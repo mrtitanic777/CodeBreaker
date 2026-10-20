@@ -12,6 +12,7 @@ Pipeline, run inside a workspace directory:
 """
 
 import os
+import re
 import shutil
 import subprocess
 
@@ -150,7 +151,37 @@ def decompile(version, workspace, java=None, on_output=None, setup=True):
     src = _find_src(workspace)
     if not src:
         raise DecompileError("Decompile produced no Java source under %s." % workspace)
+    fixed = repair_array_params(src)
     if on_output:
         n = sum(1 for _r, _d, fs in os.walk(src) for f in fs if f.endswith('.java'))
         on_output("[decompile] done: %d .java files at %s" % (n, src))
+        if fixed:
+            on_output("[decompile] repaired %d mangled array parameter name(s)" % fixed)
     return src
+
+
+# RetroMCP names an array parameter from its JVM descriptor in some versions (Indev 20100213:
+# `Block[] block;4`, `byte[] [B4`), which is not Java, while Vineflower's body still calls it `var4`
+# (`var4/* $VF was: block;4 */`). The parameter takes the name the body uses.
+_MANGLED_PARAM = re.compile(r'(\w+(?:\[\])+)\s+([^\s,()]*[;\[][^\s,()]*?)(\d+)(?=\s*[,)])')
+_VF_WAS = re.compile(r'/\* \$VF was: [^*]*\*/')
+
+
+def repair_array_params(src):
+    """Rename mangled array parameters in every .java under `src` to the `varN` their bodies use.
+    -> how many parameters were renamed."""
+    count = 0
+    for dp, _dirs, files in os.walk(src):
+        for f in files:
+            if not f.endswith('.java'):
+                continue
+            p = os.path.join(dp, f)
+            with open(p, encoding='utf-8', errors='replace') as fh:
+                text = fh.read()
+            new, n = _MANGLED_PARAM.subn(lambda m: '%s var%s' % (m.group(1), m.group(3)), text)
+            if n:
+                new = _VF_WAS.sub('', new)
+                with open(p, 'w', encoding='utf-8') as fh:
+                    fh.write(new)
+                count += n
+    return count

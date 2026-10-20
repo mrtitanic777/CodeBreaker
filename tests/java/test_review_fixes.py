@@ -12,7 +12,6 @@ import pytest
 
 from codebreaker.java import run as cli, edition, parse, transpile as pipeline, profiles
 from codebreaker.java.console import controller_nav
-from codebreaker.java.emit.statements import _balanced_call_sub
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CANON = os.path.join(_ROOT, 'codebreaker', 'java', 'platform', 'canonical')
@@ -115,51 +114,7 @@ def test_controller_nav_writes_nothing_when_one_anchor_is_missing(tmp_path):
     assert 'handleControllerMenuNav' not in (tmp_path / 'Minecraft.cpp').read_text(encoding='utf-8')
 
 
-# ---------------------------------------------------------------- 4. ->length flip is receiver-typed
-def _finalize(text, arrays, scalar_classes, receivers):
-    saved = (pipeline._LENGTH_ARRAY_FIELDS, pipeline._LENGTH_SCALAR_CLASSES, pipeline._LENGTH_SCALAR_RECEIVERS)
-    pipeline._LENGTH_ARRAY_FIELDS = set(arrays)
-    pipeline._LENGTH_SCALAR_CLASSES = set(scalar_classes)
-    pipeline._LENGTH_SCALAR_RECEIVERS = set(receivers)
-    try:
-        return pipeline._finalize_emitted(text)
-    finally:
-        (pipeline._LENGTH_ARRAY_FIELDS, pipeline._LENGTH_SCALAR_CLASSES,
-         pipeline._LENGTH_SCALAR_RECEIVERS) = saved
-
-
-def test_length_through_scalar_length_class_keeps_arrow():
-    kw = dict(arrays={'world'}, scalar_classes={'World'}, receivers={'getWorld', 'world'})
-    assert _finalize('n = ((World*)var1)->length;', **kw) == 'n = ((World*)var1)->length;'
-    assert _finalize('n = getWorld()->length;', **kw) == 'n = getWorld()->length;'
-    assert _finalize('n = static_cast<World*>(o)->length;', **kw) == 'n = static_cast<World*>(o)->length;'
-    # `world` names an array field somewhere AND a World* field -> ambiguous, left as emitted
-    assert _finalize('n = world->length;', **kw) == 'n = world->length;'
-    # unrelated array results still flip
-    assert _finalize('n = getData()->length;', **kw) == 'n = getData().length;'
-    assert _finalize('n = v->heights->length;', arrays={'heights'}, scalar_classes={'World'},
-                     receivers=set()) == 'n = v->heights.length;'
-
-
-def test_compute_length_sets_from_corpus():
-    classes = [parse.parse_source(s) for s in (
-        'public class World { public int length; public byte[] blocks; }',
-        'public class Game { public World level; public int[] world; public World getWorld() { return level; } }',
-    )]
-    arrays, scalar, receivers = pipeline.compute_length_sets(classes)
-    assert {'blocks', 'world'} <= arrays
-    assert scalar == {'World'}
-    assert {'level', 'getWorld'} <= receivers
-
-
 # ---------------------------------------------------------------- 5. charAt receiver match
-def test_charat_cast_not_spliced_into_longer_identifier():
-    s = 'c = username.charAt(i) + name.charAt(j);'
-    out = _balanced_call_sub(s, 'name', 'charAt', lambda a: 'name[%s]' % a[0], pre='(unsigned char)')
-    assert out == 'c = username.charAt(i) + (unsigned char)name[j];'
-    out = _balanced_call_sub('c = this->name.charAt(i);', 'name', 'charAt',
-                             lambda a: 'name[%s]' % a[0], pre='(unsigned char)')
-    assert out == 'c = (unsigned char)this->name[i];'
 
 
 # ---------------------------------------------------------------- 6/7. Save360 mount gate + unmount

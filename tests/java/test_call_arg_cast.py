@@ -5,29 +5,18 @@
 1. derive_nullability keyed nullable getters by NAME globally, so an obfuscated `a()` returning a
    nullable pointer in one class (Pathfinder.a -> PathPoint) mistyped `entityMap.a()` (returns List).
    Fixed with an ambiguity guard (a name with inconsistent return types is not a global getter).
-2. _deref_cast_results treated a CALL-ARG cast (`a((Entity*)NULL, ...)`) as a grouping cast and derefed
-   the CALL RESULT's `.size()` -> `->size()` on a List value. Fixed by skipping call/index arg parens."""
+2. the old text translator treated a CALL-ARG cast (`a((Entity*)NULL, ...)`) as a grouping cast and
+   derefed the CALL RESULT's `.size()` -> `->size()` on a List value. The back end types the call."""
 
 import os
 import tempfile
 
 from codebreaker.java import transpile as pipeline, profiles
-from codebreaker.java.emit.statements import _deref_cast_results
 
 
 class _Res:  # minimal resolver: every cast type is a pointer
     def is_pointer(self, jt):
         return True
-
-
-def test_deref_skips_call_arg_cast():
-    s = 'x->a((Entity*)NULL, var1).size()'
-    assert _deref_cast_results(s, _Res()) == s            # .size() (on the result) stays '.'
-
-
-def test_deref_still_handles_grouping_cast():
-    out = _deref_cast_results('y = ((Block*)obj).getName();', _Res())
-    assert ')->getName()' in out                          # ((Block*)obj).m -> ->m (genuine cast grouping)
 
 
 def _convert(files):

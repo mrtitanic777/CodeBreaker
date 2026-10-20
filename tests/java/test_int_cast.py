@@ -1,27 +1,12 @@
 # -*- coding: utf-8 -*-
 """J2X-BUGFIX float-int-cast-saturate: Java's (int)/(long) of a float or double saturates (NaN -> 0) where
 C++'s is undefined out of range. Every (int)x / (long long)x in an emitted class becomes j2xToInt(x) /
-j2xToLong(x) (expr.java_int_casts, JavaRT.h). Found by the behavioural judge: MathHelper.sin(1000000F)."""
+j2xToLong(x) (the back end's x_Cast, JavaRT.h). Found by the behavioural judge: MathHelper.sin(1000000F)."""
 
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.java.emit.statements.expr import java_int_casts
 from codebreaker.verify import java
-
-
-@pytest.mark.parametrize('cpp, want', [
-    ('return s_SIN_TABLE[(int)(var0 * 10430.378F) & 0xffff];',
-     'return s_SIN_TABLE[j2xToInt((var0 * 10430.378F)) & 0xffff];'),
-    ('int a = (int)ceilf((double)(var1 + 2));', 'int a = j2xToInt(ceilf((double)(var1 + 2)));'),
-    ('x = (int)-v->y[i] + (int)this->a.b(c);', 'x = j2xToInt(-v->y[i]) + j2xToInt(this->a.b(c));'),
-    ('long long z = (long long)(float)q;', 'long long z = j2xToLong((float)q);'),
-    ('int w = (int)Math::floor(d) * 2;', 'int w = j2xToInt(Math::floor(d)) * 2;'),
-    ('printf("(int)x"); // (int)y', 'printf("(int)x"); // (int)y'),          # literals and comments as they are
-    ('char c = (char)i;', 'char c = (char)i;'),                              # other casts as they are
-])
-def test_casts_are_rewritten(cpp, want):
-    assert java_int_casts(cpp) == want
 
 
 @pytest.mark.skipif(not (java.compiler() and java.jdk()[0]), reason='needs g++ and a JDK')

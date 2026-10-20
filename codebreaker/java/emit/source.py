@@ -8,32 +8,30 @@ This is where the console-crash classes are prevented BY CONSTRUCTION:
     (no uninitialized members)
   * a class that allocates heap in a constructor gets a destructor that frees it
     (Rule-of-Three leak fix)
-  * `this(...)` constructor delegation is detected and LOUDLY flagged, never
-    silently dropped (the Block blockID=0 / BlockContainer flag bugs)
+  * `this(...)` constructor delegation is inlined by the back end, never silently dropped (the
+    Block blockID=0 / BlockContainer flag bugs)
 
-Method-body statement translation is delegated to emit/statements.py (Module 4c).
+Every body, constructor and initialiser is written from the typed IR by the translator's back end
+(codebreaker/translate/backends/cpp03.py); what it declines is an explicit, ledgered J2X-GAP.
 """
 
 import re
 
-from codebreaker.java import typemap, ir
+from codebreaker.java import typemap
+from codebreaker.java.textutil import balanced_paren
 from codebreaker.java.ledger import Category, Severity
 from codebreaker.java.emit import naming, ownership
 from codebreaker.java.emit.std_transforms import apply_std_transforms
-from codebreaker.java.emit.statements import translate_body, _resolve_chains, _resolve_call_chains, sub_outside_literals, _split_top_commas, _fix_numeric_suffixes, _rewrite_array_aggregates, _MATH, distribute_cast_into_ternaries, _balanced_paren
 
 def _banner(cls_name, cpp_std=None, platform_label=None):
     std_label = cpp_std.label if cpp_std else 'C++03'
     plat = platform_label or 'unknown'
     return '// Auto-generated from %s.java\n// Target: %s / %s' % (cls_name, plat, std_label)
-_NEW_ARRAY = re.compile(r'^new\s+[\w.]+\s*\[([^\]]+)\]\s*$')   # size may be any expression
 # Multi-dimensional aggregate `new T[][]{...}` / `new T[][][]{...}` (2+ empty `[]` dims then `{`).
 # aggregate_array_body() intentionally handles only the 1-D `new T[]{...}` file-static-data form;
 # nested aggregates can't be a flat C array, so they build a nested JArrayInit instead (C++03 has no
 # braced new[][]). One `[]` is NOT matched here -- that stays the ownership.aggregate_array_body path.
 _NEW_ARRAY_AGG_MULTI = re.compile(r'^new\s+[\w.]+\s*(?:\[\s*\]\s*){2,}\{', re.S)
-_THIS_CALL = re.compile(r'\bthis\s*\(([^;]*)\)\s*;')
-_SUPER_CALL = re.compile(r'^super\s*\(([^;]*)\)\s*;')
 # zero-initialised in every constructor's member-init list, as Java zeroes every field. FIXED BUG
 # byte-fields-uninitialised: 'signed char' (Java byte) was missing when byte stopped being plain char, so
 # every byte field -- packet types, yaw/pitch, NBT tags -- held garbage until assigned (the behavioural
@@ -54,88 +52,6 @@ def _default_value(cpp_type):
 # ---------------------------------------------------------------------------
 # static field definitions
 # ---------------------------------------------------------------------------
-def _static_init(f, cpp_type, ledger, cls, resolver, own_statics):
-    init = (f.initializer or '').strip()
-    if not init:
-        return _default_value(cpp_type)              # forward-declared static -> NULL/0/default
-    m = _NEW_ARRAY.match(init)
-    if m:                                            # new T[n] -> JArray<elem>(n) (bounds-checked)
-        # the size expression is not a bare literal in general (e.g. `new int[EnumOptions.values().length]`)
-        # -> translate its references too, so `EnumOptions.values()` becomes `EnumOptions::values()`.
-        n = _static_ref(m.group(1), resolver, own_statics, cls.name)
-        if ledger is not None:
-            ledger.add(cls.name + '.cpp', Category.RISK,
-                       'uninit-array fixed: %s(%s) value-initialized + length-tracked (Java zero-fills)'
-                       % (cpp_type, n), line=f.line, severity=Severity.MED, source='emit',
-                       rule='uninit-array-fixed')
-        return '%s(%s)' % (cpp_type, n)
-    cm = re.match(r'^new\s+([A-Za-z_]\w*)', init)     # `new ArrayList()` -> value container (default)
-    if cm and cm.group(1) in typemap.CONTAINERS:
-        return None                                  # default-construct the value container (empty)
-    return _static_ref(init, resolver, own_statics, cls.name)  # other initializer: translate refs
-
-
-def _static_ref(expr, resolver, own_statics=(), current=None):
-    """Translate references inside a static initializer expression (these don't go through the
-    statement translator): Class.field -> Class::s_field, Class.method(...) -> Class::method(...),
-    runtime-holder/enum member -> Holder::member (no s_), a bare own/inherited static -> s_name,
-    Java null -> NULL, AND the chained/call-result pointer derefs (Block::s_stone->blockID)."""
-    # Every runtime-support class (RUNTIME_HEADERS) is a legitimate `::` static holder here, matching
-    # statements.py's static_set -- so Logger.getLogger / NumberFormat.getIntegerInstance / Locale.US
-    # / Charset.forName in a static initializer lower to `::` just as they do in method bodies.
-    holders = typemap.RUNTIME_HEADERS | typemap.JAVART_STATICS | set(resolver.enums)
-
-    # static-field/array initializers don't go through the statement translator, so apply the two
-    # transforms they still need: Java numeric-literal suffixes (`2.0D`->`2.0`, `7L`->`7LL` -- MSVC
-    # rejects the `D` suffix -> "bad suffix on number") and primitive-type casts (`(byte)2` ->
-    # `(signed char)2`; `byte`/`boolean` are not C++ types).
-    expr = _fix_numeric_suffixes(expr)
-    expr = re.sub(r'\(\s*(byte|boolean|short|int|long|float|double|char)\s*\)',
-                  lambda mm: '(%s)' % typemap.JAVA_TO_CPP.get(mm.group(1), mm.group(1)), expr)
-    # Math.<fn> -> C math (sqrtf, floorf, javaMathRound, ...) -- same map the statement translator uses,
-    # since a static initializer (e.g. NoiseGenerator2 = 0.5 * (Math.sqrt(3.0) - 1.0)) skips that pass.
-    expr = _MATH.sub(lambda mm: typemap.MATH_API_EMIT.get(mm.group(1), mm.group(0)), expr)
-    # reference-type cast -> pointer cast: `(BlockGrass)(new BlockGrass(2))` -> `(BlockGrass*)(...)`,
-    # `(Achievement)NULL` -> `(Achievement*)NULL`. Statement bodies get this via emit.statements'
-    # `_cast`, but static initializers bypass the statement translator, so apply it here too. Only
-    # POINTER types gain the star -- value types (JavaString/JObject, `(String)NULL` -> "") are left
-    # exactly as-is so their conversion-operator behaviour is unchanged.
-    def _refcast(mm):
-        t = mm.group(1)
-        return '(%s*)' % t if resolver.is_pointer(ir.JType(t)) else mm.group(0)
-    expr = re.sub(r'\(([A-Z]\w*)\)(?=\s*[\w("])', _refcast, expr)
-    # distribute a pointer-cast over a conditional's arms (see emit.statements) -- a static
-    # initializer may hold `(Base)(cond ? new A() : new B())` too.
-    expr = distribute_cast_into_ternaries(expr)
-
-    def repl(m):
-        cls, mem, paren = m.group(1), m.group(2), m.group(3)
-        if mem == 'class' and not paren:                         # Java `X.class` literal (any X) ->
-            from codebreaker.java.emit.statements import _CLASS_LIT_TYPE               # wrapper/String -> its C++ type (typeid)
-            return 'j2xClassOf(typeid(%s))' % _CLASS_LIT_TYPE.get(cls, cls)   # STABLE Class* (no dangling temp)
-        if cls in holders:
-            return '%s::%s%s' % (cls, mem, paren or '')          # holder/enum/method: no s_
-        if cls in resolver.known:
-            if paren:
-                return '%s::%s%s' % (cls, mem, paren)            # static method call
-            return '%s::%s' % (cls, naming.static_field_name(mem))   # static field -> s_
-        return m.group(0)
-    expr = re.sub(r'\b([A-Z]\w*)\.(\w+)(\s*\()?', repl, expr)
-    from codebreaker.java.emit.statements import fix_enum_access
-    expr = fix_enum_access(expr, resolver)           # const/typed enum ordinal()/values() (MappingHelper tables)
-    # bare reference to this class's own/inherited static -> s_-prefixed (e.g. an initializer
-    # calling setStepSound(soundStoneFootstep) where soundStoneFootstep is a static of the class)
-    for nm in own_statics:
-        expr = sub_outside_literals(re.compile(r'(?<![\w.:])' + re.escape(nm) + r'\b'),
-                                    naming.static_field_name(nm), expr)
-    expr = re.sub(r'\bnull\b', 'NULL', expr)
-    # static-field / call-result chain derefs (Block::s_stone.blockID -> Block::s_stone->blockID),
-    # reusing the statement translator's type-tracking walker (no locals, current class as `this`).
-    expr = _resolve_chains(expr, {}, resolver, current)
-    expr = _resolve_call_chains(expr, {}, resolver, current)
-    return expr
-
-
 def _array_elem_cpp(jtype, resolver):
     """The C++ element spelling for a T[] field, i.e. the JArray<...> template argument. Must MATCH
     types.cpp_type's array handling exactly, or the aggregate data array (`static elem _data[]`) and
@@ -183,31 +99,30 @@ def _render_statics(cls, resolver, ledger):
     """Returns (def_lines, init_lines): the static field DEFINITIONS (zero-init for deferrable ones)
     and the DEFERRED initializer statements that initStatics() must run in dependency order."""
     defs, inits = [], []
-    # own + inherited static field names, for prefixing bare references in initializers
-    own_statics = (set(f.name for f in cls.static_fields())
-                   | resolver.members.get(cls.name, {}).get('statics', set()))
     for f in cls.static_fields():
         name = naming.field_name(f)
         ft = resolver.field_type(f.jtype)
         init_raw = (f.initializer or '').strip()
+        tree = TREE_BODIES.field_init(cls.name, f.name) if TREE_BODIES is not None and init_raw else None
+        items = TREE_BODIES.array_items(cls.name, f.name) \
+            if TREE_BODIES is not None and ownership.aggregate_array_body(f) is not None else None
+        if init_raw and tree is None and items is None:
+            defs.append('%s %s::%s;' % (ft, cls.name, name))
+            inits += _gap(cls, ledger, 'static field %s.%s' % (cls.name, f.name), getattr(f, 'line', 0))
+            continue
         if _NEW_ARRAY_AGG_MULTI.match(init_raw):         # new T[][]{...} -> nested JArrayInit (C++03)
-            # Translate references first (numeric leaves are untouched), then build the nested
-            # JArrayInit comma-expression the runtime converts to JArray<JArray<T> >. Deferred into
-            # initStatics() like any value-constructing init -- it allocates, so it isn't a constant.
-            value = _rewrite_array_aggregates(
-                _static_ref(init_raw, resolver, own_statics, cls.name), resolver)
+            # the nested JArrayInit comma-expression the runtime converts to JArray<JArray<T> >. Deferred
+            # into initStatics() like any value-constructing init -- it allocates, so it isn't a constant.
             defs.append('%s %s::%s;' % (ft, cls.name, name))          # zero/default now (order-safe)
-            inits.append('%s::%s = %s;' % (cls.name, name, value))    # nested-array value in initStatics()
+            inits.append('%s::%s = %s;' % (cls.name, name, tree))     # nested-array value in initStatics()
             if ledger is not None:
                 ledger.add(cls.name + '.cpp', Category.RISK,
                            'multi-dim static array new T[][]{...} -> nested JArrayInit '
                            '(C++03 has no braced new[][]; each level length-tracked)',
                            line=f.line, severity=Severity.LOW, source='emit', rule='static-aggregate-array-nd')
             continue
-        agg = ownership.aggregate_array_body(f)
-        if agg is not None:                              # new T[]{a,b,c} -> file-static data + JArray
+        if items is not None:                            # new T[]{a,b,c} -> file-static data + JArray
             elem = _array_elem_cpp(f.jtype, resolver)
-            items = [_static_ref(e.strip(), resolver, own_statics, cls.name) for e in agg.split(',') if e.strip()]
             data = '_%s_%s_data' % (cls.name, name)
             defs.append('static %s %s[] = { %s };' % (elem, data, ', '.join(items)))
             defs.append('%s %s::%s(%s, %d);' % (ft, cls.name, name, data, len(items)))
@@ -217,8 +132,7 @@ def _render_statics(cls, resolver, ledger):
                            '(C++03 has no braced new[]; length tracked)',
                            line=f.line, severity=Severity.LOW, source='emit', rule='static-aggregate-array')
             continue
-        tree = TREE_BODIES.field_init(cls.name, f.name) if TREE_BODIES is not None else None
-        init = tree if tree is not None else _static_init(f, ft, ledger, cls, resolver, own_statics)
+        init = tree if init_raw else _default_value(ft)  # forward-declared static -> NULL/0/default
         if init is None:
             defs.append('%s %s::%s;' % (ft, cls.name, name))
         elif _is_deferrable_static_init(init, ft):
@@ -242,163 +156,20 @@ def _init_list(cls, resolver):
 
 
 
-_NEW_ARG_TYPE = re.compile(r'^\s*new\s+([A-Za-z_]\w*)')
-# `(X)e` OR the pointer-cast `(X*)e` -- reference casts are pointer-translated (`(Block)v`->`(Block*)v`)
-# BEFORE ctor-delegation inlines, so the `*` must be tolerated or the arg's type is lost and overload
-# selection falls back to the wrong same-arity ctor (ItemStack(int,int) instead of ItemStack(Block,int)).
-_CAST_ARG_TYPE = re.compile(r'^\s*\(\s*([A-Za-z_]\w*)\s*\*?\s*\)\s*\S')
-_FACTORY_ARG_TYPE = re.compile(r'^\s*([A-Za-z_]\w*)\s*::\s*[A-Za-z_]\w*\s*\(')
+# The translator's back end (codebreaker.translate.backends.cpp03.Bodies), set by transpile for the
+# conversion: every body, constructor and initialiser is written from the typed IR.
+TREE_BODIES = None
 
 
-def _infer_arg_type(expr):
-    """Static type of a delegation argument expression, when obvious: `new X(...)` -> X, `(X)e` -> X,
-    `X::factory(...)` -> X (a static factory almost always returns its own type, e.g.
-    Vec3D::createVectorHelper). None otherwise -- resolved via the caller's param map, or left unscored."""
-    m = _NEW_ARG_TYPE.match(expr)
-    if m:
-        return m.group(1)
-    m = _CAST_ARG_TYPE.match(expr)
-    if m:
-        return m.group(1)
-    m = _FACTORY_ARG_TYPE.match(expr)
-    if m:
-        return m.group(1)
-    return None
-
-
-def _paren_arg(a):
-    """Parenthesize a delegation arg before it is substituted into a ctor body, so a compound arg
-    keeps its precedence: substituting `(Block*)var1` into `var1.blockID` must yield
-    `((Block*)var1)->blockID`, not `(Block*)var1->blockID` (a cast of the whole field access)."""
-    a = a.strip()
-    if re.match(r'^[A-Za-z_][\w.]*$', a) or re.match(r'^-?\d[\w.]*$', a) or (a.startswith('(') and a.endswith(')')):
-        return a                                       # bare name/field, number, or already parenthesized
-    return '(' + a + ')'
-
-
-def _ctor_delegates(c):
-    """True if constructor `c` itself starts by delegating via `this(...)`."""
-    for _ln, t in c.body:
-        if re.match(r'\s*this\s*\(', t):
-            return True
-    return False
-
-
-def _select_deleg_target(args, deleg, cls):
-    """Pick the constructor a `this(args)` delegates to. Matching by ARG COUNT alone is ambiguous when
-    a class has several same-arity ctors (Achievement's Block/Item/ItemStack 6-arg trio) -- it can pick
-    another DELEGATING ctor and recurse (`new ItemStack(new ItemStack(...))`) or lose the base init.
-    Score candidates by param-type match against the args (`new X`/`(X)` args + the delegating ctor's
-    own param types), tie-breaking toward the terminal (non-delegating) ctor."""
-    cands = [c for c in cls.constructors() if c is not deleg and len(c.params) == len(args)]
-    if len(cands) <= 1:
-        return cands[0] if cands else None
-    pmap = dict((p.name, p.jtype.name) for p in deleg.params)
-    arg_types = []
-    for a in args:
-        t = _infer_arg_type(a)
-        if t is None:
-            t = pmap.get(a.strip())
-        arg_types.append(t)
-
-    def score(c):
-        matched = sum(1 for i, p in enumerate(c.params) if arg_types[i] and p.jtype.name == arg_types[i])
-        return (matched, not _ctor_delegates(c))
-    return max(cands, key=score)
-
-
-def _delegated_base_init(args_str, deleg, cls, resolver):
-    """When a ctor delegates `this(args)`, the base class is constructed by the TARGET ctor's
-    super(...). C++03 has no delegation, so the delegating ctor must carry that base init itself:
-    return `Parent(<target's super args, target-params substituted by the delegation args>)`."""
-    if not cls.parent:
-        return None
-    args = [a for a in _split_top_commas(args_str) if a]   # balanced: nested-comma calls stay one arg
-    target = _select_deleg_target(args, deleg, cls)
-    if target is None:
-        return None
-    sub = dict((p.name, _paren_arg(args[i])) for i, p in enumerate(target.params))
-    # Substitute the target's PARAM references, but never an identifier used as a MEMBER
-    # (`this->pos`, `obj.pos`, `Cls::pos`) -- a field that shares a param's name must keep its
-    # name. Without the lookbehind, `this->pos = pos;` became `this->(arg) = (arg);` (the botched
-    # Vertex ctor). The leading (?<![\w.>:]) excludes a preceding word char, '.', '>' (from '->')
-    # and ':' (from '::'); the trailing \b keeps whole-word matching.
-    rx = re.compile(r'(?<![\w.>:])(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
-    for line in translate_body(target, cls, resolver):
-        sm = _SUPER_CALL.match(line)
-        if sm:
-            sargs = sm.group(1).strip()
-            if rx:
-                sargs = rx.sub(lambda mm: sub[mm.group(1)], sargs)
-            return '%s(%s)' % (cls.parent, sargs)
-    return None
-
-
-def _inline_delegation(args_str, deleg, cls, resolver, ledger, _depth=0):
-    """Replace `this(args);` with the target constructor's body (C++03 has no ctor
-    delegation), substituting the target's params with the call args. This makes the
-    delegated ctor's registration actually run -- the Block blockID=0 / container-flag fix.
-    Chained delegations (target body is itself a this() call) are recursively inlined."""
-    if _depth > 8:
-        return ['// PORT: delegation this(%s) -- recursion limit reached; inline manually' % args_str]
-    args = [a for a in _split_top_commas(args_str) if a]   # balanced: nested-comma calls stay one arg
-    target = _select_deleg_target(args, deleg, cls)
-    if target is None:
-        if ledger is not None:
-            ledger.add(cls.name + '.cpp', Category.STUBBED,
-                       'constructor delegation this(%s): no target ctor with %d args found -- inline manually'
-                       % (args_str, len(args)), line=getattr(deleg, 'line', 0),
-                       severity=Severity.HIGH, source='emit', rule='ctor-delegation')
-        return ['// PORT: delegation this(%s) -- target ctor not found; inline manually' % args_str,
-                'this(%s);' % args_str]
-    sub = dict((p.name, _paren_arg(args[i])) for i, p in enumerate(target.params))
-    # Substitute the target's PARAM references, but never an identifier used as a MEMBER
-    # (`this->pos`, `obj.pos`, `Cls::pos`) -- a field that shares a param's name must keep its
-    # name. Without the lookbehind, `this->pos = pos;` became `this->(arg) = (arg);` (the botched
-    # Vertex ctor). The leading (?<![\w.>:]) excludes a preceding word char, '.', '>' (from '->')
-    # and ':' (from '::'); the trailing \b keeps whole-word matching.
-    rx = re.compile(r'(?<![\w.>:])(' + '|'.join(re.escape(k) for k in sub) + r')\b') if sub else None
-    out = ['// inlined this(%s) -- C++03 lacks ctor delegation' % args_str]
-    for line in translate_body(target, cls, resolver):
-        cm = _THIS_CALL.match(line)
-        if cm:
-            # Recursively inline chained delegation with substituted args
-            chained_args = rx.sub(lambda mm: sub[mm.group(1)], cm.group(1)) if rx else cm.group(1)
-            out.extend(_inline_delegation(chained_args, target, cls, resolver, ledger, _depth + 1))
-            continue
-        if _SUPER_CALL.match(line):                # target's super() becomes THIS ctor's base init
-            continue
-        out.append(rx.sub(lambda mm: sub[mm.group(1)], line) if rx else line)
+def _gap(cls, ledger, what, line=0):
+    """What the IR's back end could not write: said in the code and the ledger, and thrown if it runs
+    -- never a guess."""
     if ledger is not None:
-        ledger.add(cls.name + '.cpp', Category.RULE,
-                   'ctor delegation this(%s) inlined from the %d-arg constructor (registration preserved)'
-                   % (args_str, len(args)), line=getattr(deleg, 'line', 0),
-                   severity=Severity.LOW, source='emit', rule='ctor-delegation-inlined')
-    return out
-
-
-def _translate_block_lines(cls, resolver, ledger, stmt_lines, is_static):
-    """Translate raw Java statement lines in cls's context. `stmt_lines` is a list of statement
-    strings (no enclosing braces). Returns translated C++ lines."""
-    m = ir.Method('_block', ir.JType('void'), params=[], is_static=is_static)
-    m.body = ([(0, 'void _block() {')]
-              + [(i + 1, s) for i, s in enumerate(stmt_lines)]
-              + [(len(stmt_lines) + 1, '}')])
-    return translate_body(m, cls, resolver, ledger)
-
-
-def _strip_block_braces(block_lines):
-    """A captured `static {`/`{` ... `}` block -> just its inner statement strings (drop the
-    opening-brace line and exactly ONE trailing close brace -- not inner for/catch braces)."""
-    inner = [t for _ln, t in block_lines]
-    for k, t in enumerate(inner):                  # drop up to & incl. the opening `{` line
-        if '{' in t:
-            inner = inner[k + 1:]; break
-    while inner and not inner[-1].strip():         # trailing blanks
-        inner = inner[:-1]
-    if inner and inner[-1].strip() == '}':         # the block's OWN close (only one)
-        inner = inner[:-1]
-    return inner
+        ledger.add(cls.name + '.cpp', Category.STUBBED,
+                   'untranslated %s: the back end declined it -- the body throws UnsupportedOperationException '
+                   '(J2X-GAP)' % what, line=line or 0, severity=Severity.HIGH, source='emit', rule='untranslated')
+    return ['// J2X-GAP: %s was not translated (see the ledger)' % what,
+            'throw new UnsupportedOperationException();']
 
 
 def _instance_init_lines(cls, resolver, ledger):
@@ -406,86 +177,30 @@ def _instance_init_lines(cls, resolver, ledger):
     Java runs these at the top of every constructor that does NOT delegate via this(...). Dropping
     them was the null-deref / uninitialized-field crash class (e.g. EntityPlayer.inventory)."""
     tree = TREE_BODIES.instance_inits(cls.name) if TREE_BODIES is not None else None
-    if tree is not None:                                  # phase 1: the IR's initialisers
+    if tree is not None:
         return tree
-    stmts = []
-    for f in cls.instance_fields():
-        if f.initializer is None:
-            continue
-        init = f.initializer.strip()
-        if f.jtype.is_array and init in ('null', 'NULL'):
-            continue                                            # a JArray value default-constructs to empty;
-            #                                                     `arr = null` is a no-op AND invalid (JArray can't hold NULL)
-        if f.jtype.is_array and init.startswith('{'):           # `int[]..[] x = {..}` shorthand ->
-            init = 'new %s%s%s' % (f.jtype.name, '[]' * f.jtype.array_dims, init)   # new T[]..[]{..}
-        stmts.append('this.%s = %s;' % (f.name, init))
-    out = _translate_block_lines(cls, resolver, ledger, stmts, is_static=False) if stmts else []
-    for block in cls.inst_inits:                                # instance { } blocks (rare)
-        out += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=False)
-    if out and ledger is not None:
-        ledger.add(cls.name + '.cpp', Category.RISK,
-                   'instance field initializers / init-blocks emitted into the constructor(s) '
-                   '(Java runs these per-ctor; dropping them caused null-deref/uninit fields)',
-                   severity=Severity.MED, source='emit', rule='instance-init')
-    return out
+    if not any(f.initializer is not None for f in cls.instance_fields()) and not cls.inst_inits:
+        return []
+    return _gap(cls, ledger, 'instance initialisers of %s' % cls.name)
 
 
 def _render_ctor(cls, m, resolver, ledger):
     params = ownership.params_str(m, resolver)
     tree = TREE_BODIES.ctor(cls.name, m) if TREE_BODIES is not None else None
-    if tree is not None:                                  # phase 1: the IR's constructor
+    if tree is not None:
         _kind, args, body = tree
         items = (['%s(%s)' % (cls.parent, args)] if args is not None and cls.parent else []) + _init_list(cls, resolver)
-        L = ['%s::%s(%s)' % (cls.name, cls.name, params)]
-        if items:
-            L.append('\t: ' + '\n\t, '.join(items))
-        L.append('{')
-        L += ['\t' + line for line in _instance_init_lines(cls, resolver, ledger) + body]
-        L.append('}')
-        return L
-    body = translate_body(m, cls, resolver, ledger)
-
-    # extract a leading super(args) into the C++ base-class init (C++ has no super() statement)
-    super_init, rest = None, []
-    for line in body:
-        sm = _SUPER_CALL.match(line)
-        if sm and super_init is None and cls.parent:
-            super_init = '%s(%s)' % (cls.parent, sm.group(1).strip())
-            continue
-        rest.append(line)
-
-    # no own super() but delegates `this(args)`: adopt the target ctor's base init, so a base
-    # with no default ctor is still constructed (C++03 delegation gap). Java inserts super()
-    # in the target; here the delegating ctor must mirror it.
-    if super_init is None and cls.parent:
-        for line in rest:
-            dm = _THIS_CALL.match(line)
-            if dm:
-                super_init = _delegated_base_init(dm.group(1), m, cls, resolver)
-                break
-
-    items = ([super_init] if super_init else []) + _init_list(cls, resolver)
-    # Java runs instance field initializers / init-blocks at the top of every ctor that does NOT
-    # delegate via this(...) (the delegated-to ctor runs them instead).
-    is_delegating = any(_THIS_CALL.match(line) for line in rest)
-    inst_init = [] if is_delegating else _instance_init_lines(cls, resolver, ledger)
+        body = _instance_init_lines(cls, resolver, ledger) + body
+    else:
+        items = _init_list(cls, resolver)
+        body = _gap(cls, ledger, 'constructor %s(%s)' % (cls.name, params), getattr(m, 'line', 0))
     L = ['%s::%s(%s)' % (cls.name, cls.name, params)]
     if items:
         L.append('\t: ' + '\n\t, '.join(items))
     L.append('{')
-    for line in inst_init:
-        L.append('\t' + line)
-    for line in rest:
-        dm = _THIS_CALL.match(line)
-        if dm:
-            L.extend('\t' + il for il in _inline_delegation(dm.group(1), m, cls, resolver, ledger))
-        else:
-            L.append('\t' + line)
+    L += ['\t' + line for line in body]
     L.append('}')
     return L
-
-
-_RETURN_VOID = re.compile(r'\breturn\s*;')
 
 
 def _render_two_phase(cls, resolver, ledger):
@@ -502,39 +217,19 @@ def _render_two_phase(cls, resolver, ledger):
     for m in ctors:
         params = ownership.params_str(m, resolver) if m is not None else ''
         tree = TREE_BODIES.ctor(cls.name, m, True) if TREE_BODIES is not None else None
-        if tree is not None:                              # phase 1: the IR's constructor
+        L += ['%s* %s::j2xInit(%s)' % (cls.name, cls.name, params), '{']
+        if tree is not None:
             kind, args, body = tree
             head = []
             if kind != 'this' and parent_two:
                 head.append('%s::j2xInit(%s);' % (cls.parent, args or ''))   # super(...), or Java's implicit one
             inits = [] if kind == 'this' else _instance_init_lines(cls, resolver, ledger)
-            L += ['%s* %s::j2xInit(%s)' % (cls.name, cls.name, params), '{']
             L += ['\t' + x for x in head + inits + body]
             L += ['\treturn this;', '}', '']
-            continue
-        body = translate_body(m, cls, resolver, ledger) if m is not None else []
-        delegating = any(_THIS_CALL.match(line) for line in body)
-        out, head = [], []
-        supered = False
-        for line in body:
-            sm = _SUPER_CALL.match(line)
-            if sm and not supered and cls.parent:
-                supered = True
-                if parent_two:                             # before the initialisers, as in Java
-                    head.append('%s::j2xInit(%s);' % (cls.parent, sm.group(1).strip()))
-                continue
-            dm = _THIS_CALL.match(line)
-            if dm:
-                out.append('%s::j2xInit(%s);' % (cls.name, dm.group(1).strip()))
-                continue
-            out.append(_RETURN_VOID.sub('return this;', line))
-        if parent_two and not supered and not delegating:
-            head.append('%s::j2xInit();' % cls.parent)       # Java's implicit super()
-        inits = [] if delegating else _instance_init_lines(cls, resolver, ledger)
-        L.append('%s* %s::j2xInit(%s)' % (cls.name, cls.name, params))
-        L.append('{')
-        L += ['\t' + x for x in head + inits + out]
-        L += ['\treturn this;', '}', '']
+        else:
+            L += ['\t' + x for x in _gap(cls, ledger, 'constructor %s(%s)' % (cls.name, params),
+                                         getattr(m, 'line', 0))]
+            L += ['}', '']
     if ledger is not None:
         ledger.add(cls.name + '.cpp', Category.RULE,
                    'two-phase construction: constructors are j2xInit(...) so their virtual calls reach the '
@@ -584,6 +279,8 @@ def _elements_not_retained(var, text):
         if re.match(r'\s*\.\s*(?:size\s*\(\s*\)|length\b)', after):
             continue
         if re.match(r'\s*\[[^\]]*\]\s*->', after):
+            continue
+        if re.match(r'\s*\.\s*get\s*\([^()]*\)\s*\)?\s*->', after):   # var.get(i)->m(), ((T*)var.get(i))->m()
             continue
         return False
     return True
@@ -657,7 +354,7 @@ def _hoist_owned_scalar_args(lines, resolver):
             if not mm:
                 break
             nm = mm.group(1)
-            close = _balanced_paren(ln, ln.index('(', mm.start()))
+            close = balanced_paren(ln, ln.index('(', mm.start()))
             args_end = close + 1 if close >= 0 else -1
             rp = _RECV_PREFIX.search(ln[:mm.start()])
             expr_start = rp.start() if rp else mm.start()
@@ -705,19 +402,13 @@ def _free_owned_reassigns(lines, owned_scalar):
     return out
 
 
-# Phase 1 of the translator (docs/TRANSLATOR_DESIGN.md): when set -- a codebreaker.translate.backends.
-# cpp03.Bodies, by transpile when CB_TREE_BODIES=1 -- method bodies come from the typed IR where its back
-# end writes them, and from translate_body otherwise.
-TREE_BODIES = None
-
-
 def _render_method(cls, m, resolver, ledger):
     ret = ownership.return_cpp_type(m, resolver)
     params = ownership.params_str(m, resolver)
     name = resolver.renamed_method(cls.name, m.name)   # field/method name-collision -> name_
     L = ['%s %s::%s(%s)' % (ret, cls.name, name, params), '{']
-    tree = TREE_BODIES.body(cls.name, m) if TREE_BODIES is not None else None   # phase 1: the IR's body
-    body = list(tree) if tree is not None else list(translate_body(m, cls, resolver, ledger))
+    tree = TREE_BODIES.body(cls.name, m) if TREE_BODIES is not None else None
+    body = list(tree) if tree is not None else _gap(cls, ledger, 'method %s' % m.name, getattr(m, 'line', 0))
     for _pass in _OWNERSHIP_POSTPASSES:
         body = _pass(body, resolver)
     # delete-before-reassign for this class's owned SCALAR pointer members (the Entity.bb / setPos leak)
@@ -788,13 +479,6 @@ def _referenced_types(cls, resolver, body_text):
     return sorted((names & includable) - {cls.name})
 
 
-def _enum_const_arg(expr, resolver, cls_name):
-    """Translate one enum-constant constructor argument (e.g. `Material.air`, `IMob.class`,
-    `"Kebab"`, `16`). Reuses the static-initializer ref translator, which maps `X.class` to a stable
-    j2xClassOf(typeid(X)) Class*."""
-    return _static_ref(expr, resolver, (), cls_name)
-
-
 def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
     """Emit the .cpp for a typed enum: static const/instance defs, the ctor(s)/dtor/methods via the
     normal renderers, and an initStatics() that builds the singleton instance table (in ctor-body
@@ -818,18 +502,23 @@ def _render_typed_enum_source(cls, resolver, ledger, cpp_std, platform_label):
     body += ['JArray<%s* >& %s::values()' % (cls.name, cls.name), '{', '\treturn _j2x_values;', '}', '']
 
     # initStatics(): construct each singleton, set its ordinal, run real static inits, fill values().
-    own_statics = set(f.name for f in cls.static_fields())
     init = []
     for i, ec in enumerate(cls.enum_consts):
-        args = ', '.join(_enum_const_arg(a.strip(), resolver, cls.name) for a in ec.args)
+        args = TREE_BODIES.enum_args(cls.name, ec.name) if TREE_BODIES is not None else None
+        if args is None:
+            init += _gap(cls, ledger, 'enum constant %s.%s' % (cls.name, ec.name))
+            continue
         nm = naming.enum_member(ec.name)
-        init.append('%s = new %s(%s);' % (nm, cls.name, args))
+        init.append('%s = new %s(%s);' % (nm, cls.name, ', '.join(args)))
         init.append('%s->__ordinal = %d;' % (nm, i))
     for f in cls.static_fields():
         if f.initializer:
-            init.append('%s = %s;' % (f.name, _static_ref(f.initializer.strip(), resolver, own_statics, cls.name)))
-    for block in getattr(cls, 'static_inits', []):
-        init += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
+            value = TREE_BODIES.field_init(cls.name, f.name) if TREE_BODIES is not None else None
+            if value is None:
+                init += _gap(cls, ledger, 'static field %s.%s' % (cls.name, f.name))
+            else:
+                init.append('%s = %s;' % (f.name, value))
+    init += _static_block_lines(cls, ledger)
     init.append('_j2x_values = JArray<%s* >(%d);' % (cls.name, len(cls.enum_consts)))
     for i, ec in enumerate(cls.enum_consts):
         init.append('_j2x_values[%d] = %s;' % (i, naming.enum_member(ec.name)))
@@ -881,6 +570,17 @@ def _inject_lazy_singleton(mlines, clsname, field):
         mlines[i:i] = ['%sif (%s == NULL) initStatics();   // J2X: lazy singleton (Java <clinit> on static access)'
                        % (indent, field)]
     return mlines
+
+
+def _static_block_lines(cls, ledger):
+    """The class's static {} blocks, in source order."""
+    static_inits = getattr(cls, 'static_inits', [])
+    if not static_inits:
+        return []
+    tree = TREE_BODIES.static_blocks(cls.name) if TREE_BODIES is not None else None
+    if tree is None or len(tree) != len(static_inits):
+        return _gap(cls, ledger, 'static {} blocks of %s' % cls.name)
+    return [line for lines in tree for line in lines]
 
 
 def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None):
@@ -965,15 +665,8 @@ def render_source(cls, resolver, ledger=None, cpp_std=None, platform_label=None)
     # calls in dependency order -- NOT by a file-local trigger (whose cross-translation-unit order is
     # undefined: the static-init-order crash class -- Block initializing before Material -> null vtable).
     # Static field DEFS above are zero-initialized; initStatics() assigns the real values, in order.
-    static_inits = getattr(cls, 'static_inits', [])
     init_body = list(static_init_lines)                  # deferred static FIELD initializers first
-    tree = TREE_BODIES.static_blocks(cls.name) if TREE_BODIES is not None and static_inits else None
-    if tree is not None and len(tree) == len(static_inits):   # phase 1: the IR's static blocks
-        for lines in tree:
-            init_body += lines
-        static_inits = []
-    for block in static_inits:                           # then the Java static{} block bodies
-        init_body += _translate_block_lines(cls, resolver, ledger, _strip_block_braces(block), is_static=True)
+    init_body += _static_block_lines(cls, ledger)        # then the Java static{} block bodies
     # ALWAYS emit initStatics() (empty when nothing to defer) so the driver can call it on any class
     # without a header/source mismatch. header.py declares it for every concrete class to match.
     # cls.has_init_statics lets the pipeline driver call only the classes that actually defer work.

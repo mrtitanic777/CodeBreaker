@@ -1,18 +1,19 @@
-"""cpp03.py -- method bodies from the IR as C++03, beside the Java transpiler's text path (phase 1).
+"""cpp03.py -- the translator's C++03 back end: method bodies, constructors and initialisers from the IR.
 
-The transpiler (codebreaker/java) still writes every declaration: headers, signatures, fields,
-constructors. This back end writes method BODIES from the typed tree, in the transpiler's conventions
--- the same TypeResolver decides pointer or value, `s_` names statics, arrays are JArray<T>, Strings
-JavaString, concatenation JCat -- so a body from either path fits the same declarations.
+The transpiler (codebreaker/java) writes the declarations: headers, signatures, fields. This back end
+writes every body from the typed tree, in the transpiler's conventions -- the same TypeResolver decides
+pointer or value, `s_` names statics, arrays are JArray<T>, Strings JavaString (a char per byte),
+concatenation JCat -- so a body fits the declarations it is written into.
 
-It declines a method rather than guess: anything it does not handle yet (a construct, a value type,
-a label, `finally`) raises Decline, and the transpiler's own translation is used for that method.
-Whether what it writes is right is decided by the judge, class by class (probe.py).
+It declines rather than guess: anything it does not handle raises Decline, and the transpiler writes
+an explicit, ledgered gap there (J2X-GAP: the body throws UnsupportedOperationException). Whether what
+it writes is right is decided by the judge, class by class (probe.py).
 """
 import re
 
 from codebreaker.java import ir as jir
 from codebreaker.java import typemap
+from codebreaker.java.ledger import Category, Severity
 from codebreaker.java.emit import naming, ownership
 from codebreaker.translate import ir
 
@@ -90,6 +91,7 @@ class Context(object):
         self.resolver = resolver
         self.classes = dict((c.name, c) for c in classes)
         self.qnames = set()                              # the program's classes by qualified name (Bodies)
+        self.ledger = None                               # the conversion's ledger, when it keeps one
 
     def is_game(self, qualified):
         """A class of the program (not the library). By qualified name: the game's own `Container` is not
@@ -165,6 +167,7 @@ class Writer(object):
         self.loops = 0                                   # loops and switches around the statement
         self.fin = []                                    # enclosing finally-with-jumps: (n, loops)
         self.fin_count = 0
+        self.leaks = 0                                   # _j2xleakN stack temporaries written
 
     # ------------------------------------------------------------------ types
     def ctype(self, t, context='local'):
@@ -238,12 +241,14 @@ class Writer(object):
             ct = self.ctype(s.type)
             self.vars[name] = ct
             if s.init is not None:
+                self.review(s.init, out, ind)
                 code, it = self.expr(s.init)
                 out.append(ind + '%s %s = %s;' % (ct, name, unbox(coerce(code, it, ct), it, ct)))
             else:
                 out.append(ind + '%s %s;' % (ct, name))
         elif isinstance(s, ir.ExprStmt):
-            out.append(ind + self.expr(s.expr)[0] + ';')
+            self.review(s.expr, out, ind)
+            out.append(ind + (self.kept_call(s.expr) or self.expr(s.expr)[0] + ';'))
         elif isinstance(s, ir.If):
             out.append(ind + 'if(%s) {' % self.cond(s.cond))
             self.block(s.then, out, ind)
@@ -301,6 +306,7 @@ class Writer(object):
             out.append(ind + 'j2xFin%d = %d; goto j2xFinally%d;' % (n, 2 if isinstance(s, ir.Break) else 3, n))
         elif isinstance(s, ir.Return):
             if s.expr is not None:
+                self.review(s.expr, out, ind)
                 code, it = self.expr(s.expr)
                 out.append(ind + 'return %s;' % unbox(coerce(code, it, self.ret), it, self.ret))
             else:
@@ -427,6 +433,70 @@ class Writer(object):
             self.vars.pop(name, None)
         out.append(ind + '}')
 
+    def note(self, category, severity, rule, text):
+        if self.ctx.ledger is not None:
+            line = getattr(self.m, 'line', 0) or 0       # a static block or field initialiser has no method
+            self.ctx.ledger.add(self.cname + '.cpp', category, text, line=line, severity=severity,
+                                source='emit', rule=rule)
+
+    def kept_call(self, e):
+        """Two call statements written as the console needs them, or None:
+          * `(new T(a)).m(b);` -- a heap temporary used once -- as a scoped stack object
+            `{ T _j2xleakN(a); _j2xleakN.m(b); }` (Java's collector freed it; C++ leaked it every call:
+            world-gen's `new WorldGenLakes(..).generate(..)`). Not a Thread's (it outlives the statement)
+            nor start()/run();
+          * `list[i].m(b);` on an array of objects -- a registry slot (Block.blocksList) can be empty --
+            as `if (list[i] != NULL) { list[i]->m(b); }`.
+        Inside a try that catches a NullPointerException neither: j2xNN throws there, as Java does."""
+        while isinstance(e, ir.Paren):
+            e = e.x
+        if self.npe or not isinstance(e, ir.Call) or e.target is None or e.sym is None:
+            return None
+        t = e.target
+        while isinstance(t, ir.Paren):
+            t = t.x
+        if isinstance(t, ir.New) and t.body is None and t.outer is None and t.type is not None \
+                and t.type.kind == 'class' and self.ctx.is_game(t.type.name) and e.sym.name not in ('start', 'run'):
+            name = jtype(t.type).name
+            if name in self.r.thread_like or name in self.r.values or self.r.extends_value_container(name) \
+                    or name not in self.r.known:
+                return None
+            call, _rt = self.expr(e)                     # the call as written, for its method and arguments
+            m = re.match(r'\(?new %s\((.*?)\)\)?->(\w+)\((.*)\)$' % re.escape(name), call)
+            if m is None:
+                return None
+            tmp = '_j2xleak%d' % self.leaks
+            self.leaks += 1
+            decl = '%s %s(%s);' % (name, tmp, m.group(1)) if m.group(1) else '%s %s;' % (name, tmp)
+            self.note(Category.RULE, Severity.MED, 'leak-temp-stackified',
+                      'leak fixed: throwaway `(new %s(...))->%s(...)` -> scoped stack object (Java GC temp '
+                      'leaked every call)' % (name, m.group(2)))
+            return '{ %s %s.%s(%s); }' % (decl, tmp, m.group(2), m.group(3))
+        if isinstance(t, ir.Index):
+            recv, rt = self.expr(t)
+            if not is_pointer(rt):
+                return None
+            call, _rt = self.expr(e)
+            self.note(Category.RISK, Severity.MED, 'null-deref-guard',
+                      'null-deref guard inserted before list-indexed call (an unregistered/NULL slot would be '
+                      'a virtual call through NULL -- undefined behaviour in C++)')
+            return 'if (%s != NULL) { %s; }' % (recv, call)
+        return None
+
+    def review(self, e, out, ind):
+        """Reflection has no C++ equivalent -- the runtime's stubs return NULL -- so a statement using it is
+        marked for a hand-written factory (J2X-REVIEW, and a HIGH ledger entry)."""
+        for n in ir.walk(e):
+            if isinstance(n, ir.Call) and n.sym is not None and n.sym.name in _REFLECTIVE \
+                    and not self.ctx.is_game(n.sym.owner):
+                out.append(ind + '// J2X-REVIEW[reflection-unsupported]: %s() has no C++ equivalent -- the '
+                           'runtime stub returns NULL. Replace with a hand-written factory (a class-keyed '
+                           'switch / registry), then null-check the result.' % n.sym.name)
+                self.note(Category.RISK, Severity.HIGH, 'reflection-unsupported',
+                          'reflection %s() has no C++ equivalent -- stub returns NULL; needs a hand-written '
+                          'factory (J2X-REVIEW[reflection-unsupported])' % n.sym.name)
+                return
+
     def cond(self, e):
         """A condition, without the parentheses Java writes around it (`if(x)`, as the text path: the console
         passes match that shape)."""
@@ -464,6 +534,8 @@ class Writer(object):
             return _float(v, ''), 'double'
         if k == 'u16':
             c = ord(v) if isinstance(v, str) else int(v)
+            if c == _HOUSE:
+                c = 127                                   # the font's ⌂, as in its strings
             if 32 <= c < 127 and chr(c) not in '\\\'':
                 return "'%s'" % chr(c), 'unsigned char'
             if c > 255:                                   # past the runtime's 8-bit char: its value as an
@@ -509,7 +581,7 @@ class Writer(object):
             return '%s::%s' % (owner, naming.static_field_name(s.name)), ct
         if s.static:
             raise Decline('static field through an instance')
-        if isinstance(e.obj, ir.This):
+        if isinstance(e.obj, (ir.This, ir.Super)):      # super.field is this object's inherited field
             recv, rt = 'this', self.cname + '*'
         else:
             recv, rt = self.expr(e.obj)
@@ -525,6 +597,12 @@ class Writer(object):
         if ct is None:
             raise Decline('field %s.%s' % (owner, s.name))
         return '%s%s%s' % (self.checked(recv, rt), '->' if is_pointer(rt) else '.', s.name), ct
+
+    def arg(self, a):
+        """An argument. A concatenation goes as a JavaString: as a JCat it converts to JavaString and to
+        JObject, and a library constructor taking either is ambiguous (new File(dir + "/x"))."""
+        code, ct = self.expr(a)
+        return 'JavaString((%s)._s)' % code if ct == 'JCat' else code
 
     def unmarked(self, args):
         """The arguments without the decompiler's EmptyN marker ones, which the transpiler strips from
@@ -636,7 +714,9 @@ class Writer(object):
         if xt.startswith('JObject') and e.type.kind == 'class' and e.type.simple in typemap.BOXED_VALUE_TYPES:
             return x, 'JObject'                           # (Integer)o stays boxed: o.intValue() is JObject's
         ct = self.ctype(e.type)
-        if e.type.is_prim and not _SIMPLE.match(x):       # grouped: the cast-saturation pass reads the operand
+        if ct in _SATURATING:                             # Java's (int)/(long) of a float saturates; C++'s is
+            return '%s(%s)' % (_SATURATING[ct], x), ct    # undefined out of range (JavaRT.h's helpers)
+        if e.type.is_prim and not _SIMPLE.match(x):       # grouped
             return '(%s)(%s)' % (ct, x), ct
         return '(%s)%s' % (ct, x), ct                     # as the text path: the reflection pass reads
                                                           # `(T*)recv->newInstance()`
@@ -688,7 +768,7 @@ class Writer(object):
         if s.varargs:
             args = self.varargs(e, owner)
         else:
-            args = ', '.join(self.expr(a)[0] for a in e.args)
+            args = ', '.join(self.arg(a) for a in e.args)
         game = self.ctx.is_game(s.owner)
         old = self.ctx.old_method(owner, s.name, s.params) if game else None
         if game:
@@ -760,7 +840,7 @@ class Writer(object):
             raise Decline('method %s.%s not found' % (owner, s.name))
         last = _split_params(ownership.params_str(old, self.r))[-1][0]
         fixed = len(s.params) - 1
-        args = [self.expr(a)[0] for a in e.args]
+        args = [self.arg(a) for a in e.args]
         if len(e.args) == len(s.params) and e.args[-1].type is not None and e.args[-1].type.kind in ('array', 'null'):
             return ', '.join(args)                      # the array itself was passed
         rest = args[fixed:]
@@ -777,7 +857,7 @@ class Writer(object):
             raise Decline('library varargs %s.%s' % (s.owner_simple, s.name))
         elem = _elem(self.ctype(last))
         fixed = len(s.params) - 1
-        args = [self.expr(a)[0] for a in e.args]
+        args = [self.arg(a) for a in e.args]
         if len(e.args) == len(s.params) and e.args[-1].type is not None and e.args[-1].type.kind in ('array', 'null'):
             return ', '.join(args)
         rest = args[fixed:]
@@ -826,7 +906,7 @@ class Writer(object):
         if jt.name in self.r.values:
             raise Decline('value type %s' % jt.name)
         e.args = self.unmarked(e.args)
-        args = ', '.join(self.expr(a)[0] for a in e.args)
+        args = ', '.join(self.arg(a) for a in e.args)
         if t.kind == 'class' and self.ctx.is_game(t.name):
             if self.r.extends_value_container(jt.name):   # a container subclass IS the container value
                 return '(*(new %s(%s)))' % (jt.name, args), jt.name
@@ -863,8 +943,11 @@ _MATH.pop('PI', None)
 
 
 _BITS = frozenset(('<<', '>>', '&', '|', '^'))
+_SATURATING = {'int': 'j2xToInt', 'long long': 'j2xToLong'}
+_HOUSE = 0x2302                                      # U+2302, Minecraft's font tile 127
 _SIMPLE = re.compile(r'^[A-Za-z_][\w]*(?:(?:->|\.)[A-Za-z_]\w*)*$')   # a name or member chain: no grouping
 _REFLECTION = frozenset(('Class*', 'Constructor*'))   # left as written: the reflection pass rewrites them
+_REFLECTIVE = frozenset(('newInstance', 'forName', 'getConstructor', 'getDeclaredConstructor'))
 _BOXED_TEST = {'String': 'isString', 'Integer': 'isInteger', 'Character': 'isCharacter', 'Boolean': 'isBoolean'}
 # X.class for a boxed or built-in type: the C++ type it is (as the transpiler's statement layer has it)
 _CLASS_LIT_TYPE = {'Byte': 'signed char', 'Short': 'short', 'Integer': 'int', 'Long': 'long long',
@@ -1000,10 +1083,12 @@ def _cstring(v):
             out.append('\\r')
         elif ch == '\t':
             out.append('\\t')
-        elif o < 32 or o == 127:
-            out.append('\\%03o' % o)
-        elif o > 127:
-            out.append(''.join('\\%03o' % b for b in ch.encode('utf-8')))
+        elif o < 32 or 127 <= o <= 255:                  # the runtime's String is a char per byte (Latin-1),
+            out.append('\\%03o' % o)                      # as the judge's inputs are: § is one byte, 0xA7
+        elif o == _HOUSE:
+            out.append('\\177')                           # the font's ⌂ tile: its CP437 byte
+        elif o > 255:
+            out.append('?')                               # outside the 8-bit runtime, as Latin-1 encodes it
         else:
             out.append(ch)
     return '"%s"' % ''.join(out)
@@ -1221,6 +1306,41 @@ class Bodies(object):
             return field_init(self.ctx, c, f)
         except Decline as e:
             self.reasons['field init: ' + str(e)] += 1
+            return None
+
+    def enum_args(self, cls_name, const):
+        """The C++ arguments of enum constant `const`'s constructor call, or None."""
+        c = self.decls.get(cls_name)
+        e = next((x for x in c.members if isinstance(x, ir.EnumConst) and x.sym is not None
+                  and x.sym.name == const), None) if c is not None else None
+        if e is None or e.body is not None:
+            return None
+        try:
+            w = Writer(self.ctx, c, None, None)
+            return [w.arg(a) for a in w.unmarked(e.args or [])]
+        except Decline as ex:
+            self.reasons['enum constant: ' + str(ex)] += 1
+            return None
+
+    def array_items(self, cls_name, name):
+        """The C++ elements of static field `name`'s `new T[]{...}` initialiser, each as the element type,
+        or None."""
+        c = self.decls.get(cls_name)
+        f = next((x for x in c.members if isinstance(x, ir.FieldDecl) and x.sym is not None
+                  and x.sym.name == name), None) if c is not None else None
+        init = f.init if f is not None else None
+        if not isinstance(init, ir.NewArray) or init.init is None or init.dims:
+            return None
+        try:
+            w = Writer(self.ctx, c, None, None)
+            elem = _elem(self.ctx.field_ctype(cls_name, name) or w.ctype(init.type))
+            out = []
+            for x in init.init:
+                code, ct = w.expr(x)
+                out.append(unbox(coerce(code, ct, elem), ct, elem))
+            return out
+        except Decline as ex:
+            self.reasons['array items: ' + str(ex)] += 1
             return None
 
     def instance_inits(self, cls_name):

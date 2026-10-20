@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Phase 1's C++03 back end: method bodies written from the typed IR (CB_TREE_BODIES=1), compiled into
-the transpiler's own declarations, and judged beside the JVM. FIXED BUG tree-npe-catch: a try whose
-catch (Exception) a NullPointerException reaches crashed (GameSettings.saveOptions); such a try is
-declined to the text path, which models the jump."""
-
-import os
+"""The C++03 back end: method bodies written from the typed IR, compiled into the transpiler's own
+declarations, and judged beside the JVM. FIXED BUG tree-npe-catch: a try whose catch (Exception) a
+NullPointerException reaches crashed (GameSettings.saveOptions); its dereferences are null-checked
+(j2xNN) so the handler catches Java's exception."""
 
 import pytest
 
@@ -172,15 +170,7 @@ def tree(tmp_path_factory):
     (src / 'Base.java').write_text(BASE, encoding='utf-8')
     (src / 'Sub.java').write_text(SUB, encoding='utf-8')
     out = tmp_path_factory.mktemp('cpp')
-    old = os.environ.get('CB_TREE_BODIES')
-    os.environ['CB_TREE_BODIES'] = '1'
-    try:
-        s = transpile.convert(str(src), str(out), platform=None, write_report=False)
-    finally:
-        if old is None:
-            os.environ.pop('CB_TREE_BODIES')
-        else:
-            os.environ['CB_TREE_BODIES'] = old
+    s = transpile.convert(str(src), str(out), platform=None, write_report=False)
     return src, out, s
 
 
@@ -188,7 +178,7 @@ def tree(tmp_path_factory):
 def test_bodies_come_from_the_tree(tree):
     _src, out, s = tree
     written, declined = s['tree_bodies']
-    assert written >= 10 and set(declined) <= {'ctor delegating'}, (written, declined)   # this(...): text path
+    assert written >= 10 and not declined, (written, declined)
     sub = (out / 'Sub.cpp').read_text(encoding='utf-8')
     assert 'Sub::Sub(int var1)' in sub and ': Base(var1 + 1)' in sub    # super(args) as the base initialiser
     text = (out / 'Calc.cpp').read_text(encoding='utf-8')
@@ -203,7 +193,7 @@ def test_tree_bodies_beside_the_jvm(tree, tmp_path):
     javac, jvm = java.jdk()
     r = probe.run(staged, str(out), parse.parse_file(str(src / 'Calc.java')), str(tmp_path / 'work'),
                   java.compiler(), javac, jvm)
-    # guarded: a NullPointerException caught by catch (Exception) -- the text path's, until phase 2
+    # guarded: a NullPointerException caught by catch (Exception)
     assert set(r['methods']) >= {'fill', 'mix', 'wrap', 'label', 'count', 'guarded', 'cleanup', 'search',
                                  'sums', 'tabled', 'made'}, (r['methods'], r['why'])
     sub = probe.run(staged, str(out), parse.parse_file(str(src / 'Sub.java')), str(tmp_path / 'work2'),

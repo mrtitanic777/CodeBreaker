@@ -38,98 +38,8 @@ _GL_TO_D3D9 = False
 # languages catalog (kind == 'api', opengl-family) at convert() time; this default covers GL11/GLU.
 _GL_NAMESPACES = ('GL11', 'GLU')
 
-# Corpus field names whose declared type is an ARRAY. JArray's `length` is a VALUE member (`.length`),
-# so when the member-env misses an array field reached through a pointer the emitter can leave a wrong
-# `field->length`; _finalize_emitted flips those back to `.length`. Gated on THIS set so a real scalar
-# `length` field on a class pointer (e.g. Indev's `World.length`: this->length / worldObj->length) is
-# NOT clobbered. Populated per-conversion by convert(); empty = flip only call/index results.
-_LENGTH_ARRAY_FIELDS = set()
-# Classes that declare (or inherit) a SCALAR `length` field (Indev's `World.length`), and the names of
-# fields/methods whose type is one of those classes (`worldObj`, `getWorld`). A `->length` reached
-# through such a receiver -- `((World*)var1)->length`, `getWorld()->length`, `worldObj->length` -- is a
-# real pointer member access and keeps its `->`. Populated per-conversion alongside _LENGTH_ARRAY_FIELDS.
-_LENGTH_SCALAR_CLASSES = set()
-_LENGTH_SCALAR_RECEIVERS = set()
 # classes whose construction hands `this` to someone (a registry, a list, a listener) -- set per convert
 _THIS_ESCAPES = set()
-
-
-def compute_length_sets(classes):
-    """(array_field_names, scalar_length_classes, scalar_length_receivers) for the `->length` finalize
-    flip: names of array-typed fields; classes with a non-array `length` field (own or inherited); and
-    names of fields + methods whose (non-array) type is one of those classes."""
-    array_fields, scalar_classes, receivers = set(), set(), set()
-    for c in classes:
-        for f in list(getattr(c, 'fields', ()) or ()) + list(getattr(c, 'inherited_fields', ()) or ()):
-            jt = getattr(f, 'jtype', None)
-            if jt is None:
-                continue
-            if jt.is_array:
-                array_fields.add(f.name)
-            elif f.name == 'length':
-                scalar_classes.add(c.name)
-    if scalar_classes:
-        for c in classes:
-            for f in getattr(c, 'fields', ()) or ():
-                jt = getattr(f, 'jtype', None)
-                if jt is not None and not jt.is_array and jt.name in scalar_classes:
-                    receivers.add(f.name)
-            for m in getattr(c, 'methods', ()) or ():
-                rt = getattr(m, 'return_type', None)
-                if rt is not None and not rt.is_array and rt.name in scalar_classes:
-                    receivers.add(m.name)
-    return array_fields, scalar_classes, receivers
-
-
-def _match_open_paren(text, close_idx):
-    """Index of the '(' matching the ')' at close_idx, or -1."""
-    depth = 0
-    for i in range(close_idx, -1, -1):
-        c = text[i]
-        if c == ')':
-            depth += 1
-        elif c == '(':
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1
-
-
-_CAST_PREFIX_RE = re.compile(r'\(\s*(?:\w+::)*(\w+)\s*\*\s*\)')
-_STATIC_CAST_TAIL_RE = re.compile(r'_cast\s*<\s*(?:\w+::)*(\w+)\s*\*\s*>\s*$')
-_CALLEE_TAIL_RE = re.compile(r'(\w+)\s*$')
-
-
-def _paren_receiver_is_scalar_length(text, close_idx):
-    """True when the parenthesised receiver ending at close_idx points at a scalar-`length` class: a C
-    cast `((World*)x)`, a `static_cast<World*>(x)`, or a call `getWorld()` whose method returns one."""
-    if not _LENGTH_SCALAR_CLASSES:
-        return False
-    open_idx = _match_open_paren(text, close_idx)
-    if open_idx < 0:
-        return False
-    m = _CAST_PREFIX_RE.match(text[open_idx + 1:close_idx].lstrip())
-    if m and m.group(1) in _LENGTH_SCALAR_CLASSES:
-        return True
-    head = text[max(0, open_idx - 200):open_idx]
-    m = _STATIC_CAST_TAIL_RE.search(head)
-    if m and m.group(1) in _LENGTH_SCALAR_CLASSES:
-        return True
-    m = _CALLEE_TAIL_RE.search(head)
-    return bool(m and m.group(1) in _LENGTH_SCALAR_RECEIVERS)
-
-
-def _flip_length_after_bracket(m):
-    if m.group(1) == ')' and _paren_receiver_is_scalar_length(m.string, m.start(1)):
-        return m.group(0)
-    return m.group(1) + '.length'
-
-
-def _flip_length_after_ident(m):
-    name = m.group(1)
-    if name in _LENGTH_ARRAY_FIELDS and name not in _LENGTH_SCALAR_RECEIVERS:
-        return name + '.length'
-    return m.group(0)
 
 
 def _convert_gl_to_d3d9(text):
@@ -279,11 +189,8 @@ def _finalize_emitted(text):
     static-data arrays and inlined ctor bodies, not just method-body lines):
       - enum-constant refs colliding with macros (EnumX::NULL -> EnumX::NULL_)
       - the invalid `'\\u0000'` C++ char literal -> the standard `'\\0'`
-      - `new X(...)->m` -> `(new X(...))->m` (C++ precedence: the member binds to the call otherwise)
-      - `"lit".method()` -> `JavaString("lit").method()` (a bare literal has no Java String methods)"""
+      - a discarded `new X(...);` -> `delete new X(...);`"""
     from codebreaker.java.emit.std_transforms import sanitize_reserved_members
-    from codebreaker.java.emit.statements.expr import java_int_casts
-    from codebreaker.java.emit.statements import _wrap_new_alloc_chains, _wrap_literal_method, _paren_shift_operands
     text = sanitize_reserved_members(text)
     if _GL_TO_D3D9:
         text = _convert_gl_pick_to_raycast(text)   # rip GL_SELECT picking -> raycast BEFORE the ns rename
@@ -291,23 +198,9 @@ def _finalize_emitted(text):
     if _TRACE_THROWS:
         text = _trace_guest_throws(text)   # tag every throw with its site (throws are no-op landmines here)
     text = text.replace(chr(39) + chr(92) + 'u0000' + chr(39), chr(39) + chr(92) + '0' + chr(39))
-    # Java's (int)/(long) of a float or double saturates; C++'s is undefined out of range (JavaRT.h)
-    text = java_int_casts(text)
     # `new Object()` (a bare java.lang.Object, used only as a monitor/lock) -> a JObject VALUE. Object
     # has no C++ class; the universal box default-constructs, and the sync object is never used on the port.
     text = re.sub(r'\bnew\s+Object\s*\(\s*\)', 'JObject()', text)
-    # `arr->length` -> `arr.length`: JArray's `length` (no parens) is a VALUE member, so a pointer deref
-    # of it is wrong -- it happens when the member-env misses an array FIELD reached through a typed
-    # pointer (e.g. RenderEngine's var2->imageData->length). BUT a real scalar `length` FIELD on a class
-    # pointer (Indev's `World` has `int length`: this->length / worldObj->length) must KEEP its `->`, so
-    # this must NOT be a blanket flip. Flip a call/index result (`)->length` / `]->length` -- almost
-    # always a JArray), and flip an identifier receiver ONLY when it names an array-typed field
-    # (_LENGTH_ARRAY_FIELDS). `->length(` (a method) and `->lengthX` are untouched either way.
-    # Either flip is skipped when the receiver is typed as a scalar-`length` class (a `(World*)` cast,
-    # a World-returning call, a World-typed field: _LENGTH_SCALAR_*); an identifier naming BOTH an array
-    # field and a World-typed field is ambiguous and is left as emitted.
-    text = re.sub(r'([)\]])->length\b(?!\s*\()', _flip_length_after_bracket, text)
-    text = re.sub(r'\b(\w+)->length\b(?!\s*\()', _flip_length_after_ident, text)
     # DISCARDED-NEW LEAK: a statement that is a bare `new X(...);` (allocation whose result is never stored)
     # is a no-op in Java (the temporary is GC'd immediately) but LEAKS in C++. Faithful even in the original
     # -- e.g. RubyDung.render() has Notch's stray `new Cube(0, 0);`. Rewrite to `delete new X(...);` so the
@@ -322,11 +215,7 @@ def _finalize_emitted(text):
         if re.match(r'new\s+([A-Za-z_]\w*)', stmt).group(1) in _THIS_ESCAPES:
             return _m.group(0)
         return '%sdelete %s  // J2X-BUGFIX discarded-new-leak' % (indent, stmt)
-    text = re.sub(r'(?m)^(\s*)(new\s+[A-Za-z_][\w:]*\s*\([^;]*\)\s*;)\s*$', _fix_discarded_new, text)
-    # `a - 3 >> 4` -> `(a - 3) >> 4`: parenthesize a shift's arithmetic operand (MSVC C4554). Behaviour-
-    # preserving (Java/C++ agree additive/multiplicative binds tighter than shift); only silences the warn.
-    return '\n'.join(_paren_shift_operands(_wrap_literal_method(_wrap_new_alloc_chains(ln)))
-                     for ln in text.split('\n'))
+    return re.sub(r'(?m)^(\s*)(new\s+[A-Za-z_][\w:]*\s*\([^;]*\)\s*;)\s*$', _fix_discarded_new, text)
 
 
 def discover(java_dir):
@@ -1116,7 +1005,6 @@ _ONE_AT_A_TIME = threading.Lock()
 def _convert_restoring(java_dir, out_dir, value_types, ledger, write_report, cpp_std, platform, progress_cb,
                        platform_refs, sdk_override, emit_debug, overlay_dir, edition, mc_version):
     from codebreaker.java import profiles as _profiles
-    from codebreaker.java.emit import statements as _statements
     _prev_profile = _profiles.active().name
     _base_getters = set(typemap.KNOWN_NULLABLE_GETTERS)
     _base_gtypes = dict(typemap.NULLABLE_GETTER_RETURN_TYPE)
@@ -1129,7 +1017,6 @@ def _convert_restoring(java_dir, out_dir, value_types, ledger, write_report, cpp
     finally:
         typemap.KNOWN_NULLABLE_GETTERS.clear(); typemap.KNOWN_NULLABLE_GETTERS.update(_base_getters)
         typemap.NULLABLE_GETTER_RETURN_TYPE.clear(); typemap.NULLABLE_GETTER_RETURN_TYPE.update(_base_gtypes)
-        _statements.refresh_nullable_getters()
         from codebreaker.java.emit import source as _emit_source
         _emit_source.TREE_BODIES = None                # phase 1's IR bodies never outlive their conversion
         if _profiles.active().name != _prev_profile:
@@ -1226,11 +1113,6 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     _prog('[resolve] done (%d known classes, %d interfaces, %d enums)'
           % (len(resolver.known), len(resolver.interfaces), len(resolver.enums)))
 
-    # Corpus array-FIELD names -> gate the `->length`->`.length` finalize flip so a real scalar `length`
-    # field on a class pointer (Indev World.length) keeps its `->` while a missed array-field length is
-    # still corrected. (See _finalize_emitted.)
-    global _LENGTH_ARRAY_FIELDS, _LENGTH_SCALAR_CLASSES, _LENGTH_SCALAR_RECEIVERS
-    _LENGTH_ARRAY_FIELDS, _LENGTH_SCALAR_CLASSES, _LENGTH_SCALAR_RECEIVERS = compute_length_sets(classes)
     global _THIS_ESCAPES
     _THIS_ESCAPES = compute_this_escapes(classes)
 
@@ -1243,14 +1125,12 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # DERIVE nullable getters from the corpus and union into the guarded set for THIS conversion, so
     # emit-time null-guarding + the null-deref rule cover getters that can `return null` on any corpus
     # (not just the Alpha whitelist). convert()'s `finally` restores the module globals across calls.
-    from codebreaker.java.emit import statements as _statements
     _base_getters = set(typemap.KNOWN_NULLABLE_GETTERS)
     _base_gtypes = dict(typemap.NULLABLE_GETTER_RETURN_TYPE)
     d_getters, d_gtypes = derive_nullability(classes, resolver)
     typemap.KNOWN_NULLABLE_GETTERS |= d_getters
     for _k, _v in d_gtypes.items():
         typemap.NULLABLE_GETTER_RETURN_TYPE.setdefault(_k, _v)
-    _statements.refresh_nullable_getters()
     _prog('[nullability] derived %d additional nullable getter(s) from the corpus'
           % len(d_getters - _base_getters))
 
@@ -1318,20 +1198,18 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
                    _read(_data_path('platform', 'reference', 'Inflate.reference' + _ext)))
 
     # THE TRANSLATOR (docs/TRANSLATOR_DESIGN.md): every method body, constructor and initialiser comes from
-    # javac's typed tree through codebreaker/translate's IR and C++03 back end. CB_TREE_BODIES=0 selects the
-    # old text translator instead (kept until the judge has confirmed the switch everywhere).
-    tree = None
-    if os.environ.get('CB_TREE_BODIES', '1') != '0':
-        from codebreaker.java import probe as _probe
-        from codebreaker.translate.backends import cpp03 as _cpp03
-        from codebreaker.verify import java as _vjava
-        from codebreaker.base import settings as _settings
-        _cp = list(_probe.libraries())
-        _shim = _probe.shims(_settings.state('translate'), _vjava.jdk()[0]) if _cp else ''
-        tree = _cpp03.Bodies(_cpp03.Context(resolver, classes),
-                             _cpp03.java_units(java_dir, ([_shim] if _shim else []) + _cp))
-        emit_source.TREE_BODIES = tree
-        _prog('[translate] the IR front end lowered %d classes' % len(tree.decls))
+    # javac's typed tree through codebreaker/translate's IR and C++03 back end.
+    from codebreaker.java import probe as _probe
+    from codebreaker.translate.backends import cpp03 as _cpp03
+    from codebreaker.verify import java as _vjava
+    from codebreaker.base import settings as _settings
+    _cp = list(_probe.libraries())
+    _shim = _probe.shims(_settings.state('translate'), _vjava.jdk()[0]) if _cp else ''
+    _ctx = _cpp03.Context(resolver, classes)
+    _ctx.ledger = ledger
+    tree = _cpp03.Bodies(_ctx, _cpp03.java_units(java_dir, ([_shim] if _shim else []) + _cp))
+    emit_source.TREE_BODIES = tree
+    _prog('[translate] the IR front end lowered %d classes' % len(tree.decls))
 
     headers = sources = 0
     init_classes = []                                # concrete classes whose initStatics() does real work
@@ -1564,11 +1442,10 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
 
     # (the nullable-getter globals and the target profile are restored by convert()'s `finally`)
 
-    if tree is not None:
-        emit_source.TREE_BODIES = None
-        _prog('[translate] %d method bodies from the IR; the text path wrote %d (%s)'
-              % (tree.written, sum(tree.declined.values()),
-                 ', '.join('%s %d' % kv for kv in tree.declined.most_common(8))))
+    emit_source.TREE_BODIES = None
+    _prog('[translate] %d method bodies from the IR; %d untranslated (J2X-GAP%s)'
+          % (tree.written, sum(tree.declined.values()),
+             ''.join(', %s %d' % kv for kv in tree.declined.most_common(8))))
 
     cats = ledger.totals_by_category()
     sevs = ledger.totals_by_severity()
@@ -1579,7 +1456,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     return {
         'parsed': len(classes), 'headers': headers, 'sources': sources,
         'markers': sorted(markers),             # empty decompiler marker classes, dropped on purpose
-        'tree_bodies': (tree.written, dict(tree.declined)) if tree is not None else None,
+        'tree_bodies': (tree.written, dict(tree.declined)),
         'rule_findings': rule_findings, 'events': len(ledger),
         'high': sevs.get(Severity.HIGH, 0),
         'report': rep,

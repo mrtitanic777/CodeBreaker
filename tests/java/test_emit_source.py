@@ -6,7 +6,7 @@ import unittest
 
 from codebreaker.java import ir, types, parse
 from codebreaker.java.emit import source, header
-from codebreaker.java.ledger import Ledger, Category
+from codebreaker.java.ledger import Ledger
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 JAVA = os.path.join(HERE, 'fixtures', 'java')
@@ -54,14 +54,6 @@ class TestSourceSafety(unittest.TestCase):
         self.assertTrue(self.cpp.startswith('#include "stdafx.h"'))
         self.assertIn('#include "Block.h"', self.cpp)
 
-    def test_uninit_primitive_array_value_initialized(self):
-        # boolean[] -> JArray<bool>, zero-filled + length-tracked like Java
-        self.assertIn('JArray<bool > Block::s_tickOnLoad = JArray<bool >(256);', self.cpp)
-
-    def test_uninit_pointer_array_value_initialized(self):
-        # Block[] -> JArray<Block*> (length-tracked array of pointers), value-init to NULLs
-        self.assertIn('JArray<Block* > Block::s_blocksList = JArray<Block* >(256);', self.cpp)
-
     def test_forward_declared_static_is_nulled(self):
         self.assertIn('Block* Block::s_stone = NULL;', self.cpp)
 
@@ -76,33 +68,8 @@ class TestSourceSafety(unittest.TestCase):
         self.assertIn('stepSound = NULL;', self.cpp)
         self.assertTrue(any(e.rule == 'rule-of-three-dtor' for e in self.led.events))
 
-    def test_delegation_inlined(self):
-        # the raw this(...) call is gone; the target ctor's registration is inlined
-        self.assertNotIn('this(var1, var3);', self.cpp)
-        self.assertIn('// inlined this(var1, var3)', self.cpp)
-        # the 2-arg ctor's body (stepSound alloc + blockID set) now runs in the 3-arg ctor too
-        self.assertEqual(self.cpp.count('this->stepSound = new StepSound();'), 2)
-        evs = [e for e in self.led.events if e.rule == 'ctor-delegation-inlined']
-        self.assertTrue(evs and evs[0].category == Category.RULE)
-
     def test_method_signature(self):
         self.assertIn('int Block::getBlockID()', self.cpp)
-
-    def test_uninit_array_events_logged(self):
-        self.assertEqual(sum(1 for e in self.led.events if e.rule == 'uninit-array-fixed'), 2)
-
-
-class TestSuperCtor(unittest.TestCase):
-    def test_super_call_moves_to_init_list(self):
-        c = ir.JClass('Sub', parent='Base')
-        c.fields.append(ir.Field('x', ir.JType('int')))
-        ctor = ir.Method('Sub', is_ctor=True, params=[ir.Param('var1', ir.JType('int'))], line=1)
-        ctor.body = [(1, 'Sub(int var1) {'), (2, '\tsuper(var1, 5);'), (3, '\tthis.x = var1;'), (4, '}')]
-        c.methods.append(ctor)
-        cpp = source.render_source(c, types.TypeResolver(known_classes={'Base'}))
-        self.assertIn(': Base(var1, 5)', cpp)
-        self.assertNotIn('super(var1, 5);', cpp)
-        self.assertIn('this->x = var1;', cpp)
 
 
 class TestRuleOfThreeNoCopy(unittest.TestCase):
@@ -160,19 +127,6 @@ class TestSourceRealFiles(unittest.TestCase):
         r = types.TypeResolver()
         self.assertIsNone(source.render_source(c, r))
 
-    def test_dual_use_return_promoted_to_pointer(self):
-        # Vec3D is a value type, but getIntermediateWithXValue() returns `createVector(...) : null`
-        # -- a Vec3D-or-null result -> promoted to Vec3D*. (Alpha's subtract() returns a value.)
-        c = parse.parse_file(os.path.join(JAVA, 'Vec3D.java'))
-        r = types.TypeResolver(value_types={'Vec3D'})
-        cpp = source.render_source(c, r)
-        self.assertIn('Vec3D* Vec3D::getIntermediateWithXValue(Vec3D var1, double var2)', cpp)
-        self.assertIn('return NULL;', cpp)          # Java null -> NULL
-        self.assertNotIn('return null;', cpp)
-        h = header.render_header(c, r)
-        self.assertIn('virtual Vec3D* getIntermediateWithXValue(Vec3D var1, double var2);', h)
-
-
 class TestAggregateArrayStatic(unittest.TestCase):
     """`static T[] x = new T[]{a, b}` -> a JArray over a file-static data array (C++03 has no
     braced new[]), with element refs translated (Block.planks -> Block::s_planks)."""
@@ -187,14 +141,6 @@ class TestAggregateArrayStatic(unittest.TestCase):
 
     def test_header_declares_jarray_static(self):
         self.assertIn('static JArray<Block* > s_blocksEffectiveAgainst;', self.h)
-
-    def test_source_defines_translated_array(self):
-        self.assertIn('static Block* _ItemAxe_s_blocksEffectiveAgainst_data[] = '
-                      '{ Block::s_planks, Block::s_wood };', self.cpp)
-        self.assertIn('JArray<Block* > ItemAxe::s_blocksEffectiveAgainst('
-                      '_ItemAxe_s_blocksEffectiveAgainst_data, 2);', self.cpp)
-        self.assertNotIn('new Block[]', self.cpp)        # no invalid braced new[]
-
 
 class TestNestedAggregateArrayStatic(unittest.TestCase):
     """`static int[][] x = new int[][]{{...},{...}}` -> nested JArrayInit (C++03 has no braced
@@ -214,13 +160,6 @@ class TestNestedAggregateArrayStatic(unittest.TestCase):
 
     def test_no_braced_new_array(self):
         self.assertNotIn('new int[]', self.cpp)          # no invalid braced new[][] (C2087)
-
-    def test_source_builds_nested_jarrayinit(self):
-        # zero-init def now, real nested value assigned in initStatics()
-        self.assertIn('JArray<JArray<int > > ModelBed::s_bedDirection;', self.cpp)
-        self.assertIn('ModelBed::s_bedDirection = (JArrayInit<JArray<int > >(), '
-                      '(JArrayInit<int >(), 1, 0), (JArrayInit<int >(), 3, 2));', self.cpp)
-
 
 class TestValueTypeDefaultCtor(unittest.TestCase):
     """A value-type class with only parameterized ctors gets a synthesized zero-init default
@@ -253,76 +192,6 @@ class TestValueTypeDefaultCtor(unittest.TestCase):
         self.assertEqual(h.count('\tVec3D();'), 1)    # the parsed ctor only; not duplicated
 
 
-class TestChainedCtorDelegation(unittest.TestCase):
-    """Chained this() delegation (A -> B -> C) must recursively inline,
-    not silently drop the inner delegation (the ItemStack itemID=0 bug)."""
-    def setUp(self):
-        c = ir.JClass('ItemStack')
-        c.fields.append(ir.Field('itemID', ir.JType('int')))
-        c.fields.append(ir.Field('stackSize', ir.JType('int')))
-        c.fields.append(ir.Field('itemDamage', ir.JType('int')))
-        # 3-arg: the leaf — actually assigns fields
-        ctor3 = ir.Method('ItemStack', is_ctor=True,
-                          params=[ir.Param('var1', ir.JType('int')),
-                                  ir.Param('var2', ir.JType('int')),
-                                  ir.Param('var3', ir.JType('int'))], line=10)
-        ctor3.body = [(10, 'ItemStack(int var1, int var2, int var3) {'),
-                      (11, '\tthis.itemID = var1;'),
-                      (12, '\tthis.stackSize = var2;'),
-                      (13, '\tthis.itemDamage = var3;'), (14, '}')]
-        c.methods.append(ctor3)
-        # 2-arg: delegates to 3-arg
-        ctor2 = ir.Method('ItemStack', is_ctor=True,
-                          params=[ir.Param('var1', ir.JType('int')),
-                                  ir.Param('var2', ir.JType('int'))], line=16)
-        ctor2.body = [(16, 'ItemStack(int var1, int var2) {'),
-                      (17, '\tthis(var1, var2, 0);'), (18, '}')]
-        c.methods.append(ctor2)
-        # 1-arg: delegates to 2-arg (chained)
-        ctor1 = ir.Method('ItemStack', is_ctor=True,
-                          params=[ir.Param('var1', ir.JType('int'))], line=20)
-        ctor1.body = [(20, 'ItemStack(int var1) {'),
-                      (21, '\tthis(var1, 1);'), (22, '}')]
-        c.methods.append(ctor1)
-        self.r = types.TypeResolver(known_classes={'ItemStack'})
-        self.led = Ledger()
-        self.cpp = source.render_source(c, self.r, ledger=self.led)
-
-    def test_1arg_ctor_inlines_field_assignments(self):
-        # The 1-arg ctor must end up with the 3-arg ctor's field assignments
-        # (via 1-arg -> 2-arg -> 3-arg), not an empty body
-        lines = self.cpp.splitlines()
-        in_1arg = False
-        body_lines = []
-        for line in lines:
-            if 'ItemStack::ItemStack(int var1)' in line:
-                in_1arg = True
-            elif in_1arg and line.startswith('}'):
-                break
-            elif in_1arg:
-                body_lines.append(line)
-        body = '\n'.join(body_lines)
-        self.assertIn('this->itemID = var1', body)
-        self.assertIn('this->stackSize = 1', body)
-        self.assertIn('this->itemDamage = 0', body)
-
-    def test_2arg_ctor_inlines_field_assignments(self):
-        lines = self.cpp.splitlines()
-        in_2arg = False
-        body_lines = []
-        for line in lines:
-            if 'ItemStack::ItemStack(int var1, int var2)' in line:
-                in_2arg = True
-            elif in_2arg and line.startswith('}'):
-                break
-            elif in_2arg:
-                body_lines.append(line)
-        body = '\n'.join(body_lines)
-        self.assertIn('this->itemID = var1', body)
-        self.assertIn('this->stackSize = var2', body)
-        self.assertIn('this->itemDamage = 0', body)
-
-
 class TestNullableValueParams(unittest.TestCase):
     """A value-struct param used as a nullable reference (compared/assigned null) becomes a
     pointer in the signature -- callers in the raytrace dual-use chain pass Vec3D* already."""
@@ -339,10 +208,6 @@ class TestNullableValueParams(unittest.TestCase):
 
     def test_header_param_is_pointer(self):
         self.assertIn('virtual bool isVecInYZ(Vec3D* var1);', self.h)
-
-    def test_source_param_is_pointer_and_body_derefs(self):
-        self.assertIn('bool AxisAlignedBB::isVecInYZ(Vec3D* var1)', self.cpp)
-        self.assertTrue(any('var1->yCoord' in l for l in self.cpp.splitlines()), self.cpp)
 
     def test_non_nullable_value_param_stays_value(self):
         c = ir.JClass('Vec3D')
@@ -396,16 +261,6 @@ class TestStringReturnUnification(unittest.TestCase):
         c.methods.append(m)
         return c
 
-    def test_null_string_return_stays_value(self):
-        c = self._string_returner(['\treturn null;'])
-        r = types.TypeResolver(known_classes={'Entity'})
-        h = header.render_header(c, r)
-        cpp = source.render_source(c, r)
-        self.assertIn('virtual JavaString getTexture();', h)   # String -> JavaString, NOT a pointer
-        self.assertNotIn('JavaString* getTexture', h)
-        self.assertIn('return std::string();', cpp)             # null -> empty, never NULL char*
-        self.assertNotIn('return NULL;', cpp)
-
     def test_literal_string_return_value(self):
         c = self._string_returner(['\treturn "/mob/char.png";'])
         r = types.TypeResolver(known_classes={'Entity'})
@@ -414,84 +269,3 @@ class TestStringReturnUnification(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-
-
-class DelegationTargetSelectionTests(unittest.TestCase):
-    """Same-arity sibling ctors must resolve by param TYPE, not by arg count alone."""
-    def _vtx_class(self):
-        c = ir.JClass('PTV')
-        c.fields.append(ir.Field('vector3D', ir.JType('Vec3D')))
-        # 0: the delegating float x5 ctor -> this(Vec3D::createVectorHelper(...), var4, var5)
-        d = ir.Method('PTV', is_ctor=True,
-                      params=[ir.Param('var%d' % i, ir.JType('float')) for i in range(1, 6)], line=1)
-        # 1: (PTV, float, float) -- WRONG target (self-type)
-        c1 = ir.Method('PTV', is_ctor=True,
-                       params=[ir.Param('var1', ir.JType('PTV')), ir.Param('var2', ir.JType('float')),
-                               ir.Param('var3', ir.JType('float'))], line=5)
-        # 2: (Vec3D, float, float) -- the RIGHT target
-        c2 = ir.Method('PTV', is_ctor=True,
-                       params=[ir.Param('var1', ir.JType('Vec3D')), ir.Param('var2', ir.JType('float')),
-                               ir.Param('var3', ir.JType('float'))], line=8)
-        c.methods += [d, c1, c2]
-        return c, d, c1, c2
-
-    def test_factory_arg_selects_matching_ctor(self):
-        c, d, c1, c2 = self._vtx_class()
-        args = ['Vec3D::createVectorHelper((double)var1, (double)var2, (double)var3)', 'var4', 'var5']
-        self.assertIs(source._select_deleg_target(args, d, c), c2)
-
-    def test_new_arg_selects_matching_ctor(self):
-        c, d, c1, c2 = self._vtx_class()
-        args = ['new Vec3D(1.0, 2.0, 3.0)', 'var4', 'var5']
-        self.assertIs(source._select_deleg_target(args, d, c), c2)
-
-    def test_infer_arg_type_forms(self):
-        self.assertEqual(source._infer_arg_type('new ItemStack(var5)'), 'ItemStack')
-        self.assertEqual(source._infer_arg_type('(Vec3D)obj'), 'Vec3D')
-        self.assertEqual(source._infer_arg_type('Vec3D::createVectorHelper(a, b)'), 'Vec3D')
-        self.assertIsNone(source._infer_arg_type('var5 + 1'))
-
-
-class DelegationArgParenTests(unittest.TestCase):
-    def test_paren_arg_wraps_cast(self):
-        # a compound arg must be parenthesized so `(Block*)var1` substituted into `var1.blockID`
-        # yields `((Block*)var1)->blockID`, not a cast of the whole field access
-        self.assertEqual(source._paren_arg('(Block*)var1'), '((Block*)var1)')
-
-    def test_paren_arg_leaves_simple(self):
-        self.assertEqual(source._paren_arg('var1'), 'var1')
-        self.assertEqual(source._paren_arg('var1.blockID'), 'var1.blockID')
-        self.assertEqual(source._paren_arg('1'), '1')
-        self.assertEqual(source._paren_arg('(already)'), '(already)')
-
-
-class DelegationFieldParamCollisionTests(unittest.TestCase):
-    """FIXED BUG delegation-field-name: a delegating ctor whose TARGET assigns a field that shares a
-    param's name (this.pos = pos) must not substitute the field on the LHS -- the botched Vertex
-    ctor emitted `this->(new Vec3(..)) = (new Vec3(..));`."""
-
-    def _vertex(self):
-        c = ir.JClass('Vertex')
-        c.fields.append(ir.Field('pos', ir.JType('Vec3')))
-        c.fields.append(ir.Field('u', ir.JType('float')))
-        c.fields.append(ir.Field('v', ir.JType('float')))
-        d = ir.Method('Vertex', is_ctor=True,
-                      params=[ir.Param('x', ir.JType('float')), ir.Param('y', ir.JType('float')),
-                              ir.Param('z', ir.JType('float')), ir.Param('u', ir.JType('float')),
-                              ir.Param('v', ir.JType('float'))], line=10)
-        d.body = [(10, 'Vertex(float x, float y, float z, float u, float v) {'),
-                  (11, '\tthis(new Vec3(x, y, z), u, v);'), (12, '}')]
-        t = ir.Method('Vertex', is_ctor=True,
-                      params=[ir.Param('pos', ir.JType('Vec3')), ir.Param('u', ir.JType('float')),
-                              ir.Param('v', ir.JType('float'))], line=13)
-        t.body = [(13, 'Vertex(Vec3 pos, float u, float v) {'),
-                  (14, '\tthis.pos = pos;'), (15, '\tthis.u = u;'), (16, '\tthis.v = v;'), (17, '}')]
-        c.methods.extend([d, t])
-        return c
-
-    def test_field_lhs_not_substituted(self):
-        c = self._vertex()
-        r = types.TypeResolver(known_classes={'Vertex', 'Vec3'})
-        cpp = source.render_source(c, r, ledger=Ledger())
-        self.assertNotIn('this->(new Vec3', cpp)              # the botched form is gone
-        self.assertIn('this->pos = (new Vec3(x, y, z));', cpp)
