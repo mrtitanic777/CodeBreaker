@@ -944,7 +944,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # The 360 target ships a COMPLETE, self-contained platform layer by default (entry point, GL->D3D9
     # emulator, shaders, textures, audio, input, file IO) -- the user never hand-writes/copies it. Opt
     # out is still possible by passing platform_refs=False explicitly for a non-xbox target.
-    if platform == 'xbox360':
+    if platform in ('xbox360', 'pc_opengl'):
         platform_refs = True
 
     # On the 360 emulator a C++ `throw` is a no-op that doesn't unwind -> tag every emitted throw with
@@ -1052,7 +1052,9 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     if platform_refs:
         from codebreaker.java.console import platform_refs as _pref
         from codebreaker.java._paths import data_path as _data_path
-        _ref_dir0 = _data_path('platform', 'reference')
+        # the platform's own layer: the 360's (Direct3D 9 / XInput / XACT) or the PC's (SDL2 / OpenGL)
+        _ref_dir0 = (_data_path('platform', 'pc', 'reference') if platform == 'pc_opengl'
+                     else _data_path('platform', 'reference'))
         # DETECTION-DRIVEN (no game hardcoding): tell the platform emitter which classes the game
         # defines itself + its main class, so it skips any platform file that collides with a
         # game-defined class and generates a generic entry point instead of the Beta-specific one.
@@ -1064,7 +1066,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
         _runnable_game = _pref.detect_runnable_game_class(classes) if not _main_class else None
         emitted = _pref.emit_references(out_dir, _ref_dir0,
                                         game_classes=_game_classes, main_class=_main_class,
-                                        runnable_game=_runnable_game)
+                                        runnable_game=_runnable_game, platform=platform)
         _prog('[platform] emitted %d platform references (agnostic layer, replacing stubs): %s'
               % (len(emitted), ', '.join(sorted(emitted))))
         _skipped = getattr(_pref.emit_references, 'last_skipped', [])
@@ -1211,6 +1213,13 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # so it sees the final include graph. See _prune_unreferenced.
     if platform:
         _prune_unreferenced(out_dir, set(c.name for c in classes), _prog, overlay_files=_applied)
+
+    # the PC build: one CMake executable named after the program's main class
+    if platform == 'pc_opengl':
+        from codebreaker.java import cmake as _cmake
+        from codebreaker.java.console import platform_refs as _pref2
+        _exe = _pref2.detect_main_class(classes) or 'game'
+        _prog('[cmake] %s (executable %s)' % (_cmake.write_cmakelists(out_dir, _exe), _exe))
 
     # verify: run the crash-class rules over the emitted output (acceptance check)
     _prog('[rules] scanning crash-class rules on emitted output...')
@@ -1430,8 +1439,25 @@ def _write_init_driver(out_dir, init_classes, classes):
            '#endif // J2X_RTTI_H\n')
     rtti = ['#include "stdafx.h"', '#include "JavaRT.h"', '#include "j2x_rtti.h"', '#include "Class.h"', '']
     rtti += ['#include "%s.h"' % n for n in sorted(names)]
+    # Java value equality: each concrete class that defines equals(Object) or hashCode() (a HashMap key such as
+    # ChunkPosition) -- JObject compares and orders by them (JavaRT.h j2xRegisterValue)
+    valued = []
+    for c in classes:
+        if c.name not in names or getattr(c, 'is_interface', False) or getattr(c, 'is_abstract', False):
+            continue
+        ms = [m for m in c.methods if not m.is_ctor and not getattr(m, 'is_static', False)
+              and not getattr(m, 'is_abstract', False)]
+        eq = any(m.name == 'equals' and len(m.params) == 1 and m.params[0].jtype.name == 'Object' for m in ms)
+        hc = any(m.name == 'hashCode' and not m.params for m in ms)
+        if eq or hc:
+            valued.append(c.name)
+            rtti.append('static bool j2xEq_%s(void* s, const JObject& o) { return %s; }'
+                        % (c.name, '((%s*)s)->equals(o)' % c.name if eq else 's == o.p'))
+            rtti.append('static int j2xHash_%s(void* s) { return %s; }'
+                        % (c.name, '((%s*)s)->hashCode()' % c.name if hc else '(int)(std::size_t)s'))
     rtti += ['', 'void j2xRegisterRtti()', '{']
     rtti += ['\tj2xRegisterBase(typeid(%s).name(), typeid(%s).name());' % (d, b) for d, b in edges]
+    rtti += ['\tj2xRegisterValue(typeid(%s).name(), j2xEq_%s, j2xHash_%s);' % (n, n, n) for n in valued]
     rtti += ['}', '']
     # FIXED BUG classreg-multithread-race: pre-materialise EVERY class into _j2xClassReg AT BOOT (before the MP
     # network reader/writer threads start), so j2xClassOf never lazily push_backs the shared registry during play.

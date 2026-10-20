@@ -121,6 +121,28 @@ SOURCES = {
 	}
 }
 ''',
+    'Pos.java': '''public class Pos {
+	public final int x;
+	public final int y;
+
+	public Pos(int var1, int var2) {
+		this.x = var1;
+		this.y = var2;
+	}
+
+	public boolean equals(Object var1) {
+		if (!(var1 instanceof Pos)) {
+			return false;
+		}
+		Pos var2 = (Pos)var1;
+		return var2.x == this.x && var2.y == this.y;
+	}
+
+	public int hashCode() {
+		return this.x * 31 + this.y;
+	}
+}
+''',
     'Gen.java': '''public class Gen {
 	public static int total;
 	private int seed;
@@ -564,6 +586,21 @@ public class Port {
 		return var1 == null ? "big" : var1;
 	}
 
+	public static int keys(int var0) {
+		java.util.HashMap var1 = new java.util.HashMap();
+		java.util.HashSet var2 = new java.util.HashSet();
+		for (int var3 = 0; var3 < 6; ++var3) {
+			var1.put(new Pos(var3, var0 & 7), Integer.valueOf(var3 * 10));
+			var2.add(new Pos(var3 % 3, 1));
+		}
+		var1.put(new Pos(2, var0 & 7), Integer.valueOf(99));
+		Integer var4 = (Integer)var1.get(new Pos(2, var0 & 7));
+		ArrayList var5 = new ArrayList();
+		var5.add(new Pos(4, 4));
+		return var1.size() * 1000 + var2.size() * 100 + (var4 == null ? -1 : var4.intValue())
+				+ (var1.containsKey(new Pos(5, var0 & 7)) ? 1 : 0) + (var5.contains(new Pos(4, 4)) ? 5 : 0);
+	}
+
 	public static int leak(int var0) {
 		(new Gen(var0)).generate(3);
 		(new Gen(1)).generate(var0);
@@ -593,7 +630,7 @@ JUDGED = {'access', 'statics', 'shadow', 'math', 'lists', 'maps', 'sets', 'strin
           'floatMod', 'intMod', 'literalLength', 'casts', 'unsignedChar', 'arrays', 'castDeref', 'nullable',
           'unbox', 'chains', 'inherited', 'labeled', 'nullCatch', 'switches', 'iterate', 'forInit', 'identity',
           'shifts', 'finallyCounter', 'finallyReturn', 'enums', 'builder', 'parse', 'bytesOf', 'longs',
-          'compound', 'bools', 'leak', 'registry', 'containers', 'library', 'latin', 'trig', 'copies', 'order', 'vtx', 'maybe'}
+          'compound', 'bools', 'leak', 'registry', 'containers', 'library', 'latin', 'trig', 'copies', 'order', 'vtx', 'maybe', 'keys'}
 
 needs_tools = pytest.mark.skipif(not (java.compiler() and java.jdk()[0]), reason='needs g++ and a JDK')
 

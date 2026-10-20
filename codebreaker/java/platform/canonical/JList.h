@@ -58,6 +58,9 @@ public:
 		if (i < 0 || (size_t)i >= this->size()) return T();
 		T old = (*this)[(size_t)i]; (*this)[(size_t)i] = v; return old;
 	}
+	// Java's List.size() is an int: `size() - 1` stays a signed index on a 64-bit host (where size_t would
+	// pick remove-by-value, FIXED BUG jlist-size-t-remove: Alpha's World.updatingLighting crashed on PC)
+	int size() const { return (int)std::vector<T>::size(); }
 	bool isEmpty() const { return this->empty(); }
 	bool contains(const T& v) const { return std::find(this->begin(), this->end(), v) != this->end(); }
 	int indexOf(const T& v) const {
@@ -73,6 +76,8 @@ public:
 	T remove(unsigned i) { return this->remove((int)i); }
 	T remove(long i) { return this->remove((int)i); }
 	T remove(long long i) { return this->remove((int)i); }
+	T remove(unsigned long i) { return this->remove((int)i); }
+	T remove(unsigned long long i) { return this->remove((int)i); }   // size_t on a 64-bit host
 	template<class U> bool remove(const U& v) {          // List.remove(Object) -> was-present
 		// box U to the element type first: on a JList<JObject>, `std::find(.., EntityPlayer*)` would
 		// compare `JObject == EntityPlayer*`, which is ambiguous (JObject has both operator==(JObject)

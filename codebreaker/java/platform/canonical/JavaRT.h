@@ -178,6 +178,41 @@ inline bool _j2xIsA(const std::string& obj, const std::string& tgt) {
 // hold a char/String AND be RTTI-decoded, so JObject is a tagged box. Autoboxes from char/int/
 // String/any pointer; converts back via casts; `instanceof Character/String/...` -> isXxx(). Scalar
 // `Object` stays void* (opaque refs don't need this).
+// --- Java value equality for objects. A HashMap/HashSet keyed by objects (Chunk's tile entities by
+// ChunkPosition, a set of ChunkCoordIntPair) finds a key by its equals()/hashCode(), not by identity. The
+// converter registers each class that defines them (j2xRegisterValue, emitted into j2x_rtti.cpp); JObject's
+// equality and map order use them, and an unregistered class keeps Object's identity. FIXED BUG
+// object-key-identity: Alpha's dungeon chest was never found again (getBlockTileEntity -> NULL, a crash). ---
+struct JObject;
+typedef bool (*j2xEqFn)(void* self, const JObject& other);
+typedef int (*j2xHashFn)(void* self);
+struct j2xValueOps { j2xEqFn eq; j2xHashFn hash; };
+inline std::map<std::string, j2xValueOps>& _j2xValueOps() {
+	static std::map<std::string, j2xValueOps> m; return m;
+}
+inline void j2xRegisterValue(const char* cls, j2xEqFn eq, j2xHashFn hash) {
+	j2xValueOps ops = { eq, hash };
+	_j2xValueOps()[cls] = ops;
+}
+inline const j2xValueOps* _j2xValueOfName(const std::string& cls) {
+	std::map<std::string, j2xValueOps>::iterator v = _j2xValueOps().find(cls);
+	if (v != _j2xValueOps().end()) return &v->second;
+	std::map<std::string, std::vector<std::string> >::iterator b = _j2xBases().find(cls);
+	if (b == _j2xBases().end()) return 0;
+	for (std::size_t k = 0; k < b->second.size(); ++k)          // inherited from a base
+		if (const j2xValueOps* o = _j2xValueOfName(b->second[k])) return o;
+	return 0;
+}
+inline const j2xValueOps* _j2xValueOf(const std::type_info* ti) {
+	if (!ti || _j2xValueOps().empty()) return 0;
+	static std::map<const std::type_info*, const j2xValueOps*> cache;
+	std::map<const std::type_info*, const j2xValueOps*>::iterator c = cache.find(ti);
+	if (c != cache.end()) return c->second;
+	const j2xValueOps* o = _j2xValueOfName(ti->name());
+	cache[ti] = o;
+	return o;
+}
+
 struct JObject {
 	int kind;                         // 0 null, 1 int, 2 char, 4 String, 5 ptr, 6 String[], 7 bool, 8 real
 	long long i;
@@ -245,7 +280,11 @@ struct JObject {
 	JArray<JavaString> strArray() const { return sa; }
 	template<class T> T* as() const { return (T*)p; }
 	// Object.equals(...): compare by boxed value / pointer identity (Java Object.equals default).
-	bool equals(const JObject& o) const { return kind == o.kind && i == o.i && p == o.p && (kind != 4 || s == o.s); }
+	bool equals(const JObject& o) const {
+		if (kind == 5 && p && o.kind == 5 && o.p && p != o.p)        // the object's own equals(), if it has one
+			if (const j2xValueOps* v = _j2xValueOf(ti)) return v->eq(p, o);
+		return kind == o.kind && i == o.i && p == o.p && (kind != 4 || s == o.s);
+	}
 	bool equals(const JavaString& o) const { return kind == 4 && s == o; }
 	template<class T> bool equals(T* q) const { return kind == 5 && p == (void*)q; }
 	// null compare (Object x == null -> x == 0, since NULL is 0). operator==(int) is an exact
@@ -267,6 +306,16 @@ struct JObject {
 	bool operator<(const JObject& o) const {
 		if (kind != o.kind) return kind < o.kind;
 		if (kind == 4) return s < o.s;             // String / boxed char array: order by value
+		if (kind == 5 && p && o.p && p != o.p) {   // objects with equals()/hashCode(): by hash, equal ones as one
+			const j2xValueOps* a = _j2xValueOf(ti);
+			const j2xValueOps* b = _j2xValueOf(o.ti);
+			if (a || b) {
+				int ha = a ? a->hash(p) : (int)(std::size_t)p, hb = b ? b->hash(o.p) : (int)(std::size_t)o.p;
+				if (ha != hb) return ha < hb;
+				if (a && a->eq(p, o)) return false;
+				return p < o.p;
+			}
+		}
 		if (p != o.p) return p < o.p;              // ptr identity (kind 5) / null
 		return i < o.i;                            // int/char/bool/real: boxed scalar
 	}
