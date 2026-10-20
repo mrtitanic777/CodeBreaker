@@ -71,8 +71,8 @@ APPLET_H = _load_canonical('Applet.h')
 # avoid colliding with system <math.h> on a case-insensitive filesystem).
 # java.lang.String -> a thin std::string subclass that adds Java's String methods, so calls
 # like s.equals(t) / s.trim() / s.startsWith(p) compile even when the receiver's type wasn't
-# resolved at translation time (the receiver-type-gated rewrites in statements.py handle the
-# resolved cases; this catches the rest). Implicit ctors from const char*/std::string keep
+# resolved at translation time (the back end handles the resolved cases;
+# this catches the rest). Implicit ctors from const char*/std::string keep
 # literals and concat/substr results assignable.
 JAVASTRING_H = _load_canonical('JavaString.h')
 
@@ -329,7 +329,7 @@ def _ns_stub(name, consts=(), void_fns=(), ret_fns=(), includes=(), fwds=()):
 
 
 # Return-type registry for the emitted stub classes, so expression-type inference (the `.` vs `->`
-# chain resolver in emit/statements.py) can type a chain THROUGH a stub method result -- e.g.
+# chain resolver of the old text translator) can type a chain THROUGH a stub method result -- e.g.
 # `Runtime::getRuntime()->maxMemory()`, `getDocumentBase()->getHost()`, `var->getParentFile()->mkdirs()`.
 # Populated as each stub is built: {class: {'parent': base_or_None, 'methods': {method: cpp_ret_type}}}.
 # Last definition wins (matches _GENERATED overwrite for classes redefined, e.g. File). The pipeline

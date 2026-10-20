@@ -39,7 +39,7 @@ class TestMethodRenameCollision(unittest.TestCase):
     def test_field_method_name_collision_renamed(self):
         # Java allows field 'isRunning' + method 'isRunning(...)'; C++ does not -> rename method.
         from codebreaker.java import types
-        from codebreaker.java.emit import header, statements
+        from codebreaker.java.emit import header
         c = ir.JClass('NetworkManager')
         c.fields.append(ir.Field('isRunning', ir.JType('boolean')))
         m = ir.Method('isRunning', ir.JType('boolean'),
@@ -52,12 +52,7 @@ class TestMethodRenameCollision(unittest.TestCase):
         h = header.render_header(c, r)
         self.assertIn('bool isRunning;', h)                       # field unchanged
         self.assertIn('static bool isRunning_(NetworkManager* var0);', h)   # method renamed
-        # call site renamed too
-        caller = ir.JClass('Foo')
-        cm = ir.Method('g', ir.JType('void'), line=1)
-        cm.body = [(1, 'void g() {'), (2, '\tboolean b = NetworkManager.isRunning(var1);'), (3, '}')]
-        caller.methods.append(cm)
-        self.assertIn('bool b = NetworkManager::isRunning_(var1);', statements.translate_body(cm, caller, r))
+        # the call site: the back end's x_Call (tests/translate/test_port_semantics.py, Gen.total)
 
 
 class TestPipeline(unittest.TestCase):

@@ -9,7 +9,6 @@ Each is checked on the emitted text and, with g++ and a JDK, beside the JVM (ins
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.java.emit.statements.controlflow import _npe_to_catch
 from codebreaker.verify import java
 
 SOURCES = {
@@ -88,16 +87,6 @@ def tree(tmp_path_factory):
     out = tmp_path_factory.mktemp('cpp')
     transpile.convert(str(src), str(out), platform=None, write_report=False)
     return src, out
-
-
-def test_npe_guard_jumps_to_the_handler_and_skips_tested_receivers():
-    out = _npe_to_catch(['try {', 'Loader* var1 = find(var0);', 'var1->touch();',
-                         'if(var2 != NULL && var2->next != NULL) {', 'x();', '}',
-                         '} catch (Exception* var2) {', 'var2->printStackTrace();', '}'])
-    text = '\n'.join(out)
-    assert 'if ((var1) == NULL) { j2xNpe1 = true; goto j2xNpeEnd1; }\nvar1->touch();' in text
-    assert 'if ((var2) == NULL)' not in text                            # tested on its own line: Java skips it too
-    assert text.endswith('if (j2xNpe1) {\nException* var2 = new NullPointerException();\nvar2->printStackTrace();\n}')
 
 
 def test_char_is_unsigned_in_the_emitted_code(tree):

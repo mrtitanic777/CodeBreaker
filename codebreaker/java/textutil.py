@@ -4,7 +4,7 @@
 NOTE ON "DUPLICATION": several modules define their own `_split_top_commas`, `_balanced_paren`,
 `sub_outside_literals`, etc. Those look like duplicates but are deliberately *context-tuned* and
 are NOT interchangeable -- e.g. `parse._split_top_commas` tracks `<>` while
-`emit.statements._split_top_commas` intentionally does not (it would mis-balance `->`) and instead
+the old `emit.statements._split_top_commas` intentionally did not (it would mis-balance `->`) and instead
 tracks `{}` and backslash escapes. They are left in place on purpose. Only the genuinely-identical
 utilities below are centralized here.
 """
@@ -35,3 +35,16 @@ def write_text(path, text):
     """Write a UTF-8 text file, overwriting."""
     with open(path, 'w', encoding='utf-8') as f:
         f.write(text)
+
+
+def balanced_paren(s, open_idx):
+    """The index of the `)` closing the `(` at `open_idx` (nesting counted, literals not), or -1."""
+    depth = 0
+    for i in range(open_idx, len(s)):
+        if s[i] == '(':
+            depth += 1
+        elif s[i] == ')':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1

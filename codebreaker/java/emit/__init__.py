@@ -7,8 +7,8 @@ monolith:
   naming.py      identifier conventions (s_ statics, bare instance/value fields,
                  include-guard macros)
   header.py      render the .h (guard, includes, forward decls, class body)
-  source.py      render the .cpp (static defs, ctors w/ safety, method defs)   [next]
-  statements.py  translate method bodies (the use-site / ownership core)        [later]
+  source.py      render the .cpp (static defs, ctors w/ safety, method defs); the bodies come
+                 from the translator's back end (codebreaker/translate/backends/cpp03.py)
 
 The emitter takes a TypeResolver (Module 3) and an optional Ledger (so every
 PORT / GUESS / STUB is reported as it is emitted, not discovered later).

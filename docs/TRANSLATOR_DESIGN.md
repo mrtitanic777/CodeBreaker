@@ -48,6 +48,12 @@ reason. That is the same "honest gap" rule as the decompiler's.
 
 ## Where it is today
 
+*Update 2026-10-19: phase 1 is done and the old statement layer is deleted.* Every body, constructor
+and initialiser of Alpha, Beta and Indev comes from javac's typed tree through the IR and the C++03
+back end (`codebreaker/translate/`), judged equal or better than the old path class by class. What
+the back end declines is an explicit, ledgered `J2X-GAP` (the body throws). The table below is the
+starting point the plan was written against.
+
 | Part | Size | What it is |
 |---|---|---|
 | `parse.py` | 437 lines | A brace-and-paren scan, not a grammar. Works because decompiler output is regular. |
@@ -298,7 +304,8 @@ number of working pairs.
    at least as well as the old one. *Exit:* every Alpha and Beta class through the new path, results
    equal or better.
 2. **Passes off the text.** Null, construction, ownership, static order, exceptions and reflection as
-   IR passes; `emit/statements/` deleted. *Exit:* the gate passes and the emitted C++ is diffed class
+   IR passes; `emit/statements/` deleted (done 2026-10-19: the registry null guard, the leak fix and
+   the reflection tag moved into the back end; ownership is still a text pass over its output). *Exit:* the gate passes and the emitted C++ is diffed class
    by class against the last old-path output, every difference explained.
 3. **Project layer.** Everything game-specific behind project profiles. *Exit:* a non-Minecraft Java
    program converts with no Minecraft code loaded.
