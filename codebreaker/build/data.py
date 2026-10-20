@@ -415,6 +415,12 @@ def data16(path, function_at, far_segments=(), segment_symbol=None):
             if start:
                 d.exported[(auto, start)] = name
         start = at
+    # (a far pointer into one of the module's other data segments names its bytes: declared here,
+    # not left to the C's header -- with no C function using segment 41, SETUPX's data did not
+    # compile, and the build fell back to a data segment of one byte)
+    named = sorted({int(n) for n in re.findall(r"\bcodebreaker_segment_(\d+)\b", "\n".join(parts))})
+    head = head + ['extern uint1 __based(__segname("CODEBREAKER_SEGMENT_%d")) codebreaker_segment_%d[];' % (n, n)
+                   for n in named]
     d.source = "\n".join(head) + "\n" + "\n".join(parts)
     return d
 
