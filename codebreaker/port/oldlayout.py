@@ -179,6 +179,12 @@ def edits_of(tree, text, path, olds):
             out.append((p[0], depth, "dos_hp("))           # (read as a pointer: what the handle stands for)
             out.append((p[1], -depth, ")"))
             return
+        if up.get("kind") == "BinaryOperator" and up.get("opcode") == "=" and len(up.get("inner") or []) == 2 and \
+                up["inner"][0] is not n and up["inner"][0].get("kind") == "DeclRefExpr" and \
+                re.sub(r"\s+", "", tptr(up["inner"][0])) in ("intptr_t", "longlong"):   # (g_74be = n->i2, the
+            out.append((p[0], depth, "(intptr_t)dos_hp("))  #  variable one the port made hold pointers: the
+            out.append((p[1], -depth, ")"))                 #  pointer the handle stands for)
+            return
         if up.get("kind") == "CallExpr" and PTR_PARAMS:     # (given to an old-style function's parameter that is
             args = (up.get("inner") or [])[1:]              #  a pointer - no conversion said so: the definition's
             at = next((i for i, x in enumerate(parents) if x is up), None)   # parameter does)
