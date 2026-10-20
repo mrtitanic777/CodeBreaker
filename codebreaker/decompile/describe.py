@@ -255,12 +255,7 @@ def functions(nef):
     cs, ip = nef.h.get("csip", 0) >> 16, nef.h.get("csip", 0) & 0xFFFF
     if cs and segs.get(cs, {}).get("kind") == "CODE":
         out[(cs, ip)] = "far"
-    # a code segment nothing above names a function in (reached by its number from outside, or
-    # dead) still is one of the module's segments: what it holds starts at 0
-    used = {sg for sg, _o in out}
-    for s in nef.segments():
-        if s["kind"] == "CODE" and s["length"] and s["idx"] not in used:
-            out[(s["idx"], 0)] = "far"
+    used = {sg for sg, _o in out}                            # (segments some export starts in: below)
     for s in nef.segments():
         if s["kind"] != "CODE":
             continue
@@ -279,6 +274,16 @@ def functions(nef):
         for off in prologues_after_ends(bytes(code)):
             how = returns(bytes(code), off)[0]
             out.setdefault((s["idx"], off), how or "far")
+    # a code segment nothing above names a function in (reached by its number from outside, or
+    # dead) still is one of the module's segments: what it holds starts at 0 -- far or near as
+    # how it is reached says (a far fix-up, a near call: above), else as its own return says.
+    # (SUWIN's 7:0000 is a near helper -- `ret`, called `call 0` -- and taken for far, its C
+    # caller called it far and lost a word to the stack on every call: ten in a loop, then a
+    # `retf` into nothing, Illegal Instruction)
+    for s in nef.segments():
+        if s["kind"] == "CODE" and s["length"] and s["idx"] not in used and (s["idx"], 0) not in out:
+            code = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]) if s["file_off"] else b""
+            out[(s["idx"], 0)] = returns(code, 0)[0] or "far"
     # what the code calls, followed from every start known -- one call is enough when it is in
     # code that is followed (a stray E8 in data is not)
     codes = {s["idx"]: bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
