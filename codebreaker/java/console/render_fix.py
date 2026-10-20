@@ -44,7 +44,9 @@ both are fixed the same way in the proven OG hand-ports. Migrated here so every 
     never happens on spawn.
 
 -------------------------------------------------------------------------------------------------------
-Runs as a post-emit pass over the converted tree (xbox360), BEFORE overlays. Idempotent (after each
+convert applies it on the IR before the back end writes (patch(), by tree shape), then checks the output
+for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `j2ctool <fix> <dir>` on
+a tree converted elsewhere; that text form runs over the converted tree (xbox360), BEFORE overlays. Idempotent (after each
 rewrite its trigger no longer matches) and fail-loud via run()'s survivor checks. Also exposed as
 `j2ctool render-fix <dir>`.
 """
@@ -151,3 +153,109 @@ def run(out_dir):
         if _UPDATE_SURVIVOR.search(new) or _HURT_SURVIVOR.search(new):
             stranded.append(f)
     return {'files': touched, 'update': tot_u, 'hurt': tot_h, 'stranded': stranded}
+
+
+# ---- the same fixes on the IR, before the back end writes (what convert runs) ----------------------------
+def patch(units):
+    """Both render fixes on the lowered program, matched by tree shape. Returns
+    {'files': [{'file','update','hurt'}], 'update': N, 'hurt': N, 'stranded': []} like run()."""
+    from codebreaker.translate import ir
+    from codebreaker.translate import rewrite as rw
+    per = {}
+    for cls, m in rw.methods(units):
+        for ss in list(rw.stmt_lists(m.body)):
+            i = 0
+            while i < len(ss):
+                if i + 2 < len(ss) and _budget(ss, i, ir, rw):
+                    per.setdefault(cls.name, [0, 0])[0] += 1
+                if i < len(ss) and _hurt(ss[i], ir, rw):
+                    per.setdefault(cls.name, [0, 0])[1] += 1
+                i += 1
+    files = [{'file': c + '.cpp', 'update': u, 'hurt': h} for c, (u, h) in sorted(per.items())]
+    return {'files': files, 'update': sum(u for u, _h in per.values()), 'hurt': sum(h for _u, h in per.values()),
+            'stranded': []}
+
+
+def _budget(ss, i, ir, rw):
+    """[1] at ss[i]:
+        int A = this.F.size() - 1;  int B = this.F.size();
+        for (int L = 0; L < B; ++L) {
+            T W = (T)this.F.get(A - L);
+            if (W.distanceToEntitySquared(P) > 2500.0F && L > 4) return;
+            this.F.remove(W); W.updateRenderer(); W.needsUpdate = false;
+        }
+    ->  int B = _BUDGET;
+        for (int L = 0; L < B; ++L) {
+            int A = this.F.size();  if (A == 0) return;
+            T W = (T)this.F.get(A - 1);  this.F.remove(W);
+            if (W != null) { W.updateRenderer(); W.needsUpdate = false; }
+        }"""
+    a, b, loop = ss[i], ss[i + 1], ss[i + 2]
+    if not (isinstance(a, ir.Local) and isinstance(b, ir.Local) and isinstance(loop, ir.For)):
+        return False
+    size_b = rw.strip(b.init) if b.init is not None else None
+    if not (isinstance(size_b, ir.Call) and size_b.sym is not None and size_b.sym.name == 'size'):
+        return False
+    body = loop.body.stmts if isinstance(loop.body, ir.Block) else None
+    if not body or len(body) != 5 or not isinstance(body[0], ir.Local) or not isinstance(body[1], ir.If):
+        return False
+    w = body[0]
+    calls = set(n.sym.name for n in ir.walk(body[1].cond) if isinstance(n, ir.Call) and n.sym is not None)
+    then = body[1].then.stmts if isinstance(body[1].then, ir.Block) else [body[1].then]
+    if 'distanceToEntitySquared' not in calls or not any(isinstance(x, ir.Return) for x in then):
+        return False
+    get = rw.strip(w.init) if w.init is not None else None
+    while isinstance(get, ir.Cast):
+        get = rw.strip(get.x)
+    if not (isinstance(get, ir.Call) and get.sym is not None and get.sym.name == 'get' and len(get.args) == 1):
+        return False
+    idx = rw.strip(get.args[0])
+    if not (isinstance(idx, ir.Binary) and idx.op == '-' and rw.is_name(idx.left, a.sym)):
+        return False
+    a_type = a.type
+    b.init = rw.lit(_BUDGET, a_type)                     # rebuild at most _BUDGET chunks this frame
+    a.init = size_b                                      # A = this.F.size(), now inside the loop
+    idx.right = rw.lit(1, a_type)                        # the last (nearest, sorted) one
+    empty = rw.if_(rw.binary('==', rw.name(a.sym, a_type), rw.lit(0, a_type), ir.BOOL), ir.Return(expr=None))
+    present = rw.if_(rw.binary('!=', rw.name(w.sym, w.type), rw.null(), ir.BOOL), ir.Block(stmts=body[3:5]))
+    loop.body.stmts = [a, empty, w, body[2], present]
+    del ss[i]                                            # A moved into the loop
+    return True
+
+
+def _hurt(s, ir, rw):
+    """[2] `if (X >= 0.0F) { X /= (float)Y.maxHurtTime; ...` -> `if (X >= 0.0F && Y.hurtTime > 0)`."""
+    if not isinstance(s, ir.If) or not isinstance(s.then, ir.Block) or not s.then.stmts:
+        return False
+    c = rw.strip(s.cond)
+    if not (isinstance(c, ir.Binary) and c.op == '>=' and isinstance(rw.strip(c.left), ir.Name)
+            and isinstance(rw.strip(c.right), ir.Lit) and rw.strip(c.right).value == 0):
+        return False
+    first = s.then.stmts[0]
+    if not isinstance(first, ir.ExprStmt):
+        return False
+    d = rw.strip(first.expr)
+    if not (isinstance(d, ir.Assign) and d.op == '/' and rw.is_name(d.target, rw.strip(c.left).sym)):
+        return False
+    v = rw.strip(d.value)
+    while isinstance(v, ir.Cast):
+        v = rw.strip(v.x)
+    if not (isinstance(v, ir.Select) and v.sym is not None and v.sym.name == 'maxHurtTime'):
+        return False
+    hurt = ir.Select(obj=v.obj, sym=ir.Sym('field', 'hurtTime', owner=v.sym.owner, type=ir.I32), type=ir.I32)
+    s.cond = rw.binary('&&', s.cond, rw.binary('>', hurt, rw.lit(0, ir.I32), ir.BOOL), ir.BOOL)
+    return True
+
+
+def stranded(out_dir):
+    """The .cpp files where a render-fix trigger survived."""
+    out = []
+    for f in sorted(os.listdir(out_dir)):
+        if f.endswith('.cpp'):
+            try:
+                text = open(os.path.join(out_dir, f), encoding='utf-8', errors='replace').read()
+            except (IOError, OSError):
+                continue
+            if _UPDATE_SURVIVOR.search(text) or _HURT_SURVIVOR.search(text):
+                out.append(f)
+    return out

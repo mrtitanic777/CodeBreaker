@@ -18,7 +18,6 @@ Every body, constructor and initialiser is written from the typed IR by the tran
 import re
 
 from codebreaker.java import typemap
-from codebreaker.java.textutil import balanced_paren
 from codebreaker.java.ledger import Category, Severity
 from codebreaker.java.emit import naming, ownership
 from codebreaker.java.emit.std_transforms import apply_std_transforms
@@ -264,144 +263,6 @@ def _render_dtor(cls, resolver, ledger):
 # methods
 # ---------------------------------------------------------------------------
 # a local declaration `JList<T*> name = <rhs>;` (the JSet form too) -- candidate to receive an owned-return guard
-_OWNED_LOCAL_DECL = re.compile(r'^(\s*)(JList|JSet)\s*<\s*([A-Za-z_][\w:]*)\s*\*\s*>\s+([A-Za-z_]\w*)\s*=\s*(.+);\s*$')
-_CALL_NAME = re.compile(r'([A-Za-z_]\w*)\s*\(')
-
-
-def _elements_not_retained(var, text):
-    """True iff every use of `var` after its declaration is transient -- a container-level read
-    (`var.size()` / `var.length`) or an element used ONLY as a call receiver (`var[i]->m(...)`). Any other
-    use (element stored, whole container returned/passed) means an element may outlive the guard, so we
-    must NOT free -- return False and leave the leak (still flagged) rather than risk a dangling delete."""
-    v = re.escape(var)
-    for mo in re.finditer(r'\b%s\b' % v, text):
-        after = text[mo.end():]
-        if re.match(r'\s*\.\s*(?:size\s*\(\s*\)|length\b)', after):
-            continue
-        if re.match(r'\s*\[[^\]]*\]\s*->', after):
-            continue
-        if re.match(r'\s*\.\s*get\s*\([^()]*\)\s*\)?\s*->', after):   # var.get(i)->m(), ((T*)var.get(i))->m()
-            continue
-        return False
-    return True
-
-
-def _free_owned_returns(lines, resolver):
-    """Post-pass: after a `JList<T*> x = ...builder(...);` where `builder` hands back an owned container
-    (resolver.own_catalog.return_methods), drop an RAII `J2X_ScopedFreeElems` guard so the caller frees the
-    elements at scope exit -- the no-GC caller-frees contract (Level.getCubes -> new AABBs in Entity.move).
-    Only when the elements are used transiently, so the delete can never dangle."""
-    owned = resolver.own_catalog.return_methods
-    if not owned:
-        return lines
-    out = []
-    for idx, ln in enumerate(lines):
-        out.append(ln)
-        dm = _OWNED_LOCAL_DECL.match(ln)
-        if not dm:
-            continue
-        indent, kind, elem, var, rhs = dm.groups()
-        hit = sorted(set(_CALL_NAME.findall(rhs)) & owned)
-        if not hit:
-            continue
-        if not _elements_not_retained(var, '\n'.join(lines[idx + 1:])):
-            continue
-        out.append("%sJ2X_ScopedFreeElems<%s<%s*> > _j2xfree_%s(%s);   // J2X no-gc-return-leak: free the "
-                   "heap elements %s() handed back (caller-frees; Java GC'd them)"
-                   % (indent, kind, elem, var, var, '/'.join(hit)))
-    return out
-
-
-_RECV_PREFIX = re.compile(r'(?:[A-Za-z_]\w*\s*(?:->|\.|::)\s*)+$')   # `this->bb->` before a method name
-
-
-def _enclosing_call(line, inner_start):
-    """(outer_method_name, arg_position) of the call whose argument list DIRECTLY contains inner_start,
-    or None if inner_start isn't inside a call's parens. Scans left, tracking paren depth."""
-    depth, commas, i = 0, 0, inner_start - 1
-    while i >= 0:
-        ch = line[i]
-        if ch == ')':
-            depth += 1
-        elif ch == '(':
-            if depth == 0:
-                mm = re.search(r'([A-Za-z_]\w*)\s*$', line[:i])
-                return (mm.group(1), commas) if mm else None
-            depth -= 1
-        elif ch == ',' and depth == 0:
-            commas += 1
-        i -= 1
-    return None
-
-
-def _hoist_owned_scalar_args(lines, resolver):
-    """Post-pass (Pattern B): an owned-scalar builder call used INLINE as an argument -- `getCubes(bb->
-    expand(...))` -- leaks the temp. Hoist it to a local + RAII delete, but ONLY when the receiving method
-    is in-corpus and provably just reads that argument position (never retains it). Anything uncertain is
-    left untouched (the leak stays flagged) rather than risk a dangling free."""
-    cat = resolver.own_catalog
-    owned = cat.scalar_methods
-    if not owned:
-        return lines
-    corpus, retained = cat.corpus_methods, cat.retained_params
-    owned_re = re.compile(r'(?<![\w])(%s)\s*\(' % '|'.join(re.escape(n) for n in owned))
-    out, counter = [], [0]
-    for ln in lines:
-        indent = re.match(r'\s*', ln).group(0)
-        pre = []
-        for _ in range(8):                                        # bounded: at most a few owned temps / line
-            mm = owned_re.search(ln)
-            if not mm:
-                break
-            nm = mm.group(1)
-            close = balanced_paren(ln, ln.index('(', mm.start()))
-            args_end = close + 1 if close >= 0 else -1
-            rp = _RECV_PREFIX.search(ln[:mm.start()])
-            expr_start = rp.start() if rp else mm.start()
-            enc = _enclosing_call(ln, expr_start)
-            if args_end < 0 or not enc:
-                break                                             # captured (not an arg) / malformed -> stop
-            outer, pos = enc
-            if outer not in corpus or pos in retained.get(outer, set()):
-                break                                             # receiver may retain the arg -> unsafe
-            counter[0] += 1
-            tmp, elem, expr = '_j2xarg_%d' % counter[0], owned[nm], ln[expr_start:args_end]
-            pre.append('%s%s* %s = %s;' % (indent, elem, tmp, expr))
-            pre.append("%sJ2X_ScopedDelete<%s > _j2xargd_%d(%s);   // J2X no-gc-arg-leak: free the heap %s "
-                       "that %s() returned (%s() only reads it)" % (indent, elem, counter[0], tmp, elem, nm, outer))
-            ln = ln[:expr_start] + tmp + ln[args_end:]
-        out.extend(pre)
-        out.append(ln)
-    return out
-
-
-# No-GC ownership cleanup passes over the translated body, in order. Each takes (lines, resolver) and
-# returns lines; Pattern B (hoist owned-scalar args) must run before Pattern A (free owned-return
-# containers) so the container guard sees the rewritten call. Add a pass here to grow the family.
-_OWNERSHIP_POSTPASSES = (_hoist_owned_scalar_args, _free_owned_returns)
-
-
-def _free_owned_reassigns(lines, owned_scalar):
-    """Reassigning an OWNED scalar pointer member leaks the previous object (Java GC'd it; the 360 does
-    not). Prepend `delete this->m;` before each `this->m = new .../factory` -- safe because every member
-    is NULL-initialized in the constructor's member-init list, and delete-of-NULL is a no-op. Idempotent:
-    skips a reassign already preceded by that delete (a hand-written one, or the raycast template's)."""
-    if not owned_scalar:
-        return lines
-    pat = re.compile(r'^(\s*)this->(%s)\s*=\s*(?:new\s|[A-Za-z_][\w:]*::(?:create|make|alloc|clone)[A-Za-z]\w*\s*\()'
-                     % '|'.join(re.escape(n) for n in owned_scalar))
-    out = []
-    for ln in lines:
-        m = pat.match(ln)
-        if m:
-            already = bool(out) and out[-1].strip() == ('delete this->%s;' % m.group(2))
-            if not already:
-                out.append('%sdelete this->%s;   // J2X no-gc-reassign-leak: free the previous owned %s'
-                           % (m.group(1), m.group(2), m.group(2)))
-        out.append(ln)
-    return out
-
-
 def _render_method(cls, m, resolver, ledger):
     ret = ownership.return_cpp_type(m, resolver)
     params = ownership.params_str(m, resolver)
@@ -409,11 +270,6 @@ def _render_method(cls, m, resolver, ledger):
     L = ['%s %s::%s(%s)' % (ret, cls.name, name, params), '{']
     tree = TREE_BODIES.body(cls.name, m) if TREE_BODIES is not None else None
     body = list(tree) if tree is not None else _gap(cls, ledger, 'method %s' % m.name, getattr(m, 'line', 0))
-    for _pass in _OWNERSHIP_POSTPASSES:
-        body = _pass(body, resolver)
-    # delete-before-reassign for this class's owned SCALAR pointer members (the Entity.bb / setPos leak)
-    owned_scalar = [n for n, is_arr in ownership.owned_pointers(cls, resolver).items() if not is_arr]
-    body = _free_owned_reassigns(body, owned_scalar)
     L.extend('\t' + s for s in body)
     L.append('}')
     return L
