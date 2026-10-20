@@ -1010,9 +1010,12 @@ class Port:
         if getattr(self, "_bounds_done", False):
             return
         self._bounds_done = True
-        ds = getattr(self, "ds", {}) or {}
+        ds = dict(getattr(self, "ds", {}) or {})
         if not ds:
             return
+        for t in self.originals.values():                   # (a variable named by its place, g_748e: there)
+            for nm in set(re.findall(r"\bg_([0-9a-f]{4})\b", t)):
+                ds.setdefault("g_" + nm, int(nm, 16))
         old = self.old_layouts()
         arrays = {}                                         # (name: (base type, elements, old element size))
         for t in self.originals.values():
@@ -1032,7 +1035,23 @@ class Port:
         starts = {}
         for nm, at in ds.items():
             starts.setdefault(at, []).append(nm)
-        for a, (base, cnt, esz) in sorted(arrays.items()):
+        tables = dict(arrays)                               # (and a table only declared, extern int g_748e[] - in
+        for t in self.originals.values():                   #  the BSS: as many as up to the next variable)
+            for l in blank(t).split("\n"):
+                m = re.match(r"\s*extern\s+((?:unsigned\s+)?\w+)\s+(.*);", l)
+                if not m or m.group(1) in ("struct", "union"):
+                    continue
+                base = re.sub(r"\s+", " ", m.group(1))
+                esz = OLD_SCALARS.get(base, 0)
+                for nm in re.findall(r"(?:^|,)\s*(\w+)\s*\[\s*\]", m.group(2)):
+                    if not esz or nm in tables or nm not in ds:
+                        continue
+                    nxt = min((v for v in ds.values() if v > ds[nm]), default=None)
+                    if nxt is not None and (nxt - ds[nm]) % esz == 0:
+                        tables[nm] = (base, (nxt - ds[nm]) // esz, esz)
+        same_ = lambda u: {"int16_t": "int", "short": "int", "uint16_t": "unsigned", "unsigned int": "unsigned",
+                           "int8_t": "char"}.get(re.sub(r"\s+", " ", u).strip(), re.sub(r"\s+", " ", u).strip())
+        for a, (base, cnt, esz) in sorted(tables.items()):
             after = [b for b in starts.get(ds[a] + cnt * esz, []) if b != a]
             for b in after:
                 bbase = arrays.get(b, (None,))[0]
@@ -1048,7 +1067,11 @@ class Port:
                         v = m.group(1) or m.group(4)
                         last = re.findall(r"\w+", v)[-1]
                         pt = self.pointee_of(t, last) if re.fullmatch(r"\w+", v) else None
-                        if pt and re.sub(r"\s+", " ", pt) == base.replace(" *", ""):
+                        if not pt and re.fullmatch(r"\w+", v):          # (or a number's: int *g_0524)
+                            sm = re.search(r"\b((?:unsigned\s+)?(?:int|short|char|long|unsigned|u?int(?:8|16|32)_t))"
+                                           r"\s*\*\s*(?:\w+\s*,\s*\*?\s*)*%s\b\s*[;,)=]" % re.escape(v), code)
+                            pt = sm.group(1) if sm else None
+                        if pt and same_(pt) == same_(base.replace(" *", "")):
                             bs, be = (m.start(), m.end())
                             seg = code[bs:be]
                             k = seg.rfind(b) if m.group(1) else seg.find(b)
@@ -4528,6 +4551,25 @@ def mend(port, out, diags):
                         notes["integer parameter made a pointer (it held one: both were 16 bits): intptr_t"].append(
                             "%s:%d (%s, %s)" % (f, ln, fn.name, var))
                         changed = True
+                    calls_ = []                             # (the others of the line: f(.., (char *)a) && f(.., b) -
+                    for cm in re.finditer(r"\b(\w+)\s*\(", l):   #  one complaint a line - in the same place of a
+                        sp_ = call_args(l[cm.start():], cm.group(1)) or []   # call of the same function)
+                        calls_.append((cm.group(1), [l[cm.start() + a_:cm.start() + b_].strip() for a_, b_ in sp_]))
+                    cast_ = r"(?:\(\s*(?:(?:struct|union)\s+\w+|\w+)[\w\s]*\*+\s*\)\s*)?\(?\s*(\w+)\s*\)?"
+                    places = {(nm_, i_) for nm_, as_ in calls_ for i_, a_ in enumerate(as_)
+                              if re.fullmatch(cast_, a_) and re.fullmatch(cast_, a_).group(1) == var}
+                    others = {re.fullmatch(cast_, a_).group(1) for nm_, as_ in calls_ for i_, a_ in enumerate(as_)
+                              if (nm_, i_) in places and re.fullmatch(cast_, a_)}
+                    for y in others:
+                        k2 = next((i for i, (pn, pt) in enumerate(fn.params) if pn == y and pn != var), None)
+                        if k2 is not None and re.fullmatch(r"(?:register\s+)?(?:u?int16_t|int|unsigned|short)\s+\w+",
+                                                           fn.params[k2][1].strip()):
+                            pn2 = fn.params[k2][0]
+                            fn.params[k2] = (pn2, "intptr_t %s" % pn2)
+                            port.param_types[(fn.name, k2)] = fn.params[k2][1]
+                            notes["integer parameter made a pointer (it held one: both were 16 bits): intptr_t"].append(
+                                "%s:%d (%s, %s)" % (f, ln, fn.name, pn2))
+                            changed = True
                     continue
                 local = fn_at and declares_local(out[f], fn_at, var)
                 key_ = (f, fn_at[0], var) if local else var
