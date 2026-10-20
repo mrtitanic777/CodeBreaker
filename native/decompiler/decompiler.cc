@@ -842,7 +842,10 @@ Varnode* nearOffset(Varnode* addr) {
   if (!addr->isWritten() || addr->getDef()->code() != CPUI_SEGMENTOP) return addr;
   PcodeOp* seg = addr->getDef();
   const Varnode* s = seg->getIn(1);
-  if (s->isConstant() || s->isInput()) return seg->getIn(2);
+  // (the segment the function was entered with is a register -- DS, SS; a parameter on the
+  // stack is an input too, but the high word of a far pointer passed as two words: USER
+  // sub_7_3B0C's `a2:a1`, its offset half typed a near structure, read a byte at a time)
+  if (s->isConstant() || (s->isInput() && s->getSpace()->getType() == IPTR_PROCESSOR)) return seg->getIn(2);
   return nullptr;
 }
 

@@ -400,11 +400,14 @@ def _struct_decls(notes, header, far16=False):
 _GAP_FIELD = re.compile(r"field_0x([0-9a-f]+)")
 
 
-def _struct_gaps(text):
+def _struct_gaps(text, distance=None):
     """`&p->field_0x1` -- the core's name for an offset of a recovered structure that holds no
     field of it (`p` stepped a byte along, `p + 4` read where nothing else is): the bytes at that
     offset, `((uint1 *)p + 0x1)`, and `p->field_0x1` the byte there. With `.` the same from the
-    structure's own address: `&p[1].field_0x4` (past its end) is `((uint1 *)&(p[1]) + 0x4)`."""
+    structure's own address: `&p[1].field_0x4` (past its end) is `((uint1 *)&(p[1]) + 0x4)`.
+    `distance` (16-bit): {variable: "far" or "near"} -- the byte pointer keeps the variable's
+    distance (`uint1 __far *` for a far one); where the base is no variable of known distance the
+    offset is left as it is."""
     if "field_0x" not in text:
         return text
     for _ in range(4):                                   # (one inside another: the outer first)
@@ -418,14 +421,24 @@ def _struct_gaps(text):
                     any(s <= f.start_byte and f.end_byte <= e for s, e in taken):
                 continue
             arg = src.at(f.child_by_field_name("argument"))
+            ptr = "uint1 *"
+            if distance is not None:
+                root = re.match(r"\(*(\w+)", arg)
+                d = distance.get(root.group(1)) if root else None
+                cast = re.match(r"\(+\s*\w+\s*(__far\s*)?\*\s*\)", arg)    # (a cast says its own distance)
+                if cast:
+                    d = "far" if cast.group(1) else "near"
+                if d is None:
+                    continue                                 # (a base of unknown distance: as it was)
+                ptr = "uint1 __far *" if d == "far" else "uint1 *"
             if src.at(op) == ".":
                 arg = "&(%s)" % arg
             up = f.parent
             if up is not None and up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "&":
-                src.replace(up, "((uint1 *)(%s) + 0x%s)" % (arg, mm.group(1)))
+                src.replace(up, "((%s)(%s) + 0x%s)" % (ptr, arg, mm.group(1)))
                 taken.append((up.start_byte, up.end_byte))
             else:
-                src.replace(f, "(*((uint1 *)(%s) + 0x%s))" % (arg, mm.group(1)))
+                src.replace(f, "(*((%s)(%s) + 0x%s))" % (ptr, arg, mm.group(1)))
                 taken.append((f.start_byte, f.end_byte))
         if not taken:
             break
@@ -1230,6 +1243,7 @@ def _compilable16(module_path, outdir=None):
     sizes = {}                                               # address of a global -> bytes of the access
     struct_notes = []                                        # the structures the decompiler recovered (`/*@S`)
     selector_structs = []                                    # ... and those a segment holds (_selector_structs)
+    shared_selectors = {}                                    # ... a global selector's: the module's
     by_selector = decompiler._structs(d.path) == "1" and os.environ.get("CB_SELECTOR_STRUCTS") != "0"   # (with structures)
     elems = {}                                               # ... a pointer's -> bytes of what it points at
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
@@ -1348,7 +1362,8 @@ def _compilable16(module_path, outdir=None):
             m.wide.add(name)
         text = _one_name_for_globals(text)                  # (a global the decompiler named twice)
         if by_selector:
-            text = _selector_structs(text, name, selector_structs)
+            text = _selector_structs(text, name, selector_structs, shared_selectors)
+            text = _struct_gaps(text, _pointer_distances(text))
         m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))
         if seg in d.images:
             m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))
@@ -1514,6 +1529,7 @@ def _compilable16(module_path, outdir=None):
     intrinsics += interrupt_helpers(m.interrupts)
     if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
+    selector_structs += _shared_selector_structs(shared_selectors, m.texts)
     if selector_structs:
         intrinsics.append(SEG_PTR)
     m.header = HEADER + "\n" + "\n".join(intrinsics + macros + _struct_decls(struct_notes, HEADER, True) +
@@ -2166,17 +2182,68 @@ def interrupt_helper_name(vector, regs):
     return "int%02x_%s" % (vector, "_".join(regs) if regs else "none")
 
 
+def _pointer_distances(text):
+    """{name: "far" | "near"} of the function's pointer variables and parameters, by how each is
+    declared (`T __far *p` far, `T *p` near) -- after _far has marked the far ones"""
+    out = {}
+    for m in re.finditer(r"(?<![\w*])[A-Za-z_]\w*\s+(__far\s*)?\*+\s*(\w+)\s*[,;)\[]", text):
+        out.setdefault(m.group(2), "far" if m.group(1) else "near")
+    return out
+
+
 SEG_PTR = "#define SEG_PTR(T, s) ((T __far *)((uint4)(uint2)(s) << 16))   /* a structure at the start of a segment */"
 
 
-def _selector_structs(text, fname, decls):
+def _seg_layout(fields):
+    """the fields of a selector's structure, {offset: type}, as a declaration's body; None when
+    they overlap"""
+    body, at = [], 0
+    for off in sorted(fields):
+        if off < at:
+            return None
+        if off > at:
+            body.append("uint1 _pad_%x[%d];" % (at, off - at))
+        body.append("%s f_%x;" % (fields[off], off))
+        at = off + _SIZEOF[fields[off]]
+    return body
+
+
+def _shared_selector_structs(shared, texts):
+    """The structures of global selectors (_selector_structs' `shared`): one per global for the
+    whole module -- the fields every function saw, together -- where they agree (one type per
+    offset, none overlapping); where they do not, each function's own, as for a local selector.
+    `texts` {function: text} has the names put right. -> declarations"""
+    out = []
+    for name, per in sorted(shared.items()):
+        every = {}
+        for fields in per.values():
+            for off, ty in fields.items():
+                if every.setdefault(off, ty) != ty:
+                    every = None
+                    break
+            if every is None:
+                break
+        body = _seg_layout(every) if every is not None else None
+        if body is not None:
+            out.append("typedef _Packed struct %s { %s } %s;" % (name, " ".join(body), name))
+            continue
+        for fname, fields in sorted(per.items()):
+            own = "seg_%s_%s" % (re.sub(r"\W", "_", fname), name[4:])
+            out.append("typedef _Packed struct %s { %s } %s;" % (own, " ".join(_seg_layout(fields)), own))
+            texts[fname] = texts[fname].replace("SEG_PTR(%s," % name, "SEG_PTR(%s," % own)
+    return out
+
+
+def _selector_structs(text, fname, decls, shared=None):
     """A segment reached through a selector at constant offsets -- `*MK_FP(xVar2,(int2 *)0x3e)`,
     `*MK_FP(*(xunknown2 *)(a1 + 0x18),(int2 *)0x40)`: a structure that segment holds (a task's
     or a module's database) -- read as one: `SEG_PTR(seg_f_xVar2, xVar2)->f_3e` (SEG_PTR: the segment's start as a far pointer), its fields at
     exactly those offsets with exactly those types (the same place, the same width: the same
     program). Per function, for a selector that is a variable or a plain read (no call in it),
     used at two offsets or more, each always with one type and none overlapping. The structures
-    are appended to `decls`, packed. -> the text"""
+    are appended to `decls`, packed. A global selector's (`xRam10000002`, the same segment in
+    every function) is the module's, `seg_xRam10000002`: its fields go to `shared` {name:
+    {function: fields}}, declared once by _shared_selector_structs. -> the text"""
     if "MK_FP(" not in text:
         return text
     src = ctree.Source(text)
@@ -2214,21 +2281,17 @@ def _selector_structs(text, fname, decls):
             fields[off] = ty
         if not fields or len(fields) < 2 or any(_SIZEOF.get(t) is None for t in fields.values()):
             continue
-        body, at = [], 0
-        for off in sorted(fields):
-            if off < at:
-                body = None                              # (overlapping: not one layout)
-                break
-            if off > at:
-                body.append("uint1 _pad_%x[%d];" % (at, off - at))
-            body.append("%s f_%x;" % (fields[off], off))
-            at = off + _SIZEOF[fields[off]]
+        body = _seg_layout(fields)
         if body is None:
-            continue
-        tag = re.sub(r"\W+", "_", sel).strip("_") if re.fullmatch(r"[A-Za-z_]\w*", sel) else "sel%d" % made
-        name = "seg_%s_%s" % (re.sub(r"\W", "_", fname), tag)   # (not s_..: the core's own structures)
-        decls.append("typedef _Packed struct %s { %s } %s;" % (name, " ".join(body), name))
+            continue                                     # (overlapping: not one layout)
         made += 1
+        if shared is not None and _RAM.fullmatch(sel):
+            name = "seg_" + sel                          # (the module's: see _shared_selector_structs)
+            shared.setdefault(name, {})[fname] = fields
+        else:
+            tag = sel if re.fullmatch(r"[A-Za-z_]\w*", sel) else "sel%d" % made
+            name = "seg_%s_%s" % (re.sub(r"\W", "_", fname), tag)   # (not s_..: the core's own structures)
+            decls.append("typedef _Packed struct %s { %s } %s;" % (name, " ".join(body), name))
         for n, off, _ty in uses:
             ptr = "SEG_PTR(%s, %s)" % (name, src.at(n.child_by_field_name("arguments").named_children[0]))
             up = n.parent

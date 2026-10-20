@@ -148,6 +148,15 @@ RISC-V Sail, Intel XED).
   served them the C made without): USER 378 -> 356 verified, 100 -> 146 not compiling; KRNL386
   142 -> 141, 44 -> 54 -- the work before 16-bit can be on (offsets with no field, near and far
   casts, behaviour changes in USER).
+  Then (2026-10-19, evening): the core took a far pointer passed as two words (`a2:a1`, segment a
+  stack parameter) for a near base -- only a segment register the function entered with (DS, SS)
+  is near now; c_text's offsets with no field keep the base's distance in 16-bit (`uint1 __far *`
+  for a far one, the declaration or the cast says which; an unknown one is left); a global
+  selector (`xRam10000002`, KRNL386's in 28 functions) is one structure for the module, its fields
+  every function's together, where they agree. 16-bit off vs all, from scratch: USER 1 better, 3
+  worse (already divergent, now not compiling), 382 functions read differently; KRNL386 2 better,
+  2 worse (sub_1_0A80's unset DX; one not compiling), 213 read differently. No function that
+  behaved like the original stopped doing so. Ready for the Win16 gate and the VM with "all".
 - D -- fewer gotos (2026-10-18; tools/goto_report.py): a short return tail that paths reach by
   `goto` is copied onto each path (core change C13). Golden: gotos 6,923 -> 6,449, 20.2 -> 17.9
   per 1,000 lines; to a bare `return` 225 -> 26; 203 functions changed, no new failures. What is
