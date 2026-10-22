@@ -1,0 +1,172 @@
+# Microsoft C 4.0 — Signature Database
+
+> Living catalogue of byte/behavior signatures used to *identify* code before reconstructing it,
+> in CodeBreaker's origin-triage spirit: **compiler/CRT/library code is identified, not
+> reconstructed.** Companion: [NOTES.md](NOTES.md), [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md).
+>
+> `.me` in the request is honored here as `.md` so it renders. Each entry records: what it is,
+> how to detect it (bytes/regex/structure), confidence, and where it was confirmed.
+>
+> **Confidence tiers:** `CONFIRMED` (byte-verified on this corpus) · `STRONG` (canonical pattern,
+> matched here) · `HYP` (hypothesis, not yet verified). Never promote HYP→CONFIRMED without proof.
+
+---
+
+## 1. Container / packer signatures
+
+### SIG-PACK-001 — Microsoft EXEPACK loader  `[CONFIRMED]`
+The wrapper on every Tier-A/B tool (MSC, C1, C2, C3, C3L, CL, CV, LINK, LIB).
+- **MZ header tell:** `e_crlc (relocs) == 0`, `e_cparhdr == 0x20` (512-byte header),
+  `e_ip == 0x0010`, `e_sp == 0x0080`.
+- **Decompressor entry stub** (at `512 + CS*16 + IP`):
+  ```
+  8C C0        mov  ax, es
+  05 xx xx     add  ax, imm16        ; + (exepack_size>>4) style fixup
+  0E           push cs
+  1F           pop  ds
+  ...          (copy-up + unpack loop; reloc rebuild)
+  ```
+- **Trailer strings:** ASCII `RB` signature word + `"Packed file is corrupt"` near loader end.
+- **Action:** unpack to recover real OEP + relocation table before any disassembly.
+- **Confirmed:** MSC.EXE header @image 0x66d0 = `c030 0000 0000 b501 0008 9807 bb06 5242`
+  → real_ip=0x30c0, real_cs=0, exepack_size=0x1b5, real_sp=0x800, real_ss=0x798, dest_len=0x6bb,
+  sig=`RB`@+0x0E. **Decompressor stub byte-identical across all 10 packed tools** (same EXEPACK
+  version): `8CC0 0510 00 0E 1F A304 00 0306 0C00 8EC0 …`.
+- **Unpacker:** `workspace/scripts/unexepack.py` (deterministic, no deps). Decompress downward,
+  skip `0xFF` padding, `0xB0`=FILL / `0xB2`=COPY, bit0 = last-block. Verified on all 10.
+
+### SIG-PACK-002 — EXEPACK uncompressed leading region `[CONFIRMED]`
+Sub-variant: some images leave the first *K* bytes uncompressed in place; the command stream only
+regenerates `image[K:]`, so decompression ends with a `K`-byte residual that is filled verbatim
+from the packed module's own low bytes. Observed K: C1=76, LINK=32, CV=8271, CVR=8378; K=0 for
+MSC/CL/LIB/C2/C3/C3L.
+
+### SIG-PACK-000 — Unpacked MZ (control) `[CONFIRMED]`
+`MAKE.EXE` (relocs=8) and `LINK4.EXE` (relocs=1) are **plain MZ**, not packed — useful as
+warm-up targets and as a control for the disassembler.
+
+---
+
+## 2. MZ / DOS structure signatures
+
+### SIG-MZ-001 — real-mode segmented MZ `[CONFIRMED]`
+All targets: `4D 5A` (`MZ`) magic, 16-bit real-mode, segmented (far calls, seg relocations).
+Memory model per binary TBD from CRT startup fingerprint (see SIG-CRT-*).
+
+---
+
+## 3. CRT / startup signatures (ground truth = disk06 source)
+
+> These identify the C run-time so it is **named, not reconstructed**. Bytes to be filled in
+> from the *unpacked* binaries; the authored source on disk06 is the answer key. Placeholders
+> below name the target functions; status starts `HYP` until matched on an unpacked image.
+
+| ID | Function | Source file (disk06) | Detect by | Status |
+|---|---|---|---|---|
+| SIG-CRT-001 | `__astart` / entry | `CRT0.ASM` | entry prologue **`B4 30 CD 21 3C 02 73`** = `mov ah,30h/int 21h/cmp al,2/jae` (DOS-2.0 gate), then DGROUP/stack setup. Small model → near `call` to msg printer; large model → `9A` far `lcall`. | **CONFIRMED** — at OEP of MSC (0x30c0, near), C1 (0x2382, far), CV (0x417b, far). Matches disk06 `CRT0.ASM`. |
+| SIG-CRT-002 | `_chkstk` | `CHKSTK.ASM` | stack-probe idiom (`sub sp` loop touching pages) | HYP |
+| SIG-CRT-003 | `_setargv` | `STDARGV.ASM`/`SETARGV.ASM` | command-tail parse from PSP:0x80 | HYP |
+| SIG-CRT-004 | `_setenvp` | `STDENVP.ASM` | environment-segment copy loop | HYP |
+| SIG-CRT-005 | `__cintDIV`/FP init | `CRT0FP.ASM` | 8087/emulator vector patch | HYP |
+| SIG-CRT-006 | msg/abort | `CRT0MSG.ASM`/`EXECMSG.ASM`/`NMSGHDR.ASM` | writes fixed abort strings via INT 21h AH=40h | HYP |
+
+Macro/ABI context: `CMACROS.INC` defines the `cProc/cBegin/cEnd`, `save`, `parmB/W/D` calling
+conventions used throughout — the shape of every CRT prologue/epilogue comes from here.
+
+---
+
+## 4. Library signatures (ground truth = shipped .LIB, disk03/04/05/08)
+
+FLIRT-style, built **from the .LIB itself** (CodeBreaker `wt inverse omf` + `libmatch`/`libsig`).
+Each model's C library: `SLIBC/CLIBC/MLIBC/LLIBC` (small/compact/medium/large), float packs
+`?LIBFA` (alt math) / `?LIBFP` (emulator), `EM.LIB` (emulator), `87.LIB` (8087), `LIBH.LIB` (helpers).
+
+Matcher: `workspace/scripts/libsig_scan.py` (walks the .LIB into modules → `Obj.functions()` →
+per-function byte sig with FIXUPP sites wildcarded → scans carved function starts).
+
+| ID | Scope | Source | Method | Status |
+|---|---|---|---|---|
+| SIG-LIB-001 | small-model C RTL | `SLIBC.LIB` (243 mods / 390 pubs, 278 usable sigs) | OMF pubdef slice + FIXUPP mask | **CONFIRMED** — 53 fns in PI.EXE, 56 in MSC.EXE; cross-verified (chkstk/exit/printf/sscanf/time match PI main's call targets exactly) |
+| SIG-LIB-002 | float (emulator) | `SLIBFP.LIB` etc. | same | TODO |
+| SIG-LIB-003 | float (8087/alt) | `SLIBFA.LIB`,`87.LIB` | same | TODO |
+| SIG-LIB-004 | Windows glue | `?LIBW.LIB`,`?WINLIBC.LIB` | same (disk08) | TODO |
+| SIG-LIB-005 | medium/compact/large | `MLIBC/CLIBC/LLIBC.LIB` | same (for C1/C2/C3/C3L per model) | TODO |
+
+The `.OBJ`s shipped loose (`SSETARGV.OBJ`, `SVARSTCK.OBJ`, `BINMODE.OBJ`, model variants) give
+single-function, self-labelled signatures — the cleanest FLIRT seeds.
+
+---
+
+## 5. Compiler codegen idioms (C 4.0 code generator — C2/C3 output shape)
+
+> The fingerprints of *how C 4.0 compiles C*, learned from the disk07 source↔EXE sample pairs
+> (CIRCLE/COUNT/PI) and the disk06 CRT. These let the inverse engine attribute a code sequence to
+> a specific C construct. Populate as calibration proceeds.
+
+Calibrated on the disk07 sample **PI.C ↔ PI.EXE** (small model): `main` at image 0x10, aligned
+statement-by-statement. C 4.0 default codegen = **small model, cdecl, stack-checking ON**, register
+vars in SI/DI.
+
+| ID | Idiom | Pattern | Status |
+|---|---|---|---|
+| SIG-CG-001 | function prologue | `55 8B EC` `push bp / mov bp,sp`, then **`B8 <framesize> E8 <__chkstk>`** `mov ax,N / call __chkstk` (N = local bytes; stack-check default-on), then `push di`/`push si` for each register var used | **CONFIRMED** (PI main @0x10) |
+| SIG-CG-002 | epilogue | restore `pop si/di`, `mov sp,bp / pop bp / ret` (near, small model) | HYP (tail not yet dumped) |
+| SIG-CG-003 | switch/jump-table | table-indexed `jmp` — TBD from COUNT.EXE | TODO |
+| SIG-CG-004 | far-call model | large model: `9A off,seg` far call; small: `E8 rel16` near | **CONFIRMED** (near in MSC/PI; far in C1/C3L) |
+| SIG-CG-005 | cdecl call + cleanup | args pushed **right-to-left**, each `B8 imm / 50` (`mov ax,imm; push ax`) or `push [mem]`; **caller** cleans `83 C4 N` (`add sp,N`) | **CONFIRMED** (sscanf/printf/exit in PI) |
+| SIG-CG-006 | global variable access | absolute `[imm16]` DS-relative (`813E <off> <imm>` `cmp word [q],4000`) | **CONFIRMED** (PI global q @DS:0x1930) |
+| SIG-CG-007 | arg/local frame | args at `[bp+4]`,`[bp+6]`… (small model, near ret); locals at `[bp-N]` | **CONFIRMED** (PI: argc@bp+4, argv@bp+6, startime@bp-4) |
+| SIG-CG-008 | 32-bit long ops | `__aFldiv`/`__aFuldiv`/helper calls (LIBH) | TODO |
+
+**CRT call targets seen in PI main** (to cross-verify against SLIBC libsig): `__chkstk`@0x3cf,
+`sscanf`@0x5dd, `printf`@0x5a7, `exit`@0x53c, `time`@0x614; `arctan`@0xfa (from MATH.C).
+
+---
+
+## 6. Tool version / banner strings (to harvest from unpacked images)
+
+Record the exact version/copyright strings once unpacked (they pin the exact build and often the
+internal component versions of C1/C2/C3/LINK). Table seeded, values TBD.
+
+| Binary | String | Status |
+|---|---|---|
+| MSC/CL | `Microsoft (R) C Compiler  Version 4.00` (@MSC image 0x5222) | **CONFIRMED** |
+| MSC/CL | `Copyright (C) Microsoft Corp 1984, 1985, 1986.  All rights reserved.` | **CONFIRMED** |
+| MSC | internal build stamp `4.02 Mon Jun 23 10:13:47 PDT 1986` (@0x638c) | **CONFIRMED** |
+| MSC/CL | driver spawns `c0.exe c1.exe c2.exe c3.exe masm.exe link.exe` (@0x4d01) | **CONFIRMED** |
+
+---
+
+## 7. Source-module attribution — SCCS `@(#)` markers `[CONFIRMED]`
+
+### SIG-SRC-001 — `@(#)what` version strings
+Every tool embeds one `@(#)<file>.c:<rev>` string per translation unit (regex `@\(#\)([ -~]{3,60})`).
+Ground-truth module names — used to cluster carved functions by owning source file and to identify
+a module shared across tools (cross-pass libsig). Full inventory (11 tools; C1=40, C2=48, C3=35
+units) in **[docs/SOURCE_MAP.md](docs/SOURCE_MAP.md)**. Anchors (MSC image): `cc_main.c:1.28`
+@0x4cd6, `getflags.c:1.30` @0x6718, `error.c:1.4` @0x6264. CV/CVR/DOSSEG carry none (stripped).
+
+---
+
+## 8. Cross-tool module identification `[CONFIRMED]`
+
+### SIG-XREF-001 — normalized function signature
+`workspace/scripts/cross_match.py`: per-function signature = disasm with all numeric
+literals blanked (`0x..`→`#`), so the same `.c` compiled at the same rev+model is
+byte/shape-identical across tools regardless of layout. Clusters shared modules.
+Validated matrix (matching functions):
+
+| | CL | C1 | C2 | C3 | C3L |
+|--|--|--|--|--|--|
+| **MSC** | **139** | 9 | 39 | 51 | 9 |
+| **C2** | 37 | 8 | — | **74** | 8 |
+| **C1** | 9 | — | 8 | 11 | **56** |
+
+Same-model pairs overlap massively (MSC≡CL drivers 139; C2/C3 small 74; C1/C3L large 56);
+cross-model pairs stay ~8–11 (only model-independent code) — a clean confirmation of the
+SOURCE_MAP + memory-model hypothesis. 226 signatures shared across ≥2 tools. Full matrix:
+`workspace/recon/cross_match_matrix.txt`.
+
+---
+
+_Add new signatures with the next free ID in each section. Cite the file + offset where confirmed._
