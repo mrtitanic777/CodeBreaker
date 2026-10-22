@@ -237,8 +237,9 @@ def retail(name):
 
 
 def _readable(path):
-    from codebreaker.formats import xex
-    return xex.basefile(path) if xex.is_xex(path) else path
+    """The file the stages read: a container's image (a .xex: its basefile), else the file."""
+    from codebreaker import platforms
+    return platforms.named("powerpc").readable(path)
 
 
 def modules(want_lane=None, exts=(".dll", ".exe", ".drv", ".ocx", ".cpl")):

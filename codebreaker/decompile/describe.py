@@ -24,7 +24,16 @@ import capstone  # (here, once: imported inside functions, threads of a build ra
 
 
 # language id by PE machine type
-_ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:Xenon:homed"}
+def _cpu(name):
+    from codebreaker import platforms
+    return platforms.named(name).cpu
+
+
+def _arch(machine):
+    """The decompiler's language for a PE image of this machine type (its platform's), or None."""
+    from codebreaker import platforms
+    p = platforms.for_machine(machine)
+    return p.cpu if p else None
 
 
 def _ident(name):
@@ -111,7 +120,7 @@ def describe32(module_path, funcs, outdir):
     from codebreaker.build import watcom as B
     from codebreaker.formats.pe import open_pe
     pe = open_pe(module_path)
-    arch = _ARCH.get(pe.machine)
+    arch = _arch(pe.machine)
     if not arch:
         raise ValueError("%s: no language for machine type %#x" % (os.path.basename(module_path), pe.machine))
     x86 = arch.startswith("x86:")
@@ -196,7 +205,7 @@ def describe32(module_path, funcs, outdir):
     return path, names
 
 
-ARCH = "x86:LE:16:Protected Mode:default"
+ARCH = _cpu("ne")
 FIRST_SELECTOR = 0x1000
 EXTERN_SELECTOR = 0xE000           # imported functions stand at EXTERN_SELECTOR:16*n
 # KERNEL's exports that are plain numbers, the same in every protected-mode Windows (by
@@ -1109,7 +1118,7 @@ def describe16(module_path, outdir):
 
 
 # Virtual device drivers (LE) ---------------------------------------------------------------------
-LE_ARCH = "x86:LE:32:default:windows"
+LE_ARCH = _cpu("le")
 LE_BASE, LE_STRIDE = 0x01000000, 0x01000000      # object n sits at LE_BASE + (n-1) * LE_STRIDE
 LE_SLOTS = 0x0F000000                            # one pointer per service called, read as that service
 
@@ -1212,7 +1221,7 @@ def describe_le(lf, name, outdir):
 
 
 # DOS programs (MZ) -------------------------------------------------------------------------------
-DOS_ARCH = "x86:LE:16:Real Mode:default"
+DOS_ARCH = _cpu("dos")
 
 
 def describe_dos(module_path, outdir):
@@ -1252,3 +1261,29 @@ def describe_dos(module_path, outdir):
     with open(d.path, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     return d
+
+
+# NES -------------------------------------------------------------------------------------------
+def describe_nes(module_path, outdir):
+    """Write the description of a NES cartridge for the native program: the 6502, the program
+    ROM where the CPU sees it at power-on (formats/nes.py), and its functions -- the three
+    vectors' and every JSR target. -> (path of the description, {va: name})"""
+    from codebreaker import platforms
+    from codebreaker.formats import nes
+    rom = nes.read(module_path)
+    os.makedirs(outdir, exist_ok=True)
+    image = os.path.join(outdir, "cpu.bin")
+    with open(image, "wb") as f:
+        f.write(bytes(rom.memory()[0x8000:]))
+    names = {rom.vectors["reset"]: "reset"}
+    names.setdefault(rom.vectors["nmi"], "nmi")
+    names.setdefault(rom.vectors["irq"], "irq")
+    lines = ["arch\t%s" % platforms.named("nes").cpu, "bytes\t8000\t%s\t0\t8000" % os.path.abspath(image)]
+    by_va = {}
+    for va in rom.functions():
+        by_va[va] = names.get(va, "sub_%04X" % va)
+        lines.append("F\t%x\t%s\t-1" % (va, by_va[va]))
+    path = os.path.join(outdir, "description.txt")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    return path, by_va

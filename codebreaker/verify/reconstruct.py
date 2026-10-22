@@ -38,10 +38,13 @@ NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "
 GOOD = ("equivalent", "consistent")
 
 
-# the name results are filed under -> the module that knows that kind
-KINDS = {"pe": "codebreaker.verify.win32", "ne": "codebreaker.verify.win16",
-         "powerpc": "codebreaker.verify.powerpc", "le": "codebreaker.verify.driver",
-         "dos": "codebreaker.verify.dos", "java": "codebreaker.verify.java"}
+# the name results are filed under -> the module that knows that kind (each platform's lane)
+def _kinds():
+    from codebreaker import platforms
+    return platforms.lanes()
+
+
+KINDS = _kinds()
 
 
 def kind_named(name):
@@ -51,19 +54,10 @@ def kind_named(name):
 
 def kind_name(module_path):
     """Which kind a file is: 'pe', 'ne', 'powerpc', 'le', 'dos', 'java' -- or None when nothing
-    reconstructs it."""
-    from codebreaker.base import corpus
-    from codebreaker.verify import java
-    if os.path.isdir(module_path) or module_path.lower().endswith((".java", ".jar")):
-        return "java" if (module_path.lower().endswith(".jar") or java.is_module(module_path)) else None
-    lane = corpus.lane(module_path)
-    if lane == "pe":
-        from codebreaker.formats.pe import open_pe
-        return "powerpc" if open_pe(module_path).machine == 0x01F2 else "pe"
-    if lane is None:                                         # .COM files and plain driver images have no header
-        from codebreaker.formats import dos
-        return "dos" if dos.kind(module_path) else None
-    return lane if lane in KINDS else None
+    reconstructs it. (The name its platform files results under: codebreaker/platforms.)"""
+    from codebreaker import platforms
+    p = platforms.identify(module_path)
+    return p.name if p and p.lane else None
 
 
 def kind_of(module_path):

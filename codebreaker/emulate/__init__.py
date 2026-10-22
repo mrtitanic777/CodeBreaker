@@ -23,10 +23,12 @@ What a record means for a reconstruction -- two runs compared -- is not here: ve
 turns a record into a fingerprint and verify/compare.py compares two of them.
 """
 
-RUNNERS = {"pe": ("codebreaker.emulate.emulator", "trace_function"),
-           "ne": ("codebreaker.emulate.windows16", "probe"),
-           "le": ("codebreaker.emulate.driver", "run"),
-           "powerpc": ("codebreaker.emulate.powerpc", "run")}
+def _runners():
+    from codebreaker import platforms
+    return platforms.runners()
+
+
+RUNNERS = _runners()                    # each platform's runner (codebreaker/platforms)
 
 
 def runner(kind):

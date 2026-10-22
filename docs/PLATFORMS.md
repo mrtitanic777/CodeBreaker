@@ -28,9 +28,10 @@ line and nothing above it.
 | Family | CPUs | Platforms | Unpack | CPU spec | Platform model | Judged |
 |---|---|---|---|---|---|---|
 | x86 | 8086 - x86-64 | DOS, Windows 3.x/95, drivers | yes | yes (x86-64 spec present, unused) | Unicorn: DOS, Win16, Win32, VxD | yes |
-| PowerPC | 32/64-bit | Xbox 360 (code), PowerPC images | partly (no XEX yet) | yes | own interpreter | yes |
+| PowerPC | 32/64-bit, VMX128 | Xbox 360, PowerPC images | yes (XEX, STFS, discs, GoD, FATX) | yes (Xenon: VMX128) | own interpreter | yes |
 | Bytecode | JVM | Java source to C++03 | n/a | n/a | the JVM | yes |
-| 8/16-bit | 6502, 65816, Z80, SM83, 68000, SPC700 | Atari, NES, SNES, Sega, Game Boy, C64, Apple II, Spectrum, MSX, arcade | no | no | no | no |
+| 8-bit | 6502 (2A03) | NES | yes (iNES, NES 2.0) | yes (checked: 151/151) | own 6502 interpreter | yes |
+| 8/16-bit | 6502, 65816, Z80, SM83, 68000, SPC700 | Atari, SNES, Sega, Game Boy, C64, Apple II, Spectrum, MSX, arcade | no | 6502 yes | 6502 yes | no |
 | x86, console | Pentium III | original Xbox (XBE) | no | yes | no (Unicorn has the CPU) | no |
 | MIPS, SuperH | R3000, R4300, R5900, SH-2, SH-4 | PS1, N64, PS2, Saturn, Dreamcast, arcade | no | no | no | no |
 | PowerPC, Cell | Gekko, Broadway, Xenon, Cell PPU/SPU | GameCube, Wii, Xbox 360, PS3 | no | PPU yes, SPU no | no | no |

@@ -51,6 +51,18 @@ choice, `emulate.runner` and `corpus._readable` all ask it.
 | java | JVM | source folder, jar | Java -> C++ | verify/java | the JVM |
 | **nes** (new) | 6502:LE:16 | iNES (.nes) | asm (C for cc65 programs) | verify/nes | own 6502 interpreter |
 
+## Where it stands (2026-10-21)
+
+Steps 1-5 are done: `codebreaker/platforms/` describes the seven platforms (the six below and
+the NES), and `reconstruct.KINDS`, `kind_name`, `emulate.RUNNERS`, `describe`'s languages and
+`corpus._readable` all ask it -- `identify()` agrees with the old rule on every one of the 2,574
+files of the Windows 95 corpus and the PowerPC samples. The NES: `formats/nes.py` (iNES and
+NES 2.0), the 6502 language (L8 in GHIDRA_FORK.md, with its fixes), `decompile/m6502.py` (the
+table, disassembler, assembler), `emulate/m6502.py`, `source/nes_writer.py` (ca65 source and an
+ld65 configuration, rebuilt by `build/m6502_asm.py` or by cc65), `verify/nes.py`. A cartridge
+goes through `decompile`, `measure` and `module` like any other module. Step 6 (homebrew with its
+authors' source as ground truth) waits on downloading those programs and the cc65 suite.
+
 ## Order of work
 
 1. **The registry, no behaviour change.** `codebreaker/platforms/` with the six existing

@@ -1,9 +1,12 @@
 // pcodecheck -- run single instructions through the SLEIGH specification's p-code, for checking
 // the specification against an emulator of the real processor (tools/sleigh_verify.py).
 //
-//   pcodecheck <file.sla> <mode>        mode: x86-16-real, x86-32-flat, ppc-be-64
-//   pcodecheck <file.sla> ppc-be-64-asm  disassemble: one hex instruction word per stdin line in,
-//                                        "<word> <mnemonic> <operands>" (or "<word> err ...") out
+//   pcodecheck <file.sla> <mode>        mode: x86-16-real, x86-32-flat, ppc-be-64, 6502
+//   pcodecheck <file.sla> asm            disassemble: one instruction's bytes, in hex, per stdin
+//                                        line in, "<bytes> <mnemonic> <operands>" (or "<bytes>
+//                                        err ...") out (ppc-be-64-asm: the same)
+//
+// (6502: the registers A X Y SP and the flags N V B D I Z C; SP is the full stack address, 01xx.)
 //
 // Reads cases from stdin, one per line:
 //   <id> CS=<hex> IP=<hex> EAX=<hex> ... CF=<0|1> ... M<hex address>=<hex bytes> ...
@@ -37,6 +40,8 @@ namespace {
 const std::vector<std::string> REGS_X86 = {"EAX", "ECX", "EDX", "EBX", "ESP", "EBP", "ESI", "EDI",
                                            "ES", "CS", "SS", "DS", "FS", "GS",
                                            "CF", "PF", "AF", "ZF", "SF", "TF", "IF", "DF", "OF"};
+
+const std::vector<std::string> REGS_6502 = {"A", "X", "Y", "SP", "N", "V", "B", "D", "I", "Z", "C"};
 
 // PowerPC: the general registers, the link and count registers, the condition register's eight
 // fields (four bits each, a byte apiece in the specification), XER's bits, the floating registers
@@ -90,11 +95,14 @@ class CaseImage : public LoadImage {
 public:
   CaseRam *ram = nullptr;
   bool nops = false;
+  uintb codeLo = 0, codeHi = 0;                  // (6502: only these bytes decode as given; the
+  bool only = false;                              // rest decodes as NOP -- data reads are unaffected)
   CaseImage() : LoadImage("case") {}
   void loadFill(uint1 *ptr, int4 size, const Address &addr) override {
     for (int4 i = 0; i < size; ++i) {
       uintb a = addr.getOffset() + i;
-      ptr[i] = !nops || ram->bytes.count(a & ram->mask) ? ram->byte(a) : (a & 3) == 0 ? 0x60 : 0;
+      if (only) ptr[i] = codeLo <= a && a < codeHi ? ram->byte(a) : 0xea;
+      else ptr[i] = !nops || ram->bytes.count(a & ram->mask) ? ram->byte(a) : (a & 3) == 0 ? 0x60 : 0;
     }
   }
   string getArchType(void) const override { return "x86"; }
@@ -146,15 +154,16 @@ public:
 
 int main(int argc, char **argv) {
   std::string mode = argc == 3 ? argv[2] : "";
-  const bool asmOnly = mode == "ppc-be-64-asm";
-  if (asmOnly) mode = "ppc-be-64";
-  if (mode != "x86-16-real" && mode != "x86-32-flat" && mode != "ppc-be-64") {
-    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real|x86-32-flat|ppc-be-64|ppc-be-64-asm   (cases on stdin)\n", argv[0]);
+  const bool asmOnly = mode == "ppc-be-64-asm" || mode == "asm";
+  if (mode == "ppc-be-64-asm") mode = "ppc-be-64";
+  if (mode != "x86-16-real" && mode != "x86-32-flat" && mode != "ppc-be-64" && mode != "6502" && mode != "asm") {
+    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real|x86-32-flat|ppc-be-64|6502|asm   (cases on stdin)\n", argv[0]);
     return 2;
   }
   const bool ppc = mode == "ppc-be-64";
-  const bool flat = mode == "x86-32-flat" || ppc;     // (an address is the address itself)
-  const std::vector<std::string> REGS = ppc ? regsPowerPC() : REGS_X86;
+  const bool m6502 = mode == "6502";
+  const bool flat = mode == "x86-32-flat" || ppc || m6502 || mode == "asm";   // (an address is the address itself)
+  const std::vector<std::string> REGS = ppc ? regsPowerPC() : m6502 ? REGS_6502 : REGS_X86;
   AttributeId::initialize();
   ElementId::initialize();
   CaseImage image;
@@ -166,7 +175,7 @@ int main(int argc, char **argv) {
   store.registerTag(root);
   trans.initialize(store);
   auto defaults = [&](ContextInternal &ctx) {
-    if (ppc) {
+    if (ppc || m6502 || mode == "asm") {          // (no context variables to set)
     } else if (flat) {                            // (as languages/x86.pspec)
       ctx.setVariableDefault("addrsize", 1);
       ctx.setVariableDefault("opsize", 1);
@@ -186,12 +195,13 @@ int main(int argc, char **argv) {
   if (asmOnly) {
     while (std::getline(std::cin, line)) {
       if (line.empty()) continue;
-      uintb w = std::strtoull(line.c_str(), nullptr, 16);
+      std::string hex = line.substr(0, line.find_first_of(" \t\r"));
       CaseRam ram(ramspace);
       ram.mask = 0xffffffff;
-      for (int i = 0; i < 4; ++i) ram.bytes[i] = (uint1)(w >> (24 - 8 * i));
+      for (size_t i = 0; i + 1 < hex.size(); i += 2)    // the bytes in the order they sit in memory
+        ram.bytes[i / 2] = (uint1)std::strtoul(hex.substr(i, 2).c_str(), nullptr, 16);
       image.ram = &ram;
-      std::printf("%08llx ", (unsigned long long)w);
+      std::printf("%s ", hex.c_str());
       try {
         ContextInternal caseContext;
         trans.reset(&image, &caseContext);
@@ -201,7 +211,10 @@ int main(int argc, char **argv) {
         std::printf("%s\n", out.text.c_str());
       } catch (LowlevelError &e) {
         std::printf("err %s\n", e.explain.c_str());
+      } catch (std::exception &e) {
+        std::printf("err %s\n", e.what());
       }
+      std::fflush(stdout);
     }
     return 0;
   }
@@ -260,7 +273,13 @@ int main(int argc, char **argv) {
       for (const std::string &r : REGS) mem.setValue(r, given.count(r) ? given[r] : 0);
       if (ppc) mem.setValue("XER", (given["xer_so"] << 31) | (given["xer_ov"] << 30) | (given["xer_ca"] << 29));
       uintb cs = given["CS"] & 0xffff, ip = given["IP"] & (flat ? 0xffffffff : 0xffff);
-      if (!ppc) mem.setValue("EIP", ip);
+      if (m6502) {
+        mem.setValue("PC", ip & 0xffff);
+        image.only = true;
+        image.codeLo = ip & 0xffff;
+        image.codeHi = image.codeLo + 3;
+      }
+      else if (!ppc) mem.setValue("EIP", ip);
       emu.setExecuteAddress(Address(ramspace, flat ? ip : (cs << 4) + ip));
       std::string outcome;
       try {
