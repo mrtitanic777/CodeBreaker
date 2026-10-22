@@ -28,6 +28,7 @@ import struct
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
+REV = 3                                 # how an object is read (object_functions): part of the cache key
 FLAG_SETS = ("/O2", "/Ox", "/O1", "/Os", "/O2 /Oy-", "/Od")
 _BASE_FLAGS = ["/nologo", "/c", "/TC", "/GS-", "/Zl", "/Gy", "/W0", "/FIm.h"]
 
@@ -56,13 +57,14 @@ def object_functions(obj):
     funcs, i = {}, 0
     while i < nsyms:
         p = symptr + 18 * i
-        raw, value, sect, _typ, _cls, naux = struct.unpack_from("<8sIhHBB", obj, p)
+        raw, value, sect, typ, cls, naux = struct.unpack_from("<8sIhHBB", obj, p)
         if raw[:4] == b"\0\0\0\0":
             off = strings + struct.unpack_from("<I", raw, 4)[0]
             name = obj[off:obj.index(b"\0", off)].decode("latin1")
         else:
             name = raw.rstrip(b"\0").decode("latin1")
-        if sect > 0 and sects[sect - 1][4] & 0x20 and not name.startswith("."):
+        # a function: its symbol says so (labels inside one -- $M..., class 6 -- do not)
+        if sect > 0 and sects[sect - 1][4] & 0x20 and typ == 0x20 and cls != 6:
             funcs.setdefault(sect, []).append((value, name))
         i += 1 + naux
     out = {}
@@ -90,7 +92,9 @@ def _trim(code, mask):
 
 def original_functions(img, addresses):
     """{address: (bytes, [ignored bits per word])} for functions of a PowerPC image: each runs to
-    the length its .pdata record gives, else to the next function; a `b`/`bl` that leaves the
+    the length its .pdata record gives, else to the next function, and ends before the first zero
+    word (the padding between functions -- no instruction is zero; a record's length can take in
+    padding and a small function that has no record of its own); a `b`/`bl` that leaves the
     function has its distance masked (where the callee sits is the linker's choice)."""
     starts = sorted(set(img.functions) | set(img.imports) | set(img.inline))
     nxt = {a: b for a, b in zip(starts, starts[1:] + [img.code[1]])}
@@ -98,6 +102,10 @@ def original_functions(img, addresses):
     for va in addresses:
         size = img.extents.get(va, (0,))[0] or (nxt.get(va, va) - va)
         code = img.bytes_at(va, size)
+        for i in range(0, len(code) - 3, 4):
+            if code[i:i + 4] == b"\0\0\0\0":
+                code = code[:i]
+                break
         if len(code) < 4:
             continue
         mask = []
@@ -107,7 +115,7 @@ def original_functions(img, addresses):
             if w >> 26 == 18:                                       # b / bl
                 d = w & 0x03FFFFFC
                 d -= 0x04000000 if d & 0x02000000 else 0
-                if not (w & 2) and not (va <= va + 4 * i + d < va + size):
+                if not (w & 2) and not (va <= va + 4 * i + d < va + len(code)):
                     ignore = _LI
             mask.append(ignore)
         out[va] = _trim(code, mask)
@@ -137,7 +145,7 @@ def compile_function(cl, header, text, name, work, flags):
     """Compile one function on its own. -> (bytes, mask), or None when it does not compile.
     What the compiler made of a text is kept (base/cache.py)."""
     from codebreaker.base import cache
-    k = cache.key(cache.tool(cl), "powerpc", flags, header, text, name)
+    k = cache.key(cache.tool(cl), "powerpc", REV, flags, header, text, name)
     had = cache.get("period", k)
     if had is not None:
         return pickle.loads(had)
