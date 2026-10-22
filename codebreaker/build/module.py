@@ -511,14 +511,16 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
             if f.text is None and f.reaches is not None:
                 # it jumps into the middle of a function beside it: that one was written in
                 # assembly too (nothing in its own code said so); the run takes it in
-                inside = max([o for o in starts[seg] if o <= f.reaches] or [None])
+                inside = max([o for o in starts.get(seg, ()) if o <= f.reaches] or [None])
                 if inside is not None and at[(seg, inside)] not in forced and at[(seg, inside)] in public:
                     joined.add(at[(seg, inside)])
                     continue
             why = f.why if f.text is None else f.assembled
             done[run] = ("why", why) if why else ("stem", "asm/" + stems[run[0]].replace("/", "_"), f)
         for seg, t in wanted:
-            inside = max([o for o in starts[seg] if o <= t] or [None])
+            # (a segment no function is known to start in has nothing to give an entry: KRNL386's
+            # segment 4 and GDI's 45, reached far from a run's bytes -- the build stopped there)
+            inside = max([o for o in starts.get(seg, ()) if o <= t] or [None])
             name = at.get((seg, inside)) if inside is not None else None
             if name is None:
                 continue
