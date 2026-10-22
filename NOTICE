@@ -25,7 +25,9 @@ Third-party open-source code in this repository, each under its own license:
                                native/rexglue/kernel and native/rexglue/dxbc), with what they carry:
                                fmt (MIT), libmspack (LGPL-2.1), o1heap (MIT), SIMDe (MIT), utfcpp
                                (Boost 1.0), toml++ (MIT), disruptorplus (MIT, Lewis Baker),
-                               TinySHA1 (Saurav Mohapatra, ISC-style), rijndael-alg-fst (public domain)
+                               TinySHA1 (Saurav Mohapatra, ISC-style), rijndael-alg-fst (public domain),
+                               aes_128 (MIT, LuoPeng), des (MIT, Faraz Fallahi), rc4 (Whistle
+                               Communications' permissive notice), sha256 (zlib, Stephan Brumme)
   - codebreaker/recompile      the instruction builders and the switch-table scanner, derived from
                                the rexglue SDK's code generator (BSD-3-Clause, as above)
   - codebreaker/formats/xbox   the empty LIVE header template from iso2god-rs (Ilia

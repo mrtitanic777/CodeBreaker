@@ -26,6 +26,9 @@ else()
     list(FILTER REX_KERNEL_SOURCES EXCLUDE REGEX "core/math_msvc[.]cpp$")
 endif()
 list(FILTER REX_KERNEL_SOURCES EXCLUDE REGEX "core/perf/")
+# the exports that need the SDK's audio and input subsystems (not built here): their imports
+# stay host stubs
+list(FILTER REX_KERNEL_SOURCES EXCLUDE REGEX "xboxkrnl/xboxkrnl_audio|xam/xam_input")
 
 # thirdparty C sources the boot/XEX path needs: libmspack LZX decompressor,
 # o1heap (CRT heap), and the crypto (AES + SHA) the XEX loader uses.
@@ -33,7 +36,8 @@ set(REX_TP_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/mspack/lzxd.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/mspack/system.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/o1heap/o1heap.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/crypto/rijndael-alg-fst.c")
+    "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/crypto/rijndael-alg-fst.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/aes_128/aes.c")       # (the kernel's crypt exports)
 
 add_library(rex_kernel STATIC ${REX_KERNEL_SOURCES} ${REX_TP_SOURCES})
 target_compile_features(rex_kernel PUBLIC cxx_std_23)
@@ -54,5 +58,10 @@ target_include_directories(rex_kernel PUBLIC
      "${CMAKE_CURRENT_SOURCE_DIR}")             # (for "thirdparty/picosha2/picosha2.h")
 # GCC and Clang: the SIMD the base library uses (SSSE3 shuffles, SSE4.1)
 if(NOT MSVC)
-    target_compile_options(rex_kernel PRIVATE -mssse3 -msse4.1)
+    target_compile_options(rex_kernel PRIVATE -mssse3 -msse4.1 -fno-char8_t)   # (u8"" is char, as with MSVC)
+endif()
+# Windows: the crypt exports' random numbers (bcrypt), the base library's sockets, timers and
+# shell paths
+if(WIN32)
+    target_link_libraries(rex_kernel PUBLIC bcrypt ws2_32 winmm shlwapi shell32 ole32)
 endif()
