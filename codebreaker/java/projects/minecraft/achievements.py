@@ -400,7 +400,7 @@ def emit_xlast(mapping, out_path, title_id=None):
     """Write an XLAST-style achievement config skeleton (XML) to import into the submission tool."""
     tid = normalize_title_id(title_id) or '00000000'
     L = ['<?xml version="1.0" encoding="utf-8"?>',
-         '<!-- Achievement config skeleton emitted by j2ctool. Import into the platform submission/config',
+         '<!-- Achievement config skeleton emitted by CodeBreaker. Import into the platform submission/config',
          '     tool (Xbox 360: XLAST), then build the SPA. The titleId below MUST match the Title ID set',
          '     on the XEX in the Visual Studio project (Xbox 360 property pages). -->',
          '<XLASTProject titleId="0x%s">' % tid,
@@ -431,7 +431,7 @@ def _xml(s):
 
 def emit_code(mapping, out_dir, delivery='online'):
     """Write Achievements.h + Achievements.cpp: the ACH_* id constants and the unlock seam."""
-    h = ['// Achievements.h -- j2ctool-emitted achievement ids + unlock seam. See ACHIEVEMENTS.md.',
+    h = ['// Achievements.h -- CodeBreaker-emitted achievement ids + unlock seam. See ACHIEVEMENTS.md.',
          '#ifndef J2X_ACHIEVEMENTS_H', '#define J2X_ACHIEVEMENTS_H', '',
          '// Platform achievement ids (match the title config / XLAST project).']
     for x in mapping['entries']:
@@ -443,7 +443,7 @@ def emit_code(mapping, out_dir, delivery='online'):
           '', '#endif // J2X_ACHIEVEMENTS_H', '']
 
     live = delivery == 'online'
-    c = ['// Achievements.cpp -- j2ctool-emitted. Routes in-code unlocks to the platform write.',
+    c = ['// Achievements.cpp -- CodeBreaker-emitted. Routes in-code unlocks to the platform write.',
          '#include "stdafx.h"',                              # forced PCH: must be the first include
          '#include "Achievements.h"', '',
          '#if defined(_XBOX) || defined(_XENON)', '  #include <xtl.h>', '#endif',
@@ -495,10 +495,10 @@ def run(code_dir, out_dir, lang_file=None, profile='retail', delivery='online', 
         # unresolved icon, not an absence of work.
         icons = {'wired': [], 'unresolved': [
             (e['key'], 'no Content dir with terrain.png / gui/items.png found near %s '
-                       '(run `j2ctool assets` first, or pass --content-dir)' % out_dir)
+                       '(run `codebreaker java assets` first, or pass --content-dir)' % out_dir)
             for e in mapping['entries']]}
     # Title ID resolution, in precedence order: an explicit --title-id, else the project's
-    # platform.config.json (the ONE place it lives -- `j2ctool vcxproj` stamps the SAME value into the
+    # platform.config.json (the ONE place it lives -- `codebreaker java vcxproj` stamps the SAME value into the
     # XEX, and the two MUST match or unlocks never bind to a profile), else the conventional "unset"
     # placeholder 00000000. We do NOT auto-issue one: the user picks it (Suggest button / --title-id).
     tid = normalize_title_id(title_id) or normalize_title_id(_title_id_from_config(out_dir)) or '00000000'

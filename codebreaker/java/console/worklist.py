@@ -52,7 +52,7 @@ def run(out_dir, cc=None, std='c++03', worklist_path=None):
     total = len(cpps)
     L = ['# Override worklist (%s)' % out_dir, '',
          '%d / %d clean; %d failing. Sorted by error count (fewest first).' % (clean, total, len(rows)),
-         'Regenerate: `python -m j2ctool worklist %s`' % out_dir, '',
+         'Regenerate: `python -m codebreaker java worklist %s`' % out_dir, '',
          '| errs | file | dominant error |', '|---:|---|---|']
     L += ['| %d | %s | %s |' % r for r in rows]
     with open(worklist_path, 'w', encoding='utf-8') as f:

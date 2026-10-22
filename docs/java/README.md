@@ -1,101 +1,62 @@
-> This is J2CTool's README as it was when it joined CodeBreaker. The code is now `codebreaker/java`,
-> run as `python -m codebreaker java <tool>`; see [MERGED.md](MERGED.md) for where everything went.
+# The Java transpiler in CodeBreaker
 
-# j2ctool — a deterministic Java → C++03 transpiler
+J2CTool, the deterministic Java -> C++03 transpiler, is `codebreaker/java` since its merge
+(history kept: `git log j2ctool/release -- j2ctool/<file>` and `git blame` reach its commits).
 
-`j2ctool` turns Java source into portable **C++03**. It is a source-to-source transpiler built to be
-**correct by construction**: the crash classes a naive port hits — uninitialized arrays,
-Rule-of-Three double-frees, null-deref virtual calls, dropped constructor registration,
-out-of-range array access, static-init-order faults — are prevented in the generator, not patched
-afterward. Every run is deterministic: same input, same output, byte for byte.
+| J2CTool | Here |
+|---|---|
+| `j2ctool/pipeline.py` | `codebreaker/java/transpile.py` |
+| the core (`parse`, `ir`, `types`, `typemap`, `emit/`, `rules`, `runtime`, `profiles/`) | `codebreaker/java/` |
+| the Xbox 360 tooling (`assets`, `xact`, `achievements`, `platform_*`, `sdk`, `vcxproj`, the rewrites) | `codebreaker/java/console/` |
+| `j2ctool/decompile.py` | `codebreaker/decompile/jar.py` |
+| `docs/platform/{canonical,reference,companions,assets}` | `codebreaker/java/platform/` |
+| `docs/platform/notes`, the XDK index | `docs/java/platform-notes`, `docs/java/xdk` |
+| `apimap/` | `codebreaker/java/api_maps/` |
+| `python -m j2ctool <tool>` | `python -m codebreaker java <tool>` |
+| the PySide6 window | the web console (`serve`) and the workbench: "Java to C++", "Java tools" |
+| its Build button | `codebreaker java build SLN` (settings.json `msbuild`) |
+| environment variables and fixed paths (XEDK, JAVA_HOME, J2X_CC, ...) | settings.json: `xbox360_sdk`, `java`, `retromcp`, `host_cxx`, `msbuild`, `java_overlays` |
+| `BUGFIX_LEDGER.md` in the checkout | `state/java/BUGFIX_LEDGER.md` |
+| `tests/` (pytest) | `tests/java/`, run by `tests/test_java.py` in the gate |
 
-It ships in two layers:
+On CodeBreaker's path a folder of Java source is a module of the `java` kind (verify/java.py): its
+classes are its functions, each is compiled on its own with the host compiler, verdicts go to the
+store, and `codebreaker module FOLDER` writes the C++ with each class's status line and STATUS.md.
+A class that compiles is then run beside the JVM where it can be (codebreaker/java/probe.py): its
+methods with primitive parameters and results (instance ones on an object made with a constructor that
+takes primitives), on the same inputs, results compared exactly. What it found is fixed in the transpiler:
+Math.PI as a float, (int) of a float not saturating, an empty array taken for null, a null dereference in
+a try not reaching its catch, char signed. Java's char is unsigned 8-bit here (strings are 8-bit): a char
+past 255 cannot be held, and the judge shows it.
+The support headers are precompiled once per module, so a class compiles in about a fifth of the time.
 
-- a **generic transpiler core** — `parse → IR → type/ownership resolution → emit → pipeline`, a
-  structural crash-class **rule engine**, and a structured **event ledger**; and
-- a **Minecraft / Xbox-360 profile** — the game- and platform-specific tooling layered on top:
-  asset extraction, XACT audio banks, achievements mapping, the hand-written 360 platform
-  reference layer, controller/keyboard config, and Visual Studio project scaffolding.
+Conversions in one process run one at a time (transpile.convert holds a lock): the target profile
+and the per-corpus tables are module-level. Side-by-side work runs in separate processes, as
+every CodeBreaker job does.
 
-> **Bring your own source and SDK.** This repository contains **no** game code, **no** game
-> assets, and **no** platform-SDK content. You supply the Java source to transpile and any target
-> SDK needed to build the result. See [`NOTICE.md`](NOTICE.md).
+## The tools
 
-## Install
+`python -m codebreaker java <tool>`; `--help` on each gives its options.
 
-The core transpiler and CLI need only the Python **standard library** (Python ≥ 3.6). Two optional
-dependencies unlock extra features and degrade gracefully when absent:
+| Tool | What it does |
+|---|---|
+| `convert` | a Java source tree as C++ (`--platform`, `--cpp-std`, `--mc-version` to decompile first) |
+| `decompile` | a Minecraft version as Java source, through RetroMCP (`third_party/retromcp-java`) |
+| `report`, `worklist` | the crash-class report; compile the output and list the files that fail |
+| `signatures` | signatures.md: every class's fields and methods, Java type to C++ type |
+| `scan-project`, `scaffold`, `apimap` | one-folder project resolver; skeletons in other languages; the API-mapping registry |
+| `assets`, `xact`, `achievements` | textures and resources from the game jar; XACT3 audio banks; achievements to XLAST + unlock seam |
+| `platform-config`, `sdk`, `debug` | controller mapping and kernel calls; find the platform SDK; the one toggleable debug file |
+| `project-layout`, `vcxproj`, `build` | the Visual Studio layout and file list; build the solution with MSBuild |
+| `reflect-factories` | Java reflection registries as generated C++ factories |
+| `ui-mark`, `keybind-mark`, `bugfix-ledger` | greppable markers and their indexes; the catalogue of FIXED BUG markers |
+| `sound-fix`, `controller-nav`, `render-fix`, `applet-ping` | the console fixes on converted Minecraft (run on every xbox360 convert) |
 
-| Package | Enables | Without it |
-|---------|---------|-----------|
-| `PySide6` | the desktop GUI (default entry point) | use the CLI |
-| `Pillow`  | texture/asset extraction, achievement icons (`j2ctool assets`, `j2ctool achievements`) | those steps warn and skip |
-| a **Java** runtime (JRE/JDK 8+) | the bundled decompiler backend (`decompile` / `convert --mc-version`) turns a Minecraft version into Java source before transpiling | supply your own Java source dir to `convert` instead |
+## What is not in the repository
 
-```bash
-# editable install — gives you the `j2ctool` command while keeping the repo's data paths working
-pip install -e ".[full]"     # or ".[gui]", ".[assets]", or just "-e ." for the stdlib-only core
-```
-
-You can also run it without installing, straight from the repo root: `python -m j2ctool <command>`.
-
-## Usage
-
-Running `j2ctool` with **no arguments launches the GUI** — a wizard that walks through platform,
-language, paths, and each tool step. Everything the GUI does is also available on the CLI:
-
-```bash
-j2ctool convert     <java_dir> <out_dir>   # transpile Java -> C++ (--platform, --cpp-std, --platform-refs, --sdk)
-j2ctool convert --mc-version <id> <out>    # decompile a Minecraft version AND transpile it, in one step
-j2ctool decompile   <version> <workspace>  # just decompile a Minecraft version to Java source (RetroMCP/Vineflower)
-j2ctool report      <out_dir>              # crash-class report from emitted output
-j2ctool signatures  <java_dir>             # codebase map: class -> fields/methods, Java type -> C++ type
-j2ctool worklist    <out_dir>              # compile the output, write a failing-file worklist
-j2ctool vcxproj                            # (re)generate the Visual Studio .vcxproj file list + filters
-
-# Minecraft/Xbox-360 profile tooling
-j2ctool assets          <jar> <out>        # extract textures/resources, normalize PNG -> RGBA
-j2ctool xact            <sub> ...          # XACT3 audio banks: dump / build / coverage / match
-j2ctool achievements    <java_dir>         # map achievements -> Xbox 360 XLAST/SPA + unlock seam
-j2ctool platform-config <...>              # controller mapping, keyboard/storage kernel calls
-j2ctool ui-mark         <tree>             # tag UI functions with greppable markers + UI_INDEX
-j2ctool keybind-mark    <tree>             # tag hardcoded key-press sites + KEYBIND_INDEX
-j2ctool bugfix-ledger   <tree>             # catalog FIXED BUG / J2X-BUGFIX markers
-j2ctool reflect-factories <tree>           # rewrite Java reflection registries -> C++ factories
-j2ctool sound-fix       <tree>             # route SFX/music past the empty console OGG pool to XACT
-j2ctool debug           <...>              # emit a single toggleable Debug.{h,cpp}
-j2ctool sdk             <...>              # detect / gatekeep the platform SDK
-j2ctool project-layout  <tree>             # impose the VS solution layout on a flat output tree
-j2ctool gui                                # launch the GUI explicitly
-
-# tests
-python -m pytest -q
-```
-
-`convert` automatically runs the reflection-factory, sound-fix (xbox360: SFX/music XACT bypass),
-keybind-marking, and bugfix-ledger passes as part of the pipeline.
-
-## Correct by construction
-
-Durable behavior lives in the generator, so it survives a re-convert; there is no post-hoc
-patch directory. The type model is uniform: every Java class is a reference (a C++ pointer); only
-primitives, `String` (→ `JavaString`), and containers are held by value; arrays become `JArray<T>`.
-Fixes are made in one of two places:
-
-- **Generated code** → a rule / emit / type change under `j2ctool/` (e.g. signed-`byte` scalars,
-  null-deref guards, ctor delegation, Rule-of-Three, static-init ordering).
-- **Platform glue** the transpiler does not generate → the hand-written
-  `docs/platform/reference/*.reference.{h,cpp}` layer, emitted in place of stubs via `--platform-refs`.
-
-## Layout
-
-| Path | What |
-|------|------|
-| `j2ctool/` | The transpiler package. Core: `ir`, `parse`, `types`/`typemap`, `emit/`, `pipeline`, `rules`, `runtime`, `ledger`/`report`. Profile tooling: `assets`, `xact`, `achievements`, `platform_*`, `keybind_mark`, `sound_fix`, `ui_mark`, `signatures`, `vcxproj`, `project_*`, `cli`, `gui`. |
-| `tests/` | `pytest` suite. `tests/fixtures/java/` is a small **synthetic** (non-game) Java corpus used by the parser/emitter tests. |
-| `profiles/` | Conversion profiles (type/ownership defaults, skip lists). |
-| `docs/platform/` | The Xbox-360 platform layer: `notes/` (architecture write-ups), `reference/` + `companions/` (hand-written glue), `canonical/` (Java-stdlib reimplementations). |
-| `tools/` | Auxiliary developer scripts. |
-
-Generated output (`out/`, `build/`, `dist/`, …) and any locally-supplied game source or SDK are
-git-ignored — regenerated or user-provided, never committed.
+No game code (no decompiled `net.minecraft.*` tree), no game assets and no platform-SDK headers,
+libraries or documentation. The transpiler works on Java source you supply, the asset tools on
+files you own, and the console build on an SDK installed on this machine (settings.json
+`xbox360_sdk`); those inputs live in the gitignored `binaries/java/` (`original_java`,
+`PlatformSDKs`, `overlays`). Third-party class and API names appear as data, so they can be
+recognised and translated.

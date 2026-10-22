@@ -1,5 +1,5 @@
 // Textures.ext.cpp — texture-registry methods the GL11->D3D9 emulator needs.  [Step 3]
-// REFERENCE (Xbox-side; not built by j2ctool). ADD these to the old port's Textures class
+// REFERENCE (Xbox-side; not built by CodeBreaker). ADD these to the old port's Textures class
 // (../MinecraftAlpha/Textures.{h,cpp}) -- it already has load(path)/getById/bind/s_textures[128].
 // The new RenderEngine (override) drives textures through glGenTextures/glTexImage2D/glTexSubImage2D,
 // which the GL emulator forwards here. ARGB pixel data (Java BufferedImage.getRGB order = 0xAARRGGBB)

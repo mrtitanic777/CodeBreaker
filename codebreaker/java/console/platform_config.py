@@ -342,7 +342,7 @@ def save_config(path, cfg):
 def _controller_header(cfg):
     c = cfg['controller']
     binds = _apply_layout(cfg)
-    L = ['// ControllerConfig.h -- j2ctool-emitted controller mapping (edit platform.config.json + re-emit).',
+    L = ['// ControllerConfig.h -- CodeBreaker-emitted controller mapping (edit platform.config.json + re-emit).',
          '// The Input platform layer (Input.reference) reads these to map the 360 pad to the PC controls.',
          '#ifndef J2X_CONTROLLER_CONFIG_H', '#define J2X_CONTROLLER_CONFIG_H', '',
          '// Stick layout: %s   (Default / Southpaw / Legacy / Legacy-Southpaw)' % c.get('layout'),
@@ -360,7 +360,7 @@ def _controller_header(cfg):
 
 def _kernel_files(cfg):
     kb, st = cfg['keyboard'], cfg['storage']
-    h = ['// KernelConfig.h -- j2ctool-emitted 360 kernel-call selection (edit platform.config.json + re-emit).',
+    h = ['// KernelConfig.h -- CodeBreaker-emitted 360 kernel-call selection (edit platform.config.json + re-emit).',
          '#ifndef J2X_KERNEL_CONFIG_H', '#define J2X_KERNEL_CONFIG_H', '',
          '// text-input medium: %s' % kb,
          '#define KERNEL_KEYBOARD_%s 1' % kb.upper(),
@@ -373,7 +373,7 @@ def _kernel_files(cfg):
          'void Kernel_CloseSave();',
          '', '#endif // J2X_KERNEL_CONFIG_H', '']
 
-    cpp = ['// Kernel.cpp -- j2ctool-emitted 360 kernel wrappers for the chosen mediums. See KernelConfig.h.',
+    cpp = ['// Kernel.cpp -- CodeBreaker-emitted 360 kernel wrappers for the chosen mediums. See KernelConfig.h.',
            '#include "stdafx.h"',                            # forced PCH: must be the first include
            '#include "KernelConfig.h"', '',
            '#if defined(_XBOX) || defined(_XENON)', '  #include <xtl.h>', '#endif',
@@ -468,7 +468,7 @@ def _choices_md(cfg, sdk_info=None, unverified=None):
     binds = _apply_layout(cfg)
     L = ['# PLATFORM_CHOICES.md -- user decisions the converter emitted', '',
          'These are the questions only you can answer. The current pick is checked; change it in',
-         '`platform.config.json` (or via `j2ctool platform-config`) and re-emit. Everything below is wired',
+         '`platform.config.json` (or via `codebreaker java platform-config`) and re-emit. Everything below is wired',
          'into the port -- ControllerConfig.h, KernelConfig.h, Kernel.cpp.', '']
     L += ['## Controller mapping', '',
           '- Layout: **%s** (options: %s)' % (c.get('layout'), ', '.join(CONTROLLER_LAYOUTS)),

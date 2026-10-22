@@ -45,10 +45,10 @@ both are fixed the same way in the proven OG hand-ports. Migrated here so every 
 
 -------------------------------------------------------------------------------------------------------
 convert applies it on the IR before the back end writes (patch(), by tree shape), then checks the output
-for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `j2ctool <fix> <dir>` on
+for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `codebreaker java <fix> <dir>` on
 a tree converted elsewhere; that text form runs over the converted tree (xbox360), BEFORE overlays. Idempotent (after each
 rewrite its trigger no longer matches) and fail-loud via run()'s survivor checks. Also exposed as
-`j2ctool render-fix <dir>`.
+`codebreaker java render-fix <dir>`.
 """
 
 import os

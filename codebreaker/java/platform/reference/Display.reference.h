@@ -1,4 +1,4 @@
-// Display.h -- game-AGNOSTIC org.lwjgl.opengl.Display -> Direct3D 9 for the j2ctool Xbox 360 target.
+// Display.h -- game-AGNOSTIC org.lwjgl.opengl.Display -> Direct3D 9 for the CodeBreaker Xbox 360 target.
 //
 // This is the DEVICE OWNER. In the agnostic pipeline the generic entry point just runs static init and
 // calls the game's main(); the game then drives display setup itself via LWJGL (Display.setDisplayMode

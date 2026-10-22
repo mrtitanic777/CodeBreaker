@@ -72,7 +72,7 @@ SUBSYSTEMS = [
         'reference': ['Audio'],
         'options': [
             'A) XACT3 -- authored wave banks (.xwb) + sound banks (.xsb), cue-driven. The '
-            'Audio.reference routes SoundManager -> XACT cues; the `j2ctool xact` tool builds the banks '
+            'Audio.reference routes SoundManager -> XACT cues; the `codebreaker java xact` tool builds the banks '
             'from Content.md + the .ogg/.wav sources. RECOMMENDED (the Alpha port uses XACT3).',
             'B) XAudio2 -- low-level source voices; you own mixing/streaming/format decode yourself '
             '(more code, no authoring pipeline).',

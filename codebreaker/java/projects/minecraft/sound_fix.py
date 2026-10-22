@@ -36,10 +36,10 @@ SCOPE -- deliberately narrow, to match exactly what the proven hand-fix changes:
     and different XACT routing; it needs its own targeted fix, not this SFX rule.
 
 convert applies it on the IR before the back end writes (patch(), by tree shape), then checks the output
-for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `j2ctool <fix> <dir>` on
+for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `codebreaker java <fix> <dir>` on
 a tree converted elsewhere; that text form runs over the converted tree (xbox360), BEFORE overlays, alongside reflection_factory.
 Idempotent: after the rewrite the guard no longer contains `!= NULL`, so a re-run matches nothing. Also
-exposed as `j2ctool sound-fix <dir>`.
+exposed as `codebreaker java sound-fix <dir>`.
 """
 
 # FIXED BUG sfx-bypass: the converted SoundManager gates every sound effect on the empty console OGG pool

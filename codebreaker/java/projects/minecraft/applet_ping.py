@@ -27,10 +27,10 @@ the generator so every edition's setLevel loses the ping. Keyed on the STRUCTURE
 getDocumentBase()->openStream() and guards a `theWorld = <var>` assignment on the host check), not on names.
 
 convert applies it on the IR before the back end writes (patch(), by tree shape), then checks the output
-for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `j2ctool <fix> <dir>` on
+for a surviving trigger (stranded()). run()/process() are the same fix on C++ text, for `codebreaker java <fix> <dir>` on
 a tree converted elsewhere; that text form runs over the converted tree (xbox360), BEFORE overlays. Idempotent (after the rewrite
 there is no getDocumentBase()->openStream() try left) and fail-loud via run()'s survivor check. Also exposed
-as `j2ctool applet-ping <dir>`.
+as `codebreaker java applet-ping <dir>`.
 """
 
 import os

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for the one-folder project resolver (j2ctool.project_scan)."""
+"""Tests for the one-folder project resolver (codebreaker.java.console.project_scan)."""
 
 import os
 from codebreaker.java.console import project_scan as ps

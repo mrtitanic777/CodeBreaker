@@ -452,7 +452,7 @@ def _cmd_decompile(args):
         print('ERROR: %s' % e)
         return 4
     print('Decompiled Minecraft %s -> %s' % (args.version, src))
-    print('  feed it to: j2ctool convert "%s" <out_dir>' % src)
+    print('  feed it to: codebreaker java convert "%s" <out_dir>' % src)
     return 0
 
 

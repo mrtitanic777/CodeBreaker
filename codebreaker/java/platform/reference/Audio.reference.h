@@ -1,7 +1,7 @@
-// Audio.h — paulscode SoundSystem -> XACT3 bridge for the Xbox 360 j2ctool port.  [Step 6, Route A]
+// Audio.h — paulscode SoundSystem -> XACT3 bridge for the Xbox 360 CodeBreaker port.  [Step 6, Route A]
 //
 // REFERENCE IMPLEMENTATION for the Xbox-project integration. It REPLACES the converter's no-op
-// SoundSystem stub (j2ctool/runtime.py:1012-1015, _GENERATED['SoundSystem.h']): the new game code is
+// SoundSystem stub (codebreaker/java/runtime.py:1012-1015, _GENERATED['SoundSystem.h']): the new game code is
 // FAITHFUL to the Java paulscode sound model -- the generated SoundManager.cpp calls
 // s_sndSystem->newSource/newStreamingSource/play/setVolume/setPitch/setListener*/stop/playing/...
 // So unlike the OLD port (which hand-overrode SoundManager to call XACT directly), here we leave
@@ -9,7 +9,7 @@
 // onto the existing, shipped XACT3 backend (XactAudio.cpp/.h + sounds.xwb/music.xwb).
 //
 // Lives in the Xbox project against the XDK's <xact3.h> + the platform layer (XactAudio.h). It is
-// NOT compiled by the j2ctool build (which only syntax-checks the no-op stub). Grounded in the old
+// NOT compiled by the CodeBreaker build (which only syntax-checks the no-op stub). Grounded in the old
 // port's XactAudio.cpp + SoundManager.cpp (the proven 360 audio path) and
 // docs/platform/03-input-and-audio.md (AUDIO section = the spec for this file).
 //

@@ -14,7 +14,7 @@ factory is fully recoverable: this pass reads the `addMapping(j2xClassOf(typeid(
 `<Registry>_createByReflection(Class* c[, Arg* a0 …])` that switches the Class* to a real
 `new X(args)`, and rewrites the reflection call site to invoke it. NULL stub -> working factory.
 
-Runs as a post-emit pass over the converted tree (also `j2ctool reflect-factories <dir>`), and is wired
+Runs as a post-emit pass over the converted tree (also `codebreaker java reflect-factories <dir>`), and is wired
 into `convert()` so every port gets it automatically.
 """
 
@@ -115,7 +115,7 @@ def process(text, registry):
     params = ', '.join(['Class* c'] + ['%s* a%d' % (t, i) for i, t in enumerate(arg_types)])
     callargs = ', '.join('a%d' % i for i in range(len(arg_types)))
     fname = '%s_createByReflection' % registry
-    L = ['', '// ==== j2ctool-generated reflection factory (replaces newInstance/getConstructor) ====',
+    L = ['', '// ==== CodeBreaker-generated reflection factory (replaces newInstance/getConstructor) ====',
          '// Built from the class registration table; returns a real `new` instead of the NULL stub.',
          '%s* %s(%s)' % (ret_type, fname, params), '{', '\tif (!c) return NULL;']
     for x in concrete:
@@ -193,7 +193,7 @@ def _write_header(out_dir, factories):
     fwd = set(['Class'])
     for fa in factories:
         fwd.add(fa['ret']); fwd.update(fa['args'])
-    L = ['// ReflectionFactory.h -- j2ctool-generated. Declares the reflection factories so any file can',
+    L = ['// ReflectionFactory.h -- CodeBreaker-generated. Declares the reflection factories so any file can',
          '// construct a registered class by its Class* (replacing Java newInstance()).',
          '#ifndef J2X_REFLECTION_FACTORY_H', '#define J2X_REFLECTION_FACTORY_H', '',
          ' '.join('class %s;' % t for t in sorted(fwd))]

@@ -1045,9 +1045,9 @@ int glRenderMode(int mode) {
 // =========================================================================== queries
 int glGetError() { return 0; }
 JavaString glGetString(int name) {
-	if (name == GL_VENDOR)   return JavaString("j2ctool");
+	if (name == GL_VENDOR)   return JavaString("CodeBreaker");
 	if (name == GL_RENDERER) return JavaString("Direct3D9 (Xenos) GL1.x emulator");
-	if (name == GL_VERSION)  return JavaString("1.1 (j2ctool)");
+	if (name == GL_VERSION)  return JavaString("1.1 (CodeBreaker)");
 	return JavaString("");
 }
 

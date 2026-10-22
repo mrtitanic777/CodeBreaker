@@ -1,6 +1,6 @@
 #include "stdafx.h"
-// Audio.cpp — paulscode SoundSystem -> XACT3 bridge for the Xbox 360 j2ctool port.  [Step 6, Route A]
-// REFERENCE IMPLEMENTATION (Xbox-side; not built by j2ctool). See Audio.reference.h for the design.
+// Audio.cpp — paulscode SoundSystem -> XACT3 bridge for the Xbox 360 CodeBreaker port.  [Step 6, Route A]
+// REFERENCE IMPLEMENTATION (Xbox-side; not built by CodeBreaker). See Audio.reference.h for the design.
 //
 // Grounded in the OLD port's proven 360 audio path:
 //   * XactAudio.cpp/.h  — the XACT3 engine, sounds.xwb/music.xwb wave banks, the audio thread on
@@ -55,8 +55,8 @@ std::string digBreakCue(const char* family, const std::string& matIn) {
 namespace AudioBridge {
 
 std::string toCue(const std::string& nameIn) {
-	// FIXED BUG audio-tocue-bank-name-mismatch: the rebuilt Beta bank (j2ctool xact build) names EVERY cue as
-	// the Java sound EVENT with '.'/'/'/' ' -> '_' (see j2ctool/xact.py _cue_name): liquid_water, fire_fire,
+	// FIXED BUG audio-tocue-bank-name-mismatch: the rebuilt Beta bank (codebreaker java xact build) names EVERY cue as
+	// the Java sound EVENT with '.'/'/'/' ' -> '_' (see codebreaker/java/console/xact.py _cue_name): liquid_water, fire_fire,
 	// random_pop, random_hurt, mob_pig, mob_cow, step_grass, random_glass, ... The legacy Alpha-bank map
 	// below returned SHORT names (water, lava, pop, hurt, pig1/2/3, cow) that DON'T EXIST in this bank, so
 	// GetCueIndex failed and most SFX were silent ("only a couple sounds"). Each bank cue already carries

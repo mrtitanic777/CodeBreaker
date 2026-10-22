@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-parse.py -- Module 2: Java source text -> IR (j2ctool.ir).
+parse.py -- Module 2: Java source text -> IR (codebreaker.java.ir).
 
 This is the front-end. It extracts STRUCTURE only -- it does not translate
 anything. Decompiled-Minecraft Java is a constrained, well-formatted subset

@@ -1,6 +1,6 @@
 # Step 4 — Input (XInput → LWJGL Keyboard/Mouse): deliverables & integration
 
-Reference implementation written (Xbox-side; not built by the j2ctool repo — it needs the XDK's XInput +
+Reference implementation written (Xbox-side; not built by the CodeBreaker repo — it needs the XDK's XInput +
 the platform layer, so it's verified by building the Xbox project, not the converter):
 
 - `Input.reference.h` / `Input.reference.cpp` — the LWJGL→XInput adapter. ONE `XInputGetState(0,…)`
@@ -57,7 +57,7 @@ The new game code is Java-faithful and already calls exactly these (verified in 
    `KEY_W/A/S/D`, so movement still works through the pure-keyboard Java path — just on/off, not analog.
 6. Build the Xbox project (XDK). XInput comes in via `xtl.h`; no extra lib beyond the XDK default.
 
-## Converter gap to close centrally (j2ctool owner)
+## Converter gap to close centrally (CodeBreaker owner)
 
 `MouseHelper.cpp` (generated) calls `Mouse::setGrabbed(bool)` and `Mouse::setCursorPosition(int,int)`,
 which are **absent from the `runtime.py` Mouse stub** (`Mouse.h` only has create/destroy/setNativeCursor

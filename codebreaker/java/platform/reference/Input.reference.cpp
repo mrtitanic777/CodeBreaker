@@ -165,7 +165,7 @@ bool navRight() { bool f = g_navRightFired; g_navRightFired = false; return f; }
 
 // ---- Controller MENU navigation core (see Input.reference.h) -----------------------------------------
 // Edition-agnostic 2D-spatial nav over the current screen's button rectangles. The GuiScreen adapter that
-// j2ctool injects (controller_nav.py) fills the geometry arrays from controlList and calls this, so the
+// CodeBreaker injects (controller_nav.py) fills the geometry arrays from controlList and calls this, so the
 // console menu-nav can never again be a per-project overlay someone forgets. Ported from the proven Alpha
 // hand-port's GuiScreen::handleControllerMenuNav (geometry-only, no game types).
 int menuNavSelect(const int* bx, const int* by, const int* bw, const int* bh,

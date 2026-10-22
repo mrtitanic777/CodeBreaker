@@ -177,7 +177,7 @@ def require(platform, override=None):
 
 
 def describe(platform, override=None):
-    """Human-readable one-liner about SDK status for `platform` (for CLI `j2ctool sdk detect`)."""
+    """Human-readable one-liner about SDK status for `platform` (for CLI `codebreaker java sdk detect`)."""
     if platform in UNGATED:
         return "platform '%s': no SDK required (ungated)." % platform
     if platform not in PLATFORM_SDKS:

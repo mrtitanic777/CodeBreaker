@@ -160,7 +160,7 @@ EQUIV = {
 
 # NOTE: the OPPORTUNITIES and platform REQUIREMENTS are no longer hardcoded here -- they are AUTO-DETECTED
 # from the INSTALLED SDK by xdk_scan.py (each is claimed only because its XDK function is actually present in
-# the scanned headers). See j2ctool/xdk_scan.py PATTERNS + platform_coverage.render_report. EQUIV below stays: it
+# the scanned headers). See codebreaker/java/console/xdk_scan.py PATTERNS + platform_coverage.render_report. EQUIV below stays: it
 # is the Java-symbol -> XDK-family INTENT map that drives the // [360] stub annotations.
 
 

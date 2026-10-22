@@ -1,4 +1,4 @@
-// DisplayMode.h -- real org.lwjgl.opengl.DisplayMode for the j2ctool Xbox 360 target.
+// DisplayMode.h -- real org.lwjgl.opengl.DisplayMode for the CodeBreaker Xbox 360 target.
 //
 // The converter's stub discards the constructor args and getWidth/getHeight return 0, so a game that
 // does `Display.setDisplayMode(new DisplayMode(1024, 768))` then reads `getDisplayMode().getWidth()`

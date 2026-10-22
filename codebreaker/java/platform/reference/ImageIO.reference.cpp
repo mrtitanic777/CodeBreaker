@@ -1,5 +1,5 @@
 // ImageIO.cpp + BufferedImage — javax.imageio.ImageIO / java.awt.image.BufferedImage -> D3DX.  [Step 3]
-// REFERENCE (Xbox-side; not built by j2ctool). REPLACES the converter's no-op ImageIO/BufferedImage
+// REFERENCE (Xbox-side; not built by CodeBreaker). REPLACES the converter's no-op ImageIO/BufferedImage
 // stubs. The new RenderEngine (override) does: ImageIO::read(getResourceAsStream(name)) -> a
 // BufferedImage, then getRGB(...) -> int[] ARGB, then glTexImage2D. So BufferedImage must hold real
 // pixels and ImageIO::read must actually decode the PNG. PNG decode uses D3DX (the XDK decodes PNG):

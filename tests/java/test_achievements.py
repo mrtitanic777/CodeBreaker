@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for the achievement conversion analyzer (j2ctool.achievements)."""
+"""Tests for the achievement conversion analyzer (codebreaker.java.projects.minecraft.achievements)."""
 
 import os
 from codebreaker.java.projects.minecraft import achievements as ach

@@ -6,7 +6,7 @@ suggestion of the first draft was accepted: a garbage collector on the PC, moder
 project layer, more consoles. **Dynamic languages are in scope too**, and no language or pair is
 preferred: "I wanna complete universal transpiler for all programming languages."
 
-Today `codebreaker/java` (J2CTool) converts one kind of code well: decompiled 2010-2011 Minecraft
+Today `codebreaker/java` (CodeBreaker) converts one kind of code well: decompiled 2010-2011 Minecraft
 Java into C++03 for the Xbox 360. Judged beside the JVM, Alpha has 161 classes alike and none
 different; Beta has 145 alike and one different, on non-ASCII text only. The Alpha 360 build is clean.
 This document is the plan to turn it into a universal translator without losing any of that. Nothing
@@ -32,7 +32,7 @@ Where the languages differ in ways that matter, translation means lowering or em
 | Source has | Target lacks it (e.g.) | Faithful form | Idiomatic form when possible |
 |---|---|---|---|
 | Raw memory: pointer arithmetic, unions, type punning (C, C++) | Java, C#, Python, JS, Lua | an emulated linear memory (a byte array plus addresses), as Emscripten and CheerpJ do | ordinary objects, when a pointer analysis proves the code only uses whole structs and arrays |
-| Garbage collection (Java, C#, Python, JS, Lua) | C, C++ | a collector in the runtime (Boehm GC) | ownership: owned fields, scoped objects, as J2CTool does for the 360 |
+| Garbage collection (Java, C#, Python, JS, Lua) | C, C++ | a collector in the runtime (Boehm GC) | ownership: owned fields, scoped objects, as CodeBreaker does for the 360 |
 | Destructors / RAII (C++) | Java, C#, Python, JS, Lua | try/finally at each scope exit | `try-with-resources` / `using` / `with` |
 | Templates (C++), generics (Java, C#) | C, Python, JS, Lua | one copy per instantiation, or erasure to a common base | generics in Java/C#; plain duck-typed code in dynamic targets |
 | Multiple inheritance (C++, Python) | Java, C# | interfaces plus delegation | interfaces where the bases hold no state |

@@ -636,7 +636,7 @@ _GENERATED['RandomAccessFile.h'] = r'''#ifndef RANDOMACCESSFILE_H
 #define RANDOMACCESSFILE_H
 
 // ============================ PLATFORM REFERENCE ============================
-// Real java.io.RandomAccessFile for the Xbox 360 j2ctool port -- REPLACES the old symbol-only
+// Real java.io.RandomAccessFile for the Xbox 360 CodeBreaker port -- REPLACES the old symbol-only
 // stub. The stub's length() returned 0, which made RegionFile's ctor build a ZERO-length
 // sectorFree list and then call JList::set(0,..) on it -> out-of-bounds vector write ->
 // world-gen hang the instant a chunk was loaded (RegionFileCache::getChunkInputStream).
@@ -890,7 +890,7 @@ _GENERATED['TextArea.h'] = _class_stub('TextArea', void_methods=['setFont', 'set
 # override the typed virtuals; the variadic read(...) absorbs JArray/other converted read forms.
 _GENERATED['InputStream.h'] = (
     '#ifndef INPUTSTREAM_H\n#define INPUTSTREAM_H\n'
-    '// java.io.InputStream -- ONE canonical definition (see j2ctool runtime note: inputstream-odr).\n'
+    '// java.io.InputStream -- ONE canonical definition (see CodeBreaker runtime note: inputstream-odr).\n'
     '#include <string>\n#include "JavaString.h"\n#include "JArray.h"\n'
     'class InputStream {\n'
     'public:\n'

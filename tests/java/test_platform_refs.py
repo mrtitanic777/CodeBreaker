@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for detection-driven, game-agnostic platform emission (j2ctool.platform_refs)."""
+"""Tests for detection-driven, game-agnostic platform emission (codebreaker.java.console.platform_refs)."""
 
 import os
 import unittest

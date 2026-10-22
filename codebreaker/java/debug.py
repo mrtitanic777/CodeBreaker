@@ -23,13 +23,13 @@ PC builds -- selected by the platform macro so the same code runs in both.
 import os
 
 
-DEBUG_H = r'''// Debug.h -- SINGLE toggle point for ALL debug instrumentation (j2ctool-emitted).
+DEBUG_H = r'''// Debug.h -- SINGLE toggle point for ALL debug instrumentation (CodeBreaker-emitted).
 // ==========================================================================
 //  Flip DEBUG_ENABLED to 0 for retail: every macro below becomes a no-op and
 //  every debug site in the codebase that routes through these macros goes dark.
 //  This is the ONLY place you need to touch. Do not add raw printf/OutputDebug-
 //  String debug code elsewhere -- route it through a DBG_* macro so this switch
-//  governs it. (j2ctool flags stray debug output as J2X-REVIEW[debug-bypass].)
+//  governs it. (CodeBreaker flags stray debug output as J2X-REVIEW[debug-bypass].)
 // ==========================================================================
 #ifndef J2X_DEBUG_H
 #define J2X_DEBUG_H
@@ -118,7 +118,7 @@ void  Debug_HardCrash(const char* file, int line, const char* fmt, ...);  // log
 '''
 
 
-DEBUG_CPP = r'''// Debug.cpp -- backend for the single debug file (j2ctool-emitted). See Debug.h.
+DEBUG_CPP = r'''// Debug.cpp -- backend for the single debug file (CodeBreaker-emitted). See Debug.h.
 // J2X-ALWAYS-LINK: the debug facility is a developer tool that must ship whenever debug is enabled even
 // if no game code references it yet (you add Debug:: log calls while chasing a bug). The dead-subsystem
 // prune treats this file as a reachability ROOT and never cuts it. NOTE: the boot/error trace the port

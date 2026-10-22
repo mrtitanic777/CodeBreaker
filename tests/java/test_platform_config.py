@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for SDK gatekeeping (j2ctool.sdk), platform choices (j2ctool.platform_config), debug (j2ctool.debug)."""
+"""Tests for SDK gatekeeping (codebreaker.java.console.sdk), platform choices (codebreaker.java.console.platform_config), debug (codebreaker.java.debug)."""
 
 import os
 import pytest

@@ -1,6 +1,6 @@
 # Step 6 — Audio (paulscode SoundSystem → XACT3): deliverables & integration checklist
 
-Reference implementation written (Xbox-side; not built by the j2ctool repo — it needs the XDK's
+Reference implementation written (Xbox-side; not built by the CodeBreaker repo — it needs the XDK's
 `<xact3.h>` + the platform layer's `XactAudio.cpp/.h`, so it's verified by building the Xbox
 project, not the converter):
 
@@ -147,7 +147,7 @@ requirement.
 
 `SoundSystem` bridge + ported `toCue` map delivered as reference. Remaining for audible sound:
 `XactAudio.cpp/.h` + the four bank files in the project, building/iterating the Xbox project, and an
-on-device pass over cue coverage + music advance. No converter (j2ctool) changes required — the new
+on-device pass over cue coverage + music advance. No converter (CodeBreaker) changes required — the new
 `SoundManager`/`SoundPool`/`SoundPoolEntry` and the no-op `CodecJOrbis` stay generated as-is.
 
 ## Open questions

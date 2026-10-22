@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-vcxproj.py -- regenerate the Xbox-project .vcxproj file list after a j2ctool code swap.
+vcxproj.py -- regenerate the Xbox-project .vcxproj file list after a CodeBreaker code swap.
 
-    python -m j2ctool vcxproj [--proj <path>]
+    python -m codebreaker java vcxproj [--proj <path>]
 
 Strips blank-line padding, removes old ClCompile/ClInclude ItemGroups, inserts fresh
 ones listing the current .cpp/.h, preserving stdafx.cpp's per-config PCH block.

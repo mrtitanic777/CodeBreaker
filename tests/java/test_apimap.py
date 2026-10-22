@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for the API-mapping registry (j2ctool.apimap)."""
+"""Tests for the API-mapping registry (codebreaker.java.apimap)."""
 
 from codebreaker.java import apimap
 

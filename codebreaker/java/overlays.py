@@ -1,7 +1,7 @@
 """Per-project code overlays -- re-apply hand-fixes on top of freshly generated output.
 
 WHY THIS EXISTS
-    Most j2ctool fixes belong in the emitter (a general transform), the runtime headers, or the platform
+    Most CodeBreaker fixes belong in the emitter (a general transform), the runtime headers, or the platform
     reference layer (docs/platform/reference/*) -- those are GENERAL and benefit every conversion.
     But a real port also accumulates fixes that are GAME/VERSION-SPECIFIC edits to GENERATED files:
     a leak `delete` in one method, a value-comparing std::set swapped in for a broken JSet, a UI tweak,

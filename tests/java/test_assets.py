@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for asset extraction (j2ctool.assets) and sound source-matching (j2ctool.xact.match_sources)."""
+"""Tests for asset extraction (codebreaker.java.console.assets) and sound source-matching (codebreaker.java.console.xact.match_sources)."""
 
 import os
 import io

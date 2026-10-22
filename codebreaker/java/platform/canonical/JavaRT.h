@@ -1,6 +1,6 @@
 #ifndef JAVART_H
 #define JAVART_H
-// j2ctool runtime prelude -- shims for Java stdlib statics. #included by every .cpp.
+// CodeBreaker runtime prelude -- shims for Java stdlib statics. #included by every .cpp.
 #include <cstdlib>
 #include <ctime>
 #include <math.h>

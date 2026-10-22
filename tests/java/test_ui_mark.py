@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for the UI-marker tool (j2ctool.ui_mark) and debug markers (j2ctool.debug)."""
+"""Tests for the UI-marker tool (codebreaker.java.projects.minecraft.ui_mark) and debug markers (codebreaker.java.debug)."""
 
 import os
 from codebreaker.java import debug

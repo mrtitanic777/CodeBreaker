@@ -6,7 +6,7 @@ from codebreaker.java.console import vcxproj
 
 def test_debug_file_goes_to_debug_filter():
     assert vcxproj._classify('Debug') == 'Debug'
-    # the j2ctool platform glue is grouped too
+    # the CodeBreaker platform glue is grouped too
     assert vcxproj._classify('Kernel') == 'Platform\\Config'
     assert vcxproj._classify('KernelConfig') == 'Platform\\Config'
     assert vcxproj._classify('ControllerConfig') == 'Platform\\Config'

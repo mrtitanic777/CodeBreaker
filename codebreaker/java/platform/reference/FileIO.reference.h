@@ -1,16 +1,16 @@
 // ============================ PLATFORM REFERENCE ============================
-// Hand-written Xbox 360 platform layer, emitted by j2ctool from
+// Hand-written Xbox 360 platform layer, emitted by CodeBreaker from
 //   docs/platform/reference/FileIO.reference.h
 // This is the REAL implementation -- it REPLACES the converter no-op stub for FileIO.
 // (NOT converter-generated game code; edit the .reference.h source, then reconvert.)
 // ==========================================================================
 
 // FileIO.h — java.io bridge (File / streams / DataInput-Output / getResourceAsStream) for the
-// Xbox 360 j2ctool port, backed by Win32/XDK CreateFile/ReadFile/WriteFile + a mounted STFS save drive.
+// Xbox 360 CodeBreaker port, backed by Win32/XDK CreateFile/ReadFile/WriteFile + a mounted STFS save drive.
 // [Step 5]
 //
 // REFERENCE IMPLEMENTATION for the Xbox-project integration. It REPLACES the converter's no-op
-// java.io stubs (j2ctool/runtime.py: File.h, InputStream.h, OutputStream.h, FileInputStream.h,
+// java.io stubs (codebreaker/java/runtime.py: File.h, InputStream.h, OutputStream.h, FileInputStream.h,
 // FileOutputStream.h, DataInput.h, DataOutput.h, DataInputStream.h, DataOutputStream.h,
 // BufferedReader.h -- all return 0/false/self today) AND the Class::getResourceAsStream member
 // (Class.h, currently `return 0`). It is the same bridge as the OLD port's JavaIO.h /
@@ -21,7 +21,7 @@
 //   * Class::getResourceAsStream(name) resolves "/terrain.png" / "/gui/gui.png" -> game:\Content\...
 //     and returns a real FileInputStream (the dependency Step 3 flagged for ImageIO::read).
 //
-// NOT compiled by the j2ctool build (which only syntax-checks the no-op stubs). Lives in the Xbox project
+// NOT compiled by the CodeBreaker build (which only syntax-checks the no-op stubs). Lives in the Xbox project
 // against the XDK. Grounded in JavaIO.h, DataInput.h, DataOutput.h, Save360.cpp and
 // docs/platform/04-textures-resources-fileio.md.
 //

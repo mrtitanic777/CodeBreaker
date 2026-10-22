@@ -1,7 +1,7 @@
-// NIOBuffers.h — real java.nio Byte/Float/IntBuffer for the Xbox 360 j2ctool port.  [Step 5]
+// NIOBuffers.h — real java.nio Byte/Float/IntBuffer for the Xbox 360 CodeBreaker port.  [Step 5]
 //
 // REFERENCE IMPLEMENTATION for the Xbox-project integration. It REPLACES the converter's no-op
-// NIO buffer stubs (j2ctool/runtime.py _buffer_stub -> ByteBuffer.h / FloatBuffer.h / IntBuffer.h, where
+// NIO buffer stubs (codebreaker/java/runtime.py _buffer_stub -> ByteBuffer.h / FloatBuffer.h / IntBuffer.h, where
 // every method returns self / 0). The new code packs REAL data through these:
 //   * Tessellator (Tessellator.cpp) does GLAllocation::createDirectByteBuffer(n) -> asIntBuffer()/
 //     asFloatBuffer() VIEWS, then intBuffer->put(rawBuffer, 0, len), byteBuffer->position()/limit(),
@@ -12,7 +12,7 @@
 //   * GLAllocation::generateTextureNames / RenderEngine drive a "singleIntBuffer":
 //     clear() / put(int) / get(int) / get() / flip() / position() / limit().
 //
-// It is NOT compiled by the j2ctool build (which only syntax-checks the no-op stubs). Lives in the Xbox
+// It is NOT compiled by the CodeBreaker build (which only syntax-checks the no-op stubs). Lives in the Xbox
 // project. Grounded in the old port's GLAllocation.cpp (raw new[] arrays) and the new Tessellator's
 // exact buffer usage. See docs/platform/04-textures-resources-fileio.md and 05b-step5-integration.md.
 //

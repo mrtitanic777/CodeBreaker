@@ -1,11 +1,11 @@
-// Input.h — LWJGL Keyboard/Mouse/Controllers -> Xbox 360 XInput adapter for the j2ctool port.  [Step 4]
+// Input.h — LWJGL Keyboard/Mouse/Controllers -> Xbox 360 XInput adapter for the CodeBreaker port.  [Step 4]
 //
 // REFERENCE IMPLEMENTATION for the Xbox-project integration. It REPLACES the converter's no-op
-// Keyboard / Mouse stubs (j2ctool/runtime.py Keyboard.h / Mouse.h): the new game code is faithful to the
+// Keyboard / Mouse stubs (codebreaker/java/runtime.py Keyboard.h / Mouse.h): the new game code is faithful to the
 // Java and calls Keyboard::isKeyDown(KEY_*) / Keyboard::next()/getEventKey()/getEventKeyState() /
 // Mouse::getDX()/getDY() / Mouse::isButtonDown(0|1) / Mouse::next()/getEventButton(), so a real
 // backing makes input work. Lives in the Xbox project against the XDK's XInput (xinput.h via xtl.h);
-// it is NOT compiled by the j2ctool build (which only syntax-checks the no-op stubs). Grounded in the OLD
+// it is NOT compiled by the CodeBreaker build (which only syntax-checks the no-op stubs). Grounded in the OLD
 // port's proven inline XInput mapping (Minecraft.cpp:847-884, EntityPlayerSP.cpp:132-152,
 // GuiScreen.cpp:114-172) and docs/platform/03-input-and-audio.md.
 //
@@ -113,7 +113,7 @@ namespace Input {
 	// lives in the reference and every edition's injected adapter calls it. `cur` = current selection
 	// (-1 = none yet -> first enabled). Then menuSnapCursor() puts the virtual cursor on the chosen button so
 	// the game's own hover-highlight + A-as-click land on it. This is the console menu-nav contract; the
-	// adapter is emitted by j2ctool (controller_nav.py) so it can never be forgotten per-project again.
+	// adapter is emitted by CodeBreaker (controller_nav.py) so it can never be forgotten per-project again.
 	int  menuNavSelect(const int* bx, const int* by, const int* bw, const int* bh,
 	                   const unsigned char* enabled, int n, int cur);
 	void menuSnapCursor(int centerX, int centerY, int guiW, int guiH, int dispW, int dispH);

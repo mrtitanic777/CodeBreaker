@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """RetroMCP decompiler backend.
 
-J2CTool bundles the RetroMCP CLI (MIT, MCPHackers; Vineflower engine) as a headless backend so a
+CodeBreaker drives the RetroMCP CLI (third_party/retromcp-java: MIT, MCPHackers; Vineflower engine;
+built from that source, settings.json `retromcp` names the jar) as a headless backend so a
 Minecraft version can be decompiled straight into Java source and fed into the transpiler -- no manual
 round-trip through the RetroMCP GUI. The decompile step needs a Java runtime and network access
 (RetroMCP downloads the version + mappings on first setup). The C++ transpiler itself needs neither.
@@ -68,7 +69,7 @@ def _run(java, jar, args, cwd, on_output=None, stdin_text=None):
     creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0
     logf = None
     try:
-        logf = open(os.path.join(cwd, 'j2ctool-decompile.log'), 'a', encoding='utf-8', errors='replace')
+        logf = open(os.path.join(cwd, 'codebreaker-decompile.log'), 'a', encoding='utf-8', errors='replace')
         logf.write('\n$ ' + ' '.join(cmd) + '\n')
     except (IOError, OSError):
         logf = None
@@ -111,7 +112,7 @@ def decompile(version, workspace, java=None, on_output=None, setup=True):
     """Decompile a Minecraft ``version`` (e.g. ``"a1.2.6"``, ``"c0.30_01c"``) into ``workspace``.
 
     Returns the absolute path to the decompiled Java source directory, suitable as the ``java_dir``
-    input to :func:`j2ctool.pipeline.convert`. Raises :class:`DecompileError` on any failure.
+    input to :func:`codebreaker.java.transpile.convert`. Raises :class:`DecompileError` on any failure.
 
     Set ``setup=False`` to skip the download/setup step (re-decompile an already-set-up workspace).
     """

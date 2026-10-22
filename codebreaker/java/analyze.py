@@ -105,7 +105,7 @@ def scan_lint(ledger, output_dir):
     """Fold an optional external linter's findings into the ledger.
 
     `converter_lint` is an optional, external rule module (the legacy monolithic linter). It is
-    not bundled with j2ctool; when it is not importable this pass is simply skipped. Provide your own
+    not bundled with CodeBreaker; when it is not importable this pass is simply skipped. Provide your own
     module exposing `lint_tree(dir) -> [Finding(file, line, message, severity, rule)]` to enable it.
     """
     try:

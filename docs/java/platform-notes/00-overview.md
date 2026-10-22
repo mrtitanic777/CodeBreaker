@@ -1,9 +1,9 @@
 # Platform layer — overview & buildout plan
 
-**Goal:** the NEW `j2ctool` converter output (clean, faithful, crash-class-guarded game logic) replaces the OLD monolith game code in the Xbox 360 project, **reusing/adapting the old port's proven platform layer** to back the new converter's no-op platform stubs. The old monolith is buggy game code, but its *platform* infrastructure largely works and is the reference (and in several cases directly reusable).
+**Goal:** the NEW `CodeBreaker` converter output (clean, faithful, crash-class-guarded game logic) replaces the OLD monolith game code in the Xbox 360 project, **reusing/adapting the old port's proven platform layer** to back the new converter's no-op platform stubs. The old monolith is buggy game code, but its *platform* infrastructure largely works and is the reference (and in several cases directly reusable).
 
 Projects:
-- **NEW** transpiler + game logic: `J2CTool/` (stubs in `j2ctool/runtime.py`).
+- **NEW** transpiler + game logic: `codebreaker/java/` (stubs in `codebreaker/java/runtime.py`).
 - **OLD** Xbox 360 project (reference): `../MinecraftAlpha/` (`MinecraftAlpha.sln`, builds on the XDK).
 - XDK: `C:/Program Files (x86)/Microsoft Xbox 360 SDK`.
 
@@ -63,7 +63,7 @@ See the per-subsystem docs:
 6. **Audio (Route A)** — `SoundManager` → XACT backend.
 7. Skip: networking (single-player), AWT/dev-tools (IsomPreview).
 
-## Converter-improvement opportunities (crash classes the old port hit that `j2ctool/rules.py` does NOT yet guard)
+## Converter-improvement opportunities (crash classes the old port hit that `codebreaker/java/rules.py` does NOT yet guard)
 
 From [05](05-known-bugs-and-crash-classes.md) — fold these back into the converter so the new build is correct by construction:
 - **OOB fixed-array indexing** (e.g. `m_blocks[x<<11|z<<7|y]` with y≥128 → real-heap corruption / `RtlValidateHeap`). Highest-value missing rule.

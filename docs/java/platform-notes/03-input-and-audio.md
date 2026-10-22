@@ -41,7 +41,7 @@
 Platform research doc. Reverse-engineers how the **OLD** Xbox 360 port
 (`MinecraftAlpha/MinecraftAlpha/`, builds on the XDK but is buggy) handled
 controller input and audio, and maps that onto the **NEW** transpiler's
-LWJGL/paulscode stub surface (`J2CTool/j2ctool/runtime.py`) so the new build
+LWJGL/paulscode stub surface (`codebreaker/java/runtime.py`) so the new build
 can be backed by a real Xbox 360 implementation.
 
 All `file:line` references are into the OLD port unless noted.
@@ -373,7 +373,7 @@ Route A shipped with one refinement: the seam is the **`SoundSystem` bridge itse
   `SoundManager` gates every SFX on the OGG sound pool — empty on console — so
   `getRandomSoundFromSoundPool()==NULL` skipped the whole play block: **all sound effects silent**, and
   `play("BgMusic")` (which starts the XACT playlist) never fired: **no music**.
-- **Fixed by `j2ctool/sound_fix.py`** (post-emit pass, xbox360, runs before overlays; `j2ctool sound-fix`):
+- **Fixed by `codebreaker/java/projects/minecraft/sound_fix.py`** (post-emit pass, xbox360, runs before overlays; `codebreaker java sound-fix`):
   `sfx-bypass` drops the guard and routes the sound name to the XACT cue (`newSource` identifier ==
   `toCue`); `music-bypass` makes `play("BgMusic")` unconditional while keeping the `backgroundMusic` deref
   guarded. `playStreaming` is left guarded. It keys on the paulscode guard STRUCTURE, so ONE pass covers

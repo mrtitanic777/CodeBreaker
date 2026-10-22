@@ -102,7 +102,7 @@ DEAD_TYPES = (
 # Visual Studio .vcxproj/.filters classification: (basename regex, filter path). First match wins;
 # EVERY file must resolve to a filter (fallback 'Game (misc)'), never the project root.
 VCXPROJ_FILTERS = [
-    # ---- j2ctool runtime & build glue -------------------------------------------------------------
+    # ---- CodeBreaker runtime & build glue -------------------------------------------------------------
     (r'^(Debug|HeapTrack|ThreadPool|Stack)$', 'Debug'),   # debug apparatus: trace log, heap watchdog, backtrace stack, worker pool
     (r'^(JavaRT|JavaString|JArray|JList|JObject|JMap|JSet|JCat|Runnable|Iterator|Class|Runtime|j2x_\w*|stdafx|Common|ReflectionFactory)$', 'Runtime'),
 

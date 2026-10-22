@@ -22,7 +22,7 @@ void ApplyDefaultRenderState();
 #define SCREEN_HEIGHT 720
 
 // --- Random ---
-// The j2ctool runtime provides the canonical Random (faithful Java 48-bit LCG) in Random.h, included
+// The CodeBreaker runtime provides the canonical Random (faithful Java 48-bit LCG) in Random.h, included
 // by JavaRT.h everywhere. Use it here too instead of redefining (the old non-Java LCG that lived
 // here would clash with the runtime one and produce different worlds from the same seed).
 #include "Random.h"

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for the skeleton language emitters (j2ctool.scaffold)."""
+"""Tests for the skeleton language emitters (codebreaker.java.scaffold)."""
 
 import os
 import pytest

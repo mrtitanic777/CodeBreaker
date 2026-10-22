@@ -12,7 +12,7 @@ user's choice per key -- instead of hand-wiring them one at a time (e.g. the Sho
 
 It does NOT rewrite the branch logic (the route decision is deferred): it only annotates + indexes, exactly
 like ui_mark. Idempotent -- a line already carrying a J2X-KEYBIND marker is left alone. Runs automatically at
-the end of every xbox360 conversion, and is also exposed as `j2ctool keybind-mark`.
+the end of every xbox360 conversion, and is also exposed as `codebreaker java keybind-mark`.
 """
 
 import os

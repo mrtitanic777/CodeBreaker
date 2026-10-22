@@ -1,4 +1,4 @@
-// SysNotify.h -- game-AGNOSTIC Xbox 360 system-notification handling for the j2ctool target.
+// SysNotify.h -- game-AGNOSTIC Xbox 360 system-notification handling for the CodeBreaker target.
 //
 // PLATFORM REFERENCE. The console tells a title about system events through a NOTIFICATION QUEUE, not
 // through window messages: the Guide (dashboard overlay) opening or closing, the signed-in profile

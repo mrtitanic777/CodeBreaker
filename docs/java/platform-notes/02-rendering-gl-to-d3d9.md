@@ -1,7 +1,7 @@
 # 02 — Rendering: GL → D3D9 translation layer (Xbox 360)
 
 > Scope: how the NEW transpiler's faithful LWJGL GL calls (`GL11::*`, `GL12::*`, `GLU::*`,
-> declared as symbol-only stubs in `J2CTool/j2ctool/runtime.py`) get implemented as a
+> declared as symbol-only stubs in `codebreaker/java/runtime.py`) get implemented as a
 > real Direct3D 9 immediate-mode emulator backed by `g_pd3dDevice`.
 >
 > All "OLD port" file:line references are to
@@ -366,8 +366,8 @@ bytecode silently desyncs from edited HLSL).
 
 ## GL → D3D9 mapping table
 
-GL symbols are those the NEW code actually calls (from `j2ctool/runtime.py` `GL11_H` / `GL12` / `GLU`
-stubs; counts are usages across `J2CTool/`).
+GL symbols are those the NEW code actually calls (from `codebreaker/java/runtime.py` `GL11_H` / `GL12` / `GLU`
+stubs; counts are usages across `codebreaker/java/`).
 
 | GL call / enum (new code) | D3D9 implementation (from OLD port) | ref |
 |---|---|---|
@@ -459,7 +459,7 @@ NOTE (mipmaps): the terrain atlas mip chain is deliberately NOT ported to the me
 
 ## Implementation plan for the new GL11/GL12/GLU stub
 
-Replace the symbol-only stubs in `j2ctool/runtime.py` with a real translation unit (e.g.
+Replace the symbol-only stubs in `codebreaker/java/runtime.py` with a real translation unit (e.g.
 `overrides/GLEmu.cpp` + the existing `GL11.h`/`GL12.h`/`GLU.h` declaring the same signatures) that
 holds this state and drives `g_pd3dDevice`. Reuse the OLD port's `Shaders` + `Textures` + decl
 verbatim — they already work.

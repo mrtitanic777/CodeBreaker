@@ -1,5 +1,5 @@
 // NIOBuffers.cpp — real java.nio Byte/Float/IntBuffer view creation.  [Step 5]
-// REFERENCE (Xbox-side; not built by j2ctool). See NIOBuffers.reference.h for the full design.
+// REFERENCE (Xbox-side; not built by CodeBreaker). See NIOBuffers.reference.h for the full design.
 //
 // asIntBuffer()/asFloatBuffer() create a NEW typed view that shares the SAME backing bytes as the
 // ByteBuffer (java.nio view semantics) -- the Tessellator does:

@@ -1,6 +1,6 @@
 #ifndef RANDOM_H
 #define RANDOM_H
-// java.util.Random (48-bit LCG, Java constants) -- runtime support emitted by j2ctool
+// java.util.Random (48-bit LCG, Java constants) -- runtime support emitted by CodeBreaker
 
 class Random {
 	long long seed;

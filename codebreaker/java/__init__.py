@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-j2ctool -- a deterministic Java -> C++03 source-to-source transpiler.
+codebreaker.java -- a deterministic Java -> C++03 source-to-source transpiler.
 
 A generic transpiler core (parse -> IR -> type/ownership resolution -> emit -> pipeline) with a
 crash-class rule engine and a structured event ledger, plus a Minecraft/Xbox-360 *profile* that

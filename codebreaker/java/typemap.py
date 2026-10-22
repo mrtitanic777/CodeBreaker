@@ -9,7 +9,7 @@ inside the type string (Object -> "void* /* PORT: was Object */"), we map to the
 clean type and let `emit` record the PORT as a ledger event instead.
 
 The game-/target-specific sets below (nullable fields/getters, value-type opt-ins, unsigned-byte
-overrides) are sourced from the active target profile (`j2ctool.profiles`) rather than hardcoded, so the
+overrides) are sourced from the active target profile (`codebreaker.java.profiles`) rather than hardcoded, so the
 core stays game-agnostic. They remain mutable module-level names: the pipeline augments
 KNOWN_NULLABLE_GETTERS with corpus-derived getters at convert time and restores them afterward.
 """

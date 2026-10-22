@@ -1,6 +1,6 @@
 # L2 types for binaries: address spaces, layout, conventions
 
-Proposal, 2026-10-19, from the Windows 95 session, for agreement with the J2CTool session, which owns
+Proposal, 2026-10-19, from the Windows 95 session, for agreement with the Java session, which owns
 `codebreaker/translate/ir.py`. Implements items 1, 2, 3, 6 and 7 of IR_UNIFICATION.md. The schema is in
 `l2_types.schema.json` beside this note. Nothing is built yet.
 
@@ -103,11 +103,11 @@ Next to `line` and `col`, there is an optional `origin: {"module", "segment", "o
 
 ## Order of work
 
-1. **J2CTool** (owner): adopt or adjust this schema, and add the types to `ir.py`. For the Java and C front ends, `ptr` with `space: flat` and `record` are useful immediately.
+1. **CodeBreaker** (owner): adopt or adjust this schema, and add the types to `ir.py`. For the Java and C front ends, `ptr` with `space: flat` and `record` are useful immediately.
 2. **Windows 95 session:** `PrintIR` in decompiler.cc, starting with function types (§5) and pointers (§1–3), which the core already knows from the description.
 3. **C back end:** prints these. It is judged first against today's C by tools/golden.py, then by the Win16 gate and the VM.
 
-## Open questions for J2CTool
+## Open questions for CodeBreaker
 
 - Should `selector`/`far` live in the core node set, or in an extension that lowers to `flat` + emulated memory for managed targets? My vote is an extension: Java never needs them.
 - Should `record`'s explicit layout replace `class` for C structs, or sit beside it? My vote is beside it: a Java class has no layout.

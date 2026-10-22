@@ -5,14 +5,24 @@ This product includes software developed by the CodeBreaker project.
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 --------------------------------------------------------------------------------
-CodeBreaker is a reverse-engineering toolkit. It contains NO third-party or
-proprietary binaries, source code, headers, or other copyrighted material. It
-operates only on inputs that the user supplies. See DISCLAIMER in README.md.
+CodeBreaker is a reverse-engineering toolkit. It contains no proprietary
+binaries, game code, game assets or platform-SDK content: it operates only on
+inputs that the user supplies, kept outside version control (binaries/, see
+docs/NOT_IN_REPO.md). See DISCLAIMER in README.md.
+
+Third-party open-source code in this repository, each under its own license:
+  - native/decompiler/core     the Ghidra decompiler core (Apache-2.0; its LICENSE
+                               and NOTICE beside it), with zlib (zlib license)
+  - third_party/nasm-masm      NASM, with CodeBreaker's MASM-compatibility changes
+                               (BSD-2-Clause; third_party/nasm-masm/LICENSE)
+  - third_party/retromcp-java  RetroMCP-Java by MCPHackers, with CodeBreaker's
+                               changes (MIT; third_party/retromcp-java/LICENSE);
+                               the decompiler it drives, Vineflower, is Apache-2.0
 
 Third-party runtime dependency (not distributed here; installed separately):
   - Capstone disassembly framework (BSD-3-Clause) — https://www.capstone-engine.org
 
-The Java transpiler (codebreaker/java) began as J2CTool, by the same author, under the MIT License
-(codebreaker/java/LICENSE); its history is part of this repository's. It ships no game code, no
-game assets and no platform-SDK content (docs/java/NOTICE.md). The RetroMCP decompiler jar it can
-drive is not distributed here; settings.json `retromcp` names a copy on this machine.
+By the same author, under the MIT License, with their histories part of this
+repository's:
+  - codebreaker/java   began as J2CTool (codebreaker/java/LICENSE)
+  - native/xex         began as XexTool-RE (native/xex/LICENSE)

@@ -32,7 +32,7 @@ a no-op on a screen with no buttons, so this is safe on every screen.
 Runs as a post-emit pass over the converted tree (xbox360), BEFORE overlays (so a project overlay can still
 win). Idempotent: each edit is skipped if `handleControllerMenuNav` is already present. Fail-loud: run()
 reports which anchors it could NOT find so a structural drift surfaces instead of a silently dead UI. Also
-exposed as `j2ctool controller-nav <dir>`.
+exposed as `codebreaker java controller-nav <dir>`.
 """
 
 import os
@@ -42,7 +42,7 @@ import re
 # the game itself uses. Calls the edition-agnostic core in Input.reference (Input::menuNavSelect/SnapCursor).
 _NAV_METHOD = (
     "\n"
-    "// CONSOLE (controller menu nav) -- j2ctool-injected (controller_nav.py). Feeds this screen's button\n"
+    "// CONSOLE (controller menu nav) -- CodeBreaker-injected (controller_nav.py). Feeds this screen's button\n"
     "// rectangles to the edition-agnostic Input::menuNavSelect core (Input.reference) and snaps the virtual\n"
     "// cursor onto the D-pad selection, so the game's OWN hover-highlight + A-as-click land on it. Migrated\n"
     "// from the per-project hand-port overlay so every edition gets working menu nav from one place.\n"
@@ -85,7 +85,7 @@ def patch_guiscreen_h(text):
     if not m:
         return text, False
     ind = m.group(1)
-    add = ('\n%s// CONSOLE (controller menu nav): D-pad-selected button index (-1 = none yet). j2ctool-injected.'
+    add = ('\n%s// CONSOLE (controller menu nav): D-pad-selected button index (-1 = none yet). CodeBreaker-injected.'
            '\n%sint navSelected;'
            '\n%svoid handleControllerMenuNav();' % (ind, ind, ind))
     return text[:m.end()] + add + text[m.end():], True
@@ -142,7 +142,7 @@ def patch_minecraft_displayguiscreen(text, has_container):
         if has_container:
             block += ('\n\t{ extern bool g_guiCursorMode; g_guiCursorMode = (%s != NULL && '
                       'dynamic_cast<GuiContainer*>(%s) != NULL); }'
-                      '   // CONSOLE: analog cursor in container GUIs (j2ctool-injected)' % (var, var))
+                      '   // CONSOLE: analog cursor in container GUIs (CodeBreaker-injected)' % (var, var))
         block += ('\n\tMouse::setGrabbed(%s == NULL && this->theWorld != NULL);'
                   '   // CONSOLE: pad grabbed (in-game mode) IFF no screen up AND a world exists -- any menu'
                   ' -> GUI nav mode. Sets g_grabbed DIRECTLY (NOT MouseHelper::grab/ungrab, which use AWT'
@@ -162,7 +162,7 @@ def patch_entityrenderer_pointer(text):
         return text, True
     ns = 'd3d9' if 'd3d9::gl' in text else 'GL11'
     _body = [
-        '// CONSOLE (controller): draw the virtual cursor (Pointer.png) ONLY in container GUIs. j2ctool-injected.',
+        '// CONSOLE (controller): draw the virtual cursor (Pointer.png) ONLY in container GUIs. CodeBreaker-injected.',
         '{ extern bool g_guiCursorMode;',
         'if (g_guiCursorMode && this->mc->currentScreen != NULL) {',
         '\tint _gw = this->mc->currentScreen->width, _gh = this->mc->currentScreen->height;',
@@ -200,10 +200,10 @@ def patch_entityrenderer_pointer(text):
 _GRAB_FN = re.compile(r'void MouseHelper::grabMouseCursor\(\)\s*\{[\s\S]*?\n\}')
 _UNGRAB_FN = re.compile(r'void MouseHelper::ungrabMouseCursor\(\)\s*\{[\s\S]*?\n\}')
 _GRAB_SAFE = ('void MouseHelper::grabMouseCursor()\n{\n\tMouse::setGrabbed(true);'
-              '   // CONSOLE grab (j2ctool): set the pad mode flag only -- NO AWT\n'
+              '   // CONSOLE grab (CodeBreaker): set the pad mode flag only -- NO AWT\n'
               '\tthis->deltaX = 0;\n\tthis->deltaY = 0;\n}')
 _UNGRAB_SAFE = ('void MouseHelper::ungrabMouseCursor()\n{\n\tMouse::setGrabbed(false);'
-                '   // CONSOLE ungrab (j2ctool): set the pad mode flag only -- NO AWT\n'
+                '   // CONSOLE ungrab (CodeBreaker): set the pad mode flag only -- NO AWT\n'
                 '\tthis->deltaX = 0;\n\tthis->deltaY = 0;\n}')
 
 
@@ -213,7 +213,7 @@ def patch_mousehelper_grab(text):
     caller (setIngameFocus, keyTyped(ESCAPE)) faults; that's what black-screened the boot the moment the grab
     path was exercised. The pad-mode TRUTH is the displayGuiScreen invariant; these just have to be safe and
     consistent. MouseHelper.cpp already uses Mouse:: (setNativeCursor) so the namespace is in scope."""
-    if 'CONSOLE grab (j2ctool)' in text:
+    if 'CONSOLE grab (CodeBreaker)' in text or 'CONSOLE grab (j2ctool)' in text:   # trees converted before the rename
         return text, True
     new, n1 = _GRAB_FN.subn(lambda m: _GRAB_SAFE, text, count=1)
     new, n2 = _UNGRAB_FN.subn(lambda m: _UNGRAB_SAFE, new, count=1)
