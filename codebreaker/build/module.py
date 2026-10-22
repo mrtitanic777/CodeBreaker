@@ -332,9 +332,20 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     def symbol_for(kind, *what):
         if kind == "function":
             name = at.get(what)
-            return public[name][0] if name in public else entries.get(what)
+            if name in public:
+                return public[name][0]
+            if what not in entries and name in stems:
+                # (a function built on its own -- from C, or assembled by itself -- by the name it
+                # links under: NETDI's 9:0000 and 48:0000, far pointers to them in assembly
+                # beside -- with no symbol, 76 functions of four segments were refused as assembly)
+                return "_" + name
+            return entries.get(what)
         if kind == "segment":
-            return in_segment.get(what[0])
+            # (any symbol in the segment gives its selector -- a function of it built on its own
+            # too: NETDI's segments 9 and 48 hold one each, written in assembly, and the selectors
+            # of them in the code beside had no symbol)
+            return in_segment.get(what[0]) or next(
+                ("_" + n for (sg, _o), n in sorted(at.items()) if sg == what[0] and n in stems), None)
         if kind == "data":                                   # a data segment: the auto one, or one carried
             if what[0] == nef.h.get("autodata_seg"):
                 return "_codebreaker_data"

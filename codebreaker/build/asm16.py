@@ -261,6 +261,12 @@ class Function(object):
                     elif start <= target < end:
                         self.ins[at] = (bytes(ins.bytes), mn, ins.op_str, target)
                         work.append(target)
+                    elif b0 not in (0xE8, 0xE9) and target >= len(blob):
+                        # (past the end of the segment: no code jumps there -- bytes read as code.
+                        # NETDI's segment 54 ends in strings far pointers name ("NETDI: ",
+                        # "netlog.txt"), described as functions: `ja 316C` in a segment 310A
+                        # long refused all 666 of its functions. Followed no further: bytes.)
+                        break
                     elif b0 not in (0xE8, 0xE9):
                         self.why = "a short jump out of itself (%s at %04x)" % (mn, at)
                         self.reaches = target
