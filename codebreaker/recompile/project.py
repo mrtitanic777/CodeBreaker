@@ -922,11 +922,26 @@ See CodeBreaker's `docs/RECOMPILE.md` for how it works and the runtime work that
 
 
 def main(argv):
-    """python -m codebreaker recompile-project <image or .xex> -o <folder> [-j N]"""
+    """python -m codebreaker recompile-project <.xex> -o <folder> [--name N] [--title-files <dir>] [--runtime x360|rexglue] [-j N]
+
+    x360 (the default): XenonRecomp's C++ on CodeBreaker's Xbox 360 runtime (x360project.py).
+    rexglue: this module's own translation on the rexglue kernel core (scaffold, below)."""
     if not argv or "-o" not in argv:
         print(main.__doc__)
         return 2
     out = argv[argv.index("-o") + 1]
+    runtime = argv[argv.index("--runtime") + 1] if "--runtime" in argv else "x360"
+    if runtime == "x360":
+        from codebreaker.recompile import x360project
+        files = argv[argv.index("--title-files") + 1] if "--title-files" in argv else None
+        name = argv[argv.index("--name") + 1] if "--name" in argv else None
+        info = x360project.scaffold(argv[0], out, name=name, title_files=files)
+        print("%s: %d functions, %d switch tables, %d unimplemented instructions" % (
+            info["name"], info["functions"], info["switches"], info["unimplemented"]))
+        print("  -> %s" % info["dir"])
+        print("  build: %s" % os.path.join(info["dir"], "Build-%s.bat" % info["name"]))
+        print("  run:   %s game" % os.path.join(info["dir"], "build", info["name"] + ".exe"))
+        return 0
     jobs = int(argv[argv.index("-j") + 1]) if "-j" in argv else None
     agg = scaffold(argv[0], out, jobs=jobs)
     pct = 100.0 * agg["translated"] / max(1, agg["total"])

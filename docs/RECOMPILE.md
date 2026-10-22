@@ -3,118 +3,93 @@
 CodeBreaker's main deliverable is source to read: functions decompiled, rebuilt and judged
 one by one. This lane produces something else: the whole program, ahead of time, as C++ that
 builds and runs on another machine. The output is not readable source. It keeps the original's
-behaviour at the level of registers and memory. Today it covers Xbox 360 titles, in
-`codebreaker/recompile/`.
+behaviour at the level of registers and memory. Today it covers Xbox 360 titles.
 
 ```bash
-python -m codebreaker recompile default.xex --all -o game.cpp          # every function
-python -m codebreaker recompile default.xex --at 0x820FBC58 --size 0x140 --check
-python -m codebreaker recompile-project default.xex -o C:\Games\TetrisPC
+python -m codebreaker recompile-project default.xex -o C:\Games\Tetris --name tetris --title-files <the title's folder>
+C:\Games\Tetris\Build-tetris.bat
+C:\Games\Tetris\build\tetris.exe C:\Games\Tetris\game
 ```
 
-## The method
+## The pieces
 
-This is the method XenonRecomp introduced and the rexglue SDK carries out. Its code generator is
-the source of `recompile/builders/` (BSD-3, see NOTICE). It is an ahead-of-time translation, not
-an emulator:
+Two tools were merged, each giving what it does best:
 
-- **Functions.** Each guest function becomes `void sub_XXXXXXXX(PPCContext& ctx, uint8_t* base)`.
-  Functions take no arguments of their own: guest arguments are read from `ctx.r3`... So any
-  branch target can become a function, and a branch to it a tail call.
-- **Statements.** There is one C++ statement per guest instruction, for example
-  `add rD,rA,rB` → `ctx.rD.u64 = ctx.rA.u64 + ctx.rB.u64;` (powerpc.py lists the forms).
-  Record forms (`add.`) append the CR0 update.
-- **Memory.** Guest memory is one flat 4 GB allocation, so a guest address is `base + addr`.
-  Every access of two bytes or more is byte-swapped, and volatile, so the compiler keeps all of
-  the guest's memory traffic.
-- **Calls.** Direct calls are C++ calls. Indirect calls (`bctrl`, virtual methods) go through
-  a table of function pointers keyed by guest address. A `bctr` through a jump table becomes a
-  `switch` (jumptable.py).
-- **Imports.** Kernel and system-library calls become host functions. Each is one of:
-  - the rexglue kernel core's own implementation of the export (`__imp__<name>`);
-  - a host implementation of CodeBreaker's;
-  - the native GPU subsystem, for `Vd*`;
-  - a stub that logs once.
-- **Untranslated instructions.** An instruction no builder translates becomes
-  `PPC_UNIMPLEMENTED("...")`. It is a trap at run time, never a wrong translation.
-- **VMX128.** The Xenon's 128-register vector set is decoded first, by
-  `codebreaker/decompile/vmx128.py`. Capstone reads those words as later instructions the
-  Xenon doesn't have.
+- **XenonRecomp** (`native/xenonrecomp`, hedge-dev's, MIT, with the Xbox 360 ports' changes)
+  translates. Each guest instruction becomes one C++ statement on a `PPCContext`; guest memory
+  is one flat big-endian 4 GB space; every function takes the whole context, so any branch
+  target can be a function and a branch to it a tail call; a `bctr` through a table becomes a
+  `switch`. `codebreaker/recompile/xenon.py` builds it (clang-cl, Ninja; setting
+  `visual_studio`) and runs it.
+- **CodeBreaker's analysis** configures it (`codebreaker/recompile/config.py`): what
+  XenonRecomp cannot find by itself.
+  - Every function `.pdata` leaves out, sized (`discover.py`): call targets, code addresses
+    stored in the data, addresses the code builds (`lis` + `addi`/`ori`), and leaf functions that
+    start right after another one ends. A switch's case labels are never starts (an absolute
+    table is data holding code addresses), and the function holding a switch runs to the end of
+    its last case.
+  - The register save/restore runs (`__savegprlr_14` ... `__restvmx_64`, found by their code)
+    and the CRT's `setjmp`/`longjmp` (found by the jump buffer they use).
+  - The switch tables (`switches.py`, which walks back from every `bctr` and evaluates CTR
+    symbolically; XenonAnalyse's tables are added for any it leaves unresolved).
+  - The register settings: which registers are locals of each function. The non-volatile ones
+    stay in the context: a compiler-generated `__finally` block is called with `bl` and reads its
+    parent's `r30`/`r31`.
+- **The runtime** (`native/x360`, CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports) runs
+  the result: the kernel and XAM reimplemented export by export, the Xenos GPU on Direct3D 12,
+  XMA audio, input, the file system (the title's folder is `game:`), the system UI.
+  `x360.cmake` builds a title's program; `native/x360/README.md` lists its switches.
+- **Hooks**: XenonRecomp emits every function as `__imp__sub_X` plus a weak `sub_X`, so a host
+  function defined as `sub_X` replaces it; `midasm_hook` tables in a title's configuration put
+  host code at single instructions.
+- **XEX**: the runtime and XenonRecomp read only unencrypted, basic-compressed XEX files;
+  `codebreaker.formats.xex.basic` rewrites any XEX that way.
+
+The rexglue SDK's kernel core (`native/rexglue`) and CodeBreaker's own per-instruction
+translator (`powerpc.py`, its builders derived from rexglue's code generator) remain:
+`recompile` translates functions on their own (and `tests/test_recompile.py` runs them), and
+`recompile-project --runtime rexglue` still makes the earlier project form.
+
+## Checking the translation
+
+`xenon.instruction_tests()` runs Xenia's PowerPC instruction tests (inputs and the outputs
+measured on the console; `native/xenonrecomp/ppc_tests`) through XenonRecomp: each test is
+assembled with PowerPC binutils that know VMX128 (setting `ppc_binutils`, default
+`toolchains/binutils-ppc`), recompiled, built and run. Today: 160 tests, 0 mismatches; 8 are
+left out because XenonRecomp does not implement their instructions (`lvexx`, `mulhdu`, `rlwnm`,
+`subfme`, `td`, `tdi`, `tw`, `twi`; a title's own recompile reports any it uses).
 
 ## Lessons from running real titles
 
-The per-instruction emitter is mechanical. Getting real titles to run turned up the following,
-much of it the hard way:
+- **Finding every function is the hard part.** A function that isn't found is an indirect call
+  that lands nowhere. Tetris needed functions reached only by an address the code builds (the
+  CRT's `FlsAlloc` stand-in, the callbacks it registers) and leaf functions after a `blr` (D3D's
+  device setters).
+- **Switch tables split functions** when their labels are taken for starts: 126 cases "outside
+  their function" until labels were excluded.
+- **`setjmp`/`longjmp` must be the host's.** As ordinary functions, `longjmp` returns, and its
+  caller goes on with registers it never restored: in Tetris, `this` was null in D3D's device
+  setup.
+- **A function that never returns** (`bl` to `longjmp` then padding) shows up as a callee that
+  returns with `r31` changed. The fault report's host stack (the recompiled functions are the
+  frames) finds it.
+- **Imports through pointers.** The CRT calls `KeTlsGetValue` through a pointer `TlsGetValue`
+  hands back, so import stubs belong in the indirect-call table.
+- **A literal zero is not `r0`.** In X-form loads and stores, `rA = 0` is the literal zero.
 
-- **Finding every function is the hard part.** A function that isn't found is a call that does
-  nothing at run time. In one title a `this`-adjusting destructor thunk was missed, so `free()`
-  ran on a pointer 4 bytes off and the process crashed. `discover.py` therefore takes more than
-  `.pdata` and calls:
-  - every code address stored as a pointer in the data sections, where a function's first
-    instruction plausibly stands (virtual tables, function tables);
-  - addresses seeded from a run.
+## Where it stands (2026-10-22)
 
-  `recompile_image` then also turns every address the generated code calls but that isn't yet
-  a function into one. Tail jumps go to such places, and the register-restore runs are entered
-  that way, with one entry per register count.
-- **Cold blocks and shared epilogues reached by a jump become functions.** That is safe, because
-  every function takes the whole context. A switch table's last case belongs to the switch
-  (size overrides).
-- **`setjmp`/`longjmp` must be the host's.** Recompiled as ordinary functions, they restore
-  registers and return normally, which corrupts `r1`/`r31`. In one title that zeroed `this` in an
-  image loader. The runtime has to intercept their addresses: `ppc_setjmp`/`ppc_longjmp`, and
-  the rexglue context's jump-buffer map. Wiring those addresses into the emitter is still
-  open (below).
-- **A literal zero is not `r0`.** In X-form loads and stores, Capstone writes the base `rA = 0`
-  as `0`, and that means the literal zero, not register r0. The builders read it that way.
-  (Before this was fixed, every `stfiwx f0, 0, r11` was left untranslated.)
+Tetris (Tetris Splash, XBLA): `recompile-project` makes the project in 19 seconds — 14,861
+functions, 112 switch tables, no unimplemented instruction — and it builds with clang-cl.
+`tetris.exe` loads the title, binds its 217 imports (36 still stubs: networking, the camera,
+some XAM UI), runs its main thread, two worker threads and the system threads, reads its data
+(`bin.tort`) through asynchronous reads with completion routines, and draws: frame 300 is the
+Xbox LIVE Arcade splash. It then stops at the first texture in a format the renderer does not
+support yet, `k_4_4_4_4`.
 
-## Where it stands (2026-10-21)
+Next:
 
-Tetris (`default_unc.xex`):
-
-- **Discovery.** 9,262 functions found: 6,683 from `.pdata`, the calls, and 685 more through
-  pointers. Recompiling adds 104 tail-jump entries.
-- **Translation.** 99.8% of 881,184 instructions. Every real instruction is translated; what is
-  left is zero padding between functions.
-- **Compiling.** Samples of the output (600 random functions and 200 vector-heavy ones) compile
-  against the kernel core with g++ 15 (C++23).
-- **Running.** `tests/test_recompile.py` compiles C with the Xbox 360 compiler, recompiles it,
-  builds it, runs it and compares the result with the C computed natively. It covers:
-  - integer arithmetic, division, shifts and conditionals;
-  - floating point;
-  - a loop over big-endian guest memory;
-  - dispatch through the indirect-call table.
-
-**The generated Tetris project builds and links with MinGW g++ 15 and Ninja**, producing a
-23 MB `tetris.exe`. The pieces are the title's 44 translation units, the kernel core and the
-DXBC translator. Earlier copies of the kernel never linked. To get here, the kernel needed:
-
-- the SDK's base library (strings, threads, memory, clocks, the exception handler), now in
-  `native/rexglue/kernel/src/core`;
-- the headers and sources its subset lacked: `src/core`, `virtual_file_system.cpp`, the
-  host-path and null filesystem entries, CLI11, picosha2;
-- three GCC adaptations, marked `CodeBreaker:`: SEH thread naming, `__assume`, and
-  `roundevenf`, which MinGW's libm lacks;
-- in the DXBC translator, its stand-ins for base-library functions left out when it links
-  beside the kernel;
-- every executable section counted as code. A title's linked-in libraries live in `.embsec_`
-  sections past `.text`, which the image reader had never read.
-
-**Running it.** The D3D12 device comes up, the kernel loads the XEX, creates the title's main
-thread and runs recompiled code: the entry point `sub_820FBC58`, then `sub_820FC340`, then
-`sub_820FC268`. That third function faults at its first kernel-variable import. It reads a
-pointer from an import slot (`lwz r11, 0x8a4(0x820008A4 slot)`) that the loader has not
-filled with the variable's address, then dereferences it.
-
-To run a whole title, these remain:
-
-- **Variable imports.** The kernel's exported variables must be placed in guest memory and
-  their import slots filled at load. This is the first thing the title does.
-- **Host implementations** of the imports the kernel core does not implement. These are stubs
-  that log once today.
-- **`setjmp`/`longjmp`** addresses wired into the emitter.
-- **The GPU bridge.** The PM4 ring, register file and D3D12 backend are there. The three Xenos
-  translators are still to fill: shaders to DXBC (the rexglue DXBC translator plugs in), the
-  EDRAM render-target cache, and texture untiling.
-- **Thread and heap setup** at boot.
+- **Texture formats**: the renderer supports `k_8`, `k_8_8`, `k_8_8_8_8` and `k_16_16`;
+  Tetris needs `k_4_4_4_4` and, most likely, the DXT formats.
+- **The stubbed imports** a title reaches (Tetris: `NetDll_recvfrom` is polled).
+- **A second title** through `recompile-project`, to find what is Tetris-specific.
