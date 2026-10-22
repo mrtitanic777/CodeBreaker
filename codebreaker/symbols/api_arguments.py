@@ -315,11 +315,23 @@ _product = None
 
 
 def _cache16_path():
-    """One table per product: USER.171 is not the same function in every Windows. (`.2`: read
-    through thunks that add words of their own -- the tables made before are not reused.)"""
+    """One table per product: USER.171 is not the same function in every Windows -- and per way
+    of reading it: named by the code that reads an export (arg_bytes, describe.returns and
+    .forwards), so a table made by an older reading is not reused. (The one table kept before
+    went on giving the sizes it was first given: USER.471, lstrcmpi, at 12 bytes long after the
+    reading said 10.)"""
     from codebreaker.base import corpus, settings
     name = corpus.current()
-    return settings.state("api16.2.json" if name == settings.get("target") else "api16_%s.2.json" % name)
+    return settings.state(("api16.%s.json" if name == settings.get("target") else "api16_" + name + ".%s.json")
+                          % _reading())
+
+
+def _reading():
+    import hashlib
+    import inspect
+    from codebreaker.decompile import describe
+    src = "".join(inspect.getsource(f) for f in (arg_bytes, describe.returns, describe.forwards))
+    return hashlib.sha1(src.encode("utf-8")).hexdigest()[:10]
 
 
 def _load16():

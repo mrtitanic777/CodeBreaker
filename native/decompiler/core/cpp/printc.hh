@@ -340,6 +340,9 @@ public:
   virtual void opPtrsub(const PcodeOp *op);
   virtual void opSegmentOp(const PcodeOp *op);
   bool enteredSegment(const Varnode *vn) const;	///< CodeBreaker: the entry DS/SS, carried unchanged?
+  bool nearSegment(const Varnode *vn) const;	///< CodeBreaker: a segment C's near pointers already mean?
+  static bool dataSegmentKnown;			///< CodeBreaker: the module's data segment is given
+  static uintb dataSegment;			///< CodeBreaker: ... and is this selector
   virtual void opCpoolRefOp(const PcodeOp *op);
   virtual void opNewOp(const PcodeOp *op);
   virtual void opInsertOp(const PcodeOp *op);

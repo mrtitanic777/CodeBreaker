@@ -533,6 +533,15 @@ def forwards(d, seg, off, kind):
             continue
         ins.append(i)
         at = i.address + i.size
+    # (the body's address first put in a register, the rest shared: Win95 USER's entries
+    # `mov cx, 2FAh / jmp 6Bh`, and at 6B `pop eax / push 0 / push eax / jmp cx`)
+    loaded = {}
+    while ins and (ins[0].mnemonic == "into" or ins[0].mnemonic == "mov"
+                   and re.fullmatch(r"(ax|bx|cx|dx), 0x[0-9a-f]+", ins[0].op_str)):
+        if ins[0].mnemonic == "mov":
+            r, v = ins[0].op_str.split(", ")
+            loaded[r] = int(v, 16)
+        ins = ins[1:]
     words = 2 if kind == "far" else 1
     regs = ("ax", "bx", "cx", "dx", "si", "di", "es")
     # (a far return address taken off whole, in one 32-bit register: Win95 USER's 5:0011
@@ -546,23 +555,31 @@ def forwards(d, seg, off, kind):
         return None
     ret = [i.op_str for i in ins[:words]]
     k, added, taken = words, 0, 0
-    # (and the caller's arguments it takes off before adding its own -- USER's 1:014C pops one,
-    # pushes 0 and 1 or 5 (a `jcxz` choosing), puts the return address back, sets slots in the
-    # stack and goes to 1:3E1E: its callers' stack came out four bytes short in the gate)
-    while k < len(ins) and ins[k].mnemonic == "pop" and ins[k].op_str in regs and ins[k].op_str not in ret:
-        taken += 1
-        k += 1
+    wide = regs + ("eax", "ebx", "ecx", "edx", "esi", "edi")
+    # (and the caller's arguments it takes off, before adding its own or among them -- USER's
+    # 1:014C pops one, pushes 0 and 1 or 5 (a `jcxz` choosing), puts the return address back,
+    # sets slots in the stack and goes to 1:3E1E: its callers' stack came out four bytes short in
+    # the gate; Win95 USER.88 (EndDialog) `pop ecx / pop ax / cwde / push eax / push ecx`, its int
+    # widened to a long, and USER's 8:43D6 `pop eax / pop bx / xor ecx, ecx / pop cx / push ecx`)
+    _writes = {"cbw": "ax", "cwde": "eax", "cwd": "dx", "cdq": "edx"}
 
     def quiet(i):                                            # (moves nothing on the stack)
-        return i.mnemonic in ("xor", "mov", "sub", "cmp", "test", "and", "or") and "sp" not in i.op_str.split(",")[0] \
+        if i.mnemonic in _writes:                            # (widening in a register)
+            return not any(r in _writes[i.mnemonic] or _writes[i.mnemonic] in r for r in ret)
+        return i.mnemonic in ("xor", "mov", "sub", "cmp", "test", "and", "or", "movzx", "movsx") \
+            and "sp" not in i.op_str.split(",")[0] \
             or (i.mnemonic in ("jcxz", "je", "jne") and re.fullmatch(r"0x[0-9a-f]+", i.op_str)
                 and i.address < int(i.op_str, 16) <= i.address + 0x20)
-    while k < len(ins) and (ins[k].mnemonic in ("push", "into") or quiet(ins[k])) and \
+    while k < len(ins) and (ins[k].mnemonic in ("push", "pop", "into") or quiet(ins[k])) and \
             not (ins[k].mnemonic == "push" and ins[k].op_str == ret[-1]):
         if ins[k].mnemonic == "into":                        # (a jump followed: it goes on there)
             k += 1
             continue
-        if ins[k].mnemonic == "push":                        # (a 32-bit push is two words: GDI.612's
+        if ins[k].mnemonic == "pop":
+            if ins[k].op_str not in wide or ins[k].op_str in ret:
+                return None
+            taken += 2 if ins[k].op_str.startswith("e") and len(ins[k].op_str) == 3 else 1
+        elif ins[k].mnemonic == "push":                      # (a 32-bit push is two words: GDI.612's
             added += 2 if 0x66 in ins[k].bytes[:2] else 1     # `push 0` is 66 68 00000000)
         elif any(r in ins[k].op_str.split(",")[0] for r in ret):
             return None                                      # (its return address changed)
@@ -583,6 +600,8 @@ def forwards(d, seg, off, kind):
         tseg, toff = where((s << 16) | o)
     elif j.mnemonic == "into":                               # (a near jump, followed: the body there)
         tseg, toff = seg, j.address
+    elif j.mnemonic == "jmp" and j.op_str in loaded:         # (to the address put in the register)
+        tseg, toff = seg, loaded[j.op_str]
     elif j.mnemonic in ("mov", "enter", "push", "inc", "nop"):
         tseg, toff = seg, j.address                          # (no jump: the body goes on right here)
     else:

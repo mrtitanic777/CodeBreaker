@@ -54,6 +54,7 @@
 #include "libdecomp.hh"
 #include "sleigh_arch.hh"
 #include "loadimage.hh"
+#include "printc.hh"
 
 #include <algorithm>
 #include <atomic>
@@ -520,6 +521,10 @@ void setUp(Analysis& a, const Description& d) {
     ts.emplace_back();
     ts.back().loc = vd;
     ts.back().val = (uintb)r.second;
+    if (r.first == "DS") {                         // (the data segment: a constant segment that is
+      PrintC::dataSegmentKnown = true;             // another one is printed whole -- PrintC::nearSegment)
+      PrintC::dataSegment = (uintb)r.second;
+    }
   }
   auto applyModel = [&](Funcdata* fd, const Fact& f) {
     if (f.model == "inline") { fd->getFuncProto().setInline(true); return; }

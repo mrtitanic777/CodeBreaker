@@ -361,7 +361,7 @@ bool PrintC::checkArrayDeref(const Varnode *vn) const
   if (op->code()==CPUI_SEGMENTOP) {
     // CodeBreaker: a segment printed whole (MK_FP) stands between the dereference and the
     // array or member access, which then cannot take the dereference's place
-    if (!op->getIn(1)->isConstant() && !enteredSegment(op->getIn(1))) return false;
+    if (!nearSegment(op->getIn(1))) return false;
     vn = op->getIn(2);
     if (!vn->isImplied()) return false;
     if (!vn->isWritten()) return false;
@@ -1200,16 +1200,31 @@ bool PrintC::enteredSegment(const Varnode *vn) const
   return true;
 }
 
+bool PrintC::dataSegmentKnown = false;
+uintb PrintC::dataSegment = 0;
+
+/// CodeBreaker: the data and stack segments as the function was entered with them, or the
+/// module's data segment as a constant (DS is given one value throughout), are the ones C's near
+/// pointers already mean. Another constant is another segment: SUWIN's 9:0396 `mov cx, seg 1 /
+/// mov es, cx / mov ax, es:[bx+14h]` -- a constant segment with an offset that is not one is not
+/// folded away (RuleSegment folds only both constant), and printed as the offset alone it read
+/// the table in DS.
+bool PrintC::nearSegment(const Varnode *vn) const
+
+{
+  if (vn->isConstant())
+    return !dataSegmentKnown || vn->getOffset() == dataSegment;
+  return enteredSegment(vn);
+}
+
 void PrintC::opSegmentOp(const PcodeOp *op)
 
 {
-  // CodeBreaker: a segmented address whose segment is not a constant (a constant one is folded
-  // away before printing) is printed whole, MK_FP(segment, offset) -- printing only the offset,
-  // as this used to, made es:[6c] and ds:[6c] the same thing.
-  // The data and stack segments as the function was entered with them are the ones C's near
-  // pointers already mean: those stay printed as the offset alone.
+  // CodeBreaker: a segmented address whose segment is not one C's near pointers mean
+  // (nearSegment) is printed whole, MK_FP(segment, offset) -- printing only the offset, as this
+  // used to, made es:[6c] and ds:[6c] the same thing.
   const Varnode *seg = op->getIn(1);
-  if (seg->isConstant() || enteredSegment(seg)) {
+  if (nearSegment(seg)) {
     pushVn(op->getIn(2),op,mods);
     return;
   }

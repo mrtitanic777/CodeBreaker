@@ -1132,12 +1132,15 @@ def compilable16(module_path, outdir=None):
     import sys
     from codebreaker.base import cache
     from codebreaker.decompile import decompiler, describe
+    from codebreaker.symbols import api_arguments
     with open(module_path, "rb") as f:
         body = f.read()
     from codebreaker.base import settings
     # (the setting struct_recovery too: with structures the C is other C -- without it here, a
-    # run with them was handed the C made without)
-    k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe),
+    # run with them was handed the C made without; and the reading of the imports' argument
+    # sizes, which the description is written with -- a change to it alone handed back C made
+    # with the sizes before)
+    k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe, api_arguments),
                   cache.tool(decompiler._exe()), decompiler._language_stamp(),
                   (settings.get("struct_recovery") or "off").strip().lower(),
                   os.environ.get("CB_SELECTOR_STRUCTS", ""))       # (_selector_structs' off switch)
