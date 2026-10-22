@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """RetroMCP decompiler backend.
 
-CodeBreaker drives the RetroMCP CLI (third_party/retromcp-java: MIT, MCPHackers; Vineflower engine;
-built from that source, settings.json `retromcp` names the jar) as a headless backend so a
+CodeBreaker drives the RetroMCP CLI (native/retromcp: MIT, MCPHackers; built from that source,
+settings.json `retromcp` names another jar) as a headless backend so a
 Minecraft version can be decompiled straight into Java source and fed into the transpiler -- no manual
 round-trip through the RetroMCP GUI. The decompile step needs a Java runtime and network access
 (RetroMCP downloads the version + mappings on first setup). The C++ transpiler itself needs neither.
@@ -144,7 +144,7 @@ def decompile(version, workspace, java=None, on_output=None, setup=True):
             raise DecompileError("RetroMCP setup failed for version '%s' (exit code %d)." % (version, rc))
 
     if on_output:
-        on_output("[decompile] decompiling with Vineflower...")
+        on_output("[decompile] decompiling with Fernflower...")
     rc, _out = _run(java, jar, ['decompile'], workspace, on_output)
     if rc != 0:
         raise DecompileError("RetroMCP decompile failed (exit code %d)." % rc)
@@ -162,7 +162,7 @@ def decompile(version, workspace, java=None, on_output=None, setup=True):
 
 
 # RetroMCP names an array parameter from its JVM descriptor in some versions (Indev 20100213:
-# `Block[] block;4`, `byte[] [B4`), which is not Java, while Vineflower's body still calls it `var4`
+# `Block[] block;4`, `byte[] [B4`), which is not Java, while Fernflower's body still calls it `var4`
 # (`var4/* $VF was: block;4 */`). The parameter takes the name the body uses.
 _MANGLED_PARAM = re.compile(r'(\w+(?:\[\])+)\s+([^\s,()]*[;\[][^\s,()]*?)(\d+)(?=\s*[,)])')
 _VF_WAS = re.compile(r'/\* \$VF was: [^*]*\*/')

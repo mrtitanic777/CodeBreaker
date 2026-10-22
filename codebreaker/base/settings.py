@@ -16,15 +16,15 @@ and are named in one file, `settings.json` at the top of the checkout:
     msc6            folder of Microsoft C 6.0a (BIN/CL.EXE)
     msc203          folder holding Microsoft C 2.03's MC1.EXE and MC2.EXE (the 1983-84 compiler model)
     masm            folder of a Microsoft Macro Assembler (BIN/MASM.EXE, INC, LIB)
-    nasm            a MASM-compatible NASM (nasm.exe of the nasm-masm project), optional
+    nasm            the MASM-compatible assembler, nasm.exe        (default: native/nasm/build/bin/nasm.exe)
     msvc152         folder of Microsoft C/C++ 8.00c, Visual C++ 1.52c (BIN/CL.EXE)
     xenix_c         folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools)
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
     ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
     xex_bin         folder of the Xbox 360 executable reader, xex.exe (default: native/xex/build/bin)
     java            a `java` executable (JRE/JDK 8+), for decompiling a jar   (default: JAVA_HOME, PATH)
-    retromcp        the RetroMCP CLI jar (RetroMCP-Java + Vineflower) that turns a Minecraft version
-                    into Java source
+    retromcp        the Java decompile engine's jar, which turns a Minecraft version into Java source
+                    (default: native/retromcp/build/libs/retromcp.jar)
     xbox360_sdk     the Xbox 360 SDK (XDK) root; the console target of the Java transpiler needs it
                     (default: XEDK, then the standard install folders)
     host_cxx        the C++ compiler that judges transpiled Java (default: g++ on PATH)
@@ -55,6 +55,8 @@ DEFAULTS = {
     "decompiler_bin": os.path.join("native", "decompiler", "build", "bin"),
     "ghidra_core": os.path.join("native", "ghidra_core", "build", "bin"),
     "xex_bin": os.path.join("native", "xex", "build", "bin"),
+    "nasm": os.path.join("native", "nasm", "build", "bin", "nasm.exe"),
+    "retromcp": os.path.join("native", "retromcp", "build", "libs", "retromcp.jar"),
     "state": "state",
     "target": "win95",
     "threads": "1",                    # functions the native decompiler analyses at once (CB_THREADS)

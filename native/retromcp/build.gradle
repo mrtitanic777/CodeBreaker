@@ -1,0 +1,70 @@
+// CodeBreaker's Java decompile engine: RetroMCP (MIT, MCPHackers -- see LICENSE, MCP-CREDITS.TXT)
+// with CodeBreaker's decompiler-fidelity changes. Only the engine and its command-line entry are
+// here; CodeBreaker runs it headless (codebreaker/decompile/jar.py: setup, decompile).
+//
+//   native/retromcp/gradlew -p native/retromcp shadowJar   ->  build/libs/retromcp.jar
+plugins {
+	id "java"
+	id "application"
+	alias libs.plugins.shadow
+}
+
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
+repositories {
+	mavenCentral()
+	maven {
+		url = "https://maven.fabricmc.net/"
+		content { includeGroup "net.fabricmc" }
+	}
+	maven { url = "https://mcphackers.org/libraries/" }
+	maven { url = "https://maven.glass-launcher.net/releases" }
+	maven {
+		url = "https://jitpack.io/"
+		content {
+			includeGroupByRegex "io\\.github\\..+"
+			includeGroupByRegex "com\\.github\\..+"
+		}
+	}
+}
+
+dependencies {
+	implementation libs.asm
+	implementation libs.asm.analysis
+	implementation libs.asm.commons
+	implementation libs.asm.tree
+	implementation libs.asm.util
+	implementation libs.rdi.nio
+	implementation libs.rdi
+	implementation libs.fernflower
+	implementation libs.json
+	implementation libs.diffpatch
+	implementation libs.commons.lang3
+	implementation libs.mapping.io
+	implementation libs.jansi
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = "UTF-8"
+	// --release 8 on Java 9+: compile against the Java 8 platform exactly
+	if (JavaVersion.current().isJava9Compatible()) {
+		it.options.release.set(8)
+	}
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_1_8
+	targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+application {
+	mainClass = "org.mcphackers.mcp.main.MainCLI"
+}
+
+tasks.named("shadowJar", ShadowJar) {
+	configurations = [project.configurations.compileClasspath]
+	archiveBaseName.set("retromcp")
+	archiveClassifier.set("")
+	archiveVersion.set("")
+	minimize()
+}

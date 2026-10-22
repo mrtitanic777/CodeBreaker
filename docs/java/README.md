@@ -41,7 +41,7 @@ every CodeBreaker job does.
 | Tool | What it does |
 |---|---|
 | `convert` | a Java source tree as C++ (`--platform`, `--cpp-std`, `--mc-version` to decompile first) |
-| `decompile` | a Minecraft version as Java source, through RetroMCP (`third_party/retromcp-java`) |
+| `decompile` | a Minecraft version as Java source, through RetroMCP's engine (`native/retromcp`) |
 | `report`, `worklist` | the crash-class report; compile the output and list the files that fail |
 | `signatures` | signatures.md: every class's fields and methods, Java type to C++ type |
 | `scan-project`, `scaffold`, `apimap` | one-folder project resolver; skeletons in other languages; the API-mapping registry |

@@ -13,11 +13,11 @@ docs/NOT_IN_REPO.md). See DISCLAIMER in README.md.
 Third-party open-source code in this repository, each under its own license:
   - native/decompiler/core     the Ghidra decompiler core (Apache-2.0; its LICENSE
                                and NOTICE beside it), with zlib (zlib license)
-  - third_party/nasm-masm      NASM, with CodeBreaker's MASM-compatibility changes
-                               (BSD-2-Clause; third_party/nasm-masm/LICENSE)
-  - third_party/retromcp-java  RetroMCP-Java by MCPHackers, with CodeBreaker's
-                               changes (MIT; third_party/retromcp-java/LICENSE);
-                               the decompiler it drives, Vineflower, is Apache-2.0
+  - native/nasm                NASM's assembler engine, with CodeBreaker's MASM-compatibility
+                               changes (BSD-2-Clause; native/nasm/LICENSE, AUTHORS)
+  - native/retromcp            RetroMCP-Java's engine by MCPHackers, with CodeBreaker's
+                               changes (MIT; native/retromcp/LICENSE, MCP-CREDITS.TXT);
+                               the decompiler it drives, Fernflower, is Apache-2.0
 
 Third-party runtime dependency (not distributed here; installed separately):
   - Capstone disassembly framework (BSD-3-Clause) — https://www.capstone-engine.org

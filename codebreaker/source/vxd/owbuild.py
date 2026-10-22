@@ -22,7 +22,7 @@ from codebreaker.source.vxd import tree as vxd_tree
 _OW = os.path.dirname(settings.get("openwatcom") or "") or os.path.join(settings.ROOT, "experiments", "premise-proof", "open-watcom-v2")
 _WASM = os.path.join(_OW, "bld", "wasm", "nt386", "wasm.exe")
 _WLINK = os.path.join(_OW, "rel", "binnt64", "wlink.exe")
-_NASM = os.path.join(settings.ROOT, "..", "nasm-masm", "nasm.exe")
+_NASM = settings.get("nasm")
 
 
 def _env():

@@ -5,7 +5,7 @@
   Transpile
     convert JAVA OUT [--platform P] [--edition E]   Java source -> C++ (also --mc-version ID to
                                     decompile a Minecraft version first, --project for a buildable tree)
-    decompile VERSION WORKSPACE     a Minecraft version as Java source (RetroMCP / Vineflower;
+    decompile VERSION WORKSPACE     a Minecraft version as Java source (RetroMCP / Fernflower;
                                     settings.json: java, retromcp)
     scaffold JAVA OUT               structural skeletons in C, C# or Rust (not a translation)
     signatures JAVA                 the codebase map: class -> fields and methods, Java -> C++ types
@@ -371,7 +371,7 @@ def _cmd_convert(args):
             return 2
         from codebreaker.decompile import jar as decompile
         ws = args.mc_workspace or os.path.join(out_dir, '_decompiled')
-        print('Decompiling Minecraft %s via the bundled RetroMCP/Vineflower backend...' % args.mc_version)
+        print('Decompiling Minecraft %s via the bundled RetroMCP/Fernflower backend...' % args.mc_version)
         try:
             java_dir = decompile.decompile(args.mc_version, ws, java=getattr(args, 'java', None),
                                            on_output=lambda ln: print('  ' + ln))
@@ -620,7 +620,7 @@ def main(argv=None):
     cp.add_argument('out_dir', nargs='?', default=None,
                     help='Output directory for the generated .h/.cpp.')
     cp.add_argument('--mc-version', dest='mc_version', default=None,
-                    help='Decompile this Minecraft version (bundled RetroMCP/Vineflower backend) and '
+                    help='Decompile this Minecraft version (bundled RetroMCP/Fernflower backend) and '
                          'convert its source in one step. Requires a Java runtime + network. '
                          'Usage: convert --mc-version <id> <out_dir>')
     cp.add_argument('--mc-workspace', dest='mc_workspace', default=None,
@@ -649,9 +649,9 @@ def main(argv=None):
                          'else auto-detect from the source, else keep the default profile.')
     cp.set_defaults(func=_cmd_convert)
 
-    # decompile (RetroMCP/Vineflower backend: Minecraft version -> Java source)
+    # decompile (RetroMCP/Fernflower backend: Minecraft version -> Java source)
     dcp = sub.add_parser('decompile',
-                         help='Decompile a Minecraft version to Java source (bundled RetroMCP/Vineflower).')
+                         help='Decompile a Minecraft version to Java source (bundled RetroMCP/Fernflower).')
     dcp.add_argument('version', help='Minecraft version id (e.g. a1.2.6, b1.6.6, c0.30_01c, inf-20100618).')
     dcp.add_argument('workspace', help='Workspace dir; decompiled source lands under <workspace>/minecraft_*/src.')
     dcp.add_argument('--java', default=None, help='java executable (else $JAVA_HOME / PATH).')
