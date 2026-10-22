@@ -195,10 +195,6 @@ def main():
     return 1 if fails else 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
-
-
 def test_discover_built_addresses():
     """Functions reached only by an address the code builds (lis + addi), and leaf functions
     starting right after another one ends, are found."""
@@ -210,3 +206,7 @@ def test_discover_built_addresses():
     # the CRT's FlsAlloc stand-in, two callbacks it registers, and a device setter after a blr
     for a in (0x82164700, 0x82131380, 0x82107278, 0x82178348):
         assert a in funcs, hex(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
