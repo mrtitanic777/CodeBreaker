@@ -11,8 +11,21 @@ XBE header (little-endian):
   0x120 section headers(VA)   0x128 entry(^key)   0x148 kernel thunk(^key)
 Certificate: 0x08 title id  0x0C title name(40 UTF-16LE)  0xA0 region  0xA4 ratings
 Section header (0x38): flags, VA, vsize, raw addr, raw size, name VA.
+
+    to_pe(path)     the program as a 32-bit PE image, for the x86 lane (see below)
+
+The original Xbox runs x86 code, so its programs go down the 32-bit Windows lane once they are
+in the shape that lane reads. to_pe writes that image: the same bytes at the same addresses
+(each section at its address, the XBE's own header at the base), the entry point, and the
+kernel's functions as imports. The kernel thunk table already has the shape of a PE import
+address table -- one word per import, the kernel's ordinal with the top bit set, a zero at the
+end -- so it becomes the import table of `xboxkrnl.exe`, whose ordinals symbols/ordinal_names.json
+names (the kernel's export map). The image is written once per distinct file, named by its
+contents.
 """
 
+import hashlib
+import os
 import struct
 import sys
 
@@ -34,6 +47,7 @@ class XBE:
             raise ValueError("not an XBE (magic %r)" % data[:4])
         self.base = struct.unpack_from("<I", data, 0x104)[0]
         self.size_of_image = struct.unpack_from("<I", data, 0x10C)[0]
+        self.size_of_headers = struct.unpack_from("<I", data, 0x108)[0]
         self.cert_addr = struct.unpack_from("<I", data, 0x118)[0]
         self.section_count = struct.unpack_from("<I", data, 0x11C)[0]
         self.section_hdr_addr = struct.unpack_from("<I", data, 0x120)[0]
@@ -99,6 +113,69 @@ class XBE:
 
     def media_str(self):
         return "|".join(n for m, n in MEDIA.items() if self.allowed_media & m) or "0x%X" % self.allowed_media
+
+
+def to_pe(path):
+    """The XBE at `path` as a PE image (written once, kept under state/unpacked/xbe). -> its path"""
+    from codebreaker.base import settings
+    data = open(path, "rb").read()
+    digest = hashlib.sha1(data).hexdigest()[:12]
+    out = settings.state("unpacked", "xbe", "%s-%s.exe" % (os.path.splitext(os.path.basename(path))[0].lower(), digest))
+    if not os.path.isfile(out):
+        with open(out + ".part", "wb") as f:
+            f.write(pe_image(XBE(data)))
+        os.replace(out + ".part", out)
+    return out
+
+
+def pe_image(x):
+    """The bytes of the PE image for an XBE (see the module's notes)."""
+    base, size = x.base, x.size_of_image
+    sections = [s for s in x.sections() if s["vsize"] or s["raw_size"]]
+    entry, _k = x.entry_point()
+    thunk, _k = x.kernel_thunk()
+    image = bytearray(max(size, max((s["vaddr"] - base + max(s["vsize"], s["raw_size"]) for s in sections), default=0)))
+    head = min(len(x.d), x.size_of_headers, len(image))
+    image[:head] = x.d[:head]                                     # (overwritten below by the PE headers)
+    for s in sections:
+        raw = x.d[s["raw_addr"]:s["raw_addr"] + min(s["raw_size"], s["vsize"] or s["raw_size"])]
+        at = s["vaddr"] - base
+        image[at:at + len(raw)] = raw
+    # the import directory: one descriptor for the kernel, its name, in a section of its own
+    imp = (len(image) + 0xFFF) & ~0xFFF
+    name = b"xboxkrnl.exe\0"
+    thunk_rva = thunk - base
+    directory = struct.pack("<5I", thunk_rva, 0, 0, imp + 40, thunk_rva) + bytes(20) + name
+    count = 0
+    while thunk_rva + 4 * count + 4 <= len(image) and struct.unpack_from("<I", image, thunk_rva + 4 * count)[0]:
+        count += 1
+    image += bytes(imp - len(image)) + directory
+    image += bytes((-len(image)) % 0x1000)
+    names = [s["name"][:8].encode("latin-1", "replace") for s in sections] + [b".cbimp"]
+    spans = [(s["vaddr"] - base, max(s["vsize"], s["raw_size"]), s["flags"]) for s in sections]
+    spans.append((imp, len(directory), 0))
+    nsec = len(spans)
+    headers = 0x40 + 4 + 20 + 224 + 40 * nsec
+    if sections and headers > min(sp[0] for sp in spans):
+        raise ValueError("the XBE's first section starts too low for PE headers")
+    pe = bytearray(headers)
+    pe[0:2] = b"MZ"
+    struct.pack_into("<I", pe, 0x3C, 0x40)
+    pe[0x40:0x44] = b"PE\0\0"
+    struct.pack_into("<HHIIIHH", pe, 0x44, 0x014C, nsec, 0, 0, 0, 224, 0x0102)
+    o = 0x58
+    struct.pack_into("<HBBIIIIIIIIIHHHHHHIIIIHHIIIIII", pe, o, 0x10B, 0, 0, 0, 0, 0, entry - base, 0, 0,
+                     base, 0x20, 0x20, 4, 0, 0, 0, 4, 0, 0, len(image), headers, 0, 14, 0,
+                     0x100000, 0x1000, 0x100000, 0x1000, 0, 16)
+    struct.pack_into("<II", pe, o + 96 + 8, imp, len(directory))                       # import directory
+    struct.pack_into("<II", pe, o + 96 + 12 * 8, thunk_rva, 4 * (count + 1))           # import address table
+    for i, ((rva, vsize, flags), nm) in enumerate(zip(spans, names)):
+        chars = 0x40000040 | (0x20000020 if flags & 0x4 else 0) | (0x80000000 if flags & 0x1 else 0)
+        if nm == b".cbimp":
+            chars = 0x40000040
+        struct.pack_into("<8sIIIIIIHHI", pe, 0x58 + 224 + 40 * i, nm, vsize, rva, vsize, rva, 0, 0, 0, 0, chars)
+    image[:headers] = pe
+    return bytes(image)
 
 
 DESCRIPTION = "read an Original Xbox XBE executable: header/certificate/sections + entry decrypt"

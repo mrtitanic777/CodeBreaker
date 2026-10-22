@@ -53,8 +53,8 @@ choice, `emulate.runner` and `corpus._readable` all ask it.
 
 ## Where it stands (2026-10-21)
 
-Steps 1-5 are done: `codebreaker/platforms/` describes the seven platforms (the six below and
-the NES), and `reconstruct.KINDS`, `kind_name`, `emulate.RUNNERS`, `describe`'s languages and
+Steps 1-5 are done: `codebreaker/platforms/` describes eight platforms (the six below, the NES,
+and the original Xbox, whose XBE goes down the 32-bit lane as a PE image: formats/xbox/xbe.py), and `reconstruct.KINDS`, `kind_name`, `emulate.RUNNERS`, `describe`'s languages and
 `corpus._readable` all ask it -- `identify()` agrees with the old rule on every one of the 2,574
 files of the Windows 95 corpus and the PowerPC samples. The NES: `formats/nes.py` (iNES and
 NES 2.0), the 6502 language (L8 in GHIDRA_FORK.md, with its fixes), `decompile/m6502.py` (the

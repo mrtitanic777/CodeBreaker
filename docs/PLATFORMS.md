@@ -32,7 +32,7 @@ line and nothing above it.
 | Bytecode | JVM | Java source to C++03 | n/a | n/a | the JVM | yes |
 | 8-bit | 6502 (2A03) | NES | yes (iNES, NES 2.0) | yes (checked: 151/151) | own 6502 interpreter | yes |
 | 8/16-bit | 6502, 65816, Z80, SM83, 68000, SPC700 | Atari, SNES, Sega, Game Boy, C64, Apple II, Spectrum, MSX, arcade | no | 6502 yes | 6502 yes | no |
-| x86, console | Pentium III | original Xbox (XBE) | no | yes | no (Unicorn has the CPU) | no |
+| x86, console | Pentium III | original Xbox (XBE) | yes (as a PE image; kernel imports named) | yes | Unicorn (the 32-bit lane) | yes |
 | MIPS, SuperH | R3000, R4300, R5900, SH-2, SH-4 | PS1, N64, PS2, Saturn, Dreamcast, arcade | no | no | no | no |
 | PowerPC, Cell | Gekko, Broadway, Xenon, Cell PPU/SPU | GameCube, Wii, Xbox 360, PS3 | no | PPU yes, SPU no | no | no |
 | x86-64, ARM | x86-64, ARM7/9, ARMv7, AArch64 | PC 64-bit, GBA, DS, 3DS, Xbox One, PS4/5, phones, Switch | no | no | no | no |

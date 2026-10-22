@@ -12,7 +12,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITES = [("../tools/check_imports.py", False), ("../tools/tidy.py", False), ("test_plumbing.py", False), ("test_ui.py", False), ("test_symbols.py", False), ("test_dos.py", False), ("test_analysis.py", False), ("test_drivers.py", False), ("test_versions.py", False), ("test_powerpc.py", False), ("test_xex.py", False), ("test_vmx128.py", False), ("test_match_powerpc.py", False), ("test_xenos.py", False), ("test_platforms.py", False), ("test_nes.py", False), ("test_assembler.py", False), ("test_media.py", False), ("test_xbox_formats.py", False), ("test_whole_module.py", False), ("test_invert.py", False), ("test_readable.py", False), ("test_java.py", False), ("test_translate.py", False),
+SUITES = [("../tools/check_imports.py", False), ("../tools/tidy.py", False), ("test_plumbing.py", False), ("test_ui.py", False), ("test_symbols.py", False), ("test_dos.py", False), ("test_analysis.py", False), ("test_drivers.py", False), ("test_versions.py", False), ("test_powerpc.py", False), ("test_xex.py", False), ("test_vmx128.py", False), ("test_match_powerpc.py", False), ("test_xenos.py", False), ("test_platforms.py", False), ("test_nes.py", False), ("test_xbe.py", False), ("test_assembler.py", False), ("test_media.py", False), ("test_xbox_formats.py", False), ("test_whole_module.py", False), ("test_invert.py", False), ("test_readable.py", False), ("test_java.py", False), ("test_translate.py", False),
           ("test_frozen.py", False), ("test_frozen_slow.py", True), ("test_verification.py", True)]
 
 
