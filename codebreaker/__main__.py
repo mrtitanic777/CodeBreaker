@@ -39,6 +39,10 @@
     info <file-or-module>           what an executable is and holds (headers, imports, exports, resources)
     xex <command> <file.xex> ...    an Xbox 360 executable: info, list, extract the basefile, convert,
                                     patch, re-sign (any command takes a .xex: it is read as its basefile)
+    recompile <image or .xex> --all [-o FILE]   an Xbox 360 program as C++ that runs on a PC (every
+                                    function; --at ADDR --size N for one; --check compiles it)
+    recompile-project <image or .xex> -o DIR    that C++ as a project that builds: sources, imports,
+                                    the kernel core, the GPU subsystem (docs/RECOMPILE.md)
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
     progress [--once] [--window]    watch a running sweep
@@ -103,6 +107,8 @@ COMMANDS = {
     "live": ("codebreaker.ui.live", []),
     "take-apart": ("codebreaker.ui.take_apart", []),
     "settings": ("codebreaker.base.settings", []),
+    "recompile": ("codebreaker.recompile.powerpc", []),
+    "recompile-project": ("codebreaker.recompile.project", []),
     "java": ("codebreaker.java.run", []),
 }
 

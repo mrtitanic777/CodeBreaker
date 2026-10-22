@@ -120,13 +120,24 @@ ROWS = [
     ("vupklsb128", 0x180003C0, 0xFC1F07F0, "b", "vectorUnpackLowSignedByte"),
     ("vupklsh128", 0x180007E0, 0xFC1F07F0, "b", "vectorUnpackLowSignedHalfWord"),
 ]
+# The Xenon's (and Cell's) unaligned vector loads and stores on the 32 AltiVec registers, in
+# primary opcode 31 -- not VMX128, but missing from stock decoders alike: (mnemonic, extended
+# opcode, form, the user operation the SLEIGH calls)
+X31 = [("lvlx", 519, "load", "loadVectorLeftIndexed"), ("lvlxl", 775, "load", "loadVectorLeftIndexedLRU"),
+       ("lvrx", 551, "load", "loadVectorRightIndexed"), ("lvrxl", 807, "load", "loadVectorRightIndexedLRU"),
+       ("stvlx", 647, "store", "storeVectorLeftIndexed"), ("stvlxl", 903, "store", "storeVectorLeftIndexedLRU"),
+       ("stvrx", 679, "store", "storeVectorRightIndexed"), ("stvrxl", 935, "store", "storeVectorRightIndexedLRU")]
+_X31 = {xo: (m, form) for m, xo, form, _s in X31}
 # most specific (widest mask) first, so a broad row never shadows a narrow one
 _BY_SPECIFICITY = sorted(ROWS, key=lambda r: bin(r[2]).count("1"), reverse=True)
 
 
 def decode(word):
-    """(mnemonic, operand text) for a VMX128 instruction word, else None."""
+    """(mnemonic, operand text) for a VMX128 instruction word (or one of X31's), else None."""
     w = word & 0xFFFFFFFF
+    if w >> 26 == 31 and not w & 1 and (w >> 1) & 0x3FF in _X31:
+        ra, rb = (w >> 16) & 31, (w >> 11) & 31
+        return _X31[(w >> 1) & 0x3FF][0], "v%d,%s,r%d" % ((w >> 21) & 31, "r%d" % ra if ra else "0", rb)
     if (w >> 26) not in (4, 5, 6):
         return None
     for mnem, pat, mask, form, _sem in _BY_SPECIFICITY:
@@ -140,8 +151,8 @@ def decode(word):
 def _operands(form, w):
     d, a, b, c = vd128(w), va128(w), vb128(w), vc128(w)
     ra, rb = (w >> 16) & 31, (w >> 11) & 31
-    if form in ("load", "store"):
-        return "v%d,r%d,r%d" % (d, ra, rb)
+    if form in ("load", "store"):                    # (rA 0 is the literal zero, written 0)
+        return "v%d,%s,r%d" % (d, "r%d" % ra if ra else "0", rb)
     if form == "sldoi":
         return "v%d,v%d,v%d,%d" % (d, a, b, (w >> 6) & 0xF)
     if form == "perm":
@@ -255,9 +266,18 @@ def sleigh(declared=()):
     L.append("x128RA0: x128RA is x128RA { export x128RA; }")      # (rA, or 0 when it names r0)
     L.append("x128RA0: 0 is x128RA=0 { export 0:$(REGISTER_SIZE); }")
     L.append("")
-    ops = sorted({s for *_r, s in ROWS if not s.startswith("=")} | {"vectorCompareSetCR6"})
+    ops = sorted({s for *_r, s in ROWS if not s.startswith("=")} | {s for *_r, s in X31} | {"vectorCompareSetCR6"})
     L += ["define pcodeop %s;" % op for op in ops if op not in declared]
     L.append("")
+    for mnem, xo, form, sem in X31:                  # (AltiVec's own fields and register names)
+        reg = "vrD" if form == "load" else "vrS"
+        L.append(":%s %s,RA_OR_ZERO,B is OP=31 & %s & RA_OR_ZERO & B & XOP_1_10=%d & Rc=0" % (mnem, reg, reg, xo))
+        L.append("{")
+        L.append("\tbuild RA_OR_ZERO;")
+        L.append("\tea:$(REGISTER_SIZE) = RA_OR_ZERO + B;")
+        L.append("\t%s;" % ("%s = %s(ea)" % (reg, sem) if form == "load" else "%s(ea, %s)" % (sem, reg)))
+        L.append("}")
+        L.append("")
     for mnem, pat, mask, form, sem in ROWS:
         cons = ["x128OP=%d" % (pat >> 26)]
         for lo, hi in _runs(mask & 0x03FFFFFF):

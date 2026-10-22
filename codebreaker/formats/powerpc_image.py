@@ -7,7 +7,7 @@
     img.functions                   sorted function starts
     img.imports                     {address: name}: the stubs calls to other modules go through
     img.inline                      {address: name}: register save/restore runs entered by `bl`
-    img.code                        (first address, last address + 1) of the code section
+    img.code                        (first address, last address + 1) of the code: every executable section
     img.extents                     {start: (size, prologue size, has an exception handler)}, from .pdata
     img.entry                       the entry point's address (0 when there is none)
     img.word(address)               one big-endian instruction word, or None
@@ -176,11 +176,12 @@ def read(path):
     else:
         memory = score[True][0] > score[False][0]
     _n, starts, img = score[memory]
-    # the code section: the executable one holding the entry point or the first function
+    # the code: every executable section -- .text, and the sections linked-in libraries bring
+    # (an Xbox 360 title's .embsec_ ones) -- from the first to the end of the last
     code = None
     for name, va, n, flags in img.sections:
-        if (flags & 0x20000000 or name == ".text") and (code is None or any(va <= s < va + n for s in starts[:1])):
-            code = (va, va + n)
+        if flags & 0x20000000 or name == ".text":
+            code = (va, va + n) if code is None else (min(code[0], va), max(code[1], va + n))
     if code is None:
         _CACHE[path] = img
         return img

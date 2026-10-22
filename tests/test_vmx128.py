@@ -56,13 +56,10 @@ def disassemble(sla, words):
 
 
 def same(table_text, sleigh_text):
-    """The table and the language agree, allowing for how each writes numbers (SLEIGH: hex) and
-    an rA of r0 in an address (SLEIGH: 0, which is what it means)."""
+    """The table and the language agree, allowing for how each writes numbers (SLEIGH: hex)."""
     m, _, ops = sleigh_text.partition(" ")
     ops = re.sub(r"-?0x[0-9a-f]+", lambda x: str(int(x.group(0), 16)), ops)
     tm, _, tops = table_text.partition(" ")
-    if tm.startswith(("lv", "stv")):
-        tops = re.sub(r",r0,", ",0,", tops)
     return tm == m and tops.replace(" ", "") == ops.replace(" ", "")
 
 
@@ -103,6 +100,16 @@ def _game_vector_words():
                    for w in [img.word(va)] if w is not None and (w >> 26) in (4, 5, 6)})
 
 
+def test_x31_forms():
+    """The Xenon's opcode-31 unaligned vector loads and stores: decoded, and as the language reads them."""
+    words = [(31 << 26) | (5 << 21) | (ra << 16) | (4 << 11) | (xo << 1) for _m, xo, _f, _s in vmx128.X31
+             for ra in (0, 3)]
+    got = disassemble("ppc_64_xenon_be.sla", words)
+    bad = ["%08X %s / %s" % (w, vmx128.text(w), got.get(w)) for w in words if not same(vmx128.text(w), got.get(w, ""))]
+    assert not bad, bad[:4]
+    assert vmx128.text(0x7D804C0E) == "lvlx v12,0,r9"
+
+
 def test_game_vmx128_words():
     words = [w for w in _game_vector_words() if vmx128.decode(w)]
     got = disassemble("ppc_64_xenon_be.sla", words)
@@ -141,7 +148,7 @@ def test_other_words_unchanged():
 
 def main():
     for fn in (test_rows_decode_to_themselves, test_sleigh_is_current, test_language_matches_table,
-               test_game_vmx128_words, test_other_words_unchanged):
+               test_x31_forms, test_game_vmx128_words, test_other_words_unchanged):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

@@ -128,6 +128,62 @@ define pcodeop vectorPermuteWordImmediate;
 define pcodeop vectorRotateLeftImmediateAndMaskInsert;
 define pcodeop vectorUnpackD3D;
 
+:lvlx vrD,RA_OR_ZERO,B is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=519 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	vrD = loadVectorLeftIndexed(ea);
+}
+
+:lvlxl vrD,RA_OR_ZERO,B is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=775 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	vrD = loadVectorLeftIndexedLRU(ea);
+}
+
+:lvrx vrD,RA_OR_ZERO,B is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=551 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	vrD = loadVectorRightIndexed(ea);
+}
+
+:lvrxl vrD,RA_OR_ZERO,B is OP=31 & vrD & RA_OR_ZERO & B & XOP_1_10=807 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	vrD = loadVectorRightIndexedLRU(ea);
+}
+
+:stvlx vrS,RA_OR_ZERO,B is OP=31 & vrS & RA_OR_ZERO & B & XOP_1_10=647 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	storeVectorLeftIndexed(ea, vrS);
+}
+
+:stvlxl vrS,RA_OR_ZERO,B is OP=31 & vrS & RA_OR_ZERO & B & XOP_1_10=903 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	storeVectorLeftIndexedLRU(ea, vrS);
+}
+
+:stvrx vrS,RA_OR_ZERO,B is OP=31 & vrS & RA_OR_ZERO & B & XOP_1_10=679 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	storeVectorRightIndexed(ea, vrS);
+}
+
+:stvrxl vrS,RA_OR_ZERO,B is OP=31 & vrS & RA_OR_ZERO & B & XOP_1_10=935 & Rc=0
+{
+	build RA_OR_ZERO;
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	storeVectorRightIndexedLRU(ea, vrS);
+}
+
 :lvewx128 vD128,x128RA0,x128RB is x128OP=4 & x128_0_1=3 & x128_4_10=8 & vD128 & x128RA0 & x128RB
 {
 	ea:$(REGISTER_SIZE) = x128RA0 + x128RB;

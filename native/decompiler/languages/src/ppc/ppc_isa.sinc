@@ -1936,6 +1936,9 @@ define pcodeop stfdpOp;
 @endif
 } 
 
+# CodeBreaker: external-PID vector stores, left out of the Xbox 360 language (see altivec.sinc):
+# their encodings are the Xenon's stvrxl/stvlxl there.
+@ifndef XENON
 define pcodeop stvepxOp;
 :stvepx S,RA_OR_ZERO,B is OP=31 & S & RA_OR_ZERO & B & XOP_1_10=807 & BIT_0=0  {
 	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
@@ -1948,6 +1951,7 @@ define pcodeop stvepxlOp;
 	*[ram]:16 EA = stvepxlOp(S, RA_OR_ZERO, B);
 } 
 
+@endif # XENON
 # binutils-descr: "dquaq",	ZRC(63,3,0),	Z2_MASK,     POWER6,	PPCNONE,	{FRT, FRA, FRB, RMC}
 define pcodeop dquaqOp;
 # ISA-cmt: dquaq - DFP Quantize Quad
