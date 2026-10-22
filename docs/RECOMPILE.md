@@ -55,7 +55,8 @@ translator (`powerpc.py`, its builders derived from rexglue's code generator) re
 `xenon.instruction_tests()` runs Xenia's PowerPC instruction tests (inputs and the outputs
 measured on the console; `native/xenonrecomp/ppc_tests`) through XenonRecomp: each test is
 assembled with PowerPC binutils that know VMX128 (setting `ppc_binutils`, default
-`toolchains/binutils-ppc`), recompiled, built and run. Today: 160 tests, 0 mismatches; 8 are
+`toolchains/binutils-ppc`), recompiled, built and run, with CodeBreaker's own tests beside them
+(`ppc_tests/own`: divides, `frsqrte`, the dashboard's VMX). Today: 162 test files, 0 mismatches; 8 are
 left out because XenonRecomp does not implement their instructions (`lvexx`, `mulhdu`, `rlwnm`,
 `subfme`, `td`, `tdi`, `tw`, `twi`; a title's own recompile reports any it uses).
 
@@ -76,6 +77,24 @@ left out because XenonRecomp does not implement their instructions (`lvexx`, `mu
 - **Imports through pointers.** The CRT calls `KeTlsGetValue` through a pointer `TlsGetValue`
   hands back, so import stubs belong in the indirect-call table.
 - **A literal zero is not `r0`.** In X-form loads and stores, `rA = 0` is the literal zero.
+- **A function split in two must still run into its second half.** Discovery declares functions
+  inside others (a shared tail several functions branch to); the piece before one falls through
+  into it on the console. XenonRecomp ended such a piece without continuing: in Up, 191 functions
+  stopped short, among them the shader compiler's register check, which returned its pointer
+  argument as "in use" ("error X3526: register 16 already in use"). It now calls the next function.
+- **For the same reason, CR, CTR and XER live in the context.** A piece entered by a branch tests
+  the flags or counts down the CTR its caller set (`cmplwi cr6,r11,1; b 0x8212E5F4`, which starts
+  with `bne cr6`); as locals they were lost. The runtime is built with the title's settings, and
+  regenerating with other settings re-reads them (the context layouts must agree).
+- **Word divides write the whole register.** `divw`/`divwu` wrote only the low word, keeping a stale
+  high word for the 64-bit shifts that follow; all divides by zero faulted the host. The quotient
+  is now zero-extended and a zero divisor gives 0.
+- **An inline jump table ends at the first case after it,** not at its lowest case: one of Up's
+  cases jumps back before the table, which cut it to 2 of its 11 entries.
+- **Comparing with another recompiler finds the rest.** Diffing our C++ against the reference
+  port's (rexglue, the same output style) function by function found the divides; swapping its
+  bodies into our build in bulk showed the shader-compiler fault was not in the translation of any
+  matching function, which pointed at the boundaries.
 
 ## Where it stands (2026-10-22)
 
@@ -93,6 +112,14 @@ picture into a texture (`XamReadTileToTextureEx`, looked up by ordinal), sockets
 XSessions offline, and two recompiler fixes: tail-jump targets declared as functions, and
 XenonRecomp no longer dropping a branch to an unknown address (it wrote a comment; XACT's
 sound-bank sizing then came out one byte short).
+
+Up (Disney/Pixar, Heavy Iron) plays: 44,283 functions, 461 switch tables. It runs through the legal
+screen, the studio logos, the title screen, the save-slot menu, the in-engine cutscene and into the first
+biplane level at 60 frames a second. What it took: the recompiler fixes above, `frsqrte`,
+`XamInputSetState` (rumble on a host controller), `XMPGetPlaybackController`, and in the renderer
+primitive reset (strips and fans cut by the reset index), `k_24_8` depth textures, 32-bit float
+textures and `getTextureGradients`. Open: dark speckle on lit surfaces in the level. The same fixes
+applied to Tetris (137 functions had stopped short) and Minecraft (3,393), which still play.
 
 Next: a long play session on a real controller; the first shader of a scene takes seconds to
 compile with FXC the first time (the shader cache keeps it); a second title through

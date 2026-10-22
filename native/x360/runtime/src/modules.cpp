@@ -39,6 +39,10 @@ namespace modules
         void MissingFunction(PPCContext& ctx, uint8_t*)
         {
             const uint32_t callSite = uint32_t(ctx.lr) - 4;
+#ifndef PPC_CONFIG_CTR_AS_LOCAL
+            // CTR in the context: the target is right there
+            Fatal("Indirect call to {:08X}, where no recompiled function starts (call at {:08X})", ctx.ctr.u32, callSite);
+#endif
             std::string target = "an unknown address";
             PPCRegister* registers[] = { &ctx.r0, &ctx.r1, &ctx.r2, &ctx.r3, &ctx.r4, &ctx.r5, &ctx.r6, &ctx.r7,
                 &ctx.r8, &ctx.r9, &ctx.r10, &ctx.r11, &ctx.r12, &ctx.r13 };

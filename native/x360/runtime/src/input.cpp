@@ -596,6 +596,21 @@ namespace input
         return true;
     }
 
+    bool SetVibration(uint32_t user, uint16_t left, uint16_t right)
+    {
+        State& g = G();
+        std::lock_guard lock(g.mutex);
+        PadState pad;
+        if (user >= kUsers || !ReadPad(user, pad))
+            return false;
+        if (g.hostConnected[user])
+        {
+            XINPUT_VIBRATION vibration{ left, right };
+            XInputSetState(user, &vibration);
+        }
+        return true;
+    }
+
     uint32_t GetKeystroke(uint32_t user, Keystroke& keystroke)
     {
         State& g = G();

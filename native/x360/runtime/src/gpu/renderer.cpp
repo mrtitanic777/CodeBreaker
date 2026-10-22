@@ -218,6 +218,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const void* ps;
             bool rectList;
             bool pointList;
+            bool stripCut = false; // strips drawn through a list with 0xFFFFFFFF cuts (primitive reset)
             D3D12_PRIMITIVE_TOPOLOGY_TYPE topology;
             D3D12_CULL_MODE cull;
             bool frontCounterClockwise;
@@ -269,6 +270,9 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const bool snorm = f.numbers == TextureNumbers::kSigned;
             switch (f.format)
             {
+            case 22: // k_24_8: the depth as a float (the untile converts it)
+                return { DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32_FLOAT,
+                         D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 0, 0, 0), 4 };
             case 2: case 8: case 9:
                 return { DXGI_FORMAT_R8_TYPELESS, DXGI_FORMAT_R8_UINT, snorm ? DXGI_FORMAT_R8_SNORM : DXGI_FORMAT_R8_UNORM,
                          D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 0, 0, 0), 1 };
@@ -1294,7 +1298,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             SetMemoryState(kShaderResource);
             Transition(texture.resource.Get(), texture.state, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             list_->SetComputeRootSignature(presentRootSignature_.Get());
-            list_->SetPipelineState(untilePipelines_[texture.fetch.numbers == TextureNumbers::kInteger].Get());
+            list_->SetPipelineState(untilePipelines_[texture.fetch.numbers == TextureNumbers::kInteger ||
+                                                    TextureUntileKind(texture.fetch.format) == kUntileDepth24].Get());
             list_->SetComputeRootDescriptorTable(1, SrvGpu(0));
             for (uint32_t level = 0; level < texture.layout.levelCount; level++)
                 for (uint32_t face = 0; face < texture.fetch.faces; face++)
@@ -1757,6 +1762,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             desc.DepthStencilState.DepthEnable = FALSE;
             desc.DepthStencilState.StencilEnable = FALSE;
             desc.PrimitiveTopologyType = key.topology;
+            if (key.stripCut)
+                desc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFFFFFF;
             if (!key.host)
                 desc.NumRenderTargets = 0;
             desc.SampleDesc.Count = key.host ? key.samples : 1;
@@ -1783,7 +1790,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const uint32_t fields[] = { key.rectList, key.pointList, uint32_t(key.topology), uint32_t(key.cull),
                                         key.frontCounterClockwise, key.depthClip, key.forcedSamples, key.host, key.samples,
                                         key.color, key.depthStencil, key.blend, key.colorMask, key.depthControl,
-                                        key.stencilMasks, 2 /* description layout version */ };
+                                        key.stencilMasks, key.stripCut, 3 /* description layout version */ };
             mix(fields, sizeof(fields));
             const std::wstring name = std::format(L"{:016X}", hash);
             const auto start = std::chrono::steady_clock::now();
@@ -2154,20 +2161,89 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const uint32_t prim = draw.initiator & 0x3F, count = draw.initiator >> 16;
             const uint32_t source = (draw.initiator >> 6) & 3;
             const uint32_t suScMode = Reg(0x2205);
-            if ((suScMode >> 21) & 1 && source == 0 && (prim == 3 || prim == 5 || prim == 6))
-                Fatal("GPU: primitive reset (multi_prim_ib_ena) is not implemented");
             D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
             D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
             bool polygonal = true, rectList = false, pointList = false;
             ID3D12Resource* indices = nullptr; // a static index list (fans, quads) over positions 0..count-1
+            D3D12_GPU_VIRTUAL_ADDRESS drawIndices = 0; // or one made for this draw (primitive reset)
+            bool stripCut = false;
             uint32_t hostCount = count;
+
+            // Primitive reset (PA_SU_SC_MODE_CNTL multi_prim_ib_ena): in a strip or fan read from an index buffer, the
+            // index VGT_MULTI_PRIM_IB_RESET_INDX ends the primitive and the next index starts a new one (Up's level
+            // geometry). The host draws positions, so the positions are listed here: a reset becomes the host's
+            // strip cut (0xFFFFFFFF), and a fan is listed as triangles per segment, hub first.
+            if ((suScMode >> 21) & 1 && source == 0 && (prim == 3 || prim == 5 || prim == 6) && count)
+            {
+                const bool index32 = (draw.initiator >> 11) & 1;
+                const uint32_t address = (draw.dmaBase & 0x1FFFFFFF) & ~(index32 ? 3u : 1u);
+                const uint32_t endian = draw.dmaSize >> 30;
+                const uint32_t reset = Reg(0x2103) & (index32 ? 0xFFFFFFu : 0xFFFFu);
+                auto swap = [](uint32_t v, uint32_t e) {
+                    if (e == 1) return ((v << 8) & 0xFF00FF00u) | ((v >> 8) & 0x00FF00FFu);
+                    if (e == 2) return __builtin_bswap32(v);
+                    if (e == 3) return (v << 16) | (v >> 16);
+                    return v;
+                };
+                auto guestIndex = [&](uint32_t position) {
+                    if (index32)
+                    {
+                        uint32_t word;
+                        std::memcpy(&word, guest::g_memory.Translate(guest::kPhysicalWindow64k + address + position * 4), 4);
+                        return swap(word, endian) & 0xFFFFFFu;
+                    }
+                    const uint32_t at = address + position * 2;
+                    uint32_t word;
+                    std::memcpy(&word, guest::g_memory.Translate(guest::kPhysicalWindow64k + (at & ~3u)), 4);
+                    word = swap(word, endian == 2 ? 1 : endian == 3 ? 0 : endian);
+                    return (at & 2) ? word >> 16 : word & 0xFFFFu;
+                };
+                std::vector<uint32_t> list;
+                list.reserve(count + count / 2);
+                if (prim == 5)
+                {
+                    uint32_t hub = UINT32_MAX, previous = UINT32_MAX;
+                    for (uint32_t i = 0; i < count; i++)
+                    {
+                        if (guestIndex(i) == reset)
+                        {
+                            hub = previous = UINT32_MAX;
+                            continue;
+                        }
+                        if (hub == UINT32_MAX)
+                            hub = i;
+                        else if (previous == UINT32_MAX)
+                            previous = i;
+                        else
+                        {
+                            list.insert(list.end(), { previous, i, hub });
+                            previous = i;
+                        }
+                    }
+                }
+                else
+                {
+                    for (uint32_t i = 0; i < count; i++)
+                        list.push_back(guestIndex(i) == reset ? 0xFFFFFFFFu : i);
+                    stripCut = true;
+                }
+                hostCount = uint32_t(list.size());
+                if (hostCount == 0)
+                    return;
+                const Upload upload = Allocate(uint64_t(hostCount) * 4, 4);
+                std::memcpy(upload.cpu, list.data(), uint64_t(hostCount) * 4);
+                drawIndices = upload.gpu;
+            }
             switch (prim)
             {
             case 4: hostCount = count - count % 3; break;
             case 6: topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP; break;
-            case 5: // fan -> triangle list (fanIndices_)
-                indices = fanIndices_.Get();
-                hostCount = count >= 3 ? (count - 2) * 3 : 0;
+            case 5: // fan -> triangle list (fanIndices_, or listed above with primitive reset)
+                if (!drawIndices)
+                {
+                    indices = fanIndices_.Get();
+                    hostCount = count >= 3 ? (count - 2) * 3 : 0;
+                }
                 break;
             case 13: // quad list -> two triangles per whole quad (quadIndices_)
                 indices = quadIndices_.Get();
@@ -2543,6 +2619,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             pipelineKey.rectList = rectList;
             pipelineKey.pointList = pointList;
             pipelineKey.topology = topologyType;
+            pipelineKey.stripCut = stripCut;
             pipelineKey.cull = !polygonal ? D3D12_CULL_MODE_NONE
                              : cullFront ? D3D12_CULL_MODE_FRONT : cullBack ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
             pipelineKey.frontCounterClockwise = ((suScMode >> 2) & 1) == 0;
@@ -2601,9 +2678,10 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             list_->RSSetViewports(1, &viewport);
             list_->RSSetScissorRects(1, &scissor);
             list_->IASetPrimitiveTopology(rectList ? D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST : topology);
-            if (indices)
+            if (indices || drawIndices)
             {
-                D3D12_INDEX_BUFFER_VIEW view = { indices->GetGPUVirtualAddress(), UINT(hostCount * 4), DXGI_FORMAT_R32_UINT };
+                D3D12_INDEX_BUFFER_VIEW view = { drawIndices ? drawIndices : indices->GetGPUVirtualAddress(),
+                    UINT(hostCount * 4), DXGI_FORMAT_R32_UINT };
                 list_->IASetIndexBuffer(&view);
                 list_->DrawIndexedInstanced(hostCount, 1, 0, 0, 0);
             }

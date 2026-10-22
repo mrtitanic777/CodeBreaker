@@ -24,6 +24,9 @@ set(X360_MARCH "haswell" CACHE STRING "-march of the build (haswell or x86-64-v2
 
 function(x360_title target library_dir module_info)
     # the register settings the title was recompiled with, for the runtime's ppc_config.h (they change PPCContext)
+    # re-read whenever the title is regenerated with other settings: the runtime and the title must agree on the
+    # PPCContext layout
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${library_dir}/ppc_config.h")
     file(STRINGS "${library_dir}/ppc_config.h" settings REGEX "^#define PPC_CONFIG_")
     list(JOIN settings "\n" settings)
     set(settings_dir "${CMAKE_CURRENT_BINARY_DIR}/${target}_settings")

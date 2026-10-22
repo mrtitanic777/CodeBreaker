@@ -106,7 +106,8 @@ def build(force=False):
 def recompile(config):
     """Run XenonRecomp on a configuration file. -> its output (warnings, the unimplemented)."""
     build()
-    r = _run([RECOMP, config], cwd=os.path.dirname(os.path.abspath(config)))
+    r = _run([RECOMP, config, os.path.join(SOURCE, "XenonUtils", "ppc_context.h")],
+             cwd=os.path.dirname(os.path.abspath(config)))
     if r.returncode:
         raise RuntimeError("XenonRecomp failed:\n" + (r.stdout + r.stderr)[-3000:])
     return r.stdout

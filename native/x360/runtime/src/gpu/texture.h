@@ -4,7 +4,8 @@
 // 2D tiled, base level + mips, packed mip tails), the GPU untiler that converts one level from guest memory into the
 // host texture, and a CPU reference of all of it for the tests.
 //
-// Implemented (05b §6.1): 2D textures of k_8, k_8_8, k_8_8_8_8 and k_16_16, linear or 2D tiled, every mip level
+// Implemented (05b §6.1): 2D textures of k_8, k_8_8, k_8_8_8_8 and k_16_16, the packed 16-bit formats, DXT,
+// k_24_8 (the depth, as a float) and k_32(_32(_32_32))_FLOAT (the words as they are), linear or 2D tiled, every mip level
 // with the per-level stride rules (05b §2.4) and the packed mip tail (05b §2.5, also when the base level is in it),
 // all four endian modes (applied to each 32-bit word of memory, 05b §1.5), unsigned / signed / bias signs as
 // fractions and every sign as integers. Anything else is reported by DecodeTextureFetch and stops the renderer.
@@ -69,7 +70,8 @@ namespace gpu
     uint32_t TextureBlockSize(uint32_t format);
     // How the untile shader reads the format: one component per 8 or 16 bits; a packed 16-bit texel (its components'
     // widths: TexturePackedWidths, a nibble each, X first) expanded to 8 bits each; or a DXT block decoded.
-    enum : uint32_t { kUntilePlain = 0, kUntilePacked16 = 1, kUntileDxt1 = 2, kUntileDxt2_3 = 3, kUntileDxt4_5 = 4 };
+    enum : uint32_t { kUntilePlain = 0, kUntilePacked16 = 1, kUntileDxt1 = 2, kUntileDxt2_3 = 3, kUntileDxt4_5 = 4,
+                      kUntileDepth24 = 5, kUntileFloat32 = 6 };
     uint32_t TextureUntileKind(uint32_t format);
     uint32_t TexturePackedWidths(uint32_t format);
 

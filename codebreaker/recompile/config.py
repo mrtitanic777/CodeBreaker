@@ -24,9 +24,11 @@ from codebreaker.recompile import disassemble, discover
 # The registers kept as locals of each function (the runtime is built with the same settings: x360.cmake
 # reads them back from the generated ppc_config.h). LR stays in the context (backtraces and unwinding
 # read it), and so do the non-volatile registers: a compiler-generated __finally block is called with
-# `bl` and reads its parent's r30/r31, which a local of the parent would hide.
-REGISTER_SETTINGS = (("skip_lr", False), ("skip_msr", True), ("ctr_as_local", True),
-                     ("xer_as_local", True), ("reserved_as_local", True), ("cr_as_local", True),
+# `bl` and reads its parent's r30/r31, which a local of the parent would hide. CR, CTR and XER stay there too:
+# a function entered by a branch from another can test the flags or count down the CTR its caller set
+# (Up: `cmplwi cr6,r11,1; b 0x8212E5F4`, which starts with `bne cr6`).
+REGISTER_SETTINGS = (("skip_lr", False), ("skip_msr", True), ("ctr_as_local", False),
+                     ("xer_as_local", False), ("reserved_as_local", True), ("cr_as_local", False),
                      ("non_argument_as_local", False), ("non_volatile_as_local", False))
 
 

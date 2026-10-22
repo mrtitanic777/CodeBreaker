@@ -3,6 +3,12 @@
 void RecompilerConfig::Load(const std::string_view& configFilePath)
 {
     directoryPath = configFilePath.substr(0, configFilePath.find_last_of("\\/") + 1);
+    if (!std::filesystem::is_regular_file(std::filesystem::path(configFilePath)))
+    {
+        // (a missing file otherwise ends the program in the TOML parser, with no message)
+        fmt::println("Configuration file not found: {}", configFilePath);
+        std::exit(1);
+    }
     toml::table toml = toml::parse_file(configFilePath)
 #if !TOML_EXCEPTIONS
         .table()
