@@ -127,6 +127,10 @@ if not exist build\\CMakeCache.txt cmake -S . -B build -G Ninja -DCMAKE_BUILD_TY
 cmake --build build || exit /b 1
 ''' % (name, name, vs, vs))
 
+    with open(os.path.join(out_dir, "Play-%s.bat" % name), "w", newline="\r\n") as f:
+        f.write('@echo off\nrem Plays %s (written by CodeBreaker): keyboard or controller; the log is game\\%s.log\n'
+                'start "" "%%~dp0build\\%s.exe" "%%~dp0game"\n' % (name, name, name))
+
     # the title folder: its files, and default.xex in basic form
     if title_files:
         for entry in os.listdir(title_files):

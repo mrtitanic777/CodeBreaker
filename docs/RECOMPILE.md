@@ -79,17 +79,21 @@ left out because XenonRecomp does not implement their instructions (`lvexx`, `mu
 
 ## Where it stands (2026-10-22)
 
-Tetris (Tetris Splash, XBLA): `recompile-project` makes the project in 19 seconds — 14,861
-functions, 112 switch tables, no unimplemented instruction — and it builds with clang-cl.
-`tetris.exe` loads the title, binds its 217 imports (36 still stubs: networking, the camera,
-some XAM UI), runs its main thread, two worker threads and the system threads, reads its data
-(`bin.tort`) through asynchronous reads with completion routines, and draws: frame 300 is the
-Xbox LIVE Arcade splash. It then stops at the first texture in a format the renderer does not
-support yet, `k_4_4_4_4`.
+Tetris (Tetris Splash, XBLA) plays. `recompile-project` makes the project in about 20 seconds
+(14,895 functions, 114 switch tables, no unimplemented instruction); it builds with clang-cl and
+`Play-tetris.bat` starts it. It runs with no unimplemented import or message reached: the XBLA
+splash, the Tetris Online logo, the title screen, the menus, a Marathon game with its tutorial,
+with sound (the earlier rexglue-based port never had any). The title folder holds the disc's
+files only: the `devData` folder of loose files an earlier port unpacked from `bin.tort` sends
+the game down a developer path that ends in "File not found".
 
-Next:
+What it took, beyond the plumbing: texture formats (the packed 16-bit ones, DXT1/2_3/4_5, the
+8-bit aliases), cube textures, fetch constants that are not textures read as zero, the gamer
+picture into a texture (`XamReadTileToTextureEx`, looked up by ordinal), sockets with no link,
+XSessions offline, and two recompiler fixes: tail-jump targets declared as functions, and
+XenonRecomp no longer dropping a branch to an unknown address (it wrote a comment; XACT's
+sound-bank sizing then came out one byte short).
 
-- **Texture formats**: the renderer supports `k_8`, `k_8_8`, `k_8_8_8_8` and `k_16_16`;
-  Tetris needs `k_4_4_4_4` and, most likely, the DXT formats.
-- **The stubbed imports** a title reaches (Tetris: `NetDll_recvfrom` is polled).
-- **A second title** through `recompile-project`, to find what is Tetris-specific.
+Next: a long play session on a real controller; the first shader of a scene takes seconds to
+compile with FXC the first time (the shader cache keeps it); a second title through
+`recompile-project`, to find what is Tetris-specific.
