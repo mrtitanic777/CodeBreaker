@@ -1,0 +1,125 @@
+;; ============================================================================
+;; signatures.me  --  Microsoft C 5.0 RE signature catalog
+;; ----------------------------------------------------------------------------
+;; Living database of every fingerprint we rely on: file/packer formats, the
+;; per-binary identity of each target, the original-source (SCCS) attribution
+;; map, and (as recovered) CRT/library and per-function signatures.
+;;
+;; Tiers:   [BX] byte-exact verified   [BH] behavioral (oracle-tested)
+;;          [ID] identified (toolchain/CRT, not reconstructed)   [??] hypothesis
+;; ============================================================================
+
+
+;; --- FORMAT / PACKER SIGNATURES -------------------------------------------
+
+[sig format=MZ]
+  magic            "MZ" | "ZM" at 0x00
+  startup/__astart B4 30 CD 21 3C 02 73 ?? CD 20   ; mov ah,30h; int 21h; cmp al,2; jae; int 20h
+  note             every MS C 5.0 program (16/17 packed) begins __astart with this DOS get-version probe.
+
+[sig packer=EXEPACK]
+  detect           header relocs=0  AND  "Packed file is corrupt!" present  AND  "RB" sig word ending the exepack header at CS:0000
+  header(16 byte)  u16 real_ip, real_cs, mem_start, exepack_size, real_sp, real_ss, dest_len_para, "RB"
+  stub opcodes     B0=run(cnt,byte)  B2=copy(cnt)  |1 = last-command flag ; decompress top-down, in place
+  QUIRK            large images pack ONLY the trailing data; code is stored verbatim ahead of it.
+                   Decompression is in-place -> seed output with the load module, not zeros.
+  unpacker         tools/unexepack.py  (algorithm lifted from the C2.EXE stub disasm)
+
+[sig lib=OMF]
+  LIB magic        first byte 0xF0 (LIBHDR)      ; OBJ magic 0x80 (THEADR)
+  reader           wt inverse omf <file>         ; source for CRT libmatch signatures
+
+
+;; --- TARGET IDENTITY (unpacked/) ------------------------------------------
+;; name         CS:IP          relocs  role                         SCCS mods
+[bin C1.EXE ]   0F00:31F2       556    front end (small)              (stripped)
+[bin C1L.EXE]   0F52:6EBC      1663    front end (large)              (stripped)
+[bin C2.EXE ]   14CA:0732      3280    code generator                51
+[bin C3.EXE ]   0000:8FF6       386    optimizer / back end          39
+[bin CL.EXE ]   0000:3FB8         9    driver (cc_main)               8
+[bin QCL.EXE]   0000:3538         9    QuickC cmdline driver          8
+[bin LINK.EXE]  0000:CAA4        17    overlay linker v3.61           -
+[bin LIB.EXE]   0000:4F2A         7    library manager (OMF)          -
+[bin MAKE.EXE]  0000:1CD8         7    make                           2
+[bin EXEPACK.EXE]0000:11EC       19    the packer                     -
+[bin EXEMOD.EXE]0000:0868         4    EXE header patcher             -
+[bin ERROUT.EXE]0000:01C0         6    stderr redirector              -
+[bin SETENV.EXE]0000:03F2         6    env sizer (not packed)         -
+[bin QLIB.EXE]  0000:19E4         8    QuickLib                       -
+[bin CVPACK.EXE]0000:64E8       114    CodeView packer                -
+[bin LIBBUILD.EXE]0000:1384       6    library builder                -
+[bin CV.EXE ]   0000:0383      2587    CodeView debugger (overlaid)   -
+[bin QC.EXE ]   0000:471D       224    QuickC IDE (not packed)        1
+[bin SETUP.EXE] 0000:1E00         6    installer                      -
+
+
+;; --- ORIGIN ATTRIBUTION: SCCS module map ----------------------------------
+;; 80 original .c source files recovered from @(#)file.c:ver stamps.
+;; Use to attribute each recovered function to its authored module (Phase 6).
+
+[driver  CL/QCL]  cc_main cc_msdos error flags get_err getflags strings targetcode
+
+[codegen C2]      MD MDmisc ail andor bitfields canonical children confold const_hack
+                  cse cseMD csize ctypes debug emit expand exphelp gencode genswitch
+                  getattrib grammar il initil interpret intrinfo intrinsic io ioin loop
+                  ltoa mactab main memallo opMD optimize optstring p2pragma p2symtab
+                  pragma pril regMD sil sortnode su suMD switchMD tables trees
+                  error get_err getflags
+
+[backend C3]      MD ail check_mode code csize dbil dbread debug disasm2 disasm3 error
+                  get_err getflags initil io ioin labels ltoa main memallo omf omf_ms
+                  opMD p3debug p3io p3symtab pgo pgo2 pgoMD pgoMD2 pragma sil srclist
+                  srclist2 strings stub stub2 tables type
+
+[make    MAKE]    macros makeb
+[qc      QC]      yypars
+
+;; Shared C2<->C3 back-end library (identical bodies expected -> cross-verify sigs):
+[shared C2^C3]    MD ail csize debug error get_err getflags initil io ioin ltoa main
+                  memallo opMD pragma sil tables
+
+
+;; --- CRT / LIBRARY SIGNATURES (Phase 4 — DONE via tools/idlib.py) ----------
+;; 1263 fixup-masked signatures built from the shipped OMF libs (S/M/C/L x C/FP/FA +
+;; LIBH/EM/87). Matched into every binary; full [ID] lists per binary in
+;; work/<bin>/identified.json. CRT code segment is _TEXT (not Lattice's PROG).
+;; Named CRT examples confirmed in CL.EXE: _exit __exit _access __NMSG_WRITE
+;;   __NMSG_TEXT __cintDIV __ctermsub __find __inittime ...
+;;
+;; Compiler-helper (toolchain, [ID]) — recurring internal call targets:
+[helper __chkstk]  body  59 8B DC 2B D8 72 ?? 3B 1E ?? ?? 72 ?? 8B E3 FF E1
+                   (pop cx; mov bx,sp; sub bx,ax; jb; cmp bx,[heaptop]; jb; mov sp,bx; jmp cx)
+                   call site: [B8 framesize:iw] E8 rel:iw  (frameless -> 33 C0 = xor ax,ax).
+                   found by tools/asmid.py in 15/19 binaries (small/compact model):
+                   C3@0xb37e CL@0x44e6 CVPACK@0x51ae ERROUT@0x3f6 EXEMOD@0xa9e
+                   EXEPACK@0x1f82 LIB@0x5160 LIBBUILD@0x15a8 LINK@0xccda MAKE@0x1f0e
+                   QCL@0x3a66 QLIB@0x2b4c SETENV@0x11d2 SETUP@0x2024
+                   (C1/C1L/C2/CV/QC use a large-model far variant — pattern TODO)
+[helper __dosret/criterr]  55 8B EC 83 C5 02 B0 04 ... 1F 9E F9 CB  (retf; sahf; stc)
+                   shared verbatim across CL@0x4345, SETENV@0x0aad (global addr differs).
+
+
+;; --- FUNCTION SIGNATURES (Phase 5+) ---------------------------------------
+;; tier [BX]=byte-exact verified against the image (modulo masked fixups)
+
+[fn EXEMOD:_TEXT:0x1ade  [BX]  name=inset  size=41]
+  proto   int inset(char c)              ; near, __cdecl, K&R char param at [bp+4]
+  source  register char *p; for (p=set; *p; p++) if (*p==c) return 1; return 0;
+  build   cl /AS /Ox /c
+  bytes   55 8B EC 83 EC 02 56 BE **** 8A 4E 04 EB 02 90 46 80 3C 00 74 0C
+          3A 0C 75 F6 B8 01 00 5E 8B E5 5D C3 2B C0 5E 8B E5 5D C3   (** = mov si,set fixup)
+  verify  BYTE-EXACT vs EXEMOD@0x1ade (only the 2-byte set pointer differs; it is a
+          relocatable fixup). Same idiom recurs in ERROUT/SETENV/MAKE/LIB.
+  note    template for Phase-5 recovery; see work/recover/inset.c
+
+[fn ERROUT:_TEXT:0x12ce  [BX]  name=inset  size=34]
+  verify  BYTE-EXACT — byte-identical to the EXEMOD inset idiom modulo the mov si,table
+          fixup (table @DGROUP:0x228). Confirms the idiom cross-binary.
+
+[fn ERROUT:_TEXT:0x174  [~]  name=err1  size=37]
+  proto   err1(int n)                     ; error-print-and-exit helper
+  source  fprintf(&stderr, _NMSG_TEXT(n)); exit(1);      (work/recover/err.c)
+  build   cl /AS /c   (stack-check prologue: xor ax,ax; call __chkstk)
+  verify  SOURCE-CORRECT, not yet byte-exact: shipped object defers the inner-call arg
+          cleanup (one add sp,2 omitted, legal since exit() is noreturn). Flag TODO.
+  twin    ERROUT:0x19a (err2) — same body, different message-base global.

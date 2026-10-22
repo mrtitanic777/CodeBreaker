@@ -1,0 +1,15 @@
+# Copyrighted Microsoft material — NEVER commit. Attach locally only.
+Microsoft C Compiler 5.0 (1987) (5.25-360k)/
+extracted/
+unpacked/
+work/
+*.EXE
+*.IMG
+*.IMD
+*.LIB
+*.OBJ
+*.COM
+
+# scratch
+__pycache__/
+*.pyc
