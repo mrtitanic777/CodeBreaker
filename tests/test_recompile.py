@@ -197,3 +197,16 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def test_discover_built_addresses():
+    """Functions reached only by an address the code builds (lis + addi), and leaf functions
+    starting right after another one ends, are found."""
+    if not os.path.isfile(GAME):
+        raise Skip("no game image here")
+    from codebreaker.recompile import discover
+    funcs, sources, _img = discover.discover(GAME)
+    assert sources["constants"] > 0, sources
+    # the CRT's FlsAlloc stand-in, two callbacks it registers, and a device setter after a blr
+    for a in (0x82164700, 0x82131380, 0x82107278, 0x82178348):
+        assert a in funcs, hex(a)

@@ -55,6 +55,43 @@ def _shards(parts, target=SHARD_BYTES):
     return out
 
 
+def _write_if_changed(path, data):
+    """Write `data` to `path` unless it already holds exactly that: a file left alone keeps its
+    time, so rebuilding a regenerated project recompiles only what changed."""
+    try:
+        with open(path, "rb") as f:
+            if f.read() == data:
+                return False
+    except OSError:
+        pass
+    with open(path, "wb") as f:
+        f.write(data)
+    return True
+
+
+def _sync_tree(src, dst, ignore):
+    """Make `dst` a copy of `src` (less what `ignore` drops), touching only files that differ,
+    and removing the ones `src` no longer has."""
+    keep = set()
+    for dp, dirs, files in os.walk(src):
+        drop = ignore(dp, dirs + files)
+        dirs[:] = [d for d in dirs if d not in drop]
+        rel = os.path.relpath(dp, src)
+        os.makedirs(os.path.join(dst, rel), exist_ok=True)
+        for f in files:
+            if f in drop:
+                continue
+            target = os.path.normpath(os.path.join(dst, rel, f))
+            keep.add(target)
+            with open(os.path.join(dp, f), "rb") as fh:
+                _write_if_changed(target, fh.read())
+    for dp, _dirs, files in os.walk(dst):
+        for f in files:
+            path = os.path.normpath(os.path.join(dp, f))
+            if path not in keep:
+                os.remove(path)
+
+
 def _copy_rex_dxbc(dst):
     """Copy the rexglue DXBC shader translator (native/rexglue/dxbc) into a project, without
     build products or standalone tests. -> True when it is there to copy."""
@@ -75,9 +112,7 @@ def _copy_rex_dxbc(dst):
                 drop.add(n)
         return drop
 
-    if os.path.isdir(dst):
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst, ignore=_ignore)
+    _sync_tree(src, dst, _ignore)
     return True
 
 
@@ -96,9 +131,7 @@ def _copy_rex_kernel(dst):
         return {n for n in names
                 if n in _SKIP or n.endswith((".a", ".o", ".exe"))}
 
-    if os.path.isdir(dst):
-        shutil.rmtree(dst)
-    shutil.copytree(src, dst, ignore=_ignore)
+    _sync_tree(src, dst, _ignore)
     return True
 
 
@@ -131,8 +164,7 @@ def scaffold(xex_path, out_dir, jobs=None):
     # all text files are written UTF-8 (Windows' default cp encoding can't encode
     # some characters and would raise mid-write, leaving a truncated file).
     def _w(path, text):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(text)
+        _write_if_changed(path, text.encode("utf-8"))
 
     # --- include/ : the runtime header, the shared declarations, the config ---
     _w(os.path.join(inc, "rex_ppc_min.h"), powerpc.runtime_header())
@@ -145,7 +177,10 @@ def scaffold(xex_path, out_dir, jobs=None):
     for i, group in enumerate(shards):
         text = f'#include "{name}.h"\n\n' + "\n".join(group)
         _w(os.path.join(src, f"{name}_{i:04d}.cpp"), text)
-    _w(os.path.join(src, name + "_init.cpp"), _init_cpp(name, chosen))
+    # the import shims go in the table too: the CRT calls some imports through pointers
+    # (TlsGetValue handing back KeTlsGetValue's thunk, then bctrl to it)
+    _w(os.path.join(src, name + "_init.cpp"),
+       _init_cpp(name, sorted(set(chosen) | set(thunks)), sorted(set(thunks) - set(decls))))
     _w(os.path.join(src, "rex_runtime.cpp"), _runtime_cpp(name, entry))
     # the host-shim layer: one typed stub per imported kernel/XAM function
     _w(os.path.join(src, name + "_imports.cpp"), _imports_cpp(name, thunks))
@@ -225,10 +260,12 @@ def _recomp_header(name, decls):
     return "\n".join(lines)
 
 
-def _init_cpp(name, chosen):
-    lines = [f'#include "{name}.h"', "",
-             "// The function-pointer table: guest address -> recompiled function.",
-             "PPCFuncMapping PPCFuncMappings[] = {"]
+def _init_cpp(name, chosen, undeclared=()):
+    lines = [f'#include "{name}.h"', ""]
+    if undeclared:   # import shims no recompiled code calls directly
+        lines += [f"PPC_FUNC(sub_{va:08X});" for va in undeclared] + [""]
+    lines += ["// The function-pointer table: guest address -> recompiled function.",
+              "PPCFuncMapping PPCFuncMappings[] = {"]
     for va in chosen:
         lines.append(f"\t{{ 0x{va:08X}, sub_{va:08X} }},")
     lines += ["\t{ 0, nullptr },", "};", ""]
@@ -495,7 +532,8 @@ def _rex_exports():
                     ord2name[(m.group(1).lower(), int(m.group(2), 16))] = m.group(3)
         imp_re = re.compile(r'EXPORT\(__imp__(\w+)')
         left_out = re.compile(r"graphics[/\\](command_processor|graphics_system|trace_writer)|"
-                              r"xboxkrnl[/\\](cert_monitor|debug_monitor|xboxkrnl_video)")   # (its CMakeLists)
+                              r"xboxkrnl[/\\](cert_monitor|debug_monitor|xboxkrnl_video|xboxkrnl_audio)|"
+                              r"xam[/\\](xam_input|xam_ui|xam_nui)")   # (its CMakeLists)
         for cpp in glob.glob(os.path.join(root, "src", "kernel", "**", "*.cpp"), recursive=True):
             if left_out.search(cpp):
                 continue
@@ -555,6 +593,7 @@ def _imports_cpp(name, thunks):
             rexname = _rexname(lib, ordv)
             label = api or rexname or f"ordinal {o}"
             body.append(f"PPC_FUNC(sub_{addr:08X}) {{   // {lib}: {label}")
+            body.append(f'    REX_TRACE_IN("{label}");')
             if api in vd_routes:                        # (1) GPU seam -> our xe_gpu
                 body.append(f"    {vd_routes[api]}")
                 body.append("    (void)ctx; (void)base;")
@@ -574,6 +613,7 @@ def _imports_cpp(name, thunks):
                             f' "[import] TODO {lib}: {label}  (sub_{addr:08X})\\n"); }}')
                 body.append("    (void)ctx; (void)base;")
                 n_stub += 1
+            body.append(f'    REX_TRACE_OUT("{label}");')
             body.append("}")
         body.append("")
 
@@ -585,7 +625,25 @@ def _imports_cpp(name, thunks):
              f"//   {n_vd} route to our native xe_gpu (Vd*), {n_host} use our host impls,",
              f"//   {n_stub} are log-once stubs (no implementation yet).",
              "// Each is the recompiled-ABI function the game invokes (args in ctx.r3, ...).",
+             "// REX_TRACE_IMPORTS=1 in the environment prints every call: its first four arguments,",
+             "// where it was called from, and what it returned.",
              "// ==========================================================================",
+             "",
+             "static bool rex_trace_imports() {",
+             '    static const bool on = std::getenv("REX_TRACE_IMPORTS") != nullptr;',
+             "    return on;",
+             "}",
+             "static inline uint32_t rex_trace_peek(uint8_t* base, uint32_t a) {  // (an out-argument,",
+             "    if (a < 0x70000000u || a >= 0x80000000u) return 0xFFFFFFFFu;     //  when it is on the",
+             "    return PPC_LOAD_U32(a);                                          //  guest stack)",
+             "}",
+             "#define REX_TRACE_IN(n) const uint32_t _a0 = ctx.r3.u32, _a1 = ctx.r4.u32; \\",
+             "    do { if (rex_trace_imports()) std::fprintf(stderr, \\",
+             '    "[call] %s(%08X, %08X, %08X, %08X) from %08X\\n", n, ctx.r3.u32, ctx.r4.u32, \\',
+             "    ctx.r5.u32, ctx.r6.u32, (uint32_t)ctx.lr); } while (0)",
+             "#define REX_TRACE_OUT(n) do { if (rex_trace_imports()) \\",
+             '    std::fprintf(stderr, "[ret ] %s -> %08X  (*a0=%08X *a1=%08X)\\n", n, ctx.r3.u32, \\',
+             "        rex_trace_peek(base, _a0), rex_trace_peek(base, _a1)); } while (0)",
              ""]
     if imp_externs:
         lines.append("// Real RexGlue kernel exports (linked from kernel/rex_kernel). Calling")
@@ -634,15 +692,22 @@ extern "C" void ppc_call_indirect(PPCContext& ctx, uint8_t* base, uint32_t addr)
 // ============================================================================
 #include <rex/runtime.h>
 #include <rex/kernel/crt/heap.h>
+#include <rex/kernel/init.h>
 #include <rex/system/xthread.h>
 
 int main() {{
+    // unbuffered: what the runtime and the kernel say is still there when the title crashes
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
     // our native GPU; the guest drives it through the Vd* shims
     xe_gpu::IGpuBackend* backend = xe_gpu::CreateD3D12Backend();
     backend->Initialize(1280, 720);
 
     rex::Runtime runtime(".", ".", ".");
     rex::RuntimeConfig config{{}};             // our own GPU/audio/input (Vd* -> xe_gpu)
+    // the kernel modules (xboxkrnl, xam) and xam's apps: their exports, and the kernel variables
+    // the loader writes into the title's import slots (XexExecutableModuleHandle ...)
+    config.kernel_init = rex::kernel::InitializeKernel;
     if (runtime.Setup((uint32_t)PPC_IMAGE_BASE, (uint32_t)PPC_IMAGE_SIZE,
                       (uint32_t)PPC_IMAGE_BASE, (uint32_t)PPC_IMAGE_SIZE,
                       PPCFuncMappings, std::move(config)) != 0) {{   /* X_STATUS_SUCCESS */

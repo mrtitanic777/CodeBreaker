@@ -30,6 +30,7 @@ table of function pointers by guest address; a `bctr` through a jump table becom
 (jumptable.py). An instruction no builder translates becomes `PPC_UNIMPLEMENTED("...")`: a trap
 at run time, never a wrong translation. VMX128 is decoded by codebreaker/decompile/vmx128.py.
 """
+import bisect
 import os
 import re
 import subprocess
@@ -971,10 +972,32 @@ def recompile_image(path, limit=None, jobs=None, skip=None, extra=None):
     funcs, _sources, image = discover.discover(path, extra=extra)
     img, base, _entry, _sections = disassemble.image(path)
     addrs = sorted(funcs)
+
+    def to_end(va):
+        """Bytes from `va` through its first blr / bctr / plain branch. A function with no .pdata
+        length runs at least that far: the register save and restore runs have an entry every
+        word (__savegprlr_14, _15 ...), so the gap to the next start is a single instruction, but
+        each entry runs on to the run's end."""
+        off = va - base
+        for k in range(off, min(len(img), off + 0x4000) - 3, 4):
+            w = int.from_bytes(img[k:k + 4], "big")
+            if w in (0x4E800020, 0x4E800420) or (w >> 26 == 18 and not w & 1):
+                return k + 4 - off
+        return 0x100
+
+    def size_of(va, nxt):
+        gap = min((nxt - va) if nxt else 0x100, 0x4000)
+        return max(gap, to_end(va)) if gap <= 0x40 else gap
+    # a function with no .pdata length runs to the next start; the import thunks are starts too
+    # (a static initializer just before the thunk table would otherwise take the table in)
+    bounds = sorted(set(addrs) | set(image.imports))
+
+    def next_start(va):
+        i = bisect.bisect_right(bounds, va)
+        return bounds[i] if i < len(bounds) else None
     sizes = {}
-    for i, va in enumerate(addrs):
-        s = funcs[va] or min((addrs[i + 1] - va) if i + 1 < len(addrs) else 0x100, 0x4000)
-        sizes[va] = s
+    for va in addrs:
+        sizes[va] = funcs[va] or size_of(va, next_start(va))
     chosen = addrs[:limit] if limit else addrs
     emit_addrs = [a for a in chosen if a not in skip]
     code_lo = addrs[0] if addrs else base
@@ -1001,10 +1024,9 @@ def recompile_image(path, limit=None, jobs=None, skip=None, extra=None):
             missing = sorted(a for a in called if a not in results and a not in skip and lo <= a < hi
                              and a not in image.imports) if not limit else []
             if missing:
-                starts = sorted(set(addrs) | set(results) | set(missing))
+                bounds = sorted(set(bounds) | set(results) | set(missing))
                 for a in missing:
-                    i = starts.index(a)
-                    sizes[a] = min((starts[i + 1] - a) if i + 1 < len(starts) else 0x100, 0x4000)
+                    sizes[a] = size_of(a, next_start(a))
                 chosen = sorted(set(chosen) | set(missing))
             pending, rounds = missing, rounds + 1
     all_called, parts = set(), []
