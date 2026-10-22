@@ -1,11 +1,11 @@
-// idc_boilerplate.h - fixed text of xextool's -i IDC output, extracted
-// verbatim from a reference run (LF here; the emitter writes CRLF).
+// idc_boilerplate.h - the fixed text of the `idc` output (LF here; the
+// emitter writes CRLF).
 // Runtime-generated: SetupSections, SetupResources, setupImports_*,
 // SetupImports, SetupExports. Everything else is this, byte-for-byte.
 #pragma once
 
 static const char kIdcHead[] = R"IDC(//
-// Xbox360 Basefile Info - Created by XexTool
+// Xbox360 Basefile Info - Created by CodeBreaker
 //
 
 #include <idc.idc>

@@ -22,7 +22,6 @@ Third-party open-source code in this repository, each under its own license:
 Third-party runtime dependency (not distributed here; installed separately):
   - Capstone disassembly framework (BSD-3-Clause) — https://www.capstone-engine.org
 
-By the same author, under the MIT License, with their histories part of this
-repository's:
-  - codebreaker/java   began as J2CTool (codebreaker/java/LICENSE)
-  - native/xex         began as XexTool-RE (native/xex/LICENSE)
+By the same author, under the MIT License:
+  - codebreaker/java   the Java transpiler (codebreaker/java/LICENSE)
+  - native/xex         the XEX engine (native/xex/LICENSE)

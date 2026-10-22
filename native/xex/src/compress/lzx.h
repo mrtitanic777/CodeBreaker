@@ -20,8 +20,8 @@ std::vector<uint8_t> lzx_decompress(const uint8_t* in, size_t in_size,
                                     size_t ref_len = 0);
 
 // Compress `in` into a continuous LZX bitstream (block/SHA framing NOT applied).
-// Byte-for-byte reproduction of xorloser's xextool encoder. window_size is the
-// LZX window (xextool uses 0x8000); e8_filesize enables Intel-E8 translation
+// The deterministic optimal-parse encoder (lzx_encode.cpp). window_size is the
+// LZX window (XEX uses 0x8000); e8_filesize enables Intel-E8 translation
 // when non-zero (0 = disabled, as XEX game basefiles use).
 std::vector<uint8_t> lzx_compress(const uint8_t* in, size_t in_size,
                                   uint32_t window_size, uint32_t e8_filesize);

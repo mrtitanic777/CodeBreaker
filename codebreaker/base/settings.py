@@ -21,6 +21,7 @@ and are named in one file, `settings.json` at the top of the checkout:
     xenix_c         folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools)
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
     ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
+    xex_bin         folder of the Xbox 360 executable reader, xex.exe (default: native/xex/build/bin)
     java            a `java` executable (JRE/JDK 8+), for decompiling a jar   (default: JAVA_HOME, PATH)
     retromcp        the RetroMCP CLI jar (RetroMCP-Java + Vineflower) that turns a Minecraft version
                     into Java source
@@ -53,12 +54,13 @@ DEFAULTS = {
     "openwatcom": "",
     "decompiler_bin": os.path.join("native", "decompiler", "build", "bin"),
     "ghidra_core": os.path.join("native", "ghidra_core", "build", "bin"),
+    "xex_bin": os.path.join("native", "xex", "build", "bin"),
     "state": "state",
     "target": "win95",
     "threads": "1",                    # functions the native decompiler analyses at once (CB_THREADS)
     "struct_recovery": "32",           # structures from field accesses: off, 32 (32-bit x86 only), all
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs")
 _loaded = None
 

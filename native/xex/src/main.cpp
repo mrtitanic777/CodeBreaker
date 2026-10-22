@@ -1,9 +1,8 @@
-// main.cpp - XexTool-RE command line entry point.
+// main.cpp - the xex program: CodeBreaker's Xbox 360 executable reader and converter,
+// run as `codebreaker xex <command>` (codebreaker/formats/xex.py).
 //
-// A clean-room, modernized rebuild of xorloser's XexTool (2006-2011). This is
-// the foundation: file loading, XEX2 parsing, and the `info` command. Crypto
-// (AES/SHA-1/RSA), compression (LZX), patching and extraction land on top of
-// this same parsed model.
+// File loading, XEX2 parsing and `info` are the foundation; crypto (AES/SHA-1/RSA), compression (LZX), patching and
+// extraction sit on the same parsed model.
 #include "xex_file.h"
 #include "info.h"
 #include "basefile.h"
@@ -22,13 +21,13 @@
 
 namespace {
 
-const char* kVersion = "XexTool-RE 1.0.0";
+const char* kVersion = "codebreaker xex 1.0.0";
 
 void usage() {
     std::printf(
-        "%s - a modern, open rebuild of XexTool\n"
+        "%s - Xbox 360 executables\n"
         "\n"
-        "Usage:  xextool-re <command> <file.xex> [args]\n"
+        "Usage:  codebreaker xex <command> <file.xex> [args]\n"
         "\n"
         "Commands:\n"
         "  info      <file.xex>          summary info\n"
@@ -68,7 +67,7 @@ int run_selftest(); // selftest.cpp
 int main(int argc, char** argv) {
     if (argc >= 2 && std::string(argv[1]) == "selftest") return run_selftest();
 
-    // patch <base.xex> <patch.xexp> <out.xex>  (the original's -p/-u)
+    // patch <base.xex> <patch.xexp> <out.xex>
     if (argc >= 2 && (std::string(argv[1]) == "patch" || std::string(argv[1]) == "-p")) {
         if (argc < 5) { std::fprintf(stderr, "usage: patch <base.xex> <patch.xexp> <out.xex>\n"); return 1; }
         std::vector<uint8_t> baseBytes, patchBytes;

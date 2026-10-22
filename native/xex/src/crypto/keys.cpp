@@ -1,9 +1,8 @@
-// keys.cpp - key material recovered from the original XexTool binary.
+// keys.cpp - the Xbox 360 key material the XEX engine needs.
 //
 // These are well-known, publicly-documented Xbox 360 constants (the retail
 // AES title-key-wrap key and Microsoft/devkit RSA signature public keys).
-// Embedded so the rebuild reaches functional parity with the original for
-// research and preservation. Generated from the unpacked binary; do not edit.
+// Embedded for research and preservation. Generated; do not edit.
 #include "keys.h"
 
 namespace xex::crypto {

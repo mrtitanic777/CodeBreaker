@@ -16,7 +16,7 @@ static std::string format_filetime(uint32_t t) {
     static const char* wd[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
     static const char* mo[] = {"Jan","Feb","Mar","Apr","May","Jun",
                                "Jul","Aug","Sep","Oct","Nov","Dec"};
-    // The original tool renders the timestamp in local time; match that.
+    // The timestamp is rendered in local time.
     time_t tt = (time_t)t;
     std::tm g{};
 #if defined(_WIN32)
@@ -111,8 +111,7 @@ void print_info(const XexFile& x, bool extended) {
     print_media(x.security().allowed_media);
 
     std::printf("\nMedia Id \n");        hexline(x.security().media_id);
-    // For a non-encrypted xex there is no effective key; the original shows
-    // zeros. (Once the AES layer lands this will show the decrypted key.)
+    // For a non-encrypted xex there is no effective key: zeros are shown.
     std::printf("\nEncryption Key \n");
     if (x.is_encrypted()) hexline(x.security().aes_key);
     else                  hexline(std::vector<uint8_t>(16, 0));

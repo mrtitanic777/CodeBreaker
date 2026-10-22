@@ -37,6 +37,8 @@
     versions <module> --from A --to B   match the functions of two builds: identical, changed, added, removed
     fonts FILE [--show TEXT]        list and draw the raster fonts in a .FON/.FNT
     info <file-or-module>           what an executable is and holds (headers, imports, exports, resources)
+    xex <command> <file.xex> ...    an Xbox 360 executable: info, list, extract the basefile, convert,
+                                    patch, re-sign (any command takes a .xex: it is read as its basefile)
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
     progress [--once] [--window]    watch a running sweep
@@ -92,6 +94,7 @@ COMMANDS = {
     "versions": ("codebreaker.compare.versions", []),
     "fonts": ("codebreaker.formats.fonts", []),
     "info": ("codebreaker.formats.inspect", []),
+    "xex": ("codebreaker.formats.xex", []),
     "coverage": ("codebreaker.coverage.ledger", []),
     "serve": ("codebreaker.ui.server", []),
     "progress": ("codebreaker.ui.progress", []),

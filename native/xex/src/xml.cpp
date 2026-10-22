@@ -1,6 +1,6 @@
-// xml.cpp - machine-readable XML output (the original's -x mode).
+// xml.cpp - machine-readable XML output (`xml`).
 //
-// Mirrors the original's <XexInfo> schema so the tool can be driven from other
+// The <XexInfo> schema, so the engine can be driven from other
 // programs. Parse-only (no decryption), so it's fast.
 #include "xml.h"
 #include "basefile.h"

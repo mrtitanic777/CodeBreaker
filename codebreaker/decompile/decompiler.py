@@ -422,7 +422,7 @@ def main(argv):
         print(main.__doc__)
         return 2
     from codebreaker.base import corpus
-    path = argv[0] if os.path.isfile(argv[0]) else corpus.retail(argv[0])
+    path = corpus.retail(argv[0])
     if not path:
         raise SystemExit("no module %r" % argv[0])
     try:

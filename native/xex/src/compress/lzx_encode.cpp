@@ -1,20 +1,18 @@
-// lzx_encode.cpp - faithful transliteration of xextool's MS-LZX compressor.
+// lzx_encode.cpp - the MS-LZX compressor (optimal parse, deterministic).
 //
-// MODEL: the original keeps a 0x4350-byte context struct plus several heap
+// MODEL: the encoder keeps a 0x4350-byte context struct plus several heap
 // buffers, storing raw 32-bit pointers inside the struct and doing biased
 // pointer arithmetic. To remain byte-exact yet portable to 64-bit we place the
 // context and every buffer in ONE arena and represent each "pointer" as a
 // 32-bit signed byte-offset into it. A dereference `*(T*)(slot + idx)` becomes
-// `*(T*)(A + (int32_t)slot + idx)`, which reproduces the original's flat 32-bit
+// `*(T*)(A + (int32_t)slot + idx)`, which reproduces flat 32-bit
 // address arithmetic exactly (differences/biases are identical).
 //
-// Field access mirrors the decompiler: `in_EAX[N]` (int index) == byte N*4.
-// The context base is `A` (arena.data()); functions that the decompiler showed
-// using in_EAX / unaff_ESI for the context take `A` explicitly.
+// Fields are addressed by int index: field N is byte N*4 of the context.
+// The context base is `A` (arena.data()), passed to every function explicitly.
 //
-// Derived from the original's encoder cluster (FUN_004203c0..FUN_00424dd0 in a
-// Ghidra decompile of XexTool v6.3). Verified byte-exact by compressing a 36 MB
-// Xbox 360 basefile and diffing against the original tool's `-c c` output.
+// Verified byte-exact by compressing a 36 MB Xbox 360 basefile and diffing
+// against canonical `compress` output.
 #include "lzx_encode.h"
 #include <cstring>
 #include <stdexcept>
@@ -22,18 +20,18 @@
 namespace xex::compress {
 namespace {
 
-// ---- static .rdata tables (verbatim from xextool_unpacked.exe) -------------
-// extra_bits[slot] @ VA 0x4554cc
+// ---- static tables ---------------------------------------------------------
+// extra_bits[slot]
 static const uint8_t kExtraBits[52] = {
     0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,
     13,13,14,14,15,15,16,16,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,0};
-// position_base[slot] @ VA 0x455338
+// position_base[slot]
 static const uint32_t kPosBase[51] = {
     0,1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,768,1024,1536,
     2048,3072,4096,6144,8192,12288,16384,24576,32768,49152,65536,98304,131072,
     196608,262144,393216,524288,786432,1048576,1572864,2097152,3145728,4194304,
     6291456,8388608,12582912,16777216,25165824,33554432};
-// footer_mask[slot] = (1<<extra_bits)-1 @ VA 0x455400
+// footer_mask[slot] = (1<<extra_bits)-1
 static const uint32_t kFooterMask[51] = {
     0,0,0,0,1,1,3,3,7,7,0xf,0xf,0x1f,0x1f,0x3f,0x3f,0x7f,0x7f,0xff,0xff,
     0x1ff,0x1ff,0x3ff,0x3ff,0x7ff,0x7ff,0xfff,0xfff,0x1fff,0x1fff,0x3fff,0x3fff,
@@ -44,8 +42,8 @@ static const uint32_t kFooterMask[51] = {
 static const uint8_t kDelta[33] = {
     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
     0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
-// block-split divergence tables: kSplitMag[x]=bit-length of x @0x4551d8,
-// kSplitWeight[m]=m^2 @0x455190. metric = Σ|kSplitWeight[mag(h1)]-kSplitWeight[mag(h2)]|
+// block-split divergence tables: kSplitMag[x]=bit-length of x,
+// kSplitWeight[m]=m^2. metric = Σ|kSplitWeight[mag(h1)]-kSplitWeight[mag(h2)]|
 static const uint8_t kSplitMag[256] = {
     0,1,2,2,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
     6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
@@ -66,7 +64,7 @@ static inline int16_t&  i16(uint8_t* A, size_t o){ return *reinterpret_cast<int1
 static inline uint16_t& u16(uint8_t* A, size_t o){ return *reinterpret_cast<uint16_t*>(A+o); }
 static inline uint8_t&  u8 (uint8_t* A, size_t o){ return *(A+o); }
 static inline int8_t&   i8 (uint8_t* A, size_t o){ return *reinterpret_cast<int8_t*>(A+o); }
-// int-index view: in_EAX[n] == byte n*4
+// int-index view: field n == byte n*4
 static inline int32_t&  E (uint8_t* A, size_t n){ return *reinterpret_cast<int32_t*>(A+n*4); }
 // dereference a stored offset-"pointer" at byte slot `o`, plus byte index `idx`
 static inline size_t P(uint8_t* A, size_t o, int64_t idx=0){
@@ -92,17 +90,17 @@ constexpr size_t OFF_OUTCNT   = 0x868;  // == E[0x21a]
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Canonical Huffman builder (FUN_00424e80 family). Operates on the context
+// Canonical Huffman builder. Operates on the context
 // arena `a`. Scratch fields: freq array ptr @0x9a0, node-order ptr @0x9a4,
 // lengths-out ptr @0x9a8, heap[1..] @0x9ac (1-indexed), heap size @0x252c,
 // depth @0x252e, num-symbols @0x2528, bl_count[0..16] @0x2504, tree children
 // @0xf28 (left @+0, right @+2 per node).
 namespace {
-void huff_sift(uint8_t* a, int16_t node);        // FUN_00424d00
-void huff_countdepth(uint8_t* a, int16_t node);  // FUN_00424b40
-void huff_lengths(uint8_t* a, int16_t rootNode); // FUN_00424ba0
+void huff_sift(uint8_t* a, int16_t node);
+void huff_countdepth(uint8_t* a, int16_t node);
+void huff_lengths(uint8_t* a, int16_t rootNode);
 
-// FUN_00424d00: sift node down the min-heap (keyed on freq, unsigned 16-bit).
+// sift node down the min-heap (keyed on freq, unsigned 16-bit).
 void huff_sift(uint8_t* a, int16_t param_1) {
     uint32_t fq = (uint32_t)i32(a, 0x9a0);
     int16_t sVar1 = i16(a, 0x9ac + param_1*2);
@@ -125,7 +123,7 @@ void huff_sift(uint8_t* a, int16_t param_1) {
     i16(a, 0x9ac + param_1*2) = sVar1;
 }
 
-// FUN_00424b40: recursively tally leaf depths into bl_count[].
+// recursively tally leaf depths into bl_count[].
 void huff_countdepth(uint8_t* a, int16_t node) {
     int iVar2 = node;
     if (iVar2 < i32(a, 0x2528)) {
@@ -140,7 +138,7 @@ void huff_countdepth(uint8_t* a, int16_t node) {
     u8(a, 0x252e) -= 1;
 }
 
-// FUN_00424ba0: derive code lengths from the tree, 16-bit-limited, written to
+// derive code lengths from the tree, 16-bit-limited, written to
 // the lengths-out buffer in node-order.
 void huff_lengths(uint8_t* a, int16_t rootNode) {
     for (uint32_t o = 0x2504; o <= 0x2520; o += 4) i32(a,o) = 0;
@@ -193,7 +191,7 @@ void huff_lengths(uint8_t* a, int16_t rootNode) {
     }
 }
 
-// FUN_00424f80: build the Huffman tree via repeated min-extraction.
+// build the Huffman tree via repeated min-extraction.
 void huff_treebuild(uint8_t* a, int16_t count, uint32_t freqOff, uint32_t codeOff) {
     for (int16_t s = (int16_t)(i16(a, 0x252c) >> 1); s > 0; s--) huff_sift(a, s);
     i32(a, 0x9a4) = (int32_t)codeOff;
@@ -225,7 +223,7 @@ void huff_treebuild(uint8_t* a, int16_t count, uint32_t freqOff, uint32_t codeOf
     huff_lengths(a, sVar5);
 }
 
-// FUN_00424dd0: assign canonical codes from the per-length histogram.
+// assign canonical codes from the per-length histogram.
 void huff_codes(uint8_t* a, int count, uint32_t codeOff, uint32_t lenOff) {
     int16_t nc[18]; nc[0] = 0; nc[1] = 0;
     int iVar4 = 1, p = 0x2508;
@@ -248,7 +246,7 @@ void huff_codes(uint8_t* a, int count, uint32_t codeOff, uint32_t lenOff) {
     }
 }
 
-// FUN_00424e80: entry — collect nonzero-freq symbols, build tree + codes.
+// entry — collect nonzero-freq symbols, build tree + codes.
 void huff_build(uint8_t* a, int count, uint32_t freqOff, uint32_t lenOff,
                 uint32_t codeOff, int doCodes) {
     while (true) {
@@ -282,8 +280,8 @@ void huff_build(uint8_t* a, int count, uint32_t freqOff, uint32_t lenOff,
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Binary-tree match finder (FUN_00421e60 insert / FUN_00421bb0 search /
-// FUN_00421fa0 slide-delete). [0]=window base (biased), [2]=BT head pos,
+// Binary-tree match finder (insert / search /
+// slide-delete). [0]=window base (biased), [2]=BT head pos,
 // [3]=left-child array (biased), [4]=right-child array (biased). Window byte
 // at position k = arena[[0]+k]; child[k] = arena[[3 or 4]+k*4].
 namespace {
@@ -293,7 +291,7 @@ static inline int32_t& BTL(uint8_t* a, int64_t k){ return i32(a, btL_off(a,k)); 
 static inline int32_t& BTR(uint8_t* a, int64_t k){ return i32(a, btR_off(a,k)); }
 static inline uint8_t  WIN(uint8_t* a, int64_t k){ return u8(a, (size_t)((int64_t)(int32_t)E(a,0) + k)); }
 
-// FUN_00421e60: insert position param_1 into the BT (threshold param_2).
+// insert position param_1 into the BT (threshold param_2).
 void bt_insert(uint8_t* a, int param_1, int param_2) {
     int iVar6 = E(a,2);
     E(a,2) = param_1;
@@ -337,7 +335,7 @@ void bt_insert(uint8_t* a, int param_1, int param_2) {
     }
 }
 
-// FUN_00421bb0: search the BT for matches at param_1; fill in_EAX[len+0x14]
+// search the BT for matches at param_1; fill field[len+0x14]
 // with the offset-code per length; return the best (frame-capped) length.
 int bt_search(uint8_t* a, uint32_t param_1) {
     uint32_t local_1c = (uint32_t)E(a,2);
@@ -392,7 +390,7 @@ int bt_search(uint8_t* a, uint32_t param_1) {
                 local_1c = (uint32_t)BTR(a, local_1c);
             }
         }
-        if (toC7C) {  // LAB_00421c7c: extend the match-length table, then maybe c9f
+        if (toC7C) {  // extend the match-length table, then maybe the tail
             size_t piVar4 = (size_t)(iVar2 + 0x14)*4;
             do { iVar2++; piVar4 += 4; i32(a,piVar4) = (int32_t)((param_1 - local_1c) + 2); }
             while (iVar2 < iVar3);
@@ -401,7 +399,7 @@ int bt_search(uint8_t* a, uint32_t param_1) {
                 i32(a, local_14) = BTR(a, local_1c);
                 toC9F = true;
             } else {
-                // fell through the original c7c into the iVar5<0 tail handling
+                // falls through into the iVar5<0 tail handling
                 iVar6 = local_10; local_c = iVar3; if (iVar3 <= local_10) iVar6 = iVar3;
                 i32(a, local_14) = (int32_t)local_1c;
                 local_14 = btL_off(a, local_1c);
@@ -411,7 +409,7 @@ int bt_search(uint8_t* a, uint32_t param_1) {
         if (toC9F) break;
         if (!(uVar1 < local_1c)) { i32(a,local_18)=0; i32(a,local_14)=0; break; }
     }
-    // LAB_00421d69: repeat-offset (R0/R1/R2) extension
+    // repeat-offset (R0/R1/R2) extension
     if (iVar2 < 2) return 0;
     iVar6 = 0;
     if (0 < iVar2) {
@@ -451,7 +449,7 @@ e2e:
     return iVar6;
 }
 
-// FUN_00421fa0: remove position in_EAX from the BT when it falls below thresh.
+// remove a position from the BT when it falls below thresh.
 void bt_slide_delete(uint8_t* a, uint32_t pos, uint32_t thresh) {
     size_t puVar5 = 8;                      // &[2]
     if ((uint32_t)E(a,2) != pos) return;
@@ -484,14 +482,14 @@ struct LzxEnc {
     uint8_t* A() { return arena.data(); }
 
     // ---- output callback (replaces the 0x434c / 0x10d3 function pointer) -----
-    // LAB_0041dc70: writes the segment as one XEX chunk = [2-byte BE len][data].
+    // writes the segment as one XEX chunk = [2-byte BE len][data].
     void emit(uint32_t srcOff, int n) {
         out.push_back((uint8_t)(n >> 8));
         out.push_back((uint8_t)(n & 0xff));
         if (n > 0) out.insert(out.end(), arena.begin()+srcOff, arena.begin()+srcOff+n);
     }
 
-    // ---- FUN_00422e90: flush compressed output buffer, reset bit state ------
+    // ---- flush compressed output buffer, reset bit state ------
     void flush_block() {
         uint8_t* a = A();
         if (i32(a, OFF_OUTCNT) != 0) {
@@ -506,14 +504,14 @@ struct LzxEnc {
         i32(a, OFF_BITBUF)  = 0;
     }
 
-    // ---- FUN_00422040: write `nbits` (param_1) bits of `val` (this) ---------
+    // ---- write `nbits` (param_1) bits of `val` (this) ---------
     void write_bits(uint32_t val, int8_t nbits) {
         uint8_t* a = A();
         int8_t c = (int8_t)(i8(a, OFF_BITFREE) - nbits);
         u32(a, OFF_BITBUF) |= val << ((i8(a, OFF_BITFREE) - nbits) & 0x1f);
         i8(a, OFF_BITFREE) = c;
         while (c < 0x11) {
-            if (u32(a, OFF_OUTEND) <= u32(a, OFF_OUTPTR)) {  // FUN_00422040: wrap
+            if (u32(a, OFF_OUTEND) <= u32(a, OFF_OUTPTR)) {  // wrap
                 i32(a, OFF_OUTERR) = 1;
                 i32(a, OFF_OUTPTR) = i32(a, OFF_OUTBASE);
             }
@@ -527,7 +525,7 @@ struct LzxEnc {
         }
     }
 
-    // ---- FUN_00423a70: build offset->position-slot table at byte 0x45c ------
+    // ---- build offset->position-slot table at byte 0x45c ------
     void build_slot_table() {
         uint8_t* a = A();
         u8(a,0x45c)=0; u8(a,0x45d)=1; u8(a,0x45e)=2; u8(a,0x45f)=3;
@@ -541,7 +539,7 @@ struct LzxEnc {
         } while (pos < 0x400);
     }
 
-    // ---- FUN_00420ec0: per-run state + default tree lengths ----------------
+    // ---- per-run state + default tree lengths ----------------
     void init_run() {
         uint8_t* a = A();
         int32_t win = E(a,1);
@@ -581,12 +579,12 @@ struct LzxEnc {
         std::memset(a + P(a,0x4330), 0, (size_t)E(a,0x262) + 0x1101 + E(a,1)); // window
     }
 
-    // ---- FUN_00420190 + FUN_004210a0 + FUN_004220c0: allocate + init -------
+    // ---- allocate + init -------
     void setup(uint32_t window, uint32_t e8size) {
         if (window & 0x7fff) window &= 0xffff8000u;
         if ((int)window < 0x8000) window = 0x8000;
         uint32_t W = window, C = window;
-        // number of position slots (FUN_004210a0)
+        // number of position slots
         int32_t slots = 4; { uint32_t acc = 4;
             do { uint8_t eb = kExtraBits[slots]; slots++; acc += (1u << eb); } while (acc < W); }
         // arena layout
@@ -623,38 +621,38 @@ struct LzxEnc {
     }
 
     // ---- methods defined out-of-line below --------------------------------
-    void parse(int param_1);              // FUN_00420460 (optimal parse)
-    void emit_partial();                  // FUN_004203c0
-    void flush_pending(uint32_t pos);     // FUN_00420d70
-    int  block_boundary(uint32_t* pos);   // FUN_00420dc0
-    void build_emit_block();              // FUN_00421480
-    void emit_one_block(uint32_t mainLen, uint32_t offCount);  // FUN_00421320
-    int  count_tokens(uint32_t offIdx, uint32_t from, uint32_t to);  // FUN_004233e0
-    void build_codes(int doMain);         // FUN_00423170
-    void fill_default_lengths();          // FUN_004231e0
-    int  decide_aligned(uint32_t offCount);                    // FUN_00423370
-    void count_aligned(uint32_t offCount);                     // FUN_00423330
-    uint32_t cost_uncompressed();         // FUN_00422450
-    void update_repeats(uint32_t offCount);                    // FUN_00422290
-    void store_uncompressed(uint32_t outPos, uint32_t len);    // FUN_00422300
-    void emit_tokens_verbatim(uint32_t mainLen);               // FUN_00422640
-    void emit_tokens_aligned(uint32_t mainLen);                // FUN_004229d0
-    void pretree_encode(uint32_t srcLen, uint32_t count, uint32_t prevLen);  // FUN_00422f10
-    void emit_aligned_tree();             // FUN_004232e0
-    void emit_pretrees();                 // FUN_00423280
-    void find_split(uint32_t* outTok, uint32_t tokCount, uint32_t offCount, uint32_t* outOff); // FUN_00423830
-    uint32_t eval_split(uint32_t a0, uint32_t a1, uint32_t h0, uint32_t h1);  // FUN_00423500
-    void e8_translate(int len, uint32_t dstOff);               // FUN_00422180
-    int  feed_window(uint32_t destOff);   // FUN_00422100
-    void feed_chunk();                    // FUN_00420350 (per-chunk driver)
-    void chunk_flush();                   // FUN_00422e90
+    void parse(int param_1);              // optimal parse
+    void emit_partial();
+    void flush_pending(uint32_t pos);
+    int  block_boundary(uint32_t* pos);
+    void build_emit_block();
+    void emit_one_block(uint32_t mainLen, uint32_t offCount);
+    int  count_tokens(uint32_t offIdx, uint32_t from, uint32_t to);
+    void build_codes(int doMain);
+    void fill_default_lengths();
+    int  decide_aligned(uint32_t offCount);
+    void count_aligned(uint32_t offCount);
+    uint32_t cost_uncompressed();
+    void update_repeats(uint32_t offCount);
+    void store_uncompressed(uint32_t outPos, uint32_t len);
+    void emit_tokens_verbatim(uint32_t mainLen);
+    void emit_tokens_aligned(uint32_t mainLen);
+    void pretree_encode(uint32_t srcLen, uint32_t count, uint32_t prevLen);
+    void emit_aligned_tree();
+    void emit_pretrees();
+    void find_split(uint32_t* outTok, uint32_t tokCount, uint32_t offCount, uint32_t* outOff);
+    uint32_t eval_split(uint32_t a0, uint32_t a1, uint32_t h0, uint32_t h1);
+    void e8_translate(int len, uint32_t dstOff);
+    int  feed_window(uint32_t destOff);
+    void feed_chunk();                    // per-chunk driver
+    void chunk_flush();
     void out_chunk(uint32_t srcOff, int complen, int declen);  // output callback [0x10d3]
     std::vector<uint8_t> output;          // assembled compressed chunks
     std::vector<uint8_t> input;           // source basefile ([0x994]=index, [0x998]=remaining)
 };
 
 // ===== emit glue layer =====================================================
-// FUN_004233e0: accumulate token frequencies for range [from,to); offIdx is
+// accumulate token frequencies for range [from,to); offIdx is
 // the offset-buffer index at `from`. Returns decoded byte count of the range.
 int LzxEnc::count_tokens(uint32_t offIdx, uint32_t param_1, uint32_t param_3) {
     uint8_t* a = A();
@@ -688,7 +686,7 @@ int LzxEnc::count_tokens(uint32_t offIdx, uint32_t param_1, uint32_t param_3) {
     return iVar5;
 }
 
-// FUN_00423170: build the three Huffman trees from accumulated frequencies.
+// build the three Huffman trees from accumulated frequencies.
 void LzxEnc::build_codes(int doMain) {
     uint8_t* a = A();
     int n = E(a,0x21c) * 8 + 0x100;
@@ -697,7 +695,7 @@ void LzxEnc::build_codes(int doMain) {
     huff_build(a, 8,    0x42ee, 0x431e, 0x430e, 1);
 }
 
-// FUN_004231e0: fill in default code lengths for absent symbols.
+// fill in default code lengths for absent symbols.
 void LzxEnc::fill_default_lengths() {
     uint8_t* a = A();
     uint32_t uVar1 = 0;
@@ -715,7 +713,7 @@ void LzxEnc::fill_default_lengths() {
     }
 }
 
-// FUN_004203c0: refresh the adaptive cost model from accumulated tokens.
+// refresh the adaptive cost model from accumulated tokens.
 void LzxEnc::emit_partial() {
     uint8_t* a = A();
     uint32_t uVar1 = (uint32_t)E(a,9);
@@ -735,7 +733,7 @@ void LzxEnc::emit_partial() {
     }
 }
 
-// FUN_00420d70: emit one block from the pending token buffer.
+// emit one block from the pending token buffer.
 void LzxEnc::flush_pending(uint32_t pos) {
     uint8_t* a = A();
     u8(a,0x97d) = 0;
@@ -746,7 +744,7 @@ void LzxEnc::flush_pending(uint32_t pos) {
     else E(a,0x94c) = E(a,9) + 0x1000;
 }
 
-// FUN_00420dc0: decide an adaptive block boundary; reset stats and rewind.
+// decide an adaptive block boundary; reset stats and rewind.
 int LzxEnc::block_boundary(uint32_t* param_1) {
     uint8_t* a = A();
     uint32_t uVar1 = (uint32_t)E(a,1);
@@ -773,7 +771,7 @@ int LzxEnc::block_boundary(uint32_t* param_1) {
     return 1;
 }
 
-// FUN_00421480: split the pending buffer, emit the first block, keep the rest.
+// split the pending buffer, emit the first block, keep the rest.
 void LzxEnc::build_emit_block() {
     uint8_t* a = A();
     u8(a,0x97d) = 0;
@@ -798,7 +796,7 @@ void LzxEnc::build_emit_block() {
     fill_default_lengths();
 }
 
-// FUN_00421320: emit a single LZX block (choose verbatim/aligned/uncompressed).
+// emit a single LZX block (choose verbatim/aligned/uncompressed).
 void LzxEnc::emit_one_block(uint32_t param_1, uint32_t param_2) {
     uint8_t* a = A();
     std::memset(a + 0x28f8, 0, (size_t)(E(a,0x21c) + 0x20) * 0x10);
@@ -847,7 +845,7 @@ static inline uint8_t delta_sym(uint8_t* a, uint32_t prevOff, uint32_t curOff, u
 }
 
 // ===== block-type / repeat-offset / pretree subsystem ======================
-// FUN_00423330: tally aligned-tree (low-3-bit) frequencies over the offsets.
+// tally aligned-tree (low-3-bit) frequencies over the offsets.
 void LzxEnc::count_aligned(uint32_t offCount) {
     uint8_t* a = A();
     uint32_t off = P(a,0x2c);
@@ -862,7 +860,7 @@ void LzxEnc::count_aligned(uint32_t offCount) {
     }
 }
 
-// FUN_00423370: choose verbatim(1) vs aligned(2) block type.
+// choose verbatim(1) vs aligned(2) block type.
 int LzxEnc::decide_aligned(uint32_t param_3) {
     uint8_t* a = A();
     i16(a,0x42ee)=0; i16(a,0x42f0)=0;
@@ -881,7 +879,7 @@ int LzxEnc::decide_aligned(uint32_t param_3) {
     return iVar2;
 }
 
-// FUN_00422f10: pretree-encode one tree's code lengths (RLE + delta vs prev).
+// pretree-encode one tree's code lengths (RLE + delta vs prev).
 void LzxEnc::pretree_encode(uint32_t srcLen, uint32_t count, uint32_t prevLen) {
     uint8_t* a = A();
     const uint32_t fF = L.ptFreq, fL = L.ptLen, fC = L.ptCode;
@@ -963,7 +961,7 @@ P2_emit:
     std::memcpy(a + prevLen, a + srcLen, count);
 }
 
-// FUN_00423280: pretree-encode the main tree (split lit/match) + length tree.
+// pretree-encode the main tree (split lit/match) + length tree.
 void LzxEnc::emit_pretrees() {
     uint8_t* a = A();
     pretree_encode(0x2540, 0x100, 0x3960);
@@ -971,14 +969,14 @@ void LzxEnc::emit_pretrees() {
     pretree_encode(0x27fd, 0xf9, 0x41f4);
 }
 
-// FUN_004232e0: build + emit the aligned-offset tree (8 syms, 3 bits each).
+// build + emit the aligned-offset tree (8 syms, 3 bits each).
 void LzxEnc::emit_aligned_tree() {
     uint8_t* a = A();
     huff_build(a, 8, 0x42ee, 0x431e, 0x430e, 1);
     for (int i = 0; i < 8; i++) write_bits(u8(a, 0x431e + i), 3);
 }
 
-// Output sink (xextool's [0x10d3] callback). Each 32KB-decoded chunk is stored
+// Output sink. Each 32KB-decoded chunk is stored
 // as a 2-byte big-endian compressed length followed by that many bytes.
 void LzxEnc::out_chunk(uint32_t srcOff, int complen, int declen) {
     uint8_t* a = A();
@@ -988,7 +986,7 @@ void LzxEnc::out_chunk(uint32_t srcOff, int complen, int declen) {
     output.insert(output.end(), a + srcOff, a + srcOff + complen);
 }
 
-// FUN_00420350: per-chunk driver — feed window, optionally E8-translate, parse.
+// per-chunk driver — feed window, optionally E8-translate, parse.
 void LzxEnc::feed_chunk() {
     uint8_t* a = A();
     int iVar1 = E(a,0x10cc);
@@ -1004,7 +1002,7 @@ void LzxEnc::feed_chunk() {
     }
 }
 
-// FUN_00422100: copy the next ≤0x8000 input bytes into the window at destOff.
+// copy the next ≤0x8000 input bytes into the window at destOff.
 int LzxEnc::feed_window(uint32_t destOff) {
     uint8_t* a = A();
     uint32_t sz = (uint32_t)i32(a,0x998);
@@ -1021,7 +1019,7 @@ int LzxEnc::feed_window(uint32_t destOff) {
     return (int)sz;
 }
 
-// FUN_00422180: Intel-E8 call translation at compress time (operand → relative).
+// Intel-E8 call translation at compress time (operand → relative).
 void LzxEnc::e8_translate(int param_2, uint32_t param_3) {
     uint8_t* a = A();
     if (6 < param_2) {
@@ -1055,7 +1053,7 @@ void LzxEnc::e8_translate(int param_2, uint32_t param_3) {
     }
 }
 
-// FUN_00423500: histogram divergence between two 0x400-token windows.
+// histogram divergence between two 0x400-token windows.
 uint32_t LzxEnc::eval_split(uint32_t param_2, uint32_t param_3, uint32_t param_4, uint32_t param_5) {
     uint8_t* a = A();
     int iVar2 = E(a,0x21c) + 0x20;
@@ -1100,7 +1098,7 @@ uint32_t LzxEnc::eval_split(uint32_t param_2, uint32_t param_3, uint32_t param_4
     return edi;
 }
 
-// FUN_00423830: find an entropy-based block split point in the token stream.
+// find an entropy-based block split point in the token stream.
 void LzxEnc::find_split(uint32_t* outTok, uint32_t param_2, uint32_t param_3, uint32_t* outOff) {
     uint8_t* a = A();
     *outTok = param_2;
@@ -1152,7 +1150,7 @@ void LzxEnc::find_split(uint32_t* outTok, uint32_t param_2, uint32_t param_3, ui
     }
 }
 
-// FUN_00422e90: pad + ship the current 32KB chunk through the output sink.
+// pad + ship the current 32KB chunk through the output sink.
 void LzxEnc::chunk_flush() {
     uint8_t* a = A();
     if (i32(a,0x868) != 0) {
@@ -1167,7 +1165,7 @@ void LzxEnc::chunk_flush() {
     i32(a,0x14) = 0;
 }
 
-// FUN_00422290: replay repeat-offset (R0/R1/R2 @0x38) state across the block.
+// replay repeat-offset (R0/R1/R2 @0x38) state across the block.
 void LzxEnc::update_repeats(uint32_t offCount) {
     uint8_t* a = A();
     int unaff_EDI = (int)offCount;
@@ -1200,7 +1198,7 @@ done:
     }
 }
 
-// FUN_00422300: emit an uncompressed block (aligned, R0/R1/R2 header, raw bytes).
+// emit an uncompressed block (aligned, R0/R1/R2 header, raw bytes).
 void LzxEnc::store_uncompressed(uint32_t param_1, uint32_t param_2) {
     uint8_t* a = A();
     write_bits(0, (int8_t)((char)i8(a,0x18) - 0x10));
@@ -1237,7 +1235,7 @@ void LzxEnc::store_uncompressed(uint32_t param_1, uint32_t param_2) {
     u8(a,0x18) = 0x20;
 }
 
-// FUN_00422450: estimate compressed cost (bytes) of the block under cur trees.
+// estimate compressed cost (bytes) of the block under cur trees.
 uint32_t LzxEnc::cost_uncompressed() {
     uint8_t* a = A();
     int iVar6 = 0, iVar5 = 0x4b0, local_8 = 0, local_c = 0;
@@ -1280,7 +1278,7 @@ uint32_t LzxEnc::cost_uncompressed() {
     return (uint32_t)(iVar5 + iVar7 + iVar6 + 7) >> 3;
 }
 
-// FUN_00422640: emit the token bitstream for a verbatim block.
+// emit the token bitstream for a verbatim block.
 void LzxEnc::emit_tokens_verbatim(uint32_t param_1) {
     uint8_t* a = A();
     uint32_t uVar7 = 0;
@@ -1313,7 +1311,7 @@ void LzxEnc::emit_tokens_verbatim(uint32_t param_1) {
     }
 }
 
-// FUN_004229d0: emit the token bitstream for an aligned-offset block.
+// emit the token bitstream for an aligned-offset block.
 void LzxEnc::emit_tokens_aligned(uint32_t param_1) {
     uint8_t* a = A();
     uint32_t local_10 = 0;
@@ -1353,7 +1351,7 @@ void LzxEnc::emit_tokens_aligned(uint32_t param_1) {
     }
 }
 
-// ===== FUN_00420460: cost-optimal forward parse =============================
+// ===== cost-optimal forward parse =============================
 void LzxEnc::parse(int param_1) {
     uint8_t* a = A();
     const int64_t NB = (int32_t)E(a, 0x94f);            // parse-node array base
@@ -1430,7 +1428,7 @@ LAB_530:
         uVar7 = 2;
         if (1 < uVar2) {
             iVar6 = 0x30;
-            local_2c = 0x16 * 4;                        // &in_EAX[0x16] as byte off
+            local_2c = 0x16 * 4;                        // &field[0x16] as byte off
             do {
                 uVar8u = (uint32_t)i32(a, local_2c);
                 bVar1 = (uint8_t)off_slot(a, uVar8u);
@@ -1603,7 +1601,7 @@ LAB_9e0:
         uVar10 = local_30;
         if ((uint32_t)(E(a,0x262) + E(a,1)) <=
             (uint32_t)((int32_t)E(a,0) - E(a,0x10cc) + (int32_t)local_30)) {
-            // (*in_EAX - in_EAX[0x10cc]) + local_30
+            // (field[0] - field[0x10cc]) + local_30
             if (u8(a,0x97d) != 0) {
                 int r = block_boundary(&local_30); uVar10 = local_30;
                 if (r != 0) goto LAB_520;
@@ -1629,8 +1627,8 @@ LAB_9e0:
     goto LAB_520;
 }
 
-// Top-level: compress `in` into a continuous LZX bitstream (FUN_0041dcc0 loop
-// + FUN_00414850 finalize). The SHA-1 block-wrapping is applied by the caller.
+// Top-level: compress `in` into a continuous LZX bitstream (per-chunk loop
+// + finalize). The SHA-1 block-wrapping is applied by the caller.
 std::vector<uint8_t> lzx_compress(const uint8_t* in, size_t in_size,
                                   uint32_t window_size, uint32_t e8_filesize) {
     LzxEnc enc;
@@ -1640,11 +1638,11 @@ std::vector<uint8_t> lzx_compress(const uint8_t* in, size_t in_size,
     enc.input.assign(in, in + in_size);
     i32(a, 0x994) = 0;
     i32(a, 0x998) = (int32_t)in_size;
-    while (i32(a, 0x998) > 0) {                 // FUN_0041dcc0 per-chunk loop
+    while (i32(a, 0x998) > 0) {                 // per-chunk loop
         enc.feed_chunk();
         if (i32(a, 0x1c) == 0) { enc.build_codes(0); enc.fill_default_lengths(); }
     }
-    while (i32(a, 0x24) != 0) enc.build_emit_block();   // FUN_00414850 finalize
+    while (i32(a, 0x24) != 0) enc.build_emit_block();   // finalize
     enc.chunk_flush();
     return std::move(enc.output);
 }

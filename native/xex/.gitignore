@@ -12,12 +12,9 @@
 
 # ===========================================================================
 # Reverse-engineering workspace — not redistributable
-# The original XexTool binary, its disassembly/decompilation, and any keys
-# recovered from it. See README "Provenance".
+# Private reverse-engineering workspace, reference binaries and any keys.
 # ===========================================================================
 _re/
-xextool.exe
-xextool_unpacked.exe
 ghidra_*/
 ghidra_*.txt
 ghidra_*.log

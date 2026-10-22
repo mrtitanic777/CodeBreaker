@@ -2,7 +2,7 @@
 //
 // Ported from the documented algorithm in Xenia / XenonRecomp
 // (xex_patcher.cpp), using this project's own LZX, AES and SHA-1. Produces a
-// decrypted, uncompressed standalone XEX (the original tool's -u behavior).
+// decrypted, uncompressed standalone XEX.
 #include "patch.h"
 #include "compress/lzx.h"
 #include "crypto/aes.h"

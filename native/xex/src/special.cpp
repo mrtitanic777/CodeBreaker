@@ -1,14 +1,13 @@
-// special.cpp - xex-specific "special" patches (the original's -s).
+// special.cpp - xex-specific "special" patches (`special`).
 //
-// These are hardcoded, per-system-file code patches. xextool picks the patch set
+// These are hardcoded, per-system-file code patches. The patch set is picked
 // from the execution-id's TitleID: system files carry TitleID == 0 and are then
 // matched by PE name, so xam.xex ("xamd.dll") and xbdm.xex ("xbdm.dll") each get
 // their own set and every real title gets none.
 //
 // The patches themselves are pattern searches over the decompressed image, not
 // fixed offsets -- which is how they survive across builds of the same file. The
-// replacement code is not stored in xextool's binary as data; it is built on the
-// stack at runtime, which is why searching the binary for it finds nothing.
+// replacement code is built here at run time rather than stored as data.
 #include "special.h"
 #include "basefile.h"
 #include "convert.h"
@@ -76,7 +75,7 @@ bool xam_load_xex(std::vector<uint8_t>& img) {
 // -s 2: allow unauthenticated kinect hw usage. A masked search for the check,
 // then flip the guarding conditional branch (`40 80 ....` = bne/bge) into an
 // unconditional one (`48 00 ....`). NB xam 17489 does not contain this pattern
-// -- xextool itself reports "error patching" there.
+// -- it reports "error patching" there.
 bool xam_kinect(std::vector<uint8_t>& img) {
     static const uint32_t kMask[5]  = {0xffffffff,0xfffff001,0xfc000001,0xffffffff,0xfffff000};
     static const uint32_t kPatA[5]  = {0x38600008,0x4bfffcb0,0x4bffeac9,0x2c030000,0x40800044};
@@ -138,9 +137,9 @@ std::vector<uint8_t> apply_special_patches(const XexFile& x, uint32_t flags,
     if (!done) return x.raw();
 
     // The image lives inside the XEX, so the file has to be rebuilt around it:
-    // re-serialize in the source's format and re-sign. That is exactly what the
-    // original does -- which is why `-s` on an MS-compressed file like xam grows
-    // it (3190784 -> 3368960): xextool recompresses with its own encoder.
+    // re-serialize in the source's format and re-sign -- which is why `special`
+    // on an MS-compressed file like xam grows it (3190784 -> 3368960): it is
+    // recompressed with our own encoder.
     return reserialize_with_image(x, image);
 }
 

@@ -1,4 +1,4 @@
-// Verify the C++ devkit signer reproduces xextool's HeaderHash + signature.
+// Check the devkit signer's HeaderHash + signature against a signed sample.
 #include "../src/crypto/xex_sign.h"
 #include <cstdio>
 #include <cstdint>

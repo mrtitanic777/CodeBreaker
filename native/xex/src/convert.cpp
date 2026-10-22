@@ -32,9 +32,8 @@ std::vector<uint8_t> decompress_to_basic(const XexFile& x, bool binary,
 
     // The "basic" format stores (data_size, zero_size) runs; zero runs are not
     // written to the file. -c u segments the image so zero regions are elided;
-    // xextool decides the runs on a 32 KB granule: a granule that is entirely
-    // zero belongs to a zero run. (Verified exactly against xextool's own output
-    // on the 36 MB CoD image.) -c b instead emits a single run covering
+    // Runs are decided on a 32 KB granule: a granule that is entirely zero
+    // belongs to a zero run. (Verified exactly on the 36 MB CoD image.) -c b instead emits a single run covering
     // everything, storing the image flat.
     const size_t G = 0x8000;
     std::vector<std::pair<uint32_t, uint32_t>> runs;   // (data_size, zero_size)
@@ -58,7 +57,7 @@ std::vector<uint8_t> decompress_to_basic(const XexFile& x, bool binary,
         // last run when that run has no zero part -- otherwise the tail would sit
         // AFTER those zeros and needs its own pair. (CoD's image is an exact
         // multiple of 32 KB so it never showed this; xbdm's 0xAF000 does:
-        // xextool emits (0xA0000,0x8000) then (0x7000,0).)
+        // the canonical form is (0xA0000,0x8000) then (0x7000,0).)
         size_t tail = image.size() - ng * G;
         if (tail) {
             if (runs.back().second == 0) runs.back().first += uint32_t(tail);
@@ -116,7 +115,7 @@ std::vector<uint8_t> decompress_to_basic(const XexFile& x, bool binary,
 }
 
 // Inverse of decompress_to_basic: LZX-compress the raw image into the XEX
-// "normal" (block-framed) format. Byte-identical to xextool's -c c for the
+// "normal" (block-framed) format. The canonical `compress` output for the
 // data region + file-format-info; the RSA header signature and the security
 // info image hash are NOT recomputed here (see notes in main).
 std::vector<uint8_t> compress_to_normal(const XexFile& x, bool encrypt,
@@ -189,7 +188,7 @@ std::vector<uint8_t> compress_to_normal(const XexFile& x, bool encrypt,
         std::memcpy(&e.body[16], first_hash.data(), 20);
         e.is_blob = true;
     }
-    // -c c does NOT repack: xextool rewrites the FFI in place and leaves every
+    // `compress` does NOT repack: it rewrites the FFI in place and leaves every
     // following blob where it was (hence CoD's 0xC gap after a 0x30->0x24 shrink).
     // The exception is when the new 0x24 FFI would OVERLAP the next blob (a source
     // whose FFI was smaller, e.g. a -c b output with a 0x10 FFI): then the tail is
@@ -219,8 +218,8 @@ std::vector<uint8_t> compress_to_normal(const XexFile& x, bool encrypt,
     if (!B.ok) return x.raw();
 
     // 6. HeaderHash + signature. Sign with the devkit key only when the source
-    //    was devkit-signed; retail output gets a zeroed signature, as xextool
-    //    does. The security info is NOT always at 0x120 (it tracks the entry
+    //    was devkit-signed; retail output gets a zeroed signature (there is no
+    //    retail private key). The security info is NOT always at 0x120 (it tracks the entry
     //    count: 0xF8 for xam's 12) -- derive it, never assume.
     bool devkit = crypto::verify_devkit_sig(&B.hdr[B.sec + 8]);
     crypto::devkit_sign(B.hdr, B.data_offset, devkit, B.sec);
@@ -309,9 +308,9 @@ std::vector<uint8_t> convert_machine(const XexFile& x, bool to_devkit) {
     // -m RE-SERIALIZES the basefile through the same rebuild path as -c, then
     // re-keys and re-signs. It is NOT a header-only transform: on an
     // MS-compressed file like xam.xex, `-m d` is byte-identical to `-c c` (both
-    // sha a47ff3b1) because xextool decompresses and recompresses with its own
-    // encoder. It only LOOKS like a verbatim no-op on files that are already in
-    // xextool's exact output form (e.g. DashLaunch). The compression format is
+    // sha a47ff3b1) because the file is decompressed and recompressed with our
+    // own encoder. It only LOOKS like a verbatim no-op on files that are already
+    // in canonical form (e.g. DashLaunch). The compression format is
     // preserved: compressed stays compressed, basic stays basic.
     const bool encrypted = x.is_encrypted();
     std::vector<uint8_t> out = x.is_compressed()
@@ -327,8 +326,8 @@ std::vector<uint8_t> convert_machine(const XexFile& x, bool to_devkit) {
     // The title key itself is unchanged, so the ciphertext just written by the
     // rebuild stays valid -- only the wrapping changes to the target's KEK.
     // Re-wrap unconditionally: the stored aes_key must be valid for the TARGET
-    // machine regardless of whether the payload is currently encrypted, and
-    // xextool rewraps either way.  Guarding this on x.is_encrypted() left the
+    // machine regardless of whether the payload is currently encrypted.
+    // Guarding this on x.is_encrypted() left the
     // key wrapped under the source KEK on unencrypted files.
     {
         uint8_t title[16], wrapped[16], zero[16] = {0};
@@ -361,7 +360,7 @@ std::vector<uint8_t> set_encryption(const XexFile& x, bool encrypt) {
     if (encrypt) cipher.cbc_encrypt(data.data(), n, iv);
     else         cipher.cbc_decrypt(data.data(), n, iv);
 
-    // xextool rebuilds the header on every write, then re-signs. Only the
+    // The header is rebuilt on every write, then re-signed. Only the
     // file-format-info's encryption field changes here; its size is unaffected.
     std::vector<HeaderEntry> ents = header_entries(x);
     for (HeaderEntry& e : ents)

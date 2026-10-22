@@ -91,16 +91,18 @@ def real_import_names(path, used=()):
 def console_import_names(path, used=()):
     """{symbol: name} for a PowerPC image's imports. An image names what it imports by library
     and number only (`import0_ord_16`); the numbers of the console's system libraries are public
-    knowledge (symbols/console_ordinals.json). The image as extracted does not carry the
-    libraries' names: its first is taken to be the kernel and its second the system library,
-    which is the order every image seen has them in -- a call's arguments bear it out
-    (number 16 of the kernel takes a category, a setting, a buffer, its size and a length)."""
+    knowledge (symbols/console_ordinals.json). The libraries' names are in the .xex header, not
+    in the image: for an image read from a .xex they are taken from there (formats/xex.py). An
+    image extracted by other means is taken to have the kernel first and the system library
+    second, the order every image seen has them in -- a call's arguments bear it out (number 16
+    of the kernel takes a category, a setting, a buffer, its size and a length)."""
     import json
-    from codebreaker.formats import powerpc_image
+    from codebreaker.formats import powerpc_image, xex
     with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "symbols",
                            "console_ordinals.json"), encoding="utf-8") as f:
         table = json.load(f)
-    libraries = {0: table["xboxkrnl.exe"], 1: table["xam.xex"]}
+    names = xex.import_libraries(path) or ["xboxkrnl.exe", "xam.xex"]
+    libraries = {i: table.get(n.lower(), {}) for i, n in enumerate(names)}
     found = {}
     for symbol in set(powerpc_image.read(path).imports.values()):
         m = re.fullmatch(r"import(\d+)_ord_(\d+)", symbol)
@@ -213,7 +215,7 @@ def in_corpus(path):
 def write_module(module, verify=True, out_dir=None, log=print, split=0, build_whole=False):
     from codebreaker.source import placement
     from codebreaker.verify import reconstruct
-    path = module if (os.path.isfile(module) or os.path.isdir(module)) else corpus.retail(module)
+    path = module if os.path.isdir(module) else corpus.retail(module)
     if not path:
         raise SystemExit("no module %r in the corpus" % module)
     if os.path.isdir(path) or path.lower().endswith((".java", ".jar")):   # a Java program: its own writer

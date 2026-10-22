@@ -4,6 +4,6 @@
 
 namespace xex {
 // Print a human-readable summary of a parsed XEX. `extended` adds the static
-// libraries, imports, resources and section map (the original tool's `-l`).
+// libraries, imports, resources and section map (`list`).
 void print_info(const XexFile& x, bool extended);
 }

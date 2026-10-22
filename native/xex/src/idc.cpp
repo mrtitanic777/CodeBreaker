@@ -81,7 +81,7 @@ std::string make_idc(const XexFile& x) {
     std::vector<uint8_t> img = reconstruct_basefile(x);
     const uint32_t base = x.security().load_address;
 
-    // Resources first: xextool only emits the PE sections that live below the
+    // Resources first: only the PE sections that live below the
     // first resource (the ones above it -- .idata/.XBLD/.reloc -- are covered by
     // the resource map instead).
     const std::vector<Resource>& res = x.resources();

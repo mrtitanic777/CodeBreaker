@@ -220,8 +220,6 @@ def candidates(name):
 def resolve(name):
     """The file a module is named by: a path as it stands, otherwise the corpus's copy of that
     module name."""
-    if os.path.isfile(name):
-        return name
     found = retail(name)
     if not found:
         raise ValueError("no module %r in the corpus" % name)
@@ -230,11 +228,17 @@ def resolve(name):
 
 def retail(name):
     """THE retail binary for a module name, or None. An existing path is returned unchanged, so
-    callers can pass either a name or a path."""
+    callers can pass either a name or a path -- except an Xbox 360 .xex, which is handed over as
+    the PowerPC image inside it (formats/xex.py), as Windows 1.x boot images are."""
     if os.path.isfile(name):
-        return name
+        return _readable(name)
     c = candidates(name)
-    return c[0] if c else None
+    return _readable(c[0]) if c else None
+
+
+def _readable(path):
+    from codebreaker.formats import xex
+    return xex.basefile(path) if xex.is_xex(path) else path
 
 
 def modules(want_lane=None, exts=(".dll", ".exe", ".drv", ".ocx", ".cpl")):

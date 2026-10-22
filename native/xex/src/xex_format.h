@@ -1,6 +1,6 @@
 // xex_format.h - XEX2 on-disk format constants and small value types.
 //
-// This is a clean-room model of the Xbox 360 XEX2 container, reconstructed from
+// A model of the Xbox 360 XEX2 container, built from
 // public format documentation (Free60 / Xenia) and cross-checked byte-for-byte
 // against real files. Offsets/keys below are verified, not guessed.
 #pragma once

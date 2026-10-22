@@ -73,9 +73,9 @@ std::vector<uint8_t> add_bounding_path(const XexFile& x, const std::string& path
     const uint32_t sec_size  = get32(src, old_sec);
     if (x.find_header(kHdrBoundingPath)) return src;      // already present
 
-    // NB this does NOT use build_header: -a is a distinct path in xextool that
+    // NB this does NOT use build_header: `bounding-path` is a distinct path that
     // pads the file-format-info's END up to a 0x10 boundary (in.xex: FFI at
-    // 0x3788 + 0x30 = 0x37B8 -> next blob at 0x37C0), whereas the -c paths pack
+    // 0x3788 + 0x30 = 0x37B8 -> next blob at 0x37C0), whereas the compress paths pack
     // at exact size (xam: FFI 0x1050 + 0x24 -> next at 0x1074). It also keeps
     // the source's data_offset rather than deriving it, so a file with a wasted
     // page (xbdm) is untested here.
@@ -145,7 +145,7 @@ std::vector<uint8_t> add_bounding_path(const XexFile& x, const std::string& path
 std::vector<uint8_t> remove_limitations(const XexFile& x, const std::string& opts) {
     // -r RE-SERIALIZES the basefile like -m/-c before editing: `-r a` on xam
     // recompresses it (3190784 -> 3368960). It only looks like a pure header edit
-    // on files already in xextool's output form (in.xex re-serializes to itself).
+    // on files already in canonical form (in.xex re-serializes to itself).
     std::vector<uint8_t> ser = x.is_compressed()
                              ? compress_to_normal(x, x.is_encrypted())
                              : decompress_to_basic(x, false);
@@ -189,7 +189,7 @@ std::vector<uint8_t> remove_limitations(const XexFile& x, const std::string& opt
     // security info (xam: 12 entries -> 11, sec 0xF8 -> 0xF0) and removes a blob,
     // so the old offsets no longer describe the layout. When nothing is dropped
     // the layout must be preserved verbatim -- cc1 carries a 0xC gap after its
-    // FFI, and repacking would close it and diverge from xextool.
+    // FFI, and repacking would close it and change the file needlessly.
     HeaderBuild B = build_header(y, ents, /*repack=*/dropped);
     if (!B.ok) return x.raw();
     const size_t img = B.sec + 8 + 256;                   // image-info
@@ -213,7 +213,7 @@ std::vector<uint8_t> remove_limitations(const XexFile& x, const std::string& opt
     if (!dirty) return x.raw();                           // nothing stripped
 
     // Re-sign: devkit input gets a real devkit signature, retail gets a zeroed
-    // one (xextool has no retail private key). HeaderHash is always rebuilt.
+    // one (there is no retail private key). HeaderHash is always rebuilt.
     crypto::devkit_sign(B.hdr, B.data_offset,
                         crypto::verify_devkit_sig(&src[y.sec_info_offset() + 8]), B.sec);
     B.hdr.insert(B.hdr.end(), src.begin() + y.data_offset(), src.end());

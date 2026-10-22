@@ -50,7 +50,7 @@ line and nothing above it.
    emulator core, driven the way `emulate/` drives Unicorn.
 3. **Arcade**: ROM sets (MAME's set descriptions say which CPU and where each ROM loads) on the
    same 8/16-bit CPUs; Z80 and 68000.
-4. **Xbox and Xbox 360 completed**: XEX (from XexTool-RE) + the PowerPC already here; the
+4. **Xbox and Xbox 360 completed**: XEX (native/xex, docs/XEX.md) + the PowerPC already here; the
    original Xbox is x86 already handled -- only the XBE reader and the kernel's imports are new.
 5. **64-bit and ARM**: x86-64 PE/ELF, AArch64 ELF/Mach-O; then Android (Dalvik) and iOS.
 6. **The rest of the consoles**, family by family: MIPS (PS1, N64, PS2), SuperH (Saturn,
