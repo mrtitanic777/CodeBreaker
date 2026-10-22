@@ -362,7 +362,9 @@ class Scanner:
             inline = bctr < shape[2] < bctr + 16
             labels = []
             for i in range(4096):
-                if inline and shape[2] + shape[1] * i >= min(labels, default=0xFFFFFFFF):
+                # an inline table ends where the first case after it begins (a case may jump back before it:
+                # Up's 0x8258D3C4 table sends most entries to 0x8258D370)
+                if inline and shape[2] + shape[1] * i >= min((x for x in labels if x > shape[2]), default=0xFFFFFFFF):
                     break
                 v = table_entry(self.img, shape, i)
                 if v & 3 or not lo <= v <= hi:

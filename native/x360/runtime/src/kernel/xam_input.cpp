@@ -58,6 +58,19 @@ GUEST_IMPORT(XamInputGetState)
     ctx.r3.u64 = kErrorSuccess;
 }
 
+// DWORD XamInputSetState(DWORD UserIndex, DWORD Flags, PXINPUT_VIBRATION Vibration)
+// XINPUT_VIBRATION: wLeftMotorSpeed, wRightMotorSpeed (u16). The title's XInputSetState passes Flags =
+// XINPUT_FLAG_GAMEPAD; the motors run on the host controller behind the user.
+GUEST_IMPORT(XamInputSetState)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t user = ctx.r3.u32, vibration = ctx.r5.u32;
+    if (ctx.r4.u32 != kFlagGamepad && ctx.r4.u32 != 0)
+        Fatal("XamInputSetState: flags {:08X} not implemented (gamepad only)", ctx.r4.u32);
+    const uint16_t left = vibration ? mem.Read16(vibration) : 0, right = vibration ? mem.Read16(vibration + 2) : 0;
+    ctx.r3.u64 = input::SetVibration(user, left, right) ? kErrorSuccess : kErrorDeviceNotConnected;
+}
+
 // DWORD XamInputGetCapabilities(DWORD UserIndex, DWORD Flags, PXINPUT_CAPABILITIES Capabilities)
 // XAM 17559 (0x816F2E70): zeroes the 0x14-byte result, calls XamInputGetCapabilitiesEx(1, ...) and copies its result
 // on success. Ex (0x816F12B8): Flags 0 = 3; gamepad (1) and Big Button (8) ask the controller driver

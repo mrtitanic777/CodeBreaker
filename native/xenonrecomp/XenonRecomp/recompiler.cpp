@@ -1166,26 +1166,36 @@ bool Recompiler::Recompile(
         println("{}.u32) & ~127), 0, 128);", r(insn.operands[1]));
         break;
 
+    // The divides never trap on the console (a zero divisor, or the most negative value over -1, leaves an undefined
+    // result: 0 here, as a host divide would fault), and a word divide writes the whole register: its 32-bit quotient
+    // zero-extended, so no stale high word reaches the 64-bit operations that follow.
     case PPC_INST_DIVD:
-        println("\t{}.s64 = {}.s64 / {}.s64;", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+        println("	{}.s64 = ({}.s64 && !({}.s64 == INT64_MIN && {}.s64 == -1)) ? {}.s64 / {}.s64 : 0;", r(insn.operands[0]),
+            r(insn.operands[2]), r(insn.operands[1]), r(insn.operands[2]), r(insn.operands[1]), r(insn.operands[2]));
+        if (strchr(insn.opcode->name, '.'))
+            println("	{}.compare<int64_t>({}.s64, 0, {});", cr(0), r(insn.operands[0]), xer());
         break;
 
     case PPC_INST_DIVDU:
-        println("\t{}.u64 = {}.u64 / {}.u64;", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+        println("	{}.u64 = {}.u64 ? {}.u64 / {}.u64 : 0;", r(insn.operands[0]), r(insn.operands[2]), r(insn.operands[1]),
+            r(insn.operands[2]));
         if (strchr(insn.opcode->name, '.'))
-            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
+            println("	{}.compare<int64_t>({}.s64, 0, {});", cr(0), r(insn.operands[0]), xer());
         break;
 
     case PPC_INST_DIVW:
-        println("\t{}.s32 = {}.s32 / {}.s32;", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+        println("	{}.u64 = uint32_t(({}.s32 && !({}.s32 == INT32_MIN && {}.s32 == -1)) ? {}.s32 / {}.s32 : 0);",
+            r(insn.operands[0]), r(insn.operands[2]), r(insn.operands[1]), r(insn.operands[2]), r(insn.operands[1]),
+            r(insn.operands[2]));
         if (strchr(insn.opcode->name, '.'))
-            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
+            println("	{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
         break;
 
     case PPC_INST_DIVWU:
-        println("\t{}.u32 = {}.u32 / {}.u32;", r(insn.operands[0]), r(insn.operands[1]), r(insn.operands[2]));
+        println("	{}.u64 = uint32_t({}.u32 ? {}.u32 / {}.u32 : 0);", r(insn.operands[0]), r(insn.operands[2]),
+            r(insn.operands[1]), r(insn.operands[2]));
         if (strchr(insn.opcode->name, '.'))
-            println("\t{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
+            println("	{}.compare<int32_t>({}.s32, 0, {});", cr(0), r(insn.operands[0]), xer());
         break;
 
     case PPC_INST_EIEIO:
@@ -1329,6 +1339,18 @@ bool Recompiler::Recompile(
     case PPC_INST_FRES:
         printSetFlushMode(false);
         println("\t{}.f64 = float(1.0 / {}.f64);", f(insn.operands[0]), f(insn.operands[1]));
+        break;
+
+    // the reciprocal square root estimate, computed exactly (an estimate only needs to be within 1/32 of it); the
+    // single-precision form rounds the result to float
+    case PPC_INST_FRSQRTE:
+        printSetFlushMode(false);
+        println("\t{}.f64 = 1.0 / sqrt({}.f64);", f(insn.operands[0]), f(insn.operands[1]));
+        break;
+
+    case PPC_INST_FRSQRTES:
+        printSetFlushMode(false);
+        println("\t{}.f64 = float(1.0 / sqrt({}.f64));", f(insn.operands[0]), f(insn.operands[1]));
         break;
 
     case PPC_INST_FRSP:
@@ -3220,6 +3242,21 @@ bool Recompiler::Recompile(const Function& fn)
     if (insn.opcode == nullptr || (insn.opcode->id != PPC_INST_B && insn.opcode->id != PPC_INST_BCTR && insn.opcode->id != PPC_INST_BLR))
         fmt::println("Function at {:X} ends prematurely with instruction {} at {:X}", fn.base, insn.opcode != nullptr ? insn.opcode->name : "INVALID", base - 4);
 #endif
+
+    // A function that ends on an instruction the CPU can step past (a call, a conditional branch, anything but b,
+    // bctr or blr) continues into the function that starts right after it, as on the console: Up's 8242FFC0 tests
+    // a bitset and computes its result in the 8 bytes that were declared as the next function.
+    if (insn.opcode != nullptr && insn.opcode->id != PPC_INST_B && insn.opcode->id != PPC_INST_BCTR &&
+        insn.opcode->id != PPC_INST_BLR)
+    {
+        auto next = image.symbols.find(end);
+        if (next != image.symbols.end() && next->address == end && next->type == Symbol_Function)
+        {
+            println("\t// falls through to {}", next->name);
+            println("\t{}(ctx, base);", next->name);
+            println("\treturn;");
+        }
+    }
 
     println("}}\n");
 

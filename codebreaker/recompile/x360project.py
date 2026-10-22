@@ -56,6 +56,7 @@ def _sync(src, dst):
 def scaffold(xex_path, out_dir, name=None, title_files=None):
     """-> {"name", "dir", "functions", "switches", "unimplemented"}."""
     name = name or _name(xex_path)
+    out_dir = os.path.abspath(out_dir)  # XenonRecomp runs inside it and is given paths into it
     if name == "default":
         name = "title"
     recomp = os.path.join(out_dir, "src")

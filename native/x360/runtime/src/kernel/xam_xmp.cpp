@@ -184,6 +184,17 @@ namespace
         return kOk;
     }
 
+    // 0x7001B, XMPGetPlaybackController: {client, PDWORD Controller, PDWORD Locked}, sent with a length of 0 (Up,
+    // 0x8251B660). The controller recorded by the last 0x7001A; never locked, since no user takes the music over.
+    uint32_t GetPlaybackController(uint32_t buffer)
+    {
+        if (const uint32_t controllerPtr = Word(buffer, 1))
+            guest::g_memory.Write32(controllerPtr, g_state.playbackController);
+        if (const uint32_t lockedPtr = Word(buffer, 2))
+            guest::g_memory.Write32(lockedPtr, 0);
+        return kOk;
+    }
+
     // 0x70029, XMPGetMediaSources in the 1888 ... 2258 dashboards' XAM (0x9210E200; 17559: 0x7002B with one more
     // argument): {client, PDWORD Count, MSAL_MEDIASOURCEINFO* Sources, DWORD MaxSources}. The dash asks the count
     // first (Sources NULL). This runtime has no media library (the console's music on its hard drive, CDs, PCs), so
@@ -223,6 +234,7 @@ std::optional<uint32_t> kernel::xmp::Dispatch(uint32_t message, uint32_t buffer,
     case 0x0007000D: return CreateTitlePlaylist(buffer);
     case 0x00070013: return DeleteTitlePlaylist(buffer);
     case 0x0007001A: return SetPlaybackController(buffer);
+    case 0x0007001B: return GetPlaybackController(buffer);
     case 0x00070008: // the old numbering only (an older dashboard, CB_DASH)
         if (kernel::OlderDashVersion().empty())
             return std::nullopt;

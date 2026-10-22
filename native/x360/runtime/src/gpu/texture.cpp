@@ -105,6 +105,8 @@ namespace gpu
         case 10: case 3: case 4: case 15: return 2;      // k_8_8, k_1_5_5_5, k_5_6_5, k_4_4_4_4
         case 18: case 51: return 8;                      // DXT1: per 4x4 block
         case 19: case 20: case 52: case 53: return 16;   // DXT2_3, DXT4_5: per 4x4 block
+        case 37: return 8;                               // k_32_32_FLOAT
+        case 38: return 16;                              // k_32_32_32_32_FLOAT
         default: return 4;
         }
     }
@@ -114,7 +116,8 @@ namespace gpu
         switch (format)
         {
         case 2: case 8: case 9: return 1;
-        case 10: case 25: return 2;
+        case 10: case 25: case 37: return 2;
+        case 22: case 36: return 1;
         case 4: return 3;                                // k_5_6_5: no W
         default: return 4;
         }
@@ -122,7 +125,8 @@ namespace gpu
 
     uint32_t TextureBlockSize(uint32_t format)
     {
-        return TextureUntileKind(format) >= kUntileDxt1 ? 4 : 1;
+        const uint32_t kind = TextureUntileKind(format);
+        return kind >= kUntileDxt1 && kind <= kUntileDxt4_5 ? 4 : 1;
     }
 
     uint32_t TextureUntileKind(uint32_t format)
@@ -133,6 +137,8 @@ namespace gpu
         case 18: case 51: return kUntileDxt1;
         case 19: case 52: return kUntileDxt2_3;
         case 20: case 53: return kUntileDxt4_5;
+        case 22: return kUntileDepth24;
+        case 36: case 37: case 38: return kUntileFloat32;
         default: return kUntilePlain;
         }
     }
@@ -188,6 +194,8 @@ namespace gpu
         case 2: case 6: case 8: case 9: case 10: case 14: case 25:           // 8 / 16 bits per component
         case 3: case 4: case 15:                                             // packed 16-bit texels
         case 18: case 19: case 20: case 51: case 52: case 53:                // DXT blocks
+        case 22:                                                             // 24-bit depth, 8-bit stencil
+        case 36: case 37: case 38:                                           // 32-bit floats
             break;
         default:
             return std::format("format k_{}", TextureFormatName(f.format));
@@ -259,7 +267,9 @@ namespace gpu
             return "signed and unsigned components in one texture";
         else
             f.numbers = anySigned ? TextureNumbers::kSigned : TextureNumbers::kUnsigned;
-        if (TextureUntileKind(f.format) != kUntilePlain && f.numbers != TextureNumbers::kUnsigned)
+        if (TextureUntileKind(f.format) == kUntileFloat32)
+            f.numbers = TextureNumbers::kInteger; // floats are what they are: no sign or number format applies
+        else if (TextureUntileKind(f.format) != kUntilePlain && f.numbers != TextureNumbers::kUnsigned)
             return std::format("k_{} with signed or integer components", TextureFormatName(f.format));
         return {};
     }
@@ -365,7 +375,7 @@ cbuffer XeUntileConstants : register(b0)
     uint4 xe_un_layout;  // storage address, pitch (tiled: blocks, linear: row bytes), tiled, endian
     uint4 xe_un_rect;    // position in the packed tail (blocks), level width, height
     uint4 xe_un_format;  // log2 bytes per texel (per block), components, numbers (0 unsigned, 1 signed, 2 integer), signs
-    uint4 xe_un_kind;    // kind (0 plain, 1 packed 16-bit, 2 DXT1, 3 DXT2_3, 4 DXT4_5), packed widths (nibbles, X first)
+    uint4 xe_un_kind;    // kind (0 plain, 1 packed 16-bit, 2 DXT1, 3 DXT2_3, 4 DXT4_5, 5 depth 24_8, 6 32-bit floats), packed widths (nibbles, X first)
 };
 ByteAddressBuffer xe_memory : register(t0);
 #ifdef XE_UNTILE_FLOAT
@@ -456,7 +466,7 @@ void main(uint3 id : SV_DispatchThreadID)
     if (id.x >= xe_un_rect.z || id.y >= xe_un_rect.w)
         return;
     uint kind = xe_un_kind.x;
-    if (kind >= 2u)
+    if (kind >= 2u && kind <= 4u)
     {
         // DXT: the 4x4 block holding the texel, at its block position (the packed offset is in blocks)
         uint2 b = (id.xy >> 2) + xe_un_rect.xy;
@@ -487,6 +497,26 @@ void main(uint3 id : SV_DispatchThreadID)
         xe_untile_dest[uint3(id.xy, 0u)] = e;
         return;
     }
+#ifdef XE_UNTILE_FLOAT
+    if (kind == 5u)
+    {
+        // k_24_8: depth in the upper 24 bits (unorm), stencil in the low 8; the texture reads the depth
+        xe_untile_dest[uint3(id.xy, 0u)] = (float(texel >> 8) / 16777215.0).xxxx;
+        return;
+    }
+    if (kind == 6u)
+    {
+        // 32-bit floats, 1, 2 or 4 per texel: the words as they are (components a format lacks repeat the last)
+        uint n = xe_un_format.y;
+        float4 f;
+        f.x = asfloat(word);
+        f.y = n > 1u ? asfloat(xe_un_word(address + 4u)) : f.x;
+        f.z = n > 2u ? asfloat(xe_un_word(address + 8u)) : f.y;
+        f.w = n > 2u ? asfloat(xe_un_word(address + 12u)) : f.z;
+        xe_untile_dest[uint3(id.xy, 0u)] = f;
+        return;
+    }
+#endif
     uint components = xe_un_format.y;
     uint bits = (components == 2u && bytesLog2 == 2u) ? 16u : 8u;
     uint mask = (1u << bits) - 1u;

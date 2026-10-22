@@ -34,6 +34,7 @@ namespace gpu
 
         const char kComponents[] = "xyzw";
         constexpr uint32_t kFetchSetTextureLod = 24; // GPUTEXTUREFETCHOP (03b §3.1)
+        constexpr uint32_t kFetchGetTextureGradients = 18;
 
         // Exact power of two 2^e as a float literal (e in [-126, 127]).
         std::string PowerOfTwo(int32_t e)
@@ -521,6 +522,27 @@ namespace gpu
                 if (Bits(w1, 31, 1))
                     Line("if (s.p0 == {})", Bits(w2, 31, 1) ? "true" : "false");
                 Line("s.regLod = {}.{};", TempRef(Bits(w0, 5, 6), Bits(w0, 11, 1)), kComponents[Bits(w0, 26, 6) & 3]);
+                return;
+            }
+            if (opcode == kFetchGetTextureGradients)
+            {
+                // getGradients: the screen-space derivatives of the coordinate's first two components, (d/dx, d/dy)
+                // as (x.x, x.y, y.x, y.y) (Xenia's layout); a vertex shader has none (0). Coarse and fine are one on
+                // the hardware.
+                const std::string src = TempRef(Bits(w0, 5, 6), Bits(w0, 11, 1));
+                const uint32_t swz = Bits(w0, 26, 6);
+                if (Bits(w1, 31, 1))
+                    Line("if (s.p0 == {})", Bits(w2, 31, 1) ? "true" : "false");
+                Line("{{");
+                indent_++;
+                Line("float2 tg = float2({}.{}, {}.{});", src, kComponents[swz & 3], src, kComponents[(swz >> 2) & 3]);
+                if (vertex_)
+                    Line("float4 tf = float4(0.0, 0.0, 0.0, 0.0);");
+                else
+                    Line("float4 tf = float4(ddx_coarse(tg), ddy_coarse(tg));");
+                EmitFetchDestination(w0, w1, "tf");
+                indent_--;
+                Line("}}");
                 return;
             }
             if (opcode != 1)

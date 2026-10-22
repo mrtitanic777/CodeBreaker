@@ -54,6 +54,9 @@ namespace input
     bool GetState(uint32_t user, PadState& state, uint32_t& packetNumber);
     // ERROR_SUCCESS with an event, ERROR_EMPTY with none, ERROR_DEVICE_NOT_CONNECTED without a controller.
     uint32_t GetKeystroke(uint32_t user, Keystroke& keystroke);
+    // Rumble (0-65535 per motor) on the user's host XInput controller; false if no controller is connected for this
+    // user. Scripted and PlayStation controllers accept it and do not rumble.
+    bool SetVibration(uint32_t user, uint16_t left, uint16_t right);
 
     // Command-processor thread, after each presented frame: advances the input script and feeds an open system UI.
     void OnFrame(uint64_t frame);
