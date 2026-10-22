@@ -18,7 +18,8 @@ compared with the original function's bytes, masked at the same places:
     different     another length
 
 `--try` compiles under several sets of switches and reports, per function, the best; which set
-matches most functions says how the module was built. 32-bit Windows modules only.
+matches most functions says how the module was built. 32-bit Windows modules here; a 16-bit module
+goes to match16.py, a PowerPC image (or .xex) to match_powerpc.py.
 """
 import json
 import os
@@ -374,6 +375,7 @@ def run(module_path, flags, work, jobs=4):
 def main(argv):
     """python -m codebreaker match <module> [--flags "/O2 /Gz"] [--try] [--json FILE]"""
     from codebreaker.base import corpus, settings
+    from codebreaker.formats.pe import open_pe
     args = [a for a in argv if not a.startswith("--")]
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else FLAG_SETS[0]
     args = [a for a in args if a != flags and not a.endswith(".json")]
@@ -381,6 +383,10 @@ def main(argv):
         print(__doc__)
         return 2
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
+    if args[0].lower().endswith(".xex") or (path and corpus.lane(path) == "pe" and
+                                            open_pe(path).machine == 0x01F2):   # PowerPC: the Xbox 360 compiler
+        from codebreaker.verify import match_powerpc
+        return match_powerpc.main(argv)
     if path and corpus.lane(path) == "ne":                   # a 16-bit module: Microsoft C 6
         from codebreaker.verify import match16
         return match16.main(argv)

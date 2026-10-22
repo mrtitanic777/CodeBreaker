@@ -2,6 +2,8 @@
 // the specification against an emulator of the real processor (tools/sleigh_verify.py).
 //
 //   pcodecheck <file.sla> <mode>        mode: x86-16-real, x86-32-flat, ppc-be-64
+//   pcodecheck <file.sla> ppc-be-64-asm  disassemble: one hex instruction word per stdin line in,
+//                                        "<word> <mnemonic> <operands>" (or "<word> err ...") out
 //
 // Reads cases from stdin, one per line:
 //   <id> CS=<hex> IP=<hex> EAX=<hex> ... CF=<0|1> ... M<hex address>=<hex bytes> ...
@@ -122,6 +124,13 @@ public:
   }
 };
 
+// What printAssembly says, as one line.
+class AsmLine : public AssemblyEmit {
+public:
+  std::string text;
+  void dump(const Address &, const string &mnem, const string &body) override { text = mnem + " " + body; }
+};
+
 // Any other user operation: the case is not something the emulator can judge.
 struct Untestable {
   std::string name;
@@ -136,9 +145,11 @@ public:
 }  // namespace
 
 int main(int argc, char **argv) {
-  const std::string mode = argc == 3 ? argv[2] : "";
+  std::string mode = argc == 3 ? argv[2] : "";
+  const bool asmOnly = mode == "ppc-be-64-asm";
+  if (asmOnly) mode = "ppc-be-64";
   if (mode != "x86-16-real" && mode != "x86-32-flat" && mode != "ppc-be-64") {
-    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real|x86-32-flat|ppc-be-64   (cases on stdin)\n", argv[0]);
+    std::fprintf(stderr, "usage: %s <file.sla> x86-16-real|x86-32-flat|ppc-be-64|ppc-be-64-asm   (cases on stdin)\n", argv[0]);
     return 2;
   }
   const bool ppc = mode == "ppc-be-64";
@@ -172,6 +183,28 @@ int main(int argc, char **argv) {
   trans.getUserOpNames(userops);
 
   std::string line;
+  if (asmOnly) {
+    while (std::getline(std::cin, line)) {
+      if (line.empty()) continue;
+      uintb w = std::strtoull(line.c_str(), nullptr, 16);
+      CaseRam ram(ramspace);
+      ram.mask = 0xffffffff;
+      for (int i = 0; i < 4; ++i) ram.bytes[i] = (uint1)(w >> (24 - 8 * i));
+      image.ram = &ram;
+      std::printf("%08llx ", (unsigned long long)w);
+      try {
+        ContextInternal caseContext;
+        trans.reset(&image, &caseContext);
+        trans.initialize(store);
+        AsmLine out;
+        trans.printAssembly(out, Address(ramspace, 0));
+        std::printf("%s\n", out.text.c_str());
+      } catch (LowlevelError &e) {
+        std::printf("err %s\n", e.explain.c_str());
+      }
+    }
+    return 0;
+  }
   while (std::getline(std::cin, line)) {
     std::istringstream in(line);
     std::string id;

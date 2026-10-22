@@ -71,8 +71,9 @@ it write the selector or its zero extension). AF is not modelled (70 forms), as 
 
 ## PowerPC (2026-10-19; `tools/sleigh_verify_ppc.py`, report `state/sleigh_verify_ppc.txt`)
 
-The specification the PowerPC lane decompiles with (`ppc_64_isa_altivec_be.sla`,
-`PowerPC:BE:64:A2ALT-32addr`), on every instruction form the Xbox 360 SDK's `libcmt.lib`,
+The specification the PowerPC lane decompiled with then (`ppc_64_isa_altivec_be.sla`,
+`PowerPC:BE:64:A2ALT-32addr`; since wave A the lane uses `ppc_64_xenon_be.sla`, the same plus
+VMX128, whose decode `tests/test_vmx128.py` checks), on every instruction form the Xbox 360 SDK's `libcmt.lib`,
 `d3d9.lib` and `xapilib.lib` use (compiler output and hand-written runtime), 3 encodings x 8
 states each. `pcodecheck` mode `ppc-be-64`: big-endian memory, addresses cut to 32 bits (as the
 language truncates `ram`), code not given decodes as `nop`.

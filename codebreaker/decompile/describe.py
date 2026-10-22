@@ -24,7 +24,7 @@ import capstone  # (here, once: imported inside functions, threads of a build ra
 
 
 # language id by PE machine type
-_ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:A2ALT-32addr:homed"}
+_ARCH = {0x014C: "x86:LE:32:default:windows", 0x01F2: "PowerPC:BE:64:Xenon:homed"}
 
 
 def _ident(name):
@@ -115,7 +115,12 @@ def describe32(module_path, funcs, outdir):
     if not arch:
         raise ValueError("%s: no language for machine type %#x" % (os.path.basename(module_path), pe.machine))
     x86 = arch.startswith("x86:")
-    names = function_names(module_path, funcs) if x86 else {va: "sub_%08X" % va for va in funcs}
+    if x86:
+        names = function_names(module_path, funcs)
+    else:                                       # PowerPC: what run-time type information names
+        from codebreaker.symbols import names as known
+        own = known.powerpc_names(module_path)
+        names = {va: own[va][0] if va in own else "sub_%08X" % va for va in funcs}
     lines = ["arch\t%s" % arch]
     if not x86:
         # PowerPC: the image says where its bytes sit, which stubs are imports, and which

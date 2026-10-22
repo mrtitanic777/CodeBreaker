@@ -309,6 +309,21 @@
     <external_name tool="qemu_system" name="qemu-system-ppc64"/>
   </language>
   <language processor="PowerPC"
+            endian="big"
+            size="32"
+            variant="Xenon"
+            version="1.7"
+            slafile="ppc_64_xenon_be.sla"
+            processorspec="ppc_64.pspec"
+            manualindexfile="../manuals/PowerISA.idx"
+            id="PowerPC:BE:64:Xenon">
+    <description>Xbox 360 (Xenon): Power ISA w/Altivec and VMX128, 32-bit addressing</description>
+    <truncate_space space="ram" size="4"/>
+    <compiler name="default" spec="ppc_64_32.cspec" id="default"/>
+    <compiler name="homed arguments" spec="ppc_64_32_homed.cspec" id="homed"/>
+    <external_name tool="DWARF.register.mapping.file" name="ppc.dwarf"/>
+  </language>
+  <language processor="PowerPC"
             endian="little"
             size="32"
             variant="PowerISA-Altivec-64-32addr"

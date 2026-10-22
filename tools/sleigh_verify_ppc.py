@@ -1,6 +1,6 @@
 """The PowerPC SLEIGH specification checked against a real processor's emulator, instruction by
 instruction -- tools/sleigh_verify.py's check, for the specification the PowerPC lane decompiles
-with (languages/ppc_64_isa_altivec_be.sla, PowerPC:BE:64:A2ALT-32addr).
+with (languages/ppc_64_xenon_be.sla, PowerPC:BE:64:Xenon: Power ISA, AltiVec and VMX128).
 
     python tools/sleigh_verify_ppc.py [--per-form 3] [--states 8] [--report FILE] [LIBRARY_OR_IMAGE ...]
 
@@ -336,7 +336,7 @@ def main(argv):
     if not modules:
         raise SystemExit("no PowerPC code to sample (settings.json: powerpc_lib, or name files)")
     tool = os.path.join(ROOT, "native", "decompiler", "build", "bin", "pcodecheck.exe")
-    sla = os.path.join(ROOT, "native", "decompiler", "languages", "ppc_64_isa_altivec_be.sla")
+    sla = os.path.join(ROOT, "native", "decompiler", "languages", "ppc_64_xenon_be.sla")
     fs = forms(modules, a.per_form, a.seed)
     rng = random.Random(a.seed)
     cases = []                                   # (form, encoding, state, unicorn result)

@@ -2509,6 +2509,8 @@ define pcodeop InstructionCacheBlockLockSetX;
 	D = tmp;
 }
 
+# CodeBreaker: Power ISA 3.0, left out of the Xbox 360 language (see altivec.sinc).
+@ifndef XENON
 :maddhd D,A,B,C			is $(NOTVLE) & OP=4 & D & A & B & C & XOP_0_5=48 {
 	tmpa:16 = sext(A);
 	tmpb:16 = sext(B);
@@ -2533,6 +2535,7 @@ define pcodeop InstructionCacheBlockLockSetX;
 	D = tmpp:8;
 }
 
+@endif # XENON
 :mcrxrx CRFD			is $(NOTVLE) & OP=31 & BITS_11_22=0 & BIT_0=0 & XOP_1_10=576 & CRFD {
 	CRFD = (xer_ov << 3) | (xer_ov32 << 2) | (xer_ca << 1) | (xer_ca32);
 }

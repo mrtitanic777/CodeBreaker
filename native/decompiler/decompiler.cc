@@ -5,7 +5,7 @@
 // plain description, where the bytes go in memory and what is known for certain about the code:
 //
 //   arch   <language id>                      e.g. x86:LE:32:default:windows
-//                                                  PowerPC:BE:64:A2ALT-32addr:default
+//                                                  PowerPC:BE:64:Xenon:homed
 //   bytes  <hexVA> <file> <hexOffset> <hexSize>    these bytes of that file are at this address
 //   F      <hexVA> <name> <pop>               a function; pop = bytes of arguments it removes on
 //                                             return (x86 `ret N`), -1 when unknown/not applicable
