@@ -27,6 +27,7 @@ Each step is behind a switch for A/B runs, and is its own core change (C19, C20 
 1. **Loop exits past code** (about 450). C18 generalised: the code a loop's normal exit runs before
    the place a goto from inside also reaches goes into the loop on that exit path. Tried on a copy
    of the graph and kept only when the function's gotos drop (a region version traded gotos).
+   *Tried and dropped (2026-10-21), see below.*
 2. **Out of nested blocks, into a sibling** (about 890). For an acyclic region that will not fold:
    copy a small join block per way in (within a code-growth budget), or nest it under the combined
    condition (`if (a && !b)`, BlockCondition) when that condition can be evaluated again safely; else
@@ -36,6 +37,26 @@ Each step is behind a switch for A/B runs, and is its own core change (C19, C20 
    that flows on). A size limit: above it the goto stays.
 4. **Authentic gotos.** `goto cleanup` -- one label reached only from error paths -- is kept: the
    source is to read as written.
+
+## Phase 1 as tried: per-function trials (dropped)
+
+C18's exit test widened to a region of up to 8 blocks past a tail's exit (`exitPastRegion`), run
+only as a trial: a function that printed gotos was analysed again with the wider reading, and the
+reading with fewer gotos kept. Measured, then not merged:
+
+- golden corpus: 5,034 gotos to 5,032;
+- the open-source bench (tools/oss_bench.py, 1,346 functions): gotos the decompiler adds, 460 to
+  458; equivalent (594) and no-compile (38) unchanged.
+
+A first count said 460 to 297. It was false: the trial of lua's `luaV_execute` (169 gotos) failed,
+and the empty text, with no gotos, was kept -- the function was lost, not improved. A trial must
+fall back to the first reading when it fails, and must not run on a function whose first analysis
+is already slow (one thread's time limit ends the process).
+
+Two gotos for a second analysis of every function that has any is not worth it. The lesson for
+phases 2 and 3: choosing among readings the core already has does not move the count; the stuck
+regions have to be reshaped. And every count of fewer gotos is checked against the functions it
+comes from.
 
 ## Each step is shown safe
 
