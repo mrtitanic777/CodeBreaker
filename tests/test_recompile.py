@@ -23,7 +23,7 @@ sys.path.insert(0, ROOT)
 from codebreaker.recompile import disassemble, powerpc    # noqa: E402
 
 VA = 0x82000000
-GAME = os.path.join(ROOT, "Projects", "TetrisPC", "work", "default_unc.xex")
+GAME = os.path.join(ROOT, "Converted", "TetrisSplash", "original", "default.xex")   # (Converted/: never committed)
 RESULTS = []
 
 

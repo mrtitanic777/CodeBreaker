@@ -134,3 +134,11 @@ Keep as local reference; keep out of git.
 
 Lessons recorded as they are folded; each tool rebranded and integrated natively (not copied
 wholesale), the same standard as the XEX, NASM and RetroMCP folds.
+
+## Removed
+
+- **TetrisPC** (2026-10-22, with Logan's yes): Tetris Splash runs on CodeBreaker's own recompile
+  lane and Xbox 360 runtime (docs/RECOMPILE.md), with sound, which the earlier port never had. Kept: the
+  `bin.tort` archive reader (`codebreaker/formats/xbox/tort.py`); the game's original LIVE package
+  and XEX and its files moved into `Converted/TetrisSplash/` (not in the repo). Its earlier ports,
+  extracted copies, Ghidra project, raw audio dumps and audio diagnosis were superseded.

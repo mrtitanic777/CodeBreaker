@@ -17,7 +17,7 @@ sys.path.insert(0, ROOT)
 
 from codebreaker.recompile import config, discover, switches, xenon    # noqa: E402
 
-XEX = os.path.join(ROOT, "Projects", "TetrisPC", "work", "port", "private", "default.xex")
+XEX = os.path.join(ROOT, "Converted", "TetrisSplash", "original", "default.xex")   # (Converted/: never committed)
 
 
 def _need_game():
