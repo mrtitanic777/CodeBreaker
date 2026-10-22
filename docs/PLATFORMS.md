@@ -14,12 +14,12 @@ line and nothing above it.
 | Layer | What it is | Per platform? |
 |---|---|---|
 | Unpack | containers: tapes, disks, cartridge and arcade ROM sets, discs, XEX, ELF, PE, NE, LE, APK, IPA, Mach-O | yes: a reader in `formats/` |
-| Identify | which CPU, OS, SDK, compiler and runtime made it | yes: signatures in `symbols/` |
-| CPU front end | the instruction set as SLEIGH, lifted to p-code | yes: a processor spec in `native/decompiler` |
+| Identify | which CPU, OS, SDK, compiler and runtime made it -- and, per function, whether it was written in assembly or compiled | yes: signatures in `symbols/` |
+| CPU front end | the instruction set as SLEIGH, lifted to p-code | yes: a processor spec in `native/decompiler` (upstream Ghidra already has most: 6502, Z80, 68000, MIPS, SuperH, ARM, AArch64, 8051, AVR, PIC, Dalvik -- the work is compiling them in and checking them, not writing them) |
 | ---------------- | ---------------- | ---------------- |
 | Shared form | p-code, one intermediate code for every CPU | no |
 | Analyze and name | functions, types, structures, calls into the SDK and hardware | no (fed by the platform's names) |
-| Back to source | decompile to C/C++, compiler models, assembly source, bytecode to source | no |
+| Back to source | in the language it was written in: assembly source for hand-written code (most 8-bit, arcade and early console code), C/C++ for compiled code, source for bytecode | no |
 | Rebuild | the platform's own compilers and SDKs, or modern ones | yes: a build profile in `build/` |
 | Judge | run beside the original on a model of the platform | yes: a platform model in `emulate/` |
 
@@ -30,10 +30,12 @@ line and nothing above it.
 | x86 | 8086 - x86-64 | DOS, Windows 3.x/95, drivers | yes | yes (x86-64 spec present, unused) | Unicorn: DOS, Win16, Win32, VxD | yes |
 | PowerPC | 32/64-bit | Xbox 360 (code), PowerPC images | partly (no XEX yet) | yes | own interpreter | yes |
 | Bytecode | JVM | Java source to C++03 | n/a | n/a | the JVM | yes |
-| 8/16-bit | 6502, 65816, Z80, 68000 | Atari, NES, SNES, Sega, C64, Apple II, Spectrum, MSX, arcade | no | no | no | no |
+| 8/16-bit | 6502, 65816, Z80, SM83, 68000, SPC700 | Atari, NES, SNES, Sega, Game Boy, C64, Apple II, Spectrum, MSX, arcade | no | no | no | no |
+| x86, console | Pentium III | original Xbox (XBE) | no | yes | no (Unicorn has the CPU) | no |
 | MIPS, SuperH | R3000, R4300, R5900, SH-2, SH-4 | PS1, N64, PS2, Saturn, Dreamcast, arcade | no | no | no | no |
 | PowerPC, Cell | Gekko, Broadway, Xenon, Cell PPU/SPU | GameCube, Wii, Xbox 360, PS3 | no | PPU yes, SPU no | no | no |
-| x86-64, ARM | x86-64, ARMv7, AArch64 | PC 64-bit, Xbox One, PS4/5, phones, Switch | no | no | no | no |
+| x86-64, ARM | x86-64, ARM7/9, ARMv7, AArch64 | PC 64-bit, GBA, DS, 3DS, Xbox One, PS4/5, phones, Switch | no | no | no | no |
+| Firmware | 8051, AVR, PIC, ARM Cortex-M, Xtensa | microcontrollers, BIOS/UEFI, device firmware | no | no | no | no |
 | Bytecode | Dalvik, .NET IL, scripts | Android, .NET, Lua and others | no | no | no | no |
 
 ## Order of work
@@ -43,9 +45,13 @@ line and nothing above it.
    platform model) that every stage asks, so the next platform adds a descriptor, not branches.
 2. **One small 8-bit platform end to end** -- the proof that the seams hold: 6502 (NES or Apple II,
    with homebrew and open-source programs as ground truth, as `tools/oss_bench.py` does for C).
+   Its source is assembly that rebuilds (ca65), as for DOS and drivers; C only for cc65-built
+   programs. Unicorn has no 6502, Z80 or SuperH, so the platform model comes from an open-source
+   emulator core, driven the way `emulate/` drives Unicorn.
 3. **Arcade**: ROM sets (MAME's set descriptions say which CPU and where each ROM loads) on the
    same 8/16-bit CPUs; Z80 and 68000.
-4. **Xbox 360 completed**: XEX (from XexTool-RE) + the PowerPC already here.
+4. **Xbox and Xbox 360 completed**: XEX (from XexTool-RE) + the PowerPC already here; the
+   original Xbox is x86 already handled -- only the XBE reader and the kernel's imports are new.
 5. **64-bit and ARM**: x86-64 PE/ELF, AArch64 ELF/Mach-O; then Android (Dalvik) and iOS.
 6. **The rest of the consoles**, family by family: MIPS (PS1, N64, PS2), SuperH (Saturn,
    Dreamcast), Cell (PS3), x86-64 consoles.
