@@ -18,6 +18,8 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
+#include <set>
 #include <cstring>
 #include <format>
 #include <map>
@@ -386,6 +388,44 @@ namespace
             // XFriendsCreateEnumerator (dash 0x9288D1E8; XMsgInProcessCall(0xFC, 0x58020, context, arguments)):
             // kernel/xam_live.cpp (XAM 0x818DDF40). Here buffer / length are the two parameters.
             return kernel::FriendsCreateEnumerator(length);
+        }
+        if (app == kAppXgi && message == 0x000B0010)
+        {
+            // XSessionCreate (after XamSessionCreateHandle / XamSessionRefObjByHandle): buffer = { session object,
+            // flags, public slots, private slots, user index, XSESSION_INFO*, ULONGLONG* nonce } (28 bytes). Offline
+            // a session is local: its XSESSION_INFO (XNKID session id 8, XNADDR host address 36, XNKEY 16) gets a
+            // random id and key and a zero address (no network), the nonce a random value.
+            if (length < 28)
+                return 0x80070057;
+            const uint32_t info = mem.Read32(buffer + 0x14), nonce = mem.Read32(buffer + 0x18);
+            auto random = [] {
+                static uint64_t state = 0x9E3779B97F4A7C15ull ^ uint64_t(std::chrono::steady_clock::now().time_since_epoch().count());
+                state ^= state << 13; state ^= state >> 7; state ^= state << 17;
+                return state;
+            };
+            if (info)
+            {
+                std::memset(mem.Translate(info), 0, 0x3C);
+                mem.Write64(info, random());               // XNKID
+                mem.Write64(info + 0x2C, random());        // XNKEY
+                mem.Write64(info + 0x34, random());
+            }
+            if (nonce)
+                mem.Write64(nonce, random());
+            Log("XSessionCreate: flags {:X}, {} public / {} private slots, user {}", mem.Read32(buffer + 4),
+                mem.Read32(buffer + 8), mem.Read32(buffer + 0xC), mem.Read32(buffer + 0x10));
+            return kernel::kErrorSuccess;
+        }
+        if (app == kAppXgi && message >= 0x000B0011 && message <= 0x000B0021)
+        {
+            // The rest of a local session's life (delete, join / leave local users, start, end, modify, write and
+            // flush stats ...): nothing to publish without Xbox LIVE. Logged once per message.
+            static std::set<uint32_t> seen;
+            static std::mutex seenMutex;
+            std::lock_guard lock(seenMutex);
+            if (seen.insert(message).second)
+                Log("XGI session message {:08X} ({} bytes): succeeds offline", message, length);
+            return kernel::kErrorSuccess;
         }
         if (app == kAppXgi && message == 0x000B0036)
         {

@@ -128,6 +128,7 @@ namespace
         uint32_t type = 0;
         bool broadcast = false;      // SO_BROADCAST
         bool multicastSend = false;  // option 0x5801 (XAM socket flag 0x20000000)
+        bool nonBlocking = false;    // ioctlsocket FIONBIO
     };
     std::map<uint32_t, Socket> g_sockets;
     uint32_t g_nextSocket = 0x100;
@@ -427,6 +428,71 @@ GUEST_IMPORT(NetDll_sendto)
         return;
     }
     ctx.r3.u64 = length;
+}
+
+// INT NetDll_bind(XNCALLER_TYPE Caller, SOCKET s, const sockaddr* name, int namelen): any local port is free on a
+// console with no link, so a known socket binds.
+GUEST_IMPORT(NetDll_bind)
+{
+    std::lock_guard lock(g_netMutex);
+    if (FindSocket(ctx.r4.u32) == nullptr)
+    {
+        SetLastError(ctx, kWsaENotSock);
+        ctx.r3.u64 = kSocketError;
+        return;
+    }
+    ctx.r3.u64 = 0;
+}
+
+// INT NetDll_ioctlsocket(XNCALLER_TYPE Caller, SOCKET s, long cmd, u_long* argp): FIONBIO sets the socket
+// non-blocking (or blocking again); FIONREAD reports the bytes waiting, none here. Others stop to be researched.
+GUEST_IMPORT(NetDll_ioctlsocket)
+{
+    constexpr uint32_t kFionbio = 0x8004667E, kFionread = 0x4004667F;
+    auto& mem = guest::g_memory;
+    const uint32_t command = ctx.r5.u32, argument = ctx.r6.u32;
+    std::lock_guard lock(g_netMutex);
+    Socket* socket = FindSocket(ctx.r4.u32);
+    if (socket == nullptr)
+    {
+        SetLastError(ctx, kWsaENotSock);
+        ctx.r3.u64 = kSocketError;
+        return;
+    }
+    if (command == kFionbio)
+        socket->nonBlocking = argument && mem.Read32(argument) != 0;
+    else if (command == kFionread)
+    {
+        if (argument)
+            mem.Write32(argument, 0);
+    }
+    else
+        Fatal("NetDll_ioctlsocket: command {:08X} is not implemented", command);
+    ctx.r3.u64 = 0;
+}
+
+// INT NetDll_recvfrom(XNCALLER_TYPE Caller, SOCKET s, char* buf, int len, int flags, sockaddr* from, int* fromlen):
+// with no link nothing arrives. A non-blocking socket says so (WSAEWOULDBLOCK, what titles poll for); a blocking
+// one would wait for ever, which stops so the title's case gets researched.
+GUEST_IMPORT(NetDll_recvfrom)
+{
+    constexpr uint32_t kWsaEWouldBlock = 10035;
+    bool nonBlocking = false;
+    {
+        std::lock_guard lock(g_netMutex);
+        const Socket* socket = FindSocket(ctx.r4.u32);
+        if (socket == nullptr)
+        {
+            SetLastError(ctx, kWsaENotSock);
+            ctx.r3.u64 = kSocketError;
+            return;
+        }
+        nonBlocking = socket->nonBlocking;
+    }
+    if (!nonBlocking)
+        Fatal("NetDll_recvfrom on a blocking socket would wait for ever (no network link): not implemented");
+    SetLastError(ctx, kWsaEWouldBlock);
+    ctx.r3.u64 = kSocketError;
 }
 
 // INT NetDll_shutdown(XNCALLER_TYPE Caller, SOCKET s, int how)
