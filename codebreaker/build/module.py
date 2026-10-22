@@ -564,7 +564,10 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     return out
 
 
-_REGISTER_IN = re.compile(r"\b(?:in|unaff)_(BX|CX|DX|SI|DI)\b")
+_REGISTER_IN = re.compile(r"\b(?:in|unaff)_(AL|AH|AX|BL|BH|BX|CL|CH|CX|DL|DH|DX|SI|DI)\b")
+_WHOLE = {"al": "a", "ah": "a", "ax": "a", "eax": "a", "bl": "b", "bh": "b", "bx": "b", "ebx": "b",
+          "cl": "c", "ch": "c", "cx": "c", "ecx": "c", "dl": "d", "dh": "d", "dx": "d", "edx": "d",
+          "si": "si", "esi": "si", "di": "di", "edi": "di"}      # (a register by its whole: AL, AH and AX are A)
 
 
 def _registers_c_cannot_carry(nef, segs, at, texts):
@@ -582,7 +585,7 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
     for (sg, o), n in at.items():
         starts.setdefault(sg, []).append(o)
         by_offset.setdefault(o, []).append((sg, n))
-        regs = {r.lower() for r in _REGISTER_IN.findall(texts.get(n, "").split("{", 1)[-1])}
+        regs = {_WHOLE[r.lower()] for r in _REGISTER_IN.findall(texts.get(n, "").split("{", 1)[-1])}
         if regs:
             takes.setdefault(o, []).append((sg, n, regs))
     for sg in starts:
@@ -620,7 +623,10 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
                 for csg, callee, regs in takes.get(target, []):
                     if (i.mnemonic == "call" and csg != sg) or callee == n:
                         continue
-                    set_ = [p for p in prev[-3:] if p.op_str.split(",")[0].strip() in regs
+                    # (by the whole register: SUWIN's 7:0056 `mov ax, es:[si]` / `call 0`, and
+                    # 7:0000 compares AL with the character looked for -- the C passed no AL, found
+                    # no dot, and Setup set MSDOS.SYS aside as WINBOOT.---: Windows never started)
+                    set_ = [p for p in prev[-3:] if _WHOLE.get(p.op_str.split(",")[0].strip()) in regs
                             and p.mnemonic in ("mov", "xor", "sub", "lea", "les", "lds", "add", "or")]
                     if set_:
                         out.setdefault(n, "it passes %s to %s in a register (%04x)" % (
