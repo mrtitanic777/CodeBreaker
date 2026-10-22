@@ -176,6 +176,25 @@ def extra_functions(xex_path, img, switches=None):
         if a in img.extents or a in img.run_names or not lo <= a < hi:
             continue
         found[a] = size(a)
+    # A switch outside every known function (between .pdata functions): its function runs from the start of
+    # that gap (after the previous function's end and any padding) to the end of its last case; left to
+    # XenonRecomp, the gap's analysis stops at the bctr and the cases fall outside it.
+    covered = sorted([(s, e) for s, e in pdata] + [(a, a + n) for a, n in found.items()])
+    covered_starts = [s for s, _e in covered]
+    for bctr, cases in switches.items():
+        i = bisect.bisect_right(covered_starts, bctr) - 1
+        if i >= 0 and covered[i][0] <= bctr < covered[i][1]:
+            continue
+        start = covered[i][1] if i >= 0 else lo
+        while start < bctr and code[start - lo:start - lo + 4] == b"\0\0\0\0":
+            start += 4
+        if start in img.extents or not lo <= start < hi:
+            continue
+        end = max(_end_of_run(code, lo, max(cases)), bctr + 4)
+        j = bisect.bisect_right(pdata_starts, start)
+        if j < len(pdata_starts):
+            end = min(end, pdata_starts[j])
+        found[start] = end - start
     # Every branch (b, bc; no link) out of a function is a tail call: its target must be a function too, or
     # XenonRecomp has nothing to call there. New functions have branches of their own: to a fixed point.
     known = set(img.extents) | set(found) | set(img.run_names) | set(img.imports) | {s for s, _e in runs}

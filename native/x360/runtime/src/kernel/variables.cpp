@@ -28,6 +28,8 @@ namespace kernel
         constexpr uint16_t kIoDeviceObjectType = 58;
         // Imported by xam.xex (CB_RECOMP_XAM, kernel/xam_recompiled.cpp).
         constexpr uint16_t kExMutantObjectType = 18;
+        constexpr uint16_t kExSemaphoreObjectType = 23;
+        constexpr uint16_t kExTimerObjectType = 28;
         constexpr uint16_t kIoFileObjectType = 62;
         constexpr uint16_t kUsbdBootEnumerationDoneEvent = 731;
         constexpr uint16_t kStfsDeviceErrorEvent = 732;
@@ -170,6 +172,8 @@ namespace kernel
         // IoDeviceObjectType: dash.xex passes it to ObReferenceObjectByName to open a device by name (0x92267A90).
         g_kernelVariables[kIoDeviceObjectType] = mem.SystemAlloc(kObjectTypeSize);
         g_kernelVariables[kExMutantObjectType] = mem.SystemAlloc(kObjectTypeSize);
+        g_kernelVariables[kExSemaphoreObjectType] = mem.SystemAlloc(kObjectTypeSize);
+        g_kernelVariables[kExTimerObjectType] = mem.SystemAlloc(kObjectTypeSize);
         g_kernelVariables[kIoFileObjectType] = mem.SystemAlloc(kObjectTypeSize);
         // The kernel's driver events XAM waits on (KEVENTs, notification type): the USB stack's boot enumeration is
         // over at once here (no USB bus to walk: signalled); no STFS device error and no USB driver to load (clear).

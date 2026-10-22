@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <memory>
 #include <mutex>
 
@@ -93,6 +94,7 @@ namespace modules
         {
             auto& mem = guest::g_memory;
             size_t functions = 0, variables = 0;
+            std::string missing; // every variable import the runtime has no value for, reported together
             for (const auto& imp : m.xex.imports)
             {
                 if (imp.thunk)
@@ -107,11 +109,16 @@ namespace modules
                 {
                     const uint32_t address = kernel::ResolveVariable(imp.library, imp.ordinal);
                     if (address == 0)
-                        Fatal("{}: no implementation for variable import {} ordinal {}", m.path, imp.library, imp.ordinal);
+                    {
+                        missing += std::format("{}{} {}", missing.empty() ? "" : ", ", imp.library, imp.ordinal);
+                        continue;
+                    }
                     mem.Write32(imp.slot, address);
                     variables++;
                 }
             }
+            if (!missing.empty())
+                Fatal("{}: no implementation for variable imports: {}", m.path, missing);
             Log("{}: resolved {} function imports and {} variable imports", m.recompiled->name, functions, variables);
         }
 

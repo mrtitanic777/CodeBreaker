@@ -463,6 +463,10 @@ GUEST_IMPORT(ObReferenceObjectByHandle)
             matches = HasType(object, { kObjectThread });
         else if (objectType == ResolveVariable("xboxkrnl.exe", 14)) // ExEventObjectType
             matches = HasType(object, { kObjectEventNotification, kObjectEventSynchronization });
+        else if (objectType == ResolveVariable("xboxkrnl.exe", 23)) // ExSemaphoreObjectType
+            matches = HasType(object, { kObjectSemaphore });
+        else if (objectType == ResolveVariable("xboxkrnl.exe", 28)) // ExTimerObjectType
+            matches = HasType(object, { kObjectTimerNotification, kObjectTimerSynchronization });
         else if (IsCreatedObjectType(objectType)) // a type xam.xex defined (ObCreateObject)
             matches = CreatedObjectType(object) == objectType;
         else

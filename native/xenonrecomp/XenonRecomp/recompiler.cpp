@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <unordered_set>
 #include "recompiler.h"
 #include <xex_patcher.h>
 
@@ -263,6 +264,11 @@ void Recompiler::Analyse()
         // section that is the address of a code word inside a known function, right after a function's end (blr,
         // padding, or an unconditional branch), starts a function of its own there.
         size_t pointers = 0;
+        // A switch's case labels are addresses in data too (a table of them), and each case follows a branch: never
+        // an entry of its own (it would cut the function holding the switch short).
+        std::unordered_set<uint32_t> caseLabels;
+        for (const auto& [base, table] : config.switchTables)
+            caseLabels.insert(table.labels.begin(), table.labels.end());
         for (const auto& section : image.sections)
         {
             if ((section.flags & SectionFlags_Code) || section.data == nullptr)
@@ -270,7 +276,7 @@ void Recompiler::Analyse()
             for (size_t offset = 0; offset + 4 <= section.size && section.data + offset + 4 <= imageEnd; offset += 4)
             {
                 const uint32_t target = ByteSwap(*reinterpret_cast<const uint32_t*>(section.data + offset));
-                if ((target & 3) != 0 || image.symbols.find(target) != image.symbols.end())
+                if ((target & 3) != 0 || image.symbols.find(target) != image.symbols.end() || caseLabels.count(target) != 0)
                     continue;
                 bool inCode = false;
                 for (const auto& code : image.sections)
@@ -302,6 +308,20 @@ void Recompiler::Analyse()
     for (const auto& f : functions)
         known.emplace_back(f.base, f.base + f.size);
     std::sort(known.begin(), known.end());
+    // An entry XenonRecomp finds by itself (a call target or a gap) is analyzed from its address; that analysis must
+    // not run into the next known function (Minecraft TU0: a call 8 bytes before a .pdata function analyzed through
+    // that function's body to its jump table, and the gap scan then stepped over the real function's start).
+    auto nextKnownStart = [&](size_t address) -> size_t
+        {
+            auto it = std::upper_bound(known.begin(), known.end(), std::make_pair(address, SIZE_MAX));
+            return it != known.end() ? it->first : SIZE_MAX;
+        };
+    auto clampToNext = [&](Function& fn)
+        {
+            const size_t next = nextKnownStart(fn.base);
+            if (next != SIZE_MAX && fn.base + fn.size > next)
+                fn.size = next - fn.base;
+        };
     auto containing = [&](size_t address) -> size_t
         {
             auto it = std::upper_bound(known.begin(), known.end(), std::make_pair(address, SIZE_MAX));
@@ -347,6 +367,7 @@ void Recompiler::Analyse()
                             fmt::println("call target analysis at {:X}", address);
                         auto data = section.data + address - section.base;
                         auto& fn = functions.emplace_back(Function::Analyze(data, section.base + section.size - address, address));
+                        clampToNext(fn);
                         image.symbols.emplace(fmt::format("sub_{:X}{}", fn.base, config.FunctionSuffix()), fn.base, fn.size, Symbol_Function);
                     }
                 }
@@ -383,6 +404,7 @@ void Recompiler::Analyse()
                 if (progress)
                     fmt::println("gap analysis at {:X}", base);
                 auto& fn = functions.emplace_back(Function::Analyze(data, dataEnd - data, base));
+                clampToNext(fn);
                 if (fn.size == 0)
                     fn.size = 4; // as above: an analysis that finds nothing still covers its word
                 image.symbols.emplace(fmt::format("sub_{:X}{}", fn.base, config.FunctionSuffix()), fn.base, fn.size, Symbol_Function);
