@@ -20,7 +20,6 @@ and are named in one file, `settings.json` at the top of the checkout:
     msvc152         folder of Microsoft C/C++ 8.00c, Visual C++ 1.52c (BIN/CL.EXE)
     xenix_c         folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools)
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
-    ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
     xex_bin         folder of the Xbox 360 executable reader, xex.exe (default: native/xex/build/bin)
     visual_studio   a Visual Studio install with clang-cl (VC/Tools/Llvm), which builds XenonRecomp
                     and recompiled Xbox 360 projects  (default: the newest vswhere finds)
@@ -59,7 +58,6 @@ DEFAULTS = {
     "corpus": os.path.join("..", "Windows95", "design", "corpus", "files"),
     "openwatcom": "",
     "decompiler_bin": os.path.join("native", "decompiler", "build", "bin"),
-    "ghidra_core": os.path.join("native", "ghidra_core", "build", "bin"),
     "xex_bin": os.path.join("native", "xex", "build", "bin"),
     "ppc_binutils": os.path.join("toolchains", "binutils-ppc"),
     "converted": "Converted",
@@ -70,7 +68,7 @@ DEFAULTS = {
     "threads": "1",                    # functions the native decompiler analyses at once (CB_THREADS)
     "struct_recovery": "32",           # structures from field accesses: off, 32 (32-bit x86 only), all
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
           "visual_studio", "ppc_binutils", "converted")
 _loaded = None

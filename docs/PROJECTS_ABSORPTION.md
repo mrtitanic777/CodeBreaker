@@ -115,7 +115,7 @@ CodeBreaker's `formats`/`analyze`/`coverage`:
 
 ## H. Third-party — never absorb
 
-`ghidra/` and `ghidra_12.1.3_PUBLIC/` (NSA, we use the core only), `rexglue-sdk/` (rexglue org),
+`rexglue-sdk/` (rexglue org),
 `Xbox 360 IDA/` (xorloser's IDA plugins + an IDA installer), `XuiWorkshop/` (2014, third-party).
 Keep as local reference; keep out of git.
 
@@ -135,6 +135,27 @@ Keep as local reference; keep out of git.
 Lessons recorded as they are folded; each tool rebranded and integrated natively (not copied
 wholesale), the same standard as the XEX, NASM and RetroMCP folds.
 
+## Per-folder audit (2026-10-22)
+
+What each remaining folder still holds that CodeBreaker lacks, and what happens to it. Nothing is
+deleted without Logan's yes; "trim" means build output, logs and caches inside a folder.
+
+| Folder | Size | Holds | Status in CodeBreaker | Proposed |
+|---|---|---|---|---|
+| `MinecraftPC` | 1.8 G | Minecraft: Xbox 360 Edition **TU0** disc files; earlier port attempts (`Source/`) | recompiled and playing: `Converted/Minecraft` (its XEX in `original/`, its files in `assets/`) | delete once Logan has played it |
+| `UP` | 8.3 G | Up disc files (`UP_Native_PC_Port/GameData`); four earlier ports; **IronKit** (mod kit: the engine's `.HO` archives, Scaleform GFx); HiHoTool (third-party) | recompiled: `Converted/Up`; IronKit's formats not yet in `formats/` | absorb IronKit's readers, then delete |
+| `Shared` | 248 M | the ports' runtime (absorbed: `native/x360`), XenonRecomp (absorbed), docs and LIVE server (absorbed), `tools/scripts` | absorbed: switch scanner, XEX basic, import stubs, instruction tests. Not yet: `nand_fs_extract`, `xdk_libmatch`, `rtti_vtables`, `extract_system_ui`, `annotate_decomp`, `xex_symbols`/`xex_imports`, `gen_fma_tests`, ghidra_scripts | absorb those scripts, then delete (the Dashboard keeps its own `Shared`) |
+| `XboxTranspiler` | 1.2 G | the sibling toolkit | VMX128, XBE, formats folded (waves A, C, D). Not yet: the matching-decompilation engine (`match/`), `xex_patch/sign/inject`, crypto, NAND, `identify`/`report`/`refscan` | absorb the rest (the biggest remaining wave), then delete |
+| `xam` | 43 M | clean-room decompile of xam.xex (91.7 %), `ppc2c.py`, arity/clobber inference | not yet | absorb the inference passes and keep the corpus as a reference target; then delete |
+| `Arcadecraft` | 2.2 G | XNA / C# (managed) decompilation | the XNA/C# platform lane is not built yet | build the lane, then delete |
+| `cl-re`, `c1-re`, `c2-re`, `link-re`, `imagexex-re`, `deltaxex-re`, `mspdb-re`, `xma2-re`, `xui-re`, `xenon-shader-re`, `disc-re`, `xdk-build-demo` | ~180 M | XDK toolchain studies (notes, small recon code) | their findings are in `docs/XBOX360_TOOLCHAIN.md` and the PowerPC `match`/`repair` work (wave A) | check each against the doc, then delete |
+| `Xbox-vs-360-Kernel-Diff` | 1.5 M | kernel export comparison | used for the XBE lane's kernel names (wave C) | check, then delete |
+| `powerpc-samples` | 19 M | the 12 Xbox 360 images the function store judged | **the only copy** (NOT_IN_REPO points at `../powerpc-samples`, which does not exist) | move to `../powerpc-samples`, not delete |
+| `NexGen`, `NexiaCompiler`, `NexiaOS` | 2.3 G | security/homebrew toolkit; a forward compiler; a research OS | not reconstruction tools (section G) | move out to their own repos beside CodeBreaker |
+| `rexglue-sdk` | 1.5 G | the rexglue SDK (third-party, public) | the parts used are vendored in `native/rexglue` | delete (it is on GitHub) |
+| `ghidra`, `ghidra_12.1.3_PUBLIC` | 1.1 G | Ghidra source and install (third-party) | CodeBreaker no longer needs them (its own decompiler) | removed |
+| `Xbox 360 IDA`, `XuiWorkshop` | 390 M | third-party IDA plugins and installer; a 2014 XUI tool | not used | delete |
+
 ## Removed
 
 - **TetrisPC** (2026-10-22, with Logan's yes): Tetris Splash runs on CodeBreaker's own recompile
@@ -142,3 +163,7 @@ wholesale), the same standard as the XEX, NASM and RetroMCP folds.
   `bin.tort` archive reader (`codebreaker/formats/xbox/tort.py`); the game's original LIVE package
   and XEX and its files moved into `Converted/TetrisSplash/` (not in the repo). Its earlier ports,
   extracted copies, Ghidra project, raw audio dumps and audio diagnosis were superseded.
+- **ghidra, ghidra_12.1.3_PUBLIC** (2026-10-22, Logan: no Ghidra at all): CodeBreaker decompiles with its
+  own engine (`native/decompiler`, which carries the decompiler core it forked: docs/GHIDRA_FORK.md). Also
+  gone: the Ghidra user settings (`%APPDATA%\ghidra`), a desktop shortcut to an install that no longer
+  existed, and `native/ghidra_core` (an old, unused build) with its `ghidra_core` setting.
