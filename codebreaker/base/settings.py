@@ -35,6 +35,8 @@ and are named in one file, `settings.json` at the top of the checkout:
     msbuild         MSBuild.exe, to build a transpiled game's Visual Studio project
     java_overlays   per-project hand fixes laid over transpiled output (default: state/java/overlays)
     java_libs       folder of jars a Java game is compiled against when judged (LWJGL, the sound system)
+    converted       where each binary's project folder goes: what CodeBreaker made of it
+                    (original/, src/, assets/, build/, reports/, README.txt) (default: Converted/)
     state           where results and caches are kept             (default: state/)
     target          what is being reconstructed                   (default: win95)
 
@@ -60,6 +62,7 @@ DEFAULTS = {
     "ghidra_core": os.path.join("native", "ghidra_core", "build", "bin"),
     "xex_bin": os.path.join("native", "xex", "build", "bin"),
     "ppc_binutils": os.path.join("toolchains", "binutils-ppc"),
+    "converted": "Converted",
     "nasm": os.path.join("native", "nasm", "build", "bin", "nasm.exe"),
     "retromcp": os.path.join("native", "retromcp", "build", "libs", "retromcp.jar"),
     "state": "state",
@@ -69,7 +72,7 @@ DEFAULTS = {
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
-          "visual_studio", "ppc_binutils")
+          "visual_studio", "ppc_binutils", "converted")
 _loaded = None
 
 

@@ -1783,7 +1783,9 @@ def _gate16(path, folder, names, m):
 
 
 def main(argv):
-    """python -m codebreaker build <module> [--out DIR] [--no-run]"""
+    """python -m codebreaker build <module> [--out DIR] [--no-run]
+
+    Without --out the build goes into the module's project folder: Converted/<name>/build/."""
     out = argv[argv.index("--out") + 1] if "--out" in argv else None
     names = [a for a in argv if not a.startswith("--") and a != out]
     if not names:
@@ -1791,8 +1793,19 @@ def main(argv):
         return 2
     bad = 0
     for name in names:
-        b = build(name, outdir=out, call="--no-run" not in argv)
+        proj = None
+        where = out
+        if not where:
+            from codebreaker.base import converted
+            path = corpus.retail(name)
+            if path:
+                proj = converted.project(path)
+                where = proj.build
+        b = build(name, outdir=where, call="--no-run" not in argv)
         print(b.report())
+        if proj:
+            proj.record("build", [proj.build], notes="the whole module built from its recovered source: %s"
+                        % ("linked: %s" % b.image if b.linked else "did not link"))
         if b.linked:
             print("  image       %s" % b.image)
         bad += 0 if b.linked else 1

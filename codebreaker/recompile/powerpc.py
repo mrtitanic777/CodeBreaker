@@ -1105,7 +1105,9 @@ def check_compiles(full, bridge=True):
 
 def main(argv):
     """python -m codebreaker recompile <image or .xex> [--all] [--at ADDR --size N] [-o FILE]
-                                       [--limit N] [--check] [--runtime HEADER]"""
+                                       [--limit N] [--check] [--runtime HEADER]
+
+    --all without -o writes into the binary's project folder: Converted/<name>/src/<name>.cpp."""
     def opt(name, conv=str, default=None):
         return conv(argv[argv.index(name) + 1]) if name in argv else default
     if "--runtime" in argv:
@@ -1124,12 +1126,19 @@ def main(argv):
         pct = 100.0 * agg["translated"] / max(1, agg["total"])
         print("%d functions (%d found, %d tail-jump entries), %d/%d instructions translated (%.1f%%), %d not" % (
             agg["funcs"], agg["discovered"], agg["tail entries"], agg["translated"], agg["total"], pct, agg["unimpl"]))
-        if out:
-            with open(out, "w") as f:
-                f.write(body)
-            with open(out.replace(".cpp", "_init.cpp"), "w") as f:
-                f.write(mapping)
-            print("wrote", out, "and its mapping table")
+        proj = None
+        if not out:
+            from codebreaker.base import converted
+            proj = converted.project(path)
+            out = os.path.join(proj.src, proj.name.lower() + ".cpp")
+        with open(out, "w") as f:
+            f.write(body)
+        with open(out.replace(".cpp", "_init.cpp"), "w") as f:
+            f.write(mapping)
+        if proj:
+            proj.record("recompile", [out, out.replace(".cpp", "_init.cpp")],
+                        notes="every function as C++ (one statement per guest instruction) and its mapping table")
+        print("wrote", out, "and its mapping table")
         full = body
     else:
         at = opt("--at", lambda s: int(s, 0))

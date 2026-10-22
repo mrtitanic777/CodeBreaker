@@ -922,26 +922,39 @@ See CodeBreaker's `docs/RECOMPILE.md` for how it works and the runtime work that
 
 
 def main(argv):
-    """python -m codebreaker recompile-project <.xex> -o <folder> [--name N] [--title-files <dir>] [--runtime x360|rexglue] [-j N]
+    """python -m codebreaker recompile-project <.xex> [-o <folder>] [--name N] [--title-files <dir>] [--runtime x360|rexglue] [-j N]
 
-    x360 (the default): XenonRecomp's C++ on CodeBreaker's Xbox 360 runtime (x360project.py).
-    rexglue: this module's own translation on the rexglue kernel core (scaffold, below)."""
-    if not argv or "-o" not in argv:
+    x360 (the default): XenonRecomp's C++ on CodeBreaker's Xbox 360 runtime (x360project.py), in
+    the binary's project folder (Converted/<name>/) unless -o names another.
+    rexglue: this module's own translation on the rexglue kernel core (scaffold, below; needs -o)."""
+    if not argv or argv[0].startswith("-"):
         print(main.__doc__)
         return 2
-    out = argv[argv.index("-o") + 1]
+    out = argv[argv.index("-o") + 1] if "-o" in argv else None
     runtime = argv[argv.index("--runtime") + 1] if "--runtime" in argv else "x360"
     if runtime == "x360":
+        from codebreaker.base import converted
         from codebreaker.recompile import x360project
         files = argv[argv.index("--title-files") + 1] if "--title-files" in argv else None
         name = argv[argv.index("--name") + 1] if "--name" in argv else None
-        info = x360project.scaffold(argv[0], out, name=name, title_files=files)
+        proj = converted.project(argv[0], name=name) if out is None else None
+        info = x360project.scaffold(argv[0], proj.root if proj else out, name=name or (proj and proj.name),
+                                    title_files=files)
+        if proj:
+            proj.record("recompile-project", [os.path.join(proj.root, "CMakeLists.txt"), proj.src, proj.assets,
+                                              os.path.join(proj.reports, "recompile.log")],
+                        notes="%d functions recompiled to C++ (XenonRecomp) for CodeBreaker's Xbox 360 runtime.\n"
+                              "Build: Build-%s.bat   Play: Play-%s.bat (keyboard or controller)"
+                              % (info["functions"], info["name"], info["name"]))
         print("%s: %d functions, %d switch tables, %d unimplemented instructions" % (
             info["name"], info["functions"], info["switches"], info["unimplemented"]))
         print("  -> %s" % info["dir"])
         print("  build: %s" % os.path.join(info["dir"], "Build-%s.bat" % info["name"]))
-        print("  run:   %s game" % os.path.join(info["dir"], "build", info["name"] + ".exe"))
+        print("  play:  %s" % os.path.join(info["dir"], "Play-%s.bat" % info["name"]))
         return 0
+    if out is None:
+        print(main.__doc__)
+        return 2
     jobs = int(argv[argv.index("-j") + 1]) if "-j" in argv else None
     agg = scaffold(argv[0], out, jobs=jobs)
     pct = 100.0 * agg["translated"] / max(1, agg["total"])

@@ -38,9 +38,25 @@ setting it is missing.
 
 ## What CodeBreaker makes
 
-Everything it produces -- the function store, caches, build folders, reports -- goes under
-`state/` (setting `state`). Delete it to start over; nothing in it is source. The reconstructed
-source itself is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
+What CodeBreaker makes of a binary goes into that binary's project folder under `Converted/`
+(setting `converted`), one folder per binary, the same layout every time:
+
+    Converted/<name>/
+      README.txt     what the binary is, what was done to it (each command, when), how to build or run the result
+      project.json   the same for tools: the input, its SHA-1, its kind, every output and its command
+      original/      the binary as it came in
+      src/           source: decompiled C, recompiled C++, assembly, build files
+      assets/        resources and data: extracted resources, a title's files
+      build/         programs and libraries built from src/
+      reports/       analysis, listings, disassembly, logs
+
+`decompile`, `take-apart` (and the Workbench), `recompile --all`, `recompile-project`,
+`resources` and `build` write there unless given `--out` / `-o`. A binary's project is found again
+by its SHA-1, so every command run on one file adds to one folder.
+
+The rest -- the function store, caches, scratch builds, scoreboards -- goes under `state/`
+(setting `state`). Delete it to start over; nothing in it is source. The reconstructed Windows 95
+source is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
 
 The native decompiler is built from `native/decompiler` into `native/decompiler/build/bin`
 (setting `decompiler_bin`); the build output is not tracked.

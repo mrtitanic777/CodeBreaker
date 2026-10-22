@@ -1,22 +1,28 @@
 """x360project.py -- an Xbox 360 title as a PC project on CodeBreaker's Xbox 360 runtime.
 
-    python -m codebreaker recompile-project <default.xex> -o <folder> [--title-files <dir>]
+    python -m codebreaker recompile-project <default.xex> [-o <folder>] [--name N] [--title-files <dir>]
     from codebreaker.recompile import x360project
     info = x360project.scaffold(xex_path, folder, title_files=None)
 
+The folder is the binary's project folder (codebreaker/base/converted.py: Converted/<name>/)
+unless -o names another:
+
     <folder>/
       CMakeLists.txt        x360_title(<name> ...) from native/x360/x360.cmake
-      recomp/               the title's XenonRecomp configuration (config.py), its switch tables
+      src/                  the title's XenonRecomp configuration (config.py), its switch tables
                             (switches.py, with XenonAnalyse's), and default.xex in basic form
-      recomp/ppc/           XenonRecomp's C++ (one statement per guest instruction), regenerated:
+      src/ppc/              XenonRecomp's C++ (one statement per guest instruction), regenerated:
                             only changed files are rewritten, so a rebuild recompiles only those
-      recomp/module_info.cpp  the title described to the runtime (modules.h: g_titleModule)
-      game/                 the title folder the program runs: its files (--title-files) and
+      src/module_info.cpp   the title described to the runtime (modules.h: g_titleModule)
+      assets/               the title folder the program runs: its files (--title-files) and
                             default.xex in basic form; it is the title's game: device
+      build/                the CMake build: build/<name>.exe
+      reports/recompile.log what XenonRecomp said
       Build-<name>.bat      configures and builds with clang-cl and Ninja
+      Play-<name>.bat       runs it
 
 The program is native/x360's runtime with the title linked in; run it as
-`build/<name>.exe game` (or from game/).
+`build/<name>.exe assets` (or from assets/).
 """
 import filecmp
 import os
@@ -52,9 +58,10 @@ def scaffold(xex_path, out_dir, name=None, title_files=None):
     name = name or _name(xex_path)
     if name == "default":
         name = "title"
-    recomp = os.path.join(out_dir, "recomp")
-    game = os.path.join(out_dir, "game")
-    for d in (recomp, game):
+    recomp = os.path.join(out_dir, "src")
+    game = os.path.join(out_dir, "assets")
+    reports = os.path.join(out_dir, "reports")
+    for d in (recomp, game, reports):
         os.makedirs(d, exist_ok=True)
     basic = os.path.join(recomp, "default.xex")
     xex.basic(xex_path, basic)
@@ -80,7 +87,7 @@ def scaffold(xex_path, out_dir, name=None, title_files=None):
     r = subprocess.run([xenon.RECOMP, cfg, os.path.join(xenon.SOURCE, "XenonUtils", "ppc_context.h")],
                        capture_output=True, text=True, cwd=recomp)
     log = (r.stdout or "") + (r.stderr or "")
-    with open(os.path.join(recomp, "recompile.log"), "w") as f:
+    with open(os.path.join(reports, "recompile.log"), "w") as f:
         f.write(log)
     if r.returncode or not os.path.isfile(os.path.join(fresh, "ppc_func_mapping.cpp")):
         raise RuntimeError("XenonRecomp failed (%s):\n%s" % (r.returncode, log[-3000:]))
@@ -114,12 +121,12 @@ extern const modules::RecompiledModule g_titleModule = {
 cmake_minimum_required(VERSION 3.20)
 project(%s CXX)
 include("%s")
-x360_title(%s "${CMAKE_CURRENT_SOURCE_DIR}/recomp/ppc" "${CMAKE_CURRENT_SOURCE_DIR}/recomp/module_info.cpp")
+x360_title(%s "${CMAKE_CURRENT_SOURCE_DIR}/src/ppc" "${CMAKE_CURRENT_SOURCE_DIR}/src/module_info.cpp")
 ''' % (name, runtime, name))
     vs = xenon.visual_studio()
     with open(os.path.join(out_dir, "Build-%s.bat" % name), "w", newline="\r\n") as f:
         f.write('''@echo off
-rem Builds %s with clang-cl and Ninja (written by CodeBreaker). Run: build\\%s.exe game
+rem Builds %s with clang-cl and Ninja (written by CodeBreaker). Run: build\\%s.exe assets
 call "%s\\VC\\Auxiliary\\Build\\vcvars64.bat" >nul 2>&1 || exit /b 1
 set "LLVM=%s\\VC\\Tools\\Llvm\\x64\\bin"
 cd /d "%%~dp0"
@@ -128,8 +135,8 @@ cmake --build build || exit /b 1
 ''' % (name, name, vs, vs))
 
     with open(os.path.join(out_dir, "Play-%s.bat" % name), "w", newline="\r\n") as f:
-        f.write('@echo off\nrem Plays %s (written by CodeBreaker): keyboard or controller; the log is game\\%s.log\n'
-                'start "" "%%~dp0build\\%s.exe" "%%~dp0game"\n' % (name, name, name))
+        f.write('@echo off\nrem Plays %s (written by CodeBreaker): keyboard or controller; the log is assets\\%s.log\n'
+                'start "" "%%~dp0build\\%s.exe" "%%~dp0assets"\n' % (name, name, name))
 
     # the title folder: its files, and default.xex in basic form
     if title_files:

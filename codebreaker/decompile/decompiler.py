@@ -434,9 +434,17 @@ def main(argv):
         text, decompiled, total = as_c(path)
     except ValueError as e:
         raise SystemExit(str(e))
-    out = argv[argv.index("--out") + 1] if "--out" in argv else \
-        os.path.splitext(os.path.basename(path))[0].lower() + ".c"
+    proj = None
+    if "--out" in argv:
+        out = argv[argv.index("--out") + 1]
+    else:                                    # the binary's project folder: Converted/<name>/src/
+        from codebreaker.base import converted
+        proj = converted.project(path)
+        out = os.path.join(proj.src, os.path.splitext(os.path.basename(path))[0].lower() + ".c")
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
+    if proj:
+        proj.record("decompile", [out], notes="%d of %d functions as C (readable; not built or judged)"
+                    % (decompiled, total))
     print("%s: %d of %d functions -> %s" % (os.path.basename(path), decompiled, total, out))
     return 0
