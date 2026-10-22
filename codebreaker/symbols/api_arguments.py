@@ -315,10 +315,11 @@ _product = None
 
 
 def _cache16_path():
-    """One table per product: USER.171 is not the same function in every Windows."""
+    """One table per product: USER.171 is not the same function in every Windows. (`.2`: read
+    through thunks that add words of their own -- the tables made before are not reused.)"""
     from codebreaker.base import corpus, settings
     name = corpus.current()
-    return settings.state("api16.json" if name == settings.get("target") else "api16_%s.json" % name)
+    return settings.state("api16.2.json" if name == settings.get("target") else "api16_%s.2.json" % name)
 
 
 def _load16():
@@ -372,8 +373,17 @@ def arg_bytes(module, ordinal):
             s = segs.get(e["seg"]) if e else None
             if s and s["kind"] == "CODE" and s["file_off"]:
                 code = nef.data[s["file_off"]:s["file_off"] + s["length"]]
+                # (a thunk that puts a word of its own under the return address and goes on:
+                # what its callers push is what the body removes less what it added -- Win95
+                # USER.471, lstrcmpi, read as its body's `retf 0Ah` gave the C two arguments too many)
+                own = type("Exporter", (), {})()
+                own.segment_bytes = {k: bytes(nef.data[g["file_off"]:g["file_off"] + g["length"]])
+                                     for k, g in segs.items() if g["kind"] == "CODE" and g["file_off"]}
+                fwd = describe.forwards(own, e["seg"], e["offset"], "far")
                 kind, pop = describe.returns(code, e["offset"])
-                if kind == "far" and pop >= 0:
+                if fwd is not None:
+                    value = fwd
+                elif kind == "far" and pop >= 0:
                     value = pop
         cache[key] = value
         try:

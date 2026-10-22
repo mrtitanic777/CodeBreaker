@@ -1186,6 +1186,11 @@ def _build16(b, path, m, folder):
     if only or segs_only:
         named = set(m.order) if only == "all" else set(only.split(","))
         forced |= {n for n in m.order if n in stems and (n in named or segment_of.get(n) in segs_only)}
+    for n, why in kept_as_asm(b.name).items():               # (C a whole run of the module showed wrong)
+        if n in stems:
+            forced.add(n)
+            if n in b.origins:
+                b.origins[n].evidence.append("kept as its instructions (build/kept_as_asm.txt): " + why)
     for n, why in getattr(b, "gated", {}).items():           # (C that, run, did not do what the original does)
         if n in stems:
             forced.add(n)
@@ -1737,6 +1742,25 @@ def _gate16_keys(path, names, m):
         called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", m.texts.get(n, ""))) | {n}
         return sorted(name_line[c] for c in called if c in name_line)
     return {n: cache.key(module_key, tools, header, n, m.texts.get(n, ""), deps(n)) for n in names}
+
+
+KEPT_AS_ASM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kept_as_asm.txt")
+
+
+def kept_as_asm(module):
+    """{name: why} for the functions of `module` kept as their instructions by kept_as_asm.txt:
+    C the gate passes that a run of the whole module showed wrong. The list is for those the
+    decompiler cannot yet write right; each line goes when it can."""
+    kept = {}
+    try:
+        with open(KEPT_AS_ASM, encoding="utf-8") as f:
+            for line in f:
+                parts = line.split("#", 1)[0].split(None, 2)
+                if len(parts) >= 2 and parts[0].lower() == module.lower():
+                    kept[parts[1]] = parts[2].strip() if len(parts) > 2 else ""
+    except OSError:
+        pass
+    return kept
 
 
 def _gate16_known(path, m):

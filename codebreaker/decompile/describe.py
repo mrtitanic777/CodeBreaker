@@ -535,7 +535,14 @@ def forwards(d, seg, off, kind):
         at = i.address + i.size
     words = 2 if kind == "far" else 1
     regs = ("ax", "bx", "cx", "dx", "si", "di", "es")
-    if len(ins) < 2 * words + 2 or any(i.mnemonic != "pop" or i.op_str not in regs for i in ins[:words]):
+    # (a far return address taken off whole, in one 32-bit register: Win95 USER's 5:0011
+    # (lstrcmpi) `pop eax / push word es:[90h] / push eax / jmp 6E1` -- its callers push four
+    # words, not the five the body's `retf 0Ah` removes, and the C passed a sixth and a seventh)
+    if kind == "far" and ins and ins[0].mnemonic == "pop" and ins[0].op_str in ("eax", "ebx", "ecx", "edx"):
+        words = 1
+    elif any(i.mnemonic != "pop" or i.op_str not in regs for i in ins[:words]):
+        return None
+    if len(ins) < 2 * words + 2:
         return None
     ret = [i.op_str for i in ins[:words]]
     k, added, taken = words, 0, 0
@@ -555,8 +562,8 @@ def forwards(d, seg, off, kind):
         if ins[k].mnemonic == "into":                        # (a jump followed: it goes on there)
             k += 1
             continue
-        if ins[k].mnemonic == "push":
-            added += 1
+        if ins[k].mnemonic == "push":                        # (a 32-bit push is two words: GDI.612's
+            added += 2 if 0x66 in ins[k].bytes[:2] else 1     # `push 0` is 66 68 00000000)
         elif any(r in ins[k].op_str.split(",")[0] for r in ret):
             return None                                      # (its return address changed)
         k += 1
@@ -682,11 +689,43 @@ def result_bytes(code, start, end, passes=None):
         for i in ins:                                        # body: its result is that one's
             if i.mnemonic == "jmp" and i.operands and i.operands[0].type == capstone.CS_OP_IMM                     and not start <= (i.operands[0].imm & 0xFFFF) < end:
                 passes.append(("into", i.operands[0].imm & 0xFFFF))
+    def _reads_dx(p, r):
+        return p.mnemonic == "int" or bool(dx & set(r))      # (an `int` reads what it is handed: DOS's DS:DX)
+
+    def _read_after(a):
+        # DX read from what sets AX on to the return, along the way it runs (a conditional
+        # jump's fall-through; a jump followed): USER's 21:58E6 `mov ds, dx`, GDI's 4:168F
+        # `cmp dx, di` -- DX still in use there, not handed back
+        for _n in range(24):
+            if a not in at:
+                return True
+            p = ins[at[a]]
+            if p.mnemonic in ("ret", "retf"):
+                return False
+            try:
+                if _reads_dx(p, p.regs_access()[0]):
+                    return True
+            except capstone.CsError:
+                return True
+            if p.group(capstone.CS_GRP_CALL):
+                return True
+            a = p.operands[0].imm & 0xFFFF if p.mnemonic == "jmp" and p.operands and \
+                p.operands[0].type == capstone.CS_OP_IMM else p.address + p.size
+        return True
+
     def _segment_in_dx(a):
         # Before what sets AX, along the straight run into it: the first thing to set DX is a
         # segment register put there (`mov dx, es`) -- the selector of a far pointer that goes
-        # back in DX:AX (KRNL386's `mov es, sel / mov dx, es / mov ax, es:[off]`). A number or
-        # a sum there is as often scratch, and is left out.
+        # back in DX:AX (KRNL386's `mov es, sel / mov dx, es / mov ax, es:[off]`) -- or an
+        # argument nothing reads again before the return (SUWIN's 3:319C `mov ax, [bp+6] /
+        # mov dx, [bp+8] / ... sub ax, cx / add ax, 1FEh / leave / retf`: a pointer into the
+        # segment it was given; a compiler writes no DX it will not use). A number or a sum
+        # there is as often scratch, and is left out.
+        p = ins[at[a]] if a in at else None
+        try:
+            read = p is None or _reads_dx(p, p.regs_access()[0]) or _read_after(a)
+        except capstone.CsError:
+            read = True
         for _n in range(8):
             prev = into.get(a, [])
             if len(prev) != 1 or prev[0] not in at or prev[0] < prologue:
@@ -700,7 +739,9 @@ def result_bytes(code, start, end, passes=None):
             except capstone.CsError:
                 return False
             if dx & set(w):
-                return p.mnemonic == "mov" and p.op_str.split(", ")[-1] in ("es", "ds", "ss", "cs")
+                src = p.op_str.split(", ")[-1] if p.mnemonic == "mov" else ""
+                return src in ("es", "ds", "ss", "cs") or (src.startswith("word ptr [bp + ") and not read)
+            read = read or _reads_dx(p, _r)                  # (DX read on the way: scratch)
         return False
 
     best = 0

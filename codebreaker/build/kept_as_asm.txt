@@ -1,0 +1,7 @@
+# Functions a module build keeps as their instructions, whatever the gate says of their C:
+# C that passes the gate but that a run of the whole module showed wrong. One per line --
+#   <module>  <function>  <what its C did wrong, and where it showed>
+# A line goes when the decompiler writes that function right (the module run again to show it).
+suwin.exe  sub_6_0538  C since import argument sizes were read through USER's thunks; Setup stops at 89% of 'preparing the Setup Wizard' -- not yet found
+suwin.exe  sub_6_0A38  the same: Setup stops at 89% of 'preparing the Setup Wizard' -- not yet found
+suwin.exe  sub_9_0396  the same: the display check that sets the 3-D look (63ACh) -- the Wizard's etched separator drawn as a black line; not yet found

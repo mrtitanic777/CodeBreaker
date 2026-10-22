@@ -1609,7 +1609,24 @@ def _entry_sp(text):
     """The decompiler's name for SP as the function was entered, used as a value (code that keeps
     the stack pointer, or makes an address on the stack from it): codebreaker_entry_sp(). A place
     on the stack it names by that (stack0xffec: entry SP - 0x14, above the function's own frame,
-    the caller's) is that address."""
+    the caller's) is that address -- unless it is one of the function's own locals (xStack_4:
+    entry SP - 4) read through its address: then it is that local, wherever the compiler keeps
+    it. (SUWIN's 2:819E keeps GetProcAddress's DX:AX in [bp-4] and calls `lcall [bp-4]`; the C
+    read the segment as `*(xunknown2 *)(&stack0xfffa + 2)`, a place in its own frame nothing had
+    set, and called into nowhere.)"""
+    own = {int(m.group(3), 16): (m.group(1), m.group(2))     # entry SP less -> (type, name)
+           for m in re.finditer(r"^\s+(\w+) (\w*Stack_([0-9a-f]+));$", text, re.M)}
+
+    def local(m):
+        ty, base, plus = m.group(1), int(m.group(2), 16), m.group(3)
+        hit = own.get(0x10000 - base - (int(plus, 0) if plus else 0))
+        if not hit:
+            return m.group(0)
+        return hit[1] if hit[0] == ty else "*(%s *)&%s" % (ty, hit[1])
+    if own:
+        text = re.sub(r"\*\((\w+) \*\)\(&stack0x([0-9a-f]{4}) \+ (\d+|0x[0-9a-f]+)\)", local, text)
+        text = re.sub(r"\*\((\w+) \*\)&stack0x([0-9a-f]{4})()\b", local, text)
+
     def fix(src):
         for n in src.find("identifier"):
             name = src.at(n)
