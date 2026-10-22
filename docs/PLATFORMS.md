@@ -1,0 +1,55 @@
+# Any software, any platform
+
+CodeBreaker's aim: take **any** program -- from 8-bit computers and arcade boards to every games
+console, PC and phone of today -- back to source that is readable, compiles, and behaves as the
+original did. One tool, one pipeline, one way of judging; a platform is what plugs into it.
+
+![CodeBreaker, end to end](platforms.png)
+
+## The layers
+
+Everything after the CPU front end is shared. A new platform adds pieces to the layers below the
+line and nothing above it.
+
+| Layer | What it is | Per platform? |
+|---|---|---|
+| Unpack | containers: tapes, disks, cartridge and arcade ROM sets, discs, XEX, ELF, PE, NE, LE, APK, IPA, Mach-O | yes: a reader in `formats/` |
+| Identify | which CPU, OS, SDK, compiler and runtime made it | yes: signatures in `symbols/` |
+| CPU front end | the instruction set as SLEIGH, lifted to p-code | yes: a processor spec in `native/decompiler` |
+| ---------------- | ---------------- | ---------------- |
+| Shared form | p-code, one intermediate code for every CPU | no |
+| Analyze and name | functions, types, structures, calls into the SDK and hardware | no (fed by the platform's names) |
+| Back to source | decompile to C/C++, compiler models, assembly source, bytecode to source | no |
+| Rebuild | the platform's own compilers and SDKs, or modern ones | yes: a build profile in `build/` |
+| Judge | run beside the original on a model of the platform | yes: a platform model in `emulate/` |
+
+## Where it stands
+
+| Family | CPUs | Platforms | Unpack | CPU spec | Platform model | Judged |
+|---|---|---|---|---|---|---|
+| x86 | 8086 - x86-64 | DOS, Windows 3.x/95, drivers | yes | yes (x86-64 spec present, unused) | Unicorn: DOS, Win16, Win32, VxD | yes |
+| PowerPC | 32/64-bit | Xbox 360 (code), PowerPC images | partly (no XEX yet) | yes | own interpreter | yes |
+| Bytecode | JVM | Java source to C++03 | n/a | n/a | the JVM | yes |
+| 8/16-bit | 6502, 65816, Z80, 68000 | Atari, NES, SNES, Sega, C64, Apple II, Spectrum, MSX, arcade | no | no | no | no |
+| MIPS, SuperH | R3000, R4300, R5900, SH-2, SH-4 | PS1, N64, PS2, Saturn, Dreamcast, arcade | no | no | no | no |
+| PowerPC, Cell | Gekko, Broadway, Xenon, Cell PPU/SPU | GameCube, Wii, Xbox 360, PS3 | no | PPU yes, SPU no | no | no |
+| x86-64, ARM | x86-64, ARMv7, AArch64 | PC 64-bit, Xbox One, PS4/5, phones, Switch | no | no | no | no |
+| Bytecode | Dalvik, .NET IL, scripts | Android, .NET, Lua and others | no | no | no | no |
+
+## Order of work
+
+1. **Platform-neutral seams first.** Today the platform is often implied (x86, Windows). Make it
+   explicit: a platform descriptor (CPU spec, container reader, OS/SDK names, build profile,
+   platform model) that every stage asks, so the next platform adds a descriptor, not branches.
+2. **One small 8-bit platform end to end** -- the proof that the seams hold: 6502 (NES or Apple II,
+   with homebrew and open-source programs as ground truth, as `tools/oss_bench.py` does for C).
+3. **Arcade**: ROM sets (MAME's set descriptions say which CPU and where each ROM loads) on the
+   same 8/16-bit CPUs; Z80 and 68000.
+4. **Xbox 360 completed**: XEX (from XexTool-RE) + the PowerPC already here.
+5. **64-bit and ARM**: x86-64 PE/ELF, AArch64 ELF/Mach-O; then Android (Dalvik) and iOS.
+6. **The rest of the consoles**, family by family: MIPS (PS1, N64, PS2), SuperH (Saturn,
+   Dreamcast), Cell (PS3), x86-64 consoles.
+
+Each step is judged the same way as everything else: rebuilt, run beside the original, the same
+behaviour -- with open-source and homebrew programs, whose authors' source we have, as the
+ground truth for how close the source comes back.
