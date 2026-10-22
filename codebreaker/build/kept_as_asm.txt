@@ -2,3 +2,15 @@
 # C that passes the gate but that a run of the whole module showed wrong. One per line --
 #   <module>  <function>  <what its C did wrong, and where it showed>
 # A line goes when the decompiler writes that function right (the module run again to show it).
+setupx.dll  sub_2_1D92  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_38_0000  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_3_0422  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_3_04D8  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_3_3240  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_3_4670  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_3_7C18  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_3_7DB4  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_4_4B5C  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_5_0D88  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_6_218A  its calls differ from the original's when its neighbours are kept as instructions (contract16), not when they are C; with all SETUPX's C, Setup faulted in SETUPX right after the License page (SUWIN, 0018:164B)
+setupx.dll  sub_30_0856  found by bisecting SETUPX's C with a Setup walk (500 -> 1): alone as C it breaks the User Information page (SUWIN, GP in SETUPX at 001E:125D); its C reads as the original's line by line and its callers reach it by name -- the cause is not found yet
