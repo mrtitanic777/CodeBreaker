@@ -1,5 +1,7 @@
 # Microsoft C 6.0a RE — Full Project Map (end to end)
 
+> The scripts this log mentions (`*.py`) are gone: their work is CodeBreaker's own now. Which command does what: [targets/README.md](../README.md).
+
 The complete route from shipped floppies to faithful, verified recovered source for the
 Microsoft C 6.0a compiler. Companion: [`notes.md`](notes.md), [`signatures.md`](signatures.md).
 

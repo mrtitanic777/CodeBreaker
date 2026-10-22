@@ -92,6 +92,18 @@ def test_exepack_static_equals_emulated():
     assert p.unpacked == "static" and p.image == static[0] and p.entries[0][0] == dos.LOAD * 16 + 0x18DA
 
 
+def test_unpacked_file():
+    """A packed program written back unpacked reads as the same program, no longer packed."""
+    p = dos.read(_retail("find.exe"))
+    out = os.path.join(tempfile.mkdtemp(prefix="cb_unpack_"), "find.exe")
+    with open(out, "wb") as f:
+        f.write(dos.unpacked_file(p))
+    q = dos.read(out)
+    assert dos.packer(out) is None and q.unpacked is None
+    assert q.image == p.image and q.relocations == p.relocations
+    assert (q.cs, q.ip, q.ss, q.sp) == (p.cs, p.ip, p.ss, p.sp)
+
+
 def test_kernel_image_parts():
     p = dos.read(_retail("winboot.sys"))
     assert [label for _lo, _n, label in p.spans] == ["bios and dos", "sysinit", "loader"]
@@ -192,7 +204,7 @@ def test_not_an_image():
 
 def main():
     for fn in (test_kinds, test_com_and_driver_layout, test_relocations_are_applied,
-               test_exepack_static_equals_emulated, test_kernel_image_parts, test_function_discovery,
+               test_exepack_static_equals_emulated, test_unpacked_file, test_kernel_image_parts, test_function_discovery,
                test_installed_handler_is_found, test_interrupt_names, test_description_for_the_decompiler,
                test_boot_floppy, test_cd_image, test_not_an_image):
         check(fn)

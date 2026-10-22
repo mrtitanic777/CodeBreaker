@@ -564,14 +564,16 @@ def render(value, key="", indent=0):
 
 def main(argv):
     """python -m codebreaker info <file-or-module> [--json] [--section NAME] [--offset N] [--length N] [--min N]
+    python -m codebreaker info <packed.exe> --unpack <out.exe>
 
     Show what an executable is and holds. NAME is one of: summary dos headers directories sections
     exports imports resources relocations tls debug certificates clr rich driver members strings
-    hex, or `all`."""
+    hex, or `all`. --unpack writes a packed DOS program (EXEPACK, PKLITE, ...) back out unpacked,
+    as a plain MZ file that runs the same way."""
     def option(name, default=None):
         return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
 
-    taken = {option(n) for n in ("--section", "--offset", "--length", "--min")}
+    taken = {option(n) for n in ("--section", "--offset", "--length", "--min", "--unpack")}
     names = [a for a in argv if not a.startswith("--") and a not in taken]
     if not names:
         print(main.__doc__)
@@ -580,6 +582,16 @@ def main(argv):
     if not path:
         print("no file or corpus module %r" % names[0])
         return 2
+    if option("--unpack"):
+        from codebreaker.formats import dos
+        p = dos.read(path)
+        if not p.unpacked:
+            print("%s is not packed%s" % (p.name, "" if not p.packer else " readably (%s)" % "; ".join(p.notes)))
+            return 1
+        with open(option("--unpack"), "wb") as f:
+            f.write(dos.unpacked_file(p))
+        print("%s (%s, unpacked %s) -> %s" % (p.name, p.packer, p.unpacked, option("--unpack")))
+        return 0
     section, as_json = option("--section"), "--json" in argv
     if section == "hex":
         text = hexdump(path, int(option("--offset", "0"), 0), int(option("--length", "256"), 0))

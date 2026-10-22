@@ -1,5 +1,7 @@
 # Microsoft C Compiler 5.0 (1987) — Reverse Engineering Notebook
 
+> The scripts this log mentions (`*.py`) are gone: their work is CodeBreaker's own now. Which command does what: [targets/README.md](../README.md).
+
 Goal: recover readable, byte-exact-verifiable source for the Microsoft C 5.0 DOS
 toolchain (the compiler passes, linker, and utilities) from the shipped floppy
 images, using **CodeBreaker** as the workbench.

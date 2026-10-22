@@ -1,5 +1,7 @@
 # Microsoft C Compiler 4.0 — Reverse Engineering Lab Notebook
 
+> The scripts this log mentions (`*.py`) are gone: their work is CodeBreaker's own now. Which command does what: [targets/README.md](../README.md).
+
 > Running log of findings, decisions, and dead-ends. Newest dated entry at the bottom
 > of each section. Companion files: [SIGNATURES.md](SIGNATURES.md) (the signature DB),
 > [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md) (the end-to-end plan).

@@ -1,5 +1,7 @@
 # Microsoft C 6.0a — Reverse Engineering Notes
 
+> The scripts this log mentions (`*.py`) are gone: their work is CodeBreaker's own now. Which command does what: [targets/README.md](../README.md).
+
 Living log for the RE of the **Microsoft C Professional Development System 6.0a** toolchain.
 Companion files: [`signatures.md`](signatures.md) (fingerprint/signature catalog) and
 [`MAP.md`](MAP.md) (the full end-to-end project plan).

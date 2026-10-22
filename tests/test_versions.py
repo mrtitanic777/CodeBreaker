@@ -129,6 +129,28 @@ def test_a_module_against_itself():
     assert all(p["from"] == p["to"] for p in c.pairs)               # each function found itself
 
 
+def test_dos_program_and_shared():
+    """A real-mode program compares against itself, and --shared finds every function of any
+    size in two copies of one program (and nothing in a program alone)."""
+    path = corpus.retail("find.exe")
+    if not path:
+        raise Skip("no find.exe")
+    c = versions.compare(path, path)
+    n = c.counts()
+    assert n["identical"] == len(c.a.order) > 5 and not (n["changed"] or n["added"] or n["removed"])
+    side = versions.load(path)
+    big = sum(1 for f in side.functions.values() if len(f.text) >= 8)
+    found = versions.shared([path, path])                        # one name: both copies under it
+    assert found == [] and big > 0
+    import shutil
+    import tempfile
+    other = os.path.join(tempfile.mkdtemp(prefix="cb_shared_"), "find2.exe")
+    shutil.copy(path, other)
+    found = versions.shared([path, other])
+    assert len(found) <= big and sum(len(w["find.exe"]) for _n, w in found) == big
+    assert all(set(w) == {"find.exe", "find2.exe"} for _n, w in found)
+
+
 def test_function_spans_are_the_carved_functions():
     from codebreaker.formats import pe_functions
     path = corpus.retail("version.dll")
@@ -173,7 +195,8 @@ def test_two_products_16bit():
 
 def main():
     for fn in (test_default_product_is_untouched, test_selecting_a_product, test_boot_image_modules,
-               test_fonts, test_a_module_against_itself, test_function_spans_are_the_carved_functions,
+               test_fonts, test_a_module_against_itself, test_dos_program_and_shared,
+               test_function_spans_are_the_carved_functions,
                test_two_products_32bit, test_two_products_16bit):
         check(fn)
     for name, status, detail in RESULTS:

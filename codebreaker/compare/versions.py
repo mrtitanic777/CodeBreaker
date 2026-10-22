@@ -5,6 +5,9 @@ what is new, and what is already known about the new one because of the old one.
     python -m codebreaker versions <fileA> <fileB>                       any two files
     python -m codebreaker versions --all --from CORPUS --to CORPUS       every module of a product:
                                   [--sample N] [--jobs N]                how much of it is known
+    python -m codebreaker versions --shared A B C ... [--level shape]    the functions several
+                                  different programs share: a source module linked into each
+                                  (16-bit, 32-bit or real-mode DOS programs)
     options:  --json FILE   everything a side-by-side viewer needs (shape below)
               --carry       file the verified reconstructions of identical functions in the
                             store for the other build, as candidates still to be judged there,
@@ -79,7 +82,7 @@ from capstone import x86 as X
 
 from codebreaker.base import corpus
 from codebreaker.decompile import describe
-from codebreaker.formats import detect, pe_functions
+from codebreaker.formats import detect, dos, pe_functions
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 from codebreaker.jobs import pool
@@ -339,6 +342,33 @@ def _load_ne(path):
     return side.done()
 
 
+def _load_dos(path):
+    """A real-mode program as DOS loads it (unpacked): the functions dos_functions finds, keyed
+    by linear address. Each is read at its offset in its own code segment, as the program runs it,
+    so near calls and jumps land where they do at run time."""
+    from codebreaker.analyze import dos_functions
+    p = dos.read(path)
+    found = dos_functions.discover(p).functions
+    starts = sorted(found)
+    end = p.base + len(p.image)
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    side = Side(path, "dos", sum(n for _lo, n, _label in p.spans))
+    for n, lin in enumerate(starts):
+        fn, seg = found[lin], found[lin].cs             # (the code segment's linear base)
+        hi = starts[n + 1] if n + 1 < len(starts) else end
+        if not (p.base <= lin < end) or not (0 <= lin - seg < 0x10000):
+            continue
+        lo_off, hi_off = lin - seg, min(hi - seg, 0x10000)
+        relocated = {r - seg for r in p.relocations if lin <= r < hi}
+        body = _body(md.disasm(p.image[lin - p.base:hi - p.base], lo_off), lo_off, hi_off)
+        named = bool(fn.name) and not fn.name.startswith("sub_")
+        side.add(_function("%05x" % lin, fn.name if named else "sub_%05X" % lin, named, body, lo_off, hi_off,
+                           relocated, lambda t, s=seg: ("%05x" % (s + t)) if (s + t) in found else None,
+                           lambda a: None, lambda a: None, lambda v: False))
+    return side.done()
+
+
 def load(path):
     """Read a module and fingerprint its functions. -> Side"""
     kind = detect.lane(path)
@@ -346,7 +376,26 @@ def load(path):
         return _load_pe(path)
     if kind == "ne":
         return _load_ne(path)
+    if kind == "dos" or (kind is None and dos.kind(path)):
+        return _load_dos(path)
     raise ValueError("%s: functions of a %s file are not compared yet" % (os.path.basename(path), kind or "non-executable"))
+
+
+def shared(paths, level="text", least=8):
+    """The functions several programs have in common -- a source module linked into each of them,
+    the same code up to where the linker put things. Functions of fewer than `least` instructions
+    are left out (stubs and thunks match everywhere).
+    -> [(instructions, {program name: [keys]})], only fingerprints in two or more, biggest first"""
+    table, sizes = collections.defaultdict(lambda: collections.defaultdict(list)), {}
+    for path in paths:
+        side = load(path)
+        for f in side.functions.values():
+            if len(f.text) >= least:
+                h = f.ids[level]
+                table[h][side.name].append(f.key)
+                sizes[h] = len(f.text)
+    out = [(sizes[h], dict(v)) for h, v in table.items() if len(v) >= 2]
+    return sorted(out, key=lambda x: (-x[0], sorted(x[1])))
 
 
 # ---- matching ---------------------------------------------------------------------------------
@@ -734,13 +783,16 @@ def main(argv):
     """python -m codebreaker versions <module> --from CORPUS --to CORPUS [--json FILE] [--carry]
     python -m codebreaker versions <fileA> <fileB> [--json FILE] [--carry]
     python -m codebreaker versions --all --from CORPUS --to CORPUS [--sample N] [--jobs N] [--json FILE]
+    python -m codebreaker versions --shared <program> <program> ... [--level text|shape|bytes] [--json FILE]
 
     Match the functions of two builds of a module and say which are identical, changed, added
-    and removed; with --all, do it for every module of a product and total it."""
+    and removed; with --all, do it for every module of a product and total it; with --shared,
+    list the functions several different programs have in common."""
     argv = list(argv)
     old, new = _option(argv, "--from"), _option(argv, "--to")
     out, least = _option(argv, "--json"), float(_option(argv, "--least", "0.6"))
     sample, jobs = int(_option(argv, "--sample", "0")), int(_option(argv, "--jobs", "0"))
+    level = _option(argv, "--level", "text")
     flags = {a for a in argv if a.startswith("--")}
     names = [a for a in argv if not a.startswith("--")]
 
@@ -750,6 +802,26 @@ def main(argv):
                 json.dump(data, f)
             print("wrote %s" % out)
 
+    if "--shared" in flags:
+        if len(names) < 2:
+            raise SystemExit("--shared needs two programs or more")
+        if level not in LEVELS:
+            raise SystemExit("--level is one of %s" % ", ".join(LEVELS))
+        paths = [corpus.retail(n) or n for n in names]
+        found = shared(paths, level)
+        stems = [os.path.basename(p).lower() for p in paths]
+        print("%s: %d functions in two programs or more (%s)" % (", ".join(stems), len(found), level))
+        for i in range(len(stems)):
+            for j in range(i + 1, len(stems)):
+                both = sum(1 for _n, where in found if stems[i] in where and stems[j] in where)
+                print("  %s and %s: %d" % (stems[i], stems[j], both))
+        if found:
+            print("largest (instructions: program@keys):")
+        for n, where in found[:12]:
+            print("  %4d  %s" % (n, "  ".join("%s@%s" % (s, ",".join(k)) for s, k in sorted(where.items()))))
+        save({"level": level, "programs": stems,
+              "shared": [{"instructions": n, "where": where} for n, where in found]} if out else None)
+        return 0
     if "--all" in flags and old and new:
         t = time.time()
         result = product(old, new, sample, jobs, least)

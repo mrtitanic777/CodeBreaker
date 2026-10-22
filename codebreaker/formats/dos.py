@@ -8,6 +8,7 @@
     dos.read(path, run_movers=False)   a program that moves itself read as it is stored: the
                           moving is its own code, which its source has to have
     dos.programs()        every real-mode program of the corpus, one path per name
+    dos.unpacked_file(p)  a packed program written back as a plain MZ file (`info --unpack`)
 
 Four kinds of file, one result:
 
@@ -308,6 +309,30 @@ def unpack_exepack(module, cs, ip):
             relocs.append(seg * 0x10000 + off)
         table += 2 * count
     return bytes(buf[:out_paras * 16]), relocs, real_cs, real_ip, real_ss, real_sp
+
+
+def unpacked_file(p):
+    """A Program read from a packed MZ file, written back as a plain MZ file that DOS runs the
+    same way: the unpacked load module with its relocation table (grouped per 64 KB, as EXEPACK
+    kept it), the real entry and stack, room above the image for the stack, and whatever the file
+    held behind its load module. -> bytes"""
+    if p.kind != "mz" or not p.image:
+        raise ValueError("%s: not an MZ program" % p.name)
+    img, base, table = bytearray(p.image), LOAD * 16, []
+    for r in p.relocations:
+        at = r - base
+        struct.pack_into("<H", img, at, (struct.unpack_from("<H", img, at)[0] - LOAD) & 0xFFFF)
+        table.append(((at >> 16) << 12, at & 0xFFFF))
+    cs, ss = (p.cs - LOAD) & 0xFFFF, (p.ss - LOAD) & 0xFFFF
+    header = (0x1C + 4 * len(table) + 15) & ~15
+    total = header + len(img)
+    top = max(len(img), ss * 16 + p.sp)
+    h = bytearray(header)
+    struct.pack_into("<13H", h, 0, 0x5A4D, total % 512, (total + 511) // 512, len(table), header // 16,
+                     ((top - len(img) + 15) // 16) & 0xFFFF, 0xFFFF, ss, p.sp, 0, p.ip, cs, 0x1C)
+    for i, (seg, off) in enumerate(table):
+        struct.pack_into("<HH", h, 0x1C + 4 * i, off, seg)
+    return bytes(h) + bytes(img) + p.overlay
 
 
 # reading --------------------------------------------------------------------------------------
