@@ -327,10 +327,15 @@ def _cache16_path():
 
 
 def _reading():
+    # (and by the folder of binaries read: a product's folder can be pointed elsewhere --
+    # CB_CORPUS_ROOT at Setup's MINI.CAB, whose USER and KRNL386 are other files than Windows'
+    # own -- and the sizes read from one must not be handed to the other under the same name)
     import hashlib
     import inspect
+    from codebreaker.base import corpus
     from codebreaker.decompile import describe
     src = "".join(inspect.getsource(f) for f in (arg_bytes, describe.returns, describe.forwards))
+    src += os.path.normcase(os.path.abspath(corpus.root() or ""))
     return hashlib.sha1(src.encode("utf-8")).hexdigest()[:10]
 
 
