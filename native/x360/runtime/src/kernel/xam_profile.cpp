@@ -21,9 +21,11 @@
 #include "kernel/profile_store.h"
 #include "kernel/users.h"
 #include "settings.h"
+#include "xui/image.h"
 
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <map>
 #include <optional>
 #include <vector>
@@ -528,6 +530,126 @@ GUEST_IMPORT(XamReadTile)
     const uint32_t thread = guest::g_memory.Read32(ctx.r13.u32 + kernel::pcr::kCurrentThread);
     guest::g_memory.Write32(thread + kernel::kthread::kLastError, hr);
     ctx.r3.u64 = result;
+}
+
+namespace
+{
+    // The PNG XamReadTile would return for the same arguments, or nullopt (its rules: achievement and game pictures
+    // from the signed-in profile's GPD, gamer pictures of online players from our Xbox LIVE, local profiles' pictures
+    // from their package).
+    std::optional<std::vector<uint8_t>> TilePng(uint32_t type, uint32_t titleId, uint64_t imageId, uint32_t user)
+    {
+        if (type == 0 || type == 1)
+        {
+            const auto profile = user < 4 ? kernel::users::SignedIn(user) : std::nullopt;
+            if (!profile)
+                return std::nullopt;
+            return kernel::profile::ReadEntry(profile->xuid, titleId ? titleId : kernel::TitleId(), 2,
+                                              type == 1 ? 0x8000 : imageId);
+        }
+        const bool online = (imageId >> 48) == 0x0009;
+        if ((type == 2 || type == 3) && online)
+            return kernel::LiveGamerPicture(imageId, type == 3);
+        if (type == 2 || type == 3)
+            type = type == 3 ? 0xB : 0xA;
+        if (type != 4 && type != 5 && type != 0xA && type != 0xB)
+            return std::nullopt;
+        uint64_t xuid = 0;
+        if ((imageId >> 60) == 0xE)
+            xuid = imageId;
+        else if (user < 4)
+            if (const auto profile = kernel::users::SignedIn(user))
+                xuid = profile->xuid;
+        if (xuid == 0)
+            return std::nullopt;
+        const char* name = type == 4 ? "tile_64.png" : type == 5 ? "tile_32.png" : type == 0xA ? "pp_64.png" : "pp_32.png";
+        auto file = kernel::profile::ReadPackageFile(xuid, name);
+        if (!file && (type == 0xA || type == 0xB))
+            file = kernel::profile::ReadPackageFile(xuid, type == 0xA ? "tile_64.png" : "tile_32.png");
+        return file;
+    }
+
+    // XamReadTileToTexture(Ex): the tile decoded into a linear 32-bit texture the title allocated, ARGB in big-endian
+    // order (D3DFMT_LIN_A8R8G8B8), `pitch` bytes per row, at most `height` rows. A tile that is not there leaves the
+    // texture as it is and fails with ERROR_FILE_NOT_FOUND's HRESULT (the title keeps its default picture).
+    void TileToTexture(PPCContext& ctx, const std::string& what, const std::optional<std::vector<uint8_t>>& png,
+                       uint32_t buffer, uint32_t pitch, uint32_t height, uint32_t overlapped)
+    {
+        auto& mem = guest::g_memory;
+        uint32_t hr = 0x80070002;
+        if (buffer == 0 || pitch < 4)
+            hr = 0x80070057;
+        else if (png)
+        {
+            xui::Image image;
+            std::string error;
+            if (!xui::DecodePng(png->data(), png->size(), image, error))
+                Log("{}: the tile's PNG does not decode ({})", what, error);
+            else
+            {
+                const uint32_t w = std::min(image.width, pitch / 4), h = std::min(image.height, height);
+                for (uint32_t y = 0; y < h; y++)
+                {
+                    uint8_t* row = mem.Translate(buffer + y * pitch);
+                    for (uint32_t x = 0; x < w; x++)
+                    {
+                        const uint8_t* src = &image.rgba[(size_t(y) * image.width + x) * 4];
+                        row[x * 4 + 0] = src[3];
+                        row[x * 4 + 1] = src[0];
+                        row[x * 4 + 2] = src[1];
+                        row[x * 4 + 3] = src[2];
+                    }
+                }
+                hr = kernel::kErrorSuccess;
+            }
+        }
+        Log("{} ({} bytes x {} rows): {:08X}", what, pitch, height, hr);
+        const uint32_t result = int32_t(hr) < 0 ? 0x65B : kernel::kErrorSuccess;
+        if (overlapped)
+        {
+            kernel::CompleteOverlapped(overlapped, result, hr, 0);
+            ctx.r3.u64 = kernel::kErrorIoPending;
+            return;
+        }
+        const uint32_t thread = mem.Read32(ctx.r13.u32 + kernel::pcr::kCurrentThread);
+        mem.Write32(thread + kernel::kthread::kLastError, hr);
+        ctx.r3.u64 = result;
+    }
+}
+
+// DWORD XamReadTileToTexture(XTILETYPE TileType, DWORD TitleId, QWORD ImageId, DWORD UserIndex, PVOID Texture,
+//                            DWORD Pitch, DWORD Height, PXOVERLAPPED Overlapped)
+GUEST_IMPORT(XamReadTileToTexture)
+{
+    const uint32_t type = ctx.r3.u32, titleId = ctx.r4.u32, user = ctx.r6.u32;
+    const uint64_t imageId = ctx.r5.u64;
+    TileToTexture(ctx, std::format("XamReadTileToTexture(type {:X}, title {:08X}, image {:X}, user {:X})", type,
+                  titleId, imageId, user), TilePng(type, titleId, imageId, user), ctx.r7.u32, ctx.r8.u32, ctx.r9.u32,
+                  ctx.r10.u32);
+}
+
+// DWORD XamReadTileToTextureEx(XTILETYPE TileType, DWORD TitleId, QWORD ImageId, DWORD UserIndex, BOOL Small,
+//                              PCXUSER_DATA PictureKey, PVOID Texture, DWORD Pitch, DWORD Height,
+//                              PXOVERLAPPED Overlapped): titles look it up by ordinal (765) at run time. XAPI's
+// XUserReadGamerPictureByKey calls it with type 0xC (a gamer picture named by the key a gamercard holds), title 0,
+// image 0, user 0xFE. The key names a picture of the user's own profile here: the first signed-in profile's.
+GUEST_EXPORT("xam.xex", 765, XamReadTileToTextureEx)
+{
+    const uint32_t type = ctx.r3.u32, titleId = ctx.r4.u32, user = ctx.r6.u32;
+    const uint64_t imageId = ctx.r5.u64;
+    const bool small = ctx.r7.u32 != 0;
+    std::optional<std::vector<uint8_t>> png;
+    if (type == 0xC)
+    {
+        for (uint32_t u = 0; u < 4 && !png; u++)
+            if (kernel::users::SignedIn(u))
+                png = TilePng(small ? 0xB : 0xA, 0, 0, u);
+    }
+    else
+        png = TilePng(type, titleId, imageId, user);
+    TileToTexture(ctx, std::format("XamReadTileToTextureEx(type {:X}, title {:08X}, image {:X}, user {:X}, {})", type,
+                  titleId, imageId, user, small ? "small" : "large"), png, ctx.r9.u32, ctx.r10.u32,
+                  kernel::StackArg32(ctx, 8), kernel::StackArg32(ctx, 9));
 }
 
 // DWORD XamReadTileEx(XTILETYPE TileType, DWORD TitleId, QWORD ImageId, DWORD UserIndex, DWORD, DWORD, PBYTE Buffer,

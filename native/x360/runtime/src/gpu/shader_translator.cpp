@@ -525,8 +525,8 @@ namespace gpu
             }
             if (opcode != 1)
                 Unsupported(std::format("texture instruction {}", opcode));
-            if (dimension > 1)
-                Unsupported(dimension == 2 ? "tfetch3D" : "tfetchCube");
+            if (dimension == 2)
+                Unsupported("tfetch3D");
             if (Bits(w2, 0, 1))
                 Unsupported("register gradients (setGradientH/V)");
             if (options_.computeHarness)
@@ -549,6 +549,18 @@ namespace gpu
                 Line("float tu = {}.{};", src, kComponents[swz & 3]);
                 Line("float tsize = float((td2 & 0xFFFFFFu) + 1u);");
             }
+            else if (dimension == 3)
+            {
+                // Cube: X and Y are the coordinates on the face in [1, 2) (the cube instruction's SC / TC over the
+                // major axis, plus 1.5), Z the face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z). Back to the direction the
+                // cube instruction took them from, for a host cube texture (its faces in the same order).
+                Line("float tcs = {}.{} * 2.0 - 3.0, tct = {}.{} * 2.0 - 3.0;", src, kComponents[swz & 3], src,
+                     kComponents[(swz >> 2) & 3]);
+                Line("uint tface = min(uint(max({}.{}, 0.0) + 0.5), 5u);", src, kComponents[(swz >> 4) & 3]);
+                Line("float3 tu = tface == 0u ? float3(1.0, -tct, -tcs) : tface == 1u ? float3(-1.0, -tct, tcs) :");
+                Line("    tface == 2u ? float3(tcs, 1.0, tct) : tface == 3u ? float3(tcs, -1.0, -tct) :");
+                Line("    tface == 4u ? float3(tcs, -tct, 1.0) : float3(-tcs, -tct, -1.0);");
+            }
             else
             {
                 Line("float2 tu = float2({}.{}, {}.{});", src, kComponents[swz & 3], src, kComponents[(swz >> 2) & 3]);
@@ -556,11 +568,11 @@ namespace gpu
             }
             // Unnormalized coordinates are in texels; honoured only with non-wrapping addressing (03b §3.3), which the
             // sampler setup must check.
-            if (Bits(w0, 25, 1))
+            if (Bits(w0, 25, 1) && dimension != 3)
                 Line("tu /= tsize;");
             // Offsets are in half texels, applied at the base level as Xenia does (03b §3.5).
             const int32_t ox = SignExtend(Bits(w2, 16, 5), 5), oy = SignExtend(Bits(w2, 21, 5), 5);
-            if (ox || oy)
+            if ((ox || oy) && dimension != 3)
             {
                 if (dimension == 0)
                     Line("tu += {} / tsize;", float(ox) * 0.5f);
@@ -764,7 +776,8 @@ namespace gpu
             std::string text;
             for (uint32_t i = 0; i < result_.textures.size(); i++)
                 text += std::format("{} xe_texture_{} : register(t{}, space1);\n",
-                                    result_.textures[i].dimension == 0 ? "Texture1D<float4>" : "Texture2D<float4>", i, i);
+                                    result_.textures[i].dimension == 0 ? "Texture1D<float4>" :
+                                    result_.textures[i].dimension == 3 ? "TextureCube<float4>" : "Texture2D<float4>", i, i);
             for (uint32_t i = 0; i < result_.samplers.size(); i++)
                 text += std::format("SamplerState xe_sampler_{} : register(s{});\n", i, i);
             text += R"(

@@ -654,7 +654,11 @@ bool Recompiler::Recompile(
                 }
                 else
                 {
-                    println("\t// ERROR {:X}", address);
+                    // No function is known there: go through the indirect-call table, so the call happens if
+                    // the runtime has one at the address and fails loudly if it has none (it was a comment, and
+                    // the call silently vanished).
+                    println("\tPPC_CALL_INDIRECT_FUNC(0x{:X}u); // no function known at {:X}", address, address);
+                    fmt::println("WARNING: {:X} branches to {:X}, where no function is known", fn.base, address);
                 }
             }
         };

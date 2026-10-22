@@ -269,7 +269,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const bool snorm = f.numbers == TextureNumbers::kSigned;
             switch (f.format)
             {
-            case 2:
+            case 2: case 8: case 9:
                 return { DXGI_FORMAT_R8_TYPELESS, DXGI_FORMAT_R8_UINT, snorm ? DXGI_FORMAT_R8_SNORM : DXGI_FORMAT_R8_UNORM,
                          D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 0, 0, 0), 1 };
             case 10:
@@ -1297,21 +1297,25 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             list_->SetPipelineState(untilePipelines_[texture.fetch.numbers == TextureNumbers::kInteger].Get());
             list_->SetComputeRootDescriptorTable(1, SrvGpu(0));
             for (uint32_t level = 0; level < texture.layout.levelCount; level++)
-            {
-                const TextureLevelSource& source = texture.layout.levels[level];
-                if (!source.present)
-                    continue;
-                D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
-                uav.Format = host.uav;
-                uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-                uav.Texture2D.MipSlice = level;
-                const UINT index = srvNext_++;
-                device_->CreateUnorderedAccessView(texture.resource.Get(), nullptr, &uav, SrvCpu(index));
-                const TextureUntileConstants constants = UntileConstants(texture.fetch, source);
-                list_->SetComputeRootConstantBufferView(0, UploadData(&constants, sizeof(constants)));
-                list_->SetComputeRootDescriptorTable(2, SrvGpu(index));
-                list_->Dispatch((source.width + 7) / 8, (source.height + 7) / 8, 1);
-            }
+                for (uint32_t face = 0; face < texture.fetch.faces; face++)
+                {
+                    const TextureLevelSource& source = texture.layout.levels[level];
+                    if (!source.present)
+                        continue;
+                    D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
+                    uav.Format = host.uav;
+                    uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;   // one slice: the face (a 2D texture: 0)
+                    uav.Texture2DArray.MipSlice = level;
+                    uav.Texture2DArray.FirstArraySlice = face;
+                    uav.Texture2DArray.ArraySize = 1;
+                    const UINT index = srvNext_++;
+                    device_->CreateUnorderedAccessView(texture.resource.Get(), nullptr, &uav, SrvCpu(index));
+                    TextureUntileConstants constants = UntileConstants(texture.fetch, source);
+                    constants.storage += face * source.faceStride;
+                    list_->SetComputeRootConstantBufferView(0, UploadData(&constants, sizeof(constants)));
+                    list_->SetComputeRootDescriptorTable(2, SrvGpu(index));
+                    list_->Dispatch((source.width + 7) / 8, (source.height + 7) / 8, 1);
+                }
             texture.state = kShaderResource;
             Transition(texture.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, texture.state);
             if (g_dumpTextures)
@@ -1364,17 +1368,26 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                         Fatal("GPU: texture {:08X}-{:08X} is outside physical memory ({})", start, end, DescribeTextureTuple(d));
                 const HostTextureFormat host = HostFormatOf(fetch);
                 D3D12_HEAP_PROPERTIES heap = { D3D12_HEAP_TYPE_DEFAULT };
-                D3D12_RESOURCE_DESC desc = { D3D12_RESOURCE_DIMENSION_TEXTURE2D, 0, fetch.width, fetch.height, 1,
-                                             UINT16(texture.layout.levelCount), host.resource, { 1, 0 },
-                                             D3D12_TEXTURE_LAYOUT_UNKNOWN, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
+                D3D12_RESOURCE_DESC desc = { D3D12_RESOURCE_DIMENSION_TEXTURE2D, 0, fetch.width, fetch.height,
+                                             UINT16(fetch.faces), UINT16(texture.layout.levelCount), host.resource,
+                                             { 1, 0 }, D3D12_TEXTURE_LAYOUT_UNKNOWN,
+                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS };
                 CheckHr(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON,
                                                          nullptr, IID_PPV_ARGS(&texture.resource)), "texture");
                 texture.state = D3D12_RESOURCE_STATE_COMMON;
                 texture.uavFormat = host.uav;
                 texture.srv.Format = host.srv;
-                texture.srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
                 texture.srv.Shader4ComponentMapping = host.mapping;
-                texture.srv.Texture2D.MipLevels = texture.layout.levelCount;
+                if (fetch.faces == 6)
+                {
+                    texture.srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+                    texture.srv.TextureCube.MipLevels = texture.layout.levelCount;
+                }
+                else
+                {
+                    texture.srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                    texture.srv.Texture2D.MipLevels = texture.layout.levelCount;
+                }
             }
             // Untiled when new or written by a resolve (in stream order, no CPU wait), and when the guest bytes changed:
             // hashed once per frame, but only where no recorded resolve is still to
@@ -1499,9 +1512,20 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 Fatal("GPU: a shader uses {} textures (at most {} are bound)", shader.textures.size(), kTableSize);
             for (size_t i = 0; i < shader.textures.size(); i++)
             {
-                if (shader.textures[i].dimension != 1)
+                if (shader.textures[i].dimension == 0)
                     Fatal("GPU: 1D texture fetches are not implemented (tf{})", shader.textures[i].fetchConstant);
+                // A fetch constant the title never set up as a texture (type 0: all zero) while its shader still
+                // samples it: the null descriptor, which reads 0 (titles rely on it: a shader shared by draws that
+                // bind fewer textures).
+                if ((Reg(0x4800 + shader.textures[i].fetchConstant * 6) & 3) != 2)
+                {
+                    LogOnce(std::format("texture: tf{} is not a texture; sampled as zero", shader.textures[i].fetchConstant));
+                    continue;
+                }
                 textures[i] = &TextureFor(shader.textures[i].fetchConstant);
+                if ((shader.textures[i].dimension == 3) != (textures[i]->fetch.faces == 6))
+                    Fatal("GPU: tf{} is fetched as {} but its fetch constant is {}", shader.textures[i].fetchConstant,
+                          shader.textures[i].dimension == 3 ? "a cube" : "2D", textures[i]->fetch.faces == 6 ? "a cube" : "2D");
             }
             std::vector<ID3D12Resource*> resources(kTableSize, nullptr);
             for (UINT i = 0; i < kTableSize; i++)

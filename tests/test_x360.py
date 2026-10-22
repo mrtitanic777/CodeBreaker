@@ -59,6 +59,16 @@ def test_extra_functions_respect_switches():
     assert 0x82166A54 not in extra and 0x82166CEC not in extra     # entries of the vector runs
 
 
+def test_tail_jump_targets_are_functions():
+    """A branch out of a function is a tail call, so its target is declared a function: XACT's handler at
+    0x823699C8 ends `b 0x823710C8`, which XenonRecomp otherwise had nothing to call for (and dropped)."""
+    _need_game()
+    img = discover._image(XEX)
+    found, _ = switches.find(XEX)
+    extra = dict(config.extra_functions(XEX, img, {t["bctr"]: t["labels"] for t in found}))
+    assert 0x823710C8 in extra and 0x823735D0 in extra or 0x823735D0 in img.extents
+
+
 def test_basic_xex():
     """basic(): the header kept, one data block holding the whole image."""
     _need_game()

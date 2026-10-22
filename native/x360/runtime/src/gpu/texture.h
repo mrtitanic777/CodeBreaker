@@ -51,6 +51,7 @@ namespace gpu
         uint32_t mipAddress = 0;      // physical byte address of level 1's storage (0 = from the base address)
         uint32_t minLevel = 0, maxLevel = 0; // levels that can be sampled (05a §3)
         uint32_t signs = 0;           // 4 x 2 bits, data components X..W (fetch dword 0 bits 2-9)
+        uint32_t faces = 1;           // 6 for a cube texture (faces +X, -X, +Y, -Y, +Z, -Z, each level's in turn)
         TextureNumbers numbers = TextureNumbers::kUnsigned;
 
         auto operator<=>(const TextureFetch&) const = default;
@@ -61,9 +62,16 @@ namespace gpu
     // Everything about the constant except its addresses, for logs (one line, once per distinct tuple).
     std::string DescribeTextureTuple(const uint32_t dwords[6]);
     const char* TextureFormatName(uint32_t format); // GPUTEXTUREFORMAT without the k_ prefix
-    // Bytes per texel and data components of an implemented format.
+    // Bytes per texel (per 4x4 block for DXT) and data components of an implemented format.
     uint32_t TextureBytesPerTexel(uint32_t format);
     uint32_t TextureComponents(uint32_t format);
+    // Texels per block side: 4 for the DXT formats, else 1. Strides, packed-tail positions and extents are in blocks.
+    uint32_t TextureBlockSize(uint32_t format);
+    // How the untile shader reads the format: one component per 8 or 16 bits; a packed 16-bit texel (its components'
+    // widths: TexturePackedWidths, a nibble each, X first) expanded to 8 bits each; or a DXT block decoded.
+    enum : uint32_t { kUntilePlain = 0, kUntilePacked16 = 1, kUntileDxt1 = 2, kUntileDxt2_3 = 3, kUntileDxt4_5 = 4 };
+    uint32_t TextureUntileKind(uint32_t format);
+    uint32_t TexturePackedWidths(uint32_t format);
 
     // Where host level `level` comes from.
     struct TextureLevelSource
@@ -74,6 +82,7 @@ namespace gpu
         uint32_t pitchBlocks = 0;     // tiled: row pitch of that storage in blocks (a multiple of 32)
         uint32_t rowBytes = 0;        // linear: bytes per row of that storage
         uint32_t offsetX = 0, offsetY = 0; // blocks: position inside the packed tail (0 when not packed)
+        uint32_t faceStride = 0;      // bytes from one cube face's storage to the next (the storage, 4 KB aligned)
     };
 
     struct TextureLayout
@@ -92,8 +101,9 @@ namespace gpu
         uint32_t storage, pitch, tiled, endian;   // pitch: tiled = blocks, linear = row bytes
         uint32_t offsetX, offsetY, width, height;
         uint32_t bytesLog2, components, numbers, signs;
+        uint32_t kind, packedWidths, pad0, pad1;  // TextureUntileKind, TexturePackedWidths
     };
-    static_assert(sizeof(TextureUntileConstants) == 48);
+    static_assert(sizeof(TextureUntileConstants) == 64);
 
     TextureUntileConstants UntileConstants(const TextureFetch& fetch, const TextureLevelSource& level);
 

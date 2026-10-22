@@ -94,7 +94,7 @@ namespace gpu
     struct TextureBinding
     {
         uint32_t fetchConstant;           // tf#
-        uint32_t dimension;               // 0 1D, 1 2D
+        uint32_t dimension;               // 0 1D, 1 2D, 3 cube
     };
 
     struct SamplerBinding

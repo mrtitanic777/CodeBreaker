@@ -79,17 +79,18 @@ namespace gpu
         };
 
         // Strides of the base level's storage or of mip storage `level` (05b §2.4).
+        // Strides in blocks: a texel, or a 4x4 block of a DXT format.
         Storage StorageOf(const TextureFetch& f, bool base, uint32_t level)
         {
-            const uint32_t bytes = TextureBytesPerTexel(f.format);
+            const uint32_t bytes = TextureBytesPerTexel(f.format), block = TextureBlockSize(f.format);
             const uint32_t rowTexels = base ? f.pitch : std::max(NextPow2(f.width) >> level, 1u);
             const uint32_t rowsTexels = base ? f.height : std::max(NextPow2(f.height) >> level, 1u);
             Storage s;
-            s.pitchBlocks = Align(rowTexels, 32);
+            s.pitchBlocks = Align((rowTexels + block - 1) / block, 32);
             s.rowBytes = s.pitchBlocks * bytes;
             if (!f.tiled && !base)
                 s.rowBytes = Align(s.rowBytes, 256);
-            s.rows = Align(rowsTexels, 32);
+            s.rows = Align((rowsTexels + block - 1) / block, 32);
             return s;
         }
     }
@@ -100,8 +101,10 @@ namespace gpu
     {
         switch (format)
         {
-        case 2: return 1;
-        case 10: return 2;
+        case 2: case 8: case 9: return 1;                // k_8, k_8_A, k_8_B
+        case 10: case 3: case 4: case 15: return 2;      // k_8_8, k_1_5_5_5, k_5_6_5, k_4_4_4_4
+        case 18: case 51: return 8;                      // DXT1: per 4x4 block
+        case 19: case 20: case 52: case 53: return 16;   // DXT2_3, DXT4_5: per 4x4 block
         default: return 4;
         }
     }
@@ -110,9 +113,39 @@ namespace gpu
     {
         switch (format)
         {
-        case 2: return 1;
-        case 6: return 4;
-        default: return 2;
+        case 2: case 8: case 9: return 1;
+        case 10: case 25: return 2;
+        case 4: return 3;                                // k_5_6_5: no W
+        default: return 4;
+        }
+    }
+
+    uint32_t TextureBlockSize(uint32_t format)
+    {
+        return TextureUntileKind(format) >= kUntileDxt1 ? 4 : 1;
+    }
+
+    uint32_t TextureUntileKind(uint32_t format)
+    {
+        switch (format)
+        {
+        case 3: case 4: case 15: return kUntilePacked16;
+        case 18: case 51: return kUntileDxt1;
+        case 19: case 52: return kUntileDxt2_3;
+        case 20: case 53: return kUntileDxt4_5;
+        default: return kUntilePlain;
+        }
+    }
+
+    uint32_t TexturePackedWidths(uint32_t format)
+    {
+        // The packed 16-bit formats' component widths, X first (lowest bits), one nibble each.
+        switch (format)
+        {
+        case 3: return 0x1555;   // k_1_5_5_5: X 5, Y 5, Z 5, W 1
+        case 4: return 0x0565;   // k_5_6_5: X 5, Y 6, Z 5
+        case 15: return 0x4444;  // k_4_4_4_4
+        default: return 0;
         }
     }
 
@@ -150,12 +183,21 @@ namespace gpu
         if ((d[0] & 3) != 2)
             return std::format("fetch constant type {} is not a texture", d[0] & 3);
         f.format = d[1] & 0x3F;
-        if (f.format != 2 && f.format != 6 && f.format != 10 && f.format != 25)
+        switch (f.format)
+        {
+        case 2: case 6: case 8: case 9: case 10: case 14: case 25:           // 8 / 16 bits per component
+        case 3: case 4: case 15:                                             // packed 16-bit texels
+        case 18: case 19: case 20: case 51: case 52: case 53:                // DXT blocks
+            break;
+        default:
             return std::format("format k_{}", TextureFormatName(f.format));
-        if (((d[5] >> 9) & 3) != 1)
-            return "dimension other than 2D";
-        if ((d[1] >> 10) & 1)
+        }
+        const uint32_t dimension = (d[5] >> 9) & 3;
+        if (dimension != 1 && dimension != 3)
+            return dimension == 0 ? "1D texture" : "3D texture";
+        if (dimension == 1 && ((d[1] >> 10) & 1))
             return "stacked (array) texture";
+        f.faces = dimension == 3 ? 6 : 1;
         if (d[3] >> 31)
             return "border texels (BorderSize 1)";
         f.endian = (d[1] >> 6) & 3;
@@ -217,6 +259,8 @@ namespace gpu
             return "signed and unsigned components in one texture";
         else
             f.numbers = anySigned ? TextureNumbers::kSigned : TextureNumbers::kUnsigned;
+        if (TextureUntileKind(f.format) != kUntilePlain && f.numbers != TextureNumbers::kUnsigned)
+            return std::format("k_{} with signed or integer components", TextureFormatName(f.format));
         return {};
     }
 
@@ -231,7 +275,7 @@ namespace gpu
         for (uint32_t level = 1; level < lastStored && level < kTextureMaxLevels; level++)
         {
             const Storage s = StorageOf(f, false, level);
-            mipOffset[level + 1] = mipOffset[level] + Align(s.rowBytes * s.rows, 4096);
+            mipOffset[level + 1] = mipOffset[level] + Align(s.rowBytes * s.rows, 4096) * f.faces;
         }
         // Per storage (address and strides: a packed base tail and the mip tail can share the address, 05b §2.5): the
         // block extent of the levels it holds (05b §2.6).
@@ -261,13 +305,19 @@ namespace gpu
             }
             out.pitchBlocks = s.pitchBlocks;
             out.rowBytes = s.rowBytes;
+            out.faceStride = f.faces > 1 ? Align(s.rowBytes * s.rows, 4096) : 0;
+            const uint32_t block = TextureBlockSize(f.format);
             if (inTail)
+            {
                 PackedOffset(f.width, f.height, level, out.offsetX, out.offsetY);
+                out.offsetX /= block; // texels to blocks
+                out.offsetY /= block;
+            }
             out.present = true;
             Extent& e = extents[{ out.storage, s.pitchBlocks, s.rowBytes }];
             e.storage = s;
-            e.right = std::max(e.right, out.offsetX + out.width);
-            e.bottom = std::max(e.bottom, out.offsetY + out.height);
+            e.right = std::max(e.right, out.offsetX + (out.width + block - 1) / block);
+            e.bottom = std::max(e.bottom, out.offsetY + (out.height + block - 1) / block);
         }
         const uint32_t bytes = TextureBytesPerTexel(f.format), bytesLog2 = std::countr_zero(bytes);
         for (const auto& [key, e] : extents)
@@ -282,6 +332,8 @@ namespace gpu
             }
             else
                 size = e.storage.rowBytes * (e.bottom - 1) + bytes * e.right;
+            if (f.faces > 1)  // the last face's storage after the others
+                size += (f.faces - 1) * Align(e.storage.rowBytes * e.storage.rows, 4096);
             layout.extents.emplace_back(start, start + size);
         }
         return layout;
@@ -302,6 +354,8 @@ namespace gpu
         c.components = TextureComponents(f.format);
         c.numbers = uint32_t(f.numbers);
         c.signs = f.signs;
+        c.kind = TextureUntileKind(f.format);
+        c.packedWidths = TexturePackedWidths(f.format);
         return c;
     }
 
@@ -310,13 +364,14 @@ cbuffer XeUntileConstants : register(b0)
 {
     uint4 xe_un_layout;  // storage address, pitch (tiled: blocks, linear: row bytes), tiled, endian
     uint4 xe_un_rect;    // position in the packed tail (blocks), level width, height
-    uint4 xe_un_format;  // log2 bytes per texel, components, numbers (0 unsigned, 1 signed, 2 integer), signs
+    uint4 xe_un_format;  // log2 bytes per texel (per block), components, numbers (0 unsigned, 1 signed, 2 integer), signs
+    uint4 xe_un_kind;    // kind (0 plain, 1 packed 16-bit, 2 DXT1, 3 DXT2_3, 4 DXT4_5), packed widths (nibbles, X first)
 };
 ByteAddressBuffer xe_memory : register(t0);
 #ifdef XE_UNTILE_FLOAT
-RWTexture2D<float4> xe_untile_dest : register(u0);
+RWTexture2DArray<float4> xe_untile_dest : register(u0);
 #else
-RWTexture2D<uint4> xe_untile_dest : register(u0);
+RWTexture2DArray<uint4> xe_untile_dest : register(u0);
 #endif
 
 // 2D tiled byte offset of block p (05b §2.2).
@@ -340,11 +395,76 @@ uint xe_un_swap(uint v, uint endian)
     return v;
 }
 
+// A 16-bit component of `bits` bits (5 or 6 of RGB565) as 8 bits.
+uint xe_un_expand(uint v, uint bits)
+{
+    uint maxv = (1u << bits) - 1u;
+    return (v * 255u + (maxv >> 1)) / maxv;
+}
+
+uint3 xe_un_565(uint c)
+{
+    return uint3(xe_un_expand(c >> 11, 5u), xe_un_expand((c >> 5) & 63u, 6u), xe_un_expand(c & 31u, 5u));
+}
+
+uint xe_un_word(uint address)
+{
+    return xe_un_swap(xe_memory.Load(address & ~3u), xe_un_layout.w);
+}
+
+// One texel of a DXT block (block bytes at `address`, texel `t` of 16, row-major).
+uint4 xe_un_dxt(uint address, uint t, uint kind)
+{
+    uint colorAt = kind == 2u ? address : address + 8u;
+    uint colors = xe_un_word(colorAt), indices = xe_un_word(colorAt + 4u);
+    uint c0 = colors & 0xFFFFu, c1 = colors >> 16;
+    uint3 e0 = xe_un_565(c0), e1 = xe_un_565(c1);
+    uint index = (indices >> (2u * t)) & 3u;
+    bool fourColors = kind != 2u || c0 > c1;
+    uint3 rgb = index == 0u ? e0 : index == 1u ? e1 :
+                fourColors ? (index == 2u ? (2u * e0 + e1 + 1u) / 3u : (e0 + 2u * e1 + 1u) / 3u)
+                           : (index == 2u ? (e0 + e1) / 2u : uint3(0u, 0u, 0u));
+    uint a = 255u;
+    if (kind == 2u)
+        a = (!fourColors && index == 3u) ? 0u : 255u;
+    else if (kind == 3u)
+    {
+        uint word = xe_un_word(address + (t >= 8u ? 4u : 0u));
+        a = ((word >> (4u * (t & 7u))) & 15u) * 17u;
+    }
+    else
+    {
+        uint lo = xe_un_word(address), hi = xe_un_word(address + 4u);
+        uint a0 = lo & 255u, a1 = (lo >> 8) & 255u;
+        uint bit = 16u + 3u * t;    // 3-bit indices from bit 16 of the 64-bit alpha block
+        uint ai = bit + 3u <= 32u ? (lo >> bit) & 7u
+                : bit >= 32u ? (hi >> (bit - 32u)) & 7u
+                : ((lo >> bit) | (hi << (32u - bit))) & 7u;
+        if (ai == 0u) a = a0;
+        else if (ai == 1u) a = a1;
+        else if (a0 > a1) a = ((8u - ai) * a0 + (ai - 1u) * a1 + 3u) / 7u;
+        else if (ai == 6u) a = 0u;
+        else if (ai == 7u) a = 255u;
+        else a = ((6u - ai) * a0 + (ai - 1u) * a1 + 2u) / 5u;
+    }
+    return uint4(rgb, a);
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= xe_un_rect.z || id.y >= xe_un_rect.w)
         return;
+    uint kind = xe_un_kind.x;
+    if (kind >= 2u)
+    {
+        // DXT: the 4x4 block holding the texel, at its block position (the packed offset is in blocks)
+        uint2 b = (id.xy >> 2) + xe_un_rect.xy;
+        uint blockOffset = xe_un_layout.z != 0u ? xe_un_tiled(b, xe_un_layout.y >> 5, xe_un_format.x)
+                                                : b.y * xe_un_layout.y + (b.x << xe_un_format.x);
+        xe_untile_dest[uint3(id.xy, 0u)] = xe_un_dxt(xe_un_layout.x + blockOffset, (id.y & 3u) * 4u + (id.x & 3u), kind);
+        return;
+    }
     uint2 p = id.xy + xe_un_rect.xy;
     uint bytesLog2 = xe_un_format.x;
     uint offset = xe_un_layout.z != 0u ? xe_un_tiled(p, xe_un_layout.y >> 5, bytesLog2)
@@ -353,6 +473,20 @@ void main(uint3 id : SV_DispatchThreadID)
     // The endian swap works on 32-bit words of memory; the texel is then read little-endian from its word.
     uint word = xe_un_swap(xe_memory.Load(address & ~3u), xe_un_layout.w);
     uint texel = bytesLog2 == 2u ? word : (word >> ((address & 3u) << 3)) & (bytesLog2 == 1u ? 0xFFFFu : 0xFFu);
+    if (kind == 1u)
+    {
+        // packed 16-bit texel: each component expanded to 8 bits (components it lacks repeat the last one)
+        uint widths = xe_un_kind.y, shift = 0u;
+        uint4 e = uint4(0u, 0u, 0u, 0u);
+        [unroll] for (uint i = 0u; i < 4u; i++)
+        {
+            uint w = (widths >> (4u * i)) & 15u;
+            e[i] = w != 0u ? xe_un_expand((texel >> shift) & ((1u << w) - 1u), w) : e[i == 0u ? 0u : i - 1u];
+            shift += w;
+        }
+        xe_untile_dest[uint3(id.xy, 0u)] = e;
+        return;
+    }
     uint components = xe_un_format.y;
     uint bits = (components == 2u && bytesLog2 == 2u) ? 16u : 8u;
     uint mask = (1u << bits) - 1u;
@@ -366,9 +500,9 @@ void main(uint3 id : SV_DispatchThreadID)
     uint4 signs = (xe_un_format.wwww >> uint4(0u, 2u, 4u, 6u)) & 3u;
     int4 extended = int4(c << (32u - bits)) >> int(32u - bits);
     uint4 m = signs == 1u ? 0xFFFFFFFFu : 0u; // a bit-mask select (host compilers rewrite float selects)
-    xe_untile_dest[id.xy] = asfloat((asuint(float4(extended)) & m) | (asuint(float4(c)) & ~m));
+    xe_untile_dest[uint3(id.xy, 0u)] = asfloat((asuint(float4(extended)) & m) | (asuint(float4(c)) & ~m));
 #else
-    xe_untile_dest[id.xy] = c;
+    xe_untile_dest[uint3(id.xy, 0u)] = c;
 #endif
 }
 )HLSL";

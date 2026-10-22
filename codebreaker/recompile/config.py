@@ -151,10 +151,17 @@ def extra_functions(xex_path, img, switches=None):
     starts = [a for a in funcs if a not in labels and not any(s <= a < e for s, e in runs)]
     bounds = sorted(set(starts) | set(img.imports) | set(img.run_names) | set(img.extents) |
                     {s for s, _e in runs})
-    out = []
-    for a in sorted(starts):
-        if a in img.extents or a in img.run_names or not lo <= a < hi:
-            continue
+    pdata = sorted((s, s + n) for s, (n, _p, _h) in img.extents.items())
+    pdata_starts = [s for s, _e in pdata]
+
+    def containing(a):
+        i = bisect.bisect_right(pdata_starts, a) - 1
+        return pdata[i] if i >= 0 and pdata[i][0] < a < pdata[i][1] else None
+
+    def size(a):
+        inside = containing(a)
+        if inside:                       # a second entry of a .pdata function: runs to its end
+            return inside[1] - a
         i = bisect.bisect_right(bounds, a)
         end = min(bounds[i] if i < len(bounds) else hi, a + 0x4000, hi)
         for base, cases in switches.items():          # its switches' cases are inside it
@@ -162,8 +169,40 @@ def extra_functions(xex_path, img, switches=None):
                 end = max(end, min(_end_of_run(code, lo, max(cases)), hi))
         while end - 4 > a and code[end - 4 - lo:end - lo] == b"\0\0\0\0":   # trailing padding
             end -= 4
-        out.append((a, end - a))
-    return out
+        return end - a
+
+    found = {}
+    for a in sorted(starts):
+        if a in img.extents or a in img.run_names or not lo <= a < hi:
+            continue
+        found[a] = size(a)
+    # Every branch (b, bc; no link) out of a function is a tail call: its target must be a function too, or
+    # XenonRecomp has nothing to call there. New functions have branches of their own: to a fixed point.
+    known = set(img.extents) | set(found) | set(img.run_names) | set(img.imports) | {s for s, _e in runs}
+    todo = [(s, e) for s, e in pdata] + [(a, a + n) for a, n in found.items()]
+    while todo:
+        new = []
+        for s, e in todo:
+            for o in range(s - lo, min(e, hi) - lo, 4):
+                w = int.from_bytes(code[o:o + 4], "big")
+                op = w >> 26
+                if op == 18 and not w & 3:                    # b
+                    d = w & 0x03FFFFFC
+                    d -= 0x04000000 if d & 0x02000000 else 0
+                elif op == 16 and not w & 3:                  # bc
+                    d = w & 0xFFFC
+                    d -= 0x10000 if d & 0x8000 else 0
+                else:
+                    continue
+                t = lo + o + d
+                if s <= t < e or t in known or t in labels or not lo <= t < hi or \
+                        any(rs <= t < re for rs, re in runs):
+                    continue
+                known.add(t)
+                found[t] = size(t)
+                new.append((t, t + found[t]))
+        todo = new
+    return sorted(found.items())
 
 
 def make(xex_path, out_dir="ppc", switch_tables="switch_tables.toml", hooks=None, file_path=None):
