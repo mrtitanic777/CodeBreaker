@@ -7,8 +7,12 @@
     img.functions                   sorted function starts
     img.imports                     {address: name}: the stubs calls to other modules go through
     img.inline                      {address: name}: register save/restore runs entered by `bl`
-    img.code                        (first address, last address + 1) of the code section
+    img.code                        (first address, last address + 1) of the code: every executable section
+    img.extents                     {start: (size, prologue size, has an exception handler)}, from .pdata
+    img.entry                       the entry point's address (0 when there is none)
     img.word(address)               one big-endian instruction word, or None
+    virtual_methods(img)            {address: (class, slot)}: the virtual functions run-time type
+                                    information names (see below)
 
 Big-endian PowerPC code in a PE container (machine type 0x1F2), as produced by Microsoft's
 PowerPC compilers. Three things about such an image are stated by the image and need no guessing:
@@ -29,6 +33,12 @@ registers, relative to r12 (`stfd` / `lfd` runs ending `blr`). These runs are pa
 caller's own prologue and epilogue, not functions in their own right: the ones entered by `bl`
 are listed in `inline` so their instructions are read as the caller's; the general-register
 restore run is reached by a plain jump and simply continues the caller.
+
+Classes. Microsoft's C++ compilers leave run-time type information beside each virtual table of a
+class that has any: the word before the table points at a locator (signature 0) whose fourth
+word points at the class's type descriptor, which holds the class's decorated name (`.?AVCFoo@@`).
+Where that chain is intact, every function the table lists is a virtual function of that class,
+named for certain; the standard library's own classes are left out.
 
 Some files hold the image as it sits in memory (every section at its own address) rather than
 packed as a file on disk; their section headers still give file positions that are no longer
@@ -58,6 +68,7 @@ class Image(object):
         self.sections = [(s["name"], pe.image_base + s["vaddr"], s["vsize"] or s["rawsize"], s["chars"])
                          for s in pe.sections]
         self.functions, self.imports, self.inline, self.code = [], {}, {}, (0, 0)
+        self.extents, self.entry = {}, pe.image_base + pe.entry if pe.entry else 0
 
     def offset(self, va):
         for a, off, n in self.spans:
@@ -77,13 +88,16 @@ class Image(object):
 
 
 def _table(data, off, size):
+    """[(start, packed)] -- the function table's records: a start, then the prologue's length in
+    words (bits 0-7), the function's length in words (8-29), a 32-bit flag (30) and whether it has
+    an exception handler (31)."""
     out = []
     for i in range(size // 8):
         if off is None or off + 8 * i + 8 > len(data):
             break
         begin, packed = struct.unpack_from(">II", data, off + 8 * i)
         if begin and (packed >> 8) & 0x3FFFFF:               # a start and a non-zero length
-            out.append(begin)
+            out.append((begin, packed))
     return out
 
 
@@ -151,8 +165,10 @@ def read(path):
             off = rva if memory else pe._rva_to_off(rva)
         except Exception:
             off = None
-        starts = _table(data, off, size)
+        records = _table(data, off, size)
+        starts = [b for b, _p in records]
         img = Image(path, pe, data, memory)
+        img.extents = {b: (((p >> 8) & 0x3FFFFF) * 4, (p & 0xFF) * 4, bool(p >> 31)) for b, p in records}
         score[memory] = (sum(_looks_like_code(data, img.offset(s)) for s in starts), starts, img)
     if not score[True][1] and not score[False][1]:           # no table: the headers are all there is
         end = max((s["vaddr"] + max(s["vsize"], 1) for s in pe.sections), default=0)
@@ -160,11 +176,12 @@ def read(path):
     else:
         memory = score[True][0] > score[False][0]
     _n, starts, img = score[memory]
-    # the code section: the executable one holding the entry point or the first function
+    # the code: every executable section -- .text, and the sections linked-in libraries bring
+    # (an Xbox 360 title's .embsec_ ones) -- from the first to the end of the last
     code = None
     for name, va, n, flags in img.sections:
-        if (flags & 0x20000000 or name == ".text") and (code is None or any(va <= s < va + n for s in starts[:1])):
-            code = (va, va + n)
+        if flags & 0x20000000 or name == ".text":
+            code = (va, va + n) if code is None else (min(code[0], va), max(code[1], va + n))
     if code is None:
         _CACHE[path] = img
         return img
@@ -192,6 +209,59 @@ def read(path):
     img.run_names = runs
     _CACHE[path] = img
     return img
+
+
+_LIBRARY_CLASS = ("@std@@", "@tr1@", "@stlp")
+
+
+def virtual_methods(img):
+    """{address: (class, slot)} -- each virtual function whose table still links, through its
+    locator, to the class's type descriptor (see the module's notes). Big-endian words; the
+    classes of the standard library are left out."""
+    if hasattr(img, "_virtual"):
+        return img._virtual
+    import re
+    data, spans = img.data, img.spans
+
+    def at(off):                                         # file offset -> address
+        for va, o, n in spans:
+            if o <= off < o + n:
+                return va + (off - o)
+        return None
+    descriptors = {}
+    for m in re.finditer(rb"\.\?A[VU][\w@?$]{1,300}?\x00", data):
+        name_va = at(m.start())
+        if name_va is None:
+            continue
+        td = name_va - 8                                 # the descriptor: its table, 0, the name
+        if img.word(td + 4) == 0 and img.offset(img.word(td) or 0) is not None:
+            descriptors[td] = m.group()[:-1].decode("ascii", "replace")
+    locators = {}
+    for va, off, n in spans:
+        for i in range(0, n - 19, 4):
+            if struct.unpack_from(">I", data, off + i)[0] == 0:
+                td = struct.unpack_from(">I", data, off + i + 12)[0]
+                if td in descriptors:
+                    locators[va + i] = descriptors[td]
+    starts, out = set(img.functions), {}
+    for va, off, n in spans:
+        for i in range(0, n - 3, 4):
+            name = locators.get(struct.unpack_from(">I", data, off + i)[0])
+            if name is None or any(tag in name for tag in _LIBRARY_CLASS):
+                continue
+            cls = _class_name(name)
+            slot = 0
+            while img.word(va + i + 4 + 4 * slot) in starts:
+                out.setdefault(img.word(va + i + 4 + 4 * slot), (cls, slot))
+                slot += 1
+    img._virtual = out
+    return out
+
+
+def _class_name(decorated):
+    """`.?AVCFoo@@` -> "CFoo";  `.?AVInner@Outer@@` -> "Outer::Inner"."""
+    parts = [p for p in decorated[4:].split("@") if p]
+    return "::".join(reversed(parts)) if parts else decorated
 
 
 def regions(path):

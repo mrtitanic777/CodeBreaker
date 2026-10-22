@@ -344,6 +344,9 @@ def describe(path):
             "ok": False, "notes": [], "summary": {}, "dos": None, "headers": {}, "sections": [],
             "exports": {"module": "", "count": 0, "symbols": []}, "imports": [],
             "resources": {"count": 0, "types": []}}
+    fmt = detect.format_of(path) if os.path.isfile(path) else None
+    if fmt is None:                                          # not an executable: what it is, from its header
+        return _other(path, info)
     try:
         with open(path, "rb") as fh:
             data = fh.read()
@@ -351,11 +354,7 @@ def describe(path):
         info["notes"].append("cannot be read: %s" % e)
         return info
     info["size"] = len(data)
-    fmt = detect.format_of(path)
     info["format"], info["kind"] = fmt, detect.lane(path)
-    if fmt is None:
-        info["notes"].append("not an MZ executable")
-        return info
     part = _Parts(info)
     try:
         h = detect.dos_header(data) or {}
@@ -377,6 +376,169 @@ def describe(path):
         info["notes"].append("%s: %s" % (type(e).__name__, str(e)[:120]))
     info.pop("_relocs", None)
     return info
+
+
+def _other(path, info):
+    """A file that is not an MZ executable: what detect.identify says it is, with what the format's
+    reader adds (formats/xbox for the Xbox containers and assets, media for disc and disk images)."""
+    try:
+        info["size"] = os.path.getsize(path)
+    except OSError as e:
+        info["notes"].append("cannot be read: %s" % e)
+        return info
+    found = detect.identify(path)
+    if not found:
+        info["notes"].append("not a format CodeBreaker recognises")
+        return info
+    m = found[0]
+    info["format"], info["kind"] = m["format"], m["family"]
+    info["summary"] = {"format": m["format"], "type": m["detail"], "family": m["family"],
+                       "read with": ("codebreaker " + m["command"]) if m["command"] else "(nothing yet)"}
+    if m["command"] == "media" or m["family"] in ("xbox", "xbox360"):
+        try:
+            from codebreaker.formats import xbox
+            info["summary"].update(xbox.summary(path, m))
+        except Exception as e:                               # a damaged container: the format line stands
+            info["notes"].append("%s: %s" % (type(e).__name__, str(e)[:120]))
+    info["ok"] = True
+    return info
+
+
+def folder_map(folder, log=None):
+    """Every file under `folder`, identified and tallied by format (the map of a directory).
+    -> {"folder", "files", "bytes", "formats": [{format, family, command, files, bytes, example}],
+        "unrecognised": [{extension, files, bytes, example}]}"""
+    by, other, files, total = {}, {}, 0, 0
+    skip = {".git", "__pycache__", "node_modules", ".gradle", ".vs"}
+    for dp, dn, fn in os.walk(folder):
+        dn[:] = sorted(d for d in dn if d not in skip)
+        for n in sorted(fn):
+            p = os.path.join(dp, n)
+            try:
+                size = os.path.getsize(p)
+            except OSError:
+                continue
+            files += 1
+            total += size
+            if not size:
+                continue
+            fmt = detect.format_of(p)
+            if fmt:
+                m = {"format": {"PE": "PE executable", "NE": "16-bit Windows (NE)", "LE": "virtual device driver (LE)",
+                                "LX": "OS/2 / VxD (LX)", "MZ": "DOS program (MZ)"}[fmt],
+                     "family": "dos" if fmt == "MZ" else "windows", "command": "info"}
+                if fmt == "PE":                             # the CPU decides the platform
+                    m = (detect.identify(p) or [m])[0]
+            else:
+                found = detect.identify(p)
+                m = found[0] if found else None
+            if m is None:
+                m = _text_kind(p, n)
+            if m is None:
+                ext = os.path.splitext(n)[1].lower() or "(none)"
+                r = other.setdefault(ext, {"extension": ext, "files": 0, "bytes": 0, "example": p})
+            else:
+                key = (m["format"], m.get("detail", "") if m["format"] == "PE executable" else "")
+                r = by.setdefault(key, {"format": m["format"] + (" (%s)" % key[1] if key[1] else ""),
+                                        "family": m["family"], "command": m["command"],
+                                        "files": 0, "bytes": 0, "example": p})
+            r["files"] += 1
+            r["bytes"] += size
+        if log and files and files % 2000 == 0:
+            log("  %d files..." % files)
+    order = lambda rows: sorted(rows, key=lambda r: (-r["bytes"], -r["files"]))
+    return {"folder": folder, "files": files, "bytes": total, "formats": order(by.values()),
+            "unrecognised": order(other.values())}
+
+
+_SOURCE = {".c": "C", ".h": "C/C++ header", ".cc": "C++", ".cpp": "C++", ".cxx": "C++", ".hpp": "C++ header",
+           ".hh": "C++ header", ".cs": "C#", ".java": "Java", ".py": "Python", ".asm": "assembly", ".s": "assembly",
+           ".inc": "assembly include", ".mac": "assembly macros", ".js": "JavaScript", ".ts": "TypeScript",
+           ".rs": "Rust", ".go": "Go", ".lua": "Lua", ".hlsl": "HLSL shader", ".fx": "effect shader",
+           ".ps1": "PowerShell", ".bat": "batch", ".cmd": "batch", ".sh": "shell", ".pl": "Perl",
+           ".md": "Markdown", ".txt": "text", ".json": "JSON", ".xml": "XML", ".toml": "TOML", ".yml": "YAML",
+           ".yaml": "YAML", ".ini": "INI", ".cfg": "config", ".csv": "CSV", ".html": "HTML", ".css": "CSS",
+           ".def": "module definition", ".mak": "makefile", ".cmake": "CMake", ".gradle": "Gradle",
+           ".csproj": "C# project", ".vcxproj": "C++ project", ".sln": "Visual Studio solution",
+           ".obj": "Wavefront OBJ model", ".mtl": "Wavefront material", ".resx": ".NET resources"}
+
+
+def _text_kind(path, name):
+    """A text file, named by what its extension says it holds; None when it is not text."""
+    ext = os.path.splitext(name)[1].lower()
+    if name in ("Makefile", "CMakeLists.txt", "LICENSE", "NOTICE", "README", "AUTHORS"):
+        what = {"Makefile": "makefile", "CMakeLists.txt": "CMake"}.get(name, "text")
+    elif ext in _SOURCE:
+        what = _SOURCE[ext]
+    else:
+        return None
+    try:
+        with open(path, "rb") as f:
+            if b"\0" in f.read(4096):
+                return None
+    except OSError:
+        return None
+    return {"format": "source / text: " + what, "family": "source", "command": ""}
+
+
+def _size(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return ("%d %s" % (n, unit)) if unit == "B" else ("%.1f %s" % (n, unit))
+        n /= 1024.0
+
+
+def markdown(info, xex_header=None):
+    """A one-page markdown report of a description (describe()), or of a folder map (folder_map())."""
+    if "formats" in info:                                    # a folder
+        md = ["# %s" % info["folder"], "",
+              "%d files, %s. Recognised:" % (info["files"], _size(info["bytes"])), "",
+              "| Format | Platform | Files | Size | Read with |", "|---|---|---:|---:|---|"]
+        for r in info["formats"]:
+            md.append("| %s | %s | %d | %s | %s |" % (r["format"], r["family"], r["files"], _size(r["bytes"]),
+                                                    ("`codebreaker %s`" % r["command"]) if r["command"] else "-"))
+        if info["unrecognised"]:
+            md += ["", "Not recognised, by extension:", "", "| Extension | Files | Size | Example |", "|---|---:|---:|---|"]
+            for r in info["unrecognised"][:40]:
+                md.append("| `%s` | %d | %s | `%s` |" % (r["extension"], r["files"], _size(r["bytes"]),
+                                                      os.path.relpath(r["example"], info["folder"])))
+        return "\n".join(md) + "\n"
+    md = ["# %s" % info["name"], "", "%s, %s." % (info["format"] or "not recognised", _size(info["size"])), ""]
+    if xex_header:
+        md += ["## Xbox 360 executable", "", "| Field | Value |", "|---|---|"]
+        md += ["| %s | %s |" % (k, v) for k, v in xex_header.items()] + [""]
+    if info.get("summary"):
+        md += ["## Summary", "", "| Field | Value |", "|---|---|"]
+        md += ["| %s | %s |" % (k, _cell(k, v)) for k, v in info["summary"].items()] + [""]
+    if info.get("sections"):
+        md += ["## Sections", "", "| Name | Address | Size | Flags |", "|---|---|---:|---|"]
+        for s in info["sections"]:
+            md.append("| %s | %s | %s | %s |" % (s.get("name", ""), _cell("address", s.get("address")),
+                                                _cell("size", s.get("size")), _cell("flags", s.get("flags", ""))))
+        md.append("")
+    imps = info.get("imports") or []
+    if imps:
+        md += ["## Imports", "", "| Module | Functions |", "|---|---:|"]
+        md += ["| %s | %d |" % (i.get("module", ""), i.get("count", 0)) for i in imps] + [""]
+    exp = info.get("exports") or {}
+    if exp.get("count"):
+        md += ["- **Exports:** %d" % exp["count"], ""]
+    for n in info.get("notes", []):
+        md.append("> %s" % n)
+    return "\n".join(md) + "\n"
+
+
+def xex_facts(path):
+    """What a .xex's own header says (formats/xex.py), for `info`; {} when it is not one."""
+    from codebreaker.formats import xex
+    if not xex.is_xex(path):
+        return {}
+    h = xex.header(path)
+    out = {"image name": h.name, "load address": "0x%08X" % (h.base or 0), "entry point": "0x%08X" % (h.entry or 0),
+           "import libraries": ", ".join(h.imports)}
+    if h.libraries:
+        out["built with"] = ", ".join("%s %s" % lv for lv in h.libraries)
+    return out
 
 
 # ---- strings, bytes, resource bodies ---------------------------------------------------------
@@ -564,20 +726,55 @@ def render(value, key="", indent=0):
 
 def main(argv):
     """python -m codebreaker info <file-or-module> [--json] [--section NAME] [--offset N] [--length N] [--min N]
+    python -m codebreaker info <folder> [--json]                  every file in it, identified and tallied
+    python -m codebreaker info <file-or-folder> --markdown [--out FILE.md]   a one-page report
     python -m codebreaker info <packed.exe> --unpack <out.exe>
 
-    Show what an executable is and holds. NAME is one of: summary dos headers directories sections
-    exports imports resources relocations tls debug certificates clr rich driver members strings
-    hex, or `all`. --unpack writes a packed DOS program (EXEPACK, PKLITE, ...) back out unpacked,
-    as a plain MZ file that runs the same way."""
+    Show what a file is and holds: executables in full (NAME is one of: summary dos headers
+    directories sections exports imports resources relocations tls debug certificates clr rich
+    driver members strings hex, or `all`), and any other file by its format -- Xbox containers
+    and assets, disc and disk images, objects, bytecode. A folder is mapped: every file in it
+    identified, tallied by format. --unpack writes a packed DOS program (EXEPACK, PKLITE, ...) back
+    out unpacked, as a plain MZ file that runs the same way."""
     def option(name, default=None):
         return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
 
-    taken = {option(n) for n in ("--section", "--offset", "--length", "--min", "--unpack")}
+    taken = {option(n) for n in ("--section", "--offset", "--length", "--min", "--unpack", "--out")}
     names = [a for a in argv if not a.startswith("--") and a not in taken]
     if not names:
         print(main.__doc__)
         return 2
+    as_md, out_md = "--markdown" in argv, option("--out")
+    try:                                                     # names and strings may hold any byte
+        import sys
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+    def emit(text):
+        if out_md:
+            with open(out_md, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text)
+            print("wrote %s" % out_md)
+        else:
+            print(text)
+
+    if os.path.isdir(names[0]):                              # a folder: its map
+        m = folder_map(names[0], log=lambda s: print(s, flush=True))
+        if "--json" in argv:
+            emit(json.dumps(m, indent=1))
+        elif as_md:
+            emit(markdown(m))
+        else:
+            lines = ["%s: %d files, %s" % (m["folder"], m["files"], _size(m["bytes"]))]
+            for r in m["formats"]:
+                lines.append("  %-46s %-9s %7d files %10s   %s" % (r["format"][:46], r["family"], r["files"], _size(r["bytes"]),
+                                                               ("codebreaker " + r["command"]) if r["command"] else ""))
+            if m["unrecognised"]:
+                lines.append("  not recognised: " + ", ".join("%s %d" % (r["extension"], r["files"]) for r in m["unrecognised"][:25]))
+            emit("\n".join(lines))
+        return 0
+    xex_head = xex_facts(names[0]) if os.path.isfile(names[0]) else {}
     path = corpus.retail(names[0])
     if not path:
         print("no file or corpus module %r" % names[0])
@@ -607,6 +804,11 @@ def main(argv):
                                                    r["category"], _cell("", r["text"])[:120]))
         return 0
     info = describe(path)
+    if xex_head:
+        info["xex"] = xex_head
+    if as_md:
+        emit(markdown(info, xex_head))
+        return 0 if info["ok"] else 1
     if section and section != "all" and section not in info:
         print("%s has no part %r (it has: %s)" % (info["name"], section, " ".join(
             k for k in SECTIONS if info.get(k) or k in ("strings", "hex"))))
@@ -617,13 +819,13 @@ def main(argv):
         print("\n".join(render(info[section], section)))
     else:
         print("%s  (%s, %d bytes)" % (info["path"], info["format"] or "not an executable", info["size"]))
-        short = ("summary", "headers", "sections") if section is None else \
+        short = ("xex", "summary", "headers", "sections") if section is None else \
             [k for k in info if isinstance(info[k], (dict, list)) and info[k] and k != "notes"]
         for k in short:
             if info.get(k):
                 print("\n%s:" % k)
                 print("\n".join(render(info[k], k, 1)))
-        if section is None and info["ok"]:
+        if section is None and info["ok"] and "exports" in info["summary"]:
             s = info["summary"]
             print("\n%d exports, %d imports from %d modules, %d resources  (--section exports | imports | "
                   "resources | all)" % (s["exports"], s["imports"], s["import_modules"], s["resources"]))

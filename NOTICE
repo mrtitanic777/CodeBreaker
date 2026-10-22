@@ -18,6 +18,35 @@ Third-party open-source code in this repository, each under its own license:
   - native/retromcp            RetroMCP-Java's engine by MCPHackers, with CodeBreaker's
                                changes (MIT; native/retromcp/LICENSE, MCP-CREDITS.TXT);
                                the decompiler it drives, Fernflower, is Apache-2.0
+  - native/rexglue             the rexglue SDK's kernel core, base library (src/core) and DXBC
+                               shader translator, which recompiled Xbox 360 projects build on
+                               (BSD-3-Clause, Copyright (c) 2026 Tom Clay, with parts from Xenia,
+                               Copyright (c) 2022 Ben Vanik and the Xenia contributors; LICENSE in
+                               native/rexglue/kernel and native/rexglue/dxbc), with what they carry:
+                               fmt (MIT), libmspack (LGPL-2.1), o1heap (MIT), SIMDe (MIT), utfcpp
+                               (Boost 1.0), toml++ (MIT), disruptorplus (MIT, Lewis Baker),
+                               TinySHA1 (Saurav Mohapatra, ISC-style), rijndael-alg-fst (public domain),
+                               aes_128 (MIT, LuoPeng), des (MIT, Faraz Fallahi), rc4 (Whistle
+                               Communications' permissive notice), sha256 (zlib, Stephan Brumme)
+  - codebreaker/recompile      the instruction builders and the switch-table scanner, derived from
+                               the rexglue SDK's code generator (BSD-3-Clause, as above)
+  - codebreaker/formats/xbox   the empty LIVE header template from iso2god-rs (Ilia
+                               Pozdnyakov) and the ZArchive reader adapted from xVerter
+                               (MIT; codebreaker/formats/xbox/THIRD_PARTY.txt)
+  - native/xenonrecomp         XenonRecomp by hedge-dev and contributors, with the changes the Xbox 360
+                               ports made to it (MIT; native/xenonrecomp/LICENSE.md), with what it
+                               carries: the PowerPC disassembler from GNU binutils' libopcodes
+                               (thirdparty/disasm, GPL-3.0-or-later), fmt (MIT), libmspack
+                               (LGPL-2.1), SIMDe (MIT), tiny-AES-c (Unlicense), toml++ (MIT), xxHash
+                               (BSD-2-Clause, Yann Collet), TinySHA1 (Saurav Mohapatra);
+                               native/xenonrecomp/ppc_tests/xenia: Xenia's PowerPC instruction tests
+                               (BSD-3-Clause, Ben Vanik and the Xenia contributors)
+  - codebreaker/recompile/switches.py  the switch-table scanner of the Xbox 360 ports (by the
+                               same author as native/x360)
+  - native/x360                CodeBreaker's Xbox 360 runtime, from the Xbox 360 ports' runtime (by
+                               this project's author), with: WMA Pro tables from FFmpeg
+                               (runtime/src/audio/wmapro_tables.inc, LGPL-2.1-or-later) and
+                               nlohmann/json (system/live/third_party, MIT)
 
 Third-party runtime dependency (not distributed here; installed separately):
   - Capstone disassembly framework (BSD-3-Clause) — https://www.capstone-engine.org

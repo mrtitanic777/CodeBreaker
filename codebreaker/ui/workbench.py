@@ -650,13 +650,6 @@ def _run(selftest=False, shot=None, shot_panel=None):
         if S.hwnd:
             user32.InvalidateRect(S.hwnd, None, False)
 
-    def desktop_dir():
-        home = os.path.expanduser("~")
-        for d in (os.path.join(home, "Desktop"), os.path.join(home, "OneDrive", "Desktop")):
-            if os.path.isdir(d):
-                return d
-        return home
-
     def analyze(path):
         if not path or S.running or pipeline is None:
             return
@@ -672,7 +665,7 @@ def _run(selftest=False, shot=None, shot_panel=None):
 
         def worker():
             try:
-                S.report = pipeline.reverse(path, progress=prog, outbase=desktop_dir())
+                S.report = pipeline.reverse(path, progress=prog, outbase="converted")
             except Exception as e:
                 S.report = {"name": os.path.basename(path), "error": str(e)}
             S.running = False; user32.PostMessageW(S.hwnd, WM_APP_ANALYZED, 0, 0)

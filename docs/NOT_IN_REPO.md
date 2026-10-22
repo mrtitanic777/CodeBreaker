@@ -26,6 +26,8 @@ setting for one run.
 | A C++ compiler for judging transpiled Java (g++) | `C:/msys64/mingw64/bin/g++.exe` (or g++ on PATH) | `host_cxx` |
 | Java (a JDK 8+: java and javac), to decompile a jar and to run classes beside their translation | `JAVA_HOME`, or `java` on PATH | `java` |
 | RetroMCP CLI jar (RetroMCP-Java + Vineflower; MIT / Apache-2.0) | | `retromcp` |
+| Visual Studio with clang-cl (builds XenonRecomp and recompiled Xbox 360 titles) | the newest install vswhere finds | `visual_studio` |
+| PowerPC binutils that know VMX128 (the recompiler's instruction tests) | `toolchains/binutils-ppc` | `ppc_binutils` |
 | The Xbox 360 SDK (XDK), for the Java transpiler's console target | `C:/Program Files (x86)/Microsoft Xbox 360 SDK` | `xbox360_sdk` |
 | MSBuild, to build a transpiled game's Visual Studio project | | `msbuild` |
 | Per-project hand fixes laid over transpiled Java | `state/java/overlays` | `java_overlays` |
@@ -36,9 +38,25 @@ setting it is missing.
 
 ## What CodeBreaker makes
 
-Everything it produces -- the function store, caches, build folders, reports -- goes under
-`state/` (setting `state`). Delete it to start over; nothing in it is source. The reconstructed
-source itself is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
+What CodeBreaker makes of a binary goes into that binary's project folder under `Converted/`
+(setting `converted`), one folder per binary, the same layout every time:
+
+    Converted/<name>/
+      README.txt     what the binary is, what was done to it (each command, when), how to build or run the result
+      project.json   the same for tools: the input, its SHA-1, its kind, every output and its command
+      original/      the binary as it came in
+      src/           source: decompiled C, recompiled C++, assembly, build files
+      assets/        resources and data: extracted resources, a title's files
+      build/         programs and libraries built from src/
+      reports/       analysis, listings, disassembly, logs
+
+`decompile`, `take-apart` (and the Workbench), `recompile --all`, `recompile-project`,
+`resources` and `build` write there unless given `--out` / `-o`. A binary's project is found again
+by its SHA-1, so every command run on one file adds to one folder.
+
+The rest -- the function store, caches, scratch builds, scoreboards -- goes under `state/`
+(setting `state`). Delete it to start over; nothing in it is source. The reconstructed Windows 95
+source is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
 
 The native decompiler is built from `native/decompiler` into `native/decompiler/build/bin`
 (setting `decompiler_bin`); the build output is not tracked.

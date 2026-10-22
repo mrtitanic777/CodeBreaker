@@ -620,7 +620,9 @@ def rebuild(module_path, outdir, rounds=12):
 
 
 def main(argv):
-    """python -m codebreaker resources <module> [--out DIR]"""
+    """python -m codebreaker resources <module> [--out DIR]
+
+    Without --out the resources go into the module's project folder: Converted/<name>/assets/resources/."""
     out = argv[argv.index("--out") + 1] if "--out" in argv else None
     names = [a for a in argv if not a.startswith("--") and a != out]
     if not names:
@@ -633,8 +635,15 @@ def main(argv):
             print("%s: no such module in the corpus" % name)
             bad += 1
             continue
-        where = out or settings.state("resources", os.path.basename(path).lower())
+        proj = None
+        where = out
+        if not where:
+            from codebreaker.base import converted
+            proj = converted.project(path)
+            where = os.path.join(proj.assets, "resources")
         r = rebuild(path, where)
+        if proj:
+            proj.record("resources", [where], notes="its resources as files and a .rc script: %s" % r.line())
         print("%s: %s" % (os.path.basename(path).lower(), r.line()))
         for key in r.different + r.missing:
             print("    not reproduced: %s %r" % (R.type_name(key[0]), key[1]))

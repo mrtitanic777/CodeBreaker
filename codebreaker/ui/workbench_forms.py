@@ -443,13 +443,6 @@ class Workbench(object):
         self.sl_oracle.Text = "Oracle: connected" if ok else "Oracle: not set"
         self.sl_oracle.ForeColor = _col((0, 130, 0)) if ok else _col((150, 30, 30))
 
-    def _desktop(self):
-        home = os.path.expanduser("~")
-        for d in (os.path.join(home, "Desktop"), os.path.join(home, "OneDrive", "Desktop")):
-            if os.path.isdir(d):
-                return d
-        return home
-
     def _analyze(self, path):
         if not path or self.running:
             return
@@ -469,7 +462,7 @@ class Workbench(object):
 
         def worker():
             try:
-                rep = pipeline.reverse(path, progress=prog, outbase=self._desktop())
+                rep = pipeline.reverse(path, progress=prog, outbase="converted")
             except Exception as ex:
                 rep = {"name": os.path.basename(path), "error": str(ex)}
             self.running = False

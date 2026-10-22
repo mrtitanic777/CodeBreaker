@@ -14,6 +14,8 @@
 A function's name is taken from the first of these that has one:
 
     export          the module's own export table
+    run-time types  (PowerPC) a virtual function of a class its run-time type information names,
+                    as Class_vfN; the image's entry point as `entry`
     debug symbols   CodeView records in the file, or the module's .SYM file (Microsoft's symbol
                     files for the system modules, when the corpus's reference folder holds them)
                     -- used only where the file's exports say the symbols are for this build
@@ -374,6 +376,8 @@ def own_names(module_path):
             if o in entries:
                 out.setdefault(entries[o], (nm, "export"))
         stem, numbered = nef.module_name().upper(), entries
+    elif lane == "pe" and open_pe(module_path).machine == 0x01F2:
+        return powerpc_names(module_path)
     elif lane == "pe":
         pe = open_pe(module_path)
         numbered = {}
@@ -389,6 +393,24 @@ def own_names(module_path):
     for o, address in numbered.items():
         if address not in out and ordinals.linker_name(stem, o):
             out[address] = (ordinals.linker_name(stem, o), "ordinal table (%s)" % ordinals.source(stem, o))
+    return out
+
+
+def powerpc_names(module_path):
+    """{address: (name, source)} for a PowerPC image: an image of the console exports nothing and
+    carries no symbols, so what names a function for certain is its run-time type information
+    (formats/powerpc_image.py) -- a virtual function of a named class -- and the entry point."""
+    from codebreaker.formats import powerpc_image
+    img = powerpc_image.read(module_path)
+    out = {}
+    if img.entry:
+        out[img.entry] = ("entry", "entry point")
+    taken = {"entry"}
+    for address, (cls, slot) in sorted(powerpc_image.virtual_methods(img).items()):
+        name = "%s_vf%d" % (re.sub(r"\W+", "_", cls), slot)
+        if address not in out and name not in taken:
+            taken.add(name)
+            out[address] = (name, "run-time type information (%s, virtual function %d)" % (cls, slot))
     return out
 
 
@@ -461,6 +483,12 @@ def of_module(module_path, fs=None):
         for (module, o), name in sorted(ordinals.imports16(module_path).items()):
             imports.append((module, o, name or "%s.%d" % (module, o),
                             "%s's exports (%s)" % (module, ordinals.source(module, o)) if name else "(none)"))
+    elif lane == "pe" and open_pe(module_path).machine == 0x01F2:
+        from codebreaker.source import module_writer
+        for symbol, name in sorted(module_writer.console_import_names(module_path).items()):
+            m = re.fullmatch(r"import(\d+)_ord_(\d+)", symbol)
+            imports.append(("library %s" % m.group(1) if m else "?", int(m.group(2)) if m else None, name,
+                            "the console's system libraries (symbols/console_ordinals.json)"))
     elif lane == "pe":
         for dll, name in sorted(set(open_pe(module_path).imports().values())):
             module = os.path.splitext(dll)[0].upper()

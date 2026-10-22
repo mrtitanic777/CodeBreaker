@@ -1,8 +1,10 @@
-"""media.py -- read boot media: floppy and hard-disk images, CD images, module bundles.
+"""media.py -- read media and containers: floppy, hard-disk and CD images, module bundles, and
+the Xbox / Xbox 360 containers (formats/xbox/volumes.py: STFS, discs, GoD, FATX, ZAR, XZP, PCK).
 
     from codebreaker.formats import media
-    for v in media.volumes(path):          every volume inside an image file
-        v.kind                             "fat12" | "fat16" | "fat32" | "iso9660" | "bundle"
+    for v in media.volumes(path):          every volume inside an image file (or GoD folder)
+        v.kind                             "fat12" | "fat16" | "fat32" | "iso9660" | "bundle" |
+                                           "stfs" | "xdvdfs" | "god" | "fatx" | "zar" | "xzp" | "pck"
         v.label, v.where                   its name; where in the image it is
         v.boot                             {field: value} of its boot sector / volume descriptor
         for e in v.files():                every file and folder: e.path  e.size  e.is_dir  e.when
@@ -349,6 +351,12 @@ class BundleVolume(object):
 # any image ------------------------------------------------------------------------------------
 def volumes(path, long_names=True):
     """Every volume inside an image file. ValueError when nothing in it is recognised."""
+    from codebreaker.formats.xbox import volumes as xbox             # first: an Xbox 360 disc also
+    found = xbox.volumes(path, long_names)                           # carries an ISO-9660 video part
+    if found:
+        return found
+    if os.path.isdir(path):
+        raise ValueError("%s: a folder, and not a Games-on-Demand package" % os.path.basename(path))
     size = os.path.getsize(path)
     src = _Source(path)
     out = []

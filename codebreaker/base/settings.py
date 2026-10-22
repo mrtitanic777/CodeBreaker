@@ -20,8 +20,11 @@ and are named in one file, `settings.json` at the top of the checkout:
     msvc152         folder of Microsoft C/C++ 8.00c, Visual C++ 1.52c (BIN/CL.EXE)
     xenix_c         folder holding xcc.py (the XENIX C compiler of Microsoft's 1984 tools)
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
-    ghidra_core     folder holding cbdecomp.exe                    (default: native/ghidra_core/build/bin)
     xex_bin         folder of the Xbox 360 executable reader, xex.exe (default: native/xex/build/bin)
+    visual_studio   a Visual Studio install with clang-cl (VC/Tools/Llvm), which builds XenonRecomp
+                    and recompiled Xbox 360 projects  (default: the newest vswhere finds)
+    ppc_binutils    folder of PowerPC binutils that know VMX128 (powerpc-none-elf-as/objdump), for
+                    the recompiler's instruction tests      (default: toolchains/binutils-ppc)
     java            a `java` executable (JRE/JDK 8+), for decompiling a jar   (default: JAVA_HOME, PATH)
     retromcp        the Java decompile engine's jar, which turns a Minecraft version into Java source
                     (default: native/retromcp/build/libs/retromcp.jar)
@@ -31,6 +34,8 @@ and are named in one file, `settings.json` at the top of the checkout:
     msbuild         MSBuild.exe, to build a transpiled game's Visual Studio project
     java_overlays   per-project hand fixes laid over transpiled output (default: state/java/overlays)
     java_libs       folder of jars a Java game is compiled against when judged (LWJGL, the sound system)
+    converted       where each binary's project folder goes: what CodeBreaker made of it
+                    (original/, src/, assets/, build/, reports/, README.txt) (default: Converted/)
     state           where results and caches are kept             (default: state/)
     target          what is being reconstructed                   (default: win95)
 
@@ -53,8 +58,9 @@ DEFAULTS = {
     "corpus": os.path.join("..", "Windows95", "design", "corpus", "files"),
     "openwatcom": "",
     "decompiler_bin": os.path.join("native", "decompiler", "build", "bin"),
-    "ghidra_core": os.path.join("native", "ghidra_core", "build", "bin"),
     "xex_bin": os.path.join("native", "xex", "build", "bin"),
+    "ppc_binutils": os.path.join("toolchains", "binutils-ppc"),
+    "converted": "Converted",
     "nasm": os.path.join("native", "nasm", "build", "bin", "nasm.exe"),
     "retromcp": os.path.join("native", "retromcp", "build", "libs", "retromcp.jar"),
     "state": "state",
@@ -62,8 +68,9 @@ DEFAULTS = {
     "threads": "1",                    # functions the native decompiler analyses at once (CB_THREADS)
     "struct_recovery": "32",           # structures from field accesses: off, 32 (32-bit x86 only), all
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "ghidra_core", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
-          "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs")
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
+          "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
+          "visual_studio", "ppc_binutils", "converted")
 _loaded = None
 
 

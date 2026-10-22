@@ -80,7 +80,13 @@ def _split(source):
 
 def _frame(code, bits=32):
     """The bytes a function reserves for locals: the N of `sub esp, N` (`sub sp, N`) in its
-    prologue, 0 when there is none. `code` is the function's bytes."""
+    prologue (PowerPC: of `stwu r1,-N(r1)`), 0 when there is none. `code` is the function's bytes."""
+    if bits == "ppc":
+        for k in range(0, min(len(code), 48) - 3, 4):
+            w = int.from_bytes(code[k:k + 4], "big")
+            if w >> 16 == 0x9421:                                  # stwu r1,-N(r1)
+                return (-(w & 0xFFFF)) & 0xFFFF
+        return 0
     import capstone
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
     sp = "esp," if bits == 32 else "sp,"
@@ -97,9 +103,13 @@ def _frame(code, bits=32):
 
 def instructions(built, bits):
     """A function's code as its instructions, each the bytes of one with the linker's bytes
-    blanked -- what two versions of a function are lined up by."""
-    import capstone
+    blanked -- what two versions of a function are lined up by. (PowerPC: each word, with the
+    bits the linker fills in cleared.)"""
     code, mask = bytes(built[0]), built[1]
+    if bits == "ppc":
+        return [(int.from_bytes(code[i:i + 4], "big") & ~mask[i // 4]) & 0xFFFFFFFF
+                for i in range(0, len(code) - 3, 4)]
+    import capstone
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
     out, at = [], 0
     while at < len(code):
@@ -119,7 +129,11 @@ def score(built, original, bits=0, target=None):
     that have no counterpart, the bytes that differ). Bytes alone mislead: one instruction more
     near the top moves every later byte, and the function looks wholly wrong when it is nearly
     right. Lined up by instruction, it is one instruction away."""
-    v, d, t, _f = match.distance(built, original)
+    if bits == "ppc":
+        from codebreaker.verify import match_powerpc
+        v, d, t, _f = match_powerpc.distance(built, original)
+    else:
+        v, d, t, _f = match.distance(built, original)
     if not d or not bits:
         return (0 if not d else d, d), (v, d, t)
     import difflib
@@ -328,7 +342,8 @@ def repair_function(cl, env, header, source, name, original, work, flags):
 def repair(compile, source, original, bits=0):
     """Search behaviour-preserving rewrites of one function's source for the bytes closest to the
     original's. `compile` is any period compiler: source text -> (bytes, mask) or None
-    (build/period.py). `bits` (16 or 32) is the processor mode of the code: with it the search
+    (build/period.py). `bits` (16 or 32, or "ppc" for PowerPC, whose masks are per word and per
+    bit -- verify/match_powerpc.py) is the processor mode of the code: with it the search
     lines the two up by instruction and reads the size of the locals; without it, it has the
     bytes alone to go by. -> {source, verdict, distance, total, knobs, tried} for the best
     found, or None when the starting source does not compile.
@@ -429,6 +444,61 @@ def best_flags(cl, env, header, texts, order, originals, address, work, sample=6
     return best[1]
 
 
+def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
+    """run() for a PowerPC image, with the Xbox 360 compiler (verify/match_powerpc.py)."""
+    from codebreaker.base import corpus
+    from codebreaker.build import functions
+    from codebreaker.store import functions as F
+    from codebreaker.verify import match_powerpc, powerpc
+    tools = functions.powerpc_tools()
+    if not tools:
+        raise SystemExit("no PowerPC compiler (settings.json: powerpc_tools, powerpc_lib)")
+    cl = tools[0]
+    sha = corpus.sha(module_path) or ""
+    fs = fs or F.open()
+    m = powerpc.prepare(module_path, os.path.join(work, "source"))
+    address = {name: va for va, name in m.by_va.items()}
+    originals = match_powerpc.original_functions(m.image, sorted(address.values()))
+    fs.add_module(sha, os.path.basename(module_path).lower(), module_path, "powerpc")
+    fs.add_functions(sha, [m.key[n] for n in address])
+    if not flags:
+        sample = [n for n in m.order if originals.get(address[n])][::10][:60]
+        best = (-1, match_powerpc.FLAG_SETS[0])
+        for f in match_powerpc.FLAG_SETS:
+            got = 0
+            for n in sample:
+                b = match_powerpc.compile_function(cl, m.header, m.texts[n], n, os.path.join(work, "flags"), f)
+                if b:
+                    v = match_powerpc.distance(b, originals[address[n]])[0]
+                    got += 3 if v == "identical" else 1 if v == "same size" else 0
+            best = max(best, (got, f))
+        flags = best[1]
+        if log:
+            log("  compiler switches that fit best: %s" % flags)
+    todo = [n for n in m.order if originals.get(address[n]) is not None][:limit or None]
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from codebreaker.base import parallel
+
+    def one(name):
+        own = os.path.join(work, "t%d" % threading.get_ident())
+        return repair(lambda text: match_powerpc.compile_function(cl, m.header, text, name, own, flags),
+                      m.texts[name], originals[address[name]], bits="ppc")
+    with ThreadPoolExecutor(max_workers=parallel.workers()) as ex:
+        results = list(ex.map(one, todo))
+    counts = [0, 0, 0, 0]
+    for name, r in zip(todo, results):
+        if r is None:
+            continue
+        fs.record_variant(sha, m.key[name], "xbox 360 cl " + flags, r["source"], r["distance"], r["total"],
+                          r["verdict"], knobs=r["knobs"], behaves="")
+        counts[0] += 1
+        counts[1 if r["verdict"] == "identical" else 2 if r["verdict"] == "same size" else 3] += 1
+        if log and r["knobs"]:
+            log("  %-28s %-9s distance %d/%d  via %s" % (name, r["verdict"], r["distance"], r["total"], r["knobs"]))
+    return tuple(counts)
+
+
 def run(module_path, flags, work, fs=None, log=print, limit=0):
     """Repair every function of a module and record the variants. -> (functions, identical, same
     size, different). `flags` None: the switches are found first (best_flags)."""
@@ -501,10 +571,17 @@ def main(argv):
         print(main.__doc__)
         return 2
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
+    powerpc = args[0].lower().endswith(".xex")
+    if powerpc:
+        from codebreaker.formats import xex
+        path = xex.basefile(args[0])
+    elif path and corpus.lane(path) == "pe":
+        from codebreaker.formats.pe import open_pe
+        powerpc = open_pe(path).machine == 0x01F2
     if not path or corpus.lane(path) != "pe":
-        raise SystemExit("%s: a 32-bit Windows module is needed" % args[0])
+        raise SystemExit("%s: a 32-bit Windows module or a PowerPC image is needed" % args[0])
     work = settings.state("repair", os.path.basename(path).lower())
-    n, ident, same, diff = run(path, flags, work, log=print, limit=limit)
+    n, ident, same, diff = (run_powerpc if powerpc else run)(path, flags, work, log=print, limit=limit)
     print("%s: %d functions repaired toward the original's bytes: %d identical, %d same size, %d different" % (
         os.path.basename(path), n, ident, same, diff))
     return 0

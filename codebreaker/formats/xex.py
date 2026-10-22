@@ -73,6 +73,38 @@ def basefile(path):
     return out
 
 
+def basic(path, out):
+    """Write `path` as an unencrypted XEX with basic compression: every header byte kept (optional
+    headers, security info, imports, exports, resources), the file format info replaced by one
+    block holding the whole image. XenonRecomp and the Xbox 360 runtime read only this form. The
+    security info's hashes no longer match; nothing that reads it checks them."""
+    import struct
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:4] != MAGIC:
+        raise ValueError("%s: not an XEX2 module" % path)
+    pe_offset, = struct.unpack(">I", data[8:12])
+    count, = struct.unpack(">I", data[0x14:0x18])
+    info = None
+    for i in range(count):
+        key, value = struct.unpack(">II", data[0x18 + i * 8:0x20 + i * 8])
+        if key == 0x3FF:
+            info = value
+    if info is None:
+        raise ValueError("%s: no file format info header" % path)
+    info_size, = struct.unpack(">I", data[info:info + 4])
+    if info_size < 16:
+        raise ValueError("%s: file format info too small for one block" % path)
+    with open(basefile(path), "rb") as f:
+        image = f.read()
+    header = bytearray(data[:pe_offset])
+    # one block, all of the image as data, no zero run (the block count comes from info_size)
+    struct.pack_into(">IHHII", header, info, 16, 0, 1, len(image), 0)
+    with open(out, "wb") as f:
+        f.write(bytes(header) + image)
+    return out
+
+
 def import_libraries(image_path):
     """[library name] for a basefile written by basefile() -- the .xex header named them -- or
     None for an image that did not come from a .xex."""

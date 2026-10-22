@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- CodeBreaker: the NES's 2A03: the 6502 (6502.pspec) with the console's memory-mapped
+     hardware marked volatile: every read and write of the picture unit ($2000-$3FFF, its eight
+     registers repeated) and of the sound and controller registers ($4000-$401F) happens, and in
+     its order, so none is merged with another or dropped as a dead store. -->
+<processor_spec>
+  <programcounter register="PC"/>
+  <volatile outputop="write_volatile" inputop="read_volatile">
+    <range space="RAM" first="0x2000" last="0x401f"/>
+  </volatile>
+  <default_symbols>
+    <symbol name="NMI" address="FFFA" entry="true" type="code_ptr"/>
+    <symbol name="RES" address="FFFC" entry="true" type="code_ptr"/>
+    <symbol name="IRQ" address="FFFE" entry="true" type="code_ptr"/>
+  </default_symbols>
+  <default_memory_blocks>
+    <memory_block name="ZERO_PAGE" start_address="0x0000" length="0x0100" initialized="false"/>
+    <memory_block name="STACK" start_address="0x0100" length="0x0100" initialized="false"/>
+  </default_memory_blocks>
+</processor_spec>

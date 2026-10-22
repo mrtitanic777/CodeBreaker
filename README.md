@@ -93,7 +93,8 @@ Copy `settings.example.json` to `settings.json` and fill in where the original b
 OpenWatcom compiler are; `pip install -r requirements.txt`. The rest is optional -- the period
 compilers, DOSBox-X, MASM, the PowerPC compiler -- and docs/NOT_IN_REPO.md lists each with its
 setting. `workers` is how many things run at once (default half the processors, at most 6).
-Results and caches go to `state/`. Neither is committed.
+What CodeBreaker makes of each binary goes into its own folder under `Converted/` (original/, src/,
+assets/, build/, reports/, README.txt; docs/NOT_IN_REPO.md); caches go to `state/`. Neither is committed.
 
 ## Use
 

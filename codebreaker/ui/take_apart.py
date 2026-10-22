@@ -14,10 +14,12 @@ CodeBreaker's own readers and decompiler -- no placeholder stages:
     what rebuilds it and runs it beside the original.
 
 `progress` gets ("stages", [names]) once, then ("stage", index, caption) as each begins. With
-`outbase`, everything is written to a folder per program and the report lists it.
+`outbase`, everything is written to the program's project folder and the report lists it: its
+Converted/<name>/ (codebreaker/base/converted.py) when `outbase` is "converted", else a folder
+of the same layout under `outbase`: original/ (the program), src/reconstructed.c, reports/
+(structure, disassembly, functions, hex dump), README.txt.
 """
 import os
-import shutil
 import struct
 
 _MAX_INSNS = 4_000_000        # a ceiling on one section's linear sweep
@@ -123,33 +125,30 @@ def _carve(insns, ranges, seeds):
 
 
 def _save_artifacts(rep, srcpath, outbase, texts):
-    """Write everything produced into a fresh per-file project folder; record the
-    (label, path) artifacts so the UI can offer buttons to open them."""
-    stem = os.path.splitext(os.path.basename(srcpath))[0] or "binary"
-    proj = os.path.join(outbase, stem)
-    n = 2
-    while os.path.exists(proj):
-        proj = os.path.join(outbase, "%s_%d" % (stem, n)); n += 1
-    os.makedirs(proj, exist_ok=True)
+    """Write everything produced into the program's project folder (see the module's notes);
+    record the (label, path) artifacts so the UI can offer buttons to open them."""
+    from codebreaker.base import converted
+    proj = converted.project(srcpath, base=None if outbase == "converted" else outbase)
     arts = []
-    orig = os.path.join(proj, os.path.basename(srcpath))
-    try:
-        shutil.copy2(srcpath, orig); arts.append(("Original binary", orig))
-    except Exception:
-        pass
-    for label, fname in (("Structure & imports", "structure.txt"),
-                         ("Disassembly", "disassembly.asm"),
-                         ("Functions", "functions.txt"),
-                         ("Reconstructed C", "reconstructed.c"),
-                         ("Hex dump", "hexdump.txt")):
+    if proj.original_file and os.path.isfile(proj.original_file):
+        arts.append(("Original binary", proj.original_file))
+    written = []
+    for label, fname, folder in (("Structure & imports", "structure.txt", proj.reports),
+                                 ("Disassembly", "disassembly.asm", proj.reports),
+                                 ("Functions", "functions.txt", proj.reports),
+                                 ("Reconstructed C", "reconstructed.c", proj.src),
+                                 ("Hex dump", "hexdump.txt", proj.reports)):
         body = texts.get(fname)
         if not body:
             continue
-        p = os.path.join(proj, fname)
+        p = os.path.join(folder, fname)
         with open(p, "w", encoding="utf-8", newline="\n") as f:
             f.write(body)
         arts.append((label, p))
-    rep["outdir"] = proj
+        written.append(p)
+    proj.record("take-apart", written, notes="the program read, disassembled and decompiled to C "
+                "(readable; not built or judged)")
+    rep["outdir"] = proj.root
     rep["artifacts"] = arts
 
 
@@ -299,7 +298,7 @@ def main(argv):
         print(main.__doc__)
         return 2
     path = argv[0] if os.path.isfile(argv[0]) else corpus.retail(argv[0])
-    out = argv[argv.index("--out") + 1] if "--out" in argv else settings.state("take_apart")
+    out = argv[argv.index("--out") + 1] if "--out" in argv else "converted"
 
     def show(kind, *a):
         if kind == "stage" and a[0] < 5:

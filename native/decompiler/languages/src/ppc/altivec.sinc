@@ -1166,6 +1166,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 }
 
 
+# CodeBreaker: the Power ISA 2.07 and 3.0 additions below are left out of the Xbox 360 language
+# (ppc_64_xenon_be.slaspec): the Xenon has none of them, and their encodings are VMX128's there.
+@ifndef XENON
 define pcodeop altv207_1;
 define pcodeop altv207_2;
 define pcodeop altv207_3;
@@ -1859,3 +1862,4 @@ define pcodeop altv300_71;
 	temp = temp + zext(vrA[32,32])*zext(vrB[32,32]);
 	vrD = temp;
 }
+@endif # XENON

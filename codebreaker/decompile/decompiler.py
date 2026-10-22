@@ -378,8 +378,8 @@ def _is_x86(module_path):
 def as_c(path):
     """Any executable as C: (text, functions decompiled, functions found). Raises ValueError for
     a file that is not an executable this can read."""
-    from codebreaker.formats import detect
-    kind = detect.lane(path)
+    from codebreaker.formats import detect, nes
+    kind = "nes" if nes.is_nes(path) else detect.lane(path)
     if kind is None:                                         # .COM files and flat drivers have no header
         from codebreaker.formats import dos
         kind = "dos" if dos.kind(path) else None
@@ -394,6 +394,11 @@ def as_c(path):
         starts = describe.function_starts(path)
         texts, order, _by_va, _err = raw(path, starts, B._scratch("decompiler", os.path.basename(path).lower()))
         header, total = "", len(starts)
+    elif kind == "nes":                                      # the 6502, as the decompiler gives it
+        from codebreaker.build import watcom as B
+        description, by_va = describe.describe_nes(path, B._scratch("decompiler_nes", os.path.basename(path).lower()))
+        texts, order, _by_va, _err = run(description)
+        header, total = "", len(by_va)
     elif kind == "le":
         texts, order, header, total = {}, [], "", 0
         for member, out, names, d in decompile_le(path):
@@ -417,7 +422,7 @@ def main(argv):
     """python -m codebreaker decompile <module> [--out FILE]
 
     Decompile any module the corpus or a path names -- a 32-bit or 16-bit Windows module, a
-    virtual device driver, a DOS program, a PowerPC image -- and write its functions as C. Nothing is built or judged; `module` does that."""
+    virtual device driver, a DOS program, a PowerPC image, a NES cartridge -- and write its functions as C. Nothing is built or judged; `module` does that."""
     if not argv:
         print(main.__doc__)
         return 2
@@ -429,9 +434,17 @@ def main(argv):
         text, decompiled, total = as_c(path)
     except ValueError as e:
         raise SystemExit(str(e))
-    out = argv[argv.index("--out") + 1] if "--out" in argv else \
-        os.path.splitext(os.path.basename(path))[0].lower() + ".c"
+    proj = None
+    if "--out" in argv:
+        out = argv[argv.index("--out") + 1]
+    else:                                    # the binary's project folder: Converted/<name>/src/
+        from codebreaker.base import converted
+        proj = converted.project(path)
+        out = os.path.join(proj.src, os.path.splitext(os.path.basename(path))[0].lower() + ".c")
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
+    if proj:
+        proj.record("decompile", [out], notes="%d of %d functions as C (readable; not built or judged)"
+                    % (decompiled, total))
     print("%s: %d of %d functions -> %s" % (os.path.basename(path), decompiled, total, out))
     return 0
