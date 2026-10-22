@@ -1,0 +1,642 @@
+[
+ {
+  "start": 41,
+  "size": 504,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 545,
+  "size": 49,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 594,
+  "size": 450,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 1058,
+  "size": 277,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 1335,
+  "size": 95,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 1902,
+  "size": 45,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 1947,
+  "size": 29,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2055,
+  "size": 84,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2139,
+  "size": 191,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2330,
+  "size": 111,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2506,
+  "size": 100,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2606,
+  "size": 81,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2687,
+  "size": 82,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2769,
+  "size": 117,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 2886,
+  "size": 62,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 5058,
+  "size": 78,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 6003,
+  "size": 768,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 6945,
+  "size": 16,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7021,
+  "size": 58,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7675,
+  "size": 42,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7717,
+  "size": 46,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7763,
+  "size": 41,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7804,
+  "size": 50,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7854,
+  "size": 25,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7949,
+  "size": 26,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 7975,
+  "size": 31,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 8006,
+  "size": 27,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 8033,
+  "size": 48,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 8129,
+  "size": 27,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 8215,
+  "size": 32,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 8247,
+  "size": 226,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 8816,
+  "size": 96,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 8912,
+  "size": 110,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 9028,
+  "size": 880,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 10196,
+  "size": 119,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 10628,
+  "size": 60,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 10688,
+  "size": 61,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 10749,
+  "size": 1269,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 12602,
+  "size": 104,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 12706,
+  "size": 82,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 12788,
+  "size": 153,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 12941,
+  "size": 30,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 12971,
+  "size": 213,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 13184,
+  "size": 107,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 13291,
+  "size": 85,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 13376,
+  "size": 51,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 13427,
+  "size": 172,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 13599,
+  "size": 206,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 13805,
+  "size": 34,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 14358,
+  "size": 79,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 14482,
+  "size": 31,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 14514,
+  "size": 100,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 14614,
+  "size": 120,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 14734,
+  "size": 142,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 14913,
+  "size": 160,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15136,
+  "size": 59,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15195,
+  "size": 106,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15302,
+  "size": 48,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15350,
+  "size": 26,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15376,
+  "size": 51,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15427,
+  "size": 25,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15452,
+  "size": 197,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15649,
+  "size": 84,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15733,
+  "size": 138,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 15871,
+  "size": 137,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16008,
+  "size": 102,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16134,
+  "size": 37,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16171,
+  "size": 21,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16192,
+  "size": 26,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16218,
+  "size": 65,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16283,
+  "size": 31,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16314,
+  "size": 176,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16540,
+  "size": 206,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16746,
+  "size": 129,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16875,
+  "size": 45,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16920,
+  "size": 15,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16935,
+  "size": 19,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16954,
+  "size": 4,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 16958,
+  "size": 43,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17001,
+  "size": 53,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17054,
+  "size": 213,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17268,
+  "size": 304,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17572,
+  "size": 65,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17638,
+  "size": 69,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17708,
+  "size": 4,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17712,
+  "size": 63,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17776,
+  "size": 50,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17826,
+  "size": 43,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17870,
+  "size": 27,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17898,
+  "size": 10,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17908,
+  "size": 87,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 17996,
+  "size": 208,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 18204,
+  "size": 101,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 18402,
+  "size": 163,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 18566,
+  "size": 66,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 18638,
+  "size": 157,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 18795,
+  "size": 39,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 18990,
+  "size": 328,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19318,
+  "size": 32,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19350,
+  "size": 14,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19364,
+  "size": 50,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19414,
+  "size": 32,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19452,
+  "size": 23,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19476,
+  "size": 34,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19510,
+  "size": 125,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19676,
+  "size": 45,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19722,
+  "size": 4,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19726,
+  "size": 33,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19759,
+  "size": 40,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19800,
+  "size": 140,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 19940,
+  "size": 81,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20021,
+  "size": 32,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20054,
+  "size": 40,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20094,
+  "size": 58,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20152,
+  "size": 4,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20158,
+  "size": 40,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20198,
+  "size": 88,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20382,
+  "size": 74,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20456,
+  "size": 127,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20584,
+  "size": 290,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20874,
+  "size": 4,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20878,
+  "size": 35,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 20914,
+  "size": 124,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 21138,
+  "size": 43,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 21182,
+  "size": 597,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 21790,
+  "size": 232,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 22022,
+  "size": 20,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ },
+ {
+  "start": 22042,
+  "size": 197,
+  "verdict": "masm error: dosbox-x not found: C:\\Users\\mrtit\\Documents\\GitHub\\CodeBreaker\\src\\win1.0\\refs\\tools\\dosbox-x\\bin\\x64\\Release\\dosbox-x.exe (set it: CodeBreaker config dosbox_x <path>)"
+ }
+]
