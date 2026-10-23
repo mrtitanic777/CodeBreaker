@@ -1,6 +1,7 @@
 #include "memory.h"
 
 #include "log.h"
+#include "pool.h"
 #include "ppc_lookup.h"
 
 #include <windows.h>
@@ -461,6 +462,12 @@ namespace guest
 
     uint32_t Memory::SystemAlloc(uint32_t size, uint32_t alignment)
     {
+        // Small blocks (kernel objects, strings) come from the kernel pool, 16 bytes at a time, as on the console: as
+        // whole pages they took 4 KiB each, and the pages the pool leaves held ~750 of them (Doritos Crash Course
+        // created more at its start). Larger or more strictly aligned blocks are pages.
+        if (size <= 0x800 && alignment <= 16)
+            if (const uint32_t pooled = KernelPool().Allocate(size))
+                return pooled;
         uint32_t address = system.Allocate(size, alignment, true, kPageReadWrite, false);
         if (address == 0)
             Fatal("System heap exhausted allocating {:X} bytes", size);
@@ -469,6 +476,8 @@ namespace guest
 
     void Memory::SystemFree(uint32_t address)
     {
+        if (KernelPool().Free(address))
+            return;
         system.Release(address);
     }
 }

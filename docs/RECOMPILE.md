@@ -6,10 +6,26 @@ builds and runs on another machine. The output is not readable source. It keeps 
 behaviour at the level of registers and memory. Today it covers Xbox 360 titles.
 
 ```bash
-python -m codebreaker recompile-project default.xex -o C:\Games\Tetris --name tetris --title-files <the title's folder>
-C:\Games\Tetris\Build-tetris.bat
-C:\Games\Tetris\build\tetris.exe C:\Games\Tetris\game
+python -m codebreaker recompile-project "C:\Games\PAC-MAN CE" --check
+Converted\Pac-Man_C.E\Play-Pac_Man_C_E.bat
 ```
+
+The title is given as it comes -- a LIVE/CON package (Xbox LIVE Arcade titles, installs), a disc
+image, a Games-on-Demand folder, a folder of its files, or a folder holding any of those (a
+console's `<title id>/000D0000/<package>`): `codebreaker/recompile/title.py` finds the volume whose
+top holds `default.xex` (leaving title updates and DLC beside it alone) and unpacks it into the
+project's `assets/` once. The project is `Converted/<title's name>/`. `--build` builds the program
+(four compiles at a time; `CB_BUILD_JOBS` in `Build-<name>.bat`), and `--check [seconds]` also runs
+it headless and reports the frames it presented, the imports it called that the runtime does not
+implement yet, and what stopped it -- the triage for a title nobody has tuned:
+
+| Title | First check |
+|---|---|
+| PAC-MAN Championship Edition | plays: menus and a game, no unimplemented import |
+| GALAGA, Bomberman LIVE, UNO Rush | run (1800-2400 frames in 60 s), no unimplemented import |
+| Trials HD | runs, CPU-bound (12 frames/s, GPU 1 ms a frame) |
+| Zuma | its 2005 basefile names another image base: fixed (the XEX's load address is used) |
+| TRON | NtSuspendThread (implemented since); a file read into guest memory the host could not write |
 
 ## The pieces
 

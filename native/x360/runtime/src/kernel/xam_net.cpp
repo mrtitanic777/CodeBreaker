@@ -495,6 +495,60 @@ GUEST_IMPORT(NetDll_recvfrom)
     ctx.r3.u64 = kSocketError;
 }
 
+// INT NetDll_listen(XNCALLER_TYPE Caller, SOCKET s, int backlog): a bound stream socket listens; nobody connects
+// without a link. (Ecco the Dolphin's emulator listens for a debugger and polls accept every frame.)
+GUEST_IMPORT(NetDll_listen)
+{
+    constexpr uint32_t kWsaEOpNotSupp = 10045;
+    std::lock_guard lock(g_netMutex);
+    const Socket* socket = FindSocket(ctx.r4.u32);
+    if (socket == nullptr || socket->type != 1)
+    {
+        SetLastError(ctx, socket == nullptr ? kWsaENotSock : kWsaEOpNotSupp);
+        ctx.r3.u64 = kSocketError;
+        return;
+    }
+    ctx.r3.u64 = 0;
+}
+
+namespace
+{
+    // accept / recv with no link: a non-blocking socket has nothing (WSAEWOULDBLOCK); a blocking one would wait for
+    // ever, which stops so the title's case gets researched.
+    void NothingArrives(PPCContext& ctx, const char* function)
+    {
+        constexpr uint32_t kWsaEWouldBlock = 10035;
+        bool nonBlocking = false;
+        {
+            std::lock_guard lock(g_netMutex);
+            const Socket* socket = FindSocket(ctx.r4.u32);
+            if (socket == nullptr)
+            {
+                SetLastError(ctx, kWsaENotSock);
+                ctx.r3.u64 = kSocketError;
+                return;
+            }
+            nonBlocking = socket->nonBlocking;
+        }
+        if (!nonBlocking)
+            Fatal("{} on a blocking socket would wait for ever (no network link): not implemented", function);
+        SetLastError(ctx, kWsaEWouldBlock);
+        ctx.r3.u64 = kSocketError;
+    }
+}
+
+// SOCKET NetDll_accept(XNCALLER_TYPE Caller, SOCKET s, sockaddr* addr, int* addrlen)
+GUEST_IMPORT(NetDll_accept)
+{
+    NothingArrives(ctx, "NetDll_accept");
+}
+
+// INT NetDll_recv(XNCALLER_TYPE Caller, SOCKET s, char* buf, int len, int flags)
+GUEST_IMPORT(NetDll_recv)
+{
+    NothingArrives(ctx, "NetDll_recv");
+}
+
 // INT NetDll_shutdown(XNCALLER_TYPE Caller, SOCKET s, int how)
 GUEST_IMPORT(NetDll_shutdown)
 {

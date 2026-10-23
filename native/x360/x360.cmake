@@ -64,19 +64,36 @@ namespace kernel
 }
 ")
 
-    file(GLOB_RECURSE runtime_sources CONFIGURE_DEPENDS "${X360_RUNTIME}/src/*.cpp")
-    include("${X360_ROOT}/system/xui/xui.cmake")
-    include("${X360_ROOT}/system/live/live.cmake")
-    include("${X360_ROOT}/system/stfs/stfs.cmake")
-    include("${X360_ROOT}/system/guide/guide.cmake")
-    include("${X360_ROOT}/system/transition/transition.cmake")
-    include("${X360_ROOT}/system/pads/pads.cmake")
-    add_executable(${target} ${runtime_sources} "${stubs}" "${linked}" ${X360_XUI_SOURCES} ${X360_LIVE_SOURCES}
-        ${X360_STFS_SOURCES} ${X360_GUIDE_SOURCES} ${X360_TRANSITION_SOURCES} ${X360_PADS_SOURCES})
+    # The runtime itself is built once for every title with the same register settings, compiler and -march
+    # (runtime_lib/CMakeLists.txt), in native/x360/build/runtime-<key>: a title's build only checks it is up to date.
+    file(READ "${settings_dir}/x360_ppc_settings.h" settings_text)
+    string(SHA1 runtime_key "${settings_text}|${CMAKE_CXX_COMPILER}|${X360_MARCH}|${CMAKE_BUILD_TYPE}")
+    string(SUBSTRING "${runtime_key}" 0 12 runtime_key)
+    set(runtime_dir "${X360_ROOT}/build/runtime-${runtime_key}")
+    if (NOT EXISTS "${runtime_dir}/CMakeCache.txt")
+        file(MAKE_DIRECTORY "${runtime_dir}/settings")
+        file(WRITE "${runtime_dir}/settings/x360_ppc_settings.h" "${settings_text}")
+        execute_process(COMMAND "${CMAKE_COMMAND}" -S "${X360_ROOT}/runtime_lib" -B "${runtime_dir}" -G Ninja
+                "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}" "-DX360_SETTINGS_DIR=${runtime_dir}/settings"
+                "-DX360_MARCH=${X360_MARCH}" "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+            RESULT_VARIABLE configured)
+        if (NOT configured EQUAL 0)
+            message(FATAL_ERROR "The shared runtime build in ${runtime_dir} could not be configured")
+        endif()
+    endif()
+    set(runtime_lib "${runtime_dir}/x360_runtime.lib")
+    add_custom_target(${target}_runtime
+        COMMAND "${CMAKE_COMMAND}" --build "${runtime_dir}" --target x360_runtime
+        BYPRODUCTS "${runtime_lib}"
+        COMMENT "The shared Xbox 360 runtime (${runtime_dir})" USES_TERMINAL)
+    add_executable(${target} "${stubs}" "${linked}")
+    add_dependencies(${target} ${target}_runtime)
     target_include_directories(${target} PRIVATE "${X360_RUNTIME}/src" "${X360_PPC_SHARED}" "${settings_dir}"
-        "${X360_XENON}/XenonUtils" "${X360_XENON}/thirdparty/simde" "${X360_XUI_INCLUDE_DIR}" ${X360_LIVE_INCLUDE_DIRS}
-        "${X360_STFS_INCLUDE_DIR}" "${X360_GUIDE_INCLUDE_DIR}" "${X360_TRANSITION_INCLUDE_DIR}" "${X360_PADS_INCLUDE_DIR}")
-    target_link_libraries(${target} PRIVATE ${target}_title winmm xinput bcrypt d3d12 dxgi d3dcompiler ole32 ws2_32)
+        "${X360_XENON}/XenonUtils" "${X360_XENON}/thirdparty/simde")
+    # the whole library: objects nothing names directly (static registrations) must still be linked
+    target_link_options(${target} PRIVATE "/WHOLEARCHIVE:${runtime_lib}")
+    target_link_libraries(${target} PRIVATE ${target}_title "${runtime_lib}" winmm xinput bcrypt d3d12 dxgi d3dcompiler ole32 ws2_32)
     target_compile_options(${target} PRIVATE -fno-strict-aliasing -march=${X360_MARCH} /fp:strict /Z7)
     target_compile_definitions(${target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     # a Windows program: the log is <program>.log beside the title's files; a fatal error shows a box

@@ -124,6 +124,50 @@ GUEST_IMPORT(KeLeaveCriticalRegion)
 
 namespace
 {
+    // Suspension: the count is the KTHREAD's (kSuspendCount). A thread created suspended has a count of 1 and no host
+    // thread yet: it starts when the count comes back to 0. A running thread is suspended and resumed as its host
+    // thread (as Xenia does; a host thread stopped while it holds a runtime lock would stop the others needing it --
+    // the console has the same hazard for its own locks). A thread suspending itself stops at once, after writing
+    // `previousOut`, until another resumes it.
+    constexpr uint8_t kMaximumSuspendCount = 127;
+    constexpr uint32_t kStatusSuspendCountExceeded = 0xC000004A;
+
+    uint8_t SuspendGuestThread(uint32_t object, kernel::GuestThread* thread, uint32_t previousOut = 0)
+    {
+        auto& mem = guest::g_memory;
+        const uint8_t previous = mem.Read8(object + kernel::kthread::kSuspendCount);
+        mem.Write8(object + kernel::kthread::kSuspendCount, uint8_t(previous + 1));
+        if (previous == 0 && thread->started && !thread->finished)
+        {
+            if (thread == kernel::CurrentThread())
+            {
+                if (previousOut)
+                    mem.Write32(previousOut, previous);
+                ::SuspendThread(GetCurrentThread());
+            }
+            else
+                ::SuspendThread(thread->hostHandle);
+        }
+        return previous;
+    }
+
+    uint8_t ResumeGuestThread(uint32_t object, kernel::GuestThread* thread)
+    {
+        auto& mem = guest::g_memory;
+        const uint8_t previous = mem.Read8(object + kernel::kthread::kSuspendCount);
+        if (previous == 0)
+            return 0;
+        mem.Write8(object + kernel::kthread::kSuspendCount, uint8_t(previous - 1));
+        if (previous == 1)
+        {
+            if (!thread->started)
+                kernel::StartThread(thread);
+            else if (!thread->finished)
+                ::ResumeThread(thread->hostHandle);
+        }
+        return previous;
+    }
+
     // The lock word holds the owner's PRCB address. Holders run at DISPATCH_LEVEL and cannot be preempted on
     // their CPU on hardware; host threads can, so a long wait yields the host thread to let the holder finish.
     void AcquireSpinLock(const PPCContext& ctx, uint32_t lock)
@@ -223,14 +267,7 @@ GUEST_IMPORT(NtResumeThread)
         ctx.r3.u64 = kernel::kStatusInvalidHandle;
         return;
     }
-    const uint8_t previous = mem.Read8(object + kernel::kthread::kSuspendCount);
-    if (previous > 1)
-        Fatal("NtResumeThread on a thread suspended {} times: nested suspension is not implemented", previous);
-    if (previous == 1)
-    {
-        mem.Write8(object + kernel::kthread::kSuspendCount, 0);
-        kernel::StartThread(thread);
-    }
+    const uint8_t previous = ResumeGuestThread(object, thread);
     if (ctx.r4.u32)
         mem.Write32(ctx.r4.u32, previous);
     ctx.r3.u64 = kernel::kStatusSuccess;
@@ -330,18 +367,42 @@ GUEST_IMPORT(KfLowerIrql)
 // LONG KeResumeThread(PKTHREAD Thread): returns the previous suspend count.
 GUEST_IMPORT(KeResumeThread)
 {
-    auto& mem = guest::g_memory;
     const uint32_t object = ctx.r3.u32;
     kernel::GuestThread* thread = kernel::FindThread(object);
     if (thread == nullptr)
         Fatal("KeResumeThread({:08X}): not a thread object", object);
-    const uint8_t previous = mem.Read8(object + kernel::kthread::kSuspendCount);
-    if (previous > 1)
-        Fatal("KeResumeThread on a thread suspended {} times: nested suspension is not implemented", previous);
-    if (previous == 1)
+    ctx.r3.u64 = ResumeGuestThread(object, thread);
+}
+
+// LONG KeSuspendThread(PKTHREAD Thread): returns the previous suspend count.
+GUEST_IMPORT(KeSuspendThread)
+{
+    const uint32_t object = ctx.r3.u32;
+    kernel::GuestThread* thread = kernel::FindThread(object);
+    if (thread == nullptr)
+        Fatal("KeSuspendThread({:08X}): not a thread object", object);
+    ctx.r3.u64 = SuspendGuestThread(object, thread);
+}
+
+// NTSTATUS NtSuspendThread(HANDLE Thread, PDWORD PreviousSuspendCount)
+GUEST_IMPORT(NtSuspendThread)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t object = kernel::LookupHandle(ctx.r3.u32);
+    kernel::GuestThread* thread = object ? kernel::FindThread(object) : nullptr;
+    if (thread == nullptr)
     {
-        mem.Write8(object + kernel::kthread::kSuspendCount, 0);
-        kernel::StartThread(thread);
+        ctx.r3.u64 = kernel::kStatusInvalidHandle;
+        return;
     }
-    ctx.r3.u64 = previous;
+    if (mem.Read8(object + kernel::kthread::kSuspendCount) >= kMaximumSuspendCount)
+    {
+        ctx.r3.u64 = kStatusSuspendCountExceeded;
+        return;
+    }
+    const uint32_t previousOut = ctx.r4.u32;
+    const uint8_t previous = SuspendGuestThread(object, thread, previousOut);
+    if (previousOut && thread != kernel::CurrentThread())   // (a thread suspending itself wrote it before it stopped)
+        mem.Write32(previousOut, previous);
+    ctx.r3.u64 = kernel::kStatusSuccess;
 }

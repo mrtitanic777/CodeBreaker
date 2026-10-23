@@ -327,7 +327,21 @@ GUEST_IMPORT(NtReadFile)
     ov.OffsetHigh = DWORD(offset >> 32);
     DWORD read = 0;
     if (!ReadFile(file->host, mem.Translate(ctx.r8.u32), ctx.r9.u32, &read, &ov) && GetLastError() != ERROR_HANDLE_EOF)
-        Fatal("Host read of {} failed (error {})", file->path.string(), GetLastError());
+    {
+        // Which pages of the buffer the host could not write (998: a page not committed or not writable).
+        const DWORD error = GetLastError();
+        std::string pages;
+        for (uint32_t a = ctx.r8.u32 & ~0xFFFu; a < ctx.r8.u32 + ctx.r9.u32 && pages.size() < 400; )
+        {
+            MEMORY_BASIC_INFORMATION info{};
+            VirtualQuery(mem.Translate(a), &info, sizeof(info));
+            const uint32_t end = a + uint32_t(std::min<SIZE_T>(info.RegionSize, 0x7FFFFFFF));
+            pages += std::format(" {:08X}-{:08X} state {:X} protect {:X};", a, end, info.State, info.Protect);
+            a = end > a ? end : a + 0x1000;
+        }
+        Fatal("Host read of {} failed (error {}): {} bytes at {:08X} (offset {});{}", file->path.string(), error,
+              ctx.r9.u32, ctx.r8.u32, offset, pages);
+    }
     file->position = offset + read;
     // Reading at or beyond the end fails at once (also on an asynchronous handle; TU46 relies on ERROR_HANDLE_EOF for
     // an empty file read through an OVERLAPPED).

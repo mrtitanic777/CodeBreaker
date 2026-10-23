@@ -80,9 +80,13 @@ def _size(path):
 
 
 def _default_xex(folder):
+    """The folder's default.xex if it is one (some copies name a LIVE package default.xex)."""
     for n in os.listdir(folder):
-        if n.lower() == "default.xex" and os.path.isfile(os.path.join(folder, n)):
-            return n
+        path = os.path.join(folder, n)
+        if n.lower() == "default.xex" and os.path.isfile(path):
+            with open(path, "rb") as f:
+                if f.read(4) == b"XEX2":
+                    return n
     return None
 
 
