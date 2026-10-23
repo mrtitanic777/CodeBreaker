@@ -55,20 +55,22 @@ _MTCTR_R11, _BCTR = 0x7D6903A6, 0x4E800420
 
 class Image(object):
     def __init__(self, path, pe, data, memory_layout):
-        self.path, self.base, self.data = path, pe.image_base, data
+        # where the image is loaded: the XEX that held it says (an early basefile's own header can name
+        # another base -- $400000 in Zuma's, which the console loads at $82000000)
+        self.path, self.base, self.data = path, _load_base(path, pe), data
         self.memory_layout = memory_layout
         if memory_layout:
-            self.spans = [(pe.image_base, 0, len(data))]
+            self.spans = [(self.base, 0, len(data))]
         else:
             self.spans = []
             for s in pe.sections:
                 size = min(s["rawsize"], s["vsize"] or s["rawsize"])
                 if size and s["rawptr"]:
-                    self.spans.append((pe.image_base + s["vaddr"], s["rawptr"], size))
-        self.sections = [(s["name"], pe.image_base + s["vaddr"], s["vsize"] or s["rawsize"], s["chars"])
+                    self.spans.append((self.base + s["vaddr"], s["rawptr"], size))
+        self.sections = [(s["name"], self.base + s["vaddr"], s["vsize"] or s["rawsize"], s["chars"])
                          for s in pe.sections]
         self.functions, self.imports, self.inline, self.code = [], {}, {}, (0, 0)
-        self.extents, self.entry = {}, pe.image_base + pe.entry if pe.entry else 0
+        self.extents, self.entry = {}, self.base + pe.entry if pe.entry else 0
 
     def offset(self, va):
         for a, off, n in self.spans:
@@ -85,6 +87,17 @@ class Image(object):
     def bytes_at(self, va, size):
         off = self.offset(va)
         return b"" if off is None else self.data[off:off + size]
+
+
+def _load_base(path, pe):
+    """The address the image runs at: the XEX's load address when the file is a basefile taken from
+    one (xex.basefile writes it beside the file), else the PE header's."""
+    import json
+    try:
+        with open(path + ".json", encoding="utf-8") as f:
+            return json.load(f).get("base") or pe.image_base
+    except (OSError, ValueError):
+        return pe.image_base
 
 
 def _table(data, off, size):
