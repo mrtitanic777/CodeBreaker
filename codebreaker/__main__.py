@@ -41,8 +41,13 @@
                                     patch, re-sign (any command takes a .xex: it is read as its basefile)
     recompile <image or .xex> --all [-o FILE]   an Xbox 360 program as C++ that runs on a PC (every
                                     function; --at ADDR --size N for one; --check compiles it)
-    recompile-project <image or .xex> -o DIR    that C++ as a project that builds: sources, imports,
-                                    the kernel core, the GPU subsystem (docs/RECOMPILE.md)
+    recompile-project <title> [--check [s]]     an Xbox 360 title (a .xex, package, disc image or folder)
+                                    as a project that builds and runs on a PC (docs/RECOMPILE.md)
+    xex-imports <module.xex>        its imports: library, ordinal, name, function or variable, slot, thunk
+    xdk-match <.xex or image> [libs] [-o F]   name the XDK library functions it was linked with
+    system-ui <update package> <dir>    the Xbox 360 runtime's system UI assets from the owner's system update
+    classes <.xex or image> [-o F]  its C++ classes from run-time type information: bases, virtual
+                                    function tables, which class introduces each virtual function
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
     progress [--once] [--window]    watch a running sweep
@@ -109,6 +114,10 @@ COMMANDS = {
     "settings": ("codebreaker.base.settings", []),
     "recompile": ("codebreaker.recompile.powerpc", []),
     "recompile-project": ("codebreaker.recompile.project", []),
+    "xdk-match": ("codebreaker.symbols.xdk_libraries", []),
+    "xex-imports": ("codebreaker.formats.xex_imports", []),
+    "classes": ("codebreaker.symbols.cpp_classes", []),
+    "system-ui": ("codebreaker.formats.xbox.system_ui", []),
     "java": ("codebreaker.java.run", []),
 }
 

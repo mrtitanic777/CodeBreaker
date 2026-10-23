@@ -55,6 +55,10 @@ def test_demangle():
     assert demangle.stack_bytes("?AddRef@CFoo@@UAGKXZ") == 4
     assert demangle.stack_bytes("?GetAt@CStringArray@@QBE?AVCString@@H@Z") == 8
     assert demangle.stack_bytes("?x@@YAXH@Z") is None            # the caller removes them
+    # run-time type information's names
+    assert demangle.type_name(".?AVInner@Outer@@") == "Outer::Inner"
+    assert demangle.type_name(".?AV?$CComPtr@UIUnknown@@@ATL@@") == "ATL::CComPtr<struct IUnknown>"
+    assert demangle.type_name("?not a type") is None
     p = demangle.parse("?Create@CButton@@QAEHPBDKABUtagRECT@@PAVCWnd@@I@Z")
     assert p["class"] == "CButton" and p["returns"] == "int" and len(p["parameters"]) == 5 and p["access"] == "public"
 

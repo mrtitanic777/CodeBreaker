@@ -28,7 +28,7 @@ namespace kernel::profile
         }
 
         // An STFS package (XContent "CON " / "LIVE" / "PIRS"), read-only and read-write ones. Layout (Xenia's
-        // StfsContainerDevice, BSD-3, was read for it; tools/scripts/stfs_extract.py is the same reader): the
+        // StfsContainerDevice, BSD-3, was read for it; codebreaker/formats/xbox/stfs.py is the same reader): the
         // XContent header ends at the big-endian u32 at 0x340, rounded up to 4 KiB; the volume descriptor is at
         // 0x379. Data blocks are 4 KiB; every 170 data blocks follow a level-0 hash table (one block, or two copies
         // when the package is read-write), every 170 * 170 a level-1 table, and so on. A hash entry (24 bytes) ends

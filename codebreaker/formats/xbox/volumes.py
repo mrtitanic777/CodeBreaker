@@ -11,6 +11,7 @@ reads a floppy or a CD:
     xdvdfs     an Xbox / Xbox 360 disc image (XISO, redump XGD), plain or CSO / CCI compressed
     god        a Games-on-Demand folder (its Data#### parts are the disc, de-interleaved)
     fatx       each FATX partition of a hard-disk or memory-unit image
+    nand       the flash file system of a console's NAND dump (16 MB, with spare bytes)
     zar        a ZArchive (.zar)
     xzp        a XUI package (XUIZ)
     pck        a Minecraft Legacy Console Edition .pck
@@ -19,7 +20,7 @@ import os
 import struct
 
 from codebreaker.formats.media import Entry
-from codebreaker.formats.xbox import ciso, fatx, gdf, god, pck, stfs, xzp, zar
+from codebreaker.formats.xbox import ciso, fatx, gdf, god, nand, pck, stfs, xzp, zar
 
 _STFS = (b"CON ", b"LIVE", b"PIRS")
 
@@ -109,6 +110,13 @@ def _fatx(path):
     return found or None
 
 
+def _nand(path):
+    with open(path, "rb") as f:
+        fs = nand.Flash(f.read())
+    return [_Listed("nand", "flash", "root block %#x" % fs.root, {"files": len(fs.files)},
+                    lambda: [(n, v[1]) for n, v in fs.files.items()], fs.read)]
+
+
 def _zar(path):
     z = zar.ZarReader(path)
     return [_Listed("zar", os.path.basename(path), "", {"files": len(z.files())},
@@ -133,6 +141,8 @@ def volumes(path, long_names=True):
         return _stfs(path)
     if magic in (ciso.CSO_MAGIC, ciso.CCI_MAGIC):
         return [_xdvdfs(ciso.open_image(path), os.path.basename(path), magic.decode("latin-1").strip() + " compressed disc")]
+    if nand.is_nand(path):
+        return _nand(path)
     if magic == b"XUIZ":
         return _payloads("xzp", path, xzp.payloads(path))
     if path.lower().endswith(".zar"):

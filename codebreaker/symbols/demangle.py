@@ -359,6 +359,19 @@ def _read(name):
     return out
 
 
+def type_name(decorated):
+    """A type's name as run-time type information keeps it -- `.?AVCFoo@@` (a class), `.?AU...` (a
+    struct) -- as C++ writes it: "CFoo", "Outer::Inner", "std::vector<int>". None if unreadable."""
+    if not decorated or not decorated.startswith(".?A") or len(decorated) < 5 or decorated[3] not in "VUTW":
+        return None
+    try:
+        r = _Reader(decorated[4:])
+        names = r.qualified()
+        return "::".join(names).strip()
+    except (_Unreadable, IndexError, ValueError, RecursionError):
+        return None
+
+
 def parse(name):
     """What a decorated C++ name says, as a dict (see the module text), or None."""
     try:

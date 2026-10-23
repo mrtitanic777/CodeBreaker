@@ -1,6 +1,6 @@
 #pragma once
 
-// The system UI's assets as XAM 17559 finds them (tools/scripts/extract_system_ui.py writes them): XUI packages named
+// The system UI's assets as XAM 17559 finds them (`codebreaker system-ui` writes them: formats/xbox/system_ui.py): XUI packages named
 // <module>.<resource>.xzp, the HUD skin and the system fonts.
 //
 // Paths in scenes are XUI resource locators: "sharedres://x.png" = xam.xex's "shrdres" package, "xam://x.png" = its

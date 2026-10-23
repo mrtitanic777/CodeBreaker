@@ -25,7 +25,7 @@ namespace xex
 //
 // Each import is written with GUEST_IMPORT(Name) { ... }: arguments arrive in ctx.r3..r10 (f1.. for floats) and the
 // result goes in ctx.r3, exactly as the PowerPC ABI the game was compiled for. Imports not yet implemented are
-// generated as reporting stubs (tools/scripts/gen_import_stubs.py).
+// generated as reporting stubs (native/x360/tools/gen_import_stubs.py).
 //
 // Guest structure layouts below were cross-checked against Xenia Canary (BSD-3, Ben Vanik and contributors).
 

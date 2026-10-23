@@ -225,7 +225,7 @@ namespace xui
                 const auto dir = AssetDirectory();
                 if (!assets->Load(dir, error))
                     Log("System UI: no XAM assets ({}: {}); popups are shown as native dialogs. Create the folder "
-                        "with tools/scripts/extract_system_ui.py from the console's system update.", dir.string(), error);
+                        "with `codebreaker system-ui` from the console's system update.", dir.string(), error);
                 else
                 {
                     s.assets = std::move(assets);

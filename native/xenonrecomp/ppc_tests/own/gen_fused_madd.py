@@ -1,0 +1,126 @@
+"""Writes instr_fused_madd.s (beside this file): fmadd-family cases where one rounding (the PowerPC definition) and
+a separate multiply and add give different results, plus NaN / signed-zero cases from the architecture's rules.
+
+    python native/xenonrecomp/ppc_tests/own/gen_fused_madd.py native/xenonrecomp/ppc_tests/own/instr_fused_madd.s
+
+Xenia's hardware-measured fmadd/fmadds tests use values where both agree, so they cannot tell the two apart. The
+expected values here come from exact rational arithmetic rounded once (round to nearest, ties to even), i.e. from
+the architecture's definition, not from a console. (The VMX vmaddfp is different: Xenia's hardware test shows it
+is not fused, so it is not covered here.)
+"""
+import struct
+import sys
+from fractions import Fraction
+
+
+def bits_to_double(b):
+    return struct.unpack('>d', struct.pack('>Q', b))[0]
+
+
+def double_to_bits(d):
+    return struct.unpack('>Q', struct.pack('>d', d))[0]
+
+
+def round_binary(x, mant_bits, min_exp):
+    """Rounds a Fraction to the nearest value with mant_bits significant bits (ties to even), exponent >= min_exp
+    for normals (subnormals below). Returns a Fraction. No overflow handling (cases stay in range)."""
+    if x == 0:
+        return Fraction(0)
+    sign = -1 if x < 0 else 1
+    x = abs(x)
+    e = x.numerator.bit_length() - x.denominator.bit_length()
+    while Fraction(2) ** e > x:
+        e -= 1
+    while Fraction(2) ** (e + 1) <= x:
+        e += 1
+    e = max(e, min_exp)
+    ulp = Fraction(2) ** (e - (mant_bits - 1))
+    q = x / ulp
+    n = q.numerator // q.denominator
+    rem = q - n
+    if rem > Fraction(1, 2) or (rem == Fraction(1, 2) and n % 2 == 1):
+        n += 1
+    return sign * n * ulp
+
+
+def to_double(x):
+    return double_to_bits(float(round_binary(x, 53, -1022)))
+
+
+def to_single(x):
+    r = round_binary(x, 24, -126)
+    return double_to_bits(float(r))  # exact: a single is a double
+
+
+P = Fraction(2)
+
+
+def d(x):
+    """Double bits of an exactly representable Fraction."""
+    v = float(x)
+    assert Fraction(v) == x, x
+    return double_to_bits(v)
+
+
+def main():
+    out = sys.argv[1]
+    cases = []  # (name, op, a, c, b, expected bits)
+
+    def add(op, a, c, b, expected, note):
+        cases.append((op, a, c, b, expected, note))
+
+    # Double: (1 + 2^-30)(1 - 2^-30) = 1 - 2^-60; the separate product rounds to 1.0.
+    a, c = 1 + P ** -30, 1 - P ** -30
+    add('fmadd', d(a), d(c), d(Fraction(-1)), to_double(a * c - 1), 'exact -2^-60; unfused gives 0')
+    add('fmsub', d(a), d(c), d(Fraction(1)), to_double(a * c - 1), 'exact -2^-60')
+    add('fnmsub', d(a), d(c), d(Fraction(1)), to_double(-(a * c - 1)), 'exact +2^-60')
+    add('fnmsub', d(Fraction(2)), d(Fraction(3)), d(Fraction(6)), 0x8000000000000000, '-(6 - 6) = -0')
+    add('fmadd', d(Fraction(2)), d(Fraction(3)), d(Fraction(-6)), 0x0000000000000000, '6 - 6 = +0')
+
+    # Single with single inputs: the exact result sits just below a single-precision midpoint that a double
+    # rounding of the sum would land on (then ties to even goes the wrong way).
+    a, c, b = P ** 18 + P ** -5, P ** 18 - P ** -5, P ** 60 + P ** 37
+    add('fmadds', d(a), d(c), d(b), to_single(a * c + b), 'one rounding: 2^60 + 2^37; double rounding: 2^60 + 2^38')
+    add('fmsubs', d(a), d(c), d(-b), to_single(a * c + b), 'same with frB negated')
+    add('fnmadds', d(a), d(c), d(b), to_single(-(a * c + b)), 'negated')
+    add('fnmsubs', d(a), d(c), d(-b), to_single(-(a * c + b)), 'negated')
+    # Single with double inputs (not exact singles): the round-to-odd path.
+    a2 = P ** 36 - P ** -10
+    add('fmadds', d(a2), d(Fraction(1)), d(b), to_single(a2 + b), 'double input, just below a midpoint')
+    a, c = 1 + P ** -30, 1 - P ** -30
+    add('fmadds', d(a), d(c), d(Fraction(-1)), to_single(a * c - 1), 'double inputs: -2^-60')
+    add('fnmsubs', d(a), d(c), d(Fraction(1)), to_single(-(a * c - 1)), 'double inputs: +2^-60')
+
+    # NaNs: frA, then frB, then frC, quieted; invalid operations give the default QNaN, never negated.
+    qa, qb, qc = 0x7FF8000000000A00, 0x7FF8000000000B00, 0x7FF8000000000C00
+    one = d(Fraction(1))
+    add('fmadd', qa, qc, qb, qa, 'NaN frA wins')
+    add('fmadd', one, qc, qb, qb, 'NaN frB before frC')
+    add('fmadd', one, qc, one, qc, 'NaN frC')
+    add('fmadd', 0x7FF0000000000A00, one, one, 0x7FF8000000000A00, 'SNaN frA is quieted')
+    add('fnmsub', 0xFFF8000000000A00, one, one, 0xFFF8000000000A00, 'NaN keeps its sign in fnmsub')
+    add('fmadd', 0x7FF0000000000000, 0, one, 0x7FF8000000000000, 'inf * 0 + 1: default QNaN')
+    add('fnmsub', 0x7FF0000000000000, 0, one, 0x7FF8000000000000, 'invalid result is not negated')
+    add('fmsub', 0x7FF0000000000000, one, 0x7FF0000000000000, 0x7FF8000000000000, 'inf - inf: default QNaN')
+    add('fmadds', qa, one, one, 0x7FF8000000000000 | (qa & 0x000FFFFFE0000000), 'NaN rounded to single')
+
+    with open(out, 'w', newline='\n') as f:
+        f.write('# Generated by gen_fused_madd.py: fused multiply-add cases (see that script).\n\n')
+        for i, (op, a, c, b, expected, note) in enumerate(cases, 1):
+            f.write('test_fused_madd_%d:\n' % i)
+            f.write('  # %s\n' % note)
+            f.write('  #_ REGISTER_IN f1 0x0000000000000000\n')
+            f.write('  #_ REGISTER_IN f2 0x%016X\n' % a)
+            f.write('  #_ REGISTER_IN f3 0x%016X\n' % c)
+            f.write('  #_ REGISTER_IN f4 0x%016X\n' % b)
+            f.write('  %s f1, f2, f3, f4\n' % op)
+            f.write('  blr\n')
+            f.write('  #_ REGISTER_OUT f1 0x%016X\n' % expected)
+            f.write('  #_ REGISTER_OUT f2 0x%016X\n' % a)
+            f.write('  #_ REGISTER_OUT f3 0x%016X\n' % c)
+            f.write('  #_ REGISTER_OUT f4 0x%016X\n\n' % b)
+    print('%d cases -> %s' % (len(cases), out))
+
+
+if __name__ == '__main__':
+    main()

@@ -369,8 +369,52 @@ def test_real_pck():
     assert sorted(e.path for e in v.files()) == ["GameRules.grf", "languages.loc"]
 
 
+def test_nand_flash():
+    """A raw NAND dump built to the layout nand.py reads: a root block (allocation table on even
+    pages, directory on odd), an older root copy that must lose, and a file over two blocks, the
+    second remapped to another physical block by its spare id."""
+    from codebreaker.formats.xbox import nand
+    blocks = 0x1000000 // nand.BLOCK + 8
+    raw = bytearray(b"\xFF" * (blocks * nand.PAGES_PER_BLOCK * (nand.PAGE + nand.SPARE)))
+
+    def put_block(phys, block_id, data, root_seq=None):
+        for i in range(nand.PAGES_PER_BLOCK):
+            o = (phys * nand.PAGES_PER_BLOCK + i) * (nand.PAGE + nand.SPARE)
+            raw[o:o + nand.PAGE] = data[i * nand.PAGE:(i + 1) * nand.PAGE].ljust(nand.PAGE, b"\0")
+            spare = bytearray(nand.SPARE)
+            spare[1], spare[2] = block_id & 0xFF, block_id >> 8
+            if root_seq is not None:
+                spare[12] = 0x30
+                spare[0], spare[3], spare[4], spare[6] = root_seq >> 24, (root_seq >> 16) & 0xFF, (root_seq >> 8) & 0xFF, root_seq & 0xFF
+            raw[o + nand.PAGE:o + nand.PAGE + nand.SPARE] = spare
+    content = bytes(range(256)) * 80                          # 20480 bytes: two blocks
+    alloc = [0x1FFE] * 256
+    alloc[3], alloc[4] = 4, 0x1FFF
+    table = struct.pack(">256H", *alloc)
+    entry = b"kernel.bin".ljust(22, b"\0") + struct.pack(">HII", 3, len(content), 0x12345678)
+    root = bytearray()
+    for i in range(nand.PAGES_PER_BLOCK):
+        root += table if i % 2 == 0 else entry.ljust(nand.PAGE, b"\0")
+    old = bytearray(root)
+    old[nand.PAGE:nand.PAGE + 10] = b"stale.bin\0"
+    put_block(1, 1, bytes(old), root_seq=5)
+    put_block(2, 2, bytes(root), root_seq=9)
+    put_block(3, 3, content[:nand.BLOCK])
+    put_block(40, 4, content[nand.BLOCK:])                     # block 4 lives at physical block 40
+    raw[:2] = b"\xFF\x4F"
+    raw[0x1C:0x1C + 9] = b"Microsoft"
+    path = os.path.join(tempfile.mkdtemp(prefix="cb_nand_"), "flash.bin")
+    with open(path, "wb") as f:
+        f.write(raw)
+    assert nand.is_nand(path)
+    vols = media.volumes(path)
+    assert vols and vols[0].kind == "nand"
+    files = {e.path: e for e in vols[0].files()}
+    assert set(files) == {"kernel.bin"} and vols[0].read(files["kernel.bin"]) == content
+
+
 def main():
-    for fn in (test_stfs_pack_round_trip, test_stfs_resign_signs_and_verifies, test_god_round_trip,
+    for fn in (test_nand_flash, test_stfs_pack_round_trip, test_stfs_resign_signs_and_verifies, test_god_round_trip,
                test_nxe_install_to_god, test_fatx_read_and_recover, test_fatx_write, test_gpd_unlock,
                test_texture_untile, test_xpr, test_xwb, test_xur, test_xbe, test_xma_and_bink,
                test_xzp_round_trip, test_identify, test_folder_map, test_real_stfs_theme, test_real_xzp,

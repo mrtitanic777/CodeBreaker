@@ -1,7 +1,7 @@
 // Tests of the STFS library (runtime/stfs/test/build.bat).
 //
 //   stfs_test dump <package>              path, kind, size, SHA-1 of every entry (compare.py diffs it with
-//                                         tools/scripts/stfs_extract.py)
+//                                         codebreaker/formats/xbox/stfs.py)
 //   stfs_test info <package>              metadata and the verification report
 //   stfs_test selftest <work dir> [<package>...]
 //                                         create / reopen / edit / convert / sign packages in <work dir>; the given
