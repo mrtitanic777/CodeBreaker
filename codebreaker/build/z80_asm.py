@@ -194,3 +194,91 @@ def _put(image, bank, bank_size, pos, data):
     if at < 0 or at + len(data) > len(image):
         raise AsmError("bytes outside the ROM (bank %d, offset $%X)" % (bank, pos))
     image[at:at + len(data)] = data
+
+
+def build_flat(source, folder="."):
+    """A flat program in the syntax of sjasmplus, pasmo and the Spectrum and MSX assemblers:
+
+        ORG $addr                       where the next bytes go
+        DEFB / DB, DEFW / DW            bytes, little-endian words: numbers, labels, "strings"
+        DEFS / DS n[,value]             n bytes of value (0)
+        NAME EQU value
+        INCBIN "file"
+        label:
+
+    -> (address of the first byte, the bytes up to the last one written; gaps zero)."""
+    lines = [(n, _strip(raw).strip()) for n, raw in enumerate(source.splitlines(), 1)]
+    lines = [(n, l) for n, l in lines if l]
+    labels = {}
+    for final in (False, True):
+        chunks, pc = {}, 0
+        for n, line in lines:
+            try:
+                m = re.match(r"^([A-Za-z_.@][\w.@]*):\s*(.*)$", line)
+                if m:
+                    labels[m.group(1)] = pc
+                    line = m.group(2).strip()
+                    if not line:
+                        continue
+                m = re.match(r"(?i)^([A-Za-z_]\w*)\s+EQU\s+(.+)$", line)
+                if m:
+                    try:
+                        labels[m.group(1)] = z80.value(m.group(2), labels, pc)
+                    except KeyError:
+                        if final:
+                            raise
+                    continue
+                m = re.match(r"(?i)^ORG\s+(.+)$", line)
+                if m:
+                    pc = z80.value(m.group(1), labels, pc)
+                    continue
+                m = re.match(r"(?i)^(DEFB|DB|DEFM|DEFW|DW)\s+(.+)$", line)
+                if m:
+                    word = m.group(1).upper() in ("DEFW", "DW")
+                    data = bytearray()
+                    for item in _items(m.group(2)):
+                        if item.startswith('"') and item.endswith('"') and not word:
+                            data += item[1:-1].encode("latin-1")
+                            continue
+                        try:
+                            v = z80.value(item, labels, pc + len(data))
+                        except KeyError:
+                            if final:
+                                raise
+                            v = 0
+                        data += bytes([v & 0xFF, (v >> 8) & 0xFF]) if word else bytes([v & 0xFF])
+                    chunks[pc] = bytes(data)
+                    pc += len(data)
+                    continue
+                m = re.match(r"(?i)^(DEFS|DS)\s+([^,]+)(?:,\s*(.+))?$", line)
+                if m:
+                    count = z80.value(m.group(2), labels, pc)
+                    v = z80.value(m.group(3), labels, pc) if m.group(3) else 0
+                    chunks[pc] = bytes([v & 0xFF]) * count
+                    pc += count
+                    continue
+                m = re.match(r'(?i)^INCBIN\s+"([^"]+)"', line)
+                if m:
+                    with open(os.path.join(folder, m.group(1)), "rb") as f:
+                        data = f.read()
+                    chunks[pc] = data
+                    pc += len(data)
+                    continue
+                try:
+                    code = z80.assemble(line, pc, labels)
+                except KeyError:
+                    if final:
+                        raise
+                    code = _size_guess(line, pc)
+                chunks[pc] = code
+                pc += len(code)
+            except (KeyError, ValueError) as e:
+                raise AsmError("line %d: %s (%s)" % (n, line, e))
+    if not chunks:
+        return 0, b""
+    start = min(chunks)
+    end = max(a + len(b) for a, b in chunks.items())
+    image = bytearray(end - start)
+    for a, b in chunks.items():
+        image[a - start:a - start + len(b)] = b
+    return start, bytes(image)

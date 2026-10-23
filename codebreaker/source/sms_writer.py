@@ -56,8 +56,28 @@ def data_lines(data, db=".DB", fill=".DSB %d,$%02X"):
                 break
             row.append(data[i])
             i += 1
-        out.append("        %s %s" % (db, ",".join("$%02X" % b for b in row)))
+        out.append("        %s %s" % (db, ",".join(_items(row))))
     return out
+
+
+def _printable(b):
+    return 32 <= b < 127 and b not in (0x22, 0x5C)         # (no quote or backslash: every assembler reads it alike)
+
+
+def _items(row):
+    """A row's bytes as items: runs of 4 or more printable characters as one string, the rest as $XX."""
+    items, i = [], 0
+    while i < len(row):
+        j = i
+        while j < len(row) and _printable(row[j]):
+            j += 1
+        if j - i >= 4:
+            items.append('"%s"' % bytes(row[i:j]).decode("ascii"))
+            i = j
+        else:
+            items.append("$%02X" % row[i])
+            i += 1
+    return items
 
 
 def _walk(rom):

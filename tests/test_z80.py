@@ -170,10 +170,97 @@ def test_gb_lane_judges():
             "sub_017A", "vblank")     # (entry calls sub_017A: it differs too)
 
 
+def _tap_block(flag, payload):
+    body = bytes([flag]) + payload
+    x = 0
+    for b in body:
+        x ^= b
+    body += bytes([x])
+    return len(body).to_bytes(2, "little") + body
+
+
+def spectrum(kind):
+    """The Spectrum demo as a tape (a BASIC loader: 10 RANDOMIZE USR 32768, then the code block) or
+    as a 48K .sna stopped at its start."""
+    key = "zx" + kind
+    if key not in _CARTS:
+        at, code = z80_asm.build_flat(open(os.path.join(DATA, "zx", "demo.asm")).read())
+        path = os.path.join(tempfile.mkdtemp(prefix="cb_zx_"), "demo." + kind)
+        if kind == "tap":
+            line = b"\xF9\xC0" + b"32768" + b"\x0E\x00\x00" + at.to_bytes(2, "little") + b"\x00" + b"\x0D"
+            basic = (10).to_bytes(2, "big") + len(line).to_bytes(2, "little") + line
+            head = lambda t, name, n, p1, p2: bytes([t]) + name.ljust(10).encode() + n.to_bytes(2, "little") + \
+                p1.to_bytes(2, "little") + p2.to_bytes(2, "little")
+            data = _tap_block(0, head(0, "demo", len(basic), 10, len(basic))) + _tap_block(0xFF, basic) + \
+                _tap_block(0, head(3, "democode", len(code), at, 32768)) + _tap_block(0xFF, code)
+        else:
+            mem = bytearray(0x10000)
+            mem[at:at + len(code)] = code
+            sp = 0xFF00
+            mem[sp:sp + 2] = at.to_bytes(2, "little")             # the PC, which RETN pops
+            header = bytes([0x3F] + [0] * 14) + (0).to_bytes(2, "little") * 2 + bytes([0, 0, 0, 0]) + \
+                sp.to_bytes(2, "little") + bytes([1, 7])
+            data = header + bytes(mem[0x4000:])
+        with open(path, "wb") as f:
+            f.write(data)
+        _CARTS[key] = path
+    return _CARTS[key]
+
+
+def msx_cartridge():
+    if "msx" not in _CARTS:
+        _at, rom = z80_asm.build_flat(open(os.path.join(DATA, "msx", "demo.asm")).read())
+        path = os.path.join(tempfile.mkdtemp(prefix="cb_msx_"), "demo.rom")
+        with open(path, "wb") as f:
+            f.write(rom)
+        _CARTS["msx"] = path
+    return _CARTS["msx"]
+
+
+def test_spectrum_lane():
+    from codebreaker.formats import zx
+    from codebreaker.source import zx_writer
+    tape, snap = zx.read(spectrum("tap")), zx.read(spectrum("sna"))
+    assert tape.origin == 0x8000 and tape.entries == {0x8000: "start"}
+    assert snap.entries.get(0x8000) == "start" and snap.registers["sp"] == 0xFF02
+    assert platforms.identify(spectrum("tap")).name == "zx"
+    r = zx_writer.reconstruct(spectrum("tap"), tempfile.mkdtemp(prefix="cb_zx_"))
+    assert r["same"], r["notes"]
+    text = open(r["source"]).read()
+    assert "CALL CHAN_OPEN" in text and "OUT (ULA),A" in text and "LD HL,FRAMES" in text and "RST $10" in text
+    lane = platforms.named("zx").lane_module()
+    work = tempfile.mkdtemp(prefix="cb_zx_")
+    m = lane.prepare(spectrum("tap"), work)
+    ctx, items, missing = lane.build(m, spectrum("tap"), work)
+    assert ctx[0] and not missing
+    _at, edited = z80_asm.build_flat(open(m.written["source"]).read().replace("LD A,$04", "LD A,$05", 1))
+    ctx2 = (False, ctx[1], edited)
+    assert lane.judge(ctx2, items["start"])[0] == "divergent"
+    assert lane.judge(ctx2, items["sub_8017"])[0] == "equivalent"
+    assert zx_writer.reconstruct(spectrum("sna"), tempfile.mkdtemp(prefix="cb_zx_"))["same"]
+
+
+def test_msx_lane():
+    from codebreaker.source import msx_writer
+    assert platforms.identify(msx_cartridge()).name == "msx"
+    r = msx_writer.reconstruct(msx_cartridge(), tempfile.mkdtemp(prefix="cb_msx_"))
+    assert r["same"], r["notes"]
+    text = open(r["source"]).read()
+    assert "CALL INIT32" in text and "CALL LDIRVM" in text and "OUT (VDP_CTRL),A" in text and "LD HL,(JIFFY)" in text
+    lane = platforms.named("msx").lane_module()
+    work = tempfile.mkdtemp(prefix="cb_msx_")
+    m = lane.prepare(msx_cartridge(), work)
+    ctx, items, _missing = lane.build(m, msx_cartridge(), work)
+    _at, edited = z80_asm.build_flat(open(m.written["source"]).read().replace("        INC HL\n", "        DEC HL\n", 1))
+    ctx2 = (False, ctx[1], edited)
+    tick = next(n for n in items if n.startswith("sub_"))
+    assert lane.judge(ctx2, items[tick])[0] == "divergent"
+
+
 def main():
     for fn in (test_z80_table_round_trip, test_sm83_table_round_trip, test_z80_flags, test_sm83_flags,
                test_platforms_recognise, test_sms_source_rebuilds, test_gb_source_rebuilds, test_sms_lane_judges,
-               test_gb_lane_judges):
+               test_gb_lane_judges, test_spectrum_lane, test_msx_lane):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

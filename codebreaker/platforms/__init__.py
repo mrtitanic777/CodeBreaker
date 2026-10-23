@@ -22,7 +22,7 @@ recognises a file is its platform.
 import importlib
 import os
 
-ORDER = ("java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "win32", "win16", "vxd", "dos")
+ORDER = ("java", "xbox360", "xbox", "nes", "sms", "gb", "genesis", "zx", "msx", "win32", "win16", "vxd", "dos")
 
 
 class Platform(object):
