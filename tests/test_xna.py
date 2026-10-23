@@ -3,7 +3,9 @@
 the DXT decoder they share with the Xbox 360 textures (formats/xbox/texture.py). An XNB texture
 built here reads back pixel for pixel in both byte orders; a DXT1 block whose first colour is not
 above its second gives transparent black at index 3; and -- when Arcadecraft's unpacked game is on
-this machine (../Arcadecraft/Arcadecraft) -- every texture and font of it converts.
+this machine (../Arcadecraft/Arcadecraft) -- every texture and font of it converts and one of its
+libraries decompiles to a C# project. The C# fix-ups (xna/fixups.py) are checked on the forms they
+rewrite.
 
     python tests/test_xna.py"""
 import glob
@@ -17,6 +19,7 @@ sys.path.insert(0, ROOT)
 
 from codebreaker.formats import xnb                  # noqa: E402
 from codebreaker.formats.xbox import texture         # noqa: E402
+from codebreaker.xna import fixups, run              # noqa: E402
 
 GAME = os.path.join(os.path.dirname(ROOT), "Arcadecraft", "Arcadecraft")
 RESULTS = []
@@ -93,8 +96,37 @@ def test_real_game_converts():
         assert kinds.get("texture"), kinds
 
 
+def test_fixups():
+    text, n = fixups.ref_casts("((Color)(ref white)).A = 64; x = ((IDisposable)(Enumerator)(ref e)).Dispose();")
+    # the same-type cast goes; a real conversion (to the interface) stays
+    assert text == "(white).A = 64; x = ((IDisposable)e).Dispose();" and n == 2, (text, n)
+    ctor = ("class A : B {\n    public A(int x)\n    {\n        base._002Ector(x);\n        Vector2 v = default;\n"
+            "        v._002Ector(1f, 2f);\n    }\n}\n")
+    text, n, left = fixups.constructors(ctor)
+    assert n == 3 and not left, (n, left)
+    assert "public A(int x) : base(x)" in text and "v = new Vector2(1f, 2f);" in text and "_002Ector" not in text, text
+
+
+def test_managed_and_decompile():
+    assert not run.is_managed(sys.executable)
+    lib = os.path.join(GAME, "FirebaseEncryptionLib.dll")
+    if not os.path.isfile(lib):
+        raise Skip("no ../Arcadecraft/Arcadecraft here")
+    assert run.is_managed(lib)
+    try:
+        run.ilspycmd()
+    except RuntimeError as e:
+        raise Skip(str(e))
+    with tempfile.TemporaryDirectory() as d:
+        run.decompile(lib, d)
+        sources = glob.glob(os.path.join(d, "**", "*.cs"), recursive=True)
+        assert sources and glob.glob(os.path.join(d, "*.csproj")), os.listdir(d)
+        assert any("class " in open(p, encoding="utf-8-sig").read() for p in sources)
+
+
 def main():
-    for fn in (test_texture_both_byte_orders, test_dxt1_punch_through, test_real_game_converts):
+    for fn in (test_texture_both_byte_orders, test_dxt1_punch_through, test_real_game_converts, test_fixups,
+               test_managed_and_decompile):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

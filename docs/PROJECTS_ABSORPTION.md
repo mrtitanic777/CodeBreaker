@@ -175,7 +175,8 @@ Logan's rule: what something better has replaced is worthless.
   assembler; signing, limits and delta patches were already `xex`; `info` covers identify/report/refscan), `../xam` (its inference passes absorbed 2026-10-23 as `ppc-calls`,
   analyze/ppc_calls.py: call-site arity, import arity, GPR / FP clobber summaries, variadic functions; the
   decompiled corpus stays there as a reference target), `../Arcadecraft`
-  (waits for the XNA/C# lane), `../xdk-build-demo`.
+  (its pipeline is the `xna` lane, 2026-10-23: codebreaker/xna, formats/xnb.py; the MonoGame port and the
+  game-specific SunBurn model and scene readers stay there), `../xdk-build-demo`.
 - **Still under Projects/, locked by another process:** `TetrisPC` (empty folders) and `xam` (copied whole to
   `../xam`); delete both when the lock is gone.
 

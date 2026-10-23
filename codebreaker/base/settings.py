@@ -28,6 +28,8 @@ and are named in one file, `settings.json` at the top of the checkout:
     java            a `java` executable (JRE/JDK 8+), for decompiling a jar   (default: JAVA_HOME, PATH)
     retromcp        the Java decompile engine's jar, which turns a Minecraft version into Java source
                     (default: native/retromcp/build/libs/retromcp.jar)
+    ilspycmd        ILSpy's command line, which the `xna` lane decompiles .NET with  (default: PATH,
+                    then ~/.dotnet/tools)
     xbox360_keys    the Xbox 360 key store folder the `crypto` tools read (1BL_pub.bin, SB_prv.bin, ...)
                     (default: Keys/ in the current folder)
     xbox360_crypto_bin  the `crypto` tools' binaries folder: LZX libraries, the Free60 xenon-as and
@@ -74,7 +76,7 @@ DEFAULTS = {
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
-          "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin")
+          "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd")
 _loaded = None
 
 

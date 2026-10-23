@@ -49,6 +49,7 @@
     xex-imports <module.xex>        its imports: library, ordinal, name, function or variable, slot, thunk
     xex-edit <op> <file.xex> ...     change its privilege flags, or its code at an address (nop, bytes, asm, hook)
     ppc-calls <.xex or image> [-o F] what its calls show: argument counts, registers kept, variadic functions
+    xna <package, folder or .exe> [--name N]   an XNA game: C# of its assemblies (ILSpy) and its content as PNG/JSON
     xdk-match <.xex or image> [libs] [-o F]   name the XDK library functions it was linked with
     system-ui <update package> <dir>    the Xbox 360 runtime's system UI assets from the owner's system update
     crypto <tool> [args]            Xbox 360 console crypto (XeCrypt, keyvaults, boot chain, NAND, shadowboots)
@@ -130,6 +131,7 @@ COMMANDS = {
     "system-ui": ("codebreaker.formats.xbox.system_ui", []),
     "crypto": ("codebreaker.formats.xbox.crypto", []),
     "java": ("codebreaker.java.run", []),
+    "xna": ("codebreaker.xna.run", []),
 }
 
 

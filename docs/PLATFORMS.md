@@ -30,6 +30,7 @@ line and nothing above it.
 | x86 | 8086 - x86-64 | DOS, Windows 3.x/95, drivers | yes | yes (x86-64 spec present, unused) | Unicorn: DOS, Win16, Win32, VxD | yes |
 | PowerPC | 32/64-bit, VMX128 | Xbox 360, PowerPC images | yes (XEX, STFS, discs, GoD, FATX) | yes (Xenon: VMX128) | own interpreter | yes |
 | Bytecode | JVM | Java source to C++03 | n/a | n/a | the JVM | yes |
+| Bytecode | .NET CIL | XNA games (Xbox 360 Indie / Arcade, PC): `xna` | yes (STFS, folders; XNB content) | n/a (ILSpy decompiles CIL to C#) | -- | no (C# written, not yet compiled or run) |
 | 8-bit | 6502 (2A03) | NES | yes (iNES, NES 2.0) | yes (checked: 151/151) | own 6502 interpreter | yes |
 | 8-bit | Z80 | Master System, Game Gear, SG-1000 | yes (.sms .gg .sg; Sega mapper) | own table (every opcode, undocumented included) | own Z80 interpreter | yes (WLA-DX source) |
 | 8-bit | Z80 | ZX Spectrum, MSX | yes (.sna .z80 .tap; .rom up to 48 KB) | own table | own Z80 interpreter | yes (sjasmplus / pasmo source) |

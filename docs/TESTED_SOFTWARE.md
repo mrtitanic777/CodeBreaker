@@ -62,6 +62,12 @@ desktop; the 7 Setup programs; 212 of 215 VxDs build, 40 boot-set VxDs load in t
 Compiled with OpenWatcom and taken back to C by `tools/oss_bench.py`, their own source the
 answer: cJSON, zlib, sds, tiny-AES-c, inih, Lua, miniz.
 
+## XNA / C# (.NET lane)
+
+| Program | Platform | Result |
+|---|---|---|
+| Arcadecraft (Firebase Industries, 2011) | Xbox 360 Indie Game (XNA 4.0) | `xna`: 6 assemblies to C# (583 files, 125 000 lines: the game, its two own libraries, SunBurn, DPSF, EasyStorage); 610 content files -- 434 textures and 6 fonts as PNG, pixel for pixel as Arcadecraft's own pipeline made them, 170 other types catalogued. Not yet compiled or run from that C# (the earlier MonoGame port did that by hand) |
+
 ## Java
 
 Minecraft (alpha, PC): its classes as C++03 through the Java lane, built and running.
