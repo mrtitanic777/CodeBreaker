@@ -11,6 +11,7 @@
 #include "gpu/renderer.h"
 #include "gpu/shader_cache.h"
 #include "gpu/shader_translator.h"
+#include "gpu/snappy_decode.h"
 
 #include "input.h"
 #include "kernel/kernel.h"
@@ -24,6 +25,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <format>
@@ -54,6 +56,8 @@ namespace gpu
         uint32_t g_readIndex = 0;                    // dwords, owned by the CP thread
 
         std::atomic<uint32_t> g_interruptCallback = 0;
+        // Replaying a recorded trace (ReplayTrace): nothing else runs, so waits are treated as satisfied.
+        std::atomic<bool> g_replaying = false;
         std::atomic<uint32_t> g_interruptUserData = 0;
         // Process type of the thread that registered the callback. D3D's interrupt routine picks its device with
         // KeGetCurrentProcessType (VdGlobalXamDevice for the system process: bootanim, XAM; VdGlobalDevice for a
@@ -368,6 +372,23 @@ namespace gpu
             StoreRegister(reg::kRbHsioInterfaceAlignerValue, 0x00BBBBBB);
             StoreRegister(reg::kD1ModeVblankVlineStatus, 1);
             StoreRegister(reg::kD1ModeViewportSize, (s.videoWidth << 16) | s.videoHeight);
+        }
+
+        // D1MODE_V_COUNTER (0x194C), the scanline being scanned out: it sweeps the frame's lines (the visible lines plus
+        // 45 of vertical blanking) once per refresh. Titles poll it to pace themselves (Bink pauses video frames for it);
+        // a constant made Up's cutscenes spin. Registers are guest memory here, so a host thread keeps it moving.
+        void ScanlineThread()
+        {
+            constexpr uint32_t kD1ModeVCounter = 0x194C;
+            const uint32_t lines = std::min(Settings().videoHeight, 0xFFFu - 45) + 45;
+            const auto period = std::chrono::nanoseconds(int64_t(1e9 / Settings().refreshRate));
+            const auto start = Clock::now();
+            for (;;)
+            {
+                const auto inFrame = (Clock::now() - start) % period;
+                StoreRegister(kD1ModeVCounter, uint32_t(uint64_t(inFrame.count()) * lines / uint64_t(period.count())));
+                std::this_thread::sleep_for(std::chrono::microseconds(250));
+            }
         }
 
         void VblankThread()
@@ -714,7 +735,7 @@ namespace gpu
                 WaitStat* stat = g_stats ? &g_waitStats[{ info, address, reference, mask, wait }] : nullptr;
                 if (stat)
                     stat->count++;
-                while (!Compare(info, PollValue(info, address) & mask, reference))
+                while (!g_replaying && !Compare(info, PollValue(info, address) & mask, reference))
                 {
                     if (stat)
                         stat->misses++;
@@ -875,16 +896,18 @@ namespace gpu
                     Fatal("GPU: malformed runtime swap packet");
                 const uint32_t frontBuffer = s.Read(), width = s.Read(), height = s.Read();
                 // XAM's system command buffer (kernel/xboxkrnl_video.cpp VdSwap): its identifier goes back once the
-                // frame is out, and its overlay is composited into this frame.
-                const uint32_t identifierAddress = s.Read(), identifier = s.Read();
+                // frame is out, and its overlay is composited into this frame. A Xenia-recorded swap (trace replay)
+                // stops after the height: no identifier, no overlay.
+                auto more = [&] { return s.pos < end ? s.Read() : 0u; };
+                const uint32_t identifierAddress = more(), identifier = more();
                 GuestOverlay overlay;
-                overlay.base = s.Read();
-                overlay.format = s.Read();
-                overlay.width = s.Read();
-                overlay.height = s.Read();
-                overlay.mode = s.Read();
+                overlay.base = more();
+                overlay.format = more();
+                overlay.width = more();
+                overlay.height = more();
+                overlay.mode = more();
                 for (uint32_t& v : overlay.source)
-                    v = s.Read();
+                    v = more();
                 CpSync(SyncReason::kSwap);
                 const uint64_t frame = ++g_swapCount;
                 g_counter++;
@@ -1060,6 +1083,7 @@ namespace gpu
             Fatal("Unable to reserve the low 16 MiB of physical memory");
         mem.CommitPhysical(0, 0x1000000);
         WriteFixedRegisters();
+        std::thread(ScanlineThread).detach();
     }
 
     void InitializeRingBuffer(uint32_t physical, uint32_t sizeLog2)
@@ -1168,6 +1192,143 @@ namespace gpu
     uint64_t SwapCount()
     {
         return g_swapCount.load();
+    }
+
+    // A GPU trace recorded by a Xenia-based renderer (trace_writer: a header, then commands, each a little-endian type
+    // dword and its record) fed to this command processor, to compare renderers on the same input: memory the GPU read
+    // goes into physical memory, register snapshots into the register file, and every recorded packet is executed when
+    // its end record arrives (a packet started inside another, as in an indirect buffer, replaces it, as Xenia's player
+    // does). Stops after `frames` swaps (0: the whole trace).
+    void ReplayTrace(const std::string& path, uint64_t frames)
+    {
+        FILE* file = std::fopen(path.c_str(), "rb");
+        if (!file)
+            Fatal("Trace replay: cannot open {}", path);
+        auto read = [&](void* out, size_t bytes) {
+            if (bytes && std::fread(out, 1, bytes, file) != bytes)
+                return false;
+            return true;
+        };
+        auto word = [&]() {
+            uint32_t v = 0;
+            if (!read(&v, 4))
+                Fatal("Trace replay: {} ends inside a record", path);
+            return v;
+        };
+        std::vector<uint8_t> encoded;
+        // An encoded block (format 0 raw, 1 Snappy) of `encodedLength` bytes into `out` (`length` bytes).
+        auto block = [&](uint32_t format, uint32_t encodedLength, uint8_t* out, size_t length) {
+            encoded.resize(encodedLength);
+            if (!read(encoded.data(), encodedLength))
+                Fatal("Trace replay: {} ends inside a data block", path);
+            if (format == 0)
+                std::memcpy(out, encoded.data(), std::min<size_t>(length, encodedLength));
+            else if (!SnappyDecode(encoded.data(), encodedLength, out, length))
+                Fatal("Trace replay: a Snappy block in {} does not decode to {} bytes", path, length);
+        };
+        struct { uint32_t version; char commit[40]; uint32_t titleId; } header;
+        if (!read(&header, sizeof(header)) || header.version != 1)
+            Fatal("Trace replay: {} is not a version 1 trace", path);
+        Log("Trace replay: {} (title {:08X}, recorded by build {:.40})", path, header.titleId, header.commit);
+
+        g_replaying = true;
+        std::vector<uint8_t> scratch;
+        uint32_t pendingBase = 0, pendingCount = 0;
+        bool pending = false;
+        uint64_t packets = 0, reads = 0;
+        const uint64_t firstSwap = g_swapCount.load();
+        for (;;)
+        {
+            uint32_t type;
+            if (!read(&type, 4))
+                break; // end of the trace
+            switch (type)
+            {
+            case 0: case 2: // primary / indirect buffer start: base, count (count dwords follow, 0 when written)
+            {
+                word();
+                const uint32_t count = word();
+                scratch.resize(size_t(count) * 4);
+                read(scratch.data(), scratch.size());
+                break;
+            }
+            case 1: case 3: // primary / indirect buffer end
+                break;
+            case 4: // packet start: base, count, then the packet's dwords as in memory
+            {
+                pendingBase = word();
+                pendingCount = word();
+                if (!read(Physical(pendingBase), size_t(pendingCount) * 4))
+                    Fatal("Trace replay: {} ends inside a packet", path);
+                pending = true;
+                break;
+            }
+            case 5: // packet end
+                if (pending)
+                {
+                    pending = false;
+                    Stream s{ pendingBase, 0, 0, pendingCount };
+                    ExecutePackets(s);
+                    packets++;
+                }
+                break;
+            case 6: case 7: // memory read / write: base, encoding, encoded length, decoded length, data
+            {
+                const uint32_t base = word(), format = word(), encodedLength = word(), length = word();
+                if (type == 6)
+                {
+                    block(format, encodedLength, Physical(base), length);
+                    reads++;
+                }
+                else
+                {
+                    scratch.resize(encodedLength);
+                    read(scratch.data(), encodedLength); // the command processor makes the same write itself
+                }
+                break;
+            }
+            case 8: // EDRAM snapshot: encoding, encoded length, 10 MiB (the trace's initial EDRAM; not restored here)
+            {
+                const uint32_t format = word(), encodedLength = word();
+                scratch.resize(10 * 1024 * 1024);
+                block(format, encodedLength, scratch.data(), scratch.size());
+                Log("Trace replay: the trace's EDRAM snapshot is not restored (the EDRAM starts cleared)");
+                break;
+            }
+            case 9: // event: 0 = swap (the swap packet itself does the swap here)
+                word();
+                break;
+            case 10: // registers: first, count, execute callbacks (bool, padded), encoding, encoded length, values
+            {
+                const uint32_t first = word(), count = word(), callbacks = word() & 0xFF, format = word(),
+                    encodedLength = word();
+                std::vector<uint32_t> values(count);
+                block(format, encodedLength, reinterpret_cast<uint8_t*>(values.data()), size_t(count) * 4);
+                for (uint32_t i = 0; i < count; i++)
+                    if (callbacks)
+                        WriteRegister(first + i, values[i]);
+                    else
+                        StoreRegister(first + i, values[i]);
+                break;
+            }
+            case 11: // gamma ramp: component (byte, padded), encoding, encoded length, ramps
+            {
+                word();
+                const uint32_t format = word(), encodedLength = word();
+                scratch.resize(sizeof(uint32_t) * (256 + 3 * 128));
+                block(format, encodedLength, scratch.data(), scratch.size());
+                Log("Trace replay: the trace's gamma ramps are not applied");
+                break;
+            }
+            default:
+                Fatal("Trace replay: unknown record type {} in {}", type, path);
+            }
+            if (frames && g_swapCount.load() - firstSwap >= frames)
+                break;
+        }
+        std::fclose(file);
+        g_replaying = false;
+        Log("Trace replay: {} packets, {} memory reads, {} frames", packets, reads, g_swapCount.load() - firstSwap);
     }
 
     namespace

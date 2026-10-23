@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -36,6 +37,34 @@ namespace gpu
         constexpr uint32_t kFetchSetTextureLod = 24; // GPUTEXTUREFETCHOP (03b §3.1)
         constexpr uint32_t kFetchGetTextureGradients = 18;
 
+        // CB_PS_PROBE=<hash>:<slot>:<register> (hex hash, decimal slot and register): the pixel shader with that hash
+        // outputs the register's value after that slot as colour 0 (xyz, alpha 1), for finding where a value goes wrong.
+        // CB_PS_PROBE=ALL[:<n>]: every pixel shader (longer than n dwords) outputs a flat colour, the low three bytes of
+        // its hash as R, G, B, to see which shader draws what.
+        struct Probe
+        {
+            uint64_t hash = 0;
+            uint32_t slot = 0, reg = 0;
+            bool all = false;
+            uint32_t minDwords = 0; // ALL:<n>: only shaders longer than n dwords
+        };
+        const Probe g_probe = [] {
+            Probe p;
+            if (const char* v = std::getenv("CB_PS_PROBE"); v && *v)
+            {
+                unsigned long long hash = 0;
+                unsigned slot = 0, reg = 0;
+                if (std::string(v).rfind("ALL", 0) == 0)
+                {
+                    p.all = true;
+                    std::sscanf(v, "ALL:%u", &p.minDwords);
+                }
+                else if (std::sscanf(v, "%llx:%u:%u", &hash, &slot, &reg) == 3)
+                    p = { hash, slot, reg };
+            }
+            return p;
+        }();
+
         // Exact power of two 2^e as a float literal (e in [-126, 127]).
         std::string PowerOfTwo(int32_t e)
         {
@@ -53,6 +82,15 @@ namespace gpu
             TranslatedShader Run();
 
         private:
+            // The line that replaces colour 0 for CB_PS_PROBE (empty when this shader is not probed).
+            std::string ProbeColor() const
+            {
+                if (g_probe.all && shader_.words.size() > g_probe.minDwords)
+                    return std::format("    s.color[0] = float4({}, {}, {}, 1.0);\n", (shader_.hash & 0xFF) / 255.0,
+                                       ((shader_.hash >> 8) & 0xFF) / 255.0, ((shader_.hash >> 16) & 0xFF) / 255.0);
+                return g_probe.hash == shader_.hash ? "    s.color[0] = float4(s.probe.xyz, 1.0);\n" : "";
+            }
+
             const Shader& shader_;
             const TranslationOptions& options_;
             const bool vertex_;
@@ -644,6 +682,8 @@ namespace gpu
                 {
                     EmitAlu(Alu{ w0, w1, w2 });
                 }
+                if (!vertex_ && g_probe.hash == shader_.hash && g_probe.slot == currentSlot_)
+                    Line("s.probe = s.r[{}];", g_probe.reg);
             }
         }
 
@@ -827,6 +867,7 @@ struct XeState
     float4 pts;
     float4 color[4];
     float4 depth;
+    float4 probe; // CB_PS_PROBE
 };
 
 // Registers start at a zero read from the system constants: with literal zeros FXC folds arithmetic on unwritten
@@ -839,6 +880,7 @@ XeState xe_initial_state()
         s.r[i] = zero;
     s.ps = zero.x;
     s.regLod = zero.x;
+    s.probe = zero;
     return s;
 }
 )";
@@ -977,6 +1019,7 @@ XeVertexOutput main(uint xe_vertex_id : SV_VertexID)
                 // Depth derivatives before any divergent control flow (per-sample depth, polygon offset).
                 text += "    float2 xe_dz = float2(ddx(input.position.z), ddy(input.position.z));\n";
                 text += "    xe_run(s);\n    if (s.killed)\n        return;\n";
+                text += ProbeColor();
                 text += "    float4 xe_colors[4] = { s.color[0], s.color[1], s.color[2], s.color[3] };\n";
                 if (options_.outputMerger.msaa != 0)
                     text += "    uint xe_cov = input.coverage & (1u << input.sampleIndex);\n";
@@ -985,6 +1028,7 @@ XeVertexOutput main(uint xe_vertex_id : SV_VertexID)
                 return text;
             }
             text += "    xe_run(s);\n    if (s.killed)\n        discard;\n";
+            text += ProbeColor();
             if (options_.alphaTest & 8)
                 text += "    if (!xe_alpha_pass(s.color[0].w))\n        discard;\n";
             text += "    XePixelOutput output;\n";

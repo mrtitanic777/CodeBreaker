@@ -125,8 +125,8 @@ namespace gpu
         switch (msaa)
         {
         case 0: sx = x; sy = y; break;
-        case 1: sx = 4 * (x >> 2) + (x & 1) + 2 * s; sy = 4 * (y >> 1) + (y & 1) + 2 * ((x >> 1) & 1); break;
-        default: sx = 4 * (x >> 1) + (x & 1) + 2 * (s & 1); sy = 4 * (y >> 1) + (y & 1) + 2 * (s >> 1); break;
+        case 1: sx = x; sy = 2 * y + s; break;                       // 1x2 samples, sample 0 on top
+        default: sx = 2 * x + (s & 1); sy = 2 * y + (s >> 1); break; // 2x2 samples
         }
     }
 

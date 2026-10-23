@@ -31,6 +31,13 @@ Switches (environment): `CB_HEADLESS=1` (no window), `CB_LOG=<file>`, `CB_WATCHD
 threads when no frame comes), `CB_TRACE_IMPORTS=1` or `=<names>`, `CB_CONTINUE_UNIMPLEMENTED=1`
 (an unimplemented import returns 0 instead of stopping), `CB_PRESENT_DUMP=<frames>` (BMPs of those
 frames), `CB_GPU_TRACE`, `CB_PM4_LOG`, `CB_TEXTURE_DUMP`, `CB_SHADER_CACHE=0`, `CB_D3D12_DEBUG=1`.
+
+Comparing renderers: `CB_REPLAY_TRACE=<file>.xtr` (with `CB_REPLAY_FRAMES=<n>`) draws a GPU trace a
+Xenia-based renderer recorded (Xenia's `--trace_gpu_stream`) with this renderer instead of running the
+title; it is deterministic, so the switches below can bisect one frame. `CB_SKIP_DRAWS=<frame>:<first>-<last>;...`
+leaves out draws of a frame (`CB_GPU_TRACE` numbers them); `CB_PS_PROBE=<hash>:<slot>:<register>` makes a
+pixel shader output a register as its colour, and `CB_PS_PROBE=ALL[:<n>]` paints every pixel shader (longer
+than n dwords) a flat colour from its hash.
 A fault reports the guest address, the guest function and the host stack (offsets into the
 program; `llvm-symbolizer --relative-address` turns them into the recompiled functions).
 

@@ -99,6 +99,9 @@ namespace gpu
 
     // Frames presented (runtime swap packets executed).
     uint64_t SwapCount();
+    // Feeds a GPU trace recorded by a Xenia-based renderer (.xtr) to the command processor, stopping after `frames`
+    // swaps (0: all); CB_REPLAY_TRACE in main.cpp.
+    void ReplayTrace(const std::string& path, uint64_t frames);
     // The runtime's own frames before the kernel and a title run (main.cpp's dashboard launcher): presents a black
     // width x height front buffer with the system UI overlay over it (xui::RenderOverlay: its full-screen scene), as
     // a title's swap does, counts a vblank and a frame, and feeds the input (input::OnFrame). The caller paces it at

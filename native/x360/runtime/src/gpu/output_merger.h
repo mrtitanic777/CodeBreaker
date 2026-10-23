@@ -6,7 +6,7 @@
 // MSAA level, so aliasing between them needs no tracking.
 //
 // Storage model (06a): 2048 tiles of 80x16 32-bit samples (tile t, row r, column c at dword t*1280 + r*80 + c).
-// A pixel's samples sit at 1x-equivalent sample coordinates by the XDK permutation (06a §4.2); depth/stencil swaps the
+// A pixel's samples sit at 1x-equivalent sample coordinates: 1x2 per pixel at 2x MSAA, 2x2 at 4x; depth/stencil swaps the
 // two 40-column halves of each tile row (06a §5.1); tile indices wrap at 2048 (06a §3.3).
 //
 // Choices where the hardware is not documented (one place each, so they can be switched after a hardware test):
@@ -85,7 +85,7 @@ namespace gpu
 
     // ---- CPU reference (output_merger_reference.cpp), written separately from the HLSL for the test harness ----
 
-    // 1x-equivalent 32bpp sample coordinates of pixel (x, y) sample s (06a §4.2).
+    // 1x-equivalent 32bpp sample coordinates of pixel (x, y) sample s (1x2 per pixel at 2x MSAA, 2x2 at 4x).
     void EdramSample(uint32_t msaa, uint32_t x, uint32_t y, uint32_t s, uint32_t& sx, uint32_t& sy);
     // Byte offset of a sample of a surface at `base` (tiles) with `pitchTiles`.
     uint32_t EdramAddress(uint32_t base, uint32_t pitchTiles, uint32_t sx, uint32_t sy, bool depth);

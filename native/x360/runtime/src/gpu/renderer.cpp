@@ -59,6 +59,29 @@ namespace gpu
             const char* v = std::getenv("CB_EDRAM_DUMP");
             return v ? std::strtoull(v, nullptr, 10) : 0ull;
         }();
+        // CB_SKIP_DRAWS=<frame>:<first>-<last>;...: in frame <frame> (as CB_GPU_TRACE and CB_PRESENT_DUMP number them),
+        // the draws <first>..<last> (the trace's draw numbers) are not drawn; resolves still run. Consecutive frames with
+        // different ranges bisect one scene in a single run.
+        struct SkipDraws
+        {
+            uint64_t frame;
+            uint32_t first, last;
+        };
+        const std::vector<SkipDraws> g_skipDraws = [] {
+            std::vector<SkipDraws> skips;
+            const char* v = std::getenv("CB_SKIP_DRAWS");
+            for (std::string_view rest = v ? v : ""; !rest.empty();)
+            {
+                const size_t end = rest.find(';');
+                const std::string entry(rest.substr(0, end));
+                unsigned long long frame = 0;
+                unsigned first = 0, last = 0;
+                if (std::sscanf(entry.c_str(), "%llu:%u-%u", &frame, &first, &last) == 3)
+                    skips.push_back({ frame, first, last });
+                rest = end == std::string_view::npos ? std::string_view() : rest.substr(end + 1);
+            }
+            return skips;
+        }();
         const uint64_t g_frontDumpFrame = [] {
             const char* v = std::getenv("CB_FRONT_DUMP");
             return v ? std::strtoull(v, nullptr, 10) : 0ull;
@@ -2135,6 +2158,9 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 Resolve(); // COPY (07_resolve.md)
                 return;
             }
+            for (const SkipDraws& skip : g_skipDraws)
+                if (SwapCount() + 1 == skip.frame && drawOfFrame_ >= skip.first && drawOfFrame_ <= skip.last)
+                    return; // the frame being built is the one after `SwapCount()` swaps (draw_trace.cpp)
             if (mode != 4 && mode != 5)
                 return; // nothing is rasterized (01b §1)
             const uint32_t surfaceInfo = Reg(0x2000), pitch = surfaceInfo & 0x3FFF, msaa = (surfaceInfo >> 16) & 3;

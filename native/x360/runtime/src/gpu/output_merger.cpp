@@ -11,14 +11,17 @@
 namespace gpu
 {
     const char* const kEdramAddressHlsl = R"HLSL(
-// 1x-equivalent 32bpp sample coordinates of pixel `p` sample `s` (XDK permutation, analysis/xenos/06a §4.2).
+// 1x-equivalent 32bpp sample coordinates of pixel `p` sample `s`: a 2x MSAA pixel is 1x2 samples (sample 0 on top), a
+// 4x one 2x2, as Xenia stores them. Titles depend on it: Up clears and rebuilds its 1280x720 2x depth buffer as a
+// 640x720 4x surface over the same EDRAM, which only lines up pixel for pixel this way (the XDK permutation of
+// analysis/xenos/06a §4.2 scattered the rebuilt depth and speckled every 3D surface).
 uint2 xe_edram_sample(uint2 p, uint s, uint msaa)
 {
     if (msaa == 0u)
         return p;
     if (msaa == 1u)
-        return uint2(4u * (p.x >> 2) + (p.x & 1u) + 2u * s, 4u * (p.y >> 1) + (p.y & 1u) + 2u * ((p.x >> 1) & 1u));
-    return uint2(4u * (p.x >> 1) + (p.x & 1u) + 2u * (s & 1u), 4u * (p.y >> 1) + (p.y & 1u) + 2u * (s >> 1));
+        return uint2(p.x, 2u * p.y + s);
+    return uint2(2u * p.x + (s & 1u), 2u * p.y + (s >> 1));
 }
 
 // Byte offset of sample `q` of a surface at tile `base` with `pitchTiles` tiles per row (06a §3); depth/stencil
@@ -443,13 +446,15 @@ uint xe_om_depth_encode(float z)
             {
                 if (key.msaa != 0 && !key.shaderDepth)
                 {
-                    // Translated pixel shaders run per sample (shader_translator.cpp): position.z is then the depth at
-                    // the host sample, so the guest sample's depth is offset from there; the depth-only shader runs per
-                    // pixel (position.z at the centre).
+                    // Every pixel shader with this output merger runs per sample (translated ones: shader_translator.cpp;
+                    // the depth-only one below): position.z is the depth at the host sample, so the guest sample's
+                    // depth is offset from there. Both must take the same route to a sample's depth: when the
+                    // depth-only shader ran per pixel (offset from the centre), Up's depth pre-pass and its colour pass
+                    // rounded a step apart and the colour pass's less-or-equal test failed at scattered samples.
                     static const int kHostOffsets[4][2] = { { -2, -6 }, { 6, -2 }, { -6, 2 }, { 2, 6 } }; // D3D 4x
                     const int* o = key.msaa == 1 ? kOffsets2x[s] : kOffsets4x[s];
-                    const int* h = key.runsShader ? kHostOffsets[key.msaa == 1 ? kHost2x[s] : kHost4x[s]] : nullptr;
-                    const int dx = o[0] - (h ? h[0] : 0), dy = o[1] - (h ? h[1] : 0);
+                    const int* h = kHostOffsets[key.msaa == 1 ? kHost2x[s] : kHost4x[s]];
+                    const int dx = o[0] - h[0], dy = o[1] - h[1];
                     text += std::format("        precise float zs = zc + dz.x * {} + dz.y * {};\n", dx / 16.0, dy / 16.0);
                 }
                 else
@@ -483,14 +488,16 @@ uint xe_om_depth_encode(float z)
         if (!key.runsShader)
         {
             // Depth-only mode / no pixel shader: only the depth/stencil part runs (Xenia's assumption, 01b §1).
+            // With MSAA it runs per sample (SV_SampleIndex), each invocation handling its own sample, exactly as the
+            // translated shaders do, so both compute a sample's depth the same way (see the depth offsets above).
             text += "\nstruct XePixelInput\n{\n    float4 position : SV_Position;\n    bool frontFace : SV_IsFrontFace;\n";
             if (key.msaa != 0)
-                text += "    uint coverage : SV_Coverage;\n";
+                text += "    uint coverage : SV_Coverage;\n    uint sampleIndex : SV_SampleIndex;\n";
             text += "};\n\nvoid main(XePixelInput input)\n{\n";
             text += "    float2 dz = float2(ddx(input.position.z), ddy(input.position.z));\n";
             text += "    float4 colors[4] = { (0.0).xxxx, (0.0).xxxx, (0.0).xxxx, (0.0).xxxx };\n";
             text += std::format("    xe_output_merger(input.position, dz, colors, 0.0, input.frontFace, {});\n}}\n",
-                                key.msaa != 0 ? "input.coverage" : "1u");
+                                key.msaa != 0 ? "input.coverage & (1u << input.sampleIndex)" : "1u");
         }
         return text;
     }

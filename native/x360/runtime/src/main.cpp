@@ -178,6 +178,15 @@ int main(int argc, char** argv)
         }).detach();
 
     gpu::PrepareRenderer();
+    // CB_REPLAY_TRACE=<file.xtr> [CB_REPLAY_FRAMES=<n>]: instead of running the title, its GPU commands as a
+    // Xenia-based renderer recorded them are drawn by this renderer (frames saved with CB_PRESENT_DUMP), to compare the
+    // two on the same input.
+    if (const char* trace = std::getenv("CB_REPLAY_TRACE"); trace && *trace)
+    {
+        const char* frames = std::getenv("CB_REPLAY_FRAMES");
+        gpu::ReplayTrace(trace, frames ? std::strtoull(frames, nullptr, 10) : 0);
+        TerminateProcess(GetCurrentProcess(), 0);
+    }
     kernel::ThreadParams params;
     params.stackSize = title.defaultStackSize;
     params.startAddress = title.entryPoint;
