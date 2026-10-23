@@ -21,6 +21,9 @@ import time
 
 # Our own modules beside this script (python -I leaves the script's folder off sys.path).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import live_sessions  # noqa: E402
+import live_social  # noqa: E402
+import live_stats  # noqa: E402
 import web_services  # noqa: E402
 import xboxunity  # noqa: E402
 import xon_services  # noqa: E402
@@ -71,7 +74,8 @@ class Store:
         # the same game at the same time), newest first, at most RECENT_MAX (Guide.Friends.xex's 0x32).
         self.recent = {}
         # Compare Games: xuid -> the titles their profile has played, most recent first (op_titles_update): [{"id",
-        # "name", "achievements", "earned", "gamerscore", "tile" (base64 PNG)}], public like the profile.
+        # "name", "achievements" (the title's count), "earned", "gamerscore" (earned), "gamerscore_total",
+        # "last_played", "tile" (base64 PNG), "list" (its achievements)}], public like the profile.
         self.titles = {}
         # My Pins and the other web-service lists (web_services.py): xuid -> {"<type>/<name>": [item]}.
         self.lists = {}
@@ -83,9 +87,20 @@ class Store:
         # When each account was first seen (register or first sign-in), Unix seconds: the gamercard's tenure
         # ("member since" / years on Xbox LIVE, XPROFILE_GAMERCARD_TENURE).
         self.created = {}
-        # The Guide's Beacons (XamShowBeaconsUI, "players wanted"): xuid -> {"title_id", "title", "text", "at"}, the
-        # game a player wants company in and their note. Friends see it; cleared by the player or when they leave.
+        # The Guide's Beacons (XamShowBeaconsUI, "players wanted"): xuid -> [{"title_id", "title", "title_type",
+        # "text", "at"}], newest first, one per game and BEACONS_MAX at most: the games a player wants company in and
+        # their notes. Friends see them; cleared by the player or when they sign out.
         self.beacons = {}
+        # Player reviews (op_player_review): about xuid -> {reviewer xuid: FB_REVIEW_*}, the reputation's source.
+        self.reviews = {}
+        # The signup's account login (register's `login`): xuid -> {"email", "salt", "hash" (PBKDF2-SHA256), names...}.
+        self.logins = {}
+        # Leaderboards (live_stats.py): title id -> view -> xuid -> {"columns": {id: {"id","type","value"}}, "at"}.
+        self.stats = {}
+        # Message attachments (voice mail, photos): sha1 -> {"type", "format", "data" (base64)}.
+        self.attachments = {}
+        # Gamertags an account had before gamertag_change: xuid -> [old], so a console signing in with one gets the new.
+        self.old_gamertags = {}
         self.next_message = 1
         if os.path.exists(path):
             with open(path, encoding="utf-8") as f:
@@ -104,7 +119,13 @@ class Store:
             self.feedback = d.get("feedback", [])
             self.status = d.get("status", {})
             self.created = d.get("created", {})
-            self.beacons = d.get("beacons", {})
+            # a store from before several beacons a player held one, as a dict
+            self.beacons = {x: ([b] if isinstance(b, dict) else b) for x, b in d.get("beacons", {}).items()}
+            self.reviews = d.get("reviews", {})
+            self.logins = d.get("logins", {})
+            self.stats = d.get("stats", {})
+            self.attachments = d.get("attachments", {})
+            self.old_gamertags = d.get("old_gamertags", {})
             self.next_message = d.get("next_message", 1)
 
     def save(self):
@@ -113,7 +134,8 @@ class Store:
              "last_seen": self.last_seen, "next_message": self.next_message, "profiles": self.profiles,
              "livehive": self.livehive, "registered": self.registered, "recent": self.recent,
              "titles": self.titles, "lists": self.lists, "feedback": self.feedback, "status": self.status,
-             "created": self.created, "beacons": self.beacons}
+             "created": self.created, "beacons": self.beacons, "reviews": self.reviews, "logins": self.logins,
+             "stats": self.stats, "attachments": self.attachments, "old_gamertags": self.old_gamertags}
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(d, f, indent=1)
@@ -133,11 +155,12 @@ class Session:
         self.conn, self.user, self.xuid = conn, user, xuid
         self.voice_token = secrets.token_bytes(8)  # identifies this session's UDP voice packets
         self.voice_addr = None                     # where its voice packets come from (and go to)
+        self.game_addr = None                      # where its game data comes from (live_sessions.game_datagram)
         self.title_id, self.title, self.rich = "FFFE07D1", "Xbox 360 Dashboard", ""
         self.party = None
 
 
-class Server:
+class Server(live_social.SocialOps, live_sessions.SessionOps, live_stats.StatsOps):
     def __init__(self, store, logs, content_root, search_provider="none", unity=None):
         self.store = store
         self.logs = logs         # live debugging: the folder for clients' log files (op_log)
@@ -147,6 +170,7 @@ class Server:
         self.content_root = content_root
         self.web = web_services.WebServices(store, search_provider, unity)
         self.sessions = {}       # xuid -> Session
+        self.games = {}          # game sessions (live_sessions.py): session id -> session
         self.parties = {}        # id -> {"id", "leader", "members": [xuid], "open"}
         self.voice = None        # the UDP transport (VoiceProtocol)
         self.voice_tokens = {}   # token -> Session
@@ -193,7 +217,11 @@ class Server:
                 "rich": rich if online else "", "party": bool(online and in_party),
                 "request": request, "last_seen": self.store.last_seen.get(xuid, 0),
                 "status": status if online else "",
-                "beacon": self.store.beacons.get(xuid) if online and request == "" else None}
+                # the newest beacon (clients that show one) and all of them
+                "beacon": (self.store.beacons.get(xuid) or [None])[0] if online and request == "" else None,
+                "beacons": self.store.beacons.get(xuid, []) if online and request == "" else [],
+                **dict(zip(("session_id", "session_host", "joinable"),
+                           self.presence_session(owner, xuid) if online else ("", "", False)))}
 
     def friend_list(self, xuid):
         ids = set(self.store.friends.get(xuid, set())) | set(self.store.requests.get(xuid, set()))
@@ -286,12 +314,16 @@ class Server:
 
     MESSAGES_KEPT = 200  # inbox messages kept per account (the oldest dropped)
 
-    def deliver(self, sender, to, text, kind="text", title_id=""):
+    def deliver(self, sender, to, text, kind="text", title_id="", session_id="", attachment=None):
         for x in to:
             if x not in self.store.accounts:
                 continue
             m = {"id": self.store.next_message, "from": self.account(sender), "sent": int(time.time()),
                  "text": text, "read": False, "kind": kind, "title_id": title_id}
+            if session_id:
+                m["session_id"] = session_id
+            if attachment:
+                m["attachment"] = attachment
             self.store.next_message += 1
             inbox = self.store.messages.setdefault(x, [])
             inbox.append(m)
@@ -339,6 +371,8 @@ class Server:
             xuid = "0009%012X" % secrets.randbits(48)
             if xuid not in self.store.accounts:
                 break
+        if isinstance(msg.get("login"), dict):
+            self.keep_login(xuid, msg["login"])        # "email in use" / "bad email" / "bad password": nothing made
         self.store.accounts[xuid] = tag
         self.store.registered[xuid] = key
         self.store.created.setdefault(xuid, int(time.time()))
@@ -350,6 +384,7 @@ class Server:
         user, xuid, tag = int(msg["user"]), str(msg["xuid"]).upper(), str(msg["gamertag"])
         if not 0 <= user < 4 or len(xuid) != 16:
             raise ValueError("bad user or xuid")
+        tag = self.current_gamertag(xuid, tag)
         owner = self.store.xuid_of(tag)
         if owner is not None and owner != xuid:
             raise ValueError("gamertag taken")
@@ -404,6 +439,7 @@ class Server:
         if s is None:
             return
         self.meet(s)  # the players they were with: last met now
+        self.sessions_signed_out(s.xuid)  # their game sessions end (hosted) or lose them (joined)
         if not keep_seat:
             self.clear_beacon(s.xuid)  # a deliberate sign-out takes the beacon down (a drop keeps it for the minute)
         if keep_seat:
@@ -451,11 +487,15 @@ class Server:
             self.meet(s)  # another game: the players in it (and the party, with its new title)
 
     def op_profile(self, conn, msg):
-        self.session(conn, msg)
+        s = self.session(conn, msg)
         xuid = str(msg.get("xuid", "")).upper()
         if xuid not in self.store.accounts:
             raise ValueError("no such xuid")
-        return {"account": self.account(xuid), "profile": self.store.profiles.get(xuid, {})}
+        profile = dict(self.store.profiles.get(xuid, {}))
+        reputation = self.reputation(xuid)
+        if reputation is not None:
+            profile["reputation"] = reputation
+        return {"account": self.account(xuid), "profile": profile, "review": self.review_of(s.xuid, xuid)}
 
     def op_profile_update(self, conn, msg):
         """The signed-in user edited their public profile (motto, zone, name, location, bio): kept, and their friends
@@ -522,16 +562,80 @@ class Server:
         for t in titles[:self.TITLES_MAX]:
             if not isinstance(t, dict):
                 continue
-            tile = str(t.get("tile", ""))
-            out.append({"id": str(t.get("id", ""))[:8].upper(), "name": str(t.get("name", ""))[:64],
-                        "achievements": max(0, int(t.get("achievements", 0) or 0)),
-                        "earned": max(0, int(t.get("earned", 0) or 0)),
-                        "gamerscore": max(0, int(t.get("gamerscore", 0) or 0)),
-                        "tile": tile if len(tile) <= self.TITLE_TILE_MAX else ""})
+            out.append(self._title(t))
             if out[-1]["id"] in lists:
                 out[-1]["list"] = lists[out[-1]["id"]]
         self.store.titles[s.xuid] = out
         self.store.save()
+
+    def _title(self, t):
+        """One played title from either client's titles_update: {"id", "name", "achievements" (the count),
+        "earned", "gamerscore", "tile"} (the dash's sign-in list), or {"title_id", "name", "achievements"
+        (earned), "achievements_total", "gamerscore", "gamerscore_total", "last_played"} (XAM's)."""
+        def n(key):
+            return max(0, int(t.get(key, 0) or 0))
+        tile = str(t.get("tile", ""))
+        if "title_id" in t:
+            return {"id": str(t["title_id"])[:8].upper(), "name": str(t.get("name", ""))[:64],
+                    "achievements": n("achievements_total"), "earned": n("achievements"),
+                    "gamerscore": n("gamerscore"), "gamerscore_total": n("gamerscore_total"),
+                    "last_played": n("last_played"), "tile": ""}
+        return {"id": str(t.get("id", ""))[:8].upper(), "name": str(t.get("name", ""))[:64],
+                "achievements": n("achievements"), "earned": n("earned"), "gamerscore": n("gamerscore"),
+                "gamerscore_total": n("gamerscore_total"), "last_played": n("last_played"),
+                "tile": tile if len(tile) <= self.TITLE_TILE_MAX else ""}
+
+    def op_titles(self, conn, msg):
+        """A player's played titles as XAM reads them (XUserReadTitles-style): {"title_id", "name", "achievements"
+        (earned), "achievements_total", "gamerscore", "gamerscore_total", "last_played"}."""
+        self.session(conn, msg)
+        xuid = str(msg.get("xuid", "")).upper()
+        if xuid not in self.store.accounts:
+            raise ValueError("no such xuid")
+        return {"titles": [{"title_id": t["id"], "name": t["name"], "achievements": t.get("earned", 0),
+                            "achievements_total": t.get("achievements", 0), "gamerscore": t.get("gamerscore", 0),
+                            "gamerscore_total": t.get("gamerscore_total", 0), "last_played": t.get("last_played", 0)}
+                           for t in self.store.titles.get(xuid, [])]}
+
+    def op_achievements_update(self, conn, msg):
+        """One title's achievements as XAM sends them: {"id", "image_id", "gamerscore", "flags", "earned" (when,
+        Unix seconds; 0 not earned), "label", "description", "unachieved"}. Kept beside the dash's
+        title_achievements_update form, so Compare Games reads either."""
+        s = self.session(conn, msg)
+        tid = str(msg.get("title_id", ""))[:8].upper()
+        achievements = msg.get("achievements")
+        if not isinstance(achievements, list):
+            raise ValueError("no achievements")
+        titles = self.store.titles.setdefault(s.xuid, [])
+        title = next((t for t in titles if t["id"] == tid), None)
+        if title is None:
+            title = self._title({"title_id": tid})
+            titles.insert(0, title)
+            del titles[self.TITLES_MAX:]
+        out = []
+        for a in achievements[:self.ACHIEVEMENTS_MAX]:
+            if not isinstance(a, dict):
+                continue
+            when = max(0, int(a.get("earned", 0) or 0))
+            out.append({"id": max(0, int(a.get("id", 0) or 0)), "image_id": max(0, int(a.get("image_id", 0) or 0)),
+                        "flags": max(0, int(a.get("flags", 0) or 0)) & 0xFFFFFFFF,
+                        "name": str(a.get("label", ""))[:64], "description": str(a.get("description", ""))[:256],
+                        "unachieved": str(a.get("unachieved", ""))[:256],
+                        "gamerscore": max(0, int(a.get("gamerscore", 0) or 0)), "earned": bool(when),
+                        "shown": True, "time": when})
+        title["list"] = out
+        self.store.save()
+
+    def op_achievements(self, conn, msg):
+        """A player's achievements in a title as XAM reads them (the form op_achievements_update takes)."""
+        self.session(conn, msg)
+        xuid = str(msg.get("xuid", "")).upper()
+        tid = str(msg.get("title_id", "")).upper()
+        title = next((t for t in self.store.titles.get(xuid, []) if t["id"] == tid), None)
+        return {"achievements": [{"id": a.get("id", i), "image_id": a.get("image_id", 0), "flags": a.get("flags", 0),
+                                  "gamerscore": a["gamerscore"], "earned": a["time"] if a["earned"] else 0,
+                                  "label": a["name"], "description": a["description"], "unachieved": a["unachieved"]}
+                                 for i, a in enumerate(title.get("list", []) if title else [])]}
 
     ACHIEVEMENTS_MAX = 256   # achievements kept per title
 
@@ -579,39 +683,85 @@ class Server:
         return {"players": self.recent_view(self.session(conn, msg).xuid)}
 
     BEACON_TEXT_MAX = 168    # the console's beacon comment limit
+    BEACONS_MAX = 3          # beacons a player holds at once (the console's "too many beacons" past it)
+
+    def _beacon_view(self, b):
+        return {"title_id": b["title_id"], "title": b.get("title", ""), "title_type": b.get("title_type", ""),
+                "text": b["text"], "at": b["at"], "updated": b["at"]}
 
     def op_beacon_set(self, conn, msg):
-        """The Guide's Beacons (XamShowBeaconsUI): the signed-in user wants company in a game. Friends see the beacon
-        (in their friend entry and `beacons`). `title_id` / `title`: the game; `text`: the player's note."""
+        """The Guide's Beacons (XamShowBeaconsUI): the signed-in user wants company in a game. Friends see it (in
+        their friend entry, `beacons` and `friends_beacons`). `title_id`: the game; `title` / `title_type`: its name
+        and kind; `text`: the player's note. A game that already has one is replaced; a new game past BEACONS_MAX
+        fails with "too many beacons"."""
         s = self.session(conn, msg)
         title_id = str(msg.get("title_id", "")).upper()
         if not title_id or title_id.startswith("FFFE"):
             raise ValueError("a beacon needs a game")
-        self.store.beacons[s.xuid] = {"title_id": title_id, "title": str(msg.get("title", "")),
-                                      "text": str(msg.get("text", ""))[:self.BEACON_TEXT_MAX], "at": int(time.time())}
+        mine = [b for b in self.store.beacons.get(s.xuid, []) if b["title_id"] != title_id]
+        if len(mine) >= self.BEACONS_MAX:
+            raise ValueError("too many beacons")
+        beacon = {"title_id": title_id, "title": str(msg.get("title", ""))[:64],
+                  "title_type": str(msg.get("title_type", ""))[:32],
+                  "text": str(msg.get("text", ""))[:self.BEACON_TEXT_MAX], "at": int(time.time())}
+        self.store.beacons[s.xuid] = [beacon] + mine
         self.store.save()
         log.info("%s set a beacon for %s", self.store.accounts.get(s.xuid), title_id)
         self.tell_friends(s.xuid)
-        return {"beacon": self.store.beacons[s.xuid]}
+        return {"beacon": self._beacon_view(beacon), "beacons": [self._beacon_view(b) for b in self.store.beacons[s.xuid]]}
+
+    def op_beacon_delete(self, conn, msg):
+        """Takes down the user's beacon for one game (`title_id`)."""
+        s = self.session(conn, msg)
+        title_id = str(msg.get("title_id", "")).upper()
+        mine = self.store.beacons.get(s.xuid, [])
+        kept = [b for b in mine if b["title_id"] != title_id]
+        if len(kept) != len(mine):
+            if kept:
+                self.store.beacons[s.xuid] = kept
+            else:
+                del self.store.beacons[s.xuid]
+            self.store.save()
+            self.tell_friends(s.xuid)
+        return {"beacons": [self._beacon_view(b) for b in self.store.beacons.get(s.xuid, [])]}
 
     def op_beacon_clear(self, conn, msg):
+        """Takes down all of the user's beacons."""
         s = self.session(conn, msg)
         if self.store.beacons.pop(s.xuid, None) is not None:
             self.store.save()
             self.tell_friends(s.xuid)
 
-    def op_beacons(self, conn, msg):
-        """The caller's friends' beacons (online friends only), newest first: the Beacons list and the Guide's
-        "friends who want to play"."""
-        s = self.session(conn, msg)
+    def _friends_with_beacons(self, xuid):
         out = []
-        for x in self.store.friends.get(s.xuid, set()):
-            b = self.store.beacons.get(x)
+        for x in self.store.friends.get(xuid, set()):
+            mine = self.store.beacons.get(x)
             online = x in self.sessions or self.away_view(x) is not None
-            if b and online and self.store.status.get(x, "") != "offline":
-                out.append(dict(b, xuid=x, gamertag=self.store.accounts.get(x, "")))
-        out.sort(key=lambda b: b["at"], reverse=True)
-        return {"beacons": out}
+            if mine and online and self.store.status.get(x, "") != "offline":
+                out.append((x, mine))
+        out.sort(key=lambda e: e[1][0]["at"], reverse=True)
+        return out
+
+    def op_beacons(self, conn, msg):
+        """With `xuid`: that player's beacons (a friend's, or the caller's own), newest first. Without: the caller's
+        friends' beacons (online friends only), one entry each with the friend's xuid and gamertag, newest first --
+        the Beacons list and the Guide's "friends who want to play"."""
+        s = self.session(conn, msg)
+        xuid = str(msg.get("xuid", "")).upper()
+        if xuid:
+            if xuid != s.xuid and xuid not in self.store.friends.get(s.xuid, set()):
+                return {"beacons": []}
+            return {"beacons": [self._beacon_view(b) for b in self.store.beacons.get(xuid, [])]}
+        return {"beacons": [dict(self._beacon_view(b), xuid=x, gamertag=self.store.accounts.get(x, ""))
+                            for x, mine in self._friends_with_beacons(s.xuid) for b in mine]}
+
+    def op_friends_beacons(self, conn, msg):
+        """The caller's online friends that have beacons: [{"xuid", "gamertag", "beacons"}] (the Social hub's
+        suggested activities)."""
+        s = self.session(conn, msg)
+        return {"friends": [{"xuid": x, "gamertag": self.store.accounts.get(x, ""),
+                             "beacons": [self._beacon_view(b) for b in mine]}
+                            for x, mine in self._friends_with_beacons(s.xuid)]}
 
     def op_friends_of(self, conn, msg):
         """A friend's friends (the Guide's View Friends on a friend's Personal Profile): only for one of the
@@ -686,7 +836,9 @@ class Server:
         text = str(msg.get("text", ""))
         if len(text) > self.MESSAGE_TEXT_MAX:
             raise ValueError("message too long")
-        self.deliver(s.xuid, to, text, str(msg.get("kind", "text")), str(msg.get("title_id", "")))
+        attachment = self.attachment(msg["attachment"]) if msg.get("attachment") else None
+        self.deliver(s.xuid, to, text, str(msg.get("kind", "text")), str(msg.get("title_id", "")),
+                     str(msg.get("session_id", "") or "").upper(), attachment)
 
     def op_messages(self, conn, msg):
         s = self.session(conn, msg)
@@ -694,14 +846,18 @@ class Server:
 
     def op_message_read(self, conn, msg):
         s = self.session(conn, msg)
+        # the message's id is in `message` (a request's own `id` is its reply number; older clients put it there)
+        mid = msg.get("message", msg.get("id"))
         for m in self.store.messages.get(s.xuid, []):
-            if m["id"] == msg.get("id"):
+            if m["id"] == mid:
                 m["read"] = True
         self.store.save()
 
     def op_message_delete(self, conn, msg):
         s = self.session(conn, msg)
-        self.store.messages[s.xuid] = [m for m in self.store.messages.get(s.xuid, []) if m["id"] != msg.get("id")]
+        mid = msg.get("message", msg.get("id"))
+        self.store.messages[s.xuid] = [m for m in self.store.messages.get(s.xuid, []) if m["id"] != mid]
+        self.drop_unused_attachments()  # an attachment goes once no message refers to it
         self.store.save()
 
     def expire_away(self, xuid):
@@ -1007,6 +1163,9 @@ class VoiceProtocol(asyncio.DatagramProtocol):
         self.transport = transport
 
     def datagram_received(self, data, addr):
+        if data[:4] == live_sessions.GAME_MAGIC:  # game traffic (network_protocol.md "Game data")
+            self.server.game_datagram(self.transport, data, addr)
+            return
         # client -> server: magic, token (8), sequence (u32), codec payload (may be empty: a keep-alive)
         if len(data) < 16 or data[:4] != VOICE_MAGIC:
             return

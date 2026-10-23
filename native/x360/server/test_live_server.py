@@ -399,6 +399,164 @@ def test_voice_relay(ctx):
 
 
 @test
+def test_gamertags(ctx):
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob")
+    gen = a.request("generate_gamertag")["gamertag"]
+    assert 1 <= len(gen) <= 15 and gen[0].isalpha()
+    c = a.request("gamertag_check", user=0, gamertag="Bob")
+    assert c["available"] is False and len(c["suggestions"]) == 3 and "Bob" not in c["suggestions"]
+    assert a.request("gamertag_check", user=0, gamertag="Alice Two")["available"] is True
+    assert a.request("gamertag_check", user=0, gamertag="2 Fast")["available"] is False
+    assert "taken" in a.fails("gamertag_change", user=0, gamertag="bob")
+    assert a.request("gamertag_change", user=0, gamertag="Alice Two")["account"]["gamertag"] == "Alice Two"
+    a.close()
+    d = ctx.client()                                     # a console still holding the old gamertag gets the new one
+    assert d.request("signin", user=0, xuid=xuid(1), gamertag="Alice")["account"]["gamertag"] == "Alice Two"
+
+
+@test
+def test_signup_login(ctx):
+    a = ctx.client()
+    assert a.request("email_check", email="new@example.com")["free"] is True
+    assert "bad email" in a.fails("email_check", email="nope")
+    a.request("register", gamertag="Signer", key="k1", login={"email": "new@example.com", "password": "hunter2!!",
+                                                              "first_name": "A", "country": "US"})
+    assert a.request("email_check", email="NEW@example.com")["free"] is False
+    assert "email in use" in a.fails("register", gamertag="Other", key="k2",
+                                     login={"email": "new@example.com", "password": "password1"})
+    assert "bad password" in a.fails("register", gamertag="Other", key="k2",
+                                     login={"email": "o@example.com", "password": "short"})
+    assert "taken" not in a.fails("register", gamertag="Other", key="k2", login={"email": "x", "password": "password1"})
+
+
+@test
+def test_reviews(ctx):
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob", profile={"reputation": 80})
+    assert a.request("profile", user=0, xuid=xuid(2))["review"] == -1
+    r = a.request("player_review", user=0, xuid=xuid(2), review=0)["reputation"]
+    assert r == round((100 + 5 * 80) / 6)
+    assert a.request("player_review", user=0, xuid=xuid(2), review=3)["reputation"] == round(5 * 80 / 6)
+    p = a.request("profile", user=0, xuid=xuid(2))
+    assert p["review"] == 3 and p["profile"]["reputation"] == round(5 * 80 / 6)
+    assert "bad" in a.fails("player_review", user=0, xuid=xuid(1), review=0)
+    a.request("complaint", user=0, xuid=xuid(2), type=4, text="x" * 600)
+    assert "bad complaint type" in a.fails("complaint", user=0, xuid=xuid(2), type=16)
+
+
+@test
+def test_attachments_and_message_ids(ctx):
+    import base64
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob")
+    voice = base64.b64encode(bytes(164 * 50)).decode()
+    a.request("message_send", user=0, to=[xuid(2)], text="hi", attachment={"type": "voice", "format": "adpcm16k",
+                                                                          "data": voice})
+    m = b.event("message")["message"]
+    assert m["attachment"]["duration_ms"] == 1000 and m["attachment"]["type"] == "voice"
+    got = b.request("message_attachment", user=0, message=m["id"])
+    assert got["type"] == "voice" and got["data"] == voice
+    assert "bad voice data" in a.fails("message_send", user=0, to=[xuid(2)], text="x",
+                                       attachment={"type": "voice", "format": "adpcm16k",
+                                                   "data": base64.b64encode(b"123").decode()})
+    assert "bad photo data" in a.fails("message_send", user=0, to=[xuid(2)], text="x",
+                                       attachment={"type": "photo", "format": "png",
+                                                   "data": base64.b64encode(b"not a png").decode()})
+    # the message's id in `message` (a request's own id is its reply number)
+    b.request("message_read", user=0, message=m["id"])
+    assert b.request("messages", user=0)["messages"][0]["read"] is True
+    b.request("message_delete", user=0, message=m["id"])
+    assert b.request("messages", user=0)["messages"] == []
+    assert "no attachment" in b.fails("message_attachment", user=0, message=m["id"])
+
+
+@test
+def test_game_sessions(ctx):
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob")
+    a.tag = {1: "Alice"}; b.tag = {2: "Bob"}
+    befriend(ctx, a, 0, 1, b, 0, 2)
+    a.request("presence", user=0, title_id="4D5307E6", title="Halo 3", rich="")
+    b.request("presence", user=0, title_id="4D5307E6", title="Halo 3", rich="")
+    a.drain(); b.drain()
+    sid = "8000000000000001"
+    s = a.request("session_create", user=0, session_id=sid, flags=0x2 | 0x8, public_slots=4, private_slots=0)["session"]
+    assert s["host"] == xuid(1) and [m["xuid"] for m in s["members"]] == [xuid(1)]
+    a.request("session_attributes", user=0, session_id=sid, attributes={"10008001": "AAAAAQ=="})
+    f = b.event("friend")["friend"]
+    assert f["session_id"] == sid and f["session_host"] == xuid(1) and f["joinable"] is True
+    found = b.request("session_search", user=0, filters={"10008001": "AAAAAQ=="}, players=1, max_results=5)["sessions"]
+    assert [g["id"] for g in found] == [sid]
+    assert b.request("session_search", user=0, filters={"10008001": "AAAAAg=="}, players=1)["sessions"] == []
+    assert len(b.request("session_join", user=0, session_id=sid, xuids=[xuid(2)])["session"]["members"]) == 2
+    assert "host" in b.fails("session_state", user=0, session_id=sid, state="playing")
+    a.request("session_state", user=0, session_id=sid, state="playing")
+    a.request("session_qos", user=0, session_id=sid, qos="AAEC")
+    assert b.request("session", user=0, session_id=sid)["session"]["qos"] == "AAEC"
+    a.request("signout", user=0)                          # the host goes: the session ends
+    assert b.request("session", user=0, session_id=sid)["session"] is None
+
+
+@test
+def test_game_data_relay(ctx):
+    a = ctx.client(); ta = signin(a, 0, 1, "Alice")["voice_token"]
+    b = ctx.client(); tb = signin(b, 0, 2, "Bob")["voice_token"]
+    keep = b"XG01" + bytes.fromhex(tb) + struct.pack(">IHH", 0, 0, 0)
+    b.voice.sendto(keep, (HOST, b.voice_port))
+    time.sleep(0.2)
+    handle = (10 << 24) | (int(xuid(2), 16) & 0xFFFFFF)
+    a.voice.sendto(b"XG01" + bytes.fromhex(ta) + struct.pack(">IHH", handle, 1000, 2000) + b"hello",
+                   (HOST, a.voice_port))
+    b.voice.settimeout(2)
+    data, _ = b.voice.recvfrom(1 << 16)
+    assert data[:4] == b"XG01"
+    dst, src, sport, dport = struct.unpack_from(">QQHH", data, 4)
+    assert (dst, src, sport, dport, data[24:]) == (int(xuid(2), 16), int(xuid(1), 16), 2000, 1000, b"hello")
+
+
+@test
+def test_stats(ctx):
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob")
+    t = "4D5307E6"
+    def write(c, x, rating, kills, agg="sum"):
+        c.request("stats_write", user=0, title_id=t, xuid=x, views=[{"view": 1, "columns": [
+            {"id": 65534, "type": 2, "value": rating, "aggregation": "max"},
+            {"id": 3, "type": 1, "value": kills, "aggregation": agg}]}])
+    write(a, xuid(1), 100, 5)
+    write(b, xuid(2), 150, 2)
+    write(a, xuid(1), 90, 4)                              # max keeps 100; sum makes 9
+    r = a.request("stats_read", user=0, title_id=t, xuids=[xuid(1), xuid(2), xuid(3)],
+                  views=[{"view": 1, "columns": [3]}])["views"][0]
+    assert r["total"] == 2
+    assert [(row["rank"], row["rating"]) for row in r["rows"]] == [(2, 100), (1, 150), (0, 0)]
+    assert r["rows"][0]["columns"] == [{"id": 3, "type": 1, "value": 9}]
+    e = a.request("stats_enumerate", user=0, title_id=t, by="rank", rank=1, rows=10,
+                  views=[{"view": 1, "columns": [3]}])["views"][0]
+    assert [row["gamertag"] for row in e["rows"]] == ["Bob", "Alice"]
+    e = a.request("stats_enumerate", user=0, title_id=t, by="rating", rating=120, rows=10,
+                  views=[{"view": 1, "columns": []}])["views"][0]
+    assert [row["gamertag"] for row in e["rows"]] == ["Alice"]
+    a.request("stats_reset", user=0, title_id=t, view=0)
+    assert a.request("stats_read", user=0, title_id=t, xuids=[xuid(1)],
+                     views=[{"view": 1, "columns": [3]}])["views"][0]["rows"][0]["rank"] == 0
+
+
+@test
+def test_party_of(ctx):
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob")
+    a.tag = {1: "Alice"}; b.tag = {2: "Bob"}
+    befriend(ctx, a, 0, 1, b, 0, 2)
+    assert b.request("party_of", user=0, xuid=xuid(1))["party"] is None
+    a.request("party_create", user=0)
+    assert b.request("party_of", user=0, xuid=xuid(1))["party"]["leader"] == xuid(1)
+    c = ctx.client(); signin(c, 0, 3, "Carol")
+    assert "not a friend" in c.fails("party_of", user=0, xuid=xuid(1))
+
+
+@test
 def test_tenure(ctx):
     a = ctx.client()
     reg = a.request("register", gamertag="Senior", key="k")
@@ -427,6 +585,58 @@ def test_beacons(ctx):
     a.request("beacon_clear", user=0)
     assert b.event("friend")["friend"]["beacon"] is None
     assert b.request("beacons", user=0)["beacons"] == []
+
+
+@test
+def test_beacons_per_game(ctx):
+    """XAM's form: up to three beacons, one per game; taken down one game at a time; read per player and as the
+    friends that have them."""
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob")
+    a.tag = {1: "Alice"}; b.tag = {2: "Bob"}
+    befriend(ctx, a, 0, 1, b, 0, 2)
+    for tid in ("584109C2", "58410A1F", "4D5307E6"):
+        a.request("beacon_set", user=0, title_id=tid, title_type="Xbox 360 game", text="t" + tid)
+        b.event("friend")
+    assert "too many beacons" in a.fails("beacon_set", user=0, title_id="415607D2", text="fourth")
+    a.request("beacon_set", user=0, title_id="58410A1F", text="again")           # the same game: replaced
+    b.event("friend")
+    mine = b.request("beacons", user=0, xuid=xuid(1))["beacons"]
+    assert [m["title_id"] for m in mine] == ["58410A1F", "4D5307E6", "584109C2"] and mine[0]["text"] == "again"
+    assert mine[0]["updated"] > 0 and mine[1]["title_type"] == "Xbox 360 game"
+    friends = b.request("friends_beacons", user=0)["friends"]
+    assert len(friends) == 1 and friends[0]["xuid"] == xuid(1) and len(friends[0]["beacons"]) == 3
+    a.request("beacon_delete", user=0, title_id="4D5307E6")
+    e = b.event("friend")["friend"]
+    assert [m["title_id"] for m in e["beacons"]] == ["58410A1F", "584109C2"] and e["beacon"]["title_id"] == "58410A1F"
+    # a stranger's beacons are not shown
+    c = ctx.client(); signin(c, 0, 3, "Carol")
+    assert c.request("beacons", user=0, xuid=xuid(1))["beacons"] == []
+
+
+@test
+def test_titles_xam_form(ctx):
+    """XAM's titles_update / achievements_update, read back by XAM (titles, achievements) and by the dash's Compare
+    Games (titles_of, title_achievements_of) alike."""
+    a = ctx.client(); signin(a, 0, 1, "Alice")
+    b = ctx.client(); signin(b, 0, 2, "Bob")
+    a.request("titles_update", user=0, titles=[
+        {"title_id": "584109C2", "name": "Minecraft", "achievements": 12, "achievements_total": 50,
+         "gamerscore": 120, "gamerscore_total": 400, "last_played": 1700000000}])
+    t = b.request("titles", user=0, xuid=xuid(1))["titles"][0]
+    assert (t["title_id"], t["achievements"], t["achievements_total"], t["gamerscore_total"], t["last_played"]) == \
+        ("584109C2", 12, 50, 400, 1700000000)
+    dash = b.request("titles_of", user=0, xuid=xuid(1))["titles"][0]
+    assert dash["id"] == "584109C2" and dash["achievements"] == 50 and dash["earned"] == 12
+    a.request("achievements_update", user=0, title_id="584109C2", achievements=[
+        {"id": 3, "image_id": 7, "gamerscore": 20, "flags": 0x20000, "earned": 1700000100, "label": "Getting Wood",
+         "description": "Punch a tree", "unachieved": "Punch something"},
+        {"id": 4, "image_id": 8, "gamerscore": 10, "flags": 0, "earned": 0, "label": "Benchmarking",
+         "description": "Craft a table", "unachieved": "Craft something"}])
+    x = b.request("achievements", user=0, xuid=xuid(1), title_id="584109C2")["achievements"]
+    assert [(a_["id"], a_["earned"], a_["label"]) for a_ in x] == [(3, 1700000100, "Getting Wood"), (4, 0, "Benchmarking")]
+    d = b.request("title_achievements_of", user=0, xuid=xuid(1), title_id="584109C2")["achievements"]
+    assert d[0]["name"] == "Getting Wood" and d[0]["earned"] is True and d[1]["earned"] is False
 
 
 @test
