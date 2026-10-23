@@ -113,6 +113,8 @@ def write(image, origin, entries, folder, stem, ports=None, names=None, header=(
         if insn is not None:
             flush()
             t = z80.text(insn, text_names)
+            if t.startswith(".db "):                 # bytes an assembler would not write so (z80.text), in this syntax
+                t = "DEFB " + t[4:]
             if insn.pattern in ("OUT (n),A", "IN A,(n)") and insn.values[0] in used_ports:
                 t = t.replace("($%02X)" % insn.values[0], "(%s)" % used_ports[insn.values[0]])
             out.append("        " + t)

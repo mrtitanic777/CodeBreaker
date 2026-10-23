@@ -339,7 +339,7 @@ def _compile(pattern):
     rd = [o[1] for o in ops]
     wr = [o[2] for o in ops]
 
-    if m == "NOP":
+    if m in ("NOP", ".db"):                      # (.db: a lone DD/FD prefix or an ED opcode that does nothing)
         return lambda c, d: None
     if m == "LD":
         if forms[0] in ("A",) and forms[1] in ("I", "R"):

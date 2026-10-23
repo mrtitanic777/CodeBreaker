@@ -29,21 +29,33 @@ def is_msx(path):
             head = f.read(16)
     except OSError:
         return False
-    return head[:2] == b"AB"
+    if head[:2] == b"AB":
+        return True
+    try:
+        with open(path, "rb") as f:
+            f.seek(0x4000)
+            return f.read(2) == b"AB"
+    except OSError:
+        return False
 
 
 def read(path):
     with open(path, "rb") as f:
         data = f.read()
-    if data[:2] != b"AB":
-        raise ValueError("%s: no MSX cartridge header" % path)
     if len(data) > 0xC000:
         raise ValueError("%s: a %d KB cartridge switches banks (a mapper), not read yet" % (path, len(data) // 1024))
-    init, statement, device, text = struct.unpack_from("<4H", data, 2)
-    origin = 0x4000
-    if init and init < 0x4000:
+    # The header is at the start of page 1 ($4000): the image's first byte when the cartridge starts there, or its
+    # byte $4000 when it fills pages 0-2 from $0000 (48 KB: msx-wrally).
+    if data[:2] == b"AB":
+        at, origin = 0, 0x4000
+    elif len(data) > 0x4000 and data[0x4000:0x4002] == b"AB":
+        at, origin = 0x4000, 0x0000
+    else:
+        raise ValueError("%s: no MSX cartridge header" % path)
+    init, statement, device, text = struct.unpack_from("<4H", data, at + 2)
+    if at == 0 and init and init < 0x4000:
         origin = 0x0000
-    elif init >= 0x8000 and len(data) <= 0x4000:
+    elif at == 0 and init >= 0x8000 and len(data) <= 0x4000:
         origin = 0x8000
     p = Program()
     p.path, p.origin, p.image = path, origin, data

@@ -194,6 +194,12 @@ def _fields(pattern):
     return re.findall(r"\b(nn|n|d|e)\b", pattern)
 
 
+def _lone_prefix(code, at, pc):
+    """A DD or FD the next opcode does not use: the CPU ignores it (a one-byte instruction that does nothing). It is
+    written as its byte (an assembler would write NOP, 00, for "NOP")."""
+    return Insn(".db $%02X" % code[at], 1, [], None, "", pc, bytes(code[at:at + 1]))
+
+
 def decode(code, at, pc):
     """The instruction at code[at:] (it runs at address `pc`), or None if code ends inside it."""
     prefix = b""
@@ -201,7 +207,7 @@ def decode(code, at, pc):
     while i < len(code) and code[i] in (0xDD, 0xFD) and prefix[-1:] != b"\xED":
         if prefix in (b"\xDD", b"\xFD"):
             # a prefix after a prefix: the first one does nothing (a one-byte instruction of its own)
-            return Insn("NOP", 1, [], None, "", pc, bytes(code[at:at + 1]))
+            return _lone_prefix(code, at, pc)
         prefix = bytes([code[i]])
         i += 1
     if i >= len(code):
@@ -221,10 +227,10 @@ def decode(code, at, pc):
         values = [d - 256 if d >= 128 else d]
         return Insn(pattern, i + 3 - at, values, None, "", pc, bytes(code[at:i + 3]))
     elif op == 0xED and prefix:
-        return Insn("NOP", 1, [], None, "", pc, bytes(code[at:at + 1]))   # DD ED: the DD is ignored
+        return _lone_prefix(code, at, pc)   # DD ED: the DD is ignored
     pattern = TABLE.get((prefix, op))
     if pattern is None and prefix in (b"\xDD", b"\xFD"):
-        return Insn("NOP", 1, [], None, "", pc, bytes(code[at:at + 1]))   # DD before an unindexed op
+        return _lone_prefix(code, at, pc)   # DD before an unindexed op
     if pattern is None:
         pattern = "NOP" if prefix == b"\xED" else None
         if pattern is None:
@@ -255,8 +261,30 @@ def decode(code, at, pc):
 
 
 def text(insn, labels=None):
-    """The instruction as source; `labels` {address: name} names jump targets and absolute words."""
+    """The instruction as source; `labels` {address: name} names jump targets and absolute words. An encoding that is
+    not the one an assembler writes for its instruction (the undocumented mirrors: NEG at ED 4C ... 7C, RETN, IM,
+    LD HL,(nn) at ED 6B) is written as its bytes, the instruction in a comment, so the source rebuilds the same."""
     labels = labels or {}
+    if not insn.pattern.startswith(".") and not _canonical(insn):
+        return ".db %s ; %s" % (",".join("$%02X" % b for b in insn.bytes), _plain_text(insn, labels))
+    return _plain_text(insn, labels)
+
+
+def _canonical(insn):
+    """Whether the instruction's prefix and opcode are those its pattern assembles to."""
+    global _ASM
+    if _ASM is None:
+        _ASM = _patterns()
+    entry = _ASM.get(insn.pattern)
+    if entry is None:
+        return True
+    code, cbop, displacement_first = entry
+    if displacement_first:                    # DDCB d op
+        return insn.bytes[:2] == bytes(code) and insn.bytes[3:4] == bytes([cbop])
+    return insn.bytes[:len(code)] == bytes(code)
+
+
+def _plain_text(insn, labels):
     out, k = [], 0
     for part in re.split(r"(\bnn\b|\bn\b|\bd\b|\be\b)", insn.pattern):
         if part in _PLACE:

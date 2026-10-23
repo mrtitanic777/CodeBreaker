@@ -4,6 +4,23 @@ from codebreaker.formats import msx
 from codebreaker.source import msx_writer
 from codebreaker.verify.z80_flat import Lane
 
-LANE = Lane("msx", 1, msx.read, msx_writer, (0x0000, 0x4000))
+LANE = Lane("msx", 2, msx.read, msx_writer, (0x0000, 0x4000))
 KIND, REV, SAME = LANE.KIND, LANE.REV, LANE.SAME
-profile, prepare, build, judge = LANE.profile, LANE.prepare, LANE.build, LANE.judge
+
+
+# Module-level functions, not the lane's bound methods: judge is handed to worker processes (jobs/pool.py), which pickle
+# it by name.
+def profile(module_path=None):
+    return LANE.profile(module_path)
+
+
+def prepare(module_path, work):
+    return LANE.prepare(module_path, work)
+
+
+def build(m, module_path, work):
+    return LANE.build(m, module_path, work)
+
+
+def judge(context, item):
+    return LANE.judge(context, item)

@@ -63,7 +63,9 @@ def _round_trip(module, pages):
             if insn is None or insn.pattern == "NOP" and code[:1] in (b"\xDD", b"\xFD") or insn.pattern.startswith("."):
                 continue
             text = module.text(insn)
-            if text.startswith("DB "):
+            if text.startswith(("DB ", ".db ")):        # bytes written as data (a mirror encoding): the bytes themselves
+                listed = bytes(int(v.strip()[1:], 16) for v in text.split(";")[0].split(" ", 1)[1].split(","))
+                assert listed == bytes(code[:insn.size]), (text, code[:insn.size].hex())
                 continue
             built = module.assemble(text, 0x1000)
             if built != bytes(code[:insn.size]):

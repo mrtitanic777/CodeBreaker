@@ -72,10 +72,10 @@ class Op(object):
         k = self.kind
         if k in ("D", "A", "ind", "post", "pre", "disp"):
             return "%s%d" % (k, self.reg)
-        if k == "index":
-            return "index%d,%s" % (self.reg, self.xsize)
+        if k == "index":                      # (the index register and its size are the extension word's)
+            return "index%d" % self.reg
         if k == "pcindex":
-            return "pcindex,%s" % self.xsize
+            return "pcindex"
         if k == "quick":
             return "#%d" % self.value
         if k == "label8":
