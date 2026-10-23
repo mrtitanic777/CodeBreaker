@@ -149,7 +149,11 @@ def decode_dxt(data, w, h, fmt, tiled=True, swapped=True, force_opaque=False):
             if swapped:
                 blk = swap16(blk)
             if fmt == "dxt1":
-                cols, alpha = _color_block(blk, True), [255] * 16
+                cols = _color_block(blk, True)
+                alpha = [255] * 16
+                if blk[0] | blk[1] << 8 <= blk[2] | blk[3] << 8:     # c0 <= c1: index 3 is transparent
+                    idx = int.from_bytes(blk[4:8], "little")
+                    alpha = [0 if (idx >> (2 * i)) & 3 == 3 else 255 for i in range(16)]
             else:
                 cols = _color_block(blk[8:16], False)
                 if force_opaque:
