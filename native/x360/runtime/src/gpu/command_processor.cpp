@@ -4,6 +4,7 @@
 
 #include "modules.h"
 #include "gpu/gpu.h"
+#include "gpu/d3d12_device.h"
 #include "guest_clock.h"
 #include "gpu/draw_trace.h"
 #include "gpu/present.h"
@@ -918,6 +919,7 @@ namespace gpu
                 // Decodes the front buffer by fetch constant 0 (VdSwap wrote it just before this packet), applies the
                 // display gamma and hands the result to the window (renderer.cpp, Renderer::Swap).
                 RenderSwap(frame, frontBuffer, width, height, overlay);
+                LogDebugMessages(); // CB_D3D12_DEBUG: what the debug layer reported this frame (once per message)
                 if (identifierAddress)
                     guest::g_memory.Write32(identifierAddress, identifier);
                 input::OnFrame(frame);
@@ -1278,6 +1280,7 @@ namespace gpu
                 if (type == 6)
                 {
                     block(format, encodedLength, Physical(base), length);
+                    MarkMemoryWritten(base, length);
                     reads++;
                 }
                 else

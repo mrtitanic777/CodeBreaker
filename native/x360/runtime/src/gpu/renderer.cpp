@@ -53,7 +53,39 @@ namespace gpu
         }
 
         const bool g_disabled = [] { const char* v = std::getenv("CB_NO_RENDER"); return v && v[0] == '1'; }();
-        const bool g_dumpTextures = [] { const char* v = std::getenv("CB_TEXTURE_DUMP"); return v && v[0] == '1'; }();
+        // CB_HOST_1X=1 (experiment): host targets of multisampled guest surfaces are single-sampled (every guest sample
+        // stores the pixel's value), to tell sample-conversion problems from the rest.
+        const bool g_hostSingleSample = [] { const char* v = std::getenv("CB_HOST_1X"); return v && v[0] == '1'; }();
+        bool HostMs(uint32_t msaa) { return msaa != 0 && !g_hostSingleSample; }
+        // CB_LOCAL_MEMORY=1 (gpu.h LocalMemory): pages of guest physical memory written since the GPU's copy was last
+        // brought up to date, one bit per 4 KiB page; everything is written at the start.
+        const bool g_localMemory = [] { const char* v = std::getenv("CB_LOCAL_MEMORY"); return v && v[0] == '1'; }();
+        constexpr uint32_t kMemoryPageShift = 12, kMemoryPageWords = (guest::kPhysicalSize >> kMemoryPageShift) / 64;
+        std::atomic<uint64_t> g_memoryWritten[kMemoryPageWords];
+        std::atomic<bool> g_memoryAnyWritten{ false };
+        // CB_EDRAM_DUMP_AT=<frame>:<draw>;...: the EDRAM (host targets stored to it first) as edram_frame<frame*10000+draw>.bin
+        // just before that draw, to compare the output mergers draw by draw.
+        const std::vector<std::pair<uint64_t, uint32_t>> g_edramDumpAt = [] {
+            std::vector<std::pair<uint64_t, uint32_t>> at;
+            const char* v = std::getenv("CB_EDRAM_DUMP_AT");
+            for (std::string_view rest = v ? v : ""; !rest.empty();)
+            {
+                const size_t end = rest.find(';');
+                const std::string entry(rest.substr(0, end));
+                unsigned long long frame = 0;
+                unsigned draw = 0;
+                if (std::sscanf(entry.c_str(), "%llu:%u", &frame, &draw) == 2)
+                    at.emplace_back(frame, draw);
+                rest = end == std::string_view::npos ? std::string_view() : rest.substr(end + 1);
+            }
+            return at;
+        }();
+        // CB_HOST_LOG=<frame>: that frame's draws say which output merger they took and why, and host targets log their
+        // loads and stores.
+        const uint64_t g_hostLogFrame = [] { const char* v = std::getenv("CB_HOST_LOG"); return v ? std::strtoull(v, nullptr, 10) : 0ull; }();
+        // CB_TEXTURE_DUMP=1: every untiled texture; =<frame> (2 or more): only those untiled while that frame is built.
+        const uint64_t g_dumpTexturesFrame = [] { const char* v = std::getenv("CB_TEXTURE_DUMP"); return v ? std::strtoull(v, nullptr, 10) : 0ull; }();
+        const bool g_dumpTextures = g_dumpTexturesFrame != 0;
         const bool g_magentaTextures = [] { const char* v = std::getenv("CB_TEXTURE_MAGENTA"); return v && v[0] == '1'; }();
         const uint64_t g_dumpFrame = [] {
             const char* v = std::getenv("CB_EDRAM_DUMP");
@@ -487,7 +519,12 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             ComPtr<ID3D12PipelineState> untilePipelines_[2]; // fractions (UINT view), integers (float view)
             std::vector<TextureReadback> pendingDumps_;
             ComPtr<ID3D12Heap> memoryHeap_;
-            ComPtr<ID3D12Resource> memory_;
+            // memory_ is what shaders read and resolves write: guest physical memory itself (a placed buffer over the
+            // host's pages, read across the bus), or with LocalMemory() a buffer in video memory that UploadMemory
+            // brings up to date from memorySystem_, the guest's pages.
+            ComPtr<ID3D12Resource> memory_, memorySystem_;
+            void UploadMemory();
+            uint64_t memoryUploaded_ = 0; // bytes, for the frame log
             ComPtr<ID3D12Resource> edram_;
             // Host index lists for fans and quad lists over vertex positions 0..count-1: the same for every draw, so
             // built once for the largest count (VGT_DRAW_INITIATOR's 16-bit NumIndices).
@@ -592,11 +629,15 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             std::map<uint32_t, ComPtr<ID3D12PipelineState>> hostPassPipelines_;
             bool stencilRefSupported_ = false;
             bool hostTargetsEnabled_ = true;
+            // CB_RENDER_PATH=host: depth/stencil and multisampled draws go to host targets too (only formats and
+            // states the host cannot do stay on the ROV), so a depth buffer is never compared both ways.
+            bool hostAll_ = false;
             uint64_t hostDraws_ = 0, rovDraws_ = 0;
             static uint32_t TileHeight(uint32_t msaa) { return msaa == 0 ? 16 : 8; }
             HostTarget* Target(bool depth, uint32_t base, uint32_t pitch, uint32_t msaa, uint32_t rows);
             bool Stale(const HostTarget& t) const;
             void TransitionTarget(HostTarget& t, D3D12_RESOURCE_STATES state);
+            UINT TargetSrvs(HostTarget& t);
             void StoreTarget(HostTarget& t);
             void LoadTarget(HostTarget& t);
             void StoreOverlapping(uint32_t first, uint32_t count, const HostTarget* except);
@@ -704,14 +745,18 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             CheckHr(device_->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
                                                  IID_PPV_ARGS(&rootSignature_)), "CreateRootSignature");
 
-            // Compute (resolves and clears, resolve.h): constants b5, EDRAM u0 and guest memory u1 (heap slots 1-2).
+            // Compute (resolves and clears, resolve.h): constants b5, EDRAM u0 and guest memory u1 (heap slots 1-2), and
+            // for a resolve from a host render target its views t0-t1 (set only by those).
             D3D12_DESCRIPTOR_RANGE computeRange = { D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0, 0 };
-            D3D12_ROOT_PARAMETER computeParams[2] = {};
+            D3D12_DESCRIPTOR_RANGE computeSourceRange = { D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, 0 };
+            D3D12_ROOT_PARAMETER computeParams[3] = {};
             computeParams[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
             computeParams[0].Descriptor.ShaderRegister = 5;
             computeParams[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
             computeParams[1].DescriptorTable = { 1, &computeRange };
-            D3D12_ROOT_SIGNATURE_DESC computeDesc = { 2, computeParams };
+            computeParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            computeParams[2].DescriptorTable = { 1, &computeSourceRange };
+            D3D12_ROOT_SIGNATURE_DESC computeDesc = { 3, computeParams };
             blob.Reset();
             error.Reset();
             if (FAILED(D3D12SerializeRootSignature(&computeDesc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)))
@@ -789,7 +834,16 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             if (heapDesc.Flags & D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER)
                 memoryDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER;
             CheckHr(device_->CreatePlacedResource(memoryHeap_.Get(), 0, &memoryDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                  IID_PPV_ARGS(&memory_)), "CreatePlacedResource (guest physical memory)");
+                                                  IID_PPV_ARGS(&memorySystem_)), "CreatePlacedResource (guest physical memory)");
+            if (g_localMemory)
+            {
+                memory_.Attach(CreateBuffer(guest::kPhysicalSize, D3D12_HEAP_TYPE_DEFAULT,
+                                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, "guest physical memory (video memory)"));
+                MarkMemoryWritten(0, guest::kPhysicalSize);
+                Log("GPU: guest physical memory is kept in video memory (CB_LOCAL_MEMORY)");
+            }
+            else
+                memory_ = memorySystem_;
 
             edram_.Attach(CreateBuffer(kEdramBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                                        "EDRAM buffer"));
@@ -916,8 +970,11 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                     stencilRefSupported_ = options.PSSpecifiedStencilRefSupported;
                 if (const char* path = std::getenv("CB_RENDER_PATH"); path && std::string(path) == "rov")
                     hostTargetsEnabled_ = false;
-                Log("GPU: render path: {} (SV_StencilRef {})", hostTargetsEnabled_ ? "host render targets, ROV for the rest"
-                    : "ROV output merger only (CB_RENDER_PATH=rov)", stencilRefSupported_ ? "supported" : "not supported");
+                else if (path && std::string(path) == "host")
+                    hostAll_ = true;
+                Log("GPU: render path: {} (SV_StencilRef {})", !hostTargetsEnabled_ ? "ROV output merger only (CB_RENDER_PATH=rov)"
+                    : hostAll_ ? "host render targets for everything they can do (CB_RENDER_PATH=host)"
+                    : "host render targets, ROV for the rest", stencilRefSupported_ ? "supported" : "not supported");
             }
             OpenPipelineLibrary();
             Log("GPU: renderer ready (guest memory heap flags {:X}, EDRAM {} bytes)", uint32_t(heapDesc.Flags), kEdramBytes);
@@ -1287,6 +1344,50 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             list_->ResourceBarrier(1, &barrier);
         }
 
+        // Copies the written pages of guest memory into the GPU's copy (LocalMemory), in stream order before the work
+        // recorded after it. A page written again while the copy waits to run is copied again next time.
+        void Renderer::UploadMemory()
+        {
+            if (!g_localMemory || !g_memoryAnyWritten.exchange(false, std::memory_order_acq_rel))
+                return;
+            BeginRecording();
+            uint64_t runStart = 0, runPages = 0, bytes = 0;
+            auto flush = [&] {
+                if (!runPages)
+                    return;
+                SetMemoryState(D3D12_RESOURCE_STATE_COPY_DEST);
+                list_->CopyBufferRegion(memory_.Get(), runStart << kMemoryPageShift, memorySystem_.Get(),
+                                        runStart << kMemoryPageShift, runPages << kMemoryPageShift);
+                bytes += runPages << kMemoryPageShift;
+                runPages = 0;
+            };
+            for (uint32_t w = 0; w < kMemoryPageWords; w++)
+            {
+                uint64_t bits = g_memoryWritten[w].load(std::memory_order_relaxed);
+                if (bits)
+                    bits = g_memoryWritten[w].exchange(0, std::memory_order_acq_rel);
+                if (!bits)
+                {
+                    flush();
+                    continue;
+                }
+                for (uint32_t b = 0; b < 64; b++)
+                {
+                    const uint64_t page = uint64_t(w) * 64 + b;
+                    if ((bits >> b) & 1)
+                    {
+                        if (!runPages)
+                            runStart = page;
+                        runPages++;
+                    }
+                    else
+                        flush();
+                }
+            }
+            flush();
+            memoryUploaded_ += bytes;
+        }
+
         void Renderer::SetMemoryState(D3D12_RESOURCE_STATES state)
         {
             if (memoryState_ == state)
@@ -1346,7 +1447,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 }
             texture.state = kShaderResource;
             Transition(texture.resource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, texture.state);
-            if (g_dumpTextures)
+            if (g_dumpTextures && (g_dumpTexturesFrame == 1 || SwapCount() + 1 == g_dumpTexturesFrame))
             {
                 TextureReadback readback = RecordTextureReadback(texture);
                 readback.dumpName = std::format("tex_{:08X}_{}x{}{}_f{}", texture.fetch.baseAddress ? texture.fetch.baseAddress
@@ -1782,8 +1883,11 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             // the same samples near their shared edge (RTX 3060, 2026-10-19), so those samples were blended twice:
             // dark 2x2 specks along the dashboard background's quad diagonal and dashes on the boot ribbons.
             desc.RasterizerState.ForcedSampleCount = 0;
-            desc.DepthStencilState.DepthEnable = FALSE;
-            desc.DepthStencilState.StencilEnable = FALSE;
+            if (!key.host)
+            {
+                desc.DepthStencilState.DepthEnable = FALSE;
+                desc.DepthStencilState.StencilEnable = FALSE;
+            }
             desc.PrimitiveTopologyType = key.topology;
             if (key.stripCut)
                 desc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFFFFFF;
@@ -1929,7 +2033,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
             desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
             desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-            desc.SampleDesc.Count = msaa != 0 ? 4 : 1;
+            desc.SampleDesc.Count = HostMs(msaa) ? 4 : 1;
             if (kind == 0)
             {
                 desc.NumRenderTargets = 1;
@@ -1986,7 +2090,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             desc.DepthOrArraySize = 1;
             desc.MipLevels = 1;
             desc.Format = depth ? DXGI_FORMAT_R24G8_TYPELESS : DXGI_FORMAT_R8G8B8A8_TYPELESS;
-            desc.SampleDesc.Count = msaa != 0 ? 4 : 1;
+            desc.SampleDesc.Count = HostMs(msaa) ? 4 : 1;
             desc.Flags = depth ? D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL : D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
             t->state = depth ? D3D12_RESOURCE_STATE_DEPTH_WRITE : D3D12_RESOURCE_STATE_RENDER_TARGET;
             CheckHr(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, t->state, nullptr,
@@ -1999,14 +2103,14 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             {
                 D3D12_DEPTH_STENCIL_VIEW_DESC v = {};
                 v.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-                v.ViewDimension = msaa != 0 ? D3D12_DSV_DIMENSION_TEXTURE2DMS : D3D12_DSV_DIMENSION_TEXTURE2D;
+                v.ViewDimension = HostMs(msaa) ? D3D12_DSV_DIMENSION_TEXTURE2DMS : D3D12_DSV_DIMENSION_TEXTURE2D;
                 device_->CreateDepthStencilView(t->resource.Get(), &v, TargetView(*t));
             }
             else
             {
                 D3D12_RENDER_TARGET_VIEW_DESC v = {};
                 v.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-                v.ViewDimension = msaa != 0 ? D3D12_RTV_DIMENSION_TEXTURE2DMS : D3D12_RTV_DIMENSION_TEXTURE2D;
+                v.ViewDimension = HostMs(msaa) ? D3D12_RTV_DIMENSION_TEXTURE2DMS : D3D12_RTV_DIMENSION_TEXTURE2D;
                 device_->CreateRenderTargetView(t->resource.Get(), &v, TargetView(*t));
             }
             LogOnce(std::format("host render target: {} at tile {}, {} x {} ({}x MSAA)", depth ? "D24S8" : "8_8_8_8",
@@ -2025,31 +2129,12 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
         {
             if (!t.dirty)
                 return;
-            if (srvNext_ + 2 > kSrvHeapSize)
-                Sync(SyncReason::kDescriptors);
+            if (g_hostLogFrame && SwapCount() + 1 == g_hostLogFrame)
+                Log("host-log   store {} at {} ({} rows, msaa {}) before draw {}", t.depth ? "depth" : "colour", t.base, t.rows,
+                    t.msaa, drawOfFrame_);
+            const UINT index = TargetSrvs(t);
             BeginRecording();
             GpuScope scope(*this, 1);
-            const UINT index = srvNext_;
-            srvNext_ += 2;
-            D3D12_SHADER_RESOURCE_VIEW_DESC v = {};
-            v.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            v.ViewDimension = t.msaa != 0 ? D3D12_SRV_DIMENSION_TEXTURE2DMS : D3D12_SRV_DIMENSION_TEXTURE2D;
-            v.Texture2D.MipLevels = 1;
-            if (t.depth)
-            {
-                v.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index));
-                v.Format = DXGI_FORMAT_X24_TYPELESS_G8_UINT;
-                if (t.msaa == 0)
-                    v.Texture2D.PlaneSlice = 1;
-                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index + 1));
-            }
-            else
-            {
-                v.Format = DXGI_FORMAT_R8G8B8A8_UINT;
-                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index));
-                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index + 1));
-            }
             TransitionTarget(t, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             UavBarrier(edram_.Get());
             const HostTargetConstants c = { t.base, t.pitchTiles, t.msaa, 0, t.width, t.height, 0, 0 };
@@ -2065,8 +2150,41 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             t.synced = edramClock_;
         }
 
+        // Two shader resource views of a target in the SRV ring (colour: R8G8B8A8_UINT twice; depth: depth, stencil).
+        UINT Renderer::TargetSrvs(HostTarget& t)
+        {
+            if (srvNext_ + 2 > kSrvHeapSize)
+                Sync(SyncReason::kDescriptors);
+            BeginRecording();
+            const UINT index = srvNext_;
+            srvNext_ += 2;
+            D3D12_SHADER_RESOURCE_VIEW_DESC v = {};
+            v.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            v.ViewDimension = HostMs(t.msaa) ? D3D12_SRV_DIMENSION_TEXTURE2DMS : D3D12_SRV_DIMENSION_TEXTURE2D;
+            v.Texture2D.MipLevels = 1;
+            if (t.depth)
+            {
+                v.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index));
+                v.Format = DXGI_FORMAT_X24_TYPELESS_G8_UINT;
+                if (!HostMs(t.msaa))
+                    v.Texture2D.PlaneSlice = 1;
+                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index + 1));
+            }
+            else
+            {
+                v.Format = DXGI_FORMAT_R8G8B8A8_UINT;
+                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index));
+                device_->CreateShaderResourceView(t.resource.Get(), &v, SrvCpu(index + 1));
+            }
+            return index;
+        }
+
         void Renderer::LoadTarget(HostTarget& t)
         {
+            if (g_hostLogFrame && SwapCount() + 1 == g_hostLogFrame)
+                Log("host-log   load {} at {} ({} rows, msaa {}) before draw {}", t.depth ? "depth" : "colour", t.base, t.rows,
+                    t.msaa, drawOfFrame_);
             BeginRecording();
             GpuScope scope(*this, 1);
             UavBarrier(edram_.Get());
@@ -2107,7 +2225,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
         // Whether host render targets can draw this exactly enough: one 8_8_8_8 colour target (or none) without an
         // exponent bias, D3D-expressible blending, D24S8 depth/stencil without polygon offset and with the same
         // stencil reference and masks for both faces. Everything else stays on the ROV output merger.
-        bool HostEligible(const OutputMergerKey& om, uint32_t stencilFront, uint32_t stencilBack)
+        bool HostEligible(const OutputMergerKey& om, uint32_t stencilFront, uint32_t stencilBack, bool all)
         {
             for (uint32_t rt = 1; rt < 4; rt++)
                 if (om.colorFormat[rt] != kRtDisabled)
@@ -2127,7 +2245,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             // Mixed with ROV draws on the same buffer, the host's D24 conversion and compare differed by a step from
             // the ROV's round-to-nearest, and hidden ribbon edges showed through the boot animation's orb as thin
             // "crack" curves.
-            if (om.depthControl & 0x7) // stencil enable, z enable, z write
+            if (!all && (om.depthControl & 0x7)) // stencil enable, z enable, z write
                 return false;
             if (om.depthControl)
             {
@@ -2144,6 +2262,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
 
         void Renderer::Draw(const DrawPacket& draw, const Shader* vs, const Shader* ps)
         {
+            UploadMemory();
             if (const uint64_t swap = SwapCount(); swap != drawOfFrameSwap_)
             {
                 drawOfFrameSwap_ = swap;
@@ -2151,6 +2270,12 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             }
             else
                 drawOfFrame_++;
+            for (const auto& [frame, draw] : g_edramDumpAt)
+                if (SwapCount() + 1 == frame && drawOfFrame_ == draw)
+                {
+                    StoreAllDirty();
+                    DumpEdram(frame * 10000 + draw);
+                }
             GpuScope scope(*this, 0);
             const uint32_t mode = Reg(0x2208) & 7; // RB_MODECONTROL
             if (mode == 6)
@@ -2488,23 +2613,30 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const uint32_t rows = (uint32_t(std::max(drawBottom, 1)) + TileHeight(msaa) - 1) / TileHeight(msaa);
             const uint32_t colorBase0 = Reg(kColorInfo[0]) & 0x7FF, depthBase0 = Reg(0x2002) & 0x7FF;
             const bool colorOn = om.colorFormat[0] != kRtDisabled;
-            bool host = hostTargetsEnabled_ && HostEligible(om, Reg(0x210D), Reg(0x210C));
+            bool host = hostTargetsEnabled_ && HostEligible(om, Reg(0x210D), Reg(0x210C), hostAll_);
+            const char* rovReason = !hostTargetsEnabled_ ? "rov only" : host ? "" : "state or format";
             // Multisampled draws stay on the ROV output merger: the host targets' depth under MSAA does not match the
             // samples the ROV draws leave in EDRAM (the boot animation's X, depth-tested and blended at 4x, came out
             // wrong). The dashboard's UI is not multisampled.
-            if (msaa != 0)
-                host = false;
+            if (host && msaa != 0 && !hostAll_)
+                host = false, rovReason = "msaa";
             {
                 auto fits = [&](uint32_t base) { return pitchTiles != 0 && base + pitchTiles * rows <= 2048; };
-                if (host && ((colorOn && !fits(colorBase0)) || (om.depthControl && !fits(depthBase0))))
-                    host = false;
+                if (host && colorOn && !fits(colorBase0))
+                    host = false, rovReason = "colour wraps the EDRAM";
+                if (host && om.depthControl && !fits(depthBase0))
+                    host = false, rovReason = "depth wraps the EDRAM";
                 if (host && colorOn && om.depthControl)
                 {
                     const uint32_t span = pitchTiles * rows;
                     if (colorBase0 < depthBase0 + span && depthBase0 < colorBase0 + span)
-                        host = false;
+                        host = false, rovReason = "colour and depth overlap";
                 }
             }
+            if (g_hostLogFrame && SwapCount() + 1 == g_hostLogFrame)
+                Log("host-log draw {}: {} {} | msaa {} pitch {} rows {} colour {}@{} depth {:08X}@{}", drawOfFrame_,
+                    host ? "host" : "rov", rovReason, msaa, pitch, rows, colorOn ? om.colorFormat[0] : 99, colorBase0,
+                    om.depthControl, depthBase0);
 
             const HostShader* hostPs = nullptr;
             const std::vector<uint8_t>* psBytecode;
@@ -2654,7 +2786,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             if (host)
             {
                 pipelineKey.host = true;
-                pipelineKey.samples = msaa != 0 ? 4 : 1;
+                pipelineKey.samples = HostMs(msaa) ? 4 : 1;
                 pipelineKey.color = colorTarget != nullptr;
                 pipelineKey.depthStencil = depthTarget != nullptr;
                 pipelineKey.blend = colorOn ? om.blendControl[0] : 0;
@@ -2722,6 +2854,9 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 if (depthTarget)
                     depthTarget->dirty = true;
                 hostDraws_++;
+                if (g_hostLogFrame && SwapCount() + 1 == g_hostLogFrame)
+                    Log("host-log   drew {} host: {} vertices, depth target {} control {:08X} viewport z {}-{} samples {}", drawOfFrame_, hostCount,
+                        depthTarget ? depthTarget->base : 9999, om.depthControl, viewport.MinDepth, viewport.MaxDepth, pipelineKey.samples);
             }
             else
             {
@@ -2869,8 +3004,61 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const ResolveInfo info = DecodeResolve();
             if (info.empty)
                 return;
+            UploadMemory();
             LogOnce(DescribeResolve(info));
-            StoreAllDirty(); // the copy reads, the clears write the EDRAM
+            if (g_hostLogFrame && SwapCount() + 1 == g_hostLogFrame)
+                Log("host-log   resolve before draw {}: {}", drawOfFrame_, DescribeResolve(info));
+            // Host render targets stay the newest copy where they can (the EDRAM is written back only when something
+            // else needs those tiles): the copy reads a dirty target of the source surface directly, and a clear also
+            // clears the target of the cleared surface, which so stays in step with the EDRAM.
+            auto rowsOf = [](uint32_t base, uint32_t pitchTiles, uint32_t msaa, uint32_t y0, uint32_t height,
+                             uint32_t& first, uint32_t& count) {
+                const uint32_t top = y0 / TileHeight(msaa), bottom = (y0 + height + TileHeight(msaa) - 1) / TileHeight(msaa);
+                first = base + top * pitchTiles;
+                count = std::min<uint32_t>((bottom - top) * pitchTiles, 2048);
+            };
+            auto surfaceTarget = [&](bool depth, uint32_t base, uint32_t pitchTiles, uint32_t msaa, uint32_t x1,
+                                     uint32_t y1) -> HostTarget* {
+                for (auto& t : hostTargets_)
+                    if (t->depth == depth && t->base == base && t->pitchTiles == pitchTiles && t->msaa == msaa &&
+                        x1 <= t->width && y1 <= t->height)
+                        return t.get();
+                return nullptr;
+            };
+            ResolveKey key = info.key;
+            HostTarget* source = nullptr;
+            if (info.copy)
+            {
+                const ResolveConstants& c = info.constants;
+                source = surfaceTarget(key.depth, c.sourceBase, c.pitchTiles, key.msaa, c.x0 + c.width, c.y0 + c.height);
+                if (source && !source->dirty)
+                    source = nullptr; // the EDRAM holds the same data
+                uint32_t first, count;
+                rowsOf(c.sourceBase, c.pitchTiles, key.msaa, c.y0, c.height, first, count);
+                StoreOverlapping(first, count, source);
+                if (source)
+                    key.hostSource = (source->depth ? 3 : 1) + (HostMs(source->msaa) ? 1 : 0);
+            }
+            struct ClearOfTarget
+            {
+                const ClearConstants* clear;
+                HostTarget* target; // the target of the cleared surface, or none
+                bool inStep;        // it was in step with the EDRAM (or newer) before the clear
+                uint32_t first, count;
+            };
+            std::vector<ClearOfTarget> clears;
+            for (const ClearConstants* clear : { &info.depthClear, &info.colorClear })
+            {
+                if (clear == &info.depthClear ? !info.clearDepth : !info.clearColor)
+                    continue;
+                ClearOfTarget c = { clear, surfaceTarget(clear->depth != 0, clear->base, clear->pitchTiles, clear->msaa,
+                                                         clear->x0 + clear->width, clear->y0 + clear->height) };
+                c.inStep = c.target && (c.target->dirty || !Stale(*c.target));
+                rowsOf(clear->base, clear->pitchTiles, clear->msaa, clear->y0, clear->height, c.first, c.count);
+                StoreOverlapping(c.first, c.count, c.target);
+                clears.push_back(c);
+            }
+            const UINT sourceViews = source ? TargetSrvs(*source) : 0;
             BeginRecording();
             GpuScope scope(*this, 1);
             UavBarrier(edram_.Get());
@@ -2879,11 +3067,16 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             if (info.copy)
             {
                 SetMemoryState(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-                ComPtr<ID3D12PipelineState>& pipeline = resolvePipelines_[info.key];
+                ComPtr<ID3D12PipelineState>& pipeline = resolvePipelines_[key];
                 if (!pipeline)
                 {
-                    pipeline.Attach(ComputePipeline(ResolveHlsl(info.key, ResolveTarget::kRenderer), "resolve"));
-                    RecordHelper(1, &info.key, sizeof(info.key));
+                    pipeline.Attach(ComputePipeline(ResolveHlsl(key, ResolveTarget::kRenderer), "resolve"));
+                    RecordHelper(1, &key, sizeof(key));
+                }
+                if (source)
+                {
+                    TransitionTarget(*source, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                    list_->SetComputeRootDescriptorTable(2, SrvGpu(sourceViews));
                 }
                 list_->SetPipelineState(pipeline.Get());
                 list_->SetComputeRootConstantBufferView(0, UploadData(&info.constants, sizeof(info.constants)));
@@ -2891,12 +3084,12 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 // Stream-order invalidation (07 §10, 05b §5): textures over the written range are untiled again at their
                 // next use, by a dispatch recorded after this copy.
                 pendingResolves_.emplace_back(info.extentStart, info.extentEnd);
-                for (auto& [key, texture] : textures_)
+                for (auto& [k, texture] : textures_)
                     for (const auto& [start, end] : texture.layout.extents)
                         if (start < info.extentEnd && info.extentStart < end)
                             texture.dirty = true;
             }
-            if (info.clearDepth || info.clearColor)
+            if (!clears.empty())
             {
                 if (!clearPipeline_)
                 {
@@ -2904,17 +3097,38 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                     RecordHelper(2, nullptr, 0);
                 }
                 list_->SetPipelineState(clearPipeline_.Get());
-                for (const ClearConstants* clear : { &info.depthClear, &info.colorClear })
+                for (const ClearOfTarget& c : clears)
                 {
-                    if (clear == &info.depthClear ? !info.clearDepth : !info.clearColor)
-                        continue;
                     UavBarrier(edram_.Get());
-                    list_->SetComputeRootConstantBufferView(0, UploadData(clear, sizeof(*clear)));
-                    list_->Dispatch(clear->width / 8, clear->height / 8, 1);
+                    list_->SetComputeRootConstantBufferView(0, UploadData(c.clear, sizeof(*c.clear)));
+                    list_->Dispatch(c.clear->width / 8, c.clear->height / 8, 1);
+                }
+                for (const ClearOfTarget& c : clears)
+                {
+                    EdramWritten(c.first, c.count); // other targets over these tiles reload from the cleared EDRAM
+                    if (!c.target)
+                        continue;
+                    HostTarget& t = *c.target;
+                    const D3D12_RECT rect = { LONG(c.clear->x0), LONG(c.clear->y0), LONG(c.clear->x0 + c.clear->width),
+                                              LONG(c.clear->y0 + c.clear->height) };
+                    const uint32_t v = c.clear->value;
+                    if (t.depth)
+                    {
+                        TransitionTarget(t, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+                        list_->ClearDepthStencilView(TargetView(t), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+                                                     float(v >> 8) / 16777215.0f, UINT8(v & 0xFF), 1, &rect);
+                    }
+                    else
+                    {
+                        TransitionTarget(t, D3D12_RESOURCE_STATE_RENDER_TARGET);
+                        const float color[4] = { float(v & 0xFF) / 255.0f, float((v >> 8) & 0xFF) / 255.0f,
+                                                 float((v >> 16) & 0xFF) / 255.0f, float(v >> 24) / 255.0f };
+                        list_->ClearRenderTargetView(TargetView(t), color, 1, &rect);
+                    }
+                    if (c.inStep)
+                        t.synced = edramClock_;
                 }
             }
-            if (info.clearDepth || info.clearColor)
-                EdramWritten(0, 2048); // every host target reloads from the cleared EDRAM
             UavBarrier(edram_.Get());
             SubmitBatchIfDue();
         }
@@ -3129,6 +3343,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             BeginRecording();
             PresentConstants c = constants;
             const bool systemUi = UpdateOverlay(c.width, c.height);
+            UploadMemory();
             if (c.overlay != 2) // XAM's own overlay (CB_RECOMP_XAM) replaces the runtime's system UI
                 c.overlay = systemUi ? 1 : 0;
             SetMemoryState(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -4127,6 +4342,25 @@ void main(uint3 id : SV_DispatchThreadID)
                 g_renderer = new Renderer();
             return *g_renderer;
         }
+    }
+
+    bool LocalMemory() { return g_localMemory; }
+
+    void MarkMemoryWritten(uint32_t physical, uint32_t size)
+    {
+        if (!g_localMemory || size == 0)
+            return;
+        const uint64_t first = uint64_t(physical & (guest::kPhysicalSize - 1)) >> kMemoryPageShift;
+        const uint64_t last = std::min<uint64_t>((uint64_t(physical & (guest::kPhysicalSize - 1)) + size - 1) >> kMemoryPageShift,
+                                                 (guest::kPhysicalSize >> kMemoryPageShift) - 1);
+        for (uint64_t page = first; page <= last;)
+        {
+            const uint64_t word = page / 64, bit = page % 64, n = std::min<uint64_t>(64 - bit, last - page + 1);
+            const uint64_t mask = (n == 64 ? ~0ull : ((1ull << n) - 1)) << bit;
+            g_memoryWritten[word].fetch_or(mask, std::memory_order_relaxed);
+            page += n;
+        }
+        g_memoryAnyWritten.store(true, std::memory_order_release);
     }
 
     bool RendererEnabled()

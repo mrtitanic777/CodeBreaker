@@ -36,6 +36,11 @@ namespace gpu
         bool swap = false;          // copy_dest_swap: red/blue exchange
         uint32_t endian = 0;        // copy_dest_endian (0 none, 1 8in16, 2 8in32, 3 16in32)
         int32_t expBias = 0;        // copy_dest_exp_bias (converting path only)
+        // Where the source samples are read (kRenderer only): 0 the EDRAM buffer; a host render target holding newer
+        // data than the EDRAM (renderer.cpp "Host render targets"), at t0 (and its stencil at t1): 1 colour, 2 colour
+        // multisampled, 3 depth/stencil, 4 depth/stencil multisampled. The dwords are the ones the target's store
+        // pass would write (host_targets_hlsl.h).
+        uint32_t hostSource = 0;
 
         auto operator<=>(const ResolveKey&) const = default;
     };

@@ -495,6 +495,36 @@ float4 xe_rs_decode(uint v)
             }
         }
 
+        // A host render target as the source: the dword of guest sample s is the one its store pass writes, read from
+        // the host sample holding it (host_targets_hlsl.h: 2x samples 0/1 are host 1/2, 4x 0..3 are host 0, 3, 2, 1).
+        if (key.hostSource)
+        {
+            if (target != ResolveTarget::kRenderer)
+                Fatal("GPU: a resolve from a host render target runs in the renderer only");
+            const bool ms = key.hostSource == 2 || key.hostSource == 4;
+            const std::string load = ms ? "Load(p, sample)" : "Load(uint3(p, 0u))";
+            if (key.hostSource <= 2)
+                text += std::format(R"HLSL(
+{0}<uint4> xe_rs_host_color : register(t0);
+uint xe_rs_source(uint2 p, uint sample)
+{{
+    uint4 c = xe_rs_host_color.{1};
+    return c.x | (c.y << 8) | (c.z << 16) | (c.w << 24);
+}}
+)HLSL", ms ? "Texture2DMS" : "Texture2D", load);
+            else
+                text += std::format(R"HLSL(
+{0}<float> xe_rs_host_depth : register(t0);
+{0}<uint2> xe_rs_host_stencil : register(t1);
+uint xe_rs_source(uint2 p, uint sample)
+{{
+    float z = xe_rs_host_depth.{1};
+    uint st = xe_rs_host_stencil.{1}.y;
+    return (uint(round(saturate(z) * 16777215.0)) << 8) | (st & 0xFFu);
+}}
+)HLSL", ms ? "Texture2DMS" : "Texture2D", load);
+        }
+
         text += R"HLSL(
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID)
@@ -503,9 +533,14 @@ void main(uint3 id : SV_DispatchThreadID)
         return;
     uint2 p = xe_rs_rect.xy + id.xy;
 )HLSL";
+        static const uint32_t kHostSample2x[2] = { 1, 2 }, kHostSample4x[4] = { 0, 3, 2, 1 };
         for (uint32_t i = 0; i < count; i++)
-            text += std::format("    uint d{} = xe_rs_edram_load(xe_edram_address(xe_rs_surface.x, xe_rs_surface.y, "
-                                "xe_edram_sample(p, {}u, {}u), {}));\n", i, samples[i], key.msaa, key.depth ? "true" : "false");
+            if (key.hostSource)
+                text += std::format("    uint d{} = xe_rs_source(p, {}u);\n", i,
+                                    key.msaa == 1 ? kHostSample2x[samples[i] & 1] : key.msaa == 2 ? kHostSample4x[samples[i]] : 0);
+            else
+                text += std::format("    uint d{} = xe_rs_edram_load(xe_edram_address(xe_rs_surface.x, xe_rs_surface.y, "
+                                    "xe_edram_sample(p, {}u, {}u), {}));\n", i, samples[i], key.msaa, key.depth ? "true" : "false");
         if (key.raw)
         {
             text += "    uint result = d0;\n";

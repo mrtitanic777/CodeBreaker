@@ -99,6 +99,10 @@ namespace gpu
 
     // Frames presented (runtime swap packets executed).
     uint64_t SwapCount();
+    // CB_LOCAL_MEMORY=1: the GPU works on its own copy of guest physical memory in video memory, brought up to date
+    // before each draw, resolve and present from the pages marked written here (physical addresses).
+    bool LocalMemory();
+    void MarkMemoryWritten(uint32_t physical, uint32_t size);
     // Feeds a GPU trace recorded by a Xenia-based renderer (.xtr) to the command processor, stopping after `frames`
     // swaps (0: all); CB_REPLAY_TRACE in main.cpp.
     void ReplayTrace(const std::string& path, uint64_t frames);
