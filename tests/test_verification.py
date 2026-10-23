@@ -304,6 +304,23 @@ def test_pascal_calls_are_said_first_pushed_first():
     assert 'USER_25("a,(b",0)' in out                          # not a pascal callee: as it was
 
 
+def test_a_constant_near_address_is_a_variable_and_a_batch_s_errors_name_their_functions(tmp_path):
+    """`*(int2 *)0x63b2` is said as a data-segment variable (Microsoft C addresses a variable
+    directly, a constant pointer through a register); and a source file of several functions that
+    the compiler refuses names the functions its errors are in, so the rest stay together."""
+    from codebreaker.build import msc6
+    decls, text = msc6.ds_globals("  *(xunknown1 *)0x34ee = 1;\n  x = *(int2 *)0x63b2 + *(int2 *)0x63b2;\n"
+                                  "  y = *(uint2 __far *)p;\n")
+    assert decls == "extern xunknown1 codebreaker_d34ee_xunknown1;\nextern int2 codebreaker_d63b2_int2;\n"
+    assert "codebreaker_d34ee_xunknown1 = 1;" in text and "*(uint2 __far *)p" in text
+    files, starts = msc6._batch_files([["a", "b"]], {"a": (0, "int f()\n{\n}"), "b": (0, "int g()\n{\n}")}, "B")
+    assert files == [("B0", "int f()\n{\n}\n\nint g()\n{\n}")] and starts == [[(3, "a"), (7, "b")]]
+    (tmp_path / "B0.TXT").write_text("B0.C\nB0.C(8) : error C2065: 'x' : undeclared identifier\n")
+    assert msc6._refused(str(tmp_path / "B0.TXT"), starts[0]) == ["b"]
+    (tmp_path / "B1.TXT").write_text("B1.C\nm.h(211) : error C2059: syntax error : '('\n")
+    assert msc6._refused(str(tmp_path / "B1.TXT"), starts[0]) == []     # the header's: none told apart
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""

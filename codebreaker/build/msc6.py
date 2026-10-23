@@ -211,6 +211,27 @@ def pascal_order(text, names):
         i = end
 
 
+_DEREF = re.compile(r"\*\s*\(\s*((?:unsigned |signed )?\w+)\s*\*\s*\)\s*(0x[0-9a-fA-F]+|\d+)\b")
+
+
+def ds_globals(text):
+    """(declarations, text): every read or write through a constant near address, `*(T *)0x63b2`,
+    made a variable of the data segment, `codebreaker_d63b2_T`. Microsoft C addresses a variable
+    directly (`mov ax, [63b2]`, the offset a fix-up); a constant pointer it loads into a register first
+    -- the source had the variable. One variable per address and type."""
+    seen = {}
+
+    def var(m):
+        typ, at = m.group(1), int(m.group(2), 0)
+        if at < 0x10 or typ in ("void", "code"):
+            return m.group(0)
+        nm = "codebreaker_d%04x_%s" % (at, re.sub(r"\W", "_", typ))
+        seen[nm] = typ
+        return nm
+    out = _DEREF.sub(var, text)
+    return "".join("extern %s %s;\n" % (t, n) for n, t in sorted(seen.items())), out
+
+
 def function_code(obj, name):
     """(bytes, mask) of the public function `name` in an OMF object file -- cut from its code segment
     between its public name and the next -- or None. A header's own functions (static helpers, the
@@ -227,15 +248,58 @@ def function_code(obj, name):
     return None
 
 
-def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6", names=None):
+def _session(work, header, files, flags, compiler, timeout):
+    """One emulator session compiling `files` [(stem, C text)] -> whether it ran to its end."""
+    emulator, home = _tools(compiler)
+    os.makedirs(work, exist_ok=True)
+    for f in os.listdir(work):
+        if f.lower().endswith((".obj", ".c", ".txt")):
+            os.remove(os.path.join(work, f))
+    with open(os.path.join(work, "M.H"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
+        f.write(header)
+    lines = ["@echo off"]
+    for stem, text in files:
+        with open(os.path.join(work, stem + ".C"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
+            f.write('#include "m.h"\n\n' + text + "\n")
+        lines.append("cl /nologo /c /W0 %s /Fo%s.OBJ %s.C > %s.TXT" % (flags, stem, stem, stem))
+    lines.append("echo DONE > DONE.TXT")
+    with open(os.path.join(work, "BLD.BAT"), "w", newline="") as f:
+        f.write("\r\n".join(lines) + "\r\n")
+    with open(os.path.join(work, "R.CONF"), "w", newline="\n") as f:
+        f.write(_CONF % (home, work))
+    try:
+        subprocess.run([emulator, "-conf", os.path.join(work, "R.CONF"), "-exit", "-nopromptfolder", "-silent"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        pass
+    return os.path.isfile(os.path.join(work, "DONE.TXT"))
+
+
+def _read(path):
+    if os.path.isfile(path):
+        with open(path, "rb") as f:
+            return f.read()
+    return None
+
+
+BATCH = 40          # functions to a source file when each is cut out by name
+
+
+def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6", names=None, batch=BATCH):
     """Compile each of `sources` {key: C text} with `header` before it. -> {key: (bytes, mask) or None}
     names: {key: function name} -- each key's code is that public function's (function_code), not the
-    object's first code segment."""
+    object's first code segment.
+
+    With names, `batch` functions share one source file: starting the compiler's passes (CL, C1, C2)
+    is most of the cost of compiling a function in the emulator, and Microsoft C compiles each
+    function of a file on its own (a near call to a neighbour in the file is resolved without a
+    fix-up, but those bytes are the linker's in the original too, and not compared). A file the
+    compiler refuses is compiled again one function to a file, so one function cannot sink the rest."""
     from codebreaker.base import cache, settings
-    emulator, home = _tools(compiler)
     if not available(compiler):
         raise RuntimeError("%s is not set up (settings.json: dosbox_x, %s)" % (compiler, compiler))
     out, todo = {}, {}
+    _emulator, home = _tools(compiler)
     stamp = cache.tool(os.path.join(home, "BIN", "CL.EXE"))
     for key, text in sources.items():
         k = cache.key(stamp, flags, header, text, "function " + names[key] if names and key in names else "")
@@ -248,44 +312,83 @@ def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6"
     if not todo:
         return out
     work = os.path.abspath(work or settings.state(compiler, "work"))
-    os.makedirs(work, exist_ok=True)
-    for f in os.listdir(work):
-        if f.lower().endswith((".obj", ".c", ".txt")):
-            os.remove(os.path.join(work, f))
-    with open(os.path.join(work, "M.H"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
-        f.write(header)
-    lines, files = ["@echo off"], {}
-    for i, (key, (_k, text)) in enumerate(todo.items()):
-        files[key] = "F%d" % i
-        with open(os.path.join(work, "F%d.C" % i), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
-            f.write('#include "m.h"\n\n' + text + "\n")
-        lines.append("cl /nologo /c /W0 %s /FoF%d.OBJ F%d.C >nul" % (flags, i, i))
-    lines.append("echo DONE > DONE.TXT")
-    with open(os.path.join(work, "BLD.BAT"), "w", newline="") as f:
-        f.write("\r\n".join(lines) + "\r\n")
-    with open(os.path.join(work, "R.CONF"), "w", newline="\n") as f:
-        f.write(_CONF % (home, work))
-    try:
-        subprocess.run([emulator, "-conf", os.path.join(work, "R.CONF"), "-exit", "-nopromptfolder", "-silent"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        pass
-    finished = os.path.isfile(os.path.join(work, "DONE.TXT"))
-    for key, (k, _text) in todo.items():
-        path = os.path.join(work, files[key] + ".OBJ")
-        built = None
-        if os.path.isfile(path):
-            with open(path, "rb") as f:
-                obj = f.read()
-            if names and key in names:
-                built = function_code(obj, names[key])
+    keys = list(todo)
+    built, unsettled = {}, set()             # (unsettled: no verdict -- the session was cut off -- so not cached)
+    single, retry = keys, []
+    if names and batch > 1 and len(keys) > 1:
+        groups = [g for g in ([k for k in keys[i:i + batch] if k in names] for i in range(0, len(keys), batch)) if g]
+        files, starts = _batch_files(groups, todo, "B")
+        finished = _session(work, header, files, flags, compiler, timeout)
+        single = [k for k in keys if k not in names]
+        for i, g in enumerate(groups):
+            obj = _read(os.path.join(work, "B%d.OBJ" % i))
+            if obj is not None:
+                built.update((k, function_code(obj, names[k])) for k in g)
+            elif not finished:
+                unsettled.update(g)
+            else:                                    # refused: the functions its errors are in go on their
+                bad = _refused(os.path.join(work, "B%d.TXT" % i), starts[i])     # own, the rest together
+                single += bad or g
+                rest = [k for k in g if k not in bad] if bad else []
+                if rest:
+                    retry.append(rest)
+    if single or retry:
+        files, _ = _batch_files(retry, todo, "R")
+        files += [("F%d" % j, todo[k][1]) for j, k in enumerate(single)]
+        finished = _session(work, header, files, flags, compiler, timeout)
+        for i, g in enumerate(retry):
+            obj = _read(os.path.join(work, "R%d.OBJ" % i))
+            if obj is not None:
+                built.update((k, function_code(obj, names[k])) for k in g)
+            else:
+                unsettled.update(g)                  # (refused again: an error the first file's hid)
+        for j, k in enumerate(single):
+            obj = _read(os.path.join(work, "F%d.OBJ" % j))
+            if obj is None:
+                built[k] = None
+                if not finished:
+                    unsettled.add(k)
+            elif names and k in names:
+                built[k] = function_code(obj, names[k])
             else:
                 code, mask = object_code(obj)
-                if code:
-                    built = (code, mask)
-        out[key] = built
-        if built:
-            cache.put("msc6", k, len(built[0]).to_bytes(4, "little") + built[0] + built[1])
-        elif finished:
+                built[k] = (code, mask) if code else None
+    for key, (k, _text) in todo.items():
+        got = out[key] = built.get(key)
+        if got:
+            cache.put("msc6", k, len(got[0]).to_bytes(4, "little") + got[0] + got[1])
+        elif key in built and key not in unsettled:
             cache.put("msc6", k, b"-")                       # the compiler refused it (not: the session was cut off)
     return out
+
+
+def _batch_files(groups, todo, prefix):
+    """([(stem, text)], [[(first line, key)]]): each group's functions in one file, and the line each
+    begins on (the file starts with the #include and a blank line)"""
+    files, starts = [], []
+    for i, g in enumerate(groups):
+        at, here = 3, []
+        for k in g:
+            here.append((at, k))
+            at += todo[k][1].count("\n") + 2         # (its lines, and the blank one between)
+        files.append(("%s%d" % (prefix, i), "\n\n".join(todo[k][1] for k in g)))
+        starts.append(here)
+    return files, starts
+
+
+def _refused(path, starts):
+    """the keys of the functions a refused file's errors are in -- [] when an error is not in the file
+    itself (the header's: then none can be told from another)"""
+    try:
+        text = open(path, encoding="latin1").read()
+    except OSError:
+        return []
+    bad = []
+    for name, line in re.findall(r"^(\S+)\((\d+)\) : (?:fatal )?error", text, re.M):
+        if not re.match(r"[BR]\d+\.C$", os.path.basename(name), re.I):
+            return []
+        at = int(line)
+        k = max((s for s in starts if s[0] <= at), default=None)
+        if k and k[1] not in bad:
+            bad.append(k[1])
+    return bad

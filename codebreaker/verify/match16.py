@@ -71,7 +71,7 @@ def _score(results):
                for v in results.values())
 
 
-def run(module_path, flags=None, limit=0, log=print, compiler=None):
+def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False):
     """-> ({segment: (compiler, flags)}, {name: (verdict, differing bytes, total)})
 
     Without `flags` the compiler and switches are chosen segment by segment (a segment is a source
@@ -93,7 +93,9 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None):
     header, _ = msc6.dialect(m.header, "")
     pascal = msc6.pascal_names(m.header, *m.texts.values())
     header = msc6.pascal_order(header, pascal)
-    texts = {fn: msc6.pascal_order(m.texts[fn], pascal) for fn in todo}
+    decls, header = msc6.ds_globals(header)
+    header += decls                                  # (after the typedefs; the header's macros use them)
+    texts = {fn: "".join(msc6.ds_globals(msc6.pascal_order(m.texts[fn], pascal))) for fn in todo}
     work = settings.state("match16", name, "work")
     segment = {fn: m.where[address[fn]][0] for fn in todo}
 
@@ -103,8 +105,17 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None):
         return {fn: (match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0))
                 for fn in names}
     segs = sorted(set(segment.values()))
+    import json
+    remembered = settings.state("match16", name, "choices.json")
+    known = {}
+    if os.path.isfile(remembered) and not choose and not compiler:
+        known = {int(s): tuple(v) for s, v in json.load(open(remembered)).items()}
     if flags:
         chosen = {s: (compilers[0], flags) for s in segs}
+    elif all(s in known for s in segs):
+        chosen = known                               # (found by an earlier run: --choose finds them again)
+        if log:
+            log("  each segment's compiler and switches as found before (%s)" % remembered)
     else:
         sample = {s: [fn for fn in todo if segment[fn] == s] for s in segs}
         sample = {s: v[::max(1, len(v) // 6)][:6] for s, v in sample.items()}
@@ -121,6 +132,9 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None):
             chosen[s] = best[1:]
             if log:
                 log("  segment %-3s %-8s %-16s (%.1f of a sample of %d)" % (s, best[1], best[2], best[0], len(sample[s])))
+        if not compiler:
+            with open(remembered, "w") as f:
+                json.dump({str(s): list(v) for s, v in chosen.items()}, f, indent=1)
     out = {}
     for s in segs:
         out.update(judged(chosen[s][0], chosen[s][1], [fn for fn in todo if segment[fn] == s]))
@@ -128,14 +142,14 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None):
 
 
 def main(argv):
-    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N]"""
+    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose]"""
     from codebreaker.base import corpus
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else None
     compiler = argv[argv.index("--compiler") + 1] if "--compiler" in argv else None
     limit = int(argv[argv.index("--first") + 1]) if "--first" in argv else 0
     args = [a for a in argv if not a.startswith("--") and a not in (flags, compiler, str(limit))]
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
-    chosen, results = run(path, flags, limit, compiler=compiler)
+    chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv)
     counts = {}
     for v in results.values():
         counts[v[0]] = counts.get(v[0], 0) + 1
