@@ -8,6 +8,7 @@
 
 #include "kernel/kernel.h"
 #include "kernel/enumerator.h"
+#include "kernel/objects.h"
 #include "kernel/overlapped.h"
 #include "kernel/profile_store.h"
 #include "kernel/users.h"
@@ -504,10 +505,44 @@ void kernel::users::LiveSignOut(uint32_t user)
     live::SignOut(user);
 }
 
+namespace
+{
+    std::atomic<uint32_t> g_lastLogonTick = 0; // GetTickCount of the last Xbox LIVE logon, 0 = none yet
+    bool AnyoneOnLive();
+}
+
+namespace kernel
+{
+    uint32_t OnlineGetLogonExtendedStatus(uint32_t buffer); // (kept out of kernel.h; xam_msg.cpp declares it too)
+}
+
 void kernel::LiveLogonCommitted(uint32_t user)
 {
     if (user < g_liveLogonCommitted.size())
         g_liveLogonCommitted[user] = true;
+    g_lastLogonTick = std::max<uint32_t>(::GetTickCount(), 1);
+}
+
+// XOnlineGetLogonExtendedStatus (XLiveBase 0x58055, XAM 0x818CA808): fills a caller-sized buffer (0x394, or 0x3E4
+// with the logon state's extra block) when the size at +0 is one of those; anything else is left alone. +4 XLiveBase's
+// logon state, +8 its last result, +0xC / +0x10 XNetLogonGetExtendedStatus, +0x14 milliseconds since the last logon
+// (0xFFFFFFFF none) and +0x18 its result (0x80070435 none), +0x1C the router's UPnP status and +0x4C on its strings,
+// +0x20 the service network ("PROD"). The dash's network test reads +8 and +0x18 (0x922CF330). Here the logon is our
+// LIVE server's: S_OK once a user signed in; no UPnP router was asked (zeros). Always S_OK.
+uint32_t kernel::OnlineGetLogonExtendedStatus(uint32_t buffer)
+{
+    auto& mem = guest::g_memory;
+    if (buffer == 0)
+        return kErrorSuccess;
+    const uint32_t size = mem.Read32(buffer);
+    if (size != 0x394 && size != 0x3E4)
+        return kErrorSuccess;
+    std::memset(mem.Translate(buffer + 4), 0, size - 4);
+    const uint32_t logonTick = g_lastLogonTick;
+    mem.Write32(buffer + 0x14, logonTick ? ::GetTickCount() - logonTick : 0xFFFFFFFF);
+    mem.Write32(buffer + 0x18, logonTick ? 0 : 0x80070435);
+    mem.Write32(buffer + 0x20, AnyoneOnLive() ? 0x50524F44 : 0);
+    return kErrorSuccess;
 }
 
 namespace
@@ -851,3 +886,54 @@ GUEST_IMPORT(XamGetErrorStringFromWebService)
     }
     ctx.r3.u64 = kCannotConnect;
 }
+// Session objects (XAM 0x816BAF90 / 0x816BB000): a title's XSession library keeps each session in an object of XAM's
+// session type (OBJECT_TYPE 0x81A82574, a 4-byte body it fills) and finds it again by handle.
+namespace
+{
+    constexpr uint32_t kErrorInvalidHandle = 6; // RtlNtStatusToDosError(STATUS_INVALID_HANDLE / _OBJECT_TYPE_MISMATCH)
+    std::mutex g_sessionMutex;
+    std::set<uint32_t> g_sessionObjects;
+}
+
+// DWORD XamSessionCreateHandle(PHANDLE Handle): ObCreateObject(session type, 4 bytes), then ObInsertObject; the
+// status as a Win32 error.
+GUEST_IMPORT(XamSessionCreateHandle)
+{
+    const uint32_t object = kernel::CreateOwnedObject(4);
+    {
+        std::lock_guard lock(g_sessionMutex);
+        g_sessionObjects.insert(object);
+    }
+    kernel::SetObjectCleanup(object, [object] {
+        std::lock_guard lock(g_sessionMutex);
+        g_sessionObjects.erase(object);
+    });
+    kernel::ReferenceObject(object); // the creation reference, which passes to the handle
+    const uint32_t handle = kernel::CreateHandle(object);
+    kernel::DereferenceObject(object);
+    if (ctx.r3.u32)
+        guest::g_memory.Write32(ctx.r3.u32, handle);
+    ctx.r3.u64 = 0;
+}
+
+// DWORD XamSessionRefObjByHandle(HANDLE Handle, PVOID* Object): ObReferenceObjectByHandle with the session type (the
+// caller releases it with ObDereferenceObject); ERROR_INVALID_HANDLE for another handle.
+GUEST_IMPORT(XamSessionRefObjByHandle)
+{
+    const uint32_t object = kernel::LookupHandle(ctx.r3.u32);
+    bool session;
+    {
+        std::lock_guard lock(g_sessionMutex);
+        session = object != 0 && g_sessionObjects.contains(object);
+    }
+    if (!session)
+    {
+        ctx.r3.u64 = kErrorInvalidHandle;
+        return;
+    }
+    kernel::ReferenceObject(object);
+    if (ctx.r4.u32)
+        guest::g_memory.Write32(ctx.r4.u32, object);
+    ctx.r3.u64 = 0;
+}
+

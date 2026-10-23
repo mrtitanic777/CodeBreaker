@@ -27,6 +27,11 @@
 #include <thread>
 #include <vector>
 
+namespace kernel
+{
+    uint32_t OnlineGetLogonExtendedStatus(uint32_t buffer); // kernel/xam_live.cpp
+}
+
 namespace
 {
     constexpr uint32_t kAppXam = 0xFE;
@@ -434,6 +439,8 @@ namespace
             // opens its title list (0x922C8xxx).
             return kernel::kErrorSuccess;
         }
+        if (app == kAppXLiveBase && message == 0x00058055)
+            return kernel::OnlineGetLogonExtendedStatus(buffer); // XOnlineGetLogonExtendedStatus (kernel/xam_live.cpp)
         if (app == kAppXLiveBase && message == 0x00058007)
             return kernel::OnlineGetServiceInfo(buffer, length); // XOnlineGetServiceInfo(ServiceId, Info)
         if (app == kAppXLiveBase && message == 0x00058024)
