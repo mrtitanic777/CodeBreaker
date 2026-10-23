@@ -1,7 +1,7 @@
 # Live client: the ports' own Xbox LIVE replacement (shared by both runtimes)
 
 Presence, friends, messages and parties from our own server (the owner's, private; protocol in
-`Shared/docs/network_protocol.md`). Owner's plan (2026-10-15): a profile that signs in connects to the server
+`docs/x360/network_protocol.md`). Owner's plan (2026-10-15): a profile that signs in connects to the server
 (127.0.0.1 for testing) and sends its status (the title it is in, party, online / offline). No Microsoft protocols,
 no crossplay with real consoles.
 

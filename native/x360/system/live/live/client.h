@@ -1,12 +1,12 @@
 #pragma once
 
-// The client of the ports' own Xbox LIVE replacement (Shared/docs/network_protocol.md): one TCP connection per running
+// The client of the ports' own Xbox LIVE replacement (docs/x360/network_protocol.md): one TCP connection per running
 // port, kept by a background thread that reconnects when the server comes back. Users are not signed in again after a
 // reconnect by themselves (SignIn / Reconnect). The XAM side of a runtime reads the cached state (friends, messages,
 // party) without blocking and is told about changes through the event handler; requests that need the server's
 // answer block up to a timeout.
 //
-// Runtime-neutral: it logs through the runtime's "log.h" (Log), like Shared/runtime/xui.
+// Runtime-neutral: it logs through the runtime's "log.h" (Log), like native/x360/system/xui.
 
 #include <cstdint>
 #include <functional>

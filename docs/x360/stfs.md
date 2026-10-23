@@ -1,4 +1,141 @@
-# STFS packages: format and the shared library (`runtime/stfs/`)
+# STFS packages (CON / LIVE / PIRS)
+
+The Xbox 360's package format: saves, profiles, themes, gamer pictures, Xbox LIVE downloads (Arcade games, add-ons,
+title updates) and the system update's packages. `native/x360/system/stfs` reads, verifies and writes them:
+`stfs/format.h` (the layout, as arithmetic on bytes), `stfs/package.h` (reading), `stfs/builder.h` (writing),
+`stfs/sign.h` (signatures). The dashboard mounts a package as `game:` (kernel/stfs_mount.cpp) and lists dropped
+packages in My Games (kernel/game_import.cpp). Block layout as in Xenia's StfsContainerDevice (BSD-3).
+
+## The three kinds
+
+| magic | signed by | what it is |
+|---|---|---|
+| `CON ` | a console (its own 1024-bit key) | saves, profiles, content a console made or copied |
+| `LIVE` | Microsoft (2048-bit) | Xbox LIVE downloads: Arcade games, add-ons, title updates |
+| `PIRS` | Microsoft (2048-bit) | system and offline content (system update packages, demos on discs) |
+
+Only CON packages are ever written. A LIVE or PIRS package moves between devices as a byte copy
+(`stfs::CopyPackage`); turning one into CON (the builder's metadata magic set to CON) clears its Microsoft
+signature area and makes its license unrestricted.
+
+## Header
+
+Big-endian unless noted. Offsets from the start of the file (`stfs::offsets`):
+
+| offset | size | field |
+|---|---|---|
+| 0x000 | 4 | magic |
+| 0x004 | 0x1A8 | CON: the console's certificate (it holds the public key) |
+| 0x1AC | 0x80 | CON: the console's signature, byte-reversed |
+| 0x004 | 0x100 | LIVE / PIRS: Microsoft's signature |
+| 0x22C | 16 x 0x10 | licenses; **the signed region [0x22C, 0x344) starts here** |
+| 0x32C | 20 | header hash: SHA-1 of [0x344, the first hash table) |
+| 0x340 | 4 | header size |
+| 0x344 | 4 | content type (0x1 saved game, 0x2 marketplace, 0x4000 installed game, 0x8000 storage pack, 0x9000 avatar item, 0x10000 profile, 0x20000 gamer picture, 0x30000 theme, 0x40000 cache file, 0xA0000 game title, 0xB0000 installer) |
+| 0x348 | 4 | metadata version (1 or 2) |
+| 0x34C | 8 | content size |
+| 0x354 / 0x358 / 0x35C / 0x360 | 4 each | media ID, version, base version, title ID |
+| 0x364..0x367 | 1 each | platform, executable type, disc number, discs in set |
+| 0x368 | 4 | save game ID |
+| 0x36C | 5 | console ID |
+| 0x371 | 8 | profile ID |
+| 0x379 | 0x24 | volume descriptor (below) |
+| 0x39D / 0x3A1 | 4 / 8 | data file count / size |
+| 0x3A9 | 4 | volume type: 0 STFS, 1 SVOD |
+| 0x3AD | 8 | online creator |
+| 0x3B5 | 4 | category |
+| 0x3D9 | | metadata v2: series ID (0x10), season ID (0x10), season / episode (u16 each) |
+| 0x3FD | 0x14 | device ID |
+| 0x411 | 9 x 0x100 | display names (UTF-16BE, 128 characters each, by language) |
+| 0xD11 | 9 x 0x100 | descriptions |
+| 0x1611 / 0x1691 | 0x80 each | publisher, title name |
+| 0x1711 | 1 | transfer flags |
+| 0x1712 / 0x1716 | 4 each | thumbnail size, title thumbnail size |
+| 0x171A | 0x4000 | thumbnail (PNG; v2: 0x3D00, then 3 more display names at 0x541A) |
+| 0x571A | 0x4000 | title thumbnail (v2: 0x3D00, then 3 more descriptions at 0x941A) |
+| 0x971A | | end of the metadata (the library's own header size; the first hash table is at 0xA000) |
+
+Metadata version 2 has 12 languages (the 9 of v1 and 3 more, in the thumbnails' last 0x300 bytes each).
+
+## Volume descriptor (0x379, 0x24 bytes)
+
+| offset | field |
+|---|---|
+| 0 | length (0x24) |
+| 1 | version |
+| 2 | flags: bit 0 read-only format (one copy of each hash table), bit 1 root active index (which copy is current) |
+| 3 | file table blocks (LE16) |
+| 5 | file table's first block (LE24) |
+| 8 | top hash (SHA-1 of the top hash table) |
+| 0x1C | total data blocks allocated |
+| 0x20 | free data blocks |
+
+## Blocks and hash tables
+
+Everything after the header is 4 KiB blocks. A *backing block* is counted from the first hash table (the header size
+rounded up to 4 KiB); *data blocks* are numbered without the hash tables between them.
+
+A hash table is 170 entries of 24 bytes: the SHA-1 of a block (20 bytes) and an info word (BE u32: its status and,
+for a data block, the next block of its file, 0xFFFFFF ending the chain). Level 0 covers 170 data blocks, level 1
+covers 170 level-0 tables (28 900 blocks), level 2 covers 170 level-1 tables (4 913 000 blocks, the most a package
+has). The layout interleaves them:
+
+```
+level-0 table 0, data 0..169,
+level-1 table 0, level-0 table 1, data 170..339, level-0 table 2, data 340..509, ...
+(after the first 28 900 data blocks) level-2 table, level-1 table 1, ...
+```
+
+A read-write package (flags bit 0 clear) keeps two copies of every table side by side; the root active index (and
+each table entry's own bits) says which copy is current. System packages use the read-only format. The top hash in
+the volume descriptor covers the highest table present (`stfs::TopHashLevel`).
+
+## File table
+
+The file table is a chain of data blocks starting at the descriptor's block; each holds 64 entries of 0x40 bytes:
+
+| offset | field |
+|---|---|
+| 0x00 | name (0x28 bytes, ASCII / CP-1252) |
+| 0x28 | name length (low 6 bits) and flags: 0x40 contiguous, 0x80 directory |
+| 0x29 / 0x2C / 0x2F | valid blocks, allocated blocks, first block (LE24 each) |
+| 0x32 | parent entry (BE16; 0xFFFF the root) |
+| 0x34 | size (BE32) |
+| 0x38 / 0x3C | updated / accessed (FAT date in the high 16 bits, time in the low) |
+
+An entry with no name is an empty slot. A contiguous file's blocks follow one another; any other file's blocks follow its
+chain through the level-0 hash entries.
+
+## Verifying
+
+`Package::Verify` reports, and reading never depends on it:
+- each data block's SHA-1 against its level-0 entry, each table against the entry above it, the top table against the
+  descriptor's top hash;
+- the header hash (0x32C) against [0x344, the first hash table);
+- the signature (below).
+
+## Signatures
+
+A console signs [0x22C, 0x344) (licenses, header hash, header size) with its 1024-bit RSA key: PKCS#1 v1.5 with SHA-1,
+the 0x80-byte result stored byte-reversed at 0x1AC; its certificate (0x1A8 bytes, from its keyvault) at 0x004 holds
+the public key that verifies it (`stfs::VerifySignature`: Valid, Invalid, Unsigned when the area is zero, NotChecked
+for LIVE / PIRS, which are Microsoft's and which the library cannot check).
+
+The library carries no key material and never looks for any. A key is the caller's: `ConsoleKey::FromXeCrypt` takes
+the XECRYPT_RSAPRV_1024 (0x1D0 bytes) and the certificate from the user's own decrypted keyvault;
+`GenerateConsoleKey` makes a stand-in console of the library's own (a certificate for its public key, retail type, no
+Microsoft signature) for a runtime run without one.
+
+## Writing
+
+`stfs::Builder` makes a new CON package from metadata, or takes over an existing package's header and files and
+changes them (add, replace, delete; paths case-insensitive, names up to 40 characters, parents created as needed).
+`Save` writes the whole file again -- data blocks, every hash level, the top hash, the header hash -- to
+`<out>.tmp` and renames it over `<out>`, so a package can be saved over itself. With `SaveOptions::key` the header is
+signed; without, the signature area keeps what it had (a new package: zero, unsigned). `readOnlyFormat` writes one
+copy of each table (as system packages are); the default is the read-write format consoles write for saves.
+
+## The library's work and tests (2026-10-18)
 
 Status (2026-10-18)
 - **Done**: library in `runtime/stfs/` (read, verify, write CON, sign with a caller-supplied key), standalone tests

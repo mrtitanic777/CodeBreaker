@@ -1,6 +1,6 @@
 #pragma once
 
-// Party voice chat (Shared/docs/network_protocol.md "Voice"): while a signed-in user is in a party, the PC's
+// Party voice chat (docs/x360/network_protocol.md "Voice"): while a signed-in user is in a party, the PC's
 // microphone goes to the party's other members through the server and their voices are mixed to the PC's speakers.
 // One voice stream per running port (the first signed-in user who is in a party). Started by live::Start.
 //

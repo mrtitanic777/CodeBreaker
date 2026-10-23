@@ -1,6 +1,6 @@
 #pragma once
 
-// CON package signatures (Shared/docs/stfs.md, "Signatures"). A console signs [0x22C, 0x344) of the header (licenses,
+// CON package signatures (docs/x360/stfs.md, "Signatures"). A console signs [0x22C, 0x344) of the header (licenses,
 // header hash, header size) with its 1024-bit RSA key: PKCS#1 v1.5 with SHA-1, the 0x80-byte result stored
 // byte-reversed at 0x1AC; its certificate (0x1A8 bytes, from its keyvault) is at 0x004 and holds the public key.
 // LIVE / PIRS packages are signed by Microsoft (2048-bit); the library never re-signs them.

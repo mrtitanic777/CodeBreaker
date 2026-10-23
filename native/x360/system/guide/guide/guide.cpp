@@ -174,7 +174,7 @@ namespace
         const auto profile = host::SignedIn(user);
         if (!profile)
             return info;
-        // Signed in to the ports' own Xbox LIVE (Shared/runtime/live) 7; else a LIVE profile is "LIVE-enabled,
+        // Signed in to the ports' own Xbox LIVE (native/x360/system/live) 7; else a LIVE profile is "LIVE-enabled,
         // offline" (8), a local one 9.
         info.state = host::OnLive(user) ? 7 : profile->liveEnabled ? 8 : 9;
         if (info.state == 7)

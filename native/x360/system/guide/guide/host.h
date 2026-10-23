@@ -1,11 +1,11 @@
 #pragma once
 
-// What the Guide library (Shared/runtime/guide: the Xbox Guide's screens and behaviour) needs from the runtime that
+// What the Guide library (native/x360/system/guide: the Xbox Guide's screens and behaviour) needs from the runtime that
 // builds it. Besides the functions below, defined once in the runtime:
 // - "log.h" on the include path with Log(fmt, ...) and Fatal(fmt, ...) (std::format style), as both runtimes have;
-// - the XUI library (Shared/runtime/xui: the drawing) and the live client (Shared/runtime/live: friends, messages,
+// - the XUI library (native/x360/system/xui: the drawing) and the live client (native/x360/system/live: friends, messages,
 //   party, voice) in the same target; the Guide calls both directly.
-// Interface and how to adopt it: Shared/docs/shared_guide.md.
+// Interface and how to adopt it: docs/x360/shared_guide.md.
 
 #include <cstdint>
 #include <functional>

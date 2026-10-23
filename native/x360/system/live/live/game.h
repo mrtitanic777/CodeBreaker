@@ -1,6 +1,6 @@
 #pragma once
 
-// Game data (Shared/docs/network_protocol.md "Game data"): a title's datagrams to other consoles, relayed by the
+// Game data (docs/x360/network_protocol.md "Game data"): a title's datagrams to other consoles, relayed by the
 // server over its UDP port. A console is addressed by a handle 10.x.y.z made of its online XUID's low 24 bits.
 // Started by a runtime whose titles play online (it hands received datagrams to its virtual sockets).
 

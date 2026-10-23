@@ -12,7 +12,7 @@
 // `string`). (Format checked on Minecraft TU46's SPA 584111F7 and the dashboard's FFFE07D1; Xenia Canary reads the
 // same XML: util/xlast.cc, util/presence_string_builder.cc.)
 //
-// Needs Shared/runtime/xui (xui/inflate.h) in the same target.
+// Needs native/x360/system/xui (xui/inflate.h) in the same target.
 
 #include <cstdint>
 #include <functional>

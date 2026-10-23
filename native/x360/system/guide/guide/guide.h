@@ -1,10 +1,10 @@
 #pragma once
 
 // The Xbox Guide (hud.xex 17559's GuideMainScene and the screens it opens): its main blades, Sign In / Sign Out,
-// Achievements, the Community (friends, messages, party with voice, over our Xbox LIVE: Shared/runtime/live), a
+// Achievements, the Community (friends, messages, party with voice, over our Xbox LIVE: native/x360/system/live), a
 // player's Profile, the user's own Profile and Edit Profile, Gamer Zone, the dashboard items and Turn Off Console.
-// Drawn by the XUI library (Shared/runtime/xui); everything runtime-specific goes through guide/host.h.
-// Interface and how to adopt it: Shared/docs/shared_guide.md.
+// Drawn by the XUI library (native/x360/system/xui); everything runtime-specific goes through guide/host.h.
+// Interface and how to adopt it: docs/x360/shared_guide.md.
 //
 // The entry points open the Guide as the runtime's one system UI (host::OpenSystemUi); a title's XamShow*UI gets
 // their result: 0 (ERROR_SUCCESS) once open, or when the user is not on Xbox LIVE and the screen needs it (nothing

@@ -1,8 +1,8 @@
 # The Guide library: the Xbox Guide's screens and behaviour (friends, messages, party, profiles, sign-in,
-# achievements), shared by every port so each shows the same Guide (Shared/docs/shared_guide.md).
+# achievements), shared by every port so each shows the same Guide (docs/x360/shared_guide.md).
 #
 # Use from a runtime's CMakeLists.txt, together with the XUI library and the live client it calls:
-#   include("<path to Shared>/runtime/guide/guide.cmake")
+#   include("<CodeBreaker>/native/x360/system/guide/guide.cmake")
 #   target_sources(<runtime> PRIVATE ${X360_GUIDE_SOURCES})
 #   target_include_directories(<runtime> PRIVATE ${X360_GUIDE_INCLUDE_DIR})
 # The sources compile as part of the runtime's target (its flags; its "log.h"); the runtime defines the functions in
