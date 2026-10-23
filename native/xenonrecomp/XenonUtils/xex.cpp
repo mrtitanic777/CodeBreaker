@@ -289,8 +289,15 @@ Image Xex2LoadImage(const uint8_t* data, size_t dataSize)
             flags |= SectionFlags_Code;
         }
 
+        // A section's virtual size can reach past the image (xam.xex 2.0.8495 ... 9199: the last data section): map
+        // only what the image holds, so reads of the section stay inside it.
+        uint32_t size = section.Misc.VirtualSize;
+        if (section.VirtualAddress >= image.size)
+            size = 0;
+        else if (size > image.size - section.VirtualAddress)
+            size = image.size - section.VirtualAddress;
         image.Map(reinterpret_cast<const char*>(section.Name), section.VirtualAddress, 
-            section.Misc.VirtualSize, flags, image.data.get() + section.VirtualAddress);
+            size, flags, image.data.get() + section.VirtualAddress);
     }
 
     auto* imports = reinterpret_cast<const Xex2ImportHeader*>(getOptHeaderPtr(data, XEX_HEADER_IMPORT_LIBRARIES));

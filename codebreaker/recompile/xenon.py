@@ -7,7 +7,9 @@
 
 native/xenonrecomp is a fork of hedge-dev's XenonRecomp (MIT) with the changes the Xbox 360
 system-software ports needed (VMX128 compares that set CR6, the import library index, symbol
-suffixes for several modules in one program, MMIO stores, the shared indirect-call table). It
+suffixes for several modules in one program, MMIO stores, the shared indirect-call table; every
+change from upstream is listed in native/xenonrecomp/CHANGES.md). It is the one XenonRecomp: the
+Xbox 360 Dashboard's line was merged into it. It
 turns each guest instruction into one C++ statement on a PPCContext; the runtime
 (native/x360) supplies the kernel, XAM, GPU, audio and input.
 
@@ -106,8 +108,8 @@ def build(force=False):
 def recompile(config):
     """Run XenonRecomp on a configuration file. -> its output (warnings, the unimplemented)."""
     build()
-    r = _run([RECOMP, config, os.path.join(SOURCE, "XenonUtils", "ppc_context.h")],
-             cwd=os.path.dirname(os.path.abspath(config)))
+    config = os.path.abspath(config)            # it runs in the configuration's folder: a relative path would not reach it
+    r = _run([RECOMP, config, os.path.join(SOURCE, "XenonUtils", "ppc_context.h")], cwd=os.path.dirname(config))
     if r.returncode:
         raise RuntimeError("XenonRecomp failed:\n" + (r.stdout + r.stderr)[-3000:])
     return r.stdout

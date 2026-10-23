@@ -132,6 +132,10 @@ inline uint64_t ppc_query_timebase()
 #define PPC_MEMORY_SIZE 0x100000000ull
 
 // A runtime that loads several recompiled modules defines its own (one table for every module).
+#ifndef PPC_SPIN_HINT
+#define PPC_SPIN_HINT()
+#endif
+
 #ifndef PPC_LOOKUP_FUNC
 #define PPC_LOOKUP_FUNC(x, y) *(PPCFunc**)(x + PPC_IMAGE_BASE + PPC_IMAGE_SIZE + (uint64_t(uint32_t(y) - PPC_CODE_BASE) * 2))
 #endif

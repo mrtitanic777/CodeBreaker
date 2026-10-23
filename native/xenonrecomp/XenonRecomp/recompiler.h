@@ -74,6 +74,17 @@ struct Recompiler
 
     bool Recompile(const Function& fn);
 
+    // relocatable_code: the current function's relocation values, in the order the code reads them.
+    std::vector<uint32_t> relocValues;
+    // A value read from the relocation array: PPC_RI(k) (int32_t) or PPC_RL(k) (int64_t), the type the decimal
+    // literal it replaces would have had.
+    std::string Reloc(int64_t value);
+    // A label's name: loc_<address>, or loc_<offset in the function> with relocatable_code.
+    std::string Label(const Function& fn, size_t address) const;
+    // relocatable_code: the immediate of `instruction` that depends on the layout, replaced in the code it
+    // generated (out from `start`, after its comment line) when it appears there exactly once.
+    void RelocateImmediate(uint32_t instruction, size_t start);
+
     void Recompile(const std::filesystem::path& headerFilePath);
 
     void SaveCurrentOutData(const std::string_view& name = std::string_view());
