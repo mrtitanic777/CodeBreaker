@@ -11,7 +11,11 @@ a Converted project; `codebreaker xna port <project>` then builds its C# for the
 
 An assembly is the game's own unless it is the framework's: Microsoft.*, System.*, mscorlib. Other
 libraries a game ships (a middleware .dll) are decompiled too, into their own project, since they
-are what the game was built with. The decompiler is ILSpy's command line (`ilspycmd`, setting
+are what the game was built with. An assembly an obfuscator has been over (de4dot names one: SunBurn's
+Spices.Net) is cleaned by de4dot first -- names restored, strings decrypted, control flow and field data
+put back -- and the cleaned copy is decompiled (setting `de4dot`; built from its source, see
+NOT_IN_REPO.md); de4dot's "Unknown Obfuscator" is its word for none found, and such an assembly is
+decompiled as it is. The decompiler is ILSpy's command line (`ilspycmd`, setting
 `ilspycmd`; .NET's `dotnet tool install -g ilspycmd`); it is run with DOTNET_ROLL_FORWARD=LatestMajor
 so a newer .NET runs it.
 """
@@ -72,6 +76,55 @@ def assemblies(folder):
     return sorted(out, key=lambda p: (not p.lower().endswith(".exe"), p.lower()))
 
 
+def de4dot():
+    """de4dot's program, or None: the `de4dot` setting, PATH, or a build beside the checkout (../_tools/de4dot)."""
+    from codebreaker.base import settings
+    named = settings.get("de4dot")
+    if named and os.path.isfile(named):
+        return named
+    found = shutil.which("de4dot")
+    if found:
+        return found
+    beside = os.path.join(os.path.dirname(settings.ROOT), "_tools", "de4dot", "Release", "net8.0", "de4dot.exe")
+    return beside if os.path.isfile(beside) else None
+
+
+def obfuscator(assembly):
+    """The obfuscator de4dot finds in `assembly`, or None (none, or de4dot not installed)."""
+    tool = de4dot()
+    if tool is None:
+        return None
+    env = dict(os.environ, DOTNET_ROLL_FORWARD="LatestMajor")
+    r = subprocess.run([tool, "-d", assembly], capture_output=True, text=True, env=env)
+    for line in (r.stdout or "").splitlines():
+        if line.startswith("Detected ") and "(" in line:
+            name = line[len("Detected "):line.rfind("(")].strip()
+            return None if name == "Unknown Obfuscator" else name
+    return None
+
+
+def deobfuscated(assembly):
+    """`assembly` cleaned by de4dot (cached under state/xna/deobfuscated by its contents), with what it was
+    obfuscated with -- or (assembly, None) when nothing was."""
+    import hashlib
+    from codebreaker.base import settings
+    name = obfuscator(assembly)
+    if name is None:
+        return assembly, None
+    with open(assembly, "rb") as f:
+        digest = hashlib.sha1(f.read()).hexdigest()[:12]
+    cache = settings.state("xna", "deobfuscated")
+    os.makedirs(cache, exist_ok=True)
+    stem, ext = os.path.splitext(os.path.basename(assembly))
+    out = os.path.join(cache, "%s-%s%s" % (stem, digest, ext))
+    if not os.path.isfile(out):
+        env = dict(os.environ, DOTNET_ROLL_FORWARD="LatestMajor")
+        r = subprocess.run([de4dot(), assembly, "-o", out], capture_output=True, text=True, env=env)
+        if r.returncode != 0 or not os.path.isfile(out):
+            raise RuntimeError("de4dot failed on %s: %s" % (os.path.basename(assembly), (r.stdout + r.stderr)[-500:]))
+    return out, name
+
+
 def decompile(assembly, out_dir):
     env = dict(os.environ, DOTNET_ROLL_FORWARD="LatestMajor")
     # C# 11: newer syntax (C# 12's primary constructors) puts a constructor's assignments into field initializers,
@@ -109,10 +162,12 @@ def convert(source, name=None, content=True):
     for asm in assemblies(game_dir):
         stem = os.path.splitext(os.path.basename(asm))[0]
         out = os.path.join(p.src, stem)
+        source, obfuscated_with = deobfuscated(asm)
         if not os.path.isdir(out):
-            decompile(asm, out)
+            decompile(source, out)
         fixed = fixups.apply(out)
         report["assemblies"].append({"assembly": os.path.relpath(asm, game_dir), "project": stem,
+                                     "deobfuscated": obfuscated_with,
                                      "ref casts": fixed["ref casts"], "constructors": fixed["constructors"],
                                      "left": fixed["left"]})
         outputs.append(out)
@@ -157,8 +212,9 @@ def main(argv):
         print("xna: %s" % e)
         return 1
     for a in report["assemblies"]:
-        print("  %-28s C#: %d ref casts, %d constructors rewritten, %d left" % (
-            a["project"], a["ref casts"], a["constructors"], len(a["left"])))
+        print("  %-28s C#: %d ref casts, %d constructors rewritten, %d left%s" % (
+            a["project"], a["ref casts"], a["constructors"], len(a["left"]),
+            "  (deobfuscated: %s)" % a["deobfuscated"] if a["deobfuscated"] else ""))
     if kinds:
         print("  content: " + ", ".join("%d %s" % (v, k) for k, v in sorted(kinds.items())))
     print("-> %s" % p.root)

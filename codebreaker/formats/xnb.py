@@ -8,6 +8,8 @@ catalogued.
                                         <name>.png + <name>.json (glyphs, cropping, characters,
                                         spacing, kerning), a sound effect -> <name>.wav (XMA2 decoded by
                                         ffmpeg: formats/xbox/xma.py); anything else -> kind "other"
+    xnb.rename_readers(raw, rename)     the file with each type reader name passed through rename(name), as
+                                        uncompressed XNB bytes -- or None when no name changed
 
 A .xnb starts "XNB", a platform letter, the version (5 for XNA 4.0) and flags (0x80: compressed),
 then the file's size; compressed content gives its decompressed size and comes in LZX frames. The
@@ -76,6 +78,35 @@ def _7bit(b, o):
 def _string(b, o):
     n, o = _7bit(b, o)
     return b[o:o + n].decode("utf-8", "replace"), o + n
+
+
+def _7bit_bytes(value):
+    out = bytearray()
+    while True:
+        x = value & 0x7F
+        value >>= 7
+        out.append(x | (0x80 if value else 0))
+        if not value:
+            return bytes(out)
+
+
+def rename_readers(raw, rename):
+    """`raw` (an .xnb's bytes) with each type reader's name passed through rename(name) -> the new file,
+    uncompressed and otherwise the same, or None when rename changed none."""
+    x = Xnb(raw)
+    count, o = _7bit(x.data, 0)
+    manifest, changed = [_7bit_bytes(count)], False
+    for _ in range(count):
+        name, o2 = _string(x.data, o)
+        new = rename(name)
+        changed |= new != name
+        encoded = new.encode("utf-8")
+        manifest += [_7bit_bytes(len(encoded)), encoded, x.data[o2:o2 + 4]]   # and the reader's version
+        o = o2 + 4
+    if not changed:
+        return None
+    body = b"".join(manifest) + x.data[o:]
+    return b"XNB" + x.platform.encode() + bytes([x.version, x.flags & ~0x80]) + struct.pack("<I", 10 + len(body)) + body
 
 
 def _manifest(data):
@@ -204,7 +235,7 @@ def write_wav(sound, out):
     riff = _riff(sound["fmt"], sound["samples"])
     if sound["tag"] in (0x166, 0x165):
         from codebreaker.formats.xbox import xma
-        xma.decode_to_wav(riff, out)
+        xma.decode_to_wav(riff, out, sound["channels"])
     else:
         with open(out, "wb") as f:
             f.write(riff)

@@ -1,6 +1,6 @@
 """port.py -- an XNA game's decompiled C# (Converted/<name>/src) built and run on a PC with MonoGame.
 
-    codebreaker xna port <Converted project or name> [--overlay DIR] [--run SECONDS]
+    codebreaker xna port <Converted project or name> [--overlay DIR] [--run SECONDS] [--check-content]
     from codebreaker.xna import port
     result = port.build(project_dir)        {"exe", "errors": {code: count}, "first": [error lines]}
 
@@ -21,7 +21,12 @@ The project's src/ stays the decompiled source. The port is built from a copy in
                        the Windows GAC, read and never copied), members doing nothing;
   <name>.Port.csproj   MonoGame DesktopGL 3.8.1 on .NET 8 (DOTNET_ROLL_FORWARD=LatestMajor), the game's own files
                        copied beside the program, ContentConverted/ the converted content (textures, fonts and
-                       sounds the runtime loads in place of the Xbox's .xnb, and the XACT banks as WAV);
+                       sounds the runtime loads in place of the Xbox's .xnb, the XACT banks as WAV, and the
+                       songs' music, WMA on the Xbox, as Ogg Vorbis, which MonoGame plays); an .xnb
+                       naming a type in an XNA assembly MonoGame does not have (Avatar, GamerServices, Net,
+                       Storage: the stubs, in this program) names this program instead -- MonoGame would make
+                       of "Microsoft.Xna.Framework.Avatar" an assembly name nothing can parse -- and one read by
+                       XNA's ReflectiveReader names the runtime's XnaReflectiveReader, which keeps XNA's rules;
   overlay              a folder of the game's own hand work, copied over all of it last (setting `xna_overlays`,
                        <dir>/<name>/; or --overlay): shaders the Xbox had only as microcode, fixes no rewrite makes.
                        Its overlay.json may say more: "replace" [paths removed first], "sources" {path in the port:
@@ -33,6 +38,8 @@ The build runs until it compiles or stops changing: an error the compiler itself
 argument passed `ref` where the method wants `out`, or the other way) is fixed and the build run again; what is
 left is listed by error code in reports/port.json. `--run` starts the program for that many seconds and keeps its
 log (xnaport.log, and what it printed): the first missing piece is what it stops at -- a shader names itself.
+`--check-content` has the built program load every .xnb under Content/ through the runtime (models, buffers and
+custom types read by MonoGame's readers and the game's own) and lists each one's result in reports/content_check.json.
 """
 import json
 import os
@@ -304,7 +311,7 @@ def fix_shadowed_extensions(errors, extensions):
 
 
 # Named arguments whose parameter MonoGame spells otherwise than XNA did.
-RENAMED_PARAMETERS = {"mipMap": "mipmap"}
+RENAMED_PARAMETERS = {"mipMap": "mipmap", "vector1": "value1", "vector2": "value2"}
 
 
 def fix_named_arguments(errors):
@@ -313,6 +320,19 @@ def fix_named_arguments(errors):
     for old, new in RENAMED_PARAMETERS.items():
         n += _edit_lines(errors, "CS1739", "named '%s'" % old, lambda line: re.sub(r"\b%s\s*:" % old, new + ":", line))
     return n
+
+
+def fix_moved_members(errors):
+    """CS1061 for an XNA member MonoGame keeps elsewhere: GraphicsDevice.ReferenceStencil (in the
+    DepthStencilState: XnaPort.Compat), RenderTargetBinding.CubeMapFace (its ArraySlice). -> fixes."""
+    def stencil(line):
+        line = re.sub(r"([\w.\[\]()]+)\.ReferenceStencil\s*=\s*([^;]+);", r"XnaPort.Compat.SetReferenceStencil(\1, \2);", line)
+        return re.sub(r"([\w.\[\]()]+)\.ReferenceStencil\b", r"XnaPort.Compat.GetReferenceStencil(\1)", line)
+
+    def cube_face(line):
+        return re.sub(r"([\w.\[\]()]+)\.CubeMapFace\b", r"((Microsoft.Xna.Framework.Graphics.CubeMapFace)\1.ArraySlice)", line)
+    return (_edit_lines(errors, "CS1061", "definition for 'ReferenceStencil'", stencil) +
+            _edit_lines(errors, "CS1061", "definition for 'CubeMapFace'", cube_face))
 
 
 def fix_ref_out(errors):
@@ -369,6 +389,27 @@ def convert_xact(game_dir, converted):
     return counts
 
 
+def convert_songs(game_dir, converted):
+    """Every song's music (.wma, beside its .xnb) as Ogg Vorbis under `converted`, at the same relative folder --
+    what MonoGame plays on the PC (XnaPort.XboxSongReader looks there). -> songs"""
+    from codebreaker.formats.xbox import xma
+    n = 0
+    for base, _dirs, files in os.walk(game_dir):
+        for f in files:
+            if not f.lower().endswith(".wma"):
+                continue
+            out = os.path.join(converted, os.path.relpath(base, game_dir), os.path.splitext(f)[0] + ".ogg")
+            if not os.path.isfile(out):
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                r = subprocess.run([xma._need_ffmpeg(), "-y", "-hide_banner", "-loglevel", "error", "-i",
+                                    os.path.join(base, f), "-c:a", "libvorbis", "-q:a", "5", out],
+                                   capture_output=True, text=True)
+                if r.returncode != 0:
+                    raise RuntimeError("ffmpeg could not convert %s: %s" % (f, r.stderr.strip()[-300:]))
+            n += 1
+    return n
+
+
 # ---- the project ------------------------------------------------------------------------------------------------
 def _csproj(name, exe_rel, assemblies, defines):
     sources = '    <Compile Include="src/**/*.cs" Exclude="src/**/obj/**;src/**/bin/**;src/**/AssemblyInfo.cs" />'
@@ -415,6 +456,7 @@ def _overlay_dir(project, overlay):
 
 
 def _copy_tree(src, dst):
+    """src over dst; a file already there with the same size and time is left as it is."""
     for base, dirs, files in os.walk(src):
         dirs[:] = [d for d in dirs if d not in ("obj", "bin", ".git")]
         rel = os.path.relpath(base, src)
@@ -422,7 +464,55 @@ def _copy_tree(src, dst):
         for f in files:
             if f == "overlay.json":
                 continue
-            shutil.copy2(os.path.join(base, f), os.path.join(dst, rel, f))
+            a, b = os.path.join(base, f), os.path.join(dst, rel, f)
+            if os.path.isfile(b):
+                sa, sb = os.stat(a), os.stat(b)
+                if sa.st_size == sb.st_size and int(sa.st_mtime) == int(sb.st_mtime):
+                    continue
+            shutil.copy2(a, b)
+
+
+# XNA assemblies whose types MonoGame does not have; the port's stubs give them, in the program itself
+STUB_ASSEMBLIES = re.compile(r", Microsoft\.Xna\.Framework\.(?:Avatar|GamerServices|Net|Storage)(?:, Version=[^\],]*)?"
+                             r"(?:, Culture=[^\],]*)?(?:, PublicKeyToken=[^\],]*)?")
+
+
+_REFLECTIVE = "Microsoft.Xna.Framework.Content.ReflectiveReader`1["
+
+
+def port_reader_name(name, program):
+    """A type reader's name in an .xnb as the port reads it (see the module's notes)."""
+    name = STUB_ASSEMBLIES.sub(", " + program, name)
+    if name.startswith(_REFLECTIVE):
+        name = "XnaPort.XnaReflectiveReader`1[" + name[len(_REFLECTIVE):] + ", " + program
+    return name
+
+
+def port_reader_names(game_dir, program):
+    """Each .xnb under game_dir rewritten to port_reader_name's names (once: a stamp records it). -> files
+    rewritten"""
+    from codebreaker.formats import xnb
+    stamp = os.path.join(os.path.dirname(game_dir), "reader-names.stamp")
+    if os.path.isfile(stamp):
+        return 0
+    n = 0
+    for base, _dirs, files in os.walk(game_dir):
+        for f in files:
+            if not f.lower().endswith(".xnb"):
+                continue
+            path = os.path.join(base, f)
+            with open(path, "rb") as h:
+                raw = h.read()
+            if raw[:3] != b"XNB":
+                continue
+            new = xnb.rename_readers(raw, lambda name: port_reader_name(name, program))
+            if new is not None:
+                with open(path, "wb") as h:
+                    h.write(new)
+                n += 1
+    with open(stamp, "w") as h:
+        h.write("%d\n" % n)
+    return n
 
 
 def prepare(project, overlay=None):
@@ -476,12 +566,14 @@ def prepare(project, overlay=None):
     game_link = os.path.join(port, "game")
     if not os.path.isdir(game_link):
         _copy_tree(exe_dir, game_link)
+    report["xnb reader names"] = port_reader_names(game_link, name)
     converted = os.path.join(port, "ContentConverted")
     content_src = os.path.join(project.assets, "content", exe_rel)
-    if os.path.isdir(content_src) and not os.path.isdir(converted):
+    if os.path.isdir(content_src):
         _copy_tree(content_src, converted)
     os.makedirs(converted, exist_ok=True)
     report["content"] = convert_xact(exe_dir, converted)
+    report["content"]["songs"] = convert_songs(exe_dir, converted)
     # the game's own hand work
     ov = _overlay_dir(project, overlay)
     if ov:
@@ -527,7 +619,7 @@ def build(project, overlay=None, rounds=6):
     extensions = extension_methods(os.path.join(port, "src"))
     for _ in range(rounds):
         ok, errors, out = _build_once(port, name)
-        fixed = 0 if ok else (fix_ref_out(errors) + fix_access(errors) + fix_color(errors) + fix_vertex_binding(errors) + fix_named_arguments(errors) +
+        fixed = 0 if ok else (fix_ref_out(errors) + fix_access(errors) + fix_color(errors) + fix_vertex_binding(errors) + fix_named_arguments(errors) + fix_moved_members(errors) +
                               fix_shadowed_extensions(errors, extensions))
         report["rounds"].append({"errors": len(errors), "fixed": fixed})
         if ok or not fixed:
@@ -544,13 +636,13 @@ def build(project, overlay=None, rounds=6):
     return result
 
 
-def run_for(exe, seconds):
+def run_for(exe, seconds, env=None):
     """Start the built game for `seconds`; -> {"exit", "output", "log"} (its own xnaport.log and what it printed)."""
     folder = os.path.dirname(exe)
     log = os.path.join(folder, "xnaport.log")
     if os.path.isfile(log):
         os.remove(log)
-    p = subprocess.Popen([exe], cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=_env())
+    p = subprocess.Popen([exe], cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=dict(_env(), **(env or {})))
     try:
         out, _ = p.communicate(timeout=seconds)
         code = p.returncode
@@ -560,6 +652,19 @@ def run_for(exe, seconds):
         code = None                                         # still running: it did not stop on its own
     text = open(log, encoding="utf-8", errors="replace").read() if os.path.isfile(log) else ""
     return {"exit": code, "output": out[-6000:], "log": text[-6000:]}
+
+
+def check_content(exe, seconds=600):
+    """Every .xnb under the built program's Content/ loaded by the program itself -> {asset: type or "error: why"},
+    or None when it wrote nothing."""
+    out = os.path.join(os.path.dirname(exe), "content_check.json")
+    if os.path.isfile(out):
+        os.remove(out)
+    run_for(exe, seconds, {"XNAPORT_CHECK_CONTENT": "1"})
+    if not os.path.isfile(out):
+        return None
+    with open(out, encoding="utf-8") as h:
+        return json.load(h)
 
 
 def main(argv):
@@ -594,6 +699,17 @@ def main(argv):
         print((r["log"] or r["output"])[-2500:])
         with open(os.path.join(project.reports, "port_run.json"), "w", encoding="utf-8") as h:
             json.dump(r, h, indent=1)
+    if result["ok"] and "--check-content" in argv:
+        checked = check_content(result["exe"])
+        if checked is None:
+            print("content check: the program wrote no result")
+        else:
+            failed = {k: v for k, v in checked.items() if v.startswith("error:")}
+            print("content check: %d of %d .xnb loaded" % (len(checked) - len(failed), len(checked)))
+            for name, why in sorted(failed.items())[:20]:
+                print("  %s: %s" % (name, why[len("error: "):][:160]))
+            with open(os.path.join(project.reports, "content_check.json"), "w", encoding="utf-8") as h:
+                json.dump(checked, h, indent=1)
     project.record("xna port", [result["exe"]] if result["ok"] else [],
                    notes="MonoGame build of the decompiled C# in build/port: %s" % (
                        "built" if result["ok"] else "%d errors left (reports/port.json)" % sum(result["errors"].values())))

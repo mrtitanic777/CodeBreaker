@@ -4,9 +4,12 @@
 //   Runtime.Install(game)       first thing in the game's constructor (put there by the port step): the game's
 //                               Content becomes a ContentManager that reads what CodeBreaker converted
 //   Runtime.Graphics(game)      in place of `new GraphicsDeviceManager(game)`: the HiDef profile the Xbox 360 had
+//   XNAPORT_CHECK_CONTENT=1     the program loads every .xnb under Content/ through the runtime instead of playing,
+//                               writes content_check.json beside itself ({asset: type or "error: why"}) and exits
 //   ContentManager              Load<T>: a converted file when there is one (ContentConverted/: textures and fonts
 //                               as PNG and JSON, sounds as WAV), else the game's own .xnb (MonoGame reads Xbox XNB
-//                               headers; most readers work on its little-endian stream), and an Effect from
+//                               headers; its stream is little-endian, and XboxContent's readers turn the
+//                               big-endian buffers and pixels in it around), and an Effect from
 //                               Content/shaders/<name>.mgfxo -- one without names itself in the exception, so a run
 //                               says which shader to write next.
 using System;
@@ -28,8 +31,14 @@ namespace XnaPort
         public static void Install(Game game)
         {
             Game = game;
+            XboxContent.Register();
             game.Content = new ContentManager(game.Services, "Content");
             game.IsMouseVisible = true;
+            // a type an .xnb names by the assembly it was built in (a game's own "Hazzah Engine", XNA's Avatar or
+            // GamerServices, which the stubs give) is in this program
+            AppDomain.CurrentDomain.AssemblyResolve += (s, e) => System.Reflection.Assembly.GetEntryAssembly();
+            if (Environment.GetEnvironmentVariable("XNAPORT_CHECK_CONTENT") == "1")
+                game.Components.Add(new ContentCheck(game));
             Log("XnaPort: runtime installed for " + game.GetType().FullName);
         }
 
@@ -45,6 +54,99 @@ namespace XnaPort
             try { File.AppendAllText(Path.Combine(BaseDirectory, "xnaport.log"), DateTime.Now.ToString("HH:mm:ss.fff ") + line + Environment.NewLine); }
             catch (IOException) { }
             Console.WriteLine(line);
+        }
+    }
+
+    // Every .xnb under Content/ loaded as the game would load it (by what its own reader makes), on the first frame.
+    class ContentCheck : GameComponent
+    {
+        public ContentCheck(Game game) : base(game) { }
+
+        public override void Update(GameTime gameTime)
+        {
+            string root = Path.Combine(Runtime.BaseDirectory, "Content");
+            var results = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            int ok = 0;
+            foreach (string f in Directory.EnumerateFiles(root, "*.xnb", SearchOption.AllDirectories))
+            {
+                string name = Path.ChangeExtension(Path.GetRelativePath(root, f), null).Replace('\\', '/');
+                var head = new byte[3];
+                using (var h = File.OpenRead(f))
+                    h.ReadExactly(head, 0, Math.Min(3, (int)h.Length));
+                if (head[0] != 'X' || head[1] != 'N' || head[2] != 'B')
+                {
+                    results[name] = "not an XNB: a file the game reads itself";
+                    continue;
+                }
+                using var content = new ContentManager(Game.Services, "Content");
+                string converted = Path.Combine(Runtime.BaseDirectory, "ContentConverted", "Content", name);
+                try
+                {
+                    // what was converted loads as the game loads it: by its type, from the converted file
+                    object asset = File.Exists(converted + ".wav") ? content.Load<Microsoft.Xna.Framework.Audio.SoundEffect>(name)
+                                 : File.Exists(converted + ".json") ? content.Load<SpriteFont>(name)
+                                 : File.Exists(converted + ".png") ? content.Load<Texture2D>(name)
+                                 : content.Load<object>(name);
+                    string bad = asset is Model model ? Geometry(model) : null;
+                    results[name] = (asset?.GetType().FullName ?? "null") + (bad == null ? "" : " -- " + bad);
+                    ok++;
+                }
+                catch (Exception e)
+                {
+                    var inner = e;
+                    while (inner.InnerException != null) inner = inner.InnerException;
+                    results[name] = "error: " + inner.GetType().Name + ": " + inner.Message;
+                    Runtime.Log("XnaPort: content check: " + name + ": " + e);
+                }
+            }
+            File.WriteAllText(Path.Combine(Runtime.BaseDirectory, "content_check.json"),
+                              JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
+            Runtime.Log("XnaPort: content check: " + ok + " loaded of " + results.Count);
+            Game.Exit();
+        }
+
+        // A model's buffers as the GPU will read them: positions finite and within reach, indices inside their
+        // vertex range -- what a buffer left in the Xbox's byte order fails. -> why not, or null
+        static string Geometry(Model model)
+        {
+            foreach (ModelMesh mesh in model.Meshes)
+                foreach (ModelMeshPart part in mesh.MeshParts)
+                {
+                    VertexBuffer vb = part.VertexBuffer;
+                    var position = Array.Find(vb.VertexDeclaration.GetVertexElements(),
+                                              e => e.VertexElementUsage == VertexElementUsage.Position && e.VertexElementFormat == VertexElementFormat.Vector3);
+                    if (vb.VertexCount == 0 || position.VertexElementFormat != VertexElementFormat.Vector3)
+                        continue;
+                    var bytes = new byte[vb.VertexCount * vb.VertexDeclaration.VertexStride];
+                    vb.GetData(bytes);
+                    // big-endian floats read little-endian come out huge, not finite or vanishingly small -- most of
+                    // them; a modeller's own leaves a few (cos 90 degrees: 3e-17)
+                    int odd = 0;
+                    for (int v = 0; v < vb.VertexCount; v++)
+                        for (int c = 0; c < 3; c++)
+                        {
+                            float x = BitConverter.ToSingle(bytes, v * vb.VertexDeclaration.VertexStride + position.Offset + c * 4);
+                            if (!float.IsFinite(x) || Math.Abs(x) > 1e6f || (x != 0 && Math.Abs(x) < 1e-12f))
+                                odd++;
+                        }
+                    if (odd * 10 > vb.VertexCount * 3)
+                        return odd + " of " + mesh.Name + "'s " + vb.VertexCount * 3 + " position values are not plausible";
+                    IndexBuffer ib = part.IndexBuffer;
+                    int count = part.PrimitiveCount * 3;
+                    int[] index = new int[count];
+                    if (ib.IndexElementSize == IndexElementSize.SixteenBits)
+                    {
+                        var shorts = new ushort[count];
+                        ib.GetData(part.StartIndex * 2, shorts, 0, count);
+                        for (int i = 0; i < count; i++) index[i] = shorts[i];
+                    }
+                    else
+                        ib.GetData(part.StartIndex * 4, index, 0, count);
+                    foreach (int i in index)
+                        if (i + part.VertexOffset >= vb.VertexCount)
+                            return "index " + i + " in " + mesh.Name + " is past its " + vb.VertexCount + " vertices";
+                }
+            return null;
         }
     }
 
@@ -88,6 +190,20 @@ namespace XnaPort
             }
             loaded[key] = asset;
             return (T)asset;
+        }
+
+        // Which platform the .xnb was built for ('x': Xbox 360) decides whether XboxContent swaps its GPU data.
+        protected override Stream OpenStream(string assetName)
+        {
+            Stream stream = base.OpenStream(assetName);
+            if (stream.CanSeek && stream.Length >= 4)
+            {
+                var head = new byte[4];
+                stream.ReadExactly(head, 0, 4);
+                stream.Seek(-4, SeekOrigin.Current);
+                XboxContent.Swapping = head[0] == 'X' && head[1] == 'N' && head[2] == 'B' && head[3] == 'x';
+            }
+            return stream;
         }
 
         object LoadConverted<T>(string assetName)

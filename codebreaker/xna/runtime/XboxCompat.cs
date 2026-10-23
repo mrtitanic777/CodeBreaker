@@ -13,6 +13,52 @@ namespace System.Threading
     }
 }
 
+namespace XnaPort
+{
+    // XNA members MonoGame keeps elsewhere; the port step rewrites their uses to these.
+    public static class Compat
+    {
+        static readonly System.Collections.Generic.Dictionary<(DepthStencilState, int), DepthStencilState> stencil =
+            new System.Collections.Generic.Dictionary<(DepthStencilState, int), DepthStencilState>();
+
+        // XNA's GraphicsDevice.ReferenceStencil: MonoGame has the reference in the (immutable) DepthStencilState, so
+        // the current state is cloned with the new reference (and kept, so a frame does not make new ones).
+        public static void SetReferenceStencil(GraphicsDevice device, int reference)
+        {
+            DepthStencilState s = device.DepthStencilState;
+            if (s == null || s.ReferenceStencil == reference) return;
+            if (!stencil.TryGetValue((s, reference), out DepthStencilState d))
+            {
+                d = new DepthStencilState
+                {
+                    DepthBufferEnable = s.DepthBufferEnable, DepthBufferWriteEnable = s.DepthBufferWriteEnable,
+                    DepthBufferFunction = s.DepthBufferFunction, StencilEnable = s.StencilEnable,
+                    StencilFunction = s.StencilFunction, StencilPass = s.StencilPass, StencilFail = s.StencilFail,
+                    StencilDepthBufferFail = s.StencilDepthBufferFail, TwoSidedStencilMode = s.TwoSidedStencilMode,
+                    CounterClockwiseStencilFunction = s.CounterClockwiseStencilFunction,
+                    CounterClockwiseStencilPass = s.CounterClockwiseStencilPass,
+                    CounterClockwiseStencilFail = s.CounterClockwiseStencilFail,
+                    CounterClockwiseStencilDepthBufferFail = s.CounterClockwiseStencilDepthBufferFail,
+                    StencilMask = s.StencilMask, StencilWriteMask = s.StencilWriteMask, ReferenceStencil = reference,
+                };
+                stencil[(s, reference)] = d;
+            }
+            device.DepthStencilState = d;
+        }
+
+        public static int GetReferenceStencil(GraphicsDevice device) => device.DepthStencilState?.ReferenceStencil ?? 0;
+    }
+}
+
+namespace Microsoft.Xna.Framework.Graphics
+{
+    public static class EffectAnnotationCompat
+    {
+        // XNA's EffectAnnotation.GetValueString: MonoGame's annotations do not keep the string; none is found.
+        public static string GetValueString(this EffectAnnotation annotation) => null;
+    }
+}
+
 namespace Microsoft.Xna.Framework
 {
     // A value type constructed in place (IL: ldloca v; call T::.ctor) can come out of ILSpy as `v._002Ector(args)`

@@ -61,10 +61,14 @@ def decode_to_wav(xma_or_riff, out_wav, channels=2, rate=44100, block=0x10000):
     exe = _need_ffmpeg()
     riff = xma_or_riff if xma_or_riff[:4] == b"RIFF" else wrap_xma2(xma_or_riff, channels, rate, block)
     import tempfile
-    tmp = os.path.join(tempfile.mkdtemp(), "in.xma.wav")
-    open(tmp, "wb").write(riff)
-    r = subprocess.run([exe, "-y", "-hide_banner", "-loglevel", "error", "-i", tmp, out_wav],
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    with tempfile.TemporaryDirectory() as folder:
+        tmp = os.path.join(folder, "in.xma.wav")
+        open(tmp, "wb").write(riff)
+        # 16-bit PCM in a plain WAVEFORMATEX: with the decoder's own layout ffmpeg writes WAVE_FORMAT_EXTENSIBLE,
+        # which MonoGame's (and many players') WAV readers do not take
+        r = subprocess.run([exe, "-y", "-hide_banner", "-loglevel", "error", "-i", tmp, "-c:a", "pcm_s16le",
+                            "-ac", str(min(channels, 2)), out_wav],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if r.returncode != 0 or not os.path.exists(out_wav):
         raise RuntimeError("ffmpeg XMA2 decode failed:\n%s" % (r.stdout or "").strip())
     return os.path.getsize(out_wav)

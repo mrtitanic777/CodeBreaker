@@ -36,6 +36,7 @@ setting for one run.
 | The Xbox 360 key store the `crypto` tools read (1BL_pub.bin, SB_prv.bin, ...) | `Keys/` in the current folder | `xbox360_keys` |
 | The `crypto` tools' binaries: LZX libraries, the Free60 xenon-as / xenon-objcopy, hypervisor images | | `xbox360_crypto_bin` |
 | ILSpy's command line (the `xna` lane's decompiler) | `dotnet tool install -g ilspycmd` | `ilspycmd` |
+| de4dot (the `xna` lane's deobfuscator: an obfuscated assembly is cleaned before it is decompiled) | built from its source (github.com/de4dot/de4dot) for net8, beside the checkout at `../_tools/de4dot/Release/net8.0/de4dot.exe` | `de4dot` (or PATH, or that build) |
 | XNA Game Studio 4.0 (its GamerServices, Net, Storage and Avatar assemblies: `xna port` generates its stubs from their metadata) | the Windows GAC | |
 | MonoGame DesktopGL 3.8.1 and the .NET 8 SDK (`xna port` builds against them) | NuGet's cache | |
 | ffmpeg (XMA / XMA2 audio decoded to WAV) | PATH | `ffmpeg` |
