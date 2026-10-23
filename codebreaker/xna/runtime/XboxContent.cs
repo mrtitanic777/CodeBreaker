@@ -10,9 +10,9 @@
 // A Song names its music file (.wma on the Xbox 360); the port converted it to Ogg Vorbis under ContentConverted/, and
 // that is what plays.
 //
-// An Effect is the Xbox 360's GPU microcode and has no PC form to turn into: Content/shaders/<asset name>.mgfxo, or
-// Content/shaders/<sha1 of the effect's bytes>.mgfxo for one inside another asset, is loaded instead, and a missing one
-// names itself in the exception.
+// An Effect is the Xbox 360's GPU microcode. CodeBreaker recovers its HLSL (decompile/xbox_effect.py) and the port
+// compiles that to Content/shaders/<sha1 of the effect's bytes>.mgfxo; a hand-written one, Content/shaders/<asset
+// path or name>.mgfxo, is taken first. A missing one names itself in the exception.
 using System;
 using System.IO;
 using Microsoft.Xna.Framework;
@@ -172,16 +172,46 @@ namespace XnaPort
         protected override Effect Read(ContentReader input, Effect existing)
         {
             byte[] code = input.ReadBytes(input.ReadInt32());
-            string name = Path.GetFileName(input.AssetName.Replace('\\', '/'));
+            string path = input.AssetName.Replace('\\', '/').TrimStart('/');
+            return new Effect(XboxContent.Device(input), Effects.PCCode(code, path, Path.GetFileName(path)));
+        }
+    }
+
+    // An effect a game makes from bytes of its own (new Effect(device, bytes), or a class of its own deriving from
+    // Effect): the port step passes the bytes through ForPC, which gives the PC's compiled effect for an Xbox 360 one.
+    public static class Effects
+    {
+        public static T ForPC<T>(T value) => value is byte[] code ? (T)(object)PCCode(code, null, null) : value;
+
+        // A stock effect's ShaderIndex chose its shaders from arrays on the Xbox; the PC effect has a technique per
+        // value (<technique>__<n>, the first technique for 0), which becomes the current one -- in OnApply, where
+        // MonoGame's EffectPass.Apply takes the change.
+        public static void SetShaderIndex(Effect effect, EffectParameter parameter, int index)
+        {
+            parameter?.SetValue(index);
+            string first = effect.Techniques[0].Name;
+            int cut = first.IndexOf("__", StringComparison.Ordinal);
+            string name = cut < 0 ? first : first.Substring(0, cut);
+            EffectTechnique t = index == 0 ? effect.Techniques[0] : effect.Techniques[name + "__" + index];
+            if (t != null)
+                effect.CurrentTechnique = t;
+        }
+
+        internal static byte[] PCCode(byte[] code, string path, string name)
+        {
+            if (code.Length >= 4 && code[0] == 'M' && code[1] == 'G' && code[2] == 'F' && code[3] == 'X')
+                return code;                                        // already MonoGame's
             string hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(code)).ToLowerInvariant();
             string shaders = Path.Combine(Runtime.BaseDirectory, "Content", "shaders");
-            foreach (string candidate in new[] { name, hash })
+            foreach (string candidate in new[] { path, name, hash })
             {
+                if (candidate == null) continue;
                 string p = Path.Combine(shaders, candidate + ".mgfxo");
-                if (File.Exists(p)) return new Effect(XboxContent.Device(input), File.ReadAllBytes(p));
+                if (File.Exists(p)) return File.ReadAllBytes(p);
             }
-            string why = "XnaPort: the Xbox 360 shader in '" + input.AssetName + "' (sha1 " + hash + ") has no PC version yet: write it " +
-                         "as HLSL and compile it to Content/shaders/" + name + ".mgfxo (or " + hash + ".mgfxo)";
+            string why = "XnaPort: the Xbox 360 effect " + (path != null ? "in '" + path + "' " : "") + "(sha1 " + hash +
+                         ") has no PC version: reports/content.json says why its HLSL was not recovered" +
+                         (path != null ? "; a hand-written one goes in Content/shaders/" + path + ".mgfxo" : "");
             Runtime.Log(why);
             throw new ContentLoadException(why);
         }

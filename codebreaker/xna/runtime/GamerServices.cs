@@ -36,10 +36,15 @@ namespace Microsoft.Xna.Framework.GamerServices
         public PlayerIndex PlayerIndex { get; private set; }
         public bool IsSignedInToLive { get { return false; } }
         public bool IsGuest { get { return false; } }
-        public GameDefaults GameDefaults { get { return null; } }
-        public GamerPrivileges Privileges { get { return null; } }
+        // never null on the console: a game sets its presence and reads its settings without checking
+        public GameDefaults GameDefaults { get; } = new LocalGameDefaults();
+        public GamerPrivileges Privileges { get; } = new LocalPrivileges();
         public int PartySize { get { return 1; } }
-        public GamerPresence Presence { get { return null; } }
+        public GamerPresence Presence { get; } = new LocalPresence();
+
+        sealed class LocalGameDefaults : GameDefaults { }
+        sealed class LocalPrivileges : GamerPrivileges { }
+        sealed class LocalPresence : GamerPresence { }
 #pragma warning disable 67
         public static event EventHandler<SignedInEventArgs> SignedIn;
         public static event EventHandler<SignedOutEventArgs> SignedOut;

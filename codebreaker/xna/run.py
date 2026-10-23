@@ -178,13 +178,17 @@ def convert(source, name=None, content=True):
         records = []
         for base, _dirs, files in os.walk(game_dir):
             for f in files:
-                if f.lower().endswith(".xnb"):
-                    rel = os.path.relpath(base, game_dir)
+                rel = os.path.relpath(base, game_dir)
+                if not f.lower().endswith(".xnb"):
+                    rec = xnb.convert_effect_file(os.path.join(base, f), os.path.join(p.assets, "content", rel))
+                    if rec is None:
+                        continue
+                else:
                     rec = xnb.convert(os.path.join(base, f), os.path.join(p.assets, "content", rel))
-                    rec["folder"] = rel.replace("\\", "/")
-                    k = "error" if "error" in rec else rec["kind"]
-                    kinds[k] = kinds.get(k, 0) + 1
-                    records.append(rec)
+                rec["folder"] = rel.replace("\\", "/")
+                k = "error" if "error" in rec else rec["kind"]
+                kinds[k] = kinds.get(k, 0) + 1
+                records.append(rec)
         with open(os.path.join(p.reports, "content.json"), "w", encoding="utf-8") as f:
             json.dump(records, f, indent=1)
         outputs.append(os.path.join(p.assets, "content"))

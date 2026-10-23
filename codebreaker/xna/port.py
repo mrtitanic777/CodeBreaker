@@ -22,7 +22,8 @@ The project's src/ stays the decompiled source. The port is built from a copy in
   <name>.Port.csproj   MonoGame DesktopGL 3.8.1 on .NET 8 (DOTNET_ROLL_FORWARD=LatestMajor), the game's own files
                        copied beside the program, ContentConverted/ the converted content (textures, fonts and
                        sounds the runtime loads in place of the Xbox's .xnb, the XACT banks as WAV, and the
-                       songs' music, WMA on the Xbox, as Ogg Vorbis, which MonoGame plays); an .xnb
+                       songs' music, WMA on the Xbox, as Ogg Vorbis, which MonoGame plays, and the effects'
+                       recovered HLSL compiled by mgfxc to Content/shaders/<sha1>.mgfxo); an .xnb
                        naming a type in an XNA assembly MonoGame does not have (Avatar, GamerServices, Net,
                        Storage: the stubs, in this program) names this program instead -- MonoGame would make
                        of "Microsoft.Xna.Framework.Avatar" an assembly name nothing can parse -- and one read by
@@ -160,7 +161,50 @@ def rewrite(text, own=frozenset()):
     text, n = _BASE_CAST.subn(r"base.\1(", text)
     if n:
         changed.append("base calls x%d" % n)
+    # an effect made from the game's own bytes (Xbox 360 microcode) gets the PC's compiled one instead
+    text, n = _effect_bytes(text)
+    if n:
+        changed.append("effect bytes x%d" % n)
+    # a stock effect's ShaderIndex picks its technique on the PC (the effect has one per value)
+    if _DERIVES_EFFECT.search(text):
+        m = re.search(r"\b(\w+)\s*=\s*(?:base\.|this\.)?Parameters\s*\[\s*\"ShaderIndex\"\s*\]", text)
+        if m:
+            text, n = re.subn(r"\b%s\.SetValue\s*\(" % re.escape(m.group(1)),
+                              "XnaPort.Effects.SetShaderIndex(this, %s, " % m.group(1), text)
+            if n:
+                changed.append("ShaderIndex x%d" % n)
+    # the controller is read through the runtime's, which adds the keyboard and scripted presses
+    if "GamePad" not in own:
+        text, n = re.subn(r"\b(?:Microsoft\.Xna\.Framework\.Input\.)?GamePad\.GetState\s*\(", "XnaPort.Input.GetState(", text)
+        if n:
+            changed.append("GamePad.GetState x%d" % n)
     return text, changed
+
+
+_NEW_EFFECT = re.compile(r"\bnew\s+(?:Microsoft\.Xna\.Framework\.Graphics\.)?Effect\s*\(")
+_DERIVES_EFFECT = re.compile(r"\bclass\s+\w+\s*:\s*(?:Microsoft\.Xna\.Framework\.Graphics\.)?Effect\b")
+_BASE_CALL = re.compile(r"\)\s*:\s*base\s*\(")
+
+
+def _effect_bytes(text):
+    """`new Effect(device, bytes)`, and `: base(device, bytes)` in a class deriving from Effect, with the bytes
+    passed through XnaPort.Effects.ForPC (generic: any other argument goes through as it is). -> (text, wrapped)"""
+    spots = [m.end() - 1 for m in _NEW_EFFECT.finditer(text)]
+    if _DERIVES_EFFECT.search(text):
+        spots += [m.end() - 1 for m in _BASE_CALL.finditer(text)]
+    n = 0
+    for paren in sorted(spots, reverse=True):
+        spans, _ = _args(text, paren)
+        if not spans or len(spans) != 2:
+            continue
+        a, b = spans[1]
+        arg = text[a:b].strip()
+        if arg.startswith("XnaPort.Effects.ForPC("):
+            continue
+        lead = len(text[a:b]) - len(text[a:b].lstrip())
+        text = text[:a + lead] + "XnaPort.Effects.ForPC(" + arg + ")" + text[b:]
+        n += 1
+    return text, n
 
 
 def fix_access(errors):
@@ -389,6 +433,49 @@ def convert_xact(game_dir, converted):
     return counts
 
 
+def compile_effects(converted, shaders):
+    """Every recovered effect (.fx under `converted`, its first line "// sha1 <the Xbox effect's sha1>") compiled
+    by MonoGame's mgfxc to `shaders`/<sha1>.mgfxo, which the runtime loads for that effect (cached by the
+    source's contents under state/xna/mgfxo). -> {"compiled", "failed": {file: why}}"""
+    import hashlib
+    from codebreaker.base import settings
+    from codebreaker.xna import mgfx
+    cache = settings.state("xna", "mgfxo")
+    os.makedirs(cache, exist_ok=True)
+    os.makedirs(shaders, exist_ok=True)
+    tool = shutil.which("mgfxc")
+    report = {"compiled": 0, "failed": {}}
+    for base, _dirs, files in os.walk(converted):
+        for f in files:
+            if not f.endswith(".fx"):
+                continue
+            src = os.path.join(base, f)
+            with open(src, encoding="utf-8") as h:
+                text = h.read()
+            first = text.split("\n", 1)[0]
+            if not first.startswith("// sha1 "):
+                continue
+            digest = first[len("// sha1 "):].strip()
+            built = os.path.join(cache, hashlib.sha1(text.encode("utf-8")).hexdigest() + ".mgfxo")
+            if not os.path.isfile(built):
+                if tool is None:
+                    report["failed"][os.path.relpath(src, converted)] = "mgfxc is not installed (NOT_IN_REPO.md)"
+                    continue
+                r = subprocess.run([tool, src, built, "/Profile:OpenGL"], capture_output=True, text=True, env=_env())
+                if r.returncode != 0 or not os.path.isfile(built):
+                    report["failed"][os.path.relpath(src, converted)] = (r.stdout + r.stderr).strip()[-600:]
+                    continue
+            data = open(built, "rb").read()
+            params = src + ".json"
+            if os.path.isfile(params):
+                with open(params, encoding="utf-8") as h:
+                    data = mgfx.add_parameters(data, json.load(h))
+            with open(os.path.join(shaders, digest + ".mgfxo"), "wb") as h:
+                h.write(data)
+            report["compiled"] += 1
+    return report
+
+
 def convert_songs(game_dir, converted):
     """Every song's music (.wma, beside its .xnb) as Ogg Vorbis under `converted`, at the same relative folder --
     what MonoGame plays on the PC (XnaPort.XboxSongReader looks there). -> songs"""
@@ -438,7 +525,7 @@ def _csproj(name, exe_rel, assemblies, defines):
     <Compile Include="Port/**/*.cs" Exclude="Port/**/obj/**;Port/**/bin/**" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="game/**/*" Exclude="game/**/*.dll;game/**/*.exe;game/**/*.pdb;game/**/*.xml" CopyToOutputDirectory="PreserveNewest" Link="%%(RecursiveDir)%%(Filename)%%(Extension)" />
+    <None Include="game/**/*" Exclude="game/**/*.dll;game/**/*.exe;game/**/*.pdb;game/*.xml" CopyToOutputDirectory="PreserveNewest" Link="%%(RecursiveDir)%%(Filename)%%(Extension)" />
     <None Include="ContentConverted/**/*" CopyToOutputDirectory="PreserveNewest" Link="ContentConverted/%%(RecursiveDir)%%(Filename)%%(Extension)" />
     <None Include="Content/**/*" CopyToOutputDirectory="PreserveNewest" Link="Content/%%(RecursiveDir)%%(Filename)%%(Extension)" />
   </ItemGroup>
@@ -574,6 +661,7 @@ def prepare(project, overlay=None):
     os.makedirs(converted, exist_ok=True)
     report["content"] = convert_xact(exe_dir, converted)
     report["content"]["songs"] = convert_songs(exe_dir, converted)
+    report["content"]["effects"] = compile_effects(converted, os.path.join(port, "Content", "shaders"))
     # the game's own hand work
     ov = _overlay_dir(project, overlay)
     if ov:
@@ -705,7 +793,9 @@ def main(argv):
             print("content check: the program wrote no result")
         else:
             failed = {k: v for k, v in checked.items() if v.startswith("error:")}
-            print("content check: %d of %d .xnb loaded" % (len(checked) - len(failed), len(checked)))
+            other = sum(1 for v in checked.values() if v.startswith(("not an XNB", "empty")))
+            print("content check: %d of %d .xnb loaded, %d failed; %d are not XNB content (empty, or a file the "
+                  "game reads itself)" % (len(checked) - len(failed) - other, len(checked) - other, len(failed), other))
             for name, why in sorted(failed.items())[:20]:
                 print("  %s: %s" % (name, why[len("error: "):][:160]))
             with open(os.path.join(project.reports, "content_check.json"), "w", encoding="utf-8") as h:

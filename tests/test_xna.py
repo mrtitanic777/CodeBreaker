@@ -235,6 +235,20 @@ def test_port_content_check():
     assert sum(v == "ProjectMercury.ParticleEffect" for v in checked.values()) >= 8      # the XNA reflective rules
 
 
+def test_port_effect_and_input():
+    from codebreaker.xna import port
+    src = ("public class Clip : Effect\n{\n    public Clip(GraphicsDevice d) : base(d, Bytes()) { }\n"
+           "    public Clip(Clip c) : base(c) { }\n    void Cache() { shaderIndexParam = base.Parameters[\"ShaderIndex\"]; }\n"
+           "    void OnApply() { shaderIndexParam.SetValue(num); }\n"
+           "    void Make() { var e = new Effect(dev, File.ReadAllBytes(p)); var g = GamePad.GetState(PlayerIndex.One); }\n}\n")
+    text, changed = port.rewrite(src)
+    assert "base(d, XnaPort.Effects.ForPC(Bytes()))" in text and "base(c)" in text, text
+    assert "new Effect(dev, XnaPort.Effects.ForPC(File.ReadAllBytes(p)))" in text, text
+    assert "XnaPort.Effects.SetShaderIndex(this, shaderIndexParam, num);" in text, text
+    assert "XnaPort.Input.GetState(PlayerIndex.One)" in text, text
+    assert port.rewrite(text)[0] == text                     # once only
+
+
 def test_xact_sound_bank():
     from codebreaker.formats.xbox import xsb
     bank = os.path.join(GAME, "Sound Bank.xsb")
@@ -264,7 +278,7 @@ def test_sound_effect_xma():
 def main():
     for fn in (test_texture_both_byte_orders, test_dxt1_punch_through, test_real_game_converts, test_fixups,
                test_managed_and_decompile, test_port_rewrites, test_port_error_fixers, test_xact_sound_bank,
-               test_sound_effect_xma, test_rename_readers, test_port_reader_names, test_obfuscated_forms,
+               test_sound_effect_xma, test_port_effect_and_input, test_rename_readers, test_port_reader_names, test_obfuscated_forms,
                test_de4dot_detects, test_port_content_check):
         check(fn)
     for name, status, detail in RESULTS:

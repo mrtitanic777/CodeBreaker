@@ -4,14 +4,15 @@
 //   Runtime.Install(game)       first thing in the game's constructor (put there by the port step): the game's
 //                               Content becomes a ContentManager that reads what CodeBreaker converted
 //   Runtime.Graphics(game)      in place of `new GraphicsDeviceManager(game)`: the HiDef profile the Xbox 360 had
+//   XNAPORT_EXCEPTIONS=1        every exception thrown is logged with its stack (a game's own crash screen hides them)
+//   XNAPORT_SCREENSHOT=<s,...>  the frame at those seconds as screenshot_<s>.png, then the program ends
 //   XNAPORT_CHECK_CONTENT=1     the program loads every .xnb under Content/ through the runtime instead of playing,
 //                               writes content_check.json beside itself ({asset: type or "error: why"}) and exits
 //   ContentManager              Load<T>: a converted file when there is one (ContentConverted/: textures and fonts
 //                               as PNG and JSON, sounds as WAV), else the game's own .xnb (MonoGame reads Xbox XNB
 //                               headers; its stream is little-endian, and XboxContent's readers turn the
-//                               big-endian buffers and pixels in it around), and an Effect from
-//                               Content/shaders/<name>.mgfxo -- one without names itself in the exception, so a run
-//                               says which shader to write next.
+//                               big-endian buffers and pixels in it around; an Effect is the one CodeBreaker
+//                               recovered as HLSL, see XboxContent.cs).
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -39,6 +40,20 @@ namespace XnaPort
             AppDomain.CurrentDomain.AssemblyResolve += (s, e) => System.Reflection.Assembly.GetEntryAssembly();
             if (Environment.GetEnvironmentVariable("XNAPORT_CHECK_CONTENT") == "1")
                 game.Components.Add(new ContentCheck(game));
+            // XNAPORT_EXCEPTIONS=1: every exception thrown, with where, in the log -- a game that catches its own
+            // (a crash screen) says what went wrong
+            if (Environment.GetEnvironmentVariable("XNAPORT_EXCEPTIONS") == "1")
+            {
+                int logged = 0;
+                AppDomain.CurrentDomain.FirstChanceException += (s, e) =>
+                {
+                    if (logged++ < 50)
+                        Log("XnaPort: exception " + e.Exception.GetType().FullName + ": " + e.Exception.Message + "\n" +
+                            new System.Diagnostics.StackTrace(1, false));
+                };
+            }
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XNAPORT_SCREENSHOT")))
+                game.Components.Add(new Screenshot(game, Environment.GetEnvironmentVariable("XNAPORT_SCREENSHOT")));
             Log("XnaPort: runtime installed for " + game.GetType().FullName);
         }
 
@@ -58,6 +73,48 @@ namespace XnaPort
     }
 
     // Every .xnb under Content/ loaded as the game would load it (by what its own reader makes), on the first frame.
+    // XNAPORT_SCREENSHOT=<seconds>[,<seconds>...]: the frame drawn that long after the start (by the clock), as
+    // screenshot.png -- screenshot_<seconds>.png when there are several -- beside the program; after the last the
+    // program ends.
+    class Screenshot : DrawableGameComponent
+    {
+        readonly List<double> times = new List<double>();
+        readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+        readonly bool several;
+
+        public Screenshot(Game game, string seconds) : base(game)
+        {
+            foreach (string s in seconds.Split(','))
+                if (double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double t))
+                    times.Add(t);
+            times.Sort();
+            several = times.Count > 1;
+            DrawOrder = int.MaxValue;
+        }
+
+        public override void Draw(GameTime gameTime)
+        {
+            if (times.Count == 0 || clock.Elapsed.TotalSeconds < times[0])
+                return;
+            string file = several ? "screenshot_" + times[0].ToString(System.Globalization.CultureInfo.InvariantCulture) + ".png" : "screenshot.png";
+            times.RemoveAt(0);
+            var pp = GraphicsDevice.PresentationParameters;
+            var pixels = new Color[pp.BackBufferWidth * pp.BackBufferHeight];
+            GraphicsDevice.GetBackBufferData(pixels);
+            for (int i = 0; i < pixels.Length; i++)
+                pixels[i].A = 255;
+            using (var t = new Texture2D(GraphicsDevice, pp.BackBufferWidth, pp.BackBufferHeight))
+            using (var f = File.Create(Path.Combine(Runtime.BaseDirectory, file)))
+            {
+                t.SetData(pixels);
+                t.SaveAsPng(f, t.Width, t.Height);
+            }
+            Runtime.Log("XnaPort: " + file + " at " + clock.Elapsed.TotalSeconds.ToString("0.0") + " s");
+            if (times.Count == 0)
+                Game.Exit();
+        }
+    }
+
     class ContentCheck : GameComponent
     {
         public ContentCheck(Game game) : base(game) { }
@@ -73,6 +130,11 @@ namespace XnaPort
                 var head = new byte[3];
                 using (var h = File.OpenRead(f))
                     h.ReadExactly(head, 0, Math.Min(3, (int)h.Length));
+                if (new FileInfo(f).Length == 0)
+                {
+                    results[name] = "empty: the package has the file with nothing in it";
+                    continue;
+                }
                 if (head[0] != 'X' || head[1] != 'N' || head[2] != 'B')
                 {
                     results[name] = "not an XNB: a file the game reads itself";
@@ -176,9 +238,6 @@ namespace XnaPort
             object asset = LoadConverted<T>(assetName);
             if (asset == null)
             {
-                if (typeof(T) == typeof(Effect) || typeof(Effect).IsAssignableFrom(typeof(T)))
-                    asset = LoadEffect(assetName);
-                else
                 {
                     try { asset = base.Load<T>(assetName); }
                     catch (Exception e)
@@ -231,16 +290,10 @@ namespace XnaPort
 
         Texture2D PremultipliedTexture(string png)
         {
-            Texture2D t;
+            // XNA's content pipeline premultiplied alpha at build time; a PNG has straight alpha. Done as the PNG is
+            // decoded: games load content on other threads, where MonoGame cannot read a texture back.
             using (var f = File.OpenRead(png))
-                t = Texture2D.FromStream(Device, f);
-            // XNA's content pipeline premultiplied alpha at build time; a PNG has straight alpha
-            var px = new Color[t.Width * t.Height];
-            t.GetData(px);
-            for (int i = 0; i < px.Length; i++)
-                px[i] = Color.FromNonPremultiplied(px[i].R, px[i].G, px[i].B, px[i].A);
-            t.SetData(px);
-            return t;
+                return Texture2D.FromStream(Device, f, DefaultColorProcessors.PremultiplyAlpha);
         }
 
         SpriteFont Font(string png, string json)
@@ -268,18 +321,5 @@ namespace XnaPort
                                   r.GetProperty("spacing").GetSingle(), kerning, chars.Contains('?') ? '?' : (char?)null);
         }
 
-        Effect LoadEffect(string assetName)
-        {
-            string name = Path.GetFileName(Clean(assetName));
-            string mgfx = Path.Combine(Runtime.BaseDirectory, "Content", "shaders", name + ".mgfxo");
-            if (!File.Exists(mgfx))
-            {
-                string why = "XnaPort: the Xbox 360 shader '" + assetName + "' has no PC version yet: write it as HLSL and " +
-                             "compile it to Content/shaders/" + name + ".mgfxo (mgfxc in.fx out.mgfxo /Profile:OpenGL)";
-                Runtime.Log(why);
-                throw new ContentLoadException(why);
-            }
-            return new Effect(Device, File.ReadAllBytes(mgfx));
-        }
     }
 }
