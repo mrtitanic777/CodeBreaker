@@ -322,7 +322,7 @@ using namespace ghidra;
 
 namespace {
 
-struct Fact { uint64_t va; std::string name; int pop; std::string model; int result = -1; };   // result: bytes it returns in AX (DX:AX), when known
+struct Fact { uint64_t va; std::string name; int pop; std::string model; int result = -1; std::vector<std::string> args; };   // result: bytes it returns in AX (DX:AX), when known
 struct Span { uint64_t va; std::vector<uint8_t> data; };
 // A call through a pointer (a driver's dispatch table, a callback): what it is passed, as the
 // code pushed it -- the callee is not known, so the analysis cannot tell what it takes.
@@ -533,7 +533,12 @@ void setUp(Analysis& a, const Description& d) {
     if (!f.model.empty() && m.hasModel(f.model)) {
       FuncProto& fp = fd->getFuncProto();
       const int ret_addr = f.model.find("far") != std::string::npos ? 4 : 2;
-      if (f.pop > 0 && f.model.find("stdcall") != std::string::npos) {
+      // (and a function the caller cleans up after, with its arguments' sizes given: those --
+      // left to the analysis, each caller guessed for itself, SETUPX 24:0F1E's size lost)
+      std::vector<std::string> sizes(f.pop > 0 ? f.pop / 2 : 0, "2");
+      if (f.pop == 0) sizes = f.args;
+      if ((f.pop > 0 && f.model.find("stdcall") != std::string::npos) ||
+          (f.pop == 0 && !f.args.empty() && f.model.find("cdecl") != std::string::npos)) {
         // 16-bit, the function removes its own arguments: `ret N` / `retf N` states how many
         // bytes there are, so the arguments are N/2 words. (Their types are placeholders; a
         // far pointer is two of them.) Without this the analysis decides per function how
@@ -544,8 +549,13 @@ void setUp(Analysis& a, const Description& d) {
         pieces.name = f.name;
         pieces.outtype = m.types->getBase(2, TYPE_INT);
         pieces.firstVarArgSlot = -1;
-        for (int i = 0; i < f.pop / 2; ++i) {
-          pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
+        for (size_t i = 0; i < sizes.size(); ++i) {
+          // (`4p`: a far pointer -- as a 4-byte number it was dereferenced as a near one)
+          if (sizes[i] == "4p")
+            pieces.intypes.push_back(m.types->getTypePointer(4, m.types->getBase(1, TYPE_UNKNOWN),
+                                                             m.getDefaultDataSpace()->getWordSize()));
+          else
+            pieces.intypes.push_back(m.types->getBase(atoi(sizes[i].c_str()), TYPE_INT));
           pieces.innames.push_back("a" + std::to_string(i + 1));
         }
         if (f.result == 2 || f.result == 4)
@@ -1234,6 +1244,11 @@ int main(int argc, char** argv) {
         Fact x{strtoull(f[1].c_str(), nullptr, 16), f[2], f.size() > 3 ? atoi(f[3].c_str()) : -1,
                f.size() > 4 ? f[4] : std::string()};
         if (f.size() > 5 && !f[5].empty()) x.result = atoi(f[5].c_str());
+        if (f.size() > 6 && !f[6].empty()) {        // (a cdecl function: its arguments' sizes, `4,2,2`)
+          std::stringstream as(f[6]);
+          std::string a;
+          while (std::getline(as, a, ',')) if (!a.empty()) x.args.push_back(a);
+        }
         (f[0] == "I" ? d.imports : f[0] == "X" ? d.externs : d.funcs).push_back(x);
       } else if (f.size() >= 5 && f[0] == "O") {
         d.calls.push_back({strtoull(f[1].c_str(), nullptr, 16), strtoull(f[2].c_str(), nullptr, 16),

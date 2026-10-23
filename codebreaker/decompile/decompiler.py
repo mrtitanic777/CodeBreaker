@@ -298,9 +298,127 @@ def decompile16(module_path, outdir=None, rounds=4):
         more, _o, more_va, _err = run(d.path, only=sorted(new | callers))
         out.update(more)
         by_va.update(more_va)
+    # A function its callers clean up after (cdecl) has its arguments left to the analysis, which
+    # decides at each call on its own: SETUPX's allocator 24:0F1E takes a size, and 11 of its 25
+    # callers were made to pass none (sub_3_7E58's block got whatever the stack held: Setup's
+    # SU99405). Where a call passes fewer than the function itself takes, the function's own
+    # argument words are stated, and it and its callers are done again. (Stated for every such
+    # function, all 578 of SETUPX's texts changed, their pointers made words, and new faults.)
+    lost = _arguments_lost(out, by_va, d)
+    if lost:
+        _state_arguments(d.path, lost)
+        names = {by_va[va] for va in lost}
+        callers = {va for va, n in by_va.items()
+                   if any(re.search(r"\b%s\s*\(" % re.escape(c), out.get(n, "")) for c in names if c != n)}
+        more, _o, more_va, _err = run(d.path, only=sorted(set(lost) | callers))
+        # (and of what is done again, only the callers that passed too few are taken: the rest --
+        # the stated functions themselves, callers that passed all -- kept as they were. Taken
+        # whole, the analysis's second look made other mistakes: 25:0F96 lost one of its own two
+        # arguments, 30:00F6 wrote through a pointer it had read right before)
+        short = {n for va in callers for n in [by_va[va]]
+                 if any(any(k < own for k in _call_arguments(out.get(n, ""), by_va[c]))
+                        for c, own in ((c, len(lost[c])) for c in lost) if by_va[c] != n)}
+        # (and one whose own arguments the second look changed is not taken either: 25:0F96, two
+        # words become one, faulted -- its calls passed in full, its own frame read wrong)
+        out.update({n: tx for n, tx in more.items()
+                    if n in short and _own_arguments(tx, n) == _own_arguments(out.get(n, ""), n)})
     out = _by_their_names(out, d.names)
     order = [by_va[va] for va in sorted(by_va)]
     return out, order, by_va, d
+
+
+def _call_arguments(text, name):
+    """The number of arguments each call to `name` in `text` passes."""
+    out = []
+    for m in re.finditer(r"\b%s\s*\(" % re.escape(name), text):
+        depth, k, n, seen = 1, m.end(), 0, False
+        while k < len(text) and depth:
+            ch = text[k]
+            if ch in "([":
+                depth += 1
+            elif ch in ")]":
+                depth -= 1
+            elif ch == "," and depth == 1:
+                n += 1
+            if depth and not ch.isspace():
+                seen = True
+            k += 1
+        out.append(n + 1 if seen else 0)
+    return out
+
+
+def _own_arguments(text, name):
+    """(count, [bytes of each]) of the arguments a function's own text declares, or None."""
+    head = text.split("{", 1)[0]
+    m = re.search(r"\b%s\(([^)]*)\)" % re.escape(name), head)
+    if not m:
+        return None
+    # (the analysis's own text: `type name` in the list, and a far pointer marked before it,
+    # `/*@P name 4 */` -- `char *param_1` alone reads as a near one)
+    params = [p.strip() for p in m.group(1).split(",") if p.strip() and p.strip() != "void"]
+    sizes = []
+    for p in params:
+        name_ = re.findall(r"\w+", p)[-1]
+        far = re.search(r"/\*@P %s 4 \*/" % re.escape(name_), head)
+        wide = re.search(r"\b(u?int4|xunknown4|float4|undefined4)\b", p)
+        # (a far pointer stated as one: `4p` -- stated as a 4-byte number, 34:0146's string and
+        # 34:016A's copy were dereferenced as near pointers, into the data segment)
+        sizes.append("4p" if far or ("__far" in p and "*" in p) else "4" if wide else "2")
+    return len(params), sizes
+
+
+def _own_if_read(out, va, name, d):
+    """A cdecl function's own arguments' sizes, when they come to the bytes its instructions
+    read through BP (describe.args_read); otherwise None -- its own text is wrong too (SETUPX's
+    25:0F96 once declared one word and read a far pointer)."""
+    text = out.get(name, "")
+    if "__cdecl16" not in text.split("{", 1)[0]:
+        return None
+    own = _own_arguments(text, name)
+    if not own or not own[0]:
+        return None
+    if d is not None:
+        seg, off = describe.where(va)
+        code = d.segment_bytes.get(seg, b"")
+        later = [o for v in d.names for (sg, o) in [describe.where(v)] if sg == seg and o > off]
+        read = describe.args_read(code, off, min(later) if later else len(code),
+                                  "far" if "16far" in text.split("{", 1)[0] else "near")
+        if read is None or read != sum(int(s.rstrip("p")) for s in own[1]):
+            return None
+    return own
+
+
+def _arguments_lost(out, by_va, d=None):
+    """{address: [bytes of each argument]} of the cdecl functions some call passes fewer
+    arguments than they themselves take (and whose own arguments are what they read: stated
+    from a wrong text, the function was made worse)."""
+    lost = {}
+    for va, name in by_va.items():
+        own = _own_if_read(out, va, name, d)
+        if own is None:
+            continue
+        for other, t in out.items():
+            if other != name and name in t and any(n < own[0] for n in _call_arguments(t, name)):
+                lost[va] = own[1]
+                break
+    return lost
+
+
+def _state_arguments(path, lost):
+    """The description's lines for these functions given their arguments' sizes (its 7th field,
+    `4,2,2`: a far pointer one argument of four bytes, not two words -- as words, 34:0146's
+    pointer was put back together as a near one, and SUWIN faulted in it)."""
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().split("\n")
+    for i, line in enumerate(lines):
+        parts = line.split("\t")
+        if parts[0] == "F" and len(parts) >= 5 and int(parts[1], 16) in lost:
+            while len(parts) < 6:
+                parts.append("0")
+            parts[6:] = [",".join(str(s) for s in lost[int(parts[1], 16)])]
+            lines[i] = "\t".join(parts)
+    with open(path, "w", newline="\n", encoding="utf-8") as f:
+        f.write("\n".join(lines))
 
 
 def _by_their_names(out, names):

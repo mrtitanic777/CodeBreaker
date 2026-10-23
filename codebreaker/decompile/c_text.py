@@ -1367,7 +1367,7 @@ def _compilable16(module_path, outdir=None):
         if by_selector:
             text = _selector_structs(text, name, selector_structs, shared_selectors)
             text = _struct_gaps(text, _pointer_distances(text))
-        m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))
+        m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts)))))))))
         if seg in d.images:
             m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))
         if callee_pops.get(va):
@@ -2107,6 +2107,23 @@ def _far_record(text, place, ss):
             indent = line[:len(line) - len(line.lstrip())]
             src.insert(end, "\n" + indent + "%s.codebreaker_ss = %s;" % (rec, ss))
             break
+    return src.text()
+
+
+def _far_concat_casts(text):
+    """`(T *)CONCAT22(seg, off)` -> `(T __far *)CONCAT22(seg, off)` wherever it stands: four
+    bytes, a segment and an offset, cast to a near pointer keep the offset alone and C gives it
+    DS. (SETUPX's sub_31_002A passed four far pointers on as `(xunknown1 *)CONCAT22(a4,a3)` once
+    its callee's arguments were stated as the far pointers they are.)"""
+    if "CONCAT22" not in text:
+        return text
+    src = ctree.Source(text)
+    for cast in src.find("cast_expression"):
+        ty, v = cast.child_by_field_name("type"), cast.child_by_field_name("value")
+        m = re.fullmatch(r"([\w ]+?) \*", src.at(ty)) if ty is not None else None
+        if m and "__far" not in m.group(1) and v is not None and v.type == "call_expression" and \
+                src.at(v.child_by_field_name("function")) == "CONCAT22":
+            src.replace(ty, "%s __far *" % m.group(1))
     return src.text()
 
 

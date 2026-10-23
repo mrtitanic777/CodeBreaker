@@ -680,6 +680,38 @@ def popped_by_hand(code, off, kind):
     return 2 * (len(pops) - words)
 
 
+def args_read(code, start, end, kind):
+    """The bytes of arguments a function reads -- through BP, after the prologue sets it
+    (`enter`, or `push bp / mov bp, sp`) -- or None when it keeps no such frame (its reads are
+    not known here)."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    X = capstone.x86
+    if windows_far_prologue(code, start):
+        return None
+    ins = list(md.disasm(bytes(code[start:min(end, start + 0x4000)]), start))
+    if ins and ins[0].mnemonic == "enter":
+        k = 1
+    elif len(ins) > 1 and ins[0].mnemonic == "push" and ins[0].op_str == "bp" and \
+            ins[1].mnemonic == "mov" and ins[1].op_str == "bp, sp":
+        k = 2
+    else:
+        return None
+    first = 6 if kind == "far" else 4                        # (past the saved BP and the return address)
+    most = 0
+    for i in ins[k:]:
+        if i.mnemonic in ("mov", "lea", "pop", "xchg") and i.op_str.startswith("bp"):
+            break                                            # (BP made something else: no longer the frame)
+        for op in i.operands:
+            if op.type == X.X86_OP_MEM and op.mem.base == X.X86_REG_BP and op.mem.index == 0 and \
+                    op.mem.segment in (0, X.X86_REG_SS) and op.mem.disp >= first:
+                # (a far pointer loaded or called through is four bytes, whatever Capstone says)
+                size = 2 if i.mnemonic == "lea" else \
+                    4 if i.mnemonic in ("les", "lds", "lss", "lfs", "lgs", "lcall", "ljmp") else op.size
+                most = max(most, op.mem.disp + max(size, 2) - first)
+    return most + (most & 1)
+
+
 def windows_far_prologue(code, off):
     """The prologue of a far function that Windows calls (exports, callbacks): `mov ax,ds` or
     `push ds; pop ax`, `nop`, `inc bp; push bp` -- the odd BP marking a far frame."""
