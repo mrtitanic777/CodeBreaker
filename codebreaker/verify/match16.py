@@ -103,7 +103,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     # back into the expressions they came from, through the SDK's prototypes -- and judged by the
     # one nearest the original: which a function's source was is the compiler's to say (a
     # temporary may be the programmer's variable, at /Od a stack slot of its own).
-    stages = ["fold", "far"] if fold else []         # (each subset of these is a way of saying it)
+    stages = ["fold", "far", "frame"] if fold else []   # (each subset of these is a way of saying it)
     if sdk:
         stages.append("sdk")
     variants = {}
@@ -116,6 +116,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     def said(fn, on):
         t = msc6.fold_temporaries(m.texts[fn]) if "fold" in on else m.texts[fn]
         t = msc6.join_far_parameters(t) if "far" in on else t
+        t = msc6.split_frame(t) if "frame" in on else t
         t = msc6.pascal_order(t, pascal)
         return "".join(msc6.ds_globals(msc6.sdk_calls(t, protos) if "sdk" in on else t))
     texts = {v: {fn: said(fn, on) for fn in todo} for v, on in variants.items()}
@@ -157,7 +158,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
         scores = {}
         for cc in compilers:
             for fl in (msc6.FLAG_SETS if cc == "msc6" else MSC8_FLAG_SETS):
-                r = judged(cc, fl, every, tuple(v for v in ("plain", "fold") if v in variants))
+                r = judged(cc, fl, every, tuple(v for v in ("plain", "fold", "frame", "fold+frame") if v in variants))
                 for s in segs:
                     scores[(s, cc, fl)] = _score({fn: r[fn] for fn in sample[s]})
         chosen, top = {}, {}

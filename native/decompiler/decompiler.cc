@@ -1103,7 +1103,9 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
       p->setPieces(pieces);
       p->setInputLock(true);
       p->setOutputLock(false);
-      p->setExtraPop(c.pop + (c.model.find("far") != std::string::npos ? 4 : 2));
+      // (the callee removes them -- or, a C function's, its caller does: only the return address)
+      p->setExtraPop((c.model.find("cdecl") != std::string::npos ? 0 : c.pop) +
+                     (c.model.find("far") != std::string::npos ? 4 : 2));
       t.first->getOverride().insertProtoOverride(Address(code, (uintb)c.site), p);
     }
     // its switch jumps: each jump belongs to the function that starts last before it in its

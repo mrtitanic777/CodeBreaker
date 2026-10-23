@@ -877,6 +877,25 @@ def jump_tables(d):
     return lines
 
 
+def _caller_cleanup(ins, j):
+    """the bytes of arguments the caller takes off right after the call ins[j] -- `add sp, n`, or
+    `pop bx` / `pop cx` a word each (never DX, where a result's high word comes back) -- or 0"""
+    nxt = ins[j + 1] if j + 1 < len(ins) else None
+    if nxt is None:
+        return 0
+    m = re.fullmatch(r"sp, (0x[0-9a-f]+|\d+)", nxt.op_str) if nxt.mnemonic == "add" else None
+    if m:
+        n = int(m.group(1), 0)
+        return n if 0 < n < 0x100 and n % 2 == 0 else 0
+    words = 0
+    for p in ins[j + 1:j + 4]:
+        if p.mnemonic == "pop" and p.op_str in ("bx", "cx"):
+            words += 1
+        else:
+            break
+    return 2 * words
+
+
 def call_overrides(d):
     """`O` lines: for each call through a pointer (a driver's dispatch table, a callback), the
     words the code pushed for it just before -- the callee is unknown, so the analysis cannot
@@ -912,9 +931,22 @@ def call_overrides(d):
                     break
             targets.add(prologue)
             for j, i in enumerate(ins):
-                if not i.group(capstone.CS_GRP_CALL) or not i.operands or i.operands[0].type == X.X86_OP_IMM:
-                    continue                                 # (a direct call: its callee is described)
-                if i.mnemonic == "lcall" and i.operands[0].type == X.X86_OP_IMM:
+                if not i.group(capstone.CS_GRP_CALL) or not i.operands:
+                    continue
+                if i.operands[0].type == X.X86_OP_IMM:
+                    # A direct call's callee is described -- but a C function's description says
+                    # only that it removes nothing, not what it takes: its caller says that, in the
+                    # cleanup right after the call (`add sp, 6`; at /Os `pop bx`/`pop cx` for each
+                    # word). SUWIN's sub_2_0A92 passed sub_8_0F24 a far pointer and a character
+                    # (`add sp, 6`); without this the call came out with no arguments at all.
+                    # (opt-in, CB_CALLER_ARGS=1: on SUWIN it gave no function the original's bytes
+                    # and cost 7 -- the header it leads to compiles their far calls to the next
+                    # function as `lcall` where they were `push cs; call`; not yet understood)
+                    took = _caller_cleanup(ins, j) if os.environ.get("CB_CALLER_ARGS") == "1" else 0
+                    if took:
+                        far = i.mnemonic == "lcall"
+                        lines.append("O\t%x\t%x\t%d\t%s" % (address(sg, i.address), va, took,
+                                                            "__cdecl16" + ("far" if far else "near")))
                     continue
                 pushed = 0
                 for p in reversed(ins[:j]):

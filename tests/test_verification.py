@@ -383,6 +383,35 @@ def test_the_last_mile_search_rewrites_a_comparison_the_way_a_source_had_it():
     assert search16.rewrite("int f()\n{\n  return 0;\n}", random.Random(0)) is None
 
 
+def test_the_frame_structure_is_taken_apart_into_the_locals_a_source_declares():
+    """SUWIN's sub_2_0A92: two 260-byte buffers (one reached 10 bytes below its member, as the
+    decompiler printed it) and a word read through the structure become two buffers and a variable."""
+    from codebreaker.build import msc6
+    text = ("int2 f()\n{\n  _Packed struct {\n  xunknown1 axStack_200 [250];\n  xunknown1 axStack_106 [260];\n"
+            "  } codebreaker_frame;\n  int2 iVar1;\n\n  g((int2)codebreaker_frame.axStack_106);\n"
+            "  g((int2)(codebreaker_frame.axStack_200 + -10));\n"
+            "  iVar1 = (*(int2 *)((uint1 *)codebreaker_frame.axStack_200 + 0xf8));\n  return iVar1;\n}")
+    out = msc6.split_frame(text)
+    assert "codebreaker_frame" not in out
+    assert "xunknown1 local_106[260];" in out and "xunknown1 local_20a[258];" in out and "int2 local_108;" in out
+    assert "g((int2)((xunknown1 *)&local_106));" in out and "g((int2)((xunknown1 *)&local_20a));" in out
+    assert "iVar1 = local_108;" in out
+    # a frame reached some other way is left as it was
+    odd = text.replace("(int2)codebreaker_frame.axStack_106", "(int2)codebreaker_frame.axStack_999")
+    assert msc6.split_frame(odd) == odd
+
+
+def test_a_c_function_s_arguments_are_what_its_caller_takes_off():
+    """`add sp, 6` after a direct call: six bytes; at /Os `pop bx; pop cx`: four; a pop of DX
+    (a result's high word) says nothing."""
+    import capstone
+    from codebreaker.decompile import describe
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    code = bytes.fromhex("6a5c5250" "9a00000000" "83c406" "9a00000000" "5b59" "9a00000000" "5a")
+    ins = list(md.disasm(code, 0))
+    assert [describe._caller_cleanup(ins, k) for k, i in enumerate(ins) if i.mnemonic == "lcall"] == [6, 4, 0]   # (used with CB_CALLER_ARGS=1)
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""

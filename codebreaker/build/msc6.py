@@ -431,6 +431,112 @@ def join_far_parameters(text):
     return head + ",".join(params) + close + decls + body
 
 
+_SIZES = {"char": 1, "int1": 1, "uint1": 1, "xunknown1": 1, "bool": 1, "undefined": 1, "undefined1": 1,
+          "int2": 2, "uint2": 2, "xunknown2": 2, "undefined2": 2, "short": 2,
+          "int4": 4, "uint4": 4, "xunknown4": 4, "undefined4": 4, "long": 4}
+_FRAME = re.compile(r"\n[ \t]*_Packed struct \{\n((?:[ \t]*[\w ]+\s+\w+\s*(?:\[\d+\])?\s*;\n)+)[ \t]*\} codebreaker_frame;")
+_MEMBER = re.compile(r"([\w ]+?)\s+(\w+?_([0-9a-f]+))\s*(?:\[(\d+)\])?\s*;")
+_AT = re.compile(r"(&)?\(\*\((\w+) \*\)\(\(uint1 \*\)codebreaker_frame\.(\w+) \+ (0x[0-9a-f]+|\d+)\)\)")
+_INDEX = re.compile(r"codebreaker_frame\.(\w+)\[(0x[0-9a-f]+|\d+)\]")
+_PTR = re.compile(r"\(codebreaker_frame\.(\w+) \+ (-?(?:0x[0-9a-f]+|\d+))\)")
+_BARE = re.compile(r"codebreaker_frame\.(\w+)\b")
+
+
+def split_frame(text):
+    """`text` with the decompiler's frame structure -- every local of a function in one packed
+    structure of byte arrays, reached as `(*(int2 *)((uint1 *)codebreaker_frame.axStack_12 + 8))` --
+    taken apart into the locals a source declares: a variable for each place read or written (of the
+    widest type it is read as), a buffer for each place whose address is taken (to the next variable).
+    The structure keeps the frame's layout for a build; a compiler given locals lays them out itself,
+    as it did the source's. Declared nearest the frame pointer first (search16 tries other orders).
+    A function whose frame is reached in a way not read here is left as it was."""
+    fm = _FRAME.search(text)
+    if not fm:
+        return text
+    members = {}
+    for mm in _MEMBER.finditer(fm.group(1)):
+        typ, name, hexoff, count = mm.group(1).strip(), mm.group(2), mm.group(3), mm.group(4)
+        members[name] = (-int(hexoff, 16), typ, int(count) if count else 1)
+    if not members:
+        return text
+    body = text[fm.end():]
+    scalars, starts = {}, set()
+    for amp, typ, mem, k in _AT.findall(body):
+        if mem not in members or typ not in _SIZES:
+            return text
+        at = members[mem][0] + int(k, 0)
+        scalars[at] = max(scalars.get(at, 0), _SIZES[typ])
+        if amp:
+            starts.add(at)
+    for mem, k in _INDEX.findall(body):
+        if mem not in members:
+            return text
+        base, typ, _n = members[mem]
+        at = base + int(k, 0) * _SIZES.get(typ, 1)
+        scalars[at] = max(scalars.get(at, 0), _SIZES.get(typ, 1))
+    for mem, k in _PTR.findall(body):                 # (a member's address moved on: a place of its own)
+        if mem not in members:
+            return text
+        starts.add(members[mem][0] + int(k, 0))
+    rest = _PTR.sub("", _INDEX.sub("", _AT.sub("", body)))
+    for mem in _BARE.findall(rest):
+        if mem not in members:
+            return text
+        starts.add(members[mem][0])
+    low = min(b for b, _t, _n in members.values())
+    high = max(b + _SIZES.get(t, 1) * n for b, t, n in members.values())
+    points = sorted(set(scalars) | starts)
+    if not points:
+        return text
+    var = {}
+    for i, at in enumerate(points):
+        end = points[i + 1] if i + 1 < len(points) else high
+        span = end - at
+        name = "local_%x" % -at if at < 0 else "local_p%x" % at
+        if at in starts and (at not in scalars or span > scalars[at]):
+            var[at] = (name, "xunknown1", span)                      # a buffer: its address is passed on
+        else:
+            size = scalars.get(at, span)
+            if size > span:
+                return text                                           # (reads that overlap: not locals)
+            var[at] = (name, {1: "xunknown1", 2: "int2", 4: "int4"}.get(size, "xunknown1"), 1 if size in (1, 2, 4) else span)
+
+    def place(at):
+        """the variable holding `at`, and how far into it"""
+        b = max(p for p in points if p <= at)
+        return var[b], at - b
+
+    def at_text(m):
+        amp, typ, mem, k = m.groups()
+        (name, vtyp, n), d = place(members[mem][0] + int(k, 0))
+        if not d and n == 1 and vtyp == typ:
+            ref = name
+        elif not d and n == 1 and _SIZES.get(vtyp) == _SIZES[typ]:
+            ref = "(*(%s *)&%s)" % (typ, name)
+        else:
+            ref = "(*(%s *)((uint1 *)&%s + %d))" % (typ, name, d)
+        return "&" + ref if amp else ref
+
+    def index_text(m):
+        mem, k = m.groups()
+        base, typ, _n = members[mem]
+        (name, vtyp, n), d = place(base + int(k, 0) * _SIZES.get(typ, 1))
+        return name if not d and n == 1 and vtyp == typ else "(*(%s *)((uint1 *)&%s + %d))" % (typ, name, d)
+
+    def bare_text(m):
+        base, typ, _n = members[m.group(1)]
+        (name, _vt, _n2), d = place(base)
+        return "((%s *)((uint1 *)&%s + %d))" % (typ, name, d) if d else "((%s *)&%s)" % (typ, name)
+    def ptr_text(m):
+        base, typ, _n = members[m.group(1)]
+        (name, _vt, _n2), d = place(base + int(m.group(2), 0))
+        return "((%s *)((uint1 *)&%s + %d))" % (typ, name, d) if d else "((%s *)&%s)" % (typ, name)
+    body = _BARE.sub(bare_text, _PTR.sub(ptr_text, _INDEX.sub(index_text, _AT.sub(at_text, body))))
+    decls = "".join("\n  %s %s%s;" % (t, n, "[%d]" % c if c > 1 or t == "xunknown1" and c > 1 else "")
+                    for _at, (n, t, c) in sorted(var.items(), key=lambda kv: -kv[0]))
+    return text[:fm.start()] + decls + body
+
+
 def _same_block(lines, a, b):
     """lines a < b are in one block: nothing between them closes it, opens one, or is a label"""
     indent = len(lines[a]) - len(lines[a].lstrip())
