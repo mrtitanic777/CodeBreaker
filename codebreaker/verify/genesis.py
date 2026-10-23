@@ -1,0 +1,85 @@
+"""genesis.py -- what is particular to reconstructing a Genesis / Mega Drive program.
+
+One of the kinds reconstruct.py works with (see there for what a kind provides). The program's
+source is assembly written from its cartridge (source/genesis_writer.py); it is assembled
+(build/m68k_asm.py, or asm68k / vasm), and the cartridge built is compared with the original. One
+that comes back identical IS the original, so each of its functions does what the original's
+does. When it is not identical -- the source was edited -- each function is run in CodeBreaker's
+68000 (emulate/m68k.py) in both cartridges, from the same registers, and what it did is
+compared: how the run ended, D0-D7 A0-A6 and the condition codes, the 64 KB of work RAM, and
+every access to the VDP, the I/O ports and the Z80's bus, in order.
+"""
+import hashlib
+import os
+
+KIND = "genesis"
+REV = 1
+SAME = "the cartridge built from this source is the original, byte for byte"
+_HARDWARE = [(0xA00000, 0xA1FFFF), (0xC00000, 0xC0001F)]
+_STATES = [dict(d=[0] * 8, a=[0] * 7, fill=0),
+           dict(d=[1, 2, 3, 4, 5, 6, 7, 8], a=[0xFF0100, 0xFF0200, 0xFF0300, 0xFF0400, 0xFF0500, 0xFF0600, 0xFF0700], fill=1),
+           dict(d=[0x8000, 0xFFFF, 0x7F, 0x80000000, 0x10, 0x20, 0x30, 0x40],
+                a=[0xFF8000, 0xFF9000, 0xFFA000, 0xFFB000, 0xFFC000, 0xFFD000, 0xFFE000], fill=2)]
+
+
+def profile(module_path=None):
+    settings = repr(("genesis", REV, _STATES))
+    return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
+
+
+class Prepared(object):
+    pass
+
+
+def prepare(module_path, work):
+    from codebreaker.source import genesis_writer
+    m = Prepared()
+    m.written = r = genesis_writer.reconstruct(module_path, os.path.join(work, "source"))
+    with open(r["source"], encoding="latin1") as f:
+        text = f.read()
+    functions = r["functions"]
+    m.header = text
+    m.order = [functions[a].name for a in sorted(functions)]
+    m.key = {functions[a].name: "%06x" % a for a in functions}
+    m.all_keys = sorted("%06x" % a for a in functions)
+    m.texts = {n: "; %s, in %s" % (n, os.path.basename(r["source"])) for n in m.order}
+    m.by_name = {functions[a].name: a for a in functions}
+    m.sig = hashlib.sha1(("%d\0%s" % (REV, text)).encode("latin1", "replace")).hexdigest()
+    return m
+
+
+def build(m, module_path, work):
+    r = m.written
+    if not r.get("linked"):
+        why = (r.get("notes") or ["did not build"])[-1][:200]
+        return None, {}, {n: why for n in m.order}
+    return (r["same"], module_path, r["built"]), {n: (m.key[n], m.by_name[n]) for n in m.order}, {}
+
+
+def _effects(path, entry, state):
+    from codebreaker.emulate import m68k
+    from codebreaker.formats import genesis
+    mem = genesis.read(path).memory()
+    seed = state["fill"]
+    for i in range(0x10000 if seed else 0):
+        mem[0xFF0000 + i] = ((i * 7 + seed * 13) ^ (i >> 3)) & (0x0F if seed % 2 else 0xFF)
+    bus = m68k.Bus(mem)
+    for lo, hi in _HARDWARE:
+        bus.map(lo, hi, read=lambda a, n: 0x0008 if a & ~1 == 0xC00004 else 0)   # (VDP status: in vblank)
+    run = m68k.run(bus, entry, steps=20000, d=state["d"], a=state["a"] + [0])
+    return (run["end"], tuple(run["d"]), tuple(run["a"][:7]), run["sr"] & 0x1F, bytes(mem[0xFF0000:0x1000000]),
+            tuple(run["io"][:4000]))
+
+
+def judge(context, item):
+    same, original, built = context
+    if same:
+        return "equivalent", "", [], SAME
+    _key, entry = item
+    for state in _STATES:
+        a, b = _effects(original, entry, state), _effects(built, entry, state)
+        if a != b:
+            what = ("end", "D registers", "A registers", "condition codes", "RAM", "hardware accesses")
+            first = next(w for w, x, y in zip(what, a, b) if x != y)
+            return "divergent", first + "-differs", [], "from D0=%08X A0=%06X" % (state["d"][0], state["a"][0])
+    return "equivalent", "", [], "the same effects from %d register states" % len(_STATES)

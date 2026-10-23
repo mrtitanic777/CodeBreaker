@@ -33,7 +33,8 @@ line and nothing above it.
 | 8-bit | 6502 (2A03) | NES | yes (iNES, NES 2.0) | yes (checked: 151/151) | own 6502 interpreter | yes |
 | 8-bit | Z80 | Master System, Game Gear, SG-1000 | yes (.sms .gg .sg; Sega mapper) | own table (every opcode, undocumented included) | own Z80 interpreter | yes (WLA-DX source) |
 | 8-bit | SM83 | Game Boy, Game Boy Color | yes (.gb .gbc; header, MBC) | own table | own SM83 interpreter | yes (RGBDS source) |
-| 8/16-bit | 6502, 65816, Z80, 68000, SPC700 | Atari, SNES, Genesis, C64, Apple II, Spectrum, MSX, arcade | no | 6502, Z80 yes | 6502, Z80 yes | no |
+| 16/32-bit | 68000 | Genesis / Mega Drive | yes (.md .bin .gen .smd; header, vectors) | own table (every 68000 instruction) | own 68000 interpreter | yes (Motorola-syntax source) |
+| 8/16-bit | 6502, 65816, Z80, 68000, SPC700 | Atari, SNES, Neo Geo, C64, Apple II, Spectrum, MSX, arcade | no | 6502, Z80, 68000 yes | 6502, Z80, 68000 yes | no |
 | x86, console | Pentium III | original Xbox (XBE) | yes (as a PE image; kernel imports named) | yes | Unicorn (the 32-bit lane) | yes |
 | MIPS, SuperH | R3000, R4300, R5900, SH-2, SH-4 | PS1, N64, PS2, Saturn, Dreamcast, arcade | no | no | no | no |
 | PowerPC, Cell | Gekko, Broadway, Xenon, Cell PPU/SPU | GameCube, Wii, Xbox 360, PS3 | no | PPU yes, SPU no | no | no |

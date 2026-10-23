@@ -22,12 +22,12 @@ def main():
             "pe": "codebreaker.verify.win32", "ne": "codebreaker.verify.win16",
             "powerpc": "codebreaker.verify.powerpc", "le": "codebreaker.verify.driver",
             "dos": "codebreaker.verify.dos", "java": "codebreaker.verify.java", "nes": "codebreaker.verify.nes",
-            "sms": "codebreaker.verify.sms", "gb": "codebreaker.verify.gb"}),
+            "sms": "codebreaker.verify.sms", "gb": "codebreaker.verify.gb", "genesis": "codebreaker.verify.genesis"}),
         ("every runner", emulate.RUNNERS == {
             "pe": ("codebreaker.emulate.emulator", "trace_function"), "ne": ("codebreaker.emulate.windows16", "probe"),
             "le": ("codebreaker.emulate.driver", "run"), "powerpc": ("codebreaker.emulate.powerpc", "run"),
             "nes": ("codebreaker.emulate.m6502", "run"), "sms": ("codebreaker.emulate.z80", "run"),
-            "gb": ("codebreaker.emulate.sm83", "run")}),
+            "gb": ("codebreaker.emulate.sm83", "run"), "genesis": ("codebreaker.emulate.m68k", "run")}),
         ("languages", (describe._arch(0x14C), describe._arch(0x1F2), describe._arch(0x8664), describe.ARCH,
                        describe.LE_ARCH, describe.DOS_ARCH) == (
             "x86:LE:32:default:windows", "PowerPC:BE:64:Xenon:homed", None, "x86:LE:16:Protected Mode:default",
