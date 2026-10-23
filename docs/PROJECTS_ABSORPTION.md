@@ -158,6 +158,24 @@ deleted without Logan's yes; "trim" means build output, logs and caches inside a
 | `ghidra`, `ghidra_12.1.3_PUBLIC` | 1.1 G | Ghidra source and install (third-party) | CodeBreaker no longer needs them (its own decompiler) | removed |
 | `Xbox 360 IDA`, `XuiWorkshop` | 390 M | third-party IDA plugins and installer; a 2014 XUI tool | not used | delete |
 
+## Projects/ emptied (2026-10-23, with Logan's yes)
+
+Logan's rule: what something better has replaced is worthless.
+
+- **Deleted, replaced:** `MinecraftPC` (every game file is in `Converted/Minecraft`; its earlier ports are
+  replaced by the recompile), `Shared` (its runtime, recompiler, docs, server and scripts are absorbed; the
+  Dashboard keeps its own copy), `rexglue-sdk` (public on GitHub; the parts used are in `native/rexglue`, and
+  its own recompiler is replaced by XenonRecomp), `UP` (above).
+- **Deleted, third-party and unused:** `Xbox 360 IDA`, `XuiWorkshop`.
+- **Converted project:** `Xbox-vs-360-Kernel-Diff` is `Converted/xboxkrnl` (the kernels in `original/`, the
+  recovered Rtl time functions in `src/`, the diff data, report and scripts in `reports/`).
+- **Moved beside CodeBreaker** (Logan's own projects, nothing lost; what CodeBreaker still wants from them is
+  absorbed from there): `../NexGen`, `../NexiaCompiler`, `../NexiaOS`, `../XboxTranspiler` (still to absorb:
+  `xex_patch/sign/inject`, `identify`/`report`/`refscan`), `../xam` (the inference passes), `../Arcadecraft`
+  (waits for the XNA/C# lane), `../xdk-build-demo`.
+- **Still under Projects/, locked by another process:** `TetrisPC` (empty folders) and `xam` (copied whole to
+  `../xam`); delete both when the lock is gone.
+
 ## Removed
 
 - **TetrisPC** (2026-10-22, with Logan's yes): Tetris Splash runs on CodeBreaker's own recompile
