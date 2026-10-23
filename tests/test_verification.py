@@ -302,6 +302,9 @@ def test_pascal_calls_are_said_first_pushed_first():
     assert "USER_33(param_1, (void __far *)&aiStack_c[0])" in out
     assert "GDI_22(param_2, aiStack_c[0], g(a, b), aiStack_c[2], aiStack_c[3])" in out
     assert 'USER_25("a,(b",0)' in out                          # not a pascal callee: as it was
+    # a 4-byte value split into its two words is the value (lstrcpy's LPCSTR in SUWIN's sub_2_30FC)
+    assert msc6.pascal_order("KERNEL_88((int2)param_1, (int2)((uint4)param_1 >> 0x10));", {"KERNEL_88"}) == \
+        "KERNEL_88(param_1);"
 
 
 def test_a_constant_near_address_is_a_variable_and_a_batch_s_errors_name_their_functions(tmp_path):
@@ -311,14 +314,29 @@ def test_a_constant_near_address_is_a_variable_and_a_batch_s_errors_name_their_f
     from codebreaker.build import msc6
     decls, text = msc6.ds_globals("  *(xunknown1 *)0x34ee = 1;\n  x = *(int2 *)0x63b2 + *(int2 *)0x63b2;\n"
                                   "  y = *(uint2 __far *)p;\n")
-    assert decls == "extern xunknown1 codebreaker_d34ee_xunknown1;\nextern int2 codebreaker_d63b2_int2;\n"
-    assert "codebreaker_d34ee_xunknown1 = 1;" in text and "*(uint2 __far *)p" in text
+    assert decls == "extern char codebreaker_d34ee[];\nextern char codebreaker_d63b2[];\n"
+    assert "(*(xunknown1 *)codebreaker_d34ee) = 1;" in text and "*(uint2 __far *)p" in text
     files, starts = msc6._batch_files([["a", "b"]], {"a": (0, "int f()\n{\n}"), "b": (0, "int g()\n{\n}")}, "B")
     assert files == [("B0", "int f()\n{\n}\n\nint g()\n{\n}")] and starts == [[(3, "a"), (7, "b")]]
     (tmp_path / "B0.TXT").write_text("B0.C\nB0.C(8) : error C2065: 'x' : undeclared identifier\n")
     assert msc6._refused(str(tmp_path / "B0.TXT"), starts[0]) == ["b"]
     (tmp_path / "B1.TXT").write_text("B1.C\nm.h(211) : error C2059: syntax error : '('\n")
     assert msc6._refused(str(tmp_path / "B1.TXT"), starts[0]) == []     # the header's: none told apart
+
+
+def test_an_api_called_by_number_is_said_through_the_sdk_where_its_arguments_fit():
+    """USER_107 is DefWindowProc(HWND, UINT, WPARAM, LPARAM): five words are four parameters, the
+    last two one LONG (MAKELONG, low first); a void API whose value is taken, and a call whose
+    arguments fit neither way, keep their numbers."""
+    from codebreaker.build import msc6
+    sdk = ("LRESULT WINAPI DefWindowProc(HWND, UINT, WPARAM, LPARAM);\nvoid    WINAPI MessageBeep(UINT);\n"
+           "LPSTR   WINAPI lstrcpy(LPSTR, LPCSTR);\n")
+    protos = msc6.sdk_prototypes(sdk)
+    assert protos["DefWindowProc"] == ["HWND", "UINT", "WPARAM", "LPARAM"] and protos.void == {"MessageBeep"}
+    text = "  x = USER_107(a5, a4, a3, a2, a1);\n  y = USER_104(a1);\n  USER_104(a1);\n  KERNEL_88(a2, a1, b);\n"
+    out = msc6.sdk_calls(text, protos)
+    assert "x = DefWindowProc(a5, a4, a3, MAKELONG(a1, a2));" in out
+    assert "y = USER_104(a1);" in out and "  MessageBeep(a1);" in out and "KERNEL_88(a2, a1, b);" in out
 
 
 def test_a_backpatch_record_is_added_into_the_code():

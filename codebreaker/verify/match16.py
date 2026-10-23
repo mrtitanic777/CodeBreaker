@@ -71,7 +71,7 @@ def _score(results):
                for v in results.values())
 
 
-def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False):
+def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False, sdk=False):
     """-> ({segment: (compiler, flags)}, {name: (verdict, differing bytes, total)})
 
     Without `flags` the compiler and switches are chosen segment by segment (a segment is a source
@@ -95,7 +95,11 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     header = msc6.pascal_order(header, pascal)
     decls, header = msc6.ds_globals(header)
     header += decls                                  # (after the typedefs; the header's macros use them)
-    texts = {fn: "".join(msc6.ds_globals(msc6.pascal_order(m.texts[fn], pascal))) for fn in todo}
+    if sdk:
+        header = msc6.sdk_header(header)
+    protos = msc6.sdk_prototypes() if sdk else {}
+    texts = {fn: "".join(msc6.ds_globals(msc6.sdk_calls(msc6.pascal_order(m.texts[fn], pascal), protos)))
+             for fn in todo}
     work = settings.state("match16", name, "work")
     segment = {fn: m.where[address[fn]][0] for fn in todo}
 
@@ -142,14 +146,14 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
 
 
 def main(argv):
-    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose]"""
+    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose] [--sdk]"""
     from codebreaker.base import corpus
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else None
     compiler = argv[argv.index("--compiler") + 1] if "--compiler" in argv else None
     limit = int(argv[argv.index("--first") + 1]) if "--first" in argv else 0
     args = [a for a in argv if not a.startswith("--") and a not in (flags, compiler, str(limit))]
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
-    chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv)
+    chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv, sdk="--sdk" in argv)
     counts = {}
     for v in results.values():
         counts[v[0]] = counts.get(v[0], 0) + 1

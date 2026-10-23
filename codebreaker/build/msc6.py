@@ -124,7 +124,7 @@ def dialect(header, text):
 # the stack right to left: the C lists them in that order. Microsoft's _pascal pushes them left to
 # right, so the same list said as _pascal is backwards -- the Windows API and every pascal function of
 # a 1990s module were written with the first-pushed argument first.
-_PASCAL = re.compile(r"__stdcall(?:16(?:far|near))?\b[^;(){}=]*?\b(\w+)\s*\(")
+_PASCAL = re.compile(r"^(?!\s*#)[^\n]*?__stdcall(?:16(?:far|near))?\b[^;(){}=\n]*?\b(\w+)\s*\(", re.M)
 _SEGS = ("unaff_SS", "codebreaker_ss()", "unaff_DS", "codebreaker_ds()")
 
 
@@ -180,6 +180,13 @@ def _far_pairs(args):
     last, so it comes first) is one far pointer, as the source had it"""
     out, k = [], 0
     while k < len(args):
+        lo = re.match(r"^\s*\(\s*u?int2\s*\)\s*(.+?)\s*$", args[k]) if k + 1 < len(args) else None
+        hi = re.match(r"^\s*\(\s*u?int2\s*\)\s*\(\s*\(\s*u?int4\s*\)\s*(.+?)\s*>>\s*(?:0x10|16)\s*\)\s*$",
+                      args[k + 1]) if lo else None
+        if lo and hi and lo.group(1).strip("() ") == hi.group(1).strip("() "):
+            out.append(" " + lo.group(1))            # a 4-byte value split into its words: the value
+            k += 2
+            continue
         if k + 1 < len(args) and args[k + 1].strip() in _SEGS:
             off = re.sub(r"^\s*\(\s*u?int2\s*\)\s*", "", args[k]).strip()
             out.append(" (void __far *)%s" % (off if off.startswith("&") else "(char __near *)(%s)" % off))
@@ -211,25 +218,119 @@ def pascal_order(text, names):
         i = end
 
 
+_IMPORT = re.compile(r"^extern [^;\n]*__stdcall\s+([A-Z][A-Z0-9]*)_(\d+)\s*\(\s*\);[ \t]*$", re.M)
+
+
+def windows_h():
+    """the Windows SDK's WINDOWS.H (Visual C++ 1.52c's, the Windows 3.1 one), or None"""
+    from codebreaker.base import settings
+    home = settings.get("msvc152")
+    path = os.path.join(home or "", "INCLUDE", "WINDOWS.H")
+    if not home or not os.path.isfile(path):
+        return None
+    with open(path, encoding="latin1") as f:
+        return f.read().replace("\r\n", "\n")
+
+
+def sdk_header(header, sdk=None):
+    """WINDOWS.H, then `header` (whose imports by number keep their own declarations: a call that
+    cannot be said through the SDK's prototype -- sdk_calls -- stays as it was)"""
+    sdk = sdk if sdk is not None else windows_h()
+    return sdk + "\n" + header if sdk else header
+
+
+_WIDE = re.compile(r"FAR\s*\*|\bLP|\bH?PSTR\b|\bLONG\b|\bDWORD\b|\bFARPROC\b|\bSEGPTR\b|\bCOLORREF\b|\bLRESULT\b")
+_POINTERS = re.compile(r"FAR\s*\*|\bLP(?!ARAM\b)|\bH?PSTR\b|\bFARPROC\b|\bSEGPTR\b")
+
+
+def sdk_prototypes(sdk=None):
+    """{API name: [parameter type, ...]} of every WINAPI function WINDOWS.H declares on a line, or
+    None for one with a variable argument list; a function that returns nothing has its name in the
+    set `.void` of the result"""
+    sdk = sdk if sdk is not None else windows_h()
+    out = _Prototypes()
+    for m in re.finditer(r"^([^\n#]*?)\bWINAPI\s+(\w+)\s*\(([^()]*)\)\s*;", sdk or "", re.M):
+        params = [p.strip() for p in m.group(3).split(",")]
+        out[m.group(2)] = None if "..." in params else [] if params in (["void"], ["VOID"], [""]) else params
+        if re.fullmatch(r"\s*(void|VOID)\s*", m.group(1)):
+            out.void.add(m.group(2))
+    return out
+
+
+class _Prototypes(dict):
+    def __init__(self):
+        super().__init__()
+        self.void = set()
+
+
+def sdk_calls(text, protos):
+    """`text` (in Pascal order) with each call of an import by number that the SDK declares said by
+    its name, `USER_33(...)` -> `GetClientRect(...)` -- the module's maker called the API through its
+    prototype, which decides how every argument is passed. A call whose arguments are one to a
+    parameter is renamed; one whose arguments are one to a word of the parameters has each 4-byte
+    parameter's two words (high first, as pushed) joined -- MAKELP for a pointer, MAKELONG for a
+    number; any other call keeps its number and its declaration without parameters."""
+    from codebreaker.symbols import ordinals
+    out, i = [], 0
+    call = re.compile(r"\b([A-Z][A-Z0-9]*)_(\d+)\s*\(")
+    while True:
+        m = call.search(text, i)
+        if not m:
+            out.append(text[i:])
+            return "".join(out)
+        end = _close(text, m.end())
+        nm = ordinals.name(m.group(1), int(m.group(2)))
+        params = protos.get(nm) if nm else None
+        if params is not None and nm in getattr(protos, "void", ()) and not (
+                re.search(r"(^|[;{}])\s*$", text[:m.start()]) and re.match(r"\s*;", text[end:])):
+            params = None                            # (a value taken from a function of no value: not the API)
+        if end < 0 or params is None:
+            out.append(text[i:m.end()])
+            i = m.end()
+            continue
+        args = [sdk_calls(a, protos).strip() for a in _arguments(text[m.end():end - 1])]
+        wide = [bool(_WIDE.search(p)) for p in params]
+        if len(args) == len(params):
+            said = args
+        elif len(args) == len(params) + sum(wide):
+            said, k = [], 0
+            for p, w in zip(params, wide):
+                if w:
+                    hi, lo = args[k], args[k + 1]
+                    said.append(("MAKELP(%s, %s)" if _POINTERS.search(p) else "MAKELONG(%s, %s)") % (
+                        (hi, lo) if _POINTERS.search(p) else (lo, hi)))
+                    k += 2
+                else:
+                    said.append(args[k])
+                    k += 1
+        else:
+            out.append(text[i:m.end()])
+            i = m.end()
+            continue
+        out.append(text[i:m.start()] + nm + "(" + ", ".join(said) + ")")
+        i = end
+
+
 _DEREF = re.compile(r"\*\s*\(\s*((?:unsigned |signed )?\w+)\s*\*\s*\)\s*(0x[0-9a-fA-F]+|\d+)\b")
 
 
 def ds_globals(text):
     """(declarations, text): every read or write through a constant near address, `*(T *)0x63b2`,
-    made a variable of the data segment, `codebreaker_d63b2_T`. Microsoft C addresses a variable
-    directly (`mov ax, [63b2]`, the offset a fix-up); a constant pointer it loads into a register first
-    -- the source had the variable. One variable per address and type."""
-    seen = {}
+    made one through a variable of the data segment, `(*(T *)codebreaker_d63b2)`. Microsoft C
+    addresses a variable directly (`mov ax, [63b2]`, the offset a fix-up); a constant pointer it loads
+    into a register first -- the source had the variable. One variable per address, read as each
+    place reads it."""
+    seen = set()
 
     def var(m):
         typ, at = m.group(1), int(m.group(2), 0)
         if at < 0x10 or typ in ("void", "code"):
             return m.group(0)
-        nm = "codebreaker_d%04x_%s" % (at, re.sub(r"\W", "_", typ))
-        seen[nm] = typ
-        return nm
+        nm = "codebreaker_d%04x" % at
+        seen.add(nm)
+        return "(*(%s *)%s)" % (typ, nm)
     out = _DEREF.sub(var, text)
-    return "".join("extern %s %s;\n" % (t, n) for n, t in sorted(seen.items())), out
+    return "".join("extern char %s[];\n" % n for n in sorted(seen)), out
 
 
 def function_code(obj, name):
