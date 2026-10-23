@@ -26,6 +26,7 @@ The program is native/x360's runtime with the title linked in; run it as
 """
 import filecmp
 import os
+import re
 import shutil
 import subprocess
 
@@ -55,7 +56,8 @@ def _sync(src, dst):
 
 def scaffold(xex_path, out_dir, name=None, title_files=None):
     """-> {"name", "dir", "functions", "switches", "unimplemented"}."""
-    name = name or _name(xex_path)
+    # the program's, target's and scripts' name: letters, digits and underscores ("Pac-Man C.E." -> Pac_Man_C_E)
+    name = "_".join(filter(None, re.split(r"[^A-Za-z0-9]+", name or _name(xex_path)))) or "title"
     out_dir = os.path.abspath(out_dir)  # XenonRecomp runs inside it and is given paths into it
     if name == "default":
         name = "title"
@@ -132,7 +134,7 @@ call "%s\\VC\\Auxiliary\\Build\\vcvars64.bat" >nul 2>&1 || exit /b 1
 set "LLVM=%s\\VC\\Tools\\Llvm\\x64\\bin"
 cd /d "%%~dp0"
 if not exist build\\CMakeCache.txt cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_COMPILER=%%LLVM%%\\clang-cl.exe" "-DCMAKE_CXX_COMPILER=%%LLVM%%\\clang-cl.exe" || exit /b 1
-cmake --build build || exit /b 1
+if defined CB_BUILD_JOBS (cmake --build build -j %%CB_BUILD_JOBS%% || exit /b 1) else (cmake --build build || exit /b 1)
 ''' % (name, name, vs, vs))
 
     with open(os.path.join(out_dir, "Play-%s.bat" % name), "w", newline="\r\n") as f:
@@ -155,3 +157,42 @@ cmake --build build || exit /b 1
     mapping = open(os.path.join(recomp, "ppc", "ppc_func_mapping.cpp")).read()
     return {"name": name, "dir": out_dir, "functions": mapping.count("{ 0x"),
             "switches": found + added, "unimplemented": log.count("unimplemented")}
+
+
+def build(out_dir, name, jobs=4):
+    """Runs Build-<name>.bat with at most `jobs` compiles at once. -> (ok, the last lines of its output)"""
+    env = dict(os.environ, CB_BUILD_JOBS=str(jobs))
+    r = subprocess.run(["cmd", "/c", os.path.join(out_dir, "Build-%s.bat" % name)], cwd=out_dir, env=env,
+                       capture_output=True, text=True, errors="replace")
+    out = (r.stdout + r.stderr).splitlines()
+    with open(os.path.join(out_dir, "reports", "build.log"), "w", encoding="utf-8") as f:
+        f.write("\n".join(out))
+    errors = [line for line in out if " error" in line or "error:" in line]
+    return r.returncode == 0, (errors or out)[-12:]
+
+
+def check(out_dir, name, seconds=60):
+    """Runs the built title headless for `seconds` and reads its log.
+    -> {"frames", "unimplemented": {import: calls}, "fatal": message or "", "log"}"""
+    game = os.path.join(out_dir, "assets")
+    exe = os.path.join(out_dir, "build", "%s.exe" % name)
+    log = os.path.join(game, "%s.log" % name)
+    if os.path.exists(log):
+        os.remove(log)
+    env = dict(os.environ, CB_HEADLESS="1", CB_WATCHDOG="20", CB_CONTINUE_UNIMPLEMENTED="1")
+    proc = subprocess.Popen([exe, game], cwd=game, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        proc.wait(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    text = open(log, encoding="utf-8", errors="replace").read() if os.path.exists(log) else ""
+    frames = [int(m) for m in re.findall(r"GPU: frame (\d+)", text)]
+    missing = {}
+    for m in re.findall(r"UNIMPLEMENTED IMPORT (\w+)", text):
+        missing[m] = missing.get(m, 0) + 1
+    fatal = re.findall(r"FATAL: (.*)", text)
+    stall = re.findall(r"no frame presented for \d+ s after frame \d+", text)
+    return {"frames": max(frames) if frames else 0, "unimplemented": missing,
+            "fatal": fatal[0] if fatal else (stall[0] if stall else ""),
+            "exit": proc.returncode, "log": log}

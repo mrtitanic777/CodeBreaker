@@ -156,7 +156,9 @@ class STFS:
         return bytes(out[:size]) if size else bytes(out)
 
     def _read_file_listing(self):
-        files = {}
+        """{path: (start block, blocks, size)}: each file by its path in the package ("media/font.xpr").
+        An entry names its folder by the folder entry's index in the listing (0x32; -1 the root)."""
+        entries = []                                      # (name, is folder, parent index, start, blocks, size)
         cur = self.ft_block_number
         for _ in range(self.ft_block_count):
             block = self.d[self._block_addr(cur):self._block_addr(cur) + BLOCK]
@@ -164,16 +166,25 @@ class STFS:
                 e = block[i * 0x40:(i + 1) * 0x40]
                 nlen = e[0x28] & 0x3F
                 if nlen == 0:
+                    entries.append(None)                  # (indices count every slot)
                     continue
-                name = e[:nlen].decode("latin-1", "ignore")
-                blocks = _u24_le(e, 0x29)
-                start = _u24_le(e, 0x2F)
-                size = struct.unpack_from(">I", e, 0x34)[0]
-                if not (e[0x28] & 0x80):                  # not a directory
-                    files[name] = (start, blocks, size)
+                entries.append((e[:nlen].decode("latin-1", "ignore"), bool(e[0x28] & 0x80),
+                                struct.unpack_from(">h", e, 0x32)[0], _u24_le(e, 0x2F), _u24_le(e, 0x29),
+                                struct.unpack_from(">I", e, 0x34)[0]))
             cur = self._next_block(cur)
             if cur == 0xFFFFFF or cur == 0:
                 break
+
+        def path(index, depth=0):
+            entry = entries[index] if 0 <= index < len(entries) else None
+            if entry is None or depth > 64:
+                return ""
+            parent = path(entry[2], depth + 1) if entry[2] >= 0 else ""
+            return parent + "/" + entry[0] if parent else entry[0]
+        files = {}
+        for i, entry in enumerate(entries):
+            if entry and not entry[1]:
+                files[path(i)] = (entry[3], entry[4], entry[5])
         return files
 
     def read_file(self, name):

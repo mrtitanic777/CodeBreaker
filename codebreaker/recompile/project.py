@@ -922,10 +922,14 @@ See CodeBreaker's `docs/RECOMPILE.md` for how it works and the runtime work that
 
 
 def main(argv):
-    """python -m codebreaker recompile-project <.xex> [-o <folder>] [--name N] [--title-files <dir>] [--runtime x360|rexglue] [-j N]
+    """python -m codebreaker recompile-project <title> [-o <folder>] [--name N] [--title-files <dir>] [--build] [--check [seconds]] [--runtime x360|rexglue] [-j N]
 
     x360 (the default): XenonRecomp's C++ on CodeBreaker's Xbox 360 runtime (x360project.py), in
-    the binary's project folder (Converted/<name>/) unless -o names another.
+    the binary's project folder (Converted/<name>/) unless -o names another. <title> is a .xex, or
+    the title as it comes (title.py): a LIVE/CON package, a disc image, a Games-on-Demand folder, a
+    folder of its files, or a folder holding one; its files are unpacked into the project's assets/.
+    --build builds the program (4 compiles at a time); --check builds it and runs it headless for
+    the seconds given (default 60), reporting frames presented, unimplemented imports and any stop.
     rexglue: this module's own translation on the rexglue kernel core (scaffold, below; needs -o)."""
     if not argv or argv[0].startswith("-"):
         print(main.__doc__)
@@ -934,11 +938,29 @@ def main(argv):
     runtime = argv[argv.index("--runtime") + 1] if "--runtime" in argv else "x360"
     if runtime == "x360":
         from codebreaker.base import converted
-        from codebreaker.recompile import x360project
+        from codebreaker.recompile import title, x360project
         files = argv[argv.index("--title-files") + 1] if "--title-files" in argv else None
         name = argv[argv.index("--name") + 1] if "--name" in argv else None
-        proj = converted.project(argv[0], name=name) if out is None else None
-        info = x360project.scaffold(argv[0], proj.root if proj else out, name=name or (proj and proj.name),
+        xex_path, found = argv[0], None
+        if not (os.path.isfile(xex_path) and open(xex_path, "rb").read(4) == b"XEX2"):
+            # a package, disc image, Games-on-Demand folder or folder of files: its default.xex, and its files
+            # unpacked into the project's assets/ (once)
+            found = title.locate(xex_path)
+            if found is None:
+                print("%s: no Xbox 360 title found (a default.xex in a package, disc image or folder)" % xex_path)
+                return 1
+            name = name or found.name
+            staging = os.path.join(converted.root(), "_unpacking")
+            os.makedirs(staging, exist_ok=True)
+            xex_path = os.path.join(staging, "default.xex")
+            with open(xex_path, "wb") as f:
+                f.write(found.read_xex())
+        proj = converted.project(xex_path, name=name) if out is None else None
+        if found:
+            target = os.path.join(proj.root if proj else out, "assets")
+            n = found.unpack(target)
+            print("%s: %s" % (found.name, "%d files unpacked from %s" % (n, found.source) if n else "files unpacked before"))
+        info = x360project.scaffold(xex_path, proj.root if proj else out, name=name or (proj and proj.name),
                                     title_files=files)
         if proj:
             proj.record("recompile-project", [os.path.join(proj.root, "CMakeLists.txt"), proj.src, proj.assets,
@@ -951,6 +973,22 @@ def main(argv):
         print("  -> %s" % info["dir"])
         print("  build: %s" % os.path.join(info["dir"], "Build-%s.bat" % info["name"]))
         print("  play:  %s" % os.path.join(info["dir"], "Play-%s.bat" % info["name"]))
+        if "--build" in argv or "--check" in argv:
+            ok, lines = x360project.build(info["dir"], info["name"])
+            print("build: %s" % ("ok" if ok else "FAILED"))
+            if not ok:
+                print("\n".join("  " + line[:300] for line in lines))
+                return 1
+        if "--check" in argv:
+            i = argv.index("--check")
+            seconds = int(argv[i + 1]) if i + 1 < len(argv) and argv[i + 1].isdigit() else 60
+            r = x360project.check(info["dir"], info["name"], seconds)
+            print("check (%d s headless): %d frames presented" % (seconds, r["frames"]))
+            for imp, calls in sorted(r["unimplemented"].items(), key=lambda kv: -kv[1]):
+                print("  unimplemented import %s (%d calls)" % (imp, calls))
+            if r["fatal"]:
+                print("  stopped: %s" % r["fatal"][:400])
+            print("  log: %s" % r["log"])
         return 0
     if out is None:
         print(main.__doc__)
