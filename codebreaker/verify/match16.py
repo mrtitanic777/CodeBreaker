@@ -59,14 +59,31 @@ def original_functions(module_path, where, spans):
     return out
 
 
-def run(module_path, flags=None, limit=0, log=print):
-    """-> (flags used, {name: (verdict, differing bytes, total)})"""
+# Microsoft C 8.00c (Visual C++ 1.52c) built Setup's SUWIN, without /Gw, with switches that differ
+# from one source file to the next: its segment 1 at /Od, its segment 3 at /G2 /Ox.
+MSC8_FLAG_SETS = ("/AM /Gs /Od", "/AM /G2s /Ox", "/AM /G2s /Os", "/AM /Gs /Ox", "/AM /Gsw /Od", "/AM /G2sw /Ox")
+
+
+def _score(results):
+    """how near a set of functions came: each counts the share of its bytes that are the original's
+    (a function that does not compile, nothing), an identical one counting double"""
+    return sum((2.0 if v[0] == "identical" else 1.0 - v[1] / max(v[2], 1)) if v[0] != "does not compile" else 0.0
+               for v in results.values())
+
+
+def run(module_path, flags=None, limit=0, log=print, compiler=None):
+    """-> ({segment: (compiler, flags)}, {name: (verdict, differing bytes, total)})
+
+    Without `flags` the compiler and switches are chosen segment by segment (a segment is a source
+    file's code): those under which most of a sample of its functions come out the original's
+    length, or the original's bytes."""
     from codebreaker.build import msc6
     from codebreaker.base import settings
     from codebreaker.formats.ne import NEFile
     from codebreaker.verify import win16
-    if not msc6.available():
-        raise SystemExit("Microsoft C 6 is not set up (settings.json: dosbox_x, msc6)")
+    compilers = [compiler] if compiler else [c for c in ("msc6", "msvc152") if msc6.available(c)]
+    if not compilers or not all(msc6.available(c) for c in compilers):
+        raise SystemExit("Microsoft C is not set up (settings.json: dosbox_x, msc6, msvc152)")
     name = os.path.basename(module_path).lower()
     m = win16.prepare(module_path, settings.state("match16", name, "source"))
     spans = win16._spans(NEFile(module_path), {va: m.where[va] for va in m.by_va})
@@ -74,41 +91,58 @@ def run(module_path, flags=None, limit=0, log=print):
     address = {fn: va for va, fn in m.by_va.items()}
     todo = [fn for fn in m.order if address.get(fn) in originals][:limit or None]
     header, _ = msc6.dialect(m.header, "")
+    pascal = msc6.pascal_names(m.header, *m.texts.values())
+    header = msc6.pascal_order(header, pascal)
+    texts = {fn: msc6.pascal_order(m.texts[fn], pascal) for fn in todo}
     work = settings.state("match16", name, "work")
+    segment = {fn: m.where[address[fn]][0] for fn in todo}
 
-    def judged(fl, names):
-        built = msc6.compile_many({fn: m.texts[fn] for fn in names}, header, fl, work, names={fn: fn for fn in names})
+    def judged(cc, fl, names):
+        built = msc6.compile_many({fn: texts[fn] for fn in names}, header, fl, work, compiler=cc,
+                                  names={fn: fn for fn in names})
         return {fn: (match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0))
                 for fn in names}
-    if not flags:
-        sample = todo[::max(1, len(todo) // 40)][:40]
-        best = (-1, msc6.FLAG_SETS[0])
-        for fl in msc6.FLAG_SETS:
-            r = judged(fl, sample)
-            score = sum(3 if v[0] == "identical" else 1 if v[0] == "same size" else 0 for v in r.values())
+    segs = sorted(set(segment.values()))
+    if flags:
+        chosen = {s: (compilers[0], flags) for s in segs}
+    else:
+        sample = {s: [fn for fn in todo if segment[fn] == s] for s in segs}
+        sample = {s: v[::max(1, len(v) // 6)][:6] for s, v in sample.items()}
+        every = [fn for v in sample.values() for fn in v]
+        scores = {}
+        for cc in compilers:
+            for fl in (msc6.FLAG_SETS if cc == "msc6" else MSC8_FLAG_SETS):
+                r = judged(cc, fl, every)
+                for s in segs:
+                    scores[(s, cc, fl)] = _score({fn: r[fn] for fn in sample[s]})
+        chosen = {}
+        for s in segs:
+            best = max(((scores[(s, cc, fl)], cc, fl) for (s2, cc, fl) in scores if s2 == s), key=lambda x: x[0])
+            chosen[s] = best[1:]
             if log:
-                log("  %-18s %d identical, %d the same size, of %d" % (
-                    fl, sum(v[0] == "identical" for v in r.values()), sum(v[0] == "same size" for v in r.values()), len(sample)))
-            if score > best[0]:
-                best = (score, fl)
-        flags = best[1]
-    return flags, judged(flags, todo)
+                log("  segment %-3s %-8s %-16s (%.1f of a sample of %d)" % (s, best[1], best[2], best[0], len(sample[s])))
+    out = {}
+    for s in segs:
+        out.update(judged(chosen[s][0], chosen[s][1], [fn for fn in todo if segment[fn] == s]))
+    return chosen, out
 
 
 def main(argv):
-    """python -m codebreaker match <16-bit module> [--flags "..."] [--first N]"""
+    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N]"""
     from codebreaker.base import corpus
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else None
+    compiler = argv[argv.index("--compiler") + 1] if "--compiler" in argv else None
     limit = int(argv[argv.index("--first") + 1]) if "--first" in argv else 0
-    args = [a for a in argv if not a.startswith("--") and a != flags and a != str(limit)]
+    args = [a for a in argv if not a.startswith("--") and a not in (flags, compiler, str(limit))]
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
-    flags, results = run(path, flags, limit)
+    chosen, results = run(path, flags, limit, compiler=compiler)
     counts = {}
     for v in results.values():
         counts[v[0]] = counts.get(v[0], 0) + 1
-    print("%s: %d functions compiled with Microsoft C 6 (%s): %s" % (
-        os.path.basename(path), len(results), flags, ", ".join("%s %d" % (k, counts[k]) for k in (
-            "identical", "same size", "different", "does not compile") if counts.get(k))))
+    print("%s: %d functions compiled with Microsoft C (%s): %s" % (
+        os.path.basename(path), len(results), "; ".join(sorted({"%s %s" % c for c in chosen.values()})),
+        ", ".join("%s %d" % (k, counts[k]) for k in ("identical", "same size", "different", "does not compile")
+                  if counts.get(k))))
     near = sorted((v[1] / max(v[2], 1), n, v) for n, v in results.items() if v[0] in ("same size", "different"))[:8]
     for _share, n, v in near:
         print("  %-28s %-10s %d of %d bytes differ" % (n, v[0], v[1], v[2]))

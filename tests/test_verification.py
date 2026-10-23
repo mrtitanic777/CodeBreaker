@@ -286,6 +286,24 @@ def test_the_16_bit_compiler_s_function_is_cut_out_by_its_name():
     assert msc6.function_code(obj, "_HELPER")[0] == helper and msc6.function_code(obj, "none") is None
 
 
+def test_pascal_calls_are_said_first_pushed_first():
+    """OpenWatcom's __stdcall lists arguments right to left; said as Microsoft's _pascal the list is
+    turned around, and an offset with its segment register is one far pointer (SUWIN's sub_1_06AA:
+    GetClientRect(hwnd, &rc) then Rectangle(hdc, left, top, right, bottom))."""
+    from codebreaker.build import msc6
+    text = ("int2 __stdcall16near f(param_1,param_2)\n{\n"
+            "  USER_33((int2)&aiStack_c[0],unaff_SS,param_1);\n"
+            "  return GDI_22(aiStack_c[3],aiStack_c[2],g(a, b),aiStack_c[0],param_2);\n"
+            "  x = USER_25(\"a,(b\",0);\n}")
+    names = msc6.pascal_names("extern uint4 __far __stdcall GDI_22();\nextern uint4 __far __stdcall USER_33();", text)
+    assert names == {"USER_33", "GDI_22", "f"}
+    out = msc6.pascal_order(text, names)
+    assert "f(param_2, param_1)" in out
+    assert "USER_33(param_1, (void __far *)&aiStack_c[0])" in out
+    assert "GDI_22(param_2, aiStack_c[0], g(a, b), aiStack_c[2], aiStack_c[3])" in out
+    assert 'USER_25("a,(b",0)' in out                          # not a pascal callee: as it was
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""

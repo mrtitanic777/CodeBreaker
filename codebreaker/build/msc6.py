@@ -105,6 +105,8 @@ def dialect(header, text):
             # macros OpenWatcom's i86.h gives (here without a header)
             "#define __based _based", "#define __segname _segname", "#define __export _export",
             "#define __loadds _loadds", "#define __interrupt _interrupt", "#define __saveregs _saveregs",
+            # (OpenWatcom's _Packed: the frame structure c_text writes is of words -- no padding to lose)
+            "#define _Packed",
             "#define MK_FP(s,o) ((void _far *)(((unsigned long)(unsigned)(s) << 16) | (unsigned)(o)))",
             "#define FP_OFF(p) ((unsigned)(unsigned long)(void _far *)(p))",
             "#define FP_SEG(p) ((unsigned)((unsigned long)(void _far *)(p) >> 16))"]
@@ -116,6 +118,97 @@ def dialect(header, text):
             "long double", "double")
         keep.append(line)
     return "\n".join(said + keep) + "\n", text
+
+
+# The reconstruction says a callee-pops convention as OpenWatcom's __stdcall, whose arguments go on
+# the stack right to left: the C lists them in that order. Microsoft's _pascal pushes them left to
+# right, so the same list said as _pascal is backwards -- the Windows API and every pascal function of
+# a 1990s module were written with the first-pushed argument first.
+_PASCAL = re.compile(r"__stdcall(?:16(?:far|near))?\b[^;(){}=]*?\b(\w+)\s*\(")
+_SEGS = ("unaff_SS", "codebreaker_ss()", "unaff_DS", "codebreaker_ds()")
+
+
+def pascal_names(*texts):
+    """the functions the texts declare or define with a callee-pops (__stdcall) convention"""
+    return {m.group(1) for t in texts for m in _PASCAL.finditer(t)}
+
+
+def _close(text, i):
+    """the index past the parenthesis that closes the one before `i` (string and character literals
+    skipped), or -1"""
+    depth = 1
+    while i < len(text):
+        c = text[i]
+        if c in "\"'":
+            j = i + 1
+            while j < len(text) and text[j] != c:
+                j += 2 if text[j] == "\\" else 1
+            i = j + 1
+            continue
+        depth += c == "("
+        depth -= c == ")"
+        i += 1
+        if not depth:
+            return i
+    return -1
+
+
+def _arguments(inner):
+    """an argument list cut at its top-level commas"""
+    out, depth, start, i = [], 0, 0, 0
+    while i < len(inner):
+        c = inner[i]
+        if c in "\"'":
+            j = i + 1
+            while j < len(inner) and inner[j] != c:
+                j += 2 if inner[j] == "\\" else 1
+            i = j + 1
+            continue
+        depth += c in "([{"
+        depth -= c in ")]}"
+        if c == "," and not depth:
+            out.append(inner[start:i])
+            start = i + 1
+        i += 1
+    if inner.strip():
+        out.append(inner[start:])
+    return out
+
+
+def _far_pairs(args):
+    """an offset followed by the segment register it is in (right-to-left order: the offset is pushed
+    last, so it comes first) is one far pointer, as the source had it"""
+    out, k = [], 0
+    while k < len(args):
+        if k + 1 < len(args) and args[k + 1].strip() in _SEGS:
+            off = re.sub(r"^\s*\(\s*u?int2\s*\)\s*", "", args[k]).strip()
+            out.append(" (void __far *)%s" % (off if off.startswith("&") else "(char __near *)(%s)" % off))
+            k += 2
+        else:
+            out.append(args[k])
+            k += 1
+    return out
+
+
+def pascal_order(text, names):
+    """`text` with the arguments of every call to, and the parameters of every definition of, a
+    function in `names` in Pascal order: first pushed first, an offset and its segment one far pointer."""
+    out, i = [], 0
+    call = re.compile(r"\b(\w+)\s*\(")
+    while True:
+        m = call.search(text, i)
+        if not m:
+            out.append(text[i:])
+            return "".join(out)
+        end = _close(text, m.end())
+        if m.group(1) not in names or end < 0:
+            out.append(text[i:m.end()])
+            i = m.end()
+            continue
+        args = _far_pairs([pascal_order(a, names) for a in _arguments(text[m.end():end - 1])])
+        args.reverse()
+        out.append(text[i:m.end()] + ", ".join(a.strip() for a in args) + ")")
+        i = end
 
 
 def function_code(obj, name):
