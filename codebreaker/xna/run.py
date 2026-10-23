@@ -1,5 +1,5 @@
 """run.py -- `codebreaker xna <package, folder or game .exe> [--name N] [--no-content]`: an XNA game as
-a Converted project.
+a Converted project; `codebreaker xna port <project>` then builds its C# for the PC (xna/port.py).
 
     Converted/<name>/
       original/   what came in (the package, or the game's .exe)
@@ -74,7 +74,9 @@ def assemblies(folder):
 
 def decompile(assembly, out_dir):
     env = dict(os.environ, DOTNET_ROLL_FORWARD="LatestMajor")
-    r = subprocess.run([ilspycmd(), "-p", "-o", out_dir, assembly], capture_output=True, text=True, env=env)
+    # C# 11: newer syntax (C# 12's primary constructors) puts a constructor's assignments into field initializers,
+    # where one field may not set another
+    r = subprocess.run([ilspycmd(), "-p", "-lv", "CSharp11_0", "-o", out_dir, assembly], capture_output=True, text=True, env=env)
     if r.returncode != 0:
         raise RuntimeError("ilspycmd failed on %s: %s" % (os.path.basename(assembly), (r.stderr or r.stdout).strip()[-500:]))
 
@@ -145,6 +147,9 @@ def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0 if argv else 2
+    if argv[0] == "port":                     # the decompiled C# built and run on the PC (xna/port.py)
+        from codebreaker.xna import port
+        return port.main(argv[1:])
     name = argv[argv.index("--name") + 1] if "--name" in argv else None
     try:
         p, report, kinds = convert(argv[0], name=name, content="--no-content" not in argv)

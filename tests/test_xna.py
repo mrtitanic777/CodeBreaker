@@ -124,9 +124,77 @@ def test_managed_and_decompile():
         assert any("class " in open(p, encoding="utf-8-sig").read() for p in sources)
 
 
+def test_port_rewrites():
+    from codebreaker.xna import port
+    src = ("using Microsoft.Xna.Framework;\nusing Microsoft.Xna.Framework.Audio;\nusing Microsoft.Xna.Framework.Content;\n"
+           "public class MyGame : Game {\n    GraphicsDeviceManager g;\n    AudioEngine engine;\n    WaveBank waves;\n"
+           "    public MyGame()\n    {\n        g = new GraphicsDeviceManager(this);\n    }\n"
+           "    protected override void Update(GameTime t) { ((Game)this).Update(t); }\n}\n"
+           "class Loader : ContentManager { }\n")
+    out, changed = port.rewrite(src)
+    assert "XnaPort.Runtime.Install(this);" in out and "XnaPort.Runtime.Graphics(this)" in out, out
+    assert "using AudioEngine = XnaPort.Xact.AudioEngine;" in out and "base.Update(t)" in out
+    assert "class Loader : XnaPort.ContentManager" in out, out
+    # a type the game declares itself is not aliased away
+    out2, _ = port.rewrite(src, own={"AudioEngine"})
+    assert "using AudioEngine =" not in out2 and "using WaveBank = XnaPort.Xact.WaveBank;" in out2
+
+
+def test_port_error_fixers():
+    from codebreaker.xna import port
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "a.cs")
+        lines = ["x = new Color(c.R, c.G, c.B, 0);",
+                 "var b = new VertexBufferBinding[2] { vb, inst };",
+                 "if (rect.Inflate(0f, y).Contains(v)) { }",
+                 "var t = new Texture2D(gd, 4, 4, mipMap: false, SurfaceFormat.Color);"]
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        err = lambda line, code, text: {"file": p, "line": str(line), "col": "1", "code": code, "text": text}
+        errors = [err(1, "CS0121", "between 'Color.Color(int, int, int, int)' and 'Color.Color(byte, byte, byte, byte)'"),
+                  err(2, "CS0029", "Cannot implicitly convert type 'VertexBuffer' to 'Microsoft.Xna.Framework.Graphics.VertexBufferBinding'"),
+                  err(3, "CS0023", "Operator '.' cannot be applied to operand of type 'void'"),
+                  err(4, "CS1739", "The best overload for 'Texture2D' does not have a parameter named 'mipMap'")]
+        assert port.fix_color(errors) == 1 and port.fix_vertex_binding(errors) == 1
+        assert port.fix_shadowed_extensions(errors, {"Inflate": [("global::Game.RectExt", "Rectangle")]}) == 1
+        assert port.fix_named_arguments(errors) == 1
+        got = open(p, encoding="utf-8").read().split("\n")
+    assert got[0] == "x = new Color((int)(c.R), (int)(c.G), (int)(c.B), (int)(0));", got[0]
+    assert "new VertexBufferBinding(vb), new VertexBufferBinding(inst)" in got[1], got[1]
+    assert got[2] == "if (global::Game.RectExt.Inflate(rect, 0f, y).Contains(v)) { }", got[2]
+    assert "mipmap: false" in got[3]
+
+
+def test_xact_sound_bank():
+    from codebreaker.formats.xbox import xsb
+    bank = os.path.join(GAME, "Sound Bank.xsb")
+    if not os.path.isfile(bank):
+        raise Skip("no ../Arcadecraft/Arcadecraft here")
+    b = xsb.read(bank)
+    assert b["wave_banks"] == ["Wave Bank", "Music Wave Bank"] and len(b["cues"]) == 106
+    assert all(c["waves"] for c in b["cues"].values())
+
+
+def test_sound_effect_xma():
+    import shutil
+    sound = os.path.join(os.path.dirname(ROOT), "CodeBreaker", "Converted", "BlockWorld", "assets", "game", "584E07D1",
+                         "Content", "Audio", "AMP_AssaultRifle.xnb")
+    if not os.path.isfile(sound):
+        raise Skip("no Converted/BlockWorld here")
+    if not shutil.which("ffmpeg"):
+        raise Skip("ffmpeg is not on PATH")
+    with tempfile.TemporaryDirectory() as d:
+        rec = xnb.convert(sound, d)
+        assert rec.get("kind") == "sound" and rec["codec"] == "XMA2" and rec["rate"] == 44100, rec
+        with open(os.path.join(d, "AMP_AssaultRifle.wav"), "rb") as f:
+            head = f.read(44)
+        assert head[:4] == b"RIFF" and struct.unpack_from("<H", head, 20)[0] in (1, 0xFFFE)   # PCM (ffmpeg: extensible)
+
+
 def main():
     for fn in (test_texture_both_byte_orders, test_dxt1_punch_through, test_real_game_converts, test_fixups,
-               test_managed_and_decompile):
+               test_managed_and_decompile, test_port_rewrites, test_port_error_fixers, test_xact_sound_bank,
+               test_sound_effect_xma):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

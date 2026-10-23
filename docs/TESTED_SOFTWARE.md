@@ -66,7 +66,8 @@ answer: cJSON, zlib, sds, tiny-AES-c, inih, Lua, miniz.
 
 | Program | Platform | Result |
 |---|---|---|
-| Arcadecraft (Firebase Industries, 2011) | Xbox 360 Indie Game (XNA 4.0) | `xna`: 6 assemblies to C# (583 files, 125 000 lines: the game, its two own libraries, SunBurn, DPSF, EasyStorage); 610 content files -- 434 textures and 6 fonts as PNG, pixel for pixel as Arcadecraft's own pipeline made them, 170 other types catalogued. Not yet compiled or run from that C# (the earlier MonoGame port did that by hand) |
+| Arcadecraft (Firebase Industries, 2011) | Xbox 360 Indie Game (XNA 4.0) | `xna`: 6 assemblies to C# (583 files, 125 000 lines: the game, its two own libraries, SunBurn, DPSF, EasyStorage); 610 content files -- 434 textures and 6 fonts as PNG, pixel for pixel as Arcadecraft's own pipeline made them, 170 other types catalogued; all 106 XACT cues resolved to their waves (as the hand port's own map, 97 of 97). `xna port` with its overlay (the deobfuscated SunBurn, the reconstructed shaders, its port runtime: ../Arcadecraft) builds and runs to the title screen through the real SunBurn renderer. Without the overlay the generic port stops at SunBurn's obfuscation (13 errors: it needs de4dot) and its shaders exist only as Xbox microcode |
+| Block World (Hazzah Games) | Xbox 360 Indie Game (XNA 4.0) | `xna`: 16 assemblies to C# (the game and its Hazzah engine); 220 textures, 3 fonts, 270 sounds (XMA2 decoded). `xna port`, nothing written by hand: builds (249 MonoGame differences fixed by the compile loop: Color's byte constructor, a shadowed Rectangle.Inflate, VertexBufferBinding, a renamed parameter, cross-assembly overrides) and runs to its title screen ("Press A to continue"). Gameplay not yet checked |
 
 ## Java
 

@@ -35,6 +35,11 @@ setting for one run.
 | Real Xbox 360 files the format tests read when present (an STFS theme, a dashboard XZP, a Minecraft PCK) | `../xbox-samples` | (tests/test_xbox_formats.py) |
 | The Xbox 360 key store the `crypto` tools read (1BL_pub.bin, SB_prv.bin, ...) | `Keys/` in the current folder | `xbox360_keys` |
 | The `crypto` tools' binaries: LZX libraries, the Free60 xenon-as / xenon-objcopy, hypervisor images | | `xbox360_crypto_bin` |
+| ILSpy's command line (the `xna` lane's decompiler) | `dotnet tool install -g ilspycmd` | `ilspycmd` |
+| XNA Game Studio 4.0 (its GamerServices, Net, Storage and Avatar assemblies: `xna port` generates its stubs from their metadata) | the Windows GAC | |
+| MonoGame DesktopGL 3.8.1 and the .NET 8 SDK (`xna port` builds against them) | NuGet's cache | |
+| ffmpeg (XMA / XMA2 audio decoded to WAV) | PATH | `ffmpeg` |
+| Per-game hand work for `xna port` (a hand port's shaders and fixes) | `state/xna/overlays/<name>/` | `xna_overlays` |
 
 None of these is redistributable, and none is needed to read the code: each command says which
 setting it is missing.

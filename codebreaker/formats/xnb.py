@@ -6,7 +6,8 @@ catalogued.
                                         x.readers [type reader names], x.data (the content stream)
     xnb.convert(path, out_dir)          {"file", "kind", ...}: a texture -> <name>.png, a sprite font ->
                                         <name>.png + <name>.json (glyphs, cropping, characters,
-                                        spacing, kerning); anything else -> kind "other" and its readers
+                                        spacing, kerning), a sound effect -> <name>.wav (XMA2 decoded by
+                                        ffmpeg: formats/xbox/xma.py); anything else -> kind "other"
 
 A .xnb starts "XNB", a platform letter, the version (5 for XNA 4.0) and flags (0x80: compressed),
 then the file's size; compressed content gives its decompressed size and comes in LZX frames. The
@@ -163,6 +164,52 @@ def _sprite_font(data, o):
             "line_spacing": line_spacing, "spacing": spacing, "kerning": kerning}
 
 
+# WAVEFORMATEX and XMA2WAVEFORMATEX fields, in order (the Xbox 360 writes them big-endian)
+_WAVEFORMATEX = "HHIIHHH"
+_XMA2_EXTRA = "HIIIIIIIBBH"
+
+
+def _sound_effect(data, o, platform):
+    """SoundEffectReader: the format (a WAVEFORMATEX), the samples, the loop and the duration."""
+    _reader, o = _7bit(data, o)
+    n, = struct.unpack_from("<I", data, o)
+    fmt = bytearray(data[o + 4:o + 4 + n])
+    o += 4 + n
+    size, = struct.unpack_from("<I", data, o)
+    samples = data[o + 4:o + 4 + size]
+    o += 4 + size
+    loop_start, loop_length, duration = struct.unpack_from("<iii", data, o)
+    if platform == "x":                                       # the format's fields are big-endian there
+        fields = _WAVEFORMATEX + (_XMA2_EXTRA if struct.unpack_from(">H", fmt, 0)[0] == 0x166 else "")
+        size_of = struct.calcsize(">" + fields)
+        if len(fmt) >= size_of:
+            fmt[:size_of] = struct.pack("<" + fields, *struct.unpack_from(">" + fields, fmt, 0))
+        else:
+            fmt[:18] = struct.pack("<" + _WAVEFORMATEX, *struct.unpack_from(">" + _WAVEFORMATEX, fmt, 0))
+    tag, channels, rate, _avg, _align, bits = struct.unpack_from("<HHIIHH", fmt, 0)
+    if platform == "x" and tag == 1 and bits == 16:            # big-endian PCM samples
+        samples = b"".join(samples[i + 1:i + 2] + samples[i:i + 1] for i in range(0, len(samples) - 1, 2))
+    return {"tag": tag, "channels": channels, "rate": rate, "bits": bits, "fmt": bytes(fmt), "samples": samples,
+            "loop": [loop_start, loop_length], "duration_ms": duration}
+
+
+def _riff(fmt, samples):
+    chunk = lambda tag, body: tag + struct.pack("<I", len(body)) + body + (bytes(1) if len(body) % 2 else b"")
+    body = b"WAVE" + chunk(b"fmt ", fmt) + chunk(b"data", samples)
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+def write_wav(sound, out):
+    """A sound effect as a WAV a PC plays: PCM and ADPCM as they are, XMA2 decoded to PCM by ffmpeg."""
+    riff = _riff(sound["fmt"], sound["samples"])
+    if sound["tag"] in (0x166, 0x165):
+        from codebreaker.formats.xbox import xma
+        xma.decode_to_wav(riff, out)
+    else:
+        with open(out, "wb") as f:
+            f.write(riff)
+
+
 def convert(path, out_dir):
     name = os.path.splitext(os.path.basename(path))[0]
     rec = {"file": os.path.basename(path)}
@@ -184,6 +231,11 @@ def convert(path, out_dir):
             with open(os.path.join(out_dir, name + ".json"), "w", encoding="utf-8") as f:
                 json.dump(font, f, ensure_ascii=False, indent=1)
             rec.update(kind="font", width=tex["width"], height=tex["height"], glyphs=len(font["glyphs"]))
+        elif primary == "SoundEffect":
+            sound = _sound_effect(x.data, x.offset, x.platform)
+            write_wav(sound, os.path.join(out_dir, name + ".wav"))
+            rec.update(kind="sound", codec={1: "PCM", 2: "ADPCM", 0x166: "XMA2", 0x165: "XMA"}.get(sound["tag"], sound["tag"]),
+                       channels=sound["channels"], rate=sound["rate"], duration_ms=sound["duration_ms"], loop=sound["loop"])
         else:
             rec["kind"] = "other"
     except Exception as e:                                   # one bad file is reported, the rest go on
