@@ -1,16 +1,19 @@
 #pragma once
 
 // The Xbox Guide (hud.xex 17559's GuideMainScene and the screens it opens): its main blades, Sign In / Sign Out,
-// Achievements, the Community (friends, messages, party with voice, over our Xbox LIVE: native/x360/system/live), a
+// Achievements, the Community (friends, messages, party with voice, over our Xbox LIVE: Shared/runtime/live), a
 // player's Profile, the user's own Profile and Edit Profile, Gamer Zone, the dashboard items and Turn Off Console.
-// Drawn by the XUI library (native/x360/system/xui); everything runtime-specific goes through guide/host.h.
-// Interface and how to adopt it: docs/x360/shared_guide.md.
+// Drawn by the XUI library (Shared/runtime/xui); everything runtime-specific goes through guide/host.h.
+// Interface and how to adopt it: Shared/docs/shared_guide.md.
 //
 // The entry points open the Guide as the runtime's one system UI (host::OpenSystemUi); a title's XamShow*UI gets
 // their result: 0 (ERROR_SUCCESS) once open, or when the user is not on Xbox LIVE and the screen needs it (nothing
 // shown, as XAM 0x816C1718 does), 0x525 (ERROR_NO_SUCH_USER) for a user index that is not signed in.
 
+#include "guide/host.h"
+
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -51,4 +54,28 @@ namespace guide
     uint32_t ShowJoinSessionInProgress(uint32_t user, uint64_t xuid);
     // XamShowMessageComposeUI: a text message to the recipients on the keyboard. Needs Xbox LIVE.
     uint32_t ShowMessageCompose(uint32_t user, const std::vector<uint64_t>& recipients);
+    // Create Profile from a title's sign-in UI (XamShowSigninUI's pane has the row too): createprofile.xex's flow as
+    // the Guide's (Select a Device, Enter Profile Name, the waits; the new profile signs in to `user`'s controller,
+    // which the title sees as its sign-in), then Save Profile; Done, or B on the device selector, closes it.
+    void ShowCreateProfile(uint32_t user);
+
+    // Games & Apps > Recent: its Games & Apps tab lists the profile's titles played (XamUserCreateTitlesPlayed-
+    // Enumerator; `played`, else host::PlayedTitles), its Downloads and All tabs the console's content packages (hud
+    // enumerates them with XamContentAggregateCreateEnumerator; `installed`, else nothing); A on the running title
+    // (`runningTitleId`) in Games & Apps closes the Guide.
+    struct InstalledContent
+    {
+        uint32_t titleId = 0, contentType = 0; // XCONTENTTYPE_*: 0xD0000 Xbox LIVE Arcade, 0x4000 installed disc, ...
+        std::u16string name;                   // the package's display name
+        std::vector<uint8_t> thumbnail;        // PNG
+        uint64_t installed = 0;                // FILETIME (UTC)
+        bool trial = false;
+    };
+    struct RecentSources
+    {
+        uint32_t runningTitleId = 0;
+        std::function<std::vector<host::PlayedTitle>(uint32_t user)> played;
+        std::function<std::vector<InstalledContent>()> installed;
+    };
+    void SetRecentSources(RecentSources sources);
 }

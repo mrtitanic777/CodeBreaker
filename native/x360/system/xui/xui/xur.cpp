@@ -398,8 +398,9 @@ namespace xui
         }
     };
 
-    bool Scene::Load(const uint8_t* data, size_t size, std::string& error)
+    bool Scene::Load(const uint8_t* data, size_t size, std::string& error, bool version8Control)
     {
+        version8Control_ = version8Control;
         data_.assign(data, data + size);
         const uint8_t* d = data_.data();
         if (size < 0x14 || std::memcmp(d, "XUIB", 4) != 0)
@@ -1030,8 +1031,8 @@ namespace xui
             for (uint32_t i = 0; i < bytes; i++)
                 mask = mask << 8 | U8();
             if (uint32_t(std::popcount(mask)) != (x >> 3) + 1u)
-                return (error = std::format("level byte {:02X} announces {} properties, mask {:X} has {}", x,
-                                            (x >> 3) + 1, mask, std::popcount(mask))), false;
+                return (error = std::format("level byte {:02X} at {:X} announces {} properties, mask {:X} has {}", x,
+                                            at - 1 - bytes, (x >> 3) + 1, mask, std::popcount(mask))), false;
             if (table.count < 32 && (mask >> table.count) != 0)
                 return (error = std::format("property mask {:X} has bits past the class's {} properties", mask,
                                             table.count)), false;
@@ -1075,7 +1076,7 @@ namespace xui
                 {
                     const bool control = c->props.defs == kControl.defs;
                     const size_t first = node.props.size();
-                    if (!Level(control ? kControlV5 : c->props, node.props, error))
+                    if (!Level(control && !scene.version8Control_ ? kControlV5 : c->props, node.props, error))
                         return (error = std::format("{} ({} level): {}", node.className, c->name, error)), false;
                     // Its properties as the class's own (the writer and the version 8 table know them by those).
                     if (control)
@@ -1159,7 +1160,7 @@ namespace xui
                     }
                     bool resolved = target && scene.ResolveTrack(target->className, track);
                     // An XuiControl property: its index is the version 5 table's (kControlV5), the class's by name.
-                    if (resolved && track.path.empty() && track.def >= kControl.defs &&
+                    if (resolved && !scene.version8Control_ && track.path.empty() && track.def >= kControl.defs &&
                         track.def < kControl.defs + kControl.count)
                     {
                         if (track.index >= kControlV5.count)

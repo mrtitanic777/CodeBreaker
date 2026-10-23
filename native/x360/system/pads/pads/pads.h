@@ -1,6 +1,6 @@
 #pragma once
 
-// PlayStation controllers for the ports: DualShock 4 and DualSense (and DualSense Edge) read
+// PlayStation controllers for the ports (owner, 2026-10-16): DualShock 4 and DualSense (and DualSense Edge) read
 // straight from Windows' HID, over USB or Bluetooth, without Steam Input or DS4Windows. XInput only knows Xbox
 // controllers, so each runtime's input layer gives these to the players that have no XInput controller.
 //

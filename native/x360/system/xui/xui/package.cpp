@@ -27,8 +27,31 @@ namespace xui
         }
     }
 
+    namespace
+    {
+        FileSource g_source;
+    }
+
+    void SetFileSource(FileSource source)
+    {
+        g_source = source;
+    }
+
+    std::vector<std::filesystem::path> ListFiles(const std::filesystem::path& dir)
+    {
+        if (g_source.list)
+            return g_source.list(dir);
+        std::vector<std::filesystem::path> out;
+        std::error_code ec;
+        for (const auto& file : std::filesystem::directory_iterator(dir, ec))
+            out.push_back(file.path());
+        return out;
+    }
+
     bool ReadFile(const std::filesystem::path& path, std::vector<uint8_t>& out)
     {
+        if (g_source.read)
+            return g_source.read(path, out);
         std::ifstream file(path, std::ios::binary);
         if (!file)
             return false;

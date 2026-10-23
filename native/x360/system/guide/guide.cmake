@@ -1,5 +1,5 @@
 # The Guide library: the Xbox Guide's screens and behaviour (friends, messages, party, profiles, sign-in,
-# achievements), shared by every port so each shows the same Guide (docs/x360/shared_guide.md).
+# achievements), shared by every port so each shows the same Guide (Shared/docs/shared_guide.md).
 #
 # Use from a runtime's CMakeLists.txt, together with the XUI library and the live client it calls:
 #   include("<path to Shared>/runtime/guide/guide.cmake")

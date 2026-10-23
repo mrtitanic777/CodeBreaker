@@ -9,10 +9,9 @@ namespace xui
 {
     bool Assets::Load(const std::filesystem::path& dir, std::string& error)
     {
-        std::error_code ec;
-        for (const auto& file : std::filesystem::directory_iterator(dir, ec))
+        const std::vector<std::filesystem::path> files = ListFiles(dir);
+        for (const std::filesystem::path& p : files)
         {
-            const std::filesystem::path& p = file.path();
             if (p.extension() == ".xzp")
             {
                 Package package;
@@ -38,7 +37,7 @@ namespace xui
                 fonts_.emplace(name, std::move(font));
             }
         }
-        if (ec)
+        if (files.empty())
         {
             error = std::format("cannot list {}", dir.string());
             return false;
@@ -82,11 +81,10 @@ namespace xui
 
     bool Assets::ReplacePackages(const std::filesystem::path& dir, std::string& error)
     {
-        std::error_code ec;
         bool skin = false;
-        for (const auto& file : std::filesystem::directory_iterator(dir, ec))
+        const std::vector<std::filesystem::path> files = ListFiles(dir);
+        for (const std::filesystem::path& p : files)
         {
-            const std::filesystem::path& p = file.path();
             if (p.extension() != ".xzp")
                 continue;
             Package package;
@@ -120,7 +118,7 @@ namespace xui
                     ++it;
             std::erase_if(strings_, [&](const auto& e) { return e.first.starts_with(prefix); });
         }
-        if (ec)
+        if (files.empty())
         {
             error = std::format("cannot list {}", dir.string());
             return false;
@@ -135,11 +133,12 @@ namespace xui
         return !skin || LoadSkin(error);
     }
 
-    bool Assets::AddPackage(std::string name, std::vector<uint8_t> data, std::string& error)
+    bool Assets::AddPackage(std::string name, std::vector<uint8_t> data, std::string& error, bool version8Control)
     {
         Package package;
         if (!package.Load(std::move(data), error))
             return false;
+        package.version8Control = version8Control;
         packages_.insert_or_assign(std::move(name), std::move(package));
         return true;
     }
@@ -161,7 +160,7 @@ namespace xui
         std::string error;
         if (!e)
             Log("System UI: scene {} is missing", key);
-        else if (scene = std::make_unique<Scene>(); !scene->Load(e->data, e->size, error))
+        else if (scene = std::make_unique<Scene>(); !scene->Load(e->data, e->size, error, p->version8Control))
         {
             Log("System UI: scene {}: {}", key, error);
             scene.reset();

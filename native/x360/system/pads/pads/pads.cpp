@@ -21,6 +21,15 @@
 
 namespace pads
 {
+    // A setting: CB_<name>, or MC_<name> (the name it had before CodeBreaker; the dashboard's settings use it).
+    static const char* Setting(const char* name)
+    {
+        const std::string cb = std::string("CB_") + name, mc = std::string("MC_") + name;
+        if (const char* v = std::getenv(cb.c_str()))
+            return v;
+        return std::getenv(mc.c_str());
+    }
+
     namespace
     {
         constexpr uint16_t kSony = 0x054C;
@@ -248,7 +257,7 @@ namespace pads
     {
         static std::once_flag once;
         std::call_once(once, [] {
-            if (const char* off = std::getenv("CB_NO_HID_PADS"); off && off[0] == '1')
+            if (const char* off = Setting("NO_HID_PADS"); off && off[0] == '1')
             {
                 Log("Input: PlayStation controllers off (CB_NO_HID_PADS=1)");
                 return;

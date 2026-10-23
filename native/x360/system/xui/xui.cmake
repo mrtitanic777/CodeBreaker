@@ -1,5 +1,5 @@
 # The XUI library: the Xbox 360's system UI (Guide, popups, virtual keyboard, achievements) drawn from XAM 17559's own
-# XUI assets. Written for the Minecraft TU46 runtime, shared by both runtimes (README.md).
+# XUI assets. Written for the Minecraft TU46 runtime (#1), shared by both runtimes (README.md).
 #
 # Use from a runtime's CMakeLists.txt:
 #   include("<path to Shared>/runtime/xui/xui.cmake")

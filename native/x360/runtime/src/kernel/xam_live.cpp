@@ -463,6 +463,22 @@ void kernel::users::LiveSignIn(uint32_t user, const Profile& signedIn)
     kernel::RefreshPresence(user); // (signing in starts with the title alone)
 }
 
+// The Guide's Join Xbox Live (a profile without an Xbox LIVE account): the account from our server now
+// (EnsureLiveAccount), the sign-in to it in the background.
+std::optional<std::string> guide::host::JoinLive(uint32_t user)
+{
+    const auto profile = kernel::users::SignedIn(user);
+    if (!profile)
+        return "no profile signed in";
+    if (!live::Connect())
+        return "not connected";
+    const kernel::users::Profile now = EnsureLiveAccount(*profile);
+    if (!now.liveEnabled || (now.onlineXuid >> 48) != 0x0009)
+        return "the Xbox LIVE account could not be made";
+    std::thread([user, now] { kernel::users::LiveSignIn(user, now); }).detach();
+    return std::nullopt;
+}
+
 namespace
 {
     // The user whose session asks the server for other players' profiles: any signed in to our Xbox LIVE.

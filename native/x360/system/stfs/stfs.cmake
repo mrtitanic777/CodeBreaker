@@ -1,4 +1,4 @@
-# The STFS package library: reads, verifies and writes Xbox 360 CON / LIVE / PIRS packages (docs/x360/stfs.md).
+# The STFS package library: reads, verifies and writes Xbox 360 CON / LIVE / PIRS packages (Shared/docs/stfs.md).
 #
 # Use from a runtime's CMakeLists.txt:
 #   include("<path to Shared>/runtime/stfs/stfs.cmake")

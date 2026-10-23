@@ -1,6 +1,6 @@
 #pragma once
 
-// STFS on-disk format (docs/x360/stfs.md): constants, the XContent header's metadata, the volume descriptor and the
+// STFS on-disk format (Shared/docs/stfs.md): constants, the XContent header's metadata, the volume descriptor and the
 // block layout (where data blocks and hash tables sit in the file). Everything here is pure arithmetic on bytes; the
 // file access is in stfs/package.h, writing in stfs/builder.h.
 

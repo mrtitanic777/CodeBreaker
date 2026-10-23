@@ -1,6 +1,6 @@
 #pragma once
 
-// Writing STFS packages (docs/x360/stfs.md, "Writing"): a new CON package from metadata, or an existing package's
+// Writing STFS packages (Shared/docs/stfs.md, "Writing"): a new CON package from metadata, or an existing package's
 // files and header taken over and changed (add / replace / delete files), saved as a complete new file with every
 // hash level, the top hash and the header hash recomputed. Only CON packages are written: a LIVE / PIRS package is
 // never rewritten (moving one between devices is a byte copy, stfs::CopyPackage); setting the metadata's magic to CON

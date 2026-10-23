@@ -1,15 +1,16 @@
 #pragma once
 
-// The client of the ports' own Xbox LIVE replacement (docs/x360/network_protocol.md): one TCP connection per running
+// The client of the ports' own Xbox LIVE replacement (Shared/docs/network_protocol.md): one TCP connection per running
 // port, kept by a background thread that reconnects when the server comes back. Users are not signed in again after a
 // reconnect by themselves (SignIn / Reconnect). The XAM side of a runtime reads the cached state (friends, messages,
 // party) without blocking and is told about changes through the event handler; requests that need the server's
 // answer block up to a timeout.
 //
-// Runtime-neutral: it logs through the runtime's "log.h" (Log), like native/x360/system/xui.
+// Runtime-neutral: it logs through the runtime's "log.h" (Log), like Shared/runtime/xui.
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -17,17 +18,6 @@
 
 namespace live
 {
-    // A player's Beacon (the Guide's "players wanted", XamShowBeaconsUI / server beacons): they want company in a
-    // game. Shown on a friend's entry and in the beacons list.
-    struct Beacon
-    {
-        uint64_t xuid = 0;        // filled in the beacons list; 0 on a Friend's own beacon
-        std::string gamertag;
-        uint32_t titleId = 0;
-        std::string title, text;  // the game and the player's note
-        int64_t at = 0;           // when it was set (Unix seconds)
-    };
-
     struct Friend
     {
         uint64_t xuid = 0;
@@ -37,8 +27,9 @@ namespace live
         std::string title, rich;
         std::string request; // "", "outgoing", "incoming"
         int64_t lastSeen = 0;
-        std::string status; // online: "", "away" or "busy" (Preferences > Online Status)
-        std::optional<Beacon> beacon; // their Beacon while online, else none
+        uint64_t sessionId = 0, sessionHost = 0; // the game session shown in presence (XNKID), its host; 0 = none
+        bool joinable = false;                   // the user may join it through presence
+        std::string status;                      // online: "", "away" or "busy" (Preferences > Online Status)
     };
 
     struct Message
@@ -49,6 +40,7 @@ namespace live
         int64_t sent = 0;
         bool read = false;
         uint32_t titleId = 0;
+        uint64_t sessionId = 0; // a game invite's game session (XNKID), 0 for other kinds
     };
 
     struct PartyMember
@@ -114,6 +106,48 @@ namespace live
         int64_t created = 0;               // when the account was first seen (Unix seconds; 0 if unknown)
     };
 
+    // A game the player has played (the dashboard GPD's title record; the gamercard's games, Compare Games).
+    struct TitlePlayed
+    {
+        uint32_t titleId = 0;
+        std::string name;
+        uint32_t achievements = 0, achievementsTotal = 0; // earned / possible
+        uint32_t gamerscore = 0, gamerscoreTotal = 0;     // earned / possible
+        int64_t lastPlayed = 0;                           // Unix seconds
+    };
+
+    // One achievement of a title as a player has it (XACHIEVEMENT_DETAILS without the picture).
+    struct AchievementInfo
+    {
+        uint32_t id = 0, imageId = 0, gamerscore = 0;
+        uint32_t flags = 0;  // XACHIEVEMENT_DETAILS dwFlags: type | SHOWUNACHIEVED 0x8 | ACHIEVED 0x20000 ...
+        int64_t earned = 0;  // when (Unix seconds; 0: not earned, or earned offline without a time)
+        std::string label, description, unachieved; // UTF-8
+    };
+
+    // A beacon ("I want to play ..."; Guide.Beacons, the dash's BeaconsService): at most 3 per player.
+    struct Beacon
+    {
+        uint32_t titleId = 0;
+        std::string titleType; // "Game", "App" (up to 5 characters)
+        std::string text;      // up to 44 characters (UTF-8)
+        int64_t updated = 0;   // Unix seconds
+    };
+
+    struct FriendBeacons
+    {
+        uint64_t xuid = 0;
+        std::string gamertag;
+        std::vector<Beacon> beacons;
+    };
+
+    struct GamertagCheck
+    {
+        bool available = false;
+        std::string reason;                   // why not ("gamertag taken", "bad gamertag characters" ...)
+        std::vector<std::string> suggestions; // free gamertags like it, when it is not available
+    };
+
     struct Config
     {
         std::string host = "127.0.0.1";
@@ -142,8 +176,10 @@ namespace live
     // 36074). Returns false if it names no server.
     bool ParseServers(const std::string& list, Config& config);
 
-    // Starts the connection thread (once). Without a server the client keeps retrying every few seconds; until then
-    // everything answers as offline.
+    // Starts the connection thread (once). It connects only when asked (Connect, SignIn, Reconnect), never by itself:
+    // not at the start, not after a failed attempt or a lost connection (owner: as a console, the player connects
+    // again with Connect to Xbox Live). Live debugging (config.sendLog) keeps trying every few seconds. Until
+    // connected everything answers as offline.
     void Start(const Config& config);
     // Live debugging (config.sendLog): queues one log line for the server (`log`), which keeps each console's lines
     // in a file as they arrive. Lines written before Start are kept (up to a limit) and sent once connected; without
@@ -160,9 +196,24 @@ namespace live
     // ("gamertag taken", "not connected"...). `key` is this console's own random ID (the same console gets the same
     // XUID back for the gamertag).
     std::optional<uint64_t> Register(const std::string& gamertag, const std::string& key, std::string* error = nullptr);
+    // A free generated gamertag for a new account (`generate_gamertag`; the console's signup has Xbox LIVE make one and
+    // never asks): it is not reserved, Register it. Nullopt with the error text in `error`.
+    std::optional<std::string> GenerateGamertag(std::string* error = nullptr);
+    // The Microsoft account the signup (Title.NewLiveSignup.xex) collected: Register sends it with the new account
+    // (`register`'s `login`; the server keeps the password only as a hash) and forgets it once an account has it.
+    // Register then fails with "email in use" for an email another account has.
+    struct SignupLogin
+    {
+        std::string email, password, firstName, lastName, birthdate, country;
+    };
+    void SetSignupLogin(std::optional<SignupLogin> login);
+    // Whether a new account may use `email` (`email_check`): nullopt when free, else why not ("email in use",
+    // "bad email", "not connected"...).
+    std::optional<std::string> CheckEmail(const std::string& email);
     // Signs `user` in as the profile (blocks up to the timeout; not connected, it waits for one connection attempt).
     // Returns an error text, or nullopt on success. A user it could not sign in, or who lost the connection or was
-    // signed out by another console, is kept offline (Held): never signed in again by itself, only by SignIn or Reconnect.
+    // signed out by another console, is kept offline (Held): never signed in again by itself (owner, 2026-10-16: as
+    // a console, offline until the player connects again), only by SignIn or Reconnect.
     std::optional<std::string> SignIn(uint32_t user, uint64_t xuid, const std::string& gamertag,
                                       const PublicProfile& profile = {});
     // Tries the server now if not connected (every address once, blocking up to their timeouts); true if connected.
@@ -208,8 +259,10 @@ namespace live
     std::optional<std::string> AcceptFriend(uint32_t user, uint64_t xuid);
     std::optional<std::string> DeclineFriend(uint32_t user, uint64_t xuid);
     std::optional<std::string> RemoveFriend(uint32_t user, uint64_t xuid);
+    // A game invite ("game_invite") names the inviter's game session (sessionId; the invitee joins it on accepting).
     std::optional<std::string> SendLiveMessage(uint32_t user, const std::vector<uint64_t>& to, const std::string& text,
-                                               const std::string& kind = "text", uint32_t titleId = 0);
+                                               const std::string& kind = "text", uint32_t titleId = 0,
+                                               uint64_t sessionId = 0);
     std::optional<std::string> MarkMessageRead(uint32_t user, uint32_t id);
     std::optional<std::string> DeleteMessage(uint32_t user, uint32_t id);
     std::optional<std::string> CreateParty(uint32_t user);
@@ -235,13 +288,119 @@ namespace live
     // The leader's Party Status (Party Options): Invite Only, or Open to Friends.
     std::optional<std::string> SetPartyInviteOnly(uint32_t user, bool inviteOnly);
 
-    // Beacons (the Guide's "players wanted", XamShowBeaconsUI): the signed-in user asks for company in a game; their
-    // friends see it. Set (a game, not a system title, and a note), clear, or list the online friends' beacons.
-    std::optional<std::string> SetBeacon(uint32_t user, uint32_t titleId, const std::string& title,
-                                         const std::string& text);
-    std::optional<std::string> ClearBeacon(uint32_t user);
-    std::vector<Beacon> Beacons(uint32_t user);
+    // Titles and achievements (protocol "Titles and achievements"): the signed-in user's games played and one title's
+    // achievements (all of them, earned or not) go to the server, which shows them to other players.
+    std::optional<std::string> UpdateTitles(uint32_t user, const std::vector<TitlePlayed>& titles);
+    std::optional<std::string> UpdateAchievements(uint32_t user, uint32_t titleId,
+                                                  const std::vector<AchievementInfo>& achievements);
+    // Another player's games played (most recent first) / achievements in one title, as their console last sent
+    // them; nullopt when the server cannot answer (not connected, unknown player).
+    std::optional<std::vector<TitlePlayed>> Titles(uint32_t user, uint64_t xuid);
+    std::optional<std::vector<AchievementInfo>> Achievements(uint32_t user, uint64_t xuid, uint32_t titleId);
 
+    // Beacons (protocol "Beacons"): set / remove the user's beacon for a title ("too many beacons" past 3), a
+    // player's beacons, and the user's friends that have beacons (the Social hub's suggested activities).
+    std::optional<std::string> SetBeacon(uint32_t user, uint32_t titleId, const std::string& titleType,
+                                         const std::string& text);
+    std::optional<std::string> DeleteBeacon(uint32_t user, uint32_t titleId);
+    std::optional<std::vector<Beacon>> Beacons(uint32_t user, uint64_t xuid);
+    std::optional<std::vector<FriendBeacons>> FriendsWithBeacons(uint32_t user);
+
+    // Change Gamertag (protocol "Gamertag change"): whether a gamertag is free, and the change itself. After a change
+    // the server's gamertag wins at sign-in (SignIn's account carries it); the runtime renames its profile.
+    std::optional<GamertagCheck> CheckGamertag(uint32_t user, const std::string& gamertag);
+    std::optional<std::string> ChangeGamertag(uint32_t user, const std::string& gamertag);
+
+    // Game sessions (protocol "Sessions"; the title's XSessionCreate / XSessionDelete): the host registers the
+    // session's XNKID, flags and slots; deleting ends it (host) or leaves it (member). The server also ends a host's
+    // sessions when the host signs out.
+    std::optional<std::string> CreateGameSession(uint32_t user, uint64_t sessionId, uint32_t flags, uint32_t publicSlots,
+                                                 uint32_t privateSlots);
+    std::optional<std::string> DeleteGameSession(uint32_t user, uint64_t sessionId);
+    // Players entering / leaving a session (XSessionJoinLocal / Remote, XSessionLeave*): their online XUIDs.
+    std::optional<std::string> JoinGameSession(uint32_t user, uint64_t sessionId, const std::vector<uint64_t>& xuids);
+    std::optional<std::string> LeaveGameSession(uint32_t user, uint64_t sessionId, const std::vector<uint64_t>& xuids);
+    // The host's XSessionModify (flags, slots) and XSessionStart / XSessionEnd (playing).
+    std::optional<std::string> ModifyGameSession(uint32_t user, uint64_t sessionId, uint32_t flags, uint32_t publicSlots,
+                                                 uint32_t privateSlots);
+    std::optional<std::string> SetGameSessionPlaying(uint32_t user, uint64_t sessionId, bool playing);
+    // A session's details (XSessionSearchByIds, joining): nullopt when it does not exist (any more) or no answer.
+    struct GameSessionInfo
+    {
+        uint64_t id = 0, host = 0;
+        uint32_t titleId = 0, flags = 0, publicSlots = 0, privateSlots = 0;
+        std::vector<uint64_t> members;
+        bool playing = false;
+        std::vector<uint8_t> qos; // the host's XNetQosListen data
+        std::map<uint32_t, std::vector<uint8_t>> attributes; // matchmaking attributes (SetGameSessionAttributes)
+    };
+    std::optional<GameSessionInfo> GameSession(uint32_t user, uint64_t sessionId);
+    // A matchmaking session's attributes (XSESSION_CREATE_USES_MATCHMAKING; the host's): the contexts and properties
+    // of the title's matchmaking schema the host has set, by id (a context's value as 4 big-endian bytes, a
+    // property's data as the title set it). Sent at XSessionCreate and XSessionModify, as XAM does.
+    std::optional<std::string> SetGameSessionAttributes(uint32_t user, uint64_t sessionId,
+                                                        const std::map<uint32_t, std::vector<uint8_t>>& attributes);
+    // XSessionSearchEx: the caller's title's matchmaking sessions that have `players` open public slots, are joinable
+    // now (not playing with XSESSION_CREATE_JOIN_IN_PROGRESS_DISABLED), are not the caller's own, and whose
+    // attribute equals each filter's bytes (an attribute the session lacks fails its filter); at most `maxResults`,
+    // newest first. nullopt when the server does not answer.
+    std::optional<std::vector<GameSessionInfo>> SearchGameSessions(
+        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults);
+    // The host's QoS data for its session (XNetQosListen with XNET_QOS_LISTEN_SET_DATA; at most 1024 bytes).
+    std::optional<std::string> SetGameSessionQos(uint32_t user, uint64_t sessionId, const std::vector<uint8_t>& data);
+
+    // Leaderboards (protocol "Stats"). A column value: its column (attribute) id and XUSER_DATA type (1 int32, 2 int64,
+    // 3 double, 5 float, 7 date/time) with the number in `integer` (int types) or `real` (double / float).
+    struct StatsValue
+    {
+        uint16_t id = 0;
+        uint8_t type = 0;
+        int64_t integer = 0;
+        double real = 0;
+    };
+    constexpr uint16_t kStatsRatingColumn = 0xFFFE;
+    // A column written to a view, with the aggregation its SPA gives it ("last", "sum", "min", "max").
+    struct StatsWrite
+    {
+        StatsValue value;
+        std::string aggregation = "last";
+    };
+    struct StatsViewWrite
+    {
+        uint32_t view = 0;
+        std::vector<StatsWrite> columns;
+    };
+    struct StatsRow
+    {
+        uint64_t xuid = 0;
+        std::string gamertag;
+        uint32_t rank = 0; // 0: not on this leaderboard
+        int64_t rating = 0;
+        std::vector<StatsValue> columns; // the requested columns the player has
+    };
+    struct StatsView
+    {
+        uint32_t view = 0;
+        uint32_t total = 0; // rows on the leaderboard
+        std::vector<StatsRow> rows;
+    };
+    struct StatsSpec
+    {
+        uint32_t view = 0;
+        std::vector<uint16_t> columns;
+    };
+    // A session's cached XSessionWriteStats for one player (at XSessionFlushStats / XSessionEnd).
+    std::optional<std::string> WriteStats(uint32_t user, uint32_t titleId, uint64_t xuid,
+                                          const std::vector<StatsViewWrite>& views);
+    // XUserReadStats: one row per XUID in each view; nullopt when the server cannot answer.
+    std::optional<std::vector<StatsView>> ReadStats(uint32_t user, uint32_t titleId, const std::vector<uint64_t>& xuids,
+                                                    const std::vector<StatsSpec>& specs);
+    // XUserCreateStatsEnumeratorBy*: `by` "rank" (pivot = rank), "xuid" (pivot = XUID) or "rating" (pivot = rating).
+    std::optional<std::vector<StatsView>> EnumerateStats(uint32_t user, uint32_t titleId, const std::string& by,
+                                                         int64_t pivot, uint32_t rows,
+                                                         const std::vector<StatsSpec>& specs);
+    // XUserResetStatsView (view 0: all of the title's).
+    std::optional<std::string> ResetStats(uint32_t user, uint32_t titleId, uint32_t view);
     // The content subsystem (the server serves content packages the dashboard downloads, like the console did from
     // Xbox LIVE: tenure numbers, ...): one file's bytes, cached in memory after the first fetch. Empty on failure.
     std::vector<uint8_t> GetContent(const std::string& package, const std::string& file);

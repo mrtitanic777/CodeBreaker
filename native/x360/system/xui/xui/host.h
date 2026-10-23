@@ -1,6 +1,6 @@
 #pragma once
 
-// What the XUI library (native/x360/system/xui, the console's system UI: XUI packages and scenes, the Guide, popups,
+// What the XUI library (Shared/runtime/xui, the console's system UI: XUI packages and scenes, the Guide, popups,
 // virtual keyboard, achievements) needs from the runtime that builds it:
 // - "log.h" on the include path with Log(fmt, ...) and Fatal(fmt, ...) (std::format style), as both runtimes have;
 // - the functions below, defined once in the runtime.

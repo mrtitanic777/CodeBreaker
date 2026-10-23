@@ -1,7 +1,7 @@
 #pragma once
 
 // A live XUI element tree built from XUR scenes and skin visuals, with XUI's runtime semantics (the XDK 21256 XUI
-// runtime that TU46 links was decompiled for these):
+// runtime that TU46 links was decompiled for these; NOTES.md "System UI"):
 // - Transform: local = T(-pivot) S(scale) R(rotation) T(pivot) T(position); world = local x parent (row vectors).
 // - Opacity multiplies down the tree; Show=false hides a subtree.
 // - Anchors: when an element is resized from its authored size, children keep their distance to the edges they are
@@ -119,7 +119,7 @@ namespace xui
         // ---- Rendering ----
         // Draws the tree; `toDevice` maps this element's parent's space to device pixels. `colorFactor` is the
         // parents' ColorFactor: XUI multiplies an element's ColorFactor into its visual and children, as Opacity
-        // (ProfileRoot.xur's tab labels: a dark factor on a white-text label visual, the user's 7_47_09).
+        // (ProfileRoot.xur's tab labels: a dark factor on a white-text label visual, the owner's 7_47_09).
         void Render(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
                     uint32_t colorFactor = 0xFFFFFFFF);
 

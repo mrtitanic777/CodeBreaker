@@ -39,7 +39,7 @@ namespace live
         {
             bool wanted = false;   // signed in by the runtime (to sign in again after a reconnect)
             bool signedIn = false; // the server accepted it on this connection
-            // Kept offline: its sign-in found no server, the
+            // Kept offline (owner, 2026-10-16: as a console, no automatic sign-in): its sign-in found no server, the
             // connection dropped, or the account signed in elsewhere. Only SignIn or Reconnect sign it in again.
             bool held = false;
             bool pending = false; // SignIn / Reconnect is signing it in (the connection thread leaves it alone)
@@ -225,10 +225,10 @@ namespace live
             f.rich = Str(j, "rich");
             f.request = Str(j, "request");
             f.lastSeen = I64(j, "last_seen");
+            f.sessionId = ParseHex64(Get(j, "session_id"));
+            f.sessionHost = ParseHex64(Get(j, "session_host"));
+            f.joinable = Bool(j, "joinable");
             f.status = Str(j, "status");
-            if (const auto b = j.find("beacon"); b != j.end() && b->is_object())
-                f.beacon = Beacon{ f.xuid, f.gamertag, ParseHex32(Get(*b, "title_id")), Str(*b, "title"),
-                                   Str(*b, "text"), I64(*b, "at") };
             return f;
         }
 
@@ -246,6 +246,7 @@ namespace live
             m.kind = Str(j, "kind");
             m.read = Bool(j, "read");
             m.titleId = ParseHex32(Get(j, "title_id"));
+            m.sessionId = ParseHex64(Get(j, "session_id"));
             return m;
         }
 
@@ -404,10 +405,13 @@ namespace live
             if (titleId)
                 SendLine({ { "op", "presence" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
                            { "title", title }, { "rich", rich } });
-            SendTitles(user);
             RefreshUser(user);
             Log("Live: {} signed in (user {})", gamertag, user);
             Notify({ EventKind::SignedIn, user });
+            // The played titles last: the server stores each title_achievements_update as it comes (~0.2 s each), and
+            // requests behind them (RefreshUser's) waited for all of them, ~10 s for a profile of 50 titles, while the
+            // dash sat on its sign-in screen (owner, 2026-10-22).
+            SendTitles(user);
             return std::nullopt;
         }
 
@@ -593,6 +597,18 @@ namespace live
             bool reported = false;
             while (!s.stop)
             {
+                {
+                    // Our server is tried only when something asks (Connect: a LIVE profile signing in, Connect to
+                    // Xbox Live, Join Xbox Live), never by itself, also not after a lost connection (owner, Guide.txt
+                    // 103-104: as a console, the player connects again). Live debugging (sendLog) keeps trying every
+                    // few seconds, to deliver its log.
+                    std::unique_lock lock(s.mutex);
+                    if (!s.config.sendLog)
+                        s.attempted.wait(lock, [&] { return s.stop || s.retryNow; });
+                    s.retryNow = false;
+                    if (s.stop)
+                        break;
+                }
                 // The configured address first, then the fallbacks; the one that answers is the server (voice too).
                 std::vector<std::pair<std::string, uint16_t>> addresses{ { s.config.host, s.config.port } };
                 addresses.insert(addresses.end(), s.config.fallbacks.begin(), s.config.fallbacks.end());
@@ -613,15 +629,15 @@ namespace live
                         std::string list;
                         for (const auto& [host, port] : addresses)
                             list += std::format("{}{}:{}", list.empty() ? "" : ", ", host, port);
-                        Log("Live: no server at {} (offline; retrying)", list);
+                        Log("Live: no server at {} (offline)", list);
                     }
                     reported = true;
                     {
                         std::unique_lock lock(s.mutex);
                         s.attempts++;
                         s.attempted.notify_all();
-                        s.attempted.wait_for(lock, kRetryDelay, [&] { return s.stop || s.retryNow; });
-                        s.retryNow = false;
+                        if (s.config.sendLog)
+                            s.attempted.wait_for(lock, kRetryDelay, [&] { return s.stop || s.retryNow; });
                     }
                     continue;
                 }
@@ -851,7 +867,11 @@ namespace live
         State& s = S();
         if (!s.thread.joinable())
             return;
-        s.stop = true;
+        {
+            std::lock_guard lock(s.mutex);
+            s.stop = true;
+            s.attempted.notify_all();
+        }
         {
             std::lock_guard lock(s.sendMutex);
             if (s.socket != INVALID_SOCKET)
@@ -874,16 +894,69 @@ namespace live
         S().handler = std::move(handler);
     }
 
+    namespace
+    {
+        std::mutex g_signupMutex;
+        std::optional<SignupLogin> g_signup;
+    }
+
+    void SetSignupLogin(std::optional<SignupLogin> login)
+    {
+        std::lock_guard lock(g_signupMutex);
+        g_signup = std::move(login);
+    }
+
+    std::optional<std::string> CheckEmail(const std::string& email)
+    {
+        const auto reply = Request({ { "op", "email_check" }, { "email", email } });
+        if (!reply)
+            return std::string(Connected() ? "timeout" : "not connected");
+        if (!Bool(*reply, "ok"))
+            return Str(*reply, "error");
+        return Bool(*reply, "free") ? std::nullopt : std::optional<std::string>("email in use");
+    }
+
     std::optional<uint64_t> Register(const std::string& gamertag, const std::string& key, std::string* error)
     {
-        const auto reply = Request({ { "op", "register" }, { "gamertag", gamertag }, { "key", key } });
+        json request = { { "op", "register" }, { "gamertag", gamertag }, { "key", key } };
+        {
+            std::lock_guard lock(g_signupMutex);
+            if (g_signup)
+            {
+                request["login"] = { { "email", g_signup->email }, { "password", g_signup->password },
+                                     { "first_name", g_signup->firstName }, { "last_name", g_signup->lastName },
+                                     { "birthdate", g_signup->birthdate }, { "country", g_signup->country } };
+            }
+        }
+        const auto reply = Request(request);
         std::string why;
         if (!reply)
             why = Connected() ? "timeout" : "not connected";
         else if (!Bool(*reply, "ok"))
             why = Str(*reply, "error");
         else if (const uint64_t xuid = ParseHex64(Get(Get(*reply, "account"), "xuid")); (xuid >> 48) == 0x0009)
+        {
+            if (request.contains("login")) // kept with the account: sent once
+                SetSignupLogin(std::nullopt);
             return xuid;
+        }
+        else
+            why = "bad reply";
+        if (error)
+            *error = why;
+        return std::nullopt;
+    }
+
+    std::optional<std::string> GenerateGamertag(std::string* error)
+    {
+        const auto reply = Request({ { "op", "generate_gamertag" } });
+        std::string why;
+        if (!reply)
+            why = Connected() ? "timeout" : "not connected";
+        else if (!Bool(*reply, "ok"))
+            why = Str(*reply, "error");
+        else if (std::string tag = Str(*reply, "gamertag"); !tag.empty() && tag.size() <= 15)
+            return tag;
         else
             why = "bad reply";
         if (error)
@@ -1358,18 +1431,356 @@ namespace live
     }
 
     std::optional<std::string> SendLiveMessage(uint32_t user, const std::vector<uint64_t>& to, const std::string& text,
-                                               const std::string& kind, uint32_t titleId)
+                                               const std::string& kind, uint32_t titleId, uint64_t sessionId)
     {
         json list = json::array();
         for (const uint64_t x : to)
             list.push_back(Hex64(x));
-        return Simple({ { "op", "message_send" }, { "user", user }, { "to", list }, { "text", text }, { "kind", kind },
-                        { "title_id", titleId ? std::format("{:08X}", titleId) : std::string() } });
+        json request = { { "op", "message_send" }, { "user", user }, { "to", list }, { "text", text }, { "kind", kind },
+                         { "title_id", titleId ? std::format("{:08X}", titleId) : std::string() } };
+        if (sessionId)
+            request["session_id"] = Hex64(sessionId);
+        return Simple(std::move(request));
+    }
+
+    std::optional<std::string> UpdateTitles(uint32_t user, const std::vector<TitlePlayed>& titles)
+    {
+        json list = json::array();
+        for (const TitlePlayed& t : titles)
+            list.push_back({ { "title_id", std::format("{:08X}", t.titleId) }, { "name", t.name },
+                             { "achievements", t.achievements }, { "achievements_total", t.achievementsTotal },
+                             { "gamerscore", t.gamerscore }, { "gamerscore_total", t.gamerscoreTotal },
+                             { "last_played", t.lastPlayed } });
+        return Simple({ { "op", "titles_update" }, { "user", user }, { "titles", list } });
+    }
+
+    std::optional<std::string> UpdateAchievements(uint32_t user, uint32_t titleId,
+                                                  const std::vector<AchievementInfo>& achievements)
+    {
+        json list = json::array();
+        for (const AchievementInfo& a : achievements)
+            list.push_back({ { "id", a.id }, { "image_id", a.imageId }, { "gamerscore", a.gamerscore },
+                             { "flags", a.flags }, { "earned", a.earned }, { "label", a.label },
+                             { "description", a.description }, { "unachieved", a.unachieved } });
+        return Simple({ { "op", "achievements_update" }, { "user", user },
+                        { "title_id", std::format("{:08X}", titleId) }, { "achievements", list } });
+    }
+
+    std::optional<std::vector<TitlePlayed>> Titles(uint32_t user, uint64_t xuid)
+    {
+        const auto reply = Request({ { "op", "titles" }, { "user", user }, { "xuid", Hex64(xuid) } });
+        if (!reply || !Bool(*reply, "ok"))
+            return std::nullopt;
+        std::vector<TitlePlayed> out;
+        if (const auto it = reply->find("titles"); it != reply->end() && it->is_array())
+            for (const json& j : *it)
+                out.push_back({ ParseHex32(Get(j, "title_id")), Str(j, "name"), U32(j, "achievements"),
+                                U32(j, "achievements_total"), U32(j, "gamerscore"), U32(j, "gamerscore_total"),
+                                I64(j, "last_played") });
+        return out;
+    }
+
+    std::optional<std::vector<AchievementInfo>> Achievements(uint32_t user, uint64_t xuid, uint32_t titleId)
+    {
+        const auto reply = Request({ { "op", "achievements" }, { "user", user }, { "xuid", Hex64(xuid) },
+                                     { "title_id", std::format("{:08X}", titleId) } });
+        if (!reply || !Bool(*reply, "ok"))
+            return std::nullopt;
+        std::vector<AchievementInfo> out;
+        if (const auto it = reply->find("achievements"); it != reply->end() && it->is_array())
+            for (const json& j : *it)
+                out.push_back({ U32(j, "id"), U32(j, "image_id"), U32(j, "gamerscore"), U32(j, "flags"),
+                                I64(j, "earned"), Str(j, "label"), Str(j, "description"), Str(j, "unachieved") });
+        return out;
+    }
+
+    namespace
+    {
+        std::vector<Beacon> ToBeacons(const json& list)
+        {
+            std::vector<Beacon> out;
+            if (list.is_array())
+                for (const json& j : list)
+                    out.push_back({ ParseHex32(Get(j, "title_id")), Str(j, "title_type"), Str(j, "text"),
+                                    I64(j, "updated") });
+            return out;
+        }
+    }
+
+    std::optional<std::string> SetBeacon(uint32_t user, uint32_t titleId, const std::string& titleType,
+                                         const std::string& text)
+    {
+        return Simple({ { "op", "beacon_set" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
+                        { "title_type", titleType }, { "text", text } });
+    }
+
+    std::optional<std::string> DeleteBeacon(uint32_t user, uint32_t titleId)
+    {
+        return Simple({ { "op", "beacon_delete" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) } });
+    }
+
+    std::optional<std::vector<Beacon>> Beacons(uint32_t user, uint64_t xuid)
+    {
+        const auto reply = Request({ { "op", "beacons" }, { "user", user }, { "xuid", Hex64(xuid) } });
+        if (!reply || !Bool(*reply, "ok"))
+            return std::nullopt;
+        return ToBeacons(Get(*reply, "beacons"));
+    }
+
+    std::optional<std::vector<FriendBeacons>> FriendsWithBeacons(uint32_t user)
+    {
+        const auto reply = Request({ { "op", "friends_beacons" }, { "user", user } });
+        if (!reply || !Bool(*reply, "ok"))
+            return std::nullopt;
+        std::vector<FriendBeacons> out;
+        if (const json& list = Get(*reply, "friends"); list.is_array())
+            for (const json& j : list)
+                out.push_back({ ParseHex64(Get(j, "xuid")), Str(j, "gamertag"), ToBeacons(Get(j, "beacons")) });
+        return out;
+    }
+
+    std::optional<GamertagCheck> CheckGamertag(uint32_t user, const std::string& gamertag)
+    {
+        const auto reply = Request({ { "op", "gamertag_check" }, { "user", user }, { "gamertag", gamertag } });
+        if (!reply || !Bool(*reply, "ok"))
+            return std::nullopt;
+        GamertagCheck check{ Bool(*reply, "available"), Str(*reply, "reason") };
+        if (const json& list = Get(*reply, "suggestions"); list.is_array())
+            for (const json& j : list)
+                if (j.is_string())
+                    check.suggestions.push_back(j.get<std::string>());
+        return check;
+    }
+
+    std::optional<std::string> ChangeGamertag(uint32_t user, const std::string& gamertag)
+    {
+        return Simple({ { "op", "gamertag_change" }, { "user", user }, { "gamertag", gamertag } });
+    }
+
+    std::optional<std::string> CreateGameSession(uint32_t user, uint64_t sessionId, uint32_t flags, uint32_t publicSlots,
+                                                 uint32_t privateSlots)
+    {
+        return Simple({ { "op", "session_create" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                        { "flags", flags }, { "public_slots", publicSlots }, { "private_slots", privateSlots } });
+    }
+
+    std::optional<std::string> DeleteGameSession(uint32_t user, uint64_t sessionId)
+    {
+        return Simple({ { "op", "session_delete" }, { "user", user }, { "session_id", Hex64(sessionId) } });
+    }
+
+    namespace
+    {
+        json XuidList(const std::vector<uint64_t>& xuids)
+        {
+            json list = json::array();
+            for (const uint64_t x : xuids)
+                list.push_back(Hex64(x));
+            return list;
+        }
+    }
+
+    std::optional<std::string> JoinGameSession(uint32_t user, uint64_t sessionId, const std::vector<uint64_t>& xuids)
+    {
+        return Simple({ { "op", "session_join" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                        { "xuids", XuidList(xuids) } });
+    }
+
+    std::optional<std::string> LeaveGameSession(uint32_t user, uint64_t sessionId, const std::vector<uint64_t>& xuids)
+    {
+        return Simple({ { "op", "session_leave" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                        { "xuids", XuidList(xuids) } });
+    }
+
+    std::optional<std::string> ModifyGameSession(uint32_t user, uint64_t sessionId, uint32_t flags, uint32_t publicSlots,
+                                                 uint32_t privateSlots)
+    {
+        return Simple({ { "op", "session_modify" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                        { "flags", flags }, { "public_slots", publicSlots }, { "private_slots", privateSlots } });
+    }
+
+    std::optional<std::string> SetGameSessionPlaying(uint32_t user, uint64_t sessionId, bool playing)
+    {
+        return Simple({ { "op", "session_state" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                        { "state", playing ? "playing" : "lobby" } });
+    }
+
+    namespace
+    {
+        GameSessionInfo ParseGameSession(const json& j)
+        {
+            GameSessionInfo info;
+            info.id = ParseHex64(Get(j, "id"));
+            info.host = ParseHex64(Get(j, "host"));
+            info.titleId = ParseHex32(Get(j, "title_id"));
+            info.flags = uint32_t(I64(j, "flags"));
+            info.publicSlots = uint32_t(I64(j, "public_slots"));
+            info.privateSlots = uint32_t(I64(j, "private_slots"));
+            if (const json& members = Get(j, "members"); members.is_array())
+                for (const json& m : members)
+                    info.members.push_back(ParseHex64(Get(m, "xuid")));
+            info.playing = Str(j, "state") == "playing";
+            info.qos = FromBase64(Str(j, "qos"));
+            if (const json& attributes = Get(j, "attributes"); attributes.is_object())
+                for (const auto& [id, value] : attributes.items())
+                    if (value.is_string())
+                        info.attributes[uint32_t(std::strtoul(id.c_str(), nullptr, 16))] =
+                            FromBase64(value.get<std::string>());
+            return info;
+        }
+
+        json AttributeObject(const std::map<uint32_t, std::vector<uint8_t>>& attributes)
+        {
+            json out = json::object();
+            for (const auto& [id, value] : attributes)
+                out[std::format("{:08X}", id)] = Base64(value);
+            return out;
+        }
+    }
+
+    std::optional<GameSessionInfo> GameSession(uint32_t user, uint64_t sessionId)
+    {
+        const auto reply = Request({ { "op", "session" }, { "user", user }, { "session_id", Hex64(sessionId) } });
+        if (!reply || !Bool(*reply, "ok"))
+            return std::nullopt;
+        const json& j = Get(*reply, "session");
+        if (!j.is_object())
+            return std::nullopt;
+        return ParseGameSession(j);
+    }
+
+    std::optional<std::string> SetGameSessionAttributes(uint32_t user, uint64_t sessionId,
+                                                        const std::map<uint32_t, std::vector<uint8_t>>& attributes)
+    {
+        return Simple({ { "op", "session_attributes" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                        { "attributes", AttributeObject(attributes) } });
+    }
+
+    std::optional<std::vector<GameSessionInfo>> SearchGameSessions(
+        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults)
+    {
+        const auto reply = Request({ { "op", "session_search" }, { "user", user }, { "filters", AttributeObject(filters) },
+                                     { "players", players }, { "max_results", maxResults } });
+        if (!reply || !Bool(*reply, "ok"))
+            return std::nullopt;
+        std::vector<GameSessionInfo> out;
+        if (const json& list = Get(*reply, "sessions"); list.is_array())
+            for (const json& j : list)
+                if (j.is_object())
+                    out.push_back(ParseGameSession(j));
+        return out;
+    }
+
+    std::optional<std::string> SetGameSessionQos(uint32_t user, uint64_t sessionId, const std::vector<uint8_t>& data)
+    {
+        return Simple({ { "op", "session_qos" }, { "user", user }, { "session_id", Hex64(sessionId) },
+                        { "qos", Base64(data) } });
+    }
+
+    namespace
+    {
+        json StatsValueJson(const StatsValue& v)
+        {
+            json j = { { "id", v.id }, { "type", v.type } };
+            if (v.type == 3 || v.type == 5)
+                j["value"] = v.real;
+            else
+                j["value"] = v.integer;
+            return j;
+        }
+
+        json StatsSpecsJson(const std::vector<StatsSpec>& specs)
+        {
+            json list = json::array();
+            for (const StatsSpec& s : specs)
+                list.push_back({ { "view", s.view }, { "columns", s.columns } });
+            return list;
+        }
+
+        std::optional<std::vector<StatsView>> ToStatsViews(const std::optional<json>& reply)
+        {
+            if (!reply || !Bool(*reply, "ok"))
+                return std::nullopt;
+            std::vector<StatsView> out;
+            if (const json& views = Get(*reply, "views"); views.is_array())
+                for (const json& v : views)
+                {
+                    StatsView view{ U32(v, "view"), U32(v, "total"), {} };
+                    if (const json& rows = Get(v, "rows"); rows.is_array())
+                        for (const json& r : rows)
+                        {
+                            StatsRow row{ ParseHex64(Get(r, "xuid")), Str(r, "gamertag"), U32(r, "rank"),
+                                          I64(r, "rating"), {} };
+                            if (const json& cols = Get(r, "columns"); cols.is_array())
+                                for (const json& c : cols)
+                                {
+                                    StatsValue value{ uint16_t(U32(c, "id")), uint8_t(U32(c, "type")), 0, 0 };
+                                    if (value.type == 3 || value.type == 5)
+                                        value.real = Number(c, "value");
+                                    else
+                                        value.integer = I64(c, "value");
+                                    row.columns.push_back(value);
+                                }
+                            view.rows.push_back(std::move(row));
+                        }
+                    out.push_back(std::move(view));
+                }
+            return out;
+        }
+    }
+
+    std::optional<std::string> WriteStats(uint32_t user, uint32_t titleId, uint64_t xuid,
+                                          const std::vector<StatsViewWrite>& views)
+    {
+        json list = json::array();
+        for (const StatsViewWrite& v : views)
+        {
+            json columns = json::array();
+            for (const StatsWrite& c : v.columns)
+            {
+                json j = StatsValueJson(c.value);
+                j["aggregation"] = c.aggregation;
+                columns.push_back(std::move(j));
+            }
+            list.push_back({ { "view", v.view }, { "columns", std::move(columns) } });
+        }
+        return Simple({ { "op", "stats_write" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
+                        { "xuid", Hex64(xuid) }, { "views", std::move(list) } });
+    }
+
+    std::optional<std::vector<StatsView>> ReadStats(uint32_t user, uint32_t titleId, const std::vector<uint64_t>& xuids,
+                                                    const std::vector<StatsSpec>& specs)
+    {
+        json list = json::array();
+        for (const uint64_t x : xuids)
+            list.push_back(Hex64(x));
+        return ToStatsViews(Request({ { "op", "stats_read" }, { "user", user },
+                                      { "title_id", std::format("{:08X}", titleId) }, { "xuids", std::move(list) },
+                                      { "views", StatsSpecsJson(specs) } }));
+    }
+
+    std::optional<std::vector<StatsView>> EnumerateStats(uint32_t user, uint32_t titleId, const std::string& by,
+                                                         int64_t pivot, uint32_t rows,
+                                                         const std::vector<StatsSpec>& specs)
+    {
+        json request = { { "op", "stats_enumerate" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
+                         { "by", by }, { "rows", rows }, { "views", StatsSpecsJson(specs) } };
+        if (by == "xuid")
+            request["xuid"] = Hex64(uint64_t(pivot));
+        else
+            request[by] = pivot;
+        return ToStatsViews(Request(std::move(request)));
+    }
+
+    std::optional<std::string> ResetStats(uint32_t user, uint32_t titleId, uint32_t view)
+    {
+        return Simple({ { "op", "stats_reset" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
+                        { "view", view } });
     }
 
     std::optional<std::string> MarkMessageRead(uint32_t user, uint32_t id)
     {
-        const auto error = Simple({ { "op", "message_read" }, { "user", user }, { "id", id } });
+        const auto error = Simple({ { "op", "message_read" }, { "user", user }, { "message", id } });
         if (!error)
         {
             std::lock_guard lock(S().mutex);
@@ -1382,7 +1793,7 @@ namespace live
 
     std::optional<std::string> DeleteMessage(uint32_t user, uint32_t id)
     {
-        const auto error = Simple({ { "op", "message_delete" }, { "user", user }, { "id", id } });
+        const auto error = Simple({ { "op", "message_delete" }, { "user", user }, { "message", id } });
         if (!error)
         {
             std::lock_guard lock(S().mutex);
@@ -1469,30 +1880,6 @@ namespace live
         return Str(*reply, "status");
     }
 
-    std::optional<std::string> SetBeacon(uint32_t user, uint32_t titleId, const std::string& title,
-                                         const std::string& text)
-    {
-        return Simple({ { "op", "beacon_set" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
-                        { "title", title }, { "text", text } });
-    }
-
-    std::optional<std::string> ClearBeacon(uint32_t user)
-    {
-        return Simple({ { "op", "beacon_clear" }, { "user", user } });
-    }
-
-    std::vector<Beacon> Beacons(uint32_t user)
-    {
-        std::vector<Beacon> out;
-        const auto reply = Request({ { "op", "beacons" }, { "user", user } });
-        if (!reply || !Bool(*reply, "ok"))
-            return out;
-        for (const json& j : Get(*reply, "beacons"))
-            out.push_back({ ParseHex64(Get(j, "xuid")), Str(j, "gamertag"), ParseHex32(Get(j, "title_id")),
-                            Str(j, "title"), Str(j, "text"), I64(j, "at") });
-        return out;
-    }
-
     std::optional<std::string> SendFeedback(uint32_t user, uint64_t xuid, const std::string& kind,
                                             const std::string& category, const std::string& reason)
     {
@@ -1576,6 +1963,33 @@ namespace live::detail
                 t.token = u.voiceToken;
                 break;
             }
+        return t;
+    }
+
+    struct GameTarget
+    {
+        bool connected = false;
+        std::string host;
+        uint16_t port = 0;
+        std::array<bool, 4> signedIn{};
+        std::array<std::array<uint8_t, 8>, 4> token{};
+    };
+
+    // The server's address and each signed-in user's token (game.cpp).
+    GameTarget CurrentGameTarget()
+    {
+        std::lock_guard lock(S().mutex);
+        GameTarget t;
+        if (!S().connected)
+            return t;
+        t.connected = true;
+        t.host = S().server.first;
+        t.port = S().server.second;
+        for (size_t user = 0; user < 4 && user < S().users.size(); user++)
+        {
+            t.signedIn[user] = S().users[user].signedIn;
+            t.token[user] = S().users[user].voiceToken;
+        }
         return t;
     }
 }

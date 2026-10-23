@@ -1,11 +1,11 @@
 #pragma once
 
 // A read-only STFS package (CON / LIVE / PIRS) opened from a file: its header and metadata, its file system (list,
-// stat, read a range) and a check of its hash chain and signature (docs/x360/stfs.md). Reading never needs a valid
+// stat, read a range) and a check of its hash chain and signature (Shared/docs/stfs.md). Reading never needs a valid
 // hash or signature; Verify only reports. Thread-safe for concurrent reads (positional file reads, cached hash
 // tables under a lock).
 //
-// Runtime-neutral: it logs through the runtime's "log.h" (Log), like native/x360/system/live.
+// Runtime-neutral: it logs through the runtime's "log.h" (Log), like Shared/runtime/live.
 
 #include "stfs/format.h"
 
