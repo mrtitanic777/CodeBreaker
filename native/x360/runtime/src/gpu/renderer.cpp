@@ -57,12 +57,10 @@ namespace gpu
         // stores the pixel's value), to tell sample-conversion problems from the rest.
         const bool g_hostSingleSample = [] { const char* v = std::getenv("CB_HOST_1X"); return v && v[0] == '1'; }();
         bool HostMs(uint32_t msaa) { return msaa != 0 && !g_hostSingleSample; }
-        // CB_LOCAL_MEMORY=1 (gpu.h LocalMemory): pages of guest physical memory written since the GPU's copy was last
-        // brought up to date, one bit per 4 KiB page; everything is written at the start.
+        // CB_LOCAL_MEMORY=1 (gpu.h LocalMemory): the GPU's copy of guest physical memory is in video memory, its
+        // pages brought up to date as draws, resolves and presents use them (memory.h write tracking).
         const bool g_localMemory = [] { const char* v = std::getenv("CB_LOCAL_MEMORY"); return v && v[0] == '1'; }();
-        constexpr uint32_t kMemoryPageShift = 12, kMemoryPageWords = (guest::kPhysicalSize >> kMemoryPageShift) / 64;
-        std::atomic<uint64_t> g_memoryWritten[kMemoryPageWords];
-        std::atomic<bool> g_memoryAnyWritten{ false };
+        constexpr uint32_t kMemoryPageShift = 12;
         // CB_EDRAM_DUMP_AT=<frame>:<draw>;...: the EDRAM (host targets stored to it first) as edram_frame<frame*10000+draw>.bin
         // just before that draw, to compare the output mergers draw by draw.
         const std::vector<std::pair<uint64_t, uint32_t>> g_edramDumpAt = [] {
@@ -86,6 +84,16 @@ namespace gpu
         // CB_TEXTURE_DUMP=1: every untiled texture; =<frame> (2 or more): only those untiled while that frame is built.
         const uint64_t g_dumpTexturesFrame = [] { const char* v = std::getenv("CB_TEXTURE_DUMP"); return v ? std::strtoull(v, nullptr, 10) : 0ull; }();
         const bool g_dumpTextures = g_dumpTexturesFrame != 0;
+        // CB_TEXTURE_LOG=<first>-<last>: in those frames, each texture untile with its reason, and each use whose
+        // check was put off by a pending resolve.
+        const std::pair<uint64_t, uint64_t> g_textureLog = [] {
+            const char* v = std::getenv("CB_TEXTURE_LOG");
+            if (!v || !*v)
+                return std::pair<uint64_t, uint64_t>{ 1, 0 };
+            char* end = nullptr;
+            const uint64_t first = std::strtoull(v, &end, 10);
+            return std::pair<uint64_t, uint64_t>{ first, *end == '-' ? std::strtoull(end + 1, nullptr, 10) : first };
+        }();
         const bool g_magentaTextures = [] { const char* v = std::getenv("CB_TEXTURE_MAGENTA"); return v && v[0] == '1'; }();
         const uint64_t g_dumpFrame = [] {
             const char* v = std::getenv("CB_EDRAM_DUMP");
@@ -525,10 +533,14 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             std::vector<TextureReadback> pendingDumps_;
             ComPtr<ID3D12Heap> memoryHeap_;
             // memory_ is what shaders read and resolves write: guest physical memory itself (a placed buffer over the
-            // host's pages, read across the bus), or with LocalMemory() a buffer in video memory that UploadMemory
-            // brings up to date from memorySystem_, the guest's pages.
+            // host's pages, read across the bus), or with LocalMemory() a buffer in video memory that EnsureResident
+            // brings up to date from memorySystem_, the guest's pages (resolves are copied back to them).
             ComPtr<ID3D12Resource> memory_, memorySystem_;
-            void UploadMemory();
+            D3D12_RESOURCE_STATES systemState_ = D3D12_RESOURCE_STATE_COMMON; // memorySystem_'s, with LocalMemory()
+            std::vector<std::pair<uint32_t, uint32_t>> residentRuns_;
+            // The GPU's copy of physical [start, start + size) up to date before the work recorded next.
+            void EnsureResident(uint32_t start, uint32_t size);
+            void SetSystemState(D3D12_RESOURCE_STATES state);
             uint64_t memoryUploaded_ = 0; // bytes, for the frame log
             ComPtr<ID3D12Resource> edram_;
             // Host index lists for fans and quad lists over vertex positions 0..count-1: the same for every draw, so
@@ -827,8 +839,10 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                     Fatal("GPU: the device cannot store DXGI format {} through a typed UAV (texture untile)", int(format));
             }
 
-            // Guest physical memory: the section's 64 KiB-page window is physical address 0.
-            void* physical = guest::g_memory.Translate(guest::kPhysicalWindow64k);
+            // Guest physical memory: the section's 64 KiB-page window is physical address 0. With LocalMemory the
+            // heap is over a view of its own: the windows' pages are write-protected while watched, and a view a heap
+            // is opened over cannot have its protection changed.
+            void* physical = g_localMemory ? guest::g_memory.HostView() : guest::g_memory.Translate(guest::kPhysicalWindow64k);
             CheckHr(device_->OpenExistingHeapFromAddress(physical, IID_PPV_ARGS(&memoryHeap_)),
                     "OpenExistingHeapFromAddress (guest physical memory)");
             const D3D12_HEAP_DESC heapDesc = memoryHeap_->GetDesc();
@@ -847,7 +861,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             {
                 memory_.Attach(CreateBuffer(guest::kPhysicalSize, D3D12_HEAP_TYPE_DEFAULT,
                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, "guest physical memory (video memory)"));
-                MarkMemoryWritten(0, guest::kPhysicalSize);
+                guest::EnableWriteTracking();
                 Log("GPU: guest physical memory is kept in video memory (CB_LOCAL_MEMORY)");
             }
             else
@@ -1126,6 +1140,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 out += std::format("{} {:.2f} ms; ", kNames[i],
                                    timestampFrequency_ ? double(ticks) * 1000.0 / double(timestampFrequency_) : 0.0);
             }
+            if (g_localMemory)
+                out += std::format("{:.1f} MB copied to video memory; ", double(std::exchange(memoryUploaded_, 0)) / 1048576.0);
             return out;
         }
 
@@ -1185,6 +1201,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
         void Renderer::Submit()
         {
             SetMemoryState(D3D12_RESOURCE_STATE_COMMON);
+            if (g_localMemory)
+                SetSystemState(D3D12_RESOURCE_STATE_COMMON);
             CloseSegment();
             if (Timing())
             {
@@ -1352,48 +1370,33 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             list_->ResourceBarrier(1, &barrier);
         }
 
-        // Copies the written pages of guest memory into the GPU's copy (LocalMemory), in stream order before the work
-        // recorded after it. A page written again while the copy waits to run is copied again next time.
-        void Renderer::UploadMemory()
+        // Copies the stale pages of the range into the GPU's copy (LocalMemory), in stream order before the work
+        // recorded after it; they are watched from now on, so a CPU write makes them stale again.
+        void Renderer::EnsureResident(uint32_t start, uint32_t size)
         {
-            if (!g_localMemory || !g_memoryAnyWritten.exchange(false, std::memory_order_acq_rel))
+            if (!g_localMemory || size == 0)
+                return;
+            residentRuns_.clear();
+            guest::WatchStalePages(start, size, residentRuns_);
+            if (residentRuns_.empty())
                 return;
             BeginRecording();
-            uint64_t runStart = 0, runPages = 0, bytes = 0;
-            auto flush = [&] {
-                if (!runPages)
-                    return;
-                SetMemoryState(D3D12_RESOURCE_STATE_COPY_DEST);
-                list_->CopyBufferRegion(memory_.Get(), runStart << kMemoryPageShift, memorySystem_.Get(),
-                                        runStart << kMemoryPageShift, runPages << kMemoryPageShift);
-                bytes += runPages << kMemoryPageShift;
-                runPages = 0;
-            };
-            for (uint32_t w = 0; w < kMemoryPageWords; w++)
+            SetMemoryState(D3D12_RESOURCE_STATE_COPY_DEST);
+            SetSystemState(D3D12_RESOURCE_STATE_COPY_SOURCE);
+            for (const auto& [page, count] : residentRuns_)
             {
-                uint64_t bits = g_memoryWritten[w].load(std::memory_order_relaxed);
-                if (bits)
-                    bits = g_memoryWritten[w].exchange(0, std::memory_order_acq_rel);
-                if (!bits)
-                {
-                    flush();
-                    continue;
-                }
-                for (uint32_t b = 0; b < 64; b++)
-                {
-                    const uint64_t page = uint64_t(w) * 64 + b;
-                    if ((bits >> b) & 1)
-                    {
-                        if (!runPages)
-                            runStart = page;
-                        runPages++;
-                    }
-                    else
-                        flush();
-                }
+                list_->CopyBufferRegion(memory_.Get(), uint64_t(page) << kMemoryPageShift, memorySystem_.Get(),
+                                        uint64_t(page) << kMemoryPageShift, uint64_t(count) << kMemoryPageShift);
+                memoryUploaded_ += uint64_t(count) << kMemoryPageShift;
             }
-            flush();
-            memoryUploaded_ += bytes;
+        }
+
+        void Renderer::SetSystemState(D3D12_RESOURCE_STATES state)
+        {
+            if (systemState_ == state)
+                return;
+            Transition(memorySystem_.Get(), systemState_, state);
+            systemState_ = state;
         }
 
         void Renderer::SetMemoryState(D3D12_RESOURCE_STATES state)
@@ -1427,6 +1430,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 Fatal("GPU: texture untile outside a recording");
             GpuScope scope(*this, 2);
             const HostTextureFormat host = HostFormatOf(texture.fetch);
+            for (const auto& [start, end] : texture.layout.extents)
+                EnsureResident(start, end - start);
             SetMemoryState(kShaderResource);
             Transition(texture.resource.Get(), texture.state, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             list_->SetComputeRootSignature(presentRootSignature_.Get());
@@ -1536,6 +1541,11 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 return h;
             };
             const bool pending = OverlapsPendingResolve(texture.layout);
+            const bool logged = frame_ >= g_textureLog.first && frame_ <= g_textureLog.second;
+            if (logged)
+                Log("texlog frame {} draw {} tf{} {:08X} {}x{} fmt {} {}{}{}", frame_, drawOfFrame_, tf,
+                    fetch.baseAddress, fetch.width, fetch.height, uint32_t(fetch.format), texture.dirty ? "dirty " : "",
+                    pending ? "pending " : "", texture.validatedFrame == frame_ ? "checked" : "");
             if (texture.dirty)
             {
                 UntileTexture(texture);
@@ -1548,6 +1558,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             else if (texture.validatedFrame != frame_ && !pending)
             {
                 const uint64_t h = hash();
+                if (logged && (!texture.hashValid || h != texture.hash))
+                    Log("texlog   untile: {}", texture.hashValid ? "bytes changed" : "no hash yet");
                 if (!texture.hashValid || h != texture.hash)
                     UntileTexture(texture);
                 texture.hash = h;
@@ -2340,7 +2352,6 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
 
         void Renderer::Draw(const DrawPacket& draw, const Shader* vs, const Shader* ps)
         {
-            UploadMemory();
             if (const uint64_t swap = SwapCount(); swap != drawOfFrameSwap_)
             {
                 drawOfFrameSwap_ = swap;
@@ -2864,6 +2875,18 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                     StoreOverlapping(depthBase0, rovSpan, nullptr);
             }
             BeginRecording();
+            if (g_localMemory)
+            {
+                // What the vertex shader reads from memory: its vertex buffers and the index buffer.
+                for (uint32_t vf : vs->analysis.vertexFetchConstants)
+                {
+                    const uint32_t d0 = Reg(0x4800 + vf * 2), d1 = Reg(0x4800 + vf * 2 + 1);
+                    if ((d0 & 3) == 3)
+                        EnsureResident(d0 & 0xFFFFFFFC, ((d1 >> 2) & 0xFFFFFF) * 4);
+                }
+                if (source == 0)
+                    EnsureResident(system.indexAddress, count * (system.indexFormat == 2 ? 4 : 2));
+            }
             SetMemoryState(kShaderResource);
             const D3D12_GPU_DESCRIPTOR_HANDLE vsTextures = TextureTable(hostVs), vsSamplers = SamplerTable(hostVs);
             D3D12_GPU_DESCRIPTOR_HANDLE psTextures = SrvGpu(kFixedSrvs), psSamplers = samplerHeap_->GetGPUDescriptorHandleForHeapStart();
@@ -3113,7 +3136,6 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
             const ResolveInfo info = DecodeResolve();
             if (info.empty)
                 return;
-            UploadMemory();
             LogOnce(DescribeResolve(info));
             if (g_hostLogFrame && SwapCount() + 1 == g_hostLogFrame)
                 Log("host-log   resolve before draw {}: {}", drawOfFrame_, DescribeResolve(info));
@@ -3175,6 +3197,7 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
             list_->SetComputeRootDescriptorTable(1, SrvGpu(1));
             if (info.copy)
             {
+                EnsureResident(info.extentStart, info.extentEnd - info.extentStart); // the copy writes part of its pages
                 SetMemoryState(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
                 ComPtr<ID3D12PipelineState>& pipeline = resolvePipelines_[key];
                 if (!pipeline)
@@ -3190,6 +3213,15 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
                 list_->SetPipelineState(pipeline.Get());
                 list_->SetComputeRootConstantBufferView(0, UploadData(&info.constants, sizeof(info.constants)));
                 list_->Dispatch(info.constants.width / 8, info.constants.height / 8, 1);
+                if (g_localMemory)
+                {
+                    // Back to the guest's pages, where the CPU reads what it resolved (after the GPU has finished, as
+                    // without LocalMemory). Their tracking stays as it was: the GPU's copy holds the same bytes.
+                    SetMemoryState(D3D12_RESOURCE_STATE_COPY_SOURCE);
+                    SetSystemState(D3D12_RESOURCE_STATE_COPY_DEST);
+                    list_->CopyBufferRegion(memorySystem_.Get(), info.extentStart, memory_.Get(), info.extentStart,
+                                            info.extentEnd - info.extentStart);
+                }
                 // Stream-order invalidation (07 §10, 05b §5): textures over the written range are untiled again at their
                 // next use, by a dispatch recorded after this copy.
                 pendingResolves_.emplace_back(info.extentStart, info.extentEnd);
@@ -3452,7 +3484,14 @@ XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputCon
             BeginRecording();
             PresentConstants c = constants;
             const bool systemUi = UpdateOverlay(c.width, c.height);
-            UploadMemory();
+            if (g_localMemory)
+            {
+                uint32_t start, end;
+                PresentExtent(c, start, end);
+                EnsureResident(start, end - start);
+                if (c.overlay == 2) // XAM's overlay texture: whole 32-row tiles of 4-byte texels
+                    EnsureResident(c.ovBase, c.ovPitch * ((c.ovHeight + 31) & ~31u) * 4);
+            }
             if (c.overlay != 2) // XAM's own overlay (CB_RECOMP_XAM) replaces the runtime's system UI
                 c.overlay = systemUi ? 1 : 0;
             SetMemoryState(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -4455,22 +4494,7 @@ void main(uint3 id : SV_DispatchThreadID)
 
     bool LocalMemory() { return g_localMemory; }
 
-    void MarkMemoryWritten(uint32_t physical, uint32_t size)
-    {
-        if (!g_localMemory || size == 0)
-            return;
-        const uint64_t first = uint64_t(physical & (guest::kPhysicalSize - 1)) >> kMemoryPageShift;
-        const uint64_t last = std::min<uint64_t>((uint64_t(physical & (guest::kPhysicalSize - 1)) + size - 1) >> kMemoryPageShift,
-                                                 (guest::kPhysicalSize >> kMemoryPageShift) - 1);
-        for (uint64_t page = first; page <= last;)
-        {
-            const uint64_t word = page / 64, bit = page % 64, n = std::min<uint64_t>(64 - bit, last - page + 1);
-            const uint64_t mask = (n == 64 ? ~0ull : ((1ull << n) - 1)) << bit;
-            g_memoryWritten[word].fetch_or(mask, std::memory_order_relaxed);
-            page += n;
-        }
-        g_memoryAnyWritten.store(true, std::memory_order_release);
-    }
+    void MarkMemoryWritten(uint32_t physical, uint32_t size) { guest::MarkPhysicalStale(physical, size); }
 
     bool RendererEnabled()
     {

@@ -400,6 +400,17 @@ namespace guest
         Log("Guest memory reserved at host {:p} (physical windows at A0000000/C0000000/E0000000)", static_cast<void*>(base));
     }
 
+    void* Memory::HostView()
+    {
+        static void* view = [this] {
+            void* v = MapViewOfFile(physicalSection_, FILE_MAP_ALL_ACCESS, 0, 0, kPhysicalSize);
+            if (v == nullptr)
+                Fatal("Unable to map a host view of physical memory (error {})", GetLastError());
+            return v;
+        }();
+        return view;
+    }
+
     void Memory::CommitPhysical(uint32_t physical, uint32_t size)
     {
         // The section is committed as a whole; allocations only reserve address ranges in the allocator.

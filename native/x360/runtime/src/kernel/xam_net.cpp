@@ -735,6 +735,7 @@ GUEST_IMPORT(NetDll_recv)
     const SOCKET host = HostSocket(ctx.r4.u32);
     if (host == INVALID_SOCKET)
         return Fail(ctx, kWsaENotSock);
+    guest::PrepareHostWrite(ctx.r5.u32, ctx.r6.u32); // the socket writes from kernel mode
     const int received = ::recv(host, reinterpret_cast<char*>(guest::g_memory.Translate(ctx.r5.u32)), int(ctx.r6.u32),
                                 int(ctx.r7.u32));
     if (received == SOCKET_ERROR)
@@ -753,6 +754,7 @@ GUEST_IMPORT(NetDll_recvfrom)
         return Fail(ctx, kWsaENotSock);
     sockaddr_in address = {};
     int size = sizeof(address);
+    guest::PrepareHostWrite(ctx.r5.u32, ctx.r6.u32); // the socket writes from kernel mode
     const int received = ::recvfrom(host, reinterpret_cast<char*>(guest::g_memory.Translate(ctx.r5.u32)),
                                     int(ctx.r6.u32), int(ctx.r7.u32), reinterpret_cast<sockaddr*>(&address), &size);
     if (received == SOCKET_ERROR)

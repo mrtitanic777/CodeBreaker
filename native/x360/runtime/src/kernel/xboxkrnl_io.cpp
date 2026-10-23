@@ -326,6 +326,7 @@ GUEST_IMPORT(NtReadFile)
     ov.Offset = DWORD(offset);
     ov.OffsetHigh = DWORD(offset >> 32);
     DWORD read = 0;
+    guest::PrepareHostWrite(ctx.r8.u32, ctx.r9.u32); // ReadFile writes from kernel mode
     if (!ReadFile(file->host, mem.Translate(ctx.r8.u32), ctx.r9.u32, &read, &ov) && GetLastError() != ERROR_HANDLE_EOF)
     {
         // Which pages of the buffer the host could not write (998: a page not committed or not writable).

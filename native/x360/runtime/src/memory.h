@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 // Guest (Xbox 360) address space: a 4 GiB host reservation indexed by 32-bit guest addresses. Host pages are
@@ -175,6 +176,9 @@ namespace guest
         void HostDecommit(uint32_t address, uint32_t size);
         void HostProtect(uint32_t address, uint32_t size, uint32_t protect);
         bool IsGuestPointer(const void* host) const;
+        // A fourth view of physical memory outside the guest's address space (physical 0 at its start), mapped on
+        // first use: never write-protected by the write tracking, so a GPU heap can be opened over it.
+        void* HostView();
         // Commits the indirect-call table slots for guest code addresses [guestStart, guestStart + guestSize) (zeroed).
         void CommitFunctionTable(uint32_t guestStart, uint32_t guestSize);
         // If `host` lies in the indirect-call table, the guest code address of its slot.
@@ -223,4 +227,17 @@ namespace guest
     };
 
     extern Memory g_memory;
+
+    // Write tracking for a copy of physical memory kept elsewhere (the GPU's, gpu.h LocalMemory), 4 KiB pages. A page
+    // is stale (the copy is behind; the CPU writes it freely) or watched (the copy agrees; read-only in all three
+    // windows, so the CPU's first write faults, lifts the protection and makes it stale again). Off until enabled.
+    void EnableWriteTracking();
+    bool WriteTracking();
+    void MarkPhysicalStale(uint32_t physical, uint32_t size);
+    // Watches the stale pages of [physical, physical + size) and appends them to `runs` as (first page, pages): the
+    // caller brings its copy of them up to date. A CPU write after this call makes them stale again.
+    void WatchStalePages(uint32_t physical, uint32_t size, std::vector<std::pair<uint32_t, uint32_t>>& runs);
+    // Before the host writes guest memory from kernel mode (ReadFile, recv), where no fault reaches the tracking: the
+    // watched pages of the range become stale and writable. Any guest address; only the physical windows are tracked.
+    void PrepareHostWrite(uint32_t address, uint32_t size);
 }
