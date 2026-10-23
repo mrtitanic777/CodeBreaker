@@ -22,7 +22,7 @@ import subprocess
 
 # /Gc: a function declared without a convention is pascal, as the reconstruction's own default
 FLAG_SETS = ("/AM /Gcsw /Os", "/AM /Gcsw /Ox", "/AS /Gcsw /Os", "/AL /Gcsw /Os", "/AM /Gcsw /Od", "/AM /Gc2sw /Os",
-             "/AM /Gcs /Os", "/AS /Gcs /Os")
+             "/AM /Gc2sw /Ox", "/AM /Gcs /Os", "/AS /Gcs /Os")   # (/G2: SUWIN has push imm and leave)
 
 _CONF = ("[sdl]\noutput=surface\n[cpu]\ncore=dynamic\ncputype=386\ncycles=max\n[autoexec]\n"
          "mount c \"%s\"\nmount d \"%s\"\nset PATH=C:\\BIN\nset INCLUDE=C:\\INCLUDE\nset LIB=C:\\LIB\nd:\ncall BLD.BAT\nexit\n")
@@ -118,8 +118,26 @@ def dialect(header, text):
     return "\n".join(said + keep) + "\n", text
 
 
-def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6"):
-    """Compile each of `sources` {key: C text} with `header` before it. -> {key: (bytes, mask) or None}"""
+def function_code(obj, name):
+    """(bytes, mask) of the public function `name` in an OMF object file -- cut from its code segment
+    between its public name and the next -- or None. A header's own functions (static helpers, the
+    reconstruction's stubs) come first in the segment, so the first code segment is not the function."""
+    from codebreaker.invert import omf
+    want = name.lstrip("_").lower()
+    for pub, (code, holes) in omf.functions(obj).items():
+        if pub.lstrip("_").lower() == want:
+            mask = bytearray(len(code))
+            for at in holes:
+                if at < len(mask):
+                    mask[at] = 1
+            return bytes(code), bytes(mask)
+    return None
+
+
+def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6", names=None):
+    """Compile each of `sources` {key: C text} with `header` before it. -> {key: (bytes, mask) or None}
+    names: {key: function name} -- each key's code is that public function's (function_code), not the
+    object's first code segment."""
     from codebreaker.base import cache, settings
     emulator, home = _tools(compiler)
     if not available(compiler):
@@ -127,7 +145,7 @@ def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6"
     out, todo = {}, {}
     stamp = cache.tool(os.path.join(home, "BIN", "CL.EXE"))
     for key, text in sources.items():
-        k = cache.key(stamp, flags, header, text)
+        k = cache.key(stamp, flags, header, text, "function " + names[key] if names and key in names else "")
         had = cache.get("msc6", k)
         if had is not None:
             out[key] = None if had == b"-" else (had[4:4 + int.from_bytes(had[:4], "little")],
@@ -143,9 +161,9 @@ def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6"
             os.remove(os.path.join(work, f))
     with open(os.path.join(work, "M.H"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
         f.write(header)
-    lines, names = ["@echo off"], {}
+    lines, files = ["@echo off"], {}
     for i, (key, (_k, text)) in enumerate(todo.items()):
-        names[key] = "F%d" % i
+        files[key] = "F%d" % i
         with open(os.path.join(work, "F%d.C" % i), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
             f.write('#include "m.h"\n\n' + text + "\n")
         lines.append("cl /nologo /c /W0 %s /FoF%d.OBJ F%d.C >nul" % (flags, i, i))
@@ -161,13 +179,17 @@ def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6"
         pass
     finished = os.path.isfile(os.path.join(work, "DONE.TXT"))
     for key, (k, _text) in todo.items():
-        path = os.path.join(work, names[key] + ".OBJ")
+        path = os.path.join(work, files[key] + ".OBJ")
         built = None
         if os.path.isfile(path):
             with open(path, "rb") as f:
-                code, mask = object_code(f.read())
-            if code:
-                built = (code, mask)
+                obj = f.read()
+            if names and key in names:
+                built = function_code(obj, names[key])
+            else:
+                code, mask = object_code(obj)
+                if code:
+                    built = (code, mask)
         out[key] = built
         if built:
             cache.put("msc6", k, len(built[0]).to_bytes(4, "little") + built[0] + built[1])

@@ -262,6 +262,28 @@ def test_object_file_of_the_16_bit_compiler_is_read():
                                  "#define __stdcall16far __far __stdcall\n", "")
     assert "#define __far _far" in header and "pragma aux" not in header and "long long" not in header
     assert "#define __stdcall16far __far __stdcall" in header
+    header, _text = msc6.dialect("extern char __based(__segname(\"S\")) s[];\n", "")
+    assert "#define __based _based" in header and "#define __segname _segname" in header
+
+
+def test_the_16_bit_compiler_s_function_is_cut_out_by_its_name():
+    """A header's own functions come first in the code segment: the function judged is found by
+    its public name, from there to the next public, with its fix-ups marked."""
+    from codebreaker.build import msc6
+
+    def record(kind, body):
+        return bytes([kind]) + (len(body) + 1).to_bytes(2, "little") + body + b"\0"
+    helper, judged = bytes([0x55, 0x8B, 0xEC, 0x5D, 0xC3]), bytes([0x55, 0x9A, 0, 0, 0, 0, 0x5D, 0xCB])
+    obj = (record(0x80, b"\x03f.c")
+           + record(0x96, b"\x00\x05_TEXT\x04CODE")                        # names 1 (empty), 2, 3
+           + record(0x98, bytes([0x28]) + (len(helper + judged)).to_bytes(2, "little") + b"\x02\x03\x01")
+           + record(0x90, b"\x00\x01" + b"\x07_helper\x00\x00\x00" + b"\x07_judged" + (5).to_bytes(2, "little") + b"\x00")
+           + record(0x8C, b"\x04_ext\x00")                                  # external 1, the call's target
+           + record(0xA0, b"\x01\x00\x00" + helper + judged)
+           + record(0x9C, bytes([0xCC, 0x06, 0x26, 0x01, 0x01]))            # a far pointer at +6 (judged's +1)
+           + record(0x8A, b"\x00"))
+    assert msc6.function_code(obj, "judged") == (judged, bytes([0, 1, 1, 1, 1, 0, 0, 0]))
+    assert msc6.function_code(obj, "_HELPER")[0] == helper and msc6.function_code(obj, "none") is None
 
 
 def test_a_verdict_is_for_the_compiled_code():

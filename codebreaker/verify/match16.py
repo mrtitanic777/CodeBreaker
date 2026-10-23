@@ -77,7 +77,7 @@ def run(module_path, flags=None, limit=0, log=print):
     work = settings.state("match16", name, "work")
 
     def judged(fl, names):
-        built = msc6.compile_many({fn: m.texts[fn] for fn in names}, header, fl, work)
+        built = msc6.compile_many({fn: m.texts[fn] for fn in names}, header, fl, work, names={fn: fn for fn in names})
         return {fn: (match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0))
                 for fn in names}
     if not flags:
