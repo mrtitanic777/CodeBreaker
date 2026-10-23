@@ -100,7 +100,14 @@ def object_code(obj):
 def dialect(header, text):
     """(header, text) as Microsoft C 6 takes them."""
     said = ["#define __far _far", "#define __near _near", "#define __stdcall _pascal", "#define __cdecl _cdecl",
-            "#define codebreaker_ss() 0", "#define codebreaker_ds() 0", "#define codebreaker_cs() 0"]
+            "#define codebreaker_ss() 0", "#define codebreaker_ds() 0", "#define codebreaker_cs() 0",
+            # OpenWatcom's spellings of what Microsoft C 6 has with one underscore, and the far-pointer
+            # macros OpenWatcom's i86.h gives (here without a header)
+            "#define __based _based", "#define __segname _segname", "#define __export _export",
+            "#define __loadds _loadds", "#define __interrupt _interrupt", "#define __saveregs _saveregs",
+            "#define MK_FP(s,o) ((void _far *)(((unsigned long)(unsigned)(s) << 16) | (unsigned)(o)))",
+            "#define FP_OFF(p) ((unsigned)(unsigned long)(void _far *)(p))",
+            "#define FP_SEG(p) ((unsigned)((unsigned long)(void _far *)(p) >> 16))"]
     keep = []
     for line in header.split("\n"):
         if "#pragma aux" in line or re.match(r"uint2 codebreaker_[sdc]s\(void\);", line.strip()):
