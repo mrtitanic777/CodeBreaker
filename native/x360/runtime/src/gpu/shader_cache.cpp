@@ -276,7 +276,7 @@ namespace gpu
         TranslatedShader translated = TranslateShader(shader, options);
         std::vector<uint8_t> bytecode;
         std::string errors;
-        const char* target = shader.stage == ucode::Stage::kVertex ? "vs_5_1" : "ps_5_1";
+        const char* target = shader.stage != ucode::Stage::kVertex ? "ps_5_1" : options.domain ? "ds_5_1" : "vs_5_1";
         const std::string name = std::format("{}_{:016X}", ucode::StageName(shader.stage), shader.hash);
         const bool ok = CompileHlsl(translated.hlsl, target, name.c_str(), bytecode, errors);
         if (!ok || !DumpDirectory().empty())

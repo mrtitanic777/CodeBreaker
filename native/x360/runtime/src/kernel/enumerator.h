@@ -21,6 +21,12 @@ namespace kernel
         // The handler writes its items whatever BufferSize says (XAM's profile handler; its content aggregate one,
         // which the 9199 dashboard asks with BufferSize 1 and a buffer of one item).
         bool wholeItems = false;
+        // Items with variable data (XACHIEVEMENT_DETAILS with its strings): each item is `itemSize` fixed bytes then its
+        // tail; the fixed parts are written as an array and the tails after it, and each offset in `tailPointers`
+        // (within the fixed part) holds 1 + an offset into the item's tail, made the guest address there (0 stays 0).
+        // `tailSize` is the most a tail takes: an item counts itemSize + tailSize against the caller's buffer.
+        std::vector<uint32_t> tailPointers;
+        uint32_t tailSize = 0;
     };
 
     // XamProfileCreateEnumerator's records: be64 offline XUID, XAMACCOUNTINFO (0x17C), be32 device ID.

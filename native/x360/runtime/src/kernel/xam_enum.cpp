@@ -28,6 +28,8 @@ namespace
         uint32_t itemsPerEnumerate = 1;
         uint32_t unsupportedFlags = 0;
         bool wholeItems = false;
+        std::vector<uint32_t> tailPointers;
+        uint32_t tailSize = 0;
         std::vector<std::vector<uint8_t>> items;
         size_t next = 0;
     };
@@ -51,7 +53,7 @@ namespace kernel
         {
             std::lock_guard lock(g_enumMutex);
             g_enumerators[object] = { itemSize, info.itemsPerEnumerate, info.unsupportedEnumerateFlags,
-                                      info.wholeItems, std::move(items), 0 };
+                                      info.wholeItems, info.tailPointers, info.tailSize, std::move(items), 0 };
         }
         SetObjectCleanup(object, [object]
             {
@@ -99,10 +101,27 @@ namespace
     const uint32_t count = uint32_t(std::min<size_t>(e.items.size() - e.next, e.itemsPerEnumerate));
     if (count == 0)
         return finish(kErrorNoMoreFiles, 0);
-    if (!e.wholeItems && uint64_t(count) * e.itemSize > bufferSize)
-        Fatal("XamEnumerate: {}-byte buffer for {} items of {} bytes", bufferSize, count, e.itemSize);
+    uint64_t needed = 0;                                       // the fixed parts, and the tails (4-byte aligned)
     for (uint32_t i = 0; i < count; i++)
-        std::memcpy(mem.Translate(buffer + i * e.itemSize), e.items[e.next + i].data(), e.itemSize);
+        needed += e.itemSize + ((e.items[e.next + i].size() - e.itemSize + 3) & ~size_t(3));
+    if (!e.wholeItems && needed > bufferSize)
+        Fatal("XamEnumerate: {}-byte buffer for {} items ({} bytes)", bufferSize, count, needed);
+    uint32_t tail = buffer + count * e.itemSize;                // the tails follow the array of fixed parts
+    for (uint32_t i = 0; i < count; i++)
+    {
+        const std::vector<uint8_t>& item = e.items[e.next + i];
+        const uint32_t at = buffer + i * e.itemSize;
+        std::memcpy(mem.Translate(at), item.data(), e.itemSize);
+        if (item.size() > e.itemSize)
+        {
+            const uint32_t length = uint32_t(item.size() - e.itemSize);
+            std::memcpy(mem.Translate(tail), item.data() + e.itemSize, length);
+            for (uint32_t offset : e.tailPointers)
+                if (const uint32_t v = mem.Read32(at + offset))
+                    mem.Write32(at + offset, tail + v - 1);
+            tail += (length + 3) & ~3u;
+        }
+    }
     e.next += count;
     return finish(kernel::kErrorSuccess, count);
     }

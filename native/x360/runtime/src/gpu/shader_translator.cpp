@@ -924,12 +924,39 @@ void main(uint3 id : SV_DispatchThreadID)
                 for (uint32_t i = 0; i < 16; i++)
                     text += std::format("    float4 o{} : TEXCOORD{};\n", i, i);
                 text += "    float4 clip0 : SV_ClipDistance0;\n    float2 clip1 : SV_ClipDistance1;\n};\n";
-                text += R"(
+                if (options_.domain == 1)
+                    text += R"(
+// A tessellated quad: the tessellator's point (u, v) and the patch's four corners (their draw positions, as the
+// control-point shader passed them), in the registers the guest's tessellated vertex shader reads.
+struct XeControlPoint
+{
+    uint position : XEPOSITION;
+};
+struct XePatchConstants
+{
+    float edges[4] : SV_TessFactor;
+    float inside[2] : SV_InsideTessFactor;
+};
+
+[domain("quad")]
+XeVertexOutput main(XePatchConstants xe_patch, float2 xe_uv : SV_DomainLocation,
+                    const OutputPatch<XeControlPoint, 4> xe_corners)
+{
+    XeState s = xe_initial_state();
+    s.r[0].xy = xe_uv;
+    s.r[0].z = xe_vertex_index(xe_corners[0].position);
+    s.r[1].x = xe_vertex_index(xe_corners[1].position);
+    s.r[1].y = xe_vertex_index(xe_corners[2].position);
+    s.r[1].z = xe_vertex_index(xe_corners[3].position);
+    xe_run(s);)";
+                else
+                    text += R"(
 XeVertexOutput main(uint xe_vertex_id : SV_VertexID)
 {
     XeState s = xe_initial_state();
     s.r[0].x = xe_vertex_index(xe_vertex_id);
-    xe_run(s);
+    xe_run(s);)";
+                text += R"(
     XeVertexOutput output;
     // Undo the PA_CL_VTE_CNTL formats so the position is ordinary clip space (01a §5).
     precise float4 p = s.pos;

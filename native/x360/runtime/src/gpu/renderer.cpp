@@ -286,6 +286,11 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             uint32_t samples = 1;
             bool color = false, depthStencil = false;
             uint32_t blend = 0, colorMask = 0, depthControl = 0, stencilMasks = 0;
+            // Tessellated draws (VGT_OUTPUT_PATH_CNTL path 1): 0 none, else 1 + VGT_HOS_CNTL's mode (1 discrete: integer
+            // partitioning, 2 continuous: fractional_even); the vs is then the domain shader, and the hull shader gives
+            // every edge and the inside tessFactor.
+            uint32_t tessellation = 0;
+            float tessFactor = 0.0f;
             auto operator<=>(const PipelineKey&) const = default;
         };
 
@@ -560,6 +565,9 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             uint32_t pipelinesCreated_ = 0, pipelinesLoaded_ = 0;
             double pipelineCreateMs_ = 0, pipelineLoadMs_ = 0;
             void OpenPipelineLibrary();
+            const std::vector<uint8_t>& TessellationShader(uint32_t partition, float factor);
+            std::vector<uint8_t> tessControlPoint_;
+            std::map<std::pair<uint32_t, uint32_t>, std::vector<uint8_t>> tessHull_;
             void SavePipelineLibrary(bool force);
 
             // ---- Host render targets ----
@@ -1788,6 +1796,67 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             return outputMergerOnly_.emplace(key, std::move(bytecode)).first->second;
         }
 
+        // Tessellation (01b: VGT_HOS_*). A patch's control points are the draw's positions; the control-point shader
+        // passes each on, the hull shader keeps them and sets the factors, the guest's vertex shader runs as the domain
+        // shader (shader_translator: TranslationOptions::domain) and reads the corners' indices itself. The Xenos
+        // factor is VGT_HOS_MAX_TESS_LEVEL + 1 (as Xenia takes it), D3D's at most 64.
+        const std::vector<uint8_t>& Renderer::TessellationShader(uint32_t partition, float factor)
+        {
+            static const char* const kControlPoint = R"(
+struct XeControlPoint { uint position : XEPOSITION; };
+XeControlPoint main(uint id : SV_VertexID)
+{
+    XeControlPoint c;
+    c.position = id;
+    return c;
+}
+)";
+            if (partition == 0)
+            {
+                if (tessControlPoint_.empty())
+                {
+                    std::string errors;
+                    if (!CompileHlsl(kControlPoint, "vs_5_1", "tess_control_point", tessControlPoint_, errors))
+                        Fatal("GPU: the tessellation control-point shader failed to compile: {}", errors);
+                }
+                return tessControlPoint_;
+            }
+            std::vector<uint8_t>& hull = tessHull_[std::make_pair(partition, std::bit_cast<uint32_t>(factor))];
+            if (hull.empty())
+            {
+                const std::string source = std::format(R"(
+struct XeControlPoint {{ uint position : XEPOSITION; }};
+struct XePatchConstants
+{{
+    float edges[4] : SV_TessFactor;
+    float inside[2] : SV_InsideTessFactor;
+}};
+XePatchConstants xe_patch_constants(InputPatch<XeControlPoint, 4> corners)
+{{
+    XePatchConstants c;
+    [unroll] for (uint i = 0; i < 4u; i++)
+        c.edges[i] = {0:.9g};
+    c.inside[0] = {0:.9g};
+    c.inside[1] = {0:.9g};
+    return c;
+}}
+[domain("quad")]
+[partitioning("{1}")]
+[outputtopology("triangle_ccw")]
+[outputcontrolpoints(4)]
+[patchconstantfunc("xe_patch_constants")]
+XeControlPoint main(InputPatch<XeControlPoint, 4> corners, uint i : SV_OutputControlPointID)
+{{
+    return corners[i];
+}}
+)", factor, partition == 1 ? "integer" : "fractional_even");
+                std::string errors;
+                if (!CompileHlsl(source, "hs_5_1", "tess_hull", hull, errors))
+                    Fatal("GPU: the tessellation hull shader failed to compile: {}", errors);
+            }
+            return hull;
+        }
+
         ID3D12PipelineState* Renderer::Pipeline(const PipelineKey& key, const std::vector<uint8_t>& vs,
                                                  const std::vector<uint8_t>& ps)
         {
@@ -1802,6 +1871,14 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 desc.GS = { rectListGs_.data(), rectListGs_.size() };
             else if (key.pointList)
                 desc.GS = { pointListGs_.data(), pointListGs_.size() };
+            if (key.tessellation)
+            {
+                const std::vector<uint8_t>& controlPoint = TessellationShader(0, 0.0f);
+                const std::vector<uint8_t>& hull = TessellationShader(key.tessellation, key.tessFactor);
+                desc.DS = desc.VS;
+                desc.VS = { controlPoint.data(), controlPoint.size() };
+                desc.HS = { hull.data(), hull.size() };
+            }
             desc.BlendState.RenderTarget[0].RenderTargetWriteMask = 0;
             if (key.host)
             {
@@ -1908,7 +1985,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 for (size_t i = 0; i < size; i++)
                     hash = (hash ^ static_cast<const uint8_t*>(data)[i]) * 0x100000001B3ull;
             };
-            for (const D3D12_SHADER_BYTECODE& code : { desc.VS, desc.PS, desc.GS })
+            for (const D3D12_SHADER_BYTECODE& code : { desc.VS, desc.PS, desc.GS, desc.HS, desc.DS })
             {
                 mix(&code.BytecodeLength, sizeof(code.BytecodeLength));
                 if (code.BytecodeLength)
@@ -1917,7 +1994,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             const uint32_t fields[] = { key.rectList, key.pointList, uint32_t(key.topology), uint32_t(key.cull),
                                         key.frontCounterClockwise, key.depthClip, key.forcedSamples, key.host, key.samples,
                                         key.color, key.depthStencil, key.blend, key.colorMask, key.depthControl,
-                                        key.stencilMasks, key.stripCut, 3 /* description layout version */ };
+                                        key.stencilMasks, key.stripCut, key.tessellation,
+                                        std::bit_cast<uint32_t>(key.tessFactor), 4 /* description layout version */ };
             mix(fields, sizeof(fields));
             const std::wstring name = std::format(L"{:016X}", hash);
             const auto start = std::chrono::steady_clock::now();
@@ -2299,8 +2377,6 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 return; // MULTIPASS: every primitive is killed
             if (exportMode != 0)
                 Fatal("GPU: VS export mode {} (point size / edge flag / kill outputs) is not implemented", exportMode);
-            if ((Reg(0x2284) & 3) == 1)
-                Fatal("GPU: tessellation (VGT_OUTPUT_PATH_CNTL {:08X}) is not implemented", Reg(0x2284));
             if (!vs || vs->words.empty())
                 Fatal("GPU: draw without a vertex shader");
             if (vs->analysis.memoryExport || (ps && ps->analysis.memoryExport))
@@ -2310,6 +2386,26 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             // Primitive type -> host topology (01b §6.1). Index positions (0..count-1) are what the host draws; the
             // vertex shader turns a position into the guest index (xe_vertex_index).
             const uint32_t prim = draw.initiator & 0x3F, count = draw.initiator >> 16;
+            // Tessellation: quad lists in discrete or continuous mode (TRON); adaptive factors (from the index buffer)
+            // and the triangle / patch primitives stop, to be done when a title draws them.
+            // Points, lines and rectangles are not patches: drawn as they are while tessellation is on (TRON's
+            // one-point draws with a pass-through shader between its tessellated quads).
+            const bool tessellatable = prim == 4 || prim == 13 || prim == 0x10 || prim == 0x11 || prim == 0x12;
+            if ((Reg(0x2284) & 3) == 1 && !tessellatable)
+                LogOnce(std::format("tessellation is on for primitive {:02X}, which is drawn untessellated", prim));
+            const bool tessellated = (Reg(0x2284) & 3) == 1 && tessellatable;
+            uint32_t tessPartition = 0;
+            float tessFactor = 0.0f;
+            if (tessellated)
+            {
+                const uint32_t mode = Reg(0x2285) & 3;
+                if (prim != 13 || mode > 1)
+                    Fatal("GPU: tessellation of primitive {:02X} in mode {} (VGT_HOS_CNTL {:08X}) is not implemented "
+                          "(quad lists in discrete or continuous mode are; {} indices, max {}, vertex shader {:016X})", prim,
+                          mode, Reg(0x2285), count, RegFloat(0x2286), vs ? vs->hash : 0);
+                tessPartition = mode + 1;
+                tessFactor = std::clamp(RegFloat(0x2286) + 1.0f, 1.0f, 64.0f);
+            }
             const uint32_t source = (draw.initiator >> 6) & 3;
             const uint32_t suScMode = Reg(0x2205);
             D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -2396,7 +2492,14 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                     hostCount = count >= 3 ? (count - 2) * 3 : 0;
                 }
                 break;
-            case 13: // quad list -> two triangles per whole quad (quadIndices_)
+            case 13: // quad list -> two triangles per whole quad (quadIndices_), or 4-point patches when tessellated
+                if (tessellated)
+                {
+                    topology = D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST;
+                    topologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+                    hostCount = count / 4 * 4;
+                    break;
+                }
                 indices = quadIndices_.Get();
                 hostCount = count / 4 * 6;
                 break;
@@ -2490,6 +2593,7 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             // Shaders.
             TranslationOptions vsOptions;
             vsOptions.registerCount = (program & 0x3F) + 1;
+            vsOptions.domain = tessellated ? 1 : 0;
             const HostShader* hostVsReady = TryCompiledShader(*vs, vsOptions);
             if (!hostVsReady)
             {
@@ -2497,6 +2601,9 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
                 return; // its vertex shader is still compiling (shader_cache.h)
             }
             const HostShader& hostVs = *hostVsReady;
+            if (tessellated && !hostVs.textures.empty())
+                Fatal("GPU: a tessellated vertex shader that samples textures is not implemented (the vertex texture "
+                      "tables are visible to the vertex stage only)");
 
             // Viewport, depth range and scissor (01a §5 "Viewport / scissor / half-pixel derivation").
             const uint32_t vte = Reg(0x2206), vtxControl = Reg(0x2302);
@@ -2778,6 +2885,8 @@ void main(point XeVertex v[1], inout TriangleStream<XeSpriteVertex> stream)
             pipelineKey.pointList = pointList;
             pipelineKey.topology = topologyType;
             pipelineKey.stripCut = stripCut;
+            pipelineKey.tessellation = tessPartition;
+            pipelineKey.tessFactor = tessFactor;
             pipelineKey.cull = !polygonal ? D3D12_CULL_MODE_NONE
                              : cullFront ? D3D12_CULL_MODE_FRONT : cullBack ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
             pipelineKey.frontCounterClockwise = ((suScMode >> 2) & 1) == 0;

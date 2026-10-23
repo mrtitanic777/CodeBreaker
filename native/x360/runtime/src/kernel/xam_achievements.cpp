@@ -23,6 +23,10 @@ namespace
 {
     constexpr uint32_t kDetailsSize = 0x24;
     constexpr uint32_t kDetailsStrings = 0x7; // LABEL | DESCRIPTION | UNACHIEVED
+    // The characters (with the terminator) a label, description and unachieved text take, and what a caller allows per
+    // item for them: TRON allocates 500 bytes an item with strings (0x24 + 2 * (32 + 100 + 100)).
+    constexpr uint32_t kLabelLength = 32, kDescriptionLength = 100, kUnachievedLength = 100;
+    constexpr uint32_t kStringsSize = 2 * (kLabelLength + kDescriptionLength + kUnachievedLength);
 
     constexpr uint32_t kErrorInvalidParameter = 0x57;
     constexpr uint32_t kErrorNoSuchUser = 0x525;
@@ -121,8 +125,9 @@ GUEST_IMPORT(XamUserCreateAchievementEnumerator)
     }
     if (xuid != 0 && xuid != kernel::users::Xuid(user))
         Fatal("XamUserCreateAchievementEnumerator: achievements of XUID {:016X}", xuid);
-    if (detailFlags & kDetailsStrings)
-        Fatal("XamUserCreateAchievementEnumerator: detail flags {:X} request strings, not implemented", detailFlags);
+    if ((detailFlags & kDetailsStrings) && titleId != kernel::TitleId())
+        Fatal("XamUserCreateAchievementEnumerator: strings of another title's achievements ({:08X}), not implemented",
+            titleId);
     if (titleId != kernel::TitleId())
     {
         CreateProfileAchievementEnumerator(ctx, titleId, user, start, count, sizePtr, handlePtr);
@@ -141,16 +146,44 @@ GUEST_IMPORT(XamUserCreateAchievementEnumerator)
         // Earned offline: ACHIEVED without ACHIEVED_ONLINE, ftAchieved 0.
         const auto earned = kernel::profile::ReadAchievement(kernel::users::Xuid(user), kernel::TitleId(), a.id);
         PutBe32(item, 0x20, earned ? earned->flags : a.flags);
+        if (detailFlags & kDetailsStrings)
+        {
+            // The label, description and unachieved text (the SPA's strings in the console's language), each
+            // NUL-terminated UTF-16BE in the item's tail; pwszLabel / pwszDescription / pwszUnachieved point at them.
+            // The XDK's limits: 33, 100 and 100 characters with the terminator.
+            const std::pair<uint32_t, uint16_t> strings[] = { { 0x04, a.labelId }, { 0x08, a.descriptionId },
+                                                              { 0x0C, a.unachievedId } };
+            const uint32_t limits[] = { kLabelLength, kDescriptionLength, kUnachievedLength };
+            for (size_t k = 0; k < 3; k++)
+            {
+                std::u16string text = kernel::spa::String(strings[k].second);
+                text.resize(std::min<size_t>(text.size(), limits[k] - 1));
+                PutBe32(item, strings[k].first, uint32_t(item.size() - kDetailsSize) + 1);
+                for (char16_t c : text)
+                {
+                    item.push_back(uint8_t(c >> 8));
+                    item.push_back(uint8_t(c));
+                }
+                item.push_back(0);
+                item.push_back(0);
+            }
+        }
         items.push_back(std::move(item));
     }
 
-    mem.Write32(sizePtr, kDetailsSize * count);
+    const bool strings = detailFlags & kDetailsStrings;
+    mem.Write32(sizePtr, (kDetailsSize + (strings ? kStringsSize : 0)) * count);
     kernel::EnumeratorInfo info;
     info.appId = 0xFB; // XGI; messages as Xenia uses for achievement enumerators
     info.message = 0xB000A;
     info.closeMessage = 0xB000B;
     info.userIndex = user;
     info.itemsPerEnumerate = count;
+    if (strings)
+    {
+        info.tailPointers = { 0x04, 0x08, 0x0C };
+        info.tailSize = kStringsSize;
+    }
     mem.Write32(handlePtr, kernel::CreateHostEnumerator(info, kDetailsSize, std::move(items)));
     ctx.r3.u64 = kernel::kErrorSuccess;
 }

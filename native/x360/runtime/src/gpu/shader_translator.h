@@ -87,6 +87,11 @@ namespace gpu
         // Plain-output pixel shaders drawn to host render targets (renderer.cpp "Host render targets"): RB_COLORCONTROL
         // bits 0-3 (AlphaFunc | AlphaTestEnable << 3), tested on colour 0's alpha before the outputs (discard).
         uint32_t alphaTest = 0;
+        // Vertex shaders of tessellated draws (VGT_OUTPUT_PATH_CNTL path 1): the shader runs as a host domain shader
+        // on the tessellator's points. 1: a quad list's patches -- r0.xy the point's (u, v), r0.z the index of corner 0
+        // and r1.xyz those of corners 1-3 (corner 0 at (0,0), 1 at (1,0), 2 at (1,1), 3 at (0,1)), as a tessellated
+        // vertex shader reads them (TRON's interpolates its corners with those weights).
+        uint32_t domain = 0;
 
         auto operator<=>(const TranslationOptions&) const = default;
     };
