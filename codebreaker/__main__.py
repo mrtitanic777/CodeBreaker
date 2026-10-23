@@ -49,6 +49,7 @@
     xex-imports <module.xex>        its imports: library, ordinal, name, function or variable, slot, thunk
     xdk-match <.xex or image> [libs] [-o F]   name the XDK library functions it was linked with
     system-ui <update package> <dir>    the Xbox 360 runtime's system UI assets from the owner's system update
+    crypto <tool> [args]            Xbox 360 console crypto (XeCrypt, keyvaults, boot chain, NAND, shadowboots)
     classes <.xex or image> [-o F]  its C++ classes from run-time type information: bases, virtual
                                     function tables, which class introduces each virtual function
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
@@ -123,6 +124,7 @@ COMMANDS = {
     "gfx": ("codebreaker.formats.gfx", []),
     "classes": ("codebreaker.symbols.cpp_classes", []),
     "system-ui": ("codebreaker.formats.xbox.system_ui", []),
+    "crypto": ("codebreaker.formats.xbox.crypto", []),
     "java": ("codebreaker.java.run", []),
 }
 

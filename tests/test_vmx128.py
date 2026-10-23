@@ -24,7 +24,7 @@ from codebreaker.decompile import vmx128      # noqa: E402
 
 LANG = os.path.join(ROOT, "native", "decompiler", "languages")
 TOOL = os.path.join(ROOT, "native", "decompiler", "build", "bin", "pcodecheck" + (".exe" if os.name == "nt" else ""))
-GAME = os.path.join(ROOT, "Projects", "MinecraftPC", "default.xex")
+GAME = os.path.join(ROOT, "Converted", "Minecraft", "original", "default.xex")
 RESULTS = []
 
 

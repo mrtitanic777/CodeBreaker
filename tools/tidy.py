@@ -37,7 +37,7 @@ def flakes():
     out = []
     for line in (r.stdout or "").splitlines():
         m = _MSG.match(line)
-        if m:
+        if m and not os.path.relpath(os.path.join(ROOT, m.group(1)), ROOT).replace("\\", "/").startswith(prune.VENDORED):
             out.append((os.path.join(ROOT, m.group(1)), int(m.group(2)), m.group(3)))
     return out
 

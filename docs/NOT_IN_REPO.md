@@ -32,6 +32,9 @@ setting for one run.
 | MSBuild, to build a transpiled game's Visual Studio project | | `msbuild` |
 | Per-project hand fixes laid over transpiled Java | `state/java/overlays` | `java_overlays` |
 | The 12 Xbox 360 PowerPC images the store has judged (`*.basefile`) | `../powerpc-samples/images` (moved out of the old `src/xbox/samples` on 2026-10-17; its README says what else was kept) | (the store's module paths) |
+| Real Xbox 360 files the format tests read when present (an STFS theme, a dashboard XZP, a Minecraft PCK) | `../xbox-samples` | (tests/test_xbox_formats.py) |
+| The Xbox 360 key store the `crypto` tools read (1BL_pub.bin, SB_prv.bin, ...) | `Keys/` in the current folder | `xbox360_keys` |
+| The `crypto` tools' binaries: LZX libraries, the Free60 xenon-as / xenon-objcopy, hypervisor images | | `xbox360_crypto_bin` |
 
 None of these is redistributable, and none is needed to read the code: each command says which
 setting it is missing.

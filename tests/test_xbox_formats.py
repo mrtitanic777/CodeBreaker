@@ -6,7 +6,7 @@ how media and info read them.
 
 Self-contained: every container and asset is built here, and the STFS signing path runs on a
 SYNTHETIC keyvault carrying a fixed test RSA key (no real console key, no user data). Real
-sample files, when present on this machine (Projects/...), add read checks; without them those
+sample files, when present on this machine (../xbox-samples, Converted/), add read checks; without them those
 are SKIPPED."""
 import hashlib
 import os
@@ -22,7 +22,7 @@ from codebreaker.formats.xbox import (bink, fatx, gdf, god, stfs, texture, xbe, 
                                       xpr, xur, xwb, xzp)
 
 EMPTY_LIVE = os.path.join(ROOT, "codebreaker", "formats", "xbox", "empty_live.bin")
-SAMPLES = os.path.join(ROOT, "Projects")
+SAMPLES = os.path.join(os.path.dirname(ROOT), "xbox-samples")   # beside the checkout: not ours to commit
 RESULTS = []
 
 
@@ -353,19 +353,19 @@ def _sample(rel):
 
 
 def test_real_stfs_theme():
-    v = media.volumes(_sample("UP/PixarUP/assets/nxeart"))[0]
+    v = media.volumes(_sample("up/nxeart"))[0]
     files = {e.path: e for e in v.files()}
     assert v.kind == "stfs" and set(files) == {"DashStyle", "nxebg.jpg", "nxeslot.jpg"}
     assert v.read(files["nxebg.jpg"])[:3] == b"\xff\xd8\xff"
 
 
 def test_real_xzp():
-    v = media.volumes(_sample("XboxTranspiler/samples/dashboard-17559/.dash/Consoles/consoles.xzp"))[0]
+    v = media.volumes(_sample("dashboard-17559/consoles.xzp"))[0]
     assert len(v.files()) == 668
 
 
 def test_real_pck():
-    v = media.volumes(_sample("XboxTranspiler/samples/tu14/Tutorial.pck"))[0]
+    v = media.volumes(_sample("minecraft-tu14/Tutorial.pck"))[0]
     assert sorted(e.path for e in v.files()) == ["GameRules.grf", "languages.loc"]
 
 

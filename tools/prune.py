@@ -19,6 +19,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# Third-party code kept as its authors wrote it: never pruned, its imports never trimmed.
+VENDORED = ("codebreaker/formats/xbox/crypto/",)
 
 
 def _files():
@@ -40,7 +42,7 @@ def find():
     out = []
     for p, text in texts.items():
         rel = os.path.relpath(p, ROOT).replace("\\", "/")
-        if not rel.startswith("codebreaker/") or rel.endswith("__init__.py") or rel.endswith("__main__.py"):
+        if not rel.startswith("codebreaker/") or rel.endswith("__init__.py") or rel.endswith("__main__.py") or rel.startswith(VENDORED):
             continue
         try:
             tree = ast.parse(text)

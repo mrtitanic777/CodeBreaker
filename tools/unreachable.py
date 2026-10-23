@@ -13,6 +13,8 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from prune import VENDORED                                               # noqa: E402
 sys.path.insert(0, ROOT)
 
 
@@ -70,7 +72,8 @@ def main(argv):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         for f in files:
             p = os.path.join(base, f)
-            if f.endswith(".py") and f != "__init__.py" and os.path.normcase(p) not in seen:
+            rel = os.path.relpath(p, ROOT).replace("\\", "/")
+            if f.endswith(".py") and f != "__init__.py" and os.path.normcase(p) not in seen and not rel.startswith(VENDORED):
                 dead.append(p)
     total = 0
     for p in sorted(dead):
