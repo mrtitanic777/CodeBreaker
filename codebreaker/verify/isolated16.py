@@ -198,7 +198,8 @@ def _tables(original):
     except OSError:
         sizes = b""
     with open(original, "rb") as f:
-        k = cache.key(f.read(), cache.tool(decompiler._exe()), sizes, *[open(p, "rb").read() for p in sources])
+        k = cache.key(f.read(), cache.tool(decompiler._exe()), decompiler._language_stamp(), sizes,
+                      *[open(p, "rb").read() for p in sources])
     got = cache.get("gate16_tables", k)
     if got is not None:
         return json.loads(got)
