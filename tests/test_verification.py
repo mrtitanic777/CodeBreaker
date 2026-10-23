@@ -286,6 +286,22 @@ def test_the_16_bit_compiler_s_function_is_cut_out_by_its_name():
     assert msc6.function_code(obj, "_HELPER")[0] == helper and msc6.function_code(obj, "none") is None
 
 
+def test_a_backpatch_record_is_added_into_the_code():
+    """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
+    the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""
+    from codebreaker.formats import omf
+
+    def record(kind, body):
+        return bytes([kind]) + (len(body) + 1).to_bytes(2, "little") + body + b"\0"
+    code = bytes([0x55, 0x8B, 0xEC, 0x81, 0xEC, 0, 0, 0x8B, 0xE5, 0x5D, 0xC3])
+    obj = (record(0x80, b"\x03f.c") + record(0x96, b"\x00\x05_TEXT\x04CODE")
+           + record(0x98, bytes([0x28]) + len(code).to_bytes(2, "little") + b"\x02\x03\x01")
+           + record(0xA0, b"\x01\x00\x00" + code)
+           + record(0xB2, b"\x01\x01" + (5).to_bytes(2, "little") + (10).to_bytes(2, "little"))
+           + record(0x8A, b"\x00"))
+    assert omf.read(obj).seg["_TEXT"][3:7] == bytes([0x81, 0xEC, 10, 0])
+
+
 def test_a_verdict_is_for_the_compiled_code():
     """The signature of what was built does not change with the source's name, date or notes,
     nor with the header; it does when the function's code, or the code of one it calls, does."""

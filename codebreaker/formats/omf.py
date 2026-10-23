@@ -247,8 +247,23 @@ def read(data):
                 kind = {1: "off", 2: "base", 3: "ptr", 0: "lo", 5: "off"}.get(loc, "?%d" % loc)
                 if not segrel:
                     kind = "rel"
+                if last is None:                     # (a fix-up before any data: nothing to place it in)
+                    continue
                 o.fix.append((segs[last[0] - 1], last[1] + off, kind, tgt, disp))
                 o.fixloc.append((c >> 2) & 0x0F)
+        elif t in (0xB2, 0xB3):                      # BAKPAT: values added in once the segment is written
+            w = 4 if t == 0xB3 else 2                # (Microsoft C 7/8 /Od: the frame size of `sub sp, N`)
+            si, q = _idx(r, 0)
+            size = {0: 1, 1: 2, 2: 4}.get(r[q], 2)
+            q += 1
+            b = buf[si]
+            while q + 2 * w <= len(r):
+                at = int.from_bytes(r[q:q + w], "little")
+                val = int.from_bytes(r[q + w:q + 2 * w], "little")
+                q += 2 * w
+                if at + size <= len(b):
+                    cur = int.from_bytes(b[at:at + size], "little")
+                    b[at:at + size] = ((cur + val) & ((1 << (8 * size)) - 1)).to_bytes(size, "little")
     o.seg = {segs[i - 1]: bytes(d) for i, d in buf.items()}
     o.segs = seginfo
     o.filled = {segs[i - 1]: n for i, n in filled.items()}
