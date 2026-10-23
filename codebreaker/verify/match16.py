@@ -72,7 +72,7 @@ def _score(results):
                for v in results.values())
 
 
-def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False, sdk=False, fold=True):
+def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False, sdk=False, fold=True, search=0):
     """-> ({segment: (compiler, flags)}, {name: (verdict, differing bytes, total)})
 
     Without `flags` the compiler and switches are chosen segment by segment (a segment is a source
@@ -168,20 +168,39 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     out = {}
     for s in segs:
         out.update(judged(chosen[s][0], chosen[s][1], [fn for fn in todo if segment[fn] == s], tuple(variants)))
+    if search:                                       # the last bytes of the near misses (verify/search16.py)
+        from codebreaker.verify import search16
+        near = {fn: (texts[winner[fn]][fn], v, chosen[segment[fn]] + ("sdk" in variants[winner[fn]],))
+                for fn, v in out.items() if v[0] in ("same size", "different") and v[1] <= 0.4 * v[2]}
+
+        def compile_group(g, sources):
+            built = msc6.compile_many(sources, sdk_head if g[2] else header, g[1], work, compiler=g[0],
+                                      names={fn: fn for fn in sources})
+            return {fn: match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else
+                    ("does not compile", 0, 0) for fn in sources}
+        found = search16.search(near, compile_group, lambda v: _score({0: v}), search, log=log)
+        for fn, (t, v) in found.items():
+            if _score({0: v}) > _score({0: out[fn]}):
+                out[fn] = v
+                winner[fn] = "search"
+                texts.setdefault("search", {})[fn] = t
+    run.texts = {fn: texts[winner[fn]][fn] for fn in todo if fn in winner}
     run.winner = dict(winner)                        # (which way of saying each function came nearest)
     run.code = {fn: (code.get(fn), originals[address[fn]]) for fn in todo}   # (its bytes, and the original's)
     return chosen, out
 
 
 def main(argv):
-    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose] [--sdk] [--no-fold]"""
+    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose] [--sdk] [--no-fold] [--search ROUNDS]"""
     from codebreaker.base import corpus
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else None
     compiler = argv[argv.index("--compiler") + 1] if "--compiler" in argv else None
     limit = int(argv[argv.index("--first") + 1]) if "--first" in argv else 0
-    args = [a for a in argv if not a.startswith("--") and a not in (flags, compiler, str(limit))]
+    rounds = argv[argv.index("--search") + 1] if "--search" in argv else None
+    args = [a for a in argv if not a.startswith("--") and a not in (flags, compiler, str(limit), rounds)]
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
-    chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv, sdk="--sdk" in argv, fold="--no-fold" not in argv)
+    chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv, sdk="--sdk" in argv, fold="--no-fold" not in argv,
+                          search=int(argv[argv.index("--search") + 1]) if "--search" in argv else 0)
     counts = {}
     for v in results.values():
         counts[v[0]] = counts.get(v[0], 0) + 1

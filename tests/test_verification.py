@@ -367,6 +367,22 @@ def test_a_pair_of_parameters_used_only_together_is_one_far_pointer_and_a_c_name
     assert "__cdecl SETUPX_132();" in out and "__stdcall USER_33();" in out
 
 
+def test_the_last_mile_search_rewrites_a_comparison_the_way_a_source_had_it():
+    """Ghidra writes `0x19 < iVar1`; SUWIN's sub_3_200C was `iVar1 >= 0x1a` (cmp cx, 1Ah; jl):
+    the search's comparison rewrites give both sides of a constant, and either order of operands."""
+    import random
+    from codebreaker.verify import search16
+    assert search16._LEFT.sub(search16._left, "if (0x19 < iVar1) {") == "if (iVar1 >= 0x1a) {"
+    assert search16._COMPARE.sub(search16._compare, "x <= 0x19 && y > 3 && z >= -0x2") == \
+        "x < 0x1a && y >= 0x4 && z > -0x3"
+    text = "int f()\n{\n  int2 a;\n  uint2 b;\n  \n  if (0x19 < a) {\n  }\n}"
+    seen = {search16.rewrite(text, random.Random(s)) for s in range(40)}
+    assert text.replace("(0x19 < a)", "(a >= 0x1a)") in seen
+    assert text.replace("  int2 a;\n  uint2 b;", "  uint2 b;\n  int2 a;") in seen       # declaration order
+    assert text.replace("  int2 a;", "  uint2 a;") in seen                               # signedness
+    assert search16.rewrite("int f()\n{\n  return 0;\n}", random.Random(0)) is None
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""
