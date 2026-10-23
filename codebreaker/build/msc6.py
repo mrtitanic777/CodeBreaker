@@ -311,6 +311,97 @@ def sdk_calls(text, protos):
         i = end
 
 
+_DECL = re.compile(r"^\s+(?:[\w]+\s+)+\**\s*(\w+)\s*;\s*$")
+_ASSIGN = re.compile(r"^(\s*)(\w+) = (.+);\s*$")
+_LOOP = re.compile(r"^\s*(?:\}\s*)?(?:while|for|do)\b")
+
+
+def fold_temporaries(text):
+    """`text` with each temporary the decompiler made -- a local assigned once and used once, in the
+    statement right after, in the same block -- put back into the expression it came from:
+    `n = lstrlen(s); p = LocalAlloc(0x40, n + 1);` -> `p = LocalAlloc(0x40, lstrlen(s) + 1);`,
+    `iVar1 = f(x); return iVar1;` -> `return f(x);`. The source wrote one expression; the compiler
+    evaluates it in the source's order (a pascal call's arguments first to last), which the
+    temporaries change. Not into a loop's condition (that is evaluated again each time round)."""
+    lines = text.split("\n")
+    locals_ = set()
+    body = 0
+    for k, ln in enumerate(lines):
+        if ln.strip() == "{" and not body:
+            body = k + 1
+            continue
+        if body and k >= body:
+            m = _DECL.match(ln)
+            if m and "(" not in ln and "=" not in ln:
+                locals_.add(m.group(1))
+            elif re.match(r"^\s+(?:\w+\s+)+\**\s*\w+ = [^;]*;\s*$", ln):
+                continue                                 # (one declared with its value: not a temporary)
+            elif ln.strip():
+                break
+    changed = True
+    while changed:
+        changed = False
+        for k, ln in enumerate(lines):
+            m = _ASSIGN.match(ln)
+            if not m or m.group(2) not in locals_:
+                continue
+            name, expr = m.group(2), m.group(3)
+            word = re.compile(r"(?<![\w.>])%s\b(?!\s*\[)" % re.escape(name))
+            decl = _decl_line(lines, name)
+            uses = [j for j, other in enumerate(lines) if j not in (k, decl) and word.search(other)]
+            nxt = next((i for i in range(k + 1, len(lines)) if lines[i].strip()), None)
+            if not uses or nxt is None:
+                continue
+            again = _ASSIGN.match(lines[nxt])
+            constant = re.fullmatch(r"-?(?:0x[0-9a-fA-F]+|\d+)", expr.strip())
+            if again and again.group(2) == name and len(word.findall(again.group(3))) == 1:
+                j = nxt                                  # `v = f(); v = g(v + 1);`: the first value dies there
+            elif len(uses) == 1 and uses[0] == nxt:
+                j = nxt
+            elif constant and len(uses) == 1 and _same_block(lines, k, uses[0]):
+                j = uses[0]                              # a constant moves past what comes between
+            else:
+                continue
+            target = _ASSIGN.match(lines[j])
+            head, tail = (lines[j][:target.start(3)], target.group(3) + ";") if target and \
+                target.group(2) == name and j == nxt and again else ("", lines[j])
+            if len(word.findall(tail)) != 1 or _LOOP.match(lines[j]) or re.match(r"\s*\}", lines[j]):
+                continue
+            indent = len(lines[j]) - len(lines[j].lstrip())
+            if indent != len(m.group(1)):
+                continue
+            simple = re.fullmatch(r"[\w.]+|0x[0-9a-fA-F]+|-?\d+|[\w.]+\([^()]*\)", expr.strip())
+            lines[j] = head + word.sub(lambda _m: expr if simple else "(%s)" % expr, tail, count=1)
+            del lines[k]
+            changed = True
+            break
+    out = "\n".join(lines)
+    for name in sorted(locals_):                     # a declaration left with nothing to declare
+        if len(re.findall(r"(?<![\w.>])%s\b" % re.escape(name), out)) == 1:
+            out = re.sub(r"\n\s+(?:[\w]+\s+)+\**\s*%s\s*;[ \t]*(?=\n)" % re.escape(name), "", out, count=1)
+    return out
+
+
+def _same_block(lines, a, b):
+    """lines a < b are in one block: nothing between them closes it, opens one, or is a label"""
+    indent = len(lines[a]) - len(lines[a].lstrip())
+    for ln in lines[a + 1:b]:
+        s = ln.strip()
+        if not s:
+            continue
+        if len(ln) - len(ln.lstrip()) != indent or s.endswith(("{", ":")) or s.startswith("}"):
+            return False
+    return True
+
+
+def _decl_line(lines, name):
+    for i, ln in enumerate(lines):
+        m = _DECL.match(ln)
+        if m and m.group(1) == name:
+            return i
+    return -1
+
+
 _DEREF = re.compile(r"\*\s*\(\s*((?:unsigned |signed )?\w+)\s*\*\s*\)\s*(0x[0-9a-fA-F]+|\d+)\b")
 
 

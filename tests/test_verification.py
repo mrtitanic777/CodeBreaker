@@ -339,6 +339,20 @@ def test_an_api_called_by_number_is_said_through_the_sdk_where_its_arguments_fit
     assert "y = USER_104(a1);" in out and "  MessageBeep(a1);" in out and "KERNEL_88(a2, a1, b);" in out
 
 
+def test_a_temporary_used_once_goes_back_into_its_expression():
+    """SUWIN's sub_2_40D8 was LocalAlloc(LMEM_ZEROINIT, lstrlen(s) + 1) in one expression: the
+    decompiler's temporaries -- one reassigned at once, a constant used two statements on -- fold
+    back; one used twice, or in a loop's condition, stays."""
+    from codebreaker.build import msc6
+    text = ("int2 __stdcall16far f(a1,a2)\nint2 a1;\nint2 a2;\n{\n  int2 iVar1;\n  int2 unaff_DS = codebreaker_ds();\n"
+            "  int2 a2_00;\n  int2 n;\n  int2 w;\n  \n  a2_00 = 0x40;\n  iVar1 = KERNEL_90(a1,a2);\n"
+            "  iVar1 = KERNEL_5(iVar1 + 1,a2_00);\n  n = g();\n  h(n, n);\n  w = g();\n  while (w != 0) {\n  }\n"
+            "  return iVar1;\n}")
+    out = msc6.fold_temporaries(text)
+    assert "  iVar1 = KERNEL_5(KERNEL_90(a1,a2) + 1,0x40);\n" in out and "a2_00" not in out
+    assert "  n = g();\n  h(n, n);" in out and "  w = g();\n  while (w != 0)" in out
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""

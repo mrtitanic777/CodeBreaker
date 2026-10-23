@@ -61,7 +61,8 @@ def original_functions(module_path, where, spans):
 
 # Microsoft C 8.00c (Visual C++ 1.52c) built Setup's SUWIN, without /Gw, with switches that differ
 # from one source file to the next: its segment 1 at /Od, its segment 3 at /G2 /Ox.
-MSC8_FLAG_SETS = ("/AM /Gs /Od", "/AM /G2s /Ox", "/AM /G2s /Os", "/AM /Gs /Ox", "/AM /Gsw /Od", "/AM /G2sw /Ox")
+MSC8_FLAG_SETS = ("/AM /Gs /Od", "/AM /G2s /Ox", "/AM /G2s /Oxs", "/AM /G2s /Os", "/AM /Gs /Ox", "/AM /Gs /Oxs",
+                  "/AM /Gsw /Od", "/AM /G2sw /Ox", "/AM /G3s /Ox", "/AM /G3s /Oxs")   # (/G3: push dword ptr)   # (/Oxs: SUWIN's sub_2_5CFC, a 2-byte cleanup as pop bx)
 
 
 def _score(results):
@@ -71,7 +72,7 @@ def _score(results):
                for v in results.values())
 
 
-def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False, sdk=False):
+def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False, sdk=False, fold=True):
     """-> ({segment: (compiler, flags)}, {name: (verdict, differing bytes, total)})
 
     Without `flags` the compiler and switches are chosen segment by segment (a segment is a source
@@ -95,19 +96,42 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     header = msc6.pascal_order(header, pascal)
     decls, header = msc6.ds_globals(header)
     header += decls                                  # (after the typedefs; the header's macros use them)
-    if sdk:
-        header = msc6.sdk_header(header)
-    protos = msc6.sdk_prototypes() if sdk else {}
-    texts = {fn: "".join(msc6.ds_globals(msc6.sdk_calls(msc6.pascal_order(m.texts[fn], pascal), protos)))
-             for fn in todo}
     work = settings.state("match16", name, "work")
     segment = {fn: m.where[address[fn]][0] for fn in todo}
+    # Each function is said several ways -- as the decompiler wrote it, with its temporaries folded
+    # back into the expressions they came from, through the SDK's prototypes -- and judged by the
+    # one nearest the original: which a function's source was is the compiler's to say (a
+    # temporary may be the programmer's variable, at /Od a stack slot of its own).
+    variants = {"plain": (False, False)}
+    if fold:
+        variants["fold"] = (True, False)
+    if sdk:
+        variants["sdk"] = (False, True)
+        if fold:
+            variants["fold+sdk"] = (True, True)
+    protos = msc6.sdk_prototypes() if sdk else {}
+    sdk_head = msc6.sdk_header(header) if sdk else header
 
-    def judged(cc, fl, names):
-        built = msc6.compile_many({fn: texts[fn] for fn in names}, header, fl, work, compiler=cc,
-                                  names={fn: fn for fn in names})
-        return {fn: (match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0))
-                for fn in names}
+    def said(fn, folded, through_sdk):
+        t = msc6.fold_temporaries(m.texts[fn]) if folded else m.texts[fn]
+        t = msc6.pascal_order(t, pascal)
+        return "".join(msc6.ds_globals(msc6.sdk_calls(t, protos) if through_sdk else t))
+    texts = {v: {fn: said(fn, *how) for fn in todo} for v, how in variants.items()}
+    winner, code = {}, {}
+
+    def judged(cc, fl, names, only=("plain",)):
+        best = {}
+        for v in only:
+            how = variants[v]
+            built = msc6.compile_many({fn: texts[v][fn] for fn in names}, sdk_head if how[1] else header, fl, work,
+                                      compiler=cc, names={fn: fn for fn in names})
+            for fn in names:
+                got = match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0)
+                if fn not in best or _score({0: got}) > _score({0: best[fn]}):
+                    best[fn] = got
+                    winner[fn] = v
+                    code[fn] = built.get(fn)
+        return best
     segs = sorted(set(segment.values()))
     import json
     remembered = settings.state("match16", name, "choices.json")
@@ -127,7 +151,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
         scores = {}
         for cc in compilers:
             for fl in (msc6.FLAG_SETS if cc == "msc6" else MSC8_FLAG_SETS):
-                r = judged(cc, fl, every)
+                r = judged(cc, fl, every, tuple(v for v in ("plain", "fold") if v in variants))
                 for s in segs:
                     scores[(s, cc, fl)] = _score({fn: r[fn] for fn in sample[s]})
         chosen = {}
@@ -141,19 +165,21 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
                 json.dump({str(s): list(v) for s, v in chosen.items()}, f, indent=1)
     out = {}
     for s in segs:
-        out.update(judged(chosen[s][0], chosen[s][1], [fn for fn in todo if segment[fn] == s]))
+        out.update(judged(chosen[s][0], chosen[s][1], [fn for fn in todo if segment[fn] == s], tuple(variants)))
+    run.winner = dict(winner)                        # (which way of saying each function came nearest)
+    run.code = {fn: (code.get(fn), originals[address[fn]]) for fn in todo}   # (its bytes, and the original's)
     return chosen, out
 
 
 def main(argv):
-    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose] [--sdk]"""
+    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose] [--sdk] [--no-fold]"""
     from codebreaker.base import corpus
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else None
     compiler = argv[argv.index("--compiler") + 1] if "--compiler" in argv else None
     limit = int(argv[argv.index("--first") + 1]) if "--first" in argv else 0
     args = [a for a in argv if not a.startswith("--") and a not in (flags, compiler, str(limit))]
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
-    chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv, sdk="--sdk" in argv)
+    chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv, sdk="--sdk" in argv, fold="--no-fold" not in argv)
     counts = {}
     for v in results.values():
         counts[v[0]] = counts.get(v[0], 0) + 1
@@ -161,6 +187,12 @@ def main(argv):
         os.path.basename(path), len(results), "; ".join(sorted({"%s %s" % c for c in chosen.values()})),
         ", ".join("%s %d" % (k, counts[k]) for k in ("identical", "same size", "different", "does not compile")
                   if counts.get(k))))
+    won = {}
+    for fn, v in getattr(run, "winner", {}).items():
+        if results.get(fn, ("",))[0] == "identical":
+            won[v] = won.get(v, 0) + 1
+    if won:
+        print("  identical by way of saying: %s" % ", ".join("%s %d" % kv for kv in sorted(won.items())))
     near = sorted((v[1] / max(v[2], 1), n, v) for n, v in results.items() if v[0] in ("same size", "different"))[:8]
     for _share, n, v in near:
         print("  %-28s %-10s %d of %d bytes differ" % (n, v[0], v[1], v[2]))
