@@ -91,8 +91,9 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     originals = original_functions(module_path, {va: m.where[va] for va in m.by_va}, spans)
     address = {fn: va for va, fn in m.by_va.items()}
     todo = [fn for fn in m.order if address.get(fn) in originals][:limit or None]
-    header, _ = msc6.dialect(m.header, "")
-    pascal = msc6.pascal_names(m.header, *m.texts.values())
+    source_header = msc6.cdecl_imports(m.header)       # (a C function imported by number: not pascal)
+    header, _ = msc6.dialect(source_header, "")
+    pascal = msc6.pascal_names(source_header, *m.texts.values())
     header = msc6.pascal_order(header, pascal)
     decls, header = msc6.ds_globals(header)
     header += decls                                  # (after the typedefs; the header's macros use them)
@@ -102,28 +103,29 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     # back into the expressions they came from, through the SDK's prototypes -- and judged by the
     # one nearest the original: which a function's source was is the compiler's to say (a
     # temporary may be the programmer's variable, at /Od a stack slot of its own).
-    variants = {"plain": (False, False)}
-    if fold:
-        variants["fold"] = (True, False)
+    stages = ["fold", "far"] if fold else []         # (each subset of these is a way of saying it)
     if sdk:
-        variants["sdk"] = (False, True)
-        if fold:
-            variants["fold+sdk"] = (True, True)
+        stages.append("sdk")
+    variants = {}
+    for k in range(1 << len(stages)):
+        on = {st for b, st in enumerate(stages) if k >> b & 1}
+        variants["+".join(st for st in stages if st in on) or "plain"] = on
     protos = msc6.sdk_prototypes() if sdk else {}
     sdk_head = msc6.sdk_header(header) if sdk else header
 
-    def said(fn, folded, through_sdk):
-        t = msc6.fold_temporaries(m.texts[fn]) if folded else m.texts[fn]
+    def said(fn, on):
+        t = msc6.fold_temporaries(m.texts[fn]) if "fold" in on else m.texts[fn]
+        t = msc6.join_far_parameters(t) if "far" in on else t
         t = msc6.pascal_order(t, pascal)
-        return "".join(msc6.ds_globals(msc6.sdk_calls(t, protos) if through_sdk else t))
-    texts = {v: {fn: said(fn, *how) for fn in todo} for v, how in variants.items()}
+        return "".join(msc6.ds_globals(msc6.sdk_calls(t, protos) if "sdk" in on else t))
+    texts = {v: {fn: said(fn, on) for fn in todo} for v, on in variants.items()}
     winner, code = {}, {}
 
     def judged(cc, fl, names, only=("plain",)):
         best = {}
         for v in only:
             how = variants[v]
-            built = msc6.compile_many({fn: texts[v][fn] for fn in names}, sdk_head if how[1] else header, fl, work,
+            built = msc6.compile_many({fn: texts[v][fn] for fn in names}, sdk_head if "sdk" in how else header, fl, work,
                                       compiler=cc, names={fn: fn for fn in names})
             for fn in names:
                 got = match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0)

@@ -353,6 +353,20 @@ def test_a_temporary_used_once_goes_back_into_its_expression():
     assert "  n = g();\n  h(n, n);" in out and "  w = g();\n  while (w != 0)" in out
 
 
+def test_a_pair_of_parameters_used_only_together_is_one_far_pointer_and_a_c_named_import_is_cdecl():
+    """sub_2_40D8's (a1, a2) is only ever passed on as a pair -- offset then segment -- so it was one
+    far pointer; a2 used alone keeps them apart. An import exported under a C name (_SUFORMATMESSAGEBOX)
+    is a cdecl function."""
+    from codebreaker.build import msc6
+    text = "int2 __stdcall16far f(a1,a2)\nint2 a1;\nint2 a2;\n{\n  x = KERNEL_90(a1,a2);\n  KERNEL_88(b, a1, a2);\n}"
+    out = msc6.join_far_parameters(text)
+    assert out.startswith("int2 __stdcall16far f(a1)\nvoid __far * a1;\n{") and "KERNEL_90(a1)" in out and "KERNEL_88(b, a1)" in out
+    assert msc6.join_far_parameters(text.replace("}", "  y = a2;\n}")) == text.replace("}", "  y = a2;\n}")
+    header = "extern uint4 __far __stdcall SETUPX_132();\nextern uint4 __far __stdcall USER_33();\n"
+    out = msc6.cdecl_imports(header, sdk="")
+    assert "__cdecl SETUPX_132();" in out and "__stdcall USER_33();" in out
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""

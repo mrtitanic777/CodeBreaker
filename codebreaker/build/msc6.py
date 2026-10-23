@@ -232,6 +232,24 @@ def windows_h():
         return f.read().replace("\r\n", "\n")
 
 
+def cdecl_imports(header, sdk=None):
+    """`header` with every import by number that is really a C function declared __cdecl, not
+    __stdcall: one its module exports under a C name (`_SUFORMATMESSAGEBOX` -- a pascal export is
+    in capitals, a cdecl one keeps the compiler's underscore), or one WINDOWS.H declares CDECL
+    (wsprintf). The caller removes such a function's arguments (`add sp, 12h` after the call), and
+    its argument list is in C order."""
+    from codebreaker.symbols import ordinals
+    sdk = sdk if sdk is not None else (windows_h() or "")
+    cdecl = set(re.findall(r"\bCDECL\s+(\w+)\s*\(", sdk))
+
+    def swap(m):
+        nm = ordinals.name(m.group(1), int(m.group(2))) or ""
+        if nm.startswith("_") or nm in cdecl:
+            return m.group(0).replace("__stdcall", "__cdecl")
+        return m.group(0)
+    return _IMPORT.sub(swap, header)
+
+
 def sdk_header(header, sdk=None):
     """WINDOWS.H, then `header` (whose imports by number keep their own declarations: a call that
     cannot be said through the SDK's prototype -- sdk_calls -- stays as it was)"""
@@ -380,6 +398,37 @@ def fold_temporaries(text):
         if len(re.findall(r"(?<![\w.>])%s\b" % re.escape(name), out)) == 1:
             out = re.sub(r"\n\s+(?:[\w]+\s+)+\**\s*%s\s*;[ \t]*(?=\n)" % re.escape(name), "", out, count=1)
     return out
+
+
+def join_far_parameters(text):
+    """`text` with each pair of a function's own parameters that is used only as a pair -- the
+    lower one (the offset) then the next (its segment), side by side in an argument list -- made
+    the one far pointer the source had: `f(a1,a2) int2 a1; int2 a2; ... lstrlen(a1,a2)` ->
+    `f(a1) void __far *a1; ... lstrlen(a1)`. The words go on the stack as they did; what changes is
+    that the compiler knows them for one value (it pushes them straight from the frame, not through
+    registers, and a prototype takes them as the pointer they are)."""
+    m = re.match(r"(?s)(.*?\b\w+\s*\()([\w\s,]*)(\)\s*\n)(.*?)(\{.*)", text)
+    if not m:
+        return text
+    head, plist, close, decls, body = m.groups()
+    params = [p.strip() for p in plist.split(",") if p.strip()]
+    joined = []
+    for lo, hi in zip(params, params[1:]):
+        if lo in joined or hi in joined or any(lo in j or hi in j for j in joined):
+            continue
+        pair = re.compile(r"\b%s\s*,\s*%s\b" % (re.escape(lo), re.escape(hi)))
+        alone = re.compile(r"(?<![\w.])(%s|%s)\b" % (re.escape(lo), re.escape(hi)))
+        pairs = len(pair.findall(body))
+        if pairs and len(alone.findall(body)) == 2 * pairs and re.search(r"^\s*\w+\s+%s\s*;" % re.escape(hi), decls, re.M):
+            joined.append((lo, hi))
+    if not joined:
+        return text
+    for lo, hi in joined:
+        params.remove(hi)
+        body = re.sub(r"\b%s\s*,\s*%s\b" % (re.escape(lo), re.escape(hi)), lo, body)
+        decls = re.sub(r"^\s*\w+\s+%s\s*;[ \t]*\n" % re.escape(hi), "", decls, flags=re.M)
+        decls = re.sub(r"^(\s*)\w+(\s+)%s\s*;" % re.escape(lo), r"\1void __far *\2%s;" % lo, decls, flags=re.M)
+    return head + ",".join(params) + close + decls + body
 
 
 def _same_block(lines, a, b):
