@@ -262,7 +262,7 @@ def relocated_data(path):
 
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
                      insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
-                     callees=None, data_end=None):
+                     callees=None, data_end=None, context=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -279,7 +279,15 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     callees: {(seg, offset): (name, bytes of arguments it removes, far)} -- the module's other
     functions, not run: reaching one is a call recorded (rec["calls_out"]: name and argument
     words) and answered at once with a result made from them, the same on any build. A function
-    is then judged on what it does itself, whatever its callees' state."""
+    is then judged on what it does itself, whatever its callees' state.
+
+    context: a call recorded in the running system (a breakpoint at the function's entry), replayed
+    -- {"stack": its stack segment's bytes, "sp": SP at entry, "ss": SS, "ds", "es": selectors,
+    "regs": {"AX": ..}, "ldt": {selector: (bytes, is_code)}, "data_sel": the module's own data
+    selector there}. The recorded stack is the run's stack, at the same SP (its return address
+    replaced by the tracer's own); the selectors the system had name the same bytes here (an LDT
+    of them): SS's the stack, the module's data selector its data segment, the rest the recorded
+    segments' copies, and any other one scratch. `args` are then not pushed."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX)
@@ -313,9 +321,13 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     ds_sel = sels.get(auto, stack_sel)                        # DGROUP; fall back to stack
     args = [int(a) & 0xFFFF for a in (args or [0] * arity)]
 
+    alias = _recorded_ldt(uc, U, context, seg_bases.get(auto)) if context else {}
+
     def _enter(sseg, soff, sargs):
         """Set up a Pascal far frame for one call: push args left-to-right, then a far-ret sentinel,
         and point CS:IP at (sseg:soff) with DS/ES = DGROUP. Returns the effective code offset."""
+        if context:
+            return _enter_recorded(sseg, soff)
         sp = 0xFFF0
         for a in sargs:
             sp = (sp - 2) & 0xFFFF
@@ -331,6 +343,35 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         uc.reg_write(UC_X86_REG_SS, stack_sel); uc.reg_write(UC_X86_REG_ESP, sp)
         uc.reg_write(UC_X86_REG_DS, ds_sel); uc.reg_write(UC_X86_REG_ES, ds_sel)
         uc.reg_write(UC_X86_REG_EAX, ENTRY_AX)               # (a function that sets no result returns it)
+        uc.reg_write(UC_X86_REG_CS, sels[sseg]); uc.reg_write(UC_X86_REG_EIP, soff)
+        return soff
+
+    def _enter_recorded(sseg, soff):
+        """The recorded call's own frame: its stack at its SP, its registers, its selectors."""
+        from unicorn.x86_const import (UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_ESI,
+                                       UC_X86_REG_EDI, UC_X86_REG_EBP)
+        uc.mem_write(STACK_BASE, bytes(context["stack"][:0x10000]).ljust(0x10000, b"\0"))
+        sp = context["sp"] & 0xFFFF
+        if near:
+            uc.mem_write(STACK_BASE + sp, NEAR_RET.to_bytes(2, "little"))
+        else:
+            uc.mem_write(STACK_BASE + sp, FAR_RET.to_bytes(2, "little"))
+            uc.mem_write(STACK_BASE + sp + 2, sent_sel.to_bytes(2, "little"))
+        entry_sp[0] = sp
+        regs = context.get("regs") or {}
+        for r, k in ((UC_X86_REG_EAX, "AX"), (UC_X86_REG_EBX, "BX"), (UC_X86_REG_ECX, "CX"),
+                     (UC_X86_REG_EDX, "DX"), (UC_X86_REG_ESI, "SI"), (UC_X86_REG_EDI, "DI"),
+                     (UC_X86_REG_EBP, "BP")):
+            # (AX the tracer's mark, not the recorded one: a function that sets no result hands
+            # back what AX held, and the recorded word read as a result -- sub_22_4008, a copy
+            # loop, "returned 1228h")
+            uc.reg_write(r, ENTRY_AX if k == "AX" else regs.get(k, 0) & 0xFFFF)
+        # (SS the tracer's own: a stack selector must be of the running level, and the run's is
+        # 0; the recorded one, in the LDT, names the same bytes for a pointer into the stack)
+        uc.reg_write(UC_X86_REG_SS, stack_sel)
+        uc.reg_write(UC_X86_REG_ESP, sp)
+        uc.reg_write(UC_X86_REG_DS, alias.get(context.get("ds"), ds_sel))
+        uc.reg_write(UC_X86_REG_ES, alias.get(context.get("es"), ds_sel))
         uc.reg_write(UC_X86_REG_CS, sels[sseg]); uc.reg_write(UC_X86_REG_EIP, soff)
         return soff
 
@@ -414,6 +455,16 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         uc.reg_write(UC_X86_REG_EIP, ip)
 
     def hook_code(uc, address, size, _ud):
+        if OWN_BASE <= address < OWN_BASE + 0x1000000 and context:
+            # (the module's own code reached through a recorded far pointer: that function of this
+            # side's build run, by name; or, not a function's start, answered as foreign code is)
+            n, off = (address - OWN_BASE) >> 16, address & 0xFFFF
+            tgt = (context.get("redirect") or {}).get((n, off))
+            if tgt:
+                rec["imports_hit"].append({"api": "callback " + tgt[2], "n": rec["insn_count"]})
+                uc.reg_write(UC_X86_REG_CS, sels[tgt[0]])
+                uc.reg_write(UC_X86_REG_EIP, tgt[1])
+                return
         if address in intercept and rec["insn_count"]:
             answer(address)
             return
@@ -439,8 +490,21 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             hit["args_stack"] = args_stack
             hit["n"] = rec["insn_count"]
             hit["ret_ip"] = ip
-            rec["imports_hit"].append(hit)
-            res = import_stub(hit, uc, U) if import_stub else None
+            called = uc.reg_read(UC_X86_REG_CS)
+            if context and called != sent_sel:
+                called |= 3                                  # (loaded as conforming code: RPL 0)
+                # (a far call into the recorded system's code: named by where it went, the same in
+                # any build, and its arguments removed as that code's own `retf n` removes them --
+                # left on the stack, the frame below them came apart: sub_22_33B8 "lost" DI)
+                size = _retf_bytes(context, called, slot)
+                hit = {"api": "far %04x:%04x" % (called, slot), "slot": slot, "foreign": True,
+                       "args_stack": args_stack, "n": rec["insn_count"], "ret_ip": ip, "arg_bytes": size}
+                rec["imports_hit"].append(hit)
+                h = int(hashlib.sha1(hit["api"].encode()).hexdigest()[:8], 16)
+                res = {"ax": h & 0xFFFF, "dx": (h >> 16) & 0xFFFF, "pop": size}
+            else:
+                rec["imports_hit"].append(hit)
+                res = import_stub(hit, uc, U) if import_stub else None
             ax = (res or {}).get("ax", 0) & 0xFFFF
             dx = (res or {}).get("dx", 0) & 0xFFFF
             pop = (res or {}).get("pop", 0)
@@ -458,7 +522,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         # either side alike, and is not itself recorded. (Every segment's window is 64K-aligned.)
         if rec.get("limit_fault"):
             return
-        if (address & 0xFFFF) + msize > 0x10000:
+        if (address & 0xFFFF) + msize > 0x10000 and address < SNAP_BASE:   # (a recorded memory's
+                                                             # segments sit where they sat, not 64K apart)
             rec["limit_fault"] = True
             uc.emu_stop()
             return
@@ -533,6 +598,117 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     rec["ret32"] = ((uc.reg_read(UC_X86_REG_EDX) & 0xFFFF) << 16) | rec["ret"]
     rec["n_imports"] = len(imports)
     return rec
+
+
+_RETF = {}
+
+
+def _retf_bytes(context, sel, offset):
+    """The bytes of arguments the recorded system's code at sel:offset removes: its first `retf n`
+    (0 for a plain retf, or none found in the next 8K)."""
+    base = (context.get("_code_bases") or {}).get(sel)
+    snap = context.get("snapshot")
+    if base is None or not snap:
+        return 0
+    at = base - SNAP_BASE + offset
+    key = (context.get("key"), at)
+    if key not in _RETF:
+        import capstone
+        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+        got = 0
+        for ins in md.disasm(bytes(snap[at:at + 0x2000]), offset):
+            if ins.mnemonic in ("retf", "lret"):
+                got = int(ins.op_str, 0) if ins.op_str else 0
+                break
+        _RETF[key] = got
+    return _RETF[key]
+
+
+LDT_ADDR = 0x1F00000           # a recorded call's LDT
+FOREIGN_BASE = 0x2000000       # the recorded segments' copies, 64K apart
+SNAP_BASE = 0x10000000         # a recorded call's whole memory
+OWN_BASE = 0x8000000           # the module's own code as the recorded memory's selectors name it
+
+
+def _recorded_ldt(uc, U, context, data_base):
+    """An LDT holding a recorded call's selectors (each index of it present: a selector not
+    recorded names scratch). Returns {recorded selector: the one to load for it here}.
+
+    With context["snapshot"] (the whole of memory at the call, and context["ldt_at"]: where the
+    LDT was and its limit) every selector the system had names its bytes there -- a selector a
+    callee hands back as much as one among the arguments."""
+    from unicorn.x86_const import UC_X86_REG_LDTR
+    rec = dict(context.get("ldt") or {})
+    snap = context.get("snapshot")
+    if snap:
+        uc.mem_map(SNAP_BASE, (len(snap) + 0xFFFF) & ~0xFFFF)
+        uc.mem_write(SNAP_BASE, bytes(snap))
+        at, lim = context["ldt_at"]
+        n = (lim + 1) // 8
+        table = bytearray(_desc(SCRATCH_BASE, 0xFFFF, False, dpl=3) * n)
+        for i in range(1, n):
+            d = snap[at + 8 * i:at + 8 * i + 8]
+            if len(d) < 8 or not (d[5] & 0x80 and d[5] & 0x10):
+                continue                                     # (not present, or not code/data)
+            base = d[2] | d[3] << 8 | d[4] << 16 | d[7] << 24
+            limit = d[0] | d[1] << 8
+            if base + limit >= len(snap):
+                continue
+            if d[5] & 8:
+                # (code of the running system -- Windows', another module's, a callback: not run,
+                # but called as an import is, in the sentinel segment, answered and returned
+                # from. Conforming, so a far call from the tracer's level 0 to an RPL 3 selector
+                # is allowed; run where it was, a level-3 segment, it faulted on both sides)
+                e = bytearray(_desc(SENT_BASE, 0xFFFF, True))
+                e[5] = 0x80 | 0x10 | 0x0E
+                table[8 * i:8 * i + 8] = bytes(e)
+                continue
+            table[8 * i:8 * i + 8] = _desc(SNAP_BASE + base, limit, False, dpl=3)
+        rec = {}
+    else:
+        top = max([s >> 3 for s in rec] + [context["ss"] >> 3, (context.get("data_sel") or 0) >> 3, 1])
+        table = bytearray(_desc(SCRATCH_BASE, 0xFFFF, False, dpl=3) * (top + 1))
+    if len(table) // 8 <= max(context["ss"], context.get("data_sel") or 0) >> 3:
+        table += _desc(SCRATCH_BASE, 0xFFFF, False, dpl=3) * (
+            (max(context["ss"], context.get("data_sel") or 0) >> 3) + 1 - len(table) // 8)
+
+    def put(sel, base, code):
+        i = sel >> 3
+        table[8 * i:8 * i + 8] = _desc(base, 0xFFFF, code, dpl=3)
+    for k, (sel, (body, code)) in enumerate(sorted(rec.items())):
+        if not sel & 4:
+            continue
+        base = FOREIGN_BASE + k * SEG_STRIDE
+        uc.mem_map(base, SEG_STRIDE)
+        uc.mem_write(base, bytes(body[:SEG_STRIDE]))
+        put(sel, base, code)
+    put(context["ss"], STACK_BASE, False)
+    if context.get("data_sel") and data_base is not None:
+        put(context["data_sel"], data_base, False)
+    for sel, sg in (context.get("own") or {}).items() if snap else ():
+        # (the module's own code segments: a window each, where a far call is sent on by name)
+        try:
+            uc.mem_map(OWN_BASE + sg * SEG_STRIDE, SEG_STRIDE)
+        except U.UcError:
+            pass
+        e = bytearray(_desc(OWN_BASE + sg * SEG_STRIDE, 0xFFFF, True))
+        e[5] = 0x80 | 0x10 | 0x0E
+        table[8 * (sel >> 3):8 * (sel >> 3) + 8] = bytes(e)
+    size = (len(table) + _PAGE - 1) // _PAGE * _PAGE
+    uc.mem_map(LDT_ADDR, size)
+    uc.mem_write(LDT_ADDR, bytes(table))
+    uc.reg_write(UC_X86_REG_LDTR, (0, LDT_ADDR, len(table) - 1, 0x82))
+    if snap:
+        context["_code_bases"] = {(i << 3) | 7: SNAP_BASE + (snap[at + 8 * i + 2] | snap[at + 8 * i + 3] << 8 |
+                                                           snap[at + 8 * i + 4] << 16 | snap[at + 8 * i + 7] << 24)
+                                  for i in range(1, n) if snap[at + 8 * i + 5] & 0x98 == 0x98}
+    out = {s: s for s in rec if s & 4}
+    if snap:
+        out = {(i << 3) | 7: (i << 3) | 7 for i in range(1, len(table) // 8)}
+    out[context["ss"]] = context["ss"]
+    if context.get("data_sel"):
+        out[context["data_sel"]] = context["data_sel"]
+    return out
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -622,7 +798,8 @@ def default_stub(hit, uc, U, ctx):
 
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
-          prelude=None, cdecl=False, near=False, data_image=None, callees=None, data_end=None):
+          prelude=None, cdecl=False, near=False, data_image=None, callees=None, data_end=None,
+          context=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
@@ -653,7 +830,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     rec = trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
                              args=args, arity=len(args or []), import_stub=_stub,
                              prelude=prelude, near=near, data_image=data_image, callees=callees,
-                             data_end=data_end, **kw)
+                             data_end=data_end, context=context, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}

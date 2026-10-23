@@ -302,14 +302,23 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
             f.read(), sizes, repr(sorted((callees_orig or {}).items())), repr(data_end), bool(chain),
             *[open(mod.__file__, "rb").read() for mod in (emu, _emulator, _ne, win16)] + [open(__file__, "rb").read()])
 
+    def side(context, where):
+        """A recorded call's context for one side: the module's own code its far pointers reach
+        (a callback in the recorded memory) sent to that side's function of the same name."""
+        if not context or not context.get("own"):
+            return context
+        return dict(context, redirect={tuple(place[n]): (where[n][0], where[n][1], n) for n in named})
+
     def original_run(name, oseg, ooff, far, wide, v, dimg):
-        k = cache.key(original_key, name, oseg, ooff, far, wide, tuple(v["args"]), bool(v.get("noisy")))
+        k = cache.key(original_key, name, oseg, ooff, far, wide, tuple(v["args"]), bool(v.get("noisy")),
+                      # (a recorded call by the name it was given -- its memory is 64 MB)
+                      (v["context"].get("key") or pickle.dumps(v["context"], protocol=4)) if v.get("context") else b"")
         got = cache.get("gate16_original", k)
         if got is not None:
             return pickle.loads(got)
         a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
                       callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end,
-                      data_image=dimg)
+                      data_image=dimg, context=side(v.get("context"), place))
         fa = _fingerprint(a, wide, len(data), places_orig)
         cache.put("gate16_original", k, pickle.dumps(fa))
         return fa
@@ -326,11 +335,13 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         aimed = win16.directed(original, oseg, (ooff, min(later) if later else 0x10000), most=12)
         for v in (inputs or win16.vectors() + aimed + noisy_runs):
             try:
-                dimg = noisy if v.get("noisy") else None
+                # (a call recorded in the running system: its data segment as it was then, both sides)
+                dimg = v["context"]["data"] if v.get("context") and v["context"].get("data") else \
+                    noisy if v.get("noisy") else None
                 fa = original_run(name, oseg, ooff, far, wide, v, dimg)
                 b = emu.probe(image, seg=bseg, offset=boff, args=v["args"], near=not far,
                               callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=dimg or data,
-                              data_end=data_end)
+                              data_end=data_end, context=side(v.get("context"), ours))
             except Exception as e:                           # (the emulator itself fell over)
                 why = why or "the emulator: %s" % type(e).__name__
                 continue
