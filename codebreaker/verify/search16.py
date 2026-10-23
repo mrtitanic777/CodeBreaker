@@ -56,6 +56,35 @@ def _left(m):
     return "(%s %s %s)" % (var, op, ("-0x%x" % -v) if v < 0 else ("0x%x" % v))
 
 
+_IF = re.compile(r"^(\s*)if \((.*)\) \{\s*$")
+
+
+def _if_else(lines):
+    """[(if line, else line, end line)] of each `if (c) { ... } else { ... }` written a block to a line"""
+    out = []
+    for k, ln in enumerate(lines):
+        m = _IF.match(ln)
+        if not m:
+            continue
+        ind = m.group(1)
+        close = next((j for j in range(k + 1, len(lines)) if lines[j] == ind + "}"), None)
+        if close is None or close + 1 >= len(lines) or lines[close + 1] != ind + "else {":
+            continue
+        end = next((j for j in range(close + 2, len(lines)) if lines[j] == ind + "}"), None)
+        if end is not None:
+            out.append((k, close + 1, end))
+    return out
+
+
+def _negate(cond):
+    """`cond` said the other way: a comparison turned around, anything else under a !"""
+    m = re.fullmatch(r"\s*([^()&|!<>=]+?)\s*(==|!=|<=|>=|<|>)\s*([^()&|!<>=]+?)\s*", cond)
+    if m:
+        return "%s %s %s" % (m.group(1), {"==": "!=", "!=": "==", "<": ">=", ">=": "<", ">": "<=", "<=": ">"}[m.group(2)],
+                             m.group(3))
+    return "!(%s)" % cond
+
+
 def rewrite(text, rng):
     """one small rewrite of `text`, or None when there is nothing of the kind to rewrite"""
     lines = text.split("\n")
@@ -70,10 +99,19 @@ def rewrite(text, rng):
     compares += [(k, m, _left) for k in range(body, len(lines)) for m in _LEFT.finditer(lines[k])]
     if compares:
         kinds += ["compare"] * 2
+    branches = _if_else(lines)
+    if branches:
+        kinds += ["branch"] * 2
     if not kinds:
         return None
     kind = rng.choice(kinds)
-    if kind == "compare":
+    if kind == "branch":                             # `if (c) {A} else {B}` -> `if (!c) {B} else {A}`
+        k, e, end = rng.choice(branches)
+        m = _IF.match(lines[k])
+        a, b = lines[k + 1:e - 1], lines[e + 1:end]
+        lines[k:end + 1] = ([m.group(1) + "if (" + _negate(m.group(2)) + ") {"] + b + [m.group(1) + "}",
+                            m.group(1) + "else {"] + a + [m.group(1) + "}"])
+    elif kind == "compare":
         k, m, how = rng.choice(compares)
         lines[k] = lines[k][:m.start()] + how(m) + lines[k][m.end():]
     elif kind == "order":

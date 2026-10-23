@@ -412,6 +412,23 @@ def test_a_c_function_s_arguments_are_what_its_caller_takes_off():
     assert [describe._caller_cleanup(ins, k) for k, i in enumerate(ins) if i.mnemonic == "lcall"] == [6, 4, 0]   # (used with CB_CALLER_ARGS=1)
 
 
+def test_source_files_are_told_by_push_cs_calls_and_an_if_else_can_be_turned_around():
+    """SUWIN's sub_2_594A calls sub_2_595C as `push cs; call` -- the same source file, so it and
+    everything between them is one file; a function no such call reaches is a file of its own.
+    The search's branch rewrite: `if (a == 0) {A} else {B}` -> `if (a != 0) {B} else {A}`."""
+    import random
+    from codebreaker.verify import match16, search16
+    # three functions of segment 2 at 0x10, 0x20, 0x30: the first calls the third near (push cs; call)
+    a = bytes([0x0E, 0xE8]) + (0x30 - (0x10 + 4)).to_bytes(2, "little", signed=True) + bytes([0xCB])
+    where = {1: (2, 0x10), 2: (2, 0x20), 3: (2, 0x30), 4: (2, 0x40)}
+    originals = {1: (a, b"\0" * len(a)), 2: (b"\xcb", b"\0"), 3: (b"\xcb", b"\0"), 4: (b"\xcb", b"\0")}
+    address = {"f1": 1, "f2": 2, "f3": 3, "f4": 4}
+    assert match16.source_files(["f1", "f2", "f3", "f4"], where, originals, address) == [["f1", "f2", "f3"], ["f4"]]
+    text = "int f()\n{\n  int2 a;\n  \n  if (a == 0) {\n    g();\n  }\n  else {\n    h();\n  }\n  return a;\n}"
+    seen = {search16.rewrite(text, random.Random(s)) for s in range(60)}
+    assert "int f()\n{\n  int2 a;\n  \n  if (a != 0) {\n    h();\n  }\n  else {\n    g();\n  }\n  return a;\n}" in seen
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""

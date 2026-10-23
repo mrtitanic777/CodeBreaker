@@ -632,63 +632,95 @@ def _read(path):
 BATCH = 40          # functions to a source file when each is cut out by name
 
 
-def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6", names=None, batch=BATCH):
+def compile_many(sources, header, flags, work=None, timeout=900, compiler="msc6", names=None, batch=BATCH,
+                 together=None):
     """Compile each of `sources` {key: C text} with `header` before it. -> {key: (bytes, mask) or None}
     names: {key: function name} -- each key's code is that public function's (function_code), not the
     object's first code segment.
 
-    With names, `batch` functions share one source file: starting the compiler's passes (CL, C1, C2)
-    is most of the cost of compiling a function in the emulator, and Microsoft C compiles each
-    function of a file on its own (a near call to a neighbour in the file is resolved without a
-    fix-up, but those bytes are the linker's in the original too, and not compared). A file the
-    compiler refuses is compiled again one function to a file, so one function cannot sink the rest."""
+    With names, functions share source files: `together` [[key, ...], ...] says which (the source
+    files of the original, as far as they are known), else `batch` at a time in their order. Starting
+    the compiler's passes (CL, C1, C2) is most of the cost of compiling a function in the emulator.
+    What a function compiles to depends on its file: a far call to a function defined in the same
+    file is `push cs; call` (near, the segment known), to one elsewhere `lcall` -- so a function's
+    result is kept (cached) for its whole file, and a file with one function not yet known is compiled
+    again whole. A file the compiler refuses has the functions its errors are in compiled on their own,
+    the rest together, so one function cannot sink the rest."""
     from codebreaker.base import cache, settings
     if not available(compiler):
         raise RuntimeError("%s is not set up (settings.json: dosbox_x, %s)" % (compiler, compiler))
     out, todo = {}, {}
     _emulator, home = _tools(compiler)
     stamp = cache.tool(os.path.join(home, "BIN", "CL.EXE"))
+    named = [k for k in sources if names and k in names]
+    if names and batch > 1:
+        files_of = [[k for k in g if k in sources] for g in together] if together else \
+            [named[i:i + batch] for i in range(0, len(named), batch)]
+        seen = {k for g in files_of for k in g}
+        files_of = [g for g in files_of if g] + [[k] for k in named if k not in seen]
+    else:
+        files_of = [[k] for k in named]
+    context = {}
+    for g in files_of:
+        whole = cache.key(*[sources[k] for k in g]) if len(g) > 1 else ""
+        for k in g:
+            context[k] = whole
     for key, text in sources.items():
-        k = cache.key(stamp, flags, header, text, "function " + names[key] if names and key in names else "")
+        k = cache.key(stamp, flags, header, text, "function " + names[key] if names and key in names else "",
+                      context.get(key, ""))
         had = cache.get("msc6", k)
         if had is not None:
             out[key] = None if had == b"-" else (had[4:4 + int.from_bytes(had[:4], "little")],
                                                  had[4 + int.from_bytes(had[:4], "little"):])
-        else:
-            todo[key] = (k, text)
+        todo[key] = (k, text)
+    for g in files_of:                               # (a file not wholly known is compiled again whole)
+        if all(k in out for k in g):
+            for k in g:
+                todo.pop(k, None)
+    for key in list(todo):
+        if key not in context and key in out:
+            todo.pop(key)
     if not todo:
         return out
+    keep_files = [[k for k in g if k in todo] for g in files_of]
+    keep_files = [g for g in keep_files if g]
     work = os.path.abspath(work or settings.state(compiler, "work"))
     keys = list(todo)
     built, unsettled = {}, set()             # (unsettled: no verdict -- the session was cut off -- so not cached)
-    single, retry = keys, []
-    if names and batch > 1 and len(keys) > 1:
-        groups = [g for g in ([k for k in keys[i:i + batch] if k in names] for i in range(0, len(keys), batch)) if g]
+    single = [k for k in keys if not names or k not in names]
+    groups = keep_files if names else []
+    # A refused file: the functions its errors are in go on their own, the rest together again --
+    # round after round, for the compiler stops at a file's first errors and a second bad function
+    # shows only once the first is out (one emulator session a round).
+    for _round in range(6):
+        if not groups:
+            break
         files, starts = _batch_files(groups, todo, "B")
         finished = _session(work, header, files, flags, compiler, timeout)
-        single = [k for k in keys if k not in names]
+        again = []
         for i, g in enumerate(groups):
             obj = _read(os.path.join(work, "B%d.OBJ" % i))
             if obj is not None:
                 built.update((k, function_code(obj, names[k])) for k in g)
             elif not finished:
                 unsettled.update(g)
-            else:                                    # refused: the functions its errors are in go on their
-                bad = _refused(os.path.join(work, "B%d.TXT" % i), starts[i])     # own, the rest together
-                single += bad or g
-                rest = [k for k in g if k not in bad] if bad else []
-                if rest:
-                    retry.append(rest)
-    if single or retry:
-        files, _ = _batch_files(retry, todo, "R")
-        files += [("F%d" % j, todo[k][1]) for j, k in enumerate(single)]
-        finished = _session(work, header, files, flags, compiler, timeout)
-        for i, g in enumerate(retry):
-            obj = _read(os.path.join(work, "R%d.OBJ" % i))
-            if obj is not None:
-                built.update((k, function_code(obj, names[k])) for k in g)
+            elif len(g) == 1:
+                built[g[0]] = None                   # (refused on its own: it does not compile)
             else:
-                unsettled.update(g)                  # (refused again: an error the first file's hid)
+                bad = _refused(os.path.join(work, "B%d.TXT" % i), starts[i])
+                if not bad:
+                    again += [[k] for k in g]        # (errors not told apart: each on its own)
+                    continue
+                again += [[k] for k in bad]
+                rest = [k for k in g if k not in bad]
+                if rest:
+                    again.append(rest)
+        groups = again
+    for g in groups:
+        unsettled.update(g)                          # (still refused after every round: no verdict)
+    if single:
+        files = [("F%d" % j, todo[k][1]) for j, k in enumerate(single)]
+        finished = _session(work, header, files, flags, compiler, timeout)
         for j, k in enumerate(single):
             obj = _read(os.path.join(work, "F%d.OBJ" % j))
             if obj is None:

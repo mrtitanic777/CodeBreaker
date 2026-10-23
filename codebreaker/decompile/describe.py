@@ -939,12 +939,14 @@ def call_overrides(d):
                     # cleanup right after the call (`add sp, 6`; at /Os `pop bx`/`pop cx` for each
                     # word). SUWIN's sub_2_0A92 passed sub_8_0F24 a far pointer and a character
                     # (`add sp, 6`); without this the call came out with no arguments at all.
-                    # (opt-in, CB_CALLER_ARGS=1: on SUWIN it gave no function the original's bytes
-                    # and cost 7 -- the header it leads to compiles their far calls to the next
-                    # function as `lcall` where they were `push cs; call`; not yet understood)
+                    # (opt-in, CB_CALLER_ARGS=1, until a Setup run has shown it: on SUWIN as many
+                    # functions are the original's bytes with it as without -- 37 -- once each is
+                    # compiled in its own source file)
                     took = _caller_cleanup(ins, j) if os.environ.get("CB_CALLER_ARGS") == "1" else 0
                     if took:
-                        far = i.mnemonic == "lcall"
+                        # (`push cs; call` is a far call to a function of the same file: the pushed CS
+                        # is the return address's segment, not an argument)
+                        far = i.mnemonic == "lcall" or (j > 0 and ins[j - 1].mnemonic == "push" and ins[j - 1].op_str == "cs")
                         lines.append("O\t%x\t%x\t%d\t%s" % (address(sg, i.address), va, took,
                                                             "__cdecl16" + ("far" if far else "near")))
                     continue

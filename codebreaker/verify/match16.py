@@ -13,6 +13,7 @@ Without --flags the switches are found first: the memory model and options under
 a sample of the functions come out the original's length say how the module was built.
 """
 import os
+import re
 import struct
 
 from codebreaker.verify import match
@@ -65,6 +66,47 @@ MSC8_FLAG_SETS = ("/AM /Gs /Od", "/AM /G2s /Ox", "/AM /G2s /Oxs", "/AM /G2s /Os"
                   "/AM /Gsw /Od", "/AM /G2sw /Ox", "/AM /G3s /Ox", "/AM /G3s /Oxs")   # (/G3: push dword ptr)   # (/Oxs: SUWIN's sub_2_5CFC, a 2-byte cleanup as pop bx)
 
 
+def source_files(names, where, originals, address):
+    """[[function, ...], ...] -- the original's source files, as far as its calls tell: a far call
+    to a function as `push cs; call near` (the segment known: defined in the same file) or a near
+    call, puts caller and callee in one file, and a file is contiguous, so everything between them
+    too. A function no such call reaches is a file of its own."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    at = {where[address[fn]]: fn for fn in names}
+    by_seg = {}
+    for fn in names:
+        by_seg.setdefault(where[address[fn]][0], []).append(fn)
+    files = []
+    for seg, fns in by_seg.items():
+        fns.sort(key=lambda f: where[address[f]][1])
+        index = {f: i for i, f in enumerate(fns)}
+        joined = [False] * len(fns)                  # joined[i]: fns[i] and fns[i + 1] in one file
+        for fn in fns:
+            code = bytes(originals[address[fn]][0])
+            start = where[address[fn]][1]
+            ins = list(md.disasm(code, 0))
+            for k, i in enumerate(ins):
+                if i.mnemonic != "call" or not i.op_str.startswith("0x") or "," in i.op_str:
+                    continue                         # (a direct near call: `push cs; call` or a near callee)
+                target = (seg, (start + int(i.op_str, 16)) & 0xFFFF)
+                other = at.get(target)
+                if other is None or other == fn:
+                    continue
+                a, b = sorted((index[fn], index[other]))
+                for j in range(a, b):
+                    joined[j] = True
+        cur = [fns[0]]
+        for j in range(1, len(fns)):
+            if joined[j - 1]:
+                cur.append(fns[j])
+            else:
+                files.append(cur)
+                cur = [fns[j]]
+        files.append(cur)
+    return files
+
+
 def _score(results):
     """how near a set of functions came: each counts the share of its bytes that are the original's
     (a function that does not compile, nothing), an identical one counting double"""
@@ -99,6 +141,8 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     header += decls                                  # (after the typedefs; the header's macros use them)
     work = settings.state("match16", name, "work")
     segment = {fn: m.where[address[fn]][0] for fn in todo}
+    files = source_files(todo, m.where, originals, address)   # (compiled together, one setting each)
+    file_of = {fn: k for k, f in enumerate(files) for fn in f}
     # Each function is said several ways -- as the decompiler wrote it, with its temporaries folded
     # back into the expressions they came from, through the SDK's prototypes -- and judged by the
     # one nearest the original: which a function's source was is the compiler's to say (a
@@ -127,7 +171,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
         for v in only:
             how = variants[v]
             built = msc6.compile_many({fn: texts[v][fn] for fn in names}, sdk_head if "sdk" in how else header, fl, work,
-                                      compiler=cc, names={fn: fn for fn in names})
+                                      compiler=cc, names={fn: fn for fn in names}, together=files)
             for fn in names:
                 got = match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0)
                 if fn not in best or _score({0: got}) > _score({0: best[fn]}):
@@ -178,10 +222,17 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
             names = [fn for fn in todo if (cc, fl) in top[segment[fn]]]
             for fn, v in judged(cc, fl, names, ("plain",)).items():
                 tried.setdefault(fn, []).append((_score({0: v}), (cc, fl) == chosen[segment[fn]], cc, fl))
-        for fn, r in tried.items():
-            best = max(r, key=lambda x: (x[0], x[1]))
-            if best[2:] != chosen[segment[fn]]:
-                each[fn] = best[2:]
+        for f in files:                              # one file, one command line: the setting its functions
+            total = {}                               # come nearest under together
+            for fn in f:
+                for sc, first, cc, fl in tried.get(fn, ()):
+                    total[(cc, fl)] = total.get((cc, fl), 0) + sc + (1e-6 if first else 0)
+            if not total:
+                continue
+            best = max(total, key=total.get)
+            for fn in f:
+                if best != chosen[segment[fn]]:
+                    each[fn] = best
         if log:
             log("  %d functions nearer under another of their segment's switches than its first" % len(each))
         if not compiler:
@@ -189,6 +240,11 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
                 json.dump({"segments": {str(s): list(v) for s, v in chosen.items()},
                            "functions": {fn: list(v) for fn, v in sorted(each.items())}}, f, indent=1)
     setting = {fn: each.get(fn, chosen[segment[fn]]) for fn in todo}
+    for f in files:                                  # (one setting a file: its first function's, where they differ)
+        votes = [setting[fn] for fn in f]
+        one = max(votes, key=votes.count)
+        for fn in f:
+            setting[fn] = one
     out = {}
     for cc, fl in sorted(set(setting.values())):
         out.update(judged(cc, fl, [fn for fn in todo if setting[fn] == (cc, fl)], tuple(variants)))
@@ -198,8 +254,10 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
                 for fn, v in out.items() if v[0] in ("same size", "different") and v[1] <= 0.4 * v[2]}
 
         def compile_group(g, sources):
-            built = msc6.compile_many(sources, sdk_head if g[2] else header, g[1], work, compiler=g[0],
-                                      names={fn: fn for fn in sources})
+            mates = {fn: texts[winner[fn]][fn] for k in {file_of[s] for s in sources} for fn in files[k]
+                     if fn not in sources and fn in winner}   # (a rewrite is judged in its file)
+            built = msc6.compile_many(dict(mates, **sources), sdk_head if g[2] else header, g[1], work, compiler=g[0],
+                                      names={fn: fn for fn in list(sources) + list(mates)}, together=files)
             return {fn: match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else
                     ("does not compile", 0, 0) for fn in sources}
         found = search16.search(near, compile_group, lambda v: _score({0: v}), search, log=log)

@@ -1143,7 +1143,8 @@ def compilable16(module_path, outdir=None):
     k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe, api_arguments),
                   cache.tool(decompiler._exe()), decompiler._language_stamp(),
                   (settings.get("struct_recovery") or "off").strip().lower(),
-                  os.environ.get("CB_SELECTOR_STRUCTS", ""))       # (_selector_structs' off switch)
+                  os.environ.get("CB_SELECTOR_STRUCTS", ""),       # (_selector_structs' off switch)
+                  os.environ.get("CB_CALLER_ARGS", ""))            # (describe's direct-call arguments)
     had = cache.get("compilable16", k)
     if had is not None:
         m, description = pickle.loads(had)
