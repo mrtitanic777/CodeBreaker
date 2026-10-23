@@ -43,6 +43,9 @@
                                     function; --at ADDR --size N for one; --check compiles it)
     recompile-project <title> [--check [s]]     an Xbox 360 title (a .xex, package, disc image or folder)
                                     as a project that builds and runs on a PC (docs/RECOMPILE.md)
+    heavyiron <cmd> <file.ho> ...   Heavy Iron GoodEngine archives (Up, WALL-E, SpongeBob): list, extract,
+                                    replace an asset, textures as PNG
+    gfx <cmd> <file> ...            Scaleform GFx menus: movies, images, fonts, placements; a font as TTF
     xex-imports <module.xex>        its imports: library, ordinal, name, function or variable, slot, thunk
     xdk-match <.xex or image> [libs] [-o F]   name the XDK library functions it was linked with
     system-ui <update package> <dir>    the Xbox 360 runtime's system UI assets from the owner's system update
@@ -116,6 +119,8 @@ COMMANDS = {
     "recompile-project": ("codebreaker.recompile.project", []),
     "xdk-match": ("codebreaker.symbols.xdk_libraries", []),
     "xex-imports": ("codebreaker.formats.xex_imports", []),
+    "heavyiron": ("codebreaker.formats.xbox.heavyiron", []),
+    "gfx": ("codebreaker.formats.gfx", []),
     "classes": ("codebreaker.symbols.cpp_classes", []),
     "system-ui": ("codebreaker.formats.xbox.system_ui", []),
     "java": ("codebreaker.java.run", []),

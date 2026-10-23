@@ -369,6 +369,36 @@ def test_real_pck():
     assert sorted(e.path for e in v.files()) == ["GameRules.grf", "languages.loc"]
 
 
+def test_texture_offsets_and_gfx_bits():
+    """The tiled offset is in bytes (every block of a 8x8-block surface at its own block-aligned
+    byte); the GFx bit reader reads most-significant first, signed by two's complement."""
+    from codebreaker.formats import gfx
+    offsets = {texture.tiled_offset_2d(x, y, 32, 4) for y in range(8) for x in range(8)}
+    assert texture.tiled_offset_2d(0, 0, 32, 4) == 0 and len(offsets) == 64 and all(o % 16 == 0 for o in offsets)
+    b = gfx.Bits(bytes([0b10110000]))
+    assert b.read(1) == 1 and b.read(3) == 0b011
+    assert gfx.Bits(bytes([0b11110000])).reads(4) == -1
+
+
+def test_real_heavyiron_and_gfx():
+    """Up's own archives (the recompiled title's files, when present): the archive, a DXT5 texture,
+    a GFx font rebuilt as TrueType."""
+    from codebreaker.formats import gfx
+    from codebreaker.formats.xbox import heavyiron
+    scenes = os.path.join(ROOT, "Converted", "Up", "assets", "Up", "Global_Scenes")
+    if not os.path.isfile(os.path.join(scenes, "FONT.ho")):
+        raise Skip("Up's files are not in Converted/Up")
+    data = open(os.path.join(scenes, "FONT.ho"), "rb").read()
+    P = heavyiron.parse(data)
+    assert len(P["layers"]) > 0 and len(heavyiron.all_assets(P)) > 0
+    image, w, h, fmt = heavyiron.texture(data, P, 0x000000F00000036B)
+    assert (w, h, fmt) == (512, 512, 0x54) and image.getpixel((256, 200))[:3] != (0, 0, 0)
+    assert any(name == "Merit Badge" for _v, _id, name, _n, _b, _l in
+               (f for _o, _m, body in gfx.find_movies(data) for f in gfx.fonts(body)))
+    out = os.path.join(tempfile.mkdtemp(prefix="cb_gfx_"), "font.ttf")
+    assert gfx.font_to_ttf(data, 1, out) == ("Merit Badge", 243) and os.path.getsize(out) > 10000
+
+
 def test_nand_flash():
     """A raw NAND dump built to the layout nand.py reads: a root block (allocation table on even
     pages, directory on odd), an older root copy that must lose, and a file over two blocks, the
@@ -414,7 +444,7 @@ def test_nand_flash():
 
 
 def main():
-    for fn in (test_nand_flash, test_stfs_pack_round_trip, test_stfs_resign_signs_and_verifies, test_god_round_trip,
+    for fn in (test_texture_offsets_and_gfx_bits, test_real_heavyiron_and_gfx, test_nand_flash, test_stfs_pack_round_trip, test_stfs_resign_signs_and_verifies, test_god_round_trip,
                test_nxe_install_to_god, test_fatx_read_and_recover, test_fatx_write, test_gpd_unlock,
                test_texture_untile, test_xpr, test_xwb, test_xur, test_xbe, test_xma_and_bink,
                test_xzp_round_trip, test_identify, test_folder_map, test_real_stfs_theme, test_real_xzp,

@@ -12,6 +12,7 @@ reads a floppy or a CD:
     god        a Games-on-Demand folder (its Data#### parts are the disc, de-interleaved)
     fatx       each FATX partition of a hard-disk or memory-unit image
     nand       the flash file system of a console's NAND dump (16 MB, with spare bytes)
+    heavyiron  a Heavy Iron GoodEngine archive (.ho): each asset by layer, id and type
     zar        a ZArchive (.zar)
     xzp        a XUI package (XUIZ)
     pck        a Minecraft Legacy Console Edition .pck
@@ -20,7 +21,7 @@ import os
 import struct
 
 from codebreaker.formats.media import Entry
-from codebreaker.formats.xbox import ciso, fatx, gdf, god, nand, pck, stfs, xzp, zar
+from codebreaker.formats.xbox import ciso, fatx, gdf, god, heavyiron, nand, pck, stfs, xzp, zar
 
 _STFS = (b"CON ", b"LIVE", b"PIRS")
 
@@ -143,6 +144,9 @@ def volumes(path, long_names=True):
         return [_xdvdfs(ciso.open_image(path), os.path.basename(path), magic.decode("latin-1").strip() + " compressed disc")]
     if nand.is_nand(path):
         return _nand(path)
+    if path.lower().endswith(".ho") and heavyiron.is_archive(path):
+        listing, reader = heavyiron.volume_listing(path)
+        return [_Listed("heavyiron", os.path.basename(path), "", {"assets": len(listing)}, lambda: listing, reader)]
     if magic == b"XUIZ":
         return _payloads("xzp", path, xzp.payloads(path))
     if path.lower().endswith(".zar"):
