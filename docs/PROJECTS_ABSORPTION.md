@@ -172,7 +172,9 @@ Logan's rule: what something better has replaced is worthless.
 - **Moved beside CodeBreaker** (Logan's own projects, nothing lost; what CodeBreaker still wants from them is
   absorbed from there): `../NexGen`, `../NexiaCompiler`, `../NexiaOS`, `../XboxTranspiler` (absorbed in full
   2026-10-23: `xex-edit` takes its privilege editor and code injection, `build/ppc_asm.py` its PowerPC
-  assembler; signing, limits and delta patches were already `xex`; `info` covers identify/report/refscan), `../xam` (the inference passes), `../Arcadecraft`
+  assembler; signing, limits and delta patches were already `xex`; `info` covers identify/report/refscan), `../xam` (its inference passes absorbed 2026-10-23 as `ppc-calls`,
+  analyze/ppc_calls.py: call-site arity, import arity, GPR / FP clobber summaries, variadic functions; the
+  decompiled corpus stays there as a reference target), `../Arcadecraft`
   (waits for the XNA/C# lane), `../xdk-build-demo`.
 - **Still under Projects/, locked by another process:** `TetrisPC` (empty folders) and `xam` (copied whole to
   `../xam`); delete both when the lock is gone.

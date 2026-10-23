@@ -48,6 +48,7 @@
     gfx <cmd> <file> ...            Scaleform GFx menus: movies, images, fonts, placements; a font as TTF
     xex-imports <module.xex>        its imports: library, ordinal, name, function or variable, slot, thunk
     xex-edit <op> <file.xex> ...     change its privilege flags, or its code at an address (nop, bytes, asm, hook)
+    ppc-calls <.xex or image> [-o F] what its calls show: argument counts, registers kept, variadic functions
     xdk-match <.xex or image> [libs] [-o F]   name the XDK library functions it was linked with
     system-ui <update package> <dir>    the Xbox 360 runtime's system UI assets from the owner's system update
     crypto <tool> [args]            Xbox 360 console crypto (XeCrypt, keyvaults, boot chain, NAND, shadowboots)
@@ -122,6 +123,7 @@ COMMANDS = {
     "xdk-match": ("codebreaker.symbols.xdk_libraries", []),
     "xex-imports": ("codebreaker.formats.xex_imports", []),
     "xex-edit": ("codebreaker.formats.xex_edit", []),
+    "ppc-calls": ("codebreaker.analyze.ppc_calls", []),
     "heavyiron": ("codebreaker.formats.xbox.heavyiron", []),
     "gfx": ("codebreaker.formats.gfx", []),
     "classes": ("codebreaker.symbols.cpp_classes", []),
