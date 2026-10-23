@@ -137,15 +137,19 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     segs = sorted(set(segment.values()))
     import json
     remembered = settings.state("match16", name, "choices.json")
-    known = {}
+    known, each = {}, {}
     if os.path.isfile(remembered) and not choose and not compiler:
-        known = {int(s): tuple(v) for s, v in json.load(open(remembered)).items()}
+        saved = json.load(open(remembered))
+        if "segments" not in saved:
+            saved = {"segments": saved}
+        known = {int(s): tuple(v) for s, v in saved["segments"].items()}
+        each = {fn: tuple(v) for fn, v in saved.get("functions", {}).items()}
     if flags:
         chosen = {s: (compilers[0], flags) for s in segs}
     elif all(s in known for s in segs):
         chosen = known                               # (found by an earlier run: --choose finds them again)
         if log:
-            log("  each segment's compiler and switches as found before (%s)" % remembered)
+            log("  each segment's and function's compiler and switches as found before (%s)" % remembered)
     else:
         sample = {s: [fn for fn in todo if segment[fn] == s] for s in segs}
         sample = {s: v[::max(1, len(v) // 6)][:6] for s, v in sample.items()}
@@ -156,21 +160,40 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
                 r = judged(cc, fl, every, tuple(v for v in ("plain", "fold") if v in variants))
                 for s in segs:
                     scores[(s, cc, fl)] = _score({fn: r[fn] for fn in sample[s]})
-        chosen = {}
+        chosen, top = {}, {}
         for s in segs:
-            best = max(((scores[(s, cc, fl)], cc, fl) for (s2, cc, fl) in scores if s2 == s), key=lambda x: x[0])
-            chosen[s] = best[1:]
+            ranked = sorted(((scores[(s, cc, fl)], cc, fl) for (s2, cc, fl) in scores if s2 == s), key=lambda x: -x[0])
+            chosen[s] = ranked[0][1:]
+            top[s] = [r[1:] for r in ranked[:3]]
             if log:
-                log("  segment %-3s %-8s %-16s (%.1f of a sample of %d)" % (s, best[1], best[2], best[0], len(sample[s])))
+                log("  segment %-3s %-8s %-16s (%.1f of a sample of %d)" % (s, ranked[0][1], ranked[0][2], ranked[0][0],
+                                                                          len(sample[s])))
+        # A segment of the file can be several source files' code (the linker packs them), each built
+        # with its own switches: every function is judged under its segment's three best, and keeps
+        # the one it comes nearest under (its segment's first where none is nearer).
+        each = {}
+        tried = {}
+        for cc, fl in sorted({c for v in top.values() for c in v}):
+            names = [fn for fn in todo if (cc, fl) in top[segment[fn]]]
+            for fn, v in judged(cc, fl, names, ("plain",)).items():
+                tried.setdefault(fn, []).append((_score({0: v}), (cc, fl) == chosen[segment[fn]], cc, fl))
+        for fn, r in tried.items():
+            best = max(r, key=lambda x: (x[0], x[1]))
+            if best[2:] != chosen[segment[fn]]:
+                each[fn] = best[2:]
+        if log:
+            log("  %d functions nearer under another of their segment's switches than its first" % len(each))
         if not compiler:
             with open(remembered, "w") as f:
-                json.dump({str(s): list(v) for s, v in chosen.items()}, f, indent=1)
+                json.dump({"segments": {str(s): list(v) for s, v in chosen.items()},
+                           "functions": {fn: list(v) for fn, v in sorted(each.items())}}, f, indent=1)
+    setting = {fn: each.get(fn, chosen[segment[fn]]) for fn in todo}
     out = {}
-    for s in segs:
-        out.update(judged(chosen[s][0], chosen[s][1], [fn for fn in todo if segment[fn] == s], tuple(variants)))
+    for cc, fl in sorted(set(setting.values())):
+        out.update(judged(cc, fl, [fn for fn in todo if setting[fn] == (cc, fl)], tuple(variants)))
     if search:                                       # the last bytes of the near misses (verify/search16.py)
         from codebreaker.verify import search16
-        near = {fn: (texts[winner[fn]][fn], v, chosen[segment[fn]] + ("sdk" in variants[winner[fn]],))
+        near = {fn: (texts[winner[fn]][fn], v, setting[fn] + ("sdk" in variants[winner[fn]],))
                 for fn, v in out.items() if v[0] in ("same size", "different") and v[1] <= 0.4 * v[2]}
 
         def compile_group(g, sources):
@@ -185,6 +208,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
                 winner[fn] = "search"
                 texts.setdefault("search", {})[fn] = t
     run.texts = {fn: texts[winner[fn]][fn] for fn in todo if fn in winner}
+    run.settings = set(setting.values())
     run.winner = dict(winner)                        # (which way of saying each function came nearest)
     run.code = {fn: (code.get(fn), originals[address[fn]]) for fn in todo}   # (its bytes, and the original's)
     return chosen, out
@@ -205,7 +229,7 @@ def main(argv):
     for v in results.values():
         counts[v[0]] = counts.get(v[0], 0) + 1
     print("%s: %d functions compiled with Microsoft C (%s): %s" % (
-        os.path.basename(path), len(results), "; ".join(sorted({"%s %s" % c for c in chosen.values()})),
+        os.path.basename(path), len(results), "; ".join(sorted({"%s %s" % c for c in getattr(run, "settings", chosen.values())})),
         ", ".join("%s %d" % (k, counts[k]) for k in ("identical", "same size", "different", "does not compile")
                   if counts.get(k))))
     won = {}
