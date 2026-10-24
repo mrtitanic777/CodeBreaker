@@ -587,8 +587,20 @@ def test_cache_files_results_under_what_made_them():
     shutil.rmtree(os.path.dirname(os.path.dirname(cache._path(kind, k))), ignore_errors=True)
 
 
+def test_a_call_through_a_word_stays_near():
+    # MSMOUS31's Disable, `call word ptr [18h]`, as the decompiler prints it: made a far call to
+    # segment 1000h it faulted at Setup's restart
+    from codebreaker.decompile import c_text
+    text = ("int2 f()\n{\n  int2 i;\n  i = (*MK_FP(0x1000, *(xunknown2 *)0x18))();\n"
+            "  return i + *((int2 __far *)MK_FP(0x1000, (int2 *)0x40));\n}\n")
+    out = c_text._own_segment_calls(text, 1)
+    assert "((*(code __near *)*(xunknown2 *)0x18))()" in out, out
+    assert "MK_FP(codebreaker_cs(), (int2 *)0x40)" in out and "0x1000" not in out, out
+    assert c_text._own_segment_calls(text, 2).count("0x1000") == 2      # (another segment's: as it was)
+
+
 def main():
-    for fn in (test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
+    for fn in (test_a_call_through_a_word_stays_near, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
                test_field_accesses_are_written_as_fields, test_other_shapes_of_the_same_function,

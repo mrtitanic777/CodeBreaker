@@ -754,6 +754,34 @@ def _global_pointer_steps(text):
     return re.sub(r"(?<![\w*)])(p+[a-z]*Ram[0-9a-f]{8}) \+ ", r"(uint1 *)\1 + ", text)
 
 
+def _own_segment_calls(text, seg):
+    """`(*MK_FP(0x1000, *(xunknown2 *)0x18))()` -- a near call through a word, `call word ptr
+    [18h]`, as the decompiler prints it: the target is in the caller's own code segment (CS, which
+    it takes as the segment's number times 1000h). Made a far call to that constant, it faulted:
+    MSMOUS31's Disable took a GP at Setup's restart, after the file copy. A near call, as the
+    original makes."""
+    if "MK_FP(" not in text:
+        return text
+    src = ctree.Source(text)
+    for n in src.find("call_expression"):
+        fn = n.child_by_field_name("function")
+        while fn is not None and fn.type == "parenthesized_expression" and fn.named_child_count == 1:
+            fn = fn.named_children[0]
+        if fn is None or fn.type != "pointer_expression":
+            continue
+        target = fn.child_by_field_name("argument")
+        while target is not None and target.type == "parenthesized_expression" and target.named_child_count == 1:
+            target = target.named_children[0]
+        if target is None or target.type != "call_expression" or src.at(target.child_by_field_name("function")) != "MK_FP":
+            continue
+        args = target.child_by_field_name("arguments").named_children
+        if len(args) == 2 and args[0].type == "number_literal" and int(src.at(args[0]), 0) == seg << 12:
+            src.replace(fn, "(*(code __near *)%s)" % src.at(args[1]))
+    # and a read of the code segment's own bytes (`mov ax, cs:[si]`, a table beside the code):
+    # through CS as it runs, not the constant (no selector of that number exists)
+    return re.sub(r"\bMK_FP\(0x%x," % (seg << 12), "MK_FP(codebreaker_cs(),", src.text())
+
+
 def _near_calls(text):
     """A call through a word -- `call word ptr [18h]`, the decompiler's `(*(code *)*(xunknown2
     *)0x18)()` -- is a near call into the function's own code segment. `code *` is a far
@@ -1369,6 +1397,7 @@ def _compilable16(module_path, outdir=None):
         if by_selector:
             text = _selector_structs(text, name, selector_structs, shared_selectors)
             text = _struct_gaps(text, _pointer_distances(text))
+        text = _own_segment_calls(text, seg)
         m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts)))))))))
         if seg in d.images:
             m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))

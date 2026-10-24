@@ -1308,8 +1308,9 @@ def _build16(b, path, m, folder):
         if seg is None or name in m.near or loads_itself:
             return None
         if any(c in m.near for c in re.findall(r"\b(\w+)\s*\(", texts[name].split("{", 1)[-1])) \
-                or "code __near *" in texts[name]:
+                or "code __near *" in texts[name] or "codebreaker_cs()" in texts[name]:
             return None                                     # it calls near ones, which only its own segment reaches
+                                                            # (or reads its segment's own bytes through CS)
         sym = public[name][0] if name in public else "_" + name
         if sym in _near_reached():
             return None                                     # hand-written code beside it reaches it near
