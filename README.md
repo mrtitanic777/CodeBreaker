@@ -13,17 +13,21 @@ all behave right is nearest to what a person wrote.
 
 ## What it handles
 
-| Kind of code | Decompiled to C | Rebuilt | Judged |
+| Kind of code | Comes back as | Rebuilt | Judged |
 |---|---|---|---|
-| 32-bit Windows modules | yes | per function, into a DLL | by behaviour, beside the original |
-| 16-bit Windows modules | yes | per function, into a DLL | by behaviour, beside the original |
-| PowerPC images | yes | per function, into one image | by behaviour, beside the original |
-| Virtual device drivers | to assembly source | whole, from that source | byte for byte, and by behaviour |
-| Real-mode DOS programs | to assembly source | whole, from that source | byte for byte |
-| Java programs (source) | transpiled to C++03 | per class, with the host compiler | by behaviour beside the JVM (methods with primitive arguments), else compiles |
+| 32-bit Windows modules, original Xbox (XBE) | C | per function, into a DLL | by behaviour, beside the original |
+| 16-bit Windows modules | C, or its assembly where it was written in assembly | per function, into a DLL | by behaviour, beside the original |
+| Xbox 360 (PowerPC: .xex, packages, discs) | C per function; or the whole title recompiled to C++ that runs on a PC (`recompile-project`) | per function / the whole game | by behaviour, beside the original; recompiled titles play |
+| Virtual device drivers | assembly source (the driver kit's macros) | whole, from that source | byte for byte, and by behaviour |
+| Real-mode DOS programs | assembly source | whole, from that source | byte for byte |
+| NES, Master System / Game Gear, Game Boy / Color, Genesis, ZX Spectrum, MSX | assembly source (ca65, WLA-DX, RGBDS, Motorola syntax, sjasmplus) | whole cartridge or tape | byte for byte, and its functions run in CodeBreaker's own 6502 / Z80 / SM83 / 68000 |
+| XNA games (.NET, Xbox 360 or PC) | C# (ILSpy, de4dot), content as PNG/JSON/WAV, shaders as HLSL | a MonoGame project (`xna port`) | builds and runs |
+| Java programs | C++03 | per class, with the host compiler | by behaviour beside the JVM (methods with primitive arguments), else compiles |
 
-All six go through one path (`verify/reconstruct.py`); a kind is one small file that says how
-its modules are prepared, built and judged.
+Every platform plugs into one path (`verify/reconstruct.py`) through one description of it
+(`codebreaker/platforms/`); docs/PLATFORMS.md is the whole map, with what is not handled yet.
+`python -m codebreaker reach <anything>` says what CodeBreaker makes of any file or folder
+(discs and packages opened), and docs/TESTED_SOFTWARE.md lists the real programs put through.
 
 ## One of each
 
@@ -67,6 +71,7 @@ codebreaker/
                Microsoft C 2.03 / the C of 1983-84, Microsoft C 6, Visual C++ 1.52 and 2.0
   compare/     versions.py   the functions of two builds of a module: same, changed, added, removed
   coverage/    ledger.py     how much of every module is accounted for
+               reach.py      anything thrown at it: what each program is, and how far its lane gets
   java/        the Java transpiler (was J2CTool): Java source -> C++03, deterministic
                transpile.py  THE converter: parse, resolve types and ownership, emit, check
                emit/, rules.py, runtime.py, profiles/ (Minecraft eras), platform/ (the console layer)
@@ -99,6 +104,7 @@ assets/, build/, reports/, README.txt; docs/NOT_IN_REPO.md); caches go to `state
 ## Use
 
 ```
+python -m codebreaker reach <file or folder> [--judge]   what each program is, and how far it gets
 python -m codebreaker module comctl32.dll      decompile, build, judge, write the module's source
 python -m codebreaker measure commdlg.dll      the same without writing to the source tree
 python -m codebreaker sweep [--16 | --all]     every module of the corpus, resumably

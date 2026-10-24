@@ -58,6 +58,9 @@
     classes <.xex or image> [-o F]  its C++ classes from run-time type information: bases, virtual
                                     function tables, which class introduces each virtual function
     coverage [--module NAME]        how much of every corpus module is accounted for, and in what state
+    reach <file or folder> [--judge]    anything at all: what each program is, its platform (or the
+                                    platform there is no lane for yet), and with --judge how far its
+                                    lane gets; a few of each platform, one at a time
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
     progress [--once] [--window]    watch a running sweep
     app [file-or-module]            the desktop window
@@ -114,6 +117,7 @@ COMMANDS = {
     "info": ("codebreaker.formats.inspect", []),
     "xex": ("codebreaker.formats.xex", []),
     "coverage": ("codebreaker.coverage.ledger", []),
+    "reach": ("codebreaker.coverage.reach", []),
     "serve": ("codebreaker.ui.server", []),
     "progress": ("codebreaker.ui.progress", []),
     "app": ("codebreaker.ui.app", []),
