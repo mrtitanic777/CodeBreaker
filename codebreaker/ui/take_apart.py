@@ -278,7 +278,9 @@ def reverse(path, progress=None, outbase=None):
     except Exception as e:
         rep["notes"].append("decompile: %s" % e)
 
-    rep["notes"].append("%d code section(s), %s instructions, %d functions"
+    # (the scan's count, not the decompiler's: it follows calls to code the scan did not take for
+    # a function -- COMPOBJ's 506 here, 752 decompiled -- and it had read as more done than found)
+    rep["notes"].append("%d code section(s), %s instructions, %d functions found by the first scan"
                         % (len(code_secs), format(rep["insn_count"], ","), rep["functions"]))
     texts["hexdump.txt"] = hexdump(data, 512)
     rep["disasm"] = texts["disassembly.asm"][:20000]

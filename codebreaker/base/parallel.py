@@ -201,6 +201,31 @@ def reserve_gb():
     return min(min_free_gb(), t / 4) if t else min_free_gb()
 
 
+def idle_cores(sample=0.25):
+    """processors nothing is using, measured over `sample` seconds (None where not known): what
+    other programs keep busy -- a build beside us -- is not ours to take"""
+    if os.name == "nt":
+        try:
+            import ctypes
+            import time
+            FT = ctypes.c_ulonglong
+
+            def times():
+                i, k, u = FT(), FT(), FT()
+                ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(i), ctypes.byref(k), ctypes.byref(u))
+                return i.value, k.value + u.value                # (kernel time includes idle)
+            i0, t0 = times()
+            time.sleep(sample)
+            i1, t1 = times()
+            return cpu_count() * (i1 - i0) / (t1 - t0) if t1 > t0 else None
+        except Exception:
+            return None
+    try:
+        return max(0.0, cpu_count() - os.getloadavg()[0])
+    except (OSError, AttributeError):
+        return None
+
+
 def memory_allows(mb_each):
     """how many pieces of `mb_each` MB the free memory carries past the reserve (None: not known)"""
     a = available_gb()
@@ -226,6 +251,10 @@ class slots:
         folder = settings.state("slots", "")
         mem = memory_allows(self.mb_each)
         want = min(self.want, cap, max(1, mem) if mem is not None else cap)
+        if want > 1:
+            idle = idle_cores()                                  # (and no more than the processors free)
+            if idle is not None:
+                want = min(want, max(1, int(idle + 0.5)))
         waited = 0.0
         while True:
             for i in range(cap):

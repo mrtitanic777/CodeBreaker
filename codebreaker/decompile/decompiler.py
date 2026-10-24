@@ -200,8 +200,8 @@ def _run_resuming(description, only, timeout, max_instructions=None):
     function it had not written, and so on. A function a fresh start dies on at once is left
     out, with a note on stderr. -> (stdout, stderr, whether every function was attempted)"""
     from codebreaker.base import settings
-    # CB_THREADS (setting "threads"): functions analysed at once in the one process -- the
-    # output is the same; unset, the governor decides (base/parallel.py: slots)
+    # CB_THREADS (setting "threads"): functions analysed at once in the one process, by hand;
+    # unset, one thread, and the functions are shared among processes instead (below)
     env = dict(os.environ, CB_LANGUAGES=_languages(), CB_THREADS=str(settings.get("threads") or 1),
                CB_STRUCTS=_structs(description))      # (structures: see _structs)
     if max_instructions:
@@ -215,37 +215,30 @@ def _run_resuming(description, only, timeout, max_instructions=None):
         return "", "", True
     if settings.get("threads"):                          # (set by hand: as it says)
         return _resuming(description, only, timeout, env, wanted)
-    # the governor's: as many threads as there are free slots and memory for -- each thread its
-    # own analysis, some 50 MB beside the first (COMPOBJ: 59 MB alone, 305 MB with six) -- and
-    # one for a few functions, where starting the others costs more than they save
+    if len(wanted) <= _CHUNK:
+        return _resuming(description, only, timeout, env, wanted)
+    # More than a chunk: the functions in fixed chunks of _CHUNK, in address order, each chunk
+    # a process of its own on one thread, as many at once as the governor gives slots and memory
+    # for (base/parallel.py). Not the native program's threads: each keeps its own analysis, and
+    # the globals one function types stay typed for the next -- so with threads a function's text
+    # depended on which thread it fell to (HC31's sub_1_AF04 came out two ways in two runs). A
+    # chunk is always the same functions in the same order, so the texts are the same however
+    # many run at once, on any machine. (Against the whole on one thread, as before: HC31 1 of 635
+    # functions typed otherwise, sub_1_AF04; COMPOBJ and P3 none. 2-3 times as fast on 4 slots.)
+    from concurrent.futures import ThreadPoolExecutor
     from codebreaker.base import parallel
-    with parallel.slots(want=max(1, len(wanted) // 40), mb_each=_THREAD_MB, label="decompile") as n:
-        one = dict(env)
-        env["CB_THREADS"] = str(n)
-        if n > 1 and not os.environ.get("CB_MEMORY_MB"):
-            # (the process's budget is shared by its threads: each has what one alone would --
-            # with less, P3's large functions ran out of room together and the run fell back)
-            env["CB_MEMORY_MB"] = str(n * _THREAD_MB)
-        stdout, stderr, whole = _resuming(description, only, timeout, env, wanted)
-    if n > 1:
-        # A thread stopped at its share of the process's budget -- P3's 0BB1E..0BB39, "over the
-        # analysis budget (258 MB)" -- would have had the whole of it alone (there, "Flow exceeded
-        # maximum allowable instructions", which is tried again with room: _run_whole). Those are
-        # done again on one thread, so the text is what one thread makes.
-        shared = [int(m.group(1), 16) for m in re.finditer(
-            r"(?m)^/\*@@ \S+ ([0-9a-f]+) \*/\n/\* decompile failed: over the analysis budget", stdout)]
-        if shared:
-            again = _resuming(description, shared, timeout, one, shared)[0]
-            texts = {m.group(1): m.group(0) for m in _BLOCK.finditer(again)}
-            stdout = _BLOCK.sub(lambda m: texts.get(m.group(1), m.group(0)), stdout)
-    return stdout, stderr, whole
+    chunks = [wanted[i:i + _CHUNK] for i in range(0, len(wanted), _CHUNK)]
+    with parallel.slots(want=len(chunks), mb_each=_PROCESS_MB, label="decompile") as n:
+        with ThreadPoolExecutor(n) as pool:
+            parts = list(pool.map(lambda c: _resuming(description, c, timeout, env, c), chunks))
+    blocks = sorted((int(m.group(1), 16), m.group(0)) for p in parts for m in _BLOCK.finditer(p[0]))
+    return "".join(b for _va, b in blocks), "".join(p[1] for p in parts)[-2000:], all(p[2] for p in parts)
 
 
 _BLOCK = re.compile(r"(?ms)^/\*@@ \S+ ([0-9a-f]+) \*/\n.*?(?=^/\*@@ |\Z)")
-
-
-_THREAD_MB = 1536       # what each decompiler thread may take (the native program's own budget for one, CB_MEMORY_MB):
-                        # mostly ~50 MB, but a wrong function start can run to the budget -- the governor counts that
+_CHUNK = 64             # functions to a process
+_PROCESS_MB = 1536      # what the governor counts for each: the native program's own budget (CB_MEMORY_MB) --
+                        # mostly ~60 MB, but a wrong function start can run to it
 
 
 def _resuming(description, only, timeout, env, wanted):

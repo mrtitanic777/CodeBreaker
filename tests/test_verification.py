@@ -599,8 +599,49 @@ def test_a_call_through_a_word_stays_near():
     assert c_text._own_segment_calls(text, 2).count("0x1000") == 2      # (another segment's: as it was)
 
 
+def test_the_governor_shares_one_budget():
+    # slots taken are held until given back, across holders; never more than the machine's workers,
+    # never fewer than one
+    from codebreaker.base import parallel
+    old = os.environ.get("CB_WORKERS")
+    os.environ["CB_WORKERS"] = "2"
+    try:
+        with parallel.slots(want=5, mb_each=1) as a:
+            assert 1 <= a <= 2, a
+            with parallel.slots(want=5, mb_each=1, limit=0) as b:
+                assert b == 1                                  # (none free: it goes on with one, not waiting for ever)
+        with parallel.slots(want=2, mb_each=1) as c:
+            assert c >= 1
+    finally:
+        if old is None:
+            del os.environ["CB_WORKERS"]
+        else:
+            os.environ["CB_WORKERS"] = old
+
+
+def test_an_instruction_is_decoded_once():
+    import capstone
+    from codebreaker.decompile import describe
+    code = bytes.fromhex("5589e58b4604e8100083c4025dc3")
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    for at in (0, 1, 3, 6, 9, 12, 13):
+        mine, theirs = describe._one(code, at), next(md.disasm(code[at:at + 16], at), None)
+        assert (mine.mnemonic, mine.op_str, mine.size) == (theirs.mnemonic, theirs.op_str, theirs.size)
+    assert describe._one(code, 3) is describe._one(code, 3)                # (the same object: kept)
+    assert describe._one(bytearray(code), 3) is not describe._one(code, 3)  # (another segment, its own)
+
+
+def test_chunks_come_back_in_address_order():
+    # the decompiler's chunks run side by side; their blocks are put back in address order
+    from codebreaker.decompile import decompiler
+    parts = ["/*@@ b 10020 */\nB\n\n/*@@ d 10040 */\nD\n", "/*@@ a 10010 */\nA\n\n/*@@ c 10030 */\nC\n"]
+    blocks = sorted((int(m.group(1), 16), m.group(0)) for p in parts for m in decompiler._BLOCK.finditer(p))
+    assert "".join(b for _v, b in blocks) == "/*@@ a 10010 */\nA\n\n/*@@ b 10020 */\nB\n\n/*@@ c 10030 */\nC\n/*@@ d 10040 */\nD\n"
+
+
 def main():
-    for fn in (test_a_call_through_a_word_stays_near, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
+    for fn in (test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
+               test_chunks_come_back_in_address_order, test_a_call_through_a_word_stays_near, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
                test_field_accesses_are_written_as_fields, test_other_shapes_of_the_same_function,

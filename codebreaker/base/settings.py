@@ -73,7 +73,8 @@ DEFAULTS = {
     "retromcp": os.path.join("native", "retromcp", "build", "libs", "retromcp.jar"),
     "state": "state",
     "target": "win95",
-    "threads": "",                     # functions the native decompiler analyses at once (CB_THREADS); unset, the governor's (base/parallel.py)
+    "threads": "",                     # functions the native decompiler analyses at once in one process (CB_THREADS); unset, one,
+                                       # with the functions shared among processes as the governor allows (base/parallel.py)
     "struct_recovery": "32",           # structures from field accesses: off, 32 (32-bit x86 only), all
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
