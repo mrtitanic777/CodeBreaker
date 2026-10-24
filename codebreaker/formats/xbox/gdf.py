@@ -40,6 +40,9 @@ class _FileDevice:
         self.f.close()
 
 
+_MAX_DIR = 1 << 20          # the largest directory believed (bytes)
+
+
 class GDF:
     def __init__(self, dev, base=None, descriptor=None):
         self.dev = dev
@@ -62,32 +65,38 @@ class GDF:
     def _sector(self, sec, length):
         return self.dev.read_at(self.base + sec * SECTOR, length)
 
-    def _walk_dir(self, sector, size, prefix=""):
-        """Read a directory's sectors and walk its entry tree in offset order."""
+    def _walk_dir(self, sector, size, prefix="", seen=None):
+        """A directory's entries and, under each folder, its own: [(path, is folder, sector, size)].
+        The entries of a directory are a binary tree -- each names the offsets (in 4-byte units)
+        of the entries before and after it in name order, 0xFFFF for none -- so it is walked as
+        one, from the first entry. (Reading the sectors in a row instead takes what is left over
+        after the last entry for more entries: a folder of a large Games-on-Demand title then
+        "held" itself, without end.)"""
+        seen = set() if seen is None else seen
+        if sector in seen or not 0 < size <= _MAX_DIR:   # (a directory is never megabytes: an entry
+            return []                                    # that says so is not one, or not this volume's)
+        seen.add(sector)
         data = self._sector(sector, (size + SECTOR - 1) // SECTOR * SECTOR)
-        out = []
-        # entries are addressed by 4-byte-unit offset from the start of the dir;
-        # walk them linearly by advancing past each entry (the tree is laid out
-        # densely), skipping padding (0xFF / 0x00 filler between sectors).
-        pos = 0
-        n = len(data)
-        while pos + 0x0E <= n:
+        out, todo, visited = [], [0], set()
+        while todo:
+            pos = todo.pop()
+            if pos in visited or pos + 0x0E > len(data):
+                continue
+            visited.add(pos)
             left, right, start, fsize = struct.unpack_from("<HHII", data, pos)
-            attr = data[pos + 0x0C]
-            nlen = data[pos + 0x0D]
-            if nlen == 0 or nlen == 0xFF:
-                # advance to next 4-byte boundary / next sector's start
-                pos = (pos // SECTOR + 1) * SECTOR
+            attr, nlen = data[pos + 0x0C], data[pos + 0x0D]
+            if nlen in (0, 0xFF) or pos + 0x0E + nlen > len(data):
                 continue
             name = data[pos + 0x0E:pos + 0x0E + nlen].decode("latin-1", "replace")
             full = prefix + "/" + name if prefix else name
             is_dir = bool(attr & 0x10)
             out.append((full, is_dir, start, fsize))
-            if is_dir and fsize:
-                out += self._walk_dir(start, fsize, full)
-            entry_len = 0x0E + nlen
-            pos += (entry_len + 3) & ~3                    # 4-byte align
-        return out
+            if is_dir:
+                out += self._walk_dir(start, fsize, full, seen)
+            for nxt in (left, right):
+                if nxt != 0xFFFF:
+                    todo.append(nxt * 4)
+        return sorted(out, key=lambda e: e[0].lower())
 
     def files(self):
         """Return [(path, size)] for every file (not directory)."""
@@ -105,10 +114,10 @@ def build_xdvdfs(files):
     """Build a minimal XDVDFS/GDF disc volume (bytes) from {name: data}. Volume
     descriptor at sector 32, a flat root directory, then the file data. Enough
     for wrapping a default.xex (xex2god); readable by GDF above."""
-    names = list(files)
+    names = sorted(files, key=lambda n: n.upper())       # (the tree is in the console's name order)
     # lay out: sector 32 = volume descriptor, 33 = root dir, 34.. = file data
     root_sector = 33
-    data_sector = 34
+    data_sector = 34 + (sum(0x0E + len(n) + 3 for n in names) + SECTOR - 1) // SECTOR
     entries = bytearray()
     sec = data_sector
     placed = []
@@ -116,9 +125,15 @@ def build_xdvdfs(files):
         data = files[nm]
         nb = (len(data) + SECTOR - 1) // SECTOR
         nbytes = nm.encode("latin-1")
-        # left/right subtree = 0 (flat list is a degenerate tree walked linearly)
-        e = struct.pack("<HHII", 0, 0, sec, len(data)) + bytes([0x20, len(nbytes)]) + nbytes
-        e += b"\x00" * ((-len(e)) & 3)                # 4-byte align
+        size = (0x0E + len(nbytes) + 3) & ~3
+        if len(entries) // SECTOR != (len(entries) + size - 1) // SECTOR:   # (no entry crosses a sector)
+            entries += b"\xff" * ((-len(entries)) % SECTOR)
+        # the entries as a tree, each the next one's parent on its right (a sorted chain); the
+        # last points nowhere (0xFFFF)
+        here = len(entries)
+        right = 0xFFFF if i == len(names) - 1 else (here + size) // 4
+        e = struct.pack("<HHII", 0xFFFF, right, sec, len(data)) + bytes([0x20, len(nbytes)]) + nbytes
+        e += b"\xff" * ((-len(e)) & 3)                   # 4-byte align
         entries += e
         placed.append((sec, data))
         sec += nb

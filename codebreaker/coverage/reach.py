@@ -121,12 +121,11 @@ def _unpack(path, limit, log):
     from codebreaker.base import settings
     from codebreaker.formats import media
     try:
-        vols = media.volumes(path)
-    except Exception as e:                                   # noqa: BLE001 (any reader's error)
-        log("  %s: not opened (%s)" % (os.path.basename(path), str(e)[:80]))
+        entries = [(v, e) for v in media.volumes(path) for e in v.files()
+                   if not e.is_dir and e.path.lower().endswith(_PROGRAM_EXTS) and 0 < e.size < 512 << 20]
+    except Exception as e:                                   # noqa: BLE001 (any reader's error, listing too)
+        log("  %s: not opened (%s: %s)" % (os.path.basename(path), type(e).__name__, str(e)[:80]))
         return []
-    entries = [(v, e) for v in vols for e in v.files()
-               if not e.is_dir and e.path.lower().endswith(_PROGRAM_EXTS) and 0 < e.size < 512 << 20]
     entries.sort(key=lambda ve: ve[1].size)
     key = hashlib.sha1(os.path.abspath(path).encode("utf-8", "replace")).hexdigest()[:12]
     out = []
