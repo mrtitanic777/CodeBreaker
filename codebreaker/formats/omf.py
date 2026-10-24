@@ -155,6 +155,12 @@ def read(data):
                         vals.append(int.from_bytes(r[q + 1:q + 1 + k], "little") if k else c)
                         q += 1 + k
                     o.comm[nm] = (vals[0] * vals[1] if far else vals[0], far)
+        elif t == 0xBC:                              # CEXTDEF: externals named by a name index (COMDAT
+            q = 0                                    # references, MS C 8): numbered with the others
+            while q < len(r):
+                ni, q = _idx(r, q)
+                _, q = _idx(r, q)
+                o.ext.append(names[ni - 1] if 0 < ni <= len(names) else "?")
         elif t in (0x90, 0x91):
             w = 4 if t == 0x91 else 2
             gi, q = _idx(r, 0)

@@ -429,6 +429,25 @@ def test_source_files_are_told_by_push_cs_calls_and_an_if_else_can_be_turned_aro
     assert "int f()\n{\n  int2 a;\n  \n  if (a != 0) {\n    h();\n  }\n  else {\n    g();\n  }\n  return a;\n}" in seen
 
 
+def test_a_cextdef_is_numbered_with_the_other_externals():
+    """Microsoft C 8 names some externals through LNAMES (CEXTDEF, 0xBC): a fix-up's external index
+    counts them with the EXTDEFs (SETUPX's file of sub_2_1D92 at /O1 stopped the reader)."""
+    from codebreaker.formats import omf
+
+    def record(kind, body):
+        return bytes([kind]) + (len(body) + 1).to_bytes(2, "little") + body + b"\0"
+    code = bytes([0x9A, 0, 0, 0, 0, 0xCB])
+    obj = (record(0x80, b"\x03f.c") + record(0x96, b"\x00\x05_TEXT\x04CODE\x04_far")
+           + record(0x98, bytes([0x28]) + len(code).to_bytes(2, "little") + b"\x02\x03\x01")
+           + record(0xBC, b"\x04\x00")                                      # external 1: name 4, _far
+           + record(0x8C, b"\x04_ext\x00")                                  # external 2
+           + record(0xA0, b"\x01\x00\x00" + code)
+           + record(0x9C, bytes([0xCC, 0x01, 0x26, 0x02, 0x02]))            # a far pointer at +1, to external 2
+           + record(0x8A, b"\x00"))
+    o = omf.read(obj)
+    assert o.ext == ["_far", "_ext"] and o.fix[0][3] == ("ext", "_ext")
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""
