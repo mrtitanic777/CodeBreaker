@@ -159,8 +159,14 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     protos = msc6.sdk_prototypes() if sdk else {}
     sdk_head = msc6.sdk_header(header) if sdk else header
 
+    from codebreaker.symbols import wine16
+    own = {e.name.upper(): e for e in wine16.exports(name.split(".")[0]).values()} if wine else {}
+
     def said(fn, on):
-        t = msc6.fold_temporaries(m.texts[fn]) if "fold" in on else m.texts[fn]
+        t = m.texts[fn]
+        if "wine" in on and fn.upper() in own:        # (the module's own export, typed by Wine's .spec)
+            t = msc6.wine_definition(t, own[fn.upper()])
+        t = msc6.fold_temporaries(t) if "fold" in on else t
         t = msc6.join_far_parameters(t) if "far" in on else t
         t = msc6.split_frame(t) if "frame" in on else t
         t = msc6.pascal_order(t, pascal)

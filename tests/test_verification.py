@@ -495,6 +495,20 @@ def test_a_function_reading_ax_dx_or_bx_before_writing_it_takes_them_as_fastcall
     assert not describe.register_arguments(plain, 0)
 
 
+def test_an_exported_function_s_parameters_are_typed_by_wine_s_spec():
+    """IpFindFirstLine(word, str, str, ptr), pascal: in stack order a pointer, two strings, a word --
+    seven words as decompiled, four parameters as written; a half used alone is FP_OFF / FP_SEG."""
+    from codebreaker.build import msc6
+    from codebreaker.symbols.wine16 import Export
+    text = ("int2 __stdcall16far IPFINDFIRSTLINE(a1,a2,a3,a4,a5,a6,a7)\nint2 a1;\nint2 a2;\nint2 a3;\nint2 a4;\n"
+            "int2 a5;\nint2 a6;\nint2 a7;\n{\n  x = g(a1,a2);\n  y = a3 + 1;\n  h(a4, a5,a6);\n  return a7;\n}")
+    out = msc6.wine_definition(text, Export("IpFindFirstLine", "pascal", ["word", "str", "str", "ptr"], False, True))
+    assert out.startswith("int2 __stdcall16far IPFINDFIRSTLINE(a1,a3,a5,a7)\nvoid __far * a1;\nvoid __far * a3;\n"
+                          "void __far * a5;\nint2 a7;\n{")
+    assert "x = g(a1);" in out and "y = FP_OFF(a3) + 1;" in out and "h(FP_SEG(a3), a5);" in out
+    assert msc6.wine_definition(text, Export("X", "pascal", ["word"], False, False)) == text   # (words that do not add up)
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""

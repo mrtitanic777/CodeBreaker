@@ -317,6 +317,43 @@ def wine_typing(header, texts, exports=None):
     return _IMPORT.sub(declare, header), {fn: said(t) for fn, t in texts.items()}
 
 
+def wine_definition(text, export):
+    """`text` (as decompiled: parameters in stack order, a 4-byte one as its low word then its high)
+    with the parameters of an exported function typed as Wine's .spec has them (`export`, a
+    wine16.Export): each 4-byte parameter's two words one parameter -- a far pointer or a long --
+    used as such where the two are passed on together, and as FP_OFF/FP_SEG (or its halves) where
+    one is used alone. Unchanged when the words do not add up to the spec's parameters."""
+    from codebreaker.symbols import wine16
+    if not export or export.args is None:
+        return text
+    m = re.match(r"(?s)(.*?\b\w+\s*\()([\w\s,]*)(\)\s*\n)(.*?)(\{.*)", text)
+    if not m:
+        return text
+    head, plist, close, decls, body = m.groups()
+    params = [p.strip() for p in plist.split(",") if p.strip()]
+    kinds = list(reversed(export.args)) if export.convention == "pascal" else list(export.args)
+    if len(params) != sum(wine16.WIDTH[k] // 2 for k in kinds) or len(params) == len(kinds):
+        return text
+    out, k = [], 0
+    for kind in kinds:
+        if wine16.WIDTH[kind] == 2:
+            out.append(params[k])
+            k += 1
+            continue
+        lo, hi = params[k], params[k + 1]
+        k += 2
+        out.append(lo)
+        ptr = kind in wine16.POINTER
+        whole = "\x00%d\x00" % k                     # (the pair, kept out of the way while its halves change)
+        body = re.sub(r"(?<![\w.])%s\s*,\s*%s\b" % (re.escape(lo), re.escape(hi)), whole, body)
+        body = re.sub(r"(?<![\w.])%s\b" % re.escape(hi), ("FP_SEG(%s)" if ptr else "((uint2)((uint4)%s >> 16))") % whole, body)
+        body = re.sub(r"(?<![\w.])%s\b" % re.escape(lo), ("FP_OFF(%s)" if ptr else "((uint2)%s)") % whole, body)
+        body = body.replace(whole, lo)
+        decls = re.sub(r"^\s*\w+\s+%s\s*;[ \t]*\n" % re.escape(hi), "", decls, flags=re.M)
+        decls = re.sub(r"^(\s*)\w+(\s+)%s\s*;" % re.escape(lo), r"\1%s\2%s;" % (wine16.c_type(kind), lo), decls, flags=re.M)
+    return head + ",".join(out) + close + decls + body
+
+
 def sdk_header(header, sdk=None):
     """WINDOWS.H, then `header` (whose imports by number keep their own declarations: a call that
     cannot be said through the SDK's prototype -- sdk_calls -- stays as it was)"""
