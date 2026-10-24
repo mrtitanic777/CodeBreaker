@@ -1,155 +1,79 @@
-# CodeBreaker — where it stands, and what is next
+# CodeBreaker — where it stands
 
-Written 2026-10-13. Numbers are from runs on this machine against the Windows 95 corpus and
-twelve PowerPC sample images; each says which run it is from.
+Written 2026-10-24 from a `reach` run over the programs on the owner's PC (the commands below
+regenerate every number). The previous version of this page (2026-10-13) quoted figures from the
+first verifier, which later turned out to pass broken functions; they are not repeated here.
 
-## What the tool does today
+## How to read a number here
 
-One path for every kind of code: decompile, rebuild, run the rebuild beside the original on the
-same inputs, compare what both did, record a verdict per function, and write the source.
+A function counts as **verified** when it was decompiled, rebuilt, run beside the original on the
+same inputs and did the same things (calls, arguments, results, memory written). **Weak** means it
+matched with a stated limit (most often: under half of its instructions ran on any input).
+**Unverified** means it did something different, or did not compile. For the assembly lanes (DOS,
+drivers, 8-bit and 16-bit consoles) the whole program is also rebuilt from its source and compared
+byte for byte.
 
-| Kind of code | Output | How it is judged |
-|---|---|---|
-| 32-bit Windows | C, struct fields as fields, C++ classes described | behaviour, function by function |
-| 16-bit Windows | C | behaviour, function by function |
-| PowerPC | C with real import names, tables of functions described | behaviour, function by function |
-| Device drivers | assembly source that builds back | byte for byte, and behaviour of each entry point |
-| DOS programs | assembly source that builds back | byte for byte |
+How far "verified" can be trusted is itself measured: `teeth` breaks functions the judge passed and
+counts how many breaks it catches (README, "What a verdict means"). It has been run on
+a few modules only; a corpus-wide figure is still to do.
 
-Beside that path:
+## Reach: a sample of every platform on this PC
 
-- **A judge that is itself tested** (`teeth`): functions it passed are broken on purpose and it
-  is asked again.
-- **Toward the authored source** (`match`, `repair`): three compilers of the time are wired in
-  (Microsoft's 32-bit C of 1994, Microsoft C 6.0a for 16-bit code, the XENIX C compiler of the
-  1984 DOS tools), with a search over rewrites that change no meaning.
-- **Speed**: nothing is compiled or decompiled twice; a verdict holds until the function or
-  something it calls changes; the 32-bit emulator runs about six times faster than it did.
+`python -m codebreaker reach ../homebrew-samples ../Windows95/design/corpus/files C:/Nexia360/Games --judge`
+-- 5,225 files; up to 5 programs of each platform judged, spread across their sizes (the smallest,
+the largest under 4 MB, and between), each stopped after 5 minutes.
 
-## The numbers
-
-| Kind | Modules | Functions | Verified | Verified (weak) | Unverified | Not judged | Does not compile |
+| Platform | Programs found | Judged | Functions | Verified | Weak | Unverified | Stopped |
 |---|---|---|---|---|---|---|---|
-| DOS programs | 127 of 128 | 17,058 | 16,295 (96%) | — | 0 | — | 763 (two programs) |
-| Device drivers | 214 of 214 | 1,292 | 1,113 (86%) | 159 (12%) | 4 | — | 0 |
-| 16-bit Windows | 317 of 326 | 36,758 | 6,139 (17%) | 7,224 (20%) | 19,468 (53%) | — | 3,611 (10%) |
-| 32-bit Windows | 558 of 559 | 151,556 | 44,750 (30%) | 50,501 (33%) | 30,210 (20%) | 18,418 (12%) | 2,723 (2%) |
-| PowerPC, 12 images | 12 | 3,597 | 1,077 (30%) | 1,724 (48%) | 728 (20%) | — | 67 |
+| 16-bit Windows | 362 | 5 | 274 | 49% | 14% | 36% | 1 (a font file crashes the lane) |
+| 32-bit Windows | 638 | 5 | 502 | 49% | 28% | 20% | |
+| Xbox 360 (per function) | 177 | 5 | 241 | 47% | 19% | 32% | 2 (time limit: wininet.xex, a 3.9 MB default.xex) |
+| DOS programs | 132 | 5 | 601 | 100% | | | |
+| Device drivers (VxD) | 224 | 5 | 15 | 73% | 20% | | |
+| Game Boy / Color, Genesis, MSX, Master System, ZX Spectrum | 9 | 9 | 706 | 100% | | | |
+| .NET / XNA | 48 | not judged per function (the `xna` lane builds and runs whole games) | | | | | |
+| Big-endian ELF, machine 0x3D32 (Windows 95's d3d.uc, win31.uc) | 2 | no lane | | | | | |
 
-Notes on reading these:
+Five programs a platform is a sample, not a census: it shows the shape. The full Windows 95 corpus
+is measured by `coverage` and `sweep`; `reach --per-platform N` takes more.
 
-- **32-bit** is the second full pass (finished 2026-10-13), with 13 modules judged again after
-  a fix (2026-10-14). Against the first pass: verified 19% → 30%, weak 19% → 33%, does not
-  compile 28% → 2%. The fix: modules that are themselves a C runtime (mfc40, quartz, msvcrt,
-  crtdll, opengl32 ...) define their own sqrt/ldexp/floor, which clashed with the helpers'
-  declarations and broke the whole header -- 16,500 functions "did not compile" for that alone.
-  4,590 functions are runtime-library code, named and not counted as the module's own.
+What the sample says:
 
-## Whole modules
+- **Hand-written assembly comes back whole.** DOS, the drivers' code and every 8-bit / 16-bit console
+  program judged rebuild identically and verify.
+- **Compiled code (C) is about half verified**, on 16-bit and 32-bit Windows and the Xbox 360 alike,
+  and the larger the program the larger the unverified share (setup25i.exe: 63 verified, 88 not).
+  This is the main body of work: the causes are recorded per function (`tools/causes.py 16|32`).
+- **Large Xbox 360 modules do not finish per-function judging in 5 minutes.** Whole Xbox 360 titles
+  are proven the other way, recompiled to C++ that runs on a PC (`recompile-project`): see below.
 
-Every module rebuilt as one file -- all functions, data, resources, exports and imports linked
-into the original's format (`tools/build_all.py`, 2026-10-14):
+## Whole programs that run
 
-| Kind | Modules built | With every export, no foreign import | Exported functions that ran as the original's |
-|---|---|---|---|
-| 32-bit | 559 of 559 | 402 | 5,520 of 6,516 (85%) |
-| 16-bit | 326 of 326 | 287 | 4,427 of 5,947 (74%) |
+The real software put through each lane, and what came of it, is listed in
+`docs/TESTED_SOFTWARE.md`. In short:
 
-A function the compiler rejects, or that reaches near into another segment, is a stand-in
-that returns 0 in these builds; 41 32-bit and 67 16-bit modules have none at all. "Ran as the
-original's" is each export called with no arguments in the emulator: ended the same way and
-gave the same answer. Not yet tested: a rebuilt module running in place of the original.
-- **16-bit** is after the 64K fix (before it, 44% did not compile) but before the far-pointer
-  fix; a third pass is queued.
-- **"Verified (weak)"** means it matched with a stated limit — most often that under half of
-  the function's instructions ran on any input.
-- **DOS and drivers** are judged by rebuilding the whole file from assembly source, so a module
-  is all-or-nothing; that is why DOS has no "unverified".
+- **Windows 95**: the 15 MINI.CAB modules rebuilt from their reconstructed source (KRNL386, GDI and
+  USER with their C) boot together and take Setup to the License page (re-checked 2026-10-23 on
+  current master); with the 7 Setup programs, Setup has installed Windows to the desktop on them.
+- **Xbox 360**: Tetris Splash, Minecraft (TU0), Up and PAC-MAN CE play recompiled; nine more titles
+  run.
+- **XNA**: Arcadecraft and Block World build and run as MonoGame projects, their shaders recovered
+  as HLSL from Xbox microcode.
+- **Java**: Minecraft Alpha's classes as C++03, built and running.
+- **8-bit and 16-bit homebrew**: nine programs rebuild byte for byte and verify.
 
-## Brought in from the earlier CodeBreaker (2026-10-13)
+## Gaps found by this run
 
-Each checked against what the old code produced:
+- `serife.fon` (a 16-bit font resource file) crashes the 16-bit lane: `IndexError: pop from empty list`.
+- Seven Xbox 360 packages in the library do not open: five STFS packages ("index out of range")
+  and two `.xenon.package` files of a format not yet known.
+- `vmm32.vxd` (the drivers bundled into one W3 file) is filed under DOS programs.
+- Platforms with no lane yet (named by `reach` when it meets them): Game Boy Advance, Nintendo DS,
+  Nintendo 64, PlayStation, Super Nintendo, ELF by CPU (MIPS, ARM, SuperH, Cell), Android.
+  `docs/PLATFORMS.md` is the whole map and the order of work.
 
-- **Compiler models** (`invert`): functions read back into the source their compiler was given.
-  Microsoft C 6: olecli 38 of 378 byte-identical, lzexpand 4 of 35; functions are routed to
-  Microsoft C 6 or Visual C++ 1.52 by their frame. The 1983-84 C model: its local-variable
-  round trip is 19 of 19 through Microsoft C 2.03. The 1994 32-bit model agrees with the
-  installed compiler on 7 of 69 cases only -- it was made against another build; not usable yet.
-- **Drivers as the driver kit's macro source** (`vxd`): the same text as before for all 222
-  drivers, except where today's reading of driver pages is the more correct one; vkd.vxd builds
-  with ML and LINK to the original's size, its code object identical.
-- **16-bit hand-written assembly as cMacros source** (`ne-asm`); real internal names of KRNL386
-  from Microsoft's debug build (46, none contradicting its exports).
-- **Builds with the tools of the time**: a 16-bit DLL with Microsoft C 6 and LINK 5.60
-  (`build16`); a thunk DLL with the thunk compiler, ML, CL and LINK (`flat-thunk`; lz32 matches
-  the original in entry point, sections and exports).
-- **Readable names in the written source**, written in after judging: SDK constants, locals and
-  parameters named for the Windows parameters they are passed as, function-pointer globals for
-  what they point at, SDK structure fields, message numbers in switches, strings beside their
-  addresses, printf conversions. On comctl32, shell32, comdlg32 and advapi32, all 1,720 changed
-  functions compile to exactly the same code as the judged text.
-- **The Workbench** (`workbench`, `workbench --forms`, `live`): the earlier Windows 95-style
-  window, on today's commands.
+## Keeping these numbers current
 
-## How far to trust "verified"
-
-calc.exe (2026-10-13): 37 of 61 deliberate breaks caught -- comparisons 13 of 15, wrong arguments
-3 of 7. A round of randomly mutated inputs on top of the directed ones was tried and changed
-nothing (same 37 of 61, same verdicts), so it was not kept.
-
-On advapi32 the judge catches 13 of 16 functions deliberately broken after it had called them
-verified (it was 11 of 16 before two holes were closed). The three that survive are breaks
-nothing outside the function can observe. This has been run on one module only.
-
-## Toward the authored source
-
-- **1984 DOS tools (the ground truth):** the search brings back 289 of 289 functions knocked
-  away from their known original source.
-- **32-bit Windows (comctl32, first 200 functions):** 37 come out byte-identical with the 1994
-  compiler. It was 4 before the compiler was given the declarations an author would have had
-  and the switches the module was built with. The rewrites that reorder or rephrase (operand
-  order, declarations, `switch`, early returns, folded temporaries) add nothing on their own:
-  this compiler normalises them away.
-- **16-bit Windows:** the compiler runs and compares; no function matches yet on the two
-  modules tried.
-
-## Known gaps
-
-- **16-bit behaviour (53% unverified).** The main cause is the decompiler showing far pointers
-  as two unrelated numbers. A first fix reads the pointer loads from the original's code;
-  functions that reach near into another segment or take their own stack's address still fail.
-- **32-bit.** References to a function's own stack address do not compile; rebuilt whole DLLs
-  are not yet tested running in place of the original.
-- **PowerPC.** Images carry no class names; the remaining faults are mostly calls through
-  pointers that are null in the test setup.
-- **DOS.** `command.com` and `dosx.exe` each have one block of code over 64K, which the
-  assembler cannot emit as one segment. The kernel file (`winboot.sys`) is not attempted.
-- **Drivers.** Four entry points in two drivers differ; 16 have no source; 16-bit code inside
-  drivers is written as bytes.
-- **C++.** Classes are described in C++ syntax beside the C; methods are not compiled as
-  member functions.
-- **Struct fields** are written for accesses through arguments only, with positional names.
-
-## Roadmap
-
-1. **Finish measuring.** Let the second 32-bit pass and the third 16-bit pass finish; replace
-   the stale rows above. Run `teeth` on five or six large modules for a trust figure that does
-   not rest on one module.
-2. **16-bit far pointers, properly.** Tell the decompiler which argument pairs are far pointers
-   (from the same loads the text fix reads) so it types them itself, instead of repairing its
-   text afterwards. This is the largest single block of unverified functions in the corpus.
-3. **32-bit: the next causes.** After the second pass, rank again. Expected next: functions
-   that take the address of their own stack, and calling conventions that pass in registers.
-4. **Whole modules that run.** A rebuilt DLL loaded in place of the original is the real test
-   of "behaves as the original"; today only version.dll-sized modules are built whole.
-5. **Authored source.** The rewrites a normalising compiler does respond to are about types
-   and declarations, not statement shape: parameter types, structure types in place of
-   offsets, the real headers' prototypes. That is where the next exact matches are.
-6. **C++ as C++.** Compile recovered classes as classes for modules where the binary names
-   them (MFC programs first).
-7. **Other products.** Windows 1.0, 3.1 and 98 are configured and unmeasured.
-
-## Housekeeping decisions (the owner's)
-
-- The Windows95 repository has uncommitted generated files (module sources, SCOREBOARD.md).
-- This repository has no remote: all history is local.
+`reach` keeps its results in `state/reach/<name>.json` by each program's content and the tools'
+revision, and writes `state/reach/<name>.md`. Run it again after a change to the decompiler,
+builder or verifier: a program measured with the same tools is not measured again.

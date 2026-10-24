@@ -57,7 +57,7 @@ def _gap(path, head):
     if head[:4] == b"\x7fELF" and len(head) >= 20:
         machine = int.from_bytes(head[18:20], "little" if head[5] == 1 else "big")
         cpu = {0x08: "MIPS", 0x14: "PowerPC", 0x15: "PowerPC 64", 0x28: "ARM", 0x3E: "x86-64", 0x03: "x86",
-               0xB7: "AArch64", 0x2A: "SuperH", 0x17: "Cell SPU"}.get(machine, "machine %d" % machine)
+               0xB7: "AArch64", 0x2A: "SuperH", 0x17: "Cell SPU"}.get(machine, "machine 0x%X" % machine)
         return "ELF program", cpu
     if head[:2] == b"PK" and ext == ".apk":
         return "Android app", "Dalvik"
@@ -243,19 +243,27 @@ def judge(path, timeout):
             out.seek(0)
             text = out.read().decode("utf-8", "replace").strip().splitlines()
             stopped = (text or ["exit %d" % code])[-1][:160]
-    tally = {}
+    tally, why = tally_of(path)
+    return {"tally": tally, "seconds": round(time.time() - t0, 1), "stopped": stopped or why}
+
+
+def tally_of(path):
+    """(the function store's {class: count} for a program, "" or why there is none)."""
+    tally, stopped = {}, ""
     try:
+        from codebreaker.base import corpus
         from codebreaker.store import functions as F
         from codebreaker.verify import reconstruct
-        sha, digest = reconstruct.identity(path)
+        sha, digest = reconstruct.identity(corpus.retail(path))   # (filed as `measure` files it: a .xex
+                                                                    # under the basefile inside it)
         fs = F.open()
         try:
             tally = fs.tally(digest, sha)
         finally:
             fs.close()
     except Exception as e:                                   # noqa: BLE001
-        stopped = stopped or "no tally: %s" % str(e)[:120]
-    return {"tally": tally, "seconds": round(time.time() - t0, 1), "stopped": stopped}
+        stopped = "no tally: %s" % str(e)[:120]
+    return tally, stopped
 
 
 def spread(rows, n, max_size):
@@ -332,13 +340,16 @@ def report(rows):
     for r in sorted(progs, key=lambda r: (r["lane"] is None, r["platform"])):
         plats.setdefault(r["platform"], []).append(r)
     lines = ["# Reach", "", "What CodeBreaker made of every program it was given (`python -m codebreaker reach`).",
-             "", "| Platform | Programs | Lane | Judged | Functions | Verified | Weak | Unverified | Stopped |",
+             "Functions and percentages are those of the judged programs that finished; a program stopped at",
+             "its time limit is counted under Stopped only.", "",
+             "| Platform | Programs | Lane | Judged | Functions | Verified | Weak | Unverified | Stopped |",
              "|---|---|---|---|---|---|---|---|---|"]
     for plat, rs in plats.items():
         judged = [r for r in rs if r.get("judged")]
         t = collections.Counter()
-        for r in judged:
-            t.update(r["judged"]["tally"])
+        for r in judged:                                     # (a program stopped at its time limit:
+            if not r["judged"]["stopped"].startswith("timed out"):   # its functions never reached
+                t.update(r["judged"]["tally"])               # are not failures; counted as stopped)
         total = sum(t.values())
         pct = (lambda n: "%d (%d%%)" % (n, 100 * n // total) if total else "-")
         stopped = sum(1 for r in judged if r["judged"]["stopped"])
