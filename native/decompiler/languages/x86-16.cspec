@@ -137,6 +137,78 @@
       <register name="DF"/>
     </unaffected>
   </prototype>
+  <!-- Microsoft C's _fastcall (C 7.0 Programming Techniques, 30-32): up to three arguments in
+       registers, an int in AX, DX, BX in that order (a char in AL, DL, BL), the rest on the
+       stack, pushed left to right and removed by the callee. SUWIN's 7:0000 is one: it is the
+       original's bytes compiled as int _near _fastcall f(char c). -->
+  <prototype name="__fastcall16near" extrapop="unknown" stackshift="2">
+    <input>
+      <pentry minsize="1" maxsize="2">
+        <register name="AX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="2">
+        <register name="DX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="2">
+        <register name="BX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="500" align="2">
+        <addr offset="2" space="stack"/>
+      </pentry>
+    </input>
+    <output>
+        <pentry minsize="1" maxsize="2">
+          <register name="AX"/>
+        </pentry>
+        <pentry minsize="3" maxsize="4">
+          <addr space="join" piece1="DX" piece2="AX"/>
+        </pentry>
+    </output>
+    <unaffected>
+      <register name="SP"/>
+      <register name="BP"/>
+      <register name="SI"/>
+      <register name="DI"/>
+      <register name="DS"/>
+      <register name="CS"/>
+      <register name="SS"/>
+      <register name="DF"/>
+    </unaffected>
+  </prototype>
+  <prototype name="__fastcall16far" extrapop="unknown" stackshift="4">
+    <input>
+      <pentry minsize="1" maxsize="2">
+        <register name="AX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="2">
+        <register name="DX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="2">
+        <register name="BX"/>
+      </pentry>
+      <pentry minsize="1" maxsize="500" align="2">
+        <addr offset="4" space="stack"/>
+      </pentry>
+    </input>
+    <output>
+        <pentry minsize="1" maxsize="2">
+          <register name="AX"/>
+        </pentry>
+        <pentry minsize="3" maxsize="4">
+          <addr space="join" piece1="DX" piece2="AX"/>
+        </pentry>
+    </output>
+    <unaffected>
+      <register name="SP"/>
+      <register name="BP"/>
+      <register name="SI"/>
+      <register name="DI"/>
+      <register name="DS"/>
+      <register name="CS"/>
+      <register name="SS"/>
+      <register name="DF"/>
+    </unaffected>
+  </prototype>
   <prototype name="__regcall" extrapop="2" stackshift="2">
     <input>
       <pentry minsize="1" maxsize="2">

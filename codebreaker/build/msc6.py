@@ -107,6 +107,9 @@ def dialect(header, text):
             "#define __loadds _loadds", "#define __interrupt _interrupt", "#define __saveregs _saveregs",
             # (OpenWatcom's _Packed: the frame structure c_text writes is of words -- no padding to lose)
             "#define _Packed",
+            # (Microsoft's _fastcall: arguments in AX, DX, BX -- describe's __fastcall16 model)
+            "#define __fastcall _fastcall", "#define __fastcall16near __near __fastcall",
+            "#define __fastcall16far __far __fastcall",
             "#define MK_FP(s,o) ((void _far *)(((unsigned long)(unsigned)(s) << 16) | (unsigned)(o)))",
             "#define FP_OFF(p) ((unsigned)(unsigned long)(void _far *)(p))",
             "#define FP_SEG(p) ((unsigned)((unsigned long)(void _far *)(p) >> 16))"]
@@ -648,9 +651,9 @@ def function_code(obj, name):
     between its public name and the next -- or None. A header's own functions (static helpers, the
     reconstruction's stubs) come first in the segment, so the first code segment is not the function."""
     from codebreaker.invert import omf
-    want = name.lstrip("_").lower()
+    want = name.lstrip("_@").lower()             # (a C name _f, a fastcall one @f)
     for pub, (code, holes) in omf.functions(obj).items():
-        if pub.lstrip("_").lower() == want:
+        if pub.lstrip("_@").lower() == want:
             mask = bytearray(len(code))
             for at in holes:
                 if at < len(mask):

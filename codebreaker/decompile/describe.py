@@ -1012,6 +1012,40 @@ def results(d):
     return {va: size.get(where(va), 0) for va in d.names}
 
 
+_FASTCALL_REGS = {"ax": "ax", "al": "ax", "ah": "ax", "eax": "ax", "dx": "dx", "dl": "dx", "dh": "dx", "edx": "dx",
+                  "bx": "bx", "bl": "bx", "bh": "bx", "ebx": "bx"}
+
+
+def register_arguments(code, off):
+    """Whether the function at `off` takes arguments in AX, DX or BX -- Microsoft C's _fastcall: its
+    straight-line start (to the first jump, call or return) reads one of them (or AL, DL, BL) before
+    it writes it. SUWIN's 7:0000 begins `push bp / mov bp, sp / push ax` -- its char argument, kept in
+    its frame -- and its callers load AX just before the call."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    written = set()
+    for i in md.disasm(bytes(code[off:off + 64]), off):
+        if i.group(capstone.CS_GRP_JUMP) or i.group(capstone.CS_GRP_CALL) or i.group(capstone.CS_GRP_RET) \
+                or i.mnemonic in ("int", "iret", "retf"):
+            return False
+        try:
+            reads, writes = i.regs_access()
+        except capstone.CsError:
+            return False
+        ops = [o.strip() for o in i.op_str.split(",")]
+        same = i.mnemonic in ("xor", "sub", "sbb") and len(ops) == 2 and ops[0] == ops[1]
+        if not same:
+            for r in reads:
+                full = _FASTCALL_REGS.get(i.reg_name(r))
+                if full and full not in written:
+                    return True
+        for r in writes:
+            full = _FASTCALL_REGS.get(i.reg_name(r))
+            if full:
+                written.add(full)
+    return False
+
+
 def model_line(d, va, name, default="near"):
     """The description line for a function at `va`."""
     seg, off = where(va)
@@ -1039,6 +1073,10 @@ def model_line(d, va, name, default="near"):
     if hand and pop >= 0:
         pop += hand
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
+    # (opt-in until a Setup run has shown it; near ones only -- a far _fastcall function cannot be
+    # compiled with /Gw, the Windows prolog loading DS through AX: "illegal far _fastcall function")
+    if os.environ.get("CB_FASTCALL") == "1" and (kind or default) == "near" and register_arguments(code, off):
+        conv = "__fastcall16"
     # what it returns, as its instructions show (where it runs to: the next function's start)
     result = getattr(d, "results", {}).get(va)
     if result is None:                                       # (one found later: on its own)

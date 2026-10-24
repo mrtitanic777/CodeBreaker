@@ -485,6 +485,16 @@ def test_a_run_time_library_routine_is_named_outside_the_linker_s_bytes(monkeypa
     assert got == {"f": "MDLLCEW.LIB:__aFlmul"}
 
 
+def test_a_function_reading_ax_dx_or_bx_before_writing_it_takes_them_as_fastcall_arguments():
+    """SUWIN's 7:0000 begins `push bp / mov bp, sp / push ax` -- its char argument kept in its frame:
+    Microsoft's _fastcall. `xor ax, ax` writes AX without reading it; cdq writes DX (as EDX)."""
+    from codebreaker.decompile import describe
+    fastcall = bytes.fromhex("55" "8bec" "50" "a07a6c" "3846fe" "7504" "33c0" "c9" "c3")
+    plain = bytes.fromhex("c8080000" "57" "56" "33c0" "6699" "8956fa" "c9" "c3")     # enter; xor ax,ax; cdq; mov [bp-6],dx
+    assert describe.register_arguments(fastcall, 0)
+    assert not describe.register_arguments(plain, 0)
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""
