@@ -114,7 +114,7 @@ def _score(results):
                for v in results.values())
 
 
-def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False, sdk=False, fold=True, search=0):
+def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False, sdk=False, fold=True, search=0, wine=False):
     """-> ({segment: (compiler, flags)}, {name: (verdict, differing bytes, total)})
 
     Without `flags` the compiler and switches are chosen segment by segment (a segment is a source
@@ -150,6 +150,8 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     stages = ["fold", "far", "frame"] if fold else []   # (each subset of these is a way of saying it)
     if sdk:
         stages.append("sdk")
+    if wine:
+        stages.append("wine")                        # (imports typed by Wine's .spec: symbols/wine16.py)
     variants = {}
     for k in range(1 << len(stages)):
         on = {st for b, st in enumerate(stages) if k >> b & 1}
@@ -164,13 +166,19 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
         t = msc6.pascal_order(t, pascal)
         return "".join(msc6.ds_globals(msc6.sdk_calls(t, protos) if "sdk" in on else t))
     texts = {v: {fn: said(fn, on) for fn in todo} for v, on in variants.items()}
+    heads = {}
+    for v, on in variants.items():
+        h = header
+        if "wine" in on:
+            h, texts[v] = msc6.wine_typing(header, texts[v])
+        heads[v] = msc6.sdk_header(h) if "sdk" in on else h
     winner, code = {}, {}
 
     def judged(cc, fl, names, only=("plain",)):
         best = {}
         for v in only:
             how = variants[v]
-            built = msc6.compile_many({fn: texts[v][fn] for fn in names}, sdk_head if "sdk" in how else header, fl, work,
+            built = msc6.compile_many({fn: texts[v][fn] for fn in names}, heads[v], fl, work,
                                       compiler=cc, names={fn: fn for fn in names}, together=files)
             for fn in names:
                 got = match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0)
@@ -248,15 +256,20 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     out = {}
     for cc, fl in sorted(set(setting.values())):
         out.update(judged(cc, fl, [fn for fn in todo if setting[fn] == (cc, fl)], tuple(variants)))
+    from codebreaker.verify import runtime16         # (the compiler's run-time library: linked, not written)
+    run.library = runtime16.identify({fn: originals[address[fn]] for fn in todo})
+    for fn, lib in run.library.items():
+        if out.get(fn, ("",))[0] != "identical":
+            out[fn] = ("run-time library", 0, len(originals[address[fn]][0]))
     if search:                                       # the last bytes of the near misses (verify/search16.py)
         from codebreaker.verify import search16
-        near = {fn: (texts[winner[fn]][fn], v, setting[fn] + ("sdk" in variants[winner[fn]],))
+        near = {fn: (texts[winner[fn]][fn], v, setting[fn] + (winner[fn],))
                 for fn, v in out.items() if v[0] in ("same size", "different") and v[1] <= 0.4 * v[2]}
 
         def compile_group(g, sources):
             mates = {fn: texts[winner[fn]][fn] for k in {file_of[s] for s in sources} for fn in files[k]
                      if fn not in sources and fn in winner}   # (a rewrite is judged in its file)
-            built = msc6.compile_many(dict(mates, **sources), sdk_head if g[2] else header, g[1], work, compiler=g[0],
+            built = msc6.compile_many(dict(mates, **sources), heads.get(g[2], header), g[1], work, compiler=g[0],
                                       names={fn: fn for fn in list(sources) + list(mates)}, together=files)
             return {fn: match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else
                     ("does not compile", 0, 0) for fn in sources}
@@ -274,7 +287,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
 
 
 def main(argv):
-    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose] [--sdk] [--no-fold] [--search ROUNDS]"""
+    """python -m codebreaker match <16-bit module> [--flags "..."] [--compiler msc6|msvc152] [--first N] [--choose] [--sdk] [--no-fold] [--search ROUNDS] [--wine]"""
     from codebreaker.base import corpus
     flags = argv[argv.index("--flags") + 1] if "--flags" in argv else None
     compiler = argv[argv.index("--compiler") + 1] if "--compiler" in argv else None
@@ -283,13 +296,14 @@ def main(argv):
     args = [a for a in argv if not a.startswith("--") and a not in (flags, compiler, str(limit), rounds)]
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
     chosen, results = run(path, flags, limit, compiler=compiler, choose="--choose" in argv, sdk="--sdk" in argv, fold="--no-fold" not in argv,
-                          search=int(argv[argv.index("--search") + 1]) if "--search" in argv else 0)
+                          search=int(argv[argv.index("--search") + 1]) if "--search" in argv else 0,
+                          wine="--wine" in argv)
     counts = {}
     for v in results.values():
         counts[v[0]] = counts.get(v[0], 0) + 1
     print("%s: %d functions compiled with Microsoft C (%s): %s" % (
         os.path.basename(path), len(results), "; ".join(sorted({"%s %s" % c for c in getattr(run, "settings", chosen.values())})),
-        ", ".join("%s %d" % (k, counts[k]) for k in ("identical", "same size", "different", "does not compile")
+        ", ".join("%s %d" % (k, counts[k]) for k in ("identical", "run-time library", "same size", "different", "does not compile")
                   if counts.get(k))))
     won = {}
     for fn, v in getattr(run, "winner", {}).items():

@@ -250,6 +250,70 @@ def cdecl_imports(header, sdk=None):
     return _IMPORT.sub(swap, header)
 
 
+def wine_typing(header, texts, exports=None):
+    """(header, {name: text}) with every import by number that Wine's .spec types (symbols/wine16.py)
+    declared with its parameters and its result's width, and each call of it said with one argument
+    to a parameter -- a 4-byte parameter's two words joined (high first, as a pascal call pushes them;
+    low first in a C call's list). The texts are in Pascal order (pascal_order). An import with a call
+    whose arguments fit neither way keeps its declaration without parameters. `exports`: (module,
+    ordinal) -> wine16.Export, for tests."""
+    from codebreaker.symbols import wine16
+    look = exports or (lambda mod, n: wine16.exports(mod).get(n))
+    typed = {}
+    for m in _IMPORT.finditer(header):
+        e = look(m.group(1), int(m.group(2)))
+        if e and e.args is not None and e.convention in ("pascal", "cdecl"):
+            typed["%s_%s" % (m.group(1), m.group(2))] = e
+    call = re.compile(r"\b(%s)\s*\(" % "|".join(sorted(typed)) if typed else r"(?!x)x")
+
+    def calls(text):
+        for mm in call.finditer(text):
+            end = _close(text, mm.end())
+            if end > 0:
+                yield mm, end, _arguments(text[mm.end():end - 1])
+    fits = {}
+    for text in texts.values():
+        for mm, _end, args in calls(text):
+            e = typed[mm.group(1)]
+            ok = len(args) in (len(e.args), sum(wine16.WIDTH[a] // 2 for a in e.args))
+            fits[mm.group(1)] = fits.get(mm.group(1), True) and ok
+    use = {nm: e for nm, e in typed.items() if fits.get(nm, True)}
+
+    def said(text):
+        out, i = [], 0
+        for mm, end, args in calls(text):
+            if mm.group(1) not in use:
+                continue
+            e = use[mm.group(1)]
+            args = [a.strip() for a in args]
+            if len(args) != len(e.args):
+                joined, k = [], 0
+                for kind in e.args:
+                    if wine16.WIDTH[kind] == 4:
+                        hi, lo = (args[k], args[k + 1]) if e.convention == "pascal" else (args[k + 1], args[k])
+                        v = "(((uint4)(uint2)(%s) << 16) | (uint2)(%s))" % (hi, lo)
+                        joined.append("(void __far *)%s" % v if kind in wine16.POINTER else v)
+                        k += 2
+                    else:
+                        joined.append(args[k])
+                        k += 1
+                args = joined
+            out.append(text[i:mm.end()] + ", ".join(args) + ")")
+            i = end
+        out.append(text[i:])
+        return "".join(out)
+
+    def declare(m):
+        nm = "%s_%s" % (m.group(1), m.group(2))
+        if nm not in use:
+            return m.group(0)
+        e = use[nm]
+        conv = "__stdcall" if e.convention == "pascal" else "__cdecl"
+        return "extern %s __far %s %s(%s);" % ("uint2" if e.ret16 else "uint4", conv, nm,
+                                               ", ".join(wine16.c_type(a) for a in e.args) or "void")
+    return _IMPORT.sub(declare, header), {fn: said(t) for fn, t in texts.items()}
+
+
 def sdk_header(header, sdk=None):
     """WINDOWS.H, then `header` (whose imports by number keep their own declarations: a call that
     cannot be said through the SDK's prototype -- sdk_calls -- stays as it was)"""

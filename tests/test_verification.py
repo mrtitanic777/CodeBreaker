@@ -448,6 +448,43 @@ def test_a_cextdef_is_numbered_with_the_other_externals():
     assert o.ext == ["_far", "_ext"] and o.fix[0][3] == ("ext", "_ext")
 
 
+def test_wine_s_spec_types_an_import_and_its_calls_are_said_one_argument_to_a_parameter():
+    """Wine's .spec: `33 pascal -ret16 GetClientRect(word ptr)`, a stub's arguments in its comment.
+    lstrcpy(segptr, str) called with four words gets its pointers joined, high word first; a call
+    whose words fit neither way leaves its import without a prototype."""
+    from codebreaker.build import msc6
+    from codebreaker.symbols import wine16
+    spec = wine16.read_spec("33  pascal -ret16 GetClientRect(word ptr) GetClientRect16\n"
+                            "7    stub     IpFindFirstLine #(word str str ptr)\n"
+                            "88  pascal   lstrcpy(segptr str) lstrcpy16\n1 pascal X(double) X16\n")
+    assert spec[33] == wine16.Export("GetClientRect", "pascal", ["word", "ptr"], True, False)
+    assert spec[7].args == ["word", "str", "str", "ptr"] and spec[7].stub and spec[1].args is None
+    ex = {("USER", 33): spec[33], ("KERNEL", 88): spec[88], ("USER", 1): wine16.Export("Y", "pascal", ["word"], True, False)}
+    header = ("extern uint4 __far __stdcall USER_33();\nextern uint4 __far __stdcall KERNEL_88();\n"
+              "extern uint4 __far __stdcall USER_1();\n")
+    texts = {"f": "  USER_33(param_1, (void __far *)&rc);\n  KERNEL_88(a2, a1, b2, b1);\n  USER_1(1, 2);\n"}
+    h, t = msc6.wine_typing(header, texts, lambda m, n: ex.get((m, n)))
+    assert "extern uint2 __far __stdcall USER_33(uint2, void __far *);" in h
+    assert "extern uint4 __far __stdcall KERNEL_88(void __far *, void __far *);" in h
+    assert "extern uint4 __far __stdcall USER_1();" in h
+    assert "KERNEL_88((void __far *)(((uint4)(uint2)(a2) << 16) | (uint2)(a1)), " \
+           "(void __far *)(((uint4)(uint2)(b2) << 16) | (uint2)(b1)));" in t["f"]
+    assert "USER_1(1, 2);" in t["f"]
+
+
+def test_a_run_time_library_routine_is_named_outside_the_linker_s_bytes(monkeypatch):
+    """A function that is a library routine byte for byte, outside the places the linker filled in
+    (the routine's fix-ups, the original's relocations), is the library's -- __aFlmul in SUWIN."""
+    from codebreaker.verify import runtime16
+    routine = bytes([0x55, 0x8B, 0xEC, 0x9A, 0, 0, 0, 0, 0x5D, 0xCA, 0x08, 0x00])
+    mask = bytes([0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0])
+    monkeypatch.setattr(runtime16, "_routines", [("MDLLCEW.LIB:__aFlmul", routine, mask)])
+    linked = bytes([0x55, 0x8B, 0xEC, 0x9A, 0x34, 0x12, 0xFF, 0xFF, 0x5D, 0xCA, 0x08, 0x00])
+    other = bytes([0x55, 0x8B, 0xEC, 0x9A, 0x34, 0x12, 0xFF, 0xFF, 0x5D, 0xCA, 0x06, 0x00])
+    got = runtime16.identify({"f": (linked, b"\0" * 12), "g": (other, b"\0" * 12)})
+    assert got == {"f": "MDLLCEW.LIB:__aFlmul"}
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""
