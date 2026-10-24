@@ -322,7 +322,10 @@ def _relocated(nef, s, blob, auto, far_segments, function_at, segment_symbol, d,
     entries = {e["ordinal"]: e for e in nef.entries() if e.get("kind") in ("FIXED", "MOVEABLE")}
     refs = nef.module_refs()
     pointers, externs = {}, []
-    for off, src, add, r in _places(nef, s, bytes(blob)):
+    places = _places(nef, s, bytes(blob))
+    relocated = {off for off, _src, _add, _r in places}
+    original = bytes(blob)
+    for off, src, add, r in places:
         width = {3: 4, 2: 2, 5: 2, 0: 1}.get(src, 2)
         blob[off:off + width] = bytes(width)                 # the file keeps a chain link there, not a value
         where = "%s+0x%04x" % (label, off)
@@ -335,7 +338,7 @@ def _relocated(nef, s, blob, auto, far_segments, function_at, segment_symbol, d,
                 symbol = re.sub(r"\W", "_", nef.imported_name(r["name_off"]))
                 d.imports[symbol] = (mod, nef.imported_name(r["name_off"]))
             if src == 3 and not add:
-                pointers[off] = (4, "code __far *", "(code __far *)%s" % symbol, "")
+                pointers[off] = (4, "void __far *", "(void __far *)%s" % symbol, "")
                 externs.append(symbol)
             elif src == 5 and not add:                   # its offset: KERNEL's __WINFLAGS, a value
                 pointers[off] = (2, "uint2", "(uint2)%s" % symbol, "")
@@ -359,10 +362,37 @@ def _relocated(nef, s, blob, auto, far_segments, function_at, segment_symbol, d,
             tseg, toff = r["seg"], r["entry"]
         toff = (toff + add) & 0xFFFF
         fn = function_at((tseg, toff))
+        # A selector of a code segment right after a word that is a function's offset there: a far
+        # pointer to that function whose offset the linker wrote and whose selector the loader does
+        # (SETUPX's table of section handlers, DS:0F66: 4:52D2, 4:55D2, 4:56F8). Written as the
+        # pointer to the function by name, the linker writes its offset where the function is now --
+        # as a number it stayed the original's, and when the function moved, GenInstallEx called
+        # whatever was put in its place (Setup: SU99414 at "Preparing to copy files").
+        before = off - 2
+        named = (src == 2 and before >= 0 and before not in relocated and before not in pointers
+                 and tseg not in (auto, own) and function_at((tseg, struct.unpack_from("<H", original, before)[0])))
+        if named:
+            pointers.pop(off, None)
+            pointers[before] = (4, "void __far *", "(void __far *)%s" % named,
+                                "%d:%04X" % (tseg, struct.unpack_from("<H", original, before)[0]))
+            continue
+        # The same for a selector of a data segment the build carries: with the word before it, a
+        # far pointer into that segment -- the same bytes either way (the segment's object starts
+        # at its offset 0), and a constant Microsoft C takes too, where a selector alone is not
+        if src == 2 and before >= 0 and before not in relocated and before not in pointers and \
+                (tseg == auto or tseg in far_segments):
+            word = struct.unpack_from("<H", original, before)[0]
+            base = "(char __far *)&codebreaker_data" if tseg == auto else \
+                "(uint1 __far *)&codebreaker_segment_%d" % tseg
+            pointers.pop(off, None)
+            pointers[before] = (4, "void __far *", "(void __far *)(%s + 0x%x)" % (base, word), "")
+            continue
         if src == 5 and tseg in (auto, own):                 # an offset into this very segment: a number
             struct.pack_into("<H", blob, off, toff)
         elif src == 3 and fn:
-            pointers[off] = (4, "code __far *", "(code __far *)%s" % fn, "")
+            # (as void __far *: the same four bytes, and a constant Microsoft C takes for a __pascal
+            # function as well, where it refused a cast to a pointer to a cdecl function)
+            pointers[off] = (4, "void __far *", "(void __far *)%s" % fn, "")
         elif src == 3 and tseg == auto:
             pointers[off] = (4, "void __far *", "(void __far *)((char *)&codebreaker_data + 0x%x)" % toff, "")
         elif src == 3 and tseg in far_segments:
@@ -372,7 +402,9 @@ def _relocated(nef, s, blob, auto, far_segments, function_at, segment_symbol, d,
         elif src == 2 and tseg in far_segments:                                    # a segment carried,
             pointers[off] = (2, "__segment", "(__segment)&codebreaker_segment_%d" % tseg, "")
         elif src == 2 and segment_symbol and segment_symbol(tseg):                 # a code segment's
-            pointers[off] = (2, "__segment", "(__segment)&%s" % segment_symbol(tseg),
+            # (OpenWatcom: the selector of a symbol in that segment; Microsoft C has no such
+            # constant, but names the segment -- CODE<n>, as /NT CODE<n> builds it)
+            pointers[off] = (2, "__segment", "SELECTOR_OF(%s, \"CODE%d\")" % (segment_symbol(tseg), tseg),
                              "the selector of segment %d" % tseg)
         else:
             what = {5: "an offset in segment %d" % tseg,
@@ -404,6 +436,7 @@ def data16(path, function_at, far_segments=(), segment_symbol=None):
         nef.module_name(), size, len(blob)),
         " * It must be the first thing linked into the data segment: the code addresses it by offset. */"]
     head += ["extern uint4 __far __stdcall %s();" % x for x in sorted(set(externs))]
+    head += _SELECTOR_OF
     # data the module exports (KERNEL's THHOOK): the segment is cut there, and from there on it
     # is a variable of the export's own name -- the parts follow one another in the segment
     names = {}
@@ -433,6 +466,11 @@ def data16(path, function_at, far_segments=(), segment_symbol=None):
     head = head + [_segment_declaration(n) for n in named]
     d.source = "\n".join(head) + "\n" + "\n".join(parts)
     return d
+
+
+# a code segment's selector, as each compiler can say it in a constant
+_SELECTOR_OF = ["#ifdef __WATCOMC__", "#define SELECTOR_OF(symbol, name) ((__segment)&symbol)", "#else",
+                "#define SELECTOR_OF(symbol, name) __segname(name)", "#endif"]
 
 
 def _cut(pieces, offsets):
