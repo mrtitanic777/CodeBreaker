@@ -35,6 +35,8 @@ namespace xui
         bool Load(std::vector<uint8_t> data, std::string& error);
         const Entry* Find(std::string_view name) const; // case-insensitive, as XUI resolves paths
         const std::vector<Entry>& Entries() const { return entries_; }
+        // Its version 5 scenes' XuiControl has version 8's properties (Scene::Load): an NXE dashboard's package.
+        bool version8Control = false;
 
     private:
         std::vector<uint8_t> data_;
@@ -46,4 +48,16 @@ namespace xui
                          std::vector<std::string>* ids = nullptr);
 
     bool ReadFile(const std::filesystem::path& path, std::vector<uint8_t>& out);
+    // The files of a folder (ReadFile's source).
+    std::vector<std::filesystem::path> ListFiles(const std::filesystem::path& dir);
+
+    // Where the system UI's files come from (packages, fonts): the disk by default; a runtime that rebuilds files
+    // (the dashboard's version store: every dashboard version's files from patches on top of 1888's) sets its own.
+    // Either may be null (that one stays the disk's).
+    struct FileSource
+    {
+        bool (*read)(const std::filesystem::path& path, std::vector<uint8_t>& out) = nullptr;
+        std::vector<std::filesystem::path> (*list)(const std::filesystem::path& dir) = nullptr;
+    };
+    void SetFileSource(FileSource source);
 }

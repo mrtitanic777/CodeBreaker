@@ -322,3 +322,48 @@ void guide::host::OpenCloseDvdTray(bool open)
 {
     kernel::OpenCloseDvdTray(open);
 }
+
+// The Guide's Create Profile (createprofile.xex's flow: device, name, Save Profile): an offline profile on the hard
+// drive, as XamShowSigninUI's pane makes one (kernel::CreateLocalProfile).
+std::optional<uint64_t> guide::host::CreateProfile(const std::string& gamertag, std::string& error)
+{
+    std::u16string wide, reason;
+    for (unsigned char c : gamertag)
+        wide += char16_t(c);
+    const std::optional<size_t> index = kernel::CreateLocalProfile(wide, reason);
+    if (!index)
+    {
+        for (char16_t c : reason)
+            error += c < 0x80 ? char(c) : '?';
+        return std::nullopt;
+    }
+    return kernel::users::Profiles()[*index].xuid;
+}
+
+// Title.NewLiveSignup.xex is not run by the dashboard's runtime yet: the Guide gives the profile its account at once
+// (host::JoinLive, kernel/xam_live.cpp).
+bool guide::host::LaunchLiveSignup(uint32_t user)
+{
+    Log("System UI: Join Xbox Live for user {}: no signup title here, the account is made directly", user);
+    return false;
+}
+
+// Games on our Xbox LIVE: the dashboard's runtime does not track the running title's joinable session (XSessionCreate
+// only logs, kernel/xam_msg.cpp) nor hand it an accepted invite (XN_LIVE_INVITE_ACCEPTED), so Invite to Game is not
+// offered and Join Game / Accept say it cannot.
+std::optional<uint64_t> guide::host::CurrentGameSession(uint32_t)
+{
+    return std::nullopt;
+}
+
+std::optional<std::string> guide::host::InviteToGame(uint32_t, uint64_t)
+{
+    return "no joinable game session";
+}
+
+bool guide::host::JoinGame(uint32_t user, uint64_t inviter, uint64_t sessionId, bool fromGameInvite)
+{
+    Log("System UI: Join Game for user {} ({:016X}'s session {:016X}{}): not supported by this runtime yet", user,
+        inviter, sessionId, fromGameInvite ? ", a game invite" : "");
+    return false;
+}

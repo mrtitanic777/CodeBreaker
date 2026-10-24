@@ -164,8 +164,10 @@ namespace xui
     class Scene
     {
     public:
-        // Returns false with a reason in `error`.
-        bool Load(const uint8_t* data, size_t size, std::string& error);
+        // Returns false with a reason in `error`. `version8Control`: a version 5 scene's XuiControl has version 8's
+        // properties (NavTabForward / NavTabBackward included): the NXE dashboards' own scenes (6683 on) write it so;
+        // XAM's and the Blades dashboards' version 5 scenes do not (kControlV5, xur.cpp).
+        bool Load(const uint8_t* data, size_t size, std::string& error, bool version8Control = false);
         const Node& Root() const { return root_; }
         const FigurePath* Figure(uint32_t offset) const;
 
@@ -181,6 +183,7 @@ namespace xui
         struct V5Reader;
         bool LoadV5(std::string& error); // version 5: the XDK's and the Blades / NXE dashboards' (xur.cpp)
 
+        bool version8Control_ = false;
         std::vector<uint8_t> data_;
         struct Section { const uint8_t* data; size_t size; };
         std::map<std::string, Section> sections_;

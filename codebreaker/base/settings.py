@@ -30,6 +30,8 @@ and are named in one file, `settings.json` at the top of the checkout:
                     (default: native/retromcp/build/libs/retromcp.jar)
     ilspycmd        ILSpy's command line, which the `xna` lane decompiles .NET with  (default: PATH,
                     then ~/.dotnet/tools)
+    xna_overlays    per-game hand work laid over an `xna port` build, <dir>/<project name>/
+                    (default: state/xna/overlays)
     xbox360_keys    the Xbox 360 key store folder the `crypto` tools read (1BL_pub.bin, SB_prv.bin, ...)
                     (default: Keys/ in the current folder)
     xbox360_crypto_bin  the `crypto` tools' binaries folder: LZX libraries, the Free60 xenon-as and
@@ -76,7 +78,7 @@ DEFAULTS = {
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
-          "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd")
+          "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays")
 _loaded = None
 
 

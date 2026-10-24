@@ -57,9 +57,15 @@ namespace
     {
         enum class Mode { kMain, kBox, kAchievements, kSignIn, kCommunity, kCommunityBox, kKeyboard, kProfile,
                           kPartyOptions, kMessage, kCompose, kGames, kMessageType, kBio, kFriendsOf, kRecipients,
-                          kCompareGames, kCompareAchievements, kAchievementDetails, kFeedback, kPreferences,
-                          kProfileCreated, kAddXboxLive, kFeedbackText }
+                          kDevice, kWait, kSaveProfile, kJoinLive, kRecent, kCompareGames, kCompareAchievements,
+                          kAchievementDetails, kFeedback, kPreferences, kFeedbackText }
             mode = Mode::kMain;
+        // Create Profile: where B on its device selector goes (the sign-in pane, or the Guide's blades).
+        std::function<void()> createBack;
+        // Recent's Games & Apps rows: their title IDs.
+        std::vector<uint32_t> recentTitles[3]; // each Recent tab's rows' titles (Games & Apps, Downloads, All)
+        // Join Xbox Live's scene: where its B goes (the Guide's blades, Save Profile, the own Profile).
+        std::function<void()> joinBack;
         // The Community screen: its tab (the console's order: party, friends, messages, players), what each row and
         // each button of its message box does, and what the virtual keyboard's Done does.
         using Tab = guide::Tab;
@@ -99,10 +105,8 @@ namespace
         // 4 Vibration) and the online status read when it opened ("online", "away", "busy", "offline").
         uint32_t prefScene = 0;
         std::string onlineStatus = "online";
-        bool feedbackDirect = false;
-        bool fofDirect = false;
-        // Opened after Create Profile (Save Profile): Edit Profile's B comes back to it.
-        bool profileCreated = false; // the friends list opened by XamShowFofUI: B closes // opened by XamShowPlayerReviewUI / XamShowComplaintUI: done or B closes
+        bool feedbackDirect = false; // opened by XamShowPlayerReviewUI / XamShowComplaintUI: done or B closes
+        bool fofDirect = false;      // the friends list opened by XamShowFofUI: B closes
         struct CompareAchievement
         {
             std::u16string name, description, unachieved;
@@ -114,7 +118,7 @@ namespace
         bool profileFromCommunity = false;
         // The Community row A (or Y Create New) was pressed on: B from what it opened (a Profile, a message, the
         // composer, the keyboard) comes back to it, as the console's Community scene keeps its list under a drill-down
-        // (was the first row).
+        // (was the first row, owner 2026-10-16).
         uint32_t communityFocus = 0;
         // Which Profile screen kProfile shows: another player's, the user's own (Guide > Settings > Profile,
         // XamShowGamerCardUI) or its Edit Profile; and the row focused when coming back to it.
@@ -328,9 +332,6 @@ namespace
         return 0;
     }
 
-    void GuideCreateProfile(const std::shared_ptr<GuideSession>& g, const std::u16string& message,
-                            const std::u16string& text = u"");
-
     // Sign In from the Guide (0x913EA870: XamShowSigninUIp, one pane): the profiles not signed in, then Create Profile
     // and Download Profile; A on a profile signs it in to the Guide's controller. `focus` = profile IDs to focus.
     void GuideSignIn(const std::shared_ptr<GuideSession>& g, const std::vector<uint64_t>& focus = {})
@@ -339,14 +340,16 @@ namespace
         std::vector<xui::SignInEntry> entries;
         g->eligible.clear();
         for (size_t i = 0; i < profiles.size(); i++)
-        {
-            if (host::UserOfXuid(profiles[i].xuid))
-                continue;
-            g->eligible.push_back(i);
+            if (!host::UserOfXuid(profiles[i].xuid))
+                g->eligible.push_back(i);
+        // In alphabetical order of their gamertags (the owner's console).
+        std::stable_sort(g->eligible.begin(), g->eligible.end(), [&](size_t a, size_t b) {
+            return _stricmp(profiles[a].gamertag.c_str(), profiles[b].gamertag.c_str()) < 0;
+        });
+        for (size_t i : g->eligible)
             entries.push_back({ std::u16string(profiles[i].gamertag.begin(), profiles[i].gamertag.end()),
                                 profiles[i].liveEnabled ? u"Xbox Live" : u"", u"",
                                 host::GamerPicture(profiles[i].xuid) });
-        }
         Log("System UI: the Guide's sign-in pane ({} profiles)", entries.size());
         xui::GuideKeepPosition();
         g->mode = GuideSession::Mode::kSignIn;
@@ -388,13 +391,61 @@ namespace
     void GuideOwnProfile(const std::shared_ptr<GuideSession>& g, uint32_t focus = 0);
     void GuidePreferences(const std::shared_ptr<GuideSession>& g, uint32_t scene, uint32_t focus);
     void GuideFriendsOf(const std::shared_ptr<GuideSession>& g, uint64_t xuid, const std::string& tag);
-    void GuideProfileCreated(const std::shared_ptr<GuideSession>& g, uint32_t focus);
-    void GuideAddXboxLive(const std::shared_ptr<GuideSession>& g);
     void GuidePreferencePress(const std::shared_ptr<GuideSession>& g, uint32_t index, int step);
     void GuideEditProfile(const std::shared_ptr<GuideSession>& g, uint32_t focus);
     void GuideGamerZone(const std::shared_ptr<GuideSession>& g, uint32_t focus);
     void GuideSetGamerZone(const std::shared_ptr<GuideSession>& g, uint32_t zone);
     void GuideConnectToLive(const std::shared_ptr<GuideSession>& g);
+    void GuideCreateProfile(const std::shared_ptr<GuideSession>& g, std::function<void()> back);
+    void GuideRecent(const std::shared_ptr<GuideSession>& g);
+    uint32_t RunningTitle();
+    void GuideProfileName(const std::shared_ptr<GuideSession>& g, const std::u16string& text, bool afterUnloading = false);
+    std::u16string DefaultProfileName();
+    void GuideJoinLive(const std::shared_ptr<GuideSession>& g, std::function<void()> back);
+    void GuideJoinLiveSignup(const std::shared_ptr<GuideSession>& g);
+    void GuideSaveProfile(const std::shared_ptr<GuideSession>& g, uint32_t focus);
+    std::u16string Wide(const std::string& utf8);
+    // A message box of actions over the Guide's screens; B goes to `back` (else the Community's tab).
+    void GuideCommunityBox(const std::shared_ptr<GuideSession>& g, const std::u16string& title,
+                           const std::u16string& text, std::vector<std::pair<std::u16string, std::function<void()>>> buttons,
+                           uint32_t focus = 0, xui::MessageIcon icon = xui::MessageIcon::kNone);
+
+    // hud.xex's Xbox LIVE check before a LIVE feature (0x913E8968; Active Downloads 0x913E65A0, Redeem Code
+    // 0x913E66D8): on Xbox LIVE the feature goes ahead (`onLive`); else "Xbox Live Required" (hud 20) asks, Cancel
+    // focused, warning icon (0x913E81F0): signed out with no profile on the console hud 18 "... Join Xbox Live?" /
+    // Create New Profile (19); signed out with profiles hud 21 "... Sign in to Xbox Live?" / Sign In (XamStrings
+    // 157; hud also tests a flag at +0x1ED, taken as set: without it XAM's upsell shows); a LIVE profile offline hud
+    // 16 / Connect to Xbox Live (17). A local profile gets XAM's Xbox LIVE upsell (XamShowLiveUpsellUIEx): here Join
+    // Xbox Live.
+    void GuideLiveRequired(const std::shared_ptr<GuideSession>& g, std::function<void()> onLive)
+    {
+        const auto profile = host::SignedIn(g->user);
+        if (profile && host::OnLive(g->user))
+            return onLive();
+        if (profile && !profile->liveEnabled)
+            return GuideJoinLive(g, [g] { GuideBack(g); });
+        const std::u16string title = xui::HudString(20, u"Xbox Live Required");
+        const std::vector<std::u16string> cancel = { xui::CommonString(11, u"Cancel") };
+        auto ask = [&](size_t text, const char16_t* fallback, std::u16string button, std::function<void()> yes) {
+            GuideMessageBox(g, title, xui::HudString(text, fallback), { button, cancel[0] }, 1,
+                            xui::MessageIcon::kWarning, std::move(yes));
+        };
+        if (profile)
+            return ask(16, u"You need to be connected to Xbox Live to continue. Connect now?",
+                       xui::HudString(17, u"Connect to Xbox Live"), [g] {
+                           g->mode = GuideSession::Mode::kMain; // the box goes; the Guide waits for the answer
+                           xui::GuideMessageBoxClosed();
+                           GuideConnectToLive(g);
+                       });
+        if (host::Profiles().empty())
+            return ask(18, u"You need an Xbox Live profile to continue. Join Xbox Live?",
+                       xui::HudString(19, u"Create New Profile"), [g] {
+                           xui::GuideKeepPosition();
+                           GuideCreateProfile(g, [g] { GuideBack(g); });
+                       });
+        ask(21, u"You need an Xbox Live profile to continue. Sign in to Xbox Live?",
+            xui::CommonString(157, u"Sign In"), [g] { GuideSignIn(g); });
+    }
 
     // Back from the keyboard or a box: where the screen that opened it said (`back`), else the Community's tab.
     void GuideReturn(const std::shared_ptr<GuideSession>& g)
@@ -444,6 +495,13 @@ namespace
             return GuideOwnProfile(g);
         if (id == "btnRecoverGamertag") // Download Profile
             return GuideSignIn(g, DownloadProfiles());
+        if (id == "btnActiveDownloads" || id == "btnRedeemCode") // the Marketplace's: not on our Xbox LIVE
+            return GuideLiveRequired(g, [g, id] { GuideNotAvailable(g, id); });
+        if (id == "btnCreateNewGamertag") // Create Profile (CreateNewProfileNavButton); B comes back to it
+        {
+            xui::GuideKeepPosition();
+            return GuideCreateProfile(g, [g] { GuideBack(g); });
+        }
         if (id == "btnShutdown")
         {
             // ShutdownNavButton (0x913E7280): hud string 52, Turn Off Console / Cancel (focus Cancel), alert icon.
@@ -456,6 +514,11 @@ namespace
             return GuideTray();
         if (id == "btnConnectToLive")
             return GuideConnectToLive(g);
+        if (id == "btnQuickLaunch") // Games & Apps > Recent (GuideMainSceneNavButton: QuickLaunch.xur)
+        {
+            xui::GuideKeepPosition();
+            return GuideRecent(g);
+        }
         GuideNotAvailable(g, id);
     }
 
@@ -470,7 +533,7 @@ namespace
     }
 
     // Whether `user` is on our Xbox LIVE once its sign-in has decided: waits (up to 15 s) for the runtime's LIVE
-    // sign-in to succeed or to keep the user offline (live::Held; no server).
+    // sign-in to succeed or to keep the user offline (live::Held; no server, owner 2026-10-16).
     bool WaitForLive(uint32_t user)
     {
         for (int i = 0; i < 150; i++)
@@ -484,26 +547,40 @@ namespace
         return host::OnLive(user);
     }
 
-    // A profile chosen in the Guide's sign-in pane: signed in, then back to the Guide with the toast once its Xbox
-    // LIVE sign-in has its answer (signin.xex's "Signing in" while the logon runs; the pane stays meanwhile): "signed
-    // in" on Xbox LIVE or for a local profile, else "signed in offline". The toast used to come before the LIVE
-    // sign-in had finished, so a LIVE profile that then signed in showed "offline". On Xbox LIVE it
-    // is XAM's notification 8 "signed in to Xbox Live" (the user's capture), not 7.
+    // Signing a LIVE profile in to Xbox LIVE always shows signin.xex's "Signing in" for 3 seconds (owner, Guide.txt
+    // 96-100: the PC answers too fast to see it), longer while the server has not answered.
+    constexpr auto kLiveSignInShown = std::chrono::seconds(3);
+
+    void SleepUntil(std::chrono::steady_clock::time_point when)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (when > now)
+            std::this_thread::sleep_for(when - now);
+    }
+
+    xui::SignInEntry SignInRow(const guide::Profile& profile)
+    {
+        return { Wide(profile.gamertag), profile.liveEnabled ? u"Xbox Live" : u"", u"",
+                 host::GamerPicture(profile.xuid) };
+    }
+
+    // A profile chosen in the Guide's sign-in pane: signed in, then back to the Guide once its Xbox LIVE sign-in has its
+    // answer: a LIVE profile shows signin.xex's status scene ("Signing in" with the profile's row) meanwhile, at least
+    // 3 s. No toast for the Guide's sign-ins (owner, 2026-10-22; the game's and the dashboard's own sign-in UIs keep
+    // theirs).
     void GuideSignInProfile(const std::shared_ptr<GuideSession>& g, size_t index, const guide::Profile& profile)
     {
         const uint32_t user = g->user;
-        const std::u16string tag(profile.gamertag.begin(), profile.gamertag.end());
         host::SignIn(user, index);
         if (!profile.liveEnabled)
-        {
-            xui::QueueNotification(xui::kNotifySignedIn, user, tag);
             return GuideBack(g);
-        }
         g->signingIn = true;
-        std::thread([g, user, tag] {
+        xui::ShowSignInStatus(SignInRow(profile));
+        const auto shown = std::chrono::steady_clock::now() + kLiveSignInShown;
+        std::thread([g, user, shown] {
             const bool online = WaitForLive(user);
+            SleepUntil(shown);
             Log("System UI: Guide: user {} signed in{}", user, online ? " (on Xbox LIVE)" : " offline");
-            xui::QueueNotification(online ? xui::kNotifySignedInLive : xui::kNotifySignedInOffline, user, tag);
             std::lock_guard lock(g->mutex);
             g->signingIn = false;
             if (!g->ui->Closed() && g->mode == GuideSession::Mode::kSignIn)
@@ -511,10 +588,13 @@ namespace
         }).detach();
     }
 
-    // Connect to Xbox Live (hud 0x913E6AA8; "Join Xbox Live" for a local profile): the user's profile signs in to our
-    // Xbox LIVE again (live::Reconnect; nothing does it by itself after a failed sign-in or a lost connection). The
-    // Guide stays usable meanwhile; on Xbox LIVE: the "signed in" toast and the Guide's LIVE blades, else signin.xex's
-    // string 20 "Can't connect to Xbox Live ..." in a box over the Guide (was XAM's "Not Available").
+    // Connect to Xbox Live (hud 0x913E6AA8; "Join Xbox Live" for an offline profile): the user's LIVE profile signs in
+    // to our Xbox LIVE again (live::Reconnect; nothing does it by itself after a failed sign-in or a lost connection,
+    // owner's Guide.txt 103-104), with "Signing in" for at least 3 s. On Xbox LIVE: the Guide's LIVE blades (no toast,
+    // owner 2026-10-22). No server: signin.xex's string 21 "Your console can't connect to Xbox Live. Do you want to
+    // exit this session and test your network connection? ...", Yes / No (No focused, as the console's other
+    // exit-session questions); Yes is the dashboard's network test (another program: a stub, owner), No back to the
+    // blades on Connect to Xbox Live.
     void GuideConnectToLive(const std::shared_ptr<GuideSession>& g)
     {
         const auto profile = host::SignedIn(g->user);
@@ -522,47 +602,73 @@ namespace
             return GuideSignIn(g);
         if (host::OnLive(g->user) || g->connecting)
             return;
+        if (!profile->liveEnabled) // "Join Xbox Live": the profile has no Xbox LIVE account yet
+            return GuideJoinLive(g, [g] { GuideBack(g); });
         g->connecting = true;
         Log("System UI: Guide: Connect to Xbox LIVE for {}", profile->gamertag);
         const uint32_t user = g->user;
-        const std::u16string tag(profile->gamertag.begin(), profile->gamertag.end());
-        std::thread([g, user, tag] {
+        xui::GuideKeepPosition();
+        g->mode = GuideSession::Mode::kWait;
+        xui::ShowSignInStatus(SignInRow(*profile));
+        const auto shown = std::chrono::steady_clock::now() + kLiveSignInShown;
+        std::thread([g, user, shown] {
             const auto error = live::Reconnect(user);
             const bool online = !error && WaitForLive(user);
+            SleepUntil(shown);
             if (!online)
                 Log("System UI: Guide: Connect to Xbox LIVE failed: {}", error ? *error : std::string("not signed in"));
-            if (online)
-                xui::QueueNotification(xui::kNotifySignedInLive, user, tag);
             std::lock_guard lock(g->mutex);
             g->connecting = false;
+            if (g->ui->Closed())
+                return;
             if (online)
-                return GuideRefresh(g);
-            if (!g->ui->Closed() && g->mode == GuideSession::Mode::kMain)
-                GuideMessageBox(g, xui::CommonString(0x128, u"Xbox Live"),
-                                xui::SigninString(20, u"Can't connect to Xbox Live. Try signing in again or exit the "
-                                                      u"game."),
-                                { xui::CommonString(121, u"OK") }, 0, xui::MessageIcon::kError, {});
+                return GuideBack(g);
+            g->back = [g] { GuideBack(g); };
+            GuideCommunityBox(g, xui::CommonString(0x128, u"Xbox Live"),
+                              xui::SigninString(21, u"Your console can't connect to Xbox Live. Do you want to exit "
+                                                    u"this session and test your network connection? If you are "
+                                                    u"playing a game, you will lose any unsaved progress."),
+                              { { xui::CommonString(298, u"Yes"),
+                                  [g] {
+                                      Log("System UI: Guide: Test Connection leads to the dashboard: not here");
+                                      GuideBack(g);
+                                  } },
+                                { xui::CommonString(120, u"No"), [g] { GuideBack(g); } } },
+                              1, xui::MessageIcon::kWarning);
         }).detach();
     }
 
+    // Signing out shows hud's "Signing out" at least this long (owner, 2026-10-22: the PC answers too fast to see it).
+    constexpr auto kSignOutShown = std::chrono::seconds(1);
+
     // X (0x913E86A0): signed out, the sign-in pane; signed in, "Sign Out" (XamStrings 159) asking XamStrings 158, Yes /
-    // No (focus No, warning icon, 0x913E93E0); Yes signs the profile out and closes the Guide.
+    // No (focus No, warning icon, 0x913E93E0). Yes opens hud's StatusScene (0x913F8590 -> 0x913F8448: XamUserLogon
+    // without the user, txtMessage XamStrings 156 "Signing out"); when the logon finishes it navigates back to the
+    // Guide (0x913F8500), which stays open on its signed-out blades at Xbox Home (owner, 2026-10-22). No toast from
+    // the Guide's sign-ins and sign-outs (owner, 2026-10-22).
     void GuideSignInOut(const std::shared_ptr<GuideSession>& g)
     {
         const auto profile = host::SignedIn(g->user);
         if (!profile)
             return GuideSignIn(g);
-        const uint32_t user = g->user;
-        std::weak_ptr<SystemUi> weak = g->ui;
         GuideMessageBox(g, xui::CommonString(159, u"Sign Out"),
                         xui::CommonString(158, u"Are you sure you want to sign out?"),
                         { xui::CommonString(298, u"Yes"), xui::CommonString(120, u"No") }, 1, xui::MessageIcon::kWarning,
-                        [weak, user, gamertag = profile->gamertag] {
+                        [g] {
+                            const uint32_t user = g->user;
+                            g->mode = GuideSession::Mode::kWait;
+                            xui::ShowHudStatus(xui::CommonString(156, u"Signing out"));
+                            const auto shown = std::chrono::steady_clock::now() + kSignOutShown;
                             host::SignOut(user);
-                            xui::QueueNotification(xui::kNotifySignedOut, user,
-                                                   std::u16string(gamertag.begin(), gamertag.end()));
-                            if (auto ui = weak.lock())
-                                ui->Close("Sign Out", user);
+                            Log("System UI: Guide: user {} signed out", user);
+                            std::thread([g, shown] {
+                                SleepUntil(shown);
+                                std::lock_guard lock(g->mutex);
+                                if (g->ui->Closed() || g->mode != GuideSession::Mode::kWait)
+                                    return;
+                                xui::GuideForgetPosition();
+                                GuideBack(g);
+                            }).detach();
                         });
     }
 
@@ -629,6 +735,26 @@ namespace
                     GuideBack(g);
             }
             break;
+        case Mode::kRecent:
+        {
+            const xui::QuickLaunchAction action = xui::QuickLaunchPress(pressed);
+            if (action.kind == xui::QuickLaunchAction::kCancelled)
+                GuideBack(g);
+            else if (action.kind == xui::QuickLaunchAction::kLaunch)
+            {
+                // The running title closes the Guide (hud 0x913F6348; on Downloads / All too, owner 2026-10-22: the game
+                // is already open); anything else (XamContentLaunchImageInternalEx, 0x913F7640) starts another program:
+                // not here (owner).
+                const auto& titles = g->recentTitles[std::min<uint32_t>(action.tab, 2)];
+                const bool running = action.index < titles.size() && titles[action.index] == RunningTitle();
+                if (running)
+                    GuideClose(g, "Recent");
+                else
+                    Log("System UI: Guide: Recent: launching from tab {} leads out of this game: not here",
+                        action.tab + 1);
+            }
+            break;
+        }
         case Mode::kCompareGames:
         {
             // Compare Games over a player's Profile: A a title's achievements compared, B back to the Profile.
@@ -660,23 +786,6 @@ namespace
             }
             break;
         }
-        case Mode::kProfileCreated:
-        {
-            // Save Profile: Join Xbox Live, Customize Profile (Edit Profile; B there comes back here), Done / B.
-            const xui::PaneAction action = xui::PanePress(pressed);
-            if (action.kind == xui::PaneAction::kCancelled || (action.kind == xui::PaneAction::kChosen && action.index == 2))
-                GuideBack(g);
-            else if (action.kind == xui::PaneAction::kChosen && action.index == 0)
-                GuideAddXboxLive(g);
-            else if (action.kind == xui::PaneAction::kChosen && action.index == 1)
-            {
-                g->profileCreated = true;
-                GuideEditProfile(g, 0);
-            }
-            break;
-        }
-        case Mode::kAddXboxLive:
-            break; // the connection attempt answers
         case Mode::kPreferences:
         {
             // Up / down move, A presses (opens a scene, toggles a check box, picks a radio button), left / right
@@ -932,9 +1041,7 @@ namespace
             }
             if (action.kind == xui::PaneAction::kCancelled)
             {
-                if (g->profileView == View::kEdit && g->profileCreated)
-                    GuideProfileCreated(g, 1); // Customize Profile from Save Profile
-                else if (g->profileView == View::kEdit)
+                if (g->profileView == View::kEdit)
                     GuideOwnProfile(g, 1); // back on Edit Profile
                 else if (g->profileView == View::kPlayer && g->profileFromCommunity)
                     GuideCommunity(g, g->tab, g->communityFocus);
@@ -1004,10 +1111,51 @@ namespace
             }
             else if (action.kind == xui::PaneAction::kChosen && action.index == g->eligible.size() + 1)
                 GuideSignIn(g, DownloadProfiles());
-            else if (action.kind == xui::PaneAction::kChosen && host::createProfile)
-                GuideCreateProfile(g, u"Enter a gamertag for the new profile.");
             else if (action.kind == xui::PaneAction::kChosen)
-                Log("System UI: Guide sign-in: Create Profile is not available here");
+                GuideCreateProfile(g, [g] { GuideSignIn(g); });
+            break;
+        }
+        case Mode::kDevice:
+        {
+            // Create Profile's "Select a Device": A on the drive goes on to the profile's name, B back.
+            const xui::PaneAction action = xui::PanePress(pressed);
+            if (action.kind == xui::PaneAction::kCancelled && g->createBack)
+            {
+                auto back = g->createBack;
+                back();
+            }
+            else if (action.kind == xui::PaneAction::kChosen)
+                GuideProfileName(g, DefaultProfileName(), true);
+            break;
+        }
+        case Mode::kWait:
+            break; // Create Profile's steps, Checking network status, Signing in run on their own
+        case Mode::kJoinLive:
+        {
+            // hud's Join Xbox Live scene: its one button, B back where it was opened from.
+            const xui::PaneAction action = xui::PanePress(pressed);
+            if (action.kind == xui::PaneAction::kCancelled && g->joinBack)
+            {
+                auto back = g->joinBack;
+                back();
+            }
+            else if (action.kind == xui::PaneAction::kChosen)
+                GuideJoinLiveSignup(g);
+            break;
+        }
+        case Mode::kSaveProfile:
+        {
+            // Save Profile: Join Xbox Live, Customize Profile, Done. B does nothing here (on the console it goes
+            // back to the avatar choice, which this Guide does not have yet).
+            const xui::PaneAction action = xui::PanePress(pressed);
+            if (action.kind != xui::PaneAction::kChosen)
+                break;
+            if (action.index == 0)
+                GuideJoinLive(g, [g] { GuideSaveProfile(g, 0); });
+            else if (action.index == 1) // the dashboard's profile editor: another program (owner: stubbed)
+                Log("System UI: Guide: Save Profile > Customize Profile leads to the dashboard: not here");
+            else
+                GuideBack(g);
             break;
         }
         }
@@ -1052,14 +1200,6 @@ namespace
             return u"Wants to be your friend";
         if (f.request == "outgoing")
             return u"Friend request pending";
-        if (f.online && f.beacon)
-        {
-            // A beacon ("players wanted"): the game they want company in, then their note (or "Wants to play with
-            // you", Friends strings #86).
-            const std::u16string wants = xui::FriendsString(86, u"Wants to play with you");
-            return f.beacon->title.empty() ? wants
-                   : Wide(f.beacon->title) + u"\n" + (f.beacon->text.empty() ? wants : Wide(f.beacon->text));
-        }
         if (f.online)
         {
             // The title, then its rich presence under it (owner's 7_49_36: "COD: Black Ops II" / "At the main
@@ -1077,7 +1217,7 @@ namespace
         return Wide(tag);
     }
 
-    // ---- The real Community scene's rows (Guide.Friends.xex 17559's list classes) ----
+    // ---- The real Community scene's rows (Guide.Friends.xex 17559's list classes; NOTES session 20) ----
 
     // "%d" in one of the module's strings.
     std::u16string FormatCount(std::u16string format, size_t n)
@@ -1114,15 +1254,6 @@ namespace
             row.slotText[1] = xui::FriendsString(229, u"Friend request pending");
         else if (!f.online)
             row.slotText[1] = f.lastSeen ? u"Last online " + Ago(f.lastSeen) : xui::FriendsString(169, u"Offline");
-        else if (f.beacon)
-        {
-            // A beacon ("players wanted", our LIVE's beacons): the game they want company in, then their note (or the
-            // module's "Wants to play with you", strings.xus #86) under it.
-            row.slotText[1] = f.beacon->title.empty() ? xui::FriendsString(86, u"Wants to play with you")
-                                                      : Wide(f.beacon->title);
-            row.slotText[8] = f.beacon->text.empty() ? xui::FriendsString(86, u"Wants to play with you")
-                                                     : Wide(f.beacon->text);
-        }
         else
         {
             row.slotText[1] = f.title.empty() ? xui::FriendsString(170, u"Online") : Wide(f.title);
@@ -1168,7 +1299,8 @@ namespace
     // member in a game, owner's "in a party.png"; the person on the dashboard), 2 the voice icon (FUN_90127F70 with
     // FUN_90137428: 0 PartyMute.png muted, 1 Voice.png talking, 3 Headset.png a headset, nothing without one as the
     // capture without a headset shows; 2 VoiceDisable.png, voice not allowed, does not happen on our LIVE), 8 / 12
-    // the leader's Leader.png and Gold.png. Was empty for a member with a microphone who was not talking: our own row never showed one.
+    // the leader's Leader.png and Gold.png. Was empty for a member with a microphone who was not talking (owner,
+    // 2026-10-16): our own row never showed one.
     // A party member's voice icon (slot 2) now: this PC's from its default recording device and its sound level,
     // another member's from the voice frames heard from them (their microphone is open, and how loud).
     std::string VoiceIcon(uint64_t xuid, bool self)
@@ -1263,35 +1395,21 @@ namespace
 
     void GuideKeyboard(const std::shared_ptr<GuideSession>& g, const std::u16string& title,
                        const std::u16string& description, size_t maxLength,
-                       std::function<void(const std::u16string&)> done, const std::u16string& text = u"")
+                       std::function<void(const std::u16string&)> done, const std::u16string& text = u"",
+                       bool afterUnloading = false, bool gamertag = false)
     {
         g->mode = GuideSession::Mode::kKeyboard;
         g->keyboardDone = std::move(done);
-        xui::ShowKeyboard(title, description, text, maxLength);
-    }
-
-    // Create Profile from the Guide's sign-in pane: the gamertag on the keyboard, then the new profile signs in to the
-    // Guide's controller (as choosing it in the pane does); a gamertag the runtime refuses asks again with the reason.
-    void GuideCreateProfile(const std::shared_ptr<GuideSession>& g, const std::u16string& message,
-                            const std::u16string& text)
-    {
-        GuideKeyboard(g, u"Create Profile", message, 15, [g](const std::u16string& gamertag) {
-            std::u16string reason;
-            const std::optional<size_t> index = host::createProfile(gamertag, reason);
-            if (!index)
-                return GuideCreateProfile(g, reason, gamertag);
-            const std::vector<guide::Profile> profiles = host::Profiles();
-            if (*index < profiles.size())
-                GuideSignInProfile(g, *index, profiles[*index]);
-        }, text);
+        xui::ShowKeyboard(title, description, text, maxLength, afterUnloading, gamertag);
     }
 
     // A message box of actions over the Community screen; Back (or B) returns to it.
     void GuideCommunityBox(const std::shared_ptr<GuideSession>& g, const std::u16string& title,
-                           const std::u16string& text, std::vector<std::pair<std::u16string, std::function<void()>>> buttons)
+                           const std::u16string& text, std::vector<std::pair<std::u16string, std::function<void()>>> buttons,
+                           uint32_t focus, xui::MessageIcon icon)
     {
         g->mode = GuideSession::Mode::kCommunityBox;
-        g->boxFocus = 0;
+        g->boxFocus = focus;
         g->boxActions.clear();
         std::vector<std::u16string> labels;
         for (auto& [label, action] : buttons)
@@ -1301,7 +1419,13 @@ namespace
         }
         g->boxButtons = labels.size();
         Log("System UI: Community: \"{}\" / \"{}\"", Utf8(title), Utf8(text));
-        xui::ShowMessageBox(title, text, labels, 0, xui::MessageIcon::kNone);
+        xui::ShowMessageBox(title, text, labels, focus, icon);
+    }
+
+    // Our server's answer for a gamertag no account has (live_server.py "no such gamertag").
+    bool IsNoSuchGamertag(const std::optional<std::string>& error)
+    {
+        return error && error->find("no such gamertag") != std::string::npos;
     }
 
     // The outcome of a request: a box with OK, then back to the tab.
@@ -1310,6 +1434,348 @@ namespace
     {
         GuideCommunityBox(g, title, error ? Wide("Sorry, that didn't work: " + *error + ".") : success,
                           { { u"OK", nullptr } });
+    }
+
+    // Why a profile name cannot be used, in XAM's words (sharedres://LiveProfile.xus 7-12, as createprofile.xex shows
+    // them), or empty: the console's rules (letters, digits, single spaces, a letter first) and no other profile on
+    // the console with that name.
+    std::u16string ProfileNameProblem(const std::u16string& name)
+    {
+        const auto letter = [](char16_t c) { return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z'); };
+        if (name.empty())
+            return u"Your profile must have a name.";
+        if (!letter(name[0]))
+            return u"Your profile name must begin with a letter.";
+        if (!std::all_of(name.begin(), name.end(),
+                         [&](char16_t c) { return letter(c) || (c >= u'0' && c <= u'9') || c == u' '; }))
+            return u"Your profile name can consist only of letters, numbers, and spaces.";
+        if (name.find(u"  ") != std::u16string::npos)
+            return u"Your profile name cannot contain two spaces in a row.";
+        if (name.back() == u' ')
+            return u"Your profile name cannot end with a space.";
+        const std::string utf8 = Utf8(name);
+        for (const guide::Profile& p : host::Profiles())
+            if (_stricmp(p.gamertag.c_str(), utf8.c_str()) == 0)
+                return u"The profile name '" + name + u"' is already in use. Please enter another name.";
+        return u"";
+    }
+
+    // The name createprofile.xex offers: "Player%u" with the lowest number no profile on the console has.
+    std::u16string DefaultProfileName()
+    {
+        for (uint32_t n = 1;; n++)
+            if (const std::u16string name = Wide("Player" + std::to_string(n)); ProfileNameProblem(name).empty())
+                return name;
+    }
+
+    // Create Profile (the signed-out Guide's button, the sign-in pane's row before Download Profile; createprofile.xex,
+    // as the owner's console shows it): "Select a Device" for the profile (this PC's drive, the one device; B goes to
+    // `back`), the virtual keyboard ("Enter Profile Name", up to 15 characters, "Player1" or the next free number
+    // already typed; B back to the devices), then its wait scene "Creating profile", "Signing in" (the new offline
+    // profile signs in to the Guide's controller), "Updating profile", one second each, then Save Profile ("You now
+    // have your very own offline profile"): Join Xbox Live, Customize Profile, Done (the Guide's blades, now the
+    // profile's). The console's avatar choice between the waits and Save Profile (Guide.AvatarMiniCreator.xex, 3D
+    // avatars) is not here yet. A name it cannot take: a box with XAM's reason, OK opens the keyboard again on that
+    // text.
+    void GuideCreateProfile(const std::shared_ptr<GuideSession>& g, std::function<void()> back)
+    {
+        g->createBack = std::move(back);
+        ULARGE_INTEGER freeBytes{}, totalBytes{};
+        GetDiskFreeSpaceExW(L".", &freeBytes, &totalBytes, nullptr);
+        xui::DeviceEntry drive;
+        // The upright storage icon (ico_64x_BuiltInMU), as the owner's console shows its own storage in "Select a
+        // Device" ("create profile.mp4"); owner's Patch Notes: not the tilted drive or USB.
+        drive.kind = 2; // the memory unit's icon
+        drive.name = u"Hard Drive";
+        drive.freeBytes = freeBytes.QuadPart;
+        drive.totalBytes = totalBytes.QuadPart;
+        Log("System UI: Guide: Create Profile: Select a Device");
+        g->mode = GuideSession::Mode::kDevice;
+        xui::ShowDeviceSelector({ drive }, 0);
+    }
+
+    // Create Profile's steps after the name (the session's mutex held): the wait scene's texts a second each, the
+    // profile signing in during "Signing in", then Save Profile. The Guide may close meanwhile; the profile stays.
+    void GuideCreateProfileSteps(const std::shared_ptr<GuideSession>& g, uint64_t xuid, const std::u16string& name)
+    {
+        g->mode = GuideSession::Mode::kWait;
+        xui::ShowProfileWait(xui::CreateProfileString(11, u"Creating profile"));
+        std::thread([g, xuid, name] {
+            auto step = [&g](size_t text, const char16_t* fallback) {
+                std::lock_guard lock(g->mutex);
+                if (g->ui->Closed())
+                    return false;
+                xui::ShowProfileWait(xui::CreateProfileString(text, fallback));
+                return true;
+            };
+            Sleep(1000);
+            {
+                std::lock_guard lock(g->mutex);
+                const std::vector<guide::Profile> profiles = host::Profiles();
+                for (size_t i = 0; i < profiles.size(); i++)
+                    if (profiles[i].xuid == xuid && !host::UserOfXuid(xuid))
+                    {
+                        host::SignIn(g->user, i);
+                    }
+            }
+            if (!step(33, u"Signing in"))
+                return;
+            Sleep(1000);
+            if (!step(39, u"Updating profile"))
+                return;
+            Sleep(1000);
+            std::lock_guard lock(g->mutex);
+            if (g->ui->Closed())
+                return;
+            Log("System UI: Guide: Create Profile: Save Profile for {}", Utf8(name));
+            GuideSaveProfile(g, 0);
+        }).detach();
+    }
+
+    // ---- Games & Apps > Recent (hud.xex's QuickLaunch.xur and its QL* list classes) ----
+
+    std::mutex g_recentMutex;
+    guide::RecentSources g_recent;
+
+    uint32_t RunningTitle()
+    {
+        std::lock_guard lock(g_recentMutex);
+        return g_recent.runningTitleId;
+    }
+
+    // XamFormatDateString's short date as the US console shows it (owner: "6/29/2017").
+    std::u16string ShortDate(uint64_t fileTime)
+    {
+        FILETIME utc{ DWORD(fileTime), DWORD(fileTime >> 32) }, local{};
+        SYSTEMTIME t{};
+        FileTimeToLocalFileTime(&utc, &local);
+        FileTimeToSystemTime(&local, &t);
+        return Wide(std::format("{}/{}/{}", t.wMonth, t.wDay, t.wYear));
+    }
+
+    // The rows as hud's list classes make them. Games & Apps (QLRecentlyPlayedList, 0x913FBBB0): the profile's titles
+    // played in the enumerator's order (12 asked, at most 6 shown), without the system's (0x584Axxxx, 0x584807DC,
+    // 0x5848085B; 0x913FB448 / 0x913FB4C8): name, hud string 9 "%1!u! of %2!u! Achievements", the gamerscore, the
+    // tile. Downloads (QLRecentlyDownloadedList): packages installed in the last 28 days, newest first, at most 6
+    // (0x913F6F58, 0x913F63C0, 0x913F5B00): name and XamFormatDateString of the date. All (QLAllGamesList): content
+    // types 2 (not the system's 0x5848xxxx / 0x584E07D2), 0x4000, 0x5000, 0x7000 and 0xD0000, alphabetical
+    // (XamUniSortCmpString, 0x913FBB98). Both skip 0x584807DC / 0x5848085B.
+    void GuideRecent(const std::shared_ptr<GuideSession>& g)
+    {
+        xui::QuickLaunchInfo info;
+        for (auto& titles : g->recentTitles)
+            titles.clear();
+        info.signedIn = host::SignedIn(g->user).has_value();
+        if (info.signedIn)
+        {
+            const std::u16string format = xui::HudString(9, u"%1!u! of %2!u! Achievements");
+            std::function<std::vector<host::PlayedTitle>(uint32_t)> source;
+            {
+                std::lock_guard lock(g_recentMutex);
+                source = g_recent.played;
+            }
+            for (const host::PlayedTitle& t : source ? source(g->user) : host::PlayedTitles(g->user))
+            {
+                if ((t.titleId >> 16) == 0x584A || t.titleId == 0x584807DC || t.titleId == 0x5848085B)
+                    continue;
+                if (info.played.size() == 12)
+                    break;
+                std::u16string line2 = format;
+                auto put = [&line2](const char16_t* key, uint32_t value) {
+                    if (const size_t at = line2.find(key); at != std::u16string::npos)
+                        line2.replace(at, std::char_traits<char16_t>::length(key), Wide(std::to_string(value)));
+                };
+                put(u"%1!u!", t.earned);
+                put(u"%2!u!", t.achievements);
+                xui::QuickLaunchRow row;
+                row.name = t.name;
+                row.line2 = line2;
+                row.right = Wide(std::to_string(t.gamerscore));
+                row.picture = t.tile;
+                info.played.push_back(std::move(row));
+                g->recentTitles[0].push_back(t.titleId);
+            }
+        }
+        std::vector<guide::InstalledContent> content;
+        {
+            std::lock_guard lock(g_recentMutex);
+            if (g_recent.installed)
+                content = g_recent.installed();
+        }
+        std::erase_if(content, [](const guide::InstalledContent& c) {
+            return c.titleId == 0x584807DC || c.titleId == 0x5848085B;
+        });
+        FILETIME nowTime{};
+        GetSystemTimeAsFileTime(&nowTime);
+        const uint64_t now = uint64_t(nowTime.dwHighDateTime) << 32 | nowTime.dwLowDateTime;
+        constexpr uint64_t kTwentyEightDays = 28ull * 24 * 3600 * 10000000;
+        std::vector<guide::InstalledContent> recent;
+        for (const guide::InstalledContent& c : content)
+            if (c.installed + kTwentyEightDays >= now)
+                recent.push_back(c);
+        std::stable_sort(recent.begin(), recent.end(),
+                         [](const guide::InstalledContent& a, const guide::InstalledContent& b) { return a.installed > b.installed; });
+        if (recent.size() > 6)
+            recent.resize(6);
+        for (const guide::InstalledContent& c : recent)
+        {
+            info.downloads.push_back({ c.name, u"", ShortDate(c.installed), c.thumbnail, c.trial });
+            g->recentTitles[1].push_back(c.titleId);
+        }
+        std::vector<guide::InstalledContent> all;
+        for (const guide::InstalledContent& c : content)
+        {
+            const uint32_t type = c.contentType;
+            if (type == 2 ? ((c.titleId >> 16) != 0x5848 && c.titleId != 0x584E07D2)
+                          : (type == 0x4000 || type == 0x5000 || type == 0x7000 || type == 0xD0000))
+                all.push_back(c);
+        }
+        std::stable_sort(all.begin(), all.end(), [](const guide::InstalledContent& a, const guide::InstalledContent& b) {
+            return CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE, reinterpret_cast<const wchar_t*>(a.name.c_str()),
+                                  int(a.name.size()), reinterpret_cast<const wchar_t*>(b.name.c_str()),
+                                  int(b.name.size())) == CSTR_LESS_THAN;
+        });
+        for (const guide::InstalledContent& c : all)
+        {
+            info.all.push_back({ c.name, u"", u"", c.thumbnail, c.trial });
+            g->recentTitles[2].push_back(c.titleId);
+        }
+        Log("System UI: Guide: Recent ({} played, {} downloads, {} in All)", info.played.size(), info.downloads.size(),
+            info.all.size());
+        g->mode = GuideSession::Mode::kRecent;
+        xui::ShowQuickLaunch(info);
+    }
+
+    // Save Profile for the Guide's signed-in profile (Create Profile's last scene; back from its Join Xbox Live).
+    void GuideSaveProfile(const std::shared_ptr<GuideSession>& g, uint32_t focus)
+    {
+        const auto profile = host::SignedIn(g->user);
+        if (!profile)
+            return GuideBack(g);
+        g->mode = GuideSession::Mode::kSaveProfile;
+        xui::ShowSaveProfile(Wide(profile->gamertag), host::GamerPicture(profile->xuid), focus);
+    }
+
+    // createprofile.xex asks for the name with XamShowKeyboardUI after XamShowDeviceSelectorUI: coming from the
+    // device selector (`afterUnloading`), the selector's scene goes, the big panel stays empty while vk.xex loads, then
+    // the keyboard shows in it (owner's "create profile.mp4").
+    void GuideProfileName(const std::shared_ptr<GuideSession>& g, const std::u16string& text, bool afterUnloading)
+    {
+        g->back = [g] { GuideCreateProfile(g, g->createBack); };
+        GuideKeyboard(g, xui::CreateProfileString(15, u"Enter Profile Name"),
+                      u"Enter a profile name. Your profile name can contain up to 15 characters.", 15,
+                      [g](const std::u16string& entered) {
+                          std::string error;
+                          std::u16string problem = ProfileNameProblem(entered);
+                          const auto xuid = problem.empty() ? host::CreateProfile(Utf8(entered), error) : std::nullopt;
+                          if (problem.empty() && !xuid)
+                              problem = Wide(error + ".");
+                          if (!xuid)
+                              return GuideCommunityBox(g, xui::CreateProfileString(13, u"Profile"), problem,
+                                                       { { u"OK", [g, entered] { GuideProfileName(g, entered); } } });
+                          g->back = nullptr;
+                          GuideCreateProfileSteps(g, *xuid, entered);
+                      },
+                      text, afterUnloading);
+    }
+
+    // Join Xbox Live for an offline profile (the profile blade's Join Xbox Live, Save Profile's first button, the own
+    // Profile's row, "Xbox Live Required"): hud.xex's InfoUpsellLive.xur, one big Join Xbox Live button that calls
+    // XamShowLiveSignupUI (hud 0x913F05B8); B goes to `back`.
+    void GuideJoinLive(const std::shared_ptr<GuideSession>& g, std::function<void()> back)
+    {
+        if (!host::SignedIn(g->user))
+            return GuideBack(g);
+        g->joinBack = std::move(back);
+        Log("System UI: Guide: Join Xbox Live");
+        g->mode = GuideSession::Mode::kJoinLive;
+        xui::ShowJoinLive();
+    }
+
+    // XamShowLiveSignupUI, as the owner's console shows it (Guide.txt 70-74): the signup is another program
+    // (Title.NewLiveSignup.xex), so createprofile.xex first asks "Exit Session" (its strings 2 / 5, Yes / No, No
+    // focused; No: back to the button), then its wait scene says "Checking network status" (string 0, at least 1 s,
+    // owner) while our server is tried. Not reachable: "Can't Connect" (22 / 21); Test Connection is the dashboard's
+    // network test (another program: a stub), B back to the button. Reachable: the signup (Welcome to Xbox Live,
+    // Microsoft account, email, password: Guide.txt 111-116).
+    // It is Xbox LIVE's signup runs as the console's does (owner, 2026-10-22: Title.NewLiveSignup.xex itself, recompiled
+    // in the dashboard's runtime; host::LaunchLiveSignup). A runtime that cannot run it (a game started on its own)
+    // makes the profile an Xbox LIVE account at once (host::JoinLive: a generated gamertag, as the signup gives) and
+    // signs it in to our server.
+    void GuideJoinLiveSignup(const std::shared_ptr<GuideSession>& g)
+    {
+        auto toButton = [g] { GuideJoinLive(g, g->joinBack); };
+        g->back = toButton;
+        GuideCommunityBox(
+            g, xui::CreateProfileString(2, u"Exit Session"),
+            xui::CreateProfileString(5, u"To connect to Xbox Live, you must exit your current session. If you are "
+                                        u"playing a game, you will lose any unsaved progress.\n\nAre you sure you "
+                                        u"want to exit?"),
+            { { xui::CommonString(298, u"Yes"),
+                [g, toButton] {
+                    if (g->connecting)
+                        return;
+                    g->connecting = true;
+                    g->mode = GuideSession::Mode::kWait;
+                    xui::ShowProfileWait(xui::CreateProfileString(0, u"Checking network status"));
+                    const uint32_t user = g->user;
+                    const auto shown = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+                    std::thread([g, user, shown, toButton] {
+                        const bool reachable = live::Connect();
+                        SleepUntil(shown);
+                        Log("System UI: Guide: Join Xbox Live: network {}", reachable ? "reachable" : "not reachable");
+                        if (!reachable)
+                        {
+                            std::lock_guard lock(g->mutex);
+                            g->connecting = false;
+                            if (g->ui->Closed())
+                                return;
+                            g->back = toButton;
+                            GuideCommunityBox(
+                                g, xui::CreateProfileString(22, u"Can't Connect"),
+                                xui::CreateProfileString(21, u"Can't connect to Xbox Live. Select Test Connection to "
+                                                             u"troubleshoot your connection.\n\nFor more info, go to "
+                                                             u"www.xbox.com/support."),
+                                { { xui::CreateProfileString(38, u"Test Connection"),
+                                    [toButton] {
+                                        Log("System UI: Guide: Test Connection leads to the dashboard: not here");
+                                        toButton();
+                                    } } },
+                                0, xui::MessageIcon::kError);
+                            return;
+                        }
+                        // The console's way: the session ends and Xbox LIVE's signup runs (host::LaunchLiveSignup does
+                        // not return then). Where this runtime cannot run it, the signup's work in one step (above).
+                        if (host::LaunchLiveSignup(user))
+                            return;
+                        const auto before = host::SignedIn(user);
+                        const std::u16string tag = before ? Wide(before->gamertag) : u"";
+                        const auto error = host::JoinLive(user);
+                        const bool online = !error && WaitForLive(user);
+                        const auto joined = host::SignedIn(user);
+                        const std::u16string liveTag = joined ? Wide(joined->gamertag) : tag;
+                        std::lock_guard lock(g->mutex);
+                        g->connecting = false;
+                        if (g->ui->Closed())
+                            return;
+                        g->back = [g] { GuideBack(g); };
+                        if (error)
+                            return GuideCommunityResult(g, xui::HudString(15, u"Join Xbox Live"), error, u"");
+                        // The signup's CongratsScene: "Your free account is now active." with the gamertag.
+                        std::u16string text =
+                            liveTag == tag
+                                ? tag + u" is now a member of Xbox Live."
+                                : u"Your free account is now active.\n\nYour gamertag: " + liveTag +
+                                      u"\n\nYou can change it once for free. After signup, go to the Social hub, "
+                                      u"select your avatar, and then select Change Gamertag.";
+                        if (!online)
+                            text += u"\n\nIt could not sign in to Xbox Live yet. Use Connect to Xbox Live in the "
+                                    u"Guide to try again.";
+                        GuideCommunityBox(g, xui::HudString(15, u"Join Xbox Live"), text, { { u"OK", nullptr } });
+                    }).detach();
+                } },
+              { xui::CommonString(120, u"No"), toButton } },
+            1, xui::MessageIcon::kWarning);
     }
 
     void GuideCompose(const std::shared_ptr<GuideSession>& g, uint32_t focus);
@@ -1357,27 +1823,18 @@ namespace
         if (isFriend)
         {
             card.online = f->online;
-            if (f->online && f->beacon)
-            {
-                card.title = Wide(f->beacon->title);
-                card.presence = f->beacon->text.empty() ? xui::FriendsString(86, u"Wants to play with you")
-                                                        : Wide(f->beacon->text);
-            }
-            else
-            {
-                card.title = Wide(f->title);
-                std::string rich = f->rich;
-                for (size_t at; (at = rich.find('\n')) != std::string::npos;)
-                    rich.replace(at, 1, " - ");
-                card.presence = Wide(rich);
-            }
+            card.title = Wide(f->title);
+            std::string rich = f->rich;
+            for (size_t at; (at = rich.find('\n')) != std::string::npos;)
+                rich.replace(at, 1, " - ");
+            card.presence = Wide(rich);
             if (!f->online && f->lastSeen)
                 card.offlineSeconds = std::max<int64_t>(0, int64_t(std::time(nullptr)) - f->lastSeen);
         }
 
         std::vector<xui::ProfileRow> rows;
         g->rowActions.clear();
-        auto add = [&](const char16_t* text, std::function<void()> action) {
+        auto add = [&](const std::u16string& text, std::function<void()> action) {
             rows.push_back({ text, bool(action) });
             g->rowActions.push_back(std::move(action));
         };
@@ -1415,7 +1872,16 @@ namespace
                     GuideCommunity(g, g->tab, g->communityFocus);
                 });
             }
-            add(u"Invite to Game", nullptr);
+            // Invite to Game: while the user plays in a joinable session (the console greys it otherwise). Sent, it
+            // raises XAM's "Game invite sent" toast and the Profile stays (Guide.Friends 0x90108B08:
+            // XNotifyQueueUI(0x16)); no message box.
+            add(xui::FriendsString(224, u"Invite to Game"),
+                host::CurrentGameSession(user) ? std::function<void()>([g, user, xuid] {
+                    if (const auto error = host::InviteToGame(user, xuid))
+                        return GuideCommunityResult(g, xui::FriendsString(224, u"Invite to Game"), error, u"");
+                    xui::QueueNotification(xui::kNotifyGameInviteSent, user, u"");
+                })
+                                               : std::function<void()>());
             // Invite to Party: not for a member of my party, a full party (8) or a profile signed in here.
             if (!inMyParty && !local && !(party && party->members.size() >= 8))
                 add(u"Invite to Party", [g, user, xuid] {
@@ -1425,6 +1891,17 @@ namespace
                         return GuideCommunityResult(g, u"Invite to Party", error, u"");
                     xui::QueueNotification(xui::kNotifyPartyInviteSent, user, u"");
                     GuideCommunity(g, GuideSession::Tab::kParty);
+                });
+            // Join Session In Progress: a friend in a joinable game of this title (their presence's session), after
+            // the invite rows as in Guide.Friends' friend menu (row 10 of the template at 0x90100E48, string 117).
+            // Joining closes the Guide: the title takes it from there (TU46: "Joining game" from its menus).
+            if (isFriend && f->joinable && f->sessionId)
+                add(xui::FriendsString(117, u"Join Session In Progress"), [g, user, xuid, session = f->sessionId] {
+                    if (host::JoinGame(user, xuid, session, false))
+                        return GuideClose(g, "Join Session In Progress");
+                    GuideCommunityBox(g, xui::FriendsString(117, u"Join Session In Progress"),
+                                      xui::FriendsString(71, u"Couldn't join the session in progress."),
+                                      { { u"OK", nullptr } });
                 });
             // Kick from Party: the leader, for another member of the party.
             if (inMyParty && leader && !local)
@@ -1574,7 +2051,9 @@ namespace
             add(u"View Rep", nullptr);
         add(u"Game Defaults", nullptr);
         add(u"Sign-in Preferences", nullptr);
-        add(online ? u"Account Security" : u"Join Xbox Live", nullptr);
+        const uint32_t joinRow = uint32_t(rows.size());
+        add(online ? u"Account Security" : u"Join Xbox Live",
+            online ? std::function<void()>() : [g, joinRow] { GuideJoinLive(g, [g, joinRow] { GuideOwnProfile(g, joinRow); }); });
         add(u"Manage Exercise Info", nullptr);
         Log("System UI: own Profile of user {} ({})", user, online ? "on Xbox LIVE" : "offline");
         xui::ShowGamerProfile({}, 0, rows, std::min<uint32_t>(focus, uint32_t(rows.size()) - 1),
@@ -1819,6 +2298,28 @@ namespace
             add(xui::FriendsString(214, u"Reply"), reply);
             add(xui::FriendsString(255, u"View Profile"), viewProfile);
         }
+        else if (m.kind == "game_invite" && m.sessionId)
+        {
+            // Accept: the title joins the inviter's session (XN_LIVE_INVITE_ACCEPTED) and the Guide closes; the
+            // invite is read.
+            text = Gamertag(tag) + u" has invited you to play" + (m.titleId ? u" " + host::TitleName() : u"") + u".";
+            title = xui::FriendsString(240, u"Game Invite");
+            icon = "gameinvite.png";
+            add(xui::FriendsString(2, u"Accept Game Invite"), [g, user, from, session = m.sessionId, id = m.id] {
+                if (host::JoinGame(user, from, session, true))
+                {
+                    live::DeleteMessage(user, id);
+                    return GuideClose(g, "game invite accepted");
+                }
+                GuideCommunityBox(g, xui::FriendsString(240, u"Game Invite"),
+                                  xui::FriendsString(65, u"Couldn't accept game invite. The invitation is no longer "
+                                                         u"available."),
+                                  { { u"OK", nullptr } });
+            });
+            add(xui::FriendsString(52, u"Decline Game Invite"), remove);
+            add(xui::FriendsString(214, u"Reply"), reply);
+            add(xui::FriendsString(255, u"View Profile"), viewProfile);
+        }
         else if (m.kind == "friend_request")
         {
             text = withTag(78, u"%s wants to be your friend.");
@@ -1889,14 +2390,17 @@ namespace
             [g] { GuideCommunity(g, GuideSession::Tab::kFriends); },
             nullptr,
             [g, user] {
-                GuideKeyboard(g, xui::FriendsString(7, u"Add Friend"), xui::FriendsString(11, u"Enter a gamertag."), 15,
+                GuideKeyboard(g, xui::FriendsString(12, u"Enter a Gamertag"), xui::FriendsString(11, u"Enter a gamertag."),
+                              15,
                               [g, user](const std::u16string& text) {
                                   const std::string tag = Utf8(text);
-                                  if (tag.empty())
+                                  const auto error = tag.empty() ? std::nullopt : live::AddFriend(user, tag);
+                                  if (tag.empty() || IsNoSuchGamertag(error))
                                       return GuideCommunity(g, GuideSession::Tab::kMessages, g->communityFocus);
-                                  GuideCommunityResult(g, u"Friend Request", live::AddFriend(user, tag),
+                                  GuideCommunityResult(g, u"Friend Request", error,
                                                        u"A friend request was sent to " + text + u".");
-                              });
+                              },
+                              u"", false, true);
             },
         };
         g->mode = GuideSession::Mode::kMessageType;
@@ -1940,7 +2444,8 @@ namespace
                           g->back = back;
                           GuideCommunityBox(g, xui::FriendsString(10, u"Enter Gamertags"),
                                             text + u" isn't on your friends list.", { { u"OK", nullptr } });
-                      });
+                      },
+                      u"", false, true);
         g->back = [g, scene] { scene ? GuideRecipients(g, 0) : GuideCompose(g, 0); };
     }
 
@@ -2055,7 +2560,8 @@ namespace
 
     // While the Party tab shows its members: every 150 ms their voice icons as they are now (a default recording
     // device appearing, talking, muted), redrawn in place (xui::SetCommunityRowImage); the list used to keep the icons
-    // it was built with. Ends when the Guide closes or leaves the Party tab.
+    // it was built with (owner, 2026-10-16: no microphone right after Start a Party, "talking" left over after an
+    // invite). Ends when the Guide closes or leaves the Party tab.
     void GuideVoiceTicker(const std::shared_ptr<GuideSession>& g)
     {
         if (g->voiceTicker)
@@ -2161,14 +2667,19 @@ namespace
                 rows.push_back(add);
                 g->rowX.push_back(nullptr);
                 g->rowActions.push_back([g, user] {
-                    GuideKeyboard(g, u"Add Friend", u"Enter the gamertag of the person you want to add.", 15,
+                    // Owner's Patch Notes (2026-10-22): the keyboard says "Enter a Gamertag" / "Enter a gamertag." only
+                    // (Guide.Friends' strings 12 / 11), with a gamertag's keys only; a gamertag nobody has gives no box.
+                    GuideKeyboard(g, xui::FriendsString(12, u"Enter a Gamertag"),
+                                  xui::FriendsString(11, u"Enter a gamertag."), 15,
                                   [g, user](const std::u16string& text) {
                                       const std::string tag = Utf8(text);
-                                      if (tag.empty())
+                                      const auto error = tag.empty() ? std::nullopt : live::AddFriend(user, tag);
+                                      if (tag.empty() || IsNoSuchGamertag(error))
                                           return GuideCommunity(g, g->tab, g->communityFocus);
-                                      GuideCommunityResult(g, u"Add Friend", live::AddFriend(user, tag),
+                                      GuideCommunityResult(g, xui::FriendsString(7, u"Add Friend"), error,
                                                            u"A friend request was sent to " + text + u".");
-                                  });
+                                  },
+                                  u"", false, true);
                 });
                 for (const live::Friend& f : friends)
                 {
@@ -2349,7 +2860,7 @@ namespace
         Log("System UI: Guide: Community tab {} ({} rows)", int(tab), rows.size());
         xui::GuideKeepPosition();
         // The Party and Messages tabs list one-line rows, half the Friends / Players rows' height (captures 7_49_59,
-        // 7_50_04, partychat.mp4: 28 units against 46).
+        // 7_50_04, partychat.mp4: 28 units against 46; owner 2026-10-16).
         const bool oneLine = tab == GuideSession::Tab::kParty || tab == GuideSession::Tab::kMessages;
         xui::CommunityOptions options;
         options.footer = footer;
@@ -2542,61 +3053,6 @@ namespace
         xui::GuideKeepPosition();
         xui::ShowCompareAchievements(title.name, profile ? profile->picture : std::vector<uint8_t>(), title.theirs,
                                      host::GamerPicture(me->xuid), title.mine, rows, focus);
-    }
-
-    // After Create Profile (XAM's createprofile.cp): Congratulations.xur, "Save Profile", with the new profile's
-    // gamercard (owner-less defaults: no titles, achievements or gamerscore yet).
-    void GuideProfileCreated(const std::shared_ptr<GuideSession>& g, uint32_t focus)
-    {
-        const auto me = host::SignedIn(g->user);
-        if (!me)
-            return GuideBack(g);
-        g->mode = GuideSession::Mode::kProfileCreated;
-        const guide::Gamercard card = host::ReadGamercard(me->xuid);
-        const std::vector<host::PlayedTitle> titles = host::PlayedTitles(g->user);
-        uint32_t achievements = 0;
-        for (const host::PlayedTitle& t : titles)
-            achievements += t.earned;
-        xui::GuideKeepPosition();
-        xui::ShowProfileCreated(Wide(me->gamertag), host::GamerPicture(me->xuid), card.gamerscore.value_or(0),
-                                uint32_t(titles.size()), achievements, focus);
-    }
-
-    // Join Xbox Live: AddXboxLive.xur ("Checking network status") while the profile signs in to our Xbox LIVE
-    // (registering its gamertag there); online, the screen closes with the Xbox LIVE toast, else "Can't Connect"
-    // (createprofile strings 22 / 21) and back to Save Profile.
-    void GuideAddXboxLive(const std::shared_ptr<GuideSession>& g)
-    {
-        const auto profile = host::SignedIn(g->user);
-        if (!profile)
-            return GuideBack(g);
-        g->mode = GuideSession::Mode::kAddXboxLive;
-        xui::GuideKeepPosition();
-        xui::ShowAddXboxLive(xui::CreateProfileString(0, u"Checking network status"));
-        const uint32_t user = g->user;
-        const std::u16string tag(profile->gamertag.begin(), profile->gamertag.end());
-        std::thread([g, user, tag] {
-            bool online = host::OnLive(user);
-            std::optional<std::string> error;
-            if (!online)
-            {
-                error = live::Reconnect(user);
-                online = !error && WaitForLive(user);
-            }
-            std::lock_guard lock(g->mutex);
-            if (g->ui->Closed() || g->mode != GuideSession::Mode::kAddXboxLive)
-                return;
-            if (online)
-            {
-                Log("System UI: Guide: {} joined Xbox LIVE", Utf8(tag));
-                xui::QueueNotification(xui::kNotifySignedInLive, user, tag);
-                return GuideBack(g);
-            }
-            Log("System UI: Guide: Join Xbox LIVE failed: {}", error ? *error : std::string("not signed in"));
-            g->back = [g] { GuideProfileCreated(g, 0); };
-            GuideCommunityBox(g, xui::CreateProfileString(22, u"Can't Connect"),
-                              xui::CreateProfileString(21, u"Can't connect to Xbox Live."), { { u"OK", nullptr } });
-        }).detach();
     }
 
     // View Friends (a friend's Personal Profile) / XamShowFofUI: Guide.Friends.xex's FofScene.xur ("%s's Friends",
@@ -3083,6 +3539,9 @@ namespace
             std::lock_guard lock(g_mutex);
             g_current = session;
         }
+        // Every opening starts at Xbox Home on the Home blade, however the last Guide was closed (the Guide button from
+        // a scene left a kept position behind; owner, 2026-10-22). Within the Guide, B from a scene returns to its button.
+        xui::GuideForgetPosition();
         if (start)
         {
             session->direct = true;
@@ -3168,6 +3627,18 @@ uint32_t guide::ShowOwnProfile(uint32_t user)
     return 0;
 }
 
+void guide::SetRecentSources(RecentSources sources)
+{
+    std::lock_guard lock(g_recentMutex);
+    g_recent = std::move(sources);
+}
+
+void guide::ShowCreateProfile(uint32_t user)
+{
+    OpenGuide(user, [](const std::shared_ptr<GuideSession>& g) { GuideCreateProfile(g, [g] { GuideBack(g); }); },
+              false);
+}
+
 uint32_t guide::ShowGames(uint32_t user, uint64_t xuid)
 {
     const auto profile = user < 4 ? host::SignedIn(user) : std::nullopt;
@@ -3191,7 +3662,7 @@ uint32_t guide::ShowProfileCreated(uint32_t user)
     std::shared_ptr<GuideSession> opened;
     OpenGuide(user, [&opened](const std::shared_ptr<GuideSession>& g) {
         opened = g;
-        GuideProfileCreated(g, 0);
+        GuideSaveProfile(g, 0);
     }, false);
     return opened ? 0 : 5;
 }

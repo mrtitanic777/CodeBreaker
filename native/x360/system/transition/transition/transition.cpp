@@ -70,6 +70,10 @@ namespace transition
         std::lock_guard lock(g_mutex);
         if (g_cover)
             return;
+        // A process drawing inside a window host's window (XBOX360RECOMP_HOST_WINDOW: the dashboard port's
+        // window_host.h): the host's window stays on the screen, black behind the titles' views, and is the cover.
+        if (GetEnvironmentVariableW(L"XBOX360RECOMP_HOST_WINDOW", nullptr, 0) != 0)
+            return;
         const RECT rect = CoverRect();
         std::atomic<HWND> created = nullptr;
         std::atomic<bool> done = false;

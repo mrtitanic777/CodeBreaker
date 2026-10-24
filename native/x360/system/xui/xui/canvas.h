@@ -76,7 +76,7 @@ namespace xui
 
         // XAM draws the HUD into an 852 x 480 target (1 unit = 1 pixel) that the console scales to the screen, so an
         // image covers the whole units whose centres it contains: its edges land on the unit grid (a skin image at
-        // y 1.5 .. 25.5 shows as 1 .. 25; the user's real party row). `unitToDevice` maps HUD units
+        // y 1.5 .. 25.5 shows as 1 .. 25; the owner's real party row, NOTES session 26). `unitToDevice` maps HUD units
         // to this canvas; without a grid (the default) nothing snaps.
         void SetUnitGrid(const Affine& unitToDevice)
         {

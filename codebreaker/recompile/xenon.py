@@ -3,11 +3,18 @@
     from codebreaker.recompile import xenon
     xenon.build()                      # native/xenonrecomp -> build/XenonRecomp/XenonRecomp.exe
     xenon.recompile(config_toml)       # runs it on a project's configuration (config.py writes one)
+    xenon.recompile_synced(config_toml)  # the same into a clean folder, then only the changed files into the
+                                       # configuration's output folder (and the stale ones out)
+
+    python -m codebreaker xenon-recompile <config.toml>   the synced form, for a build to run (the Xbox 360
+                                       Dashboard's modules: PYTHONPATH=<CodeBreaker>)
     xenon.instruction_tests()          # Xenia's PowerPC tests through it: {"tested", "skipped", "mismatches"}
 
 native/xenonrecomp is a fork of hedge-dev's XenonRecomp (MIT) with the changes the Xbox 360
 system-software ports needed (VMX128 compares that set CR6, the import library index, symbol
-suffixes for several modules in one program, MMIO stores, the shared indirect-call table). It
+suffixes for several modules in one program, MMIO stores, the shared indirect-call table; every
+change from upstream is listed in native/xenonrecomp/CHANGES.md). It is the one XenonRecomp: the
+Xbox 360 Dashboard's line was merged into it. It
 turns each guest instruction into one C++ statement on a PPCContext; the runtime
 (native/x360) supplies the kernel, XAM, GPU, audio and input.
 
@@ -106,11 +113,75 @@ def build(force=False):
 def recompile(config):
     """Run XenonRecomp on a configuration file. -> its output (warnings, the unimplemented)."""
     build()
-    r = _run([RECOMP, config, os.path.join(SOURCE, "XenonUtils", "ppc_context.h")],
-             cwd=os.path.dirname(os.path.abspath(config)))
+    config = os.path.abspath(config)            # it runs in the configuration's folder: a relative path would not reach it
+    r = _run([RECOMP, config, os.path.join(SOURCE, "XenonUtils", "ppc_context.h")], cwd=os.path.dirname(config))
     if r.returncode:
         raise RuntimeError("XenonRecomp failed:\n" + (r.stdout + r.stderr)[-3000:])
     return r.stdout
+
+
+def recompile_synced(config, report=print):
+    """XenonRecomp on `config` into a clean folder, then into its out_directory_path only the files that changed
+    (the others keep their times, so builds stay incremental) and out the files this run did not make: XenonRecomp
+    never deletes, and a recompile that splits the code into fewer files would leave old ones defining functions
+    twice. -> {"generated", "changed", "stale": [names], "log": [its warning lines]}"""
+    import filecmp
+    import re
+    import tempfile
+    build()
+    config = os.path.abspath(config)
+    folder = os.path.dirname(config)
+    with open(config, encoding="utf-8") as f:
+        text = f.read()
+    m = re.search(r'^out_directory_path\s*=\s*"([^"]*)"', text, re.M)
+    if not m:
+        raise ValueError("%s: no out_directory_path" % config)
+    out_dir = os.path.normpath(os.path.join(folder, m.group(1)))
+    os.makedirs(os.path.dirname(out_dir), exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=os.path.dirname(out_dir)) as tmp:
+        fresh = os.path.join(tmp, "ppc")
+        os.makedirs(fresh)
+        # the same configuration beside the original (its relative paths still reach), with the fresh folder; passed
+        # by its name, as XenonRecomp joins the paths inside to the configuration's own
+        work = "_recompile_tmp.toml"
+        with open(os.path.join(folder, work), "w", encoding="utf-8", newline="\n") as f:
+            f.write(re.sub(r"^out_directory_path\s*=.*$", 'out_directory_path = "%s"' %
+                           os.path.relpath(fresh, folder).replace("\\", "/"), text, flags=re.M))
+        try:
+            r = _run([RECOMP, work, os.path.join(SOURCE, "XenonUtils", "ppc_context.h")], cwd=folder)
+        finally:
+            os.remove(os.path.join(folder, work))
+        log = [l for l in r.stdout.splitlines() if not l.startswith("Recompiling functions")]
+        if r.returncode:
+            raise RuntimeError("XenonRecomp failed (%d):\n%s" % (r.returncode, "\n".join(log[-40:]) + r.stderr))
+        os.makedirs(out_dir, exist_ok=True)
+        new = set(os.listdir(fresh))
+        changed = 0
+        for name in sorted(new):
+            dst = os.path.join(out_dir, name)
+            if not os.path.exists(dst) or not filecmp.cmp(os.path.join(fresh, name), dst, shallow=False):
+                shutil.copy2(os.path.join(fresh, name), dst)
+                changed += 1
+        stale = sorted(n for n in os.listdir(out_dir) if n not in new)
+        for name in stale:
+            os.remove(os.path.join(out_dir, name))
+    for line in log:
+        report(line)
+    report("%d files generated, %d changed, %d stale removed%s; %d warning lines" % (
+        len(new), changed, len(stale), (": " + " ".join(stale)) if stale else "", len(log)))
+    return {"generated": len(new), "changed": changed, "stale": stale, "log": log}
+
+
+def main(argv):
+    if len(argv) != 1:
+        print("usage: python -m codebreaker xenon-recompile <config.toml>")
+        return 2
+    try:
+        recompile_synced(argv[0])
+    except (RuntimeError, ValueError) as e:
+        print(e)
+        return 1
+    return 0
 
 
 def _unix(p):

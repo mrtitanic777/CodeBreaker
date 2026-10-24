@@ -1,7 +1,7 @@
 # The live client: the ports' own Xbox LIVE replacement (docs/x360/network_protocol.md), shared by both runtimes.
 #
 # Use from a runtime's CMakeLists.txt:
-#   include("<path to Shared>/runtime/live/live.cmake")
+#   include("<CodeBreaker>/native/x360/system/live/live.cmake")
 #   target_sources(<runtime> PRIVATE ${X360_LIVE_SOURCES})
 #   target_include_directories(<runtime> PRIVATE ${X360_LIVE_INCLUDE_DIRS})
 #   target_link_libraries(<runtime> PRIVATE ws2_32)

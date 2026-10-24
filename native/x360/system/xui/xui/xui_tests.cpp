@@ -5,6 +5,7 @@
 // string table reads, and every PNG decodes to exactly what Windows' WIC decoder gives. Each scene is dumped as text
 // to analysis/xui/<package>/<entry>.txt (Microsoft data: not committed).
 
+#include <string>
 #include "xui/xui_tests.h"
 
 #include "xui/element.h"
@@ -33,6 +34,15 @@
 
 namespace xui
 {
+    // A setting: CB_<name>, or MC_<name> (the name it had before CodeBreaker; the dashboard's settings use it).
+    static const char* Setting(const char* name)
+    {
+        const std::string cb = std::string("CB_") + name, mc = std::string("MC_") + name;
+        if (const char* v = std::getenv(cb.c_str()))
+            return v;
+        return std::getenv(mc.c_str());
+    }
+
     namespace
     {
         // Reference decoding with WIC: non-premultiplied RGBA.
@@ -114,7 +124,7 @@ namespace xui
         // packages): each scene reads and survives a write; dumps in analysis/xui/extra/<folder>/<package>/.
         int TestExtraScenes()
         {
-            const char* extra = std::getenv("CB_XUI_EXTRA");
+            const char* extra = Setting("XUI_EXTRA");
             if (!extra)
                 return 0;
             int failures = 0, scenes = 0, unread = 0;
@@ -551,6 +561,21 @@ namespace xui
             ClosePopup();
             RenderFrames("analysis/xui/render_closed10.bmp", 60, vblank);
 
+            // Create Profile (createprofile.xex): the wait scene's three steps, then Save Profile with each button
+            // focused in turn.
+            ShowProfileWait(CreateProfileString(11, u"Creating profile"));
+            RenderFrames("analysis/xui/render_createprofile_wait.bmp", 40, vblank);
+            ShowProfileWait(CreateProfileString(33, u"Signing in"));
+            RenderFrames("analysis/xui/render_createprofile_wait2.bmp", 20, vblank);
+            ShowSaveProfile(u"Player5", {}, 0);
+            RenderFrames("analysis/xui/render_saveprofile.bmp", 60, vblank);
+            PanePress(0x0002);
+            RenderFrames("analysis/xui/render_saveprofile2.bmp", 40, vblank);
+            PanePress(0x0002);
+            RenderFrames("analysis/xui/render_saveprofile3.bmp", 40, vblank);
+            ClosePopup();
+            RenderFrames("analysis/xui/render_closed14.bmp", 60, vblank);
+
             // The Guide's Community, party tab (owner's captures reference/.../party chat/"start a party.png",
             // "in a party.png", "party settings *.png").
             const std::vector<CommunityTab> partyTabs = {
@@ -578,6 +603,10 @@ namespace xui
             partyRows[3].right = u"COD: Black Ops II";
             partyRows[3].status = "sharedres://ico_32x_controller.png";
             partyRows[3].statusColor = 0xFF92C542;
+            // The member's gamer picture (CB_XUI_PICTURE: a 64x64 PNG, e.g. one of the console's default ones).
+            if (const char* path = Setting("XUI_PICTURE"))
+                if (std::ifstream file(path, std::ios::binary); file)
+                    partyRows[3].picture.assign(std::istreambuf_iterator<char>(file), {});
             CommunityOptions inPartyOptions = oneLine;
             inPartyOptions.legendX = u"Leave Party";
             inPartyOptions.legendY = u"Chat Channel";
@@ -608,7 +637,7 @@ namespace xui
         // sign-in, in analysis/xui/era/<update>_*.bmp. Run alone: the replaced packages stay for the process.
         int TestEra()
         {
-            const char* era = std::getenv("CB_XUI_ERA");
+            const char* era = Setting("XUI_ERA");
             if (!era)
                 return 0;
             std::string error;
@@ -664,14 +693,14 @@ namespace xui
 
     std::filesystem::path AssetDirectory()
     {
-        if (const char* v = std::getenv("CB_XUI_ASSETS"))
+        if (const char* v = Setting("XUI_ASSETS"))
             return v;
         return "system_ui";
     }
 
     int RunXuiTests()
     {
-        if (std::getenv("CB_XUI_ERA"))
+        if (Setting("XUI_ERA"))
             return TestEra();
         int failures = TestAssets();
         failures += TestExtraScenes();

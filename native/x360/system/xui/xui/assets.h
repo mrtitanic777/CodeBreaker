@@ -1,6 +1,6 @@
 #pragma once
 
-// The system UI's assets as XAM 17559 finds them (`codebreaker system-ui` writes them: formats/xbox/system_ui.py): XUI packages named
+// The system UI's assets as XAM 17559 finds them (tools/scripts/extract_system_ui.py writes them): XUI packages named
 // <module>.<resource>.xzp, the HUD skin and the system fonts.
 //
 // Paths in scenes are XUI resource locators: "sharedres://x.png" = xam.xex's "shrdres" package, "xam://x.png" = its
@@ -31,7 +31,7 @@ namespace xui
 
         // A package from elsewhere, as scenes' paths will name it (an older dashboard's "dash6719.dashmain": the
         // launcher's era themes). Replaces one of that name.
-        bool AddPackage(std::string name, std::vector<uint8_t> data, std::string& error);
+        bool AddPackage(std::string name, std::vector<uint8_t> data, std::string& error, bool version8Control = false);
         // Every package in `dir` in place of the one of that name (an older dashboard's system update: its Guide, skin
         // and XAM scenes, system_ui/<update>/), and the HUD skin again if huduiskin.skin is one of them. What was
         // loaded from the packages it replaces stays alive (elements may point at it) but is no longer found.

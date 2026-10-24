@@ -43,6 +43,8 @@
                                     function; --at ADDR --size N for one; --check compiles it)
     recompile-project <title> [--check [s]]     an Xbox 360 title (a .xex, package, disc image or folder)
                                     as a project that builds and runs on a PC (docs/RECOMPILE.md)
+    xenon-recompile <config.toml>   XenonRecomp on a configuration, its output folder synced (changed files in,
+                                    stale ones out): what a build runs, the Xbox 360 Dashboard's modules too
     heavyiron <cmd> <file.ho> ...   Heavy Iron GoodEngine archives (Up, WALL-E, SpongeBob): list, extract,
                                     replace an asset, textures as PNG
     gfx <cmd> <file> ...            Scaleform GFx menus: movies, images, fonts, placements; a font as TTF
@@ -121,6 +123,7 @@ COMMANDS = {
     "settings": ("codebreaker.base.settings", []),
     "recompile": ("codebreaker.recompile.powerpc", []),
     "recompile-project": ("codebreaker.recompile.project", []),
+    "xenon-recompile": ("codebreaker.recompile.xenon", []),
     "xdk-match": ("codebreaker.symbols.xdk_libraries", []),
     "xex-imports": ("codebreaker.formats.xex_imports", []),
     "xex-edit": ("codebreaker.formats.xex_edit", []),

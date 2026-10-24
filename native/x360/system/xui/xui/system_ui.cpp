@@ -15,6 +15,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <ctime>
+#include <cwctype>
 #include <deque>
 #include <format>
 #include <functional>
@@ -32,7 +33,22 @@ namespace xui
         // The gamerscore symbol after an achievement's points: the circled G of the Guide's font (xenonclatin U+E00A;
         // U+E000-E009 are emoticons).
         constexpr char16_t kGamerscoreGlyph[] = u"\uE00A";
-        constexpr float kDimAlpha = float(0xDC) / 255.0f;
+        // XAM darkens the title behind its HUD in two layers (measured on the owner's console videos of TU46's popups,
+        // Resources/From Patrick/Xbox 360 UI Popups in the Minecraft port; NOTES session 19 job 2): one black layer at
+        // once, from the first frame of the opening to the last frame of the closing, and a second one that fades in
+        // with the opening and out with the closing; both go in the same frame when the closing animation ends.
+        // Message boxes (HUD state Error): ~33% of the brightness kept at once, ~12% when open, the fade over 16 frames.
+        // The keyboard: ~21% at once, ~8.5% when open, the fade over 12 frames. Popups no video shows yet (the Guide,
+        // sign-in, achievements) keep one layer fading to 0xDC over 16 frames, as before.
+        struct DimLayers
+        {
+            float hold, fade, frames;
+        };
+        constexpr DimLayers kDimError{ float(0xAB) / 255.0f, float(0xA2) / 255.0f, 16 };
+        constexpr DimLayers kDimKeyboard{ float(0xC9) / 255.0f, float(0x99) / 255.0f, 12 };
+        // The device selector (Change Storage Device): ~10% at once, ~3.5% open, 12 frames.
+        constexpr DimLayers kDimDeviceSelector{ float(0xE5) / 255.0f, float(0xA8) / 255.0f, 12 };
+        constexpr DimLayers kDimOther{ 0, float(0xDC) / 255.0f, 16 };
 
         // XamStrings.xus (huduiskin.xam) entries.
         constexpr size_t kStringBack = 8, kStringSelect = 152;
@@ -77,15 +93,27 @@ namespace xui
             // A popup requested while the previous one plays its closing animation opens when that has finished
             // (the next request reaches the HUD once the previous one is dismissed).
             std::function<void(State&)> pending;
+            // A screen asked for by a button's A opens once the button's Press state has played (PlayPress): on the
+            // console the next screen comes from another module and the pressed button is seen first (skin: Press ..
+            // EndPress, 10 frames). Input waits meanwhile.
+            std::function<void(State&)> afterPress;
+            float pressLeft = 0; // seconds of the Press state still to play
+            // A full scene left for another full one from another module (ShowAfterUnloading): the HUD's panel, legend
+            // and clock stay, empty, while the next module loads; then it opens in place.
+            std::function<void(State&)> afterLoad;
+            float loadLeft = 0;
+            // The Community scene was left for a drill-down or the keyboard (its tab's Tab<N>Close brings it back).
+            bool communityLeft = false;
             std::vector<std::function<void()>> closed; // ClosePopup callbacks for the animation playing
             std::vector<std::function<void()>> due;    // callbacks to run once the lock is released
-            float dim = 0;                       // 0..1 of kDimAlpha
+            float dim = 0;                       // 0..1 of the fading layer's alpha (dimLayers)
+            DimLayers dimLayers = kDimOther;     // the open popup's darkening
             std::vector<Element*> buttons;       // message box buttons in order
             uint32_t focus = 0;
 
             // The Guide pane open in AppHostElementId (none for message boxes).
             enum class Pane { kNone, kSignIn, kKeyboard, kAchievements, kGuide, kCommunity, kProfile, kGamerZone,
-                              kDrill } // kDrill: a Guide.Friends drill-down scene (its controls in buttons)
+                              kDrill, kDeviceSelector, kWait, kQuickLaunch } // kDrill: a drill-down scene (its controls in buttons)
                 pane = Pane::kNone;
             std::u16string clockText;            // what DateTimeTextId shows
             std::unique_ptr<Image> gamerPicture; // hudbkgnd's GamerPic (SetGamerPicture)
@@ -120,6 +148,7 @@ namespace xui
                 Element* focus = nullptr;
                 int mode = 0;                    // kLayouts index: alphabet, symbols, accents
                 bool caps = false;
+                bool gamertag = false;           // gamertag characters only (ShowKeyboard)
                 std::u16string text;
                 size_t cursor = 0;
                 size_t maxLength = 0;
@@ -154,16 +183,22 @@ namespace xui
                 std::vector<Element*> buttons;
                 int focus = 0;
                 // Each tab's gamer pictures, kept while its list shows them: the tab sliding out still draws its rows
-                // (freeing them with the next tab's crashed in SampleBilinear).
+                // (freeing them with the next tab's crashed in SampleBilinear, owner 2026-10-16).
                 std::array<std::vector<std::unique_ptr<Image>>, 4> pictures;
                 // The shown tab's rows (its list items are filled from them; SetCommunityRowImage changes one).
                 std::vector<CommunityRow> rows;
             } community;
-            // The Community tab a Guide.Friends drill-down (Party Options, a profile, a message ...) was opened from,
-            // -1 if none: coming back plays community.xur's Tab<N>Close (the tab hidden ~22 frames, then faded in over
-            // 17), as CommunityRootScene does on its BACKTO transition (FUN_9011BE08 -> FUN_90135408, tab table
-            // 0x901033C8). Its Tab<N>Open is one frame hiding the tab, which the drill-down replacing it already shows.
-            int communityDrillTab = -1;
+            // hud's QuickLaunch.xur while it is the pane (Games & Apps > Recent).
+            struct QuickLaunchScene
+            {
+                Element* tabs = nullptr;         // Tabscene (XuiTabScene: Tab1..Tab3)
+                Element* tab[3] = {};
+                int cur = 0;
+                QuickLaunchInfo info;
+                bool hideTrials = false;         // the All tab's Y (0x913F74B8)
+                std::vector<int> shown;          // the shown tab's rows: indices into its row vector
+                std::array<std::vector<std::unique_ptr<Image>>, 3> pictures;
+            } quick;
             // Guide.Friends' ProfileRoot.xur while it is the pane (its tab, for the LB / RB transitions).
             struct ProfileRootScene
             {
@@ -225,7 +260,7 @@ namespace xui
                 const auto dir = AssetDirectory();
                 if (!assets->Load(dir, error))
                     Log("System UI: no XAM assets ({}: {}); popups are shown as native dialogs. Create the folder "
-                        "with `codebreaker system-ui` from the console's system update.", dir.string(), error);
+                        "with tools/scripts/extract_system_ui.py from the console's system update.", dir.string(), error);
                 else
                 {
                     s.assets = std::move(assets);
@@ -294,6 +329,8 @@ namespace xui
         void Open(State& s, const std::string& state, const std::string& hostId, std::unique_ptr<Element> popup)
         {
             DropPopup(s);
+            s.afterLoad = nullptr; // another popup came first
+            s.loadLeft = 0;
             s.community = {};
             s.profileRoot = {};
             s.buttonFocus = {};
@@ -311,17 +348,66 @@ namespace xui
             if (from != state)
                 s.hudScene->PlayNamed(from + "To" + state, "End" + from + "To" + state, true);
             s.hudState = state;
+            s.dimLayers = state == "Error" ? kDimError : kDimOther;
             s.phase = Phase::kOpen;
             s.dirty = true;
         }
 
-        // Opens a popup now, or after the closing animation of the previous one.
+        // Opens a popup now, after the closing animation of the previous one, or after a pressed button's Press.
         void ShowWhenClosed(State& s, std::function<void(State&)> show)
         {
             if (s.phase == Phase::kClosing)
                 s.pending = std::move(show);
+            else if (s.phase == Phase::kOpen && s.pressLeft > 0)
+                s.afterPress = std::move(show);
             else
                 show(s);
+        }
+
+        // Opens a popup after the open one has closed with its HUD's closing animation (two XAM UIs in a row, each
+        // opening and closing on its own), after a pressed button's Press.
+        void ShowAfterClosing(State& s, std::function<void(State&)> show)
+        {
+            ShowWhenClosed(s, [show = std::move(show)](State& s) {
+                if (s.phase != Phase::kOpen || !s.hudScene || s.hudState.empty())
+                    return show(s);
+                s.hudScene->PlayNamed(s.hudState + "ToClosed", "End" + s.hudState + "ToClosed", true);
+                s.phase = Phase::kClosing;
+                s.pending = show;
+                s.dirty = true;
+            });
+        }
+
+        // The HUD state a pane scene opens in (OpenPane): its OpenType 2 Full, else Half (empty: no such scene).
+        std::string PaneState(State& s, std::string_view package, std::string_view entry);
+
+        // Opens a pane after the open one has been unloaded, after a pressed button's Press, when both are the same
+        // size (the open HUD state is `state`, the next scene's): the console keeps the HUD's panel (legend and clock
+        // too), drops the scene at once, shows the empty panel while the next module loads (`seconds`) and then shows
+        // the next scene in it, without a HUD animation (owner's "create profile.mp4": Select a Device -> 107 frames
+        // empty -> Enter Profile Name). A popup of another size closes and the next opens as ShowAfterClosing.
+        void ShowAfterUnloading(State& s, const std::string& state, float seconds, std::function<void(State&)> show)
+        {
+            ShowWhenClosed(s, [state, seconds, show = std::move(show)](State& s) {
+                if (s.phase != Phase::kOpen || state.empty() || s.hudState != state || s.pane == State::Pane::kGuide)
+                    return ShowAfterClosing(s, show);
+                DropPopup(s);
+                s.community = {};
+                s.profileRoot = {};
+                s.buttonFocus = {};
+                s.afterLoad = show;
+                s.loadLeft = seconds;
+                s.dirty = true;
+            });
+        }
+
+        // A's Press state on a control (XuiControlPlayOptionalVisual "Press" .. "EndPress"); a screen the press opens
+        // waits for it (ShowWhenClosed).
+        void PlayPress(State& s, Element* control)
+        {
+            control->PlayVisualState("Press");
+            s.pressLeft = 10.0f / 60.0f;
+            s.dirty = true;
         }
 
         void Focus(State& s, uint32_t index, bool initial)
@@ -453,12 +539,13 @@ namespace xui
             const Scene* scene = s.assets->LoadScene(package, entry);
             if (!scene || scene->Root().children.empty())
                 return nullptr;
+            // Leaving the Community for one of its drill-downs or the keyboard (CommunityRootScene: Tab<N>Open).
+            if (s.phase == Phase::kOpen && s.pane == State::Pane::kCommunity && s.community.root &&
+                s.hosted == s.community.root && entry != "community.xur")
+                s.communityLeft = true;
             auto pane = Element::Create(*s.assets, *scene, scene->Root().children.front(), std::string(package),
                                         nullptr);
             Element* p = pane.get();
-            if (package == "guide.friends.friends" && entry != "community.xur" && s.pane == State::Pane::kCommunity &&
-                s.community.root && s.hosted == s.community.root)
-                s.communityDrillTab = s.community.tab;
             // A plain XuiScene (Guide.Friends' PartySettings, MessageType, Bio ...) is navigated to inside the
             // Community's full HUD scene: full as well.
             const bool full = pane->GetInt("OpenType", 1) == 2 || pane->ClassName() != "HUDScene";
@@ -472,6 +559,16 @@ namespace xui
             if (const std::string trans = p->GetString("TransTo"); !trans.empty())
                 p->PlayNamed(trans, "End" + trans, true);
             return p;
+        }
+
+        std::string PaneState(State& s, std::string_view package, std::string_view entry)
+        {
+            const Scene* scene = s.assets->LoadScene(package, entry);
+            if (!scene || scene->Root().children.empty())
+                return {};
+            const auto pane = Element::Create(*s.assets, *scene, scene->Root().children.front(), std::string(package),
+                                              nullptr);
+            return pane->GetInt("OpenType", 1) == 2 || pane->ClassName() != "HUDScene" ? "Full" : "Half";
         }
 
         // Loads `entry`'s scene into the element `host` of an open pane (KeyboardBase.xur into KeyboardPlaceholder,
@@ -490,7 +587,7 @@ namespace xui
         // vk.xex's Latin key layouts (17559, image offsets 0x1A88 / 0x1B10 / 0x1C20): the characters of keys 0_0..4_9
         // row by row (40 keys = rows 0-3, 50 = rows 0-4), then the virtual keys of the side keys (VK_LEFT, VK_RIGHT,
         // LT, RT, VK_RETURN, VK_SPACE, VK_BACK and VK_CAPITAL, which the symbols layout lacks). U+00BD / U+00BE are
-        // VK_OEM_MINUS / VK_OEM_PERIOD ('-' and '.' on the console's US layout, as the user's capture shows); 0x80 in
+        // VK_OEM_MINUS / VK_OEM_PERIOD ('-' and '.' on the console's US layout, as the owner's capture shows); 0x80 in
         // the symbols layout is taken as the euro sign (cp1252 0x80).
         struct KeyLayout { const char16_t* keys; bool caps; };
         constexpr KeyLayout kLayouts[3] = {
@@ -531,6 +628,21 @@ namespace xui
         constexpr size_t kVkAccents = 0, kVkAlphabet = 1, kVkBackspace = 2, kVkCaps = 3, kVkDone = 18, kVkLeft = 54,
                          kVkRight = 55, kVkSpace = 65, kVkSymbols = 66;
 
+        // A gamertag's characters: letters, digits and spaces.
+        bool GamertagChar(char16_t c)
+        {
+            return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9') || c == u' ';
+        }
+
+        // A key greyed (the skin's ...Disable states; not pressable) or not.
+        void SetKeyEnabled(Element* key, bool enabled)
+        {
+            if (!key || key->enabled == enabled)
+                return;
+            key->enabled = enabled;
+            key->PlayVisualState(key->focused ? (enabled ? "Focus" : "FocusDisable") : (enabled ? "Normal" : "NormalDisable"));
+        }
+
         void KeyboardRefreshEdit(State& s);
 
         void KeyboardRefresh(State& s)
@@ -558,7 +670,11 @@ namespace xui
                         const size_t i = size_t(row * 10 + col);
                         SetShow(key, i < keys.size());
                         key->text = i < keys.size() ? std::u16string(1, KeyChar(keys[i], k.caps && layout.caps)) : u"";
+                        SetKeyEnabled(key, !k.gamertag || (!key->text.empty() && GamertagChar(key->text[0])));
                     }
+            // A gamertag has no symbols or accents (owner's Patch Notes: greyed on the Add Friend keyboard).
+            SetKeyEnabled(k.group->Find("Key.Prev"), !k.gamertag);
+            SetKeyEnabled(k.group->Find("Key.Next"), !k.gamertag);
             SetText(k.group->Find("Key.Left"), VkString(s, kVkLeft, u"Left"));
             SetText(k.group->Find("Key.Right"), VkString(s, kVkRight, u"Right"));
             SetText(k.group->Find("Key.Prev"), k.mode == 1 ? VkString(s, kVkAlphabet, u"Alphabet") :
@@ -566,8 +682,7 @@ namespace xui
             SetText(k.group->Find("Key.Next"), k.mode == 2 ? VkString(s, kVkAlphabet, u"Alphabet") :
                                                             VkString(s, kVkAccents, u"Accents"));
             SetText(k.group->Find("Key.Caps"), VkString(s, kVkCaps, u"Caps"));
-            if (Element* caps = k.group->Find("Key.Caps"))
-                caps->enabled = layout.caps;
+            SetKeyEnabled(k.group->Find("Key.Caps"), layout.caps);
             SetText(k.group->Find("Key.OK"), VkString(s, kVkDone, u"Done"));
             SetText(k.group->Find("Key.BS"), VkString(s, kVkBackspace, u"Backspace"));
             SetText(k.group->Find("Key.Spc"), VkString(s, kVkSpace, u"Space"));
@@ -578,7 +693,8 @@ namespace xui
         {
             auto& k = s.keyboard;
             // The edit shows the text (its presenter is bound to association 1) and the caret after the cursor's
-            // character: the caret control is centred on the text position (its visual is 14 units wide).
+            // character: scr_Edit places the caret control 4 units after the text's end (Text at x 6, Caret at
+            // x 10 with no text); its visual draws the bar 4 units into it (owner: the bar sat on the letter).
             if (k.edit)
             {
                 k.edit->text = k.text;
@@ -589,7 +705,7 @@ namespace xui
                 {
                     const Vec3 p = presenter->GetVector("Position", {});
                     const float x = p.x + float(presenter->MeasureText(*s.assets, k.text.substr(0, k.cursor)));
-                    caret->SetPosition(x - 7, caret->GetVector("Position", {}).y);
+                    caret->SetPosition(x + 4, caret->GetVector("Position", {}).y);
                 }
             }
             s.dirty = true;
@@ -643,9 +759,10 @@ namespace xui
             if (!key || !key->enabled)
                 return;
             // A key pressed through its controller button while another one has the focus plays NormalPress, then
-            // returns to Normal.
+            // returns to Normal; the focused key plays Press, then returns to Focus (its EndPress frame is the
+            // bright green: owner's report, it stayed so).
             key->PlayVisualState(key->focused ? "Press" : "NormalPress");
-            if (!key->focused)
+            if (std::find(k.pressed.begin(), k.pressed.end(), key) == k.pressed.end())
                 k.pressed.push_back(key);
             const std::string& id = key->Id();
             if (id == "Key.OK")
@@ -686,8 +803,7 @@ namespace xui
             std::erase_if(k.pressed, [](Element* key) {
                 if (key->Playing())
                     return false;
-                if (!key->focused)
-                    key->PlayVisualState("Normal");
+                key->PlayVisualState(key->focused ? (key->enabled ? "Focus" : "FocusDisable") : "Normal");
                 return true;
             });
         }
@@ -824,6 +940,7 @@ namespace xui
                 return;
             const int stride = v.cols, slots = int(v.slots.size());
             const int topLimit = std::max(0, (v.count - slots + stride - 1) / stride * stride);
+            const int before = v.cur;
             if (dx < 0 && v.cur % stride > 0)
                 v.cur--;
             else if (dx > 0 && v.cur % stride < stride - 1 && v.cur + 1 < v.count)
@@ -862,7 +979,20 @@ namespace xui
             }
             else
                 return;
+            Element* const focusedBefore = v.focused;
             ListRefresh(s, false);
+            // XUI's list recycles its item controls: a scroll puts the focus on the control the next item went to,
+            // which plays Focus (and its sound). Ours keeps the same slot, so it plays Focus again (owner: the move
+            // sound stopped while the sign-in list scrolled).
+            if (v.cur != before && v.focused && v.focused == focusedBefore)
+            {
+                // A fresh control's sound has no File yet: clear ours, so a quick second move sounds too.
+                if (Element* visual = v.focused->Visual())
+                    for (const auto& c : visual->Children())
+                        if (c->ClassName() == "XuiSoundXAudio")
+                            c->SetString("File", "");
+                v.focused->PlayVisualState(v.focused->enabled ? "Focus" : "FocusDisable");
+            }
         }
 
         // ---- Message boxes ----
@@ -876,9 +1006,11 @@ namespace xui
             const std::string visual = std::format("XuiMessageBox{}", buttons.size() + 1);
             auto box = Element::CreateControl(*s.assets, "XuiMessageBox", visual, 360, 410);
             box->text = title;
+            // XAM's icon field (0x81692380): 1 error, 2 warning, 3 alert, 4 information (no XMB_ name; XAM's own
+            // boxes use it, e.g. Data Sharing), others none.
             static const char* const kIcons[] = { "", "xam://ico_32x_error.png", "xam://ico_32x_warning.png",
-                                                  "xam://ico_32x_alert.png" };
-            box->imagePath = kIcons[int(icon) & 3];
+                                                  "xam://ico_32x_alert.png", "xam://ico_32x_information.png" };
+            box->imagePath = unsigned(icon) < std::size(kIcons) ? kIcons[int(icon)] : "";
             box->imageBase = "xam.xam";
             if (Element* message = box->FindInVisual("MessageText"))
                 message->text = text;
@@ -1257,6 +1389,8 @@ namespace xui
             { kNotifySignedOut, "xam://signed_out.png", 119 }, { kNotifySignedIn, "xam://signed_in.png", 116 },
             { kNotifySignedInLive, "xam://signed_in.png", 117 }, { kNotifySignedInOffline, "xam://signed_in.png", 118 },
             { kNotifyFriendRequest, "xam://ico_32x_Friend.png", 62 }, { kNotifyMessage, "sharedres://ico_32x_Mail.png", 136 },
+            { kNotifyGameInvite, "sharedres://ico_32x_Mail.png", 63 },
+            { kNotifyGameInviteSent, "sharedres://ico_32x_Mail.png", 64 },
             { kNotifyLiveDisconnected, "xam://connection_lost.png", 112 },
             { kNotifyPartyInvite, "xam://party.png", 131 }, { kNotifyPartyInviteSent, "xam://party.png", 114 },
             { kNotifyPartyMemberJoined, "xam://party.png", 132 }, { kNotifyPartyMemberLeft, "xam://party.png", 134 },
@@ -1382,6 +1516,11 @@ namespace xui
             std::replace(logged.begin(), logged.end(), '\n', '/');
             Log("System UI: toast {:02X} for user {}: \"{}\" at ({}, {}) in the HUD", toast.type, toast.user, logged,
                 s.toastX, s.toastY);
+            // The pop-up sound (the skin visual's PopUpSound: TransTo's frame 0 sets its File to NotifyPopup.xma, frame 1
+            // clears it) plays when its File changes. XAM keeps its toast scene, so the file is clear when the next toast
+            // opens; the scene is new here, made with the file already set: cleared first, or no toast had a sound.
+            if (Element* sound = visual->Find("PopUpSound"))
+                sound->SetString("File", "");
             s.toastControl->PlayVisualState("TransTo");
             visual->PlayNamed("TransTo", "", true);
             s.toastTime = 0;
@@ -1493,76 +1632,6 @@ namespace xui
             if (body)
                 body->ShowFrame((e->focused ? 101 : 0) + (value - lo) * 100 / std::max(1, hi - lo));
         }
-    }
-
-    std::u16string CreateProfileString(size_t index, const char16_t* fallback)
-    {
-        State& s = S();
-        std::lock_guard lock(s.mutex);
-        const auto* table = Ready(s) ? s.assets->Strings(Base17559(s, "createprofile.cp"), "CreateProfile_Custom.xus") : nullptr;
-        return table && index < table->size() ? Utf16((*table)[index]) : std::u16string(fallback);
-    }
-
-    void ShowProfileCreated(const std::u16string& gamertag, const std::vector<uint8_t>& picture, uint32_t gamerscore,
-                            uint32_t titles, uint32_t achievements, uint32_t focus)
-    {
-        State& s = S();
-        std::lock_guard lock(s.mutex);
-        if (!Ready(s) || !EnsureHud(s))
-            return;
-        ShowWhenClosed(s, [=](State& s) {
-            Element* pane = OpenPane(s, "createprofile.cp", "Congratulations.xur");
-            if (!pane)
-                return;
-            s.pane = State::Pane::kDrill;
-            s.images.clear();
-            SetText(pane->Find("gamerTagText"), gamertag);
-            SetText(pane->Find("GSTextnumber"), Utf16(std::to_string(gamerscore)));
-            SetText(pane->Find("titlesPlayednumber"), Utf16(std::to_string(titles)));
-            SetText(pane->Find("achievementsnumber"), Utf16(std::to_string(achievements)));
-            if (Element* tile = pane->Find("gamerTileImage"); tile && !picture.empty())
-            {
-                auto image = std::make_unique<Image>();
-                std::string error;
-                if (DecodePng(picture.data(), picture.size(), *image, error))
-                {
-                    tile->image = image.get();
-                    s.images.push_back(std::move(image));
-                }
-            }
-            s.buttons.clear();
-            for (const char* id : { "getLiveButton", "editProfileButton", "doneButton" })
-                if (Element* b = pane->Find(id))
-                    s.buttons.push_back(b);
-            // Each button's meta panel on the right (getLiveMetaPanel shown at first, the others hidden).
-            Element* panels[3] = { pane->Find("getLiveMetaPanel"), pane->Find("editProfileMetaPanel"),
-                                   pane->Find("doneMetaPanel") };
-            s.buttonFocus = [panels](State&, uint32_t focus) {
-                for (uint32_t i = 0; i < 3; i++)
-                    if (panels[i])
-                    {
-                        SetShow(panels[i], i == focus);
-                        panels[i]->SetFloat("Opacity", 1.0f);
-                    }
-            };
-            DrillFocus(s, std::min<uint32_t>(focus, 2), true);
-        });
-    }
-
-    void ShowAddXboxLive(const std::u16string& status)
-    {
-        State& s = S();
-        std::lock_guard lock(s.mutex);
-        if (!Ready(s) || !EnsureHud(s))
-            return;
-        ShowWhenClosed(s, [=](State& s) {
-            Element* pane = OpenPane(s, "createprofile.cp", "AddXboxLive.xur");
-            if (!pane)
-                return;
-            s.pane = State::Pane::kDrill;
-            s.buttons.clear();
-            SetText(pane->Find("statusText"), status);
-        });
     }
 
     void ShowControlScene(const std::string& package, const std::string& scene, const std::vector<SceneControl>& controls,
@@ -1707,12 +1776,21 @@ namespace xui
         s.guideKeep = true;
     }
 
+    void GuideForgetPosition()
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        s.guideKeep = false;
+        s.guideTab = 1;
+        s.guideFocus.clear();
+    }
+
     GuideAction GuidePress(uint16_t pressed)
     {
         State& s = S();
         std::lock_guard lock(s.mutex);
         auto& g = s.guide;
-        if (s.pane != Pane::kGuide || s.phase != Phase::kOpen || !g.tabs || (g.box && !g.boxClosing))
+        if (s.pane != Pane::kGuide || s.phase != Phase::kOpen || !g.tabs || (g.box && !g.boxClosing) || s.afterPress)
             return {};
         constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kBack = 0x0020,
                            kLeftTrigger = 0x0400, kRightTrigger = 0x0800, kA = 0x1000, kB = 0x2000, kX = 0x4000,
@@ -1735,8 +1813,7 @@ namespace xui
             GuideSwitchTab(s, 1);
         if ((pressed & kA) && g.focus && g.focus->enabled)
         {
-            g.focus->PlayVisualState("Press");
-            s.dirty = true;
+            PlayPress(s, g.focus);
             return { GuideAction::kButton, g.focus->Id(), g.focus->text };
         }
         if (pressed & kX)
@@ -1818,71 +1895,6 @@ namespace xui
         return table && index < table->size() ? Utf16((*table)[index]) : std::u16string(fallback);
     }
 
-    void ShowDeviceSelector(const std::vector<DeviceEntry>& entries, uint32_t focus)
-    {
-        State& s = S();
-        std::lock_guard lock(s.mutex);
-        if (!Ready(s) || !EnsureHud(s))
-            return;
-        ShowWhenClosed(s, [=](State& s) {
-            Element* pane = OpenPane(s, "deviceselector.media", "DeviceSelector.xur");
-            Element* list = pane ? pane->Find("DeviceListId") : nullptr;
-            if (!list)
-                return;
-            s.pane = Pane::kSignIn; // a list pane: PanePress's list handling
-            const auto* strings = s.assets->Strings(Base17559(s, "deviceselector.media"), "Strings.xus");
-            auto text = [&](size_t i) { return strings && i < strings->size() ? Utf16((*strings)[i]) : std::u16string(); };
-            // deviceselector.xex's free-space text (FUN_916D2708, SHOWS): the size divided by 1024 up to three times
-            // (unit strings 0x19, 0x1B, 0x1C, 0x1A); from 1 GB to under 100 GB format 0x1F with one decimal (floored),
-            // else format 0x1E with the floored whole number; a size below one unit is "0" of the second unit.
-            auto freeText = [&](uint64_t bytes) {
-                static constexpr size_t kUnits[4] = { 0x19, 0x1B, 0x1C, 0x1A };
-                const double original = double(bytes);
-                const bool decimal = original >= 1073741824.0 && original < 107374182400.0;
-                double v = original;
-                size_t unit = 0;
-                if (std::floor(v) == 0)
-                    unit = 1;
-                else
-                    for (; v >= 1024.0 && unit < 3; unit++)
-                        v *= 1.0 / 1024.0;
-                const std::u16string format = text(decimal ? 0x1F : 0x1E), unitText = text(kUnits[unit]);
-                std::wstring f(format.begin(), format.end()), u(unitText.begin(), unitText.end());
-                wchar_t out[64] = {};
-                if (decimal)
-                    _snwprintf(out, 63, f.c_str(), std::floor(v * 10.0) * 0.1, u.c_str());
-                else
-                    _snwprintf(out, 63, f.c_str(), int(std::floor(v)), u.c_str());
-                return std::u16string(out, out + wcslen(out));
-            };
-            const Image* hdd = s.assets->LoadImage("ico_64x_HD_black.png", "deviceselector.media");
-            const Image* usb = s.assets->LoadImage("ico_96x_USB.png", "deviceselector.media");
-            const Image* mu = s.assets->LoadImage("ico_64x_BuiltInMU.png", "deviceselector.media");
-            const Image* cable = s.assets->LoadImage("ico_64x_TransferCable.png", "deviceselector.media");
-            SetShow(pane->Find("txtNoDevices"), entries.empty());
-            // Rows are filled again whenever the list scrolls or moves focus: their texts are made here, captured by
-            // value (the lambdas above refer to this callback's locals).
-            std::vector<std::u16string> sizes;
-            for (const DeviceEntry& e : entries)
-                sizes.push_back(freeText(e.freeBytes));
-            ListBuild(s, list, int(entries.size()), int(focus), [=](Element* item, int index) {
-                const DeviceEntry& e = entries[size_t(index)];
-                item->text.clear();
-                item->dataText[1] = e.name;
-                item->dataText[2] = sizes[size_t(index)];
-                // The icon: the row's image presenter with no data association shows the item's own image
-                // (deviceselector.xex answers the list's image query for association 0).
-                item->image = e.kind == 1 ? hdd : e.kind == 2 ? mu : e.kind == 8 ? cable : usb;
-                // The fill bar: XuiProgressBar1 in the row's visual set to the percent used, as deviceselector.xex
-                // does (FUN_916D2E10: (total - free) * 100 / total; its reserved-bytes term is 0 here).
-                if (Element* visual = item->Visual())
-                    if (Element* bar = visual->Find("XuiProgressBar1"))
-                        bar->SetProgressValue(e.totalBytes == 0 ? 0 :
-                            int((e.totalBytes - std::min(e.freeBytes, e.totalBytes)) * 100 / e.totalBytes));
-            });
-        });
-    }
-
     void ShowSignIn(const std::vector<SignInEntry>& entries, uint32_t focus)
     {
         State& s = S();
@@ -1905,6 +1917,7 @@ namespace xui
             };
             const std::u16string create = text(9, u"Create Profile"), download = text(64, u"Download Profile");
             const std::u16string hdd = text(17, u"HDD"); // the storage line of a profile on the hard drive
+            const std::u16string guest = text(16, u"Guest");
             const Image* createIcon = s.assets->LoadImage("CreateProfileIcon.png", "signin.signin");
             const Image* downloadIcon = s.assets->LoadImage("DownloadProfileIcon.png", "signin.signin");
             const int profiles = int(entries.size());
@@ -1929,11 +1942,16 @@ namespace xui
                 item->dataText[1].clear();
                 item->dataText[2].clear();
                 item->dataImage[3] = nullptr;
+                const bool enabled = index >= profiles || entries[size_t(index)].enabled;
+                if (item->enabled != enabled && !item->focused)
+                    item->PlayVisualState(enabled ? "Normal" : "NormalDisable");
+                item->enabled = enabled;
                 if (index < profiles)
                 {
-                    item->text = entries[size_t(index)].gamertag;
-                    item->dataText[1] = entries[size_t(index)].status;
-                    item->dataText[2] = entries[size_t(index)].storage.empty() ? hdd : entries[size_t(index)].storage;
+                    const SignInEntry& entry = entries[size_t(index)];
+                    item->text = entry.guest ? guest : entry.gamertag;
+                    item->dataText[1] = entry.status;
+                    item->dataText[2] = entry.guest ? std::u16string() : entry.storage.empty() ? hdd : entry.storage;
                     item->dataImage[3] = pictures[size_t(index)];
                 }
                 else
@@ -1944,14 +1962,158 @@ namespace xui
             });
         });
     }
-    void ShowKeyboard(const std::u16string& title, const std::u16string& description, const std::u16string& text,
-                      size_t maxLength)
+    void ShowSignInStatus(const SignInEntry& entry)
     {
         State& s = S();
         std::lock_guard lock(s.mutex);
         if (!Ready(s) || !EnsureHud(s))
             return;
         ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, "signin.signin", "signin1.xur");
+            if (!pane)
+                return;
+            s.pane = Pane::kWait;
+            s.buttons.clear();
+            Element* status = LoadInto(s, pane->Find("Scene_Pane0"), "signin.signin", "status.xur");
+            if (!status)
+                return;
+            // StatusScene while a profile signs in: the profile's row, "Signing in" over the skin's txt_Starting wait
+            // cursor (its XuiControl1, a Loading_Small: it fades in and turns from its Normal state on, as in
+            // createprofile's wait scene); the Start button and "Waiting for others" belong to the multi-pane sign-in.
+            SetShow(status->Find("btnStart"), false);
+            SetShow(status->Find("txtWaiting"), false);
+            SetShow(status->Find("txtDataCenterMode"), false);
+            if (Element* starting = status->Find("txtStarting"); starting && starting->Visual())
+                if (Element* cursor = starting->Visual()->Find("XuiControl1"))
+                    cursor->PlayVisualState("Normal");
+            s.images.clear();
+            if (Element* row = status->Find("SelectedProfile"))
+            {
+                row->text = entry.gamertag;
+                row->dataText[1] = entry.status;
+                // The storage line as the list's rows show it ("HDD", signin.xex string 17).
+                const auto* strings = s.assets->Strings("signin.signin", "strings.xus");
+                row->dataText[2] = !entry.storage.empty()            ? entry.storage
+                                   : strings && strings->size() > 17 ? Utf16((*strings)[17])
+                                                                      : std::u16string(u"HDD");
+                if (!entry.picture.empty())
+                {
+                    auto image = std::make_unique<Image>();
+                    std::string error;
+                    if (DecodePng(entry.picture.data(), entry.picture.size(), *image, error))
+                    {
+                        row->dataImage[3] = image.get();
+                        s.images.push_back(std::move(image));
+                    }
+                }
+            }
+            const std::u16string legend[4] = {};
+            SetLegend(s, legend);
+        });
+    }
+
+    namespace
+    {
+        // deviceselector.xex's string table (Strings.xus), or `fallback` (no assets).
+        std::u16string DeviceSelectorStringOf(State& s, size_t index, const char16_t* fallback)
+        {
+            const auto* table = s.assets ? s.assets->Strings(Base17559(s, "deviceselector.media"), "Strings.xus")
+                                         : nullptr;
+            return table && index < table->size() ? Utf16((*table)[index]) : std::u16string(fallback);
+        }
+
+        std::u16string DeviceSelectorFreeOf(State& s, uint64_t bytes)
+        {
+            // Strings.xus: 25 bytes, 27 KB, 28 MB, 26 GB; 31 "%.01f %s" (30 "%d %s" for bytes); 5 "%s free".
+            const char16_t* units[] = { u"bytes", u"KB", u"MB", u"GB" };
+            const size_t ids[] = { 25, 27, 28, 26 };
+            double value = double(bytes);
+            size_t unit = 0;
+            while (unit < 3 && value >= 1024.0)
+            {
+                value /= 1024.0;
+                unit++;
+            }
+            const std::u16string name = DeviceSelectorStringOf(s, ids[unit], units[unit]);
+            std::string number = unit == 0 ? std::format("{}", bytes) : std::format("{:.1f}", value);
+            std::u16string size(number.begin(), number.end());
+            size += u" " + name;
+            std::u16string free = DeviceSelectorStringOf(s, 5, u"%s free");
+            if (const size_t at = free.find(u"%s"); at != std::u16string::npos)
+                free.replace(at, 2, size);
+            return free;
+        }
+    }
+
+    std::u16string DeviceSelectorString(size_t index, const char16_t* fallback)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        return Ready(s) ? DeviceSelectorStringOf(s, index, fallback) : std::u16string(fallback);
+    }
+
+    std::u16string DeviceSelectorFree(uint64_t bytes)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        Ready(s); // loads the assets; without them the texts are the fallbacks
+        return DeviceSelectorFreeOf(s, bytes);
+    }
+
+    void ShowDeviceSelector(const std::vector<DeviceEntry>& devices, uint32_t focus)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, "deviceselector.media", "DeviceSelector.xur");
+            if (!pane)
+                return;
+            s.pane = Pane::kDeviceSelector;
+            s.dimLayers = kDimDeviceSelector;
+            Element* list = pane->Find("DeviceListId");
+            if (!list)
+                return;
+            // deviceselector.xex's icons, one per kind of device (XDEVICE_DATA type: 1 hard drive, 2 memory unit,
+            // 8 transfer cable, others USB).
+            const Image* hdd = s.assets->LoadImage("ico_64x_HD_black.png", "deviceselector.media");
+            const Image* mu = s.assets->LoadImage("ico_64x_BuiltInMU.png", "deviceselector.media");
+            const Image* cable = s.assets->LoadImage("ico_64x_TransferCable.png", "deviceselector.media");
+            const Image* usb = s.assets->LoadImage("ico_96x_USB.png", "deviceselector.media");
+            // Rows are filled again whenever the list scrolls or moves focus: their status lines are made here.
+            std::vector<std::u16string> status;
+            for (const DeviceEntry& d : devices)
+                status.push_back(d.status.empty() ? DeviceSelectorFreeOf(s, d.freeBytes) : d.status);
+            ListBuild(s, list, int(devices.size()), int(focus), [=](Element* item, int index) {
+                const DeviceEntry& d = devices[size_t(index)];
+                item->text.clear();
+                item->dataText[1] = d.name;
+                item->dataText[2] = status[size_t(index)];
+                item->image = d.kind == 1 ? hdd : d.kind == 2 ? mu : d.kind == 8 ? cable : usb;
+                item->enabled = d.enabled;
+                // btn_3Line_Icon_prgbr's XuiProgressBar1: prgbr_Memory's ProgressBody timeline shows Bar_mid (the used
+                // share, dark over the light background) at frames 1-100 = percent.
+                if (Element* bar = item->FindInVisual("XuiProgressBar1"))
+                {
+                    const int used = d.totalBytes ?
+                        int((d.totalBytes - std::min(d.freeBytes, d.totalBytes)) * 100 / d.totalBytes) : -1;
+                    SetShow(bar, used >= 0);
+                    if (Element* body = used >= 0 && bar->Visual() ? bar->Visual()->Find("ProgressBody") : nullptr)
+                        body->ShowFrame(std::clamp(used, 1, 100));
+                }
+            });
+        });
+    }
+
+    void ShowKeyboard(const std::u16string& title, const std::u16string& description, const std::u16string& text,
+                      size_t maxLength, bool afterUnloading, bool gamertag)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        auto show = [=](State& s) {
             // An older system update's (vk.xex 1888 ... 9199): Keyboard.xur, the keys in the scene itself.
             if (const Package* vk = s.assets->FindPackage("vk.vk"); vk && !vk->Find("KeyboardMain.xur") &&
                 vk->Find("Keyboard.xur"))
@@ -1960,6 +2122,7 @@ namespace xui
                 if (!pane)
                     return;
                 s.pane = Pane::kKeyboard;
+                s.dimLayers = kDimKeyboard;
                 auto& k = s.keyboard;
                 k = {};
                 k.legacy = true;
@@ -1989,6 +2152,7 @@ namespace xui
             if (!pane)
                 return;
             s.pane = Pane::kKeyboard;
+            s.dimLayers = kDimKeyboard;
             SetText(pane->Find("Text_Header"), title);
             Element* base = LoadInto(s, pane->Find("KeyboardPlaceholder"), "vk.vk", "KeyboardBase.xur");
             auto& k = s.keyboard;
@@ -2000,6 +2164,7 @@ namespace xui
             SetShow(base->Find("FormattedText"), false); // the IME's formatted line, unused by the Latin layouts
             SetText(base->Find("XuiText1"), description);
             k.maxLength = maxLength;
+            k.gamertag = gamertag;
             k.text = text.substr(0, maxLength);
             k.cursor = k.text.size();
             // KeyboardMain names X Backspace and Y Space, but the console's legend shows only A and B there (capture
@@ -2028,7 +2193,11 @@ namespace xui
             if (k.edit)
                 k.edit->PlayVisualState("Focus");
             KeyboardTick(s);
-        });
+        };
+        if (afterUnloading)
+            ShowAfterUnloading(s, PaneState(s, "vk.vk", "KeyboardMain.xur"), 107.0f / 60.0f, show);
+        else
+            ShowWhenClosed(s, show);
     }
 
     KeyboardAction KeyboardPress(uint16_t pressed)
@@ -2037,7 +2206,7 @@ namespace xui
         std::lock_guard lock(s.mutex);
         KeyboardAction action = KeyboardAction::kNone;
         auto& k = s.keyboard;
-        if (s.pane != Pane::kKeyboard || s.phase != Phase::kOpen || !k.group)
+        if (s.pane != Pane::kKeyboard || s.phase != Phase::kOpen || !k.group || s.afterPress)
             return action;
         constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kStart = 0x0010,
                            kBack = 0x0020, kLeftThumb = 0x0040, kLeftShoulder = 0x0100, kRightShoulder = 0x0200,
@@ -2093,11 +2262,35 @@ namespace xui
             if (k.cursor > 0)
                 k.text.erase(--k.cursor, 1);
         }
-        else if (c >= 0x20 && c != 0x7F)
+        else if (c >= 0x20 && c != 0x7F && (!k.gamertag || GamertagChar(c)))
             KeyboardType(s, c);
         else
             return;
         KeyboardRefresh(s);
+        // Like a chatpad on the console: the focus jumps to the typed character's key (Backspace, Space) and the key
+        // shows its Press, green as if selected there (owner's Patch Notes, "Not Fixed" 1). A character the page
+        // does not show leaves the focus where it is.
+        Element* typed = nullptr;
+        if (c == u'\b')
+            typed = k.group->Find("Key.BS");
+        else if (c == u' ')
+            typed = k.group->Find("Key.Spc");
+        else
+            for (int row = 0; row < 5 && !typed; row++)
+                for (int col = 0; col < 10 && !typed; col++)
+                    if (Element* key = k.group->Find(std::format("Key.{}_{}", row, col));
+                        key && key->Shown() && !key->text.empty() && std::towlower(key->text[0]) == std::towlower(c))
+                        typed = key;
+        if (typed && typed->Shown())
+        {
+            KeyboardFocus(s, typed, false);
+            if (typed->enabled)
+            {
+                typed->PlayVisualState("Press");
+                if (std::find(k.pressed.begin(), k.pressed.end(), typed) == k.pressed.end())
+                    k.pressed.push_back(typed);
+            }
+        }
         Log("System UI: keyboard typed: \"{}\" (cursor {})", Utf8(k.text), k.cursor);
     }
     namespace
@@ -2259,7 +2452,7 @@ namespace xui
         }
     }
 
-    // ---- The Guide's real Community scene (Guide.Friends.xex 17559's community.xur) ----
+    // ---- The Guide's real Community scene (Guide.Friends.xex 17559's community.xur; NOTES session 20) ----
 
     namespace
     {
@@ -2340,7 +2533,6 @@ namespace xui
                                 ? s.community.root
                                 : nullptr;
             const int previous = root ? s.community.tab : -1;
-            const int backFrom = root ? -1 : s.communityDrillTab;
             if (!root)
             {
                 root = OpenPane(s, kFriendsPackage, "community.xur");
@@ -2349,17 +2541,22 @@ namespace xui
                 s.community.root = root;
                 for (auto& p : s.community.pictures)
                     p.clear();
-                s.communityDrillTab = -1;
             }
             s.pane = State::Pane::kCommunity;
             s.community.tab = tab;
             if (previous >= 0 && std::abs(tab - previous) == 1)
                 root->PlayNamed(std::format("{}To{}", previous + 1, tab + 1),
                                 std::format("{}To{}End", previous + 1, tab + 1), false);
+            else if (previous < 0 && s.communityLeft)
+            {
+                // Back from a drill-down (Guide.Friends' tab table 0x901033C8: Tab<N>Open hides the strip and the
+                // tab when one opens, Tab<N>Close brings them back: 17 frames hidden, then 18 fading in).
+                const std::string close = std::format("Tab{}Close", tab + 1);
+                root->PlayNamed(close, "End" + close, false);
+            }
             else if (previous != tab)
                 root->PlayNamed(kCommunityTabs[tab].snap, kCommunityTabs[tab].snap, false);
-            if (backFrom == tab)
-                root->PlayNamed(std::format("Tab{}Close", tab + 1), std::format("EndTab{}Close", tab + 1), false);
+            s.communityLeft = false;
 
             // The strip: every tab's long label and number (its list class sets both, FUN_9011B6A0 / FUN_90127ED0 ...).
             for (size_t i = 0; i < 4 && i < tabs.size(); i++)
@@ -2738,7 +2935,7 @@ namespace xui
                 // btn_oneline_3strings: txt_line1 (the item text) at x 18, txt_line2 (data 1) at 213, txt_line3
                 // (data 2) at 408, one line each; no image. A row with text only spans the width. Party members and
                 // settings get parts of their own, made once per list slot and found by their "Part" tag (measured
-                // on the user's captures "in a party.png" / "party settings *.png", in list units): a member's
+                // on the owner's captures "in a party.png" / "party settings *.png", in list units): a member's
                 // 22-unit picture at x 26 with the gamertag from 53, the tinted controller at 279, the title from
                 // 339, the leader's mark at 544 (the console's icon, a seated person with a star, is in the
                 // LIVE-delivered Guide module: XAM's person and reputation star here); a setting's name keeps the
@@ -2876,7 +3073,7 @@ namespace xui
                 SetShow(status, !row.status.empty());
                 status->SetString("ImagePath", row.status);
                 status->Set("ColorFactor", color(row.statusColor));
-                // The Community's text is 12 points (the user's captures), the skin's two-line rows 11.
+                // The Community's text is 12 points (the owner's captures), the skin's two-line rows 11.
                 for (const char* id : { "txt_line1", "txt_line2", "txt_line3" })
                     if (Element* t = visual->Find(id))
                         t->SetFloat("PointSize", 12);
@@ -3394,10 +3591,10 @@ namespace xui
             if (Element* ext = gc->Find("extendedScene"))
             {
                 SetShow(ext, extended);
-                // The Online layout (motto on top, status at y 192) whenever the card has a motto or a title to show:
-                // the user's 7_48_27 has an offline friend's motto, last game and "Offline for 9 hours" laid out
-                // so; the Offline frame (no motto, status at y 201) for a card with nothing else.
-                const char* frame = card.online || !card.motto.empty() || !card.title.empty() ? "Online" : "Offline";
+                // The Online layout (status at y 192), also for an offline card: the owner's 7_48_27 has "Offline for
+                // 9 hours" there (720p rows 574-591, 12 above the pane's edge). The Offline frame's y 201 puts the
+                // status past the Profile pane's edge, which clips the enlarged card (owner's report: cut off).
+                const char* frame = "Online";
                 ext->PlayNamed(frame, frame, true);
                 SetText(ext->Find("topText"), card.motto);
                 SetText(ext->Find("titleText"), card.title);
@@ -4012,11 +4209,318 @@ namespace xui
         return true;
     }
 
+    std::u16string CreateProfileString(size_t index, const char16_t* fallback)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        const auto* table = Ready(s) ? s.assets->Strings(Base17559(s, "createprofile.cp"), "CreateProfile_Custom.xus") : nullptr;
+        return table && index < table->size() ? Utf16((*table)[index]) : std::u16string(fallback);
+    }
+
+    void ShowProfileWait(const std::u16string& status)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            // The scene stays while its text changes ("Creating profile", "Signing in", "Updating profile").
+            if (s.pane == Pane::kWait && s.phase == Phase::kOpen && s.hosted)
+            {
+                SetText(s.hosted->Find("statusText"), status);
+                s.dirty = true;
+                return;
+            }
+            Element* pane = OpenPane(s, "createprofile.cp", "AddXboxLive.xur");
+            if (!pane)
+                return;
+            s.pane = Pane::kWait;
+            s.buttons.clear();
+            SetText(pane->Find("statusText"), status);
+            SetShow(pane->Find("backButton"), false);
+            // The wait cursor (the skin's Loading_Small: its ring fades in and turns from its Normal state on).
+            if (Element* cursor = pane->Find("waitCursorControl"))
+                cursor->PlayVisualState("Normal");
+            const std::u16string legend[4] = {};
+            SetLegend(s, legend);
+        });
+    }
+
+    namespace
+    {
+        // A QuickLaunch tab's contents (QLRecentlyPlayedTabScene / QLRecentlyDownloadedTabScene / QLAllGamesTabScene,
+        // hud 0x913F6110 / 0x913F61C8 / 0x913F5770 / 0x913F5CA0): Tab1 without a signed-in profile shows labelSignIn;
+        // no rows show labelNoGames; else the list (Tab1 at most 6 rows). The wait cursors are hidden once loaded;
+        // text_PercentFull and ProgressAnimation are never used by hud. Legend: A "Launch" (hud 36) once the tab has
+        // rows, B the scene's "Back", Y on All "Hide Trial Games" (35) / "Show Trial Games" (37) (0x913F73A8).
+        void QuickLaunchFill(State& s)
+        {
+            auto& q = s.quick;
+            static const char* const kLists[3] = { "gameList", "downloadList", "listItems" };
+            Element* tab = q.tab[q.cur];
+            const std::vector<QuickLaunchRow>& rows =
+                q.cur == 0 ? q.info.played : q.cur == 1 ? q.info.downloads : q.info.all;
+            const bool signIn = q.cur == 0 && !q.info.signedIn;
+            q.shown.clear();
+            for (size_t i = 0; i < rows.size() && !signIn; i++)
+                if (!(q.cur == 2 && q.hideTrials && rows[i].trial) && !(q.cur == 0 && q.shown.size() >= 6))
+                    q.shown.push_back(int(i));
+            const bool empty = !signIn && q.shown.empty();
+            SetShow(tab->Find("labelSignIn"), signIn);
+            SetShow(tab->Find("labelNoGames"), empty);
+            SetShow(tab->Find("waitCursorControl"), false);
+            SetShow(tab->Find("ProgressAnimation"), false);
+            SetText(tab->Find("text_PercentFull"), u"");
+            Element* list = tab->Find(kLists[q.cur]);
+            SetShow(list, !signIn && !empty);
+            auto& owned = q.pictures[size_t(q.cur)];
+            owned.clear();
+            std::vector<const Image*> pictures(rows.size());
+            for (int i : q.shown)
+            {
+                if (rows[size_t(i)].picture.empty())
+                    continue;
+                auto image = std::make_unique<Image>();
+                std::string error;
+                if (!DecodePng(rows[size_t(i)].picture.data(), rows[size_t(i)].picture.size(), *image, error))
+                {
+                    Log("System UI: Recent: row {}: {}", i, error);
+                    continue;
+                }
+                pictures[size_t(i)] = image.get();
+                owned.push_back(std::move(image));
+            }
+            const int tabIndex = q.cur;
+            if (list)
+            {
+                while (!list->Children().empty())
+                    list->Release(list->Children().back().get());
+                ListBuild(s, list, int(q.shown.size()), 0, [=](Element* item, int index) {
+                    const auto& qq = S().quick;
+                    const std::vector<QuickLaunchRow>& r =
+                        tabIndex == 0 ? qq.info.played : tabIndex == 1 ? qq.info.downloads : qq.info.all;
+                    const int at = qq.shown[size_t(index)];
+                    const QuickLaunchRow& row = r[size_t(at)];
+                    item->text = row.name;
+                    for (auto& t : item->dataText)
+                        t.clear();
+                    for (auto& i : item->dataImage)
+                        i = nullptr;
+                    item->image = nullptr;
+                    if (tabIndex == 0)
+                    {
+                        item->dataText[2] = row.line2; // btn_twoline-icon_RightGS: txt_line2
+                        item->dataText[1] = row.right; // txt_line3, the right column
+                        item->dataImage[3] = pictures[size_t(at)];
+                    }
+                    else if (tabIndex == 1)
+                    {
+                        item->dataText[1] = row.right; // btn_2Line_ico_Right1String: txt_line2, the date
+                        item->dataImage[3] = pictures[size_t(at)];
+                    }
+                    else
+                        item->image = pictures[size_t(at)]; // btn_standard1: its image presenter has no association
+                });
+            }
+            std::u16string legend[4] = { q.shown.empty() ? u"" : HudStringOf(s, 36, u"Launch"), u"Back", u"", u"" };
+            if (q.cur == 2)
+                legend[3] = q.hideTrials ? HudStringOf(s, 37, u"Show Trial Games") : HudStringOf(s, 35, u"Hide Trial Games");
+            SetLegend(s, legend);
+            s.dirty = true;
+        }
+    }
+
+    void ShowQuickLaunch(const QuickLaunchInfo& info)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, "hud.hud", "QuickLaunch.xur");
+            if (!pane)
+                return;
+            s.pane = Pane::kQuickLaunch;
+            s.buttons.clear();
+            auto& q = s.quick;
+            q.tabs = pane->Find("Tabscene");
+            for (int i = 0; i < 3; i++)
+                q.tab[i] = q.tabs ? q.tabs->Find(std::format("Tab{}", i + 1)) : nullptr;
+            if (!q.tab[0] || !q.tab[1] || !q.tab[2])
+            {
+                Log("System UI: QuickLaunch.xur: its three tabs not found");
+                return;
+            }
+            q.info = info;
+            q.hideTrials = false;
+            q.cur = 0;
+            q.tabs->PlayNamed("2To1End", "2To1End", false); // Tab1's resting frame (XuiTabSceneElement::GotoTab)
+            for (int i = 0; i < 3; i++)
+                SetShow(q.tab[i], i == 0);
+            QuickLaunchFill(s);
+        });
+    }
+
+    QuickLaunchAction QuickLaunchPress(uint16_t pressed)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kBack = 0x0020,
+                           kLeftShoulder = 0x0100, kRightShoulder = 0x0200, kLeftTrigger = 0x0400,
+                           kRightTrigger = 0x0800, kA = 0x1000, kB = 0x2000, kY = 0x8000;
+        if (s.phase != Phase::kOpen || s.pane != State::Pane::kQuickLaunch || s.afterPress)
+            return {};
+        auto& q = s.quick;
+        if (pressed & (kB | kBack))
+            return { QuickLaunchAction::kCancelled };
+        // XuiTabSceneElement (TU46 0x82A9C0C8 / 0x82A9C1E0): RB / RT next, LB / LT previous, "<from>To<to>" up to its
+        // End; the old tab is hidden, the new one shown (TabTransition 0x82A9BF80). The lists only go up and down, so
+        // the d-pad / left stick left and right reach the tab scene too (XuiTabSceneElement::ObjectProc, as on the
+        // Guide's blades; owner, 2026-10-22).
+        const int delta = (pressed & (kRightShoulder | kRightTrigger | kRight)) ? 1
+                          : (pressed & (kLeftShoulder | kLeftTrigger | kLeft)) ? -1
+                                                                                : 0;
+        if (delta != 0)
+        {
+            const int next = q.cur + delta;
+            if (next < 0 || next > 2)
+                return {};
+            const std::string name = std::format("{}To{}", q.cur + 1, next + 1);
+            q.tabs->PlayNamed(name, name + "End", false);
+            SetShow(q.tab[q.cur], false);
+            SetShow(q.tab[next], true);
+            q.cur = next;
+            QuickLaunchFill(s);
+            return {};
+        }
+        if ((pressed & kY) && q.cur == 2)
+        {
+            q.hideTrials = !q.hideTrials;
+            QuickLaunchFill(s);
+            return {};
+        }
+        if (pressed & kUp)
+            ListMove(s, 0, -1);
+        if (pressed & kDown)
+            ListMove(s, 0, 1);
+        if ((pressed & kA) && !q.shown.empty() && s.list.cur < int(q.shown.size()))
+        {
+            if (s.list.focused)
+                PlayPress(s, s.list.focused);
+            s.dirty = true;
+            return { QuickLaunchAction::kLaunch, uint32_t(q.cur), uint32_t(q.shown[size_t(s.list.cur)]) };
+        }
+        return {};
+    }
+
+    void ShowSaveProfile(const std::u16string& gamertag, const std::vector<uint8_t>& picture, uint32_t focus)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, "createprofile.cp", "Congratulations.xur");
+            if (!pane)
+                return;
+            s.pane = Pane::kDrill;
+            s.buttons.clear();
+            for (const char* id : { "getLiveButton", "editProfileButton", "doneButton" })
+                if (Element* b = pane->Find(id))
+                    s.buttons.push_back(b);
+            if (s.buttons.size() != 3)
+                Log("System UI: Congratulations.xur: {} of its 3 buttons found", s.buttons.size());
+            // The new profile's gamercard: its gamertag and picture, nothing earned yet.
+            SetText(pane->Find("gamerTagText"), gamertag);
+            for (const char* id : { "GSTextnumber", "titlesPlayednumber", "achievementsnumber" })
+                SetText(pane->Find(id), u"0");
+            s.images.clear();
+            if (Element* tile = pane->Find("gamerTileImage"); tile && !picture.empty())
+            {
+                auto image = std::make_unique<Image>();
+                std::string error;
+                if (DecodePng(picture.data(), picture.size(), *image, error))
+                {
+                    tile->image = image.get();
+                    s.images.push_back(std::move(image));
+                }
+                else
+                    Log("System UI: Save Profile's gamer picture: {}", error);
+            }
+            // The text beside the buttons follows the focus: the scene's timelines between the three panels
+            // ("GetLiveToEditProfile" ... "EndGetLiveToEditProfile"; Join Xbox Live and Done each border Customize
+            // Profile). Opening shows the focused button's panel at rest.
+            static const char* const kPanel[3] = { "GetLive", "EditProfile", "Done" };
+            const std::string rest = focus == 1 ? "EndGetLiveToEditProfile" :
+                                     std::format("EndEditProfileTo{}", kPanel[std::min<uint32_t>(focus, 2)]);
+            pane->PlayNamed(rest, rest, true);
+            auto shown = std::make_shared<uint32_t>(std::min<uint32_t>(focus, 2));
+            s.buttonFocus = [pane, shown](State& s, uint32_t index) {
+                if (index == *shown || index > 2)
+                    return;
+                // The focus moves one button at a time (up / down), so each move is one of the four timelines.
+                const std::string name = std::format("{}To{}", kPanel[*shown], kPanel[index]);
+                pane->PlayNamed(name, "End" + name, true);
+                *shown = index;
+                s.dirty = true;
+            };
+            DrillFocus(s, focus, true);
+        });
+    }
+
+    void ShowJoinLive()
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, "hud.hud", "InfoUpsellLive.xur");
+            if (!pane)
+                return;
+            s.pane = Pane::kDrill;
+            s.buttons.clear();
+            if (Element* b = pane->Find("btnJoinLive"))
+                s.buttons.push_back(b);
+            const std::u16string legend[4] = { u"Select", u"Back", u"", u"" };
+            SetLegend(s, legend);
+            DrillFocus(s, 0, true);
+        });
+    }
+
+    void ShowHudStatus(const std::u16string& text)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, "hud.hud", "Status.xur");
+            if (!pane)
+                return;
+            s.pane = Pane::kWait;
+            s.buttons.clear();
+            // StatusScene (hud 0x913F8590): txtMessage (visual txt_Starting) gets the text; its wait cursor
+            // (XuiControl1, a Loading_Small) fades in and turns from its Normal state on, as in signin's status.xur.
+            if (Element* message = pane->Find("txtMessage"))
+            {
+                SetText(message, text);
+                if (message->Visual())
+                    if (Element* cursor = message->Visual()->Find("XuiControl1"))
+                        cursor->PlayVisualState("Normal");
+            }
+            const std::u16string legend[4] = {};
+            SetLegend(s, legend);
+        });
+    }
+
     PaneAction PanePress(uint16_t pressed)
     {
         State& s = S();
         std::lock_guard lock(s.mutex);
         PaneAction action;
+        if (s.afterPress)
+            return action;
         constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kBack = 0x0020,
                            kA = 0x1000, kB = 0x2000;
         if (s.phase == Phase::kOpen && (s.pane == State::Pane::kProfile || s.pane == State::Pane::kDrill))
@@ -4031,7 +4535,10 @@ namespace xui
             if ((pressed & kA) && s.focus < s.buttons.size())
             {
                 Element* b = s.buttons[s.focus];
-                b->PlayVisualState(b->enabled ? "Press" : "PressDisable");
+                if (b->enabled)
+                    PlayPress(s, b);
+                else
+                    b->PlayVisualState("PressDisable");
                 s.dirty = true;
                 if (b->enabled)
                     return { PaneAction::kChosen, s.focus };
@@ -4070,7 +4577,10 @@ namespace xui
                 if (c.focus < nb)
                 {
                     Element* b = c.buttons[size_t(c.focus)];
-                    b->PlayVisualState(b->enabled ? "Press" : "PressDisable");
+                    if (b->enabled)
+                        PlayPress(s, b);
+                    else
+                        b->PlayVisualState("PressDisable");
                     s.dirty = true;
                     if (b->enabled)
                         return { PaneAction::kChosen, uint32_t(c.focus) };
@@ -4078,7 +4588,7 @@ namespace xui
                 else if (s.list.count > 0)
                 {
                     if (s.list.focused)
-                        s.list.focused->PlayVisualState("Press");
+                        PlayPress(s, s.list.focused);
                     return { PaneAction::kChosen, uint32_t(nb + s.list.cur) };
                 }
             }
@@ -4099,7 +4609,7 @@ namespace xui
         if ((pressed & kA) && s.list.count > 0)
         {
             if (s.list.focused)
-                s.list.focused->PlayVisualState("Press");
+                PlayPress(s, s.list.focused);
             return { PaneAction::kChosen, uint32_t(s.list.cur) };
         }
         return action;
@@ -4127,10 +4637,7 @@ namespace xui
         State& s = S();
         std::lock_guard lock(s.mutex);
         if (s.assets && s.phase == Phase::kOpen && index < s.buttons.size())
-        {
-            s.buttons[index]->PlayVisualState("Press");
-            s.dirty = true;
-        }
+            PlayPress(s, s.buttons[index]);
     }
 
     bool PopupShowing()
@@ -4153,6 +4660,9 @@ namespace xui
             s.pending = nullptr; // closed before it was shown
             return;
         }
+        s.afterPress = nullptr; // the close comes first
+        s.afterLoad = nullptr;
+        s.loadLeft = 0;
         if (!animating)
             return;
         if (s.pane == Pane::kGuide && s.guide.tabs && !s.guide.box)
@@ -4252,7 +4762,7 @@ namespace xui
             }
 
             // Advance the animations.
-            if (s.hud && (s.phase != Phase::kClosed || s.dim > 0))
+            if (s.hud && s.phase != Phase::kClosed)
             {
                 // Redrawn only when something changed: a timeline that was or is playing, the clock, the dim level,
                 // the phase (navigation, text and popups mark the overlay dirty where they change it). A redraw is
@@ -4262,11 +4772,29 @@ namespace xui
                 const float dimBefore = s.dim;
                 bool changed = false;
                 s.hud->Advance(dt);
+                if (s.pressLeft > 0 && (s.pressLeft -= dt) <= 0)
+                {
+                    s.pressLeft = 0;
+                    auto show = std::move(s.afterPress);
+                    s.afterPress = nullptr;
+                    if (show && s.phase == Phase::kOpen)
+                        show(s);
+                }
+                if (s.afterLoad && (s.loadLeft -= dt) <= 0)
+                {
+                    s.loadLeft = 0;
+                    auto show = std::move(s.afterLoad);
+                    s.afterLoad = nullptr;
+                    if (s.phase == Phase::kOpen)
+                        show(s);
+                }
                 if (s.phase == Phase::kClosing && !s.hudScene->TimelinePlaying())
                 {
                     DropPopup(s);
                     s.phase = Phase::kClosed;
-                    s.communityDrillTab = -1;
+                    s.communityLeft = false;
+                    s.pressLeft = 0;
+                    s.dim = 0; // both layers go with the last frame of the closing
                     s.hudState.clear();
                     for (auto& f : s.closed)
                         s.due.push_back(std::move(f));
@@ -4295,9 +4823,9 @@ namespace xui
                     }
                     KeyboardTick(s);
                 }
-                // The darkening follows the open/close animations (16 frames).
+                // The fading layer follows the open / close animations.
                 const float target = s.phase == Phase::kOpen ? 1.0f : 0.0f;
-                const float step = dt * 60.0f / 16.0f;
+                const float step = dt * 60.0f / s.dimLayers.frames;
                 s.dim = s.dim < target ? std::min(target, s.dim + step) : std::max(target, s.dim - step);
                 if (changed || wasPlaying || (s.hud && s.hud->Playing()) || s.phase != phaseBefore || s.dim != dimBefore)
                     s.dirty = true;
@@ -4337,7 +4865,7 @@ namespace xui
         return true;
     }
 
-    bool AddSystemUiPackage(std::string name, std::vector<uint8_t> data, std::string& error)
+    bool AddSystemUiPackage(std::string name, std::vector<uint8_t> data, std::string& error, bool nxe)
     {
         State& s = S();
         RunDue due{ s };
@@ -4347,7 +4875,7 @@ namespace xui
             error = "the system UI assets are missing";
             return false;
         }
-        return s.assets->AddPackage(std::move(name), std::move(data), error);
+        return s.assets->AddPackage(std::move(name), std::move(data), error, nxe);
     }
 
     bool UseSystemUiPackages(const std::filesystem::path& dir, std::string& error)
@@ -4464,7 +4992,7 @@ namespace xui
             return false;
         Advance(s, vblank);
 
-        const bool visible = s.phase != Phase::kClosed || s.dim > 0 || s.toastScene || s.full;
+        const bool visible = s.phase != Phase::kClosed || s.toastScene || s.full;
         if (!visible)
         {
             changed = !s.last.empty();
@@ -4523,9 +5051,12 @@ namespace xui
                                      { 0, float(height) } }, [&](float, float) { return black; }, clip);
                 s.full->Render(*s.assets, canvas, fullDesign, 1.0f, clip);
             }
-            if (s.dim > 0)
+            if (s.phase != Phase::kClosed)
             {
-                const Rgba black{ 0, 0, 0, kDimAlpha * s.dim };
+                // The held layer and the fading one over it (black over black: one fill of the combined alpha).
+                const DimLayers& layers = s.dimLayers;
+                const float alpha = 1.0f - (1.0f - layers.hold) * (1.0f - layers.fade * s.dim);
+                const Rgba black{ 0, 0, 0, alpha };
                 canvas.FillPolygon({ { 0, 0 }, { float(width), 0 }, { float(width), float(height) },
                                      { 0, float(height) } }, [&](float, float) { return black; }, clip);
             }

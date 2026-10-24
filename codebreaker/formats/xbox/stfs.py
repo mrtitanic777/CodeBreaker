@@ -189,6 +189,8 @@ class STFS:
 
     def read_file(self, name):
         start, blocks, size = self.files[name]
+        if size == 0:
+            return b""          # an empty file's start block is the next file's: there is nothing to read
         return self._read_chain(start, blocks, size)
 
     def extract_all(self, outdir):

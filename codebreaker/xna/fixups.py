@@ -5,8 +5,10 @@
     text, n, left = fixups.constructors(text)
                                             base._002Ector(a);  ->  `: base(a)` on the constructor;
                                             v._002Ector(a);     ->  v = new T(a);   (T from v's declaration)
-    fixups.apply(folder)                    both, over every .cs file: {"ref casts", "constructors",
-                                            "left": [(file, line, why)]}
+    text, n = fixups.data_holders(text)     a compiler's static-data holder (<PrivateImplementationDetails>,
+                                            renamed by an obfuscator): its private blob structs internal
+    fixups.apply(folder)                    all of them, over every .cs file: {"ref casts", "constructors",
+                                            "data holders", "left": [(file, line, why)]}
 
 Each rewrite gives the same program: a cast of a value to its own type is no cast (the `ref` in it
 is how the decompiler marks a mutable struct's member being reached in place), and a base or this
@@ -104,8 +106,18 @@ def constructors(text):
     return text, applied, left
 
 
+def data_holders(text):
+    """The compiler's holder of static array data (<PrivateImplementationDetails>; an obfuscator renames it):
+    ILSpy writes its fields as `internal static StructN X /* Not supported: data(...) */` over private blob
+    structs, which C# refuses (CS0052), and turns the code that used the data into array literals. The blob
+    structs become internal; nothing reads them. -> (text, structs changed)"""
+    if "/* Not supported: data(" not in text:
+        return text, 0
+    return re.subn(r"\bprivate(\s+struct\s+\w+)", r"internal\1", text)
+
+
 def apply(folder):
-    report = {"ref casts": 0, "constructors": 0, "left": []}
+    report = {"ref casts": 0, "constructors": 0, "data holders": 0, "left": []}
     for base, _dirs, files in os.walk(folder):
         for f in files:
             if not f.endswith(".cs"):
@@ -115,6 +127,8 @@ def apply(folder):
                 text = fh.read()
             fixed, n_ref = ref_casts(text)
             fixed, n_ctor, left = constructors(fixed)
+            fixed, n_data = data_holders(fixed)
+            report["data holders"] += n_data
             report["ref casts"] += n_ref
             report["constructors"] += n_ctor
             report["left"] += [(os.path.relpath(p, folder), ln, why) for ln, why in left]

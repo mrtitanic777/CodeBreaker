@@ -1,6 +1,6 @@
 #pragma once
 
-// Seamless switches between the ports' processes: the dashboard starting a game, a game going
+// Seamless switches between the ports' processes (owner, 2026-10-16): the dashboard starting a game, a game going
 // back to the dashboard. A console shows no desktop in between, so the process that leaves fades its picture to
 // black (its presenter), covers the screen with a black window on top of everything, starts the next one, and goes
 // only when that one's boot animation is ready (its first frame with content is on the screen: FrameShown /
@@ -38,7 +38,7 @@ namespace transition
     // FrameShown / FramePresented, not directly.
     void SignalReady();
 
-    // Started side: the launcher's cover stays while this process only shows black (its window
+    // Started side (owner, 2026-10-16): the launcher's cover stays while this process only shows black (its window
     // appearing, loading, the black screen before the boot animation) and goes when the boot animation is ready to
     // start: the first frame with something on it is on the screen.
     // FrameShown: the command processor at each swap, with the guest front buffer's bytes (32-bit pixels, any

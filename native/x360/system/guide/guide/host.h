@@ -36,7 +36,7 @@ namespace guide
         std::u16string motto, name, location, bio;
     };
 
-    // The settings the Guide's Edit Profile changes (host::WriteGamercard), the ids the user's console profile uses.
+    // The settings the Guide's Edit Profile changes (host::WriteGamercard), the ids the owner's console profile uses.
     constexpr uint32_t kSettingZone = 0x10040004;     // XPROFILE_GAMERCARD_ZONE (the text is the zone's digit)
     constexpr uint32_t kSettingMotto = 0x402C0011;    // XPROFILE_GAMERCARD_MOTTO, 21 characters
     constexpr uint32_t kSettingName = 0x41040040;     // the Personal Profile's name, 129 characters
@@ -88,13 +88,25 @@ namespace guide::host
     void SignIn(uint32_t user, size_t index);
     // Signs `user` out (and off our Xbox LIVE) and broadcasts XN_SYS_SIGNINCHANGED.
     void SignOut(uint32_t user);
-    // "Create Profile" (optional: a runtime that cannot create profiles leaves it empty and the row does nothing): makes
-    // a new profile with this gamertag and returns its index into Profiles(); nullopt with the reason the console would
-    // show (an invalid gamertag) in `reason`.
+    // A runtime's own profile maker (optional): a new profile with this gamertag, its index into Profiles(); nullopt
+    // with the reason the console would show (an invalid gamertag) in `reason`. The Guide's Create Profile does not
+    // call it (createprofile.xex's flow over CreateProfile below); kept for the runtimes that set it.
     inline std::function<std::optional<size_t>(const std::u16string& gamertag, std::u16string& reason)> createProfile;
     // "Download Profile": adds the profiles the runtime can bring onto the console (the dashboard: the `profiles`
     // folder) to Profiles(); returns their XUIDs.
     std::vector<uint64_t> DownloadProfiles();
+    // "Create Profile" (the sign-in pane's row): a new profile with this gamertag, offline (no Xbox LIVE account
+    // yet), added to Profiles(). Its XUID, or nullopt with the reason in `error` (a bad or taken gamertag, ...).
+    std::optional<uint64_t> CreateProfile(const std::string& gamertag, std::string& error);
+    // "Join Xbox Live" (the Profile's row for a profile without an Xbox LIVE account): our server gives the profile
+    // signed in to `user` an Xbox LIVE account (its online XUID), the profile keeps it and signs in to it. nullopt
+    // when that worked (the sign-in itself goes on in the background), else the reason ("gamertag taken", ...).
+    std::optional<std::string> JoinLive(uint32_t user);
+    // Join Xbox Live as the console does it: Xbox LIVE's signup (Title.NewLiveSignup.xex: Welcome, the Microsoft
+    // account's name, email and password, ...) for the profile signed in to `user`. The running title ends and the
+    // signup runs in its place (the dashboard's runtime runs it); returns only when this runtime cannot start it (then
+    // the Guide gives the profile its account at once, host::JoinLive).
+    bool LaunchLiveSignup(uint32_t user);
     // A profile's gamer picture (64x64 PNG; empty: none).
     std::vector<uint8_t> GamerPicture(uint64_t xuid);
     // A profile's gamercard (zeros / empty texts when it has none).
@@ -117,6 +129,18 @@ namespace guide::host
     };
     Preferences ReadPreferences(uint32_t user);
     void WritePreferences(uint32_t user, const Preferences& preferences);
+
+    // ---- Games on our Xbox LIVE ----
+
+    // The game session `user` plays in that others can join (Invite to Game is offered while there is one), if any.
+    std::optional<uint64_t> CurrentGameSession(uint32_t user);
+    // Invite to Game: a game invite (our LIVE's message kind game_invite, with the session) from `user` to `xuid`.
+    // nullopt when sent, else the reason.
+    std::optional<std::string> InviteToGame(uint32_t user, uint64_t xuid);
+    // Join Game on a friend in a joinable game, or Accept on a received game invite: the running title is told to
+    // join that session (XN_LIVE_INVITE_ACCEPTED, XInviteGetAcceptedInfo). False when it cannot (the session is gone
+    // or another title's).
+    bool JoinGame(uint32_t user, uint64_t inviter, uint64_t sessionId, bool fromGameInvite);
 
     // ---- The running title ----
 

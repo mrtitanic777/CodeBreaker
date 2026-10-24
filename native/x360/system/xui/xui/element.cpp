@@ -88,9 +88,26 @@ namespace xui
             }
             case Type::kQuaternion:
             {
-                // Normalised linear interpolation (the timeline rotations are about z and short).
-                Quat q{ a.q.x + (b.q.x - a.q.x) * t, a.q.y + (b.q.y - a.q.y) * t, a.q.z + (b.q.z - a.q.z) * t,
-                        a.q.w + (b.q.w - a.q.w) * t };
+                // Spherical interpolation along the shorter arc (XMQuaternionSlerp): constant angular speed, and keys
+                // of opposite sign take the short way. The skin's Loading_Small turns 90 degrees a key and two of its
+                // key pairs have opposite signs (270 -> 360 as (0,0,-.707,.707) -> (0,0,0,-1)); a plain linear blend
+                // turned those quarters the long way round, backwards (owner, 2026-10-21).
+                Quat bq = b.q;
+                float cosOmega = a.q.x * bq.x + a.q.y * bq.y + a.q.z * bq.z + a.q.w * bq.w;
+                if (cosOmega < 0)
+                {
+                    cosOmega = -cosOmega;
+                    bq = { -bq.x, -bq.y, -bq.z, -bq.w };
+                }
+                float wa = 1.0f - t, wb = t;
+                if (cosOmega < 0.9999f)
+                {
+                    const float omega = std::acos(std::min(cosOmega, 1.0f));
+                    const float sinOmega = std::sin(omega);
+                    wa = std::sin((1.0f - t) * omega) / sinOmega;
+                    wb = std::sin(t * omega) / sinOmega;
+                }
+                Quat q{ a.q.x * wa + bq.x * wb, a.q.y * wa + bq.y * wb, a.q.z * wa + bq.z * wb, a.q.w * wa + bq.w * wb };
                 const float n = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
                 if (n > 0)
                     q = { q.x / n, q.y / n, q.z / n, q.w / n };
@@ -1284,7 +1301,7 @@ namespace xui
 
         // Glyphs are rasterised at their size on the target (the glyph cache holds them at the device size) and
         // drawn as bilinear-filtered quads at the pen's position mapped to the target, which may fall between
-        // pixels; the cache keeps an empty texel around each glyph. (Checked against the user's captures: the
+        // pixels; the cache keeps an empty texel around each glyph. (Checked against the owner's captures: the
         // layout in scene units with glyphs at the device size matches them to within 0.6 pixel.)
         const float scale = std::sqrt(std::abs(world.a * world.d - world.b * world.c));
         auto drawGlyph = [&](char16_t c, int penX, int lineTop, Rgba tint, float offset) {

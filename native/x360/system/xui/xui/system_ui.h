@@ -7,7 +7,7 @@
 // asks for the overlay at every present. The HUD is laid out in XAM's 852x480 design space, scaled by the output
 // height and centred (1280x720: x1.5, 1 pixel left margin), and drawn into an overlay the size of the title's front
 // buffer that is composited over it before the display gamma, as XAM draws into the front buffer. A popup darkens
-// the title's frame (a black layer, alpha 0xDC, measured on the user's console captures) and plays hudbkgnd.xur's
+// the title's frame (a black layer, alpha 0xDC, measured on the owner's console captures) and plays hudbkgnd.xur's
 // state animations (ClosedToError / ErrorToClosed for message boxes; for the Guide's panes Half or Full by the pane
 // scene's OpenType). A pane (the Guide, sign-in, keyboard, achievements) is a HUDScene hosted in hudbkgnd's
 // AppHostElementId, with hudbkgnd's legend packed from its LegendA..Y, the clock and the user's gamer picture
@@ -32,7 +32,7 @@ namespace xui
     // first popup or Guide finds everything parsed and decoded.
     void PreloadSystemUi();
 
-    enum class MessageIcon { kNone = 0, kError = 1, kWarning = 2, kAlert = 3 }; // XMB_*ICON
+    enum class MessageIcon { kNone = 0, kError = 1, kWarning = 2, kAlert = 3, kInformation = 4 }; // XMB_*ICON; XAM's 4
 
     // A row of the sign-in pane (signin.xex's user list): gamertag, "Xbox Live" for a LIVE profile, the storage
     // device ("HDD"), the gamer picture (PNG, empty if the profile has none).
@@ -42,6 +42,10 @@ namespace xui
         std::u16string status;
         std::u16string storage;
         std::vector<uint8_t> picture;
+        // signin.xex's "Guest" row (XSSUI_FLAGS_ENABLE_GUEST): its string #16 as the name, no storage line.
+        bool guest = false;
+        // A profile listed but not choosable (greyed: already signed in, XSSUI_FLAGS_ADDUSER; signin.xex 0x90118BF8).
+        bool enabled = true;
     };
 
     // An achievement of the Guide's achievement list (gamerprofile.xex's 802_Achievements.xur).
@@ -79,7 +83,7 @@ namespace xui
         std::u16string legendX;
         // The real Community scene (Guide.Friends.xex's community.xur, CommunitySceneAvailable): what the row's
         // presenters show, by DataAssociation, as the module's list classes answer XM_GET_SOURCE_TEXT / _IMAGE
-        //: texts, images by locator (relative to the module's package: "friend_online.png"), and
+        // (NOTES session 20): texts, images by locator (relative to the module's package: "friend_online.png"), and
         // the slot `picture` (the gamer picture) goes to (-1: none). A row of a tab's buttons (sceneButtons) uses
         // slot 0's text only.
         std::map<int, std::u16string> slotText;
@@ -142,21 +146,25 @@ namespace xui
     // The one-pane sign-in (signin1.xur + UserListSinglePane.xur): the profiles, then signin.xex's "Create Profile"
     // and "Download Profile" rows (indices entries.size() and entries.size() + 1).
     void ShowSignIn(const std::vector<SignInEntry>& entries, uint32_t focus);
-    // A storage device the device selector offers (deviceselector.xex's DeviceSelector.xur list).
-    struct DeviceEntry
-    {
-        std::u16string name;
-        uint32_t kind = 1;      // XDEVICE_DATA type: 1 hard drive, 2 memory unit, 8 transfer cable, 0x10 USB
-        uint64_t freeBytes = 0;
-        uint64_t totalBytes = 0; // the fill bar: (total - free) / total
-    };
-    // The device selector (XamShowDeviceSelectorUI): DeviceSelector.xur's DeviceListId rows (icon, name, free space
-    // as deviceselector.xex formats it). A on row i chooses entries[i] (PanePress), B cancels.
-    void ShowDeviceSelector(const std::vector<DeviceEntry>& entries, uint32_t focus);
+    // The same pane while a profile signs in to Xbox LIVE (signin.xex's status.xur in it): the profile's row and
+    // "Signing in" with its wait cursor. No input (a wait).
+    void ShowSignInStatus(const SignInEntry& entry);
+    // hud.xex's "Join Xbox Live" scene (InfoUpsellLive.xur, the Guide's Join Xbox Live for an offline profile): its
+    // one big Join Xbox Live button (row 0: PanePress), B back. Its button calls XamShowLiveSignupUI.
+    void ShowJoinLive();
+    // hud.xex's StatusScene (Status.xur): `text` over its wait cursor (txtMessage, the skin's txt_Starting), no input.
+    // The Guide's Sign Out shows it with XamStrings 156 "Signing out" while the profile signs out (hud 0x913F8448).
+    void ShowHudStatus(const std::u16string& text);
     // The Guide's virtual keyboard (vk.xex's scenes and key layouts). Controller buttons go to KeyboardPress, which
     // says when the gamer pressed Done (START or the Done key) or cancelled (B / BACK); KeyboardText is the text.
+    // `afterUnloading`: the keyboard comes from another module after the open full scene (createprofile.xex calls
+    // XamShowKeyboardUI after XamShowDeviceSelectorUI): the HUD's big panel stays, the open scene goes at once, the
+    // panel stays empty while vk.xex loads (107 frames on the owner's console), then the keyboard shows in it. A popup
+    // in another HUD state closes first and the keyboard opens with its own animation.
+    // `gamertag`: only a gamertag's characters (letters, digits, space; VKBD_LATIN_GAMERTAG): the other keys, Symbols and
+    // Accents are greyed and do nothing, the PC keyboard types only those characters.
     void ShowKeyboard(const std::u16string& title, const std::u16string& description, const std::u16string& text,
-                      size_t maxLength);
+                      size_t maxLength, bool afterUnloading = false, bool gamertag = false);
     enum class KeyboardAction { kNone, kDone, kCancel };
     KeyboardAction KeyboardPress(uint16_t pressed); // XINPUT_GAMEPAD buttons newly pressed (input.h's UI bits)
     std::u16string KeyboardText();
@@ -166,6 +174,58 @@ namespace xui
     bool KeyboardOpen();
     void KeyboardTypeChar(char16_t c);
     void ShowAchievements(const std::u16string& titleName, const std::vector<AchievementEntry>& achievements);
+    // XShowDeviceSelectorUI's "Select a Device" (deviceselector.xex's DeviceSelector.xur, its List_3Line_Icon_prgbr
+    // rows): per device its name, its kind's icon, a status line (`status`, else DeviceSelectorFree of `freeBytes`:
+    // "<size> free") and the used share of its space as a bar ((total - free) / total; no bar without `totalBytes`).
+    // Disabled rows (too little space) are greyed.
+    struct DeviceEntry
+    {
+        std::u16string name;
+        uint32_t kind = 1;        // XDEVICE_DATA type: 1 hard drive, 2 memory unit, 8 transfer cable, 0x10 USB
+        uint64_t freeBytes = 0;
+        uint64_t totalBytes = 0;
+        std::u16string status;    // e.g. "Offline" (empty: the free space)
+        bool enabled = true;
+    };
+    void ShowDeviceSelector(const std::vector<DeviceEntry>& devices, uint32_t focus);
+    // deviceselector.xex's text for `bytes` free ("2.2 GB free": strings 5 and 31, units 25-28) / one of its strings.
+    std::u16string DeviceSelectorFree(uint64_t bytes);
+    std::u16string DeviceSelectorString(size_t index, const char16_t* fallback);
+    // Create Profile's scenes (createprofile.xex): its wait scene (AddXboxLive.xur: the wait cursor over `status`,
+    // "Creating profile", "Signing in", "Updating profile", "Checking network status"; its back button hidden; called
+    // again while it shows, only the text changes) and Save Profile (Congratulations.xur: the new profile's gamercard,
+    // the buttons Join Xbox Live / Customize Profile / Done (rows 0-2: SetFocus / PanePress as a drill-down), the
+    // focused button's text beside them). CreateProfileString: its CreateProfile_Custom.xus.
+    void ShowProfileWait(const std::u16string& status);
+    void ShowSaveProfile(const std::u16string& gamertag, const std::vector<uint8_t>& picture, uint32_t focus);
+
+    // The Guide's Games & Apps > Recent: hud.xex's QuickLaunch.xur (QuickLaunchMainScene; XuiTabScene Tab1 Games &
+    // Apps = QLRecentlyPlayedList, Tab2 Downloads = QLRecentlyDownloadedList, Tab3 All = QLAllGamesList). A row:
+    // `name`, Tab1's second line and right column (`line2` "x of y Achievements", `right` the gamerscore), Tab2's
+    // date (`right`), the tile / thumbnail (PNG). `trial` rows leave the All tab while Y "Hide Trial Games" is on.
+    struct QuickLaunchRow
+    {
+        std::u16string name, line2, right;
+        std::vector<uint8_t> picture;
+        bool trial = false;
+    };
+    struct QuickLaunchInfo
+    {
+        bool signedIn = false; // Tab1 says "Sign in to see your recent items." without a profile
+        std::vector<QuickLaunchRow> played, downloads, all;
+    };
+    // Opens it on Tab1 (always, 0x913F7DF0).
+    void ShowQuickLaunch(const QuickLaunchInfo& info);
+    // Input while it shows: RB / RT and LB / LT change tabs (XuiTabScene, no wrap), up / down the list, A launches the
+    // focused row (kLaunch: tab 0-2 and the row's index in that tab's rows as given), Y on All toggles Hide / Show
+    // Trial Games, B / BACK closes (kCancelled).
+    struct QuickLaunchAction
+    {
+        enum Kind { kNone, kLaunch, kCancelled } kind = kNone;
+        uint32_t tab = 0, index = 0;
+    };
+    QuickLaunchAction QuickLaunchPress(uint16_t pressed);
+    std::u16string CreateProfileString(size_t index, const char16_t* fallback);
     // Compare Games (gamerprofile.xex's 825_GameShowcaseCompare.xur, the Guide's Profile row / XamShowGamesUI with
     // another player): the header's two gamer pictures and total gamerscores (the other player's first, "you" in
     // the scene's names), then a row per title either has played: its tile, name, the other player's gamerscore in it
@@ -202,7 +262,7 @@ namespace xui
     // header ("Community"), the tab strip (`tabs`, `activeTab` drawn wide and light, as hud's QuickLaunch.xur draws
     // its tabs with the skin's tab_activeGS1 / tab_inactiveGS2; none: the list starts where they would be, as Party
     // Options does), the rows, `message` centred in the list area (empty: none), `footer` at its bottom left ("Sorted
-    // by online status") and the legend's X / Y texts (empty: none). Layout measured on the user's captures 7_47_01
+    // by online status") and the legend's X / Y texts (empty: none). Layout measured on the owner's captures 7_47_01
     // / 7_50_12, partychat.mp4 and "party chat/*.png". A / B through PanePress.
     // `layout`: kTwoLine rows (46 high: picture or icon, line1 over line2, the right column and status person; the
     // Friends and Players tabs), or kOneLine rows (28 high, XAM's skin btn_oneline_3strings: line1, line2 and right in
@@ -367,6 +427,9 @@ namespace xui
     // The Guide is leaving for a scene that returns to it (sign-in, achievements): its next opening comes back to the
     // blade and button it had. Any other opening starts on the default blade (hud.xex 0x913E8130 / 0x913E79F8).
     void GuideKeepPosition();
+    // A new Guide opening (the Guide button): forget a position kept by a scene the Guide was closed from (owner,
+    // 2026-10-22: the Guide button always reopens on Xbox Home; only B back from a scene returns to its button).
+    void GuideForgetPosition();
     // Controller input for the Guide: the d-pad / left stick move through a blade's buttons, left / right (and LT /
     // RT) switch blades, A presses the focused button (`id` = its Id, `text` its text), X and Y are the legend's
     // buttons, B / BACK close it.
@@ -388,14 +451,6 @@ namespace xui
     std::u16string HudString(size_t index, const char16_t* fallback);
     // signin.xex's strings.xus entry, or `fallback`.
     std::u16string SigninString(size_t index, const char16_t* fallback);
-    // createprofile.cp's strings (CreateProfile_Custom.xus).
-    std::u16string CreateProfileString(size_t index, const char16_t* fallback);
-    // After a profile is created (createprofile.cp): Congratulations.xur, "Save Profile" with the new profile's
-    // gamercard and Join Xbox Live / Customize Profile / Done (PanePress kChosen 0 / 1 / 2, each with its meta panel);
-    // AddXboxLive.xur, the wait cursor and `status`.
-    void ShowProfileCreated(const std::u16string& gamertag, const std::vector<uint8_t>& picture, uint32_t gamerscore,
-                            uint32_t titles, uint32_t achievements, uint32_t focus);
-    void ShowAddXboxLive(const std::u16string& status);
 
     // Notification toasts, as XAM queues them (XNotifyQueueUI): `type` is XAM's notification id (the ones below; it
     // picks the icon and the XamStrings text), `user` the user index it concerns (0xFF: none; lights that quadrant of
@@ -409,6 +464,10 @@ namespace xui
     // Xbox LIVE's (param = the other gamer's gamertag where the text has one): "%s wants to be your friend",
     // "%s sent you a message", "Disconnected from Xbox Live", "%s wants you to join an Xbox Live Party", "Party invite
     // sent", "%s has joined / left your Xbox Live Party", "Joined Xbox Live Party".
+    // 1 "%s has invited you to play" (XNOTIFYUI_TYPE_GAMEINVITE, XamStrings 63, the mail icon).
+    constexpr uint32_t kNotifyGameInvite = 0x01;
+    // 0x16 "Game invite sent" (XamStrings 64, the mail icon): Guide.Friends after an Invite to Game was sent.
+    constexpr uint32_t kNotifyGameInviteSent = 0x16;
     constexpr uint32_t kNotifyFriendRequest = 0x02, kNotifyMessage = 0x05, kNotifyLiveDisconnected = 0x0B,
                        kNotifyPartyInvite = 0x31, kNotifyPartyInviteSent = 0x32, kNotifyPartyMemberJoined = 0x39,
                        kNotifyPartyMemberLeft = 0x3A, kNotifyPartyJoined = 0x3D;
@@ -429,7 +488,8 @@ namespace xui
     // A scene of a package instead (one of the system UI's, or one added with AddSystemUiPackage: an older
     // dashboard's, which the launcher's era themes draw from); its relative paths are its package's.
     bool ShowFullScreenScene(const std::string& package, const std::string& entry, std::string& error);
-    bool AddSystemUiPackage(std::string name, std::vector<uint8_t> data, std::string& error);
+    // `nxe`: an NXE dashboard's package (6683 on), whose version 5 scenes write version 8's XuiControl (Scene::Load).
+    bool AddSystemUiPackage(std::string name, std::vector<uint8_t> data, std::string& error, bool nxe = false);
     // The system UI of an older system update (the Guide, its skin, XAM's scenes: <module>.<resource>.xzp files in
     // `dir`) in place of the base folder's packages of those names, for an older dashboard (Assets::ReplacePackages).
     // Before the HUD is built: what it already shows keeps the packages it was built from.

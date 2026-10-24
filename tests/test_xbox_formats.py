@@ -77,7 +77,8 @@ def _synth_kv(console_id=b"\xAB\xCD\xEF\x01\x23"):
 # ---- STFS -------------------------------------------------------------------------------------
 def test_stfs_pack_round_trip():
     d = tempfile.mkdtemp(prefix="cb_stfs_")
-    payload = {"alpha.bin": b"A" * 5000, "beta.txt": b"hello world" * 100}
+    # an empty file reads back empty (its start block is the next file's: once it read as that file)
+    payload = {"alpha.bin": b"A" * 5000, "beta.txt": b"hello world" * 100, "empty.dat": b""}
     for nm, data in payload.items():
         open(os.path.join(d, nm), "wb").write(data)
     out = os.path.join(d, "packed.con")

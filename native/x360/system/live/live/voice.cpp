@@ -157,7 +157,8 @@ namespace live::voice
         }
 
         // WASAPI endpoint in shared mode with Windows converting to 16 kHz mono 16-bit.
-        // Whether Windows has a default recording device now (the party list's own headset icon). COM initialised by the caller.
+        // Whether Windows has a default recording device now (the party list's own headset icon, owner 2026-10-16:
+        // shown from the start of a party, before the microphone stream opens). COM initialised by the caller.
         bool DefaultCaptureDevice()
         {
             IMMDeviceEnumerator* enumerator = nullptr;
@@ -188,7 +189,7 @@ namespace live::voice
                     return false;
                 // The default devices (eConsole), not the communications ones: a stream on the communications
                 // device counts as a call and Windows turns other sounds down ("When Windows detects communications
-                // activity", 80% by default); the user did not want party chat to do that (2026-10-16).
+                // activity", 80% by default); the owner did not want party chat to do that (2026-10-16).
                 const bool found = SUCCEEDED(enumerator->GetDefaultAudioEndpoint(flow, eConsole, &device));
                 enumerator->Release();
                 if (!found)

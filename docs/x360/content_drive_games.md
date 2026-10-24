@@ -26,8 +26,8 @@ content/0000000000000000/<TitleID>/Headers/<Type>/<FileName>.header   STFS heade
 ## Minecraft TU46 (title 584111F7, Arcade 0xD0000)
 ```
 python -I tools/scripts/make_game_package.py content 584111F7 D0000 "Minecraft: Xbox 360 Edition" Minecraft
-       "../Minecraft Xbox 360 TU46 Port/Base Game Dump/MinecraftIcon.png"
-       --arcade-dir "../Minecraft Xbox 360 TU46 Port/Base Game Dump"
+       "../Games/Minecraft/TU46/Code/Game/Base Game Dump/MinecraftIcon.png"
+       --arcade-dir "../Games/Minecraft/TU46/Code/Game/Base Game Dump"
 ```
 (run in `Xbox 360 Dashboard/`; it only reads the dump). Generated files are the user's data: never committed.
 
@@ -45,7 +45,16 @@ icon         = Base Game Dump/MinecraftIcon.png  package thumbnail, PNG, at most
 arcade_dir   = Base Game Dump                    folder with ArcadeInfo.xml (copied with the images it names)
 executable   = MinecraftRecomp.exe               the PC executable to start from My Games (launching, below)
 license_bits = 1                                 optional, hex, default 1 (full game)
+arcade_info  = C:/Dumps/Game/ArcadeInfo.xml      optional: the ArcadeInfo.xml when it is not in arcade_dir
+arguments    = "C:/Games/Up/assets"             optional: the executable's command-line arguments
+signals_ready = no                              optional, default yes: no = the game does not say when its first
+                                                frame is up (transition::FrameShown), so the launch does not wait
 ```
+`arcade_info`, `arguments` and `signals_ready` are read by the dashboard's runtime (DashRecomp's `game_import.cpp`);
+CodeBreaker's runtime does not read them yet.
+An Arcade item (D0000) needs its ArcadeInfo.xml: My Games leaves one without it out. The dashboard's
+`tools/scripts/import_converted_games.py` writes these game.ini files for the games CodeBreaker converted
+(`Converted/<Name>/`).
 Beside each generated header the runtime keeps `Headers/<Type>/<FileName>.recomp` (the game's folder and executable).
 A package with a marker whose game left `games/` (or whose game.ini / icon changed) is removed at the next start;
 packages without a marker (made by hand) are never touched. Box art: `images/<TitleID>/largeboxart.jpg` beside the exe.
@@ -59,7 +68,7 @@ The dashboard port does the same with a games/ package: it starts `executable` f
 - `XBOX360RECOMP_CONTENT` = the dashboard's hard drive folder (its `content/`, Xenia's layout, as above).
 A missing executable: the dash's own "Can't launch <title>." box (the console would show a fatal error instead).
 
-## Open: returning to the dashboard (the side, proposal)
+## Open: returning to the dashboard (the game's side, proposal)
 When `XBOX360RECOMP_DASHBOARD` is set, a title returns the way a console title does: XamLoaderLaunchTitle(NULL, 0)
 (the Guide's "Xbox Home", the title's own exit) starts that executable and ends the title's process. When it is not
 set (started on its own), the title keeps its current behaviour. Optional, later: use `XBOX360RECOMP_CONTENT` as the

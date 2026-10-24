@@ -6,7 +6,13 @@ catalogued.
                                         x.readers [type reader names], x.data (the content stream)
     xnb.convert(path, out_dir)          {"file", "kind", ...}: a texture -> <name>.png, a sprite font ->
                                         <name>.png + <name>.json (glyphs, cropping, characters,
-                                        spacing, kerning); anything else -> kind "other" and its readers
+                                        spacing, kerning), a sound effect -> <name>.wav (XMA2 decoded by
+                                        ffmpeg: formats/xbox/xma.py), an Xbox 360 effect -> <name>.fx, its
+                                        HLSL source (decompile/xbox_effect.py; the record names the sha1
+                                        of the effect's bytes, which the PC runtime finds it by);
+                                        anything else -> kind "other"
+    xnb.rename_readers(raw, rename)     the file with each type reader name passed through rename(name), as
+                                        uncompressed XNB bytes -- or None when no name changed
 
 A .xnb starts "XNB", a platform letter, the version (5 for XNA 4.0) and flags (0x80: compressed),
 then the file's size; compressed content gives its decompressed size and comes in LZX frames. The
@@ -75,6 +81,35 @@ def _7bit(b, o):
 def _string(b, o):
     n, o = _7bit(b, o)
     return b[o:o + n].decode("utf-8", "replace"), o + n
+
+
+def _7bit_bytes(value):
+    out = bytearray()
+    while True:
+        x = value & 0x7F
+        value >>= 7
+        out.append(x | (0x80 if value else 0))
+        if not value:
+            return bytes(out)
+
+
+def rename_readers(raw, rename):
+    """`raw` (an .xnb's bytes) with each type reader's name passed through rename(name) -> the new file,
+    uncompressed and otherwise the same, or None when rename changed none."""
+    x = Xnb(raw)
+    count, o = _7bit(x.data, 0)
+    manifest, changed = [_7bit_bytes(count)], False
+    for _ in range(count):
+        name, o2 = _string(x.data, o)
+        new = rename(name)
+        changed |= new != name
+        encoded = new.encode("utf-8")
+        manifest += [_7bit_bytes(len(encoded)), encoded, x.data[o2:o2 + 4]]   # and the reader's version
+        o = o2 + 4
+    if not changed:
+        return None
+    body = b"".join(manifest) + x.data[o:]
+    return b"XNB" + x.platform.encode() + bytes([x.version, x.flags & ~0x80]) + struct.pack("<I", 10 + len(body)) + body
 
 
 def _manifest(data):
@@ -163,9 +198,109 @@ def _sprite_font(data, o):
             "line_spacing": line_spacing, "spacing": spacing, "kerning": kerning}
 
 
+# WAVEFORMATEX and XMA2WAVEFORMATEX fields, in order (the Xbox 360 writes them big-endian)
+_WAVEFORMATEX = "HHIIHHH"
+_XMA2_EXTRA = "HIIIIIIIBBH"
+
+
+def effect_code(data, o):
+    """EffectReader: the compiled effect's bytes."""
+    _reader, o = _7bit(data, o)
+    n, = struct.unpack_from("<I", data, o)
+    return bytes(data[o + 4:o + 4 + n])
+
+
+def _sound_effect(data, o, platform):
+    """SoundEffectReader: the format (a WAVEFORMATEX), the samples, the loop and the duration."""
+    _reader, o = _7bit(data, o)
+    n, = struct.unpack_from("<I", data, o)
+    fmt = bytearray(data[o + 4:o + 4 + n])
+    o += 4 + n
+    size, = struct.unpack_from("<I", data, o)
+    samples = data[o + 4:o + 4 + size]
+    o += 4 + size
+    loop_start, loop_length, duration = struct.unpack_from("<iii", data, o)
+    if platform == "x":                                       # the format's fields are big-endian there
+        fields = _WAVEFORMATEX + (_XMA2_EXTRA if struct.unpack_from(">H", fmt, 0)[0] == 0x166 else "")
+        size_of = struct.calcsize(">" + fields)
+        if len(fmt) >= size_of:
+            fmt[:size_of] = struct.pack("<" + fields, *struct.unpack_from(">" + fields, fmt, 0))
+        else:
+            fmt[:18] = struct.pack("<" + _WAVEFORMATEX, *struct.unpack_from(">" + _WAVEFORMATEX, fmt, 0))
+    tag, channels, rate, _avg, _align, bits = struct.unpack_from("<HHIIHH", fmt, 0)
+    if platform == "x" and tag == 1 and bits == 16:            # big-endian PCM samples
+        samples = b"".join(samples[i + 1:i + 2] + samples[i:i + 1] for i in range(0, len(samples) - 1, 2))
+    return {"tag": tag, "channels": channels, "rate": rate, "bits": bits, "fmt": bytes(fmt), "samples": samples,
+            "loop": [loop_start, loop_length], "duration_ms": duration}
+
+
+def _riff(fmt, samples):
+    chunk = lambda tag, body: tag + struct.pack("<I", len(body)) + body + (bytes(1) if len(body) % 2 else b"")
+    body = b"WAVE" + chunk(b"fmt ", fmt) + chunk(b"data", samples)
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+def write_wav(sound, out):
+    """A sound effect as a WAV a PC plays: PCM and ADPCM as they are, XMA2 decoded to PCM by ffmpeg."""
+    riff = _riff(sound["fmt"], sound["samples"])
+    if sound["tag"] in (0x166, 0x165):
+        from codebreaker.formats.xbox import xma
+        xma.decode_to_wav(riff, out, sound["channels"])
+    else:
+        with open(out, "wb") as f:
+            f.write(riff)
+
+
+XBOX_EFFECT = b"\xbc\xf0\x0b\xcf"                        # an XNA effect's magic, as the Xbox 360 writes it
+
+
+def write_effect(code, name, out_dir):
+    """An Xbox 360 effect's bytes as <name>.fx in out_dir, its first line "// sha1 <the bytes' sha1>"
+    (the PC runtime finds the compiled effect by it), and <name>.fx.json: every parameter it declares (the
+    port gives the compiled effect back the ones no shader reads: xna/mgfx.py). -> sha1"""
+    import hashlib
+    from codebreaker.decompile import xbox_effect
+    from codebreaker.formats.xbox import effect
+    digest = hashlib.sha1(code).hexdigest()
+    text = xbox_effect.to_fx(code, name)
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, name + ".fx"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("// sha1 %s\n%s" % (digest, text))
+    with open(os.path.join(out_dir, name + ".fx.json"), "w", encoding="utf-8") as f:
+        json.dump([_parameter(p) for p in effect.read(code).parameters], f, indent=1)
+    return digest
+
+
+def _parameter(p):
+    """An effect parameter's declaration as data (its value when it is numbers)."""
+    numbers = isinstance(p.value, list) and all(isinstance(v, (int, float)) for v in p.value)
+    return {"name": p.name, "semantic": p.semantic, "type": p.type, "cls": p.cls, "rows": p.rows,
+            "columns": p.columns, "elements": p.elements, "value": p.value if numbers and not p.elements else None,
+            "members": [_parameter(m) for m in p.members]}
+
+
+def convert_effect_file(path, out_dir):
+    """A file that is an Xbox 360 effect on its own (a game reads it and makes an Effect of the bytes) -> its
+    record, or None when the file is not one."""
+    with open(path, "rb") as f:
+        code = f.read()
+    if code[:4] != XBOX_EFFECT:
+        return None
+    name = os.path.splitext(os.path.basename(path))[0]
+    rec = {"file": os.path.basename(path), "kind": "effect"}
+    try:
+        rec["sha1"] = write_effect(code, name, out_dir)
+    except Exception as e:
+        rec["error"] = "%s: %s" % (type(e).__name__, e)
+    return rec
+
+
 def convert(path, out_dir):
     name = os.path.splitext(os.path.basename(path))[0]
     rec = {"file": os.path.basename(path)}
+    if os.path.getsize(path) == 0:
+        rec["kind"] = "empty"                                # the package has it, with nothing in it
+        return rec
     try:
         x = read(path)
         kinds = [short(r) for r in x.readers]
@@ -184,6 +319,14 @@ def convert(path, out_dir):
             with open(os.path.join(out_dir, name + ".json"), "w", encoding="utf-8") as f:
                 json.dump(font, f, ensure_ascii=False, indent=1)
             rec.update(kind="font", width=tex["width"], height=tex["height"], glyphs=len(font["glyphs"]))
+        elif primary == "SoundEffect":
+            sound = _sound_effect(x.data, x.offset, x.platform)
+            write_wav(sound, os.path.join(out_dir, name + ".wav"))
+            rec.update(kind="sound", codec={1: "PCM", 2: "ADPCM", 0x166: "XMA2", 0x165: "XMA"}.get(sound["tag"], sound["tag"]),
+                       channels=sound["channels"], rate=sound["rate"], duration_ms=sound["duration_ms"], loop=sound["loop"])
+        elif primary == "Effect" and x.platform == "x":
+            rec["kind"] = "effect"
+            rec["sha1"] = write_effect(effect_code(x.data, x.offset), name, out_dir)
         else:
             rec["kind"] = "other"
     except Exception as e:                                   # one bad file is reported, the rest go on

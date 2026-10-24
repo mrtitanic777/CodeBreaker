@@ -671,7 +671,10 @@ bool Recompiler::Recompile(
                     }
                     else
                     {
-                        println("\t{}(ctx, base);", targetSymbol->name);
+                        if (config.relocatableCode)
+                            println("\t(PPC_LOOKUP_FUNC(base, {}))(ctx, base);", Reloc(address));
+                        else
+                            println("\t{}(ctx, base);", targetSymbol->name);
                     }
                 }
                 else
@@ -679,7 +682,8 @@ bool Recompiler::Recompile(
                     // No function is known there: go through the indirect-call table, so the call happens if
                     // the runtime has one at the address and fails loudly if it has none (it was a comment, and
                     // the call silently vanished).
-                    println("\tPPC_CALL_INDIRECT_FUNC(0x{:X}u); // no function known at {:X}", address, address);
+                    println("\tPPC_CALL_INDIRECT_FUNC({}); // no function known at {:X}",
+                        config.relocatableCode ? Reloc(address) : fmt::format("0x{:X}u", address), address);
                     fmt::println("WARNING: {:X} branches to {:X}, where no function is known", fn.base, address);
                 }
             }
@@ -697,7 +701,7 @@ bool Recompiler::Recompile(
             }
             else
             {
-                println("\tif ({}{}.{}) goto loc_{:X};", not_ ? "!" : "", cr(insn.operands[0]), cond, insn.operands[1]);
+                println("\tif ({}{}.{}) goto {};", not_ ? "!" : "", cr(insn.operands[0]), cond, Label(fn, insn.operands[1]));
             }
         };
 
@@ -715,7 +719,7 @@ bool Recompiler::Recompile(
             }
             else
             {
-                println("	if ({}) goto loc_{:X};", condition, target);
+                println("	if ({}) goto {};", condition, Label(fn, target));
             }
         };
 
@@ -789,7 +793,7 @@ bool Recompiler::Recompile(
                 if (midAsmHook->second.returnOnTrue)
                     println("\t\treturn;");
                 else if (midAsmHook->second.jumpAddressOnTrue != NULL)
-                    println("\t\tgoto loc_{:X};", midAsmHook->second.jumpAddressOnTrue);
+                    println("\t\tgoto {};", Label(fn, midAsmHook->second.jumpAddressOnTrue));
 
                 println("\t}}");
 
@@ -798,7 +802,7 @@ bool Recompiler::Recompile(
                 if (midAsmHook->second.returnOnFalse)
                     println("\t\treturn;");
                 else if (midAsmHook->second.jumpAddressOnFalse != NULL)
-                    println("\t\tgoto loc_{:X};", midAsmHook->second.jumpAddressOnFalse);
+                    println("\t\tgoto {};", Label(fn, midAsmHook->second.jumpAddressOnFalse));
 
                 println("\t}}");
             }
@@ -809,7 +813,7 @@ bool Recompiler::Recompile(
                 if (midAsmHook->second.ret)
                     println("\treturn;");
                 else if (midAsmHook->second.jumpAddress != NULL)
-                    println("\tgoto loc_{:X};", midAsmHook->second.jumpAddress);
+                    println("\tgoto {};", Label(fn, midAsmHook->second.jumpAddress));
             }
         };
 
@@ -917,7 +921,7 @@ bool Recompiler::Recompile(
         }
         else
         {
-            println("\tgoto loc_{:X};", insn.operands[0]);
+            println("\tgoto {};", Label(fn, insn.operands[0]));
         }
         break;
 
@@ -946,7 +950,7 @@ bool Recompiler::Recompile(
                 }
                 else
                 {
-                    println("\t\tgoto loc_{:X};", label);
+                    println("\t\tgoto {};", Label(fn, label));
                 }
             }
 
@@ -968,7 +972,7 @@ bool Recompiler::Recompile(
 
     case PPC_INST_BCTRL:
         if (!config.skipLr)
-            println("\tctx.lr = 0x{:X};", base + 4);
+            println("\tctx.lr = {};", config.relocatableCode ? Reloc(base + 4) : fmt::format("0x{:X}", base + 4));
         println("\tPPC_CALL_INDIRECT_FUNC({}.u32);", ctr());
         csrState = CSRState::Unknown; // the call could change it
         break;
@@ -1029,7 +1033,7 @@ bool Recompiler::Recompile(
 
     case PPC_INST_BL:
         if (!config.skipLr)
-            println("\tctx.lr = 0x{:X};", base + 4);
+            println("\tctx.lr = {};", config.relocatableCode ? Reloc(base + 4) : fmt::format("0x{:X}", base + 4));
         printFunctionCall(insn.operands[0]);
         csrState = CSRState::Unknown; // the call could change it
         break;
@@ -1050,7 +1054,7 @@ bool Recompiler::Recompile(
         // Indirect call through LR (e.g. the CRT's _CallSettingFrame invoking an EH funclet).
         println("\t{}.u64 = ctx.lr;", temp());
         if (!config.skipLr)
-            println("\tctx.lr = 0x{:X};", base + 4);
+            println("\tctx.lr = {};", config.relocatableCode ? Reloc(base + 4) : fmt::format("0x{:X}", base + 4));
         println("\tPPC_CALL_INDIRECT_FUNC({}.u32);", temp());
         csrState = CSRState::Unknown; // the call could change it
         break;
@@ -1137,7 +1141,9 @@ bool Recompiler::Recompile(
         break;
 
     case PPC_INST_DB16CYC:
-        // no op
+        // The spin-wait hint XDK code puts in its busy loops (D3D's GPU waits): the runtime may yield there
+        // (PPC_SPIN_HINT, a no-op unless the runtime defines it).
+        println("\tPPC_SPIN_HINT();");
         break;
 
     case PPC_INST_DCBF:
@@ -3203,7 +3209,7 @@ bool Recompiler::Recompile(const Function& fn)
     {
         if (labels.find(base) != labels.end())
         {
-            println("loc_{:X}:", base);
+            println("{}:", Label(fn, base));
 
             // Anyone could jump to this label so we wouldn't know what the CSR state would be.
             csrState = CSRState::Unknown;
@@ -3227,7 +3233,11 @@ bool Recompiler::Recompile(const Function& fn)
             if (insn.opcode->id == PPC_INST_BCTR && (*(data - 1) == 0x07008038 || *(data - 1) == 0x00000060) && switchTable == config.switchTables.end())
                 fmt::println("Found a switch jump table at {:X} with no switch table entry present", base);
 
-            if (!Recompile(fn, base, insn, data, switchTable, localVariables, csrState))
+            const size_t start = out.size();
+            const bool recompiled = Recompile(fn, base, insn, data, switchTable, localVariables, csrState);
+            if (config.relocatableCode)
+                RelocateImmediate(ByteSwap(*data), start);
+            if (!recompiled)
             {
                 fmt::println("Unrecognized instruction at 0x{:X}: {}", base, insn.opcode->name);
                 allRecompiled = false;
@@ -3253,7 +3263,10 @@ bool Recompiler::Recompile(const Function& fn)
         if (next != image.symbols.end() && next->address == end && next->type == Symbol_Function)
         {
             println("\t// falls through to {}", next->name);
-            println("\t{}(ctx, base);", next->name);
+            if (config.relocatableCode)
+                println("\t(PPC_LOOKUP_FUNC(base, {}))(ctx, base);", Reloc(end));
+            else
+                println("\t{}(ctx, base);", next->name);
             println("\treturn;");
         }
     }
@@ -3310,7 +3323,19 @@ bool Recompiler::Recompile(const Function& fn)
     if (localVariables.ea)
         println("\tuint32_t ea{{}};");
 
+    if (config.relocatableCode && !relocValues.empty())
+        println("\tPPC_RELOC_PROLOGUE();");
+
     out += tempString;
+
+    if (config.relocatableCode)
+    {
+        print("//@R");
+        for (uint32_t v : relocValues)
+            print(" {:X}", v);
+        println("");
+        relocValues.clear();
+    }
 
     return allRecompiled;
 }
@@ -3481,4 +3506,63 @@ void Recompiler::SaveCurrentOutData(const std::string_view& name)
 
         out.clear();
     }
+}
+
+std::string Recompiler::Reloc(int64_t value)
+{
+    const size_t k = relocValues.size();
+    relocValues.push_back(uint32_t(value));
+    // A decimal literal is an int when it fits one (every 16-bit field, every lis value), else a long long
+    // (oris values from 0x80000000, return addresses, call targets).
+    if (value >= INT32_MIN && value <= INT32_MAX)
+        return fmt::format("PPC_RI({})", k);
+    return fmt::format("PPC_RL({})", k);
+}
+
+std::string Recompiler::Label(const Function& fn, size_t address) const
+{
+    return fmt::format("loc_{:X}", config.relocatableCode ? address - fn.base : address);
+}
+
+void Recompiler::RelocateImmediate(uint32_t instruction, size_t start)
+{
+    const uint32_t op = instruction >> 26, ra = (instruction >> 16) & 31;
+    int64_t value;
+    if (op == 14 && ra > 1)                    // addi off a register (li, r1 adjustments: constants)
+        value = int16_t(instruction & 0xFFFF);
+    else if (op == 15 && ra != 1)              // addis / lis
+        value = int32_t((instruction & 0xFFFF) << 16);
+    else if (op == 24)                         // ori
+        value = instruction & 0xFFFF;
+    else if (op == 25)                         // oris
+        value = int64_t(instruction & 0xFFFF) << 16;
+    else if (((op >= 32 && op <= 55) || op == 58 || op == 62) && ra != 1) // D / DS-form off a non-stack register
+        value = int16_t(instruction & ((op == 58 || op == 62) ? 0xFFFC : 0xFFFF));
+    else
+        return;
+    if (value == 0)
+        return; // XenonRecomp leaves zero offsets out
+    // Skip the instruction's comment line.
+    size_t from = out.find('\n', start);
+    if (from == std::string::npos)
+        return;
+    const std::string literal = fmt::format("{}", value);
+    auto isWord = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.'; };
+    size_t found = std::string::npos, count = 0;
+    for (size_t at = out.find(literal, from); at != std::string::npos; at = out.find(literal, at + 1))
+    {
+        // (not a relocation already written for this instruction: PPC_RI(3))
+        const bool before = at > 0 && (isWord(out[at - 1]) || (value >= 0 && out[at - 1] == '-') ||
+                                       (at >= 7 && out.compare(at - 7, 6, "PPC_RI") == 0) ||
+                                       (at >= 7 && out.compare(at - 7, 6, "PPC_RL") == 0));
+        const bool after = at + literal.size() < out.size() && isWord(out[at + literal.size()]);
+        if (!before && !after)
+        {
+            found = at;
+            count++;
+        }
+    }
+    if (count != 1)
+        return; // not there or ambiguous: the constant stays, and the function shares only with identical code
+    out.replace(found, literal.size(), Reloc(value));
 }

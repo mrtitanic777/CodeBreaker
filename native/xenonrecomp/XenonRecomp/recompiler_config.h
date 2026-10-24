@@ -46,6 +46,13 @@ struct RecompilerConfig
     bool crRegistersAsLocalVariables = false;
     bool nonArgumentRegistersAsLocalVariables = false;
     bool nonVolatileRegistersAsLocalVariables = false;
+    // relocatable_code: no guest address in the generated code. Call targets, return addresses, address halves
+    // (lis / addis / ori / oris, addi off a register) and load / store offsets off a register other than r1 are
+    // read from the function's relocation array (PPC_RELOC_PROLOGUE, PPC_RI / PPC_RL), labels are named by
+    // their offset in the function and direct calls go through the indirect-call table. Each function is
+    // followed by a "//@R" line listing its relocation values. Functions of several versions of a module whose
+    // generated text is then the same can share one host function (unify_xam.py).
+    bool relocatableCode = false;
     uint32_t restGpr14Address = 0;
     uint32_t saveGpr14Address = 0;
     uint32_t restFpr14Address = 0;
