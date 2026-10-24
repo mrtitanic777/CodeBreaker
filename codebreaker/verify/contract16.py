@@ -19,6 +19,7 @@ import capstone
 
 from codebreaker.decompile import describe
 
+_VARIADIC = {"USER_420", "wsprintf", "USER_421", "wvsprintf"}   # (USER.420 wsprintf: its own count)
 _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
 _MD.detail = True                                       # (what an instruction reads and writes)
 
@@ -43,8 +44,13 @@ def _calls(img, seg, lo, hi, name_of):
     targets = {i.operands[0].imm & 0xFFFF for i in ins
                if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.x86.X86_OP_IMM}
     prologue = lo
-    for i in ins[:12]:
+    for j, i in enumerate(ins[:16]):
+        nxt_ = ins[j + 1] if j + 1 < len(ins) else None
         if (i.mnemonic in ("nop", "enter") or i.op_str in ("ax, ds", "bp, sp", "ds, ax")
+                # (and OpenWatcom's room for locals, `push ax` a word at a time -- counted as an
+                # argument, sub_3_7E58's allocator call "pushed six bytes" for its two)
+                or (i.mnemonic == "push" and i.op_str in ("ax", "cx", "dx") and nxt_ is not None
+                    and not nxt_.group(capstone.CS_GRP_CALL))
                 or (i.mnemonic in ("push", "inc") and i.op_str in ("bp", "ds", "si", "di"))
                 or (i.mnemonic == "pop" and i.op_str == "ax")
                 or (i.mnemonic == "mov" and i.op_str.startswith("ax, 0x"))
@@ -67,15 +73,24 @@ def _calls(img, seg, lo, hi, name_of):
             continue                                         # (through a pointer: the callee is not known here)
         nxt = ins[k + 1] if k + 1 < len(ins) else None
         pushed = 0                                         # (the argument bytes pushed just before it)
-        for p in reversed(ins[:k]):
+        before = ins[:k]
+        # (`push cs / call near`: a far call to a function of the same segment -- CS is the return
+        # address's half, no argument: counted as one, every such call of the build's "pushed two
+        # more" than the original's)
+        if before and before[-1].mnemonic == "push" and before[-1].op_str == "cs":
+            before = before[:-1]
+        exact = True                                       # (False: counted only from a join on)
+        for p in reversed(before):
             if p.address < prologue:
                 break
             if p.mnemonic == "push":
                 pushed += 4 if p.operands and p.operands[0].size == 4 else 2
                 if p.address in targets:
-                    break
-                continue
-            if p.address in targets:
+                    exact = p.address == prologue          # (a jump lands here: another path's
+                    break                                  # pushes may come before -- MSC shares
+                continue                                   # a call's tail, `push ds / push 1150h /
+            if p.address in targets:                       # jmp` into the middle of its pushes)
+                exact = p.address == prologue
                 break
             if p.group(capstone.CS_GRP_CALL) or p.group(capstone.CS_GRP_JUMP) or                     p.mnemonic in ("ret", "retf", "pop", "leave", "enter", "add", "sub") and                     (p.mnemonic not in ("add", "sub") or p.op_str.startswith("sp")):
                 break
@@ -89,8 +104,17 @@ def _calls(img, seg, lo, hi, name_of):
         if nxt is not None and nxt.mnemonic == "add" and nxt.op_str.startswith("sp, "):
             amount = nxt.op_str.split(", ")[1]
             off = int(amount, 0) if re.fullmatch(r"-?(0x[0-9a-f]+|\d+)", amount) else "?" + amount
+        else:
+            # (or taken off by popping them into a register no one reads: `pop bx`, `pop cx` --
+            # the original's way after a one-word cdecl call; read as nothing, the build's
+            # `add sp, 2` after the same call "took off two bytes the original did not")
+            for q in ins[k + 1:k + 1 + max(0, pushed // 2)]:
+                if q.mnemonic == "pop" and q.op_str in ("bx", "cx") and off < pushed:
+                    off += 2
+                else:
+                    break
         if callee:
-            out.append((callee, off, pushed))
+            out.append((callee, off, pushed if exact else -pushed))   # (negative: at least that)
     return out
 
 
@@ -136,9 +160,11 @@ def mismatches(original, folder, image, names):
 
     def ours_name(key):
         if key[0] == "far":
-            if key[1] in xu:
-                return xu[key[1]]
-            return ours_at.get(describe.where(key[1]))
+            # (the build's own map first: the describer names a function of the build by where it
+            # is in the build -- SETUPX's allocator sub_24_0F1E was "sub_24_052E" there, no call to
+            # it compared, and sub_3_7E58 calling it with no size was never seen. An import has no
+            # place in the map: its name is the describer's)
+            return ours_at.get(describe.where(key[1])) or xu.get(key[1])
         return ours_at.get(key[1:])
 
     wanted, out = set(names), {}
@@ -151,12 +177,17 @@ def mismatches(original, folder, image, names):
             os_, oo, oe = orig_fn[n]
             a, b = collections.defaultdict(set), collections.defaultdict(set)
             pa, pb = collections.defaultdict(set), collections.defaultdict(set)
+            low = collections.defaultdict(int)            # (the original's at-least counts)
             for c, t, p in _calls(do.images.get(os_, b""), os_, oo, oe, orig_name):
                 a[c].add(t)
-                pa[c].add(p)
+                if p >= 0:
+                    pa[c].add(p)
+                else:
+                    low[c] = max(low[c], -p)
             for c, t, p in _calls(img, s, o, hi, ours_name):
                 b[c].add(t)
-                pb[c].add(p)
+                if p >= 0:                                # (ours counted from a join: not compared)
+                    pb[c].add(p)
             for c in sorted(set(a) & set(b)):
                 if a[c] != b[c]:
                     out[n] = "after calling %s the original takes off %s bytes, ours %s" % (
@@ -165,7 +196,10 @@ def mismatches(original, folder, image, names):
                 # (and fewer argument bytes pushed than the original pushes: SUWIN's sub_8_0634
                 # gave sub_8_0A6A one near pointer for its two far ones -- the second, a 260-byte
                 # buffer the caller never reads, dropped -- and a path was written over its frame)
-                if pa[c] and pb[c] and max(pb[c]) < min(pa[c]):
+                # (or more: a call is the callee's, the same bytes from any caller -- unless the
+                # callee takes a varying number, `...`, as wsprintf does)
+                if pa[c] and pb[c] and (max(pb[c]) < min(pa[c]) or
+                                        pa[c] != pb[c] and len(pa[c]) == 1 and len(pb[c]) == 1 and c not in _VARIADIC):
                     out[n] = "it pushes %s argument bytes for %s, the original %s" % (
                         sorted(pb[c]), c, sorted(pa[c]))
                     break
