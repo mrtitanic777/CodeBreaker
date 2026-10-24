@@ -699,8 +699,70 @@ def function_code(obj, name):
     return None
 
 
+def _native(compiler):
+    """(the compiler's folder, a work folder), both by short paths, when `compiler` runs on Windows
+    itself -- else None. Visual C++ 1.52c's CL, C1 and C2 (C/C++ 8.00c) are Win32 console programs
+    (KERNEL32 only; the Phar Lap stub is for DOS), and run on 64-bit Windows given two things:
+    paths short enough for a buffer in CL (a long one overruns it: CL.EXE+0xC46B reads part of the
+    path as a pointer) and an environment small enough for its pass launcher (with a modern
+    environment it says "Out of memory" before starting C2). The short paths are directory
+    junctions, made the first time (settings: native16_tools, native16_work; native16 = off keeps
+    the emulator). Microsoft C 6.0a is a DOS program: always the emulator."""
+    from codebreaker.base import settings
+    if compiler != "msvc152" or str(settings.get("native16") or "").lower() in ("off", "0", "false", "no"):
+        return None
+    _emulator, home = _tools(compiler)
+    if not home or not os.path.isfile(os.path.join(home, "BIN", "CL.EXE")):
+        return None
+    profile = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    tools = settings.get("native16_tools") or os.path.join(profile, ".cbt")
+    root = settings.get("native16_work") or os.path.join(profile, ".cbw")
+    if not os.path.isdir(tools):
+        subprocess.run(["cmd", "/c", "mklink", "/J", tools, os.path.abspath(home)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    os.makedirs(root, exist_ok=True)
+    if not os.path.isfile(os.path.join(tools, "BIN", "CL.EXE")):
+        return None
+    return tools, root
+
+
+def _native_session(work, header, files, flags, tools, root, timeout):
+    """`files` compiled by the compiler run on Windows itself, one CL a file, in a short work folder;
+    the objects and messages copied back into `work` as an emulator session leaves them."""
+    import hashlib
+    import shutil
+    short = os.path.join(root, hashlib.sha1(os.path.abspath(work).encode()).hexdigest()[:8])
+    for folder in (work, short):
+        os.makedirs(folder, exist_ok=True)
+        for f in os.listdir(folder):
+            if f.lower().endswith((".obj", ".c", ".txt", ".h")):
+                os.remove(os.path.join(folder, f))
+    with open(os.path.join(short, "M.H"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
+        f.write(header)
+    env = {"PATH": os.path.join(tools, "BIN"), "INCLUDE": os.path.join(tools, "INCLUDE"), "TMP": short, "TEMP": short,
+           "SystemRoot": os.environ.get("SystemRoot", r"C:\Windows")}
+    for stem, text in files:
+        with open(os.path.join(short, stem + ".C"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
+            f.write('#include "m.h"\n\n' + text + "\n")
+        try:
+            r = subprocess.run([os.path.join(tools, "BIN", "CL.EXE"), "/nologo", "/c", "/W0"] + flags.split() +
+                               ["/Fo%s.OBJ" % stem, stem + ".C"], cwd=short, env=env, capture_output=True, timeout=timeout)
+            said = (r.stdout or b"") + (r.stderr or b"")
+        except subprocess.TimeoutExpired:
+            said = b"(timed out)"
+        with open(os.path.join(work, stem + ".TXT"), "wb") as f:
+            f.write(said)
+        if os.path.isfile(os.path.join(short, stem + ".OBJ")):
+            shutil.copyfile(os.path.join(short, stem + ".OBJ"), os.path.join(work, stem + ".OBJ"))
+    return True
+
+
 def _session(work, header, files, flags, compiler, timeout):
-    """One emulator session compiling `files` [(stem, C text)] -> whether it ran to its end."""
+    """One emulator session compiling `files` [(stem, C text)] -> whether it ran to its end. A compiler
+    that runs on Windows itself (_native) is run so instead -- no emulator."""
+    native = _native(compiler)
+    if native:
+        return _native_session(work, header, files, flags, native[0], native[1], timeout)
     emulator, home = _tools(compiler)
     os.makedirs(work, exist_ok=True)
     for f in os.listdir(work):

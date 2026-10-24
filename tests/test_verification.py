@@ -509,6 +509,17 @@ def test_an_exported_function_s_parameters_are_typed_by_wine_s_spec():
     assert msc6.wine_definition(text, Export("X", "pascal", ["word"], False, False)) == text   # (words that do not add up)
 
 
+def test_only_visual_c_1_52c_runs_without_the_emulator(monkeypatch):
+    """C/C++ 8.00c's CL is a Win32 program and runs on Windows itself; Microsoft C 6.0a is DOS's and
+    keeps the emulator; native16 = off keeps the emulator for both."""
+    from codebreaker.base import settings
+    from codebreaker.build import msc6
+    assert msc6._native("msc6") is None
+    real = settings.get
+    monkeypatch.setattr(settings, "get", lambda k, *a: "off" if k == "native16" else real(k, *a))
+    assert msc6._native("msvc152") is None
+
+
 def test_a_backpatch_record_is_added_into_the_code():
     """Microsoft C 8 at /Od writes `sub sp, 0` and gives the frame's size in a BAKPAT record after
     the function: the reader adds it in (SUWIN's sub_1_06AA is the original's bytes only with it)."""
