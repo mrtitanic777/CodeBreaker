@@ -13,7 +13,6 @@ Without --flags the switches are found first: the memory model and options under
 a sample of the functions come out the original's length say how the module was built.
 """
 import os
-import re
 import struct
 
 from codebreaker.verify import match
