@@ -321,6 +321,28 @@ _PROLOGUES = (b"\x55\x8b\xec",                 # push bp; mov bp, sp
               b"\x8c\xd8\x90")                 # mov ax, ds; nop
 _ENDS = ("ret", "retf", "iret", "jmp", "ljmp")
 
+# The instruction at an offset of a code segment, decoded once. Finding functions, their returns
+# and the stubs in front of them walks the same bytes again and again, one instruction at a time:
+# COMPOBJ's 75,000 instructions were decoded 752,000 times, a quarter of describing it. Kept per
+# segment (the object itself, held so its id is not reused), with a decoder per thread.
+_DECODED = {}
+_DECODER = __import__("threading").local()
+
+
+def _one(code, at):
+    """The 16-bit instruction at `at` in `code` (as `next(md.disasm(code[at:at + 16], at))`), or None."""
+    held = _DECODED.get(id(code))
+    if held is None or held[0] is not code:
+        held = _DECODED[id(code)] = (code, {})
+    seen = held[1]
+    if at in seen:
+        return seen[at]
+    md = getattr(_DECODER, "md", None)
+    if md is None:
+        md = _DECODER.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    ins = seen[at] = next(md.disasm(bytes(code[at:at + 16]), at), None)
+    return ins
+
 
 def _is_prologue(code, o):
     if any(code.startswith(p, o) for p in _PROLOGUES):
@@ -336,7 +358,7 @@ def prologues_after_ends(code):
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
     out, at, n = [], 0, len(code)
     while at < n:
-        ins = next(md.disasm(code[at:at + 16], at), None)
+        ins = _one(code, at)
         if ins is None:
             at += 1
             continue
@@ -357,7 +379,7 @@ def _calls_followed(code, start, limit=20000):
     while work and len(seen) < limit:
         at = work.pop()
         while 0 <= at < n and at not in seen:
-            ins = next(md.disasm(code[at:at + 16], at), None)
+            ins = _one(code, at)
             if ins is None:
                 break
             seen.add(at)
@@ -446,7 +468,7 @@ def returns(code, off, limit=600, want=None):
         if not 0 <= at < len(code) or at in seen:
             continue
         seen.add(at)
-        ins = next(md.disasm(bytes(code[at:at + 16]), at), None)
+        ins = _one(code, at)
         if ins is None:
             continue
         n += 1
@@ -538,7 +560,7 @@ def forwards(d, seg, off, kind):
     # not seven, and the C passed DS for a seventh)
     ins, at = [], off
     while len(ins) < 30 and 0 <= at < len(code):
-        i = next(md.disasm(bytes(code[at:at + 16]), at), None)
+        i = _one(code, at)
         if i is None:
             break
         if i.mnemonic == "jmp" and re.fullmatch(r"0x[0-9a-f]+", i.op_str) and len(ins) > 0:
@@ -1127,6 +1149,7 @@ def model_line(d, va, name, default="near"):
 def describe16(module_path, outdir):
     """Write the description (and the relocated image it points at). -> Description"""
     from codebreaker.formats.ne import NEFile
+    _DECODED.clear()                                         # (another module's segments: let them go)
     nef = NEFile(module_path)
     segs = nef.segments()
     entries = {e["ordinal"]: e for e in nef.entries() if e.get("kind") in ("FIXED", "MOVEABLE")}

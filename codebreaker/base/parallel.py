@@ -135,6 +135,120 @@ def wait_for_memory(label="", poll=2.0, limit=600):
         waited += poll
 
 
+def total_gb():
+    """the machine's memory in GB (None where not known)"""
+    if os.name == "nt":
+        try:
+            import ctypes
+            m = ctypes.c_ulonglong(0)
+            if ctypes.windll.kernel32.GetPhysicallyInstalledSystemMemory(ctypes.byref(m)):
+                return m.value / 2 ** 20                          # (KB)
+        except Exception:
+            return None
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2 ** 30
+    except (ValueError, OSError, AttributeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# The governor: one budget of heavy jobs for the whole machine.
+#
+# Each part used to decide on its own how much to run at once, so they multiplied: a sweep taking
+# two binaries apart, each splitting its decompiler six ways, asked for twelve at once. Now a
+# heavy job holds a slot while it runs -- slots are the machine's `workers()`, shared by every
+# CodeBreaker process (a locked file each: the system lets go of it when its process ends, even
+# killed) -- and it is given no more than the free memory carries, at `mb_each` a piece, past the
+# reserve the system keeps. A small machine runs one at a time; nobody waits for ever.
+# ---------------------------------------------------------------------------
+class _Slot:
+    def __init__(self, path):
+        self.path, self.f = path, None
+
+    def take(self):
+        f = open(self.path, "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.close()
+            return False
+        self.f = f
+        return True
+
+    def give_back(self):
+        if self.f is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self.f.seek(0)
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+        self.f.close()
+        self.f = None
+
+
+def reserve_gb():
+    """memory the governor leaves to the system: min_free_gb, but no more than a quarter of the machine"""
+    t = total_gb()
+    return min(min_free_gb(), t / 4) if t else min_free_gb()
+
+
+def memory_allows(mb_each):
+    """how many pieces of `mb_each` MB the free memory carries past the reserve (None: not known)"""
+    a = available_gb()
+    if a is None:
+        return None
+    return int(max(0.0, a - reserve_gb()) * 1024 // max(1, mb_each))
+
+
+class slots:
+    """    with parallel.slots(want=6, mb_each=256, label="decompile") as n:
+            ... run n at once ...
+    Up to `want` of the machine's slots, as many as are free and the memory carries -- at least
+    one: with none free it waits for one (up to `limit` seconds, then runs on one regardless)."""
+
+    def __init__(self, want, mb_each=256, label="", limit=600, poll=0.5):
+        self.want, self.mb_each, self.label, self.limit, self.poll = max(1, int(want)), mb_each, label, limit, poll
+        self.held = []
+
+    def __enter__(self):
+        import time
+        from codebreaker.base import settings
+        cap = workers()
+        folder = settings.state("slots", "")
+        mem = memory_allows(self.mb_each)
+        want = min(self.want, cap, max(1, mem) if mem is not None else cap)
+        waited = 0.0
+        while True:
+            for i in range(cap):
+                if len(self.held) >= want:
+                    break
+                s = _Slot(os.path.join(folder, "slot-%d" % i))
+                if s.take():
+                    self.held.append(s)
+            if self.held or waited >= self.limit:
+                return max(1, len(self.held))
+            if waited == 0:
+                import sys
+                print("(waiting for a free slot%s)" % (" - " + self.label if self.label else ""), file=sys.stderr, flush=True)
+            time.sleep(self.poll)
+            waited += self.poll
+
+    def __exit__(self, *exc):
+        for s in self.held:
+            s.give_back()
+        self.held = []
+        return False
+
+
 def _load_state(path):
     import json
     try:

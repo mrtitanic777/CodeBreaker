@@ -201,7 +201,7 @@ def _run_resuming(description, only, timeout, max_instructions=None):
     out, with a note on stderr. -> (stdout, stderr, whether every function was attempted)"""
     from codebreaker.base import settings
     # CB_THREADS (setting "threads"): functions analysed at once in the one process -- the
-    # output is the same; 1 by default (a sweep already runs a process per worker)
+    # output is the same; unset, the governor decides (base/parallel.py: slots)
     env = dict(os.environ, CB_LANGUAGES=_languages(), CB_THREADS=str(settings.get("threads") or 1),
                CB_STRUCTS=_structs(description))      # (structures: see _structs)
     if max_instructions:
@@ -213,6 +213,43 @@ def _run_resuming(description, only, timeout, max_instructions=None):
             wanted = sorted({int(line.split("\t")[1], 16) for line in f if line.startswith("F\t")})
     if not wanted:                                       # (no code: a font or resource-only module)
         return "", "", True
+    if settings.get("threads"):                          # (set by hand: as it says)
+        return _resuming(description, only, timeout, env, wanted)
+    # the governor's: as many threads as there are free slots and memory for -- each thread its
+    # own analysis, some 50 MB beside the first (COMPOBJ: 59 MB alone, 305 MB with six) -- and
+    # one for a few functions, where starting the others costs more than they save
+    from codebreaker.base import parallel
+    with parallel.slots(want=max(1, len(wanted) // 40), mb_each=_THREAD_MB, label="decompile") as n:
+        one = dict(env)
+        env["CB_THREADS"] = str(n)
+        if n > 1 and not os.environ.get("CB_MEMORY_MB"):
+            # (the process's budget is shared by its threads: each has what one alone would --
+            # with less, P3's large functions ran out of room together and the run fell back)
+            env["CB_MEMORY_MB"] = str(n * _THREAD_MB)
+        stdout, stderr, whole = _resuming(description, only, timeout, env, wanted)
+    if n > 1:
+        # A thread stopped at its share of the process's budget -- P3's 0BB1E..0BB39, "over the
+        # analysis budget (258 MB)" -- would have had the whole of it alone (there, "Flow exceeded
+        # maximum allowable instructions", which is tried again with room: _run_whole). Those are
+        # done again on one thread, so the text is what one thread makes.
+        shared = [int(m.group(1), 16) for m in re.finditer(
+            r"(?m)^/\*@@ \S+ ([0-9a-f]+) \*/\n/\* decompile failed: over the analysis budget", stdout)]
+        if shared:
+            again = _resuming(description, shared, timeout, one, shared)[0]
+            texts = {m.group(1): m.group(0) for m in _BLOCK.finditer(again)}
+            stdout = _BLOCK.sub(lambda m: texts.get(m.group(1), m.group(0)), stdout)
+    return stdout, stderr, whole
+
+
+_BLOCK = re.compile(r"(?ms)^/\*@@ \S+ ([0-9a-f]+) \*/\n.*?(?=^/\*@@ |\Z)")
+
+
+_THREAD_MB = 1536       # what each decompiler thread may take (the native program's own budget for one, CB_MEMORY_MB):
+                        # mostly ~50 MB, but a wrong function start can run to the budget -- the governor counts that
+
+
+def _resuming(description, only, timeout, env, wanted):
+    """(_run_resuming, once the threads are settled)"""
     first = True
     outs, errs, left = [], [], list(wanted)
     while True:
@@ -226,6 +263,19 @@ def _run_resuming(description, only, timeout, max_instructions=None):
         done = {int(m.group(1), 16) for m in _MARK.finditer(out)}
         # (the last one written may be cut off by the crash: it is done again)
         last = max(done) if done else None
+        if int(env.get("CB_THREADS") or 1) > 1:
+            # Several threads at work: what ended the process was any of the functions in hand,
+            # not the last one written -- P3's 1BCE4 went over its budget while 1BC01 was being
+            # written, and the rule below, taking 1BC01 for the culprit, left it out. What is left
+            # is done on one thread, where the last written is the one in hand.
+            env = dict(env, CB_THREADS="1")
+            if not os.environ.get("CB_MEMORY_MB"):
+                env.pop("CB_MEMORY_MB", None)
+            left = [va for va in left if va not in done or va == last]
+            if done:
+                outs[-1] = out[:list(_MARK.finditer(out))[-1].start()]
+            first = False
+            continue
         # the governor stopped it on one function (over its memory budget or its time): that one
         # is done -- failed, as written -- and is not tried again
         governed = re.search(r"/\* decompile failed: over the (?:memory budget|time limit)[^*]*\*/\s*$", out)
