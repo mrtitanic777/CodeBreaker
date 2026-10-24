@@ -3,6 +3,7 @@
 from struct import unpack_from
 
 from .XeCrypt import *
+from .XeCrypt import _store_key
 from .build_lib import *
 
 # test data
