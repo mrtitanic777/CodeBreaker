@@ -123,7 +123,11 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     from codebreaker.base import settings
     from codebreaker.formats.ne import NEFile
     from codebreaker.verify import win16
-    compilers = [compiler] if compiler else [c for c in ("msc6", "msvc152") if msc6.available(c)]
+    # Microsoft C 8.00c built Windows 95's Setup modules and runs on Windows itself; Microsoft C 6.0a
+    # (DOS, the emulator) is tried only when asked for (settings: match16_msc6 = on) -- choosing
+    # SUWIN's switches among both gave nothing more than among C 8's alone (35 either way).
+    wanted = ("msc6", "msvc152") if str(settings.get("match16_msc6") or "").lower() in ("on", "1", "true", "yes")         else ("msvc152",)
+    compilers = [compiler] if compiler else [c for c in wanted if msc6.available(c)]
     if not compilers or not all(msc6.available(c) for c in compilers):
         raise SystemExit("Microsoft C is not set up (settings.json: dosbox_x, msc6, msvc152)")
     name = os.path.basename(module_path).lower()
