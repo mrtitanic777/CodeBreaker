@@ -676,6 +676,15 @@ uint2 codebreaker_entry_sp(void);
 #define __stdcall16near __near __stdcall
 #define __cdecl16far __far __cdecl
 #define __cdecl16near __near __cdecl
+#ifdef __WATCOMC__
+/* Microsoft's _fastcall (describe: a near function reading AX, DX or BX before it writes them):
+   its arguments in AX, DX, BX, its result where Watcom puts one too (AL, AX, DX:AX: a `value
+   [ax]` here made every long-returning one "invalid return register"), and the registers
+   Microsoft C lets a function overwrite. Watcom has no keyword for it: each such function is
+   named in a pragma after its declaration. */
+#pragma aux codebreaker_fastcall "_*" parm caller [ax] [dx] [bx] modify [ax bx cx dx es];
+#define __fastcall16near __near
+#endif
 #define CONCAT11(a,b) ((uint2)(((uint2)(uint1)(a) << 8) | (uint1)(b)))
 #define CONCAT22(a,b) ((uint4)(((uint4)(uint2)(a) << 16) | (uint2)(b)))
 #define CONCAT13(a,b) ((uint4)(((uint4)(uint1)(a) << 24) | ((uint4)(b) & 0xFFFFFFUL)))
@@ -1561,6 +1570,8 @@ def _compilable16(module_path, outdir=None):
                 m.imports[n] = (mm.group(1), int(mm.group(2)))
     decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports) if nm not in m.selector_imports]
     decls += [declaration(m.texts[n]) for n in m.order]
+    decls += ["#ifdef __WATCOMC__\n#pragma aux (codebreaker_fastcall) %s;\n#endif" % n for n in m.order
+              if "__fastcall16near" in m.texts[n].split("(", 1)[0]]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if n in called]
     intrinsics += interrupt_helpers(m.interrupts)
     if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:

@@ -993,10 +993,10 @@ def call_overrides(d):
                     # cleanup right after the call (`add sp, 6`; at /Os `pop bx`/`pop cx` for each
                     # word). SUWIN's sub_2_0A92 passed sub_8_0F24 a far pointer and a character
                     # (`add sp, 6`); without this the call came out with no arguments at all.
-                    # (opt-in, CB_CALLER_ARGS=1, until a Setup run has shown it: on SUWIN as many
-                    # functions are the original's bytes with it as without -- 37 -- once each is
-                    # compiled in its own source file)
-                    took = _caller_cleanup(ins, j) if os.environ.get("CB_CALLER_ARGS") == "1" else 0
+                    # (CB_CALLER_ARGS=0 turns it off: on SUWIN as many functions are the original's
+                    # bytes with it as without -- 37 -- once each is compiled in its own source file;
+                    # Setup on the 15 MINI.CAB modules rebuilt with it ran to the desktop)
+                    took = _caller_cleanup(ins, j) if os.environ.get("CB_CALLER_ARGS") != "0" else 0
                     if took:
                         # (`push cs; call` is a far call to a function of the same file: the pushed CS
                         # is the return address's segment, not an argument)
@@ -1127,9 +1127,9 @@ def model_line(d, va, name, default="near"):
     if hand and pop >= 0:
         pop += hand
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
-    # (opt-in until a Setup run has shown it; near ones only -- a far _fastcall function cannot be
-    # compiled with /Gw, the Windows prolog loading DS through AX: "illegal far _fastcall function")
-    if os.environ.get("CB_FASTCALL") == "1" and (kind or default) == "near" and register_arguments(code, off):
+    # (CB_FASTCALL=0 turns it off; near ones only -- a far _fastcall function cannot be compiled
+    # with /Gw, the Windows prolog loading DS through AX: "illegal far _fastcall function")
+    if os.environ.get("CB_FASTCALL") != "0" and (kind or default) == "near" and register_arguments(code, off):
         conv = "__fastcall16"
     # what it returns, as its instructions show (where it runs to: the next function's start)
     result = getattr(d, "results", {}).get(va)
