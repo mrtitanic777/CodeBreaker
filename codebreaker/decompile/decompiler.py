@@ -211,6 +211,8 @@ def _run_resuming(description, only, timeout, max_instructions=None):
     else:
         with open(description, encoding="utf-8", errors="replace") as f:
             wanted = sorted({int(line.split("\t")[1], 16) for line in f if line.startswith("F\t")})
+    if not wanted:                                       # (no code: a font or resource-only module)
+        return "", "", True
     first = True
     outs, errs, left = [], [], list(wanted)
     while True:

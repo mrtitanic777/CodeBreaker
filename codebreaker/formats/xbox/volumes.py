@@ -47,15 +47,18 @@ def _stfs(path):
                     lambda: [(n, v[2]) for n, v in p.files.items()], p.read_file)]
 
 
-def _xdvdfs(device, label, where, kind="xdvdfs"):
-    g = gdf.GDF(device)
+def _xdvdfs(device, label, where, kind="xdvdfs", base=None, descriptor=None):
+    g = gdf.GDF(device, base, descriptor)
     return _Listed(kind, label, where, {"volume at": "0x%X" % g.base},
                    g.files, g.read)
 
 
-def _god(folder):
+def _god(folder, header=None):
     """A Games-on-Demand folder: the `<media id>.data` folder of Data#### parts, or the folder
-    of the whole package (the one that holds it)."""
+    of the whole package (the one that holds it). With its `header` (the package file beside
+    the .data folder), the volume is placed as the header's SVOD descriptor says: the disc
+    sectors before its first data block are not in the parts, and in the "enhanced GDF"
+    layout the volume descriptor comes first, the volume's sectors a 4 KB block after it."""
     def parts(d):
         return any(n.lower().startswith("data") and os.path.isfile(os.path.join(d, n)) for n in os.listdir(d))
     data = folder if parts(folder) else None
@@ -67,7 +70,18 @@ def _god(folder):
                 break
     if data is None:
         return None
-    return [_xdvdfs(god.SvodReader(data), os.path.basename(os.path.dirname(data)) or "GoD", "Games on Demand", "god")]
+    base = descriptor = None
+    if header:
+        with open(header, "rb") as f:
+            f.seek(0x391)                                    # SVOD descriptor (0x379): features, blocks, first block
+            d = f.read(7)
+        if len(d) == 7:
+            first = d[4] | d[5] << 8 | d[6] << 16            # (24-bit, low byte first)
+            enhanced = bool(d[0] & 0x40)
+            base = (0x1000 if enhanced else 0) - first * 0x1000
+            descriptor = 0
+    return [_xdvdfs(god.SvodReader(data), os.path.basename(os.path.dirname(data)) or "GoD", "Games on Demand", "god",
+                    base, descriptor)]
 
 
 class FatxVolume(object):
@@ -139,6 +153,10 @@ def volumes(path, long_names=True):
         head = f.read(16)
     magic = head[:4]
     if magic in _STFS:
+        # (a Games-on-Demand package's header: its contents are the Data#### parts in the
+        # `<header>.data` folder beside it, not in the header file)
+        if os.path.isdir(path + ".data"):
+            return _god(path + ".data", header=path)
         return _stfs(path)
     if magic in (ciso.CSO_MAGIC, ciso.CCI_MAGIC):
         return [_xdvdfs(ciso.open_image(path), os.path.basename(path), magic.decode("latin-1").strip() + " compressed disc")]

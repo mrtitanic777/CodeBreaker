@@ -41,12 +41,14 @@ class _FileDevice:
 
 
 class GDF:
-    def __init__(self, dev, base=None):
+    def __init__(self, dev, base=None, descriptor=None):
         self.dev = dev
         self.base = base if base is not None else self._find_base()
+        if descriptor is not None:                           # (where the volume descriptor is, when
+            self._descriptor = descriptor                    # not at the volume's sector 32)
         if self.base is None:
             raise ValueError("no XDVDFS volume found")
-        vd = self.dev.read_at(self.base + 32 * SECTOR, SECTOR)
+        vd = self.dev.read_at(getattr(self, "_descriptor", self.base + 32 * SECTOR), SECTOR)
         assert vd[:20] == MAGIC
         self.root_sector = struct.unpack_from("<I", vd, 0x14)[0]
         self.root_size = struct.unpack_from("<I", vd, 0x18)[0]

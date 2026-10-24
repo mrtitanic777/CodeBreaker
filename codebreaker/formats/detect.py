@@ -197,7 +197,13 @@ def identify(path):
                 if at(16 * sector + skip + 1, 5) == b"CD001":
                     return [_match(format="CD image (ISO-9660)", detail="%d-byte sectors" % sector,
                                    family="disc", command="media")]
-            if len(head) >= 512 and head[510:512] == b"\x55\xaa":
+            # (55 AA alone is two bytes any file may hold at 510: a FAT boot sector also starts
+            # with a jump and gives a sector size; a disk's partition table marks each entry
+            # active (80) or not (00))
+            if len(head) >= 512 and head[510:512] == b"\x55\xaa" and (
+                    head[0] in (0xEB, 0xE9) and struct.unpack_from("<H", head, 11)[0] in (512, 1024, 2048, 4096)
+                    or all(head[0x1BE + 16 * i] in (0, 0x80) for i in range(4))
+                    and any(head[0x1BE + 16 * i + 4] for i in range(4))):
                 kind = "floppy image" if size <= 2949120 else "hard-disk image"
                 return [_match(format="disk image (FAT)", detail=kind, family="disc", command="media")]
             if head[:1] in (b"\x80", b"\x82") and len(head) > 3:            # THEADR / LHEADR
