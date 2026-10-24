@@ -1,0 +1,14 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "Microsoft's _fastcall: a near function's arguments in AX, DX, BX",
+ "code": {
+  "fastcall_add": [
+   "578bf88bc2f7eb03c75fc390",
+   "000000000000000000000000"
+  ],
+  "fastcall_caller": [
+   "b80400ba0500bb0600e8e8ffcb90",
+   "0000000000000000000000000000"
+  ]
+ }
+}

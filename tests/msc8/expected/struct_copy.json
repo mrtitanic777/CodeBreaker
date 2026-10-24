@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "a structure assigned: rep movsw",
+ "code": {
+  "struct_copy": [
+   "558bec57568b460a8b560c1e8bf08edac47e06b90800f3a51f5e5fc9cb90",
+   "000000000000000000000000000000000000000000000000000000000000"
+  ]
+ }
+}

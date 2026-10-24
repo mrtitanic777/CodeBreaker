@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "a far pointer parameter loaded with les",
+ "code": {
+  "far_pointer_param": [
+   "558bec5756c57e0633db381d7408438bf780380075f8161f8bc35e5fc9cb",
+   "000000000000000000000000000000000000000000000000000000000000"
+  ]
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "SI and DI kept for variables, saved after the frame",
+ "code": {
+  "register_vars": [
+   "c80600008b560833c08946fc3bd07e0e8b5e068b0783c3020146fc4a75f58b46fcc9cb90",
+   "000000000000000000000000000000000000000000000000000000000000000000000000"
+  ]
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "a signed char widened: cbw",
+ "code": {
+  "char_extend": [
+   "558bec8a4606988a4e082aed03c1c9cb",
+   "00000000000000000000000000000000"
+  ]
+ }
+}

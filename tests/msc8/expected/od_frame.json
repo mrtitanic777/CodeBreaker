@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /Gs /Od",
+ "what": "/Od: a frame (push bp / mov bp,sp / sub sp,N), every local in memory",
+ "code": {
+  "od_frame": [
+   "558bec81ec060056578b46060501008946fa8b4608d1e08946fc8b46fa0346fce900005f5e8be55dcb90",
+   "000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  ]
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "FAR PASCAL: arguments pushed left to right, the callee removes them",
+ "code": {
+  "pascal_order": [
+   "6a016a026a039a00000000cb",
+   "000000000000000101010100"
+  ]
+ }
+}

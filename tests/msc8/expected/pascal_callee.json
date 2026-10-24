@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "FAR PASCAL function: retf N, its arguments read from the far end",
+ "code": {
+  "PASCALCALLEE": [
+   "558bec8b46082b4606c9ca040090",
+   "0000000000000000000000000000"
+  ]
+ }
+}

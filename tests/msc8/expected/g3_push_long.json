@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G3s /Ox",
+ "what": "/G3: a 32-bit constant argument pushed whole (66 68 imm32)",
+ "code": {
+  "g3_push_long": [
+   "6668785634129a0000000083c404cb90",
+   "00000000000000010101010000000000"
+  ]
+ }
+}

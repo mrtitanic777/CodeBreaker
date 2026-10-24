@@ -1,0 +1,10 @@
+{
+ "flags": "/AM /G2s /Ox",
+ "what": "_loadds: the function loads its own data segment",
+ "code": {
+  "loadds_export": [
+   "1eb800008ed8a100001fcb90",
+   "000001010000000101000000"
+  ]
+ }
+}
