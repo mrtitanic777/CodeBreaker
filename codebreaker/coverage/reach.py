@@ -190,17 +190,59 @@ def _tools():
         return "?"
 
 
+def _job(proc):
+    """A Windows job that holds `proc` and everything it starts (None elsewhere)."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateJobObjectW.restype = wintypes.HANDLE
+    job = k.CreateJobObjectW(None, None)
+
+    class Limits(ctypes.Structure):                          # JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+        _fields_ = [("a", ctypes.c_int64 * 2), ("flags", wintypes.DWORD), ("b", ctypes.c_size_t * 2),
+                    ("c", wintypes.DWORD), ("d", ctypes.c_size_t), ("e", wintypes.DWORD),
+                    ("f", wintypes.DWORD), ("io", ctypes.c_uint64 * 6), ("g", ctypes.c_size_t * 4)]
+    lim = Limits()
+    lim.flags = 0x2000                                       # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    k.SetInformationJobObject(wintypes.HANDLE(job), 9, ctypes.byref(lim), ctypes.sizeof(lim))
+    k.AssignProcessToJobObject(wintypes.HANDLE(job), wintypes.HANDLE(int(proc._handle)))
+    return (k, job)
+
+
+def _end(job, proc):
+    """Stop `proc` and everything it started."""
+    if job:
+        from ctypes import wintypes
+        k, h = job
+        k.TerminateJobObject(wintypes.HANDLE(h), 1)
+        k.CloseHandle(wintypes.HANDLE(h))
+    elif proc.poll() is None:
+        proc.kill()
+    proc.wait()
+
+
 def judge(path, timeout):
     """Run the platform's lane on one program in its own process. -> {"tally", "seconds", "stopped"}"""
+    import tempfile
     t0 = time.time()
     stopped = ""
-    try:
-        r = subprocess.run([sys.executable, "-m", "codebreaker", "measure", path], capture_output=True,
-                           text=True, errors="replace", timeout=timeout)
-        if r.returncode:
-            stopped = ((r.stderr or r.stdout).strip().splitlines() or ["exit %d" % r.returncode])[-1][:160]
-    except subprocess.TimeoutExpired:
-        stopped = "timed out after %d s" % timeout
+    # Output to a file, not a pipe, and the whole process tree in one job: a stopped `measure`
+    # leaves its worker processes behind otherwise, and they hold a pipe (and the run) open.
+    with tempfile.TemporaryFile() as out:
+        proc = subprocess.Popen([sys.executable, "-m", "codebreaker", "measure", path], stdout=out,
+                                stderr=subprocess.STDOUT)
+        job = _job(proc)
+        try:
+            code = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            code, stopped = None, "timed out after %d s" % timeout
+        _end(job, proc)
+        if code:
+            out.seek(0)
+            text = out.read().decode("utf-8", "replace").strip().splitlines()
+            stopped = (text or ["exit %d" % code])[-1][:160]
     tally = {}
     try:
         from codebreaker.store import functions as F
@@ -226,7 +268,8 @@ def spread(rows, n, max_size):
 
 
 def run(inputs, per_platform=5, do_judge=False, timeout=300, containers=20, name="reach", again=False,
-        max_size=4 << 20, log=print):
+        max_size=4 << 20, log=None):
+    log = log or (lambda text: print(text, flush=True))
     from codebreaker.base import settings
     store = settings.state("reach", name + ".json")
     old = {}
@@ -248,6 +291,12 @@ def run(inputs, per_platform=5, do_judge=False, timeout=300, containers=20, name
             continue
         seen.add(row["sha"])
         rows.append(row)
+    def save():                                              # after every program: a stopped run keeps its results
+        kept = rows + [r for r in old.values() if r["sha"] not in seen]   # (and what earlier runs measured)
+        with open(store, "w", encoding="utf-8") as f:
+            json.dump({"when": time.strftime("%Y-%m-%d %I:%M %p"), "inputs": [os.path.abspath(i) for i in inputs],
+                       "tools": tools, "programs": kept}, f, indent=1)
+
     # which get judged: programs of a platform with a lane, smallest first, per_platform of each
     by_platform = collections.defaultdict(list)
     for r in rows:
@@ -267,13 +316,9 @@ def run(inputs, per_platform=5, do_judge=False, timeout=300, containers=20, name
                 j = r["judged"]
                 log("  %s%s" % (", ".join("%s %d" % kv for kv in j["tally"].items() if kv[1]) or "nothing recorded",
                                "; " + j["stopped"] if j["stopped"] else ""))
-    for r in old.values():                                   # keep what earlier runs measured
-        if r["sha"] not in seen:
-            rows.append(r)
-    with open(store, "w", encoding="utf-8") as f:
-        json.dump({"when": time.strftime("%Y-%m-%d %I:%M %p"), "inputs": [os.path.abspath(i) for i in inputs],
-                   "tools": tools, "programs": rows}, f, indent=1)
-    text = report(rows)
+                save()
+    save()
+    text = report(rows + [r for r in old.values() if r["sha"] not in seen])
     with open(settings.state("reach", name + ".md"), "w", encoding="utf-8") as f:
         f.write(text)
     return rows, text
