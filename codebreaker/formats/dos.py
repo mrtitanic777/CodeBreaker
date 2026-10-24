@@ -156,6 +156,27 @@ def _kind(data, name=""):
     return None
 
 
+def chain(data):
+    """Programs stored one after another in one file, each with its own MZ header: [(offset,
+    bytes)], or [] for one alone. CodeView 4.1's CV.EXE is three -- a stub that checks the CPU and
+    memory, the DOSX16 extender, and CodeView itself (448 KB, run in protected mode) -- and only
+    the stub was taken apart: 7 functions of a debugger. (A program's overlays, stored after it the
+    same way, come out as parts too.) Each part starts at the next byte, or after up to 15 bytes
+    of zeros to a paragraph."""
+    parts, at = [], 0
+    while at < len(data):
+        h = _mz(data[at:])
+        if not h or h["size"] <= h["header"] or at + h["size"] > len(data):
+            break
+        parts.append((at, h["size"]))
+        nxt = at + h["size"]
+        pad = len(data[nxt:nxt + 16]) - len(data[nxt:nxt + 16].lstrip(b"\0"))
+        if pad > 15 or data[nxt + pad:nxt + pad + 2] != b"MZ":
+            break
+        at = nxt + pad
+    return parts if len(parts) > 1 else []
+
+
 def driver_and_vxd(data):
     """A real-mode device driver and a VxD in one file (DRVSPACE.BIN): an MZ header whose load
     module is the driver -- device headers at its start -- and whose new-header field points at

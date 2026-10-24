@@ -571,8 +571,28 @@ def as_c(path):
                 texts[key] = "/* driver %s */\n%s" % (member, out[n])
                 order.append(key)
     elif kind == "dos":
-        texts, order, d = decompile_dos(path)
-        header, total = "", len(d.names)
+        from codebreaker.formats import dos
+        with open(path, "rb") as f:
+            data = f.read()
+        parts = dos.chain(data)
+        if not parts:
+            texts, order, d = decompile_dos(path)
+            header, total = "", len(d.names)
+        else:                                                # programs one after another: each its own
+            from codebreaker.build import watcom as B
+            texts, order, header, total = {}, [], "", 0
+            stem = os.path.basename(path).lower()
+            for k, (at, size) in enumerate(parts, 1):
+                part = B._scratch("decompiler_dos", "%s.part%d" % (stem, k), "%s.part%d.exe" % (stem, k))
+                os.makedirs(os.path.dirname(part), exist_ok=True)
+                with open(part, "wb") as f:
+                    f.write(data[at:at + size])
+                out, names, d = decompile_dos(part)
+                total += len(d.names)
+                for n in names:
+                    key = "part%d.%s" % (k, n)
+                    texts[key] = "/* part %d of %d: offset %Xh, %d bytes */\n%s" % (k, len(parts), at, size, out[n])
+                    order.append(key)
     else:
         raise ValueError("%s: not an executable this can read" % path)
     texts = {n: c_text._FACT.sub("", t).strip() for n, t in texts.items()}    # the decompiler's side notes

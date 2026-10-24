@@ -639,8 +639,27 @@ def test_chunks_come_back_in_address_order():
     assert "".join(b for _v, b in blocks) == "/*@@ a 10010 */\nA\n\n/*@@ b 10020 */\nB\n\n/*@@ c 10030 */\nC\n/*@@ d 10040 */\nD\n"
 
 
+def test_programs_stored_one_after_another_are_each_found():
+    # CodeView 4.1's CV.EXE: a stub, the DOS extender, CodeView -- three MZ programs back to back
+    from codebreaker.formats import dos
+
+    def mz(body_paras, extra=b""):
+        size = 32 + body_paras * 16                          # (a 32-byte header, then the body)
+        h = bytearray(32)
+        h[0:2] = b"MZ"
+        h[2:4] = (size % 512).to_bytes(2, "little")
+        h[4:6] = ((size + 511) // 512).to_bytes(2, "little")
+        h[8:10] = (2).to_bytes(2, "little")                  # (header paragraphs)
+        return bytes(h) + bytes(body_paras * 16) + extra
+    one, two = mz(4), mz(8)
+    assert dos.chain(one) == []                              # (one alone: not a chain)
+    assert dos.chain(one + two) == [(0, len(one)), (len(one), len(two))]
+    assert dos.chain(one + b"\0" * 6 + two)[1] == (len(one) + 6, len(two))   # (zeros to a paragraph between)
+    assert dos.chain(one + b"junk" + two) == []              # (something else after it: no chain)
+
+
 def main():
-    for fn in (test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
+    for fn in (test_programs_stored_one_after_another_are_each_found, test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
                test_chunks_come_back_in_address_order, test_a_call_through_a_word_stays_near, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
