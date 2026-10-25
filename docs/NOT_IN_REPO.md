@@ -17,6 +17,7 @@ setting for one run.
 | Microsoft C 6.0a | `toolchains/period/compilers/msc-6.0a` | `msc6` |
 | Visual C++ 1.52c (Microsoft C/C++ 8, LINK 5.60, RC) | `toolchains/period/compilers/msvc-1.52c` | `msvc152` |
 | Visual C++ 2.0 (the 32-bit compiler of 1994) | `toolchains/period/compilers/msvc-2.0/BIN` | `period_compiler` |
+| Visual C++ 4.0's C runtime libraries (LIBC, LIBCMT, MSVCRT: only to learn runtime signatures from, `identify --learn`) | `toolchains/period/compilers/msvc-4.0/LIB` | (named on the command line) |
 | The Windows 3.1 DLL kit (lean MDLLCEW.LIB, LIBW.LIB, LIBENTRY.OBJ) | `toolchains/period/libs/win31-kit` | (found there) |
 | Microsoft C 2.03 (MC1, MC2) | `binaries/latticec/oracle16` | `msc203` |
 | MASM (BIN, INC, LIB) | `toolchains/masmroot` | `masm` |
