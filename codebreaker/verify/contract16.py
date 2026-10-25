@@ -71,7 +71,10 @@ def _calls(img, seg, lo, hi, name_of):
             callee = name_of(("far", (s << 16) | o))
         else:
             continue                                         # (through a pointer: the callee is not known here)
-        nxt = ins[k + 1] if k + 1 < len(ins) else None
+        after = k + 1
+        while after < len(ins) and ins[after].mnemonic == "nop":
+            after += 1                                     # (OpenWatcom's `nop` after a near call)
+        nxt = ins[after] if after < len(ins) else None
         pushed = 0                                         # (the argument bytes pushed just before it)
         before = ins[:k]
         # (`push cs / call near`: a far call to a function of the same segment -- CS is the return
@@ -101,20 +104,43 @@ def _calls(img, seg, lo, hi, name_of):
             if capstone.x86.X86_REG_SP in w:
                 break
         off = 0
+        rest = after                                       # (the first instruction past the cleanup)
         if nxt is not None and nxt.mnemonic == "add" and nxt.op_str.startswith("sp, "):
             amount = nxt.op_str.split(", ")[1]
             off = int(amount, 0) if re.fullmatch(r"-?(0x[0-9a-f]+|\d+)", amount) else "?" + amount
+            rest = after + 1
         else:
             # (or taken off by popping them into a register no one reads: `pop bx`, `pop cx` --
             # the original's way after a one-word cdecl call; read as nothing, the build's
             # `add sp, 2` after the same call "took off two bytes the original did not")
-            for q in ins[k + 1:k + 1 + max(0, pushed // 2)]:
+            for q in ins[after:after + max(0, pushed // 2)]:
                 if q.mnemonic == "pop" and q.op_str in ("bx", "cx") and off < pushed:
                     off += 2
+                    rest += 1
                 else:
                     break
+        at_leave = False
+        if pushed:
+            # (and then the frame's LEAVE, nothing touching the stack before it: SP is set back from
+            # BP whatever was taken off -- Microsoft C 8 itself leaves a call's arguments there when
+            # the function ends next (SETUPX's 2:5A3C, `lcall _SUFORMATMESSAGEBOX / xor ax, ax /
+            # leave`), OpenWatcom takes them off: the same. Told here; compared as the same.)
+            for q in ins[rest:rest + 12]:
+                if q.mnemonic == "leave" or (q.mnemonic == "mov" and q.op_str == "sp, bp") or \
+                        (q.mnemonic == "lea" and q.op_str.startswith("sp, [bp")):   # (OpenWatcom's, before its pops)
+                    at_leave = True
+                    break
+                if q.mnemonic in ("push", "pop", "pushf", "popf", "enter", "ret", "retf") or \
+                        q.group(capstone.CS_GRP_CALL) or q.group(capstone.CS_GRP_JUMP):
+                    break
+                try:
+                    _r, w = q.regs_access()
+                except capstone.CsError:
+                    break
+                if capstone.x86.X86_REG_SP in w:
+                    break
         if callee:
-            out.append((callee, off, pushed if exact else -pushed))   # (negative: at least that)
+            out.append((callee, off, pushed if exact else -pushed, at_leave))   # (negative: at least that)
     return out
 
 
@@ -178,18 +204,19 @@ def mismatches(original, folder, image, names):
             a, b = collections.defaultdict(set), collections.defaultdict(set)
             pa, pb = collections.defaultdict(set), collections.defaultdict(set)
             low = collections.defaultdict(int)            # (the original's at-least counts)
-            for c, t, p in _calls(do.images.get(os_, b""), os_, oo, oe, orig_name):
-                a[c].add(t)
+            for c, t, p, lv in _calls(do.images.get(os_, b""), os_, oo, oe, orig_name):
+                a[c].add("leave" if lv else t)
                 if p >= 0:
                     pa[c].add(p)
                 else:
                     low[c] = max(low[c], -p)
-            for c, t, p in _calls(img, s, o, hi, ours_name):
-                b[c].add(t)
+            for c, t, p, lv in _calls(img, s, o, hi, ours_name):
+                b[c].add("leave" if lv else t)
                 if p >= 0:                                # (ours counted from a join: not compared)
                     pb[c].add(p)
             for c in sorted(set(a) & set(b)):
-                if a[c] != b[c]:
+                ta, tb = a[c] - {"leave"}, b[c] - {"leave"}   # (before a LEAVE: whatever was taken off)
+                if ta and tb and ta != tb:
                     out[n] = "after calling %s the original takes off %s bytes, ours %s" % (
                         c, sorted(a[c]), sorted(b[c]))
                     break

@@ -1086,7 +1086,104 @@ def results(d):
                     size[place], changed = got, True
         if not changed:
             break
+    if os.environ.get("CB_CALLER_RESULTS") != "0" and getattr(d, "images", None):
+        edges = []
+        for place in callers_read_dx(d, edges):              # (what the callers read after it)
+            if place in size and size[place] < 4:
+                size[place] = 4
+        for _round in range(8):                              # (and what a four-byte caller hands back
+            changed = False                                  #  as it is: its callee's DX:AX too)
+            for caller, callee in edges:
+                if size.get(caller, 0) >= 4 and callee in size and size[callee] < 4:
+                    size[callee], changed = 4, True
+            if not changed:
+                break
     return {va: size.get(where(va), 0) for va in d.names}
+
+
+def callers_read_dx(d, edges=None):
+    """{(seg, off)} of the functions a call to which is followed, before anything else could set
+    it, by a read of DX -- the callee returns four bytes, DX:AX, whatever its own instructions
+    let one tell: a compiler reads DX after a call only for a long or a far pointer it returned
+    (SETUPX's 4:6C9C: `lcall SUREGCREATEKEY / or dx, ax`, the key's LONG result, read as an int and
+    a DX nothing in the C had set). `edges`, given a list, has [(caller, callee)] added for each
+    call whose AX and DX go back to the caller's own caller as they are (nothing writes either
+    before the return, a jump to it followed): if the caller returns four bytes, so does the
+    callee (SUREGQUERYVALUEEX hands back sub_31_002A's)."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    dx = {capstone.x86.X86_REG_DX, capstone.x86.X86_REG_DL, capstone.x86.X86_REG_DH, capstone.x86.X86_REG_EDX}
+    ax = {capstone.x86.X86_REG_AX, capstone.x86.X86_REG_AL, capstone.x86.X86_REG_AH, capstone.x86.X86_REG_EAX}
+    out = set()
+    code_segs = getattr(d, "code", None) or {}
+    starts = {}
+    for va in d.names:
+        sg, o = where(va)
+        starts.setdefault(sg, []).append(o)
+    for sg in starts:
+        starts[sg].sort()
+    import bisect
+    for seg, img in d.images.items():
+        if code_segs and seg not in code_segs:
+            continue                                         # (a data segment: no calls in it)
+        ins = list(md.disasm(bytes(img), 0))
+        at = {i.address: n for n, i in enumerate(ins)}
+        for k, i in enumerate(ins[:-1]):
+            if edges is not None and (i.mnemonic in ("call", "lcall")) and seg in starts:
+                own = starts[seg][bisect.bisect_right(starts[seg], i.address) - 1] \
+                    if bisect.bisect_right(starts[seg], i.address) else None
+                n, hops, through = k + 1, 0, None
+                while own is not None and n < len(ins) and hops < 12:
+                    q = ins[n]
+                    if q.mnemonic in ("ret", "retf"):
+                        through = True
+                        break
+                    if q.mnemonic == "jmp" and q.op_str.startswith("0x") and int(q.op_str, 16) in at:
+                        n, hops = at[int(q.op_str, 16)], hops + 1
+                        continue
+                    if q.group(capstone.CS_GRP_JUMP) or q.group(capstone.CS_GRP_CALL):
+                        break
+                    try:
+                        _r, w = q.regs_access()
+                    except capstone.CsError:
+                        break
+                    if (ax | dx) & set(w):
+                        break
+                    n, hops = n + 1, hops + 1
+                if through:
+                    tgt = None
+                    if i.mnemonic == "call" and i.op_str.startswith("0x") and "," not in i.op_str:
+                        tgt = (seg, int(i.op_str, 16) & 0xFFFF)
+                    elif i.mnemonic == "lcall" and "," in i.op_str and i.op_str.startswith("0x"):
+                        s, o = (int(x, 16) for x in i.op_str.split(", "))
+                        tgt = where((s << 16) | o) if s < 0xE000 else None
+                    if tgt is not None:
+                        edges.append(((seg, own), tgt))
+            if i.mnemonic == "call" and i.op_str.startswith("0x") and "," not in i.op_str:
+                target = (seg, int(i.op_str, 16) & 0xFFFF)
+            elif i.mnemonic == "lcall" and "," in i.op_str and i.op_str.startswith("0x"):
+                s, o = (int(x, 16) for x in i.op_str.split(", "))
+                target = where((s << 16) | o) if s < 0xE000 else None
+            else:
+                continue
+            if target is None:
+                continue
+            for q in ins[k + 1:k + 8]:
+                if q.group(capstone.CS_GRP_JUMP) or q.group(capstone.CS_GRP_CALL) or q.group(capstone.CS_GRP_RET) \
+                        or q.mnemonic in ("int", "iret", "leave"):
+                    break
+                try:
+                    r, w = q.regs_access()
+                except capstone.CsError:
+                    break
+                if q.mnemonic == "xor" and q.op_str in ("dx, dx",) or q.mnemonic == "sub" and q.op_str == "dx, dx":
+                    break                                    # (cleared: written, not read)
+                if dx & set(r):
+                    out.add(target)
+                    break
+                if dx & set(w):
+                    break
+    return out
 
 
 _FASTCALL_REGS = {"ax": "ax", "al": "ax", "ah": "ax", "eax": "ax", "dx": "dx", "dl": "dx", "dh": "dx", "edx": "dx",
