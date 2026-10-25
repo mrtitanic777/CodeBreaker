@@ -142,6 +142,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     header = msc6.pascal_order(header, pascal)
     decls, header = msc6.ds_globals(header)
     header += decls                                  # (after the typedefs; the header's macros use them)
+    run.header = header
     work = settings.state("match16", name, "work")
     segment = {fn: m.where[address[fn]][0] for fn in todo}
     files = source_files(todo, m.where, originals, address)   # (compiled together, one setting each)
@@ -290,6 +291,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
                 texts.setdefault("search", {})[fn] = t
     run.texts = {fn: texts[winner[fn]][fn] for fn in todo if fn in winner}
     run.settings = set(setting.values())
+    run.setting, run.files, run.segment = dict(setting), files, dict(segment)   # (for scoreboard16)
     run.winner = dict(winner)                        # (which way of saying each function came nearest)
     run.code = {fn: (code.get(fn), originals[address[fn]]) for fn in todo}   # (its bytes, and the original's)
     return chosen, out

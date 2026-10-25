@@ -810,6 +810,8 @@ struct Sketch {
   std::map<int64_t, FieldUse> fields;
   bool bad = false;
   bool isFar = false;                                // (16-bit: reached as a far pointer)
+  bool farSeen = false;                              // (16-bit: used as a far pointer at all)
+  bool mixed = false;                                // (near and far both)
 };
 
 // The high-level variable a varnode belongs to, or null (an annotation has none)
@@ -867,17 +869,37 @@ Varnode* nearOffset(Varnode* addr) {
 // The four-byte variable a 16-bit far address `segment(s, o)` is made from: s its high word and o
 // its low word (plus constants, added to `off`), or null
 Varnode* farBase(Varnode* addr, int64_t& off) {
-  if (!addr->isWritten() || addr->getDef()->code() != CPUI_SEGMENTOP) return nullptr;
+  if (!addr->isWritten()) return nullptr;
   PcodeOp* seg = addr->getDef();
-  Varnode* s = seg->getIn(1);
+  Varnode* s;
   Varnode* lo;
-  if (!baseOf(seg->getIn(2), lo, off)) return nullptr;
+  if (seg->code() == CPUI_SEGMENTOP) {
+    s = seg->getIn(1);
+    if (!baseOf(seg->getIn(2), lo, off)) return nullptr;
+  } else if (seg->code() == CPUI_PIECE && seg->getIn(0)->getSize() == 2 && seg->getIn(1)->getSize() == 2) {
+    // (the segment operation as the rules leave it: the selector the high word, the offset the low)
+    s = seg->getIn(0);
+    if (!baseOf(seg->getIn(1), lo, off)) return nullptr;
+  } else {
+    return nullptr;
+  }
   auto piece = [](Varnode* v, int at) -> Varnode* {   // v = SUBPIECE(w, at) of a 4-byte w, through copies
     for (int depth = 0; depth < 8 && v->isWritten(); ++depth) {
       PcodeOp* d = v->getDef();
       if (d->code() == CPUI_COPY) { v = d->getIn(0); continue; }
       if (d->code() == CPUI_SUBPIECE && d->getIn(0)->getSize() == 4 && (int)d->getIn(1)->getOffset() == at)
         return d->getIn(0);
+      // (the high word as the rules may leave it: the low word of the 4 bytes shifted right 16,
+      // the 4 bytes through a cast -- SUB42((cast)p >> 0x10, 0))
+      if (at == 2 && d->code() == CPUI_SUBPIECE && d->getIn(0)->getSize() == 4 && d->getIn(1)->getOffset() == 0 &&
+          d->getIn(0)->isWritten() && d->getIn(0)->getDef()->code() == CPUI_INT_RIGHT &&
+          d->getIn(0)->getDef()->getIn(1)->isConstant() && d->getIn(0)->getDef()->getIn(1)->getOffset() == 16) {
+        Varnode* w = d->getIn(0)->getDef()->getIn(0);
+        while (w->isWritten() && (w->getDef()->code() == CPUI_CAST || w->getDef()->code() == CPUI_COPY) &&
+               w->getDef()->getIn(0)->getSize() == 4)
+          w = w->getDef()->getIn(0);
+        return w;
+      }
       return nullptr;
     }
     return nullptr;
@@ -971,6 +993,18 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
     int64_t off;
     HighVariable* bh;
     bool isFar = false;
+    if (std::getenv("CB_DEBUG_STRUCTS")) {        // (how each access's address is made: CB_DEBUG_STRUCTS=1)
+      std::ostringstream o;
+      addr->printRaw(o);
+      if (addr->isWritten()) {
+        o << " = "; addr->getDef()->printRaw(o);
+        for (int k = 0; k < addr->getDef()->numInput(); ++k) {
+          Varnode* in = addr->getDef()->getIn(k);
+          for (int d = 0; d < 3 && in->isWritten(); ++d) { o << "\n     in" << k << ": "; in->getDef()->printRaw(o); in = in->getDef()->getIn(0); }
+        }
+      }
+      std::fprintf(stderr, "struct? %s\n", o.str().c_str());
+    }
     if (seg16) {
       Varnode* nearAddr = nearOffset(addr);
       if (nearAddr != nullptr) addr = nearAddr;
@@ -979,7 +1013,8 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
     }
     if (isFar ? (bh = highOf(base)) == nullptr : !baseOf(addr, base, off) || (bh = highOf(base)) == nullptr) continue;
     Sketch& s = sketches[bh];
-    if (!s.fields.empty() && s.isFar != isFar) { s.bad = true; continue; }   // (near and far at once: neither)
+    if (isFar) s.farSeen = true;
+    if (!s.fields.empty() && s.isFar != isFar) { s.bad = s.mixed = true; continue; }   // (near and far at once: neither)
     s.isFar = isFar;
     if (off < 0 || off > 0xffff) { s.bad = true; continue; }
     auto at = s.fields.find(off);
@@ -1053,24 +1088,100 @@ std::string recoverStructs(Machine& m, Funcdata* fd, const Fact& f, bool seg16, 
     changed = true;
     notes += line + " */\n";
   }
-  if (!param_types.empty()) {
+  // Two 2-byte parameters that are one far pointer's halves -- the code reaches memory at
+  // segment:offset with the segment one parameter and the offset (plus a constant) the one just
+  // before it on the stack -- are that far pointer: the code loaded them apart (`mov bx, [bp+6]` /
+  // `mov es, [bp+8]`), as Microsoft C does when it keeps the offset for a while, but the source
+  // passed one pointer, and every caller pushes it as one.
+  std::set<int> far_pairs;                         // (the offset's position; the segment's is the next)
+  if (seg16) {
+    auto param_index = [&](Varnode* v) -> int {
+      for (int d = 0; d < 8 && v->isWritten() &&
+                      (v->getDef()->code() == CPUI_COPY || v->getDef()->code() == CPUI_CAST); ++d)
+        v = v->getDef()->getIn(0);
+      if (!v->isInput() || v->getSize() != 2) return -1;
+      HighVariable* h = highOf(v);
+      Symbol* sym = h != nullptr ? h->getSymbol() : nullptr;
+      if (sym == nullptr || sym->getScope() != loc || sym->getCategory() != Symbol::function_parameter) return -1;
+      return (int)sym->getCategoryIndex();
+    };
+    for (auto it = fd->beginOpAlive(); it != fd->endOpAlive(); ++it) {
+      PcodeOp* op = *it;
+      Varnode *sv, *ov;
+      if (op->code() == CPUI_SEGMENTOP) { sv = op->getIn(1); ov = op->getIn(2); }
+      else if (op->code() == CPUI_PIECE && op->getIn(0)->getSize() == 2 && op->getIn(1)->getSize() == 2 &&
+               op->getOut()->getSize() == 4) {
+        // (only an address: a 4-byte value that is loaded or stored through)
+        bool address = false;
+        for (auto d = op->getOut()->beginDescend(); d != op->getOut()->endDescend(); ++d)
+          if (((*d)->code() == CPUI_LOAD || (*d)->code() == CPUI_STORE) && (*d)->getIn(1) == op->getOut()) address = true;
+        if (!address) continue;
+        sv = op->getIn(0); ov = op->getIn(1);
+      } else continue;
+      Varnode* lo;
+      int64_t off;
+      if (!baseOf(ov, lo, off)) continue;
+      const int si = param_index(sv), oi = param_index(lo);
+      if (si >= 0 && oi >= 0 && si == oi + 1 && si < fp.numParams() &&
+          fp.getParam(oi)->getAddress().getOffset() + 2 == fp.getParam(si)->getAddress().getOffset())
+        far_pairs.insert(oi);
+    }
+  }
+  // A 4-byte parameter the code reaches memory through as a far pointer, but that is no structure
+  // (one field, a field before it, an index): a far pointer to bytes. Left a 4-byte number, every
+  // access is written as its two halves put back together (MK_FP(p >> 16, (int)p + 2)), which no
+  // compiler turns back into the original's `les bx, p` -- with the pointer, `*(int far *)(p + 2)`.
+  if (seg16) {
+    for (auto& kv : sketches) {
+      const Sketch& s = kv.second;
+      HighVariable* h = kv.first;
+      if (!s.farSeen || s.mixed || h->getInstance(0)->getSize() != 4) continue;
+      Symbol* sym = h->getSymbol();
+      if (sym == nullptr || sym->getScope() != loc || sym->getCategory() != Symbol::function_parameter) continue;
+      const int index = (int)sym->getCategoryIndex();
+      if (index >= fp.numParams() || param_types.count(index)) continue;
+      if (h->getType()->getMetatype() == TYPE_PTR) continue;
+      param_types[index] = m.types->getTypePointer(4, m.types->getTypeVoid(),
+                                                   m.getDefaultDataSpace()->getWordSize());
+      changed = true;
+    }
+  }
+  if (!param_types.empty() || !far_pairs.empty()) {
     // a parameter's type is part of the prototype: lock the prototype as it now stands, with
-    // those parameters pointers to their structures -- all at once (setting the prototype makes
-    // its parameters' symbols anew)
+    // those parameters pointers to their structures, and the far pointers' halves joined -- all
+    // at once (setting the prototype makes its parameters' symbols anew)
     PrototypePieces pieces;
     pieces.model = m.getModel(fp.getModelName());
     pieces.name = f.name;
     pieces.outtype = fp.getOutputType();
-    pieces.firstVarArgSlot = fp.isDotdotdot() ? fp.numParams() : -1;
+    pieces.firstVarArgSlot = fp.isDotdotdot() ? fp.numParams() - (int4)far_pairs.size() : -1;
     for (int4 i = 0; i < fp.numParams(); ++i) {
       ProtoParameter* p = fp.getParam(i);
+      if (far_pairs.count(i) && !param_types.count(i) && !param_types.count(i + 1)) {
+        pieces.intypes.push_back(m.types->getTypePointer(4, m.types->getTypeVoid(),
+                                                         m.getDefaultDataSpace()->getWordSize()));
+        pieces.innames.push_back(p->getName());
+        ++i;                                       // (its segment: part of it now)
+        changed = true;
+        continue;
+      }
       auto nt = param_types.find(i);
       pieces.intypes.push_back(nt != param_types.end() ? nt->second : p->getType());
       pieces.innames.push_back(p->getName());
     }
+    if (std::getenv("CB_DEBUG_STRUCTS")) {
+      for (int4 i = 0; i < fp.numParams(); ++i)
+        std::fprintf(stderr, "before %d %s @%llx size %d\n", i, fp.getParam(i)->getName().c_str(),
+                     (unsigned long long)fp.getParam(i)->getAddress().getOffset(), fp.getParam(i)->getSize());
+    }
     const int4 pop = fp.getExtraPop();
     const bool out_locked = fp.isOutputLocked();
     fp.setPieces(pieces);
+    if (std::getenv("CB_DEBUG_STRUCTS")) {
+      for (int4 i = 0; i < fp.numParams(); ++i)
+        std::fprintf(stderr, "after %d %s @%llx size %d\n", i, fp.getParam(i)->getName().c_str(),
+                     (unsigned long long)fp.getParam(i)->getAddress().getOffset(), fp.getParam(i)->getSize());
+    }
     fp.setExtraPop(pop);
     fp.setInputLock(true);
     fp.setOutputLock(out_locked);

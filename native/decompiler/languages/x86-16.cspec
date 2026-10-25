@@ -16,15 +16,14 @@
 	<float_size value="4" />
 	<double_size value="8" />
 	<long_double_size value="10" />
-	<!-- alignment varies between MIcrosoft and Borland -->
-	<!--
+	<!-- alignment varies between Microsoft and Borland: Microsoft C's (/Zp2, its default for 16-bit
+	     code): a 4-byte value, a far pointer among them, on a word, as an argument on the stack is -->
 	<size_alignment_map>
 		<entry size="1" alignment="1" />
 		<entry size="2" alignment="2" />
 		<entry size="4" alignment="2" />
 		<entry size="8" alignment="2" />
 	</size_alignment_map>
-	-->
   </data_organization>
   
   <global>

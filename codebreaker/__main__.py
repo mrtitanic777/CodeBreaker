@@ -85,6 +85,7 @@ COMMANDS = {
     "sweep": ("codebreaker.verify.sweep", []),
     "measure": ("codebreaker.verify.measure", []),
     "match": ("codebreaker.verify.match", []),
+    "score16": ("codebreaker.verify.scoreboard16", []),
     "repair": ("codebreaker.verify.repair", []),
     "teeth": ("codebreaker.verify.teeth", []),
     "invert": ("codebreaker.invert.run", []),

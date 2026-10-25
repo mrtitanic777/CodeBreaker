@@ -49,7 +49,10 @@ def prototype(text):
 def stand_in(text):
     """A definition with the same signature that does nothing."""
     head = prototype(text).rstrip(";")
-    return head + ("\n{\n}\n" if head.split()[0] == "void" else "\n{\n  return 0;\n}\n")
+    # (with the old-style argument lines kept: a parameter they declare, left out, is an int --
+    # not what the header's prototype of the function says)
+    whole = text.split("{", 1)[0].rstrip()
+    return whole + ("\n{\n}\n" if head.split()[0] == "void" else "\n{\n  return 0;\n}\n")
 
 
 def _plain(symbol):

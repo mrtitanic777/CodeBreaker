@@ -45,8 +45,9 @@ def _languages():
 
 def _structs(description):
     """"1" when the native program is to recover structures for this description (its CB_STRUCTS),
-    else "0". The setting `struct_recovery`: "off", "32" (32-bit x86 only -- the 16-bit modules
-    wait on the 16-bit gate and the VM), or "all"."""
+    else "0". The setting `struct_recovery`: "off", "32" (32-bit x86 only), or "all" (the default:
+    16-bit code too -- there the same pass makes a far pointer of a parameter the code reaches
+    memory through as one, and of two that are one pointer's halves)."""
     from codebreaker.base import settings
     want = (settings.get("struct_recovery") or "off").strip().lower()
     if want == "all":

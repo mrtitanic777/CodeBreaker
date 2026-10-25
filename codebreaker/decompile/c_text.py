@@ -1081,6 +1081,110 @@ def declaration(text):
     return head[:head.index("(")] + "();"
 
 
+_DEFINITION = re.compile(r"^([^\n#{};]*?\b(\w+))\(([^)]*)\)\n((?:[^{;\n]+;\n)*)\{", re.M)
+_WIDE_TYPES = re.compile(r"\b(u?int4|xunknown4|long|unkbyte3|unkint3|unkuint3|int3|float4)\b")
+_NARROW_TYPES = re.compile(r"^(?:const\s+)?(?:u?int1|char|xunknown1|bool|uchar|byte)$")
+
+
+def _words(ty):
+    """the words a value of C type `ty` takes on the stack -- 1, 2 -- or None"""
+    ty = " ".join(ty.split())
+    if "*" in ty:
+        return 2 if "__far" in ty else 1
+    if _WIDE_TYPES.search(ty):
+        return 2
+    if re.search(r"\b(u?int2|xunknown2|int|unsigned|short|code|u?int1|char|xunknown1|bool)\b", ty):
+        return 1
+    return None
+
+
+def _parameters(text):
+    """(head before the parameter list, [(name, type)]) of a definition as the decompiler writes it, or None"""
+    m = _DEFINITION.search(text)
+    if not m:
+        return None
+    decl = {}
+    for d in m.group(4).strip().splitlines():
+        d = d.strip().rstrip(";")
+        nm = re.findall(r"\w+", d)
+        if nm:
+            decl[nm[-1]] = d[:d.rindex(nm[-1])].strip()
+    names = [p.strip() for p in m.group(3).split(",") if p.strip()]
+    head = []                                        # (the head may run over lines: `int2 __stdcall16far` / `name(`)
+    for line in reversed(text[:m.end(2)].split("\n")):
+        s = line.strip()
+        if head and (not s or s.endswith((";", "}", "*/")) or s.startswith(("#", "extern ", "/*"))):
+            break
+        head.insert(0, s)
+    return " ".join(head), [(p, decl.get(p, "int")) for p in names]
+
+
+def _argument_words(arg, types):
+    """the words an argument expression takes on the stack, as far as it can be told, else None"""
+    a = arg.strip()
+    while a.startswith("(") and _arguments_at(a, 0)[1] == len(a):
+        a = a[1:-1].strip()                          # (the whole in brackets)
+    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)", a):
+        v = int(a, 0)
+        return 1 if -0x8000 <= v <= 0xFFFF else 2
+    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)[lL]", a):
+        return 2
+    cast = re.match(r"\(\s*([A-Za-z_][\w ]*\**)\s*\)", a)
+    if cast and _arguments_at(a, 0)[1] == cast.end():
+        return _words(cast.group(1))
+    if re.fullmatch(r"[A-Za-z_]\w*", a):
+        if a in ("unaff_SS", "unaff_DS", "unaff_ES", "unaff_CS"):
+            return 1
+        return _words(types[a]) if a in types else None
+    if a.startswith("&") or a.startswith('"'):
+        return 1                                     # (a near address: the medium model's data is near)
+    return None
+
+
+def prototypes(texts, order):
+    """{name: a declaration with its parameters} for each function every call to which, in all of
+    `texts`, passes as many words in each place as its definition takes there -- the source had
+    prototypes, and with none Microsoft C gives other code for the call (it keeps what it passes
+    in a register variable, and removes the arguments itself before a frame's `leave`). A function
+    a call disagrees with keeps the open declaration (see declaration). Each parameter is declared
+    with the type its old-style definition gives it, as it is -- `short`, not the `int` it is
+    promoted to: both Microsoft C 8 (silent; C4028 for the promoted one) and OpenWatcom (E1129 for
+    the promoted one) take it so."""
+    params = {n: _parameters(texts[n]) for n in order}
+    want = {n: [_words(t) for _p, t in ps[1]] for n, ps in params.items() if ps and "..." not in ps[0]}
+    ok = {n: all(w is not None for w in ws) for n, ws in want.items()}
+    for caller in order:
+        t = texts[caller]
+        info = params.get(caller)
+        types = dict(info[1]) if info else {}
+        body = t[t.find("{"):] if "{" in t else t
+        for line in body.splitlines():                   # (the function's own variables)
+            mm = re.match(r"^\s+([A-Za-z_][\w ]*?[\w*])\s*\**\s*(\w+)(\s*\[[^\]]*\])?\s*;\s*$", line)
+            if mm and mm.group(1) not in ("return", "goto"):
+                star = line.count("*")
+                types[mm.group(2)] = mm.group(1) + (" *" * star if star else "") + (" *" if mm.group(3) else "")
+        for mm in re.finditer(r"\b(\w+)\s*\(", body):
+            callee = mm.group(1)
+            if not ok.get(callee):
+                continue
+            args, _end = _arguments_at(body, mm.end() - 1)
+            if len(args) != len(want[callee]) or \
+                    any(_argument_words(a, types) != w for a, w in zip(args, want[callee])):
+                ok[callee] = False
+            elif "__stdcall" in params[callee][0] and \
+                    any(re.search(r"\b(unaff_[SD]S|codebreaker_[sd]s\(\))|>>\s*0x10", a) for a in args):
+                ok[callee] = False                   # (a far pointer passed as halves: build/msc6.py's
+                                                     #  pascal_order makes it one argument -- not two words)
+    out = {}
+    for n, good in ok.items():
+        if not good:
+            continue
+        head, ps = params[n]
+        listed = ", ".join("%s %s" % (t, p) for p, t in ps)
+        out[n] = " ".join(head.split()) + "(" + (listed or "void") + ");"
+    return out
+
+
 _RAM = re.compile(r"([a-z]+)Ram([0-9a-f]{8})")
 
 
@@ -1182,7 +1286,8 @@ def compilable16(module_path, outdir=None):
                   (settings.get("struct_recovery") or "off").strip().lower(),
                   os.environ.get("CB_SELECTOR_STRUCTS", ""),       # (_selector_structs' off switch)
                   os.environ.get("CB_CALLER_ARGS", ""),            # (describe's direct-call arguments)
-                  os.environ.get("CB_FASTCALL", ""))               # (describe's _fastcall functions)
+                  os.environ.get("CB_FASTCALL", ""),               # (describe's _fastcall functions)
+                  os.environ.get("CB_PROTOTYPES", ""))             # (prototypes where the calls agree)
     had = cache.get("compilable16", k)
     if had is not None:
         m, description = pickle.loads(had)
@@ -1407,7 +1512,7 @@ def _compilable16(module_path, outdir=None):
             text = _selector_structs(text, name, selector_structs, shared_selectors)
             text = _struct_gaps(text, _pointer_distances(text))
         text = _own_segment_calls(text, seg)
-        m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(_far_addresses(_interrupts(_open_arguments(text), m.interrupts)))))))))
+        m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(_far_casts(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))))
         if seg in d.images:
             m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))
         if callee_pops.get(va):
@@ -1569,7 +1674,9 @@ def _compilable16(module_path, outdir=None):
             if mm:
                 m.imports[n] = (mm.group(1), int(mm.group(2)))
     decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports) if nm not in m.selector_imports]
-    decls += [declaration(m.texts[n]) for n in m.order]
+    agreed = prototypes(m.texts, m.order) if os.environ.get("CB_PROTOTYPES", "1") != "0" else {}
+    m.prototyped = set(agreed)
+    decls += [agreed.get(n) or declaration(m.texts[n]) for n in m.order]
     decls += ["#ifdef __WATCOMC__\n#pragma aux (codebreaker_fastcall) %s;\n#endif" % n for n in m.order
               if "__fastcall16near" in m.texts[n].split("(", 1)[0]]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if n in called]
@@ -2389,7 +2496,7 @@ def _far_addresses(text, pointers=None):
     An offset with no cast is a pointer's own arithmetic (`MK_FP(seg, p + 2)`, p an `int2 *`:
     the word two words on) -- the place is a T as the pointer is; only an offset that is no
     pointer at all is taken a byte at a time."""
-    if "MK_FP(" not in text:
+    if "MK_FP(" not in text and "+ 2))" not in text and ">> 0x10" not in text:
         return text
     src = ctree.Source(text)
     if pointers is None:                                    # (the function's own: `T *name;`)
@@ -2420,6 +2527,35 @@ def _far_addresses(text, pointers=None):
         ty = src.at(n.child_by_field_name("type")).strip()
         return ty[:-1].strip() if ty.endswith("*") and ty.count("*") == 1 else None
 
+    # A far pointer's own halves put back together -- `MK_FP((int2)((uint4)p >> 0x10), (T *)p + 2)`,
+    # or the high half kept in a variable first -- is the pointer's own arithmetic: `(T __far *)p + 2`.
+    # Written as halves, no compiler gives back the original's `les bx, p` / `es:[bx+2]`.
+    far_names = set(re.findall(r"__far\s*\*\s*(\w+)\s*[;,)]", text))
+    # (the high half: `(T)((uint4)p >> 0x10)`, the core's `p._2_2_`, or that as the word at &p + 2)
+    high = (r"(?:\(\s*\w+\s*\)\s*\(\s*\(\s*uint4\s*\)\s*(\w+)\s*>>\s*0x10\s*\)|(\w+)\._2_2_|"
+            r"\(?\s*\*\s*\(\s*u?int2\s*\*\s*\)\s*\(\s*\(\s*char\s*\*\s*\)\s*&\s*(\w+)\s*\+\s*2\s*\)\s*\)?)")
+    high_vars = {v: p or q or r for v, p, q, r in re.findall(r"(?m)^\s*(\w+)\s*=\s*" + high + r"\s*;", text)
+                 if (p or q or r) in far_names}
+
+    def own_halves(seg, off):
+        """the far pointer whose two halves seg and off are, else None"""
+        s = src.at(seg).strip()
+        m = re.fullmatch(high, s)
+        p = (m.group(1) or m.group(2) or m.group(3)) if m else high_vars.get(s)
+        if p not in far_names:
+            return None
+        base = off
+        for _ in range(12):                          # (through casts, brackets, a sum's first term)
+            if base.type == "parenthesized_expression" and base.named_child_count == 1:
+                base = base.named_children[0]
+            elif base.type == "cast_expression":
+                base = base.child_by_field_name("value")
+            elif base.type == "binary_expression" and base.child_by_field_name("operator").type in ("+", "-"):
+                base = base.child_by_field_name("left")
+            else:
+                break
+        return p if base is not None and base.type == "identifier" and src.at(base) == p else None
+
     def far(n):
         """MK_FP(seg, off) as a far pointer to what is there; None for any other node"""
         if n.type != "call_expression" or src.at(n.child_by_field_name("function")) != "MK_FP":
@@ -2428,6 +2564,16 @@ def _far_addresses(text, pointers=None):
         if len(args) != 2:
             return None
         seg, off = args
+        p = own_halves(seg, off)
+        if p is not None:
+            target = pointer_cast(off) or pointer_cast(leftmost(off)) or "uint1"
+            sum_ = src.render(off.child_by_field_name("value") if pointer_cast(off) else off, far)
+            # (the low half counted in bytes -- `(int2)(void *)p + 2` -- is the pointer moved on 2 bytes)
+            sum_ = re.sub(r"\(\s*u?int2\s*\)\s*(?:\(\s*void\s*\*\s*\)\s*)?%s\b" % re.escape(p), "(uint1 __far *)%s" % p, sum_)
+            sum_ = re.sub(r"\(\s*((?:(?!__far)[\w ])+?)\s*\*\s*\)\s*%s\b" % re.escape(p), r"(\1 __far *)%s" % p, sum_)
+            if not re.search(r"__far \*\)\s*%s\b" % re.escape(p), sum_):
+                sum_ = re.sub(r"\b%s\b" % re.escape(p), "(uint1 __far *)%s" % p, sum_, count=1)
+            return "((%s __far *)(%s))" % ("uint1" if target in ("void", "code") else target, sum_)
         first = leftmost(off)
         if pointer_cast(off):                              # (T *)x: a T there, at x
             target, offset = pointer_cast(off), off.child_by_field_name("value")
@@ -2449,7 +2595,52 @@ def _far_addresses(text, pointers=None):
             new = far(n)
             if new is not None:
                 src.replace(n, new)
-    return src.text()
+    out = _whole_far_arguments(src.text(), far_names, high, high_vars)
+    for v in high_vars:                              # (a far pointer's high half no longer used: gone)
+        if len(re.findall(r"\b%s\b" % re.escape(v), out)) == 2:
+            out = re.sub(r"(?m)^\s*%s\s*=\s*%s\s*;\n" % (re.escape(v), high), "", out)
+            out = re.sub(r"(?m)^\s*\w+\s+%s\s*;\n" % re.escape(v), "", out)
+    return out
+
+
+def _far_casts(text):
+    """A far pointer read as another type stays far: `*(int2 *)p`, p a `void __far *`, is
+    `*(int2 __far *)p` -- the near cast keeps only its offset, and reads it in DS."""
+    for p in set(re.findall(r"__far\s*\*\s*(\w+)\s*[;,)]", text)):
+        text = re.sub(r"\(\s*((?:(?!__far)[\w ])+?)\s*\*\s*\)\s*(?=%s\b)" % re.escape(p), r"(\1 __far *)", text)
+    return text
+
+
+def _whole_far_arguments(text, far_names, high, high_vars):
+    """A far pointer passed as its two halves, low then high -- `f((int2)(void *)p, p._2_2_)` -- is
+    the pointer passed: the same two words, in the same places, whatever the convention (the list
+    is in the order the words go on the stack), and what the original pushes (`push es` / `push bx`
+    from one `les`). As halves, the callee cannot be declared with the pointer it takes."""
+    low = r"\(\s*u?int2\s*\)\s*(?:\(\s*void\s*\*\s*\)\s*)?(\w+)"
+    out, i = [], 0
+    for mm in re.finditer(r"\b\w+\s*\(", text):
+        if mm.start() < i:
+            continue
+        args, end = _arguments_at(text, mm.end() - 1)
+        if len(args) < 2:
+            continue
+        new, k, changed = [], 0, False
+        while k < len(args):
+            lo = re.fullmatch(r"\s*" + low + r"\s*", args[k]) if k + 1 < len(args) else None
+            hi = re.fullmatch(r"\s*" + high + r"\s*", args[k + 1]) if lo else None
+            hp = (hi.group(1) or hi.group(2) or hi.group(3)) if hi else (high_vars.get(args[k + 1].strip()) if lo else None)
+            if lo and lo.group(1) in far_names and hp == lo.group(1):
+                new.append(" " + lo.group(1) if k else lo.group(1))
+                k += 2
+                changed = True
+            else:
+                new.append(args[k])
+                k += 1
+        if changed:
+            out.append(text[i:mm.end()] + ",".join(new) + ")")
+            i = end
+    out.append(text[i:])
+    return "".join(out)
 
 
 def interrupt_helpers(used):
