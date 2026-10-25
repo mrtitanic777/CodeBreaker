@@ -121,6 +121,76 @@ def _zeros(outdir, size):
     return os.path.abspath(path)
 
 
+def _register_holds_known(img, fn, i, reg):
+    """Whether the register a call at fn.insns[i] goes through was last loaded, earlier in the
+    function, with an import's address (`mov esi, [slot]`) or a constant (a function's address):
+    the core then calls that function, with its own declaration."""
+    for p in reversed(fn.insns[:i]):
+        if reg not in p.wr:
+            continue
+        if p.mn == "mov" and len(p.ops) == 2:
+            src = p.ops[1]
+            if src[0] == "i":
+                return True
+            if src[0] == "m" and src[1] is None and src[2] is None:   # (an absolute address: no base, no index)
+                return src[4] in img.imports
+        return False
+    return False
+
+
+def _pointer_calls32(module_path, funcs):
+    """`O <site> <function> <bytes> <model>` for each call through a pointer (a register, a
+    variable; not an import's slot): the bytes the code pushed just before it, and who takes them
+    off -- the caller (`add esp, N` right after: __cdecl) or the callee (__stdcall). The core
+    otherwise calls through a pointer with no arguments at all: msjava.dll's
+    `pcVar7 = cond ? CoTaskMemAlloc : CoTaskMemRealloc; (*pcVar7)();`, the original having pushed
+    one or two, so the callee took off what the rebuild never pushed."""
+    from codebreaker.analyze import image
+    try:
+        img = image.load(module_path)
+    except Exception:
+        return []
+    wanted, out = set(funcs), []
+    for fn in img.each():
+        if fn.start not in wanted:
+            continue
+        # (the pushes a function opens with save registers: never a call's arguments)
+        opening = 0
+        while opening < len(fn.insns) and fn.insns[opening].mn == "push":
+            opening += 1
+        for i, ins in enumerate(fn.insns):
+            if ins.flow != "call" or ins.target is not None or image.destination(img, ins) is not None:
+                continue
+            if ins.ops and ins.ops[0][0] == "r" and _register_holds_known(img, fn, i, image.family(ins.ops[0][1])):
+                continue                                   # (`mov esi, [lstrcatA's slot] / call esi`: the core knows it)
+            nxt = fn.insns[i + 1] if i + 1 < len(fn.insns) else None
+            if nxt is not None and nxt.mn == "add" and len(nxt.ops) == 2 and nxt.ops[0][0] == "r" \
+                    and image.family(nxt.ops[0][1]) == "esp" and nxt.ops[1][0] == "i":
+                # the caller takes them off: exactly as many as it says
+                out.append("O\t%x\t%x\t%d\t__cdecl" % (ins.addr, fn.start, nxt.ops[1][1]))
+                continue
+            pushed, k = 0, i - 1
+            while k >= max(opening, i - 40):
+                p = fn.insns[k]
+                if p.mn == "push":
+                    pushed += 4
+                elif p.flow or p.mn in ("pop", "leave", "enter", "pushal", "popal") or "esp" in p.wr:
+                    break
+                k -= 1
+            if pushed:
+                # (a method called through its object's table -- `mov ecx, esi / call [eax+8]` --
+                # takes the object in ECX beside what was pushed: __thiscall, or it is lost)
+                this = False
+                for p in reversed(fn.insns[max(0, i - 12):i]):
+                    if p.flow:
+                        break
+                    if "ecx" in p.wr:
+                        this = True
+                        break
+                out.append("O\t%x\t%x\t%d\t%s" % (ins.addr, fn.start, pushed, "__thiscall" if this else "__stdcall"))
+    return out
+
+
 def describe32(module_path, funcs, outdir):
     """Write the description of a PE module for the native program: its processor, where its
     bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
@@ -221,6 +291,11 @@ def describe32(module_path, funcs, outdir):
             continue
         pop = api_stack.stack_bytes(stem, name) if x86 else None
         lines.append("I\t%x\t%s\t%d" % (slot, _ident(name), -1 if pop is None else pop))
+    # (CB_POINTER_CALLS=1: say what each call through a pointer was pushed. Off: on the 32-bit
+    # sample it fixed no program and made msjava.dll worse -- 280 unverified to 377 -- where a
+    # pointer call's pushes are not all its arguments; to be made right before it is on)
+    if x86 and os.environ.get("CB_POINTER_CALLS") == "1":
+        lines += _pointer_calls32(module_path, funcs)
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, "description.txt")
     with open(path, "w", newline="\n", encoding="utf-8") as f:
