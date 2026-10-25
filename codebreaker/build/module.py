@@ -865,6 +865,37 @@ def _wasm(wasm, env, folder, stem, text, flags=("-q", "-zcm")):
     return r.returncode or 1, msg
 
 
+def _register_argument_calls(nef, at):
+    """The functions whose original loads AX from its frame just before a far call through a
+    pointer in its frame -- `mov ax, [bp-8]` / `call dword ptr [bp-6]`: a VxD's protected-mode API
+    entry (INT 2Fh AX=1684h), the service number in AX and the arguments read from the caller's
+    frame as it is (SETUPX's CONFIGMG wrappers 4:13E6, 4:1470, 4:149E ...). The decompiler drops
+    the register and C has no way to set it, nor to lay the frame out as the entry reads it."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    segs = {s["idx"]: s for s in nef.segments()}
+    by_seg = {}
+    for (sg, off), name in at.items():
+        by_seg.setdefault(sg, []).append((off, name))
+    out = set()
+    for sg, lst in by_seg.items():
+        s = segs.get(sg)
+        if not s or not s["file_off"]:
+            continue
+        code = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+        lst.sort()
+        for k, (off, name) in enumerate(lst):
+            end = lst[k + 1][0] if k + 1 < len(lst) else len(code)
+            prev = None
+            for i in md.disasm(code[off:end], off):
+                if i.mnemonic == "lcall" and i.op_str.startswith("[bp - ") and prev is not None \
+                        and prev.mnemonic == "mov" and prev.op_str.startswith("ax, word ptr [bp - "):
+                    out.add(name)
+                    break
+                prev = i
+    return out
+
+
 def _filler(folder, wasm, env, seg, stem, n):
     """An object of `n` bytes of INT 3 in code segment `seg`: a place kept where it was."""
     stem = "asm/" + stem
@@ -1205,6 +1236,14 @@ def _build16(b, path, m, folder):
     if only or segs_only:
         named = set(m.order) if only == "all" else set(only.split(","))
         forced |= {n for n in m.order if n in stems and (n in named or segment_of.get(n) in segs_only)}
+    for n in _register_argument_calls(nef, at):
+        # (a call through a pointer that takes an argument in a register: C cannot say it)
+        if n in stems and n not in forced:
+            forced.add(n)
+            if n in b.origins:
+                b.origins[n].evidence.append("it loads AX for a call through a pointer (a VxD's API entry: "
+                                             "the service in AX, the arguments read from its frame) -- "
+                                             "kept as its instructions")
     for n, why in kept_as_asm(b.name).items():               # (C a whole run of the module showed wrong)
         if n in stems:
             forced.add(n)

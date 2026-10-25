@@ -1083,7 +1083,6 @@ def declaration(text):
 
 _DEFINITION = re.compile(r"^([^\n#{};]*?\b(\w+))\(([^)]*)\)\n((?:[^{;\n]+;\n)*)\{", re.M)
 _WIDE_TYPES = re.compile(r"\b(u?int4|xunknown4|long|unkbyte3|unkint3|unkuint3|int3|float4)\b")
-_NARROW_TYPES = re.compile(r"^(?:const\s+)?(?:u?int1|char|xunknown1|bool|uchar|byte)$")
 
 
 def _words(ty):

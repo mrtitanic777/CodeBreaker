@@ -967,6 +967,50 @@ def _caller_cleanup(ins, j):
     return 2 * words
 
 
+def _leave_follows(ins, j):
+    """nothing after the call ins[j] touches the stack before the frame's LEAVE"""
+    import capstone
+    for q in ins[j + 1:j + 12]:
+        if q.mnemonic == "leave" or (q.mnemonic == "mov" and q.op_str == "sp, bp"):
+            return True
+        if q.mnemonic in ("push", "pop", "pushf", "popf", "enter", "ret", "retf") or \
+                q.group(capstone.CS_GRP_CALL) or q.group(capstone.CS_GRP_JUMP):
+            return False
+        try:
+            _r, w = q.regs_access()
+        except capstone.CsError:
+            return False
+        if capstone.x86.X86_REG_SP in w:
+            return False
+    return False
+
+
+def _pushed_before(ins, j, targets, X):
+    """the bytes pushed just before the call ins[j] (back to a jump target, the prologue, or
+    anything else that moves SP); `push cs` of a near call to a far function not counted"""
+    import capstone
+    pushed = 0
+    before = ins[:j]
+    if before and before[-1].mnemonic == "push" and before[-1].op_str == "cs":
+        before = before[:-1]
+    for p in reversed(before):
+        if p.mnemonic == "push":
+            pushed += 4 if p.operands and p.operands[0].size == 4 else 2
+            if p.address in targets:
+                break
+            continue
+        if p.group(capstone.CS_GRP_CALL) or p.group(capstone.CS_GRP_JUMP) or \
+                p.mnemonic in ("ret", "retf", "pop", "leave", "enter") or p.address in targets:
+            break
+        try:
+            _r, w = p.regs_access()
+        except capstone.CsError:
+            break
+        if X.X86_REG_SP in w:
+            break
+    return pushed
+
+
 def call_overrides(d):
     """`O` lines: for each call through a pointer (a driver's dispatch table, a callback), the
     words the code pushed for it just before -- the callee is unknown, so the analysis cannot
@@ -1014,6 +1058,15 @@ def call_overrides(d):
                     # bytes with it as without -- 37 -- once each is compiled in its own source file;
                     # Setup on the 15 MINI.CAB modules rebuilt with it ran to the desktop)
                     took = _caller_cleanup(ins, j) if os.environ.get("CB_CALLER_ARGS") != "0" else 0
+                    if not took and os.environ.get("CB_CALLER_ARGS") != "0" and i.mnemonic == "call" \
+                            and _leave_follows(ins, j):
+                        # (or none: Microsoft C 8 leaves a call's arguments to the frame's LEAVE when
+                        # the function ends there -- SETUPX's 4:16D8 pushes sub_4_1470 six words and
+                        # never takes them off. The pushes are the arguments, when the callee is one
+                        # that leaves them to its caller: its own return says so)
+                        target = i.operands[0].imm & 0xFFFF
+                        if returns(d.segment_bytes.get(sg, b""), target)[1] == 0:
+                            took = _pushed_before(ins, j, targets, X)
                     if took:
                         # (`push cs; call` is a far call to a function of the same file: the pushed CS
                         # is the return address's segment, not an argument)
