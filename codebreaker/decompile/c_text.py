@@ -2605,9 +2605,20 @@ def _far_addresses(text, pointers=None):
 
 def _far_casts(text):
     """A far pointer read as another type stays far: `*(int2 *)p`, p a `void __far *`, is
-    `*(int2 __far *)p` -- the near cast keeps only its offset, and reads it in DS."""
+    `*(int2 __far *)p` -- the near cast keeps only its offset, and reads it in DS.
+    And a far pointer's own halves put back as it: `CONCAT22(<p's high word>, p)` is `(int4)p`;
+    `<p's low word> = <p's offset> + k` -- the pointer moved on in its segment, as a far
+    pointer's arithmetic is -- is `p = (uint1 __far *)p + k`."""
     for p in set(re.findall(r"__far\s*\*\s*(\w+)\s*[;,)]", text)):
         text = re.sub(r"\(\s*((?:(?!__far)[\w ])+?)\s*\*\s*\)\s*(?=%s\b)" % re.escape(p), r"(\1 __far *)", text)
+        q = re.escape(p)
+        hi = (r"(?:\(\s*\*\s*\(\s*u?int2\s*(?:__far\s*)?\*\s*\)\s*\(\s*\(\s*char\s*(?:__far\s*)?\*\s*\)\s*&\s*%s\s*\+\s*2\s*\)\s*\)"
+              r"|\(\s*u?int2\s*\)\s*\(\s*\(\s*uint4\s*\)\s*%s\s*>>\s*0x10\s*\)|%s\._2_2_)" % (q, q, q))
+        lo = r"(?:\(\s*void\s*__far\s*\*\s*\)\s*)?%s" % q
+        text = re.sub(r"CONCAT22\(\s*%s\s*,\s*%s\s*\)" % (hi, lo), "(int4)%s" % p, text)
+        low_word = r"\(\s*\*\s*\(\s*u?int2\s*(?:__far\s*)?\*\s*\)\s*\(\s*\(\s*char\s*(?:__far\s*)?\*\s*\)\s*&\s*%s\s*\+\s*0\s*\)\s*\)" % q
+        offset = r"\(\s*void\s*(?:__far\s*)?\*\s*\)\s*\(\s*\(\s*u?int2\s*\)\s*(?:\(\s*void\s*__far\s*\*\s*\)\s*)?%s\s*([+-])\s*(0x[0-9a-fA-F]+|\d+)\s*\)" % q
+        text = re.sub(r"%s\s*=\s*%s\s*;" % (low_word, offset), r"%s = (uint1 __far *)%s \1 \2;" % (p, p), text)
     return text
 
 
