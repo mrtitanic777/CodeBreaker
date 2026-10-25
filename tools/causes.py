@@ -31,7 +31,9 @@ def main(argv):
         if not os.path.isfile(path or ""):
             continue
         _sha, digest = reconstruct.identity(path)
-        rows = [r for r in fs.candidates(sha, digest) if r["verdict"]]
+        # (a runtime-library function is identified, not the module's own: not counted here)
+        library = fs.identified(sha)
+        rows = [r for r in fs.candidates(sha, digest) if r["verdict"] and r["addr"] not in library]
         if not rows:
             continue
         n_mod += 1
