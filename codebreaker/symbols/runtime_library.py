@@ -132,6 +132,42 @@ def _c_name(symbol):
     return name.split("@")[0] if "@" in name and name.rsplit("@", 1)[1].isdigit() else name
 
 
+THUNK_COMPILER = "Microsoft thunk compiler: a 32-to-16-bit flat thunk"
+
+
+def _flat_thunk_stubs(module_path, pe, sections):
+    """The functions of a flat-thunk module (build/flat_thunk.classify) that the thunk compiler
+    generated: each reaches the 16-bit side through a pointer kept in the code section itself
+    (QT_Thunk's, filled in by ThunkConnect32 when the DLL is loaded), which no compiled C does.
+    They are the thunk compiler's output, rebuilt from the .thk script (`flat-thunk`), not C --
+    and cannot run here: mnmcpi32.dll's 297 such functions all called into nothing."""
+    from codebreaker.build import flat_thunk
+    from codebreaker.formats import pe_functions
+    import capstone
+    try:
+        if flat_thunk.classify(module_path).get("subtype") != "flat-thunk":
+            return []
+    except Exception:                                       # (not readable as one: not one)
+        return []
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    in_code = lambda a: any(b <= a < b + len(raw) for b, raw, _n in sections)
+    def reaches(va, hops):
+        """Whether the code at `va`, followed through `hops` more jumps, calls through such a pointer."""
+        for base, raw, _name in sections:
+            if base <= va < base + len(raw):
+                for ins in md.disasm(raw[va - base:va - base + 512], va):
+                    if ins.mnemonic == "call" and ins.op_str.startswith("dword ptr [0x"):
+                        if in_code(int(ins.op_str[len("dword ptr ["):-1], 16)):
+                            return True
+                    if ins.mnemonic == "jmp" and ins.op_str.startswith("0x"):
+                        # (a short stub sets up and jumps to the common thunk code: `mov cl, 3 / jmp`)
+                        return hops > 0 and reaches(int(ins.op_str, 16), hops - 1)
+                    if ins.mnemonic in ("ret", "retn", "int3"):
+                        return False
+        return False
+    return [va for va in sorted(pe_functions.carve(module_path).funcs) if reaches(va, 1)]
+
+
 def identify(module_path):
     """{address: (name, library)} for the functions of a module that belong to a runtime library."""
     lane = corpus.lane(module_path)
@@ -150,6 +186,8 @@ def identify(module_path):
                     if hit:
                         out[va] = hit
                     break
+        for va in _flat_thunk_stubs(module_path, pe, sections):
+            out.setdefault(va, ("thunk stub", THUNK_COMPILER))
         if stem in ITSELF:
             unnamed = ordinals.table(stem)
             for o, nm, rva in pe.exports():

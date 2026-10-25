@@ -46,6 +46,10 @@ def build(m, module_path, work):
     # Only functions with a known address are built. The rest are library routines recognised
     # by signature (__allshl, _memcpy): they belong to the C runtime, which is linked.
     placed = [n for n in m.order if n in m.va]
+    # A flat thunk's stubs are the thunk compiler's, not C: not rebuilt, so a call to one goes to
+    # the original's (build32: a jump to it), which the judge enters as an import (_thunk_stubs).
+    stubs = _thunk_stubs(module_path)[0]
+    placed = [n for n in placed if m.va[n] not in stubs]
     from codebreaker.decompile import describe
     every = describe.function_names(module_path, LANES["pe"].functions(module_path))
     dll, where, dropped = functions.build32(module_path, m.header, m.texts, placed, m.imports, work,
@@ -93,7 +97,7 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 29                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+PIPE_REV = 32                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
                                 # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
@@ -437,6 +441,41 @@ def _reachable_insns(code, start):
     return len(seen)
 
 
+_THUNKS = {}
+
+
+def _thunk_stubs(original):
+    """{address: ("THUNK", name)} and {name: argument count} for the stubs a flat thunk's compiler
+    generated (symbols/runtime_library: identified, not rebuilt). A call into one goes on into
+    16-bit code through a pointer only Windows fills in; the judge enters it as it enters an
+    import -- removing the arguments its `ret N` removes -- so the functions that call the 16-bit
+    side can be judged at all (mnmcpi32.dll: 76 of them could not)."""
+    if original not in _THUNKS:
+        at, argc = {}, {}
+        try:
+            import capstone
+            from codebreaker.symbols import runtime_library
+            from codebreaker.formats.pe import open_pe
+            pe = open_pe(original)
+            sections = pe.code_sections()
+            md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+            for va in runtime_library._flat_thunk_stubs(original, pe, sections):
+                name = "stub_%x" % va
+                at[va] = ("THUNK", name)
+                for base, raw, _n in sections:
+                    if base <= va < base + len(raw):
+                        for ins in md.disasm(raw[va - base:va - base + 512], va):
+                            if ins.mnemonic in ("ret", "retn"):
+                                n = int(ins.op_str, 0) if ins.op_str else 0
+                                argc[name] = n // 4 if n % 4 == 0 and n <= 256 else None
+                                break
+                        break
+        except Exception:
+            at, argc = {}, {}
+        _THUNKS[original] = (at, argc)
+    return _THUNKS[original]
+
+
 def _fp_pe(path, func, spec, rebuilt=False):
     """Fingerprint one run. For a REBUILT image pass `rebuilt=<path of the original>`: its own
     statics are then left out of the comparison and the original's code is mapped beside it."""
@@ -448,10 +487,12 @@ def _fp_pe(path, func, spec, rebuilt=False):
             hit = compare.cache_get(key)
             if hit is not None:
                 return hit
+    stubs, stub_argc = _thunk_stubs(rebuilt if isinstance(rebuilt, str) else path)
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   insn_cap=int(spec.get("room") or tracer._MAX_INSNS),
-                                  stub_externals=True, sig_resolver=_argc,
+                                  stub_externals=True, stub_at=stubs or None,
+                                  sig_resolver=(lambda d, n: stub_argc.get(n) if d == "THUNK" else _argc(d, n)),
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True, ecx=spec.get("ecx"), edx=spec.get("edx"),
