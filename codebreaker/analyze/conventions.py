@@ -321,6 +321,8 @@ def _functions(img):
             fact["thunk_of"] = img.label(real[0].target)
         elif len(real) == 1 and real[0].flow == "ret":
             shape = "empty"
+        elif not real:                                   # (only padding: int3 / nop where a function was thought to start)
+            shape = "empty"
         elif len(real) <= 3 and real[-1].flow == "ret" and ret_kinds and isinstance(ret_kinds[0][0], tuple) \
                 and all(i.flow is None for i in real[:-1]) and len(real) == 2:
             shape = "constant"

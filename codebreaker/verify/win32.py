@@ -93,7 +93,7 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 27                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+PIPE_REV = 29                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
                                 # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
