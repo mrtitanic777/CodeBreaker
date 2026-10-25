@@ -67,9 +67,20 @@ def judge(module_path, item):
     shape = (in_ecx_edx if item[4] == 2 else in_ecx) if len(item) > 4 and item[4] else (lambda v: v)
     info = {}
     try:
+        def rebuilt(v):
+            # A rebuild may spend many more instructions than the original on the same work -- a C
+            # loop where the original filled memory with one `rep stosd` (dnr.exe's memset over
+            # 64 KB: 16,418 steps for the original, 229,414 for the loop, the same 16,387 writes)
+            # -- and stop at the step limit where the original returned. Such a run is tried again
+            # with room before it counts as different.
+            b = _fp_pe(dll, entry, shape(v), rebuilt=module_path)
+            if b.get("truncated") and b.get("exit") != "wild-call" and                     _fp_pe(module_path, va, shape(v)).get("exit") == "ret":
+                b = _fp_pe(dll, entry, dict(shape(v), room=ROOM), rebuilt=module_path)
+            return b
+
         verdict, reason, limits = compare.compare(
             lambda v: _fp_pe(module_path, va, shape(v)),
-            lambda v: _fp_pe(dll, entry, shape(v), rebuilt=module_path),
+            rebuilt,
             _vectors(4, "pe"), _confirm_vectors(4, "pe"),
             insns=insn_count(module_path, va),
             directed=lambda cov, rch: directed_and_guided(module_path, va, cov, rch,
@@ -82,7 +93,9 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 23                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name)
+PIPE_REV = 25                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+                                # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM)
+ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
 
@@ -252,7 +265,8 @@ def _fp_key(sha, func, spec):
         repr((func, args, mi, int(spec.get("stub_ret", 0))) + (
             (tuple(spec["sentinels"]),) if spec.get("sentinels") else ()) + (
             ("ecx", int(spec["ecx"])) if spec.get("ecx") is not None else ()) + (
-            ("edx", int(spec["edx"])) if spec.get("edx") is not None else ())).encode()).hexdigest())
+            ("edx", int(spec["edx"])) if spec.get("edx") is not None else ()) + (
+            ("room", int(spec["room"])) if spec.get("room") else ())).encode()).hexdigest())
 
 
 def in_ecx(v):
@@ -436,6 +450,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
                 return hit
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
+                                  insn_cap=int(spec.get("room") or tracer._MAX_INSNS),
                                   stub_externals=True, sig_resolver=_argc,
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
@@ -673,6 +688,7 @@ def _branch_run(path, func, spec):
     the run is not an observation (as _fp_pe: an error, or a call into nothing)."""
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
+                                  insn_cap=int(spec.get("room") or tracer._MAX_INSNS),
                                   stub_externals=True, sig_resolver=_argc, stub_ret=int(spec.get("stub_ret", 0)),
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
                                   ecx=spec.get("ecx"), edx=spec.get("edx"), quiet_stack=True,
