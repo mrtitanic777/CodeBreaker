@@ -1287,7 +1287,8 @@ def compilable16(module_path, outdir=None):
                   os.environ.get("CB_SELECTOR_STRUCTS", ""),       # (_selector_structs' off switch)
                   os.environ.get("CB_CALLER_ARGS", ""),            # (describe's direct-call arguments)
                   os.environ.get("CB_FASTCALL", ""),               # (describe's _fastcall functions)
-                  os.environ.get("CB_PROTOTYPES", ""))             # (prototypes where the calls agree)
+                  os.environ.get("CB_PROTOTYPES", ""),             # (prototypes where the calls agree)
+                  os.environ.get("CB_CALLER_RESULTS", ""))         # (results the callers read DX of)
     had = cache.get("compilable16", k)
     if had is not None:
         m, description = pickle.loads(had)
