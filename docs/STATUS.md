@@ -26,7 +26,7 @@ the largest under 4 MB, and between), each stopped after 5 minutes.
 | Platform | Programs found | Judged | Functions | Verified | Weak | Unverified | Stopped |
 |---|---|---|---|---|---|---|---|
 | 16-bit Windows | 362 | 5 | 274 | 49% | 14% | 36% | 1 (a font file crashes the lane) |
-| 32-bit Windows | 638 | 5 | 502 | 49% | 28% | 20% | |
+| 32-bit Windows | 638 | 25 (below) | 5,015 | 45% | 26% | 16% (+12% not judged) | |
 | Xbox 360 (per function) | 177 | 5 | 241 | 47% | 19% | 32% | 2 (time limit: wininet.xex, a 3.9 MB default.xex) |
 | DOS programs | 132 | 5 | 601 | 100% | | | |
 | Device drivers (VxD) | 224 | 5 | 15 | 73% | 20% | | |
@@ -61,6 +61,31 @@ The real software put through each lane, and what came of it, is listed in
   as HLSL from Xbox microcode.
 - **Java**: Minecraft Alpha's classes as C++03, built and running.
 - **8-bit and 16-bit homebrew**: nine programs rebuild byte for byte and verify.
+
+## 32-bit Windows, a wider sample (2026-10-25)
+
+25 of the corpus's 638 32-bit programs, spread across sizes (5 KB to 2 MB: system DLLs, drivers,
+fax, network and Java components, Setup), judged with every fix of that night:
+
+| | Verified | Weak | Unverified | Not judged | Does not compile |
+|---|---|---|---|---|---|
+| 25 programs, 5,015 functions of their own | 45% | 26% | 16% | 12% | 1% |
+
+What moved it (each a general cause, found on one program and checked on the rest):
+
+- the C runtime of Visual C++ 4.0 identified, not reconstructed (its signatures learned);
+- the zero-filled part of a section (.bss) described, so its globals keep their sizes;
+- C++ methods keep their object in ECX: the calling-convention analysis no longer stops on a
+  function of padding (msjava.dll 626 -> 280 unverified);
+- imports with stdcall or C++ decorated names are linked instead of falling through to the next
+  instruction (ftpsvc2.dll 149 -> 38);
+- a register pushed at entry is an argument when the callers load it (awfaxp32.dll 89 -> 43);
+- the judge: a rebuild that runs out of steps where the original returned is given room, and a
+  stubbed API gives back handles and counts through its pointer parameters, the same each run.
+
+Largest causes left: calls through a pointer whose argument count the decompiler does not know
+(a selected allocator: `(*pcVar)()`), and "not judged" functions (mnmcpi32.dll: 297 of 405), where
+neither side could be run on any input.
 
 ## Gaps found by this run
 
