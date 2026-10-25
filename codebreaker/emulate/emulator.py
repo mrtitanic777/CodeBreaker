@@ -591,7 +591,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
                    stub_ret_unique=False, overlay=None, sentinels=None, reads=True, stop_wild=False,
                    quiet_stack=False, reuse=False, fast=False, lean=False, ecx=None, edx=None,
-                   pads=None, branches=False):
+                   pads=None, branches=False, stub_at=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -639,6 +639,10 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         mach = _machine(U, path, sha, va0, code, secbase, size, imports, overlay, stub_externals,
                         () if reuse else mem_init)
     uc, sentinel_map, statics = mach["uc"], mach["sentinels"], mach["statics"]
+    if stub_at and stub_externals:
+        # functions entered as if they were imports: {address: (dll, name)} -- a flat thunk's
+        # stubs, which go on into 16-bit code through a pointer only Windows fills in
+        sentinel_map = {**sentinel_map, **stub_at}
     mapped = set(mach["mapped"]) if reuse else mach["mapped"]
     init_pages = set(mach["init_pages"])
     for addr, data in mem_init:

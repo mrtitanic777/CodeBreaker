@@ -1215,10 +1215,13 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
       PrototypePieces pieces;
       pieces.model = m.getModel(c.model);
       pieces.name = "";
-      pieces.outtype = m.types->getBase(2, TYPE_UNKNOWN);
+      // (a 32-bit call's arguments are words of four bytes and its return address four: describe32
+      // says __cdecl or __stdcall; a 16-bit one's are two-byte words, near or far)
+      const int word = d.x86_32 ? 4 : 2;
+      pieces.outtype = m.types->getBase(word, TYPE_UNKNOWN);
       pieces.firstVarArgSlot = -1;
-      for (int k = 0; k < c.pop / 2; ++k) {
-        pieces.intypes.push_back(m.types->getBase(2, TYPE_INT));
+      for (int k = 0; k < c.pop / word; ++k) {
+        pieces.intypes.push_back(m.types->getBase(word, TYPE_INT));
         pieces.innames.push_back("p" + std::to_string(k + 1));
       }
       p->setPieces(pieces);
@@ -1226,7 +1229,7 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
       p->setOutputLock(false);
       // (the callee removes them -- or, a C function's, its caller does: only the return address)
       p->setExtraPop((c.model.find("cdecl") != std::string::npos ? 0 : c.pop) +
-                     (c.model.find("far") != std::string::npos ? 4 : 2));
+                     (d.x86_32 ? 4 : c.model.find("far") != std::string::npos ? 4 : 2));
       t.first->getOverride().insertProtoOverride(Address(code, (uintb)c.site), p);
     }
     // its switch jumps: each jump belongs to the function that starts last before it in its

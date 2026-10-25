@@ -26,7 +26,7 @@ the largest under 4 MB, and between), each stopped after 5 minutes.
 | Platform | Programs found | Judged | Functions | Verified | Weak | Unverified | Stopped |
 |---|---|---|---|---|---|---|---|
 | 16-bit Windows | 362 | 5 | 274 | 49% | 14% | 36% | 1 (a font file crashes the lane) |
-| 32-bit Windows | 638 | 25 (below) | 5,015 | 45% | 26% | 16% (+12% not judged) | |
+| 32-bit Windows | 638 | 25 (below) | 4,749 | 50% | 28% | 16% (+5% not judged) | |
 | Xbox 360 (per function) | 177 | 5 | 241 | 47% | 19% | 32% | 2 (time limit: wininet.xex, a 3.9 MB default.xex) |
 | DOS programs | 132 | 5 | 601 | 100% | | | |
 | Device drivers (VxD) | 224 | 5 | 15 | 73% | 20% | | |
@@ -69,7 +69,7 @@ fax, network and Java components, Setup), judged with every fix of that night:
 
 | | Verified | Weak | Unverified | Not judged | Does not compile |
 |---|---|---|---|---|---|
-| 25 programs, 5,015 functions of their own | 45% | 26% | 16% | 12% | 1% |
+| 25 programs, 4,749 functions of their own | 50% | 28% | 16% | 5% | 1% |
 
 What moved it (each a general cause, found on one program and checked on the rest):
 
@@ -81,11 +81,15 @@ What moved it (each a general cause, found on one program and checked on the res
   instruction (ftpsvc2.dll 149 -> 38);
 - a register pushed at entry is an argument when the callers load it (awfaxp32.dll 89 -> 43);
 - the judge: a rebuild that runs out of steps where the original returned is given room, and a
-  stubbed API gives back handles and counts through its pointer parameters, the same each run.
+  stubbed API gives back handles and counts through its pointer parameters, the same each run;
+- a flat thunk's stubs (the thunk compiler's 32-to-16-bit veneers) identified, called in the
+  original and entered like imports, so the module's own functions that call them are judged
+  (mnmcpi32.dll: not judged 297 -> 1, verified 81 -> 151).
 
 Largest causes left: calls through a pointer whose argument count the decompiler does not know
-(a selected allocator: `(*pcVar)()`), and "not judged" functions (mnmcpi32.dll: 297 of 405), where
-neither side could be run on any input.
+(a selected allocator: `(*pcVar)()`; saying the pushes before each such call -- CB_POINTER_CALLS=1
+-- helped no program and made msjava.dll worse, so it is off), and the rebuild calling into
+nothing where the original returns, which has several causes still to be told apart.
 
 ## Gaps found by this run
 
