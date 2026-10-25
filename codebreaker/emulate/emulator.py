@@ -222,6 +222,30 @@ def _resolve_func_(module, func):
 
 
 _RETSENT_BASE = 0xB1B10000                                # unique per-call external-return marker
+_OUT_HANDLE = 0x0000A100                                  # the handle a stubbed API gives back (+ 4 x its parameter's place)
+_HANDLE_OUT_TYPES = ("PHKEY", "PHANDLE", "LPHANDLE")
+_NUMBER_OUT_TYPES = ("LPDWORD", "PDWORD", "LPLONG", "PLONG", "PULONG", "LPUINT", "PUINT")
+_OUTS = {}
+
+
+def _outs(name):
+    """[(place, value)] of an API's parameters through which it gives something back, by its
+    declaration: a handle (value None: _OUT_HANDLE by its place) or a number (0)."""
+    if name not in _OUTS:
+        try:
+            from codebreaker.symbols import prototypes
+            proto = prototypes.of(name) or {}
+        except Exception:                                   # (no headers here: nothing is given back)
+            proto = {}
+        out = []
+        for i, (ty, _n) in enumerate(proto.get("parameters") or []):
+            t = ty.split()[-1]
+            if t in _HANDLE_OUT_TYPES:
+                out.append((i, None))
+            elif t in _NUMBER_OUT_TYPES:
+                out.append((i, 0))
+        _OUTS[name] = out
+    return _OUTS[name]
 
 
 _INSN = {}                # (module file, its hash) -> {address: (text, is a call, direct target)}
@@ -791,6 +815,21 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                     seq.append((api, None if argc is None else
                                 [int.from_bytes(uc.mem_read(esp_now + 4 + 4 * i, 4), "little")
                                  for i in range(argc)]))
+                # What the API gives back through a pointer -- a handle (RegOpenKeyExA's PHKEY), a
+                # number (RegQueryInfoKeyA's count of subkeys) -- is given: the same on every run,
+                # so the caller goes on with what it would have from Windows. Left out, each build
+                # went on with whatever its own stack held there (shlwapi: a stale return address
+                # against 0).
+                if argc and dll != "CALLBACK":
+                    for i, given in _outs(name):
+                        if i >= argc:
+                            continue
+                        p = int.from_bytes(uc.mem_read(esp_now + 4 + 4 * i, 4), "little")
+                        if p:
+                            try:
+                                uc.mem_write(p, (given if given is not None else _OUT_HANDLE + 4 * i).to_bytes(4, "little"))
+                            except Exception:
+                                pass
                 # unique per-call return marker (interproc v2 value-flow), else the fixed stub_ret
                 nstub = rec.get("stubbed_externals", 0)
                 rv = (_RETSENT_BASE + nstub) if stub_ret_unique else stub_ret

@@ -177,8 +177,14 @@ def describe32(module_path, funcs, outdir):
             found = conventions.functions(image.load(module_path))
             in_ecx = {va for va, fact in found.items() if fact.get("convention") == "thiscall"}
             in_edx = {va for va, fact in found.items() if fact.get("convention") == "fastcall"}   # ECX and EDX
-        except Exception:
-            in_ecx = set()
+        except Exception as e:
+            # (said, not swallowed: without it no function takes its object in ECX, and every
+            # C++ method of the module loses it -- msjava.dll's analysis stopped on a function
+            # of padding alone, and 116 of its functions passed EnterCriticalSection garbage)
+            import sys
+            print("describe32: %s: calling conventions not found (%s: %s); no function takes ECX or EDX"
+                  % (os.path.basename(module_path), type(e).__name__, e), file=sys.stderr)
+            in_ecx, in_edx = set(), set()
     IN_ECX[module_path] = {names[va] for va in funcs if va in in_ecx}
     for va in funcs:
         pop = None

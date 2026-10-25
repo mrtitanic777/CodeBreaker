@@ -255,6 +255,47 @@ def _cleanup(img, graph):
     return out
 
 
+def _loaded_before(img, graph):
+    """{callee: {register: (sites that load it just before the call, sites)}} -- ECX and EDX
+    written by one of the three instructions before a call (and not by a call among them)."""
+    out = {}
+    for f in img.functions:
+        fn = img.function(f)
+        for site, kind, dest in graph.calls[f]:
+            if kind != "call":
+                continue
+            i = fn.at(site)
+            loaded = set()
+            for b in fn.insns[max(0, i - 3):i][::-1]:
+                if b.flow:
+                    break
+                loaded |= set(b.wr) & {"ecx", "edx"}
+            votes = out.setdefault(dest, {"sites": 0, "ecx": 0, "edx": 0})
+            votes["sites"] += 1
+            for r in loaded:
+                votes[r] += 1
+    return out
+
+
+def _pushed_inputs(fn, loads):
+    """Registers a function pushes at its entry that its callers load for it: an argument passed
+    in a register and kept on the stack (`push ecx / push 40h / call [LocalAlloc]`, awfaxp32's
+    allocator taking its size in ECX). A `push ecx` alone also makes room for a local, so it
+    counts only when nearly every caller (at least two) loads the register just before the call."""
+    out = set()
+    real = [i for i in fn.insns if i.mn not in ("nop", "int3")]
+    for ins in real[:4]:
+        if ins.mn == "push" and ins.ops and ins.ops[0][0] == "i":
+            continue                                       # (a constant pushed among them: `push 42h / push edx`)
+        if ins.mn != "push" or not ins.ops or ins.ops[0][0] != "r":
+            break
+        r = family(ins.ops[0][1])
+        v = loads or {}
+        if r in ("ecx", "edx") and v.get("sites", 0) >= 2 and v.get(r, 0) * 10 >= v["sites"] * 9:
+            out.add(r)
+    return out
+
+
 def _entry16(img, fn):
     """What a 16-bit function's first bytes say about how it is entered."""
     head = img.read(fn.start, 8)
@@ -297,6 +338,7 @@ def _functions(img):
     graph = call_graph.build(img)
     word = 4 if img.bits == 32 else 2
     uses, cleanup = _result_use(img, graph), _cleanup(img, graph)
+    loads = _loaded_before(img, graph) if img.bits == 32 else {}
     facts = {}
     for fn in img.each():
         fact = facts[fn.start] = {"addr": fn.start, "kind": "convention", "name": fn.name}
@@ -308,7 +350,7 @@ def _functions(img):
         framed, local, saved = _frame(fn, word)
         first = 2 * word if img.bits == 32 else (6 if far else 4)
         slots = _argument_slots(fn, framed, first, word)
-        regs = sorted(_register_inputs(fn) - set(saved) - {"ebp", "esp"})
+        regs = sorted((_register_inputs(fn) | _pushed_inputs(fn, loads.get(fn.start))) - set(saved) - {"ebp", "esp"})
         calls = graph.calls[fn.start]
         apis = sorted({img.imports[d] for _s, _k, d in calls if d in img.imports})
         real = [i for i in fn.insns if i.mn not in ("nop", "int3")]
@@ -320,6 +362,8 @@ def _functions(img):
             shape = "jump thunk"
             fact["thunk_of"] = img.label(real[0].target)
         elif len(real) == 1 and real[0].flow == "ret":
+            shape = "empty"
+        elif not real:                                   # (only padding: int3 / nop where a function was thought to start)
             shape = "empty"
         elif len(real) <= 3 and real[-1].flow == "ret" and ret_kinds and isinstance(ret_kinds[0][0], tuple) \
                 and all(i.flow is None for i in real[:-1]) and len(real) == 2:

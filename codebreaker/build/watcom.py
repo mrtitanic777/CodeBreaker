@@ -54,14 +54,25 @@ def _ow_env(ow):
 _IMPORT_MAPS = {}
 
 
+_EXPORT_NAMES = {}      # C name of an import -> the name the DLL exports it by, where they differ
+
+
 def import_map(module):
-    """{name: dll} for the functions a retail PE imports by name (the first DLL wins)."""
+    """{name: dll} for the functions a retail PE imports by name (the first DLL wins). An export
+    with a stdcall decoration (`_AtqReadFile@16`, INFOCOMM's) or a C++ one (`?QueryStrA@STR@@QBEPADXZ`)
+    is under its C spelling, the one the decompiler writes (`_AtqReadFile_16`,
+    `_QueryStrA_STR__QBEPADXZ`), and links to the decorated name (_EXPORT_NAMES): left out, the
+    call was linked to nothing and went to the next instruction."""
     if module not in _IMPORT_MAPS:
         out = {}
         try:
             for dll, name in open_pe(module).imports().values():
-                if name and re.fullmatch(r"[A-Za-z_]\w*", name):
-                    out.setdefault(name, os.path.splitext(dll)[0].upper())
+                c = name if name and re.fullmatch(r"[A-Za-z_]\w*", name) else \
+                    re.sub(r"\W", "_", name) if name and re.fullmatch(r"[A-Za-z_]\w*@\d+|\?[\w@$?]+", name) else None
+                if c:
+                    out.setdefault(c, os.path.splitext(dll)[0].upper())
+                    if c != name:
+                        _EXPORT_NAMES[c] = name
         except Exception:
             pass
         _IMPORT_MAPS[module] = out
@@ -99,7 +110,7 @@ def _import_lines(obj, names, imports, numbered=None):
                 if numbered and n in numbered:
                     out.append("import '%s' '%s'.%d\n" % (sym, numbered[n][0], numbered[n][1]))
                 elif n in imports:
-                    out.append("import '%s' '%s'.'%s'\n" % (sym, imports[n], n))
+                    out.append("import '%s' '%s'.'%s'\n" % (sym, imports[n], _EXPORT_NAMES.get(n, n)))
                 break
     return "".join(out)
 

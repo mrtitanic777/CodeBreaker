@@ -152,8 +152,11 @@ def _keep_frame(t, sizes=None):
         return t
     names = [m.group(2) for m in locs]
     src = ctree.Source(t)
-    if not (any(m.group(4) for m in locs) or any(src.unary(n) and src.unary(n)[0] == "&"
-                                                for n in src.find("identifier") if src.at(n) in names)):
+    # (the stack pointer at entry, which the core writes `register0x00000010` when no local stands
+    # for the place -- MSVC's SEH frame saving ESP, a buffer reached from ESP: the frame says where)
+    esp = _ENTRY_ESP in t
+    if not (esp or any(m.group(4) for m in locs) or any(src.unary(n) and src.unary(n)[0] == "&"
+                                                       for n in src.find("identifier") if src.at(n) in names)):
         return t
     items = []
     for m in locs:
@@ -194,7 +197,12 @@ def _keep_frame(t, sizes=None):
         for n in src.find("identifier"):
             if src.at(n) in wanted:
                 src.replace(n, "_f." + src.at(n))
-    return ctree.rewrite(t, fields).replace("/*codebreaker:frame*/", decl)
+    t = ctree.rewrite(t, fields).replace("/*codebreaker:frame*/", decl)
+    # the frame structure ends where the original's locals end: at the stack pointer on entry
+    return t.replace(_ENTRY_ESP, "((int4)&_f + (int4)sizeof(_f))") if esp else t
+
+
+_ENTRY_ESP = "register0x00000010"
 
 
 _PTR_DECL = re.compile(r"(?m)^  [A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?;[ \t]*$")
