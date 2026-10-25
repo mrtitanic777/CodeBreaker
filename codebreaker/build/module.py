@@ -865,6 +865,56 @@ def _wasm(wasm, env, folder, stem, text, flags=("-q", "-zcm")):
     return r.returncode or 1, msg
 
 
+def _near_pointer_tables(nef, at):
+    """The functions whose addresses sit in the automatic data segment as near pointers -- a table
+    of handlers the code calls through (`mov di, 776h` / `call word ptr [di]`): SETUPX's CONFIG.SYS
+    and AUTOEXEC.BAT line handlers, DS:0776, ten offsets in segment 3. A near pointer has no
+    relocation, so nothing tells the build it is code: a handler rebuilt from C that moves leaves the
+    table pointing at whatever now sits there -- sub_3_36DE moved to 2A3C, TPWRITEPROFILESTRING went
+    into its place, and the table's second entry ran it (a far return from a near call: a fault in
+    SETUPX at 0003:3700 as Setup began to copy). A run of three or more words in a row that are all
+    function starts of one code segment, or two that the segment's code loads as the table's address,
+    and that segment calls or jumps through a word in memory."""
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    segs = {s["idx"]: s for s in nef.segments()}
+    auto = nef.h.get("autodata_seg")
+    if not auto or auto not in segs or not segs[auto]["file_off"]:
+        return set()
+    ds = segs[auto]
+    data = bytes(nef.data[ds["file_off"]:ds["file_off"] + ds["length"]])
+    starts = {}
+    for (sg, off), name in at.items():
+        starts.setdefault(sg, {})[off] = name
+    out = set()
+    for sg, names in starts.items():
+        s = segs.get(sg)
+        if not s or not s["file_off"] or len(names) < 2:
+            continue
+        code = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]])
+        indirect, immediates = False, set()
+        for i in md.disasm(code, 0):
+            if i.mnemonic in ("call", "jmp") and i.op_str.startswith("word ptr ["):
+                indirect = True
+            if i.mnemonic == "mov" and i.op_str.count(", 0x") == 1 and i.op_str[:2] in ("bx", "si", "di", "ax", "cx", "dx"):
+                immediates.add(int(i.op_str.split(", ")[1], 16))
+        if not indirect:
+            continue
+        for align in (0, 1):
+            run = []
+            for p in range(align, len(data) - 1, 2):
+                w = struct.unpack_from("<H", data, p)[0]
+                if w in names and w:
+                    run.append((p, names[w]))
+                    continue
+                if len(run) >= 3 or (len(run) >= 2 and run[0][0] in immediates):
+                    out.update(n for _p, n in run)
+                run = []
+            if len(run) >= 3 or (len(run) >= 2 and run and run[0][0] in immediates):
+                out.update(n for _p, n in run)
+    return out
+
+
 def _register_argument_calls(nef, at):
     """The functions whose original loads AX from its frame just before a far call through a
     pointer in its frame -- `mov ax, [bp-8]` / `call dword ptr [bp-6]`: a VxD's protected-mode API
@@ -1236,6 +1286,13 @@ def _build16(b, path, m, folder):
     if only or segs_only:
         named = set(m.order) if only == "all" else set(only.split(","))
         forced |= {n for n in m.order if n in stems and (n in named or segment_of.get(n) in segs_only)}
+    for n in _near_pointer_tables(nef, at):
+        # (its address is a number in the data segment: it must stay where it is)
+        if n in stems and n not in forced:
+            forced.add(n)
+            if n in b.origins:
+                b.origins[n].evidence.append("its address is in a table of near code pointers in the data segment "
+                                             "(called through it) -- kept as its instructions, at its place")
     for n in _register_argument_calls(nef, at):
         # (a call through a pointer that takes an argument in a register: C cannot say it)
         if n in stems and n not in forced:
