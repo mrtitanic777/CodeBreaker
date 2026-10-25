@@ -111,6 +111,15 @@ BY_NUMBER = {}
 IN_ECX = {}                             # module file -> names of its functions that take an argument in ECX
 
 
+def _zeros(outdir, size):
+    """A file of at least `size` zero bytes in `outdir`, for describing memory the file does not hold."""
+    path = os.path.join(outdir, "zeros.bin")
+    if not os.path.isfile(path) or os.path.getsize(path) < size:
+        with open(path, "wb") as f:
+            f.truncate(max(size, 1 << 20))
+    return os.path.abspath(path)
+
+
 def describe32(module_path, funcs, outdir):
     """Write the description of a PE module for the native program: its processor, where its
     bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
@@ -148,6 +157,13 @@ def describe32(module_path, funcs, outdir):
             if size and sec["rawptr"]:
                 lines.append("bytes\t%x\t%s\t%x\t%x" % (pe.image_base + sec["vaddr"],
                                                         os.path.abspath(module_path), sec["rawptr"], size))
+            # The part of a section the file does not hold (.bss; a section's tail past its raw
+            # size) is zeros when the module is loaded: described as such, its globals are the
+            # image's, and their sizes reach the C (undescribed, every one was declared 4 bytes:
+            # setup32's `dec word ptr [40e36c]` stored over the word beside it).
+            if (sec["vsize"] or 0) > size:
+                lines.append("bytes\t%x\t%s\t0\t%x" % (pe.image_base + sec["vaddr"] + size,
+                                                     _zeros(outdir, sec["vsize"] - size), sec["vsize"] - size))
     mod = api_stack._Mod(module_path) if x86 else None
     # Functions that take an argument in ECX and nothing else in a register: a C++ member
     # function's object. Read from the code (ECX is used before anything is put in it), and said
