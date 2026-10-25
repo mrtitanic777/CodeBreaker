@@ -113,6 +113,7 @@ IN_ECX = {}                             # module file -> names of its functions 
 
 def _zeros(outdir, size):
     """A file of at least `size` zero bytes in `outdir`, for describing memory the file does not hold."""
+    os.makedirs(outdir, exist_ok=True)                   # (the first time, before anything else is there)
     path = os.path.join(outdir, "zeros.bin")
     if not os.path.isfile(path) or os.path.getsize(path) < size:
         with open(path, "wb") as f:
