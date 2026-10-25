@@ -84,6 +84,17 @@ def _god(folder, header=None):
                     base, descriptor)]
 
 
+def _parts(folder):
+    """The Data#### files of a package's .data folder, as they are."""
+    names = sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n)))
+
+    def read(name):
+        with open(os.path.join(folder, name), "rb") as f:
+            return f.read()
+    return [_Listed("parts", os.path.basename(folder), "", {"parts": len(names)},
+                    lambda: [(n, os.path.getsize(os.path.join(folder, n))) for n in names], read)]
+
+
 class FatxVolume(object):
     """One FATX partition of a drive or memory-unit image."""
     kind = "fatx"
@@ -153,10 +164,14 @@ def volumes(path, long_names=True):
         head = f.read(16)
     magic = head[:4]
     if magic in _STFS:
-        # (a Games-on-Demand package's header: its contents are the Data#### parts in the
-        # `<header>.data` folder beside it, not in the header file)
+        # (a package whose contents are the Data#### parts in the `<header>.data` folder beside
+        # it: a Games-on-Demand title when its volume is a disc (SVOD, volume type 1 at 0x3A9),
+        # else the parts themselves -- a video download is its .wmv cut into them)
         if os.path.isdir(path + ".data"):
-            return _god(path + ".data", header=path)
+            with open(path, "rb") as f:
+                f.seek(0x3A9)
+                svod = int.from_bytes(f.read(4), "big") == 1
+            return _god(path + ".data", header=path) if svod else _parts(path + ".data")
         return _stfs(path)
     if magic in (ciso.CSO_MAGIC, ciso.CCI_MAGIC):
         return [_xdvdfs(ciso.open_image(path), os.path.basename(path), magic.decode("latin-1").strip() + " compressed disc")]
