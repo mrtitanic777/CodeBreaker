@@ -1144,14 +1144,57 @@ def results(d):
         for place in callers_read_dx(d, edges):              # (what the callers read after it)
             if place in size and size[place] < 4:
                 size[place] = 4
+        writes = _writes_dx(d, {callee for _c, callee in edges})
         for _round in range(8):                              # (and what a four-byte caller hands back
-            changed = False                                  #  as it is: its callee's DX:AX too)
-            for caller, callee in edges:
-                if size.get(caller, 0) >= 4 and callee in size and size[callee] < 4:
+            changed = False                                  #  as it is: its callee's DX:AX too --
+            for caller, callee in edges:                     #  one that sets DX at all: KEYBOARD's
+                if size.get(caller, 0) >= 4 and callee in size and size[callee] < 4 \
+                        and callee in writes:                #  9:0367 leaves it as its caller had it)
                     size[callee], changed = 4, True
             if not changed:
                 break
     return {va: size.get(where(va), 0) for va in d.names}
+
+
+def _writes_dx(d, places):
+    """{(seg, off)} of `places` whose own code (to the next function's start) writes DX other than
+    by popping back what it pushed -- or calls out, which may set it"""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    dx = {capstone.x86.X86_REG_DX, capstone.x86.X86_REG_DL, capstone.x86.X86_REG_DH, capstone.x86.X86_REG_EDX}
+    starts = {}
+    for va in d.names:
+        sg, o = where(va)
+        starts.setdefault(sg, []).append(o)
+    out = set()
+    for sg, off in places:
+        img = d.images.get(sg)
+        if img is None:
+            continue
+        later = sorted(o for o in starts.get(sg, []) if o > off)
+        end = later[0] if later else len(img)
+        saved = False
+        reach = off                                      # (the furthest a jump seen so far goes)
+        for i in md.disasm(bytes(img[off:end]), off):
+            if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM:
+                reach = max(reach, i.operands[0].imm & 0xFFFF)
+            if i.mnemonic in ("ret", "retf") and reach <= i.address:
+                break                                    # (its end: what follows is another's)
+            if i.mnemonic == "push" and i.op_str == "dx":
+                saved = True
+                continue
+            if i.mnemonic == "pop" and i.op_str == "dx" and saved:
+                continue
+            if i.group(capstone.CS_GRP_CALL) and i.mnemonic == "call" and "[" not in i.op_str:
+                out.add((sg, off))                           # (a callee of its own may set it)
+                break
+            try:
+                if dx & set(i.regs_access()[1]):
+                    out.add((sg, off))
+                    break
+            except capstone.CsError:
+                continue
+    return out
 
 
 def callers_read_dx(d, edges=None):
@@ -1220,6 +1263,19 @@ def callers_read_dx(d, edges=None):
             else:
                 continue
             if target is None:
+                continue
+            # (not when the caller set DX itself just before: what it reads may be its own, kept --
+            # KEYBOARD's 9:0367 saves AX and BX and leaves DX alone -- nor for a _fastcall callee,
+            # whose DX may be its argument)
+            set_before = False
+            for q in ins[max(0, k - 6):k]:
+                try:
+                    if dx & set(q.regs_access()[1]):
+                        set_before = True
+                except capstone.CsError:
+                    pass
+            if set_before or (target[0] in getattr(d, "segment_bytes", {}) and
+                              register_arguments(d.segment_bytes[target[0]], target[1])):
                 continue
             for q in ins[k + 1:k + 8]:
                 if q.group(capstone.CS_GRP_JUMP) or q.group(capstone.CS_GRP_CALL) or q.group(capstone.CS_GRP_RET) \
