@@ -97,7 +97,7 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 38                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+PIPE_REV = 42                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
                                 # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
@@ -172,11 +172,11 @@ _TOOLCHAIN = {"KERNEL.GETVERSION", "KERNEL.GETWINFLAGS", "KERNEL.LOCALINIT", "KE
 
 def _norm_dep(d):
     """Canonicalise an imported-call name so the two builds' import-table SPELLINGS of the same
-    import compare equal: uppercase, drop a .DLL/.EXE on the module half, unify the separator.
+    import compare equal: uppercase, drop a .DLL/.EXE/.SYS (NDIS.SYS is NDIS) on the module half, unify the separator.
     ('KERNEL32.dll!#21' and 'KERNEL32!#21' are the same ordinal import -> same behavior)."""
     s = str(d).upper().replace("!", ".").replace(":", ".")
     parts = s.split(".")
-    parts = [p for p in parts if p not in ("DLL", "EXE", "DRV")]
+    parts = [p for p in parts if p not in ("DLL", "EXE", "DRV", "SYS", "VXD", "OCX", "CPL")]
     return ".".join(parts)
 
 
