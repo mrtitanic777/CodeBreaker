@@ -228,6 +228,34 @@ _NUMBER_OUT_TYPES = ("LPDWORD", "PDWORD", "LPLONG", "PLONG", "PULONG", "LPUINT",
 _OUTS = {}
 
 
+def _callee_pops(uc, ret):
+    """Bytes of arguments a call that returns to `ret` leaves for its callee to take off: the
+    pushes just before the call -- read back from the code before `ret`, the decoding that ends
+    exactly on the call -- unless the caller takes them off itself (`add esp, N` at `ret`). 0
+    when the code does not say."""
+    try:
+        after = bytes(uc.mem_read(ret, 3))
+        if after[:2] in (bytes((0x83, 0xC4)), bytes((0x81, 0xC4))):   # add esp, imm: the caller's
+            return 0
+        before = bytes(uc.mem_read(ret - 64, 64))
+    except Exception:
+        return 0
+    md = _md()
+    for start in range(0, 60):
+        insns = list(md.disasm(before[start:], ret - 64 + start))
+        if not insns or insns[-1].address + insns[-1].size != ret or insns[-1].mnemonic != "call":
+            continue
+        pushed = 0
+        for ins in reversed(insns[:-1]):
+            if ins.mnemonic == "push":
+                pushed += 4
+                continue
+            if ins.mnemonic in ("call", "ret", "pop", "leave", "enter", "pushal", "popal") or                     ins.mnemonic.startswith("j") or ins.op_str.startswith("esp"):
+                break
+        return pushed if pushed <= 64 else 0
+    return 0
+
+
 def _outs(name):
     """[(place, value)] of an API's parameters through which it gives something back, by its
     declaration: a handle (value None: _OUT_HANDLE by its place) or a number (0)."""
@@ -807,6 +835,18 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 rec["api_deps"].append(api)
             argc = 0 if dll == "CALLBACK" else sig_resolver(dll, name) if sig_resolver else None
             cleanup = 4 * argc if argc is not None else stub_cleanup
+            if not argc:
+                # A callback, or an import nothing here gives the argument count of (a driver's
+                # NDIS.SYS calls), removes what its call site pushed when its caller does not take
+                # them off (as Windows' callbacks and stdcall imports do). Left on the stack, the
+                # original got over it (its frame pointer puts ESP back) and the rebuild, keeping
+                # no frame pointer, returned to whatever was there: pjlmon's sub_001D2A, to 0.
+                # (Only removed: what each side recorded of the call stays as it was -- worked out
+                # from each side's own code, the two would not record alike.)
+                try:
+                    cleanup = _callee_pops(uc, int.from_bytes(uc.mem_read(uc.reg_read(UC_X86_REG_ESP), 4), "little")) or cleanup
+                except Exception:
+                    pass
             try:
                 esp_now = uc.reg_read(UC_X86_REG_ESP)
                 ret_addr = int.from_bytes(uc.mem_read(esp_now, 4), "little")
