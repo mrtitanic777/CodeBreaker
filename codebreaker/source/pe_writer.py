@@ -72,8 +72,11 @@ class Writer(object):
         for i, s in enumerate(pe.sections):
             va = B + s["vaddr"]
             nxt = B + pe.sections[i + 1]["vaddr"] if i + 1 < len(pe.sections) else va + max(s["vsize"], s["rawsize"])
+            nasm = self._secname(s["name"], i)
+            if not s["rawptr"] and nasm != ".bss":                # (and NASM's .text, .data are always stored)
+                nasm = nasm.strip(".") + "_nobits"
             self.secs.append(dict(s, va=va, file=bool(s["rawptr"]), extent=nxt - va,
-                                  code=bool(s["chars"] & 0x20000020), nasm=self._secname(s["name"], i)))
+                                  code=bool(s["chars"] & 0x20000020), nasm=nasm))
         self.sites = {}                                      # VA of a relocated dword -> the address it holds
         for r in pe.base_relocs():
             o = pe.file_offset(r)
@@ -91,7 +94,8 @@ class Writer(object):
     @staticmethod
     def _secname(name, i):
         n = re.sub(r"[^\w.]", "_", name) or "sec%d" % i
-        return n if n not in ("hdr", "tail") else n + "_"
+        # (NASM's own .bss is never stored in the file; a stored section of that name is named apart)
+        return n if n not in ("hdr", "tail", ".bss") else n.strip(".") + "_"
 
     # -- what is where -------------------------------------------------------------------------
     def section_of(self, va):
@@ -326,13 +330,24 @@ class Writer(object):
             self._data(L, self.B + size, self.B + self.headers, header=True)
         else:
             self._data(L, self.B, self.B + self.headers, header=True)
+        # what the file holds between the headers and the sections, or between two sections: as it is
+        ends, gaps = self.headers, {}
+        for s in sorted((x for x in self.secs if x["file"]), key=lambda x: x["rawptr"]):
+            if s["rawptr"] > ends:
+                gaps[s["nasm"]] = (ends, s["rawptr"])
+            ends = max(ends, s["rawptr"] + s["rawsize"])
         for s in self.secs:
             L.append("")
+            if s["nasm"] in gaps:
+                lo, hi = gaps[s["nasm"]]
+                L.append("section gap_%s start=0x%x vstart=0 align=1" % (s["nasm"].strip("."), lo))
+                L.extend("    " + x for x in assembly.data_lines(self.d[lo:hi]))
+                L.append("")
             if not s["file"]:
                 L.append("section %s nobits vstart=0x%x" % (s["nasm"], s["va"]))
                 self._bss(L, s)
                 continue
-            L.append("section %s start=0x%x vstart=0x%x align=1" % (s["nasm"], s["rawptr"], s["va"]))
+            L.append("section %s progbits start=0x%x vstart=0x%x align=1" % (s["nasm"], s["rawptr"], s["va"]))
             a, end = s["va"], s["va"] + s["rawsize"]
             while a < end:
                 if a in self.insns:
