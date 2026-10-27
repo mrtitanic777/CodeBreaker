@@ -552,7 +552,15 @@ def _kernel(module_path, outdir, log=None):
     h = dos._mz(exe)
     image = exe[h["header"]:h["size"]]
     relocs = [struct.unpack_from("<HH", exe, h["reloc_off"] + 4 * i) for i in range(h["nreloc"])]
-    packed, (cs, ip, _ss, _sp) = exepack.pack(image, [seg * 16 + off for off, seg in relocs], (h["cs"], h["ip"]),
+    sites = [seg * 16 + off for off, seg in relocs]
+    try:                                                     # (the table in the order the original's lists it)
+        oh = dos._mz(bytes(original))
+        theirs = dos.unpack_exepack(bytes(original)[oh["header"]:oh["size"]], oh["cs"], oh["ip"])[1]
+        if sorted(theirs) == sorted(sites):
+            sites = theirs
+    except (ValueError, KeyError, struct.error):
+        pass
+    packed, (cs, ip, _ss, _sp) = exepack.pack(image, sites, (h["cs"], h["ip"]),
                                               (h["ss"], h["sp"]), _read_fills(fills), stub_code, layout.words)
     with open(built["msload"], "rb") as f:
         loader = bytearray(f.read())
@@ -567,6 +575,8 @@ def _kernel(module_path, outdir, log=None):
         result["notes"].append("the MZ header in msload does not describe what was built: %s" % ", ".join(
             "%s %#x, built %#x" % (k, a, b) for k, (a, b) in sorted(wrong.items())))
     joined = bytes(loader) + kernel + packed
+    with open(os.path.join(outdir, "kernel.build.json"), "w") as f:     # (what rebuild() joins, from the folder)
+        json.dump({"file": os.path.basename(module_path).upper(), "words": layout.words, "order": sites}, f, indent=1)
     out = os.path.join(outdir, os.path.basename(module_path).lower())
     with open(out, "wb") as f:
         f.write(joined)
@@ -648,7 +658,7 @@ def _facts(p, data, outdir, stem, log=None):
     if p.overlay:
         _beside(os.path.join(outdir, stem + ".ovl"), lambda: p.overlay)
     facts = {"file": os.path.basename(p.path).upper(), "packer": p.packer, "overlay": bool(p.overlay),
-             "min_alloc": oh["min_alloc"]}
+             "min_alloc": oh["min_alloc"], "full_last": struct.unpack_from("<H", data, 2)[0] == 512}
     if p.packer == "EXEPACK":
         layout = exepack.layout(data[oh["header"]:oh["size"]], oh["cs"], oh["ip"])
         _beside(os.path.join(outdir, stem + ".pack"), lambda: _fills_text(layout).replace("SYSINIT", p.name).encode())
@@ -703,7 +713,7 @@ def _compose(outdir, stem, exe, facts, result):
                 result.setdefault("remarks", []).append("the memory it asks for is the original's (%d paragraphs; "
                                                         "the rule gives %d)" % (facts["min_alloc"], memory))
                 memory = facts["min_alloc"]
-            body = mzfile.compose(tpl, packed, [], cs, ip, ss, sp, memory)
+            body = mzfile.compose(tpl, packed, [], cs, ip, ss, sp, memory, facts.get("full_last", False))
         else:
             # the relocation table as the original's linker wrote it -- each entry in the frame of
             # the segment it was recorded in, in the order of its records -- when it names the
@@ -718,7 +728,7 @@ def _compose(outdir, stem, exe, facts, result):
                 result.setdefault("remarks", []).append("the original asks for %d bytes more memory than its stack needs" % (
                     16 * (facts["min_alloc"] - beyond)))
                 beyond = facts["min_alloc"]
-            body = mzfile.compose(tpl, module, relocs, h["cs"], h["ip"], h["ss"], h["sp"], beyond)
+            body = mzfile.compose(tpl, module, relocs, h["cs"], h["ip"], h["ss"], h["sp"], beyond, facts.get("full_last", False))
     except ValueError as e:
         result.setdefault("notes", []).append("not laid out as the original file: %s" % e)
         body = exe
@@ -826,7 +836,7 @@ def _program(p, outdir, stem, log=None):
             result.update(same=not notes, notes=notes)
             if not w.flat and result["same"] and not getattr(p, "in_kernel", False):
                 _as_file(p, outdir, stem, image, result, log)
-            if result["same"] and not getattr(p, "in_kernel", False):
+            if result["same"]:                               # (SYSINIT of IO.SYS too: joined by _rebuild_kernel)
                 patched = any("entry and stack set" in i for i in result.get("remarks", []))
                 desc = {"stem": stem, "product": os.path.basename(out), "flat": bool(w.flat),
                         "regs": [(p.ss - dos.LOAD) & 0xFFFF, p.sp, p.ip, (p.cs - dos.LOAD) & 0xFFFF] if patched else None,
@@ -855,12 +865,38 @@ def _program(p, outdir, stem, log=None):
     return result
 
 
-def rebuild(srcdir, log=None):
+def _rebuild_kernel(srcdir, log=None):
+    """IO.SYS from its folder: its four programs built, SYSINIT packed, the three joined."""
+    from codebreaker.build import exepack
+    with open(os.path.join(srcdir, "kernel.build.json")) as f:
+        k = json.load(f)
+    made = {stem: rebuild(srcdir, log, desc=stem + ".build.json") for stem in ("exepack", "msload", "msdos", "sysinit")}
+    with open(made["exepack"], "rb") as f:
+        stub_code = f.read()
+    with open(made["sysinit"], "rb") as f:
+        exe = f.read()
+    h = dos._mz(exe)
+    packed, _regs = exepack.pack(exe[h["header"]:h["size"]], k["order"], (h["cs"], h["ip"]), (h["ss"], h["sp"]),
+                                 _read_fills(os.path.join(srcdir, "sysinit.pack")), stub_code, k["words"])
+    with open(made["msload"], "rb") as f:
+        loader = f.read()
+    with open(made["msdos"], "rb") as f:
+        kernel = f.read()
+    os.makedirs(os.path.join(srcdir, "file"), exist_ok=True)
+    out = os.path.join(srcdir, "file", k["file"])
+    with open(out, "wb") as f:
+        f.write(loader + kernel + packed)
+    return out
+
+
+def rebuild(srcdir, log=None, desc=None):
     """Make the program from its folder alone (what dos-source wrote: <stem>.asm, .lnk, .build.json
     and the side files): assemble, link, set the header's entry and stack where the source cannot
     say them, lay the file out. -> the path of the file made."""
     srcdir = os.path.abspath(srcdir)
-    desc_path = next((os.path.join(srcdir, f) for f in sorted(os.listdir(srcdir)) if f.endswith(".build.json")), None)
+    if desc is None and os.path.isfile(os.path.join(srcdir, "kernel.build.json")):
+        return _rebuild_kernel(srcdir, log)
+    desc_path = os.path.join(srcdir, desc) if desc else         next((os.path.join(srcdir, f) for f in sorted(os.listdir(srcdir)) if f.endswith(".build.json")), None)
     if not desc_path:
         raise SystemExit("%s: no .build.json (write it with dos-source)" % srcdir)
     with open(desc_path) as f:

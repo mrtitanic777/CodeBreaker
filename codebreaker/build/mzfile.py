@@ -29,7 +29,7 @@ def template(header):
     return bytes(t)
 
 
-def compose(tpl, module, relocs, cs, ip, ss, sp, min_alloc):
+def compose(tpl, module, relocs, cs, ip, ss, sp, min_alloc, full_last=False):
     """The file: the template's header with the blanks filled -- `relocs` [(offset, segment)]
     written at the template's relocation table place -- then the load module.
     ValueError when the relocation table does not fit where the template has room for it."""
@@ -41,7 +41,9 @@ def compose(tpl, module, relocs, cs, ip, ss, sp, min_alloc):
     for i, (off, seg) in enumerate(relocs):
         struct.pack_into("<HH", head, reloc_off + 4 * i, off, seg)
     total = len(head) + len(module)
-    struct.pack_into("<HHH", head, 2, total % 512, (total + 511) // 512, len(relocs))
+    # (a last page that is full: 0, or 512 as some linkers wrote it -- `full_last`)
+    last = total % 512 or (512 if full_last else 0)
+    struct.pack_into("<HHH", head, 2, last, (total + 511) // 512, len(relocs))
     struct.pack_into("<H", head, 0x0A, min_alloc)
     struct.pack_into("<HH", head, 0x0E, ss, sp)
     struct.pack_into("<HH", head, 0x14, ip, cs)
