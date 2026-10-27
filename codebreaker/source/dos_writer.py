@@ -677,6 +677,8 @@ def _facts(p, data, outdir, stem, log=None):
 def _compose(outdir, stem, exe, facts, result):
     """The file, from what was linked (exe) and the folder: header data, packing, overlay."""
     from codebreaker.build import exepack, mzfile
+    if facts["packer"] == "PKLITE":
+        return _compose_pklite(outdir, stem, exe, facts, result)
     h = dos._mz(exe)
     module = exe[h["header"]:h["size"]]
     relocs = [struct.unpack_from("<HH", exe, h["reloc_off"] + 4 * i) for i in range(h["nreloc"])]
@@ -739,35 +741,65 @@ def _as_pklite_file(p, data, oh, exe, h, module, outdir, stem, out, result, log=
     """A program the original stores packed by PKLITE: packed the same way (build/pklite.py),
     behind PKLITE's entry code and decompressor (written as source, pklite/pklite.asm), in a
     header laid out as the original's -- which keeps, after PKLITE's notice, a copy of the
-    program's own header: its min-alloc is the memory the program asks for beyond itself."""
+    program's own header: its min-alloc is the memory the program asks for beyond itself.
+    The relocation table is the original's -- PKLITE wrote its runs in the order and the segment
+    frames the linker gave it -- when it names the same places as the build's."""
     from codebreaker.build import mzfile, pklite
-    tpl = _beside(os.path.join(outdir, stem + ".hdr"), lambda: mzfile.template(data[:oh["header"]]))
+    _beside(os.path.join(outdir, stem + ".hdr"), lambda: mzfile.template(data[:oh["header"]]))
+    if p.overlay:
+        _beside(os.path.join(outdir, stem + ".ovl"), lambda: p.overlay)
     head_dir = os.path.join(outdir, "pklite")
-    head_bin = os.path.join(head_dir, "pklite.bin")
-    if not os.path.isfile(head_bin):
+    if not os.path.isfile(os.path.join(head_dir, "pklite.bin")):
         start = pklite.stream_start(data[oh["header"]:oh["size"]])
         r = _program(dos.pklite_head(p.path, start), head_dir, "pklite", log)
         if not r["same"]:
             raise ValueError("PKLITE's decompressor does not build back")
-    with open(head_bin, "rb") as f:
+    stored = pklite.read(data[oh["header"]:oh["size"]])
+    facts = {"file": os.path.basename(p.path).upper(), "packer": "PKLITE", "overlay": bool(p.overlay),
+             "order": [[seg, off] for seg, offs in stored.relocs for off in offs], "min_alloc": oh["min_alloc"]}
+    result["facts"] = facts
+    body = _compose(outdir, stem, exe, facts, result)
+    with open(out, "wb") as f:
+        f.write(body)
+    result.update(file=out, file_same=body == data)
+    if not result["file_same"]:
+        n = min(len(body), len(data))
+        first = next((a for a in range(n) if body[a] != data[a]), n)
+        result.setdefault("remarks", []).append("the file differs from the original's at %#x (%d bytes, original %d)" % (
+            first, len(body), len(data)))
+
+
+def _compose_pklite(outdir, stem, exe, facts, result):
+    from codebreaker.build import mzfile, pklite
+    h = dos._mz(exe)
+    module = exe[h["header"]:h["size"]]
+    with open(os.path.join(outdir, stem + ".hdr"), "rb") as f:
+        tpl = f.read()
+    with open(os.path.join(outdir, "pklite", "pklite.bin"), "rb") as f:
         head = f.read()
     at = tpl.find(b"Reserved")
     if at < 0:
         raise ValueError("no copy of the program's header behind PKLITE's notice in %s.hdr" % stem)
     memory = struct.unpack_from("<H", tpl, at + 8 + 4 + 8)[0]
     relocs = [struct.unpack_from("<HH", exe, h["reloc_off"] + 4 * i)[::-1] for i in range(h["nreloc"])]
+    theirs = [tuple(x) for x in facts["order"]]
+    if sorted(seg * 16 + off for seg, off in relocs) == sorted(seg * 16 + off for seg, off in theirs) and theirs != relocs:
+        relocs = theirs
+        result.setdefault("remarks", []).append("the relocation table is written in the original's frames and order")
     packed, hd = pklite.pack(module, relocs, (h["cs"], h["ip"], h["ss"], h["sp"]), head, memory)
+    memory = hd["min_alloc"]
+    if facts.get("min_alloc") is not None and facts["min_alloc"] != memory:
+        # (PKLITE's own figure for the memory it asks for, by a rule not yet found: the original's)
+        result.setdefault("remarks", []).append("the memory it asks for is the original's (%d paragraphs; the rule "
+                                                "gives %d)" % (facts["min_alloc"], memory))
+        memory = facts["min_alloc"]
     body = mzfile.compose(tpl, packed, [(off, seg) for off, seg in hd["relocs"]], hd["cs"], hd["ip"], hd["ss"],
-                          hd["sp"], hd["min_alloc"])
-    overlay = _beside(os.path.join(outdir, stem + ".ovl"), lambda: p.overlay) if p.overlay else b""
-    with open(out, "wb") as f:
-        f.write(body + overlay)
-    result.update(file=out, file_same=body + overlay == data)
-    if not result["file_same"]:
-        n = min(len(body + overlay), len(data))
-        first = next((a for a in range(n) if (body + overlay)[a] != data[a]), n)
-        result.setdefault("remarks", []).append("the file differs from the original's at %#x (%d bytes, original %d)" % (
-            first, len(body + overlay), len(data)))
+                          hd["sp"], memory)
+    overlay = b""
+    if facts["overlay"]:
+        with open(os.path.join(outdir, stem + ".ovl"), "rb") as f:
+            overlay = f.read()
+    return body + overlay
 
 
 def _program(p, outdir, stem, log=None):
@@ -903,8 +935,8 @@ def rebuild(srcdir, log=None, desc=None):
         desc = json.load(f)
     stem = desc["stem"]
     facts = desc.get("facts")
-    if facts and facts.get("packer") == "EXEPACK":
-        rebuild(os.path.join(srcdir, "exepack"), log)        # (its unpacker first: a program of its own)
+    if facts and facts.get("packer") in ("EXEPACK", "PKLITE"):    # (its unpacker first: a program of its own)
+        rebuild(os.path.join(srcdir, facts["packer"].lower()), log)
     obj, messages = assembly.assemble(os.path.join(srcdir, stem + ".asm"), srcdir)
     if not obj:
         raise SystemExit("assembler: " + messages[-500:])
