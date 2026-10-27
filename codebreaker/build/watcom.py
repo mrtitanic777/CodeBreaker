@@ -8,6 +8,7 @@ whose argument count disagrees with the callee's definition before the compiler 
 import os
 import re
 from codebreaker.build import watcom as toolchain
+from codebreaker.formats import omf
 from codebreaker.formats.pe import open_pe
 
 
@@ -79,29 +80,10 @@ def import_map(module):
     return _IMPORT_MAPS[module]
 
 
-def _omf_externs(data):
-    """External symbol names an OMF object refers to (EXTDEF records, 0x8C)."""
-    out, i, n = [], 0, len(data)
-    while i + 3 <= n:
-        rectype = data[i]
-        end = i + 3 + (data[i + 1] | (data[i + 2] << 8))
-        if end > n:
-            break
-        if rectype == 0x8C:
-            q = i + 3
-            while q < end - 1:                           # end-1 is the record checksum
-                ln = data[q]
-                out.append(data[q + 1:q + 1 + ln].decode("latin1"))
-                q += 1 + ln
-                q += 2 if (q < end and data[q] & 0x80) else 1     # type index
-        i = end
-    return out
-
-
 def _import_lines(obj, names, imports, numbered=None):
     """wlink `import` directives binding each imported name's decorated symbol to DLL.name --
     or to DLL.number for one the original imports by number (`numbered`: {name: (DLL, number, ...)})."""
-    ext = _omf_externs(obj)
+    ext = omf.externs(obj)
     out = []
     for n in sorted(names):
         for sym in ext:
@@ -173,40 +155,6 @@ def ow_env(cls):
     env["WLINK_LNK"] = os.path.join(root, "binnt64", "wlink.lnk")
     env["PATH"] = os.path.join(root, "binnt64") + os.pathsep + env.get("PATH", "")
     return env
-
-
-def _omf_publics(data):
-    """Exact public symbol names from an OMF object's PUBDEF records (0x90/0x91). Length-prefixed
-    names, so no greedy-match errors -- the authoritative `_name@N` decorations wcc386 emitted."""
-    out, i, n = set(), 0, len(data)
-
-    def idx(p):                                          # OMF index: 1 byte, or 2 if high bit set
-        b = data[p]
-        return (((b & 0x7f) << 8) | data[p + 1], p + 2) if (b & 0x80) else (b, p + 1)
-
-    while i + 3 <= n:
-        rectype = data[i]
-        length = data[i + 1] | (data[i + 2] << 8)
-        body, end = i + 3, i + 3 + length
-        if end > n:
-            break
-        if rectype in (0x90, 0x91):
-            p = body
-            _grp, p = idx(p)
-            seg, p = idx(p)
-            if seg == 0:
-                p += 2                                   # base frame present when segment index == 0
-            offsz = 2 if rectype == 0x90 else 4
-            while p < end - 1:                           # end-1 is the record checksum
-                ln = data[p]
-                p += 1
-                if p + ln > end:
-                    break
-                out.add(data[p:p + ln].decode("latin1"))
-                p += ln + offsz
-                _t, p = idx(p)
-        i = end
-    return out
 
 
 # ------------------------------------------------------------------ RECOVER from a decompile (logic modules)

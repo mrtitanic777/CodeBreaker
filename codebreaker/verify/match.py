@@ -142,20 +142,9 @@ def distance(built, original):
     fills in. -> (verdict, number of bytes that differ, total bytes compared, first differing
     offset or -1). When the lengths differ the whole tail counts as differing, so a longer or
     shorter function is always farther than one of the right length."""
+    from codebreaker.compare import image
     (a, ma), (b, mb) = _trim(*built), original
-    n = min(len(a), len(b))
-    diff = first = 0
-    saw = False
-    for i in range(n):
-        if ma[i] or mb[i]:
-            continue
-        if a[i] != b[i]:
-            diff += 1
-            if not saw:
-                first, saw = i, True
-    diff += abs(len(a) - len(b))
-    verdict = "identical" if diff == 0 else "same size" if len(a) == len(b) else "different"
-    return verdict, diff, max(len(a), len(b)), (first if saw else (n if len(a) != len(b) else -1))
+    return image.distance(a, b, ma, mb)
 
 
 def relocation_targets(path):

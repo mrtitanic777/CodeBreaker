@@ -15,6 +15,8 @@ import struct
 import subprocess
 import sys
 
+from codebreaker.base import settings
+
 DESCRIPTION = "Xbox 360 XMA/XMA2 audio -> playable WAV (native RIFF-XMA2 wrap + ffmpeg decode)"
 
 WAVE_FORMAT_XMA2 = 0x0166
@@ -37,18 +39,8 @@ def wrap_xma2(data, channels, rate, block=0x10000):
     return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
-def _find_ffmpeg():
-    """settings.json `ffmpeg`, else one on PATH."""
-    import shutil
-    from codebreaker.base import settings
-    p = settings.get("ffmpeg")
-    if p and (os.path.exists(p) or shutil.which(p)):
-        return p
-    return shutil.which("ffmpeg")
-
-
 def _need_ffmpeg():
-    exe = _find_ffmpeg()
+    exe = settings.tool("ffmpeg")
     if not exe:
         raise RuntimeError("ffmpeg not found — install it and/or run: "
                            'set "ffmpeg" in settings.json')

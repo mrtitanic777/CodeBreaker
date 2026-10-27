@@ -25,6 +25,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 from codebreaker.build import watcom as period_tools
+from codebreaker.formats import omf
 
 # Medium model (far code, near data), as the module build has it (build/module.py): the C
 # runtime's helpers (long multiply, divide, shifts) are then called far, so a function reaches them
@@ -333,7 +334,6 @@ def _in_the_original(outdir, env, undefined, originals):
 def build32(module_path, header, texts, order, used_imports, outdir, cflags, jobs=None, originals=None):
     from codebreaker.build import watcom as B
     from codebreaker.formats.pe import open_pe
-    from codebreaker.build import watcom as A
     ow = B._ow()
     if not os.path.exists(ow["wcc"]):
         raise RuntimeError("OpenWatcom's 32-bit compiler is not set up (settings.json: openwatcom)")
@@ -364,7 +364,7 @@ def build32(module_path, header, texts, order, used_imports, outdir, cflags, job
         if n in dropped:
             continue
         # the public symbol as the compiler decorated it: _name (cdecl), _name@N (stdcall)
-        sym = next((s for s in A._omf_publics(obj) if s == "_" + n or s == n or
+        sym = next((s for s in omf.publics(obj) if s == "_" + n or s == n or
                     re.fullmatch(r"[_@]%s@\d+" % re.escape(n), s)), None)
         if sym:
             exports.append("export %s='%s'" % (n, sym))

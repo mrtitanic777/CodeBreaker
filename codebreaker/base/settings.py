@@ -104,6 +104,16 @@ def get(key):
     return value
 
 
+def tool(key, name=None):
+    """A program: the one settings.json names under `key`, else one on PATH called `name` (default:
+    `key`). -> its path, or None."""
+    import shutil
+    p = get(key)
+    if p and (os.path.exists(p) or shutil.which(p)):
+        return p
+    return shutil.which(name or key)
+
+
 def corpora():
     """{name: folder} of every product's original binaries: the "corpora" setting, and the
     single "corpus" under the name in "target" when that name is not listed there."""

@@ -87,28 +87,20 @@ def msvc2():
 
 
 def mc_compile(csrc, stem="cand", timeout=120):
-    """Compile one source text through MC1 and MC2, in their own folder. -> the .OBJ's bytes, or None"""
+    """Compile one source text through MC1 and MC2, in a folder of its own (build/dos_tools.py: the
+    compiler's folder is C:). -> the .OBJ's bytes, or None"""
+    import shutil
     from codebreaker.base import settings
     from codebreaker.build import dos_tools
     home, emulator = settings.get("msc203") or "", dos_tools.emulator()
     if not (home and emulator and all(os.path.isfile(os.path.join(home, f)) for f in ("MC1.EXE", "MC2.EXE"))):
         raise RuntimeError("Microsoft C 2.03 is not set up (settings.json: msc203, dosbox_x)")
-    with open(os.path.join(home, stem + ".c"), "w", newline="\r\n") as f:
-        f.write(csrc)
-    for ext in ("OBJ", "Q", "q"):
-        path = os.path.join(home, stem + "." + ext)
-        if os.path.exists(path):
-            os.remove(path)
-    with open(os.path.join(home, "dbx.conf"), "w", newline="") as f:
-        f.write("\r\n".join(["[cpu]", "core=auto", "cputype=386", "[autoexec]", 'mount c "%s"' % home, "c:",
-                             "mc1 %s.c >NUL" % stem, "mc2 %s >NUL" % stem, "echo DONE >D.TXT", "exit", ""]))
-    subprocess.run([emulator, "-conf", os.path.join(home, "dbx.conf"), "-fastlaunch"], capture_output=True,
-                   timeout=max(timeout, 30), env=dict(os.environ, SDL_VIDEODRIVER="dummy"))
-    path = os.path.join(home, stem + ".OBJ")
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as f:
-        return f.read()
+    _ok, made, work = dos_tools.run({"c": home}, ["c:mc1 %s.c >NUL" % stem, "c:mc2 %s >NUL" % stem],
+                                    [stem + ".OBJ"], timeout=max(timeout, 30), files={stem + ".c": csrc},
+                                    cpu={"core": "auto", "cputype": "386"})
+    if work:
+        shutil.rmtree(work, ignore_errors=True)
+    return made.get(stem + ".OBJ")
 
 
 def mc_compile_multi(csrc):

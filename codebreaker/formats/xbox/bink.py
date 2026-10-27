@@ -14,6 +14,8 @@ import struct
 import subprocess
 import sys
 
+from codebreaker.base import settings
+
 DESCRIPTION = "Xbox 360 Bink video (.bik): native header info + ffmpeg-driven decode/extract"
 
 _BINK1 = (b"BIKb", b"BIKd", b"BIKf", b"BIKg", b"BIKh", b"BIKi", b"BIKk")
@@ -44,20 +46,10 @@ def read_header(path):
     }
 
 
-def _find_ffmpeg():
-    """settings.json `ffmpeg`, else one on PATH."""
-    import shutil
-    from codebreaker.base import settings
-    p = settings.get("ffmpeg")
-    if p and (os.path.exists(p) or shutil.which(p)):
-        return p
-    return shutil.which("ffmpeg")
-
-
 def decode(bik_path, out_path, audio_only=False, video_only=False):
     """Decode a .bik via ffmpeg. The output container/codec is chosen by the
     out_path extension (.wav/.mp4/.png-sequence/…). Returns output size."""
-    exe = _find_ffmpeg()
+    exe = settings.tool("ffmpeg")
     if not exe:
         raise RuntimeError("ffmpeg not found — install it or run: "
                            'set "ffmpeg" in settings.json')

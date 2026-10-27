@@ -32,7 +32,6 @@ import os
 import re
 import shutil
 import struct
-import subprocess
 import tempfile
 
 from codebreaker.base import corpus, settings
@@ -93,23 +92,13 @@ def build(folder, work=None, flags="/AM /G2 /Gsw /Ox"):
             if os.path.exists(os.path.join(kit, lib)):
                 shutil.copy2(os.path.join(kit, lib), os.path.join(work, lib))
     modules = [m for m in objs if os.path.exists(os.path.join(work, m + ".c"))]
-    with open(os.path.join(work, "BUILD.BAT"), "w", newline="") as f:
-        f.write("@echo off\r\n")
-        for m in modules:
-            f.write("del %s.obj\r\n" % m)
-        f.write("del %s\r\ndel done.txt\r\n" % out_name)
-        for m in modules:
-            f.write("cl /c %s %s.c >> CL.TXT\r\n" % (flags, m))
-        f.write("link @%s > LINK.TXT\r\nrc %s > RC.TXT\r\necho DONE > done.txt\r\n" % (lnk_name, out_name))
-    with open(os.path.join(work, "b.conf"), "w", newline="") as f:
-        f.write("[cpu]\r\ncycles=max\r\n[autoexec]\r\n")
-        f.write("mount c %s\r\nmount e %s\r\nmount d %s\r\n" % (_win(msc6), _win(msvc), _win(work)))
-        # windows.h is in the SDK's (Visual C++ 1.52c's) INCLUDE, the C library's headers in Microsoft C 6's
-        f.write("set PATH=C:\\BIN;E:\\BIN\r\nset INCLUDE=C:\\INCLUDE;E:\\INCLUDE\r\nset LIB=D:\\;E:\\LIB\r\n")
-        f.write("d:\r\ncall BUILD.BAT\r\nexit\r\n")
-    subprocess.run([dbx, "-conf", os.path.join(work, "b.conf"), "-fastlaunch"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=600,
-                   env=dict(os.environ, SDL_VIDEODRIVER="dummy"))
+    from codebreaker.build import dos_tools
+    bat = ["del %s.obj" % m for m in modules] + ["del %s" % out_name, "del done.txt"]
+    bat += ["cl /c %s %s.c >> CL.TXT" % (flags, m) for m in modules]
+    bat += ["link @%s > LINK.TXT" % lnk_name, "rc %s > RC.TXT" % out_name]
+    # windows.h is in the SDK's (Visual C++ 1.52c's) INCLUDE, the C library's headers in Microsoft C 6's
+    dos_tools.run({"c": _win(msc6), "e": _win(msvc), "d": _win(work)}, bat, [out_name], timeout=600, cpu={"cycles": "max"},
+                  variables={"PATH": r"C:\BIN;E:\BIN", "INCLUDE": r"C:\INCLUDE;E:\INCLUDE", "LIB": r"D:\;E:\LIB"}, work=work)
     dll = os.path.join(work, out_name)
     return dll if os.path.exists(dll) else None
 

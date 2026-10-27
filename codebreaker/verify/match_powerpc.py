@@ -124,21 +124,9 @@ def original_functions(img, addresses):
 
 def distance(built, original):
     """-> (verdict, words that differ outside masked bits, words compared, first differing word or -1)"""
+    from codebreaker.compare import image
     (a, ma), (b, mb) = _trim(*built), original
-    n = min(len(a), len(b)) // 4
-    diff, first = 0, -1
-    for i in range(n):
-        ignore = ma[i] | mb[i]
-        wa, wb = struct.unpack_from(">I", a, 4 * i)[0], struct.unpack_from(">I", b, 4 * i)[0]
-        if (wa ^ wb) & ~ignore & 0xFFFFFFFF:
-            diff += 1
-            first = i if first < 0 else first
-    extra = abs(len(a) - len(b)) // 4
-    diff += extra
-    if first < 0 and extra:
-        first = n
-    verdict = "identical" if diff == 0 else "same size" if len(a) == len(b) else "different"
-    return verdict, diff, max(len(a), len(b)) // 4, first
+    return image.distance(a, b, ma, mb, unit=4, byteorder="big")
 
 
 def compile_function(cl, header, text, name, work, flags):

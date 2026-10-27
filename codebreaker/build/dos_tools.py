@@ -24,12 +24,16 @@ def emulator():
     return path if path and os.path.isfile(path) else ""
 
 
-def run(mounts, bat_lines, artifacts, timeout=90, files=None):
-    """-> (every artifact was made, {name: bytes}, the work folder or None)"""
+def run(mounts, bat_lines, artifacts, timeout=90, files=None, cpu=None, dos=None, variables=None,
+        work=None):
+    """-> (every artifact was made, {name: bytes}, the work folder or None)
+
+    cpu, dos: the emulator's [cpu] and [dos] settings (default: cycles=20000); variables: set
+    before the commands run (PATH, INCLUDE, LIB ...); work: the folder to run in (default: a new one), kept."""
     dbx = emulator()
     if not dbx:
         return False, {}, None
-    work = tempfile.mkdtemp(prefix="cb_dos_")
+    work = work or tempfile.mkdtemp(prefix="cb_dos_")
     mounts = dict(mounts)
     mounts.setdefault("d", work)
     for name, data in (files or {}).items():
@@ -37,8 +41,11 @@ def run(mounts, bat_lines, artifacts, timeout=90, files=None):
             f.write(data if isinstance(data, (bytes, bytearray)) else str(data))
     with open(os.path.join(work, "BLD.BAT"), "w") as f:
         f.write("@echo off\r\n" + "\r\n".join(bat_lines) + "\r\necho _DONE_ > done.txt\r\n")
-    conf = ["[cpu]", "cycles=20000", "[autoexec]"]
-    conf += ["mount %s %s" % (drive, folder.replace("/", "\\")) for drive, folder in mounts.items()]
+    conf = ["[cpu]"] + ["%s=%s" % kv for kv in (cpu or {"cycles": 20000}).items()]
+    conf += (["[dos]"] + ["%s=%s" % kv for kv in dos.items()]) if dos else []
+    conf += ["[autoexec]"]
+    conf += ['mount %s "%s"' % (drive, folder.replace("/", "\\")) for drive, folder in mounts.items()]
+    conf += ["set %s=%s" % kv for kv in (variables or {}).items()]
     conf += ["%s:" % list(mounts)[-1], "call BLD.BAT", "exit", ""]
     with open(os.path.join(work, "r.conf"), "w") as f:
         f.write("\n".join(conf))

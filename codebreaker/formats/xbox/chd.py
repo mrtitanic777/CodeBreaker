@@ -14,6 +14,8 @@ import struct
 import subprocess
 import sys
 
+from codebreaker.base import settings
+
 DESCRIPTION = "CHD (MAME) Xbox disc images: native header info + chdman-driven chd<->iso/verify"
 
 CHD_MAGIC = b"MComprHD"
@@ -59,18 +61,8 @@ def is_chd(path):
 
 
 # ── chdman driver ──────────────────────────────────────────────────────
-def _find_chdman():
-    """settings.json `chdman`, else one on PATH."""
-    import shutil
-    from codebreaker.base import settings
-    p = settings.get("chdman")
-    if p and (os.path.exists(p) or shutil.which(p)):
-        return p
-    return shutil.which("chdman")
-
-
 def _need_chdman():
-    exe = _find_chdman()
+    exe = settings.tool("chdman")
     if not exe:
         raise ChdError("`chdman` not found — install MAME tools (Linux: mame-tools / "
                        "rom-tools; Windows: chdman.exe ships with MAME) and, if it is "

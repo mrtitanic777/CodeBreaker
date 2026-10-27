@@ -448,3 +448,57 @@ def names_of(data):
     """(the public names an object module defines, the external names it needs)"""
     o = read(data)
     return {n for n, s, off in o.pubs}, set(o.ext)
+
+
+def publics(data):
+    """Exact public symbol names from an OMF object's PUBDEF records (0x90/0x91). Length-prefixed
+    names, so no greedy-match errors -- the authoritative `_name@N` decorations wcc386 emitted.
+    It reads only those records, so it reads objects read() cannot (names_of: the full reader)."""
+    out, i, n = set(), 0, len(data)
+
+    def idx(p):                                          # OMF index: 1 byte, or 2 if high bit set
+        b = data[p]
+        return (((b & 0x7f) << 8) | data[p + 1], p + 2) if (b & 0x80) else (b, p + 1)
+
+    while i + 3 <= n:
+        rectype = data[i]
+        length = data[i + 1] | (data[i + 2] << 8)
+        body, end = i + 3, i + 3 + length
+        if end > n:
+            break
+        if rectype in (0x90, 0x91):
+            p = body
+            _grp, p = idx(p)
+            seg, p = idx(p)
+            if seg == 0:
+                p += 2                                   # base frame present when segment index == 0
+            offsz = 2 if rectype == 0x90 else 4
+            while p < end - 1:                           # end-1 is the record checksum
+                ln = data[p]
+                p += 1
+                if p + ln > end:
+                    break
+                out.add(data[p:p + ln].decode("latin1"))
+                p += ln + offsz
+                _t, p = idx(p)
+        i = end
+    return out
+
+
+def externs(data):
+    """External symbol names an OMF object refers to (EXTDEF records, 0x8C)."""
+    out, i, n = [], 0, len(data)
+    while i + 3 <= n:
+        rectype = data[i]
+        end = i + 3 + (data[i + 1] | (data[i + 2] << 8))
+        if end > n:
+            break
+        if rectype == 0x8C:
+            q = i + 3
+            while q < end - 1:                           # end-1 is the record checksum
+                ln = data[q]
+                out.append(data[q + 1:q + 1 + ln].decode("latin1"))
+                q += 1 + ln
+                q += 2 if (q < end and data[q] & 0x80) else 1     # type index
+        i = end
+    return out

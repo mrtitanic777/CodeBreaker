@@ -19,63 +19,32 @@ oracle). First job: confirm MSVC 1.52c runs here and emits code.
 """
 import argparse
 import os
-import subprocess
 import sys
-import tempfile
 
 from codebreaker.base import settings as _settings
 DBX = _settings.get("dosbox_x") or "dosbox-x"                  # settings.json: dosbox_x
 MSVC = _settings.get("msvc152") or ""                          # settings.json: msvc152 (Microsoft C/C++ 8.00c)
 
-CONF = r"""[sdl]
-autolock=false
-[cpu]
-cputype=386
-core=normal
-cycles=max
-[dos]
-ver=6.22
-[autoexec]
-mount c "{msvc}"
-mount d "{work}"
-set PATH=C:\BIN
-set INCLUDE=C:\INCLUDE
-set LIB=C:\LIB
-set TMP=D:\
-d:
-{cmd}
-exit
-"""
-
-
 def compile_c(csrc, flags="/AM /c", stem="t", timeout=180):
-    """Compile csrc with MSVC 1.52c under DOSBox-X. Returns dict with obj bytes,
-    the /Fc listing text, and the raw compiler log."""
+    """Compile csrc with MSVC 1.52c under DOSBox-X (build/dos_tools.py). Returns dict with obj
+    bytes, the /Fc listing text, and the raw compiler log; "work" is the folder it ran in (kept for
+    inspection; the caller cleans it up)."""
+    from codebreaker.build import dos_tools
     if not os.path.exists(DBX):
         sys.exit("dosbox-x not found: %s" % DBX)
     if not os.path.exists(os.path.join(MSVC, "BIN", "CL.EXE")):
         sys.exit("MSVC 1.52c CL.EXE not found under %s" % MSVC)
-    work = tempfile.mkdtemp(prefix="cc16_")
-    try:
-        with open(os.path.join(work, stem + ".C"), "w", newline="\r\n") as f:
-            f.write(csrc)
-        # /Fc emits a mixed source+machine-code listing; /Fo the obj.
-        cmd = ("CL %s /Fc%s.COD /Fo%s.OBJ %s.C > %s.LOG 2>&1"
-               % (flags, stem, stem, stem, stem))
-        conf = os.path.join(work, "cc.conf")
-        with open(conf, "w", newline="\r\n") as f:
-            f.write(CONF.format(msvc=MSVC, work=work, cmd=cmd))
-        subprocess.run([DBX, "-conf", conf, "-nolog"], capture_output=True,
-                       timeout=timeout)
-        out = {"work": work}
-        for ext, key in ((".OBJ", "obj"), (".COD", "cod"), (".LOG", "log")):
-            p = os.path.join(work, stem + ext)
-            if os.path.exists(p):
-                out[key] = open(p, "rb").read() if ext == ".OBJ" else \
-                    open(p, encoding="latin1").read()
-        return out
-    finally:
-        pass  # keep work dir for inspection; caller cleans if desired
+    # /Fc emits a mixed source+machine-code listing; /Fo the obj.
+    cmd = "CL %s /Fc%s.COD /Fo%s.OBJ %s.C > %s.LOG 2>&1" % (flags, stem, stem, stem, stem)
+    _ok, made, work = dos_tools.run(
+        {"c": MSVC}, [cmd], [stem + ext for ext in (".OBJ", ".COD", ".LOG")], timeout=timeout,
+        files={stem + ".C": csrc}, cpu={"cputype": "386", "core": "normal", "cycles": "max"}, dos={"ver": "6.22"},
+        variables={"PATH": r"C:\BIN", "INCLUDE": r"C:\INCLUDE", "LIB": r"C:\LIB", "TMP": "D:\\"})
+    out = {"work": work}
+    for ext, key in ((".OBJ", "obj"), (".COD", "cod"), (".LOG", "log")):
+        if stem + ext in made:
+            out[key] = made[stem + ext] if ext == ".OBJ" else made[stem + ext].decode("latin1")
+    return out
 
 
 def main():

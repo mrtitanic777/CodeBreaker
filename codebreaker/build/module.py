@@ -58,7 +58,7 @@ import subprocess
 from codebreaker.base import cache, corpus, settings
 from codebreaker.build import data, definitions, functions, resources, watcom
 from codebreaker.decompile import c_text
-from codebreaker.formats import detect
+from codebreaker.formats import detect, omf
 from codebreaker.formats import resources as resource_reader
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
@@ -975,7 +975,7 @@ def _publics(folder, stems):
         k = cache.key(body)                                  # (an object's publics: read once, kept by its bytes)
         had = cache.get("omf_publics", k)
         if had is None:
-            symbols = watcom._omf_publics(body)
+            symbols = omf.publics(body)
             cache.put("omf_publics", k, "\n".join(sorted(symbols)).encode("utf-8"))
         else:
             symbols = set(had.decode("utf-8").split("\n")) - {""}
@@ -1096,7 +1096,7 @@ def _build32(b, path, m, folder):
     for o in objects:
         obj = open(os.path.join(folder, o), "rb").read()
         binds = watcom._import_lines(obj, set(m.imports), named, numbered).strip().split("\n")
-        for sym in watcom._omf_externs(obj):
+        for sym in omf.externs(obj):
             mm = _ORDINAL_IMPORT.fullmatch(sym)
             if mm and (mm.group(1).upper(), int(mm.group(2))) in originals:
                 binds.append("import '%s' '%s'.%s" % (sym, mm.group(1).upper(), mm.group(2)))

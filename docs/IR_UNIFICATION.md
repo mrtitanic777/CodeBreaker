@@ -91,3 +91,29 @@ A decompiled function can go straight to any target, judged by the same verdict 
    supported natively in Python and Rust (serde). A binary encoding of the same schema
    (FlatBuffers or Cap'n Proto) is added later only if size or speed demands it.
 3. **Adopted:** phase 2's segment types are built directly as L2 types, once.
+
+## Where it stands, and the order of work (2026-10-26)
+
+Built: the L2 schema (`codebreaker/translate/l2.schema.json`) and its Python side
+(`translate/l2.py`: to_json, from_json, validate); the Java front end and the C++03 back end use the
+hub tree; the native decompiler's PrintIR, first stage (`CB_L2=1`): each function's signature and
+types as an `/*@L2 ... */` note beside its C. Not built: function bodies in L2, a C back end, and
+any c_text pass moved onto the tree. `decompile/c_text.py` is still 2,936 lines with 19 regular
+expression rewrites (and `ctree.py`, a tree-sitter parse of the C, for the passes that moved off
+regexes); `source/readable.py` has 10 more.
+
+The order, each step gated by `tools/golden.py` and the emulator judge before the next:
+
+1. **PrintIR bodies.** Statements and expressions of the structured function as L2, from the same
+   markup PrintC walks, behind `CB_L2=1`. Done when every function of the golden corpus gives a
+   document `l2.validate` accepts.
+2. **The C back end** (`translate/backends/c.py`): L2 to C that compiles with OpenWatcom. Done when,
+   on the golden corpus, it compiles everywhere today's C compiles and the judge gives the same
+   verdicts. Today's path stays the default until then.
+3. **Retire c_text into L2 passes,** one at a time, in L2_BINARY_TYPES.md's order (pointers with
+   an address space first: `_far`, `_far_from_stack`, `_near_calls`). Each pass moved is one regex
+   gone; the count above is the to-do list.
+4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
+   writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
+5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module
+   writer from L2 provenance (module + address).

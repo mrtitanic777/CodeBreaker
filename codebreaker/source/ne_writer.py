@@ -29,6 +29,7 @@ import subprocess
 import capstone
 
 from codebreaker.base import settings
+from codebreaker.compare import image
 from codebreaker.formats.ne import NEFile
 from codebreaker.source import assembly, pe_writer
 
@@ -431,7 +432,7 @@ def reconstruct(path, outdir, stub=None, log=None):
     same = bool(built) and open(built, "rb").read() == w.d
     if built and not same:
         a, b = open(built, "rb").read(), w.d
-        k = next((j for j in range(min(len(a), len(b))) if a[j] != b[j]), min(len(a), len(b)))
+        k = image.first_difference(a, b)
         say("first difference at file offset 0x%x (sizes %d, %d)" % (k, len(a), len(b)))
     return {"source": os.path.join(outdir, name + ".asm"), "image": built, "same": same,
             "instructions": len(w.insns), "raw": len(raw | w._raw), "rounds": rounds, "log": msg[-2000:]}

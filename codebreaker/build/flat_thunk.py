@@ -16,6 +16,8 @@ import os
 import sys
 import struct
 
+from codebreaker.formats import omf
+
 
 # ------------------------------------------------------------------ binary model (PE + NE)
 class PE:
@@ -374,40 +376,6 @@ def _discover_flat_thunk(srcdir):
             "rc": rc[0] if rc else None, "module": module}
 
 
-def _omf_publics(data):
-    """Exact public symbol names from an OMF object's PUBDEF records (0x90/0x91). Length-prefixed
-    names, so no greedy-match errors -- the authoritative `_name@N` decorations wcc386 emitted."""
-    out, i, n = set(), 0, len(data)
-
-    def idx(p):                                          # OMF index: 1 byte, or 2 if high bit set
-        b = data[p]
-        return (((b & 0x7f) << 8) | data[p + 1], p + 2) if (b & 0x80) else (b, p + 1)
-
-    while i + 3 <= n:
-        rectype = data[i]
-        length = data[i + 1] | (data[i + 2] << 8)
-        body, end = i + 3, i + 3 + length
-        if end > n:
-            break
-        if rectype in (0x90, 0x91):
-            p = body
-            _grp, p = idx(p)
-            seg, p = idx(p)
-            if seg == 0:
-                p += 2                                   # base frame present when segment index == 0
-            offsz = 2 if rectype == 0x90 else 4
-            while p < end - 1:                           # end-1 is the record checksum
-                ln = data[p]
-                p += 1
-                if p + ln > end:
-                    break
-                out.add(data[p:p + ln].decode("latin1"))
-                p += ln + offsz
-                _t, p = idx(p)
-        i = end
-    return out
-
-
 _BYVAL = {"POINT": 8, "POINTL": 8, "SIZE": 8, "SIZEL": 8, "RECT": 16, "RECTL": 16, "double": 8,
           "__int64": 8, "LARGE_INTEGER": 8, "ULARGE_INTEGER": 8, "DWORDLONG": 8, "LONGLONG": 8}
 
@@ -508,7 +476,7 @@ def build_flat_thunk_ow(srcdir, outdir=None):
     # records; parse them so by-value structs (POINT=8, RECT=16) get the right N, not a guessed
     # nargs*4. Alias each clean export name to its decorated public symbol.
     obj_bytes = open(os.path.join(outdir, module + ".obj"), "rb").read()
-    publics = _omf_publics(obj_bytes)                   # set of exact public symbol strings
+    publics = omf.publics(obj_bytes)                   # set of exact public symbol strings
     by_clean = {}                                       # clean name -> decorated symbol
     for sym in publics:
         base = sym[1:] if sym.startswith("_") else sym  # drop leading underscore
