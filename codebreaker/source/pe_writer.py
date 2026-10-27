@@ -464,6 +464,35 @@ def _differing(w, data, syms, raw):
     return bad
 
 
+def _stub(w, outdir, say):
+    """The DOS program in front of the headers, from its own source (dos-source) when that
+    comes back as the original's bytes; None (its bytes kept) when it does not, or when it is
+    only the 128-byte "cannot be run in DOS mode" kind too small to be worth it."""
+    d = w.d
+    last, pages = struct.unpack_from("<HH", d, 2)
+    size = (pages - 1) * 512 + (last or 512) if pages else 0
+    if not 0x80 < size <= w.pe.e_lfanew:
+        return None
+    from codebreaker.source import dos_writer
+    sd = os.path.join(outdir, "stub")
+    os.makedirs(sd, exist_ok=True)
+    carved = os.path.join(sd, "original", "STUB.EXE")
+    os.makedirs(os.path.dirname(carved), exist_ok=True)
+    with open(carved, "wb") as f:
+        f.write(d[:size])
+    try:
+        r = dos_writer.reconstruct(carved, sd)
+    except Exception as e:                                   # (a stub the DOS lane cannot take: its bytes)
+        say("the stub: %s" % e)
+        return None
+    built = r.get("file")
+    if built and r.get("file_same"):
+        say("the stub: %d bytes, from its own source (%s)" % (size, r["source"]))
+        return os.path.abspath(built)
+    say("the stub does not come back from its source; its bytes are kept")
+    return None
+
+
 def reconstruct(path, outdir, stub=None, log=None):
     say = log or (lambda s: None)
     if not nasm():
@@ -472,6 +501,9 @@ def reconstruct(path, outdir, stub=None, log=None):
     os.makedirs(outdir, exist_ok=True)
     w = Writer(path)
     name = os.path.basename(path).lower()
+    if stub is None:
+        stub = _stub(w, outdir, say)
+    stub = stub or None
     raw, rounds, built = set(), 0, None
     while rounds < _MAX_ROUNDS:
         rounds += 1
@@ -513,6 +545,7 @@ def main(argv):
     outdir = argv[argv.index("--out") + 1] if "--out" in argv else \
         settings.state("pe_source", os.path.splitext(os.path.basename(path))[0].lower())
     stub = os.path.abspath(argv[argv.index("--stub") + 1]) if "--stub" in argv else None
+    stub = False if "--keep-stub" in argv else stub
     r = reconstruct(path, outdir, stub=stub, log=print)
     n = max(1, r["instructions"])
     print("%s: %d instructions, %d (%d%%) written as bytes; %d round%s; %s" % (
