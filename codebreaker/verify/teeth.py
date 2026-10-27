@@ -190,6 +190,9 @@ def main(argv):
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
     if not path:
         raise SystemExit("no module %r" % args[0])
+    from codebreaker import platforms
+    p = platforms.identify(path)
+    path = p.readable(path) if p else path               # (a .xex: its basefile, as the lanes read it)
     report = run(path, rounds)
     out = out or settings.state("teeth", report["module"] + ".json")
     os.makedirs(os.path.dirname(out), exist_ok=True)

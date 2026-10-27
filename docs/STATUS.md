@@ -14,8 +14,22 @@ drivers, 8-bit and 16-bit consoles) the whole program is also rebuilt from its s
 byte for byte.
 
 How far "verified" can be trusted is itself measured: `teeth` breaks functions the judge passed and
-counts how many breaks it catches (README, "What a verdict means"). It has been run on
-a few modules only; a corpus-wide figure is still to do.
+counts how many breaks it catches (README, "What a verdict means"). Measured 2026-10-27 on 13
+modules (9 32-bit Windows, 3 16-bit Windows, 1 Xbox 360; the reach sample below plus six earlier
+ones), three rounds each, `state/teeth/2026-10-27/`:
+
+| verdict | breaks caught |
+|---|---|
+| VERIFIED | 800 of 1,005 (80%) -- from 66% (calc.exe, wfm0203.acv) to 95% (nec24pin.drv) |
+| VERIFIED (weak) | 175 of 261 (67%) |
+
+By kind of break: a comparison turned round 95%, two arguments swapped 92%, a constant one higher
+68%, a plus made a minus 58%, a store left out 56%. So a VERIFIED function is right about four times
+in five against one small wrong change; read the verified shares below with that margin. Two thirds
+of the breaks that survived (131 of 199) were in functions whose every instruction ran: the inputs
+reached the broken line and the judge did not see its effect -- a store to memory it does not compare,
+a constant whose +1 the inputs do not distinguish. That is the next work on the judge, ahead of more
+inputs.
 
 ## Reach: a sample of every platform on this PC
 
@@ -99,6 +113,9 @@ cannot say), 57 calls through a pointer the test leaves empty, 14 jumps through 
 
 ## Gaps found by this run
 
+- On a fresh run (no verdicts kept) MXF.Xact.dll and MXF.Graphics.dll do not compile: every function
+  fails with C2061 on a structure type it names and nothing declares (`s_sub_98001008_param_1`).
+  The verdicts in the table above were reached before; a fresh store does not reproduce them.
 - `serife.fon` (a 16-bit font resource file) crashes the 16-bit lane: `IndexError: pop from empty list`.
 - Seven Xbox 360 packages in the library do not open: five STFS packages ("index out of range")
   and two `.xenon.package` files of a format not yet known.
