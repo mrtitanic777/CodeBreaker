@@ -654,6 +654,20 @@ def _as_file(p, outdir, stem, linked, result, log=None):
             unpacker = ss + sp // 16 - (len(packed) + 15) // 16
             body = mzfile.compose(tpl, packed, [], cs, ip, ss, sp, max(program, unpacker))
         else:
+            # the relocation table as the original's linker wrote it -- each entry in the frame of
+            # the segment it was recorded in, in the order of its records -- when it names the
+            # same places as the build's; and the memory the original asks for beyond its stack
+            # (a segment of no bytes behind it) when that is more than the stack needs
+            mine = [(seg * 16 + off, (off, seg)) for off, seg in relocs]
+            theirs = [struct.unpack_from("<HH", data, oh["reloc_off"] + 4 * i) for i in range(oh["nreloc"])]
+            if sorted(a for a, _ in mine) == sorted(seg * 16 + off for off, seg in theirs) and theirs != relocs:
+                relocs = theirs
+                result.setdefault("remarks", []).append("the relocation table is written in the original linker's frames and order")
+            asked = struct.unpack_from("<H", data, 0x0A)[0]
+            if asked > beyond:
+                result.setdefault("remarks", []).append("the original asks for %d bytes more memory than its stack needs" % (
+                    16 * (asked - beyond)))
+                beyond = asked
             body = mzfile.compose(tpl, module, relocs, h["cs"], h["ip"], h["ss"], h["sp"], beyond)
     except ValueError as e:
         result.setdefault("notes", []).append("not laid out as the original file: %s" % e)

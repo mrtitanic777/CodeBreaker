@@ -337,7 +337,10 @@ def run(module_path, flags, work, jobs=4):
     out_dir = os.path.join(work, re.sub(r"\W+", "_", flags).strip("_") or "default")
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
-        f.write(m.header.replace("unsigned long long", "unsigned __int64").replace("long long", "__int64"))
+        # (the 32-bit C 8.00 of 1993 -- C13232 -- has no 64-bit integer: a function using one does not match anyway)
+        wide = "double" if os.path.isfile(os.path.join(os.path.dirname(cl), "C13232.EXE")) else "__int64"
+        f.write(m.header.replace("unsigned long long", "unsigned " + wide).replace("long long", wide)
+                .replace("unsigned double", "double"))
     env = dict(os.environ, PATH=os.path.dirname(cl) + os.pathsep + os.environ.get("PATH", ""),
                INCLUDE=os.path.join(os.path.dirname(os.path.dirname(cl)), "INCLUDE"))
     names = list(m.order)
