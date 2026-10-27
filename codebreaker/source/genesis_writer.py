@@ -24,7 +24,8 @@ import sys
 
 from codebreaker.decompile import m68k
 from codebreaker.formats import genesis
-from codebreaker.source.sms_writer import data_lines
+from codebreaker.source import image_writer as w
+from codebreaker.source.image_writer import data_lines
 
 # the console's registers, by the names the hardware documentation gives them
 HARDWARE = {0xC00000: "VDP_DATA", 0xC00004: "VDP_CTRL", 0xC00008: "VDP_HVCOUNTER", 0xC00011: "PSG",
@@ -38,32 +39,22 @@ _HEADER = [(0x100, 16, "system"), (0x110, 16, "copyright"), (0x120, 48, "domesti
            (0x1BC, 12, "modem"), (0x1C8, 40, "notes"), (0x1F0, 16, "regions")]
 
 
-class Function(object):
-    def __init__(self, name):
-        self.name = name
+_HEADER_AT = {at: (n, what) for at, n, what in _HEADER}
+
+
+def _length(insn):
+    return insn.length
 
 
 def _walk(rom):
     mem = rom.data
     limit = len(mem)
-    starts = rom.functions()
-    code, targets, todo, seen = {}, set(), list(starts), set()
-    while todo:
-        pc = todo.pop()
-        while 0x200 <= pc < limit and pc not in seen:
-            seen.add(pc)
-            insn = m68k.decode(mem, pc, pc)
-            if insn is None or pc + insn.length > limit:
-                break
-            code[pc] = insn
-            t = insn.target
-            if t is not None and 0x200 <= t < limit and t % 2 == 0 and insn.flow and insn.mnemonic != "TRAP":
-                targets.add(t)
-                todo.append(t)
-            if insn.flow in ("jump", "ret", "indirect", "halt"):
-                break
-            pc += insn.length
-    return code, targets, starts
+    return w.walk(rom.functions(), lambda pc: m68k.decode(mem, pc, pc),
+                  inside=lambda pc: 0x200 <= pc < limit,
+                  fits=lambda pc, insn: pc + insn.length <= limit,
+                  follows=lambda insn: 0x200 <= insn.target < limit and insn.target % 2 == 0 and insn.flow
+                  and insn.mnemonic != "TRAP",
+                  stops=lambda insn: insn.flow in ("jump", "ret", "indirect", "halt"), size=_length)
 
 
 def _refs(insn):
@@ -91,24 +82,13 @@ def reconstruct(path, folder):
             continue
         main = [v for v in vecs if v in ("reset", "vblank", "hblank", "external")]
         names[at] = "exception" if len(vecs) > 2 else main[0] if main else vecs[0]
-    functions = {}
-    for a in starts:
-        names.setdefault(a, "sub_%06X" % a)
-        functions[a] = Function(names[a])
-    covered = set()
-    for off, insn in code.items():
-        covered.update(range(off + 1, off + insn.length))
+    functions = w.functions(starts, names, "sub_%06X")
+    covered = w.covered(code, _length)
     limit = len(rom.data)
-    labels = {}
 
     def line_start(a):
         return 0x200 <= a < limit and a not in covered and a % 2 == 0
-    for a in sorted(targets):
-        if line_start(a):
-            labels[a] = names.get(a, "L_%06X" % a)
-    for a, n in names.items():
-        if line_start(a):
-            labels[a] = n
+    labels = w.labels(targets, names, line_start, "L_%06X")
     used = set()
     for insn in code.values():
         for v, kind in _refs(insn):
@@ -133,76 +113,33 @@ def reconstruct(path, folder):
         name = labels.get(v) if i else None
         what = {0: "initial stack pointer", 1: "reset"}.get(i) or genesis.VECTOR_NAMES.get(i, "")
         out.append("        dc.l %s%s" % (name or "$%08X" % v, ("  ; " + what) if what else ""))
-    offset = 0x100
-    header_at = {at: (n, what) for at, n, what in _HEADER}
-    data = []
 
-    def flush():
-        out.extend(data_lines(data, "dc.b", "dcb.b %d,$%02X"))
-        del data[:]
-    while offset < limit:
-        if offset in header_at:
-            flush()
-            n, what = header_at[offset]
-            field = rom.data[offset:offset + n]
-            if all(32 <= b < 127 and b != 0x22 for b in field):
-                lines = ['        dc.b "%s"' % field.decode("ascii")]          # a text field as its text
-            else:
-                lines = data_lines(list(field), "dc.b", "dcb.b %d,$%02X")
-            out.extend(["%s  ; %s" % (line, what) if i == 0 else line for i, line in enumerate(lines)])
-            offset += n
-            continue
-        if offset in labels:
-            flush()
-            if offset in functions:
-                out.append("")
-            out.append("%s:" % labels[offset])
-        insn = code.get(offset)
-        if insn is not None:
-            flush()
-            out.append("        " + m68k.text(insn, text_names))
-            offset += insn.length
+    def lines(data):
+        return data_lines(data, "dc.b", "dcb.b %d,$%02X")
+
+    def header(offset, addr, flush):
+        if offset not in _HEADER_AT:
+            return 0
+        flush()
+        n, what = _HEADER_AT[offset]
+        field = rom.data[offset:offset + n]
+        if all(32 <= b < 127 and b != 0x22 for b in field):
+            text = ['        dc.b "%s"' % field.decode("ascii")]          # a text field as its text
         else:
-            data.append(rom.data[offset])
-            if (offset + 1) in labels:
-                flush()
-            offset += 1
-    flush()
+            text = lines(list(field))
+        out.extend(w.commented(text, what))
+        return n
+    w.emit(out, 0x100, limit, rom.data.__getitem__, lambda offset: offset, lambda offset, addr: code.get(offset),
+           labels, functions, lambda insn: m68k.text(insn, text_names), lines, special=header, size=_length)
     source = "\n".join(out) + "\n"
-    src_path = os.path.join(folder, stem + ".asm")
-    with open(src_path, "w", newline="\n") as f:
-        f.write(source)
-    r = {"source": src_path, "functions": functions, "notes": [], "linked": False, "same": False,
-         "code bytes": sum(i.length for i in code.values()), "rom bytes": len(rom.data)}
+    r = w.result(folder, stem + ".asm", source, functions, code, _length, **{"rom bytes": len(rom.data)})
     from codebreaker.build import m68k_asm
-    try:
-        built = m68k_asm.build(source)
-    except ValueError as e:
-        r["notes"].append("does not assemble: %s" % e)
-        return r
-    r["linked"] = True
-    built_path = os.path.join(folder, stem + ".built.md")
-    with open(built_path, "wb") as f:
-        f.write(built)
-    r["built"] = built_path
-    r["same"] = built == rom.data
-    if not r["same"]:
-        first = next((i for i in range(min(len(built), len(rom.data))) if built[i] != rom.data[i]),
-                     min(len(built), len(rom.data)))
-        r["notes"].append("the built image differs from the original at byte %#x" % first)
+    w.assembled(r, lambda: m68k_asm.build(source), rom.data, os.path.join(folder, stem + ".built.md"))
     return r
 
 
 def main(argv):
-    if not argv:
-        print(__doc__.split("\n\n")[0])
-        return 2
-    folder = argv[1] if len(argv) > 1 else os.path.splitext(argv[0])[0] + "_source"
-    r = reconstruct(argv[0], folder)
-    print("%s: %d functions, %d of %d ROM bytes reached as code -> %s" % (
-        os.path.basename(argv[0]), len(r["functions"]), r["code bytes"], r["rom bytes"], r["source"]))
-    print("  rebuilt: %s" % ("identical to the original" if r["same"] else "; ".join(r["notes"]) or "differs"))
-    return 0 if r["same"] else 1
+    return w.main(argv, reconstruct, __doc__)
 
 
 if __name__ == "__main__":

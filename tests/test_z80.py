@@ -236,7 +236,7 @@ def test_spectrum_lane():
     ctx, items, missing = lane.build(m, spectrum("tap"), work)
     assert ctx[0] and not missing
     _at, edited = z80_asm.build_flat(open(m.written["source"]).read().replace("LD A,$04", "LD A,$05", 1))
-    ctx2 = (False, ctx[1], edited)
+    ctx2 = (False, ctx[1], (ctx[1][0], edited))     # (each side: the program, and its bytes)
     assert lane.judge(ctx2, items["start"])[0] == "divergent"
     assert lane.judge(ctx2, items["sub_8017"])[0] == "equivalent"
     assert zx_writer.reconstruct(spectrum("sna"), tempfile.mkdtemp(prefix="cb_zx_"))["same"]
@@ -254,7 +254,7 @@ def test_msx_lane():
     m = lane.prepare(msx_cartridge(), work)
     ctx, items, _missing = lane.build(m, msx_cartridge(), work)
     _at, edited = z80_asm.build_flat(open(m.written["source"]).read().replace("        INC HL\n", "        DEC HL\n", 1))
-    ctx2 = (False, ctx[1], edited)
+    ctx2 = (False, ctx[1], (ctx[1][0], edited))     # (each side: the program, and its bytes)
     tick = next(n for n in items if n.startswith("sub_"))
     assert lane.judge(ctx2, items[tick])[0] == "divergent"
 

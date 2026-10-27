@@ -23,7 +23,8 @@ import sys
 
 from codebreaker.decompile import sm83
 from codebreaker.formats import gb
-from codebreaker.source.sms_writer import data_lines
+from codebreaker.source import image_writer as w
+from codebreaker.source.image_writer import data_lines
 
 # the I/O registers, as hardware.inc names them
 REGISTERS = {0xFF00: "rP1", 0xFF01: "rSB", 0xFF02: "rSC", 0xFF04: "rDIV", 0xFF05: "rTIMA", 0xFF06: "rTMA",
@@ -45,31 +46,17 @@ _HEADER = [(0x0104, 0x30, "Nintendo's logo (the boot ROM checks it)"), (0x0134, 
            (0x014D, 1, "header checksum"), (0x014E, 2, "global checksum")]
 
 
-class Function(object):
-    def __init__(self, name):
-        self.name = name
+_HEADER_AT = {at: (size, what) for at, size, what in _HEADER}
 
 
 def _walk(rom):
     mem = rom.memory()
     limit = min(len(rom.data), 0x8000)
-    starts = rom.functions()
-    code, targets, todo, seen = {}, set(), list(starts), set()
-    while todo:
-        pc = todo.pop()
-        while 0 <= pc < limit and pc not in seen and not 0x104 <= pc < 0x150:
-            seen.add(pc)
-            insn = sm83.decode(mem, pc, pc)
-            if insn is None or pc + insn.size > limit or (pc < 0x104 < pc + insn.size):
-                break
-            code[pc] = insn
-            if insn.target is not None and insn.target < limit and insn.flow:
-                targets.add(insn.target)
-                todo.append(insn.target)
-            if insn.flow in ("jump", "ret", "indirect") or insn.pattern == "STOP":
-                break
-            pc += insn.size
-    return code, targets, starts
+    return w.walk(rom.functions(), lambda pc: sm83.decode(mem, pc, pc),
+                  inside=lambda pc: 0 <= pc < limit and not 0x104 <= pc < 0x150,      # (not the header)
+                  fits=lambda pc, insn: pc + insn.size <= limit and not pc < 0x104 < pc + insn.size,
+                  follows=lambda insn: insn.target < limit and insn.flow,
+                  stops=lambda insn: insn.flow in ("jump", "ret", "indirect") or insn.pattern == "STOP")
 
 
 def reconstruct(path, folder):
@@ -77,26 +64,12 @@ def reconstruct(path, folder):
     os.makedirs(folder, exist_ok=True)
     stem = os.path.splitext(os.path.basename(path))[0]
     code, targets, starts = _walk(rom)
-    names = {}
-    for name, at in rom.vectors.items():
-        if at in starts:
-            names[at] = name
-    functions = {}
-    for a in starts:
-        names.setdefault(a, "sub_%04X" % a)
-        functions[a] = Function(names[a])
-    covered = set()
-    for off, insn in code.items():
-        covered.update(range(off + 1, off + insn.size))
+    names = {at: name for name, at in rom.vectors.items() if at in starts}
+    functions = w.functions(starts, names, "sub_%04X")
+    covered = w.covered(code)
     limit = min(len(rom.data), 0x8000)
     line_at = {a for a in range(limit) if a not in covered}
-    labels = {}
-    for a in sorted(targets):
-        if a in line_at:
-            labels[a] = names.get(a, "L_%04X" % a)
-    for a, n in names.items():
-        if a in line_at:
-            labels[a] = n
+    labels = w.labels(targets, names, line_at.__contains__, "L_%04X")
     pointer = ("LD HL,nn", "LD DE,nn", "LD SP,nn")
     for insn in code.values():
         v = insn.values[-1] if insn.values else None
@@ -119,77 +92,41 @@ def reconstruct(path, folder):
     if used:
         out.append("")
     names_for_text = {**labels, **hardware}
+
+    def lines(data):
+        return data_lines(data, "db", "ds %d, $%02X")
     for bank in range(len(rom.banks)):
         base = 0 if bank == 0 else gb.BANK
+        first = bank * gb.BANK
+        end = first + len(rom.banks[bank])
+        mapped = bank <= 1                   # (the banks seen at power-on: where flow was followed)
         out.append('SECTION "bank%d", %s' % (bank, "ROM0[$0000]" if bank == 0 else "ROMX[$4000], BANK[%d]" % bank))
-        data = []
 
-        def flush():
-            out.extend(data_lines(data, "db", "ds %d, $%02X"))
-            del data[:]
-        offset, end = bank * gb.BANK, bank * gb.BANK + len(rom.banks[bank])
-        mapped = bank <= 1
-        while offset < end:
-            addr = base + offset - bank * gb.BANK
-            if bank == 0 and addr in dict((h[0], 1) for h in _HEADER):
-                flush()
-                at, size, what = next(h for h in _HEADER if h[0] == addr)
-                out.extend(["%s  ; %s" % (line, what) if i == 0 else line
-                            for i, line in enumerate(data_lines(list(rom.data[at:at + size]), "db", "ds %d, $%02X"))])
-                offset += size
-                continue
-            if mapped and addr in labels:
-                flush()
-                if addr in functions:
-                    out.append("")
-                out.append("%s:" % labels[addr])
+        def header(offset, addr, flush, bank=bank):
+            if bank != 0 or addr not in _HEADER_AT:
+                return 0
+            flush()
+            size, what = _HEADER_AT[addr]
+            out.extend(w.commented(lines(list(rom.data[addr:addr + size])), what))
+            return size
+
+        def code_at(offset, addr, end=end, mapped=mapped):
             insn = code.get(addr) if mapped else None
-            if insn is not None and offset + insn.size <= end:
-                flush()
-                out.append("        " + sm83.text(insn, names_for_text))
-                offset += insn.size
-            else:
-                data.append(rom.data[offset])
-                if mapped and (addr + 1) in labels:
-                    flush()
-                offset += 1
-        flush()
+            return insn if insn is not None and offset + insn.size <= end else None
+        w.emit(out, first, end, rom.data.__getitem__, lambda offset, base=base, first=first: base + offset - first,
+               code_at, labels if mapped else {}, functions, lambda insn: sm83.text(insn, names_for_text), lines,
+               special=header)
         out.append("")
     source = "\n".join(out) + "\n"
-    src_path = os.path.join(folder, stem + ".asm")
-    with open(src_path, "w", newline="\n") as f:
-        f.write(source)
-    r = {"source": src_path, "functions": functions, "notes": [], "linked": False, "same": False,
-         "code bytes": sum(i.size for i in code.values()), "rom bytes": len(rom.data)}
+    r = w.result(folder, stem + ".asm", source, functions, code, **{"rom bytes": len(rom.data)})
     from codebreaker.build import sm83_asm
-    try:
-        built = sm83_asm.build(source, len(rom.data), folder)
-    except ValueError as e:
-        r["notes"].append("does not assemble: %s" % e)
-        return r
-    r["linked"] = True
-    built_path = os.path.join(folder, stem + ".built" + os.path.splitext(path)[1])
-    with open(built_path, "wb") as f:
-        f.write(built)
-    r["built"] = built_path
-    r["same"] = built == rom.data
-    if not r["same"]:
-        first = next((i for i in range(min(len(built), len(rom.data))) if built[i] != rom.data[i]),
-                     min(len(built), len(rom.data)))
-        r["notes"].append("the built image differs from the original at byte %#x" % first)
+    w.assembled(r, lambda: sm83_asm.build(source, len(rom.data), folder), rom.data,
+                os.path.join(folder, stem + ".built" + os.path.splitext(path)[1]))
     return r
 
 
 def main(argv):
-    if not argv:
-        print(__doc__.split("\n\n")[0])
-        return 2
-    folder = argv[1] if len(argv) > 1 else os.path.splitext(argv[0])[0] + "_source"
-    r = reconstruct(argv[0], folder)
-    print("%s: %d functions, %d of %d ROM bytes reached as code -> %s" % (
-        os.path.basename(argv[0]), len(r["functions"]), r["code bytes"], r["rom bytes"], r["source"]))
-    print("  rebuilt: %s" % ("identical to the original" if r["same"] else "; ".join(r["notes"]) or "differs"))
-    return 0 if r["same"] else 1
+    return w.main(argv, reconstruct, __doc__)
 
 
 if __name__ == "__main__":

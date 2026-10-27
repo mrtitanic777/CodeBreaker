@@ -9,51 +9,13 @@ does. When it is not identical -- the source was edited -- each function is run 
 compared: how the run ended, D0-D7 A0-A6 and the condition codes, the 64 KB of work RAM, and
 every access to the VDP, the I/O ports and the Z80's bus, in order.
 """
-import hashlib
-import os
+from codebreaker.verify.image_lane import Lane
 
-KIND = "genesis"
-REV = 1
-SAME = "the cartridge built from this source is the original, byte for byte"
 _HARDWARE = [(0xA00000, 0xA1FFFF), (0xC00000, 0xC0001F)]
 _STATES = [dict(d=[0] * 8, a=[0] * 7, fill=0),
            dict(d=[1, 2, 3, 4, 5, 6, 7, 8], a=[0xFF0100, 0xFF0200, 0xFF0300, 0xFF0400, 0xFF0500, 0xFF0600, 0xFF0700], fill=1),
            dict(d=[0x8000, 0xFFFF, 0x7F, 0x80000000, 0x10, 0x20, 0x30, 0x40],
                 a=[0xFF8000, 0xFF9000, 0xFFA000, 0xFFB000, 0xFFC000, 0xFFD000, 0xFFE000], fill=2)]
-
-
-def profile(module_path=None):
-    settings = repr(("genesis", REV, _STATES))
-    return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
-
-
-class Prepared(object):
-    pass
-
-
-def prepare(module_path, work):
-    from codebreaker.source import genesis_writer
-    m = Prepared()
-    m.written = r = genesis_writer.reconstruct(module_path, os.path.join(work, "source"))
-    with open(r["source"], encoding="latin1") as f:
-        text = f.read()
-    functions = r["functions"]
-    m.header = text
-    m.order = [functions[a].name for a in sorted(functions)]
-    m.key = {functions[a].name: "%06x" % a for a in functions}
-    m.all_keys = sorted("%06x" % a for a in functions)
-    m.texts = {n: "; %s, in %s" % (n, os.path.basename(r["source"])) for n in m.order}
-    m.by_name = {functions[a].name: a for a in functions}
-    m.sig = hashlib.sha1(("%d\0%s" % (REV, text)).encode("latin1", "replace")).hexdigest()
-    return m
-
-
-def build(m, module_path, work):
-    r = m.written
-    if not r.get("linked"):
-        why = (r.get("notes") or ["did not build"])[-1][:200]
-        return None, {}, {n: why for n in m.order}
-    return (r["same"], module_path, r["built"]), {n: (m.key[n], m.by_name[n]) for n in m.order}, {}
 
 
 def _effects(path, entry, state):
@@ -71,15 +33,6 @@ def _effects(path, entry, state):
             tuple(run["io"][:4000]))
 
 
-def judge(context, item):
-    same, original, built = context
-    if same:
-        return "equivalent", "", [], SAME
-    _key, entry = item
-    for state in _STATES:
-        a, b = _effects(original, entry, state), _effects(built, entry, state)
-        if a != b:
-            what = ("end", "D registers", "A registers", "condition codes", "RAM", "hardware accesses")
-            first = next(w for w, x, y in zip(what, a, b) if x != y)
-            return "divergent", first + "-differs", [], "from D0=%08X A0=%06X" % (state["d"][0], state["a"][0])
-    return "equivalent", "", [], "the same effects from %d register states" % len(_STATES)
+Lane("genesis", 1, "genesis_writer", _STATES, _effects,
+     ("end", "D registers", "A registers", "condition codes", "RAM", "hardware accesses"),
+     lambda state: "from D0=%08X A0=%06X" % (state["d"][0], state["a"][0]), key="%06x").export(globals())

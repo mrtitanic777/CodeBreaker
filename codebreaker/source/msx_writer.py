@@ -12,7 +12,7 @@ import os
 import sys
 
 from codebreaker.formats import msx
-from codebreaker.source import z80_writer
+from codebreaker.source import image_writer, z80_writer
 
 PORTS = {0x98: "VDP_DATA", 0x99: "VDP_CTRL", 0xA0: "PSG_ADDR", 0xA1: "PSG_WRITE", 0xA2: "PSG_READ",
          0xA8: "PPI_A", 0xA9: "PPI_B", 0xAA: "PPI_C", 0xAB: "PPI_CTRL"}
@@ -36,15 +36,7 @@ def reconstruct(path, folder):
 
 
 def main(argv):
-    if not argv:
-        print(__doc__.split("\n\n")[0])
-        return 2
-    folder = argv[1] if len(argv) > 1 else os.path.splitext(argv[0])[0] + "_source"
-    r = reconstruct(argv[0], folder)
-    print("%s: %d functions, %d of %d bytes reached as code -> %s" % (
-        os.path.basename(argv[0]), len(r["functions"]), r["code bytes"], r["bytes"], r["source"]))
-    print("  rebuilt: %s" % ("identical to the original" if r["same"] else "; ".join(r["notes"]) or "differs"))
-    return 0 if r["same"] else 1
+    return image_writer.main(argv, reconstruct, __doc__, "bytes", "bytes")
 
 
 if __name__ == "__main__":
