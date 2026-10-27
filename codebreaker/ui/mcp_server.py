@@ -811,9 +811,10 @@ def diff_function(module_a: str, module_b: str, addr: str, wait: int = 60) -> di
 
 # ---- code: disassembly, cross-references, a module at a glance --------------------------------
 def _ascii_at(img, va, most=40):
-    """The text stored at a data address, when there is some (4 printable characters or more)."""
+    """The text stored at an address, when there is some (4 printable characters or more; code
+    sections hold strings too, such as a flat thunk's connection-data name)."""
     s = img.span(va)
-    if not s or s[2] or not img.initialised(va):
+    if not s or not img.initialised(va):
         return None
     raw = bytes(s[1][va - s[0]:va - s[0] + most])
     text = raw.split(b"\0")[0]
@@ -834,9 +835,11 @@ def _thunk(img, va):
 
 def _label(img, va):
     """A function's name, with the import it only jumps to; else name+offset, else the address."""
+    t = img.memo(("mcp_thunk", va), lambda im: _thunk(im, va))
     if va in img.names:
-        t = img.memo(("mcp_thunk", va), lambda im: _thunk(im, va))
         return "%s (thunk: %s)" % (img.names[va], _import_name(t[1])) if t else img.names[va]
+    if t:                                          # a thunk no function starts at
+        return "thunk at %x: %s" % (va, _import_name(t[1]))
     owner = img.owner(va)
     return "%s+%x" % (img.names[owner], va - owner) if owner is not None else "%x" % va
 
@@ -850,10 +853,8 @@ def _note(img, ins, fn_start=None):
             return _import_name(img.imports[dest])
         if dest is not None and ins.flow != "jcc":
             owner = img.owner(dest)
-            if dest in img.names:
+            if dest in img.names or owner is not None and owner != fn_start:
                 return _label(img, dest)
-            if owner is not None and owner != fn_start:
-                return "%s+%x" % (img.names[owner], dest - owner)
             if owner is None:
                 return "%x: no known function starts there" % dest
     for op in ins.ops:
@@ -971,10 +972,20 @@ def xrefs(module: str, addr: str) -> dict:
                                                                          "a": "takes the address"}[how], "ins": ins.text}
                        for f, ins, how in refs][:500]
     out["in_data"] = ["%x" % site for kind, _f, site in g.taken.get(va, []) if kind == "data"][:200]
-    if va in img.names:
-        out["calls"] = [{"site": "%x" % s, "kind": k, "to": (_import_name(img.imports[d]) if d in img.imports
-                                                             else lab(d)) if d is not None else "(decided at run time)"}
-                        for s, k, d in g.calls.get(va, [])]
+    if va in img.names:                        # every call, and every jump that leaves the function
+        from codebreaker.analyze import image
+        fn = img.function(va)
+        out["calls"] = []
+        for ins in fn.insns:
+            if ins.flow not in ("call", "jmp"):
+                continue
+            d = image.destination(img, ins)
+            if ins.flow == "jmp" and (d is None and any(t["site"] == ins.addr for t in fn.tables)
+                                      or d is not None and d not in img.imports and fn.start <= d < fn.limit):
+                continue
+            out["calls"].append({"site": "%x" % ins.addr, "kind": "call" if ins.flow == "call" else "tail",
+                                 "to": "(decided at run time)" if d is None else _import_name(img.imports[d])
+                                 if d in img.imports else lab(d)})
     if not (sites or refs or out["in_data"]):
         out["say"] = ("nothing in the module refers to it: it is entered from outside (an export)"
                       if va in img.exports or va in img.roots else "no code or data here refers to it")
