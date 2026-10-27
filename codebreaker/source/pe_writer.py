@@ -267,7 +267,7 @@ class Writer(object):
         if m in _RR and rr and all(any(x in g for g in _REGS) for x in rr.groups()):
             op = bytes(i.bytes)[1 if i.bytes[0] == 0x66 else 0]
             return ("%s_ %s" % (m, ops)) if op & 2 else "%s %s" % (m, ops)
-        ops = ops.replace(" ptr ", " ").replace("xword ", "tword ")
+        ops = ops.replace(" ptr ", " ").replace("xmmword ", "oword ").replace("xword ", "tword ")
         ops = re.sub(r"\[(\w\w:)?(e\w\w\*[248])", r"[nosplit ", ops)
         ops = re.sub(r"\bst\((\d)\)", r"st\1", ops)
         ops = re.sub(r"\b([cdefgs]s):\[", r"[\1:", ops)
@@ -349,6 +349,9 @@ class Writer(object):
                         stop += 1
                     self._data(L, a, stop)
                     a = stop
+            # labels in the part of the section the file does not store (zeros the loader adds): from its end
+            for v in sorted(x for x in self.placed if end <= x < s["va"] + s["extent"]):
+                L.append("%s equ $+0x%x" % (self.placed[v], v - end))
         if self.tail:
             L.append("")
             L.append("section tail start=0x%x vstart=0 align=1" % (len(self.d) - self.tail))

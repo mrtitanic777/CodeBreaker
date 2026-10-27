@@ -215,7 +215,7 @@ class Writer(object):
         if m in pe_writer._RR and rr and all(any(x in g for g in _REGS16) for x in rr.groups()):
             op = bytes(i.bytes)[1 if i.bytes[0] == 0x66 else 0]
             return ("%s_ %s" % (m, ops)) if op & 2 else "%s %s" % (m, ops)
-        ops = ops.replace(" ptr ", " ").replace("xword ", "tword ")
+        ops = ops.replace(" ptr ", " ").replace("xmmword ", "oword ").replace("xword ", "tword ")
         ops = re.sub(r"\bst\((\d)\)", r"st\1", ops)
         ops = re.sub(r"\b([cdefgs]s):\[", r"[\1:", ops)
         if i.imm_size == 2 and m in pe_writer._ARITH:
@@ -326,9 +326,10 @@ class Writer(object):
                 head = "db 0x%02x,0x%02x" % (rec[0], rec[1])
                 where = self.ref(si, r["offset"])
                 if r["kind"] == "INTERNAL" and r["seg"] != 0xFF and r["seg"] in self.by_idx:
-                    L.append("    %s\n    dw %s\n    db 0x%02x,0x%02x\n    dw %s" % (head, where, rec[4], rec[5], self.ref(r["seg"], r["entry"])))
+                    L.extend(["    " + head, "    dw " + where, "    db 0x%02x,0x%02x" % (rec[4], rec[5]),
+                              "    dw " + self.ref(r["seg"], r["entry"])])
                 else:
-                    L.append("    %s\n    dw %s\n    %s" % (head, where, "db " + ",".join("0x%02x" % c for c in rec[4:8])))
+                    L.extend(["    " + head, "    dw " + where, "    db " + ",".join("0x%02x" % c for c in rec[4:8])])
 
     def _data(self, L, si, base, a, end):
         cuts = sorted({x for (sj, x) in self.placed if sj == si and a <= x < end} |
