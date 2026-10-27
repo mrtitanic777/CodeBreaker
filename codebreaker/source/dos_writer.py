@@ -644,7 +644,12 @@ def _as_file(p, outdir, stem, linked, result, log=None):
                     raise ValueError("the EXEPACK unpacker does not build back")
             with open(stub_bin, "rb") as f:
                 stub_code = f.read()
-            packed, (cs, ip, ss, sp) = exepack.pack(module, [seg * 16 + off for off, seg in relocs],
+            sites = [seg * 16 + off for off, seg in relocs]
+            theirs = dos.unpack_exepack(data[oh["header"]:oh["size"]], oh["cs"], oh["ip"])[1]   # (in its table's order)
+            if sorted(theirs) == sorted(sites) and theirs != sites:
+                sites = theirs
+                result.setdefault("remarks", []).append("the relocation table is written in the original linker's order")
+            packed, (cs, ip, ss, sp) = exepack.pack(module, sites,
                                                     (h["cs"], h["ip"]), (h["ss"], h["sp"]), _read_fills(fills),
                                                     stub_code, layout.words)
             # the memory it asks for beyond the stored module: the unpacked program and its stack
@@ -652,7 +657,14 @@ def _as_file(p, outdir, stem, linked, result, log=None):
             # behind it (counted from the stored module rounded up) -- whichever is more
             program = (len(module) + 15) // 16 + max(0, h["ss"] * 16 + h["sp"] - len(module)) // 16 - len(packed) // 16
             unpacker = ss + sp // 16 - (len(packed) + 15) // 16
-            body = mzfile.compose(tpl, packed, [], cs, ip, ss, sp, max(program, unpacker))
+            memory = max(program, unpacker)
+            if abs(oh["min_alloc"] - memory) == 1:
+                # (LINK rounded this count down for some programs and up for others -- CL.EXE of
+                # MSC 6.0a one way, C1.EXE the other -- by a rule not yet found: the original's)
+                result.setdefault("remarks", []).append("the memory it asks for is the original's (%d paragraphs; "
+                                                        "the rule gives %d)" % (oh["min_alloc"], memory))
+                memory = oh["min_alloc"]
+            body = mzfile.compose(tpl, packed, [], cs, ip, ss, sp, memory)
         else:
             # the relocation table as the original's linker wrote it -- each entry in the frame of
             # the segment it was recorded in, in the order of its records -- when it names the

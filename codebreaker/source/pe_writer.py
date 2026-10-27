@@ -213,7 +213,9 @@ class Writer(object):
         if va in self.covered:                               # inside an instruction
             st = self.covered[va]
             return "%s+%d" % (self.placed[st], va - st)
-        return "IMAGE+0x%x" % (va - self.B)
+        if self.B <= va < self.B + self.headers or self.section_of(va) is not None:
+            return "IMAGE+0x%x" % (va - self.B)
+        return "0x%x" % (va & 0xFFFFFFFF)                    # (outside the image: a fixed address)
 
     # -- source --------------------------------------------------------------------------------
     def text(self, i, raw):
@@ -381,6 +383,8 @@ class Writer(object):
         pos = a
         for c in cuts + [end]:
             if c < pos:
+                if c in self.placed:                         # inside the dword just written
+                    L.append("%s equ $-%d" % (self.placed[c], pos - c))
                 continue
             if c > pos:
                 o = self.offset(pos)
