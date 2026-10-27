@@ -23,7 +23,6 @@ filled in where it is not yet -- the imports the kernel core does not implement 
 log once, and the GPU bridge is a scaffold (GPU_DESIGN.md).
 """
 import os
-import struct
 import sys
 
 from codebreaker.recompile import powerpc
@@ -95,7 +94,6 @@ def _sync_tree(src, dst, ignore):
 def _copy_rex_dxbc(dst):
     """Copy the rexglue DXBC shader translator (native/rexglue/dxbc) into a project, without
     build products or standalone tests. -> True when it is there to copy."""
-    import shutil
     src = os.path.join(_REXGLUE, "dxbc")
     if not os.path.isdir(src) or not os.path.exists(os.path.join(src, "CMakeLists.txt")):
         return False
@@ -121,7 +119,6 @@ def _copy_rex_kernel(dst):
     products. Its CMake target hands C++23, header-only fmt and its include folders to whatever
     links it, so the recompiled code compiles against its PPCContext (the bridge).
     -> True when it is there to copy."""
-    import shutil
     src = os.path.join(_REXGLUE, "kernel")
     if not os.path.isdir(src) or not os.path.exists(os.path.join(src, "CMakeLists.txt")):
         return False
@@ -379,132 +376,6 @@ inline uint64_t rex_system_time_100ns() {{
         (uint64_t)duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count() / 100;
     return unix_100ns + 116444736000000000ull;   // 1601->1970 epoch offset
 }}
-"""
-
-
-def _kernel_h(name):
-    return """// rex_kernel.h - from-scratch guest kernel-object layer (host-backed).
-// Guest threads run on host std::threads; dispatcher events are keyed by their
-// guest KEVENT address (the Ke* ABI passes object pointers, not handles);
-// critical sections map to host recursive_mutexes. Modeled on the Xenia XObject
-// decomposition but our own, minimal implementation. Threading / object manager
-// are what let a title get past early init.
-#pragma once
-#include <cstdint>
-
-// the runtime registers how to invoke a recompiled guest function on a fresh
-// context + stack (used to start guest threads).
-typedef void (*RexGuestRunner)(uint32_t entry_addr, uint32_t arg);
-void rex_kernel_set_runner(RexGuestRunner runner);
-
-// guest threads (host std::thread) -> handle
-uint32_t rex_thread_create(uint32_t entry_addr, uint32_t arg, bool suspended);
-void     rex_thread_resume(uint32_t handle);
-void     rex_thread_join(uint32_t handle);
-
-// dispatcher events keyed by guest KEVENT address (Ke* ABI)
-void     rex_event_init(uint32_t guest_addr, bool manual_reset, bool initial);
-void     rex_event_set(uint32_t guest_addr);
-void     rex_event_reset(uint32_t guest_addr);
-uint32_t rex_event_wait(uint32_t guest_addr, uint32_t timeout_ms);  // 0=signaled,0x102=timeout
-
-// critical sections keyed by guest CRITICAL_SECTION address
-void rex_cs_enter(uint32_t guest_addr);
-void rex_cs_leave(uint32_t guest_addr);
-"""
-
-
-def _kernel_cpp(name):
-    return """// rex_kernel.cpp - host-backed implementation of the guest kernel objects.
-#include "rex_kernel.h"
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <chrono>
-#include <unordered_map>
-
-static RexGuestRunner g_runner = nullptr;
-void rex_kernel_set_runner(RexGuestRunner r) { g_runner = r; }
-
-// --- guest threads --------------------------------------------------------
-struct RexThread { uint32_t entry = 0, arg = 0; bool suspended = false; std::thread th; };
-static std::mutex g_thr_mtx;
-static std::unordered_map<uint32_t, RexThread*> g_threads;
-static uint32_t g_next_handle = 0xF0000000u;
-
-static void start_thread(RexThread* t) {
-    if (!g_runner) return;
-    RexGuestRunner run = g_runner;
-    uint32_t e = t->entry, a = t->arg;
-    t->th = std::thread([run, e, a] { run(e, a); });
-}
-uint32_t rex_thread_create(uint32_t entry, uint32_t arg, bool suspended) {
-    std::lock_guard<std::mutex> lk(g_thr_mtx);
-    RexThread* t = new RexThread(); t->entry = entry; t->arg = arg; t->suspended = suspended;
-    uint32_t h = g_next_handle++;
-    g_threads[h] = t;
-    if (!suspended) start_thread(t);
-    return h;
-}
-void rex_thread_resume(uint32_t h) {
-    std::lock_guard<std::mutex> lk(g_thr_mtx);
-    auto it = g_threads.find(h);
-    if (it != g_threads.end() && it->second->suspended && !it->second->th.joinable()) {
-        it->second->suspended = false; start_thread(it->second);
-    }
-}
-void rex_thread_join(uint32_t h) {
-    RexThread* t = nullptr;
-    { std::lock_guard<std::mutex> lk(g_thr_mtx);
-      auto it = g_threads.find(h); if (it != g_threads.end()) t = it->second; }
-    if (t && t->th.joinable()) t->th.join();
-}
-
-// --- dispatcher events (keyed by guest KEVENT address) --------------------
-struct RexEvent { std::mutex m; std::condition_variable cv; bool signaled = false, manual = true; };
-static std::mutex g_ev_mtx;
-static std::unordered_map<uint32_t, RexEvent*> g_events;
-static RexEvent* get_event(uint32_t addr) {
-    std::lock_guard<std::mutex> lk(g_ev_mtx);
-    auto it = g_events.find(addr);
-    if (it != g_events.end()) return it->second;
-    RexEvent* e = new RexEvent(); g_events[addr] = e; return e;
-}
-void rex_event_init(uint32_t addr, bool manual, bool initial) {
-    RexEvent* e = get_event(addr); e->manual = manual; e->signaled = initial;
-}
-void rex_event_set(uint32_t addr) {
-    RexEvent* e = get_event(addr);
-    { std::lock_guard<std::mutex> lk(e->m); e->signaled = true; }
-    e->cv.notify_all();
-}
-void rex_event_reset(uint32_t addr) {
-    RexEvent* e = get_event(addr);
-    std::lock_guard<std::mutex> lk(e->m); e->signaled = false;
-}
-uint32_t rex_event_wait(uint32_t addr, uint32_t timeout_ms) {
-    RexEvent* e = get_event(addr);
-    std::unique_lock<std::mutex> lk(e->m);
-    if (timeout_ms == 0xFFFFFFFFu) {
-        e->cv.wait(lk, [&] { return e->signaled; });
-    } else if (!e->cv.wait_for(lk, std::chrono::milliseconds(timeout_ms),
-                               [&] { return e->signaled; })) {
-        return 0x102u;   // STATUS_TIMEOUT
-    }
-    if (!e->manual) e->signaled = false;
-    return 0u;           // STATUS_SUCCESS (signaled)
-}
-
-// --- critical sections (keyed by guest CRITICAL_SECTION address) ----------
-static std::mutex g_cs_mtx;
-static std::unordered_map<uint32_t, std::recursive_mutex*> g_cs;
-static std::recursive_mutex* get_cs(uint32_t addr) {
-    std::lock_guard<std::mutex> lk(g_cs_mtx);
-    auto it = g_cs.find(addr); if (it != g_cs.end()) return it->second;
-    std::recursive_mutex* m = new std::recursive_mutex(); g_cs[addr] = m; return m;
-}
-void rex_cs_enter(uint32_t addr) { get_cs(addr)->lock(); }
-void rex_cs_leave(uint32_t addr) { get_cs(addr)->unlock(); }
 """
 
 

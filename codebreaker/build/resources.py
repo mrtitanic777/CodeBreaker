@@ -53,7 +53,7 @@ import re
 import struct
 import subprocess
 
-from codebreaker.base import corpus, settings
+from codebreaker.base import corpus
 from codebreaker.build import watcom
 from codebreaker.formats import resources as R
 

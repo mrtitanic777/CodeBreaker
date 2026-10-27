@@ -35,6 +35,9 @@ def test_the_schema_is_valid_and_names_every_node():
     jsonschema.Draft202012Validator.check_schema(s)
     in_schema = set(s['$defs']['Node']['properties']['node']['enum'])
     assert in_schema == set(l2._NODES)                           # ir.py and the schema in step
+    for node in ('Unary', 'Binary', 'Assign', 'Cast'):           # an operator's integer rules, too
+        rules = next(a['enum'] for a in s['$defs'][node]['properties']['overflow']['anyOf'] if 'enum' in a)
+        assert tuple(rules) == ir.OVERFLOW, node
 
 
 @pytest.mark.skipif(not java.jdk()[0], reason='needs a JDK')

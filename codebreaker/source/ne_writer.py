@@ -24,7 +24,6 @@ mnemonic beside it. The DOS program in front (the stub) comes from its own sourc
 import os
 import re
 import struct
-import subprocess
 
 import capstone
 

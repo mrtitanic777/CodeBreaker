@@ -8,7 +8,6 @@ import sys
 import shutil
 import subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import fastqemu  # noqa: F401  (QEMU_FAST=1: Hyper-V)
 import tempfile
 import time
 
@@ -145,7 +144,6 @@ try:
         keys = {"	": "tab", " ": "spc", "-": "minus"}
         mon.send(*["sendkey " + keys.get(ch, ch) for ch in text])
     if "W95KEY" not in os.environ:                   # (the key, from settings.json: a run started from a
-        import re                                    # shell without it typed nothing and gave no verdict)
         from codebreaker.base import settings as _s
         os.environ["W95KEY"] = _s.get("w95_key") or ""   # (settings.json, local)
     key = os.environ["W95KEY"].split("-OEM-")

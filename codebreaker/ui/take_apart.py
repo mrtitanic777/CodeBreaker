@@ -295,7 +295,7 @@ def reverse(path, progress=None, outbase=None):
 
 def main(argv):
     """python -m codebreaker take-apart <program> [--out FOLDER]"""
-    from codebreaker.base import corpus, settings
+    from codebreaker.base import corpus
     if not argv:
         print(main.__doc__)
         return 2

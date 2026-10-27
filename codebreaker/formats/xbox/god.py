@@ -29,8 +29,6 @@ BLOCKS_PER_SUBPART = 0xCC          # 204 data blocks per subpart
 SUBPARTS_PER_PART = 0xCB           # 203 subparts per part
 BLOCKS_PER_PART = 0xA1C4           # = 0xCB * 0xCC data blocks per part
 SUBPART_SIZE = BLOCK * BLOCKS_PER_SUBPART
-# physical size of one part file: master hash + 0xCB*(subpart hash + 204 data)
-PART_PHYS = BLOCK + SUBPARTS_PER_PART * (BLOCK + SUBPART_SIZE)
 
 
 def _phys_offset_in_part(block_in_part):

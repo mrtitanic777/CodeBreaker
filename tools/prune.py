@@ -7,7 +7,7 @@
 
 A top-level name is unused when it appears nowhere in the package, the tests or the tools except
 where it is defined (any appearance counts, also inside a string, so something reached by name
-is kept). Removing one can leave another unused, hence the repetition. Left alone: `main`,
+is kept; the package's .json files count too: a toolchain profile names its plugin class). Removing one can leave another unused, hence the repetition. Left alone: `main`,
 tests, names starting and ending with two underscores, and anything in an `__init__.py`.
 
 Run the tests afterwards; git has everything that was removed.
@@ -23,26 +23,26 @@ WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 VENDORED = ("codebreaker/formats/xbox/crypto/",)
 
 
-def _files():
+def _files(kinds=(".py",)):
     for d in ("codebreaker", "tests", "tools"):
         for base, dirs, files in os.walk(os.path.join(ROOT, d)):
             dirs[:] = [x for x in dirs if x != "__pycache__"]
             for f in files:
-                if f.endswith(".py"):
+                if f.endswith(kinds):
                     yield os.path.join(base, f)
 
 
 def find():
     """[(path, name, first line, last line)] of unused top-level definitions in the package."""
     count, texts = {}, {}
-    for p in _files():
+    for p in _files((".py", ".json")):
         texts[p] = open(p, encoding="utf-8", errors="replace").read()
         for w in WORD.findall(texts[p]):
             count[w] = count.get(w, 0) + 1
     out = []
     for p, text in texts.items():
         rel = os.path.relpath(p, ROOT).replace("\\", "/")
-        if not rel.startswith("codebreaker/") or rel.endswith("__init__.py") or rel.endswith("__main__.py") or rel.startswith(VENDORED):
+        if not rel.startswith("codebreaker/") or not rel.endswith(".py") or rel.endswith("__init__.py") or rel.endswith("__main__.py") or rel.startswith(VENDORED):
             continue
         try:
             tree = ast.parse(text)

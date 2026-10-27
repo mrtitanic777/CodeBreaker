@@ -16,7 +16,6 @@ Variants: the kit's version ("version": a folder of the kit, or "1.10": the pre-
 """
 import hashlib
 import os
-import pickle
 import re
 import shutil
 import struct

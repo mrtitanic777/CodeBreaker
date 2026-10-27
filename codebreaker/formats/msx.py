@@ -11,7 +11,6 @@ in page 1 ($4000) -- 32 KB ones fill pages 1 and 2 -- or, rarely, at $0000 or $8
 by its INIT address. Cartridges over 48 KB switch banks through a mapper (Konami, ASCII ...), which
 this lane does not follow yet: only the part seen at power-on would come back.
 """
-import os
 import struct
 
 EXTENSIONS = (".rom", ".mx1", ".mx2")

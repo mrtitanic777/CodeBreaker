@@ -17,7 +17,6 @@ arguments; the result (AX, and DX for a function that returns four bytes); what 
 data segment; how many bytes of arguments were removed; and whether SI, DI and DS were kept.
 Where the two differ is the first thing a reader needs: it says which.
 """
-import hashlib
 import os
 import re
 

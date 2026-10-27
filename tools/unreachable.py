@@ -4,8 +4,16 @@
     python tools/unreachable.py [--delete]
 
 Starts from what a person can actually run -- the commands listed in codebreaker/__main__.py,
-the tests and the tools -- and follows imports (including those made inside functions). Anything in the package not reached that way is not part of the
-program: nothing runs it and nothing checks it. `--delete` removes those files (git keeps them).
+the tests, the tools (and their subfolders), and every module that runs as a program of its own
+(`if __name__ == "__main__"`: `python -m codebreaker.x.y`) -- and follows imports, including those
+made inside functions and those made by name:
+
+    "codebreaker.a.b"            a string that is a module's name (`-m`, import_module, a command table)
+    "codebreaker.a.b:name"       a plugin, in a string or a toolchain profile (exact/toolchains/*.json)
+    "codebreaker.a." + name      a package whose modules are loaded by name: all of them
+
+Anything in the package not reached that way is not part of the program: nothing runs it and
+nothing checks it. `--delete` removes those files (git keeps them).
 """
 import ast
 import os
@@ -27,19 +35,40 @@ def _path(mod):
     return None
 
 
+_NAMED = re.compile(r"codebreaker(?:\.[A-Za-z_]\w*)+(?=:[A-Za-z_])")       # "codebreaker.a.b:name"
+
+
+def _package(name):
+    """Every module of a package, for a package whose modules are loaded by name."""
+    init = _path(name)
+    if not init or not init.endswith("__init__.py"):
+        return set()
+    return {name + "." + f[:-3] for f in os.listdir(os.path.dirname(init))
+            if f.endswith(".py") and f != "__init__.py"}
+
+
 def _imports(path, mod):
     text = open(path, encoding="utf-8", errors="replace").read()
+    if path.endswith(".json"):
+        return set(_NAMED.findall(text))
     out = set()
     tree = ast.parse(text)
     for node in ast.walk(tree):
-        # a string that is exactly a module name: `-m`, import_module(...), a command table
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and \
-                re.fullmatch(r"codebreaker(?:\.[A-Za-z_]\w*)+", node.value):
-            out.add(node.value)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            # a string that is exactly a module name: `-m`, import_module(...), a command table
+            if re.fullmatch(r"codebreaker(?:\.[A-Za-z_]\w*)+", node.value):
+                out.add(node.value)
+            # a package a name is added to: "codebreaker.platforms." + m
+            elif re.fullmatch(r"codebreaker(?:\.[A-Za-z_]\w*)+\.", node.value):
+                out |= _package(node.value[:-1])
+            out |= set(_NAMED.findall(node.value))
         if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("codebreaker"):
             out.add(node.module)
             out |= {node.module + "." + a.name for a in node.names}
     return out
+
+
+_MAIN = re.compile(r"""^if __name__ == ["']__main__["']\s*:""", re.M)
 
 
 def reachable():
@@ -48,9 +77,19 @@ def reachable():
     roots += [m for m, _a in COMMANDS.values()]
     seen, work = set(), list(roots)
     for d in ("tests", "tools"):
-        for f in os.listdir(os.path.join(ROOT, d)):
-            if f.endswith(".py"):
-                work += list(_imports(os.path.join(ROOT, d, f), d))
+        for base, dirs, files in os.walk(os.path.join(ROOT, d)):
+            dirs[:] = [x for x in dirs if x != "__pycache__"]
+            work += [m for f in files if f.endswith(".py") for m in _imports(os.path.join(base, f), d)]
+    # what the package loads by name from data (toolchain profiles), and every module that is a
+    # program of its own
+    for base, dirs, files in os.walk(os.path.join(ROOT, "codebreaker")):
+        dirs[:] = [x for x in dirs if x != "__pycache__"]
+        for f in files:
+            p = os.path.join(base, f)
+            if f.endswith(".json"):
+                work += list(_imports(p, ""))
+            elif f.endswith(".py") and _MAIN.search(open(p, encoding="utf-8", errors="replace").read()):
+                work.append(os.path.relpath(p, ROOT)[:-3].replace(os.sep, ".").replace("/", "."))
     while work:
         mod = work.pop()
         while mod and not _path(mod):                        # codebreaker.a.b.func -> codebreaker.a.b

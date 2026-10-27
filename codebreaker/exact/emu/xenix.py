@@ -21,7 +21,9 @@ for in WORKDIR first (so /tmp and the files being compiled live there), then in 
 """
 import os, sys, struct, time
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INSN, UcError
-from unicorn.x86_const import *
+from unicorn.x86_const import (UC_X86_INS_OUT, UC_X86_REG_AX, UC_X86_REG_BP, UC_X86_REG_BX, UC_X86_REG_CS,
+                               UC_X86_REG_CX, UC_X86_REG_DI, UC_X86_REG_DS, UC_X86_REG_EFLAGS, UC_X86_REG_ES,
+                               UC_X86_REG_IP, UC_X86_REG_SI, UC_X86_REG_SP, UC_X86_REG_SS)
 
 CS, DS = 0x1000, 0x3000
 ENOENT, EBADF, ENOTTY, EINVAL = 2, 9, 25, 22

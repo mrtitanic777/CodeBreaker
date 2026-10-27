@@ -82,11 +82,21 @@ def _alone(tree, node):
     return False
 
 
+def _noqa(path, line):
+    """Is the import at `line` marked `# noqa` (an import made for what loading the module does)?
+    pyflakes does not read those marks; the import statement may span lines, the mark is on its first."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for n, text in enumerate(f, 1):
+            if n == line:
+                return "# noqa" in text
+    return False
+
+
 def unused_imports(apply=False):
     found = {}
     for path, line, msg in flakes():
         m = re.match(r"'(.+?)' imported but unused", msg)
-        if m:
+        if m and not _noqa(path, line):
             local = m.group(1).split(" as ")[-1].split(".")[-1] if " as " in m.group(1) else m.group(1).split(".")[-1]
             found.setdefault(path, {}).setdefault(line, set()).add(local)
             # `import a.b` binds `a`; `from x import y` binds `y`

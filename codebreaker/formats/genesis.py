@@ -19,7 +19,6 @@ refuses to start a cartridge without it). There is no bank switching below 4 MB:
 simply at $000000-$3FFFFF. An .smd dump (a copier's 512-byte header, then 16 KB blocks stored
 odd bytes first) is turned into that plain image.
 """
-import os
 import struct
 
 EXTENSIONS = (".md", ".bin", ".gen", ".smd")

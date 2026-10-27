@@ -30,7 +30,6 @@ WORD = 4
 _tls = threading.local()
 # flow does not go on past these; calls (bl bla bcl bctrl bclrl) come back
 _ENDERS = {"b", "ba", "blr", "bctr", "bctrl", "rfi", "rfid"}
-_CALLS = {"bl", "bla", "bcl", "bctrl", "bclrl"}
 
 
 def _md():

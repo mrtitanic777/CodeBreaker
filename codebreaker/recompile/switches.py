@@ -19,7 +19,6 @@ bounds .pdata gives. Every executable section is scanned.
 import struct
 
 
-
 class Image:
     def __init__(self, data, base):
         self.data = data
@@ -481,18 +480,6 @@ def extent(funcs, addr, text_start, text_end):
     return lo, hi
 
 
-def read_pdata(img, start, size):
-    funcs = []
-    for off in range(0, size, 8):
-        begin, packed = struct.unpack_from('>II', img.data, start - img.base + off)
-        if begin == 0:
-            continue
-        length = ((packed >> 8) & 0x3FFFFF) * 4
-        funcs.append((begin, begin + length))
-    funcs.sort()
-    return funcs
-
-
 def containing(funcs, addr):
     import bisect
     i = bisect.bisect_right(funcs, (addr, 0xFFFFFFFF)) - 1
@@ -504,7 +491,6 @@ def containing(funcs, addr):
 def find(path):
     """-> ([table], {counts}) for an image or .xex. A table is a dict: bctr, r (the index
     register), default, labels, kind, table, guard, inline, func."""
-    import os
     from codebreaker.formats import powerpc_image, xex
     image = powerpc_image.read(xex.basefile(path) if xex.is_xex(path) else path)
     lo, hi = image.code
@@ -537,8 +523,6 @@ def find(path):
         kinds[t['kind']] = kinds.get(t['kind'], 0) + 1
     return found, {"tables": len(found), "kinds": kinds, "unresolved": failed, "outside": outside,
                    "pointer_calls": unguarded}
-
-
 
 
 def write(path, found):

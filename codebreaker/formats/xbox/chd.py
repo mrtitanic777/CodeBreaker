@@ -53,13 +53,6 @@ def read_header(path):
     }
 
 
-def is_chd(path):
-    try:
-        return open(path, "rb").read(8) == CHD_MAGIC
-    except OSError:
-        return False
-
-
 # ── chdman driver ──────────────────────────────────────────────────────
 def _need_chdman():
     exe = settings.tool("chdman")

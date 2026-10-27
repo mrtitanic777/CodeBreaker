@@ -12,7 +12,6 @@ access to the I/O registers and the bank controller, in order.
 from codebreaker.verify.image_lane import Lane
 
 _IO = (0xFF00, 0xFF7F)
-_MBC = (0x0000, 0x7FFF)       # writes there go to the bank controller
 _STATES = [dict(a=0, b=0, c=0, d=0, e=0, h=0, l=0, fill=0), dict(a=1, b=2, c=3, d=0xC1, e=0x00, h=0xC2, l=0x10, fill=1),
            dict(a=0x80, b=0xFF, c=0x7F, d=0xC0, e=0x80, h=0xC1, l=0x00, fill=2),
            dict(a=0x55, b=0x10, c=0xAA, d=0xD0, e=0x00, h=0xC8, l=0x40, fill=3)]

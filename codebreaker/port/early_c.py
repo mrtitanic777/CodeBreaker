@@ -26,7 +26,6 @@ import collections
 import os
 import functools
 import re
-import subprocess
 
 KEYWORDS = {"auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern",
             "float", "for", "goto", "if", "int", "long", "register", "return", "short", "signed", "sizeof", "static",
@@ -62,30 +61,6 @@ def blank(text):
     """the text with what is inside its comments, strings and character constants made spaces (newlines and
     the quotes kept, every offset the same): what is code (a text seen before: as it was - the passes ask often)"""
     return _BLANK_RX.sub(_blank_one, text)
-
-
-def blank_slow(text):
-    """blank, a character at a time (what blank must give: the test of it)"""
-    out = list(text)
-    i, n = 0, len(text)
-    while i < n:
-        if text.startswith("/*", i):
-            j = text.find("*/", i + 2)
-            j = n if j < 0 else j + 2
-            for k in range(i, j):
-                if out[k] != "\n":
-                    out[k] = " "
-            i = j
-        elif text[i] in "\"'":
-            q, j = text[i], i + 1
-            while j < n and text[j] != q and text[j] != "\n":
-                j += 2 if text[j] == "\\" else 1
-            for k in range(i + 1, min(j, n)):
-                out[k] = " "
-            i = j + 1
-        else:
-            i += 1
-    return "".join(out)
 
 
 def sub_code(text, rx, fn):
@@ -3524,8 +3499,6 @@ def truthy(body, name):
     return bool(uses) and all(re.search(r"(?:(?:^|[^\w\s\])]|\b(?:if|while|for|return))\s*\(|!|&&|\|\|)\s*$",
                                         body[:u.start()]) and   # (a call's argument is no test)
                               re.match(r"\s*(?:\)|&&|\|\|)", body[u.end():]) for u in uses)
-
-
 
 
 # what the compilers say, by the kind of complaint: gcc's words, clang's, MSVC's

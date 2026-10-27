@@ -9,7 +9,6 @@ source; --out writes one line a function (address, verdict) for comparing two ru
 """
 import collections
 import importlib
-import os
 
 from codebreaker.exact import carve, draft
 

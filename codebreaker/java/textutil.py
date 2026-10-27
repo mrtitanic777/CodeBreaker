@@ -37,14 +37,3 @@ def write_text(path, text):
         f.write(text)
 
 
-def balanced_paren(s, open_idx):
-    """The index of the `)` closing the `(` at `open_idx` (nesting counted, literals not), or -1."""
-    depth = 0
-    for i in range(open_idx, len(s)):
-        if s[i] == '(':
-            depth += 1
-        elif s[i] == ')':
-            depth -= 1
-            if depth == 0:
-                return i
-    return -1

@@ -25,7 +25,6 @@ classes share (a compiler-merged body) keeps no class name.
 """
 import json
 import os
-import struct
 import sys
 from collections import defaultdict
 

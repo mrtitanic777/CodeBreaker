@@ -9,10 +9,9 @@ and C from bits 11 and 15; ADD SP,e and LD HL,SP+e set H and C from the low byte
 and clear Z; DAA works from N H C as the Z80's does but leaves H clear. The I/O registers at
 $FF00-$FF7F and $FFFF are the machine's: a Bus hands them to callbacks and logs each access.
 """
-import re
 
 from codebreaker.decompile import sm83 as table
-from codebreaker.emulate.z80 import Bus, Stop  # (the same 64 KB bus with mapped ranges)
+from codebreaker.emulate.z80 import Bus, Stop  # noqa: F401 (sm83.Bus: the same 64 KB bus with mapped ranges)
 
 MAX_STEPS = 200000
 FZ, FN, FH, FC = 0x80, 0x40, 0x20, 0x10

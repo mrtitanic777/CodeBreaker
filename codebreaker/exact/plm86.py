@@ -13,7 +13,6 @@ A source's $INCLUDEd files are the project's headers (the profile's "headers" ex
 """
 import hashlib
 import os
-import pickle
 import re
 import shutil
 import tempfile

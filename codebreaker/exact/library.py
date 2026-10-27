@@ -28,7 +28,6 @@ src/CRTLIB, one line each:
 
     library.find(project) -> Map (.modules [Placed], .start, .raws, .lines())
 """
-import os
 import struct
 
 from codebreaker.exact import omf

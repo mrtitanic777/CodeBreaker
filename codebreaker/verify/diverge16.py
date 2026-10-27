@@ -199,7 +199,6 @@ def explain(original, folder, names, image=None):
 
 
 if __name__ == "__main__":
-    import capstone  # noqa  (the emulator's disassembler, loaded before the workers)
     for n, r in explain(sys.argv[1], sys.argv[2], sys.argv[3:]):
         print("%s: %s" % (n, r.get("class")))
         for k in ("args", "gate", "original", "ours", "reads_original", "reads_ours", "same_before", "fault"):

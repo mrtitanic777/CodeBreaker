@@ -24,7 +24,6 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from codebreaker.base import settings                       # noqa: E402
 from codebreaker.decompile import decompiler                 # noqa: E402
 from codebreaker.symbols import prototypes, sdk_structs      # noqa: E402
 

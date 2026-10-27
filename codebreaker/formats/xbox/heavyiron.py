@@ -183,23 +183,6 @@ def align(n, a):
     return (n + a - 1) // a * a
 
 
-def repack_inslot(data, edits):
-    """edits: list of (asset, newbytes), each <= the asset's slot. In-place patch, no cascade.
-    The slot tail is zero-filled, so this is not byte-identical to the source when the original
-    padding was non-zero (harmless to the engine)."""
-    buf = bytearray(data)
-    for a, nd in edits:
-        if len(nd) > a["totalDataSize"]:
-            raise ValueError("asset %016X: %d bytes > slot %d (use replace())"
-                             % (a["assetID"], len(nd), a["totalDataSize"]))
-        off = a["absDataOff"]
-        buf[off:off + len(nd)] = nd
-        for i in range(off + len(nd), off + a["actualSize"]):
-            buf[i] = 0
-        struct.pack_into(">i", buf, a["absSizeOff"], len(nd))
-    return buf
-
-
 def replace(P, data, assetID, newdata, layer_idx=None):
     """Replace an asset with newdata of ANY size. Same slot -> in-place; else rebuild that
     layer's 0x800-aligned block, relocate to EOF, and fix offToStart + sizes. Pass layer_idx
@@ -265,8 +248,6 @@ def replace(P, data, assetID, newdata, layer_idx=None):
         if ss["type"] == 1:
             struct.pack_into(">i", buf, ss["pos"] + 8, len(adata))
     return buf
-
-
 
 
 # ---- textures ---------------------------------------------------------------------------------------

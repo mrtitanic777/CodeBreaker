@@ -188,10 +188,6 @@ def expand(packed):
     raise ValueError("not a COMPRESS file")
 
 
-def is_compressed(head):
-    return head[:4] in (b"SZDD", b"KWAJ") or head[:8] == b"SZ \x88\xf0\x27\x33\xd1"
-
-
 def main(argv):
     out = argv[argv.index("--out") + 1] if "--out" in argv else None
     files = [a for a in argv if not a.startswith("--") and a != out]

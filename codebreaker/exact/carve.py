@@ -23,8 +23,6 @@ import struct
 
 from codebreaker.exact import library
 
-RETS = (b"\xc3", b"\xcb")                                   # (ret, retf; ret n / retf n are 3 bytes)
-
 
 def _rel(img, k):
     return struct.unpack_from("<h", img, k)[0]

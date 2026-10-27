@@ -18,7 +18,6 @@ Run under the XENIX emulator (emu/xenix.py). The object is a Version 7 a.out (ex
 """
 import hashlib
 import os
-import pickle
 import re
 import shutil
 import struct

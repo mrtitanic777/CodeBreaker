@@ -147,9 +147,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
     PSP = psp or globals()["PSP"]                # (the PSP's segment: some passes need to be loaded low, some high)
     TOP = top or globals()["TOP"]                # (the top of memory: some programs fail above 512K)
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INTR, UC_HOOK_BLOCK, UC_HOOK_CODE, UcError
-    from unicorn.x86_const import (UC_X86_REG_AX, UC_X86_REG_BX, UC_X86_REG_CX, UC_X86_REG_DX, UC_X86_REG_SI,
-        UC_X86_REG_DI, UC_X86_REG_BP, UC_X86_REG_SP, UC_X86_REG_IP, UC_X86_REG_CS, UC_X86_REG_DS,
-        UC_X86_REG_ES, UC_X86_REG_SS, UC_X86_REG_EFLAGS)
+    from unicorn.x86_const import UC_X86_REG_AX, UC_X86_REG_BX, UC_X86_REG_CX, UC_X86_REG_DX, UC_X86_REG_SI, UC_X86_REG_DI, UC_X86_REG_SP, UC_X86_REG_IP, UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_ES, UC_X86_REG_SS, UC_X86_REG_EFLAGS
     # fs: a MemFS - the files the program opens, makes, removes kept in memory (the disk only read)
     fsopen = fs.open if fs else ropen
     fsisfile = fs.isfile if fs else os.path.isfile

@@ -7,7 +7,6 @@ mini-Windows: protected mode, paging off, so linear = physical).
 A loaded code segment is the file's bytes with its fix-ups patched in: it is recognised by the
 bytes no fix-up touches. The module's data segment (written to as it runs) by its own bytes
 likewise, with a looser bar."""
-import struct
 import os
 import sys
 
