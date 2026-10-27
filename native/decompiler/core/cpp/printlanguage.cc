@@ -131,6 +131,7 @@ void PrintLanguage::pushOp(const OpToken *tok,const PcodeOp *op)
 {
   if (pending < nodepend.size()) // Pending varnode pushes before op
     recurse();			// So we must recurse
+  placeOp(tok,op);		// CodeBreaker: the tree's view of the same push
 
   bool paren;
   int4 id;
@@ -164,6 +165,7 @@ void PrintLanguage::pushAtom(const Atom &atom)
 {
   if (pending < nodepend.size()) // pending varnodes before atom
     recurse();			// So we must recurse
+  placeAtom(atom);		// CodeBreaker: the tree's view of the same push
 
   if (revpol.empty())
     emitAtom(atom);

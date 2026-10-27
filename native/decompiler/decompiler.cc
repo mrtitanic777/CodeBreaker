@@ -43,6 +43,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -655,13 +656,15 @@ bool g_structs = false;
 // function is preceded by `/*@L2 {...} */`, its type as L2 JSON -- the hub IR's "fn": convention,
 // near or far, the bytes it removes, each parameter's type and where it is (stack offset or
 // register), the result's type and where it is. Pointers carry their address space. Off by
-// default: the C is not changed. (Bodies come later; codebreaker.translate.l2.validate judges it.)
+// default: the C is not changed. The body follows (PrintL2, below); codebreaker.translate.l2.validate
+// judges the document.
 bool g_l2 = false;
 
 std::string jsonText(const std::string& s) {
   std::string out = "\"";
   for (char c : s) {
     if (c == '"' || c == '\\') { out += '\\'; out += c; }
+    else if (c == '/' && !out.empty() && out.back() == '*') out += "\\/";   // (never `*/`: a note is a comment)
     else if ((unsigned char)c < 0x20) { char b[8]; std::snprintf(b, sizeof b, "\\u%04x", c); out += b; }
     else out += c;
   }
@@ -771,6 +774,480 @@ std::string l2Function(Architecture& m, Funcdata* fd, bool flat) {
          "\"sym\":{\"kind\":\"function\",\"name\":" + jsonText(fd->getName()) + ",\"static\":true,\"type\":" + fn + "}," +
          "\"ret\":" + (ot == nullptr ? std::string("{\"kind\":\"void\"}") : l2Type(ot, flat)) +
          ",\"origin\":" + origin + "}";
+}
+
+// PrintIR, second stage: the function's body as L2 -- the statements and expressions PrintC
+// prints, from the same walk. PrintL2 is PrintC with its output thrown away: the block emitters
+// are PrintC's own, made to build statement nodes, and every expression is read off the core's
+// expression stack as PrintC places its operators and leaves (the placeOp/placeAtom hooks,
+// docs/GHIDRA_FORK.md C19), so casts, fields, array indexing and negated conditions are PrintC's
+// choices. What has no L2 node yet becomes Unsupported with the C token it was.
+class PrintL2 : public PrintC {
+  struct Tree {
+    const OpToken* tok = nullptr;          // an operator; else a leaf
+    const PcodeOp* op = nullptr;
+    std::string name;                      // a leaf's printed text
+    int atype = -1;                        // a leaf's PrintLanguage::tagtype
+    const Varnode* vn = nullptr;
+    const Datatype* ct = nullptr;          // a cast's type, as PrintC pushed it
+    std::vector<std::unique_ptr<Tree>> kids;
+  };
+  struct Item {                            // one statement, or the condition a branch tests
+    std::string stmt, expr;
+    bool cond = false;
+  };
+  std::ostringstream sink_;
+  std::vector<std::pair<Tree*, int>> stack_;        // operators waiting for operands, and how many they have
+  std::unique_ptr<Tree> open_;                      // the expression being placed
+  std::vector<std::unique_ptr<Tree>> done_;         // expressions completed since the last take()
+  std::vector<std::vector<Item>> lists_;            // statement lists being built, innermost last
+  bool flat_;
+  int unsupported_ = 0;
+  Tree* cast_ = nullptr;                            // the cast operator placed last, waiting for its type
+
+  void complete(void) {
+    while (!stack_.empty()) {
+      auto& top = stack_.back();
+      if (++top.second < top.first->tok->stage) return;
+      stack_.pop_back();
+    }
+    done_.push_back(std::move(open_));
+  }
+  void attach(std::unique_ptr<Tree> t) {
+    Tree* raw = t.get();
+    if (stack_.empty()) open_ = std::move(t);
+    else stack_.back().first->kids.push_back(std::move(t));
+    if (raw->tok != nullptr && raw->tok->stage > 0) stack_.push_back({raw, 0});
+    else complete();
+  }
+
+ public:
+  explicit PrintL2(Architecture* g, bool flat) : PrintC(g), flat_(flat) {
+    delete emit;                                              // (unbuffered: no line is ever ended, and the
+    emit = new EmitNoMarkup();                                //  pretty printer's token buffer would fill)
+    setOutputStream(&sink_);
+    initializeFromArchitecture();
+    adjustTypeOperators();
+  }
+  int unsupported(void) const { return unsupported_; }
+
+  void placeOp(const OpToken* tok, const PcodeOp* op) override {
+    auto t = std::make_unique<Tree>();
+    t->tok = tok;
+    t->op = op;
+    cast_ = tok->type == OpToken::presurround ? t.get() : nullptr;
+    attach(std::move(t));
+  }
+  void pushType(const Datatype* ct) override {
+    // (only while that cast is still waiting for its operands: compared, never followed, before)
+    if (cast_ != nullptr && !stack_.empty() && stack_.back().first == cast_ && cast_->ct == nullptr) cast_->ct = ct;
+    cast_ = nullptr;
+    PrintC::pushType(ct);
+  }
+  void placeAtom(const Atom& a) override {
+    auto t = std::make_unique<Tree>();
+    t->name = a.name;
+    t->atype = a.type;
+    t->op = a.op;
+    if (a.type == vartoken) t->vn = a.ptr_second.vn;
+    attach(std::move(t));
+  }
+
+  // ------------------------------------------------------------------------------- expressions
+  std::string type(const Datatype* t) { return l2Type(const_cast<Datatype*>(t), flat_); }
+  std::string unsupported(const std::string& kind, const std::string& raw) {
+    ++unsupported_;
+    return "{\"node\":\"Unsupported\",\"kind\":" + jsonText(kind) + ",\"raw\":" + jsonText(raw) + "}";
+  }
+  std::string sym(const std::string& kind, const std::string& name) {
+    return "{\"kind\":\"" + kind + "\",\"name\":" + jsonText(name) + "}";
+  }
+  std::string lit(const Tree& t) {
+    const Varnode* vn = t.vn;
+    std::string ty = (vn != nullptr) ? ",\"type\":" + type(vn->getHighTypeReadFacing(t.op)) : "";
+    if (!t.name.empty() && t.name[0] == '"')         // a string: its C text, quotes taken off
+      return "{\"node\":\"Lit\"" + ty + ",\"value\":" + jsonText(t.name.substr(1, t.name.size() - 2)) + "}";
+    if (vn != nullptr && vn->isConstant()) {
+      const Datatype* ct = vn->getHighTypeReadFacing(t.op);
+      if (ct->getMetatype() == TYPE_BOOL)
+        return "{\"node\":\"Lit\"" + ty + ",\"value\":" + (vn->getOffset() ? "true" : "false") + "}";
+      if (ct->getMetatype() != TYPE_FLOAT) {
+        uintb v = vn->getOffset();
+        int bits = 8 * vn->getSize();
+        if (ct->getMetatype() == TYPE_INT && bits < 64 && ((v >> (bits - 1)) & 1))
+          return "{\"node\":\"Lit\"" + ty + ",\"value\":" + std::to_string((long long)v - (1ll << bits)) + "}";
+        return "{\"node\":\"Lit\"" + ty + ",\"value\":" + std::to_string((unsigned long long)v) + "}";
+      }
+    }
+    return "{\"node\":\"Lit\"" + ty + ",\"value\":" + jsonText(t.name) + "}";
+  }
+  std::string leaf(const Tree& t) {
+    switch (t.atype) {
+    case vartoken: {
+      const Varnode* vn = t.vn;
+      if (vn != nullptr && (vn->isConstant() || vn->isAnnotation())) return lit(t);
+      if (!t.name.empty() && (t.name[0] == '"' || t.name[0] == '\'' || std::isdigit((unsigned char)t.name[0])))
+        return lit(t);
+      std::string kind = "local";
+      Symbol* s = (vn != nullptr && vn->getHigh() != nullptr) ? vn->getHigh()->getSymbol() : nullptr;
+      if (s != nullptr && s->getCategory() == Symbol::function_parameter) kind = "param";
+      else if (s != nullptr && s->getScope() != nullptr && s->getScope()->isGlobal()) kind = "global";
+      std::string ty = (vn != nullptr && vn->getHigh() != nullptr) ? ",\"type\":" + type(vn->getHigh()->getType()) : "";
+      return "{\"node\":\"Name\"" + ty + ",\"sym\":" + sym(kind, t.name) + "}";
+    }
+    case functoken:
+    case optoken:
+      return "{\"node\":\"Name\",\"sym\":" + sym("function", t.name) + "}";
+    case fieldtoken:
+      return "{\"node\":\"Name\",\"sym\":" + sym("field", t.name) + "}";
+    case syntax:                                              // a number PrintC writes as plain text
+      if (!t.name.empty() && std::all_of(t.name.begin(), t.name.end(), [](char c) { return std::isdigit((unsigned char)c); }))
+        return "{\"node\":\"Lit\",\"value\":" + t.name + "}";
+      return unsupported("syntax", t.name);
+    default:
+      return unsupported("token", t.name);
+    }
+  }
+  // the arguments of a call: the comma operators PrintC joins them with, flattened
+  void args(const Tree& t, std::vector<std::string>& out) {
+    if (t.tok != nullptr && t.tok->type == OpToken::binary && t.tok->print1 == ",") {
+      for (auto& k : t.kids) args(*k, out);
+      return;
+    }
+    if (t.tok == nullptr && t.atype == blanktoken) return;      // f(): no arguments
+    out.push_back(expr(t));
+  }
+  std::string optype(const Tree& t) {
+    const Varnode* out = (t.op != nullptr) ? t.op->getOut() : nullptr;
+    return (out != nullptr && out->getHigh() != nullptr) ? ",\"type\":" + type(out->getHighTypeDefFacing()) : "";
+  }
+  std::string expr(const Tree& t) {
+    if (t.tok == nullptr) return leaf(t);
+    const OpToken& k = *t.tok;
+    auto kid = [&](size_t i) { return i < t.kids.size() ? expr(*t.kids[i]) : unsupported("missing", k.print1); };
+    switch (k.type) {
+    case OpToken::binary: {
+      const std::string& p = k.print1;
+      if (p == "=")
+        return "{\"node\":\"Assign\",\"target\":" + kid(0) + ",\"value\":" + kid(1) + "}";
+      if (p.size() >= 2 && p.back() == '=' && p != "==" && p != "!=" && p != "<=" && p != ">=")
+        return "{\"node\":\"Assign\",\"op\":" + jsonText(p.substr(0, p.size() - 1)) + ",\"target\":" + kid(0) +
+               ",\"value\":" + kid(1) + "}";
+      if (p == "::") return kid(1);                          // a scope's name before a symbol's: the symbol
+      if (p == "." || p == "->") {
+        std::string field = t.kids.size() > 1 ? t.kids[1]->name : "";
+        std::string obj = p == "->" ? "{\"node\":\"Unary\",\"op\":\"*\",\"x\":" + kid(0) + "}" : kid(0);
+        return "{\"node\":\"Select\"" + optype(t) + ",\"obj\":" + obj + ",\"sym\":" + sym("field", field) + "}";
+      }
+      return "{\"node\":\"Binary\"" + optype(t) + ",\"op\":" + jsonText(p) + ",\"left\":" + kid(0) +
+             ",\"right\":" + kid(1) + "}";
+    }
+    case OpToken::unary_prefix:
+      return "{\"node\":\"Unary\"" + optype(t) + ",\"op\":" + jsonText(k.print1) + ",\"x\":" + kid(0) + "}";
+    case OpToken::postsurround:
+      if (k.print1 == "(") {                                  // a call: the function, then its arguments
+        std::vector<std::string> a;
+        if (t.kids.size() > 1) args(*t.kids[1], a);
+        std::string list;
+        for (auto& s : a) list += (list.empty() ? "" : ",") + s;
+        return "{\"node\":\"Call\"" + optype(t) + ",\"target\":" + kid(0) + ",\"args\":[" + list + "]}";
+      }
+      if (k.print1 == "[")
+        return "{\"node\":\"Index\"" + optype(t) + ",\"arr\":" + kid(0) + ",\"index\":" + kid(1) + "}";
+      break;
+    case OpToken::presurround:
+      if (k.print1 == "(" && !t.kids.empty() && (t.ct != nullptr || (t.op != nullptr && t.op->getOut() != nullptr)))
+        return "{\"node\":\"Cast\",\"type\":" + type(t.ct ? t.ct : t.op->getOut()->getHighTypeDefFacing()) +
+               ",\"x\":" + expr(*t.kids.back()) + "}";                     // a cast: (type) x
+      break;
+    case OpToken::hiddenfunction:
+    case OpToken::space:
+      if (t.kids.size() == 1) return kid(0);                  // nothing printed: what it applies to
+      break;
+    }
+    return unsupported("operator", k.print1 + k.print2);
+  }
+  // the expressions PrintC placed while `f` ran
+  std::vector<std::string> capture(const std::function<void()>& f) {
+    size_t before = done_.size();
+    f();
+    std::vector<std::string> out;
+    for (size_t i = before; i < done_.size(); ++i) out.push_back(expr(*done_[i]));
+    done_.resize(before);
+    return out;
+  }
+
+  // ------------------------------------------------------------------------------- statements
+  std::string label(const FlowBlock* bl) {                    // PrintC::emitLabel, as a name
+    bl = bl->getFrontLeaf();
+    if (bl == nullptr) return "";
+    const BlockBasic* bb = (const BlockBasic*)bl->subBlock(0);
+    Address addr = bb->getEntryAddr();
+    if (!bb->hasSpecialLabel() && bb->getType() == FlowBlock::t_basic) {
+      Symbol* s = bb->getFuncdata()->getScopeLocal()->queryCodeLabel(addr);
+      if (s != nullptr) return s->getDisplayName();
+    }
+    std::ostringstream lb;
+    lb << (bb->isJoined() ? "joined_" : bb->isDuplicated() ? "dup_" : "code_") << addr.getShortcut();
+    addr.printRaw(lb);
+    return lb.str();
+  }
+  void add(const std::string& stmt) { lists_.back().push_back({stmt, "", false}); }
+  void addLabel(const FlowBlock* bl) {                        // PrintC::emitLabelStatement
+    if (isSet(only_branch) || !bl->isUnstructuredTarget() || bl->getType() != FlowBlock::t_copy) return;
+    add("{\"node\":\"Labeled\",\"label\":" + jsonText(label(bl)) + ",\"body\":[]}");
+  }
+  void addAnyLabel(const FlowBlock* bl) {
+    if (bl->isLabelBumpUp()) return;
+    bl = bl->getFrontLeaf();
+    if (bl != nullptr) addLabel(bl);
+  }
+  std::string jump(const FlowBlock* target, uint4 type) {
+    if (type == FlowBlock::f_break_goto) return "{\"node\":\"Break\"}";
+    if (type == FlowBlock::f_continue_goto) return "{\"node\":\"Continue\"}";
+    return "{\"node\":\"Goto\",\"label\":" + jsonText(target ? label(target) : "") + "}";
+  }
+  // the statements `bl` prints with these modes
+  std::vector<Item> collect(const FlowBlock* bl, uint4 on, uint4 off = 0) {
+    pushMod();
+    unsetMod(off);
+    setMod(on);
+    lists_.emplace_back();
+    bl->emit(this);
+    std::vector<Item> got = std::move(lists_.back());
+    lists_.pop_back();
+    popMod();
+    return got;
+  }
+  static std::string array(const std::vector<Item>& items) {
+    std::string s;
+    for (auto& i : items)
+      s += (s.empty() ? "" : ",") + (i.cond ? "{\"node\":\"ExprStmt\",\"expr\":" + i.expr + "}" : i.stmt);
+    return "[" + s + "]";
+  }
+  // one expression of what `bl` prints as a condition: statements in it joined by the comma operator
+  std::string condition(const FlowBlock* bl, uint4 on, uint4 off = 0) {
+    std::vector<Item> got = collect(bl, on, off);
+    std::string e;
+    for (auto& i : got) {
+      std::string x = i.expr.empty() ? unsupported("statement", "") : i.expr;
+      e = e.empty() ? x : "{\"node\":\"Binary\",\"op\":\",\",\"left\":" + e + ",\"right\":" + x + "}";
+    }
+    return e.empty() ? unsupported("condition", "") : e;
+  }
+
+  void emitBlockBasic(const BlockBasic* bb) override {
+    addLabel(bb);
+    if (isSet(only_branch)) {
+      const PcodeOp* inst = bb->lastOp();
+      if (inst != nullptr && inst->isBranch())
+        for (auto& e : capture([&] { emitExpression(inst); })) lists_.back().push_back({"", e, true});
+      return;
+    }
+    for (auto it = bb->beginOp(); it != bb->endOp(); ++it) {
+      const PcodeOp* inst = *it;
+      if (inst->notPrinted()) continue;
+      if (inst->isBranch() && (isSet(no_branch) || inst->code() == CPUI_BRANCH)) continue;
+      const Varnode* vn = inst->getOut();
+      if (vn != nullptr && vn->isImplied()) continue;
+      statement(inst);
+    }
+  }
+  void statement(const PcodeOp* inst) {
+    std::vector<std::string> e = capture([&] { emitExpression(inst); });
+    std::string x = e.empty() ? "" : e.back();
+    if (inst->code() == CPUI_CBRANCH || inst->code() == CPUI_BRANCHIND) {
+      lists_.back().push_back({"", x.empty() ? unsupported("condition", "") : x, true});
+      return;
+    }
+    if (inst->code() == CPUI_RETURN && inst->getHaltType() == 0) {
+      lists_.back().push_back({"{\"node\":\"Return\"" + (x.empty() ? "" : ",\"expr\":" + x) + "}", x, false});
+      return;
+    }
+    if (x.empty()) x = unsupported("statement", get_opname(inst->code()));
+    lists_.back().push_back({"{\"node\":\"ExprStmt\",\"expr\":" + x + "}", x, false});
+  }
+  void emitBlockGraph(const BlockGraph* bl) override {
+    for (FlowBlock* b : bl->getList()) b->emit(this);
+  }
+  void emitBlockCopy(const BlockCopy* bl) override {
+    addAnyLabel(bl);
+    bl->subBlock(0)->emit(this);
+  }
+  void emitBlockGoto(const BlockGoto* bl) override {
+    for (auto& i : collect(bl->getBlock(0), no_branch)) lists_.back().push_back(i);
+    if (bl->gotoPrints()) add(jump(bl->getGotoTarget(), bl->getGotoType()));
+  }
+  void emitBlockLs(const BlockList* bl) override {
+    if (isSet(only_branch)) {
+      bl->getBlock(bl->getSize() - 1)->emit(this);
+      return;
+    }
+    int n = bl->getSize();
+    if (n == 0) return;
+    pushMod();
+    setMod(no_branch);
+    for (int i = 0; i < n - 1; ++i) bl->getBlock(i)->emit(this);
+    popMod();
+    bl->getBlock(n - 1)->emit(this);                         // the last keeps the caller's modes
+  }
+  void emitBlockCondition(const BlockCondition* bl) override {
+    if (isSet(no_branch)) {
+      bl->getBlock(0)->emit(this);
+      return;
+    }
+    if (isSet(only_branch) || isSet(comma_separate)) {
+      std::string a = condition(bl->getBlock(0), 0);
+      std::string b = condition(bl->getBlock(1), comma_separate, only_branch);
+      std::string op = bl->getOpcode() == CPUI_BOOL_AND ? "&&" : "||";
+      lists_.back().push_back({"", "{\"node\":\"Binary\",\"op\":\"" + op + "\",\"left\":" + a + ",\"right\":" + b + "}", true});
+    }
+  }
+  void emitBlockIf(const BlockIf* bl) override {
+    pushMod();
+    unsetMod(no_branch | only_branch | pending_brace);
+    const FlowBlock* cb = bl->getBlock(0);
+    for (auto& i : collect(cb, no_branch)) lists_.back().push_back(i);
+    std::string cond = condition(cb, only_branch);
+    FlowBlock::block_type t = bl->getType();
+    std::string s = "{\"node\":\"If\",\"cond\":" + cond + ",\"then\":";
+    std::vector<Item> after;
+    if (t == FlowBlock::t_ifgoto) {
+      const BlockIfGoto* g = (const BlockIfGoto*)bl;
+      s += "[" + jump(g->getGotoTarget(), g->getGotoType()) + "]";
+    }
+    else {
+      s += array(collect(bl->getBlock(1), no_branch));
+      if (t == FlowBlock::t_ifelse) s += ",\"orelse\":" + array(collect(bl->getBlock(2), no_branch));
+      else if (t == FlowBlock::t_ifnoexit) after = collect(bl->getBlock(2), no_branch);
+    }
+    add(s + "}");
+    for (auto& i : after) lists_.back().push_back(i);
+    popMod();
+  }
+  void emitBlockWhileDo(const BlockWhileDo* bl) override {
+    pushMod();
+    unsetMod(no_branch | only_branch);
+    addAnyLabel(bl);
+    const FlowBlock* cb = bl->getBlock(0);
+    if (bl->getIterateOp() != nullptr) {                      // PrintC::emitForLoop
+      std::string init, step;
+      if (const PcodeOp* op = bl->getInitializeOp())
+        for (auto& e : capture([&] { pushMod(); setMod(comma_separate); emitExpression(op); popMod(); }))
+          init += (init.empty() ? "" : ",") + ("{\"node\":\"ExprStmt\",\"expr\":" + e + "}");
+      std::string cond = condition(cb, comma_separate);
+      for (auto& e : capture([&] { pushMod(); setMod(comma_separate); emitExpression(bl->getIterateOp()); popMod(); }))
+        step += (step.empty() ? "" : ",") + ("{\"node\":\"ExprStmt\",\"expr\":" + e + "}");
+      add("{\"node\":\"For\",\"init\":[" + init + "],\"cond\":" + cond + ",\"update\":[" + step + "],\"body\":" +
+          array(collect(bl->getBlock(1), no_branch)) + "}");
+    }
+    else if (bl->hasOverflowSyntax()) {                       // while (true) { cond's statements; if (c) break; ...
+      std::vector<Item> body = collect(cb, no_branch);
+      body.push_back({"{\"node\":\"If\",\"cond\":" + condition(cb, only_branch) + ",\"then\":[{\"node\":\"Break\"}]}", "", false});
+      for (auto& i : collect(bl->getBlock(1), no_branch)) body.push_back(i);
+      add("{\"node\":\"While\",\"cond\":{\"node\":\"Lit\",\"type\":{\"kind\":\"bool\"},\"value\":true},\"body\":" +
+          array(body) + "}");
+    }
+    else {
+      std::string cond = condition(cb, comma_separate);
+      add("{\"node\":\"While\",\"cond\":" + cond + ",\"body\":" + array(collect(bl->getBlock(1), no_branch)) + "}");
+    }
+    popMod();
+  }
+  void emitBlockDoWhile(const BlockDoWhile* bl) override {
+    pushMod();
+    unsetMod(no_branch | only_branch);
+    addAnyLabel(bl);
+    std::string body = array(collect(bl->getBlock(0), no_branch));
+    add("{\"node\":\"DoWhile\",\"body\":" + body + ",\"cond\":" + condition(bl->getBlock(0), only_branch) + "}");
+    popMod();
+  }
+  void emitBlockInfLoop(const BlockInfLoop* bl) override {
+    pushMod();
+    unsetMod(no_branch | only_branch);
+    addAnyLabel(bl);
+    add("{\"node\":\"DoWhile\",\"body\":" + array(collect(bl->getBlock(0), 0)) +
+        ",\"cond\":{\"node\":\"Lit\",\"type\":{\"kind\":\"bool\"},\"value\":true}}");
+    popMod();
+  }
+  void emitBlockSwitch(const BlockSwitch* bl) override {
+    pushMod();
+    unsetMod(no_branch | only_branch);
+    for (auto& i : collect(bl->getSwitchBlock(), no_branch)) lists_.back().push_back(i);
+    std::string sel = condition(bl->getSwitchBlock(), only_branch | comma_separate);
+    const Datatype* ct = bl->getSwitchType();
+    std::string cases;
+    int n = bl->getNumCaseBlocks();
+    for (int i = 0; i < n; ++i) {
+      std::string labels;
+      if (!bl->isDefaultCase(i))
+        for (int j = 0; j < bl->getNumLabels(i); ++j) {
+          uintb v = bl->getLabel(i, j);
+          int bits = 8 * (int)ct->getSize();
+          std::string value = (ct->getMetatype() == TYPE_INT && bits < 64 && ((v >> (bits - 1)) & 1))
+              ? std::to_string((long long)v - (1ll << bits)) : std::to_string((unsigned long long)v);
+          labels += (labels.empty() ? "" : ",") + ("{\"node\":\"Lit\",\"type\":" + type(ct) + ",\"value\":" + value + "}");
+        }
+      std::vector<Item> body;
+      if (bl->getGotoType(i) != 0) body.push_back({jump(bl->getCaseBlock(i), bl->getGotoType(i)), "", false});
+      else {
+        body = collect(bl->getCaseBlock(i), 0);
+        if (bl->isExit(i) && i != n - 1) body.push_back({"{\"node\":\"Break\"}", "", false});
+      }
+      cases += (cases.empty() ? "" : ",") + ("{\"node\":\"Case\",\"labels\":[" + labels + "],\"default\":" +
+               (bl->isDefaultCase(i) ? "true" : "false") + ",\"body\":" + array(body) + "}");
+    }
+    add("{\"node\":\"Switch\",\"expr\":" + sel + ",\"cases\":[" + cases + "]}");
+    popMod();
+  }
+
+  // the body: the locals, then the statements
+  std::string body(Funcdata* fd) {
+    lists_.clear();
+    lists_.emplace_back();
+    pushScope(fd->getScopeLocal());                          // (names as seen from inside: no `f::x`)
+    const BlockGraph& g = fd->getStructure();
+    if (g.getSize() != 0) g.emit(this);
+    else emitBlockGraph(&fd->getBasicBlocks());              // (not structured: the blocks in order)
+    std::string locals;
+    ScopeLocal* loc = fd->getScopeLocal();
+    std::set<std::string> said;
+    for (MapIterator it = loc->begin(); it != loc->end(); ++it) {
+      const Symbol* s = (*it)->getSymbol();
+      if (s == nullptr || s->getCategory() == Symbol::function_parameter || s->getType() == nullptr) continue;
+      if (s->getType()->getMetatype() == TYPE_CODE || !said.insert(s->getDisplayName()).second) continue;
+      locals += (locals.empty() ? "" : ",") + ("{\"node\":\"Local\",\"sym\":" + sym("local", s->getDisplayName()) +
+                ",\"type\":" + type(s->getType()) + "}");
+    }
+    std::string stmts = array(lists_.back());
+    lists_.clear();
+    popScope();
+    clear();
+    return "[" + locals + (locals.empty() || stmts == "[]" ? "" : ",") + stmts.substr(1);
+  }
+};
+
+// The function as L2: its declaration (l2Function), its parameters and its body.
+std::string l2Document(Architecture& m, Funcdata* fd, bool flat, int* unsupported) {
+  std::string decl = l2Function(m, fd, flat);
+  std::string params;
+  const FuncProto& p = fd->getFuncProto();
+  for (int i = 0; i < p.numParams(); ++i) {
+    ProtoParameter* q = p.getParam(i);
+    params += (params.empty() ? "" : ",") + ("{\"node\":\"Param\",\"sym\":{\"kind\":\"param\",\"name\":" +
+              jsonText(q->getName()) + "},\"type\":" + l2Type(q->getType(), flat) + "}");
+  }
+  std::string body;
+  try {
+    PrintL2 l2(&m, flat);
+    body = l2.body(fd);
+    if (unsupported) *unsupported = l2.unsupported();
+  } catch (LowlevelError& e) {
+    body = "[{\"node\":\"Unsupported\",\"kind\":\"body\",\"raw\":" + jsonText(e.explain) + "}]";
+    if (unsupported) *unsupported = 1;
+  }
+  decl.pop_back();                                            // (the closing brace: two more fields)
+  return decl + ",\"params\":[" + params + "],\"body\":" + body + "}";
 }
 
 struct FieldUse { int size; Datatype* type; };
@@ -1313,7 +1790,7 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
         out << "/*@P return " << rt->getSize() << " */" << std::endl;
     }
     out << struct_notes;
-    if (g_l2) out << "/*@L2 " << l2Function(m, t.first, d.x86_32) << " */" << std::endl;
+    if (g_l2) out << "/*@L2 " << l2Document(m, t.first, d.x86_32, nullptr) << " */" << std::endl;
     m.print->docFunction(t.first);
   } catch (LowlevelError& e) {
     out << "/* decompile failed: " << e.explain << " */" << std::endl;
@@ -1471,3 +1948,4 @@ int main(int argc, char** argv) {
   }
   return 0;
 }
+

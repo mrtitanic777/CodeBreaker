@@ -290,6 +290,10 @@ protected:
   void setMod(uint4 m) { mods |= m; }						///< Activate the given printing modification
   void unsetMod(uint4 m) { mods &= ~m; }					///< Deactivate the given printing modification
   void pushOp(const OpToken *tok,const PcodeOp *op);			///< Push an operator token onto the RPN stack
+  /// CodeBreaker: where an operator or a leaf takes its place in the expression tree (after any pending
+  /// sub-expressions before it are placed): a printer that builds a tree (PrintL2) reads them here
+  virtual void placeOp(const OpToken *tok,const PcodeOp *op) {}
+  virtual void placeAtom(const Atom &atom) {}
   void pushAtom(const Atom &atom);					///< Push a variable token onto the RPN stack
   void pushVn(const Varnode *vn,const PcodeOp *op,uint4 m);	///< Push an expression rooted at a Varnode onto the RPN stack
   void pushVnExplicit(const Varnode *vn,const PcodeOp *op);		///< Push an explicit variable onto the RPN stack

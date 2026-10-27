@@ -107,6 +107,13 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
 1. **PrintIR bodies.** Statements and expressions of the structured function as L2, from the same
    markup PrintC walks, behind `CB_L2=1`. Done when every function of the golden corpus gives a
    document `l2.validate` accepts.
+   **Done 2026-10-27.** `PrintL2` in `native/decompiler/decompiler.cc` is PrintC with its output
+   discarded: its block emitters build If/While/For/DoWhile/Switch/Goto/Labeled statements, and each
+   expression is rebuilt as a tree from the core's expression stack through two hooks (fork change
+   C19, `placeOp`/`placeAtom`), so the tree has PrintC's casts, fields, indexing and negated
+   conditions. `python tools/l2check.py`: all 6,808 golden functions the core decompiles give a valid
+   document, with no Unsupported node left (45 more fail in the core itself and have no C either).
+   The C is unchanged: `tools/golden.py check` gives the same differences as master's build. (Not yet carried: comments, and the address of each statement as `origin`.)
 2. **The C back end** (`translate/backends/c.py`): L2 to C that compiles with OpenWatcom. Done when,
    on the golden corpus, it compiles everywhere today's C compiles and the judge gives the same
    verdicts. Today's path stays the default until then.
