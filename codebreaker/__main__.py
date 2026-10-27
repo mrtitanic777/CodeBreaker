@@ -69,7 +69,7 @@
                                     platform there is no lane for yet), and with --judge how far its
                                     lane gets; a few of each platform, one at a time
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
-    mcp [--http PORT]               CodeBreaker as an MCP server for an assistant (stdio; claude mcp add)
+    mcp [--http PORT]               CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)
     progress [--once] [--window]    watch a running sweep
     app [file-or-module]            the desktop window
     workbench [--forms]             the Workbench: the earlier CodeBreaker's Windows 95-style window

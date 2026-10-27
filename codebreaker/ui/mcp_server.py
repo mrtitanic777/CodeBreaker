@@ -1,14 +1,17 @@
 r"""mcp_server.py -- CodeBreaker as an MCP server: what the console shows, for an assistant to use.
 
     python -m codebreaker mcp                     serve over stdin/stdout (what an MCP client starts)
+    python -m codebreaker mcp --http PORT         streamable HTTP on 127.0.0.1, behind a bearer token
     claude mcp add codebreaker -- python -m codebreaker mcp      (or the project's .mcp.json)
 
 The same reading and the same jobs as the web console (server.py), as tools an assistant such
 as Claude Code calls. Three kinds:
 
-    reading     instant, nothing changes: describe, inspect, strings, hex_dump, resource,
-                modules, coverage, progress, functions, function, names, identify, demangle,
-                commands, command_help
+    reading     nothing changes: describe, inspect, strings, hex_dump, resource, modules,
+                coverage, progress, functions, function, names, identify, demangle, commands,
+                command_help; what was made: reach_results, projects, project, source_tree,
+                read_file (only inside Converted/, state/, this checkout and the source tree);
+                worked out on asking, kept an hour: decompile_function, compare_versions
     jobs        any command of `python -m codebreaker` run as a process of its own, below normal
                 priority, its output kept in state/ui_jobs/ (as the console's jobs): run_command,
                 jobs, job, job_file, stop_job. At most two at a time, at most one `measure`.
@@ -17,19 +20,22 @@ as Claude Code calls. Three kinds:
 
 Every answer is capped (MOST characters) and pages with offset/limit where it can be long. The
 ledger behind coverage, modules and progress reads the whole corpus (minutes when cold), so it is
-worked out in the background and remembered; a call that finds it not ready yet says so instead
-of holding the client past its timeout. Stdout is the protocol: the MCP library points file 1 at
+worked out in the background and remembered, and kept in state/mcp/ledger.json so a server
+started later answers at once from the last one (saying how old it is) while a fresh one is made;
+a call that finds neither says so instead of holding the client past its timeout. Stdout is the protocol: the MCP library points file 1 at
 stderr while serving, so anything the commands print cannot corrupt it.
 """
 import functools
 import io
 import json
 import os
+import re
+import sys
 import threading
 import time
 from contextlib import closing, redirect_stdout
 
-from codebreaker.base import corpus
+from codebreaker.base import corpus, settings
 from codebreaker.formats import inspect
 from codebreaker.store import functions as F
 from codebreaker.ui import server
@@ -42,8 +48,11 @@ drivers, Xbox, Xbox 360, 8/16-bit consoles, XNA, Java) and checks that the sourc
 original by running both in an emulator. Start with `describe` on a file or `modules` for the corpus;
 `inspect` for headers/imports/exports; `functions` and `function` for what the store holds (each
 function's reconstructed C and its verdict: verified, weak, unverified, not-judged, no-compile,
-no-source). Anything long (decompile, measure, reach --judge, pe-source, recompile-project) goes
-through `run_command`, then `job` to follow it. A module is a corpus name (lz32.dll) or a path."""
+no-source); `decompile_function` for one function's C now. What was made lives in `projects`/`project`
+(Converted/), `source_tree` (the product's source tree) and `reach_results`; `read_file` reads any of
+it. `compare_versions` matches two builds function by function. Anything long (decompile, measure,
+reach --judge, pe-source, recompile-project) goes through `run_command`, then `job` to follow it.
+A module is a corpus name (lz32.dll) or a path."""
 
 
 # ---- plumbing --------------------------------------------------------------------------------
@@ -198,31 +207,54 @@ def resource(module: str, offset: int, size: int, type_id: int = -1, wide: bool 
 
 
 def _ledger():
+    """The ledger, worked out, and kept on disk so a server started later has it at once."""
     from codebreaker.coverage import ledger
-    return _quiet(ledger.measure)
+    led = _quiet(ledger.measure)
+    if "error" not in led:
+        path = settings.state("mcp", "ledger.json")
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump({"time": time.time(), "ledger": led}, f, default=str)
+        os.replace(path + ".tmp", path)
+    return led
+
+
+def _ledger_now(refresh=False):
+    """(ledger, None) when it is known; (the one kept on disk, a note how old) while it is
+    being worked out again; (None, not-ready answer) when there is neither."""
+    led, waited = SLOW.get("ledger", _ledger, again=refresh)
+    if led is not None:
+        return led, None
+    try:
+        with open(settings.state("mcp", "ledger.json"), encoding="utf-8") as f:
+            kept = json.load(f)
+        return kept["ledger"], {"as_of": time.strftime("%Y-%m-%d %I:%M %p", time.localtime(kept["time"])),
+                                "say": "the ledger kept from then; a fresh one is being worked out"}
+    except (OSError, ValueError, KeyError):
+        return None, _not_ready("the coverage ledger", waited)
 
 
 def modules(kind: str = "", find: str = "", only_in_store: bool = False, offset: int = 0, limit: int = 200,
             refresh: bool = False) -> dict:
     """The corpus modules with their ledger numbers (functions, verified, weak, unverified, ...).
     `kind`: pe, ne, le, dos, powerpc, ...; `find`: part of a name."""
-    led, waited = SLOW.get("ledger", _ledger, again=refresh)
+    led, note = _ledger_now(refresh)
     if led is None:
-        return _not_ready("the coverage ledger", waited)
+        return note
     from codebreaker.coverage import ledger
     keep = ("name", "kind", "size", "in_store", "measured", "judged") + ledger.COUNTS
     rows = [{k: r.get(k) for k in keep} for r in led.get("modules", [])
             if (not kind or r["kind"] == kind) and (not find or find.lower() in r["name"])
             and (r["in_store"] or not only_in_store)]
-    return _page(rows, offset, limit)
+    return dict(_page(rows, offset, limit), **({"kept": note} if note else {}))
 
 
 def coverage(refresh: bool = False) -> dict:
     """How the corpus stands: totals and one row per kind of module."""
-    led, waited = SLOW.get("ledger", _ledger, again=refresh)
+    led, note = _ledger_now(refresh)
     if led is None:
-        return _not_ready("the coverage ledger", waited)
-    return {k: led.get(k) for k in ("total", "kinds", "profiles", "error") if k in led}
+        return note
+    return dict({k: led.get(k) for k in ("total", "kinds", "profiles", "error") if k in led},
+                **({"kept": note} if note else {}))
 
 
 def progress() -> dict:
@@ -341,6 +373,247 @@ def command_help(command: str) -> dict:
             "help": (mod.__doc__ or "(no description)")[:MOST]}
 
 
+# ---- what was made: reach runs, project folders, the source tree --------------------------------
+def reach_results(run: str = "", platform: str = "", judged_only: bool = False, find: str = "",
+                  offset: int = 0, limit: int = 100) -> dict:
+    """The results `reach` kept (state/reach/<run>.json). Without `run`, the runs there are. With
+    it, the programs found: what each is, its platform and lane, and for those judged the tally;
+    `platform` and `find` (part of a path) narrow it, plus a count per platform."""
+    folder = os.path.dirname(settings.state("reach", "x"))
+    if not run:
+        runs = []
+        for name in sorted(os.listdir(folder)):
+            if name.endswith(".json"):
+                try:
+                    with open(os.path.join(folder, name), encoding="utf-8") as f:
+                        d = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                progs = d.get("programs", [])
+                runs.append({"run": name[:-5], "when": d.get("when"), "inputs": d.get("inputs"),
+                             "programs": len(progs), "judged": sum(1 for r in progs if r.get("judged"))})
+        return {"runs": runs}
+    path = os.path.join(folder, os.path.basename(run) + ".json")
+    if not os.path.isfile(path):
+        raise ValueError("no reach run %r (reach_results without a run lists them)" % run)
+    with open(path, encoding="utf-8") as f:
+        d = json.load(f)
+    per = {}
+    rows = []
+    for r in d.get("programs", []):
+        p = per.setdefault(r.get("platform") or "(unknown)", {"programs": 0, "judged": 0, "lane": r.get("lane")})
+        p["programs"] += 1
+        p["judged"] += bool(r.get("judged"))
+        if platform and platform.lower() not in (r.get("platform") or "").lower():
+            continue
+        if find and find.lower() not in (r.get("path") or "").lower():
+            continue
+        if judged_only and not r.get("judged"):
+            continue
+        rows.append({k: r.get(k) for k in ("path", "origin", "found", "platform", "lane", "family", "size", "picked",
+                                           "judged") if r.get(k) not in (None, "")})
+    return dict(_page(rows, offset, limit), when=d.get("when"), inputs=d.get("inputs"), platforms=per)
+
+
+def _roots():
+    """The folders read_file may read: project folders, the source tree, state, this checkout."""
+    from codebreaker.source import placement
+    out = [settings.get("converted"), settings.get("state"), settings.ROOT]
+    try:
+        out.append(placement.tree_root())
+    except Exception:
+        pass
+    return [os.path.realpath(r) for r in out if r and os.path.isdir(r)]
+
+
+def _inside(path, root):
+    try:
+        return os.path.commonpath([path, root]) == root
+    except ValueError:                                           # another drive
+        return False
+
+
+def _listing(folder, find="", most=2000):
+    rows = []
+    for top, dirs, files in os.walk(folder):
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        for name in sorted(files):
+            rel = os.path.relpath(os.path.join(top, name), folder).replace("\\", "/")
+            if not find or find.lower() in rel.lower():
+                rows.append({"file": rel, "size": os.path.getsize(os.path.join(top, name))})
+                if len(rows) >= most:
+                    return rows, True
+    return rows, False
+
+
+def projects(find: str = "") -> dict:
+    """The project folders under Converted/ (one per binary CodeBreaker has taken apart): name,
+    the original's file name, its kind and the commands run on it."""
+    root = settings.get("converted")
+    out = []
+    for name in sorted(os.listdir(root)) if os.path.isdir(root) else ():
+        pj = os.path.join(root, name, "project.json")
+        if not os.path.isfile(pj):
+            continue
+        try:
+            with open(pj, encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            d = {}
+        row = {"name": name, "file": d.get("file", ""), "kind": d.get("kind", ""), "size": d.get("size"),
+               "commands": [s.get("command") for s in d.get("steps", [])]}
+        if not find or find.lower() in (name + " " + row["file"]).lower():
+            out.append(row)
+    return {"root": root, "projects": out}
+
+
+def project(name: str, find: str = "") -> dict:
+    """One project folder: its project.json (what was done, each output) and its files."""
+    folder = os.path.join(settings.get("converted"), os.path.basename(name))
+    if not os.path.isdir(folder):
+        raise ValueError("no project %r under %s (`projects` lists them)" % (name, settings.get("converted")))
+    d = {}
+    if os.path.isfile(os.path.join(folder, "project.json")):
+        with open(os.path.join(folder, "project.json"), encoding="utf-8") as f:
+            d = json.load(f)
+    for step in d.get("steps", []):
+        outs = step.get("outputs") or []
+        if len(outs) > 20:
+            step["outputs"] = outs[:20] + ["... %d more" % (len(outs) - 20)]
+    files, more = _listing(folder, find)
+    return _fit({"folder": folder, "project": d, "files": files, "more_files": more})
+
+
+def source_tree(module: str, find: str = "") -> dict:
+    """Where a module's source lives in the product's source tree (and why there), and its files."""
+    from codebreaker.source import placement
+    p = _path(module)
+    rel, how = placement.resolve(os.path.basename(p), p)
+    folder = os.path.join(placement.tree_root(), *rel.split("/"))
+    files, more = _listing(folder, find) if os.path.isdir(folder) else ([], False)
+    return {"tree": placement.tree_root(), "folder": folder, "relative": rel, "decided": how,
+            "exists": os.path.isdir(folder), "files": files, "more_files": more}
+
+
+def read_file(path: str, offset: int = 0, length: int = 40000) -> dict:
+    """A text file from a project folder, the source tree, state/ or this checkout, from character
+    `offset` (a binary file: use hex_dump)."""
+    real = os.path.realpath(path)
+    if not any(_inside(real, r) for r in _roots()):
+        raise ValueError("%s is outside the folders this reads: %s" % (path, ", ".join(_roots())))
+    if not os.path.isfile(real):
+        raise ValueError("no file %s" % path)
+    with open(real, "rb") as f:
+        head = f.read(4096)
+    if b"\0" in head:
+        raise ValueError("%s is binary; hex_dump reads it" % path)
+    with open(real, "rb") as f:
+        data = f.read()
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:                                   # the period's files: Windows-1252
+        text = data.decode("cp1252", "replace")
+    at, n = max(0, int(offset)), max(1, min(int(length), MOST))
+    return {"path": real, "characters": len(text), "offset": at, "text": text[at:at + n],
+            "next": at + n if at + n < len(text) else None}
+
+
+# ---- one function now; two builds side by side ------------------------------------------------
+_HEADER_ADDR = re.compile(r"\b(?:sub|func|FUN)_(?:0x)?([0-9a-fA-F]+)(?:_([0-9a-fA-F]+))?\s*\(")
+
+
+def _same_place(addr, header):
+    """Does a function header line name the place `addr` is (hex, or segment:offset)? Compared
+    as numbers: sub_00132 is 132, sub_1_0116 is 1:0116, func_0x7f021036 is 7f021036."""
+    m = _HEADER_ADDR.search(header)
+    if not m:
+        return False
+    try:
+        if ":" in addr:
+            seg, off = addr.split(":", 1)
+            return m.group(2) is not None and (int(m.group(1), 16), int(m.group(2), 16)) == (int(seg, 16), int(off, 16))
+        return m.group(2) is None and int(m.group(1), 16) == int(addr, 16)
+    except ValueError:
+        return False
+
+
+def _cut_function(text, addr):
+    """The function in a whole module's C at `addr` (or named `addr`), with the comment lines
+    just above its header."""
+    named = re.compile(r"\b%s\s*\(" % re.escape(addr), re.I) if not re.fullmatch(r"[0-9a-f:]+", addr) else None
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not line or line[:1].isspace() or "(" not in line:
+            continue
+        if not (line.rstrip().endswith("{") or (i + 1 < len(lines) and lines[i + 1].strip() in ("{", ""))):
+            continue
+        if not (named.search(line) if named else _same_place(addr, line)):
+            continue
+        start = i
+        while start > 0 and lines[start - 1].startswith(("/*", " *", "//")):
+            start -= 1
+        end = i + 1
+        while end < len(lines) and lines[end] != "}":
+            end += 1
+        return "\n".join(lines[start:end + 1])
+    return None
+
+
+def decompile_function(module: str, addr: str, wait: int = 60) -> dict:
+    """One function decompiled now, without starting a job: a 32-bit x86 function by itself (cached
+    by its inputs); any other kind decompiles its whole module once (kept) and the function is cut
+    out of it. Not built or judged. Says so when it takes longer than `wait` seconds: call again."""
+    from codebreaker.decompile import decompiler as D
+    p = _path(module)
+    a = _addr(addr)
+    wait = max(1, min(int(wait), 240))
+    if corpus.lane(p) == "pe" and D._is_x86(p):
+        try:
+            va = int(a, 16)
+        except ValueError:
+            raise ValueError("a 32-bit function is asked for by its address (hex)")
+
+        def work():
+            got = _quiet(D.decompile, p, [va]).functions.get(va)
+            return {"name": got[0], "text": got[1]} if got else {"error": "no function at %x" % va}
+        value, waited = SLOW.get(("decompile", p, va), work, age=3600.0, wait=wait)
+    else:
+        value, waited = SLOW.get(("decompile", p), lambda: {"whole": _quiet(D.as_c, p)[0]}, age=3600.0, wait=wait)
+        if value is not None and "whole" in value:
+            cut = _cut_function(value["whole"], a)
+            value = {"text": cut} if cut else {"error": "no function header naming %s in the module's C; "
+                                                        "run_command decompile writes all of it" % addr}
+    if value is None:
+        return _not_ready("decompiling %s at %s" % (os.path.basename(p), addr), waited)
+    if "error" in value:
+        raise ValueError(value["error"])
+    return dict(value, module=os.path.basename(p), addr=a, note="decompiled now; not built or judged")
+
+
+def compare_versions(module_a: str, module_b: str, status: str = "", offset: int = 0, limit: int = 200,
+                     wait: int = 60) -> dict:
+    """Two builds of a module function by function (compare/versions.py): identical, changed (with
+    a likeness score), added, removed, and the names the old build gives functions the new one
+    leaves unnamed. `status` keeps identical or changed pairs only."""
+    from codebreaker.compare import versions
+    pa, pb = _path(module_a), _path(module_b)
+
+    def work():
+        c = _quiet(versions.compare, pa, pb)
+        return {"report": c.report(), "counts": c.counts(), "code": c.code(), "pairs": c.pairs,
+                "added": c.added, "removed": c.removed, "names": c.names()}
+    value, waited = SLOW.get(("versions", pa, pb), work, age=3600.0, wait=max(1, min(int(wait), 240)))
+    if value is None:
+        return _not_ready("comparing the two builds", waited)
+    if "error" in value:
+        return value
+    pairs = [x for x in value["pairs"] if not status or x["status"] == status]
+    out = {k: value[k] for k in ("report", "counts", "code")}
+    out.update(added=value["added"][:500], removed=value["removed"][:500], names=value["names"][:500])
+    out.update(_page(pairs, offset, limit))
+    return _fit(out)
+
+
 # ---- jobs ------------------------------------------------------------------------------------
 def run_command(command: str, args: list[str] | None = None) -> dict:
     """Start `python -m codebreaker <command> <args...>` as a background job; returns at once with
@@ -418,7 +691,8 @@ def name_function(module: str, addr: str, name: str) -> dict:
 
 # ---- the server ------------------------------------------------------------------------------
 READING = (describe, inspect_module, strings, hex_dump, resource, modules, coverage, progress,
-           functions, function, names, identify, demangle, commands, command_help, jobs, job, job_file)
+           functions, function, names, identify, demangle, commands, command_help, jobs, job, job_file,
+           reach_results, projects, project, source_tree, read_file, decompile_function, compare_versions)
 TOOL_NAMES = {inspect_module: "inspect", demangle: "demangle"}
 
 
@@ -470,13 +744,66 @@ def _version():
         return ""
 
 
+def token():
+    """The secret an HTTP client must send (Authorization: Bearer <it>): CB_MCP_TOKEN, else one
+    made once and kept in state/mcp/http_token.txt."""
+    if os.environ.get("CB_MCP_TOKEN"):
+        return os.environ["CB_MCP_TOKEN"]
+    path = settings.state("mcp", "http_token.txt")
+    if not os.path.isfile(path):
+        import secrets
+        with open(path, "w", encoding="ascii") as f:
+            f.write(secrets.token_urlsafe(32))
+    with open(path, encoding="ascii") as f:
+        return f.read().strip()
+
+
+class Bearer(object):
+    """ASGI: every HTTP request must carry the token; anything else gets 401 and goes no further."""
+
+    def __init__(self, app, secret):
+        import hmac
+        self.app, self.secret, self.same = app, ("Bearer " + secret).encode(), hmac.compare_digest
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            got = dict(scope.get("headers") or []).get(b"authorization", b"")
+            if not self.same(got, self.secret):
+                await send({"type": "http.response.start", "status": 401,
+                            "headers": [(b"content-type", b"text/plain"), (b"www-authenticate", b"Bearer")]})
+                await send({"type": "http.response.body", "body": b"a bearer token is needed"})
+                return
+        await self.app(scope, receive, send)
+
+
+def http_app(hosts=()):
+    """The server as an ASGI app (streamable HTTP at /mcp) behind the token. `hosts` are the
+    extra Host names it answers to (a tunnel's), beside 127.0.0.1 and localhost."""
+    from mcp.server.transport_security import TransportSecuritySettings
+    allowed = ["127.0.0.1:*", "localhost:*"] + list(hosts)
+    security = TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=allowed,
+                                         allowed_origins=["http://127.0.0.1:*", "http://localhost:*"] +
+                                         ["https://" + h for h in hosts])
+    return Bearer(build().streamable_http_app(transport_security=security), token())
+
+
 def main(argv):
-    """python -m codebreaker mcp [--http PORT]    (stdio unless --http: streamable HTTP on 127.0.0.1)"""
-    app = build()
+    """python -m codebreaker mcp                                    stdio (what Claude Code starts)
+    python -m codebreaker mcp --http PORT [--host H] [--allow-host NAME ...]
+        streamable HTTP at http://H:PORT/mcp (H: 127.0.0.1), every request needing the bearer
+        token (CB_MCP_TOKEN, else state/mcp/http_token.txt); --allow-host: a Host name besides
+        127.0.0.1 and localhost to answer to, such as a tunnel's"""
     if "--http" in argv:
+        import uvicorn
         port = int(argv[argv.index("--http") + 1])
-        app.run("streamable-http", host="127.0.0.1", port=port)
+        host = argv[argv.index("--host") + 1] if "--host" in argv else "127.0.0.1"
+        hosts = [argv[i + 1] for i, a in enumerate(argv) if a == "--allow-host"]
+        token()
+        print("CodeBreaker MCP on http://%s:%d/mcp -- token in %s" % (
+            host, port, "CB_MCP_TOKEN" if os.environ.get("CB_MCP_TOKEN") else settings.state("mcp", "http_token.txt")),
+            file=sys.stderr, flush=True)
+        uvicorn.run(http_app(hosts), host=host, port=port, log_level="warning")
     else:
-        app.run("stdio")
+        build().run("stdio")
     server.JOBS.stop_all()
     return 0

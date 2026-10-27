@@ -137,12 +137,24 @@ open Claude Code in this folder and approve the `codebreaker` server. Elsewhere,
 
 - reading tools that answer at once: describe, inspect, strings, hex_dump, resource, modules,
   coverage, progress, functions, function, names, identify, demangle, commands, command_help
+- what was made: reach_results (the saved `reach` runs), projects and project (Converted/),
+  source_tree (where a module's source sits in the product's tree), read_file (only inside those
+  folders, state/ and this checkout)
+- worked out when asked and kept for an hour: decompile_function (one function's C, without a
+  job) and compare_versions (two builds, function by function)
 - any command run as a background job: run_command, then jobs, job, job_file, stop_job
 - one writing tool, name_function, which names a body in the function store
 - a resource, `codebreaker://function/{module}/{addr}`, and a prompt, `triage`
 
 The coverage ledger behind coverage, modules and progress takes minutes when cold. It is worked
-out in the background and kept, and a call made before it is ready says so.
+out in the background and kept in state/mcp/ledger.json. A server started later answers from
+that copy, says how old it is, and works out a fresh one.
+
+`python -m codebreaker mcp --http PORT` serves the same tools over streamable HTTP at
+`http://127.0.0.1:PORT/mcp`. Every request must carry `Authorization: Bearer <token>`, where the
+token comes from CB_MCP_TOKEN or is made once and kept in state/mcp/http_token.txt. Use
+`--allow-host NAME` for a name such as a tunnel's, and `--host` to listen somewhere other than
+127.0.0.1. Anyone who has the token can run any command, so keep it secret.
 
 ## What a verdict means
 
