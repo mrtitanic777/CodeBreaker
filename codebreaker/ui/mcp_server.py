@@ -1142,17 +1142,19 @@ def _said(fn):
     return tool
 
 
-def build():
-    """The MCP server with every tool, the function resource and the triage prompt."""
+def build(writes=True):
+    """The MCP server with every tool, the function resource and the triage prompt; without
+    `writes`, the reading tools only (nothing that starts a process or changes the store)."""
     from mcp.server.mcpserver import MCPServer
     from mcp_types import ToolAnnotations
     app = MCPServer("codebreaker", title="CodeBreaker", instructions=INSTRUCTIONS,
                     version=_version(), log_level="WARNING")
     for fn in READING:
         app.tool(name=TOOL_NAMES.get(fn), annotations=ToolAnnotations(read_only_hint=True))(_said(fn))
-    app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False))(_said(run_command))
-    app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))(_said(stop_job))
-    app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True))(_said(name_function))
+    if writes:
+        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False))(_said(run_command))
+        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))(_said(stop_job))
+        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True))(_said(name_function))
 
     @app.resource("codebreaker://function/{module}/{addr}", mime_type="text/x-c",
                   description="One function's reconstructed source, as the store holds it")
@@ -1192,15 +1194,22 @@ def token():
 
 
 class Bearer(object):
-    """ASGI: every HTTP request must carry the token; anything else gets 401 and goes no further."""
+    """ASGI: every HTTP request must carry the token; anything else gets 401 and goes no further.
+    With `in_path` the token may instead be the URL's first segment (/<token>/mcp), for clients
+    that cannot send a header."""
 
-    def __init__(self, app, secret):
+    def __init__(self, app, secret, in_path=False):
         import hmac
         self.app, self.secret, self.same = app, ("Bearer " + secret).encode(), hmac.compare_digest
+        self.path = "/" + secret if in_path else ""
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             got = dict(scope.get("headers") or []).get(b"authorization", b"")
+            if self.path and scope.get("path", "").startswith(self.path + "/"):
+                rest = scope["path"][len(self.path):]
+                scope = dict(scope, path=rest, raw_path=rest.encode())
+                got = self.secret
             if not self.same(got, self.secret):
                 await send({"type": "http.response.start", "status": 401,
                             "headers": [(b"content-type", b"text/plain"), (b"www-authenticate", b"Bearer")]})
@@ -1209,33 +1218,38 @@ class Bearer(object):
         await self.app(scope, receive, send)
 
 
-def http_app(hosts=()):
+def http_app(hosts=(), public=False):
     """The server as an ASGI app (streamable HTTP at /mcp) behind the token. `hosts` are the
-    extra Host names it answers to (a tunnel's), beside 127.0.0.1 and localhost."""
+    extra Host names it answers to (a tunnel's), beside 127.0.0.1 and localhost. `public`: for
+    the internet, the reading tools only, and the token also accepted in the path."""
     from mcp.server.transport_security import TransportSecuritySettings
     allowed = ["127.0.0.1:*", "localhost:*"] + list(hosts)
     security = TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=allowed,
                                          allowed_origins=["http://127.0.0.1:*", "http://localhost:*"] +
                                          ["https://" + h for h in hosts])
-    return Bearer(build().streamable_http_app(transport_security=security), token())
+    return Bearer(build(writes=not public).streamable_http_app(transport_security=security), token(), in_path=public)
 
 
 def main(argv):
     """python -m codebreaker mcp                                    stdio (what Claude Code starts)
-    python -m codebreaker mcp --http PORT [--host H] [--allow-host NAME ...]
+    python -m codebreaker mcp --http PORT [--host H] [--allow-host NAME ...] [--public]
         streamable HTTP at http://H:PORT/mcp (H: 127.0.0.1), every request needing the bearer
         token (CB_MCP_TOKEN, else state/mcp/http_token.txt); --allow-host: a Host name besides
-        127.0.0.1 and localhost to answer to, such as a tunnel's"""
+        127.0.0.1 and localhost to answer to, such as a tunnel's; --public: the reading tools only,
+        and the token also accepted as the URL's first segment (/<token>/mcp), for clients that
+        cannot send a header"""
     if "--http" in argv:
         import uvicorn
         port = int(argv[argv.index("--http") + 1])
         host = argv[argv.index("--host") + 1] if "--host" in argv else "127.0.0.1"
         hosts = [argv[i + 1] for i, a in enumerate(argv) if a == "--allow-host"]
+        public = "--public" in argv
         token()
-        print("CodeBreaker MCP on http://%s:%d/mcp -- token in %s" % (
-            host, port, "CB_MCP_TOKEN" if os.environ.get("CB_MCP_TOKEN") else settings.state("mcp", "http_token.txt")),
+        print("CodeBreaker MCP on http://%s:%d/mcp%s -- token in %s" % (
+            host, port, " (public: reading tools only, also at /<token>/mcp)" if public else "",
+            "CB_MCP_TOKEN" if os.environ.get("CB_MCP_TOKEN") else settings.state("mcp", "http_token.txt")),
             file=sys.stderr, flush=True)
-        uvicorn.run(http_app(hosts), host=host, port=port, log_level="warning")
+        uvicorn.run(http_app(hosts, public), host=host, port=port, log_level="warning")
     else:
         build().run("stdio")
     server.JOBS.stop_all()
