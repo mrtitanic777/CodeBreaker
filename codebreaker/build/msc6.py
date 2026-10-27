@@ -24,9 +24,6 @@ import subprocess
 FLAG_SETS = ("/AM /Gcsw /Os", "/AM /Gcsw /Ox", "/AS /Gcsw /Os", "/AL /Gcsw /Os", "/AM /Gcsw /Od", "/AM /Gc2sw /Os",
              "/AM /Gc2sw /Ox", "/AM /Gcs /Os", "/AS /Gcs /Os")   # (/G2: SUWIN has push imm and leave)
 
-_CONF = ("[sdl]\noutput=surface\n[cpu]\ncore=dynamic\ncputype=386\ncycles=max\n[autoexec]\n"
-         "mount c \"%s\"\nmount d \"%s\"\nset PATH=C:\\BIN\nset INCLUDE=C:\\INCLUDE\nset LIB=C:\\LIB\nd:\ncall BLD.BAT\nexit\n")
-
 
 def _tools(compiler="msc6"):
     """(DOSBox-X, the compiler's folder). compiler: "msc6" (Microsoft C 6.0a) or "msvc152"
@@ -763,29 +760,23 @@ def _session(work, header, files, flags, compiler, timeout):
     native = _native(compiler)
     if native:
         return _native_session(work, header, files, flags, native[0], native[1], timeout)
-    emulator, home = _tools(compiler)
+    from codebreaker.build import dos_tools
+    _emulator, home = _tools(compiler)
     os.makedirs(work, exist_ok=True)
     for f in os.listdir(work):
         if f.lower().endswith((".obj", ".c", ".txt")):
             os.remove(os.path.join(work, f))
     with open(os.path.join(work, "M.H"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
         f.write(header)
-    lines = ["@echo off"]
+    lines = []
     for stem, text in files:
         with open(os.path.join(work, stem + ".C"), "w", newline="\r\n", encoding="latin1", errors="replace") as f:
             f.write('#include "m.h"\n\n' + text + "\n")
         lines.append("cl /nologo /c /W0 %s /Fo%s.OBJ %s.C > %s.TXT" % (flags, stem, stem, stem))
-    lines.append("echo DONE > DONE.TXT")
-    with open(os.path.join(work, "BLD.BAT"), "w", newline="") as f:
-        f.write("\r\n".join(lines) + "\r\n")
-    with open(os.path.join(work, "R.CONF"), "w", newline="\n") as f:
-        f.write(_CONF % (home, work))
-    try:
-        subprocess.run([emulator, "-conf", os.path.join(work, "R.CONF"), "-exit", "-nopromptfolder", "-silent"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        pass
-    return os.path.isfile(os.path.join(work, "DONE.TXT"))
+    dos_tools.run({"c": home, "d": work}, lines, [], timeout=timeout, work=work,
+                  cpu={"core": "dynamic", "cputype": "386", "cycles": "max"},
+                  variables={"PATH": r"C:\BIN", "INCLUDE": r"C:\INCLUDE", "LIB": r"C:\LIB"})
+    return os.path.isfile(os.path.join(work, "done.txt"))
 
 
 def _read(path):

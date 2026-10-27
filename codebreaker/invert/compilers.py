@@ -2,8 +2,8 @@
 
 A model of a code generator is only as good as its agreement with the compiler itself. Each
 model has a battery of small functions; this compiles them with the real compiler and hands
-back its bytes. The compilers are the ones build/msc6.py, build/period.py and verify/match.py
-already run -- this module only gives them the shapes the models were written against.
+back its bytes. The compilers are build/period.py's -- this module only gives them the shapes
+the models were written against.
 
     compilers.available()                 Microsoft C 6 is set up (settings: dosbox_x, msc6)
     compilers.mc6_compile(text, flags)    the code bytes Microsoft C 6 gives for one source text
@@ -87,20 +87,13 @@ def msvc2():
 
 
 def mc_compile(csrc, stem="cand", timeout=120):
-    """Compile one source text through MC1 and MC2, in a folder of its own (build/dos_tools.py: the
-    compiler's folder is C:). -> the .OBJ's bytes, or None"""
-    import shutil
-    from codebreaker.base import settings
-    from codebreaker.build import dos_tools
-    home, emulator = settings.get("msc203") or "", dos_tools.emulator()
-    if not (home and emulator and all(os.path.isfile(os.path.join(home, f)) for f in ("MC1.EXE", "MC2.EXE"))):
+    """Compile one source text through MC1 and MC2 (build/period.py). -> the .OBJ's bytes, or None"""
+    from codebreaker.build import period
+    try:
+        compiler = period.get("msc203")
+    except ValueError:
         raise RuntimeError("Microsoft C 2.03 is not set up (settings.json: msc203, dosbox_x)")
-    _ok, made, work = dos_tools.run({"c": home}, ["c:mc1 %s.c >NUL" % stem, "c:mc2 %s >NUL" % stem],
-                                    [stem + ".OBJ"], timeout=max(timeout, 30), files={stem + ".c": csrc},
-                                    cpu={"core": "auto", "cputype": "386"})
-    if work:
-        shutil.rmtree(work, ignore_errors=True)
-    return made.get(stem + ".OBJ")
+    return compiler.object(csrc, stem, timeout)
 
 
 def mc_compile_multi(csrc):
