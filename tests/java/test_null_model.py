@@ -8,7 +8,7 @@ null state of its own: set by null and by never being given a value, cleared by 
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCE = '''import java.util.ArrayList;
 import java.util.HashMap;

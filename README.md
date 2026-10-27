@@ -56,9 +56,11 @@ codebreaker/
                services, debug symbols and the source file each function came from, debug builds
   verify/      reconstruct.py  THE path: decompile, build, run, compare, record
                compare.py      THE comparer: do two builds of a function behave alike?
-               win32.py, win16.py, powerpc.py, driver.py, dos.py    what differs per kind
+               lanes/          what differs per kind: win32, win16, powerpc, driver, dos, java, and the
+                               cartridge and tape lanes (nes, sms, gb, genesis, zx, msx: image_lane)
                teeth.py        the judge judged: functions broken on purpose
-               match.py, repair.py, shape.py   toward the authored source, with a period compiler
+               authored/       toward the authored source, with a period compiler: match, repair, shape
+               gate16/         the 16-bit system test: modules booted alone, Setup's run, first divergence
                sweep.py, measure.py            the corpus, and one module
   store/       functions.py  THE store: every function, every reconstruction, every verdict
   jobs/        pool.py       THE runner: work spread over processes, surviving a crash

@@ -12,7 +12,7 @@ import re
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCES = {
     'Node.java': '''public class Node {

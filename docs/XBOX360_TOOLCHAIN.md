@@ -22,7 +22,7 @@ source.c / .cpp
 CodeBreaker works this chain backwards. `native/xex` unpacks the XEX2 to the PE ("basefile").
 `formats/powerpc_image.py` reads the PE. The decompiler turns the PE's functions back into C.
 `build/functions.py` compiles that C with the same `cl.exe` and links it with the same
-`link.exe`, and `verify/powerpc.py` runs both images side by side.
+`link.exe`, and `verify/lanes/powerpc.py` runs both images side by side.
 
 ## What the lane takes from each stage
 
@@ -31,7 +31,7 @@ options: `-D_M_PPCBE -D_XBOX_VER=200 -QVMX128 -Zp8 -fp:fast -Gd -Ob0 -Ot -ML`. I
 (16.00.11886). So a title's code is `__cdecl`, packs structures to 8 bytes, does not inline
 unless told to, and has the 128-register vector file switched on. CodeBreaker compiles through
 the same driver, so the defaults come along without being named.
-`verify/match_powerpc.py --try` pins down the switches a module was built with. On the SDK's
+`verify/authored/match_powerpc.py --try` pins down the switches a module was built with. On the SDK's
 `hud` sample, `/O1` matches 46 functions exactly and `/O2` matches 45.
 
 **VMX128.** The Xenon has 128 vector registers. AltiVec's encodings (primary opcode 4, 5-bit
@@ -59,7 +59,7 @@ class: 32 general registers, 32 floating-point, 128 vector. It saves callee-save
 through shared helper runs (`__savegprlr`/`__restgprlr` and the `stfd`/`lfd` runs). A
 function calls into those runs instead of saving inline, and often leaves by jumping into the
 restore run instead of ending in `blr`. `formats/powerpc_image.py` treats these runs as part
-of their callers, and `verify/match_powerpc.py` accepts that tail jump as a function's end.
+of their callers, and `verify/authored/match_powerpc.py` accepts that tail jump as a function's end.
 
 **Instruction selection.** `c2` routes each of 174 IL operations through 41 handlers to its
 PowerPC form. Strength reductions apply: `a * 4` becomes `slwi`. This is the gradient
@@ -76,7 +76,7 @@ the linker fills in is a relocation of one of the PowerPC types:
 | `REFHI`/`REFLO`, `ADDR16`, `TOCREL*`, `SECREL16` | a 16-bit half of an address (`lis`/`addi`, loads and stores) |
 | `ADDR32`, `SECREL` | a whole word |
 
-`verify/match_powerpc.py` masks exactly those bits and keeps comparing the opcode and
+`verify/authored/match_powerpc.py` masks exactly those bits and keeps comparing the opcode and
 registers of a relocated instruction. Labels inside a function (`$M...`, storage class 6) are
 not function symbols.
 

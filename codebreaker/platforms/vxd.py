@@ -16,5 +16,5 @@ def _recognise(path):
 PLATFORM = Platform(
     name="le", title="device drivers", family="x86", container="LE",
     cpu="x86:LE:32:default:windows", source="asm",
-    lane="codebreaker.verify.driver", runner=("codebreaker.emulate.driver", "run"),
+    lane="codebreaker.verify.lanes.driver", runner=("codebreaker.emulate.driver", "run"),
     recognise=_recognise)

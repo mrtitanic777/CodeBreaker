@@ -11,11 +11,11 @@
 A reconstruction is judged by behaviour with a modern compiler (build/functions.py). Whether it
 is the source that was WRITTEN is a different question, and only a compiler of the original's
 time can speak to it: the authored source gives the original's bytes back, another source that
-behaves the same does not. verify/repair.py searches with that distance; this module is the one
+behaves the same does not. verify/authored/repair.py searches with that distance; this module is the one
 place that knows how each such compiler is run and how its output is read.
 
     msvc2      Microsoft's 32-bit C compiler of 1994 (settings: period_compiler -- the folder of
-               CL.EXE). One function at a time; see verify/match.py.
+               CL.EXE). One function at a time; see verify/authored/match.py.
     xenix-c    the C compiler of XENIX for the 8086 (cpp, c0, c1, c2, as), with which Microsoft's
                linker and librarian of 1983-84 were compiled (settings: xenix_c -- the folder
                holding xcc.py, which runs the compiler's own passes in an emulator). One source
@@ -119,17 +119,17 @@ class XenixC(object):
 
 
 class Msvc2(object):
-    """Microsoft's 32-bit C compiler of 1994, one function at a time (verify/match.py)."""
+    """Microsoft's 32-bit C compiler of 1994, one function at a time (verify/authored/match.py)."""
     name = "msvc2"
     bits = 32
 
     def __init__(self, cl, flags="/O2 /Gz"):
-        from codebreaker.verify import match
+        from codebreaker.verify.authored import match
         self.cl, self.flags, self.env = cl, flags, match.compiler_env(cl)
 
     def compile(self, source, work, header="", function=""):
         """-> (bytes, mask) of the function (the one named, or the only one), or None"""
-        from codebreaker.verify import match
+        from codebreaker.verify.authored import match
         return match.compile_function(self.cl, self.env, header, source, function, work, self.flags)
 
     def units(self):

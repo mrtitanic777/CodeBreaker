@@ -13,7 +13,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from codebreaker.base import settings
-from codebreaker.verify import setup16 as s
+from codebreaker.verify.gate16 import setup16 as s
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 tag = sys.argv[1]

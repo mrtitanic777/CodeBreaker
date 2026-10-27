@@ -1,9 +1,9 @@
 """diverge16.py -- where a function rebuilt from C first stops doing what the original does.
 
-    from codebreaker.verify import diverge16
+    from codebreaker.verify.gate16 import diverge16
     for name, report in diverge16.explain(original_path, build_folder, names):
         ...
-    python -m codebreaker.verify.diverge16 ORIGINAL BUILD_FOLDER NAME [NAME ...]
+    python -m codebreaker.verify.gate16.diverge16 ORIGINAL BUILD_FOLDER NAME [NAME ...]
 
 The gate (isolated16) says THAT a function differs: how its run ends, which call or result or
 byte of data is not the original's. This says WHERE, and of what kind. Each side is run the way
@@ -29,7 +29,9 @@ the original's instruction there and what each side did. Its class says what to 
 import os
 import sys
 
-from codebreaker.verify import isolated16, win16
+from codebreaker.verify.gate16 import isolated16
+
+from codebreaker.verify.lanes import win16
 
 
 def _events(rec, data_len, entry_sp, stack_base, wide_words=None):

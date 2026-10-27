@@ -106,7 +106,7 @@ def _watcom(files, texts, header, settings_of, log):
 
 
 def run(module_path, segment=None, log=print):
-    from codebreaker.verify import match, match16
+    from codebreaker.verify.authored import match, match16
     _chosen, results = match16.run(module_path, log=log, fold=False)   # (the C as the decompiler wrote it, as the build has it)
     names = [n for n in results if n in getattr(match16.run, "code", {})]
     m_where = getattr(match16.run, "where", None)

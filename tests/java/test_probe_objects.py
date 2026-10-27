@@ -6,7 +6,7 @@ afterwards -- and the bug it found with them, J2X-BUGFIX java-number-text (Vec3D
 import pytest
 
 from codebreaker.java import probe, transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCES = {
     'Point.java': '''package geo;

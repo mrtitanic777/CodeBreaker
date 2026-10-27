@@ -31,7 +31,7 @@ PLATFORM = Platform(
     open=pe_image.open,              # container -> the image the stages read
     cpu="x86:LE:32:default:windows", # SLEIGH language id the decompiler uses
     source="c",                      # what its functions come back as: c | asm | java
-    lane="codebreaker.verify.win32", # the kind module: profile, prepare, build, judge
+    lane="codebreaker.verify.lanes.win32", # the kind module: profile, prepare, build, judge
     runner=("codebreaker.emulate.emulator", "trace_function"),
     names=[...],                     # where names come from: ordinal tables, SDK prototypes
 )
@@ -59,7 +59,7 @@ and the original Xbox, whose XBE goes down the 32-bit lane as a PE image: format
 files of the Windows 95 corpus and the PowerPC samples. The NES: `formats/nes.py` (iNES and
 NES 2.0), the 6502 language (L8 in GHIDRA_FORK.md, with its fixes), `decompile/m6502.py` (the
 table, disassembler, assembler), `emulate/m6502.py`, `source/nes_writer.py` (ca65 source and an
-ld65 configuration, rebuilt by `build/m6502_asm.py` or by cc65), `verify/nes.py`. A cartridge
+ld65 configuration, rebuilt by `build/m6502_asm.py` or by cc65), `verify/lanes/nes.py`. A cartridge
 goes through `decompile`, `measure` and `module` like any other module. Step 6 (homebrew with its
 authors' source as ground truth) waits on downloading those programs and the cc65 suite.
 

@@ -21,7 +21,7 @@ def write_java(path, fs, sha, digest, out_dir, log=print):
     from codebreaker.java import transpile
     from codebreaker.source.module_writer import made_by_us
     from codebreaker.store import functions as F
-    from codebreaker.verify import java
+    from codebreaker.verify.lanes import java
     name = os.path.basename(os.path.normpath(path))
     if os.path.isdir(out_dir) and any(not made_by_us(os.path.join(out_dir, f))
                                       for f in os.listdir(out_dir) if f.endswith((".h", ".cpp"))):

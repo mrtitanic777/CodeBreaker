@@ -177,7 +177,7 @@ def c_text16(path):
 
 def c_text32(path):
     from codebreaker.decompile import c_text
-    from codebreaker.verify import win32
+    from codebreaker.verify.lanes import win32
     with tempfile.TemporaryDirectory(prefix="cbfrozen_") as work:
         header, texts, order, _by_va, used, in_ecx, in_edx = c_text.compilable32(
             path, win32.LANES["pe"].functions(path), work)

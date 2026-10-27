@@ -26,7 +26,7 @@ TIMEOUT = 1800
 
 
 def _jdk():
-    from codebreaker.verify import java as _vj
+    from codebreaker.verify.lanes import java as _vj
     javac, java = _vj.jdk()
     if not javac:
         raise RuntimeError('the Java front end needs a JDK (settings.json: java)')

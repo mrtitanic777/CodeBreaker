@@ -2,7 +2,7 @@
 """The 68000 and the Genesis / Mega Drive end to end: the instruction table (decompile/m68k.py)
 round trips through its assembler, the interpreter (emulate/m68k.py) computes and sets flags as
 the CPU does, source written from a cartridge builds back into it (source/genesis_writer.py,
-build/m68k_asm.py), and the lane's judge (verify/genesis.py) tells an edited function from the
+build/m68k_asm.py), and the lane's judge (verify/lanes/genesis.py) tells an edited function from the
 others.
 
     python tests/test_m68k.py

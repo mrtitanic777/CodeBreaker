@@ -3,7 +3,7 @@
     from codebreaker.java import probe
     result = probe.run(java_src_dir, cpp_dir, cls, work, cxx, javac, java)
 
-The behavioural half of the java kind's judge (verify/java.py). For a class, every method it can call is
+The behavioural half of the java kind's judge (verify/lanes/java.py). For a class, every method it can call is
 called on a fixed, deterministic set of inputs, in the JVM and natively, and what comes back compared:
 
   * what it can pass: primitives, Strings, and objects of classes it can make -- a class is made with

@@ -4,7 +4,7 @@
 import pytest
 
 from codebreaker.translate.frontends import java as fj
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCE = '''import java.util.List;
 

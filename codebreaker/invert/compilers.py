@@ -49,7 +49,7 @@ class _Obj(object):
 
     def functions(self):
         """{symbol: (bytes, [positions the linker fills in])}"""
-        from codebreaker.verify import match
+        from codebreaker.verify.authored import match
         return {name: (code, [i for i, m in enumerate(mask) if m])
                 for name, (code, mask) in match.object_functions(self.data).items()}
 
@@ -59,7 +59,7 @@ class _Msvc2(object):
 
     def __init__(self, cl):
         from codebreaker.base import settings
-        from codebreaker.verify import match
+        from codebreaker.verify.authored import match
         self.cl, self.env, self.work = cl, match.compiler_env(cl), settings.state("invert", "msvc2")
 
     def compile_c(self, text, flags="/c /O1 /Oy-"):
@@ -79,7 +79,7 @@ class _Msvc2(object):
 
 
 def msvc2():
-    from codebreaker.verify import match
+    from codebreaker.verify.authored import match
     cl = match.compiler()
     if not cl:
         raise RuntimeError("the 1994 32-bit compiler is not set up (settings.json: period_compiler)")

@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from codebreaker.base import corpus
 from codebreaker.emulate import windows16 as emu
-from codebreaker.verify import isolated16
+from codebreaker.verify.gate16 import isolated16
 import memmap16
 pkl, folder = sys.argv[1], sys.argv[2]
 r = pickle.load(open(pkl, "rb"))

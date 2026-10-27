@@ -13,4 +13,4 @@ def _recognise(path):
 PLATFORM = Platform(
     name="zx", title="ZX Spectrum", family="z80", container="snapshot or tape (.sna, .z80, .tap)",
     cpu="z80:LE:16:default", source="asm",
-    lane="codebreaker.verify.zx", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)
+    lane="codebreaker.verify.lanes.zx", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)

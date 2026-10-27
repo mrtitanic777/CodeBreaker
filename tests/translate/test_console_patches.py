@@ -8,7 +8,7 @@ import pytest
 from codebreaker.java.projects.minecraft import applet_ping, render_fix, sound_fix
 from codebreaker.translate import ir
 from codebreaker.translate.backends import cpp03
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 needs_jdk = pytest.mark.skipif(not java.jdk()[0], reason='needs a JDK')
 

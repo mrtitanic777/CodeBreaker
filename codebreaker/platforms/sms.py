@@ -13,4 +13,4 @@ def _recognise(path):
 PLATFORM = Platform(
     name="sms", title="Master System / Game Gear", family="z80", container="cartridge image (.sms, .gg, .sg)",
     cpu="z80:LE:16:default", source="asm",
-    lane="codebreaker.verify.sms", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)
+    lane="codebreaker.verify.lanes.sms", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)

@@ -9,7 +9,7 @@
 The decompiler gives source that BEHAVES like a function. A compiler model gives the source
 that was WRITTEN, for the functions it covers: it knows which instructions the compiler emits
 for which statement, so it reads the statements off the instructions instead of searching for
-them (verify/repair.py searches). What it says is then put to the compiler itself: the text is
+them (verify/authored/repair.py searches). What it says is then put to the compiler itself: the text is
 compiled by the real Microsoft C 6 and its bytes compared with the original's, outside the
 places a linker fills in.
 
@@ -147,7 +147,8 @@ def module(module_path, limit=0, flags=None, log=None):
     from codebreaker.build import msc6 as compiler
     from codebreaker.formats.ne import NEFile
     from codebreaker.invert import grammars, msc6 as model, segment_thunk, whole_function
-    from codebreaker.verify import match, match16, win16
+    from codebreaker.verify.authored import match, match16
+    from codebreaker.verify.lanes import win16
     name = os.path.basename(module_path).lower()
     m = win16.prepare(module_path, settings.state("invert", name, "source"))
     where = {va: m.where[va] for va in m.by_va}

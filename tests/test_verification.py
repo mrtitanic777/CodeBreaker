@@ -14,7 +14,7 @@ if ROOT not in sys.path:
 
 from codebreaker.base import corpus
 from codebreaker.build import watcom as toolchain                      # noqa: E402
-from codebreaker.verify import win32 as pipeline
+from codebreaker.verify.lanes import win32 as pipeline
 
 RESULTS = []
 
@@ -95,7 +95,7 @@ def test_variant_store():
 def test_repair_knobs_preserve_meaning():
     """The repair knobs are behaviour-preserving source rewrites, and the distance measure ranks
     a right-length near-match ahead of a wrong-length one and ignores linker-filled bytes."""
-    from codebreaker.verify import repair, match
+    from codebreaker.verify.authored import repair, match
     src = "int f(int a, int b){\n  int x;\n  int y;\n  return a + b;\n}"
     knobs = dict(repair._knobs(src, 16, 4))
     assert any(k.startswith("pad") for k in knobs)       # the original reserves 16, the draft 4
@@ -111,7 +111,7 @@ def test_repair_knobs_preserve_meaning():
 def test_repair_search_with_any_compiler():
     """The search works with whatever compiles: here a stand-in whose `bytes` are the order of
     the declarations, so only the authored order is at distance 0."""
-    from codebreaker.verify import repair
+    from codebreaker.verify.authored import repair
     authored = "f(a)\nint a;\n{\n\tint x;\n\tregister int y;\n\treturn a;\n}"
     fake = lambda text: (" ".join(text.split()).encode(), bytes(len(" ".join(text.split()))))
     moved = authored.replace("\tint x;\n\tregister int y;", "\tregister int y;\n\tint x;")
@@ -126,7 +126,7 @@ def test_period_compiler_gives_the_original_back():
     """A source file of the reconstructed 1984 linker, compiled by the XENIX C compiler through
     build/period.py, is the linker's own bytes."""
     from codebreaker.build import period
-    from codebreaker.verify import match
+    from codebreaker.verify.authored import match
     if "xenix-c" not in period.names():
         raise Skip("needs the XENIX C compiler (settings: xenix_c)")
     p = period.get("xenix-c")
@@ -168,7 +168,7 @@ def test_period_source_gives_the_declarations_an_author_had():
     """For a period compiler an import is called through its slot, a global is a variable, an
     address the module's relocations name is the address of a variable, and a function that
     only hands back what happened to be in EAX returns nothing."""
-    from codebreaker.verify import match, repair
+    from codebreaker.verify.authored import match, repair
     header = "\n".join(["typedef int int4;", "int __stdcall HeapFree();", "#define iRam00401000 (*(int4 *)0x401000)",
                         "#define iRam00900000 (*(int4 *)0x900000)", "int4 f(int4 a1);", "int4 __cdecl g(void);"])
     texts = {"f": "int4 f(int4 a1)\n{\n  g();\n  return HeapFree(iRam00401000,0,a1 -0x400eff90) + 0x402000 + 0x12345;\n}",
@@ -206,7 +206,7 @@ def test_field_accesses_are_written_as_fields():
     that offset with that type; an access of another type at the same place is left alone."""
     from codebreaker.analyze import image, structures
     from codebreaker.decompile import struct_text
-    from codebreaker.verify import match
+    from codebreaker.verify.authored import match
     texts = {"f": "int4 f(int4 a1,int4 a2)\n{\n  *(int4 *)(a1 + 8) = *(int4 *)a1 + a2;\n"
                   "  return *(uint1 *)(a1 + 8) + *(int4 *)(a1 + 8) + (**(code **)(a1 + 0x10))(a2);\n}",
              "g": "int4 g(int4 a1)\n{\n  return *(int4 *)(a1 + 8);\n}"}
@@ -229,7 +229,7 @@ def test_other_shapes_of_the_same_function():
     """An if-chain on one value is offered as a switch, and `r = x;` before the final `return r;`
     as `return x;` -- but not through a variable narrower than what the function returns, nor
     where a branch holds a `break`."""
-    from codebreaker.verify import repair
+    from codebreaker.verify.authored import repair
     src = "\n".join([
         "int4 f(int4 a1,int4 a2)", "", "{", "  int4 iVar1;", "  ", "  iVar1 = g(a1);", "  if (iVar1 == 0) {",
         "    iVar1 = 0;", "  }", "  else {", "    if (a2 == 0) {", "      h(a1);", "    }", "    else if (a2 == 1) {",
@@ -371,7 +371,7 @@ def test_the_last_mile_search_rewrites_a_comparison_the_way_a_source_had_it():
     """Ghidra writes `0x19 < iVar1`; SUWIN's sub_3_200C was `iVar1 >= 0x1a` (cmp cx, 1Ah; jl):
     the search's comparison rewrites give both sides of a constant, and either order of operands."""
     import random
-    from codebreaker.verify import search16
+    from codebreaker.verify.authored import search16
     assert search16._LEFT.sub(search16._left, "if (0x19 < iVar1) {") == "if (iVar1 >= 0x1a) {"
     assert search16._COMPARE.sub(search16._compare, "x <= 0x19 && y > 3 && z >= -0x2") == \
         "x < 0x1a && y >= 0x4 && z > -0x3"
@@ -417,7 +417,7 @@ def test_source_files_are_told_by_push_cs_calls_and_an_if_else_can_be_turned_aro
     everything between them is one file; a function no such call reaches is a file of its own.
     The search's branch rewrite: `if (a == 0) {A} else {B}` -> `if (a != 0) {B} else {A}`."""
     import random
-    from codebreaker.verify import match16, search16
+    from codebreaker.verify.authored import match16, search16
     # three functions of segment 2 at 0x10, 0x20, 0x30: the first calls the third near (push cs; call)
     a = bytes([0x0E, 0xE8]) + (0x30 - (0x10 + 4)).to_bytes(2, "little", signed=True) + bytes([0xCB])
     where = {1: (2, 0x10), 2: (2, 0x20), 3: (2, 0x30), 4: (2, 0x40)}
@@ -475,7 +475,7 @@ def test_wine_s_spec_types_an_import_and_its_calls_are_said_one_argument_to_a_pa
 def test_a_run_time_library_routine_is_named_outside_the_linker_s_bytes(monkeypatch):
     """A function that is a library routine byte for byte, outside the places the linker filled in
     (the routine's fix-ups, the original's relocations), is the library's -- __aFlmul in SUWIN."""
-    from codebreaker.verify import runtime16
+    from codebreaker.verify.gate16 import runtime16
     routine = bytes([0x55, 0x8B, 0xEC, 0x9A, 0, 0, 0, 0, 0x5D, 0xCA, 0x08, 0x00])
     mask = bytes([0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0])
     monkeypatch.setattr(runtime16, "_routines", [("MDLLCEW.LIB:__aFlmul", routine, mask)])

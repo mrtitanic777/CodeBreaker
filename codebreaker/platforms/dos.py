@@ -14,4 +14,4 @@ def _recognise(path):
 PLATFORM = Platform(
     name="dos", title="DOS programs", family="x86", container="MZ, COM, SYS",
     cpu="x86:LE:16:Real Mode:default", source="asm",
-    lane="codebreaker.verify.dos", recognise=_recognise)
+    lane="codebreaker.verify.lanes.dos", recognise=_recognise)

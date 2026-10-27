@@ -16,5 +16,5 @@ def _open(path):
 PLATFORM = Platform(
     name="powerpc", title="Xbox 360 (PowerPC)", family="PowerPC", container="XEX2 -> PE",
     cpu="PowerPC:BE:64:Xenon:homed", source="c", machine=0x01F2,
-    lane="codebreaker.verify.powerpc", runner=("codebreaker.emulate.powerpc", "run"),
+    lane="codebreaker.verify.lanes.powerpc", runner=("codebreaker.emulate.powerpc", "run"),
     recognise=_recognise, open=_open)

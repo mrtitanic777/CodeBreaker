@@ -53,7 +53,7 @@ def _tools():
 
 def leaf(csrc, name, va):
     """Compile one C function with the Xbox 360 compiler and recompile it at `va`."""
-    from codebreaker.verify import match_powerpc
+    from codebreaker.verify.authored import match_powerpc
     built = match_powerpc._compile(_tools(), "", csrc, name, tempfile.mkdtemp(prefix="cb_rc_"), "/O2")
     if built is None:
         raise RuntimeError("the Xbox 360 compiler rejected %s" % name)

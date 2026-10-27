@@ -38,11 +38,11 @@ def main():
     from codebreaker.verify import reconstruct
     checks = [
         ("every lane", reconstruct.KINDS == {
-            "pe": "codebreaker.verify.win32", "ne": "codebreaker.verify.win16",
-            "powerpc": "codebreaker.verify.powerpc", "le": "codebreaker.verify.driver",
-            "dos": "codebreaker.verify.dos", "java": "codebreaker.verify.java", "nes": "codebreaker.verify.nes",
-            "sms": "codebreaker.verify.sms", "gb": "codebreaker.verify.gb", "genesis": "codebreaker.verify.genesis",
-            "zx": "codebreaker.verify.zx", "msx": "codebreaker.verify.msx"}),
+            "pe": "codebreaker.verify.lanes.win32", "ne": "codebreaker.verify.lanes.win16",
+            "powerpc": "codebreaker.verify.lanes.powerpc", "le": "codebreaker.verify.lanes.driver",
+            "dos": "codebreaker.verify.lanes.dos", "java": "codebreaker.verify.lanes.java", "nes": "codebreaker.verify.lanes.nes",
+            "sms": "codebreaker.verify.lanes.sms", "gb": "codebreaker.verify.lanes.gb", "genesis": "codebreaker.verify.lanes.genesis",
+            "zx": "codebreaker.verify.lanes.zx", "msx": "codebreaker.verify.lanes.msx"}),
         ("every runner", emulate.RUNNERS == {
             "pe": ("codebreaker.emulate.emulator", "trace_function"), "ne": ("codebreaker.emulate.windows16", "probe"),
             "le": ("codebreaker.emulate.driver", "run"), "powerpc": ("codebreaker.emulate.powerpc", "run"),

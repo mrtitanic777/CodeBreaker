@@ -305,7 +305,7 @@ def raw(module_path, funcs, outdir, timeout=3600):
 def decompile(module_path, funcs=None, outdir=None):
     """Decompile a module (every function, or the addresses in `funcs`). -> Module"""
     from codebreaker.build import watcom as B
-    from codebreaker.verify import win32 as pipeline
+    from codebreaker.verify.lanes import win32 as pipeline
     if funcs is None:
         funcs = pipeline.LANES["pe"].functions(module_path)
     outdir = outdir or B._scratch("decompiler", os.path.basename(module_path).lower())

@@ -9,7 +9,7 @@ When it is not identical -- the source was edited -- each function is run in Cod
 the run ended, the registers and flags, the 8 KB of RAM it left, and every port access and
 mapper write, in order.
 """
-from codebreaker.verify.image_lane import Lane
+from codebreaker.verify.lanes.image_lane import Lane
 
 _MAPPER = (0xFFFC, 0xFFFF)
 # the registers a function starts from, and how its RAM is filled (seed 0: all zero)

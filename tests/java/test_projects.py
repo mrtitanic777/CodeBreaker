@@ -11,7 +11,7 @@ import pytest
 
 from codebreaker.java import parse, projects
 from codebreaker.translate.backends import cpp03
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

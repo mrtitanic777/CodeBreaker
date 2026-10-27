@@ -8,7 +8,7 @@ The flat-code counterpart of emulator.trace_function: it takes memory regions an
 where that takes a module file and stack arguments. A call to the system or to another driver
 (`int 20h`, service, device) is answered with what the input says and recorded with the
 registers and stack words it was given; port reads and writes are recorded; memory is kept by
-the emulator's own hooks. What a run did is judged in verify/driver.py.
+the emulator's own hooks. What a run did is judged in verify/lanes/driver.py.
 """
 import hashlib
 import struct

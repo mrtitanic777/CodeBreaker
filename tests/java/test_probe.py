@@ -7,7 +7,7 @@ import os
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCES = {
     'Calc.java': '''package demo;

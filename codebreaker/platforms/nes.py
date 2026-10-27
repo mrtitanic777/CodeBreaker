@@ -13,4 +13,4 @@ def _recognise(path):
 PLATFORM = Platform(
     name="nes", title="NES", family="6502", container="iNES (.nes)",
     cpu="6502:LE:16:NES:default", source="asm",
-    lane="codebreaker.verify.nes", runner=("codebreaker.emulate.m6502", "run"), recognise=_recognise)
+    lane="codebreaker.verify.lanes.nes", runner=("codebreaker.emulate.m6502", "run"), recognise=_recognise)

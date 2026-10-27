@@ -5,5 +5,5 @@ from codebreaker.platforms import Platform, lane_of
 PLATFORM = Platform(
     name="ne", title="16-bit Windows", family="x86", container="NE",
     cpu="x86:LE:16:Protected Mode:default", source="c or asm",
-    lane="codebreaker.verify.win16", runner=("codebreaker.emulate.windows16", "probe"),
+    lane="codebreaker.verify.lanes.win16", runner=("codebreaker.emulate.windows16", "probe"),
     recognise=lambda path: lane_of(path) == "ne")

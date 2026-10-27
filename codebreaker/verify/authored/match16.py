@@ -15,14 +15,14 @@ a sample of the functions come out the original's length say how the module was 
 import os
 import struct
 
-from codebreaker.verify import match
+from codebreaker.verify.authored import match
 
 _SIZE = {0: 1, 2: 2, 3: 4, 5: 2, 11: 6, 13: 4}              # bytes a relocation of each source type covers
 
 
 def original_functions(module_path, where, spans):
     """{address: (bytes, mask)} for a 16-bit module's functions. `where` {address: (segment,
-    offset)}, `spans` {address: ((start, end), instructions)} as verify/win16.py makes them."""
+    offset)}, `spans` {address: ((start, end), instructions)} as verify/lanes/win16.py makes them."""
     import capstone
     from codebreaker.formats.ne import NEFile
     nef = NEFile(module_path)
@@ -122,7 +122,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     from codebreaker.build import msc6
     from codebreaker.base import settings
     from codebreaker.formats.ne import NEFile
-    from codebreaker.verify import win16
+    from codebreaker.verify.lanes import win16
     # Microsoft C 8.00c built Windows 95's Setup modules and runs on Windows itself; Microsoft C 6.0a
     # (DOS, the emulator) is tried only when asked for (settings: match16_msc6 = on) -- choosing
     # SUWIN's switches among both gave nothing more than among C 8's alone (35 either way).
@@ -266,13 +266,13 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     out = {}
     for cc, fl in sorted(set(setting.values())):
         out.update(judged(cc, fl, [fn for fn in todo if setting[fn] == (cc, fl)], tuple(variants)))
-    from codebreaker.verify import runtime16         # (the compiler's run-time library: linked, not written)
+    from codebreaker.verify.gate16 import runtime16         # (the compiler's run-time library: linked, not written)
     run.library = runtime16.identify({fn: originals[address[fn]] for fn in todo})
     for fn, lib in run.library.items():
         if out.get(fn, ("",))[0] != "identical":
             out[fn] = ("run-time library", 0, len(originals[address[fn]][0]))
-    if search:                                       # the last bytes of the near misses (verify/search16.py)
-        from codebreaker.verify import search16
+    if search:                                       # the last bytes of the near misses (verify/authored/search16.py)
+        from codebreaker.verify.authored import search16
         near = {fn: (texts[winner[fn]][fn], v, setting[fn] + (winner[fn],))
                 for fn, v in out.items() if v[0] in ("same size", "different") and v[1] <= 0.4 * v[2]}
 

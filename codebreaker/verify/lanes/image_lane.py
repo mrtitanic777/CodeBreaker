@@ -1,6 +1,6 @@
 """image_lane.py -- the lane of a program image written back as its assembly source: a cartridge,
 a tape block, a ROM. The NES, Master System, Game Boy, Genesis, ZX Spectrum and MSX lanes are each
-one of these (verify/nes.py ...), giving only what is particular to their machine.
+one of these (verify/lanes/nes.py ...), giving only what is particular to their machine.
 
     LANE = Lane("gb", 1, "gb_writer", STATES, effects, WHAT, start)
     LANE.export(globals())            # the module is then a kind reconstruct.py works with

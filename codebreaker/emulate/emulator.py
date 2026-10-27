@@ -1,4 +1,4 @@
-r"""tracer.py -- run one win95 function in Unicorn and record a structured TraceRecord.
+r"""emulator.py -- run one 32-bit function in Unicorn and record a structured TraceRecord.
 
 This is the behavioral engine's observation primitive. It reuses the SAME entry-state
 setup that recompile95/tools/difftest.py proved correct (map the code section page-aligned,

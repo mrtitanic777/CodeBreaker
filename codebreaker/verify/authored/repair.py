@@ -5,7 +5,7 @@
 The behavioural pipeline (verify/) proves a reconstruction MEANS the same as the original, but
 many different sources mean the same thing, and the decompiler's C is only one of them -- and
 not usually the one that was written. The byte distance to the original, when it is compiled
-with a compiler of its time (verify/match.py), is the gradient that tells which of the many
+with a compiler of its time (verify/authored/match.py), is the gradient that tells which of the many
 behaviourally-equal sources is closest to what was written: a register variable rather than a
 stack one, declarations in the order that lays the frame out the same way, an unused local the
 author left in, the operands of a sum in the order they were typed.
@@ -32,7 +32,7 @@ import itertools
 import os
 import re
 
-from codebreaker.verify import match
+from codebreaker.verify.authored import match
 
 MAX_LOCALS = 6           # the leading locals whose order and storage are tried
 MAX_SITES = 6            # places in the body each kind of rewrite is tried at
@@ -130,7 +130,7 @@ def score(built, original, bits=0, target=None):
     near the top moves every later byte, and the function looks wholly wrong when it is nearly
     right. Lined up by instruction, it is one instruction away."""
     if bits == "ppc":
-        from codebreaker.verify import match_powerpc
+        from codebreaker.verify.authored import match_powerpc
         v, d, t, _f = match_powerpc.distance(built, original)
     else:
         v, d, t, _f = match.distance(built, original)
@@ -258,7 +258,7 @@ def _knobs(source, target_frame, draft_frame):
         new = "%s%s %s %s%s" % (m.group("pre"), m.group("b"), _COMMUTATIVE[m.group("op")], m.group("a"), m.group("post"))
         yield "swap%d" % j, top + body[:m.start()] + new + body[m.end():]
     # switch: a chain of `if (v == A) .. else if (v == B) ..` as a switch on v
-    from codebreaker.verify import shape
+    from codebreaker.verify.authored import shape
     for j, (i0, i1, new) in enumerate(shape.switches(body, shadow)):
         if j >= MAX_SITES:
             break
@@ -308,7 +308,7 @@ def _knobs(source, target_frame, draft_frame):
 
 
 def repair_function(cl, env, header, source, name, original, work, flags):
-    """repair() with Microsoft's 32-bit compiler of 1994 (verify/match.py).
+    """repair() with Microsoft's 32-bit compiler of 1994 (verify/authored/match.py).
 
     Before the search, the setting the function is compiled in is chosen, since the files of
     one module were not all compiled alike: with and without a frame pointer kept (/Oy-), and
@@ -343,7 +343,7 @@ def repair(compile, source, original, bits=0):
     """Search behaviour-preserving rewrites of one function's source for the bytes closest to the
     original's. `compile` is any period compiler: source text -> (bytes, mask) or None
     (build/period.py). `bits` (16 or 32, or "ppc" for PowerPC, whose masks are per word and per
-    bit -- verify/match_powerpc.py) is the processor mode of the code: with it the search
+    bit -- verify/authored/match_powerpc.py) is the processor mode of the code: with it the search
     lines the two up by instruction and reads the size of the locals; without it, it has the
     bytes alone to go by. -> {source, verdict, distance, total, knobs, tried} for the best
     found, or None when the starting source does not compile.
@@ -445,11 +445,12 @@ def best_flags(cl, env, header, texts, order, originals, address, work, sample=6
 
 
 def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
-    """run() for a PowerPC image, with the Xbox 360 compiler (verify/match_powerpc.py)."""
+    """run() for a PowerPC image, with the Xbox 360 compiler (verify/authored/match_powerpc.py)."""
     from codebreaker.base import corpus
     from codebreaker.build import functions
     from codebreaker.store import functions as F
-    from codebreaker.verify import match_powerpc, powerpc
+    from codebreaker.verify.authored import match_powerpc
+    from codebreaker.verify.lanes import powerpc
     tools = functions.powerpc_tools()
     if not tools:
         raise SystemExit("no PowerPC compiler (settings.json: powerpc_tools, powerpc_lib)")
@@ -503,7 +504,7 @@ def run(module_path, flags, work, fs=None, log=print, limit=0):
     """Repair every function of a module and record the variants. -> (functions, identical, same
     size, different). `flags` None: the switches are found first (best_flags)."""
     from codebreaker.store import functions as F
-    from codebreaker.verify import win32
+    from codebreaker.verify.lanes import win32
     cl = match.compiler()
     if not cl:
         raise SystemExit("no period compiler (settings.json: period_compiler)")

@@ -129,7 +129,7 @@ def test_container():
 
 # --- the judge ---------------------------------------------------------------------------------
 def test_judge_agrees_with_itself_and_catches_a_break():
-    from codebreaker.verify import driver
+    from codebreaker.verify.lanes import driver
     path = _driver()
     for label in ("service_0", "service_3", "pm_api"):
         verdict = driver.judge((path, path), (label, label))
@@ -145,7 +145,7 @@ def test_judge_agrees_with_itself_and_catches_a_break():
 
 
 def test_run_records_service_calls():
-    from codebreaker.verify import driver
+    from codebreaker.verify.lanes import driver
     image = driver.load(_driver())
     v = driver.inputs("control")[0][1]                    # DEVICE_INIT
     r = driver.run(image, image.entries["control"], v["regs"], v["stack"], v["memory"], flags=v["flags"])
@@ -157,7 +157,7 @@ def test_run_records_service_calls():
 # --- the builder -------------------------------------------------------------------------------
 def test_build_from_source():
     from codebreaker.build import driver as builder
-    from codebreaker.verify import driver
+    from codebreaker.verify.lanes import driver
     path = _driver()
     if not builder.tool("wasm") or not builder.tool("wlink"):
         raise Skip("OpenWatcom wasm/wlink not found")
@@ -190,7 +190,7 @@ def test_source_written_from_the_image_builds_back():
 
 
 def driver_judge_all_equivalent(image):
-    from codebreaker.verify import driver
+    from codebreaker.verify.lanes import driver
     results = driver.judge_files(image, _driver())
     return results and all(v[0] in ("equivalent", "consistent") for v in results.values())
 

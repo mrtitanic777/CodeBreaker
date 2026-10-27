@@ -10,7 +10,7 @@ imports come from are named in the header rather than in the image. CodeBreaker'
 Any command takes a `.xex` where it takes a module: `corpus.retail` / `corpus.resolve` hand every
 stage the basefile instead (`codebreaker/formats/xex.py`), extracted once under
 `state/unpacked/xex/<name>-<hash>.exe` with the header beside it (`.json`). From there it is a
-PowerPC image like any other (`verify/powerpc.py`): decompiled, rebuilt, run beside the original.
+PowerPC image like any other (`verify/lanes/powerpc.py`): decompiled, rebuilt, run beside the original.
 
 What the header adds over the basefile alone:
 

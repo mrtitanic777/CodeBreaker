@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """move.py -- move named top-level definitions from one module to another.
 
-    python tools/move.py codebreaker.verify.win32 codebreaker.verify.compare compare first_difference ...
+    python tools/move.py codebreaker.verify.lanes.win32 codebreaker.verify.compare compare first_difference ...
 
 The definitions (functions, classes, assignments, with the comments above them) are cut from the
 first module and appended to the second (created with the first's imports if it does not

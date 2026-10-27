@@ -1,6 +1,6 @@
 """runtime16.py -- which of a 16-bit module's functions are the compiler's run-time library.
 
-    from codebreaker.verify import runtime16
+    from codebreaker.verify.gate16 import runtime16
     runtime16.identify(originals_by_name)   -> {function: "MDLLCEW.LIB:__aFlmul", ...}
 
 A Windows module built with Microsoft C 8.00c (Visual C++ 1.52c) was linked with that compiler's

@@ -6,7 +6,7 @@ and a byte in string concatenation prints its number, not a character (NBTTagByt
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCE = '''public class Packet {
 	public int entityId;

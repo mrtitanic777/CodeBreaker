@@ -13,4 +13,4 @@ def _recognise(path):
 PLATFORM = Platform(
     name="gb", title="Game Boy / Game Boy Color", family="sm83", container="cartridge image (.gb, .gbc)",
     cpu="sm83:LE:16:default", source="asm",
-    lane="codebreaker.verify.gb", runner=("codebreaker.emulate.sm83", "run"), recognise=_recognise)
+    lane="codebreaker.verify.lanes.gb", runner=("codebreaker.emulate.sm83", "run"), recognise=_recognise)

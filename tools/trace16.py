@@ -24,7 +24,7 @@ def main(argv):
     from codebreaker.decompile import describe
     from codebreaker.emulate import windows16 as ne_probe
     from codebreaker.formats.ne import NEFile
-    from codebreaker.verify import win16 as reconstruct16
+    from codebreaker.verify.lanes import win16 as reconstruct16
 
     def opt(flag, default):
         return argv[argv.index(flag) + 1] if flag in argv else default

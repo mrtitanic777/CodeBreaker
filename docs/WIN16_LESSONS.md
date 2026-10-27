@@ -106,4 +106,4 @@ session scratchpad). They belong in `codebreaker/verify/live16.py` as commands:
 - Origin (asm or C): `codebreaker/analyze/origin.py`
 - C text: `codebreaker/decompile/c_text.py`; Ghidra core: `native/decompiler/core/cpp/varmap.cc`
 - Frames: `codebreaker/build/asm16.py`; link order, gates, caches: `codebreaker/build/module.py`
-- Checks: `codebreaker/verify/isolated16.py`, `contract16.py`, `setup16.py`
+- Checks: `codebreaker/verify/gate16/isolated16.py`, `contract16.py`, `setup16.py`

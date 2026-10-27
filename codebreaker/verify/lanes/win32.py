@@ -2,7 +2,7 @@
 
 One of the kinds reconstruct.py works with (see there for what a kind provides). Here: the
 module is decompiled by decompile/decompiler.py, built by build/functions.py, and
-each function is run beside the original in the 32-bit emulator and compared by verify/oracle.py
+each function is run beside the original in the 32-bit emulator (emulate/emulator.py) and compared by verify/compare.py
 (calls and their arguments, result, memory changed, stack, saved registers, coverage).
 """
 import hashlib

@@ -10,7 +10,7 @@ import os
 import pytest
 
 from codebreaker.java import probe
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 CODEC_MUS = '''package net.minecraft.src;
 

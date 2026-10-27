@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The NES platform end to end: the cartridge (formats/nes.py), the 6502 (decompile/m6502.py,
 emulate/m6502.py, the SLEIGH language), source that builds back (source/nes_writer.py,
-build/m6502_asm.py) and the lane's judge (verify/nes.py).
+build/m6502_asm.py) and the lane's judge (verify/lanes/nes.py).
 
     python tests/test_nes.py
 
@@ -145,7 +145,7 @@ def test_decompiles():
 
 
 def test_lane_judges():
-    from codebreaker.verify import nes as lane
+    from codebreaker.verify.lanes import nes as lane
     work = tempfile.mkdtemp(prefix="cb_nes_lane_")
     m = lane.prepare(cartridge(), work)
     ctx, items, dropped = lane.build(m, cartridge(), work)

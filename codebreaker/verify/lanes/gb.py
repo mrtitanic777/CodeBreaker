@@ -9,7 +9,7 @@ SM83 (emulate/sm83.py) in both cartridges, from the same registers, and what it 
 how the run ended, the registers and flags, work RAM and high RAM as it left them, and every
 access to the I/O registers and the bank controller, in order.
 """
-from codebreaker.verify.image_lane import Lane
+from codebreaker.verify.lanes.image_lane import Lane
 
 _IO = (0xFF00, 0xFF7F)
 _STATES = [dict(a=0, b=0, c=0, d=0, e=0, h=0, l=0, fill=0), dict(a=1, b=2, c=3, d=0xC1, e=0x00, h=0xC2, l=0x10, fill=1),

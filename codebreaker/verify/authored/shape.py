@@ -8,7 +8,7 @@ collects the result, one return at the end. A compiler that optimises sees throu
 differences of spelling (the order of a comparison's sides, the order of declarations) and gives
 the same bytes for all of them -- but not through these: a `switch` is compiled as a switch, and
 a function that returns from the middle is laid out differently from one that does not. Each
-rewrite here changes no meaning; verify/repair.py tries them and keeps what brings the bytes
+rewrite here changes no meaning; verify/authored/repair.py tries them and keeps what brings the bytes
 nearer the original's.
 
 `shadow` is the body with its strings and comments blanked (repair._blank), the same length:

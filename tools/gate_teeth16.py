@@ -1,4 +1,4 @@
-"""gate_teeth16.py -- is the 16-bit gate (verify/isolated16.py) a ruler worth trusting?
+"""gate_teeth16.py -- is the 16-bit gate (verify/gate16/isolated16.py) a ruler worth trusting?
 
     python tools/gate_teeth16.py self   MODULE                 the original against itself
     python tools/gate_teeth16.py teeth  MODULE BUILD [N]       planted bugs in a build's C
@@ -23,7 +23,7 @@ sys.path.insert(0, ROOT)
 import capstone  # noqa: E402  (before the workers: the disassembler's DLL)
 
 from codebreaker.formats.ne import NEFile  # noqa: E402
-from codebreaker.verify import isolated16  # noqa: E402
+from codebreaker.verify.gate16 import isolated16  # noqa: E402
 
 ORIG = os.path.join(ROOT, "state", "mini", "original")
 SRC = os.path.join(ROOT, "state", "mini", "src")
@@ -91,7 +91,7 @@ def _mutants(code, start, end, rnd):
 def _executed(original, build, image, tables, names):
     """{name: {offsets in its segment of the instructions the gate's inputs run}} in the build."""
     from codebreaker.emulate import windows16 as emu
-    from codebreaker.verify import win16
+    from codebreaker.verify.lanes import win16
     funcs = {n: tuple(v) for n, v in tables["funcs"].items()}
     place = {n: tuple(v) for n, v in tables["place"].items()}
     ours = isolated16._built_places(build)

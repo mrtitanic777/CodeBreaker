@@ -10,7 +10,7 @@ import subprocess
 import pytest
 
 from codebreaker.java import transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SDL = r'C:\msys64\mingw64\include\SDL2\SDL.h'
 needs_sdl = pytest.mark.skipif(not (java.compiler() and os.path.isfile(SDL)), reason='needs g++ and SDL2')

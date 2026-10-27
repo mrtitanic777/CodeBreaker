@@ -24,7 +24,7 @@ The check is structural -- does the rebuilt file have what the original has:
     module       the same kind of module (start-up, on demand, old style)
 
 and, where objects pair up, how many of their bytes are equal outside the places the loader
-patches. Whether the two BEHAVE alike is verify/driver.py's question (`driver-judge`).
+patches. Whether the two BEHAVE alike is verify/lanes/driver.py's question (`driver-judge`).
 Everything is written under the state folder; the source folder is only read.
 """
 import os

@@ -7,7 +7,7 @@ field-zeroing C() and a j2xInit(...) per Java constructor, and `new C(args)` is 
 import pytest
 
 from codebreaker.java import parse, probe, transpile, twophase
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 BLOCK = '''public class Block {
 	public static final boolean[] opaque = new boolean[16];

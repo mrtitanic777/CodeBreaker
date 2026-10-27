@@ -9,7 +9,7 @@ CodeBreaker's 6502 (emulate/m6502.py) in both cartridges, from the same register
 did is compared: how the run ended, A X Y and the flags, the RAM it left, and every access to
 the picture and sound hardware, in order.
 """
-from codebreaker.verify.image_lane import Lane
+from codebreaker.verify.lanes.image_lane import Lane
 
 _HARDWARE = (0x2000, 0x401F)
 # the registers a function starts from, and how its 2 KB of RAM is filled (seed 0: all zero)

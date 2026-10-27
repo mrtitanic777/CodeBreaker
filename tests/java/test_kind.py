@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The java kind on CodeBreaker's path (verify/java.py through verify/reconstruct.py, the store, and
+"""The java kind on CodeBreaker's path (verify/lanes/java.py through verify/reconstruct.py, the store, and
 source/java_writer.py): a folder of Java source is a module, its classes are its functions, each is
 compiled on its own and filed NOT JUDGED (compiles, not run) or DOES NOT COMPILE."""
 
@@ -8,7 +8,9 @@ import shutil
 
 import pytest
 
-from codebreaker.verify import java, reconstruct
+from codebreaker.verify import reconstruct
+
+from codebreaker.verify.lanes import java
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, 'fixtures', 'java')

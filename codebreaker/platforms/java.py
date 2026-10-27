@@ -9,11 +9,11 @@ def _recognise(path):
     if path.lower().endswith(".jar"):
         return True
     if os.path.isdir(path) or path.lower().endswith(".java"):
-        from codebreaker.verify import java
+        from codebreaker.verify.lanes import java
         return java.is_module(path)
     return False
 
 
 PLATFORM = Platform(
     name="java", title="Java", family="bytecode", container="source folder, jar",
-    cpu="", source="java -> c++", lane="codebreaker.verify.java", recognise=_recognise)
+    cpu="", source="java -> c++", lane="codebreaker.verify.lanes.java", recognise=_recognise)

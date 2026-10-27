@@ -20,7 +20,7 @@ the registers and stack words they were given, the port reads and writes, the me
 behind, the flags and registers handed back, how far the stack moved -- and the two fingerprints
 go to the one comparer (verify/compare.py), which gives the verdict.
 
-    from codebreaker.verify import driver
+    from codebreaker.verify.lanes import driver
     for label, (verdict, reason, limits, detail) in driver.judge_files(rebuilt, original).items(): ...
 
 A service call returns what the input says (EAX, carry), so both sides see the same system; the

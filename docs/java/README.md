@@ -19,7 +19,7 @@ J2CTool, the deterministic Java -> C++03 transpiler, is `codebreaker/java` since
 | `BUGFIX_LEDGER.md` in the checkout | `state/java/BUGFIX_LEDGER.md` |
 | `tests/` (pytest) | `tests/java/`, run by `tests/test_java.py` in the gate |
 
-On CodeBreaker's path a folder of Java source is a module of the `java` kind (verify/java.py): its
+On CodeBreaker's path a folder of Java source is a module of the `java` kind (verify/lanes/java.py): its
 classes are its functions, each is compiled on its own with the host compiler, verdicts go to the
 store, and `codebreaker module FOLDER` writes the C++ with each class's status line and STATUS.md.
 A class that compiles is then run beside the JVM where it can be (codebreaker/java/probe.py): its

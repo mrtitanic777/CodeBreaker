@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`match` and `repair` on PowerPC (codebreaker/verify/match_powerpc.py): the object reader, its
+"""`match` and `repair` on PowerPC (codebreaker/verify/authored/match_powerpc.py): the object reader, its
 bit-level masks, the comparison.
 
     python tests/test_match_powerpc.py
@@ -14,7 +14,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from codebreaker.verify import match_powerpc as M      # noqa: E402
+from codebreaker.verify.authored import match_powerpc as M      # noqa: E402
 
 RESULTS = []
 SOURCE = """

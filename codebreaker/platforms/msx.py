@@ -13,4 +13,4 @@ def _recognise(path):
 PLATFORM = Platform(
     name="msx", title="MSX", family="z80", container="cartridge image (.rom)",
     cpu="z80:LE:16:default", source="asm",
-    lane="codebreaker.verify.msx", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)
+    lane="codebreaker.verify.lanes.msx", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)

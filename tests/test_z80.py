@@ -3,7 +3,7 @@
 each: the instruction table (decompile/z80.py, decompile/sm83.py) round trips through its
 assembler, the interpreter (emulate/z80.py, emulate/sm83.py) sets the flags the CPU sets, source
 written from a cartridge builds back into it (source/sms_writer.py, source/gb_writer.py with
-build/z80_asm.py, build/sm83_asm.py), and the lane's judge (verify/sms.py, verify/gb.py) tells an
+build/z80_asm.py, build/sm83_asm.py), and the lane's judge (verify/lanes/sms.py, verify/lanes/gb.py) tells an
 edited function from the others.
 
     python tests/test_z80.py

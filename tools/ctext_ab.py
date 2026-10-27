@@ -57,7 +57,7 @@ def _outputs(mod, path, kind, work):
     if kind == "16":
         m = mod._compilable16(path, work)
         return m.header, dict(m.texts)
-    from codebreaker.verify import win32
+    from codebreaker.verify.lanes import win32
     header, texts, _order, _by_va, _used, _ecx, _edx = mod.compilable32(path, win32.LANES["pe"].functions(path), work)
     return header, dict(texts)
 

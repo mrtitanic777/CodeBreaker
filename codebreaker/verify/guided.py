@@ -1,7 +1,7 @@
 """guided.py -- inputs aimed at the branches no input has taken yet.
 
 A function verified on inputs that ran under half of its instructions is "verified (weak)": the
-rest was never compared. The fixed inputs (verify/win32.py _vectors, _confirm_vectors) and the
+rest was never compared. The fixed inputs (verify/lanes/win32.py _vectors, _confirm_vectors) and the
 directed ones (constants and globals read off the code) stop at the first test they do not
 happen to satisfy. This generator watches each conditional jump of the ORIGINAL function -- which
 way it went, and what the comparison before it compared -- and makes inputs for the side not
@@ -22,7 +22,7 @@ no input before it did. Kept inputs are run on both sides by compare.compare lik
 set of addresses, "args_at": where the first argument is on the stack, "stack": (low, high) of
 the stack} or None when it cannot be observed (compare: see emulate/emulator.py _branch_hook). An input is a dict with "args" (a list
 of words) and optionally "mem_init" [(address, bytes)] and "stub_ret". Nothing here knows the
-processor: verify/win32.py and verify/powerpc.py supply `run`."""
+processor: verify/lanes/win32.py and verify/lanes/powerpc.py supply `run`."""
 import random
 
 INTERESTING = (0, 1, 2, 0xFFFFFFFF, 0x7FFFFFFF, 0x80000000, 0xFF, 0x100, 0xFFFF, 0x10000, 0x40, 0x8000)

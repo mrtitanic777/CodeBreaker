@@ -9,7 +9,7 @@ became `delete new Reg(x);`, freeing an object its constructor had just put in R
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCE = '''public class Reg {
 	public static Reg[] list = new Reg[8];

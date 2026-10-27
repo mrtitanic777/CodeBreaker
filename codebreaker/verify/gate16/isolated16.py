@@ -1,6 +1,6 @@
 """isolated16.py -- each function of a rebuilt 16-bit module run beside the original's, on its own.
 
-    from codebreaker.verify import isolated16
+    from codebreaker.verify.gate16 import isolated16
     for name, verdict, why in isolated16.check(original_path, build_folder, names):
         ...
 
@@ -20,7 +20,7 @@ Where the two differ is the first thing a reader needs: it says which.
 import os
 import re
 
-from codebreaker.verify import win16
+from codebreaker.verify.lanes import win16
 
 _MAP = re.compile(r"^([0-9a-f]{4}):([0-9a-f]{4,8})[+*]?\s+_?([A-Za-z_]\w*?)(?:@\d+)?\s*$")
 
@@ -190,7 +190,7 @@ def _tables(original):
     from codebreaker.base import cache
     from codebreaker.decompile import c_text, decompiler
     from codebreaker.symbols import api_arguments
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # codebreaker/
     sources = sorted(glob.glob(os.path.join(root, "decompile", "*.py")) + glob.glob(os.path.join(root, "symbols", "*.py")))
     try:
         sizes = open(api_arguments._cache16_path(), "rb").read()
@@ -223,9 +223,9 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         import json
         import subprocess
         import sys
-        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         code = ("import sys, json; sys.path.insert(0, %r); import capstone; "
-                "from codebreaker.verify import isolated16 as v; a = json.load(sys.stdin); "
+                "from codebreaker.verify.gate16 import isolated16 as v; a = json.load(sys.stdin); "
                 "print(json.dumps(v._part(a)))" % root)
         import tempfile
         errs = [tempfile.TemporaryFile(mode="w+") for _ in range(workers)]

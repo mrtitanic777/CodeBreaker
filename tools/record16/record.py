@@ -26,8 +26,8 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, CB)
 from codebreaker.base import corpus, settings
 from codebreaker.formats.ne import NEFile
-from codebreaker.verify import isolated16
-from codebreaker.verify import setup16 as s
+from codebreaker.verify.gate16 import isolated16
+from codebreaker.verify.gate16 import setup16 as s
 import gdbrsp
 import memmap16
 

@@ -12,7 +12,7 @@ from collections import defaultdict
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from codebreaker.base import corpus, settings
-from codebreaker.verify import isolated16
+from codebreaker.verify.gate16 import isolated16
 sys.path.insert(0, HERE)
 import memmap16
 

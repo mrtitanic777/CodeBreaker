@@ -2,7 +2,7 @@
 
     python -m codebreaker match <16-bit module> --search ROUNDS
 
-A function a few bytes from the original under Microsoft C (verify/match16.py) is often one the
+A function a few bytes from the original under Microsoft C (verify/authored/match16.py) is often one the
 compiler would make exactly from a source written a little differently: its locals declared in
 another order (the compiler lays the frame out by declaration, so every [bp-N] moves), or one of
 them unsigned where the decompiler guessed signed (a compare, a shift, a widening). Each round

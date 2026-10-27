@@ -6,7 +6,7 @@
 run -- a dict saying how it ended, what it returned, which calls it made with which arguments,
 what it left in memory, how far the stack moved, whether saved registers were preserved, and
 which of the original's instructions ran. This module knows nothing about processors or file
-formats: a kind of module (verify/win32.py, verify/win16.py) knows how to run its code and
+formats: a kind of module (verify/lanes/win32.py, verify/lanes/win16.py) knows how to run its code and
 produce the fingerprint; the comparison, the verdicts and the list of reasons a match is weaker
 than it looks are the same for all of them.
 

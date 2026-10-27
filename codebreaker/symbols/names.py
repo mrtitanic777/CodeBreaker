@@ -49,11 +49,11 @@ _ENDS = ("ret", "retf", "retn", "jmp", "ljmp", "iret", "iretd")
 
 
 def key(module_path, address):
-    """The function store's text for an address (see verify/win32.py and win16.py)."""
+    """The function store's text for an address (see verify/lanes/win32.py and win16.py)."""
     if corpus.lane(module_path) == "ne":
-        from codebreaker.verify import win16
+        from codebreaker.verify.lanes import win16
         return win16.key(*describe.where(address))
-    from codebreaker.verify import win32
+    from codebreaker.verify.lanes import win32
     return win32.LANES["pe"].key(address)
 
 

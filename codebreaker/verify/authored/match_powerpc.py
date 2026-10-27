@@ -165,7 +165,7 @@ def run(module_path, flags, work, jobs=4):
     """Compile every reconstructed function of the image and compare.
     -> {name: (verdict, words differing, words, original words)}"""
     from codebreaker.build import functions
-    from codebreaker.verify import powerpc
+    from codebreaker.verify.lanes import powerpc
     tools = functions.powerpc_tools()
     if not tools:
         raise SystemExit("no PowerPC compiler (settings.json: powerpc_tools, powerpc_lib)")

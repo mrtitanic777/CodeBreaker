@@ -9,7 +9,7 @@ Each is checked on the emitted text and, with g++ and a JDK, beside the JVM (ins
 import pytest
 
 from codebreaker.java import parse, probe, transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCES = {
     'Nibbles.java': '''public class Nibbles {

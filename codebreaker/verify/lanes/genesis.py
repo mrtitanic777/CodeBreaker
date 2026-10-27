@@ -9,7 +9,7 @@ does. When it is not identical -- the source was edited -- each function is run 
 compared: how the run ended, D0-D7 A0-A6 and the condition codes, the 64 KB of work RAM, and
 every access to the VDP, the I/O ports and the Z80's bus, in order.
 """
-from codebreaker.verify.image_lane import Lane
+from codebreaker.verify.lanes.image_lane import Lane
 
 _HARDWARE = [(0xA00000, 0xA1FFFF), (0xC00000, 0xC0001F)]
 _STATES = [dict(d=[0] * 8, a=[0] * 7, fill=0),

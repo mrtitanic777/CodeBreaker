@@ -1,5 +1,5 @@
 """z80_flat.py -- the lane of a flat Z80 program (one block at one address): the ZX Spectrum's and
-the MSX's (verify/zx.py, verify/msx.py), each giving its reader, writer and machine.
+the MSX's (verify/lanes/zx.py, verify/lanes/msx.py), each giving its reader, writer and machine.
 
 The program's source is written (source/z80_writer.py through the machine's writer) and built
 (build/z80_asm.py build_flat); a block that comes back identical IS the original. When it is not
@@ -9,7 +9,7 @@ how the run ended, the registers and flags, the memory it left, and every port a
 The machine's ROM is not run: each of its bytes reads as RET, so a call into the ROM returns at
 once, the same way in both runs.
 """
-from codebreaker.verify.image_lane import Lane
+from codebreaker.verify.lanes.image_lane import Lane
 
 STATES = [dict(a=0, b=0, c=0, d=0, e=0, h=0, l=0, fill=0), dict(a=1, b=2, c=3, d=0xC1, e=0x00, h=0xC2, l=0x10, fill=1),
           dict(a=0x80, b=0xFF, c=0x7F, d=0xD0, e=0x80, h=0xE1, l=0x00, fill=2)]

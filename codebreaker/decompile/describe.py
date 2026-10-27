@@ -101,7 +101,7 @@ def function_starts(module_path):
     from codebreaker.formats.pe import open_pe
     if open_pe(module_path).machine == powerpc_image.MACHINE:
         return powerpc_image.read(module_path).functions
-    from codebreaker.verify import win32 as pipeline
+    from codebreaker.verify.lanes import win32 as pipeline
     return pipeline.LANES["pe"].functions(module_path)
 
 

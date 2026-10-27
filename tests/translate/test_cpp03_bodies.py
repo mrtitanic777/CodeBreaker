@@ -8,7 +8,7 @@ import pytest
 
 from codebreaker.java import parse, probe, transpile
 from codebreaker.translate.backends import cpp03
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCE = '''import java.util.ArrayList;
 import java.util.List;

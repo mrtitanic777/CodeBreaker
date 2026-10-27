@@ -318,7 +318,7 @@ def run(module_path, flags, work, jobs=4):
     """Compile every reconstructed function of a module with the period compiler and compare.
     -> {function name: (verdict, share, compiled size, original size)}; a function the compiler
     rejects has verdict "does not compile"."""
-    from codebreaker.verify import win32
+    from codebreaker.verify.lanes import win32
     cl = compiler()
     if not cl:
         raise SystemExit("no period compiler (settings.json: period_compiler -- the folder holding CL.EXE)")
@@ -377,10 +377,10 @@ def main(argv):
     path = args[0] if os.path.isfile(args[0]) else corpus.retail(args[0])
     if args[0].lower().endswith(".xex") or (path and corpus.lane(path) == "pe" and
                                             open_pe(path).machine == 0x01F2):   # PowerPC: the Xbox 360 compiler
-        from codebreaker.verify import match_powerpc
+        from codebreaker.verify.authored import match_powerpc
         return match_powerpc.main(argv)
     if path and corpus.lane(path) == "ne":                   # a 16-bit module: Microsoft C 6
-        from codebreaker.verify import match16
+        from codebreaker.verify.authored import match16
         return match16.main(argv)
     if not path or corpus.lane(path) != "pe":
         raise SystemExit("%s: a 32-bit or 16-bit Windows module is needed" % args[0])

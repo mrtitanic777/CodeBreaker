@@ -1718,7 +1718,7 @@ def _call(path, kind, export):
         if kind == "ne":
             r = windows16.probe(path, ordinal=export.ordinal, args=[0] * 8)
         else:
-            from codebreaker.verify import win32
+            from codebreaker.verify.lanes import win32
             r = emulator.trace_function(path, func=export.address, args=[0] * 4, mem_init=_sections(path),
                                         stub_externals=True, sig_resolver=win32._argc)
     except ImportError:
@@ -1741,7 +1741,7 @@ def build(module, outdir=None, call=True, log=print, gated=None):
     """Build a module whole. -> Built
 
     A 16-bit module's functions rebuilt from C are then each run beside the original's
-    (verify/isolated16.py: on their own, every call out answered alike on both sides); one
+    (verify/gate16/isolated16.py: on their own, every call out answered alike on both sides); one
     that does not do what the original does is rebuilt from its own instructions instead, and
     the module built again (b.gated: name -> how it differed). CB_NO_GATE=1 leaves them."""
     from codebreaker.verify import reconstruct
@@ -1788,7 +1788,7 @@ def build(module, outdir=None, call=True, log=print, gated=None):
                 log("%s: the gate could not run %d functions: %s" % (b.name, len(failed), failed[0][1][:120]))
             # (and its calls beside the original's: what each call is followed by -- the check
             # above answers a call as the description believes; this reads both as they are)
-            from codebreaker.verify import contract16
+            from codebreaker.verify.gate16 import contract16
             try:
                 for n, why in contract16.mismatches(path, folder, b.image, c).items():
                     differ.setdefault(n, "its calls are not the original's: " + why)
@@ -1829,7 +1829,8 @@ def _disputes(d):
 def _gate16_keys(path, names, m):
     import sys
     from codebreaker.emulate import windows16
-    from codebreaker.verify import isolated16, win16
+    from codebreaker.verify.gate16 import isolated16
+    from codebreaker.verify.lanes import win16
     with open(path, "rb") as f:
         module_key = cache.key(f.read())
     from codebreaker.symbols import api_arguments
@@ -1898,11 +1899,11 @@ def _gate16_known(path, m):
 
 def _gate16(path, folder, names, m):
     """{name: how it differs} for the named functions rebuilt from C, each run beside the
-    original's (verify/isolated16.py). A function's verdict is kept (base/cache.py) by what
+    original's (verify/gate16/isolated16.py). A function's verdict is kept (base/cache.py) by what
     makes it: the original module, the function's C and the header it compiles with, the
     compiler and its options, and the source of the checker and the emulator -- a function
     the same as in an earlier build is not run again."""
-    from codebreaker.verify import isolated16
+    from codebreaker.verify.gate16 import isolated16
     keys = _gate16_keys(path, names, m)
     differ, run = {}, []
     for n in names:

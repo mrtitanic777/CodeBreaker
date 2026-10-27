@@ -7,7 +7,7 @@ The module's segments are laid out in protected mode, each behind a selector of 
 its relocations applied; every import is a far address in a segment of landing places, so a
 call to Windows is seen, named, and returned from with the arguments it was given. The function
 is entered the way it is really called (far or near). Memory is kept by the same hooks as the
-32-bit emulator's (emulator._memory_hooks). What a run did is judged in verify/win16.py.
+32-bit emulator's (emulator._memory_hooks). What a run did is judged in verify/lanes/win16.py.
 """
 import hashlib
 import os

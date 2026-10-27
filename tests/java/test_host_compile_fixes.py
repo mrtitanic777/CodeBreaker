@@ -10,7 +10,7 @@ import subprocess
 import pytest
 
 from codebreaker.java import transpile
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCES = {
     'Session.java': 'public class Session {\n\tpublic String inventory;\n}\n',

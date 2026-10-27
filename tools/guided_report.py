@@ -51,8 +51,8 @@ def _takes_ecx(path, va):
 
 def pe_coverage(path, va):
     """(instructions, ran before, ran after, inputs kept, seconds) for one PE function: the inputs
-    the judge gives it (verify/win32.py judge), then those and the guided ones."""
-    from codebreaker.verify import win32 as W
+    the judge gives it (verify/lanes/win32.py judge), then those and the guided ones."""
+    from codebreaker.verify.lanes import win32 as W
     insns = W.insn_count(path, va)
     if not insns:
         return None

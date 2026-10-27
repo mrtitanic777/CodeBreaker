@@ -1107,7 +1107,7 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # javac's typed tree through codebreaker/translate's IR and C++03 back end.
     from codebreaker.java import probe as _probe
     from codebreaker.translate.backends import cpp03 as _cpp03
-    from codebreaker.verify import java as _vjava
+    from codebreaker.verify.lanes import java as _vjava
     from codebreaker.base import settings as _settings
     _cp = list(_probe.libraries())
     _shim = _probe.shims(_settings.state('translate'), _vjava.jdk()[0]) if _cp else ''

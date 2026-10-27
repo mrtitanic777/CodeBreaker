@@ -246,7 +246,7 @@ a{color:var(--accent)}
 <!-- ============ FIG 3 ============ -->
 <section id="judge">
 <h2>The judge</h2>
-<p class="col">What <code>kind.judge</code> does for one function (shown for 32-bit Windows, <code>verify/win32.py</code>; the other lanes differ only in their runner). The comparison itself, <code>verify/compare.py</code>, knows nothing about processors or file formats.</p>
+<p class="col">What <code>kind.judge</code> does for one function (shown for 32-bit Windows, <code>verify/lanes/win32.py</code>; the other lanes differ only in their runner). The comparison itself, <code>verify/compare.py</code>, knows nothing about processors or file formats.</p>
 <figure>
 <div class="fig w3">
 <svg viewBox="0 0 1000 510" role="img" aria-label="The judge: the same inputs go to the original function and to the rebuilt one, each running in the emulator and producing a fingerprint; compare.first_difference turns the fingerprints into one of four verdicts; coverage from the original steers new inputs toward branches not yet taken.">
@@ -383,10 +383,7 @@ a{color:var(--accent)}
   <li><span class="pill ok">Strong</span><div><b>The spine is truly single.</b> <code>reconstruct.run</code> has no platform branches, and 13 platforms plug in through four functions each. This is the main reason the tool could grow from Win95 to consoles, Java and XNA without forking.</div></li>
   <li><span class="pill ok">Strong</span><div><b>Incremental work is sound.</b> Signatures over call-graph cycles, plus the object-code digest, mean a verdict is reused only when what was judged truly didn't change. The rule is stricter than per-file caching and cheaper than re-judging.</div></li>
   <li><span class="pill ok">Strong</span><div><b>Failure is first-class.</b> no-synth, no-compile, inconclusive and stub-callee are all recorded with reasons, so the store can explain every function instead of only counting successes.</div></li>
-  <li><span class="pill warn">Drift</span><div><code>verify/win32.py</code>'s docstring says comparison happens in <code>verify/oracle.py</code>, which no longer exists. It is now <code>verify/compare.py</code> plus <code>emulate/emulator.py</code>.</div></li>
-  <li><span class="pill warn">Drift</span><div><code>emulate/emulator.py</code> still introduces itself as <code>tracer.py</code> and cites <code>recompile95/tools/difftest.py</code>, both from before the restructure.</div></li>
   <li><span class="pill warn">Drift</span><div><code>docs/architecture.png</code> shows five kinds of code. <code>platforms/</code> now has thirteen, and the picture leaves out Java, XNA, the consoles and recompile.</div></li>
-  <li><span class="pill warn">Shape</span><div><code>verify/</code> holds two different things: the 13 lane modules (the plug-in surface) and about 15 judge tools (teeth, match, repair, diverge16, search16…). A <code>verify/lanes/</code> subfolder would make the plug-in contract visible at a glance.</div></li>
   <li><span class="pill warn">Shape</span><div><code>invert/omf.py</code> is a second, standalone OMF parser. <code>exact/omf.py</code> was already folded into <code>formats/omf.py</code> as “one OMF-86 reader for exact, invert and the builders”, so invert's copy looks like an unfinished merge.</div></li>
   <li><span class="pill bad">Open</span><div><b>The judge's strength is measured on only a few modules.</b> <code>teeth</code> has not been run corpus-wide (<code>docs/STATUS.md</code>), so “verified” percentages for compiled code (about 50% on Win16, Win32 and Xbox 360 samples) still carry an unmeasured margin.</div></li>
 </ul>

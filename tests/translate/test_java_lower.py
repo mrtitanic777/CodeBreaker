@@ -7,7 +7,7 @@ import pytest
 from codebreaker.translate import ir
 from codebreaker.translate.frontends import java as fj
 from codebreaker.translate.frontends.java import lower as L
-from codebreaker.verify import java
+from codebreaker.verify.lanes import java
 
 SOURCE = '''import java.io.*;
 import java.util.*;

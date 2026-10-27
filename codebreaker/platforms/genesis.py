@@ -13,4 +13,4 @@ def _recognise(path):
 PLATFORM = Platform(
     name="genesis", title="Genesis / Mega Drive", family="68000", container="cartridge image (.md, .bin, .gen, .smd)",
     cpu="68000:BE:32:default", source="asm",
-    lane="codebreaker.verify.genesis", runner=("codebreaker.emulate.m68k", "run"), recognise=_recognise)
+    lane="codebreaker.verify.lanes.genesis", runner=("codebreaker.emulate.m68k", "run"), recognise=_recognise)
