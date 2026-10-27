@@ -28,6 +28,8 @@
     dos-source <program>            a real-mode program's assembly source, built and compared
     pe-source <program> [--stub F]  a 32-bit Windows program's assembly source (NASM), built and
                                     compared byte for byte
+    ne-source <program>             a 16-bit Windows / OS/2 program's assembly source (NASM), built and
+                                    compared byte for byte
     origin <module> [--list]        which of a 16-bit module's functions were written in assembly
     boot-floppy                     the Win95 Setup boot floppy, made from the rebuilt files
     driver-build <folder or .asm>   assemble and link a driver, check it against the original
@@ -108,6 +110,7 @@ COMMANDS = {
     "driver-source": ("codebreaker.source.driver_writer", []),
     "dos-source": ("codebreaker.source.dos_writer", []),
     "pe-source": ("codebreaker.source.pe_writer", []),
+    "ne-source": ("codebreaker.source.ne_writer", []),
     "origin": ("codebreaker.analyze.origin", []),
     "boot-floppy": ("codebreaker.build.floppy", []),
     "driver-build": ("codebreaker.build.driver", []),
