@@ -199,14 +199,14 @@ def measure(fs=None, module=None, refresh=False):
             stored.setdefault(name, []).append((sha, path or "", kind or ""))
         mods = corpus_modules(refresh)
         have = {m["name"] for m in mods}
+        want = os.path.basename(module).lower() if module else None
         for name, versions in stored.items():                   # in the store but not a corpus module
-            if name not in have:
+            if name not in have and (not want or want in (name, os.path.splitext(name)[0])):
                 sha, path, kind = versions[0]
                 size = os.path.getsize(path) if os.path.isfile(path) else 0
                 mods.append({"name": name, "path": path, "kind": kind if kind in TITLE else "pe", "size": size,
                              "code_bytes": inspect.describe(path)["summary"].get("code_bytes", 0) if size else 0})
         if module:
-            want = os.path.basename(module).lower()
             mods = [m for m in mods if m["name"] == want or os.path.splitext(m["name"])[0] == want]
         rows = []
         for m in sorted(mods, key=lambda m: m["name"]):

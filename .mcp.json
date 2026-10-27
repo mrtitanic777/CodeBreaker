@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "codebreaker": {
+      "type": "stdio",
+      "command": "C:/Python314/python.exe",
+      "args": ["-m", "codebreaker", "mcp"],
+      "env": {}
+    }
+  }
+}

@@ -128,6 +128,22 @@ python -m codebreaker                          every command
 A run of a module that was run before only redoes what changed: a verdict holds for as long as
 the function's source, and the source of everything it calls, is the same.
 
+### From an assistant (MCP)
+
+`python -m codebreaker mcp` is CodeBreaker as an MCP server (codebreaker/ui/mcp_server.py), so
+an assistant such as Claude Code can use it directly. `.mcp.json` registers it for this project:
+open Claude Code in this folder and approve the `codebreaker` server. Elsewhere, run
+`claude mcp add codebreaker -- python -m codebreaker mcp`. What it offers:
+
+- reading tools that answer at once: describe, inspect, strings, hex_dump, resource, modules,
+  coverage, progress, functions, function, names, identify, demangle, commands, command_help
+- any command run as a background job: run_command, then jobs, job, job_file, stop_job
+- one writing tool, name_function, which names a body in the function store
+- a resource, `codebreaker://function/{module}/{addr}`, and a prompt, `triage`
+
+The coverage ledger behind coverage, modules and progress takes minutes when cold. It is worked
+out in the background and kept, and a call made before it is ready says so.
+
 ## What a verdict means
 
 ```

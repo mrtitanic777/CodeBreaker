@@ -1,6 +1,7 @@
 # CodeBreaker's Python dependencies (everything else it uses is named in settings.json).
 capstone>=5.0        # disassembly (x86 16/32-bit, PowerPC)
 unicorn>=2.0         # the emulator the judges run original and rebuilt code in
+mcp>=2.3            # `python -m codebreaker mcp`: the MCP server for an assistant
 pyflakes>=3.0        # tools/tidy.py, part of the test gate
 pytest>=7.0          # tests/java (the Java transpiler's suite), part of the test gate
 Pillow>=9.0          # optional: the Java transpiler's texture/achievement-icon tooling

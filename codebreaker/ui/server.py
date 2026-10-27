@@ -74,6 +74,13 @@ class Jobs(object):
         if not path:
             raise ValueError("no module %r in the corpus" % module)
         name = os.path.basename(os.path.normpath(path)).lower()
+        output = os.path.join(settings.state("ui_jobs"), os.path.splitext(name)[0] + ".c") if action == "decompile" else ""
+        return self.launch(action, [path] + (["--out", output] if output else []), name, output)
+
+    def launch(self, action, args, name, output=""):
+        """Run `python -m codebreaker <action> <args>` as a job (any command of __main__.COMMANDS).
+        -> the job, or raises ValueError("busy: ...") while two jobs run, or a measure would be
+        the second. `output` is a file the command is told to write, shown once it is done."""
         with self.lock:
             running = [j for j in self.jobs.values() if j["proc"].poll() is None]
             if len(running) >= 2 or any(j["action"] == "measure" for j in running if action == "measure"):
@@ -84,8 +91,7 @@ class Jobs(object):
             folder = settings.state("ui_jobs")
             os.makedirs(folder, exist_ok=True)
             log = os.path.join(folder, jid + ".log")
-            output = os.path.join(folder, os.path.splitext(name)[0] + ".c") if action == "decompile" else ""
-            argv = [sys.executable, "-u", "-m", "codebreaker", action, path] + (["--out", output] if output else [])
+            argv = [sys.executable, "-u", "-m", "codebreaker", action] + list(args)
             with open(log, "wb") as f:
                 proc = subprocess.Popen(argv, cwd=settings.ROOT, stdout=f, stderr=subprocess.STDOUT,
                                         stdin=subprocess.DEVNULL,
