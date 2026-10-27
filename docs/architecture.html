@@ -1,0 +1,396 @@
+<title>CodeBreaker Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an engineering manual. One reading column; figures break wider and scroll on their own. */
+:root{
+  --bg:#f2f4f6; --panel:#ffffff; --fg:#141c26; --muted:#56626f; --line:#c5ccd4; --line-strong:#3a4654;
+  --accent:#2747c4; --accent-soft:#e6ebfb;
+  --ok:#17794a; --ok-soft:#e3f3ea; --warn:#946200; --warn-soft:#fbf1da; --bad:#b4322b; --bad-soft:#fbe6e4; --dim:#5e6874; --dim-soft:#eceef1;
+  --display:"Schibsted Grotesk",system-ui,sans-serif; --body:"Instrument Sans",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141a; --panel:#171e27; --fg:#e4e9ef; --muted:#9aa6b3; --line:#2d3845; --line-strong:#a9b5c2;
+  --accent:#8aa2ff; --accent-soft:#1d2852;
+  --ok:#5fd09a; --ok-soft:#14301f; --warn:#e8b54a; --warn-soft:#352a10; --bad:#f08178; --bad-soft:#3a1a18; --dim:#a3adb8; --dim-soft:#222a33; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --panel:#171e27; --fg:#e4e9ef; --muted:#9aa6b3; --line:#2d3845; --line-strong:#a9b5c2;
+  --accent:#8aa2ff; --accent-soft:#1d2852;
+  --ok:#5fd09a; --ok-soft:#14301f; --warn:#e8b54a; --warn-soft:#352a10; --bad:#f08178; --bad-soft:#3a1a18; --dim:#a3adb8; --dim-soft:#222a33; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 var(--body)}
+.wrap{max-width:1180px;margin:0 auto;padding-block:40px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.col{max-width:72ch}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(2.1rem,5vw,3.2rem);font-weight:800;letter-spacing:-.02em}
+h2{font-size:1.65rem;font-weight:700;margin-top:64px;padding-top:20px;border-top:1px solid var(--line)}
+h3{font-size:1.1rem;font-weight:700;margin-top:28px}
+p{margin:12px 0}
+code,.m{font-family:var(--mono);font-size:.86em}
+.eyebrow{font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.lede{font-size:1.15rem;color:var(--muted);max-width:66ch;margin-top:14px}
+.facts{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:24px;font:13px var(--mono);color:var(--muted)}
+.facts b{color:var(--fg);font-weight:500;font-variant-numeric:tabular-nums}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:22px;font-size:14px}
+nav.toc a{color:var(--accent);text-decoration:none}
+nav.toc a:hover{text-decoration:underline}
+figure{margin:28px 0 8px}
+.fig{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px}
+.fig svg{display:block;width:100%;height:auto;color:var(--line-strong)}
+.fig.w1 svg{min-width:860px}.fig.w2 svg{min-width:620px;max-width:820px;margin:0 auto}.fig.w3 svg{min-width:760px}
+figcaption{font-size:14px;color:var(--muted);margin-top:10px;max-width:90ch}
+figcaption b{color:var(--fg)}
+/* svg parts, all from tokens */
+.bx{fill:var(--panel);stroke:var(--line-strong);stroke-width:1.2}
+.ax{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.6}
+.dx{fill:var(--bg);stroke:var(--line-strong);stroke-width:1;stroke-dasharray:4 3}
+.sx{fill:var(--bg);stroke:var(--line-strong);stroke-width:1}
+.ln{stroke:currentColor;fill:none;stroke-width:1.4}
+.ln.d{stroke-dasharray:5 4}
+.t{fill:var(--fg);font:600 13px var(--body)}
+.t.a{fill:var(--accent)}
+.s{fill:var(--muted);font:12px var(--body)}
+.sm{fill:var(--muted);font:11.5px var(--mono)}
+.lb{fill:var(--muted);font:500 11px var(--mono)}
+.layer{fill:var(--muted);font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.v-ok{fill:var(--ok)}.v-warn{fill:var(--warn)}.v-bad{fill:var(--bad)}.v-dim{fill:var(--dim)}
+.b-ok{fill:var(--ok-soft);stroke:var(--ok)}.b-bad{fill:var(--bad-soft);stroke:var(--bad)}.b-dim{fill:var(--dim-soft);stroke:var(--dim)}.b-warn{fill:var(--warn-soft);stroke:var(--warn)}
+/* principles */
+.principles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:18px 32px;margin-top:20px}
+.principles div{min-width:0}
+.principles h3{margin-top:0;font-size:1rem}
+.principles p{font-size:15px;margin:6px 0 0;color:var(--fg)}
+/* tables */
+.tbl{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:720px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.n{font-family:var(--mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td code{white-space:nowrap}
+/* command map */
+.cmds{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;margin-top:18px}
+.cmds div{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;min-width:0}
+.cmds h3{margin:0 0 6px;font-size:.95rem}
+.cmds p span{white-space:nowrap}
+.cmds p{margin:0;font:12.5px/1.75 var(--mono);color:var(--muted)}
+/* observations */
+.obs{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:12px}
+.obs li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start}
+.obs li>div{min-width:0}
+.pill{font:600 11px var(--mono);letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:999px;white-space:nowrap;margin-top:3px}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.foot{margin-top:56px;font-size:13px;color:var(--muted)}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:560px){.obs li{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+<header class="col">
+  <div class="eyebrow">Architecture · master @ ffe988b · 26 Oct 2026</div>
+  <h1>CodeBreaker Architecture</h1>
+  <p class="lede">CodeBreaker takes a compiled program apart, writes source for it, builds that source, runs the rebuild beside the original in an emulator on the same inputs, and records what it saw. A function counts as reconstructed only when the two behave alike.</p>
+</header>
+<div class="facts">
+  <span><b>482</b> Python files</span><span><b>~152k</b> lines of Python</span><span><b>22</b> packages</span>
+  <span><b>66</b> commands</span><span><b>13</b> platforms</span><span><b>6</b> native engines</span><span><b>7,564</b> commits</span>
+</div>
+<nav class="toc">
+  <a href="#theory">Theory of operation</a><a href="#system">System map</a><a href="#flow">Reconstruction flow</a>
+  <a href="#judge">The judge</a><a href="#lanes">Platforms and lanes</a><a href="#beside">Beside the path</a>
+  <a href="#source">Source map</a><a href="#commands">Commands</a><a href="#findings">Findings</a>
+</nav>
+
+<!-- ============ THEORY ============ -->
+<section id="theory">
+<h2>Theory of operation</h2>
+<div class="col">
+<p>The goal is readable, maintainable source in the language the program was first written in, which compiles and behaves as the original did. Getting the same bytes back is a useful hint about which of several working sources is closest to what a person wrote. It is never the goal.</p>
+<p>Everything follows from one rule: <b>nothing is believed until it has been observed.</b> Every function goes through the same five steps: decompile, build, run both, compare, record. The machinery around those steps (caching, signatures, worker pools, the judge's own test) exists to make the loop cheap enough to run over hundreds of thousands of functions, and strict enough that a pass means something.</p>
+</div>
+<div class="principles">
+  <div><h3>One path, many platforms</h3><p>A platform is a descriptor in <code>platforms/</code>: its processor (the decompiler's language id), container, source language, lane module and runner. Its lane, <code>verify/&lt;kind&gt;.py</code>, provides four functions: <code>profile</code>, <code>prepare</code>, <code>build</code>, <code>judge</code>. <code>reconstruct.run</code> never branches on platform. Adding a platform means adding one descriptor and one lane file.</p></div>
+  <div><h3>The decompiler knows processors, not files</h3><p><code>describe.py</code> does the loader's work: it lays NE segments out at selectors, applies relocations and turns imports into far pointers. It also records facts read from the binary instead of guessed, such as function starts and <code>ret N</code> byte counts (which fix the calling convention). The native <code>decompiler.exe</code>, a forked Ghidra decompiler core driven by SLEIGH languages, turns that description into C.</p></div>
+  <div><h3>C that compiles and means the same</h3><p><code>c_text.py</code> turns the decompiler's output into C that OpenWatcom accepts. It defines base types, binds globals to the original's addresses, declares every function and import with its real convention, and keeps address-taken locals in the frame. <code>struct_text.py</code> writes field accesses as fields.</p></div>
+  <div><h3>Judged by behaviour</h3><p>Both sides run in an emulator on the same inputs. Each run is reduced to a fingerprint: how it ended, what it returned, which calls it made and with which arguments, what memory it wrote, the stack and the saved registers. The first difference decides the verdict. Inputs are aimed at branches no earlier input reached.</p></div>
+  <div><h3>Never the same work twice</h3><p>Compiles and decompiles are cached under a hash of everything they depend on, including the tool itself. A verdict carries a signature built from the function's text, the header and its callees' signatures. If a source edit leaves the compiled code unchanged, the verdict is kept and nothing is re-run.</p></div>
+  <div><h3>One store of truth</h3><p><code>state/functions.sqlite</code> holds every module, function, candidate source and verdict. Verdicts are filed per verifier profile, so changing the judge adds new verdicts beside the old ones instead of erasing them. Every report reads from the store: scoreboards, module files, the web console and the MCP tools.</p></div>
+  <div><h3>Crashes are data</h3><p><code>jobs/pool.py</code> spreads judging over worker processes at low priority. When emulated native code kills a worker, the items it was running are retried one at a time. The one that crashes again is recorded as <em>inconclusive</em>, and no item is lost.</p></div>
+  <div><h3>The judge is judged</h3><p><code>verify/teeth.py</code> deliberately breaks functions the judge passed and counts how many breaks it catches. The project once found its earlier verifier passing 41% of broken bodies. Since then, every “verified” figure carries the measured strength of the check behind it.</p></div>
+</div>
+</section>
+
+<!-- ============ FIG 1 ============ -->
+<section id="system">
+<h2>System map</h2>
+<p class="col">How the source tree is layered: the ways in, the one orchestrator, the five stages it runs for a module, the engines each stage hands work to, and the foundation they all share.</p>
+<figure>
+<div class="fig w1">
+<svg viewBox="0 0 1120 600" role="img" aria-label="Layered system map: four entry points feed the drivers, which call verify/reconstruct.run; it asks the platform registry for a lane and runs five stages (decompile, build, judge, record, write), each backed by an engine, all on a shared foundation of base and formats.">
+<defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<!-- layer labels -->
+<text class="layer" x="124" y="53" text-anchor="end">Ways in</text>
+<text class="layer" x="124" y="159" text-anchor="end">Orchestration</text>
+<text class="layer" x="124" y="288" text-anchor="end">Per module</text>
+<text class="layer" x="124" y="440" text-anchor="end">Engines</text>
+<text class="layer" x="124" y="553" text-anchor="end">Foundation</text>
+<!-- row 1 -->
+<rect class="bx" x="140" y="20" width="225" height="58" rx="4"/><text class="t" x="152" y="40">Command line</text><text class="sm" x="152" y="57">python -m codebreaker</text><text class="s" x="152" y="72">__main__.py · 66 commands</text>
+<rect class="bx" x="385" y="20" width="225" height="58" rx="4"/><text class="t" x="397" y="40">Web console</text><text class="sm" x="397" y="57">ui/server.py</text><text class="s" x="397" y="72">serve · 127.0.0.1 only</text>
+<rect class="bx" x="630" y="20" width="225" height="58" rx="4"/><text class="t" x="642" y="40">Desktop windows</text><text class="sm" x="642" y="57">ui/app · workbench · live</text><text class="s" x="642" y="72">the Win95-style Workbench</text>
+<rect class="bx" x="875" y="20" width="225" height="58" rx="4"/><text class="t" x="887" y="40">MCP server</text><text class="sm" x="887" y="57">ui/mcp_server.py</text><text class="s" x="887" y="72">tools for an assistant</text>
+<path class="ln" d="M252,78 V100 M497,78 V100 M742,78 V100 M987,78 V100 M252,100 H987"/>
+<path class="ln" d="M290,100 V122" marker-end="url(#a1)"/>
+<!-- row 2 -->
+<rect class="bx" x="140" y="124" width="300" height="62" rx="4"/><text class="t" x="152" y="145">Drivers</text><text class="s" x="152" y="162">module · measure · sweep</text><text class="s" x="152" y="178">reach --judge · coverage · scoreboard</text>
+<rect class="ax" x="470" y="124" width="300" height="62" rx="4"/><text class="t a" x="482" y="145">verify/reconstruct.run</text><text class="s" x="482" y="162">one path for every platform</text><text class="s" x="482" y="178">265 lines, no platform branches</text>
+<rect class="bx" x="800" y="124" width="300" height="62" rx="4"/><text class="t" x="812" y="145">platforms/ · 13 descriptors</text><text class="s" x="812" y="162">identify(path) → its lane module</text><text class="sm" x="812" y="178">verify/&lt;kind&gt;.py: 4 functions</text>
+<path class="ln" d="M440,155 H468" marker-end="url(#a1)"/><text class="lb" x="455" y="148" text-anchor="middle">run</text>
+<path class="ln" d="M770,155 H798" marker-end="url(#a1)"/><text class="lb" x="785" y="148" text-anchor="middle">ask</text>
+<!-- fan out to stages -->
+<path class="ln" d="M620,186 V212 M220,212 H1020"/>
+<path class="ln" d="M220,212 V234 M420,212 V234 M620,212 V234 M820,212 V234 M1020,212 V234" marker-end="url(#a1)"/>
+<text class="lb" x="628" y="204">calls in order</text>
+<!-- row 3 stages -->
+<g>
+<rect class="bx" x="140" y="236" width="160" height="96" rx="4"/><text class="t" x="152" y="257">1 · Decompile</text><text class="sm" x="152" y="276">describe.py</text><text class="sm" x="152" y="293">→ decompiler.exe</text><text class="sm" x="152" y="310">→ c_text.py</text>
+<rect class="bx" x="340" y="236" width="160" height="96" rx="4"/><text class="t" x="352" y="257">2 · Build</text><text class="sm" x="352" y="276">build/functions</text><text class="s" x="352" y="293">each function compiled</text><text class="s" x="352" y="310">one module linked</text>
+<rect class="bx" x="540" y="236" width="160" height="96" rx="4"/><text class="t" x="552" y="257">3 · Judge</text><text class="sm" x="552" y="276">&lt;kind&gt;.judge</text><text class="s" x="552" y="293">both run, same inputs</text><text class="s" x="552" y="310">jobs/pool workers</text>
+<rect class="bx" x="740" y="236" width="160" height="96" rx="4"/><text class="t" x="752" y="257">4 · Record</text><text class="sm" x="752" y="276">store/functions</text><text class="s" x="752" y="293">functions.sqlite</text><text class="s" x="752" y="310">verdict per profile</text>
+<rect class="bx" x="940" y="236" width="160" height="96" rx="4"/><text class="t" x="952" y="257">5 · Write</text><text class="sm" x="952" y="276">module_writer</text><text class="s" x="952" y="293">placement in the tree</text><text class="s" x="952" y="310">status per function</text>
+</g>
+<path class="ln" d="M300,284 H338" marker-end="url(#a1)"/><text class="lb" x="320" y="277" text-anchor="middle">C</text>
+<path class="ln" d="M500,284 H538" marker-end="url(#a1)"/><text class="lb" x="520" y="277" text-anchor="middle">DLL</text>
+<path class="ln" d="M700,284 H738" marker-end="url(#a1)"/><text class="lb" x="720" y="277" text-anchor="middle">result</text>
+<path class="ln" d="M900,284 H938" marker-end="url(#a1)"/><text class="lb" x="920" y="277" text-anchor="middle">rows</text>
+<!-- row 4 engines -->
+<rect class="sx" x="140" y="388" width="160" height="96" rx="4"/><text class="t" x="152" y="409">Native decompiler</text><text class="s" x="152" y="428">forked Ghidra core</text><text class="s" x="152" y="445">SLEIGH: x86, PowerPC</text><text class="s" x="152" y="462">+ 6502 Z80 SM83 68k</text>
+<rect class="sx" x="340" y="388" width="160" height="96" rx="4"/><text class="t" x="352" y="409">Toolchains</text><text class="s" x="352" y="428">OpenWatcom · NASM fork</text><text class="s" x="352" y="445">own Z80/SM83/68k asm</text><text class="s" x="352" y="462">period MSC (DOSBox-X)</text>
+<rect class="sx" x="540" y="388" width="160" height="96" rx="4"/><text class="t" x="552" y="409">Emulators</text><text class="s" x="552" y="428">Unicorn: x86, PowerPC</text><text class="s" x="552" y="445">Win16 env · VxD ring 0</text><text class="s" x="552" y="462">own 6502 Z80 SM83 68k</text>
+<rect class="sx" x="740" y="388" width="160" height="96" rx="4"/><text class="t" x="752" y="409">Names and facts</text><text class="s" x="752" y="428">symbols/: imports, CRT</text><text class="s" x="752" y="445">prototypes, demangle</text><text class="s" x="752" y="462">analyze/: structs, calls</text>
+<rect class="sx" x="940" y="388" width="160" height="96" rx="4"/><text class="t" x="952" y="409">Outputs</text><text class="sm" x="952" y="428">Converted/&lt;bin&gt;/</text><text class="s" x="952" y="445">the Win95 source tree</text><text class="s" x="952" y="462">scoreboard · reports</text>
+<path class="ln" d="M220,388 V334" marker-end="url(#a1)"/><text class="lb" x="227" y="366">C text</text>
+<path class="ln" d="M420,388 V334" marker-end="url(#a1)"/><text class="lb" x="427" y="366">objects</text>
+<path class="ln" d="M620,388 V334" marker-end="url(#a1)"/><text class="lb" x="627" y="366">traces</text>
+<path class="ln" d="M820,388 V334" marker-end="url(#a1)"/><text class="lb" x="827" y="366">names</text>
+<path class="ln" d="M1020,332 V386" marker-end="url(#a1)"/><text class="lb" x="1027" y="366">files</text>
+<!-- row 5 foundation -->
+<rect class="bx" x="140" y="520" width="470" height="58" rx="4"/><text class="t" x="152" y="540">base/</text><text class="s" x="200" y="540">settings · corpus · cache · parallel · converted</text><text class="s" x="152" y="565">results filed under a hash of their inputs (state/cache/)</text>
+<rect class="bx" x="630" y="520" width="470" height="58" rx="4"/><text class="t" x="642" y="540">formats/</text><text class="s" x="710" y="540">96 readers: PE NE LE MZ XEX XBE · ROMs · CAB · ISO · STFS</text><text class="s" x="642" y="565">platforms recognise files, and stages read them, through these</text>
+</svg>
+</div>
+<figcaption><b>Figure 1.</b> Every way in ends at the same orchestrator. <code>reconstruct.run</code> asks <code>platforms/</code> which lane a file belongs to, then calls that lane's <code>prepare → build → judge</code> and records the results. The engines in the fourth row do the heavy lifting. The foundation row is used by every layer above it.</figcaption>
+</figure>
+</section>
+
+<!-- ============ FIG 2 ============ -->
+<section id="flow">
+<h2>Reconstruction flow</h2>
+<p class="col">The logic of <code>verify/reconstruct.run(module_path)</code>, decision by decision. Every outcome on the right is a verdict recorded in the store, not a dropped function.</p>
+<figure>
+<div class="fig w2">
+<svg viewBox="0 0 820 1200" role="img" aria-label="Flowchart of reconstruct.run: identify the platform; profile; prepare by decompiling; compute call-graph signatures; register in the store; skip functions whose signature is unchanged; build; record no-compile for those that fail; carry verdicts over when the object code is unchanged; judge the rest in worker processes; taint callers of stand-ins; record; write the module source.">
+<defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<!-- main column -->
+<rect class="ax" x="90" y="14" width="360" height="40" rx="20"/><text class="t a" x="270" y="39" text-anchor="middle">A file or folder: the module path</text>
+<path class="ln" d="M270,54 V78" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="80" width="360" height="50" rx="4"/><text class="t" x="270" y="101" text-anchor="middle">platforms.identify(path)</text><text class="s" x="270" y="119" text-anchor="middle">tried in a fixed order; the first that recognises it wins</text>
+<path class="ln" d="M270,130 V150" marker-end="url(#a2)"/>
+<polygon class="bx" points="270,152 390,187 270,222 150,187"/><text class="t" x="270" y="191" text-anchor="middle">A lane for it?</text>
+<path class="ln" d="M390,187 H518" marker-end="url(#a2)"/><text class="lb" x="455" y="180" text-anchor="middle">no</text>
+<rect class="dx" x="520" y="163" width="240" height="48" rx="4"/><text class="t" x="532" y="183">No lane yet</text><text class="s" x="532" y="200">reach names the platform as a gap</text>
+<path class="ln" d="M270,222 V244" marker-end="url(#a2)"/><text class="lb" x="278" y="238">yes</text>
+<rect class="bx" x="90" y="246" width="360" height="50" rx="4"/><text class="t" x="270" y="267" text-anchor="middle">kind.profile(path)</text><text class="s" x="270" y="285" text-anchor="middle">a digest of every setting a verdict depends on</text>
+<path class="ln" d="M270,296 V316" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="318" width="360" height="66" rx="4"/><text class="t" x="270" y="339" text-anchor="middle">kind.prepare(path) · decompile</text><text class="sm" x="270" y="357" text-anchor="middle">describe → decompiler.exe → c_text</text><text class="s" x="270" y="374" text-anchor="middle">header + {name: C text} + addresses</text>
+<path class="ln" d="M270,384 V404" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="406" width="360" height="66" rx="4"/><text class="t" x="270" y="427" text-anchor="middle">signatures(m)</text><text class="s" x="270" y="445" text-anchor="middle">call graph split into cycles (Tarjan), callees first</text><text class="s" x="270" y="462" text-anchor="middle">sig = own text + header + callees' sigs</text>
+<path class="ln" d="M270,472 V492" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="494" width="360" height="66" rx="4"/><text class="t" x="270" y="515" text-anchor="middle">Register in the store</text><text class="s" x="270" y="533" text-anchor="middle">module, functions, the shared header</text><text class="s" x="270" y="550" text-anchor="middle">runtime_library.identify names CRT code</text>
+<path class="ln" d="M450,527 H518" marker-end="url(#a2)"/><text class="lb" x="484" y="520" text-anchor="middle">no C</text>
+<rect class="sx" x="520" y="503" width="240" height="48" rx="4"/><text class="t v-dim" x="532" y="523">no-synth</text><text class="s" x="532" y="540">the decompiler gave nothing</text>
+<path class="ln" d="M270,560 V582" marker-end="url(#a2)"/>
+<polygon class="bx" points="270,584 420,624 270,664 120,624"/><text class="t" x="270" y="620" text-anchor="middle">Its sig differs from</text><text class="t" x="270" y="636" text-anchor="middle">the stored verdict's?</text>
+<path class="ln" d="M420,624 H518" marker-end="url(#a2)"/><text class="lb" x="470" y="617" text-anchor="middle">no</text>
+<rect class="sx" x="520" y="600" width="240" height="48" rx="4"/><text class="t v-ok" x="532" y="620">verdict kept</text><text class="s" x="532" y="637">nothing rebuilt or rerun</text>
+<path class="ln" d="M270,664 V686" marker-end="url(#a2)"/><text class="lb" x="278" y="680">yes</text>
+<rect class="bx" x="90" y="688" width="360" height="50" rx="4"/><text class="t" x="270" y="709" text-anchor="middle">kind.build(m)</text><text class="s" x="270" y="727" text-anchor="middle">compile each function, link one module</text>
+<path class="ln" d="M270,738 V758" marker-end="url(#a2)"/>
+<polygon class="bx" points="270,760 390,795 270,830 150,795"/><text class="t" x="270" y="799" text-anchor="middle">Compiled?</text>
+<path class="ln" d="M390,795 H518" marker-end="url(#a2)"/><text class="lb" x="455" y="788" text-anchor="middle">no</text>
+<rect class="sx" x="520" y="771" width="240" height="48" rx="4"/><text class="t v-bad" x="532" y="791">no-compile</text><text class="s" x="532" y="808">the compiler's reason is kept</text>
+<path class="ln" d="M270,830 V852" marker-end="url(#a2)"/><text class="lb" x="278" y="846">yes</text>
+<polygon class="bx" points="270,854 430,899 270,944 110,899"/><text class="t" x="270" y="895" text-anchor="middle">Same object code as last</text><text class="t" x="270" y="911" text-anchor="middle">build, callees included?</text>
+<path class="ln" d="M430,899 H518" marker-end="url(#a2)"/><text class="lb" x="474" y="892" text-anchor="middle">yes</text>
+<rect class="sx" x="520" y="875" width="240" height="48" rx="4"/><text class="t v-ok" x="532" y="895">verdict carried over</text><text class="s" x="532" y="912">a cosmetic edit costs no rerun</text>
+<path class="ln" d="M270,944 V966" marker-end="url(#a2)"/><text class="lb" x="278" y="960">no</text>
+<rect class="ax" x="90" y="968" width="360" height="66" rx="4"/><text class="t a" x="270" y="989" text-anchor="middle">jobs/pool.run(kind.judge)</text><text class="s" x="270" y="1007" text-anchor="middle">functions spread over worker processes</text><text class="s" x="270" y="1024" text-anchor="middle">each runs beside the original (Figure 3)</text>
+<path class="ln" d="M450,1001 H518" marker-end="url(#a2)"/><text class="lb" x="484" y="994" text-anchor="middle">crash</text>
+<rect class="sx" x="520" y="977" width="240" height="48" rx="4"/><text class="t v-dim" x="532" y="997">inconclusive</text><text class="s" x="532" y="1014">crashed again when run alone</text>
+<path class="ln" d="M270,1034 V1054" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="1056" width="360" height="66" rx="4"/><text class="t" x="270" y="1077" text-anchor="middle">Taint, then record</text><text class="s" x="270" y="1095" text-anchor="middle">callers of stand-ins get the limit stub-callee</text><text class="sm" x="270" y="1112" text-anchor="middle">fs.record_many → scores</text>
+<path class="ln" d="M270,1122 V1142" marker-end="url(#a2)"/>
+<rect class="ax" x="90" y="1144" width="360" height="40" rx="20"/><text class="t a" x="270" y="1169" text-anchor="middle">module_writer: a status line per function</text>
+<!-- rail: side outcomes recorded too -->
+<path class="ln d" d="M760,527 H790 M760,624 H790 M760,795 H790 M760,899 H790 M760,1001 H790 M790,527 V1089"/>
+<path class="ln d" d="M790,1089 H452" marker-end="url(#a2)"/>
+<text class="lb" x="780" y="1082" text-anchor="end">recorded as such</text>
+</svg>
+</div>
+<figcaption><b>Figure 2.</b> Three gates keep the loop cheap: the <b>signature</b> check skips functions whose source and callees are unchanged; the <b>object-code</b> check skips functions whose source changed without changing the code; and the <b>cache</b> under each compile and decompile skips the tools themselves. Only functions that pass all three are run in the emulator.</figcaption>
+</figure>
+</section>
+
+<!-- ============ FIG 3 ============ -->
+<section id="judge">
+<h2>The judge</h2>
+<p class="col">What <code>kind.judge</code> does for one function (shown for 32-bit Windows, <code>verify/win32.py</code>; the other lanes differ only in their runner). The comparison itself, <code>verify/compare.py</code>, knows nothing about processors or file formats.</p>
+<figure>
+<div class="fig w3">
+<svg viewBox="0 0 1000 510" role="img" aria-label="The judge: the same inputs go to the original function and to the rebuilt one, each running in the emulator and producing a fingerprint; compare.first_difference turns the fingerprints into one of four verdicts; coverage from the original steers new inputs toward branches not yet taken.">
+<defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<rect class="bx" x="20" y="130" width="190" height="130" rx="4"/><text class="t" x="32" y="152">Inputs v</text><text class="s" x="32" y="174">4 fixed vectors</text><text class="s" x="32" y="192">+ confirming vectors</text><text class="s" x="32" y="210">+ directed and guided</text><text class="s" x="32" y="228">inputs, aimed at</text><text class="s" x="32" y="246">branches not yet taken</text>
+<path class="ln" d="M210,175 H235 V88 H258" marker-end="url(#a3)"/>
+<path class="ln" d="M210,215 H235 V328 H258" marker-end="url(#a3)"/>
+<text class="lb" x="241" y="206">same v</text>
+<rect class="bx" x="260" y="40" width="260" height="96" rx="4"/><text class="t" x="272" y="62">Original</text><text class="s" x="272" y="81">the binary, at its own address</text><text class="s" x="272" y="99">imports stubbed, unmapped pages</text><text class="s" x="272" y="117">mapped on first touch</text>
+<rect class="bx" x="260" y="280" width="260" height="96" rx="4"/><text class="t" x="272" y="302">Rebuild</text><text class="s" x="272" y="321">the built DLL, at its entry</text><text class="s" x="272" y="339">same emulator, same input</text><text class="s" x="272" y="357">retried with more steps if cut short</text>
+<path class="ln d" d="M390,40 V18 H115 V128" marker-end="url(#a3)"/><text class="lb" x="252" y="13" text-anchor="middle">coverage: which branches never ran</text>
+<path class="ln" d="M520,88 H558" marker-end="url(#a3)"/>
+<path class="ln" d="M520,328 H558" marker-end="url(#a3)"/>
+<rect class="bx" x="560" y="63" width="180" height="50" rx="4"/><text class="t" x="650" y="93" text-anchor="middle">fingerprint A</text>
+<rect class="bx" x="560" y="303" width="180" height="50" rx="4"/><text class="t" x="650" y="333" text-anchor="middle">fingerprint B</text>
+<rect class="dx" x="560" y="140" width="180" height="136" rx="4"/><text class="lb" x="572" y="160">A FINGERPRINT HOLDS</text><text class="s" x="572" y="180">how it ended · return value</text><text class="s" x="572" y="198">calls + arguments, in order</text><text class="s" x="572" y="216">memory it wrote</text><text class="s" x="572" y="234">stack moved · saved regs</text><text class="s" x="572" y="252">instructions that ran</text>
+<path class="ln" d="M740,88 H885 V148" marker-end="url(#a3)"/>
+<path class="ln" d="M740,328 H885 V252" marker-end="url(#a3)"/>
+<rect class="ax" x="790" y="150" width="190" height="100" rx="4"/><text class="t a" x="802" y="174">first_difference</text><text class="sm" x="802" y="194">verify/compare.py</text><text class="s" x="802" y="214">each input, A against B</text><text class="s" x="802" y="232">leftover return bits masked</text>
+<path class="ln" d="M885,250 V400 M132,400 H885"/>
+<path class="ln" d="M132,400 V422 M377,400 V422 M622,400 V422 M867,400 V422" marker-end="url(#a3)"/>
+<rect class="b-ok" x="20" y="424" width="225" height="74" rx="4" stroke-width="1.4"/><text class="t v-ok" x="32" y="446">equivalent</text><text class="s" x="32" y="466">every input equal, and at</text><text class="s" x="32" y="484">least one run returned</text>
+<rect class="b-warn" x="265" y="424" width="225" height="74" rx="4" stroke-width="1.4"/><text class="t v-warn" x="277" y="446">consistent</text><text class="s" x="277" y="466">every input equal, but no</text><text class="s" x="277" y="484">run returned normally</text>
+<rect class="b-bad" x="510" y="424" width="225" height="74" rx="4" stroke-width="1.4"/><text class="t v-bad" x="522" y="446">divergent</text><text class="s" x="522" y="466">an input differed; the</text><text class="s" x="522" y="484">reason names which kind</text>
+<rect class="b-dim" x="755" y="424" width="225" height="74" rx="4" stroke-width="1.4"/><text class="t v-dim" x="767" y="446">inconclusive</text><text class="s" x="767" y="466">the original could not be</text><text class="s" x="767" y="484">observed on any input</text>
+</svg>
+</div>
+<figcaption><b>Figure 3.</b> One verdict per function, from observed runs only. A match also carries <b>limits</b>, which the writer reports as <em>VERIFIED (weak)</em>: less than half of the original's instructions ran on any input, or it calls a function that was a stand-in (<code>stub-callee</code>). Assembly lanes (DOS, drivers, consoles) also rebuild the whole program and compare it byte for byte.</figcaption>
+</figure>
+</section>
+
+<!-- ============ LANES ============ -->
+<section id="lanes">
+<h2>Platforms and lanes</h2>
+<p class="col">Platforms are tried in this order: <span class="m">java, xbox360, xbox, nes, sms, gb, genesis, zx, msx, win32, win16, vxd, dos</span>. The first one that recognises a file decides its lane. Specific formats come before general ones, because a .xex or a ROM would otherwise be mistaken for a plain executable.</p>
+<div class="tbl"><table>
+<thead><tr><th>Platform (filed as)</th><th>Comes back as</th><th>Built</th><th>Judged</th></tr></thead>
+<tbody>
+<tr><td>32-bit Windows <code>pe</code>, original Xbox <code>xbox</code></td><td>C per function; or the whole file as NASM source (<code>pe-source</code>)</td><td>OpenWatcom, per function, into one DLL</td><td>by behaviour in Unicorn; byte for byte for <code>pe-source</code></td></tr>
+<tr><td>16-bit Windows / OS/2 <code>ne</code></td><td>C, or assembly where it was written in assembly (cMacros)</td><td>per function into a DLL; MSC 6 + LINK 5.60 as a check</td><td>by behaviour in the Win16 environment; Setup itself as the system test</td></tr>
+<tr><td>Xbox 360 <code>powerpc</code></td><td>C per function; or the whole title as C++ (<code>recompile-project</code>)</td><td>per function; or a PC project via XenonRecomp + the x360 runtime</td><td>by behaviour; recompiled titles are played</td></tr>
+<tr><td>VxD drivers <code>le</code></td><td>assembly in the driver kit's macros</td><td>whole, NASM (MASM mode) / wasm + wlink</td><td>byte for byte, and every entry point run</td></tr>
+<tr><td>Real-mode DOS <code>dos</code></td><td>assembly source</td><td>whole, from its source folder alone</td><td>byte for byte (EXEPACK / PKLITE layouts kept)</td></tr>
+<tr><td>NES, SMS / GG, GB / GBC, Genesis, ZX Spectrum, MSX</td><td>assembly (ca65, WLA-DX, RGBDS, Motorola, sjasmplus)</td><td>whole cartridge or tape, with CodeBreaker's own assemblers</td><td>byte for byte; functions run on its own 6502 / Z80 / SM83 / 68000</td></tr>
+<tr><td>Java <code>java</code></td><td>C++03, class by class (<code>java/transpile.py</code>)</td><td>the host C++ compiler</td><td>beside the JVM for primitive-argument methods; else it compiles</td></tr>
+<tr><td>XNA (.NET) <span class="m">via xna/</span></td><td>C# (ILSpy, de4dot); content as PNG/JSON/WAV; shaders as HLSL</td><td>a MonoGame project</td><td>builds and runs</td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ============ BESIDE ============ -->
+<section id="beside">
+<h2>Beside the path</h2>
+<p class="col">Subsystems that work on what the main path produces, or replace it for one kind of program.</p>
+<div class="tbl"><table>
+<thead><tr><th>Subsystem</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>verify/match · repair · shape · search16</code></td><td>Moves a behaviour-correct source toward the bytes a period compiler gave, by trying rewrites that keep the meaning. Used to choose among several sources that all work.</td></tr>
+<tr><td><code>invert/</code></td><td>Compiler models read backwards: from the code Microsoft C 2.03 / Lattice, MSC 6.0a or MSVC 1.52 / 2.0 emits for each statement, back to the statement.</td></tr>
+<tr><td><code>exact/</code></td><td>Rebuilds early programs byte for byte with their own toolchains run in-process: XENIX C, Microsoft Pascal, PL/M-86, period linkers (<code>docs/EXACT.md</code>).</td></tr>
+<tr><td><code>source/*_writer.py</code></td><td>Writers for each assembly lane (PE, NE, LE, DOS, NES, SMS, GB, Genesis, ZX, MSX), each paired with a build-back check.</td></tr>
+<tr><td><code>recompile/</code> + <code>native/xenonrecomp, x360, rexglue</code></td><td>A whole Xbox 360 title recompiled ahead of time to C++, with a D3D12 GPU layer and a kernel runtime, as a PC project that builds and plays.</td></tr>
+<tr><td><code>port/</code></td><td>Recovered source made buildable by compilers of today (16-bit arithmetic kept, old record layouts kept), checked under AddressSanitizer.</td></tr>
+<tr><td><code>translate/</code></td><td>One typed IR for every source language, serialised as L2 JSON; front ends in, passes, back ends out.</td></tr>
+<tr><td><code>compare/versions.py</code></td><td>Two builds of a module matched function by function: same, changed, added, removed.</td></tr>
+<tr><td><code>coverage/ledger · reach</code></td><td>How much of every module is accounted for, and how far any file gets through its lane.</td></tr>
+</tbody></table></div>
+
+<h3>Native engines (<code>native/</code>)</h3>
+<div class="tbl"><table>
+<thead><tr><th>Engine</th><th>Files</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>decompiler</code></td><td class="n">137</td><td>C++ around a vendored, patched Ghidra decompiler core (Apache-2.0, <code>docs/GHIDRA_FORK.md</code>) with SLEIGH languages for x86 and PowerPC. Takes a description file, returns C per function.</td></tr>
+<tr><td><code>nasm</code></td><td class="n">142</td><td>NASM's engine with a MASM 6.x mode (<code>--masm</code>): assembles the assembly-source lanes.</td></tr>
+<tr><td><code>xex</code></td><td class="n">44</td><td>The Xbox 360 executable engine: .xex in, basefile out; convert, patch, re-sign.</td></tr>
+<tr><td><code>xenonrecomp</code></td><td class="n">632</td><td>XenonRecomp, the PowerPC-to-C++ recompiler that generates recompiled projects.</td></tr>
+<tr><td><code>x360</code> · <code>rexglue</code></td><td class="n">215 · 994</td><td>The runtime a recompiled title runs on: kernel, system, GPU (DXBC) translation.</td></tr>
+<tr><td><code>retromcp</code></td><td class="n">Java</td><td>RetroMCP's Java decompiler, run headless by <code>decompile/jar.py</code>.</td></tr>
+</tbody></table></div>
+</section>
+
+<!-- ============ SOURCE MAP ============ -->
+<section id="source">
+<h2>Source map</h2>
+<p class="col">The <code>codebreaker/</code> package, measured on master. Line counts include subpackages.</p>
+<div class="tbl"><table>
+<thead><tr><th>Package</th><th>Files</th><th>Lines</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><code>formats/</code></td><td class="n">96</td><td class="n">24,405</td><td>Readers for every container: PE, NE, LE, MZ, XEX, XBE, OMF, CAB, ISO, STFS, ROM headers, fonts, resources</td></tr>
+<tr><td><code>java/</code></td><td class="n">67</td><td class="n">18,257</td><td>Java → C++03 transpiler, Minecraft profiles, the Xbox 360 console layer</td></tr>
+<tr><td><code>exact/</code></td><td class="n">45</td><td class="n">15,089</td><td>Byte-exact rebuilds of early programs with in-process period toolchains</td></tr>
+<tr><td><code>source/</code></td><td class="n">45</td><td class="n">13,249</td><td>Module writer, placement, readable names, the assembly writers, VxD and cMacros idiom</td></tr>
+<tr><td><code>build/</code></td><td class="n">29</td><td class="n">10,515</td><td>The builder: OpenWatcom, period compilers in DOSBox-X, own assemblers, linkers, disc and floppy images</td></tr>
+<tr><td><code>invert/</code></td><td class="n">29</td><td class="n">9,698</td><td>Compiler models run backwards (MC2/LC2, MSC 6.0a, MSVC 2.0)</td></tr>
+<tr><td><code>port/</code></td><td class="n">9</td><td class="n">9,627</td><td>Recovered source for compilers of today, with verification</td></tr>
+<tr><td><code>decompile/</code></td><td class="n">15</td><td class="n">9,204</td><td>describe → native decompiler → c_text / struct_text; 6502, Z80, SM83, 68000, VMX128, Xenos shaders</td></tr>
+<tr><td><code>recompile/</code></td><td class="n">19</td><td class="n">7,933</td><td>Xbox 360 titles as PC projects: discovery, jump tables, XenonRecomp config, GPU</td></tr>
+<tr><td><code>verify/</code></td><td class="n">32</td><td class="n">6,953</td><td><code>reconstruct.py</code>, <code>compare.py</code>, the 13 lane modules, and the judge's tools (teeth, match, repair, diverge16)</td></tr>
+<tr><td><code>analyze/</code></td><td class="n">16</td><td class="n">5,527</td><td>Call graph, conventions, globals, strings, structures, classes, dispatch, origin</td></tr>
+<tr><td><code>emulate/</code></td><td class="n">10</td><td class="n">5,428</td><td>Runners: Unicorn x86 (32-bit, Win16, ring 0), PowerPC; own 6502, Z80, SM83, 68000</td></tr>
+<tr><td><code>ui/</code></td><td class="n">9</td><td class="n">4,413</td><td>Web console, desktop app, Workbench, Live window, MCP server</td></tr>
+<tr><td><code>symbols/</code></td><td class="n">15</td><td class="n">4,153</td><td>Ordinals, prototypes, runtime-library identification, demangling, DOS/VxD services, XDK libraries</td></tr>
+<tr><td><code>translate/</code></td><td class="n">9</td><td class="n">2,845</td><td>Universal IR and L2 JSON</td></tr>
+<tr><td><code>xna/</code></td><td class="n">5</td><td class="n">1,342</td><td>XNA games to C# and MonoGame</td></tr>
+<tr><td><code>base/</code></td><td class="n">7</td><td class="n">1,160</td><td>Settings, corpus resolver, content-keyed cache, parallelism, Converted/ folders</td></tr>
+<tr><td><code>compare/</code></td><td class="n">2</td><td class="n">865</td><td>Version-to-version function matching</td></tr>
+<tr><td><code>coverage/</code></td><td class="n">3</td><td class="n">746</td><td>Ledger and reach</td></tr>
+<tr><td><code>store/</code></td><td class="n">2</td><td class="n">398</td><td>The function store (SQLite)</td></tr>
+<tr><td><code>platforms/</code></td><td class="n">14</td><td class="n">318</td><td>One descriptor per platform</td></tr>
+<tr><td><code>jobs/</code></td><td class="n">2</td><td class="n">107</td><td>The crash-surviving worker pool</td></tr>
+</tbody></table></div>
+<p class="col" style="font-size:14px;color:var(--muted)">The core of the system is small. Orchestration, the store, the pool and the platform registry together come to under 1,100 lines. Most of the code is per-format and per-toolchain knowledge, which is where it belongs.</p>
+</section>
+
+<!-- ============ COMMANDS ============ -->
+<section id="commands">
+<h2>Commands</h2>
+<p class="col"><code>__main__.py</code> maps each of the 66 commands to the module that runs it. Grouped by what they are for:</p>
+<div class="cmds">
+  <div><h3>Reconstruct and judge</h3><p><span>module</span> · <span>measure</span> · <span>sweep</span> · <span>scoreboard</span> · <span>place</span> · <span>decompile</span> · <span>coverage</span> · <span>reach</span> · <span>progress</span></p></div>
+  <div><h3>Toward the authored bytes</h3><p><span>match</span> · <span>repair</span> · <span>teeth</span> · <span>invert</span> · <span>exact</span> · <span>build16</span> · <span>flat-thunk</span> · <span>score16</span></p></div>
+  <div><h3>Assembly source</h3><p><span>pe-source</span> · <span>ne-source</span> · <span>le-source</span> · <span>dos-source</span> · <span>dos-build</span> · <span>driver-source</span> · <span>driver-build</span> · <span>driver-judge</span> · <span>vxd</span> · <span>ne-asm</span> · <span>origin</span></p></div>
+  <div><h3>Knowledge</h3><p><span>info</span> · <span>names</span> · <span>identify</span> · <span>demangle</span> · <span>analyze</span> · <span>dos-functions</span> · <span>dos-interrupts</span> · <span>driver-services</span> · <span>versions</span> · <span>classes</span></p></div>
+  <div><h3>Whole modules and media</h3><p><span>build</span> · <span>resources</span> · <span>cab</span> · <span>media</span> · <span>disc</span> · <span>fonts</span> · <span>boot-floppy</span></p></div>
+  <div><h3>Xbox 360 and other platforms</h3><p><span>xex</span> · <span>xex-imports</span> · <span>xex-edit</span> · <span>ppc-calls</span> · <span>recompile</span> · <span>recompile-project</span> · <span>xenon-recompile</span> · <span>xdk-match</span> · <span>system-ui</span> · <span>crypto</span> · <span>heavyiron</span> · <span>gfx</span> · <span>xna</span> · <span>java</span></p></div>
+  <div><h3>Interfaces</h3><p><span>serve</span> · <span>app</span> · <span>workbench</span> · <span>live</span> · <span>take-apart</span> · <span>mcp</span> · <span>settings</span></p></div>
+</div>
+</section>
+
+<!-- ============ FINDINGS ============ -->
+<section id="findings">
+<h2>Findings from this read</h2>
+<p class="col">What a fresh pass over the code shows: what holds up, and where the code and its documentation have drifted apart.</p>
+<ul class="obs col">
+  <li><span class="pill ok">Strong</span><div><b>The spine is truly single.</b> <code>reconstruct.run</code> has no platform branches, and 13 platforms plug in through four functions each. This is the main reason the tool could grow from Win95 to consoles, Java and XNA without forking.</div></li>
+  <li><span class="pill ok">Strong</span><div><b>Incremental work is sound.</b> Signatures over call-graph cycles, plus the object-code digest, mean a verdict is reused only when what was judged truly didn't change. The rule is stricter than per-file caching and cheaper than re-judging.</div></li>
+  <li><span class="pill ok">Strong</span><div><b>Failure is first-class.</b> no-synth, no-compile, inconclusive and stub-callee are all recorded with reasons, so the store can explain every function instead of only counting successes.</div></li>
+  <li><span class="pill warn">Drift</span><div><code>verify/win32.py</code>'s docstring says comparison happens in <code>verify/oracle.py</code>, which no longer exists. It is now <code>verify/compare.py</code> plus <code>emulate/emulator.py</code>.</div></li>
+  <li><span class="pill warn">Drift</span><div><code>emulate/emulator.py</code> still introduces itself as <code>tracer.py</code> and cites <code>recompile95/tools/difftest.py</code>, both from before the restructure.</div></li>
+  <li><span class="pill warn">Drift</span><div><code>docs/architecture.png</code> shows five kinds of code. <code>platforms/</code> now has thirteen, and the picture leaves out Java, XNA, the consoles and recompile.</div></li>
+  <li><span class="pill warn">Shape</span><div><code>verify/</code> holds two different things: the 13 lane modules (the plug-in surface) and about 15 judge tools (teeth, match, repair, diverge16, search16…). A <code>verify/lanes/</code> subfolder would make the plug-in contract visible at a glance.</div></li>
+  <li><span class="pill warn">Shape</span><div><code>invert/omf.py</code> is a second, standalone OMF parser. <code>exact/omf.py</code> was already folded into <code>formats/omf.py</code> as “one OMF-86 reader for exact, invert and the builders”, so invert's copy looks like an unfinished merge.</div></li>
+  <li><span class="pill bad">Open</span><div><b>The judge's strength is measured on only a few modules.</b> <code>teeth</code> has not been run corpus-wide (<code>docs/STATUS.md</code>), so “verified” percentages for compiled code (about 50% on Win16, Win32 and Xbox 360 samples) still carry an unmeasured margin.</div></li>
+</ul>
+</section>
+
+<p class="foot">Built from a read of <code>codebreaker/</code>, <code>native/</code>, README.md, docs/STATUS.md and docs/GHIDRA_FORK.md at commit ffe988b. Counts are from the working tree on 26 Oct 2026.</p>
+</div>

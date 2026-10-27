@@ -1,0 +1,47 @@
+<svg viewBox="0 0 820 1200" xmlns="http://www.w3.org/2000/svg" role="img" style="color:#3a4654;background:#ffffff" aria-label="Flowchart of reconstruct.run: identify the platform; profile; prepare by decompiling; compute call-graph signatures; register in the store; skip functions whose signature is unchanged; build; record no-compile for those that fail; carry verdicts over when the object code is unchanged; judge the rest in worker processes; taint callers of stand-ins; record; write the module source."><style>@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap");.toc{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:22px;font-size:14px}.toc a{color:#2747c4;text-decoration:none}.toc a:hover{text-decoration:underline}.bx{fill:#ffffff;stroke:#3a4654;stroke-width:1.2}.ax{fill:#e6ebfb;stroke:#2747c4;stroke-width:1.6}.dx{fill:#f2f4f6;stroke:#3a4654;stroke-width:1;stroke-dasharray:4 3}.sx{fill:#f2f4f6;stroke:#3a4654;stroke-width:1}.ln{stroke:currentColor;fill:none;stroke-width:1.4}.ln.d{stroke-dasharray:5 4}.t{fill:#141c26;font:600 13px "Instrument Sans",system-ui,sans-serif}.t.a{fill:#2747c4}.s{fill:#56626f;font:12px "Instrument Sans",system-ui,sans-serif}.sm{fill:#56626f;font:11.5px "JetBrains Mono",ui-monospace,Consolas,monospace}.lb{fill:#56626f;font:500 11px "JetBrains Mono",ui-monospace,Consolas,monospace}.layer{fill:#56626f;font:600 11px "JetBrains Mono",ui-monospace,Consolas,monospace;letter-spacing:.06em;text-transform:uppercase}.v-ok{fill:#17794a}.v-warn{fill:#946200}.v-bad{fill:#b4322b}.v-dim{fill:#5e6874}.b-ok{fill:#e3f3ea;stroke:#17794a}.b-bad{fill:#fbe6e4;stroke:#b4322b}.b-dim{fill:#eceef1;stroke:#5e6874}.b-warn{fill:#fbf1da;stroke:#946200}.tbl{overflow-x:auto;margin-top:18px;border:1px solid #c5ccd4;border-radius:6px;background:#ffffff}</style><rect width="100%" height="100%" fill="#ffffff"/>
+<defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+<!-- main column -->
+<rect class="ax" x="90" y="14" width="360" height="40" rx="20"/><text class="t a" x="270" y="39" text-anchor="middle">A file or folder: the module path</text>
+<path class="ln" d="M270,54 V78" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="80" width="360" height="50" rx="4"/><text class="t" x="270" y="101" text-anchor="middle">platforms.identify(path)</text><text class="s" x="270" y="119" text-anchor="middle">tried in a fixed order; the first that recognises it wins</text>
+<path class="ln" d="M270,130 V150" marker-end="url(#a2)"/>
+<polygon class="bx" points="270,152 390,187 270,222 150,187"/><text class="t" x="270" y="191" text-anchor="middle">A lane for it?</text>
+<path class="ln" d="M390,187 H518" marker-end="url(#a2)"/><text class="lb" x="455" y="180" text-anchor="middle">no</text>
+<rect class="dx" x="520" y="163" width="240" height="48" rx="4"/><text class="t" x="532" y="183">No lane yet</text><text class="s" x="532" y="200">reach names the platform as a gap</text>
+<path class="ln" d="M270,222 V244" marker-end="url(#a2)"/><text class="lb" x="278" y="238">yes</text>
+<rect class="bx" x="90" y="246" width="360" height="50" rx="4"/><text class="t" x="270" y="267" text-anchor="middle">kind.profile(path)</text><text class="s" x="270" y="285" text-anchor="middle">a digest of every setting a verdict depends on</text>
+<path class="ln" d="M270,296 V316" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="318" width="360" height="66" rx="4"/><text class="t" x="270" y="339" text-anchor="middle">kind.prepare(path) · decompile</text><text class="sm" x="270" y="357" text-anchor="middle">describe → decompiler.exe → c_text</text><text class="s" x="270" y="374" text-anchor="middle">header + {name: C text} + addresses</text>
+<path class="ln" d="M270,384 V404" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="406" width="360" height="66" rx="4"/><text class="t" x="270" y="427" text-anchor="middle">signatures(m)</text><text class="s" x="270" y="445" text-anchor="middle">call graph split into cycles (Tarjan), callees first</text><text class="s" x="270" y="462" text-anchor="middle">sig = own text + header + callees' sigs</text>
+<path class="ln" d="M270,472 V492" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="494" width="360" height="66" rx="4"/><text class="t" x="270" y="515" text-anchor="middle">Register in the store</text><text class="s" x="270" y="533" text-anchor="middle">module, functions, the shared header</text><text class="s" x="270" y="550" text-anchor="middle">runtime_library.identify names CRT code</text>
+<path class="ln" d="M450,527 H518" marker-end="url(#a2)"/><text class="lb" x="484" y="520" text-anchor="middle">no C</text>
+<rect class="sx" x="520" y="503" width="240" height="48" rx="4"/><text class="t v-dim" x="532" y="523">no-synth</text><text class="s" x="532" y="540">the decompiler gave nothing</text>
+<path class="ln" d="M270,560 V582" marker-end="url(#a2)"/>
+<polygon class="bx" points="270,584 420,624 270,664 120,624"/><text class="t" x="270" y="620" text-anchor="middle">Its sig differs from</text><text class="t" x="270" y="636" text-anchor="middle">the stored verdict's?</text>
+<path class="ln" d="M420,624 H518" marker-end="url(#a2)"/><text class="lb" x="470" y="617" text-anchor="middle">no</text>
+<rect class="sx" x="520" y="600" width="240" height="48" rx="4"/><text class="t v-ok" x="532" y="620">verdict kept</text><text class="s" x="532" y="637">nothing rebuilt or rerun</text>
+<path class="ln" d="M270,664 V686" marker-end="url(#a2)"/><text class="lb" x="278" y="680">yes</text>
+<rect class="bx" x="90" y="688" width="360" height="50" rx="4"/><text class="t" x="270" y="709" text-anchor="middle">kind.build(m)</text><text class="s" x="270" y="727" text-anchor="middle">compile each function, link one module</text>
+<path class="ln" d="M270,738 V758" marker-end="url(#a2)"/>
+<polygon class="bx" points="270,760 390,795 270,830 150,795"/><text class="t" x="270" y="799" text-anchor="middle">Compiled?</text>
+<path class="ln" d="M390,795 H518" marker-end="url(#a2)"/><text class="lb" x="455" y="788" text-anchor="middle">no</text>
+<rect class="sx" x="520" y="771" width="240" height="48" rx="4"/><text class="t v-bad" x="532" y="791">no-compile</text><text class="s" x="532" y="808">the compiler's reason is kept</text>
+<path class="ln" d="M270,830 V852" marker-end="url(#a2)"/><text class="lb" x="278" y="846">yes</text>
+<polygon class="bx" points="270,854 430,899 270,944 110,899"/><text class="t" x="270" y="895" text-anchor="middle">Same object code as last</text><text class="t" x="270" y="911" text-anchor="middle">build, callees included?</text>
+<path class="ln" d="M430,899 H518" marker-end="url(#a2)"/><text class="lb" x="474" y="892" text-anchor="middle">yes</text>
+<rect class="sx" x="520" y="875" width="240" height="48" rx="4"/><text class="t v-ok" x="532" y="895">verdict carried over</text><text class="s" x="532" y="912">a cosmetic edit costs no rerun</text>
+<path class="ln" d="M270,944 V966" marker-end="url(#a2)"/><text class="lb" x="278" y="960">no</text>
+<rect class="ax" x="90" y="968" width="360" height="66" rx="4"/><text class="t a" x="270" y="989" text-anchor="middle">jobs/pool.run(kind.judge)</text><text class="s" x="270" y="1007" text-anchor="middle">functions spread over worker processes</text><text class="s" x="270" y="1024" text-anchor="middle">each runs beside the original (Figure 3)</text>
+<path class="ln" d="M450,1001 H518" marker-end="url(#a2)"/><text class="lb" x="484" y="994" text-anchor="middle">crash</text>
+<rect class="sx" x="520" y="977" width="240" height="48" rx="4"/><text class="t v-dim" x="532" y="997">inconclusive</text><text class="s" x="532" y="1014">crashed again when run alone</text>
+<path class="ln" d="M270,1034 V1054" marker-end="url(#a2)"/>
+<rect class="bx" x="90" y="1056" width="360" height="66" rx="4"/><text class="t" x="270" y="1077" text-anchor="middle">Taint, then record</text><text class="s" x="270" y="1095" text-anchor="middle">callers of stand-ins get the limit stub-callee</text><text class="sm" x="270" y="1112" text-anchor="middle">fs.record_many → scores</text>
+<path class="ln" d="M270,1122 V1142" marker-end="url(#a2)"/>
+<rect class="ax" x="90" y="1144" width="360" height="40" rx="20"/><text class="t a" x="270" y="1169" text-anchor="middle">module_writer: a status line per function</text>
+<!-- rail: side outcomes recorded too -->
+<path class="ln d" d="M760,527 H790 M760,624 H790 M760,795 H790 M760,899 H790 M760,1001 H790 M790,527 V1089"/>
+<path class="ln d" d="M790,1089 H452" marker-end="url(#a2)"/>
+<text class="lb" x="780" y="1082" text-anchor="end">recorded as such</text>
+</svg>
