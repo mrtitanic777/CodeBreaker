@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from codebreaker.port import early_c                                                   # noqa: E402
+from codebreaker.port import pre_ansi                                                   # noqa: E402
 from codebreaker.port import __main__ as port_main                                      # noqa: E402
 
 PROFILE = json.load(open(os.path.join(ROOT, "codebreaker", "port", "runtimes", "dos_c_early.json")))
@@ -50,7 +50,7 @@ def check(fn):
 
 
 def ported():
-    p = early_c.Port(dict(TREE), PROFILE)
+    p = pre_ansi.Port(dict(TREE), PROFILE)
     out = p.modernize()
     out.update({k: v for k, v in p.headers().items() if v})
     return p, out
@@ -109,4 +109,5 @@ if __name__ == "__main__":
         check(t)
     for n, v, why in RESULTS:
         print("%-32s %s %s" % (n, v, why))
+    print("%d passed, %d failed" % (sum(v != "FAIL" for n, v, w in RESULTS), sum(v == "FAIL" for n, v, w in RESULTS)))
     sys.exit(1 if any(v == "FAIL" for n, v, w in RESULTS) else 0)

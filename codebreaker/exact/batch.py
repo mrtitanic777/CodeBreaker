@@ -6,7 +6,7 @@ given a suffix of its own (__Q<k>) so that they do not meet; the object's names 
 function of the object is held to the program's code as a lone compile's would be.
 
 A candidate the compiler refuses (the error's line says whose) is left out and the rest compiled again; the ones
-left out the caller proves alone (draft._prove mends what it can). Candidates with preprocessor lines other than
+left out the caller proves alone (draft/prove.py's _prove mends what it can). Candidates with preprocessor lines other than
 #include, or a different file comment (MFLAGS) from the rest, are not batched.
 """
 import re

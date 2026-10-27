@@ -1,4 +1,4 @@
-"""early_c.py -- C of before the standard made C a compiler of today takes, the meaning kept.
+"""pre_ansi.py -- C of before the standard made C a compiler of today takes, the meaning kept.
 
 The C that CodeBreaker recovers from a program of the 1980s is what its authors wrote: function definitions in the
 old style (`f(a, b) char *a; {`), no prototypes, an int that is 16 bits, a long that is 32, structures whose bytes

@@ -30,10 +30,10 @@ C_SIZES = {"char": (1, 1), "signed char": (1, 1), "unsigned char": (1, 1), "int1
 def c_layout(body):
     """{member: (offset, size)} and the size of a structure of today's C (x64: pointers 8, natural alignment) - of
     its members' text (the port's: int16_t and the like); None when a member is not known"""
-    from codebreaker.port import early_c
+    from codebreaker.port import pre_ansi
     off, out, align = 0, {}, 1
-    for d in early_c.blank(body).split(";"):
-        r = early_c.declarators(d.strip()) if d.strip() else None
+    for d in pre_ansi.blank(body).split(";"):
+        r = pre_ansi.declarators(d.strip()) if d.strip() else None
         if not r:
             continue
         base = re.sub(r"\s+", " ", re.sub(r"\b(register|const|volatile|signed)\b(?= \w)", "", r[0])).strip()
@@ -92,16 +92,16 @@ def before_start(port, out, case, text):
     if not x or re.search(r"\+\+|--|[^=!<>]=[^=]", x.group(1)):
         return None
     field = x.group(2)
-    from codebreaker.port import early_c
+    from codebreaker.port import pre_ansi
     decl = None
     for t in out.values():                                  # (the table's structure and its rows)
-        d = re.search(r"\b(struct\s+\w+)\s+%s\s*\[[^\]]*\]\s*=\s*\{" % re.escape(var), early_c.blank(t))
+        d = re.search(r"\b(struct\s+\w+)\s+%s\s*\[[^\]]*\]\s*=\s*\{" % re.escape(var), pre_ansi.blank(t))
         if d:
             decl = (d.group(1), t, d.end())
             break
     if not decl:
         for t in out.values():
-            d = re.search(r"\b(struct\s+\w+)\s+%s\s*\[" % re.escape(var), early_c.blank(t))
+            d = re.search(r"\b(struct\s+\w+)\s+%s\s*\[" % re.escape(var), pre_ansi.blank(t))
             if d:
                 decl = (d.group(1), t, None)
                 break
@@ -110,7 +110,7 @@ def before_start(port, out, case, text):
     st = re.sub(r"\s+", " ", decl[0])
     body = None
     for t in out.values():
-        b = re.search(r"\b%s\s*\{([^{}]*)\}" % re.escape(st).replace(r"\ ", r"\s+"), early_c.blank(t))
+        b = re.search(r"\b%s\s*\{([^{}]*)\}" % re.escape(st).replace(r"\ ", r"\s+"), pre_ansi.blank(t))
         if b:
             body = t[b.start(1):b.end(1)]
             break
@@ -132,12 +132,12 @@ def before_start(port, out, case, text):
     w = owner[1]
     wexpr = None
     for t in out.values():                                  # (what is there: of the variable's own type)
-        d = re.search(r"\b(struct\s+\w+)\s+%s\s*\[" % re.escape(w), early_c.blank(t))
+        d = re.search(r"\b(struct\s+\w+)\s+%s\s*\[" % re.escape(w), pre_ansi.blank(t))
         if d:
             wst = re.sub(r"\s+", " ", d.group(1))           # (declared where it is read now, its header too)
             port.extra_decls.setdefault(f, set()).add("extern %s %s[];" % (wst, w))
             hs = [h for h, ht in out.items() if h.endswith(".h") and
-                  re.search(r"\b%s\s*\{" % re.escape(wst).replace(r"\ ", r"\s+"), early_c.blank(ht))]
+                  re.search(r"\b%s\s*\{" % re.escape(wst).replace(r"\ ", r"\s+"), pre_ansi.blank(ht))]
             if hs:
                 port.need_headers.setdefault(f, set()).add(hs[0])
             wl = old.get(re.sub(r"\s+", " ", d.group(1)))

@@ -6,7 +6,7 @@ changed) and writes, into a folder of its own, the same program for a modern com
 
     python -m codebreaker.port SOURCE_DIR OUT_DIR [--compiler gcc|clang|msvc] [--runtime PROFILE]
 
-- early_c.py    the C itself: prototypes, explicit types, exact widths where the bytes of a structure matter,
+- pre_ansi.py    the C itself: prototypes, explicit types, exact widths where the bytes of a structure matter,
                 the declarations of the C library its own; then the compiler's own complaints mended in a loop
 - runtimes/     what each old runtime was (data): which of the program's modules were its C library, and which
                 of the calls it makes the platform layer supplies

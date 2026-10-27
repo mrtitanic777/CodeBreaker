@@ -23,7 +23,7 @@ the source as it was, the new one as the port lays it out.
 import collections
 import re
 
-from codebreaker.port import early_c
+from codebreaker.port import pre_ansi
 
 R16 = ["ax", "bx", "cx", "dx", "si", "di", "bp", "sp"]
 R8 = {"al": "ax", "ah": "ax", "bl": "bx", "bh": "bx", "cl": "cx", "ch": "cx", "dl": "dx", "dh": "dx"}
@@ -280,14 +280,14 @@ class CTypes:
     def __init__(self, port_texts, orig_texts):
         self.vars = {}
         for t in port_texts:
-            code = early_c.blank(t)
-            ds = early_c.depths(code.split("\n"))
+            code = pre_ansi.blank(t)
+            ds = pre_ansi.depths(code.split("\n"))
             for i, l in enumerate(code.split("\n")):
                 s = l.strip()
                 if ds[i] or not s.endswith(";") or "(" in s.replace("(*", "") or s.startswith(("typedef", "#")):
                     continue
                 s = re.sub(r"=.*;$", ";", s)
-                r = early_c.declarators(s)
+                r = pre_ansi.declarators(s)
                 if not r or not r[0]:
                     continue
                 for n, d in r[1]:
@@ -298,7 +298,7 @@ class CTypes:
         self.far_ptrs = set()                               # (globals whose pointers were far: 4 bytes each)
         for t in orig_texts:
             for d in re.finditer(r"(?m)^[^;(){}#]*\bfar\s*\*[^;(){}]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*(?:=[^;]*)?;",
-                                 early_c.blank(t)):
+                                 pre_ansi.blank(t)):
                 self.far_ptrs.add(d.group(1))
 
     def elem_sizes(self, name):
@@ -322,7 +322,7 @@ class CTypes:
         out = Layouts()
         defs = {}                                           # (each tag's first definition: its body)
         for t in texts:
-            code = early_c.blank(t)
+            code = pre_ansi.blank(t)
             for m in re.finditer(r"\b(struct|union)\s+(\w+)\s*\{", code):
                 d, k = 0, m.end() - 1
                 while k < len(code):
@@ -374,11 +374,11 @@ class CTypes:
                 continue
             isfar = bool(re.search(r"\bfar\b", s))
             s2 = re.sub(r"\b(far|near|huge)\b", "", s)
-            r = early_c.declarators(s2)
+            r = pre_ansi.declarators(s2)
             if not r:
                 continue
             for n, dcl in r[1]:
-                sz = early_c.size_of(r[0], dcl, n, far if isfar else ptr, out)
+                sz = pre_ansi.size_of(r[0], dcl, n, far if isfar else ptr, out)
                 if sz is None:
                     sz = 2
                 if sz > 1 and off % 2:
@@ -506,7 +506,7 @@ def c_functions(texts):
     """{C name: (pascal, [(the old size of each argument, val|long|ptr|double)], what it returns)} of the functions
     a C program defines - the old way (the arguments' types declared after the head), the macros made of calling
     words (#define NEAR near pascal) as they were"""
-    from codebreaker.port import early_c
+    from codebreaker.port import pre_ansi
     macros = {}
     for t in texts:
         for m in re.finditer(r"(?m)^\s*#\s*define\s+(\w+)[ \t]+([\w \t]+?)\s*$", t):
@@ -514,14 +514,14 @@ def c_functions(texts):
                 macros[m.group(1)] = m.group(2)
     out = {}
     for t in texts:
-        code = early_c.blank(t)
+        code = pre_ansi.blank(t)
         for k, v in macros.items():
             code = re.sub(r"\b%s\b" % k, v, code)
         lines = code.split("\n")
-        ds = early_c.depths(lines)
+        ds = pre_ansi.depths(lines)
         for i, ln in enumerate(lines):
             m = re.match(r"^([\w\s*]*?)\b([A-Za-z_]\w*)\s*\(([\w\s,]*)\)\s*$", ln)
-            if not m or ds[i] != 0 or m.group(2) in early_c.KEYWORDS:
+            if not m or ds[i] != 0 or m.group(2) in pre_ansi.KEYWORDS:
                 continue
             j, decls = i + 1, {}
             while j < len(lines) and not lines[j].strip().startswith("{"):
@@ -531,7 +531,7 @@ def c_functions(texts):
                 base = re.match(r"((?:\s*\b(?:register|unsigned|signed|long|short|int|char|float|double|"
                                 r"struct\s+\w+|union\s+\w+|far|near|huge)\b)+)", d)
                 if base:
-                    for dcl in early_c.split_top(d[base.end():].rstrip(";")):
+                    for dcl in pre_ansi.split_top(d[base.end():].rstrip(";")):
                         n = re.search(r"\w+", dcl)
                         if n:
                             decls[n.group(0)] = (base.group(1), dcl)
