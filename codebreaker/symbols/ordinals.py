@@ -32,6 +32,14 @@ from codebreaker.formats.pe import open_pe
 from codebreaker.symbols import api_arguments, demangle, prototypes
 
 _TABLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ordinal_names.json")
+# Exports no definition file or import library names, named from documentation instead, for
+# people to read (documented()). name() does not use them: the decompiler's names come from
+# files only, and these would change what it writes.
+_DOCUMENTED = {
+    "KERNEL32": ({17: "CommonUnimpStub", 20: "DosFileHandleToWin32Handle", 21: "Win32HandleToDosFileHandle",
+                  22: "DisposeLZ32Handle", 41: "ThunkInitLSF", 89: "FT_PrologPrime", 90: "QT_ThunkPrime"},
+                 "Geoff Chappell, Ordinal-Only Exports In KERNEL32 4.0 (names per the Windows Me symbol file)"),
+}
 _tables = {}                    # MODULE -> ({ordinal: name}, where it was read) from the corpus
 _shipped = None                 # ordinal_names.json
 _by_module_name = None          # 16-bit module name -> file, for modules whose file is named otherwise
@@ -114,6 +122,12 @@ def name(module, ordinal):
     """The export's name: as the headers spell it when they know it, else as the tables hold it."""
     raw = linker_name(module, ordinal)
     return prototypes.spelling(raw) if raw and not raw.startswith("?") else raw
+
+
+def documented(module, ordinal):
+    """(name, where) for an export only documentation names, or None."""
+    names, where = _DOCUMENTED.get(_stem(module), ({}, ""))
+    return (names[int(ordinal)], where) if int(ordinal) in names else None
 
 
 def source(module, ordinal):

@@ -7,11 +7,12 @@ r"""mcp_server.py -- CodeBreaker as an MCP server: what the console shows, for a
 The same reading and the same jobs as the web console (server.py), as tools an assistant such
 as Claude Code calls. Three kinds:
 
-    reading     nothing changes: describe, inspect, strings, hex_dump, resource, modules,
+    reading     nothing changes: triage, describe, inspect, strings, hex_dump, resource, modules,
                 coverage, progress, functions, function, names, identify, demangle, commands,
-                command_help; what was made: reach_results, projects, project, source_tree,
-                read_file (only inside Converted/, state/, this checkout and the source tree);
-                worked out on asking, kept an hour: decompile_function, compare_versions
+                command_help; the code itself (analyze/image.py, call_graph.py): disasm, xrefs;
+                what was made: reach_results, projects, project, source_tree, read_file (only
+                inside Converted/, state/, this checkout and the source tree); worked out on
+                asking, kept an hour: decompile_function, compare_versions, diff_function
     jobs        any command of `python -m codebreaker` run as a process of its own, below normal
                 priority, its output kept in state/ui_jobs/ (as the console's jobs): run_command,
                 jobs, job, job_file, stop_job. At most two at a time, at most one `measure`.
@@ -45,14 +46,16 @@ INTERACTIVE = {"serve", "app", "workbench", "live", "progress", "mcp"}     # win
 
 INSTRUCTIONS = """CodeBreaker reconstructs readable source from binaries (Windows 16/32-bit, DOS, VxD
 drivers, Xbox, Xbox 360, 8/16-bit consoles, XNA, Java) and checks that the source behaves like the
-original by running both in an emulator. Start with `describe` on a file or `modules` for the corpus;
-`inspect` for headers/imports/exports; `functions` and `function` for what the store holds (each
-function's reconstructed C and its verdict: verified, weak, unverified, not-judged, no-compile,
-no-source); `decompile_function` for one function's C now. What was made lives in `projects`/`project`
-(Converted/), `source_tree` (the product's source tree) and `reach_results`; `read_file` reads any of
-it. `compare_versions` matches two builds function by function. Anything long (decompile, measure,
-reach --judge, pe-source, recompile-project) goes through `run_command`, then `job` to follow it.
-A module is a corpus name (lz32.dll) or a path."""
+original by running both in an emulator. Start with `triage` on a module (everything below at a
+glance), `describe` on a file or `modules` for the corpus; `inspect` for headers/imports/exports;
+`functions` and `function` for what the store holds (each function's reconstructed C and its verdict:
+verified, weak, unverified, not-judged, no-compile, no-source); `decompile_function` for one function's
+C now; `disasm` for its instructions, `xrefs` for who calls it and what it calls, `hex_dump` by address.
+What was made lives in `projects`/`project` (Converted/), `source_tree` (the product's source tree)
+and `reach_results`; `read_file` reads any of it. `compare_versions` matches two builds function by
+function, `diff_function` shows one pair side by side. Anything long (decompile, measure, reach
+--judge, pe-source, recompile-project) goes through `run_command`, then `job` to follow it.
+A module is a corpus name (lz32.dll) or a path; an address is hex, or a function's name."""
 
 
 # ---- plumbing --------------------------------------------------------------------------------
@@ -152,6 +155,98 @@ def _store_view(module):
     return value
 
 
+def _image(p):
+    """The module as the analyses see it (analyze/image.py), read once and kept an hour."""
+    from codebreaker.analyze import image
+    value, waited = SLOW.get(("image", p), lambda: {"img": _quiet(image.load, p)}, age=3600.0, wait=120.0)
+    if value is None:
+        raise ValueError("still reading %s (%d s so far); call again" % (os.path.basename(p), waited))
+    if "error" in value:
+        raise ValueError(value["error"])
+    return value["img"]
+
+
+def _import_name(text):
+    """"KERNEL32!#17" as "KERNEL32!CommonUnimpStub (#17)" when the number has a known name."""
+    from codebreaker.symbols import ordinals
+    mod, _, nm = (text or "").partition("!")
+    if nm.startswith("#") and nm[1:].isdigit():
+        o = int(nm[1:])
+        real = ordinals.name(mod, o) or (ordinals.documented(mod, o) or (None,))[0]
+        if real:
+            return "%s!%s (#%d)" % (mod, real, o)
+    return text
+
+
+def _place(img, text):
+    """The address `text` stands for in an image: hex (0x optional; an RVA below a 32-bit
+    module's base counts from the base), segment:offset in a 16-bit module, or a name."""
+    from codebreaker.decompile import describe as D
+    a = _addr(text)
+    if re.fullmatch(r"[0-9a-f]+:[0-9a-f]+", a) and img.bits == 16:
+        seg, off = a.split(":")
+        return D.address(int(seg, 16), int(off, 16))
+    if re.fullmatch(r"[0-9a-f]+", a):
+        va = int(a, 16)
+        return va + img.base if img.kind == "pe" and va < img.base else va
+    low = (text or "").strip().lower()
+    for table in (img.names, img.exports):
+        hit = next((va for va, nm in sorted(table.items()) if nm and nm.lower() == low), None)
+        if hit is not None:
+            return hit
+    from codebreaker.symbols import names as N              # names given elsewhere: the store, other modules
+    hit = next((va for va, _k, nm, _s in _quiet(N.of_module, img.path)["functions"]
+                if isinstance(va, int) and nm and nm.lower() == low), None)
+    if hit is not None:
+        return hit
+    raise ValueError("no address or function named %r in %s (an address in hex, or a name `names` lists)"
+                     % (text, img.name))
+
+
+def _file_offset(p, va):
+    """Where a 32-bit module's address is in its file, or None (not stored there, or not a PE)."""
+    from codebreaker.formats.pe import open_pe
+    if corpus.lane(p) != "pe":
+        return None
+    pe = open_pe(p)
+    return pe._rva_to_off(va - pe.image_base) if va >= pe.image_base else None
+
+
+def _hex_addresses(info):
+    """The inspector's description with addresses as hex text and by-number imports named. File
+    offsets and sizes stay numbers (hex_dump and resource take them as they are)."""
+    from codebreaker.symbols import ordinals
+    h = lambda v: "0x%x" % v if isinstance(v, int) else v
+    for part in (info.get("summary") or {}, (info.get("headers") or {}).get("optional") or {}):
+        for k in ("image_base", "entry", "entry_point", "code_base", "data_base"):
+            if k in part:
+                part[k] = h(part[k])
+    for s in info.get("sections") or ():
+        s["address"] = h(s.get("address"))
+    for s in (info.get("exports") or {}).get("symbols") or ():
+        s["address"] = h(s.get("address"))
+    for imp in info.get("imports") or ():
+        stem = os.path.splitext(imp.get("module", ""))[0]
+        for s in imp.get("symbols") or ():
+            s["slot"] = h(s.get("slot"))
+            if not s.get("name") and isinstance(s.get("ordinal"), int) and s["ordinal"] >= 0:
+                real = ordinals.name(stem, s["ordinal"])
+                doc = None if real else ordinals.documented(stem, s["ordinal"])
+                if real or doc:
+                    s["name"] = real or doc[0]
+                    s["named_from"] = ordinals.source(stem, s["ordinal"]) if real else doc[1]
+    return info
+
+
+def _identified(p):
+    """{addr hex: library} of a module's functions a runtime library or tool made (identify)."""
+    from codebreaker.symbols import runtime_library as R
+    value, _ = SLOW.get(("identify", p), lambda: _quiet(R.identify, p), age=3600.0, wait=120.0)
+    if not isinstance(value, dict) or "error" in value:
+        return {}
+    return {("%x" % a if isinstance(a, int) else str(a)): lib for a, (_n, lib) in value.items()}
+
+
 # ---- reading ---------------------------------------------------------------------------------
 def describe(path: str) -> dict:
     """What a file is, the platform it belongs to, and the lane CodeBreaker reconstructs it with
@@ -161,18 +256,21 @@ def describe(path: str) -> dict:
     if os.path.isdir(p):
         return {"path": p, "found": "a folder", "say": "a folder: use reach through run_command to go through it"}
     out = dict(_quiet(reach.describe, p), path=p, size=os.path.getsize(p))
-    out["summary"] = _quiet(inspect.describe, p).get("summary", {})
+    out["summary"] = _hex_addresses({"summary": _quiet(inspect.describe, p).get("summary", {})})["summary"]
     return out
 
 
 def inspect_module(module: str, section: str = "") -> dict:
     """The inspector: headers, sections, imports, exports, resources, version. Without `section`
-    the whole description (long parts are listed instead when it is too big); with it, one part."""
+    the whole description (long parts are listed instead when it is too big); with it, one part:
+    summary, dos, headers, sections, exports, imports, resources, directories, relocations, ...
+    Addresses are hex text; file offsets and sizes are numbers (as hex_dump and resource take
+    them). Imports by number carry the name when one is known, and where it came from."""
     p = _path(module)
     if os.path.isdir(p):
         from codebreaker.java import transpile
         return {"path": p, "kind": "java", "classes": len(transpile.discover(p))}
-    info = _quiet(inspect.describe, p)
+    info = _hex_addresses(_quiet(inspect.describe, p))
     if section:
         if section not in info:
             raise ValueError("no part %r; there are: %s" % (section, ", ".join(info)))
@@ -188,12 +286,23 @@ def strings(module: str, find: str = "", min_len: int = 4, offset: int = 0, limi
     return _page(rows, offset, limit)
 
 
-def hex_dump(module: str, offset: int = 0, length: int = 512) -> dict:
-    """A hex dump of a file's bytes from `offset` (at most 16 KB)."""
+def hex_dump(module: str, offset: int = 0, length: int = 512, addr: str = "") -> dict:
+    """A hex dump of a file's bytes from file `offset`, or from the place a 32-bit module's
+    address (or function name) `addr` is stored (at most 16 KB)."""
     p = _path(module)
     n = max(1, min(int(length), 16384))
-    return {"offset": int(offset), "length": n, "size": os.path.getsize(p),
-            "text": inspect.hexdump(p, max(0, int(offset)), n)}
+    out = {}
+    if addr:
+        img = _image(p)
+        va = _place(img, addr)
+        offset = _file_offset(p, va)
+        if offset is None:
+            raise ValueError("%x is not stored in the file (or %s is not a 32-bit module: give `offset`)"
+                             % (va, os.path.basename(p)))
+        out["addr"] = "%x" % va
+    out.update(offset=int(offset), length=n, size=os.path.getsize(p),
+               text=inspect.hexdump(p, max(0, int(offset)), n))
+    return out
 
 
 def resource(module: str, offset: int, size: int, type_id: int = -1, wide: bool = True):
@@ -266,17 +375,28 @@ def progress() -> dict:
 
 def functions(module: str, cls: str = "", find: str = "", offset: int = 0, limit: int = 300) -> dict:
     """Every function the store holds for a module, with its class (verified, weak, unverified,
-    not-judged, no-compile, no-source), name and why; plus counts and the commonest reasons.
-    `cls` keeps one class; `find` matches a name or an address."""
+    not-judged, no-compile, no-source), name and why; plus counts and the commonest reasons. A
+    function a runtime library or a tool (the thunk compiler) made carries `library`, and is
+    counted under `identified`. `cls` keeps one class (or "identified"); `find` matches a name or
+    an address."""
     p = _path(module)
     found = _store_view(os.path.basename(p))
     if found is None:
         raise ValueError("%s is not a module of the corpus or the store" % module)
     if "error" in found and "functions" not in found:
         return found
-    rows = [r for r in found["functions"] if (not cls or r["class"] == cls)
-            and (not find or find.lower() in r["name"].lower() or _addr(find) in r["addr"])]
+    made = _identified(p)
+    rows = []
+    for r in found["functions"]:
+        if made.get(r["addr"]):                    # made by a tool or a runtime library: not authored code
+            r = dict(r, library=made[r["addr"]])
+            if r["class"] == "no-compile":
+                r["why"] = "identified, not reconstructed by design (%s)" % made[r["addr"]]
+        if (not cls or r["class"] == cls or (cls == "identified" and r.get("library"))) and \
+                (not find or find.lower() in r["name"].lower() or _addr(find) in r["addr"]):
+            rows.append(r)
     out = {k: found[k] for k in ("module", "kind_title", "sha", "in_store", "measured", "counts", "reasons")}
+    out["counts"] = dict(out["counts"], identified=sum(1 for r in found["functions"] if made.get(r["addr"])))
     if not found["in_store"]:
         out["say"] = "not measured yet: run_command('measure', ['%s'])" % module
     out.update(_page(rows, offset, limit))
@@ -484,15 +604,34 @@ def project(name: str, find: str = "") -> dict:
     return _fit({"folder": folder, "project": d, "files": files, "more_files": more})
 
 
+_BUILT = {".obj", ".o", ".lib", ".exp", ".res", ".map", ".dll", ".exe", ".drv", ".vxd", ".386", ".sym", ".log",
+          ".pdb", ".ilk", ".err", ".lst", ".com", ".sys", ".bin"}
+_NOTES = {".md", ".txt"}
+
+
+def _file_kind(rel):
+    """"built" (made by a build, or in a folder a build writes), "notes", or "source"."""
+    parts = rel.lower().split("/")
+    ext = os.path.splitext(parts[-1])[1]
+    if ext in _BUILT or any(p.startswith("_build") or p in ("build", "out", "obj") for p in parts[:-1]):
+        return "built"
+    return "notes" if ext in _NOTES else "source"
+
+
 def source_tree(module: str, find: str = "") -> dict:
-    """Where a module's source lives in the product's source tree (and why there), and its files."""
+    """Where a module's source lives in the product's source tree (and why there), and its files,
+    each marked source, notes (.md, .txt) or built (a build's output or working folder); counts
+    of each, source first."""
     from codebreaker.source import placement
     p = _path(module)
     rel, how = placement.resolve(os.path.basename(p), p)
     folder = os.path.join(placement.tree_root(), *rel.split("/"))
     files, more = _listing(folder, find) if os.path.isdir(folder) else ([], False)
+    order = {"source": 0, "notes": 1, "built": 2}
+    files = sorted((dict(f, kind=_file_kind(f["file"])) for f in files), key=lambda f: order[f["kind"]])
+    counts = {k: sum(1 for f in files if f["kind"] == k) for k in order}
     return {"tree": placement.tree_root(), "folder": folder, "relative": rel, "decided": how,
-            "exists": os.path.isdir(folder), "files": files, "more_files": more}
+            "exists": os.path.isdir(folder), "counts": counts, "files": files, "more_files": more}
 
 
 def read_file(path: str, offset: int = 0, length: int = 40000) -> dict:
@@ -562,16 +701,17 @@ def _cut_function(text, addr):
 def decompile_function(module: str, addr: str, wait: int = 60) -> dict:
     """One function decompiled now, without starting a job: a 32-bit x86 function by itself (cached
     by its inputs); any other kind decompiles its whole module once (kept) and the function is cut
-    out of it. Not built or judged. Says so when it takes longer than `wait` seconds: call again."""
+    out of it. `addr` is an address (hex) or a name. Not built or judged, and not necessarily the
+    text the store holds (that was made by the measure that judged it: `function`). Says so when it
+    takes longer than `wait` seconds: call again."""
     from codebreaker.decompile import decompiler as D
     p = _path(module)
     a = _addr(addr)
     wait = max(1, min(int(wait), 240))
-    if corpus.lane(p) == "pe" and D._is_x86(p):
-        try:
-            va = int(a, 16)
-        except ValueError:
-            raise ValueError("a 32-bit function is asked for by its address (hex)")
+    x86 = corpus.lane(p) == "pe" and D._is_x86(p)
+    if x86:
+        va = _place(_image(p), addr)
+        a = "%x" % va
 
         def work():
             got = _quiet(D.decompile, p, [va]).functions.get(va)
@@ -590,27 +730,307 @@ def decompile_function(module: str, addr: str, wait: int = 60) -> dict:
     return dict(value, module=os.path.basename(p), addr=a, note="decompiled now; not built or judged")
 
 
+_PAIR_FIELDS = ("level: what agrees -- bytes (the same machine code but for what the loader fills in), text "
+                "(the same instructions, addresses aside), shape (the same kinds of instruction and operand: "
+                "registers or constants differ); how: which matching step paired them (bytes, name, text, "
+                "shape, calls, likeness, position); score: likeness of the shapes, so a changed pair at 1.0 "
+                "differs only in registers or constants. diff_function shows one pair side by side.")
+
+
+def _versions(pa, pb, wait):
+    """compare/versions.py's Comparison of two builds, worked out once and kept an hour."""
+    from codebreaker.compare import versions
+
+    def work():
+        c = _quiet(versions.compare, pa, pb)
+        return {"c": c, "report": c.report(), "counts": c.counts(), "code": c.code(), "pairs": c.pairs,
+                "added": c.added, "removed": c.removed, "names": c.names()}
+    return SLOW.get(("versions", pa, pb), work, age=3600.0, wait=max(1, min(int(wait), 240)))
+
+
 def compare_versions(module_a: str, module_b: str, status: str = "", offset: int = 0, limit: int = 200,
                      wait: int = 60) -> dict:
     """Two builds of a module function by function (compare/versions.py): identical, changed (with
     a likeness score), added, removed, and the names the old build gives functions the new one
-    leaves unnamed. `status` keeps identical or changed pairs only."""
-    from codebreaker.compare import versions
-    pa, pb = _path(module_a), _path(module_b)
-
-    def work():
-        c = _quiet(versions.compare, pa, pb)
-        return {"report": c.report(), "counts": c.counts(), "code": c.code(), "pairs": c.pairs,
-                "added": c.added, "removed": c.removed, "names": c.names()}
-    value, waited = SLOW.get(("versions", pa, pb), work, age=3600.0, wait=max(1, min(int(wait), 240)))
+    leaves unnamed. Changed pairs come first. `status` keeps identical or changed pairs only."""
+    value, waited = _versions(_path(module_a), _path(module_b), wait)
     if value is None:
         return _not_ready("comparing the two builds", waited)
     if "error" in value:
         return value
-    pairs = [x for x in value["pairs"] if not status or x["status"] == status]
+    pairs = sorted((x for x in value["pairs"] if not status or x["status"] == status),
+                   key=lambda x: x["status"] != "changed")
     out = {k: value[k] for k in ("report", "counts", "code")}
+    out["fields"] = _PAIR_FIELDS
     out.update(added=value["added"][:500], removed=value["removed"][:500], names=value["names"][:500])
     out.update(_page(pairs, offset, limit))
+    return _fit(out)
+
+
+def diff_function(module_a: str, module_b: str, addr: str, wait: int = 60) -> dict:
+    """One function in two builds, instruction by instruction: `addr` is its address (or name) in
+    the first build, or in the second. The listings are lined up by the kinds of instruction and
+    operand, each line marked ' ' the same (addresses aside), '~' the same instruction with other
+    registers or constants, '-' only in the first, '+' only in the second."""
+    import difflib
+    pa, pb = _path(module_a), _path(module_b)
+    value, waited = _versions(pa, pb, wait)
+    if value is None:
+        return _not_ready("comparing the two builds", waited)
+    if "error" in value:
+        return value
+    c = value["c"]
+    want, low = _addr(addr), (addr or "").strip().lower()
+    pair = next((x for x in c.pairs if x["from"] == want or x["to"] == want), None) or \
+        next((x for x in c.pairs if low in (x["from_name"].lower(), x["to_name"].lower())), None)
+
+    def listing(f):
+        return "\n".join("%x  %s" % row for row in f.rows)
+    if not pair:
+        for side, keys, what in ((c.a, c.removed, "removed: only in the first build"),
+                                 (c.b, c.added, "added: only in the second build")):
+            k = next((k for k in keys if k == want or side.functions[k].name.lower() == low), None)
+            if k:
+                return {"status": what, "addr": k, "name": side.functions[k].name, "listing": listing(side.functions[k])}
+        raise ValueError("no function %r in either build (compare_versions lists the pairs)" % addr)
+    fa, fb = c.a.functions[pair["from"]], c.b.functions[pair["to"]]
+    out = {k: pair[k] for k in ("from", "to", "from_name", "to_name", "status", "level", "score", "sizes")}
+    lines = []                     # lined up by shape, so other registers or constants do not break the line-up
+    for tag, a1, a2, b1, b2 in difflib.SequenceMatcher(None, fa.shape, fb.shape, autojunk=False).get_opcodes():
+        if tag == "equal":
+            for i, j in zip(range(a1, a2), range(b1, b2)):
+                lines.append("%s %x %-36s %x %s" % (" " if fa.text[i] == fb.text[j] else "~", fa.rows[i][0],
+                                                    fa.rows[i][1], fb.rows[j][0], fb.rows[j][1]))
+            continue
+        lines += ["- %x %s" % fa.rows[i] for i in range(a1, a2)]
+        lines += ["+ %47s %x %s" % ("", fb.rows[j][0], fb.rows[j][1]) for j in range(b1, b2)]
+    out["diff"] = "\n".join(lines)
+    out["differ"] = sum(1 for ln in lines if ln[0] != " ")
+    return _fit(out)
+
+
+# ---- code: disassembly, cross-references, a module at a glance --------------------------------
+def _ascii_at(img, va, most=40):
+    """The text stored at a data address, when there is some (4 printable characters or more)."""
+    s = img.span(va)
+    if not s or s[2] or not img.initialised(va):
+        return None
+    raw = bytes(s[1][va - s[0]:va - s[0] + most])
+    text = raw.split(b"\0")[0]
+    if len(text) >= 4 and all(32 <= b < 127 for b in text):
+        return text.decode("ascii")
+    return None
+
+
+def _thunk(img, va):
+    """The import a `jmp [slot]` at `va` goes to, or None."""
+    from codebreaker.analyze import image
+    s = img.span(va)
+    ci = next(img._md.disasm(bytes(s[1][va - s[0]:va - s[0] + 16]), va), None) if s and s[2] else None
+    ins = img._convert(ci) if ci is not None else None
+    slot = image._slot(ins) if ins is not None and ins.flow == "jmp" and ins.target is None else None
+    return (slot, img.imports[slot]) if slot in img.imports else None
+
+
+def _label(img, va):
+    """A function's name, with the import it only jumps to; else name+offset, else the address."""
+    if va in img.names:
+        t = img.memo(("mcp_thunk", va), lambda im: _thunk(im, va))
+        return "%s (thunk: %s)" % (img.names[va], _import_name(t[1])) if t else img.names[va]
+    owner = img.owner(va)
+    return "%s+%x" % (img.names[owner], va - owner) if owner is not None else "%x" % va
+
+
+def _note(img, ins, fn_start=None):
+    """What an instruction's destination or address operand stands for."""
+    from codebreaker.analyze import image
+    if ins.flow in ("call", "jmp", "jcc"):
+        dest = image.destination(img, ins)
+        if dest is not None and dest in img.imports:
+            return _import_name(img.imports[dest])
+        if dest is not None and ins.flow != "jcc":
+            owner = img.owner(dest)
+            if dest in img.names:
+                return _label(img, dest)
+            if owner is not None and owner != fn_start:
+                return "%s+%x" % (img.names[owner], dest - owner)
+            if owner is None:
+                return "%x: no known function starts there" % dest
+    for op in ins.ops:
+        va = op[1] if op[0] == "i" and op[2] == 4 else op[4] if op[0] == "m" and op[1] is None else None
+        if va is None:
+            continue
+        if va in img.imports:
+            return _import_name(img.imports[va])
+        text = _ascii_at(img, va)
+        if text:
+            return '"%s"' % text
+        if va in img.names:
+            return img.names[va]
+    return ""
+
+
+def disasm(module: str, addr: str, count: int = 0) -> dict:
+    """The instructions at an address or function name. At a function's start (count 0): the whole
+    function as the analyses decode it, following its branches. Anywhere else, or with `count`: that
+    many instructions read straight on from there (64 when count is 0). Each line: address, file
+    offset (32-bit modules), bytes, instruction, and what it refers to (a function, an import by its
+    name, a string)."""
+    p = _path(module)
+    img = _image(p)
+    va = _place(img, addr)
+    n = max(1, min(int(count) or 64, 4000))
+    if va in img.names and not int(count):
+        fn = img.function(va)
+        insns, how = fn.insns, "the function, as decoded from its start"
+        head = {"function": img.names[va], "start": "%x" % va, "end": "%x" % fn.end, "limit": "%x" % fn.limit}
+    else:
+        s = img.span(va)
+        if not s:
+            raise ValueError("%x is not in %s" % (va, img.name))
+        insns = []
+        for ci in img._md.disasm(bytes(s[1][va - s[0]:va - s[0] + 16 * n]), va):
+            insns.append(img._convert(ci))
+            if len(insns) >= n:
+                break
+        how = "%d instructions read straight on" % len(insns)
+        owner = img.owner(va)
+        head = {"inside": "%s+%x" % (img.names[owner], va - owner) if owner is not None else None}
+    pe = corpus.lane(p) == "pe"
+    rows = []
+    for ins in insns:
+        s = img.span(ins.addr)
+        code = bytes(s[1][ins.addr - s[0]:ins.addr - s[0] + ins.size]) if s else b""
+        off = _file_offset(p, ins.addr) if pe else None
+        note = _note(img, ins, va)
+        rows.append(("%x%s  %-20s %-34s%s" % (ins.addr, "  %05x" % off if off is not None else "",
+                                               code.hex(" ").upper(), ins.text, ("; " + note) if note else "")).rstrip())
+    return _fit(dict(head, module=img.name, addr="%x" % va, how=how, count=len(rows), listing="\n".join(rows)))
+
+
+def _xref_index(img):
+    """{address: [(function, site, how)]}: every direct call, jump and import-slot use in the code."""
+    from codebreaker.analyze import image
+    out = {}
+    for fn in img.each():
+        for ins in fn.insns:
+            if ins.target is not None and ins.flow in ("call", "jmp") or ins.flow == "jcc" and ins.target is not None \
+                    and not fn.start <= ins.target < fn.limit:
+                out.setdefault(ins.target, []).append((fn.start, ins.addr, ins.flow))
+            slot = image._slot(ins)
+            if slot is not None and slot in img.imports:
+                out.setdefault(slot, []).append((fn.start, ins.addr, (ins.flow or "reads") + " [slot]"))
+    return out
+
+
+def xrefs(module: str, addr: str) -> dict:
+    """What refers to an address or function, and what a function calls: the call and jump sites
+    that go there, the code that reads, writes or takes the address, the data that holds it, and,
+    for a function, each call it makes. `addr` may also be an import, as MODULE!name, its name
+    alone, or MODULE!#ordinal: then the code that calls it, directly or through a thunk."""
+    from codebreaker.analyze import call_graph
+    p = _path(module)
+    img = _image(p)
+    g = call_graph.build(img)
+    index = img.memo("mcp_xrefs", _xref_index)
+    lab = lambda v: _label(img, v)
+    try:
+        targets = [_place(img, addr)]
+    except ValueError:
+        low = addr.strip().lower()
+        targets = [s for s, nm in sorted(img.imports.items()) if low in (nm.lower(), nm.split("!")[-1].lower(),
+                   _import_name(nm).lower(), _import_name(nm).split("!")[-1].split(" (")[0].lower())]
+        if not targets:
+            raise
+    out = {"module": img.name, "addr": " ".join("%x" % t for t in targets)}
+    va = targets[0]
+    if va in img.imports:
+        out["import"] = _import_name(img.imports[va])
+        if img.bits == 32:                     # the thunks that jump to it (jmp [slot]), function or not
+            pattern = b"\xff\x25" + va.to_bytes(4, "little")
+            for base, data, executable, _w, _n, _held in img.spans:
+                at = data.find(pattern) if executable else -1
+                while at >= 0:
+                    targets.append(base + at)
+                    at = data.find(pattern, at + 1)
+            if len(targets) > 1:
+                out["thunks"] = [lab(t) for t in targets[1:]]
+    elif va in img.names:
+        out["function"] = img.names[va]
+    elif img.owner(va) is not None:
+        out["inside"] = lab(va)
+    if va in img.exports:
+        out["exported_as"] = img.exports[va]
+    t = _thunk(img, va) if va not in img.imports else None
+    if t:
+        out["is"] = "a thunk: jmp [%x] = %s" % (t[0], _import_name(t[1]))
+    sites = sorted({(f, s, how) for t in targets for f, s, how in index.get(t, ())}, key=lambda x: x[1])
+    out["from_code"] = [{"site": "%x" % s, "in": lab(f), "how": how} for f, s, how in sites][:500]
+    refs = [(f, ins, how) for f, ins, a, how in g.refs if a in targets]
+    out["referred"] = [{"site": "%x" % ins.addr, "in": lab(f), "how": {"r": "reads", "w": "writes", "rw": "reads and writes",
+                                                                         "a": "takes the address"}[how], "ins": ins.text}
+                       for f, ins, how in refs][:500]
+    out["in_data"] = ["%x" % site for kind, _f, site in g.taken.get(va, []) if kind == "data"][:200]
+    if va in img.names:
+        out["calls"] = [{"site": "%x" % s, "kind": k, "to": (_import_name(img.imports[d]) if d in img.imports
+                                                             else lab(d)) if d is not None else "(decided at run time)"}
+                        for s, k, d in g.calls.get(va, [])]
+    if not (sites or refs or out["in_data"]):
+        out["say"] = ("nothing in the module refers to it: it is entered from outside (an export)"
+                      if va in img.exports or va in img.roots else "no code or data here refers to it")
+    return _fit(out)
+
+
+def triage(module: str) -> dict:
+    """A module at a glance: what it is, its exports and imports, what made it, where the function
+    store stands (counts, and each unverified function with its verdict's detail), the functions
+    a tool or runtime library made, and where its authored source lives. What to look at next."""
+    p = _path(module)
+    name = os.path.basename(p)
+    d = describe(p)
+    out = {"module": name, "path": p, "is": {k: d.get(k) for k in ("found", "platform", "lane", "family", "size")},
+           "summary": d.get("summary")}
+    try:
+        info = _hex_addresses(_quiet(inspect.describe, p))
+        ex = (info.get("exports") or {}).get("symbols") or []
+        out["exports"] = [s.get("name") or "#%s" % s.get("ordinal") for s in ex][:200]
+        out["imports"] = {i["module"]: [s.get("name") or "#%s" % s.get("ordinal") for s in i.get("symbols", [])][:100]
+                          for i in info.get("imports") or []}
+    except Exception as e:
+        out["inspect"] = "%s: %s" % (type(e).__name__, e)
+    try:
+        ident = identify(p)
+        libs = {}
+        for r in ident["rows"]:
+            libs[r["library"]] = libs.get(r["library"], 0) + 1
+        out["made_by"] = {"compiler": ident.get("compiler"), "identified": libs}
+    except Exception as e:
+        out["made_by"] = "%s: %s" % (type(e).__name__, e)
+    try:
+        fns = functions(p, limit=5000)
+        out["store"] = {k: fns[k] for k in ("counts", "reasons")}
+        bad = [r for r in fns["rows"] if r["class"] in ("unverified", "weak", "no-compile", "no-source")
+               and not r.get("library")]
+        out["to_look_at"] = []
+        for r in bad[:12]:
+            one = function(p, r["addr"])
+            out["to_look_at"].append({"addr": r["addr"], "name": r["name"], "class": r["class"], "why": r["why"],
+                                      "detail": one.get("detail", ""), "source": (one.get("source") or "")[:1500]})
+        if len(bad) > 12:
+            out["more_to_look_at"] = len(bad) - 12
+        if not fns.get("in_store"):
+            out["store"]["say"] = fns.get("say")
+    except ValueError as e:
+        out["store"] = str(e)
+    try:
+        st = source_tree(p)
+        out["source"] = {"folder": st["folder"], "exists": st["exists"], "counts": st["counts"],
+                         "notes": [f["file"] for f in st["files"] if f["kind"] == "notes"][:20],
+                         "source": [f["file"] for f in st["files"] if f["kind"] == "source"][:40]}
+    except Exception as e:
+        out["source"] = "%s: %s" % (type(e).__name__, e)
+    out["next"] = ("disasm and xrefs at each function to look at; read_file the notes; compare_versions "
+                   "against another build of it")
     return _fit(out)
 
 
@@ -692,7 +1112,8 @@ def name_function(module: str, addr: str, name: str) -> dict:
 # ---- the server ------------------------------------------------------------------------------
 READING = (describe, inspect_module, strings, hex_dump, resource, modules, coverage, progress,
            functions, function, names, identify, demangle, commands, command_help, jobs, job, job_file,
-           reach_results, projects, project, source_tree, read_file, decompile_function, compare_versions)
+           reach_results, projects, project, source_tree, read_file, decompile_function, compare_versions,
+           diff_function, disasm, xrefs, triage)
 TOOL_NAMES = {inspect_module: "inspect", demangle: "demangle"}
 
 
@@ -727,12 +1148,13 @@ def build():
     def function_source(module: str, addr: str) -> str:
         return function(module, addr).get("source") or "/* no source: see the verdict (the `function` tool) */"
 
-    @app.prompt(description="Take a binary apart: what it is, what is in it, where its reconstruction stands")
-    def triage(path: str) -> str:
-        return ("Triage %s with the CodeBreaker tools: `describe` it; `inspect` its summary, imports and "
-                "exports; `functions` for what the store holds (if nothing, offer to `run_command` measure "
-                "on it and follow the job); then read the worst unverified functions with `function` and "
-                "say, for each, what most likely went wrong and what the original code was for." % path)
+    @app.prompt(name="triage", description="Take a binary apart: what it is, what is in it, where its reconstruction stands")
+    def triage_prompt(path: str) -> str:
+        return ("Triage %s with the CodeBreaker tools: start with the `triage` tool (what it is, its imports "
+                "and exports, the store's counts and each unverified function with its verdict); if nothing "
+                "is stored, offer to `run_command` measure on it and follow the job; then for each function to "
+                "look at, `disasm` and `xrefs` it and say what most likely went wrong and what the original "
+                "code was for." % path)
     return app
 
 

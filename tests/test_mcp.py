@@ -86,7 +86,8 @@ def test_every_tool_is_offered():
     for name in ("describe", "inspect", "strings", "hex_dump", "resource", "modules", "coverage", "progress",
                  "functions", "function", "names", "identify", "demangle", "commands", "command_help",
                  "run_command", "jobs", "job", "job_file", "stop_job", "name_function", "reach_results",
-                 "projects", "project", "source_tree", "read_file", "decompile_function", "compare_versions"):
+                 "projects", "project", "source_tree", "read_file", "decompile_function", "compare_versions",
+                 "diff_function", "disasm", "xrefs", "triage"):
         assert name in tools, name
     assert tools["describe"].annotations.read_only_hint and not tools["run_command"].annotations.read_only_hint
     assert "module" in tools["functions"].input_schema["properties"]
@@ -229,6 +230,32 @@ def test_compare_two_builds():
     assert d["counts"]["changed"] == 0 and d["counts"]["identical"] == d["total"] > 5 and d["count"] == 2
 
 
+def test_the_code_itself():
+    path = _module("version.dll")
+    got = _calls([("names", {"module": path, "limit": 1})])
+    first = json.loads(got[0][1])["rows"][0]
+    got = _calls([("disasm", {"module": path, "addr": first["name"]}),
+                  ("disasm", {"module": path, "addr": first["addr"], "count": 3}),
+                  ("xrefs", {"module": path, "addr": first["addr"]}),
+                  ("hex_dump", {"module": path, "addr": first["addr"], "length": 4}),
+                  ("diff_function", {"module_a": path, "module_b": path, "addr": first["addr"], "wait": 200}),
+                  ("triage", {"module": path}),
+                  ("inspect", {"module": path, "section": "summary"}),
+                  ("disasm", {"module": path, "addr": "no_such_function"})])
+    whole, three, refs, dump, diff, tri, summary, wrong = got
+    assert not whole[0] and json.loads(whole[1])["listing"].startswith(first["addr"]), whole
+    assert json.loads(three[1])["count"] == 3
+    assert json.loads(refs[1])["addr"] == first["addr"] and "from_code" in json.loads(refs[1])
+    d = json.loads(dump[1])
+    assert d["addr"] == first["addr"] and len(d["text"].split("  ")[1].split()) == 4
+    d = json.loads(diff[1])
+    assert d["status"] == "identical" and d["differ"] == 0
+    d = json.loads(tri[1])
+    assert d["module"] == "version.dll" and d["exports"] and "store" in d and "made_by" in d
+    assert json.loads(summary[1])["summary"]["image_base"].startswith("0x")
+    assert wrong[0] and "no address or function" in wrong[1]
+
+
 def test_ledger_kept_answers_at_once():
     _Client, mcp_server = _mcp()
     from codebreaker.base import settings
@@ -281,7 +308,7 @@ def test_http_needs_the_token():
 def main():
     for fn in (test_every_tool_is_offered, test_reading_a_module, test_wrong_names_are_said, test_symbols,
                test_a_job_runs_and_reports, test_naming_writes_only_this_store, test_cut_and_slow,
-               test_what_was_made, test_one_function_cut_out, test_compare_two_builds,
+               test_what_was_made, test_one_function_cut_out, test_compare_two_builds, test_the_code_itself,
                test_ledger_kept_answers_at_once, test_http_needs_the_token):
         check(fn)
     for name, status, detail in RESULTS:
