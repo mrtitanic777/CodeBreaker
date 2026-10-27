@@ -26,9 +26,12 @@
     driver-services [FILE ...]      names of ring-0 services; how many of a driver's calls they name
     driver-source <driver>          a driver's assembly source from its image, built and checked
     dos-source <program>            a real-mode program's assembly source, built and compared
+    dos-build <folder> [--against F]  that program made again from its source folder alone
     pe-source <program> [--stub F]  a 32-bit Windows program's assembly source (NASM), built and
                                     compared byte for byte
     ne-source <program>             a 16-bit Windows / OS/2 program's assembly source (NASM), built and
+                                    compared byte for byte
+    le-source <driver>              a VxD's (or VMM32.VXD's) file as assembly source (NASM), built and
                                     compared byte for byte
     origin <module> [--list]        which of a 16-bit module's functions were written in assembly
     boot-floppy                     the Win95 Setup boot floppy, made from the rebuilt files
@@ -66,6 +69,7 @@
                                     platform there is no lane for yet), and with --judge how far its
                                     lane gets; a few of each platform, one at a time
     serve [--port N] [--open]       the local web console (127.0.0.1 only)
+    mcp [--http PORT]               CodeBreaker as an MCP server for an assistant (stdio; claude mcp add)
     progress [--once] [--window]    watch a running sweep
     app [file-or-module]            the desktop window
     workbench [--forms]             the Workbench: the earlier CodeBreaker's Windows 95-style window
@@ -109,8 +113,10 @@ COMMANDS = {
     "driver-services": ("codebreaker.symbols.driver_services", []),
     "driver-source": ("codebreaker.source.driver_writer", []),
     "dos-source": ("codebreaker.source.dos_writer", []),
+    "dos-build": ("codebreaker.source.dos_build", []),
     "pe-source": ("codebreaker.source.pe_writer", []),
     "ne-source": ("codebreaker.source.ne_writer", []),
+    "le-source": ("codebreaker.source.le_writer", []),
     "origin": ("codebreaker.analyze.origin", []),
     "boot-floppy": ("codebreaker.build.floppy", []),
     "driver-build": ("codebreaker.build.driver", []),
@@ -126,6 +132,7 @@ COMMANDS = {
     "coverage": ("codebreaker.coverage.ledger", []),
     "reach": ("codebreaker.coverage.reach", []),
     "serve": ("codebreaker.ui.server", []),
+    "mcp": ("codebreaker.ui.mcp_server", []),
     "progress": ("codebreaker.ui.progress", []),
     "app": ("codebreaker.ui.app", []),
     "workbench": ("codebreaker.ui.workbench", []),
