@@ -284,6 +284,7 @@ DESCRIPTOR = (("next", 0x00, "I"), ("kit_version", 0x04, "H"), ("device_id", 0x0
               ("pm_api_address", 0x28, "I"), ("reference_data", 0x2C, "I"), ("service_table", 0x30, "I"),
               ("service_count", 0x34, "I"))
 _DESCRIPTOR_AT = {name: off for name, off, _fmt in DESCRIPTOR}
+_FIELD_AT = {name: off for name, off, _fmt in _FIELDS}
 
 
 def header_fields(lf):
@@ -606,9 +607,12 @@ def read_image(lf):
     linker's layout, which read_image leaves out: "page_map" (the page map's bytes as that
     linker numbered the pages), "tables_tail" (bytes kept right behind the import names,
     outside the fix-up section's size), "data_pages" (the file offset the data pages stay at
-    while the tables fit in front of it) and "fill_from" (the original file, whose trailing
-    bytes fill out a written file that comes out shorter). "resident" and "nonresident" may
-    also be a name table's bytes, kept as stored."""
+    while the tables fit in front of it), "in_pages" ({header field: file offset} for parts
+    that sit among the data pages, as a container's member keeps its non-resident names and
+    resources: the field points there, moved with the data pages, and a non-resident name table
+    there is not written again) and "fill_from" (the original file, whose trailing bytes fill
+    out a written file that comes out shorter). "resident" and
+    "nonresident" may also be a name table's bytes, kept as stored."""
     d, h = lf.d, header_fields(lf)
     member = is_member(lf)
     pm = page_map(lf)
@@ -724,11 +728,16 @@ def write_image(image):
     out += (gap if len(gap) == pages_at - len(out) else bytes(pages_at - len(out))) + data
     non = _name_table(image["nonresident"]) if image["nonresident"] else b""
     out += names_gap
-    put(0x88, len(out) if non else 0), put(0x8C, len(non))
-    out += non
+    in_pages = image.get("in_pages") or {}
+    put(0x8C, len(non))
+    if "nonresident_names" not in in_pages:          # else already among the data pages
+        put(0x88, len(out) if non else 0)
+        out += non
     shift = len(out) - image["moved"]["from"]
     for off, key in ((0x98, "debug_info"), (0xB8, "resource_data")):
         put(off, image["moved"][key] + shift if image["moved"][key] and image["after"] else image["moved"][key])
+    for key, at in in_pages.items():
+        put(_FIELD_AT[key], at + pages_at - image["data_pages"])
     out += image["after"]
     fill = image.get("fill_from") or b""
     out += fill[len(out):]

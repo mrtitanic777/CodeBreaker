@@ -204,18 +204,56 @@ def build_w3(D, v, name):
     a standalone .vxd, the embedded LE keeps its container-absolute layout at v.lfa; its OBJECT DATA
     comes from D.code and its FIXUP records from D.fx, while the DOS stub + real-mode loader, the W3
     header + entry, the LE header fields, the object/name tables and the version resource are the
-    container's own metadata. Byte-exact with the oracle vmm32.vxd except LINK386's intra-page fixup
-    ORDER -- the same standard as the 213 standalone modules."""
-    out = bytearray(v.d)
+    container's own metadata.
+
+    The member is written by le.write_image, like build_le's drivers, in front of it the
+    container's own program and directory; the directory is then packed again with the member's
+    size as written. D.fx gives more fix-up records than LINK386 wrote (Win95's VMM: 3824 against
+    3804, 98 bytes more; Win98's: 48 bytes more), so the fix-up section, the import-table offsets
+    and the member's size grow with them, and where the tables then run into the data pages
+    (Win95's VMM) the pages move to the next 0x200, the non-resident names and resource with them."""
     L = v.lfa
-    U = lambda o: struct.unpack_from("<I", v.d, L + o)[0]
+    U = lambda o: struct.unpack_from("<I", v.d, L + o)[0]       # noqa: E731
     ps = v.pagesize
-    datapages = U(0x80)                                     # container-absolute
-    for o in v.objects:                                     # recovered object bytes, in place
-        base = datapages + (o["pmidx"] - 1) * ps
+    first = U(0x80)                                             # data pages, container-absolute
+    # data pages: the container's own, each recovered object's bytes laid over them at its logical
+    # page index, in object order (an object whose recovered bytes run past its pages -- its
+    # uninitialised tail -- spills into the next page, and the next object is laid over that)
+    data = bytearray(v.d[first:first + (v.mpages - 1) * ps + v.last_page_bytes])
+    size = len(data)
+    for o in v.objects:
+        at = (o["pmidx"] - 1) * ps
         cb = D.code[o["idx"]]
-        out[base:base + len(cb)] = cb
-    fxpage, fxrec = le.fixup_tables(_emit_fixups(D, v), v.mpages)   # fixup tables rebuilt from D.fx
-    out[L + U(0x68):L + U(0x68) + len(fxpage)] = fxpage
-    out[L + U(0x6c):L + U(0x6c) + len(fxrec)] = fxrec
+        data[at:at + len(cb)] = cb
+    del data[size:]
+    pages = [(0, bytes(data[i:i + ps])) for i in range(0, size, ps)]
+    otab = L + U(0x40)
+    objects = [{"vsize": o["vsize"], "base": o["base"], "flags": o["flags"], "first_page": o["pmidx"],
+                "page_count": o["pcnt"], "reserved": bytes(v.d[otab + i * 24 + 20: otab + i * 24 + 24])}
+               for i, o in enumerate(v.objects)]
+    # the loader's tables and the names as the container stores them, but the fix-up tables rebuilt
+    # from D.fx; the container's own bytes behind them up to the data pages are kept where they lie
+    # (the data pages move to the next 0x200 only when the rebuilt tables run into them). The
+    # non-resident names and the version resource sit among the data pages, and move with them.
+    fixups = _emit_fixups(D, v)
+    fix_pages, fix_records = le.fixup_tables(fixups, v.mpages)
+    tables_end = L + U(0x68) + len(fix_pages) + len(fix_records)
+    nres_off, nres_sz = U(0x88), U(0x8c)
+    out = bytearray(le.write_image({
+        "stub": bytes(v.d[:L]), "header": bytes(v.d[L:L + le.HEADER_SIZE]), "objects": objects,
+        "pages": pages, "page_map": bytes(v.d[L + U(0x48): L + U(0x48) + v.mpages * 4]),
+        "last_page_bytes": v.last_page_bytes,
+        "resident": bytes(v.d[L + U(0x58): L + U(0x5c)]), "entry_table": bytes(v.d[L + U(0x5c): L + U(0x68)]),
+        "nonresident": bytes(v.d[nres_off:nres_off + nres_sz]), "fixups": fixups,
+        "import_modules": [], "import_names": b"", "tables_tail": bytes(v.d[tables_end:first]),
+        "align": 0x200, "data_pages": first, "gaps": (b"", b""),
+        "in_pages": {"nonresident_names": nres_off, "resource_data": U(0xb8)},
+        "after": b"", "moved": {"debug_info": U(0x98), "resource_data": 0, "from": len(v.d)},
+        "fill_from": bytes(v.d)}))
+    # the container's directory, each member's size being its header and loader tables as written
+    c = le.container(v.d)
+    loader_end = lambda at: struct.unpack_from("<I", out, at + 0x68)[0] + struct.unpack_from("<I", out, at + 0x30)[0]   # noqa: E731
+    c["members"] = [(nm, off, loader_end(off) if off == L else sz) for nm, off, sz in c["members"]]
+    directory = le.pack_directory(c)
+    out[c["at"]:c["at"] + len(directory)] = directory
     return bytes(out)
