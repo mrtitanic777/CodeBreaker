@@ -58,8 +58,9 @@ Two tools were merged, each giving what it does best:
 - **Hooks**: XenonRecomp emits every function as `__imp__sub_X` plus a weak `sub_X`, so a host
   function defined as `sub_X` replaces it; `midasm_hook` tables in a title's configuration put
   host code at single instructions.
-- **XEX**: the runtime and XenonRecomp read only unencrypted, basic-compressed XEX files;
-  `codebreaker.formats.xex.basic` rewrites any XEX that way.
+- **XEX**: the runtime loads any XEX (encrypted or not, basic or LZX) through CodeBreaker's one
+  XEX reader (`native/xex/reader.cmake`); XenonRecomp reads only unencrypted, basic-compressed
+  files, and `codebreaker.formats.xex.basic` rewrites any XEX that way.
 
 The rexglue SDK's kernel core (`native/rexglue`) and CodeBreaker's own per-instruction
 translator (`powerpc.py`, its builders derived from rexglue's code generator) remain:
