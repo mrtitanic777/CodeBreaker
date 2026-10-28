@@ -25,6 +25,8 @@ import shutil
 import subprocess
 import sys
 
+from codebreaker.formats import pe
+
 FRAMEWORK = ("microsoft.", "system.", "mscorlib", "netstandard")
 
 
@@ -43,25 +45,6 @@ def ilspycmd():
                        "(or name it in the `ilspycmd` setting)")
 
 
-def is_managed(path):
-    """A PE whose CLR runtime header directory (entry 14) is present: a .NET assembly."""
-    try:
-        with open(path, "rb") as f:
-            data = f.read(0x400)
-        if data[:2] != b"MZ":
-            return False
-        pe = int.from_bytes(data[0x3C:0x40], "little")
-        if data[pe:pe + 4] != b"PE\0\0":
-            return False
-        opt = pe + 24
-        magic = int.from_bytes(data[opt:opt + 2], "little")
-        dirs = opt + (96 if magic == 0x10B else 112)
-        rva = int.from_bytes(data[dirs + 14 * 8:dirs + 14 * 8 + 4], "little")
-        return rva != 0
-    except (OSError, IndexError):
-        return False
-
-
 def assemblies(folder):
     """The game's own assemblies under `folder` ([path]), the .exe first."""
     out = []
@@ -71,7 +54,7 @@ def assemblies(folder):
             if not low.endswith((".exe", ".dll")) or low.startswith(FRAMEWORK) or ".resources." in low:
                 continue
             p = os.path.join(base, f)
-            if is_managed(p):
+            if pe.is_dotnet(p):
                 out.append(p)
     return sorted(out, key=lambda p: (not p.lower().endswith(".exe"), p.lower()))
 
@@ -147,7 +130,7 @@ def convert(source, name=None, content=True):
         game_dir = os.path.join(p.assets, "game")
         if not os.path.isdir(game_dir):
             shutil.copytree(source, game_dir)
-    elif is_managed(source):
+    elif pe.is_dotnet(source):
         p = converted.project(source, name=name)
         game_dir = os.path.join(p.assets, "game")
         if not os.path.isdir(game_dir):

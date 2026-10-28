@@ -64,28 +64,11 @@ def _gap(path, head):
     return None
 
 
-def _dotnet(path):
-    """True for a .NET assembly (a PE with a CLI header, data directory 14): the `xna` lane's,
-    not the x86 one's."""
-    import struct
-    try:
-        with open(path, "rb") as f:
-            head = f.read(0x1000)
-        e = struct.unpack_from("<I", head, 0x3C)[0]
-        opt = e + 24
-        magic = struct.unpack_from("<H", head, opt)[0]
-        dirs = opt + (112 if magic == 0x20B else 96)
-        count = struct.unpack_from("<I", head, dirs - 4)[0]
-        return count > 14 and struct.unpack_from("<II", head, dirs + 14 * 8)[1] > 0
-    except (OSError, struct.error):
-        return False
-
-
 def describe(path):
     """{"found", "platform", "lane"} for one file: what it is, whose it is, and the lane's name
     (None when CodeBreaker has none for it yet)."""
     from codebreaker import platforms
-    from codebreaker.formats import detect
+    from codebreaker.formats import detect, pe
     found = (detect.identify(path) or [{}])[0]
     fmt = found.get("format", "")
     try:
@@ -93,7 +76,7 @@ def describe(path):
             head = f.read(0x200)
     except OSError:
         head = b""
-    if fmt.startswith("PE") and found.get("family") == "windows" and _dotnet(path):
+    if fmt.startswith("PE") and found.get("family") == "windows" and pe.is_dotnet(path):   # (the `xna` lane's)
         return {"found": ".NET assembly", "platform": ".NET (CIL)", "lane": "xna", "family": "xna"}
     big = os.path.getsize(path) > 256 << 20 and not fmt               # (data: not read further)
     p = None if big else platforms.identify(path)

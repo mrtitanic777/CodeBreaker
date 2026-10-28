@@ -19,7 +19,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from codebreaker.formats import xnb                  # noqa: E402
+from codebreaker.formats import pe, xnb              # noqa: E402
 from codebreaker.formats.xbox import texture         # noqa: E402
 from codebreaker.xna import fixups, run              # noqa: E402
 
@@ -110,11 +110,11 @@ def test_fixups():
 
 
 def test_managed_and_decompile():
-    assert not run.is_managed(sys.executable)
+    assert not pe.is_dotnet(sys.executable)
     lib = os.path.join(GAME, "FirebaseEncryptionLib.dll")
     if not os.path.isfile(lib):
         raise Skip("no ../Arcadecraft/Arcadecraft here")
-    assert run.is_managed(lib)
+    assert pe.is_dotnet(lib)
     try:
         run.ilspycmd()
     except RuntimeError as e:
