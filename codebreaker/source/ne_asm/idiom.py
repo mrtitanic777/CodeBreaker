@@ -373,7 +373,7 @@ def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60, backend
     ML re-encodes (length or same-length) shifts the rest: find those via the
     listing and pin them as `db` (byte-exact), keeping everything else live and
     idiomatic.  Returns (asm_text, result, force_db, n_code)."""
-    from codebreaker.invert import omf as objextract
+    from codebreaker.formats import omf
     from codebreaker.source.ne_asm import recon as asmrecon, segdiff
     shipped = sg.code[start:end]
     seg_mask = getattr(sg, "mask", set()) or set()
@@ -425,7 +425,7 @@ def reconcile_range(sg, start, end, funcs=None, root=".", max_passes=60, backend
                 break
             force_db = set(rows)
             continue
-        _nm, our, omask = objextract.Obj(r["obj"]).code_segment()
+        _nm, our, omask = omf.code_segment(r["obj"])
         omask = set(omask) | {u - start for u in unresolved}
         res = segdiff.diff(our, omask, shipped, smask)
         if res.get("exact"):

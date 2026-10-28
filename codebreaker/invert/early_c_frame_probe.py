@@ -6,7 +6,7 @@ and every `[bp+disp]` reference, printing the layout so we can correlate
 source-local-usage -> assigned offset and recover the allocator rule.
 """
 import re
-from codebreaker.invert import omf as objextract
+from codebreaker.formats import omf
 from codebreaker.invert.compilers import mc_compile_multi
 from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 
@@ -50,7 +50,7 @@ def main():
     obj=mc_compile_multi(BATTERY)
     if not obj:
         print("COMPILE FAILED"); return
-    fns=objextract.Obj(obj).functions()
+    fns=omf.function_bytes(obj)
     order=sorted(fns.keys(), key=lambda k:k.upper())
     for k in order:
         code=fns[k][0]

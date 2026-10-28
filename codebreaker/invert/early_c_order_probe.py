@@ -1,13 +1,13 @@
 """early_c_order_probe.py - characterize MC2's emission-order scheduling (load hoist / store defer)."""
 import re
-from codebreaker.invert import omf as objextract
+from codebreaker.formats import omf
 from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 from codebreaker.invert.compilers import mc_compile_multi
 md = Cs(CS_ARCH_X86, CS_MODE_16)
 
 def stream(src):
     obj = mc_compile_multi(src+"\n")
-    code = next(iter(objextract.Obj(obj).functions().values()))[0]
+    code = next(iter(omf.function_bytes(obj).values()))[0]
     ops=[]
     for ins in md.disasm(bytes(code), 0):
         if ins.address < 0xf: continue

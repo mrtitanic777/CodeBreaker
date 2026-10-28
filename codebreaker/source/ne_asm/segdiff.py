@@ -10,7 +10,7 @@ calls resolve to real displacements instead of masked relocations), then diffs
 against the shipped bytes.
 
 Comparison is mask-aware on BOTH sides: our side masks OMF FIXUPP sites
-(objextract); the shipped side masks NE relocation sites (ne.relocations,
+(formats/omf); the shipped side masks NE relocation sites (ne.relocations,
 following the fixup chains). Absolute addresses legitimately differ between
 builds, so masking them is what makes a true opcode-stream match possible.
 
@@ -22,7 +22,7 @@ import argparse
 import sys
 
 from codebreaker.build import msvc152 as cc16
-from codebreaker.invert import omf as objextract
+from codebreaker.formats import omf
 
 # NE relocation source-type -> width in bytes of the relocated field
 def _masm():
@@ -67,7 +67,7 @@ def compile_group(csrc, flags="/AM /Ox /c"):
     r = cc16.compile_c(csrc, flags=flags)
     if "obj" not in r:
         raise RuntimeError("compile produced no OBJ:\n" + r.get("log", "")[:600])
-    return objextract.Obj(r["obj"]).functions()
+    return omf.function_bytes(r["obj"])
 
 
 # ---------------------------------------------------------------------------
