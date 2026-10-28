@@ -411,7 +411,8 @@ def self_check(original, work=None, per_entry=3, entries=12):
     "caught": reported divergent, "missed": [(label, instruction)]}. The original against
     itself must come out with nothing divergent; then, for up to `entries` entry points that
     came out equivalent, `per_entry` copies each with one executed instruction broken are
-    judged -- a judge with teeth reports them divergent."""
+    judged -- a judge with teeth reports them divergent (verify/teeth.plant, the harness)."""
+    from codebreaker.verify import teeth
     work = work or settings.state("driver_judge", os.path.splitext(os.path.basename(original))[0].lower())
     os.makedirs(work, exist_ok=True)
     own = judge_files(original, original)
@@ -420,19 +421,28 @@ def self_check(original, work=None, per_entry=3, entries=12):
         out["self"][verdict] = out["self"].get(verdict, 0) + 1
     good = [n for n, v in own.items() if v[0] == "equivalent"][:entries]
     ext = os.path.splitext(original)[1]
-    for label in good:
-        for nth in range(per_entry):
-            copy = os.path.join(work, "broken_%s_%d%s" % (label, nth, ext))
-            changed = break_instruction(original, copy, label, nth)
-            if not changed:
-                break
-            _IMAGES.pop(copy, None)
-            verdict = judge((original, copy), (label, label))[0]
-            out["broken"] += 1
-            if verdict == "divergent":
-                out["caught"] += 1
-            else:
-                out["missed"].append((label, changed[1], verdict))
+
+    def broken():                                            # (a round each: one entry point, one break)
+        for label in good:
+            for nth in range(per_entry):
+                copy = os.path.join(work, "broken_%s_%d%s" % (label, nth, ext))
+                changed = break_instruction(original, copy, label, nth)
+                if not changed:
+                    break
+                _IMAGES.pop(copy, None)
+                yield [(label, changed[1], copy)]
+
+    def judged(batch):
+        (label, _text, copy), = batch
+        return {label: judge((original, copy), (label, label))[0]}
+
+    for (label, text, _copy, verdict, got), in teeth.plant(broken(), judged,
+                                                           lambda v: "caught" if v == "divergent" else "missed"):
+        out["broken"] += 1
+        if got == "caught":
+            out["caught"] += 1
+        else:
+            out["missed"].append((label, text, verdict))
     return out
 
 
