@@ -28,15 +28,13 @@ import struct
 import capstone
 
 from codebreaker.base import settings
-from codebreaker.compare import image
 from codebreaker.formats.ne import NEFile
-from codebreaker.source import assembly, pe_writer
+from codebreaker.source import assembly, image_writer, pe_writer
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jcxz|jecxz)$")
 _STOP = {"ret", "retf", "jmp", "ljmp", "hlt", "iret", "iretd", "ud2"}
 _SEGS = {0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65}
 _WIDTH = {2: 2, 3: 4, 5: 2, 11: 6, 13: 4, 0: 1}            # bytes a relocation patches, by source type
-_MAX_ROUNDS = 30
 
 _REGS16 = (("ax", "cx", "dx", "bx", "sp", "bp", "si", "di"), ("eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"),
            ("al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"))
@@ -387,20 +385,9 @@ def _differing(w, data, syms, raw):
     return bad
 
 
-def _map(mp):
-    """{label: (address in its segment, place in the file)} from NASM's map."""
-    syms = {}
-    with open(mp, encoding="latin1") as f:
-        for line in f:
-            m = re.match(r"^\s*([0-9A-F]+)\s+([0-9A-F]+)\s+(\S+)\s*$", line)
-            if m:
-                syms[m.group(3)] = (int(m.group(2), 16), int(m.group(1), 16))
-    return syms
-
-
 def reconstruct(path, outdir, stub=None, log=None):
     say = log or (lambda s: None)
-    if not pe_writer.nasm():
+    if not image_writer.nasm():
         raise SystemExit("no assembler (settings.json: nasm)")
     outdir = os.path.abspath(outdir)
     os.makedirs(outdir, exist_ok=True)
@@ -409,32 +396,13 @@ def reconstruct(path, outdir, stub=None, log=None):
     if stub is None:
         stub = _stub(w, outdir, say)
     stub = stub or None
-    raw, rounds, built, msg = set(), 0, None, ""
-    while rounds < _MAX_ROUNDS:
-        rounds += 1
-        src, lines_of = w.source(raw, mark_all=True, stub=stub, exact=False)
-        built, msg, mp = pe_writer._assemble(src, outdir, name)
-        if not built:
-            bad = {lines_of.get(int(n) - 1) for n in re.findall(r":(\d+): error", msg)} - {None}
-            say("round %d: %d instructions the assembler rejects" % (rounds, len(bad)))
-            if not bad:
-                raise SystemExit("assembler: " + msg[-2000:])
-            raw |= bad
-            continue
-        bad = _differing(w, open(built, "rb").read(), _map(mp), raw | w._raw)
-        say("round %d: %d instructions come back different" % (rounds, len(bad)))
-        if not bad:
-            break
-        raw |= bad
-    src, _l = w.source(raw, mark_all=False, stub=stub)
-    built, msg, _mp = pe_writer._assemble(src, outdir, name)
-    same = bool(built) and open(built, "rb").read() == w.d
-    if built and not same:
-        a, b = open(built, "rb").read(), w.d
-        k = image.first_difference(a, b)
-        say("first difference at file offset 0x%x (sizes %d, %d)" % (k, len(a), len(b)))
-    return {"source": os.path.join(outdir, name + ".asm"), "image": built, "same": same,
-            "instructions": len(w.insns), "raw": len(raw | w._raw), "rounds": rounds, "log": msg[-2000:]}
+
+    def write(raw, final):
+        return w.source(raw, mark_all=False, stub=stub) if final else w.source(raw, mark_all=True, stub=stub, exact=False)
+    r = image_writer.flat(w.d, write, lambda data, labels, raw: _differing(w, data, labels, raw | w._raw),
+                          outdir, name, say)
+    r.update(instructions=len(w.insns), raw=len(r["raw"] | w._raw))
+    return r
 
 
 def _stub(w, outdir, say):
@@ -457,10 +425,4 @@ def main(argv):
     path = args[0]
     outdir = argv[argv.index("--out") + 1] if "--out" in argv else \
         settings.state("ne_source", os.path.splitext(os.path.basename(path))[0].lower())
-    r = reconstruct(path, outdir, stub=False if "--keep-stub" in argv else None, log=print)
-    n = max(1, r["instructions"])
-    print("%s: %d instructions, %d (%d%%) written as bytes; %d round%s; %s" % (
-        os.path.basename(path), r["instructions"], r["raw"], 100 * r["raw"] // n, r["rounds"],
-        "" if r["rounds"] == 1 else "s", "builds back THE SAME" if r["same"] else "built, differs" if r["image"] else "not built"))
-    print("  source: %s" % r["source"])
-    return 0 if r["same"] else 1
+    return image_writer.flat_report(path, reconstruct(path, outdir, stub=False if "--keep-stub" in argv else None, log=print))

@@ -1,4 +1,4 @@
-"""image_writer.py -- what the writers of a program image share: a cartridge, a tape block, a ROM.
+"""image_writer.py -- what the writers of a program image share: a cartridge, a tape block, a ROM, a Windows file.
 
     from codebreaker.source import image_writer as w
     code, targets, starts = w.walk(starts, decode, inside, fits, follows, stops)
@@ -7,6 +7,9 @@
     w.emit(out, start, end, byte, address, code_at, labels, functions, text, lines)
     r = w.result(folder, stem + ".asm", source, functions, code, size)
     w.assembled(r, build, original, built_path)
+
+    r = w.flat(original, write, differing, outdir, name, say)     a whole x86 file, as NASM writes it
+    w.flat_report(path, r)
 
 Every one of these programs comes back the same way. Code is what the program's own flow reaches
 from its entry points; every byte it reaches is written as an instruction, every other byte as
@@ -17,9 +20,19 @@ assembled and the result compared with the original byte for byte.
 What differs from one machine to the next -- its processor, the assembler's spelling, how the
 image is laid out in memory, which hardware has names -- stays in its writer (source/nes_writer.py,
 sms_writer.py, gb_writer.py, genesis_writer.py, z80_writer.py).
+
+The x86 files written whole -- a 32-bit Windows program, a 16-bit one, a driver (source/pe_writer.py,
+ne_writer.py, le_writer.py) -- are one NASM source each, assembled flat (-f bin), and found out in
+rounds: every round assembles the whole file, reads where each instruction went from the
+assembler's map of labels, and writes as its bytes, next round, each instruction the assembler
+rejected or gave back different; until nothing differs. flat() is those rounds; the writer says
+how the file is written and what "different" means for it.
 """
 import os
+import re
+import subprocess
 
+from codebreaker.base import settings
 from codebreaker.compare import image
 
 
@@ -206,6 +219,94 @@ def assembled(r, build, original, built_path=None, what="image", same=None):
         r["notes"].append("the built %s differs from the original at byte %#x" % (
             what, len(original) if at is None else at))
     return built
+
+
+# The x86 files written whole -------------------------------------------------------------------
+ROUNDS = 30
+
+
+def nasm():
+    """The assembler the whole-file writers use (settings.json: nasm), or "" when there is none."""
+    exe = settings.get("nasm") or ""
+    return exe if os.path.isfile(exe) else ""
+
+
+def assemble_flat(source, work, name):
+    """Assemble `source` flat (-f bin) as <work>/<name>, with its map of labels beside it.
+    -> (the file built, or None; what the assembler said; the map's path)"""
+    asm = os.path.join(work, name + ".asm")
+    out = os.path.join(work, name)
+    mp = os.path.join(work, name + ".map")
+    with open(asm, "w", newline="\n", encoding="latin1") as f:
+        f.write("[map symbols %s]\n" % mp.replace("\\", "/") + source)
+    for p in (out, mp):
+        if os.path.exists(p):
+            os.remove(p)
+    r = subprocess.run([nasm(), "-f", "bin", "-w-all", "-o", out, asm], capture_output=True, text=True,
+                       errors="replace", cwd=work)
+    return (out if r.returncode == 0 and os.path.isfile(out) else None), r.stderr + r.stdout, mp
+
+
+def nasm_map(path):
+    """{label: (its address in its section, its place in the file)} from NASM's map."""
+    syms = {}
+    with open(path, encoding="latin1") as f:
+        for line in f:
+            m = re.match(r"^\s*([0-9A-F]+)\s+([0-9A-F]+)\s+(\S+)\s*$", line)
+            if m:
+                syms[m.group(3)] = (int(m.group(2), 16), int(m.group(1), 16))
+    return syms
+
+
+def flat(original, write, differing, work, name, say, new_only=False):
+    """The rounds that find which instructions are written as their bytes, then the file built.
+
+    write(raw, final) -> (source, {line number: instruction}): the file with the instructions in
+    `raw` as bytes (`final`: the last writing, without the round's marks); differing(data, labels,
+    raw) -> the instructions the assembler did not give back, given what it built and nasm_map's
+    labels. The assembler rejecting nothing new it can be blamed for (anything, or with
+    `new_only`, anything not already bytes) ends it. -> {"source", "image", "same", "rounds",
+    "raw" (the set), "log"}"""
+    raw, rounds, msg = set(), 0, ""
+    while rounds < ROUNDS:
+        rounds += 1
+        src, lines_of = write(raw, False)
+        built, msg, mp = assemble_flat(src, work, name)
+        if not built:
+            bad = {lines_of.get(int(n) - 1) for n in re.findall(r":(\d+): error", msg)} - {None}
+            say("round %d: %d instructions the assembler rejects" % (rounds, len(bad)))
+            if not (bad - raw if new_only else bad):
+                raise SystemExit("assembler: " + msg[-2000:])
+            raw |= bad
+            continue
+        with open(built, "rb") as f:
+            bad = differing(f.read(), nasm_map(mp), raw)
+        say("round %d: %d instructions come back different" % (rounds, len(bad)))
+        if not bad:
+            break
+        raw |= bad
+    src, _lines = write(raw, True)
+    built, msg, _mp = assemble_flat(src, work, name)
+    data = None
+    if built:
+        with open(built, "rb") as f:
+            data = f.read()
+    same = bool(built) and data == original
+    if built and not same:
+        k = image.first_difference(data, original)
+        say("first difference at file offset 0x%x (sizes %d, %d)" % (k, len(data), len(original)))
+    return {"source": os.path.join(work, name + ".asm"), "image": built, "same": same, "rounds": rounds,
+            "raw": raw, "log": msg[-2000:]}
+
+
+def flat_report(path, r):
+    """What the command line of a whole-file writer prints. -> its exit code"""
+    n = max(1, r["instructions"])
+    print("%s: %d instructions, %d (%d%%) written as bytes; %d round%s; %s" % (
+        os.path.basename(path), r["instructions"], r["raw"], 100 * r["raw"] // n, r["rounds"],
+        "" if r["rounds"] == 1 else "s", "builds back THE SAME" if r["same"] else "built, differs" if r["image"] else "not built"))
+    print("  source: %s" % r["source"])
+    return 0 if r["same"] else 1
 
 
 def main(argv, reconstruct, doc, unit="ROM bytes", total="rom bytes"):

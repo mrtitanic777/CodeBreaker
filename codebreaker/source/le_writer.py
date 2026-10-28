@@ -31,15 +31,13 @@ import struct
 import capstone
 
 from codebreaker.base import settings
-from codebreaker.compare import image
 from codebreaker.formats import le
-from codebreaker.source import assembly, pe_writer
+from codebreaker.source import assembly, image_writer, pe_writer
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jcxz|jecxz)$")
 _STOP = {"ret", "retf", "jmp", "ljmp", "hlt", "iret", "iretd", "ud2"}
 _SEGS = {0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65}
 _WIDTH = {0: 1, 2: 2, 3: 4, 5: 2, 6: 6, 7: 4, 8: 4}
-_MAX_ROUNDS = 30
 _REG = {n: (k, w) for w, names in ((4, ("eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi")),
                                    (2, ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di")),
                                    (0, ("al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"))) for k, n in enumerate(names)}
@@ -456,40 +454,17 @@ def _differing(w, data, syms, raw):
 
 
 def reconstruct(path, outdir, log=None):
-    from codebreaker.source import ne_writer
     say = log or (lambda s: None)
-    if not pe_writer.nasm():
+    if not image_writer.nasm():
         raise SystemExit("no assembler (settings.json: nasm)")
     outdir = os.path.abspath(outdir)
     os.makedirs(outdir, exist_ok=True)
     w = Writer(path)
     name = os.path.basename(path).lower()
-    raw, rounds, msg = set(), 0, ""
-    while rounds < _MAX_ROUNDS:
-        rounds += 1
-        src, lines_of = w.source(raw, mark_all=True, exact=False)
-        built, msg, mp = pe_writer._assemble(src, outdir, name)
-        if not built:
-            bad = {lines_of.get(int(k) - 1) for k in re.findall(r":(\d+): error", msg)} - {None}
-            say("round %d: %d instructions the assembler rejects" % (rounds, len(bad)))
-            if not bad - raw:
-                raise SystemExit("assembler: " + msg[-2000:])
-            raw |= bad
-            continue
-        bad = _differing(w, open(built, "rb").read(), ne_writer._map(mp), raw)
-        say("round %d: %d instructions come back different" % (rounds, len(bad)))
-        if not bad:
-            break
-        raw |= bad
-    src, _l = w.source(raw, mark_all=False, exact=True)
-    built, msg, _mp = pe_writer._assemble(src, outdir, name)
-    same = bool(built) and open(built, "rb").read() == w.d
-    if built and not same:
-        a, b = open(built, "rb").read(), w.d
-        k = image.first_difference(a, b)
-        say("first difference at file offset 0x%x (sizes %d, %d)" % (k, len(a), len(b)))
-    return {"source": os.path.join(outdir, name + ".asm"), "image": built, "same": same,
-            "instructions": w.insn_count, "raw": len(raw), "rounds": rounds, "log": msg[-2000:]}
+    r = image_writer.flat(w.d, lambda raw, final: w.source(raw, mark_all=not final, exact=final),
+                          lambda data, labels, raw: _differing(w, data, labels, raw), outdir, name, say, new_only=True)
+    r.update(instructions=w.insn_count, raw=len(r["raw"]))
+    return r
 
 
 def main(argv):
@@ -503,10 +478,4 @@ def main(argv):
     path = args[0]
     outdir = argv[argv.index("--out") + 1] if "--out" in argv else \
         settings.state("le_source", os.path.splitext(os.path.basename(path))[0].lower())
-    r = reconstruct(path, outdir, log=print)
-    n = max(1, r["instructions"])
-    print("%s: %d instructions, %d (%d%%) written as bytes; %d round%s; %s" % (
-        os.path.basename(path), r["instructions"], r["raw"], 100 * r["raw"] // n, r["rounds"],
-        "" if r["rounds"] == 1 else "s", "builds back THE SAME" if r["same"] else "built, differs" if r["image"] else "not built"))
-    print("  source: %s" % r["source"])
-    return 0 if r["same"] else 1
+    return image_writer.flat_report(path, reconstruct(path, outdir, log=print))

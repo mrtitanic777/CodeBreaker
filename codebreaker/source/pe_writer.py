@@ -27,21 +27,18 @@ or, given --stub, assembled from its own source (dos-source) and included.
 import os
 import re
 import struct
-import subprocess
 
 import capstone
 
 from codebreaker.base import settings
-from codebreaker.compare import image
 from codebreaker.formats import pe_functions
 from codebreaker.formats.pe import open_pe
-from codebreaker.source import assembly
+from codebreaker.source import assembly, image_writer
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jecxz|jcxz)$")
 _STOP = {"ret", "retf", "jmp", "hlt", "iretd", "iret", "ud2"}
 _SEGS = {0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65}
 _ARITH = {"add", "or", "adc", "sbb", "and", "sub", "xor", "cmp", "push", "imul", "mov", "test"}
-_MAX_ROUNDS = 30
 
 
 _REGS = (("eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"), ("ax", "cx", "dx", "bx", "sp", "bp", "si", "di"),
@@ -55,11 +52,6 @@ for _w, _names in zip((1, 2, 0), _REGS):
 _PRELUDE += ["%macro _rr 3", "  %if _w_%2 == 2", "    db 0x66", "  %endif",
              "  db (%1) | 2 | (_w_%2 > 0), 0xC0 | (_r_%2 << 3) | _r_%3", "%endmacro"]
 _PRELUDE += ["%%define %s_ _rr 0x%02x," % (m, v) for m, v in sorted(_RR.items())]
-
-
-def nasm():
-    exe = settings.get("nasm") or ""
-    return exe if os.path.isfile(exe) else ""
 
 
 class Writer(object):
@@ -430,34 +422,11 @@ class Writer(object):
         return None
 
 
-def _assemble(src, work, name):
-    asm = os.path.join(work, name + ".asm")
-    out = os.path.join(work, name)
-    mp = os.path.join(work, name + ".map")
-    with open(asm, "w", newline="\n", encoding="latin1") as f:
-        f.write("[map symbols %s]\n" % mp.replace("\\", "/") + src)
-    for p in (out, mp):
-        if os.path.exists(p):
-            os.remove(p)
-    r = subprocess.run([nasm(), "-f", "bin", "-w-all", "-o", out, asm], capture_output=True, text=True,
-                       errors="replace", cwd=work)
-    return (out if r.returncode == 0 and os.path.isfile(out) else None), r.stderr + r.stdout, mp
-
-
-def _map(mp):
-    syms = {}
-    with open(mp, encoding="latin1") as f:
-        for line in f:
-            m = re.match(r"^\s*([0-9A-F]+)\s+([0-9A-F]+)\s+(\S+)\s*$", line)
-            if m:
-                syms[m.group(3)] = int(m.group(2), 16)
-    return syms
-
-
-def _differing(w, data, syms, raw):
+def _differing(w, data, labels, raw):
     """The instructions the assembler did not give back: compared where each one went, its
     length (to the next instruction's label) and its bytes, outside the places whose value
     depends on where things are (relocated addresses, branch distances)."""
+    syms = {k: address for k, (address, _place) in labels.items()}
     bad = set()
     order = sorted(w.insns)
     for n, a in enumerate(order):
@@ -514,7 +483,7 @@ def _stub(w, outdir, say):
 
 def reconstruct(path, outdir, stub=None, log=None):
     say = log or (lambda s: None)
-    if not nasm():
+    if not image_writer.nasm():
         raise SystemExit("no assembler (settings.json: nasm)")
     outdir = os.path.abspath(outdir)
     os.makedirs(outdir, exist_ok=True)
@@ -523,32 +492,10 @@ def reconstruct(path, outdir, stub=None, log=None):
     if stub is None:
         stub = _stub(w, outdir, say)
     stub = stub or None
-    raw, rounds, built = set(), 0, None
-    while rounds < _MAX_ROUNDS:
-        rounds += 1
-        src, lines_of = w.source(raw, mark_all=True, stub=stub)
-        built, msg, mp = _assemble(src, outdir, name)
-        if not built:
-            bad = {lines_of.get(int(n) - 1) for n in re.findall(r":(\d+): error", msg)} - {None}
-            say("round %d: %d instructions the assembler rejects" % (rounds, len(bad)))
-            if not bad:
-                raise SystemExit("assembler: " + msg[-2000:])
-            raw |= bad
-            continue
-        bad = _differing(w, open(built, "rb").read(), _map(mp), raw)
-        say("round %d: %d instructions come back different" % (rounds, len(bad)))
-        if not bad:
-            break
-        raw |= bad
-    src, _lines = w.source(raw, mark_all=False, stub=stub)
-    built, msg, _mp = _assemble(src, outdir, name)
-    same = bool(built) and open(built, "rb").read() == w.d
-    if built and not same:
-        a, b = open(built, "rb").read(), w.d
-        k = image.first_difference(a, b)
-        say("first difference at file offset 0x%x (sizes %d, %d)" % (k, len(a), len(b)))
-    return {"source": os.path.join(outdir, name + ".asm"), "image": built, "same": same,
-            "instructions": len(w.insns), "raw": len(raw), "rounds": rounds, "log": msg[-2000:]}
+    r = image_writer.flat(w.d, lambda raw, final: w.source(raw, mark_all=not final, stub=stub),
+                          lambda data, labels, raw: _differing(w, data, labels, raw), outdir, name, say)
+    r.update(instructions=len(w.insns), raw=len(r["raw"]))
+    return r
 
 
 def main(argv):
@@ -565,10 +512,4 @@ def main(argv):
         settings.state("pe_source", os.path.splitext(os.path.basename(path))[0].lower())
     stub = os.path.abspath(argv[argv.index("--stub") + 1]) if "--stub" in argv else None
     stub = False if "--keep-stub" in argv else stub
-    r = reconstruct(path, outdir, stub=stub, log=print)
-    n = max(1, r["instructions"])
-    print("%s: %d instructions, %d (%d%%) written as bytes; %d round%s; %s" % (
-        os.path.basename(path), r["instructions"], r["raw"], 100 * r["raw"] // n, r["rounds"],
-        "" if r["rounds"] == 1 else "s", "builds back THE SAME" if r["same"] else "built, differs" if r["image"] else "not built"))
-    print("  source: %s" % r["source"])
-    return 0 if r["same"] else 1
+    return image_writer.flat_report(path, reconstruct(path, outdir, stub=stub, log=print))
