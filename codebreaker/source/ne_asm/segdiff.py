@@ -22,6 +22,7 @@ import argparse
 import sys
 
 from codebreaker.build import msvc152 as cc16
+from codebreaker.compare import mask as masks
 from codebreaker.formats import omf
 
 # NE relocation source-type -> width in bytes of the relocated field
@@ -112,18 +113,11 @@ def shipped_ne_segment(module_path, seg_index):
 # the differ
 # ---------------------------------------------------------------------------
 def diff(our, omask, shipped, smask):
-    """Compare two byte strings ignoring masked positions on either side."""
+    """Compare two byte strings ignoring masked positions on either side (sets of offsets)."""
     skip = omask | smask
     n = min(len(our), len(shipped))
-    first = None
-    ndiff = 0
-    for i in range(n):
-        if i in skip:
-            continue
-        if our[i] != shipped[i]:
-            ndiff += 1
-            if first is None:
-                first = i
+    found = masks.differing(our[:n], shipped[:n], masks.of(skip, n))
+    ndiff, first = len(found), (found[0] if found else None)
     return {
         "exact": (len(our) == len(shipped) and ndiff == 0),
         "length_match": len(our) == len(shipped),

@@ -2333,24 +2333,6 @@ class R:
         s._emit_seq(blocks, tree, top)             # emitting -- return the TOP-LEVEL list
         return top
 
-CX_OP = {"CXA":"+","CXS":"-","CXM":"*","CXD":"/"}   # helper family -> binary operator
-
-def build_cxmap(image, libpaths):
-    """{image_offset -> operator} for CX* arithmetic helpers located in a linked image."""
-    from codebreaker.invert.library_match import iter_modules, module_functions, masked_eq
-    cxmap={}
-    for lib in libpaths:
-        d=open(lib,"rb").read()
-        for ms in iter_modules(d):
-            for nm,code,mask in module_functions(d,ms):
-                op=CX_OP.get(nm[:3].upper())
-                if not op or len(code)<6: continue
-                L=len(code); c0=bytes([code[0]]); pos=image.find(c0)
-                while pos!=-1 and pos+L<=len(image):
-                    if masked_eq(code,mask,image[pos:pos+L]): cxmap[pos]=op
-                    pos=image.find(c0,pos+1)
-    return cxmap
-
 def _dead_store_recover(stmts, rc):
     """Recover MC2's dead-store elimination. `a=X; b=a; a=Y`: the compiler elides a's first
     store (a is overwritten) but keeps X live in a register to serve `b=a`, routing b's store

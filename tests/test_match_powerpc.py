@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`match` and `repair` on PowerPC (codebreaker/verify/authored/match_powerpc.py): the object reader, its
+"""`match` and `repair` on PowerPC (codebreaker/verify/authored/match.py, ARCH["powerpc"]): the object reader, its
 bit-level masks, the comparison.
 
     python tests/test_match_powerpc.py
@@ -14,7 +14,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from codebreaker.verify.authored import match_powerpc as M      # noqa: E402
+from codebreaker.verify.authored import match as M      # noqa: E402
 
 RESULTS = []
 SOURCE = """
@@ -51,7 +51,7 @@ def _built():
     if not tools:
         raise Skip("no PowerPC compiler set up")
     work = tempfile.mkdtemp(prefix="cb_ppcmatch_")
-    return M._compile(tools[0], "", SOURCE, "caller", work, "/O2")
+    return M._compile_powerpc(tools[0], "", SOURCE, "caller", work, "/O2")
 
 
 def test_one_function_whole():
@@ -77,14 +77,14 @@ def test_masks_are_fields():
 def test_distance():
     built = _built()
     code, mask = built
-    assert M.distance(built, (code, [0] * len(mask)))[:2] == ("identical", 0)
+    assert M.distance(built, (code, [0] * len(mask)), "powerpc")[:2] == ("identical", 0)
     w = bytearray(code)
     calls = [i for i in range(0, len(code), 4) if struct.unpack_from(">I", code, i)[0] >> 26 == 18]
     w[calls[0] + 2] ^= 0x40                                  # another callee address: masked
-    assert M.distance(built, (bytes(w), [0] * len(mask)))[0] == "identical"
+    assert M.distance(built, (bytes(w), [0] * len(mask)), "powerpc")[0] == "identical"
     w[0] ^= 0x01                                             # another register: not masked
-    assert M.distance(built, (bytes(w), [0] * len(mask)))[:2] == ("same size", 1)
-    assert M.distance(built, (code[:-4], [0] * (len(mask) - 1)))[0] == "different"
+    assert M.distance(built, (bytes(w), [0] * len(mask)), "powerpc")[:2] == ("same size", 1)
+    assert M.distance(built, (code[:-4], [0] * (len(mask) - 1)), "powerpc")[0] == "different"
 
 
 def test_original_stops_at_padding():
@@ -95,7 +95,7 @@ def test_original_stops_at_padding():
         def bytes_at(self, va, n):
             body = struct.pack(">4I", 0x7D8802A6, 0x48000011, 0x4E800020, 0)
             return (body + struct.pack(">4I", 0x38600000, 0x4E800020, 0, 0) + bytes(32))[:n]
-    code, mask = M.original_functions(Img(), [0x1000])[0x1000]
+    code, mask = M.ARCH["powerpc"].originals(Img(), [0x1000])[0x1000]
     assert len(code) == 12 and mask[1] == M._LI                  # bl out of the function: masked
 
 

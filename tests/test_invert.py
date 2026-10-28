@@ -42,7 +42,6 @@ def test_early_c_reads_a_function():
         assert (size, params, statements, kind) == (0, ["a", "b"], ["return (a + b);"], "int")
         text = early_c.to_c("f", size, params, statements, kind, local)
         assert "f(a, b)" in text and "int a, b;" in text and "return (a + b);" in text
-    assert early_c.build_cxmap(b"", []) == {}                # no library given: no helper is named
 
 
 def test_early_c_frame_model():

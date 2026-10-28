@@ -31,7 +31,7 @@ options: `-D_M_PPCBE -D_XBOX_VER=200 -QVMX128 -Zp8 -fp:fast -Gd -Ob0 -Ot -ML`. I
 (16.00.11886). So a title's code is `__cdecl`, packs structures to 8 bytes, does not inline
 unless told to, and has the 128-register vector file switched on. CodeBreaker compiles through
 the same driver, so the defaults come along without being named.
-`verify/authored/match_powerpc.py --try` pins down the switches a module was built with. On the SDK's
+`match <image> --try` (verify/authored/match.py) pins down the switches a module was built with. On the SDK's
 `hud` sample, `/O1` matches 46 functions exactly and `/O2` matches 45.
 
 **VMX128.** The Xenon has 128 vector registers. AltiVec's encodings (primary opcode 4, 5-bit
@@ -59,7 +59,7 @@ class: 32 general registers, 32 floating-point, 128 vector. It saves callee-save
 through shared helper runs (`__savegprlr`/`__restgprlr` and the `stfd`/`lfd` runs). A
 function calls into those runs instead of saving inline, and often leaves by jumping into the
 restore run instead of ending in `blr`. `formats/powerpc_image.py` treats these runs as part
-of their callers, and `verify/authored/match_powerpc.py` accepts that tail jump as a function's end.
+of their callers, and `match` (verify/authored/match.py) accepts that tail jump as a function's end.
 
 **Instruction selection.** `c2` routes each of 174 IL operations through 41 handlers to its
 PowerPC form. Strength reductions apply: `a * 4` becomes `slwi`. This is the gradient
@@ -76,7 +76,7 @@ the linker fills in is a relocation of one of the PowerPC types:
 | `REFHI`/`REFLO`, `ADDR16`, `TOCREL*`, `SECREL16` | a 16-bit half of an address (`lis`/`addi`, loads and stores) |
 | `ADDR32`, `SECREL` | a whole word |
 
-`verify/authored/match_powerpc.py` masks exactly those bits and keeps comparing the opcode and
+`match` (verify/authored/match.py, ARCH["powerpc"]) masks exactly those bits and keeps comparing the opcode and
 registers of a relocated instruction. Labels inside a function (`$M...`, storage class 6) are
 not function symbols.
 
@@ -86,7 +86,7 @@ title can stand for several functions of the source, and those functions can no 
 told apart: the image keeps one address for all of them. The `.pdata` record of a function
 gives its length, the length of its prologue and whether it has an exception handler. A
 record's length can take in the padding after the function and a small leaf function that
-has no record of its own. `match_powerpc` therefore ends a function at the first zero word.
+has no record of its own. `match` therefore ends a function at the first zero word.
 
 **C++.** Run-time type information sits beside each virtual table: the locator (signature 0)
 before the table points at the type descriptor, which holds the decorated class name. Where

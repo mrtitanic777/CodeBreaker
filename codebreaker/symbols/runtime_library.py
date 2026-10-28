@@ -18,7 +18,7 @@ fills in (calls to other functions, addresses of data: listed by the library's o
 records, so nothing is guessed), and a digest of every other byte. A function in a module is
 that library function when all of those bytes are the same. The signatures are in
 runtime_signatures.json beside this file; `identify --learn` makes them from library files
-(32-bit archives of objects, 16-bit libraries of object modules).
+(32-bit archives of objects, 16-bit libraries of object modules: read by symbols/libraries).
 
 Two more things are known without signatures: a module that IS a runtime library (CRTDLL,
 MSVCRT20, an MFC DLL) -- its exports are that library's functions; and exports of such a
@@ -34,10 +34,11 @@ import re
 import struct
 
 from codebreaker.base import corpus
+from codebreaker.compare import mask as masks
 from codebreaker.decompile import describe
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
-from codebreaker.symbols import ordinals
+from codebreaker.symbols import libraries, ordinals
 
 _FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runtime_signatures.json")
 _LONGEST = 1024                 # bytes of a function that are compared
@@ -60,16 +61,14 @@ ITSELF = {"CRTDLL": "C runtime (this module is the runtime library)",
 
 
 # ---- signatures ----------------------------------------------------------------------------------
-def signature(code, masked):
-    """(size, mask text, digest) of a function's bytes with the offsets in `masked` left out,
-    or None when too little is left to tell it from anything else."""
+def signature(code, mask):
+    """(size, mask text, digest) of a function's bytes with what its byte mask leaves out left out
+    (compare/mask.py), or None when too little is left to tell it from anything else."""
     size = min(len(code), _LONGEST)
-    masked = sorted(o for o in masked if 0 <= o < size)
+    masked = [o for o in range(min(size, len(mask))) if mask[o]]
     if size - len(masked) < _FEWEST:
         return None
-    body = bytearray(code[:size])
-    for o in masked:
-        body[o] = 0
+    body = masks.blank(code[:size], masked)
     if len(set(body)) < 4:                                   # padding, a table of zeros
         return None
     runs, i = [], 0
@@ -79,7 +78,7 @@ def signature(code, masked):
             j += 1
         runs.append("%x.%x" % (masked[i], j - i + 1))
         i = j + 1
-    return size, ",".join(runs), hashlib.sha1(bytes(body)).hexdigest()[:16]
+    return size, ",".join(runs), hashlib.sha1(body).hexdigest()[:16]
 
 
 def _offsets(mask_text):
@@ -115,10 +114,7 @@ def match(bits, code):
     for n in range(_LEAD, 0, -1):
         for size, masked, digest, name, library in table.get(bytes(code[:n]), ()):
             if size <= len(code):
-                body = bytearray(code[:size])
-                for o in masked:
-                    body[o] = 0
-                if hashlib.sha1(bytes(body)).hexdigest()[:16] == digest:
+                if hashlib.sha1(masks.blank(code[:size], masked)).hexdigest()[:16] == digest:
                     return name, library
     return None
 
@@ -294,181 +290,7 @@ def compiler(module_path, identified=None):
     return {"linker": linker, "compiler": guess or "not established", "evidence": evidence}
 
 
-# ---- reading libraries (to make runtime_signatures.json) -------------------------------------------
-def _coff_functions(obj):
-    """[(symbol, code, masked offsets)] for the functions of one 32-bit object file."""
-    if len(obj) < 20:
-        return []
-    machine, nsec, _ts, symptr, nsym = struct.unpack_from("<HHIII", obj, 0)
-    if machine != 0x014C or not symptr:
-        return []
-    sections = {}
-    for i in range(nsec):
-        o = 20 + 40 * i
-        rawsize, rawptr, relptr, _lines, nrel, _nlines, flags = struct.unpack_from("<IIIIHHI", obj, o + 16)
-        if flags & 0x20 and rawsize and rawptr:              # holds code
-            masked = set()
-            for r in range(nrel):
-                at, _sym, kind = struct.unpack_from("<IIH", obj, relptr + 10 * r)
-                masked.update(range(at, at + (2 if kind in (1, 2) else 4)))
-            sections[i + 1] = (obj[rawptr:rawptr + rawsize], masked, [])
-    strings, i = symptr + 18 * nsym, 0
-    while i < nsym:
-        rec = obj[symptr + 18 * i:symptr + 18 * i + 18]
-        if len(rec) < 18:
-            break
-        value, section, kind, storage, aux = struct.unpack_from("<IhHBB", rec, 8)
-        # a function: external, or static and typed as a function (jump-table labels are neither)
-        if section in sections and (storage == 2 or (storage == 3 and kind == 0x20)):
-            if rec[:4] == b"\0\0\0\0":
-                o = strings + struct.unpack_from("<I", rec, 4)[0]
-                name = obj[o:obj.find(b"\0", o)].decode("latin1")
-            else:
-                name = rec[:8].rstrip(b"\0").decode("latin1")
-            sections[section][2].append((value, name, storage))
-        i += 1 + aux
-    out = []
-    for code, masked, symbols in sections.values():
-        symbols.sort()
-        for k, (start, name, storage) in enumerate(symbols):
-            end = next((s for s, _n, _c in symbols[k + 1:] if s > start), len(code))
-            if storage == 2:
-                out.append((name, code[start:end], {o - start for o in masked if start <= o < end}))
-    return out
-
-
-def _omf_number(b, i):
-    return (((b[i] & 0x7F) << 8) | b[i + 1], i + 2) if b[i] & 0x80 else (b[i], i + 1)
-
-
-_WIDTH = {0: 1, 1: 2, 2: 2, 3: 4, 4: 1, 5: 2, 9: 4, 11: 6, 13: 4}       # bytes a 16-bit fix-up covers, by kind
-
-
-def _omf_functions(module):
-    """[(symbol, code, masked offsets)] for the public functions of one 16-bit object module.
-    A function is either a public name inside a code segment, or a piece of its own that the
-    linker places (the C++ compiler writes one such piece per function)."""
-    names, segments, publics, pieces = [""], [], [], {}
-    last, at = None, 0                                       # last: (bytes, masked set, offset) fix-ups apply to
-    while at + 3 <= len(module):
-        kind, size = module[at], struct.unpack_from("<H", module, at + 1)[0]
-        b = module[at + 3:at + 3 + size - 1]
-        at += 3 + size
-        wide = kind & 1                                      # the 32-bit form of a record
-        if kind == 0x96:
-            i = 0
-            while i < len(b):
-                names.append(b[i + 1:i + 1 + b[i]].decode("latin1"))
-                i += 1 + b[i]
-        elif kind in (0x98, 0x99):
-            i = 1 + (3 if (b[0] >> 5) == 0 else 0) + (4 if wide else 2)
-            _nm, i = _omf_number(b, i)
-            cls, i = _omf_number(b, i)
-            segments.append((names[cls] if cls < len(names) else "", bytearray(), set()))
-        elif kind in (0xA0, 0xA1, 0xC2, 0xC3):
-            if kind >= 0xC2:                                 # a piece of its own
-                flags, how = b[0], b[1] & 0x0F
-                off = struct.unpack_from("<I" if wide else "<H", b, 3)[0]
-                _type, i = _omf_number(b, 3 + (4 if wide else 2))
-                code = how in (1, 3)
-                if how == 0:
-                    _grp, i = _omf_number(b, i)
-                    seg, i = _omf_number(b, i)
-                    i += 2 if seg == 0 else 0
-                    code = 1 <= seg <= len(segments) and "CODE" in segments[seg - 1][0].upper()
-                name, i = _omf_number(b, i)
-                where = pieces.setdefault(name, (code and not flags & 2, bytearray(), set()))
-                buf, masked, chunk = where[1], where[2], b[i:]
-            else:
-                seg, i = _omf_number(b, 0)
-                off = struct.unpack_from("<I" if wide else "<H", b, i)[0]
-                chunk = b[i + (4 if wide else 2):]
-                if not 1 <= seg <= len(segments):
-                    last = None
-                    continue
-                buf, masked = segments[seg - 1][1], segments[seg - 1][2]
-            buf.extend(bytes(max(0, off + len(chunk) - len(buf))))
-            buf[off:off + len(chunk)] = chunk
-            last = (buf, masked, off)
-        elif kind in (0x9C, 0x9D) and last:
-            buf, masked, base = last
-            i = 0
-            while i < len(b):
-                first = b[i]
-                if not first & 0x80:                         # a thread: says how later fix-ups are framed
-                    i += 1
-                    if (first >> 2) & 7 < 3:
-                        _x, i = _omf_number(b, i)
-                    continue
-                where = ((first & 3) << 8) | b[i + 1]
-                loc, fix = (first >> 2) & 0xF, b[i + 2]
-                i += 3
-                if not fix & 0x80 and (fix >> 4) & 7 < 3:
-                    _x, i = _omf_number(b, i)
-                if not fix & 0x08:
-                    _x, i = _omf_number(b, i)
-                if not fix & 0x04:
-                    i += 4 if wide else 2
-                start, n = base + where, _WIDTH.get(loc, 2)
-                if loc == 3 and start and buf[start - 1] == 0x9A:
-                    start, n = start - 1, 5                  # a far call: the linker may rewrite all of it
-                masked.update(range(start, start + n))
-        elif kind in (0x90, 0x91):
-            _grp, i = _omf_number(b, 0)
-            seg, i = _omf_number(b, i)
-            if seg == 0:
-                i += 2
-            while i < len(b):
-                name = b[i + 1:i + 1 + b[i]].decode("latin1")
-                i += 1 + b[i]
-                off = struct.unpack_from("<I" if wide else "<H", b, i)[0]
-                i += 4 if wide else 2
-                _type, i = _omf_number(b, i)
-                publics.append((seg, off, name))
-    out = [(names[n], bytes(buf), set(masked)) for n, (code, buf, masked) in pieces.items() if code and n < len(names)]
-    publics.sort()
-    for k, (seg, start, name) in enumerate(publics):
-        if not (1 <= seg <= len(segments)) or "CODE" not in segments[seg - 1][0].upper():
-            continue
-        code, masked = segments[seg - 1][1], segments[seg - 1][2]
-        end = next((o for s, o, _n in publics[k + 1:] if s == seg and o > start), len(code))
-        out.append((name, bytes(code[start:end]), {o - start for o in masked if start <= o < end}))
-    return out
-
-
-def library_functions(path):
-    """(16 or 32, [(symbol, code, masked offsets)]) for every function in a library or object file."""
-    with open(path, "rb") as f:
-        data = f.read()
-    out = []
-    if data[:8] == b"!<arch>\n":
-        for _label, body in ordinals._archive_members(data):
-            try:
-                out += _coff_functions(body)
-            except (struct.error, IndexError):
-                pass
-        return 32, out
-    if data[:2] == b"\x4c\x01":
-        return 32, _coff_functions(data)
-    at, page, start = 0, 1, None
-    if data[:1] == b"\xF0":
-        page = struct.unpack_from("<H", data, 1)[0] + 3
-        at = page
-    while at + 3 <= len(data) and data[at] != 0xF1:
-        kind, size = data[at], struct.unpack_from("<H", data, at + 1)[0]
-        if start is None:
-            start = at
-        at += 3 + size
-        if kind in (0x8A, 0x8B):                             # the end of one object module
-            try:
-                out += _omf_functions(data[start:at])
-            except (struct.error, IndexError):
-                pass
-            start = None
-            at += (-at) % page
-    return 16, out
-
-
+# ---- making runtime_signatures.json ------------------------------------------------------------
 _FRAME = re.compile(
     r"(push|pop) (e?bp|e?si|e?di|e?bx|ds|es)$|mov (e?bp, e?sp|e?sp, e?bp|ds, ax|ax, ds|es, ax)$|(inc|dec) bp$|nop|leave|"
     r"ret|retf|mov (e?ax|e?dx), (0x)?[0-9a-f]+$|xor (e?ax, e?ax|e?dx, e?dx)$|(sub|add) (e?sp|bp), |lea sp, |int3")
@@ -492,20 +314,23 @@ def learn(sources, log=print):
     instructions of its own; 8 for a class library, whose thousands of small methods look like
     everyone's small methods), and any signature two differently named functions share once the
     linker's bytes are left out -- which of them a match would be is not known."""
-    libraries, found, names = [], {}, {}
+    labels, found, names = [], {}, {}
     for tag, path in sources:
         try:
-            bits, functions = library_functions(path)
+            bits, functions = libraries.functions(path)
         except OSError as e:
             log("%s: %s" % (path, e))
             continue
         label = "%s (%s)" % (tag, os.path.basename(path).upper())
         need = 8 if "MFC" in tag else 4
         added = 0
-        for symbol, code, masked in functions:
-            sig = signature(code, masked)
+        if bits not in (16, 32):
+            log("%s: not x86 code" % path)
+            continue
+        for symbol, code, mask, _at in functions:
+            sig = signature(code, mask)
             lead = 0
-            while lead < _LEAD and lead < len(code) and lead not in masked:
+            while lead < _LEAD and lead < len(code) and not mask[lead]:
                 lead += 1
             if not sig or not lead:
                 continue
@@ -513,9 +338,9 @@ def learn(sources, log=print):
             names.setdefault(key, set()).add(_c_name(symbol))
             if key in found or substance(bits, code, sig[0]) < need:
                 continue
-            if label not in libraries:
-                libraries.append(label)
-            found[key] = [bytes(code[:lead]).hex(), sig[0], sig[1], sig[2], _c_name(symbol), libraries.index(label)]
+            if label not in labels:
+                labels.append(label)
+            found[key] = [bytes(code[:lead]).hex(), sig[0], sig[1], sig[2], _c_name(symbol), labels.index(label)]
             added += 1
         log("%-60s %5d functions, %5d new signatures" % (label, len(functions), added))
     unsure = [k for k in found if k[1][1] and len(names[k]) > 1]
@@ -524,7 +349,7 @@ def learn(sources, log=print):
     log("%d signatures left out: shared by differently named functions" % len(unsure))
     entries = {bits: [e for (b, _s), e in found.items() if str(b) == bits] for bits in ("32", "16")}
     with open(_FILE, "w", encoding="utf-8", newline="\n") as f:
-        f.write('{"libraries": %s,\n' % json.dumps(libraries))
+        f.write('{"libraries": %s,\n' % json.dumps(labels))
         f.write(",\n".join('"%s": [\n%s\n]' % (bits, ",\n".join(json.dumps(e, separators=(",", ":")) for e in entries[bits]))
                            for bits in ("32", "16")) + "\n}\n")
     return {bits: len(v) for bits, v in entries.items()}
