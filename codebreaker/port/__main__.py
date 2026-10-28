@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 
+from codebreaker.base import cache
 from codebreaker.port import pre_ansi
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -157,9 +158,6 @@ def memory_guard(out):
     threading.Thread(target=watch, daemon=True, name="memory-guard").start()
 
 
-CHECK_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "checks")
-
-
 def check_key(spec, cc, n, res):
     """what one file's check depends on: the compiler and its command, the file, every header it reaches"""
     import hashlib
@@ -173,25 +171,6 @@ def check_key(spec, cc, n, res):
         h.update(x.encode() + b"\0" + (res.get(x) or "").encode("latin1", "replace") + b"\0")
         todo += re.findall(r'#\s*include\s*"([^"]+)"', res.get(x) or "")
     return h.hexdigest()
-
-
-def check_cached(key):
-    try:
-        return json.load(open(os.path.join(CHECK_CACHE, key[:2], key + ".json"), encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
-def check_store(key, diags):
-    d = os.path.join(CHECK_CACHE, key[:2])
-    try:
-        os.makedirs(d, exist_ok=True)
-        json.dump(diags, open(os.path.join(d, key + ".json"), "w", encoding="utf-8"))
-    except (OSError, TypeError):
-        pass
-
-
-OBJ_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "objects")
 
 
 def build(spec, cc, tpl, out, srcs, exe, objdir):
@@ -238,9 +217,9 @@ def build(spec, cc, tpl, out, srcs, exe, objdir):
 
     def one(n):
         k = keys[n]
-        o = os.path.join(OBJ_CACHE, k[:2], k + ".o")
+        o = cache.path("port-objects", k) + ".o"
         mine = os.path.join(objdir, n[:-2] + ".o")
-        if sound(o):                                        # (as the last time: its object, and what it said then)
+        if not cache.off() and sound(o):                                        # (as the last time: its object, and what it said then)
             try:
                 shutil.copyfile(o, mine)
                 os.utime(o)
@@ -249,7 +228,7 @@ def build(spec, cc, tpl, out, srcs, exe, objdir):
             except OSError:
                 pass
         p = run(spec, cargv + ["-c", n, "-o", mine], out, cc)
-        if p.returncode == 0 and sound(mine):
+        if p.returncode == 0 and not cache.off() and sound(mine):
             try:
                 os.makedirs(os.path.dirname(o), exist_ok=True)
                 tmp = o + ".%d.%d.tmp" % (os.getpid(), threading.get_ident())
@@ -272,7 +251,7 @@ def build(spec, cc, tpl, out, srcs, exe, objdir):
             for n in srcs]
     p = run(spec, args(tpl, cc=cc, inc=".", out=exe, srcs=objs), out, cc)
     shutil.rmtree(objdir, ignore_errors=True)
-    prune_objects()
+    cache.prune("port-objects", 3 << 30)                     # (the kept objects held under 3 GB)
     return subprocess.CompletedProcess(p.args, p.returncode, logs + p.stdout, p.stderr)
 
 
@@ -284,27 +263,6 @@ def sound(path):
         return os.path.getsize(path) > 64 and head.strip(b"\0") != b""
     except OSError:
         return False
-
-
-def prune_objects(cap=3 << 30):
-    """the kept objects held under cap bytes: the longest unused gone first"""
-    fs = []
-    for d, _, ns in os.walk(OBJ_CACHE):
-        for n in ns:
-            try:
-                st = os.stat(os.path.join(d, n))
-                fs.append((st.st_mtime, st.st_size, os.path.join(d, n)))
-            except OSError:
-                pass
-    total = sum(s for t, s, p in fs)
-    for t, s, p in sorted(fs):
-        if total <= cap * 0.8:
-            break
-        try:
-            os.remove(p)
-            total -= s
-        except OSError:
-            pass
 
 
 def changed_files(res, before, cfiles):
@@ -842,7 +800,7 @@ def main(argv):
             todo = changed_files(res, seen_text, cfiles)   # (the files whose text, or a header's they include,
             keys = {n: check_key(spec_, cc_, n, res) for n in todo}   # changed: the others said it already - and
             for n in list(todo):                            #  what an earlier run's compiler said of the same
-                got = check_cached(keys[n])                 #  text, kept: not said again)
+                got = cache.value("port-checks", keys[n])  #  text, kept: not said again)
                 if got is not None:
                     seen_diags[n] = got
                     todo.remove(n)
@@ -852,7 +810,7 @@ def main(argv):
             for n in cfiles:                                # (in the files' order, as one compiler would say them)
                 if n in done:
                     seen_diags[n] = diagnostics(spec_, done[n].stdout + done[n].stderr, out)
-                    check_store(keys[n], seen_diags[n])
+                    cache.keep("port-checks", keys[n], seen_diags[n])
                 diags += seen_diags.get(n, [])
             seen_text = dict(res)
             sys.stderr.write("port: round %d (%s): %d of %d files checked, %d errors, %d warnings, %.0fs\n" % (

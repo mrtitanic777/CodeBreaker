@@ -21,6 +21,7 @@ import collections
 import os
 import re
 
+from codebreaker.base import cache
 from codebreaker.port import arith16
 
 
@@ -357,7 +358,7 @@ def run(cc, folder, files):
     hk = arith16._headers_key(folder)                       #  headers too - all of them at once were gigabytes;
     for f in files:                                         #  a file's result kept by its text and its headers')
         key = arith16.pass_key(cc, folder, f, "records", headers=hk)
-        got = arith16.cache_get(key)
+        got = cache.value("port-passes", key)
         if got is not None:
             olds |= set(got["olds"])
             continue
@@ -367,7 +368,7 @@ def run(cc, folder, files):
             arith16.mark_files(tree, [None])
             mine = byte_records([tree])
             olds |= mine
-        arith16.cache_put(key, {"olds": sorted(mine)})
+        cache.keep("port-passes", key, {"olds": sorted(mine)})
         del tree
     out, found_all, refused = {}, {}, []
     if not olds:
@@ -377,7 +378,7 @@ def run(cc, folder, files):
         if not mentions(folder, f, tags):                   # (a file that never names them, nor its headers: none)
             continue
         key = arith16.pass_key(cc, folder, f, "oldlayout", sorted(olds), sorted(PTR_PARAMS.items()), headers=hk)
-        got = arith16.cache_get(key)
+        got = cache.value("port-passes", key)
         if got is None:
             tree = arith16.dump(cc, f, folder)
             if not tree:
@@ -388,7 +389,7 @@ def run(cc, folder, files):
             e, found, ref = edits_of(tree, text, path, olds)
             got = {"new": apply(text, e) if e else None, "found": [[k[0], k[1], v] for k, v in found.items()],
                    "refused": [list(x) for x in ref]}
-            arith16.cache_put(key, got)
+            cache.keep("port-passes", key, got)
             del tree
         found_all.update({(a_, b_): v for a_, b_, v in got["found"]})
         refused += [(f, at, op) for at, op in got["refused"]]

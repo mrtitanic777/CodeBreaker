@@ -583,8 +583,12 @@ def test_cache_files_results_under_what_made_them():
         assert cache.get(kind, k) is None
     finally:
         del os.environ["CB_NO_CACHE"]
+    v = cache.key("a value")
+    assert cache.value(kind, v) is None
+    cache.keep(kind, v, ({"kind": "error"}, (1, 2)))
+    assert cache.value(kind, v) == ({"kind": "error"}, (1, 2))
     import shutil
-    shutil.rmtree(os.path.dirname(os.path.dirname(cache._path(kind, k))), ignore_errors=True)
+    shutil.rmtree(os.path.dirname(os.path.dirname(cache.path(kind, k))), ignore_errors=True)
 
 
 def test_a_call_through_a_word_stays_near():

@@ -17,7 +17,7 @@ import re
 import shutil
 import tempfile
 
-from codebreaker.base import settings
+from codebreaker.base import cache as _cache
 from codebreaker.exact import toolchain as tcm
 
 CACHE_VERSION = "p2"
@@ -39,13 +39,12 @@ class PLM86(object):
         hs = sorted((f.upper(), crlf(b)) for f, b in (headers or {}).items())
         controls = switches or self.controls
         key = hashlib.sha1(b"\0".join([src, repr(hs).encode(), controls.encode(), self.key.encode()])).hexdigest()
-        cf = settings.state("exact", "cache", key[:2], key)
         if cache:
-            got = tcm.cache_get(cf)
+            got = _cache.value("exact", key)
             if got is not None:
                 return got
         res = self._compile(src, hs, controls)
-        tcm.cache_put(cf, res)
+        _cache.keep("exact", key, res)
         return res
 
     def _compile(self, src, headers, controls):

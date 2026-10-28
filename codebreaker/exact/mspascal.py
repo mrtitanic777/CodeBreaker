@@ -22,6 +22,7 @@ import struct
 import tempfile
 import zipfile
 
+from codebreaker.base import cache as _cache
 from codebreaker.base import settings
 from codebreaker.exact import omf
 from codebreaker.exact import toolchain as tcm
@@ -138,13 +139,12 @@ class MSPascal(object):
     def compile(self, src, headers=None, include=(), switches=None, cache=True, name="T.PAS"):
         src = src.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
         key = hashlib.sha1(b"\0".join([src, name.encode(), self.key.encode()])).hexdigest()
-        cf = settings.state("exact", "cache", key[:2], key)
         if cache:
-            got = tcm.cache_get(cf)
+            got = _cache.value("exact", key)
             if got is not None:
                 return got
         res = self._compile(src, name)
-        tcm.cache_put(cf, res)
+        _cache.keep("exact", key, res)
         return res
 
     def _compile(self, src, name):

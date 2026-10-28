@@ -19,6 +19,8 @@ import os
 import re
 import subprocess
 
+from codebreaker.base import cache
+
 W16 = {"int16_t": "i16", "short": "i16", "uint16_t": "u16", "unsigned short": "u16", "char": "i16",
        "signed char": "i16", "unsigned char": "i16", "uint8_t": "i16", "int8_t": "i16", "int32_t": "i32",
        "long": "i32", "uint32_t": "u32", "unsigned long": "u32"}
@@ -242,9 +244,6 @@ def apply(text, edits):
     return text
 
 
-PASS_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "passes")
-
-
 def _headers_key(folder):
     """what every file of the port includes: its headers' texts (one changed: every file's result again)"""
     import hashlib
@@ -341,25 +340,6 @@ def pass_key(cc, folder, f, kind, *extra, headers=None):
     return h.hexdigest()
 
 
-def cache_get(key):
-    at = os.path.join(PASS_CACHE, key[:2], key + ".json")
-    try:
-        return json.load(open(at, encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
-def cache_put(key, value):
-    at = os.path.join(PASS_CACHE, key[:2], key + ".json")
-    try:
-        os.makedirs(os.path.dirname(at), exist_ok=True)
-        tmp = at + ".%d.tmp" % os.getpid()
-        json.dump(value, open(tmp, "w", encoding="utf-8"))
-        os.replace(tmp, at)
-    except OSError:
-        pass
-
-
 def run(cc, folder, files):
     """{file: its text with the casts} for the port's C files (those clang could read) - a file's result kept,
     by its text and its headers': the same file again, not read again"""
@@ -367,7 +347,7 @@ def run(cc, folder, files):
     hk = _headers_key(folder)
     for f in files:
         key = pass_key(cc, folder, f, "arith16", headers=hk)
-        got = cache_get(key)
+        got = cache.value("port-passes", key)
         if got is not None:
             if got.get("new") is not None:
                 out[f] = got["new"]
@@ -382,7 +362,7 @@ def run(cc, folder, files):
         new = apply(text, e) if e else None
         if new is not None:
             out[f] = new
-        cache_put(key, {"new": new})
+        cache.keep("port-passes", key, {"new": new})
         del tree
     return out
 

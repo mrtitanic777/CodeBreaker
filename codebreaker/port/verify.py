@@ -32,9 +32,6 @@ import sys
 import tempfile
 
 
-CACHE = os.path.join(os.path.expanduser("~"), ".cache", "codebreaker", "originals")
-
-
 @functools.lru_cache(maxsize=None)
 def _emulator_key():
     """what the emulator is: its sources (a change to it runs the originals again)"""
@@ -73,19 +70,19 @@ def _original_key(exe, folder, cmd, stdin):
 def run_original(cfg, exe, folder, cmd, stdin):
     """the original run under the emulator - once: what it showed and left, by what it was given, kept (it is the
     same every time); -> (console, exit)"""
-    import base64
+    from codebreaker.base import cache
     key = _original_key(exe, folder, cmd, stdin)
-    at = os.path.join(CACHE, key[:2], key + ".json")
-    if os.path.isfile(at):
+    got = cache.value("port-originals", key)
+    if got is not None:
         try:
-            got = json.load(open(at))
             for n in os.listdir(folder):                    # (the folder as the run left it)
                 if os.path.isfile(os.path.join(folder, n)):
                     os.remove(os.path.join(folder, n))
-            for n, b64 in got["files"].items():
-                open(os.path.join(folder, n), "wb").write(base64.b64decode(b64))
-            return got["console"].encode("latin1"), got["exit"]
-        except (OSError, ValueError, KeyError):
+            for n, data in got["files"].items():
+                with open(os.path.join(folder, n), "wb") as f:
+                    f.write(data)
+            return got["console"], got["exit"]
+        except (OSError, KeyError):
             pass
     from codebreaker.exact.emu import dos
     from codebreaker.base import parallel
@@ -96,12 +93,9 @@ def run_original(cfg, exe, folder, cmd, stdin):
     except RuntimeError as e:                               # (a run that does not end: what it showed, and that)
         console, code = str(e).encode("latin1", "replace"), "did not end"
     try:
-        os.makedirs(os.path.dirname(at), exist_ok=True)
-        files = {n: base64.b64encode(open(os.path.join(folder, n), "rb").read()).decode()
+        files = {n: open(os.path.join(folder, n), "rb").read()
                  for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n))}
-        tmp = at + ".%d.tmp" % os.getpid()
-        json.dump({"console": console.decode("latin1"), "exit": code, "files": files}, open(tmp, "w"))
-        os.replace(tmp, at)
+        cache.keep("port-originals", key, {"console": console, "exit": code, "files": files})
     except OSError:
         pass
     return console, code
