@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 
+from codebreaker.base import ctext
 from codebreaker.port import pre_ansi
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -425,7 +426,7 @@ def c_declared(texts):
                 macros.add(m.group(1))
     out = {}
     for t in texts:
-        for m in re.finditer(r"\bextern\s+([\w\s*]+?)\b([A-Za-z_]\w*)\s*\(\s*\)\s*;", pre_ansi.blank(t)):
+        for m in re.finditer(r"\bextern\s+([\w\s*]+?)\b([A-Za-z_]\w*)\s*\(\s*\)\s*;", ctext.blank(t)):
             words = [w for w in re.findall(r"\w+|\*", m.group(1)) if w not in asm16.CALL_WORDS and w not in macros]
             stars = words.count("*")
             base = " ".join(w for w in words if w != "*")
@@ -479,12 +480,12 @@ def call_arg_types(fn, texts, origs, ct):
     if far is None or call_arg_types.key is not origs:
         far = set()
         for t in origs:
-            for d in re.finditer(r"(?m)^[^;(){}]*\bfar\b[^;(){}]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*;", pre_ansi.blank(t)):
+            for d in re.finditer(r"(?m)^[^;(){}]*\bfar\b[^;(){}]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*;", ctext.blank(t)):
                 far.add(d.group(1))
         call_arg_types.far, call_arg_types.key = far, origs
     best = []
     for t in texts:
-        for line in pre_ansi.blank(t).split("\n"):
+        for line in ctext.blank(t).split("\n"):
             if not re.search(r"\b%s\s*\(" % re.escape(fn), line) or re.match(r"\s*(?:extern\b|\w[\w\s*]*\b%s\s*\([^)]*\)\s*$)"
                                                                            % re.escape(fn), line):
                 continue
@@ -501,7 +502,7 @@ def call_arg_types(fn, texts, origs, ct):
                     out.append((4 if m.group(1) in far else 2, v[0].strip() + (" " + "*" * stars if stars else "")))
                     continue
                 loc = re.search(r"\b((?:struct|union)\s+\w+|char|unsigned\s+char|int16_t|uint16_t)\s*(\*+)\s*%s\s*[;,)=]"
-                                % re.escape(arg), pre_ansi.blank(t)) if re.fullmatch(r"\w+", arg) else None
+                                % re.escape(arg), ctext.blank(t)) if re.fullmatch(r"\w+", arg) else None
                 if loc:                                     # (a variable of the calling file: a parameter, a local)
                     stars = len(loc.group(2))
                     out.append((2, re.sub(r"\s+", " ", loc.group(1)) + (" " + "*" * (stars - 1) if stars > 1 else "")))
@@ -511,7 +512,7 @@ def call_arg_types(fn, texts, origs, ct):
                     continue
                 v = ct.var(arg) if re.fullmatch(r"\w+", arg) else None
                 lng = re.fullmatch(r"\w+", arg) and re.search(r"\b(?:long|int32_t|uint32_t)\s+(?:[^;(){}]*,\s*)?%s\s*[;,=]"
-                                                           % re.escape(arg), pre_ansi.blank(t))
+                                                           % re.escape(arg), ctext.blank(t))
                 out.append((4 if (v and re.search(r"\b(long|int32_t|uint32_t)\b", v[0])) or lng or
                             re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|\d+)[lL]", arg) else 2, None))
             if sum(1 for s, to in out if to) > sum(1 for s, to in best if to):
@@ -577,8 +578,8 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
     texts = [t for n, t in res.items() if n.endswith((".c", ".h"))]
     origs = list(port.originals.values())
     ct = asm16.CTypes(texts, origs)
-    calls = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", "\n".join(pre_ansi.blank(t) for t in texts)))
-    far = set(re.findall(r"\bfar\b[^;(){}]*?\b(\w+)\s*\(", "\n".join(pre_ansi.blank(t) for t in origs)))
+    calls = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", "\n".join(ctext.blank(t) for t in texts)))
+    far = set(re.findall(r"\bfar\b[^;(){}]*?\b(\w+)\s*\(", "\n".join(ctext.blank(t) for t in origs)))
     old_asm = opt("--asm16") or (settings.get("port") or {}).get("asm16") if hasattr(settings, "get") else None
     ml = find(compilers.get("ml64", {}).get("find", []))
     objs, protos, notes = [], {}, []
