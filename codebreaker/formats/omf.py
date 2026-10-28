@@ -502,3 +502,101 @@ def externs(data):
                 q += 2 if (q < end and data[q] & 0x80) else 1     # type index
         i = end
     return out
+
+
+# ---- record by record, for the readers that walk the records themselves (invert's library_match, quad_align)
+def walk(data, start=0):
+    """(offset, type, payload) of each record from `start`, the payload without its checksum: zero bytes
+    between records (a library's padding) passed over, the walk ended by a LIBEND"""
+    i = start
+    while i < len(data):
+        t = data[i]
+        if t == 0:
+            i += 1
+            continue
+        n = struct.unpack_from("<H", data, i + 1)[0]
+        yield i, t, data[i + 3:i + 3 + n - 1]
+        i += 3 + n
+        if t == 0xF1:
+            break
+
+
+index = _idx                                                # an OMF index at q: (value, the offset past it)
+
+
+# ---- one object's code, cut at its publics (build/masm, build/msc6, the ne_asm comparers, invert's probes)
+# what the linker fills in, by a fix-up's location field: the bytes it covers
+_WIDTH = {0: 1, 1: 2, 2: 2, 3: 4, 4: 1, 5: 2, 9: 4, 11: 6, 13: 4}
+
+
+def _code(data):
+    """(code segment's name, its bytes, {offsets the linker fills in}, {public: (segment, offset)}): the code
+    segment is the first whose class is CODE or whose name ends TEXT; its bytes run to the end of its data;
+    a fix-up covers the bytes of its kind."""
+    o = read(data)
+    pubs = {nm: (seg if seg is not None else "?", off) for nm, seg, off in o.pubs}
+    segs = [(nm, cls) for nm, cls, _ln, _al in o.segs]
+    code_seg = next((n for n, c in segs if "CODE" in c.upper() or n.upper().endswith("TEXT")), segs[0][0] if segs else None)
+    if code_seg is None:
+        return None, b"", set(), pubs
+    mask = set()
+    for (seg, at, _kind, _tgt, _disp), loc in zip(o.fix, o.fixloc):
+        if seg == code_seg:
+            mask.update(range(at, at + _WIDTH.get(loc, 2)))
+    return code_seg, bytes(o.seg.get(code_seg, b"")[:o.filled.get(code_seg, 0)]), mask, pubs
+
+
+def code_segment(data):
+    """(name, bytes, {offsets the linker fills in}) of an object file's code segment."""
+    seg, code, mask, _pubs = _code(data)
+    return seg, code, mask
+
+
+def function_bytes(data):
+    """{public name: (bytes, {offsets the linker fills in})} of an object file's code segment, cut between
+    consecutive public names. A name keeps the compiler's leading underscore."""
+    seg, code, mask, pubs = _code(data)
+    if seg is None:
+        return {}
+    here = sorted((off, nm) for nm, (sg, off) in pubs.items() if sg == seg)
+    out = {}
+    for i, (off, nm) in enumerate(here):
+        end = here[i + 1][0] if i + 1 < len(here) else len(code)
+        out[nm] = (code[off:end], {m - off for m in mask if off <= m < end})
+    return out
+
+
+# ---- a listing: python -m codebreaker.formats.omf <file.obj | file.lib> [--raw]
+_KIND = {0x80: "THEADR", 0x82: "LHEADR", 0x88: "COMENT", 0x8A: "MODEND", 0x8B: "MODEND", 0x8C: "EXTDEF",
+         0x8E: "TYPDEF", 0x90: "PUBDEF", 0x91: "PUBDEF", 0x94: "LINNUM", 0x95: "LINNUM", 0x96: "LNAMES",
+         0x98: "SEGDEF", 0x99: "SEGDEF", 0x9A: "GRPDEF", 0x9C: "FIXUPP", 0x9D: "FIXUPP", 0xA0: "LEDATA",
+         0xA1: "LEDATA", 0xA2: "LIDATA", 0xA3: "LIDATA", 0xB0: "COMDEF", 0xF0: "LIBHDR", 0xF1: "LIBEND"}
+
+
+def main(argv):
+    """python -m codebreaker.formats.omf <file.obj | file.lib> [--raw]
+    each module's segments, publics and externals; --raw every record (type, length)"""
+    if not argv:
+        print(main.__doc__)
+        return 2
+    with open(argv[0], "rb") as f:
+        data = f.read()
+    if "--raw" in argv:
+        for off, t, body in walk(data):
+            print("@%06x %-8s len=%d" % (off, _KIND.get(t, "?%02X" % t), len(body) + 1))
+        return 0
+    for nm, module in library(data):
+        o = read(module)
+        print("== %s (%d bytes)" % (nm, len(module)))
+        for s, cls, ln, _al in o.segs:
+            print("  segment %-12s class=%-8s %6d bytes" % (s, cls, ln))
+        for p, s, off in o.pubs:
+            print("  public  %-24s %s:%04x" % (p, s if s is not None else "-", off))
+        for e in o.ext:
+            print("  extern  %s" % e)
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main(sys.argv[1:]))

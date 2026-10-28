@@ -8,7 +8,7 @@ on x64), so like `cc16` drives CL, this drives MASM.EXE under the vendored
 DOSBox-X.
 
 Crucially, MASM emits an OMF `.OBJ` exactly like the C compiler, so the whole
-downstream is REUSED: `objextract` pulls the code bytes + relocation mask and
+downstream is REUSED: `formats/omf` pulls the code bytes + relocation mask and
 `segdiff` renders the byte-exact verdict. This module only has to run the
 assembler — the acceptance test for hand-asm is then identical to the C path.
 
@@ -379,12 +379,12 @@ def _assemble_uncached(items, timeout=None, masmroot=None):
 
 
 def functions(asm_src, flags=None):
-    """Assemble and return {name: (bytes, mask)} via objextract (same as cc16)."""
-    from codebreaker.invert import omf as objextract
+    """Assemble and return {name: (bytes, mask)} via formats/omf (same as cc16)."""
+    from codebreaker.formats import omf
     r = assemble(asm_src)
     if "obj" not in r:
         raise RuntimeError("MASM produced no OBJ:\n" + r.get("log", "")[:600])
-    return objextract.Obj(r["obj"]).functions()
+    return omf.function_bytes(r["obj"])
 
 
 SELF_ASM = """\
@@ -405,12 +405,12 @@ _TEXT   ends
 
 
 def _selftest():
-    from codebreaker.invert import omf as objextract
+    from codebreaker.formats import omf
     r = assemble(SELF_ASM)
     if "obj" not in r:
         print("no OBJ; MASM log:\n" + r.get("log", "")[:800])
         return False
-    fns = objextract.Obj(r["obj"]).functions()
+    fns = omf.function_bytes(r["obj"])
     print("functions:", {k: len(v[0]) for k, v in fns.items()})
     # MASM upper-cases public symbols by default (_ADDASM); match case-insensitively
     key = next((k for k in fns if k.lower() == "_addasm"), None)
@@ -433,13 +433,13 @@ def main():
         sys.exit(0 if _selftest() else 1)
     if not args.asm:
         ap.error("give a .ASM file or --selftest")
-    from codebreaker.invert import omf as objextract
+    from codebreaker.formats import omf
     r = assemble(open(args.asm).read())
     if "obj" not in r:
         sys.exit("no OBJ produced; MASM log:\n" + r.get("log", "")[:1000])
-    obj = objextract.Obj(r["obj"])
-    for name, cls in obj.segs:
-        b = obj.seg_bytes.get(name, b"")
+    obj = omf.read(r["obj"])
+    for name, cls, _ln, _al in obj.segs:
+        b = obj.seg.get(name, b"")
         print("  %-12s class=%-8s %6d bytes" % (name, cls, len(b)))
     print("# work dir: %s" % r["work"])
 

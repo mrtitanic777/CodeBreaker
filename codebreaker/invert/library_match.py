@@ -10,7 +10,7 @@ reconstruction (just link the lib).
 Usage: python library_match.py <lib> <target_image.bin> <ghidra.json>
 """
 import sys, struct, json
-from codebreaker.invert.omf import records, rd_index
+from codebreaker.formats.omf import walk, index
 
 def iter_modules(data):
     """Yield mstart offsets for each library module, page-aligned (OMF .LIB)."""
@@ -24,7 +24,7 @@ def iter_modules(data):
         yield i
         # advance to end of this module (MODEND), then page-align
         end=i
-        for off,rt,body in records(data,i):
+        for off,rt,body in walk(data,i):
             end=off+3+len(body)+1
             if rt in (0x8a,0x8b): break
         i=((end+pagelen-1)//pagelen)*pagelen
@@ -34,15 +34,15 @@ def module_functions(data, mstart):
     list of (pubname, code_bytes, mask_bytes)."""
     lnames=[""]; segs=[]; pubs={}
     image=bytearray(); mask=bytearray(); cur=None
-    for off,rt,body in records(data, mstart):
+    for off,rt,body in walk(data, mstart):
         if rt==0x80 and off!=mstart: break
         if rt==0x96:
             j=0
             while j<len(body): n=body[j]; lnames.append(body[j+1:j+1+n].decode('latin1')); j+=1+n
         elif rt in (0x98,0x99):
-            si,j=rd_index(body,3); segs.append(lnames[si] if si<len(lnames) else str(si))
+            si,j=index(body,3); segs.append(lnames[si] if si<len(lnames) else str(si))
         elif rt in (0xa0,0xa1):
-            seg,j=rd_index(body,0); do=struct.unpack_from("<H",body,j)[0]; j+=2; pl=body[j:]
+            seg,j=index(body,0); do=struct.unpack_from("<H",body,j)[0]; j+=2; pl=body[j:]
             sn=segs[seg-1] if 0<seg<=len(segs) else ""
             if sn in ("PROG","CODE","BASE") or sn.endswith("_TEXT"):   # MSC code seg = _TEXT / <mod>_TEXT
                 end=do+len(pl)
@@ -59,18 +59,18 @@ def module_functions(data, mstart):
                 fd=body[j]; j+=1
                 if not (fd&0x80):
                     fb=(fd>>4)&7
-                    if fb in (0,1,2): _,j=rd_index(body,j)
-                if not (fd&0x08): _,j=rd_index(body,j)
+                    if fb in (0,1,2): _,j=index(body,j)
+                if not (fd&0x08): _,j=index(body,j)
                 if not ((fd>>2)&1): j+=2
                 w={0:1,1:2,2:2,3:4,4:1,5:2,9:4}.get(loc,2)
                 for k in range(w):
                     if cur+dro+k<len(mask): mask[cur+dro+k]=1
         elif rt in (0x90,0x91):
-            g,j=rd_index(body,0); s,j=rd_index(body,j)
+            g,j=index(body,0); s,j=index(body,j)
             if s==0: j+=2
             while j<len(body):
                 n=body[j]; nm=body[j+1:j+1+n].decode('latin1'); j+=1+n
-                po=struct.unpack_from("<H",body,j)[0]; j+=2; _,j=rd_index(body,j)
+                po=struct.unpack_from("<H",body,j)[0]; j+=2; _,j=index(body,j)
                 pubs[nm]=po
         elif rt in (0x8a,0x8b): break
     # split into functions by pub offsets

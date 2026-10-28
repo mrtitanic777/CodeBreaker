@@ -5,7 +5,7 @@ the MC2 code generator. Foundation for mc2model (forward quad->bytes model).
 Usage: python quad_align.py <corp.q/corpq.bin> <corp.OBJ>
 """
 import sys, struct
-from codebreaker.invert.omf import records, rd_index
+from codebreaker.formats.omf import walk, index
 
 def parse_quads(qpath):
     """Return list of functions, each = list of (opcode, payload_bytes)."""
@@ -30,24 +30,24 @@ def parse_obj_funcs(objpath):
     """Return [(name, off, bytes)] for PROG functions, in address order."""
     data = open(objpath,"rb").read()
     lnames=[""]; segs=[]; code=b""; pubs=[]
-    for off,rt,body in records(data):
+    for off,rt,body in walk(data):
         if rt==0x96:
             j=0
             while j<len(body): n=body[j]; lnames.append(body[j+1:j+1+n].decode('latin1')); j+=1+n
         elif rt in (0x98,0x99):
-            si,j=rd_index(body,3); segs.append(lnames[si] if si<len(lnames) else str(si))
+            si,j=index(body,3); segs.append(lnames[si] if si<len(lnames) else str(si))
         elif rt in (0xa0,0xa1):
-            seg,j=rd_index(body,0); do=struct.unpack_from("<H",body,j)[0]; j+=2; pl=body[j:]
+            seg,j=index(body,0); do=struct.unpack_from("<H",body,j)[0]; j+=2; pl=body[j:]
             sn=segs[seg-1] if 0<seg<=len(segs) else ""
             if sn=="PROG":
                 if do+len(pl)>len(code): code=code+b"\x00"*(do+len(pl)-len(code))
                 code=code[:do]+pl+code[do+len(pl):]
         elif rt in (0x90,0x91):
-            g,j=rd_index(body,0); s,j=rd_index(body,j)
+            g,j=index(body,0); s,j=index(body,j)
             if s==0: j+=2
             while j<len(body):
                 n=body[j]; nm=body[j+1:j+1+n].decode('latin1'); j+=1+n
-                po=struct.unpack_from("<H",body,j)[0]; j+=2; _,j=rd_index(body,j)
+                po=struct.unpack_from("<H",body,j)[0]; j+=2; _,j=index(body,j)
                 pubs.append((nm,po))
     pubs=[p for p in pubs if not p[0].isupper() or True]
     pubs.sort(key=lambda x:x[1])

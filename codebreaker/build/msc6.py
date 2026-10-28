@@ -684,9 +684,9 @@ def function_code(obj, name):
     """(bytes, mask) of the public function `name` in an OMF object file -- cut from its code segment
     between its public name and the next -- or None. A header's own functions (static helpers, the
     reconstruction's stubs) come first in the segment, so the first code segment is not the function."""
-    from codebreaker.invert import omf
+    from codebreaker.formats import omf
     want = name.lstrip("_@").lower()             # (a C name _f, a fastcall one @f)
-    for pub, (code, holes) in omf.functions(obj).items():
+    for pub, (code, holes) in omf.function_bytes(obj).items():
         if pub.lstrip("_@").lower() == want:
             mask = bytearray(len(code))
             for at in holes:

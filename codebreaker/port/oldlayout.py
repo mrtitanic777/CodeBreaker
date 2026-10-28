@@ -276,7 +276,7 @@ def null_reads(text):
     """((struct n *)dos_hp(h))->op, and l = ((struct n *)dos_hp(h)); ... l->op with l never tested: a read
     through what may be NULL - on DOS the start of the data segment (no fault) - dos_hpr, the null segment for
     handle 0; a pointer the function tests (if (!l), l == 0, l && ...) keeps dos_hp, its NULL a NULL"""
-    from codebreaker.port.pre_ansi import blank
+    from codebreaker.base.ctext import blank
     cast = re.compile(r"\(\((?:struct|union)\s+\w+\s*\*\s*\)dos_hp\(")
 
     def close(code, i):                                     # (the ')' that closes the '(' at i)

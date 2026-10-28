@@ -57,7 +57,7 @@ def _target():
 
 
 from codebreaker.build import masm as masmlift
-from codebreaker.invert import omf as objextract
+from codebreaker.formats import omf
 from codebreaker.source.ne_asm import segdiff, segment as trace
 target = _Corpus
 
@@ -367,7 +367,7 @@ def reconcile(sg, start, end, seg_mask, max_passes=200, verbose=True):
                 break
             force_db = set(rows)
             continue
-        _nm, our, omask = objextract.Obj(r["obj"]).code_segment()
+        _nm, our, omask = omf.code_segment(r["obj"])
         res = segdiff.diff(our, omask, shipped, smask)
         if res["exact"]:
             break

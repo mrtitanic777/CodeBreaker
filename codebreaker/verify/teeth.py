@@ -19,12 +19,14 @@ so each is caught, or not, on its own account. Nothing is recorded in the functi
 The share caught is given for the functions it had called VERIFIED and for those it had called
 VERIFIED (weak) apart: the first is what the strong verdict is worth.
 """
+import itertools
 import json
 import os
 import re
 
+from codebreaker.base import ctext
+
 _NAME = r"[A-Za-z_]\w*"
-_STRING = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|/\*.*?\*/', re.S)
 
 
 def _body(text):
@@ -80,7 +82,7 @@ BREAKS = (("constant", _constant), ("comparison", _comparison), ("operator", _op
 def breaks(text):
     """[(kind of break, the function's text with it made)] -- every kind that applies."""
     head, body = _body(text)
-    shadow = _STRING.sub(lambda m: " " * len(m.group(0)), body)
+    shadow = ctext.blank(body, whole=True)
     out = []
     for kind, make in BREAKS:
         new = make(body, shadow)
@@ -116,6 +118,18 @@ def _reach(texts):
     return out
 
 
+def plant(rounds, judge, outcome):
+    """The judge judged, whatever the lane. `rounds` gives lists of (name, what, made): a function (or an
+    entry point) and one break made in it, the breaks of a round never reaching one another; judge(round)
+    judges a round's together -> {name: what the judge said}; outcome(said) is "caught" (it noticed),
+    "missed" (it passed the break) or anything else (not counted). Yields, round by round,
+    [(name, what, made, said, outcome)]. The lanes: C text broken and rebuilt (run, below), a 16-bit
+    build's code (tools/gate_teeth16.py), a driver's (verify/lanes/driver.py's self_check)."""
+    for batch in rounds:
+        said = judge(batch)
+        yield [(name, what, made, said[name], outcome(said[name])) for name, what, made in batch]
+
+
 def run(module_path, rounds=3, log=print):
     """-> {"module", "rounds", "results": [{name, break, was, now, reason}], "caught": {...}}"""
     from codebreaker.build import watcom
@@ -139,41 +153,53 @@ def run(module_path, rounds=3, log=print):
     candidates = [n for n in m.order if key_of.get(n) in passed and breaks(m.texts[n])]
     reach = _reach(m.texts)
     original_texts = dict(m.texts)
-    results, used = [], set()
-    for r in range(rounds):
-        chosen, taken = [], set()
-        for n in candidates:
-            if n in used or reach[n] & taken or any(n in reach[c] for c in chosen):
-                continue
-            chosen.append(n)
-            taken |= reach[n]
-        if not chosen:
-            break
-        used.update(chosen)
-        made = {}
+
+    def broken():
+        used = set()
+        for r in range(rounds):
+            chosen, taken = [], set()
+            for n in candidates:
+                if n in used or reach[n] & taken or any(n in reach[c] for c in chosen):
+                    continue
+                chosen.append(n)
+                taken |= reach[n]
+            if not chosen:
+                return
+            used.update(chosen)
+            batch = []
+            for i, n in enumerate(chosen):
+                options = breaks(original_texts[n])
+                batch.append((n,) + options[(i + r) % len(options)])     # the kinds of break in turn
+            yield batch
+
+    number = itertools.count()
+
+    def judge(batch):
         m.texts = dict(original_texts)
-        for i, n in enumerate(chosen):
-            options = breaks(original_texts[n])
-            made[n] = options[(i + r) % len(options)]            # the kinds of break in turn
-            m.texts[n] = made[n][1]
-        context, items, dropped = kind.build(m, module_path, os.path.join(work, "round%d" % r))
-        judged = pool.run(kind.judge, [items[n] for n in chosen if n in items], context=context,
+        for n, _kind, text in batch:
+            m.texts[n] = text
+        context, items, dropped = kind.build(m, module_path, os.path.join(work, "round%d" % next(number)))
+        judged = pool.run(kind.judge, [items[n] for n, _k, _t in batch if n in items], context=context,
                           crashed=lambda item: reconstruct.NOT_RUN)
-        for n in chosen:
-            if n not in items:
-                results.append(dict(name=n, was=passed[key_of[n]], now="does not compile", reason=dropped.get(n, ""),
-                                    made=made[n][0]))
+        return {n: judged[items[n][0]] if n in items else (None, dropped.get(n, ""), (), None) for n, _k, _t in batch}
+
+    def outcome(said):
+        return "missed" if said[0] in reconstruct.GOOD else "caught" if said[0] == "divergent" else said[0]
+
+    results = []
+    for r, batch in enumerate(plant(broken(), judge, outcome)):
+        for n, made, text, (verdict, reason, limits, _detail), got in batch:
+            if verdict is None:
+                results.append(dict(name=n, was=passed[key_of[n]], now="does not compile", reason=reason, made=made))
                 continue
-            verdict, reason, limits, _detail = judged[items[n][0]]
-            results.append(dict(name=n, was=passed[key_of[n]], made=made[n][0], reason=reason,
-                                change=_changed(original_texts[n], made[n][1]),
-                                now="survived" if verdict in reconstruct.GOOD else
-                                "caught" if verdict == "divergent" else "not judged",
+            results.append(dict(name=n, was=passed[key_of[n]], made=made, reason=reason,
+                                change=_changed(original_texts[n], text),
+                                now={"missed": "survived", "caught": "caught"}.get(got, "not judged"),
                                 limits=",".join(limits)))
         if log:
             done = [x for x in results if x["now"] in ("caught", "survived")]
             log("  round %d: %d functions broken; so far %d of %d caught" % (
-                r + 1, len(chosen), sum(1 for x in done if x["now"] == "caught"), len(done)))
+                r + 1, len(batch), sum(1 for x in done if x["now"] == "caught"), len(done)))
     m.texts = original_texts
     tally = {}
     for x in results:

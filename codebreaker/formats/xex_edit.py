@@ -33,17 +33,12 @@ NAMED_BITS = {"pal50": 10}                             # PAL-50 incompatible
 NOP = b"\x60\x00\x00\x00"
 
 
-def _entries(data):
-    if data[:4] != xex.MAGIC:
-        raise ValueError("not an XEX2 module")
-    count, = struct.unpack_from(">I", data, 0x14)
-    return [(0x18 + i * 8,) + struct.unpack_from(">II", data, 0x18 + i * 8) for i in range(count)]
-
-
 def privileges(data):
     """{bit: True} for each privilege bit set, and the entries' offsets {key: value offset}."""
+    if data[:4] != xex.MAGIC:
+        raise ValueError("not an XEX2 module")
     bits, where = {}, {}
-    for offset, key, value in _entries(data):
+    for offset, key, value in xex.optional_headers(data):
         if key in PRIVILEGE_KEYS:
             first = 32 * PRIVILEGE_KEYS.index(key)
             where[key] = offset + 4

@@ -4,7 +4,7 @@ For each probe function: oracle-compile -> extract bytes -> mc2inv.recover -> to
 oracle-recompile -> masked byte-compare. Exercises unused-local gaps + temp-shifted
 locals, which the old `int v<off>` emission could not reproduce.
 """
-from codebreaker.invert import omf as objextract
+from codebreaker.formats import omf
 from codebreaker.invert import early_c as mc2inv
 from codebreaker.invert.early_c_check import external_branches as mask_external_branches
 from codebreaker.invert.compilers import mc_compile_multi
@@ -37,7 +37,7 @@ def extract_one(csrc):
     """compile a single-function C string, return (bytes, mask_offsets) for its function."""
     obj = compilers.mc_compile(csrc)
     if not obj: return None, None
-    fns = objextract.Obj(obj).functions()
+    fns = omf.function_bytes(obj)
     if not fns: return None, None
     v = next(iter(fns.values()))
     return v[0], (v[1] if len(v)>1 else None)
@@ -58,7 +58,7 @@ def masked_eq(a, b, extra_mask):
 
 def main():
     obj = mc_compile_multi(BATTERY)
-    fns = objextract.Obj(obj).functions()
+    fns = omf.function_bytes(obj)
     ok=0; tot=0
     for k in sorted(fns.keys(), key=lambda s:s.upper()):
         code = fns[k][0]

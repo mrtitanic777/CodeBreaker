@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 import capstone  # noqa: E402  (before the workers: the disassembler's DLL)
 
 from codebreaker.formats.ne import NEFile  # noqa: E402
+from codebreaker.verify.teeth import plant  # noqa: E402  (the harness every lane's self-test runs on)
 from codebreaker.verify.gate16 import isolated16  # noqa: E402
 
 ORIG = os.path.join(ROOT, "state", "mini", "original")
@@ -146,23 +147,32 @@ def teeth(module, build, n=40, seed=1):
     nef = NEFile(image)
     segs = {s["idx"]: s for s in nef.segments()}
     raw = open(image, "rb").read()
-    caught, missed, unrun = [], [], []
     work = tempfile.mkdtemp(prefix="teeth")
     ran = _executed(original, build, image, tables, passing)
-    for name in passing:
-        s, lo, hi = spans[name]
-        seg = segs[s]
-        code = raw[seg["file_off"]:seg["file_off"] + seg["length"]]
-        # (only where the gate's own inputs go: a bug in code no input reaches proves nothing)
-        live = [x for x in _mutants(code, lo, min(hi, len(code)), rnd) if x[0] in ran.get(name, ())]
-        for at, new, what in live[:1]:
-            m = bytearray(raw)
-            m[seg["file_off"] + at:seg["file_off"] + at + len(new)] = new
-            mut = os.path.join(work, os.path.basename(image))
-            open(mut, "wb").write(bytes(m))
-            got = list(isolated16.check(original, build, [name], image=mut, tables=tables, workers=1))
-            verdict = got[0][1] if got else "not run"
-            (caught if verdict == "differs" else missed if verdict == "same" else unrun).append((name, what))
+
+    def broken():                                            # (a round each: one function, one bug)
+        for name in passing:
+            s, lo, hi = spans[name]
+            seg = segs[s]
+            code = raw[seg["file_off"]:seg["file_off"] + seg["length"]]
+            # (only where the gate's own inputs go: a bug in code no input reaches proves nothing)
+            live = [x for x in _mutants(code, lo, min(hi, len(code)), rnd) if x[0] in ran.get(name, ())]
+            for at, new, what in live[:1]:
+                m = bytearray(raw)
+                m[seg["file_off"] + at:seg["file_off"] + at + len(new)] = new
+                mut = os.path.join(work, os.path.basename(image))
+                open(mut, "wb").write(bytes(m))
+                yield [(name, what, mut)]
+
+    def judge(batch):
+        (name, _what, mut), = batch
+        got = list(isolated16.check(original, build, [name], image=mut, tables=tables, workers=1))
+        return {name: got[0][1] if got else "not run"}
+
+    planted = [x for batch in plant(broken(), judge, {"differs": "caught", "same": "missed"}.get) for x in batch]
+    caught = [(name, what) for name, what, _m, _v, got in planted if got == "caught"]
+    missed = [(name, what) for name, what, _m, _v, got in planted if got == "missed"]
+    unrun = [(name, what) for name, what, _m, _v, got in planted if got is None]
     shutil.rmtree(work, ignore_errors=True)
     total = len(caught) + len(missed)
     print("%s: %d planted bugs, caught %d, missed %d (%.0f%%), not run %d" % (

@@ -103,12 +103,13 @@ def test_a_module():
 
 
 def test_object_file_functions_and_the_early_compiler():
-    from codebreaker.invert import early_c_check, omf
+    from codebreaker.formats import omf
+    from codebreaker.invert import early_c_check
     try:
         obj = compilers.mc_compile("f(a, b)\nint a, b;\n{\n    return (a + b);\n}\n")
     except RuntimeError as e:
         raise Skip(str(e))
-    functions = omf.functions(obj)
+    functions = omf.function_bytes(obj)
     assert len(functions) == 1
     code, fixed = next(iter(functions.values()))
     assert all(0 <= i < len(code) for i in fixed)

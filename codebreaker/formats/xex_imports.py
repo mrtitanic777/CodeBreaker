@@ -31,16 +31,11 @@ def _names():
     return {lib: {int(k): v for k, v in names.items()} for lib, names in table.items() if not lib.startswith("_")}
 
 
-def _headers(data):
-    count = struct.unpack_from(">I", data, 20)[0]
-    return dict(struct.unpack_from(">II", data, 24 + i * 8) for i in range(count))
-
-
 def imports(path):
     from codebreaker.formats import powerpc_image, xex
     with open(path, "rb") as f:
         data = f.read()
-    o = _headers(data).get(IMPORT_HEADER)
+    o = {key: value for _at, key, value in xex.optional_headers(data)}.get(IMPORT_HEADER)
     if o is None:
         return []
     img = powerpc_image.read(xex.basefile(path))

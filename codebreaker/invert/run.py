@@ -54,7 +54,7 @@ TOOLS = {
     "early-c-forward": "codebreaker.invert.early_c_forward",  # the forward model against a quad file and its object
     "quads": "codebreaker.invert.quad_dump",                  # list a quad file
     "quad-align": "codebreaker.invert.quad_align",            # a quad file beside its object, per function
-    "omf": "codebreaker.invert.omf",                          # list an object file or library
+    "omf": "codebreaker.formats.omf",                         # list an object file or library
     "library-match": "codebreaker.invert.library_match",      # which functions of a program are a library's
     "msc6": "codebreaker.invert.msc6",
     "msc6-templates": "codebreaker.invert.msc6_templates",
