@@ -475,10 +475,11 @@ def test_wine_s_spec_types_an_import_and_its_calls_are_said_one_argument_to_a_pa
 def test_a_run_time_library_routine_is_named_outside_the_linker_s_bytes(monkeypatch):
     """A function that is a library routine byte for byte, outside the places the linker filled in
     (the routine's fix-ups, the original's relocations), is the library's -- __aFlmul in SUWIN."""
+    from codebreaker.symbols import libraries
     from codebreaker.verify.gate16 import runtime16
     routine = bytes([0x55, 0x8B, 0xEC, 0x9A, 0, 0, 0, 0, 0x5D, 0xCA, 0x08, 0x00])
     mask = bytes([0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0])
-    monkeypatch.setattr(runtime16, "_routines", [("MDLLCEW.LIB:__aFlmul", routine, mask)])
+    monkeypatch.setattr(runtime16, "_routines", [libraries.Function("MDLLCEW.LIB:__aFlmul", routine, mask, 0)])
     linked = bytes([0x55, 0x8B, 0xEC, 0x9A, 0x34, 0x12, 0xFF, 0xFF, 0x5D, 0xCA, 0x08, 0x00])
     other = bytes([0x55, 0x8B, 0xEC, 0x9A, 0x34, 0x12, 0xFF, 0xFF, 0x5D, 0xCA, 0x06, 0x00])
     got = runtime16.identify({"f": (linked, b"\0" * 12), "g": (other, b"\0" * 12)})

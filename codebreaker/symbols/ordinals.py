@@ -30,6 +30,7 @@ from codebreaker.base import corpus, settings
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 from codebreaker.symbols import api_arguments, demangle, prototypes
+from codebreaker.symbols.libraries import coff
 
 _TABLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ordinal_names.json")
 # Exports no definition file or import library names, named from documentation instead, for
@@ -200,25 +201,6 @@ def read_definition_file(path):
     return {module: names} if names else {}
 
 
-def _archive_members(data):
-    at, long_names = 8, b""
-    while at + 60 <= len(data):
-        head = data[at:at + 60]
-        try:                                                    # the size is the last number of the header
-            size = int(head[16:58].replace(b"\0", b" ").split()[-1])    # (the first 32-bit tools misplaced it)
-        except (ValueError, IndexError):
-            return
-        body = data[at + 60:at + 60 + size]
-        at += 60 + size + (size & 1)
-        label = head[:16].strip()
-        if label == b"//":
-            long_names = body
-        elif label not in (b"/", b""):
-            if label.startswith(b"/") and label[1:].isdigit():
-                label = long_names[int(label[1:]):].split(b"\0")[0].split(b"\n")[0]
-            yield label.rstrip(b"/").decode("latin1"), body
-
-
 def _coff_import(obj):
     """(dll stem, ordinal, symbol) when a library member imports one function by number."""
     if len(obj) >= 20 and obj[:4] == b"\0\0\xff\xff":           # the short form
@@ -266,7 +248,7 @@ def read_import_library(path):
         data = f.read()
     out = {}
     if data[:8] == b"!<arch>\n":
-        for _label, body in _archive_members(data):
+        for _label, body in coff.members(data):
             hit = _coff_import(body)
             if hit:
                 out.setdefault(hit[0], {}).setdefault(hit[1], hit[2])
