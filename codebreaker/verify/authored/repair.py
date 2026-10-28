@@ -130,8 +130,7 @@ def score(built, original, bits=0, target=None):
     near the top moves every later byte, and the function looks wholly wrong when it is nearly
     right. Lined up by instruction, it is one instruction away."""
     if bits == "ppc":
-        from codebreaker.verify.authored import match_powerpc
-        v, d, t, _f = match_powerpc.distance(built, original)
+        v, d, t, _f = match.distance(built, original, "powerpc")
     else:
         v, d, t, _f = match.distance(built, original)
     if not d or not bits:
@@ -343,7 +342,7 @@ def repair(compile, source, original, bits=0):
     """Search behaviour-preserving rewrites of one function's source for the bytes closest to the
     original's. `compile` is any period compiler: source text -> (bytes, mask) or None
     (build/period.py). `bits` (16 or 32, or "ppc" for PowerPC, whose masks are per word and per
-    bit -- verify/authored/match_powerpc.py) is the processor mode of the code: with it the search
+    bit -- verify/authored/match.py, ARCH["powerpc"]) is the processor mode of the code: with it the search
     lines the two up by instruction and reads the size of the locals; without it, it has the
     bytes alone to go by. -> {source, verdict, distance, total, knobs, tried} for the best
     found, or None when the starting source does not compile.
@@ -445,11 +444,10 @@ def best_flags(cl, env, header, texts, order, originals, address, work, sample=6
 
 
 def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
-    """run() for a PowerPC image, with the Xbox 360 compiler (verify/authored/match_powerpc.py)."""
+    """run() for a PowerPC image, with the Xbox 360 compiler (verify/authored/match.py)."""
     from codebreaker.base import corpus
     from codebreaker.build import functions
     from codebreaker.store import functions as F
-    from codebreaker.verify.authored import match_powerpc
     from codebreaker.verify.lanes import powerpc
     tools = functions.powerpc_tools()
     if not tools:
@@ -459,18 +457,18 @@ def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
     fs = fs or F.open()
     m = powerpc.prepare(module_path, os.path.join(work, "source"))
     address = {name: va for va, name in m.by_va.items()}
-    originals = match_powerpc.original_functions(m.image, sorted(address.values()))
+    originals = match.ARCH["powerpc"].originals(m.image, sorted(address.values()))
     fs.add_module(sha, os.path.basename(module_path).lower(), module_path, "powerpc")
     fs.add_functions(sha, [m.key[n] for n in address])
     if not flags:
         sample = [n for n in m.order if originals.get(address[n])][::10][:60]
-        best = (-1, match_powerpc.FLAG_SETS[0])
-        for f in match_powerpc.FLAG_SETS:
+        best = (-1, match.POWERPC_FLAG_SETS[0])
+        for f in match.POWERPC_FLAG_SETS:
             got = 0
             for n in sample:
-                b = match_powerpc.compile_function(cl, m.header, m.texts[n], n, os.path.join(work, "flags"), f)
+                b = match.compile_powerpc(cl, m.header, m.texts[n], n, os.path.join(work, "flags"), f)
                 if b:
-                    v = match_powerpc.distance(b, originals[address[n]])[0]
+                    v = match.distance(b, originals[address[n]], "powerpc")[0]
                     got += 3 if v == "identical" else 1 if v == "same size" else 0
             best = max(best, (got, f))
         flags = best[1]
@@ -483,7 +481,7 @@ def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
 
     def one(name):
         own = os.path.join(work, "t%d" % threading.get_ident())
-        return repair(lambda text: match_powerpc.compile_function(cl, m.header, text, name, own, flags),
+        return repair(lambda text: match.compile_powerpc(cl, m.header, text, name, own, flags),
                       m.texts[name], originals[address[name]], bits="ppc")
     with ThreadPoolExecutor(max_workers=parallel.workers()) as ex:
         results = list(ex.map(one, todo))

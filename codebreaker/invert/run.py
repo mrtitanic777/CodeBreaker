@@ -55,7 +55,6 @@ TOOLS = {
     "quads": "codebreaker.invert.quad_dump",                  # list a quad file
     "quad-align": "codebreaker.invert.quad_align",            # a quad file beside its object, per function
     "omf": "codebreaker.invert.omf",                          # list an object file or library
-    "library-match": "codebreaker.invert.library_match",      # which functions of a program are a library's
     "msc6": "codebreaker.invert.msc6",
     "msc6-templates": "codebreaker.invert.msc6_templates",
     "msc6-function": "codebreaker.invert.msc6_function",
@@ -147,12 +146,12 @@ def module(module_path, limit=0, flags=None, log=None):
     from codebreaker.build import msc6 as compiler
     from codebreaker.formats.ne import NEFile
     from codebreaker.invert import grammars, msc6 as model, segment_thunk, whole_function
-    from codebreaker.verify.authored import match, match16
+    from codebreaker.verify.authored import match
     from codebreaker.verify.lanes import win16
     name = os.path.basename(module_path).lower()
     m = win16.prepare(module_path, settings.state("invert", name, "source"))
     where = {va: m.where[va] for va in m.by_va}
-    originals = match16.original_functions(module_path, where, win16._spans(NEFile(module_path), where))
+    originals = match.ARCH["x86-16"].originals(module_path, where, win16._spans(NEFile(module_path), where))
     out, texts = {}, {}
     called = _segment_signatures(module_path)
     for va, fn in sorted(m.by_va.items()):

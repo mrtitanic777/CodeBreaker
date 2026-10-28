@@ -7,63 +7,15 @@ reconstructed function is compiled by Microsoft C 6.0a (build/msc6.py: the real 
 emulator, a whole module's functions in one session) and its bytes are compared with the
 original function's, outside the places a loader or linker fills in: in the original, every
 word a relocation record of its segment names and the distance of every near call and jump to
-another function; in the compiled function, every place the object file has a fix-up for.
+another function; in the compiled function, every place the object file has a fix-up for. (What
+is 16-bit about that is match.py's ARCH["x86-16"]; this is the driver.)
 
 Without --flags the switches are found first: the memory model and options under which most of
 a sample of the functions come out the original's length say how the module was built.
 """
 import os
-import struct
 
 from codebreaker.verify.authored import match
-
-_SIZE = {0: 1, 2: 2, 3: 4, 5: 2, 11: 6, 13: 4}              # bytes a relocation of each source type covers
-
-
-def original_functions(module_path, where, spans):
-    """{address: (bytes, mask)} for a 16-bit module's functions. `where` {address: (segment,
-    offset)}, `spans` {address: ((start, end), instructions)} as verify/lanes/win16.py makes them."""
-    import capstone
-    from codebreaker.formats.ne import NEFile
-    nef = NEFile(module_path)
-    segs = {s["idx"]: s for s in nef.segments()}
-    masks = {}
-    for idx, s in segs.items():
-        code = nef.data[s["file_off"]:s["file_off"] + s["length"]]
-        mask = bytearray(len(code))
-        for r in nef.relocations(s):
-            n = _SIZE.get(r["src"], 2)
-            at, seen = r["offset"], 0
-            while 0 <= at < len(code) and seen < 0x4000:     # the places are chained through the code
-                nxt = struct.unpack_from("<H", code, at)[0] if at + 2 <= len(code) else 0xFFFF
-                mask[at:at + n] = b"\1" * min(n, len(code) - at)
-                if r["additive"] or nxt == 0xFFFF:
-                    break
-                at, seen = nxt, seen + 1
-        masks[idx] = (bytes(code), mask)
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    out = {}
-    for va, (seg, _off) in where.items():
-        if va not in spans or seg not in masks:
-            continue
-        (start, end), _n = spans[va]
-        code, mask = masks[seg]
-        piece, m = code[start:end], bytearray(mask[start:end])
-        for addr, n, _mn, _ops in md.disasm_lite(piece, start):
-            first = piece[addr - start]
-            if first in (0xE8, 0xE9) and n == 3:             # a near call or jump: its distance
-                target = (addr + 3 + struct.unpack_from("<h", piece, addr - start + 1)[0]) & 0xFFFF
-                if not start <= target < end:
-                    m[addr - start + 1:addr - start + 3] = b"\1\1"
-        out[va] = match._trim(piece, bytes(m))
-    return out
-
-
-# Microsoft C 8.00c (Visual C++ 1.52c) built Setup's SUWIN, without /Gw, with switches that differ
-# from one source file to the next: its segment 1 at /Od, its segment 3 at /G2 /Ox.
-MSC8_FLAG_SETS = ("/AM /Gs /Od", "/AM /G2s /Ox", "/AM /G2s /Oxs", "/AM /G2s /Os", "/AM /Gs /Ox", "/AM /Gs /Oxs",
-                  "/AM /Gsw /Od", "/AM /G2sw /Ox", "/AM /G3s /Ox", "/AM /G3s /Oxs")   # (/G3: push dword ptr)   # (/Oxs: SUWIN's sub_2_5CFC, a 2-byte cleanup as pop bx)
-
 
 def source_files(names, where, originals, address):
     """[[function, ...], ...] -- the original's source files, as far as its calls tell: a far call
@@ -133,7 +85,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     name = os.path.basename(module_path).lower()
     m = win16.prepare(module_path, settings.state("match16", name, "source"))
     spans = win16._spans(NEFile(module_path), {va: m.where[va] for va in m.by_va})
-    originals = original_functions(module_path, {va: m.where[va] for va in m.by_va}, spans)
+    originals = match.ARCH["x86-16"].originals(module_path, {va: m.where[va] for va in m.by_va}, spans)
     address = {fn: va for va, fn in m.by_va.items()}
     todo = [fn for fn in m.order if address.get(fn) in originals][:limit or None]
     source_header = msc6.cdecl_imports(m.header)       # (a C function imported by number: not pascal)
@@ -219,7 +171,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
         every = [fn for v in sample.values() for fn in v]
         scores = {}
         for cc in compilers:
-            for fl in (msc6.FLAG_SETS if cc == "msc6" else MSC8_FLAG_SETS):
+            for fl in (msc6.FLAG_SETS if cc == "msc6" else match.ARCH["x86-16"].flag_sets):
                 r = judged(cc, fl, every, tuple(v for v in ("plain", "fold", "frame", "fold+frame") if v in variants))
                 for s in segs:
                     scores[(s, cc, fl)] = _score({fn: r[fn] for fn in sample[s]})
