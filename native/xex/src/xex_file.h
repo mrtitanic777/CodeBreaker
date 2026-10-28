@@ -42,10 +42,23 @@ struct StaticLibrary {
     Version version;
 };
 
+// One import block. A library can have several (dash.xex: xam.xex, xam.xex, xboxkrnl.exe), so blocks are listed in
+// file order and the same name can repeat.
 struct ImportLibrary {
-    std::string name;
+    std::string name;      // empty when the block's name index is out of range
     Version version;
     Version version_min;
+    // The image addresses the loader fills: each holds (type << 24 | ordinal) in the basefile, type 0 an import slot,
+    // type != 0 a function's code thunk.
+    std::vector<uint32_t> records;
+};
+
+// The TLS optional header (kHdrTlsInfo). Named apart from the runtime's xex::TlsInfo (native/x360/runtime/src/xex.h).
+struct TlsHeader {
+    uint32_t slot_count       = 0;
+    uint32_t raw_data_address = 0;
+    uint32_t data_size        = 0;
+    uint32_t raw_data_size    = 0;
 };
 
 struct Resource {
@@ -90,6 +103,7 @@ public:
     std::optional<uint32_t> timestamp() const { return timestamp_; }
     std::optional<std::vector<uint8_t>> lan_key() const { return lan_key_; }
     std::optional<ExecutionId> execution_id() const { return exec_id_; }
+    std::optional<TlsHeader> tls_info() const { return tls_; }
     std::optional<uint16_t> compression_type() const { return compression_; }
     std::optional<uint16_t> encryption_type()  const { return encryption_; }
     uint32_t comp_window_size()      const { return comp_window_size_; }
@@ -134,6 +148,7 @@ private:
     std::optional<uint32_t> timestamp_;
     std::optional<std::vector<uint8_t>> lan_key_;
     std::optional<ExecutionId> exec_id_;
+    std::optional<TlsHeader> tls_;
     std::optional<uint16_t> compression_;
     std::optional<uint16_t> encryption_;
     uint32_t comp_window_size_ = 0;

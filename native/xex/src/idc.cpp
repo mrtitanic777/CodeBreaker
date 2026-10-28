@@ -25,9 +25,6 @@ uint32_t be32(const std::vector<uint8_t>& d, size_t o) {
     return (uint32_t(d[o]) << 24) | (uint32_t(d[o+1]) << 16) |
            (uint32_t(d[o+2]) << 8) | d[o+3];
 }
-uint16_t be16(const std::vector<uint8_t>& d, size_t o) {
-    return uint16_t((uint32_t(d[o]) << 8) | d[o+1]);
-}
 
 std::string fmt(const char* f, ...) {
     char buf[512];
@@ -117,50 +114,38 @@ std::string make_idc(const XexFile& x) {
     // rec[i] is the IAT slot (image word 0x0000<ord>) and rec[i+1] the stub
     // (0x0100<ord>, same ordinal). A lone slot is a data import. Records are
     // chunked 256 at a time -- note that is 256 RECORDS, not 256 emitted lines.
-    const OptionalHeader* imp = x.find_header(kHdrImportLibraries);
     std::vector<std::string> chunk_names;
-    if (imp) {
-        const std::vector<uint8_t>& raw = x.raw();
-        size_t it = imp->value;
-        uint32_t str_size = be32(raw, it + 4);
-        uint32_t nlibs    = be32(raw, it + 8);
-        size_t p = it + 12 + str_size;
-        for (uint32_t L = 0; L < nlibs && p + 0x28 <= raw.size(); ++L) {
-            uint32_t bsz    = be32(raw, p);
-            uint16_t ncount = be16(raw, p + 0x26);
-            const std::string& lib = L < x.import_libraries().size()
-                                   ? x.import_libraries()[L].name : std::string();
-            std::vector<uint32_t> recs(ncount);
-            for (uint16_t i = 0; i < ncount; ++i) recs[i] = be32(raw, p + 0x28 + size_t(i) * 4);
+    for (uint32_t L = 0; L < x.import_libraries().size(); ++L) {
+        const std::string& lib = x.import_libraries()[L].name;
+        const std::vector<uint32_t>& recs = x.import_libraries()[L].records;
+        const uint32_t ncount = uint32_t(recs.size());
 
-            auto word_at = [&](uint32_t va) -> uint32_t {
-                size_t o = size_t(va - base);
-                return (o + 4 <= img.size()) ? be32(img, o) : 0u;
-            };
-            for (uint32_t c0 = 0; c0 < ncount; c0 += 256) {
-                uint32_t c1 = std::min<uint32_t>(c0 + 256, ncount);
-                std::string name = fmt("setupImports_%u_%s_%u", L,
-                                       mangle(lib).c_str(), c0 / 256);
-                chunk_names.push_back(name);
-                body += "static " + name + "()\n{\n";
-                for (uint32_t i = c0; i < c1;) {
-                    uint32_t v = word_at(recs[i]);
-                    uint32_t ord = v & 0xFFFF;
-                    bool is_func = (i + 1 < c1) && ((word_at(recs[i + 1]) >> 24) == 1) &&
-                                   ((word_at(recs[i + 1]) & 0xFFFF) == ord);
-                    if (is_func) {
-                        body += fmt("    SetupImportFunc(0x%08X, 0x%08X, 0x%03X, \"%s\");\n",
-                                    recs[i], recs[i + 1], ord, lib.c_str());
-                        i += 2;
-                    } else {
-                        body += fmt("    SetupImportData(0x%08X,             0x%03X, \"%s\");\n",
-                                    recs[i], ord, lib.c_str());
-                        i += 1;
-                    }
+        auto word_at = [&](uint32_t va) -> uint32_t {
+            size_t o = size_t(va - base);
+            return (o + 4 <= img.size()) ? be32(img, o) : 0u;
+        };
+        for (uint32_t c0 = 0; c0 < ncount; c0 += 256) {
+            uint32_t c1 = std::min<uint32_t>(c0 + 256, ncount);
+            std::string name = fmt("setupImports_%u_%s_%u", L,
+                                   mangle(lib).c_str(), c0 / 256);
+            chunk_names.push_back(name);
+            body += "static " + name + "()\n{\n";
+            for (uint32_t i = c0; i < c1;) {
+                uint32_t v = word_at(recs[i]);
+                uint32_t ord = v & 0xFFFF;
+                bool is_func = (i + 1 < c1) && ((word_at(recs[i + 1]) >> 24) == 1) &&
+                               ((word_at(recs[i + 1]) & 0xFFFF) == ord);
+                if (is_func) {
+                    body += fmt("    SetupImportFunc(0x%08X, 0x%08X, 0x%03X, \"%s\");\n",
+                                recs[i], recs[i + 1], ord, lib.c_str());
+                    i += 2;
+                } else {
+                    body += fmt("    SetupImportData(0x%08X,             0x%03X, \"%s\");\n",
+                                recs[i], ord, lib.c_str());
+                    i += 1;
                 }
-                body += "}\n\n";
             }
-            p += bsz;
+            body += "}\n\n";
         }
     }
     body += "static SetupImports()\n{\n";

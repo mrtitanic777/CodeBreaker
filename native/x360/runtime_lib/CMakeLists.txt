@@ -28,10 +28,13 @@ include("${X360_ROOT}/system/stfs/stfs.cmake")
 include("${X360_ROOT}/system/guide/guide.cmake")
 include("${X360_ROOT}/system/transition/transition.cmake")
 include("${X360_ROOT}/system/pads/pads.cmake")
+# the XEX reader, shared with the xex engine (native/xex): xex.cpp loads modules through it
+include("${X360_ROOT}/../xex/reader.cmake")
 add_library(x360_runtime STATIC ${runtime_sources} ${X360_XUI_SOURCES} ${X360_LIVE_SOURCES} ${X360_STFS_SOURCES}
-    ${X360_GUIDE_SOURCES} ${X360_TRANSITION_SOURCES} ${X360_PADS_SOURCES})
+    ${X360_GUIDE_SOURCES} ${X360_TRANSITION_SOURCES} ${X360_PADS_SOURCES} ${XEX_READER_SOURCES})
 target_include_directories(x360_runtime PRIVATE "${X360_RUNTIME}/src" "${X360_PPC_SHARED}" "${X360_SETTINGS_DIR}"
     "${X360_XENON}/XenonUtils" "${X360_XENON}/thirdparty/simde" "${X360_XUI_INCLUDE_DIR}" ${X360_LIVE_INCLUDE_DIRS}
-    "${X360_STFS_INCLUDE_DIR}" "${X360_GUIDE_INCLUDE_DIR}" "${X360_TRANSITION_INCLUDE_DIR}" "${X360_PADS_INCLUDE_DIR}")
+    "${X360_STFS_INCLUDE_DIR}" "${X360_GUIDE_INCLUDE_DIR}" "${X360_TRANSITION_INCLUDE_DIR}" "${X360_PADS_INCLUDE_DIR}"
+    "${XEX_READER_INCLUDE_DIR}")
 target_compile_options(x360_runtime PRIVATE -fno-strict-aliasing -march=${X360_MARCH} /fp:strict /Z7)
 target_compile_definitions(x360_runtime PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
