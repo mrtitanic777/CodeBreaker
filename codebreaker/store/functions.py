@@ -102,6 +102,54 @@ def classify(verdict, limits=""):
         verdict, "no-source"), []
 
 
+def overview(path=None):
+    """The store at a glance, quickly (seconds, where the coverage ledger takes many minutes): per
+    module {sha, name, kind, path, functions, identified, latest: {class: count}}, by each function's
+    LATEST verdict under any judge -- what it last came to, not what the judge in force says (a
+    change to the judge leaves every module unjudged until it is measured again)."""
+    import sqlite3
+    db = sqlite3.connect("file:%s?mode=ro" % (path or default_path()), uri=True, timeout=30.0)
+    try:
+        mods = {sha: {"sha": sha, "name": name, "kind": kind, "path": p, "functions": 0, "identified": 0,
+                      "latest": dict.fromkeys(ORDER, 0)}
+                for sha, name, p, kind in db.execute("SELECT sha, name, path, kind FROM module")}
+        for sha, n in db.execute("SELECT module, COUNT(*) FROM function GROUP BY module"):
+            if sha in mods:
+                mods[sha]["functions"] = n
+        for sha, n in db.execute("SELECT module, COUNT(*) FROM identified GROUP BY module"):
+            if sha in mods:
+                mods[sha]["identified"] = n
+        for sha, verdict, limits, n in db.execute("""
+                WITH last AS (
+                  SELECT f.module AS module, v.verdict AS verdict, v.limits AS limits,
+                         ROW_NUMBER() OVER (PARTITION BY f.id ORDER BY v.ts DESC) AS k
+                  FROM function f JOIN candidate c ON c.function = f.id JOIN verdict v ON v.candidate = c.id)
+                SELECT module, verdict, limits, COUNT(*) FROM last WHERE k = 1 GROUP BY module, verdict, limits"""):
+            if sha in mods:
+                cls = classify(verdict, limits)[0]
+                mods[sha]["latest"][cls] += n
+        for m in mods.values():                             # (functions with no verdict at all)
+            m["latest"]["no-source"] += max(0, m["functions"] - sum(m["latest"].values()))
+        return sorted(mods.values(), key=lambda m: m["name"] or "")
+    finally:
+        db.close()
+
+
+def latest(module_sha, path=None):
+    """{addr: class} by each function's latest verdict under any judge (see overview)."""
+    import sqlite3
+    db = sqlite3.connect("file:%s?mode=ro" % (path or default_path()), uri=True, timeout=30.0)
+    try:
+        return {addr: classify(verdict, limits)[0] for addr, verdict, limits in db.execute("""
+            SELECT addr, verdict, limits FROM (
+              SELECT f.addr AS addr, v.verdict AS verdict, v.limits AS limits,
+                     ROW_NUMBER() OVER (PARTITION BY f.id ORDER BY v.ts DESC) AS k
+              FROM function f JOIN candidate c ON c.function = f.id JOIN verdict v ON v.candidate = c.id
+              WHERE f.module = ?) WHERE k = 1""", (module_sha,))}
+    finally:
+        db.close()
+
+
 def default_path():
     from codebreaker.base import settings
     return os.environ.get("CB_FUNCTIONS_DB") or settings.state("functions.sqlite")

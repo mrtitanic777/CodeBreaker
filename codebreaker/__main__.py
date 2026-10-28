@@ -1,4 +1,8 @@
 """python -m codebreaker <command> [arguments]
+python -m codebreaker               with no command, in a terminal: the terminal interface (ui)
+
+    ui [module]                     CodeBreaker in the command prompt: the corpus, a module's functions,
+                                    their C, assembly, calls and verdicts, jobs followed live
 
     module <name> [--no-verify]     reconstruct one module: decompile, build, judge, write its source
     scoreboard                      rewrite the scoreboard from stored results
@@ -84,6 +88,7 @@
 Every command is listed here, by name. Nothing is discovered by scanning folders.
 """
 import importlib
+import importlib.util
 import sys
 
 COMMANDS = {
@@ -133,6 +138,7 @@ COMMANDS = {
     "reach": ("codebreaker.coverage.reach", []),
     "serve": ("codebreaker.ui.server", []),
     "mcp": ("codebreaker.ui.mcp_server", []),
+    "ui": ("codebreaker.ui.terminal", []),
     "progress": ("codebreaker.ui.progress", []),
     "app": ("codebreaker.ui.app", []),
     "workbench": ("codebreaker.ui.workbench", []),
@@ -159,6 +165,8 @@ COMMANDS = {
 def main(argv):
     from codebreaker.base import corpus
     argv = corpus.take_option(argv)                          # --corpus NAME, for any command
+    if not argv and sys.stdin.isatty() and sys.stdout.isatty() and importlib.util.find_spec("textual"):
+        argv = ["ui"]                                        # (no command, in a terminal: the interface)
     if not argv or argv[0] in ("-h", "--help", "help") or argv[0] not in COMMANDS:
         print(__doc__)
         return 0 if argv and argv[0] in ("-h", "--help", "help") else 2

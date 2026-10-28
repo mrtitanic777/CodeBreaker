@@ -124,11 +124,22 @@ python -m codebreaker build16 tests/fixtures/lzexpand          a 16-bit DLL with
 python -m codebreaker flat-thunk lz32.dll --build DIR          a thunk DLL with the period tools
 python -m codebreaker module path/to/java/src  a Java program as C++03, every class compiled and labelled
 python -m codebreaker java convert SRC OUT --platform xbox360 --project   the transpiler's own tools
-python -m codebreaker                          every command
+python -m codebreaker                          in a terminal: the interface below (piped: every command)
+python -m codebreaker help                     every command
 ```
 
 A run of a module that was run before only redoes what changed: a verdict holds for as long as
 the function's source, and the source of everything it calls, is the same.
+
+### In the command prompt
+
+`python -m codebreaker` with no command, in a terminal (or `python -m codebreaker ui [module]`),
+is CodeBreaker as a full-screen interface in the same window (codebreaker/ui/terminal.py, Textual):
+every module the store holds with its verdicts as a coloured bar; a module's functions beside
+their C, assembly, callers and callees and the judge's verdict; `m` measures a module, `d`
+decompiles a function now, `n` names it, `i` shows what the file is, `j` follows jobs live,
+`ctrl+p` opens any module or command, `?` lists every key. Where a change to the judge has left
+functions unjudged, each shows the last verdict it had, marked as an earlier judge's.
 
 ### From an assistant (MCP)
 

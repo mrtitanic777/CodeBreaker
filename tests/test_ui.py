@@ -280,11 +280,47 @@ def test_workbench_and_live_window():
             workbench.main(["--forms", "--selftest"])
 
 
+def test_terminal_interface():
+    """The terminal interface (ui/terminal.py): its verdict bar and addresses, the store's quick
+    overview it opens on, and every screen shown headless -- home, a module, its tabs, help, jobs."""
+    import asyncio
+    import importlib.util
+    if not importlib.util.find_spec("textual"):
+        raise Skip("textual is not installed")
+    from codebreaker.ui import terminal as T
+    b = T.bar({"verified": 3, "weak": 1}, 20)
+    assert len(b.plain) == 20 and b.plain == "█" * 20
+    assert len(T.bar({}, 12).plain) == 12
+    assert T.flat_address("4:015c") == "1018015c" and T.flat_address("401000") == "401000"
+    over = F.overview()                                     # (the test's own store)
+    assert all({"name", "functions", "latest"} <= set(m) for m in over)
+    path = _module("lzexpand.dll")
+
+    async def tour():
+        app = T.CodeBreaker(path)
+        async with app.run_test(size=(160, 44)) as pilot:
+            await pilot.pause(3)
+            assert isinstance(app.screen, T.Module), app.screen
+            for tab in ("tab-asm", "tab-calls", "tab-verdict", "tab-source"):
+                app.screen.query_one(T.TabbedContent).active = tab
+                await pilot.pause(0.3)
+            await pilot.press("f", "question_mark")
+            await pilot.pause(0.5)
+            assert isinstance(app.screen, T.Help)
+            await pilot.press("escape", "j")
+            await pilot.pause(0.5)
+            assert isinstance(app.screen, T.Jobs)
+            await pilot.press("escape", "escape")
+            await pilot.pause(0.5)
+            assert isinstance(app.screen, T.Home)
+    asyncio.run(tour())
+
+
 def main():
     for fn in (test_describe_32bit, test_describe_16bit_driver_and_dos, test_describe_never_raises,
                test_strings_bytes_and_resources, test_info_command, test_ledger_agrees_with_the_store,
                test_ledger_reads_without_writing, test_progress_reading, test_console_serves_everything,
-               test_workbench_and_live_window):
+               test_workbench_and_live_window, test_terminal_interface):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
