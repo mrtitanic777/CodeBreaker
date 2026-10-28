@@ -22,7 +22,13 @@ def _src_type(D, oi, off, ends, code):
     0x07 (a 32-bit offset). A decoded branch ending at this field is authoritative; otherwise, when
     NO decoded instruction ends at off+4 (the field is not a clean instruction tail -- an undecoded
     or mis-decoded branch, including code past the object's declared vsize), trust the raw opcode
-    byte. `ends` is the set of instruction-end offsets; `code` the object's full (untruncated) bytes."""
+    byte. `ends` is the set of instruction-end offsets; `code` the object's full (untruncated) bytes.
+
+    A recovered fix-up that says its own source type (D.fx's internal references do) keeps it: the
+    shape of the code cannot always tell -- VMM has `cmp eax, imm32` fields relocated self-relative."""
+    told = (D.fx.get((oi, off)) or {}).get("srctype")
+    if told is not None:
+        return told
     n = len(code)
     b1 = code[off - 1] if 0 <= off - 1 < n else None
     b2 = code[off - 2] if 0 <= off - 2 < n else None
