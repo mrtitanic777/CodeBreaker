@@ -182,8 +182,8 @@ def build(spec, cc, tpl, out, srcs, exe, objdir):
         return run(spec, args(tpl, cc=cc, inc=".", out=exe, srcs=srcs), out, cc)
     import hashlib
     import threading
-    from concurrent.futures import ThreadPoolExecutor
     from codebreaker.base import parallel
+    from codebreaker.jobs import pool
     cargv = args([a for i, a in enumerate(tpl) if i not in (at - 1, at) and a != "{srcs}"], cc=cc, inc=".", out="")
     objdir = os.path.abspath(objdir) + ".%d" % os.getpid()   # (its own: two ports of one folder at once apart)
     os.makedirs(objdir, exist_ok=True)
@@ -240,8 +240,7 @@ def build(spec, cc, tpl, out, srcs, exe, objdir):
                 pass
         return p.returncode, p.stdout + p.stderr
 
-    with ThreadPoolExecutor(max_workers=max(1, min(4, parallel.workers(), len(cs) or 1))) as ex:
-        done = list(ex.map(one, cs))
+    done = pool.threads(one, cs, jobs=min(4, parallel.workers(), len(cs) or 1))
     logs = "".join(t for r, t in done)
     if any(r for r, t in done):
         shutil.rmtree(objdir, ignore_errors=True)
@@ -786,8 +785,8 @@ def main(argv):
         cl = find(compilers["clang"]["find"])
         if cl:
             checkers.append((compilers["clang"], cl))
-    from concurrent.futures import ThreadPoolExecutor
     from codebreaker.base import parallel
+    from codebreaker.jobs import pool
     for k_, (spec_, cc_) in enumerate(checkers):
         start = rounds
         seen_text, seen_diags, t_round, same, last_said = {}, {}, time.time(), 0, None                  # (what each file was, and what the compiler said of it)
@@ -804,9 +803,8 @@ def main(argv):
                 if got is not None:
                     seen_diags[n] = got
                     todo.remove(n)
-            with ThreadPoolExecutor(max(1, parallel.workers())) as ex:
-                done = dict(zip(todo, ex.map(lambda n: run(spec_, args(spec_["check"], cc=cc_, inc=".", src=n), out,
-                                                           cc_), todo)))
+            done = dict(zip(todo, pool.threads(lambda n: run(spec_, args(spec_["check"], cc=cc_, inc=".", src=n), out,
+                                                             cc_), todo, jobs=parallel.workers())))
             for n in cfiles:                                # (in the files' order, as one compiler would say them)
                 if n in done:
                     seen_diags[n] = diagnostics(spec_, done[n].stdout + done[n].stderr, out)

@@ -965,8 +965,8 @@ def recompile_image(path, limit=None, jobs=None, skip=None, extra=None):
     `skip`: addresses not to recompile -- the import stubs, whose bytes the loader replaces;
     the host provides them, and they stay declared and mapped so calls to them resolve.
     `extra`: addresses known to be called indirectly, found by a run, seeded into discovery."""
-    from concurrent.futures import ThreadPoolExecutor
     from codebreaker.base import parallel
+    from codebreaker.jobs import pool
     from codebreaker.recompile import discover
     skip = set(skip or ())
     funcs, _sources, image = discover.discover(path, extra=extra)
@@ -1016,19 +1016,18 @@ def recompile_image(path, limit=None, jobs=None, skip=None, extra=None):
     # one entry per register count) -- until nothing called is missing.
     results, pending, rounds = {}, list(emit_addrs), 0
     lo, hi = image.code
-    with ThreadPoolExecutor(max_workers=jobs or parallel.workers()) as ex:
-        while pending and rounds < 8:
-            for va, r in zip(pending, ex.map(one, pending)):   # (each thread decodes with its own Capstone)
-                results[va] = r
-            called = set().union(*(r[1] for r in results.values() if r))
-            missing = sorted(a for a in called if a not in results and a not in skip and lo <= a < hi
-                             and a not in image.imports) if not limit else []
-            if missing:
-                bounds = sorted(set(bounds) | set(results) | set(missing))
-                for a in missing:
-                    sizes[a] = size_of(a, next_start(a))
-                chosen = sorted(set(chosen) | set(missing))
-            pending, rounds = missing, rounds + 1
+    while pending and rounds < 8:
+        for va, r in zip(pending, pool.threads(one, pending, jobs=jobs or parallel.workers())):
+            results[va] = r                                    # (each thread decodes with its own Capstone)
+        called = set().union(*(r[1] for r in results.values() if r))
+        missing = sorted(a for a in called if a not in results and a not in skip and lo <= a < hi
+                         and a not in image.imports) if not limit else []
+        if missing:
+            bounds = sorted(set(bounds) | set(results) | set(missing))
+            for a in missing:
+                sizes[a] = size_of(a, next_start(a))
+            chosen = sorted(set(chosen) | set(missing))
+        pending, rounds = missing, rounds + 1
     all_called, parts = set(), []
     agg = {"funcs": 0, "total": 0, "translated": 0, "unimpl": 0, "discovered": len(funcs),
            "tail entries": len(chosen) - len(addrs[:limit] if limit else addrs),

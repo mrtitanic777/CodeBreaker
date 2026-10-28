@@ -62,6 +62,7 @@ from codebreaker.formats import detect, omf
 from codebreaker.formats import resources as resource_reader
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
+from codebreaker.jobs import pool
 
 _UNDEFINED = re.compile(r"(\S+) is an undefined reference")
 _BY_ADDRESS = re.compile(r"\bfunc_0x([0-9a-f]{8})\b")
@@ -504,9 +505,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
                 f.assembled = assemble("asm/" + stems[run[0]].replace("/", "_"), f)
             return run, f
 
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-            made = list(pool.map(one, [r for r in runs if r not in done]))
+        made = pool.threads(one, [r for r in runs if r not in done], jobs=os.cpu_count() or 4)
         for run, f in made:
             seg = where[run[0]][0]
             for place in f.raw_far_entries:                # (from its bytes: a far call into a middle)
@@ -1267,11 +1266,9 @@ def _build16(b, path, m, folder):
     # the original took from a register on entry or from a buffer it had filled through a
     # pointer, which the C reads as whatever happens to be there -- right or wrong by where the
     # build happens to put things
-    from concurrent.futures import ThreadPoolExecutor
     left = [n for n in m.order if n not in forced and n in stems and n in texts]
-    with ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-        unset = dict(zip(left, pool.map(lambda n: functions.never_set(
-            wcc, cflags, env, os.path.join(folder, "s%02d" % segment_of[n]), n, texts[n]), left)))
+    unset = dict(zip(left, pool.threads(lambda n: functions.never_set(
+        wcc, cflags, env, os.path.join(folder, "s%02d" % segment_of[n]), n, texts[n]), left, jobs=os.cpu_count() or 4)))
     for n, names in unset.items():
         if names:
             if n in b.origins:

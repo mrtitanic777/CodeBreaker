@@ -278,16 +278,13 @@ def _assemble_uncached(items, timeout=None, masmroot=None):
                     return {"work": "", "aborted": True}
                 merged.update(r.get("results", {}))
             return {"work": "", "results": merged}
-        import concurrent.futures as _cf
+        from codebreaker.jobs import pool
         aborted = False
-        with _cf.ThreadPoolExecutor(max_workers=nthreads) as ex:
-            futs = [ex.submit(_assemble_uncached, ch, timeout, masm) for ch in chunks]
-            for fu in _cf.as_completed(futs):
-                r = fu.result()
-                if r.get("aborted"):
-                    aborted = True
-                else:
-                    merged.update(r.get("results", {}))
+        for r in pool.threads(lambda ch: _assemble_uncached(ch, timeout, masm), chunks, jobs=nthreads):
+            if r.get("aborted"):
+                aborted = True
+            else:
+                merged.update(r.get("results", {}))
         return {"work": "", "aborted": True} if aborted else {"work": "", "results": merged}
 
     if WARM_POOL:

@@ -65,9 +65,8 @@ def _is_le_vxd(path):
 def run(srcdir, out_json, redo=None, workers=4):
     """Assemble-and-compare every module of the corpus, `workers` in parallel (each an independent
     DOSBox), checkpointing to out_json after every module so the run resumes where it stopped."""
-    import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     from codebreaker.formats import le
+    from codebreaker.jobs import pool
     redo = set(redo or [])
     results = json.load(open(out_json)) if os.path.exists(out_json) else {}
     cand = []
@@ -88,24 +87,18 @@ def run(srcdir, out_json, redo=None, workers=4):
             if key in results and key not in redo and "error" not in results[key]:
                 continue                                    # resume: already recorded
             todo.append((key, name, v))
-    lock = threading.Lock()
     t_all = time.time()
     print("== %d modules to process, %d workers ==" % (len(todo), workers), flush=True)
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(_one_module, name, v): (key, name) for key, name, v in todo}
-        for fut in as_completed(futs):
-            key, name = futs[fut]
-            r = fut.result()
-            with lock:
-                results[key] = r
-                _save(results, out_json)
-            if "error" in r:
-                print("  %-14s ERROR %s" % (name, r["error"][:60]), flush=True)
-            else:
-                print("  %-14s %2d/%2d byte-exact  sym=%-6d raw=%-5d fb=%d  %-10s [%ds]" % (
-                    name, r["n_exact"], r["n_obj"], r["symbolic"], r["forced_raw"],
-                    r["raw_fallback_objs"], "BYTE-EXACT" if r["byte_exact"] else "PARTIAL",
-                    r["seconds"]), flush=True)
+    for (key, name, _v), r in pool.as_done(lambda t: _one_module(t[1], t[2]), todo, jobs=workers):
+        results[key] = r
+        _save(results, out_json)
+        if "error" in r:
+            print("  %-14s ERROR %s" % (name, r["error"][:60]), flush=True)
+        else:
+            print("  %-14s %2d/%2d byte-exact  sym=%-6d raw=%-5d fb=%d  %-10s [%ds]" % (
+                name, r["n_exact"], r["n_obj"], r["symbolic"], r["forced_raw"],
+                r["raw_fallback_objs"], "BYTE-EXACT" if r["byte_exact"] else "PARTIAL",
+                r["seconds"]), flush=True)
     _summary(results, time.time() - t_all)
     return results
 

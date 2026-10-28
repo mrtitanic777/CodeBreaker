@@ -6,7 +6,7 @@ The workers run at below-normal priority, as many as settings.json "workers" (CB
 begins a function while the system has less than "min_free_gb" free (CB_MIN_FREE_GB, 6 GB unless set).
 
 Every function each project has a source for is drafted and proven as `bench` does, the largest first so the
-pool stays busy to the end. Each worker has a stage of its own (CB_STAGE_TAG); the compile cache is shared.
+pool stays busy to the end (jobs/pool.py runs them: a worker that dies is the function it was on, "failed"). Each worker has a stage of its own (CB_STAGE_TAG); the compile cache is shared.
 
 --since PREFIX re-benches only what a run before did not get identical (PREFIX_NAME.txt, one line a function),
 carrying its identical ones over as they were; --keep FILE (lines `NAME ADDR` or a regression list) benches
@@ -32,20 +32,23 @@ def _init(tags):
         os.environ["CB_STAGE_TAG"] = "w%d" % tags.value
 
 
-def _one(task):
+def _task(task):
+    return task
+
+
+def _one(_context, task):
     path, a = task
     from codebreaker.exact import project, bench
     from codebreaker.base import parallel
     parallel.wait_for_memory("fleet")                       # (no function begun while memory is short)
     if path not in _PRJ:
         _PRJ[path] = project.load(path)
-    t0 = time.time()
     try:
         rows = bench.run(_PRJ[path], [a])
         v = rows[0][1] if rows else "no source"
     except Exception as e:                                  # (a function that breaks a worker's run: noted)
         v = "failed: %s: %s" % (type(e).__name__, str(e)[:80])
-    return path, a, v, time.time() - t0
+    return v
 
 
 def _read(f):
@@ -60,6 +63,7 @@ def _read(f):
 
 def main(argv):
     from codebreaker.exact import project, carve
+    from codebreaker.jobs import pool
     out = argv[argv.index("--out") + 1]
     from codebreaker.base import parallel
     jobs = int(argv[argv.index("--jobs") + 1]) if "--jobs" in argv else parallel.workers()   # (settings.json
@@ -98,14 +102,20 @@ def main(argv):
     tags = multiprocessing.Value("i", 0)
     res = {p: dict(carried[p]) for p in paths}
     t0 = time.time()
-    done = 0
-    with multiprocessing.Pool(jobs, initializer=_init, initargs=(tags,)) as pool:
-        for path, a, v, dt in pool.imap_unordered(_one, [(p, a) for ln, p, a in tasks]):
-            res[path][a] = v
-            done += 1
-            if done % 25 == 0 or done == len(tasks):
-                print("%d/%d done, %.0fs" % (done, len(tasks), time.time() - t0))
-                sys.stdout.flush()
+    said = [0]
+
+    def progress(done, total):
+        if done // 25 > said[0] // 25 or done == total:
+            print("%d/%d done, %.0fs" % (done, total, time.time() - t0))
+            sys.stdout.flush()
+        said[0] = done
+    got = pool.run(_one, [(p, a) for ln, p, a in tasks], key=_task, jobs=jobs, small=2, size=1,
+                   init=_init, initargs=(tags,), progress=progress,
+                   crashed=lambda task: "failed: the worker running it died")
+    if tasks and said[0] < len(tasks):                     # (a run of one: done here, in this process)
+        progress(len(tasks), len(tasks))
+    for (path, a), v in got.items():
+        res[path][a] = v
     tally_all = collections.Counter()
     lines = []
     for p in paths:

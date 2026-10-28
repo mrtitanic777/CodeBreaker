@@ -16,6 +16,7 @@ if ROOT not in sys.path:
 from codebreaker.base import corpus
 from codebreaker.base import parallel
 from codebreaker.build import watcom as toolchain   # noqa: E402
+from codebreaker.jobs import pool   # noqa: E402
 
 RESULTS = []
 
@@ -116,7 +117,7 @@ def test_format_detection():
     assert corpus.lane(mk("viacorpus", b"NE")) == "ne"     # the corpus resolver delegates here
 
 
-# --- isolated sweep runner -------------------------------------------------------------------
+# --- the job runner: threads, and a subprocess per item -----------------------------------------------------------------
 _CHILD = ("import sys,json,time\n"
           "a=sys.argv[1]\n"
           "if a=='crash': raise SystemExit(3)\n"
@@ -129,11 +130,11 @@ def _argv(item):
     return [sys.executable, "-c", _CHILD, item]
 
 
-def test_isolated_map_separates_failures_and_resumes():
+def test_isolated_separates_failures_and_resumes():
     state = os.path.join(tempfile.mkdtemp(), "state.json")
     seen = []
-    out = parallel.isolated_map(_argv, ["ok1", "ok22", "crash", "err", "slow"], jobs=5, timeout=5,
-                                state_path=state, on_result=lambda it, r, ok: seen.append((it, ok)))
+    out = pool.isolated(_argv, ["ok1", "ok22", "crash", "err", "slow"], jobs=5, timeout=5,
+                           state_path=state, on_result=lambda it, r, ok: seen.append((it, ok)))
     assert set(out["done"]) == {"ok1", "ok22"}, out
     assert out["done"]["ok22"] == {"item": "ok22", "n": 4}
     assert out["failed"]["crash"]["error"] == "no-output"
@@ -144,16 +145,32 @@ def test_isolated_map_separates_failures_and_resumes():
     assert set(json.load(open(state))["done"]) == {"ok1", "ok22"}
 
     # resume: completed items are skipped, failed ones are retried (max_tries=2)
-    out2 = parallel.isolated_map(_argv, ["ok1", "ok22", "crash", "err"], jobs=4, timeout=5,
-                                 state_path=state)
+    out2 = pool.isolated(_argv, ["ok1", "ok22", "crash", "err"], jobs=4, timeout=5,
+                            state_path=state)
     assert out2["ran"] == 2 and out2["skipped"] == 2, out2
     assert out2["failed"]["crash"]["tries"] == 2
     # third run: tries exhausted -> skipped, unless retry_failed
-    out3 = parallel.isolated_map(_argv, ["crash", "err"], jobs=2, timeout=5, state_path=state)
+    out3 = pool.isolated(_argv, ["crash", "err"], jobs=2, timeout=5, state_path=state)
     assert out3["ran"] == 0 and out3["skipped"] == 2, out3
-    out4 = parallel.isolated_map(_argv, ["crash"], jobs=1, timeout=5, state_path=state,
-                                 retry_failed=True)
+    out4 = pool.isolated(_argv, ["crash"], jobs=1, timeout=5, state_path=state,
+                            retry_failed=True)
     assert out4["ran"] == 1 and out4["failed"]["crash"]["tries"] == 3
+
+
+def test_threads_keep_order_and_raise():
+    assert pool.threads(lambda n: n * n, range(20), jobs=4) == [n * n for n in range(20)]
+
+    def bad(n):
+        if n == 3:
+            raise ValueError("three")
+        return n
+    try:
+        pool.threads(bad, range(6), jobs=2)
+        assert False, "the error was swallowed"
+    except ValueError:
+        pass
+    got = dict(pool.as_done(bad, range(6), jobs=3, failed=lambda item, e: "failed: %s" % e))
+    assert got == {0: 0, 1: 1, 2: 2, 3: "failed: three", 4: 4, 5: 5}
 
 
 def test_throttle_is_safe():
@@ -164,7 +181,8 @@ def main():
     for fn in (test_decompiler_is_built, test_openwatcom,
                test_corpus_rank_prefers_installed_copy, test_corpus_retail, test_corpus_modules,
                test_format_detection,
-               test_isolated_map_separates_failures_and_resumes, test_throttle_is_safe):
+               test_isolated_separates_failures_and_resumes, test_threads_keep_order_and_raise,
+               test_throttle_is_safe):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

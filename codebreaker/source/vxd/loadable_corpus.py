@@ -44,9 +44,8 @@ def _one(name, v, root):
 
 
 def run(srcdir, out_json, redo=None, workers=4, root="."):
-    import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     from codebreaker.formats import le
+    from codebreaker.jobs import pool
     from codebreaker.source.vxd import corpus as vxd_corpus
     import glob
     root = os.path.abspath(root)
@@ -70,24 +69,18 @@ def run(srcdir, out_json, redo=None, workers=4, root="."):
             if key in results and key not in redo:
                 continue
             todo.append((key, name, v))
-    lock = threading.Lock()
     t_all = time.time()
     print("== %d modules to build, %d workers ==" % (len(todo), workers), flush=True)
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(_one, name, v, root): key for key, name, v in todo}
-        for fut in as_completed(futs):
-            key = futs[fut]
-            r = fut.result()
-            with lock:
-                results[key] = r
-                _save(results, out_json)
-            if r["ok"]:
-                print("  %-14s OK   objs=%-2d dev=0x%04x dev_ok=%-5s ident=%-5s res=%-4d [%ss]" % (
-                    key, r["objects"], r["device_id"], r["device_id_ok"], r["identity"],
-                    r["resource_len"], r["seconds"]), flush=True)
-            else:
-                print("  %-14s FAIL@%-10s %s" % (key, r["stage"], (r.get("log") or "")[-90:].replace("\n", " ")),
-                      flush=True)
+    for (key, _name, _v), r in pool.as_done(lambda t: _one(t[1], t[2], root), todo, jobs=workers):
+        results[key] = r
+        _save(results, out_json)
+        if r["ok"]:
+            print("  %-14s OK   objs=%-2d dev=0x%04x dev_ok=%-5s ident=%-5s res=%-4d [%ss]" % (
+                key, r["objects"], r["device_id"], r["device_id_ok"], r["identity"],
+                r["resource_len"], r["seconds"]), flush=True)
+        else:
+            print("  %-14s FAIL@%-10s %s" % (key, r["stage"], (r.get("log") or "")[-90:].replace("\n", " ")),
+                  flush=True)
     _summary(results, time.time() - t_all)
     return results
 

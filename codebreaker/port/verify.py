@@ -144,12 +144,10 @@ def run_cases(path, exe, env=None):
         finally:
             shutil.rmtree(fb, ignore_errors=True)
         return o
-    from concurrent.futures import ThreadPoolExecutor
-    from codebreaker.base import parallel
+    from codebreaker.jobs import pool
     out = []
-    with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the cases at once: the machine's budget)
-        for o in ex.map(top, cfg["cases"]):
-            out += o
+    for o in pool.threads(top, cfg["cases"]):                   # (the cases at once: the machine's budget)
+        out += o
     return out
 
 
@@ -234,11 +232,10 @@ def main(argv):
             shutil.rmtree(fa, ignore_errors=True)
             shutil.rmtree(fb, ignore_errors=True)
         return r, d
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max(1, parallel.workers())) as ex:   # (the cases at once, the machine's budget of
-        for r, d in ex.map(top, cfg["cases"]):                  #  them; reported in their order)
-            rows += r
-            detail += d
+    from codebreaker.jobs import pool
+    for r, d in pool.threads(top, cfg["cases"]):                # (the cases at once, the machine's budget of
+        rows += r                                               #  them; reported in their order)
+        detail += d
     same = sum(1 for r in rows if r[2])
     L = ["# Behaviour: the original against the port", "",
          "`%s` (under CodeBreaker's emulator) against `%s` (native): **%d of %d cases the same**." % (
