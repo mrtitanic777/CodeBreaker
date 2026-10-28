@@ -87,6 +87,11 @@ def _build_harness(uc, U, segs):
 _IMPORT_SENT_STRIDE = 0x10                                    # per-import slot inside SENT segment
 
 
+def segment_base(idx):
+    """Where the module's segment `idx` (1-based) is laid out: its own 64K window."""
+    return SEG_ORIGIN + idx * SEG_STRIDE
+
+
 def _load_ne(uc, U, nef):
     """Map every NE segment into its 64K GDT window, build the GDT (segments + stack + import
     sentinel), and load the segment bytes. Returns (sels, seg_bases, stack_sel, sent_sel).
@@ -99,7 +104,7 @@ def _load_ne(uc, U, nef):
     # differ between the original and a rebuild, so 17 of USER's functions "differed" by it.
     harness_list = [(SCRATCH_BASE, 0xFFFF, False)] * (_MODULE_SLOT - 1)
     for s in segs:
-        base = SEG_ORIGIN + s["idx"] * SEG_STRIDE
+        base = segment_base(s["idx"])
         seg_bases[s["idx"]] = base
         uc.mem_map(base, 0x10000)
         body = nef.data[s["file_off"]:s["file_off"] + s["length"]]
@@ -260,9 +265,136 @@ def relocated_data(path):
     return out
 
 
+# Branch log (trace_function16(branches=...)): the 16-bit form of emulator._branch_hook -- for each
+# conditional jump of the function itself, which way it went and what the comparison before it
+# compared, for verify/guided.py. What differs from 32-bit code: an instruction is decoded at its
+# offset in its segment (a jump's target is an offset), and a memory operand is an offset in a
+# segment -- DS, SS for one based on BP, or the one it names -- whose base is read from the GDT.
+_DECODED16 = {}                      # (code bytes, offset) -> as emulator._decode_branchy's
+
+
+def _decode16(md, raw, off):
+    key = (raw, off)
+    if key not in _DECODED16:
+        from capstone import x86_const as X
+        from codebreaker.emulate.emulator import _COMPARES, _FLAGLESS, _PARENT, _uc_reg
+        out = ("other", None, (), None)
+        try:
+            ins = next(md.disasm(raw, off, 1))
+            mn = ins.mnemonic
+
+            def operand(op):
+                if op.type == X.X86_OP_REG:
+                    name = ins.reg_name(op.reg)
+                    return ("reg", (_uc_reg(name), _PARENT.get(name, name)), op.size)
+                if op.type == X.X86_OP_IMM:
+                    return ("imm", op.imm, op.size)
+                if op.type == X.X86_OP_MEM:
+                    m = op.mem
+                    base = ins.reg_name(m.base) if m.base else None
+                    seg = ins.reg_name(m.segment) if m.segment else ("ss" if base in ("bp", "sp") else "ds")
+                    return ("mem", (_uc_reg(base) if base else None,
+                                    _uc_reg(ins.reg_name(m.index)) if m.index else None, m.disp, _uc_reg(seg)), op.size)
+                return None
+            try:
+                written = tuple({_PARENT.get(ins.reg_name(r), ins.reg_name(r)) for r in ins.regs_access()[1]})
+            except Exception:
+                written = ()
+            load = None
+            if mn in ("mov", "movzx", "movsx") and len(ins.operands) == 2 and ins.operands[0].type == X.X86_OP_REG \
+                    and ins.operands[1].type == X.X86_OP_MEM:
+                src = operand(ins.operands[1])
+                if src:
+                    load = (_PARENT.get(ins.reg_name(ins.operands[0].reg)), src, ins.operands[1].size)
+            if mn in _FLAGLESS or mn.startswith(("cmov", "set")):
+                out = ("keep", None, written, load)
+            elif mn.startswith("j") and mn != "jmp" and ins.operands and ins.operands[0].type == X.X86_OP_IMM:
+                out = ("jcc", ((ins.operands[0].imm & 0xFFFF), off + ins.size), (), None)
+            elif mn in _COMPARES and len(ins.operands) in (1, 2):
+                ops = [operand(op) for op in ins.operands]
+                if all(o is not None and (o[0] != "reg" or o[1][0] is not None) for o in ops):
+                    if len(ops) == 1:                        # dec/inc: compared with what it becomes
+                        ops.append(("imm", 1 if mn == "dec" else -1, ops[0][2]))
+                    out = ("cmp", (mn, ops, ops[0][2]), written, None)
+                else:
+                    out = ("other", None, written, None)
+            else:
+                out = ("other", None, written, None)
+        except Exception:
+            pass
+        _DECODED16[key] = out
+    return _DECODED16[key]
+
+
+def _branch_hook16(rec, cs_base, lo, hi):
+    """A code hook for the offsets [lo, hi) of the segment at `cs_base`: appends (jump, taken,
+    compare) to rec["branches"] as emulator._branch_hook does, every address a linear one."""
+    import capstone
+    from codebreaker.emulate.emulator import _BRANCH_CAP
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    log = rec["branches"] = []
+    state = [None, None]                                     # [pending jump, compare in force]
+    loaded = {}                                              # register -> (address, size) it was loaded from
+    bases = {}
+
+    def segbase(uc, sel):
+        if sel not in bases:                                 # (the descriptor's base, from the GDT)
+            d = bytes(uc.mem_read(GDT_ADDR + (sel >> 3) * 8, 8))
+            bases[sel] = d[2] | d[3] << 8 | d[4] << 16 | d[7] << 24
+        return bases[sel]
+
+    def address(uc, mem):
+        base, index, disp, seg = mem
+        off = (disp + (uc.reg_read(base) if base else 0) + (uc.reg_read(index) if index else 0)) & 0xFFFF
+        return segbase(uc, uc.reg_read(seg)) + off
+
+    def value(uc, op):
+        kind, what, size = op
+        mask = (1 << (8 * size)) - 1
+        if kind == "imm":
+            return what & mask, None
+        if kind == "reg":
+            at = loaded.get(what[1])
+            return uc.reg_read(what[0]) & mask, (at[0] if at and at[1] == size else None)
+        a = address(uc, what)
+        return int.from_bytes(bytes(uc.mem_read(a, size)), "little"), a
+
+    def hook(uc, addr, _size, _ud):
+        pend = state[0]
+        if pend is not None:
+            state[0] = None
+            if len(log) < _BRANCH_CAP and addr in (pend[1], pend[2]):
+                log.append((pend[0], addr == pend[1], pend[3]))
+        try:
+            raw = bytes(uc.mem_read(addr, 16))
+        except Exception:
+            raw = bytes(uc.mem_read(addr, (addr | 0xFFF) + 1 - addr))   # (the last bytes of a window)
+        kind, detail, written, load = _decode16(md, raw, addr - cs_base)
+        if kind == "cmp":
+            try:
+                (a, at_a), (b, at_b) = value(uc, detail[1][0]), value(uc, detail[1][1])
+                state[1] = (detail[0], detail[2], a, b, at_a, at_b)
+            except Exception:
+                state[1] = None
+        elif kind == "jcc":
+            if lo <= detail[0] < hi and detail[0] != detail[1]:
+                state[0] = (addr, cs_base + detail[0], cs_base + detail[1], state[1])
+        elif kind == "other":
+            state[1] = None
+        for r in written:
+            loaded.pop(r, None)
+        if load is not None and load[0]:
+            try:
+                loaded[load[0]] = (address(uc, load[1][1]), load[2])
+            except Exception:
+                pass
+    return hook
+
+
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
                      insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
-                     callees=None, data_end=None, context=None):
+                     callees=None, data_end=None, context=None, mem_init=None, branches=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -287,7 +419,13 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     selector there}. The recorded stack is the run's stack, at the same SP (its return address
     replaced by the tracer's own); the selectors the system had name the same bytes here (an LDT
     of them): SS's the stack, the module's data selector its data segment, the rest the recorded
-    segments' copies, and any other one scratch. `args` are then not pushed."""
+    segments' copies, and any other one scratch. `args` are then not pushed.
+
+    mem_init: [(where, bytes)] written before the run, `where` a linear address or ("D", offset):
+    an offset in the module's data segment, wherever this build has it.
+
+    branches: (low, high) offsets in the function's segment -- also log each conditional jump
+    there: which way it went and what was compared (rec["branches"]; _branch_hook16)."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX)
@@ -396,6 +534,14 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             tail = _TAILS[(base, data_end[1])] = bytes(((base + a) * 0x9E3779B1 >> 13) & 0xFF   # (emulator._pattern's)
                                                        for a in range(data_end[1], 0x10000))
         uc.mem_write(base + data_end[1], tail)
+    for where, data in mem_init or ():
+        if isinstance(where, tuple) and (seg_bases.get(auto) is None or where[1] + len(data) > 0x10000):
+            continue                                         # (no data segment, or past its end)
+        at = seg_bases[auto] + where[1] if isinstance(where, tuple) else where
+        try:
+            uc.mem_write(at, bytes(data))
+        except U.UcError:
+            pass                                             # (nothing mapped there: not an input)
     _enter(seg, offset, args)
 
     rec = {"schema": "cb.behavior.trace16/1", "module": os.path.basename(path),
@@ -530,6 +676,9 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         return hook_mem(uc, access, address, msize, value, ud)
 
     uc.hook_add(U.UC_HOOK_CODE, hook_code)
+    if branches:
+        uc.hook_add(U.UC_HOOK_CODE, _branch_hook16(rec, cs_base, branches[0], branches[1]), None,
+                    cs_base + branches[0], cs_base + branches[1] - 1)
     uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_limited)
     uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
                 | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
@@ -799,13 +948,16 @@ def default_stub(hit, uc, U, ctx):
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
           prelude=None, cdecl=False, near=False, data_image=None, callees=None, data_end=None,
-          context=None):
+          context=None, stub_ret=None, mem_init=None, branches=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
     cdecl=True reverses `args` before pushing: the tracer pushes Pascal order (left-to-right), but
     INTERNAL functions are often __cdecl16far (args pushed right-to-left), so their args must be
-    reversed to land in the right slots (this is how the LZDecompress reset path was reached)."""
+    reversed to land in the right slots (this is how the LZDecompress reset path was reached).
+
+    stub_ret: what a Windows function `stub` does not model returns in DX:AX (else 0). mem_init,
+    branches: as trace_function16."""
     if cdecl and args:
         args = list(reversed(args))
     ctx_box = {}
@@ -814,6 +966,8 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
         if "ctx" not in ctx_box:
             ctx_box["ctx"] = _Ctx(uc, u)
         res = stub(hit, uc, u, ctx_box["ctx"]) or {}
+        if "pop" not in res and stub_ret is not None:        # (not modelled: the result asked for)
+            res = dict(res, ax=stub_ret & 0xFFFF, dx=(stub_ret >> 16) & 0xFFFF)
         if "pop" not in res:                                 # remove the arguments, as the real one would
             from codebreaker.symbols import api_arguments as api16
             size = api16.of(hit.get("api"))
@@ -830,7 +984,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     rec = trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
                              args=args, arity=len(args or []), import_stub=_stub,
                              prelude=prelude, near=near, data_image=data_image, callees=callees,
-                             data_end=data_end, context=context, **kw)
+                             data_end=data_end, context=context, mem_init=mem_init, branches=branches, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}

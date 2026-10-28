@@ -15,8 +15,13 @@ bytes of arguments were removed, and whether SI, DI and DS were preserved.
 How many bytes of arguments a Windows function takes is read from the module that exports it
 (emulate/api16.py). A call whose size could not be established is compared by name only, and a
 match involving one is marked weak.
+
+Besides the fixed inputs and the directed ones (the constants the code compares with), each
+function is run on branch-guided inputs (verify/guided.py): arguments, words of the data
+segment and results of Windows calls chosen to take branches of the original no input took.
 """
 import hashlib
+import os
 
 from codebreaker.base import corpus
 from codebreaker.verify import compare
@@ -25,7 +30,9 @@ from codebreaker.verify import lane_common
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 20                                # bump when what is built or compared changes
+REV = 21                                # bump when what is built or compared changes
+                                        # (21: branch-guided inputs, an input's memory and what Windows returns;
+                                        # the interrupt routines linked, their registers the build's own)
 
 
 def vectors():
@@ -142,11 +149,13 @@ def directed(module_path, seg, span, most=8):
     return _DIRECTED[key]
 
 
-def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
-    """What one run of one function did, in a form two builds can be compared on."""
+def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=()):
+    """What one run of one function did, in a form two builds can be compared on. `own`: ranges
+    of the data segment that are the build's own (_own_data), whose writes are left out."""
     from codebreaker.emulate import windows16 as ne_probe
     try:
-        r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image)
+        r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
+                           stub_ret=v.get("stub_ret"), mem_init=v.get("mem"))
     except ImportError:
         raise
     except Exception as e:
@@ -158,6 +167,8 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
     for w in r.get("mem_writes") or []:
         a, n, val = w["addr"], w["size"], w["value"] or 0
         if ds is not None and ds <= a < ds + 0x10000:
+            if any(lo <= a - ds < hi for lo, hi in own):
+                continue
             where = ("D", a - ds)
         elif ne_probe.HEAP_BASE <= a < ne_probe.HEAP_BASE + 64 * ne_probe.HEAP_STRIDE:
             where = ("H", a - ne_probe.HEAP_BASE)
@@ -192,27 +203,90 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
 
 def _judge(context, item):
     """Worker. item = (key, seg, off, near, wide, span, insns, rebuilt seg, rebuilt off)."""
-    module_path, dll, data_image = context
+    module_path, dll, data_image, own = context
     key, seg, off, near, wide, span, insns, bseg, boff = item
     last = {}
 
     def original(v):
         # the original's run depends only on the original: remembered across rebuilds (a run cut
         # off at the step limit is not)
-        k = compare.cache_key("ne", REV, corpus.sha(module_path), seg, off, near, wide, tuple(v["args"]), span)
+        k = compare.cache_key("ne", REV, corpus.sha(module_path), seg, off, near, wide, tuple(v["args"]), span,
+                              v.get("mem"), v.get("stub_ret"))
         fp = lane_common.remembered(k, lambda: fingerprint(module_path, seg, off, near, wide, v, span=span),
                                     keep=lambda fp: not fp.get("truncated"))
         last["fp"] = fp
         return fp
 
     def rebuilt(v):
-        fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image)
+        fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image, own=own)
         if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
             fp["ret"] = LEFTOVER                             # the original returned no value here
         return fp
+    def aimed(covered, reached):
+        # the directed inputs, then branch-guided ones seeded with every input run so far
+        d = directed(module_path, seg, span)
+        return list(d) + guided_vectors(module_path, seg, off, near, span, vectors() + list(d))
     return lane_common.judged(lambda info: compare.compare(
-        original, rebuilt, vectors(), (), insns=insns, info=info,
-        directed=lambda covered, reached: directed(module_path, seg, span)))
+        original, rebuilt, vectors(), (), insns=insns, info=info, directed=aimed))
+
+
+# Branch-guided inputs (verify/guided.py, through lane_common.guided). The explorer reads an
+# input's arguments as words rising up the stack from `args_at`; the tracer pushes them in Pascal
+# order, the first deepest. So to the explorer an input's words are the other way round, and its
+# memory is linear addresses of the original's run -- in the data segment ("D", offset there in
+# whichever build), or the scratch segment pointers go to (at one place in every build); a place
+# elsewhere is not something an input sets, and is left out.
+def _to_explorer(v, ds):
+    g = {"args": list(reversed(v["args"]))}
+    if v.get("mem"):
+        g["mem_init"] = [((ds + w[1]) if isinstance(w, tuple) else w, data) for w, data in v["mem"]]
+    if v.get("stub_ret") is not None:
+        g["stub_ret"] = v["stub_ret"]
+    return g
+
+
+def _from_explorer(g, ds):
+    from codebreaker.emulate import windows16 as ne_probe
+    v = {"args": [int(a) & 0xFFFF for a in reversed(g["args"])]}
+    mem = []
+    for at, data in g.get("mem_init") or ():
+        if ds is not None and ds <= at < ds + 0x10000:
+            mem.append((("D", at - ds), bytes(data)))
+        elif ne_probe.SCRATCH_BASE <= at < ne_probe.SCRATCH_BASE + 0x10000:
+            mem.append((at, bytes(data)))
+    if mem:
+        v["mem"] = tuple(mem)
+    if g.get("stub_ret") is not None:
+        v["stub_ret"] = int(g["stub_ret"]) & 0xFFFFFFFF
+    return v
+
+
+def _branch_run(module_path, seg, off, near, span, v):
+    """The original run on `v` with its branches logged, as the explorer reads it, or None when
+    the run is not an observation."""
+    from codebreaker.emulate import windows16 as ne_probe
+    try:
+        r = ne_probe.probe(module_path, seg=seg, offset=off, args=v["args"], near=near,
+                           stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), branches=span)
+    except ImportError:
+        raise
+    except Exception:
+        return None
+    base = ne_probe.STACK_BASE
+    return {"branches": r.get("branches") or [], "reach": set(r.get("path") or ()),
+            "args_at": base + ne_probe.FAR_RET - 2 * len(v["args"]), "stack": (base, base + 0x10000)}
+
+
+def guided_vectors(module_path, seg, off, near, span, seeds):
+    """Inputs that take branches of the original no seed took (verify/guided.py)."""
+    from codebreaker.emulate import windows16 as ne_probe
+    from codebreaker.formats.ne import NEFile
+    auto = NEFile(module_path).h.get("autodata_seg")
+    ds = ne_probe.segment_base(auto) if auto else None
+    kept = lane_common.guided(
+        lambda g: _branch_run(module_path, seg, off, near, span, _from_explorer(g, ds)),
+        [_to_explorer(v, ds) for v in seeds], off, word=2)
+    return [_from_explorer(g, ds) for g in kept]
 
 
 def _spans(nef, where):
@@ -243,7 +317,8 @@ PER_FUNCTION = True             # a verdict holds while the function and what it
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
     from codebreaker.build import functions
-    settings = repr(("ne", REV, compare.REV, functions.CFLAGS16, vectors()))
+    settings = repr(("ne", REV, compare.REV, functions.CFLAGS16, vectors(),
+                     ("guided", lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED)))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 
@@ -265,7 +340,8 @@ def build(m, module_path, work):
     from codebreaker.build import functions
     from codebreaker.formats.ne import NEFile
     dll, placed, dropped = functions.build16(m.header, m.texts, m.order, m.imports, work, segments=m.segments,
-                                             code_segment={fn: m.where[va][0] for va, fn in m.by_va.items()})
+                                             code_segment={fn: m.where[va][0] for va, fn in m.by_va.items()},
+                                             interrupts={v for v, _regs in getattr(m, "interrupts", ())})
     nef = NEFile(module_path)
     auto = nef.h.get("autodata_seg")
     data_image = b""
@@ -284,7 +360,24 @@ def build(m, module_path, work):
         span, insns = spans[va]
         wide = None if fn in m.novalue else fn in m.wide
         items[fn] = (m.key[fn], seg, off, fn in m.near, wide, span, insns) + tuple(placed[fn])
-    return (module_path, dll, data_image), items, dropped
+    return (module_path, dll, data_image, _own_data(work)), items, dropped
+
+
+def _own_data(work):
+    """The offsets in the rebuild's data segment of what the build itself keeps there and the
+    original does not: the registers an interrupt helper hands its routine (codebreaker_int,
+    c_text.interrupt_routines). Writing them is the build's bookkeeping, not the function's
+    effect -- as a rebuilt 32-bit image's own statics are left out (win32._image_span)."""
+    import re
+    try:
+        text = open(os.path.join(work, "m.map"), errors="replace").read()
+    except OSError:
+        return ()
+    m = re.search(r"(?m)^[0-9A-Fa-f]{4}:([0-9A-Fa-f]{4,8})[+*]?\s+_codebreaker_int\s*$", text)
+    return ((int(m.group(1), 16), int(m.group(1), 16) + _INT_REGISTERS),) if m else ()
+
+
+_INT_REGISTERS = 20                     # sizeof(struct codebreaker_registers): eight words, CF, ZF, a word
 
 
 judge = _judge
