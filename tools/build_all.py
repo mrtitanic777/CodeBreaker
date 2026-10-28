@@ -27,7 +27,6 @@ import hashlib
 import os
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -102,6 +101,10 @@ def _one(path, previous, jobs):
     return {k: str(v) for k, v in row.items()}
 
 
+def _one_item(args):
+    return _one(*args)
+
+
 def _write(out, rows):
     tmp = out + ".tmp"
     with open(tmp, "w", newline="", encoding="utf-8") as f:
@@ -114,6 +117,7 @@ def _write(out, rows):
 
 def main(argv):
     from codebreaker.base import corpus, parallel, settings
+    from codebreaker.jobs import pool
     out = settings.state("build_all.csv")
     rows = []
     if os.path.isfile(out):
@@ -133,24 +137,22 @@ def main(argv):
     side_by_side = max(1, min(3, workers // 2, len(paths)))
     jobs = max(1, workers // side_by_side)
     kept = 0
-    with ProcessPoolExecutor(max_workers=side_by_side) as ex:
-        futures = {ex.submit(_one, p, by_name.get(os.path.basename(p).lower()), jobs): p for p in paths}
-        for i, fut in enumerate(as_completed(futures)):
-            path = futures[fut]
-            name = os.path.basename(path).lower()
-            try:
-                row = fut.result()
-            except Exception as e:                           # the worker itself fell over
-                row = dict.fromkeys(FIELDS, "")
-                row.update(module=name, kind=corpus.lane(path), linked="0", error="worker: %s" % str(e)[:100])
-            was_kept = row.pop("kept", None)
-            kept += bool(was_kept)
-            by_name[name] = row
-            _write(out, list(by_name.values()))
-            print("[%d/%d] %s: %s" % (i + 1, len(paths), name, "unchanged since its last build, kept" if was_kept else
-                  "built, %s of %s exports, %s of %s ran the same" % (row["exports_same"], row["exports"], row["ran_same"],
-                                                                      row["ran"]) if row["linked"] == "1" else
-                  "NOT built: " + str(row["error"])), flush=True)
+    def fell_over(item, e):                                  # the worker itself fell over
+        row = dict.fromkeys(FIELDS, "")
+        row.update(module=os.path.basename(item[0]).lower(), kind=corpus.lane(item[0]), linked="0",
+                   error="worker: %s" % str(e)[:100])
+        return row
+    items = [(p, by_name.get(os.path.basename(p).lower()), jobs) for p in paths]
+    for i, (item, row) in enumerate(pool.as_done(_one_item, items, jobs=side_by_side, processes=True, failed=fell_over)):
+        name = os.path.basename(item[0]).lower()
+        was_kept = row.pop("kept", None)
+        kept += bool(was_kept)
+        by_name[name] = row
+        _write(out, list(by_name.values()))
+        print("[%d/%d] %s: %s" % (i + 1, len(paths), name, "unchanged since its last build, kept" if was_kept else
+              "built, %s of %s exports, %s of %s ran the same" % (row["exports_same"], row["exports"], row["ran_same"],
+                                                                  row["ran"]) if row["linked"] == "1" else
+              "NOT built: " + str(row["error"])), flush=True)
     if kept:
         print("%d modules unchanged since their last build: kept" % kept)
     tally(list(by_name.values()))

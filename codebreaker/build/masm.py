@@ -17,7 +17,6 @@ assembler — the acceptance test for hand-asm is then identical to the C path.
 """
 import argparse
 import atexit
-import hashlib
 import os
 import subprocess
 import sys
@@ -26,6 +25,7 @@ import threading
 import time
 import zlib
 
+from codebreaker.base import cache
 from codebreaker.base import settings as _settings
 DBX = _settings.get("dosbox_x") or ""                          # settings.json: dosbox_x
 MASMROOT = _settings.get("masm") or ""                         # settings.json: masm (BIN, INC, LIB)
@@ -187,71 +187,36 @@ def _cancelled():
 # --- assembled-bytes cache -----------------------------------------------------------
 # Assembling MASM is the whole cost: each function boots/leases a full-system DOSBox and
 # runs a 16-bit DOS assembler. But MASM is DETERMINISTIC -- identical .asm source + same
-# assembler + same INCLUDE/LIB yields byte-identical .OBJ/.LST every time. So key the
-# result on a hash of the source (+ the assembler dir) and reuse it: a re-verify or a
-# whole-module relink whose .asm hasn't changed then splices cached bytes and boots ZERO
-# DOSBoxes. One gzip'd file per function under the target's runtime dir (gitignored).
-# Bump CACHE_VER if the CONF / assembler invocation changes in a way that alters output.
+# assembler + same INCLUDE/LIB yields byte-identical .OBJ/.LST every time. So the result is
+# kept (base/cache.py, kind "masm") by the source, the assembler and its folder: a re-verify
+# or a whole-module relink whose .asm hasn't changed then splices cached bytes and boots ZERO
+# DOSBoxes. Bump CACHE_VER if the CONF / assembler invocation changes in a way that alters output.
 CACHE_VER = 1
-_ASM_CACHE_DIR = None
-_ASM_CACHE_RESOLVED = False
-
-
-def _asm_cache_dir():
-    """The persistent OBJ/LST cache dir (WT_ASM_CACHE, else <runtime_dir>/asm_obj_cache).
-    Resolved once per process; None disables caching (behaves exactly as before)."""
-    global _ASM_CACHE_DIR, _ASM_CACHE_RESOLVED
-    if _ASM_CACHE_RESOLVED:
-        return _ASM_CACHE_DIR
-    _ASM_CACHE_RESOLVED = True
-    if os.environ.get("WT_NO_ASM_CACHE") == "1":
-        return None
-    d = os.environ.get("WT_ASM_CACHE")
-    if not d:
-        try:
-            d = _settings.state("cache", "masm")
-        except Exception:
-            d = os.path.join(tempfile.gettempdir(), "wt_asm_obj_cache")
-    try:
-        os.makedirs(d, exist_ok=True)
-    except OSError:
-        d = None
-    _ASM_CACHE_DIR = d
-    return d
 
 
 def _cache_key(src, masmroot):
-    tag = "%d\0%s" % (CACHE_VER, os.path.basename(os.path.normpath(masmroot or "")))
-    return hashlib.sha1((tag + "\0" + src).encode("latin1", "replace")).hexdigest()
+    return cache.key(CACHE_VER, os.path.basename(os.path.normpath(masmroot or "")),
+                     cache.tool(os.path.join(masmroot or "", "BIN", "MASM.EXE")), src)
 
 
-def _cache_get(cdir, key):
-    if not cdir:
+def _cache_get(key):
+    blob = cache.get("masm", key)
+    if blob is None:
         return None
     try:
-        blob = zlib.decompress(open(os.path.join(cdir, key + ".z"), "rb").read())
-    except (OSError, zlib.error):
+        blob = zlib.decompress(blob)
+    except zlib.error:
         return None
     n = int.from_bytes(blob[:4], "little")
     return {"obj": bytes(blob[4:4 + n]), "lst": blob[4 + n:].decode("latin1"), "log": ""}
 
 
-def _cache_put(cdir, key, res):
-    if not cdir or not res.get("obj"):        # never cache an empty/failed assembly
+def _cache_put(key, res):
+    if not res.get("obj"):                    # never cache an empty/failed assembly
         return
     obj = res["obj"]
     blob = len(obj).to_bytes(4, "little") + obj + (res.get("lst") or "").encode("latin1", "replace")
-    p = os.path.join(cdir, key + ".z")
-    tmp = "%s.%d.tmp" % (p, os.getpid())
-    try:
-        with open(tmp, "wb") as f:
-            f.write(zlib.compress(blob, 6))
-        os.replace(tmp, p)                    # atomic publish (safe under the worker pool)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+    cache.put("masm", key, zlib.compress(blob, 6))
 
 
 def assemble_many(items, timeout=None, masmroot=None):
@@ -261,11 +226,10 @@ def assemble_many(items, timeout=None, masmroot=None):
     DOSBoxes -- this is what makes re-verifies and whole-module relinks near-instant.
     Returns {"work": dir, "results": {stem: {obj,lst,log}}} (or {"aborted": True})."""
     masm = masmroot or MASMROOT
-    cdir = _asm_cache_dir()
     hits, misses, mkeys = {}, [], {}
     for stem, src in items:
         key = _cache_key(src, masm)
-        c = _cache_get(cdir, key)
+        c = _cache_get(key)
         if c is not None:
             hits[stem] = c
         else:
@@ -280,7 +244,7 @@ def assemble_many(items, timeout=None, masmroot=None):
     for stem, _src in misses:                  # persist newly-assembled results
         r = fresh.get(stem)
         if r:
-            _cache_put(cdir, mkeys[stem], r)
+            _cache_put(mkeys[stem], r)
     fresh.update(hits)                          # merge cache hits back in
     return {"work": out.get("work", ""), "results": fresh}
 
@@ -314,16 +278,13 @@ def _assemble_uncached(items, timeout=None, masmroot=None):
                     return {"work": "", "aborted": True}
                 merged.update(r.get("results", {}))
             return {"work": "", "results": merged}
-        import concurrent.futures as _cf
+        from codebreaker.jobs import pool
         aborted = False
-        with _cf.ThreadPoolExecutor(max_workers=nthreads) as ex:
-            futs = [ex.submit(_assemble_uncached, ch, timeout, masm) for ch in chunks]
-            for fu in _cf.as_completed(futs):
-                r = fu.result()
-                if r.get("aborted"):
-                    aborted = True
-                else:
-                    merged.update(r.get("results", {}))
+        for r in pool.threads(lambda ch: _assemble_uncached(ch, timeout, masm), chunks, jobs=nthreads):
+            if r.get("aborted"):
+                aborted = True
+            else:
+                merged.update(r.get("results", {}))
         return {"work": "", "aborted": True} if aborted else {"work": "", "results": merged}
 
     if WARM_POOL:

@@ -31,11 +31,11 @@ compiler is written here. Its parts:
 import hashlib
 import json
 import os
-import pickle
 import re
 import shutil
 import struct
 
+from codebreaker.base import cache as _cache
 from codebreaker.base import settings
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -63,28 +63,6 @@ def kit_path(kit, path, base=None):
 
 
 
-def cache_get(cf):
-    """a compile's answer kept from before, or None (none, or one another process is still writing)"""
-    try:
-        with open(cf, "rb") as f:
-            return pickle.load(f)
-    except (OSError, EOFError, pickle.UnpicklingError, ValueError):
-        return None
-
-
-def cache_put(cf, res):
-    """kept whole or not at all: written aside, then put in its place (processes share the cache)"""
-    os.makedirs(os.path.dirname(cf), exist_ok=True)
-    tmp = "%s.%d.tmp" % (cf, os.getpid())
-    with open(tmp, "wb") as f:
-        pickle.dump(res, f)
-    try:
-        os.replace(tmp, cf)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
 
 def profiles():
     d = os.path.join(HERE, "toolchains")
@@ -223,9 +201,8 @@ class Toolchain(object):
         ans = self.answers_of(src)
         key = hashlib.sha1(b"\0".join([src, repr(sorted(headers.items())).encode(), repr(incs).encode(), sw.encode(),
                                        repr(sorted(ans.items())).encode(), self.key.encode(), CACHE_VERSION.encode()])).hexdigest()
-        cf = settings.state("exact", "cache", key[:2], key)
         if cache:
-            got = cache_get(cf)
+            got = _cache.value("exact", key)
             if got is not None:
                 if len(got) > 2:                            # (a listing kept with it)
                     self._listing = got[2]
@@ -280,7 +257,7 @@ class Toolchain(object):
             obj = omf.rename_externs(obj, self.p["rename_externs"])
         res = (obj, con.decode("latin1").replace("\r", ""))
         self._listing = lst_text
-        cache_put(cf, res + ((lst_text,) if lst_text is not None else ()))
+        _cache.keep("exact", key, res + ((lst_text,) if lst_text is not None else ()))
         return res
 
     def _run(self, w, sw, tag, ans):

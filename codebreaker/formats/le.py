@@ -635,6 +635,24 @@ def _name_table(pairs):
     return b"".join(bytes([len(n)]) + n.encode("latin1") + struct.pack("<H", o) for n, o in pairs) + b"\0"
 
 
+def object_table(objects):
+    """The object table: each object's size, base, flags, first page and page count, and the four
+    bytes behind them ("reserved"; a driver's linker leaves the object's name there)."""
+    return b"".join(struct.pack("<IIIII", o["vsize"], o["base"], o["flags"], o["first_page"], o["page_count"])
+                    + o.get("reserved", b"\0\0\0\0") for o in objects)
+
+
+def fixup_tables(fixups, pages):
+    """The fix-up page table and record table for {page: [record bytes]} over pages 1..`pages`:
+    where each page's records start, and where the last one's end. -> (page table, records)"""
+    table, records = bytearray(), bytearray()
+    for pg in range(1, pages + 1):
+        table += struct.pack("<I", len(records))
+        records += b"".join(fixups.get(pg, ()))
+    table += struct.pack("<I", len(records))
+    return bytes(table), bytes(records)
+
+
 def write_image(image):
     """The file for an image as read_image describes it: the stub, the header with every
     offset and size worked out again, the object table, the page map, the name and entry
@@ -642,11 +660,9 @@ def write_image(image):
     whatever came after. Pages are stored and numbered in page-map order."""
     hdr = bytearray(image["header"].ljust(HEADER_SIZE, b"\0"))
     page_size = struct.unpack_from("<I", hdr, 0x28)[0]
-    table, pmap, data, number, last_len = bytearray(), bytearray(), bytearray(), 0, 0
+    pmap, data, number, last_len = bytearray(), bytearray(), 0, 0
+    table = object_table(image["objects"])
     kinds = image["pages"]
-    for o in image["objects"]:
-        table += struct.pack("<IIIII", o["vsize"], o["base"], o["flags"], o["first_page"], o["page_count"])
-        table += o.get("reserved", b"\0\0\0\0")
     stored = [i for i, (kind, body) in enumerate(kinds) if kind not in (2, 3) and body]
     for i, (kind, body) in enumerate(kinds):
         if i in stored:
@@ -657,11 +673,7 @@ def write_image(image):
         else:
             pmap += bytes(3) + bytes([kind])
     resident = _name_table(image["resident"])
-    fix_pages, fix_records = bytearray(), bytearray()
-    for pg in range(1, len(kinds) + 1):
-        fix_pages += struct.pack("<I", len(fix_records))
-        fix_records += b"".join(image["fixups"].get(pg, ()))
-    fix_pages += struct.pack("<I", len(fix_records))
+    fix_pages, fix_records = fixup_tables(image["fixups"], len(kinds))
     modules = b"".join(bytes([len(n)]) + n.encode("latin1") for n in image["import_modules"])
     at = HEADER_SIZE
     where = {}

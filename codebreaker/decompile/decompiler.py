@@ -274,12 +274,11 @@ def _run_resuming(description, only, timeout, max_instructions=None):
     # chunk is always the same functions in the same order, so the texts are the same however
     # many run at once, on any machine. (Against the whole on one thread, as before: HC31 1 of 635
     # functions typed otherwise, sub_1_AF04; COMPOBJ and P3 none. 2-3 times as fast on 4 slots.)
-    from concurrent.futures import ThreadPoolExecutor
     from codebreaker.base import parallel
+    from codebreaker.jobs import pool
     chunks = [wanted[i:i + _CHUNK] for i in range(0, len(wanted), _CHUNK)]
     with parallel.slots(want=len(chunks), mb_each=_PROCESS_MB, label="decompile") as n:
-        with ThreadPoolExecutor(n) as pool:
-            parts = list(pool.map(lambda c: _resuming(description, c, timeout, env, c), chunks))
+        parts = pool.threads(lambda c: _resuming(description, c, timeout, env, c), chunks, jobs=n)
     blocks = sorted((int(m.group(1), 16), m.group(0)) for p in parts for m in _BLOCK.finditer(p[0]))
     return "".join(b for _va, b in blocks), "".join(p[1] for p in parts)[-2000:], all(p[2] for p in parts)
 

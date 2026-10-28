@@ -11,6 +11,8 @@ object/module names, device id, and version resource all match exactly.
 """
 import struct
 
+from codebreaker.formats import le
+
 
 def _src_type(D, oi, off, ends, code):
     """LE fixup source type for the field at (oi, off): 0x08 (32-bit self-relative) when the 4-byte
@@ -43,7 +45,7 @@ def _emit_fixups(D, v):
     caps the fixup records per page, so the one-record-per-source form overflows and the module is
     rejected as "damaged". Records are ordered by ascending first-source offset. The table is indexed
     by logical page (matching the loader), independent of the page map's own page numbers. Returns
-    (page_table_bytes, record_bytes)."""
+    (page_table_bytes, record_bytes), written by formats/le.py as every LE's are."""
     ends = {}                                               # per-object instruction-end offsets
     for (oi, start), r in D.insns.items():
         ends.setdefault(oi, set()).add(start + r["size"])
@@ -73,10 +75,9 @@ def _emit_fixups(D, v):
         # a 4-byte source that crosses into the next page is ALSO listed there, with a negative offset
         if po > v.pagesize - 4 and pg < v.mpages:
             by_page.setdefault(pg + 1, {}).setdefault(key, []).append(po - v.pagesize)
-    recs = bytearray()
-    pageoffs = []
+    records = {}
     for pg in range(1, v.mpages + 1):
-        pageoffs.append(len(recs))
+        recs = bytearray()
         groups = by_page.get(pg, {})
         for key in sorted(groups, key=lambda k: min(groups[k])):
             st, tflags, kind, a, b = key
@@ -93,8 +94,8 @@ def _emit_fixups(D, v):
                     recs += struct.pack("<BB", a, b)
                 if srclist:                                 # ascending source-offset list at record end
                     recs += b"".join(struct.pack("<h", o) for o in chunk)
-    pageoffs.append(len(recs))
-    return b"".join(struct.pack("<I", o) for o in pageoffs), bytes(recs)
+        records[pg] = [bytes(recs)]
+    return le.fixup_tables(records, v.mpages)
 
 
 def build_le(D, v, vxdname):
@@ -128,9 +129,10 @@ def build_le(D, v, vxdname):
         data += bytes(v.d[o_dp + len(data): data_end])
 
     otab_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x40)[0]
-    objtab = b"".join(struct.pack("<IIIII", o["vsize"], o["base"], o["flags"], o["pmidx"], o["pcnt"])
-                      + v.d[otab_abs + i * 24 + 20: otab_abs + i * 24 + 24]   # 4-char object name (recovered)
-                      for i, o in enumerate(objs))
+    objtab = le.object_table({"vsize": o["vsize"], "base": o["base"], "flags": o["flags"], "first_page": o["pmidx"],
+                              "page_count": o["pcnt"],
+                              "reserved": bytes(v.d[otab_abs + i * 24 + 20: otab_abs + i * 24 + 24])}   # 4-char object name
+                             for i, o in enumerate(objs))                                                # (recovered)
     # page map: recovered verbatim from the oracle (each 4-byte entry's page number + flag byte are
     # LINK386's; the numbers are a permutation for some modules but do not affect page/fixup loading)
     pm_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x48)[0]

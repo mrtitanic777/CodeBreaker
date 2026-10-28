@@ -514,7 +514,7 @@ def library(cxx, cpp_dir, work, prefix=None, jobs=None):
     """The whole emitted program as one archive, every .cpp compiled once (in parallel): the harnesses
     link against it and the linker takes what each needs. -> the archive path ('' if it cannot be made).
     A unit that does not compile is left out of it (its class is DOES NOT COMPILE anyway)."""
-    from concurrent.futures import ThreadPoolExecutor
+    from codebreaker.jobs import pool
     folder = os.path.join(work, 'probe', '_objects')
     lib = os.path.join(work, 'probe', 'libj2x.a')
     if os.path.isfile(lib):
@@ -531,8 +531,7 @@ def library(cxx, cpp_dir, work, prefix=None, jobs=None):
             return obj if not _compile(cxx, cpp_dir, os.path.join(cpp_dir, f), obj, prefix) else None
         except subprocess.TimeoutExpired:
             return None
-    with ThreadPoolExecutor(max(1, jobs)) as pool:
-        objects = [o for o in pool.map(one, units) if o]
+    objects = [o for o in pool.threads(one, units, jobs=jobs) if o]
     tmp = lib + '.%d.tmp' % os.getpid()
     ar = os.path.join(os.path.dirname(cxx), 'ar' + ('.exe' if os.name == 'nt' else ''))
     ar = ar if os.path.isfile(ar) else 'ar'
@@ -648,7 +647,7 @@ def compile_java(java_dir, todo, work, javac, size=40, jobs=None, tag='batch'):
     three quarters of a class's time), the batches side by side. A batch javac rejects is split in half
     and tried again, so a class whose source cannot compile (LWJGL not on the classpath, say) fails alone.
     -> {class name: (classes folder, harness class to run) or ('', why)}"""
-    from concurrent.futures import ThreadPoolExecutor
+    from codebreaker.jobs import pool
     out = {}
     root = os.path.join(work, 'probe', '_java')
     shims(work, javac)
@@ -696,8 +695,7 @@ def compile_java(java_dir, todo, work, javac, size=40, jobs=None, tag='batch'):
     if jobs is None:
         from codebreaker.base import parallel
         jobs = parallel.workers()
-    with ThreadPoolExecutor(max(1, min(jobs, len(batches) or 1))) as pool:
-        list(pool.map(lambda nb: settle(nb[1], '%s%d' % (tag, nb[0])), enumerate(batches)))
+    pool.threads(lambda nb: settle(nb[1], '%s%d' % (tag, nb[0])), enumerate(batches), jobs=min(jobs, len(batches) or 1))
     return out
 
 

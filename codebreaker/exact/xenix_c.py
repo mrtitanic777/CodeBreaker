@@ -23,7 +23,7 @@ import shutil
 import struct
 import tempfile
 
-from codebreaker.base import settings
+from codebreaker.base import cache as _cache
 from codebreaker.exact import toolchain as tcm
 
 CACHE_VERSION = "x1"
@@ -303,13 +303,12 @@ class XenixC(object):
                 if f.lower().endswith(".h"):
                     incs.append((f, open(os.path.join(d, f), "rb").read()))
         key = hashlib.sha1(b"\0".join([src, repr(hs).encode(), repr(incs).encode(), self.key.encode()])).hexdigest()
-        cf = settings.state("exact", "cache", key[:2], key)
         if cache:
-            got = tcm.cache_get(cf)
+            got = _cache.value("exact", key)
             if got is not None:
                 return got
         res = self._compile(src, hs + incs)
-        tcm.cache_put(cf, res)
+        _cache.keep("exact", key, res)
         return res
 
     def _compile(self, src, headers):

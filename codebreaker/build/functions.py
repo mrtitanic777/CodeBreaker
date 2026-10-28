@@ -22,10 +22,10 @@ the original module's data and every global is then where the original had it.
 import os
 import re
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
 
 from codebreaker.build import watcom as period_tools
 from codebreaker.formats import omf
+from codebreaker.jobs import pool
 
 # Medium model (far code, near data), as the module build has it (build/module.py): the C
 # runtime's helpers (long multiply, divide, shifts) are then called far, so a function reaches them
@@ -187,8 +187,7 @@ def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None, more=N
     with open(os.path.join(outdir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
         f.write(header)
     stems = {n: "f%04d" % i for i, n in enumerate(order)}
-    with ThreadPoolExecutor(max_workers=jobs) as ex:
-        errors = list(ex.map(lambda n: _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], texts[n]), order))
+    errors = pool.threads(lambda n: _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], texts[n]), order, jobs=jobs)
     dropped = {n: e for n, e in zip(order, errors) if e}
     for n in list(dropped):                                  # callers of a rejected function still link
         if _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], stand_in(texts[n])):
@@ -442,8 +441,7 @@ def build_powerpc(header, texts, order, externs, outdir, base, jobs=None):
     with open(os.path.join(outdir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
         f.write(header)
     stems = {n: "f%04d" % i for i, n in enumerate(order)}
-    with ThreadPoolExecutor(max_workers=jobs) as ex:
-        errors = list(ex.map(lambda n: _compile_powerpc(cl, outdir, stems[n], texts[n]), order))
+    errors = pool.threads(lambda n: _compile_powerpc(cl, outdir, stems[n], texts[n]), order, jobs=jobs)
     dropped = {n: e for n, e in zip(order, errors) if e}
     for n in list(dropped):
         if _compile_powerpc(cl, outdir, stems[n], stand_in(texts[n])):
