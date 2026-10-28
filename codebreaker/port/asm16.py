@@ -23,6 +23,7 @@ the source as it was, the new one as the port lays it out.
 import collections
 import re
 
+from codebreaker.base import ctext
 from codebreaker.port import pre_ansi
 
 R16 = ["ax", "bx", "cx", "dx", "si", "di", "bp", "sp"]
@@ -280,7 +281,7 @@ class CTypes:
     def __init__(self, port_texts, orig_texts):
         self.vars = {}
         for t in port_texts:
-            code = pre_ansi.blank(t)
+            code = ctext.blank(t)
             ds = pre_ansi.depths(code.split("\n"))
             for i, l in enumerate(code.split("\n")):
                 s = l.strip()
@@ -298,7 +299,7 @@ class CTypes:
         self.far_ptrs = set()                               # (globals whose pointers were far: 4 bytes each)
         for t in orig_texts:
             for d in re.finditer(r"(?m)^[^;(){}#]*\bfar\s*\*[^;(){}]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*(?:=[^;]*)?;",
-                                 pre_ansi.blank(t)):
+                                 ctext.blank(t)):
                 self.far_ptrs.add(d.group(1))
 
     def elem_sizes(self, name):
@@ -322,7 +323,7 @@ class CTypes:
         out = Layouts()
         defs = {}                                           # (each tag's first definition: its body)
         for t in texts:
-            code = pre_ansi.blank(t)
+            code = ctext.blank(t)
             for m in re.finditer(r"\b(struct|union)\s+(\w+)\s*\{", code):
                 d, k = 0, m.end() - 1
                 while k < len(code):
@@ -514,7 +515,7 @@ def c_functions(texts):
                 macros[m.group(1)] = m.group(2)
     out = {}
     for t in texts:
-        code = pre_ansi.blank(t)
+        code = ctext.blank(t)
         for k, v in macros.items():
             code = re.sub(r"\b%s\b" % k, v, code)
         lines = code.split("\n")

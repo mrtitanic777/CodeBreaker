@@ -27,6 +27,8 @@ import os
 import functools
 import re
 
+from codebreaker.base.ctext import blank, sub_code
+
 KEYWORDS = {"auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern",
             "float", "for", "goto", "if", "int", "long", "register", "return", "short", "signed", "sizeof", "static",
             "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while"}
@@ -38,39 +40,7 @@ PRINTF = {"printf", "fprintf", "sprintf"}
 
 
 # ---------------------------------------------------------------- reading the text
-
-_BLANK_RX = re.compile(r"/\*[\s\S]*?(?:\*/|\Z)|\"(?:\\[\s\S]|[^\"\\\n])*\"?|'(?:\\[\s\S]|[^'\\\n])*'?")
-
-
-def _blank_one(m):
-    t = m.group(0)
-    if t.startswith("/*"):                                  # (a comment: its newlines kept)
-        return re.sub(r"[^\n]", " ", t)
-    q = t[0]
-    end = len(t) - 1 if len(t) > 1 and t[-1] == q and not _escaped_end(t) else len(t)
-    return q + " " * (end - 1) + t[end:]                    # (a string: inside it spaces, its quotes kept)
-
-
-def _escaped_end(t):
-    """whether the last quote of a string's match is inside it (an escape: \\" ) - never, by the pattern"""
-    return False
-
-
-@functools.lru_cache(maxsize=16384)
-def blank(text):
-    """the text with what is inside its comments, strings and character constants made spaces (newlines and
-    the quotes kept, every offset the same): what is code (a text seen before: as it was - the passes ask often)"""
-    return _BLANK_RX.sub(_blank_one, text)
-
-
-def sub_code(text, rx, fn):
-    """re.sub of what is code alone (not in strings or comments)"""
-    code = blank(text)
-    out, last = [], 0
-    for m in rx.finditer(code):
-        out += [text[last:m.start()], fn(m)]
-        last = m.end()
-    return "".join(out) + text[last:]
+# (blank and sub_code, what is code apart from its strings and comments: base/ctext)
 
 
 def depths(code_lines):

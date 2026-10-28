@@ -11,6 +11,8 @@ left out the caller proves alone (draft/prove.py's _prove mends what it can). Ca
 """
 import re
 
+from codebreaker.base import ctext
+
 KEYWORDS = {"extern", "int", "char", "long", "short", "unsigned", "signed", "struct", "union", "double", "float",
             "register", "static", "void", "auto", "typedef", "enum", "sizeof", "return", "if", "else", "while", "for",
             "do", "switch", "case", "default", "break", "continue", "goto"}
@@ -28,7 +30,7 @@ def split(src):
         if s.startswith("#"):
             return None
         body.append(l)
-    b = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|/\*.*?\*/', "", "\n".join(body), flags=re.S)
+    b = ctext.blank("\n".join(body), whole=True)
     if b.count("{") != b.count("}") or b.count("(") != b.count(")"):
         return None                                         # (a text that does not hold together: its errors would
     return "\n".join(x for x in pre if x.strip()), "\n".join(body)   #  run on into the next one's)

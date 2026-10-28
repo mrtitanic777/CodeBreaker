@@ -23,8 +23,9 @@ import json
 import os
 import re
 
+from codebreaker.base import ctext
+
 _NAME = r"[A-Za-z_]\w*"
-_STRING = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|/\*.*?\*/', re.S)
 
 
 def _body(text):
@@ -80,7 +81,7 @@ BREAKS = (("constant", _constant), ("comparison", _comparison), ("operator", _op
 def breaks(text):
     """[(kind of break, the function's text with it made)] -- every kind that applies."""
     head, body = _body(text)
-    shadow = _STRING.sub(lambda m: " " * len(m.group(0)), body)
+    shadow = ctext.blank(body, whole=True)
     out = []
     for kind, make in BREAKS:
         new = make(body, shadow)

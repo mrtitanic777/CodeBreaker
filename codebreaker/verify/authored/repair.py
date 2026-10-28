@@ -32,6 +32,7 @@ import itertools
 import os
 import re
 
+from codebreaker.base import ctext
 from codebreaker.verify.authored import match
 
 MAX_LOCALS = 6           # the leading locals whose order and storage are tried
@@ -56,7 +57,6 @@ _LONG = re.compile(r"(?P<pre>[;{}]\s*|\belse\s+)(?P<x>" + _NAME + r")\s*=\s*(?P=
                    + r")(?P<post>\s*[;)])")
 _SHORT = re.compile(r"(?P<pre>[;{}]\s*|\belse\s+)(?P<x>" + _NAME + r")\s*(?P<op>[-+*&|^])=\s*(?P<y>" + _ID
                     + r")(?P<post>\s*[;)])")
-_LITERAL = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|/\*.*?\*/', re.S)
 _DECL = re.compile(r"^[A-Za-z_][\w ]*\**\s*[A-Za-z_]\w*(\s*\[[^\]]*\])?\s*;$")
 
 
@@ -146,7 +146,7 @@ def score(built, original, bits=0, target=None):
 def _blank(text):
     """The text with its strings, characters and comments blanked, the same length: what the
     rewrites look for their places in, so that none is found inside one."""
-    return _LITERAL.sub(lambda m: " " * len(m.group(0)), text)
+    return ctext.blank(text, whole=True)
 
 
 def _depth(shadow, at):
