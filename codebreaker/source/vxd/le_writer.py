@@ -1,7 +1,9 @@
 """Synthesize an LE VxD directly from the recovered disassembly -- object bytes from D.code, the
 relocation table from D.fx -- instead of assembling + linking. This sidesteps LINK/MASM entirely,
 so cross-object relocations (which MASM/COFF cannot express as a near call across sections) are
-trivial: the fixup records are emitted by hand.
+trivial: the fixup records are emitted by hand. The file itself is written by formats/le.py's
+write_image, the one place LE files are written, told which of the original linker's layout
+choices to keep.
 
 The emitted file round-trips through le.py to the same objects, object bytes, and fixups, AND is
 accepted by the real Win95 VMM loader -- a VKD.VXD synthesized this way boots Windows 95 to the
@@ -45,7 +47,8 @@ def _emit_fixups(D, v):
     caps the fixup records per page, so the one-record-per-source form overflows and the module is
     rejected as "damaged". Records are ordered by ascending first-source offset. The table is indexed
     by logical page (matching the loader), independent of the page map's own page numbers. Returns
-    (page_table_bytes, record_bytes), written by formats/le.py as every LE's are."""
+    {page: [record bytes]}, encoded and laid into the fix-up tables by formats/le.py as every LE's
+    are."""
     ends = {}                                               # per-object instruction-end offsets
     for (oi, start), r in D.insns.items():
         ends.setdefault(oi, set()).add(start + r["size"])
@@ -77,42 +80,43 @@ def _emit_fixups(D, v):
             by_page.setdefault(pg + 1, {}).setdefault(key, []).append(po - v.pagesize)
     records = {}
     for pg in range(1, v.mpages + 1):
-        recs = bytearray()
         groups = by_page.get(pg, {})
+        records[pg] = []
         for key in sorted(groups, key=lambda k: min(groups[k])):
             st, tflags, kind, a, b = key
             offs = sorted(groups[key])
             for i in range(0, len(offs), 255):              # source count is one byte -> spill past 255
                 chunk = offs[i:i + 255]
-                srclist = len(chunk) > 1
-                recs += struct.pack("<BB", st | 0x20 if srclist else st, tflags)
-                recs += struct.pack("<B", len(chunk)) if srclist else struct.pack("<h", chunk[0])
+                rec = {"source": st, "source_flags": 0x20 if len(chunk) > 1 else 0, "flags": tflags,
+                       "sources": chunk}
                 if kind == "int":                           # target: obj# then 16/32-bit offset
-                    recs += struct.pack("<B", a)
-                    recs += struct.pack("<I", b) if (tflags & 0x10) else struct.pack("<H", b)
+                    rec.update(kind="internal", obj=a, target=b)
                 else:                                       # import: module# then 8-bit ordinal
-                    recs += struct.pack("<BB", a, b)
-                if srclist:                                 # ascending source-offset list at record end
-                    recs += b"".join(struct.pack("<h", o) for o in chunk)
-        records[pg] = [bytes(recs)]
-    return le.fixup_tables(records, v.mpages)
+                    rec.update(kind="import", module=a, ordinal=b)
+                records[pg].append(le.encode_fixup(rec))
+    return records
 
 
 def build_le(D, v, vxdname):
-    """Return the bytes of a synthesized LE VxD for the recovered disassembly D of oracle v."""
+    """Return the bytes of a synthesized LE VxD for the recovered disassembly D of oracle v: its
+    object pages from D.code and its fix-up records from D.fx, written by le.write_image in the
+    original linker's (LINK386's) layout, whose choices are read from the oracle. The header goes
+    at 0x80, behind the oracle's DOS stub, and that layout is read from the oracle's header at
+    0x80 too -- for the few files whose header sits elsewhere, those are the bytes their rebuilt
+    drivers have always had."""
     ps = v.pagesize
-    objs = v.objects
-    # data pages: each recovered object's pages come from D.code, laid out by physical page index.
+    lfa = 0x80
+    at = lambda off: struct.unpack_from("<I", v.d, lfa + off)[0]       # noqa: E731
+    o_dp = at(0x80)
+    # data pages: each recovered object's pages come from D.code, laid out by logical page index.
     # A logical page that no object maps ("gap" page) is not recovered code -- LINK386 left stale
     # buffer bytes there; those are copied from the oracle (the loader ignores them, they are not
-    # derivable). The last physical page holds only last_page_bytes (any tail is BSS, not stored).
-    o_dp = struct.unpack_from("<I", v.d, 0x80 + 0x80)[0]
+    # derivable). The last page holds only last_page_bytes (any tail is BSS, not stored).
     page_content = {}
-    for o in objs:
+    for o in v.objects:
         for k in range(o["pcnt"]):
             page_content[o["pmidx"] + k] = D.code[o["idx"]][k * ps:(k + 1) * ps]
-    last_page_bytes = v.last_page_bytes
-    data = bytearray()
+    pages = []
     for pg in range(1, v.mpages + 1):
         if pg in page_content:
             b = bytes(page_content[pg])
@@ -120,35 +124,28 @@ def build_le(D, v, vxdname):
             b = bytes(v.d[o_dp + (pg - 1) * ps: o_dp + pg * ps])   # gap page: orphaned linker bytes
         if len(b) < ps and pg != v.mpages:                          # object ends mid-page: the rest of
             b += bytes(v.d[o_dp + (pg - 1) * ps + len(b): o_dp + pg * ps])   # the page is oracle leftover
-        data += b[:last_page_bytes] if pg == v.mpages else b + b"\x00" * (ps - len(b))
+        pages.append((0, b[:v.last_page_bytes] if pg == v.mpages else b + b"\x00" * (ps - len(b))))
     # trailing bytes between the last object page and the non-resident name table (LINK386 zero-padding
     # or stale bytes): recovered from the oracle so the whole data region is byte-exact
-    data_end = (struct.unpack_from("<I", v.d, 0x80 + 0x88)[0]
-                or struct.unpack_from("<I", v.d, 0x80 + 0xb8)[0] or len(v.d))
-    if 0 <= len(data) < data_end - o_dp:
-        data += bytes(v.d[o_dp + len(data): data_end])
+    stored = sum(len(b) for _kind, b in pages)
+    data_end = at(0x88) or at(0xb8) or len(v.d)
+    names_gap = bytes(v.d[o_dp + stored: data_end]) if 0 <= stored < data_end - o_dp else b""
 
     otab_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x40)[0]
-    objtab = le.object_table({"vsize": o["vsize"], "base": o["base"], "flags": o["flags"], "first_page": o["pmidx"],
-                              "page_count": o["pcnt"],
-                              "reserved": bytes(v.d[otab_abs + i * 24 + 20: otab_abs + i * 24 + 24])}   # 4-char object name
-                             for i, o in enumerate(objs))                                                # (recovered)
+    objects = [{"vsize": o["vsize"], "base": o["base"], "flags": o["flags"], "first_page": o["pmidx"],
+                "page_count": o["pcnt"],
+                "reserved": bytes(v.d[otab_abs + i * 24 + 20: otab_abs + i * 24 + 24])}   # 4-char object name
+               for i, o in enumerate(v.objects)]                                          # (recovered)
     # page map: recovered verbatim from the oracle (each 4-byte entry's page number + flag byte are
     # LINK386's; the numbers are a permutation for some modules but do not affect page/fixup loading)
     pm_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x48)[0]
-    pagemap = bytes(v.d[pm_abs: pm_abs + v.mpages * 4])
     # resident-name table (the module's own name + any exported names): recovered verbatim from the
     # oracle so it is byte-exact regardless of the file name the caller injects under
     rn_off = struct.unpack_from("<I", v.d, v.lfa + 0x58)[0]
     et_off = struct.unpack_from("<I", v.d, v.lfa + 0x5c)[0]
-    if et_off > rn_off > 0:
-        resnames = bytes(v.d[v.lfa + rn_off: v.lfa + et_off])
-    else:
-        nm = vxdname.encode("latin1")
-        resnames = struct.pack("<B", len(nm)) + nm + struct.pack("<H", 0) + b"\x00"
+    resident = bytes(v.d[v.lfa + rn_off: v.lfa + et_off]) if et_off > rn_off > 0 else [(vxdname, 0)]
     # entry table (the export directory: DDB @1 + any further exports): recovered verbatim from the
     # oracle -- the DDB obj/rva it points at is independently verified by the byte-exact object bytes
-    et_off = struct.unpack_from("<I", v.d, v.lfa + 0x5c)[0]
     fp_off = struct.unpack_from("<I", v.d, v.lfa + 0x68)[0]
     if fp_off > et_off > 0:
         entrytab = bytes(v.d[v.lfa + et_off: v.lfa + fp_off])
@@ -156,78 +153,50 @@ def build_le(D, v, vxdname):
         db = D.ddb
         entrytab = struct.pack("<BBH", 1, 0x03, db["obj"] if db else 1) \
             + struct.pack("<BI", 0x03, db["rva"] if db else 0) + b"\x00"   # flags 0x03: EXPORTED entry
-    fxpage, fxrec = _emit_fixups(D, v)
     # loader-section tail after the fixup records -- the import module + procedure name tables (always
     # empty/count 0 in this corpus) plus whatever dead symbol strings LINK386 left in the gap up to the
-    # data pages: recovered verbatim from the oracle (the loader ignores it; it is not derivable)
-    o_impmod = 0x80 + struct.unpack_from("<I", v.d, 0x80 + 0x70)[0]
-    o_dp = struct.unpack_from("<I", v.d, 0x80 + 0x80)[0]
+    # data pages: recovered verbatim from the oracle as the tables' tail (the loader ignores it; it is
+    # not derivable), zero-padded up to the data pages. So the import tables are empty, and the fixup
+    # section size counts the fixup tables alone.
+    o_impmod = lfa + at(0x70)
     imp_region = bytes(v.d[o_impmod:o_dp]) if o_dp > o_impmod else b""   # empty when impmod == datapages
 
-    lfa = 0x80
-    hdr_len = 0xc4
-    pos = hdr_len
-    off_objtab = pos; pos += len(objtab)
-    off_pagemap = pos; pos += len(pagemap)
-    off_resnames = pos; pos += len(resnames)
-    off_entrytab = pos; pos += len(entrytab)
-    off_fxpage = pos; pos += len(fxpage)
-    off_fxrec = pos; pos += len(fxrec)
-    off_impmod = pos; pos += len(imp_region)
-    # data pages start at the oracle's recorded offset (LINK386's own alignment varies with page size);
-    # fall back to a 0x200 alignment only if our loader content would not fit under it
-    natural = (pos + lfa + 0x1ff) & ~0x1ff
-    oracle_dp = struct.unpack_from("<I", v.d, lfa + 0x80)[0]
-    datapages = oracle_dp if oracle_dp >= pos + lfa else natural
-
-    H = bytearray(hdr_len)
+    H = bytearray(le.HEADER_SIZE)
     struct.pack_into("<2sBBI", H, 0, b"LE", 0, 0, 0)
     struct.pack_into("<HH", H, 0x08, v.cpu, v.ostype)
-    struct.pack_into("<I", H, 0x14, v.mpages)
     struct.pack_into("<II", H, 0x18, v.eip_obj, v.eip)
-    struct.pack_into("<II", H, 0x28, ps, last_page_bytes)
-    struct.pack_into("<I", H, 0x40, off_objtab); struct.pack_into("<I", H, 0x44, len(objs))
-    struct.pack_into("<I", H, 0x48, off_pagemap)
-    struct.pack_into("<I", H, 0x58, off_resnames)
-    struct.pack_into("<I", H, 0x5c, off_entrytab)
-    struct.pack_into("<I", H, 0x68, off_fxpage)
-    struct.pack_into("<I", H, 0x6c, off_fxrec)
-    struct.pack_into("<I", H, 0x70, off_impmod); struct.pack_into("<I", H, 0x74, 0)
-    struct.pack_into("<I", H, 0x78, off_impmod)                       # import proc name table (empty, shares terminator)
-    struct.pack_into("<I", H, 0x80, datapages)
-    # section sizes the real loader reads to bound each table (checksums stay 0 -- unverified):
-    struct.pack_into("<I", H, 0x38, off_fxpage - off_objtab)          # loader section (objtab..entrytab)
-    struct.pack_into("<I", H, 0x30, len(fxpage) + len(fxrec))         # fixup section (page table + records)
+    struct.pack_into("<I", H, 0x28, ps)
     # header fields the real Win95 loader reads, preserved from the oracle (module version/flags, the
     # initial ESP, preload count, and the VxD device id + DDK version packed at 0xc0) -- recovered values
     for foff in (0x0c, 0x10, 0x20, 0x24, 0x84, 0x94, 0xc0):
-        struct.pack_into("<I", H, foff, struct.unpack_from("<I", v.d, lfa + foff)[0])
+        struct.pack_into("<I", H, foff, at(foff))
     # non-resident name table (the module description string): preserved, placed after the data pages
-    nres_off = struct.unpack_from("<I", v.d, lfa + 0x88)[0]
-    nres_sz = struct.unpack_from("<I", v.d, lfa + 0x8c)[0]
+    nres_off, nres_sz = at(0x88), at(0x8c)
     nres = v.d[nres_off:nres_off + nres_sz] if (nres_off and nres_sz and nres_off + nres_sz <= len(v.d)) else b""
     if nres and not (0 < nres[0] < 64 and all(31 < c < 127 or c == 9 for c in nres[1:1 + nres[0]])):
         nres = b""                                          # not a plausible description (e.g. a W3 module's container-relative offset)
-    if nres:
-        struct.pack_into("<I", H, 0x88, datapages + len(data))
-        struct.pack_into("<I", H, 0x8c, len(nres))
     # Windows resource block (the VxD's version resource): recovered from the oracle and re-pointed.
     # winresoff/winreslen (0xb8/0xbc) locate it; it sits at end-of-file, just past the non-res table.
-    wro = struct.unpack_from("<I", v.d, lfa + 0xb8)[0]
-    wrl = struct.unpack_from("<I", v.d, lfa + 0xbc)[0]
+    wro, wrl = at(0xb8), at(0xbc)
     winres = v.d[wro:wro + wrl] if (wro and wrl and wro + wrl <= len(v.d)) else b""
     if winres:
-        struct.pack_into("<I", H, 0xb8, datapages + len(data) + len(nres))
         struct.pack_into("<I", H, 0xbc, len(winres))
 
     mz = bytearray(v.d[:lfa]) if (v.d[:2] == b"MZ" and len(v.d) >= lfa) else bytearray(lfa)
     mz[0:2] = b"MZ"                                          # DOS stub preserved from the oracle
     struct.pack_into("<I", mz, 0x3c, lfa)
-    body = bytes(mz) + bytes(H) + objtab + pagemap + resnames + entrytab + fxpage + fxrec + imp_region
-    body += b"\x00" * (datapages - len(body)) + bytes(data) + nres + winres
-    if len(body) < len(v.d):                                # match the oracle's end-of-file padding
-        body += bytes(v.d[len(body):])
-    return bytes(body)
+    # the data pages start at the oracle's recorded offset (LINK386's own alignment varies with page
+    # size), at a 0x200 alignment only if our loader content would not fit under it; a file that comes
+    # out shorter than the oracle ends with the oracle's own end-of-file padding
+    return le.write_image({
+        "stub": bytes(mz), "header": bytes(H), "objects": objects, "pages": pages,
+        "page_map": bytes(v.d[pm_abs: pm_abs + v.mpages * 4]), "last_page_bytes": v.last_page_bytes,
+        "resident": resident, "nonresident": bytes(nres), "entry_table": entrytab,
+        "fixups": _emit_fixups(D, v), "import_modules": [], "import_names": b"",
+        "tables_tail": imp_region, "align": 0x200, "data_pages": o_dp, "gaps": (b"", names_gap),
+        "after": bytes(winres),
+        "moved": {"debug_info": 0, "resource_data": wro if winres else 0, "from": wro},
+        "fill_from": bytes(v.d)})
 
 
 def build_w3(D, v, name):
@@ -246,7 +215,7 @@ def build_w3(D, v, name):
         base = datapages + (o["pmidx"] - 1) * ps
         cb = D.code[o["idx"]]
         out[base:base + len(cb)] = cb
-    fxpage, fxrec = _emit_fixups(D, v)                      # fixup page + record tables rebuilt from D.fx
+    fxpage, fxrec = le.fixup_tables(_emit_fixups(D, v), v.mpages)   # fixup tables rebuilt from D.fx
     out[L + U(0x68):L + U(0x68) + len(fxpage)] = fxpage
     out[L + U(0x6c):L + U(0x6c) + len(fxrec)] = fxrec
     return bytes(out)
