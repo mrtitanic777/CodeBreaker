@@ -594,7 +594,8 @@ def read_image(lf):
     front of the header), "header" (the header's own bytes), "objects" [{vsize, base, flags,
     reserved, first_page, page_count}], "pages" [(kind, bytes)] (all of them, in page-map
     order; an object owns a run of them), "resident" / "nonresident" [(name, ordinal)],
-    "entry_table" (bytes), "fixups" {page: [record bytes]}, "import_modules" [names],
+    "entry_table" (bytes), "fixups" {page: [record bytes]} (by the page's place in the page
+    map, whatever its number), "import_modules" [names],
     "import_names" (bytes), "align" (what the data pages are aligned to in the file),
     "last_page_bytes" (the header's count of bytes on the last page, or None to count the
     last page written; a linker's 0 for a full last page is kept), "gaps" (the filler in front
@@ -626,8 +627,9 @@ def read_image(lf):
     kept = [body for kind, body in pages if kind not in (2, 3) and body]
     full_last = bool(kept) and len(kept[-1]) == lf.pagesize
     fix = {}
-    for pg, rec in fixup_records(lf):
-        fix.setdefault(pg, []).append(rec["raw"])
+    page_of = {number: i + 1 for i, (number, _kind) in reversed(list(enumerate(pm))) if number}
+    for row, rec in fixup_records(lf):                 # a row is a page's number: kept by the page
+        fix.setdefault(page_of.get(row, row), []).append(rec["raw"])
     res, non = names(lf)
     names_end = (h["nonresident_names"] + h["nonresident_size"]) if non else 0
     pages_end = lf.datapages + ((last - 1) * lf.pagesize + (lf.last_page_bytes or lf.pagesize) if last else 0)
@@ -679,25 +681,28 @@ def write_image(image):
     it), the header with every offset and size worked out again, the object table, the page
     map, the name and entry tables, the fix-up tables, the import names and the tables'
     tail, the filler and the data pages, the filler and the non-resident names, and whatever came after. Pages are
-    stored in page-map order and numbered that way, unless the image keeps its own page map."""
+    numbered in page-map order, unless the image keeps its own page map; either way each page is
+    stored at the place its number gives and its fix-ups go in the row of that number (a loader
+    finds both by the number), the highest-numbered page last and not filled out."""
     hdr = bytearray(image["header"].ljust(HEADER_SIZE, b"\0"))
     page_size = struct.unpack_from("<I", hdr, 0x28)[0]
-    pmap, data, number, last_len = bytearray(), bytearray(), 0, 0
     table = object_table(image["objects"])
     kinds = image["pages"]
     stored = [i for i, (kind, body) in enumerate(kinds) if kind not in (2, 3) and body]
-    for i, (kind, body) in enumerate(kinds):
-        if i in stored:
-            number += 1
-            pmap += number.to_bytes(3, "big") + bytes([kind])
-            last_len = len(body) if i == stored[-1] else page_size
-            data += body if i == stored[-1] else body.ljust(page_size, b"\0")
-        else:
-            pmap += bytes(3) + bytes([kind])
     if image.get("page_map") is not None:
         pmap = image["page_map"]
+        number = {i: int.from_bytes(pmap[4 * i:4 * i + 3], "big") for i in stored}
+    else:
+        number = {i: n + 1 for n, i in enumerate(stored)}
+        pmap = b"".join(number.get(i, 0).to_bytes(3, "big") + bytes([kind]) for i, (kind, _body) in enumerate(kinds))
+    at = {n: i for i, n in number.items()}
+    top = max(at, default=0)
+    data = b"".join(kinds[at[n]][1] if n == top else kinds[at[n]][1].ljust(page_size, b"\0") if n in at
+                    else bytes(page_size) for n in range(1, top + 1))
+    last_len = len(kinds[at[top]][1]) if top else 0
     resident = _name_table(image["resident"])
-    fix_pages, fix_records = fixup_tables(image["fixups"], len(kinds))
+    fix_pages, fix_records = fixup_tables({number.get(pg - 1, pg): recs for pg, recs in image["fixups"].items()},
+                                          len(kinds))
     modules = b"".join(bytes([len(n)]) + n.encode("latin1") for n in image["import_modules"])
     tail = image.get("tables_tail") or b""
     at = HEADER_SIZE
