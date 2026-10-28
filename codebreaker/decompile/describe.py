@@ -839,18 +839,35 @@ def windows_far_prologue(code, off):
     return head[:4] in (b"\x8c\xd8\x90\x45", b"\x1e\x58\x90\x45") or head[:2] == b"\x45\x55"
 
 
-def result_bytes(code, start, end, passes=None):
+def result_bytes(code, start, end, passes=None, voided=None):
     """What a function returns, by its instructions: 2 when on a way to one of its returns the
     last thing to set AX is its own (past the prologue's `mov ax, ds` / `push ds; pop ax` /
     `mov ax, DGROUP` ahead of `mov ds, ax`, and not a `pop ax` -- AX given back as it came) or
     a call (what the callee left there goes back as it came); 4 when DX is set there as well.
     0 when no return is seen to carry anything. Walked back from each return through its
-    straight run of instructions."""
+    straight run of instructions.
+    0 as well when a way to a return sets AX nowhere past that prologue: AX is then the data
+    segment the prologue loaded -- a register as it came, not a result -- and a function that
+    returns nothing on one way returns nothing at all (LZEXPAND's LZDONE: `dec word ptr [32h] /
+    jne` straight to the return, the other way copying globals through AX) -- unless on another
+    way AX is set and not read again before the return (LMOUSE31's CPLAPPLET: `mov ax, 0 / jmp`
+    to the return; DS on its other way is a nonzero answer as well). `voided`, given a
+    list, has what the other ways would have made it appended (results() keeps that where a
+    caller reads AX after all), and `passes` is emptied."""
     import capstone
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
     md.detail = True
     ins = list(md.disasm(code[start:end], start))
-    prologue = next((i.address + i.size for i in ins[:6] if i.mnemonic == "mov" and i.op_str == "ds, ax"), start)
+    # (Windows' own prologue loads DS seventh or eighth: `mov ax, ds` or `push ds; pop ax`, `nop`,
+    # `inc bp; push bp; mov bp, sp; push ds; mov ds, ax`)
+    windows = windows_far_prologue(code, start)
+    head = [i for i in ins[:8 if windows else 6] if i.mnemonic == "mov" and i.op_str == "ds, ax"]
+    prologue = head[0].address + head[0].size if head else start
+    # (AX there is the data segment -- the caller's, which Windows makes the module's own, or
+    # DGROUP's `mov ax, seg` -- not an argument loaded into DS)
+    k = ins.index(head[0]) if head else 0
+    ds_in_ax = bool(head) and (windows or k > 0 and ins[k - 1].mnemonic == "mov" and
+                               re.fullmatch(r"ax, (0x[0-9a-f]+|\d+)", ins[k - 1].op_str) is not None)
     targets = set()
     for i in ins:
         if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM:
@@ -929,20 +946,27 @@ def result_bytes(code, start, end, passes=None):
             read = read or _reads_dx(p, _r)                  # (DX read on the way: scratch)
         return False
 
-    best = 0
+    # (`bare`: a way to a return sets no AX past the prologue; `evident`: on one, what sets AX
+    # last is not read again before the return -- `mov ax, 0 / jmp done` -- a value set for the
+    # caller, where one read on the way -- `mov ax, [34h] / mov [44h], ax` -- was a scratch copy)
+    best, bare, evident = 0, False, False
     for i in ins:
         if i.mnemonic not in ("ret", "retf"):
             continue
         # back from the return along every way into it, to what last set AX on each
         # (DX set too makes it four bytes only right at the end -- `mov ax, lo / mov dx, hi` --
         # or by what sets AX itself: DX on the way is as often a scratch register)
-        work, seen = [(p, False, 0) for p in into.get(i.address, [])], set()
+        work, seen = [(p, False, 0, False, False) for p in into.get(i.address, [])], set()
         while work:
-            a, wide, steps = work.pop()
-            if (a, wide) in seen or a not in at or a < prologue:
+            a, wide, steps, opaque, used = work.pop()
+            if a in at and ds_in_ax and a < prologue and not opaque:
+                bare = True                                  # (into the prologue, AX still its DS)
+            if (a, wide, opaque, used) in seen or a not in at or a < prologue:
                 continue
-            seen.add((a, wide))
+            seen.add((a, wide, opaque, used))
             p = ins[at[a]]
+            # (an interrupt's results are not all in what Capstone says it writes)
+            opaque = opaque or p.mnemonic in ("int", "into", "int3")
             if p.group(capstone.CS_GRP_CALL):
                 if passes is not None:                      # (its size is the callee's: see results())
                     near = p.operands and p.operands[0].type == capstone.CS_OP_IMM and p.bytes[0] == 0xE8
@@ -958,9 +982,18 @@ def result_bytes(code, start, end, passes=None):
             if ax & set(written):
                 if p.mnemonic != "pop":
                     best = max(best, 4 if wide or (dx & set(written)) or _segment_in_dx(p.address) else 2)
+                    evident = evident or not used
                 continue
             w = wide or bool(dx & set(written) and steps < 3 and (p.mnemonic != "pop" or not saves_dx))
-            work += [(q, w, steps + (0 if p.mnemonic in ("pop", "leave", "push") else 1)) for q in into.get(a, [])]
+            u = used or bool(ax & set(_r))
+            work += [(q, w, steps + (0 if p.mnemonic in ("pop", "leave", "push") else 1), opaque, u)
+                     for q in into.get(a, [])]
+    if bare and not evident and (best or passes):
+        if voided is not None:
+            voided.append(best or 2)
+        if passes is not None:
+            del passes[:]
+        return 0
     return best
 
 
@@ -1189,14 +1222,20 @@ def results(d):
     for va in d.names:
         sg, off = where(va)
         by_seg.setdefault(sg, []).append(off)
-    own, passes = {}, {}
+    own, passes, voided = {}, {}, {}
     for sg, offs in by_seg.items():
         code = d.segment_bytes.get(sg, b"")
         offs = sorted(offs)
         for k, off in enumerate(offs):
-            p = []
-            own[(sg, off)] = result_bytes(code, off, offs[k + 1] if k + 1 < len(offs) else len(code), p)
+            p, v = [], []
+            own[(sg, off)] = result_bytes(code, off, offs[k + 1] if k + 1 < len(offs) else len(code), p, v)
             passes[(sg, off)] = p
+            if v:
+                voided[(sg, off)] = v[0]
+    if voided and getattr(d, "images", None):
+        # (one with a way that sets no AX, whose result a caller reads all the same: a result)
+        for place in callers_read_ax(d, set(voided)):
+            own[place] = voided[place]
     size = dict(own)
     for _round in range(8):                                   # (wrappers of wrappers)
         changed = False
@@ -1366,6 +1405,49 @@ def callers_read_dx(d, edges=None):
                     out.add(target)
                     break
                 if dx & set(w):
+                    break
+    return out
+
+
+def callers_read_ax(d, places):
+    """{(seg, off)} of `places` a call to which is followed, before anything sets it, by a read of
+    AX (`or ax, ax`, `mov [x], ax`, `push ax`): what it leaves there is a result its caller uses."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    ax = {capstone.x86.X86_REG_AX, capstone.x86.X86_REG_AL, capstone.x86.X86_REG_AH, capstone.x86.X86_REG_EAX}
+    code_segs = getattr(d, "code", None) or {}
+    out = set()
+    for seg, img in d.images.items():
+        if code_segs and seg not in code_segs:
+            continue
+        ins = list(md.disasm(bytes(img), 0))
+        for k, i in enumerate(ins[:-1]):
+            if i.mnemonic == "call" and i.op_str.startswith("0x") and "," not in i.op_str:
+                target = (seg, int(i.op_str, 16) & 0xFFFF)
+            elif i.mnemonic == "lcall" and "," in i.op_str and i.op_str.startswith("0x"):
+                s, o = (int(x, 16) for x in i.op_str.split(", "))
+                target = where((s << 16) | o) if s < 0xE000 else None
+            else:
+                continue
+            if target not in places or target in out:
+                continue
+            for q in ins[k + 1:k + 8]:
+                if q.group(capstone.CS_GRP_JUMP) or q.group(capstone.CS_GRP_CALL) or q.group(capstone.CS_GRP_RET) \
+                        or q.mnemonic in ("int", "iret", "leave"):
+                    break
+                ops = [o.strip() for o in q.op_str.split(",")]
+                if q.mnemonic in ("xor", "sub") and len(ops) == 2 and ops[0] == ops[1]:
+                    if ops[0] in ("ax", "al", "ah", "eax"):
+                        break                                # (cleared: written, not read)
+                    continue
+                try:
+                    r, w = q.regs_access()
+                except capstone.CsError:
+                    break
+                if ax & set(r):
+                    out.add(target)
+                    break
+                if ax & set(w):
                     break
     return out
 
