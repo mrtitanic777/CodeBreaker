@@ -1488,6 +1488,12 @@ def _compilable16(module_path, outdir=None):
                                  "  return 0;\n}" % (model, nm))
                     by_va[va] = nm
                     m.failed[nm] = "the decompiler could not make it"
+    # helpers that work in their caller's frame: its places passed to them (_caller_frame_slots)
+    frames = {}
+    for va, nm in by_va.items():
+        seg, off = d.where.get(va) or (None, None)
+        frames[nm] = seg in d.images and _keeps_frame(d.images[seg], off)
+    texts = _caller_frame_slots(texts, frames)
     # each function's model as the description gives it: near or far is how it returns, and
     # the C must say it (the decompiler leaves the convention out of a head whose result is a
     # pointer -- and in the medium model an unmarked function is far)
@@ -1833,6 +1839,82 @@ def _interrupts(text, used):
             if m and n.parent.type != "declaration" and not (n.parent.type == "pointer_declarator"):
                 src.replace(n, "int_" + m.group(1))
     return ctree.rewrite(text, results)
+
+
+_CALLER_SLOT = re.compile(r"\*\((\w+) \*\)\(unaff_BP \+ -(0x[0-9a-f]+|\d+)\)")
+
+
+def _keeps_frame(code, off):
+    """Does the function at `off` set up BP as its frame -- Windows' far prologue, `push bp /
+    mov bp, sp`, or `enter`?"""
+    from codebreaker.decompile import describe
+    head = bytes(code[off:off + 3])
+    return describe.windows_far_prologue(code, off) or head in (b"\x55\x8b\xec", b"\x55\x89\xe5") or head[:1] == b"\xc8"
+
+
+def _caller_frame_slots(texts, frames):
+    """A helper that works in its caller's frame: it makes no frame of its own and reaches places
+    through BP as its caller left it -- KEYBOARD's sub_9_0A62, `xor ax, ax / mov [bp-4], ax /
+    mov [bp-6], ax / ret`, which clears two of OEMTOANSI's locals. The decompiler writes
+    `*(xunknown2 *)(unaff_BP + -4) = 0`, a BP the C never has, and the caller's locals stay
+    unset (its loop compared the pointers against whatever the frame held). Here each such place
+    becomes a parameter -- a far pointer, the frame being in SS -- and each call passes the
+    address of the caller's own local there: [bp-4] of a frame BP set up is entry SP - 6, the
+    caller's xStack_6. Only where every place is below BP, every caller keeps a frame of its own
+    (`frames`: function -> bool), and every use of the helper is a plain call of it; otherwise
+    the C is left as it was. -> {function: text}"""
+    out = dict(texts)
+    for name, text in texts.items():
+        hm = re.search(r"\b(__cdecl16(?:near|far)) %s\((void)?\)" % re.escape(name), text)
+        if not hm or "{" not in text[hm.end():] or not re.search(r"(?m)^\s+int2 unaff_BP;$", text):
+            continue
+        at = text.index("{", hm.end())
+        head, body = text[:at], text[at:]
+        uses = len(re.findall(r"\bunaff_BP\b", body))
+        slots = {}                                           # BP less -> the type first reached there
+        for m in _CALLER_SLOT.finditer(body):
+            slots.setdefault(int(m.group(2), 0), m.group(1))
+        if not slots or uses != 1 + len(_CALLER_SLOT.findall(body)) or \
+                any(t not in _SIZEOF for t in slots.values()):
+            continue
+        callers = {n: t for n, t in texts.items() if n != name and re.search(r"\b%s\b" % re.escape(name), t)}
+        if not callers or any(not frames.get(n) or "unaff_BP" in t or
+                              len(re.findall(r"\b%s\b" % re.escape(name), t)) !=
+                              len(re.findall(r"\b%s\(\)" % re.escape(name), t)) for n, t in callers.items()):
+            continue
+        # the caller's local at each place: declared alone, as wide as what the helper puts there
+        found, ok = {}, True
+        for n, t in callers.items():
+            own = {int(m.group(3), 16): (m.group(1), m.group(2)) for m in
+                   re.finditer(r"(?m)^\s+([\w ]+?\**) ?(\w*Stack_([0-9a-f]+));$", t)}
+            arrays = re.search(r"(?m)^\s+[\w ]+?\**\s*\w*Stack_[0-9a-f]+ \[\d+\];", t)
+            for less, ty in slots.items():
+                got = own.get(less + 2)
+                width = 2 if got and "*" in got[0] else _SIZEOF.get(got[0].strip()) if got else None
+                if got is None and arrays or got is not None and width != _SIZEOF[ty]:
+                    ok = False
+                found[(n, less)] = got[1] if got else None
+        if not ok:
+            continue
+        params = ["%s __far *frame_%x" % (slots[less], less) for less in sorted(slots)]
+        new_body = _CALLER_SLOT.sub(lambda m: "*frame_%x" % int(m.group(2), 0) if m.group(1) == slots[int(m.group(2), 0)]
+                                    else "*(%s __far *)frame_%x" % (m.group(1), int(m.group(2), 0)), body)
+        new_body = re.sub(r"(?m)^\s+int2 unaff_BP;\n", "", new_body, count=1)
+        out[name] = head[:hm.start()] + "%s %s(%s)" % (hm.group(1), name, ",".join(params)) + head[hm.end():] + new_body
+        for n, t in callers.items():
+            t = out[n]
+            args = []
+            for less in sorted(slots):
+                local = found[(n, less)]
+                if local is None:                            # (a place the caller's C never reads)
+                    local = "xStack_%x" % (less + 2)
+                if not re.search(r"(?m)^\s+[\w ]+?\**\s*%s;$" % local, t):
+                    own = re.search(r"\b%s\(" % re.escape(n), t)
+                    at = t.find("{\n", own.end() if own else 0)
+                    t = t[:at] + "{\n  %s %s;\n" % (slots[less], local) + t[at + 2:]
+                args.append("(%s __far *)MK_FP(codebreaker_ss(),&%s)" % (slots[less], local))
+            out[n] = re.sub(r"\b%s\(\)" % re.escape(name), "%s(%s)" % (name, ",".join(args)), t)
+    return out
 
 
 def _entry_sp(text):
