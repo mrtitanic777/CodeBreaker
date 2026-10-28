@@ -20,7 +20,9 @@ rebuilt image keeps its own copy of a constant.
 """
 import hashlib
 
+from codebreaker.base import corpus
 from codebreaker.verify import compare
+from codebreaker.verify import lane_common
 
 REV = 4                                 # 4: branch-guided inputs (verify/guided.py); calls into absent code
 ARGS = 8
@@ -34,17 +36,17 @@ def vectors():
     there, on both sides alike."""
     from codebreaker.emulate import powerpc
     a = powerpc.ARGS_BASE
-    return [{"args": [0] * ARGS}, {"args": [i + 1 for i in range(ARGS)]},
-            {"args": [a + 0x1000 * i for i in range(ARGS)]},
-            {"args": [a + 0x1000 * i for i in range(ARGS)], "stub_ret": 1},
-            {"args": [0x100 * (i + 1) for i in range(ARGS)], "stub_ret": 0xFFFFFFFFFFFFFFFF},
-            {"args": [(a + 0x800 * i) if i % 2 == 0 else 0x20 * (i + 1) for i in range(ARGS)]},
-            {"args": [0x20 * (i + 1) if i % 2 == 0 else (a + 0x800 * i) for i in range(ARGS)], "stub_ret": 1},
-            {"args": [0xFFFFFFFFFFFFFFFF - i for i in range(ARGS)]},
+    return [{"args": [0] * ARGS}, {"args": lane_common.counting(ARGS)},
+            {"args": lane_common.counting(ARGS, a, 0x1000)},
+            {"args": lane_common.counting(ARGS, a, 0x1000), "stub_ret": 1},
+            {"args": lane_common.counting(ARGS, 0x100, 0x100), "stub_ret": 0xFFFFFFFFFFFFFFFF},
+            {"args": lane_common.alternating(ARGS, lambda i: a + 0x800 * i, lambda i: 0x20 * (i + 1))},
+            {"args": lane_common.alternating(ARGS, lambda i: 0x20 * (i + 1), lambda i: a + 0x800 * i), "stub_ret": 1},
+            {"args": lane_common.descending(ARGS, 0xFFFFFFFFFFFFFFFF)},
             {"args": [a, 3, a + 0x4000, 0x40, a + 0x8000, 1, 0, 2], "stub_ret": 0x103},
-            {"args": [a + 0x1000 * i for i in range(ARGS)], "fill": "pointers"},
-            {"args": [a + 0x1000 * i for i in range(ARGS)], "fill": "counts", "stub_ret": 1},
-            {"args": [a + 0x1000 * i for i in range(ARGS)], "fill": "text"},
+            {"args": lane_common.counting(ARGS, a, 0x1000), "fill": "pointers"},
+            {"args": lane_common.counting(ARGS, a, 0x1000), "fill": "counts", "stub_ret": 1},
+            {"args": lane_common.counting(ARGS, a, 0x1000), "fill": "text"},
             {"args": [a + 0x40, 5, a + 0x2000, 2, 1, a + 0x3000, 0, 9], "fill": "counts"},
             {"args": [7, a + 0x100, 0x30, a + 0x5000, a + 0x200, 4, 3, 1], "fill": "pointers", "stub_ret": 2}]
 
@@ -70,22 +72,14 @@ def directed(image, span, most=6):
         a, out = powerpc.ARGS_BASE, []
         for c in seen[:most]:
             out.append({"args": [c] * ARGS, "stub_ret": c})
-            out.append({"args": [c if i % 2 else a + 0x1000 * i for i in range(ARGS)], "stub_ret": c, "fill": "counts"})
+            out.append({"args": lane_common.alternating(ARGS, lambda i: a + 0x1000 * i, c), "stub_ret": c, "fill": "counts"})
         _DIRECTED[span] = out
     return _DIRECTED[span]
 
 
-MAX_GUIDED = 16                 # branch-guided inputs kept per function (verify/guided.py)
-GUIDED_BUDGET = 96              # runs of the original it may spend finding them
-
-
 def guided_vectors(shared, va, span, externs, seeds, absent=None):
     """Inputs that take branches of the original no seed took (verify/guided.py)."""
-    import os
     from codebreaker.emulate import powerpc
-    from codebreaker.verify import guided
-    if os.environ.get("CB_NO_GUIDED"):              # (to measure what the guided inputs add)
-        return []
 
     def run(v):
         try:
@@ -96,8 +90,7 @@ def guided_vectors(shared, va, span, externs, seeds, absent=None):
             return None
         return {"branches": r["branches"], "reach": r["path"], "args_at": None,
                 "stack": (powerpc.STACK_LOW, powerpc.STACK_TOP)}
-    return guided.guided_inputs(run, seeds, budget=GUIDED_BUDGET, keep=MAX_GUIDED, seed=va & 0xFFFF,
-                                byteorder="big", word=8)
+    return lane_common.guided(run, seeds, va & 0xFFFF, byteorder="big", word=8)
 
 
 def directed_and_guided(module_path, shared, va, span, externs, absent=None):
@@ -108,7 +101,8 @@ def directed_and_guided(module_path, shared, va, span, externs, absent=None):
 
 def _argument(machine, v, images):
     """One argument of a recorded call, written as what it is rather than its bit pattern where
-    the two builds would legitimately differ."""
+    the two builds would legitimately differ: an address in the stack, or what an address in
+    either image points at; otherwise as lane_common.argument writes it."""
     from codebreaker.emulate import powerpc
     x = v & M32
     if powerpc.STACK_LOW <= x < powerpc.STACK_TOP:
@@ -116,7 +110,7 @@ def _argument(machine, v, images):
     for lo, hi in images:
         if lo <= x < hi:
             return "data:" + bytes(machine.read(x + i, 1) for i in range(12)).hex()
-    return "%x" % x
+    return lane_common.argument(x)
 
 
 def fingerprint(shared, entry, v, externs, argc, images, span=None, novalue=False):
@@ -129,15 +123,13 @@ def fingerprint(shared, entry, v, externs, argc, images, span=None, novalue=Fals
         return {"err": type(e).__name__}
     ex = compare._exit_norm(r["exit"])
     m = r["machine"]
-    deps = []
-    for name, args in r["calls"]:
-        n = argc.get(name)
-        deps.append(name if n is None else "%s(%s)" % (name, ",".join(_argument(m, x, images) for x in args[:n])))
+    deps = list(lane_common.calls([(name, None if argc.get(name) is None else args[:argc[name]])
+                                   for name, args in r["calls"]], lambda x: _argument(m, x, images)))
     if r["truncated"] and len(r["calls"]) >= powerpc.MAX_CALLS:
         deps.append("...")
     lo_r, hi_r = images[-1]                                  # the rebuilt image, when there is one
-    state = {a: new for a, (_old, new) in r["writes"].items() if not (len(images) > 1 and lo_r <= a < hi_r)}
-    writes = "%d:%s" % (len(state), hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16]) if state else ""
+    writes = lane_common.writes({a: new for a, (_old, new) in r["writes"].items()
+                                 if not (len(images) > 1 and lo_r <= a < hi_r)})
     lo = span[0] if span else 0
     return {"ret": None if (novalue or ex != "ret") else r["ret"] & M32, "exit": ex, "truncated": bool(r["truncated"]),
             "deps": tuple(deps), "writes": writes, "pop": None, "saved": r["saved"] if ex == "ret" else None,
@@ -167,21 +159,26 @@ def _judge(context, item):
     """Worker. item = (key, address, span, instruction count, rebuilt address, returns nothing)."""
     module_path, dll, ext_original, ext_rebuilt, argc = context
     _key, va, span, insns, rebuilt_va, novalue = item
-    info = {}
-    try:
+    sha = corpus.sha(module_path)
+
+    def compare_one(info):
         alone, both, images = _memory(module_path, dll)
         merged = {**ext_original, **ext_rebuilt}
-        verdict, reason, limits = compare.compare(
-            lambda v: fingerprint(alone, va, v, ext_original, argc, images[:1], span=span, novalue=novalue),
+
+        def original(v):
+            # the original's run depends on the original, and on what the build says of the calls
+            # out of it (their names, how many arguments each takes): remembered across rebuilds
+            key = compare.cache_key(KIND, REV, sha, va, span, novalue, sorted(v.items()),
+                                    sorted(ext_original.items()), sorted(argc.items())) if sha else None
+            return lane_common.remembered(key, lambda: fingerprint(alone, va, v, ext_original, argc, images[:1],
+                                                                   span=span, novalue=novalue))
+        return compare.compare(
+            original,
             lambda v: fingerprint(both, rebuilt_va, v, merged, argc, images, novalue=novalue),
             vectors(), (), insns=insns, info=info,
             directed=lambda covered, reached: directed_and_guided(module_path, alone, va, span, ext_original,
                                                                   images[0]))
-    except ImportError:
-        raise
-    except Exception as e:
-        verdict, reason, limits = "inconclusive", "judge: %s" % type(e).__name__, []
-    return verdict, reason, list(limits), info.get("detail", "")
+    return lane_common.judged(compare_one)
 
 
 KIND = "powerpc"

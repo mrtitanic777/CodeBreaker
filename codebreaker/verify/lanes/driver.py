@@ -44,6 +44,7 @@ from codebreaker.emulate.driver import (BUFFER, CLIENT, INSN_CAP, MAX_CALLS, OBJ
 from codebreaker.formats import le
 from codebreaker.symbols import driver_services
 from codebreaker.verify import compare
+from codebreaker.verify import lane_common
 
 KIND = "le"
 REV = 3                           # what a verdict means; raise when run() or the inputs change
@@ -52,12 +53,10 @@ REV = 3                           # what a verdict means; raise when run() or th
 
 # From a run to a fingerprint --------------------------------------------------------------------
 def _value(image, v, aligned):
-    """A value as two builds of the same code agree on it."""
-    if STACK_LO <= v < STACK_HI:
-        return "S"
-    if not aligned and image.holds(v):
-        return "P"                                           # somewhere in the driver
-    return "%x" % v
+    """A value as two builds of the same code agree on it (lane_common.argument): an address in
+    the stack is "S"; one in the driver is "P", somewhere in the driver, when the two files are
+    not laid out alike."""
+    return lane_common.argument(v, frame=((STACK_LO, STACK_HI),), image=None if aligned else image.holds)
 
 
 def _service(device, service):
@@ -98,14 +97,13 @@ def _effects(image, r, aligned):
 def fingerprint(image, entry, v, aligned=True):
     """One run as the comparer wants it (see verify/compare.py). `aligned`: the other image
     has the same objects, so addresses inside the driver mean the same on both sides."""
-    key = None
-    if not os.environ.get("CB_NO_FP_CACHE"):                 # the same switch the other kinds obey
-        key = compare.cache_key(KIND, REV, image.digest, entry, aligned, sorted(v["regs"].items()), v.get("stack"),
-                                v.get("flags"),
-                                [(a, bytes(b)) for a, b in v.get("memory", ())], v.get("stub_ret"), v.get("stub_carry"))
-        hit = compare.cache_get(key)
-        if hit is not None:
-            return hit
+    key = compare.cache_key(KIND, REV, image.digest, entry, aligned, sorted(v["regs"].items()), v.get("stack"),
+                            v.get("flags"),
+                            [(a, bytes(b)) for a, b in v.get("memory", ())], v.get("stub_ret"), v.get("stub_carry"))
+    return lane_common.remembered(key, lambda: _run(image, entry, v, aligned))
+
+
+def _run(image, entry, v, aligned):
     try:
         r = run(image, entry, v["regs"], v.get("stack", ()), v.get("memory", ()),
                 v.get("stub_ret", 0), v.get("stub_carry", 0), flags=v.get("flags", 0))
@@ -113,29 +111,23 @@ def fingerprint(image, entry, v, aligned=True):
         raise
     except Exception as e:
         return {"err": "%s: %s" % (type(e).__name__, e)}
-    deps = []
-    for device, service, regs, words in r["calls"][:MAX_CALLS]:
-        deps.append("%s(%s)" % (_service(device, service) if device is not None else
-                                "outside:" + _value(image, service, aligned),
-                                ",".join(_value(image, x, aligned) for x in regs + tuple(words))))
-    if len(r["calls"]) > MAX_CALLS:
-        deps.append("...")
+    deps = list(lane_common.calls([(_service(device, service) if device is not None else
+                                    "outside:" + _value(image, service, aligned), regs + tuple(words))
+                                   for device, service, regs, words in r["calls"]],
+                                  lambda x: _value(image, x, aligned), cap=MAX_CALLS))
     deps += ["%s(%x,%d,%x)" % p for p in r["ports"][:MAX_CALLS]]
     done = compare._exit_norm(r["exit"]) == "ret"
     memory = _effects(image, r, aligned)
     result = (r["flags"],) + tuple(_value(image, x, aligned) for x in r["registers"]) if done else ()
-    fp = {"exit": compare._exit_norm(r["exit"]), "ret": r["eax"], "deps": tuple(deps),
-          "truncated": bool(r["truncated"]),
-          # the comparer's "what it left behind": memory, and for a driver the flags and
-          # registers it hands back, which are results here just as EAX is
-          "writes": None if memory is None else "%d:%s" % (memory[0], hashlib.sha1(
-              repr((memory[1], result)).encode()).hexdigest()[:16]),
-          "memory": memory, "result": result,
-          "pop": r["esp_delta"] if done else None, "saved": None,
-          "cov": tuple(sorted(r["cover"])), "reach": ()}
-    if key:
-        compare.cache_put(key, fp)
-    return fp
+    return {"exit": compare._exit_norm(r["exit"]), "ret": r["eax"], "deps": tuple(deps),
+            "truncated": bool(r["truncated"]),
+            # the comparer's "what it left behind": memory, and for a driver the flags and
+            # registers it hands back, which are results here just as EAX is
+            "writes": None if memory is None else "%d:%s" % (memory[0], hashlib.sha1(
+                repr((memory[1], result)).encode()).hexdigest()[:16]),
+            "memory": memory, "result": result,
+            "pop": r["esp_delta"] if done else None, "saved": None,
+            "cov": tuple(sorted(r["cover"])), "reach": ()}
 
 
 def explain(a, b):
