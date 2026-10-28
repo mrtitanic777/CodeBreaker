@@ -145,11 +145,21 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    `__far` on a four-byte pointer's declaration and on the cast assigned to it, and `code __near *`
    on a call through a word; c_text leaves its own out for a function whose C the back end wrote
    (decompiler.FROM_L2 marks it; one it declined -- an Unsupported node -- keeps the printed C and
-   every pass). Which pointers are far is still read from the decompiler's `/*@P name 4 */` notes,
-   as c_text does: in three USER and GDI functions a variable four bytes wide is typed as a near
-   pointer, so L2's types alone would differ. Gate: `--made` on the seven modules above, 5,336
-   functions, all the same. Next: `_far_from_stack` (a dataflow over the statements: a far pointer
-   set from the frame gets SS), then the near/far types made right in PrintL2 so the notes can go.
+   every pass). Gate: `--made` on the seven modules above, 5,336 functions, all the same.
+   **Pointer passes done 2026-10-28:** `_far_from_stack` moved too (`backends/c._far_from_stack`, a
+   dataflow over the statements: a far pointer set from a near one into the frame gets SS). Which
+   pointers are far now comes from L2's types alone, not the `/*@P name 4 */` notes: measured on
+   every 16-bit function of the golden corpus (4,064) and of USER, GDI, KRNL386, LZEXPAND,
+   KEYBOARD and COMM, the two sets are the same (the three USER/GDI functions that once differed
+   no longer do). PrintL2 brackets a hidden function's operand as PrintC does (`(a & 0xcff) &
+   0xffffff03` across a ZEXT), so `tools/l2c.py` gives 6,808 of 6,808. Two pointer bugs the
+   stronger 16-bit judge found were fixed in both paths: a constant data address assigned to a far
+   pointer stays near, so C makes it far with DS (LZEXPAND's LZDONE wrote through 0000:0032;
+   `c_text.data_address`), and a frame buffer reached through its address as a number is written
+   with SS (KEYBOARD's NEWTABLEEX; `c_text._frame_through_ss`, not yet a tree pass). Still not
+   carried: comments (PrintC's warnings) and where PrintC breaks a long line -- the `--made` gate's
+   "but for comments and line breaks". Next: the c_text passes after the pointer ones, in
+   L2_BINARY_TYPES.md's order.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
 5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module
