@@ -511,7 +511,7 @@ class PEFile:
 
     def clr(self):
         """The .NET runtime header, or None for a native image."""
-        va, _size = self.directory(14)
+        va = _clr_directory(self.datadirs)[0]
         off = self.file_offset(va) if va else None
         if off is None or off + 72 > len(self.data):
             return None
@@ -536,3 +536,30 @@ class PEFile:
 
 def open_pe(path):
     return PEFile(path)
+
+
+def _clr_directory(datadirs):
+    """(rva, size) of the CLR runtime header's directory (14), or (0, 0): a native image."""
+    va, size = datadirs[14] if len(datadirs) > 14 else (0, 0)
+    return (va, size) if va and size else (0, 0)
+
+
+def is_dotnet(path):
+    """Whether the file is a .NET assembly: a PE image with a CLR runtime header (data directory
+    14). Reads the headers only."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(0x40)
+            if len(head) < 0x40 or head[:2] != b"MZ":
+                return False
+            f.seek(struct.unpack_from("<I", head, 0x3C)[0])
+            nt = f.read(24 + 112 + 16 * 8)                      # (PE32+: the largest optional header)
+    except OSError:
+        return False
+    if len(nt) < 26 or nt[:4] != b"PE\0\0":
+        return False
+    at = 24 + (108 if struct.unpack_from("<H", nt, 24)[0] == 0x20B else 92)    # NumberOfRvaAndSizes
+    if at + 4 > len(nt):
+        return False
+    count = min(struct.unpack_from("<I", nt, at)[0], (len(nt) - at - 4) // 8)
+    return _clr_directory([struct.unpack_from("<II", nt, at + 4 + 8 * k) for k in range(count)]) != (0, 0)

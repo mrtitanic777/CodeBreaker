@@ -50,16 +50,8 @@ _EXTRA_FILES = ("csmapper.sys", "bigmem.drv", "drvspace.bin")
 
 def _is_le_vxd(path):
     """True if `path` is an LE/LX/W3/W4 Ring-0 module (so a stray real-mode .sys/.drv is skipped)."""
-    try:
-        import struct
-        d = open(path, "rb").read(0x100)
-        if d[:2] != b"MZ":
-            return False
-        lfa = struct.unpack_from("<I", d, 0x3c)[0]
-        full = open(path, "rb").read(lfa + 2)
-        return full[lfa:lfa + 2] in (b"LE", b"LX", b"W3", b"W4")
-    except Exception:
-        return False
+    from codebreaker.formats import detect
+    return detect.holds_drivers(path)
 
 
 def run(srcdir, out_json, redo=None, workers=4):

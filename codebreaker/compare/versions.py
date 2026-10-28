@@ -371,12 +371,12 @@ def _load_dos(path):
 
 def load(path):
     """Read a module and fingerprint its functions. -> Side"""
-    kind = detect.lane(path)
+    kind = detect.kind(path)
     if kind == "pe":
         return _load_pe(path)
     if kind == "ne":
         return _load_ne(path)
-    if kind == "dos" or (kind is None and dos.kind(path)):
+    if kind == "dos":
         return _load_dos(path)
     raise ValueError("%s: functions of a %s file are not compared yet" % (os.path.basename(path), kind or "non-executable"))
 

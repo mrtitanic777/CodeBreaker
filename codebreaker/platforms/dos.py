@@ -1,14 +1,11 @@
 """Real-mode DOS programs: MZ executables, and .COM files and device drivers, which have no
 header (formats/dos.py tells them apart). Their source is assembly, rebuilt and compared."""
-from codebreaker.platforms import Platform, lane_of
+from codebreaker.platforms import Platform
 
 
 def _recognise(path):
-    lane = lane_of(path)
-    if lane is None:                    # .COM files and plain driver images have no header
-        from codebreaker.formats import dos
-        return bool(dos.kind(path))
-    return lane == "dos"
+    from codebreaker.formats import detect
+    return detect.kind(path) == "dos"   # (.COM files and plain driver images too, which have no header)
 
 
 PLATFORM = Platform(

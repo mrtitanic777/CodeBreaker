@@ -8,7 +8,7 @@ put the text to that compiler.
     text, same, note = early_c_check.reconstruct(image_bytes, offset, size)
 
 The model (early_c.py) reads the function into C; the text is compiled by the compiler itself --
-Microsoft C 2.03, MC1 and MC2 (settings: msc203, the folder holding them; dosbox_x) -- and the
+Microsoft C 2.03, MC1 and MC2 (settings: kits.msc203, the folder holding them) -- and the
 function's bytes are compared with the original's, outside the places the linker fills in: the
 fix-ups of the object file and the distance of every call or jump that leaves the function.
 `same` is None when the text was not compiled (verify=False).

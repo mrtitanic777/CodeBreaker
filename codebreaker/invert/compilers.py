@@ -9,8 +9,8 @@ the models were written against.
     compilers.mc6_compile(text, flags)    the code bytes Microsoft C 6 gives for one source text
     compilers.mc6_compile_batch(jobs)     the same for [(text, flags)], one emulator session per flag set
     compilers.msvc2()                     the 32-bit compiler of 1994: .compile_c(text, flags) and .Obj
-    compilers.mc_compile(text)            Microsoft C 2.03, MC1 then MC2 (settings: msc203 -- the folder
-                                          holding them; dosbox_x): the object file's bytes, or None
+    compilers.mc_compile(text)            Microsoft C 2.03, MC1 then MC2 (settings: kits.msc203 -- the
+                                          folder holding them): the object file's bytes, or None
 """
 import os
 import subprocess
@@ -92,7 +92,7 @@ def mc_compile(csrc, stem="cand", timeout=120):
     try:
         compiler = period.get("msc203")
     except ValueError:
-        raise RuntimeError("Microsoft C 2.03 is not set up (settings.json: msc203, dosbox_x)")
+        raise RuntimeError("Microsoft C 2.03 is not set up (settings.json: kits.msc203)")
     return compiler.object(csrc, stem, timeout)
 
 
