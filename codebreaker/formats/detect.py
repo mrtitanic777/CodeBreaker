@@ -7,16 +7,23 @@ out separately in each era's target module, the corpus sweeps, the native-decomp
 others, with small disagreements (some read e_lfanew as 2 bytes, which mis-locates the header
 of any file whose DOS stub is 64 KB or more). Dependency-free, like the rest of formats/.
 
-    signature(path)   -> b"PE" | b"NE" | b"LE" | b"LX" | b"" (MZ, no known new header) | None (not MZ)
-    format_of(path)   -> "PE" | "NE" | "LE" | "LX" | "MZ" | None
+    signature(path)   -> b"PE" | b"NE" | b"LE" | b"LX" | b"W3" | b"W4" | b"" (MZ, no known new
+                         header) | None (not MZ)
+    format_of(path)   -> "PE" | "NE" | "LE" | "LX" | "W3" | "W4" | "MZ" | None
     lane(path)        -> "pe" | "ne" | "le" | "dos" | None      (the decompiler lane)
+    kind(path)        -> lane(path), and "dos" for a DOS program with no header (.COM, a driver)
+    holds_drivers(path, bundles=(b"W3", b"W4"))  an LE or LX image, or a bundle of them
+
+W3 and W4 are Windows 95's bundles of drivers (VMM32.VXD: VMM and the drivers loaded with it; W4
+is a W3 compressed). formats/le.py reads them. No lane reads a bundle whole: its lane is its
+DOS stub's, "dos".
     identify(path)    -> [{format, detail, family, command}]: what ANY file is (executables,
                          Xbox containers and assets, disc and disk images, objects, bytecode)
 """
 import os
 import struct
 
-_KNOWN = (b"PE", b"NE", b"LE", b"LX")
+_KNOWN = (b"PE", b"NE", b"LE", b"LX", b"W3", b"W4")
 
 
 def signature_of_bytes(head, read_at=None):
@@ -50,20 +57,36 @@ def signature(path):
 
 
 def format_of(path):
-    """'PE' | 'NE' | 'LE' | 'LX' | 'MZ' (plain DOS executable) | None (not an MZ executable)."""
+    """'PE' | 'NE' | 'LE' | 'LX' | 'W3' | 'W4' | 'MZ' (plain DOS executable) | None (not an MZ
+    executable)."""
     sig = signature(path)
     if sig is None:
         return None
     return sig.decode("ascii") if sig else "MZ"
 
 
-_LANE = {b"PE": "pe", b"NE": "ne", b"LE": "le", b"LX": "le", b"": "dos"}
+_LANE = {b"PE": "pe", b"NE": "ne", b"LE": "le", b"LX": "le", b"W3": "dos", b"W4": "dos", b"": "dos"}
 
 
 def lane(path):
     """The decompiler lane for a file: 'pe', 'ne', 'le' (VxD; LE and LX), 'dos', or None."""
     sig = signature(path)
     return None if sig is None else _LANE[sig]
+
+
+def kind(path):
+    """lane(path), and for a file with no MZ header 'dos' when it is a DOS program all the same
+    (a .COM file, a device driver: formats/dos.py tells), else None."""
+    out = lane(path)
+    if out is None:
+        from codebreaker.formats import dos
+        out = "dos" if dos.kind(path) else None
+    return out
+
+
+def holds_drivers(path, bundles=(b"W3", b"W4")):
+    """Whether the file is an LE or LX image (a VxD), or one of the `bundles` of them."""
+    return signature(path) in (b"LE", b"LX") + tuple(bundles)
 
 
 def dos_header(data):
@@ -167,12 +190,9 @@ def identify(path):
                     cpu = _COFF.get(machine, "machine 0x%04X" % machine)
                     fam = "xbox360" if machine == 0x01F2 else "windows"
                     return [_match(format="PE executable", detail=cpu, family=fam, command="info")]
-                if sig == b"":                                   # W3 / W4: a bundle of drivers (VMM32)
-                    e = struct.unpack_from("<I", head, 0x3C)[0] if len(head) >= 0x40 else 0
-                    w = at(e, 2) if 0 < e < size else b""
-                    if w in (b"W3", b"W4"):
-                        return [_match(format="driver bundle (%s)" % w.decode(), detail="VxDs stored together",
-                                       family="windows", command="info")]
+                if sig in (b"W3", b"W4"):                       # a bundle of drivers (VMM32)
+                    return [_match(format="driver bundle (%s)" % sig.decode(), detail="VxDs stored together",
+                                   family="windows", command="info")]
                 name = {b"NE": "16-bit Windows (NE)", b"LE": "virtual device driver (LE)",
                         b"LX": "OS/2 / VxD (LX)", b"": "DOS program (MZ)"}[sig]
                 return [_match(format=name, family="windows" if sig else "dos", command="info")]

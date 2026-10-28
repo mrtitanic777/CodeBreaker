@@ -866,16 +866,6 @@ def corpus_files():
     name, smallest first."""
     import os
     from codebreaker.base import corpus
-    out = []
-    for _name, cands in corpus.index().items():
-        try:
-            with open(cands[0], "rb") as f:
-                head = f.read(0x40)
-                if head[:2] != b"MZ" or len(head) < 0x40:
-                    continue
-                f.seek(struct.unpack_from("<I", head, 0x3C)[0])
-                if f.read(2) in (b"LE", b"LX", b"W3", b"W4"):
-                    out.append(cands[0])
-        except OSError:
-            continue
+    from codebreaker.formats import detect
+    out = [cands[0] for _name, cands in corpus.index().items() if detect.holds_drivers(cands[0])]
     return sorted(out, key=lambda p: (os.path.getsize(p), p.lower()))

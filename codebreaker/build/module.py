@@ -233,12 +233,11 @@ def _dos_stub(path, folder):
     """The original's DOS part (the bytes before its NE header), as a stub for the linker: its
     MZ header made to say just that much. -> the file's name, or None."""
     with open(path, "rb") as f:
-        head = f.read(0x40)
-        if head[:2] != b"MZ":
+        h = detect.dos_header(f.read(0x40))
+        if h is None:
             return None
-        at = struct.unpack_from("<I", head, 0x3C)[0]
         f.seek(0)
-        stub = bytearray(f.read(at))
+        stub = bytearray(f.read(h["new_header"]))
     if len(stub) < 0x40:
         return None
     struct.pack_into("<HH", stub, 2, len(stub) % 512, (len(stub) + 511) // 512)

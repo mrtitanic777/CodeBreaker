@@ -16,9 +16,9 @@ import argparse
 import glob
 import json
 import os
-import struct
 import sys
 from codebreaker.base import corpus as paths, settings
+from codebreaker.formats import detect
 
 def _masm():
     from codebreaker.build import masm
@@ -58,20 +58,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 def _setup():
     os.chdir(ROOT)
     sys.path.insert(0, ".")
-def _is_ne(path):
-    """MZ -> e_lfanew -> 'NE' signature (a 16-bit New Executable)."""
-    try:
-        with open(path, "rb") as f:
-            d = f.read(0x40)
-            if d[:2] != b"MZ":
-                return False
-            off = struct.unpack_from("<I", d, 0x3c)[0]
-            f.seek(off)
-            return f.read(2) == b"NE"
-    except Exception:
-        return False
-
-
 def ne_modules():
     """Every NE module under the system tree, de-duplicated by basename."""
     _setup()
@@ -84,7 +70,7 @@ def ne_modules():
                 if nm in seen:
                     continue
                 seen.add(nm)
-                if _is_ne(p):
+                if detect.format_of(p) == "NE":
                     out.append((nm, p))
     return out
 

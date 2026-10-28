@@ -707,17 +707,19 @@ def _load_le(path, member, work):
     return img
 
 
+def kind_of(path):
+    """'pe', 'ne' or 'le' for what load() reads (a bundle of drivers, vmm32.vxd's W3, is read as
+    its drivers), else the file's lane (base/corpus.lane)."""
+    from codebreaker.formats import detect
+    return "le" if detect.format_of(path) == "W3" else corpus.lane(path)
+
+
 def load(module, work=None):
     """The image of a module the corpus names (or a path). A driver inside a bundle is named
     "vmm32.vxd#vmm"."""
     name, _, member = module.partition("#")
     path = corpus.resolve(name)
-    kind = corpus.lane(path)
-    if kind not in ("pe", "ne", "le"):
-        with open(path, "rb") as f:                      # a bundle of drivers (vmm32.vxd) has a header of its own
-            head = f.read(0x40)
-            f.seek(struct.unpack_from("<I", head, 0x3C)[0] if len(head) == 0x40 and head[:2] == b"MZ" else 0)
-            kind = "le" if f.read(2) == b"W3" else kind
+    kind = kind_of(path)
     if kind not in ("pe", "ne", "le"):
         raise ValueError("%s: not a 32-bit module, a 16-bit module or a driver" % os.path.basename(path))
     work = work or settings.state("analyze", "work", os.path.basename(path).lower() + ("-" + member if member else ""))

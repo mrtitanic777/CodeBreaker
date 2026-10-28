@@ -591,10 +591,7 @@ def as_c(path):
     """Any executable as C: (text, functions decompiled, functions found). Raises ValueError for
     a file that is not an executable this can read."""
     from codebreaker.formats import detect, nes
-    kind = "nes" if nes.is_nes(path) else detect.lane(path)
-    if kind is None:                                         # .COM files and flat drivers have no header
-        from codebreaker.formats import dos
-        kind = "dos" if dos.kind(path) else None
+    kind = "nes" if nes.is_nes(path) else detect.kind(path)
     if kind == "ne":
         texts, order, _by_va, d = decompile16(path)
         header, total = "", len(d.names)

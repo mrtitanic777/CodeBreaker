@@ -366,8 +366,7 @@ def describe(path):
             _ne(path, info, part)
         elif fmt in ("LE", "LX"):
             _le(path, info, part)
-        elif data[h.get("new_header", 0):h.get("new_header", 0) + 2] == b"W3" and h.get("new_header"):
-            info["format"] = "W3"
+        elif fmt == "W3":
             _bundle(data, info, part)
         else:
             _dos(data, info, part)
@@ -425,9 +424,9 @@ def folder_map(folder, log=None):
             fmt = detect.format_of(p)
             if fmt:
                 m = {"format": {"PE": "PE executable", "NE": "16-bit Windows (NE)", "LE": "virtual device driver (LE)",
-                                "LX": "OS/2 / VxD (LX)", "MZ": "DOS program (MZ)"}[fmt],
+                                "LX": "OS/2 / VxD (LX)", "MZ": "DOS program (MZ)"}.get(fmt, fmt),
                      "family": "dos" if fmt == "MZ" else "windows", "command": "info"}
-                if fmt == "PE":                             # the CPU decides the platform
+                if fmt in ("PE", "W3", "W4"):               # the CPU decides the platform; a bundle of drivers
                     m = (detect.identify(p) or [m])[0]
             else:
                 found = detect.identify(p)
