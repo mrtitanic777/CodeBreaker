@@ -574,11 +574,8 @@ def _xex_length(stream, pos, head, avail, decrypt=False):
     def _page(n):
         return (n + FATX_PAGE_SIZE - 1) & ~(FATX_PAGE_SIZE - 1)
 
-    ffi = None
-    for i in range(opt_count):
-        if _u32be(hdr, 0x18 + i * 8) == 0x000003FF:  # K_FILE_FORMAT
-            ffi = _u32be(hdr, 0x18 + i * 8 + 4)
-            break
+    from codebreaker.formats import xex
+    ffi = next((v for _at, k, v in xex.optional_headers(hdr) if k == xex.FILE_FORMAT_INFO), None)
     if ffi is None or ffi + 8 > len(hdr):            # uncompressed, no FFI
         sz = _img_size()
         return _page(data_offset + sz) if sz else None

@@ -2,6 +2,8 @@
 
     from codebreaker.formats import xex
     xex.is_xex(path)               the file starts with XEX2
+    xex.optional_headers(data)     (entry's offset, key, value) of each entry of the header's table:
+                                   the one reader of it (xex_edit, xex_imports, god, fatx's carver)
     xex.basefile(path)             the decrypted, decompressed PowerPC image (a PE, machine 0x1F2),
                                    written once under state/unpacked/xex/ and reused, with the
                                    header beside it (<image>.json)
@@ -23,10 +25,13 @@ import hashlib
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 
 MAGIC = b"XEX2"
+FILE_FORMAT_INFO = 0x000003FF
+EXECUTION_INFO = 0x00040006
 
 
 def is_xex(path):
@@ -35,6 +40,26 @@ def is_xex(path):
             return f.read(4) == MAGIC
     except OSError:
         return False
+
+
+def optional_headers(data):
+    """(the entry's offset, key, value) of each entry of the header's optional-header table, in order (read
+    as asked: a reader that stops at the key it wants reads no further). A value is the data itself for a
+    key whose low byte is 0 or 1, else the offset of the data in the header."""
+    count, = struct.unpack_from(">I", data, 0x14)
+    for i in range(count):
+        key, value = struct.unpack_from(">II", data, 0x18 + i * 8)
+        yield 0x18 + i * 8, key, value
+
+
+def ids(data):
+    """(media id, title id) from the header's execution info, or (0, 0) for a header without one (or what is
+    not an XEX2 header)"""
+    if data[:4] == MAGIC:
+        for _at, key, value in optional_headers(data):
+            if key == EXECUTION_INFO:
+                return struct.unpack_from(">I", data, value)[0], struct.unpack_from(">I", data, value + 0x0C)[0]
+    return 0, 0
 
 
 def program():
@@ -78,17 +103,14 @@ def basic(path, out):
     headers, security info, imports, exports, resources), the file format info replaced by one
     block holding the whole image. XenonRecomp and the Xbox 360 runtime read only this form. The
     security info's hashes no longer match; nothing that reads it checks them."""
-    import struct
     with open(path, "rb") as f:
         data = f.read()
     if data[:4] != MAGIC:
         raise ValueError("%s: not an XEX2 module" % path)
     pe_offset, = struct.unpack(">I", data[8:12])
-    count, = struct.unpack(">I", data[0x14:0x18])
     info = None
-    for i in range(count):
-        key, value = struct.unpack(">II", data[0x18 + i * 8:0x20 + i * 8])
-        if key == 0x3FF:
+    for _at, key, value in optional_headers(data):
+        if key == FILE_FORMAT_INFO:
             info = value
     if info is None:
         raise ValueError("%s: no file format info header" % path)

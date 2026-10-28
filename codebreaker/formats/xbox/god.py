@@ -273,6 +273,7 @@ def main():
         if len(a) < 3:
             print("usage: iso2god <image.iso> <out-dir> [--title NAME]"); sys.exit(2)
         from codebreaker.formats.xbox import gdf
+        from codebreaker.formats import xex
         iso, outdir = a[1], a[2]
         title = ""
         if "--title" in a:
@@ -290,15 +291,7 @@ def main():
         # title/media id: read from the disc's default.xex if present, else 0
         title_id = media_id = 0
         try:
-            xex = disc.read("DEFAULT.XEX")
-            if xex[:4] == b"XEX2":
-                nopt = struct.unpack_from(">I", xex, 0x14)[0]
-                for i in range(nopt):
-                    k, v = struct.unpack_from(">II", xex, 0x18 + i * 8)
-                    if k == 0x00040006:                    # execution info header
-                        media_id = struct.unpack_from(">I", xex, v + 0)[0]
-                        title_id = struct.unpack_from(">I", xex, v + 0x0C)[0]
-                        break
+            media_id, title_id = xex.ids(disc.read("DEFAULT.XEX"))
         except Exception:
             pass
         print("  title_id=%08X  media_id=%08X" % (title_id, media_id))
@@ -311,19 +304,12 @@ def main():
         if len(a) < 3:
             print("usage: xex2god <default.xex> <out-dir> [--title NAME]"); sys.exit(2)
         from codebreaker.formats.xbox import gdf
+        from codebreaker.formats import xex
         xexpath, outdir = a[1], a[2]
         title = a[a.index("--title") + 1] if "--title" in a else ""
-        xex = open(xexpath, "rb").read()
-        title_id = media_id = 0
-        if xex[:4] == b"XEX2":
-            nopt = struct.unpack_from(">I", xex, 0x14)[0]
-            for i in range(nopt):
-                k, v = struct.unpack_from(">II", xex, 0x18 + i * 8)
-                if k == 0x00040006:
-                    media_id = struct.unpack_from(">I", xex, v)[0]
-                    title_id = struct.unpack_from(">I", xex, v + 0x0C)[0]
-                    break
-        vol = gdf.build_xdvdfs({"default.xex": xex})
+        data = open(xexpath, "rb").read()
+        media_id, title_id = xex.ids(data)
+        vol = gdf.build_xdvdfs({"default.xex": data})
         con, ddir, n = write_god(lambda o, l: vol[o:o + l], len(vol), outdir, _template(),
                                  title_id=title_id, media_id=media_id, title=title)
         print("wrote GoD from XEX: title_id=%08X media_id=%08X, %d part(s)" % (title_id, media_id, n))
