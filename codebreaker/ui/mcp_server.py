@@ -188,7 +188,7 @@ def _place(img, text):
         return D.address(int(seg, 16), int(off, 16))
     if re.fullmatch(r"[0-9a-f]+", a):
         va = int(a, 16)
-        return va + img.base if img.kind == "pe" and va < img.base else va
+        return va + img.base if img.flat and va < img.base else va
     low = (text or "").strip().lower()
     for table in (img.names, img.exports):
         hit = next((va for va, nm in sorted(table.items()) if nm and nm.lower() == low), None)

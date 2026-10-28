@@ -40,6 +40,7 @@ import time
 
 from codebreaker.base import corpus, settings
 from codebreaker.decompile import describe as description
+from codebreaker.formats import detect
 from codebreaker.store import functions as F
 from codebreaker.symbols import demangle, names
 
@@ -380,7 +381,7 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
 
     def name_at(address):
         k = names.key(path, address)
-        if k not in best and k not in known and kind == "pe":
+        if k not in best and k not in known and detect.flat(kind):
             behind = classes_writer.import_behind(path, address)
             if behind:
                 return behind

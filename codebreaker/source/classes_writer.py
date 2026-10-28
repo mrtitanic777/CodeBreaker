@@ -28,6 +28,8 @@ tables (tables, in its data, of addresses of its own functions): the image carri
 import os
 import struct
 
+from codebreaker.formats import detect
+
 
 def _powerpc_tables(path):
     """[{vtable, methods}] -- runs of two or more words in a PowerPC image's data that are each
@@ -106,7 +108,7 @@ def found(path, kind):
     """The classes of a module, as analyze/classes.py's hierarchy gives them (or the PowerPC tables)."""
     if kind == "powerpc":
         return _powerpc_tables(path)
-    if kind != "pe":
+    if not detect.flat(kind):
         return []
     from codebreaker.analyze import classes, image
     return classes.hierarchy(image.load(path))

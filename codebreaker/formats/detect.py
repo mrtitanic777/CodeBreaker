@@ -12,6 +12,8 @@ of any file whose DOS stub is 64 KB or more). Dependency-free, like the rest of 
     format_of(path)   -> "PE" | "NE" | "LE" | "LX" | "W3" | "W4" | "MZ" | None
     lane(path)        -> "pe" | "ne" | "le" | "dos" | None      (the decompiler lane)
     kind(path)        -> lane(path), and "dos" for a DOS program with no header (.COM, a driver)
+    flat(kind)        -> whether a module of that kind is a flat 32-bit image (PE)
+    wide_resources(kind) -> whether its resources keep their strings wide (a PE resource tree)
     holds_drivers(path, bundles=(b"W3", b"W4"))  an LE or LX image, or a bundle of them
 
 W3 and W4 are Windows 95's bundles of drivers (VMM32.VXD: VMM and the drivers loaded with it; W4
@@ -82,6 +84,19 @@ def kind(path):
         from codebreaker.formats import dos
         out = "dos" if dos.kind(path) else None
     return out
+
+
+def flat(kind):
+    """Whether a module of this kind (as kind() names it) is a flat 32-bit image: one address
+    space counted from its image base, run in user mode (PE). A driver (LE) is 32-bit too, but is
+    placed object by object and runs privileged."""
+    return kind == "pe"
+
+
+def wide_resources(kind):
+    """Whether a module of this kind keeps its resources' strings wide (UTF-16), as a PE resource
+    tree does; a 16-bit module's are single-byte."""
+    return kind == "pe"
 
 
 def holds_drivers(path, bundles=(b"W3", b"W4")):

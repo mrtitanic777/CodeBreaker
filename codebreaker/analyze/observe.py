@@ -248,7 +248,7 @@ def _observe(context, item):
 
 
 def _run(img, limit, jobs):
-    if img.kind != "pe":
+    if not img.flat:
         return {}
     facts = conventions.functions(img)
     pointer_args = {}

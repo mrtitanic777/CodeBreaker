@@ -37,6 +37,7 @@ from capstone import x86 as X
 
 from codebreaker.base import corpus, settings
 from codebreaker.decompile import describe
+from codebreaker.formats import detect
 from codebreaker.formats import le as le_format
 from codebreaker.formats import pe_functions
 from codebreaker.formats.ne import NEFile
@@ -108,6 +109,11 @@ class Image(object):
         self._starts = []
         self._fn = {}
         self._memo = {}
+
+    @property
+    def flat(self):
+        """A flat 32-bit image (PE): one address space from its base, run in user mode."""
+        return detect.flat(self.kind)
         self._md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
         self._md.detail = True
         self._regs = {}
@@ -335,7 +341,7 @@ class Image(object):
         off, n = va - span[0], 0
         for ci in self._md.disasm(bytes(span[1][off:off + 16 * most]), va):
             mn = ci.mnemonic
-            if mn.split()[-1] in _NEVER or (self.kind == "pe" and mn in _PRIVILEGED) \
+            if mn.split()[-1] in _NEVER or (self.flat and mn in _PRIVILEGED) \
                     or bytes(ci.bytes[:2]) == b"\x00\x00":
                 return False
             if self.pointers:                            # an address the loader writes must be an operand
@@ -710,7 +716,6 @@ def _load_le(path, member, work):
 def kind_of(path):
     """'pe', 'ne' or 'le' for what load() reads (a bundle of drivers, vmm32.vxd's W3, is read as
     its drivers), else the file's lane (base/corpus.lane)."""
-    from codebreaker.formats import detect
     return "le" if detect.format_of(path) == "W3" else corpus.lane(path)
 
 
