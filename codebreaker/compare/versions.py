@@ -81,6 +81,7 @@ import capstone
 from capstone import x86 as X
 
 from codebreaker.base import corpus
+from codebreaker.compare import mask
 from codebreaker.decompile import describe
 from codebreaker.formats import detect, dos, pe_functions
 from codebreaker.formats.ne import NEFile
@@ -164,10 +165,8 @@ def _function(key, name, named, body, lo, hi, relocated, direct, site, slot, ins
     raw, f.rows, f.text, f.shape, f.calls, f.marks, f.jumps = [], [], [], [], [], set(), 0
     for i, ins in enumerate(body):
         mn, ops, addr = ins.mnemonic, ins.operands, ins.address
-        code = bytearray(ins.bytes)
         hits = [k for k in range(ins.size) if addr + k in relocated]
-        for k in hits:
-            code[k] = 0
+        out = set(hits)                                          # the bytes left out of the `bytes` digest
         ref = next((r for r in (site(addr + k) for k in hits) if r), None) if hits else None
         calls = mn in ("call", "lcall")
         jumps = mn[0] == "j" or mn.startswith("loop") or mn == "ljmp"
@@ -189,13 +188,13 @@ def _function(key, name, named, body, lo, hi, relocated, direct, site, slot, ins
                         parts.append("%+d" % (index[op.imm] - i))
                         f.jumps += 1
                     else:                                        # leaves the function
-                        code[lo_f:lo_f + n_f] = bytes(n_f)
+                        out.update(range(lo_f, lo_f + n_f))
                         tgt = direct(op.imm)
                         called = ("f", tgt) if tgt else None
                         parts.append(">")
                     kinds.append("t")
                 elif any(lo_f <= k < lo_f + n_f for k in hits) or (n_f == 4 and inside(op.imm & 0xFFFFFFFF)):
-                    code[lo_f:lo_f + n_f] = bytes(n_f)
+                    out.update(range(lo_f, lo_f + n_f))
                     parts.append(("!" + ref[1]) if ref and ref[0] == "i" else ">" if direct(op.imm) else "@")
                     kinds.append("a")
                 else:
@@ -210,7 +209,7 @@ def _function(key, name, named, body, lo, hi, relocated, direct, site, slot, ins
                 bare = not m.base and not m.index
                 if bare or any(lo_f <= k < lo_f + n_f for k in hits) or (n_f == 4 and inside(m.disp & 0xFFFFFFFF)):
                     if n_f == 4:
-                        code[lo_f:lo_f + n_f] = bytes(n_f)
+                        out.update(range(lo_f, lo_f + n_f))
                     imp = slot(m.disp & 0xFFFFFFFF) if bare else None
                     if imp and (calls or jumps):
                         called = ("i", imp)
@@ -225,7 +224,7 @@ def _function(key, name, named, body, lo, hi, relocated, direct, site, slot, ins
             f.calls.append(called)
             if called[0] == "i":
                 f.marks.add("i" + called[1])
-        raw.append(bytes(code))
+        raw.append(mask.blank(ins.bytes, out))
         f.rows.append((addr, ("%s %s" % (mn, ins.op_str)).strip()))
         f.text.append("%s %s" % (mn, ",".join(parts)))
         f.shape.append("%s %s" % (_ALIKE.get(mn, "jcc" if jumps and mn not in ("jmp", "ljmp") else mn), "".join(kinds)))
