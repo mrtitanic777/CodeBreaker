@@ -155,6 +155,8 @@ else:
     from codebreaker.verify.lanes import win32
     texts = c_text.compilable32(path, win32.LANES["pe"].functions(path), work)[1]
 pickle.dump(texts, open(%r, "wb"))
+import shutil
+shutil.rmtree(work, ignore_errors=True)
 """
 
 
@@ -163,17 +165,22 @@ def made(module, l2):
     import pickle
     import subprocess
     import tempfile
-    out = os.path.join(tempfile.mkdtemp(prefix="l2made_"), "texts.pickle")
+    import shutil
+    folder = tempfile.mkdtemp(prefix="l2made_")
+    out = os.path.join(folder, "texts.pickle")
     env = dict(os.environ)
     env.pop("CB_C_FROM_L2", None)
     if l2:
         env["CB_C_FROM_L2"] = "1"
-    r = subprocess.run([sys.executable, "-c", _MADE % (ROOT, module, module, out)], env=env,
-                       capture_output=True, text=True, errors="replace")
-    if r.returncode:
-        raise RuntimeError("%s: %s" % (module, (r.stderr or r.stdout).strip().splitlines()[-1:]))
-    with open(out, "rb") as f:
-        return pickle.load(f)
+    try:
+        r = subprocess.run([sys.executable, "-c", _MADE % (ROOT, module, module, out)], env=env,
+                           capture_output=True, text=True, errors="replace")
+        if r.returncode:
+            raise RuntimeError("%s: %s" % (module, (r.stderr or r.stdout).strip().splitlines()[-1:]))
+        with open(out, "rb") as f:
+            return pickle.load(f)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)       # (nothing of a run is left behind)
 
 
 def check_made(module, show):

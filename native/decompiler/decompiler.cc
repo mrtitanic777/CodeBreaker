@@ -931,22 +931,32 @@ class PrintL2 : public PrintC {
     }
   }
   // the arguments of a call: the comma operators PrintC joins them with, flattened
-  void args(const Tree& t, std::vector<std::string>& out) {
+  void args(const Tree& t, std::vector<std::string>& out, const OpToken* parent) {
     if (t.tok != nullptr && t.tok->type == OpToken::binary && t.tok->print1 == ",") {
-      for (auto& k : t.kids) args(*k, out);
+      for (auto& k : t.kids) args(*k, out, t.tok);
       return;
     }
     if (t.tok == nullptr && t.atype == blanktoken) return;      // f(): no arguments
-    out.push_back(expr(t));
+    out.push_back(expr(t, parent));
+  }
+  // Does PrintC bracket the operand of a hidden function (an extension it does not print) placed
+  // under `parent`? Its rule (PrintLanguage::parentheses, hiddenfunction): an operator beside a
+  // binary or prefix one of no lower precedence is bracketed -- also the same associative one,
+  // `(a & 0xcff) & 0xffffff03` where a ZEXT lies between -- which the tree alone would not show.
+  static bool hiddenBrackets(const OpToken* parent, const Tree& kid) {
+    if (kid.tok == nullptr) return false;                      // (a leaf is never bracketed)
+    if (parent == nullptr) return true;
+    if (parent->type != OpToken::binary && parent->type != OpToken::unary_prefix) return false;
+    return parent->precedence >= kid.tok->precedence;
   }
   std::string optype(const Tree& t) {
     const Varnode* out = (t.op != nullptr) ? t.op->getOut() : nullptr;
     return (out != nullptr && out->getHigh() != nullptr) ? ",\"type\":" + type(out->getHighTypeDefFacing()) : "";
   }
-  std::string expr(const Tree& t) {
+  std::string expr(const Tree& t, const OpToken* parent = nullptr) {
     if (t.tok == nullptr) return leaf(t);
     const OpToken& k = *t.tok;
-    auto kid = [&](size_t i) { return i < t.kids.size() ? expr(*t.kids[i]) : unsupported("missing", k.print1); };
+    auto kid = [&](size_t i) { return i < t.kids.size() ? expr(*t.kids[i], &k) : unsupported("missing", k.print1); };
     switch (k.type) {
     case OpToken::binary: {
       const std::string& p = k.print1;
@@ -969,7 +979,7 @@ class PrintL2 : public PrintC {
     case OpToken::postsurround:
       if (k.print1 == "(") {                                  // a call: the function, then its arguments
         std::vector<std::string> a;
-        if (t.kids.size() > 1) args(*t.kids[1], a);
+        if (t.kids.size() > 1) args(*t.kids[1], a, &k);
         std::string list;
         for (auto& s : a) list += (list.empty() ? "" : ",") + s;
         return "{\"node\":\"Call\"" + optype(t) + ",\"target\":" + kid(0) + ",\"args\":[" + list + "]}";
@@ -980,11 +990,15 @@ class PrintL2 : public PrintC {
     case OpToken::presurround:
       if (k.print1 == "(" && !t.kids.empty() && (t.ct != nullptr || (t.op != nullptr && t.op->getOut() != nullptr)))
         return "{\"node\":\"Cast\",\"type\":" + type(t.ct ? t.ct : t.op->getOut()->getHighTypeDefFacing()) +
-               ",\"x\":" + expr(*t.kids.back()) + "}";                     // a cast: (type) x
+               ",\"x\":" + expr(*t.kids.back(), &k) + "}";                 // a cast: (type) x
       break;
     case OpToken::hiddenfunction:
+      if (t.kids.size() == 1)                                 // nothing printed: what it applies to,
+        return hiddenBrackets(parent, *t.kids[0])             // in the brackets PrintC gives it there
+            ? "{\"node\":\"Paren\",\"x\":" + expr(*t.kids[0], &k) + "}" : expr(*t.kids[0], &k);
+      break;
     case OpToken::space:
-      if (t.kids.size() == 1) return kid(0);                  // nothing printed: what it applies to
+      if (t.kids.size() == 1) return kid(0);
       break;
     }
     return unsupported("operator", k.print1 + k.print2);

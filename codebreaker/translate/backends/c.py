@@ -16,10 +16,12 @@ written where the address spaces and types L2 carries say so, and c_text leaves 
 written from L2. MOVED is every one there is.
 """
 
+import re
+
 # c_text's passes done on L2 (docs/IR_UNIFICATION.md step 3, L2_BINARY_TYPES.md's order)
-MOVED = ("far", "near_calls")
+MOVED = ("far", "near_calls", "far_from_stack")
 _now = {"moved": (), "far": set(), "marks": {}}  # the function being written: its passes, its far names,
-                                               # and the casts they rewrite ({id(node): '_far' | '_near'})
+                                               # and the nodes they rewrite ({id(node): '_far' | '_near' | '_ss'})
 
 # L2 primitive kinds -> the decompiler's names for them
 _PRIM = {'i8': 'int1', 'u8': 'uint1', 'i16': 'int2', 'u16': 'uint2', 'i32': 'int4', 'u32': 'uint4',
@@ -281,6 +283,15 @@ def _leading_cast(e):
         e = child
 
 
+def _data_address(e):
+    """A constant address in the data segment, a number of one word but 0: a far pointer set to
+    one is DS and it, so its cast stays near (c_text.data_address: LZEXPAND's LZDONE)."""
+    if e.get('node') != 'Lit':
+        return False
+    m = re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", _lit(e))     # (as it is written: no character)
+    return bool(m) and 0 < int(m.group(1), 0) <= 0xFFFF
+
+
 def _assigned_name(target):
     """`x` of `x = ...`, `*x = ...`, `**x = ...`"""
     while target.get('node') == 'Unary' and target.get('op') == '*' and not target.get('postfix'):
@@ -293,6 +304,8 @@ def _expr(e):
     if n == 'Lit':
         return _lit(e)
     if n == 'Name':
+        if _now['marks'].get(id(e)) == '_ss':
+            return 'MK_FP(codebreaker_ss(), %s)' % _name(e)
         return _name(e)
     if n == 'Paren':
         _near_call(e['x'])
@@ -314,7 +327,8 @@ def _expr(e):
     if n == 'Assign':
         if 'far' in _now['moved'] and not e.get('op') and _assigned_name(e['target']) in _now['far']:
             cast = _leading_cast(e['value'])             # `p = (T *)x` -> `p = (T __far *)x` (c_text._far)
-            if cast is not None and (cast.get('type') or {}).get('kind') in ('ptr', 'fnptr'):
+            if cast is not None and (cast.get('type') or {}).get('kind') in ('ptr', 'fnptr') and \
+                    not _data_address(cast['x']):
                 _now['marks'][id(cast)] = '_far'
         return '%s %s %s' % (_sub(tok, e['target'], 0), tok[1], _sub(tok, e['value'], 1))
     if n == 'Cond':
@@ -466,6 +480,81 @@ def _locals(stmts, found):
     return found
 
 
+# ---------------------------------------------------------------------------------------------- far from the frame
+_FRAME = re.compile(r"\w*Stack_[0-9a-f]+")
+
+
+def _sets(stmts, found):
+    """(variable, right side) of each `v = ...;` statement of a line of its own, wherever it sits."""
+    for s in _stmts(stmts):
+        if not isinstance(s, dict):
+            continue
+        n = s.get('node')
+        if n == 'ExprStmt':
+            a = s['expr']
+            if a.get('node') == 'Assign' and not a.get('op') and a['target'].get('node') == 'Name':
+                found.append((_name(a['target']), a['value']))
+            continue
+        if n == 'If' and isinstance(s.get('then'), dict):
+            _sets(s.get('orelse'), found)                # (`if (c) goto x;`: one line with its if)
+            continue
+        for key in ('then', 'orelse', 'body', 'stmts'):
+            if key in s:
+                _sets(s[key], found)
+        for c in _stmts(s.get('cases')):
+            _sets(c.get('body'), found)
+    return found
+
+
+def _origin(e):
+    """(the variable a pointer is set from, whether its address was taken): `x`, `&x`, `(T *)x`,
+    `(T *)&x`, each `+ n` -- or (None, False). As the C reads: a bracketed operand is none of these."""
+    if e.get('node') == 'Binary' and e['op'] == '+' and not _bracket(_token(e), e['left'], 0) and \
+            re.fullmatch(r"[\w()]+", _sub(_token(e), e['right'], 1)):
+        e = e['left']
+    if e.get('node') == 'Cast' and re.fullmatch(r"[\w ]+\*", type_text(e['type'])) and not _bracket(_token(e), e['x'], 1):
+        e = e['x']
+    amp = False
+    if e.get('node') == 'Unary' and e['op'] == '&' and not e.get('postfix') and not _bracket(_token(e), e['x'], 1):
+        e, amp = e['x'], True
+    return (_name(e), amp) if e.get('node') == 'Name' else (None, False)
+
+
+def _far_from_stack(body, locs):
+    """A far pointer set from a near one into the frame: the original made it with SS (`push ss;
+    pop es; rep movsw` -- USER's WM_WINDOWPOSCHANGED copies each WINDOWPOS into its frame so). C
+    makes a far pointer of a near one with DS, and the bytes went to the frame's offset in the data
+    segment, over whatever lay there (c_text._far_from_stack). Marks each such right side to be
+    written `MK_FP(codebreaker_ss(), p)`."""
+    sets = _sets(body, [])
+    # (an address in the frame: an array local, or & of a local -- not the value a local holds)
+    arrays = {(v.get('sym') or {}).get('name') for v in locs
+              if (v.get('type') or {}).get('kind') == 'array' and 'count' in v['type']
+              and v['type']['elem'].get('kind') != 'array' and _FRAME.fullmatch((v.get('sym') or {}).get('name') or '')}
+    far = _now['far']
+
+    def in_frame(found, stack):
+        name, amp = found
+        return name is not None and bool((amp and _FRAME.fullmatch(name)) or name in arrays or
+                                         (not amp and name in stack))
+    stack = set()
+    for _ in range(3):                                   # (pointers set from those, in turn)
+        for v, rhs in sets:
+            if v not in far and in_frame(_origin(rhs), stack):
+                stack.add(v)
+    # (one set from anything else too is not known to be in the frame -- nor one set from it)
+    dropped = True
+    while dropped:
+        dropped = False
+        for v in sorted(stack):
+            if any(not in_frame(_origin(rhs), stack) for w, rhs in sets if w == v):
+                stack.discard(v)
+                dropped = True
+    for v, rhs in sets:
+        if v in far and rhs.get('node') == 'Name' and _name(rhs) in stack:
+            _now['marks'][id(rhs)] = '_ss'
+
+
 # ---------------------------------------------------------------------------------------------- functions
 def _param_name(p):
     return (p.get('sym') or {}).get('name') or p.get('name', '')
@@ -502,6 +591,8 @@ def function(doc, moved=(), far=None):
                     [((v.get('sym') or {}).get('name'), v.get('type')) for v in locs] if is_far(t)}) \
         if 'far' in _now['moved'] else set()
     try:
+        if 'far_from_stack' in _now['moved'] and _now['far']:
+            _far_from_stack(doc.get('body'), locs)
         return _function(doc, locs)
     finally:
         _now['moved'], _now['far'], _now['marks'] = (), set(), {}

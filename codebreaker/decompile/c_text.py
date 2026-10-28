@@ -739,8 +739,19 @@ def moved_to_l2(raw):
     return cback.MOVED
 
 
+def data_address(text):
+    """Is `text` a constant address in the data segment: a number of one word, not 0? A far
+    pointer set to one is DS and it (LZEXPAND's LZDONE counts down the word at DS:32h through
+    one); cast to a far pointer, a word gets segment 0 and the write goes to 0000:0032. Left
+    near, C makes it far with DS, as the original. (0 stays a far null; a number past a word
+    carries its own segment.)"""
+    m = re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", text.strip())
+    return bool(m) and 0 < int(m.group(1), 0) <= 0xFFFF
+
+
 def _far(text, far):
-    """Declare the four-byte pointers `far` and make what is assigned to them far too."""
+    """Declare the four-byte pointers `far` and make what is assigned to them far too (but a data
+    address, which stays near: data_address)."""
     if not far:
         return text
 
@@ -766,7 +777,7 @@ def _far(text, far):
             if src.at(n.child_by_field_name("operator")) != "=" or left.type != "identifier" or src.at(left) not in far:
                 continue
             cast = src.leading(right, "cast_expression")       # (the cast the right side starts with)
-            if cast is not None:
+            if cast is not None and not data_address(src.at(cast.child_by_field_name("value"))):
                 ty = cast.child_by_field_name("type")
                 m = re.fullmatch(r"([A-Za-z_][\w ]*?) ?(\*+)", src.at(ty))
                 if m:
@@ -875,6 +886,46 @@ def _far_from_stack(body, far):
     for v, rhs in sets:
         if v in far and rhs.type == "identifier" and src.at(rhs) in stack:
             src.replace(rhs, "MK_FP(codebreaker_ss(), %s)" % src.at(rhs))
+    return src.text()
+
+
+def _frame_through_ss(body):
+    """A buffer in the frame reached through its address as a number: `*(xunknown2 *)((int2)
+    axStack_a8 + iVar1) = 0x5c` -- KEYBOARD's NEWTABLEEX puts the `\\` after the system directory
+    so, `mov ss:[bx], ax`. The decompiler keeps the offset but not the SS it went with, and a near
+    pointer made of a number is read through DS: the byte went to the data segment. Written with
+    SS, as the original: `*(xunknown2 *)MK_FP(codebreaker_ss(),(int2)axStack_a8 + iVar1)`, which
+    the far passes after make `*(xunknown2 __far *)((uint1 __far *)MK_FP(...))`."""
+    if "Stack_" not in body:
+        return body
+    arrays = set(re.findall(r"(?m)^\s+[\w ]+?\**\s*(\w*Stack_[0-9a-f]+) \[\d+\];", body))
+    src = ctree.Source(body)
+
+    def in_frame(n):
+        """`(int2)axStack_a8` or `(int2)&iStack_6`: a frame address as a number"""
+        if n.type != "cast_expression" or src.at(n.child_by_field_name("type")) not in ("int2", "uint2"):
+            return False
+        v = n.child_by_field_name("value")
+        if v.type == "pointer_expression" and src.at(v.child_by_field_name("operator")) == "&":
+            v = v.child_by_field_name("argument")
+            return v.type == "identifier" and re.fullmatch(r"\w*Stack_[0-9a-f]+", src.at(v)) is not None
+        return v.type == "identifier" and src.at(v) in arrays
+
+    for n in src.find("pointer_expression"):
+        if src.at(n.child_by_field_name("operator")) != "*":
+            continue
+        cast = n.child_by_field_name("argument")
+        if cast.type != "cast_expression":
+            continue
+        ty = re.fullmatch(r"([\w ]+?) ?\*", src.at(cast.child_by_field_name("type")))
+        sum_ = cast.child_by_field_name("value")
+        if ty is None or sum_.type != "parenthesized_expression" or sum_.named_child_count != 1:
+            continue
+        sum_ = sum_.named_children[0]
+        if sum_.type != "binary_expression" or sum_.child_by_field_name("operator").type != "+" or \
+                not (in_frame(sum_.child_by_field_name("left")) or in_frame(sum_.child_by_field_name("right"))):
+            continue
+        src.replace(cast, "(%s *)MK_FP(codebreaker_ss(),%s)" % (ty.group(1), src.at(sum_)))   # (made far by _far_casts)
     return src.text()
 
 
@@ -1497,8 +1548,9 @@ def _compilable16(module_path, outdir=None):
         widths = _far_argument_widths(d.images[seg], off, ends.get(va, off),
                                       "far" in text.split("(", 1)[0]) if seg in d.images else {}
         # (_far and _near_calls are the back end's for C written from L2: docs/IR_UNIFICATION.md step 3)
-        far_done = _far_from_stack(text.strip(), far) if "far" in moved else _far(text.strip(), far)
-        text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(far_done), widths)))
+        far_done = (text.strip() if "far_from_stack" in moved else _far_from_stack(text.strip(), far)) \
+            if "far" in moved else _far(text.strip(), far)
+        text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(_frame_through_ss(far_done)), widths)))
         text = _global_pointer_steps(text if "near_calls" in moved else _near_calls(text))
         if seg in d.images:
             text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])

@@ -96,18 +96,43 @@ def test_moved_passes_far_and_near_calls():
                                        'x': {'node': 'Cast', 'type': {'kind': 'fnptr', 'space': 'far',
                                                                       'fn': {'kind': 'fn'}}, 'x': word}}, 'args': []}
     p = {'node': 'Name', 'sym': {'kind': 'local', 'name': 'p'}, 'type': ptr({'kind': 'i16'})}
+    q = {'node': 'Name', 'sym': {'kind': 'param', 'name': 'q'}, 'type': ptr({'kind': 'void'})}
     set_p = {'node': 'Assign', 'target': p,
-             'value': {'node': 'Cast', 'type': ptr({'kind': 'i16'}, 'near'), 'x': lit(0x40)}}
+             'value': {'node': 'Cast', 'type': ptr({'kind': 'i16'}, 'near'), 'x': q}}
+    set_data = {'node': 'Assign', 'target': p,
+                'value': {'node': 'Cast', 'type': ptr({'kind': 'i16'}, 'near'), 'x': lit(0x40)}}
     doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'void'},
            'origin': {'module': '', 'segment': 1, 'offset': 0},
            'params': [{'node': 'Param', 'sym': {'kind': 'param', 'name': 'q'}, 'type': ptr({'kind': 'void'})}],
            'body': [{'node': 'Local', 'sym': {'kind': 'local', 'name': 'p'}, 'type': ptr({'kind': 'i16'})},
-                    {'node': 'ExprStmt', 'expr': set_p}, {'node': 'ExprStmt', 'expr': call}]}
+                    {'node': 'ExprStmt', 'expr': set_p}, {'node': 'ExprStmt', 'expr': set_data},
+                    {'node': 'ExprStmt', 'expr': call}]}
     plain, moved = c.function(doc), c.function(doc, c.MOVED)
     assert '__far' not in plain and '__near' not in plain           # (as the decompiler prints it)
     assert 'void __far *q' in moved and '  int2 __far *p;' in moved
-    assert 'p = (int2 __far *)0x40;' in moved
+    assert 'p = (int2 __far *)q;' in moved
+    assert 'p = (int2 *)0x40;' in moved                             # (a data address: DS, made far by C)
     assert '(*(code __near *)*(xunknown2 *)0x18)();' in moved
     assert 'void *q' in c.function(doc, c.MOVED, far={'p'})         # (the notes' far set, when given, rules)
     flat = dict(doc, origin={'module': '', 'va': 0x401000})
     assert '__far' not in c.function(flat, c.MOVED)                  # (32-bit: no segments, nothing moves)
+
+
+def test_moved_far_from_stack():
+    """c_text's _far_from_stack on the tree: a far pointer set from a near one into the frame is
+    made with SS (USER's WM_WINDOWPOSCHANGED)."""
+    def name(n, t, kind='local'):
+        return {'node': 'Name', 'sym': {'kind': kind, 'name': n}, 'type': t}
+    near, far = ptr({'kind': 'i16'}, 'near'), ptr({'kind': 'i16'})
+    buf = {'kind': 'array', 'elem': {'kind': 'i16'}, 'count': 7}
+    sets = lambda v, x: {'node': 'ExprStmt', 'expr': {'node': 'Assign', 'target': name(v, near), 'value': x}}
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'void'},
+           'origin': {'module': '', 'segment': 1, 'offset': 0}, 'params': [],
+           'body': [{'node': 'Local', 'sym': {'kind': 'local', 'name': 'aiStack_10'}, 'type': buf},
+                    {'node': 'Local', 'sym': {'kind': 'local', 'name': 'piVar1'}, 'type': near},
+                    {'node': 'Local', 'sym': {'kind': 'local', 'name': 'piVar2'}, 'type': far},
+                    sets('piVar1', name('aiStack_10', buf)),
+                    {'node': 'ExprStmt', 'expr': {'node': 'Assign', 'target': name('piVar2', far),
+                                                  'value': name('piVar1', near)}}]}
+    assert 'piVar2 = MK_FP(codebreaker_ss(), piVar1);' in c.function(doc, c.MOVED)
+    assert 'piVar2 = piVar1;' in c.function(doc, ('far', 'near_calls'))

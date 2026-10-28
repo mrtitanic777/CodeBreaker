@@ -91,8 +91,7 @@ def c_from_l2(text):
     if not m:
         return text
     try:
-        far = set(re.findall(r"(?m)^/\*@P (\w+) 4 \*/$", text))    # (the four-byte pointers, as c_text reads them)
-        body = cback.function(json.loads(m.group(1)), cback.MOVED, far)
+        body = cback.function(json.loads(m.group(1)), cback.MOVED)  # (its far pointers: L2's types say which)
     except (cback.Decline, ValueError, KeyError):
         return text[:m.start()] + text[m.end() + 1:]
     notes = [ln for ln in text.splitlines() if ln.startswith("/*@") and not ln.startswith("/*@L2 ")]
