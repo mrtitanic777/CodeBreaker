@@ -594,10 +594,21 @@ def read_image(lf):
     reserved, first_page, page_count}], "pages" [(kind, bytes)] (all of them, in page-map
     order; an object owns a run of them), "resident" / "nonresident" [(name, ordinal)],
     "entry_table" (bytes), "fixups" {page: [record bytes]}, "import_modules" [names],
-    "import_names" (bytes), "align" (what the data pages are aligned to in the file), "gaps"
-    (the filler in front of the data pages and in front of the non-resident names), "after"
-    (everything behind the data pages and the non-resident names: debug information,
-    resources)}. Change a part, write it back."""
+    "import_names" (bytes), "align" (what the data pages are aligned to in the file),
+    "last_page_bytes" (the header's count of bytes on the last page, or None to count the
+    last page written; a linker's 0 for a full last page is kept), "gaps" (the filler in front
+    of the data pages, written when it still fits exactly, and the filler in front of the
+    non-resident names), "after" (everything behind the data pages and the non-resident
+    names: debug information, resources), "moved" (where the parts of "after" the header
+    points at were)}. Change a part, write it back.
+
+    write_image also takes what a driver rebuilt from recovered code keeps of its original
+    linker's layout, which read_image leaves out: "page_map" (the page map's bytes as that
+    linker numbered the pages), "tables_tail" (bytes kept right behind the import names,
+    outside the fix-up section's size), "data_pages" (the file offset the data pages stay at
+    while the tables fit in front of it) and "fill_from" (the original file, whose trailing
+    bytes fill out a written file that comes out shorter). "resident" and "nonresident" may
+    also be a name table's bytes, kept as stored."""
     d, h = lf.d, header_fields(lf)
     member = is_member(lf)
     pm = page_map(lf)
@@ -608,6 +619,8 @@ def read_image(lf):
     # the file keeps pages in the order of their numbers; that is the page-map order in every
     # image seen, and write_image numbers them that way again
     pages = [(kind, _page(lf, number, kind, last)) for number, kind in pm]
+    kept = [body for kind, body in pages if kind not in (2, 3) and body]
+    full_last = bool(kept) and len(kept[-1]) == lf.pagesize
     fix = {}
     for pg, rec in fixup_records(lf):
         fix.setdefault(pg, []).append(rec["raw"])
@@ -623,15 +636,19 @@ def read_image(lf):
             "resident": res, "nonresident": non, "entry_table": bytes(d[lf.entrytab:lf.entrytab + _entry_table_size(lf)]),
             "fixups": fix, "import_modules": lf.import_modules(),
             "import_names": bytes(d[ip:ie]) if h["import_names"] and lf.lfa < ip < ie <= len(d) else b"",
-            "align": align, "last_page_bytes": lf.last_page_bytes,
+            "align": align, "last_page_bytes": 0 if not lf.last_page_bytes and full_last else None,
             "gaps": (bytes(d[ie:lf.datapages]) if lf.lfa < ie <= lf.datapages and not member else b"",
-                     bytes(d[pages_end:h["nonresident_names"]]) if non and pages_end <= h["nonresident_names"] else b""),
+                     bytes(d[pages_end:h["nonresident_names"]])
+                     if non and pages_end <= h["nonresident_names"] < pages_end + 16 else b""),
             "after": b"" if member else bytes(d[max(pages_end, names_end):]),
             "moved": {"debug_info": h["debug_info"], "resource_data": h["resource_data"],
                       "from": max(pages_end, names_end)}}
 
 
 def _name_table(pairs):
+    """A name table: its bytes when given as stored, else built from [(name, ordinal)]."""
+    if isinstance(pairs, (bytes, bytearray)):
+        return bytes(pairs)
     return b"".join(bytes([len(n)]) + n.encode("latin1") + struct.pack("<H", o) for n, o in pairs) + b"\0"
 
 
@@ -654,10 +671,11 @@ def fixup_tables(fixups, pages):
 
 
 def write_image(image):
-    """The file for an image as read_image describes it: the stub, the header with every
-    offset and size worked out again, the object table, the page map, the name and entry
-    tables, the fix-up tables, the import names, the data pages, the non-resident names and
-    whatever came after. Pages are stored and numbered in page-map order."""
+    """The file for an image as read_image describes it: the stub (the header sits right behind
+    it), the header with every offset and size worked out again, the object table, the page
+    map, the name and entry tables, the fix-up tables, the import names and the tables'
+    tail, the filler and the data pages, the filler and the non-resident names, and whatever came after. Pages are
+    stored in page-map order and numbered that way, unless the image keeps its own page map."""
     hdr = bytearray(image["header"].ljust(HEADER_SIZE, b"\0"))
     page_size = struct.unpack_from("<I", hdr, 0x28)[0]
     pmap, data, number, last_len = bytearray(), bytearray(), 0, 0
@@ -672,21 +690,27 @@ def write_image(image):
             data += body if i == stored[-1] else body.ljust(page_size, b"\0")
         else:
             pmap += bytes(3) + bytes([kind])
+    if image.get("page_map") is not None:
+        pmap = image["page_map"]
     resident = _name_table(image["resident"])
     fix_pages, fix_records = fixup_tables(image["fixups"], len(kinds))
     modules = b"".join(bytes([len(n)]) + n.encode("latin1") for n in image["import_modules"])
+    tail = image.get("tables_tail") or b""
     at = HEADER_SIZE
     where = {}
     for key, part in (("object_table", table), ("page_map", pmap), ("resident_names", resident),
                       ("entry_table", image["entry_table"]), ("fixup_pages", fix_pages),
                       ("fixup_records", fix_records), ("import_modules", modules),
-                      ("import_names", image["import_names"])):
+                      ("import_names", image["import_names"]), ("tables_tail", tail)):
         where[key] = at
         at += len(part)
     base = len(image["stub"])
-    pages_at = -(-(base + at) // image["align"]) * image["align"]
+    pages_at = image.get("data_pages") or 0
+    if pages_at < base + at:
+        pages_at = -(-(base + at) // image["align"]) * image["align"]
+    last = image.get("last_page_bytes")
     put = lambda off, v: struct.pack_into("<I", hdr, off, v)        # noqa: E731
-    put(0x14, len(kinds)), put(0x2C, last_len if image.get("last_page_bytes") or last_len != page_size else 0)
+    put(0x14, len(kinds)), put(0x2C, last_len if last is None else last)
     put(0x30, len(fix_pages) + len(fix_records) + len(modules) + len(image["import_names"]))
     put(0x38, where["fixup_pages"] - HEADER_SIZE)
     put(0x40, where["object_table"]), put(0x44, len(image["objects"])), put(0x48, where["page_map"])
@@ -695,17 +719,19 @@ def write_image(image):
     put(0x70, where["import_modules"]), put(0x74, len(image["import_modules"]))
     put(0x78, where["import_names"]), put(0x80, pages_at)
     out = bytearray(image["stub"]) + hdr + table + pmap + resident + image["entry_table"] + fix_pages + \
-        fix_records + modules + image["import_names"]
+        fix_records + modules + image["import_names"] + tail
     gap, names_gap = image.get("gaps") or (b"", b"")
     out += (gap if len(gap) == pages_at - len(out) else bytes(pages_at - len(out))) + data
     non = _name_table(image["nonresident"]) if image["nonresident"] else b""
-    out += names_gap if non and len(names_gap) < 16 else b""
+    out += names_gap
     put(0x88, len(out) if non else 0), put(0x8C, len(non))
     out += non
     shift = len(out) - image["moved"]["from"]
     for off, key in ((0x98, "debug_info"), (0xB8, "resource_data")):
         put(off, image["moved"][key] + shift if image["moved"][key] and image["after"] else image["moved"][key])
     out += image["after"]
+    fill = image.get("fill_from") or b""
+    out += fill[len(out):]
     out[base:base + HEADER_SIZE] = hdr
     return bytes(out)
 
