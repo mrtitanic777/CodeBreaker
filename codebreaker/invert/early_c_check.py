@@ -56,7 +56,8 @@ def source(code, name):
 
 def reconstruct(image, off, size, verify=True):
     """-> (C text or None, True/False/None, what happened)"""
-    from codebreaker.invert import compilers, omf
+    from codebreaker.formats import omf
+    from codebreaker.invert import compilers
     code = bytes(image[off:off + size])
     if len(code) < 4:
         return None, False, "too small to be a function"
@@ -70,7 +71,7 @@ def reconstruct(image, off, size, verify=True):
     obj = compilers.mc_compile(text)
     if not obj:
         return text, False, "does not compile"
-    functions = omf.functions(obj)
+    functions = omf.function_bytes(obj)
     built = next((v for k, v in functions.items() if k.upper().lstrip("_") == name.upper()), None) or \
         (next(iter(functions.values())) if functions else None)
     if built is None:

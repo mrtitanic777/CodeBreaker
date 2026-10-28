@@ -504,7 +504,7 @@ def externs(data):
     return out
 
 
-# ---- record by record, for the readers that walk the records themselves (invert's library_match, quad_align)
+# ---- record by record, for the readers that walk the records themselves (invert's quad_align)
 def walk(data, start=0):
     """(offset, type, payload) of each record from `start`, the payload without its checksum: zero bytes
     between records (a library's padding) passed over, the walk ended by a LIBEND"""

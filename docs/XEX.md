@@ -29,6 +29,9 @@ cmake --build native/xex/build --config Release --target xex
 ```
 
 `xex.exe` lands in `native/xex/build/bin` (settings.json `xex_bin` to put it elsewhere).
+The parsing and the basefile (`xex_file`, `basefile`, LZX decoding, the crypto) are the reader,
+`native/xex/reader.cmake`: built here as `xexreader`, and compiled into the recompiled-game
+runtime (`native/x360/runtime_lib`), whose loader (`runtime/src/xex.cpp`) has no parser of its own.
 `test_lzxenc` and `test_sign` are hand-run byte-identity harnesses against samples kept outside
 the repository (`native/xex/_re/`, gitignored).
 

@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-// Minimal XEX2 loader for decrypted, "basic"-compressed modules (titles; system modules converted by
-// codebreaker.formats.xex.basic).
+// The runtime's XEX2 loader: modules read by CodeBreaker's XEX reader (native/xex/reader.cmake), so any encryption and
+// basic or LZX compression; this file places them in guest memory and resolves their imports and exports.
 namespace xex
 {
     struct Import

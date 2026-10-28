@@ -10,18 +10,24 @@ project(codebreaker_xex CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# The engine: every source but the program's entry points.
+# The reader (reader.cmake): parsing and the basefile, shared with the recompiled-game runtime (native/x360).
+include(${CMAKE_CURRENT_SOURCE_DIR}/reader.cmake)
+add_library(xexreader STATIC ${XEX_READER_SOURCES})
+target_include_directories(xexreader PUBLIC ${XEX_READER_INCLUDE_DIR})
+if(MSVC)
+  target_compile_definitions(xexreader PUBLIC _CRT_SECURE_NO_WARNINGS)
+  target_compile_options(xexreader PUBLIC /EHsc /utf-8)
+endif()
+
+# The engine on top of it: every other source but the program's entry points.
 file(GLOB ENGINE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
                      ${CMAKE_CURRENT_SOURCE_DIR}/src/crypto/*.cpp
                      ${CMAKE_CURRENT_SOURCE_DIR}/src/compress/*.cpp)
 list(REMOVE_ITEM ENGINE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
-                            ${CMAKE_CURRENT_SOURCE_DIR}/src/selftest.cpp)
+                            ${CMAKE_CURRENT_SOURCE_DIR}/src/selftest.cpp
+                            ${XEX_READER_SOURCES})
 add_library(xexcore STATIC ${ENGINE_SRC})
-target_include_directories(xexcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-if(MSVC)
-  target_compile_definitions(xexcore PUBLIC _CRT_SECURE_NO_WARNINGS)
-  target_compile_options(xexcore PUBLIC /EHsc /utf-8)
-endif()
+target_link_libraries(xexcore PUBLIC xexreader)
 
 add_executable(xex src/main.cpp src/selftest.cpp)
 target_link_libraries(xex PRIVATE xexcore)

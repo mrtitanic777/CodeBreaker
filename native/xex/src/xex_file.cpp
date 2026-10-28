@@ -160,9 +160,11 @@ void XexFile::parse_optional_headers(const Reader& r) {
         }
     }
     if (auto* h = find_header(kHdrImportLibraries)) {
+        // {total size, string table size, name count, names (NUL-padded)}, then import blocks until the total size
+        // is used up -- walked by size, not by the name count, since a library can have several blocks.
         size_t o = blob_offset(*h);
+        uint32_t total_size = r.u32(o);
         uint32_t string_table_size = r.u32(o + 4);
-        uint32_t count = r.u32(o + 8);
         size_t strtab = o + 12;
         // Split the string table into a list of NUL-terminated names.
         std::vector<std::string> names;
@@ -172,19 +174,29 @@ void XexFile::parse_optional_headers(const Reader& r) {
             p += nm.size() + 1;
             while (p < string_table_size && r.u8(strtab + p) == 0) ++p; // padding
         }
-        size_t desc = strtab + string_table_size;
-        for (uint32_t i = 0; i < count; ++i) {
+        for (size_t desc = strtab + string_table_size; desc < o + total_size; ) {
             uint32_t dsize = r.u32(desc);
+            if (dsize < 0x28)
+                throw std::runtime_error("bad import library block at header offset " + std::to_string(desc));
             ImportLibrary lib;
             // descriptor: size@0, digest[20]@4, id@24, version@28,
-            // version_min@32, name_index@36, import_count@38
+            // version_min@32, name_index@36, record_count@38, records@40
             lib.version     = Version::unpack(r.u32(desc + 28));
             lib.version_min = Version::unpack(r.u32(desc + 32));
-            uint16_t name_index = r.u16(desc + 36);
+            // The name index is the low byte: early devkit dashboards (2.0.2255, 2258, 2832) have other bits in the
+            // high one (0x0900, 0xC301, 0x3102 for libraries 0, 1, 2).
+            uint16_t name_index = r.u16(desc + 36) & 0xFF;
             if (name_index < names.size()) lib.name = names[name_index];
+            uint16_t record_count = r.u16(desc + 38);
+            for (uint16_t i = 0; i < record_count; ++i)
+                lib.records.push_back(r.u32(desc + 40 + size_t(i) * 4));
             import_libs_.push_back(lib);
             desc += dsize;
         }
+    }
+    if (auto* h = find_header(kHdrTlsInfo)) {
+        size_t o = h->value;
+        tls_ = TlsHeader{ r.u32(o), r.u32(o + 4), r.u32(o + 8), r.u32(o + 12) };
     }
 }
 

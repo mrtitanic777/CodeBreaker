@@ -17,6 +17,8 @@ from codebreaker.base import corpus                                   # noqa: E4
 from codebreaker.build import watcom                                  # noqa: E402
 from codebreaker.store import functions as F                          # noqa: E402
 from codebreaker.symbols import demangle, names, ordinals, prototypes, runtime_library   # noqa: E402
+from codebreaker.symbols import libraries   # noqa: E402
+from codebreaker.compare import mask   # noqa: E402
 
 RESULTS = []
 
@@ -130,13 +132,16 @@ def test_signatures():
     obj = os.path.join(tempfile.mkdtemp(), "probe.obj")
     with open(obj, "wb") as f:
         f.write(_object(code, 17))
-    bits, found = runtime_library.library_functions(obj)
-    assert bits == 32 and [(n, c, sorted(m)) for n, c, m in found] == [("_probe", code, [17, 18, 19, 20])], found
-    sig = runtime_library.signature(code, found[0][2])
+    bits, found = libraries.functions(obj)
+    assert bits == 32 and [(f.name, f.code, [i for i, m in enumerate(f.mask) if m]) for f in found] == \
+        [("_probe", code, [17, 18, 19, 20])], found
+    sig = runtime_library.signature(code, found[0].mask)
     linked = code[:17] + b"\xAA\xBB\xCC\xDD" + code[21:]                 # the same function where a linker put it
-    assert runtime_library.signature(linked, {17, 18, 19, 20}) == sig
-    assert runtime_library.signature(code[:6] + b"\x09" + code[7:], {17, 18, 19, 20}) != sig
-    assert runtime_library.signature(b"\x55\x8b\xec\x5d\xc3", set()) is None    # nothing to tell it by
+    four = mask.of({17, 18, 19, 20}, len(code))
+    assert runtime_library.signature(linked, four) == sig
+    assert runtime_library.signature(code[:6] + b"\x09" + code[7:], four) != sig
+    assert runtime_library.signature(b"\x55\x8b\xec\x5d\xc3", bytes(5)) is None    # nothing to tell it by
+    assert libraries.fits(found[0], linked + b"\x90", four) and not libraries.fits(found[0], code[:6] + b"\x09" + code[7:])
     assert runtime_library.substance(32, code, len(code)) >= 4
     assert runtime_library.substance(16, bytes.fromhex("8cd89045558bec1e8ed833c08d66fe1f5d4dcb90"), 20) == 0
     assert runtime_library._c_name("__allmul") == "_allmul" and runtime_library._c_name("_f@8") == "f"
