@@ -2,12 +2,11 @@ r"""progress.py -- watch a long run from outside it.
 
     python -m codebreaker progress                 one status line, rewritten every few seconds
     python -m codebreaker progress --once          print the status once and stop
-    python -m codebreaker progress --window        the same in a small window
     python -m codebreaker progress --interval 10   seconds between readings (default 3)
     python -m codebreaker progress --log FILE      also show the last line of a run's output file
 
     from codebreaker.ui import progress
-    progress.snapshot()        # what the line, the window and the web console all show
+    progress.snapshot()        # what the line, the terminal interface and the MCP server show
 
 A sweep or a module run is not asked to report anything: every result it produces goes into
 the function store as it is made, so the store is the progress. A reading says, per kind of
@@ -115,73 +114,14 @@ def line(s):
     return "[%s] %s" % (s["time"], " | ".join(parts) or "no results yet")
 
 
-def _window(interval, log, once):
-    """The reading in a small window (standard-library tkinter), refreshed every `interval` seconds."""
-    import tkinter as tk
-    from tkinter import ttk
-    root = tk.Tk()
-    root.title("CodeBreaker -- progress")
-    root.minsize(520, 300)
-    frame = ttk.Frame(root, padding=12)
-    frame.pack(fill="both", expand=True)
-    head = ttk.Label(frame, text="reading the store...", font=("Segoe UI", 10, "bold"))
-    head.pack(anchor="w")
-    rows = ttk.Frame(frame)
-    rows.pack(fill="x", pady=(8, 4))
-    bars = {}
-    status = ttk.Label(frame, text="", wraplength=640, justify="left")
-    status.pack(anchor="w", pady=(4, 4))
-    recent = tk.Listbox(frame, height=8, activestyle="none", font=("Consolas", 9))
-    recent.pack(fill="both", expand=True)
-
-    def refresh():
-        try:
-            s = snapshot(log)
-        except Exception as e:                                # the store was mid-write: read again
-            status.config(text="could not read the store this time (%s)" % type(e).__name__)
-            s = None
-        if s:
-            head.config(text=("Working" if s["active"] else "Idle") + "   " + s["time"])
-            for k in s["kinds"]:
-                if k["kind"] not in bars:
-                    label = ttk.Label(rows, text="")
-                    bar = ttk.Progressbar(rows, maximum=max(1, k["modules"]), length=360)
-                    label.grid(row=len(bars) * 2, column=0, sticky="w")
-                    bar.grid(row=len(bars) * 2 + 1, column=0, sticky="we", pady=(0, 6))
-                    bars[k["kind"]] = (label, bar)
-                label, bar = bars[k["kind"]]
-                label.config(text="%s: %d of %d modules measured; %d functions: %s" % (
-                    k["name"], k["measured"], k["modules"], k["functions"],
-                    ", ".join("%s %d" % (F.TITLE[c], k[c]) for c in F.ORDER if k[c]) or "nothing yet"))
-                bar.config(value=k["measured"])
-            status.config(text="%s results a minute; %d workers busy; about %s left%s" % (
-                s["rate"], s["workers"], _clock(s["eta"]), ("\n" + s["log"]) if s["log"] else ""))
-            recent.delete(0, "end")
-            for r in s["recent"]:
-                recent.insert("end", "%-16s %-7s %6d results   %s ago" % (r["module"], r["kind"], r["results"], _clock(r["age"])))
-        if once:
-            root.after(400, root.destroy)
-        else:
-            root.after(int(interval * 1000), refresh)
-
-    root.after(50, refresh)
-    root.mainloop()
-    return 0
-
-
 def main(argv):
-    """python -m codebreaker progress [--once] [--window] [--interval SECONDS] [--log FILE]
+    """python -m codebreaker progress [--once] [--interval SECONDS] [--log FILE]
 
     Show how a running sweep or module run is getting on, read from the function store."""
     def option(name, default=None):
         return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
 
     interval, log, once = max(1.0, float(option("--interval", "3"))), option("--log"), "--once" in argv
-    if "--window" in argv:
-        try:
-            return _window(interval, log, once)
-        except ImportError:
-            print("no window toolkit (tkinter) in this Python; showing the line instead")
     width = 0
     try:
         while True:

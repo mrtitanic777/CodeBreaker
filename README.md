@@ -79,7 +79,7 @@ codebreaker/
                emit/, rules.py, runtime.py, profiles/ (Minecraft eras), platform/ (the console layer)
                console/      the Xbox 360 port: assets, XACT audio, achievements, the post-convert
                              rewrites, the Visual Studio project; run.py: `java <tool>`
-  ui/          the local web console and the desktop window
+  ui/          the terminal interface (terminal.py), the MCP server, and service.py under both
 native/decompiler/   the native decompiler (C++): decompiler.cc around the Ghidra decompiler core
                      in core/ (Apache-2.0, see core/LICENSE, core/NOTICE); upstream
                      version and every local patch: docs/GHIDRA_FORK.md

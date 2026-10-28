@@ -62,7 +62,7 @@ What CodeBreaker makes of a binary goes into that binary's project folder under 
       build/         programs and libraries built from src/
       reports/       analysis, listings, disassembly, logs
 
-`decompile`, `take-apart` (and the Workbench), `recompile --all`, `recompile-project`,
+`decompile`, `recompile --all`, `recompile-project`,
 `resources` and `build` write there unless given `--out` / `-o`. A binary's project is found again
 by its SHA-1, so every command run on one file adds to one folder.
 

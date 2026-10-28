@@ -72,13 +72,8 @@ python -m codebreaker               with no command, in a terminal: the terminal
     reach <file or folder> [--judge]    anything at all: what each program is, its platform (or the
                                     platform there is no lane for yet), and with --judge how far its
                                     lane gets; a few of each platform, one at a time
-    serve [--port N] [--open]       the local web console (127.0.0.1 only)
     mcp [--http PORT]               CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)
-    progress [--once] [--window]    watch a running sweep
-    app [file-or-module]            the desktop window
-    workbench [--forms]             the Workbench: the earlier CodeBreaker's Windows 95-style window
-    live <binary>                   the Live reconstruction window: the file's bytes and its C appearing
-    take-apart <binary>             what the Workbench does with a dropped program, to a folder
+    progress [--once]               watch a running sweep
     settings                        every setting, and whether what it names is there
     java <tool> ...                 the Java transpiler: a Java program as C++03 (convert, decompile,
                                     worklist, ...; `java --help` lists them)
@@ -136,14 +131,9 @@ COMMANDS = {
     "xex": ("codebreaker.formats.xex", []),
     "coverage": ("codebreaker.coverage.ledger", []),
     "reach": ("codebreaker.coverage.reach", []),
-    "serve": ("codebreaker.ui.server", []),
     "mcp": ("codebreaker.ui.mcp_server", []),
     "ui": ("codebreaker.ui.terminal", []),
     "progress": ("codebreaker.ui.progress", []),
-    "app": ("codebreaker.ui.app", []),
-    "workbench": ("codebreaker.ui.workbench", []),
-    "live": ("codebreaker.ui.live", []),
-    "take-apart": ("codebreaker.ui.take_apart", []),
     "settings": ("codebreaker.base.settings", []),
     "recompile": ("codebreaker.recompile.powerpc", []),
     "recompile-project": ("codebreaker.recompile.project", []),

@@ -1,10 +1,10 @@
-r"""mcp_server.py -- CodeBreaker as an MCP server: what the console shows, for an assistant to use.
+r"""mcp_server.py -- CodeBreaker as an MCP server: what the terminal interface shows, for an assistant to use.
 
     python -m codebreaker mcp                     serve over stdin/stdout (what an MCP client starts)
     python -m codebreaker mcp --http PORT         streamable HTTP on 127.0.0.1, behind a bearer token
     claude mcp add codebreaker -- python -m codebreaker mcp      (or the project's .mcp.json)
 
-The same reading and the same jobs as the web console (server.py), as tools an assistant such
+The same reading and the same jobs as the terminal interface (both through ui/service.py), as tools an assistant such
 as Claude Code calls. Three kinds:
 
     reading     nothing changes: triage, describe, inspect, strings, hex_dump, resource, modules,
@@ -14,7 +14,7 @@ as Claude Code calls. Three kinds:
                 inside Converted/, state/, this checkout and the source tree); worked out on
                 asking, kept an hour: decompile_function, compare_versions, diff_function
     jobs        any command of `python -m codebreaker` run as a process of its own, below normal
-                priority, its output kept in state/ui_jobs/ (as the console's jobs): run_command,
+                priority, its output kept in state/ui_jobs/ (as the terminal interface's jobs): run_command,
                 jobs, job, job_file, stop_job. At most two at a time, at most one `measure`.
     writing     name_function: give a function's body a name in the function store; every module
                 holding the same body then has it (symbols/names.py set_name)
@@ -39,10 +39,10 @@ from contextlib import closing, redirect_stdout
 from codebreaker.base import corpus, settings
 from codebreaker.formats import inspect
 from codebreaker.store import functions as F
-from codebreaker.ui import server
+from codebreaker.ui import service
 
 MOST = 60000                     # characters in one answer, at most
-INTERACTIVE = {"serve", "app", "workbench", "live", "progress", "mcp"}     # windows and servers: not jobs
+INTERACTIVE = {"ui", "progress", "mcp"}                 # interfaces and servers: not jobs
 
 INSTRUCTIONS = """CodeBreaker reconstructs readable source from binaries (Windows 16/32-bit, DOS, VxD
 drivers, Xbox, Xbox 360, 8/16-bit consoles, XNA, Java) and checks that the source behaves like the
@@ -114,7 +114,7 @@ def _path(module):
     module = (module or "").strip().strip('"')
     if not module:
         raise ValueError("name a module (a corpus name such as lz32.dll, or a path)")
-    path = module if os.path.isdir(module) else corpus.retail(module) or server._stored_path(module)
+    path = module if os.path.isdir(module) else corpus.retail(module) or service.stored_path(module)
     if not path:
         raise ValueError("no module %r: not a file, not in the corpus (%s), not in the store"
                          % (module, corpus.root()))
@@ -150,8 +150,8 @@ def _addr(text):
 
 
 def _store_view(module):
-    """server.functions for a module, remembered a few seconds (it reads the ledger)."""
-    value, _ = SLOW.get(("functions", module), lambda: _quiet(server.functions, module), age=15.0, wait=120.0)
+    """service.functions for a module, remembered a few seconds (it reads the ledger)."""
+    value, _ = SLOW.get(("functions", module), lambda: _quiet(service.functions, module), age=15.0, wait=120.0)
     return value
 
 
@@ -418,7 +418,7 @@ def function(module: str, addr: str) -> dict:
         next((r for r in rows if r["name"] and r["name"].lower() == addr.strip().lower()), None)
     if not hit:
         raise ValueError("no function %r in %s (%d functions; `functions` lists them)" % (addr, name, len(rows)))
-    one = _quiet(server.functions, name, hit["addr"])["function"]
+    one = _quiet(service.functions, name, hit["addr"])["function"]
     if not one.get("source"):                     # not judged under these settings: what was made of it
         with closing(F.open()) as fs:
             made = [{"engine": e, "rev": r, "name": n, "source": s or "", "problem": pr or "",
@@ -477,7 +477,7 @@ def _commands():
 
 def commands() -> dict:
     """Every command of `python -m codebreaker` with its one-line usage (any of them can be run as
-    a job through run_command, except the windows and servers)."""
+    a job through run_command, except the interfaces and servers)."""
     M = _commands()
     return {"usage": M.__doc__, "runnable": sorted(set(M.COMMANDS) - INTERACTIVE)}
 
@@ -1056,23 +1056,23 @@ def run_command(command: str, args: list[str] | None = None) -> dict:
     if command not in M.COMMANDS:
         raise ValueError("no command %r; `commands` lists them" % command)
     if command in INTERACTIVE:
-        raise ValueError("%r opens a window or a server; it is not run as a job" % command)
+        raise ValueError("%r is an interface or a server; it is not run as a job" % command)
     label = next((os.path.basename(os.path.normpath(a)) for a in args if not a.startswith("-")), "")
-    return server.JOBS.launch(command, args, label.lower())
+    return service.JOBS.launch(command, args, label.lower())
 
 
 def jobs() -> dict:
     """The jobs this server started, newest first."""
-    return {"jobs": server.JOBS.all()}
+    return {"jobs": service.JOBS.all()}
 
 
 def job(job_id: str, offset: int = 0, tail: int = 0) -> dict:
     """A job's state and its output from byte `offset` (up to 256 KB; `next` is where to go on).
     `tail`: just the last that many characters of the output instead."""
-    j = server.JOBS.get(job_id)
+    j = service.JOBS.get(job_id)
     if not j:
         raise ValueError("no job %r (this server's jobs: `jobs`)" % job_id)
-    out = server.JOBS.view(j, 0 if tail else int(offset))
+    out = service.JOBS.view(j, 0 if tail else int(offset))
     if tail:
         out["log"] = out["log"][-max(1, min(int(tail), MOST)):]
     elif len(out["log"]) > MOST:
@@ -1083,7 +1083,7 @@ def job(job_id: str, offset: int = 0, tail: int = 0) -> dict:
 
 def job_file(job_id: str, offset: int = 0, length: int = MOST) -> dict:
     """The file a job wrote (a decompile's C), from character `offset`."""
-    j = server.JOBS.get(job_id)
+    j = service.JOBS.get(job_id)
     if not j or not (j["output"] and os.path.isfile(j["output"])):
         raise ValueError("job %r wrote no file" % job_id)
     with open(j["output"], encoding="utf-8", errors="replace") as f:
@@ -1096,9 +1096,9 @@ def job_file(job_id: str, offset: int = 0, length: int = MOST) -> dict:
 
 def stop_job(job_id: str) -> dict:
     """Stop a job this server started (only that process is stopped)."""
-    if not server.JOBS.stop(job_id):
+    if not service.JOBS.stop(job_id):
         raise ValueError("no job %r" % job_id)
-    return server.JOBS.view(server.JOBS.get(job_id))
+    return service.JOBS.view(service.JOBS.get(job_id))
 
 
 # ---- writing ---------------------------------------------------------------------------------
@@ -1252,5 +1252,5 @@ def main(argv):
         uvicorn.run(http_app(hosts, public), host=host, port=port, log_level="warning")
     else:
         build().run("stdio")
-    server.JOBS.stop_all()
+    service.JOBS.stop_all()
     return 0

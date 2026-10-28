@@ -805,14 +805,14 @@ class CodeBreaker(App):
 
     async def action_quit(self):
         """Quit; a job still running is said first (a second q stops it with the interface)."""
-        from codebreaker.ui import server
-        running = [j for j in server.JOBS.all() if j["status"] == "running"]
+        from codebreaker.ui import service
+        running = [j for j in service.JOBS.all() if j["status"] == "running"]
         if running and not getattr(self, "warned", False):
             self.warned = True
             self.notify("%s still running: q again stops it and quits" % ", ".join(
                 "%s %s" % (j["action"], j["module"]) for j in running), severity="warning", timeout=6)
             return
-        server.JOBS.stop_all()                                  # (only the processes started here)
+        service.JOBS.stop_all()                                  # (only the processes started here)
         self.exit()
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Tests for what shows the work: the inspector, the coverage ledger, the progress reading and the
-web console. Run:  python tests/test_ui.py     (exit code 0 = all passed)
+"""Tests for what shows the work: the inspector, the coverage ledger, the progress reading, the
+query layer and the terminal interface. Run:  python tests/test_ui.py     (exit code 0 = all passed)
 
 They use three small corpus modules (version.dll, lzexpand.dll, vkd.vxd) and a function store of
 their own in a temporary folder -- the real store is never opened. Checks that need the corpus
@@ -12,9 +12,6 @@ import os
 import sqlite3
 import sys
 import tempfile
-import threading
-import urllib.error
-import urllib.request
 from contextlib import redirect_stdout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,7 +24,7 @@ from codebreaker.base import corpus                          # noqa: E402
 from codebreaker.coverage import ledger                      # noqa: E402
 from codebreaker.formats import inspect                      # noqa: E402
 from codebreaker.store import functions as F                 # noqa: E402
-from codebreaker.ui import progress, server                  # noqa: E402
+from codebreaker.ui import progress, service                 # noqa: E402
 
 RESULTS = []
 
@@ -212,72 +209,21 @@ def test_progress_reading():
     assert "32-bit 0/" in text and "version.dll" in text and F.TITLE["verified"] + " 1" in text, text
 
 
-# --- web console -----------------------------------------------------------------------------
-def test_console_serves_everything():
-    path, _sha, _digest = _fill_store()
-    srv = server.make_server(0, search=False)                       # any free port
-    port = srv.server_address[1]
-    assert srv.server_address[0] == "127.0.0.1"
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-
-    def get(route, headers=None, data=None):
-        req = urllib.request.Request("http://127.0.0.1:%d%s" % (port, route), headers=headers or {}, data=data)
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return r.status, r.read()
-        except urllib.error.HTTPError as e:
-            return e.code, e.read()
+# --- the query layer under the interfaces ------------------------------------------------------
+def test_service_reads_the_store():
+    _fill_store()
+    fns = service.functions("version.dll")
+    assert len(fns["functions"]) == 6 and fns["counts"]["verified"] == 1 and "unverified" in fns["reasons"]
+    good = [f for f in fns["functions"] if f["class"] == "verified"][0]
+    one = service.functions("version.dll", good["addr"])["function"]
+    assert one["verdict"] == "equivalent" and one["source"].startswith("int f0") and one["title"] == F.TITLE["verified"]
+    assert service.functions("no_such_zz.dll") is None
     try:
-        code, page = get("/")
-        assert code == 200 and b"<title>CodeBreaker console</title>" in page and b"https://" not in page
-        assert json.loads(get("/api/health")[1])["ok"]
-        mods = json.loads(get("/api/modules")[1])["modules"]
-        assert [m["verified"] for m in mods if m["name"] == "version.dll"] == [1]
-        assert len(json.loads(get("/api/coverage")[1])["kinds"]) == 5     # 32-bit, 16-bit, driver, DOS, Java
-        assert json.loads(get("/api/info?module=version.dll")[1])["summary"]["exports"] == 14
-        assert json.loads(get("/api/info?module=version.dll&section=sections")[1])[0]["name"] == ".text"
-        assert json.loads(get("/api/strings?module=version.dll&find=kernel32")[1])["total"] >= 1
-        assert json.loads(get("/api/hex?module=version.dll&length=16")[1])["text"].startswith("00000000  4D 5A")
-        fns = json.loads(get("/api/functions?module=version.dll")[1])
-        assert len(fns["functions"]) == 6 and fns["counts"]["verified"] == 1 and "unverified" in fns["reasons"]
-        good = [f for f in fns["functions"] if f["class"] == "verified"][0]
-        one = json.loads(get("/api/function?module=version.dll&addr=" + good["addr"])[1])["function"]
-        assert one["verdict"] == "equivalent" and one["source"].startswith("int f0") and one["title"] == F.TITLE["verified"]
-        assert json.loads(get("/api/progress")[1])["recent"][0]["module"] == "version.dll"
-        assert json.loads(get("/api/jobs")[1]) == {"jobs": []}
-        assert get("/api/info?module=no_such_zz.dll")[0] == 404 and get("/api/nowhere")[0] == 404
-        assert get("/api/health", {"Host": "elsewhere.example:%d" % port})[0] == 403
-        post = {"Content-Type": "application/json"}
-        assert get("/api/jobs", post, b'{"action": "erase", "module": "version.dll"}')[0] == 400
-        assert get("/api/jobs", dict(post, Origin="http://elsewhere.example"), b'{"action": "decompile", "module": "version.dll"}')[0] == 403
-        assert get("/api/jobs", {"Content-Type": "text/plain"}, b"{}")[0] == 415
-        assert json.loads(get("/api/jobs")[1]) == {"jobs": []}         # none of those started anything
-    finally:
-        srv.shutdown()
-        srv.server_close()
-
-
-def test_workbench_and_live_window():
-    """The Workbench (Win32/GDI and Windows Forms) and the Live reconstruction window: built and
-    destroyed, a program taken apart, the live window fed the program's own C."""
-    import tempfile
-    from codebreaker.ui import live, take_apart, workbench
-    path = corpus.retail("lzexpand.dll")
-    if not path:
-        raise Skip("no lzexpand.dll")
-    rep = take_apart.reverse(path, None, tempfile.mkdtemp(prefix="takeapart_"))
-    assert rep["format"].startswith("NE") and rep["functions"] > 20 and rep["insn_count"] > 1000
-    assert [a for a, _p in rep["artifacts"]][-2:] == ["Reconstructed C", "Hex dump"]
-    lines = live._real_reveal_lines(path)
-    assert lines and "(" in lines[0] and lines[1].strip() == "{"            # a function's C, from the file
-    commands = {e[3][1] for e in workbench.NAV if e[0] == "act" and e[3][0] == "cmd"}
-    from codebreaker import __main__ as cli
-    assert commands <= set(cli.COMMANDS), commands - set(cli.COMMANDS)    # every menu entry is a real command
-    if sys.platform == "win32":
-        workbench.main(["--selftest"])
-        import importlib.util
-        if importlib.util.find_spec("clr"):                  # pythonnet, for the Windows Forms one
-            workbench.main(["--forms", "--selftest"])
+        service.JOBS.start("erase", "version.dll")
+        raise AssertionError("an unknown action was started")
+    except ValueError as e:
+        assert "no such action" in str(e)
+    assert service.JOBS.all() == []                                  # nothing was started
 
 
 def test_terminal_interface():
@@ -319,8 +265,8 @@ def test_terminal_interface():
 def main():
     for fn in (test_describe_32bit, test_describe_16bit_driver_and_dos, test_describe_never_raises,
                test_strings_bytes_and_resources, test_info_command, test_ledger_agrees_with_the_store,
-               test_ledger_reads_without_writing, test_progress_reading, test_console_serves_everything,
-               test_workbench_and_live_window, test_terminal_interface):
+               test_ledger_reads_without_writing, test_progress_reading, test_service_reads_the_store,
+               test_terminal_interface):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

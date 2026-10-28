@@ -110,9 +110,9 @@ def test_reading_a_module():
 
 def test_wrong_names_are_said():
     got = _calls([("describe", {"path": "no-such-module.dll"}), ("command_help", {"command": "nothing"}),
-                  ("run_command", {"command": "serve"}), ("job", {"job_id": "x"})])
+                  ("run_command", {"command": "ui"}), ("job", {"job_id": "x"})])
     assert all(err for err, _t in got), got
-    assert "no module" in got[0][1] and "no command" in got[1][1] and "window or a server" in got[2][1]
+    assert "no module" in got[0][1] and "no command" in got[1][1] and "an interface or a server" in got[2][1]
 
 
 def test_symbols():
@@ -122,7 +122,7 @@ def test_symbols():
     assert d["?AddRef@CFoo@@UAGKXZ"]["readable"] == "public: virtual unsigned long __stdcall CFoo::AddRef(void)"
     assert d["_Bar@8"]["stack_bytes"] == 8
     c = json.loads(got[1][1])
-    assert "reach" in c["runnable"] and "serve" not in c["runnable"] and "mcp" not in c["runnable"]
+    assert "reach" in c["runnable"] and "ui" not in c["runnable"] and "mcp" not in c["runnable"]
     assert "--judge" in json.loads(got[2][1])["help"]
 
 
@@ -137,7 +137,7 @@ def test_a_job_runs_and_reports():
             while time.time() < end:
                 j = json.loads((await c.call_tool("job", {"job_id": jid})).content[0].text)
                 if j["status"] != "running":
-                    os.remove(mcp_server.server.JOBS.get(jid)["log"])          # leave nothing behind
+                    os.remove(mcp_server.service.JOBS.get(jid)["log"])          # leave nothing behind
                     return j
                 await asyncio.sleep(0.5)
             return j
