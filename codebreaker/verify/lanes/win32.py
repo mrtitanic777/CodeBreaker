@@ -93,10 +93,11 @@ def judge(module_path, item):
         info=info, leftover=undefined_ret_bits))
 
 
-PIPE_REV = 46                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+PIPE_REV = 47                  # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
                                 # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM;
                                 # 43-45: striped objects, globals with values of their own, the original's data filled with pads;
-                                # 46: an original cut off at the limit is matched by the calls it made, the rebuild given ROOM)
+                                # 46: an original cut off at the limit is matched by the calls it made, the rebuild given ROOM;
+                                # 47: the branch tracer enters a flat thunk's stubs as the fingerprint runs do)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
@@ -453,6 +454,15 @@ def _thunk_stubs(original):
     return _THUNKS[original]
 
 
+def _stub_options(original):
+    """How a run enters the stubs: as imports (_thunk_stubs), each with its argument count. The
+    same for a fingerprint run and a branch-logged one, so that the inputs aimed at branches are
+    chosen on the program the judge runs."""
+    stubs, stub_argc = _thunk_stubs(original)
+    return {"stub_at": stubs or None,
+            "sig_resolver": lambda d, n: stub_argc.get(n) if d == "THUNK" else _argc(d, n)}
+
+
 def _fp_pe(path, func, spec, rebuilt=False):
     """Fingerprint one run. For a REBUILT image pass `rebuilt=<path of the original>`: its own
     statics are then left out of the comparison and the original's code is mapped beside it.
@@ -467,16 +477,14 @@ def _fp_pe(path, func, spec, rebuilt=False):
 
 
 def _trace_pe(path, func, spec, rebuilt):
-    stubs, stub_argc = _thunk_stubs(rebuilt if isinstance(rebuilt, str) else path)
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   insn_cap=int(spec.get("room") or tracer._MAX_INSNS),
-                                  stub_externals=True, stub_at=stubs or None,
-                                  sig_resolver=(lambda d, n: stub_argc.get(n) if d == "THUNK" else _argc(d, n)),
-                                  stub_ret=int(spec.get("stub_ret", 0)),
+                                  stub_externals=True, stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True, ecx=spec.get("ecx"), edx=spec.get("edx"),
-                                  quiet_stack=True, reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS)
+                                  quiet_stack=True, reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS,
+                                  **_stub_options(rebuilt if isinstance(rebuilt, str) else path))
     except ImportError:
         raise                                     # a broken setup is not an observation
     except Exception as e:
@@ -734,14 +742,16 @@ def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
 
 def _branch_run(path, func, spec):
     """The original run on `spec` with its branches logged: {"branches", "reach"}, or None when
-    the run is not an observation (as _fp_pe: an error, or a call into nothing)."""
+    the run is not an observation (as _fp_pe: an error, or a call into nothing). A flat thunk's
+    stubs are entered as _fp_pe enters them (_stub_options)."""
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   insn_cap=int(spec.get("room") or tracer._MAX_INSNS),
-                                  stub_externals=True, sig_resolver=_argc, stub_ret=int(spec.get("stub_ret", 0)),
+                                  stub_externals=True, stub_ret=int(spec.get("stub_ret", 0)),
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
                                   ecx=spec.get("ecx"), edx=spec.get("edx"), quiet_stack=True,
-                                  reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS, branches=True)
+                                  reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS, branches=True,
+                                  **_stub_options(path))
     except ImportError:
         raise
     except Exception:

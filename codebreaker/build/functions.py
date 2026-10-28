@@ -217,10 +217,29 @@ def _link(wlink, env, outdir, lines):
     return None, (errors[0][:200] if errors else log[-160:]) or "the linker produced nothing"
 
 
-def build16(header, texts, order, imports, outdir, segments=None, jobs=None, code_segment=None):
+def _interrupt_routines(wcc, env, outdir, interrupts):
+    """The link lines for the routines the interrupt helpers call (decompile/c_text.py
+    interrupt_routines, as build/module.py adds them) when the module's C takes an interrupt
+    (the helpers are in the header): without them a helper's call went to 0:0 and its registers
+    to offset 0 of the data segment."""
+    if not interrupts:
+        return []
+    from codebreaker.decompile import c_text
+    asm, c = c_text.interrupt_routines(interrupts)
+    with open(os.path.join(outdir, "interrupts.asm"), "w", newline="\n") as f:
+        f.write(asm)
+    r = subprocess.run([period_tools.ow_tool("wasm"), "-q", "interrupts.asm"], cwd=outdir, env=env,
+                       capture_output=True, text=True)
+    if r.returncode or _compile(wcc, CFLAGS16, env, outdir, "interrupt_registers", c.replace('#include "m.h"\n', "")):
+        return []
+    return ["file interrupts.obj", "file interrupt_registers.obj"]
+
+
+def build16(header, texts, order, imports, outdir, segments=None, jobs=None, code_segment=None, interrupts=None):
     """`code_segment` {name: the number of the original's segment the function is in}: the
     functions of one segment are put in one segment again. A segment holds 64K at most, and
-    functions of one segment call each other near, of different ones far -- as in the original."""
+    functions of one segment call each other near, of different ones far -- as in the original.
+    `interrupts` {vector}: the software interrupts the texts take (c_text: m.interrupts)."""
     wcc, wlink = period_tools.ow_tool("wcc"), period_tools.ow_tool("wlink")
     if not (wcc and wlink):
         raise RuntimeError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)")
@@ -239,6 +258,7 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
              "libpath %s" % period_tools.ow_lib("ne")]
     lines += ["file %s.obj" % stems[n] for n in order if n in stems]
     lines += ["file data.obj", "library clibm.lib"]
+    lines += _interrupt_routines(wcc, env, outdir, interrupts)
     # a C name compiled as __stdcall with an open argument list is the symbol `_name`
     lines += ["import _%s %s.%d" % (nm, mod, ordn) for nm, (mod, ordn) in sorted(imports.items())]
     dll, why = _link(wlink, env, outdir, lines)
