@@ -31,13 +31,26 @@ def _exit_norm(e):
 # section now run instead of being stub-returned). 3: the import stub removes the arguments a
 # stdcall import takes, and the fingerprint is the full call sequence WITH arguments, not the set of
 # import names reached. 4: the fingerprint also carries the memory the function wrote and which of
-# its instructions ran; inputs can set what imported calls return.
-REV = 24
+# its instructions ran; inputs can set what imported calls return. 25: `steps`, the instructions a
+# run took (a rebuild that ends where the original was cut off is judged by it).
+REV = 25
 
 
 def first_difference(a, b, ret_mask=0):
     """The first observable difference between two fingerprints of the same input, or ''.
     `ret_mask` marks bits of the return value that are leftovers, not results."""
+    # The original (a) cut off at the step limit did only part of its work, and where it stopped
+    # is the harness's doing: the rebuild must have made every call it made by then, in order,
+    # but how far either got is not comparable (a C loop takes more steps than `rep stosd`).
+    # A rebuild that ENDED where the original was still going ended early, unless it had run more
+    # steps than the original was given (`steps`, where the lane records it).
+    if a.get("exit") == "truncated" and b.get("exit") != "wild-call":
+        da = tuple(a["deps"])                  # (a list cut at its cap says so, "...", in both runs alike)
+        if tuple(b["deps"][:len(da)]) != da:
+            return "deps-differ"
+        if b.get("exit") != "truncated" and not (a.get("steps") and (b.get("steps") or 0) > a["steps"]):
+            return "exit-differs"
+        return ""
     if a["exit"] != b["exit"]:
         return "exit-differs"
     if a["deps"] != b["deps"]:

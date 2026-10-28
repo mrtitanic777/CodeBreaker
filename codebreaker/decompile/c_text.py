@@ -2850,6 +2850,7 @@ def compilable_powerpc(module_path, outdir):
             if wide:
                 src.replace(num, "0x" + wide.group(1))
         t = src.text()
+        t = _struct_gaps(t)                      # an offset of a recovered structure with no field
         t = _pieces(t, _BY_SIZE, "uint4", lambda x, off, ty: "PIECE(%s, %s, %s)" % (x, off, ty))
         t = _compare_as_numbers(t)
         t = _code_pointers(t, set(order))
@@ -2884,8 +2885,13 @@ def compilable_powerpc(module_path, outdir):
         if "(" not in head:
             continue
         decls.append(head[:head.index("(")] + "();")
+    # The structures recovered for each function (`/*@S` notes), declared before the prototypes:
+    # a function returning a pointer to one names it in its prototype, which every body includes.
+    types = _TYPES.replace("typedef int code();", "typedef uint8 code();") + _HELPERS + _POWERPC
+    notes = [ln for t in out.values() for ln in t.split("\n") if ln.startswith("/*@S ")]
+    structs = _struct_decls(notes, types)
     m = ModulePowerPC()
-    m.header = _TYPES.replace("typedef int code();", "typedef uint8 code();") + _HELPERS + _POWERPC + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
+    m.header = types + "".join(x + "\n" for x in structs) + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     m.texts, m.order, m.by_va, m.novalue = out, order, by_va, novalue
     by_name = {name: va for va, name in img.imports.items()}
     m.externs = {n: by_name[n] for n in used if n in by_name}

@@ -172,7 +172,7 @@ def _powerpc():
 
 
 def freeze_subjects(names):
-    for group, name, where, fn in frozen_subjects.SUBJECTS:
+    for group, name, where, fn in frozen_subjects.SUBJECTS + frozen_subjects.MODULE_SUBJECTS:
         if names and name not in names and "%s/%s" % (group, name) not in names:
             continue
         path = where()

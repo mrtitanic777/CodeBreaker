@@ -117,6 +117,23 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
 2. **The C back end** (`translate/backends/c.py`): L2 to C that compiles with OpenWatcom. Done when,
    on the golden corpus, it compiles everywhere today's C compiles and the judge gives the same
    verdicts. Today's path stays the default until then.
+   **Done 2026-10-28.** `translate/backends/c.py` writes an L2 function document as C in the
+   decompiler's own dialect, from PrintC's own rules: the core's operator table and its bracketing
+   rule (`PrintLanguage::parentheses`: an operand of equal precedence is bracketed unless it is the
+   same associative operator, `(a + b) - c`), the brackets of conditions the structure joined
+   (`(a) && (b)`, none on the right side or in a loop's comma list), `if (c) goto x;` braceless.
+   What only PrintC knew, PrintL2 now writes into L2: a literal's spelling (`Lit.text`: base, `U`,
+   character escapes; a schema addition), the convention's word where it is not the default
+   (`MethodDecl.mods`), the locals in PrintC's order and with PrintC's names for nameless types
+   (`unkint3`), an if-goto's jump as one statement rather than a block, an `else` that only holds an
+   `if` as a Block. `python tools/l2c.py` holds it to the printed C token for token and in its
+   spacing, which c_text's passes read (`xunknown1 axStack_4c [52];`: written `a[52]`, the frame
+   pass missed it and one calc.exe body went wrong): 6,807 of the 6,808 golden functions the same
+   (the one left, VKD 1:0922, brackets across a hidden cast L2 does not show). With
+   `CB_C_FROM_L2=1` the decompiler's C for each function is the back end's
+   (decompiler.c_from_l2); the judge gave the same verdict for all 379 functions of lzexpand.dll,
+   lz32.dll, keyboard.drv, comm.drv and calc.exe either way. Today's path stays the default; not
+   carried yet: comments (PrintC's warnings), and where PrintC breaks a long line.
 3. **Retire c_text into L2 passes,** one at a time, in L2_BINARY_TYPES.md's order (pointers with
    an address space first: `_far`, `_far_from_stack`, `_near_calls`). Each pass moved is one regex
    gone; the count above is the to-do list.

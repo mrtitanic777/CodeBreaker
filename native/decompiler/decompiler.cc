@@ -709,13 +709,25 @@ std::string l2Type(Datatype* t, bool flat, int depth = 0) {
       f += "{\"name\":" + jsonText(it->name) + ",\"offset\":" + std::to_string(it->offset) +
            ",\"type\":" + l2Type(it->type, flat, depth + 1) + "}";
     }
-    return "{\"kind\":\"record\",\"name\":" + jsonText(t->getName()) + ",\"role\":\"struct\",\"size\":" +
+    return "{\"kind\":\"record\",\"name\":" + jsonText(t->getDisplayName()) + ",\"role\":\"struct\",\"size\":" +
            std::to_string(n) + ",\"packed\":true,\"fields\":[" + f + "]}";
   }
   default: break;
   }
-  // (what has no L2 kind of its own: a nominal type by the core's name for it)
-  return "{\"kind\":\"class\",\"name\":" + jsonText(t->getName()) + "}";
+  // (what has no L2 kind of its own: a nominal type by the name PrintC prints for it -- a type with
+  // no name, a 3-byte one, by PrintC::genericTypeName's: unkint3, unkbyte3, BADSPACEBASE)
+  std::string name = t->getDisplayName();
+  if (name.empty()) {
+    switch (t->getMetatype()) {
+    case TYPE_INT: name = "unkint" + std::to_string(n); break;
+    case TYPE_UINT: name = "unkuint" + std::to_string(n); break;
+    case TYPE_UNKNOWN: name = "unkbyte" + std::to_string(n); break;
+    case TYPE_FLOAT: name = "unkfloat" + std::to_string(n); break;
+    case TYPE_SPACEBASE: name = "BADSPACEBASE"; break;
+    default: name = "BADTYPE"; break;
+    }
+  }
+  return "{\"kind\":\"class\",\"name\":" + jsonText(name) + "}";
 }
 
 std::string l2Location(Architecture& m, const Address& a, int size) {
@@ -773,6 +785,9 @@ std::string l2Function(Architecture& m, Funcdata* fd, bool flat) {
   return "{\"node\":\"MethodDecl\",\"name\":" + jsonText(fd->getName()) + ",\"kind\":\"function\"," +
          "\"sym\":{\"kind\":\"function\",\"name\":" + jsonText(fd->getName()) + ",\"static\":true,\"type\":" + fn + "}," +
          "\"ret\":" + (ot == nullptr ? std::string("{\"kind\":\"void\"}") : l2Type(ot, flat)) +
+         // the convention's word where PrintC writes one in the declaration (a model other than
+         // the default): a modifier of the declaration as written
+         (p.printModelInDecl() ? ",\"mods\":[" + jsonText(p.getModelName()) + "]" : std::string()) +
          ",\"origin\":" + origin + "}";
 }
 
@@ -844,7 +859,12 @@ class PrintL2 : public PrintC {
     cast_ = nullptr;
     PrintC::pushType(ct);
   }
+  std::string* spell_ = nullptr;                    // set: the next leaf is only read for its text
   void placeAtom(const Atom& a) override {
+    if (spell_ != nullptr) {
+      *spell_ = a.name;
+      return;
+    }
     auto t = std::make_unique<Tree>();
     t->name = a.name;
     t->atype = a.type;
@@ -865,6 +885,8 @@ class PrintL2 : public PrintC {
   std::string lit(const Tree& t) {
     const Varnode* vn = t.vn;
     std::string ty = (vn != nullptr) ? ",\"type\":" + type(vn->getHighTypeReadFacing(t.op)) : "";
+    // and PrintC's spelling of it (base, a U suffix, a character escape), which the C back end prints
+    if (!t.name.empty() && t.name[0] != '"') ty += ",\"text\":" + jsonText(t.name);
     if (!t.name.empty() && t.name[0] == '"')         // a string: its C text, quotes taken off
       return "{\"node\":\"Lit\"" + ty + ",\"value\":" + jsonText(t.name.substr(1, t.name.size() - 2)) + "}";
     if (vn != nullptr && vn->isConstant()) {
@@ -1091,6 +1113,8 @@ class PrintL2 : public PrintC {
     popMod();
     bl->getBlock(n - 1)->emit(this);                         // the last keeps the caller's modes
   }
+  std::vector<const Symbol*> declared_;             // the locals emitLocalVarDecls named
+  void emitVarDeclStatement(const Symbol* sym) override { declared_.push_back(sym); }
   void emitBlockCondition(const BlockCondition* bl) override {
     if (isSet(no_branch)) {
       bl->getBlock(0)->emit(this);
@@ -1100,7 +1124,10 @@ class PrintL2 : public PrintC {
       std::string a = condition(bl->getBlock(0), 0);
       std::string b = condition(bl->getBlock(1), comma_separate, only_branch);
       std::string op = bl->getOpcode() == CPUI_BOOL_AND ? "&&" : "||";
-      lists_.back().push_back({"", "{\"node\":\"Binary\",\"op\":\"" + op + "\",\"left\":" + a + ",\"right\":" + b + "}", true});
+      // PrintC brackets both sides of a condition joined by the structure (emitBlockCondition):
+      // `(a) && (b)`, where an && inside one expression is printed bare
+      lists_.back().push_back({"", "{\"node\":\"Binary\",\"op\":\"" + op + "\",\"left\":{\"node\":\"Paren\",\"x\":" + a +
+                                   "},\"right\":{\"node\":\"Paren\",\"x\":" + b + "}}", true});
     }
   }
   void emitBlockIf(const BlockIf* bl) override {
@@ -1114,11 +1141,19 @@ class PrintL2 : public PrintC {
     std::vector<Item> after;
     if (t == FlowBlock::t_ifgoto) {
       const BlockIfGoto* g = (const BlockIfGoto*)bl;
-      s += "[" + jump(g->getGotoTarget(), g->getGotoType()) + "]";
+      s += jump(g->getGotoTarget(), g->getGotoType());       // one statement, not a block: PrintC
+                                                             // writes it braceless, `if (c) goto x;`
     }
     else {
       s += array(collect(bl->getBlock(1), no_branch));
-      if (t == FlowBlock::t_ifelse) s += ",\"orelse\":" + array(collect(bl->getBlock(2), no_branch));
+      if (t == FlowBlock::t_ifelse) {
+        // PrintC merges `else` and `if` only where the else-part IS an if; one that only holds an
+        // if keeps its braces -- as a Block here, so the C back end can tell them apart
+        FlowBlock::block_type et = bl->getBlock(2)->getType();
+        std::string e = array(collect(bl->getBlock(2), no_branch));
+        bool merges = et == FlowBlock::t_if || et == FlowBlock::t_ifelse || et == FlowBlock::t_ifgoto;
+        s += ",\"orelse\":" + (merges ? e : "[{\"node\":\"Block\",\"stmts\":" + e + "}]");
+      }
       else if (t == FlowBlock::t_ifnoexit) after = collect(bl->getBlock(2), no_branch);
     }
     add(s + "}");
@@ -1143,7 +1178,7 @@ class PrintL2 : public PrintC {
     }
     else if (bl->hasOverflowSyntax()) {                       // while (true) { cond's statements; if (c) break; ...
       std::vector<Item> body = collect(cb, no_branch);
-      body.push_back({"{\"node\":\"If\",\"cond\":" + condition(cb, only_branch) + ",\"then\":[{\"node\":\"Break\"}]}", "", false});
+      body.push_back({"{\"node\":\"If\",\"cond\":" + condition(cb, only_branch) + ",\"then\":{\"node\":\"Break\"}}", "", false});   // (braceless)
       for (auto& i : collect(bl->getBlock(1), no_branch)) body.push_back(i);
       add("{\"node\":\"While\",\"cond\":{\"node\":\"Lit\",\"type\":{\"kind\":\"bool\"},\"value\":true},\"body\":" +
           array(body) + "}");
@@ -1186,7 +1221,15 @@ class PrintL2 : public PrintC {
           int bits = 8 * (int)ct->getSize();
           std::string value = (ct->getMetatype() == TYPE_INT && bits < 64 && ((v >> (bits - 1)) & 1))
               ? std::to_string((long long)v - (1ll << bits)) : std::to_string((unsigned long long)v);
-          labels += (labels.empty() ? "" : ",") + ("{\"node\":\"Lit\",\"type\":" + type(ct) + ",\"value\":" + value + "}");
+          // and as PrintC::emitSwitchCase spells it (`'\"'`, a hexadecimal one)
+          std::string text;
+          uint4 format = bl->getDisplayFormat() != 0 ? bl->getDisplayFormat() : ct->getDisplayFormat();
+          spell_ = &text;
+          pushConstant(v, ct, casetoken, nullptr, bl->getCaseBlock(i)->firstOp(), format);
+          recurse();
+          spell_ = nullptr;
+          labels += (labels.empty() ? "" : ",") + ("{\"node\":\"Lit\",\"type\":" + type(ct) + ",\"value\":" + value +
+                    (text.empty() ? "" : ",\"text\":" + jsonText(text)) + "}");
         }
       std::vector<Item> body;
       if (bl->getGotoType(i) != 0) body.push_back({jump(bl->getCaseBlock(i), bl->getGotoType(i)), "", false});
@@ -1209,13 +1252,14 @@ class PrintL2 : public PrintC {
     const BlockGraph& g = fd->getStructure();
     if (g.getSize() != 0) g.emit(this);
     else emitBlockGraph(&fd->getBasicBlocks());              // (not structured: the blocks in order)
+    // the locals PrintC declares, in its order: its own walk of the scopes, each declaration
+    // caught (emitVarDeclStatement, below) instead of printed
+    declared_.clear();
+    emitLocalVarDecls(fd);
     std::string locals;
-    ScopeLocal* loc = fd->getScopeLocal();
     std::set<std::string> said;
-    for (MapIterator it = loc->begin(); it != loc->end(); ++it) {
-      const Symbol* s = (*it)->getSymbol();
-      if (s == nullptr || s->getCategory() == Symbol::function_parameter || s->getType() == nullptr) continue;
-      if (s->getType()->getMetatype() == TYPE_CODE || !said.insert(s->getDisplayName()).second) continue;
+    for (const Symbol* s : declared_) {
+      if (s->getType() == nullptr || !said.insert(s->getDisplayName()).second) continue;
       locals += (locals.empty() ? "" : ",") + ("{\"node\":\"Local\",\"sym\":" + sym("local", s->getDisplayName()) +
                 ",\"type\":" + type(s->getType()) + "}");
     }

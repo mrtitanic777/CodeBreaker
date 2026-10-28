@@ -76,9 +76,10 @@ def judge(module_path, item):
             # loop where the original filled memory with one `rep stosd` (dnr.exe's memset over
             # 64 KB: 16,418 steps for the original, 229,414 for the loop, the same 16,387 writes)
             # -- and stop at the step limit where the original returned. Such a run is tried again
-            # with room before it counts as different.
+            # with room before it counts as different -- also where the original itself stopped at
+            # the limit: the rebuild must reach every call the original made by then.
             b = _fp_pe(dll, entry, shape(v), rebuilt=module_path)
-            if b.get("truncated") and b.get("exit") != "wild-call" and                     _fp_pe(module_path, va, shape(v)).get("exit") == "ret":
+            if b.get("truncated") and b.get("exit") != "wild-call" and                     _fp_pe(module_path, va, shape(v)).get("exit") in ("ret", "truncated"):
                 b = _fp_pe(dll, entry, dict(shape(v), room=ROOM), rebuilt=module_path)
             return b
 
@@ -97,9 +98,10 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 45                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+PIPE_REV = 46                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
                                 # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM;
-                                # 43-45: striped objects, globals with values of their own, the original's data filled with pads)
+                                # 43-45: striped objects, globals with values of their own, the original's data filled with pads;
+                                # 46: an original cut off at the limit is matched by the calls it made, the rebuild given ROOM)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
@@ -517,7 +519,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
     deps = _call_seq(r.get("api_calls", []), [int(a) for a in spec.get("given") or spec["args"]],
                      _image_span(path) if rebuilt else None)
     fp = {"ret": r.get("ret"), "exit": "wild-call" if wild else compare._exit_norm(r.get("exit")), "deps": deps,
-          "truncated": bool(r.get("truncated")),
+          "truncated": bool(r.get("truncated")), "steps": r.get("insn_count"),
           "writes": _effects(r, _image_span(path) if rebuilt else None),
           # how the function left the stack pointer (4 = the caller removes the arguments, 4 + N =
           # the function removed N bytes of them) and whether it preserved EBX/ESI/EDI/EBP

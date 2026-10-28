@@ -2583,7 +2583,11 @@
     "type": {
      "$ref": "#/$defs/Type"
     },
-    "value": {}
+    "value": {},
+    "text": {
+     "type": "string",
+     "description": "the literal as the source spelled it (base, suffix, character escape): a back end for the same language prints it so"
+    }
    },
    "additionalProperties": false
   },

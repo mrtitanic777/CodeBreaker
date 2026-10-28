@@ -38,10 +38,13 @@ object was the same word all through, so a field read one byte off read the same
 2026-10-27 (32-bit lane, PIPE_REV 45) the inputs also give every word of the original's writable
 data a value of its own (a landing pad: called, it returns, and which was called is seen), each
 global it reads its own value, and objects whose words are zero and non-zero by turns. On calc,
-shlwapi and setup32 this caught no correct body (every verdict that changed was checked) and found
-two real faults that zero globals had hidden (shlwapi's `PathCompactPathExW` never calls
-`CharNextW`; the body at bfe5518b goes wrong behind `if (global != 0)`). The judge costs about 7%
-more time. Teeth after: calc.exe 67% -> 76%, wordpad.exe 79% -> 80%, comctl32.dll 84% -> 85%.
+shlwapi and setup32 this caught no correct body (every verdict that changed was checked). Two
+shlwapi "faults" it first showed were the judge's own: on those inputs the original itself runs
+into the step limit, and the rebuild, whose C loop takes more steps than the original's `rep
+stosd`, was cut off sooner. Since 2026-10-28 (PIPE_REV 46) an original cut off at the limit is
+matched by the calls it made by then, the rebuild given room to make them, and a rebuild that ends
+where the original was still going must have run further than it (calc.exe unchanged; setup32 and
+shlwapi two bodies each from unverified to weak). The judge costs about 7% more time. Teeth after: calc.exe 67% -> 76%, wordpad.exe 79% -> 80%, comctl32.dll 84% -> 85%.
 Most of what still survives at full coverage is Microsoft C's exception-frame bookkeeping (the
 `fs:[0]` registration, the try level, handler addresses): seen only when an exception is raised,
 which no input does. The rest is mostly a constant whose +1 changes nothing the inputs show.
@@ -128,9 +131,6 @@ cannot say), 57 calls through a pointer the test leaves empty, 14 jumps through 
 
 ## Gaps found by this run
 
-- On a fresh run (no verdicts kept) MXF.Xact.dll and MXF.Graphics.dll do not compile: every function
-  fails with C2061 on a structure type it names and nothing declares (`s_sub_98001008_param_1`).
-  The verdicts in the table above were reached before; a fresh store does not reproduce them.
 - `serife.fon` (a 16-bit font resource file) crashes the 16-bit lane: `IndexError: pop from empty list`.
 - Seven Xbox 360 packages in the library do not open: five STFS packages ("index out of range")
   and two `.xenon.package` files of a format not yet known.

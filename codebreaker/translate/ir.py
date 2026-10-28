@@ -245,7 +245,7 @@ def _expr(name, slots, fields=None):
     return _node(name, slots, fields, Expr)
 
 
-Lit = _expr('Lit', ['value'], [])                    # value: int, float, bool, str, None (null)
+Lit = _expr('Lit', ['value', 'text'], [])            # value: int, float, bool, str, None (null); text: as spelled
 Name = _expr('Name', ['sym'], [])                    # a local or parameter
 Select = _expr('Select', ['obj', 'sym'], ['obj'])    # a field: obj is an Expr, This, or TypeName for a static
 TypeName = _expr('TypeName', [], [])                 # a type used as a qualifier (Block.stone); .type says which

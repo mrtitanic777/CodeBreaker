@@ -71,7 +71,50 @@ def available():
 LARGE = 200000          # instructions a function may have, tried again when the first limit stops it
 
 
+def _l2_key():
+    """What the L2 notes add to a cache key: a text made with them is another text. (Named "l2 2":
+    the whole-module run once left it out, and per-function texts without notes were kept under
+    the first name.)"""
+    return ["l2 2"] if os.environ.get("CB_L2") else []
+
+
+_L2_NOTE = re.compile(r"^/\*@L2 (\{.*\}) \*/$", re.M)
+
+
+def c_from_l2(text):
+    """A function's text with its C written by the hub's C back end from its L2 note
+    (translate/backends/c.py; docs/IR_UNIFICATION.md step 2) in place of the C the decompiler
+    printed; the decompiler's other notes kept. Without a note, or one the back end declines,
+    the printed C stays."""
+    from codebreaker.translate.backends import c as cback
+    m = _L2_NOTE.search(text)
+    if not m:
+        return text
+    try:
+        body = cback.function(json.loads(m.group(1)))
+    except (cback.Decline, ValueError, KeyError):
+        return text[:m.start()] + text[m.end() + 1:]
+    notes = [ln for ln in text.splitlines() if ln.startswith("/*@") and not ln.startswith("/*@L2 ")]
+    return "\n".join(notes) + "\n\n" + body
+
+
 def run(description, only=(), timeout=3600, max_instructions=None):
+    """As _run; with CB_C_FROM_L2=1 each function's C is the hub's C back end's, from its L2."""
+    if not os.environ.get("CB_C_FROM_L2"):
+        return _run(description, only, timeout, max_instructions)
+    was = os.environ.get("CB_L2")
+    os.environ["CB_L2"] = "1"
+    try:
+        out, order, by_va, err = _run(description, only, timeout, max_instructions)
+    finally:
+        if was is None:
+            del os.environ["CB_L2"]
+        else:
+            os.environ["CB_L2"] = was
+    return {n: c_from_l2(t) for n, t in out.items()}, order, by_va, err
+
+
+def _run(description, only=(), timeout=3600, max_instructions=None):
     """Run the native program on a description. -> ({name: text}, [names], {va: name}, stderr)
     Works for any processor it has a language for; `only` limits it to those addresses.
 
@@ -103,7 +146,7 @@ def run(description, only=(), timeout=3600, max_instructions=None):
     if not fn_line:
         return _run_whole(description, only, timeout, max_instructions)
     common = cache.key(cache.tool(_exe()), _language_stamp(), base, max_instructions or "", _structs(description),
-                       *(["l2"] if os.environ.get("CB_L2") else []))   # (with the L2 notes: another text)
+                       *_l2_key())   # (with the L2 notes: another text)
     starts = sorted(fn_line)
     import bisect
 
@@ -165,7 +208,8 @@ def _run_whole(description, only=(), timeout=3600, max_instructions=None):
         return mm.group(1) + files[p].encode() + mm.group(3)
     text = re.sub(rb"(?m)^(bytes\t[0-9a-fA-F]+\t)([^\t\r\n]+)(\t)", _content, text)
     k = cache.key(cache.tool(_exe()), _language_stamp(), text, ["%x" % va for va in only],
-                  max_instructions or "", _structs(description))
+                  max_instructions or "", _structs(description),
+                  *_l2_key())   # (with the L2 notes: another text)
     had = cache.get("decompiled", k)
     if had is not None:
         stdout, stderr = had.decode("utf-8", "replace").split("\x00", 1)
@@ -185,7 +229,7 @@ def _run_whole(description, only=(), timeout=3600, max_instructions=None):
             order.append(name)
             by_va[va] = name
     if large and not max_instructions:                   # longer than a wrong start would run: again, with room
-        more, more_order, more_va, _e = run(description, only=large, timeout=timeout, max_instructions=LARGE)
+        more, more_order, more_va, _e = _run(description, only=large, timeout=timeout, max_instructions=LARGE)
         out.update(more)
         order += [n for n in more_order if n not in order]
         by_va.update(more_va)
