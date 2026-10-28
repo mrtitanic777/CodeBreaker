@@ -30,7 +30,7 @@ def split(src):
         if s.startswith("#"):
             return None
         body.append(l)
-    b = ctext.blank("\n".join(body), whole=True)
+    b = ctext.blank("\n".join(body), whole=True, across_lines=True)
     if b.count("{") != b.count("}") or b.count("(") != b.count(")"):
         return None                                         # (a text that does not hold together: its errors would
     return "\n".join(x for x in pre if x.strip()), "\n".join(body)   #  run on into the next one's)

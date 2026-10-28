@@ -8,6 +8,9 @@ offsets it has, for the regular expressions and counts that must not look inside
                                     line (a string) or of the text (a comment)
     ctext.blank(text, whole=True)   each closed one made spaces whole, its quotes and newlines too (a
                                     quote with no partner on its line is left as it is: an apostrophe)
+    ctext.blank(text, whole=True, across_lines=True)
+                                    the same, but a string or character constant runs on across lines
+                                    to its partner (how exact/batch's brace count has always read them)
     ctext.sub_code(text, rx, fn)    re.sub of what is code alone (not in strings or comments)
 """
 import functools
@@ -15,6 +18,7 @@ import re
 
 _OPEN = re.compile(r"/\*[\s\S]*?(?:\*/|\Z)|\"(?:\\[\s\S]|[^\"\\\n])*\"?|'(?:\\[\s\S]|[^'\\\n])*'?")
 _CLOSED = re.compile(r"/\*[\s\S]*?\*/|\"(?:\\[\s\S]|[^\"\\\n])*\"|'(?:\\[\s\S]|[^'\\\n])*'")
+_ACROSS = re.compile(r"/\*[\s\S]*?\*/|\"(?:\\[\s\S]|[^\"\\])*\"|'(?:\\[\s\S]|[^'\\])*'")
 
 
 def _inside(m):
@@ -27,12 +31,13 @@ def _inside(m):
 
 
 @functools.lru_cache(maxsize=16384)
-def blank(text, whole=False):
+def blank(text, whole=False, across_lines=False):
     """the text with its comments, strings and character constants blanked, every offset the same: inside
-    them made spaces (the quotes and newlines kept), or all of each closed one (`whole`). A text seen
-    before is given as it was -- the passes ask often."""
+    them made spaces (the quotes and newlines kept), or all of each closed one (`whole`; with
+    `across_lines` a string or character constant may close on a later line). A text seen before is
+    given as it was -- the passes ask often."""
     if whole:
-        return _CLOSED.sub(lambda m: " " * len(m.group(0)), text)
+        return (_ACROSS if across_lines else _CLOSED).sub(lambda m: " " * len(m.group(0)), text)
     return _OPEN.sub(_inside, text)
 
 
