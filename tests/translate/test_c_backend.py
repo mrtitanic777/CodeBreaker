@@ -81,3 +81,33 @@ def test_statements():
     assert '  if (x == 0) goto LAB_1;' in text
     assert '  else if (x == 0) {' in text
     assert '  else {\n  }' in text
+
+
+def ptr(to, space='far'):
+    return {'kind': 'ptr', 'space': space, 'to': to}
+
+
+def test_moved_passes_far_and_near_calls():
+    """c_text's _far and _near_calls done on the tree (step 3): a four-byte pointer is written
+    __far where it is declared and in the cast assigned to it; a call through a word is near."""
+    word = {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr({'kind': 'class', 'name': 'xunknown2'}, 'near'),
+                                              'x': lit(0x18)}}
+    call = {'node': 'Call', 'target': {'node': 'Unary', 'op': '*',
+                                       'x': {'node': 'Cast', 'type': {'kind': 'fnptr', 'space': 'far',
+                                                                      'fn': {'kind': 'fn'}}, 'x': word}}, 'args': []}
+    p = {'node': 'Name', 'sym': {'kind': 'local', 'name': 'p'}, 'type': ptr({'kind': 'i16'})}
+    set_p = {'node': 'Assign', 'target': p,
+             'value': {'node': 'Cast', 'type': ptr({'kind': 'i16'}, 'near'), 'x': lit(0x40)}}
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'void'},
+           'origin': {'module': '', 'segment': 1, 'offset': 0},
+           'params': [{'node': 'Param', 'sym': {'kind': 'param', 'name': 'q'}, 'type': ptr({'kind': 'void'})}],
+           'body': [{'node': 'Local', 'sym': {'kind': 'local', 'name': 'p'}, 'type': ptr({'kind': 'i16'})},
+                    {'node': 'ExprStmt', 'expr': set_p}, {'node': 'ExprStmt', 'expr': call}]}
+    plain, moved = c.function(doc), c.function(doc, c.MOVED)
+    assert '__far' not in plain and '__near' not in plain           # (as the decompiler prints it)
+    assert 'void __far *q' in moved and '  int2 __far *p;' in moved
+    assert 'p = (int2 __far *)0x40;' in moved
+    assert '(*(code __near *)*(xunknown2 *)0x18)();' in moved
+    assert 'void *q' in c.function(doc, c.MOVED, far={'p'})         # (the notes' far set, when given, rules)
+    flat = dict(doc, origin={'module': '', 'va': 0x401000})
+    assert '__far' not in c.function(flat, c.MOVED)                  # (32-bit: no segments, nothing moves)

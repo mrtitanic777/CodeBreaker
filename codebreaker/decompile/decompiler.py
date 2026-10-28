@@ -91,11 +91,15 @@ def c_from_l2(text):
     if not m:
         return text
     try:
-        body = cback.function(json.loads(m.group(1)))
+        far = set(re.findall(r"(?m)^/\*@P (\w+) 4 \*/$", text))    # (the four-byte pointers, as c_text reads them)
+        body = cback.function(json.loads(m.group(1)), cback.MOVED, far)
     except (cback.Decline, ValueError, KeyError):
         return text[:m.start()] + text[m.end() + 1:]
     notes = [ln for ln in text.splitlines() if ln.startswith("/*@") and not ln.startswith("/*@L2 ")]
-    return "\n".join(notes) + "\n\n" + body
+    return "\n".join(notes + [FROM_L2]) + "\n\n" + body
+
+
+FROM_L2 = "/*@C from L2 */"            # (on a text the back end wrote: c_text leaves the passes it did out)
 
 
 def run(description, only=(), timeout=3600, max_instructions=None):

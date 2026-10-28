@@ -131,12 +131,25 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    pass missed it and one calc.exe body went wrong): 6,807 of the 6,808 golden functions the same
    (the one left, VKD 1:0922, brackets across a hidden cast L2 does not show). With
    `CB_C_FROM_L2=1` the decompiler's C for each function is the back end's
-   (decompiler.c_from_l2); the judge gave the same verdict for all 379 functions of lzexpand.dll,
-   lz32.dll, keyboard.drv, comm.drv and calc.exe either way. Today's path stays the default; not
+   (decompiler.c_from_l2). `python tools/l2c.py --made MODULE ...` takes a module the whole way to
+   compilable C both ways, each in a process of its own, and compares every function's final text:
+   lzexpand, keyboard, comm, lz32 -- and USER, GDI and KRNL386 -- all the same, token for token.
+   (A first check by the judge, 2026-10-28, gave the same verdicts on lzexpand, lz32, keyboard,
+   comm and calc; for the 16-bit three it proved nothing: c_text.compilable16's cache was not keyed
+   by CB_C_FROM_L2 and handed back the printed C. Keyed now.) Today's path stays the default; not
    carried yet: comments (PrintC's warnings), and where PrintC breaks a long line.
 3. **Retire c_text into L2 passes,** one at a time, in L2_BINARY_TYPES.md's order (pointers with
    an address space first: `_far`, `_far_from_stack`, `_near_calls`). Each pass moved is one regex
    gone; the count above is the to-do list.
+   **Begun 2026-10-28: `_far` and `_near_calls` moved** (`backends/c.MOVED`). The back end writes
+   `__far` on a four-byte pointer's declaration and on the cast assigned to it, and `code __near *`
+   on a call through a word; c_text leaves its own out for a function whose C the back end wrote
+   (decompiler.FROM_L2 marks it; one it declined -- an Unsupported node -- keeps the printed C and
+   every pass). Which pointers are far is still read from the decompiler's `/*@P name 4 */` notes,
+   as c_text does: in three USER and GDI functions a variable four bytes wide is typed as a near
+   pointer, so L2's types alone would differ. Gate: `--made` on the seven modules above, 5,336
+   functions, all the same. Next: `_far_from_stack` (a dataflow over the statements: a far pointer
+   set from the frame gets SS), then the near/far types made right in PrintL2 so the notes can go.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
 5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module

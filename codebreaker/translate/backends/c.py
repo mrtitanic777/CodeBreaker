@@ -9,8 +9,17 @@ the same way. tools/l2c.py holds it to that C, token for token, over the golden 
 Works on the JSON document itself (a dict), not on ir.py's classes: L2 from a binary carries
 address spaces, conventions and layouts the Java front end's classes do not need.
 
-    function(doc) -> C text of one function          type_text(t, name='') -> a declaration
+    function(doc, moved=()) -> C text of one function          type_text(t, name='') -> a declaration
+
+`moved` names the passes of decompile/c_text.py done here instead, on the tree (step 3): each is
+written where the address spaces and types L2 carries say so, and c_text leaves its own out for C
+written from L2. MOVED is every one there is.
 """
+
+# c_text's passes done on L2 (docs/IR_UNIFICATION.md step 3, L2_BINARY_TYPES.md's order)
+MOVED = ("far", "near_calls")
+_now = {"moved": (), "far": set(), "marks": {}}  # the function being written: its passes, its far names,
+                                               # and the casts they rewrite ({id(node): '_far' | '_near'})
 
 # L2 primitive kinds -> the decompiler's names for them
 _PRIM = {'i8': 'int1', 'u8': 'uint1', 'i16': 'int2', 'u16': 'uint2', 'i32': 'int4', 'u32': 'uint4',
@@ -70,12 +79,25 @@ def _record(t):
     return '%sstruct { %s }' % ('_Packed ' if t.get('packed') else '', fields)
 
 
-def type_text(t, name=''):
+def _far_stars(pre):
+    """`int2 *` -> `int2 __far *`, `int2 **` -> `int2 __far **`: the pointer is far (c_text._far)."""
+    stars = len(pre) - len(pre.rstrip('*'))
+    return pre[:len(pre) - stars].rstrip() + ' __far ' + '*' * stars
+
+
+def is_far(t):
+    """A pointer of four bytes in a 16-bit function: selector and offset."""
+    return bool(t) and t.get('kind') in ('ptr', 'fnptr') and t.get('space') == 'far'
+
+
+def type_text(t, name='', far=False):
     """A declaration of `name` with type `t` (`int2 *p`, `xunknown1 a [22]` -- PrintC's spacing,
-    which c_text's passes read), or the type alone."""
+    which c_text's passes read), or the type alone. `far`: the outer pointer written __far."""
     if t is None:
         return ('void ' + name).strip()
     pre, post = _base(t)
+    if far and pre.endswith('*') and not post:
+        pre = _far_stars(pre)
     if not name:
         return (pre + post).strip()
     sep = '' if pre.endswith('*') or pre.endswith('(') else ' '
@@ -211,8 +233,59 @@ def expr(e):
 
 
 def _sub(parent, child, stage):
+    bracketed = _bracket(parent, child, stage)
+    if bracketed:
+        _near_call(child)
     text = _expr(child)
-    return '(%s)' % text if _bracket(parent, child, stage) else text
+    return '(%s)' % text if bracketed else text
+
+
+_WORDS = ('xunknown2', 'int2', 'uint2', 'undefined2')
+
+
+def _near_call(e):
+    """`(*(code *)*(xunknown2 *)0x18)` -- a call through a word, `call word ptr [18h]` -- is near:
+    into the function's own code segment. `code *` is far in the model the 16-bit C is built in,
+    and a word made into one gets segment 0 (c_text._near_calls: MSMOUS31's Disable took a GP so).
+    Marks the cast to be written `code __near *`."""
+    if 'near_calls' not in _now['moved'] or e.get('node') != 'Unary' or e.get('op') != '*' or e.get('postfix'):
+        return
+    cast = e['x']
+    if cast.get('node') != 'Cast' or (cast.get('type') or {}).get('kind') != 'fnptr':
+        return
+    word = cast['x']
+    if word.get('node') == 'Unary' and word.get('op') == '*' and not word.get('postfix') and \
+            word['x'].get('node') == 'Cast' and type_text(word['x']['type']) in tuple(w + ' *' for w in _WORDS):
+        _now['marks'][id(cast)] = '_near'
+
+
+def _leading_cast(e):
+    """The cast a printed expression starts with (`(T *)x + 2`), as ctree.Source.leading finds it:
+    following the first operand down while nothing is printed before it."""
+    while True:
+        n = e.get('node')
+        if n == 'Cast':
+            return e
+        tok = _token(e)
+        first = {'Binary': 'left', 'Assign': 'target', 'Cond': 'cond', 'Call': 'target', 'Index': 'arr',
+                 'Select': 'obj'}.get(n)
+        if n == 'Unary' and e.get('postfix'):
+            first = 'x'
+        if not first or not e.get(first):
+            return None
+        child = e[first]
+        if n == 'Select' and child.get('node') == 'Unary' and child.get('op') == '*' and not child.get('postfix'):
+            child = child['x']                           # (`p->f`: p comes first)
+        if _bracket(tok, child, 0):
+            return None                                  # (a bracket comes first)
+        e = child
+
+
+def _assigned_name(target):
+    """`x` of `x = ...`, `*x = ...`, `**x = ...`"""
+    while target.get('node') == 'Unary' and target.get('op') == '*' and not target.get('postfix'):
+        target = target['x']
+    return (target.get('sym') or {}).get('name') if target.get('node') == 'Name' else None
 
 
 def _expr(e):
@@ -222,10 +295,13 @@ def _expr(e):
     if n == 'Name':
         return _name(e)
     if n == 'Paren':
+        _near_call(e['x'])
         return '(%s)' % _expr(e['x'])
     tok = _token(e)
     if n == 'Cast':
-        return '(%s)%s' % (type_text(e['type']), _sub(tok, e['x'], 1))
+        if _now['marks'].get(id(e)) == '_near':
+            return '(code __near *)%s' % _sub(tok, e['x'], 1)
+        return '(%s)%s' % (type_text(e['type'], far=_now['marks'].get(id(e)) == '_far'), _sub(tok, e['x'], 1))
     if n == 'Unary':
         op = e['op']
         if e.get('postfix'):
@@ -236,6 +312,10 @@ def _expr(e):
         left, right = _sub(tok, e['left'], 0), _sub(tok, e['right'], 1)
         return '%s,%s' % (left, right) if op == ',' else '%s %s %s' % (left, op, right)   # (PrintC::comma: no space)
     if n == 'Assign':
+        if 'far' in _now['moved'] and not e.get('op') and _assigned_name(e['target']) in _now['far']:
+            cast = _leading_cast(e['value'])             # `p = (T *)x` -> `p = (T __far *)x` (c_text._far)
+            if cast is not None and (cast.get('type') or {}).get('kind') in ('ptr', 'fnptr'):
+                _now['marks'][id(cast)] = '_far'
         return '%s %s %s' % (_sub(tok, e['target'], 0), tok[1], _sub(tok, e['value'], 1))
     if n == 'Cond':
         return '%s ? %s : %s' % (_sub(tok, e['cond'], 0), _expr(e['then']), _sub(tok, e['orelse'], 1))
@@ -387,12 +467,16 @@ def _locals(stmts, found):
 
 
 # ---------------------------------------------------------------------------------------------- functions
+def _param_name(p):
+    return (p.get('sym') or {}).get('name') or p.get('name', '')
+
+
 def signature(doc):
     """`int2 __cdecl16far sub_1_0000(void)`"""
     sym = doc.get('sym') or {}
     ft = sym.get('type') or {}
     ret = type_text(doc.get('ret') or (ft.get('result') or {}).get('type'))
-    params = [type_text(p.get('type'), (p.get('sym') or {}).get('name') or p.get('name', ''))
+    params = [type_text(p.get('type'), _param_name(p), far=_param_name(p) in _now['far'])
               for p in doc.get('params') or []]
     if ft.get('variadic'):
         params.append('...')
@@ -402,13 +486,32 @@ def signature(doc):
     return '%s %s%s(%s)' % (ret, mods, doc['name'], ','.join(params) or 'void')
 
 
-def function(doc):
-    """C text of one function document (a MethodDecl)."""
+def function(doc, moved=(), far=None):
+    """C text of one function document (a MethodDecl), with the c_text passes `moved` done here.
+    `far`: the names of its four-byte pointers where the decompiler said them apart from the types
+    (its /*@P name 4 */ notes, which c_text goes by: a variable can be four bytes wide and typed as
+    a near pointer); else they are read off the types."""
     if doc.get('node') != 'MethodDecl':
         raise Decline('document %s' % doc.get('node'))
+    sixteen = 'segment' in (doc.get('origin') or {})
+    locs = _locals(doc.get('body'), [])
+    _now['moved'] = tuple(moved) if sixteen else ()
+    # the far pointers: the parameters and locals of four bytes
+    _now['far'] = (set(far) if far is not None else
+                   {n for n, t in [(_param_name(p), p.get('type')) for p in doc.get('params') or []] +
+                    [((v.get('sym') or {}).get('name'), v.get('type')) for v in locs] if is_far(t)}) \
+        if 'far' in _now['moved'] else set()
+    try:
+        return _function(doc, locs)
+    finally:
+        _now['moved'], _now['far'], _now['marks'] = (), set(), {}
+
+
+def _function(doc, locs):
     out = [signature(doc), '', '{']
-    for loc in _locals(doc.get('body'), []):
-        out.append('  ' + type_text(loc.get('type'), (loc.get('sym') or {}).get('name', '')) + ';')
+    for loc in locs:
+        name = (loc.get('sym') or {}).get('name', '')
+        out.append('  ' + type_text(loc.get('type'), name, far=name in _now['far']) + ';')
     out.append('  ')
     _block(out, doc.get('body'), 1)
     out.append('}')

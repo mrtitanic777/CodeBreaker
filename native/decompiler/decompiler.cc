@@ -672,7 +672,7 @@ std::string jsonText(const std::string& s) {
 }
 
 std::string l2Type(Datatype* t, bool flat, int depth = 0) {
-  if (t == nullptr || depth > 6) return "{\"kind\":\"class\",\"name\":\"undefined\"}";
+  if (t == nullptr || depth > 32) return "{\"kind\":\"class\",\"name\":\"undefined\"}";
   int n = (int)t->getSize();
   switch (t->getMetatype()) {
   case TYPE_VOID: return "{\"kind\":\"void\"}";

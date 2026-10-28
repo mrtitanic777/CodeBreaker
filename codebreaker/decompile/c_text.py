@@ -728,6 +728,17 @@ class Module16(object):
     pass
 
 
+def moved_to_l2(raw):
+    """The passes the C back end did on the tree, for a function whose C it wrote from L2
+    (CB_C_FROM_L2; decompiler.c_from_l2 marks it): left out here (docs/IR_UNIFICATION.md step 3).
+    One it declined keeps the printed C, and every pass."""
+    from codebreaker.decompile import decompiler
+    if decompiler.FROM_L2 not in raw:
+        return ()
+    from codebreaker.translate.backends import c as cback
+    return cback.MOVED
+
+
 def _far(text, far):
     """Declare the four-byte pointers `far` and make what is assigned to them far too."""
     if not far:
@@ -1288,7 +1299,10 @@ def compilable16(module_path, outdir=None):
     # run with them was handed the C made without; and the reading of the imports' argument
     # sizes, which the description is written with -- a change to it alone handed back C made
     # with the sizes before)
+    from codebreaker.translate.backends import c as cback
+    # (and the C written from L2 instead, CB_C_FROM_L2: other C, by the back end's own source)
     k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe, api_arguments),
+                  *([os.environ["CB_C_FROM_L2"], _source_stamp(cback)] if os.environ.get("CB_C_FROM_L2") else []),
                   cache.tool(decompiler._exe()), decompiler._language_stamp(),
                   (settings.get("struct_recovery") or "off").strip().lower(),
                   os.environ.get("CB_SELECTOR_STRUCTS", ""),       # (_selector_structs' off switch)
@@ -1455,6 +1469,7 @@ def _compilable16(module_path, outdir=None):
     for va in sorted(by_va):
         name = by_va[va]
         raw = texts[name]
+        moved = moved_to_l2(raw)
         head0 = raw.split("{", 1)[0]
         named = ctree.Source(raw).function_name()
         if distance.get(name) and "16near" not in head0 and "16far" not in head0 and named is not None and \
@@ -1481,7 +1496,10 @@ def _compilable16(module_path, outdir=None):
         seg, off = d.where[va]
         widths = _far_argument_widths(d.images[seg], off, ends.get(va, off),
                                       "far" in text.split("(", 1)[0]) if seg in d.images else {}
-        text = _global_pointer_steps(_near_calls(_null_is_zero(_segment_registers(_joined_arguments(_pieces(_far(text.strip(), far)), widths)))))
+        # (_far and _near_calls are the back end's for C written from L2: docs/IR_UNIFICATION.md step 3)
+        far_done = _far_from_stack(text.strip(), far) if "far" in moved else _far(text.strip(), far)
+        text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(far_done), widths)))
+        text = _global_pointer_steps(text if "near_calls" in moved else _near_calls(text))
         if seg in d.images:
             text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])
         if "return" in far:                                  # the function returns a far pointer
@@ -2862,7 +2880,6 @@ def compilable_powerpc(module_path, outdir):
             novalue.add(n)
             t = lead + "uint8" + body[4:]
         out[n] = _open_arguments(t)
-    text = "\n".join(out.values())
     macros = []
     called_through = set().union(*(_called_through(t) for t in out.values())) if out else set()
     for pre, addr in sorted(set().union(*(_globals(t) for t in out.values())) if out else ()):

@@ -11,7 +11,13 @@ Per module: functions written back the same, the same but for spacing, different
 the back end does not write). docs/IR_UNIFICATION.md step 2: the back end replaces
 the printed C where they are the same.
 
---diff NAME prints one function's two texts where they part."""
+--diff NAME prints one function's two texts where they part.
+
+    python tools/l2c.py --made MODULE ... [--show N]
+
+the whole way to compilable C (c_text) for corpus modules, once from the printed C and once from
+the back end's (CB_C_FROM_L2), each function's final text compared: the gate for moving a c_text
+pass onto L2 (docs/IR_UNIFICATION.md step 3)."""
 import collections
 import json
 import os
@@ -130,7 +136,74 @@ def check(name, folder, show, diff=None):
     return tally
 
 
+# ---------------------------------------------------------------------------------------------- --made
+# The whole way to compilable C: a 16-bit module through c_text.compilable16, a 32-bit one through
+# compilable32 -- once from the C the decompiler printed, once from the back end's (CB_C_FROM_L2) --
+# each in a process of its own, so nothing kept in memory crosses from one to the other.
+_MADE = r"""
+import os, pickle, sys, tempfile
+sys.path.insert(0, %r)
+from codebreaker.base import corpus
+from codebreaker.decompile import c_text
+from codebreaker.verify import reconstruct
+path = corpus.retail(%r) or %r
+work = tempfile.mkdtemp(prefix="l2made_")
+if reconstruct.kind_of(path).KIND == "ne":
+    m = c_text.compilable16(path, work)
+    texts = dict(m.texts)
+else:
+    from codebreaker.verify.lanes import win32
+    texts = c_text.compilable32(path, win32.LANES["pe"].functions(path), work)[1]
+pickle.dump(texts, open(%r, "wb"))
+"""
+
+
+def made(module, l2):
+    """{function: its compilable C}, from the printed C or (l2) from the back end's."""
+    import pickle
+    import subprocess
+    import tempfile
+    out = os.path.join(tempfile.mkdtemp(prefix="l2made_"), "texts.pickle")
+    env = dict(os.environ)
+    env.pop("CB_C_FROM_L2", None)
+    if l2:
+        env["CB_C_FROM_L2"] = "1"
+    r = subprocess.run([sys.executable, "-c", _MADE % (ROOT, module, module, out)], env=env,
+                       capture_output=True, text=True, errors="replace")
+    if r.returncode:
+        raise RuntimeError("%s: %s" % (module, (r.stderr or r.stdout).strip().splitlines()[-1:]))
+    with open(out, "rb") as f:
+        return pickle.load(f)
+
+
+def check_made(module, show):
+    """Functions whose compilable C is the same either way, and the first lines that differ."""
+    a, b = made(module, False), made(module, True)
+
+    def flat(t):                                         # (its tokens: comments, and where PrintC broke a long line, aside)
+        return " ".join(tokens(t))
+    same = [n for n in a if n in b and a[n] == b[n]]
+    spaced = [n for n in a if n in b and a[n] != b[n] and flat(a[n]) == flat(b[n])]
+    differ = [n for n in a if n in b and flat(a[n]) != flat(b[n])]
+    print("%-14s %5d functions  %5d the same  %4d but for comments and line breaks  %4d different  %d only one way" % (
+        module, len(a), len(same), len(spaced), len(differ), len(set(a) ^ set(b))), flush=True)
+    for n in differ[:show]:
+        ta, tb = flat(a[n]), flat(b[n])
+        k = next((i for i, (x, y) in enumerate(zip(ta, tb)) if x != y), min(len(ta), len(tb)))
+        print("      %s:\n        printed  ...%s\n        from L2  ...%s" % (n, ta[max(0, k - 60):k + 60], tb[max(0, k - 60):k + 60]))
+    return len(a), len(same) + len(spaced)
+
+
 def main(argv):
+    if "--made" in argv:
+        show = int(argv[argv.index("--show") + 1]) if "--show" in argv else 6
+        names = [a for a in argv if not a.startswith("--") and a != str(show)]
+        total = same = 0
+        for name in names:
+            t, s = check_made(name, show)
+            total, same = total + t, same + s
+        print("all: %d functions, %d made the same either way" % (total, same))
+        return 0 if total and same == total else 1
     folder = argv[argv.index("--golden") + 1] if "--golden" in argv else os.path.join(ROOT, "state", "golden")
     show = int(argv[argv.index("--show") + 1]) if "--show" in argv else 8
     diff = argv[argv.index("--diff") + 1] if "--diff" in argv else None
