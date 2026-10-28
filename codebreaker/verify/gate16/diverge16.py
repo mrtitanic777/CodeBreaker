@@ -105,14 +105,15 @@ def _classify(a, b, reads_a, reads_b):
 
 
 def explain_one(original, image, oplace, bplace, pop_far, args, data, callees_orig, callees_ours, wide=False,
-                data_end=None):
-    """-> the report, or None where the gate would find this input the same on both sides."""
+                data_end=None, mem=None, stub_ret=None):
+    """-> the report, or None where the gate would find this input the same on both sides. `mem`,
+    `stub_ret`: a branch-guided input's words of memory and what an unmodelled Windows call returns."""
     from codebreaker.emulate import windows16 as emu
     pop, far = pop_far
     a = emu.probe(original, seg=oplace[0], offset=oplace[1], args=args, near=not far, callees=callees_orig,
-                  insn_cap=20000, data_end=data_end)
+                  insn_cap=20000, data_end=data_end, mem_init=mem, stub_ret=stub_ret)
     b = emu.probe(image, seg=bplace[0], offset=bplace[1], args=args, near=not far, callees=callees_ours,
-                  insn_cap=20000, data_image=data, data_end=data_end)
+                  insn_cap=20000, data_image=data, data_end=data_end, mem_init=mem, stub_ret=stub_ret)
     # (the gate's own judgement picks the input: what it does not count -- DX of a function
     # returning a word -- is not a divergence here either)
     gate = isolated16._differ(isolated16._fingerprint(a, wide, len(data), {k: v[0] for k, v in (callees_orig or {}).items()}),
@@ -180,22 +181,34 @@ def explain(original, folder, names, image=None):
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
     callees_ours = {ours[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in ours}
     wide_set = set(tables["wide"])
+    key = [None]                                             # (the original's side, made once)
     for name in names:
         if name not in place or name not in ours or name not in funcs:
             yield name, {"class": "not found on both sides"}
             continue
         oseg, ooff = place[name]
         later = [o for (sg, o) in place.values() if sg == oseg and o > ooff]
-        aimed = win16.directed(original, oseg, (ooff, min(later) if later else 0x10000), most=12)
+        span = (ooff, min(later) if later else 0x10000)
+        aimed = win16.directed(original, oseg, span, most=12)
         report = None
-        for v in win16.vectors() + aimed:
+
+        # (and the gate's branch-guided inputs, the same ones (isolated16.guided_inputs): a function
+        # the gate found to differ only on one of them was otherwise "same effects" here)
+        def every():
+            yield from win16.vectors() + aimed
+            if key[0] is None:
+                key[0] = isolated16._original_key(original, callees_orig, data_end)
+            yield from isolated16.guided_inputs(original, key[0], name, oseg, ooff, funcs[name][1], span,
+                                                win16.vectors() + aimed, callees_orig, data_end)
+        for v in every():
             try:
                 r = explain_one(original, image, place[name], ours[name], funcs[name], v["args"], data,
-                                callees_orig, callees_ours, name in wide_set, data_end)
+                                callees_orig, callees_ours, name in wide_set, data_end,
+                                mem=v.get("mem"), stub_ret=v.get("stub_ret"))
             except Exception as e:
                 r = {"class": "the emulator: %s: %s" % (type(e).__name__, e)}
             if r is not None:
-                report = dict(r, args=" ".join("%x" % w for w in v["args"][:4]))
+                report = dict(r, input=isolated16._input(v))
                 break
         yield name, report or {"class": "same effects"}
 
@@ -203,6 +216,6 @@ def explain(original, folder, names, image=None):
 if __name__ == "__main__":
     for n, r in explain(sys.argv[1], sys.argv[2], sys.argv[3:]):
         print("%s: %s" % (n, r.get("class")))
-        for k in ("args", "gate", "original", "ours", "reads_original", "reads_ours", "same_before", "fault"):
+        for k in ("input", "gate", "original", "ours", "reads_original", "reads_ours", "same_before", "fault"):
             if r.get(k):
                 print("    %-15s %s" % (k, r[k]))

@@ -229,6 +229,47 @@ def _tables(original):
     return out
 
 
+def _original_key(original, callees, data_end, chain=False):
+    """What the original's side of a run depends on besides the function and the input: the
+    original, how its callees and Windows' functions are answered, the checker and emulator as
+    written."""
+    from codebreaker.base import cache
+    from codebreaker.emulate import emulator as _emulator
+    from codebreaker.emulate import windows16 as emu
+    from codebreaker.formats import ne as _ne
+    from codebreaker.symbols import api_arguments
+    try:
+        sizes = open(api_arguments._cache16_path(), "rb").read()
+    except OSError:
+        sizes = b""
+    with open(original, "rb") as f:
+        return cache.key(
+            f.read(), sizes, repr(sorted((callees or {}).items())), repr(data_end), bool(chain),
+            *[open(mod.__file__, "rb").read() for mod in (emu, _emulator, _ne, win16)] + [open(__file__, "rb").read()])
+
+
+def guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, callees, data_end, insn_cap=20000):
+    """Branch-guided inputs (verify/lanes/win16.py guided_vectors, as the judge makes them):
+    arguments, words of the data segment and what an unmodelled Windows call returns, chosen to
+    take branches of the original no other input took -- the original run as this checker runs
+    it, its callees answered. Kept, keyed on the original's side (_original_key) and the
+    explorer's limits; none when CB_NO_GUIDED is set. (diverge16 explains with the same.)"""
+    if not lane_common.guided_on():
+        return []
+    import pickle
+    from codebreaker.base import cache
+    from codebreaker.verify import guided as _explorer
+    k = cache.key(original_key, name, oseg, ooff, far, span, repr(seeds), lane_common.GUIDED_BUDGET,
+                  lane_common.MAX_GUIDED, *[open(mod.__file__, "rb").read() for mod in (_explorer, lane_common)])
+    got = cache.get("gate16_guided", k)
+    if got is not None:
+        return pickle.loads(got)
+    out = [dict(g, guided=True) for g in win16.guided_vectors(
+        original, oseg, ooff, not far, span, seeds, callees=callees, data_end=data_end, insn_cap=insn_cap)]
+    cache.put("gate16_guided", k, pickle.dumps(out))
+    return out
+
+
 def check(original, folder, names, image=None, inputs=None, workers=None, tables=None, chain=False):
     """Each named function (one the build has as C) beside the original's. Yields
     (name, "same" | "differs" | "not run", why). Many at once: shared out over processes."""
@@ -311,20 +352,7 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     # decompiler runs only its own side. (The self-test, the teeth and the build share it too.)
     import pickle
     from codebreaker.base import cache
-    from codebreaker.emulate import emulator as _emulator
-    from codebreaker.formats import ne as _ne
-    from codebreaker.symbols import api_arguments
-    try:
-        sizes = open(api_arguments._cache16_path(), "rb").read()
-    except OSError:
-        sizes = b""
-    with open(original, "rb") as f:
-        original_key = cache.key(
-            f.read(), sizes, repr(sorted((callees_orig or {}).items())), repr(data_end), bool(chain),
-            *[open(mod.__file__, "rb").read() for mod in (emu, _emulator, _ne, win16)] + [open(__file__, "rb").read()])
-    from codebreaker.verify import guided as _explorer
-    guided_key = cache.key(lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED,
-                           *[open(mod.__file__, "rb").read() for mod in (_explorer, lane_common)])
+    original_key = _original_key(original, callees_orig, data_end, chain)
 
     def side(context, where):
         """A recorded call's context for one side: the module's own code its far pointers reach
@@ -350,21 +378,8 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         return fa
 
     def guided(name, oseg, ooff, far, span, seeds):
-        """Branch-guided inputs (verify/lanes/win16.py guided_vectors, as the judge makes them):
-        arguments, words of the data segment and what an unmodelled Windows call returns, chosen
-        to take branches of the original no other input took -- the original run as this checker
-        runs it, its callees answered. Kept, keyed on the original's side and the explorer's
-        limits; none when CB_NO_GUIDED is set."""
-        if not lane_common.guided_on():
-            return []
-        k = cache.key(original_key, name, oseg, ooff, far, span, repr(seeds), guided_key)
-        got = cache.get("gate16_guided", k)
-        if got is not None:
-            return pickle.loads(got)
-        out = [dict(g, guided=True) for g in win16.guided_vectors(
-            original, oseg, ooff, not far, span, seeds, callees=callees_orig, data_end=data_end, insn_cap=insn_cap)]
-        cache.put("gate16_guided", k, pickle.dumps(out))
-        return out
+        return guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, callees_orig,
+                             data_end, insn_cap)
     for name in names:
         if name not in place or name not in ours or name not in funcs:
             yield name, "not run", "not found on both sides"
