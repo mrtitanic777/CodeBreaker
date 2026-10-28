@@ -97,8 +97,9 @@ def judge(module_path, item):
     return verdict, reason, list(limits), info.get("detail", "")
 
 
-PIPE_REV = 42                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
-                                # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM)
+PIPE_REV = 45                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+                                # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM;
+                                # 43-45: striped objects, globals with values of their own, the original's data filled with pads)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
@@ -126,6 +127,9 @@ def settings_profile(lane):
             "lane": lane, "pipeline": PIPE_REV, "oracle": compare.REV,
             "inputs": [v["args"] for v in _vectors(4, lane)],
             "confirm_inputs": [v["args"] for v in _confirm_vectors(4, lane)],
+            # (and what they put in memory: two inputs with the same arguments can differ only there)
+            "input_memory": hashlib.sha1(repr([sorted(v.items()) for v in _vectors(4, lane) + _confirm_vectors(4, lane)])
+                                         .encode()).hexdigest()[:16],
             "max_calls": _MAX_CALLS, "max_support": MAX_SUPPORT,
             "directed": [MAX_DIRECTED, _HARVEST_DEPTH] if lane == "pe" else [],
             "guided": [GUIDED_BUDGET, MAX_GUIDED] if lane == "pe" else [],
@@ -570,6 +574,11 @@ def _confirm_vectors(arity, lane):
     # object above, so everything behind such a test never ran.
     ones = [(_OBJ, b"\xff" * 0x1000), (_SAFE, b"\xc3" * 16)]
     small = [(_OBJ, _struct.pack("<I", 3) * 0x400), (_SAFE, b"\xc3" * 16)]
+    # Objects whose words are zero and non-zero by turns, both ways round. On an object that is the
+    # same all through, a field read one byte off (`p + 0x3d` for `p + 0x3c`) reads what the right
+    # one holds, and `if (p->x == 0)` goes the same way whichever field it tests.
+    striped = [[(_OBJ, b"".join(_struct.pack("<I", 0 if i % 2 == phase else _SAFE + 4 * i) for i in range(0x400))),
+                (_SAFE, b"\xc3" * 0x1000)] for phase in (0, 1)]
     return [
         # Imported calls return 0 by default, so the code after `if (!CreateThing()) return` never
         # ran. Run again with imports succeeding: returning 1, and returning a valid object.
@@ -579,6 +588,8 @@ def _confirm_vectors(arity, lane):
         {"args": obj, "mem_init": ones, "stub_ret": 1},
         {"args": obj, "mem_init": small, "stub_ret": 1},
         {"args": obj, "mem_init": small},
+        {"args": obj, "mem_init": striped[0], "stub_ret": 1},
+        {"args": obj, "mem_init": striped[1], "stub_ret": 1},
         {"args": [0xFFFFFFFF - i for i in range(n)]},                          # small negatives
         {"args": [edge[i % len(edge)] for i in range(n)]},                     # boundary integers
         {"args": [n - i for i in range(n)]},                                   # distinct, reversed
@@ -640,6 +651,33 @@ def _harvest(path, func):
     return _HARVEST[key]
 
 
+_FILL = {}
+_FILL_MAX = 0x40000
+
+
+def _data_filled(path):
+    """mem_init that gives every word of the original's writable sections a value of its own: the
+    address of a landing pad, so one used as a function pointer is called and returns, and which
+    was called is seen. The emulator does not load a module's data, so its globals all read as
+    zero: two of them passed in each other's places, or a loop that clears a table it never
+    reaches, look the same as the right code while both are zero. (The file's own data is not
+    used: its tables of initialisers would be run, which is the harness's doing, not the body's.)"""
+    if path not in _FILL:
+        out = []
+        try:
+            pe = open_pe(path)
+            for s in pe.sections:
+                if not s["chars"] & 0x80000000 or s["chars"] & 0x20000000 or not s["vsize"]:
+                    continue                                    # writable data only, not code
+                at = pe.image_base + s["vaddr"]
+                out.append((at, b"".join(_struct.pack("<I", _SAFE + 4 * (((at >> 2) + i) % 0x400))
+                                         for i in range(min(s["vsize"], _FILL_MAX) // 4))))
+        except Exception:
+            out = []
+        _FILL[path] = out
+    return _FILL[path]
+
+
 def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
     """Inputs chosen for THIS function. Generic inputs stop at the first guard (`if (msg != 0x4E)
     return`, `if (!g_initialised) return`), so most of a body never ran and was 'verified' on its
@@ -647,7 +685,7 @@ def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
     argument, and set the globals it reads to non-zero values; a candidate is kept only if the
     ORIGINAL then runs instructions no earlier input reached. Returns at most MAX_DIRECTED."""
     consts, globs = _harvest(path, func)
-    if not consts and not globs:
+    if not consts and not globs and not _data_filled(path):
         return []
     n = arity
     mi = _prov_meminit()
@@ -655,6 +693,12 @@ def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
     ints = [i + 1 for i in range(n)]
     cands = []
     gsets = [[(a, _struct.pack("<I", val)) for a in globs] for val in (1, _SAFE, _OBJ + 0x800)] if globs else []
+    if globs:                                    # each global a value of its own (see _data_filled)
+        gsets.append([(a, _struct.pack("<I", _SAFE + 4 * i)) for i, a in enumerate(globs)])
+    filled = _data_filled(path)
+    if filled:
+        cands.append({"args": obj, "mem_init": mi + filled, "stub_ret": 1})
+        cands.append({"args": ints, "mem_init": mi + filled})
     for g in gsets:
         cands.append({"args": obj, "mem_init": mi + g, "stub_ret": 1})
         cands.append({"args": ints, "mem_init": mi + g})

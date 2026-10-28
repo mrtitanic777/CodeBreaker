@@ -31,6 +31,21 @@ reached the broken line and the judge did not see its effect -- a store to memor
 a constant whose +1 the inputs do not distinguish. That is the next work on the judge, ahead of more
 inputs.
 
+Looking at those survivors line by line (`teeth` now records the line it changed): the memory the
+inputs gave was too even. Every global read as zero (the emulator does not load a module's data), so
+two globals swapped, or a loop that clears a table it no longer reaches, changed nothing; every
+object was the same word all through, so a field read one byte off read the same value. Since
+2026-10-27 (32-bit lane, PIPE_REV 45) the inputs also give every word of the original's writable
+data a value of its own (a landing pad: called, it returns, and which was called is seen), each
+global it reads its own value, and objects whose words are zero and non-zero by turns. On calc,
+shlwapi and setup32 this caught no correct body (every verdict that changed was checked) and found
+two real faults that zero globals had hidden (shlwapi's `PathCompactPathExW` never calls
+`CharNextW`; the body at bfe5518b goes wrong behind `if (global != 0)`). The judge costs about 7%
+more time. Teeth after: calc.exe 67% -> 76%, wordpad.exe 79% -> 80%, comctl32.dll 84% -> 85%.
+Most of what still survives at full coverage is Microsoft C's exception-frame bookkeeping (the
+`fs:[0]` registration, the try level, handler addresses): seen only when an exception is raised,
+which no input does. The rest is mostly a constant whose +1 changes nothing the inputs show.
+
 ## Reach: a sample of every platform on this PC
 
 `python -m codebreaker reach ../homebrew-samples ../Windows95/design/corpus/files C:/Nexia360/Games --judge`

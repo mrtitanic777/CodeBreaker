@@ -89,6 +89,16 @@ def breaks(text):
     return out
 
 
+def _changed(before, after):
+    """'old line  ->  new line' for the one line a break changed (or removed)."""
+    a, b = before.splitlines(), after.splitlines()
+    i = 0
+    while i < min(len(a), len(b)) and a[i] == b[i]:
+        i += 1
+    new = b[i].strip() if len(b) == len(a) and i < len(b) else "(removed)"
+    return ("%s  ->  %s" % (a[i].strip() if i < len(a) else "", new))[:200]
+
+
 def _reach(texts):
     """{name: every function it can reach, itself included}"""
     names = set(texts)
@@ -156,6 +166,7 @@ def run(module_path, rounds=3, log=print):
                 continue
             verdict, reason, limits, _detail = judged[items[n][0]]
             results.append(dict(name=n, was=passed[key_of[n]], made=made[n][0], reason=reason,
+                                change=_changed(original_texts[n], made[n][1]),
                                 now="survived" if verdict in reconstruct.GOOD else
                                 "caught" if verdict == "divergent" else "not judged",
                                 limits=",".join(limits)))
