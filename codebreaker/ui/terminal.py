@@ -241,7 +241,8 @@ class Jobs(Screen):
         with Horizontal():
             with Vertical(id="jobs-list"):
                 yield Label("[b]Jobs[/]  [dim]started from here[/]", classes="pane-title")
-                yield DataTable(id="jobs", cursor_type="row", zebra_stripes=True)
+                yield DataTable(id="jobs", cursor_type="row", zebra_stripes=True,
+                            cursor_foreground_priority="renderable")
             with Vertical(id="jobs-log-pane"):
                 yield Label("output", id="jobs-log-title", classes="pane-title")
                 yield RichLog(id="jobs-log", wrap=False, highlight=True, markup=False)
@@ -316,7 +317,8 @@ class Module(Screen):
         with Horizontal(id="mod-body"):
             with Vertical(id="fn-pane"):
                 yield Input(placeholder="find a function: name or address", id="fn-find")
-                yield DataTable(id="functions", cursor_type="row", zebra_stripes=True)
+                yield DataTable(id="functions", cursor_type="row", zebra_stripes=True,
+                            cursor_foreground_priority="renderable")
                 yield Label(id="fn-count", classes="dim-line")
             with TabbedContent(id="detail"):
                 with TabPane("Source", id="tab-source"):
@@ -622,7 +624,8 @@ class Home(Screen):
                 yield Static(id="sweep")
             with Vertical(id="main"):
                 yield Input(placeholder="find a module, or type a path and press enter", id="find")
-                yield DataTable(id="modules", cursor_type="row", zebra_stripes=True)
+                yield DataTable(id="modules", cursor_type="row", zebra_stripes=True,
+                            cursor_foreground_priority="renderable")
                 yield Label(id="mod-count", classes="dim-line")
         yield Footer()
 

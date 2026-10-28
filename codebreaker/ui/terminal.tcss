@@ -167,6 +167,6 @@ Footer {
     background: $panel;
 }
 
-#detail Static {
+#detail TabPane Static {
     width: 100%;
 }
