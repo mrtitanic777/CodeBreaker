@@ -14,7 +14,6 @@ and are named in one file, `settings.json` at the top of the checkout:
                     for the optional byte-match check (`match`)
     dosbox_x        DOSBox-X, which runs the DOS compilers, assemblers and linkers
     msc6            folder of Microsoft C 6.0a (BIN/CL.EXE)
-    msc203          folder holding Microsoft C 2.03's MC1.EXE and MC2.EXE (the 1983-84 compiler model)
     masm            folder of a Microsoft Macro Assembler (BIN/MASM.EXE, INC, LIB)
     nasm            the MASM-compatible assembler, nasm.exe        (default: native/nasm/build/bin/nasm.exe)
     msvc152         folder of Microsoft C/C++ 8.00c, Visual C++ 1.52c (BIN/CL.EXE)
@@ -77,7 +76,7 @@ DEFAULTS = {
                                        # with the functions shared among processes as the governor allows (base/parallel.py)
     "struct_recovery": "all",          # structures from field accesses: off, 32 (32-bit x86 only), all
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "msc203", "masm", "nasm", "msvc152",
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
           "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays")
 _loaded = None

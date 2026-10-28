@@ -14,16 +14,22 @@ time can speak to it: the authored source gives the original's bytes back, anoth
 behaves the same does not. verify/authored/repair.py searches with that distance; this module is the one
 place that knows how each such compiler is run and how its output is read.
 
+A compiler exact/ also runs is not described twice: its profile there (exact/toolchains/NAME.json,
+its files in the settings.json `kits` entry the profile names) is the one description, and this
+module reads it -- exact/toolchain.py runs the passes.
+
     msvc2      Microsoft's 32-bit C compiler of 1994 (settings: period_compiler -- the folder of
                CL.EXE). One function at a time; see verify/authored/match.py.
-    xenix-c    the C compiler of XENIX for the 8086 (cpp, c0, c1, c2, as), with which Microsoft's
-               linker and librarian of 1983-84 were compiled (settings: xenix_c -- the folder
-               holding xcc.py, which runs the compiler's own passes in an emulator). One source
-               file at a time; a file's code is one stretch of the executable.
+    xenix-c    the C compiler of XENIX for the 8086 (cpp, c0, c1, c2, as) in the revision with which
+               Microsoft's linker and librarian of 1983-84 were compiled: exact's profile "xenixc"
+               (kit: xenix86). One source file at a time; a file's code is one stretch of the
+               executable. The reconstruction of those programs it is compared with is found
+               through settings: xenix_c (the folder holding xcc.py, which knows where its sources
+               and the original executables are).
     msc6       Microsoft C 6.0a, the 16-bit Windows modules' compiler, in DOSBox-X (settings: msc6,
     msvc152    dosbox_x); and Visual C++ 1.52c's C/C++ 8.00c (settings: msvc152), which built a few
                of them. Many sources in one emulator session: build/msc6.py.
-    msc203     Microsoft C 2.03 of 1984, MC1 then MC2, in DOSBox-X (settings: msc203).
+    msc203     Microsoft C 2.03 of 1984, MC1 then MC2: exact's profile "msc203" (kit: msc203).
 
 `mask` marks the bytes the linker fills in (an address, the distance of a call): they are not
 the compiler's to get right, and are left out of every comparison.
@@ -40,15 +46,19 @@ class Unit(object):
 
 
 class XenixC(object):
-    """The XENIX C compiler, run by the project that reconstructed LINK and LIB with it."""
+    """The XENIX C compiler (exact's profile "xenixc", Microsoft's revision), with the
+    reconstruction of LINK and LIB it is compared with (xcc.py's; `target` picks the program)."""
     name = "xenix-c"
     bits = 16
 
     def __init__(self, tools, target="link240"):
+        from codebreaker.exact import toolchain
         self.tools, self.target = tools, target
+        self.tc = toolchain.load("xenixc")
         self._xcc = None
 
     def _load(self):
+        """xcc.py: where the reconstruction's sources and the original executable are"""
         if self._xcc is None:
             os.environ["TARGET"] = self.target
             if self.tools not in sys.path:
@@ -57,29 +67,28 @@ class XenixC(object):
         return self._xcc
 
     def compile(self, source, work, header="", function=""):
-        """Compile one source file's text (a file's code is one stretch: `function` is not used).
-        -> (bytes, mask) or None."""
-        xcc = self._load()
-        source = header + source
-        os.makedirs(work, exist_ok=True)
-        path = os.path.join(work, "unit.c")
-        with open(path, "wb") as f:
-            f.write(source.replace("\r\n", "\n").encode("latin1", "replace"))
+        """Compile one source file's text (a file's code is one stretch: `function` is not used),
+        with the reconstruction's headers. -> (bytes, mask) or None."""
+        from codebreaker.exact import aout
+        source = (header + source).replace("\r\n", "\n").encode("latin1", "replace")
         try:
-            o = xcc.compile_c(path, include=os.path.join(xcc.WORK, "src"))
+            obj, _printed = self.tc.compile(source, include=[os.path.join(self._load().WORK, "src")])
         except Exception:
             return None
-        text = getattr(o, "text", None)
+        if not obj:
+            return None
+        o = aout.read(obj)
+        text = o.seg["_TEXT"]
         if not text:
             return None
-        return bytes(text), self._mask(len(text), o)
+        return text, self._mask(len(text), [fx[1] for fx in o.fix if fx[0] == "_TEXT"])
 
     @staticmethod
-    def _mask(size, o):
+    def _mask(size, fixed):
+        """the words the linker fills in (each relocated word's offset in the text)"""
         mask = bytearray(size)
-        for r in getattr(o, "treloc", None) or ():
-            at = r[0] if isinstance(r, (tuple, list)) else r
-            if isinstance(at, int) and 0 <= at < size:
+        for at in fixed:
+            if 0 <= at < size:
                 mask[at:at + 2] = b"\1\1"[:size - at]
         return bytes(mask)
 
@@ -159,23 +168,19 @@ class MicrosoftC16(object):
 
 
 class Msc203(object):
-    """Microsoft C 2.03 (1984): MC1 then MC2, in DOSBox-X (settings: msc203 -- their folder)."""
+    """Microsoft C 2.03 (1984): MC1 then MC2, as exact's profile "msc203" runs them."""
     name = "msc203"
     bits = 16
 
-    def __init__(self, home):
-        self.home = home
+    def __init__(self):
+        from codebreaker.exact import toolchain
+        self.tc = toolchain.load("msc203")
 
     def object(self, source, stem="cand", timeout=120):
-        """-> the .OBJ's bytes, or None"""
-        import shutil
-        from codebreaker.build import dos_tools
-        _ok, made, work = dos_tools.run({"c": self.home}, ["c:mc1 %s.c >NUL" % stem, "c:mc2 %s >NUL" % stem],
-                                        [stem + ".OBJ"], timeout=max(timeout, 30), files={stem + ".c": source},
-                                        cpu={"core": "auto", "cputype": "386"})
-        if work:
-            shutil.rmtree(work, ignore_errors=True)
-        return made.get(stem + ".OBJ")
+        """-> the .OBJ's bytes, or None (stem and timeout are not needed: the profile names the
+        file, and the passes run in this process)"""
+        obj, _printed = self.tc.compile(source.encode("latin1", "replace"))
+        return obj
 
     def compile(self, source, work=None, header="", function=""):
         """-> (bytes, mask) of the public function named, else of the first code segment; or None"""
@@ -197,17 +202,27 @@ def _scratch():
     return settings.state("period")
 
 
+def _kit(profile, *files):
+    """Whether exact's profile `profile` has its kit set up (with these files in it)."""
+    from codebreaker.exact import toolchain
+    try:
+        kit = toolchain.kit_dir(toolchain.load(profile).p["kit"])
+    except (RuntimeError, OSError, ValueError):
+        return False
+    return os.path.isdir(kit) and all(os.path.isfile(os.path.join(kit, f)) for f in files)
+
+
 def _set_up():
     """{name: the setting it needs, and whether that is there}"""
     from codebreaker.base import settings
-    from codebreaker.build import dos_tools, msc6
+    from codebreaker.build import msc6
     folder = lambda key, *files: bool(settings.get(key)) and all(
         os.path.isfile(os.path.join(settings.get(key), f)) for f in files)
     return {"msvc2": folder("period_compiler", "CL.EXE"),
-            "xenix-c": folder("xenix_c", "xcc.py"),
+            "xenix-c": folder("xenix_c", "xcc.py") and _kit("xenixc", "lib/c1", "lib/c2"),
             "msc6": msc6.available("msc6"),
             "msvc152": msc6.available("msvc152"),
-            "msc203": bool(dos_tools.emulator()) and folder("msc203", "MC1.EXE", "MC2.EXE")}
+            "msc203": _kit("msc203")}
 
 
 NAMES = ("msvc2", "xenix-c", "msc6", "msvc152", "msc203")
@@ -231,5 +246,5 @@ def get(name, target=None, flags=None):
     if name == "msvc2":
         return Msvc2(os.path.join(settings.get("period_compiler"), "CL.EXE"), *([flags] if flags else []))
     if name == "msc203":
-        return Msc203(settings.get("msc203"))
+        return Msc203()
     return MicrosoftC16(name, *([flags] if flags else []))

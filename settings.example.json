@@ -12,7 +12,7 @@
   "period_compiler": "<optional: folder of a period 32-bit CL.EXE, for `match` and `repair`>",
   "dosbox_x": "<optional: dosbox-x.exe, for the DOS compilers and assemblers>",
   "msc6": "<optional: folder of Microsoft C 6.0a>",
-  "msc203": "<optional: folder holding MC1.EXE and MC2.EXE (Microsoft C 2.03)>",
+  "kits": {"msc203": "<optional: folder holding MC1.EXE and MC2.EXE (Microsoft C 2.03)>", "xenix86": "<optional: the XENIX C compiler's files (lib/c1, lib/c2 ...)>"},
   "masm": "<optional: folder of a Microsoft Macro Assembler (BIN\\MASM.EXE)>",
   "nasm": "<optional: nasm.exe of the nasm-masm project (a MASM-compatible NASM)>",
   "msvc152": "<optional: folder of Visual C++ 1.52c's compiler (BIN\\CL.EXE)>",
