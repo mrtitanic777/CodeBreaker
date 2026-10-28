@@ -6,6 +6,7 @@
     guided.py        inputs aimed at the branches no input has reached yet
     measure.py, sweep.py   one module, and the corpus
     lanes/           what differs per kind of module (the platform descriptors name them)
+    lane_common.py   what the kinds' judges do alike: kept fingerprints, calls as text, inputs, switches
     authored/        toward the authored bytes, with a compiler of the original's time
     gate16/          the 16-bit Windows system test and its diagnosis
 """

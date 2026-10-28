@@ -587,6 +587,41 @@ def test_cache_files_results_under_what_made_them():
     shutil.rmtree(os.path.dirname(os.path.dirname(cache._path(kind, k))), ignore_errors=True)
 
 
+def test_every_kind_keeps_fingerprints_and_writes_calls_alike():
+    from codebreaker.verify import compare, lane_common
+    kept, runs = {}, []
+    was = compare.cache_get, compare.cache_put, os.environ.pop("CB_NO_FP_CACHE", None)
+    compare.cache_get, compare.cache_put = kept.get, kept.__setitem__
+    try:
+        def run():
+            runs.append(1)
+            return {"exit": "ret", "truncated": len(runs) == 1}
+        lane_common.remembered("k", run, keep=lambda fp: not fp["truncated"])        # turned down: made again
+        lane_common.remembered("k", run, keep=lambda fp: not fp["truncated"])
+        lane_common.remembered("k", run)
+        assert len(runs) == 2 and "k" in kept
+        lane_common.remembered("e", lambda: {"err": "x"})                              # not an observation
+        assert "e" not in kept
+        os.environ["CB_NO_FP_CACHE"] = "1"                                              # every kind obeys it
+        lane_common.remembered("k", run)
+        assert len(runs) == 3
+    finally:
+        compare.cache_get, compare.cache_put = was[:2]
+        os.environ.pop("CB_NO_FP_CACHE", None)
+        if was[2] is not None:
+            os.environ["CB_NO_FP_CACHE"] = was[2]
+    # one normaliser: inputs by position, small constants signed, the frame and the own image by kind
+    arg = lane_common.argument
+    assert arg(0x1234, [0x99, 0x1234]) == "a1" and arg(0x12, [0x12], above=0xFF) == "12"
+    assert arg(0xFFFFFFFE, small=True) == "-2" and arg(0x7000, frame=((0x6000, 0x8000), None)) == "S"
+    assert arg(0x10, image=(0, 0x100)) == "P" and arg(0x10, image=lambda v: False) == "10"
+    seq = [("A", [1, 2]), ("NOISE", [3]), ("B", None)] * 3
+    assert lane_common.calls(seq, str, skip=lambda n: n == "NOISE", cap=4) == ("A(1,2)", "B", "A(1,2)", "B", "...")
+    from codebreaker.verify.lanes import win16
+    assert win16._call({"api": "KERNEL.X", "arg_bytes": 6, "args_stack": [0x10, 0x1F, 0x1234]},
+                       [0x1234], {"SS": 0x1F, "DS": 0x2F}) == "KERNEL.X(stack,SS,a0)"
+
+
 def test_a_call_through_a_word_stays_near():
     # MSMOUS31's Disable, `call word ptr [18h]`, as the decompiler prints it: made a far call to
     # segment 1000h it faulted at Setup's restart
@@ -662,6 +697,7 @@ def main():
     for fn in (test_programs_stored_one_after_another_are_each_found, test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
                test_chunks_come_back_in_address_order, test_a_call_through_a_word_stays_near, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
+               test_every_kind_keeps_fingerprints_and_writes_calls_alike,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
                test_field_accesses_are_written_as_fields, test_other_shapes_of_the_same_function,
                test_object_file_of_the_16_bit_compiler_is_read, test_a_verdict_is_for_the_compiled_code,

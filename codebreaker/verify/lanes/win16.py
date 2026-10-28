@@ -20,6 +20,7 @@ import hashlib
 
 from codebreaker.base import corpus
 from codebreaker.verify import compare
+from codebreaker.verify import lane_common
 
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
@@ -38,10 +39,10 @@ def vectors():
     from codebreaker.emulate import windows16 as ne_probe
     n, sel = ARG_WORDS, ne_probe.SAFE_ARG
     return [{"args": [0] * n}, {"args": [0x0400] * n}, {"args": [0x0080] * n},
-            {"args": [i + 1 for i in range(n)]}, {"args": [0x100 * (i + 1) for i in range(n)]},
-            {"args": [0xFFFF - i for i in range(n)]},
-            {"args": [sel if i % 2 else 0x20 * (i + 1) for i in range(n)]},     # offset, selector, ...
-            {"args": [0x20 * (i + 1) if i % 2 else sel for i in range(n)]},     # selector, offset, ...
+            {"args": lane_common.counting(n)}, {"args": lane_common.counting(n, 0x100, 0x100)},
+            {"args": lane_common.descending(n, 0xFFFF)},
+            {"args": lane_common.alternating(n, lambda i: 0x20 * (i + 1), sel)},     # offset, selector, ...
+            {"args": lane_common.alternating(n, sel, lambda i: 0x20 * (i + 1))},     # selector, offset, ...
             {"args": [sel] * n},
             {"args": [1, 0x40, sel, 2, 0x80, sel, 3, 0x100]}] + _scattered(n, sel)
 
@@ -63,14 +64,15 @@ def _scattered(n, sel):
 
 
 def _call(hit, inputs, entry):
-    """One Windows call as text: its name, and its arguments when their size is known. An
-    argument is written as what it IS rather than its bit pattern wherever the two builds would
-    legitimately differ: one of the function's own inputs, the data or stack selector, an
-    address in the stack."""
+    """One Windows call as text (lane_common.call): its name, and its arguments when their size
+    is known. An argument is written as what it IS rather than its bit pattern wherever the two
+    builds would legitimately differ: the data or stack selector, an address in the stack, one of
+    the function's own inputs (lane_common.argument; above 0xFF, since a small one is as likely a
+    constant)."""
     name = hit.get("api") or "?"
     size = hit.get("arg_bytes")
     if size is None:
-        return name
+        return lane_common.call(name)
     words = (hit.get("args_stack") or [])[:size // 2]
     ss, ds = entry.get("SS"), entry.get("DS")
     out = []
@@ -82,11 +84,9 @@ def _call(hit, inputs, entry):
             out.append("SS")
         elif nxt == ss:
             out.append("stack")                              # offset part of a far pointer into the stack
-        elif w in inputs and w > 0xFF:
-            out.append("a%d" % inputs.index(w))
         else:
-            out.append("%x" % w)
-    return "%s(%s)" % (name, ",".join(out))
+            out.append(lane_common.argument(w, inputs, above=0xFF))
+    return lane_common.call(name, out)
 
 
 _DIRECTED = {}
@@ -137,7 +137,7 @@ def directed(module_path, seg, span, most=8):
         n, sel, out = ARG_WORDS, emulator.SAFE_ARG, []
         for c in seen[:max(most // 2, 24)]:
             out.append({"args": [c] * n})
-            out.append({"args": [c if i % 2 == 0 else sel for i in range(n)]})
+            out.append({"args": lane_common.alternating(n, c, sel)})
         _DIRECTED[key] = out
     return _DIRECTED[key]
 
@@ -169,9 +169,7 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None):
             state[k] = (val >> (8 * i)) & 0xFF
     # a byte left holding what it held on entry is not an effect (one compiler clears a flag
     # with a word write, another with a byte write)
-    state = {k: x for k, x in state.items() if x != before.get(k)}
-    writes = "%d:%s" % (len(state), hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16]) \
-        if state else ""
+    writes = lane_common.writes({k: x for k, x in state.items() if x != before.get(k)})
     regs = r.get("exit_regs") or {}
     entry = r.get("entry_regs") or {}
     base = r.get("code_base") or 0
@@ -196,36 +194,25 @@ def _judge(context, item):
     """Worker. item = (key, seg, off, near, wide, span, insns, rebuilt seg, rebuilt off)."""
     module_path, dll, data_image = context
     key, seg, off, near, wide, span, insns, bseg, boff = item
-    info = {}
-    try:
-        last = {}
+    last = {}
 
-        sha = corpus.sha(module_path)
+    def original(v):
+        # the original's run depends only on the original: remembered across rebuilds (a run cut
+        # off at the step limit is not)
+        k = compare.cache_key("ne", REV, corpus.sha(module_path), seg, off, near, wide, tuple(v["args"]), span)
+        fp = lane_common.remembered(k, lambda: fingerprint(module_path, seg, off, near, wide, v, span=span),
+                                    keep=lambda fp: not fp.get("truncated"))
+        last["fp"] = fp
+        return fp
 
-        def original(v):
-            # the original's run depends only on the original: remembered across rebuilds
-            k = compare.cache_key("ne", REV, sha, seg, off, near, wide, tuple(v["args"]), span)
-            fp = compare.cache_get(k)
-            if fp is None:
-                fp = fingerprint(module_path, seg, off, near, wide, v, span=span)
-                if "err" not in fp and not fp.get("truncated"):
-                    compare.cache_put(k, fp)
-            last["fp"] = fp
-            return fp
-
-        def rebuilt(v):
-            fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image)
-            if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
-                fp["ret"] = LEFTOVER                         # the original returned no value here
-            return fp
-        verdict, reason, limits = compare.compare(
-            original, rebuilt, vectors(), (), insns=insns, info=info,
-            directed=lambda covered, reached: directed(module_path, seg, span))
-    except ImportError:
-        raise
-    except Exception as e:
-        verdict, reason, limits = "inconclusive", "judge: %s" % type(e).__name__, []
-    return verdict, reason, list(limits), info.get("detail", "")
+    def rebuilt(v):
+        fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image)
+        if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
+            fp["ret"] = LEFTOVER                             # the original returned no value here
+        return fp
+    return lane_common.judged(lambda info: compare.compare(
+        original, rebuilt, vectors(), (), insns=insns, info=info,
+        directed=lambda covered, reached: directed(module_path, seg, span)))
 
 
 def _spans(nef, where):

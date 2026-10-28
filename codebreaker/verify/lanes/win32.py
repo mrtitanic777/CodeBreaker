@@ -10,7 +10,7 @@ import os
 from codebreaker.build import watcom as toolchain
 from codebreaker.base import corpus
 from codebreaker.verify import compare
-from codebreaker.verify import guided
+from codebreaker.verify import lane_common
 from codebreaker.formats.pe import open_pe
 from codebreaker.emulate import emulator as tracer
 import struct as _struct
@@ -69,33 +69,28 @@ def judge(module_path, item):
     """Worker: judge one function. item = (key, address, dll, entry)."""
     _key, va, dll, entry = item[:4]
     shape = (in_ecx_edx if item[4] == 2 else in_ecx) if len(item) > 4 and item[4] else (lambda v: v)
-    info = {}
-    try:
-        def rebuilt(v):
-            # A rebuild may spend many more instructions than the original on the same work -- a C
-            # loop where the original filled memory with one `rep stosd` (dnr.exe's memset over
-            # 64 KB: 16,418 steps for the original, 229,414 for the loop, the same 16,387 writes)
-            # -- and stop at the step limit where the original returned. Such a run is tried again
-            # with room before it counts as different -- also where the original itself stopped at
-            # the limit: the rebuild must reach every call the original made by then.
-            b = _fp_pe(dll, entry, shape(v), rebuilt=module_path)
-            if b.get("truncated") and b.get("exit") != "wild-call" and                     _fp_pe(module_path, va, shape(v)).get("exit") in ("ret", "truncated"):
-                b = _fp_pe(dll, entry, dict(shape(v), room=ROOM), rebuilt=module_path)
-            return b
 
-        verdict, reason, limits = compare.compare(
-            lambda v: _fp_pe(module_path, va, shape(v)),
-            rebuilt,
-            _vectors(4, "pe"), _confirm_vectors(4, "pe"),
-            insns=insn_count(module_path, va),
-            directed=lambda cov, rch: directed_and_guided(module_path, va, cov, rch,
-                                                          shape if len(item) > 4 and item[4] else None),
-            info=info, leftover=undefined_ret_bits)
-    except ImportError:
-        raise
-    except Exception as e:                                  # one function must not sink the rest
-        verdict, reason, limits = "inconclusive", "judge: %s" % type(e).__name__, []
-    return verdict, reason, list(limits), info.get("detail", "")
+    def rebuilt(v):
+        # A rebuild may spend many more instructions than the original on the same work -- a C
+        # loop where the original filled memory with one `rep stosd` (dnr.exe's memset over
+        # 64 KB: 16,418 steps for the original, 229,414 for the loop, the same 16,387 writes)
+        # -- and stop at the step limit where the original returned. Such a run is tried again
+        # with room before it counts as different -- also where the original itself stopped at
+        # the limit: the rebuild must reach every call the original made by then.
+        b = _fp_pe(dll, entry, shape(v), rebuilt=module_path)
+        if b.get("truncated") and b.get("exit") != "wild-call" and \
+                _fp_pe(module_path, va, shape(v)).get("exit") in ("ret", "truncated"):
+            b = _fp_pe(dll, entry, dict(shape(v), room=ROOM), rebuilt=module_path)
+        return b
+
+    return lane_common.judged(lambda info: compare.compare(
+        lambda v: _fp_pe(module_path, va, shape(v)),
+        rebuilt,
+        _vectors(4, "pe"), _confirm_vectors(4, "pe"),
+        insns=insn_count(module_path, va),
+        directed=lambda cov, rch: directed_and_guided(module_path, va, cov, rch,
+                                                      shape if len(item) > 4 and item[4] else None),
+        info=info, leftover=undefined_ret_bits))
 
 
 PIPE_REV = 46                   # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
@@ -134,7 +129,7 @@ def settings_profile(lane):
                                          .encode()).hexdigest()[:16],
             "max_calls": _MAX_CALLS, "max_support": MAX_SUPPORT,
             "directed": [MAX_DIRECTED, _HARVEST_DEPTH] if lane == "pe" else [],
-            "guided": [GUIDED_BUDGET, MAX_GUIDED] if lane == "pe" else [],
+            "guided": [lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED] if lane == "pe" else [],
             # (not the decompiler's revision: a verdict is for a text, whichever revision wrote it)
             "cflags": list(c_text.CFLAGS), "runtime": B._RTL,
             "compiler": compiler,
@@ -206,39 +201,20 @@ def _argc(dll, name):
     return n if n is not None else env._builtin_argc(name)
 
 
-def _norm_arg(v, ins, own=None):
-    """An argument value in a form two builds of the same code agree on: which input it is, a small
-    constant, a stack address ('S') or an address inside the rebuilt image ('p') -- those two
-    differ by build -- and otherwise the value itself. Reconstructed code refers to the original's
-    data by its literal address, so a pointer into the original image is the same number on both
-    sides and is compared as one: passing the wrong string or the wrong table is a difference."""
-    if v in ins:
-        return "a%d" % ins.index(v)
-    sv = v - (1 << 32) if v & 0x80000000 else v
-    if -0x10000 < sv < 0x10000:
-        return "%d" % sv
-    # A rebuilt body's locals live in its stand-in frame, inside its own image: like a stack
-    # address, that is "somewhere in this call's frame".
-    if _STACK_LO <= v < _STACK_HI or (own and own[0] <= v < own[1]):
-        return "S"
-    return "%x" % v
-
-
 _MAX_CALLS = 64
 
 
 def _call_seq(calls, ins, own=None):
-    """The imported-call part of a fingerprint: every call in order, with normalised arguments."""
-    out = []
-    for api, args in calls:
-        if _is_noise(api):
-            continue
-        if len(out) >= _MAX_CALLS:
-            out.append("...")
-            break
-        out.append(_norm_dep(api) if args is None else
-                   "%s(%s)" % (_norm_dep(api), ",".join(_norm_arg(a, ins, own) for a in args)))
-    return tuple(out)
+    """The imported-call part of a fingerprint: every call in order, its name as both builds spell
+    it, toolchain noise left out, and each argument as lane_common.argument writes it -- which input
+    it is, a small constant, or a stack address or an address inside the rebuilt image ("S": those
+    differ by build; a rebuilt body's locals live in its stand-in frame, inside its own image);
+    otherwise the value itself. Reconstructed code refers to the original's data by its literal
+    address, so a pointer into the original image is the same number on both sides and is compared
+    as one: passing the wrong string or the wrong table is a difference."""
+    frame = ((_STACK_LO, _STACK_HI), own)
+    return lane_common.calls(calls, lambda a: lane_common.argument(a, ins, small=True, frame=frame),
+                             name=_norm_dep, skip=_is_noise, cap=_MAX_CALLS)
 
 
 # provisioned environment (mirrors envprov): a region of pointers that all resolve to a safe RET, so
@@ -248,7 +224,7 @@ _OBJ, _SAFE = 0x206000, 0x207800
 
 
 _PADS = (_SAFE, _SAFE + 0x1000)
-_PLAIN = bool(os.environ.get("CB_PLAIN"))
+_PLAIN = lane_common.PLAIN       # one instruction at a time on a fresh machine (CB_PLAIN)
 
 
 def _prov_meminit():
@@ -265,7 +241,8 @@ def _prov_meminit():
 # time, making it ~half of the oracle cost (4 of 8 traces/body). Cache fingerprints keyed by the
 # module's content hash so a re-run (the common case after any synth/lifter change) skips the retail
 # traces entirely. Keying on content hash (not path) makes it correct for both sides and for shared
-# bodies: a rebuilt DLL gets a fresh hash each build, so it never stales. Disabled by CB_NO_FP_CACHE.
+# bodies: a rebuilt DLL gets a fresh hash each build, so it never stales. (lane_common.remembered;
+# not with CB_NO_FP_CACHE.)
 
 
 def _fp_key(sha, func, spec):
@@ -348,10 +325,7 @@ def _effects(r, own):
         else:
             for i in range(min(n, 8)):
                 state[a + i] = (v >> (8 * i)) & 0xFF
-    state = {k: x for k, x in state.items() if x != before.get(k)}
-    if not state:
-        return ""
-    return "%d:%s" % (len(state), _hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16])
+    return lane_common.writes({k: x for k, x in state.items() if x != before.get(k)})
 
 
 def _effects_lean(r, ws, own):
@@ -374,10 +348,7 @@ def _effects_lean(r, ws, own):
             for i in range(min(n, 8)):
                 state[a + i] = (v >> (8 * i)) & 0xFF
     pages = r["pages0"]
-    state = {k: x for k, x in state.items() if x != pages[k & ~0xFFF][k & 0xFFF]}
-    if not state:
-        return ""
-    return "%d:%s" % (len(state), _hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16])
+    return lane_common.writes({k: x for k, x in state.items() if x != pages[k & ~0xFFF][k & 0xFFF]})
 
 
 _MAX_REACH = 6000
@@ -484,15 +455,18 @@ def _thunk_stubs(original):
 
 def _fp_pe(path, func, spec, rebuilt=False):
     """Fingerprint one run. For a REBUILT image pass `rebuilt=<path of the original>`: its own
-    statics are then left out of the comparison and the original's code is mapped beside it."""
-    key = None
-    if not os.environ.get("CB_NO_FP_CACHE"):
-        sha = corpus.sha(path)
-        if sha:
-            key = _fp_key(sha, func, spec)
-            hit = compare.cache_get(key)
-            if hit is not None:
-                return hit
+    statics are then left out of the comparison and the original's code is mapped beside it.
+
+    Kept across runs under the module's content hash (lane_common.remembered, _fp_key). A run
+    cut off at the step limit is kept too: a run stops on counts alone (the tracer's old
+    wall-clock cap is gone), the same on every machine, so a truncated run is as settled as any
+    other -- and they are the slowest to make again."""
+    sha = corpus.sha(path)
+    return lane_common.remembered(_fp_key(sha, func, spec) if sha else None,
+                                  lambda: _trace_pe(path, func, spec, rebuilt))
+
+
+def _trace_pe(path, func, spec, rebuilt):
     stubs, stub_argc = _thunk_stubs(rebuilt if isinstance(rebuilt, str) else path)
     try:
         r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
@@ -502,8 +476,6 @@ def _fp_pe(path, func, spec, rebuilt=False):
                                   stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True, ecx=spec.get("ecx"), edx=spec.get("edx"),
-                                  # CB_PLAIN=1: one instruction at a time on a fresh machine
-                                  # each run -- the slow way the fast one must agree with
                                   quiet_stack=True, reuse=not _PLAIN, fast=not _PLAIN, lean=not _PLAIN, pads=_PADS)
     except ImportError:
         raise                                     # a broken setup is not an observation
@@ -529,12 +501,6 @@ def _fp_pe(path, func, spec, rebuilt=False):
           "cov": (), "reach": ()}
     if not rebuilt:
         fp["cov"], fp["reach"] = _coverage(r)
-    # Cache only settled results. A truncated trace can differ by wall-clock (the tracer's 2s cap),
-    # so caching it could record a machine-dependent fingerprint -- re-trace those instead.
-    # (That cap is gone: a run now stops on counts alone, the same on every machine, so a
-    # truncated run is as settled as any other -- and they are the slowest to make again.)
-    if key:
-        compare.cache_put(key, fp)
     return fp
 
 
@@ -550,13 +516,13 @@ def _vectors(arity, lane):
     # every slot, a body that uses its parameters in the wrong order behaves identically.
     vs = [{"args": [0] * n}]
     if lane in ("pe", "dos"):
-        vs.append({"args": [0x200000 + 0x100 * i for i in range(n)]})        # bare scratch pointers
+        vs.append({"args": lane_common.counting(n, 0x200000, 0x100)})        # bare scratch pointers
         vs.append({"args": [_OBJ + 0x40 * (i % 32) for i in range(n)],        # provisioned objects
                    "mem_init": _prov_meminit()})
     else:                                                        # NE controlled env: valid handles
         vs.append({"args": [0x0400] * n})                        # LZ handle base
         vs.append({"args": [0x0080] * n})                        # open-file handle
-    vs.append({"args": [i + 1 for i in range(n)]})
+    vs.append({"args": lane_common.counting(n)})
     return vs
 
 
@@ -570,7 +536,7 @@ def _confirm_vectors(arity, lane):
     mi = _prov_meminit()
     obj = [_OBJ + 0x40 * (i % 32) for i in range(n)]
     edge = [0x7FFFFFFF, 0x80000000, 0x10000, 0xFFFF, 0xFF, 0x100, 0x8000, 0x7FFF]
-    ints = [i + 1 for i in range(n)]
+    ints = lane_common.counting(n)
     # Objects whose fields are not pointers: all-ones (every flag bit set, counts large) and small
     # counts. A field tested with `& 0x40` or compared with an index is false on the pointer-filled
     # object above, so everything behind such a test never ran.
@@ -592,12 +558,12 @@ def _confirm_vectors(arity, lane):
         {"args": obj, "mem_init": small},
         {"args": obj, "mem_init": striped[0], "stub_ret": 1},
         {"args": obj, "mem_init": striped[1], "stub_ret": 1},
-        {"args": [0xFFFFFFFF - i for i in range(n)]},                          # small negatives
+        {"args": lane_common.descending(n, 0xFFFFFFFF)},                      # small negatives
         {"args": [edge[i % len(edge)] for i in range(n)]},                     # boundary integers
-        {"args": [n - i for i in range(n)]},                                   # distinct, reversed
+        {"args": lane_common.descending(n, n)},                                # distinct, reversed
         {"args": [obj[0]] + [i + 2 for i in range(1, n)], "mem_init": mi},     # pointer, then integers
         {"args": [5] + obj[1:], "mem_init": mi},                               # integer, then pointers
-        {"args": [obj[i] if i % 2 else 0x100 + i for i in range(n)], "mem_init": mi},
+        {"args": lane_common.alternating(n, lambda i: 0x100 + i, lambda i: obj[i]), "mem_init": mi},
     ]
 
 
@@ -692,7 +658,7 @@ def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
     n = arity
     mi = _prov_meminit()
     obj = [_OBJ + 0x40 * (i % 32) for i in range(n)]
-    ints = [i + 1 for i in range(n)]
+    ints = lane_common.counting(n)
     cands = []
     gsets = [[(a, _struct.pack("<I", val)) for a in globs] for val in (1, _SAFE, _OBJ + 0x800)] if globs else []
     if globs:                                    # each global a value of its own (see _data_filled)
@@ -766,10 +732,6 @@ def directed_vectors(path, func, covered, arity=4, reached=(), shape=None):
     return keep
 
 
-MAX_GUIDED = 16                  # branch-guided inputs kept per body (verify/guided.py)
-GUIDED_BUDGET = 96               # runs of the original it may spend finding them
-
-
 def _branch_run(path, func, spec):
     """The original run on `spec` with its branches logged: {"branches", "reach"}, or None when
     the run is not an observation (as _fp_pe: an error, or a call into nothing)."""
@@ -792,15 +754,12 @@ def _branch_run(path, func, spec):
 
 def guided_vectors(path, func, seeds, shape=None):
     """Inputs that take branches of the original no seed took (verify/guided.py)."""
-    return guided.guided_inputs(lambda v: _branch_run(path, func, shape(v) if shape else v), seeds,
-                                budget=GUIDED_BUDGET, keep=MAX_GUIDED, seed=func & 0xFFFF)
+    return lane_common.guided(lambda v: _branch_run(path, func, shape(v) if shape else v), seeds, func & 0xFFFF)
 
 
 def directed_and_guided(path, func, covered, reached, shape=None):
     """The directed inputs, then branch-guided ones seeded with every input run so far."""
     d = directed_vectors(path, func, covered, reached=reached, shape=shape)
-    if os.environ.get("CB_NO_GUIDED"):              # (to measure what the guided inputs add)
-        return d
     seeds = list(_vectors(4, "pe")) + list(_confirm_vectors(4, "pe")) + list(d)
     return list(d) + guided_vectors(path, func, seeds, shape)
 
