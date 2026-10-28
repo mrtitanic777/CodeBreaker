@@ -109,14 +109,14 @@ class Image(object):
         self._starts = []
         self._fn = {}
         self._memo = {}
+        self._md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
+        self._md.detail = True
+        self._regs = {}
 
     @property
     def flat(self):
         """A flat 32-bit image (PE): one address space from its base, run in user mode."""
         return detect.flat(self.kind)
-        self._md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
-        self._md.detail = True
-        self._regs = {}
 
     # ---- the bytes ---------------------------------------------------------------------------
     def _finish(self):
