@@ -776,7 +776,7 @@ class Modules(Provider):
 
 # ---------------------------------------------------------------------------------------------- the app
 class CodeBreaker(App):
-    CSS_PATH = "terminal.tcss"
+    CSS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "terminal.tcss")   # (wherever the app is run or subclassed from)
     TITLE = "CodeBreaker"
     COMMANDS = App.COMMANDS | {Modules}
     BINDINGS = [Binding("j", "jobs", "Jobs"), Binding("question_mark", "help", "Help"),
