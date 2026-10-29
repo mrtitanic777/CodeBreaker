@@ -14,6 +14,6 @@ PLATFORM = machine(
     "nes", "NES", "6502", "iNES (.nes)",
     Cpu("6502:LE:16:NES:default", bits=8, endian="little", decoder="codebreaker.decompile.m6502",
         registers=("A", "X", "Y", "P", "S"), stack="S"),
-    _recognise, reader=("codebreaker.formats.nes", "read"), runner=("codebreaker.emulate.m6502", "run"),
+    _recognise, reader=("codebreaker.formats.nes", "read"), runner=("codebreaker.emulate.m6502", "recorded"),
     assembler=("codebreaker.build.m6502_asm", "build"), writer=("codebreaker.source.nes_writer", "reconstruct"),
     results=("A", "X", "Y", "P"), toolchain="CodeBreaker's own assembler, or cc65")

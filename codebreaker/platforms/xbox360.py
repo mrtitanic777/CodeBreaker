@@ -39,7 +39,7 @@ PLATFORM = Platform(
             registers=tuple("r%d" % i for i in range(32)), stack="r1"),
     convention=Convention(names=("__cdecl",), arguments=8, word=8, order="registers", results=("r3", "f1"),
                           pops="caller", preserved=tuple("r%d" % i for i in range(14, 32))),
-    emulator=Emulator(engine="CodeBreaker's own interpreter", run=Ref("codebreaker.emulate.powerpc", "run")),
+    emulator=Emulator(engine="CodeBreaker's own interpreter", run=Ref("codebreaker.emulate.powerpc", "recorded")),
     compiler=Compiler(language="c", toolchain="the Xbox 360 SDK", tool=Ref(__name__, "compiler"),
                       tools=Ref(__name__, "tools"), flags=Ref("codebreaker.build.functions", "CFLAGS_POWERPC")),
     packager=Packager(functions=Ref("codebreaker.build.functions", "build_powerpc"), tools=Ref(__name__, "tools")))

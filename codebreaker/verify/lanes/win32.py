@@ -86,27 +86,43 @@ def judge(module_path, item):
             b = _fp_pe(dll, entry, dict(shape(v), room=ROOM), rebuilt=module_path)
         return b
 
-    return lane_common.judged(lambda info: compare.compare(
-        lambda v: _fp_pe(module_path, va, shape(v)),
-        rebuilt,
-        _vectors(ARITY, "pe"), _confirm_vectors(ARITY, "pe"),
-        insns=insn_count(module_path, va),
-        directed=lambda cov, rch: directed_and_guided(module_path, va, cov, rch,
-                                                      shape if len(item) > 4 and item[4] else None),
-        info=info, leftover=undefined_ret_bits))
+    found = {}
+
+    def judged(info):
+        verdict, reason, limits = compare.compare(
+            lambda v: _fp_pe(module_path, va, shape(v)),
+            rebuilt,
+            _vectors(ARITY, "pe"), _confirm_vectors(ARITY, "pe"),
+            insns=insn_count(module_path, va),
+            directed=lambda cov, rch: directed_and_guided(module_path, va, cov, rch,
+                                                          shape if len(item) > 4 and item[4] else None, found),
+            info=info, leftover=undefined_ret_bits)
+        if verdict != "divergent":
+            limits = list(limits) + lane_common.path_limits(found.get("got"))
+        return verdict, reason, limits
+    return lane_common.judged(judged)
 
 
-PIPE_REV = 47                  # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
+PIPE_REV = 48                  # what a verdict means (13: one build per batch; bodies the compiler rejects are dropped by name;
                                 # 24, 25: a rebuild stopped at the step limit where the original returned is run again with ROOM;
                                 # 43-45: striped objects, globals with values of their own, the original's data filled with pads;
                                 # 46: an original cut off at the limit is matched by the calls it made, the rebuild given ROOM;
-                                # 47: the branch tracer enters a flat thunk's stubs as the fingerprint runs do)
+                                # 47: the branch tracer enters a flat thunk's stubs as the fingerprint runs do;
+                                # 48: branch-guided inputs found path by path (explore_vectors: Shadow32, verify/concolic.py),
+                                # a verdict's limits saying paths=N / paths-all)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
 GOOD = ("equivalent", "consistent")
 
 
 _PROFILES = {}
+
+
+def _paths_profile():
+    from codebreaker.emulate import pcode
+    ready = concolic_ready()
+    return [ready, lane_common.PATH_BUDGET, lane_common.MAX_PATHS, lane_common.GUIDED_REST,
+            list(pcode.stamp(_mode())) if ready else ""]
 
 
 def settings_profile(lane):
@@ -133,6 +149,8 @@ def settings_profile(lane):
             "max_calls": _MAX_CALLS, "max_support": MAX_SUPPORT,
             "directed": [MAX_DIRECTED, _HARVEST_DEPTH] if lane == "pe" else [],
             "guided": [lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED] if lane == "pe" else [],
+            # (and whether the paths are explored, and with what: the lifter and its specification)
+            "paths": _paths_profile() if lane == "pe" else [],
             # (not the decompiler's revision: a verdict is for a text, whichever revision wrote it)
             "cflags": P.compiler.options(), "runtime": B._RTL,
             "compiler": compiler,
@@ -295,63 +313,24 @@ def _image_span(path):
 
 def _effects(r, own):
     """What the function left in memory outside its own frame: a digest of the final value of every
-    byte it wrote. A function that stores to a global or through a pointer argument is judged on
-    what it stored and where -- the return value alone says nothing about either. A byte left
-    holding what it held on entry is not an effect: one compiler clears a flag with a 16-bit
-    `and`, another with an 8-bit one, and memory ends up the same.
+    byte it wrote (lane_common.left). A function that stores to a global or through a pointer
+    argument is judged on what it stored and where -- the return value alone says nothing about
+    either. A byte left holding what it held on entry is not an effect: one compiler clears a flag
+    with a 16-bit `and`, another with an 8-bit one, and memory ends up the same.
 
     `own` is the address range of a REBUILT image: writes into it are that build's own statics
     (compiler temporaries, register stand-ins), which the original has no counterpart for. The
     original's globals are reached by their literal addresses on both sides, so they compare.
-    A stored stack address is recorded as such (its value differs by build). None = too many
-    writes were made to record them all."""
-    ws = r.get("mem_writes") or []
-    if r.get("writes_seen", len(ws)) >= tracer._MAX_MEM:
-        return None
-    if r.get("pages0") is not None:
-        return _effects_lean(r, ws, own)
-    # A call through a pointer that resolves to nothing lands in zero bytes; the oracle returns
-    # from it after one `add [eax], al`. That write is the harness's, not the function's.
-    mn = r.get("mnemonics") or {}
-    state, before = {}, {}
-    for w in ws:
-        a, n, v = w["addr"], w["size"], w["value"] or 0
-        for i in range(min(n, 8)):
-            before.setdefault(a + i, ((w.get("old") or 0) >> (8 * i)) & 0xFF if "old" in w else None)
-        if mn.get("0x%x" % w["pc"]) == "add byte ptr [eax], al":
-            continue
-        if _STACK_LO <= a < _STACK_HI or (own and own[0] <= a < own[1]):
-            continue
-        if n == 4 and (_STACK_LO <= v < _STACK_HI or (own and own[0] <= v < own[1])):
-            for i in range(4):
-                state[a + i] = "S"
-        else:
-            for i in range(min(n, 8)):
-                state[a + i] = (v >> (8 * i)) & 0xFF
-    return lane_common.writes({k: x for k, x in state.items() if x != before.get(k)})
+    A stored stack address is recorded as such (its value differs by build). A call through a
+    pointer that resolves to nothing lands in zero bytes; the oracle returns from it after one
+    `add [eax], al`: that write is the harness's (the record says so), not the function's.
+    None = too many writes were made to record them all."""
+    def place(a):
+        return None if _STACK_LO <= a < _STACK_HI or (own and own[0] <= a < own[1]) else a
 
-
-def _effects_lean(r, ws, own):
-    """_effects for a run recorded lean (emulator.trace_function): writes as (address, size,
-    value, pc), no stack writes among them, and what memory held before in r["pages0"]."""
-    mn = r.get("mnemonics") or {}
-    latest = {}                                      # (address, size) -> the last write of that shape
-    for i, (a, n, v, pc) in enumerate(ws):
-        if pc and mn.get("0x%x" % pc) == "add byte ptr [eax], al":
-            continue
-        if own and own[0] <= a < own[1]:
-            continue
-        latest[(a, n)] = (i, v)
-    state = {}
-    for (a, n), (_i, v) in sorted(latest.items(), key=lambda kv: kv[1][0]):
-        if n == 4 and (_STACK_LO <= v < _STACK_HI or (own and own[0] <= v < own[1])):
-            for i in range(4):
-                state[a + i] = "S"
-        else:
-            for i in range(min(n, 8)):
-                state[a + i] = (v >> (8 * i)) & 0xFF
-    pages = r["pages0"]
-    return lane_common.writes({k: x for k, x in state.items() if x != pages[k & ~0xFFF][k & 0xFFF]})
+    def word(v):
+        return "S" if _STACK_LO <= v < _STACK_HI or (own and own[0] <= v < own[1]) else None
+    return lane_common.left(r, place, word)
 
 
 _MAX_REACH = 6000
@@ -360,10 +339,9 @@ _MAX_REACH = 6000
 def _coverage(r):
     """(own, reach): offsets of the function's own instructions that ran, and the addresses of
     every instruction that ran anywhere in the module (the function and the callees it entered)."""
-    lo, hi = r.get("func_va") or 0, r.get("func_end_va") or 0
+    lo, hi = r.raw.get("func_va") or 0, r.raw.get("func_end_va") or 0
     own, reach = [], []
-    for k in r.get("mnemonics") or ():
-        a = int(k, 16) if isinstance(k, str) else k
+    for a in r.path:
         reach.append(a)
         if lo <= a < hi:
             own.append(a - lo)
@@ -492,23 +470,17 @@ def _trace_pe(path, func, spec, rebuilt):
     # in (a 32->16 thunk entry the loader would set, an uninitialised callback). What the ORIGINAL
     # does after that is the harness's doing, not the function's: the run is not an observation.
     # A REBUILT body that does it where the original did not has simply gone somewhere wrong.
-    wild = bool(r.get("bogus_stubs") or r.get("ran_into_zeros"))
+    wild = bool(r.raw.get("bogus_stubs") or r.raw.get("ran_into_zeros"))
     if wild and not rebuilt:
         return {"err": "call-into-nothing"}
-    deps = _call_seq(r.get("api_calls", []), [int(a) for a in spec.get("given") or spec["args"]],
-                     _image_span(path) if rebuilt else None)
-    fp = {"ret": r.get("ret"), "exit": "wild-call" if wild else compare._exit_norm(r.get("exit")), "deps": deps,
-          "truncated": bool(r.get("truncated")), "steps": r.get("insn_count"),
-          "writes": _effects(r, _image_span(path) if rebuilt else None),
-          # how the function left the stack pointer (4 = the caller removes the arguments, 4 + N =
-          # the function removed N bytes of them) and whether it preserved EBX/ESI/EDI/EBP
-          "pop": r.get("esp_delta") if compare._exit_norm(r.get("exit")) == "ret" else None,
-          "saved": (tuple(r.get("saved_regs") or ()) == tuple(spec.get("sentinels") or tracer.SAVED_SENTINELS)
-                    if compare._exit_norm(r.get("exit")) == "ret" else None),
-          "cov": (), "reach": ()}
-    if not rebuilt:
-        fp["cov"], fp["reach"] = _coverage(r)
-    return fp
+    own = _image_span(path) if rebuilt else None
+    deps = _call_seq(r.calls, [int(a) for a in spec.get("given") or spec["args"]], own)
+    more = {"exit": "wild-call"} if wild else {}
+    cov, reach = _coverage(r) if not rebuilt else ((), ())
+    # how the function left the stack pointer (4 = the caller removes the arguments, 4 + N = the
+    # function removed N bytes of them) and whether it preserved EBX/ESI/EDI/EBP
+    return lane_common.fingerprint(r, deps, ret=r.results.get("EAX"), writes=_effects(r, own), saved=r.kept(),
+                                   cov=cov, reach=reach, steps=r.steps, **more)
 
 
 def _vectors(arity, lane):
@@ -753,10 +725,10 @@ def _branch_run(path, func, spec):
         raise
     except Exception:
         return None
-    if r.get("bogus_stubs") or r.get("ran_into_zeros"):
+    if r.raw.get("bogus_stubs") or r.raw.get("ran_into_zeros"):
         return None
-    return {"branches": r.get("branches") or [], "reach": set(_coverage(r)[1]),
-            "args_at": (r.get("entry") or {}).get("esp", 0) + 4, "stack": (_STACK_LO, _STACK_HI)}
+    return {"branches": r.raw.get("branches") or [], "reach": set(_coverage(r)[1]),
+            "args_at": (r.raw.get("entry") or {}).get("esp", 0) + 4, "stack": (_STACK_LO, _STACK_HI)}
 
 
 def guided_vectors(path, func, seeds, shape=None):
@@ -764,11 +736,158 @@ def guided_vectors(path, func, seeds, shape=None):
     return lane_common.guided(lambda v: _branch_run(path, func, shape(v) if shape else v), seeds, func & 0xFFFF)
 
 
-def directed_and_guided(path, func, covered, reached, shape=None):
-    """The directed inputs, then branch-guided ones seeded with every input run so far."""
+def directed_and_guided(path, func, covered, reached, shape=None, found=None):
+    """The directed inputs, then those found path by path (or guessed) seeded with every input
+    run so far. `found`: a dict the exploration is left in (["got"]: its concolic.Exploration)."""
     d = directed_vectors(path, func, covered, reached=reached, shape=shape)
     seeds = list(_vectors(ARITY, "pe")) + list(_confirm_vectors(ARITY, "pe")) + list(d)
+    if concolic_ready():
+        kept, got = explore_vectors(path, func, seeds, shape)
+        if found is not None:
+            found["got"] = got
+        return list(d) + kept
     return list(d) + guided_vectors(path, func, seeds, shape)
+
+
+def _mode():
+    """The lift mode of the platform's processor (emulate/shadow.py mode: its cpu slot)."""
+    from codebreaker.emulate import shadow
+    return shadow.mode(P.cpu)
+
+
+# Path by path (verify/concolic.py), as the 16-bit judge finds them (lanes/win16.py): the original
+# run with its symbolic shadow (emulate/shadow.py Shadow32, on the decompiler's x86-32-flat
+# p-code) -- its argument dwords (on the stack, or in ECX / EDX for a member function), the bytes
+# of the scratch memory pointer arguments point into and of the module's writable data, and what
+# an import the tracer answers returns (stub_ret) are the inputs -- and inputs solved for to take
+# each path its conditions allow. Where the lifter is not there or CB_NO_CONCOLIC is set, the
+# inputs are guessed as before (guided_vectors).
+def concolic_ready():
+    from codebreaker.emulate import pcode
+    return lane_common.guided_on() and lane_common.concolic_on() and pcode.lifter(_mode()) is not None
+
+
+_DATA = {}
+
+
+def _writable(path):
+    """[(low, high)] of the module's writable data sections, as loaded."""
+    if path not in _DATA:
+        try:
+            pe = open_pe(path)
+            _DATA[path] = [(pe.image_base + s["vaddr"], pe.image_base + s["vaddr"] + max(s["vsize"], s["rawsize"]))
+                           for s in pe.sections if s["chars"] & 0x80000000 and not s["chars"] & 0x20000000]
+        except Exception:
+            _DATA[path] = []
+    return _DATA[path]
+
+
+def _derive(v, values, names, shape):
+    """Input `v` (as the run is given it: `shape`d) with the named inputs (shadow.vars) set to
+    `values`: an argument dword, ECX or EDX, what the answered imports return, bytes of memory
+    (put after the input's own memory, so they are what the run finds there)."""
+    w = dict(shape(v) if shape else v)
+    args = list(w["args"])
+    mem = {}
+    changed = False
+    for name, value in values.items():
+        kind, where, bits, was = names.get(name, (None, None, 0, None))
+        if kind == "arg" and where < len(args):
+            changed |= args[where] != value & 0xFFFFFFFF
+            args[where] = value & 0xFFFFFFFF
+        elif kind == "reg" and where in ("ecx", "edx") and where in w:
+            changed |= w[where] != value & 0xFFFFFFFF
+            w[where] = value & 0xFFFFFFFF
+        elif kind == "ret":
+            changed |= int(w.get("stub_ret", 0)) != value & 0xFFFFFFFF
+            w["stub_ret"] = value & 0xFFFFFFFF
+        elif kind == "mem":
+            changed |= was != value & 0xFF
+            mem[where] = value & 0xFF
+    if not changed:
+        return None
+    w["args"] = args
+    if "given" in w:                                         # (what the calls' arguments are named by)
+        w["given"] = ([w["ecx"]] + ([w["edx"]] if "edx" in w else []) + args)[:len(w["given"])]
+    if mem:
+        runs = []
+        for at in sorted(mem):
+            if runs and runs[-1][0] + len(runs[-1][1]) == at:
+                runs[-1][1].append(mem[at])
+            else:
+                runs.append((at, [mem[at]]))
+        w["mem_init"] = list(w.get("mem_init") or ()) + [(at, bytes(data)) for at, data in runs]
+    return w
+
+
+def explore_vectors(path, func, seeds, shape=None):
+    """(inputs, exploration): inputs taking paths of the original no seed took, found path by path
+    (verify/concolic.py; lane_common.explored), and how far the exploration got. The seeds are run
+    first as the guessing explorer runs them (their branches logged): of those that took the same
+    path only one is run again with its shadow. Where the paths found are not all there are and a
+    jump of the function's own was still seen going one way only, what is left of the guessing
+    explorer's budget (lane_common.GUIDED_REST) goes to it, seeded with every run made."""
+    from codebreaker.emulate import pcode, shadow
+    from codebreaker.verify import guided
+    try:
+        off, va0, _code, end, _sec = tracer._resolve_func(path, func)
+    except Exception:
+        return guided_vectors(path, func, seeds, shape), None
+    lo, hi = va0 + off, va0 + end
+    lifter = pcode.lifter(_mode())
+    data = _writable(path)
+    scratch = (tracer._SCRATCH_BASE, tracer._SCRATCH_BASE + tracer._SCRATCH_SIZE)
+
+    def inputs(b):
+        return scratch[0] <= b < scratch[1] or any(a <= b < z for a, z in data)
+
+    seen, known = [], {}
+    for i, v in enumerate(seeds):
+        o = _branch_run(path, func, shape(v) if shape else v)
+        if o is not None:
+            seen.append((v, o))
+            known[i] = [(a, taken) for a, taken, _cmp in o["branches"]]
+
+    def run(v):
+        w = shape(v) if shape else v
+        sh = shadow.Shadow32(lifter, inputs, span=(lo, hi))
+        esp = tracer._STACK_TOP - 4 * len(w["args"]) - 4
+        places = [(esp + 4 + 4 * k, int(a) & 0xFFFFFFFF, k) for k, a in enumerate(w["args"])]
+        places += [(reg.upper(), int(w[reg]) & 0xFFFFFFFF, reg) for reg in ("ecx", "edx") if w.get(reg) is not None]
+        sh.enter(places, bits=32)
+        try:
+            r = P.emulator.run(path, func=func, args=w["args"], mem_init=w.get("mem_init"),
+                               insn_cap=int(w.get("room") or tracer._MAX_INSNS),
+                               stub_externals=True, stub_ret=int(w.get("stub_ret", 0)),
+                               sentinels=w.get("sentinels"), reads=False, stop_wild=True,
+                               ecx=w.get("ecx"), edx=w.get("edx"), quiet_stack=True,
+                               reuse=not _PLAIN, fast=False, lean=not _PLAIN, pads=_PADS, branches=True,
+                               shadow=sh, **_stub_options(path))
+        except ImportError:
+            raise
+        except Exception:
+            return None
+        if r.raw.get("bogus_stubs") or r.raw.get("ran_into_zeros"):
+            return None
+        seen.append((v, {"branches": r.raw.get("branches") or [], "reach": set(_coverage(r)[1]),
+                         "args_at": esp + 4, "stack": (_STACK_LO, _STACK_HI)}))
+        lost = set(sh.lost)
+        if r.truncated:
+            lost.add("truncated")
+        return {"trail": sh.trail, "path": sh.path, "vars": sh.vars, "lost": lost, "cut": r.truncated}
+    got = lane_common.explored(run, seeds, lambda v, values, names: _derive(v, values, names, shape),
+                               own=lambda site: lo <= site < hi, known=known)
+    kept = list(got.kept)
+    one_way = {}
+    for site, taken in got.edges:
+        one_way[site] = one_way.get(site, 0) | (1 << int(taken))
+    if not got.complete and any(w != 3 for w in one_way.values()) and lane_common.GUIDED_REST and seen:
+        extra = guided.guided_inputs(lambda v: _branch_run(path, func, shape(v) if shape else v), [],
+                                     budget=lane_common.GUIDED_REST, keep=lane_common.MAX_GUIDED, seed=func & 0xFFFF,
+                                     observed=seen)
+        kept += extra
+        got.guessed = len(extra)
+    return kept, got
 
 
 # The saved registers hold these instead when asking which bits of a return value are leftovers.

@@ -14,6 +14,6 @@ PLATFORM = machine(
     "sms", "Master System / Game Gear", "z80", "cartridge image (.sms, .gg, .sg)",
     Cpu("z80:LE:16:default", bits=8, endian="little", decoder="codebreaker.decompile.z80",
         registers=("A", "F", "BC", "DE", "HL", "IX", "IY", "SP"), stack="SP"),
-    _recognise, reader=("codebreaker.formats.sms", "read"), runner=("codebreaker.emulate.z80", "run"),
+    _recognise, reader=("codebreaker.formats.sms", "read"), runner=("codebreaker.emulate.z80", "recorded"),
     assembler=("codebreaker.build.z80_asm", "build"), writer=("codebreaker.source.sms_writer", "reconstruct"),
     results=("A", "F", "BC", "DE", "HL", "IX", "IY"), toolchain="CodeBreaker's own assembler, or WLA-DX")

@@ -24,12 +24,13 @@ def lane(kind, rev, rom):
         from codebreaker import platforms
         p = platforms.of(kind).loader.open(module_path)
         return (p, p.image), (p, written["built image"])
-    return Lane(kind, rev, STATES, lambda subject, entry, state: _effects(rom, subject, entry, state), WHAT,
+    return Lane(kind, rev, STATES, lambda subject, entry, state: _effects(kind, rom, subject, entry, state), WHAT,
                 lambda state: "from A=%(a)02X BC=%(b)02X%(c)02X HL=%(h)02X%(l)02X" % state, subjects=subjects,
                 same="the program built from this source is the original, byte for byte")
 
 
-def _effects(rom, subject, entry, state):
+def _effects(kind, rom, subject, entry, state):
+    from codebreaker import platforms
     from codebreaker.emulate import z80
     program, image = subject
     mem = bytearray(program.memory) if hasattr(program, "memory") else bytearray(0x10000)
@@ -43,9 +44,9 @@ def _effects(rom, subject, entry, state):
     bus = z80.Bus(mem, inp=lambda port: 0xFF)
     regs = {k: v for k, v in state.items() if k != "fill"}
     before = bytes(mem)
-    run = z80.run(bus, entry, steps=20000, sp=0xFFF0, **regs)
+    run = platforms.of(kind).emulator.run(bus, entry, steps=20000, sp=0xFFF0, **regs)
     # what the run changed (the program lives in this memory: an edited byte the function does not
     # write is the source's difference, not the function's)
     changed = tuple((i, v) for i, (u, v) in enumerate(zip(before, bus.mem)) if u != v)
-    return (run["end"], run["a"], run["f"], run["bc"], run["de"], run["hl"], run["ix"], run["iy"], changed,
-            tuple(bus.log[:4000]))
+    return (run.exit,) + tuple(run.results[k] for k in ("A", "F", "BC", "DE", "HL", "IX", "IY")) + (
+        changed, tuple(run.io[:4000]))

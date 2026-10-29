@@ -62,7 +62,7 @@ def _the_old_tables():
     return (w16.compiler.options() == functions.CFLAGS16 and w32.compiler.options() == c_text.CFLAGS
             and w16.convention.arguments == 8 and w32.convention.arguments == 4
             and w16.packager.link.target() is module._build16 and w32.packager.link.target() is module._build32
-            and w16.emulator.run.target() is windows16.probe and w32.emulator.run.target() is emulator.trace_function
+            and w16.emulator.run.target() is windows16.recorded and w32.emulator.run.target() is emulator.recorded
             and platforms.of("dos").emulator.run is None
             and platforms.step_modules()["win16"] == "codebreaker.engine.win16"
             and {i for i, m in platforms.step_modules().items() if m == "codebreaker.engine.lanes"}
@@ -83,11 +83,11 @@ def main():
             "sms": "codebreaker.verify.lanes.sms", "gb": "codebreaker.verify.lanes.gb", "genesis": "codebreaker.verify.lanes.genesis",
             "zx": "codebreaker.verify.lanes.zx", "msx": "codebreaker.verify.lanes.msx"}),
         ("every runner", emulate.RUNNERS == {
-            "pe": ("codebreaker.emulate.emulator", "trace_function"), "ne": ("codebreaker.emulate.windows16", "probe"),
-            "le": ("codebreaker.emulate.driver", "run"), "powerpc": ("codebreaker.emulate.powerpc", "run"),
-            "nes": ("codebreaker.emulate.m6502", "run"), "sms": ("codebreaker.emulate.z80", "run"),
-            "gb": ("codebreaker.emulate.sm83", "run"), "genesis": ("codebreaker.emulate.m68k", "run"),
-            "zx": ("codebreaker.emulate.z80", "run"), "msx": ("codebreaker.emulate.z80", "run")}),
+            "pe": ("codebreaker.emulate.emulator", "recorded"), "ne": ("codebreaker.emulate.windows16", "recorded"),
+            "le": ("codebreaker.emulate.driver", "recorded"), "powerpc": ("codebreaker.emulate.powerpc", "recorded"),
+            "nes": ("codebreaker.emulate.m6502", "recorded"), "sms": ("codebreaker.emulate.z80", "recorded"),
+            "gb": ("codebreaker.emulate.sm83", "recorded"), "genesis": ("codebreaker.emulate.m68k", "recorded"),
+            "zx": ("codebreaker.emulate.z80", "recorded"), "msx": ("codebreaker.emulate.z80", "recorded")}),
         ("languages", (describe._arch(0x14C), describe._arch(0x1F2), describe._arch(0x8664), describe.ARCH,
                        describe.LE_ARCH, describe.DOS_ARCH) == (
             "x86:LE:32:default:windows", "PowerPC:BE:64:Xenon:homed", None, "x86:LE:16:Protected Mode:default",

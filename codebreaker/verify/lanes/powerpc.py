@@ -29,7 +29,9 @@ from codebreaker.verify import compare
 from codebreaker.verify import lane_common
 
 P = platforms.of("powerpc")             # the Xbox 360: the six slots this lane asks
-REV = 4                                 # 4: branch-guided inputs (verify/guided.py); calls into absent code
+REV = 5                                 # 4: branch-guided inputs (verify/guided.py); calls into absent code;
+                                        # 5: those found path by path (explore_vectors: ShadowPPC, verify/concolic.py),
+                                        # a verdict's limits saying paths=N / paths-all
 ARGS = P.convention.arguments           # r3-r10
 M32 = 0xFFFFFFFF
 _OFFSET = 0x01000000                    # the rebuilt image sits this far above the original
@@ -93,15 +95,159 @@ def guided_vectors(shared, va, span, externs, seeds, absent=None):
                                absent=absent)
         except Exception:
             return None
-        return {"branches": r["branches"], "reach": r["path"], "args_at": None,
+        return {"branches": r.raw["branches"], "reach": r.path, "args_at": None,
                 "stack": (powerpc.STACK_LOW, powerpc.STACK_TOP)}
     return lane_common.guided(run, seeds, va & 0xFFFF, byteorder="big", word=8)
 
 
-def directed_and_guided(module_path, shared, va, span, externs, absent=None):
+def directed_and_guided(module_path, shared, va, span, externs, absent=None, found=None):
+    """The directed inputs, then those found path by path (or guessed). `found`: a dict the
+    exploration is left in (["got"]: its concolic.Exploration)."""
     from codebreaker.formats import powerpc_image
     d = directed(powerpc_image.read(module_path), span)
-    return list(d) + guided_vectors(shared, va, span, externs, vectors() + list(d), absent)
+    seeds = vectors() + list(d)
+    if concolic_ready():
+        kept, got = explore_vectors(shared, va, span, externs, seeds, absent, _writable(module_path))
+        if found is not None:
+            found["got"] = got
+        return list(d) + kept
+    return list(d) + guided_vectors(shared, va, span, externs, seeds, absent)
+
+
+def _mode():
+    """The lift mode of the platform's processor (emulate/shadow.py mode: its cpu slot)."""
+    from codebreaker.emulate import shadow
+    return shadow.mode(P.cpu)
+
+
+# Path by path (verify/concolic.py), as the x86 judges find them: the original run with its
+# symbolic shadow (emulate/shadow.py ShadowPPC, on the decompiler's ppc_64_xenon_be p-code) -- the
+# eight argument registers, the bytes of the memory pointer arguments point into (ARGS_BASE) and
+# of the image's writable sections (its globals), and what a call out returns are the inputs --
+# and inputs solved for to take each path its conditions allow. Where the lifter is not there or
+# CB_NO_CONCOLIC is set, the inputs are guessed as before.
+def concolic_ready():
+    from codebreaker.emulate import pcode
+    return lane_common.guided_on() and lane_common.concolic_on() and pcode.lifter(_mode()) is not None
+
+
+# A question over 64-bit registers is a bigger one for the solver than the 16-bit lane's: those it
+# cannot answer cost it four times as long before it gives up (a C library's number parsing: 52 of
+# 256 questions). A quarter of concolic.SOLVER_STEPS -- still z3's own steps, the same on any machine.
+SOLVER_STEPS = 500000
+
+
+def _derive(v, values, names):
+    """Input `v` with the named inputs (shadow.vars) set to `values`: an argument register, what a
+    call out returns, bytes of memory -- behind the pointers given as whole pages, the input's
+    `fill` under them (a page an input puts memory in is made from the image and that alone)."""
+    from codebreaker.emulate import powerpc
+    out = dict(v)
+    args = list(v["args"])
+    mem = {}
+    for at, data in v.get("mem_init") or ():
+        for k, b in enumerate(bytes(data)):
+            mem[at + k] = b
+    changed = False
+    for name, value in values.items():
+        kind, where, bits, was = names.get(name, (None, None, 0, None))
+        if kind == "arg" and where < len(args):
+            changed |= args[where] != value & powerpc.M64
+            args[where] = value & powerpc.M64
+        elif kind == "ret":
+            changed |= int(v.get("stub_ret", 0)) & powerpc.M64 != value & powerpc.M64
+            out["stub_ret"] = value & powerpc.M64
+        elif kind == "mem":
+            changed |= mem.get(where, was) != value & 0xFF
+            mem[where] = value & 0xFF
+    if not changed:
+        return None
+    out["args"] = args
+    if mem:
+        under = powerpc.filled(v["fill"]) if v.get("fill") else b""
+        pages, runs = {}, []
+        for at in sorted(mem):
+            lo = (at & ~(powerpc.PAGE - 1)) - powerpc.ARGS_BASE
+            if 0 <= lo < len(under):                         # (in the fill: the whole page)
+                base = at & ~(powerpc.PAGE - 1)
+                if base not in pages:
+                    pages[base] = bytearray(under[lo:lo + powerpc.PAGE])
+                pages[base][at - base] = mem[at]
+            elif runs and runs[-1][0] + len(runs[-1][1]) == at:
+                runs[-1][1].append(mem[at])
+            else:
+                runs.append((at, [mem[at]]))
+        out["mem_init"] = tuple(sorted([(base, bytes(page)) for base, page in pages.items()] +
+                                       [(at, bytes(data)) for at, data in runs]))
+    return out
+
+
+def _writable(module_path):
+    """[(low, high)] of the image's writable sections: its globals, which an input may set."""
+    from codebreaker.formats import powerpc_image
+    try:
+        return [(at, at + size) for _name, at, size, chars in powerpc_image.read(module_path).sections
+                if chars & 0x80000000 and not chars & 0x20000000]
+    except Exception:
+        return []
+
+
+def explore_vectors(shared, va, span, externs, seeds, absent=None, data=()):
+    """(inputs, exploration): inputs taking paths of the original no seed took, found path by path
+    (lane_common.explored), and how far the exploration got. The seeds are run first as the
+    guessing explorer runs them (their branches logged): of those that took the same path only
+    one is run again with its shadow. Where the paths are not all and a jump of the function's
+    own was seen one way only, the guessing explorer gets lane_common.GUIDED_REST runs, seeded
+    with every run made."""
+    from codebreaker.emulate import pcode, powerpc, shadow
+    from codebreaker.verify import guided
+    lifter = pcode.lifter(_mode())
+    lo, hi = span
+    region = (powerpc.ARGS_BASE, powerpc.ARGS_BASE + 0x10000)
+
+    def inputs(b):
+        return region[0] <= b < region[1] or any(a <= b < z for a, z in data)
+
+    def observe(v, **more):
+        try:
+            r = P.emulator.run(v.get("mem_init") or (), va, v["args"], externs=externs, span=span,
+                               stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), branches=True,
+                               absent=absent, **more)
+        except Exception:
+            return None, None
+        return r, {"branches": r.raw["branches"], "reach": r.path, "args_at": None,
+                   "stack": (powerpc.STACK_LOW, powerpc.STACK_TOP)}
+
+    seen, known = [], {}
+    for i, v in enumerate(seeds):
+        _r, o = observe(v)
+        if o is not None:
+            seen.append((v, o))
+            known[i] = [(a, taken) for a, taken, _cmp in o["branches"]]
+
+    def run(v):
+        sh = shadow.ShadowPPC(lifter, inputs, span=span)
+        sh.enter([("r%d" % (3 + k), int(a) & powerpc.M64, k) for k, a in enumerate(v["args"][:8])], bits=64)
+        r, o = observe(v, shadow=sh)
+        if r is None:
+            return None
+        seen.append((v, o))
+        lost = set(sh.lost)
+        if r.truncated:
+            lost.add("truncated")
+        return {"trail": sh.trail, "path": sh.path, "vars": sh.vars, "lost": lost, "cut": r.truncated}
+    got = lane_common.explored(run, seeds, _derive, own=lambda site: lo <= site < hi, known=known, steps=SOLVER_STEPS)
+    kept = list(got.kept)
+    one_way = {}
+    for site, taken in got.edges:
+        one_way[site] = one_way.get(site, 0) | (1 << int(taken))
+    if not got.complete and any(w != 3 for w in one_way.values()) and lane_common.GUIDED_REST and seen:
+        extra = guided.guided_inputs(lambda v: observe(v)[1], [], budget=lane_common.GUIDED_REST,
+                                     keep=lane_common.MAX_GUIDED, seed=va & 0xFFFF, byteorder="big", word=8,
+                                     observed=seen)
+        kept += extra
+        got.guessed = len(extra)
+    return kept, got
 
 
 def _argument(machine, v, images):
@@ -126,19 +272,18 @@ def fingerprint(shared, entry, v, externs, argc, images, span=None, novalue=Fals
                            stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), absent=images[0])
     except Exception as e:
         return {"err": type(e).__name__}
-    ex = compare._exit_norm(r["exit"])
-    m = r["machine"]
-    deps = list(lane_common.calls([(name, None if argc.get(name) is None else args[:argc[name]])
-                                   for name, args in r["calls"]], lambda x: _argument(m, x, images)))
-    if r["truncated"] and len(r["calls"]) >= powerpc.MAX_CALLS:
+    ex = r.ended
+    m = r.raw["machine"]
+    deps = list(lane_common.calls([(c.name, None if argc.get(c.name) is None else c.args[:argc[c.name]])
+                                   for c in r.calls], lambda x: _argument(m, x, images)))
+    if r.truncated and len(r.calls) >= powerpc.MAX_CALLS:
         deps.append("...")
     lo_r, hi_r = images[-1]                                  # the rebuilt image, when there is one
-    writes = lane_common.writes({a: new for a, (_old, new) in r["writes"].items()
-                                 if not (len(images) > 1 and lo_r <= a < hi_r)})
     lo = span[0] if span else 0
-    return {"ret": None if (novalue or ex != "ret") else r["ret"] & M32, "exit": ex, "truncated": bool(r["truncated"]),
-            "deps": tuple(deps), "writes": writes, "pop": None, "saved": r["saved"] if ex == "ret" else None,
-            "cov": tuple(sorted(p - lo for p in r["path"])), "reach": ()}
+    return lane_common.fingerprint(
+        r, deps, ret=None if (novalue or ex != "ret") else r.results["r3"] & M32,
+        writes=lane_common.left(r, lambda a: None if len(images) > 1 and lo_r <= a < hi_r else a), saved=r.kept(),
+        cov=tuple(sorted(p - lo for p in r.path)), pop=None)
 
 
 _SHARED = {}
@@ -177,12 +322,16 @@ def _judge(context, item):
                                     sorted(ext_original.items()), sorted(argc.items())) if sha else None
             return lane_common.remembered(key, lambda: fingerprint(alone, va, v, ext_original, argc, images[:1],
                                                                    span=span, novalue=novalue))
-        return compare.compare(
+        found = {}
+        verdict, reason, limits = compare.compare(
             original,
             lambda v: fingerprint(both, rebuilt_va, v, merged, argc, images, novalue=novalue),
             vectors(), (), insns=insns, info=info,
             directed=lambda covered, reached: directed_and_guided(module_path, alone, va, span, ext_original,
-                                                                  images[0]))
+                                                                  images[0], found))
+        if verdict != "divergent":
+            limits = list(limits) + lane_common.path_limits(found.get("got"))
+        return verdict, reason, limits
     return lane_common.judged(compare_one)
 
 
@@ -192,7 +341,11 @@ PER_FUNCTION = True             # a verdict holds while the function and what it
 
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
-    settings = repr(("powerpc", REV, compare.REV, P.compiler.options(), vectors()))
+    from codebreaker.emulate import pcode
+    ready = concolic_ready()
+    settings = repr(("powerpc", REV, compare.REV, P.compiler.options(), vectors(),
+                     ("paths", ready, lane_common.PATH_BUDGET, lane_common.MAX_PATHS, lane_common.GUIDED_REST, SOLVER_STEPS,
+                      pcode.stamp(_mode()) if ready else "")))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 

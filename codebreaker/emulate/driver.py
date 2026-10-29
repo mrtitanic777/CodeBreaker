@@ -90,7 +90,7 @@ def load(path, member=None):
 
 # One run ---------------------------------------------------------------------------------------
 def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, service_carry=0, cap=INSN_CAP,
-        flags=0):
+        flags=0, shadow=None):
     """Run flat 32-bit code at `entry` of `image` until it returns, and record what it did:
     {"exit", "eax", "flags", "registers", "esp_delta", "calls" [(device, service, registers,
     stack words)], "ports" [...], "mem_writes" [...], "cover" (addresses run inside the image),
@@ -98,7 +98,9 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
     [(address, bytes)] set before the run; `flags` the carry (1) and zero (0x40) flags on
     entry. Every `int 20h` service call is recorded and
     returns EAX = service_eax, carry = service_carry; a call that leaves the image for
-    nowhere is recorded and returned from the same way."""
+    nowhere is recorded and returned from the same way. `shadow`: an emulate/shadow.py ShadowLE
+    kept up beside the run (the path explorer's): stepped before each instruction run, told of
+    each call answered. The run is the same run with it or without."""
     import unicorn as U
     from unicorn import x86_const as X
     reg = {n: getattr(X, "UC_X86_REG_" + n.upper()) for n in REGISTERS + ("esp", "eip", "eflags")}
@@ -153,6 +155,8 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
             sp = uc.reg_read(reg["esp"])
             uc.reg_write(reg["eip"], struct.unpack("<I", uc.mem_read(sp, 4))[0])
             uc.reg_write(reg["esp"], sp + 4)
+        if shadow is not None:
+            shadow.after_call(uc, True, service_eax, carry=service_carry)
 
     def on_code(_uc, address, _size, _user):
         if rec["insns"] >= cap:
@@ -163,7 +167,12 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
         if image.holds(address):
             if len(rec["cover"]) < MAX_COVER:
                 rec["cover"].add(address)
-        elif not SCRATCH <= address < SCRATCH + emulator._SCRATCH_SIZE:
+            if shadow is not None:
+                shadow.step(uc, address)
+        elif SCRATCH <= address < SCRATCH + emulator._SCRATCH_SIZE:
+            if shadow is not None:                           # (a pointer's landing pad: a plain `ret`)
+                shadow.step(uc, address)
+        else:
             # Through a pointer nothing here fills in (a callback, a hooked vector): a call out.
             rec["outside"] += 1
             if rec["outside"] > MAX_OUTSIDE:
@@ -199,6 +208,8 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
                 uc.reg_write(reg["eip"], eip + 4)
             if where:
                 uc.reg_write(reg[where], VM)
+                if shadow is not None:
+                    shadow.forget((where.upper(),))
         elif number != 0x41:                                 # 41h talks to a debugger: nothing happens
             rec["exit"] = "int:%02x" % number
             uc.emu_stop()
@@ -250,3 +261,27 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
     rec["registers"] = tuple(uc.reg_read(reg[n]) for n in RESULT_REGISTERS)
     rec["esp_delta"] = (uc.reg_read(reg["esp"]) - esp) & 0xFFFFFFFF
     return rec
+
+
+def record(rec):
+    """run's record as the one run record (emulate/run.py): EAX, the carry and zero flags and the
+    result registers; each service call (detail: (device, service), or (None, address) for a call
+    out through a pointer) with its registers and stack words; each port access; the addresses
+    of the driver's own code that ran."""
+    from codebreaker.emulate.run import IO, Call, Run, Write
+    ws = rec.get("mem_writes") or []
+    results = {"eax": rec.get("eax"), "flags": rec.get("flags")}
+    results.update(zip(RESULT_REGISTERS, rec.get("registers") or ()))
+    return Run(rec.get("exit"), results=results,
+               writes=[Write(w["addr"], w["size"], w["value"] or 0, w.get("old") or 0, False) for w in ws],
+               capped=len(ws) >= emulator._MAX_MEM,
+               calls=[Call(None, tuple(regs) + tuple(words), (device, service))
+                      for device, service, regs, words in rec.get("calls") or ()],
+               io=[IO(None, kind, port, value, size) for kind, port, size, value in rec.get("ports") or ()],
+               stack=rec.get("esp_delta"), path=rec.get("cover") or (), steps=rec.get("insns"),
+               truncated=rec.get("truncated"), raw=rec)
+
+
+def recorded(image, entry, *a, **kw):
+    """The platform's runner (platforms/vxd.py emulator.run): run(...) as a Run."""
+    return record(run(image, entry, *a, **kw))

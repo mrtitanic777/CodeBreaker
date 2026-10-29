@@ -14,6 +14,6 @@ PLATFORM = machine(
     "gb", "Game Boy / Game Boy Color", "sm83", "cartridge image (.gb, .gbc)",
     Cpu("sm83:LE:16:default", bits=8, endian="little", decoder="codebreaker.decompile.sm83",
         registers=("A", "F", "BC", "DE", "HL", "SP"), stack="SP"),
-    _recognise, reader=("codebreaker.formats.gb", "read"), runner=("codebreaker.emulate.sm83", "run"),
+    _recognise, reader=("codebreaker.formats.gb", "read"), runner=("codebreaker.emulate.sm83", "recorded"),
     assembler=("codebreaker.build.sm83_asm", "build"), writer=("codebreaker.source.gb_writer", "reconstruct"),
     results=("A", "F", "BC", "DE", "HL"), toolchain="CodeBreaker's own assembler, or RGBDS")

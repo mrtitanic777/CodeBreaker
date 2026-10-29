@@ -43,7 +43,7 @@ from codebreaker.base import corpus, settings
 from codebreaker.decompile import describe
 from codebreaker.emulate import emulator
 from codebreaker.emulate.driver import (BUFFER, CLIENT, INSN_CAP, MAX_CALLS, OBJECT, REGISTERS, RESULT_REGISTERS, SAFE,
-                                        STACK_HI, STACK_LO, VM, load)
+                                        SCRATCH, STACK_HI, STACK_LO, VM, load)
 from codebreaker.formats import le
 from codebreaker.symbols import driver_services
 from codebreaker.verify import compare
@@ -51,7 +51,8 @@ from codebreaker.verify import lane_common
 
 KIND = "le"
 P = platforms.of(KIND)            # device drivers: the six slots this lane asks
-REV = 3                           # what a verdict means; raise when run() or the inputs change
+REV = 4                           # what a verdict means; raise when run() or the inputs change
+                                  # (4: inputs found path by path beyond the fixed ones, explore_vectors)
 
 
 
@@ -74,12 +75,11 @@ def _effects(image, r, aligned):
     """What the run left in memory outside its stack: (bytes changed, digest). Memory outside
     the driver by address; the driver's own by address too when the two files are laid out
     alike, else as the values stored in the order they were stored. None: too many to record."""
-    ws = r["mem_writes"]
-    if len(ws) >= emulator._MAX_MEM:
+    if r.capped:
         return None
     state, before, own = {}, {}, []
-    for w in ws:
-        a, n, v = w["addr"], min(w["size"], 8), w["value"] or 0
+    for w in r.writes:
+        a, n, v = w.address, min(w.size, 8), w.value
         if STACK_LO <= a < STACK_HI:
             continue
         inside = image.holds(a)
@@ -87,7 +87,7 @@ def _effects(image, r, aligned):
             own.append((n, _value(image, v, aligned) if n == 4 else v & ((1 << (8 * n)) - 1)))
             continue
         for i in range(n):
-            before.setdefault(a + i, ((w.get("old") or 0) >> (8 * i)) & 0xFF)
+            before.setdefault(a + i, (w.old >> (8 * i)) & 0xFF)
         if n == 4 and _value(image, v, aligned) in ("S", "P"):
             for i in range(4):
                 state[a + i] = _value(image, v, aligned)
@@ -115,23 +115,111 @@ def _run(image, entry, v, aligned):
         raise
     except Exception as e:
         return {"err": "%s: %s" % (type(e).__name__, e)}
-    deps = list(lane_common.calls([(_service(device, service) if device is not None else
-                                    "outside:" + _value(image, service, aligned), regs + tuple(words))
-                                   for device, service, regs, words in r["calls"]],
+    deps = list(lane_common.calls([(_service(*c.detail) if c.detail[0] is not None else
+                                    "outside:" + _value(image, c.detail[1], aligned), c.args) for c in r.calls],
                                   lambda x: _value(image, x, aligned), cap=MAX_CALLS))
-    deps += ["%s(%x,%d,%x)" % p for p in r["ports"][:MAX_CALLS]]
-    done = compare._exit_norm(r["exit"]) == "ret"
+    deps += ["%s(%x,%d,%x)" % (p.kind, p.port, p.size, p.value) for p in r.io[:MAX_CALLS]]
+    done = r.ended == "ret"
     memory = _effects(image, r, aligned)
-    result = (r["flags"],) + tuple(_value(image, x, aligned) for x in r["registers"]) if done else ()
-    return {"exit": compare._exit_norm(r["exit"]), "ret": r["eax"], "deps": tuple(deps),
-            "truncated": bool(r["truncated"]),
-            # the comparer's "what it left behind": memory, and for a driver the flags and
-            # registers it hands back, which are results here just as EAX is
-            "writes": None if memory is None else "%d:%s" % (memory[0], hashlib.sha1(
-                repr((memory[1], result)).encode()).hexdigest()[:16]),
-            "memory": memory, "result": result,
-            "pop": r["esp_delta"] if done else None, "saved": None,
-            "cov": tuple(sorted(r["cover"])), "reach": ()}
+    result = (r.results["flags"],) + tuple(_value(image, r.results[n], aligned) for n in RESULT_REGISTERS) \
+        if done else ()
+    # the comparer's "what it left behind": memory, and for a driver the flags and registers it
+    # hands back, which are results here just as EAX is
+    return lane_common.fingerprint(
+        r, deps, ret=r.results["eax"], saved=None, cov=tuple(sorted(r.path)), writes=None if memory is None else
+        "%d:%s" % (memory[0], hashlib.sha1(repr((memory[1], result)).encode()).hexdigest()[:16]),
+        result=result, memory=memory)
+
+
+def _mode():
+    """The lift mode of the platform's processor (emulate/shadow.py mode: its cpu slot)."""
+    from codebreaker.emulate import shadow
+    return shadow.mode(P.cpu)
+
+
+# Path by path (verify/concolic.py), as the Windows judges find them: the original run with its
+# symbolic shadow (emulate/shadow.py ShadowLE, on the decompiler's x86-32-flat p-code) -- the
+# registers it is entered with (EAX-EDI), the carry and zero flags, its stack words, the bytes of
+# the scratch memory its pointers lead into, and what a service call answers in EAX and carry are
+# the inputs -- and inputs solved for to take each path its conditions allow. The driver's own
+# jumps are its paths (a procedure and what it calls inside the driver). Off without the lifter,
+# or with CB_NO_CONCOLIC / CB_NO_GUIDED set: then only the fixed inputs, as before.
+def concolic_ready():
+    from codebreaker.emulate import pcode
+    return lane_common.guided_on() and lane_common.concolic_on() and pcode.lifter(_mode()) is not None
+
+
+def _paths_profile():
+    from codebreaker.emulate import pcode
+    ready = concolic_ready()
+    return [ready, lane_common.PATH_BUDGET, lane_common.MAX_PATHS, list(pcode.stamp(_mode())) if ready else ""]
+
+
+def _derive(v, values, names):
+    """Input `v` with the named inputs (shadow.vars) set to `values`."""
+    out = dict(v)
+    regs, stack = dict(v["regs"]), list(v.get("stack") or ())
+    flags = v.get("flags", 0)
+    memory = list(v.get("memory") or ())
+    changed = False
+    for name, value in values.items():
+        kind, where, bits, was = names.get(name, (None, None, 0, None))
+        if kind == "arg" and where < len(stack):
+            changed |= stack[where] != value & 0xFFFFFFFF
+            stack[where] = value & 0xFFFFFFFF
+        elif kind == "reg" and where in regs:
+            changed |= regs[where] != value & 0xFFFFFFFF
+            regs[where] = value & 0xFFFFFFFF
+        elif kind == "reg" and where in ("cf", "zf"):
+            bit = 1 if where == "cf" else 0x40
+            new = (flags | bit) if value else (flags & ~bit)
+            changed |= new != flags
+            flags = new
+        elif kind == "ret":
+            changed |= int(v.get("stub_ret", 0)) != value & 0xFFFFFFFF
+            out["stub_ret"] = value & 0xFFFFFFFF
+        elif kind == "carry":
+            changed |= int(v.get("stub_carry", 0)) != (1 if value else 0)
+            out["stub_carry"] = 1 if value else 0
+        elif kind == "mem":
+            changed |= was != value & 0xFF
+            memory.append((where, bytes([value & 0xFF])))
+    if not changed:
+        return None
+    out.update(regs=regs, stack=tuple(stack), flags=flags, memory=memory,
+               args=[regs[n] for n in REGISTERS[:6]] + stack)
+    return out
+
+
+def explore_vectors(image, entry, seeds):
+    """(inputs, exploration): inputs taking paths of the original no seed took, found path by path
+    (lane_common.explored), and how far the exploration got. Each seed is run again with its
+    shadow (the driver's runs keep no branch log to know their paths by)."""
+    from codebreaker.emulate import emulator as tracer
+    from codebreaker.emulate import pcode, shadow
+    lifter = pcode.lifter(_mode())
+    scratch = (SCRATCH, SCRATCH + emulator._SCRATCH_SIZE)
+
+    def run(v):
+        sh = shadow.ShadowLE(lifter, lambda b: scratch[0] <= b < scratch[1])
+        stack = list(v.get("stack") or ())
+        esp = tracer._STACK_TOP - 4 * len(stack) - 4
+        sh.enter([(esp + 4 + 4 * k, w & 0xFFFFFFFF, k) for k, w in enumerate(stack)] +
+                 [(n.upper(), v["regs"][n] & 0xFFFFFFFF, n) for n in REGISTERS[:6] if n in v["regs"]], bits=32)
+        sh.enter([("CF", v.get("flags", 0) & 1, "cf"), ("ZF", (v.get("flags", 0) >> 6) & 1, "zf")], bits=8)
+        try:
+            r = P.emulator.run(image, entry, v["regs"], v.get("stack", ()), v.get("memory", ()),
+                               v.get("stub_ret", 0), v.get("stub_carry", 0), flags=v.get("flags", 0), shadow=sh)
+        except ImportError:
+            raise
+        except Exception:
+            return None
+        lost = set(sh.lost)
+        if r.truncated:
+            lost.add("truncated")
+        return {"trail": sh.trail, "path": sh.path, "vars": sh.vars, "lost": lost, "cut": r.truncated}
+    got = lane_common.explored(run, seeds, _derive, own=image.holds, more=len(seeds))
+    return list(got.kept), got
 
 
 def explain(a, b):
@@ -220,7 +308,7 @@ def profile(module_path=None):
     text = json.dumps({"kind": KIND, "judge": REV, "comparer": compare.REV, "cap": INSN_CAP,
                        "inputs": [len(first), len(more), len(sfirst), len(smore)],
                        "segments": builder.SEGMENT_CLASSES, "tools": tools,
-                       "services": driver_services.size()}, sort_keys=True)
+                       "services": driver_services.size(), "paths": _paths_profile()}, sort_keys=True)
     return hashlib.sha1(text.encode()).hexdigest()[:12], text
 
 
@@ -328,14 +416,23 @@ def judge(context, item):
             return f
         return fp
 
+    found = {}
+
+    def aimed(_covered, _reached):
+        if not concolic_ready():
+            return []
+        kept, found["got"] = explore_vectors(a, a.entries[label], list(first) + list(more))
+        return kept
     try:
         verdict, reason, limits = compare.compare(side(a, a.entries[label], "a"), side(b, b.entries[label], "b"),
-                                                  first, more, info=info)
+                                                  first, more, info=info, directed=aimed)
     except ImportError:
         raise
     except Exception as e:                                  # one entry point must not sink the rest
         return "inconclusive", "judge: %s: %s" % (type(e).__name__, e), [], ""
     limits = list(limits)
+    if verdict != "divergent":
+        limits += lane_common.path_limits(found.get("got"))
     if not aligned:
         limits.append("layout-differs")
     detail = info.get("detail", "")
@@ -371,8 +468,8 @@ def break_instruction(original, out, label, nth=0):
         return None
     cover = set()
     for v in inputs(label)[0]:
-        cover |= P.emulator.run(image, image.entries[label], v["regs"], v["stack"], v["memory"],
-                                flags=v["flags"])["cover"]
+        cover |= set(P.emulator.run(image, image.entries[label], v["regs"], v["stack"], v["memory"],
+                                    flags=v["flags"]).path)
     md = P.cpu.disassembler()
     patched = set()
     for obj, off, _kind, _to, _ta in le.references(lf):

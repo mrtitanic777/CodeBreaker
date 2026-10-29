@@ -1073,6 +1073,26 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     return rec
 
 
+def record(rec):
+    """probe's record as the one run record (emulate/run.py): AX and DX:AX the results, every
+    Windows call made with its hit (the detail: what the lane names it from), the devices' log,
+    SI DI DS as they went in and came out, the linear addresses run in order."""
+    from codebreaker.emulate.run import IO, Call, Run, Write
+    entry, out = rec.get("entry_regs") or {}, rec.get("exit_regs") or {}
+    return Run(rec.get("exit"), results={"AX": rec.get("ret"), "DX:AX": rec.get("ret32")},
+               writes=[Write(w["addr"], w["size"], w["value"] or 0, w.get("old") or 0, False)
+                       for w in rec.get("mem_writes") or ()],
+               calls=[Call(h.get("api"), h.get("args_stack"), h) for h in rec.get("imports_hit") or ()],
+               io=[IO(n, what, port, value, None) for n, what, port, value in rec.get("io") or ()],
+               stack=rec.get("sp_delta"), preserved={r: (entry.get(r), v) for r, v in out.items()},
+               path=rec.get("path") or (), steps=rec.get("insn_count"), truncated=rec.get("truncated"), raw=rec)
+
+
+def recorded(dll, **kw):
+    """The platform's runner (platforms/win16.py emulator.run): probe(dll, **kw) as a Run."""
+    return record(probe(dll, **kw))
+
+
 _REF = ("docs", "reference")
 _CACHE = {}
 

@@ -3,7 +3,8 @@
     verdict, reason, limits = compare.compare(fp_original, fp_rebuilt, inputs, ...)
 
 `fp_original(v)` and `fp_rebuilt(v)` run their side on input `v` and return a FINGERPRINT of the
-run -- a dict saying how it ended, what it returned, which calls it made with which arguments,
+run (made from the emulator's run record, emulate/run.py, by lane_common.fingerprint) -- a dict
+saying how it ended, what it returned, which calls it made with which arguments,
 what it left in memory, how far the stack moved, whether saved registers were preserved, and
 which of the original's instructions ran. This module knows nothing about processors or file
 formats: a kind of module (verify/lanes/win32.py, verify/lanes/win16.py) knows how to run its code and
@@ -16,13 +17,6 @@ than it looks are the same for all of them.
     inconclusive   the original could not be observed on any input
 """
 import hashlib
-
-
-def _exit_norm(e):
-    if e is None:
-        return "none"
-    e = str(e)
-    return "ret" if e == "ret" else ("fault" if e.startswith("exception") else e.split(":")[0])
 
 
 # Bump when the oracle changes what a trace of the SAME code observes, so fingerprints cached under

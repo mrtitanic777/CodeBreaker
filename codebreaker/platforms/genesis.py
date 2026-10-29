@@ -14,6 +14,6 @@ PLATFORM = machine(
     "genesis", "Genesis / Mega Drive", "68000", "cartridge image (.md, .bin, .gen, .smd)",
     Cpu("68000:BE:32:default", bits=32, endian="big", decoder="codebreaker.decompile.m68k",
         registers=tuple("D%d" % i for i in range(8)) + tuple("A%d" % i for i in range(8)) + ("SR",), stack="A7"),
-    _recognise, reader=("codebreaker.formats.genesis", "read"), runner=("codebreaker.emulate.m68k", "run"),
+    _recognise, reader=("codebreaker.formats.genesis", "read"), runner=("codebreaker.emulate.m68k", "recorded"),
     assembler=("codebreaker.build.m68k_asm", "build"), writer=("codebreaker.source.genesis_writer", "reconstruct"),
     results=tuple("D%d" % i for i in range(8)) + tuple("A%d" % i for i in range(7)), toolchain="CodeBreaker's own assembler")

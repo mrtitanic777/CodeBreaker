@@ -1,8 +1,11 @@
 """shadow.py -- which values of a run are made from its inputs, and from which: a run's symbolic
-shadow, kept up beside Unicorn instruction by instruction.
+shadow, kept up beside the emulator instruction by instruction.
 
-    sh = shadow.Shadow16(lifter, segbase, inputs)     # inputs: which linear bytes are inputs
-    ... the tracer calls sh.enter(), sh.step() before each instruction, sh.after_call() ...
+    sh = shadow.Shadow16(lifter, segbase, inputs)     # a 16-bit run in Unicorn (windows16)
+    sh = shadow.Shadow32(lifter, inputs)              # a flat 32-bit run in Unicorn (emulator.trace_function)
+    sh = shadow.ShadowLE(lifter, inputs)              # a driver's flat ring-0 run in Unicorn (driver.run)
+    sh = shadow.ShadowPPC(lifter, inputs)             # a PowerPC run in CodeBreaker's interpreter (powerpc.run)
+    ... the runner calls sh.enter(), sh.step() before each instruction, sh.after_call() ...
     sh.path        [(site, taken, condition, kind)]  the conditions the run's path went by: each
                    a condition (emulate/symbolic.py) and whether it held -- a jump's ("jump": taken or not), one
                    inside an instruction's p-code ("inner": a string instruction's count), or an
@@ -11,22 +14,28 @@ shadow, kept up beside Unicorn instruction by instruction.
     sh.vars        {name: (kind, where, bits, value)} the inputs the conditions are over
     sh.lost        why the conditions may not be all there is (empty: they are)
 
-The run itself is Unicorn's: nothing here changes it. Before each instruction runs, its p-code
-(emulate/pcode.py, the decompiler's own specification) is evaluated twice over at once --
-concretely, from the registers and memory as they are at that moment, and symbolically (emulate/symbolic.py,
-for the solver) for the values that come from an input. Only the symbolic half is kept: which
-register bytes and memory bytes hold an expression over the inputs. A conditional jump whose
-condition is such an expression is a condition of the path; its direction is the one Unicorn
-then takes (the next instruction says which).
+The run itself is the emulator's: nothing here changes it. Before each instruction runs, its
+p-code (emulate/pcode.py, the decompiler's own specification) is evaluated twice over at once --
+concretely, from the registers and memory as they are at that moment, and symbolically
+(emulate/symbolic.py, for the solver) for the values that come from an input. Only the symbolic
+half is kept: which register bytes and memory bytes hold an expression over the inputs. A
+conditional jump whose condition is such an expression is a condition of the path; its
+direction is the one the emulator then takes (the next instruction says which).
 
-The inputs are the function's argument words (a0, a1 ... in the order pushed), any byte of
-memory the `inputs(address)` test names (the data segment, the scratch segment pointers go to)
-not yet written by the run (m<address>), and what an unmodelled Windows call returns (ret, 32
-bits, DX:AX). An address made from an input is held at the value it had (a "pin" in the path:
-the pointer as given), and so is a selector; a value made from an input that leaves through
-something not followed (a call the environment answers from its arguments, an interrupt, an
-operation without a meaning here) makes the path's conditions possibly short of all there are,
-and says so in `lost`."""
+What is particular to a processor and an emulator is a View (the platform's cpu slot: its
+register names as the specification has them, its word, its byte order; and how to read the
+emulator's registers and memory without disturbing it): UnicornX86 for both x86 runners,
+PowerPCView for the interpreter. Everything else -- the p-code's evaluation, the inputs, the
+conditions -- is the same for all of them.
+
+The inputs are the function's argument words (a0, a1 ... : in memory where they were pushed, or
+in the registers they are passed in), any byte of memory the `inputs(address)` test names (the
+data segment, the scratch memory pointers go to) not yet written by the run (m<address>), and
+what a call the environment does not model returns (ret). An address made from an input is held
+at the value it had (a "pin" in the path: the pointer as given), and so is a selector; a value
+made from an input that leaves through something not followed (a call the environment answers
+from its arguments, an interrupt, an operation without a meaning here) makes the path's
+conditions possibly short of all there are, and says so in `lost`."""
 from codebreaker.emulate import symbolic as S
 
 _CAP_PATH = 400                     # conditions kept per run; past it the run is followed no further
@@ -65,18 +74,122 @@ class _Stop(Exception):
     pass
 
 
-class Shadow16(object):
-    """The shadow of one 16-bit run (emulate/windows16.py trace_function16, `shadow`). `lifter`:
-    emulate/pcode.py's for x86-16-real. `segbase(uc, selector)`: the base a selector names.
-    `inputs(address)`: whether a linear byte is one of the run's inputs until written. `span`:
-    (low, high) linear addresses of the function's own code (its jumps are the path's)."""
+def mode(cpu):
+    """The lift mode (emulate/pcode.py) for a platform's cpu slot (codebreaker/platforms: its
+    SLEIGH language, bits, byte order), or None where there is no lift: x86 16-bit (its segments
+    read from the run), x86 32-bit flat, PowerPC big-endian."""
+    lang = str(cpu)
+    if lang.startswith("x86:LE:16"):
+        return "x86-16-real"
+    if lang.startswith("x86:LE:32"):
+        return "x86-32-flat"
+    if lang.startswith("PowerPC:BE"):
+        return "ppc-be-64"
+    return None
 
-    def __init__(self, lifter, segbase, inputs, span=None):
+
+class UnicornX86(object):
+    """The view of an x86 run in Unicorn (emulate/windows16.py, emulate/emulator.py): the
+    specification's register names are Unicorn's, its flags bits of EFLAGS; memory little-endian.
+    `bits`: 16 (a jump's target an offset in its segment) or 32 (flat)."""
+    endian = "little"
+    addresses = 0xFFFFFFFF                  # (what of an address reaches memory)
+
+    def __init__(self, bits=16):
         from unicorn import x86_const as X
-        self.lifter, self._segbase, self.inputs, self.span = lifter, segbase, inputs, span
+        self.X = X
+        self.mask = 0xFFFF if bits == 16 else 0xFFFFFFFF
+        self._ids = {}
+
+    def known(self, name):
+        return name in _FLAGS or getattr(self.X, "UC_X86_REG_" + name, None) is not None
+
+    def reg(self, uc, name):
+        bit = _FLAGS.get(name)
+        if bit is not None:
+            return (uc.reg_read(self.X.UC_X86_REG_EFLAGS) >> bit) & 1
+        r = self._ids.get(name)
+        if r is None:
+            r = self._ids[name] = getattr(self.X, "UC_X86_REG_" + name)
+        return uc.reg_read(r)
+
+    def code(self, uc, address):
+        try:
+            return bytes(uc.mem_read(address, 16))
+        except Exception:
+            return bytes(uc.mem_read(address, (address | 0xFFF) + 1 - address))
+
+    def mem(self, uc, at, size):
+        return bytes(uc.mem_read(at, size))
+
+
+class PowerPCView(object):
+    """The view of a run in CodeBreaker's PowerPC interpreter (emulate/powerpc.py): r0-r31, LR,
+    CTR, the condition register's eight fields, XER's bits, f0-f31 as the interpreter keeps them;
+    memory big-endian, read without making pages (a page the run has not touched reads as the
+    interpreter would give it)."""
+    endian = "big"
+    mask = 0xFFFFFFFF
+    addresses = 0xFFFFFFFF                  # (64-bit registers, 32-bit addresses: the interpreter's M32)
+
+    def __init__(self):
+        from codebreaker.emulate import powerpc
+        self.page = powerpc.PAGE
+
+    def known(self, name):
+        return name in ("LR", "CTR", "XER", "xer_so", "xer_ov", "xer_ca") or \
+            (name[:1] in "rf" and name[1:].isdigit()) or (name[:2] == "cr" and name[2:].isdigit())
+
+    def reg(self, m, name):
+        c = name[0]
+        if c == "r":
+            return m.r[int(name[1:])]
+        if c == "f":
+            return m.f[int(name[1:])]
+        if name[:2] == "cr":
+            return (m.cr >> (28 - 4 * int(name[2:]))) & 0xF
+        if name == "LR":
+            return m.lr
+        if name == "CTR":
+            return m.ctr
+        if name == "xer_ca":
+            return m.ca
+        if name == "XER":
+            return m.ca << 29
+        return 0                                             # (SO, OV: the interpreter never sets them)
+
+    def mem(self, m, at, size):
+        at &= 0xFFFFFFFF
+        off = at & (self.page - 1)
+        if off + size <= self.page:                          # (within one page: one slice)
+            page = m.pages.get(at >> 12)
+            if page is None:
+                page = m.shared.get(at >> 12)
+            return bytes(page[off:off + size]) if page is not None else bytes(size)
+        return b"".join(self.mem(m, at + i, 1) for i in range(size))
+
+    def code(self, m, address):
+        return self.mem(m, address, 4)
+
+
+class Shadow(object):
+    """The shadow of one run. `lifter`: emulate/pcode.py's for the processor; `view`: how the
+    emulator's registers and memory are read (UnicornX86, PowerPCView); `inputs(address)`: whether
+    a byte of memory is one of the run's inputs until written; `span`: (low, high) addresses of the
+    function's own code (its jumps are the path's); `segbase(machine, selector)`: the base a
+    selector names (x86; a flat program's are all 0). `result`: [(register, byte of it, byte of
+    `ret`)] -- where an unmodelled call's result lands; `clobbered`: the registers such a call
+    sets (anything else it leaves as it was); `ret_bits`: how wide `ret` is."""
+
+    def __init__(self, lifter, view, inputs, span=None, segbase=None, result=(), clobbered=(), ret_bits=32):
+        self.lifter, self.view, self.inputs, self.span = lifter, view, inputs, span
+        self._segbase = segbase or (lambda m, sel: 0)
+        self.result, self.clobbered, self.ret_bits = tuple(result), tuple(clobbered), ret_bits
+        self.little = view.endian == "little"
+        self.mask = view.mask
         self.bases = {}                     # selector -> base, as read this run (until a call)
         self.reg = {}                       # register byte -> (expr, k)
-        self.mem = {}                       # linear byte -> (expr, k)
+        self.mem = {}                       # byte of memory -> (expr, k)
         self.touched = set()                # bytes the run wrote (no longer inputs)
         self.vars = {}
         self.path, self.trail = [], []
@@ -87,26 +200,26 @@ class Shadow16(object):
         self.pending = None                 # (site, target, fallthrough, entry of path or None)
         self.lifted = {}
         self._sym = {}
-        # register bytes -> (Unicorn register, shift) or ("F", bit) for a flag
+        # register bytes -> (register name, shift): byte k of a register, from its low end on a
+        # little-endian processor, its high end on a big-endian one
         self.places = {}
         for name, (off, size) in lifter.regs.items():
-            if name in _FLAGS:
-                self.places[off] = ("F", _FLAGS[name])
-                continue
-            uc_reg = getattr(X, "UC_X86_REG_" + name, None)
-            if uc_reg is None:
+            if not view.known(name):
                 continue
             for k in range(size):
-                self.places[off + k] = (uc_reg, 8 * k)
-        self.flags_reg = X.UC_X86_REG_EFLAGS
+                self.places[off + k] = (name, 8 * (k if self.little else size - 1 - k))
         self.named = {n: o for n, (o, _s) in lifter.regs.items()}
 
-    def segbase(self, uc, sel):
+    def _bytes(self, at, size):
+        """The addresses of a value's bytes, its least significant first."""
+        return range(at, at + size) if self.little else range(at + size - 1, at - 1, -1)
+
+    def segbase(self, m, sel):
         """The base `sel` names (read once, until the environment next answers a call: an
         allocation makes descriptors)."""
         got = self.bases.get(sel)
         if got is None:
-            got = self.bases[sel] = self._segbase(uc, sel)
+            got = self.bases[sel] = self._segbase(m, sel)
         return got
 
     # --- inputs ---------------------------------------------------------------------------------
@@ -116,12 +229,28 @@ class Shadow16(object):
             self._sym[name] = S.var(name, bits)
         return self._sym[name]
 
-    def enter(self, arg_places):
-        """The run is about to start: argument word k sits at linear address arg_places[k]."""
-        for k, (at, value) in enumerate(arg_places):
-            v = self.var("a%d" % k, 16, "arg", k, value)
-            self.mem[at] = (v, 0)
-            self.mem[at + 1] = (v, 1)
+    def enter(self, places, bits=16):
+        """The run is about to start: argument k, `bits` wide, is (where, value) -- where a
+        memory address, or a register's name; or (where, value, k) to name it argument k (an
+        input named `k` itself, of kind "reg", when k is a string: "ecx")."""
+        for n, item in enumerate(places):
+            at, value = item[0], item[1]
+            k = item[2] if len(item) > 2 else n
+            v = self.var("a%d" % k, bits, "arg", k, value) if isinstance(k, int) else \
+                self.var(k, bits, "reg", k, value)
+            if isinstance(at, str):
+                off, size = self.lifter.regs[at]
+                for j, b in enumerate(self._bytes(off, size)):
+                    if j < bits // 8:
+                        self.reg[b] = (v, j)
+            else:
+                for j, b in enumerate(self._bytes(at, bits // 8)):
+                    self.mem[b] = (v, j)
+
+    def forget(self, names):
+        """Registers the environment set (not an instruction): no longer made from anything."""
+        if not self.off:
+            self._safely(self._forget_regs, names)
 
     def _forget_regs(self, names):
         for n in names:
@@ -132,16 +261,16 @@ class Shadow16(object):
             for b in range(off, off + size):
                 self.reg.pop(b, None)
 
-    # (what the tracer calls: nothing here may change the run -- whatever goes wrong in the
+    # (what the runner calls: nothing here may change the run -- whatever goes wrong in the
     # shadow ends the shadow, never the run: a selector no descriptor names, read for its base,
     # was an exception in Unicorn's hook, and Unicorn stopped LZCOPY there)
     def after_call(self, *a, **k):
         self._safely(self._after_call, *a, **k)
 
-    def step(self, uc, address, cs_base):
-        """Before the instruction at linear `address` (its segment based at `cs_base`) runs."""
+    def step(self, m, address, cs_base=0):
+        """Before the instruction at `address` (its segment based at `cs_base`) runs."""
         if not self.off:
-            self._safely(self._step, uc, address, cs_base)
+            self._safely(self._step, m, address, cs_base)
 
     def _safely(self, f, *a, **k):
         try:
@@ -150,25 +279,25 @@ class Shadow16(object):
             self.lost.add("shadow: %s" % type(e).__name__)
             self.off = True
 
-    def _after_call(self, uc, symbolic_result, value, args_at=None, nargs=0, why=None):
-        """A call the environment answered (an imported function, or a callee not run): AX and DX
-        now hold its result -- `ret`, an input, when `symbolic_result` -- and SP, CS, IP were set.
-        Arguments made from the inputs, when the result is made from them (`why`): the path may be
-        short of what it depends on."""
+    def _after_call(self, m, symbolic_result, value, args_at=None, nargs=0, why=None, word=2):
+        """A call the environment answered (an imported function, or a callee not run): the
+        `clobbered` registers were set, the result ones to its result -- `ret`, an input, when
+        `symbolic_result`. Arguments made from the inputs (`nargs` words of `word` bytes from
+        `args_at`), when the result is made from them (`why`): the path may be short of what it
+        depends on."""
         self.pending = None
         self.bases.clear()
         if self.off:
             return
         if why and args_at is not None:
-            if any(b in self.mem for b in range(args_at, args_at + 2 * nargs)):
+            if any(b in self.mem for b in range(args_at, args_at + word * nargs)):
                 self.lost.add(why)
-        self._forget_regs(("EAX", "EDX", "ESP", "EIP", "CS"))
+        self._forget_regs(self.clobbered)
         if symbolic_result:
-            r = self.var("ret", 32, "ret", None, value & 0xFFFFFFFF)
-            ax, dx = self.named["EAX"], self.named["EDX"]
-            self.reg[ax], self.reg[ax + 1] = (r, 0), (r, 1)
-            self.reg[ax + 2], self.reg[ax + 3] = (r, 2), (r, 3)
-            self.reg[dx], self.reg[dx + 1] = (r, 2), (r, 3)
+            r = self.var("ret", self.ret_bits, "ret", None, value & ((1 << self.ret_bits) - 1))
+            for name, k, j in self.result:
+                off, size = self.lifter.regs[name]
+                self.reg[off + k if self.little else off + size - 1 - k] = (r, j)
 
     def written(self, at, size):
         """Memory the environment wrote (not an instruction): no longer an input, nor made from one."""
@@ -177,7 +306,7 @@ class Shadow16(object):
             self.touched.add(b)
 
     # --- one instruction ------------------------------------------------------------------------
-    def _step(self, uc, address, cs_base):
+    def _step(self, m, address, cs_base):
         pend = self.pending
         if pend is not None:
             self.pending = None
@@ -191,12 +320,9 @@ class Shadow16(object):
                     self.path.append((site, went, entry, "jump"))
         self.steps += 1
         try:
-            raw = bytes(uc.mem_read(address, 16))
+            raw = self.view.code(m, address)
         except Exception:
-            try:
-                raw = bytes(uc.mem_read(address, (address | 0xFFF) + 1 - address))
-            except Exception:
-                return
+            return
         off = address - cs_base
         ins = self.lifted.get((raw, off))
         if ins is None:
@@ -211,7 +337,7 @@ class Shadow16(object):
                     self.reg.pop(b, None)
             return
         try:
-            self._run(uc, address, cs_base, ins)
+            self._run(m, address, cs_base, ins)
         except _Stop:
             pass
         if len(self.path) >= _CAP_PATH:
@@ -226,18 +352,16 @@ class Shadow16(object):
     def _run(self, uc, address, cs_base, ins):
         local_reg, local_mem, uniq, conc = {}, {}, {}, {}
         regs = self.reg
+        view, order, little = self.view, self._bytes, self.little
+        amask = view.addresses
 
         def concrete_reg(b):
             place = self.places.get(b)
             if place is None:
                 return 0
             r, shift = place
-            if r == "F":
-                if "F" not in conc:
-                    conc["F"] = uc.reg_read(self.flags_reg)
-                return (conc["F"] >> shift) & 1
             if r not in conc:
-                conc[r] = uc.reg_read(r)
+                conc[r] = view.reg(uc, r)
             return (conc[r] >> shift) & 0xFF
 
         def read(vn):
@@ -253,8 +377,7 @@ class Shadow16(object):
                 return 0, None
             if space == "r":
                 c, ents, any_s = 0, [], False
-                for k in range(size):
-                    b = off + k
+                for k, b in enumerate(order(off, size)):
                     if b in local_reg:
                         cb, e = local_reg[b]
                     else:
@@ -271,8 +394,8 @@ class Shadow16(object):
             if space == "u":
                 uniq[off] = (size, c, s)
             elif space == "r":
-                for k in range(size):
-                    local_reg[off + k] = ((c >> (8 * k)) & 0xFF, (s, k) if s is not None else None)
+                for k, b in enumerate(order(off, size)):
+                    local_reg[b] = ((c >> (8 * k)) & 0xFF, (s, k) if s is not None else None)
             elif space == "m":
                 store(off, size, c, s)
 
@@ -283,28 +406,27 @@ class Shadow16(object):
 
         def load(at, size, _s):
             try:
-                data = bytes(uc.mem_read(at, size))
+                data = view.mem(uc, at, size)
             except Exception:
                 data = bytes(size)
-            c = int.from_bytes(data, "little")
+            c = int.from_bytes(data, view.endian)
             ents, any_s = [], False
-            for k in range(size):
-                b = at + k
+            for k, b in enumerate(order(at, size)):
                 if b in local_mem:
                     cb, e = local_mem[b]
                     c = (c & ~(0xFF << (8 * k))) | (cb << (8 * k))
                 else:
                     e = self.mem.get(b)
                     if e is None and b not in self.touched and self.inputs(b):
-                        e = (self.var("m%x" % b, 8, "mem", b, data[k]), 0)
+                        e = (self.var("m%x" % b, 8, "mem", b, data[b - at]), 0)
                         self.mem[b] = e
                 ents.append(e)
                 any_s = any_s or e is not None
             return c, (_join(ents, c, size) if any_s else None)
 
         def store(at, size, c, s):
-            for k in range(size):
-                local_mem[at + k] = ((c >> (8 * k)) & 0xFF, (s, k) if s is not None else None)
+            for k, b in enumerate(order(at, size)):
+                local_mem[b] = ((c >> (8 * k)) & 0xFF, (s, k) if s is not None else None)
 
         ops = ins.ops
         i, n = 0, len(ops)
@@ -318,13 +440,13 @@ class Shadow16(object):
             elif opc == "LOAD":
                 ac, asym = read(args[1])
                 pin(ac, asym, 8 * args[1][2])
-                c, s = load(ac, out[2], None)
+                c, s = load(ac & amask, out[2], None)
                 write(out, c, s)
             elif opc == "STORE":
                 ac, asym = read(args[1])
                 pin(ac, asym, 8 * args[1][2])
                 c, s = read(args[2])
-                store(ac, args[2][2], c & _mask(args[2][2]), s)
+                store(ac & amask, args[2][2], c & _mask(args[2][2]), s)
             elif opc == "CALLOTHER":
                 name = args[0]
                 if name == "segment":
@@ -332,12 +454,21 @@ class Shadow16(object):
                     oc, os_ = read(args[2])
                     pin(sc, ss, 8 * args[1][2])
                     base = self.segbase(uc, sc)
-                    c = base + (oc & 0xFFFF)
                     s = None
-                    if os_ is not None:
-                        off16 = S.extract(os_, 0, 16)
-                        bits = 8 * out[2]
-                        s = S.binary("add", S.zext(off16, bits), S.const(base, bits)) if bits > 16 else off16
+                    if self.mask == 0xFFFF:                  # (real or protected 16-bit: base + 16-bit offset)
+                        c = base + (oc & 0xFFFF)
+                        if os_ is not None:
+                            off16 = S.extract(os_, 0, 16)
+                            bits = 8 * out[2]
+                            s = S.binary("add", S.zext(off16, bits), S.const(base, bits)) if bits > 16 else off16
+                    else:                                    # (flat: the offset is the address)
+                        c = base + oc
+                        if os_ is not None:
+                            bits = 8 * out[2]
+                            s = os_ if S.bits(os_) == bits else S.zext(os_, bits) if S.bits(os_) < bits \
+                                else S.extract(os_, 0, bits)
+                            if base:
+                                s = S.binary("add", s, S.const(base, bits))
                     write(out, c, s)
                 else:
                     if any(isinstance(a, tuple) and read(a)[1] is not None for a in args[1:]):
@@ -354,7 +485,7 @@ class Shadow16(object):
                     if taken:
                         i = i - 1 + _sx(tgt[1], tgt[2])
                 else:
-                    target, fall = cs_base + (tgt[1] & 0xFFFF), address + ins.length
+                    target, fall = cs_base + (tgt[1] & self.mask), address + ins.length
                     if target in (fall, address):            # (a string instruction's count run out, or
                         if cs is not None:                   # its compare: its loop is the instruction's own)
                             self.path.append((address, taken, S.nonzero(cs), "inner"))
@@ -391,6 +522,56 @@ class Shadow16(object):
                 self.mem.pop(b, None)
             else:
                 self.mem[b] = e
+
+
+class Shadow16(Shadow):
+    """The shadow of one 16-bit run (emulate/windows16.py trace_function16, `shadow`). `lifter`:
+    emulate/pcode.py's for x86-16-real. `segbase(uc, selector)`: the base a selector names.
+    `inputs(address)`: whether a linear byte is one of the run's inputs until written. `span`:
+    (low, high) linear addresses of the function's own code (its jumps are the path's). What an
+    unmodelled Windows call returns lands in DX:AX (and the high half of EAX)."""
+
+    def __init__(self, lifter, segbase, inputs, span=None):
+        Shadow.__init__(self, lifter, UnicornX86(16), inputs, span, segbase,
+                        result=(("EAX", 0, 0), ("EAX", 1, 1), ("EAX", 2, 2), ("EAX", 3, 3), ("EDX", 0, 2), ("EDX", 1, 3)),
+                        clobbered=("EAX", "EDX", "ESP", "EIP", "CS"))
+
+    def enter(self, arg_places, bits=16):
+        """The run is about to start: argument word k sits at linear address arg_places[k]."""
+        Shadow.enter(self, arg_places, bits)
+
+
+class Shadow32(Shadow):
+    """The shadow of one flat 32-bit run (emulate/emulator.py trace_function, `shadow`): every
+    segment based at 0; an import or callback the tracer answers sets EAX to `ret` and moves ESP
+    and EIP, nothing else. Arguments: dwords on the stack, or ECX / EDX (enter)."""
+
+    def __init__(self, lifter, inputs, span=None):
+        Shadow.__init__(self, lifter, UnicornX86(32), inputs, span, None,
+                        result=(("EAX", 0, 0), ("EAX", 1, 1), ("EAX", 2, 2), ("EAX", 3, 3)),
+                        clobbered=("EAX", "ESP", "EIP"))
+
+
+class ShadowLE(Shadow32):
+    """The shadow of one run of a driver's flat ring-0 code (emulate/driver.py run, `shadow`): a
+    service call (or a call out through a pointer) the emulator answers sets EAX to `ret` and the
+    carry flag to `carry`, as the input says. Inputs: the registers a procedure is entered with,
+    the carry and zero flags, its stack words, the scratch memory its pointers lead into."""
+
+    def _after_call(self, m, symbolic_result, value, *a, carry=0, **k):
+        Shadow._after_call(self, m, symbolic_result, value, *a, **k)
+        if symbolic_result and not self.off:
+            off = self.lifter.regs["CF"][0]
+            self.reg[off] = (self.var("carry", 8, "carry", None, carry & 1), 0)
+
+
+class ShadowPPC(Shadow):
+    """The shadow of one PowerPC run (emulate/powerpc.py run, `shadow`): a call out of the code
+    given returns `ret` (64 bits) in r3 and changes nothing else. Arguments: r3-r10 (enter)."""
+
+    def __init__(self, lifter, inputs, span=None):
+        Shadow.__init__(self, lifter, PowerPCView(), inputs, span, None,
+                        result=tuple(("r3", k, k) for k in range(8)), clobbered=("r3",), ret_bits=64)
 
 
 def _arith(opc, osize, vals, args, sh):

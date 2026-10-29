@@ -36,7 +36,7 @@ PLATFORM = Platform(
     convention=Convention(names=("registers",), arguments="registers", word=4, order="registers",
                           results=("EAX", "CF", "ZF"), pops="callee",
                           preserved=("EBX", "ECX", "EDX", "ESI", "EDI", "EBP")),
-    emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.driver", "run")),
+    emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.driver", "recorded")),
     compiler=Compiler(language="asm", toolchain="openwatcom wasm, the DDK's macros",
                       tool=Ref("codebreaker.build.driver", "tool", "wasm"), tools=Ref(__name__, "tools")),
     packager=Packager(writer=Ref("codebreaker.source.driver_writer", "reconstruct"),

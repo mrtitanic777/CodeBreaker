@@ -743,7 +743,9 @@ def test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do():
     # what was done to them is compared with the calls, in the order it was done
     hits = [{"api": "KERNEL.X", "n": 5}]
     io = [(2, "out", 0x3FB, 0x83), (9, "in", 0x3FD, 0x60)]
-    assert win16._effects(hits, io, lambda h: h["api"]) == ("out(3fb,83)", "KERNEL.X", "in(3fd)")
+    from codebreaker.emulate import windows16
+    r = windows16.record({"exit": "ret", "imports_hit": hits, "io": io})
+    assert win16._effects(r, lambda h: h["api"]) == ("out(3fb,83)", "KERNEL.X", "in(3fd)")
 
 
 def test_the_governor_shares_one_budget():

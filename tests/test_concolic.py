@@ -4,7 +4,8 @@
 Run:  python tests/test_concolic.py     (exit code 0 = all passed)
 
 The explorer's tests are self-contained (a made-up function over z3); the shadow's run real
-16-bit code in Unicorn and are skipped when z3 or the lifting pcodecheck is absent."""
+16-bit and 32-bit code in Unicorn and PowerPC code in CodeBreaker's interpreter, and are skipped
+when z3 or the lifting pcodecheck (with the mode each needs) is absent."""
 import os
 import sys
 
@@ -223,6 +224,131 @@ def test_the_lifter_gives_the_specification_s_p_code():
     assert any(o[0] == "CALLOTHER" and o[2][0] == "segment" for o in ins.ops)
     jcc = lifter.lift(bytes.fromhex("7405") + bytes(14), 0x20)
     assert jcc.ops[-1][0] == "CBRANCH" and jcc.ops[-1][2][0] == ("m", 0x27, 4), jcc.ops
+
+
+# --- the 32-bit and PowerPC shadows (one Shadow over the platform's view) ------------------------
+def _lifter_for(mode):
+    _z3()
+    from codebreaker.emulate import pcode
+    lifter = pcode.lifter(mode)
+    if lifter is None:
+        raise Skip("needs pcodecheck with its %s-lift mode (native/decompiler, target pcodecheck)" % mode)
+    return lifter
+
+
+def _lz32():
+    from codebreaker.base import corpus
+    from codebreaker.formats.pe import open_pe
+    path = corpus.retail("lz32.dll")
+    if not path:
+        raise Skip("needs lz32.dll in the corpus")
+    pe = open_pe(path)
+    return path, [(name, pe.image_base + rva) for _o, name, rva in pe.exports()]
+
+
+def test_a_32_bit_run_with_its_shadow_is_the_same_run():
+    """The 32-bit shadow only watches: LZ32's exports traced with it (one instruction at a time)
+    and without it (the fast tracer) give the judge the same fingerprint."""
+    _lifter_for("x86-32-flat")
+    from codebreaker.verify.lanes import win32
+    os.environ["CB_NO_FP_CACHE"] = "1"
+    path, exports = _lz32()
+    seeds = list(win32._vectors(4, "pe"))[1:] + list(win32._confirm_vectors(4, "pe"))[:3]
+    from codebreaker.emulate import pcode, shadow
+    from codebreaker.emulate import emulator as tracer
+    lifter = pcode.lifter("x86-32-flat")
+    for name, va in exports[:8]:
+        for v in seeds:
+            runs = []
+            for watched in (False, True):
+                sh = shadow.Shadow32(lifter, lambda b: 0x200000 <= b < 0x210000) if watched else None
+                r = win32.P.emulator.run(path, func=va, args=v["args"], mem_init=v.get("mem_init"),
+                                         stub_externals=True, stub_ret=int(v.get("stub_ret", 0)), reads=False,
+                                         stop_wild=True, quiet_stack=True, reuse=True, fast=True, lean=True,
+                                         pads=win32._PADS, shadow=sh, **win32._stub_options(path))
+                runs.append((r.exit, r.steps, r.results["EAX"], [tuple(c[:2]) for c in r.calls],
+                             win32._effects(r, None), r.stack, r.kept(), sorted(r.path)))
+            assert runs[0] == runs[1], (name, v.get("args"), runs[0][:4], runs[1][:4])
+            assert tracer._MACHINES                                  # (and the kept machines put back)
+
+
+def test_the_32_bit_explorer_finds_every_path_of_lzopenfile():
+    """LZOpenFileA through the x86-32-flat p-code: its paths found, said to be all, and each input
+    kept takes one no seed took."""
+    _lifter_for("x86-32-flat")
+    from codebreaker.verify.lanes import win32
+    os.environ["CB_NO_FP_CACHE"] = "1"
+    path, exports = _lz32()
+    va = dict(exports)["LZOpenFileA"]
+    seeds = list(win32._vectors(4, "pe")) + list(win32._confirm_vectors(4, "pe"))
+    kept, got = win32.explore_vectors(path, va, seeds)
+    assert got.complete and got.paths >= 4 and kept, got.summary()
+    trails = {tuple(win32._branch_run(path, va, v)["branches"]) for v in seeds}
+    for v in kept:
+        assert tuple(win32._branch_run(path, va, v)["branches"]) not in trails
+
+
+# cmpwi r3, 5 / beq +12 / li r3, 1 / blr / li r3, 2 / blr -- and a call out (bl) whose result is compared
+_PPC = bytes.fromhex("2C030005" "4182000C" "38600001" "4E800020" "38600002" "4E800020")
+_PPC_CALL = bytes.fromhex("7C0802A6" "F8010010" "48000101" "E8010010" "7C0803A6" "2C030007" "41820008"
+                          "4E800020" "38600009" "4E800020")
+
+
+def _ppc_run(code, a0, stub_ret=0, watched=True, externs=None):
+    from codebreaker.emulate import pcode, powerpc, shadow
+    base = 0x82000000
+    sh = None
+    if watched:
+        sh = shadow.ShadowPPC(pcode.lifter("ppc-be-64"),
+                              lambda b: powerpc.ARGS_BASE <= b < powerpc.ARGS_BASE + 0x10000, span=(base, base + len(code)))
+        sh.enter([("r3", a0)], bits=64)
+    r = powerpc.run([(base, code)], base, [a0], span=(base, base + len(code)), stub_ret=stub_ret, shadow=sh,
+                    externs=externs)
+    return r, sh
+
+
+def test_the_powerpc_shadow_gives_a_branch_s_condition_over_an_argument():
+    """cmpwi r3, 5 / beq: the branch's condition, through ppc_64_xenon_be's p-code, is over a0 (r3),
+    and z3's answer takes the other side; a call out's result is the input `ret`, and a condition
+    over it is solved too. With the shadow or without, the same run."""
+    _lifter_for("ppc-be-64")
+    from codebreaker.verify import concolic
+
+    def explore(code, externs=None):
+        def run(v):
+            r, sh = _ppc_run(code, v["a0"], v.get("ret", 0), externs=externs)
+            v["got"] = r["ret"]
+            return {"trail": sh.trail, "path": sh.path, "vars": sh.vars, "lost": set(sh.lost)}
+
+        def derive(v, values, names):
+            w = {"a0": v["a0"], "ret": v.get("ret", 0)}
+            for name, value in values.items():
+                w["a0" if names[name][0] == "arg" else "ret"] = value
+            return w if (w["a0"], w["ret"]) != (v["a0"], v.get("ret", 0)) else None
+        return concolic.explore(run, [{"a0": 0}], derive, budget=8, keep=8)
+    got = explore(_PPC)
+    assert [v["a0"] & 0xFFFFFFFF for v in got.kept] == [5] and got.kept[0]["got"] == 2, got.kept
+    assert got.paths == 2 and got.complete, got.summary()
+    externs = {0x82000108: "outside"}                       # (bl +0x100 from 0x82000008)
+    got = explore(_PPC_CALL, externs)
+    assert [v["ret"] & 0xFFFFFFFF for v in got.kept] == [7] and got.kept[0]["got"] == 9, got.kept
+    for a0, ret in ((0, 0), (5, 7), (-1, 3)):
+        plain, _ = _ppc_run(_PPC_CALL, a0, ret, watched=False, externs=externs)
+        watched, _ = _ppc_run(_PPC_CALL, a0, ret, externs=externs)
+        assert {k: plain[k] for k in ("exit", "ret", "steps", "calls", "writes", "saved")} == \
+            {k: watched[k] for k in ("exit", "ret", "steps", "calls", "writes", "saved")}
+
+
+def test_the_lifter_names_the_powerpc_registers():
+    """ppc-be-64-lift: r0-r31, LR, CTR, cr0-cr7, XER's bits, f0-f31 and XER named; addi's p-code
+    adds to r3's eight bytes, a conditional branch's target is its address."""
+    lifter = _lifter_for("ppc-be-64")
+    assert {"r3", "LR", "CTR", "cr0", "xer_ca", "f1", "XER"} <= set(lifter.regs), sorted(lifter.regs)[:8]
+    ins = lifter.lift(bytes.fromhex("38630004"), 0x82001000)
+    assert ins.length == 4 and ins.ops == (("INT_ADD", ("r", lifter.regs["r3"][0], 8),
+                                            (("r", lifter.regs["r3"][0], 8), ("c", 4, 8))),), ins.ops
+    bc = lifter.lift(bytes.fromhex("4182000c"), 0x82001004)
+    assert bc.ops[-1][0] == "CBRANCH" and bc.ops[-1][2][0] == ("m", 0x82001010, 4), bc.ops
 
 
 def main():
