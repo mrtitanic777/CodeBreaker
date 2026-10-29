@@ -1214,14 +1214,17 @@ def results(d):
                     size[place], changed = got, True
         if not changed:
             break
-    # (off unless CB_CALLER_RESULTS=1: with it, USER's C no longer starts Windows 95 Setup -- "not
-    # enough memory to run Setup" -- and which of the functions it makes four-byte does that is not
-    # yet found; SETUPX, which it was for, goes into the Setup that boots as its instructions)
-    if os.environ.get("CB_CALLER_RESULTS") == "1" and getattr(d, "images", None):
+    # (CB_CALLER_RESULTS=0 turns it off. With it USER once stopped starting Windows 95 Setup, "not
+    # enough memory to run Setup": not a wrong result -- the C it lets USER have grew its fixed
+    # segment 1 past what Setup's low memory could spare; build/module.py now keeps a fixed segment
+    # at the original's size)
+    if os.environ.get("CB_CALLER_RESULTS") != "0" and getattr(d, "images", None):
         edges = []
-        for place in callers_read_dx(d, edges):              # (what the callers read after it)
-            if place in size and size[place] < 4:
-                size[place] = 4
+        read = callers_read_dx(d, edges)                     # (what the callers read after it --
+        sets = _writes_dx(d, read)                           #  from a callee that sets DX at all: one
+        for place in read:                                   #  that leaves it alone hands the caller
+            if place in size and size[place] < 4 and place in sets:    # its own DX back, USER's
+                size[place] = 4                              #  11:005E `call 5E / xchg dx, ax / call 5E`)
         writes = _writes_dx(d, {callee for _c, callee in edges})
         for _round in range(8):                              # (and what a four-byte caller hands back
             changed = False                                  #  as it is: its callee's DX:AX too --
@@ -1263,9 +1266,12 @@ def _writes_dx(d, places):
                 continue
             if i.mnemonic == "pop" and i.op_str == "dx" and saved:
                 continue
-            if i.group(capstone.CS_GRP_CALL) and i.mnemonic == "call" and "[" not in i.op_str:
-                out.add((sg, off))                           # (a callee of its own may set it)
-                break
+            if (i.group(capstone.CS_GRP_CALL) or i.mnemonic == "ljmp") and "[" not in i.op_str:
+                out.add((sg, off))                           # (a callee may set it: one of its own, or
+                break                                        #  an import -- SETUPX's SUREG* wrappers
+                #                                              hand back RegCreateKey's LONG. Not one
+                #                                              through a pointer: KEYBOARD's 9:0367
+                #                                              `lcall [20h]`, a VxD's entry, keeps DX)
             try:
                 if dx & set(i.regs_access()[1]):
                     out.add((sg, off))

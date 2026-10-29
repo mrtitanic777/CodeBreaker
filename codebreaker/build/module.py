@@ -800,8 +800,8 @@ def _frame_pieces(b, f, seg, stems, folder, wasm, env, assemble_piece, elsewhere
                 # (past where the segment is cut after start-up: the build is done again with it
                 # as its instructions -- see _resident_limit)
                 b.resident_overflow = getattr(b, "resident_overflow", {})
-                b.resident_overflow[name] = ("its C finds no room below where segment %d is cut (%04x)"
-                                             % (seg, limit))
+                b.resident_overflow[name] = ("its C finds no room in segment %d below %04x (where it is "
+                                             "cut, or a fixed segment's end)" % (seg, limit))
     for name in size:
         if name not in b.moved_c:
             b.placed_c.add(name)
@@ -1326,12 +1326,24 @@ def _build16(b, path, m, folder):
         # was to decode ("Invalid DPMI return from 0367:C608"). The packing the frame will do is
         # done here first, and only such a one stays as its instructions; one from past the
         # point (init code) may go after the frame.
-        from codebreaker.build import msc6
         for sg, s in segs.items():
             if s["kind"] == "CODE":
                 lim = _resident_limit(bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]))
                 if lim and lim < s["length"]:
                     b.resident_limit[sg] = lim
+    for sg, s in segs.items():
+        # A FIXED code segment is no bigger than the original's: Windows puts a fixed segment as low
+        # in memory as it can -- below 1 MB, where every task's PSP and task database must go too.
+        # USER's segment 1 grown from BA2Eh to C6DEh with the functions rebuilt from C that found
+        # no room in their places and went after the frame, Setup could no longer start the
+        # program after its Welcome page: "There is not enough memory to run Setup". (At C63Ch it
+        # still could; C778h -- the same build with sub_1_3514's C made 300 bytes longer, nothing
+        # else -- could not.) So a function with no room in the frame stays as its instructions.
+        # (CB_FIXED_GROWS=1: let them grow, as before)
+        if s["kind"] == "CODE" and not s["flags"] & 0x0010 and not os.environ.get("CB_FIXED_GROWS"):
+            b.resident_limit[sg] = min(b.resident_limit.get(sg, s["length"]), s["length"])
+    if b.resident_limit:
+        from codebreaker.build import msc6
         starts_of = {}
         for (sg, o), nm in at.items():
             starts_of.setdefault(sg, []).append((o, nm))
@@ -1359,8 +1371,10 @@ def _build16(b, path, m, folder):
                     del size[nm]
                     if nm in b.origins:
                         b.origins[nm].evidence.append(
-                            "its C finds no room below where segment %d is cut (%04x) in a module that "
-                            "loads itself" % (sg, lim))
+                            ("its C finds no room below where segment %d is cut (%04x) in a module that "
+                             "loads itself" % (sg, lim)) if lim < segs[sg]["length"] else
+                            ("its C finds no room in fixed segment %d, which must stay the original's "
+                             "size (%04x bytes)" % (sg, lim)))
 
     asm_read = {}                                            # (file -> (size, mtime, text): each read once)
 
@@ -1733,7 +1747,7 @@ def run(b, limit=RUN_LIMIT):
     return b
 
 
-def build(module, outdir=None, call=True, log=print, gated=None):
+def build(module, outdir=None, call=True, log=print, gated=None, _gate=False):
     """Build a module whole. -> Built
 
     A 16-bit module's functions rebuilt from C are then each run beside the original's
@@ -1766,14 +1780,17 @@ def build(module, outdir=None, call=True, log=print, gated=None):
     if getattr(b, "resident_overflow", None):
         log("%s: %d placed past where a segment is cut: rebuilt from their instructions"
             % (b.name, len(b.resident_overflow)))
-        return build(module, outdir=outdir, call=call, log=log, gated=dict(b.gated, **b.resident_overflow))
+        # (and the gate still runs on what is left as C, if this build was to run it: the overflow
+        # is found before the gate, and a build handed its gated set runs none)
+        return build(module, outdir=outdir, call=call, log=log, gated=dict(b.gated, **b.resident_overflow),
+                     _gate=_gate or gated is None or from_cache)
     if not image:
         return b
     b.image = os.path.join(folder, os.path.basename(path).lower())
     shutil.copyfile(image, b.image)
     if b.kind == "ne":
         _whole_file_image(path, b.image)
-        if (gated is None or from_cache) and not os.environ.get("CB_NO_GATE"):
+        if (gated is None or from_cache or _gate) and not os.environ.get("CB_NO_GATE"):
             # (built with the kept verdicts: only a C function not among them is run now)
             c = sorted(b.placed_c | getattr(b, "moved_c", set()))
             log("%s: running %d functions rebuilt from C beside the original's" % (b.name, len(c)))
