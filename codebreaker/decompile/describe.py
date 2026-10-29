@@ -339,8 +339,25 @@ def inside(d, va):
 
 
 class Description(object):
+    """What is said of a module before it is decompiled. `lines` are the description itself --
+    its facts, one to a line (F a function, X an import, O a call's convention, bytes, reg ...);
+    the file at `path` is written from them (write) for the native decompiler, which reads it.
+    Python reads the lines (records), not the file back."""
     def __init__(self, path, names, where, imports):
         self.path, self.names, self.where, self.imports = path, names, where, imports
+        self.lines = []
+        self.notes = {}                  # {function: its facts from the decompiler} (decompiler.split_notes)
+
+    def write(self, path=None):
+        """The file the native decompiler reads, written from the lines (at `path`: there from now on)."""
+        self.path = path or self.path
+        with open(self.path, "w", newline="\n", encoding="utf-8") as f:
+            f.write("\n".join(self.lines) + "\n")
+        return self.path
+
+    def records(self, *kinds):
+        """[fields of each line] of those kinds (`F`, `O` ...), in order."""
+        return [p for p in (ln.split("\t") for ln in self.lines) if p[0] in kinds]
 
 
 def _near_call_targets(code):
@@ -1933,10 +1950,8 @@ def describe16(module_path, outdir):
     for nm in order:                 # Windows API: far, and the callee removes its arguments --
         size = knowledge.argument_bytes("win16", nm)     # how many bytes is read from the module that exports it
         lines.append("X\t%x\t%s\t%d\t__stdcall16far" % (imports[nm], nm, -1 if size is None else size))
-    path = os.path.join(outdir, "description.txt")
-    with open(path, "w", newline="\n", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    d.path = path
+    d.lines = lines
+    d.write(os.path.join(outdir, "description.txt"))
     return d
 
 
@@ -2038,8 +2053,8 @@ def describe_le(lf, name, outdir):
     d = Description(os.path.join(outdir, "description.txt"), names, {}, [])
     d.spans = {obj: (le_address(obj, 0), len(images[obj])) for obj in execs}
     d.device = (ddb or {}).get("name") or name
-    with open(d.path, "w", newline="\n", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    d.lines = lines
+    d.write()
     return d
 
 
@@ -2081,8 +2096,8 @@ def describe_dos(module_path, outdir):
     for call in found.interrupts:
         if call.function is not None:
             d.interrupts.setdefault(call.function.name, []).append(call)
-    with open(d.path, "w", newline="\n", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+    d.lines = lines
+    d.write()
     return d
 
 

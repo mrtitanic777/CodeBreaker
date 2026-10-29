@@ -145,7 +145,7 @@ def _keep_frame(t, sizes=None):
     the callee, reading through the pointer, finds something else. When any stack local's address
     can escape, the locals are declared as the fields of one frame structure at their original
     offsets, so every address taken still points at what the original put there. `sizes`: more
-    types' sizes -- the structures recovered for the function (`/*@S` notes)."""
+    types' sizes -- the structures recovered for the function (_struct_sizes)."""
     lines = _declaration_lines(t)                        # (`return x;` / `goto x;` are not declarations)
     locs = [m for m in _LOCAL.finditer(t) if m.group(0) in lines]
     if not locs:
@@ -350,35 +350,30 @@ def _without_notes(text):
     return src.data[end:].decode("utf-8").lstrip()
 
 
-# The decompiler's note for a structure it recovered from a variable's field accesses (CB_STRUCTS):
-#   /*@S <name> <bytes> <offset>:<bytes>:<type> ...*/  -- offsets in hex; a type is one word, a
-# pointer's ending in `*` (or `^`, a 16-bit far pointer)
-_STRUCT_NOTE = re.compile(r"/\*@S (\w+) (\d+)((?: [0-9a-f]+:\d+:[\w*^]+)*) \*/")
+# A structure the decompiler recovered from a variable's field accesses (CB_STRUCTS), as its facts
+# give it (decompiler.split_notes): [name, bytes, [[offset, bytes, type], ...]] -- a type is one
+# word, a pointer's ending in `*` (or `^`, a 16-bit far pointer)
 _C_WORDS = {"char", "short", "int", "long", "float", "double", "void", "code"}
 
 
-def _struct_sizes(notes):
-    """{structure name: its bytes} from `/*@S` notes"""
+def _struct_sizes(structs):
+    """{structure name: its bytes} of the structures recovered"""
     out = {}
-    for note in notes:
-        mm = _STRUCT_NOTE.fullmatch(note.strip())
-        if mm:
-            out.setdefault(mm.group(1), int(mm.group(2)))
+    for name, size, _fields in structs:
+        out.setdefault(name, size)
     return out
 
 
-def _struct_decls(notes, header, far16=False):
-    """The C declaring the structures of the `/*@S` notes -- every name first (`typedef struct
+def _struct_decls(structs, header, far16=False):
+    """The C declaring the structures recovered -- every name first (`typedef struct
     s_f_p s_f_p;`, so one may point at another), then each at its exact layout: its fields at
     their offsets with filler between, the whole its full size, packed (the 32-bit header packs
     everything; a 16-bit structure says so itself). A field type the header does not know is
     the bytes it takes."""
     found = {}
-    for note in notes:
-        mm = _STRUCT_NOTE.fullmatch(note.strip())
-        if mm and mm.group(1) not in found:
-            found[mm.group(1)] = (int(mm.group(2)), [(int(o, 16), int(z), t) for o, z, t in
-                                                     (f.split(":") for f in mm.group(3).split())])
+    for name, size, fields in structs:
+        if name not in found:
+            found[name] = (size, [tuple(f) for f in fields])
     if not found:
         return []
     known = set(re.findall(r"typedef [^;()]*?\b(\w+);", header)) | _C_WORDS | set(found)
@@ -481,29 +476,25 @@ def compilable32(module_path, funcs, outdir):
     from codebreaker.decompile import decompiler
     from codebreaker.decompile import describe
     from codebreaker.translate.backends import c as cback
-    out, order, by_va, _err = decompiler.raw(module_path, funcs, outdir)
+    got = decompiler.raw(module_path, funcs, outdir)
+    out, order, by_va, _err = got
     imports = dict(B.import_map(module_path))
     # imports by number, under the names the description gave them: declared and linked too
     numbered = describe.BY_NUMBER.get(module_path) or {}
     imports.update({n: stem for n, (stem, _number, _pop) in numbered.items() if n not in imports})
     sizes, in_ecx, in_edx = {}, set(), set()
     own = {}                                  # function -> address of a global -> bytes of its uses there
-    struct_notes = []                         # the structures the decompiler recovered (`/*@S`)
+    struct_notes = []                         # the structures the decompiler recovered (its facts)
     for n in order:
-        body = []
-        for ln in out[n].split("\n"):
-            m = re.match(r"/\*@G ([0-9a-f]+) (\d+)(?: \d+)? \*/$", ln)
-            if ln.startswith("/*@S "):
-                struct_notes.append(ln)
-            elif m:
-                sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
-                own.setdefault(n, {}).setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
-            else:
-                body.append(ln)
-        # (a note the core put before the function -- "WARNING: Removing unreachable block" --
+        facts = got.notes.get(n) or {}
+        struct_notes += facts.get("structs") or []
+        for va, size, _elem in facts.get("globals") or ():
+            sizes.setdefault(va, set()).add(size)
+            own.setdefault(n, {}).setdefault(va, set()).add(size)
+        # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
-        t = _without_notes("\n".join(body).strip())
-        moved = set(moved_to_l2(out[n])) & set(cback.FLAT)     # (those the back end did, for C from L2)
+        t = _without_notes(out[n].strip())
+        moved = set(moved_to_l2(facts)) & set(cback.FLAT)     # (those the back end did, for C from L2)
         # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
         t = t if "pieces" in moved else _pieces(t, _BY_SIZE, "uint4")
         t = t if "null_is_zero" in moved else _null_is_zero(t)
@@ -723,7 +714,6 @@ uint2 codebreaker_entry_sp(void);
 #define CODEBREAKER_FAR(seg, off) ((void __far *)(((uint4)(uint2)(seg) << 16) | (uint2)(off)))
 """
 
-_FACT = re.compile(r"(?m)^/\*@([GP]) (\S+) (\d+)(?: (\d+))? \*/\n?")
 _WIDE = ("xunknown4", "int4", "uint4", "undefined4", "float4")
 
 
@@ -731,12 +721,11 @@ class Module16(object):
     pass
 
 
-def moved_to_l2(raw):
+def moved_to_l2(facts):
     """The passes the C back end did on the tree, for a function whose C it wrote from L2
-    (CB_C_FROM_L2; decompiler.c_from_l2 marks it): left out here (docs/IR_UNIFICATION.md step 3).
-    One it declined keeps the printed C, and every pass."""
-    from codebreaker.decompile import decompiler
-    if decompiler.FROM_L2 not in raw:
+    (CB_C_FROM_L2; decompiler.c_from_l2 says so in its facts): left out here (docs/IR_UNIFICATION.md
+    step 3). One it declined keeps the printed C, and every pass."""
+    if not (facts or {}).get("from_l2"):
         return ()
     from codebreaker.translate.backends import c as cback
     return cback.MOVED
@@ -1843,16 +1832,13 @@ def compilable16(module_path, outdir=None):
                   os.environ.get("CB_CALLER_RESULTS", ""))         # (results the callers read DX of)
     had = cache.get("compilable16", k)
     if had is not None:
-        m, description = pickle.loads(had)
+        m = pickle.loads(had)
         folder = outdir or os.path.dirname(m.description.path)
         os.makedirs(folder, exist_ok=True)
-        m.description.path = os.path.join(folder, "description.txt")
-        with open(m.description.path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(description)
+        m.description.write(os.path.join(folder, "description.txt"))     # (from its lines, for the decompiler)
         return m
     m = _compilable16(module_path, outdir)
-    with open(m.description.path, encoding="utf-8") as f:
-        cache.put("compilable16", k, pickle.dumps((m, f.read())))
+    cache.put("compilable16", k, pickle.dumps(m))
     return m
 
 
@@ -1941,15 +1927,15 @@ def _one16_images(images):
 
 def _one16(context, item):
     """One function of _compilable16 made compilable: its text alone, apart from the module's (a
-    worker process each share of them, jobs/pool.py). -> (address, text, flags, interrupts,
-    selector structures, shared selector fields, structure notes, global facts) -- the caller
-    gathers them in address order, as when they were made one after another."""
+    worker process each share of them, jobs/pool.py). `known` is what the decompiler said of it
+    besides its C (decompiler.split_notes). -> (address, text, flags, interrupts, selector
+    structures, shared selector fields) -- the caller gathers them in address order, as when
+    they were made one after another."""
     by_selector, dgroup = context
-    va, name, raw, distance, model, seg, off, end, end_of, callee_pops = item
+    va, name, raw, distance, model, seg, off, end, end_of, callee_pops, known = item
     code = _IMAGES16.get(seg)
-    flags, interrupts, decls, shared, facts = set(), set(), [], {}, []
-    notes = [ln for ln in raw.split("\n") if ln.startswith("/*@S ")]
-    moved = moved_to_l2(raw)
+    flags, interrupts, decls, shared = set(), set(), [], {}
+    moved = moved_to_l2(known)
     head0 = raw.split("{", 1)[0]
     named = ctree.Source(raw).function_name()
     if distance and "16near" not in head0 and "16far" not in head0 and named is not None and \
@@ -1962,13 +1948,8 @@ def _one16(context, item):
         at = named.start_byte
         raw = (raw.encode("utf-8")[:at] + ("%s " % (marker or "__" + distance)).encode("utf-8") +
                raw.encode("utf-8")[at:]).decode("utf-8")
-    far = set()
-    for mm in _FACT.finditer(raw):
-        if mm.group(1) == "P" and mm.group(3) == "4":
-            far.add(mm.group(2))
-        elif mm.group(1) == "G":
-            facts.append((mm.group(2), mm.group(3), mm.group(4)))
-    text = _without_notes(_FACT.sub("", raw))            # notes the decompiler put before the function
+    far = {n for n, size in ((known or {}).get("pointers") or {}).items() if size == 4}
+    text = _without_notes(raw)                           # (the core's comments before the function)
     widths = _far_argument_widths(code, off, end,
                                   "far" in text.split("(", 1)[0]) if code is not None else {}
     # (_far and _near_calls are the back end's for C written from L2: docs/IR_UNIFICATION.md step 3)
@@ -2027,25 +2008,22 @@ def _one16(context, item):
         # its calls through pointers remove nothing themselves: the callee does (the arguments
         # are listed in stack order, so __stdcall lays them out as the original pushed them)
         out = _callee_pops(out)
-    return va, out, flags, interrupts, decls, shared, notes, facts
+    return va, out, flags, interrupts, decls, shared
 
 
 def _compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
-    decompiler.L2_DOCUMENTS.clear()                          # (this module's alone, below)
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
     m = Module16()
-    m.l2 = {}                                                # each function's L2 document (CB_C_FROM_L2)
-    for docs in decompiler.L2_DOCUMENTS.values():
-        m.l2.update(docs)
-    decompiler.L2_DOCUMENTS.clear()
+    m.notes = d.notes                                        # what the decompiler said of each besides its C
+    m.l2 = {n: f["l2"] for n, f in d.notes.items() if f.get("l2") is not None}   # each one's L2 document
     m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
     m.near, m.wide, m.novalue = set(), set(), set()
     m.interrupts = set()                                     # (vector, arguments) of the interrupts taken
     m.selector_imports = {}                                  # imports used for their selector
     m.exported_prologue = set()                              # far functions the original starts with Windows' prologue
     sizes = {}                                               # address of a global -> bytes of the access
-    struct_notes = []                                        # the structures the decompiler recovered (`/*@S`)
+    struct_notes = []                                        # the structures the decompiler recovered
     selector_structs = []                                    # ... and those a segment holds (_selector_structs)
     shared_selectors = {}                                    # ... a global selector's: the module's
     by_selector = decompiler._structs(d.path) == "1" and os.environ.get("CB_SELECTOR_STRUCTS") != "0"   # (with structures)
@@ -2061,17 +2039,14 @@ def _compilable16(module_path, outdir=None):
     # so, which the build replaces by the function's own instructions where it was written in
     # assembly, and otherwise reports as not rebuilt (m.failed).
     m.failed = {}
-    with open(d.path, encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("F\t"):
-                parts = line.rstrip("\n").split("\t")
-                va, nm = int(parts[1], 16), parts[2]
-                if va not in by_va and nm not in texts and d.where.get(va):
-                    model = parts[4] if len(parts) > 4 and parts[4] != "inline" else "__cdecl16near"
-                    texts[nm] = ("xunknown2 %s %s()\n{\n  /* the decompiler could not make this function */\n"
-                                 "  return 0;\n}" % (model, nm))
-                    by_va[va] = nm
-                    m.failed[nm] = "the decompiler could not make it"
+    for parts in d.records("F"):
+        va, nm = int(parts[1], 16), parts[2]
+        if va not in by_va and nm not in texts and d.where.get(va):
+            model = parts[4] if len(parts) > 4 and parts[4] != "inline" else "__cdecl16near"
+            texts[nm] = ("xunknown2 %s %s()\n{\n  /* the decompiler could not make this function */\n"
+                         "  return 0;\n}" % (model, nm))
+            by_va[va] = nm
+            m.failed[nm] = "the decompiler could not make it"
     # helpers that work in their caller's frame: its places passed to them (_caller_frame_slots)
     frames = {}
     for va, nm in by_va.items():
@@ -2082,15 +2057,11 @@ def _compilable16(module_path, outdir=None):
     # the C must say it (the decompiler leaves the convention out of a head whose result is a
     # pointer -- and in the medium model an unmarked function is far)
     callee_pops = {}                                         # function -> its pointer calls' callee removes the arguments
-    with open(d.path, encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("O\t"):
-                parts = line.rstrip("\n").split("\t")
-                if parts[4].startswith("__stdcall"):
-                    # (kept by the call's own place: the function the description named for it
-                    # may since have been found to be two -- the call belongs to the one that
-                    # holds it, below)
-                    callee_pops[int(parts[1], 16)] = True
+    for parts in d.records("O"):
+        if parts[4].startswith("__stdcall"):
+            # (kept by the call's own place: the function the description named for it may
+            # since have been found to be two -- the call belongs to the one that holds it, below)
+            callee_pops[int(parts[1], 16)] = True
     import bisect
     starts_all = sorted(by_va)
     held = {}
@@ -2100,13 +2071,11 @@ def _compilable16(module_path, outdir=None):
             held[starts_all[k]] = True
     callee_pops = held
     distance, model_of = {}, {}
-    with open(d.path, encoding="utf-8") as f:
-        for line in f:
-            parts = line.rstrip("\n").split("\t")
-            if parts[0] == "F" and len(parts) > 4:
-                distance[parts[2]] = "far" if parts[4].endswith("far") else "near" if parts[4].endswith("near") else None
-                if parts[4].startswith(("__stdcall16", "__cdecl16")):
-                    model_of[parts[2]] = parts[4]
+    for parts in d.records("F"):
+        if len(parts) > 4:
+            distance[parts[2]] = "far" if parts[4].endswith("far") else "near" if parts[4].endswith("near") else None
+            if parts[4].startswith(("__stdcall16", "__cdecl16")):
+                model_of[parts[2]] = parts[4]
     # each function on its own (_one16), shared among worker processes: the module's texts
     # are thousands of tree passes, and none of them looks at another function's text
     from codebreaker.jobs import pool
@@ -2116,7 +2085,8 @@ def _compilable16(module_path, outdir=None):
         name = by_va[va]
         seg, off = d.where[va]
         items.append((va, name, texts[name], distance.get(name), model_of.get(name), seg, off,
-                      ends.get(va, off), _end_of(d, seg, off) if seg in d.images else None, callee_pops.get(va)))
+                      ends.get(va, off), _end_of(d, seg, off) if seg in d.images else None, callee_pops.get(va),
+                      d.notes.get(name)))
     context, images = (by_selector, dgroup), dict(d.images)
     # (the segments given each worker once, as it starts: sent with every share of the work they
     # were most of what went down the pipes -- a minute of USER's)
@@ -2128,13 +2098,13 @@ def _compilable16(module_path, outdir=None):
             made[item[0]] = _one16(context, item)            # guard -- is done here, as before)
     for va in sorted(by_va):
         name = by_va[va]
-        _va, text, flags, interrupts, decls, shared, notes, facts = made[va]
-        struct_notes += notes
-        for addr, size, elem in facts:
-            a = int(addr, 16)
-            sizes[a] = max(sizes.get(a, 0), int(size)) if int(size) <= 4 else sizes.get(a, 2)
-            if elem and int(elem) in (1, 2, 4):
-                elems[a] = int(elem)
+        _va, text, flags, interrupts, decls, shared = made[va]
+        known = d.notes.get(name) or {}
+        struct_notes += known.get("structs") or []
+        for a, size, elem in known.get("globals") or ():
+            sizes[a] = max(sizes.get(a, 0), size) if size <= 4 else sizes.get(a, 2)
+            if elem in (1, 2, 4):
+                elems[a] = elem
         for flag in flags:
             getattr(m, flag).add(name)
         m.interrupts |= interrupts
@@ -3530,17 +3500,13 @@ def compilable_powerpc(module_path, outdir):
     from codebreaker.decompile import decompiler, describe
     from codebreaker.formats import powerpc_image
     img = powerpc_image.read(module_path)
-    out, order, by_va, _err = decompiler.raw(module_path, describe.function_starts(module_path), outdir)
+    got = decompiler.raw(module_path, describe.function_starts(module_path), outdir)
+    out, order, by_va, _err = got
     sizes, novalue = {}, set()
     for n in order:
-        body = []
-        for ln in out[n].split("\n"):
-            m = re.match(r"/\*@G ([0-9a-f]+) (\d+)(?: \d+)? \*/$", ln)
-            if m:
-                sizes.setdefault(int(m.group(1), 16), set()).add(int(m.group(2)))
-            elif not ln.startswith("/*@P "):
-                body.append(ln)
-        t = "\n".join(body).strip()
+        for va, size, _elem in (got.notes.get(n) or {}).get("globals") or ():
+            sizes.setdefault(va, set()).add(size)
+        t = out[n].strip()
         src = ctree.Source(t)
         for num in _numbers(src):
             wide = _WIDE_ADDRESS.fullmatch(src.at(num))
@@ -3581,11 +3547,10 @@ def compilable_powerpc(module_path, outdir):
         if "(" not in head:
             continue
         decls.append(head[:head.index("(")] + "();")
-    # The structures recovered for each function (`/*@S` notes), declared before the prototypes:
+    # The structures recovered for each function (its facts), declared before the prototypes:
     # a function returning a pointer to one names it in its prototype, which every body includes.
     types = _TYPES.replace("typedef int code();", "typedef uint8 code();") + _HELPERS + _POWERPC
-    notes = [ln for t in out.values() for ln in t.split("\n") if ln.startswith("/*@S ")]
-    structs = _struct_decls(notes, types)
+    structs = _struct_decls([st for n in order for st in (got.notes.get(n) or {}).get("structs") or ()], types)
     m = ModulePowerPC()
     m.header = types + "".join(x + "\n" for x in structs) + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
     m.texts, m.order, m.by_va, m.novalue = out, order, by_va, novalue

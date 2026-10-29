@@ -36,7 +36,6 @@ from codebreaker.decompile import decompiler                 # noqa: E402
 from codebreaker.translate.backends import c as cback        # noqa: E402
 
 HEAD = re.compile(r"^/\*@@ (\S+) ", re.M)
-NOTE = re.compile(r"^/\*@L2 (\{.*\}) \*/$", re.M)
 _TOKEN = re.compile(r"0x[0-9a-fA-F]+|\d+(?:\.\d+)?(?:e[-+]?\d+)?|\w+|'(?:\\.|[^'])*'|\"(?:\\.|[^\"])*\"|"
                     r"->|\+\+|--|<<=|>>=|<<|>>|<=|>=|==|!=|&&|\|\||[-+*/%&|^]=|\S")
 
@@ -55,11 +54,15 @@ def functions(out):
     heads = list(HEAD.finditer(out))
     for i, h in enumerate(heads):
         chunk = out[h.start():heads[i + 1].start() if i + 1 < len(heads) else len(out)]
-        note = NOTE.search(chunk)
-        printed = chunk[note.end() + 2:] if note and chunk[note.end():note.end() + 2] == "\n\n" else chunk
+        body = chunk.split("\n", 1)[1] if "\n" in chunk else ""
+        printed, facts = decompiler.split_notes(body)          # (the notes are the function's facts)
+        if facts["l2"] is not None and printed.startswith("\n"):
+            printed = printed[1:]
+        elif facts["l2"] is None:
+            printed = chunk
         if printed.endswith("\n\n"):
             printed = printed[:-1]
-        found[h.group(1)] = (json.loads(note.group(1)) if note else None, printed)
+        found[h.group(1)] = (facts["l2"], printed)
     return found
 
 

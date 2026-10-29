@@ -78,9 +78,6 @@ def _l2_key():
     return ["l2 2"] if os.environ.get("CB_L2") else []
 
 
-_L2_NOTE = re.compile(r"^/\*@L2 (\{.*\}) \*/$", re.M)
-
-
 def _segment_images(description):
     """{segment: bytes} of a 16-bit module's code, from its description's `bytes` lines (describe16)."""
     from codebreaker.decompile import describe
@@ -95,63 +92,104 @@ def _segment_images(description):
     return images
 
 
-def c_from_l2(text, images=None, documents=None):
-    """A function's text with its C written by the hub's C back end from its L2 note
-    (translate/backends/c.py; docs/IR_UNIFICATION.md step 2) in place of the C the decompiler
-    printed; the decompiler's other notes kept. Without a note, or one the back end declines,
-    the printed C stays. With `images` ({segment: code}, CB_ASM_BLOCKS=1) a 16-bit function's
-    interrupts are first made the _asm blocks its instructions say (decompile/asm_blocks.py).
-    `documents`: a list the function's L2 document is added to, whichever C it keeps (the module's L2 tree is made of them: build/module.module_document)."""
+# What the native program says of a function besides its C: notes on lines of their own before it
+# (decompiler.cc decompileOne). They are read here, once, as the native program's output is taken
+# in -- the C handed on holds none of them -- and become the function's facts (split_notes):
+#   /*@G <va> <bytes> <bytes pointed at> */     a global it touches     -> "globals": [[va, bytes, elem]]
+#   /*@P <name> <bytes> */                      a pointer and its size  -> "pointers": {name: bytes}
+#                                               (16-bit; `return` its result)
+#   /*@S <name> <bytes> <off>:<bytes>:<type>... */  a structure it recovered
+#                                               -> "structs": [[name, bytes, [[off, bytes, type], ...]]]
+#   /*@L2 {...} */                              its L2 document (CB_L2) -> "l2"
+# and, for C the back end wrote from that document, "from_l2": True.
+_NOTE = re.compile(r"/\*@(G|P|S|L2) (.*) \*/")
+_STRUCT_FIELD = re.compile(r"([0-9a-f]+):(\d+):([\w*^]+)")
+
+
+def split_notes(text):
+    """(the C, its facts) of one function as the native program wrote it (see _NOTE)."""
+    facts = {"globals": [], "pointers": {}, "structs": [], "l2": None}
+    lines = text.split("\n")
+    k = 0
+    while k < len(lines):
+        m = _NOTE.fullmatch(lines[k].strip())
+        if not m:
+            break
+        kind, rest = m.groups()
+        if kind == "L2":
+            facts["l2"] = json.loads(rest)
+        elif kind == "S":
+            name, size, *fields = rest.split()
+            facts["structs"].append([name, int(size), [[int(o, 16), int(z), t] for o, z, t in
+                                                       (_STRUCT_FIELD.fullmatch(f).groups() for f in fields)]])
+        else:
+            parts = rest.split()
+            if kind == "G":
+                facts["globals"].append([int(parts[0], 16), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0])
+            else:
+                facts["pointers"].setdefault(parts[0], int(parts[1]))
+        k += 1
+    return "\n".join(lines[k:]), facts
+
+
+class Decompiled(tuple):
+    """run()'s (texts, order, by_va, stderr) -- the texts C alone -- and `notes`: {name: its facts}."""
+    notes = None
+
+    @staticmethod
+    def of(texts, order, by_va, err, notes):
+        r = Decompiled((texts, order, by_va, err))
+        r.notes = notes
+        return r
+
+
+def c_from_l2(text, facts, images=None):
+    """A function's C written by the hub's C back end from its L2 document (facts["l2"];
+    translate/backends/c.py, docs/IR_UNIFICATION.md step 2) in place of the C the decompiler
+    printed (`text`). Without a document, or one the back end declines, the printed C stays.
+    With `images` ({segment: code}, CB_ASM_BLOCKS=1) a 16-bit function's interrupts are first
+    made the _asm blocks its instructions say (decompile/asm_blocks.py), and facts["l2"] is the
+    document so placed (the module's L2 tree is made of them: build/module.module_document).
+    facts["from_l2"] says which C it is."""
     from codebreaker.translate.backends import c as cback
-    m = _L2_NOTE.search(text)
-    if not m:
+    doc = facts.get("l2")
+    if doc is None:
         return text
-    doc = json.loads(m.group(1))
     origin = doc.get("origin") or {}
     if images and origin.get("segment") in images:
         from codebreaker.decompile import asm_blocks
         code = images[origin["segment"]]
         doc, _said = asm_blocks.place(doc, code, origin["offset"], len(code), seg=origin["segment"])
+        facts["l2"] = doc
     try:
-        if documents is not None:
-            documents.append(doc)
         body = cback.function(doc, cback.MOVED)  # (its far pointers: L2's types say which)
     except (cback.Decline, ValueError, KeyError):
-        return text[:m.start()] + text[m.end() + 1:]
-    notes = [ln for ln in text.splitlines() if ln.startswith("/*@") and not ln.startswith("/*@L2 ")]
-    return "\n".join(notes + [FROM_L2]) + "\n\n" + body
-
-
-FROM_L2 = "/*@C from L2 */"            # (on a text the back end wrote: c_text leaves the passes it did out)
+        return text
+    facts["from_l2"] = True
+    return "\n" + body
 
 
 def run(description, only=(), timeout=3600, max_instructions=None):
-    """As _run; with CB_C_FROM_L2=1 each function's C is the hub's C back end's, from its L2."""
-    if not os.environ.get("CB_C_FROM_L2"):
-        return _run(description, only, timeout, max_instructions)
+    """As _run, the notes taken apart from the C (split_notes) -> Decompiled; with CB_C_FROM_L2=1
+    each function's C is the hub's C back end's, from its L2."""
+    l2 = bool(os.environ.get("CB_C_FROM_L2"))
     was = os.environ.get("CB_L2")
-    os.environ["CB_L2"] = "1"
+    if l2:
+        os.environ["CB_L2"] = "1"
     try:
         out, order, by_va, err = _run(description, only, timeout, max_instructions)
     finally:
-        if was is None:
+        if l2 and was is None:
             del os.environ["CB_L2"]
-        else:
+        elif l2:
             os.environ["CB_L2"] = was
-    images = _segment_images(description) if os.environ.get("CB_ASM_BLOCKS") else None
-    docs = L2_DOCUMENTS.setdefault(os.path.abspath(description), {})
-    texts = {}
+    images = _segment_images(description) if l2 and os.environ.get("CB_ASM_BLOCKS") else None
+    texts, notes = {}, {}
     for n, t in out.items():
-        got = []
-        texts[n] = c_from_l2(t, images, got)
-        if got:
-            docs[n] = got[0]
-    return texts, order, by_va, err
-
-
-# {description path: {function name: its L2 document}} -- what run gave with CB_C_FROM_L2, for the
-# module's whole L2 tree (c_text._compilable16 keeps its module's as Module16.l2)
-L2_DOCUMENTS = {}
+        texts[n], notes[n] = split_notes(t)
+        if l2:
+            texts[n] = c_from_l2(texts[n], notes[n], images)
+    return Decompiled.of(texts, order, by_va, err, notes)
 
 
 def _run(description, only=(), timeout=3600, max_instructions=None):
@@ -419,38 +457,41 @@ def decompile16(module_path, outdir=None, rounds=4):
     from codebreaker.build import watcom as B
     outdir = outdir or B._scratch("decompiler16", os.path.basename(module_path).lower())
     d = describe.describe16(module_path, outdir)
-    out, order, by_va, _err = run(d.path)
+    got = run(d.path)
+    out, order, by_va, _err = got
+    notes = dict(got.notes)                                  # {name: its facts} (split_notes)
     for _ in range(rounds):
         new = {int(x, 16) for t in out.values() for x in _CALLED.findall(t)} - set(d.names)
         new = {va for va in new if describe.inside(d, va)}
         if not new:
             break
-        with open(d.path, "a", newline="\n", encoding="utf-8") as f:
-            for va in sorted(new):
-                seg, off = describe.where(va)
-                d.names[va], d.where[va] = "sub_%d_%04X" % (seg, off), (seg, off)
-                f.write(describe.model_line(d, va, d.names[va]) + "\n")
+        for va in sorted(new):
+            seg, off = describe.where(va)
+            d.names[va], d.where[va] = "sub_%d_%04X" % (seg, off), (seg, off)
+            d.lines.append(describe.model_line(d, va, d.names[va]))
+        d.write()
         # the new ones -- and again every function that calls one: it was made while the callee
         # was unknown, a default near function (a far call's pushed CS read as its first
         # argument, the last one lost); now its prototype is known
         callers = {va for va, n in by_va.items()
                    if any("func_0x%08x" % c in out.get(n, "") for c in new)}
-        more, _o, more_va, _err = run(d.path, only=sorted(new | callers))
-        out.update(more)
-        by_va.update(more_va)
+        more = run(d.path, only=sorted(new | callers))
+        out.update(more[0])
+        notes.update(more.notes)
+        by_va.update(more[2])
     # A function its callers clean up after (cdecl) has its arguments left to the analysis, which
     # decides at each call on its own: SETUPX's allocator 24:0F1E takes a size, and 11 of its 25
     # callers were made to pass none (sub_3_7E58's block got whatever the stack held: Setup's
     # SU99405). Where a call passes fewer than the function itself takes, the function's own
     # argument words are stated, and it and its callers are done again. (Stated for every such
     # function, all 578 of SETUPX's texts changed, their pointers made words, and new faults.)
-    lost = _arguments_lost(out, by_va, d)
+    lost = _arguments_lost(out, by_va, d, notes)
     if lost:
-        _state_arguments(d.path, lost)
+        _state_arguments(d, lost)
         names = {by_va[va] for va in lost}
         callers = {va for va, n in by_va.items()
                    if any(re.search(r"\b%s\s*\(" % re.escape(c), out.get(n, "")) for c in names if c != n)}
-        more, _o, more_va, _err = run(d.path, only=sorted(set(lost) | callers))
+        more = run(d.path, only=sorted(set(lost) | callers))
         # (and of what is done again, only the callers that passed too few are taken: the rest --
         # the stated functions themselves, callers that passed all -- kept as they were. Taken
         # whole, the analysis's second look made other mistakes: 25:0F96 lost one of its own two
@@ -460,23 +501,30 @@ def decompile16(module_path, outdir=None, rounds=4):
                         for c, own in ((c, len(lost[c])) for c in lost) if by_va[c] != n)}
         # (and one whose own arguments the second look changed is not taken either: 25:0F96, two
         # words become one, faulted -- its calls passed in full, its own frame read wrong)
-        out.update({n: tx for n, tx in more.items()
-                    if n in short and _own_arguments(tx, n) == _own_arguments(out.get(n, ""), n)})
+        taken = {n for n, tx in more[0].items() if n in short and
+                 _own_arguments(tx, n, more.notes[n]) == _own_arguments(out.get(n, ""), n, notes.get(n))}
+        out.update({n: more[0][n] for n in taken})
+        notes.update({n: more.notes[n] for n in taken})
     # a helper made part of its callers (describe.register_helper: `inline`) is still a function of
     # the module, at its place, for whatever else reaches it: its own text, from the description
     # with it as an ordinary function
     if getattr(d, "inlined", None):
-        own_path = os.path.join(os.path.dirname(d.path), "description_own.txt")
-        with open(d.path, encoding="utf-8") as f, open(own_path, "w", newline="\n", encoding="utf-8") as g:
-            for ln in f:
-                p = ln.split("\t")
-                if p[0] == "F" and len(p) > 4 and p[4].strip() == "inline" and int(p[1], 16) in d.inlined:
-                    ln = describe.model_line(d, int(p[1], 16), p[2]) + "\n"
-                g.write(ln)
-        more, _o, more_va, _err = run(own_path, only=sorted(d.inlined))
-        out.update(more)
-        by_va.update(more_va)
+        own = describe.Description(os.path.join(os.path.dirname(d.path), "description_own.txt"), {}, {}, [])
+        for ln in d.lines:
+            p = ln.split("\t")
+            if p[0] == "F" and len(p) > 4 and p[4].strip() == "inline" and int(p[1], 16) in d.inlined:
+                ln = describe.model_line(d, int(p[1], 16), p[2])
+            own.lines.append(ln)
+        more = run(own.write(), only=sorted(d.inlined))
+        out.update(more[0])
+        notes.update(more.notes)
+        by_va.update(more[2])
     out = _by_their_names(out, d.names)
+    for facts in notes.values():                             # (its L2 document's calls by those names too)
+        if facts.get("l2") is not None:
+            facts["l2"] = _by_their_names({"": json.dumps(facts["l2"])}, d.names)[""]
+            facts["l2"] = json.loads(facts["l2"])
+    d.notes = {n: notes[n] for n in out if n in notes}
     order = [by_va[va] for va in sorted(by_va)]
     return out, order, by_va, d
 
@@ -501,19 +549,21 @@ def _call_arguments(text, name):
     return out
 
 
-def _own_arguments(text, name):
-    """(count, [bytes of each]) of the arguments a function's own text declares, or None."""
+def _own_arguments(text, name, facts=None):
+    """(count, [bytes of each]) of the arguments a function's own text declares, or None
+    (`facts`: its facts, split_notes -- which pointers are four bytes)."""
     head = text.split("{", 1)[0]
     m = re.search(r"\b%s\(([^)]*)\)" % re.escape(name), head)
     if not m:
         return None
-    # (the analysis's own text: `type name` in the list, and a far pointer marked before it,
-    # `/*@P name 4 */` -- `char *param_1` alone reads as a near one)
+    # (the analysis's own text: `type name` in the list, and a far pointer as its facts say --
+    # `char *param_1` alone reads as a near one)
+    pointers = (facts or {}).get("pointers") or {}
     params = [p.strip() for p in m.group(1).split(",") if p.strip() and p.strip() != "void"]
     sizes = []
     for p in params:
         name_ = re.findall(r"\w+", p)[-1]
-        far = re.search(r"/\*@P %s 4 \*/" % re.escape(name_), head)
+        far = pointers.get(name_) == 4
         wide = re.search(r"\b(u?int4|xunknown4|float4|undefined4)\b", p)
         # (a far pointer stated as one: `4p` -- stated as a 4-byte number, 34:0146's string and
         # 34:016A's copy were dereferenced as near pointers, into the data segment)
@@ -521,14 +571,14 @@ def _own_arguments(text, name):
     return len(params), sizes
 
 
-def _own_if_read(out, va, name, d):
+def _own_if_read(out, va, name, d, notes=None):
     """A cdecl function's own arguments' sizes, when they come to the bytes its instructions
     read through BP (describe.args_read); otherwise None -- its own text is wrong too (SETUPX's
     25:0F96 once declared one word and read a far pointer)."""
     text = out.get(name, "")
     if "__cdecl16" not in text.split("{", 1)[0]:
         return None
-    own = _own_arguments(text, name)
+    own = _own_arguments(text, name, (notes or {}).get(name))
     if not own or not own[0]:
         return None
     if d is not None:
@@ -542,13 +592,13 @@ def _own_if_read(out, va, name, d):
     return own
 
 
-def _arguments_lost(out, by_va, d=None):
+def _arguments_lost(out, by_va, d=None, notes=None):
     """{address: [bytes of each argument]} of the cdecl functions some call passes fewer
     arguments than they themselves take (and whose own arguments are what they read: stated
     from a wrong text, the function was made worse)."""
     lost = {}
     for va, name in by_va.items():
-        own = _own_if_read(out, va, name, d)
+        own = _own_if_read(out, va, name, d, notes)
         if own is None:
             continue
         for other, t in out.items():
@@ -558,12 +608,11 @@ def _arguments_lost(out, by_va, d=None):
     return lost
 
 
-def _state_arguments(path, lost):
+def _state_arguments(d, lost):
     """The description's lines for these functions given their arguments' sizes (its 7th field,
     `4,2,2`: a far pointer one argument of four bytes, not two words -- as words, 34:0146's
     pointer was put back together as a near one, and SUWIN faulted in it)."""
-    with open(path, encoding="utf-8") as f:
-        lines = f.read().split("\n")
+    lines = d.lines
     for i, line in enumerate(lines):
         parts = line.split("\t")
         if parts[0] == "F" and len(parts) >= 5 and int(parts[1], 16) in lost:
@@ -571,8 +620,7 @@ def _state_arguments(path, lost):
                 parts.append("0")
             parts[6:] = [",".join(str(s) for s in lost[int(parts[1], 16)])]
             lines[i] = "\t".join(parts)
-    with open(path, "w", newline="\n", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    d.write()
 
 
 def _by_their_names(out, names):
@@ -594,11 +642,11 @@ def _grow(d, line_for, rounds=4):
         new = {va for va in new if any(lo <= va < lo + n for lo, n in d.spans.values())}
         if not new:
             break
-        with open(d.path, "a", newline="\n", encoding="utf-8") as f:
-            for va in sorted(new):
-                name, line = line_for(va)
-                d.names[va] = name
-                f.write(line + "\n")
+        for va in sorted(new):
+            name, line = line_for(va)
+            d.names[va] = name
+            d.lines.append(line)
+        d.write()
         callers = {va for va, n in by_va.items()                 # (made while these were unknown)
                    if any("func_0x%08x" % c in out.get(n, "") for c in new)}
         more, _o, more_va, _err = run(d.path, only=sorted(new | callers))
@@ -701,7 +749,7 @@ def as_c(path):
                     order.append(key)
     else:
         raise ValueError("%s: not an executable this can read" % path)
-    texts = {n: c_text._FACT.sub("", t).strip() for n, t in texts.items()}    # the decompiler's side notes
+    texts = {n: t.strip() for n, t in texts.items()}
     text = "/* %s -- decompiled by CodeBreaker; not built, not judged. */\n\n" % os.path.basename(path) + \
         (header + "\n\n" if header else "") + "\n\n".join(texts[n] for n in order) + "\n"
     return text, len(order), total
