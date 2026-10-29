@@ -60,6 +60,101 @@ E. **Knowledge base** (7): the name store, SDK prototypes and library signatures
 F. **Path-exploring judge** (6): concolic execution on the emulators, judging a function's paths
    as facts; sampling where it cannot.
 
+## Built: phase A (2026-10-29)
+
+The database and the engine are `codebreaker/engine/`, and the 16-bit module build runs on them
+behind a switch: `python -m codebreaker build <module> --engine`, or `CB_ENGINE=1` (module.build
+then hands a 16-bit module to the engine). The old path is still the default.
+
+**The database** (engine/facts.py). One SQLite file per binary, state/db/<sha256>.sqlite. A fact
+is (kind, key, value): `function.object` at `1:7cd4` (a function's address in the original), or
+`ne.image` at "" (the whole binary). Each row keeps the step that made it, that step's version,
+and the (kind, key, hash) of every fact it was made from. A value is kept as bytes, text, JSON
+or a pickle, and its hash is the SHA-1 of that; past 4 KB it goes once into a blob table by its
+hash. Size: the first time a step is used on a database in a process, its facts of other
+versions are dropped (and the blobs nothing holds); all databases together are held under the
+setting `db_max_gb` (default 4), the one opened longest ago deleted whole first. Files a step
+writes as it works (a build folder) go beside it in <sha>.work/ -- not facts, deletable.
+
+**The engine** (engine/engine.py). A step is a function declared with `@engine.step(kind,
+reads=..., platform=..., uses=..., stamp=...)`. Its version is a digest of its own source, of
+the modules and helper functions in `uses`, and of what `stamp()` gives (tool stamps, settings,
+environment switches). What a fact depends on is recorded as the step asks for it
+(`ctx.need(kind, key)`), so the dependencies are what was actually read; `reads` is checked
+against it.
+
+    db = engine.open(path)                       # the database; the binary is the fact `binary`
+    engine.get(db, kind, key)                    # current: kept, or made again with what it needs
+    engine.get_many(db, kind, keys)              # the stale ones made side by side
+    engine.put(db, kind, key, value)             # a fact given by hand (an edited function's C)
+    engine.forget(db, kind, key)                 # ... and back to its step
+    engine.why(db, kind, key)                    # how it was made, and which inputs changed
+
+A fact is current when its step's version is now's and every input is current with the hash it
+had; that is decided once per run, from the bottom up. A fact made again with the same hash
+leaves what was made from it current (a comment added to a function's C makes its object again,
+the same bytes, and nothing past that). Stale facts asked for together are made on threads
+(jobs/pool.threads), as many as the processors unless the setting `low_load` caps it (a number,
+or true for base/parallel.workers()); a `batch` step is given its stale keys in one call (the
+gate shares them out over its own four processes). `always` steps run once per run (a file's
+hash: `ctx.file(path)`), and `Unkept(value)` is used and not kept (a verdict not reached).
+
+    python -m codebreaker facts <binary>                 the kinds, counts, sizes, who made them
+    python -m codebreaker facts <binary> <kind>          each fact: key, hash, size, made, version state
+    python -m codebreaker facts <binary> <kind> <key>    one fact's value and what it was made from
+    python -m codebreaker facts <binary> <kind> [key] --make      made current first
+    python -m codebreaker facts --databases              every database and the cap
+
+**The 16-bit module build on it** (engine/win16.py). The stages are module.build's own, called
+as they are; the steps only say what each is made from:
+
+    ne.segments, ne.module (lanes/win16.prepare: describe16 + decompiler + c_text), ne.functions,
+    ne.header, ne.lines
+    function.c -> function.source -> function.object, function.never_set   (per function)
+    function.c + function.contract (the description's lines for it and its callees) -> function.gate
+    ne.image   (module._build16 and module.build's gate loop, made of all the above)
+
+The link is module._build16 unchanged: while it runs, a compile it asks for with exactly the
+options and text a `function.object` fact was made from is handed that object (and the flow
+check its `function.never_set`), and the compiler is not started; anything else it compiles
+itself, so options that drift make the link slower, never wrong. The gate loop is module.build's
+(verdicts already known first, the C functions of the build then run beside the original's in
+it, a second link when some differ, not again after a resident-overflow rebuild); known verdicts
+are taken per function, so a touched function costs one link when it still passes.
+
+Evidence (this machine, low_load 6, other sessions' work running beside; seconds; each run a
+process of its own, from an empty state folder -- no cache, no database):
+
+    module          image == module.build's   module.build cold / warm   engine cold / warm / one function touched
+    LZEXPAND.DLL    yes (b2113a90...)          23.1 / 13.4                26.9 / 0.1 / 4.1 (back: 4.2)
+    KEYBOARD.DRV    yes (79749e52...)          8.5 / 3.6                  15.8 / 0.1 / 4.1 (back: 3.8)
+    USER.EXE        yes (afd2d27f..., 40 gated) 1718 / 136                2628 / 4.5 / 201 (back: 115)
+
+"Touched": a comment added to one function's C by hand (engine.put of function.c), then taken
+away again (engine.forget): each time exactly that function's source, object, flow check,
+contract and gate verdict were made again, and the link -- 1612 of 1613 objects kept, 645 of
+646 verdicts -- and the image came out the same. Warm (nothing changed) checks ~10,000 facts of
+USER and makes none. Of USER's 1625 compiles in the link, 1622 were handed the engine's objects.
+The cold runs are slower than module.build's: they compile every function's flow check up front
+(module.build skips those already forced to assembly) and the gate's 646 functions took 1909 s
+against about 1215 s in the old run, the machine shared; cold speed is the other agent's work in
+module.build and the decompiler, which the engine calls unchanged. Of the touched USER time, most
+is module._build16 itself (the link, origin analysis, assembling) and contract16's two
+descriptions -- the parts of the link that are not yet facts.
+
+Tests: tests/test_engine.py (12, seconds: made once then kept, provenance recorded, a given fact
+remakes only what depends on it, the same value stops the change, a new step version remakes
+and drops the old, a changed binary is a new database, stale facts made side by side, undeclared
+reads refused, batch steps and unkept values, files as facts, values and blobs, old versions and
+the cap); test_plumbing and test_frozen pass.
+
+**What phase A leaves for B and after.** ne.module is one step because describe, the decompiler
+and c_text are one call today (compilable16); splitting them into facts of their own is phase C's
+(L2 as the fact). The inner caches of the stages (compilable16, gate16_original, masm, the
+decompiler's) are still state/cache: the engine is the outer layer, and each goes as its stage
+becomes a step. The function store is not yet the verdict table. The engine runs in the process
+that asks; phase B makes it the service, with its versions and memos kept across asks.
+
 ## Decisions, and what is left open
 
 - Python stays the language of the engine and the steps; the native decompiler stays a step. The
