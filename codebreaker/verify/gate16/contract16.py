@@ -20,23 +20,50 @@ import capstone
 from codebreaker.decompile import describe
 
 _VARIADIC = {"USER_420", "wsprintf", "USER_421", "wvsprintf"}   # (USER.420 wsprintf: its own count)
+# (functions that take their arguments in registers -- DOS3Call, NetBIOSCall: AH, DS:DX, ES:DI, CX
+# loaded just before the call, and the carry flag back. C sets none of them: a C caller of one is
+# not the original's. VER's sub_3_0BD6 renames a file through DOS3Call; its C called it with
+# nothing loaded, and the isolated check, answering DOS3Call alike on both sides, saw no difference)
+_IN_REGISTERS = {"KERNEL_102", "DOS3CALL", "KERNEL_103", "NETBIOSCALL"}
 _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
 _MD.detail = True                                       # (what an instruction reads and writes)
 
 
 def _described(path, where):
+    """(description, {address: name}, {address: bytes it removes -- None: not known})"""
     d = describe.describe16(path, where)
-    names = {}
+    names, pops = {}, {}
     with open(os.path.join(where, "description.txt"), encoding="utf-8") as f:
         for line in f:
             p = line.rstrip("\n").split("\t")
             if p[0] in ("X", "F") and len(p) > 2:
                 names[int(p[1], 16)] = p[2]
-    return d, names
+            if p[0] in ("X", "F") and len(p) > 3 and re.fullmatch(r"-?\d+", p[3]):
+                pops[int(p[1], 16)] = int(p[3]) if int(p[3]) >= 0 else None
+    return d, names, pops
 
 
-def _calls(img, seg, lo, hi, name_of):
-    """[(callee, bytes taken off after it)] of the code in [lo, hi)."""
+def _removes(d, pops):
+    """removes(key) for _calls: what the callee at a call's target removes, as described -- or,
+    one the describer did not find (the build's functions are found as the original's are, and
+    not all of them: USER's sub_1_2293 rebuilt at 1:5810 was not, and every call to it "took
+    none"), as its own nearest return says"""
+    def removes(key):
+        va = key[1] if key[0] == "far" else describe.address(key[1], key[2])
+        if va in pops:
+            return pops[va]
+        s, o = describe.where(va)
+        if s not in d.images:
+            return None
+        pop = describe.returns(d.images[s], o, want="far" if key[0] == "far" else None)[1]
+        return pop if pop >= 0 else None
+    return removes
+
+
+def _calls(img, seg, lo, hi, name_of, removes=lambda key: None):
+    """[(callee, bytes taken off after it, argument bytes pushed for it -- negative: at least that,
+    None: not known -- whether the frame's LEAVE follows)] of the code in [lo, hi). removes(key):
+    the bytes a callee removes itself (its `retf n`), or None."""
     ins = list(_MD.disasm(bytes(img[lo:hi]), lo))
     out = []
     # (what the prologue pushes is saved registers, not arguments; and a push a jump lands on
@@ -44,65 +71,43 @@ def _calls(img, seg, lo, hi, name_of):
     targets = {i.operands[0].imm & 0xFFFF for i in ins
                if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.x86.X86_OP_IMM}
     prologue = lo
+    loaded = False                                         # (DS set from AX: the Windows prolog done)
     for j, i in enumerate(ins[:16]):
         nxt_ = ins[j + 1] if j + 1 < len(ins) else None
-        if (i.mnemonic in ("nop", "enter") or i.op_str in ("ax, ds", "bp, sp", "ds, ax")
+        # (`mov ax, ds` and `mov ax, <data segment>` are the prolog's only before DS is loaded from
+        # AX: after it, GDI's sub_1_59D2 rebuilt -- `mov ds, ax / mov ax, ds / push ax / push 594h`,
+        # a far pointer to its data -- "pushed two bytes" for the four it pushes)
+        if (i.mnemonic in ("nop", "enter") or i.op_str in ("bp, sp", "ds, ax")
+                or (not loaded and i.op_str == "ax, ds")
                 # (and OpenWatcom's room for locals, `push ax` a word at a time -- counted as an
                 # argument, sub_3_7E58's allocator call "pushed six bytes" for its two)
                 or (i.mnemonic == "push" and i.op_str in ("ax", "cx", "dx") and nxt_ is not None
                     and not nxt_.group(capstone.CS_GRP_CALL))
                 or (i.mnemonic in ("push", "inc") and i.op_str in ("bp", "ds", "si", "di"))
                 or (i.mnemonic == "pop" and i.op_str == "ax")
-                or (i.mnemonic == "mov" and i.op_str.startswith("ax, 0x"))
+                or (not loaded and i.mnemonic == "mov" and i.op_str.startswith("ax, 0x"))
                 or (i.mnemonic == "sub" and i.op_str.startswith("sp,"))):
             prologue = i.address + i.size
+            loaded = loaded or (i.mnemonic == "mov" and i.op_str == "ds, ax")
         else:
             break
     targets.add(prologue)
+    stack_at = _stack(ins, seg, prologue, removes)
     for k, i in enumerate(ins):
         # (a target of 0 is printed `0`, not `0x0`: every call to a segment's first function --
         # SUWIN's helpers at 7:0000 and 9:0000 -- went unchecked, and a C caller passing one word
         # of a far pointer's two was never seen)
-        mnemonic = i.mnemonic.replace("notrack ", "")      # (OpenWatcom's `3E E8`, a call with a DS prefix:
-        if mnemonic == "call" and re.fullmatch(r"0x[0-9a-f]+|\d+", i.op_str):   # Capstone's "notrack call")
-            callee = name_of(("near", seg, int(i.op_str, 0) & 0xFFFF))
-        elif mnemonic == "lcall" and re.fullmatch(r"(0x[0-9a-f]+|\d+), (0x[0-9a-f]+|\d+)", i.op_str):
-            s, o = (int(x, 0) for x in i.op_str.split(", "))
-            callee = name_of(("far", (s << 16) | o))
-        else:
+        # (OpenWatcom's `3E E8`, a call with a DS prefix: Capstone's "notrack call")
+        key = _callee_key(i, seg)
+        if key is None:
             continue                                         # (through a pointer: the callee is not known here)
+        callee = name_of(key)
         after = k + 1
         while after < len(ins) and ins[after].mnemonic == "nop":
             after += 1                                     # (OpenWatcom's `nop` after a near call)
         nxt = ins[after] if after < len(ins) else None
-        pushed = 0                                         # (the argument bytes pushed just before it)
-        before = ins[:k]
-        # (`push cs / call near`: a far call to a function of the same segment -- CS is the return
-        # address's half, no argument: counted as one, every such call of the build's "pushed two
-        # more" than the original's)
-        if before and before[-1].mnemonic == "push" and before[-1].op_str == "cs":
-            before = before[:-1]
-        exact = True                                       # (False: counted only from a join on)
-        for p in reversed(before):
-            if p.address < prologue:
-                break
-            if p.mnemonic == "push":
-                pushed += 4 if p.operands and p.operands[0].size == 4 else 2
-                if p.address in targets:
-                    exact = p.address == prologue          # (a jump lands here: another path's
-                    break                                  # pushes may come before -- MSC shares
-                continue                                   # a call's tail, `push ds / push 1150h /
-            if p.address in targets:                       # jmp` into the middle of its pushes)
-                exact = p.address == prologue
-                break
-            if p.group(capstone.CS_GRP_CALL) or p.group(capstone.CS_GRP_JUMP) or                     p.mnemonic in ("ret", "retf", "pop", "leave", "enter", "add", "sub") and                     (p.mnemonic not in ("add", "sub") or p.op_str.startswith("sp")):
-                break
-            try:
-                _r, w = p.regs_access()
-            except capstone.CsError:
-                break
-            if capstone.x86.X86_REG_SP in w:
-                break
+        total, exact = stack_at.get(k, (0, False))         # (pushed and not yet taken off; False:
+                                                           #  counted only from a join on)
         off = 0
         rest = after                                       # (the first instruction past the cleanup)
         if nxt is not None and nxt.mnemonic == "add" and nxt.op_str.startswith("sp, "):
@@ -113,14 +118,14 @@ def _calls(img, seg, lo, hi, name_of):
             # (or taken off by popping them into a register no one reads: `pop bx`, `pop cx` --
             # the original's way after a one-word cdecl call; read as nothing, the build's
             # `add sp, 2` after the same call "took off two bytes the original did not")
-            for q in ins[after:after + max(0, pushed // 2)]:
-                if q.mnemonic == "pop" and q.op_str in ("bx", "cx") and off < pushed:
+            for q in ins[after:after + max(0, total // 2)]:
+                if q.mnemonic == "pop" and q.op_str in ("bx", "cx") and off < total:
                     off += 2
                     rest += 1
                 else:
                     break
         at_leave = False
-        if pushed:
+        if total:
             # (and then the frame's LEAVE, nothing touching the stack before it: SP is set back from
             # BP whatever was taken off -- Microsoft C 8 itself leaves a call's arguments there when
             # the function ends next (SETUPX's 2:5A3C, `lcall _SUFORMATMESSAGEBOX / xor ax, ax /
@@ -140,7 +145,116 @@ def _calls(img, seg, lo, hi, name_of):
                 if capstone.x86.X86_REG_SP in w:
                     break
         if callee:
-            out.append((callee, off, pushed if exact else -pushed, at_leave))   # (negative: at least that)
+            # (the bytes that are this call's: what the callee removes itself, else what the caller
+            # takes off after it, else -- the frame's LEAVE taking them -- all still pushed; a
+            # callee that removes none and is followed by no cleanup says nothing of its own)
+            took = removes(key) or 0
+            args = took if took > 0 else off if isinstance(off, int) and off > 0 else total if at_leave else None
+            if args is None:
+                pushed = None
+            elif args <= total:
+                pushed = args
+            else:
+                # (negative: at least that -- and none counted from a join is no count at all: USER's
+                # sub_6_1A72 jumps into its call to sub_1_38E4 from three places, "pushing none")
+                pushed = total if exact else -total if total else None
+            out.append((callee, off, pushed, at_leave))
+    return out
+
+
+def _callee_key(i, seg):
+    """("near", seg, off) / ("far", address) of a direct call, or None (through a pointer)"""
+    mnemonic = i.mnemonic.replace("notrack ", "")
+    if mnemonic == "call" and re.fullmatch(r"0x[0-9a-f]+|\d+", i.op_str):
+        return ("near", seg, int(i.op_str, 0) & 0xFFFF)
+    if mnemonic == "lcall" and re.fullmatch(r"(0x[0-9a-f]+|\d+), (0x[0-9a-f]+|\d+)", i.op_str):
+        s, o = (int(x, 0) for x in i.op_str.split(", "))
+        return ("far", (s << 16) | o)
+    return None
+
+
+def _stack(ins, seg, prologue, removes):
+    """{index of a call: (bytes pushed and not yet taken off, whether that is all of them)} -- the
+    pushes since the prologue, less what was popped, taken off (`add sp, n`) or removed by a callee
+    that removes its own (removes(key)). A call's pushes are not all its own: the bytes before
+    them can be an enclosing call's -- `GlobalAlloc(0x2042, GlobalSize(h))` pushes the flags, then
+    GlobalSize's handle -- and counted back only to the call before, USER's GETCLIPBOARDDATA
+    "pushed four" for GlobalAlloc's six; counted back to a join, a call taking no arguments was
+    given the next call's (USER's sub_9_0907 pushes sub_9_0930's far pointer before calling
+    sub_1_8270, whose result is sub_9_0930's first argument). A join of paths (a jump's target)
+    has what every jump to it had, if they agree; else (or one not seen: a jump back, a table's)
+    the count starts over there, as no longer all of them."""
+    out, saved = {}, {}
+    pend, exact, live = [], False, False
+    for k, i in enumerate(ins):
+        a = i.address
+        if a < prologue:
+            continue
+        if a == prologue:
+            pend, exact, live = [], True, True
+        elif a in saved or not live:
+            seen = saved.pop(a, []) + ([(pend, exact)] if live else [])
+            if seen and all(e for _p, e in seen) and len({sum(p) for p, _e in seen}) == 1:
+                pend, exact = list(seen[0][0]), True
+            else:
+                pend, exact = [], False
+            live = True
+        m = i.mnemonic.replace("notrack ", "")
+        if m == "push":
+            pend.append(4 if i.operands and i.operands[0].size == 4 else 2)
+            if i.op_str == "cs" and k + 1 < len(ins) and ins[k + 1].mnemonic == "call":
+                pend[-1] = 0                                     # (`push cs / call near`: the return
+            continue                                             #  address's half, no argument)
+        if m in ("pushf", "pushfw"):
+            pend.append(2)
+            continue
+        if m in ("pusha", "pushaw"):
+            pend.append(16)
+            continue
+        if m in ("pop", "popf", "popfw", "popa", "popaw"):
+            n = 16 if m.startswith("popa") else 2
+            while n > 0 and pend:
+                n -= pend.pop() or 2
+            continue
+        if m in ("add", "sub") and re.fullmatch(r"sp, (0x[0-9a-f]+|\d+)", i.op_str):
+            n = int(i.op_str.split(", ")[1], 0)
+            if m == "sub":
+                pend.append(n)                                   # (room for a structure passed by value)
+            else:
+                while n > 0 and pend:
+                    n -= pend.pop() or 2
+            continue
+        if i.group(capstone.CS_GRP_CALL):
+            if pend and pend[-1] == 0:
+                pend.pop()
+            out[k] = (sum(pend), exact)
+            key = _callee_key(i, seg)
+            if key is None:
+                nxt = ins[k + 1] if k + 1 < len(ins) else None
+                if not (nxt is not None and nxt.mnemonic == "add" and nxt.op_str.startswith("sp")):
+                    pend, exact = [], False                      # (through a pointer: it may remove
+                continue                                         #  what was pushed, or not)
+            n = removes(key) or 0
+            while n > 0 and pend:
+                n -= pend.pop() or 2
+            continue
+        if i.group(capstone.CS_GRP_JUMP):
+            t = i.operands[0].imm & 0xFFFF if i.operands and i.operands[0].type == capstone.x86.X86_OP_IMM else None
+            if t is not None and t > a:
+                saved.setdefault(t, []).append((list(pend), exact))
+            if m in ("jmp", "ljmp"):
+                live = False
+            continue
+        if i.group(capstone.CS_GRP_RET) or m in ("ret", "retf", "iret", "int3"):
+            live = False
+            continue
+        try:
+            _r, w = i.regs_access()
+        except capstone.CsError:
+            pend, exact = [], False
+            continue
+        if capstone.x86.X86_REG_SP in w:
+            pend, exact = [], False                              # (`mov sp, bp`, LEAVE: the frame's end)
     return out
 
 
@@ -149,8 +263,8 @@ def mismatches(original, folder, image, names):
     original's calls to the same callee (map file and image of the build in `folder`)."""
     tmp = tempfile.mkdtemp(prefix="contract16_")
     try:
-        do, xo = _described(original, os.path.join(tmp, "o"))
-        du, xu = _described(image, os.path.join(tmp, "u"))
+        do, xo, po = _described(original, os.path.join(tmp, "o"))
+        du, xu, pu = _described(image, os.path.join(tmp, "u"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     starts = collections.defaultdict(list)
@@ -204,17 +318,22 @@ def mismatches(original, folder, image, names):
             a, b = collections.defaultdict(set), collections.defaultdict(set)
             pa, pb = collections.defaultdict(set), collections.defaultdict(set)
             low = collections.defaultdict(int)            # (the original's at-least counts)
-            for c, t, p, lv in _calls(do.images.get(os_, b""), os_, oo, oe, orig_name):
+            for c, t, p, lv in _calls(do.images.get(os_, b""), os_, oo, oe, orig_name, _removes(do, po)):
                 a[c].add("leave" if lv else t)
+                if p is None:
+                    continue
                 if p >= 0:
                     pa[c].add(p)
                 else:
                     low[c] = max(low[c], -p)
-            for c, t, p, lv in _calls(img, s, o, hi, ours_name):
+            for c, t, p, lv in _calls(img, s, o, hi, ours_name, _removes(du, pu)):
                 b[c].add("leave" if lv else t)
-                if p >= 0:                                # (ours counted from a join: not compared)
+                if p is not None and p >= 0:              # (ours counted from a join: not compared)
                     pb[c].add(p)
             for c in sorted(set(a) & set(b)):
+                if c in _IN_REGISTERS:
+                    out[n] = "it calls %s, which takes its arguments in registers" % c
+                    break
                 ta, tb = a[c] - {"leave"}, b[c] - {"leave"}   # (before a LEAVE: whatever was taken off)
                 if ta and tb and ta != tb:
                     # (each set may hold "leave" beside the byte counts -- and a count read from a
