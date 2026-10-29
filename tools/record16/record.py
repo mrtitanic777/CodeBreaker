@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, HERE)
 sys.path.insert(0, CB)
-from codebreaker.base import corpus, settings
+from codebreaker.base import corpus, runs, settings
 from codebreaker.formats.ne import NEFile
 from codebreaker.verify.gate16 import isolated16
 from codebreaker.verify.gate16 import setup16 as s
@@ -91,7 +91,8 @@ def descriptor(ldt_base, sel):
     return base, lim, d[5]
 
 
-dump_path = os.path.join(OUT, "rec_mem_%s.bin" % tag).replace("\\", "/")
+work = runs.start("record16", tag)            # (the memory dumps, 64 MB each: the run's, deleted at its end)
+dump_path = os.path.join(work, "rec_mem.bin").replace("\\", "/")
 where = {}                       # segment -> {"selector", "base", "limit"}
 
 
@@ -172,7 +173,7 @@ def want():
 
 
 base_mem = {"np": None, "id": 0, "saved": False, "ldt": None}
-hit_path = os.path.join(OUT, "rec_hit_%s.bin" % tag).replace("\\", "/")
+hit_path = os.path.join(work, "rec_hit.bin").replace("\\", "/")
 
 
 def memory():
@@ -324,7 +325,4 @@ finally:
         walk.wait(timeout=60)
     except subprocess.TimeoutExpired:
         walk.kill()
-    try:
-        os.remove(dump_path)
-    except OSError:
-        pass
+    runs.remove(work)

@@ -16,8 +16,7 @@ than it looks are the same for all of them.
     inconclusive   the original could not be observed on any input
 """
 import hashlib
-import pickle
-import sqlite3
+
 
 def _exit_norm(e):
     if e is None:
@@ -214,52 +213,18 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
     return "equivalent", "", sorted(limits)
 
 
-_FP_DB = None
-
-
-def _fp_cache_path():
-    from codebreaker.base import settings
-    return settings.state("fingerprints.sqlite")
-
-
-def _fp_db():
-    """Open (once per process) the WAL-mode sqlite fp cache, or False if it cannot be used. WAL lets
-    the 10 sweep workers read concurrently; a write that loses the lock is swallowed (re-traced next
-    time), so the cache never affects correctness."""
-    global _FP_DB
-    if _FP_DB is None:
-        try:
-            db = sqlite3.connect(_fp_cache_path(), timeout=5.0)
-            db.execute("PRAGMA journal_mode=WAL")
-            db.execute("PRAGMA synchronous=NORMAL")
-            db.execute("CREATE TABLE IF NOT EXISTS fp(k TEXT PRIMARY KEY, v BLOB)")
-            db.commit()
-            _FP_DB = db
-        except Exception:
-            _FP_DB = False
-    return _FP_DB or None
-
-
+# Fingerprints are kept in the one cache (base/cache.py), kind "fingerprints", its generation
+# REV: a fingerprint made under another revision of the comparer is dropped, not kept for ever,
+# and all of them count toward the cache's cap. A write that loses the lock is swallowed
+# (traced again next time), so the cache never affects a verdict.
 def cache_get(key):
-    db = _fp_db()
-    if not db:
-        return None
-    try:
-        row = db.execute("SELECT v FROM fp WHERE k=?", (key,)).fetchone()
-        return pickle.loads(row[0]) if row else None
-    except Exception:
-        return None
+    from codebreaker.base import cache
+    return cache.value("fingerprints", key)
 
 
 def cache_put(key, fp):
-    db = _fp_db()
-    if not db:
-        return
-    try:
-        db.execute("INSERT OR REPLACE INTO fp(k,v) VALUES(?,?)", (key, pickle.dumps(fp)))
-        db.commit()
-    except Exception:
-        pass
+    from codebreaker.base import cache
+    cache.keep("fingerprints", key, fp)
 
 
 def cache_key(*parts):

@@ -3,7 +3,7 @@ source beside what CodeBreaker makes of their binary.
 
     python tools/oss_bench.py [PROJECT ...] [--opt FLAGS]
 
-Each project (PROJECTS; cloned under state/oss/<name>) is compiled with OpenWatcom into a 32-bit
+Each project (PROJECTS; cloned under state/oss_bench/oss/<name>) is compiled with OpenWatcom into a 32-bit
 DLL exporting every public function -- only its library's .c files, with our own compiler command;
 nothing of the project's is run to build it. The DLL goes through the same pipeline as
 `python -m codebreaker measure` (verify/reconstruct.py: decompile, rebuild, run beside it). Then,
@@ -12,7 +12,8 @@ per function -- named by the link map, statics too -- the authored C and ours ar
 - the verdict (does ours behave as the original);
 - gotos: the authors' (in their source) and ours; ours beyond theirs are the decompiler's.
 
-The report: state/oss_bench.txt. The store: state/oss_bench.sqlite (CB_FUNCTIONS_DB).
+All of it under state/oss_bench/: the report oss_bench.txt, the store oss_bench.sqlite
+(CB_FUNCTIONS_DB), the builds in build/.
 """
 import collections
 import os
@@ -23,8 +24,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-OSS = os.path.join(ROOT, "state", "oss")
-WORK = os.path.join(ROOT, "state", "oss_build")
+HOME = os.path.join(ROOT, "state", "oss_bench")
+OSS = os.path.join(HOME, "oss")
+WORK = os.path.join(HOME, "build")
 # name -> (the library's .c files (globs, relative), defines, include dirs)
 PROJECTS = {
     "cJSON": (["cJSON.c", "cJSON_Utils.c"], ["_MSC_VER=1200"], ["."]),   # (its wrappers for a __cdecl malloc)
@@ -38,7 +40,7 @@ PROJECTS = {
              "lundump.c", "lvm.c", "lzio.c", "lauxlib.c", "lbaselib.c", "lcorolib.c", "ldblib.c", "liolib.c",
              "lmathlib.c", "loadlib.c", "loslib.c", "lstrlib.c", "ltablib.c", "lutf8lib.c", "linit.c"],
             ["LUA_32BITS=1"], ["."]),
-    "miniz": (["miniz.c", "miniz_tdef.c", "miniz_tinfl.c", "miniz_zip.c"], ["MINIZ_NO_STDIO=1", "MINIZ_EXPORT="], [".", "../../oss_build/_shim"]),   # (an empty miniz_export.h: CMake makes it)
+    "miniz": (["miniz.c", "miniz_tdef.c", "miniz_tinfl.c", "miniz_zip.c"], ["MINIZ_NO_STDIO=1", "MINIZ_EXPORT="], [".", "../../build/_shim"]),   # (an empty miniz_export.h: CMake makes it)
 }
 # (not yet built by OpenWatcom: cJSON's __cdecl hooks against OW's own malloc; sds's GNU C)
 SET_ASIDE = ("cJSON", "sds")
@@ -129,7 +131,7 @@ def main(argv):
         opt = argv[argv.index("--opt") + 1]
         argv = [a for a in argv if a not in ("--opt", opt)]
     names = argv or [n for n in PROJECTS if n not in SET_ASIDE]
-    db = os.environ.get("CB_FUNCTIONS_DB") or os.path.join(ROOT, "state", "oss_bench.sqlite")
+    db = os.environ.get("CB_FUNCTIONS_DB") or os.path.join(HOME, "oss_bench.sqlite")
     os.environ["CB_FUNCTIONS_DB"] = db
     fs = F.open()
     lines = []
@@ -165,7 +167,7 @@ def main(argv):
                  "gotos: theirs %3d, ours %3d, added %3d" % (
                      "TOTAL", tot["functions"], tot["equivalent"], tot["consistent"], tot["divergent"],
                      tot["no-compile"], tot["their gotos"], tot["our gotos"], tot["gotos we added"]))
-    with open(os.environ.get("CB_OSS_REPORT") or os.path.join(ROOT, "state", "oss_bench.txt"), "w", encoding="utf-8") as f:
+    with open(os.environ.get("CB_OSS_REPORT") or os.path.join(HOME, "oss_bench.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     print(lines[-1])
     return 0

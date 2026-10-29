@@ -35,7 +35,9 @@ Every platform plugs into one path (`verify/reconstruct.py`) through one descrip
 codebreaker/
   base/        settings.py   where things are on this machine (settings.json)
                corpus.py     the original binaries: find one, identify it
-               cache.py      results kept by what made them: nothing is compiled or decompiled twice
+               cache.py      results kept by what made them: nothing is compiled or decompiled twice;
+                             old generations dropped, all of it under a cap (cache_max_gb)
+               runs.py       a run's own folder (disk and CD copies), deleted when the run ends
                parallel.py   the one number of things that run side by side
   formats/     reading files: pe, ne, le (drivers), dos, powerpc_image, resources, cab, media, fonts
   decompile/   describe.py   take a file apart and describe it to the decompiler
@@ -102,6 +104,34 @@ compilers, DOSBox-X, MASM, the PowerPC compiler -- and docs/NOT_IN_REPO.md lists
 setting. `workers` is how many things run at once (default half the processors, at most 6).
 What CodeBreaker makes of each binary goes into its own folder under `Converted/` (original/, src/,
 assets/, build/, reports/, README.txt; docs/NOT_IN_REPO.md); caches go to `state/`. Neither is committed.
+
+### What is kept, and how big it gets
+
+`state/` looks after its own size. Three rules keep it there:
+
+- **The cache holds one generation, under a cap.** Every kept result -- decompiled C, compiled
+  objects, the judge's fingerprints, assembled listings -- is filed by a hash of what made it, in
+  one sqlite file per kind (`state/cache/<kind>/<generation>.sqlite`), not millions of small files.
+  A kind's generation is the version of the code that makes it (the comparer's `REV`, the
+  decompiler's build and languages: `GENERATIONS` in base/cache.py); when the code moves on, the
+  results of the old generation are dropped the first time the kind is used -- one file deleted.
+  All of the caches together stay under `cache_max_gb` (default 2): as results are written, past
+  the cap the ones used longest ago go first. `CB_NO_CACHE=1` keeps nothing for a run.
+- **A run's copies are the run's.** Every harness that boots a copied disk or CD (`setup16`, `vxd
+  boot`, the record16 tools) works in `state/<tool>/runs/<run>/`, deleted when the run ends; a run
+  that was killed is swept by the next run of that tool once it is a day old. Only the last
+  screenshot and log of each tag are kept, in the tool's one results folder (`state/phase3/shots`,
+  `state/vxdboot/shots`).
+- **Every tool writes under its own folder**, `state/<tool>/`, never loose at the top of `state/`.
+
+```
+python -m codebreaker cache               what is kept, kind by kind, its generations, the cap
+python -m codebreaker cache --prune       old generations dropped, the cap held
+python -m codebreaker cache --clear       all of it gone (costs time, nothing else)
+python -m codebreaker tidy-state [--dry]  state/'s size by part; the stale removed: killed runs, old
+                                          caches, build objects of Converted projects idle two weeks
+                                          (--stray: also what no part of CodeBreaker writes)
+```
 
 ## Use
 

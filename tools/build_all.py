@@ -6,7 +6,7 @@
 A function judged one at a time says the function is right. A module built whole -- every
 function, its data, its resources, its exports and imports, linked into one file of the
 original's format -- says the module is there. For each module this runs `codebreaker build`
-(build/module.py) and keeps one line in state/build_all.csv:
+(build/module.py) and keeps one line in state/build_all/build_all.csv:
 
     linked            the module was built into a file
     exports           how many of the original's exports it has, with the same number and name
@@ -118,7 +118,7 @@ def _write(out, rows):
 def main(argv):
     from codebreaker.base import corpus, parallel, settings
     from codebreaker.jobs import pool
-    out = settings.state("build_all.csv")
+    out = settings.state("build_all", "build_all.csv")
     rows = []
     if os.path.isfile(out):
         with open(out, newline="", encoding="utf-8") as f:

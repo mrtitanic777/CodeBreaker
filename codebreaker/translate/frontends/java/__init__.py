@@ -48,6 +48,9 @@ def tool(javac=None):
         if r.returncode != 0:
             shutil.rmtree(folder, ignore_errors=True)
             raise RuntimeError('TreeDump did not compile: ' + r.stdout.decode('utf-8', 'replace')[:400])
+        for old in os.listdir(os.path.dirname(folder)):     # (those of another source or JDK: never used again)
+            if old.startswith('treedump-') and old != os.path.basename(folder):
+                shutil.rmtree(os.path.join(os.path.dirname(folder), old), ignore_errors=True)
     return folder
 
 

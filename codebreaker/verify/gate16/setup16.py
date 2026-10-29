@@ -6,8 +6,10 @@ that starts `SETUP /IS`. At the Welcome dialog Enter is pressed (Continue); Setu
 its License Agreement page. That page on the screen is a pass; Windows back at the DOS prompt,
 an error box, or Windows' screen with nothing on it is a fail.
 
-Everything a run copies (the CD, the disk -- 650 MB) is made in a folder of its own and gone
-when the run ends; only the last screen is kept, for whoever looks at a failure.
+Everything a run copies (the CD, the disk -- 650 MB) is made in a folder of its own
+(base/runs.py: state/phase3/runs/) and gone when the run ends -- a killed run's, by the next
+run once it is a day old; only the last screen of each tag is kept (state/phase3/shots/<tag>.png),
+for whoever looks at a failure.
 
     continue_test({"USER.EXE": path, ...}, tag) -> (verdict, screenshot)
       verdict: "PASS" | "FAIL(dos)" | "FAIL(hang)" | "FAIL(error box)" | "FAIL(timeout)"
@@ -18,10 +20,9 @@ import os
 import shutil
 import socket
 import subprocess
-import tempfile
 import time
 
-from codebreaker.base import settings
+from codebreaker.base import runs, settings
 
 LICENSE_GREY = (192, 199, 200)
 LICENSE_POINTS = ((60, 350), (580, 350), (300, 395))
@@ -175,10 +176,10 @@ def _black(img):
 def continue_test(replace, tag, wait=150, keep_shot=None):
     """Boot Setup with `replace` {NAME: path} and press Continue. -> (verdict, screenshot path)"""
     p = _paths()
-    shots = keep_shot or settings.state("phase3", "shots")
+    shots = keep_shot or runs.results("phase3")
     os.makedirs(shots, exist_ok=True)
     png = os.path.join(shots, tag + ".png")
-    work = tempfile.mkdtemp(prefix="setup16_", dir=settings.state("phase3"))
+    work = runs.start("phase3", tag)                         # (the disk and CD copies: this run's alone)
     q = None
     verdict = "SLOW"
     try:
@@ -238,9 +239,5 @@ def continue_test(replace, tag, wait=150, keep_shot=None):
                 q.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 pass
-        for _ in range(20):                                  # (QEMU lets go of its files a moment later)
-            shutil.rmtree(work, ignore_errors=True)
-            if not os.path.exists(work):
-                break
-            time.sleep(0.5)
+        runs.remove(work)                                    # (QEMU lets go of its files a moment later)
     return verdict, png

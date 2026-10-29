@@ -67,7 +67,10 @@ What CodeBreaker makes of a binary goes into that binary's project folder under 
 by its SHA-1, so every command run on one file adds to one folder.
 
 The rest -- the function store, caches, scratch builds, scoreboards -- goes under `state/`
-(setting `state`). Delete it to start over; nothing in it is source. The reconstructed Windows 95
+(setting `state`). Delete it to start over; nothing in it is source. It holds its own size: the
+caches stay under `cache_max_gb` (default 2) and keep only the generation of the code of now; boot
+runs delete their disk copies; `python -m codebreaker tidy-state` shows it part by part and clears
+what is stale (README: What is kept, and how big it gets). The reconstructed Windows 95
 source is written into the Windows 95 tree (`../Windows95`), where it is kept and curated.
 
 The native decompiler is built from `native/decompiler` into `native/decompiler/build/bin`

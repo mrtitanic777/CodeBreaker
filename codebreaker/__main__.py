@@ -75,6 +75,10 @@ python -m codebreaker               with no command, in a terminal: the terminal
     mcp [--http PORT]               CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)
     progress [--once]               watch a running sweep
     settings                        every setting, and whether what it names is there
+    cache [--stats|--prune|--clear] what the cache keeps, kind by kind; old generations dropped, the cap
+                                    held (setting cache_max_gb, default 2); or all of it gone
+    tidy-state [--dry] [--stray]    state/'s size by part, and what is stale in it removed (killed runs'
+                                    disk copies, old caches, idle build objects)
     java <tool> ...                 the Java transpiler: a Java program as C++03 (convert, decompile,
                                     worklist, ...; `java --help` lists them)
 
@@ -135,6 +139,8 @@ COMMANDS = {
     "ui": ("codebreaker.ui.terminal", []),
     "progress": ("codebreaker.ui.progress", []),
     "settings": ("codebreaker.base.settings", []),
+    "cache": ("codebreaker.base.cache", []),
+    "tidy-state": ("codebreaker.base.tidy_state", []),
     "recompile": ("codebreaker.recompile.powerpc", []),
     "recompile-project": ("codebreaker.recompile.project", []),
     "xenon-recompile": ("codebreaker.recompile.xenon", []),

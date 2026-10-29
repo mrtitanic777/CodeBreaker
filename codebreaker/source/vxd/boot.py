@@ -22,9 +22,11 @@ a driver it does not find in the bundle from there).
 
 The disk is never changed: `--disk`, or the setting "win95_installed_hd" (a raw image of a hard
 disk Windows 95 is installed on; default the one the Phase 3 install left in WSL), is copied into
-a run folder of its own, which is deleted when the run ends. BootLog=1 is set in the copy's
-MSDOS.SYS; after the run the copy's BOOTLOG.TXT says which of the files Windows loaded, and its
-last lines are kept with the last screen (state/vxdboot/<tag>.png and <tag>.bootlog.txt). That
+a run folder of its own (base/runs.py), which is deleted when the run ends -- and a killed run's,
+by the next run, once it is a day old. BootLog=1 is set in the copy's MSDOS.SYS; after the run the
+copy's BOOTLOG.TXT says which of the files Windows loaded, and it is kept with the last screen,
+one of each per tag (state/vxdboot/shots/<tag>.png and <tag>.bootlog.txt; the tag is "rebuilt"
+or "retail" unless --tag names another, and a run overwrites the last of its tag). That
 image has FIX95CPU's drivers in VMM32 already: without them a fast host fails at IOS, whatever
 the drivers (the classic timing-loop fault of Windows 95), and those files are left alone.
 
@@ -34,10 +36,9 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 
-from codebreaker.base import corpus, settings
+from codebreaker.base import corpus, runs, settings
 from codebreaker.formats import le, media
 
 DEFAULT_DISK = r"\\wsl$\Ubuntu\home\mrtit\win95_install.img"
@@ -180,13 +181,13 @@ def boot(disk, files, tag, wait=300, log=print):
     | "FAIL(qemu exited)" """
     from codebreaker.verify.gate16 import setup16
     qemu = settings.get("qemu") or r"C:\Program Files\qemu\qemu-system-i386.exe"
-    shots = settings.state("vxdboot", "shots")
+    shots = runs.results("vxdboot")
     os.makedirs(shots, exist_ok=True)
     png = os.path.join(shots, tag + ".png")
     need = os.path.getsize(disk) + float(settings.get("min_free_gb") or 6) * 2 ** 30
     if shutil.disk_usage(settings.state("vxdboot")).free < need:
         raise RuntimeError("not enough free disk space for a copy of %s" % disk)
-    work = tempfile.mkdtemp(prefix="run_%s_" % tag, dir=settings.state("vxdboot"))
+    work = runs.start("vxdboot", tag)                           # (the disk copy: this run's alone)
     q, verdict, bootlog = None, "FAIL(timeout)", ""
     try:
         hd = os.path.join(work, "hd.img")
@@ -237,11 +238,7 @@ def boot(disk, files, tag, wait=300, log=print):
             bootlog = _read(os.path.join(work, "hd.img"), "BOOTLOG.TXT")
         except (OSError, ValueError, KeyError):
             pass
-        for _ in range(20):                                     # (QEMU lets go of its files a moment later)
-            shutil.rmtree(work, ignore_errors=True)
-            if not os.path.exists(work):
-                break
-            time.sleep(0.5)
+        runs.remove(work)                                       # (QEMU lets go of its files a moment later)
     with open(os.path.join(shots, tag + ".bootlog.txt"), "w", encoding="latin1") as f:
         f.write(bootlog)
     return verdict, png, bootlog
@@ -326,7 +323,7 @@ def main(argv):
     if not os.path.isfile(disk):
         print("no installed Windows 95 disk at %s (set win95_installed_hd in settings.json, or --disk)" % disk)
         return 1
-    tag = opts["--tag"] or ("retail" if "--retail" in flags else "rebuilt") + time.strftime("_%Y%m%d_%H%M%S")
+    tag = opts["--tag"] or ("retail" if "--retail" in flags else "rebuilt")     # (the last of a tag is kept)
     verdict = run(disk, drivers, "--vmm32" in flags, "--retail" in flags, tag, int(opts["--wait"]))
     if verdict != "PASS" and "--bisect" in flags:
         units = drivers + (["VMM32"] if "--vmm32" in flags else [])

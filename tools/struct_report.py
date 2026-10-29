@@ -13,7 +13,8 @@ and compares with the frozen output:
   recovered for that parameter is checked against the SDK's layout: a field of the SDK structure
   starts at that offset and has that size.
 
-The report is written to state/struct_report.txt; each module's output to state/structs/.
+The report is written to state/struct_report/struct_report.txt; each module's output to
+state/struct_report/modules/.
 """
 import json
 import os
@@ -28,7 +29,8 @@ from codebreaker.decompile import decompiler                 # noqa: E402
 from codebreaker.symbols import prototypes, sdk_structs      # noqa: E402
 
 GOLDEN = os.path.join(ROOT, "state", "golden")
-OUT = os.path.join(ROOT, "state", "structs")
+HOME = os.path.join(ROOT, "state", "struct_report")
+OUT = os.path.join(HOME, "modules")
 DEREF = re.compile(r"\*\([\w ]+\*+\)\(\(?\w+\)? ?\w* \+ (?:0x)?[0-9a-f]+\)")
 NOTE = re.compile(r"^/\*@S (\S+) (\d+) ((?:[0-9a-f]+:\d+:\S+ ?)*)\*/$", re.M)
 
@@ -136,7 +138,8 @@ def main(names):
                  (total["params"], total["whole"], total["agree"], total["disagree"]))
     lines += sdk_rows
     report = "\n".join(lines) + "\n"
-    with open(os.path.join(ROOT, "state", "struct_report.txt"), "w", encoding="utf-8") as f:
+    os.makedirs(HOME, exist_ok=True)
+    with open(os.path.join(HOME, "struct_report.txt"), "w", encoding="utf-8") as f:
         f.write(report)
     print(report)
 

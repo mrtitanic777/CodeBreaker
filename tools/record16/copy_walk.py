@@ -1,18 +1,21 @@
 """Boot Setup with a given SUWIN.EXE (or the original), accept the license, then press Enter
 through the Wizard, saving a screenshot after each step.
 
-    python wizard_walk.py <tag> [suwin.exe path] [steps]"""
+    python copy_walk.py <tag> [suwin.exe path] [steps]
+
+The disk and CD copies are the run's (base/runs.py: state/phase3/runs/), deleted when it ends; the
+screenshots go to state/record16/walk/<tag>/ (the film of every third look: its last 50 frames).
+COPY_WALK_KEEP_DISK=1 keeps the installed disk there too (hd.img, 650 MB), to compare."""
 import os
 import json
 import sys
 import shutil
 import subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from codebreaker.base import settings
+from codebreaker.base import runs, settings
 from codebreaker.verify.gate16 import setup16 as s
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +46,7 @@ def log(*a):
 
 
 p = s._paths()
-work = tempfile.mkdtemp(prefix="walk_", dir=settings.state("phase3"))
+work = runs.start("phase3", "walk_" + tag)
 q = None
 try:
     iso = os.path.join(work, "cd.iso")
@@ -134,6 +137,10 @@ try:
             filmed[0] += 1                                   # (every look kept, to see what happened)
             if filmed[0] % 3 == 0:
                 img.save(os.path.join(shots, "film_%04d.png" % filmed[0]))
+                try:                                         # (the last 50 frames: a long walk's film
+                    os.remove(os.path.join(shots, "film_%04d.png" % (filmed[0] - 150)))   # was gigabytes)
+                except OSError:
+                    pass
             if still >= 3 or app_error(img):
                 return img
             last = img
@@ -212,12 +219,9 @@ finally:
             q.wait(timeout=20)
         except subprocess.TimeoutExpired:
             pass
-    try:                                                     # (the installed disk kept, to compare)
-        shutil.move(os.path.join(work, "hd.img"), os.path.join(shots, "hd.img"))
-    except OSError:
-        pass
-    for _ in range(20):
-        shutil.rmtree(work, ignore_errors=True)
-        if not os.path.exists(work):
-            break
-        time.sleep(0.5)
+    if os.environ.get("COPY_WALK_KEEP_DISK"):                # (the installed disk kept, to compare: asked for)
+        try:
+            shutil.move(os.path.join(work, "hd.img"), os.path.join(shots, "hd.img"))
+        except OSError:
+            pass
+    runs.remove(work)
