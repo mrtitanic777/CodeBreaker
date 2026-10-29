@@ -106,13 +106,16 @@ def _module16(path, more=None):
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
     md.detail = True
     res = Result()
+    g3 = _linker16(path) >= (5, 30)                          # (C 7 and 8: /G3 makes 32-bit registers)
     for va, name in sorted(names.items()):
         seg, off = d.where[va]
         image = d.images.get(seg, b"")
         later = [o for o in starts[seg] if o > off]
         end = later[0] if later else len(image)
         o = res.functions[va] = Origin(va, name)
-        _judge(o, md, image, off, end, imported, set(starts[seg]))
+        _judge(o, md, image, off, end, imported, set(starts[seg]), g3)
+        if g3 and o.language == "assembly":
+            _c8_forms(o, md, image, off, end)
     # A function whose inner addresses a table names (KRNL386's fault chain: a start and an end
     # of the instructions that may fault, with where to go on if they do) was written in
     # assembly: its instructions have to be where the table says, which C's cannot be. Three
@@ -144,7 +147,7 @@ def _module16(path, more=None):
     # was written in assembly as well (C passes arguments on the stack)
     by_place = {d.where[va]: o for va, o in res.functions.items()}
     takes_registers = {place for place, o in by_place.items()
-                       if any(e.startswith("argument in ") for e in o.evidence)}
+                       if any(e.startswith("argument in ") for e in o.evidence) and o.language == "assembly"}
     for va, o in res.functions.items():
         if o.language == "assembly":
             continue
@@ -174,7 +177,53 @@ def _module16(path, more=None):
     return res
 
 
-def _judge(o, md, image, start, end, imported, starts=()):
+# What Microsoft C 7 and 8 make that the rules above take for assembly (measured with C 8.00c):
+#   _fastcall   the first arguments in AX, DX, BX (a char in AL, DL, BL; a long in DX:AX), the
+#               rest on the stack, removed by the callee; no frame when nothing is on the stack
+#   _asm        the block's own instructions (INT n, IN/OUT, CLI/STI, PUSHF/POPF, a carry tested
+#               or set), and round them a BP frame: C 8 gives every function holding an _asm
+#               block one (push bp / mov bp,sp, or enter), even without locals or arguments
+_FASTCALL = {"AX", "AL", "DX", "DL", "BX", "BL"}
+_INLINE = ("INT 0x", "PUSHF", "POPF", "CLI", "STI", "IN (", "OUT (", "STC:", "CLC:", "CMC:",
+           "argument in the flags")
+
+
+def _c8_forms(o, md, image, start, end):
+    """A function judged assembly whose only evidence is what C 7/8 make for _fastcall or an _asm
+    block: C, with what it is said beside it (o.compiler)."""
+    kinds = [e.split(" (")[0] for e in o.evidence]
+    regs = {k[len("argument in "):] for k in kinds if k.startswith("argument in ") and k != "argument in the flags"}
+    inline = [e for e in o.evidence if e.startswith(_INLINE)]
+    rest = [e for e in o.evidence if not e.startswith(_INLINE) and not (
+        e.startswith("argument in ") and e.split(" (")[0][len("argument in "):] in _FASTCALL)]
+    if rest:
+        return
+    ins = list(md.disasm(image[start:min(end, start + 8)], start))
+    framed = bool(ins) and (ins[0].mnemonic == "enter" or (
+        len(ins) > 1 and (ins[0].mnemonic, ins[0].op_str, ins[1].mnemonic, ins[1].op_str) == ("push", "bp", "mov", "bp, sp")))
+    if inline and not framed:
+        return
+    if regs and not {"AX", "AL"} & regs:                    # (the first argument is AX's, a long's DX:AX)
+        return
+    said = []
+    if regs:
+        said.append("_fastcall (arguments in %s)" % ", ".join(sorted(regs)))
+    if inline:
+        said.append("an _asm block (%s)" % "; ".join(e for e in inline[:3]))
+    o.compiler.extend(said)
+    o.evidence = []
+    o.language = "c"
+
+
+def _linker16(path):
+    """The (major, minor) version of the linker that made a 16-bit module, from its NE header."""
+    with open(path, "rb") as f:
+        d = f.read()
+    o = struct.unpack_from("<I", d, 0x3C)[0] if len(d) >= 0x40 else 0
+    return (d[o + 2], d[o + 3]) if d[o:o + 2] == b"NE" else (0, 0)
+
+
+def _judge(o, md, image, start, end, imported, starts=(), g3=False):
     written, prologue_ax, frame, last_push_seg, flags_set = set(), False, False, False, False
     ax_from_ss = False
     prev_call, pending, code_in = False, None, {}
@@ -286,7 +335,11 @@ def _judge(o, md, image, start, end, imported, starts=()):
             o.evidence.append("%s: a result in the carry flag (%04x)" % (mn.upper(), ins.address))
         elif mn in _MACHINE:
             o.evidence.append("%s (%04x)" % (_MACHINE[mn], ins.address))
-        explicit = [op.reg for op in ops if op.type == X.X86_OP_REG] +                    [r for op in ops if op.type == X.X86_OP_MEM for r in (op.mem.base, op.mem.index)]
+        # Microsoft C 7 and 8 under /G3 move and compute longs in 32-bit registers (mov eax, dword
+        # ptr _h; add eax, ...; movsx eax, word ptr _a), but address memory with 16-bit registers
+        # only: in a module their linker made, a 32-bit register as an operand says nothing, one
+        # that addresses memory still says assembly.
+        explicit = ([] if g3 else [op.reg for op in ops if op.type == X.X86_OP_REG]) +             [r for op in ops if op.type == X.X86_OP_MEM for r in (op.mem.base, op.mem.index)]
         if any(r in _REGS32 for r in explicit):                # (not the stack pointer push and call imply)
             o.evidence.append("32-bit register (%04x %s %s)" % (ins.address, mn, ins.op_str))
         for op in ops:
@@ -359,6 +412,8 @@ def _judge(o, md, image, start, end, imported, starts=()):
             written.add(nm)
             if len(nm) == 2 and nm[1] in "lh":
                 written.add(nm[0] + "x")
+            elif len(nm) == 3 and nm[0] == "e":                 # (cdq, movsx eax ...: its 16-bit half too)
+                written.add(nm[1:])
         if mn in ("call", "lcall"):                           # what a call leaves: its result in DX:AX,
             written.update(("ax", "bx", "cx", "dx", "es"))   # and the registers it may use
         elif mn == "int":

@@ -81,18 +81,38 @@ def _l2_key():
 _L2_NOTE = re.compile(r"^/\*@L2 (\{.*\}) \*/$", re.M)
 
 
-def c_from_l2(text, documents=None):
+def _segment_images(description):
+    """{segment: bytes} of a 16-bit module's code, from its description's `bytes` lines (describe16)."""
+    from codebreaker.decompile import describe
+    images = {}
+    with open(description, encoding="utf-8", errors="replace") as f:
+        for ln in f:
+            p = ln.rstrip("\n").split("\t")
+            if p[0] == "bytes" and len(p) >= 5:
+                with open(p[2], "rb") as fh:
+                    fh.seek(int(p[3], 16))
+                    images[describe.where(int(p[1], 16))[0]] = fh.read(int(p[4], 16))
+    return images
+
+
+def c_from_l2(text, images=None, documents=None):
     """A function's text with its C written by the hub's C back end from its L2 note
     (translate/backends/c.py; docs/IR_UNIFICATION.md step 2) in place of the C the decompiler
     printed; the decompiler's other notes kept. Without a note, or one the back end declines,
-    the printed C stays. `documents`: a list the function's L2 document is added to, whichever
-    C it keeps (the module's L2 tree is made of them: build/module.module_document)."""
+    the printed C stays. With `images` ({segment: code}, CB_ASM_BLOCKS=1) a 16-bit function's
+    interrupts are first made the _asm blocks its instructions say (decompile/asm_blocks.py).
+    `documents`: a list the function's L2 document is added to, whichever C it keeps (the module's L2 tree is made of them: build/module.module_document)."""
     from codebreaker.translate.backends import c as cback
     m = _L2_NOTE.search(text)
     if not m:
         return text
+    doc = json.loads(m.group(1))
+    origin = doc.get("origin") or {}
+    if images and origin.get("segment") in images:
+        from codebreaker.decompile import asm_blocks
+        code = images[origin["segment"]]
+        doc, _said = asm_blocks.place(doc, code, origin["offset"], len(code), seg=origin["segment"])
     try:
-        doc = json.loads(m.group(1))
         if documents is not None:
             documents.append(doc)
         body = cback.function(doc, cback.MOVED)  # (its far pointers: L2's types say which)
@@ -118,11 +138,12 @@ def run(description, only=(), timeout=3600, max_instructions=None):
             del os.environ["CB_L2"]
         else:
             os.environ["CB_L2"] = was
+    images = _segment_images(description) if os.environ.get("CB_ASM_BLOCKS") else None
     docs = L2_DOCUMENTS.setdefault(os.path.abspath(description), {})
     texts = {}
     for n, t in out.items():
         got = []
-        texts[n] = c_from_l2(t, got)
+        texts[n] = c_from_l2(t, images, got)
         if got:
             docs[n] = got[0]
     return texts, order, by_va, err

@@ -812,6 +812,7 @@ class PrintL2 : public PrintC {
     std::string stmt, expr;
     bool cond = false;
     bool comment = false;                  // a Comment statement
+    std::set<uintb> at;                    // the instructions it was made from (their addresses)
   };
   std::vector<std::string> header_;                 // the function's header comments (its warnings), JSON strings
   std::ostringstream sink_;
@@ -1017,12 +1018,32 @@ class PrintL2 : public PrintC {
     }
     return unsupported("operator", k.print1 + k.print2);
   }
+  // the instructions an expression was made from: every operator's and leaf's p-code op's address
+  static void addresses(const Tree& t, std::set<uintb>& at) {
+    // (an operator's op, a variable leaf's: other atoms do not say an op of their own)
+    bool has = t.op != nullptr && (t.tok != nullptr || t.atype == vartoken);
+    const AddrSpace* sp = has ? t.op->getAddr().getSpace() : nullptr;
+    if (sp != nullptr && sp->getType() == IPTR_PROCESSOR)   // (an instruction's: not a constant's, a temporary's)
+      at.insert(t.op->getAddr().getOffset());
+    for (auto& k : t.kids) addresses(*k, at);
+  }
+  // L2's "at" (docs/L2_BINARY_TYPES.md section 8, provenance): the addresses, in order
+  static std::string atJson(const std::set<uintb>& at) {
+    std::string s;
+    for (uintb a : at) s += (s.empty() ? "" : ",") + std::to_string((unsigned long long)a);
+    return "[" + s + "]";
+  }
+  std::set<uintb> captured_;                        // what the last capture's expressions came from
   // the expressions PrintC placed while `f` ran
   std::vector<std::string> capture(const std::function<void()>& f) {
     size_t before = done_.size();
     f();
     std::vector<std::string> out;
-    for (size_t i = before; i < done_.size(); ++i) out.push_back(expr(*done_[i]));
+    captured_.clear();
+    for (size_t i = before; i < done_.size(); ++i) {
+      out.push_back(expr(*done_[i]));
+      addresses(*done_[i], captured_);
+    }
     done_.resize(before);
     return out;
   }
@@ -1072,13 +1093,17 @@ class PrintL2 : public PrintC {
   static std::string array(const std::vector<Item>& items) {
     std::string s;
     for (auto& i : items)
-      s += (s.empty() ? "" : ",") + (i.cond ? "{\"node\":\"ExprStmt\",\"expr\":" + i.expr + "}" : i.stmt);
+      s += (s.empty() ? "" : ",") + (i.cond ? "{\"node\":\"ExprStmt\",\"expr\":" + i.expr + ",\"origin\":{\"at\":" +
+                                     atJson(i.at) + "}}" : i.stmt);
     return "[" + s + "]";
   }
+  std::set<uintb> conditionAt_;                     // what the last condition() was made from
   // one expression of what `bl` prints as a condition: statements in it joined by the comma operator
   std::string condition(const FlowBlock* bl, uint4 on, uint4 off = 0) {
     std::vector<Item> got = collect(bl, on, off);
     std::string e;
+    conditionAt_.clear();
+    for (auto& i : got) conditionAt_.insert(i.at.begin(), i.at.end());
     for (auto& i : got) {
       // (a comment the core sorted into a loop's comma list has no statement to stand beside: L2
       // cannot say where PrintC writes it, so the back end keeps the printed C)
@@ -1094,7 +1119,10 @@ class PrintL2 : public PrintC {
     if (isSet(only_branch)) {
       const PcodeOp* inst = bb->lastOp();
       if (inst != nullptr && inst->isBranch())
-        for (auto& e : capture([&] { emitExpression(inst); })) lists_.back().push_back({"", e, true});
+        for (auto& e : capture([&] { emitExpression(inst); })) {
+          lists_.back().push_back({"", e, true, captured_});
+          lists_.back().back().at.insert(inst->getAddr().getOffset());
+        }
       return;
     }
     for (auto it = bb->beginOp(); it != bb->endOp(); ++it) {
@@ -1120,16 +1148,19 @@ class PrintL2 : public PrintC {
   void statement(const PcodeOp* inst) {
     std::vector<std::string> e = capture([&] { emitExpression(inst); });
     std::string x = e.empty() ? "" : e.back();
+    std::set<uintb> at = captured_;
+    at.insert(inst->getAddr().getOffset());
     if (inst->code() == CPUI_CBRANCH || inst->code() == CPUI_BRANCHIND) {
-      lists_.back().push_back({"", x.empty() ? unsupported("condition", "") : x, true});
+      lists_.back().push_back({"", x.empty() ? unsupported("condition", "") : x, true, at});
       return;
     }
     if (inst->code() == CPUI_RETURN && inst->getHaltType() == 0) {
-      lists_.back().push_back({"{\"node\":\"Return\"" + (x.empty() ? "" : ",\"expr\":" + x) + "}", x, false});
+      lists_.back().push_back({"{\"node\":\"Return\"" + (x.empty() ? "" : ",\"expr\":" + x) + ",\"origin\":{\"at\":" + atJson(at) + "}}",
+                               x, false, at});
       return;
     }
     if (x.empty()) x = unsupported("statement", get_opname(inst->code()));
-    lists_.back().push_back({"{\"node\":\"ExprStmt\",\"expr\":" + x + "}", x, false});
+    lists_.back().push_back({"{\"node\":\"ExprStmt\",\"expr\":" + x + ",\"origin\":{\"at\":" + atJson(at) + "}}", x, false, at});
   }
   void emitBlockGraph(const BlockGraph* bl) override {
     for (FlowBlock* b : bl->getList()) b->emit(this);
@@ -1164,12 +1195,14 @@ class PrintL2 : public PrintC {
     }
     if (isSet(only_branch) || isSet(comma_separate)) {
       std::string a = condition(bl->getBlock(0), 0);
+      std::set<uintb> at = conditionAt_;
       std::string b = condition(bl->getBlock(1), comma_separate, only_branch);
+      at.insert(conditionAt_.begin(), conditionAt_.end());
       std::string op = bl->getOpcode() == CPUI_BOOL_AND ? "&&" : "||";
       // PrintC brackets both sides of a condition joined by the structure (emitBlockCondition):
       // `(a) && (b)`, where an && inside one expression is printed bare
       lists_.back().push_back({"", "{\"node\":\"Binary\",\"op\":\"" + op + "\",\"left\":{\"node\":\"Paren\",\"x\":" + a +
-                                   "},\"right\":{\"node\":\"Paren\",\"x\":" + b + "}}", true});
+                                   "},\"right\":{\"node\":\"Paren\",\"x\":" + b + "}}", true, at});
     }
   }
   void emitBlockIf(const BlockIf* bl) override {
@@ -1180,7 +1213,7 @@ class PrintL2 : public PrintC {
     for (auto& i : comments(cb)) lists_.back().push_back(i);
     std::string cond = condition(cb, only_branch);
     FlowBlock::block_type t = bl->getType();
-    std::string s = "{\"node\":\"If\",\"cond\":" + cond + ",\"then\":";
+    std::string s = "{\"node\":\"If\",\"origin\":{\"at\":" + atJson(conditionAt_) + "},\"cond\":" + cond + ",\"then\":";
     std::vector<Item> after;
     if (t == FlowBlock::t_ifgoto) {
       const BlockIfGoto* g = (const BlockIfGoto*)bl;

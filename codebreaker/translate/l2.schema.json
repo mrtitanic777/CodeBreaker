@@ -501,6 +501,22 @@
       }
      },
      "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "required": [
+      "at"
+     ],
+     "description": "a statement of a decompiled function: the addresses of the instructions it was made from",
+     "properties": {
+      "at": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      }
+     },
+     "additionalProperties": false
     }
    ]
   },

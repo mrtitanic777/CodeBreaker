@@ -1104,6 +1104,13 @@ def _stmt(em, s):
         _comment(em, s['text'], 20)              # (PrintC's line_commentindent)
     elif n == 'Empty':
         pass
+    elif n == 'MachineFragment' and s.get('reason') == 'inline':
+        # an _asm block of Microsoft C (decompile/asm_blocks.py): its instructions as the inline
+        # assembler takes them, C's names in its operands, labels at the left
+        out.append(pad + '_asm {')
+        for ln in _stmts(s.get('asm')):
+            out.append(ln if ln.endswith(':') else pad + '  ' + ln)
+        out.append(pad + '}')
     else:
         raise Decline('statement %s' % n)
 

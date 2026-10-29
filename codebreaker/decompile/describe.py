@@ -1759,9 +1759,10 @@ def model_line(d, va, name, default="near"):
     if hand and pop >= 0:
         pop += hand
     conv = "__stdcall16" if pop > 0 else "__cdecl16" if pop == 0 else "__stdcall16"
-    # (CB_FASTCALL=0 turns it off; near ones only -- a far _fastcall function cannot be compiled
-    # with /Gw, the Windows prolog loading DS through AX: "illegal far _fastcall function")
-    if os.environ.get("CB_FASTCALL") != "0" and (kind or default) == "near" and register_arguments(code, off):
+    # (CB_FASTCALL=0 turns it off. A far one only without the Windows prolog: under /Gw, which
+    # loads DS through AX, C 8 says "illegal far _fastcall function" -- without it, as in SUWIN,
+    # a far _fastcall takes AX, DX, BX as a near one does: measured, `retf` / `retf n`)
+    if os.environ.get("CB_FASTCALL") != "0" and ((kind or default) == "near" or not windows_far_prologue(code, off))             and register_arguments(code, off):
         conv = "__fastcall16"
     # what it returns, as its instructions show (where it runs to: the next function's start)
     result = getattr(d, "results", {}).get(va)
