@@ -236,13 +236,16 @@ def _interrupt_routines(wcc, env, outdir, interrupts):
 
 
 def build16(header, texts, order, imports, outdir, segments=None, jobs=None, code_segment=None, interrupts=None,
-            code_data=None):
+            code_data=None, code_image=None):
     """`code_segment` {name: the number of the original's segment the function is in}: the
     functions of one segment are put in one segment again. A segment holds 64K at most, and
     functions of one segment call each other near, of different ones far -- as in the original.
     `interrupts` {vector}: the software interrupts the texts take (c_text: m.interrupts).
     `code_data` {segment: C}: the original's data its functions read through CS (c_text:
-    m.code_data), compiled into that code segment."""
+    m.code_data), compiled into that code segment. `code_image` {segment: bytes}: the original's
+    whole segment, put at the start of the rebuilt one -- for C that still reads its code segment
+    at the original's offsets (c_text: m.code_reads "left"), so that what it reads there is what
+    the original has; the functions come after it. Left out again when the segment would not fit."""
     wcc, wlink = period_tools.ow_tool("wcc"), period_tools.ow_tool("wlink")
     if not (wcc and wlink):
         raise RuntimeError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)")
@@ -259,6 +262,15 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
     _compile(wcc, CFLAGS16, env, outdir, "data", "\n".join(data))
     lines = ["system windows dll", "name m.dll", "option quiet, map, nodefaultlibs, caseexact, undefsok",
              "libpath %s" % period_tools.ow_lib("ne")]
+    images = []                                              # (first in their segments: at offset 0)
+    for seg, image in sorted((code_image or {}).items()):
+        if not _compile(wcc, CFLAGS16 + ["-nt=CODE%d" % seg], env, outdir, "image%02d" % seg,
+                        'uint1 __based(__segname("_CODE")) codebreaker_code_image_%d[] = {\n%s\n};' % (seg, ",\n".join(
+                            ",".join(str(x) for x in image[i:i + 32]) for i in range(0, len(image), 32)))):
+            images.append((seg, "file image%02d.obj" % seg))
+    if images:                                               # (each its own segment, not packed after another)
+        lines.append("option packcode=0")
+    lines += [line for _seg, line in images]
     lines += ["file %s.obj" % stems[n] for n in order if n in stems]
     for seg, text in sorted((code_data or {}).items()):     # (beside the functions of its segment)
         if not _compile(wcc, CFLAGS16 + ["-nt=CODE%d" % seg], env, outdir, "code%02d" % seg, text):
@@ -289,6 +301,11 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
         if dll or not over or not code_segment:
             break
         seg, need = int(over.group(1)), int(over.group(2)) + 512
+        image = next((line for sg, line in images if sg == seg and line in lines), None)
+        if image:                                            # (the original's image goes first)
+            lines.remove(image)
+            dll, why = _link(wlink, env, outdir, lines)
+            continue
         sized = sorted(((os.path.getsize(os.path.join(outdir, stems[n] + ".obj")), n) for n in live
                         if code_segment.get(n) == seg and n in stems and n not in dropped), reverse=True)
         freed = 0
