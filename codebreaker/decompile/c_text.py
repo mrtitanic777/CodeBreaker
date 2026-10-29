@@ -2582,10 +2582,12 @@ def _far_reads(text):
             if not op or op[0] != "*":
                 continue
             ty = cast.child_by_field_name("type")
-            near = re.fullmatch(r"(\w+(?: \w+)?) \*", src.at(ty))
+            # (`T *`, and a pointer read so, `T **` -- KRNL386's INITTASK stores &param_1 at
+            # ss:[0Ch]: `*(xunknown1 **)((uint1 __far *)MK_FP(unaff_SS, 0xc))` wrote DS:0Ch)
+            near = re.fullmatch(r"(\w+(?: \w+)?(?: ?\*)*?) ?\*", src.at(ty))
             inner = cast.child_by_field_name("value")
             inner = inner.named_children[0] if inner.type == "parenthesized_expression" and inner.named_child_count == 1 else None
-            if near and inner is not None and inner.type == "cast_expression" and \
+            if near and "__far" not in src.at(ty) and inner is not None and inner.type == "cast_expression" and \
                     re.fullmatch(r"\w+ __far \*", src.at(inner.child_by_field_name("type"))):
                 src.insert(ty.start_byte + len(near.group(1)), " __far")
     return ctree.rewrite(text, fix)

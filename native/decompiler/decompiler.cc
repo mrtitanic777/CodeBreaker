@@ -470,6 +470,7 @@ struct Description {
   std::shared_ptr<const std::vector<Span>> spans;
   std::vector<CallSite> calls;
   std::vector<JumpOverride> jumps;
+  std::vector<uint64_t> retjumps;                  // returns that are jumps (`R <address>`)
   std::set<uint64_t> only;
   bool x86_32 = false;
 };
@@ -1817,6 +1818,23 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
       JumpTable* jt = t.first->installJumpTable(Address(code, (uintb)j.site));
       jt->setOverride(addrs, Address(), 0, 0);
     }
+    // its returns that are jumps (describe.jump_by_return: `push dx / push ax / retf`, the stack as
+    // the function was entered): each a call through the address pushed, then a return -- the
+    // CALL_RETURN flow override, as the Ghidra application sets it by hand -- and the call given
+    // the function's own prototype, so it passes on the arguments the function was given and its
+    // result is the function's. VER's sub_4_003E/008A/00D6 jump so to the LZEXPAND functions
+    // GetProcAddress found; read as returns, their C returned the pointer and an uninitialised DX.
+    for (uint64_t r : d.retjumps) {
+      uint64_t owner = 0;
+      for (const auto& f : d.funcs)
+        if (f.va <= r && f.va > owner && (f.va >> 16) == (r >> 16)) owner = f.va;
+      if (owner != t.second.va) continue;
+      Address ra(code, (uintb)r);
+      t.first->getOverride().insertFlowOverride(ra, "callreturn");
+      FuncProto* own = new FuncProto();
+      own->copy(t.first->getFuncProto());
+      t.first->getOverride().insertProtoOverride(ra, own);
+    }
     Action* act = m.allacts.getCurrent();
     act->reset(*t.first);
     act->perform(*t.first);
@@ -1948,6 +1966,8 @@ int main(int argc, char** argv) {
         std::string t;
         while (std::getline(ts, t, ',')) if (!t.empty()) j.targets.push_back(strtoull(t.c_str(), nullptr, 16));
         if (!j.targets.empty()) d.jumps.push_back(j);
+      } else if (f.size() >= 2 && f[0] == "R") {
+        d.retjumps.push_back(strtoull(f[1].c_str(), nullptr, 16));
       } else if (f.size() >= 3 && f[0] == "reg") {
         d.regs.push_back({f[1], strtoull(f[2].c_str(), nullptr, 16)});
       }

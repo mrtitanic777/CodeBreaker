@@ -339,8 +339,9 @@ public:
   virtual void opPtradd(const PcodeOp *op);
   virtual void opPtrsub(const PcodeOp *op);
   virtual void opSegmentOp(const PcodeOp *op);
-  bool enteredSegment(const Varnode *vn) const;	///< CodeBreaker: the entry DS/SS, carried unchanged?
-  bool nearSegment(const Varnode *vn) const;	///< CodeBreaker: a segment C's near pointers already mean?
+  bool enteredSegment(const Varnode *vn,bool dataOnly=false) const;	///< CodeBreaker: the entry DS/SS (or DS alone), carried unchanged?
+  bool nearSegment(const Varnode *vn,const Varnode *off=(const Varnode *)0) const;	///< CodeBreaker: a segment C's near pointers already mean?
+  bool frameAddress(const Varnode *vn) const;	///< CodeBreaker: an address in a frame (this function's, or BP's)?
   static bool dataSegmentKnown;			///< CodeBreaker: the module's data segment is given
   static uintb dataSegment;			///< CodeBreaker: ... and is this selector
   virtual void opCpoolRefOp(const PcodeOp *op);

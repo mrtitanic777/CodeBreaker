@@ -863,7 +863,11 @@ def _wasm(wasm, env, folder, stem, text, flags=("-q", "-zcm")):
         with open(obj, "rb") as fh:
             cache.put("wasm16", k, b"OK" + fh.read())
         return 0, msg
-    cache.put("wasm16", k, b"ER" + msg.encode("utf-8", "replace"))
+    # (a failure that says nothing is the assembler stopped from outside -- a build interrupted --
+    # not the text: kept, every later build of the module found that piece "not assembling" and
+    # gave up its whole frame, USER's segment 1 with all its C)
+    if msg.strip():
+        cache.put("wasm16", k, b"ER" + msg.encode("utf-8", "replace"))
     return r.returncode or 1, msg
 
 
