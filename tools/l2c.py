@@ -5,11 +5,11 @@
 Runs the native decompiler with CB_L2=1 on each golden module's frozen description (tools/golden.py)
 and, for every function, writes its `/*@L2 {...} */` document back as C with
 codebreaker.translate.backends.c and compares that with the C the decompiler printed beside it,
-token by token and in its spacing (comments aside, and where PrintC broke a long line: c_text's
-passes read spacing).
-Per module: functions written back the same, the same but for spacing, different, declined (a node
-the back end does not write). docs/IR_UNIFICATION.md step 2: the back end replaces
-the printed C where they are the same.
+character for character: its comments and where it broke a long line too (c_text's passes read
+spacing and lines).
+Per module: functions written back the same, the same tokens but laid out otherwise (spacing, line
+breaks, comments), different, declined (a node the back end does not write).
+docs/IR_UNIFICATION.md step 2: the back end replaces the printed C where they are the same.
 
 --diff NAME prints one function's two texts where they part.
 
@@ -44,39 +44,24 @@ def tokens(text):
 
 
 def functions(out):
-    """{name: (L2 document or None, the printed C)} from the decompiler's output."""
+    """{name: (L2 document or None, the printed C)} from the decompiler's output: the C after its
+    notes, as PrintC wrote it (docFunction: its first line break left out, and the empty line
+    after it)."""
     found = {}
     heads = list(HEAD.finditer(out))
     for i, h in enumerate(heads):
         chunk = out[h.start():heads[i + 1].start() if i + 1 < len(heads) else len(out)]
         note = NOTE.search(chunk)
-        found[h.group(1)] = (json.loads(note.group(1)) if note else None, chunk)
+        printed = chunk[note.end() + 2:] if note and chunk[note.end():note.end() + 2] == "\n\n" else chunk
+        if printed.endswith("\n\n"):
+            printed = printed[:-1]
+        found[h.group(1)] = (json.loads(note.group(1)) if note else None, printed)
     return found
-
-
-def _uncommented(text):
-    return re.sub(r"/\*.*?\*/", " ", text, flags=re.S).strip()
-
-
-def spaced_alike(mine, printed):
-    """Is `mine` spaced as `printed` is, wherever printed is on one line? c_text's passes read
-    spacing (`  xunknown1 axStack_4c [52];`), not only tokens. Where PrintC breaks a long line, the
-    break stands either for a space (`a, b` in a condition's list) or for none (`f(a,b)`): either is
-    taken there, and only there."""
-    pieces = re.split(r"[ \t]*\n\s*", _uncommented(printed))
-    pattern = " ?".join(re.escape(" ".join(p.split())) for p in pieces)
-    return re.fullmatch(pattern, " ".join(_uncommented(mine).split())) is not None
-
-
-def layout(text):
-    """The C on one line, comments left out, every run of white space one space (for showing where
-    two texts part)."""
-    return " ".join(_uncommented(text).split())
 
 
 def compare(doc, printed):
     """('same' | 'same tokens' | 'different' | 'declined: why' | 'no L2', the back end's C or '')
-    'same': line for line as printed; 'same tokens': only the spacing differs."""
+    'same': character for character as printed; 'same tokens': laid out otherwise."""
     if doc is None:
         return "no L2", ""
     try:
@@ -85,7 +70,7 @@ def compare(doc, printed):
         return "declined: %s" % e, ""
     if tokens(mine) != tokens(printed):
         return "different", mine
-    return ("same" if spaced_alike(mine, printed) else "same tokens"), mine
+    return ("same" if mine == printed else "same tokens"), mine
 
 
 def first_parting(a, b, around=8):
@@ -112,9 +97,8 @@ def check(name, folder, show, diff=None):
             if verdict.startswith("declined"):
                 partings[verdict] += 1
             elif verdict == "same tokens":
-                la, lb = layout(mine), layout(printed)
-                k = next((i for i, (x, y) in enumerate(zip(la, lb)) if x != y), min(len(la), len(lb)))
-                p = "spacing: %r  |  %r" % (la[max(0, k - 25):k + 15], lb[max(0, k - 25):k + 15])
+                k = next((i for i, (x, y) in enumerate(zip(mine, printed)) if x != y), min(len(mine), len(printed)))
+                p = "layout: %r  |  %r" % (mine[max(0, k - 30):k + 15], printed[max(0, k - 30):k + 15])
                 partings[p] += 1
                 examples.setdefault(p, fn)
             elif verdict == "different":
@@ -124,7 +108,7 @@ def check(name, folder, show, diff=None):
             if diff == fn:
                 print(mine)
                 print("----- printed")
-                print(re.sub(r"^/\*@L2 .*$", "", printed, flags=re.M))
+                print(printed)
                 print("----- parting:\n  %s\n  %s" % first_parting(mine, printed, 12))
     total = sum(tally.values())
     print("%-10s %5d functions  %5d same  %5d same tokens  %5d different  %5d declined  %4d no L2  (%.0fs)" % (
@@ -187,7 +171,7 @@ def check_made(module, show):
     """Functions whose compilable C is the same either way, and the first lines that differ."""
     a, b = made(module, False), made(module, True)
 
-    def flat(t):                                         # (its tokens: comments, and where PrintC broke a long line, aside)
+    def flat(t):                                         # (its tokens: comments, and where a line was broken, aside)
         return " ".join(tokens(t))
     same = [n for n in a if n in b and a[n] == b[n]]
     spaced = [n for n in a if n in b and a[n] != b[n] and flat(a[n]) == flat(b[n])]

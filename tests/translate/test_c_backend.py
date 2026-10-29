@@ -136,3 +136,43 @@ def test_moved_far_from_stack():
                                                   'value': name('piVar1', near)}}]}
     assert 'piVar2 = MK_FP(codebreaker_ss(), piVar1);' in c.function(doc, c.MOVED)
     assert 'piVar2 = piVar1;' in c.function(doc, ('far', 'near_calls'))
+
+
+def test_comments_where_printc_writes_them():
+    """PrintC's comments come with L2: the function's warnings above it (MethodDecl.comments, a
+    line break in one written as the core writes it, the comment's fill after it), the others as
+    Comment statements, each on a line of its own at column 20 (line_commentindent)."""
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'void'}, 'params': [],
+           'comments': ['WARNING: Instruction at (ram,0x10e8036d) overlaps instruction at (ram,0x10e8036c)\n',
+                        'WARNING: Treating indirect jump as call'],
+           'body': [{'node': 'Comment', 'text': 'WARNING: Could not recover jumptable at 0x00011a6a. Too many branches'},
+                    {'node': 'Return'}]}
+    assert not list(l2.validate(doc) or ())
+    assert c.function(doc) == (
+        '/* WARNING: Instruction at (ram,0x10e8036d) overlaps instruction at (ram,0x10e8036c)\n'
+        '    */\n'
+        '/* WARNING: Treating indirect jump as call */\n'
+        '\n'
+        'void f(void)\n'
+        '\n'
+        '{\n'
+        '                    /* WARNING: Could not recover jumptable at 0x00011a6a. Too many branches */\n'
+        '  return;\n'
+        '}\n')
+
+
+def test_a_long_line_broken_as_printc_breaks_it():
+    """EmitPrettyPrint's rule, not C's: lines of 100, broken at the last place the groups allow --
+    here between two arguments, the rest under the bracket (USER's 1:59E6)."""
+    args = ['iStack_4', 'iStack_1e', 'iStack_1c', 'iStack_1a', 'iStack_18', 'iStack_16', 'iStack_14',
+            'iStack_12', 'iStack_10', 'a5']
+    call = {'node': 'Call', 'target': {'node': 'Name', 'sym': {'kind': 'function', 'name': 'sub_1_65AE'}},
+            'args': [name(a) for a in args]}
+    stmt = {'node': 'ExprStmt', 'expr': {'node': 'Assign', 'target': name('iVar3'), 'value': call}}
+    nest = [stmt]
+    for _ in range(3):
+        nest = [{'node': 'If', 'cond': binary('==', name('x'), lit(0)), 'then': nest}]
+    text = function(nest)
+    assert '        iVar3 = sub_1_65AE(iStack_4,iStack_1e,iStack_1c,iStack_1a,iStack_18,iStack_16,iStack_14,\n' \
+           '                           iStack_12,iStack_10,a5);\n' in text
+    assert c.expr(stmt['expr']) == 'iVar3 = sub_1_65AE(%s)' % ','.join(args)     # (on its own: one line)

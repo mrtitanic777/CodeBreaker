@@ -810,7 +810,9 @@ class PrintL2 : public PrintC {
   struct Item {                            // one statement, or the condition a branch tests
     std::string stmt, expr;
     bool cond = false;
+    bool comment = false;                  // a Comment statement
   };
+  std::vector<std::string> header_;                 // the function's header comments (its warnings), JSON strings
   std::ostringstream sink_;
   std::vector<std::pair<Tree*, int>> stack_;        // operators waiting for operands, and how many they have
   std::unique_ptr<Tree> open_;                      // the expression being placed
@@ -845,6 +847,17 @@ class PrintL2 : public PrintC {
     adjustTypeOperators();
   }
   int unsupported(void) const { return unsupported_; }
+  const std::vector<std::string>& header(void) const { return header_; }
+
+  // A comment, where PrintC writes one (emitCommentFuncHeader, emitCommentGroup,
+  // emitCommentBlockTree): one of the header's (indent 0 or 1), or a Comment statement in the
+  // list being built, at its place among the statements.
+  void emitLineComment(int4 indent, const Comment* comm) override {
+    std::string text = jsonText(comm->getText());
+    if (indent >= 0) header_.push_back(text);
+    else if (!lists_.empty()) lists_.back().push_back({"{\"node\":\"Comment\",\"text\":" + text + "}", "", false, true});
+    comm->setEmitted(true);
+  }
 
   void placeOp(const OpToken* tok, const PcodeOp* op) override {
     auto t = std::make_unique<Tree>();
@@ -1066,13 +1079,16 @@ class PrintL2 : public PrintC {
     std::vector<Item> got = collect(bl, on, off);
     std::string e;
     for (auto& i : got) {
-      std::string x = i.expr.empty() ? unsupported("statement", "") : i.expr;
+      // (a comment the core sorted into a loop's comma list has no statement to stand beside: L2
+      // cannot say where PrintC writes it, so the back end keeps the printed C)
+      std::string x = i.comment ? unsupported("comment", i.stmt) : i.expr.empty() ? unsupported("statement", "") : i.expr;
       e = e.empty() ? x : "{\"node\":\"Binary\",\"op\":\",\",\"left\":" + e + ",\"right\":" + x + "}";
     }
     return e.empty() ? unsupported("condition", "") : e;
   }
 
   void emitBlockBasic(const BlockBasic* bb) override {
+    commsorter.setupBlockList(bb);
     addLabel(bb);
     if (isSet(only_branch)) {
       const PcodeOp* inst = bb->lastOp();
@@ -1086,8 +1102,19 @@ class PrintL2 : public PrintC {
       if (inst->isBranch() && (isSet(no_branch) || inst->code() == CPUI_BRANCH)) continue;
       const Varnode* vn = inst->getOut();
       if (vn != nullptr && vn->isImplied()) continue;
+      if (!isSet(comma_separate)) emitCommentGroup(inst);     // (the comments before it, as PrintC)
       statement(inst);
     }
+    emitCommentGroup(nullptr);                                // (and any left in the block)
+  }
+  // the comments PrintC writes for a condition's blocks before the statement that tests it
+  // (emitCommentBlockTree), as Comment statements
+  std::vector<Item> comments(const FlowBlock* bl) {
+    lists_.emplace_back();
+    emitCommentBlockTree(bl);
+    std::vector<Item> got = std::move(lists_.back());
+    lists_.pop_back();
+    return got;
   }
   void statement(const PcodeOp* inst) {
     std::vector<std::string> e = capture([&] { emitExpression(inst); });
@@ -1149,6 +1176,7 @@ class PrintL2 : public PrintC {
     unsetMod(no_branch | only_branch | pending_brace);
     const FlowBlock* cb = bl->getBlock(0);
     for (auto& i : collect(cb, no_branch)) lists_.back().push_back(i);
+    for (auto& i : comments(cb)) lists_.back().push_back(i);
     std::string cond = condition(cb, only_branch);
     FlowBlock::block_type t = bl->getType();
     std::string s = "{\"node\":\"If\",\"cond\":" + cond + ",\"then\":";
@@ -1180,6 +1208,7 @@ class PrintL2 : public PrintC {
     addAnyLabel(bl);
     const FlowBlock* cb = bl->getBlock(0);
     if (bl->getIterateOp() != nullptr) {                      // PrintC::emitForLoop
+      for (auto& i : comments(cb)) lists_.back().push_back(i);
       std::string init, step;
       if (const PcodeOp* op = bl->getInitializeOp())
         for (auto& e : capture([&] { pushMod(); setMod(comma_separate); emitExpression(op); popMod(); }))
@@ -1192,12 +1221,14 @@ class PrintL2 : public PrintC {
     }
     else if (bl->hasOverflowSyntax()) {                       // while (true) { cond's statements; if (c) break; ...
       std::vector<Item> body = collect(cb, no_branch);
+      for (auto& i : comments(cb)) body.push_back(i);
       body.push_back({"{\"node\":\"If\",\"cond\":" + condition(cb, only_branch) + ",\"then\":{\"node\":\"Break\"}}", "", false});   // (braceless)
       for (auto& i : collect(bl->getBlock(1), no_branch)) body.push_back(i);
       add("{\"node\":\"While\",\"cond\":{\"node\":\"Lit\",\"type\":{\"kind\":\"bool\"},\"value\":true},\"body\":" +
           array(body) + "}");
     }
     else {
+      for (auto& i : comments(cb)) lists_.back().push_back(i);
       std::string cond = condition(cb, comma_separate);
       add("{\"node\":\"While\",\"cond\":" + cond + ",\"body\":" + array(collect(bl->getBlock(1), no_branch)) + "}");
     }
@@ -1261,6 +1292,10 @@ class PrintL2 : public PrintC {
   // the body: the locals, then the statements
   std::string body(Funcdata* fd) {
     lists_.clear();
+    header_.clear();
+    // the comments, sorted to their places as PrintC::docFunction sorts them; the header's first
+    commsorter.setupFunctionList(instr_comment_type | head_comment_type, fd, *fd->getArch()->commentdb, option_unplaced);
+    emitCommentFuncHeader(fd);
     lists_.emplace_back();
     pushScope(fd->getScopeLocal());                          // (names as seen from inside: no `f::x`)
     const BlockGraph& g = fd->getStructure();
@@ -1295,16 +1330,19 @@ std::string l2Document(Architecture& m, Funcdata* fd, bool flat, int* unsupporte
     params += (params.empty() ? "" : ",") + ("{\"node\":\"Param\",\"sym\":{\"kind\":\"param\",\"name\":" +
               jsonText(q->getName()) + "},\"type\":" + l2Type(q->getType(), flat) + "}");
   }
-  std::string body;
+  std::string body, comments;
   try {
     PrintL2 l2(&m, flat);
     body = l2.body(fd);
     if (unsupported) *unsupported = l2.unsupported();
+    for (const std::string& c : l2.header()) comments += (comments.empty() ? "" : ",") + c;
   } catch (LowlevelError& e) {
     body = "[{\"node\":\"Unsupported\",\"kind\":\"body\",\"raw\":" + jsonText(e.explain) + "}]";
     if (unsupported) *unsupported = 1;
   }
-  decl.pop_back();                                            // (the closing brace: two more fields)
+  decl.pop_back();                                            // (the closing brace: more fields)
+  // the comments PrintC writes above the function (its warnings), each as the core wrote it
+  if (!comments.empty()) decl += ",\"comments\":[" + comments + "]";
   return decl + ",\"params\":[" + params + "],\"body\":" + body + "}";
 }
 

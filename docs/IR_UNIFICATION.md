@@ -113,7 +113,7 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    C19, `placeOp`/`placeAtom`), so the tree has PrintC's casts, fields, indexing and negated
    conditions. `python tools/l2check.py`: all 6,808 golden functions the core decompiles give a valid
    document, with no Unsupported node left (45 more fail in the core itself and have no C either).
-   The C is unchanged: `tools/golden.py check` gives the same differences as master's build. (Not yet carried: comments, and the address of each statement as `origin`.)
+   The C is unchanged: `tools/golden.py check` gives the same differences as master's build. (Not yet carried: the address of each statement as `origin`. Comments: carried since 2026-10-28, step 3.)
 2. **The C back end** (`translate/backends/c.py`): L2 to C that compiles with OpenWatcom. Done when,
    on the golden corpus, it compiles everywhere today's C compiles and the judge gives the same
    verdicts. Today's path stays the default until then.
@@ -136,8 +136,8 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    lzexpand, keyboard, comm, lz32 -- and USER, GDI and KRNL386 -- all the same, token for token.
    (A first check by the judge, 2026-10-28, gave the same verdicts on lzexpand, lz32, keyboard,
    comm and calc; for the 16-bit three it proved nothing: c_text.compilable16's cache was not keyed
-   by CB_C_FROM_L2 and handed back the printed C. Keyed now.) Today's path stays the default; not
-   carried yet: comments (PrintC's warnings), and where PrintC breaks a long line.
+   by CB_C_FROM_L2 and handed back the printed C. Keyed now.) Today's path stays the default.
+   (Comments and where PrintC breaks a long line: carried since 2026-10-28, step 3.)
 3. **Retire c_text into L2 passes,** one at a time, in L2_BINARY_TYPES.md's order (pointers with
    an address space first: `_far`, `_far_from_stack`, `_near_calls`). Each pass moved is one regex
    gone; the count above is the to-do list.
@@ -156,10 +156,22 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    stronger 16-bit judge found were fixed in both paths: a constant data address assigned to a far
    pointer stays near, so C makes it far with DS (LZEXPAND's LZDONE wrote through 0000:0032;
    `c_text.data_address`), and a frame buffer reached through its address as a number is written
-   with SS (KEYBOARD's NEWTABLEEX; `c_text._frame_through_ss`, not yet a tree pass). Still not
-   carried: comments (PrintC's warnings) and where PrintC breaks a long line -- the `--made` gate's
-   "but for comments and line breaks". Next: the c_text passes after the pointer ones, in
-   L2_BINARY_TYPES.md's order.
+   with SS (KEYBOARD's NEWTABLEEX; `c_text._frame_through_ss`, not yet a tree pass).
+   **Comments and line breaks carried 2026-10-28.** PrintL2 writes PrintC's comments into L2 where
+   PrintC writes them (it sorts them with the core's CommentSorter and catches emitLineComment): the
+   function's warnings as `MethodDecl.comments`, the others as `Comment` statements at their places
+   (a schema addition). The one place L2 cannot hold one is a loop's comma list (`while (a, b)`),
+   where the core can sort a comment between two parts: that becomes Unsupported, and the printed C
+   stays; there is none in the golden corpus or the seven `--made` modules.
+   The back end lays its text out as PrintC does, by the rule rather than by carried break points:
+   it makes the same calls to the core's emitter in the same order -- each expression and type
+   through a reverse-Polish stack as PrintLanguage::pushOp/pushAtom place it -- and runs them
+   through a port of EmitPrettyPrint (`backends/c._Pretty`: lines of 100, broken where the groups
+   allow, a comment's broken line filled). What a moved pass adds (`__far`, `MK_FP(...)`) is given
+   no room, as c_text adds it to the printed C after the layout. `tools/l2c.py` now holds the back
+   end to the printed C character for character, comments and line breaks included: 6,808 of
+   6,808. `--made` on the seven modules: 5,336 functions, all the same, none "but for comments and
+   line breaks". Next: the c_text passes after the pointer ones, in L2_BINARY_TYPES.md's order.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
 5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module

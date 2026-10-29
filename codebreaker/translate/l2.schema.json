@@ -1371,6 +1371,39 @@
    },
    "additionalProperties": false
   },
+  "Comment": {
+   "type": "object",
+   "required": [
+    "node",
+    "text"
+   ],
+   "properties": {
+    "node": {
+     "const": "Comment"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "text": {
+     "type": "string"
+    }
+   },
+   "additionalProperties": false,
+   "description": "a comment the source carries at this place among the statements (a decompiler's warning): its text, without the delimiters; a back end for the same language writes it where it stands"
+  },
   "Concat": {
    "type": "object",
    "required": [
@@ -2852,6 +2885,13 @@
      "items": {
       "type": "string"
      }
+    },
+    "comments": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "comments written above the declaration (a decompiler's warnings), each as its text"
     }
    },
    "additionalProperties": false,
@@ -4127,6 +4167,7 @@
       "Catch",
       "ClassDecl",
       "ClassLit",
+      "Comment",
       "Concat",
       "Cond",
       "Continue",
@@ -4321,6 +4362,18 @@
      },
      "then": {
       "$ref": "#/$defs/ClassLit"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Comment"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Comment"
      }
     },
     {
