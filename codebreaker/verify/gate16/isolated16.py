@@ -212,10 +212,7 @@ def _tables(original):
     from codebreaker.symbols import api_arguments
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # codebreaker/
     sources = sorted(glob.glob(os.path.join(root, "decompile", "*.py")) + glob.glob(os.path.join(root, "symbols", "*.py")))
-    try:
-        sizes = open(api_arguments._cache16_path(), "rb").read()
-    except OSError:
-        sizes = b""
+    sizes = api_arguments.sizes16()
     with open(original, "rb") as f:
         k = cache.key(f.read(), cache.tool(decompiler._exe()), decompiler._language_stamp(), sizes,
                       *[open(p, "rb").read() for p in sources])
@@ -238,10 +235,7 @@ def _original_key(original, callees, data_end, chain=False):
     from codebreaker.emulate import windows16 as emu
     from codebreaker.formats import ne as _ne
     from codebreaker.symbols import api_arguments
-    try:
-        sizes = open(api_arguments._cache16_path(), "rb").read()
-    except OSError:
-        sizes = b""
+    sizes = api_arguments.sizes16()
     with open(original, "rb") as f:
         return cache.key(
             f.read(), sizes, repr(sorted((callees or {}).items())), repr(data_end), bool(chain),

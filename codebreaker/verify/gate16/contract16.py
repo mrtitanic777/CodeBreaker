@@ -56,10 +56,7 @@ def _description(path, where):
     from codebreaker.symbols import api_arguments
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # codebreaker/
     sources = sorted(glob.glob(os.path.join(root, "decompile", "*.py")) + glob.glob(os.path.join(root, "symbols", "*.py")))
-    try:
-        sizes = open(api_arguments._cache16_path(), "rb").read()
-    except OSError:
-        sizes = b""
+    sizes = api_arguments.sizes16()
     with open(path, "rb") as f:
         k = cache.key(f.read(), sizes, *[open(p, "rb").read() for p in sources])
     had = cache.get("contract16_described", k)
