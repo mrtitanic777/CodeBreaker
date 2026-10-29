@@ -114,7 +114,9 @@ def _tools(p):
         tools = p.packager.tools() if p.packager.tools else {}
     except Exception:
         tools = {}
-    return sorted((k, cache.tool(v)) for k, v in (tools or {}).items() if v)
+    if not isinstance(tools, dict):                          # (a list of programs, or one)
+        tools = dict(enumerate(tools if isinstance(tools, (list, tuple)) else [tools]))
+    return sorted((str(k), cache.tool(v)) for k, v in tools.items() if isinstance(v, str) and v)
 
 
 def _build_stamp(p):

@@ -513,11 +513,122 @@ yet make the facts made from it stale by itself); that is the next step, with th
 phase B owning the one open base. verify/lanes/win32's argc and c_text's argument sizes go
 through api_arguments and so through the base, unchanged in their own code (other agents' areas).
 
+## Built: every lane on the engine, one function store (2026-10-29)
+
+**The lanes on the engine** (engine/lanes.py, behind phase A's switch: `CB_ENGINE=1`, or
+`measure <module> --engine`, `build <module> --engine`). A lane is four calls (verify/reconstruct.py:
+profile, prepare, build, judge); one set of steps, declared once per lane, makes reconstruct.run's
+decompile, build and judge facts of the binary's database, for every lane at once -- 32-bit Windows
+(pe), 16-bit Windows' judge (ne), the drivers (le), DOS, the Xbox 360 (powerpc), Java, and the six
+console and home-computer machines:
+
+    lane.K.profile          the lane's profile (digest, settings), asked every run   <- binary
+    lane.K.module           the lane's prepare (the decompiled module)               <- binary
+    lane.K.keys, lane.K.function <key>   each function's name and C (given by hand: engine.put)
+    lane.K.texts            each function's name, signature and C as they now are, the header
+    lane.K.build            the lane's build: context, items, why the rest are not in it, each
+                            function's built signature (its code and what it reaches)
+    lane.K.built <key>      what a verdict is reached for: the built signature (or, for a lane
+                            that builds the module as one, the signature); or why it is not built
+    lane.K.verdict <key>    the lane's judge in worker processes (batch; the build handed to it)
+    lane.K.rows             the rows reconstruct.run records
+
+and, for module.build of a 32-bit module, `pe.image` (the packager's link and module.check, made of
+lane.pe.module and lane.pe.function). A verdict is made again exactly when the store would judge
+the function again -- its built code (or, where a lane builds the whole module, its text) or the
+lane's profile changed: a comment added to a function's C rebuilds the module and judges nothing.
+reconstruct.run on the engine gives the store only the rows that differ from what it holds. Each
+platform's descriptor names engine/lanes.py as its steps unless it has its own (win16: engine/win16.py,
+whose module build and gate are phase A's). A Java program is a folder, not a binary: its database
+is named by the lane's sha of its sources.
+
+The versions: lane.K.module and lane.K.build are stamped with a digest of every .py of the
+decompiling and building code (decompile, translate, symbols, analyze, formats, knowledge, source,
+build, java, base, platforms ...), the lane's file, the native decompiler and its languages and the
+CB_ switches; the judge's is the lane's own profile, as the store has always filed verdicts (a change
+to the judge's code that leaves PIPE_REV/REV as it was does not judge again, on either path).
+
+Evidence (each run a process of its own, CB_NO_FP_CACHE=1, CB_LOW_LOAD=4, the old path and the engine
+each into a store of its own, the engine first cold -- its database removed --, then warm, then with
+one function's C touched by a comment by hand, then forgotten; rows compared row for row including
+reason, limits, detail and signature):
+
+    module          lane     profile        old path: verdicts                                       engine = old   warm          touched (a comment) / back
+    lz32.dll        pe       5890b88354da   17 equivalent, 3 divergent, 19 no-compile   (9.4s)        yes (8.9s)     0 judged 0.7s  0 judged, 2 rows new / the same
+    lzexpand.dll    ne       4a267afaeca1   31 equivalent, 13 divergent, 2 no-compile   (21.8s)       yes (29.8s)    0 judged 1.1s  0 judged, 2 rows new / the same
+    splitter.vxd    le       a66e119a9a64   6 equivalent                                (8.4s)        yes (9.6s)     0 judged 0.7s  6 judged (one module) / the same
+    choice.com      dos      3b24b406d543   22 equivalent                               (0.9s)        yes (1.1s)     0 judged 0.8s  22 judged / the same
+    bootanim .exe   powerpc  24af7b540c5b   237 equivalent, 54 consistent, 234 divergent, 29 no-compile (275s)  yes (204s)  0 judged 0.7s  46 judged, 508 kept (7.1s) / the same
+    HelloWorld.sms  sms      c4cd1270b7a4   3 equivalent                                (0.9s)        yes (1.0s)     0 judged 0.8s  3 judged / the same
+    tests' java     java     dd3bf79fff2d   3 equivalent, 6 inconclusive                (17.6s)       yes (17.3s)    0 judged 0.9s  1 judged, 8 kept (6.2s) / the same
+
+"engine = old": every row of the store, verdict, reason, limits, detail and signature, the same.
+The first lzexpand.dll run differed in one function (LZCOPY: equivalent / writes-differ) while the
+engine judged in key order; the 16-bit judge's answer depends on the order the functions are shared
+out over the workers, so the verdicts are now judged in the module's order, as reconstruct.run
+judges them, and the rows came out the same. "Touched" is a comment added by hand to one function's
+C (engine.put of lane.K.function): where a lane builds per function (pe, ne, powerpc, java) the
+module is built again and only the functions whose built code changed are judged; where the module
+is built as one (le, dos, the consoles) every function is, as reconstruct.run would.
+
+The 32-bit module build (module.build lz32.dll / version.dll, the old path and CB_ENGINE=1, the
+engine cold, warm, touched and back): every image the same as the old path's but for the five
+fields that differ between any two builds by the old path too (the PE header's time stamp, the
+resource directories' three, the version resource's file date); the report the same; the 12
+export calls the same (lz32: 11 alike with the original's, version.dll: 10). Warm: pe.image kept,
+0.3-0.4s; a comment by hand: only pe.image made again (the link, 0.5s).
+
+**One function store.** store/functions.py keeps its API (the UI, the MCP server, the ledger and the
+module writer read it), and a module's tables -- function, candidate, verdict, text, identified,
+built, variant -- are now in that binary's program database (state/db/<sha>.sqlite, the engine's
+file): the verdict table is the database's. The store's own file (state/functions.sqlite) is their
+index: the modules (sha, name, path, kind), the profiles and a summary per module (functions,
+verdicts, the latest class of each function, the profiles judged under) kept as each module is
+written, so what is asked across the corpus (overview, the ledger's stamps, progress) reads one
+file. The callers that read the store's tables by SQL across modules (the ledger, progress, the MCP
+server's function and name_function, the service's stored_path, module_writer, tools/causes) ask
+the store instead (module_rows, module_path, stamps, latest_profile, recent, verdicts_since, stored,
+modules_with_body). A store given a path of its own keeps its databases in `db` beside it.
+
+Carried over: the first time a store from before is opened, every module's rows are copied into
+its database, each verdict marked `carried` = 1 (a verdict reached since is 0); rows an older
+checkout writes into the old tables afterwards are carried on the next open (by their time). The
+old tables are left where they were, unread. On a copy of this machine's store (522 MB):
+
+    rows in the old tables      1262 modules, 219,177 functions, 212,960 candidates, 219,325 verdicts,
+                                15,025 identified, 169,598 built signatures, 649 variants, 1262 texts
+    carried                     every one of them (219,325 verdicts marked carried), 35s, once
+    the next open               0.5s, nothing carried again
+    overview()                  0.02s from the index (the same 1262 rows as the old store's overview)
+    old readers = new readers   overview of all 1262 modules; scores, candidates and built of 169
+                                (module, profile) pairs over 120 modules chosen at random; latest,
+                                identified, addresses, the header text; modules(profile) for each of
+                                the 51 profiles -- all the same
+
+The databases' cap (facts.hold) no longer deletes a database that holds verdicts: its facts and
+blobs go, the store's rows stay.
+
+Tests: tests/test_store.py (new, 3: a module's rows in its database and the index across modules,
+read-only, an older store carried over once and then only what was written since, with its
+variant parents and verdicts marked carried; the cap leaves the verdicts); test_engine (13: one new
+-- a made-up lane on the lanes' steps: made once then kept, a comment by hand judges nothing, a
+change to one function's code judges that one, one that does not compile is not run, a new profile
+with the build's files gone builds again there and judges all); test_platforms (every lane
+platform's steps named); test_ui, test_mcp, test_service, test_plumbing, test_frozen, test_verification, test_whole_module, test_drivers, test_dos, test_powerpc, test_knowledge, test_symbols, test_analysis and tests/java/test_kind pass; tools/check_imports passes, tools/tidy reports nothing in these files (its findings are in c_text, describe, windows16 and translate/backends/c.py, other work).
+
+**Left.** The inner caches of the stages (state/cache: the compiler's objects in build/functions,
+masm, msc6, the period compiler's in verify/authored/match, origin16, and the 16-bit gate's and the
+decompiler's, which are other work now) are still base/cache.py: the lanes' steps are the outer
+layer, as phase A's were, and each goes as its stage becomes steps of its own (the compiler's
+objects are per text, not per binary: they need a compile step the build asks, as engine/win16.py's
+function.object). The engine path is behind its switch; the old reconstruct.run and module.build
+paths stay the default until the switch is turned on for all.
+
 ## Decisions, and what is left open
 
 - Python stays the language of the engine and the steps; the native decompiler stays a step. The
   Rust core of CORE_ROADMAP Track 2 can later replace steps one at a time, behind the same facts.
 - SQLite, not a server database: one file per binary is easy to delete, copy and inspect.
 - Open: how a fact made by a period compiler (DOSBox-X) is keyed (the kit's files' hashes); how the
-  service and other sessions share a machine (the load setting); whether verdicts from before the
-  database are carried over or the store starts fresh.
+  service and other sessions share a machine (the load setting). (Decided: verdicts from before the
+  database are carried over, marked carried -- "Built: every lane on the engine" above.)
