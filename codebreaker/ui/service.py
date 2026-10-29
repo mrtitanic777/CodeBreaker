@@ -50,8 +50,8 @@ ACTIONS = {"decompile": "decompile it to C (nothing is built or judged)",
 def stored_path(name):
     """The path a module not in the corpus (a Java program's folder) was reconstructed from."""
     fs = ledger.open_store()
-    row = fs and fs.db.execute("SELECT path FROM module WHERE name=? ORDER BY ts DESC LIMIT 1", (name,)).fetchone()
-    return row[0] if row and row[0] and os.path.exists(row[0]) else None
+    p = fs and fs.module_path(name)
+    return p if p and os.path.exists(p) else None
 
 
 class Jobs(object):

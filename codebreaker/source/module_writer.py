@@ -416,7 +416,7 @@ def scoreboard(out_dir=None, log=print):
              "| Module | Kind | Functions | Verified | Verified (weak) | Identified (runtime library) | Unverified | Not judged | Does not compile | No source | Builds whole | Runs in place |",
              "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|"]
     tot = dict.fromkeys(ORDER, 0)
-    where = dict(fs.db.execute("SELECT sha, path FROM module").fetchall())
+    where = {sha: path for sha, _name, path, _kind in fs.module_rows()}
     mods = sorted((name, kind, sha, d) for d, kind in current.items() for sha, name in fs.modules(d)
                   if in_corpus(where.get(sha) or ""))          # this product's modules, no other's
     for name, kind, sha, d in mods:

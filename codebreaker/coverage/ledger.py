@@ -33,7 +33,6 @@ import collections
 import csv
 import json
 import os
-import sqlite3
 import time
 
 from codebreaker.base import corpus, settings
@@ -54,15 +53,8 @@ _rows = {}                                                       # (sha, digest)
 
 def open_store(path=None):
     """The function store, read-only: the store's own reading methods (best, tally, candidates,
-    addresses, modules, get_text) on a connection that cannot write. None when no store exists."""
-    path = path or F.default_path()
-    if not os.path.isfile(path):
-        return None
-    fs = F.FunctionStore.__new__(F.FunctionStore)                # its __init__ creates tables: not here
-    fs.path = path
-    fs.db = sqlite3.connect("file:%s?mode=ro" % path.replace("\\", "/").replace("?", "%3f").replace("#", "%23"),
-                            uri=True, timeout=60.0)
-    return fs
+    addresses, modules, get_text) on connections that cannot write. None when no store exists."""
+    return F.open(path or F.default_path(), readonly=True)
 
 
 def profiles(fs=None):
@@ -72,11 +64,7 @@ def profiles(fs=None):
     for kind, digest in reconstruct.digests().items():
         out[kind] = digest
         if digest is None:
-            row = fs and fs.db.execute(
-                "SELECT v.profile FROM verdict v JOIN candidate c ON c.id=v.candidate JOIN function f "
-                "ON f.id=c.function JOIN module m ON m.sha=f.module WHERE m.kind=? ORDER BY v.ts DESC LIMIT 1",
-                (kind,)).fetchone()
-            out[kind] = row[0] if row else None
+            out[kind] = fs.latest_profile(kind) if fs else None
     return out
 
 
@@ -150,9 +138,7 @@ def extents(path, kind, addrs):
 def _stamps(fs):
     """{sha: what changes when a module's results change} -- lets an unchanged module be served
     from memory."""
-    return {sha: (n, judged, last) for sha, n, judged, last in fs.db.execute(
-        "SELECT f.module, COUNT(DISTINCT f.id), COUNT(v.ts), MAX(v.ts) FROM function f "
-        "LEFT JOIN candidate c ON c.function=f.id LEFT JOIN verdict v ON v.candidate=c.id GROUP BY f.module")}
+    return fs.stamps()
 
 
 def _classes(fs, sha, digest):
@@ -195,7 +181,7 @@ def measure(fs=None, module=None, refresh=False):
         digests = profiles(fs)
         stored = {}                                              # name -> [(sha, path, kind)]
         stamps = _stamps(fs) if fs else {}
-        for sha, name, path, kind in (fs.db.execute("SELECT sha, name, path, kind FROM module") if fs else ()):
+        for sha, name, path, kind in (fs.module_rows() if fs else ()):
             stored.setdefault(name, []).append((sha, path or "", kind or ""))
         mods = corpus_modules(refresh)
         have = {m["name"] for m in mods}

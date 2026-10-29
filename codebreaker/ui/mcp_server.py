@@ -425,14 +425,10 @@ def function(module: str, addr: str) -> dict:
     one = _quiet(service.functions, name, hit["addr"])["function"]
     if not one.get("source"):                     # not judged under these settings: what was made of it
         with closing(F.open()) as fs:
-            made = [{"engine": e, "rev": r, "name": n, "source": s or "", "problem": pr or "",
-                     "older_verdicts": [{"profile": p, "verdict": v, "reason": why or "", "limits": lim or ""}
-                                        for p, v, why, lim in fs.db.execute(
-                                            "SELECT profile, verdict, reason, limits FROM verdict WHERE candidate=? "
-                                            "ORDER BY ts DESC LIMIT 5", (cid,))]}
-                    for cid, e, r, n, s, pr in fs.db.execute(
-                        "SELECT c.id, c.engine, c.rev, c.name, c.source, c.problem FROM candidate c JOIN function f "
-                        "ON f.id=c.function WHERE f.module=? AND f.addr=?", (found["sha"], hit["addr"]))]
+            made = [{"engine": c["engine"], "rev": c["rev"], "name": c["name"], "source": c["source"],
+                     "problem": c["problem"], "older_verdicts": [{k: v[k] for k in ("profile", "verdict", "reason", "limits")}
+                                                                 for v in c["verdicts"][:5]]}
+                    for c in fs.stored(found["sha"], hit["addr"])]
         if made:
             one["candidates"] = made
             one["say"] = ("no verdict under the verifier settings in force (profile %s); these are the stored "
@@ -1121,7 +1117,7 @@ def name_function(module: str, addr: str, name: str) -> dict:
         raise ValueError("no body recorded at %s in %s (too small to tell apart, or not a function start)"
                          % (addr, os.path.basename(p)))
     with closing(F.open()) as fs:
-        shared = fs.db.execute("SELECT COUNT(DISTINCT module) FROM body WHERE hash=?", (digest,)).fetchone()[0]
+        shared = fs.modules_with_body(digest)
     return {"named": name, "body": digest, "modules_with_this_body": shared}
 
 

@@ -27,7 +27,7 @@ def main(argv):
     compile_, differ, tally = collections.Counter(), collections.Counter(), collections.Counter()
     ex = collections.defaultdict(list)
     n_mod = 0
-    for sha, name, path in fs.db.execute("SELECT sha, name, path FROM module WHERE kind=?", (kind,)):
+    for sha, name, path, _kind in fs.module_rows(kind):
         if not os.path.isfile(path or ""):
             continue
         _sha, digest = reconstruct.identity(path)

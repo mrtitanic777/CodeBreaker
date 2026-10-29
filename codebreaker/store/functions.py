@@ -10,6 +10,21 @@ here: the module writer, the scoreboard, the tools that explain a failure.
     text         something a decompiler's functions share, such as its header of types
     identified   a function recognised as a runtime library's (its name there, and the library)
 
+Where it is kept. A module's functions, candidates, verdicts, texts, identified functions, built
+signatures and byte-match variants are tables of that binary's program database
+(state/db/<sha>.sqlite, engine/facts.py: the same file the engine keeps the binary's facts in) --
+the verdict table IS the database's. The store's own file (state/functions.sqlite, CB_FUNCTIONS_DB)
+is the index of them: which modules there are (sha, name, path, kind), the verifier profiles, and
+a summary per module (functions, verdicts, the latest class of each function) kept as each module
+is written, so the questions asked across the corpus (overview, the ledger, progress) open one file.
+A store given a path of its own keeps its databases in the folder `db` beside it (a store not named
+functions.sqlite: in <its name>.db/), as the knowledge base beside it is found.
+
+Carried over: a store from before the databases held every module's rows in its own file. The
+first time such a store is opened they are copied into the modules' databases, each verdict marked
+`carried` (1) -- and again for rows an older checkout wrote there since (by their time). The old
+tables are then left as they were and not read.
+
 Bodies and the names given to them -- the name store -- are the knowledge base's
 (knowledge/store.py: body, body_name); the store's set_bodies, bodies, name_body,
 names_from_bodies and shared_bodies are kept for their callers and go there. A store made
@@ -20,20 +35,33 @@ changing the verifier adds new verdicts beside the old ones instead of erasing t
 has to be re-judged to see what a change did, and old results stay comparable.
 
     from codebreaker.store import functions
-    fs = functions.open()                          # state/functions.sqlite
+    fs = functions.open()                          # state/functions.sqlite and state/db/
     fs.add_module(sha, "comctl32.dll", path, "pe")
     fs.record(sha, "bfee83ad", "core", rev, sig, "sub_0183AD", source, profile,
               "equivalent", limits="coverage=100")
     fs.best(sha, profile)                          # {address: the best candidate's row}
     fs.tally(profile, sha)                         # {class: count}
+    fs.module_rows()                               # [(sha, name, path, kind)] (the index)
 """
+import json
 import os
 import sqlite3
+import threading
 import time
 
-_SCHEMA = """
+# the index: the store's own file
+_INDEX = """
 CREATE TABLE IF NOT EXISTS module(
     sha TEXT PRIMARY KEY, name TEXT, path TEXT, kind TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS profile(digest TEXT PRIMARY KEY, settings TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS summary(
+    module TEXT PRIMARY KEY, functions INTEGER, identified INTEGER, judged INTEGER, last REAL,
+    last_profile TEXT, profiles TEXT, latest TEXT);
+CREATE TABLE IF NOT EXISTS store_about(name TEXT PRIMARY KEY, value TEXT);
+"""
+
+# a module's tables, in its program database
+_MODULE = """
 CREATE TABLE IF NOT EXISTS function(
     id INTEGER PRIMARY KEY, module TEXT NOT NULL, addr TEXT NOT NULL, name TEXT, size INTEGER,
     UNIQUE(module, addr));
@@ -43,13 +71,11 @@ CREATE TABLE IF NOT EXISTS candidate(
     UNIQUE(function, engine));
 CREATE TABLE IF NOT EXISTS verdict(
     candidate INTEGER NOT NULL, profile TEXT NOT NULL, sig TEXT, verdict TEXT, reason TEXT,
-    limits TEXT, detail TEXT, ts REAL,
+    limits TEXT, detail TEXT, ts REAL, carried INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (candidate, profile));
-CREATE TABLE IF NOT EXISTS profile(digest TEXT PRIMARY KEY, settings TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS text(
     module TEXT NOT NULL, engine TEXT NOT NULL, kind TEXT NOT NULL, body TEXT, ts REAL,
     PRIMARY KEY (module, engine, kind));
-CREATE INDEX IF NOT EXISTS function_module ON function(module);
 CREATE INDEX IF NOT EXISTS candidate_function ON candidate(function);
 CREATE TABLE IF NOT EXISTS identified(
     module TEXT NOT NULL, addr TEXT NOT NULL, name TEXT, library TEXT, ts REAL,
@@ -100,51 +126,47 @@ def classify(verdict, limits=""):
 
 
 def overview(path=None):
-    """The store at a glance, quickly (seconds, where the coverage ledger takes many minutes): per
-    module {sha, name, kind, path, functions, identified, latest: {class: count}}, by each function's
-    LATEST verdict under any judge -- what it last came to, not what the judge in force says (a
-    change to the judge leaves every module unjudged until it is measured again)."""
-    import sqlite3
-    db = sqlite3.connect("file:%s?mode=ro" % (path or default_path()), uri=True, timeout=30.0)
+    """The store at a glance, quickly (one file: the index's summaries, where the coverage ledger
+    takes many minutes): per module {sha, name, kind, path, functions, identified, latest: {class:
+    count}}, by each function's LATEST verdict under any judge -- what it last came to, not what the
+    judge in force says (a change to the judge leaves every module unjudged until it is measured
+    again)."""
+    fs = open(path, readonly=True)
+    if fs is None:
+        return []
     try:
-        mods = {sha: {"sha": sha, "name": name, "kind": kind, "path": p, "functions": 0, "identified": 0,
-                      "latest": dict.fromkeys(ORDER, 0)}
-                for sha, name, p, kind in db.execute("SELECT sha, name, path, kind FROM module")}
-        for sha, n in db.execute("SELECT module, COUNT(*) FROM function GROUP BY module"):
-            if sha in mods:
-                mods[sha]["functions"] = n
-        for sha, n in db.execute("SELECT module, COUNT(*) FROM identified GROUP BY module"):
-            if sha in mods:
-                mods[sha]["identified"] = n
-        for sha, verdict, limits, n in db.execute("""
-                WITH last AS (
-                  SELECT f.module AS module, v.verdict AS verdict, v.limits AS limits,
-                         ROW_NUMBER() OVER (PARTITION BY f.id ORDER BY v.ts DESC) AS k
-                  FROM function f JOIN candidate c ON c.function = f.id JOIN verdict v ON v.candidate = c.id)
-                SELECT module, verdict, limits, COUNT(*) FROM last WHERE k = 1 GROUP BY module, verdict, limits"""):
-            if sha in mods:
-                cls = classify(verdict, limits)[0]
-                mods[sha]["latest"][cls] += n
-        for m in mods.values():                             # (functions with no verdict at all)
-            m["latest"]["no-source"] += max(0, m["functions"] - sum(m["latest"].values()))
-        return sorted(mods.values(), key=lambda m: m["name"] or "")
+        out = []
+        summaries = fs.summaries()
+        for sha, name, p, kind in fs.module_rows():
+            s = summaries.get(sha) or {}
+            latest = dict.fromkeys(ORDER, 0)
+            latest.update(s.get("latest") or {})
+            n = s.get("functions") or 0
+            latest["no-source"] += max(0, n - sum(latest.values()))      # (functions with no verdict at all)
+            out.append({"sha": sha, "name": name, "kind": kind, "path": p, "functions": n,
+                        "identified": s.get("identified") or 0, "latest": latest})
+        return sorted(out, key=lambda m: m["name"] or "")
     finally:
-        db.close()
+        fs.close()
 
 
 def latest(module_sha, path=None):
     """{addr: class} by each function's latest verdict under any judge (see overview)."""
-    import sqlite3
-    db = sqlite3.connect("file:%s?mode=ro" % (path or default_path()), uri=True, timeout=30.0)
+    fs = open(path, readonly=True)
+    if fs is None:
+        return {}
     try:
-        return {addr: classify(verdict, limits)[0] for addr, verdict, limits in db.execute("""
-            SELECT addr, verdict, limits FROM (
-              SELECT f.addr AS addr, v.verdict AS verdict, v.limits AS limits,
-                     ROW_NUMBER() OVER (PARTITION BY f.id ORDER BY v.ts DESC) AS k
-              FROM function f JOIN candidate c ON c.function = f.id JOIN verdict v ON v.candidate = c.id
-              WHERE f.module = ?) WHERE k = 1""", (module_sha,))}
+        return fs.latest(module_sha)
     finally:
-        db.close()
+        fs.close()
+
+
+_LATEST = """
+    SELECT addr, verdict, limits FROM (
+      SELECT f.addr AS addr, v.verdict AS verdict, v.limits AS limits,
+             ROW_NUMBER() OVER (PARTITION BY f.id ORDER BY v.ts DESC) AS k
+      FROM function f JOIN candidate c ON c.function = f.id JOIN verdict v ON v.candidate = c.id
+      WHERE f.module = ?) WHERE k = 1"""
 
 
 def default_path():
@@ -152,18 +174,160 @@ def default_path():
     return os.environ.get("CB_FUNCTIONS_DB") or settings.state("functions.sqlite")
 
 
+def databases_folder(path=None, own=None):
+    """Where a store keeps its modules' databases: the engine's (state/db) for the store of the
+    state folder; for a store given a path of its own, the folder `db` beside it (or <name>.db/
+    for a store not called functions.sqlite)."""
+    from codebreaker.engine import facts
+    if own is None:
+        own = bool(path or os.environ.get("CB_FUNCTIONS_DB"))
+    path = path or default_path()
+    if not own:
+        return facts.root()
+    if os.path.basename(path).lower() == "functions.sqlite":
+        return os.path.join(os.path.dirname(os.path.abspath(path)), "db")
+    return os.path.splitext(os.path.abspath(path))[0] + ".db"
+
+
+def _ro(path):
+    return sqlite3.connect("file:%s?mode=ro" % path.replace("\\", "/").replace("?", "%3f").replace("#", "%23"),
+                           uri=True, timeout=60.0, check_same_thread=False)
+
+
+class _Module(object):
+    """One module's tables, in its database: the connection and the lock its writes go under."""
+
+    def __init__(self, conn, lock, owned):
+        self.conn, self.lock, self.owned = conn, lock, owned
+
+    def rows(self, q, args=()):
+        with self.lock:
+            return self.conn.execute(q, args).fetchall()
+
+    def one(self, q, args=()):
+        with self.lock:
+            return self.conn.execute(q, args).fetchone()
+
+
+class _Empty(object):
+    """A module with no database (read-only, and never written): nothing in it."""
+
+    def rows(self, q, args=()):
+        return []
+
+    def one(self, q, args=()):
+        return None
+
+
 class FunctionStore(object):
-    def __init__(self, path=None):
+    def __init__(self, path=None, readonly=False):
         self.own_path = bool(path or os.environ.get("CB_FUNCTIONS_DB"))
         self.path = path or default_path()
+        self.readonly = readonly
+        self.folder = databases_folder(self.path, self.own_path)
+        self._modules = {}
+        self._lock = threading.RLock()
+        if readonly:
+            self.db = _ro(self.path)
+            return
         self.db = sqlite3.connect(self.path, timeout=60.0)     # several workers may write
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
-        self.db.executescript(_SCHEMA)
+        self.db.executescript(_INDEX)
         self.db.commit()
+        self.carry()
 
     def close(self):
+        for m in self._modules.values():
+            if getattr(m, "owned", False):
+                try:
+                    m.conn.close()
+                except sqlite3.Error:
+                    pass
+        self._modules.clear()
         self.db.close()
+
+    # ---- a module's database ---------------------------------------------------------------
+    def database_path(self, module):
+        return os.path.join(self.folder, module + ".sqlite")
+
+    def _m(self, module):
+        """The module's tables (its database opened, and its tables made, the first time)."""
+        got = self._modules.get(module)
+        if got is not None:
+            return got
+        with self._lock:
+            got = self._modules.get(module)
+            if got is not None:
+                return got
+            p = self.database_path(module)
+            if self.readonly:
+                got = _Module(_ro(p), threading.RLock(), True) if os.path.isfile(p) else _Empty()
+            else:
+                from codebreaker.engine import facts
+                d = facts.open_at(p)                       # (the engine's connection to it, shared)
+                with d.lock:
+                    d.conn.executescript(_MODULE)
+                    if "carried" not in [r[1] for r in d.conn.execute("PRAGMA table_info(verdict)")]:
+                        d.conn.execute("ALTER TABLE verdict ADD COLUMN carried INTEGER NOT NULL DEFAULT 0")
+                    d.conn.commit()
+                got = _Module(d.conn, d.lock, False)
+            self._modules[module] = got
+            return got
+
+    def module_db(self, module):
+        """The sqlite3 connection of a module's tables (for reading by hand, and the tests)."""
+        return getattr(self._m(module), "conn", None)
+
+    class _Write(object):
+        def __init__(self, m):
+            self.m = m
+
+        def __enter__(self):
+            self.m.lock.acquire()
+            self.m.conn.__enter__()
+            return self.m.conn
+
+        def __exit__(self, *exc):
+            try:
+                return self.m.conn.__exit__(*exc)
+            finally:
+                self.m.lock.release()
+
+    def _write(self, module):
+        if self.readonly:
+            raise sqlite3.OperationalError("attempt to write a readonly database")
+        return self._Write(self._m(module))
+
+    # ---- the summary of a module, in the index ------------------------------------------------
+    def _summarize(self, module):
+        """The module's summary made again from its tables (after each write to them)."""
+        m = self._m(module)
+        functions = m.one("SELECT COUNT(*) FROM function WHERE module=?", (module,))[0]
+        identified = m.one("SELECT COUNT(*) FROM identified WHERE module=?", (module,))[0]
+        q = "FROM verdict v JOIN candidate c ON c.id=v.candidate JOIN function f ON f.id=c.function WHERE f.module=?"
+        judged, last = m.one("SELECT COUNT(*), MAX(v.ts) " + q, (module,))
+        row = m.one("SELECT v.profile " + q + " ORDER BY v.ts DESC LIMIT 1", (module,))
+        profiles = sorted(r[0] for r in m.rows("SELECT DISTINCT v.profile " + q, (module,)))
+        latest = {}
+        for _addr, verdict, limits in m.rows(_LATEST, (module,)):
+            cls = classify(verdict, limits)[0]
+            latest[cls] = latest.get(cls, 0) + 1
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO summary(module, functions, identified, judged, last, last_profile, "
+                            "profiles, latest) VALUES(?,?,?,?,?,?,?,?)",
+                            (module, functions, identified, judged, last, row[0] if row else None,
+                             json.dumps(profiles), json.dumps(latest, sort_keys=True)))
+
+    def summaries(self):
+        """{sha: {functions, identified, judged, last, last_profile, profiles, latest}}"""
+        out = {}
+        for sha, n, ident, judged, last, lp, profiles, latest in self.db.execute(
+                "SELECT module, functions, identified, judged, last, last_profile, profiles, latest FROM summary"):
+            out[sha] = {"functions": n or 0, "identified": ident or 0, "judged": judged or 0, "last": last,
+                        "last_profile": lp, "profiles": json.loads(profiles or "[]"),
+                        "latest": json.loads(latest or "{}")}
+        return out
 
     # ---- writing -------------------------------------------------------------------------
     def add_module(self, sha, name, path="", kind=""):
@@ -171,62 +335,65 @@ class FunctionStore(object):
             self.db.execute("INSERT INTO module(sha, name, path, kind, ts) VALUES(?,?,?,?,?) "
                             "ON CONFLICT(sha) DO UPDATE SET name=excluded.name, path=excluded.path, "
                             "kind=excluded.kind", (sha, name.lower(), path, kind, time.time()))
+        self._m(sha)
 
     def add_profile(self, digest, settings):
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO profile(digest, settings, ts) VALUES(?,?,?)",
                             (digest, settings, time.time()))
 
-    def _function(self, module, addr, name=None, size=None):
-        row = self.db.execute("SELECT id FROM function WHERE module=? AND addr=?", (module, addr)).fetchone()
+    @staticmethod
+    def _function(conn, module, addr, name=None, size=None):
+        row = conn.execute("SELECT id FROM function WHERE module=? AND addr=?", (module, addr)).fetchone()
         if row:
             return row[0]
-        return self.db.execute("INSERT INTO function(module, addr, name, size) VALUES(?,?,?,?)",
-                               (module, addr, name, size)).lastrowid
+        return conn.execute("INSERT INTO function(module, addr, name, size) VALUES(?,?,?,?)",
+                            (module, addr, name, size)).lastrowid
 
     def add_functions(self, module, addrs):
         """Make sure every address of a module is known, reconstructed or not."""
-        with self.db:
+        with self._write(module) as db:
             for addr in addrs:
-                self._function(module, addr)
+                self._function(db, module, addr)
+        self._summarize(module)
 
     def record_many(self, module, engine, rev, profile, rows):
         """rows: dicts with addr, name, source, sig, verdict and optionally reason, limits, detail,
         problem. One transaction. A candidate is replaced by a newer one from the same engine;
         its verdicts under other profiles stay as long as the source did not change."""
         now = time.time()
-        with self.db:
+        with self._write(module) as db:
             for r in rows:
-                f = self._function(module, r["addr"], r.get("name"))
-                old = self.db.execute("SELECT id, sig FROM candidate WHERE function=? AND engine=?",
-                                      (f, engine)).fetchone()
+                f = self._function(db, module, r["addr"], r.get("name"))
+                old = db.execute("SELECT id, sig FROM candidate WHERE function=? AND engine=?", (f, engine)).fetchone()
                 if old:
                     cid = old[0]
                     if old[1] != r.get("sig"):
-                        self.db.execute("DELETE FROM verdict WHERE candidate=? AND profile<>?", (cid, profile))
-                    self.db.execute("UPDATE candidate SET rev=?, sig=?, name=?, source=?, problem=?, ts=? "
-                                    "WHERE id=?", (rev, r.get("sig"), r.get("name"), r.get("source"),
-                                                   r.get("problem"), now, cid))
+                        db.execute("DELETE FROM verdict WHERE candidate=? AND profile<>?", (cid, profile))
+                    db.execute("UPDATE candidate SET rev=?, sig=?, name=?, source=?, problem=?, ts=? "
+                               "WHERE id=?", (rev, r.get("sig"), r.get("name"), r.get("source"),
+                                              r.get("problem"), now, cid))
                 else:
-                    cid = self.db.execute(
+                    cid = db.execute(
                         "INSERT INTO candidate(function, engine, rev, sig, name, source, problem, ts) "
                         "VALUES(?,?,?,?,?,?,?,?)", (f, engine, rev, r.get("sig"), r.get("name"),
                                                     r.get("source"), r.get("problem"), now)).lastrowid
-                self.db.execute(
-                    "INSERT OR REPLACE INTO verdict(candidate, profile, sig, verdict, reason, limits, detail, ts) "
-                    "VALUES(?,?,?,?,?,?,?,?)", (cid, profile, r.get("sig"), r["verdict"], r.get("reason") or "",
-                                                r.get("limits") or "", r.get("detail") or "", now))
+                db.execute(
+                    "INSERT OR REPLACE INTO verdict(candidate, profile, sig, verdict, reason, limits, detail, ts, carried) "
+                    "VALUES(?,?,?,?,?,?,?,?,0)", (cid, profile, r.get("sig"), r["verdict"], r.get("reason") or "",
+                                                  r.get("limits") or "", r.get("detail") or "", now))
+        self._summarize(module)
 
     def put_text(self, module, engine, kind, body):
         """A module-level text an engine's functions need, e.g. kind "header": its types and
         declarations."""
-        with self.db:
-            self.db.execute("INSERT OR REPLACE INTO text(module, engine, kind, body, ts) VALUES(?,?,?,?,?)",
-                            (module, engine, kind, body, time.time()))
+        with self._write(module) as db:
+            db.execute("INSERT OR REPLACE INTO text(module, engine, kind, body, ts) VALUES(?,?,?,?,?)",
+                       (module, engine, kind, body, time.time()))
 
     def get_text(self, module, engine, kind):
-        row = self.db.execute("SELECT body FROM text WHERE module=? AND engine=? AND kind=?",
-                              (module, engine, kind)).fetchone()
+        row = self._m(module).one("SELECT body FROM text WHERE module=? AND engine=? AND kind=?",
+                                  (module, engine, kind))
         return row[0] if row else ""
 
     def record(self, module, addr, engine, rev, sig, name, source, profile, verdict, **more):
@@ -247,17 +414,31 @@ class FunctionStore(object):
         if engine:
             q += " AND c.engine=?"
             args.append(engine)
-        return [dict(zip(self._ROW, r)) for r in self.db.execute(q, args)]
+        return [dict(zip(self._ROW, r)) for r in self._m(module).rows(q, args)]
+
+    def stored(self, module, addr):
+        """[{engine, rev, name, source, problem, verdicts: [{profile, verdict, reason, limits, carried}]}]
+        -- every candidate kept for one function, each with its verdicts under any profile, newest first."""
+        m = self._m(module)
+        out = []
+        for cid, e, r, n, s, pr in m.rows("SELECT c.id, c.engine, c.rev, c.name, c.source, c.problem FROM candidate c "
+                                          "JOIN function f ON f.id=c.function WHERE f.module=? AND f.addr=?",
+                                          (module, addr)):
+            out.append({"engine": e, "rev": r, "name": n, "source": s or "", "problem": pr or "", "verdicts": [
+                {"profile": p, "verdict": v, "reason": why or "", "limits": lim or "", "carried": bool(car)}
+                for p, v, why, lim, car in m.rows("SELECT profile, verdict, reason, limits, carried FROM verdict "
+                                                  "WHERE candidate=? ORDER BY ts DESC", (cid,))]})
+        return out
 
     def built(self, module, profile):
         """{addr: signature of the compiled code a function's verdict under `profile` was reached
         for} -- its own object code and that of everything it reaches (verify/reconstruct.py)."""
-        return dict(self.db.execute("SELECT addr, sig FROM built WHERE module=? AND profile=?", (module, profile)))
+        return dict(self._m(module).rows("SELECT addr, sig FROM built WHERE module=? AND profile=?", (module, profile)))
 
     def set_built(self, module, profile, sigs):
-        with self.db:
-            self.db.executemany("INSERT OR REPLACE INTO built(module, addr, profile, sig) VALUES(?,?,?,?)",
-                                [(module, addr, profile, sig) for addr, sig in sigs.items()])
+        with self._write(module) as db:
+            db.executemany("INSERT OR REPLACE INTO built(module, addr, profile, sig) VALUES(?,?,?,?)",
+                           [(module, addr, profile, sig) for addr, sig in sigs.items()])
 
     def judged(self, module, profile, engine):
         """{addr: row} of an engine's candidates that have a verdict under `profile` for the source
@@ -285,8 +466,12 @@ class FunctionStore(object):
             del r["_key"]
         return out
 
+    def latest(self, module):
+        """{addr: class} by each function's latest verdict under any judge (see overview)."""
+        return {addr: classify(verdict, limits)[0] for addr, verdict, limits in self._m(module).rows(_LATEST, (module,))}
+
     def addresses(self, module):
-        return [r[0] for r in self.db.execute("SELECT addr FROM function WHERE module=? ORDER BY addr", (module,))]
+        return [r[0] for r in self._m(module).rows("SELECT addr FROM function WHERE module=? ORDER BY addr", (module,))]
 
     def tally(self, profile, module, prefer=()):
         """{class: count} over every known function of a module (unjudged ones are no-source)."""
@@ -300,15 +485,16 @@ class FunctionStore(object):
     def set_identified(self, module, found):
         """Replace what is known of a module's runtime-library functions: {addr: (name, library)}."""
         now = time.time()
-        with self.db:
-            self.db.execute("DELETE FROM identified WHERE module=?", (module,))
-            self.db.executemany("INSERT INTO identified(module, addr, name, library, ts) VALUES(?,?,?,?,?)",
-                                [(module, a, n, lib, now) for a, (n, lib) in found.items()])
+        with self._write(module) as db:
+            db.execute("DELETE FROM identified WHERE module=?", (module,))
+            db.executemany("INSERT INTO identified(module, addr, name, library, ts) VALUES(?,?,?,?,?)",
+                           [(module, a, n, lib, now) for a, (n, lib) in found.items()])
+        self._summarize(module)
 
     def identified(self, module):
         """{addr: (name, library)}"""
         return {a: (n, lib) for a, n, lib in
-                self.db.execute("SELECT addr, name, library FROM identified WHERE module=?", (module,))}
+                self._m(module).rows("SELECT addr, name, library FROM identified WHERE module=?", (module,))}
 
     def scores(self, profile, module, prefer=()):
         """tally() with the identified functions in a class of their own: {class: count} over
@@ -356,6 +542,12 @@ class FunctionStore(object):
     def shared_bodies(self):
         return self.knowledge.shared_bodies()
 
+    def modules_with_body(self, digest):
+        """How many modules hold the body `digest`."""
+        kb = self.knowledge
+        with kb.lock:
+            return kb.conn.execute("SELECT COUNT(DISTINCT module) FROM body WHERE hash=?", (digest,)).fetchone()[0]
+
     # ---- byte-match variants (the repair search) -----------------------------------------
     # The behavioural pipeline (candidate/verdict) judges whether a reconstruction MEANS the same.
     # The repair search is a different question: compiled with a compiler of the original's time,
@@ -372,16 +564,16 @@ class FunctionStore(object):
                        knobs="", parent=None, behaves=""):
         """Record (or update) one variant of a function for a period compiler. -> its id."""
         now = time.time()
-        with self.db:
-            f = self._function(module, addr)
-            self.db.execute(
+        with self._write(module) as db:
+            f = self._function(db, module, addr)
+            db.execute(
                 "INSERT INTO variant(function, compiler, source, parent, knobs, distance, total, verdict, "
                 "behaves, ts) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(function, compiler, knobs) DO UPDATE SET "
                 "source=excluded.source, parent=excluded.parent, distance=excluded.distance, "
                 "total=excluded.total, verdict=excluded.verdict, behaves=excluded.behaves, ts=excluded.ts",
                 (f, compiler, source, parent, knobs, distance, total, verdict, behaves, now))
-            return self.db.execute("SELECT id FROM variant WHERE function=? AND compiler=? AND knobs=?",
-                                   (f, compiler, knobs)).fetchone()[0]
+            return db.execute("SELECT id FROM variant WHERE function=? AND compiler=? AND knobs=?",
+                              (f, compiler, knobs)).fetchone()[0]
 
     _VROW = ("addr", "compiler", "source", "parent", "knobs", "distance", "total", "verdict", "behaves")
 
@@ -393,7 +585,7 @@ class FunctionStore(object):
         if compiler:
             q += " AND v.compiler=?"
             args.append(compiler)
-        return [dict(zip(self._VROW, r)) for r in self.db.execute(q, args)]
+        return [dict(zip(self._VROW, r)) for r in self._m(module).rows(q, args)]
 
     def best_variant(self, module, compiler):
         """{addr: the closest variant row} -- the one with the smallest byte distance that still
@@ -416,15 +608,202 @@ class FunctionStore(object):
         same = sum(1 for r in best.values() if r["verdict"] == "same size")
         return len(best), ident, same, len(best) - ident - same
 
+    # ---- across modules: the index ---------------------------------------------------------
     def modules(self, profile=None):
         """[(sha, name)] of modules, limited to those judged under `profile` when given."""
+        rows = self.db.execute("SELECT sha, name FROM module ORDER BY name").fetchall()
         if profile is None:
-            return self.db.execute("SELECT sha, name FROM module ORDER BY name").fetchall()
-        return self.db.execute(
-            "SELECT DISTINCT m.sha, m.name FROM module m JOIN function f ON f.module=m.sha "
-            "JOIN candidate c ON c.function=f.id JOIN verdict v ON v.candidate=c.id "
-            "WHERE v.profile=? ORDER BY m.name", (profile,)).fetchall()
+            return rows
+        judged = {sha for sha, s in self.summaries().items() if profile in s["profiles"]}
+        return [r for r in rows if r[0] in judged]
+
+    def module_rows(self, kind=None):
+        """[(sha, name, path, kind)] of every module (of one kind)."""
+        if kind is None:
+            return self.db.execute("SELECT sha, name, path, kind FROM module ORDER BY name").fetchall()
+        return self.db.execute("SELECT sha, name, path, kind FROM module WHERE kind=? ORDER BY name", (kind,)).fetchall()
+
+    def module_path(self, name):
+        """The path the module of this name was last added from (None if it is not known)."""
+        row = self.db.execute("SELECT path FROM module WHERE name=? ORDER BY ts DESC LIMIT 1", (name,)).fetchone()
+        return row[0] if row else None
+
+    def stamps(self):
+        """{sha: (functions, verdicts, the latest verdict's time)} -- what changes when a module's
+        results change."""
+        return {sha: (s["functions"], s["judged"], s["last"]) for sha, s in self.summaries().items()
+                if s["functions"]}
+
+    def latest_profile(self, kind):
+        """The profile of the latest verdict on a module of this kind (None when there is none)."""
+        row = self.db.execute("SELECT s.last_profile FROM summary s JOIN module m ON m.sha=s.module "
+                              "WHERE m.kind=? AND s.last IS NOT NULL ORDER BY s.last DESC LIMIT 1", (kind,)).fetchone()
+        return row[0] if row else None
+
+    def recent(self, limit=8):
+        """[(name, kind, verdicts, the latest verdict's time)] of the modules judged most lately."""
+        return self.db.execute("SELECT m.name, m.kind, s.judged, s.last FROM summary s JOIN module m ON m.sha=s.module "
+                               "WHERE s.last IS NOT NULL ORDER BY s.last DESC LIMIT ?", (limit,)).fetchall()
+
+    def verdicts_since(self, t):
+        """How many verdicts were reached after the time `t`, over every module."""
+        n = 0
+        for (sha,) in self.db.execute("SELECT module FROM summary WHERE last > ?", (t,)).fetchall():
+            n += self._m(sha).one("SELECT COUNT(*) FROM verdict WHERE ts > ?", (t,))[0]
+        return n
+
+    # ---- the store from before the databases, carried over -----------------------------------
+    def _about(self, name, value=None):
+        if value is None:
+            row = self.db.execute("SELECT value FROM store_about WHERE name=?", (name,)).fetchone()
+            return row[0] if row else None
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO store_about(name, value) VALUES(?,?)", (name, str(value)))
+        return value
+
+    def _old(self):
+        """Does the store's own file hold the tables of the store before the databases?"""
+        names = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        return {"function", "candidate", "verdict"} <= names
+
+    def carry(self, log=None):
+        """The rows of the store from before the databases, copied into the modules' databases (once;
+        then only rows written there since, by an older checkout). -> {modules, functions,
+        candidates, verdicts, ...} carried this time."""
+        if self.readonly or not self._old():
+            return {}
+        names = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        since = float(self._about("carried_upto") or 0)
+        newest = since
+        for t in ("candidate", "verdict", "text", "identified", "variant"):
+            if t in names:
+                got = self.db.execute("SELECT MAX(ts) FROM %s" % t).fetchone()[0]
+                newest = max(newest, got or 0)
+        if self._about("carried") is not None and newest <= since:
+            return {}
+        q = {"function": "SELECT DISTINCT module FROM function WHERE id IN (SELECT function FROM candidate WHERE ts > ?)",
+             "verdict": "SELECT DISTINCT f.module FROM verdict v JOIN candidate c ON c.id=v.candidate "
+                        "JOIN function f ON f.id=c.function WHERE v.ts > ?",
+             "text": "SELECT DISTINCT module FROM text WHERE ts > ?",
+             "identified": "SELECT DISTINCT module FROM identified WHERE ts > ?",
+             "variant": "SELECT DISTINCT f.module FROM variant v JOIN function f ON f.id=v.function WHERE v.ts > ?"}
+        modules = set()
+        if self._about("carried") is None:
+            modules = {r[0] for r in self.db.execute("SELECT DISTINCT module FROM function")}
+            modules |= {r[0] for r in self.db.execute("SELECT sha FROM module")}
+        else:
+            for t, sql in q.items():
+                if t in names:
+                    modules |= {r[0] for r in self.db.execute(sql, (since,))}
+        say = log or (lambda s: None)
+        if self._about("carried") is None and modules:
+            import sys
+            say = log or (lambda s: sys.stderr.write(s + "\n"))
+            say("the function store: carrying %d modules' rows into their databases (%s), once"
+                % (len(modules), self.folder))
+        total = {}
+        t0 = time.time()
+        for i, sha in enumerate(sorted(modules)):
+            for k, n in self._carry_module(sha, since, names).items():
+                total[k] = total.get(k, 0) + n
+            if i and i % 200 == 0:
+                say("  %d of %d modules (%.0fs)" % (i, len(modules), time.time() - t0))
+        total["modules"] = len(modules)
+        self._about("carried_upto", repr(newest))
+        if self._about("carried") is None:
+            self._about("carried", json.dumps(dict(total, at=time.time())))
+            say("the function store: carried %s (%.0fs)" % (", ".join("%d %s" % (v, k) for k, v in sorted(total.items())),
+                                                           time.time() - t0))
+        return total
+
+    def _carry_module(self, sha, since, names):
+        """One module's rows newer than `since`, from the old tables into its database. A row the
+        database already has newer is left; a verdict carried is marked carried."""
+        src = self.db
+        out = {}
+        m = self._m(sha)
+        with self._write(sha) as db:
+            fid = {}
+            for oid, addr, name, size in src.execute("SELECT id, addr, name, size FROM function WHERE module=?", (sha,)):
+                db.execute("INSERT OR IGNORE INTO function(module, addr, name, size) VALUES(?,?,?,?)", (sha, addr, name, size))
+                fid[oid] = None
+            new_id = dict(db.execute("SELECT addr, id FROM function WHERE module=?", (sha,)).fetchall())
+            addr_of = dict(src.execute("SELECT id, addr FROM function WHERE module=?", (sha,)).fetchall())
+            out["functions"] = len(addr_of)
+            cid = {}
+            n = 0
+            for oc, f, engine, rev, sig, name, source, problem, ts in src.execute(
+                    "SELECT c.id, c.function, c.engine, c.rev, c.sig, c.name, c.source, c.problem, c.ts FROM candidate c "
+                    "JOIN function f ON f.id=c.function WHERE f.module=?", (sha,)):
+                nf = new_id[addr_of[f]]
+                have = db.execute("SELECT id, ts FROM candidate WHERE function=? AND engine=?", (nf, engine)).fetchone()
+                if have is None:
+                    cid[oc] = db.execute("INSERT INTO candidate(function, engine, rev, sig, name, source, problem, ts) "
+                                         "VALUES(?,?,?,?,?,?,?,?)", (nf, engine, rev, sig, name, source, problem, ts)).lastrowid
+                    n += 1
+                else:
+                    cid[oc] = have[0]
+                    if (ts or 0) > (have[1] or 0) and (ts or 0) > since:
+                        db.execute("UPDATE candidate SET rev=?, sig=?, name=?, source=?, problem=?, ts=? WHERE id=?",
+                                   (rev, sig, name, source, problem, ts, have[0]))
+                        n += 1
+            out["candidates"] = n
+            n = 0
+            for oc, profile, sig, verdict, reason, limits, detail, ts in src.execute(
+                    "SELECT v.candidate, v.profile, v.sig, v.verdict, v.reason, v.limits, v.detail, v.ts FROM verdict v "
+                    "JOIN candidate c ON c.id=v.candidate JOIN function f ON f.id=c.function WHERE f.module=?", (sha,)):
+                have = db.execute("SELECT ts FROM verdict WHERE candidate=? AND profile=?", (cid[oc], profile)).fetchone()
+                if have is None or ((ts or 0) > (have[0] or 0) and (ts or 0) > since):
+                    db.execute("INSERT OR REPLACE INTO verdict(candidate, profile, sig, verdict, reason, limits, detail, ts, "
+                               "carried) VALUES(?,?,?,?,?,?,?,?,1)", (cid[oc], profile, sig, verdict, reason, limits, detail, ts))
+                    n += 1
+            out["verdicts"] = n
+            if "text" in names:
+                rows = src.execute("SELECT engine, kind, body, ts FROM text WHERE module=?", (sha,)).fetchall()
+                for engine, kind, body, ts in rows:
+                    have = db.execute("SELECT ts FROM text WHERE module=? AND engine=? AND kind=?", (sha, engine, kind)).fetchone()
+                    if have is None or (ts or 0) > (have[0] or 0):
+                        db.execute("INSERT OR REPLACE INTO text(module, engine, kind, body, ts) VALUES(?,?,?,?,?)",
+                                   (sha, engine, kind, body, ts))
+                out["texts"] = len(rows)
+            if "identified" in names:
+                rows = src.execute("SELECT addr, name, library, ts FROM identified WHERE module=?", (sha,)).fetchall()
+                newest = db.execute("SELECT MAX(ts) FROM identified WHERE module=?", (sha,)).fetchone()[0]
+                if rows and (newest is None or max(r[3] or 0 for r in rows) > newest):
+                    db.execute("DELETE FROM identified WHERE module=?", (sha,))
+                    db.executemany("INSERT INTO identified(module, addr, name, library, ts) VALUES(?,?,?,?,?)",
+                                   [(sha,) + tuple(r) for r in rows])
+                out["identified"] = len(rows)
+            if "built" in names:
+                rows = src.execute("SELECT addr, profile, sig FROM built WHERE module=?", (sha,)).fetchall()
+                db.executemany("INSERT OR IGNORE INTO built(module, addr, profile, sig) VALUES(?,?,?,?)",
+                               [(sha,) + tuple(r) for r in rows])
+                out["built"] = len(rows)
+            if "variant" in names:
+                rows = src.execute("SELECT v.id, v.function, v.compiler, v.source, v.parent, v.knobs, v.distance, v.total, "
+                                   "v.verdict, v.behaves, v.ts FROM variant v JOIN function f ON f.id=v.function "
+                                   "WHERE f.module=? ORDER BY v.id", (sha,)).fetchall()
+                vid = {}
+                for ov, f, compiler, source, parent, knobs, distance, total, verdict, behaves, ts in rows:
+                    nf = new_id[addr_of[f]]
+                    db.execute("INSERT INTO variant(function, compiler, source, parent, knobs, distance, total, verdict, "
+                               "behaves, ts) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(function, compiler, knobs) DO UPDATE SET "
+                               "source=excluded.source, distance=excluded.distance, total=excluded.total, "
+                               "verdict=excluded.verdict, behaves=excluded.behaves, ts=excluded.ts WHERE excluded.ts > variant.ts",
+                               (nf, compiler, source, None, knobs, distance, total, verdict, behaves, ts))
+                    vid[ov] = (db.execute("SELECT id FROM variant WHERE function=? AND compiler=? AND knobs=?",
+                                          (nf, compiler, knobs)).fetchone()[0], parent)
+                for ov, (nv, parent) in vid.items():                  # (a variant's parent, by its new number)
+                    if parent in vid:
+                        db.execute("UPDATE variant SET parent=? WHERE id=?", (vid[parent][0], nv))
+                out["variants"] = len(rows)
+        del m, fid
+        self._summarize(sha)
+        return out
 
 
-def open(path=None):                                    # noqa: A001 (as sqlite3.connect / shelve.open)
-    return FunctionStore(path)
+def open(path=None, readonly=False):                    # noqa: A001 (as sqlite3.connect / shelve.open)
+    """The function store (see the module's text). Read-only: None when there is no store yet."""
+    if readonly and not os.path.isfile(path or default_path()):
+        return None
+    return FunctionStore(path, readonly=readonly)

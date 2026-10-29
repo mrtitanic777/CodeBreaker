@@ -183,13 +183,16 @@ def test_ledger_agrees_with_the_store():
 
 
 def test_ledger_reads_without_writing():
-    _fill_store()
+    _path, sha, _digest = _fill_store()
     fs = ledger.open_store()
     try:
-        fs.db.execute("DELETE FROM verdict")
-        raise AssertionError("the ledger's store connection accepted a write")
-    except sqlite3.OperationalError:
-        pass
+        for db, what in ((fs.db, "DELETE FROM module"), (fs.module_db(sha), "DELETE FROM verdict")):
+            try:                                   # (the index, and the module's database)
+                db.execute(what)
+                raise AssertionError("the ledger's store connection accepted a write")
+            except sqlite3.OperationalError:
+                pass
+        assert fs.candidates(sha, _digest)        # (and it reads)
     finally:
         fs.close()
     assert ledger.open_store(os.path.join(TEMP, "none.sqlite")) is None

@@ -67,13 +67,10 @@ def snapshot(log=None):
     if fs is None:
         return out
     try:
-        q = ("FROM verdict v JOIN candidate c ON c.id=v.candidate JOIN function f ON f.id=c.function "
-             "JOIN module m ON m.sha=f.module ")
-        for name, kind, n, last in fs.db.execute(
-                "SELECT m.name, m.kind, COUNT(*), MAX(v.ts) " + q + "GROUP BY m.sha ORDER BY MAX(v.ts) DESC LIMIT 8"):
+        for name, kind, n, last in fs.recent(8):
             out["recent"].append({"module": name, "kind": ledger.TITLE.get(kind, kind), "results": n,
                                   "age": max(0, int(now - last))})
-        fresh = fs.db.execute("SELECT COUNT(*) " + q + "WHERE v.ts > ?", (now - WINDOW,)).fetchone()[0]
+        fresh = fs.verdicts_since(now - WINDOW)
     finally:
         fs.close()
     out["rate"] = round(fresh * 60.0 / WINDOW, 1)

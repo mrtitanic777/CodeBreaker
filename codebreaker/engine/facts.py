@@ -32,7 +32,9 @@ The size of it all is looked after the way base/cache.py looks after the cache's
   THE CAP      all the databases together are held under the setting `db_max_gb` (default 4):
                past it, the databases opened longest ago go first, whole (a database is the
                binary's knowledge; deleting it costs the time to make it again and nothing
-               else), never one open in this process.
+               else), never one open in this process. A database that holds the function
+               store's tables of its binary (its verdicts, store/functions.py) is not deleted:
+               its facts go, and the store's rows stay.
 
 Facts a person gives -- a function's C edited by hand -- are made by the step "given" and are
 never dropped by either rule.
@@ -338,7 +340,8 @@ def databases(folder=None):
 def hold(cap=None, folder=None):
     """All the databases back under `cap` bytes (default the setting db_max_gb): past it, those
     opened longest ago go, whole, with their work folders, until four fifths of the cap is used;
-    never one open in this process. -> [path gone]"""
+    never one open in this process (and of one holding the function store's verdicts only its
+    facts). -> [path gone or emptied of facts]"""
     cap = max_bytes() if cap is None else cap
     dbs = databases(folder)
     total = sum(s for _p, s, _t in dbs)
@@ -352,12 +355,46 @@ def hold(cap=None, folder=None):
             break
         if os.path.normcase(os.path.abspath(p)) in mine:
             continue
+        shutil.rmtree(os.path.splitext(p)[0] + ".work", ignore_errors=True)
+        if _holds_verdicts(p):                       # (the function store's tables stay: only the facts go)
+            total -= size - _facts_dropped(p)
+            gone.append(p)
+            continue
         for suffix in ("", "-wal", "-shm"):
             try:
                 os.remove(p + suffix)
             except OSError:
                 pass
-        shutil.rmtree(os.path.splitext(p)[0] + ".work", ignore_errors=True)
         total -= size
         gone.append(p)
     return gone
+
+
+def _holds_verdicts(p):
+    """Does the database hold the function store's tables of its binary (store/functions.py)? Those
+    are not made again by a step: past the cap they stay, and only the facts go."""
+    try:
+        conn = sqlite3.connect("file:%s?mode=ro" % p.replace("\\", "/"), uri=True, timeout=5.0)
+        try:
+            return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='verdict'").fetchone() is not None
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+
+
+def _facts_dropped(p):
+    """The facts and blobs of a database gone, its space given back. -> its size now"""
+    try:
+        conn = sqlite3.connect(p, timeout=30.0)
+        try:
+            conn.execute("DELETE FROM fact")
+            conn.execute("DELETE FROM blob")
+            conn.commit()
+            conn.execute("VACUUM")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        pass
+    return _size(p)
