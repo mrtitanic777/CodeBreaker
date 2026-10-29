@@ -42,6 +42,7 @@ from codebreaker.formats import le as le_format
 from codebreaker.formats import pe_functions
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
+from codebreaker import platforms
 
 _FAMILY = {}
 for _fam, _names in (("eax", "rax eax ax al ah"), ("ecx", "rcx ecx cx cl ch"), ("edx", "rdx edx dx dl dh"),
@@ -109,8 +110,7 @@ class Image(object):
         self._starts = []
         self._fn = {}
         self._memo = {}
-        self._md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
-        self._md.detail = True
+        self._md = platforms.decoder(32 if bits == 32 else 16, detail=True)
         self._regs = {}
 
     @property

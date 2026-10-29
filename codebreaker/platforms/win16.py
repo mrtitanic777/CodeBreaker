@@ -67,4 +67,7 @@ PLATFORM = Platform(
                       env=Ref("codebreaker.build.watcom", "ow_env", "ne"),
                       compile=Ref("codebreaker.build.functions", "_compile"), library=Ref(__name__, "library")),
     packager=Packager(link=Ref("codebreaker.build.module", "_build16"),
-                      functions=Ref("codebreaker.build.functions", "build16"), tools=Ref(__name__, "tools")))
+                      functions=Ref("codebreaker.build.functions", "build16"), tools=Ref(__name__, "tools"),
+                      linker=Ref("codebreaker.build.watcom", "ow_tool", "wlink"),
+                      assembler=Ref("codebreaker.build.watcom", "ow_tool", "wasm"),
+                      resources=Ref("codebreaker.build.watcom", "ow_tool", "wrc")))

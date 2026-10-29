@@ -9,9 +9,9 @@ stand for.
 
     for i in x86.disasm(img, at, end, emulator=True): i.address i.size i.bytes i.mnemonic i.op_str
 """
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
+from codebreaker import platforms
 
-_CS = Cs(CS_ARCH_X86, CS_MODE_16)
+_CS = platforms.decoder(16)
 
 
 class Insn(object):

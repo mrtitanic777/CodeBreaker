@@ -77,7 +77,6 @@ import json
 import os
 import time
 
-import capstone
 from capstone import x86 as X
 
 from codebreaker.base import corpus
@@ -88,6 +87,7 @@ from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 from codebreaker.jobs import pool
 from codebreaker.store import functions as store
+from codebreaker import platforms
 
 LEVELS = ("bytes", "text", "shape")
 ENGINE = "carried"                      # who a candidate carried across builds came from
@@ -245,8 +245,7 @@ def _load_pe(path):
     imports = {va: "%s.%s" % (os.path.splitext(dll)[0].upper(), name) for va, (dll, name) in pe.imports().items()}
     low = pe.image_base
     high = low + max((s["vaddr"] + max(s["vsize"], s["rawsize"]) for s in pe.sections), default=0)
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-    md.detail = True
+    md = platforms.decoder(32, detail=True)
     side = Side(path, "pe", sum(len(data) for _va, data, _name in sections))
     for va in sorted(spans):
         hi, name = spans[va]
@@ -304,8 +303,7 @@ def _load_ne(path):
     starts = collections.defaultdict(set)
     for seg, off in describe.functions(nef):
         starts[seg].add(off)
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = platforms.decoder(16, detail=True)
     side = Side(path, "ne", sum(s["length"] for s in segs.values() if s["kind"] == "CODE" and s["file_off"]))
     for idx in sorted(starts):
         s = segs.get(idx)
@@ -350,8 +348,7 @@ def _load_dos(path):
     found = dos_functions.discover(p).functions
     starts = sorted(found)
     end = p.base + len(p.image)
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = platforms.decoder(16, detail=True)
     side = Side(path, "dos", sum(n for _lo, n, _label in p.spans))
     for n, lin in enumerate(starts):
         fn, seg = found[lin], found[lin].cs             # (the code segment's linear base)

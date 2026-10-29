@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import tempfile
+from codebreaker import platforms
 
 # what the decompiler writes that a programmer does not, and that a compiler turns into more code
 PATTERNS = {
@@ -64,9 +65,10 @@ def _same(a, b):
 def _watcom(files, texts, header, settings_of, log):
     """{function: (bytes, mask) or None}: each source file compiled by OpenWatcom -zmsc as Microsoft C
     compiled it (the same functions together, the same switches)"""
-    from codebreaker.build import msc6, watcom
-    wcc = watcom.ow_tool("wcc")
-    env = watcom.ow_env("ne")
+    from codebreaker.build import msc6
+    P = platforms.of("ne")
+    wcc = P.compiler.tool()
+    env = P.compiler.env()
     work = tempfile.mkdtemp(prefix="score16_")
     with open(os.path.join(work, "m.h"), "w", newline="\n") as f:
         f.write(header)
@@ -169,8 +171,7 @@ def report(rows, out=print):
 
 def show(row, out=print):
     """a function's C, and its original's, Microsoft C 8's and OpenWatcom's instructions side by side"""
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = platforms.decoder(16)
     out(row["c"])
     cols = [["%s %s" % (i.mnemonic, i.op_str) for i in md.disasm(bytes.fromhex(row["hex"][k]), 0)]
             for k in ("original", "msc8", "watcom")]

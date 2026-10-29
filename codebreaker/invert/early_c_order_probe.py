@@ -1,9 +1,9 @@
 """early_c_order_probe.py - characterize MC2's emission-order scheduling (load hoist / store defer)."""
 import re
 from codebreaker.formats import omf
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 from codebreaker.invert.compilers import mc_compile_multi
-md = Cs(CS_ARCH_X86, CS_MODE_16)
+from codebreaker import platforms
+md = platforms.decoder(16)
 
 def stream(src):
     obj = mc_compile_multi(src+"\n")

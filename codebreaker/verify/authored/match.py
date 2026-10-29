@@ -48,6 +48,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from codebreaker.compare import mask as masks
 from codebreaker.symbols.libraries import coff
+from codebreaker import platforms
 
 FLAG_SETS = ("/O2 /Gz", "/Oxs /Gz", "/O1 /Gz", "/Ox /Gz", "/O2 /Gz /Oy-", "/Od /Gz", "/O2 /Gd")
 # Microsoft C 8.00c (Visual C++ 1.52c) built Setup's SUWIN, without /Gw, with switches that differ
@@ -144,7 +145,6 @@ def _trim_words(code, mask):
 def original_functions(path, addresses):
     """{address: (bytes, mask)} for functions of a 32-bit module; the mask marks relocated words
     and the distances of direct calls and jumps, which depend on where things are."""
-    import capstone
     from codebreaker.formats import pe_functions
     from codebreaker.formats.pe import open_pe
     pe = open_pe(path)
@@ -162,7 +162,7 @@ def original_functions(path, addresses):
             if e >> 12 == 3:
                 relocated.add(pe.image_base + page + (e & 0xFFF))
         off += block
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    md = platforms.decoder(32)
     out = {}
     for start in addresses:
         if start not in spans:
@@ -189,7 +189,6 @@ def _originals_ne(module_path, where, spans):
     segment names, and the distance of every near call and jump to another function. `where`
     {address: (segment, offset)}, `spans` {address: ((start, end), instructions)} as
     verify/lanes/win16.py makes them."""
-    import capstone
     from codebreaker.formats.ne import NEFile
     nef = NEFile(module_path)
     segs = {s["idx"]: s for s in nef.segments()}
@@ -207,7 +206,7 @@ def _originals_ne(module_path, where, spans):
                     break
                 at, seen = nxt, seen + 1
         by_seg[idx] = (bytes(code), relocated)
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = platforms.decoder(16)
     out = {}
     for va, (seg, _off) in where.items():
         if va not in spans or seg not in by_seg:

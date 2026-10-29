@@ -142,8 +142,7 @@ def directed(module_path, seg, span, most=8):
         nef = P.loader.open(module_path)
         s = nef.segments()[seg - 1]
         code = nef.data[s["file_off"]:s["file_off"] + s["length"]]
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-        md.detail = True
+        md = P.cpu.disassembler(detail=True)
         seen = []
         # (a switch written as a chain of subtractions -- `dec ax / dec ax / sub ax, 4 / sub ax, 9
         # / sub ax, 72h`, each case's `je` after its step: a window procedure's messages 1, 2, 6,
@@ -616,8 +615,7 @@ def explore_vectors(module_path, seg, off, near, span, seeds, known=None, **prob
 def _spans(nef, where):
     """{address: ((start, end), instruction count)} -- each function runs to the next one in its
     segment (or the segment's end)."""
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = P.cpu.disassembler()
     segs = {s["idx"]: s for s in nef.segments()}
     by_seg = {}
     for va, (seg, off) in where.items():

@@ -135,6 +135,49 @@ class Cpu(str):
         out.update({f: getattr(self, f) for f in self.FIELDS if getattr(self, f) is not None})
         return out
 
+    def disassembler(self, detail=False):
+        """The decoder this processor declares, made once per thread (decoder() below). Only
+        for a ("capstone", arch, bits) decoder; one of CodeBreaker's own modules is imported."""
+        d = self.decoder
+        if isinstance(d, tuple) and d and d[0] == "capstone":
+            return decoder(d[2], arch=d[1], detail=detail)
+        if isinstance(d, str):
+            return importlib.import_module(d)
+        raise ValueError("%r declares no decoder" % self)
+
+
+# The capstone decoders, one per thread and option set. Making one is a thousand times dearer
+# than decoding an instruction with it, and a decoder is not shared between threads. Its options
+# (detail) are part of the key and are set once, here: a caller never changes a decoder it was
+# handed, so what one caller asked for never changes what another's instructions say.
+_DECODERS = __import__("threading").local()
+
+
+def decoder(bits=16, arch="x86", detail=False):
+    """A capstone decoder for `arch` ("x86": 16, 32 or 64 bits; "ppc": 32 or 64 bits, big-endian,
+    as the Xbox 360's) or for a Cpu (its declared decoder), kept per thread. `detail`: with each
+    instruction's operands and the registers it reads and writes."""
+    if isinstance(bits, Cpu):
+        return bits.disassembler(detail)
+    key = (arch, bits, bool(detail))
+    held = getattr(_DECODERS, "held", None)
+    if held is None:
+        held = _DECODERS.held = {}
+    md = held.get(key)
+    if md is None:
+        import capstone
+        if arch == "x86":
+            md = capstone.Cs(capstone.CS_ARCH_X86, {16: capstone.CS_MODE_16, 32: capstone.CS_MODE_32,
+                                                    64: capstone.CS_MODE_64}[bits])
+        elif arch == "ppc":
+            md = capstone.Cs(capstone.CS_ARCH_PPC, {32: capstone.CS_MODE_32, 64: capstone.CS_MODE_64}[bits]
+                             | capstone.CS_MODE_BIG_ENDIAN)
+        else:
+            raise ValueError("no capstone decoder for %r" % arch)
+        md.detail = bool(detail)
+        held[key] = md
+    return md
+
 
 class Convention(Slot):
     """How a function is called, as the judge enters it and the decompiler writes it.
@@ -185,8 +228,11 @@ class Packager(Slot):
                     (build/functions.build16, build32 ...)
         writer      the module that writes a program's whole source and rebuilds it
                     (source/<machine>_writer.py: reconstruct(path, folder))
-        tools       () -> {name: path} of the linker, assembler ... (profiles)"""
-    FIELDS = ("link", "functions", "writer", "tools")
+        tools       () -> {name: path} of the linker, assembler ... (profiles)
+        linker      () -> the linker's path
+        assembler   () -> the assembler's path (what is kept as assembly, the helpers C calls)
+        resources   () -> the resource compiler's path"""
+    FIELDS = ("link", "functions", "writer", "tools", "linker", "assembler", "resources")
 
 
 _SLOT_CLASSES = {"loader": Loader, "cpu": Cpu, "convention": Convention, "emulator": Emulator,

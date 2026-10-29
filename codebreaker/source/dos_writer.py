@@ -37,6 +37,7 @@ from codebreaker.compare.image import first_difference
 from codebreaker.formats import dos
 from codebreaker.source import assembly
 from codebreaker.symbols import dos_interrupts
+from codebreaker import platforms
 
 _MARK = 0x7AB3                           # stands in for a relocated segment word while decoding
 _MAX_ROUNDS = 200
@@ -126,8 +127,7 @@ class Writer(object):
         return self.names.get(at) or "L_%05X" % at
 
     def _decode(self):
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-        md.detail = True
+        md = platforms.decoder(16, detail=True)
         marks = self.analysis._mark
         img = self.img
         for at in range(len(img)):

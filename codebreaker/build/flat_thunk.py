@@ -270,10 +270,12 @@ def _param_bytes(part):
 def _ow_paths():
     """(wcc386, wlink, include-dirs) for the from-source OpenWatcom toolchain -- the compiler the
     project builds with (no Microsoft tools). None if the OW tree is not present."""
+    from codebreaker import platforms
     from codebreaker.build import watcom as toolchain
+    P = platforms.of("pe")                                    # (32-bit Windows: its compiler and linker)
     ow = toolchain.openwatcom_root()
-    wcc = toolchain.ow_cc("pe")
-    wlink = toolchain.ow_tool("wlink")
+    wcc = P.compiler.tool()
+    wlink = P.packager.linker()
     incs = [os.path.join(ow, "h", "nt"), os.path.join(ow, "h")]
     if not wcc:
         return None

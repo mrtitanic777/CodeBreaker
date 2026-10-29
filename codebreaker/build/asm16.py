@@ -28,10 +28,10 @@ segment, so it stays where it was.
 import re
 import struct
 
-import capstone
 import capstone.x86 as X
 
 from codebreaker.build import data as data16
+from codebreaker import platforms
 
 
 _DECODED = {}                           # (bytes, place) -> the instruction: a segment's code is decoded
@@ -161,8 +161,7 @@ class Function(object):
                 internal_selector[off] = tseg
         self.sites = sites
         # the instructions: near calls and jumps leaving the function, and references to its own segment
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-        md.detail = True
+        md = platforms.decoder(16, detail=True)
         calls = {}                                          # offset -> (size, text)
         self.ins = {}                                       # offset -> (bytes, mnemonic, operands, label target)
         self.symbolic = {}                                  # offset -> (size, text): an instruction whose fixup has a name
@@ -491,8 +490,7 @@ class Function(object):
         the part of the frame NOT followed as code -- written out as its bytes -- goes to: the
         bytes hold the displacement to where the function was, and it is placed elsewhere
         (USER's 25:2460 `E8 59 FB`, call 1FBC, in code reached only through a table)."""
-        import capstone as cs
-        md = cs.Cs(cs.CS_ARCH_X86, cs.CS_MODE_16)
+        md = platforms.decoder(16)
         decoded = set()
         for a, t in self.ins.items():
             decoded.update(range(a, a + len(t[0])))

@@ -8,9 +8,9 @@ source-local-usage -> assigned offset and recover the allocator rule.
 import re
 from codebreaker.formats import omf
 from codebreaker.invert.compilers import mc_compile_multi
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
+from codebreaker import platforms
 
-md = Cs(CS_ARCH_X86, CS_MODE_16); md.detail = True
+md = platforms.decoder(16, detail=True)
 
 # Battery: each function probes a local-allocation pattern. K&R only, int locals.
 BATTERY = r"""

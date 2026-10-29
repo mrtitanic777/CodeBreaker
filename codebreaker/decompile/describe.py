@@ -21,6 +21,7 @@ import re
 import struct
 
 import capstone  # (here, once: imported inside functions, threads of a build raced to a half-made module)
+from codebreaker import platforms
 
 
 # language id by PE machine type
@@ -422,21 +423,13 @@ _ENDS = ("ret", "retf", "iret", "jmp", "ljmp")
 # The instruction at an offset of a code segment, decoded once. Finding functions, their returns
 # and the stubs in front of them walks the same bytes again and again, one instruction at a time:
 # COMPOBJ's 75,000 instructions were decoded 752,000 times, a quarter of describing it. Kept per
-# segment (the object itself, held so its id is not reused), with a decoder per thread.
+# segment (the object itself, held so its id is not reused).
 _DECODED = {}
-_DECODER = __import__("threading").local()
 
 def decoder16(detail=False):
-    """A 16-bit x86 decoder (capstone), one of each kind per thread and kept: making one is
-    a thousand times dearer than decoding an instruction with it, and describing USER made
-    17,000 of them. `detail`: with each instruction's operands and registers."""
-    key = "md16_detail" if detail else "md16"
-    md = getattr(_DECODER, key, None)
-    if md is None:
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-        md.detail = bool(detail)
-        setattr(_DECODER, key, md)
-    return md
+    """A 16-bit x86 decoder (platforms.decoder: one of each kind per thread and kept, since
+    describing USER made 17,000 of them). `detail`: with each instruction's operands and registers."""
+    return platforms.decoder(16, detail=detail)
 
 
 
@@ -448,10 +441,7 @@ def _one(code, at):
     seen = held[1]
     if at in seen:
         return seen[at]
-    md = getattr(_DECODER, "md", None)
-    if md is None:
-        md = _DECODER.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    ins = seen[at] = next(md.disasm(bytes(code[at:at + 16]), at), None)
+    ins = seen[at] = next(platforms.decoder(16).disasm(bytes(code[at:at + 16]), at), None)
     return ins
 
 
@@ -623,8 +613,7 @@ def jump_by_return(ins, k, targets=()):
 
 def return_jumps(d):
     """[(address of a return that is a jump)] in every code segment (jump_by_return)."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = platforms.decoder(16, detail=True)
     code_segs = getattr(d, "code", None) or {}
     out = []
     for seg, img in sorted(d.images.items()):

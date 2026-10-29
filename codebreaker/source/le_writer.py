@@ -28,11 +28,11 @@ import os
 import re
 import struct
 
-import capstone
 
 from codebreaker.base import settings
 from codebreaker.formats import le
 from codebreaker.source import assembly, image_writer, pe_writer
+from codebreaker import platforms
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jcxz|jecxz)$")
 _STOP = {"ret", "retf", "jmp", "ljmp", "hlt", "iret", "iretd", "ud2"}
@@ -116,8 +116,7 @@ class _Driver(object):
             o = self.by_idx[oi]
             md = mds.get(o["bits"])
             if md is None:
-                md = mds[o["bits"]] = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if o["bits"] == 32 else capstone.CS_MODE_16)
-                md.detail = True
+                md = mds[o["bits"]] = platforms.decoder(32 if o["bits"] == 32 else 16, detail=True)
             limit = min(o["vsize"], o["size"])
             while 0 <= a < limit and (oi, a) not in self.insns and (oi, a) not in self.covered:
                 off = o["start"] + a

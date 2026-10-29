@@ -40,12 +40,12 @@ its own return instructions, not from how it was found.
 import bisect
 import struct
 
-import capstone
 from capstone import x86_const as X
 
 from codebreaker.base import corpus
 from codebreaker.formats import dos
 from codebreaker.symbols import dos_interrupts
+from codebreaker import platforms
 
 _PREFIX = (0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65, 0x66, 0x67, 0xF0, 0xF2, 0xF3)
 _HALVES = {"ax": ("al", "ah"), "bx": ("bl", "bh"), "cx": ("cl", "ch"), "dx": ("dl", "dh")}
@@ -83,8 +83,7 @@ class Analysis(object):
     def __init__(self, program):
         self.program = p = program
         self.functions, self.interrupts, self.tables, self.vectors = {}, [], {}, {}
-        self._md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-        self._md.detail = True
+        self._md = platforms.decoder(16, detail=True)
         self._cache = {}
         self._mark = bytearray(len(p.image))       # 1 instruction start, 2 inside one, 3 jump table
         self._guess = bytearray(len(p.image))      # reached only from a guessed function start

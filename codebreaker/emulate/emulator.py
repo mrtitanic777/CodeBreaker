@@ -29,6 +29,7 @@ from codebreaker.base import settings as paths                          # noqa: 
 from codebreaker.formats.pe import open_pe                 # noqa: E402
 from codebreaker.formats.pe_functions import PeSeg               # noqa: E402
 from codebreaker.formats.pe_functions import PeCarve           # noqa: E402
+from codebreaker import platforms
 
 
 
@@ -87,9 +88,7 @@ def _md():
     cost that dominates -- same lesson difftest._md() records)."""
     global _MD
     if _MD is None:
-        import capstone
-        _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-        _MD.detail = True
+        _MD = platforms.decoder(32, detail=True)
     return _MD
 
 

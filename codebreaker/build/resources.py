@@ -53,8 +53,8 @@ import re
 import struct
 import subprocess
 
+from codebreaker import platforms
 from codebreaker.base import corpus
-from codebreaker.build import watcom
 from codebreaker.formats import resources as R
 
 _MEMORY = ((0x40, "PRELOAD", "LOADONCALL"), (0x10, "MOVEABLE", "FIXED"), (0x1000, "DISCARDABLE", ""),
@@ -440,7 +440,8 @@ def compile_rc(rc, wide, microsoft=True):
     layout of the .res: the Microsoft one, which read_res reads, or the compiler's own
     (`<name>_link.res`), which is the one to hand the linker -- from a Microsoft-layout file
     the linker binds every resource with language 0."""
-    wrc = watcom.ow_tool("wrc")
+    P = platforms.of("pe" if wide else "ne")                 # (the resource compiler of the one it is for)
+    wrc = P.packager.resources()
     if not wrc:
         raise RuntimeError("OpenWatcom's resource compiler is not set up (settings.json: openwatcom)")
     res = os.path.splitext(rc)[0] + (".res" if microsoft else "_link.res")
@@ -453,7 +454,7 @@ def compile_rc(rc, wide, microsoft=True):
     args = [wrc, "-q", "-r", "-bt=" + ("nt" if wide else "windows")] + (["-zm"] if microsoft else []) + (
         ["-zku8"] if wide == UNICODE else [])
     p = subprocess.run(args + ["-fo=" + os.path.basename(res), os.path.basename(rc)], cwd=os.path.dirname(rc),
-                       env=watcom.ow_env("pe" if wide else "ne"), capture_output=True, text=True, errors="replace",
+                       env=P.compiler.env(), capture_output=True, text=True, errors="replace",
                        timeout=600)
     log = (p.stdout or "") + (p.stderr or "")
     return (res if p.returncode == 0 and os.path.isfile(res) else None), log

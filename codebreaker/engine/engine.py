@@ -11,7 +11,7 @@
 A step makes one kind of fact. It is a function, declared with what it reads and makes:
 
     @engine.step("function.object", reads=("function.source", "ne.header"), platform="win16",
-                 uses=(functions,), stamp=lambda: cache.tool(watcom.ow_tool("wcc")))
+                 uses=(functions,), stamp=lambda: cache.tool(P.compiler.tool()))
     def function_object(ctx, key):
         src = ctx.need("function.source", key)      # another fact: made first if it is stale
         ...

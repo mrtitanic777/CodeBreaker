@@ -64,6 +64,7 @@ from codebreaker.formats import resources as resource_reader
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 from codebreaker.jobs import pool
+from codebreaker import platforms
 
 _UNDEFINED = re.compile(r"(\S+) is an undefined reference")
 _BY_ADDRESS = re.compile(r"\bfunc_0x([0-9a-f]{8})\b")
@@ -188,8 +189,7 @@ def _result_in_ax(code, start, end):
     one past the prologue's (`mov ax, ds` / `push ds; pop ax` / `mov ax, DGROUP` ahead of
     `mov ds, ax`), and not a `pop ax` (its own AX given back). -> offset, or None."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = platforms.decoder(16, detail=True)
     ins = list(md.disasm(code[start:end], start))
     prologue = next((i.address + i.size for i in ins[:6] if i.mnemonic == "mov" and i.op_str == "ds, ax"), start)
     targets = set()
@@ -313,7 +313,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     from codebreaker.build import asm16
     from codebreaker.source import assembly as _assembly
     from codebreaker.build import msc6 as _msc6
-    wasm = watcom.ow_tool("wasm")
+    wasm = platforms.of("ne").packager.assembler()
     asm_stamp = cache.key(cache.tool(wasm) if wasm else "", open(asm16.__file__, "rb").read(),
                           open(_assembly.__file__, "rb").read(), open(_msc6.__file__, "rb").read(),
                           _source_of(_assembled16))         # (this function's own code: the rounds are in it)
@@ -594,8 +594,7 @@ def _registers_c_cannot_carry(nef, segs, at, texts):
       hook record at 1 and jumped to a selector D400 -- a GP on Setup's License page).
     - It returns a word, but the original sets DX just before it returns: a DX:AX result
       (sub_1_81C8 returns es:[38h]:1Eh, the C 1Eh alone)."""
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = platforms.decoder(16)
     starts, takes, by_offset = {}, {}, {}
     for (sg, o), n in at.items():
         starts.setdefault(sg, []).append(o)
@@ -881,8 +880,7 @@ def _near_pointer_tables(nef, at):
     SETUPX at 0003:3700 as Setup began to copy). A run of three or more words in a row that are all
     function starts of one code segment, or two that the segment's code loads as the table's address,
     and that segment calls or jumps through a word in memory."""
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = platforms.decoder(16)
     segs = {s["idx"]: s for s in nef.segments()}
     auto = nef.h.get("autodata_seg")
     if not auto or auto not in segs or not segs[auto]["file_off"]:
@@ -927,8 +925,7 @@ def _register_argument_calls(nef, at):
     entry (INT 2Fh AX=1684h), the service number in AX and the arguments read from the caller's
     frame as it is (SETUPX's CONFIGMG wrappers 4:13E6, 4:1470, 4:149E ...). The decompiler drops
     the register and C has no way to set it, nor to lay the frame out as the entry reads it."""
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = platforms.decoder(16)
     segs = {s["idx"]: s for s in nef.segments()}
     by_seg = {}
     for (sg, off), name in at.items():
@@ -1132,10 +1129,11 @@ def _build32(b, path, m, folder):
 # 16-bit
 # ---------------------------------------------------------------------------------------------
 def _build16(b, path, m, folder):
-    wcc, wlink = watcom.ow_tool("wcc"), watcom.ow_tool("wlink")
+    P = platforms.of("ne")                                    # (16-bit Windows: its compiler and packager)
+    wcc, wlink = P.compiler.tool(), P.packager.linker()
     if not (wcc and wlink):
         raise RuntimeError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)")
-    env, nef = watcom.ow_env("ne"), NEFile(path)
+    env, nef = P.compiler.env(), NEFile(path)
     segs = {s["idx"]: s for s in nef.segments()}
     at = {m.where[va]: name for va, name in m.by_va.items() if m.where.get(va)}
     b.with_text = len(m.order)
@@ -1490,7 +1488,7 @@ def _build16(b, path, m, folder):
         asm, c = c_text.interrupt_routines({v for v, _regs in m.interrupts})
         with open(os.path.join(folder, "interrupts.asm"), "w", newline="\n") as f:
             f.write(asm)
-        r = subprocess.run([watcom.ow_tool("wasm"), "-q", "interrupts.asm"], cwd=folder, env=env,
+        r = subprocess.run([P.packager.assembler(), "-q", "interrupts.asm"], cwd=folder, env=env,
                            capture_output=True, text=True)
         why = extra("interrupt_registers", c.replace('#include "m.h"\n', ""))
         if r.returncode == 0 and not why:
@@ -1587,7 +1585,7 @@ def _build16(b, path, m, folder):
             src += ["public %s" % symbol(e), "%s equ 0%Xh" % (symbol(e), e.address[1])]
         with open(os.path.join(folder, "constants.asm"), "w", newline="\n") as f:
             f.write("\n".join(src + ["end", ""]))
-        r = subprocess.run([watcom.ow_tool("wasm"), "-q", "constants.asm"], cwd=folder, env=env,
+        r = subprocess.run([P.packager.assembler(), "-q", "constants.asm"], cwd=folder, env=env,
                            capture_output=True, text=True)
         if r.returncode == 0:
             lines.append("file constants.obj")
@@ -1915,7 +1913,7 @@ def _gate16_keys(path, names, m):
     # (and the branch-guided inputs the checker runs: the explorers, their limits, whether they are
     # on -- the path explorer's lifter too)
     ready = win16.concolic_ready()
-    tools = cache.key(cache.tool(watcom.ow_tool("wcc") or ""), functions.CFLAGS16, sizes,
+    tools = cache.key(cache.tool(platforms.of("ne").compiler.tool() or ""), functions.CFLAGS16, sizes,
                       lane_common.guided_on(), lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED,
                       ready, lane_common.PATH_BUDGET, lane_common.MAX_PATHS, pcode.stamp() if ready else "",
                       *[open(sys.modules[x.__name__].__file__, "rb").read()

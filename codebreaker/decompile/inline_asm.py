@@ -20,8 +20,8 @@ a fix-up it cannot name) is left as the decompiler wrote it: -> (None, why).
 """
 import re
 
-import capstone
 import capstone.x86 as X
+from codebreaker import platforms
 
 _STRING = {"movsb", "movsw", "movsd", "lodsb", "lodsw", "lodsd", "stosb", "stosw", "stosd", "scasb", "scasw",
            "scasd", "cmpsb", "cmpsw", "cmpsd", "insb", "insw", "outsb", "outsw"}
@@ -101,8 +101,7 @@ def whole_body(name, code, start, end, fixups, name_at, seg, result="int2"):
     """The function at code[start:end] as a C function whose body is one _asm block.
     fixups: {offset in the segment: target name or None}; name_at(seg, off) -> a function's name.
     -> (C text, None) or (None, why)"""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = platforms.decoder(16, detail=True)
     ins = []
     for i in md.disasm(bytes(code[start:end]), start):
         ins.append(i)

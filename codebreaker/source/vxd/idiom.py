@@ -17,6 +17,7 @@ import re
 from codebreaker.source.vxd.disassembly import VxDDisasm
 from codebreaker.source.vxd import services as vxd_services
 from codebreaker.base import corpus as paths
+from codebreaker import platforms
 
 # a branch operand that is a bare number (optionally SHORT/NEAR PTR-pinned) -- ML's "jump destination
 # must specify a label"; these are self-relative call/jmp (e8/e9 rel32=0, a PIC idiom) our disasm
@@ -342,8 +343,7 @@ def _addr16(row):
 
 
 import capstone as _cap
-_MDD = _cap.Cs(_cap.CS_ARCH_X86, _cap.CS_MODE_32)
-_MDD.detail = True
+_MDD = platforms.decoder(32, detail=True)
 _DISP0_CACHE = {}
 
 

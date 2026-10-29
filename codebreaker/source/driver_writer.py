@@ -39,6 +39,7 @@ from codebreaker.build import vxdfile
 from codebreaker.formats import le
 from codebreaker.source import assembly
 from codebreaker.symbols import driver_services
+from codebreaker import platforms
 
 _MARK = 0x7A000000                       # stands in for a patched address while decoding
 _MAX_ROUNDS = 40
@@ -135,8 +136,7 @@ class Writer(object):
 
     # -- finding the code ------------------------------------------------------------------------
     def _decode(self):
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-        md.detail = True
+        md = platforms.decoder(32, detail=True)
         work = [(o, a) for (o, a) in le.entry_points(self.lf).values()]
         for ob in self.objects.values():
             for a, (kind, to, ta) in ob.fix.items():

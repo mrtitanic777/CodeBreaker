@@ -16,6 +16,7 @@ from codebreaker.emulate import fast_uc
 from codebreaker.emulate.emulator import _MAX_INSNS, _PAGE, _memory_hooks
 from codebreaker.formats.ne import NEFile
 import json
+from codebreaker import platforms
 
 
 # ---- GDT / memory layout (linear, 32-bit protected mode) -------------------
@@ -812,13 +813,12 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         # fault detail: disassemble the instruction at the faulting CS:EIP (helps triage which
         # 16-bit construct the segmented emulator still can't handle).
         try:
-            import capstone
             feip = uc.reg_read(UC_X86_REG_EIP) & 0xFFFF
             fcs = uc.reg_read(UC_X86_REG_CS)
             csbase = next((b for sidx, b in seg_bases.items() if sels.get(sidx) == fcs), None)
             if csbase is not None:
                 fb = bytes(uc.mem_read(csbase + feip, 16))
-                ins = next(capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16).disasm(fb, feip), None)
+                ins = next(platforms.decoder(16).disasm(fb, feip), None)
                 rec["fault"] = {"cs": fcs, "eip": feip,
                                 "insn": ("%s %s" % (ins.mnemonic, ins.op_str)).strip() if ins else None,
                                 "bytes": fb[:8].hex()}

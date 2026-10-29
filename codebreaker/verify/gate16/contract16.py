@@ -18,6 +18,7 @@ import tempfile
 import capstone
 
 from codebreaker.decompile import describe
+from codebreaker import platforms
 
 _VARIADIC = {"USER_420", "wsprintf", "USER_421", "wvsprintf"}   # (USER.420 wsprintf: its own count)
 # (functions that take their arguments in registers -- DOS3Call, NetBIOSCall: AH, DS:DX, ES:DI, CX
@@ -25,8 +26,7 @@ _VARIADIC = {"USER_420", "wsprintf", "USER_421", "wvsprintf"}   # (USER.420 wspr
 # not the original's. VER's sub_3_0BD6 renames a file through DOS3Call; its C called it with
 # nothing loaded, and the isolated check, answering DOS3Call alike on both sides, saw no difference)
 _IN_REGISTERS = {"KERNEL_102", "DOS3CALL", "KERNEL_103", "NETBIOSCALL"}
-_MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-_MD.detail = True                                       # (what an instruction reads and writes)
+_MD = platforms.decoder(16, detail=True)                # (what an instruction reads and writes)
 
 
 def _described(path, where, keep=False):

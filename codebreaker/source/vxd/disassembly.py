@@ -24,23 +24,21 @@ Three VxD-specific mechanisms are decoded:
 import os
 import sys
 import struct
+from codebreaker import platforms
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CS_MODE_16
 from codebreaker.source.vxd import services as vxd_services
 from codebreaker.base import corpus as paths
 
-_MD = Cs(CS_ARCH_X86, CS_MODE_32)
-_MD.detail = True
+_MD = platforms.decoder(32, detail=True)
 # A 16-bit decoder for the real-mode-init (RCOD) and any 16:16 segment. An LE object is 32-bit iff
 # its BIG bit (0x2000) is set; without it the segment is USE16 and MUST decode as 16-bit, or a VxD's
 # real-mode init (and, for the broader 16-bit Win95 modules, nearly everything) decodes to garbage.
-_MD16 = Cs(CS_ARCH_X86, CS_MODE_16)
-_MD16.detail = True
+_MD16 = platforms.decoder(16, detail=True)
 _SVC = vxd_services.load()          # DDK service-name tables (ordinal -> name)
 
 # Canonical Win95 VxD device ids -> names (DDK VxD service tables). The high word of an INT 20h

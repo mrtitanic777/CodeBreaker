@@ -30,10 +30,10 @@ Out-of-class constructs are declined (emit returns None) -- never mis-modeled.
 """
 import struct
 import sys
+from codebreaker import platforms
 
 try:
-    from capstone import Cs, CS_ARCH_X86, CS_MODE_32
-    _MD = Cs(CS_ARCH_X86, CS_MODE_32)
+    _MD = platforms.decoder(32)
 except Exception:
     _MD = None                                          # only the frame self-test needs it
 

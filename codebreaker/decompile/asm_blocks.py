@@ -34,6 +34,7 @@ import capstone
 import capstone.x86 as X
 
 from codebreaker.decompile import inline_asm
+from codebreaker import platforms
 
 _HELPER = re.compile(r"^int([0-9a-f]{2})(_[a-z_]+)?$")
 _FLAGS = ("int_CF", "int_ZF")
@@ -106,8 +107,7 @@ def _named(text, frame):
 
 
 def _decode(code, start, end):
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = platforms.decoder(16, detail=True)
     return list(md.disasm(bytes(code[start:end]), start))
 
 

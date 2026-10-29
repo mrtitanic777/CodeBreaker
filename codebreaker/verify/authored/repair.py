@@ -34,6 +34,7 @@ import re
 
 from codebreaker.base import ctext
 from codebreaker.verify.authored import match
+from codebreaker import platforms
 
 MAX_LOCALS = 6           # the leading locals whose order and storage are tried
 MAX_SITES = 6            # places in the body each kind of rewrite is tried at
@@ -87,8 +88,7 @@ def _frame(code, bits=32):
             if w >> 16 == 0x9421:                                  # stwu r1,-N(r1)
                 return (-(w & 0xFFFF)) & 0xFFFF
         return 0
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
+    md = platforms.decoder(32 if bits == 32 else 16)
     sp = "esp," if bits == 32 else "sp,"
     for k, (_a, _n, mnem, ops) in enumerate(md.disasm_lite(bytes(code[:32]), 0)):
         if mnem == "sub" and ops.startswith(sp):
@@ -109,8 +109,7 @@ def instructions(built, bits):
     if bits == "ppc":
         return [(int.from_bytes(code[i:i + 4], "big") & ~mask[i // 4]) & 0xFFFFFFFF
                 for i in range(0, len(code) - 3, 4)]
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
+    md = platforms.decoder(32 if bits == 32 else 16)
     out, at = [], 0
     while at < len(code):
         n = 0

@@ -19,9 +19,10 @@ should become one here, so it is never re-derived on another DLL.
     from codebreaker.invert import whole_function as templates
     c = templates.synthesize(func_bytes)     # -> candidate C str, or None
 """
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16, x86
+from capstone import x86
+from codebreaker import platforms
 
-_MD = Cs(CS_ARCH_X86, CS_MODE_16); _MD.detail = True
+_MD = platforms.decoder(16, detail=True)
 # the Win16 exported far-function loadds prologue
 _PROLOGUE = ["push ds", "pop ax", "nop", "inc bp", "push bp", "mov bp, sp",
              "push ds", "mov ds, ax"]

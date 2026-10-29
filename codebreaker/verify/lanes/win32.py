@@ -11,7 +11,6 @@ the platform's (codebreaker/platforms/win32.py): its emulator, convention, compi
 import hashlib
 import os
 from codebreaker import platforms
-from codebreaker.build import watcom as toolchain
 from codebreaker.base import corpus
 from codebreaker.verify import compare
 from codebreaker.verify import lane_common
@@ -118,7 +117,7 @@ def settings_profile(lane):
     if lane not in _PROFILES:
         import json
         from codebreaker.build import watcom as B
-        cc =toolchain.ow_tool("wcc386" if lane == "pe" else "wcc")
+        cc = platforms.of("pe" if lane == "pe" else "ne").compiler.tool()
         try:
             st = os.stat(cc)
             compiler = "%s:%d:%d" % (os.path.basename(cc), st.st_size, int(st.st_mtime))
@@ -391,10 +390,8 @@ def insn_count(path, func):
 
 
 def _reachable_insns(code, start):
-    import capstone
     from capstone import x86_const as X
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-    md.detail = True
+    md = P.cpu.disassembler(detail=True)
     lo, hi = start, start + len(code)
     seen, todo = set(), [start]
     while todo:
@@ -434,12 +431,11 @@ def _thunk_stubs(original):
     if original not in _THUNKS:
         at, argc = {}, {}
         try:
-            import capstone
             from codebreaker.symbols import runtime_library
             from codebreaker.formats.pe import open_pe
             pe = open_pe(original)
             sections = pe.code_sections()
-            md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+            md = P.cpu.disassembler()
             for va in runtime_library._flat_thunk_stubs(original, pe, sections):
                 name = "stub_%x" % va
                 at[va] = ("THUNK", name)
@@ -592,12 +588,10 @@ def _harvest(path, func):
     if key not in _HARVEST:
         consts, globs = [], []
         try:
-            import capstone
             from capstone import x86_const as X
             lo, hi = _image_span(path)
             iat = set(open_pe(path).imports())
-            md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-            md.detail = True
+            md = P.cpu.disassembler(detail=True)
             # The function first, then the functions it calls: a caller often cannot get past
             # `if (!helper(x)) return` until the input satisfies what the HELPER tests.
             todo, seen = [(func, 0)], set()

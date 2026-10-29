@@ -16,14 +16,14 @@ a sample of the functions come out the original's length say how the module was 
 import os
 
 from codebreaker.verify.authored import match
+from codebreaker import platforms
 
 def source_files(names, where, originals, address):
     """[[function, ...], ...] -- the original's source files, as far as its calls tell: a far call
     to a function as `push cs; call near` (the segment known: defined in the same file) or a near
     call, puts caller and callee in one file, and a file is contiguous, so everything between them
     too. A function no such call reaches is a file of its own."""
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = platforms.decoder(16)
     at = {where[address[fn]]: fn for fn in names}
     by_seg = {}
     for fn in names:

@@ -16,7 +16,8 @@ boundary to recover: code is what flow reaches, the rest is data.
 """
 import os
 import sys
-import threading
+
+from codebreaker import platforms
 
 try:
     import capstone
@@ -27,7 +28,6 @@ except ImportError:
 from codebreaker.decompile import vmx128
 
 WORD = 4
-_tls = threading.local()
 # flow does not go on past these; calls (bl bla bcl bctrl bclrl) come back
 _ENDERS = {"b", "ba", "blr", "bctr", "bctrl", "rfi", "rfid"}
 
@@ -36,12 +36,7 @@ def _md():
     """This thread's decoder, or None when Capstone is not installed."""
     if capstone is None:
         return None
-    md = getattr(_tls, "md", None)
-    if md is None:
-        md = capstone.Cs(capstone.CS_ARCH_PPC, capstone.CS_MODE_32 | capstone.CS_MODE_BIG_ENDIAN)
-        md.detail = True
-        _tls.md = md
-    return md
+    return platforms.decoder(32, arch="ppc", detail=True)
 
 
 def is_vmx128(raw4):

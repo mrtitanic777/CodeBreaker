@@ -4,10 +4,10 @@ from struct import unpack
 
 # py -m pip install capstone
 # sudo pip3 install capstone
-from capstone import *
+from codebreaker import platforms
 
 def main() -> None:
-	md = Cs(CS_ARCH_PPC, CS_MODE_32 + CS_MODE_BIG_ENDIAN)
+	md = platforms.decoder(32, arch="ppc")
 
 	with open("Output/decompiled_patches.asm", "w", newline="\n") as fw:
 		with open(r"X:\Xbox 360\xeBuild_1.21\Builds\17559 - FB\bin\patches_g2mzephyr.bin", "rb") as fr:

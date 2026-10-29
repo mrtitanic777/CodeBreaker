@@ -13,10 +13,10 @@ Prints IDENTICAL, or the instructions that differ. --asm prints the original pro
 compiles nothing; --cod prints the compiler's own listing of the compiled procedure.
 """
 import os, sys, re, json, struct
+from codebreaker import platforms
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
-MD = Cs(CS_ARCH_X86, CS_MODE_16)
+MD = platforms.decoder(16)
 
 HDRLEN = 3          # what follows a procedure's call of the entry helper: a byte and a word (build.py sets 2 for MASM 3.00)
 

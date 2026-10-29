@@ -35,6 +35,7 @@ import capstone
 import capstone.x86 as X
 
 from codebreaker.decompile import describe
+from codebreaker import platforms
 
 _COMPILER_HELPERS = ("chkstk", "__aFlmul", "__aFldiv", "__aFuldiv", "__aFlrem", "__aFulrem", "__aFlshl",
                      "__aFlshr", "__aFulshr", "__aNlmul", "__aNldiv", "__aNuldiv", "__aNlrem", "__aNulrem",
@@ -103,8 +104,7 @@ def _module16(path, more=None):
     for seg in starts:
         starts[seg].sort()
     imported = dict(getattr(d, "import_names", {}) or {})
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = platforms.decoder(16, detail=True)
     res = Result()
     g3 = _linker16(path) >= (5, 30)                          # (C 7 and 8: /G3 makes 32-bit registers)
     for va, name in sorted(names.items()):

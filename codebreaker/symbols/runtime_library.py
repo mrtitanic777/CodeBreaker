@@ -39,6 +39,7 @@ from codebreaker.decompile import describe
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 from codebreaker.symbols import libraries, ordinals
+from codebreaker import platforms
 
 _FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runtime_signatures.json")
 _LONGEST = 1024                 # bytes of a function that are compared
@@ -134,13 +135,12 @@ def _flat_thunk_stubs(module_path, pe, sections):
     and cannot run here: mnmcpi32.dll's 297 such functions all called into nothing."""
     from codebreaker.build import flat_thunk
     from codebreaker.formats import pe_functions
-    import capstone
     try:
         if flat_thunk.classify(module_path).get("subtype") != "flat-thunk":
             return []
     except Exception:                                       # (not readable as one: not one)
         return []
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    md = platforms.decoder(32)
     in_code = lambda a: any(b <= a < b + len(raw) for b, raw, _n in sections)
     def reaches(va, hops):
         """Whether the code at `va`, followed through `hops` more jumps, calls through such a pointer."""
@@ -295,8 +295,7 @@ def substance(bits, code, size):
     """How many instructions of a function do something of its own: not the frame every function
     sets up and takes down, not `return 0`. An empty function is the same bytes in every program
     and every library; only one with substance can be told to be a particular library function."""
-    import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32 if bits == 32 else capstone.CS_MODE_16)
+    md = platforms.decoder(32 if bits == 32 else 16)
     return sum(1 for _a, _s, mnemonic, operands in md.disasm_lite(bytes(code[:size]), 0)
                if not _FRAME.match((mnemonic + " " + operands).strip()))
 

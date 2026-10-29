@@ -12,8 +12,8 @@ GlobalFree((WORD)(gpX>>16)); gpX = 0L; }` blocks (long globals + far call + long
 
     wt inverse msc6fn        # runs the Cleanup end-to-end self-test
 """
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
-_MD = Cs(CS_ARCH_X86, CS_MODE_16)
+from codebreaker import platforms
+_MD = platforms.decoder(16)
 
 PROLOGUE = bytes.fromhex("1e589045558bec1e8ed8")
 EPI = bytes.fromhex("4d4d8be51f5d4d")

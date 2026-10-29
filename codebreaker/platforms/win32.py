@@ -53,4 +53,7 @@ PLATFORM = Platform(
                       tools=Ref(__name__, "tools"), flags=Ref("codebreaker.decompile.c_text", "CFLAGS"),
                       env=Ref("codebreaker.build.watcom", "ow_env", "pe")),
     packager=Packager(link=Ref("codebreaker.build.module", "_build32"),
-                      functions=Ref("codebreaker.build.functions", "build32"), tools=Ref(__name__, "tools")))
+                      functions=Ref("codebreaker.build.functions", "build32"), tools=Ref(__name__, "tools"),
+                      linker=Ref("codebreaker.build.watcom", "ow_tool", "wlink"),
+                      assembler=Ref("codebreaker.build.watcom", "ow_tool", "wasm"),
+                      resources=Ref("codebreaker.build.watcom", "ow_tool", "wrc")))

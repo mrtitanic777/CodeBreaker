@@ -32,6 +32,7 @@ import capstone
 from codebreaker.formats.pe import open_pe
 import os
 from codebreaker.base import settings as paths
+from codebreaker import platforms
 
 
 
@@ -43,8 +44,7 @@ class PeCarve:
         # linear capstone sweep, so a caller can drive a disassembly progress bar.
         self._progress_cb = progress_cb
         self.pe = open_pe(corpus.resolve(path))
-        self.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-        self.md.detail = True
+        self.md = platforms.decoder(32, detail=True)
         self.sections = self.pe.code_sections()          # [(va, bytes, name)]
         self.imports = self.pe.imports()                 # {iat_va: (dll, name)}
         self.exports = {}                                 # export_va -> name
@@ -293,7 +293,7 @@ class PeCarve:
         return out
 
 
-_MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+_MD = platforms.decoder(32)
 _CARVE = {}
 
 # Bootstrap: put the target dir on sys.path so bare sibling imports (cc32,
@@ -322,7 +322,7 @@ def carve(module):
     return _CARVE[module]
 
 
-_MD32 = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+_MD32 = platforms.decoder(32)
 
 
 def disasm_whole32(code, base=0, progress_cb=None):
@@ -424,7 +424,7 @@ def function_spans(path):
     module with a megabyte of code takes over a gigabyte. This keeps only where instructions
     start and what is called, which is all the rule needs."""
     pe = open_pe(corpus.resolve(path))
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    md = platforms.decoder(32)
     sections = pe.code_sections()
     decoded, called = set(), set()
     for base, data, _name in sections:

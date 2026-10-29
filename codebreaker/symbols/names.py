@@ -44,6 +44,7 @@ from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 from codebreaker.store import functions as store
 from codebreaker.symbols import demangle, ordinals, runtime_library
+from codebreaker import platforms
 
 _SMALLEST = 24                  # bytes; a body shorter than this is everybody's
 _ENDS = ("ret", "retf", "retn", "jmp", "ljmp", "iret", "iretd")
@@ -111,9 +112,8 @@ def _bodies32(path):
 
 
 def _bodies16(path):
-    import capstone
     nef = NEFile(path)
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = platforms.decoder(16)
     segs = {s["idx"]: s for s in nef.segments()}
     starts = {}
     for (seg, off) in describe.functions(nef):

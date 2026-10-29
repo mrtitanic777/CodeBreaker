@@ -25,11 +25,11 @@ import os
 import re
 import struct
 
-import capstone
 
 from codebreaker.base import settings
 from codebreaker.formats.ne import NEFile
 from codebreaker.source import assembly, image_writer, pe_writer
+from codebreaker import platforms
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jcxz|jecxz)$")
 _STOP = {"ret", "retf", "jmp", "ljmp", "hlt", "iret", "iretd", "ud2"}
@@ -79,8 +79,7 @@ class Writer(object):
 
     # -- code ----------------------------------------------------------------------------------
     def _decode(self):
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-        md.detail = True
+        md = platforms.decoder(16, detail=True)
         self.insns, self.covered = {}, {}
         seeds = []
         for e in self.ne.entries():

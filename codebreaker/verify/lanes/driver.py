@@ -365,7 +365,6 @@ def break_instruction(original, out, label, nth=0):
     the nth instruction (in address order) that runs on the first input, with one bit of its
     last byte flipped (a register, a displacement or an immediate becomes another).
     -> (file offset changed, the instruction's text) or None when there is no such one."""
-    import capstone
     lf = le.members(original)[0][1]
     image = _image(original)
     if label not in image.entries or le.is_member(lf):
@@ -374,7 +373,7 @@ def break_instruction(original, out, label, nth=0):
     for v in inputs(label)[0]:
         cover |= P.emulator.run(image, image.entries[label], v["regs"], v["stack"], v["memory"],
                                 flags=v["flags"])["cover"]
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    md = P.cpu.disassembler()
     patched = set()
     for obj, off, _kind, _to, _ta in le.references(lf):
         patched.update(describe.le_address(obj, off) + i for i in range(4))

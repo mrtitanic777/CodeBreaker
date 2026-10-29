@@ -18,10 +18,10 @@ is the live `eax` (a call result, optionally combined with one arg/const, or a s
 Control flow and multi-park register allocation compose onto this next (see docs/MSVC2_DATAFLOW).
 """
 import re
+from codebreaker import platforms
 
 try:
-    from capstone import Cs, CS_ARCH_X86, CS_MODE_32
-    _MD = Cs(CS_ARCH_X86, CS_MODE_32)
+    _MD = platforms.decoder(32)
 except Exception:
     _MD = None
 

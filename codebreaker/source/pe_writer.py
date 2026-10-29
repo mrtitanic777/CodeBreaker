@@ -28,12 +28,12 @@ import os
 import re
 import struct
 
-import capstone
 
 from codebreaker.base import settings
 from codebreaker.formats import pe_functions
 from codebreaker.formats.pe import open_pe
 from codebreaker.source import assembly, image_writer
+from codebreaker import platforms
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jecxz|jcxz)$")
 _STOP = {"ret", "retf", "jmp", "hlt", "iretd", "iret", "ud2"}
@@ -135,8 +135,7 @@ class Writer(object):
 
     # -- code ----------------------------------------------------------------------------------
     def _decode(self):
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
-        md.detail = True
+        md = platforms.decoder(32, detail=True)
         self.insns = {}                                      # VA -> instruction
         covered = {}                                         # VA of every byte of an instruction -> its start
         code = [s for s in self.secs if s["code"] and s["file"]]

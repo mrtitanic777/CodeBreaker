@@ -15,10 +15,10 @@ signature, which run.py hands to the model (msc6.py) as the params.
     sigs = msc6_calls.infer_segment_sigs(nefile, seg, segbytes)   # {func_off: [(name,type),...]}
 """
 import re
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 from codebreaker.invert.msc6_function import PROLOGUE, EPI
+from codebreaker import platforms
 
-_MD = Cs(CS_ARCH_X86, CS_MODE_16)
+_MD = platforms.decoder(16)
 _SEGPUSH = {0x06: "es", 0x0e: "cs", 0x16: "ss", 0x1e: "ds"}   # push <segreg> opcodes
 
 

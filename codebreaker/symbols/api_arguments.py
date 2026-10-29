@@ -20,6 +20,7 @@ import os
 import re
 from codebreaker.base import corpus
 from codebreaker.formats.pe import open_pe
+from codebreaker import platforms
 
 
 _MAX_INSNS = 4000              # per function
@@ -32,7 +33,6 @@ _IAT = re.compile(r"dword ptr \[(0x[0-9a-f]+)\]")
 
 class _Mod:
     def __init__(self, path):
-        import capstone
         self.pe = open_pe(path)
         self.base = self.pe.image_base
         self.exports = {}
@@ -42,7 +42,7 @@ class _Mod:
             if n:
                 self.exports[n] = rva
         self.imports = self.pe.imports()
-        self.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+        self.md = platforms.decoder(32)
         ed = self.pe.datadirs[0] if self.pe.datadirs else (0, 0)
         self.exp_lo, self.exp_hi = ed[0], ed[0] + ed[1]
 

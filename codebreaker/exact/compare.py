@@ -18,6 +18,7 @@ an offset within one wraps at 64K. Its segment words are those of a load at the 
         notes  what is wrong with the linker's words; a note starting with "?" is a warning only
 """
 import struct
+from codebreaker import platforms
 
 W = lambda b, k: struct.unpack_from("<H", b, k)[0]
 S = lambda b, k: struct.unpack_from("<h", b, k)[0]
@@ -136,8 +137,7 @@ def function(o, img, name, off, ln, at, prj, syms, learn, text="_TEXT", where=No
 def _indexed(code, off, ln, fo, cache):
     """the instruction holding the word at fo addresses memory through a base or index register"""
     if "ins" not in cache:
-        from capstone import Cs, CS_ARCH_X86, CS_MODE_16
-        cache["ins"] = [(i.address, i.size, i.op_str) for i in Cs(CS_ARCH_X86, CS_MODE_16).disasm(bytes(code[off:off + ln]), off)]
+        cache["ins"] = [(i.address, i.size, i.op_str) for i in platforms.decoder(16).disasm(bytes(code[off:off + ln]), off)]
     for a, sz, ops in cache["ins"]:
         if a <= fo < a + sz:
             m = ops.find("[")
@@ -160,8 +160,7 @@ def _shift(code, img, off, at, bad):
 def _calls_within(code, img, off, ln, at, base, where, skip):
     """near calls and jumps from the function to another of its file have no fixup (the compiler wrote them):
     with the file's functions at places of their own, each must reach its callee's place"""
-    from capstone import Cs, CS_ARCH_X86, CS_MODE_16
-    for i in Cs(CS_ARCH_X86, CS_MODE_16).disasm(bytes(code[off:off + ln]), off):
+    for i in platforms.decoder(16).disasm(bytes(code[off:off + ln]), off):
         if i.bytes[0] in (0xE8, 0xE9) and i.size == 3 and i.address - off + 1 not in skip:
             k = i.address - off + 1
             mine = (i.address + 3 + S(i.bytes, 1)) & 0xFFFF

@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 
+from codebreaker import platforms
 from codebreaker.build import watcom as period_tools
 from codebreaker.formats import omf
 from codebreaker.jobs import pool
@@ -248,7 +249,7 @@ def _interrupt_routines(wcc, env, outdir, interrupts):
     asm, c = c_text.interrupt_routines(interrupts)
     with open(os.path.join(outdir, "interrupts.asm"), "w", newline="\n") as f:
         f.write(asm)
-    r = subprocess.run([period_tools.ow_tool("wasm"), "-q", "interrupts.asm"], cwd=outdir, env=env,
+    r = subprocess.run([platforms.of("ne").packager.assembler(), "-q", "interrupts.asm"], cwd=outdir, env=env,
                        capture_output=True, text=True)
     if r.returncode or _compile(wcc, CFLAGS16, env, outdir, "interrupt_registers", c.replace('#include "m.h"\n', "")):
         return []
@@ -266,10 +267,11 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
     whole segment, put at the start of the rebuilt one -- for C that still reads its code segment
     at the original's offsets (c_text: m.code_reads "left"), so that what it reads there is what
     the original has; the functions come after it. Left out again when the segment would not fit."""
-    wcc, wlink = period_tools.ow_tool("wcc"), period_tools.ow_tool("wlink")
+    P = platforms.of("ne")                                    # (16-bit Windows: its compiler and packager)
+    wcc, wlink = P.compiler.tool(), P.packager.linker()
     if not (wcc and wlink):
         raise RuntimeError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)")
-    env = period_tools.ow_env("ne")
+    env = P.compiler.env()
     more = {n: ["-nt=CODE%d" % s] for n, s in (code_segment or {}).items()}
     stems, dropped = compile_all(wcc, CFLAGS16, env, header, texts, order, outdir, jobs, more)
     live = [n for n in order if n not in dropped]
@@ -381,7 +383,7 @@ def _in_the_original(outdir, env, undefined, originals):
     lines += ["_TEXT ends", "end"]
     with open(os.path.join(outdir, "original.asm"), "w", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
-    wasm = period_tools.ow_tool("wasm")
+    wasm = platforms.of("pe").packager.assembler()
     if not wasm:
         return None
     try:

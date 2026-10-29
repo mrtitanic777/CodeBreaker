@@ -16,10 +16,10 @@ pointer deref / index, global read/write/inc, extern & indirect calls.
 import re
 import sys
 from codebreaker.invert import msvc2_forward as M
+from codebreaker import platforms
 
 try:
-    from capstone import Cs, CS_ARCH_X86, CS_MODE_32
-    _MD = Cs(CS_ARCH_X86, CS_MODE_32)
+    _MD = platforms.decoder(32)
 except Exception:
     _MD = None
 

@@ -54,8 +54,8 @@ def main(argv):
     from codebreaker.base import corpus
     from codebreaker.store import functions as F
     from codebreaker.verify import reconstruct
-    from codebreaker.build import watcom as period_tools
-    if not period_tools.ow_tool("wcc386"):
+    from codebreaker import platforms
+    if not platforms.of("pe").compiler.tool():
         raise SystemExit("OpenWatcom is not set up (settings.json: openwatcom): nothing could be built")
     fs = F.open()
     kinds = ("pe", "ne", "le", "dos") if "--all" in argv else ("ne",) if "--16" in argv else \

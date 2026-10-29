@@ -7,9 +7,9 @@ Usage: python early_c.py <image.bin> <hexoff> <len>
 """
 import os
 import sys, re, os
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
 from codebreaker.invert import early_c_frame as framemodel
-_MD = Cs(CS_ARCH_X86, CS_MODE_16)
+from codebreaker import platforms
+_MD = platforms.decoder(16)
 
 ALU={"add":"+","sub":"-","and":"&","or":"|","xor":"^"}
 JCC={"jl":"<","jle":"<=","jg":">","jge":">=","je":"==","jne":"!=",      # jump's OWN taken condition

@@ -11,8 +11,8 @@ masked). Declines at the first unmodeled instruction (no mis-reconstruction).
     wt inverse msc6reg     # runs the non-loop register-var self-test
 """
 import re
-from capstone import Cs, CS_ARCH_X86, CS_MODE_16
-_MD = Cs(CS_ARCH_X86, CS_MODE_16)
+from codebreaker import platforms
+_MD = platforms.decoder(16)
 from codebreaker.invert.msc6_function import _mask, PROLOGUE, EPI
 
 
