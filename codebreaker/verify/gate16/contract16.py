@@ -217,8 +217,11 @@ def mismatches(original, folder, image, names):
             for c in sorted(set(a) & set(b)):
                 ta, tb = a[c] - {"leave"}, b[c] - {"leave"}   # (before a LEAVE: whatever was taken off)
                 if ta and tb and ta != tb:
+                    # (each set may hold "leave" beside the byte counts -- and a count read from a
+                    # register, "?bx": sorted as text, or the report itself fails. It did, on every
+                    # USER build after the LEAVE rule came in, and with it the whole check)
                     out[n] = "after calling %s the original takes off %s bytes, ours %s" % (
-                        c, sorted(a[c]), sorted(b[c]))
+                        c, sorted(a[c], key=str), sorted(b[c], key=str))
                     break
                 # (and fewer argument bytes pushed than the original pushes: SUWIN's sub_8_0634
                 # gave sub_8_0A6A one near pointer for its two far ones -- the second, a 260-byte

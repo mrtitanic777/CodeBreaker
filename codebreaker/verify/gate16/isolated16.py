@@ -16,10 +16,17 @@ Compared, for each set of inputs: how the run ends; the calls it makes, in order
 arguments; the result (AX, and DX for a function that returns four bytes); what is left in the
 data segment; how many bytes of arguments were removed; and whether SI, DI and DS were kept.
 Where the two differ is the first thing a reader needs: it says which.
+
+The inputs are the 16-bit judge's (verify/lanes/win16.py): the fixed ones, the directed ones (the
+constants the code compares with) and the branch-guided ones (verify/guided.py through
+lane_common.guided: arguments, words of the data segment and what an unmodelled Windows call
+returns, chosen to take branches of the original no other input took), and the scattered ones
+once more over a patterned data segment. CB_NO_GUIDED=1 leaves the branch-guided ones out.
 """
 import os
 import re
 
+from codebreaker.verify import lane_common
 from codebreaker.verify.lanes import win16
 
 _MAP = re.compile(r"^([0-9a-f]{4}):([0-9a-f]{4,8})[+*]?\s+_?([A-Za-z_]\w*?)(?:@\d+)?\s*$")
@@ -72,6 +79,19 @@ def _word(w, entry, nxt, places=None):
     if nxt == entry.get("SS") or 0xE000 <= w < 0xFFF0:
         return "stack"                                       # a place in the stack (frames differ)
     return "%x" % w
+
+
+def _input(v):
+    """An input as a verdict names it: its first argument words, and for a branch-guided one
+    what else it sets (words of the data segment, what an unmodelled Windows call returns)."""
+    out = "args %s" % " ".join("%x" % w for w in v["args"][:4])
+    if v.get("guided"):
+        extra = ["DS:%04x=%s" % (w[1], bytes(data).hex()) if isinstance(w, tuple) else "%x=%s" % (w, bytes(data).hex())
+                 for w, data in (v.get("mem") or ())[:2]]
+        if v.get("stub_ret") is not None:
+            extra.append("windows returns %x" % v["stub_ret"])
+        out = "guided " + out + "".join(", " + e for e in extra)
+    return out
 
 
 def _fingerprint(r, wide, data_len, places=None):
@@ -209,6 +229,47 @@ def _tables(original):
     return out
 
 
+def _original_key(original, callees, data_end, chain=False):
+    """What the original's side of a run depends on besides the function and the input: the
+    original, how its callees and Windows' functions are answered, the checker and emulator as
+    written."""
+    from codebreaker.base import cache
+    from codebreaker.emulate import emulator as _emulator
+    from codebreaker.emulate import windows16 as emu
+    from codebreaker.formats import ne as _ne
+    from codebreaker.symbols import api_arguments
+    try:
+        sizes = open(api_arguments._cache16_path(), "rb").read()
+    except OSError:
+        sizes = b""
+    with open(original, "rb") as f:
+        return cache.key(
+            f.read(), sizes, repr(sorted((callees or {}).items())), repr(data_end), bool(chain),
+            *[open(mod.__file__, "rb").read() for mod in (emu, _emulator, _ne, win16)] + [open(__file__, "rb").read()])
+
+
+def guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, callees, data_end, insn_cap=20000):
+    """Branch-guided inputs (verify/lanes/win16.py guided_vectors, as the judge makes them):
+    arguments, words of the data segment and what an unmodelled Windows call returns, chosen to
+    take branches of the original no other input took -- the original run as this checker runs
+    it, its callees answered. Kept, keyed on the original's side (_original_key) and the
+    explorer's limits; none when CB_NO_GUIDED is set. (diverge16 explains with the same.)"""
+    if not lane_common.guided_on():
+        return []
+    import pickle
+    from codebreaker.base import cache
+    from codebreaker.verify import guided as _explorer
+    k = cache.key(original_key, name, oseg, ooff, far, span, repr(seeds), lane_common.GUIDED_BUDGET,
+                  lane_common.MAX_GUIDED, *[open(mod.__file__, "rb").read() for mod in (_explorer, lane_common)])
+    got = cache.get("gate16_guided", k)
+    if got is not None:
+        return pickle.loads(got)
+    out = [dict(g, guided=True) for g in win16.guided_vectors(
+        original, oseg, ooff, not far, span, seeds, callees=callees, data_end=data_end, insn_cap=insn_cap)]
+    cache.put("gate16_guided", k, pickle.dumps(out))
+    return out
+
+
 def check(original, folder, names, image=None, inputs=None, workers=None, tables=None, chain=False):
     """Each named function (one the build has as C) beside the original's. Yields
     (name, "same" | "differs" | "not run", why). Many at once: shared out over processes."""
@@ -280,6 +341,7 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     places_ours = {tuple(ours[n]): n for n in named}
     callees_orig = {place[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in place}
     callees_ours = {ours[n]: (n, pop, far) for n, (pop, far) in funcs.items() if n in ours}
+    insn_cap = 200000 if chain else 20000
     if chain:
         # (chained: the module's other functions run for real on both sides -- what one function
         # leaves for another, through the stack, registers or memory, is then seen)
@@ -290,17 +352,7 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     # decompiler runs only its own side. (The self-test, the teeth and the build share it too.)
     import pickle
     from codebreaker.base import cache
-    from codebreaker.emulate import emulator as _emulator
-    from codebreaker.formats import ne as _ne
-    from codebreaker.symbols import api_arguments
-    try:
-        sizes = open(api_arguments._cache16_path(), "rb").read()
-    except OSError:
-        sizes = b""
-    with open(original, "rb") as f:
-        original_key = cache.key(
-            f.read(), sizes, repr(sorted((callees_orig or {}).items())), repr(data_end), bool(chain),
-            *[open(mod.__file__, "rb").read() for mod in (emu, _emulator, _ne, win16)] + [open(__file__, "rb").read()])
+    original_key = _original_key(original, callees_orig, data_end, chain)
 
     def side(context, where):
         """A recorded call's context for one side: the module's own code its far pointers reach
@@ -312,16 +364,22 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     def original_run(name, oseg, ooff, far, wide, v, dimg):
         k = cache.key(original_key, name, oseg, ooff, far, wide, tuple(v["args"]), bool(v.get("noisy")),
                       # (a recorded call by the name it was given -- its memory is 64 MB)
-                      (v["context"].get("key") or pickle.dumps(v["context"], protocol=4)) if v.get("context") else b"")
+                      (v["context"].get("key") or pickle.dumps(v["context"], protocol=4)) if v.get("context") else b"",
+                      repr(v.get("mem")), repr(v.get("stub_ret")))
         got = cache.get("gate16_original", k)
         if got is not None:
             return pickle.loads(got)
         a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
-                      callees=callees_orig, insn_cap=200000 if chain else 20000, data_end=data_end,
-                      data_image=dimg, context=side(v.get("context"), place))
+                      callees=callees_orig, insn_cap=insn_cap, data_end=data_end,
+                      data_image=dimg, context=side(v.get("context"), place),
+                      mem_init=v.get("mem"), stub_ret=v.get("stub_ret"))
         fa = _fingerprint(a, wide, len(data), places_orig)
         cache.put("gate16_original", k, pickle.dumps(fa))
         return fa
+
+    def guided(name, oseg, ooff, far, span, seeds):
+        return guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, callees_orig,
+                             data_end, insn_cap)
     for name in names:
         if name not in place or name not in ours or name not in funcs:
             yield name, "not run", "not found on both sides"
@@ -332,16 +390,24 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         why = None
         # (and inputs aimed at what its own code tests: the constants it compares with)
         later = [o for (sg, o) in place.values() if sg == oseg and o > ooff]
-        aimed = win16.directed(original, oseg, (ooff, min(later) if later else 0x10000), most=12)
-        for v in (inputs or win16.vectors() + aimed + noisy_runs):
+        span = (ooff, min(later) if later else 0x10000)
+        aimed = win16.directed(original, oseg, span, most=12)
+        # (and the branch-guided ones the judge runs: a branch no fixed or aimed input takes --
+        # a global tested before anything is done, a Windows call's result -- hid the path behind it.
+        # Looked for only once the others all agree: a function found to differ needs no more)
+        def every(fixed):
+            yield from fixed
+            yield from guided(name, oseg, ooff, far, span, win16.vectors() + aimed)
+        for v in (inputs or every(win16.vectors() + aimed + noisy_runs)):
             try:
                 # (a call recorded in the running system: its data segment as it was then, both sides)
                 dimg = v["context"]["data"] if v.get("context") and v["context"].get("data") else \
                     noisy if v.get("noisy") else None
                 fa = original_run(name, oseg, ooff, far, wide, v, dimg)
                 b = emu.probe(image, seg=bseg, offset=boff, args=v["args"], near=not far,
-                              callees=callees_ours, insn_cap=200000 if chain else 20000, data_image=dimg or data,
-                              data_end=data_end, context=side(v.get("context"), ours))
+                              callees=callees_ours, insn_cap=insn_cap, data_image=dimg or data,
+                              data_end=data_end, context=side(v.get("context"), ours),
+                              mem_init=v.get("mem"), stub_ret=v.get("stub_ret"))
             except Exception as e:                           # (the emulator itself fell over)
                 why = why or "the emulator: %s" % type(e).__name__
                 continue
@@ -352,13 +418,12 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
                 # use it, went on. What the original did before it faulted must still be done.
                 x, y = fa.get("calls") or (), fb.get("calls") or ()
                 if tuple(y[:len(x)]) != tuple(x):
-                    yield name, "differs", "args %s: calls: original %s, ours %s" % (
-                        " ".join("%x" % w for w in v["args"][:4]), list(x[:2]), list(y[:2]))
+                    yield name, "differs", "%s: calls: original %s, ours %s" % (_input(v), list(x[:2]), list(y[:2]))
                     break
                 continue
             d = _differ(fa, fb)
             if d:
-                yield name, "differs", "args %s: %s" % (" ".join("%x" % w for w in v["args"][:4]), d)
+                yield name, "differs", "%s: %s" % (_input(v), d)
                 break
         else:
             yield name, ("not run" if why else "same"), why or ""

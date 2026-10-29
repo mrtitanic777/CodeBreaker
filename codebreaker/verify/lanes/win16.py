@@ -261,13 +261,13 @@ def _from_explorer(g, ds):
     return v
 
 
-def _branch_run(module_path, seg, off, near, span, v):
+def _branch_run(module_path, seg, off, near, span, v, **probe):
     """The original run on `v` with its branches logged, as the explorer reads it, or None when
-    the run is not an observation."""
+    the run is not an observation. `probe`: more of ne_probe.probe's options, for every run."""
     from codebreaker.emulate import windows16 as ne_probe
     try:
         r = ne_probe.probe(module_path, seg=seg, offset=off, args=v["args"], near=near,
-                           stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), branches=span)
+                           stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), branches=span, **probe)
     except ImportError:
         raise
     except Exception:
@@ -277,14 +277,16 @@ def _branch_run(module_path, seg, off, near, span, v):
             "args_at": base + ne_probe.FAR_RET - 2 * len(v["args"]), "stack": (base, base + 0x10000)}
 
 
-def guided_vectors(module_path, seg, off, near, span, seeds):
-    """Inputs that take branches of the original no seed took (verify/guided.py)."""
+def guided_vectors(module_path, seg, off, near, span, seeds, **probe):
+    """Inputs that take branches of the original no seed took (verify/guided.py). `probe`: how the
+    original is run, when not as the judge runs it -- the build's gate (verify/gate16/isolated16.py)
+    answers the module's own callees and fills the data segment's tail, and explores so."""
     from codebreaker.emulate import windows16 as ne_probe
     from codebreaker.formats.ne import NEFile
     auto = NEFile(module_path).h.get("autodata_seg")
     ds = ne_probe.segment_base(auto) if auto else None
     kept = lane_common.guided(
-        lambda g: _branch_run(module_path, seg, off, near, span, _from_explorer(g, ds)),
+        lambda g: _branch_run(module_path, seg, off, near, span, _from_explorer(g, ds), **probe),
         [_to_explorer(v, ds) for v in seeds], off, word=2)
     return [_from_explorer(g, ds) for g in kept]
 

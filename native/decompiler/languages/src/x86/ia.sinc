@@ -1518,6 +1518,13 @@ check_rm32_dest:	is epsilon	{ }
 ptr1616: reloc is protectedMode=0 & imm16; j16		[ reloc = j16*0x10 + imm16; ] { CS = j16; export *[ram]:4 reloc; }
 ptr1616: reloc is protectedMode=1 & imm16; j16		[ reloc = j16*0x10000 + imm16; ] { CS = j16; export *[ram]:4 reloc; }
 ptr1632: j16":"imm32 is imm32; j16	{ CS = j16; export *:4 imm32; }
+# CodeBreaker: a far CALL's target, CS left as it is -- the callee's RETF gives the caller's back.
+# Through ptr1616 (which sets CS, as a far JMP does) the code after every far call read CS as the
+# callee's segment: USER's sub_21_53CC `push cs / push 26FAh` after a KERNEL call came out as
+# the far pointer 0xE000:26FA -- the import's made-up selector -- a constant in the C.
+callptr1616: reloc is protectedMode=0 & imm16; j16		[ reloc = j16*0x10 + imm16; ] { export *[ram]:4 reloc; }
+callptr1616: reloc is protectedMode=1 & imm16; j16		[ reloc = j16*0x10000 + imm16; ] { export *[ram]:4 reloc; }
+callptr1632: j16":"imm32 is imm32; j16	{ export *:4 imm32; }
 
 # conditions
 
@@ -2952,10 +2959,10 @@ with : lockprefx=0 {
 @endif
 
 # direct far calls generate an opcode undefined exception in x86-64
-:CALLF ptr1616      is vexMode=0 & addrsize=0 & opsize=0 & byte=0x9a; ptr1616           { push22(CS); build ptr1616; push22(&:2 inst_next); call ptr1616; }
-:CALLF ptr1616      is vexMode=0 & addrsize=1 & opsize=0 & byte=0x9a; ptr1616           { push42(CS); build ptr1616; push42(&:2 inst_next); call ptr1616; }
-:CALLF ptr1632      is vexMode=0 & addrsize=0 & opsize=1 & byte=0x9a; ptr1632           { push22(CS); build ptr1632; push24(&:4 inst_next); call ptr1632; }
-:CALLF ptr1632      is vexMode=0 & addrsize=1 & opsize=1 & byte=0x9a; ptr1632           { pushseg44(CS); build ptr1632; push44(&:4 inst_next); call ptr1632; }
+:CALLF callptr1616  is vexMode=0 & addrsize=0 & opsize=0 & byte=0x9a; callptr1616       { push22(CS); build callptr1616; push22(&:2 inst_next); call callptr1616; }
+:CALLF callptr1616  is vexMode=0 & addrsize=1 & opsize=0 & byte=0x9a; callptr1616       { push42(CS); build callptr1616; push42(&:2 inst_next); call callptr1616; }
+:CALLF callptr1632  is vexMode=0 & addrsize=0 & opsize=1 & byte=0x9a; callptr1632       { push22(CS); build callptr1632; push24(&:4 inst_next); call callptr1632; }
+:CALLF callptr1632  is vexMode=0 & addrsize=1 & opsize=1 & byte=0x9a; callptr1632       { pushseg44(CS); build callptr1632; push44(&:4 inst_next); call callptr1632; }
 # CodeBreaker: the far pointer read where the instruction says -- its segment prefix, or SS for an
 # address made from BP (Mem16) -- not always DS: SETUPX's 22:3427 `lcall es:[16h]` read DS:16h.
 :CALLF Mem16        is vexMode=0 & addrsize=0 & opsize=0 & byte=0xff; Mem16 & reg_opcode=3 ... { local ptr:$(SIZE) = Mem16; local addrptr:$(SIZE) = segment(*:2 (ptr+2),*:2 ptr);
