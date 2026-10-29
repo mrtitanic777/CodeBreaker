@@ -394,7 +394,7 @@ def _branch_hook16(rec, cs_base, lo, hi):
 
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
                      insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
-                     callees=None, data_end=None, context=None, mem_init=None, branches=None):
+                     callees=None, data_end=None, context=None, mem_init=None, branches=None, bp=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -425,10 +425,14 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     an offset in the module's data segment, wherever this build has it.
 
     branches: (low, high) offsets in the function's segment -- also log each conditional jump
-    there: which way it went and what was compared (rec["branches"]; _branch_hook16)."""
+    there: which way it went and what was compared (rec["branches"]; _branch_hook16).
+
+    bp: BP as the function is entered (else as the emulator starts it, 0) -- for a helper that
+    works in its caller's frame (verify/lanes/win16.py, CALLER_BP)."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
-                                   UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX)
+                                   UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX,
+                                   UC_X86_REG_EBP)
     # (a module is parsed and fixed up once per process: each run after the first writes the
     # fixed-up segments as they were -- walking every fix-up chain again was most of a run's setup)
     st = os.stat(path)
@@ -481,6 +485,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         uc.reg_write(UC_X86_REG_SS, stack_sel); uc.reg_write(UC_X86_REG_ESP, sp)
         uc.reg_write(UC_X86_REG_DS, ds_sel); uc.reg_write(UC_X86_REG_ES, ds_sel)
         uc.reg_write(UC_X86_REG_EAX, ENTRY_AX)               # (a function that sets no result returns it)
+        if bp is not None:
+            uc.reg_write(UC_X86_REG_EBP, bp & 0xFFFF)
         uc.reg_write(UC_X86_REG_CS, sels[sseg]); uc.reg_write(UC_X86_REG_EIP, soff)
         return soff
 
@@ -868,6 +874,7 @@ if ROOT not in sys.path:
 HEAP_BASE = 0xB00000        # first far-heap block (distinct from seg/stack/scratch/sentinel windows)
 HEAP_STRIDE = 0x10000
 SAFE_ARG = _sel(200)      # a selector that names a real, writable scratch segment
+STACK_SEL = _sel(_FIXED_SLOT)   # the stack's selector, whatever the module (_load_ne)
 
                             # returns to the sentinel regardless, so surplus args are harmless
 
@@ -948,7 +955,7 @@ def default_stub(hit, uc, U, ctx):
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
           prelude=None, cdecl=False, near=False, data_image=None, callees=None, data_end=None,
-          context=None, stub_ret=None, mem_init=None, branches=None):
+          context=None, stub_ret=None, mem_init=None, branches=None, bp=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
@@ -957,7 +964,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     reversed to land in the right slots (this is how the LZDecompress reset path was reached).
 
     stub_ret: what a Windows function `stub` does not model returns in DX:AX (else 0). mem_init,
-    branches: as trace_function16."""
+    branches, bp: as trace_function16."""
     if cdecl and args:
         args = list(reversed(args))
     ctx_box = {}
@@ -984,7 +991,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     rec = trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
                              args=args, arity=len(args or []), import_stub=_stub,
                              prelude=prelude, near=near, data_image=data_image, callees=callees,
-                             data_end=data_end, context=context, mem_init=mem_init, branches=branches, **kw)
+                             data_end=data_end, context=context, mem_init=mem_init, branches=branches, bp=bp, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}
