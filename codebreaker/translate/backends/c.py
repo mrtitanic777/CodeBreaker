@@ -285,7 +285,7 @@ def _leading_cast(e):
 
 def _data_address(e):
     """A constant address in the data segment, a number of one word but 0: a far pointer set to
-    one is DS and it, so its cast stays near (c_text.data_address: LZEXPAND's LZDONE)."""
+    one is DS and it, written MK_FP(codebreaker_ds(), n) (c_text.data_address: LZEXPAND's LZDONE)."""
     if e.get('node') != 'Lit':
         return False
     m = re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", _lit(e))     # (as it is written: no character)
@@ -314,6 +314,8 @@ def _expr(e):
     if n == 'Cast':
         if _now['marks'].get(id(e)) == '_near':
             return '(code __near *)%s' % _sub(tok, e['x'], 1)
+        if _now['marks'].get(id(e)) == '_ds':                # (a data address: DS and it -- _data_address)
+            return '(%s)MK_FP(codebreaker_ds(), %s)' % (type_text(e['type'], far=True), _expr(e['x']))
         return '(%s)%s' % (type_text(e['type'], far=_now['marks'].get(id(e)) == '_far'), _sub(tok, e['x'], 1))
     if n == 'Unary':
         op = e['op']
@@ -327,9 +329,8 @@ def _expr(e):
     if n == 'Assign':
         if 'far' in _now['moved'] and not e.get('op') and _assigned_name(e['target']) in _now['far']:
             cast = _leading_cast(e['value'])             # `p = (T *)x` -> `p = (T __far *)x` (c_text._far)
-            if cast is not None and (cast.get('type') or {}).get('kind') in ('ptr', 'fnptr') and \
-                    not _data_address(cast['x']):
-                _now['marks'][id(cast)] = '_far'
+            if cast is not None and (cast.get('type') or {}).get('kind') in ('ptr', 'fnptr'):
+                _now['marks'][id(cast)] = '_ds' if _data_address(cast['x']) else '_far'
         return '%s %s %s' % (_sub(tok, e['target'], 0), tok[1], _sub(tok, e['value'], 1))
     if n == 'Cond':
         return '%s ? %s : %s' % (_sub(tok, e['cond'], 0), _expr(e['then']), _sub(tok, e['orelse'], 1))

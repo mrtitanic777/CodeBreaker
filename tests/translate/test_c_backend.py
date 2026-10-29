@@ -111,7 +111,8 @@ def test_moved_passes_far_and_near_calls():
     assert '__far' not in plain and '__near' not in plain           # (as the decompiler prints it)
     assert 'void __far *q' in moved and '  int2 __far *p;' in moved
     assert 'p = (int2 __far *)q;' in moved
-    assert 'p = (int2 *)0x40;' in moved                             # (a data address: DS, made far by C)
+    # (a data address: DS and it -- left near, OpenWatcom made the constant far with segment 0)
+    assert 'p = (int2 __far *)MK_FP(codebreaker_ds(), 0x40);' in moved
     assert '(*(code __near *)*(xunknown2 *)0x18)();' in moved
     assert 'void *q' in c.function(doc, c.MOVED, far={'p'})         # (the notes' far set, when given, rules)
     flat = dict(doc, origin={'module': '', 'va': 0x401000})

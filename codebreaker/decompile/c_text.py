@@ -742,8 +742,10 @@ def moved_to_l2(raw):
 def data_address(text):
     """Is `text` a constant address in the data segment: a number of one word, not 0? A far
     pointer set to one is DS and it (LZEXPAND's LZDONE counts down the word at DS:32h through
-    one); cast to a far pointer, a word gets segment 0 and the write goes to 0000:0032. Left
-    near, C makes it far with DS, as the original. (0 stays a far null; a number past a word
+    one); cast to a far pointer, a word gets segment 0 and the write goes to 0000:0032 -- and
+    left near it does as well: OpenWatcom folds the constant near pointer made far to
+    `xor ax, ax / mov es, ax / dec word ptr es:[bx]`. Written with DS itself,
+    MK_FP(codebreaker_ds(), 0x32), as the original. (0 stays a far null; a number past a word
     carries its own segment.)"""
     m = re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", text.strip())
     return bool(m) and 0 < int(m.group(1), 0) <= 0xFFFF
@@ -777,10 +779,13 @@ def _far(text, far):
             if src.at(n.child_by_field_name("operator")) != "=" or left.type != "identifier" or src.at(left) not in far:
                 continue
             cast = src.leading(right, "cast_expression")       # (the cast the right side starts with)
-            if cast is not None and not data_address(src.at(cast.child_by_field_name("value"))):
+            if cast is not None:
                 ty = cast.child_by_field_name("type")
+                value = cast.child_by_field_name("value")
                 m = re.fullmatch(r"([A-Za-z_][\w ]*?) ?(\*+)", src.at(ty))
-                if m:
+                if m and data_address(src.at(value)):
+                    src.replace(cast, "(%s __far %s)MK_FP(codebreaker_ds(), %s)" % (m.group(1), m.group(2), src.at(value)))
+                elif m:
                     src.replace(ty, "%s __far %s" % (m.group(1), m.group(2)))
     return _far_from_stack(ctree.rewrite(text, fix), far)
 
@@ -798,9 +803,13 @@ def _own_segment_calls(text, seg):
     [18h]`, as the decompiler prints it: the target is in the caller's own code segment (CS, which
     it takes as the segment's number times 1000h). Made a far call to that constant, it faulted:
     MSMOUS31's Disable took a GP at Setup's restart, after the file copy. A near call, as the
-    original makes."""
+    original makes. (CS as the decompiler has it is the segment's place in the description, its
+    made-up selector: 1000h for segment 1, 1040h for segment 9 -- KEYBOARD's OemToAnsi, `cs:
+    xlat` from a table beside its code -- not the number times 1000h, which is that only for 1.)"""
     if "MK_FP(" not in text:
         return text
+    from codebreaker.decompile import describe
+    own = describe.selector(seg)
     src = ctree.Source(text)
     for n in src.find("call_expression"):
         fn = n.child_by_field_name("function")
@@ -814,11 +823,11 @@ def _own_segment_calls(text, seg):
         if target is None or target.type != "call_expression" or src.at(target.child_by_field_name("function")) != "MK_FP":
             continue
         args = target.child_by_field_name("arguments").named_children
-        if len(args) == 2 and args[0].type == "number_literal" and int(src.at(args[0]), 0) == seg << 12:
+        if len(args) == 2 and args[0].type == "number_literal" and int(src.at(args[0]), 0) == own:
             src.replace(fn, "(*(code __near *)%s)" % src.at(args[1]))
     # and a read of the code segment's own bytes (`mov ax, cs:[si]`, a table beside the code):
     # through CS as it runs, not the constant (no selector of that number exists)
-    return re.sub(r"\bMK_FP\(0x%x," % (seg << 12), "MK_FP(codebreaker_cs(),", src.text())
+    return re.sub(r"\bMK_FP\(0x%x," % own, "MK_FP(codebreaker_cs(),", src.text())
 
 
 def _near_calls(text):
