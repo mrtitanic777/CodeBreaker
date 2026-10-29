@@ -149,13 +149,58 @@ def directed(module_path, seg, span, most=8):
     return _DIRECTED[key]
 
 
-def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=()):
-    """What one run of one function did, in a form two builds can be compared on. `own`: ranges
-    of the data segment that are the build's own (_own_data), whose writes are left out."""
+# A helper that works in its caller's frame (c_text._caller_frame_slots: KEYBOARD's sub_9_0A62
+# clears [bp-4] and [bp-6] of OemToAnsi's frame) takes no arguments in the original and, in its C,
+# a far pointer to each of those places. Run alone, the original is entered with BP at CALLER_BP --
+# a caller's frame, well below the stack the run itself uses -- and the C with far pointers to
+# those very places in the stack segment, not the input's words (pointers to nowhere: "exit ret
+# vs fault"). The places start out holding FRAME_FILL on both sides, and what is left in them is
+# compared, as data is.
+CALLER_BP = 0x8000
+FRAME_FILL = 0xA5
+
+
+def frame_slots(text, name):
+    """[(BP less, bytes)] of a caller-frame helper's parameters, in their order, from its C; or None"""
+    import re
+    from codebreaker.decompile import c_text
+    head = text.split("{", 1)[0]
+    m = re.search(r"\b%s\(((?:frame_[0-9a-f]+,?)+)\)" % re.escape(name), head)
+    if not m:
+        return None
+    types = dict((less, ty) for ty, less in re.findall(r"(\w+) __far \*frame_([0-9a-f]+);", head))
+    out = []
+    for p in m.group(1).split(","):
+        less = p[len("frame_"):]
+        if less not in types:
+            return None
+        out.append((int(less, 16), c_text._SIZEOF.get(types[less], 2)))
+    return tuple(out)
+
+
+def _frame_arguments(frame):
+    """The words a frame helper's C is entered with: a far pointer into the stack segment to each
+    place, the last parameter deepest (its callers push them so)"""
     from codebreaker.emulate import windows16 as ne_probe
+    words = []
+    for less, _size in reversed(frame):
+        words += [ne_probe.STACK_SEL, (CALLER_BP - less) & 0xFFFF]
+    return words
+
+
+def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(), frame=None):
+    """What one run of one function did, in a form two builds can be compared on. `own`: ranges
+    of the data segment that are the build's own (_own_data), whose writes are left out. `frame`:
+    a caller-frame helper's places (frame_slots), whose writes are compared."""
+    from codebreaker.emulate import windows16 as ne_probe
+    mem, bp = v.get("mem"), None
+    if frame:                                                # (a caller-frame helper: see CALLER_BP)
+        bp = CALLER_BP
+        mem = tuple(mem or ()) + tuple((ne_probe.STACK_BASE + ((CALLER_BP - less) & 0xFFFF), bytes([FRAME_FILL]) * size)
+                                       for less, size in frame)
     try:
         r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
-                           stub_ret=v.get("stub_ret"), mem_init=v.get("mem"))
+                           stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp)
     except ImportError:
         raise
     except Exception as e:
@@ -164,8 +209,18 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
     lay = r.get("layout") or {}
     ds = lay.get("ds_base")
     state, before = {}, {}
+    places = {}                                              # a frame helper's places in the stack: byte -> its own
+    for less, size in frame or ():
+        for i in range(size):
+            places[ne_probe.STACK_BASE + ((CALLER_BP - less + i) & 0xFFFF)] = ("F", -less + i)
     for w in r.get("mem_writes") or []:
         a, n, val = w["addr"], w["size"], w["value"] or 0
+        if places and any(a + i in places for i in range(min(n, 4))):
+            for i in range(min(n, 4)):
+                if a + i in places:
+                    before.setdefault(places[a + i], ((w.get("old") or 0) >> (8 * i)) & 0xFF)
+                    state[places[a + i]] = (val >> (8 * i)) & 0xFF
+            continue
         if ds is not None and ds <= a < ds + 0x10000:
             if any(lo <= a - ds < hi for lo, hi in own):
                 continue
@@ -202,23 +257,28 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
 
 
 def _judge(context, item):
-    """Worker. item = (key, seg, off, near, wide, span, insns, rebuilt seg, rebuilt off)."""
+    """Worker. item = (key, seg, off, near, wide, span, insns, rebuilt seg, rebuilt off[, frame]):
+    `frame` a caller-frame helper's places (frame_slots), else None."""
     module_path, dll, data_image, own = context
-    key, seg, off, near, wide, span, insns, bseg, boff = item
+    key, seg, off, near, wide, span, insns, bseg, boff = item[:9]
+    frame = item[9] if len(item) > 9 else None
     last = {}
 
     def original(v):
         # the original's run depends only on the original: remembered across rebuilds (a run cut
         # off at the step limit is not)
         k = compare.cache_key("ne", REV, corpus.sha(module_path), seg, off, near, wide, tuple(v["args"]), span,
-                              v.get("mem"), v.get("stub_ret"))
-        fp = lane_common.remembered(k, lambda: fingerprint(module_path, seg, off, near, wide, v, span=span),
+                              v.get("mem"), v.get("stub_ret"), *((CALLER_BP, FRAME_FILL, frame) if frame else ()))
+        fp = lane_common.remembered(k, lambda: fingerprint(module_path, seg, off, near, wide, v, span=span,
+                                                           frame=frame),
                                     keep=lambda fp: not fp.get("truncated"))
         last["fp"] = fp
         return fp
 
     def rebuilt(v):
-        fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image, own=own)
+        if frame:                                            # (pointers to the places, not the input's words)
+            v = dict(v, args=_frame_arguments(frame))
+        fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image, own=own, frame=frame)
         if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
             fp["ret"] = LEFTOVER                             # the original returned no value here
         return fp
@@ -360,6 +420,9 @@ def build(m, module_path, work):
         span, insns = spans[va]
         wide = None if fn in m.novalue else fn in m.wide
         items[fn] = (m.key[fn], seg, off, fn in m.near, wide, span, insns) + tuple(placed[fn])
+        frame = frame_slots(m.texts.get(fn, ""), fn)
+        if frame:                                            # (a caller-frame helper: _judge)
+            items[fn] += (frame,)
     return (module_path, dll, data_image, _own_data(work)), items, dropped
 
 
