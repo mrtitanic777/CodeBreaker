@@ -284,6 +284,7 @@ DESCRIPTOR = (("next", 0x00, "I"), ("kit_version", 0x04, "H"), ("device_id", 0x0
               ("pm_api_address", 0x28, "I"), ("reference_data", 0x2C, "I"), ("service_table", 0x30, "I"),
               ("service_count", 0x34, "I"))
 _DESCRIPTOR_AT = {name: off for name, off, _fmt in DESCRIPTOR}
+_FIELD_AT = {name: off for name, off, _fmt in _FIELDS}
 
 
 def header_fields(lf):
@@ -593,7 +594,8 @@ def read_image(lf):
     front of the header), "header" (the header's own bytes), "objects" [{vsize, base, flags,
     reserved, first_page, page_count}], "pages" [(kind, bytes)] (all of them, in page-map
     order; an object owns a run of them), "resident" / "nonresident" [(name, ordinal)],
-    "entry_table" (bytes), "fixups" {page: [record bytes]}, "import_modules" [names],
+    "entry_table" (bytes), "fixups" {page: [record bytes]} (by the page's place in the page
+    map, whatever its number), "import_modules" [names],
     "import_names" (bytes), "align" (what the data pages are aligned to in the file),
     "last_page_bytes" (the header's count of bytes on the last page, or None to count the
     last page written; a linker's 0 for a full last page is kept), "gaps" (the filler in front
@@ -606,9 +608,12 @@ def read_image(lf):
     linker's layout, which read_image leaves out: "page_map" (the page map's bytes as that
     linker numbered the pages), "tables_tail" (bytes kept right behind the import names,
     outside the fix-up section's size), "data_pages" (the file offset the data pages stay at
-    while the tables fit in front of it) and "fill_from" (the original file, whose trailing
-    bytes fill out a written file that comes out shorter). "resident" and "nonresident" may
-    also be a name table's bytes, kept as stored."""
+    while the tables fit in front of it), "in_pages" ({header field: file offset} for parts
+    that sit among the data pages, as a container's member keeps its non-resident names and
+    resources: the field points there, moved with the data pages, and a non-resident name table
+    there is not written again) and "fill_from" (the original file, whose trailing bytes fill
+    out a written file that comes out shorter). "resident" and
+    "nonresident" may also be a name table's bytes, kept as stored."""
     d, h = lf.d, header_fields(lf)
     member = is_member(lf)
     pm = page_map(lf)
@@ -622,8 +627,9 @@ def read_image(lf):
     kept = [body for kind, body in pages if kind not in (2, 3) and body]
     full_last = bool(kept) and len(kept[-1]) == lf.pagesize
     fix = {}
-    for pg, rec in fixup_records(lf):
-        fix.setdefault(pg, []).append(rec["raw"])
+    page_of = {number: i + 1 for i, (number, _kind) in reversed(list(enumerate(pm))) if number}
+    for row, rec in fixup_records(lf):                 # a row is a page's number: kept by the page
+        fix.setdefault(page_of.get(row, row), []).append(rec["raw"])
     res, non = names(lf)
     names_end = (h["nonresident_names"] + h["nonresident_size"]) if non else 0
     pages_end = lf.datapages + ((last - 1) * lf.pagesize + (lf.last_page_bytes or lf.pagesize) if last else 0)
@@ -675,25 +681,28 @@ def write_image(image):
     it), the header with every offset and size worked out again, the object table, the page
     map, the name and entry tables, the fix-up tables, the import names and the tables'
     tail, the filler and the data pages, the filler and the non-resident names, and whatever came after. Pages are
-    stored in page-map order and numbered that way, unless the image keeps its own page map."""
+    numbered in page-map order, unless the image keeps its own page map; either way each page is
+    stored at the place its number gives and its fix-ups go in the row of that number (a loader
+    finds both by the number), the highest-numbered page last and not filled out."""
     hdr = bytearray(image["header"].ljust(HEADER_SIZE, b"\0"))
     page_size = struct.unpack_from("<I", hdr, 0x28)[0]
-    pmap, data, number, last_len = bytearray(), bytearray(), 0, 0
     table = object_table(image["objects"])
     kinds = image["pages"]
     stored = [i for i, (kind, body) in enumerate(kinds) if kind not in (2, 3) and body]
-    for i, (kind, body) in enumerate(kinds):
-        if i in stored:
-            number += 1
-            pmap += number.to_bytes(3, "big") + bytes([kind])
-            last_len = len(body) if i == stored[-1] else page_size
-            data += body if i == stored[-1] else body.ljust(page_size, b"\0")
-        else:
-            pmap += bytes(3) + bytes([kind])
     if image.get("page_map") is not None:
         pmap = image["page_map"]
+        number = {i: int.from_bytes(pmap[4 * i:4 * i + 3], "big") for i in stored}
+    else:
+        number = {i: n + 1 for n, i in enumerate(stored)}
+        pmap = b"".join(number.get(i, 0).to_bytes(3, "big") + bytes([kind]) for i, (kind, _body) in enumerate(kinds))
+    at = {n: i for i, n in number.items()}
+    top = max(at, default=0)
+    data = b"".join(kinds[at[n]][1] if n == top else kinds[at[n]][1].ljust(page_size, b"\0") if n in at
+                    else bytes(page_size) for n in range(1, top + 1))
+    last_len = len(kinds[at[top]][1]) if top else 0
     resident = _name_table(image["resident"])
-    fix_pages, fix_records = fixup_tables(image["fixups"], len(kinds))
+    fix_pages, fix_records = fixup_tables({number.get(pg - 1, pg): recs for pg, recs in image["fixups"].items()},
+                                          len(kinds))
     modules = b"".join(bytes([len(n)]) + n.encode("latin1") for n in image["import_modules"])
     tail = image.get("tables_tail") or b""
     at = HEADER_SIZE
@@ -724,11 +733,16 @@ def write_image(image):
     out += (gap if len(gap) == pages_at - len(out) else bytes(pages_at - len(out))) + data
     non = _name_table(image["nonresident"]) if image["nonresident"] else b""
     out += names_gap
-    put(0x88, len(out) if non else 0), put(0x8C, len(non))
-    out += non
+    in_pages = image.get("in_pages") or {}
+    put(0x8C, len(non))
+    if "nonresident_names" not in in_pages:          # else already among the data pages
+        put(0x88, len(out) if non else 0)
+        out += non
     shift = len(out) - image["moved"]["from"]
     for off, key in ((0x98, "debug_info"), (0xB8, "resource_data")):
         put(off, image["moved"][key] + shift if image["moved"][key] and image["after"] else image["moved"][key])
+    for key, at in in_pages.items():
+        put(_FIELD_AT[key], at + pages_at - image["data_pages"])
     out += image["after"]
     fill = image.get("fill_from") or b""
     out += fill[len(out):]

@@ -1684,7 +1684,7 @@ def check(b):
     b.imports_extra = sorted(have - want, key=str)
     original = resource_reader.read(orig)
     if original:
-        r = resources.compare(original, resource_reader.read(image), b.kind == "pe")
+        r = resources.compare(original, resource_reader.read(image), detect.wide_resources(b.kind))
         b.resources_same = r.same
         w = b.resources
         b.resources_line = "%d of %d the same in the image (%d identical, %d equivalent)" % (

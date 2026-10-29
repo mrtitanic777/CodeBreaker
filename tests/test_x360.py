@@ -6,7 +6,9 @@
 Uses Tetris's image from the absorbed projects' folder when it is there (skipped otherwise).
 """
 import os
+import re
 import struct
+import subprocess
 import sys
 import tempfile
 
@@ -85,6 +87,71 @@ def test_basic_xex():
         _size, encryption, compression, data_size, zeros = struct.unpack(">IHHII", data[info:info + 16])
         assert (encryption, compression, zeros) == (0, 1, 0) and data_size == len(data) - pe_offset
         assert data[0x18:info] == original[0x18:info]
+
+
+def build_read_image_test(build_dir):
+    """native/x360/runtime/test built with clang-cl into build_dir -> the program (xex_image_test.exe)."""
+    env, cc = xenon.msvc_env(), xenon.clang_cl()
+    for cmd in (["cmake", "-S", os.path.join(ROOT, "native", "x360", "runtime", "test"), "-B", build_dir, "-G", "Ninja",
+                 "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_CXX_COMPILER=" + cc], ["cmake", "--build", build_dir, "-j", "4"]):
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        assert r.returncode == 0, (r.stdout + r.stderr)[-3000:]
+    return os.path.join(build_dir, "xex_image_test.exe")
+
+
+def read_image_problems(program, path, work):
+    """How the runtime's xex::ReadImage of `path` (the program built above) differs from the xex engine's basefile of
+    it, at the base address its header gives; [] when it does not. -> (problems, resources it read)"""
+    from codebreaker.formats import xex
+    out = os.path.join(work, "image.bin")
+    r = subprocess.run([program, path, out], capture_output=True, text=True)
+    if r.returncode:
+        return ["ReadImage failed: " + (r.stderr or r.stdout).strip()[-300:]], []
+    lines = r.stdout.splitlines()
+    base, size = lines[0].split()[1], int(lines[0].split()[3])
+    resources = [l.split()[1:] for l in lines[1:]]
+    problems = []
+    with open(xex.basefile(path), "rb") as f:
+        want = f.read()
+    with open(out, "rb") as f:
+        got = f.read()
+    if got != want or size != len(want):
+        problems.append("image differs from the basefile (%d bytes, basefile %d)" % (len(got), len(want)))
+    header = xex.header(path)
+    if header.base is not None and int(base, 16) != header.base:      # (none for a module of resources alone)
+        problems.append("base %s, header %08X" % (base, header.base))
+    problems += ["resource %s outside the image" % r[0] for r in resources if r[3] != "inside"]
+    # the resources as the xex engine lists them, under "Resources": "0) 90F90000 - 90FA284B : skin" (start, end)
+    listing = subprocess.run([xex.program(), "list", path], capture_output=True, text=True).stdout
+    section = re.search(r"(?m)^Resources\n((?:[ \t]+.*\n?)*)", listing)
+    listed = sorted((m.group(3), int(m.group(1), 16), int(m.group(2), 16) - int(m.group(1), 16))
+                    for m in re.finditer(r"(?m)^\s+\d+\)\s+([0-9A-F]{8}) - ([0-9A-F]{8}) : (\S+)$",
+                                         section.group(1) if section else ""))
+    read = sorted((r[0], int(r[1], 16), int(r[2], 16)) for r in resources)
+    if read != listed:
+        problems.append("resources %s, listed %s" % (read[:4], listed[:4]))
+    return problems, resources
+
+
+@pytest.mark.skipif(not os.environ.get("CB_SLOW_TESTS"), reason="slow: set CB_SLOW_TESTS=1")
+def test_runtime_read_image():
+    """The runtime's xex::ReadImage (src/xex.cpp, through the shared XEX reader; the path XAM's data reads take) gives
+    the xex engine's basefile of a real XEX, at its base. Also XAM's own modules (xam.xex, huduiskin.xex) when
+    CB_X360_CONVERTED names the folder holding them (the dashboard's SystemUpdate/converted)."""
+    _need_game()
+    try:
+        xenon.clang_cl()
+    except RuntimeError as e:
+        pytest.skip(str(e))
+    modules = [XEX]
+    folder = os.environ.get("CB_X360_CONVERTED")
+    if folder:
+        modules += [os.path.join(folder, n) for n in ("xam.xex", "huduiskin.xex")]
+    with tempfile.TemporaryDirectory() as d:
+        program = build_read_image_test(os.path.join(d, "build"))
+        for path in modules:
+            problems, _resources = read_image_problems(program, path, d)
+            assert not problems, (path, problems)
 
 
 @pytest.mark.skipif(not os.environ.get("CB_SLOW_TESTS"), reason="slow: set CB_SLOW_TESTS=1")

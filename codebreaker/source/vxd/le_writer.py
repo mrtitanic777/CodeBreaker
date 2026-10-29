@@ -22,7 +22,13 @@ def _src_type(D, oi, off, ends, code):
     0x07 (a 32-bit offset). A decoded branch ending at this field is authoritative; otherwise, when
     NO decoded instruction ends at off+4 (the field is not a clean instruction tail -- an undecoded
     or mis-decoded branch, including code past the object's declared vsize), trust the raw opcode
-    byte. `ends` is the set of instruction-end offsets; `code` the object's full (untruncated) bytes."""
+    byte. `ends` is the set of instruction-end offsets; `code` the object's full (untruncated) bytes.
+
+    A recovered fix-up that says its own source type (D.fx's internal references do) keeps it: the
+    shape of the code cannot always tell -- VMM has `cmp eax, imm32` fields relocated self-relative."""
+    told = (D.fx.get((oi, off)) or {}).get("srctype")
+    if told is not None:
+        return told
     n = len(code)
     b1 = code[off - 1] if 0 <= off - 1 < n else None
     b2 = code[off - 2] if 0 <= off - 2 < n else None
@@ -40,15 +46,28 @@ def _src_type(D, oi, off, ends, code):
     return 0x07
 
 
+def _oracle_pages(v, first=None):
+    """The oracle's data pages in page-map order, each found by its number in the page map (a
+    linker may number them out of order: the loader fetches a page, and its fix-up row, by that
+    number): ([(number, the page's place in the file as bytes)], the highest number). A place runs a
+    whole page; the highest-numbered page holds only last_page_bytes of it. `first`: where the
+    data pages start (default: as the header says)."""
+    if first is None:
+        first = struct.unpack_from("<I", v.d, v.lfa + 0x80)[0]
+    ps = v.pagesize
+    pm = le.page_map(v)
+    return [(n, bytes(v.d[first + (n - 1) * ps: first + n * ps])) for n, _k in pm], max([n for n, _k in pm] or [0])
+
+
 def _emit_fixups(D, v):
     """LE fixup page table + record table from D.fx. Sources on a page that share one target (same
     source type + target) are combined into a single source-list record (src|0x20, count, target,
     then the ascending source-offset list) exactly as LINK386 emitted them -- Win95's LE loader
     caps the fixup records per page, so the one-record-per-source form overflows and the module is
-    rejected as "damaged". Records are ordered by ascending first-source offset. The table is indexed
-    by logical page (matching the loader), independent of the page map's own page numbers. Returns
-    {page: [record bytes]}, encoded and laid into the fix-up tables by formats/le.py as every LE's
-    are."""
+    rejected as "damaged". Records are ordered by ascending first-source offset. Returns {page:
+    [record bytes]} by the page's place in the page map (le.write_image puts each page's records in
+    the row of the page's number, as the loader reads them), encoded and laid into the fix-up tables
+    by formats/le.py as every LE's are."""
     ends = {}                                               # per-object instruction-end offsets
     for (oi, start), r in D.insns.items():
         ends.setdefault(oi, set()).add(start + r["size"])
@@ -58,7 +77,10 @@ def _emit_fixups(D, v):
     # layout (container-absolute), NOT the nres field: W3 bundling leaves nres module-relative, which
     # would make this empty for a bundled module and break every src_type read.
     data_end = min(o_dp + (v.mpages - 1) * ps + v.last_page_bytes, len(v.d))
-    code_of = {o["idx"]: bytes(v.d[o_dp + (o["pmidx"] - 1) * ps: data_end]) for o in v.objects}
+    # the pages in page-map order (each found by its number), the highest-numbered one cut at data_end
+    found, top = _oracle_pages(v)
+    logical = [b if n != top else b[:max(0, data_end - (o_dp + (n - 1) * ps))] for n, b in found]
+    code_of = {o["idx"]: b"".join(logical[o["pmidx"] - 1:]) for o in v.objects}
     by_page = {}
     for (oi, off), f in D.fx.items():
         if f["kind"] == "internal" and f["target"] is None:
@@ -112,19 +134,22 @@ def build_le(D, v, vxdname):
     # A logical page that no object maps ("gap" page) is not recovered code -- LINK386 left stale
     # buffer bytes there; those are copied from the oracle (the loader ignores them, they are not
     # derivable). The last page holds only last_page_bytes (any tail is BSS, not stored).
+    # The oracle's own page bytes are those at each page's NUMBER in its page map (LINK386 numbered
+    # some drivers' pages out of order); le.write_image stores each page at its number again.
     page_content = {}
     for o in v.objects:
         for k in range(o["pcnt"]):
             page_content[o["pmidx"] + k] = D.code[o["idx"]][k * ps:(k + 1) * ps]
+    found, top = _oracle_pages(v, o_dp)
     pages = []
-    for pg in range(1, v.mpages + 1):
+    for pg, (number, own) in enumerate(found, 1):
         if pg in page_content:
             b = bytes(page_content[pg])
         else:
-            b = bytes(v.d[o_dp + (pg - 1) * ps: o_dp + pg * ps])   # gap page: orphaned linker bytes
-        if len(b) < ps and pg != v.mpages:                          # object ends mid-page: the rest of
-            b += bytes(v.d[o_dp + (pg - 1) * ps + len(b): o_dp + pg * ps])   # the page is oracle leftover
-        pages.append((0, b[:v.last_page_bytes] if pg == v.mpages else b + b"\x00" * (ps - len(b))))
+            b = own                                                 # gap page: orphaned linker bytes
+        if len(b) < ps and number != top:                           # object ends mid-page: the rest of
+            b += own[len(b):]                                       # the page is oracle leftover
+        pages.append((0, b[:v.last_page_bytes] if number == top else b + b"\x00" * (ps - len(b))))
     # trailing bytes between the last object page and the non-resident name table (LINK386 zero-padding
     # or stale bytes): recovered from the oracle so the whole data region is byte-exact
     stored = sum(len(b) for _kind, b in pages)
@@ -137,7 +162,8 @@ def build_le(D, v, vxdname):
                 "reserved": bytes(v.d[otab_abs + i * 24 + 20: otab_abs + i * 24 + 24])}   # 4-char object name
                for i, o in enumerate(v.objects)]                                          # (recovered)
     # page map: recovered verbatim from the oracle (each 4-byte entry's page number + flag byte are
-    # LINK386's; the numbers are a permutation for some modules but do not affect page/fixup loading)
+    # LINK386's; the numbers are a permutation for some modules, and write_image stores each page and
+    # its fix-up row at its number)
     pm_abs = v.lfa + struct.unpack_from("<I", v.d, v.lfa + 0x48)[0]
     # resident-name table (the module's own name + any exported names): recovered verbatim from the
     # oracle so it is byte-exact regardless of the file name the caller injects under
@@ -204,18 +230,57 @@ def build_w3(D, v, name):
     a standalone .vxd, the embedded LE keeps its container-absolute layout at v.lfa; its OBJECT DATA
     comes from D.code and its FIXUP records from D.fx, while the DOS stub + real-mode loader, the W3
     header + entry, the LE header fields, the object/name tables and the version resource are the
-    container's own metadata. Byte-exact with the oracle vmm32.vxd except LINK386's intra-page fixup
-    ORDER -- the same standard as the 213 standalone modules."""
-    out = bytearray(v.d)
+    container's own metadata.
+
+    The member is written by le.write_image, like build_le's drivers, in front of it the
+    container's own program and directory; the directory is then packed again with the member's
+    size as written. D.fx gives more fix-up records than LINK386 wrote (Win95's VMM: 3824 against
+    3804, 98 bytes more; Win98's: 48 bytes more), so the fix-up section, the import-table offsets
+    and the member's size grow with them, and where the tables then run into the data pages
+    (Win95's VMM) the pages move to the next 0x200, the non-resident names and resource with them."""
     L = v.lfa
-    U = lambda o: struct.unpack_from("<I", v.d, L + o)[0]
+    U = lambda o: struct.unpack_from("<I", v.d, L + o)[0]       # noqa: E731
     ps = v.pagesize
-    datapages = U(0x80)                                     # container-absolute
-    for o in v.objects:                                     # recovered object bytes, in place
-        base = datapages + (o["pmidx"] - 1) * ps
+    first = U(0x80)                                             # data pages, container-absolute
+    # data pages: the container's own in page-map order (each found by its number), each recovered
+    # object's bytes laid over them at its first page, in object order (an object whose recovered
+    # bytes run past its pages -- its uninitialised tail -- spills into the next page, and the next
+    # object is laid over that); le.write_image stores each page at its number again
+    found, top = _oracle_pages(v)
+    data = bytearray(b"".join(b.ljust(ps, b"\0") for _n, b in found))
+    for o in v.objects:
+        at = (o["pmidx"] - 1) * ps
         cb = D.code[o["idx"]]
-        out[base:base + len(cb)] = cb
-    fxpage, fxrec = le.fixup_tables(_emit_fixups(D, v), v.mpages)   # fixup tables rebuilt from D.fx
-    out[L + U(0x68):L + U(0x68) + len(fxpage)] = fxpage
-    out[L + U(0x6c):L + U(0x6c) + len(fxrec)] = fxrec
+        data[at:at + len(cb)] = cb
+    pages = [(0, bytes(data[i * ps:(i + 1) * ps])[:v.last_page_bytes if n == top else ps])
+             for i, (n, _b) in enumerate(found)]
+    otab = L + U(0x40)
+    objects = [{"vsize": o["vsize"], "base": o["base"], "flags": o["flags"], "first_page": o["pmidx"],
+                "page_count": o["pcnt"], "reserved": bytes(v.d[otab + i * 24 + 20: otab + i * 24 + 24])}
+               for i, o in enumerate(v.objects)]
+    # the loader's tables and the names as the container stores them, but the fix-up tables rebuilt
+    # from D.fx; the container's own bytes behind them up to the data pages are kept where they lie
+    # (the data pages move to the next 0x200 only when the rebuilt tables run into them). The
+    # non-resident names and the version resource sit among the data pages, and move with them.
+    fixups = _emit_fixups(D, v)
+    fix_pages, fix_records = le.fixup_tables(fixups, v.mpages)
+    tables_end = L + U(0x68) + len(fix_pages) + len(fix_records)
+    nres_off, nres_sz = U(0x88), U(0x8c)
+    out = bytearray(le.write_image({
+        "stub": bytes(v.d[:L]), "header": bytes(v.d[L:L + le.HEADER_SIZE]), "objects": objects,
+        "pages": pages, "page_map": bytes(v.d[L + U(0x48): L + U(0x48) + v.mpages * 4]),
+        "last_page_bytes": v.last_page_bytes,
+        "resident": bytes(v.d[L + U(0x58): L + U(0x5c)]), "entry_table": bytes(v.d[L + U(0x5c): L + U(0x68)]),
+        "nonresident": bytes(v.d[nres_off:nres_off + nres_sz]), "fixups": fixups,
+        "import_modules": [], "import_names": b"", "tables_tail": bytes(v.d[tables_end:first]),
+        "align": 0x200, "data_pages": first, "gaps": (b"", b""),
+        "in_pages": {"nonresident_names": nres_off, "resource_data": U(0xb8)},
+        "after": b"", "moved": {"debug_info": U(0x98), "resource_data": 0, "from": len(v.d)},
+        "fill_from": bytes(v.d)}))
+    # the container's directory, each member's size being its header and loader tables as written
+    c = le.container(v.d)
+    loader_end = lambda at: struct.unpack_from("<I", out, at + 0x68)[0] + struct.unpack_from("<I", out, at + 0x30)[0]   # noqa: E731
+    c["members"] = [(nm, off, loader_end(off) if off == L else sz) for nm, off, sz in c["members"]]
+    directory = le.pack_directory(c)
+    out[c["at"]:c["at"] + len(directory)] = directory
     return bytes(out)
