@@ -1307,8 +1307,13 @@ class PrintL2 : public PrintC {
     std::set<std::string> said;
     for (const Symbol* s : declared_) {
       if (s->getType() == nullptr || !said.insert(s->getDisplayName()).second) continue;
+      // and where the original keeps it: its stack place (the frame pass lays a source's locals out
+      // by these, decompile/frame16.py), a register
+      SymbolEntry* e = const_cast<Symbol*>(s)->getFirstWholeMap();
+      const MapEntry* me = dynamic_cast<const MapEntry*>(e);   // (a dynamic entry has no storage of its own)
+      std::string at = me != nullptr ? std::string(",\"at\":") + l2Location(*glb, me->getAddr(), me->getSize()) : std::string();
       locals += (locals.empty() ? "" : ",") + ("{\"node\":\"Local\",\"sym\":" + sym("local", s->getDisplayName()) +
-                ",\"type\":" + type(s->getType()) + "}");
+                ",\"type\":" + type(s->getType()) + at + "}");
     }
     std::string stmts = array(lists_.back());
     lists_.clear();

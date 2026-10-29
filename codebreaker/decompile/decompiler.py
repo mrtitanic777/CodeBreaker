@@ -107,10 +107,21 @@ def c_from_l2(text, images=None):
         return text
     doc = json.loads(m.group(1))
     origin = doc.get("origin") or {}
-    if images and origin.get("segment") in images:
+    if images and origin.get("segment") in images and not os.environ.get("CB_ASM_BLOCKS"):
+        from codebreaker.decompile import frame16
+        code = images[origin["segment"]]
+        doc, _said = frame16.lay_out(doc, code, origin["offset"], len(code))
+        from codebreaker.decompile import shape16
+        doc, _said = shape16.reshape(doc, code)
+    elif images and origin.get("segment") in images:
         from codebreaker.decompile import asm_blocks
         code = images[origin["segment"]]
         doc, _said = asm_blocks.place(doc, code, origin["offset"], len(code), seg=origin["segment"])
+        if os.environ.get("CB_FRAME16"):                      # (and its locals as the frame had them)
+            from codebreaker.decompile import frame16
+            doc, _said = frame16.lay_out(doc, code, origin["offset"], len(code))
+            from codebreaker.decompile import shape16
+            doc, _said = shape16.reshape(doc, code)
     try:
         body = cback.function(doc, cback.MOVED)  # (its far pointers: L2's types say which)
     except (cback.Decline, ValueError, KeyError):
@@ -135,7 +146,7 @@ def run(description, only=(), timeout=3600, max_instructions=None):
             del os.environ["CB_L2"]
         else:
             os.environ["CB_L2"] = was
-    images = _segment_images(description) if os.environ.get("CB_ASM_BLOCKS") else None
+    images = _segment_images(description) if os.environ.get("CB_ASM_BLOCKS") or os.environ.get("CB_FRAME16") else None
     return {n: c_from_l2(t, images) for n, t in out.items()}, order, by_va, err
 
 

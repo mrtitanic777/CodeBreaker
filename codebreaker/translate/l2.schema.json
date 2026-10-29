@@ -2659,6 +2659,10 @@
      "items": {
       "type": "string"
      }
+    },
+    "at": {
+     "$ref": "#/$defs/Location",
+     "description": "a decompiled function's local: where the original keeps it (its stack place, a register)"
     }
    },
    "additionalProperties": false

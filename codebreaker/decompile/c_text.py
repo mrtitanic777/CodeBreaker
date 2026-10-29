@@ -1351,11 +1351,12 @@ def compilable16(module_path, outdir=None):
     # sizes, which the description is written with -- a change to it alone handed back C made
     # with the sizes before)
     from codebreaker.translate.backends import c as cback
-    from codebreaker.decompile import asm_blocks, inline_asm
+    from codebreaker.decompile import asm_blocks, inline_asm, frame16, shape16
     # (and the C written from L2 instead, CB_C_FROM_L2: other C, by the back end's own source)
     k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe, api_arguments),
                   *([os.environ["CB_C_FROM_L2"], _source_stamp(cback)] if os.environ.get("CB_C_FROM_L2") else []),
                   *(["asm blocks", _source_stamp(asm_blocks, inline_asm)] if os.environ.get("CB_ASM_BLOCKS") else []),
+                  *(["frame16", _source_stamp(frame16, shape16)] if os.environ.get("CB_FRAME16") else []),
                   cache.tool(decompiler._exe()), decompiler._language_stamp(),
                   (settings.get("struct_recovery") or "off").strip().lower(),
                   os.environ.get("CB_SELECTOR_STRUCTS", ""),       # (_selector_structs' off switch)
