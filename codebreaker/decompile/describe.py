@@ -563,14 +563,17 @@ def _return_pops(i):
 
 def jump_by_return(ins, k, targets=()):
     """Is ins[k] a return that is a jump -- the instructions straight before it push exactly what it
-    takes off (`push dx / push ax / retf`, `push ax / ret`), none of them a place jumped to? It
-    goes to the address pushed, the stack as the function was entered: a tail call through a
-    pointer (the native decompiler reads it so: core/cpp/flow.cc, C20). VER's sub_4_003E jumps
-    so to the LZEXPAND function GetProcAddress gave it."""
+    takes off (`push dx / push ax / retf`, `push ax / ret`), none of them a place jumped to, and
+    what they push is not a return address popped earlier? It goes to the address pushed, the
+    stack as the function was entered: a tail call through a pointer. VER's sub_4_003E jumps so
+    to the LZEXPAND function GetProcAddress gave it (`mov dx, [4] / mov ax, [2] ... push dx /
+    push ax / retf`). USER's 1:81F5 is not one: `pop ax / pop dx / pop bx / pop cx ... push dx /
+    push ax / retf` takes its arguments off by hand and returns to where it was called from --
+    what is pushed was last set by a pop, and is left a return (as is anything not found)."""
     want = _return_pops(ins[k])
     if not want or ins[k].address in targets:
         return False
-    got, j = 0, k - 1
+    got, j, regs = 0, k - 1, []
     while j >= 0 and got < want:
         n = _push_bytes(ins[j])
         if not n or ins[j].address + ins[j].size != ins[j + 1].address:
@@ -578,8 +581,49 @@ def jump_by_return(ins, k, targets=()):
         got += n
         if got < want and ins[j].address in targets:
             return False
+        regs.append(ins[j].op_str)
         j -= 1
-    return got == want
+    if got != want:
+        return False
+    # (what set each pushed register last, straight back from the pushes: a constant pushed is
+    # an address of its own -- `push seg / push off / retf`)
+    for reg in regs:
+        if reg.startswith(("0x", "word ptr", "cs", "ss", "ds", "es")) or reg.isdigit():
+            continue
+        found = False
+        for q in reversed(ins[:j + 1]):
+            if q.mnemonic in ("ret", "retf", "iret", "jmp", "ljmp"):
+                break                                    # (what is before is not on the way in)
+            try:
+                written = q.regs_access()[1]
+            except Exception:
+                return False
+            if any(q.reg_name(w) == reg for w in written):
+                if q.mnemonic == "pop":
+                    return False                         # (a return address given back)
+                found = True
+                break
+        if not found:
+            return False
+    return True
+
+
+def return_jumps(d):
+    """[(address of a return that is a jump)] in every code segment (jump_by_return)."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    code_segs = getattr(d, "code", None) or {}
+    out = []
+    for seg, img in sorted(d.images.items()):
+        if code_segs and seg not in code_segs:
+            continue
+        ins = list(md.disasm(bytes(img), 0))
+        targets = {i.operands[0].imm & 0xFFFF for i in ins
+                   if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM}
+        for k, i in enumerate(ins):
+            if i.mnemonic in ("ret", "retf") and not i.op_str and jump_by_return(ins, k, targets):
+                out.append(address(seg, i.address))
+    return out
 
 
 def returns(code, off, limit=600, want=None):
@@ -597,7 +641,6 @@ def returns(code, off, limit=600, want=None):
     from collections import deque
     # (one instruction at a time, every path abreast: the return fewest instructions away)
     work, seen, n = deque([off]), set(), 0
-    pushed = {}                                  # (an address -> what the pushes straight before it put on)
     while work and n < limit:
         at = work.popleft()
         if not 0 <= at < len(code) or at in seen:
@@ -607,10 +650,6 @@ def returns(code, off, limit=600, want=None):
         if ins is None:
             continue
         n += 1
-        if _push_bytes(ins):
-            pushed[ins.address + ins.size] = pushed.get(at, 0) + _push_bytes(ins)
-        if _return_pops(ins) and pushed.get(at) == _return_pops(ins):
-            continue                             # (a jump to the address pushed: jump_by_return)
         if ins.mnemonic in ("ret", "retf", "lret"):
             kind = "near" if ins.mnemonic == "ret" else "far"
             pop = int(ins.op_str, 0) if ins.op_str else 0
@@ -1892,6 +1931,9 @@ def describe16(module_path, outdir):
     if not os.environ.get("CB_NO_CALL_OVERRIDES"):
         lines += call_overrides(d)
     lines += jump_tables(d)
+    # (each return that is a jump -- jump_by_return -- is a call through the address pushed,
+    # followed by a return: the decompiler's CALL_RETURN flow override, `R <address>`)
+    lines += ["R	%x" % va for va in return_jumps(d)]
     from codebreaker.symbols import api_arguments as api16
     for nm in order:                 # Windows API: far, and the callee removes its arguments --
         size = api16.of(nm)          # how many bytes is read from the module that exports it

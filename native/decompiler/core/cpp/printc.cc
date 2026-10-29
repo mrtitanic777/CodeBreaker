@@ -1211,7 +1211,7 @@ uintb PrintC::dataSegment = 0;
 /// folded away (RuleSegment folds only both constant), and printed as the offset alone it read
 /// the table in DS.
 ///
-/// The stack segment is not one of them (C20b): C's near pointer is read through DS, and only a
+/// The stack segment is not one of them (C20): C's near pointer is read through DS, and only a
 /// variable of the frame is read through SS. An address the code reads with an `ss:` override
 /// that is not a frame variable's -- a near pointer a caller made of its own frame, handed in
 /// (USER's sub_1_2293: `mov bx, [bp+6] / push word ptr ss:[bx+6]`, a RECT in its caller's frame)
@@ -1230,45 +1230,40 @@ bool PrintC::nearSegment(const Varnode *vn,const Varnode *off) const
   return off != (const Varnode *)0 && enteredSegment(vn) && frameAddress(off);
 }
 
-/// CodeBreaker: is  vn an address in the function's own frame -- the stack pointer, or made from
-/// it by adding offsets and indexes (through copies, casts and joins of paths)?
-bool PrintC::frameAddress(const Varnode *vn)
+/// CodeBreaker: is  vn an address in a frame -- made from the stack pointer, or from BP as the
+/// function was entered (its caller's frame: c_text turns `*(T *)(unaff_BP + -n)` written by a
+/// helper into a far pointer to the caller's local, `frame_n`), by adding offsets and indexes
+/// (through copies, casts and joins of paths)? Each varnode is looked at once (a sum's two sides
+/// both followed, the one that is the index going nowhere).
+bool PrintC::frameAddress(const Varnode *vn) const
 
 {
   vector<const Varnode *> todo(1,vn);
   set<const Varnode *> seen;
-  bool found = false;
   while(!todo.empty()) {
     const Varnode *cur = todo.back();
     todo.pop_back();
     if (!seen.insert(cur).second) continue;
-    if (seen.size() > 32) return false;
-    if (cur->isSpacebase()) { found = true; continue; }
-    if (!cur->isWritten()) return false;
+    if (seen.size() > 64) return false;
+    if (cur->isSpacebase()) return true;
+    if (cur->isInput() && cur->getSpace()->getType() == IPTR_PROCESSOR &&
+	glb->translate->getRegisterName(cur->getSpace(),cur->getOffset(),cur->getSize()) == "BP")
+      return true;
+    if (!cur->isWritten()) continue;
     const PcodeOp *def = cur->getDef();
     switch(def->code()) {
     case CPUI_COPY: case CPUI_CAST: case CPUI_PTRSUB: case CPUI_PTRADD: case CPUI_INT_SUB:
       todo.push_back(def->getIn(0));
       break;
-    case CPUI_INT_ADD:
-      {
-	// (the frame's address is one side; the other is the offset or index added)
-	bool either = false;
-	for(int4 i=0;i<2;++i)
-	  if (frameAddress(def->getIn(i))) either = true;
-	if (!either) return false;
-	found = true;
-	break;
-      }
-    case CPUI_MULTIEQUAL:
+    case CPUI_INT_ADD: case CPUI_MULTIEQUAL:
       for(int4 i=0;i<def->numInput();++i)
 	todo.push_back(def->getIn(i));
       break;
     default:
-      return false;
+      break;
     }
   }
-  return found;
+  return false;
 }
 
 void PrintC::opSegmentOp(const PcodeOp *op)
@@ -1282,10 +1277,21 @@ void PrintC::opSegmentOp(const PcodeOp *op)
     pushVn(op->getIn(2),op,mods);
     return;
   }
+  // (the stack segment with a field's address as the offset -- `&a1->f_2`, already the type the
+  // dereference reads, so it prints no cast of its own -- keeps that type, `(int2 *)MK_FP(unaff_SS,
+  // &a1->f_2)`: c_text makes that a far pointer to an int2, and without it read a byte)
+  const Varnode *off = op->getIn(2);
+  Datatype *offtype = off->getHighTypeReadFacing(op);
+  if (!seg->isConstant() && enteredSegment(seg) && off->isWritten() && off->getDef()->code() == CPUI_PTRSUB &&
+      op->getOut() != (const Varnode *)0 && offtype->getMetatype() == TYPE_PTR &&
+      op->getOut()->getHighTypeDefFacing() == offtype) {
+    pushOp(&typecast,op);
+    pushType(offtype);
+  }
   pushOp(&function_call,op);
   pushAtom(Atom("MK_FP",optoken,EmitMarkup::funcname_color,op));
   pushOp(&comma,op);
-  pushVn(op->getIn(2),op,mods);		// (implied varnodes are pushed in reverse order)
+  pushVn(off,op,mods);		// (implied varnodes are pushed in reverse order)
   pushVn(seg,op,mods);
 }
 

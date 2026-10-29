@@ -104,10 +104,6 @@ private:
   Funcdata *inline_head;		///< First function in the in-lining chain
   set<Address> *inline_recursion;	///< Active list of addresses for function that are in-lined
   set<Address> inline_base;		///< Storage for addresses of functions that are in-lined
-  // CodeBreaker: the run of pushes the last instructions followed in fall-thru order made (C20)
-  Address cb_pushend;			///< The address just past the run (invalid: no run)
-  int4 cb_pushed = 0;			///< Bytes the run put on the stack
-  int4 cbStackEffect(list<PcodeOp *>::const_iterator iter,bool &push) const;
   bool hasPossibleUnreachable(void) const { return ((flags & possible_unreachable)!=0); }	///< Are there possible unreachable ops
   void setPossibleUnreachable(void) { flags |= possible_unreachable; }	///< Mark that there may be unreachable ops
   void clearProperties(void);		///< Clear any discovered flow properties
