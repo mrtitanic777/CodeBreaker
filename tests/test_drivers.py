@@ -148,7 +148,7 @@ def test_run_records_service_calls():
     from codebreaker.verify.lanes import driver
     image = driver.load(_driver())
     v = driver.inputs("control")[0][1]                    # DEVICE_INIT
-    r = driver.run(image, image.entries["control"], v["regs"], v["stack"], v["memory"], flags=v["flags"])
+    r = driver.P.emulator.run(image, image.entries["control"], v["regs"], v["stack"], v["memory"], flags=v["flags"])
     assert r["calls"] and r["insns"] > 10
     f = driver.fingerprint(image, image.entries["control"], v)
     assert f["deps"] and "." in f["deps"][0] and "(" in f["deps"][0], f["deps"][:2]

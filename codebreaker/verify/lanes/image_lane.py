@@ -2,10 +2,11 @@
 a tape block, a ROM. The NES, Master System, Game Boy, Genesis, ZX Spectrum and MSX lanes are each
 one of these (verify/lanes/nes.py ...), giving only what is particular to their machine.
 
-    LANE = Lane("gb", 1, "gb_writer", STATES, effects, WHAT, start)
+    LANE = Lane("gb", 1, STATES, effects, WHAT, start)
     LANE.export(globals())            # the module is then a kind reconstruct.py works with
 
-The program's source is written by its writer (source/<machine>_writer.py) and assembled; a
+The program's source is written by its platform's writer (the packager slot of
+codebreaker/platforms/<machine>.py: source/<machine>_writer.py) and assembled; a
 program that comes back identical IS the original, so each of its functions does what the
 original's does. When it is not identical -- the source was edited -- each function is run in
 both, from the same starting states, and what it did is compared: effects(subject, entry, state)
@@ -13,7 +14,6 @@ is a tuple of what the run showed (how it ended, the registers, the memory it le
 it touched), and WHAT names each place in it, so a difference says which.
 """
 import hashlib
-import importlib
 import os
 
 SAME = "the cartridge built from this source is the original, byte for byte"
@@ -24,8 +24,8 @@ class Prepared(object):
 
 
 class Lane(object):
-    """kind: the name results are filed under; rev: bump when what a verdict depends on changes;
-    writer: its module under codebreaker.source (or the module); states: where each run starts
+    """kind: the name results are filed under (its platform's: the writer is that platform's
+    packager); rev: bump when what a verdict depends on changes; states: where each run starts
     (part of every verdict's profile); effects(subject, entry, state) -> a tuple; what: a name for
     each place in that tuple; start(state) -> the state, as a verdict's detail says it.
 
@@ -33,14 +33,14 @@ class Lane(object):
     (default: the original's path and the built file's); key: how an address is written in the
     store's keys."""
 
-    def __init__(self, kind, rev, writer, states, effects, what, start, subjects=None, key="%04x", same=SAME):
+    def __init__(self, kind, rev, states, effects, what, start, subjects=None, key="%04x", same=SAME):
         self.KIND, self.REV, self.SAME = kind, rev, same
-        self._writer, self._states, self._effects, self._what = writer, states, effects, what
+        self._states, self._effects, self._what = states, effects, what
         self._start, self._subjects, self._key = start, subjects, key
 
-    def writer(self):
-        w = self._writer
-        return importlib.import_module("codebreaker.source." + w) if isinstance(w, str) else w
+    def platform(self):
+        from codebreaker import platforms
+        return platforms.of(self.KIND)
 
     def profile(self, module_path=None):
         settings = repr((self.KIND, self.REV, self._states))     # (the states are part of what a verdict depends on)
@@ -48,7 +48,7 @@ class Lane(object):
 
     def prepare(self, module_path, work):
         m = Prepared()
-        m.written = r = self.writer().reconstruct(module_path, os.path.join(work, "source"))
+        m.written = r = self.platform().packager.writer(module_path, os.path.join(work, "source"))
         with open(r["source"], encoding="latin1") as f:
             text = f.read()
         functions = r["functions"]

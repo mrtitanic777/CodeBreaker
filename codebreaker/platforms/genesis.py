@@ -2,7 +2,7 @@
 code the 68000 copies in). Its programs were mostly written in assembly, which is what comes back
 (source/genesis_writer.py, Motorola syntax); the cartridge built from that source is compared
 with the original, and its functions are run in CodeBreaker's own 68000 (emulate/m68k.py)."""
-from codebreaker.platforms import Platform
+from codebreaker.platforms import Cpu, machine
 
 
 def _recognise(path):
@@ -10,7 +10,10 @@ def _recognise(path):
     return genesis.is_genesis(path)
 
 
-PLATFORM = Platform(
-    name="genesis", title="Genesis / Mega Drive", family="68000", container="cartridge image (.md, .bin, .gen, .smd)",
-    cpu="68000:BE:32:default", source="asm",
-    lane="codebreaker.verify.lanes.genesis", runner=("codebreaker.emulate.m68k", "run"), recognise=_recognise)
+PLATFORM = machine(
+    "genesis", "Genesis / Mega Drive", "68000", "cartridge image (.md, .bin, .gen, .smd)",
+    Cpu("68000:BE:32:default", bits=32, endian="big", decoder="codebreaker.decompile.m68k",
+        registers=tuple("D%d" % i for i in range(8)) + tuple("A%d" % i for i in range(8)) + ("SR",), stack="A7"),
+    _recognise, reader=("codebreaker.formats.genesis", "read"), runner=("codebreaker.emulate.m68k", "run"),
+    assembler=("codebreaker.build.m68k_asm", "build"), writer=("codebreaker.source.genesis_writer", "reconstruct"),
+    results=tuple("D%d" % i for i in range(8)) + tuple("A%d" % i for i in range(7)), toolchain="CodeBreaker's own assembler")

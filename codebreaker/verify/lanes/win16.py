@@ -19,16 +19,21 @@ match involving one is marked weak.
 Besides the fixed inputs and the directed ones (the constants the code compares with), each
 function is run on branch-guided inputs (verify/guided.py): arguments, words of the data
 segment and results of Windows calls chosen to take branches of the original no input took.
+
+What runs a function, how it is called and what links the rebuild are the platform's
+(codebreaker/platforms/win16.py): its emulator, its convention, its packager and loader.
 """
 import hashlib
 import os
 
+from codebreaker import platforms
 from codebreaker.base import corpus
 from codebreaker.verify import compare
 from codebreaker.verify import lane_common
 
+P = platforms.of("ne")                  # 16-bit Windows: the six slots this lane asks
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
-ARG_WORDS = 8
+ARG_WORDS = P.convention.arguments      # the words of arguments every function is given
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
 REV = 21                                # bump when what is built or compared changes
                                         # (21: branch-guided inputs, an input's memory and what Windows returns;
@@ -108,8 +113,7 @@ def directed(module_path, seg, span, most=8):
     if key not in _DIRECTED:
         import capstone
         from codebreaker.emulate import windows16 as emulator
-        from codebreaker.formats.ne import NEFile
-        nef = NEFile(module_path)
+        nef = P.loader.open(module_path)
         s = nef.segments()[seg - 1]
         code = nef.data[s["file_off"]:s["file_off"] + s["length"]]
         md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
@@ -199,7 +203,7 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
         mem = tuple(mem or ()) + tuple((ne_probe.STACK_BASE + ((CALLER_BP - less) & 0xFFFF), bytes([FRAME_FILL]) * size)
                                        for less, size in frame)
     try:
-        r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
+        r = P.emulator.run(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
                            stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp)
     except ImportError:
         raise
@@ -251,8 +255,7 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
     return {"ret": ret, "exit": ex, "truncated": bool(r.get("truncated")),
             "deps": tuple(_call(h, v["args"], entry) for h in r.get("imports_hit") or ()),
             "writes": writes, "pop": r.get("sp_delta") if ex == "ret" else None,
-            "saved": (regs.get("SI") == entry.get("SI") and regs.get("DI") == entry.get("DI")
-                      and regs.get("DS") == entry.get("DS")) if ex == "ret" else None,
+            "saved": all(regs.get(r) == entry.get(r) for r in P.convention.preserved) if ex == "ret" else None,
             "cov": cov, "reach": ()}
 
 
@@ -326,7 +329,7 @@ def _branch_run(module_path, seg, off, near, span, v, **probe):
     the run is not an observation. `probe`: more of ne_probe.probe's options, for every run."""
     from codebreaker.emulate import windows16 as ne_probe
     try:
-        r = ne_probe.probe(module_path, seg=seg, offset=off, args=v["args"], near=near,
+        r = P.emulator.run(module_path, seg=seg, offset=off, args=v["args"], near=near,
                            stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), branches=span, **probe)
     except ImportError:
         raise
@@ -342,8 +345,7 @@ def guided_vectors(module_path, seg, off, near, span, seeds, **probe):
     original is run, when not as the judge runs it -- the build's gate (verify/gate16/isolated16.py)
     answers the module's own callees and fills the data segment's tail, and explores so."""
     from codebreaker.emulate import windows16 as ne_probe
-    from codebreaker.formats.ne import NEFile
-    auto = NEFile(module_path).h.get("autodata_seg")
+    auto = P.loader.open(module_path).h.get("autodata_seg")
     ds = ne_probe.segment_base(auto) if auto else None
     kept = lane_common.guided(
         lambda g: _branch_run(module_path, seg, off, near, span, _from_explorer(g, ds), **probe),
@@ -378,8 +380,7 @@ PER_FUNCTION = True             # a verdict holds while the function and what it
 
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
-    from codebreaker.build import functions
-    settings = repr(("ne", REV, compare.REV, functions.CFLAGS16, vectors(),
+    settings = repr(("ne", REV, compare.REV, P.compiler.options(), vectors(),
                      ("guided", lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED)))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
@@ -399,13 +400,11 @@ def prepare(module_path, work):
 
 def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
-    from codebreaker.build import functions
-    from codebreaker.formats.ne import NEFile
-    dll, placed, dropped = functions.build16(m.header, m.texts, m.order, m.imports, work, segments=m.segments,
-                                             code_segment={fn: m.where[va][0] for va, fn in m.by_va.items()},
-                                             interrupts={v for v, _regs in getattr(m, "interrupts", ())},
-                                             code_data=getattr(m, "code_data", None))
-    nef = NEFile(module_path)
+    dll, placed, dropped = P.packager.functions(m.header, m.texts, m.order, m.imports, work, segments=m.segments,
+                                                code_segment={fn: m.where[va][0] for va, fn in m.by_va.items()},
+                                                interrupts={v for v, _regs in getattr(m, "interrupts", ())},
+                                                code_data=getattr(m, "code_data", None))
+    nef = P.loader.open(module_path)
     auto = nef.h.get("autodata_seg")
     data_image = b""
     if auto:

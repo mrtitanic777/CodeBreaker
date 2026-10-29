@@ -31,6 +31,43 @@ def _reach_kinds():
                    "game.z64": ("Nintendo 64 (MIPS R4300)", None), "notes.txt": ("", None)}
 
 
+def _slots():
+    """The one lane interface (docs/ARCHITECTURE.md part 4): every platform has the six slots;
+    every one with a lane fills its loader and its packager, and its processor unless its code is
+    not machine code; every Ref a slot names resolves to something that exists."""
+    bad = []
+    for p in platforms.all():
+        if list(p.slots()) != list(platforms.SLOTS):
+            bad.append((p.name, "slots"))
+        if p.lane and not (p.loader.container and p.packager):
+            bad.append((p.name, "loader or packager"))
+        if p.lane and p.source != "java -> c++" and not str(p.cpu):
+            bad.append((p.name, "cpu"))
+        for slot, s in p.slots().items():
+            for field, v in s.given().items():
+                if isinstance(v, platforms.Ref):
+                    try:
+                        v.target()
+                    except Exception as e:
+                        bad.append((p.name, slot, field, repr(e)))
+    return not bad or print(bad)
+
+
+def _the_old_tables():
+    """What the lanes and module.build had written for themselves is what the slots give."""
+    from codebreaker.build import functions, module
+    from codebreaker.decompile import c_text
+    from codebreaker.emulate import emulator, windows16
+    w16, w32 = platforms.of("ne"), platforms.of("pe")
+    return (w16.compiler.options() == functions.CFLAGS16 and w32.compiler.options() == c_text.CFLAGS
+            and w16.convention.arguments == 8 and w32.convention.arguments == 4
+            and w16.packager.link.target() is module._build16 and w32.packager.link.target() is module._build32
+            and w16.emulator.run.target() is windows16.probe and w32.emulator.run.target() is emulator.trace_function
+            and platforms.of("dos").emulator.run is None
+            and platforms.step_modules() == {"win16": "codebreaker.engine.win16"}
+            and platforms.named("win16") is w16 and str(w16.cpu) == "x86:LE:16:Protected Mode:default")
+
+
 def main():
     from codebreaker import emulate
     from codebreaker.base import corpus
@@ -57,6 +94,8 @@ def main():
         ("a file nothing recognises", platforms.identify(__file__) is None),
         ("a plain file reads as itself", corpus._readable(__file__) == __file__),
         ("reach: platforms, gaps and data told apart", _reach_kinds()),
+        ("every platform fills the six slots", _slots()),
+        ("the slots say what the lanes' own tables said", _the_old_tables()),
     ]
     for name, ok in checks:
         print("  %-4s %s" % ("ok" if ok else "FAIL", name))

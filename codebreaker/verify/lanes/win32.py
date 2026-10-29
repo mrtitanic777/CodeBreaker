@@ -4,9 +4,13 @@ One of the kinds reconstruct.py works with (see there for what a kind provides).
 module is decompiled by decompile/decompiler.py, built by build/functions.py, and
 each function is run beside the original in the 32-bit emulator (emulate/emulator.py) and compared by verify/compare.py
 (calls and their arguments, result, memory changed, stack, saved registers, coverage).
+
+What runs a function, how it is called, its compiler's options and what builds the rebuild are
+the platform's (codebreaker/platforms/win32.py): its emulator, convention, compiler and packager.
 """
 import hashlib
 import os
+from codebreaker import platforms
 from codebreaker.build import watcom as toolchain
 from codebreaker.base import corpus
 from codebreaker.verify import compare
@@ -18,6 +22,8 @@ import hashlib as _hashlib
 
 
 KIND = "pe"
+P = platforms.of(KIND)          # 32-bit Windows: the six slots this lane asks
+ARITY = P.convention.arguments  # the arguments every function is given (its count is not known)
 PER_FUNCTION = True             # a verdict holds while the function and what it reaches are unchanged
 
 
@@ -41,8 +47,6 @@ def prepare(module_path, work):
 
 def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
-    from codebreaker.build import functions
-    from codebreaker.decompile import c_text
     # Only functions with a known address are built. The rest are library routines recognised
     # by signature (__allshl, _memcpy): they belong to the C runtime, which is linked.
     placed = [n for n in m.order if n in m.va]
@@ -52,8 +56,8 @@ def build(m, module_path, work):
     placed = [n for n in placed if m.va[n] not in stubs]
     from codebreaker.decompile import describe
     every = describe.function_names(module_path, LANES["pe"].functions(module_path))
-    dll, where, dropped = functions.build32(module_path, m.header, m.texts, placed, m.imports, work,
-                                            c_text.CFLAGS, originals={name: va for va, name in every.items()})
+    dll, where, dropped = P.packager.functions(module_path, m.header, m.texts, placed, m.imports, work,
+                                               P.compiler.options(), originals={name: va for va, name in every.items()})
     items, dropped = {}, dict(dropped)
     for fn in placed:
         if fn in dropped:
@@ -86,7 +90,7 @@ def judge(module_path, item):
     return lane_common.judged(lambda info: compare.compare(
         lambda v: _fp_pe(module_path, va, shape(v)),
         rebuilt,
-        _vectors(4, "pe"), _confirm_vectors(4, "pe"),
+        _vectors(ARITY, "pe"), _confirm_vectors(ARITY, "pe"),
         insns=insn_count(module_path, va),
         directed=lambda cov, rch: directed_and_guided(module_path, va, cov, rch,
                                                       shape if len(item) > 4 and item[4] else None),
@@ -114,8 +118,7 @@ def settings_profile(lane):
     if lane not in _PROFILES:
         import json
         from codebreaker.build import watcom as B
-        from codebreaker.decompile import c_text
-        cc = toolchain.ow_tool("wcc386" if lane == "pe" else "wcc")
+        cc =toolchain.ow_tool("wcc386" if lane == "pe" else "wcc")
         try:
             st = os.stat(cc)
             compiler = "%s:%d:%d" % (os.path.basename(cc), st.st_size, int(st.st_mtime))
@@ -123,16 +126,16 @@ def settings_profile(lane):
             compiler = ""
         settings = {
             "lane": lane, "pipeline": PIPE_REV, "oracle": compare.REV,
-            "inputs": [v["args"] for v in _vectors(4, lane)],
-            "confirm_inputs": [v["args"] for v in _confirm_vectors(4, lane)],
+            "inputs": [v["args"] for v in _vectors(ARITY, lane)],
+            "confirm_inputs": [v["args"] for v in _confirm_vectors(ARITY, lane)],
             # (and what they put in memory: two inputs with the same arguments can differ only there)
-            "input_memory": hashlib.sha1(repr([sorted(v.items()) for v in _vectors(4, lane) + _confirm_vectors(4, lane)])
+            "input_memory": hashlib.sha1(repr([sorted(v.items()) for v in _vectors(ARITY, lane) + _confirm_vectors(ARITY, lane)])
                                          .encode()).hexdigest()[:16],
             "max_calls": _MAX_CALLS, "max_support": MAX_SUPPORT,
             "directed": [MAX_DIRECTED, _HARVEST_DEPTH] if lane == "pe" else [],
             "guided": [lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED] if lane == "pe" else [],
             # (not the decompiler's revision: a verdict is for a text, whichever revision wrote it)
-            "cflags": list(c_text.CFLAGS), "runtime": B._RTL,
+            "cflags": P.compiler.options(), "runtime": B._RTL,
             "compiler": compiler,
         }
         text = json.dumps(settings, sort_keys=True)
@@ -478,7 +481,7 @@ def _fp_pe(path, func, spec, rebuilt=False):
 
 def _trace_pe(path, func, spec, rebuilt):
     try:
-        r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
+        r = P.emulator.run(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   insn_cap=int(spec.get("room") or tracer._MAX_INSNS),
                                   stub_externals=True, stub_ret=int(spec.get("stub_ret", 0)),
                                   overlay=rebuilt if isinstance(rebuilt, str) else None,
@@ -745,7 +748,7 @@ def _branch_run(path, func, spec):
     the run is not an observation (as _fp_pe: an error, or a call into nothing). A flat thunk's
     stubs are entered as _fp_pe enters them (_stub_options)."""
     try:
-        r = tracer.trace_function(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
+        r = P.emulator.run(path, func=func, args=spec["args"], mem_init=spec.get("mem_init"),
                                   insn_cap=int(spec.get("room") or tracer._MAX_INSNS),
                                   stub_externals=True, stub_ret=int(spec.get("stub_ret", 0)),
                                   sentinels=spec.get("sentinels"), reads=False, stop_wild=True,
@@ -770,7 +773,7 @@ def guided_vectors(path, func, seeds, shape=None):
 def directed_and_guided(path, func, covered, reached, shape=None):
     """The directed inputs, then branch-guided ones seeded with every input run so far."""
     d = directed_vectors(path, func, covered, reached=reached, shape=shape)
-    seeds = list(_vectors(4, "pe")) + list(_confirm_vectors(4, "pe")) + list(d)
+    seeds = list(_vectors(ARITY, "pe")) + list(_confirm_vectors(ARITY, "pe")) + list(d)
     return list(d) + guided_vectors(path, func, seeds, shape)
 
 

@@ -56,9 +56,11 @@ import time
 from codebreaker.engine import facts
 
 STEPS = {}                      # kind -> Step
-STEP_MODULES = {                # platform -> the module whose steps it has (imported when asked)
-    "win16": "codebreaker.engine.win16",
-}
+def _step_modules():
+    """{platform -> the module whose steps it has} (imported when asked): each platform's
+    descriptor says (codebreaker/platforms: `steps`), filed under the descriptor's name (win16)."""
+    from codebreaker import platforms
+    return platforms.step_modules()
 
 
 class Unkept(object):
@@ -115,15 +117,17 @@ def steps(platform=None):
     if platform:
         load(platform)
         return {k: s for k, s in STEPS.items() if s.platform in (platform, "")}
-    for p in STEP_MODULES:
+    for p in _step_modules():
         load(p)
     return dict(STEPS)
 
 
 def load(platform):
     import importlib
-    if platform in STEP_MODULES:
-        importlib.import_module(STEP_MODULES[platform])
+    from codebreaker import platforms
+    p = platforms.named(platform)
+    if p is not None and p.steps:
+        importlib.import_module(p.steps)
 
 
 def jobs():
@@ -398,7 +402,7 @@ class Context(object):
 def _step_of(kind):
     s = STEPS.get(kind)
     if s is None:
-        for p in STEP_MODULES:
+        for p in _step_modules():
             load(p)
         s = STEPS.get(kind)
     if s is None:

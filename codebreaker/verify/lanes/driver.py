@@ -29,24 +29,28 @@ Addresses inside the driver are compared as they are when the two files have the
 and as "somewhere in the driver" when they do not (then the driver's own memory is compared as
 the order of values stored, and the verdict carries the limit `layout-differs`).
 
-The run itself is emulate/driver.py.
+The run itself is emulate/driver.py. What runs an entry point, what writes and links the
+rebuild and where the entry points are come from the platform (codebreaker/platforms/vxd.py):
+its emulator, packager and loader.
 """
 import hashlib
 import json
 import os
 import struct
 
+from codebreaker import platforms
 from codebreaker.base import corpus, settings
 from codebreaker.decompile import describe
 from codebreaker.emulate import emulator
 from codebreaker.emulate.driver import (BUFFER, CLIENT, INSN_CAP, MAX_CALLS, OBJECT, REGISTERS, RESULT_REGISTERS, SAFE,
-                                        STACK_HI, STACK_LO, VM, load, run)
+                                        STACK_HI, STACK_LO, VM, load)
 from codebreaker.formats import le
 from codebreaker.symbols import driver_services
 from codebreaker.verify import compare
 from codebreaker.verify import lane_common
 
 KIND = "le"
+P = platforms.of(KIND)            # device drivers: the six slots this lane asks
 REV = 3                           # what a verdict means; raise when run() or the inputs change
 
 
@@ -105,7 +109,7 @@ def fingerprint(image, entry, v, aligned=True):
 
 def _run(image, entry, v, aligned):
     try:
-        r = run(image, entry, v["regs"], v.get("stack", ()), v.get("memory", ()),
+        r = P.emulator.run(image, entry, v["regs"], v.get("stack", ()), v.get("memory", ()),
                 v.get("stub_ret", 0), v.get("stub_carry", 0), flags=v.get("flags", 0))
     except ImportError:
         raise
@@ -205,8 +209,7 @@ def profile(module_path=None):
     """(digest, settings): everything but the source a verdict depends on."""
     from codebreaker.build import driver as builder
     tools = []
-    for name in ("wasm", "wlink"):
-        exe = builder.tool(name)
+    for exe in P.packager.tools().values():
         try:
             st = os.stat(exe)
             tools.append("%s:%d:%d" % (os.path.basename(exe), st.st_size, int(st.st_mtime)))
@@ -248,8 +251,6 @@ class Prepared(object):
 def prepare(module_path, work):
     """The driver's source: the assembly file in the source tree when CB_DRIVER_SOURCES names
     one to judge, otherwise written from the image (source/driver_writer.py) and built."""
-    from codebreaker.source import driver_writer
-    lf = le.members(module_path)[0][1]
     m = Prepared()
     m.source = source_folder(module_path) if os.environ.get("CB_DRIVER_SOURCES") else ""
     m.written = None
@@ -258,11 +259,11 @@ def prepare(module_path, work):
         with open(os.path.join(m.source, os.path.basename(m.source) + ".asm"), encoding="latin1") as f:
             text = f.read()
     else:
-        m.written = driver_writer.reconstruct(module_path, os.path.join(work, "source"))
+        m.written = P.packager.writer(module_path, os.path.join(work, "source"))
         if m.written.get("linked"):
             with open(m.written["source"], encoding="latin1") as f:
                 text = f.read()
-    points, taken = le.entry_points(lf), set()
+    points, taken = P.loader.entries(module_path), set()
     m.header = text
     m.order = []
     for n in sorted(points, key=_entry_order):               # two labels, one procedure: judged once
@@ -280,13 +281,12 @@ def prepare(module_path, work):
 
 def build(m, module_path, work):
     """-> (context for judge, {label: item}, {label: why it is not in the build})"""
-    from codebreaker.build import driver as builder
     if m.written is not None:
         if not m.written.get("linked"):
             why = (m.written.get("notes") or ["did not build"])[-1][:200]
             return (module_path, None), {}, {n: why for n in m.order}
         return (module_path, m.written["image"]), {n: (m.key[n], n) for n in m.order}, {}
-    r = builder.build(m.source, original=module_path, out=os.path.join(work, "build"))
+    r = P.packager.functions(m.source, original=module_path, out=os.path.join(work, "build"))
     if not r["linked"]:
         why = (r["log"].splitlines() or ["did not build"])[-1][:200]
         return (module_path, None), {}, {n: why for n in m.order}
@@ -372,7 +372,8 @@ def break_instruction(original, out, label, nth=0):
         return None
     cover = set()
     for v in inputs(label)[0]:
-        cover |= run(image, image.entries[label], v["regs"], v["stack"], v["memory"], flags=v["flags"])["cover"]
+        cover |= P.emulator.run(image, image.entries[label], v["regs"], v["stack"], v["memory"],
+                                flags=v["flags"])["cover"]
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
     patched = set()
     for obj, off, _kind, _to, _ta in le.references(lf):

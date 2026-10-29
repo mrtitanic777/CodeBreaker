@@ -31,6 +31,6 @@ def _effects(path, entry, state):
     return (run["end"], run["a"], run["x"], run["y"], run["p"], ram, tuple(bus.log[:4000]))
 
 
-Lane("nes", 2, "nes_writer", _STATES, _effects,
+Lane("nes", 2, _STATES, _effects,
      ("end", "A", "X", "Y", "flags", "RAM", "hardware accesses"),
      lambda state: "from A=%(a)02X X=%(x)02X Y=%(y)02X" % state).export(globals())
