@@ -1,5 +1,6 @@
 """z80_flat.py -- the lane of a flat Z80 program (one block at one address): the ZX Spectrum's and
-the MSX's (verify/lanes/zx.py, verify/lanes/msx.py), each giving its reader, writer and machine.
+the MSX's (verify/lanes/zx.py, verify/lanes/msx.py), each giving its machine's ROM; its reader and
+writer are its platform's loader and packager (codebreaker/platforms/zx.py, msx.py).
 
 The program's source is written (source/z80_writer.py through the machine's writer) and built
 (build/z80_asm.py build_flat); a block that comes back identical IS the original. When it is not
@@ -16,13 +17,14 @@ STATES = [dict(a=0, b=0, c=0, d=0, e=0, h=0, l=0, fill=0), dict(a=1, b=2, c=3, d
 WHAT = ("end", "A", "flags", "BC", "DE", "HL", "IX", "IY", "memory", "port accesses")
 
 
-def lane(kind, rev, read, writer, rom):
-    """kind: the name results are filed under; read(path) -> a Program (formats/zx.py, msx.py);
-    writer: the machine's writer module; rom: the addresses the machine's ROM occupies."""
+def lane(kind, rev, rom):
+    """kind: the name results are filed under (its platform's loader reads a Program: formats/zx.py,
+    msx.py); rom: the addresses the machine's ROM occupies."""
     def subjects(module_path, written):
-        p = read(module_path)
+        from codebreaker import platforms
+        p = platforms.of(kind).loader.open(module_path)
         return (p, p.image), (p, written["built image"])
-    return Lane(kind, rev, writer, STATES, lambda subject, entry, state: _effects(rom, subject, entry, state), WHAT,
+    return Lane(kind, rev, STATES, lambda subject, entry, state: _effects(rom, subject, entry, state), WHAT,
                 lambda state: "from A=%(a)02X BC=%(b)02X%(c)02X HL=%(h)02X%(l)02X" % state, subjects=subjects,
                 same="the program built from this source is the original, byte for byte")
 

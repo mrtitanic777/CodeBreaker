@@ -35,6 +35,6 @@ def _effects(path, entry, state):
     return (run["end"], run["a"], run["f"], run["bc"], run["de"], run["hl"], ram, io)
 
 
-Lane("gb", 1, "gb_writer", _STATES, _effects,
+Lane("gb", 1, _STATES, _effects,
      ("end", "A", "flags", "BC", "DE", "HL", "RAM", "I/O and bank accesses"),
      lambda state: "from A=%(a)02X BC=%(b)02X%(c)02X HL=%(h)02X%(l)02X" % state).export(globals())

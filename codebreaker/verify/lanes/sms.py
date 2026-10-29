@@ -34,6 +34,6 @@ def _effects(path, entry, state):
             tuple(bus.log[:4000]))
 
 
-Lane("sms", 1, "sms_writer", _STATES, _effects,
+Lane("sms", 1, _STATES, _effects,
      ("end", "A", "flags", "BC", "DE", "HL", "IX", "IY", "RAM", "port and mapper accesses"),
      lambda state: "from A=%(a)02X BC=%(b)02X%(c)02X HL=%(h)02X%(l)02X" % state).export(globals())

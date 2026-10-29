@@ -33,6 +33,6 @@ def _effects(path, entry, state):
             tuple(run["io"][:4000]))
 
 
-Lane("genesis", 1, "genesis_writer", _STATES, _effects,
+Lane("genesis", 1, _STATES, _effects,
      ("end", "D registers", "A registers", "condition codes", "RAM", "hardware accesses"),
      lambda state: "from D0=%08X A0=%06X" % (state["d"][0], state["a"][0]), key="%06x").export(globals())

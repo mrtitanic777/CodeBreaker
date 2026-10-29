@@ -17,15 +17,20 @@ image. Where every call to it in the module passes the same number, that many ar
 otherwise the call is compared by name only and a match involving it is marked weak. An
 argument that points into either image's data is compared by what it points at, since the
 rebuilt image keeps its own copy of a constant.
+
+The interpreter, the convention, the compiler's options and the build of the rebuilt image are
+the platform's (codebreaker/platforms/xbox360.py): its emulator, convention, compiler, packager.
 """
 import hashlib
 
+from codebreaker import platforms
 from codebreaker.base import corpus
 from codebreaker.verify import compare
 from codebreaker.verify import lane_common
 
+P = platforms.of("powerpc")             # the Xbox 360: the six slots this lane asks
 REV = 4                                 # 4: branch-guided inputs (verify/guided.py); calls into absent code
-ARGS = 8
+ARGS = P.convention.arguments           # r3-r10
 M32 = 0xFFFFFFFF
 _OFFSET = 0x01000000                    # the rebuilt image sits this far above the original
 
@@ -83,9 +88,9 @@ def guided_vectors(shared, va, span, externs, seeds, absent=None):
 
     def run(v):
         try:
-            r = powerpc.run(v.get("mem_init") or (), va, v["args"], externs=externs, span=span,
-                            stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), branches=True,
-                            absent=absent)
+            r = P.emulator.run(v.get("mem_init") or (), va, v["args"], externs=externs, span=span,
+                               stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), branches=True,
+                               absent=absent)
         except Exception:
             return None
         return {"branches": r["branches"], "reach": r["path"], "args_at": None,
@@ -117,8 +122,8 @@ def fingerprint(shared, entry, v, externs, argc, images, span=None, novalue=Fals
     """What one run of one function did, in a form two builds can be compared on."""
     from codebreaker.emulate import powerpc
     try:
-        r = powerpc.run(v.get("mem_init") or (), entry, v["args"], externs=externs, span=span,
-                        stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), absent=images[0])
+        r = P.emulator.run(v.get("mem_init") or (), entry, v["args"], externs=externs, span=span,
+                           stub_ret=v.get("stub_ret", 0), shared=shared, fill=v.get("fill"), absent=images[0])
     except Exception as e:
         return {"err": type(e).__name__}
     ex = compare._exit_norm(r["exit"])
@@ -187,8 +192,7 @@ PER_FUNCTION = True             # a verdict holds while the function and what it
 
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
-    from codebreaker.build import functions
-    settings = repr(("powerpc", REV, compare.REV, functions.CFLAGS_POWERPC, vectors()))
+    settings = repr(("powerpc", REV, compare.REV, P.compiler.options(), vectors()))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 
@@ -203,11 +207,10 @@ def prepare(module_path, work):
 
 def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
-    from codebreaker.build import functions
     img = m.image
     top = max(va + size for va, _off, size in img.spans)
     base = (img.base + max(_OFFSET, (top - img.base + 0xFFFF) & ~0xFFFF)) & 0xFFFF0000
-    dll, placed, dropped = functions.build_powerpc(m.header, m.texts, m.order, sorted(m.externs), work, base)
+    dll, placed, dropped = P.packager.functions(m.header, m.texts, m.order, sorted(m.externs), work, base)
     starts = sorted(set(img.functions) | set(img.imports) | set(img.run_names))
     nxt = {a: b for a, b in zip(starts, starts[1:] + [img.code[1]])}
     items, dropped = {}, dict(dropped)

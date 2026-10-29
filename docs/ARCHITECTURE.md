@@ -54,7 +54,7 @@ B. **Service** (5): the engine in one process; the terminal UI and MCP as client
 C. **L2 only** (3): the decompiler's output is the L2 fact; c_text's remaining passes become steps
    on it (IR_UNIFICATION step 3 continues); C is the back end's.
 D. **Lanes on the interface** (4): win16 first (it is on the engine since A), then win32, drivers,
-   DOS, PowerPC, the console lanes.
+   DOS, PowerPC, the console lanes. See "Built: phase D" below.
 E. **Knowledge base** (7): the name store, SDK prototypes and library signatures as facts of a
    platform database the per-binary ones refer to.
 F. **Path-exploring judge** (6): concolic execution on the emulators, judging a function's paths
@@ -360,6 +360,74 @@ next once phase C has made more of the stages facts -- `facts --make` already ru
 the service, its output sent when it is done. The function store is still opened per call (it
 is the verdict table phase A left for later). The load setting between the service and other
 sessions is still the open question below.
+
+## Built: phase D (2026-10-29)
+
+The lane interface is the Platform descriptor of codebreaker/platforms/, extended -- not a second
+registry. Every platform has the same six slots, each a small object whose fields say what the
+platform is and name (as a `Ref`: module and function, imported when first used) what does the
+work:
+
+    p.loader       container, open, readable, parts, entries, exports, imports
+    p.cpu          the SLEIGH language id (p.cpu IS that string, as before), bits, endian,
+                   decoder, registers, stack
+    p.convention   names, arguments, word, order, results, pops, preserved
+    p.emulator     run (the judge's runner), call (one export called: module.run), engine
+    p.compiler     language, toolchain, tool, tools, flags, env, compile, library
+    p.packager     link (the whole module), functions (the judge's build), writer (an
+                   assembly lane's source writer + rebuild), tools
+
+plus `p.steps`, the module of its steps on the engine, and `p.id`, the descriptor's file name
+(win16), which `platforms.named` also answers to. A slot a platform has no use for is empty (a
+DOS program is not run: its emulator's run is None). `platforms.machine(...)` describes an
+assembly-language machine in one call (the six console and home-computer platforms).
+
+**Which lanes are on it.** All thirteen platforms fill their slots: win16, win32, the drivers
+(vxd), DOS, the Xbox 360, the NES, Master System, Game Boy, Genesis, ZX Spectrum, MSX, Java and the
+original Xbox (loader and CPU only: every other stage gets its PE image). What asks them:
+
+| Shared machinery | Asks the platform for | Was |
+|---|---|---|
+| engine/engine.py `load`, `steps` | `p.steps` | its own STEP_MODULES table |
+| engine/win16.py | loader.parts (ne.segments), compiler.tool/options/env/compile/library, packager.link and tools (ne.image) | NEFile, watcom.ow_tool("wcc"), functions.CFLAGS16, ow_env("ne"), module._build16 |
+| build/module.build | `p.steps_module().build` for a platform on the engine; packager.link; emulator.call | `engine16.handles`, `_build16 if kind == "ne" else _build32`, `_call`'s `if kind == "ne"` |
+| verify/lanes/win16 (the judge) | emulator.run (every run, the branch tracer's too), convention.arguments and .preserved, packager.functions, loader.open, compiler.options (profile) | windows16.probe, ARG_WORDS = 8, SI/DI/DS written out, functions.build16, NEFile |
+| verify/lanes/win32 | emulator.run, convention.arguments (ARITY), packager.functions, compiler.options | tracer.trace_function, the literal 4s, functions.build32, c_text.CFLAGS |
+| verify/lanes/driver | emulator.run, loader.entries, packager.writer/functions/tools | emulate.driver.run, le.entry_points, driver_writer, build/driver |
+| verify/lanes/dos | packager.writer and tools | dos_writer, build/driver.tool |
+| verify/lanes/powerpc | emulator.run, convention.arguments, compiler.options, packager.functions | powerpc.run, ARGS = 8, CFLAGS_POWERPC, build_powerpc |
+| verify/lanes/image_lane, z80_flat (six machines) | packager.writer, loader.open | each lane's writer name, the reader handed in |
+| emulate.RUNNERS, reconstruct.KINDS, describe's languages, corpus._readable | emulator.run, lane, cpu, loader.readable | (since PLATFORM_DESCRIPTOR step 1) |
+
+The per-lane branches that went: engine's STEP_MODULES, module.build's `engine16.handles` and
+`kind == "ne"` choice of linker, module._call's `kind == "ne"`, the image lanes' writer argument,
+z80_flat's reader argument. A new platform with a lane of the existing shapes now fills a
+descriptor; its lane module gives only what is particular to judging it (its fingerprint).
+
+**Left as they are, on purpose.** The 16-bit gate's branches in module.build (`b.kind == "ne"`:
+the known verdicts, the gate, the whole-file image) are the gate's, not one of the six slots --
+they become the win16 steps' once module.build is only the engine. decompile/decompiler.as_c,
+compare/versions.load, coverage/ledger.extents and build/definitions still choose by kind inside
+themselves (the decompiler and the comparer are other agents' work now; each is a loader- or
+decompiler-shaped table to move next). The emulators' memory layouts (windows16.STACK_BASE ...)
+are read from the emulator modules: they are the runner's, which the slot names.
+
+Evidence (each module reconstructed and judged into a fresh function store, CB_NO_FP_CACHE=1 so
+every original is run again, before and after the change, same machine):
+
+    module         lane     profile digest        verdicts (before = after, row for row incl. reason and detail)
+    lzexpand.dll   ne       775d76c5eed9 (same)   24 equivalent, 20 divergent, 2 no-compile
+    lz32.dll       pe       5890b88354da (same)   17 equivalent, 3 divergent, 19 no-compile
+    splitter.vxd   le       a66e119a9a64 (same)   6 equivalent
+    choice.com     dos      3b24b406d543 (same)   22 equivalent
+
+and the images: lzexpand.dll by module.build and by the engine b2113a90... before and after (the
+12 export calls the same); lz32.dll's image differs between any two builds only in its link
+time stamps (the PE header's and the directories'), before as after -- its 12 export calls the same.
+
+Tests: tests/test_platforms.py (9: two new -- every platform fills the six slots and every Ref
+resolves; the slots give what the lanes' own tables said), test_engine (12), test_verification
+(21), test_drivers (16), test_dos (13), test_frozen (47), test_nes, test_z80, test_m68k pass.
 
 ## Decisions, and what is left open
 

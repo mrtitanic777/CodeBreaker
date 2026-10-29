@@ -1735,22 +1735,10 @@ def _sections(path):
 
 
 def _call(path, kind, export):
-    """Load a module in the emulator and call one exported function with zero arguments.
-    -> (how it ended, its result)"""
-    from codebreaker.emulate import emulator, windows16
-    from codebreaker.verify import compare
-    try:
-        if kind == "ne":
-            r = windows16.probe(path, ordinal=export.ordinal, args=[0] * 8)
-        else:
-            from codebreaker.verify.lanes import win32
-            r = emulator.trace_function(path, func=export.address, args=[0] * 4, mem_init=_sections(path),
-                                        stub_externals=True, sig_resolver=win32._argc)
-    except ImportError:
-        raise
-    except Exception as e:                                    # the emulator giving up is a result too
-        return "error: %s" % type(e).__name__, None
-    return compare._exit_norm(r.get("exit")), r.get("ret")
+    """Load a module in the emulator and call one exported function with zero arguments: the
+    platform's emulator does it (codebreaker/platforms: emulator.call). -> (how it ended, its result)"""
+    from codebreaker import platforms
+    return platforms.of(kind).emulator.call(path, export)
 
 
 def run(b, limit=RUN_LIMIT):
@@ -1760,6 +1748,15 @@ def run(b, limit=RUN_LIMIT):
         got, want = _call(b.image, b.kind, mine[e.ordinal]), _call(b.original, b.kind, e)
         b.ran.append((e.name or "@%d" % e.ordinal, got[0], want[0], got == want))
     return b
+
+
+def _linker(b):
+    """What links a module of this kind: its platform's packager (_build16, _build32)."""
+    from codebreaker import platforms
+    link = platforms.of(b.kind).packager.link
+    if link is None:
+        raise SystemExit("%s: a %s module is not linked whole here" % (b.name, platforms.of(b.kind).title))
+    return link
 
 
 def build(module, outdir=None, call=True, log=print, gated=None):
@@ -1775,9 +1772,10 @@ def build(module, outdir=None, call=True, log=print, gated=None):
         raise SystemExit("no module %r in the corpus" % module)
     if os.environ.get("CB_ENGINE") == "1" and gated is None:
         # (on the engine: the same build made of facts, only what changed made again -- engine/win16.py)
-        from codebreaker.engine import win16 as engine16
-        if engine16.handles(path):
-            return engine16.build(path, outdir=outdir, call=call, log=log)
+        from codebreaker import platforms
+        p = platforms.identify(path)
+        if p is not None and p.steps:
+            return p.steps_module().build(path, outdir=outdir, call=call, log=log)
     b = Built(path)
     b.gated = dict(gated or {})
     kind = reconstruct.kind_of(path)
@@ -1796,7 +1794,7 @@ def build(module, outdir=None, call=True, log=print, gated=None):
     if b.kind == "ne" and getattr(m, "description", None) is not None:
         b.disputes = _disputes(m.description)
     log("%s: compiling %d functions, data and resources" % (b.name, len(m.order)))
-    image = (_build16 if b.kind == "ne" else _build32)(b, path, m, folder)
+    image = _linker(b)(b, path, m, folder)
     if getattr(b, "resident_overflow", None):
         log("%s: %d placed past where a segment is cut: rebuilt from their instructions"
             % (b.name, len(b.resident_overflow)))

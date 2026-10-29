@@ -2,7 +2,7 @@
 image formats/xbox/xbe.py makes of it (the same bytes at the same addresses, the kernel's
 functions as imports of xboxkrnl.exe), so it has no lane of its own: corpus.retail hands every
 stage that image."""
-from codebreaker.platforms import Platform
+from codebreaker.platforms import Cpu, Loader, Platform
 
 
 def _recognise(path):
@@ -16,5 +16,7 @@ def _open(path):
 
 
 PLATFORM = Platform(
-    name="xbe", title="original Xbox", family="x86", container="XBE -> PE",
-    cpu="x86:LE:32:default:windows", source="c", lane=None, recognise=_recognise, open=_open)
+    name="xbe", title="original Xbox", family="x86", source="c", lane=None, recognise=_recognise,
+    cpu=Cpu("x86:LE:32:default:windows", bits=32, endian="little", decoder=("capstone", "x86", 32)),
+    loader=Loader(container="XBE -> PE", readable=_open))
+# (every other slot is 32-bit Windows': the stages are handed the PE image, which identifies as "pe")

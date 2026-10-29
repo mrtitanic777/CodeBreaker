@@ -2,7 +2,7 @@
 written in assembly (or BASIC around a machine-code core), and assembly is what comes back
 (source/zx_writer.py, sjasmplus / pasmo syntax); the block built from that source is compared with
 the original, and its functions are run in CodeBreaker's own Z80 (emulate/z80.py)."""
-from codebreaker.platforms import Platform
+from codebreaker.platforms import Cpu, machine
 
 
 def _recognise(path):
@@ -10,7 +10,10 @@ def _recognise(path):
     return zx.is_zx(path)
 
 
-PLATFORM = Platform(
-    name="zx", title="ZX Spectrum", family="z80", container="snapshot or tape (.sna, .z80, .tap)",
-    cpu="z80:LE:16:default", source="asm",
-    lane="codebreaker.verify.lanes.zx", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)
+PLATFORM = machine(
+    "zx", "ZX Spectrum", "z80", "snapshot or tape (.sna, .z80, .tap)",
+    Cpu("z80:LE:16:default", bits=8, endian="little", decoder="codebreaker.decompile.z80",
+        registers=("A", "F", "BC", "DE", "HL", "IX", "IY", "SP"), stack="SP"),
+    _recognise, reader=("codebreaker.formats.zx", "read"), runner=("codebreaker.emulate.z80", "run"),
+    assembler=("codebreaker.build.z80_asm", "build_flat"), writer=("codebreaker.source.zx_writer", "reconstruct"),
+    results=("A", "F", "BC", "DE", "HL", "IX", "IY"), toolchain="CodeBreaker's own assembler, or sjasmplus / pasmo")

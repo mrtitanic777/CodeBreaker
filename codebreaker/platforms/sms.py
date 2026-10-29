@@ -2,7 +2,7 @@
 image. Their programs were written in assembly, which is what comes back (source/sms_writer.py,
 WLA-DX syntax); the cartridge built from that source is compared with the original, and its
 functions are run in CodeBreaker's own Z80 (emulate/z80.py)."""
-from codebreaker.platforms import Platform
+from codebreaker.platforms import Cpu, machine
 
 
 def _recognise(path):
@@ -10,7 +10,10 @@ def _recognise(path):
     return sms.is_sms(path)
 
 
-PLATFORM = Platform(
-    name="sms", title="Master System / Game Gear", family="z80", container="cartridge image (.sms, .gg, .sg)",
-    cpu="z80:LE:16:default", source="asm",
-    lane="codebreaker.verify.lanes.sms", runner=("codebreaker.emulate.z80", "run"), recognise=_recognise)
+PLATFORM = machine(
+    "sms", "Master System / Game Gear", "z80", "cartridge image (.sms, .gg, .sg)",
+    Cpu("z80:LE:16:default", bits=8, endian="little", decoder="codebreaker.decompile.z80",
+        registers=("A", "F", "BC", "DE", "HL", "IX", "IY", "SP"), stack="SP"),
+    _recognise, reader=("codebreaker.formats.sms", "read"), runner=("codebreaker.emulate.z80", "run"),
+    assembler=("codebreaker.build.z80_asm", "build"), writer=("codebreaker.source.sms_writer", "reconstruct"),
+    results=("A", "F", "BC", "DE", "HL", "IX", "IY"), toolchain="CodeBreaker's own assembler, or WLA-DX")

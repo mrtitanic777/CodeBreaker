@@ -9,21 +9,26 @@ Nothing is run. A program that comes back identical IS the original, so each of 
 does what the original's does -- a stronger statement than any number of runs would give, and
 the verdict says that this is how it was reached. A program that does not come back identical
 leaves all of its functions unverified, with where it first differs.
+
+What writes and rebuilds the program, and its tools, are the platform's packager
+(codebreaker/platforms/dos.py); its emulator slot is empty.
 """
 import hashlib
 import os
 
+from codebreaker import platforms
+
 KIND = "dos"
+P = platforms.of(KIND)
 REV = 93
 SAME = "the program built from this source is the original, byte for byte"
 
 
 def profile(module_path=None):
-    from codebreaker.build import driver as builder
     tools = []
-    for name in ("wasm", "wlink"):
+    for name, exe in P.packager.tools().items():
         try:
-            st = os.stat(builder.tool(name))
+            st = os.stat(exe)
             tools.append("%s:%d:%d" % (name, st.st_size, int(st.st_mtime)))
         except OSError:
             tools.append("")
@@ -36,9 +41,8 @@ class Prepared(object):
 
 
 def prepare(module_path, work):
-    from codebreaker.source import dos_writer
     m = Prepared()
-    m.written = r = dos_writer.reconstruct(module_path, os.path.join(work, "source"))
+    m.written = r = P.packager.writer(module_path, os.path.join(work, "source"))
     text = ""
     if r.get("source") and os.path.isfile(r["source"]):
         with open(r["source"], encoding="latin1") as f:

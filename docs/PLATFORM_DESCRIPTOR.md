@@ -37,6 +37,34 @@ PLATFORM = Platform(
 )
 ```
 
+Since 2026-10-29 (ARCHITECTURE.md phase D) the description is the **one lane interface**: besides
+the fields above, every platform fills six slots -- `loader`, `cpu`, `convention`, `emulator`,
+`compiler`, `packager` -- each an object of platforms/__init__.py (Loader, Cpu, Convention,
+Emulator, Compiler, Packager) whose fields name, as `Ref("module", "function")`, what does that
+part of the work. The older keywords still fill their slots (`runner=` the emulator's run, `open=`
+the loader's readable, `container=` the loader's container, a `cpu=` string the Cpu), so
+`p.runner`, `p.container`, `p.readable(path)` and `p.cpu` mean what they did.
+
+```python
+PLATFORM = Platform(
+    name="ne", title="16-bit Windows", family="x86", source="c or asm",
+    lane="codebreaker.verify.lanes.win16", steps="codebreaker.engine.win16", recognise=...,
+    loader=Loader(container="NE", open=Ref("codebreaker.formats.ne", "NEFile"), parts=..., exports=...),
+    cpu=Cpu("x86:LE:16:Protected Mode:default", bits=16, decoder=("capstone", "x86", 16), registers=...),
+    convention=Convention(names=("__stdcall16far", ...), arguments=8, word=2, order="pascal",
+                          results=("AX", "DX:AX"), pops="either", preserved=("SI", "DI", "DS")),
+    emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.windows16", "probe"), call=...),
+    compiler=Compiler(language="c", toolchain="openwatcom", tool=Ref("codebreaker.build.watcom", "ow_tool", "wcc"),
+                      flags=Ref("codebreaker.build.functions", "CFLAGS16"), env=..., compile=..., library=...),
+    packager=Packager(link=Ref("codebreaker.build.module", "_build16"),
+                      functions=Ref("codebreaker.build.functions", "build16")))
+```
+
+The judge (verify/lanes/*) asks its platform (`P = platforms.of(KIND)`) for the emulator, the
+convention, the compiler's options and the packager; the engine's steps (engine/win16.py) ask it
+for the loader, the compiler and the packager; module.build asks for the link, the export call
+and the platform's steps. What each slot replaced is in ARCHITECTURE.md, "Built: phase D".
+
 `platforms.identify(path)` opens the file once and returns the one platform that recognises
 it (or says which near-misses there were). `reconstruct.kind_name`, `describe`'s language
 choice, `emulate.runner` and `corpus._readable` all ask it.
@@ -62,6 +90,9 @@ table, disassembler, assembler), `emulate/m6502.py`, `source/nes_writer.py` (ca6
 ld65 configuration, rebuilt by `build/m6502_asm.py` or by cc65), `verify/lanes/nes.py`. A cartridge
 goes through `decompile`, `measure` and `module` like any other module. Step 6 (homebrew with its
 authors' source as ground truth) waits on downloading those programs and the cc65 suite.
+
+2026-10-29: the six slots (above) are filled for all thirteen platforms and the lanes, the engine
+and module.build ask them; verdicts and images are unchanged (ARCHITECTURE.md, "Built: phase D").
 
 ## Order of work
 

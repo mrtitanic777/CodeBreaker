@@ -32,7 +32,10 @@ The facts, and what each is made from (a key is a function's address in the orig
                           module.build gives it)                              <- all of the above
 
 The stages are module.build's own, called as they are; the steps only say what each is made
-from. So a function's C changed (by hand: engine.put(db, "function.c", key, text)) makes again
+from. What is particular to 16-bit Windows they ask the platform for (codebreaker/platforms/win16.py):
+the segments of the file (its loader), the compiler, its options and environment (its compiler),
+and the link (its packager) -- the steps of another platform would be the same steps asking its
+slots. So a function's C changed (by hand: engine.put(db, "function.c", key, text)) makes again
 that function's source, object, flow check and gate verdict, and the link -- nothing else.
 
 The link is module._build16, with the compiler's work handed to it: while it runs, a function it
@@ -52,17 +55,19 @@ import os
 import shutil
 import threading
 
+from codebreaker import platforms
 from codebreaker.base import cache
-from codebreaker.build import functions, module, watcom
+from codebreaker.build import functions, module
 from codebreaker.engine import engine
 
 step = engine.step
 PLATFORM = "win16"
+P = platforms.named(PLATFORM)                           # its six slots: loader, cpu, ... packager
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))       # codebreaker/
-_real_compile, _real_never_set = functions._compile, functions.never_set
+_real_compile, _real_never_set = P.compiler.compile.target(), functions.never_set
 # (the options module._build16 compiles a function with, before its code segment's -nt=: the
 # medium model, the 8087, for size, the code class it lays out first)
-CFLAGS = [f for f in functions.CFLAGS16 if f != "-ms"] + ["-mm", "-fpi87", "-os", "-nc=MCODE"]
+CFLAGS = [f for f in P.compiler.options() if f != "-ms"] + ["-mm", "-fpi87", "-os", "-nc=MCODE"]
 SWITCHES = ("CB_ASM_ONLY", "CB_ASM_SEGMENTS", "CB_FORCE_C", "CB_ASM_KEEP_C", "CB_NO_GATE", "CB_NO_GUIDED")
 
 
@@ -77,16 +82,15 @@ def _sources(*patterns):
 
 
 def _wcc():
-    return watcom.ow_tool("wcc") or ""
+    return P.compiler.tool() or ""
 
 
 # --- the module -------------------------------------------------------------------------------
 @step("ne.segments", reads=("binary",), platform=PLATFORM)
 def ne_segments(ctx, key):
-    """The segment table: number, kind, where in the file, length, flags."""
-    from codebreaker.formats.ne import NEFile
+    """The segment table: number, kind, where in the file, length, flags (the loader's parts)."""
     return [{k: s[k] for k in ("idx", "kind", "file_off", "length", "flags", "minalloc")}
-            for s in NEFile(ctx.need("binary")["path"]).segments()]
+            for s in P.loader.parts(ctx.need("binary")["path"])]
 
 
 def _module_stamp():
@@ -217,7 +221,7 @@ def function_object(ctx, key):
         return None
     header = ctx.need("ne.header")
     d = _folder(ctx, src["seg"], header)
-    env = watcom.ow_env("ne")
+    env = P.compiler.env()
     out = {"flags": src["flags"], "text": src["text"]}
     why = _real_compile(_wcc(), src["flags"], env, d, src["stem"], src["text"])
     if why:
@@ -242,7 +246,7 @@ def function_never_set(ctx, key):
     d = _folder(ctx, src["seg"], ctx.need("ne.header"))
     stem = "n" + key.replace(":", "_")                       # (only its scratch file's name)
     return {"flags": CFLAGS, "text": src["text"],
-            "names": _real_never_set(_wcc(), CFLAGS, watcom.ow_env("ne"), d, stem, src["text"])}
+            "names": _real_never_set(_wcc(), CFLAGS, P.compiler.env(), d, stem, src["text"])}
 
 
 @step("function.contract", reads=("function.c", "ne.functions", "ne.lines"), platform=PLATFORM)
@@ -267,7 +271,7 @@ def _gate_stamp():
     from codebreaker.emulate import pcode
     from codebreaker.verify.lanes import win16 as lane
     ready = lane.concolic_ready()                            # (the gate's inputs found path by path)
-    return (cache.tool(_wcc()), functions.CFLAGS16, sizes, lane_common.guided_on(), lane_common.GUIDED_BUDGET,
+    return (cache.tool(_wcc()), P.compiler.options(), sizes, lane_common.guided_on(), lane_common.GUIDED_BUDGET,
             lane_common.MAX_GUIDED, os.environ.get("CB_NO_GUIDED", ""), ready, lane_common.PATH_BUDGET,
             lane_common.MAX_PATHS, pcode.stamp() if ready else "")
 
@@ -368,8 +372,8 @@ def _image_stamp():
     return (_sources("build/*.py", "analyze/origin.py", "verify/gate16/contract16.py", "decompile/c_text.py",
                      "decompile/describe.py", "formats/ne.py", "formats/omf.py", "formats/resources.py",
                      "formats/detect.py"),
-            [cache.tool(watcom.ow_tool(t) or "") for t in ("wcc", "wlink", "wasm")],
-            cache.tool(os.path.join(watcom.ow_lib("ne"), "clibm.lib")),
+            [cache.tool(t) for t in P.packager.tools().values()],
+            cache.tool(P.compiler.library()),
             [os.environ.get(n, "") for n in SWITCHES])
 
 
@@ -431,7 +435,7 @@ def ne_image(ctx, key):
         mm = copy.deepcopy(m)                                # (_build16 adds to its segments)
         with _serving(m.header, objects.values(), never.values()) as count:
             before = dict(count)
-            image = module._build16(b, path, mm, folder)
+            image = P.packager.link(b, path, mm, folder)
             served = {k: count[k] - before[k] for k in count}
         if getattr(b, "resident_overflow", None):            # (as module.build: again, and not gated)
             gated, gate_now = dict(b.gated, **b.resident_overflow), False
@@ -475,8 +479,7 @@ def ne_image(ctx, key):
 
 # --- module.build on the engine ---------------------------------------------------------------
 def handles(path):
-    from codebreaker.base import corpus
-    return corpus.lane(path) == "ne"
+    return platforms.identify(path) is P
 
 
 def build(module_name, outdir=None, call=True, log=print):
