@@ -172,7 +172,8 @@ def c_text16(path):
     return {"header": m.header, "texts": m.texts, "order": m.order,
             "imports": {k: list(v) for k, v in m.imports.items()},
             "near": sorted(m.near), "wide": sorted(m.wide), "novalue": sorted(m.novalue),
-            "failed": m.failed, "interrupts": plain(m.interrupts)}
+            "failed": m.failed, "interrupts": plain(m.interrupts),
+            "code_data": {str(k): v for k, v in sorted(m.code_data.items())}}
 
 
 def c_text32(path):
