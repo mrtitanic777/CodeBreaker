@@ -119,6 +119,8 @@ python -m codebreaker dos-source find.exe      the same for a real-mode program
 python -m codebreaker analyze shell32.dll      structures, classes, call graph, conventions
 python -m codebreaker invert olecli.dll        functions read back into the source their compiler was given
 python -m codebreaker vxd idiom vkd.vxd        a driver as the driver kit's macro source
+python -m codebreaker vxd boot --drivers vtd --vmm32   drivers rebuilt into a copy of an installed
+                                               Windows 95, booted in QEMU: desktop? (docs/VXD.md)
 python -m codebreaker ne-asm idiom KRNL386.EXE 1 0x4a4 0x4fa   16-bit assembly as cMacros source
 python -m codebreaker build16 tests/fixtures/lzexpand          a 16-bit DLL with the period tools
 python -m codebreaker flat-thunk lz32.dll --build DIR          a thunk DLL with the period tools

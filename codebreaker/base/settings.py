@@ -78,7 +78,8 @@ DEFAULTS = {
 }
 _PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
-          "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays")
+          "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays",
+          "win95_installed_hd")
 _loaded = None
 
 

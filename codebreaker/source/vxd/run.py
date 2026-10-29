@@ -17,6 +17,9 @@
     disassembly FILE              the driver's code as the reader sees it
     corpus FOLDER RESULTS         every driver of a folder through `masm`
     loadable-corpus FOLDER RESULTS   every driver of a folder through `from-source`
+    boot [--drivers N,...] [--vmm32] [--retail] [--bisect]
+                                  the drivers rebuilt and put into a copy of an installed
+                                  Windows 95 disk, booted in QEMU: does it reach the desktop?
 
 V2's own driver writer (`driver-source`) writes a driver as plain labelled assembly; this chain
 writes it in the kit's macro form, which is how the Windows 95 tree's drivers are kept.
@@ -34,6 +37,7 @@ TOOLS = {
     "disassembly": "codebreaker.source.vxd.disassembly",
     "corpus": "codebreaker.source.vxd.corpus",
     "loadable-corpus": "codebreaker.source.vxd.loadable_corpus",
+    "boot": "codebreaker.source.vxd.boot",
 }
 
 

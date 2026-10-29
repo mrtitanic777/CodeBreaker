@@ -221,12 +221,94 @@ def test_kit_macro_source_builds_back():
     assert r["vxd_len"] == r["oracle_len"] and r["obj1_diffs"] == 0 and r["page_map_identity"]
 
 
+def test_boot_disk_injection():
+    """`vxd boot` without the machine: what goes where on an installed disk, written and read back."""
+    import struct
+    import tempfile
+    from test_media import _blank_fat
+    from codebreaker.formats import media
+    from codebreaker.source.vxd import boot
+    vtd = _driver("vtd.vxd")
+    d = tempfile.mkdtemp()
+    disk = os.path.join(d, "hd.img")
+    _blank_fat(disk, 16)
+    bundle = bytearray(0x40 + 16 + 4 * 16)                 # an installed VMM32.VXD's directory: W3
+    bundle[0:2] = b"MZ"
+    struct.pack_into("<I", bundle, 0x3C, 0x40)
+    struct.pack_into("<2sHH", bundle, 0x40, b"W3", 0x400, 4)
+    for i, name in enumerate((b"VMM", b"VTD", b"VKD", b"INT13")):
+        struct.pack_into("<8sII", bundle, 0x50 + 16 * i, name.ljust(8), 0x1000 * (i + 1), 0x100)
+    msdos = b"[Paths]\r\nWinDir=C:\\WINDOWS\r\n\r\n[Options]\r\nBootMulti=1\r\nBootLog=0\r\n" + b";x" * 600
+    media.put(disk, {"MSDOS.SYS": msdos, "WINDOWS/SYSTEM/VMM32.VXD": bytes(bundle),
+                     "WINDOWS/SYSTEM/VMM32/INT13.VXD": b"the machine's own"})
+    files = boot.plan(disk, ["vtd"], vmm32=True, retail=True, log=lambda *a: None)
+    with open(vtd, "rb") as f:
+        assert files["WINDOWS/SYSTEM/VMM32/VTD.VXD"] == f.read()
+    assert set(files) == {"WINDOWS/SYSTEM/VMM32/VTD.VXD", "WINDOWS/SYSTEM/VMM32.VXD",   # VKD: from the corpus,
+                          "WINDOWS/SYSTEM/VMM32/VKD.VXD", "MSDOS.SYS"}, sorted(files)  # INT13: the disk's own kept
+    options = files["MSDOS.SYS"].decode("latin1").split("\r\n")
+    assert "BootLog=1" in options and "AutoScan=0" in options and "BootLog=0" not in options
+    assert options.index("BootLog=1") == options.index("[Options]") + 1
+    rebuilt = boot.plan(disk, ["vtd"], log=lambda *a: None)["WINDOWS/SYSTEM/VMM32/VTD.VXD"]
+    assert le.LEFile.from_buffer(rebuilt).ddb()["name"] == "VTD"
+    media.put(disk, files)
+    v, = media.volumes(disk)
+    on = {e.path.upper(): e for e in v.files()}
+    for path, data in files.items():
+        assert v.read(on[path]) == data, path
+    assert v.read(on["WINDOWS/SYSTEM/VMM32/INT13.VXD"]) == b"the machine's own"
+    assert boot.guest_path(_driver("vdhcp.386")) == "WINDOWS/SYSTEM/VDHCP.386"
+    assert boot.loaded("[0000123F] Loading Vxd = C:\\WINDOWS\\system\\VMM32\\VTD.VXD\n"
+                       "[00001241] LoadSuccess = C:\\WINDOWS\\system\\VMM32\\VTD.VXD\n"
+                       "[000012AD] SYSCRITINIT  = VTD     \n[000012AD] SYSCRITINITSUCCESS  = VTD     \n"
+                       "[000012B4] DEVICEINIT   = VTD     \n", "WINDOWS/SYSTEM/VMM32/VTD.VXD") \
+        == "LoadSuccess SYSCRITINITSUCCESS DEVICEINIT"
+
+
+def test_boot_screens():
+    """The boot check's reading of the screen: the desktop, a blue screen, a black one, text."""
+    from PIL import Image
+    from codebreaker.source.vxd import boot
+    desktop = Image.new("RGB", (640, 480), (87, 168, 168))
+    desktop.paste((192, 199, 200), (136, 200, 512, 320))            # a message box on it
+    assert boot.classify(desktop) == "desktop"
+    wallpaper = Image.new("RGB", (640, 480), (0, 0, 120))
+    wallpaper.paste((192, 199, 200), (0, 452, 640, 480))            # the taskbar
+    assert boot.classify(wallpaper) == "desktop"
+    assert boot.classify(Image.new("RGB", (720, 400), (0, 0, 168))) == "blue"
+    assert boot.classify(Image.new("RGB", (640, 480), (0, 0, 0))) == "black"
+    text = Image.new("RGB", (720, 400), (0, 0, 0))
+    text.paste((168, 168, 168), (40, 100, 680, 140))
+    assert boot.classify(text) == "text"
+
+
+def test_boot_bisect():
+    """--bisect: halves of a failing set, down to the drivers that fail alone (or together)."""
+    from codebreaker.source.vxd import boot
+    units = ["drvspacx", "dosmgr", "ifsmgr", "shell", "vtd", "vxdldr", "VMM32"]
+    tried = []
+
+    def trial(bad):
+        def go(part, tag):
+            tried.append(tag)
+            return "FAIL(text screen)" if bad(part) else "PASS"
+        return go
+    assert boot.bisect(units, trial(lambda part: "vtd" in part or "dosmgr" in part), "t", log=lambda *a: None) \
+        == ["dosmgr", "vtd"]
+    assert boot.bisect(units, trial(lambda part: "shell" in part and "vtd" in part), "t", log=lambda *a: None) \
+        == ["shell", "vtd"]                                # (a pair that fails only together)
+    assert boot.bisect(units, trial(lambda part: "dosmgr" in part and "vtd" in part), "t", log=lambda *a: None) \
+        == units                                           # (split by the first halving)
+    assert tried[:3] == ["t_b0", "t_b00", "t_b01"] and "t_b10" in tried     # (a half's halves at once)
+
+
 def main():
     for fn in (test_table_names_services, test_table_names_are_identifiers, test_table_names_a_real_driver,
                test_reader_descriptor_and_entries, test_reader_fixups_encode_back, test_writer_round_trip,
                test_container, test_judge_agrees_with_itself_and_catches_a_break,
                test_run_records_service_calls, test_build_from_source, test_source_written_from_the_image_builds_back,
-               test_kit_macro_source, test_kit_macro_source_builds_back):
+               test_kit_macro_source, test_kit_macro_source_builds_back, test_boot_disk_injection,
+               test_boot_screens, test_boot_bisect):
         check(fn)
     for name, state, why in RESULTS:
         print("%-5s %s%s" % (state, name, ("  -- " + why) if why else ""))

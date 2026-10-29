@@ -280,13 +280,88 @@ def test_disc_image_reports_name_clashes():
     raise AssertionError("two files with one 8.3 name were written")
 
 
+# --- writing into a FAT volume ---------------------------------------------------------------
+def _blank_fat(path, bits):
+    """An empty FAT volume made by hand: a FAT16 one inside a partition table (as an installed
+    hard disk has it, the partition at sector 63) or a bare FAT32 one."""
+    if bits == 16:
+        first, spc, total, roots, spf = 63, 4, 32768, 512, 33
+    else:
+        first, spc, total, roots, spf = 0, 1, 70000, 0, 548
+    b = bytearray(512)
+    b[0:3], b[3:11] = b"\xEB\x3C\x90", b"MSWIN4.1"
+    struct.pack_into("<HBHBHHBHHHII", b, 11, 512, spc, 1 if bits == 16 else 32, 2, roots, 0, 0xF8,
+                     spf if bits == 16 else 0, 63, 16, first, total)
+    if bits == 32:
+        struct.pack_into("<IHHI", b, 36, spf, 0, 0, 2)                # root folder at cluster 2
+        b[66] = 0x29
+    else:
+        b[38] = 0x29
+    b[510:512] = b"\x55\xAA"
+    reserved = struct.unpack_from("<H", b, 14)[0]
+    fat = bytearray(spf * 512)
+    struct.pack_into("<HH" if bits == 16 else "<III", fat, 0, *((0xFFF8, 0xFFFF) if bits == 16 else (0x0FFFFFF8, 0x0FFFFFFF, 0x0FFFFFFF)))
+    with open(path, "wb") as f:
+        f.truncate((first + total) * 512)
+        if first:
+            mbr = bytearray(512)
+            mbr[446 + 4] = 0x06
+            struct.pack_into("<II", mbr, 446 + 8, first, total)
+            mbr[510:512] = b"\x55\xAA"
+            f.write(mbr)
+        f.seek(first * 512)
+        f.write(b)
+        for i in range(2):
+            f.seek((first + reserved + i * spf) * 512)
+            f.write(fat)
+
+
+def _put_round_trip(bits):
+    d = tempfile.mkdtemp()
+    img = os.path.join(d, "hd.img")
+    _blank_fat(img, bits)
+    big = bytes(random.Random(11).getrandbits(8) for _ in range(70000))
+    done = media.put(img, {"WINDOWS/SYSTEM/VMM32/VTD.VXD": big, "msdos.sys": b"[Options]\r\n",
+                           "WINDOWS/SYSTEM/empty.dat": b""})
+    assert [h for _p, h in done] == ["added"] * 3, done
+    for i in range(40):                                   # more than a cluster of entries: the folder grows
+        media.put(img, {"WINDOWS/SYSTEM/VMM32/F%02d.VXD" % i: b"%d" % i * 300})
+    assert media.put(img, {"WINDOWS/SYSTEM/VMM32/VTD.VXD": b"short now"}) == [("WINDOWS/SYSTEM/VMM32/VTD.VXD", "replaced")]
+    media.put(img, {"MSDOS.SYS": big[:5000]})
+    v, = media.volumes(img)
+    listing = {e.path.upper(): e for e in v.files()}
+    assert v.read(listing["WINDOWS/SYSTEM/VMM32/VTD.VXD"]) == b"short now"
+    assert v.read(listing["MSDOS.SYS"]) == big[:5000]
+    assert listing["WINDOWS/SYSTEM/EMPTY.DAT"].size == 0 and listing["WINDOWS/SYSTEM/VMM32"].is_dir
+    for i in range(40):
+        assert v.read(listing["WINDOWS/SYSTEM/VMM32/F%02d.VXD" % i]) == b"%d" % i * 300
+    used = sum(1 for c in range(2, v.clusters + 2) if v._next(c))     # the replaced chains were let go
+    step = v.spc * v.bps
+    want = sum((e.size + step - 1) // step for e in listing.values() if not e.is_dir)
+    want += sum(len(v._chain(e.start)) // step for e in listing.values() if e.is_dir) + (bits == 32)
+    assert used == want, (used, want)
+    try:
+        media.put(img, {"WINDOWS/SYSTEM/a long name.vxd": b"x"})
+    except ValueError:
+        return
+    raise AssertionError("a name that is not 8.3 was written")
+
+
+def test_fat16_put_in_partition():
+    _put_round_trip(16)
+
+
+def test_fat32_put():
+    _put_round_trip(32)
+
+
 def main():
     for fn in (test_cabinet_round_trip_stored, test_cabinet_round_trip_mszip,
                test_cabinet_accepted_by_windows_expand,
                test_cabinet_rejects_what_it_cannot_do, test_checksum_matches_known_block,
                test_real_mszip_cabinet, test_real_quantum_cabinet,
                test_disc_image_round_trip, test_disc_image_bootable,
-               test_disc_image_reports_name_clashes):
+               test_disc_image_reports_name_clashes, test_fat16_put_in_partition, test_fat32_put):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

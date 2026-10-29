@@ -23,6 +23,8 @@
   "host_cxx": "<optional: full path to the C++ compiler that judges transpiled Java (g++.exe); default g++ on PATH>",
   "msbuild": "<optional: MSBuild.exe, to build a transpiled game's Visual Studio project>",
   "java_overlays": "<optional: folder of per-project hand fixes for transpiled Java; default state/java/overlays>",
+  "qemu": "<optional: qemu-system-i386.exe, for the Windows 95 boot checks>",
+  "win95_installed_hd": "<optional: raw image of a disk with Windows 95 installed, for `vxd boot` (read only)>",
   "workers": 0,
   "min_free_gb": 6
 }
