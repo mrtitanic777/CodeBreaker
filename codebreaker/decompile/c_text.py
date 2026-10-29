@@ -861,7 +861,8 @@ def _code_bytes(image, starts):
     from its start, every branch it can take. -> bytearray, 1 at a byte of code. (A place only a
     jump table reaches is taken for data -- its bytes copied as data is all that comes of it.)"""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    from codebreaker.decompile.describe import decoder16
+    md = decoder16()
     code, seen = bytearray(len(image)), set()
     todo = [s for s in starts if 0 <= s < len(image)]
     while todo:
@@ -1452,7 +1453,8 @@ def _far_argument_widths(code, start, end, far_fn):
     """{a<n>: bytes} -- how wide the original reads through the far pointer it takes as
     argument n: `les reg, [bp+N]`, then the first `es:[reg...]` through it."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    from codebreaker.decompile.describe import decoder16
+    md = decoder16()
     first = 6 if far_fn else 4                             # (the first argument above the return address)
     out, held = {}, {}
     for ins in md.disasm(bytes(code[start:end]), start):
@@ -1494,7 +1496,8 @@ def _far_loads(code, start, end):
     """The offsets from BP of the argument words a function loads as far pointers: `les bx,
     [bp+6]` takes the word at +6 as an offset and the one above it as its segment."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    from codebreaker.decompile.describe import decoder16
+    md = decoder16()
     found = set()
     for _a, _n, mnemonic, ops in md.disasm_lite(bytes(code[start:end]), start):
         if mnemonic in ("les", "lds"):
@@ -1719,7 +1722,8 @@ def _loads_dgroup(code, off, dgroup):
     """Whether a function's prologue loads DS with its own data segment: `mov ax, DGROUP`
     then `mov ds, ax`, among its first instructions (before or after `enter`/`push bp`, saves)."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    from codebreaker.decompile.describe import decoder16
+    md = decoder16()
     loaded = False
     for i in md.disasm(bytes(code[off:off + 24]), off):
         if i.mnemonic == "mov" and i.op_str == "ax, 0x%x" % dgroup:
@@ -1905,6 +1909,91 @@ def _identifiers(text):
     return [src.at(n) for n in src.find("identifier")]
 
 
+def _one16(context, item):
+    """One function of _compilable16 made compilable: its text alone, apart from the module's (a
+    worker process each share of them, jobs/pool.py). -> (address, text, flags, interrupts,
+    selector structures, shared selector fields, structure notes, global facts) -- the caller
+    gathers them in address order, as when they were made one after another."""
+    by_selector, dgroup, images = context
+    va, name, raw, distance, model, seg, off, end, end_of, callee_pops = item
+    code = images.get(seg)
+    flags, interrupts, decls, shared, facts = set(), set(), [], {}, []
+    notes = [ln for ln in raw.split("\n") if ln.startswith("/*@S ")]
+    moved = moved_to_l2(raw)
+    head0 = raw.split("{", 1)[0]
+    named = ctree.Source(raw).function_name()
+    if distance and "16near" not in head0 and "16far" not in head0 and named is not None and \
+            named.start_byte < len(head0.encode("utf-8")) and named.text.decode("utf-8") == name:
+        # its whole model, convention too: the decompiler leaves the default one
+        # (__stdcall16near) out, and a function with no convention named is compiled with
+        # OpenWatcom's own -- arguments in registers, where its callers push them
+        words = head0.replace("(", " ").replace(")", " ").replace("*", " ").split()
+        marker = model if not set(words) & {"__stdcall", "__cdecl", "__pascal"} else None
+        at = named.start_byte
+        raw = (raw.encode("utf-8")[:at] + ("%s " % (marker or "__" + distance)).encode("utf-8") +
+               raw.encode("utf-8")[at:]).decode("utf-8")
+    far = set()
+    for mm in _FACT.finditer(raw):
+        if mm.group(1) == "P" and mm.group(3) == "4":
+            far.add(mm.group(2))
+        elif mm.group(1) == "G":
+            facts.append((mm.group(2), mm.group(3), mm.group(4)))
+    text = _without_notes(_FACT.sub("", raw))            # notes the decompiler put before the function
+    widths = _far_argument_widths(code, off, end,
+                                  "far" in text.split("(", 1)[0]) if code is not None else {}
+    # (_far and _near_calls are the back end's for C written from L2: docs/IR_UNIFICATION.md step 3)
+    far_done = (text.strip() if "far_from_stack" in moved else _far_from_stack(text.strip(), far)) \
+        if "far" in moved else _far(text.strip(), far)
+    text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(_frame_through_ss(far_done)), widths)))
+    text = _global_pointer_steps(text if "near_calls" in moved else _near_calls(text))
+    if code is not None:
+        text = _far_arguments(text, _far_loads(code, off, end), "far" not in text.split("{", 1)[0])
+    if "return" in far:                                  # the function returns a far pointer
+        text = _far_result(text, name)
+        flags.add("wide")
+    head = text.split("{", 1)[0]
+    if head.split()[0] == "void":
+        # It sets no result -- but its callers may still read AX, and the decompiler shows
+        # them doing so. Declared as returning a word, with no `return`, it leaves AX as the
+        # original does: whatever was last there.
+        flags.add("novalue")
+        text = "xunknown2" + text[4:]
+        head = text.split("{", 1)[0]
+    byte_result = _byte_result(text)
+    if byte_result:
+        # A result the decompiler sized as a byte is returned in AX all the same: Windows'
+        # BOOL is an int, and callers test the whole of AX (a byte would leave AH as it was)
+        text = ("int2 " if byte_result[0] in ("char", "int1") else "uint2 ") + text[byte_result[1]:]
+        head = text.split("{", 1)[0]
+    if not ("__stdcall16far" in head or "__cdecl16far" in head or _far_before_name(text, name)):
+        flags.add("near")                                 # near is the default and is not printed
+    elif code is not None and bytes(code[off:off + 3]) in (b"\x8c\xd8\x90", b"\x1e\x58\x90"):
+        # The original starts `mov ax,ds; nop` -- the prologue Windows rewrites, for an export,
+        # to load the module's own data segment: the source marked it _export, and so does
+        # this (the compiler then writes that prologue: build/functions.py)
+        text = _before_name(text, name, "__export ")
+        flags.add("exported_prologue")
+    if code is not None and dgroup is not None and _loads_dgroup(code, off, dgroup):
+        # it loads its own data segment, whoever calls it -- `mov ax, DGROUP` / `mov ds, ax`,
+        # first or after its frame is set up (the source's _loadds): so does this
+        text = _before_name(text, name, "__loadds ")
+    if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
+        flags.add("wide")
+    text = _one_name_for_globals(text)                  # (a global the decompiler named twice)
+    if by_selector:
+        text = _selector_structs(text, name, decls, shared)
+        text = _struct_gaps(text, _pointer_distances(text))
+    text = _own_segment_calls(text, seg)
+    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(_far_casts(_far_addresses(_interrupts(_open_arguments(text), interrupts))))))))))
+    if code is not None:
+        out = _stack_segment_stores(out, code, off, end_of)
+    if callee_pops:
+        # its calls through pointers remove nothing themselves: the callee does (the arguments
+        # are listed in stack order, so __stdcall lays them out as the original pushed them)
+        out = _callee_pops(out)
+    return va, out, flags, interrupts, decls, shared, notes, facts
+
+
 def _compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
@@ -1977,86 +2066,37 @@ def _compilable16(module_path, outdir=None):
                 distance[parts[2]] = "far" if parts[4].endswith("far") else "near" if parts[4].endswith("near") else None
                 if parts[4].startswith(("__stdcall16", "__cdecl16")):
                     model_of[parts[2]] = parts[4]
+    # each function on its own (_one16), shared among worker processes: the module's texts
+    # are thousands of tree passes, and none of them looks at another function's text
+    from codebreaker.jobs import pool
+    dgroup = describe.selector(d.data_segment) if d.data_segment else None
+    items = []
     for va in sorted(by_va):
         name = by_va[va]
-        raw = texts[name]
-        moved = moved_to_l2(raw)
-        head0 = raw.split("{", 1)[0]
-        named = ctree.Source(raw).function_name()
-        if distance.get(name) and "16near" not in head0 and "16far" not in head0 and named is not None and \
-                named.start_byte < len(head0.encode("utf-8")) and named.text.decode("utf-8") == name:
-            # its whole model, convention too: the decompiler leaves the default one
-            # (__stdcall16near) out, and a function with no convention named is compiled with
-            # OpenWatcom's own -- arguments in registers, where its callers push them
-            words = head0.replace("(", " ").replace(")", " ").replace("*", " ").split()
-            marker = model_of.get(name) if not set(words) & {"__stdcall", "__cdecl", "__pascal"} else None
-            at = named.start_byte
-            raw = (raw.encode("utf-8")[:at] + ("%s " % (marker or "__" + distance[name])).encode("utf-8") +
-                   raw.encode("utf-8")[at:]).decode("utf-8")
-        far = set()
-        struct_notes += [ln for ln in raw.split("\n") if ln.startswith("/*@S ")]
-        for mm in _FACT.finditer(raw):
-            if mm.group(1) == "P" and mm.group(3) == "4":
-                far.add(mm.group(2))
-            elif mm.group(1) == "G":
-                a = int(mm.group(2), 16)
-                sizes[a] = max(sizes.get(a, 0), int(mm.group(3))) if int(mm.group(3)) <= 4 else sizes.get(a, 2)
-                if mm.group(4) and int(mm.group(4)) in (1, 2, 4):
-                    elems[a] = int(mm.group(4))
-        text = _without_notes(_FACT.sub("", raw))            # notes the decompiler put before the function
         seg, off = d.where[va]
-        widths = _far_argument_widths(d.images[seg], off, ends.get(va, off),
-                                      "far" in text.split("(", 1)[0]) if seg in d.images else {}
-        # (_far and _near_calls are the back end's for C written from L2: docs/IR_UNIFICATION.md step 3)
-        far_done = (text.strip() if "far_from_stack" in moved else _far_from_stack(text.strip(), far)) \
-            if "far" in moved else _far(text.strip(), far)
-        text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(_frame_through_ss(far_done)), widths)))
-        text = _global_pointer_steps(text if "near_calls" in moved else _near_calls(text))
-        if seg in d.images:
-            text = _far_arguments(text, _far_loads(d.images[seg], off, ends.get(va, off)), "far" not in text.split("{", 1)[0])
-        if "return" in far:                                  # the function returns a far pointer
-            text = _far_result(text, name)
-            m.wide.add(name)
-        head = text.split("{", 1)[0]
-        if head.split()[0] == "void":
-            # It sets no result -- but its callers may still read AX, and the decompiler shows
-            # them doing so. Declared as returning a word, with no `return`, it leaves AX as the
-            # original does: whatever was last there.
-            m.novalue.add(name)
-            text = "xunknown2" + text[4:]
-            head = text.split("{", 1)[0]
-        byte_result = _byte_result(text)
-        if byte_result:
-            # A result the decompiler sized as a byte is returned in AX all the same: Windows'
-            # BOOL is an int, and callers test the whole of AX (a byte would leave AH as it was)
-            text = ("int2 " if byte_result[0] in ("char", "int1") else "uint2 ") + text[byte_result[1]:]
-            head = text.split("{", 1)[0]
-        if not ("__stdcall16far" in head or "__cdecl16far" in head or _far_before_name(text, name)):
-            m.near.add(name)                                 # near is the default and is not printed
-        elif seg in d.images and bytes(d.images[seg][off:off + 3]) in (b"\x8c\xd8\x90", b"\x1e\x58\x90"):
-            # The original starts `mov ax,ds; nop` -- the prologue Windows rewrites, for an export,
-            # to load the module's own data segment: the source marked it _export, and so does
-            # this (the compiler then writes that prologue: build/functions.py)
-            text = _before_name(text, name, "__export ")
-            m.exported_prologue.add(name)
-        if seg in d.images and d.data_segment and _loads_dgroup(d.images[seg], off, describe.selector(d.data_segment)):
-            # it loads its own data segment, whoever calls it -- `mov ax, DGROUP` / `mov ds, ax`,
-            # first or after its frame is set up (the source's _loadds): so does this
-            text = _before_name(text, name, "__loadds ")
-        if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
-            m.wide.add(name)
-        text = _one_name_for_globals(text)                  # (a global the decompiler named twice)
-        if by_selector:
-            text = _selector_structs(text, name, selector_structs, shared_selectors)
-            text = _struct_gaps(text, _pointer_distances(text))
-        text = _own_segment_calls(text, seg)
-        m.texts[name] = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(_far_casts(_far_addresses(_interrupts(_open_arguments(text), m.interrupts))))))))))
-        if seg in d.images:
-            m.texts[name] = _stack_segment_stores(m.texts[name], d.images[seg], off, _end_of(d, seg, off))
-        if callee_pops.get(va):
-            # its calls through pointers remove nothing themselves: the callee does (the arguments
-            # are listed in stack order, so __stdcall lays them out as the original pushed them)
-            m.texts[name] = _callee_pops(m.texts[name])
+        items.append((va, name, texts[name], distance.get(name), model_of.get(name), seg, off,
+                      ends.get(va, off), _end_of(d, seg, off) if seg in d.images else None, callee_pops.get(va)))
+    context = (by_selector, dgroup, dict(d.images))
+    made = pool.run(_one16, items, context=context)
+    for item in items:                                       # (a worker that could not start or died
+        if made.get(item[0]) is None:                        # -- a calling script with no __main__
+            made[item[0]] = _one16(context, item)            # guard -- is done here, as before)
+    for va in sorted(by_va):
+        name = by_va[va]
+        _va, text, flags, interrupts, decls, shared, notes, facts = made[va]
+        struct_notes += notes
+        for addr, size, elem in facts:
+            a = int(addr, 16)
+            sizes[a] = max(sizes.get(a, 0), int(size)) if int(size) <= 4 else sizes.get(a, 2)
+            if elem and int(elem) in (1, 2, 4):
+                elems[a] = int(elem)
+        for flag in flags:
+            getattr(m, flag).add(name)
+        m.interrupts |= interrupts
+        selector_structs += decls
+        for k, fields in shared.items():
+            shared_selectors.setdefault(k, {}).update(fields)
+        m.texts[name] = text
         m.order.append(name)
         m.by_va[va] = name
         m.where[va] = d.where.get(va)
@@ -2743,7 +2783,8 @@ def _stack_segment_stores(text, code, start, end):
     where the buffer holding that place has it: SS written there just before the first call the
     buffer's address is passed to."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    from codebreaker.decompile.describe import decoder16
+    md = decoder16()
     places = []
     for ins in md.disasm(bytes(code[start:end]), start):
         mm = re.fullmatch(r"word ptr \[bp - (0x[0-9a-f]+|\d+)\], ss", ins.op_str) if ins.mnemonic == "mov" else None

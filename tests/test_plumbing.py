@@ -177,6 +177,76 @@ def test_throttle_is_safe():
     assert parallel.throttle(cores=None, below_normal=False) in (True, False)
 
 
+def test_workers_scale_and_low_load_caps():
+    """workers(): every processor but two unless set; low_load holds it (and a set number) to four"""
+    keep = {k: os.environ.pop(k, None) for k in ("CB_JOBS", "CB_WORKERS", "CB_LOW_LOAD")}
+    try:
+        os.environ["CB_WORKERS"] = "0"                       # (not set: whatever settings.json says)
+        os.environ["CB_LOW_LOAD"] = "0"
+        assert parallel.workers() == max(1, parallel.cpu_count() - 2)
+        os.environ["CB_JOBS"] = "9"
+        assert parallel.workers() == 9
+        os.environ["CB_LOW_LOAD"] = "1"
+        assert parallel.workers() == min(9, parallel.LOW_LOAD)
+        del os.environ["CB_JOBS"]
+        assert parallel.workers() == min(max(1, parallel.cpu_count() - 2), parallel.LOW_LOAD)
+    finally:
+        for k, v in keep.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_processes_safe_reads_the_guard():
+    """pool.run starts worker processes only from where a worker would not run the caller's
+    script again: a script with no __main__ guard is done in the one process"""
+    import types
+    was = sys.modules["__main__"]
+    folder = tempfile.mkdtemp(prefix="cbguard_")
+    try:
+        for body, safe in (("print(1)\n", False), ("if __name__ == '__main__':\n    print(1)\n", True)):
+            p = os.path.join(folder, "s.py")
+            with open(p, "w") as f:
+                f.write(body)
+            m = types.ModuleType("__main__")
+            m.__file__, m.__spec__ = p, None
+            sys.modules["__main__"] = m
+            assert pool.processes_safe() is safe, body
+        m = types.ModuleType("__main__")                     # (python -c, or interactive: no file)
+        m.__spec__ = None
+        sys.modules["__main__"] = m
+        assert pool.processes_safe()
+    finally:
+        sys.modules["__main__"] = was
+        import shutil
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def test_fast_unicorn_reads_are_the_same():
+    """emulate/fast_uc.py: the registers and memory read as Unicorn's own calls read them"""
+    try:
+        import unicorn as U
+        from unicorn import x86_const as X
+    except ImportError:
+        raise Skip("unicorn not installed")
+    from codebreaker.emulate import fast_uc
+    plain, fast = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32), fast_uc.speed_up(U.Uc(U.UC_ARCH_X86, U.UC_MODE_32))
+    for uc in (plain, fast):
+        uc.mem_map(0x1000, 0x1000)
+        uc.mem_write(0x1000, bytes(range(256)) * 16)
+        uc.reg_write(X.UC_X86_REG_EAX, 0x12345678)
+        uc.reg_write(X.UC_X86_REG_ESI, 0xFEDC)
+    for r in (X.UC_X86_REG_EAX, X.UC_X86_REG_AX, X.UC_X86_REG_AH, X.UC_X86_REG_ESI, X.UC_X86_REG_CS,
+              X.UC_X86_REG_EFLAGS, X.UC_X86_REG_GDTR):
+        assert plain.reg_read(r) == fast.reg_read(r), r
+    assert plain.mem_read(0x1010, 9) == fast.mem_read(0x1010, 9) and type(fast.mem_read(0x1000, 1)) is bytearray
+    try:
+        fast.mem_read(0x9000, 4)
+        assert False, "an unmapped read went through"
+    except U.UcError:
+        pass
+
+
 # --- state that looks after its own size -----------------------------------------------------
 _TEST_REV = 1                   # the generation of the kind "test-gen" (cache.GENERATIONS, below)
 
@@ -322,7 +392,8 @@ def main():
                test_corpus_rank_prefers_installed_copy, test_corpus_retail, test_corpus_modules,
                test_format_detection,
                test_isolated_separates_failures_and_resumes, test_threads_keep_order_and_raise,
-               test_throttle_is_safe, test_cache_drops_older_generations,
+               test_throttle_is_safe, test_workers_scale_and_low_load_caps, test_processes_safe_reads_the_guard,
+               test_fast_unicorn_reads_are_the_same, test_cache_drops_older_generations,
                test_cache_holds_its_cap_least_recently_used_first, test_fingerprints_are_kept_in_the_cache,
                test_run_folders_are_deleted, test_tidy_state_finds_the_stale):
         check(fn)

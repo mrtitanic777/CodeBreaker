@@ -32,7 +32,8 @@ def _chunk(work, context, items, key, mark):
     """One worker's share. -> {key: result}."""
     try:
         from codebreaker.base import parallel
-        parallel.throttle(cores=int(os.environ.get("CB_CORES", "6")), below_normal=True)
+        # (on as many cores as the machine's budget: the workers are no more than that)
+        parallel.throttle(cores=int(os.environ.get("CB_CORES") or 0) or parallel.workers(), below_normal=True)
     except Exception:
         pass
     note = os.path.join(mark, "%d.cur" % os.getpid()) if mark else None
@@ -52,6 +53,24 @@ def _first(item):
     return item[0] if isinstance(item, (tuple, list)) else item
 
 
+def processes_safe():
+    """Can worker processes be started from here? A worker process on Windows starts by running
+    the calling script again, as __mp_main__: a script with no `if __name__ == "__main__":`
+    guard would run whatever it does -- a whole module build -- once in every worker before
+    failing. Safe: run as `python -m ...`, `python -c ...` or interactively, or a script that
+    has the guard."""
+    import sys
+    main = sys.modules.get("__main__")
+    if main is None or getattr(getattr(main, "__spec__", None), "name", None) or not getattr(main, "__file__", None):
+        return True
+    try:
+        with open(main.__file__, encoding="utf-8", errors="replace") as f:
+            import re
+            return bool(re.search(r"""__name__\s*==\s*['"]__main__['"]""", f.read()))
+    except OSError:
+        return False
+
+
 def default_jobs():
     from codebreaker.base import parallel
     return parallel.workers()
@@ -65,7 +84,7 @@ def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24
     items = list(items)
     jobs = jobs or default_jobs()
     crashed = crashed or (lambda item: None)
-    if jobs <= 1 or len(items) < small:
+    if jobs <= 1 or len(items) < small or not processes_safe():
         return _chunk(work, context, items, key, None)
     from concurrent.futures import ProcessPoolExecutor
     size = size or max(8, -(-len(items) // (jobs * 6)))

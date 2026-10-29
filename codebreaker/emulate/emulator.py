@@ -383,8 +383,17 @@ def _memory_hooks(U, rec, mapped, reads=True, static=(), quiet=None, saved=None,
 def _pattern(base):
     """What a page nothing set holds, when a run asks for one filled: every byte made from its
     own address, the same on any build. Zeros hid a C function reading the wrong field of a
-    caller's structure -- zero there, zero where it should have read, the same either way."""
-    return bytes(((base + i) * 0x9E3779B1 >> 13) & 0xFF for i in range(_PAGE))
+    caller's structure -- zero there, zero where it should have read, the same either way.
+    (Made once per page and kept: a gate run maps the same pages thousands of times.)"""
+    got = _PATTERNS.get(base)
+    if got is None:
+        if len(_PATTERNS) > 4096:
+            _PATTERNS.clear()
+        got = _PATTERNS[base] = bytes(((base + i) * 0x9E3779B1 >> 13) & 0xFF for i in range(_PAGE))
+    return got
+
+
+_PATTERNS = {}                       # page -> _pattern(page)
 
 
 # Branch log (trace_function(branches=True)): for each conditional jump of the function itself,

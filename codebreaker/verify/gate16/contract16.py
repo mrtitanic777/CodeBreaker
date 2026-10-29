@@ -29,9 +29,11 @@ _MD = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
 _MD.detail = True                                       # (what an instruction reads and writes)
 
 
-def _described(path, where):
-    """(description, {address: name}, {address: bytes it removes -- None: not known})"""
-    d = describe.describe16(path, where)
+def _described(path, where, keep=False):
+    """(description, {address: name}, {address: bytes it removes -- None: not known}).
+    `keep`: the description is kept (base/cache.py) by the module's bytes and the source of
+    what describes it -- the original's, the same for every build of it, was half the check."""
+    d = _description(path, where) if keep else describe.describe16(path, where)
     names, pops = {}, {}
     with open(os.path.join(where, "description.txt"), encoding="utf-8") as f:
         for line in f:
@@ -41,6 +43,36 @@ def _described(path, where):
             if p[0] in ("X", "F") and len(p) > 3 and re.fullmatch(r"-?\d+", p[3]):
                 pops[int(p[1], 16)] = int(p[3]) if int(p[3]) >= 0 else None
     return d, names, pops
+
+
+def _description(path, where):
+    """describe.describe16(path, where), kept: by the module's bytes, the source of the
+    describer and of what it reads of Windows' functions (decompile/, symbols/), and the table
+    of what each Windows call removes -- as the gate's tables are kept (isolated16._tables)."""
+    import glob
+    import pickle
+    from codebreaker.base import cache
+    from codebreaker.symbols import api_arguments
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # codebreaker/
+    sources = sorted(glob.glob(os.path.join(root, "decompile", "*.py")) + glob.glob(os.path.join(root, "symbols", "*.py")))
+    try:
+        sizes = open(api_arguments._cache16_path(), "rb").read()
+    except OSError:
+        sizes = b""
+    with open(path, "rb") as f:
+        k = cache.key(f.read(), sizes, *[open(p, "rb").read() for p in sources])
+    had = cache.get("contract16_described", k)
+    if had is not None:
+        d, text = pickle.loads(had)
+        os.makedirs(where, exist_ok=True)
+        with open(os.path.join(where, "description.txt"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        d.path = os.path.join(where, "description.txt")
+        return d
+    d = describe.describe16(path, where)
+    with open(os.path.join(where, "description.txt"), encoding="utf-8", newline="") as f:
+        cache.put("contract16_described", k, pickle.dumps((d, f.read())))
+    return d
 
 
 def _removes(d, pops):
@@ -263,7 +295,7 @@ def mismatches(original, folder, image, names):
     original's calls to the same callee (map file and image of the build in `folder`)."""
     tmp = tempfile.mkdtemp(prefix="contract16_")
     try:
-        do, xo, po = _described(original, os.path.join(tmp, "o"))
+        do, xo, po = _described(original, os.path.join(tmp, "o"), keep=True)
         du, xu, pu = _described(image, os.path.join(tmp, "u"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

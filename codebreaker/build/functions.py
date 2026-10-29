@@ -179,20 +179,40 @@ def _note_objects(outdir, stems, dropped, gone=()):
 def compile_all(cc, cflags, env, header, texts, order, outdir, jobs=None, more=None):
     """Compile every function. -> ({name: object file stem}, {name: why it was rejected}).
     `more` gives switches of a function's own: {name: [switch, ...]}."""
+    return compile_groups(cc, env, header, texts, [(cflags, order, outdir)], jobs=jobs, more=more)[0]
+
+
+def compile_groups(cc, env, header, texts, groups, jobs=None, more=None):
+    """compile_all for several folders at once -- `groups` [(cflags, order, outdir)], a 16-bit
+    module's code segments each into a folder of its own -- every function of every folder in
+    the one pool, so that a segment of a few functions does not leave the compilers idle while
+    it ends. -> [({name: object file stem}, {name: why it was rejected})], one for each group."""
     more = more or {}
     from codebreaker.base import cache, parallel
     jobs = jobs or parallel.workers()
-    os.makedirs(outdir, exist_ok=True)
-    _HEADER[outdir] = cache.key(header)
-    with open(os.path.join(outdir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
-        f.write(header)
-    stems = {n: "f%04d" % i for i, n in enumerate(order)}
-    errors = pool.threads(lambda n: _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], texts[n]), order, jobs=jobs)
-    dropped = {n: e for n, e in zip(order, errors) if e}
-    for n in list(dropped):                                  # callers of a rejected function still link
-        if _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], stand_in(texts[n])):
-            stems.pop(n)                                     # not even a stand-in: left unresolved
-    return stems, dropped
+    work = []
+    for cflags, order, outdir in groups:
+        os.makedirs(outdir, exist_ok=True)
+        _HEADER[outdir] = cache.key(header)
+        with open(os.path.join(outdir, "m.h"), "w", newline="\n", encoding="utf-8") as f:
+            f.write(header)
+        stems = {n: "f%04d" % i for i, n in enumerate(order)}
+        work += [(cflags, outdir, stems, n) for n in order]
+    # (the largest first: a long function started last would be the one the rest wait for)
+    order_run = sorted(range(len(work)), key=lambda i: -len(texts[work[i][3]]))
+    got = pool.threads(lambda i: _compile(cc, work[i][0] + more.get(work[i][3], []), env, work[i][1],
+                                          work[i][2][work[i][3]], texts[work[i][3]]), order_run, jobs=jobs)
+    errors = dict(zip(order_run, got))
+    out, k = [], 0
+    for cflags, order, outdir in groups:
+        stems = work[k][2] if order else {}
+        dropped = {n: errors[k + i] for i, n in enumerate(order) if errors[k + i]}
+        k += len(order)
+        for n in list(dropped):                              # callers of a rejected function still link
+            if _compile(cc, cflags + more.get(n, []), env, outdir, stems[n], stand_in(texts[n])):
+                stems.pop(n)                                 # not even a stand-in: left unresolved
+        out.append((stems, dropped))
+    return out
 
 
 _LINKED = {}                     # build folder -> what the linker said last

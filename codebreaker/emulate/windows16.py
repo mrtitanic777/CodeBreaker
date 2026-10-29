@@ -12,6 +12,7 @@ is entered the way it is really called (far or near). Memory is kept by the same
 import hashlib
 import os
 import sys
+from codebreaker.emulate import fast_uc
 from codebreaker.emulate.emulator import _MAX_INSNS, _PAGE, _memory_hooks
 from codebreaker.formats.ne import NEFile
 import json
@@ -331,8 +332,8 @@ def _branch_hook16(rec, cs_base, lo, hi):
     compare) to rec["branches"] as emulator._branch_hook does, every address a linear one."""
     import capstone
     from codebreaker.emulate.emulator import _BRANCH_CAP
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    from codebreaker.decompile.describe import decoder16
+    md = decoder16(detail=True)
     log = rec["branches"] = []
     state = [None, None]                                     # [pending jump, compare in force]
     loaded = {}                                              # register -> (address, size) it was loaded from
@@ -439,6 +440,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     known = _LOADED.get((path, st.st_size, st.st_mtime_ns))
     nef = known[0] if known else NEFile(path)
     uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
+    fast_uc.speed_up(uc)                                     # (the same reads, for less: emulate/fast_uc.py)
     sels, seg_bases, stack_sel, sent_sel = _load_ne(uc, U, nef)
     if known:
         for base, body in known[1].items():
@@ -769,7 +771,8 @@ def _retf_bytes(context, sel, offset):
     key = (context.get("key"), at)
     if key not in _RETF:
         import capstone
-        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+        from codebreaker.decompile.describe import decoder16
+        md = decoder16()
         got = 0
         for ins in md.disasm(bytes(snap[at:at + 0x2000]), offset):
             if ins.mnemonic in ("retf", "lret"):
