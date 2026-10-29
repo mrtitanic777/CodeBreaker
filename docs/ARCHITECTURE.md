@@ -429,6 +429,90 @@ Tests: tests/test_platforms.py (9: two new -- every platform fills the six slots
 resolves; the slots give what the lanes' own tables said), test_engine (12), test_verification
 (21), test_drivers (16), test_dos (13), test_frozen (47), test_nes, test_z80, test_m68k pass.
 
+## Built: phase E (2026-10-29)
+
+The knowledge base is `codebreaker/knowledge/`: one SQLite file, state/db/knowledge.sqlite
+(CB_KNOWLEDGE_DB), keyed by platform -- win16, win32, windows (both halves), vxd, dos, xbox360
+(the lanes' names ne, pe, le, mz, powerpc, 16, 32 are taken too). It sits beside the program
+databases but is not one of them: facts.hold never deletes it, since what was learned and given
+is not made again.
+
+**The store** (knowledge/store.py). A piece is (platform, kind, key, value), its value kept as
+the program database keeps a fact's (engine/facts.py encode: bytes, text, JSON or a pickle, with
+its SHA-1), with its source and its origin:
+
+    authored   loaded from a file people write, kept where it is: the rows are its copy, loaded
+               again when the file's hash changes (knowledge/sources.py lists them)
+    derived    worked out from inputs outside the repository (the compiler's headers), made again
+               when their stamp changes
+    learned    found once by a step and kept: written once, seen by every later ask, any process
+    given      given by hand (a body named)
+
+A whole authored or derived kind is made in one go (`ensure(platform, kind, stamp, make)`):
+the stamp it was made under is kept, and when it differs only its authored/derived rows are made
+again -- learned and given rows stay. The name store's two tables, `body` (a body's digest per
+module, with the name the module gives it) and `body_name` (a name given to a body), are here.
+
+**The API** (knowledge/__init__.py):
+
+    kb.prototype("win16", "KERNEL.GLOBALALLOC")   kb.declaration(...)   kb.spelling("GETDLGITEM")
+    kb.argument_bytes("win16", "USER.@171")       kb.argument_bytes("win32", "FindWindowA", "USER32")
+    kb.declared_argument_bytes("FindWindowA")     kb.import_name("USER", 91)
+    kb.name(body_id)    kb.name_body(body_id, "Name")
+    kb.signatures("win32")    kb.signature_matches("win32", code)
+    kb.struct("win32", "RECT")    kb.api_model("win16", "GLOBALLOCK")    kb.api_model("vxd", ...)
+    kb.table(platform, kind)    kb.known(...)    kb.learn(platform, kind, key, value, source)
+
+    python -m codebreaker knowledge [platform [kind [key]]]     what it holds and where from (--load)
+
+**What moved onto it.** Kept as the authored inputs, now read through it: ordinal_names.json
+(windows ordinal_names), win32_arguments.json (win32 argument_bytes.header),
+runtime_signatures.json (win32/win16 signature), driver_services.json (vxd device,
+service_table, driver, message), dos_interrupts.json (dos interrupt), console_ordinals.json
+(xbox360 ordinal_names: formats/xex_imports, module_writer, recompile/project). New authored
+files, out of code: knowledge/models/win16.json (the 16-bit stand-ins of emulate/windows16.py
+-- what each returns and removes, as data -- and KERNEL's numbers for them), models/win32.json
+(emulate/emulator.py's documented argument counts), models/vxd.json (emulate/driver.py's
+services that answer in another register). Derived: the headers' prototypes (win32/win16
+prototype; symbols/prototypes.py) and structure layouts (win32 struct, struct.pointer;
+symbols/sdk_structs.py), the XDK's library signatures (xbox360 library_signatures;
+symbols/xdk_libraries.py). Learned: the bytes of arguments an export removes, read from its
+code (win32 argument_bytes.code, win16 argument_bytes keyed by product and reading;
+symbols/api_arguments.py). The bodies and body names (symbols/names.py through the function
+store's body calls, which now go to the knowledge base -- the knowledge base beside a store
+given a path of its own; an older store's bodies and hand-given names are carried over the
+first time it is opened). describe.py fetches its import names and argument sizes through
+the API; the emulator's 32-bit stand-in reads its out-parameters' types through kb.prototype.
+
+Generated caches gone: state/prototypes.json, state/api16*.json, state/xdk/*.pickle (tidy-state
+no longer knows them, so old copies go), and the corpus's apiarity/*.json is no longer written
+(a file still there is read into the base once, per module). The `runtime_library.learn`,
+`ordinals.collect` and `driver_services.generate` writers still write their JSON files, and the
+base loads them again.
+
+Evidence (each run a process of its own from an empty state folder, before = this branch
+before the change): `names`, `identify`, the MCP triage and describe's description for
+lz32.dll, lzexpand.dll and user.exe, and a table of direct asks (prototypes 16/32, spellings,
+declarations, argument bytes 16/32, ordinal names and sources, four structure layouts, driver
+services, a DOS interrupt) -- 13 files, all identical before and after (USER's description 3229
+lines, its names 2689). `measure lzexpand.dll`, before and after: 46 functions -- VERIFIED 21, weak 3, IDENTIFIED 3,
+UNVERIFIED 18 (exit-differs 8, deps-differ 7, ret-differs 3, writes-differ 2), DOES NOT COMPILE 1
+-- the same counts and causes. The after state holds
+knowledge.sqlite (prototypes 8292 + 1874, structures 8514, signatures 5233 + 3988, 1423 + 383
+learned argument sizes, 1942 bodies) and none of prototypes.json, api16.*.json.
+
+Tests: tests/test_knowledge.py (8, seconds: a kind made again only when its stamp changes and
+learned pieces kept through it, values keep their shape, a name follows the body, an older
+store's bodies carried over, the authored files read through it, the stand-ins as data, the size
+rule leaves the base alone, platform names); test_symbols, test_engine, test_frozen,
+test_verification, test_match_powerpc and test_invert pass.
+
+**Left.** The per-binary databases do not yet refer to the base's pieces by (platform, kind, key)
+as inputs of their facts (an engine step asks symbols/ as before, so a changed prototype does not
+yet make the facts made from it stale by itself); that is the next step, with the service of
+phase B owning the one open base. verify/lanes/win32's argc and c_text's argument sizes go
+through api_arguments and so through the base, unchanged in their own code (other agents' areas).
+
 ## Decisions, and what is left open
 
 - Python stays the language of the engine and the steps; the native decompiler stays a step. The

@@ -422,10 +422,8 @@ def _imports_cpp(name, thunks):
     sub_<addr> the game calls. In order: (1) Vd* -> the native GPU subsystem (xe_gpu);
     (2) an export the kernel core implements -> its __imp__<name>; (3) a host implementation
     of CodeBreaker's (HOST_IMPL); (4) a stub that logs once. Names: symbols/console_ordinals.json."""
-    import json
-    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "symbols",
-                           "console_ordinals.json"), encoding="utf-8") as f:
-        ordinal_names = json.load(f)
+    from codebreaker import knowledge
+    ordinal_names = knowledge.table("xbox360", "ordinal_names")   # (console_ordinals.json, through the knowledge base)
 
     by_lib = {}
     for addr, (lib, ordv) in thunks.items():

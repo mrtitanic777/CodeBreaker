@@ -82,7 +82,7 @@ def import_names16(nef):
     """{symbol: name} for a 16-bit module's imports by number: the symbol the C text and the
     link use (`USER_91`) and the function's real name (`GetDlgItem`), where the exporting
     module or its definition file gives one that is a C name."""
-    from codebreaker.symbols import ordinals
+    from codebreaker import knowledge
     refs = nef.module_refs()
     out = {}
     for s in nef.segments():
@@ -90,7 +90,7 @@ def import_names16(nef):
             if r["kind"] == "IMPORTORD" and 0 < r["module"] <= len(refs):
                 symbol = re.sub(r"\W", "_", "%s_%d" % (refs[r["module"] - 1], r["ordinal"]))
                 if symbol not in out:
-                    out[symbol] = ordinals.identifier(refs[r["module"] - 1], r["ordinal"])
+                    out[symbol] = knowledge.import_name(refs[r["module"] - 1], r["ordinal"])
     return {symbol: name for symbol, name in out.items() if name}
 
 
@@ -195,8 +195,8 @@ def describe32(module_path, funcs, outdir):
     """Write the description of a PE module for the native program: its processor, where its
     bytes sit in memory, and the facts about `funcs` (addresses) and its imports.
     -> (path of the description, {va: name})"""
+    from codebreaker import knowledge
     from codebreaker.symbols import api_arguments as api_stack
-    from codebreaker.symbols import ordinals
     from codebreaker.build import watcom as B
     from codebreaker.formats.pe import open_pe
     pe = open_pe(module_path)
@@ -275,21 +275,21 @@ def describe32(module_path, funcs, outdir):
         stem = os.path.splitext(dll)[0].upper()
         if not name or name.startswith("#"):
             number = int(name[1:]) if name and name[1:].isdigit() else 0
-            real = ordinals.identifier(stem, number)
+            real = knowledge.import_name(stem, number)
             if real and taken.setdefault(real, (stem, number)) == (stem, number):
-                pop = api_stack.header_bytes(real)
-                pop = api_stack.stack_bytes(stem, name) if pop is None else pop
+                pop = knowledge.declared_argument_bytes(real)
+                pop = knowledge.argument_bytes("win32", name, stem) if pop is None else pop
                 lines.append("I\t%x\t%s\t%d" % (slot, real, -1 if pop is None else pop))
                 numbered[real] = (stem, number, pop)
             else:
                 # no name for it -- but the module that exports it still says how many bytes of
                 # arguments it removes, and without that the call is recovered with none
-                pop = api_stack.stack_bytes(stem, name) if name else None
+                pop = knowledge.argument_bytes("win32", name, stem) if name else None
                 lines.append("I\t%x\t%s\t%d" % (slot, _ident("%s_ord_%s" % (stem, (name or "#0")[1:])),
                                                 -1 if pop is None else pop))
                 numbered[_ident("%s_ord_%s" % (stem, (name or "#0")[1:]))] = (stem, number, pop)
             continue
-        pop = api_stack.stack_bytes(stem, name) if x86 else None
+        pop = knowledge.argument_bytes("win32", name, stem) if x86 else None
         lines.append("I\t%x\t%s\t%d" % (slot, _ident(name), -1 if pop is None else pop))
     # (CB_POINTER_CALLS=1: say what each call through a pointer was pushed. Off: on the 32-bit
     # sample it fixed no program and made msjava.dll worse -- 280 unverified to 377 -- where a
@@ -1741,9 +1741,9 @@ def describe16(module_path, outdir):
     if not os.environ.get("CB_NO_CALL_OVERRIDES"):
         lines += call_overrides(d)
     lines += jump_tables(d)
-    from codebreaker.symbols import api_arguments as api16
+    from codebreaker import knowledge
     for nm in order:                 # Windows API: far, and the callee removes its arguments --
-        size = api16.of(nm)          # how many bytes is read from the module that exports it
+        size = knowledge.argument_bytes("win16", nm)     # how many bytes is read from the module that exports it
         lines.append("X\t%x\t%s\t%d\t__stdcall16far" % (imports[nm], nm, -1 if size is None else size))
     path = os.path.join(outdir, "description.txt")
     with open(path, "w", newline="\n", encoding="utf-8") as f:

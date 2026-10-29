@@ -989,52 +989,41 @@ class _Ctx(object):
         return sel
 
 
-# Well-known Win16 KERNEL.EXE ordinals -- fallback when the SDK ordinal oracle (symdb) doesn't
-# resolve them (it can come back as 'KERNEL.@15'). These are the stable KERNEL export ordinals.
-KERNEL_ORD = {
-    15: "GLOBALALLOC", 16: "GLOBALREALLOC", 17: "GLOBALFREE", 18: "GLOBALLOCK",
-    19: "GLOBALUNLOCK", 20: "GLOBALSIZE", 21: "GLOBALHANDLE", 22: "GLOBALFLAGS",
-    23: "LOCKSEGMENT", 24: "UNLOCKSEGMENT", 26: "GLOBALDOSALLOC",
-    81: "_LCLOSE", 82: "_LREAD", 83: "_LCREAT", 84: "_LLSEEK", 85: "_LOPEN", 86: "_LWRITE",
-}
-
-
 def _api(hit):
-    """Bare API function name, upper-cased (drop the 'MODULE.' prefix); resolve KERNEL @ordinals."""
+    """Bare API function name, upper-cased (drop the 'MODULE.' prefix); resolve KERNEL @ordinals
+    (the knowledge base's win16 kernel_ordinal: KERNEL's numbers for the functions modelled, for
+    when the call is reported by number, 'KERNEL.@15')."""
     api = (hit.get("api") or "").upper()
     fn = api.split(".", 1)[1] if "." in api else api
     if fn.startswith("@") and api.startswith("KERNEL"):
         try:
-            fn = KERNEL_ORD.get(int(fn[1:]), fn)
+            from codebreaker import knowledge
+            fn = knowledge.table("win16", "kernel_ordinal").get(str(int(fn[1:])), fn)
         except ValueError:
             pass
     return fn
 
 
 def default_stub(hit, uc, U, ctx):
-    """Model the Win16 APIs an LZ-class module calls. Returns {ax, dx, pop}. `pop` = total Pascal
-    arg bytes the callee removes (WORD=2, DWORD / far ptr = 4)."""
-    fn = _api(hit)
+    """Model the Win16 APIs an LZ-class module calls, as the knowledge base's win16 api_model says
+    (knowledge/models/win16.json). Returns {ax, dx, pop}. `pop` = total Pascal arg bytes the
+    callee removes (WORD=2, DWORD / far ptr = 4)."""
+    from codebreaker import knowledge
+    model = knowledge.api_model("win16", _api(hit))
+    if model is None:
+        return {"ax": 0}                                     # unknown: benign 0 (stack may drift)
     a = hit.get("args_stack", [])
-    if fn in ("GLOBALALLOC", "GLOBALDOSALLOC"):        # (wFlags:W, dwBytes:D) -> HGLOBAL(sel)
-        return {"ax": ctx.alloc_heap(), "pop": 6}
-    if fn in ("GLOBALLOCK",):                            # (hMem:W) -> far ptr sel:0000  (DX:AX)
-        return {"ax": 0, "dx": a[0] if a else 0, "pop": 2}
-    if fn in ("GLOBALFREE", "GLOBALUNLOCK", "GLOBALHANDLE"):
-        return {"ax": 0, "pop": 2}
-    if fn in ("_LOPEN", "_LCREAT"):                      # -> HFILE (pretend a valid handle)
-        return {"ax": 0x0080, "pop": 6}
-    if fn in ("_LCLOSE",):
-        return {"ax": 0, "pop": 2}
-    if fn in ("_LLSEEK",):                               # (hf:W, off:D, org:W) -> LONG new pos
-        return {"ax": (a[1] if len(a) > 1 else 0), "dx": (a[2] if len(a) > 2 else 0), "pop": 8}
-    if fn in ("_LREAD", "_HREAD"):                       # (hf:W, buf:far, cb:W) -> bytes read
-        cb = a[3] if len(a) > 3 else 0
-        return {"ax": cb, "pop": 8}
-    if fn in ("_LWRITE", "_HWRITE"):
-        cb = a[3] if len(a) > 3 else 0
-        return {"ax": cb, "pop": 8}
-    return {"ax": 0}                                     # unknown: benign 0 (stack may drift)
+    out = {}
+    for reg in ("ax", "dx", "pop"):
+        if reg in model:
+            v = model[reg]
+            if v == "heap":                                  # a new selector of the stand-in heap
+                v = ctx.alloc_heap()
+            elif isinstance(v, str) and v.startswith("arg"):  # the Nth word of the arguments, as pushed
+                n = int(v[3:])
+                v = a[n] if len(a) > n else 0
+            out[reg] = v
+    return out
 
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,

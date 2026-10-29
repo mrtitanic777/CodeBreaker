@@ -1862,10 +1862,7 @@ def _gate16_keys(path, names, m):
     with open(path, "rb") as f:
         module_key = cache.key(f.read())
     from codebreaker.symbols import api_arguments
-    try:                                                     # (what each Windows call removes: the
-        sizes = open(api_arguments._cache16_path(), "rb").read()     # checker answers calls by it)
-    except OSError:
-        sizes = b""
+    sizes = api_arguments.sizes16()                          # (what each Windows call removes: the checker answers calls by it)
     from codebreaker.emulate import pcode, shadow, symbolic
     from codebreaker.verify import concolic, guided, lane_common
     # (and the branch-guided inputs the checker runs: the explorers, their limits, whether they are

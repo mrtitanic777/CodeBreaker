@@ -264,10 +264,7 @@ def function_contract(ctx, key):
 def _gate_stamp():
     from codebreaker.symbols import api_arguments
     from codebreaker.verify import lane_common
-    try:
-        sizes = hashlib.sha1(open(api_arguments._cache16_path(), "rb").read()).hexdigest()
-    except OSError:
-        sizes = ""
+    sizes = hashlib.sha1(api_arguments.sizes16()).hexdigest()
     from codebreaker.emulate import pcode
     from codebreaker.verify.lanes import win16 as lane
     ready = lane.concolic_ready()                            # (the gate's inputs found path by path)

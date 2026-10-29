@@ -36,7 +36,9 @@ import time
 DAY = 24 * 3600
 RUN_TOOLS = ("phase3", "vxdboot", "record16")
 # what the code names by a value, not by a literal: the period compilers' work folders, the
-# setup ISO's folder (the setting win95_setup_iso), the 16-bit API tables (api16*.json)
+# setup ISO's folder (the setting win95_setup_iso). (The 16-bit API tables, api16*.json, the
+# headers' prototypes.json and xdk/ are kept in the knowledge base now, state/db/knowledge.sqlite:
+# copies left over from before are not known, and go.)
 NAMED_ELSEWHERE = ("msc6", "msvc152", "win95", "products", "golden")
 OLD_CACHES = ("fingerprints.sqlite",)     # (the fingerprints' own file, before they were in the cache)
 
@@ -77,7 +79,7 @@ def known():
 
 def _is_known(name, names):
     base = re.sub(r"-(wal|shm|journal)$", "", name)
-    return base in names or base in OLD_CACHES or base.startswith("api16")
+    return base in names or base in OLD_CACHES
 
 
 def stale(now=None):

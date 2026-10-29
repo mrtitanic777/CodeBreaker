@@ -9,9 +9,11 @@ here: the module writer, the scoreboard, the tools that explain a failure.
     verdict      what the verifier found for a candidate, under one set of verifier settings
     text         something a decompiler's functions share, such as its header of types
     identified   a function recognised as a runtime library's (its name there, and the library)
-    body         a function's body as a digest that is the same wherever the same code is linked,
-                 with the name its own module gives it (an export, a debug symbol)
-    body_name    a name given to a body: it holds in every module that contains the body
+
+Bodies and the names given to them -- the name store -- are the knowledge base's
+(knowledge/store.py: body, body_name); the store's set_bodies, bodies, name_body,
+names_from_bodies and shared_bodies are kept for their callers and go there. A store made
+before carries its bodies over the first time it is opened.
 
 A verdict is kept per verifier profile (a digest of every setting a verdict depends on), so
 changing the verifier adds new verdicts beside the old ones instead of erasing them: nothing
@@ -52,11 +54,6 @@ CREATE INDEX IF NOT EXISTS candidate_function ON candidate(function);
 CREATE TABLE IF NOT EXISTS identified(
     module TEXT NOT NULL, addr TEXT NOT NULL, name TEXT, library TEXT, ts REAL,
     PRIMARY KEY (module, addr));
-CREATE TABLE IF NOT EXISTS body(
-    module TEXT NOT NULL, addr TEXT NOT NULL, hash TEXT NOT NULL, name TEXT, source TEXT,
-    PRIMARY KEY (module, addr));
-CREATE INDEX IF NOT EXISTS body_hash ON body(hash);
-CREATE TABLE IF NOT EXISTS body_name(hash TEXT PRIMARY KEY, name TEXT, source TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS built(
     module TEXT NOT NULL, addr TEXT NOT NULL, profile TEXT NOT NULL, sig TEXT,
     PRIMARY KEY (module, addr, profile));
@@ -157,6 +154,7 @@ def default_path():
 
 class FunctionStore(object):
     def __init__(self, path=None):
+        self.own_path = bool(path or os.environ.get("CB_FUNCTIONS_DB"))
         self.path = path or default_path()
         self.db = sqlite3.connect(self.path, timeout=60.0)     # several workers may write
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -322,55 +320,41 @@ class FunctionStore(object):
             out[IDENTIFIED if addr in known and cls not in ("verified", "weak") else cls] += 1
         return out
 
-    # ---- bodies and their names ----------------------------------------------------------
+    # ---- bodies and their names: the knowledge base's (knowledge/store.py) -------------------
+    @property
+    def knowledge(self):
+        """The knowledge base the store's bodies are kept in: the state folder's (a store given a
+        path of its own: the one beside it), with what this store held before carried over."""
+        kb = self.__dict__.get("_knowledge")
+        if kb is None:
+            from codebreaker.knowledge import store as kstore
+            kb = kstore.open(kstore.beside(self.path) if self.own_path else None)
+            kb.carry_bodies(self.db, "function store " + os.path.normcase(os.path.abspath(self.path)))
+            self._knowledge = kb
+        return kb
+
     def set_bodies(self, module, rows):
         """Replace a module's bodies: {addr: (hash, name the module itself gives it or None, where
         that name is from)}."""
-        with self.db:
-            self.db.execute("DELETE FROM body WHERE module=?", (module,))
-            self.db.executemany("INSERT INTO body(module, addr, hash, name, source) VALUES(?,?,?,?,?)",
-                                [(module, a, h, n, s) for a, (h, n, s) in rows.items()])
+        row = self.db.execute("SELECT name, kind FROM module WHERE sha=?", (module,)).fetchone()
+        if row:
+            self.knowledge.add_module(module, row[0], row[1])
+        self.knowledge.set_bodies(module, rows)
 
     def bodies(self, module):
         """{addr: (hash, own name, its source)}"""
-        return {a: (h, n, s) for a, h, n, s in
-                self.db.execute("SELECT addr, hash, name, source FROM body WHERE module=?", (module,))}
+        return self.knowledge.bodies(module)
 
     def name_body(self, digest, name, source="named by hand"):
         """Give a body a name. It then holds for every module containing that body."""
-        with self.db:
-            self.db.execute("INSERT OR REPLACE INTO body_name(hash, name, source, ts) VALUES(?,?,?,?)",
-                            (digest, name, source, time.time()))
+        self.knowledge.name_body(digest, name, source)
 
     def names_from_bodies(self, module):
-        """{addr: (name, where it is from)} for the functions of a module whose body has a name
-        somewhere: one given to the body, else the name another module gives the same body
-        (when the modules that name it agree)."""
-        out = {}
-        for addr, digest, name, source in self.db.execute(
-                "SELECT b.addr, b.hash, n.name, n.source FROM body b JOIN body_name n ON n.hash=b.hash "
-                "WHERE b.module=?", (module,)):
-            out[addr] = (name, source)
-        seen = {}
-        for addr, name, other in self.db.execute(
-                "SELECT b.addr, o.name, m.name FROM body b JOIN body o ON o.hash=b.hash AND o.module<>b.module "
-                "AND o.name IS NOT NULL LEFT JOIN module m ON m.sha=o.module WHERE b.module=? AND b.name IS NULL",
-                (module,)):
-            seen.setdefault(addr, {}).setdefault(name, other or "another module")
-        for addr, names in seen.items():
-            if addr not in out and len(names) == 1:
-                name, other = next(iter(names.items()))
-                out[addr] = (name, "the same body in %s" % other)
-        return out
+        """{addr: (name, where it is from)} (knowledge/store.py names_from_bodies)"""
+        return self.knowledge.names_from_bodies(module)
 
     def shared_bodies(self):
-        """(bodies recorded, distinct bodies, bodies found in two or more modules, functions that
-        are a copy of a body in another module)"""
-        total, distinct = self.db.execute("SELECT COUNT(*), COUNT(DISTINCT hash) FROM body").fetchone()
-        shared, copies = self.db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(n), 0) FROM (SELECT COUNT(*) n FROM body GROUP BY hash "
-            "HAVING COUNT(DISTINCT module) > 1)").fetchone()
-        return total, distinct, shared, copies
+        return self.knowledge.shared_bodies()
 
     # ---- byte-match variants (the repair search) -----------------------------------------
     # The behavioural pipeline (candidate/verdict) judges whether a reconstruction MEANS the same.

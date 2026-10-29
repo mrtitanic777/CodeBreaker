@@ -97,11 +97,9 @@ def console_import_names(path, used=()):
     image extracted by other means is taken to have the kernel first and the system library
     second, the order every image seen has them in -- a call's arguments bear it out (number 16
     of the kernel takes a category, a setting, a buffer, its size and a length)."""
-    import json
+    from codebreaker import knowledge
     from codebreaker.formats import powerpc_image, xex
-    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "symbols",
-                           "console_ordinals.json"), encoding="utf-8") as f:
-        table = json.load(f)
+    table = knowledge.table("xbox360", "ordinal_names")      # (console_ordinals.json, as the knowledge base has it)
     names = xex.import_libraries(path) or ["xboxkrnl.exe", "xam.xex"]
     libraries = {i: table.get(n.lower(), {}) for i, n in enumerate(names)}
     found = {}
