@@ -227,8 +227,10 @@ Catch = _stmt('Catch', ['sym', 'types', 'body'], ['body'])          # several ty
 Labeled = _stmt('Labeled', ['label', 'body'], ['body'])
 Goto = _stmt('Goto', ['label'], [])                  # C, and whatever structuring leaves in a binary
 # What stays assembly (L2_BINARY_TYPES.md section 7), as a statement, a member or a whole function:
-# origin, length in bytes, reason (hand-written, register-arguments, ds-left-changed, ...), why, asm.
-MachineFragment = _stmt('MachineFragment', ['length', 'reason', 'why', 'asm'], [])
+# origin, length in bytes, reason (hand-written, register-arguments, ds-left-changed, ...), why, asm;
+# name (the function it stands for), syntax (the assembler: wasm, masm, nasm), within (the fragment
+# whose asm holds it too: a run of functions assembled as one file).
+MachineFragment = _stmt('MachineFragment', ['length', 'reason', 'why', 'asm', 'name', 'syntax', 'within'], [])
 Sync = _stmt('Sync', ['lock', 'body'])
 Empty = _stmt('Empty', [], [])
 Comment = _stmt('Comment', ['text'], [])             # a comment at its place among the statements (a warning)
