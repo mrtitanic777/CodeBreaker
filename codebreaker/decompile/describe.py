@@ -1214,7 +1214,10 @@ def results(d):
                     size[place], changed = got, True
         if not changed:
             break
-    if os.environ.get("CB_CALLER_RESULTS") != "0" and getattr(d, "images", None):
+    # (off unless CB_CALLER_RESULTS=1: with it, USER's C no longer starts Windows 95 Setup -- "not
+    # enough memory to run Setup" -- and which of the functions it makes four-byte does that is not
+    # yet found; SETUPX, which it was for, goes into the Setup that boots as its instructions)
+    if os.environ.get("CB_CALLER_RESULTS") == "1" and getattr(d, "images", None):
         edges = []
         for place in callers_read_dx(d, edges):              # (what the callers read after it)
             if place in size and size[place] < 4:
