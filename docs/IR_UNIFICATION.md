@@ -183,7 +183,7 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    run before the function is written), its text placed as c_text places its rewrite: the
    expression as one token given the room of what PrintC printed (`_Stack.whole`), so the lines
    break where they did. `pieces` and `null_is_zero` are done for the 32-bit path too
-   (`backends/c.FLAT`; compilable32 leaves them out for C from L2). Gate: GATE_NUMBERS.
+   (`backends/c.FLAT`; compilable32 leaves them out for C from L2). Gate (`--made`): KRNL386 1,166, GDI 1,657, LZEXPAND 46, KEYBOARD 70, COMM 41 and LZ32 39 functions, all the same. USER has not been gated yet: with a newly built decompiler its first full decompile ran past two hours, so it was stopped. Holding the gate meant copying one of c_text's blind spots onto the tree: `(int4)*(int2 *)((int2)&xStack_4 + i)` is parsed as a product (int4 is no C type name), so c_text never gives that frame read SS. GDI's sub_35_0669, sub_35_0722 and sub_36_0000 read their frame through DS in both paths. That is a bug to fix in both paths together.
    **Left in c_text, and why.** `_joined_arguments` reads how wide the original reads through a far
    argument from its instructions (`_far_argument_widths`): the back end, run at decompile time,
    has no image -- it moves once L2 carries that width (a `Join` read through, typed). After it,
