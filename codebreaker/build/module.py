@@ -122,6 +122,9 @@ class Built(object):
             out.append("  data        %d bytes as C, %d pointers written as pointers, %d left as numbers, "
                        "%d addresses used by the code not placed" % (d.size, d.pointers, len(d.unresolved),
                                                                          self.lost_addresses))
+        if getattr(self, "code_data", None):
+            out.append("  code data   the original's bytes the C reads through CS, in its segment: %s" % ", ".join(
+                "%d (for %s)" % (sg, ", ".join(ns[:4]) + (" ..." if len(ns) > 4 else "")) for sg, ns in self.code_data))
         disputes = getattr(self, "disputes", None)
         if disputes:
             out.append("  conventions %d functions whose callers contradict how they are described (who removes "
@@ -1332,6 +1335,17 @@ def _build16(b, path, m, folder):
                 lim = _resident_limit(bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]))
                 if lim and lim < s["length"]:
                     b.resident_limit[sg] = lim
+        # (the data such a segment's C reads through CS is linked after its frame: past the cut,
+        # thrown away with the init code -- a function that reads it stays as its instructions,
+        # which read the original's bytes where they are)
+        for n in m.order:
+            sg = segment_of.get(n)
+            if sg in b.resident_limit and n in stems and n not in forced and \
+                    re.search(r"\bcodebreaker_code_%d\b" % sg, texts.get(n, "")):
+                forced.add(n)
+                if n in b.origins:
+                    b.origins[n].evidence.append("it reads data beside its code through CS, in a segment cut "
+                                                 "after start-up (%04x)" % b.resident_limit[sg])
         starts_of = {}
         for (sg, o), nm in at.items():
             starts_of.setdefault(sg, []).append((o, nm))
@@ -1400,7 +1414,8 @@ def _build16(b, path, m, folder):
         if seg is None or name in m.near or loads_itself:
             return None
         if any(c in m.near for c in re.findall(r"\b(\w+)\s*\(", texts[name].split("{", 1)[-1])) \
-                or "code __near *" in texts[name] or "codebreaker_cs()" in texts[name]:
+                or "code __near *" in texts[name] or "codebreaker_cs()" in texts[name] \
+                or re.search(r"\bcodebreaker_code_\d+\b", texts[name]):
             return None                                     # it calls near ones, which only its own segment reaches
                                                             # (or reads its segment's own bytes through CS)
         sym = public[name][0] if name in public else "_" + name
@@ -1481,6 +1496,20 @@ def _build16(b, path, m, folder):
     lines += ["file %s.obj" % s for s in dict.fromkeys(stems[n] for n in m.order if n in stems)
               if s not in b.lead_ins]                                   # (a run of
     # functions written in assembly is one object)
+    # the original's data that the C of a segment reads through CS (c_text: codebreaker_code_<n>),
+    # after the segment's code -- for a segment with any such function rebuilt from C
+    b.code_data = []
+    for seg, text in sorted(getattr(m, "code_data", {}).items()):
+        readers = [n for n in by_segment.get(seg, ()) if n in stems and not stems[n].startswith("asm/")
+                   and re.search(r"\bcodebreaker_code_%d\b" % seg, texts.get(n, ""))]
+        if not readers:
+            continue
+        why = functions._compile(wcc, cflags + ["-nt=CODE%d" % seg], env, folder, "code%02d" % seg, text)
+        if why:
+            b.error = b.error or "the data code segment %d's C reads through CS: %s" % (seg, why)
+        else:
+            lines.append("file code%02d.obj" % seg)
+            b.code_data.append((seg, readers))
     if cs and entry not in public:
         lines.append("file entry.obj")
     for seg in sorted(by_segment):                             # each code segment loaded as the original's was

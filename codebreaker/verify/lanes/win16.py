@@ -343,7 +343,8 @@ def build(m, module_path, work):
     from codebreaker.formats.ne import NEFile
     dll, placed, dropped = functions.build16(m.header, m.texts, m.order, m.imports, work, segments=m.segments,
                                              code_segment={fn: m.where[va][0] for va, fn in m.by_va.items()},
-                                             interrupts={v for v, _regs in getattr(m, "interrupts", ())})
+                                             interrupts={v for v, _regs in getattr(m, "interrupts", ())},
+                                             code_data=getattr(m, "code_data", None))
     nef = NEFile(module_path)
     auto = nef.h.get("autodata_seg")
     data_image = b""

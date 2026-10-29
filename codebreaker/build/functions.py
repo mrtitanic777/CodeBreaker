@@ -235,11 +235,14 @@ def _interrupt_routines(wcc, env, outdir, interrupts):
     return ["file interrupts.obj", "file interrupt_registers.obj"]
 
 
-def build16(header, texts, order, imports, outdir, segments=None, jobs=None, code_segment=None, interrupts=None):
+def build16(header, texts, order, imports, outdir, segments=None, jobs=None, code_segment=None, interrupts=None,
+            code_data=None):
     """`code_segment` {name: the number of the original's segment the function is in}: the
     functions of one segment are put in one segment again. A segment holds 64K at most, and
     functions of one segment call each other near, of different ones far -- as in the original.
-    `interrupts` {vector}: the software interrupts the texts take (c_text: m.interrupts)."""
+    `interrupts` {vector}: the software interrupts the texts take (c_text: m.interrupts).
+    `code_data` {segment: C}: the original's data its functions read through CS (c_text:
+    m.code_data), compiled into that code segment."""
     wcc, wlink = period_tools.ow_tool("wcc"), period_tools.ow_tool("wlink")
     if not (wcc and wlink):
         raise RuntimeError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)")
@@ -257,6 +260,9 @@ def build16(header, texts, order, imports, outdir, segments=None, jobs=None, cod
     lines = ["system windows dll", "name m.dll", "option quiet, map, nodefaultlibs, caseexact, undefsok",
              "libpath %s" % period_tools.ow_lib("ne")]
     lines += ["file %s.obj" % stems[n] for n in order if n in stems]
+    for seg, text in sorted((code_data or {}).items()):     # (beside the functions of its segment)
+        if not _compile(wcc, CFLAGS16 + ["-nt=CODE%d" % seg], env, outdir, "code%02d" % seg, text):
+            lines.append("file code%02d.obj" % seg)
     lines += ["file data.obj", "library clibm.lib"]
     lines += _interrupt_routines(wcc, env, outdir, interrupts)
     # a C name compiled as __stdcall with an open argument list is the symbol `_name`
