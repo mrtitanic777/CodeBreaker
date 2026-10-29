@@ -5,7 +5,10 @@ r"""mcp_server.py -- CodeBreaker as an MCP server: what the terminal interface s
     claude mcp add codebreaker -- python -m codebreaker mcp      (or the project's .mcp.json)
 
 The same reading and the same jobs as the terminal interface (both through ui/service.py), as tools an assistant such
-as Claude Code calls. Three kinds:
+as Claude Code calls. This process stays the MCP server (stdio or HTTP) but each tool is answered by
+the CodeBreaker service (ui/serve.py; started on demand), so the terminal interface, every MCP
+server and the command line share one process, its open databases and its slow answers; with no
+service (CB_SERVICE=0, or it cannot start) the tools are answered here, as before. Three kinds:
 
     reading     nothing changes: triage, describe, inspect, strings, hex_dump, resource, modules,
                 coverage, progress, functions, function, names, identify, demangle, commands,
@@ -27,14 +30,14 @@ a call that finds neither says so instead of holding the client past its timeout
 stderr while serving, so anything the commands print cannot corrupt it.
 """
 import functools
-import io
 import json
 import os
 import re
 import sys
 import threading
 import time
-from contextlib import closing, redirect_stdout
+from contextlib import closing
+from inspect import signature
 
 from codebreaker.base import corpus, settings
 from codebreaker.formats import inspect
@@ -104,8 +107,9 @@ def _not_ready(what, seconds):
 
 
 def _quiet(work, *args, **kw):
-    """`work(...)` with anything it prints kept out of the answer (and off the protocol)."""
-    with redirect_stdout(io.StringIO()):
+    """`work(...)` with anything it prints kept out of the answer (and off the protocol); in the
+    service, out of the other calls' too (service.captured is per thread there)."""
+    with service.captured():
         return work(*args, **kw)
 
 
@@ -1062,7 +1066,8 @@ def run_command(command: str, args: list[str] | None = None) -> dict:
 
 
 def jobs() -> dict:
-    """The jobs this server started, newest first."""
+    """The jobs started, newest first: with the service running, those of every interface (the
+    terminal's, each MCP server's), each with its owner; else this server's."""
     return {"jobs": service.JOBS.all()}
 
 
@@ -1126,6 +1131,21 @@ READING = (describe, inspect_module, strings, hex_dump, resource, modules, cover
            reach_results, projects, project, source_tree, read_file, decompile_function, compare_versions,
            diff_function, disasm, xrefs, triage)
 TOOL_NAMES = {inspect_module: "inspect", demangle: "demangle"}
+TOOLS = READING + (run_command, stop_job, name_function)    # what the service answers as mcp.<name>
+
+
+def _forward(fn):
+    """`fn` answered by the service when one runs (ui/service.call: one process and one answer
+    for every client), else here. A job this process started itself (no service then) stays here."""
+    sig = signature(fn)
+
+    @functools.wraps(fn)
+    def tool(*args, **kw):
+        given = sig.bind(*args, **kw).arguments
+        if "job_id" in given and service.JOBS.get(given["job_id"]):
+            return fn(**given)
+        return service.call("mcp." + fn.__name__, **given)
+    return tool
 
 
 def _said(fn):
@@ -1150,11 +1170,11 @@ def build(writes=True):
     app = MCPServer("codebreaker", title="CodeBreaker", instructions=INSTRUCTIONS,
                     version=_version(), log_level="WARNING")
     for fn in READING:
-        app.tool(name=TOOL_NAMES.get(fn), annotations=ToolAnnotations(read_only_hint=True))(_said(fn))
+        app.tool(name=TOOL_NAMES.get(fn), annotations=ToolAnnotations(read_only_hint=True))(_said(_forward(fn)))
     if writes:
-        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False))(_said(run_command))
-        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))(_said(stop_job))
-        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True))(_said(name_function))
+        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False))(_said(_forward(run_command)))
+        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))(_said(_forward(stop_job)))
+        app.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True))(_said(_forward(name_function)))
 
     @app.resource("codebreaker://function/{module}/{addr}", mime_type="text/x-c",
                   description="One function's reconstructed source, as the store holds it")
@@ -1238,6 +1258,8 @@ def main(argv):
         127.0.0.1 and localhost to answer to, such as a tunnel's; --public: the reading tools only,
         and the token also accepted as the URL's first segment (/<token>/mcp), for clients that
         cannot send a header"""
+    service.START = True                                         # the service, started on demand
+    threading.Thread(target=service.client, daemon=True).start()   # (found or started while the client connects)
     if "--http" in argv:
         import uvicorn
         port = int(argv[argv.index("--http") + 1])
@@ -1252,5 +1274,5 @@ def main(argv):
         uvicorn.run(http_app(hosts, public), host=host, port=port, log_level="warning")
     else:
         build().run("stdio")
-    service.JOBS.stop_all()
+    service.stop_mine()                                          # (only the jobs this server started)
     return 0

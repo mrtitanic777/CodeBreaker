@@ -253,12 +253,22 @@ def root():
     return settings.state("db")
 
 
+_SHA = {}                       # (path, size, mtime) -> SHA-256, of this process (the service asks again and again)
+
+
 def sha(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            h.update(block)
-    return h.hexdigest()
+    st = os.stat(path)
+    seen = (os.path.normcase(os.path.abspath(path)), st.st_size, st.st_mtime_ns)
+    got = _SHA.get(seen)
+    if got is None:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1 << 20), b""):
+                h.update(block)
+        got = h.hexdigest()
+        if time.time() - st.st_mtime > 2.0:          # (a file written just now may be written again within the clock's tick)
+            _SHA[seen] = got
+    return got
 
 
 def open_at(path):
@@ -313,7 +323,7 @@ def databases(folder=None):
     """[(path, bytes, last opened)] of every database, the one opened longest ago first."""
     folder = folder or root()
     out = []
-    for n in os.listdir(folder):
+    for n in (os.listdir(folder) if os.path.isdir(folder) else ()):
         if n.endswith(".sqlite"):
             p = os.path.join(folder, n)
             try:

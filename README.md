@@ -81,7 +81,8 @@ codebreaker/
                emit/, rules.py, runtime.py, profiles/ (Minecraft eras), platform/ (the console layer)
                console/      the Xbox 360 port: assets, XACT audio, achievements, the post-convert
                              rewrites, the Visual Studio project; run.py: `java <tool>`
-  ui/          the terminal interface (terminal.py), the MCP server, and service.py under both
+  ui/          the terminal interface (terminal.py), the MCP server, service.py under both, and
+               serve.py, the service process they are clients of
 native/decompiler/   the native decompiler (C++): decompiler.cc around the Ghidra decompiler core
                      in core/ (Apache-2.0, see core/LICENSE, core/NOTICE); upstream
                      version and every local patch: docs/GHIDRA_FORK.md
@@ -183,6 +184,19 @@ background job). `.mcp.json` registers it for this project; elsewhere,
 `claude mcp add --scope user codebreaker -- python -m codebreaker mcp`. `--http PORT` serves it
 over HTTP behind a token, and `--public` limits that to the reading tools for the internet.
 docs/MCP.md has every tool, how to connect, and a worked example.
+
+### One process behind them: the service
+
+The terminal interface and every MCP server are clients of one process, the CodeBreaker service
+(`python -m codebreaker serve`, codebreaker/ui/serve.py): it keeps the binaries' databases open,
+the engine's step versions, the slow answers (a decompile, the ledger) and the jobs, so two
+interfaces see the same jobs and one's answer is the other's at once. Nobody starts it by hand --
+an interface starts it the first time it needs it -- and it exits after `service_idle_minutes`
+(default 20) with no call and no job, or as soon as its own code or settings.json changes. The
+`facts` command uses it when it runs. It answers on 127.0.0.1 only, each request carrying the
+token in state/service/, one per checkout. `serve --status` says whether one runs, `serve --stop`
+stops it; `CB_SERVICE=0` keeps everything in process, as before (and anything answers in process
+when the service is not there).
 
 ## What a verdict means
 
