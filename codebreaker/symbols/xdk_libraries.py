@@ -80,6 +80,12 @@ def signatures(folder):
     with open(cache + ".part", "wb") as f:
         pickle.dump(sigs, f, protocol=pickle.HIGHEST_PROTOCOL)
     os.replace(cache + ".part", cache)
+    for old in os.listdir(os.path.dirname(cache)):        # (those of another XDK or REV: never read again)
+        if old.startswith("signatures-") and old != os.path.basename(cache):
+            try:
+                os.remove(os.path.join(os.path.dirname(cache), old))
+            except OSError:
+                pass
     return sigs
 
 

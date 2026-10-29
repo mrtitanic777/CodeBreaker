@@ -10,9 +10,10 @@ function (a loop the structurer could not make one), or somewhere further on.
 With --classes, each goto of the new C is also put in a class by where its label stands
 (docs/STRUCTURING_PLAN.md): out of a loop, into a loop (a second entry), a loop made by a goto,
 out of nested blocks, into another block -- besides the tails above. The functions of each
-class are listed in state/goto_classes/<class>.txt (the regression set of each phase).
+class are listed in state/goto_report/classes/<class>.txt (the regression set of each phase).
 
-The report is written to state/goto_report.txt; each module's output to state/gotos/.
+The report is written to state/goto_report/goto_report.txt; each module's output to
+state/goto_report/modules/.
 """
 import collections
 import json
@@ -27,7 +28,8 @@ sys.path.insert(0, ROOT)
 from codebreaker.decompile import decompiler                 # noqa: E402
 
 GOLDEN = os.path.join(ROOT, "state", "golden")
-OUT = os.path.join(ROOT, "state", "gotos")
+HOME = os.path.join(ROOT, "state", "goto_report")
+OUT = os.path.join(HOME, "modules")
 GOTO = re.compile(r"\bgoto (\w+);")
 LABEL = re.compile(r"^\s*(\w+):\s*$")
 
@@ -187,13 +189,14 @@ def main(names):
         lines.append("by class, outside COMMAND.COM (docs/STRUCTURING_PLAN.md):")
         for c in CLASSES:
             lines.append("  %-34s %5d" % (c, cls[c]))
-        d = os.path.join(ROOT, "state", "goto_classes")
+        d = os.path.join(HOME, "classes")
         os.makedirs(d, exist_ok=True)
         for c in CLASSES:
             with open(os.path.join(d, re.sub(r"\W+", "_", c).strip("_") + ".txt"), "w", encoding="utf-8") as f:
                 f.write("\n".join(cls_where.get(c, [])) + "\n")
     report = "\n".join(lines) + "\n"
-    with open(os.path.join(ROOT, "state", "goto_report.txt"), "w", encoding="utf-8") as f:
+    os.makedirs(HOME, exist_ok=True)
+    with open(os.path.join(HOME, "goto_report.txt"), "w", encoding="utf-8") as f:
         f.write(report)
     print(report)
 

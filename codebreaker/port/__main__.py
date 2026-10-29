@@ -250,7 +250,7 @@ def build(spec, cc, tpl, out, srcs, exe, objdir):
             for n in srcs]
     p = run(spec, args(tpl, cc=cc, inc=".", out=exe, srcs=objs), out, cc)
     shutil.rmtree(objdir, ignore_errors=True)
-    cache.prune("port-objects", 3 << 30)                     # (the kept objects held under 3 GB)
+    cache.hold()                                             # (the kept objects count toward the cache cap)
     return subprocess.CompletedProcess(p.args, p.returncode, logs + p.stdout, p.stderr)
 
 

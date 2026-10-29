@@ -342,6 +342,17 @@ def _language_stamp():
     return _STAMP[0]
 
 
+def generation():
+    """The version of what makes decompiled C, as the cache keeps its results apart
+    (base/cache.py GENERATIONS): REV, the native program and its languages. (Not those of
+    CB_LANGUAGES_DIR: a run comparing another folder of them shares the generation of now.)"""
+    from codebreaker.base import cache
+    from codebreaker.base import settings
+    languages = _language_stamp() if not os.environ.get("CB_LANGUAGES_DIR") else \
+        cache.folder(os.path.join(settings.ROOT, "native", "decompiler", "languages"))
+    return REV, cache.tool(_exe()), languages
+
+
 def raw(module_path, funcs, outdir, timeout=3600):
     """The native program's own output for a PE module, before it is made compilable."""
     description, _names = describe.describe32(module_path, funcs, outdir)

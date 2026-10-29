@@ -7,7 +7,7 @@ same pipeline as `python -m codebreaker measure` (verify/reconstruct.py).
 
 Per function and build: the gotos in its C, and the verdict (does it behave as the original).
 A change to the structurer is to bring the gotos down and keep every verdict. The store is
-state/goto_synthetic.sqlite (CB_FUNCTIONS_DB), made anew each run unless --keep.
+state/goto_synthetic/goto_synthetic.sqlite (CB_FUNCTIONS_DB), made anew each run unless --keep.
 """
 import os
 import re
@@ -43,7 +43,8 @@ def build(flags, tag):
 def main(argv):
     from codebreaker.store import functions as F
     from codebreaker.verify import reconstruct
-    db = os.path.join(ROOT, "state", "goto_synthetic.sqlite")
+    os.makedirs(OUT, exist_ok=True)
+    db = os.path.join(OUT, "goto_synthetic.sqlite")
     if "--keep" not in argv and os.path.exists(db):
         os.remove(db)
     os.environ["CB_FUNCTIONS_DB"] = db

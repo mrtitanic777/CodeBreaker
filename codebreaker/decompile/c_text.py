@@ -1770,6 +1770,16 @@ def _source_stamp(*modules):
     return cache.key(*[open(mod.__file__, "rb").read() for mod in modules])
 
 
+def generation():
+    """The version of what makes a module compilable (compilable16), as the cache keeps its
+    results apart (base/cache.py GENERATIONS): the source stamp its keys carry, and the
+    decompiler's own generation."""
+    import sys
+    from codebreaker.decompile import decompiler, describe
+    from codebreaker.symbols import api_arguments
+    return _source_stamp(sys.modules[__name__], decompiler, describe, api_arguments), decompiler.generation()
+
+
 def compilable16(module_path, outdir=None):
     """The module made compilable (see _compilable16) -- kept (base/cache.py) by the module's
     bytes, the decompiler and the source of what makes it: the same module built again (a

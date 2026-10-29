@@ -44,6 +44,8 @@ and are named in one file, `settings.json` at the top of the checkout:
     converted       where each binary's project folder goes: what CodeBreaker made of it
                     (original/, src/, assets/, build/, reports/, README.txt) (default: Converted/)
     state           where results and caches are kept             (default: state/)
+    cache_max_gb    the cap on all of state's caches together, in GB (default 2): past it the
+                    results used longest ago go first (base/cache.py)
     target          what is being reconstructed                   (default: win95)
 
 A relative path is relative to the checkout. An environment variable CB_<KEY> (CB_CORPUS,

@@ -589,7 +589,8 @@ def test_cache_files_results_under_what_made_them():
     cache.keep(kind, v, ({"kind": "error"}, (1, 2)))
     assert cache.value(kind, v) == ({"kind": "error"}, (1, 2))
     import shutil
-    shutil.rmtree(os.path.dirname(os.path.dirname(cache.path(kind, k))), ignore_errors=True)
+    cache._close(kind)
+    shutil.rmtree(os.path.join(cache.root(), kind), ignore_errors=True)
 
 
 def test_every_kind_keeps_fingerprints_and_writes_calls_alike():
