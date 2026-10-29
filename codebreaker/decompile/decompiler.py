@@ -169,10 +169,11 @@ def c_from_l2(text, facts, images=None):
     return "\n" + body
 
 
-def run(description, only=(), timeout=3600, max_instructions=None):
-    """As _run, the notes taken apart from the C (split_notes) -> Decompiled; with CB_C_FROM_L2=1
-    each function's C is the hub's C back end's, from its L2."""
-    l2 = bool(os.environ.get("CB_C_FROM_L2"))
+def run(description, only=(), timeout=3600, max_instructions=None, l2=None):
+    """As _run, the notes taken apart from the C (split_notes) -> Decompiled. With `l2` each
+    function's C is the hub's C back end's, from its L2 (c_from_l2): the x86 lanes that make
+    compilable C ask for it (decompile16, compilable32); for the others CB_C_FROM_L2=1 says."""
+    l2 = bool(os.environ.get("CB_C_FROM_L2")) if l2 is None else l2
     was = os.environ.get("CB_L2")
     if l2:
         os.environ["CB_L2"] = "1"
@@ -428,10 +429,10 @@ def generation():
     return REV, cache.tool(_exe()), languages
 
 
-def raw(module_path, funcs, outdir, timeout=3600):
-    """The native program's own output for a PE module, before it is made compilable."""
+def raw(module_path, funcs, outdir, timeout=3600, l2=None):
+    """The native program's own output for a PE module, before it is made compilable (`l2`: run's)."""
     description, _names = describe.describe32(module_path, funcs, outdir)
-    return run(description, timeout=timeout)
+    return run(description, timeout=timeout, l2=l2)
 
 
 def decompile(module_path, funcs=None, outdir=None):
@@ -457,7 +458,7 @@ def decompile16(module_path, outdir=None, rounds=4):
     from codebreaker.build import watcom as B
     outdir = outdir or B._scratch("decompiler16", os.path.basename(module_path).lower())
     d = describe.describe16(module_path, outdir)
-    got = run(d.path)
+    got = run(d.path, l2=True)
     out, order, by_va, _err = got
     notes = dict(got.notes)                                  # {name: its facts} (split_notes)
     for _ in range(rounds):
@@ -475,7 +476,7 @@ def decompile16(module_path, outdir=None, rounds=4):
         # argument, the last one lost); now its prototype is known
         callers = {va for va, n in by_va.items()
                    if any("func_0x%08x" % c in out.get(n, "") for c in new)}
-        more = run(d.path, only=sorted(new | callers))
+        more = run(d.path, only=sorted(new | callers), l2=True)
         out.update(more[0])
         notes.update(more.notes)
         by_va.update(more[2])
@@ -491,7 +492,7 @@ def decompile16(module_path, outdir=None, rounds=4):
         names = {by_va[va] for va in lost}
         callers = {va for va, n in by_va.items()
                    if any(re.search(r"\b%s\s*\(" % re.escape(c), out.get(n, "")) for c in names if c != n)}
-        more = run(d.path, only=sorted(set(lost) | callers))
+        more = run(d.path, only=sorted(set(lost) | callers), l2=True)
         # (and of what is done again, only the callers that passed too few are taken: the rest --
         # the stated functions themselves, callers that passed all -- kept as they were. Taken
         # whole, the analysis's second look made other mistakes: 25:0F96 lost one of its own two
@@ -515,7 +516,7 @@ def decompile16(module_path, outdir=None, rounds=4):
             if p[0] == "F" and len(p) > 4 and p[4].strip() == "inline" and int(p[1], 16) in d.inlined:
                 ln = describe.model_line(d, int(p[1], 16), p[2])
             own.lines.append(ln)
-        more = run(own.write(), only=sorted(d.inlined))
+        more = run(own.write(), only=sorted(d.inlined), l2=True)
         out.update(more[0])
         notes.update(more.notes)
         by_va.update(more[2])

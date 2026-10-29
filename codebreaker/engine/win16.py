@@ -23,7 +23,7 @@ The facts, and what each is made from (a key is a function's address in the orig
     function.notes <key>  what the decompiler said of it besides its C (decompiler.split_notes:
                           its pointers' sizes, the globals it touches, the structures it
                           recovered)                                          <- ne.module, ne.functions
-    function.l2  <key>    its L2 document (CB_C_FROM_L2), or None              <- function.notes
+    function.l2  <key>    its L2 document, the C is written from (or None)     <- function.notes
     function.source <key> the C as the build compiles it: calls left as addresses named, its
                           segment's code segment, the compiler's options     <- function.c, ne.functions
     function.object <key> the object the compiler makes of it (or why it would not, and the
@@ -103,12 +103,12 @@ def ne_segments(ctx, key):
 def _module_stamp():
     from codebreaker.base import settings
     from codebreaker.decompile import decompiler
-    switches = [os.environ.get(n, "") for n in ("CB_C_FROM_L2", "CB_SELECTOR_STRUCTS", "CB_CODE_DATA",
+    switches = [os.environ.get(n, "") for n in ("CB_SELECTOR_STRUCTS", "CB_CODE_DATA",
                                                  "CB_CALLER_ARGS", "CB_FASTCALL", "CB_INLINE_HELPERS",
                                                  "CB_PROTOTYPES", "CB_CALLER_RESULTS")]
     return (cache.tool(decompiler._exe()), decompiler._language_stamp(),
             (settings.get("struct_recovery") or "off").strip().lower(), switches,
-            _sources("translate/backends/c.py") if os.environ.get("CB_C_FROM_L2") else "")
+            _sources("translate/backends/c.py"))           # (the C is written from L2 by it)
 
 
 def _uses_module():
@@ -185,7 +185,7 @@ def function_notes(ctx, key):
 
 @step("function.l2", reads=("function.notes",), platform=PLATFORM)
 def function_l2(ctx, key):
-    """The function's L2 document, where the decompiler wrote one (CB_C_FROM_L2), else None."""
+    """The function's L2 document, the C of it is written from (or None: the decompiler made none)."""
     return (ctx.need("function.notes", key) or {}).get("l2")
 
 

@@ -15,13 +15,12 @@ docs/IR_UNIFICATION.md step 2: the back end replaces the printed C where they ar
 
     python tools/l2c.py --made MODULE ... [--show N] [--record]
 
-the whole way to compilable C (c_text) for corpus modules, once from the printed C and once from
-the back end's (CB_C_FROM_L2), each function's final text compared: the gate for moving a c_text
-pass onto L2 (docs/IR_UNIFICATION.md step 3).
-
---record keeps the printed side's texts (state/l2c/<module>.<sha256>.pickle) as the reference:
-once a pass's c_text version is deleted the printed path cannot make them again, and --made then
-holds the C from L2 to that record (the printed path's last word, made before the deletion)."""
+the whole way to compilable C (c_text) for corpus modules, each function's final text held to
+the reference: the gate for moving a c_text pass onto L2 (docs/IR_UNIFICATION.md step 3). The
+reference is the printed path's texts, recorded (state/l2c/<module>.<sha256>.pickle) before its
+passes were deleted from c_text -- the C is now written from L2 alone, and the printed path
+cannot make them again. --record keeps what is made now as the new reference: for an intended
+change only (GDI's SS fix was the last one recorded so)."""
 import collections
 import json
 import os
@@ -151,8 +150,9 @@ shutil.rmtree(work, ignore_errors=True)
 """
 
 
-def made(module, l2):
-    """{function: its compilable C}, from the printed C or (l2) from the back end's."""
+def made(module, l2=True):
+    """{function: its compilable C} (`l2`: CB_C_FROM_L2 for the lanes that ask it of the
+    environment; the 16-bit and 32-bit x86 paths write C from L2 whatever it says)."""
     import pickle
     import subprocess
     import tempfile
@@ -184,34 +184,36 @@ def _record_path(module):
 
 
 def reference(module, record=False):
-    """The printed side: kept (--record makes it now, from the printed path, and keeps it)."""
+    """The recorded texts the C is held to (--record: what is made now, kept as them)."""
     import pickle
     where = _record_path(module)
-    if not record and os.path.isfile(where):
+    if not record:
+        if not os.path.isfile(where):
+            raise SystemExit("%s: no reference recorded (%s)" % (module, where))
         with open(where, "rb") as f:
             return pickle.load(f)
-    texts = made(module, False)
-    if record:
-        with open(where, "wb") as f:
-            pickle.dump(texts, f)
+    texts = made(module)
+    with open(where, "wb") as f:
+        pickle.dump(texts, f)
     return texts
 
 
 def check_made(module, show, record=False):
     """Functions whose compilable C is the same either way, and the first lines that differ."""
-    a, b = reference(module, record), made(module, True)
+    a = reference(module, record)
+    b = dict(a) if record else made(module)
 
     def flat(t):                                         # (its tokens: comments, and where a line was broken, aside)
         return " ".join(tokens(t))
     same = [n for n in a if n in b and a[n] == b[n]]
     spaced = [n for n in a if n in b and a[n] != b[n] and flat(a[n]) == flat(b[n])]
     differ = [n for n in a if n in b and flat(a[n]) != flat(b[n])]
-    print("%-14s %5d functions  %5d the same  %4d but for comments and line breaks  %4d different  %d only one way" % (
+    print("%-14s %5d functions  %5d the same as the reference  %4d but for comments and line breaks  %4d different  %d only one way" % (
         module, len(a), len(same), len(spaced), len(differ), len(set(a) ^ set(b))), flush=True)
     for n in differ[:show]:
         ta, tb = flat(a[n]), flat(b[n])
         k = next((i for i, (x, y) in enumerate(zip(ta, tb)) if x != y), min(len(ta), len(tb)))
-        print("      %s:\n        printed  ...%s\n        from L2  ...%s" % (n, ta[max(0, k - 60):k + 60], tb[max(0, k - 60):k + 60]))
+        print("      %s:\n        reference ...%s\n        now       ...%s" % (n, ta[max(0, k - 60):k + 60], tb[max(0, k - 60):k + 60]))
     return len(a), len(same) + len(spaced)
 
 
