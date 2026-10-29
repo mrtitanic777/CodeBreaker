@@ -8,6 +8,9 @@
     python -m codebreaker facts --databases               every database, its size, and the cap (db_max_gb)
 
 <binary> is a path or a corpus name. Nothing is made unless --make is given.
+
+When the CodeBreaker service runs (ui/serve.py) it answers (its databases open, its step versions
+known; what is printed comes when it is done); else the command answers itself, here.
 """
 import os
 import time
@@ -42,6 +45,10 @@ def _when(t):
 
 
 def main(argv):
+    from codebreaker.ui import service
+    code = service.cli("facts", argv)                    # the running service's answer, when there is one
+    if code is not None:
+        return code
     if "--databases" in argv:
         total = 0
         for p, size, t in facts.databases():

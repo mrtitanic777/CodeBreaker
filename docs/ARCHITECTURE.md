@@ -50,7 +50,7 @@ A. **Database + engine core** (1, 2): the fact store and the step/engine API, an
    giving the same image as module.build. Cold parallelism comes from the engine.
    See "Built: phase A" below.
 B. **Service** (5): the engine in one process; the terminal UI and MCP as clients of it; the CLI
-   starting it on demand.
+   starting it on demand. See "Built: phase B" below.
 C. **L2 only** (3): the decompiler's output is the L2 fact; c_text's remaining passes become steps
    on it (IR_UNIFICATION step 3 continues); C is the back end's.
 D. **Lanes on the interface** (4): win16 first (it is on the engine since A), then win32, drivers,
@@ -261,6 +261,105 @@ Shadow32 is the next step; a modelled call's result could follow the argument it
 (_llseek, _lread) instead of being lost; and a second input per path with every free byte
 different would give stores the value diversity paths alone do not (teeth: removed stores
 survive).
+
+## Built: phase B (2026-10-29)
+
+The service is `python -m codebreaker serve` (codebreaker/ui/serve.py): one process per checkout
+(per state folder) that the terminal interface, every MCP server and the command line's queries
+ask. ui/service.py is its client and the query layer under all of them.
+
+**What it is.** An HTTP+JSON server on 127.0.0.1, threaded, at a port fixed for the state folder
+(the setting `service_port`, else 20000 + a CRC of the folder's path mod 20000; the next one up
+when another program holds it), bound exclusively (SO_EXCLUSIVEADDRUSE on Windows, where two
+sockets may otherwise share a port). Its record is state/service/service.json (pid, port, root,
+state folder, started); its token state/service/token, a new secret each start, which every
+request carries as X-CodeBreaker-Token (and the Host must be 127.0.0.1 or localhost); its log
+state/service/serve.log. On exit it stops its jobs and takes the record and the token away.
+
+    GET  /ping   -> {pid, port, root, state, started, idle_minutes, idle_for, calls, busy, jobs, stale}
+    POST /call   {"name": N, "args": {...}, "owner": CLIENT}
+                 -> {"value": ...} | {"error": text, "kind": ValueError | OSError | LookupError | ...}
+    POST /stop   -> {"stopping": true}
+
+A call's name is one of service.CALLS -- `functions`, `store.overview`, `store.latest`,
+`jobs.all`, `jobs.running`, `jobs.stop_all`, `cli` (a query command run in the service, what it
+prints sent back) -- or `mcp.<tool>`, any tool of the MCP server (mcp_server.TOOLS: the 29
+reading tools, run_command, stop_job, name_function). The client re-raises the failure as its
+kind, so a wrong module name is still a ValueError the MCP server says as a tool error.
+
+**What it keeps between calls.** The databases open (facts._OPEN); each step's code digest
+worked out once per process (Step.code -- in a long-lived process this is also the honest
+version: the code that runs is the code loaded); binaries' SHA-256 by path, size and time
+(facts.sha); the MCP server's slow answers (mcp_server.SLOW: the ledger, decompiles,
+version comparisons, an hour); the jobs (service.JOBS: the ui/service JOBS role, moved into it --
+each job still a `python -m codebreaker ...` process below normal priority, now the service's
+child, with an owner: the client that started it).
+
+**Lifetime.** A watchdog thread, every second: no call answered for `service_idle_minutes`
+(default 20; `--idle MINUTES`) and no job running -> it exits (idle counts from the last job's
+end). Every five seconds it compares the package's .py files (count, newest time, total size)
+and settings.json's time with those at start; when they differ it is stale -- its answers would
+be the old code's -- and it exits as soon as no job runs; a client that finds a stale one with no
+job tells it to stop and starts a fresh one. A second `serve` cannot bind beside it: it finds the
+one running (ping with the token, the same state folder) and says "already running"; two
+starting at once, the one that loses the bind waits for the other's record. `serve --status`,
+`serve --stop`.
+
+**The clients.** `service.call(name, *args, **kw)` binds the arguments to the local function's
+signature, then asks the service when there is one, else calls the function here -- the same
+function either way, so the in-process path is the old one. Which:
+
+    CB_SERVICE=0     always in process (the old path)
+    CB_SERVICE=1     the service, started when not running
+    unset            an interface (ui/terminal.py, ui/mcp_server.py: service.START) starts it on
+                     demand -- in the background as it opens; anything else (`facts`, tests) uses
+                     it when it runs and answers in process when not
+    in the service   (service.LOCAL) everything answered there
+
+A service not found is looked for again at most every five seconds; one that goes away mid-call
+(connection refused or reset) is dropped, looked for (started, for an interface) once more, and
+the call answered in process if that fails. It is started out of the client's console, process
+group and (where allowed) job object, so an MCP server killed by its client does not take it
+down; its stdout and stderr go to serve.log, never into an MCP server's protocol pipe.
+
+- The terminal interface: Store forwards every mcp_server tool it uses as `mcp.<tool>`, the home
+  screen's overview and a module's earlier verdicts as `store.overview`/`store.latest`; quitting
+  stops only its own jobs (`service.stop_mine()`: jobs.stop_all for its owner).
+- The MCP server stays an MCP stdio (or HTTP) server; each tool is registered as `_forward(fn)`,
+  which sends it to the service (a job this process started itself, with no service then, stays
+  here). Its job tools now see every interface's jobs; on exit it stops only its own.
+- The command line: `facts` (service.QUERIES) asks the running service (`service.cli`) and prints
+  its answer; with none it runs in process. It never starts one.
+- What a call prints: the service's stdout is a Router -- inside `service.captured()` (the MCP
+  server's _quiet, the `cli` call) what a thread prints goes to that thread's buffer, so
+  concurrent calls never see each other's output.
+
+Evidence (this machine, other sessions' work running beside; seconds, each client a fresh process,
+a fresh state folder; "inside" is from the client's first import to its answer):
+
+    decompile_function on version.dll   in process 3.95 (3.47 inside), again 3.14 (2.73)
+                                        via the service: first client 3.12 (2.90), second 0.89 (0.68)
+    xrefs on version.dll                in process 1.68 / 2.52; via the service 1.38 / 1.10
+    facts --databases                   in process 1.45; via the service 1.30
+    the service, cold start to its first answer: 1.40
+
+The second client's decompile is the first's, kept in the service; in process every client
+decompiles again. Most of what is left of a client's time is Python starting and importing.
+
+Tests: tests/test_service.py (11, about a minute: in process with no service and with
+CB_SERVICE=0; started on demand, its record and token; requests without the token refused;
+queries answered by it equal to the in-process answer, failures carried over as their kind; a
+job run in it with its owner, followed to its end; a second `serve` and `serve --status` finding
+the first; `facts` through it, the same output as in process; the MCP server's tools forwarded;
+the service gone -> answered in process; idle exit; stale exit when the package changes -- every
+service started is stopped at the end); test_ui (10), test_mcp (13) and test_engine (12) pass.
+
+**What phase B leaves.** The 16-bit build (`build --engine`) still runs the engine in the
+process that asks (or as a job); running it inside the service, with progress streamed back, is
+next once phase C has made more of the stages facts -- `facts --make` already runs the engine in
+the service, its output sent when it is done. The function store is still opened per call (it
+is the verdict table phase A left for later). The load setting between the service and other
+sessions is still the open question below.
 
 ## Decisions, and what is left open
 

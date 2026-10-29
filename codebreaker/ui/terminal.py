@@ -6,7 +6,8 @@
 The corpus at a glance (every module, its verdicts as a bar), a module's functions with the
 reconstructed C, the assembly, who calls what and the judge's verdict beside each, and the long
 work (measure, decompile) started as jobs and followed live. It shows what the function store
-holds through the same calls the MCP server answers (ui/mcp_server.py), so the two never disagree.
+holds through the same calls the MCP server answers (ui/mcp_server.py), so the two never disagree --
+answered by the CodeBreaker service (ui/serve.py, started on demand) when it can be, else here.
 
 Built on Textual (pip install textual). Every call that can take a while runs in a worker
 thread; the screens say "working" and fill in when it is done.
@@ -109,8 +110,10 @@ def flat_address(addr):
 
 # ---------------------------------------------------------------------------------------------- the store
 class Store(object):
-    """The calls the screens make, as the MCP server answers them (ui/mcp_server.py). Imported on
-    first use: the server module sets up the corpus and the store."""
+    """The calls the screens make, as the MCP server answers them (ui/mcp_server.py) -- by the
+    CodeBreaker service when it runs (ui/service.call: the same process and the same answers as
+    every MCP server), else here. Imported on first use: the server module sets up the corpus
+    and the store."""
 
     def __init__(self):
         self._m = None
@@ -123,7 +126,19 @@ class Store(object):
         return self._m
 
     def __getattr__(self, name):
-        return getattr(self.m, name)
+        from codebreaker.ui import service
+        fn = getattr(self.m, name)
+        if fn in self.m.TOOLS:
+            return lambda *a, **kw: service.call("mcp." + name, *a, **kw)
+        return fn
+
+    def overview(self):
+        from codebreaker.ui import service
+        return service.call("store.overview")
+
+    def latest(self, sha):
+        from codebreaker.ui import service
+        return service.call("store.latest", sha)
 
 
 STORE = Store()
@@ -348,8 +363,7 @@ class Module(Screen):
         try:
             got = STORE.functions(self.module, limit=5000)
             if got.get("sha"):
-                from codebreaker.store import functions as F
-                earlier = F.latest(got["sha"])
+                earlier = STORE.latest(got["sha"])
                 for r in got.get("rows", []):
                     if r["class"] == "no-source" and earlier.get(r["addr"], "no-source") != "no-source":
                         r["earlier"] = earlier[r["addr"]]
@@ -646,9 +660,8 @@ class Home(Screen):
 
     @work(thread=True, exclusive=True, group="home")
     def load(self, refresh=False):
-        from codebreaker.store import functions as F
         try:
-            mods = F.overview()
+            mods = STORE.overview()
         except Exception as e:                                  # noqa: BLE001
             self.app.call_from_thread(self.query_one("#totals", Static).update, Text(str(e), style="#e06c75"))
             return
@@ -806,13 +819,13 @@ class CodeBreaker(App):
     async def action_quit(self):
         """Quit; a job still running is said first (a second q stops it with the interface)."""
         from codebreaker.ui import service
-        running = [j for j in service.JOBS.all() if j["status"] == "running"]
+        running = [j for j in STORE.jobs()["jobs"] if j["status"] == "running" and j.get("owner") == service.OWNER]
         if running and not getattr(self, "warned", False):
             self.warned = True
             self.notify("%s still running: q again stops it and quits" % ", ".join(
                 "%s %s" % (j["action"], j["module"]) for j in running), severity="warning", timeout=6)
             return
-        service.JOBS.stop_all()                                  # (only the processes started here)
+        service.stop_mine()                                      # (only the jobs started from here)
         self.exit()
 
 
@@ -821,6 +834,10 @@ def main(argv):
     if not importlib.util.find_spec("textual"):
         print("The terminal interface needs Textual:  pip install textual")
         return 2
+    import threading
+    from codebreaker.ui import service
+    service.START = True                                     # the service, started on demand
+    threading.Thread(target=service.client, daemon=True).start()
     CodeBreaker(argv[0] if argv else None).run()
     return 0
 

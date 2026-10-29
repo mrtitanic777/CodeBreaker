@@ -74,21 +74,27 @@ class Step(object):
         self.uses, self.stamp, self.batch, self.always = tuple(uses), stamp, batch, always
         self.fixed_version = version
         self.doc = (inspect.getdoc(fn) or "").split("\n\n")[0]
+        self.code = None                     # the digest of the code, worked out once per process
 
     def version(self):
-        """A digest of the code that makes this step's facts, as it is now: the step's own source,
-        each module (its file) and function (its source) in `uses`, and what stamp() gives."""
+        """A digest of the code that makes this step's facts: the step's own source, each module
+        (its file) and function (its source) in `uses` -- read once, the first time it is asked
+        in a process: the code that runs is the code loaded then, however long the process lives
+        (the service) -- and what stamp() gives, now."""
         if self.fixed_version is not None:
             return str(self.fixed_version)
-        h = hashlib.sha1(self.kind.encode())
-        for code in (self.fn,) + self.uses:
-            if inspect.ismodule(code):
-                path = getattr(code, "__file__", None)
-                if path:
-                    with io.open(path, "rb") as f:
-                        h.update(f.read())
-            else:
-                h.update(inspect.getsource(code).encode("utf-8"))
+        if self.code is None:
+            h = hashlib.sha1(self.kind.encode())
+            for code in (self.fn,) + self.uses:
+                if inspect.ismodule(code):
+                    path = getattr(code, "__file__", None)
+                    if path:
+                        with io.open(path, "rb") as f:
+                            h.update(f.read())
+                else:
+                    h.update(inspect.getsource(code).encode("utf-8"))
+            self.code = h
+        h = self.code.copy()
         if self.stamp:
             h.update(inspect.getsource(self.stamp).encode("utf-8"))
             h.update(repr(self.stamp()).encode("utf-8", "replace"))

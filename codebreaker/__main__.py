@@ -73,6 +73,8 @@ python -m codebreaker               with no command, in a terminal: the terminal
                                     platform there is no lane for yet), and with --judge how far its
                                     lane gets; a few of each platform, one at a time
     mcp [--http PORT]               CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)
+    serve [--status|--stop]         the CodeBreaker service: one process the terminal interface, the MCP
+                                    servers and `facts` all ask (started on demand; exits when idle)
     progress [--once]               watch a running sweep
     settings                        every setting, and whether what it names is there
     cache [--stats|--prune|--clear] what the cache keeps, kind by kind; old generations dropped, the cap
@@ -138,6 +140,7 @@ COMMANDS = {
     "coverage": ("codebreaker.coverage.ledger", []),
     "reach": ("codebreaker.coverage.reach", []),
     "mcp": ("codebreaker.ui.mcp_server", []),
+    "serve": ("codebreaker.ui.serve", []),
     "ui": ("codebreaker.ui.terminal", []),
     "progress": ("codebreaker.ui.progress", []),
     "settings": ("codebreaker.base.settings", []),

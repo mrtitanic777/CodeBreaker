@@ -47,6 +47,10 @@ and are named in one file, `settings.json` at the top of the checkout:
     cache_max_gb    the cap on all of state's caches together, in GB (default 2): past it the
                     results used longest ago go first (base/cache.py)
     target          what is being reconstructed                   (default: win95)
+    service_idle_minutes  the CodeBreaker service (`serve`) exits after this long with no call and
+                    no job (default 20)
+    service_port    the port the service answers on, on 127.0.0.1 (default: one fixed for the state
+                    folder, 20000-39999)
 
 A relative path is relative to the checkout. An environment variable CB_<KEY> (CB_CORPUS,
 CB_OPENWATCOM, ...) overrides the file, for one-off runs.
