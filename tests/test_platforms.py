@@ -64,7 +64,9 @@ def _the_old_tables():
             and w16.packager.link.target() is module._build16 and w32.packager.link.target() is module._build32
             and w16.emulator.run.target() is windows16.probe and w32.emulator.run.target() is emulator.trace_function
             and platforms.of("dos").emulator.run is None
-            and platforms.step_modules() == {"win16": "codebreaker.engine.win16"}
+            and platforms.step_modules()["win16"] == "codebreaker.engine.win16"
+            and {i for i, m in platforms.step_modules().items() if m == "codebreaker.engine.lanes"}
+            == {p.id for p in platforms.all() if p.lane and p.id != "win16"}
             and platforms.named("win16") is w16 and str(w16.cpu) == "x86:LE:16:Protected Mode:default")
 
 

@@ -230,6 +230,7 @@ class FunctionStore(object):
         if readonly:
             self.db = _ro(self.path)
             return
+        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
         self.db = sqlite3.connect(self.path, timeout=60.0)     # several workers may write
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")

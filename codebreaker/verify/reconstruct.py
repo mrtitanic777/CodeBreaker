@@ -194,6 +194,10 @@ def run(module_path, fs=None, log=print):
     from codebreaker.symbols import names, runtime_library
     kind = kind_of(module_path)
     fs = fs or functions.open()
+    if os.environ.get("CB_ENGINE") == "1":
+        from codebreaker.engine import lanes
+        if lanes.on(module_path):
+            return _run_on_engine(module_path, kind, fs, log)
     sha = module_sha(kind, module_path)
     digest, settings = kind.profile(module_path)
     name = os.path.basename(os.path.normpath(module_path)).lower()
@@ -263,3 +267,37 @@ def run(module_path, fs=None, log=print):
         ", ".join("%s %d" % (functions.TITLE[k], c[k]) for k in functions.SCORED if c[k]), time.time() - t0,
         t1 - t0, t2 - t1, t3 - t2))
     return sha, digest
+
+
+def _run_on_engine(module_path, kind, fs, log=print):
+    """run(), its decompile, build and judge made by the engine (engine/lanes.py): only what changed
+    is made again, and the store is given the rows that differ from what it holds."""
+    from codebreaker.decompile import decompiler
+    from codebreaker.engine import facts, lanes
+    from codebreaker.store import functions
+    from codebreaker.symbols import names, runtime_library
+    sha = module_sha(kind, module_path)
+    name = os.path.basename(os.path.normpath(module_path)).lower()
+    t0 = time.time()
+    j = lanes.judged(module_path)
+    fs.add_module(sha, name, module_path, kind.KIND)
+    fs.add_profile(j.profile, j.settings)
+    fs.add_functions(sha, j.all_keys)
+    fs.put_text(sha, SOURCE, "header", j.header)
+    if getattr(kind, "LIBRARY", True):
+        fs.set_identified(sha, {names.key(module_path, address): found
+                                for address, found in runtime_library.identify(module_path).items()})
+    known = fs.judged(sha, j.profile, SOURCE)
+    same = ("sig", "name", "source", "verdict", "reason", "limits", "detail")
+    rows = [r for r in j.rows if r["addr"] not in known or
+            any((known[r["addr"]].get(k) or "") != (r.get(k) or "") for k in same)]
+    fs.record_many(sha, SOURCE, str(getattr(kind, "SOURCE_REV", decompiler.REV)), j.profile, rows)
+    if j.built:
+        fs.set_built(sha, j.profile, j.built)
+    kept, made = j.made.get("lane.%s.verdict" % kind.KIND, [0, 0])
+    c = fs.scores(j.profile, sha)
+    log("%s: %d functions on the engine, %d judged now, %d kept, %d rows new to the store: %s  (%.0fs)" % (
+        name, len(j.all_keys), made, kept, len(rows),
+        ", ".join("%s %d" % (functions.TITLE[k], c[k]) for k in functions.SCORED if c[k]), time.time() - t0))
+    facts.hold()
+    return sha, j.profile

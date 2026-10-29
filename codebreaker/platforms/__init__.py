@@ -244,7 +244,9 @@ class Platform(object):
                  open=None, container="", loader=None, convention=None, emulator=None, compiler=None,
                  packager=None, steps=None):
         self.name, self.title, self.family, self.source = name, title, family, source
-        self.lane, self.machine, self.steps = lane, machine, steps
+        self.lane, self.machine = lane, machine
+        # (its steps on the engine: its own module, else the lanes' steps every lane of a binary has)
+        self.steps = steps or ("codebreaker.engine.lanes" if lane else None)
         self._recognise = recognise
         self.id = None                                          # (set by all(): the descriptor's file)
         # the six slots; the older keywords (runner, open, container, a cpu string) fill theirs

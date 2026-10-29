@@ -333,13 +333,124 @@ def test_old_versions_and_the_cap():
         shutil.rmtree(d, ignore_errors=True)
 
 
+# --- a lane on the lanes' steps (engine/lanes.py): a made-up lane, judged in this process ---------
+class _FakeModule(object):
+    """What a lane's prepare gives: the functions' C, their keys, the header, the module's signature."""
+
+    def __init__(self, words):
+        self.order = ["f%d" % i for i in range(len(words))]
+        self.texts = {"f%d" % i: "int f%d(void) { return %s; }" % (i, w) for i, w in enumerate(words)}
+        self.key = {"f%d" % i: "%04x" % i for i in range(len(words))}
+        self.all_keys = sorted(self.key.values()) + ["ffff"]            # (one the decompiler gave nothing for)
+        self.header = "typedef int int4;"
+        self.sig = "whole:" + " ".join(words)
+
+
+def _fake_lane():
+    """A lane module (verify/lanes' four calls) kept in sys.modules: prepare reads the binary's words,
+    build 'compiles' each function to the digits of its body (so a comment leaves its code alone),
+    judge says equivalent for an even key, divergent for an odd one, and notes each call."""
+    import re
+    import types
+    from codebreaker.build import functions as builder
+    lane = types.ModuleType("cb_test_fake_lane")
+    lane.__file__ = os.path.abspath(__file__)
+    lane.KIND, lane.PER_FUNCTION, lane.LIBRARY = "tfake", True, False
+    lane.PROFILE = ["p1", "{}"]
+    lane.JUDGED = []
+
+    def profile(path):
+        return tuple(lane.PROFILE)
+
+    def prepare(path, work):
+        with open(path) as f:
+            return _FakeModule(f.read().split())
+
+    def build(m, path, work):
+        with open(os.path.join(work, "m.dll"), "w") as f:
+            f.write("built")
+        builder.OBJECTS[work] = {n: "".join(re.findall(r"\d", t.split("{", 1)[1].split("/*")[0]))
+                                 for n, t in m.texts.items()}
+        items = {n: (m.key[n], os.path.join(work, "m.dll")) for n in m.order if "x" not in m.texts[n]}
+        return "context", items, {n: "it does not compile" for n in m.order if "x" in m.texts[n]}
+
+    def judge(context, item):
+        with LOCK:
+            lane.JUDGED.append(item[0])
+        assert context == "context" and os.path.isfile(item[1])
+        return ("equivalent" if int(item[0], 16) % 2 == 0 else "divergent"), "", ["coverage=100"], ""
+    lane.profile, lane.prepare, lane.build, lane.judge = profile, prepare, build, judge
+    sys.modules[lane.__name__] = lane
+    return lane
+
+
+def _declared():
+    """The lanes' steps declared for the made-up lane (kinds lane.tfake.*)."""
+    from codebreaker.engine import lanes
+    lane = sys.modules.get("cb_test_fake_lane") or _fake_lane()
+
+    class P(object):
+        name, id, lane = "tfake", "tfake", "cb_test_fake_lane"
+        packager = type("Packager", (), {"tools": None})()
+
+        def lane_module(self):
+            return sys.modules["cb_test_fake_lane"]
+    if "lane.tfake.rows" not in engine.STEPS:
+        lanes._declare(P())
+    return lane
+
+
+def test_a_lane_on_the_lanes_steps():
+    lane = _declared()
+    p = Place("2 7 4 9")
+    try:
+        lane.JUDGED[:] = []
+        got = engine.get(p.db, "lane.tfake.rows")
+        rows = {r["addr"]: r for r in got["rows"]}
+        assert sorted(lane.JUDGED) == ["0000", "0001", "0002", "0003"]
+        assert rows["0000"]["verdict"] == "equivalent" and rows["0001"]["verdict"] == "divergent"
+        assert rows["ffff"]["verdict"] == "no-synth" and got["profile"] == "p1" and got["header"]
+        assert sorted(got["built"]) == ["0000", "0001", "0002", "0003"]
+        lane.JUDGED[:] = []
+        assert engine.get(p.db, "lane.tfake.rows") == got and lane.JUDGED == []     # nothing judged again
+        # a comment added to one function by hand: its code is the same, so no verdict is made again --
+        # but the rows carry its new C and signature
+        f = engine.get(p.db, "lane.tfake.function", "0002")
+        engine.put(p.db, "lane.tfake.function", "0002", [f[0], f[1] + " /* by hand */"])
+        again = engine.get(p.db, "lane.tfake.rows")
+        assert lane.JUDGED == [] and engine.last_run(p.db)["lane.tfake.build"] == [0, 1]
+        mine = {r["addr"]: r for r in again["rows"]}["0002"]
+        assert mine["source"].endswith("/* by hand */") and mine["sig"] != rows["0002"]["sig"]
+        # ... a change to its code: that function judged again (and only it); one that does not compile is not run
+        engine.put(p.db, "lane.tfake.function", "0002", [f[0], f[1].replace("4", "6")])
+        engine.put(p.db, "lane.tfake.function", "0003", ["f3", "int f3(void) { return x; }"])
+        again = {r["addr"]: r for r in engine.get(p.db, "lane.tfake.rows")["rows"]}
+        assert lane.JUDGED == ["0002"], lane.JUDGED
+        assert again["0003"]["verdict"] == "no-compile" and again["0003"]["reason"] == "it does not compile"
+        assert again["0003"]["problem"] == "compile"
+        engine.forget(p.db, "lane.tfake.function", "0002")
+        engine.forget(p.db, "lane.tfake.function", "0003")
+        lane.JUDGED[:] = []
+        assert engine.get(p.db, "lane.tfake.rows")["rows"] == got["rows"] and sorted(lane.JUDGED) == ["0002", "0003"]
+        # the profile changed and the build's files gone: built again there, every function judged again
+        lane.PROFILE[0] = "p2"
+        lane.JUDGED[:] = []
+        shutil.rmtree(os.path.join(os.path.splitext(p.db.path)[0] + ".work", "lane"), ignore_errors=True)
+        got2 = engine.get(p.db, "lane.tfake.rows")
+        assert got2["profile"] == "p2" and sorted(lane.JUDGED) == ["0000", "0001", "0002", "0003"]
+        assert [r["verdict"] for r in got2["rows"]] == [r["verdict"] for r in got["rows"]]
+    finally:
+        lane.PROFILE[0] = "p1"
+        p.close()
+
+
 def main():
     for fn in (test_made_once_then_kept, test_provenance_is_recorded,
                test_a_given_fact_recomputes_only_what_depends_on_it, test_the_same_value_stops_the_change,
                test_a_new_step_version_remakes_its_facts_and_drops_the_old, test_a_changed_binary_is_a_new_database,
                test_stale_facts_are_made_side_by_side, test_a_step_reads_only_what_it_declares,
                test_batch_steps_and_unkept_values, test_files_are_facts_too, test_values_and_blobs,
-               test_old_versions_and_the_cap):
+               test_old_versions_and_the_cap, test_a_lane_on_the_lanes_steps):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

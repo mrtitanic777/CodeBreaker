@@ -1816,7 +1816,7 @@ def build(module, outdir=None, call=True, log=print, gated=None):
     if not path:
         raise SystemExit("no module %r in the corpus" % module)
     if os.environ.get("CB_ENGINE") == "1" and gated is None:
-        # (on the engine: the same build made of facts, only what changed made again -- engine/win16.py)
+        # (on the engine: the same build made of facts, only what changed made again -- engine/win16.py, engine/lanes.py for a 32-bit one)
         from codebreaker import platforms
         p = platforms.identify(path)
         if p is not None and p.steps:
@@ -2007,7 +2007,7 @@ def main(argv):
     Without --out the build goes into the module's project folder: Converted/<name>/build/."""
     out = argv[argv.index("--out") + 1] if "--out" in argv else None
     names = [a for a in argv if not a.startswith("--") and a != out]
-    if "--engine" in argv:                                   # (a 16-bit module made by the engine)
+    if "--engine" in argv:                                   # (a 16-bit or 32-bit module made by the engine)
         os.environ["CB_ENGINE"] = "1"
     if not names:
         print(__doc__)

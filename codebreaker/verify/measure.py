@@ -1,7 +1,10 @@
 """measure.py -- reconstruct and judge one module and print the tally. Nothing is written to the
 source tree.
 
-    python -m codebreaker measure <module>
+    python -m codebreaker measure <module> [--engine]
+
+With --engine (or CB_ENGINE=1) the decompile, build and judge are steps of the engine
+(engine/lanes.py): only what changed since the last measure is made again.
 
 This is the number to watch while changing the decompiler or the verifier.
 """
@@ -10,6 +13,9 @@ import os
 
 
 def main(argv):
+    if "--engine" in argv:
+        os.environ["CB_ENGINE"] = "1"
+        argv = [a for a in argv if a != "--engine"]
     if not argv:
         print(__doc__)
         return 2
