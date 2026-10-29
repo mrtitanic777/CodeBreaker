@@ -13,11 +13,15 @@ docs/IR_UNIFICATION.md step 2: the back end replaces the printed C where they ar
 
 --diff NAME prints one function's two texts where they part.
 
-    python tools/l2c.py --made MODULE ... [--show N]
+    python tools/l2c.py --made MODULE ... [--show N] [--record]
 
 the whole way to compilable C (c_text) for corpus modules, once from the printed C and once from
 the back end's (CB_C_FROM_L2), each function's final text compared: the gate for moving a c_text
-pass onto L2 (docs/IR_UNIFICATION.md step 3)."""
+pass onto L2 (docs/IR_UNIFICATION.md step 3).
+
+--record keeps the printed side's texts (state/l2c/<module>.<sha256>.pickle) as the reference:
+once a pass's c_text version is deleted the printed path cannot make them again, and --made then
+holds the C from L2 to that record (the printed path's last word, made before the deletion)."""
 import collections
 import json
 import os
@@ -167,9 +171,32 @@ def made(module, l2):
         shutil.rmtree(folder, ignore_errors=True)       # (nothing of a run is left behind)
 
 
-def check_made(module, show):
+def _record_path(module):
+    from codebreaker.base import corpus, settings
+    import hashlib
+    path = corpus.retail(module) or module
+    with open(path, "rb") as f:
+        sha = hashlib.sha256(f.read()).hexdigest()
+    return settings.state("l2c", "%s.%s.pickle" % (os.path.basename(module).lower(), sha[:16]))
+
+
+def reference(module, record=False):
+    """The printed side: kept (--record makes it now, from the printed path, and keeps it)."""
+    import pickle
+    where = _record_path(module)
+    if not record and os.path.isfile(where):
+        with open(where, "rb") as f:
+            return pickle.load(f)
+    texts = made(module, False)
+    if record:
+        with open(where, "wb") as f:
+            pickle.dump(texts, f)
+    return texts
+
+
+def check_made(module, show, record=False):
     """Functions whose compilable C is the same either way, and the first lines that differ."""
-    a, b = made(module, False), made(module, True)
+    a, b = reference(module, record), made(module, True)
 
     def flat(t):                                         # (its tokens: comments, and where a line was broken, aside)
         return " ".join(tokens(t))
@@ -191,7 +218,7 @@ def main(argv):
         names = [a for a in argv if not a.startswith("--") and a != str(show)]
         total = same = 0
         for name in names:
-            t, s = check_made(name, show)
+            t, s = check_made(name, show, "--record" in argv)
             total, same = total + t, same + s
         print("all: %d functions, %d made the same either way" % (total, same))
         return 0 if total and same == total else 1
