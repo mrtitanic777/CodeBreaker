@@ -17,6 +17,7 @@ Works on the JSON document itself (a dict), not on ir.py's classes: L2 from a bi
 address spaces, conventions and layouts the Java front end's classes do not need.
 
     function(doc, moved=()) -> C text of one function          type_text(t, name='') -> a declaration
+    module(doc) -> (C text, {name: assembly}) of a Module: its functions, and what stayed assembly
 
 `moved` names the passes of decompile/c_text.py done here instead, on the tree (step 3): each is
 written where the address spaces and types L2 carries say so, and c_text leaves its own out for C
@@ -27,9 +28,13 @@ adds the same to the printed C, after PrintC broke its lines.
 import re
 
 # c_text's passes done on L2 (docs/IR_UNIFICATION.md step 3, L2_BINARY_TYPES.md's order)
-MOVED = ("far", "near_calls", "far_from_stack")
-_now = {"moved": (), "far": set(), "marks": {}}  # the function being written: its passes, its far names,
-                                               # and the nodes they rewrite ({id(node): '_far' | '_near' | '_ss'})
+MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers",
+         "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result")
+FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
+_now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False}
+# (the function being written: its passes, its far names, and the nodes they rewrite --
+#  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
+#  an expression written whole in another way; `bare`: those being printed as PrintC printed them)
 
 # L2 primitive kinds -> the decompiler's names for them
 _PRIM = {'i8': 'int1', 'u8': 'uint1', 'i16': 'int2', 'u16': 'uint2', 'i32': 'int4', 'u32': 'uint4',
@@ -250,21 +255,25 @@ class _Pretty:
 
 
 class _Flat:
-    """The same calls, written on one line (an expression or a type on its own)."""
+    """The same calls, written on one line (an expression or a type on its own): the text shown,
+    and beside it the text the layout gives room to (`raw`: as PrintC printed it)."""
 
     def __init__(self):
-        self.out = []
+        self.out, self.raw = [], []
 
     def print(self, text, shown=None):
         self.out.append(text if shown is None else shown)
+        self.raw.append(text)
 
     def open_paren(self, p):
         self.out.append(p)
+        self.raw.append(p)
 
     close_paren = open_paren
 
     def spaces(self, n, bump=0):
         self.out.append(' ' * n)
+        self.raw.append(' ' * n)
 
     def open_group(self):
         pass
@@ -273,6 +282,7 @@ class _Flat:
 
     def tag_line(self, indent=None):
         self.out.append('\n')
+        self.raw.append('\n')
 
     def text(self):
         return ''.join(self.out)
@@ -307,6 +317,7 @@ _TYPE_SPACE = _Op('', '', 2, 10, False, 'space', 1)
 _TYPE_NOSPACE = _Op('', '', 2, 10, False, 'space', 0)
 _PTR = _Op('*', '', 1, 62, False, 'unary_prefix')
 _ARRAY = _Op('[', ']', 2, 66, False, 'postsurround', 1)
+_WHOLE = _Op('', '', 1, _ATOM, False, 'whole')           # (an expression placed as one token: _Stack.whole)
 
 
 def _assign_op(op):
@@ -354,6 +365,26 @@ class _Stack:
             else:
                 self.em.close_group()
             self.ops.pop()
+
+    def whole(self, tok, raw, shown, paren=None):
+        """An expression whose outermost operator is `tok` placed as one token: bracketed where
+        that operator would be, given the room of its text as printed (`raw`), showing `shown`
+        -- what a moved c_text pass writes in place of it, after the layout."""
+        if tok is None:
+            self.atom(raw, shown)
+            return
+        if not self.ops:
+            paren = False
+        else:
+            self._emit(self.ops[-1])
+            if paren is None:
+                paren = self._parens(tok)
+        if paren:
+            self.em.open_paren('(')
+        else:
+            self.em.open_group()
+        self.ops.append([_WHOLE, 0, paren])
+        self.atom(raw, shown)
 
     def _parens(self, op2):
         """PrintLanguage::parentheses"""
@@ -446,10 +477,11 @@ def is_far(t):
     return bool(t) and t.get('kind') in ('ptr', 'fnptr') and t.get('space') == 'far'
 
 
-def _push_type(st, t, name=None, far=False, word=None):
+def _push_type(st, t, name=None, far=False, word=None, shown_name=None):
     """A type with its name (a declaration) or without (a cast, a return type), on the stack:
     PrintC::pushTypeStart, the name or a blank, pushTypeEnd. `far`: the outer pointer written
-    __far (c_text._far: `int2 __far *p`); `word`: another word there (` __near`)."""
+    __far (c_text._far: `int2 __far *p`); `word`: another word there (` __near`); `shown_name`:
+    what is shown for the name (`unaff_SS = codebreaker_ss()`)."""
     mods, base = _stack(t)
     st.op(_TYPE_NOSPACE if name is None and not mods else _TYPE_SPACE)
     word = ' __far' if far else word
@@ -460,15 +492,15 @@ def _push_type(st, t, name=None, far=False, word=None):
     if name is None:
         st.atom('', blank=True)
     else:
-        st.atom(name)
+        st.atom(name, shown_name)
     for m in mods:
         if m != 'ptr':
             st.atom(str(m[1]))
 
 
-def _put_type(em, t, name=None, far=False):
+def _put_type(em, t, name=None, far=False, shown_name=None):
     st = _Stack(em)
-    _push_type(st, t, name, far)
+    _push_type(st, t, name, far, shown_name=shown_name)
 
 
 def type_text(t, name='', far=False):
@@ -684,10 +716,46 @@ def _operands(e, tok, kids):
             _near_call(child)
 
 
+def _op_of(e):
+    """The core's operator token an expression is printed with on the outside (None: an atom)."""
+    n = e['node']
+    if n == 'Binary':
+        return _BINOPS[e['op']]
+    if n == 'Assign':
+        return _assign_op(e.get('op'))
+    if n == 'Unary':
+        return _UNARY.get(e['op'])
+    if n == 'Select':
+        return _MEMBER['->' if _arrow(e) else '.']
+    return {'Cast': _CAST, 'Call': _CALL, 'Index': _SUBSCRIPT, 'Paren': _HIDDEN}.get(n)
+
+
+def _raw(e):
+    """An expression's text as PrintC printed it, the moved passes' rewrites of it and in it left out."""
+    _now['bare'].add(id(e))
+    try:
+        em = _Flat()
+        _put(em, e)
+        return ''.join(em.raw)
+    finally:
+        _now['bare'].discard(id(e))
+
+
+def _rewrite(e, shown):
+    """A moved pass writes `shown(e)` in place of expression `e` (the first pass to claim it)."""
+    _now['whole'].setdefault(id(e), shown)
+
+
 def _push(st, e, paren=None):
     """One expression on the stack, as PrintC pushes it: the operator, then its operands in the
     order they are printed."""
     n = e['node']
+    rewrite = _now['whole'].get(id(e))
+    if rewrite is not None and id(e) not in _now['bare']:
+        # (a moved pass's text in its place: given the room of the text PrintC printed, as
+        # c_text rewrites the printed C after its layout)
+        st.whole(_op_of(e), _raw(e), rewrite(e), paren)
+        return
     if n == 'Lit':
         st.atom(_lit(e))
         return
@@ -1102,9 +1170,7 @@ def _far_from_stack(body, locs):
     written `MK_FP(codebreaker_ss(), p)`."""
     sets = _sets(body, [])
     # (an address in the frame: an array local, or & of a local -- not the value a local holds)
-    arrays = {(v.get('sym') or {}).get('name') for v in locs
-              if (v.get('type') or {}).get('kind') == 'array' and 'count' in v['type']
-              and v['type']['elem'].get('kind') != 'array' and _FRAME.fullmatch((v.get('sym') or {}).get('name') or '')}
+    arrays = _frame_arrays(locs)
     far = _now['far']
 
     def in_frame(found, stack):
@@ -1129,6 +1195,175 @@ def _far_from_stack(body, locs):
             _now['marks'][id(rhs)] = '_ss'
 
 
+def _frame_arrays(locs):
+    """The names of the buffers in the frame: array locals (`xunknown1 axStack_4c [52];`)."""
+    return {(v.get('sym') or {}).get('name') for v in locs
+            if (v.get('type') or {}).get('kind') == 'array' and 'count' in v['type']
+            and v['type']['elem'].get('kind') != 'array' and _FRAME.fullmatch((v.get('sym') or {}).get('name') or '')}
+
+
+# ---------------------------------------------------------------------------------------------- the passes on the tree
+def _walk(x, parent=None):
+    """(node, its parent) for every node under `x`, in the order they are printed."""
+    if isinstance(x, list):
+        for y in x:
+            yield from _walk(y, parent)
+    elif isinstance(x, dict) and 'node' in x:
+        yield x, parent
+        for k, v in x.items():
+            if isinstance(v, (dict, list)) and k not in ('type', 'sym', 'ret'):
+                yield from _walk(v, x)
+
+
+_C_TYPES = {'char', 'short', 'int', 'long', 'float', 'double', 'void', 'signed', 'unsigned', 'bool'}
+
+
+def _terms(e):
+    """The terms of a sum written without brackets (`a + b + c`), in order."""
+    if e.get('node') != 'Binary' or e.get('op') != '+':
+        return [e]
+    tok = _token(e)
+    return [x for k, side in enumerate((e['left'], e['right']))
+            for x in ([side] if _bracket(tok, side, k) else _terms(side))]
+
+
+def _frame_through_ss(nodes, arrays):
+    """A buffer in the frame reached through its address as a number -- `*(xunknown2 *)((int2)
+    axStack_a8 + iVar1)`, `mov ss:[bx], ax` (KEYBOARD's NEWTABLEEX): a near pointer made of a
+    number is read through DS, so the cast is written with SS, `(xunknown2 *)MK_FP(
+    codebreaker_ss(),(int2)axStack_a8 + iVar1)` (c_text._frame_through_ss)."""
+    def in_frame(n):
+        """`(int2)axStack_a8` or `(int2)&iStack_6`: a frame address as a number"""
+        if n.get('node') != 'Cast' or type_text(n.get('type')) not in ('int2', 'uint2'):
+            return False
+        v = n['x']
+        if v.get('node') == 'Unary' and v.get('op') == '&' and not v.get('postfix'):
+            return v['x'].get('node') == 'Name' and _FRAME.fullmatch(_name(v['x'])) is not None
+        return v.get('node') == 'Name' and _name(v) in arrays
+    for e, parent in nodes:
+        if e['node'] != 'Unary' or e.get('op') != '*' or e.get('postfix') or e['x'].get('node') != 'Cast':
+            continue
+        if parent is not None and parent.get('node') == 'Cast' and \
+                re.fullmatch(r"\w+", type_text(parent.get('type'))) and type_text(parent.get('type')) not in _C_TYPES:
+            # (`(int4)*(int2 *)(...)`: a name of a type not C's own, so the C's parser reads
+            # `(int4) * ...` as a product -- c_text never saw a dereference there, and left it as
+            # the core printed it: GDI's sub_35_0669 reads its frame so, through DS)
+            continue
+        cast = e['x']
+        ty = re.fullmatch(r"([\w ]+?) ?\*", type_text(cast.get('type')))
+        sum_ = cast['x']['x'] if cast['x'].get('node') == 'Paren' else cast['x']
+        if ty is None or sum_.get('node') != 'Binary' or sum_.get('op') != '+':
+            continue
+        # (the sum as the C reads it: `a + b + c` is (a + b) + c whatever the tree's grouping,
+        # so of three terms or more only the last is a side of its own)
+        terms = _terms(sum_)
+        if not (in_frame(terms[-1]) or len(terms) == 2 and in_frame(terms[0])):
+            continue
+        _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s *)MK_FP(codebreaker_ss(),%s)" % (t, expr(s)))
+
+
+_PIECE = re.compile(r"_(\d+)_(\d+)_")
+_ORDERING = ('<', '>', '<=', '>=')
+
+
+def _pieces(nodes, _arrays):
+    """`x._2_2_` is the decompiler's "2 bytes of x from byte 2": written as the bytes at that
+    place, `(*(uint2 *)((char *)&x + 2))` -- unsigned, but signed as one side of an ordering
+    comparison, where the core printed its signed compare with no cast (USER's sub_10_2F28;
+    c_text._pieces). A piece of a piece: the inner one inside."""
+    parent = {id(e): p for e, p in nodes}
+    for e, p in nodes:
+        m = _PIECE.fullmatch(_name(e)) if e['node'] == 'Select' and not _arrow(e) else None
+        if not m:
+            continue
+        while p is not None and p['node'] == 'Paren':
+            p = parent.get(id(p))
+        if not _now['sixteen']:                          # (32-bit: by its size alone, c_text.compilable32)
+            table, other = _BY_SIZE, 'uint4'
+        else:
+            table = _SIGNED if p is not None and p['node'] == 'Binary' and p['op'] in _ORDERING else _SIZED
+            other = 'uint2'
+        _rewrite(e, lambda s, off=m.group(1), ty=table.get(int(m.group(2)), other):
+                 "(*(%s *)((char *)&%s + %s))" % (ty, _sub(_token(s), s['obj'], 0), off))
+
+
+_SIZED = {1: 'uint1', 2: 'uint2', 4: 'uint4'}
+_SIGNED = {1: 'int1', 2: 'int2', 4: 'int4'}
+_BY_SIZE = {1: 'uint1', 2: 'uint2', 4: 'uint4', 8: 'uint8'}
+
+def _null_is_zero(nodes, _arrays):
+    """`x == (int4 *)0x0` is `x == 0` whatever x is; with the cast it does not compile where x is
+    a number (c_text._null_is_zero)."""
+    for e, _p in nodes:
+        if e['node'] == 'Binary' and e['op'] in ('==', '!='):
+            r = e['right']
+            if r.get('node') == 'Cast' and (r.get('type') or {}).get('kind') in ('ptr', 'fnptr') and \
+                    r['x'].get('node') == 'Lit' and _lit(r['x']) == '0x0':
+                _rewrite(r, lambda _r: '0')
+
+
+_POINTER_GLOBAL = re.compile(r"p+[a-z]*Ram[0-9a-f]{8}")
+
+
+def _last_name(e):
+    """The name an expression's text ends with (`x - pRam00001234`: pRam00001234), and what is
+    printed just before it ('*' of `*p`, ')' of `(T)p`, else ' '); or (None, None)."""
+    before = ' '
+    while True:
+        n = e.get('node')
+        if n == 'Name':
+            return e, before
+        tok = _token(e)
+        if n == 'Binary':
+            kid, before = e['right'], ' '
+        elif n == 'Assign':
+            kid, before = e['value'], ' '
+        elif n == 'Unary' and not e.get('postfix'):
+            kid, before = e['x'], e['op']
+        elif n == 'Cast':
+            kid, before = e['x'], ')'
+        else:
+            return None, None
+        if _bracket(tok, kid, 1 if n != 'Unary' else 0):
+            return None, None                            # (a bracket comes last)
+        e = kid
+
+
+def _global_pointer_steps(nodes, _arrays):
+    """`pRam00001234 + 2` -- a step from a global pointer: in bytes, as the core counts it, so
+    written `(uint1 *)pRam00001234 + 2` (c_text._global_pointer_steps, which rewrites a name of
+    the kind followed by ` + ` where nothing but a blank or an operator other than `*` is before it)."""
+    for e, _p in nodes:
+        if e['node'] == 'Select' and id(e) in _now['whole'] and _PIECE.fullmatch(_name(e)):
+            # (a piece is written `(char *)&x + 2`: x, too, is followed by ` + `)
+            obj = e['obj']
+            if _bracket(_token(e), obj, 0):
+                continue
+            last, before = (obj, '&') if obj.get('node') == 'Name' else _last_name(obj)
+        elif e['node'] != 'Binary' or e['op'] != '+' or _bracket(_token(e), e['left'], 0):
+            continue
+        else:
+            last, before = _last_name(e['left'])
+        if last is not None and before not in ('*', ')') and _POINTER_GLOBAL.fullmatch(_name(last)):
+            _rewrite(last, lambda x: '(uint1 *)' + _name(x))
+
+
+_SECOND_NAME = re.compile(r"_[a-z]+Ram[0-9a-f]{8}")
+
+
+def _one_name_for_globals(nodes, _arrays):
+    """`_iRam0040c000` is the decompiler's second name for the global iRam0040c000 (read at another
+    width): the global (c_text._one_name_for_globals)."""
+    for e, _p in nodes:
+        if e['node'] == 'Name' and _SECOND_NAME.fullmatch(_name(e)):
+            _rewrite(e, lambda x: _name(x)[1:])
+
+
+# (each: c_text's pass, done on the tree -- in the order c_text runs them)
+_PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("null_is_zero", _null_is_zero),
+           ("global_pointer_steps", _global_pointer_steps), ("one_name_for_globals", _one_name_for_globals))
+
+
 # ---------------------------------------------------------------------------------------------- functions
 def _param_name(p):
     return (p.get('sym') or {}).get('name') or p.get('name', '')
@@ -1141,7 +1376,11 @@ def _signature(em, doc):
     ft = sym.get('type') or {}
     em.open_group()                                      # (the prototype)
     em.open_group()                                      # (its result)
-    _put_type(em, doc.get('ret') or (ft.get('result') or {}).get('type') or {'kind': 'void'})
+    ret = doc.get('ret') or (ft.get('result') or {}).get('type') or {'kind': 'void'}
+    far = 'far_result' in _now['moved'] and is_far(ret)
+    if far and _stack(ret)[0] != ['ptr']:
+        raise Decline('a far result of a pointer to a pointer')      # (c_text._far_result writes `T *__far *`)
+    _put_type(em, ret, far=far)                          # (a far pointer: `T __far *`, c_text._far_result)
     em.close_group()
     em.spaces(1)
     for m in doc.get('mods') or ():
@@ -1184,7 +1423,8 @@ def function(doc, moved=(), far=None):
         raise Decline('document %s' % doc.get('node'))
     sixteen = 'segment' in (doc.get('origin') or {})
     locs = _locals(doc.get('body'), [])
-    _now['moved'] = tuple(moved) if sixteen else ()
+    _now['moved'] = tuple(moved) if sixteen else tuple(p for p in moved if p in FLAT)
+    _now['sixteen'] = sixteen
     # the far pointers: the parameters and locals of four bytes
     _now['far'] = (set(far) if far is not None else
                    {n for n, t in [(_param_name(p), p.get('type')) for p in doc.get('params') or []] +
@@ -1193,9 +1433,65 @@ def function(doc, moved=(), far=None):
     try:
         if 'far_from_stack' in _now['moved'] and _now['far']:
             _far_from_stack(doc.get('body'), locs)
+        nodes, arrays = list(_walk(doc.get('body'))), _frame_arrays(locs)
+        for name, rule in _PASSES:
+            if name in _now['moved']:
+                rule(nodes, arrays)
         return _function(doc, locs)
     finally:
-        _now['moved'], _now['far'], _now['marks'] = (), set(), {}
+        _now['moved'], _now['far'], _now['marks'], _now['whole'], _now['bare'] = (), set(), {}, {}, set()
+
+
+_SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
+
+
+def _segment_register(name, t):
+    """`unaff_SS` is the decompiler's "SS as the function was entered" (the segment of a local
+    passed as a far pointer, CS of a string constant): declared with the register's value,
+    `xunknown2 unaff_SS = codebreaker_ss();` (c_text._segment_registers). -> what is shown for the
+    name, or None."""
+    m = _SEGMENT_REGISTER.fullmatch(name)
+    if 'segment_registers' not in _now['moved'] or not m or not re.fullmatch(r"\w+", type_text(t)):
+        return None
+    return "%s = codebreaker_%s()" % (name, m.group(1).lower())
+
+
+def fragment(node):
+    """A MachineFragment -- what stays assembly -- as the C of its module holds it. The 16-bit
+    lane assembles such a function on its own, from its own file (build/module.py: wasm, linked at
+    its place), and the C has its declaration in the header like any other's: in the function's
+    place in the C, a note of where it is and why."""
+    if node.get('node') != 'MachineFragment':
+        raise Decline('document %s' % node.get('node'))
+    o = node.get('origin') or {}
+    at = ' %d:%04X' % (o['segment'], o['offset']) if 'segment' in o else ' %08X' % o['va'] if 'va' in o else ''
+    held = ' (assembled with %s)' % node['within'] if node.get('within') else ''
+    why = (node.get('reason') or '').replace('*/', '* /')
+    return '/* %s%s: kept as its instructions%s -- %s */\n' % (node.get('name') or 'a fragment', at, held, why)
+
+
+def module(doc, moved=MOVED):
+    """A Module -- one L2 tree whatever each part came back as -- as (its C, {name: assembly}):
+    each function written from its L2 document with the passes `moved`, each MachineFragment as
+    `fragment` writes it and its text beside, for the assembler (docs/IR_UNIFICATION.md step 4).
+    A function with no body in the tree (its C was the decompiler's, with no L2) is a note too."""
+    if doc.get('node') != 'Module':
+        raise Decline('document %s' % doc.get('node'))
+    units = doc.get('units') or []
+    parts, asm = [], {}
+    for u in units if isinstance(units, list) else [units]:
+        if u.get('node') == 'MachineFragment':
+            parts.append(fragment(u))
+            if u.get('asm'):
+                asm[u.get('name') or len(asm)] = u['asm']
+        elif u.get('node') == 'MethodDecl' and u.get('body') is not None:
+            try:
+                parts.append(function(u, moved))
+            except Decline as e:                         # (a node this back end does not write)
+                parts.append('/* %s: not written from L2 (%s) */\n' % (u.get('name') or '?', e))
+        else:
+            parts.append('/* %s: not in L2 (its C is the decompiler\'s printed C) */\n' % (u.get('name') or '?'))
+    return '\n'.join(parts), asm
 
 
 def _function(doc, locs):
@@ -1217,7 +1513,7 @@ def _function(doc, locs):
         name = (loc.get('sym') or {}).get('name', '')
         em.tag_line()
         em.open_group()
-        _put_type(em, loc.get('type'), name, name in _now['far'])
+        _put_type(em, loc.get('type'), name, name in _now['far'], _segment_register(name, loc.get('type')))
         em.close_group()
         em.print(';')
     if locs:

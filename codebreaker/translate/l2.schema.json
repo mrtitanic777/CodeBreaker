@@ -2774,9 +2774,43 @@
        "type": "null"
       }
      ]
+    },
+    "name": {
+     "description": "the function (or label) the fragment stands for, as the module's other parts call it",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "syntax": {
+     "description": "the assembler `asm` is written for (wasm, masm, nasm); with `asm` null, `within` names the fragment that holds its text",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "within": {
+     "description": "the name of the fragment whose `asm` holds this one's too (a run of functions assembled as one file)",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     }
    },
-   "additionalProperties": false
+   "additionalProperties": false,
+   "description": "what stays assembly (L2_BINARY_TYPES.md section 7) -- a statement, a member or a whole function: where it came from, its length in bytes, why (hand-written, register-arguments, ...), its text"
   },
   "MethodDecl": {
    "type": "object",

@@ -480,6 +480,7 @@ def compilable32(module_path, funcs, outdir):
     from codebreaker.build import watcom as B
     from codebreaker.decompile import decompiler
     from codebreaker.decompile import describe
+    from codebreaker.translate.backends import c as cback
     out, order, by_va, _err = decompiler.raw(module_path, funcs, outdir)
     imports = dict(B.import_map(module_path))
     # imports by number, under the names the description gave them: declared and linked too
@@ -502,9 +503,11 @@ def compilable32(module_path, funcs, outdir):
         # (a note the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
         t = _without_notes("\n".join(body).strip())
+        moved = set(moved_to_l2(out[n])) & set(cback.FLAT)     # (those the back end did, for C from L2)
         # `x._1_2_` is the core's spelling of "2 bytes of x starting at byte 1"
-        t = _pieces(t, _BY_SIZE, "uint4")
-        t = _compare_as_numbers(_keep_frame(_null_is_zero(t), _struct_sizes(struct_notes)))
+        t = t if "pieces" in moved else _pieces(t, _BY_SIZE, "uint4")
+        t = t if "null_is_zero" in moved else _null_is_zero(t)
+        t = _compare_as_numbers(_keep_frame(t, _struct_sizes(struct_notes)))
         # a function's address stored in a pointer the core typed loosely
         t = _code_pointers(t, set(order))
         t = _struct_gaps(t)                      # an offset of a recovered structure with no field
@@ -1952,12 +1955,17 @@ def _one16(context, item):
     # (_far and _near_calls are the back end's for C written from L2: docs/IR_UNIFICATION.md step 3)
     far_done = (text.strip() if "far_from_stack" in moved else _far_from_stack(text.strip(), far)) \
         if "far" in moved else _far(text.strip(), far)
-    text = _null_is_zero(_segment_registers(_joined_arguments(_pieces(_frame_through_ss(far_done)), widths)))
-    text = _global_pointer_steps(text if "near_calls" in moved else _near_calls(text))
+    # (and those after them that the back end does too: each named in backends/c.MOVED)
+    text = far_done if "frame_through_ss" in moved else _frame_through_ss(far_done)
+    text = _joined_arguments(text if "pieces" in moved else _pieces(text), widths)
+    text = text if "segment_registers" in moved else _segment_registers(text)
+    text = text if "null_is_zero" in moved else _null_is_zero(text)
+    text = text if "near_calls" in moved else _near_calls(text)
+    text = text if "global_pointer_steps" in moved else _global_pointer_steps(text)
     if code is not None:
         text = _far_arguments(text, _far_loads(code, off, end), "far" not in text.split("{", 1)[0])
     if "return" in far:                                  # the function returns a far pointer
-        text = _far_result(text, name)
+        text = text if "far_result" in moved else _far_result(text, name)
         flags.add("wide")
     head = text.split("{", 1)[0]
     if head.split()[0] == "void":
@@ -1987,7 +1995,8 @@ def _one16(context, item):
         text = _before_name(text, name, "__loadds ")
     if head.split()[0] in _WIDE or "*" in head.split(name)[0] and "__far" in head.split(name)[0]:
         flags.add("wide")
-    text = _one_name_for_globals(text)                  # (a global the decompiler named twice)
+    if "one_name_for_globals" not in moved:
+        text = _one_name_for_globals(text)              # (a global the decompiler named twice)
     if by_selector:
         text = _selector_structs(text, name, decls, shared)
         text = _struct_gaps(text, _pointer_distances(text))
@@ -2004,8 +2013,13 @@ def _one16(context, item):
 
 def _compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
+    decompiler.L2_DOCUMENTS.clear()                          # (this module's alone, below)
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
     m = Module16()
+    m.l2 = {}                                                # each function's L2 document (CB_C_FROM_L2)
+    for docs in decompiler.L2_DOCUMENTS.values():
+        m.l2.update(docs)
+    decompiler.L2_DOCUMENTS.clear()
     m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
     m.near, m.wide, m.novalue = set(), set(), set()
     m.interrupts = set()                                     # (vector, arguments) of the interrupts taken

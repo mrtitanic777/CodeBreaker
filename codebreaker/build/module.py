@@ -49,6 +49,7 @@ Toolchain facts this relies on (each cost a failed build once):
     function at the original's entry address; a library with no entry point is not loadable
     as one, so one whose entry was not reconstructed gets a stand-in that reports success.
 """
+import json
 import os
 import re
 import shutil
@@ -1669,7 +1670,49 @@ def _build16(b, path, m, folder):
         if not (group and mine and group.groups() == mine.groups()):
             b.data_error = "the data did not land at the start of the automatic data segment"
     _write_definitions(path, folder, lambda e: c_text.declaration(m.texts[at[e.address]]) if e.address in at else None)
+    # the module as one L2 tree, whatever each function came back as (docs/IR_UNIFICATION.md step 4)
+    b.l2 = module_document(b.name, m, b.assembled, stems, folder, {n: s["length"] for n, s in segs.items()})
+    with open(os.path.join(folder, "module.l2.json"), "w", newline="\n", encoding="utf-8") as fh:
+        json.dump(b.l2, fh)
     return image
+
+
+def module_document(module, m, assembled, stems, folder, lengths=None):
+    """The whole module as one L2 tree (docs/IR_UNIFICATION.md step 4): a Module whose units are
+    its functions in address order, each as it came back -- one rebuilt from C as its L2 document
+    (its MethodDecl, where CB_C_FROM_L2 gave one: m.l2; else its name and place alone), one kept
+    as its instructions as a MachineFragment: its place, length, why, and the assembly the build
+    wrote for it (a run of them assembled as one file: the text on the first, the others `within`
+    it). `assembled`: {name: why} (Build.assembled); `stems`: {name: object stem}; `lengths`:
+    {segment: bytes}, for the last function of each."""
+    places = sorted((m.where[va], n) for va, n in m.by_va.items() if m.where.get(va))
+    docs = getattr(m, "l2", None) or {}
+    units, holder = [], {}                                    # (asm stem -> the fragment that holds its text)
+    for k, ((seg, off), name) in enumerate(places):
+        after = places[k + 1][0] if k + 1 < len(places) else None
+        end = after[1] if after and after[0] == seg else (lengths or {}).get(seg)
+        origin = {"module": module, "segment": seg, "offset": off}
+        if name in assembled:
+            frag = {"node": "MachineFragment", "origin": origin, "name": name, "reason": assembled[name],
+                    "syntax": "wasm"}
+            if end is not None and end > off:
+                frag["length"] = end - off
+            stem = stems.get(name)
+            if stem in holder:
+                frag["asm"], frag["within"] = None, holder[stem]
+            else:
+                try:
+                    with open(os.path.join(folder, stem + ".asm"), encoding="utf-8", errors="replace") as fh:
+                        frag["asm"] = fh.read()
+                except (OSError, TypeError):
+                    frag["asm"] = None
+                holder[stem] = name
+            units.append(frag)
+        elif name in docs:
+            units.append(dict(docs[name], origin=origin))
+        else:
+            units.append({"node": "MethodDecl", "name": name, "kind": "function", "origin": origin})
+    return {"node": "Module", "units": units}
 
 
 # ---------------------------------------------------------------------------------------------

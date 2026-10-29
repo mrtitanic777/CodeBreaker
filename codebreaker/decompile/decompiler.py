@@ -81,17 +81,21 @@ def _l2_key():
 _L2_NOTE = re.compile(r"^/\*@L2 (\{.*\}) \*/$", re.M)
 
 
-def c_from_l2(text):
+def c_from_l2(text, documents=None):
     """A function's text with its C written by the hub's C back end from its L2 note
     (translate/backends/c.py; docs/IR_UNIFICATION.md step 2) in place of the C the decompiler
     printed; the decompiler's other notes kept. Without a note, or one the back end declines,
-    the printed C stays."""
+    the printed C stays. `documents`: a list the function's L2 document is added to, whichever
+    C it keeps (the module's L2 tree is made of them: build/module.module_document)."""
     from codebreaker.translate.backends import c as cback
     m = _L2_NOTE.search(text)
     if not m:
         return text
     try:
-        body = cback.function(json.loads(m.group(1)), cback.MOVED)  # (its far pointers: L2's types say which)
+        doc = json.loads(m.group(1))
+        if documents is not None:
+            documents.append(doc)
+        body = cback.function(doc, cback.MOVED)  # (its far pointers: L2's types say which)
     except (cback.Decline, ValueError, KeyError):
         return text[:m.start()] + text[m.end() + 1:]
     notes = [ln for ln in text.splitlines() if ln.startswith("/*@") and not ln.startswith("/*@L2 ")]
@@ -114,7 +118,19 @@ def run(description, only=(), timeout=3600, max_instructions=None):
             del os.environ["CB_L2"]
         else:
             os.environ["CB_L2"] = was
-    return {n: c_from_l2(t) for n, t in out.items()}, order, by_va, err
+    docs = L2_DOCUMENTS.setdefault(os.path.abspath(description), {})
+    texts = {}
+    for n, t in out.items():
+        got = []
+        texts[n] = c_from_l2(t, got)
+        if got:
+            docs[n] = got[0]
+    return texts, order, by_va, err
+
+
+# {description path: {function name: its L2 document}} -- what run gave with CB_C_FROM_L2, for the
+# module's whole L2 tree (c_text._compilable16 keeps its module's as Module16.l2)
+L2_DOCUMENTS = {}
 
 
 def _run(description, only=(), timeout=3600, max_instructions=None):

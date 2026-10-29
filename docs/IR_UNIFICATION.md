@@ -172,7 +172,44 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    end to the printed C character for character, comments and line breaks included: 6,808 of
    6,808. `--made` on the seven modules: 5,336 functions, all the same, none "but for comments and
    line breaks". Next: the c_text passes after the pointer ones, in L2_BINARY_TYPES.md's order.
+   **The passes after them, 2026-10-29** (in the order c_text runs them, L2_BINARY_TYPES.md giving
+   none past the pointers): `frame_through_ss` (a frame buffer reached through its address as a
+   number gets SS), `pieces` (`x._2_2_`; signed beside an ordering comparison -- L2 Binary.op says
+   so, not the text around it), `segment_registers` (`unaff_SS = codebreaker_ss()`), `null_is_zero`,
+   `global_pointer_steps` (`(uint1 *)pRam.. + n`; done on the name the text ends with before the
+   `+`, as the regex saw it, including the `&x + 2` a piece is written with), `one_name_for_globals`
+   (`_iRam..` is `iRam..`) and `far_result` (`T __far *` for a far result; a far pointer to a
+   pointer declines, keeping the printed C). Each is a rule over the tree (`backends/c._PASSES`,
+   run before the function is written), its text placed as c_text places its rewrite: the
+   expression as one token given the room of what PrintC printed (`_Stack.whole`), so the lines
+   break where they did. `pieces` and `null_is_zero` are done for the 32-bit path too
+   (`backends/c.FLAT`; compilable32 leaves them out for C from L2). Gate (`--made`): KRNL386 1,166, GDI 1,657, LZEXPAND 46, KEYBOARD 70, COMM 41 and LZ32 39 functions, all the same. USER has not been gated yet: with a newly built decompiler its first full decompile ran past two hours, so it was stopped. Holding the gate meant copying one of c_text's blind spots onto the tree: `(int4)*(int2 *)((int2)&xStack_4 + i)` is parsed as a product (int4 is no C type name), so c_text never gives that frame read SS. GDI's sub_35_0669, sub_35_0722 and sub_36_0000 read their frame through DS in both paths. That is a bug to fix in both paths together.
+   **Left in c_text, and why.** `_joined_arguments` reads how wide the original reads through a far
+   argument from its instructions (`_far_argument_widths`): the back end, run at decompile time,
+   has no image -- it moves once L2 carries that width (a `Join` read through, typed). After it,
+   `_far_arguments`, `_stack_segment_stores`, `__export` and `__loadds` read the code bytes the same
+   way; `void` -> `xunknown2`, the byte result, the model word in the heading and `_callee_pops`
+   feed the module's own tables (m.novalue, m.near, m.wide) from the text; `_open_arguments` must
+   come after every pass that reads the parameters' types; `_selector_structs`, `_struct_gaps`,
+   `_own_segment_calls` and the module-wide selector and import rewrites need the other functions
+   and the segments; `_interrupts`, `_far_addresses`, `_far_casts`, `_entry_sp`,
+   `_stack_arguments`, `_far_locals`, `_far_concat_casts`, `_buffer_fields`, `_far_reads` and
+   `_near_to_far` run after those and read what they wrote. Each is the next to move, in that
+   order; the ones that need the image move when L2 carries what they read from it.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
+   **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`
+   (L2_BINARY_TYPES.md section 7), with three fields added to the schema and ir.py: `name` (the
+   function it stands for), `syntax` (the assembler: wasm here) and `within` (a run of functions
+   assembled as one file: the text is on the first, the others name it). `build/module.py`'s
+   `_build16` writes the module as one Module (`module_document`, `b.l2`, `module.l2.json` in the
+   build folder): its functions in address order, each one kept as its instructions a
+   MachineFragment (origin, length, why, the .asm the build assembled), each one rebuilt from C
+   its L2 document (decompiler.run keeps them with CB_C_FROM_L2: `c_text.Module16.l2`), and one with
+   no L2 its name and place. `backends/c.module` writes the whole tree back: the C of each
+   function, a note in each fragment's place, and the assembly beside it, which the lane assembles
+   on its own as today. Not yet: the 32-bit and VxD lanes, source/image_writer.py and the NASM/MASM
+   writers producing the node; a fragment inside a function (a block). Test:
+   tests/translate/test_c_backend.py.
 5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module
    writer from L2 provenance (module + address).
