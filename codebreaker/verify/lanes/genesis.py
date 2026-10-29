@@ -19,6 +19,7 @@ _STATES = [dict(d=[0] * 8, a=[0] * 7, fill=0),
 
 
 def _effects(path, entry, state):
+    from codebreaker import platforms
     from codebreaker.emulate import m68k
     from codebreaker.formats import genesis
     mem = genesis.read(path).memory()
@@ -28,9 +29,10 @@ def _effects(path, entry, state):
     bus = m68k.Bus(mem)
     for lo, hi in _HARDWARE:
         bus.map(lo, hi, read=lambda a, n: 0x0008 if a & ~1 == 0xC00004 else 0)   # (VDP status: in vblank)
-    run = m68k.run(bus, entry, steps=20000, d=state["d"], a=state["a"] + [0])
-    return (run["end"], tuple(run["d"]), tuple(run["a"][:7]), run["sr"] & 0x1F, bytes(mem[0xFF0000:0x1000000]),
-            tuple(run["io"][:4000]))
+    run = platforms.of("genesis").emulator.run(bus, entry, steps=20000, d=state["d"], a=state["a"] + [0])
+    r = run.results
+    return (run.exit, tuple(r["D%d" % i] for i in range(8)), tuple(r["A%d" % i] for i in range(7)), r["SR"] & 0x1F,
+            bytes(mem[0xFF0000:0x1000000]), tuple(run.io[:4000]))
 
 
 Lane("genesis", 1, _STATES, _effects,

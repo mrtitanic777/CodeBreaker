@@ -298,3 +298,17 @@ def run(memory, entry, a=0, x=0, y=0, p=_U | _I, steps=MAX_STEPS, decimal=False)
         end = "stopped: %s" % e
     return {"end": end, "a": cpu.a, "x": cpu.x, "y": cpu.y, "p": cpu.p, "s": cpu.s, "steps": cpu.steps,
             "io": list(getattr(memory, "log", []))}
+
+
+def record(out):
+    """run's record as the one run record (emulate/run.py): the registers (A X Y P S) its results,
+    the bus's log its device accesses. What it wrote is in the memory it was given, which its
+    lane reads (verify/lanes/image_lane.py)."""
+    from codebreaker.emulate.run import Run
+    return Run(out["end"], results={"A": out["a"], "X": out["x"], "Y": out["y"], "P": out["p"], "S": out["s"]}, io=out["io"], steps=out["steps"],
+               truncated=out["end"] == "limit", endian="little", raw=out)
+
+
+def recorded(memory, entry, **kw):
+    """The platform's runner (codebreaker/platforms): run(...) as a Run."""
+    return record(run(memory, entry, **kw))

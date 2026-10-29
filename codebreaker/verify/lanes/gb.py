@@ -18,6 +18,7 @@ _STATES = [dict(a=0, b=0, c=0, d=0, e=0, h=0, l=0, fill=0), dict(a=1, b=2, c=3, 
 
 
 def _effects(path, entry, state):
+    from codebreaker import platforms
     from codebreaker.emulate import sm83
     from codebreaker.formats import gb
     mem = gb.read(path).memory()
@@ -29,10 +30,10 @@ def _effects(path, entry, state):
     bus.map(0xFFFF, 0xFFFF)
     bus.map(0x2000, 0x3FFF, read=lambda a: mem[a])                 # bank select writes, logged
     regs = {k: v for k, v in state.items() if k != "fill"}
-    run = sm83.run(bus, entry, steps=20000, **regs)
+    run = platforms.of("gb").emulator.run(bus, entry, steps=20000, **regs)
     ram = bytes(bus.mem[0xC000:0xE000]) + bytes(bus.mem[0xFF80:0xFFFF])
-    io = tuple(x for x in bus.log if not (x[0] == "r" and 0x2000 <= x[1] <= 0x3FFF))[:4000]
-    return (run["end"], run["a"], run["f"], run["bc"], run["de"], run["hl"], ram, io)
+    io = tuple(x for x in run.io if not (x[0] == "r" and 0x2000 <= x[1] <= 0x3FFF))[:4000]
+    return (run.exit,) + tuple(run.results[k] for k in ("A", "F", "BC", "DE", "HL")) + (ram, io)
 
 
 Lane("gb", 1, _STATES, _effects,

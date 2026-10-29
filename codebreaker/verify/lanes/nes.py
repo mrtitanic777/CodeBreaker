@@ -18,6 +18,7 @@ _STATES = [dict(a=0, x=0, y=0, fill=0), dict(a=1, x=2, y=3, fill=1), dict(a=0x80
 
 
 def _effects(path, entry, state):
+    from codebreaker import platforms
     from codebreaker.emulate import m6502
     from codebreaker.formats import nes
     mem = nes.read(path).memory()
@@ -26,9 +27,10 @@ def _effects(path, entry, state):
         mem[i] = ((i * 7 + seed * 13) ^ (i >> 3)) & (0x0F if seed % 2 else 0xFF)
     bus = m6502.Bus(mem)
     bus.map(*_HARDWARE, read=lambda a: 0x80 if a == 0x2002 else 0)    # (the picture unit always in vblank)
-    run = m6502.run(bus, entry, steps=20000, a=state["a"], x=state["x"], y=state["y"])
+    run = platforms.of("nes").emulator.run(bus, entry, steps=20000, a=state["a"], x=state["x"], y=state["y"])
     ram = bytes(bus.mem[:0x800])
-    return (run["end"], run["a"], run["x"], run["y"], run["p"], ram, tuple(bus.log[:4000]))
+    return (run.exit, run.results["A"], run.results["X"], run.results["Y"], run.results["P"], ram,
+            tuple(run.io[:4000]))
 
 
 Lane("nes", 2, _STATES, _effects,

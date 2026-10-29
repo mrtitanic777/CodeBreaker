@@ -627,7 +627,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                    stub_externals=None, stub_ret=0, stub_cleanup=0, sig_resolver=None,
                    stub_ret_unique=False, overlay=None, sentinels=None, reads=True, stop_wild=False,
                    quiet_stack=False, reuse=False, fast=False, lean=False, ecx=None, edx=None,
-                   pads=None, branches=False, stub_at=None):
+                   pads=None, branches=False, stub_at=None, shadow=None):
     """Run one function under Unicorn with full hooks; return a TraceRecord (a plain dict).
 
     module  -- e.g. "gdi32.dll"; resolved through the active target like difftest.
@@ -647,6 +647,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                it does not model the API's real effects.
     branches -- also log each conditional jump of the function itself: which way it went and
                what the comparison before it compared (rec["branches"]; see _branch_hook).
+    shadow  -- an emulate/shadow.py Shadow32 kept up beside the run (the path explorer's): stepped
+               before each instruction, told of each import or callback answered and of what the
+               answer wrote. One instruction at a time (not `fast`); the run is the same run.
     """
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_ESP, UC_X86_REG_EAX, UC_X86_REG_EIP,
@@ -758,7 +761,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     pending = [None]        # index of a call whose actual destination is the next instruction
     zeros = [0]             # consecutive 00-00 ("add [eax],al") instructions -> crawling zeros
     skip = [None]
-    fast = bool(fast) and not _GOV["ceil"]
+    fast = bool(fast) and not _GOV["ceil"] and shadow is None
 
     def hook_code(uc, address, csize, _ud):
         if skip[0] is not None:
@@ -815,6 +818,8 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                     uc.reg_write(UC_X86_REG_EIP, ret_addr)
                     rec["bogus_stubs"] = rec.get("bogus_stubs", 0) + 1
                     zeros[0] = 0
+                    if shadow is not None:
+                        shadow.after_call(uc, False, 0)
                     return
                 if zeros[0] > 16:
                     rec["truncated"] = True
@@ -880,6 +885,8 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                         if p:
                             try:
                                 uc.mem_write(p, (given if given is not None else _OUT_HANDLE + 4 * i).to_bytes(4, "little"))
+                                if shadow is not None:
+                                    shadow.written(p, 4)
                             except Exception:
                                 pass
                 # unique per-call return marker (interproc v2 value-flow), else the fixed stub_ret
@@ -888,6 +895,8 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 uc.reg_write(UC_X86_REG_EAX, rv & 0xFFFFFFFF)
                 uc.reg_write(UC_X86_REG_EIP, ret_addr)
                 rec["stubbed_externals"] = nstub + 1
+                if shadow is not None:                       # (its result: stub_ret, an input of the run)
+                    shadow.after_call(uc, not stub_ret_unique, rv)
                 if pending[0] is not None:                   # annotate the call record, if via CALL
                     cr = rec["calls"][pending[0]]
                     cr.update(resolved_target=address, external=True, api=api, stubbed=True,
@@ -954,6 +963,8 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                                      "into_func": bool(tgt is not None
                                                        and func_lo <= tgt < func_hi)})
                 pending[0] = len(rec["calls"]) - 1
+        if shadow is not None:
+            shadow.step(uc, address)
 
     # FAST: told of a whole straight run of instructions at once, not of each. Calling back per
     # instruction is most of what a run costs, and a straight run of the file's own code holds
@@ -1134,6 +1145,49 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         except Exception:
             pass                                             # not put back: the next run makes its own
     return rec
+
+
+_HARNESS = "add byte ptr [eax], al"     # (a call through nothing lands in zeros: the stand-in's write)
+
+
+def record(rec, sentinels=None):
+    """trace_function's record as the one run record (emulate/run.py): EAX (and x87 ST0) the
+    results, the imports and callbacks entered with their arguments, EBX ESI EDI EBP against the
+    sentinels they were given (`sentinels`, else SAVED_SENTINELS), every instruction run (first
+    seen first). A write made on the way out of zeros is the harness's. A lean run's writes carry
+    what their bytes held before the run (its pages as first written)."""
+    from codebreaker.emulate.run import Call, Run, Write
+    ws = rec.get("mem_writes") or []
+    mn = rec.get("mnemonics") or {}
+    pages = rec.get("pages0")
+    writes = []
+    if pages is not None:
+        for a, n, v, pc in ws:
+            old = 0
+            for i in range(min(n, 8)):
+                b = a + i
+                old |= pages[b & ~(_PAGE - 1)][b & (_PAGE - 1)] << (8 * i)
+            writes.append(Write(a, n, v, old, bool(pc) and mn.get("0x%x" % pc) == _HARNESS))
+    else:
+        for w in ws:
+            writes.append(Write(w["addr"], w["size"], w["value"] or 0, (w.get("old") or 0) if "old" in w else None,
+                                mn.get("0x%x" % w["pc"]) == _HARNESS))
+    saved = rec.get("saved_regs")
+    preserved = None if saved is None else dict(zip(("EBX", "ESI", "EDI", "EBP"),
+                                                    zip(tuple(sentinels or SAVED_SENTINELS), saved)))
+    if preserved is not None and len(saved) != len(tuple(sentinels or SAVED_SENTINELS)):
+        preserved = None
+    return Run(rec.get("exit"), results={"EAX": rec.get("ret"), "ST0": rec.get("st0")}, writes=writes,
+               capped=rec.get("writes_seen", len(ws)) >= _MAX_MEM,
+               calls=[Call(api, args, None) for api, args in rec.get("api_calls") or ()],
+               stack=rec.get("esp_delta"), preserved=preserved,
+               path=tuple(int(k, 16) if isinstance(k, str) else k for k in mn),
+               steps=rec.get("insn_count"), truncated=rec.get("truncated"), raw=rec)
+
+
+def recorded(module, **kw):
+    """The platform's runner (platforms/win32.py emulator.run): trace_function(module, **kw) as a Run."""
+    return record(trace_function(module, **kw), kw.get("sentinels"))
 
 
 def _builtin_argc(name):

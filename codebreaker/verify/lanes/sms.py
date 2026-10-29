@@ -19,6 +19,7 @@ _STATES = [dict(a=0, b=0, c=0, d=0, e=0, h=0, l=0, fill=0), dict(a=1, b=2, c=3, 
 
 
 def _effects(path, entry, state):
+    from codebreaker import platforms
     from codebreaker.emulate import z80
     from codebreaker.formats import sms
     mem = sms.read(path).memory()
@@ -28,10 +29,9 @@ def _effects(path, entry, state):
     bus = z80.Bus(mem, inp=lambda port: 0x80 if port & 0xFF == 0xBF else 0xFF)   # (the VDP always in vblank)
     bus.map(*_MAPPER)
     regs = {k: v for k, v in state.items() if k != "fill"}
-    run = z80.run(bus, entry, steps=20000, **regs)
+    run = platforms.of("sms").emulator.run(bus, entry, steps=20000, **regs)
     ram = bytes(bus.mem[0xC000:0xE000])
-    return (run["end"], run["a"], run["f"], run["bc"], run["de"], run["hl"], run["ix"], run["iy"], ram,
-            tuple(bus.log[:4000]))
+    return (run.exit,) + tuple(run.results[k] for k in ("A", "F", "BC", "DE", "HL", "IX", "IY")) + (ram, tuple(run.io[:4000]))
 
 
 Lane("sms", 1, _STATES, _effects,

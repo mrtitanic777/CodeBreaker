@@ -149,7 +149,7 @@ def test_run_records_service_calls():
     image = driver.load(_driver())
     v = driver.inputs("control")[0][1]                    # DEVICE_INIT
     r = driver.P.emulator.run(image, image.entries["control"], v["regs"], v["stack"], v["memory"], flags=v["flags"])
-    assert r["calls"] and r["insns"] > 10
+    assert r.calls and r.steps > 10 and r.raw["calls"]
     f = driver.fingerprint(image, image.entries["control"], v)
     assert f["deps"] and "." in f["deps"][0] and "(" in f["deps"][0], f["deps"][:2]
 

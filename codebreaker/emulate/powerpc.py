@@ -742,7 +742,7 @@ _FILLED = {}
 
 
 def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_STEPS, fargs=(), shared=None,
-        fill=None, branches=False, absent=None):
+        fill=None, branches=False, absent=None, shadow=None):
     """Run the function at `entry`. `regions` is [(address, bytes)] to place in memory; `args`
     go in r3..r10 and `fargs` (floats) in f1..; `externs` {address: name} are functions outside
     what was given: a call to one is recorded with its eight argument registers and returns
@@ -750,7 +750,11 @@ def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_
     `fill` names what the memory behind pointer-shaped inputs holds (see filled()). With
     `branches`, each conditional branch inside `span` is logged in out["branches"] (see _Branches).
     `absent` (low, high): where code the image calls may be missing -- a call that lands on nothing
-    there is a call out, recorded as "@<address>" (a partial image calls into the rest of its title)."""
+    there is a call out, recorded as "@<address>" (a partial image calls into the rest of its title).
+    `shadow`: an emulate/shadow.py ShadowPPC kept up beside the run (the path explorer's): stepped
+    before each instruction, told of each call out. The run is the same run with it or without.
+    (A page of `regions` is made from `shared` alone: one that lies in the `fill` holds only what
+    the regions put there.)"""
     m = Machine(regions, shared)
     if fill:
         if fill not in _FILLED:
@@ -789,6 +793,8 @@ def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_
                 calls.append((name, [m.r[3 + i] for i in range(8)]))
                 m.r[3] = stub_ret & M64
                 m.pc = m.lr & M32
+                if shadow is not None:
+                    shadow.after_call(m, True, stub_ret & M64)
                 continue
             if count >= steps:
                 out["truncated"] = True
@@ -809,9 +815,13 @@ def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_
                     calls.append(("@%08x" % pc, [m.r[3 + i] for i in range(8)]))
                     m.r[3] = stub_ret & M64
                     m.pc = m.lr & M32
+                    if shadow is not None:
+                        shadow.after_call(m, True, stub_ret & M64)
                     continue
                 raise Stop("invalid")
             last, linked = pc, None
+            if shadow is not None:
+                shadow.step(m, pc)
             if log is not None and lo <= pc < hi:
                 log.step(m, pc, w)
             else:
@@ -826,6 +836,28 @@ def run(regions, entry, args=(), externs=None, span=None, stub_ret=0, steps=MAX_
     if log is not None:
         out["branches"] = log.events
     return out
+
+
+def record(out):
+    """run's record as the one run record (emulate/run.py): r3 and f1 the results, each call out
+    with its eight argument registers, the bytes it left changed (outside the stack), r14-r31 and
+    the stack pointer as they went in and came out, the addresses of `span` that ran."""
+    from codebreaker.emulate.run import Call, Run, Write
+    m = out.get("machine")
+    preserved = None
+    if m is not None:
+        preserved = {"r%d" % i: (0xA5A50000 + i, m.r[i]) for i in range(14, 32)}
+        preserved["r1"] = (STACK_TOP - 0x4000, m.r[1])
+    return Run(out.get("exit"), results={"r3": out.get("ret"), "f1": out.get("fret")},
+               writes=[Write(a, 1, new, old, False) for a, (old, new) in (out.get("writes") or {}).items()],
+               calls=[Call(name, args, None) for name, args in out.get("calls") or ()],
+               preserved=preserved, path=out.get("path") or (), steps=out.get("steps"),
+               truncated=out.get("truncated"), endian="big", raw=out)
+
+
+def recorded(regions, entry, args=(), **kw):
+    """The platform's runner (platforms/xbox360.py emulator.run): run(...) as a Run."""
+    return record(run(regions, entry, args, **kw))
 
 
 class _Branches(object):

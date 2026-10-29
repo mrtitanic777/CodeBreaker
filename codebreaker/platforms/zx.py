@@ -14,6 +14,6 @@ PLATFORM = machine(
     "zx", "ZX Spectrum", "z80", "snapshot or tape (.sna, .z80, .tap)",
     Cpu("z80:LE:16:default", bits=8, endian="little", decoder="codebreaker.decompile.z80",
         registers=("A", "F", "BC", "DE", "HL", "IX", "IY", "SP"), stack="SP"),
-    _recognise, reader=("codebreaker.formats.zx", "read"), runner=("codebreaker.emulate.z80", "run"),
+    _recognise, reader=("codebreaker.formats.zx", "read"), runner=("codebreaker.emulate.z80", "recorded"),
     assembler=("codebreaker.build.z80_asm", "build_flat"), writer=("codebreaker.source.zx_writer", "reconstruct"),
     results=("A", "F", "BC", "DE", "HL", "IX", "IY"), toolchain="CodeBreaker's own assembler, or sjasmplus / pasmo")

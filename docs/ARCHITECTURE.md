@@ -160,7 +160,8 @@ that asks; phase B makes it the service, with its versions and memos kept across
 The 16-bit judge (verify/lanes/win16.py) and the 16-bit gate (verify/gate16/isolated16.py) now
 find their branch-guided inputs path by path instead of guessing them. Switch: on wherever the
 lifter is there; `CB_NO_CONCOLIC=1` goes back to the guessing explorer (verify/guided.py) to
-compare the two. The 32-bit and PowerPC lanes still guess (below).
+compare the two. The 32-bit and PowerPC lanes still guess (below; since then they explore too:
+"Built: one run record, the path judge everywhere").
 
 **The pieces.**
 
@@ -261,6 +262,142 @@ Shadow32 is the next step; a modelled call's result could follow the argument it
 (_llseek, _lread) instead of being lost; and a second input per path with every free byte
 different would give stores the value diversity paths alone do not (teeth: removed stores
 survive).
+
+## Built: one run record, the path judge everywhere (2026-10-29)
+
+**One run record.** Every platform's emulator slot (`p.emulator.run`) now returns the same
+record, emulate/run.py `Run`, whichever emulator made it -- the 32-bit and 16-bit tracers, the
+driver runner, the PowerPC interpreter, the 6502, Z80, SM83 and 68000:
+
+    exit / ended    how it ended: the emulator's words / as the comparer says it (ret, fault, truncated ...)
+    results         {register: value}: EAX (ST0); AX, DX:AX; eax, the flags and the result registers; r3, f1; A X Y ...
+    writes          [Write(address, size, value, old, harness)] in order; `capped` when not all were recorded
+    calls           [Call(name, args, detail)] the calls out, in order (args None: their number not known)
+    io              [IO(step, kind, port, value, size)] device accesses in order (a machine: its bus log)
+    stack           how far the stack pointer moved
+    preserved       {register: (on entry, at the end)} the registers a function must hand back
+    path, steps     the instructions that ran; how many
+    truncated       cut off at a cap
+    endian, raw     how a value's bytes lie; the emulator's own record (other tools read it, unchanged)
+
+Each emulator module has `record(raw)` (its record as a Run) and `recorded(...)` (the slot: run,
+then record); the module's own runner and record are what they were. The comparing moved to
+verify/lane_common.py: `fingerprint(run, deps, ret, writes, saved, cov, reach, **own)` makes
+what compare.py compares (the stack's move and the saved registers only for a run that
+returned), `changed(run, place, word, most, everything)` / `left(...)` the memory left changed
+(what a byte held before is what the first write found there; a harness write only says that;
+`place` names a write's bytes or leaves it out, `word` gives a 4-byte value a token such as "S"),
+`calls(run.calls, ...)` the calls as text. What each lane keeps is its own: win32 -- which places
+are its frame and the rebuild's own image, "S" for a stored stack address, wild-call; win16 --
+the data segment, the heap, a caller-frame helper's places, the calls and UART accesses merged by
+step, LEFTOVER; the driver -- services named by the kit, ports after calls, its own memory digest
+with the flags and result registers; PowerPC -- what an argument into an image points at, the
+rebuilt image left out; the machines -- which registers, RAM and bus log make a tuple.
+compare._exit_norm went (run.ended is it).
+
+**The path judge everywhere.** The shadow (emulate/shadow.py) is one `Shadow` over a View of the
+machine it follows, chosen by the platform's cpu slot (`shadow.mode(p.cpu)`: the lift mode from
+the SLEIGH language, its bits and byte order): UnicornX86 (16 or 32 bits: register names as
+Unicorn's, flags as EFLAGS bits) and PowerPCView (CodeBreaker's interpreter: r0-r31, LR, CTR,
+cr0-cr7, XER's bits, f0-f31; memory read without making pages). Register and memory bytes are
+kept least significant first on either byte order; addresses are cut to the address width (a
+PowerPC register's upper word is not part of an address). Shadow16 (unchanged in effect), Shadow32,
+ShadowLE (a driver: a service answers EAX and carry, both inputs) and ShadowPPC (64-bit `ret` in
+r3) say only where an answered call's result lands and what it clobbers.
+
+    native/decompiler/pcodecheck.cc  ppc-be-64-lift (ppc_64_xenon_be.sla): the PowerPC registers named, XER
+    emulate/pcode.py                 lifter(mode) with the specification each mode reads (SLA)
+    emulate/emulator.py              trace_function(shadow=): stepped per instruction (not fast), told of
+                                     each import or callback answered and of what the answer wrote
+    emulate/powerpc.py, driver.py    run(shadow=): the same
+    lanes/win32.py explore_vectors   inputs: the argument dwords (stack, or ECX/EDX for a member function),
+                                     the scratch memory and the module's writable sections, stub_ret;
+                                     the seeds' paths known from a branch-logged run each (one per path
+                                     run again with a shadow); the guessing explorer's GUIDED_REST where
+                                     the paths are not all. PIPE_REV 48
+    lanes/powerpc.py explore_vectors inputs: r3-r10, the memory behind the pointers (a page an input puts
+                                     bytes in is given whole, the fill under it) and the image's writable
+                                     sections, the calls' result; solver limit a quarter of the 16-bit
+                                     lane's (64-bit questions cost four times as long to give up on). REV 5
+    lanes/driver.py explore_vectors  new: the driver lane had only its fixed inputs. Inputs: EAX-EDI, the
+                                     carry and zero flags, the stack words, the scratch memory, a service's
+                                     EAX and carry; each seed run with a shadow (no branch log to know its
+                                     path by). REV 4
+
+A verdict's limits gain `paths=N` / `paths-all` as in the 16-bit lane; each lane's profile names
+the lifter and the specification. CB_NO_CONCOLIC=1 (or no lifting pcodecheck) is the old search,
+input for input.
+
+**Evidence** (this machine, other sessions' work beside; "before" is the tree as merged, exported
+and run from a copy; "after" this one; each module reconstructed and judged into a fresh function
+store, CB_NO_FP_CACHE=1, serial (CB_WORKERS=1), the same counting script for both: a count of the
+original's runs wraps the emulators' own runners).
+
+The record, verdicts row for row (verdict, reason, limits, detail) -- the 16-bit lane with its
+path judge on as before, the others with CB_NO_CONCOLIC=1 so their inputs are the old ones:
+
+    module         lane     verdicts (before = after)                               original runs
+    lzexpand.dll   ne       30 equivalent, 14 divergent, 2 no-compile                1278 = 1278
+    ver.dll        ne       17 equivalent, 11 divergent, 3 no-compile                 587 = 587
+    lz32.dll       pe       17 equivalent, 3 divergent, 19 no-compile                1625 = 1625
+    splitter.vxd   le       6 equivalent
+    PowerPC image  powerpc  45 equivalent, 21 divergent, 43 consistent, 2 no-compile 5334 = 5334
+    choice.com     dos      22 equivalent
+
+(The PowerPC image is tests/test_powerpc.py's cases linked with the SDK's libcmt: 111 functions.
+keyboard.drv was in the list: its C does not compile at this tree, before or after -- E1009 at
+sub_9_04B4 in 68 of 70 functions, the decompiler's -- so VER.DLL stands in for it.) The console
+lanes' own judge tests (an edited cartridge: the edited function divergent, the rest equivalent)
+pass on the record: test_nes, test_z80, test_m68k. tests/test_run_record.py checks the 32-bit and
+16-bit memory digests made from the record against the lanes' old code, kept in the test, on
+LZ32 (lean and plain) and LZEXPAND runs.
+
+The path judge, before (guessing) -> after (path by path):
+
+    module         seconds       original runs  of them exploring  paths  all paths  VERIFIED  weak     UNVERIFIED
+    lz32.dll       9.1 -> 9.6    1625 -> 1383   670 -> 402         57     16 of 17   17 -> 17  0 -> 0   3 -> 3
+    PowerPC image  60.1 -> 80.0  5334 -> 4096   3866 -> 2349       473    68 of 86   30 -> 30  58 -> 56 21 -> 23
+    splitter.vxd   9.7 -> 11.4   (fixed inputs only before)        26     4 of 6     4 -> 4    2 -> 2   0 -> 0
+
+    teeth          VERIFIED caught       VERIFIED (weak) caught
+    lz32.dll       6 of 6 -> 6 of 6      --
+    PowerPC image  9 of 14 -> 11 of 16   2 of 14 -> 7 of 16
+
+PowerPC verdicts that moved: sub_93010BA0 (a number formatter) VERIFIED (weak) -> UNVERIFIED --
+real: on an input the explorer found both return, the original having written 9 bytes and its C
+4; sub_930125F0 (memset, its C with an unrecovered jump table) weak -> UNVERIFIED -- real: the C
+faults where the original returns; sub_93016FE8 weak (fault-only) -> VERIFIED (an input it
+returns from); sub_93010FB8 VERIFIED -> weak (an input found runs it to the step limit:
+`truncated`). On the way, one loss was the judge's own and is fixed: sub_93016EA8's loop over a table
+of globals (DIVERGENT before, through the guesser setting the table) came out equivalent with
+paths-all -- the image's globals were not inputs, and a PowerPC address is a 64-bit register's low
+word (`lis` sign-extends: the shadow looked for the inputs at 0xFFFFFFFF9302xxxx). Both fixed;
+it is divergent again. The PowerPC's seconds are its solver: a C library's number parsing asks
+questions z3 cannot settle (122-197 unknown of 256 in each of five functions), hence the lighter
+limit; lz32's paths came at no cost.
+
+**Not covered, and why.** The 6502, Z80, SM83 and 68000 lanes judge a program from fixed register
+states and compare whole images; there is no input to solve for, and SLEIGH specifications for
+the Z80, SM83 and 68000 are not in languages/ (the 6502's has no lift mode yet). DOS programs are
+not run. The 16-bit gate keeps calling windows16.probe directly (it reads that record's own
+fields). The driver lane runs each seed again with its shadow (its runs keep no branch log to
+know their paths by): more runs than the Windows lanes' one-per-path. The explorer's runs are not
+handed back to the 32-bit and PowerPC judges as fingerprints (the 16-bit judge's are): a shadow
+run is one instruction at a time, and the judge's fingerprint run stays the fast one.
+
+Tests: tests/test_run_record.py (5: the record's rules on made-up writes; a fingerprint from a
+record; every platform's runner gives the record; the 32-bit and 16-bit memory digests as the
+lanes' own code made them), tests/test_concolic.py (11, four new: a 32-bit run with its shadow is
+the same run, on LZ32's exports; LZOpenFileA's paths all found; a PowerPC branch over an argument
+and over a call's result solved, the same run with the shadow or without; the PowerPC lift mode's
+registers and p-code). check_imports, test_verification (23), test_drivers (16), test_powerpc (17),
+test_platforms (9), test_frozen (47), test_z80, test_m68k, test_nes pass; tidy reports only what
+it reported before.
+
+Left for after: the pcodecheck in the setting decompiler_bin needs rebuilding for ppc-be-64-lift
+(`cmake --build native/decompiler/build --config Release --target pcodecheck`; until then the
+PowerPC lane guesses as before, the x86 lanes explore). Handing the 32-bit explorer's runs back
+as fingerprints would save about a quarter of lz32's original runs again.
 
 ## Built: phase B (2026-10-29)
 

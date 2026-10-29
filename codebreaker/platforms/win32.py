@@ -2,7 +2,7 @@
 
 The six slots: the PE reader (formats/pe.py); the 386 in flat 32-bit mode; the Win32 conventions
 (__stdcall, __cdecl, __fastcall, __thiscall: EAX the result, EBX ESI EDI EBP kept); the 32-bit
-emulator (emulate/emulator.py trace_function, on Unicorn); OpenWatcom's wcc386 with the options
+emulator (emulate/emulator.py trace_function, on Unicorn, as a run record); OpenWatcom's wcc386 with the options
 c_text gives; the module linked by build/module._build32, the judge's build by
 build/functions.build32."""
 from codebreaker.platforms import (Compiler, Convention, Cpu, Emulator, Loader, Packager, Platform, Ref,
@@ -18,7 +18,6 @@ def sections(path):
 def call(path, export):
     """One export of a module called with zero arguments: (how it ended, its result)."""
     from codebreaker.build import module
-    from codebreaker.verify import compare
     from codebreaker.verify.lanes import win32
     try:
         r = PLATFORM.emulator.run(path, func=export.address, args=[0] * PLATFORM.convention.arguments,
@@ -27,7 +26,7 @@ def call(path, export):
         raise
     except Exception as e:                                    # the emulator giving up is a result too
         return "error: %s" % type(e).__name__, None
-    return compare._exit_norm(r.get("exit")), r.get("ret")
+    return r.ended, r.results.get("EAX")
 
 
 def tools():
@@ -47,7 +46,7 @@ PLATFORM = Platform(
     convention=Convention(names=("__stdcall", "__cdecl", "__fastcall", "__thiscall"), arguments=4, word=4,
                           order="c", results=("EAX", "EDX:EAX"), pops="either",
                           preserved=("EBX", "ESI", "EDI", "EBP")),
-    emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.emulator", "trace_function"),
+    emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.emulator", "recorded"),
                       call=Ref(__name__, "call")),
     compiler=Compiler(language="c", toolchain="openwatcom", tool=Ref("codebreaker.build.watcom", "ow_tool", "wcc386"),
                       tools=Ref(__name__, "tools"), flags=Ref("codebreaker.decompile.c_text", "CFLAGS"),

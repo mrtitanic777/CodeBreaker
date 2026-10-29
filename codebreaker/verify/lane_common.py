@@ -1,8 +1,8 @@
 """lane_common.py -- what every kind's judge does the same way.
 
 A kind of module (verify/lanes/win32.py, win16.py, powerpc.py, driver.py) knows how to run its
-code -- its emulator, its calling convention, which addresses mean what -- and turns a run into a
-fingerprint for verify/compare.py. What is left over is the same for all of them, and lives here
+code -- its emulator, its calling convention, which addresses mean what -- and turns a run (the
+one run record every emulator returns, emulate/run.py) into a fingerprint for verify/compare.py. What is left over is the same for all of them, and lives here
 so that it stays the same:
 
     the switches     CB_NO_FP_CACHE, CB_NO_GUIDED and CB_PLAIN, read in one place
@@ -10,6 +10,9 @@ so that it stays the same:
     call(), calls()  a recorded call as the text two builds of the same code agree on
     argument()       one argument of such a call
     writes()         the memory a run left changed, as the digest a fingerprint carries
+    fingerprint()    what compare.py compares, made from an emulator's run record (emulate/run.py):
+                     how it ended, the result, the calls, the memory, the stack, the saved registers
+    changed(), left() the memory a run record says was left changed, as a lane names its places
     the inputs       the argument patterns the kinds' tables of inputs are made of
     guided()         branch-guided inputs (verify/guided.py), with the limits every kind uses
     explored()       the same found path by path (verify/concolic.py), where the kind can follow
@@ -74,11 +77,13 @@ def call(name, args=None):
 
 def calls(seq, argument, name=str, skip=None, cap=None):
     """The calls a run made, in order, as a fingerprint records them. `seq` is (name, args) for
-    each, args None when their number is not known; each name goes through `name` and each
-    argument through `argument(value)`. Calls `skip(name)` says are not the function's own are
-    left out. Past `cap` calls the rest are one "..." (compare.py: calls-capped)."""
+    each -- a run record's calls (emulate/run.py Call) or pairs --, args None when their number
+    is not known; each name goes through `name` and each argument through `argument(value)`.
+    Calls `skip(name)` says are not the function's own are left out. Past `cap` calls the rest
+    are one "..." (compare.py: calls-capped)."""
     out = []
-    for api, args in seq:
+    for c in seq:
+        api, args = c[0], c[1]
         if skip and skip(api):
             continue
         if cap is not None and len(out) >= cap:
@@ -124,6 +129,65 @@ def writes(state):
     return "%d:%s" % (len(state), hashlib.sha1(repr(sorted(state.items())).encode()).hexdigest()[:16])
 
 
+# --- from a run record (emulate/run.py) to a fingerprint ----------------------------------------
+def changed(run, place=None, word=None, most=8, everything=True):
+    """{place: final value} of the bytes a run left with a value other than they held before it
+    (run.writes, emulate/run.py), as a lane names its places. `place(address)` is asked of each
+    write's first byte: None leaves the write out; a key -- an address, or (tag, offset) -- names
+    its first byte, the next ones following it; a function names each byte (i -> key or None).
+    Default: the address itself. `word(value)`: what a 4-byte value stands for in every one of
+    its bytes when it is not a number to compare ("S", a stack address), else None. At most
+    `most` bytes of a write are taken. What a byte held before is what the first write to it
+    found there -- the first of every write (`everything`), the harness's and those left out
+    too, or the first of those kept."""
+    state, before, at = {}, {}, {}
+    little = run.endian == "little"
+    for w in run.writes:
+        a, n, v, old = w.address, min(w.size, most), w.value, w.old
+        if everything:
+            for i in range(n):
+                before.setdefault(a + i, None if old is None else (old >> (8 * (i if little else n - 1 - i))) & 0xFF)
+        if w.harness:
+            continue
+        where = place(a) if place is not None else a
+        if where is None:
+            continue
+        token = word(v) if word is not None and n == 4 else None
+        for i in range(n):
+            if callable(where):
+                k = where(i)
+                if k is None:
+                    continue
+            else:
+                k = where + i if isinstance(where, int) else (where[0], where[1] + i)
+            if not everything:
+                before.setdefault(a + i, None if old is None else (old >> (8 * (i if little else n - 1 - i))) & 0xFF)
+            state[k] = token if token is not None else (v >> (8 * (i if little else n - 1 - i))) & 0xFF
+            at.setdefault(k, a + i)
+    return {k: x for k, x in state.items() if x != before.get(at[k])}
+
+
+def left(run, place=None, word=None, most=8, everything=True):
+    """The memory a run left changed (changed()) as a fingerprint carries it (writes()); None when
+    the emulator recorded fewer writes than were made (compare.py: writes-capped)."""
+    if run.capped:
+        return None
+    return writes(changed(run, place, word, most, everything))
+
+
+def fingerprint(run, deps, ret=None, writes="", saved=None, cov=(), reach=(), **more):
+    """What verify/compare.py compares, made from a run record: how it ended, `ret` (the result,
+    or None for one that is not), `deps` (its calls and effects out, as text in order: calls()),
+    `writes` (left()), the stack's move and `saved` (the preserved registers handed back: a bool,
+    or None where a lane does not compare them) only for a run that returned; `cov`, `reach`: the
+    function's own instructions run and every one run; `more`: a lane's own fields."""
+    done = run.ended == "ret"
+    fp = {"ret": ret, "exit": run.ended, "truncated": bool(run.truncated), "deps": tuple(deps), "writes": writes,
+          "pop": run.stack if done else None, "saved": saved if done else None, "cov": cov, "reach": reach}
+    fp.update(more)
+    return fp
+
+
 # --- inputs -------------------------------------------------------------------------------------
 # The argument patterns the kinds' inputs are made of. Every argument gets a DIFFERENT value
 # wherever the pattern allows: with one value in every slot, a body that uses its parameters in
@@ -165,11 +229,14 @@ MAX_PATHS = 24                  # inputs it keeps, one per new path
 GUIDED_REST = 32                # runs then left to guessing, where the paths found are not all
 
 
-def explored(run, seeds, derive, own, known=None):
+def explored(run, seeds, derive, own, known=None, steps=None, more=0):
     """Inputs for the paths of the original no seed took (verify/concolic.py explore, with these
-    limits): -> its Exploration, whose .kept are the inputs."""
+    limits): -> its Exploration, whose .kept are the inputs. `steps`: the solver's limit for one
+    question, in its own steps, where not concolic.SOLVER_STEPS; `more`: runs beyond PATH_BUDGET
+    (for seeds whose paths are not known beforehand, each run again with its shadow)."""
     from codebreaker.verify import concolic
-    return concolic.explore(run, seeds, derive, own=own, budget=PATH_BUDGET, keep=MAX_PATHS, known=known)
+    return concolic.explore(run, seeds, derive, own=own, budget=PATH_BUDGET + more, keep=MAX_PATHS, known=known,
+                            steps=steps or concolic.SOLVER_STEPS)
 
 
 def path_limits(got):

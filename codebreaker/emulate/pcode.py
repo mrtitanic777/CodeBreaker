@@ -1,6 +1,7 @@
 """pcode.py -- an instruction's p-code, from the decompiler's own SLEIGH specification.
 
-    lifter = pcode.lifter("x86-16-real")       # None when the lifting program is not there
+    lifter = pcode.lifter("x86-16-real")       # (or "x86-32-flat", "ppc-be-64"); None when the lifting
+                                               # program is not there, or has not that mode
     ins = lifter.lift(code_bytes, offset)      # Lifted: .length, .ops, ...; None if it does not decode
 
 The judge's path explorer (verify/concolic.py through emulate/shadow.py) follows what an
@@ -14,7 +15,8 @@ An op is (OPCODE, out, inputs): a varnode is (space, offset, size) with space "r
 "u" unique, "c" constant, "m" ram; out is None for none; a user operation's first input is its
 name (a str, "segment"). A 16-bit instruction is lifted at its offset in its segment: a near
 jump's target is an offset there too (the lift mode puts each in a 64K window of its own, the
-window dropped here).
+window dropped here). A flat 32-bit one and a PowerPC one at its address (the PowerPC's from
+ppc_64_xenon_be.sla, its registers named as pcodecheck's ppc-be-64 mode names them, big-endian).
 
 The program is found as CB_PCODECHECK names it, else beside the decompiler (the setting
 decompiler_bin); one built before the lift mode existed is not used (lifter() is None)."""
@@ -103,6 +105,8 @@ class Lifter(object):
 
 
 _LIFTERS = {}
+# the specification each lift mode reads (native/decompiler/languages)
+SLA = {"x86-16-real": "x86.sla", "x86-32-flat": "x86.sla", "ppc-be-64": "ppc_64_xenon_be.sla"}
 
 
 def _exe():
@@ -119,7 +123,7 @@ def lifter(mode="x86-16-real"):
     if mode not in _LIFTERS:
         from codebreaker.decompile import decompiler
         exe = _exe()
-        sla = os.path.join(decompiler._languages(), "x86.sla")
+        sla = os.path.join(decompiler._languages(), SLA[mode])
         try:
             _LIFTERS[mode] = Lifter(exe, sla, mode) if os.path.exists(exe) and os.path.exists(sla) else None
         except (OSError, ValueError):
@@ -127,9 +131,9 @@ def lifter(mode="x86-16-real"):
     return _LIFTERS[mode]
 
 
-def stamp():
+def stamp(mode="x86-16-real"):
     """What the lifted p-code depends on (for keys of anything kept from it): the program and the
     specification (base/cache.py tool)."""
     from codebreaker.base import cache
     from codebreaker.decompile import decompiler
-    return cache.tool(_exe()), cache.tool(os.path.join(decompiler._languages(), "x86.sla"))
+    return cache.tool(_exe()), cache.tool(os.path.join(decompiler._languages(), SLA[mode]))

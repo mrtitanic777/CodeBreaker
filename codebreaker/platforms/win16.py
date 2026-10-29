@@ -25,14 +25,13 @@ def entries(path):
 
 def call(path, export):
     """One export of a module called with zero arguments: (how it ended, its result)."""
-    from codebreaker.verify import compare
     try:
         r = PLATFORM.emulator.run(path, ordinal=export.ordinal, args=[0] * PLATFORM.convention.arguments)
     except ImportError:
         raise
     except Exception as e:                                    # the emulator giving up is a result too
         return "error: %s" % type(e).__name__, None
-    return compare._exit_norm(r.get("exit")), r.get("ret")
+    return r.ended, r.results.get("AX")
 
 
 def library():
@@ -60,7 +59,7 @@ PLATFORM = Platform(
                                  "__fastcall16near"),
                           arguments=8, word=2, order="pascal", results=("AX", "DX:AX"), pops="either",
                           preserved=("SI", "DI", "DS")),
-    emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.windows16", "probe"),
+    emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.windows16", "recorded"),
                       call=Ref(__name__, "call")),
     compiler=Compiler(language="c", toolchain="openwatcom", tool=Ref("codebreaker.build.watcom", "ow_tool", "wcc"),
                       tools=Ref(__name__, "tools"), flags=Ref("codebreaker.build.functions", "CFLAGS16"),

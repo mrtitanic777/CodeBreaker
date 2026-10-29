@@ -233,68 +233,53 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
                                        for less, size in frame)
     try:
         r = ran or P.emulator.run(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
-                           stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp, ports=True, insn_cap=steps)
+                                  stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp, ports=True, insn_cap=steps)
     except ImportError:
         raise
     except Exception as e:
         return {"err": type(e).__name__}
-    ex = compare._exit_norm(r.get("exit"))
-    lay = r.get("layout") or {}
+    ex = r.ended
+    lay = r.raw.get("layout") or {}
     ds = lay.get("ds_base")
-    state, before = {}, {}
     places = {}                                              # a frame helper's places in the stack: byte -> its own
     for less, size in frame or ():
         for i in range(size):
             places[ne_probe.STACK_BASE + ((CALLER_BP - less + i) & 0xFFFF)] = ("F", -less + i)
-    for w in r.get("mem_writes") or []:
-        a, n, val = w["addr"], w["size"], w["value"] or 0
-        if places and any(a + i in places for i in range(min(n, 4))):
-            for i in range(min(n, 4)):
-                if a + i in places:
-                    before.setdefault(places[a + i], ((w.get("old") or 0) >> (8 * i)) & 0xFF)
-                    state[places[a + i]] = (val >> (8 * i)) & 0xFF
-            continue
+
+    def place(a):
+        if places and any(a + i in places for i in range(4)):
+            return lambda i: places.get(a + i)
         if ds is not None and ds <= a < ds + 0x10000:
-            if any(lo <= a - ds < hi for lo, hi in own):
-                continue
-            where = ("D", a - ds)
-        elif ne_probe.HEAP_BASE <= a < ne_probe.HEAP_BASE + 64 * ne_probe.HEAP_STRIDE:
-            where = ("H", a - ne_probe.HEAP_BASE)
-        else:
-            continue                                         # the stack, or somewhere wild
-        for i in range(min(n, 4)):
-            k = (where[0], where[1] + i)
-            before.setdefault(k, ((w.get("old") or 0) >> (8 * i)) & 0xFF)
-            state[k] = (val >> (8 * i)) & 0xFF
+            return None if any(lo <= a - ds < hi for lo, hi in own) else ("D", a - ds)
+        if ne_probe.HEAP_BASE <= a < ne_probe.HEAP_BASE + 64 * ne_probe.HEAP_STRIDE:
+            return ("H", a - ne_probe.HEAP_BASE)
+        return None                                          # the stack, or somewhere wild
     # a byte left holding what it held on entry is not an effect (one compiler clears a flag
     # with a word write, another with a byte write)
-    writes = lane_common.writes({k: x for k, x in state.items() if x != before.get(k)})
-    regs = r.get("exit_regs") or {}
-    entry = r.get("entry_regs") or {}
-    base = r.get("code_base") or 0
+    writes = lane_common.left(r, place, most=4, everything=False)
+    entry = r.raw.get("entry_regs") or {}
+    base = r.raw.get("code_base") or 0
     lo, hi = span or (off, off)
-    cov = tuple(sorted({a - base - lo for a in r.get("path") or () if lo <= a - base < hi}))
+    cov = tuple(sorted({a - base - lo for a in r.path if lo <= a - base < hi}))
     ret = None
     if ex == "ret" and wide is not None:                     # None: the function returns nothing
-        ret = (r.get("ret32") if wide else r.get("ret")) or 0
+        ret = (r.results.get("DX:AX") if wide else r.results.get("AX")) or 0
         # An exported function starts `push ds / pop ax`; one that sets no result returns with
         # that still in AX. Its own data selector is a leftover, not a result.
         if ret & 0xFFFF == (entry.get("DS") or -1) and not wide:
             ret = LEFTOVER
-    return {"ret": ret, "exit": ex, "truncated": bool(r.get("truncated")),
-            "deps": _effects(r.get("imports_hit") or (), r.get("io") or (), lambda h: _call(h, v["args"], entry, segs)),
-            "writes": writes, "pop": r.get("sp_delta") if ex == "ret" else None,
-            "saved": all(regs.get(r) == entry.get(r) for r in P.convention.preserved) if ex == "ret" else None,
-            "cov": cov, "reach": (), "trail": tuple(trail(path, seg, span, r.get("path") or ())) if span else ()}
+    return lane_common.fingerprint(r, _effects(r, lambda h: _call(h, v["args"], entry, segs)), ret=ret, writes=writes,
+                                   saved=r.kept(P.convention.preserved), cov=cov,
+                                   trail=tuple(trail(path, seg, span, r.path)) if span else ())
 
 
-def _effects(hits, io, call):
-    """The run's effects outside itself, in the order it had them: each Windows call (`call(hit)`)
-    and each access to a device (emulate/ports16.py) -- `out(3fb,83)`, `in(3fd)`. What a function
-    did to the UART is what it is for: a rebuild writing another divisor, or reading the line
-    status of another port, did something else."""
-    out = [(h.get("n") or 0, 0, k, call(h)) for k, h in enumerate(hits)]
-    for k, (n, what, port, value) in enumerate(io):
+def _effects(r, call):
+    """The run's effects outside itself, in the order it had them: each Windows call (`call(hit)`,
+    the call's detail) and each access to a device (emulate/ports16.py) -- `out(3fb,83)`,
+    `in(3fd)`. What a function did to the UART is what it is for: a rebuild writing another
+    divisor, or reading the line status of another port, did something else."""
+    out = [(c.detail.get("n") or 0, 0, k, call(c.detail)) for k, c in enumerate(r.calls)]
+    for k, (n, what, port, value, _size) in enumerate(r.io):
         out.append((n, 1, k, "..." if what == "..." else "in(%x)" % port if what == "in" else
                     "out(%x,%x)" % (port, value)))
     return tuple(text for _n, _o, _k, text in sorted(out))
@@ -358,8 +343,9 @@ def _judge(context, item):
         known = {i: original(v).get("trail") for i, v in enumerate(vectors()) if "err" not in original(v)}
         kept, got, ran = explore_vectors(module_path, seg, off, near, span, seeds, known=known)
         if not frame:                                        # (the explorer ran the original as the judge does)
+            from codebreaker.emulate import windows16 as ne_probe
             for v, r in ran:
-                original(v, ran=r)
+                original(v, ran=ne_probe.record(r))
         paths["got"] = got
         return list(d) + kept
 
@@ -416,7 +402,7 @@ def _branch_run(module_path, seg, off, near, span, v, **probe):
     except Exception:
         return None
     base = ne_probe.STACK_BASE
-    return {"branches": r.get("branches") or [], "reach": set(r.get("path") or ()),
+    return {"branches": r.raw.get("branches") or [], "reach": set(r.path),
             "args_at": base + ne_probe.FAR_RET - 2 * len(v["args"]), "stack": (base, base + 0x10000)}
 
 

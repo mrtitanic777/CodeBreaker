@@ -20,7 +20,8 @@
 //   <id> err <message>
 // LIN is the linear address of the next instruction; W are the bytes of memory written.
 //
-//   pcodecheck <file.sla> x86-16-real-lift   (or x86-32-flat-lift: an instruction at its address)
+//   pcodecheck <file.sla> x86-16-real-lift   (or x86-32-flat-lift, ppc-be-64-lift: an instruction at
+// its address; ppc-be-64 names the PowerPC registers above and XER instead of the x86 ones)
 // lifts instead of running, for the judge's path explorer (codebreaker/verify/concolic.py): first
 // writes one line naming the registers, "regs NAME:offset:size ...", then for each stdin line
 // "<instruction bytes in hex> <offset hex>" one line "<length> <op>;<op>;..." (or "err ..."):
@@ -187,7 +188,7 @@ public:
 
 int main(int argc, char **argv) {
   std::string mode = argc == 3 ? argv[2] : "";
-  const bool lift = mode == "x86-16-real-lift" || mode == "x86-32-flat-lift";
+  const bool lift = mode == "x86-16-real-lift" || mode == "x86-32-flat-lift" || mode == "ppc-be-64-lift";
   if (lift) mode = mode.substr(0, mode.size() - 5);
   const bool asmOnly = mode == "ppc-be-64-asm" || mode == "asm";
   if (mode == "ppc-be-64-asm") mode = "ppc-be-64";
@@ -232,13 +233,11 @@ int main(int argc, char **argv) {
     // no decoding cached for another instruction's bytes is used: a 16-bit jump's target wraps in
     // its window, and the window is dropped by the reader)
     std::printf("regs");
-    for (const std::string &r : REGS_X86) {
+    std::vector<std::string> named = REGS;
+    named.push_back(ppc ? "XER" : "EIP");
+    for (const std::string &r : named) {
       const VarnodeData &v = trans.getRegister(r);
       std::printf(" %s:%llx:%u", r.c_str(), (unsigned long long)v.offset, (unsigned)v.size);
-    }
-    for (const char *r : {"EIP"}) {
-      const VarnodeData &v = trans.getRegister(r);
-      std::printf(" %s:%llx:%u", r, (unsigned long long)v.offset, (unsigned)v.size);
     }
     std::printf("\n");
     std::fflush(stdout);
