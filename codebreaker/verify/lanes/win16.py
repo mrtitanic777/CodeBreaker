@@ -8,7 +8,8 @@ module is decompiled and made compilable by decompile/c_text.py, every function 
 Both sides are entered the way the function is really called (far or near) with the same words
 on the stack, and the rebuilt module's data segment is given the original's data, so a global is
 at the same offset and starts with the same value on both sides. Compared: how the run ends,
-the Windows functions called, in order and with their arguments, the result in AX (DX:AX when
+the Windows functions called and the UART and interrupt controller ports read and written
+(emulate/ports16.py, a device both sides meet alike), in order and with their arguments, the result in AX (DX:AX when
 the function returns four bytes), what is left in the data segment and on the far heap, how many
 bytes of arguments were removed, and whether SI, DI and DS were preserved.
 
@@ -30,9 +31,12 @@ from codebreaker.verify import lane_common
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 21                                # bump when what is built or compared changes
+REV = 22                                # bump when what is built or compared changes
                                         # (21: branch-guided inputs, an input's memory and what Windows returns;
-                                        # the interrupt routines linked, their registers the build's own)
+                                        # the interrupt routines linked, their registers the build's own;
+                                        # 22: in/out reach a UART and the interrupt controllers, and what was
+                                        # done to them is compared with the calls; C still reading its code
+                                        # segment at the original's offsets has the original's segment there)
 
 
 def vectors():
@@ -200,7 +204,7 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
                                        for less, size in frame)
     try:
         r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
-                           stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp)
+                           stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp, ports=True)
     except ImportError:
         raise
     except Exception as e:
@@ -249,11 +253,23 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
         if ret & 0xFFFF == (entry.get("DS") or -1) and not wide:
             ret = LEFTOVER
     return {"ret": ret, "exit": ex, "truncated": bool(r.get("truncated")),
-            "deps": tuple(_call(h, v["args"], entry) for h in r.get("imports_hit") or ()),
+            "deps": _effects(r.get("imports_hit") or (), r.get("io") or (), lambda h: _call(h, v["args"], entry)),
             "writes": writes, "pop": r.get("sp_delta") if ex == "ret" else None,
             "saved": (regs.get("SI") == entry.get("SI") and regs.get("DI") == entry.get("DI")
                       and regs.get("DS") == entry.get("DS")) if ex == "ret" else None,
             "cov": cov, "reach": ()}
+
+
+def _effects(hits, io, call):
+    """The run's effects outside itself, in the order it had them: each Windows call (`call(hit)`)
+    and each access to a device (emulate/ports16.py) -- `out(3fb,83)`, `in(3fd)`. What a function
+    did to the UART is what it is for: a rebuild writing another divisor, or reading the line
+    status of another port, did something else."""
+    out = [(h.get("n") or 0, 0, k, call(h)) for k, h in enumerate(hits)]
+    for k, (n, what, port, value) in enumerate(io):
+        out.append((n, 1, k, "..." if what == "..." else "in(%x)" % port if what == "in" else
+                    "out(%x,%x)" % (port, value)))
+    return tuple(text for _n, _o, _k, text in sorted(out))
 
 
 def _judge(context, item):
@@ -327,7 +343,8 @@ def _branch_run(module_path, seg, off, near, span, v, **probe):
     from codebreaker.emulate import windows16 as ne_probe
     try:
         r = ne_probe.probe(module_path, seg=seg, offset=off, args=v["args"], near=near,
-                           stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), branches=span, **probe)
+                           stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), branches=span,
+                           **dict({"ports": True}, **probe))
     except ImportError:
         raise
     except Exception:
@@ -401,11 +418,12 @@ def build(m, module_path, work):
     """-> (context for judge, {name: item}, {name: why it is not in the build})"""
     from codebreaker.build import functions
     from codebreaker.formats.ne import NEFile
+    nef = NEFile(module_path)
     dll, placed, dropped = functions.build16(m.header, m.texts, m.order, m.imports, work, segments=m.segments,
                                              code_segment={fn: m.where[va][0] for va, fn in m.by_va.items()},
                                              interrupts={v for v, _regs in getattr(m, "interrupts", ())},
-                                             code_data=getattr(m, "code_data", None))
-    nef = NEFile(module_path)
+                                             code_data=getattr(m, "code_data", None),
+                                             code_image=_code_images(m, nef))
     auto = nef.h.get("autodata_seg")
     data_image = b""
     if auto:
@@ -427,6 +445,22 @@ def build(m, module_path, work):
         if frame:                                            # (a caller-frame helper: _judge)
             items[fn] += (frame,)
     return (module_path, dll, data_image, _own_data(work)), items, dropped
+
+
+def _code_images(m, nef):
+    """{segment: the original's bytes of it} for each code segment some of whose C still reads it
+    through CS at the original's offsets -- what c_text could not name (m.code_reads "left": an
+    offset from a register, a table of the code's own addresses), or, with the naming turned off
+    (CB_CODE_DATA=0), every segment whose C reads through CS. The judge's build puts them at the
+    start of the rebuilt segment (functions.build16 code_image): CS:offset there is then what it is
+    in the original (the file's bytes: a place the loader fixes up is not)."""
+    if os.environ.get("CB_CODE_DATA") == "0":
+        want = {m.where[va][0] for va, fn in m.by_va.items() if "codebreaker_cs()" in m.texts.get(fn, "")}
+    else:
+        want = {int(sg) for sg, r in (getattr(m, "code_reads", None) or {}).items() if r.get("left")}
+    segs = {s["idx"]: s for s in nef.segments()}
+    return {sg: bytes(nef.data[segs[sg]["file_off"]:segs[sg]["file_off"] + segs[sg]["length"]])
+            for sg in sorted(want) if sg in segs and segs[sg]["file_off"]}
 
 
 def _own_data(work):

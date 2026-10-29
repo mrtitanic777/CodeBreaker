@@ -395,7 +395,8 @@ def _branch_hook16(rec, cs_base, lo, hi):
 
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
                      insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
-                     callees=None, data_end=None, context=None, mem_init=None, branches=None, bp=None):
+                     callees=None, data_end=None, context=None, mem_init=None, branches=None, bp=None,
+                     ports=False):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -429,7 +430,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     there: which way it went and what was compared (rec["branches"]; _branch_hook16).
 
     bp: BP as the function is entered (else as the emulator starts it, 0) -- for a helper that
-    works in its caller's frame (verify/lanes/win16.py, CALLER_BP)."""
+    works in its caller's frame (verify/lanes/win16.py, CALLER_BP).
+
+    ports: `in` and `out` reach the UARTs and interrupt controllers of emulate/ports16.py, fresh
+    for the run, and what was done to them is rec["io"] ([(step, "in"|"out", port, value)]);
+    else an `in` reads 0 and an `out` goes nowhere."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX,
@@ -690,6 +695,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_limited)
     uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
                 | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
+    devices = None
+    if ports:
+        from codebreaker.emulate import ports16
+        devices = ports16.Devices(clock=lambda: rec["insn_count"])
+        ports16.hook(uc, U, devices)
 
     # prelude: run setup calls first (sharing this uc's DGROUP state + the import_stub ctx), then
     # discard their trace so only the main function's memory/imports are captured.
@@ -706,6 +716,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     if prelude:
         rec["mem_reads"] = []; rec["mem_writes"] = []; rec["imports_hit"] = []
         rec["path"] = []; rec["insn_count"] = 0; rec["prelude_ran"] = len(prelude)
+        if devices:
+            devices.log.clear()                              # (the devices keep their state)
         _enter(seg, offset, args)
 
     # snapshot the register file the main function sees at entry (the implicit inputs behind
@@ -754,6 +766,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
                         "DS": uc.reg_read(UC_X86_REG_DS)}
     rec["ret32"] = ((uc.reg_read(UC_X86_REG_EDX) & 0xFFFF) << 16) | rec["ret"]
     rec["n_imports"] = len(imports)
+    if devices:
+        rec["io"] = list(devices.log)
     return rec
 
 
@@ -958,7 +972,7 @@ def default_stub(hit, uc, U, ctx):
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
           prelude=None, cdecl=False, near=False, data_image=None, callees=None, data_end=None,
-          context=None, stub_ret=None, mem_init=None, branches=None, bp=None):
+          context=None, stub_ret=None, mem_init=None, branches=None, bp=None, ports=False):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
@@ -967,7 +981,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     reversed to land in the right slots (this is how the LZDecompress reset path was reached).
 
     stub_ret: what a Windows function `stub` does not model returns in DX:AX (else 0). mem_init,
-    branches, bp: as trace_function16."""
+    branches, bp, ports: as trace_function16."""
     if cdecl and args:
         args = list(reversed(args))
     ctx_box = {}
@@ -994,7 +1008,8 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     rec = trace_function16(dll, ordinal=ordinal, seg=seg, offset=offset,
                              args=args, arity=len(args or []), import_stub=_stub,
                              prelude=prelude, near=near, data_image=data_image, callees=callees,
-                             data_end=data_end, context=context, mem_init=mem_init, branches=branches, bp=bp, **kw)
+                             data_end=data_end, context=context, mem_init=mem_init, branches=branches, bp=bp,
+                             ports=ports, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}

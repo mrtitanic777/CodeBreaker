@@ -691,6 +691,61 @@ def test_data_beside_the_code_is_read_by_its_place():
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
 
 
+def test_the_judge_s_build_has_the_original_s_code_segment_where_c_still_reads_it():
+    # KEYBOARD's ENABLE reads its segment through CS at offsets from a register: c_text could not
+    # name them, so the judge's build puts the original's segment 10 first in the rebuilt one
+    import types
+    from codebreaker.verify.lanes import win16
+
+    class Nef:
+        data = bytes(range(16)) * 4
+
+        def segments(self):
+            return [{"idx": 9, "file_off": 0, "length": 8}, {"idx": 10, "file_off": 16, "length": 8}]
+    m = types.SimpleNamespace(code_reads={9: {"read": 2, "named": 2, "left": []},
+                                          10: {"read": 5, "named": 4, "left": ["ENABLE: ... int_DI"]}},
+                              by_va={1: "ENABLE", 2: "VKKEYSCAN"}, where={1: (10, 0), 2: (9, 0)},
+                              texts={"ENABLE": "MK_FP(codebreaker_cs(), x)", "VKKEYSCAN": "y"})
+    old = os.environ.pop("CB_CODE_DATA", None)
+    try:
+        assert win16._code_images(m, Nef()) == {10: bytes(range(8))}
+        os.environ["CB_CODE_DATA"] = "0"                     # (nothing named: every segment read through CS)
+        assert win16._code_images(m, Nef()) == {10: bytes(range(8))}
+    finally:
+        os.environ.pop("CB_CODE_DATA", None)
+        if old is not None:
+            os.environ["CB_CODE_DATA"] = old
+
+
+def test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do():
+    # COMM.DRV waits for an empty transmitter, sets the divisor behind DLAB, tells a 16550A by its
+    # FIFO bits, loops on the interrupt identification until nothing is pending, unmasks its IRQ
+    from codebreaker.emulate import ports16
+    from codebreaker.verify.lanes import win16
+    d = ports16.Devices()
+    assert d.read(0x3FD) & 0x60 == 0x60 and d.read(0x3FD) & 1         # transmitter empty, data waiting
+    d.write(0x3FB, 0x83)                                              # DLAB
+    d.write(0x3F8, 0x06), d.write(0x3F9, 0x00)
+    assert d.read(0x3F8) == 0x06 and d.read(0x3FB) == 0x83
+    d.write(0x3FB, 0x03)
+    assert d.read(0x3F8) == ord("A")                                  # (the receiver, not the divisor)
+    d.write(0x3FF, 0x5A)
+    assert d.read(0x3FF) == 0x5A                                      # scratch
+    d.write(0x3FA, 0xC7)
+    assert d.read(0x3FA) & 0xC0 == 0xC0                               # a 16550A's FIFOs
+    d.write(0x3F9, 0x02)                                              # transmitter interrupt on
+    assert d.read(0x3FA) & 0x0F == 0x02 and d.read(0x3FA) & 0x0F == 0x01   # once, then nothing
+    assert d.read(0x21) == 0xB8
+    d.write(0x21, 0xA8), d.write(0x20, 0x20)
+    assert d.read(0x21) == 0xA8
+    assert d.read(0x60) == 0 and all(p != 0x60 for _n, _w, p, _v in d.log)  # (not a modelled port)
+    assert d.read(0x005) & 0x60 == 0x60                               # (base 0: a port record unset)
+    # what was done to them is compared with the calls, in the order it was done
+    hits = [{"api": "KERNEL.X", "n": 5}]
+    io = [(2, "out", 0x3FB, 0x83), (9, "in", 0x3FD, 0x60)]
+    assert win16._effects(hits, io, lambda h: h["api"]) == ("out(3fb,83)", "KERNEL.X", "in(3fd)")
+
+
 def test_the_governor_shares_one_budget():
     # slots taken are held until given back, across holders; never more than the machine's workers,
     # never fewer than one
@@ -753,7 +808,9 @@ def test_programs_stored_one_after_another_are_each_found():
 def main():
     for fn in (test_programs_stored_one_after_another_are_each_found, test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
                test_chunks_come_back_in_address_order, test_a_call_through_a_word_stays_near,
-               test_data_beside_the_code_is_read_by_its_place, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
+               test_data_beside_the_code_is_read_by_its_place,
+               test_the_judge_s_build_has_the_original_s_code_segment_where_c_still_reads_it,
+               test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_every_kind_keeps_fingerprints_and_writes_calls_alike,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
