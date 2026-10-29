@@ -31,6 +31,13 @@ _JUMPS = {"jmp", "je", "jne", "jb", "jae", "jbe", "ja", "jl", "jge", "jle", "jg"
           "jp", "jnp", "jcxz", "loop", "loope", "loopne"}
 
 
+def _386(i):
+    """Is it an instruction the inline assembler does not take -- the 386's, which /G3 makes: a
+    32-bit register, an operand-size prefix, a near conditional jump?"""
+    regs = [op.reg for op in i.operands if op.type == X.X86_OP_REG] +         [r for op in i.operands if op.type == X.X86_OP_MEM for r in (op.mem.base, op.mem.index)]
+    return any(r in _REGS32 for r in regs) or i.bytes[:1] == b"f" or         (i.bytes[:1] == b"" and 0x80 <= i.bytes[1] <= 0x8f)
+
+
 def _prologue(ins):
     """-> (instructions it takes, frame bytes, loads DS) -- the frame C 8 makes for the function."""
     k, frame, loadds = 0, 0, False
@@ -80,7 +87,7 @@ def _operands(i, fixups, name_at, seg):
     if i.mnemonic.split()[-1] in _STRING:
         return ""
     if i.mnemonic in ("les", "lds") and re.search(r"(^|[ ,])ptr ", s):
-        s = re.sub(r"(^|[ ,] ?)ptr ", r"dword ptr ", s, count=1)
+        s = re.sub(r"(^|[ ,] ?)ptr ", r"\g<1>dword ptr ", s, count=1)
     ops = i.operands
     # a direct memory operand: the module's data (DS: the inline assembler takes [n] for an immediate)
     for op in ops:
@@ -115,8 +122,7 @@ def whole_body(name, code, start, end, fixups, name_at, seg, result="int2"):
     first, last = ins[0].address, ins[-1].address + ins[-1].size
     targets = set()
     for i in body:
-        regs = [op.reg for op in i.operands if op.type == X.X86_OP_REG] +             [r for op in i.operands if op.type == X.X86_OP_MEM for r in (op.mem.base, op.mem.index)]
-        if any(r in _REGS32 for r in regs) or i.bytes[:1] == b"f" or i.bytes[:1] == b"" and                 0x80 <= i.bytes[1] <= 0x8f:
+        if _386(i):
             # (the inline assembler takes the 286's instructions: a 32-bit register, an operand-size
             # prefix, a near conditional jump are /G3's code -- C round a block, not the block)
             return None, "386 code, which the compiler made (%04x %s %s)" % (i.address, i.mnemonic, i.op_str)
