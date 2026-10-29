@@ -126,13 +126,18 @@ def _put(v, place, value, size, mach):
     return out
 
 
-def guided_inputs(run, seeds, budget=96, keep=16, seed=0, byteorder="little", word=4):
+def guided_inputs(run, seeds, budget=96, keep=16, seed=0, byteorder="little", word=4, observed=()):
     """Inputs (beyond `seeds`) that take branch directions the seeds did not. See the module text.
-    `byteorder` and `word` (bytes in an argument) are the processor's."""
+    `byteorder` and `word` (bytes in an argument) are the processor's. `observed`: [(input, its
+    observation)] of inputs already run, taken as seeds without running them again."""
     rng = random.Random(seed)
     mach = _Machine(byteorder, word)
     seen_edges, seen_reach = set(), set()
     pool = []                                  # (input, its observation) -- seeds and kept inputs
+    for v, o in observed:
+        seen_edges |= _edges(o)
+        seen_reach |= set(o.get("reach") or ())
+        pool.append((v, o))
     for v in seeds:
         o = run(v)
         if o is None:

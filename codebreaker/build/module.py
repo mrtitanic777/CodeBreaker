@@ -1868,12 +1868,17 @@ def _gate16_keys(path, names, m):
         sizes = open(api_arguments._cache16_path(), "rb").read()     # checker answers calls by it)
     except OSError:
         sizes = b""
-    from codebreaker.verify import guided, lane_common
-    # (and the branch-guided inputs the checker runs: the explorer, its limits, whether it is on)
+    from codebreaker.emulate import pcode, shadow, symbolic
+    from codebreaker.verify import concolic, guided, lane_common
+    # (and the branch-guided inputs the checker runs: the explorers, their limits, whether they are
+    # on -- the path explorer's lifter too)
+    ready = win16.concolic_ready()
     tools = cache.key(cache.tool(watcom.ow_tool("wcc") or ""), functions.CFLAGS16, sizes,
                       lane_common.guided_on(), lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED,
+                      ready, lane_common.PATH_BUDGET, lane_common.MAX_PATHS, pcode.stamp() if ready else "",
                       *[open(sys.modules[x.__name__].__file__, "rb").read()
-                        for x in (isolated16, windows16, win16, api_arguments, guided, lane_common)])
+                        for x in (isolated16, windows16, win16, api_arguments, guided, lane_common, concolic,
+                                  shadow, symbolic, pcode)])
     header = cache.key(getattr(m, "header", ""))
     # (and the description's lines for the function and for each it calls: the checker answers
     # a call as the description says the callee does -- what it removes, what it returns -- so

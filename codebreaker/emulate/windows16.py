@@ -93,6 +93,15 @@ def segment_base(idx):
     return SEG_ORIGIN + idx * SEG_STRIDE
 
 
+def selector_base(uc, sel):
+    """The base the descriptor for `sel` gives, read from the GDT as it is now (0 past its end)."""
+    try:
+        d = bytes(uc.mem_read(GDT_ADDR + (sel >> 3) * 8, 8))
+    except Exception:
+        return 0
+    return d[2] | d[3] << 8 | d[4] << 16 | d[7] << 24
+
+
 def _load_ne(uc, U, nef):
     """Map every NE segment into its 64K GDT window, build the GDT (segments + stack + import
     sentinel), and load the segment bytes. Returns (sels, seg_bases, stack_sel, sent_sel).
@@ -396,7 +405,7 @@ def _branch_hook16(rec, cs_base, lo, hi):
 def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity=0,
                      insn_cap=_MAX_INSNS, import_stub=None, prelude=None, near=False, data_image=None,
                      callees=None, data_end=None, context=None, mem_init=None, branches=None, bp=None,
-                     ports=False):
+                     ports=False, shadow=None):
     """Trace one exported 16-bit function. Identify it by `ordinal` (entry-table) or explicit
     (seg, offset). `args` are 16-bit Pascal args (pushed left-to-right); a far-RET sentinel sits
     under them. Returns a TraceRecord dict like tracer.trace_function.
@@ -434,7 +443,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
 
     ports: `in` and `out` reach the UARTs and interrupt controllers of emulate/ports16.py, fresh
     for the run, and what was done to them is rec["io"] ([(step, "in"|"out", port, value)]);
-    else an `in` reads 0 and an `out` goes nowhere."""
+    else an `in` reads 0 and an `out` goes nowhere.
+
+    shadow: an emulate/shadow.py Shadow16 kept up beside the run (the path explorer's): told the
+    arguments' places, stepped before each instruction of the module's code, told of each call
+    the environment answers. The run is the same run with it or without."""
     import unicorn as U
     from unicorn.x86_const import (UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_SS, UC_X86_REG_ES,
                                    UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_EAX, UC_X86_REG_EDX,
@@ -478,9 +491,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         if context:
             return _enter_recorded(sseg, soff)
         sp = 0xFFF0
+        arg_places[:] = []
         for a in sargs:
             sp = (sp - 2) & 0xFFFF
             uc.mem_write(STACK_BASE + sp, (int(a) & 0xFFFF).to_bytes(2, "little"))
+            arg_places.append((STACK_BASE + sp, int(a) & 0xFFFF))
         if near:                                             # near call: just the return offset
             sp = (sp - 2) & 0xFFFF; uc.mem_write(STACK_BASE + sp, NEAR_RET.to_bytes(2, "little"))
         else:
@@ -527,6 +542,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         return soff
 
     entry_sp = [0]
+    arg_places = []                                          # (where each argument word is pushed, its value)
     if data_image and seg_bases.get(auto) is not None:
         uc.mem_write(seg_bases[auto], bytes(data_image[:0x10000]))
     if data_end and seg_bases.get(auto) is not None:
@@ -567,6 +583,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
                      "autodata_seg": auto, "seg_stride": SEG_STRIDE,
                      "stack_base": STACK_BASE, "scratch_base": SCRATCH_BASE, "sent_base": SENT_BASE}
 
+    code_at = {sels[i] & ~3: seg_bases[i] for i in seg_bases if i in sels and i != auto}   # (selector -> base)
     intercept = {}
     places = {(cseg, coff): what[0] for (cseg, coff), what in (callees or {}).items()}
     for (cseg, coff), what in (callees or {}).items():
@@ -604,9 +621,13 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         # (a place in the caller's stack handed over, `&local, SS`, the callee fills: a word made
         # up the same way. Left as it was, the caller read what its frame held before -- another
         # thing in each build: LookupMenuHandle's result, written by sub_10_009C)
+        if shadow is not None:
+            shadow.after_call(uc, False, 0, STACK_BASE + first, len(words), "callee")
         for i, w in enumerate(words[:-1]):
             if words[i + 1] == ss_now:
                 uc.mem_write(STACK_BASE + w, (((h >> 7) ^ (0x9E37 * (i + 1))) & 0xFFFF).to_bytes(2, "little"))
+                if shadow is not None:
+                    shadow.written(STACK_BASE + w, 2)
         uc.reg_write(UC_X86_REG_EAX, h & 0xFFFF)
         uc.reg_write(UC_X86_REG_EDX, (h >> 16) & 0xFFFF)
         uc.reg_write(UC_X86_REG_ESP, (first + pop) & 0xFFFF)
@@ -649,6 +670,16 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             hit["args_stack"] = args_stack
             hit["n"] = rec["insn_count"]
             hit["ret_ip"] = ip
+            hit["ret_cs"] = cs                               # (the caller's own code segment)
+            # (and what a far pointer into one of the module's code segments points at: up to 32
+            # bytes, to the first zero -- a string kept in the code, at its own offset in each build)
+            for k in range(len(args_stack) - 1):
+                base = code_at.get(args_stack[k + 1] & ~3)
+                if base is not None:
+                    try:
+                        hit.setdefault("pointed", {})[k] = bytes(uc.mem_read(base + args_stack[k], 32)).split(b"\0")[0]
+                    except U.UcError:
+                        pass
             called = uc.reg_read(UC_X86_REG_CS)
             if context and called != sent_sel:
                 called |= 3                                  # (loaded as conforming code: RPL 0)
@@ -671,6 +702,14 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             uc.reg_write(UC_X86_REG_EAX, (dx << 16) | ax)
             uc.reg_write(UC_X86_REG_EDX, dx)
             uc.reg_write(UC_X86_REG_CS, cs); uc.reg_write(UC_X86_REG_EIP, ip)
+            if shadow is not None:
+                # (an unmodelled call's result is an input, `ret`; a modelled one's is made from
+                # its arguments, which the shadow does not follow into the model)
+                free = bool(hit.get("unmodelled"))
+                shadow.after_call(uc, free, (dx << 16) | ax, STACK_BASE + ((spn + 4) & 0xFFFF), pop // 2,
+                                  None if free else "call:%s" % hit.get("api"))
+        elif shadow is not None:
+            shadow.step(uc, address, shadow.segbase(uc, uc.reg_read(UC_X86_REG_CS)))
 
     hook_mem, hook_unmapped = _memory_hooks(U, rec, set(), fill=not os.environ.get("CB_GATE_ZERO"))
 
@@ -688,7 +727,28 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             return
         return hook_mem(uc, access, address, msize, value, ud)
 
+    def hook_intr(uc, intno, _ud):
+        # `int 21h` in a Windows module is DOS3Call by another door -- the same service, which
+        # Windows documents as the faster way in; a module's own code picks one by a flag its
+        # start-up sets (LZEXPAND's sub_11_0042 tests CS:[71h]), and a rebuild in C calls
+        # DOS3Call. So it is answered as that import is, recorded as that call. Any other
+        # interrupt, or a processor exception, ends the run as it did without this hook.
+        if intno == 0x21 and import_stub is not None:
+            hit = {"api": "KERNEL.@102", "slot": None, "args_stack": [], "n": rec["insn_count"], "int": 0x21}
+            rec["imports_hit"].append(hit)
+            res = import_stub(hit, uc, U) or {}
+            ax, dx = res.get("ax", 0) & 0xFFFF, res.get("dx", 0) & 0xFFFF
+            uc.reg_write(UC_X86_REG_EAX, (dx << 16) | ax)
+            uc.reg_write(UC_X86_REG_EDX, dx)
+            if shadow is not None:
+                free = bool(hit.get("unmodelled"))
+                shadow.after_call(uc, free, (dx << 16) | ax, None, 0, None if free else "call:KERNEL.@102")
+            return
+        rec["interrupt"] = intno
+        uc.emu_stop()
+
     uc.hook_add(U.UC_HOOK_CODE, hook_code)
+    uc.hook_add(U.UC_HOOK_INTR, hook_intr)
     if branches:
         uc.hook_add(U.UC_HOOK_CODE, _branch_hook16(rec, cs_base, branches[0], branches[1]), None,
                     cs_base + branches[0], cs_base + branches[1] - 1)
@@ -732,6 +792,9 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         "DS": uc.reg_read(UC_X86_REG_DS), "ES": uc.reg_read(UC_X86_REG_ES),
         "SS": uc.reg_read(UC_X86_REG_SS)}
 
+    if shadow is not None:
+        shadow.enter([] if context else list(arg_places))
+    failed = None
     try:
         uc.emu_start(offset, SENT_BASE, count=insn_cap + 1)
         # (neither returned nor stopped by a hook: emu_start's own instruction count ran out --
@@ -740,8 +803,12 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         rec["exit"] = "ret" if rec.get("returned") else "truncated"
         if rec.get("limit_fault"):
             rec["exit"] = "exception: past the end of a segment"
+        if rec.get("interrupt") is not None:                 # (hook_intr: as Unicorn says it unhooked)
+            failed = "Unhandled CPU exception (UC_ERR_EXCEPTION)"
     except U.UcError as e:
-        rec["exit"] = "exception: %s" % e
+        failed = str(e)
+    if failed:
+        rec["exit"] = "exception: %s" % failed
         # fault detail: disassemble the instruction at the faulting CS:EIP (helps triage which
         # 16-bit construct the segmented emulator still can't handle).
         try:
@@ -972,7 +1039,7 @@ def default_stub(hit, uc, U, ctx):
 
 def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub, insn_cap=None,
           prelude=None, cdecl=False, near=False, data_image=None, callees=None, data_end=None,
-          context=None, stub_ret=None, mem_init=None, branches=None, bp=None, ports=False):
+          context=None, stub_ret=None, mem_init=None, branches=None, bp=None, ports=False, shadow=None):
     """Run one NE function under the controlled Win16 environment. Returns the tracer16 TraceRecord
     (with rec['layout'] + rec['imports_hit'] + rec['mem_*'] + rec['ret']).
 
@@ -981,7 +1048,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
     reversed to land in the right slots (this is how the LZDecompress reset path was reached).
 
     stub_ret: what a Windows function `stub` does not model returns in DX:AX (else 0). mem_init,
-    branches, bp, ports: as trace_function16."""
+    branches, bp, ports, shadow: as trace_function16."""
     if cdecl and args:
         args = list(reversed(args))
     ctx_box = {}
@@ -990,6 +1057,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
         if "ctx" not in ctx_box:
             ctx_box["ctx"] = _Ctx(uc, u)
         res = stub(hit, uc, u, ctx_box["ctx"]) or {}
+        hit["unmodelled"] = "pop" not in res                 # (its result: stub_ret, for the path explorer)
         if "pop" not in res and stub_ret is not None:        # (not modelled: the result asked for)
             res = dict(res, ax=stub_ret & 0xFFFF, dx=(stub_ret >> 16) & 0xFFFF)
         if "pop" not in res:                                 # remove the arguments, as the real one would
@@ -1009,7 +1077,7 @@ def probe(dll, ordinal=None, seg=None, offset=None, args=None, stub=default_stub
                              args=args, arity=len(args or []), import_stub=_stub,
                              prelude=prelude, near=near, data_image=data_image, callees=callees,
                              data_end=data_end, context=context, mem_init=mem_init, branches=branches, bp=bp,
-                             ports=ports, **kw)
+                             ports=ports, shadow=shadow, **kw)
     rec["heaps"] = {"base": HEAP_BASE, "stride": HEAP_STRIDE}
     ctx = ctx_box.get("ctx")
     rec["heap_sels"] = {s: b for s, (b, _sz) in ctx.heaps.items()} if ctx else {}

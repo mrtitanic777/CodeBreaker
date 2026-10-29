@@ -19,6 +19,13 @@
 //   <id> skip <why>        (a user operation the emulator has no meaning for: in, out, int ...)
 //   <id> err <message>
 // LIN is the linear address of the next instruction; W are the bytes of memory written.
+//
+//   pcodecheck <file.sla> x86-16-real-lift   (or x86-32-flat-lift: an instruction at its address)
+// lifts instead of running, for the judge's path explorer (codebreaker/verify/concolic.py): first
+// writes one line naming the registers, "regs NAME:offset:size ...", then for each stdin line
+// "<instruction bytes in hex> <offset hex>" one line "<length> <op>;<op>;..." (or "err ..."):
+// each op "OPCODE out in ...", a varnode "r|u|c|m:offset:size" (register, unique, constant,
+// ram; "-" for no output), and a user operation's first input its name ("@segment").
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -139,6 +146,32 @@ public:
   void dump(const Address &, const string &mnem, const string &body) override { text = mnem + " " + body; }
 };
 
+// The p-code of one instruction, as text (the lift mode).
+class OpText : public PcodeEmit {
+public:
+  std::ostringstream out;
+  const std::vector<std::string> *userops = nullptr;
+  int n = 0;
+  static void varnode(std::ostringstream &o, const VarnodeData &v) {
+    const std::string &sp = v.space->getName();
+    char k = sp == "register" ? 'r' : sp == "unique" ? 'u' : sp == "const" ? 'c' : sp == "ram" ? 'm' : '?';
+    o << k << ":" << std::hex << v.offset << ":" << std::dec << v.size;
+  }
+  void dump(const Address &, OpCode opc, VarnodeData *outvar, VarnodeData *vars, int4 isize) override {
+    if (n++) out << ";";
+    out << get_opname(opc) << " ";
+    if (outvar) varnode(out, *outvar);
+    else out << "-";
+    for (int4 i = 0; i < isize; ++i) {
+      out << " ";
+      if (i == 0 && opc == CPUI_CALLOTHER && userops && vars[0].offset < userops->size())
+        out << "@" << (*userops)[vars[0].offset];
+      else
+        varnode(out, vars[i]);
+    }
+  }
+};
+
 // Any other user operation: the case is not something the emulator can judge.
 struct Untestable {
   std::string name;
@@ -154,6 +187,8 @@ public:
 
 int main(int argc, char **argv) {
   std::string mode = argc == 3 ? argv[2] : "";
+  const bool lift = mode == "x86-16-real-lift" || mode == "x86-32-flat-lift";
+  if (lift) mode = mode.substr(0, mode.size() - 5);
   const bool asmOnly = mode == "ppc-be-64-asm" || mode == "asm";
   if (mode == "ppc-be-64-asm") mode = "ppc-be-64";
   if (mode != "x86-16-real" && mode != "x86-32-flat" && mode != "ppc-be-64" && mode != "6502" && mode != "asm") {
@@ -192,6 +227,61 @@ int main(int argc, char **argv) {
   trans.getUserOpNames(userops);
 
   std::string line;
+  if (lift) {
+    // (each instruction at an address of its own -- its offset in a 64K window of its own -- so
+    // no decoding cached for another instruction's bytes is used: a 16-bit jump's target wraps in
+    // its window, and the window is dropped by the reader)
+    std::printf("regs");
+    for (const std::string &r : REGS_X86) {
+      const VarnodeData &v = trans.getRegister(r);
+      std::printf(" %s:%llx:%u", r.c_str(), (unsigned long long)v.offset, (unsigned)v.size);
+    }
+    for (const char *r : {"EIP"}) {
+      const VarnodeData &v = trans.getRegister(r);
+      std::printf(" %s:%llx:%u", r, (unsigned long long)v.offset, (unsigned)v.size);
+    }
+    std::printf("\n");
+    std::fflush(stdout);
+    CaseRam ram(ramspace);
+    ram.mask = 0xffffffff;
+    image.ram = &ram;
+    uintb window = 0;
+    std::map<uintb, std::string> seen;           // (flat: the bytes each address was decoded from)
+    while (std::getline(std::cin, line)) {
+      std::istringstream in(line);
+      std::string hex, offs;
+      in >> hex >> offs;
+      if (hex.empty()) continue;
+      uintb off = std::strtoull(offs.c_str(), nullptr, 16);
+      // (the windows used up, or a flat address seen before with other bytes: decoding starts afresh)
+      bool again = flat ? seen.count(off) && seen[off] != hex : ++window >= 0x8000;
+      if (again) {
+        window = 1;
+        seen.clear();
+        ContextInternal *fresh = new ContextInternal();   // (kept: the translator holds it)
+        trans.reset(&image, fresh);
+        trans.initialize(store);
+        defaults(*fresh);
+      }
+      if (flat) seen[off] = hex;
+      uintb at = flat ? off : (window << 16) | (off & 0xffff);
+      ram.bytes.clear();
+      for (size_t i = 0; i + 1 < hex.size(); i += 2)
+        ram.bytes[(at + i / 2) & 0xffffffff] = (uint1)std::strtoul(hex.substr(i, 2).c_str(), nullptr, 16);
+      try {
+        OpText ops;
+        ops.userops = &userops;
+        int4 len = trans.oneInstruction(ops, Address(ramspace, at));
+        std::printf("%d %s\n", len, ops.out.str().c_str());
+      } catch (LowlevelError &e) {
+        std::printf("err %s\n", e.explain.c_str());
+      } catch (std::exception &e) {
+        std::printf("err %s\n", e.what());
+      }
+      std::fflush(stdout);
+    }
+    return 0;
+  }
   if (asmOnly) {
     while (std::getline(std::cin, line)) {
       if (line.empty()) continue;

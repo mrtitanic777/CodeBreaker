@@ -18,8 +18,13 @@ How many bytes of arguments a Windows function takes is read from the module tha
 match involving one is marked weak.
 
 Besides the fixed inputs and the directed ones (the constants the code compares with), each
-function is run on branch-guided inputs (verify/guided.py): arguments, words of the data
-segment and results of Windows calls chosen to take branches of the original no input took.
+function is run on inputs found path by path (verify/concolic.py): the original is run with its
+symbolic shadow (emulate/shadow.py: the decompiler's own p-code over the arguments, the words of
+the data segment and of the scratch segment, and what an unmodelled Windows call returns), and
+z3 is asked for inputs that turn each condition of its path -- one input kept per new path, and
+the verdict's limits say how many paths there were (`paths=N`) and whether those are all
+(`paths-all`). Where the lifter is not there, or with CB_NO_CONCOLIC=1, the inputs are guessed
+instead (verify/guided.py, branch-guided).
 """
 import hashlib
 import os
@@ -31,12 +36,19 @@ from codebreaker.verify import lane_common
 NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
 ARG_WORDS = 8
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
-REV = 22                                # bump when what is built or compared changes
+REV = 23                                # bump when what is built or compared changes
                                         # (21: branch-guided inputs, an input's memory and what Windows returns;
                                         # the interrupt routines linked, their registers the build's own;
                                         # 22: in/out reach a UART and the interrupt controllers, and what was
                                         # done to them is compared with the calls; C still reading its code
-                                        # segment at the original's offsets has the original's segment there)
+                                        # segment at the original's offsets has the original's segment there;
+                                        # 23: the branch-guided inputs found path by path (verify/concolic.py:
+                                        # the original's symbolic shadow and z3), the seeds' paths known from
+                                        # their runs; a fingerprint carries its path ("trail"); paths= limits;
+                                        # what the deeper inputs showed of the judge itself: `int 21h` answered as
+                                        # DOS3Call, a code segment's selector named by the segment it holds, the
+                                        # rebuild's own data places left out on both sides, a rebuild still going
+                                        # where the original returned given RETRY times the steps)
 
 
 def vectors():
@@ -74,12 +86,17 @@ def _scattered(n, sel):
     return out
 
 
-def _call(hit, inputs, entry):
+def _call(hit, inputs, entry, segs=None):
     """One Windows call as text (lane_common.call): its name, and its arguments when their size
     is known. An argument is written as what it IS rather than its bit pattern wherever the two
     builds would legitimately differ: the data or stack selector, an address in the stack, one of
     the function's own inputs (lane_common.argument; above 0xFF, since a small one is as likely a
-    constant)."""
+    constant), the selector of one of the module's code segments (`segs`: selector -> the
+    original's segment it holds -- a build orders its segments its own way: KEYBOARD's
+    GETBIOSKEYPROC sits in segment 9 of the original and 1 of its rebuild, and the selector of
+    "its segment" is handed to AllocCStoDSAlias), and a far pointer into one of them as what it
+    points at (hit["pointed"]: KEYBOARD's sub_2_031F hands GetModuleHandle a name kept in its code
+    segment, at 2E1h in the original and BA5h in the rebuild)."""
     name = hit.get("api") or "?"
     size = hit.get("arg_bytes")
     if size is None:
@@ -89,8 +106,13 @@ def _call(hit, inputs, entry):
     out = []
     for i, w in enumerate(words):
         nxt = words[i + 1] if i + 1 < len(words) else None
+        pointed = (hit.get("pointed") or {}).get(i)
         if w == ds:
             out.append("DS")
+        elif segs and (w & ~3) in segs:
+            out.append(segs[w & ~3])
+        elif segs and nxt is not None and (nxt & ~3) in segs and pointed is not None:
+            out.append("&" + pointed.hex())                  # (a far pointer into a code segment: what is there)
         elif w == ss:
             out.append("SS")
         elif nxt == ss:
@@ -192,10 +214,14 @@ def _frame_arguments(frame):
     return words
 
 
-def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(), frame=None):
+def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(), frame=None, ran=None, segs=None,
+                steps=None):
     """What one run of one function did, in a form two builds can be compared on. `own`: ranges
     of the data segment that are the build's own (_own_data), whose writes are left out. `frame`:
-    a caller-frame helper's places (frame_slots), whose writes are compared."""
+    a caller-frame helper's places (frame_slots), whose writes are compared. `ran`: the record of
+    this very run, made already (by the path explorer). With `span`, also the path the function's
+    own jumps took ("trail"). `segs`: the module's code segment selectors as _call names them.
+    `steps`: the instructions a run may take, when not the emulator's own limit."""
     from codebreaker.emulate import windows16 as ne_probe
     mem, bp = v.get("mem"), None
     if frame:                                                # (a caller-frame helper: see CALLER_BP)
@@ -203,8 +229,8 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
         mem = tuple(mem or ()) + tuple((ne_probe.STACK_BASE + ((CALLER_BP - less) & 0xFFFF), bytes([FRAME_FILL]) * size)
                                        for less, size in frame)
     try:
-        r = ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
-                           stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp, ports=True)
+        r = ran or ne_probe.probe(path, seg=seg, offset=off, args=v["args"], near=near, data_image=data_image,
+                                  stub_ret=v.get("stub_ret"), mem_init=mem, bp=bp, ports=True, insn_cap=steps)
     except ImportError:
         raise
     except Exception as e:
@@ -253,11 +279,11 @@ def fingerprint(path, seg, off, near, wide, v, data_image=None, span=None, own=(
         if ret & 0xFFFF == (entry.get("DS") or -1) and not wide:
             ret = LEFTOVER
     return {"ret": ret, "exit": ex, "truncated": bool(r.get("truncated")),
-            "deps": _effects(r.get("imports_hit") or (), r.get("io") or (), lambda h: _call(h, v["args"], entry)),
+            "deps": _effects(r.get("imports_hit") or (), r.get("io") or (), lambda h: _call(h, v["args"], entry, segs)),
             "writes": writes, "pop": r.get("sp_delta") if ex == "ret" else None,
             "saved": (regs.get("SI") == entry.get("SI") and regs.get("DI") == entry.get("DI")
                       and regs.get("DS") == entry.get("DS")) if ex == "ret" else None,
-            "cov": cov, "reach": ()}
+            "cov": cov, "reach": (), "trail": tuple(trail(path, seg, span, r.get("path") or ())) if span else ()}
 
 
 def _effects(hits, io, call):
@@ -272,38 +298,76 @@ def _effects(hits, io, call):
     return tuple(text for _n, _o, _k, text in sorted(out))
 
 
+RETRY = 8                       # times the emulator's step limit a rebuild still going is given
+
+
+def _steps():
+    from codebreaker.emulate import emulator
+    return emulator._MAX_INSNS
+
+
 def _judge(context, item):
     """Worker. item = (key, seg, off, near, wide, span, insns, rebuilt seg, rebuilt off[, frame]):
     `frame` a caller-frame helper's places (frame_slots), else None."""
-    module_path, dll, data_image, own = context
+    module_path, dll, data_image, own = context[:4]
+    order = context[4] if len(context) > 4 else {}          # rebuilt segment -> the original's
     key, seg, off, near, wide, span, insns, bseg, boff = item[:9]
     frame = item[9] if len(item) > 9 else None
-    last = {}
+    last, runs, paths = {}, {}, {}
 
-    def original(v):
+    def original(v, ran=None):
         # the original's run depends only on the original: remembered across rebuilds (a run cut
-        # off at the step limit is not)
+        # off at the step limit is not), and within this judgement (the path explorer's runs too)
+        # (and on what of the rebuild it is compared with: the places in the data segment the
+        # rebuild keeps for itself, left out on both sides -- NEWTABLEEX, its table put at DS:0 by
+        # an input, wrote there in both builds, and only the original's writes were counted -- and
+        # which code segment of the rebuild holds which of the original's)
         k = compare.cache_key("ne", REV, corpus.sha(module_path), seg, off, near, wide, tuple(v["args"]), span,
-                              v.get("mem"), v.get("stub_ret"), *((CALLER_BP, FRAME_FILL, frame) if frame else ()))
-        fp = lane_common.remembered(k, lambda: fingerprint(module_path, seg, off, near, wide, v, span=span,
-                                                           frame=frame),
-                                    keep=lambda fp: not fp.get("truncated"))
+                              v.get("mem"), v.get("stub_ret"), own, sorted(order.items()),
+                              *((CALLER_BP, FRAME_FILL, frame) if frame else ()))
+        fp = runs.get(k)
+        if fp is None:
+            fp = lane_common.remembered(k, lambda: fingerprint(module_path, seg, off, near, wide, v, span=span, own=own,
+                                                               frame=frame, ran=ran, segs=_named(order.values())),
+                                        keep=lambda fp: not fp.get("truncated"))
+            runs[k] = fp
         last["fp"] = fp
         return fp
 
     def rebuilt(v):
         if frame:                                            # (pointers to the places, not the input's words)
             v = dict(v, args=_frame_arguments(frame))
-        fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image, own=own, frame=frame)
+        fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image, own=own, frame=frame,
+                         segs=_named(order.values(), order))
+        if fp.get("exit") == "truncated" and (last.get("fp") or {}).get("exit") == "ret":
+            # (the original returned and its C was still going: C takes more instructions than the
+            # code it was made from -- KEYBOARD's sub_2_06B6 over a table of 448 entries an input
+            # gave it. Given RETRY times the steps; one still going then does not end)
+            fp = fingerprint(dll, bseg, boff, near, wide, v, data_image=data_image, own=own, frame=frame,
+                             segs=_named(order.values(), order), steps=RETRY * _steps())
         if (last.get("fp") or {}).get("ret") == LEFTOVER and "err" not in fp and fp.get("ret") is not None:
             fp["ret"] = LEFTOVER                             # the original returned no value here
         return fp
     def aimed(covered, reached):
-        # the directed inputs, then branch-guided ones seeded with every input run so far
+        # the directed inputs, then those found path by path (or guessed) seeded with every input
+        # -- of the fixed ones the paths they took are known: one per path is run again
         d = directed(module_path, seg, span)
-        return list(d) + guided_vectors(module_path, seg, off, near, span, vectors() + list(d))
-    return lane_common.judged(lambda info: compare.compare(
-        original, rebuilt, vectors(), (), insns=insns, info=info, directed=aimed))
+        seeds = vectors() + list(d)
+        known = {i: original(v).get("trail") for i, v in enumerate(vectors()) if "err" not in original(v)}
+        kept, got, ran = explore_vectors(module_path, seg, off, near, span, seeds, known=known)
+        if not frame:                                        # (the explorer ran the original as the judge does)
+            for v, r in ran:
+                original(v, ran=r)
+        paths["got"] = got
+        return list(d) + kept
+
+    def judge(info):
+        verdict, reason, limits = compare.compare(original, rebuilt, vectors(), (), insns=insns, info=info,
+                                                  directed=aimed)
+        if verdict != "divergent":
+            limits = list(limits) + lane_common.path_limits(paths.get("got"))
+        return verdict, reason, limits
+    return lane_common.judged(judge)
 
 
 # Branch-guided inputs (verify/guided.py, through lane_common.guided). The explorer reads an
@@ -368,6 +432,185 @@ def guided_vectors(module_path, seg, off, near, span, seeds, **probe):
     return [_from_explorer(g, ds) for g in kept]
 
 
+# Path by path (verify/concolic.py): the original run with its symbolic shadow (emulate/shadow.py)
+# -- its arguments, the words of its data segment and of the scratch segment pointers go to, and
+# what an unmodelled Windows call returns are the inputs -- and inputs solved for to take each
+# path its conditions allow. Where the lifter is not there (an older pcodecheck) or CB_NO_CONCOLIC
+# is set, the inputs are guessed as before (guided_vectors).
+def concolic_ready():
+    from codebreaker.emulate import pcode
+    return lane_common.guided_on() and lane_common.concolic_on() and pcode.lifter() is not None
+
+
+_JUMPS = {}
+
+
+def _jumps(module_path, seg):
+    """{offset: target offset} of the conditional jumps at each offset of a code segment, as found
+    (decoded the first time an offset is asked about; None: not a conditional jump)."""
+    key = (module_path, seg)
+    if key not in _JUMPS:
+        from codebreaker.formats.ne import NEFile
+        nef = NEFile(module_path)
+        s = nef.segments()[seg - 1]
+        _JUMPS[key] = (bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]), {})
+    return _JUMPS[key]
+
+
+def trail(module_path, seg, span, path):
+    """[(site, taken)] -- the function's own conditional jumps in the order a run took them, from
+    the run's instructions (rec["path"], linear addresses): the path it went, as the explorer
+    names one (concolic.py), for a run made without a shadow."""
+    from codebreaker.decompile.describe import decoder16
+    from codebreaker.emulate import windows16 as ne_probe
+    code, known = _jumps(module_path, seg)
+    base = ne_probe.segment_base(seg)
+    lo, hi = base + span[0], base + span[1]
+    out = []
+    md = None
+    for i, a in enumerate(path[:-1]):
+        if not lo <= a < hi:
+            continue
+        off = a - base
+        if off not in known:
+            md = md or decoder16()
+            ins = next(md.disasm(code[off:off + 8], off, 1), None)
+            j = None
+            if ins is not None and (ins.mnemonic.startswith("j") and ins.mnemonic != "jmp" or
+                                    ins.mnemonic.startswith("loop")) and ins.op_str.startswith("0x"):
+                j = (int(ins.op_str, 16), off + ins.size)
+            known[off] = j
+        j = known[off]
+        if j is not None and j[0] != j[1] and path[i + 1] - base in j:
+            out.append((a, path[i + 1] - base == j[0]))
+    return out
+
+
+def _derive(v, values, names, ds):
+    """Input `v` with the named inputs (shadow.vars) set to `values`: an argument word, what an
+    unmodelled call returns, bytes of the data segment or of the scratch segment."""
+    from codebreaker.emulate import windows16 as ne_probe
+    out = dict(v)
+    args = list(v["args"])
+    mem = {}
+    for where, data in v.get("mem") or ():
+        at = (ds + where[1]) if isinstance(where, tuple) else where
+        if isinstance(where, tuple) and ds is None:
+            continue
+        for k, b in enumerate(bytes(data)):
+            mem[at + k] = b
+    changed = False
+    for name, value in values.items():
+        kind, where, bits, was = names.get(name, (None, None, 0, None))
+        if kind == "arg" and where < len(args):
+            changed |= args[where] != value & 0xFFFF
+            args[where] = value & 0xFFFF
+        elif kind == "ret":
+            changed |= (v.get("stub_ret") or 0) != value
+            out["stub_ret"] = value & 0xFFFFFFFF
+        elif kind == "mem":
+            changed |= mem.get(where, was) != value & 0xFF
+            mem[where] = value & 0xFF
+    if not changed:
+        return None
+    out["args"] = args
+    runs = []
+    for at in sorted(mem):
+        if runs and runs[-1][0] + len(runs[-1][1]) == at:
+            runs[-1][1].append(mem[at])
+        else:
+            runs.append((at, [mem[at]]))
+    entries = []
+    for at, data in runs:
+        if ds is not None and ds <= at < ds + 0x10000:
+            entries.append((("D", at - ds), bytes(data)))
+        elif ne_probe.SCRATCH_BASE <= at < ne_probe.SCRATCH_BASE + 0x10000:
+            entries.append((at, bytes(data)))
+    if entries:
+        out["mem"] = tuple(entries)
+    else:
+        out.pop("mem", None)
+    return out
+
+
+def explore_vectors(module_path, seg, off, near, span, seeds, known=None, **probe):
+    """(inputs, exploration, [(input, record)]): inputs taking paths of the original no seed took,
+    found path by path (verify/concolic.py; lane_common.explored), how far the exploration got
+    (its .paths, .complete), and every run it made, input and record (a judge running the
+    original as `probe` does need not run those again). `known`: {seed index: trail} of seeds
+    already run. Falls back to guided_vectors (exploration None) where it cannot.
+
+    Where the paths found are not all there are and a jump of the function's own was still seen
+    going one way only, what is left of the guessing explorer's budget (lane_common.GUIDED_REST)
+    goes to it, seeded with the runs made: a condition over what the shadow does not follow --
+    the made-up answer of a callee not run, a Windows call modelled from its arguments -- is no
+    question for the solver, and guessing still reaches some of them."""
+    if not concolic_ready():
+        return guided_vectors(module_path, seg, off, near, span, seeds, **probe), None, []
+    from codebreaker.emulate import pcode, shadow
+    from codebreaker.emulate import windows16 as ne_probe
+    from codebreaker.formats.ne import NEFile
+    auto = NEFile(module_path).h.get("autodata_seg")
+    ds = ne_probe.segment_base(auto) if auto else None
+    base = ne_probe.segment_base(seg)
+    lo, hi = base + span[0], base + span[1]
+    scratch = ne_probe.SCRATCH_BASE
+    lifter = pcode.lifter()
+    made = []                                                # (input, record) of every run
+
+    def inputs(b):
+        return (ds is not None and ds <= b < ds + 0x10000) or scratch <= b < scratch + 0x10000
+
+    def run(v):
+        sh = shadow.Shadow16(lifter, ne_probe.selector_base, inputs, span=(lo, hi))
+        try:
+            r = ne_probe.probe(module_path, seg=seg, offset=off, args=v["args"], near=near,
+                               stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), shadow=sh, branches=span,
+                               **dict({"ports": True}, **probe))
+        except ImportError:
+            raise
+        except Exception:
+            return None
+        lost = set(sh.lost)
+        cut = bool(r.get("truncated") or str(r.get("exit")) == "truncated")
+        if cut:
+            lost.add("truncated")
+        made.append((v, r))
+        return {"trail": sh.trail, "path": sh.path, "vars": sh.vars, "lost": lost, "cut": cut}
+    got = lane_common.explored(run, seeds, lambda v, values, names: _derive(v, values, names, ds),
+                               own=lambda site: lo <= site < hi, known=known)
+    kept = list(got.kept)
+    one_way = {}
+    for site, taken in got.edges:
+        one_way[site] = one_way.get(site, 0) | (1 << int(taken))
+    if not got.complete and any(w != 3 for w in one_way.values()) and lane_common.GUIDED_REST and made:
+        from codebreaker.verify import guided
+
+        def plain(g):
+            v = _from_explorer(g, ds)
+            try:
+                r = ne_probe.probe(module_path, seg=seg, offset=off, args=v["args"], near=near,
+                                   stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), branches=span,
+                                   **dict({"ports": True}, **probe))
+            except ImportError:
+                raise
+            except Exception:
+                return None
+            made.append((v, r))
+            return _observed(r, v)
+
+        def _observed(r, v):
+            stack = ne_probe.STACK_BASE
+            return {"branches": r.get("branches") or [], "reach": set(r.get("path") or ()),
+                    "args_at": stack + ne_probe.FAR_RET - 2 * len(v["args"]), "stack": (stack, stack + 0x10000)}
+        seen = [(_to_explorer(v, ds), _observed(r, v)) for v, r in made]
+        extra = guided.guided_inputs(plain, [], budget=lane_common.GUIDED_REST, keep=lane_common.MAX_GUIDED,
+                                     seed=off, word=2, observed=seen)
+        kept += [_from_explorer(g, ds) for g in extra]
+        got.guessed = len(extra)
+    return kept, got, made
+
+
 def _spans(nef, where):
     """{address: ((start, end), instruction count)} -- each function runs to the next one in its
     segment (or the segment's end)."""
@@ -396,8 +639,11 @@ PER_FUNCTION = True             # a verdict holds while the function and what it
 def profile(module_path):
     """(digest, settings) of everything other than the source that a verdict depends on."""
     from codebreaker.build import functions
+    from codebreaker.emulate import pcode
+    ready = concolic_ready()
     settings = repr(("ne", REV, compare.REV, functions.CFLAGS16, vectors(),
-                     ("guided", lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED)))
+                     ("guided", lane_common.GUIDED_BUDGET, lane_common.MAX_GUIDED),
+                     ("paths", ready, lane_common.PATH_BUDGET, lane_common.MAX_PATHS, pcode.stamp() if ready else "")))
     return hashlib.sha1(settings.encode()).hexdigest()[:12], settings
 
 
@@ -444,7 +690,19 @@ def build(m, module_path, work):
         frame = frame_slots(m.texts.get(fn, ""), fn)
         if frame:                                            # (a caller-frame helper: _judge)
             items[fn] += (frame,)
-    return (module_path, dll, data_image, _own_data(work)), items, dropped
+    order = {}                                               # rebuilt code segment -> the original's
+    for it in items.values():
+        order.setdefault(it[7], int(it[0].split(":")[0]))
+    return (module_path, dll, data_image, _own_data(work), order), items, dropped
+
+
+def _named(original_segments, order=None):
+    """{selector: "seg<n>"} for a build's code segments, n the original's number of the segment
+    each holds: the original's own (`order` None), or a rebuild's through `order` (its segment ->
+    the original's)."""
+    from codebreaker.emulate import windows16 as ne_probe
+    pairs = order.items() if order is not None else ((n, n) for n in original_segments)
+    return {ne_probe._sel(ne_probe._MODULE_SLOT + mine - 1): "seg%d" % theirs for mine, theirs in pairs}
 
 
 def _code_images(m, nef):

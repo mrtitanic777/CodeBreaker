@@ -248,25 +248,47 @@ def _original_key(original, callees, data_end, chain=False):
             *[open(mod.__file__, "rb").read() for mod in (emu, _emulator, _ne, win16)] + [open(__file__, "rb").read()])
 
 
-def guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, callees, data_end, insn_cap=20000):
-    """Branch-guided inputs (verify/lanes/win16.py guided_vectors, as the judge makes them):
-    arguments, words of the data segment and what an unmodelled Windows call returns, chosen to
-    take branches of the original no other input took -- the original run as this checker runs
-    it, its callees answered. Kept, keyed on the original's side (_original_key) and the
-    explorer's limits; none when CB_NO_GUIDED is set. (diverge16 explains with the same.)"""
+def guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, callees, data_end, insn_cap=20000,
+                  known=None, explored=None):
+    """Branch-guided inputs: arguments, words of the data segment and what an unmodelled Windows
+    call returns, chosen to take paths of the original no other input took -- the original run
+    as this checker runs it, its callees answered. Found path by path where the explorer can
+    follow the run (verify/lanes/win16.py explore_vectors, verify/concolic.py), else guessed
+    (guided_vectors). Kept, keyed on the original's side (_original_key) and the explorer's
+    limits; none when CB_NO_GUIDED is set. (diverge16 explains with the same.)
+
+    `known`: {seed index: trail} of seeds already run (their paths: only one seed per path is run
+    again, with its shadow). `explored`: a dict given the exploration's summary ("paths", "all":
+    complete, "spent": runs) and, when it was made now, "runs": {id of an input returned: the
+    record of its run} for a caller that would run it again."""
     if not lane_common.guided_on():
         return []
     import pickle
     from codebreaker.base import cache
+    from codebreaker.emulate import pcode, shadow, symbolic
+    from codebreaker.verify import concolic
     from codebreaker.verify import guided as _explorer
+    ready = win16.concolic_ready()
     k = cache.key(original_key, name, oseg, ooff, far, span, repr(seeds), lane_common.GUIDED_BUDGET,
-                  lane_common.MAX_GUIDED, *[open(mod.__file__, "rb").read() for mod in (_explorer, lane_common)])
+                  lane_common.MAX_GUIDED, lane_common.PATH_BUDGET, lane_common.MAX_PATHS, ready,
+                  pcode.stamp() if ready else "",
+                  *[open(mod.__file__, "rb").read() for mod in (_explorer, lane_common, concolic, shadow, symbolic, pcode)])
     got = cache.get("gate16_guided", k)
     if got is not None:
-        return pickle.loads(got)
-    out = [dict(g, guided=True) for g in win16.guided_vectors(
-        original, oseg, ooff, not far, span, seeds, callees=callees, data_end=data_end, insn_cap=insn_cap)]
-    cache.put("gate16_guided", k, pickle.dumps(out))
+        out, summary = pickle.loads(got)
+        if explored is not None:
+            explored.update(summary)
+        return out
+    kept, how, ran = win16.explore_vectors(original, oseg, ooff, not far, span, seeds, known=known,
+                                           callees=callees, data_end=data_end, insn_cap=insn_cap, ports=False)
+    out = [dict(g, guided=True) for g in kept]
+    summary = {"paths": how.paths, "all": how.complete, "spent": how.runs} if how is not None else {}
+    cache.put("gate16_guided", k, pickle.dumps((out, summary)))
+    if explored is not None:
+        def same(v):
+            return repr((list(v["args"]), v.get("mem"), v.get("stub_ret")))
+        made = {same(v): r for v, r in ran}
+        explored.update(summary, runs={id(o): made[same(g)] for o, g in zip(out, kept) if same(g) in made})
     return out
 
 
@@ -366,25 +388,29 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
             return context
         return dict(context, redirect={tuple(place[n]): (where[n][0], where[n][1], n) for n in named})
 
-    def original_run(name, oseg, ooff, far, wide, v, dimg):
-        k = cache.key(original_key, name, oseg, ooff, far, wide, tuple(v["args"]), bool(v.get("noisy")),
+    def original_run(name, oseg, ooff, far, wide, v, dimg, span, ran=None):
+        """The original's fingerprint on `v`, kept; with the path its own jumps took ("trail",
+        win16.trail: the path explorer's seeds). `ran`: the record of that very run, when the
+        explorer made it already."""
+        k = cache.key(original_key, name, oseg, ooff, far, wide, span, tuple(v["args"]), bool(v.get("noisy")),
                       # (a recorded call by the name it was given -- its memory is 64 MB)
                       (v["context"].get("key") or pickle.dumps(v["context"], protocol=4)) if v.get("context") else b"",
                       repr(v.get("mem")), repr(v.get("stub_ret")))
         got = cache.get("gate16_original", k)
         if got is not None:
             return pickle.loads(got)
-        a = emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
-                      callees=callees_orig, insn_cap=insn_cap, data_end=data_end,
-                      data_image=dimg, context=side(v.get("context"), place),
-                      mem_init=v.get("mem"), stub_ret=v.get("stub_ret"))
+        a = ran or emu.probe(original, seg=oseg, offset=ooff, args=v["args"], near=not far,
+                             callees=callees_orig, insn_cap=insn_cap, data_end=data_end,
+                             data_image=dimg, context=side(v.get("context"), place),
+                             mem_init=v.get("mem"), stub_ret=v.get("stub_ret"))
         fa = _fingerprint(a, wide, len(data), places_orig)
+        fa["trail"] = tuple(win16.trail(original, oseg, span, a.get("path") or ()))
         cache.put("gate16_original", k, pickle.dumps(fa))
         return fa
 
-    def guided(name, oseg, ooff, far, span, seeds):
+    def guided(name, oseg, ooff, far, span, seeds, known, explored):
         return guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, callees_orig,
-                             data_end, insn_cap)
+                             data_end, insn_cap, known=known, explored=explored)
     for name in names:
         if name not in place or name not in ours or name not in funcs:
             yield name, "not run", "not found on both sides"
@@ -400,15 +426,25 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
         # (and the branch-guided ones the judge runs: a branch no fixed or aimed input takes --
         # a global tested before anything is done, a Windows call's result -- hid the path behind it.
         # Looked for only once the others all agree: a function found to differ needs no more)
+        # (the seeds' paths are known from their runs as fixed inputs: of seeds that went the same
+        # way only one is run again with the explorer's shadow; the inputs it finds it has run)
+        seeds = win16.vectors() + aimed
+        trails, explored = {}, {}
+
         def every(fixed):
             yield from fixed
-            yield from guided(name, oseg, ooff, far, span, win16.vectors() + aimed)
-        for v in (inputs or every(win16.vectors() + aimed + noisy_runs)):
+            yield from guided(name, oseg, ooff, far, span, seeds, trails, explored)
+        for v in (inputs or every(seeds + noisy_runs)):
             try:
                 # (a call recorded in the running system: its data segment as it was then, both sides)
                 dimg = v["context"]["data"] if v.get("context") and v["context"].get("data") else \
                     noisy if v.get("noisy") else None
-                fa = original_run(name, oseg, ooff, far, wide, v, dimg)
+                ran = (explored.get("runs") or {}).get(id(v)) if v.get("guided") else None
+                fa = original_run(name, oseg, ooff, far, wide, v, dimg, span, ran)
+                if not inputs and not v.get("guided") and not v.get("noisy"):
+                    at = next((i for i, x in enumerate(seeds) if x is v), None)
+                    if at is not None:
+                        trails[at] = fa.get("trail")
                 b = emu.probe(image, seg=bseg, offset=boff, args=v["args"], near=not far,
                               callees=callees_ours, insn_cap=insn_cap, data_image=dimg or data,
                               data_end=data_end, context=side(v.get("context"), ours),
@@ -431,4 +467,8 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
                 yield name, "differs", "%s: %s" % (_input(v), d)
                 break
         else:
-            yield name, ("not run" if why else "same"), why or ""
+            # (and, when it passes, how much of the original that was: the paths of its own jumps
+            # the runs took -- all there are, when the explorer found no more)
+            seen = "paths %d%s" % (explored["paths"], " (all)" if explored.get("all") else "") \
+                if explored.get("paths") is not None else ""
+            yield name, ("not run" if why else "same"), why or seen

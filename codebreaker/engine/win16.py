@@ -264,17 +264,21 @@ def _gate_stamp():
         sizes = hashlib.sha1(open(api_arguments._cache16_path(), "rb").read()).hexdigest()
     except OSError:
         sizes = ""
+    from codebreaker.emulate import pcode
+    from codebreaker.verify.lanes import win16 as lane
+    ready = lane.concolic_ready()                            # (the gate's inputs found path by path)
     return (cache.tool(_wcc()), functions.CFLAGS16, sizes, lane_common.guided_on(), lane_common.GUIDED_BUDGET,
-            lane_common.MAX_GUIDED, os.environ.get("CB_NO_GUIDED", ""))
+            lane_common.MAX_GUIDED, os.environ.get("CB_NO_GUIDED", ""), ready, lane_common.PATH_BUDGET,
+            lane_common.MAX_PATHS, pcode.stamp() if ready else "")
 
 
 def _uses_gate():
-    from codebreaker.emulate import windows16
+    from codebreaker.emulate import pcode, shadow, symbolic, windows16
     from codebreaker.symbols import api_arguments
-    from codebreaker.verify import guided, lane_common
+    from codebreaker.verify import concolic, guided, lane_common
     from codebreaker.verify.gate16 import isolated16
     from codebreaker.verify.lanes import win16 as lane
-    return isolated16, windows16, lane, api_arguments, guided, lane_common
+    return isolated16, windows16, lane, api_arguments, guided, lane_common, concolic, shadow, symbolic, pcode
 
 
 @step("function.gate", reads=("binary", "ne.header", "function.c", "function.contract"), platform=PLATFORM,

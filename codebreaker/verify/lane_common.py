@@ -12,6 +12,8 @@ so that it stays the same:
     writes()         the memory a run left changed, as the digest a fingerprint carries
     the inputs       the argument patterns the kinds' tables of inputs are made of
     guided()         branch-guided inputs (verify/guided.py), with the limits every kind uses
+    explored()       the same found path by path (verify/concolic.py), where the kind can follow
+                     a run's values symbolically; and the limits a verdict then carries
     judged()         one function's verdict, whatever goes wrong while reaching it
 """
 import hashlib
@@ -30,6 +32,12 @@ def fp_cache_on():
 def guided_on():
     """False when CB_NO_GUIDED is set: no branch-guided inputs (to measure what they add)."""
     return not os.environ.get("CB_NO_GUIDED")
+
+
+def concolic_on():
+    """False when CB_NO_CONCOLIC is set: the branch-guided inputs are guessed (verify/guided.py)
+    rather than solved for along each path (verify/concolic.py) -- to compare the two."""
+    return not os.environ.get("CB_NO_CONCOLIC")
 
 
 # CB_PLAIN=1: one instruction at a time on a fresh machine each run -- the slow way the fast one
@@ -150,6 +158,26 @@ def guided(run, seeds, seed, **options):
         return []
     from codebreaker.verify import guided as explorer
     return explorer.guided_inputs(run, seeds, budget=GUIDED_BUDGET, keep=MAX_GUIDED, seed=seed, **options)
+
+
+PATH_BUDGET = 32                # runs of the original the path explorer may spend (verify/concolic.py)
+MAX_PATHS = 24                  # inputs it keeps, one per new path
+GUIDED_REST = 32                # runs then left to guessing, where the paths found are not all
+
+
+def explored(run, seeds, derive, own, known=None):
+    """Inputs for the paths of the original no seed took (verify/concolic.py explore, with these
+    limits): -> its Exploration, whose .kept are the inputs."""
+    from codebreaker.verify import concolic
+    return concolic.explore(run, seeds, derive, own=own, budget=PATH_BUDGET, keep=MAX_PATHS, known=known)
+
+
+def path_limits(got):
+    """What an exploration adds to a verdict's limits: `paths=N`, the distinct paths the original
+    took on the inputs, and `paths-all` when those are all it has (concolic.Exploration.complete)."""
+    if got is None:
+        return []
+    return ["paths=%d" % got.paths] + (["paths-all"] if got.complete else [])
 
 
 # --- the verdict --------------------------------------------------------------------------------
