@@ -546,6 +546,42 @@ def _far_pointer_targets(nef, s, code, segs):
     return out
 
 
+def _push_bytes(i):
+    """Bytes a push puts on the 16-bit stack (2, or 4 for a 32-bit one), 0 for anything else."""
+    if i.mnemonic != "push":
+        return 0
+    return 4 if i.op_str.startswith(("e", "dword")) else 2
+
+
+def _return_pops(i):
+    """Bytes a plain `ret` / `retf` takes off for the address it goes to (none when it also removes
+    arguments: `retf 6` is a function's own return)."""
+    if i.mnemonic not in ("ret", "retf") or i.op_str:
+        return 0
+    return 2 if i.mnemonic == "ret" else 4
+
+
+def jump_by_return(ins, k, targets=()):
+    """Is ins[k] a return that is a jump -- the instructions straight before it push exactly what it
+    takes off (`push dx / push ax / retf`, `push ax / ret`), none of them a place jumped to? It
+    goes to the address pushed, the stack as the function was entered: a tail call through a
+    pointer (the native decompiler reads it so: core/cpp/flow.cc, C20). VER's sub_4_003E jumps
+    so to the LZEXPAND function GetProcAddress gave it."""
+    want = _return_pops(ins[k])
+    if not want or ins[k].address in targets:
+        return False
+    got, j = 0, k - 1
+    while j >= 0 and got < want:
+        n = _push_bytes(ins[j])
+        if not n or ins[j].address + ins[j].size != ins[j + 1].address:
+            return False
+        got += n
+        if got < want and ins[j].address in targets:
+            return False
+        j -= 1
+    return got == want
+
+
 def returns(code, off, limit=600, want=None):
     """How the function at `off` returns: ("far" | "near" | None, bytes of arguments removed).
 
@@ -561,6 +597,7 @@ def returns(code, off, limit=600, want=None):
     from collections import deque
     # (one instruction at a time, every path abreast: the return fewest instructions away)
     work, seen, n = deque([off]), set(), 0
+    pushed = {}                                  # (an address -> what the pushes straight before it put on)
     while work and n < limit:
         at = work.popleft()
         if not 0 <= at < len(code) or at in seen:
@@ -570,6 +607,10 @@ def returns(code, off, limit=600, want=None):
         if ins is None:
             continue
         n += 1
+        if _push_bytes(ins):
+            pushed[ins.address + ins.size] = pushed.get(at, 0) + _push_bytes(ins)
+        if _return_pops(ins) and pushed.get(at) == _return_pops(ins):
+            continue                             # (a jump to the address pushed: jump_by_return)
         if ins.mnemonic in ("ret", "retf", "lret"):
             kind = "near" if ins.mnemonic == "ret" else "far"
             pop = int(ins.op_str, 0) if ins.op_str else 0
@@ -950,8 +991,16 @@ def result_bytes(code, start, end, passes=None, voided=None):
     # last is not read again before the return -- `mov ax, 0 / jmp done` -- a value set for the
     # caller, where one read on the way -- `mov ax, [34h] / mov [44h], ax` -- was a scratch copy)
     best, bare, evident = 0, False, False
-    for i in ins:
+    for k_ret, i in enumerate(ins):
         if i.mnemonic not in ("ret", "retf"):
+            continue
+        if jump_by_return(ins, k_ret, targets):
+            # (a jump through the address pushed: what the function jumped to returns -- a call's
+            # result, passed on; DX:AX here were the address, not a result)
+            if passes is not None:
+                passes.append(None)
+            else:
+                best = max(best, 2)
             continue
         # back from the return along every way into it, to what last set AX on each
         # (DX set too makes it four bytes only right at the end -- `mov ax, lo / mov dx, hi` --
@@ -1253,65 +1302,172 @@ def results(d):
                     size[place], changed = got, True
         if not changed:
             break
-    # (off unless CB_CALLER_RESULTS=1: with it, USER's C no longer starts Windows 95 Setup -- "not
-    # enough memory to run Setup" -- and which of the functions it makes four-byte does that is not
-    # yet found; SETUPX, which it was for, goes into the Setup that boots as its instructions)
+    # (off unless CB_CALLER_RESULTS=1 until Windows 95 Setup has been booted with it: before the
+    # callee had to hand back a DX of its own, USER's C stopped Setup -- "not enough memory to
+    # run Setup" -- see _DxReturns)
     if os.environ.get("CB_CALLER_RESULTS") == "1" and getattr(d, "images", None):
         edges = []
-        for place in callers_read_dx(d, edges):              # (what the callers read after it)
-            if place in size and size[place] < 4:
-                size[place] = 4
-        writes = _writes_dx(d, {callee for _c, callee in edges})
-        for _round in range(8):                              # (and what a four-byte caller hands back
-            changed = False                                  #  as it is: its callee's DX:AX too --
-            for caller, callee in edges:                     #  one that sets DX at all: KEYBOARD's
-                if size.get(caller, 0) >= 4 and callee in size and size[callee] < 4 \
-                        and callee in writes:                #  9:0367 leaves it as its caller had it)
-                    size[callee], changed = 4, True
-            if not changed:
+        read = {p for p in callers_read_dx(d, edges) if p in size and size[p] < 4}   # (what the callers read after it)
+        handed = {callee for caller, callee in edges if callee in size and size[callee] < 4}
+        own = _DxReturns(d)
+        # (all taken as four-byte, then each that does not hand back a DX of its own under that
+        # dropped, until none is left to drop: a wrapper's DX is its callee's, and the callee is
+        # four-byte only through the wrapper's callers -- USER's 25:107F `call 1:1292 / leave /
+        # ret 8`, 1292 handing back GDI's GetTextExtent)
+        base = {p for p, n in size.items() if n >= 4}
+        made = read | handed
+        for _round in range(len(made) + 1):
+            four = base | made
+            keep = {p for p in read if own.every_way(p, four)}
+            keep |= {callee for caller, callee in edges
+                     if caller in four and callee in handed and own.every_way(callee, four)}
+            keep &= made
+            if keep == made:
                 break
+            made = keep
+        for p in made:
+            size[p] = 4
     return {va: size.get(where(va), 0) for va in d.names}
 
 
-def _writes_dx(d, places):
-    """{(seg, off)} of `places` whose own code (to the next function's start) writes DX other than
-    by popping back what it pushed -- or calls out, which may set it"""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
-    dx = {capstone.x86.X86_REG_DX, capstone.x86.X86_REG_DL, capstone.x86.X86_REG_DH, capstone.x86.X86_REG_EDX}
-    starts = {}
-    for va in d.names:
-        sg, o = where(va)
-        starts.setdefault(sg, []).append(o)
-    out = set()
-    for sg, off in places:
-        img = d.images.get(sg)
-        if img is None:
-            continue
-        later = sorted(o for o in starts.get(sg, []) if o > off)
-        end = later[0] if later else len(img)
-        saved = False
-        reach = off                                      # (the furthest a jump seen so far goes)
-        for i in md.disasm(bytes(img[off:end]), off):
-            if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM:
-                reach = max(reach, i.operands[0].imm & 0xFFFF)
-            if i.mnemonic in ("ret", "retf") and reach <= i.address:
-                break                                    # (its end: what follows is another's)
-            if i.mnemonic == "push" and i.op_str == "dx":
-                saved = True
-                continue
-            if i.mnemonic == "pop" and i.op_str == "dx" and saved:
-                continue
-            if i.group(capstone.CS_GRP_CALL) and i.mnemonic == "call" and "[" not in i.op_str:
-                out.add((sg, off))                           # (a callee of its own may set it)
-                break
-            try:
-                if dx & set(i.regs_access()[1]):
-                    out.add((sg, off))
+class _DxReturns:
+    """Does a function hand back a DX of its own -- on every way to each of its returns, the last
+    thing to set DX is one of its own instructions (not a `pop dx` giving back what it saved), an
+    import or interrupt, or a call (or a jump on) to a function that returns four bytes itself?
+
+    Only then is it four-byte when a caller reads DX after it. Where DX on some way is still what
+    it was given, the caller read its own DX, kept across the call: made four-byte, the callee's C
+    hands back an uninitialised `in_DX` in its place, where the original -- and the C with the
+    callee two-byte, the call keeping DX -- give the caller's back. USER's listbox window
+    procedure 35:0100 sign-extends -1 into DX (`cwd`) before calling sub_35_20AC and returns
+    DX:AX after it; 20AC, which loops over the selection, sets no DX when the range is empty, and
+    four-byte its C handed back garbage as the high word of the LONG the window returns. USER's
+    11:0088 reads the DL it set itself after `call 005E` (a character-class helper that never
+    touches DX). (USER with the rule on, before this, stopped Setup: "not enough memory".)"""
+
+    def __init__(self, d):
+        self.d = d
+        self.md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+        self.md.detail = True
+        self.starts = {}
+        for va in d.names:
+            sg, o = where(va)
+            self.starts.setdefault(sg, []).append(o)
+        for sg in self.starts:
+            self.starts[sg].sort()
+        self.code = {}
+
+    def _function(self, place):
+        if place not in self.code:
+            sg, off = place
+            img = self.d.images.get(sg)
+            if img is None:
+                self.code[place] = None
+                return None
+            later = [o for o in self.starts.get(sg, []) if o > off]
+            end = later[0] if later else len(img)
+            ins = list(self.md.disasm(bytes(img[off:end]), off))
+            # (one that runs on into the next function's start, with no return or jump of its own
+            # at the end, is that code too: SETUPX's 3:8246 is cut by a start found inside one of
+            # its instructions, 3:8259)
+            for _n in range(4):
+                if not ins or ins[-1].mnemonic in ("ret", "retf", "iret", "jmp", "ljmp") or                         end - (ins[-1].address + ins[-1].size) >= 16 or end >= len(img):
                     break
-            except capstone.CsError:
+                later = [o for o in later if o > end]
+                end = later[0] if later else len(img)
+                ins = list(self.md.disasm(bytes(img[off:end]), off))
+            at = {i.address: k for k, i in enumerate(ins)}
+            into = {}
+            for k, i in enumerate(ins):
+                if k + 1 < len(ins) and i.mnemonic not in ("jmp", "ljmp", "ret", "retf", "iret"):
+                    into.setdefault(ins[k + 1].address, []).append(i.address)
+                if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM                         and i.mnemonic != "ljmp":
+                    into.setdefault(i.operands[0].imm & 0xFFFF, []).append(i.address)
+            self.code[place] = (ins, at, into, end, any(i.mnemonic == "push" and i.op_str == "dx" for i in ins))
+        return self.code[place]
+
+    def _target(self, sg, i):
+        """(seg, off) of a direct call's or jump's target in the module, "out" for an import, None
+        for one through a register or memory"""
+        if not i.operands or i.operands[0].type != capstone.CS_OP_IMM:
+            return None
+        if i.mnemonic in ("lcall", "ljmp"):
+            s, o = (int(x, 16) for x in i.op_str.split(":" if ":" in i.op_str else ", "))
+            return "out" if s >= 0xE000 else where((s << 16) | o)
+        return (sg, i.operands[0].imm & 0xFFFF)
+
+    def every_way(self, place, four):
+        f = self._function(place)
+        if f is None:
+            return False
+        ins, at, into, end, saves_dx = f
+        sg, off = place
+        dx = {capstone.x86.X86_REG_DX, capstone.x86.X86_REG_DL, capstone.x86.X86_REG_DH, capstone.x86.X86_REG_EDX}
+
+        def handed_on(i):                                    # (a call, or a jump on: its callee's DX --
+            t = self._target(sg, i)                          #  an import's, or one through a pointer:
+            return t in ("out", None) or t in four           #  SETUPX's 28:111C `call far es:[bx+4]`)
+
+        # (the instructions reached from its start -- what lies past a jump on, a jump to an import
+        # (GETTICKCOUNT: `jmp far KERNEL`), is not its; through a jump table everything may be)
+        reach, todo = set(), [off]
+        while todo:
+            a = todo.pop()
+            if a in reach or a not in at:
                 continue
-    return out
+            reach.add(a)
+            i = ins[at[a]]
+            if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM \
+                    and i.mnemonic != "ljmp":
+                todo.append(i.operands[0].imm & 0xFFFF)
+            elif i.group(capstone.CS_GRP_JUMP) and i.mnemonic == "jmp":
+                reach = set(at)                              # (a jump through a table or register)
+                break
+            if i.mnemonic not in ("jmp", "ljmp", "ret", "retf", "iret"):
+                todo.append(i.address + i.size)
+        ends = [i for k, i in enumerate(ins) if i.mnemonic in ("ret", "retf") and i.address in reach
+                and not jump_by_return(ins, k)]      # (a jump through a pointer: its callee's DX)
+        jumped_on = False
+        for i in ins:                                        # (a jump on to another function: its result)
+            if i.address not in reach:
+                continue
+            if i.mnemonic in ("jmp", "ljmp"):
+                t = self._target(sg, i)
+                if t == "out" or (t is not None and t != place and not (t[0] == sg and off <= t[1] < end)):
+                    if not handed_on(i):
+                        return False
+                    jumped_on = True
+        if not ends and not jumped_on:
+            return False
+        work, seen = [], set()
+        for r in ends:
+            work += into.get(r.address, []) or [None]
+        while work:
+            a = work.pop()
+            if a is None or a not in at:
+                return False                                 # (reached from what is not seen: DX unknown)
+            if a in seen:
+                continue
+            seen.add(a)
+            p = ins[at[a]]
+            if p.group(capstone.CS_GRP_CALL):
+                if handed_on(p):
+                    continue
+                return False                                 # (a two-byte callee: DX as it was)
+            if p.mnemonic in ("int", "into"):
+                continue
+            try:
+                written = set(p.regs_access()[1])
+            except capstone.CsError:
+                return False
+            if dx & written:
+                if p.mnemonic == "pop" and saves_dx:
+                    return False                             # (DX given back as it came)
+                continue
+            if a == off:
+                return False                                 # (DX as the caller had it)
+            work += into.get(a, []) or [None]
+        return True
 
 
 def callers_read_dx(d, edges=None):

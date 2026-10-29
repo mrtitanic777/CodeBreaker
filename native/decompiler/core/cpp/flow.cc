@@ -382,6 +382,53 @@ PcodeOp *FlowInfo::xrefControlFlow(list<PcodeOp *>::const_iterator oiter,bool &s
 /// \param curaddr is the address of the instruction to process
 /// \param startbasic indicates of the instruction starts a basic block and passes back whether the next instruction does
 /// \return \b true if the processed instruction has a fall-thru flow
+/// CodeBreaker (C20): what one instruction's p-code does to the stack pointer. Its writes to it
+/// must each be the stack pointer plus or minus a constant. A push (\b push set) moves it down
+/// by the size of the one value it stores and does nothing else that changes flow; anything
+/// that moves it up and stores nothing (a return, a pop) gives how far up. 0 otherwise.
+/// \param iter is the first op of the instruction (the ops to the end of the dead list are its)
+/// \param push is set when the instruction is a push
+/// \return the bytes pushed, or taken off, or 0
+int4 FlowInfo::cbStackEffect(list<PcodeOp *>::const_iterator iter,bool &push) const
+
+{
+  push = false;
+  AddrSpace *stackspc = glb->getStackSpace();
+  if (stackspc == (AddrSpace *)0 || stackspc->numSpacebase() == 0) return 0;
+  const VarnodeData &sp( stackspc->getSpacebase(0) );
+  intb delta = 0;
+  int4 stores = 0,storesize = 0;
+  bool flow = false;
+  for(;iter!=obank.endDead();++iter) {
+    PcodeOp *op = *iter;
+    OpCode opc = op->code();
+    if (opc == CPUI_BRANCH || opc == CPUI_CBRANCH || opc == CPUI_BRANCHIND || opc == CPUI_CALL ||
+	opc == CPUI_CALLIND) flow = true;	// (CALLOTHER is `segment(SS,SP)`: not flow)
+    if (op->code() == CPUI_STORE) {
+      stores += 1;
+      storesize = op->getIn(2)->getSize();
+    }
+    Varnode *out = op->getOut();
+    if (out == (Varnode *)0) continue;
+    if (out->getSpace() != sp.space) continue;
+    if (out->getOffset() + out->getSize() <= sp.offset || sp.offset + sp.size <= out->getOffset()) continue;
+    if (out->getOffset() != sp.offset || out->getSize() != (int4)sp.size) return 0;
+    if (op->code() != CPUI_INT_ADD && op->code() != CPUI_INT_SUB) return 0;
+    Varnode *in0 = op->getIn(0);
+    Varnode *in1 = op->getIn(1);
+    if (in0->getSpace() != sp.space || in0->getOffset() != sp.offset || !in1->isConstant()) return 0;
+    intb c = sign_extend((intb)in1->getOffset(),8*in1->getSize()-1);
+    delta += (op->code() == CPUI_INT_ADD) ? c : -c;
+  }
+  if (flow) return 0;
+  if (delta < 0 && stores == 1 && storesize == -delta) {
+    push = true;
+    return (int4)-delta;
+  }
+  if (delta > 0 && stores == 0) return (int4)delta;
+  return 0;
+}
+
 bool FlowInfo::processInstruction(const Address &curaddr,bool &startbasic)
 
 {
@@ -493,6 +540,37 @@ bool FlowInfo::processInstruction(const Address &curaddr,bool &startbasic)
 	  data.opSetInput(newReturn,data.newConstant(1,0),0);
 	  data.opDeadInsertAfter(newReturn,bop);
 	}
+      }
+      // CodeBreaker (C20): a return that takes off the stack exactly what the instructions
+      // straight before it pushed -- `push dx / push ax / retf`, `push seg / push off / retf`,
+      // `push ax / ret` -- does not return: it jumps to the address it was handed, with the
+      // stack (the caller's return address, its arguments) as the function was entered. That is
+      // a tail call through a pointer: a CALLIND to the pushed address, then a RETURN -- as the
+      // CALL_RETURN flow override would make it. The call is given the function's own
+      // prototype, so it passes on the arguments the function was given and its result is the
+      // function's (VER's sub_4_003E: LZEXPAND's function, found by GetProcAddress, jumped to
+      // in place of the thunk; read as a return, its "result" was the pointer itself, DX:AX).
+      bool push;
+      int4 effect = cbStackEffect(oiter,push);
+      PcodeOp *rop = data.findPrimaryBranch(curaddr,false,false,false,true);
+      if (rop != (PcodeOp *)0 && rop->isDead() && rop->code() == CPUI_RETURN && !push &&
+	  effect > 0 && cb_pushend == curaddr && cb_pushed == effect) {
+	data.opSetOpcode(rop,CPUI_CALLIND);
+	PcodeOp *newReturn = data.newOp(1,curaddr);
+	data.opSetOpcode(newReturn,CPUI_RETURN);
+	data.opSetInput(newReturn,data.newConstant(1,0),0);
+	data.opDeadInsertAfter(newReturn,rop);
+	FuncProto *own = new FuncProto();
+	own->copy(data.getFuncProto());
+	data.getOverride().insertProtoOverride(curaddr,own);
+      }
+      if (push && effect > 0) {
+	cb_pushed = (cb_pushend == curaddr) ? cb_pushed + effect : effect;
+	cb_pushend = curaddr + step;
+      }
+      else {
+	cb_pushed = 0;
+	cb_pushend = Address();
       }
     }
     xrefControlFlow(oiter,startbasic,isfallthru,(FuncCallSpecs *)0);

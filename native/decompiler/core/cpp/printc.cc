@@ -361,7 +361,7 @@ bool PrintC::checkArrayDeref(const Varnode *vn) const
   if (op->code()==CPUI_SEGMENTOP) {
     // CodeBreaker: a segment printed whole (MK_FP) stands between the dereference and the
     // array or member access, which then cannot take the dereference's place
-    if (!nearSegment(op->getIn(1))) return false;
+    if (!nearSegment(op->getIn(1),op->getIn(2))) return false;
     vn = op->getIn(2);
     if (!vn->isImplied()) return false;
     if (!vn->isWritten()) return false;
@@ -1170,8 +1170,9 @@ void PrintC::opPtrsub(const PcodeOp *op)
 ///
 /// \param op is the SEGMENTOP PcodeOp
 /// CodeBreaker: is \b vn the data or stack segment register as the function was entered --
-/// itself, or carried unchanged across calls (which keep it) and joins of paths?
-bool PrintC::enteredSegment(const Varnode *vn) const
+/// itself, or carried unchanged across calls (which keep it) and joins of paths? With
+/// \b dataOnly, the data segment alone: every way back reaches DS.
+bool PrintC::enteredSegment(const Varnode *vn,bool dataOnly) const
 
 {
   vector<const Varnode *> todo(1,vn);
@@ -1183,7 +1184,7 @@ bool PrintC::enteredSegment(const Varnode *vn) const
     if (seen.size() > 64) return false;
     if (cur->isInput()) {
       const string &reg(glb->translate->getRegisterName(cur->getSpace(),cur->getOffset(),cur->getSize()));
-      if (reg != "DS" && reg != "SS") return false;
+      if (reg != "DS" && (dataOnly || reg != "SS")) return false;
       continue;
     }
     if (!cur->isWritten()) return false;
@@ -1209,12 +1210,65 @@ uintb PrintC::dataSegment = 0;
 /// mov es, cx / mov ax, es:[bx+14h]` -- a constant segment with an offset that is not one is not
 /// folded away (RuleSegment folds only both constant), and printed as the offset alone it read
 /// the table in DS.
-bool PrintC::nearSegment(const Varnode *vn) const
+///
+/// The stack segment is not one of them (C20b): C's near pointer is read through DS, and only a
+/// variable of the frame is read through SS. An address the code reads with an `ss:` override
+/// that is not a frame variable's -- a near pointer a caller made of its own frame, handed in
+/// (USER's sub_1_2293: `mov bx, [bp+6] / push word ptr ss:[bx+6]`, a RECT in its caller's frame)
+/// -- printed as the offset alone read DS's word at that offset in the module's data segment
+/// (the function loads DS for itself: `mov ax, 1160h / mov ds, ax`). Printed whole,
+/// MK_FP(unaff_SS, offset), it reads the stack as the original does; where SS and DS are the
+/// same segment (a program's DGROUP) it reads the same thing either way. An address in the
+/// function's own frame ( off made from the stack pointer: `acStack_82[i]`) stays as it is: C
+/// reads its locals through SS.
+bool PrintC::nearSegment(const Varnode *vn,const Varnode *off) const
 
 {
   if (vn->isConstant())
     return !dataSegmentKnown || vn->getOffset() == dataSegment;
-  return enteredSegment(vn);
+  if (enteredSegment(vn,true)) return true;
+  return off != (const Varnode *)0 && enteredSegment(vn) && frameAddress(off);
+}
+
+/// CodeBreaker: is  vn an address in the function's own frame -- the stack pointer, or made from
+/// it by adding offsets and indexes (through copies, casts and joins of paths)?
+bool PrintC::frameAddress(const Varnode *vn)
+
+{
+  vector<const Varnode *> todo(1,vn);
+  set<const Varnode *> seen;
+  bool found = false;
+  while(!todo.empty()) {
+    const Varnode *cur = todo.back();
+    todo.pop_back();
+    if (!seen.insert(cur).second) continue;
+    if (seen.size() > 32) return false;
+    if (cur->isSpacebase()) { found = true; continue; }
+    if (!cur->isWritten()) return false;
+    const PcodeOp *def = cur->getDef();
+    switch(def->code()) {
+    case CPUI_COPY: case CPUI_CAST: case CPUI_PTRSUB: case CPUI_PTRADD: case CPUI_INT_SUB:
+      todo.push_back(def->getIn(0));
+      break;
+    case CPUI_INT_ADD:
+      {
+	// (the frame's address is one side; the other is the offset or index added)
+	bool either = false;
+	for(int4 i=0;i<2;++i)
+	  if (frameAddress(def->getIn(i))) either = true;
+	if (!either) return false;
+	found = true;
+	break;
+      }
+    case CPUI_MULTIEQUAL:
+      for(int4 i=0;i<def->numInput();++i)
+	todo.push_back(def->getIn(i));
+      break;
+    default:
+      return false;
+    }
+  }
+  return found;
 }
 
 void PrintC::opSegmentOp(const PcodeOp *op)
@@ -1224,7 +1278,7 @@ void PrintC::opSegmentOp(const PcodeOp *op)
   // (nearSegment) is printed whole, MK_FP(segment, offset) -- printing only the offset, as this
   // used to, made es:[6c] and ds:[6c] the same thing.
   const Varnode *seg = op->getIn(1);
-  if (nearSegment(seg)) {
+  if (nearSegment(seg,op->getIn(2))) {
     pushVn(op->getIn(2),op,mods);
     return;
   }
