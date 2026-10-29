@@ -46,6 +46,11 @@ do not write CS (the decompiler keeps CS per function and resolves far transfers
 address-size prefix in 16-bit code widens a push's stack pointer to ESP (only in data read as
 code).
 
+2026-10-28 (470 forms of USER, GDI, KRNL386, VGA, KEYBOARD from Setup's MINI.CAB, 8,168 cases): 393
+agree, 10 disagree on purpose, 67 untested. The tenth is the direct far call (`9A`), which wrote
+CS through `ptr1616` until the fix of docs/GHIDRA_FORK.md L9 -- and so left CS as the callee's
+segment for the code after every direct far call (79 functions of the 15 Setup modules read it).
+
 Golden (tools/golden.py, 11 modules, 6,853 functions): 65 functions print differently, every one
 the `pushf` fix -- the flags word they compute now has bit 1 set (`... | 4` -> `... | 6`, or
 `| 2` added), a few with locals numbered differently; nothing else changed.
