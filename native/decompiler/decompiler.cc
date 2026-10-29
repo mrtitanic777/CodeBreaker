@@ -811,8 +811,8 @@ class PrintL2 : public PrintC {
   struct Item {                            // one statement, or the condition a branch tests
     std::string stmt, expr;
     bool cond = false;
-    bool comment = false;                  // a Comment statement
     std::set<uintb> at;                    // the instructions it was made from (their addresses)
+    bool comment = false;                  // a Comment statement
   };
   std::vector<std::string> header_;                 // the function's header comments (its warnings), JSON strings
   std::ostringstream sink_;
@@ -857,7 +857,7 @@ class PrintL2 : public PrintC {
   void emitLineComment(int4 indent, const Comment* comm) override {
     std::string text = jsonText(comm->getText());
     if (indent >= 0) header_.push_back(text);
-    else if (!lists_.empty()) lists_.back().push_back({"{\"node\":\"Comment\",\"text\":" + text + "}", "", false, true});
+    else if (!lists_.empty()) lists_.back().push_back({"{\"node\":\"Comment\",\"text\":" + text + "}", "", false, {}, true});
     comm->setEmitted(true);
   }
 
