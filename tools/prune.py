@@ -58,6 +58,8 @@ def find():
                 continue
             if any(n == "main" or n.startswith("test") or (n.startswith("__") and n.endswith("__")) for n in names):
                 continue
+            if getattr(node, "decorator_list", None):
+                continue                                     # (its decorator keeps it: an engine step)
             own = len(re.findall(r"\b(?:%s)\b" % "|".join(map(re.escape, names)),
                                  "\n".join(lines[node.lineno - 1:node.end_lineno])))
             if sum(count.get(n, 0) for n in names) > own:

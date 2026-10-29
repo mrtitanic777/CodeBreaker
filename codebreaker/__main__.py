@@ -77,6 +77,8 @@ python -m codebreaker               with no command, in a terminal: the terminal
     settings                        every setting, and whether what it names is there
     cache [--stats|--prune|--clear] what the cache keeps, kind by kind; old generations dropped, the cap
                                     held (setting cache_max_gb, default 2); or all of it gone
+    facts <binary> [kind [key]]     what a binary's database holds (the engine's facts) and what each
+                                    was made from; --make to make one current, --databases for all
     tidy-state [--dry] [--stray]    state/'s size by part, and what is stale in it removed (killed runs'
                                     disk copies, old caches, idle build objects)
     java <tool> ...                 the Java transpiler: a Java program as C++03 (convert, decompile,
@@ -140,6 +142,7 @@ COMMANDS = {
     "progress": ("codebreaker.ui.progress", []),
     "settings": ("codebreaker.base.settings", []),
     "cache": ("codebreaker.base.cache", []),
+    "facts": ("codebreaker.engine.show", []),
     "tidy-state": ("codebreaker.base.tidy_state", []),
     "recompile": ("codebreaker.recompile.powerpc", []),
     "recompile-project": ("codebreaker.recompile.project", []),

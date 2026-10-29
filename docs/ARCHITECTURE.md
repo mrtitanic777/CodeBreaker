@@ -48,6 +48,7 @@ results (Logan, 2026-10-29: the full regression runs at milestones, not after ev
 A. **Database + engine core** (1, 2): the fact store and the step/engine API, and one pipeline on
    it end to end -- the 16-bit module build (describe -> decompile -> compile -> gate -> link) --
    giving the same image as module.build. Cold parallelism comes from the engine.
+   See "Built: phase A" below.
 B. **Service** (5): the engine in one process; the terminal UI and MCP as clients of it; the CLI
    starting it on demand.
 C. **L2 only** (3): the decompiler's output is the L2 fact; c_text's remaining passes become steps
