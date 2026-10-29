@@ -10,6 +10,8 @@ the Xbox / Xbox 360 containers (formats/xbox/volumes.py: STFS, discs, GoD, FATX,
         for e in v.files():                every file and folder: e.path  e.size  e.is_dir  e.when
             data = v.read(e)
     media.extract(path, folder, names=())  write the files out; -> number written
+    media.put(path, {"WINDOWS/SYSTEM/X.VXD": data})   write files into an image's FAT volume in
+                                           place (replaced or added; folders made as needed)
 
     python -m codebreaker media list <image> [--boot] [--plain]
     python -m codebreaker media extract <image> <folder> [name ...]
@@ -22,7 +24,7 @@ drives included; a CD image is an ISO-9660 volume and, when it is bootable by fl
 one-file executable (codebreaker.formats.ne does the taking apart).
 
 FAT: 12-, 16- and 32-bit tables told apart by the number of clusters, as DOS does; long file
-names are read (`--plain` shows the 8.3 names); floppies from before DOS 2.0 carry no parameter
+names are read (`--plain` shows the 8.3 names) and put() writes by the 8.3 ones; floppies from before DOS 2.0 carry no parameter
 block, so their layout is taken from the media byte and the image size. ISO-9660: the primary
 names, or the long (Joliet) names when the disc has them (`--plain` for the primary ones);
 images with raw 2352-byte sectors are read too. Files are read on demand, never the whole image.
@@ -85,11 +87,11 @@ class FatVolume(object):
                 raise ValueError("not a FAT volume")
         spf = spf16 or struct.unpack_from("<I", b, 36)[0]
         total = total16 or total32
-        self.bps, self.spc, self.roots = bps, spc, roots
+        self.bps, self.spc, self.roots, self.fats, self.spf = bps, spc, roots, fats, spf
         self.fat_at = reserved * bps
         self.root_at = self.fat_at + fats * spf * bps
         self.data_at = self.root_at + (roots * 32 + bps - 1) // bps * bps
-        clusters = (total * bps - self.data_at) // (spc * bps)
+        clusters = self.clusters = (total * bps - self.data_at) // (spc * bps)
         self.bits = 12 if clusters < 4085 else 16 if clusters < 65525 else 32
         self.kind = "fat%d" % self.bits
         self.root_cluster = struct.unpack_from("<I", b, 44)[0] if self.bits == 32 else 0
@@ -387,6 +389,188 @@ def volumes(path, long_names=True):
         return [BundleVolume(path)]
     except (ValueError, struct.error, IndexError, KeyError):
         raise ValueError("%s: no FAT volume, partition table, ISO-9660 volume or module bundle found" % os.path.basename(path))
+
+
+
+# Writing into a FAT volume ----------------------------------------------------------------------
+class _FatWriter(object):
+    """A FAT volume of an image file opened for writing: its table held here and written back to
+    every copy by close(); folders and file data written where they lie."""
+    def __init__(self, path, vol):
+        if not isinstance(vol, FatVolume) or vol.old:
+            raise ValueError("not a FAT volume with a parameter block")
+        self.v, self.bits, self.base = vol, vol.bits, vol.src.offset
+        self.f = open(path, "r+b")
+        self.fat = bytearray(vol.fat)
+        self.step = vol.spc * vol.bps
+        self.end = 0xFFF if vol.bits == 12 else 0xFFFF if vol.bits == 16 else 0x0FFFFFFF
+        self.free_from = 2
+
+    def close(self):
+        for i in range(self.v.fats):
+            self.f.seek(self.base + self.v.fat_at + i * self.v.spf * self.v.bps)
+            self.f.write(self.fat)
+        self.f.close()
+
+    def get(self, c):
+        return FatVolume._next(self, c)
+
+    def set(self, c, value):
+        if self.bits == 12:
+            at = c * 3 // 2
+            old = self.fat[at] | self.fat[at + 1] << 8
+            new = (old & 0x000F) | (value & 0xFFF) << 4 if c & 1 else (old & 0xF000) | (value & 0xFFF)
+            self.fat[at], self.fat[at + 1] = new & 0xFF, new >> 8
+        elif self.bits == 16:
+            struct.pack_into("<H", self.fat, c * 2, value & 0xFFFF)
+        else:
+            keep = struct.unpack_from("<I", self.fat, c * 4)[0] & 0xF0000000
+            struct.pack_into("<I", self.fat, c * 4, keep | (value & 0x0FFFFFFF))
+
+    def chain(self, c):
+        out, seen = [], set()
+        while 2 <= c < self.end - 7 and c not in seen:
+            out.append(c)
+            seen.add(c)
+            c = self.get(c)
+        return out
+
+    def allocate(self, n):
+        """n free clusters, linked into one chain, the last marked as its end."""
+        got, c = [], self.free_from
+        while len(got) < n:
+            if c >= self.v.clusters + 2:
+                raise ValueError("the volume is full")
+            if self.get(c) == 0:
+                got.append(c)
+            c += 1
+        self.free_from = c
+        for a, b in zip(got, got[1:] + [self.end]):
+            self.set(a, b)
+        return got
+
+    def write_clusters(self, chain, data):
+        for i, c in enumerate(chain):
+            self.f.seek(self.base + self.v.data_at + (c - 2) * self.step)
+            self.f.write(data[i * self.step:(i + 1) * self.step].ljust(self.step, b"\0"))
+
+    def slots(self, start):
+        """[(where in the image, the 32-byte entry)] of a folder; start 0 is the root folder."""
+        if start == 0 and self.bits != 32:
+            at = [self.base + self.v.root_at + i * 32 for i in range(self.v.roots)]
+        else:
+            at = [self.base + self.v.data_at + (c - 2) * self.step + i
+                  for c in self.chain(start or self.v.root_cluster) for i in range(0, self.step, 32)]
+        out = []
+        for a in at:
+            self.f.seek(a)
+            out.append((a, self.f.read(32)))
+        return out
+
+    def find(self, start, short):
+        for a, e in self.slots(start):
+            if e[0] == 0:
+                break
+            if e[0] != 0xE5 and e[11] & 0x3F != 0x0F and not e[11] & 0x08 and e[:11] == short:
+                return a, bytearray(e)
+        return None, None
+
+    def new_slot(self, start):
+        for a, e in self.slots(start):
+            if e[0] in (0, 0xE5):
+                return a
+        if start == 0 and self.bits != 32:
+            raise ValueError("the root folder is full")
+        c = self.allocate(1)[0]                               # a folder grows by a cluster
+        self.set(self.chain(start or self.v.root_cluster)[-1], c)
+        self.write_clusters([c], b"")
+        return self.base + self.v.data_at + (c - 2) * self.step
+
+    def start_of(self, e):
+        return struct.unpack_from("<H", e, 26)[0] | (struct.unpack_from("<H", e, 20)[0] << 16 if self.bits == 32 else 0)
+
+    def set_start(self, e, cluster):
+        struct.pack_into("<H", e, 26, cluster & 0xFFFF)
+        if self.bits == 32:
+            struct.pack_into("<H", e, 20, cluster >> 16)
+
+    def write_entry(self, at, e):
+        self.f.seek(at)
+        self.f.write(bytes(e))
+
+    def mkdir(self, folder, short, when):
+        """A new folder in `folder`, its "." and ".." in it. -> its first cluster"""
+        c = self.allocate(1)[0]
+        dot = bytearray(32)
+        dot[:11], dot[11] = b".          ", 0x10
+        struct.pack_into("<HH", dot, 22, *when)
+        self.set_start(dot, c)
+        dotdot = bytearray(dot)
+        dotdot[:11] = b"..         "
+        self.set_start(dotdot, 0 if folder == self.v.root_cluster else folder)
+        self.write_clusters([c], bytes(dot + dotdot))
+        e = bytearray(dot)
+        e[:11] = short
+        self.write_entry(self.new_slot(folder), e)
+        return c
+
+    def write_file(self, folder, short, data, when):
+        """Replace or add one file of `folder`. -> "replaced" | "added" """
+        at, e = self.find(folder, short)
+        if e is not None:
+            if e[11] & 0x10:
+                raise ValueError("%s is a folder" % short.decode("cp437"))
+            for c in self.chain(self.start_of(e)):
+                self.set(c, 0)
+            self.free_from, how = 2, "replaced"
+        else:
+            at, e, how = self.new_slot(folder), bytearray(32), "added"
+            e[:11], e[11] = short, 0x20
+        n = (len(data) + self.step - 1) // self.step
+        chain = self.allocate(n) if n else []
+        self.write_clusters(chain, data)
+        self.set_start(e, chain[0] if chain else 0)
+        struct.pack_into("<HH", e, 22, *when)
+        struct.pack_into("<I", e, 28, len(data))
+        self.write_entry(at, e)
+        return how
+
+
+def _short(name):
+    """An 8.3 name as a directory entry holds it ("vtd.vxd" -> b"VTD     VXD")."""
+    base, _, ext = name.upper().partition(".")
+    if not base or len(base) > 8 or len(ext) > 3 or any(c in ' ."/\\[]:;=,+*?<>|' or ord(c) < 33 for c in base + ext):
+        raise ValueError("not an 8.3 name: %r" % name)
+    return (base.ljust(8) + ext.ljust(3)).encode("cp437")
+
+
+def put(path, files, volume=0):
+    """Write `files` {"FOLDER/NAME.EXT": bytes} into FAT volume number `volume` of the image at
+    `path`, in place. Paths are 8.3 names in any case, folder by folder. A file that is there is
+    replaced -- its clusters freed; its directory entry, attributes and long name kept, with the
+    new start, size and time -- and one that is not is added, a missing folder made. Every copy
+    of the FAT is written. -> [(path, "replaced" | "added")]"""
+    import time
+    t = time.localtime()
+    when = (t.tm_hour << 11 | t.tm_min << 5 | t.tm_sec // 2, (t.tm_year - 1980) << 9 | t.tm_mon << 5 | t.tm_mday)
+    w = _FatWriter(path, volumes(path)[volume])
+    done = []
+    try:
+        for name, data in files.items():
+            parts = [p for p in name.replace("\\", "/").split("/") if p]
+            folder = w.v.root_cluster if w.bits == 32 else 0
+            for part in parts[:-1]:
+                _at, e = w.find(folder, _short(part))
+                if e is None:
+                    folder = w.mkdir(folder, _short(part), when)
+                elif e[11] & 0x10:
+                    folder = w.start_of(e)
+                else:
+                    raise ValueError("%s: %s is not a folder" % (name, part))
+            done.append(("/".join(parts), w.write_file(folder, _short(parts[-1]), data, when)))
+    finally:
+        w.close()
+    return done
 
 
 def _safe(path):
