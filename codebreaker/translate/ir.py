@@ -190,10 +190,11 @@ ClassDecl = _node('ClassDecl', ['name', 'qname', 'kind', 'mods', 'typeparams', '
                                 'members', 'outer'], ['members'])
 # (a C struct, a frame, a data segment with a fixed layout is a 'record' Type, beside ClassDecl)     # kind: class interface enum record annotation
 FieldDecl = _node('FieldDecl', ['sym', 'type', 'init', 'mods'], ['init'])
-MethodDecl = _node('MethodDecl', ['sym', 'name', 'kind', 'params', 'ret', 'body', 'mods', 'throws', 'typeparams'],
-                   ['params', 'body'])
+MethodDecl = _node('MethodDecl', ['sym', 'name', 'kind', 'params', 'ret', 'body', 'mods', 'throws', 'typeparams',
+                                  'comments'], ['params', 'body'])
 # kind: method ctor static_init init, or function (a free function: C, a decompiled binary). A function
 # whose type carries a calling convention (an 'fn' Type) has it on sym.type, where callers read it too.
+# comments: the text of each comment written above it (a decompiler's warnings).
 Param = _node('Param', ['sym', 'type', 'mods'], [])
 EnumConst = _node('EnumConst', ['sym', 'args', 'body', 'ctor'], ['args', 'body'])
 
@@ -230,6 +231,7 @@ Goto = _stmt('Goto', ['label'], [])                  # C, and whatever structuri
 MachineFragment = _stmt('MachineFragment', ['length', 'reason', 'why', 'asm'], [])
 Sync = _stmt('Sync', ['lock', 'body'])
 Empty = _stmt('Empty', [], [])
+Comment = _stmt('Comment', ['text'], [])             # a comment at its place among the statements (a warning)
 LocalClass = _stmt('LocalClass', ['decl'])
 Assert = _stmt('Assert', ['cond', 'detail'])
 CtorCall = _stmt('CtorCall', ['kind', 'sym', 'args', 'target'], ['args', 'target'])   # this(...) / super(...)

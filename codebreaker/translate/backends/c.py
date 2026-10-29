@@ -4,7 +4,14 @@ The decompiler's PrintL2 writes each function as L2 (`/*@L2 {...} */`, CB_L2=1).
 back as C in the decompiler's own dialect -- its type names (int2, uint4, xunknown2, code), its
 calling-convention words (__cdecl16far, __stdcall), hexadecimal past 9 -- so what it writes goes
 through decompile/c_text.py's passes as the decompiler's C does today, and is compiled and judged
-the same way. tools/l2c.py holds it to that C, token for token, over the golden corpus.
+the same way. tools/l2c.py holds it to that C, character for character, over the golden corpus.
+
+The text is laid out as PrintC lays it out: the same calls to the core's emitter (openGroup,
+spaces, tagLine, ...) in the same order -- each expression through a reverse-Polish stack as
+PrintLanguage::pushOp/pushAtom place it -- run through a port of its pretty printer
+(EmitPrettyPrint: lines of 100, a long one broken where its groups allow). PrintC's comments (its
+warnings) come with L2: the function's above it (MethodDecl.comments), the others as Comment
+statements at their places.
 
 Works on the JSON document itself (a dict), not on ir.py's classes: L2 from a binary carries
 address spaces, conventions and layouts the Java front end's classes do not need.
@@ -13,7 +20,8 @@ address spaces, conventions and layouts the Java front end's classes do not need
 
 `moved` names the passes of decompile/c_text.py done here instead, on the tree (step 3): each is
 written where the address spaces and types L2 carries say so, and c_text leaves its own out for C
-written from L2. MOVED is every one there is.
+written from L2. MOVED is every one there is. What they add is laid out as taking no room: c_text
+adds the same to the printed C, after PrintC broke its lines.
 """
 
 import re
@@ -44,34 +52,386 @@ class Decline(Exception):
     """A node this back end does not write."""
 
 
+# ---------------------------------------------------------------------------------------------- layout
+class _Pretty:
+    """The core's EmitPrettyPrint (prettyprint.cc) over its EmitNoMarkup: the same calls, the same
+    queue of tokens and the same rule for where a line is broken (lines of 100 characters, an
+    indent of 2, a comment's broken line filled with 3 spaces). A token can show other text than
+    the room it is given: what a moved c_text pass adds, which c_text adds after PrintC's layout."""
+    BEGIN, END, STRING, BREAK, INDENT, UNINDENT, COMMENT, UNCOMMENT = range(8)
+
+    def __init__(self, width=100, indent=2, fill='   '):
+        self.width, self.indent, self.fill = width, indent, fill
+        self.toks = []             # [class, size, text, spaces, bump, absolute]
+        self.lo = 0                # the first token not yet printed
+        self.scanq = []            # tokens whose size is not yet known (groups opened, breaks)
+        self.stack = []            # indentstack: the room left at each open group and indent
+        self.room = width          # spaceremain
+        self.left = self.right = 1
+        self.needbreak = False
+        self.commentmode = False
+        self.out = []
+
+    # -- the queue (EmitPrettyPrint::scan, advanceleft, print, overflow)
+    def _push(self, cls, size=0, text='', spaces=0, bump=0, absolute=False):
+        self.toks.append([cls, size, text, spaces, bump, absolute])
+        self._scan()
+
+    def _scan(self):
+        ref = len(self.toks) - 1
+        tok = self.toks[ref]
+        c = tok[0]
+        if c in (self.BEGIN, self.COMMENT):
+            if not self.scanq:
+                self.left = self.right = 1
+            tok[1] = -self.right
+            self.scanq.append(ref)
+        elif c in (self.END, self.UNCOMMENT):
+            tok[1] = 0
+            if self.scanq:
+                r = self.toks[self.scanq.pop()]
+                r[1] += self.right
+                if r[0] == self.BREAK and self.scanq:
+                    self.toks[self.scanq.pop()][1] += self.right
+                if not self.scanq:
+                    self._advance()
+        elif c == self.BREAK:
+            if not self.scanq:
+                self.left = self.right = 1
+            else:
+                r = self.toks[self.scanq[-1]]
+                if r[0] == self.BREAK:
+                    self.scanq.pop()
+                    r[1] += self.right
+            tok[1] = -self.right
+            self.scanq.append(ref)
+            self.right += tok[3]
+        elif c in (self.INDENT, self.UNINDENT):
+            tok[1] = 0
+        elif self.scanq:                                 # a string
+            self.right += tok[1]
+            while self.right - self.left > self.room:
+                self.toks[self.scanq.pop(0)][1] = 999999
+                self._advance()
+                if not self.scanq:
+                    break
+
+    def _advance(self):
+        while self.lo < len(self.toks) and self.toks[self.lo][1] >= 0:
+            tok = self.toks[self.lo]
+            self._print(tok)
+            if tok[0] == self.BREAK:
+                self.left += tok[3]
+            elif tok[0] == self.STRING:
+                self.left += tok[1]
+            self.lo += 1
+
+    def _line(self):
+        self.out.append('\n' + ' ' * (self.width - self.room))
+        if self.commentmode and self.fill:
+            self.out.append(self.fill)
+            self.room -= len(self.fill)
+
+    def _overflow(self):
+        half = self.width // 2
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i] < half:
+                self.stack[i] = half
+            else:
+                break
+        room = self.stack[-1] if self.stack else self.width
+        if room == self.room or self.commentmode and room == self.room + len(self.fill):
+            return                                       # (a new line would give no more room)
+        self.room = room
+        self._line()
+
+    def _print(self, tok):
+        c = tok[0]
+        if c == self.INDENT:
+            self.stack.append(self.stack[-1] - tok[4])
+        elif c in (self.BEGIN, self.COMMENT):
+            self.commentmode = self.commentmode or c == self.COMMENT
+            self.stack.append(self.room)
+        elif c == self.UNINDENT:
+            self.stack.pop()
+        elif c in (self.END, self.UNCOMMENT):
+            self.commentmode = self.commentmode and c != self.UNCOMMENT
+            self.stack.pop()
+        elif c == self.STRING:
+            if tok[1] > self.room:
+                self._overflow()
+            self.out.append(tok[2])
+            self.room -= tok[1]
+        elif tok[1] > self.room:                         # a break where the line is full
+            if tok[5]:
+                self.room = self.width - tok[4]          # (a line at its own indent)
+            else:
+                val = self.stack[-1] - tok[4]
+                if tok[3] <= self.room and val - self.room < 10:
+                    self.out.append(' ' * tok[3])        # (breaking would gain too little)
+                    self.room -= tok[3]
+                    return
+                self.stack[-1] = self.room = val
+            self._line()
+        else:
+            self.out.append(' ' * tok[3])
+            self.room -= tok[3]
+
+    # -- the emitter's calls (EmitPrettyPrint's checkstart/checkstring/checkend/checkbreak)
+    def _start(self):
+        if self.needbreak:
+            self._push(self.BREAK)
+        self.needbreak = False
+
+    def _string(self):
+        if self.needbreak:
+            self._push(self.BREAK)
+        self.needbreak = True
+
+    def _end(self):
+        if not self.needbreak:
+            self._push(self.STRING)
+        self.needbreak = True
+
+    def _break(self):
+        if not self.needbreak:
+            self._push(self.STRING)
+        self.needbreak = False
+
+    def print(self, text, shown=None):
+        self._string()
+        self._push(self.STRING, len(text), text if shown is None else shown)
+
+    def open_group(self):
+        self._start()
+        self._push(self.BEGIN)
+
+    def close_group(self):
+        self._end()
+        self._push(self.END)
+
+    def open_paren(self, p):
+        self.open_group()
+        self._push(self.STRING, 1, p)
+        self.needbreak = True
+
+    def close_paren(self, p):
+        self._string()
+        self._push(self.STRING, 1, p)
+        self.close_group()
+
+    def spaces(self, n, bump=0):
+        self._break()
+        self._push(self.BREAK, 0, '', n, bump)
+
+    def tag_line(self, indent=None):
+        self._break()
+        self._push(self.BREAK, 0, '', 999999, indent or 0, indent is not None)
+
+    def start_indent(self):
+        self._push(self.INDENT, 0, '', 0, self.indent)
+
+    def stop_indent(self):
+        self._push(self.UNINDENT)
+
+    def start_comment(self):
+        self._start()
+        self._push(self.COMMENT)
+
+    def stop_comment(self):
+        self._end()
+        self._push(self.UNCOMMENT)
+
+    def text(self):
+        for tok in self.toks[self.lo:]:                  # (flush)
+            self._print(tok)
+        self.lo = len(self.toks)
+        return ''.join(self.out)
+
+
+class _Flat:
+    """The same calls, written on one line (an expression or a type on its own)."""
+
+    def __init__(self):
+        self.out = []
+
+    def print(self, text, shown=None):
+        self.out.append(text if shown is None else shown)
+
+    def open_paren(self, p):
+        self.out.append(p)
+
+    close_paren = open_paren
+
+    def spaces(self, n, bump=0):
+        self.out.append(' ' * n)
+
+    def open_group(self):
+        pass
+
+    close_group = start_indent = stop_indent = start_comment = stop_comment = open_group
+
+    def tag_line(self, indent=None):
+        self.out.append('\n')
+
+    def text(self):
+        return ''.join(self.out)
+
+
+def _flat(put, *args):
+    em = _Flat()
+    put(em, *args)
+    return em.text()
+
+
+# ---------------------------------------------------------------------------------------------- the core's operators
+class _Op:
+    """An OpToken (printc.cc): what it prints, its operands, precedence, kind, and the spacing
+    around it (and the extra indent of a line broken there)."""
+    __slots__ = ('print1', 'print2', 'stage', 'prec', 'assoc', 'kind', 'spacing', 'bump')
+
+    def __init__(self, print1, print2, stage, prec, assoc, kind, spacing=0, bump=0):
+        self.print1, self.print2, self.stage, self.prec = print1, print2, stage, prec
+        self.assoc, self.kind, self.spacing, self.bump = assoc, kind, spacing, bump
+
+
+_HIDDEN = _Op('', '', 1, 70, False, 'hiddenfunction')
+_MEMBER = {'.': _Op('.', '', 2, 66, True, 'binary'), '->': _Op('->', '', 2, 66, True, 'binary')}
+_SUBSCRIPT = _Op('[', ']', 2, 66, False, 'postsurround')
+_CALL = _Op('(', ')', 2, 66, False, 'postsurround', 0, 10)
+_UNARY = {op: _Op(op, '', 1, 62, False, 'unary_prefix') for op in ('~', '!', '-', '+', '&', '*')}
+_CAST = _Op('(', ')', 2, 62, False, 'presurround')
+_BINOPS = {op: _Op(op, '', 2, p, op in _ASSOCIATIVE, 'binary', 0 if op == ',' else 1) for op, p in _BINARY.items()}
+_ASSIGNS = {}
+_TYPE_SPACE = _Op('', '', 2, 10, False, 'space', 1)
+_TYPE_NOSPACE = _Op('', '', 2, 10, False, 'space', 0)
+_PTR = _Op('*', '', 1, 62, False, 'unary_prefix')
+_ARRAY = _Op('[', ']', 2, 66, False, 'postsurround', 1)
+
+
+def _assign_op(op):
+    word = (op or '') + '='
+    if word not in _ASSIGNS:
+        _ASSIGNS[word] = _Op(word, '', 2, _ASSIGN, False, 'binary', 1, 5)
+    return _ASSIGNS[word]
+
+
+class _Stack:
+    """PrintLanguage's reverse-Polish stack: an expression pushed operator first, then each operand,
+    as PrintC pushes it -- each operator a group of the emitter's, bracketed where
+    PrintLanguage::parentheses says, its symbols placed as PrintLanguage::emitOp places them."""
+
+    def __init__(self, em):
+        self.em = em
+        self.ops = []                                    # [op, operands placed, bracketed]
+
+    def op(self, tok, paren=None):
+        if not self.ops:
+            paren = False
+        else:
+            self._emit(self.ops[-1])
+            if paren is None:
+                paren = self._parens(tok)
+        if paren:
+            self.em.open_paren('(')
+        else:
+            self.em.open_group()
+        self.ops.append([tok, 0, paren])
+
+    def atom(self, text, shown=None, blank=False):
+        if self.ops:
+            self._emit(self.ops[-1])
+        if not blank:
+            self.em.print(text, shown)
+        while self.ops:
+            top = self.ops[-1]
+            top[1] += 1
+            if top[1] != top[0].stage:
+                break
+            self._emit(top)
+            if top[2]:
+                self.em.close_paren(')')
+            else:
+                self.em.close_group()
+            self.ops.pop()
+
+    def _parens(self, op2):
+        """PrintLanguage::parentheses"""
+        tok, stage = self.ops[-1][0], self.ops[-1][1]
+        k = tok.kind
+        if k == 'hiddenfunction':
+            if stage == 0 and len(self.ops) > 1:
+                prev = self.ops[-2][0]
+                if prev.kind not in ('binary', 'unary_prefix') or prev.prec < op2.prec:
+                    return False
+            return True
+        if k == 'postsurround' and stage == 1 or k == 'presurround' and stage == 0:
+            return False                                 # (inside the surround)
+        if tok.prec != op2.prec:
+            return tok.prec > op2.prec
+        if k in ('space', 'binary'):
+            if tok.assoc and tok is op2:
+                return False
+            return not (op2.kind == 'postsurround' and stage == 0)
+        if k in ('unary_prefix', 'presurround'):
+            return op2.kind not in ('unary_prefix', 'presurround')
+        return op2.kind not in ('postsurround', 'binary')
+
+    def _emit(self, entry):
+        """PrintLanguage::emitOp: the operator's symbols due before operand `entry[1]`."""
+        tok, v, em = entry[0], entry[1], self.em
+        k = tok.kind
+        if k == 'binary' and v == 1:
+            em.spaces(tok.spacing, tok.bump)
+            em.print(tok.print1)
+            em.spaces(tok.spacing, tok.bump)
+        elif k == 'unary_prefix' and v == 0:
+            em.print(tok.print1)
+            em.spaces(tok.spacing, tok.bump)
+        elif k == 'postsurround' and v == 1:
+            em.spaces(tok.spacing, tok.bump)
+            em.open_paren(tok.print1)
+            em.spaces(0, tok.bump)
+        elif k == 'postsurround' and v == 2:
+            em.close_paren(tok.print2)
+        elif k == 'presurround' and v == 0:
+            em.open_paren(tok.print1)
+        elif k == 'presurround' and v == 1:
+            em.close_paren(tok.print2)
+            em.spaces(tok.spacing, tok.bump)
+        elif k == 'space' and v == 1:
+            em.spaces(tok.spacing, tok.bump)
+
+
 # ---------------------------------------------------------------------------------------------- types
-def _base(t):
-    """(text before the name, text after it) for a type: `int2 *` + `p` + `[4]`."""
-    k = t['kind']
-    if k in _PRIM:
-        return _PRIM[k], ''
-    if k == 'class':
-        return t.get('name') or 'undefined', ''
-    if k == 'record':
-        if t.get('name'):
-            return t['name'], ''
-        return _record(t), ''
-    if k == 'ptr':
-        pre, post = _base(t['to'])
-        if post:                                 # pointer to an array: int2 (*p)[4]
-            return pre + ' (*', ')' + post
-        # (a far one too: its width is the /*@P note's) -- `int2 *`, `int2 **`
-        return pre + ('*' if pre.endswith('*') else ' *'), ''
-    if k == 'fnptr':
-        return 'code *', ''
-    if k == 'fn':
-        return 'code', ''
-    if k == 'array':
-        pre, post = _base(t['elem'])
-        return pre, '[%s]%s' % (t['count'] if 'count' in t else '', post)
-    if k == 'selector':
-        return 'uint2', ''
-    raise Decline('type kind %r' % k)
+def _stack(t):
+    """(the modifiers of a type, outermost first: 'ptr' or ('array', count); its base type's name):
+    PrintC::buildTypeStack, down to the first type with a name."""
+    mods = []
+    while True:
+        if t is None:
+            return mods, 'void'
+        k = t['kind']
+        if k in _PRIM:
+            return mods, _PRIM[k]
+        if k == 'class':
+            return mods, t.get('name') or 'undefined'
+        if k == 'record':
+            return mods, t.get('name') or _record(t)
+        if k == 'ptr':
+            mods.append('ptr')
+            t = t['to']
+        elif k == 'fnptr':
+            return mods + ['ptr'], 'code'
+        elif k == 'fn':
+            return mods, 'code'
+        elif k == 'array':
+            mods.append(('array', t['count'] if 'count' in t else ''))
+            t = t['elem']
+        elif k == 'selector':
+            return mods, 'uint2'
+        else:
+            raise Decline('type kind %r' % k)
 
 
 def _record(t):
@@ -81,15 +441,34 @@ def _record(t):
     return '%sstruct { %s }' % ('_Packed ' if t.get('packed') else '', fields)
 
 
-def _far_stars(pre):
-    """`int2 *` -> `int2 __far *`, `int2 **` -> `int2 __far **`: the pointer is far (c_text._far)."""
-    stars = len(pre) - len(pre.rstrip('*'))
-    return pre[:len(pre) - stars].rstrip() + ' __far ' + '*' * stars
-
-
 def is_far(t):
     """A pointer of four bytes in a 16-bit function: selector and offset."""
     return bool(t) and t.get('kind') in ('ptr', 'fnptr') and t.get('space') == 'far'
+
+
+def _push_type(st, t, name=None, far=False, word=None):
+    """A type with its name (a declaration) or without (a cast, a return type), on the stack:
+    PrintC::pushTypeStart, the name or a blank, pushTypeEnd. `far`: the outer pointer written
+    __far (c_text._far: `int2 __far *p`); `word`: another word there (` __near`)."""
+    mods, base = _stack(t)
+    st.op(_TYPE_NOSPACE if name is None and not mods else _TYPE_SPACE)
+    word = ' __far' if far else word
+    shown = base + word if word and mods and all(m == 'ptr' for m in mods) else None
+    st.atom(base, shown)
+    for m in reversed(mods):
+        st.op(_PTR if m == 'ptr' else _ARRAY)
+    if name is None:
+        st.atom('', blank=True)
+    else:
+        st.atom(name)
+    for m in mods:
+        if m != 'ptr':
+            st.atom(str(m[1]))
+
+
+def _put_type(em, t, name=None, far=False):
+    st = _Stack(em)
+    _push_type(st, t, name, far)
 
 
 def type_text(t, name='', far=False):
@@ -97,13 +476,7 @@ def type_text(t, name='', far=False):
     which c_text's passes read), or the type alone. `far`: the outer pointer written __far."""
     if t is None:
         return ('void ' + name).strip()
-    pre, post = _base(t)
-    if far and pre.endswith('*') and not post:
-        pre = _far_stars(pre)
-    if not name:
-        return (pre + post).strip()
-    sep = '' if pre.endswith('*') or pre.endswith('(') else ' '
-    return pre + sep + name + (' ' + post if post.startswith('[') else post)
+    return _flat(_put_type, t, name or None, far)
 
 
 # ---------------------------------------------------------------------------------------------- expressions
@@ -231,15 +604,12 @@ def _arrow(e):
 
 def expr(e):
     """C text of an expression."""
-    return _expr(e)
+    return _flat(_put, e)
 
 
 def _sub(parent, child, stage):
-    bracketed = _bracket(parent, child, stage)
-    if bracketed:
-        _near_call(child)
-    text = _expr(child)
-    return '(%s)' % text if bracketed else text
+    """An operand's text as it is written there, in brackets where it takes them."""
+    return '(%s)' % expr(child) if _bracket(parent, child, stage) else expr(child)
 
 
 _WORDS = ('xunknown2', 'int2', 'uint2', 'undefined2')
@@ -299,67 +669,152 @@ def _assigned_name(target):
     return (target.get('sym') or {}).get('name') if target.get('node') == 'Name' else None
 
 
-def _expr(e):
+def _put(em, e):
+    """An expression, the root of its statement, onto the emitter."""
+    st = _Stack(em)
+    _push(st, e)
+    if st.ops:
+        raise Decline('expression left unfinished')
+
+
+def _operands(e, tok, kids):
+    """Marks the casts of calls through a word among the bracketed operands (as they are written)."""
+    for stage, child in enumerate(kids):
+        if child is not None and _bracket(tok, child, stage):
+            _near_call(child)
+
+
+def _push(st, e, paren=None):
+    """One expression on the stack, as PrintC pushes it: the operator, then its operands in the
+    order they are printed."""
     n = e['node']
     if n == 'Lit':
-        return _lit(e)
+        st.atom(_lit(e))
+        return
     if n == 'Name':
-        if _now['marks'].get(id(e)) == '_ss':
-            return 'MK_FP(codebreaker_ss(), %s)' % _name(e)
-        return _name(e)
-    if n == 'Paren':
+        name = _name(e)
+        st.atom(name, 'MK_FP(codebreaker_ss(), %s)' % name if _now['marks'].get(id(e)) == '_ss' else None)
+        return
+    if n == 'Paren':                                     # a hidden function's operand, bracketed
         _near_call(e['x'])
-        return '(%s)' % _expr(e['x'])
+        st.op(_HIDDEN, paren)
+        _push(st, e['x'], True)
+        return
     tok = _token(e)
     if n == 'Cast':
-        if _now['marks'].get(id(e)) == '_near':
-            return '(code __near *)%s' % _sub(tok, e['x'], 1)
-        return '(%s)%s' % (type_text(e['type'], far=_now['marks'].get(id(e)) == '_far'), _sub(tok, e['x'], 1))
+        _operands(e, tok, (None, e['x']))
+        mark = _now['marks'].get(id(e))
+        st.op(_CAST, paren)
+        if mark == '_near':                              # (`code __near *`: c_text._near_calls)
+            _push_type(st, e['type'], word=' __near')
+        else:
+            _push_type(st, e['type'], far=mark == '_far')
+        _push(st, e['x'])
+        return
     if n == 'Unary':
-        op = e['op']
-        if e.get('postfix'):
-            return _sub(tok, e['x'], 0) + op
-        return op + _sub(tok, e['x'], 1)
+        if e.get('postfix') or e['op'] not in _UNARY:
+            raise Decline('unary %s' % e['op'])
+        _operands(e, tok, (e['x'],))
+        st.op(_UNARY[e['op']], paren)
+        _push(st, e['x'])
+        return
     if n == 'Binary':
-        op = e['op']
-        left, right = _sub(tok, e['left'], 0), _sub(tok, e['right'], 1)
-        return '%s,%s' % (left, right) if op == ',' else '%s %s %s' % (left, op, right)   # (PrintC::comma: no space)
+        _operands(e, tok, (e['left'], e['right']))
+        st.op(_BINOPS[e['op']], paren)
+        _push(st, e['left'])
+        _push(st, e['right'])
+        return
     if n == 'Assign':
         if 'far' in _now['moved'] and not e.get('op') and _assigned_name(e['target']) in _now['far']:
             cast = _leading_cast(e['value'])             # `p = (T *)x` -> `p = (T __far *)x` (c_text._far)
             if cast is not None and (cast.get('type') or {}).get('kind') in ('ptr', 'fnptr') and \
                     not _data_address(cast['x']):
                 _now['marks'][id(cast)] = '_far'
-        return '%s %s %s' % (_sub(tok, e['target'], 0), tok[1], _sub(tok, e['value'], 1))
-    if n == 'Cond':
-        return '%s ? %s : %s' % (_sub(tok, e['cond'], 0), _expr(e['then']), _sub(tok, e['orelse'], 1))
+        _operands(e, tok, (e['target'], e['value']))
+        st.op(_assign_op(e.get('op')), paren)
+        _push(st, e['target'])
+        _push(st, e['value'])
+        return
     if n == 'Call':
         target = e.get('target')
-        head = _sub(tok, target, 0) if target else (e.get('sym') or {}).get('name', '?')
-        return '%s(%s)' % (head, ','.join(_expr(a) for a in (e.get('args') or [])))
+        args = e.get('args') or []
+        _operands(e, tok, (target,))
+        st.op(_CALL, paren)
+        if target:
+            _push(st, target)
+        else:
+            st.atom((e.get('sym') or {}).get('name', '?'))
+        if not args:
+            st.atom('', blank=True)                      # f(): nothing between the brackets
+        for _ in args[1:]:
+            st.op(_BINOPS[','])                          # (the arguments as PrintC joins them)
+        for a in args:
+            _push(st, a)
+        return
     if n == 'Index':
-        return '%s[%s]' % (_sub(tok, e['arr'], 0), _expr(e['index']))
+        _operands(e, tok, (e['arr'], e['index']))
+        st.op(_SUBSCRIPT, paren)
+        _push(st, e['arr'])
+        _push(st, e['index'])
+        return
     if n == 'Select':
-        if _arrow(e):
-            return '%s->%s' % (_sub(tok, e['obj']['x'], 0), _name(e))
-        return '%s.%s' % (_sub(tok, e['obj'], 0), _name(e))
+        obj = e['obj']['x'] if _arrow(e) else e['obj']
+        _operands(e, tok, (obj,))
+        st.op(_MEMBER['->' if _arrow(e) else '.'], paren)
+        _push(st, obj)
+        st.atom(_name(e))
+        return
     raise Decline('expression %s' % n)
 
 
+# ---------------------------------------------------------------------------------------------- conditions
 def _joined(e):
     """A condition the structure joined (PrintL2 marks one so: both sides in Paren)."""
     return e.get('node') == 'Binary' and e.get('op') in ('&&', '||') and \
         e['left'].get('node') == 'Paren' and e['right'].get('node') == 'Paren'
 
 
+def _cond(em, e, comma):
+    """A branch's condition as PrintC writes it (emitBlockCondition, opCbranch): the test of one
+    block in brackets of its own -- or, in a loop's comma list (`comma`: comma_separate), each
+    statement of the block and the test, `a, b`, the test in none; a condition the structure
+    joined bracketed whole, its right side in brackets and in comma-list mode."""
+    if _joined(e):
+        em.open_paren('(')
+        _cond(em, e['left']['x'], comma)
+        em.spaces(1)
+        em.print(e['op'])
+        em.spaces(1)
+        em.open_paren('(')
+        _cond(em, e['right']['x'], True)
+        em.close_paren(')')
+        em.close_paren(')')
+        return
+    if not comma:                                        # (only the branch: opCbranch's brackets)
+        em.open_paren('(')
+        _put(em, e)
+        em.close_paren(')')
+        return
+    items = _listed(e)
+    for i, x in enumerate(items):
+        if i:
+            em.print(',')
+            em.spaces(1)
+        em.open_group()                                  # (each a statement: emitStatement)
+        if i == len(items) - 1:
+            em.open_group()                              # (the test: opCbranch, unbracketed)
+            _put(em, x)
+            em.close_group()
+        else:
+            _put(em, x)
+        em.close_group()
+
+
 def condition(e, inner=False):
     """A branch's condition as PrintC brackets it (emitBlockCondition, opCbranch): each condition
     in brackets of its own, but not one in a comma list (a loop's) or on the right of a joining
     && / ||, which the join brackets instead -- `if ((a) && (b))`, `if (((a) && (b)) && ((c || (d))))`."""
-    if _joined(e):
-        return '(%s %s (%s))' % (condition(e['left']['x'], inner), e['op'], condition(e['right']['x'], True))
-    text = ', '.join(expr(x) for x in _listed(e))
-    return text if inner else '(%s)' % text
+    return _flat(_cond, e, inner)
 
 
 def _listed(e):
@@ -375,91 +830,207 @@ def _true(e):
     return e.get('node') == 'Lit' and e.get('value') is True
 
 
-def _loop(cond):
-    """A while's condition: PrintC writes the endless one `while( true )`; others in comma-list mode."""
-    return '( true )' if _true(cond) else ' (%s)' % condition(cond, True)
-
-
 def _stmts(s):
     if s is None:
         return []
     return s if isinstance(s, list) else [s]
 
 
-def _block(out, stmts, depth):
+def _block(em, stmts):
     for s in _stmts(stmts):
-        _stmt(out, s, depth)
+        _stmt(em, s)
 
 
-def _if(out, s, depth, word):
+def _braced(em, stmts):
+    """`{` on the line, the statements indented, `}` on a line of its own (openBraceIndent,
+    closeBraceIndent)."""
+    em.spaces(1)
+    em.start_indent()
+    em.print('{')
+    _block(em, stmts)
+    em.stop_indent()
+    em.tag_line()
+    em.print('}')
+
+
+def _comment(em, text, indent):
+    """PrintLanguage::emitLineComment: `/* text */` on a line at `indent`, its words as the
+    core splits them, so a long one is broken as PrintC breaks it."""
+    em.tag_line(indent)
+    em.start_comment()
+    em.print('/* ')
+    for m in re.finditer(r"[ \t]+|\n|\r|\{@[^}]*\}?|[^\s]+", text):
+        w = m.group(0)
+        if w[0] in ' \t':
+            em.spaces(len(w))
+        elif w == '\n':
+            em.tag_line()
+        elif w != '\r':
+            em.print(w)
+    em.print(' */')
+    em.stop_comment()
+
+
+def _jump(em, s):
+    """PrintC::emitGotoStatement: `goto x;`, `break;`, `continue;` as one statement."""
+    em.open_group()
+    n = s['node']
+    if n == 'Goto':
+        em.print('goto')
+        em.spaces(1)
+        em.print(s['label'])
+    elif n in ('Break', 'Continue'):
+        em.print(n.lower())
+    else:
+        raise Decline('jump %s' % n)
+    em.print(';')
+    em.close_group()
+
+
+def _while_true(em):
+    em.open_paren('(')
+    em.spaces(1)
+    em.print('true')
+    em.spaces(1)
+    em.close_paren(')')
+
+
+def _if(em, s, merged=False):
     """PrintC::emitBlockIf: `if (c) goto x;` braceless where the then-part is one statement, not a
     block; an else holding one if and nothing else merged into `else if`."""
-    pad = '  ' * depth
+    if merged:
+        em.spaces(1)
+    else:
+        em.tag_line()
+    em.print('if')
+    em.spaces(1)
+    _cond(em, s['cond'], False)
     if isinstance(s.get('then'), dict):
-        line = []
-        _stmt(line, s['then'], 0)
-        out.append(pad + '%s %s %s' % (word, condition(s['cond']), line[0]))
+        em.spaces(1)
+        _jump(em, s['then'])
         return
-    out.append(pad + '%s %s {' % (word, condition(s['cond'])))
-    _block(out, s.get('then'), depth + 1)
-    out.append(pad + '}')
+    _braced(em, s.get('then'))
     orelse = s.get('orelse')
     if orelse is None:
         return
+    em.tag_line()
+    em.print('else')
     if isinstance(orelse, list) and len(orelse) == 1 and orelse[0]['node'] == 'If':
-        _if(out, orelse[0], depth, 'else if')
+        _if(em, orelse[0], True)
         return
-    out.append(pad + 'else {')                   # (an else with nothing in it is still written)
-    _block(out, orelse, depth + 1)
-    out.append(pad + '}')
+    _braced(em, orelse)                                  # (an else with nothing in it is still written)
 
 
-def _stmt(out, s, depth):
-    pad = '  ' * depth
+def _statement(em, e, word=None):
+    """PrintC::emitStatement: one expression as a statement (a group of its own), then `;`."""
+    em.tag_line()
+    em.open_group()
+    if word:
+        em.print(word)
+        if e is not None:
+            em.spaces(1)
+    if e is not None:
+        _put(em, e)
+    em.close_group()
+    em.print(';')
+
+
+def _stmt(em, s):
     n = s['node']
     if n == 'Local':
         return                                   # declared at the top, as the decompiler does
     if n == 'ExprStmt':
-        out.append(pad + expr(s['expr']) + ';')
+        _statement(em, s['expr'])
     elif n == 'Return':
-        out.append(pad + ('return %s;' % expr(s['expr']) if s.get('expr') else 'return;'))
+        _statement(em, s.get('expr'), 'return')
     elif n == 'If':
-        _if(out, s, depth, 'if')
+        _if(em, s)
     elif n == 'While':
-        out.append(pad + 'while%s {' % _loop(s['cond']))
-        _block(out, s.get('body'), depth + 1)
-        out.append(pad + '}')
+        em.tag_line()
+        em.print('while')
+        if _true(s['cond']):
+            _while_true(em)                      # PrintC writes the endless one `while( true )`
+        else:
+            em.spaces(1)
+            em.open_paren('(')
+            _cond(em, s['cond'], True)
+            em.close_paren(')')
+        _braced(em, s.get('body'))
     elif n == 'DoWhile':
-        out.append(pad + 'do {')
-        _block(out, s.get('body'), depth + 1)
-        out.append(pad + '} while%s;' % ('( true )' if _true(s['cond']) else ' ' + condition(s['cond'])))
+        em.tag_line()
+        em.print('do')
+        _braced(em, s.get('body'))
+        em.spaces(1)
+        em.print('while')
+        if _true(s['cond']):
+            _while_true(em)
+        else:
+            em.spaces(1)
+            _cond(em, s['cond'], False)
+        em.print(';')
     elif n == 'For':
-        init = '; '.join(expr(x['expr'] if x.get('node') == 'ExprStmt' else x) for x in _stmts(s.get('init')))
-        update = ','.join(expr(x['expr'] if x.get('node') == 'ExprStmt' else x) for x in _stmts(s.get('update')))
-        cond = condition(s['cond'], True) if s.get('cond') else ''
-        out.append(pad + 'for (%s; %s; %s) {' % (init, cond, update))
-        _block(out, s.get('body'), depth + 1)
-        out.append(pad + '}')
+        em.tag_line()
+        em.print('for')
+        em.spaces(1)
+        em.open_paren('(')
+        for i, x in enumerate(_stmts(s.get('init'))):
+            if i:
+                em.print(';')
+                em.spaces(1)
+            em.open_group()
+            _put(em, x['expr'] if x.get('node') == 'ExprStmt' else x)
+            em.close_group()
+        em.print(';')
+        em.spaces(1)
+        if s.get('cond'):
+            _cond(em, s['cond'], True)
+        em.print(';')
+        em.spaces(1)
+        for i, x in enumerate(_stmts(s.get('update'))):
+            if i:
+                em.print(',')
+            em.open_group()
+            _put(em, x['expr'] if x.get('node') == 'ExprStmt' else x)
+            em.close_group()
+        em.close_paren(')')
+        _braced(em, s.get('body'))
     elif n == 'Switch':
-        out.append(pad + 'switch(%s) {' % expr(s['expr']))
+        em.tag_line()
+        em.print('switch')
+        em.open_paren('(')
+        _put(em, s['expr'])
+        em.close_paren(')')
+        em.spaces(1)
+        em.print('{')
         for c in _stmts(s.get('cases')):
-            for label in _stmts(c.get('labels')):
-                out.append(pad + 'case %s:' % expr(label))
             if c.get('default'):
-                out.append(pad + 'default:')
-            _block(out, c.get('body'), depth + 1)
-        out.append(pad + '}')
-    elif n == 'Goto':
-        out.append(pad + 'goto %s;' % s['label'])
+                em.tag_line()
+                em.print('default')
+                em.print(':')
+            else:
+                for label in _stmts(c.get('labels')):
+                    em.tag_line()
+                    em.print('case')
+                    em.spaces(1)
+                    _put(em, label)
+                    em.print(':')
+            em.start_indent()
+            _block(em, c.get('body'))
+            em.stop_indent()
+        em.tag_line()
+        em.print('}')
+    elif n in ('Goto', 'Break', 'Continue'):
+        em.tag_line()
+        _jump(em, s)
     elif n == 'Labeled':
-        out.append(s['label'] + ':')
-        _block(out, s.get('body'), depth)
-    elif n == 'Break':
-        out.append(pad + 'break;')
-    elif n == 'Continue':
-        out.append(pad + 'continue;')
+        em.tag_line(0)
+        em.print(s['label'])
+        em.print(':')
+        _block(em, s.get('body'))
     elif n == 'Block':
-        _block(out, s.get('stmts'), depth)
+        _block(em, s.get('stmts'))
+    elif n == 'Comment':
+        _comment(em, s['text'], 20)              # (PrintC's line_commentindent)
     elif n == 'Empty':
         pass
     else:
@@ -560,19 +1131,45 @@ def _param_name(p):
     return (p.get('sym') or {}).get('name') or p.get('name', '')
 
 
-def signature(doc):
-    """`int2 __cdecl16far sub_1_0000(void)`"""
+def _signature(em, doc):
+    """PrintC::emitFunctionDeclaration: the result's type, the convention's word where it is not
+    the module's default (`__stdcall16near`), the name, the parameters."""
     sym = doc.get('sym') or {}
     ft = sym.get('type') or {}
-    ret = type_text(doc.get('ret') or (ft.get('result') or {}).get('type'))
-    params = [type_text(p.get('type'), _param_name(p), far=_param_name(p) in _now['far'])
-              for p in doc.get('params') or []]
+    em.open_group()                                      # (the prototype)
+    em.open_group()                                      # (its result)
+    _put_type(em, doc.get('ret') or (ft.get('result') or {}).get('type') or {'kind': 'void'})
+    em.close_group()
+    em.spaces(1)
+    for m in doc.get('mods') or ():
+        em.print(m)
+        em.spaces(1)
+    em.open_group()
+    em.print(doc['name'])
+    em.spaces(0, 10)
+    em.open_paren('(')
+    em.spaces(0, 10)
+    params = doc.get('params') or []
+    if not params:
+        em.print('void')
+    for i, p in enumerate(params):
+        if i:
+            em.print(',')
+        em.open_group()                                  # (each a declaration)
+        _put_type(em, p.get('type'), _param_name(p), _param_name(p) in _now['far'])
+        em.close_group()
     if ft.get('variadic'):
-        params.append('...')
-    # the declaration's modifiers as the decompiler wrote them: the convention's word, where the
-    # function's is not the module's default (`__stdcall16near`)
-    mods = ''.join(m + ' ' for m in doc.get('mods') or ())
-    return '%s %s%s(%s)' % (ret, mods, doc['name'], ','.join(params) or 'void')
+        if params:
+            em.print(',')
+        em.print('...')
+    em.close_paren(')')
+    em.close_group()
+    em.close_group()
+
+
+def signature(doc):
+    """`int2 __cdecl16far sub_1_0000(void)`"""
+    return _flat(_signature, doc)
 
 
 def function(doc, moved=(), far=None):
@@ -599,11 +1196,33 @@ def function(doc, moved=(), far=None):
 
 
 def _function(doc, locs):
-    out = [signature(doc), '', '{']
+    """PrintC::docFunction: the comments above it, the declaration, `{` a line below, the locals,
+    the statements, `}`."""
+    em = _Pretty()
+    em.open_group()                                      # (the function)
+    for text in doc.get('comments') or ():
+        _comment(em, text, 0)
+    if doc.get('comments'):
+        em.tag_line()
+    em.tag_line()
+    _signature(em, doc)
+    em.tag_line()
+    em.tag_line()
+    em.start_indent()
+    em.print('{')
     for loc in locs:
         name = (loc.get('sym') or {}).get('name', '')
-        out.append('  ' + type_text(loc.get('type'), name, far=name in _now['far']) + ';')
-    out.append('  ')
-    _block(out, doc.get('body'), 1)
-    out.append('}')
-    return '\n'.join(out) + '\n'
+        em.tag_line()
+        em.open_group()
+        _put_type(em, loc.get('type'), name, name in _now['far'])
+        em.close_group()
+        em.print(';')
+    if locs:
+        em.tag_line()
+    _block(em, doc.get('body'))
+    em.stop_indent()
+    em.tag_line()
+    em.print('}')
+    em.tag_line()
+    em.close_group()
+    return em.text()[1:]                                 # (the line it starts with: the caller's)
