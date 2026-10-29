@@ -164,6 +164,12 @@ def test_moved_frame_through_ss():
     doc = sixteen([local('axStack_a8', buf), local('iVar1', {'kind': 'i16'}), {'node': 'ExprStmt', 'expr': store}])
     assert '  *(xunknown2 *)MK_FP(codebreaker_ss(),(int2)axStack_a8 + iVar1) = 0x5c;' in c.function(doc, c.MOVED)
     assert '  *(xunknown2 *)((int2)axStack_a8 + iVar1) = 0x5c;' in c.function(doc, ('far',))
+    # (behind a cast too, `(int4)*(T *)(...)`: GDI's sub_35_0669 -- once read as a product, through DS)
+    read = {'node': 'Cast', 'type': {'kind': 'i32'},
+            'x': {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(word, 'near'), 'x': at}}}
+    doc = sixteen([local('axStack_a8', buf), local('iVar1', {'kind': 'i16'}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': read})])
+    assert '  y = (int4)*(xunknown2 *)MK_FP(codebreaker_ss(),(int2)axStack_a8 + iVar1);' in c.function(doc, c.MOVED)
 
 
 def select(obj, field):

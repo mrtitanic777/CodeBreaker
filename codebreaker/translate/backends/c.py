@@ -1222,7 +1222,6 @@ def _walk(x, parent=None):
                 yield from _walk(v, x)
 
 
-_C_TYPES = {'char', 'short', 'int', 'long', 'float', 'double', 'void', 'signed', 'unsigned', 'bool'}
 
 
 def _terms(e):
@@ -1247,14 +1246,10 @@ def _frame_through_ss(nodes, arrays):
         if v.get('node') == 'Unary' and v.get('op') == '&' and not v.get('postfix'):
             return v['x'].get('node') == 'Name' and _FRAME.fullmatch(_name(v['x'])) is not None
         return v.get('node') == 'Name' and _name(v) in arrays
-    for e, parent in nodes:
+    for e, _parent in nodes:
+        # (also behind a cast, `(int4)*(int2 *)(...)`: GDI's sub_35_0669, sub_35_0722 and
+        # sub_36_0000, which read their frame through DS while c_text took it for a product)
         if e['node'] != 'Unary' or e.get('op') != '*' or e.get('postfix') or e['x'].get('node') != 'Cast':
-            continue
-        if parent is not None and parent.get('node') == 'Cast' and \
-                re.fullmatch(r"\w+", type_text(parent.get('type'))) and type_text(parent.get('type')) not in _C_TYPES:
-            # (`(int4)*(int2 *)(...)`: a name of a type not C's own, so the C's parser reads
-            # `(int4) * ...` as a product -- c_text never saw a dereference there, and left it as
-            # the core printed it: GDI's sub_35_0669 reads its frame so, through DS)
             continue
         cast = e['x']
         ty = re.fullmatch(r"([\w ]+?) ?\*", type_text(cast.get('type')))

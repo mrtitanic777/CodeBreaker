@@ -1335,6 +1335,22 @@ def _far_from_stack(body, far):
     return src.text()
 
 
+def _behind_cast(src, node):
+    """('*', where) when `node` is the operand of a `*` the grammar read as a product with what
+    comes before: `a * (int4)*(int2 *)p` is `(a * (int4)) * (int2 *)p` to it (the cast ends the
+    left side, as in ctree.misread, but more is before it)."""
+    up = node.parent
+    if up is None or up.type != "binary_expression" or up.child_by_field_name("right") != node or \
+            up.child_by_field_name("operator").type != "*":
+        return None
+    left = up.child_by_field_name("left")
+    while left.type == "binary_expression":
+        left = left.child_by_field_name("right")
+    if left.type != "parenthesized_expression" or not ctree._CASTS.match(src.at(left)):
+        return None
+    return "*", up.child_by_field_name("operator").start_byte
+
+
 def _frame_through_ss(body):
     """A buffer in the frame reached through its address as a number: `*(xunknown2 *)((int2)
     axStack_a8 + iVar1) = 0x5c` -- KEYBOARD's NEWTABLEEX puts the `\\` after the system directory
@@ -1357,11 +1373,12 @@ def _frame_through_ss(body):
             return v.type == "identifier" and re.fullmatch(r"\w*Stack_[0-9a-f]+", src.at(v)) is not None
         return v.type == "identifier" and src.at(v) in arrays
 
-    for n in src.find("pointer_expression"):
-        if src.at(n.child_by_field_name("operator")) != "*":
-            continue
-        cast = n.child_by_field_name("argument")
-        if cast.type != "cast_expression":
+    for cast in src.find("cast_expression"):
+        # (`*(T *)(...)` -- also behind a cast to a type C does not name, `(int4)*(int2 *)(...)`,
+        # which the grammar reads as a product: ctree.misread. Missed so, GDI's sub_35_0669,
+        # sub_35_0722 and sub_36_0000 read their frame through DS)
+        op = src.unary(cast) or _behind_cast(src, cast)
+        if not op or op[0] != "*":
             continue
         ty = re.fullmatch(r"([\w ]+?) ?\*", src.at(cast.child_by_field_name("type")))
         sum_ = cast.child_by_field_name("value")
@@ -2580,7 +2597,7 @@ def _far_reads(text):
     the module's own). What is reached through a far pointer is reached far."""
     def fix(src):
         for cast in src.find("cast_expression"):
-            op = src.unary(cast)
+            op = src.unary(cast) or _behind_cast(src, cast)      # (`a * (int4)*(T *)(...)` too)
             if not op or op[0] != "*":
                 continue
             ty = cast.child_by_field_name("type")
