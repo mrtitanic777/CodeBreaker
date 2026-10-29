@@ -114,6 +114,8 @@ def _module16(path, more=None):
         end = later[0] if later else len(image)
         o = res.functions[va] = Origin(va, name)
         _judge(o, md, image, off, end, imported, set(starts[seg]), g3)
+        if g3 and o.language == "assembly":
+            _c8_forms(o, md, image, off, end)
     # A function whose inner addresses a table names (KRNL386's fault chain: a start and an end
     # of the instructions that may fault, with where to go on if they do) was written in
     # assembly: its instructions have to be where the table says, which C's cannot be. Three
@@ -145,7 +147,7 @@ def _module16(path, more=None):
     # was written in assembly as well (C passes arguments on the stack)
     by_place = {d.where[va]: o for va, o in res.functions.items()}
     takes_registers = {place for place, o in by_place.items()
-                       if any(e.startswith("argument in ") for e in o.evidence)}
+                       if any(e.startswith("argument in ") for e in o.evidence) and o.language == "assembly"}
     for va, o in res.functions.items():
         if o.language == "assembly":
             continue
@@ -173,6 +175,44 @@ def _module16(path, more=None):
             for r in written:
                 set_regs.add(ins.reg_name(r))
     return res
+
+
+# What Microsoft C 7 and 8 make that the rules above take for assembly (measured with C 8.00c):
+#   _fastcall   the first arguments in AX, DX, BX (a char in AL, DL, BL; a long in DX:AX), the
+#               rest on the stack, removed by the callee; no frame when nothing is on the stack
+#   _asm        the block's own instructions (INT n, IN/OUT, CLI/STI, PUSHF/POPF, a carry tested
+#               or set), and round them a BP frame: C 8 gives every function holding an _asm
+#               block one (push bp / mov bp,sp, or enter), even without locals or arguments
+_FASTCALL = {"AX", "AL", "DX", "DL", "BX", "BL"}
+_INLINE = ("INT 0x", "PUSHF", "POPF", "CLI", "STI", "IN (", "OUT (", "STC:", "CLC:", "CMC:",
+           "argument in the flags")
+
+
+def _c8_forms(o, md, image, start, end):
+    """A function judged assembly whose only evidence is what C 7/8 make for _fastcall or an _asm
+    block: C, with what it is said beside it (o.compiler)."""
+    kinds = [e.split(" (")[0] for e in o.evidence]
+    regs = {k[len("argument in "):] for k in kinds if k.startswith("argument in ") and k != "argument in the flags"}
+    inline = [e for e in o.evidence if e.startswith(_INLINE)]
+    rest = [e for e in o.evidence if not e.startswith(_INLINE) and not (
+        e.startswith("argument in ") and e.split(" (")[0][len("argument in "):] in _FASTCALL)]
+    if rest:
+        return
+    ins = list(md.disasm(image[start:min(end, start + 8)], start))
+    framed = bool(ins) and (ins[0].mnemonic == "enter" or (
+        len(ins) > 1 and (ins[0].mnemonic, ins[0].op_str, ins[1].mnemonic, ins[1].op_str) == ("push", "bp", "mov", "bp, sp")))
+    if inline and not framed:
+        return
+    if regs and not {"AX", "AL"} & regs:                    # (the first argument is AX's, a long's DX:AX)
+        return
+    said = []
+    if regs:
+        said.append("_fastcall (arguments in %s)" % ", ".join(sorted(regs)))
+    if inline:
+        said.append("an _asm block (%s)" % "; ".join(e for e in inline[:3]))
+    o.compiler.extend(said)
+    o.evidence = []
+    o.language = "c"
 
 
 def _linker16(path):
@@ -372,6 +412,8 @@ def _judge(o, md, image, start, end, imported, starts=(), g3=False):
             written.add(nm)
             if len(nm) == 2 and nm[1] in "lh":
                 written.add(nm[0] + "x")
+            elif len(nm) == 3 and nm[0] == "e":                 # (cdq, movsx eax ...: its 16-bit half too)
+                written.add(nm[1:])
         if mn in ("call", "lcall"):                           # what a call leaves: its result in DX:AX,
             written.update(("ax", "bx", "cx", "dx", "es"))   # and the registers it may use
         elif mn == "int":
