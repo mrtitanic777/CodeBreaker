@@ -183,19 +183,54 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    run before the function is written), its text placed as c_text places its rewrite: the
    expression as one token given the room of what PrintC printed (`_Stack.whole`), so the lines
    break where they did. `pieces` and `null_is_zero` are done for the 32-bit path too
-   (`backends/c.FLAT`; compilable32 leaves them out for C from L2). Gate (`--made`): KRNL386 1,166, GDI 1,657, LZEXPAND 46, KEYBOARD 70, COMM 41 and LZ32 39 functions, all the same. USER has not been gated yet: with a newly built decompiler its first full decompile ran past two hours, so it was stopped. Holding the gate meant copying one of c_text's blind spots onto the tree: `(int4)*(int2 *)((int2)&xStack_4 + i)` is parsed as a product (int4 is no C type name), so c_text never gives that frame read SS. GDI's sub_35_0669, sub_35_0722 and sub_36_0000 read their frame through DS in both paths. That is a bug to fix in both paths together.
-   **Left in c_text, and why.** `_joined_arguments` reads how wide the original reads through a far
-   argument from its instructions (`_far_argument_widths`): the back end, run at decompile time,
-   has no image -- it moves once L2 carries that width (a `Join` read through, typed). After it,
-   `_far_arguments`, `_stack_segment_stores`, `__export` and `__loadds` read the code bytes the same
-   way; `void` -> `xunknown2`, the byte result, the model word in the heading and `_callee_pops`
-   feed the module's own tables (m.novalue, m.near, m.wide) from the text; `_open_arguments` must
-   come after every pass that reads the parameters' types; `_selector_structs`, `_struct_gaps`,
-   `_own_segment_calls` and the module-wide selector and import rewrites need the other functions
-   and the segments; `_interrupts`, `_far_addresses`, `_far_casts`, `_entry_sp`,
-   `_stack_arguments`, `_far_locals`, `_far_concat_casts`, `_buffer_fields`, `_far_reads` and
-   `_near_to_far` run after those and read what they wrote. Each is the next to move, in that
-   order; the ones that need the image move when L2 carries what they read from it.
+   (`backends/c.FLAT`; compilable32 leaves them out for C from L2). Gate (`--made`): KRNL386 1,166, GDI 1,657, LZEXPAND 46, KEYBOARD 70, COMM 41 and LZ32 39 functions, all the same. USER has not been gated yet: with a newly built decompiler its first full decompile ran past two hours, so it was stopped. Holding the gate meant copying one of c_text's blind spots onto the tree: `(int4)*(int2 *)((int2)&xStack_4 + i)` is parsed as a product (int4 is no C type name), so c_text never gives that frame read SS. GDI's sub_35_0669, sub_35_0722 and sub_36_0000 read their frame through DS in both paths. **Fixed in both paths, 2026-10-29** (c_text._behind_cast in _frame_through_ss and _far_reads; the back end no longer skips a dereference behind a cast): those three now read their frame through SS, and four more GDI functions of the same blind spot (sub_5_1B0A, sub_5_3DAD, sub_37_0714, sub_37_07A5, a far place read behind `(int8)` / `(uint4)` after a product or a quotient) through a far cast; KRNL386, LZEXPAND, KEYBOARD, COMM and LZ32 unchanged.
+   **The printed path retired, 2026-10-29.** The C from L2 is now the only 16-bit and 32-bit x86
+   path (decompile16 and compilable32 ask run() for it whatever CB_C_FROM_L2 says), and each pass
+   it does is gone from c_text: `_far`, `_far_from_stack`, `_frame_through_ss`,
+   `_segment_registers`, `_near_calls`, `_global_pointer_steps`, `_one_name_for_globals`,
+   `_far_result` (and `moved_to_l2`). `_pieces` and `_null_is_zero` stay, for the 32-bit C the
+   back end declines and for PowerPC. Those that read the module moved too, as the passes
+   `backends/c.IN_MODULE`: the back end writes a 16-bit function's C once the module is whole
+   (`c_text._write16`, among workers), given what the module says of it (`c_text.module_facts16`:
+   its model in the description, how wide its instructions read through each far argument, which
+   argument words they load as far pointers, the export prologue, a DGROUP load) -- the model
+   word, `_joined_arguments`, `_far_arguments`, `void` -> `xunknown2`, a byte result made a word,
+   `__export` and `__loadds`; and the module's tables m.near, m.wide, m.novalue and
+   m.exported_prologue come from the document and those facts (`backends/c.flags`), not from the
+   heading's text. c_text's `_joined_arguments`, `_far_arguments`, `_byte_result`, `_before_name`
+   and `_far_before_name` are deleted. Two rules kept as c_text had them, each a change of its
+   own to try: a heading c_text's parser lost (`int2 __fastcall16far f(void)`: tree-sitter reads
+   `__fastcall` as Microsoft's word) gets no `__export`, `__loadds` or word result
+   (`backends/c._lost`: KRNL386's sub_2_7805, sub_2_79DB and sub_2_7BA8 load DGROUP and stay
+   without __loadds); `far` anywhere in the heading as c_text saw it decides where the arguments
+   start for `_far_arguments`.
+   A 16-bit function the back end declines (an Unsupported node: the core's PrintL2 has no node
+   for some statements yet) is now one the decompiler could not make (m.failed, its body a
+   stand-in the gate sends back to its instructions): GDI's sub_22_0B96, the one such function of
+   the seven modules. The gate holds the C to the printed path's texts as they were last made,
+   recorded before the deletions (`tools/l2c.py --made`; `--record` only for an intended
+   change): LZEXPAND 46, KEYBOARD 70, COMM 41, LZ32 39, KRNL386 1,166 functions the same, GDI
+   1,656 of 1,657 (sub_22_0B96) -- and the module's tables (near, wide, novalue,
+   exported_prologue, interrupts, selector imports, prototypes, the header) the same as the
+   printed path's.
+   **Left in c_text, and why.** Per 16-bit function (`_one16`), in the order they run:
+   `_selector_structs` and `_struct_gaps` (a selector's structure is the module's when the
+   selector is a global: its fields gathered over every function, then renamed in their texts);
+   `_own_segment_calls`; `_open_arguments` (after `_caller_frame_slots`, which rewrites a helper's
+   heading as text: the two move together); `_interrupts`, `_far_addresses`, `_far_casts`,
+   `_entry_sp`, `_stack_arguments`, `_far_locals`, `_far_concat_casts`, `_buffer_fields`,
+   `_far_reads`, `_near_to_far` (each reads what the ones before it wrote, so they move in that
+   order); `_stack_segment_stores` (the code bytes: a fact for `module_facts16` next) and
+   `_callee_pops` (last: it rewrites casts the others write). Module-wide, in `_compilable16`:
+   `_caller_frame_slots` (a helper and its callers rewritten together), an import's value used
+   bare, the module's own segments as values and far pointers passed whole, `_code_segment_data`,
+   the globals' macros (from each function's facts: decompiler.split_notes), `prototypes` and
+   `declaration` (which still read each heading from its text) and the header. The 32-bit path
+   (`compilable32`: the frame, comparisons as numbers, code pointers, structure gaps, thiscall
+   and fastcall, the globals) and PowerPC's (`compilable_powerpc`) have not begun. decompile16's
+   rounds still find the calls to places not yet known (`func_0x...`) and count each call's
+   arguments in the printed C; the L2 documents' Call nodes say the same, and that is the next
+   to move off text.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
    **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`

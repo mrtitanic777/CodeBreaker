@@ -155,6 +155,43 @@ decompiler's) are still state/cache: the engine is the outer layer, and each goe
 becomes a step. The function store is not yet the verdict table. The engine runs in the process
 that asks; phase B makes it the service, with its versions and memos kept across asks.
 
+## Built: phase C, first part (2026-10-29)
+
+**The notes are facts.** The native decompiler's notes before each function's C (`/*@G` a global
+it touches, `/*@P` a pointer's size, `/*@S` a structure it recovered, `/*@L2` its L2 document) are
+taken apart from the C once, as its output is read in (decompile/decompiler.split_notes):
+run() hands on C alone and `Decompiled.notes` {function: facts} -- globals, pointers, structs,
+l2, from_l2. decompile16 keeps them across its rounds (Description.notes; the L2 documents'
+calls renamed with the texts), and c_text, compilable32, compilable_powerpc and decompile16's own
+argument check read them there: nothing reads a note back out of C text (`_FACT`,
+`_STRUCT_NOTE`, `moved_to_l2`, the `/*@C from L2 */` mark and decompiler.L2_DOCUMENTS are gone).
+
+**The description is facts.** describe's Description holds its lines (`lines`; `records(kind)`);
+the file the native decompiler reads is written from them (`write`), decompile16 adds and states
+lines there rather than appending to the file, and c_text reads the records. On the engine they
+are facts of the 16-bit steps: `ne.description` (the lines), `function.notes` and `function.l2`
+per function, and ne.lines is made from ne.description; ne.image writes the decompiler's file from
+the fact. (build/module.py and the 16-bit gate, other areas, still read the file written from
+them.)
+
+**L2 the only form of the 16-bit and 32-bit x86 C.** The printed C goes no further than
+decompile16's rounds: every function's C is the C back end's, from its L2 document, and the passes
+it does are gone from c_text -- ten on the pointers and the names (since 2026-10-28, now deleted),
+and seven that need what the module says of the function, written with it once the module is
+whole (c_text._write16, module_facts16; backends/c.IN_MODULE): the model word, the joined and far
+arguments, the result made a word, `__export`, `__loadds`. The module's tables of near, wide,
+no-value and export-prologue functions come from the documents and those facts (backends/c.flags).
+A function the back end declines is one the decompiler could not make (GDI's sub_22_0B96, whose
+statements PrintL2 cannot all write yet). docs/IR_UNIFICATION.md step 3 has the passes left in
+c_text and why; c_text.py is 3,284 lines (3,621 before).
+
+Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
+before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the
+module's tables (near, wide, novalue, exported_prologue, interrupts, selector imports,
+prototypes, the header) the same as the printed path's. One fix in both paths before that, GDI's
+reads behind `(int4)*(T *)(...)` (seven functions: IR_UNIFICATION.md). USER: see the report of
+this step.
+
 ## Built: phase F (2026-10-29)
 
 The 16-bit judge (verify/lanes/win16.py) and the 16-bit gate (verify/gate16/isolated16.py) now
