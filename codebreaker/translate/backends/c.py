@@ -1215,6 +1215,18 @@ def _walk(x, parent=None):
                 yield from _walk(v, x)
 
 
+_C_TYPES = {'char', 'short', 'int', 'long', 'float', 'double', 'void', 'signed', 'unsigned', 'bool'}
+
+
+def _terms(e):
+    """The terms of a sum written without brackets (`a + b + c`), in order."""
+    if e.get('node') != 'Binary' or e.get('op') != '+':
+        return [e]
+    tok = _token(e)
+    return [x for k, side in enumerate((e['left'], e['right']))
+            for x in ([side] if _bracket(tok, side, k) else _terms(side))]
+
+
 def _frame_through_ss(nodes, arrays):
     """A buffer in the frame reached through its address as a number -- `*(xunknown2 *)((int2)
     axStack_a8 + iVar1)`, `mov ss:[bx], ax` (KEYBOARD's NEWTABLEEX): a near pointer made of a
@@ -1228,14 +1240,24 @@ def _frame_through_ss(nodes, arrays):
         if v.get('node') == 'Unary' and v.get('op') == '&' and not v.get('postfix'):
             return v['x'].get('node') == 'Name' and _FRAME.fullmatch(_name(v['x'])) is not None
         return v.get('node') == 'Name' and _name(v) in arrays
-    for e, _parent in nodes:
+    for e, parent in nodes:
         if e['node'] != 'Unary' or e.get('op') != '*' or e.get('postfix') or e['x'].get('node') != 'Cast':
+            continue
+        if parent is not None and parent.get('node') == 'Cast' and \
+                re.fullmatch(r"\w+", type_text(parent.get('type'))) and type_text(parent.get('type')) not in _C_TYPES:
+            # (`(int4)*(int2 *)(...)`: a name of a type not C's own, so the C's parser reads
+            # `(int4) * ...` as a product -- c_text never saw a dereference there, and left it as
+            # the core printed it: GDI's sub_35_0669 reads its frame so, through DS)
             continue
         cast = e['x']
         ty = re.fullmatch(r"([\w ]+?) ?\*", type_text(cast.get('type')))
         sum_ = cast['x']['x'] if cast['x'].get('node') == 'Paren' else cast['x']
-        if ty is None or sum_.get('node') != 'Binary' or sum_.get('op') != '+' or \
-                not (in_frame(sum_['left']) or in_frame(sum_['right'])):
+        if ty is None or sum_.get('node') != 'Binary' or sum_.get('op') != '+':
+            continue
+        # (the sum as the C reads it: `a + b + c` is (a + b) + c whatever the tree's grouping,
+        # so of three terms or more only the last is a side of its own)
+        terms = _terms(sum_)
+        if not (in_frame(terms[-1]) or len(terms) == 2 and in_frame(terms[0])):
             continue
         _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s *)MK_FP(codebreaker_ss(),%s)" % (t, expr(s)))
 
