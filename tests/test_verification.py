@@ -412,6 +412,23 @@ def test_a_c_function_s_arguments_are_what_its_caller_takes_off():
     assert [describe._caller_cleanup(ins, k) for k, i in enumerate(ins) if i.mnemonic == "lcall"] == [6, 4, 0]   # (used with CB_CALLER_ARGS=1)
 
 
+def test_a_call_s_arguments_are_what_its_callee_removes_of_what_was_pushed():
+    """The call-contract check's count: `GlobalAlloc(0x2042, GlobalSize(h))` pushes the flags, then
+    GlobalSize's handle -- six bytes are GlobalAlloc's, two GlobalSize's; a push before a call that
+    takes nothing is the next call's (USER's sub_14_041A); fewer pushed than the callee removes,
+    from the function's start, is a count that differs."""
+    from codebreaker.verify.gate16 import contract16
+    removes = {0xE0000000: 2, 0xE0000010: 6, 0xE0000020: 0, 0xE0000030: 4}
+    names = {0xE0000000: "GlobalSize", 0xE0000010: "GlobalAlloc", 0xE0000020: "none", 0xE0000030: "two"}
+
+    def calls(code):
+        return [(c, p) for c, _t, p, _lv in contract16._calls(bytes.fromhex(code), 1, 0, len(bytes.fromhex(code)),
+                                                              lambda key: names[key[1]], lambda key: removes[key[1]])]
+    assert calls("684220" "57" "9a000000e0" "52" "50" "9a100000e0" "cb") == [("GlobalSize", 2), ("GlobalAlloc", 6)]
+    assert calls("bb0100" "56" "9a200000e0" "50" "9a300000e0" "cb") == [("none", None), ("two", 4)]
+    assert calls("bb0100" "50" "9a100000e0" "cb") == [("GlobalAlloc", 2)]
+
+
 def test_source_files_are_told_by_push_cs_calls_and_an_if_else_can_be_turned_around():
     """SUWIN's sub_2_594A calls sub_2_595C as `push cs; call` -- the same source file, so it and
     everything between them is one file; a function no such call reaches is a file of its own.
