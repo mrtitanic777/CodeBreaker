@@ -1864,10 +1864,7 @@ def _gate16_keys(path, names, m):
     with open(path, "rb") as f:
         module_key = cache.key(f.read())
     from codebreaker.symbols import api_arguments
-    try:                                                     # (what each Windows call removes: the
-        sizes = open(api_arguments._cache16_path(), "rb").read()     # checker answers calls by it)
-    except OSError:
-        sizes = b""
+    sizes = api_arguments.sizes16()                          # (what each Windows call removes: the checker answers calls by it)
     from codebreaker.verify import guided, lane_common
     # (and the branch-guided inputs the checker runs: the explorer, its limits, whether it is on)
     tools = cache.key(cache.tool(watcom.ow_tool("wcc") or ""), functions.CFLAGS16, sizes,

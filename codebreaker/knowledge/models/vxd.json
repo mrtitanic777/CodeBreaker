@@ -1,0 +1,11 @@
+{
+ "_about": "What a ring-0 service does that the emulator's stand-in must do too (emulate/driver.py): the register it answers in, for the services that answer in another register than EAX -- without the answer the code after them has nothing to work on. What the driver kit documents; every other service returns EAX and carry.",
+ "services": {
+  "Get_Cur_VM_Handle": {"answers_in": "ebx"},
+  "Get_Sys_VM_Handle": {"answers_in": "ebx"},
+  "Get_Next_VM_Handle": {"answers_in": "ebx"},
+  "Get_Execution_Focus": {"answers_in": "ebx"},
+  "Get_Cur_Thread_Handle": {"answers_in": "edi"},
+  "Get_Sys_Thread_Handle": {"answers_in": "edi"}
+ }
+}

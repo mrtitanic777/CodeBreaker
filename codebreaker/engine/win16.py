@@ -260,10 +260,7 @@ def function_contract(ctx, key):
 def _gate_stamp():
     from codebreaker.symbols import api_arguments
     from codebreaker.verify import lane_common
-    try:
-        sizes = hashlib.sha1(open(api_arguments._cache16_path(), "rb").read()).hexdigest()
-    except OSError:
-        sizes = ""
+    sizes = hashlib.sha1(api_arguments.sizes16()).hexdigest()
     return (cache.tool(_wcc()), functions.CFLAGS16, sizes, lane_common.guided_on(), lane_common.GUIDED_BUDGET,
             lane_common.MAX_GUIDED, os.environ.get("CB_NO_GUIDED", ""))
 

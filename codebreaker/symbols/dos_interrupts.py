@@ -17,8 +17,6 @@ comes from the machine code (codebreaker.analyze.dos_functions finds the constan
 each `int`). annotate() writes what is known in front of each function, and inline where every
 call of that interrupt in the function asks for the same service.
 """
-import json
-import os
 import re
 
 _TABLE = None
@@ -33,11 +31,11 @@ class Service(object):
 
 
 def table():
-    """{interrupt number: entry of dos_interrupts.json}, read once."""
+    """{interrupt number: entry of dos_interrupts.json}, read once (as the knowledge base has it)."""
     global _TABLE
     if _TABLE is None:
-        with open(os.path.splitext(os.path.abspath(__file__))[0] + ".json", encoding="utf-8") as f:
-            _TABLE = {int(k, 16): v for k, v in json.load(f).items()}
+        from codebreaker import knowledge
+        _TABLE = {int(k, 16): v for k, v in knowledge.table("dos", "interrupt").items()}
     return _TABLE
 
 

@@ -16,10 +16,10 @@ Read from the headers reconstructions are compiled against (OpenWatcom's h/nt an
 declaration given here is one the compiler accepts. Those headers leave parameters unnamed;
 where Microsoft's own headers of the time are at hand (the corpus's reference folder) and
 declare the same number of parameters, their parameter names are added, and functions only they
-declare are taken from them. The headers are read once; the table is kept in the state folder
-and made again when a header folder changes.
+declare are taken from them. The headers are read once; the table is kept in the knowledge base
+(platforms win32 and win16, kind "prototype": knowledge/) and made again when a header folder
+changes.
 """
-import json
 import os
 import re
 
@@ -163,21 +163,21 @@ def table():
     """{"32": {name: prototype}, "16": {...}, "spelling": {NAME: name}}"""
     global _table
     if _table is None:
+        from codebreaker.knowledge import store
         folders = _folders()
         stamp = _stamp(folders)
-        cache = settings.state("prototypes.json")
-        try:
-            with open(cache, encoding="utf-8") as f:
-                saved = json.load(f)
-        except (OSError, ValueError):
-            saved = {}
-        if saved.get("stamp") != stamp:
-            saved = _build(folders)
-            saved["stamp"] = stamp
-            tmp = "%s.%d.tmp" % (cache, os.getpid())
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(saved, f, sort_keys=True)
-            os.replace(tmp, cache)
+        kb = store.open()
+        built = {}
+
+        def made(bits):
+            def make():
+                if not built:
+                    built.update(_build(folders))
+                return built[bits]
+            return make
+        source = "the headers: " + "; ".join(d for bits in sorted(folders) for d in folders[bits])
+        saved = {"32": kb.ensure("win32", "prototype", stamp, made("32"), source, store.DERIVED),
+                 "16": kb.ensure("win16", "prototype", stamp, made("16"), source, store.DERIVED)}
         spelling = {}
         for bits in ("32", "16"):                            # the 16-bit spelling wins: that is where it is needed
             for name in saved[bits]:

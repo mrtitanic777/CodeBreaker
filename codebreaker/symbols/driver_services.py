@@ -6,7 +6,7 @@ mean nothing by themselves. The driver kit's include files give each device its 
 (`VKD_Device_ID EQU 0000DH`) and list its services in order between `Begin_Service_Table VKD`
 and `End_Service_Table` -- the Nth `VKD_Service` line is service N. That list, read once from
 the include files, is kept beside this module in driver_services.json; the package only reads
-the table.
+the table (through the knowledge base: platform vxd, kinds device, service_table, driver, message).
 
     from codebreaker.symbols import driver_services
     driver_services.service_name(0x0001, 0x0001)     -> "Get_Cur_VM_Handle"
@@ -42,17 +42,10 @@ _EQU = re.compile(r"^\s*(\w+)\s+(?:equ|=)\s+([0-9][0-9A-Fa-f]*h?)\s*(?:;.*)?$", 
 def _table():
     global _loaded
     if _loaded is None:
-        try:
-            with open(TABLE, encoding="utf-8") as f:
-                raw = json.load(f)
-        except (OSError, ValueError):
-            raw = {}
-        _loaded = {
-            "devices": {int(k, 16): v for k, v in raw.get("devices", {}).items()},
-            "services": {int(k, 16): v for k, v in raw.get("services", {}).items()},
-            "drivers": {int(k, 16): v for k, v in raw.get("drivers", {}).items()},
-            "messages": {int(k, 16): v for k, v in raw.get("messages", {}).items()},
-        }
+        from codebreaker import knowledge                    # (driver_services.json, as the knowledge base has it)
+        _loaded = {part: {int(k, 16): v for k, v in knowledge.table("vxd", kind).items()}
+                   for part, kind in (("devices", "device"), ("services", "service_table"), ("drivers", "driver"),
+                                      ("messages", "message"))}
     return _loaded
 
 
@@ -244,6 +237,8 @@ def generate(folder=None, out=TABLE):
                    "messages": hx(read_messages(folder))},
                   f, indent=1)
         f.write("\n")
+    from codebreaker.knowledge import sources
+    sources.changed(out)                                     # the knowledge base loads it again
     _loaded = None
     return size()
 

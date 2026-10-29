@@ -1,0 +1,25 @@
+{
+ "_about": "What the emulator's stand-in for a 16-bit Windows function does (emulate/windows16.py default_stub): the value it returns in AX (and DX) and the bytes of arguments it removes (pop). A value is a number; \"arg<N>\" is the Nth word of the arguments as pushed (0 when there are fewer); \"heap\" is a new selector of the stand-in heap. A function not listed returns AX 0 and removes what its export's code says (symbols/api_arguments.py). kernel_ordinals: KERNEL's numbers for these, for a call reported by number.",
+ "kernel_ordinals": {
+  "15": "GLOBALALLOC", "16": "GLOBALREALLOC", "17": "GLOBALFREE", "18": "GLOBALLOCK",
+  "19": "GLOBALUNLOCK", "20": "GLOBALSIZE", "21": "GLOBALHANDLE", "22": "GLOBALFLAGS",
+  "23": "LOCKSEGMENT", "24": "UNLOCKSEGMENT", "26": "GLOBALDOSALLOC",
+  "81": "_LCLOSE", "82": "_LREAD", "83": "_LCREAT", "84": "_LLSEEK", "85": "_LOPEN", "86": "_LWRITE"
+ },
+ "functions": {
+  "GLOBALALLOC": {"ax": "heap", "pop": 6, "_": "(wFlags, dwBytes) -> HGLOBAL, a selector"},
+  "GLOBALDOSALLOC": {"ax": "heap", "pop": 6},
+  "GLOBALLOCK": {"ax": 0, "dx": "arg0", "pop": 2, "_": "(hMem) -> far pointer hMem:0000 in DX:AX"},
+  "GLOBALFREE": {"ax": 0, "pop": 2},
+  "GLOBALUNLOCK": {"ax": 0, "pop": 2},
+  "GLOBALHANDLE": {"ax": 0, "pop": 2},
+  "_LOPEN": {"ax": 128, "pop": 6, "_": "-> HFILE: a handle that looks valid"},
+  "_LCREAT": {"ax": 128, "pop": 6},
+  "_LCLOSE": {"ax": 0, "pop": 2},
+  "_LLSEEK": {"ax": "arg1", "dx": "arg2", "pop": 8, "_": "(hf, lOffset, nOrigin) -> the new position"},
+  "_LREAD": {"ax": "arg3", "pop": 8, "_": "(hf, lpBuffer, cb) -> cb bytes read"},
+  "_HREAD": {"ax": "arg3", "pop": 8},
+  "_LWRITE": {"ax": "arg3", "pop": 8},
+  "_HWRITE": {"ax": "arg3", "pop": 8}
+ }
+}

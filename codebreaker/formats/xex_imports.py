@@ -16,8 +16,6 @@ A block names its library by index in its byte at 0x25 (early devkit dashboards 
 2832 -- set other bits in the byte before it), then lists the addresses of its records; a
 record's word in the image has the ordinal in its low 16 bits and, for a thunk, a non-zero top byte.
 """
-import json
-import os
 import struct
 import sys
 
@@ -25,9 +23,8 @@ IMPORT_HEADER = 0x000103FF
 
 
 def _names():
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "symbols", "console_ordinals.json")
-    with open(path, encoding="utf-8") as f:
-        table = json.load(f)
+    from codebreaker import knowledge                       # (console_ordinals.json, as the knowledge base has it)
+    table = knowledge.table("xbox360", "ordinal_names")
     return {lib: {int(k): v for k, v in names.items()} for lib, names in table.items() if not lib.startswith("_")}
 
 

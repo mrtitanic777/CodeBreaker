@@ -28,9 +28,10 @@ A function's name is taken from the first of these that has one:
 The same function is linked into many modules -- the C runtime, helper libraries, code shared
 between the 16-bit and 32-bit halves of a component. Its body is recognised by a digest of its
 bytes with everything the linker fills in left out (addresses inside the module, calls and
-jumps out of the function), so the digest is the same wherever the code sits. The function
-store keeps one row per body per module; a name given to a body is kept once and read back for
-every module that has it.
+jumps out of the function), so the digest is the same wherever the code sits. The knowledge
+base keeps one row per body per module (knowledge/store.py, reached through the function
+store's body calls); a name given to a body is kept once and read back for every module that
+has it -- `knowledge.name(digest)` from anywhere.
 """
 import hashlib
 import os

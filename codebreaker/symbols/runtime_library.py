@@ -93,17 +93,12 @@ def _signatures():
     """{"32"|"16": {leading bytes: [(size, masked offsets, digest, name, library)]}}"""
     global _index
     if _index is None:
-        try:
-            with open(_FILE, encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            data = {}
-        libraries = data.get("libraries") or []
+        from codebreaker import knowledge
         _index = {}
-        for bits in ("32", "16"):
+        for bits in ("32", "16"):                            # (runtime_signatures.json, as the knowledge base has it)
             by_lead = {}
-            for lead, size, mask, digest, name, lib in data.get(bits) or ():
-                by_lead.setdefault(bytes.fromhex(lead), []).append((size, _offsets(mask), digest, name, libraries[lib]))
+            for lead, size, mask, digest, name, library in knowledge.signatures(bits):
+                by_lead.setdefault(bytes.fromhex(lead), []).append((size, _offsets(mask), digest, name, library))
             _index[bits] = by_lead
     return _index
 
@@ -352,6 +347,10 @@ def learn(sources, log=print):
         f.write('{"libraries": %s,\n' % json.dumps(labels))
         f.write(",\n".join('"%s": [\n%s\n]' % (bits, ",\n".join(json.dumps(e, separators=(",", ":")) for e in entries[bits]))
                            for bits in ("32", "16")) + "\n}\n")
+    global _index
+    from codebreaker.knowledge import sources
+    sources.changed(_FILE)                                   # the knowledge base loads it again
+    _index = None
     return {bits: len(v) for bits, v in entries.items()}
 
 

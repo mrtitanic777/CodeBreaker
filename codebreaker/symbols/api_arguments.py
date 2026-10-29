@@ -11,7 +11,9 @@ Win95 modules use). The answer is what the binary does; nothing is guessed:
     stack_bytes("KERNEL32", "nonesuch")   -> None     (not found / not decidable)
 
 Every path from a function's entry is walked to its `ret`, tracking the stack depth; direct
-jumps, calls, import thunks and forwarded exports are followed. Results are cached per exporting module beside the corpus index.
+jumps, calls, import thunks and forwarded exports are followed. What is found is kept in the
+knowledge base (knowledge/: win32 "argument_bytes.code", win16 "argument_bytes"), once for every
+later ask; the headers' table is its authored kind win32 "argument_bytes.header".
 """
 import json
 import os
@@ -232,31 +234,37 @@ def _resolve(dll, name, hops):
         return None
 
 
-def _cache_path(stem):
-    d = os.path.join(corpus.design_dir(), "apiarity")
-    return os.path.join(d, stem.lower() + ".json")
+def _apiarity(stem):
+    """The table an older CodeBreaker kept for `stem` beside the corpus (apiarity/<stem>.json),
+    or {}: carried into the knowledge base once, then not read again."""
+    try:
+        with open(os.path.join(corpus.design_dir(), "apiarity", stem.lower() + ".json"), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def _load(stem):
+    """{name: bytes or None} found for the exports of `stem` (the knowledge base's, this process's view)."""
     if stem not in _CACHE:
-        try:
-            with open(_cache_path(stem), encoding="utf-8") as f:
-                _CACHE[stem] = json.load(f)
-        except Exception:
-            _CACHE[stem] = {}
+        from codebreaker.knowledge import store
+        kb = store.open()
+        if kb.carried("apiarity " + stem) is None:
+            old = _apiarity(stem)
+            if old:
+                kb.put_many("win32", "argument_bytes.code", {"%s.%s" % (stem, n): v for n, v in old.items()},
+                            "%s's code (carried over from apiarity/%s.json)" % (stem.lower(), stem.lower()))
+            kb.carried("apiarity " + stem, str(len(old)))
+        prefix = stem + "."
+        _CACHE[stem] = {k[len(prefix):]: v for k, v in kb.table("win32", "argument_bytes.code").items()
+                        if k.startswith(prefix)}
     return _CACHE[stem]
 
 
-def _save(stem):
-    p = _cache_path(stem)
-    try:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        tmp = "%s.%d.tmp" % (p, os.getpid())
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(_CACHE[stem], f, sort_keys=True)
-        os.replace(tmp, p)
-    except Exception:
-        pass
+def _save(stem, name):
+    from codebreaker.knowledge import store
+    store.open().put("win32", "argument_bytes.code", "%s.%s" % (stem, name), _CACHE[stem][name],
+                     "%s's code" % stem.lower())
 
 
 _TABLE = None
@@ -265,15 +273,12 @@ _TABLE = None
 def header_bytes(name):
     """Argument bytes for `name` as the Win32 headers declare it, or None when the headers do
     not settle it (no prototype; variadic; caller-cleans; a wide by-value parameter). Read from
-    win32_arguments.json beside this file (tools/make_api_table.py regenerates it)."""
+    win32_arguments.json beside this file (tools/make_api_table.py regenerates it), as the
+    knowledge base has it."""
     global _TABLE
     if _TABLE is None:
-        try:
-            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "win32_arguments.json"),
-                      encoding="utf-8") as f:
-                _TABLE = json.load(f)
-        except (OSError, ValueError):
-            _TABLE = {}
+        from codebreaker import knowledge
+        _TABLE = knowledge.table("win32", "argument_bytes.header")
     return _TABLE.get(name)
 
 
@@ -292,7 +297,7 @@ def stack_bytes(dll, name):
     c = _load(stem)
     if name not in c:
         c[name] = _resolve(stem, name, _MAX_HOPS)
-        _save(stem)
+        _save(stem, name)
     return c[name]
 
 
@@ -308,22 +313,22 @@ _FILES = {"KERNEL": ("krnl386.exe", "kernel.exe"), "USER": ("user.exe",), "GDI":
           # DISPLAY.102 (SetCursor) was given no argument size, and its C "faulted" in the gate)
           "DISPLAY": ("vga.drv", "display.drv"), "MOUSE": ("msmous31.drv", "lmouse31.drv", "mouse.drv")}
 _cache = None
+_scoped = ""
 _modules = {}
 
 
 _product = None
 
 
-def _cache16_path():
+def _scope():
     """One table per product: USER.171 is not the same function in every Windows -- and per way
     of reading it: named by the code that reads an export (arg_bytes, describe.returns and
     .forwards), so a table made by an older reading is not reused. (The one table kept before
     went on giving the sizes it was first given: USER.471, lstrcmpi, at 12 bytes long after the
-    reading said 10.)"""
-    from codebreaker.base import corpus, settings
-    name = corpus.current()
-    return settings.state(("api16.%s.json" if name == settings.get("target") else "api16_" + name + ".%s.json")
-                          % _reading())
+    reading said 10.) Kept in the knowledge base as win16 "argument_bytes", keyed
+    "<product>:<reading>|MODULE.ordinal"."""
+    from codebreaker.base import corpus
+    return "%s:%s" % (corpus.current(), _reading())
 
 
 def _reading():
@@ -340,19 +345,24 @@ def _reading():
 
 
 def _load16():
-    global _cache, _product
+    global _cache, _product, _scoped
     from codebreaker.base import corpus
     if _product != corpus.current():                         # another product was selected
         _product = corpus.current()
         _cache = None
         _modules.clear()
     if _cache is None:
-        try:
-            with open(_cache16_path(), encoding="utf-8") as f:
-                _cache = json.load(f)
-        except (OSError, ValueError):
-            _cache = {}
+        from codebreaker.knowledge import store
+        _scoped = _scope() + "|"
+        _cache = {k[len(_scoped):]: v for k, v in store.open().table("win16", "argument_bytes").items()
+                  if k.startswith(_scoped)}
     return _cache
+
+
+def sizes16():
+    """The table of sizes found so far for this product and reading, as bytes (sorted JSON): what a
+    cache of the checker's verdicts is keyed by, since the checker answers calls by it."""
+    return json.dumps(_load16(), sort_keys=True).encode("utf-8")
 
 
 def _module(name):
@@ -403,11 +413,9 @@ def arg_bytes(module, ordinal):
                 elif kind == "far" and pop >= 0:
                     value = pop
         cache[key] = value
-        try:
-            with open(_cache16_path(), "w", encoding="utf-8") as f:
-                json.dump(cache, f, sort_keys=True)
-        except OSError:
-            pass
+        from codebreaker.knowledge import store
+        store.open().put("win16", "argument_bytes", _scoped + key, value,
+                         "%s's code" % (os.path.basename(mod[0].path).lower() if mod else module.upper()))
     return cache[key]
 
 

@@ -310,11 +310,13 @@ def _size(p):
 
 
 def databases(folder=None):
-    """[(path, bytes, last opened)] of every database, the one opened longest ago first."""
+    """[(path, bytes, last opened)] of every database, the one opened longest ago first. (Not the
+    knowledge base beside them, knowledge.sqlite: it holds what was learned and given by hand,
+    which nothing would make again; the cap never deletes it.)"""
     folder = folder or root()
     out = []
     for n in os.listdir(folder):
-        if n.endswith(".sqlite"):
+        if n.endswith(".sqlite") and n != "knowledge.sqlite":
             p = os.path.join(folder, n)
             try:
                 out.append((p, _size(p), os.path.getmtime(p)))

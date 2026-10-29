@@ -56,37 +56,21 @@ def _falls_through(w):
     return True
 
 
-REV = 2                                 # how the libraries are read (a mask: the bits left out): part of the cache's name
+REV = 2                                 # how the libraries are read (a mask: the bits left out): part of the stamp
 
 
 def signatures(folder):
     """{(words, bits left out of each): [names, libraries, secondary entry?]} from every .lib in
-    `folder`, cached (the cache is named by every library's name, size and time, so a changed XDK is
-    read again)."""
+    `folder`, kept in the knowledge base (platform xbox360, kind "library_signatures", one piece
+    named by every library's name, size and time and REV: a changed XDK is read again)."""
     import hashlib
-    import pickle
-    from codebreaker.base import settings
+    from codebreaker.knowledge import store
     libs = sorted(f for f in os.listdir(folder) if f.lower().endswith(".lib"))
-    stamp = hashlib.sha1(repr([(f, os.path.getsize(os.path.join(folder, f)), int(os.path.getmtime(os.path.join(folder, f))))
-                               for f in libs]).encode()).hexdigest()[:16]
-    cache = settings.state("xdk", "signatures-%d-%s.pickle" % (REV, stamp))
-    try:
-        with open(cache, "rb") as f:
-            return pickle.load(f)
-    except (OSError, EOFError, pickle.UnpicklingError):
-        pass
-    sigs = _read_signatures(folder)
-    os.makedirs(os.path.dirname(cache), exist_ok=True)
-    with open(cache + ".part", "wb") as f:
-        pickle.dump(sigs, f, protocol=pickle.HIGHEST_PROTOCOL)
-    os.replace(cache + ".part", cache)
-    for old in os.listdir(os.path.dirname(cache)):        # (those of another XDK or REV: never read again)
-        if old.startswith("signatures-") and old != os.path.basename(cache):
-            try:
-                os.remove(os.path.join(os.path.dirname(cache), old))
-            except OSError:
-                pass
-    return sigs
+    stamp = "%d-%s" % (REV, hashlib.sha1(repr([(f, os.path.getsize(os.path.join(folder, f)),
+                                                  int(os.path.getmtime(os.path.join(folder, f))))
+                                                 for f in libs]).encode()).hexdigest()[:16])
+    return store.open().ensure("xbox360", "library_signatures", stamp, lambda: {stamp: _read_signatures(folder)},
+                               "the XDK's libraries in " + folder, store.DERIVED)[stamp]
 
 
 def _read_signatures(folder):

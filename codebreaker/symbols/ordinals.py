@@ -104,11 +104,8 @@ def _from_corpus(stem):
 def _from_file(stem):
     global _shipped
     if _shipped is None:
-        try:
-            with open(_TABLE_FILE, encoding="utf-8") as f:
-                _shipped = json.load(f)
-        except (OSError, ValueError):
-            _shipped = {}
+        from codebreaker import knowledge
+        _shipped = knowledge.table("windows", "ordinal_names")      # ordinal_names.json, as the knowledge base has it
     entry = _shipped.get(stem) or {}
     return {int(o): nm for o, nm in (entry.get("names") or {}).items()}, entry.get("from", "")
 
@@ -368,6 +365,10 @@ def collect(paths, log=print):
                            "names": {str(o): nm for o, nm in keep.items() if checks[o] is not False}}
     with open(_TABLE_FILE, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, sort_keys=True, indent=0)
+    global _shipped
+    from codebreaker.knowledge import sources
+    sources.changed(_TABLE_FILE)                             # the knowledge base loads it again
+    _shipped = None
     for module in sorted(out):
         log("%-10s %5d names from %-14s (%d checked against the code, %d dropped)" % (
             module, len(out[module]["names"]), out[module]["from"], *out[module]["checked"]))

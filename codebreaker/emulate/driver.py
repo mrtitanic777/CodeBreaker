@@ -49,10 +49,12 @@ RETURN = emulator._RET
 REGISTERS = ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp")
 
 
-# Services that answer in a register other than EAX: without the answer the code after them
-# has nothing to work on. (What the kit documents; everything else returns EAX and carry.)
-ANSWERS_IN = {"Get_Cur_VM_Handle": "ebx", "Get_Sys_VM_Handle": "ebx", "Get_Next_VM_Handle": "ebx",
-              "Get_Execution_Focus": "ebx", "Get_Cur_Thread_Handle": "edi", "Get_Sys_Thread_Handle": "edi"}
+def answers_in(service):
+    """The register a service answers in when it is not EAX, or None: without the answer the code
+    after it has nothing to work on. (What the kit documents -- the knowledge base's vxd
+    api_model, knowledge/models/vxd.json; everything else returns EAX and carry.)"""
+    from codebreaker import knowledge
+    return (knowledge.api_model("vxd", service or "") or {}).get("answers_in")
 
 
 class Image(object):
@@ -189,7 +191,7 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
                 uc.emu_stop()
                 return
             rec["calls"].append((device, service) + (given() if len(rec["calls"]) <= MAX_CALLS else ((), ())))
-            where = ANSWERS_IN.get(driver_services.service_name(device, service) or "")
+            where = answers_in(driver_services.service_name(device, service))
             if service & 0x8000:                             # jump: the service returns to our caller
                 answer(True)
             else:

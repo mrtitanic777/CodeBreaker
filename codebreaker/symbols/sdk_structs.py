@@ -7,7 +7,7 @@
     sdk_structs.definition(s)               C text defining it, field for field, at the SDK's offsets
 
 A structure is read from its `typedef struct tagX { ... } X, *PX, FAR *LPX;` in the 32-bit
-headers (symbols/prototypes.py finds them). Offsets follow the headers' packing (#include
+headers (symbols/prototypes.py finds them), once: the layouts are kept in the knowledge base. Offsets follow the headers' packing (#include
 <pshpackN.h> ... <poppack.h>, natural alignment otherwise). A field of a type this does not
 know the size of makes the whole structure unknown -- a wrong offset would name the wrong field.
 The definition written out lays the fields at those offsets explicitly (packed to 1, with the
@@ -76,9 +76,35 @@ def _size(t, structs):
 
 
 def _read():
+    """(structures, pointers) as the knowledge base keeps them (platform win32, kinds "struct" and
+    "struct.pointer"): read from the headers again when a header folder or this reading changes."""
     global _db
     if _db is not None:
         return _db
+    import hashlib
+    import inspect
+    from codebreaker.knowledge import store
+    from codebreaker.source import readable
+    from codebreaker.symbols import prototypes
+    folders = prototypes._folders()
+    stamp = hashlib.sha1((prototypes._stamp(folders) + inspect.getsource(_from_headers) +
+                          inspect.getsource(readable._constants)).encode("utf-8")).hexdigest()
+    made = []
+
+    def part(i):
+        def make():
+            if not made:
+                made.extend(_from_headers())
+            return made[i]
+        return make
+    kb = store.open()
+    source = "the 32-bit headers: " + "; ".join(folders.get("32", []))
+    _db = (kb.ensure("win32", "struct", stamp, part(0), source, store.DERIVED),
+           kb.ensure("win32", "struct.pointer", stamp, part(1), source, store.DERIVED))
+    return _db
+
+
+def _from_headers():
     from codebreaker.symbols import prototypes
     from codebreaker.source import readable
     values = readable._constants()[0]
@@ -183,8 +209,7 @@ def _read():
         return structs[name]
     for name in list(raw):
         build(name)
-    _db = (structs, pointers)
-    return _db
+    return structs, pointers
 
 
 def layout(name):
