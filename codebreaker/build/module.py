@@ -55,7 +55,7 @@ import shutil
 import struct
 import subprocess
 
-from codebreaker.base import cache, corpus, settings
+from codebreaker.base import cache, corpus, parallel, settings
 from codebreaker.build import data, definitions, functions, resources, watcom
 from codebreaker.decompile import c_text
 from codebreaker.formats import detect, omf
@@ -507,7 +507,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
                 f.assembled = assemble("asm/" + stems[run[0]].replace("/", "_"), f)
             return run, f
 
-        made = pool.threads(one, [r for r in runs if r not in done], jobs=os.cpu_count() or 4)
+        made = pool.threads(one, [r for r in runs if r not in done], jobs=parallel.workers())
         for run, f in made:
             seg = where[run[0]][0]
             for place in f.raw_far_entries:                # (from its bytes: a far call into a middle)
@@ -1156,11 +1156,11 @@ def _build16(b, path, m, folder):
         return _BY_ADDRESS.sub(fix, text)
 
     texts = {name: named(m.texts[name], segment_of[name]) for name in segment_of}
-    for seg, names in sorted(by_segment.items()):
-        sub = "s%02d" % seg
-        got, rejected = functions.compile_all(wcc, cflags + ["-nt=CODE%d" % seg], env, m.header,
-                                              texts, names, os.path.join(folder, sub))
-        stems.update({n: "%s/%s" % (sub, s) for n, s in got.items()})
+    segments = sorted(by_segment.items())                    # (every segment's functions in the one pool)
+    for (seg, _names), (got, rejected) in zip(segments, functions.compile_groups(
+            wcc, env, m.header, texts,
+            [(cflags + ["-nt=CODE%d" % seg], names, os.path.join(folder, "s%02d" % seg)) for seg, names in segments])):
+        stems.update({n: "s%02d/%s" % (seg, s) for n, s in got.items()})
         b.rejected.update(rejected)
 
     with open(os.path.join(folder, "m.h"), "w", newline="\n", encoding="utf-8") as f:
@@ -1270,7 +1270,7 @@ def _build16(b, path, m, folder):
     # build happens to put things
     left = [n for n in m.order if n not in forced and n in stems and n in texts]
     unset = dict(zip(left, pool.threads(lambda n: functions.never_set(
-        wcc, cflags, env, os.path.join(folder, "s%02d" % segment_of[n]), n, texts[n]), left, jobs=os.cpu_count() or 4)))
+        wcc, cflags, env, os.path.join(folder, "s%02d" % segment_of[n]), n, texts[n]), left, jobs=parallel.workers())))
     for n, names in unset.items():
         if names:
             if n in b.origins:

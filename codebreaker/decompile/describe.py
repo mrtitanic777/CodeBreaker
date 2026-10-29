@@ -426,6 +426,19 @@ _ENDS = ("ret", "retf", "iret", "jmp", "ljmp")
 _DECODED = {}
 _DECODER = __import__("threading").local()
 
+def decoder16(detail=False):
+    """A 16-bit x86 decoder (capstone), one of each kind per thread and kept: making one is
+    a thousand times dearer than decoding an instruction with it, and describing USER made
+    17,000 of them. `detail`: with each instruction's operands and registers."""
+    key = "md16_detail" if detail else "md16"
+    md = getattr(_DECODER, key, None)
+    if md is None:
+        md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+        md.detail = bool(detail)
+        setattr(_DECODER, key, md)
+    return md
+
+
 
 def _one(code, at):
     """The 16-bit instruction at `at` in `code` (as `next(md.disasm(code[at:at + 16], at))`), or None."""
@@ -453,7 +466,7 @@ def _is_prologue(code, o):
 def prologues_after_ends(code):
     """Offsets in one code segment where an entry sequence follows the end of code (a return or
     a jump, then padding): where a function begins, whether or not anything seen reaches it."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = decoder16()
     out, at, n = [], 0, len(code)
     while at < n:
         ins = _one(code, at)
@@ -472,7 +485,7 @@ def prologues_after_ends(code):
 
 def _calls_followed(code, start, limit=20000):
     """Near call targets in the code reached from `start` (fall-through and jumps followed)."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = decoder16()
     calls, seen, work, n = set(), set(), [start], len(code)
     while work and len(seen) < limit:
         at = work.pop()
@@ -553,7 +566,7 @@ def returns(code, off, limit=600, want=None):
     near one, and the operand is what it removes. That is the function's own statement of how
     it must be called; where it was found (entry table, a relocation, a near call) only says
     how SOMEONE calls it. None when no return is met within `limit` instructions."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = decoder16()
     # The code is followed, not read straight down: functions share epilogues (Windows exports
     # beside each other jump into one `retf 8` that may lie BEFORE them), and straight down from
     # a jump is often someone else's code and someone else's return. The nearest return by the
@@ -616,7 +629,7 @@ def callers_say(d):
     whose calls (two at least) all say the same is in it. The callers are the original program's
     own word on how each callee is called -- the callee's instructions can hide it (arguments
     taken off by hand, a shared epilogue)."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = decoder16()
     votes = {}
     for seg, img in d.images.items():
         ins = list(md.disasm(bytes(img), 0))
@@ -651,7 +664,7 @@ def forwards(d, seg, off, kind):
     (USER's 1:0110 adds a 0 and goes to BeginPaint's body at 1:75C8). What the target removes,
     less the words the thunk added. -> bytes, or None when it is not such a thunk."""
     code = (getattr(d, "images", None) or {}).get(seg) or d.segment_bytes.get(seg, b"")   # (relocated: a far jump's segment as the placeholder)
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = decoder16()
     # (read along the way it runs: a near jump inside the segment followed, not listed -- USER's
     # 1:2440 `pop ax / pop dx / xor cx, cx / jmp 244C` into 1:2446's `push cx / push dx / push
     # ax`, then on into the body they share, which ends `retf 0Eh`: its callers push six words,
@@ -750,7 +763,7 @@ def popped_by_hand(code, off, kind):
     """Bytes of arguments a function takes off the stack itself at its start: its return
     address popped (one word near, two far), then more words popped, then the return address
     pushed back. -> bytes, or None when it does not start so."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = decoder16()
     ins = list(md.disasm(bytes(code[off:off + 40]), off))[:20]
     words = 2 if kind == "far" else 1
     regs = ("ax", "bx", "cx", "dx", "si", "di", "bp", "es")
@@ -804,8 +817,7 @@ def args_read(code, start, end, kind):
     """The bytes of arguments a function reads -- through BP, after the prologue sets it
     (`enter`, or `push bp / mov bp, sp`) -- or None when it keeps no such frame (its reads are
     not known here)."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     X = capstone.x86
     if windows_far_prologue(code, start):
         return None
@@ -855,8 +867,7 @@ def result_bytes(code, start, end, passes=None, voided=None):
     list, has what the other ways would have made it appended (results() keeps that where a
     caller reads AX after all), and `passes` is emptied."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     ins = list(md.disasm(code[start:end], start))
     # (Windows' own prologue loads DS seventh or eighth: `mov ax, ds` or `push ds; pop ax`, `nop`,
     # `inc bp; push bp; mov bp, sp; push ds; mov ds, ax`)
@@ -1010,7 +1021,7 @@ def jump_tables(d):
     compare that guards the jump (`cmp reg, n` / `ja`), the index a byte offset unless doubled
     before (`shl bx, 1` / `add bx, bx`) -- and no further than where the code it sends to begins."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md = decoder16()
     lines = []
     for sg, code in d.segment_bytes.items():
         at = 0
@@ -1131,8 +1142,7 @@ def call_overrides(d):
     tell what it takes, and drops what was pushed. Removed by the callee (Pascal: Windows'
     drivers and callbacks) unless the caller takes them off itself right after (`add sp, n`)."""
     import capstone
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     X = capstone.x86
     by_seg = {}
     for va in d.names:
@@ -1276,8 +1286,7 @@ def results(d):
 def _writes_dx(d, places):
     """{(seg, off)} of `places` whose own code (to the next function's start) writes DX other than
     by popping back what it pushed -- or calls out, which may set it"""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     dx = {capstone.x86.X86_REG_DX, capstone.x86.X86_REG_DL, capstone.x86.X86_REG_DH, capstone.x86.X86_REG_EDX}
     starts = {}
     for va in d.names:
@@ -1323,8 +1332,7 @@ def callers_read_dx(d, edges=None):
     call whose AX and DX go back to the caller's own caller as they are (nothing writes either
     before the return, a jump to it followed): if the caller returns four bytes, so does the
     callee (SUREGQUERYVALUEEX hands back sub_31_002A's)."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     dx = {capstone.x86.X86_REG_DX, capstone.x86.X86_REG_DL, capstone.x86.X86_REG_DH, capstone.x86.X86_REG_EDX}
     ax = {capstone.x86.X86_REG_AX, capstone.x86.X86_REG_AL, capstone.x86.X86_REG_AH, capstone.x86.X86_REG_EAX}
     out = set()
@@ -1424,8 +1432,7 @@ def register_helper(code, off, end=None):
     own its C can only `return`, and the caller's C goes on through the old pointer (its copy
     past 64K went back over the start). Such a helper is decompiled as part of each caller --
     the description's `inline` -- so the caller's C moves its own pointer."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     stop = off + 48 if end is None else min(end, off + 48)
     pushed, changed = [], set()
     for k, i in enumerate(md.disasm(bytes(code[off:stop]), off)):
@@ -1458,8 +1465,7 @@ def register_helper(code, off, end=None):
 def callers_read_ax(d, places):
     """{(seg, off)} of `places` a call to which is followed, before anything sets it, by a read of
     AX (`or ax, ax`, `mov [x], ax`, `push ax`): what it leaves there is a result its caller uses."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     ax = {capstone.x86.X86_REG_AX, capstone.x86.X86_REG_AL, capstone.x86.X86_REG_AH, capstone.x86.X86_REG_EAX}
     code_segs = getattr(d, "code", None) or {}
     out = set()
@@ -1507,8 +1513,7 @@ def register_arguments(code, off):
     straight-line start (to the first jump, call or return) reads one of them (or AL, DL, BL) before
     it writes it. SUWIN's 7:0000 begins `push bp / mov bp, sp / push ax` -- its char argument, kept in
     its frame -- and its callers load AX just before the call."""
-    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
-    md.detail = True
+    md = decoder16(detail=True)
     written = set()
     for i in md.disasm(bytes(code[off:off + 64]), off):
         if i.group(capstone.CS_GRP_JUMP) or i.group(capstone.CS_GRP_CALL) or i.group(capstone.CS_GRP_RET) \

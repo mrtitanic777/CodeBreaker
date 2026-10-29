@@ -18,17 +18,30 @@ def cpu_count():
     return os.cpu_count() or 4
 
 
+LOW_LOAD = 4                    # what the setting low_load holds everything to
+
+
+def low_load():
+    """settings.json "low_load" (or CB_LOW_LOAD=1): the machine is someone's to work on while
+    CodeBreaker runs -- every count below is held to LOW_LOAD"""
+    from codebreaker.base import settings
+    v = os.environ.get("CB_LOW_LOAD") or settings.get("low_load")
+    return str(v).strip().lower() not in ("", "0", "false", "no", "off", "none")
+
+
 def workers():
     """How many things run side by side, everywhere: the one number every part of the workbench
-    asks for (compiles, judging, sweeps). settings.json "workers", or CB_JOBS; otherwise half the
-    processors, at most 6 -- so that two parts running at once do not take the whole machine."""
+    asks for (compiles, judging, sweeps). settings.json "workers", or CB_JOBS; otherwise every
+    processor but two (the two left for the machine's owner and for the process handing the work
+    out). With low_load, never more than LOW_LOAD."""
     from codebreaker.base import settings
     n = os.environ.get("CB_JOBS") or settings.get("workers")
     try:
         n = int(n)
     except (TypeError, ValueError):
         n = 0
-    return n if n > 0 else max(1, min(6, cpu_count() // 2))
+    n = n if n > 0 else max(1, cpu_count() - 2)
+    return min(n, LOW_LOAD) if low_load() else n
 
 
 # ---------------------------------------------------------------------------

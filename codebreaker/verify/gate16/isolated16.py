@@ -274,46 +274,51 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
     """Each named function (one the build has as C) beside the original's. Yields
     (name, "same" | "differs" | "not run", why). Many at once: shared out over processes."""
     names = list(names)
-    # (four: the machine is Logan's to work on while it runs -- twelve made it crawl. More than
-    # one per hardware thread gains nothing: the run is computation, the emulator calling back
-    # into Python on every instruction. CB_GATE_WORKERS for another number)
-    workers = workers or max(1, int(os.environ.get("CB_GATE_WORKERS", "4")))
+    # (as many as the machine's budget, base/parallel.py workers() -- the setting low_load holds
+    # it to four, for when the machine is Logan's to work on while it runs. More than one per
+    # hardware thread gains nothing: the run is computation, the emulator calling back into
+    # Python on every instruction. CB_GATE_WORKERS for another number)
+    if not workers:
+        from codebreaker.base import parallel
+        workers = int(os.environ.get("CB_GATE_WORKERS") or 0) or parallel.workers()
+    workers = max(1, workers)
     tables = tables or _tables(original)
     if workers > 1 and len(names) > 2 * workers and inputs is None and not chain:
-        # (each share a Python of its own, started fresh: nothing of the caller's script runs again)
+        # (each share a Python of its own, started fresh: nothing of the caller's script runs again.
+        # Shares of a few functions each, `workers` running at once, the next started as one ends:
+        # one function can take a minute and another a second, and four equal shares made at the
+        # start had the others idle while the slowest went on -- USER, 646 functions)
         import json
         import subprocess
         import sys
+        import tempfile
+        from codebreaker.jobs import pool
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         code = ("import sys, json; sys.path.insert(0, %r); import capstone; "
                 "from codebreaker.verify.gate16 import isolated16 as v; a = json.load(sys.stdin); "
                 "print(json.dumps(v._part(a)))" % root)
-        import tempfile
-        errs = [tempfile.TemporaryFile(mode="w+") for _ in range(workers)]
-        procs = [subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  stderr=errs[k], text=True)
-                 for k in range(workers)]
-        for k, p in enumerate(procs):
-            p.stdin.write(json.dumps([original, folder, names[k::workers], image, tables]))
-            p.stdin.close()
-        for k, p in enumerate(procs):
-            out = p.stdout.read()
-            p.wait()
-            got = set()
-            try:
-                for item in json.loads(out.strip().splitlines()[-1]):
-                    got.add(item[0])
-                    yield tuple(item)
-            except (ValueError, IndexError):
-                pass
-            # (a share the worker did not answer for is NOT the same as the original: it was
-            # not run, and says why)
-            errs[k].seek(0)
-            why = (errs[k].read().strip().splitlines() or ["the worker gave no answer"])[-1][:200]
-            errs[k].close()
-            for n in names[k::workers]:
-                if n not in got:
-                    yield (n, "not run", "the checker failed: " + why)
+        count = min(len(names), workers * 4)
+        shares = [names[k::count] for k in range(count)]
+
+        def one(share):
+            with tempfile.TemporaryFile(mode="w+") as err:
+                p = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=err, text=True)
+                out, _ = p.communicate(json.dumps([original, folder, share, image, tables]))
+                got, items = set(), []
+                try:
+                    for item in json.loads(out.strip().splitlines()[-1]):
+                        got.add(item[0])
+                        items.append(tuple(item))
+                except (ValueError, IndexError):
+                    pass
+                # (a share the worker did not answer for is NOT the same as the original: it was
+                # not run, and says why)
+                err.seek(0)
+                why = (err.read().strip().splitlines() or ["the worker gave no answer"])[-1][:200]
+            return items + [(n, "not run", "the checker failed: " + why) for n in share if n not in got]
+        for items in pool.threads(one, shares, jobs=workers):
+            yield from items
         return
     from codebreaker.emulate import windows16 as emu
     from codebreaker.formats.ne import NEFile

@@ -28,13 +28,18 @@ import os
 import tempfile
 
 
-def _chunk(work, context, items, key, mark):
-    """One worker's share. -> {key: result}."""
-    try:
-        from codebreaker.base import parallel
-        parallel.throttle(cores=int(os.environ.get("CB_CORES", "6")), below_normal=True)
-    except Exception:
-        pass
+def _chunk(work, context, items, key, mark, below_normal=True, worker=True):
+    """One worker's share. -> {key: result}. `worker`: in a worker process, which is held to the
+    machine's budget of cores (and below normal priority, with `below_normal`); the caller's own
+    process, doing a short list itself, is left as it is."""
+    if worker:
+        try:
+            from codebreaker.base import parallel
+            # (on as many cores as the machine's budget: the workers are no more than that)
+            parallel.throttle(cores=int(os.environ.get("CB_CORES") or 0) or parallel.workers(),
+                              below_normal=below_normal)
+        except Exception:
+            pass
     note = os.path.join(mark, "%d.cur" % os.getpid()) if mark else None
     out = {}
     for n, item in enumerate(items):
@@ -52,21 +57,41 @@ def _first(item):
     return item[0] if isinstance(item, (tuple, list)) else item
 
 
+def processes_safe():
+    """Can worker processes be started from here? A worker process on Windows starts by running
+    the calling script again, as __mp_main__: a script with no `if __name__ == "__main__":`
+    guard would run whatever it does -- a whole module build -- once in every worker before
+    failing. Safe: run as `python -m ...`, `python -c ...` or interactively, or a script that
+    has the guard."""
+    import sys
+    main = sys.modules.get("__main__")
+    if main is None or getattr(getattr(main, "__spec__", None), "name", None) or not getattr(main, "__file__", None):
+        return True
+    try:
+        with open(main.__file__, encoding="utf-8", errors="replace") as f:
+            import re
+            return bool(re.search(r"""__name__\s*==\s*['"]__main__['"]""", f.read()))
+    except OSError:
+        return False
+
+
 def default_jobs():
     from codebreaker.base import parallel
     return parallel.workers()
 
 
 def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24, init=None, initargs=(),
-        progress=None, size=None):
+        progress=None, size=None, below_normal=True):
     """-> {key(item): work(context, item)} for every item. A worker is given `size` items at a time
     (default: a sixth of its share, at least eight); init(*initargs) is run first in each worker
-    process; progress(done, total) is told as each share comes back."""
+    process; progress(done, total) is told as each share comes back. below_normal=False: the
+    workers keep normal priority -- for work the caller would otherwise do itself, and waits on
+    (below normal, on a machine busy with other work, they were starved: slower than one process)."""
     items = list(items)
     jobs = jobs or default_jobs()
     crashed = crashed or (lambda item: None)
-    if jobs <= 1 or len(items) < small:
-        return _chunk(work, context, items, key, None)
+    if jobs <= 1 or len(items) < small or not processes_safe():
+        return _chunk(work, context, items, key, None, worker=False)
     from concurrent.futures import ProcessPoolExecutor
     size = size or max(8, -(-len(items) // (jobs * 6)))
     out, todo = {}, items
@@ -76,7 +101,8 @@ def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24
         with tempfile.TemporaryDirectory(prefix="cbjobs") as mark:
             chunks = [todo[i:i + size] for i in range(0, len(todo), size)]
             with ProcessPoolExecutor(max_workers=jobs, initializer=init, initargs=initargs) as ex:
-                futs = [(ex.submit(_chunk, work, context, c, key, _sub(mark, i)), c) for i, c in enumerate(chunks)]
+                futs = [(ex.submit(_chunk, work, context, c, key, _sub(mark, i), below_normal), c)
+                        for i, c in enumerate(chunks)]
                 for fut, _c in futs:
                     try:
                         out.update(fut.result())
@@ -103,7 +129,7 @@ def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24
         for item in suspects:
             try:
                 with ProcessPoolExecutor(max_workers=1, initializer=init, initargs=initargs) as ex:
-                    out.update(ex.submit(_chunk, work, context, [item], key, None).result())
+                    out.update(ex.submit(_chunk, work, context, [item], key, None, below_normal).result())
             except ImportError:
                 raise
             except Exception:
