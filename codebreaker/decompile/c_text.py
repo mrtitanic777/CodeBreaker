@@ -1909,14 +1909,22 @@ def _identifiers(text):
     return [src.at(n) for n in src.find("identifier")]
 
 
+_IMAGES16 = {}                   # segment -> its bytes, for _one16 (in each worker: _one16_images)
+
+
+def _one16_images(images):
+    _IMAGES16.clear()
+    _IMAGES16.update(images)
+
+
 def _one16(context, item):
     """One function of _compilable16 made compilable: its text alone, apart from the module's (a
     worker process each share of them, jobs/pool.py). -> (address, text, flags, interrupts,
     selector structures, shared selector fields, structure notes, global facts) -- the caller
     gathers them in address order, as when they were made one after another."""
-    by_selector, dgroup, images = context
+    by_selector, dgroup = context
     va, name, raw, distance, model, seg, off, end, end_of, callee_pops = item
-    code = images.get(seg)
+    code = _IMAGES16.get(seg)
     flags, interrupts, decls, shared, facts = set(), set(), [], {}, []
     notes = [ln for ln in raw.split("\n") if ln.startswith("/*@S ")]
     moved = moved_to_l2(raw)
@@ -2076,8 +2084,12 @@ def _compilable16(module_path, outdir=None):
         seg, off = d.where[va]
         items.append((va, name, texts[name], distance.get(name), model_of.get(name), seg, off,
                       ends.get(va, off), _end_of(d, seg, off) if seg in d.images else None, callee_pops.get(va)))
-    context = (by_selector, dgroup, dict(d.images))
-    made = pool.run(_one16, items, context=context)
+    context, images = (by_selector, dgroup), dict(d.images)
+    # (the segments given each worker once, as it starts: sent with every share of the work they
+    # were most of what went down the pipes -- a minute of USER's)
+    _one16_images(images)                                    # (and here: a short list is done in this process)
+    made = pool.run(_one16, items, context=context, init=_one16_images, initargs=(images,),
+                    below_normal=False)                   # (the build waits on it: as this process)
     for item in items:                                       # (a worker that could not start or died
         if made.get(item[0]) is None:                        # -- a calling script with no __main__
             made[item[0]] = _one16(context, item)            # guard -- is done here, as before)

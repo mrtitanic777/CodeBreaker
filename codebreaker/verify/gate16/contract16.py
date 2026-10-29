@@ -32,7 +32,8 @@ _MD.detail = True                                       # (what an instruction r
 def _described(path, where, keep=False):
     """(description, {address: name}, {address: bytes it removes -- None: not known}).
     `keep`: the description is kept (base/cache.py) by the module's bytes and the source of
-    what describes it -- the original's, the same for every build of it, was half the check."""
+    what describes it -- the original's is the same for every build of it, and a build made
+    again the same as before is too: describing the two was most of the check."""
     d = _description(path, where) if keep else describe.describe16(path, where)
     names, pops = {}, {}
     with open(os.path.join(where, "description.txt"), encoding="utf-8") as f:
@@ -296,7 +297,7 @@ def mismatches(original, folder, image, names):
     tmp = tempfile.mkdtemp(prefix="contract16_")
     try:
         do, xo, po = _described(original, os.path.join(tmp, "o"), keep=True)
-        du, xu, pu = _described(image, os.path.join(tmp, "u"))
+        du, xu, pu = _described(image, os.path.join(tmp, "u"), keep=True)   # (a build made again: the same)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     starts = collections.defaultdict(list)

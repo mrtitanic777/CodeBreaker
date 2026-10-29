@@ -1,16 +1,17 @@
 """fast_uc.py -- Unicorn's register and memory reads, the same values for less of Python's time.
 
     uc = U.Uc(U.UC_ARCH_X86, U.UC_MODE_32)
-    fast_uc.speed_up(uc)          # uc.reg_read / uc.mem_read: the same answers, faster
+    fast_uc.speed_up(uc)          # uc.reg_read / reg_write / mem_read: the same answers, faster
 
 A run under the checker calls back into Python on every instruction and every memory access,
 and each callback reads registers and memory: USER's gate made 18 million register reads and
 22 million memory reads for 81 functions. Unicorn's Python binding spends most of each on
 choosing the register's class (a walk over six ranges, every time), building the ctypes value
 to read into, and an audited string buffer. Here the class is chosen once per register, and
-a plain integer register is read into one value kept for it; a memory read gets its buffer
-from a type made once per size. What comes back is what Unicorn's own call gives -- the same
-call into the library, the same value type -- so a run is the same run.
+a plain integer register is read into one value kept for it (and written from a value of that
+class); a memory read goes into a buffer kept for its size and is copied out. What comes back
+is what Unicorn's own call gives -- the same call into the library, the same value type -- so
+a run is the same run. (A register of another class, or an `aux`, goes the binding's own way.)
 """
 import ctypes
 

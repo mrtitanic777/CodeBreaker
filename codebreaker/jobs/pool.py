@@ -28,14 +28,18 @@ import os
 import tempfile
 
 
-def _chunk(work, context, items, key, mark):
-    """One worker's share. -> {key: result}."""
-    try:
-        from codebreaker.base import parallel
-        # (on as many cores as the machine's budget: the workers are no more than that)
-        parallel.throttle(cores=int(os.environ.get("CB_CORES") or 0) or parallel.workers(), below_normal=True)
-    except Exception:
-        pass
+def _chunk(work, context, items, key, mark, below_normal=True, worker=True):
+    """One worker's share. -> {key: result}. `worker`: in a worker process, which is held to the
+    machine's budget of cores (and below normal priority, with `below_normal`); the caller's own
+    process, doing a short list itself, is left as it is."""
+    if worker:
+        try:
+            from codebreaker.base import parallel
+            # (on as many cores as the machine's budget: the workers are no more than that)
+            parallel.throttle(cores=int(os.environ.get("CB_CORES") or 0) or parallel.workers(),
+                              below_normal=below_normal)
+        except Exception:
+            pass
     note = os.path.join(mark, "%d.cur" % os.getpid()) if mark else None
     out = {}
     for n, item in enumerate(items):
@@ -77,15 +81,17 @@ def default_jobs():
 
 
 def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24, init=None, initargs=(),
-        progress=None, size=None):
+        progress=None, size=None, below_normal=True):
     """-> {key(item): work(context, item)} for every item. A worker is given `size` items at a time
     (default: a sixth of its share, at least eight); init(*initargs) is run first in each worker
-    process; progress(done, total) is told as each share comes back."""
+    process; progress(done, total) is told as each share comes back. below_normal=False: the
+    workers keep normal priority -- for work the caller would otherwise do itself, and waits on
+    (below normal, on a machine busy with other work, they were starved: slower than one process)."""
     items = list(items)
     jobs = jobs or default_jobs()
     crashed = crashed or (lambda item: None)
     if jobs <= 1 or len(items) < small or not processes_safe():
-        return _chunk(work, context, items, key, None)
+        return _chunk(work, context, items, key, None, worker=False)
     from concurrent.futures import ProcessPoolExecutor
     size = size or max(8, -(-len(items) // (jobs * 6)))
     out, todo = {}, items
@@ -95,7 +101,8 @@ def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24
         with tempfile.TemporaryDirectory(prefix="cbjobs") as mark:
             chunks = [todo[i:i + size] for i in range(0, len(todo), size)]
             with ProcessPoolExecutor(max_workers=jobs, initializer=init, initargs=initargs) as ex:
-                futs = [(ex.submit(_chunk, work, context, c, key, _sub(mark, i)), c) for i, c in enumerate(chunks)]
+                futs = [(ex.submit(_chunk, work, context, c, key, _sub(mark, i), below_normal), c)
+                        for i, c in enumerate(chunks)]
                 for fut, _c in futs:
                     try:
                         out.update(fut.result())
@@ -122,7 +129,7 @@ def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24
         for item in suspects:
             try:
                 with ProcessPoolExecutor(max_workers=1, initializer=init, initargs=initargs) as ex:
-                    out.update(ex.submit(_chunk, work, context, [item], key, None).result())
+                    out.update(ex.submit(_chunk, work, context, [item], key, None, below_normal).result())
             except ImportError:
                 raise
             except Exception:
