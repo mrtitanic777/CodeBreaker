@@ -1368,6 +1368,7 @@ def compilable16(module_path, outdir=None):
                   os.environ.get("CB_SELECTOR_STRUCTS", ""),       # (_selector_structs' off switch)
                   os.environ.get("CB_CALLER_ARGS", ""),            # (describe's direct-call arguments)
                   os.environ.get("CB_FASTCALL", ""),               # (describe's _fastcall functions)
+                  os.environ.get("CB_INLINE_HELPERS", ""),         # (describe's helpers made part of their callers)
                   os.environ.get("CB_PROTOTYPES", ""),             # (prototypes where the calls agree)
                   os.environ.get("CB_CALLER_RESULTS", ""))         # (results the callers read DX of)
     had = cache.get("compilable16", k)

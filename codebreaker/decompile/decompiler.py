@@ -414,6 +414,20 @@ def decompile16(module_path, outdir=None, rounds=4):
         # words become one, faulted -- its calls passed in full, its own frame read wrong)
         out.update({n: tx for n, tx in more.items()
                     if n in short and _own_arguments(tx, n) == _own_arguments(out.get(n, ""), n)})
+    # a helper made part of its callers (describe.register_helper: `inline`) is still a function of
+    # the module, at its place, for whatever else reaches it: its own text, from the description
+    # with it as an ordinary function
+    if getattr(d, "inlined", None):
+        own_path = os.path.join(os.path.dirname(d.path), "description_own.txt")
+        with open(d.path, encoding="utf-8") as f, open(own_path, "w", newline="\n", encoding="utf-8") as g:
+            for ln in f:
+                p = ln.split("\t")
+                if p[0] == "F" and len(p) > 4 and p[4].strip() == "inline" and int(p[1], 16) in d.inlined:
+                    ln = describe.model_line(d, int(p[1], 16), p[2]) + "\n"
+                g.write(ln)
+        more, _o, more_va, _err = run(own_path, only=sorted(d.inlined))
+        out.update(more)
+        by_va.update(more_va)
     out = _by_their_names(out, d.names)
     order = [by_va[va] for va in sorted(by_va)]
     return out, order, by_va, d

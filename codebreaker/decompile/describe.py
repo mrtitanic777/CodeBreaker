@@ -1409,6 +1409,49 @@ def callers_read_dx(d, edges=None):
     return out
 
 
+_KEPT_BY_C = {"si": "si", "esi": "si", "di": "di", "edi": "di", "ds": "ds"}
+
+
+def register_helper(code, off, end=None):
+    """Is the function at `off` a helper whose effect is on its caller's registers: a short
+    straight run to a plain `ret` -- no frame, no branch, no call -- that leaves SI, DI or DS
+    changed, registers a C function keeps for its caller? KEYBOARD's sub_9_0A6B, `push ax / push
+    bx / mov ax, ds / add ax, 8 / mov ds, ax / xor si, si / pop bx / pop ax / ret`, moves
+    OEMTOANSI's source pointer DS:SI on to the next 64K of a huge buffer. As a function of its
+    own its C can only `return`, and the caller's C goes on through the old pointer (its copy
+    past 64K went back over the start). Such a helper is decompiled as part of each caller --
+    the description's `inline` -- so the caller's C moves its own pointer."""
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
+    md.detail = True
+    stop = off + 48 if end is None else min(end, off + 48)
+    pushed, changed = [], set()
+    for k, i in enumerate(md.disasm(bytes(code[off:stop]), off)):
+        if k >= 16:
+            return False
+        if i.mnemonic == "ret" and not i.op_str:
+            return not pushed and bool(changed)
+        if i.group(capstone.CS_GRP_JUMP) or i.group(capstone.CS_GRP_CALL) or i.group(capstone.CS_GRP_RET) or \
+                i.group(capstone.CS_GRP_INT) or i.mnemonic in ("retf", "iret", "enter", "leave", "int", "into"):
+            return False
+        try:
+            reads, writes = i.regs_access()
+        except capstone.CsError:
+            return False
+        names = {i.reg_name(r) for r in reads} | {i.reg_name(r) for r in writes}
+        if names & {"bp", "ebp", "sp", "esp"} - ({"sp", "esp"} if i.mnemonic in ("push", "pop") else set()):
+            return False                                     # (a frame, or its caller's: not this)
+        if i.mnemonic == "push":
+            pushed.append(i.op_str)
+            continue
+        if i.mnemonic == "pop":
+            if not pushed or pushed.pop() != i.op_str:
+                return False
+            changed.discard(_KEPT_BY_C.get(i.op_str))
+            continue
+        changed |= {_KEPT_BY_C[i.reg_name(r)] for r in writes if i.reg_name(r) in _KEPT_BY_C}
+    return False
+
+
 def callers_read_ax(d, places):
     """{(seg, off)} of `places` a call to which is followed, before anything sets it, by a read of
     AX (`or ax, ax`, `mov [x], ax`, `push ax`): what it leaves there is a result its caller uses."""
@@ -1674,7 +1717,18 @@ def describe16(module_path, outdir):
                        + bytes(max(0, min(s["minalloc"] or 0x10000, 0x10000) - s["length"]))
                        for s in segs if s["kind"] == "CODE" and s["file_off"]}
     d.results = results(d)
+    d.inlined = set()                                        # helpers made part of their callers
+    starts16 = {}
+    for va, _nm, _dist in funcs:
+        starts16.setdefault(where[va][0], []).append(where[va][1])
     for va, nm, dist in funcs:
+        seg, off = where[va]
+        later = [o for o in starts16.get(seg, ()) if o > off]
+        if dist == "near" and (seg, off) not in exported and os.environ.get("CB_INLINE_HELPERS") != "0" and \
+                register_helper(d.segment_bytes.get(seg, b""), off, min(later) if later else None):
+            d.inlined.add(va)
+            lines.append("F\t%x\t%s\t-1\tinline" % (va, nm))
+            continue
         lines.append(model_line(d, va, nm, default=dist))
     if not os.environ.get("CB_NO_CALL_OVERRIDES"):
         lines += call_overrides(d)
