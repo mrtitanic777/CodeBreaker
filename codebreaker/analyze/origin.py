@@ -106,13 +106,14 @@ def _module16(path, more=None):
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_16)
     md.detail = True
     res = Result()
+    g3 = _linker16(path) >= (5, 30)                          # (C 7 and 8: /G3 makes 32-bit registers)
     for va, name in sorted(names.items()):
         seg, off = d.where[va]
         image = d.images.get(seg, b"")
         later = [o for o in starts[seg] if o > off]
         end = later[0] if later else len(image)
         o = res.functions[va] = Origin(va, name)
-        _judge(o, md, image, off, end, imported, set(starts[seg]))
+        _judge(o, md, image, off, end, imported, set(starts[seg]), g3)
     # A function whose inner addresses a table names (KRNL386's fault chain: a start and an end
     # of the instructions that may fault, with where to go on if they do) was written in
     # assembly: its instructions have to be where the table says, which C's cannot be. Three
@@ -174,7 +175,15 @@ def _module16(path, more=None):
     return res
 
 
-def _judge(o, md, image, start, end, imported, starts=()):
+def _linker16(path):
+    """The (major, minor) version of the linker that made a 16-bit module, from its NE header."""
+    with open(path, "rb") as f:
+        d = f.read()
+    o = struct.unpack_from("<I", d, 0x3C)[0] if len(d) >= 0x40 else 0
+    return (d[o + 2], d[o + 3]) if d[o:o + 2] == b"NE" else (0, 0)
+
+
+def _judge(o, md, image, start, end, imported, starts=(), g3=False):
     written, prologue_ax, frame, last_push_seg, flags_set = set(), False, False, False, False
     ax_from_ss = False
     prev_call, pending, code_in = False, None, {}
@@ -286,7 +295,11 @@ def _judge(o, md, image, start, end, imported, starts=()):
             o.evidence.append("%s: a result in the carry flag (%04x)" % (mn.upper(), ins.address))
         elif mn in _MACHINE:
             o.evidence.append("%s (%04x)" % (_MACHINE[mn], ins.address))
-        explicit = [op.reg for op in ops if op.type == X.X86_OP_REG] +                    [r for op in ops if op.type == X.X86_OP_MEM for r in (op.mem.base, op.mem.index)]
+        # Microsoft C 7 and 8 under /G3 move and compute longs in 32-bit registers (mov eax, dword
+        # ptr _h; add eax, ...; movsx eax, word ptr _a), but address memory with 16-bit registers
+        # only: in a module their linker made, a 32-bit register as an operand says nothing, one
+        # that addresses memory still says assembly.
+        explicit = ([] if g3 else [op.reg for op in ops if op.type == X.X86_OP_REG]) +             [r for op in ops if op.type == X.X86_OP_MEM for r in (op.mem.base, op.mem.index)]
         if any(r in _REGS32 for r in explicit):                # (not the stack pointer push and call imply)
             o.evidence.append("32-bit register (%04x %s %s)" % (ins.address, mn, ins.op_str))
         for op in ops:
