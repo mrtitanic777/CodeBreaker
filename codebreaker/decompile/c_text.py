@@ -2,17 +2,23 @@
 original meant.
 
     compilable32(module_path, addresses, workdir)   a 32-bit module: (header, texts, order, by_va, imports)
-    compilable16(module_path, workdir)              a 16-bit module: an object with the same, plus what
-                                                    16-bit code needs said (near functions, wide results)
-    compilable_powerpc(module_path, workdir)        a PowerPC image: the same, plus its imports and
+    compilable16(module_path, workdir)              a 16-bit module: an l2.Made (one L2 Module, its
+                                                    C per function) with what 16-bit code needs said
+                                                    (near functions, wide results ...)
+    compilable_powerpc(module_path, workdir)        a PowerPC image: an l2.Made, with its imports and
                                                     how many arguments each is called with
 
 The decompiler prints C for reading. To be compiled and to behave as the original it needs its
 base types defined, every function and import declared with its real convention, its globals
 bound to where the original keeps them, and its stack locals kept where the original had them
 whenever an address to one can escape. 16-bit code needs more said: which pointers are far, how
-arguments lie on the stack, what the segment registers hold. Those rules are here, per kind;
-what the two kinds share (the byte-piece notation, how a function is declared) is shared.
+arguments lie on the stack, what the segment registers hold.
+
+Every rule of the 16-bit path is the C back end's now, on the L2 tree (translate/backends/c.py,
+docs/IR_UNIFICATION.md step 3): this module writes each function's C with what the module says of
+it (_write16, module_facts16), makes the module's decisions from what each writing reported and
+writes the functions they name again, and builds the header. The 32-bit path does five of its
+rules on the tree (backends/c.FLAT) and the rest here, on the text; PowerPC's are all here.
 """
 import os
 import re

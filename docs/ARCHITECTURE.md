@@ -208,6 +208,27 @@ What is left in c_text: the module-wide assembly of the 16-bit module (`_caller_
 first -- the per-function passes now run before it, where c_text ran them after; no gated module
 showed a difference), its Module classes, the 32-bit and PowerPC paths.
 
+Later still on 2026-10-30 the module-wide passes moved too (IR_UNIFICATION.md step 3 has each):
+the 16-bit module is written in two rounds -- every function once, each pass reporting what the
+module decides from (a helper working in its caller's frame, the imports used for their value,
+the numbers a read through CS may come from, the names and calls written, the heading and its
+calls), then the functions the module's plans name (caller frames, the module's own segments as
+values, the code segment's data, a global selector's structure of a function's own) a second time
+with them -- and the header is built from the reports: `_caller_frame_slots`, the import values,
+the own segments and far pointers passed whole, `_cs_reads` / `_cs_places`, the globals' macros,
+`prototypes` and `declaration`, the shared selector structures' renames and `_one16` are gone from
+c_text. Its Module, Module16 and ModulePowerPC are one class of the module model,
+`translate/l2.Made` (an L2 Module document with the lane's tables beside it). The 32-bit path
+writes each function with the module's facts now, and the back end does five of its passes on the
+tree (`void` -> `int`, `__thiscall` / `__fastcall`, the structure gaps, the code pointers,
+comparisons as numbers). Gate: every function, header and table of the seven `l2c --made` modules
+the same after each pass; the 32-bit (six modules, five more with structures recovered) and
+PowerPC (the Xbox 360 HUD module) paths held to references recorded from master first
+(state/work/item3d/), all the same. c_text.py is 1,860 lines. Left: the 32-bit path's `_keep_frame`,
+global rules, `_fit_calls`, odd types and struct_text; the PowerPC path, which decompiles without
+L2 and is still text throughout; the module assembly itself (orchestration and the facts read from
+the bytes), which is no text pass but still lives in c_text.
+
 Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
 before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the
 module's tables (near, wide, novalue, exported_prologue, interrupts, selector imports,
@@ -881,8 +902,9 @@ tests/translate/test_module_model.py (7, new); test_frozen, test_verification, t
 test_engine, test_translate, test_plumbing, test_drivers, test_xex, test_readable, test_dos,
 test_nes, test_z80, test_m68k, test_port, test_platforms and tools/check_imports pass.
 
-**Left.** decompile/c_text.py's three Module classes (Module, Module16, ModulePowerPC) are
-another agent's, folding into this model now. build/module.module_document writes its Module as
+**Left.** decompile/c_text.py's three Module classes (Module, Module16, ModulePowerPC) were
+folded into this model later the same day: `translate/l2.Made`, the module made compilable as an
+L2 Module document with the lane's tables beside it. build/module.module_document writes its Module as
 dicts of its own (the same shape; l2.fragment/l2.function would order the keys of module.l2.json
 differently, so it was left). The xbox360 lane has no assembly writer of its own (its module file is
 module_writer's C path, gated here only through the pe and ne cases); the java lane writes C++ by

@@ -307,13 +307,68 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    LZEXPAND 55, KEYBOARD 79, COMM 50, LZ32 39, KRNL386 1,175, GDI 1,666 and USER 2,326 entries
    (functions, the header and the tables) the same as the reference character for character --
    none different, none in line breaks only. c_text.py is 2,178 lines (2,863 before).
-   **Left in c_text.** Module-wide in `_compilable16`: `_caller_frame_slots` (a helper working in
-   its caller's frame, and its callers, rewritten together), an import's value used bare, the
-   module's own segments as values and far pointers passed whole, `_code_segment_data`, the
-   globals' macros, `prototypes` / `declaration` (read each heading from text), the header; then
-   c_text's `Module16` / `Module` / `ModulePowerPC` classes (to fold into the L2 Module); the
-   32-bit path's text passes (`compilable32`); the PowerPC path (`_pieces`, `_null_is_zero`,
-   `_open_arguments`, `_struct_gaps` still used there).
+   **The module-wide passes on the tree, 2026-10-30** (one commit each). What the module decides
+   from every function is now decided from what writing each one found, and the functions it
+   names are written again with the decision: `_write16` writes every function once (each pass
+   reporting into the facts what the module needs: `frame`, `selector_imports`, `code_reads`,
+   `names`, `heading`), `_compilable16` makes the module's plans from those reports and writes the
+   functions they name a second time with them (merged, one second writing each), and builds the
+   header from the reports -- no function's text is read back. In order: `_caller_frame_slots`
+   (backends/c._caller_frame_slots + `caller_frame_plan`: the helper's heading in the older style
+   with far-pointer parameters, each caller's plain calls given its locals' addresses, a local it
+   never declared declared first, `_now['declare_first']`; the per-function passes and this one
+   now run in the order they are written in); an import's value used bare (`_selector_imports`,
+   given the module's `selector_values`); the module's own segments as values and far pointers
+   passed whole (`_segment_values` + `segment_plan`, after the first writing says which functions
+   are far; GDI's sub_42_231C taught it to read a call's arguments as written whatever rewrite
+   holds them); `_code_segment_data` (`_code_segment_reads` finds every number a read through CS
+   may come from, by its node -- the selector structures' `SEG_PTR(name, CS)` among the far
+   pointers passed as (offset, CS), as c_text's parser read that text, and a local by the name it
+   is written as: KRNL386's int_DI -- and c_text keeps only the layout over the segment's data,
+   the second writing given `code_places`); the globals' macros, the imports, the segments carried,
+   the intrinsics (`_names_used`: the tree's names and calls as printed, and those in the text the
+   passes wrote); `prototypes` / `declaration` (`_heading_facts` + backends/c.`prototypes`, with
+   `arguments_at`, `argument_words`, `words`, `parameters`; one quirk kept: a heading in the newer
+   style is none c_text's pattern read -- the blank line before its `{` -- so it gets no
+   prototype); a global selector's structure that is each function's own (`selector_renames`, 52
+   of KRNL386's functions); and `_one16` (the core's notes left out by the back end:
+   `without_notes`). c_text's helpers nothing called any more went with them.
+   **c_text's Module classes folded,** into `translate/l2.Made`: the module made compilable as one
+   L2 Module document (`m.doc`; each function a MethodDecl with its C as `text` and its place as
+   `origin` {module, va}, the header the Module's), the lane's tables beside it as attributes;
+   `texts`, `order`, `by_va`, `header`, `functions` are views of the document, and setting texts
+   or header makes a new document (a `copy.copy` of the module keeps its own).
+   **The 32-bit path begun:** compilable32 keeps the L2 documents (`decompiler.raw(write=False)`)
+   and writes each function with the module's facts, so the back end does the passes that are for
+   the module's C alone (backends/c.`FLAT`, `FLAT_ONLY`): a `void` result `int`; `__thiscall` /
+   `__fastcall` left out of the heading and reported (`registers`: the module's in_ecx / in_edx);
+   the structure gaps; the code pointers (`functions`); a pointer compared with a number as one.
+   compilable32 keeps its text rules for C the back end declined.
+   Gate: after every pass `l2c --made` gives LZEXPAND 55, KEYBOARD 79, COMM 50, LZ32 39, KRNL386
+   1,175, GDI 1,666 and USER 2,326 entries the same as the references (master 2d2a195fc),
+   character for character, and the 16-bit modules' code data, code reads, imports and segments
+   carried the same as master's; the 32-bit and PowerPC passes are held by state/work/item3d/gate.py
+   to references recorded from master 1821606f9 before any change (a copy in
+   state/work/item3d/refs/): every text, the header and the tables of LZ32 44, VERSION 49, IMM32 78,
+   TAPI32 191, WINSPOOL 87, MPR 231 entries; with structures recovered (struct_recovery 32) MPR,
+   VERSION, TAPI32, WINSPOOL and COMDLG32 239; PowerPC: the Xbox 360 HUD module 670 -- all the same.
+   No output changed. c_text.py is 1,860 lines (2,412 before).
+   **Left in c_text.** The 16-bit path's module assembly is no text pass any more, but it is still
+   in c_text: `_compilable16` (the orchestration and the header), the module's facts from the
+   bytes (`module_facts16`, `_far_argument_widths`, `_far_loads`, `_loads_dgroup`,
+   `_ss_store_places`, `_selector_sites`, `_keeps_frame`, `_code_bytes`, `_data_runs`,
+   `_code_segment_data`'s layout), `HEADER`, `interrupt_helpers`, `interrupt_routines`,
+   `INTRINSICS16`, `_global_type`; and `declaration(text)`, which build/module still reads each
+   function's heading with. The 32-bit path's text passes on C from L2: `_keep_frame` (the frame
+   structure `_f` where a local's address escapes), the globals read through as pointers
+   (`through`), a global used at another width (its alias), pointer globals compared with a cast
+   number (`same_cast`), `_fit_calls`, the odd-size typedefs, struct_text.apply (`p->field`); and,
+   for C the back end declines, `_pieces`, `_null_is_zero`, `_compare_as_numbers`,
+   `_code_pointers`, `_struct_gaps`. The PowerPC path is not begun: it decompiles without L2
+   (`decompiler.raw` with no `l2`), so every pass there (`_WIDE_ADDRESS`, `_struct_gaps`,
+   `_pieces` with PIECE, `_compare_as_numbers`, `_code_pointers`, `_homed_arguments`, void ->
+   uint8, `_open_arguments`, the globals, `call_counts`) is still on text; it needs PrintL2's
+   PowerPC documents held to the printed C first (tools/l2c.py has no PowerPC corpus).
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
    **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`
