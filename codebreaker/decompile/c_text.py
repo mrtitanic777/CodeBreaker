@@ -721,31 +721,6 @@ def _far_loads(code, start, end):
     return found
 
 
-def _open_arguments(text):
-    """Write the definition in the older style, `f(a, b) int a; int b; { ... }`.
-
-    A definition written with its argument types in the parentheses also fixes how every later
-    call must look, and the decompiler recovers each call on its own evidence: a caller that
-    passes three words where the definition takes one far pointer and a word is the same bytes on
-    the stack, but not the same C. In the older style the definition says what the function
-    takes and each call is compiled as written."""
-    src = ctree.Source(text)
-    plist = src.parameter_list()
-    body = src.body()
-    if plist is None or body is None or any("(" in p or ")" in p for p in src.parameters()):
-        return text
-    params = [p for p in src.parameters() if p not in ("", "void")] if src.parameters() != ["void"] else []
-    names = []
-    for prm in params:
-        nm = re.search(r"([A-Za-z_]\w*)\s*(?:\[\d*\])?$", prm)
-        if not nm:
-            return text
-        names.append(nm.group(1))
-    decls = "".join("%s;\n" % prm for prm in params)
-    before = src.data[:plist.start_byte].decode("utf-8").rstrip()
-    return "%s(%s)\n%s%s" % (before, ",".join(names), decls, src.data[body.start_byte:].decode("utf-8"))
-
-
 def declaration(text):
     """A declaration that fixes the function's convention and result but not its arguments.
     The decompiler works out arguments one call at a time and callers do not always agree with
@@ -1407,7 +1382,7 @@ def compilable_powerpc(module_path, outdir):
             # (every function leaves something in r3 and callers are free to use it: a `void`
             # result is uint8 -- the back end's, backends/c._result_shown -- and the module notes it)
             novalue.add(n)
-        out[n] = _open_arguments(t)
+        out[n] = t
     macros = []
     called_through = set().union(*(_called_through(t) for t in out.values())) if out else set()
     for pre, addr in sorted(set().union(*(_globals(t) for t in out.values())) if out else ()):
