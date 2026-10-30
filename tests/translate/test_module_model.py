@@ -113,3 +113,23 @@ def test_a_drivers_file_is_its_status_then_its_source():
     assert ";   VERIFIED                         1   50.0%\n" in text
     assert text.endswith(";\n; judged as one module\n;   0001       Init                         NO SOURCE \n;\nS1 segment\nS1 ends\n")
     assert module_file.asm(l2.module(), facts).endswith(";\n; (no source could be written)\n")
+
+
+def test_a_made_module_is_its_tree():
+    """c_text's Module, Module16 and ModulePowerPC are one l2.Made: the module made compilable as
+    an L2 Module (each function a MethodDecl with its C and its place, the header the Module's),
+    texts / order / by_va / functions read from it, a change written into a document of its own
+    (a copy keeps the one it had), the lane's tables beside it."""
+    import copy
+    import pickle
+    m = l2.Made("x.dll", "H", {"a": "A", "b": "B"}, ["a", "b"], {0x10: "a", 0x20: "b"}, near={"a"})
+    l2.validate(m.doc)
+    assert (m.texts, m.order, m.by_va, m.header, m.near) == ({"a": "A", "b": "B"}, ["a", "b"], {0x10: "a", 0x20: "b"}, "H", {"a"})
+    assert m.functions == {0x10: ("a", "A"), 0x20: ("b", "B")}
+    assert l2.units(m.doc)[0]["origin"] == {"module": "x.dll", "va": 0x10}
+    other = copy.copy(m)
+    other.texts = dict(other.texts, a="Z")
+    other.texts["b"] = "Y"
+    assert m.texts == {"a": "A", "b": "B"} and other.texts == {"a": "Z", "b": "Y"}
+    m.add("c", "C", 0x30)
+    assert m.order == ["a", "b", "c"] and pickle.loads(pickle.dumps(m)).texts["c"] == "C"

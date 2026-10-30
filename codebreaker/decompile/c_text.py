@@ -2,23 +2,30 @@
 original meant.
 
     compilable32(module_path, addresses, workdir)   a 32-bit module: (header, texts, order, by_va, imports)
-    compilable16(module_path, workdir)              a 16-bit module: an object with the same, plus what
-                                                    16-bit code needs said (near functions, wide results)
-    compilable_powerpc(module_path, workdir)        a PowerPC image: the same, plus its imports and
+    compilable16(module_path, workdir)              a 16-bit module: an l2.Made (one L2 Module, its
+                                                    C per function) with what 16-bit code needs said
+                                                    (near functions, wide results ...)
+    compilable_powerpc(module_path, workdir)        a PowerPC image: an l2.Made, with its imports and
                                                     how many arguments each is called with
 
 The decompiler prints C for reading. To be compiled and to behave as the original it needs its
 base types defined, every function and import declared with its real convention, its globals
 bound to where the original keeps them, and its stack locals kept where the original had them
 whenever an address to one can escape. 16-bit code needs more said: which pointers are far, how
-arguments lie on the stack, what the segment registers hold. Those rules are here, per kind;
-what the two kinds share (the byte-piece notation, how a function is declared) is shared.
+arguments lie on the stack, what the segment registers hold.
+
+Every rule of the 16-bit path is the C back end's now, on the L2 tree (translate/backends/c.py,
+docs/IR_UNIFICATION.md step 3): this module writes each function's C with what the module says of
+it (_write16, module_facts16), makes the module's decisions from what each writing reported and
+writes the functions they name again, and builds the header. The 32-bit path does five of its
+rules on the tree (backends/c.FLAT) and the rest here, on the text; PowerPC's are all here.
 """
 import os
 import re
 import struct
 
 from codebreaker.decompile import ctree
+from codebreaker.translate import l2
 from codebreaker.translate.backends import c as cback
 
 
@@ -473,7 +480,9 @@ def compilable32(module_path, funcs, outdir):
     from codebreaker.build import watcom as B
     from codebreaker.decompile import decompiler
     from codebreaker.decompile import describe
-    got = decompiler.raw(module_path, funcs, outdir, l2=True)
+    # (the L2 documents kept, and each function's C written from its own here: with the module's
+    # facts, the back end's passes of the 32-bit path among them -- backends/c.FLAT)
+    got = decompiler.raw(module_path, funcs, outdir, l2=True, write=False)
     out, order, by_va, _err = got
     imports = dict(B.import_map(module_path))
     # imports by number, under the names the description gave them: declared and linked too
@@ -488,6 +497,10 @@ def compilable32(module_path, funcs, outdir):
         for va, size, _elem in facts.get("globals") or ():
             sizes.setdefault(va, set()).add(size)
             own.setdefault(n, {}).setdefault(va, set()).add(size)
+        written = {}                              # (what the back end found of the function as it wrote it)
+        if facts.get("l2") is not None:
+            written["functions"] = set(order)
+            out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
         t = _without_notes(out[n].strip())
@@ -496,16 +509,30 @@ def compilable32(module_path, funcs, outdir):
             # of its passes the 32-bit path shares done here: `x._1_2_` is the core's spelling
             # of "2 bytes of x starting at byte 1")
             t = _null_is_zero(_pieces(t, _BY_SIZE, "uint4"))
-        t = _compare_as_numbers(_keep_frame(t, _struct_sizes(struct_notes)))
-        # a function's address stored in a pointer the core typed loosely
-        t = _code_pointers(t, set(order))
-        t = _struct_gaps(t)                      # an offset of a recovered structure with no field
-        # every function returns a value in EAX whether or not the core saw it used
-        if t.startswith("void") and t[4:5].isspace():
+        t = _keep_frame(t, _struct_sizes(struct_notes))
+        if not facts.get("from_l2"):
+            t = _compare_as_numbers(t)            # (the back end's for C from L2: backends/c._compare_as_numbers)
+        # a function's address stored in a pointer the core typed loosely (the back end's for C
+        # written from L2: backends/c._code_pointers)
+        if not facts.get("from_l2"):
+            t = _code_pointers(t, set(order))
+        if not facts.get("from_l2"):
+            t = _struct_gaps(t)                  # an offset of a recovered structure with no field
+        # every function returns a value in EAX whether or not the core saw it used; the compiler
+        # used here has no word for "first argument in ECX": the function is declared plainly, and
+        # a #pragma in the header says where its first argument is (both the back end's for C
+        # written from L2: backends/c._result_shown, _register_arguments)
+        if written.get("registers") == "ecx":
+            in_ecx.add(n)
+        elif written.get("registers") == "edx":
+            in_edx.add(n)
+        elif facts.get("from_l2"):
+            pass
+        elif t.startswith("void") and t[4:5].isspace():
             t = "int" + t[4:]
-        # the compiler used here has no word for "first argument in ECX": the function is
-        # declared plainly, and a #pragma in the header says where its first argument is
-        if "__thiscall" in t.split("{", 1)[0]:
+        if facts.get("from_l2"):
+            pass
+        elif "__thiscall" in t.split("{", 1)[0]:
             head, brace, body = t.partition("{")
             t = head.replace("__thiscall ", "").replace("__thiscall", "") + brace + body
             in_ecx.add(n)
@@ -636,17 +663,6 @@ def compilable32(module_path, funcs, outdir):
     return preamble, out, order, by_va, used, in_ecx, in_edx
 
 
-class Module(object):
-    """A decompiled module: `header` (shared text), `functions` {address: (name, text)},
-    `order` (names by address), `imports` (the import names its functions call)."""
-
-    def __init__(self, header, texts, order, by_va, imports, in_ecx=(), in_edx=()):
-        self.header, self.texts, self.order, self.by_va, self.imports = header, texts, order, by_va, imports
-        self.in_ecx = set(in_ecx)                # names of functions that take their first argument in ECX
-        self.in_edx = set(in_edx)                # ... and their second in EDX
-        self.functions = {va: (n, texts[n]) for va, n in by_va.items()}
-
-
 HEADER = """typedef long long int8; typedef unsigned long long uint8; typedef unsigned long long xunknown8;
 typedef double float8; typedef long double float10;
 typedef unsigned long unkbyte3; typedef long unkint3; typedef unsigned long unkuint3; typedef long int3;
@@ -712,25 +728,6 @@ uint2 codebreaker_entry_sp(void);
 #define CODEBREAKER_FAR(seg, off) ((void __far *)(((uint4)(uint2)(seg) << 16) | (uint2)(off)))
 """
 
-_WIDE = ("xunknown4", "int4", "uint4", "undefined4", "float4")
-
-
-class Module16(object):
-    pass
-
-
-def data_address(text):
-    """Is `text` a constant address in the data segment: a number of one word, not 0? A far
-    pointer set to one is DS and it (LZEXPAND's LZDONE counts down the word at DS:32h through
-    one); cast to a far pointer, a word gets segment 0 and the write goes to 0000:0032 -- and
-    left near it does as well: OpenWatcom folds the constant near pointer made far to
-    `xor ax, ax / mov es, ax / dec word ptr es:[bx]`. Written with DS itself,
-    MK_FP(codebreaker_ds(), 0x32), as the original. (0 stays a far null; a number past a word
-    carries its own segment.)"""
-    m = re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", text.strip())
-    return bool(m) and 0 < int(m.group(1), 0) <= 0xFFFF
-
-
 # ---------------------------------------------------------------------------------------------
 # Data kept in a code segment, read through CS
 # ---------------------------------------------------------------------------------------------
@@ -789,214 +786,6 @@ def _data_runs(code):
     return runs
 
 
-def _bare(src, n):
-    """`n` without the brackets and casts around it"""
-    while n is not None and n.type in ("parenthesized_expression", "cast_expression"):
-        n = n.child_by_field_name("value") if n.type == "cast_expression" else \
-            (n.named_children[0] if n.named_child_count == 1 else None)
-    return n
-
-
-def _terms(src, n, sign=1):
-    """The terms of a sum, each with its sign: `p + i - 1` -> [(p, 1), (i, 1), (1, -1)]"""
-    n = _bare(src, n)
-    if n is not None and n.type == "binary_expression" and not src.misread(n):
-        op = src.at(n.child_by_field_name("operator"))
-        if op in ("+", "-"):
-            return _terms(src, n.child_by_field_name("left"), sign) + \
-                _terms(src, n.child_by_field_name("right"), sign if op == "+" else -sign)
-    if n is not None and n.type == "unary_expression" and src.at(n.child_by_field_name("operator")) == "-":
-        return _terms(src, n.child_by_field_name("argument"), -sign)
-    return [(n, sign)] if n is not None else []
-
-
-def _cs_reads(text):
-    """Where a function's C reads its own code segment, and from what: -> (src, [(the offset
-    expression, what the read is used for: "call" or "")], [far pointer
-    (offset expression) passed as (offset, CS)], {variable: type}, {variable: [the right side of
-    each assignment to it]}, {the variables holding CS}), or None when it reads nothing through CS."""
-    if "codebreaker_cs()" not in text:
-        return None
-    src = ctree.Source(text)
-    body = src.body()
-    if body is None:
-        return None
-    cs = set()
-    types, sets = {}, {}
-    for dcl in src.find("declaration", under=body):
-        ty = src.at(dcl.child_by_field_name("type"))
-        for d in dcl.children_by_field_name("declarator"):
-            name = src.declared_name(d)
-            if not name:
-                continue
-            types[name] = ty + (" *" if "*" in src.at(d).split("=", 1)[0] else "")
-            if d.type == "init_declarator":
-                value = d.child_by_field_name("value")
-                if value is not None and src.at(value).strip() == "codebreaker_cs()":
-                    cs.add(name)
-                elif value is not None:
-                    sets.setdefault(name, []).append(value)
-    for a in src.find("assignment_expression", under=body):
-        left = a.child_by_field_name("left")
-        if left.type == "identifier" and src.at(a.child_by_field_name("operator")) == "=":
-            sets.setdefault(src.at(left), []).append(a.child_by_field_name("right"))
-
-    def is_cs(n):
-        n = _bare(src, n)
-        return n is not None and (src.at(n).strip() == "codebreaker_cs()" or (n.type == "identifier" and src.at(n) in cs))
-    reads, far = [], []
-    for call in src.find("call_expression", under=body):
-        if not src.is_call(call):
-            continue
-        fn = src.at(call.child_by_field_name("function"))
-        args = call.child_by_field_name("arguments").named_children
-        if fn == "MK_FP" and len(args) == 2 and is_cs(args[0]):
-            # (what is read there called: a table of the code's own addresses)
-            called = any(c.child_by_field_name("function").start_byte <= call.start_byte
-                         < c.child_by_field_name("function").end_byte for c in src.ancestors(call, "call_expression"))
-            reads.append((args[1], "call" if called else ""))
-        elif fn != "MK_FP":
-            for a, b in zip(args, args[1:]):
-                if is_cs(b) and not is_cs(a):
-                    far.append(a)
-    if not reads and not far:
-        return None
-    return src, reads, far, types, sets, cs
-
-
-def _cs_places(src, reads, far, types, sets, cs_names, inside):
-    """The numbers that are places in the code segment's data: -> ({number node: value}, {value:
-    "pointers" -- what is read there is itself a place read through CS -- or "call" -- the code's
-    own addresses, called}, [variables read for an offset whose numbers are not known])
-
-    In each offset read through CS: a number added to things that are not pointers is the place
-    (`(uVar6 & 0xff) * 2 + 0x1c7`, the table, indexed); a variable is followed to what is put in
-    it (`pcVar11 = (char *)0x261`), and so on; a number added to a pointer is a step from the
-    place (`psVar13 + 1`). A number outside the segment's data (`inside(value)`) is none. A
-    variable that is not a pointer and is also set from arithmetic (`uStack_c = (a5 + -1) * 2`)
-    is an index: its numbers are not places (MINIKBD's `uStack_c = 0`).
-
-    What is read through CS and then used as an offset makes the place it was read from a table
-    of places: a word read so ("pointers") is written as the place it holds; anything else (a
-    byte added to an index, a structure's field -- MINIKBD's GetKbdTable) cannot be, and the
-    function is left as it is (-> unsafe)."""
-    places, kinds, seen, unknown, unsafe = {}, {}, set(), [], []
-
-    def pointer(n):
-        n = n if n.type == "identifier" else None
-        return n is not None and "*" in types.get(src.at(n), "")
-
-    def read_through_cs(t):
-        """(a word or not, the offset expression) when `t` is a value read through CS"""
-        if t.type == "pointer_expression" and src.at(t.child_by_field_name("operator")) == "*":
-            arg = t.child_by_field_name("argument")
-            while arg is not None and arg.type == "parenthesized_expression" and arg.named_child_count == 1:
-                arg = arg.named_children[0]
-            ty = src.at(arg.child_by_field_name("type")) if arg is not None and arg.type == "cast_expression" else ""
-            word = bool(re.match(r"\s*(?:x?unknown2|u?int2|undefined2)\s+__far\s*\*\s*$", ty))
-        elif t.type == "field_expression":
-            arg, word = t.child_by_field_name("argument"), False
-        else:
-            return None
-        inner = _bare(src, arg)
-        if inner is not None and inner.type == "call_expression" and src.at(inner.child_by_field_name("function")) == "MK_FP":
-            args = inner.child_by_field_name("arguments").named_children
-            if len(args) == 2 and "codebreaker_cs()" in src.at(args[0]) or (
-                    len(args) == 2 and args[0].type == "identifier" and src.at(args[0]) in cs_names):
-                return word, args[1]
-        return None
-
-    def from_cs(t, depth):
-        got = read_through_cs(t)
-        if got is None:
-            return
-        word, e = got
-        if word:
-            for v in follow(e, None, depth + 1):
-                kinds.setdefault(v, "pointers")
-        else:
-            unsafe.append(src.at(t)[:60])
-
-    def index(name):
-        """an integer variable also set from arithmetic"""
-        if "*" in types.get(name, "*"):
-            return False
-        for rhs in sets.get(name, ()):
-            rb = _bare(src, rhs)
-            if rb is None or rb.type in ("number_literal", "identifier") or read_through_cs(rb):
-                continue
-            if rb.type == "binary_expression" and src.at(rb.child_by_field_name("operator")) in ("+", "-") \
-                    and not src.misread(rb):
-                continue
-            return True
-        return False
-
-    def node_terms(e):
-        out = []
-        for t, sign in _terms(src, e):
-            if t.type == "pointer_expression" and src.at(t.child_by_field_name("operator")) == "&":
-                arg = _bare(src, t.child_by_field_name("argument"))
-                if arg is not None and arg.type == "field_expression":       # &p->f: a place in p
-                    t = _bare(src, arg.child_by_field_name("argument"))
-                    if t is None:
-                        continue
-            out.append((t, sign))
-        return out
-
-    def follow(e, self_name=None, depth=0):
-        """the places an offset expression `e` comes from"""
-        if depth > 12:
-            return set()
-        found = set()
-        ts = node_terms(e)
-        numbers = []
-        for t, s in ts:
-            if t.type == "number_literal":
-                v = int(re.sub(r"[uUlL]+$", "", src.at(t)), 0)
-                if s > 0 and v > 0 or (v == 0 and len(ts) == 1 and (self_name is None or pointer_name(self_name))):
-                    numbers.append((t, v))                 # (a 0 only as a pointer's whole value: MINIKBD's
-                                                           # index `uStack_c = 0` is no place)
-        names = [t for t, _s in ts if t.type == "identifier"]
-        steps = any(pointer(t) for t in names) or (self_name is not None and self_name in [src.at(t) for t in names])
-        for t, v in numbers:
-            if not steps and inside(v):
-                places[t.start_byte] = (t, v)
-                found.add(v)
-        for t, _s in ts:
-            from_cs(t, depth)                              # (what is read through CS, used as an offset)
-        if numbers and not steps:
-            # the other terms are an index into it -- also where the number is no place in the
-            # data (VGA's `iVar2 + 0x22c`: iVar2 counts down from 5, which is not a place either)
-            return found
-        for t in names:
-            name = src.at(t)
-            if name == self_name or name in seen:
-                continue
-            seen.add(name)
-            if name not in sets:
-                unknown.append(name)
-            if index(name):
-                continue
-            for rhs in sets.get(name, ()):
-                found |= follow(rhs, name, depth + 1)
-        return found
-
-    def pointer_name(name):
-        return "*" in types.get(name, "")
-    each = []                                              # the places each read comes from
-    for e, use in reads:
-        seen.clear()
-        got = follow(e)
-        if use == "call":
-            for v in got:
-                kinds[v] = "call"
-        each.append(got)
-    for e in far:
-        seen.clear()
-        each.append(follow(e))
-    return places, kinds, unknown, each, unsafe
-
-
 def _string_literal(chunk):
     """The bytes as a C string -- its own NUL the last of them -- when they are text (names, NUL
     between them), else None"""
@@ -1015,20 +804,18 @@ def _rows(items, per):
     return "\n    " + ",\n    ".join(", ".join(items[k:k + per]) for k in range(0, len(items), per)) + "\n  "
 
 
-def _code_segment_data(m, d, module_path):
+def _code_segment_data(reports, where, d, module_path):
     """Each number in the C that is a place in a code segment's data, read through CS, written as
-    that place in the segment's codebreaker_code_<n> (above). -> (header declarations, {segment:
-    the C defining its structure}, {segment: {"read": places, "left": [why]}})"""
+    that place in the segment's codebreaker_code_<n> (above): from what writing each function
+    found (`reports` {function: backends/c._code_segment_reads' facts["code_reads"]}, in address
+    order; `where` {function: (segment, offset)}). -> (header declarations, {segment: the C
+    defining its structure}, {segment: {"read": places, "left": [why]}}, {function: the facts it
+    is written again with: "code_places" {its number's node: the member}})"""
     from codebreaker.build import data as data16
     from codebreaker.formats.ne import NEFile
-    found = {}                                               # name -> (_cs_reads, segment)
-    for va, name in m.by_va.items():
-        if name in m.texts and m.where.get(va):
-            got = _cs_reads(m.texts[name])
-            if got:
-                found[name] = (got, m.where[va][0])
+    found = {name: (r, where[name][0]) for name, r in reports.items() if r and where.get(name)}
     if not found:
-        return [], {}, {}
+        return [], {}, {}, {}
     nef = NEFile(module_path)
     segs = {s["idx"]: s for s in nef.segments()}
     starts = {}
@@ -1050,20 +837,30 @@ def _code_segment_data(m, d, module_path):
     report = {}                                              # segment -> {"read", "named", "left", "placed"}
     per = {}                                                 # segment -> {name: (src, places, kinds)}
     each_read = {}                                           # segment -> [the places of each read]
-    for name, ((src, reads, far, types, sets, cs), sg) in found.items():
-        places, kinds, unknown, each, unsafe = _cs_places(src, reads, far, types, sets, cs,
-                                                          lambda v, sg=sg: run_of(sg, v) is not None)
+    for name, (rep, sg) in found.items():
+        inside = lambda v, sg=sg: run_of(sg, v) is not None
+        places = {k: (k, v) for k, v in rep["places"].items() if inside(v)}
+        kinds = {}
+        for kind, (_k, v) in rep["events"]:                 # (in the order the reads found them)
+            if not inside(v):
+                continue
+            if kind == "call":
+                kinds[v] = "call"
+            else:
+                kinds.setdefault(v, kind)
+        each = [{v for _k, v in got if inside(v)} for got in rep["each"]]
+        unknown, unsafe = rep["unknown"], rep["unsafe"]
         r = report.setdefault(sg, {"read": 0, "named": 0, "left": []})
-        r["read"] += len(reads) + len(far)
+        r["read"] += rep["reads"]
         if unsafe:                                           # (a table of places it cannot write as places)
             r["left"].append("%s: an offset it reads through CS is a %s" % (name, unsafe[0]))
             continue
-        per.setdefault(sg, {})[name] = (src, places, kinds)
+        per.setdefault(sg, {})[name] = (None, places, kinds)
         each_read.setdefault(sg, []).extend(each)
         if not places:
             r["left"].append("%s: its offsets through CS come from %s" % (
                 name, ", ".join(sorted(set(unknown))) or "nothing it sets to a place in the data"))
-    decls, defs = [], {}
+    decls, defs, plan = [], {}, {}
     for sg in sorted(per):
         image = d.images.get(sg, b"")
         bases, kinds = set(), {}
@@ -1141,33 +938,13 @@ def _code_segment_data(m, d, module_path):
                   'extern _Packed struct %s __based(__segname("_CODE")) %s;' % (struct_name, struct_name)]
         defs[sg] = '_Packed struct %s __based(__segname("_CODE")) %s = {\n%s\n};\n' % (
             struct_name, struct_name, ",\n".join(inits))
-        for name, (src, places, _k) in per[sg].items():
-            done = False
-            for t, v in places.values():
-                if v in ok_place:
-                    src.replace(t, "(uint2)%s" % place(v))
-                    done = True
-            if done:
-                m.texts[name] = src.text()
+        for name, (_src, places, _k) in per[sg].items():
+            written = {k: "(uint2)%s" % place(v) for k, v in places.values() if v in ok_place}
+            if written:
+                plan[name] = {"code_places": written}
         report[sg]["placed"] = sorted(ok_place)
         report[sg]["named"] = sum(1 for got in each_read[sg] if got and got <= ok_place)
-    return decls, defs, report
-
-
-def _behind_cast(src, node):
-    """('*', where) when `node` is the operand of a `*` the grammar read as a product with what
-    comes before: `a * (int4)*(int2 *)p` is `(a * (int4)) * (int2 *)p` to it (the cast ends the
-    left side, as in ctree.misread, but more is before it)."""
-    up = node.parent
-    if up is None or up.type != "binary_expression" or up.child_by_field_name("right") != node or \
-            up.child_by_field_name("operator").type != "*":
-        return None
-    left = up.child_by_field_name("left")
-    while left.type == "binary_expression":
-        left = left.child_by_field_name("right")
-    if left.type != "parenthesized_expression" or not ctree._CASTS.match(src.at(left)):
-        return None
-    return "*", up.child_by_field_name("operator").start_byte
+    return decls, defs, report, plan
 
 
 _SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
@@ -1295,109 +1072,6 @@ def declaration(text):
     that hides the whole function."""
     head = " ".join(text.split("{", 1)[0].split())
     return head[:head.index("(")] + "();"
-
-
-_DEFINITION = re.compile(r"^([^\n#{};]*?\b(\w+))\(([^)]*)\)\n((?:[^{;\n]+;\n)*)\{", re.M)
-_WIDE_TYPES = re.compile(r"\b(u?int4|xunknown4|long|unkbyte3|unkint3|unkuint3|int3|float4)\b")
-
-
-def _words(ty):
-    """the words a value of C type `ty` takes on the stack -- 1, 2 -- or None"""
-    ty = " ".join(ty.split())
-    if "*" in ty:
-        return 2 if "__far" in ty else 1
-    if _WIDE_TYPES.search(ty):
-        return 2
-    if re.search(r"\b(u?int2|xunknown2|int|unsigned|short|code|u?int1|char|xunknown1|bool)\b", ty):
-        return 1
-    return None
-
-
-def _parameters(text):
-    """(head before the parameter list, [(name, type)]) of a definition as the decompiler writes it, or None"""
-    m = _DEFINITION.search(text)
-    if not m:
-        return None
-    decl = {}
-    for d in m.group(4).strip().splitlines():
-        d = d.strip().rstrip(";")
-        nm = re.findall(r"\w+", d)
-        if nm:
-            decl[nm[-1]] = d[:d.rindex(nm[-1])].strip()
-    names = [p.strip() for p in m.group(3).split(",") if p.strip()]
-    head = []                                        # (the head may run over lines: `int2 __stdcall16far` / `name(`)
-    for line in reversed(text[:m.end(2)].split("\n")):
-        s = line.strip()
-        if head and (not s or s.endswith((";", "}", "*/")) or s.startswith(("#", "extern ", "/*"))):
-            break
-        head.insert(0, s)
-    return " ".join(head), [(p, decl.get(p, "int")) for p in names]
-
-
-def _argument_words(arg, types):
-    """the words an argument expression takes on the stack, as far as it can be told, else None"""
-    a = arg.strip()
-    while a.startswith("(") and _arguments_at(a, 0)[1] == len(a):
-        a = a[1:-1].strip()                          # (the whole in brackets)
-    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)", a):
-        v = int(a, 0)
-        return 1 if -0x8000 <= v <= 0xFFFF else 2
-    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)[lL]", a):
-        return 2
-    cast = re.match(r"\(\s*([A-Za-z_][\w ]*\**)\s*\)", a)
-    if cast and _arguments_at(a, 0)[1] == cast.end():
-        return _words(cast.group(1))
-    if re.fullmatch(r"[A-Za-z_]\w*", a):
-        if a in ("unaff_SS", "unaff_DS", "unaff_ES", "unaff_CS"):
-            return 1
-        return _words(types[a]) if a in types else None
-    if a.startswith("&") or a.startswith('"'):
-        return 1                                     # (a near address: the medium model's data is near)
-    return None
-
-
-def prototypes(texts, order):
-    """{name: a declaration with its parameters} for each function every call to which, in all of
-    `texts`, passes as many words in each place as its definition takes there -- the source had
-    prototypes, and with none Microsoft C gives other code for the call (it keeps what it passes
-    in a register variable, and removes the arguments itself before a frame's `leave`). A function
-    a call disagrees with keeps the open declaration (see declaration). Each parameter is declared
-    with the type its old-style definition gives it, as it is -- `short`, not the `int` it is
-    promoted to: both Microsoft C 8 (silent; C4028 for the promoted one) and OpenWatcom (E1129 for
-    the promoted one) take it so."""
-    params = {n: _parameters(texts[n]) for n in order}
-    want = {n: [_words(t) for _p, t in ps[1]] for n, ps in params.items() if ps and "..." not in ps[0]}
-    ok = {n: all(w is not None for w in ws) for n, ws in want.items()}
-    for caller in order:
-        t = texts[caller]
-        info = params.get(caller)
-        types = dict(info[1]) if info else {}
-        body = t[t.find("{"):] if "{" in t else t
-        for line in body.splitlines():                   # (the function's own variables)
-            mm = re.match(r"^\s+([A-Za-z_][\w ]*?[\w*])\s*\**\s*(\w+)(\s*\[[^\]]*\])?\s*;\s*$", line)
-            if mm and mm.group(1) not in ("return", "goto"):
-                star = line.count("*")
-                types[mm.group(2)] = mm.group(1) + (" *" * star if star else "") + (" *" if mm.group(3) else "")
-        for mm in re.finditer(r"\b(\w+)\s*\(", body):
-            callee = mm.group(1)
-            if not ok.get(callee):
-                continue
-            args, _end = _arguments_at(body, mm.end() - 1)
-            if len(args) != len(want[callee]) or \
-                    any(_argument_words(a, types) != w for a, w in zip(args, want[callee])):
-                ok[callee] = False
-            elif "__stdcall" in params[callee][0] and \
-                    any(re.search(r"\b(unaff_[SD]S|codebreaker_[sd]s\(\))|>>\s*0x10", a) for a in args):
-                ok[callee] = False                   # (a far pointer passed as halves: build/msc6.py's
-                                                     #  pascal_order makes it one argument -- not two words)
-    out = {}
-    for n, good in ok.items():
-        if not good:
-            continue
-        head, ps = params[n]
-        listed = ", ".join("%s %s" % (t, p) for p, t in ps)
-        out[n] = " ".join(head.split()) + "(" + (listed or "void") + ");"
-    return out
 
 
 _RAM = re.compile(r"([a-z]+)Ram([0-9a-f]{8})")
@@ -1538,10 +1212,10 @@ def _identifiers(text):
     return [src.at(n) for n in src.find("identifier")]
 
 
-_IMAGES16 = {}                   # segment -> its bytes, for _one16 (in each worker: _one16_images)
+_IMAGES16 = {}                   # segment -> its bytes, for _write16 (in each worker: _write16_images)
 
 
-def _one16_images(images):
+def _write16_images(images):
     _IMAGES16.clear()
     _IMAGES16.update(images)
 
@@ -1590,41 +1264,32 @@ def _write16(context, item):
     for the module: {"interrupts": {(vector, registers)}, "selector_decls": [declaration],
     "selector_shared": {structure: {function: fields}}})."""
     images = context
-    va, distance, model, seg, off, end, dgroup, known, by_selector, callee_pops = item
+    va, distance, model, seg, off, end, dgroup, known, by_selector, callee_pops = item[:10]
     from codebreaker.decompile import decompiler
     from codebreaker.translate.backends import c as cback
     far = {n for n, size in ((known or {}).get("pointers") or {}).items() if size == 4}
     facts = module_facts16(_IMAGES16.get(seg), off, end, distance, model, dgroup, "return" in far, seg)
     facts["selector_structs"] = by_selector
     facts["callee_pops"] = bool(callee_pops)
+    facts["without_notes"] = True                        # (the module's C: no notes above a function)
+    facts.update(item[10] if len(item) > 10 else {})     # (the module's own: "selector_values"; and what it decided of it since: "frame_slots" ...)
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
-    found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared") if k in facts}
+    found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared", "frame", "selector_imports",
+                                   "code_reads", "names", "heading") if k in facts}
     if not known.get("from_l2"):
         return va, None, set(), known, {}
     return va, text, cback.flags(known["l2"], facts), known, found
 
 
-def _one16(context, item):
-    """One function of _compilable16 made compilable: its text alone, apart from the module's (a
-    worker process each share of them, jobs/pool.py): the passes after those the C back end did
-    as it wrote it (_write16). -> (address, text)"""
-    va, name, raw, seg, off, end_of, callee_pops = item
-    # (_far, _far_from_stack, _frame_through_ss, _pieces, _joined_arguments, _segment_registers,
-    # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
-    # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
-    # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block), _far_reads, _near_to_far, _stack_segment_stores and _callee_pops are the back end's, done on the tree as it writes the C from L2:
-    # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
-    return va, _without_notes(raw).strip()               # (the core's comments before the function)
-
-
 def _compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
-    m = Module16()
+    # the module made: one L2 Module (translate/l2.Made), each function a MethodDecl with its C, and
+    # what the 16-bit build needs said of the module beside it
+    m = l2.Made(os.path.basename(module_path).lower())
     m.notes = d.notes                                        # what the decompiler said of each besides its C
-    m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
+    m.where = {}
     m.near, m.wide, m.novalue = set(), set(), set()
     m.interrupts = set()                                     # (vector, arguments) of the interrupts taken
     m.selector_imports = {}                                  # imports used for their selector
@@ -1632,7 +1297,6 @@ def _compilable16(module_path, outdir=None):
     sizes = {}                                               # address of a global -> bytes of the access
     struct_notes = []                                        # the structures the decompiler recovered
     selector_structs = []                                    # ... and those a segment holds (_selector_structs)
-    shared_selectors = {}                                    # ... a global selector's: the module's
     by_selector = decompiler._structs(d.path) == "1" and os.environ.get("CB_SELECTOR_STRUCTS") != "0"   # (with structures)
     elems = {}                                               # ... a pointer's -> bytes of what it points at
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
@@ -1656,7 +1320,7 @@ def _compilable16(module_path, outdir=None):
     images = dict(d.images)
     # (the segments given each worker once, as it starts: sent with every share of the work they
     # were most of what went down the pipes -- a minute of USER's)
-    _one16_images(images)                                    # (and here: a short list is done in this process)
+    _write16_images(images)                                    # (and here: a short list is done in this process)
     # Each function's C written from its L2 document by the C back end, with what the module says
     # of it (_write16, among worker processes: the back end's passes on the tree, its heading as
     # the description and its instructions give it)
@@ -1677,13 +1341,16 @@ def _compilable16(module_path, outdir=None):
         k = bisect.bisect_right(starts_all, site) - 1
         if k >= 0 and starts_all[k] >> 16 == site >> 16:
             callee_pops[starts_all[k]] = True
+    # what the module says that every function is written with: its imports used for their value
+    # (describe's selector_imports, the made-up number each is shown as)
+    shared = {"selector_values": dict(getattr(d, "selector_imports", {}) or {})}
     items = []
     for va in sorted(by_va):
         name = by_va[va]
         seg, off = d.where[va]
         items.append((va, distance.get(name), model_of.get(name), seg, off, ends.get(va, off), dgroup,
-                      d.notes.get(name), by_selector, callee_pops.get(va)))
-    written = pool.run(_write16, items, context=asm_images, init=_one16_images, initargs=(images,),
+                      d.notes.get(name), by_selector, callee_pops.get(va), shared))
+    written = pool.run(_write16, items, context=asm_images, init=_write16_images, initargs=(images,),
                        below_normal=False)
     for item in items:                                       # (a worker that could not start or died
         if written.get(item[0]) is None:                     # -- a calling script with no __main__
@@ -1715,31 +1382,56 @@ def _compilable16(module_path, outdir=None):
             words = [model] + (["__export"] if far and facts["export"] else []) + (["__loadds"] if facts["loadds"] else [])
             texts[nm] = ("xunknown2 %s %s()\n{\n  /* the decompiler could not make this function */\n"
                          "  return 0;\n}" % (" ".join(words), nm))
+            head = "xunknown2 %s %s" % (" ".join(words), nm)          # (its heading, as the back end reports one)
+            found_of[nm] = {"heading": {"params": (head, []), "types": {}, "calls": [], "declaration": head + "();",
+                                        "fastcall": "__fastcall16near" in head}}
             flags_of[nm] = ({"exported_prologue"} if far and facts["export"] else set()) | (set() if far else {"near"})
             by_va[va] = nm
             m.failed.setdefault(nm, "the decompiler could not make it")
-    # helpers that work in their caller's frame: its places passed to them (_caller_frame_slots)
+    # helpers that work in their caller's frame: its places passed to them -- what the module
+    # decides from what writing each function found (backends/c.caller_frame_plan), and the
+    # functions it names written again with it
     frames = {}
     for va, nm in by_va.items():
         seg, off = d.where.get(va) or (None, None)
         frames[nm] = seg in d.images and _keeps_frame(d.images[seg], off)
-    texts = _caller_frame_slots(texts, frames)
-    # each function on its own (_one16), shared among worker processes: the module's texts
-    # are thousands of tree passes, and none of them looks at another function's text
-    items = []
-    for va in sorted(by_va):
-        name = by_va[va]
-        seg, off = d.where[va]
-        items.append((va, name, texts[name], seg, off, _end_of(d, seg, off) if seg in d.images else None, None))
-    made = pool.run(_one16, items, init=_one16_images, initargs=(images,),
-                    below_normal=False)                   # (the build waits on it: as this process)
-    for item in items:
-        if made.get(item[0]) is None:
-            made[item[0]] = _one16(None, item)
+    plan = cback.caller_frame_plan({nm: (found_of.get(nm) or {}).get("frame") for nm in texts}, frames)
+    # ... and the module's own segments as values, where the function's code holds a loader fix-up
+    # for one (backends/c._segment_values: which function is far is known once each is written)
+    near = {nm for nm, fl in flags_of.items() if "near" in fl}
+    for nm, extra in cback.segment_plan(sorted(by_va.items()), near, d.where, _selector_sites(module_path),
+                                        getattr(d, "code", {}), d.data_segment,
+                                        set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment},
+                                        describe.FIRST_SELECTOR).items():
+        plan.setdefault(nm, {}).update(extra)
+    # ... and the data a function reads through CS from beside its code: by name, in its own code
+    # segment (backends/c._code_segment_reads finds the numbers, _code_segment_data lays it out)
+    code_decls, code_data, code_reads, code_plan = _code_segment_data(
+        {nm: (found_of.get(nm) or {}).get("code_reads") for _va, nm in sorted(by_va.items())},
+        {nm: d.where.get(va) for va, nm in by_va.items()}, d, module_path) \
+        if os.environ.get("CB_CODE_DATA") != "0" else ([], {}, {}, {})
+    for nm, extra in code_plan.items():
+        plan.setdefault(nm, {}).update(extra)
+    # ... and the structures of global selectors: one for the module where every function's fields
+    # agree, else each function's own -- its uses then written by that name (backends/c
+    # ._selector_structs, given "selector_renames")
+    shared_selectors = {}
+    for _va, nm in sorted(by_va.items()):
+        for k, fields in ((found_of.get(nm) or {}).get("selector_shared") or {}).items():
+            shared_selectors.setdefault(k, {}).update(fields)
+    shared_decls, renames = _shared_selector_structs(shared_selectors)
+    for nm, names in renames.items():
+        plan.setdefault(nm, {})["selector_renames"] = names
+    item_of = {by_va[item[0]]: item for item in items if item[0] in by_va}
+    for nm, extra in plan.items():
+        if nm in item_of:
+            _va, text, _flags, _known, _found = _write16(asm_images, item_of[nm][:10] + (dict(shared, **extra),))
+            if text is not None:
+                texts[nm], found_of[nm] = text, _found
     m.l2 = {n: f["l2"] for n, f in d.notes.items() if f.get("l2") is not None}   # each one's L2 document
     for va in sorted(by_va):
         name = by_va[va]
-        _va, text = made[va]
+        text = texts[name].strip()
         found = found_of.get(name) or {}
         known = d.notes.get(name) or {}
         struct_notes += known.get("structs") or []
@@ -1750,104 +1442,15 @@ def _compilable16(module_path, outdir=None):
         for flag in flags_of.get(name, ()):
             getattr(m, flag).add(name)
         selector_structs += found.get("selector_decls") or []
-        for k, fields in (found.get("selector_shared") or {}).items():
-            shared_selectors.setdefault(k, {}).update(fields)
-        m.texts[name] = text
-        m.order.append(name)
-        m.by_va[va] = name
+        m.add(name, text, va)
         m.where[va] = d.where.get(va)
-    # an import's value used bare (mov es, __0040H; test ax, __WINFLAGS) is the import
-    values = getattr(d, "selector_imports", {})
-
-    def _value(number):
-        if int(number, 16) not in values:
-            return number
-        imp, how = values[int(number, 16)]
-        m.selector_imports[imp] = how
-        return "%s(&%s)" % ("FP_SEG" if how == "segment" else "FP_OFF", imp)
-    if values:
-        for name in m.texts:
-            src = ctree.Source(m.texts[name])
-            for num in _numbers(src):
-                if re.fullmatch(r"0x[dD]0[0-9a-fA-F]{2}", src.at(num)):
-                    new = _value(src.at(num))
-                    if new != src.at(num):
-                        src.replace(num, new)
-            m.texts[name] = src.text()
-    # A segment of the module's own as a value -- its selector passed on, pushed, left in AX: the
-    # decompiler shows the made-up selector the description gave it. The automatic data segment
-    # is DS; a code segment, the selector of a far function in it (the loader fixes that one up).
-    own = {}
-    for va, n in m.by_va.items():
-        sg = (m.where.get(va) or (None,))[0]
-        if sg is not None and n not in m.near:
-            own.setdefault(sg, n)
-    sel_expr = {}
-    for sg in set(getattr(d, "code", {})) | ({d.data_segment} if d.data_segment else set()):
-        made_up = describe.FIRST_SELECTOR + 8 * (sg - 1)
-        if sg == d.data_segment:
-            sel_expr[made_up] = "codebreaker_ds()"
-        elif sg in own:
-            sel_expr[made_up] = "((uint2)((uint4)(void __far *)&%s >> 16))" % own[sg]
-    # ... and a data segment besides the automatic one, by the bytes the build carries for it
-    # (USER's segment 44 handed to GetProfileString as the far pointer to a string in it)
+        # (an import's value used bare is the import: backends/c._selector_imports)
+        m.selector_imports.update(found.get("selector_imports") or {})
     other_data = set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment}
-    for sg in other_data:
-        sel_expr[describe.FIRST_SELECTOR + 8 * (sg - 1)] = \
-            "((uint2)((uint4)(void __far *)codebreaker_segment_%d >> 16))" % sg
-    # ... where the function's own code holds a loader fix-up for that segment's selector: a
-    # number like 1000h is as often a plain constant
-    sites = _selector_sites(module_path)
-    starts = {}
-    for va, n in m.by_va.items():
-        sg_off = m.where.get(va)
-        if sg_off:
-            starts.setdefault(sg_off[0], []).append(sg_off[1])
-    for sg in starts:
-        starts[sg].sort()
-    at_place = {m.where[va]: n for va, n in m.by_va.items() if m.where.get(va)}
-    if sel_expr:
-        for va, name in m.by_va.items():
-            sg_off = m.where.get(va)
-            if not sg_off or name not in m.texts:
-                continue
-            sg, off = sg_off
-            later = [o for o in starts[sg] if o > off]
-            end = later[0] if later else 0x10000
-            wanted = {describe.FIRST_SELECTOR + 8 * (t - 1) for (o, t) in sites.get(sg, ()) if off <= o < end}
-            here = {v: e for v, e in sel_expr.items() if v in wanted}
-            if not here:
-                continue
-            spelled = {"0x%x" % v: v for v in here}
-            src = ctree.Source(m.texts[name])
-            for num in _numbers(src, under=src.body()):
-                if src.at(num) in spelled:
-                    src.replace(num, here[spelled[src.at(num)]])
-            t = src.text()
-            # a far pointer passed whole -- its offset the argument before its selector: a
-            # function's place, written by the function's name (USER's sub_1_3514 passes the
-            # callback 1:3452 to an enumeration as `0x3452, <segment 1>`: a number, it would
-            # still go where the function was if that one moved)
-            src = ctree.Source(t)
-            by_expr = {expr: (v - describe.FIRST_SELECTOR) // 8 + 1 for v, expr in here.items()}
-            for args in src.find("argument_list", under=src.body()):
-                items = args.named_children
-                for a, b in zip(items, items[1:]):
-                    sg_t = by_expr.get(src.at(b).strip())
-                    # (an offset of 8000h or more the core writes negative: GetFilePortName's
-                    # dialog procedure 1:9D0F was `-0x62f1`, left a number)
-                    lit = re.fullmatch(r"(-?)0x([0-9a-f]+)", src.at(a).replace(" ", ""))
-                    if sg_t is None or a.type not in ("number_literal", "unary_expression") or not lit:
-                        continue
-                    fn = at_place.get((sg_t, (-int(lit.group(2), 16) if lit.group(1) else int(lit.group(2), 16)) & 0xFFFF))
-                    if fn:
-                        src.replace(a, "((uint2)(uint4)(void __far *)&%s)" % fn)
-            m.texts[name] = src.text()
-    # the data a function reads through CS from beside its code: by name, in its own code segment
-    code_decls, m.code_data, m.code_reads = _code_segment_data(m, d, module_path) \
-        if os.environ.get("CB_CODE_DATA") != "0" else ([], {}, {})
-    body = "\n".join(m.texts.values())
-    called = set().union(*(_called(t) for t in m.texts.values())) if m.texts else set()
+    m.code_data, m.code_reads = code_data, code_reads
+    # what the functions name and call, as each was written (backends/c._names_used)
+    used = [(found_of.get(n) or {}).get("names") or {} for n in m.order]
+    called = set().union(*(u.get("called", ()) for u in used)) if used else set()
     m.imports = {}
     for nm in d.imports:
         if nm in called and nm not in m.texts:
@@ -1859,11 +1462,11 @@ def _compilable16(module_path, outdir=None):
     # the module carries that segment's bytes, and the global is a place in them.
     macros, m.segments = [], {}
     for sg in other_data:                                    # (a segment's selector used as a value)
-        if any(re.search(r"\bcodebreaker_segment_%d\b" % sg, t) for t in m.texts.values()):
+        if any(sg in u.get("segments", ()) for u in used):
             m.segments[sg] = d.images[sg]
     # a global the code calls through holds a function pointer -- near or far by its size
-    called_through = set().union(*(_called_through(t) for t in m.texts.values())) if m.texts else set()
-    for prefix, addr in sorted(set().union(*(_globals(t) for t in m.texts.values())) if m.texts else ()):
+    called_through = set().union(*(u.get("called_through", ()) for u in used)) if used else set()
+    for prefix, addr in sorted(set().union(*(u.get("globals", ()) for u in used)) if used else ()):
         va = int(addr, 16)
         seg, off = describe.where(va)
         ty = _global_type(prefix, sizes.get(va, 2), elems.get(va))
@@ -1911,16 +1514,19 @@ def _compilable16(module_path, outdir=None):
             if mm:
                 m.imports[n] = (mm.group(1), int(mm.group(2)))
     decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports) if nm not in m.selector_imports]
-    agreed = prototypes(m.texts, m.order) if os.environ.get("CB_PROTOTYPES", "1") != "0" else {}
+    # each function declared: with its parameters where every call agrees with its definition
+    # (backends/c.prototypes, from each one's heading and calls as the back end wrote them)
+    headings = {n: (found_of.get(n) or {}).get("heading") or {} for n in m.order}
+    agreed = cback.prototypes(headings, m.order) if os.environ.get("CB_PROTOTYPES", "1") != "0" else {}
     m.prototyped = set(agreed)
-    decls += [agreed.get(n) or declaration(m.texts[n]) for n in m.order]
+    decls += [agreed.get(n) or headings[n]["declaration"] for n in m.order]
     decls += ["#ifdef __WATCOMC__\n#pragma aux (codebreaker_fastcall) %s;\n#endif" % n for n in m.order
-              if "__fastcall16near" in m.texts[n].split("(", 1)[0]]
+              if headings[n]["fastcall"]]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if n in called]
     intrinsics += interrupt_helpers(m.interrupts)
-    if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:
+    if (any(u.get("mk_fp") for u in used) or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
-    selector_structs += _shared_selector_structs(shared_selectors, m.texts)
+    selector_structs += shared_decls
     if selector_structs:
         intrinsics.append(SEG_PTR)
     m.header = HEADER + "\n" + "\n".join(intrinsics + macros + _struct_decls(struct_notes, HEADER, True) +
@@ -1935,109 +1541,12 @@ def _compilable16(module_path, outdir=None):
 INTERRUPT_REGISTERS = ("ax", "bx", "cx", "dx", "si", "di", "ds", "es")
 
 
-def _arguments_at(text, open_paren):
-    """The arguments of the call whose `(` is at `open_paren`. -> ([argument text], index after `)`)"""
-    depth, args, start, i = 0, [], open_paren + 1, open_paren
-    while i < len(text):
-        c = text[i]
-        if c == "(":
-            depth += 1
-        elif c == ")":
-            depth -= 1
-            if depth == 0:
-                if text[start:i].strip():
-                    args.append(text[start:i])
-                return args, i + 1
-        elif c == "," and depth == 1:
-            args.append(text[start:i])
-            start = i + 1
-        i += 1
-    return args, len(text)
-
-
-_CALLER_SLOT = re.compile(r"\*\((\w+) \*\)\(unaff_BP \+ -(0x[0-9a-f]+|\d+)\)")
-
-
 def _keeps_frame(code, off):
     """Does the function at `off` set up BP as its frame -- Windows' far prologue, `push bp /
     mov bp, sp`, or `enter`?"""
     from codebreaker.decompile import describe
     head = bytes(code[off:off + 3])
     return describe.windows_far_prologue(code, off) or head in (b"\x55\x8b\xec", b"\x55\x89\xe5") or head[:1] == b"\xc8"
-
-
-def _caller_frame_slots(texts, frames):
-    """A helper that works in its caller's frame: it makes no frame of its own and reaches places
-    through BP as its caller left it -- KEYBOARD's sub_9_0A62, `xor ax, ax / mov [bp-4], ax /
-    mov [bp-6], ax / ret`, which clears two of OEMTOANSI's locals. The decompiler writes
-    `*(xunknown2 *)(unaff_BP + -4) = 0`, a BP the C never has, and the caller's locals stay
-    unset (its loop compared the pointers against whatever the frame held). Here each such place
-    becomes a parameter -- a far pointer, the frame being in SS -- and each call passes the
-    address of the caller's own local there: [bp-4] of a frame BP set up is entry SP - 6, the
-    caller's xStack_6. Only where every place is below BP, every caller keeps a frame of its own
-    (`frames`: function -> bool), and every use of the helper is a plain call of it; otherwise
-    the C is left as it was. -> {function: text}"""
-    out = dict(texts)
-    for name, text in texts.items():
-        hm = re.search(r"\b(__cdecl16(?:near|far)) %s\((void)?\)" % re.escape(name), text)
-        if not hm or "{" not in text[hm.end():] or not re.search(r"(?m)^\s+int2 unaff_BP;$", text):
-            continue
-        at = text.index("{", hm.end())
-        head, body = text[:at], text[at:]
-        uses = len(re.findall(r"\bunaff_BP\b", body))
-        slots = {}                                           # BP less -> the type first reached there
-        for m in _CALLER_SLOT.finditer(body):
-            slots.setdefault(int(m.group(2), 0), m.group(1))
-        if not slots or uses != 1 + len(_CALLER_SLOT.findall(body)) or \
-                any(t not in _SIZEOF for t in slots.values()):
-            continue
-        callers = {n: t for n, t in texts.items() if n != name and re.search(r"\b%s\b" % re.escape(name), t)}
-        if not callers or any(not frames.get(n) or "unaff_BP" in t or
-                              len(re.findall(r"\b%s\b" % re.escape(name), t)) !=
-                              len(re.findall(r"\b%s\(\)" % re.escape(name), t)) for n, t in callers.items()):
-            continue
-        # the caller's local at each place: declared alone, as wide as what the helper puts there
-        found, ok = {}, True
-        for n, t in callers.items():
-            own = {int(m.group(3), 16): (m.group(1), m.group(2)) for m in
-                   re.finditer(r"(?m)^\s+([\w ]+?\**) ?(\w*Stack_([0-9a-f]+));$", t)}
-            arrays = re.search(r"(?m)^\s+[\w ]+?\**\s*\w*Stack_[0-9a-f]+ \[\d+\];", t)
-            for less, ty in slots.items():
-                got = own.get(less + 2)
-                width = 2 if got and "*" in got[0] else _SIZEOF.get(got[0].strip()) if got else None
-                if got is None and arrays or got is not None and width != _SIZEOF[ty]:
-                    ok = False
-                found[(n, less)] = got[1] if got else None
-        if not ok:
-            continue
-        params = ["%s __far *frame_%x" % (slots[less], less) for less in sorted(slots)]
-        new_body = _CALLER_SLOT.sub(lambda m: "*frame_%x" % int(m.group(2), 0) if m.group(1) == slots[int(m.group(2), 0)]
-                                    else "*(%s __far *)frame_%x" % (m.group(1), int(m.group(2), 0)), body)
-        new_body = re.sub(r"(?m)^\s+int2 unaff_BP;\n", "", new_body, count=1)
-        # (in the older style the back end writes the definitions in: the names, then each declared)
-        rest = head[hm.end():]
-        out[name] = head[:hm.start()] + "%s %s(%s)\n%s" % (
-            hm.group(1), name, ",".join("frame_%x" % less for less in sorted(slots)),
-            "".join("%s;\n" % p for p in params)) + (rest[1:] if rest.startswith("\n") else rest) + new_body
-        for n, t in callers.items():
-            t = out[n]
-            args = []
-            for less in sorted(slots):
-                local = found[(n, less)]
-                if local is None:                            # (a place the caller's C never reads)
-                    local = "xStack_%x" % (less + 2)
-                if not re.search(r"(?m)^\s+[\w ]+?\**\s*%s;$" % local, t):
-                    own = re.search(r"\b%s\(" % re.escape(n), t)
-                    at = t.find("{\n", own.end() if own else 0)
-                    t = t[:at] + "{\n  %s %s;\n" % (slots[less], local) + t[at + 2:]
-                # (the far address as the back end writes one: _far_addresses)
-                args.append("(%s __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &%s))" % (slots[less], local))
-            out[n] = re.sub(r"\b%s\(\)" % re.escape(name), "%s(%s)" % (name, ",".join(args)), t)
-    return out
-
-
-_SIZE = {"1": 1, "2": 2, "4": 4}
-
 
 
 def _declaration_lines(text):
@@ -2048,63 +1557,6 @@ def _declaration_lines(text):
     return {src.line(n) for n in src.find("declaration", under=src.body()) if src.at(n) == src.line(n).strip()}
 
 
-def _is_declarator(n):
-    """`n` is the name a declaration declares, not a use of it"""
-    up = n.parent
-    while up is not None and up.type in ("pointer_declarator", "array_declarator", "init_declarator",
-                                         "parenthesized_declarator"):
-        if up.type == "array_declarator" and up.child_by_field_name("declarator") != n and \
-                up.child_by_field_name("size") is not None and up.child_by_field_name("size").start_byte <= n.start_byte:
-            return False                                 # (in an array's size)
-        if up.type == "init_declarator" and up.child_by_field_name("value") is not None and \
-                up.child_by_field_name("value").start_byte <= n.start_byte:
-            return False                                 # (in an initial value)
-        n, up = up, up.parent
-    return up is not None and up.type in ("declaration", "parameter_declaration")
-
-
-def _uses(text, name):
-    """Where `name` is used (not declared), outside strings and comments: [node], and the source."""
-    src = ctree.Source(text)
-    return [n for n in src.find("identifier") if src.at(n) == name and not _is_declarator(n)], src
-
-
-def _rename(text, name, new):
-    """Every use of the variable `name` written as `new` (its declaration left as it is)."""
-    nodes, src = _uses(text, name)
-    for n in nodes:
-        src.replace(n, new)
-    return src.text()
-
-
-def _addressed(text, name):
-    """Is the address of `name` (or of an element of it) taken: `&name`, `&name[2]`?"""
-    nodes, src = _uses(text, name)
-    for n in nodes:
-        op = src.unary(n)
-        if op and op[0] == "&":
-            return True
-        up = n.parent
-        if up is not None and up.type == "subscript_expression" and up.child_by_field_name("argument") == n:
-            op = src.unary(up)
-            if op and op[0] == "&" and op[1] + 1 == n.start_byte:
-                return True
-    return False
-
-
-def _end_of(d, seg, off):
-    """Where the function at seg:off ends: the next function's start in its segment. (Kept on the
-    description: kept by id() it was given to the next module's description when that one came
-    to the same address -- and its functions were cut at the other module's starts.)"""
-    ends = d.__dict__.setdefault("_ends", {})
-    if seg not in ends:
-        ends[seg] = sorted(o for (s, o) in d.where.values() if s == seg)
-    starts = ends[seg]
-    import bisect
-    k = bisect.bisect_right(starts, off)
-    return starts[k] if k < len(starts) else len(d.images.get(seg, b""))
-
-
 def interrupt_helper_name(vector, regs):
     return "int%02x_%s" % (vector, "_".join(regs) if regs else "none")
 
@@ -2112,12 +1564,12 @@ def interrupt_helper_name(vector, regs):
 SEG_PTR = "#define SEG_PTR(T, s) ((T __far *)((uint4)(uint2)(s) << 16))   /* a structure at the start of a segment */"
 
 
-def _shared_selector_structs(shared, texts):
-    """The structures of global selectors (backends/c._selector_structs' `selector_shared`): one per global for the
-    whole module -- the fields every function saw, together -- where they agree (one type per
-    offset, none overlapping); where they do not, each function's own, as for a local selector.
-    `texts` {function: text} has the names put right. -> declarations"""
-    out = []
+def _shared_selector_structs(shared):
+    """The structures of global selectors (backends/c._selector_structs' `selector_shared`): one
+    per global for the whole module -- the fields every function saw, together -- where they agree
+    (one type per offset, none overlapping); where they do not, each function's own, as for a
+    local selector. -> (declarations, {function: {the module's name: its own}})"""
+    out, renames = [], {}
     for name, per in sorted(shared.items()):
         every = {}
         for fields in per.values():
@@ -2134,8 +1586,8 @@ def _shared_selector_structs(shared, texts):
         for fname, fields in sorted(per.items()):
             own = "seg_%s_%s" % (re.sub(r"\W", "_", fname), name[4:])
             out.append("typedef _Packed struct %s { %s } %s;" % (own, " ".join(cback.seg_layout(fields)), own))
-            texts[fname] = texts[fname].replace("SEG_PTR(%s," % name, "SEG_PTR(%s," % own)
-    return out
+            renames.setdefault(fname, {})[name] = own
+    return out, renames
 
 
 def interrupt_helpers(used):
@@ -2216,10 +1668,6 @@ _WIDE_ADDRESS = re.compile(r"0xffffffff([89a-f][0-9a-f]{7})")
 
 
 _HOME = re.compile(r"_?([a-z]+)Stack(000000[0-9a-f]{2})")
-
-
-class ModulePowerPC(object):
-    pass
 
 
 def _homed_arguments(t):
@@ -2360,9 +1808,9 @@ def compilable_powerpc(module_path, outdir):
     # a function returning a pointer to one names it in its prototype, which every body includes.
     types = _TYPES.replace("typedef int code();", "typedef uint8 code();") + _HELPERS + _POWERPC
     structs = _struct_decls([st for n in order for st in (got.notes.get(n) or {}).get("structs") or ()], types)
-    m = ModulePowerPC()
-    m.header = types + "".join(x + "\n" for x in structs) + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
-    m.texts, m.order, m.by_va, m.novalue = out, order, by_va, novalue
+    m = l2.Made(os.path.basename(module_path).lower(),
+                types + "".join(x + "\n" for x in structs) + "\n".join(decls) + "\n" + "\n".join(macros) + "\n",
+                out, order, by_va, novalue=novalue)
     by_name = {name: va for va, name in img.imports.items()}
     m.externs = {n: by_name[n] for n in used if n in by_name}
     m.argc = call_counts(out, set(m.externs))

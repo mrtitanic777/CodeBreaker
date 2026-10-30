@@ -4,6 +4,7 @@ here is one of PrintC's that the golden corpus showed (tools/l2c.py holds the wh
 
 from codebreaker.translate import l2
 from codebreaker.translate.backends import c
+from codebreaker.decompile import c_text
 
 
 def lit(v, kind='i32', text=None):
@@ -369,6 +370,18 @@ def test_moved_selector_structs():
     assert '  b = SEG_PTR(seg_f_xVar2, xVar2)->f_40;' in text, text
     assert facts['selector_decls'] == ['typedef _Packed struct seg_f_xVar2 { uint1 _pad_0[62]; int2 f_3e; uint1 f_40; } seg_f_xVar2;']
     assert 'MK_FP' in c.function(doc, c.MOVED, facts={})          # (without structures: as it was)
+    # a global selector's: the module's, its fields reported; where the functions disagree the
+    # module gives this one its own (c_text._shared_selector_structs) and its uses are written so
+    glob = sixteen([stmt({'node': 'Assign', 'target': name('a'), 'value': at(name('xRam10000002'), 'i16', 0x3e)}),
+                    stmt({'node': 'Assign', 'target': name('b'), 'value': at(name('xRam10000002'), 'u8', 0x40)})])
+    facts = {'selector_structs': True}
+    assert '  a = SEG_PTR(seg_xRam10000002, xRam10000002)->f_3e;' in c.function(glob, c.MOVED, facts=facts)
+    assert facts['selector_shared'] == {'seg_xRam10000002': {'f': {0x3e: 'int2', 0x40: 'uint1'}}}
+    other = {'seg_xRam10000002': {'f': {0x3e: 'int2', 0x40: 'uint1'}, 'g': {0x3e: 'uint1'}}}
+    decls, renames = c_text._shared_selector_structs(other)
+    assert renames == {'f': {'seg_xRam10000002': 'seg_f_xRam10000002'}, 'g': {'seg_xRam10000002': 'seg_g_xRam10000002'}}
+    text = c.function(glob, c.MOVED, facts={'selector_structs': True, 'selector_renames': renames['f']})
+    assert '  a = SEG_PTR(seg_f_xRam10000002, xRam10000002)->f_3e;' in text, text
 
 
 def test_moved_old_style_definition():
@@ -575,3 +588,194 @@ def test_moved_callee_pops():
     doc = sixteen([stmt(call)])
     assert '  (*(code_callee_pops *)p)();' in c.function(doc, c.MOVED, facts={'distance': 'far', 'callee_pops': True})
     assert '  (*(code *)p)();' in c.function(doc, c.MOVED, facts={'distance': 'far'})
+
+
+def test_moved_caller_frame_slots():
+    """c_text._caller_frame_slots on the tree: KEYBOARD's sub_9_0A62 clears two of its caller's
+    locals through BP as the caller left it. Written once, each function reports what the module
+    decides from (facts["frame"]); the module's plan (c.caller_frame_plan) has the helper take
+    each place as a far pointer, in the older style, and each caller pass its own local's address
+    there -- one it never declared declared first."""
+    word = {'kind': 'class', 'name': 'xunknown2'}
+    slot = lambda less: {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(word, 'near'),
+                                                           'x': binary('+', name('unaff_BP', 'i16'), lit(-less, 'i16'))}}
+    helper = dict(sixteen([local('unaff_BP', {'kind': 'i16'}),
+                           stmt({'node': 'Assign', 'target': slot(4), 'value': lit(0, 'i16')}),
+                           stmt({'node': 'Assign', 'target': slot(6), 'value': lit(0, 'i16')})]), name='h')
+    caller = dict(sixteen([local('puStack_6', ptr({'kind': 'u8'}, 'near')), stmt(fcall('h'))]), name='g')
+    near, far = {'distance': 'near', 'model': '__cdecl16near'}, {'distance': 'far', 'model': '__stdcall16far'}
+    reports = {}
+    for doc, facts in ((helper, dict(near)), (caller, dict(far))):
+        c.function(doc, c.MOVED, facts=facts)
+        reports[doc['name']] = facts['frame']
+    assert reports['h']['slots'] == {4: 'xunknown2', 6: 'xunknown2'} and reports['g']['slots'] is None
+    plan = c.caller_frame_plan(reports, {'h': False, 'g': True})
+    assert plan['h'] == {'frame_slots': {4: 'xunknown2', 6: 'xunknown2'}}
+    assert plan['g']['frame_declare'] == [('xunknown2', 'xStack_8')]
+    text = c.function(helper, c.MOVED, facts=dict(near, **plan['h']))
+    assert text.startswith('xunknown2 __cdecl16near h(frame_4,frame_6)\nxunknown2 __far *frame_4;\n'
+                           'xunknown2 __far *frame_6;\n{\n'), text
+    assert '*frame_4 = 0;' in text and 'unaff_BP' not in text
+    text = c.function(caller, c.MOVED, facts=dict(far, **plan['g']))
+    assert '{\n  xunknown2 xStack_8;\n  uint1 *puStack_6;\n' in text, text
+    assert 'h((xunknown2 __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &puStack_6)),' \
+           '(xunknown2 __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &xStack_8)));' in text
+    # (a caller with no frame of its own: nothing is changed)
+    assert c.caller_frame_plan(reports, {'g': False}) == {}
+
+
+def test_moved_selector_imports():
+    """c_text's import values on the tree: the made-up number an import used for its value is
+    shown as (`mov es, __0040H`) is the import, FP_SEG(&__0040H) -- FP_OFF for one used for its
+    offset -- and the imports so used are found for the header. Another number stays."""
+    doc = sixteen([stmt({'node': 'Assign', 'target': name('x'), 'value': lit(0xd008, 'u16', text='0xd008')}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': lit(0xd010, 'u16', text='0xd010')}),
+                   stmt({'node': 'Assign', 'target': name('z'), 'value': lit(0xd018, 'u16', text='0xd018')})])
+    facts = {'distance': 'far', 'selector_values': {0xd008: ('__0040H', 'segment'), 0xd010: ('__WINFLAGS', 'offset')}}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '  x = FP_SEG(&__0040H);\n  y = FP_OFF(&__WINFLAGS);\n  z = 0xd018;' in text, text
+    assert facts['selector_imports'] == {'__0040H': 'segment', '__WINFLAGS': 'offset'}
+
+
+def test_moved_segment_values():
+    """c_text's own segments as values on the tree: where a function's code holds the loader's
+    fix-up for a segment's selector, the made-up selector the decompiler shows is DS for the data
+    segment, a far function's selector for a code segment (c.segment_plan decides, for the module),
+    and a far pointer passed whole -- an offset, then that selector -- is the function there
+    (USER's sub_1_3514 passing the callback 1:3452 to an enumeration)."""
+    functions = [(0x10000, 'f'), (0x13452, 'cb'), (0x20000, 'g')]
+    where = {0x10000: (1, 0), 0x13452: (1, 0x3452), 0x20000: (2, 0)}
+    sites = {1: [(0x10, 1), (0x12, 2)]}                  # (two fix-ups in f: segment 1's selector, segment 2's)
+    plan = c.segment_plan(functions, {'g'}, where, sites, {1: b'', 2: b''}, 2, set(), 0x1000)
+    assert set(plan) == {'f'}
+    seg1 = '((uint2)((uint4)(void __far *)&f >> 16))'
+    assert plan['f']['segment_values'] == {'0x1000': seg1, '0x1008': 'codebreaker_ds()'}
+    doc = sixteen([stmt(fcall('EnumWindows', lit(0x3452, 'u16', text='0x3452'), lit(0x1000, 'u16', text='0x1000'))),
+                   stmt({'node': 'Assign', 'target': name('x'), 'value': lit(0x1008, 'u16', text='0x1008')}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': lit(0x1010, 'u16', text='0x1010')})])
+    text = c.function(doc, c.MOVED, facts=dict({'distance': 'far'}, **plan['f']))
+    assert '  EnumWindows(((uint2)(uint4)(void __far *)&cb),%s);' % seg1 in text, text
+    assert '  x = codebreaker_ds();\n  y = 0x1010;' in text, text
+
+
+def test_moved_code_segment_reads():
+    """c_text's _cs_reads and _cs_places on the tree (KEYBOARD's GetKeyNameText): tables beside
+    its code read through CS by a pointer set to the first (0x261) and a number set to the second
+    (0x290); a word table at 1C7h of places it then reads; a step (`+ 1`), a count (`iVar8 =
+    0x2f`) and an index (`uStack_c = 0`, set from arithmetic too) are no places; a far pointer
+    passed as (offset, CS) is read there too. Given "code_places", each is written as the member."""
+    char, word = {'kind': 'char'}, {'kind': 'class', 'name': 'xunknown2'}
+    cs, cs_call = name('unaff_CS', 'i16'), {'node': 'Call', 'target': name('codebreaker_cs'), 'args': []}
+    at = lambda seg, off, t=char: {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(t, 'far'),
+                                                                     'x': fcall('MK_FP', seg, off)}}
+    put = lambda v, x: stmt({'node': 'Assign', 'target': name(v), 'value': x})
+    p11, p12 = typed('pcVar11', ptr(char, 'near')), typed('pcVar12', ptr(char, 'near'))
+    body = [local('pcVar11', ptr(char, 'near')), local('pcVar12', ptr(char, 'near')), local('iVar10', {'kind': 'i16'}),
+            local('iVar8', {'kind': 'i16'}), local('uStack_c', {'kind': 'u16'}), local('unaff_CS', word),
+            put('pcVar11', {'node': 'Cast', 'type': ptr(char, 'near'), 'x': lit(0x261, 'i16', '0x261')}),
+            put('iVar10', lit(0x290, 'i16', '0x290')), put('iVar8', lit(0x2f, 'i16', '0x2f')), put('pcVar12', p11),
+            put('uStack_c', binary('*', binary('+', name('a5', 'i16'), lit(-1, 'i16')), lit(2, 'i16'))),
+            put('uStack_c', lit(0, 'i16')),
+            put('pcVar11', binary('+', p11, lit(1, 'i16'))),
+            put('iVar8', at(cs, binary('+', binary('+', p11, name('iVar10', 'i16')), p12))),
+            put('pcVar11', {'node': 'Cast', 'type': ptr(char, 'near'),
+                            'x': at(cs_call, binary('+', binary('*', name('a5', 'i16'), lit(2, 'i16')),
+                                                    lit(0x1c7, 'i16', '0x1c7')), word)}),
+            put('iVar8', at(cs, p11)),
+            stmt(at(cs, binary('+', name('uStack_c', 'u16'), lit(0x30, 'i16', '0x30')))),
+            stmt(fcall('KERNEL_128', lit(0x5a, 'i16', '0x5a'), cs, lit(0x3f, 'i16', '0x3f')))]
+    doc = sixteen(body, [param('a5', {'kind': 'i16'})])
+    facts = {'distance': 'far'}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '  xunknown2 unaff_CS = codebreaker_cs();' in text, text
+    rep = facts['code_reads']
+    assert rep['reads'] == 5 and not rep['unsafe'], rep
+    inside = lambda v: 0 < v < 0x305
+    assert sorted(v for v in rep['places'].values() if inside(v)) == [0x30, 0x5a, 0x1c7, 0x261, 0x290], rep['places']
+    assert {v for kind, (_k, v) in rep['events'] if inside(v)} == {0x1c7} and rep['events'][0][0] == 'pointers'
+    k = next(k for k, v in rep['places'].items() if v == 0x261)
+    again = c.function(doc, c.MOVED, facts={'distance': 'far', 'code_places': {k: '(uint2)codebreaker_code_9.at_0261'}})
+    assert '  pcVar11 = (char *)(uint2)codebreaker_code_9.at_0261;' in again, again
+    assert c_text._string_literal(b"type\0subtype\0") == '"type\\000subtype"'
+
+
+def test_names_used_for_the_header():
+    """What the header is written from, read off the tree as the function is written (c_text read
+    every text): the globals named by address -- `_pcRam..`, written pcRam.. by a pass, among them
+    -- those called through, the calls, MK_FP."""
+    fn = {'kind': 'fnptr', 'space': 'far', 'fn': {'kind': 'fn'}}
+    g = {'node': 'Name', 'sym': {'kind': 'global', 'name': '_pcRam1000001a'}, 'type': fn}
+    doc = sixteen([stmt({'node': 'Call', 'target': {'node': 'Unary', 'op': '*', 'x': g}, 'args': [lit(1, 'i16')]}),
+                   stmt({'node': 'Assign', 'target': name('iRam10080012', 'i16'), 'value': fcall('KERNEL_3', lit(2, 'i16'))}),
+                   stmt(fcall('MK_FP', lit(0, 'i16'), lit(1, 'i16')))])
+    facts = {'distance': 'far'}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '(*pcRam1000001a)(1);' in text, text
+    got = facts['names']
+    assert got['globals'] == {('pc', '1000001a'), ('i', '10080012')} and got['called_through'] == {'pcRam1000001a'}
+    assert {'KERNEL_3', 'MK_FP'} <= got['called'] and got['mk_fp'] and not got['segments']
+
+
+def test_prototypes_where_the_calls_agree():
+    """c_text.prototypes from what the back end wrote: g takes a word and every call passes one, so
+    it is declared with its parameter; h is passed a long where it takes a word, so its list is
+    left open; a heading in the newer style (`(void)`, a blank line before its `{`) is none
+    c_text's pattern read, and gets no prototype."""
+    word = {'kind': 'i16'}
+    far = {'distance': 'far', 'model': '__stdcall16far'}
+    g = dict(sixteen([stmt({'node': 'Assign', 'target': name('x'), 'value': name('a1', 'i16')})], [param('a1', word)]), name='g')
+    h = dict(g, name='h')
+    f = dict(sixteen([stmt(fcall('g', lit(1, 'i16'))), stmt(fcall('h', lit(0x12345, 'i32', '0x12345')))]), name='f')
+    lost = dict(sixteen([]), name='k', mods=['__fastcall16far'])
+    heads = {}
+    for doc in (f, g, h, lost):
+        facts = dict(far)
+        c.function(doc, c.MOVED, facts=facts)
+        heads[doc['name']] = facts['heading']
+    assert heads['g']['declaration'] == 'xunknown2 __stdcall16far g();'
+    assert ('g', ['1']) in heads['f']['calls']
+    assert c.prototypes(heads, ['f', 'g', 'h', 'k']) == {'f': 'xunknown2 __stdcall16far f(void);',
+                                                          'g': 'xunknown2 __stdcall16far g(int2 a1);'}
+    assert c.argument_words('(uint4)x', {}) == 2 and c.argument_words('&x', {}) == 1
+    # (c_text._arguments_at's frozen case)
+    assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
+
+
+def test_moved_32bit_heading():
+    """compilable32's heading rules on the tree, for the module's C (given facts): a `void`
+    result is `int` (EAX is there whatever the core saw), and `__thiscall` -- OpenWatcom has no
+    word for it -- is left out and reported, for the header's #pragma. Without the module's facts
+    (the C the decompiler is read for) the heading is as the core printed it."""
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'void'}, 'mods': ['__thiscall'],
+           'origin': {'module': '', 'va': 0x401000}, 'params': [param('self', ptr({'kind': 'i32'}))],
+           'body': [stmt({'node': 'Assign', 'target': name('x'), 'value': lit(1)})]}
+    facts = {}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert text.startswith('int f(int4 *self)'), text
+    assert facts['registers'] == 'ecx'
+    assert c.function(doc, c.MOVED).startswith('void __thiscall f(int4 *self)')
+    assert c.function(dict(doc, mods=['__fastcall']), c.MOVED, facts=facts).startswith('int f(') and facts['registers'] == 'edx'
+    # an offset of a recovered structure that holds no field (compilable32's _struct_gaps): the
+    # byte there, counted from the structure's start as a byte pointer
+    rec = {'kind': 'class', 'name': 's_f_p'}
+    gap = {'node': 'Select', 'obj': {'node': 'Unary', 'op': '*', 'x': typed('p', ptr(rec))},
+           'sym': {'kind': 'field', 'name': 'field_0x4'}, 'type': {'kind': 'u8'}}
+    flat = dict(doc, mods=[], body=[stmt({'node': 'Assign', 'target': name('x'), 'value': gap})])
+    assert '  x = (*((uint1 *)(p) + 0x4));' in c.function(flat, c.MOVED, facts={})
+    assert '  x = p->field_0x4;' in c.function(flat, c.MOVED)
+    # a function's address stored in a pointer the core typed loosely (compilable32's _code_pointers)
+    store = dict(doc, mods=[], body=[stmt({'node': 'Assign', 'target': name('a3'), 'value': name('sub_004583')}),
+                                     stmt({'node': 'Assign', 'target': name('b'), 'value': name('other')})])
+    text = c.function(store, c.MOVED, facts={'functions': {'sub_004583', 'f'}})
+    assert '  a3 = (code *)sub_004583;\n  b = other;' in text, text
+    # a pointer compared with a number is compared as one (compilable32's _compare_as_numbers)
+    cmp = dict(doc, mods=[], body=[local('pcVar2', ptr({'kind': 'char'})),
+                                   {'node': 'If', 'cond': binary('<', typed('pcVar2', ptr({'kind': 'char'})),
+                                                                 {'node': 'Cast', 'type': {'kind': 'u32'}, 'x': name('a1')}),
+                                    'then': [stmt({'node': 'Assign', 'target': name('x'), 'value': lit(1)})]}])
+    assert '  if ((uint4)pcVar2 < (uint4)a1) {' in c.function(cmp, c.MOVED, facts={})
+    assert '  if (pcVar2 < (uint4)a1) {' in c.function(cmp, c.MOVED)
+    sixteen_doc = sixteen([], [])
+    assert c.function(sixteen_doc, c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()')
+    assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
+    assert c_text._string_literal(b"\x04\x00\x22\x00") is None

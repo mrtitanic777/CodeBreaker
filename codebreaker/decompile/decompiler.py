@@ -437,10 +437,11 @@ def generation():
     return REV, cache.tool(_exe()), languages
 
 
-def raw(module_path, funcs, outdir, timeout=3600, l2=None):
-    """The native program's own output for a PE module, before it is made compilable (`l2`: run's)."""
+def raw(module_path, funcs, outdir, timeout=3600, l2=None, write=True):
+    """The native program's own output for a PE module, before it is made compilable (`l2`,
+    `write`: run's)."""
     description, _names = describe.describe32(module_path, funcs, outdir)
-    return run(description, timeout=timeout, l2=l2)
+    return run(description, timeout=timeout, l2=l2, write=write)
 
 
 def decompile(module_path, funcs=None, outdir=None):
@@ -450,7 +451,12 @@ def decompile(module_path, funcs=None, outdir=None):
     if funcs is None:
         funcs = pipeline.LANES["pe"].functions(module_path)
     outdir = outdir or B._scratch("decompiler", os.path.basename(module_path).lower())
-    return c_text.Module(*c_text.compilable32(module_path, funcs, outdir))
+    from codebreaker.translate import l2
+    header, texts, order, by_va, used, in_ecx, in_edx = c_text.compilable32(module_path, funcs, outdir)
+    # (one L2 Module: each function a MethodDecl with its C; the imports it calls, and those of its
+    # functions that take their first argument in ECX -- and their second in EDX -- beside it)
+    return l2.Made(os.path.basename(module_path).lower(), header, texts, order, by_va, imports=used,
+                   in_ecx=set(in_ecx), in_edx=set(in_edx))
 
 
 # 16-bit modules ---------------------------------------------------------------------------------
