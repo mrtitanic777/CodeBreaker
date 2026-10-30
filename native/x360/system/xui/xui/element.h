@@ -27,6 +27,10 @@ namespace xui
 {
     class Assets;
 
+    // Whether wrapped text breaks a word after a hyphen (17559's XUI, the default) or only at spaces (1888's dash: its
+    // Pictures panel keeps "Windows-based" whole where the hyphen would fit the line).
+    void SetHyphenBreaks(bool on);
+
     class Element
     {
     public:
@@ -35,9 +39,11 @@ namespace xui
                                                const std::string& basePackage, Element* parent);
         // A control created by code (as XAM creates its message boxes): `className` drawn through the skin visual
         // `visual`, sized w x h (no visual: an element drawn by its class, such as an XuiImage; 0 x 0: the visual's
-        // own size).
+        // own size). `context`: an element of the scene it is for (a list's item template), whose skin it takes
+        // (Assets::FindVisual).
         static std::unique_ptr<Element> CreateControl(Assets& assets, std::string_view className,
-                                                      std::string_view visual, float width, float height);
+                                                      std::string_view visual, float width, float height,
+                                                      const Element* context = nullptr);
         // Makes `child` the last child of this element / takes a child back out.
         Element* Adopt(std::unique_ptr<Element> child);
         std::unique_ptr<Element> Release(Element* child);

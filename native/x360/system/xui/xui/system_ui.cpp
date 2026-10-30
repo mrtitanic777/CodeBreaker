@@ -918,7 +918,7 @@ namespace xui
             for (int i = 0; i < v.rows * v.cols; i++)
             {
                 const float w = v.layout == 4 ? v.itemW : v.liveW;
-                auto slot = Element::CreateControl(*s.assets, "XuiListItem", visualName, w, v.itemH);
+                auto slot = Element::CreateControl(*s.assets, "XuiListItem", visualName, w, v.itemH, item);
                 if (v.layout == 4)
                     slot->SetPosition(v.x0 + float(i % v.cols) * (v.itemW + v.spaceX),
                                       v.y0 + float(i / v.cols) * (v.itemH + v.spaceY));
@@ -3215,7 +3215,7 @@ namespace xui
             const std::string visual = item->GetString("Visual");
             for (size_t i = 0; i < rows.size(); i++)
             {
-                auto row = Element::CreateControl(*s.assets, "XuiListItem", visual, w, h);
+                auto row = Element::CreateControl(*s.assets, "XuiListItem", visual, w, h, item);
                 row->SetPosition(p.x, p.y + h * float(i));
                 row->text = rows[i].text;
                 row->enabled = rows[i].enabled;
@@ -3691,11 +3691,23 @@ namespace xui
         State& s = S();
         std::lock_guard lock(s.mutex);
         if (!Ready(s) || !EnsureHud(s))
+        {
+            Log("System UI: achievements of {}: {}", Utf8(titleName), Ready(s) ? "no HUD scene" : "the system UI is not ready");
             return;
+        }
         ShowWhenClosed(s, [=](State& s) {
-            Element* pane = OpenPane(s, "gamerprofile.gp", "802_Achievements.xur");
+            // An older system update's gamerprofile (ReplacePackages) has its own viewer (1888: 821-2_GameAchievStatsMe,
+            // not implemented) and no 802_Achievements: 17559's from the base folder's package, so the list shows and
+            // its B closes it (without a pane the request kept the controller).
+            const Package* gp = s.assets->FindPackage("gamerprofile.gp");
+            const std::string package = gp && gp->Find("802_Achievements.xur") ? std::string("gamerprofile.gp")
+                                                                               : Base17559(s, "gamerprofile.gp");
+            Element* pane = OpenPane(s, package, "802_Achievements.xur");
             if (!pane)
+            {
+                Log("System UI: achievements: {}/802_Achievements.xur does not open", package);
                 return;
+            }
             s.pane = Pane::kAchievements;
             s.images.clear();
             // XAM's shared strings (LiveAll.xus): #0 "Secret", #1 the secret achievement's description, #4 "%u of %u

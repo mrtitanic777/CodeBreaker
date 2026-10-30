@@ -4,6 +4,7 @@
 
 #include <format>
 #include <functional>
+#include <tuple>
 
 namespace xui
 {
@@ -21,6 +22,7 @@ namespace xui
                     error = std::format("{}: {}", p.filename().string(), why);
                     return false;
                 }
+                basePackages_.insert(p.stem().string());
                 packages_.emplace(p.stem().string(), std::move(package));
             }
             else if (p.extension() == ".xtt")
@@ -109,6 +111,17 @@ namespace xui
                 index(child);
         };
         index(scene->Root());
+        // An older system update's skin (ReplacePackages) lacks visuals the newer scenes still shown over it name (17559's
+        // Guide.Friends lists over 1888's skin: List_Fullwidth_icon_string_x3): those stay the replaced skin's.
+        for (const auto& [id, node] : visuals_)
+            if (!visuals.contains(id))
+                skinFallback_.try_emplace(id, node, skin_.get());
+        std::erase_if(skinFallback_, [&](const auto& e) { return visuals.contains(e.first); });
+        if (!baseSkin_ && !visuals_.empty())
+        {
+            baseSkin_ = skin_.get();
+            baseVisuals_ = visuals_;
+        }
         retiredScenes_.push_back(std::move(skin_));
         skin_ = std::move(scene);
         visuals_ = std::move(visuals);
@@ -132,6 +145,7 @@ namespace xui
             }
             const std::string name = p.stem().string();
             skin |= name == "huduiskin.skin";
+            basePackages_.erase(name);
             if (auto it = packages_.find(name); it != packages_.end())
             {
                 // The base folder's stays findable as "base:<name>": the runtime's string indices are its tables'.
@@ -221,7 +235,8 @@ namespace xui
         return &strings_.emplace(key, std::move(table)).first->second;
     }
 
-    bool Assets::FindVisual(std::string_view name, const Node*& node, const Scene*& scene, std::string& base) const
+    bool Assets::FindVisual(std::string_view name, const Node*& node, const Scene*& scene, std::string& base,
+                            const Scene* from, std::string_view fromPackage) const
     {
         if (const auto it = themeVisuals_.find(name); it != themeVisuals_.end())
         {
@@ -230,9 +245,19 @@ namespace xui
             base = it->second.base;
             return true;
         }
+        base = kSkinBase;
+        if (baseSkin_ && (from == baseSkin_ || (fromPackage != kSkinBase && basePackages_.contains(fromPackage))))
+            if (const auto it = baseVisuals_.find(name); it != baseVisuals_.end())
+            {
+                node = it->second;
+                scene = baseSkin_;
+                return true;
+            }
         node = Visual(name);
         scene = skin_.get();
-        base = kSkinBase;
+        if (!node)
+            if (const auto it = skinFallback_.find(name); it != skinFallback_.end())
+                std::tie(node, scene) = it->second;
         return node != nullptr;
     }
 

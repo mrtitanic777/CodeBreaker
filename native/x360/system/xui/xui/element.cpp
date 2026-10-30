@@ -21,6 +21,7 @@ namespace xui
 {
     namespace
     {
+        std::atomic<bool> g_hyphenBreaks = true;
         std::atomic<host::SoundPlayer> g_soundPlayer = nullptr;
 
         bool IsControlClass(const std::string& className)
@@ -196,6 +197,11 @@ namespace xui
         }
     }
 
+    void SetHyphenBreaks(bool on)
+    {
+        g_hyphenBreaks = on;
+    }
+
     void EaseControls(int easeIn, int easeOut, int easeScale, float& p1, float& p2)
     {
         // Control points: (s, 0) and (-s, 0) rotated by (1 - e/100) * 45 degrees, the second offset by (1, 1); the
@@ -302,7 +308,7 @@ namespace xui
     }
 
     std::unique_ptr<Element> Element::CreateControl(Assets& assets, std::string_view className, std::string_view visual,
-                                                    float width, float height)
+                                                    float width, float height, const Element* context)
     {
         std::unique_ptr<Element> e(new Element());
         e->className_ = className;
@@ -316,7 +322,8 @@ namespace xui
         const Node* v = nullptr;
         const Scene* skin = nullptr;
         std::string skinBase;
-        if (assets.FindVisual(visual, v, skin, skinBase))
+        if (assets.FindVisual(visual, v, skin, skinBase, context ? context->scene_ : nullptr,
+                              context ? std::string_view(context->basePackage_) : std::string_view()))
         {
             e->visual_.reset(new Element());
             e->visual_->owner_ = e.get();
@@ -385,16 +392,16 @@ namespace xui
             std::string skinBase;
             bool found = false;
             if (!visualName.empty())
-                found = assets.FindVisual(visualName, v, skin, skinBase);
+                found = assets.FindVisual(visualName, v, skin, skinBase, &scene, basePackage);
             else
             {
                 // No Visual: the skin's visual named after the class, else after its nearest base class that has one
                 // (an XuiNavButton draws as XuiButton: the Blades skins have no XuiNavButton visual, 1888's Console
                 // Settings buttons have no Visual).
                 const std::vector<const ClassDef*> chain = ClassChain(className_);
-                found = assets.FindVisual(className_, v, skin, skinBase);
+                found = assets.FindVisual(className_, v, skin, skinBase, &scene, basePackage);
                 for (auto it = chain.rbegin(); !found && it != chain.rend(); ++it)
-                    found = assets.FindVisual((*it)->name, v, skin, skinBase);
+                    found = assets.FindVisual((*it)->name, v, skin, skinBase, &scene, basePackage);
             }
             if (found)
             {
@@ -862,7 +869,7 @@ namespace xui
         const Scene* skin = nullptr;
         std::string skinBase;
         const std::string name = GetString("Visual");
-        if (name.empty() || !assets_->FindVisual(name, v, skin, skinBase))
+        if (name.empty() || !assets_->FindVisual(name, v, skin, skinBase, scene_, basePackage_))
         {
             visual_.reset();
             return;
@@ -1031,7 +1038,11 @@ namespace xui
             RenderText(assets, canvas, world, opacity, clip, Utf16(GetString("Text")));
         else if (className_ == "XuiTextPresenter")
         {
-            if (Element* control = Control())
+            // Text a program gave this presenter itself (C4LineBtn fills each of btn_4Line's eight presenters by id)
+            // comes first; else the control's data.
+            if (!text.empty())
+                RenderText(assets, canvas, world, opacity, clip, text);
+            else if (Element* control = Control())
             {
                 const int64_t association = GetInt("DataAssociation", 0);
                 RenderText(assets, canvas, world, opacity, clip,
@@ -1416,11 +1427,13 @@ namespace xui
         };
         auto isSpace = [](char16_t c) { return c == u' ' || c == 0x3000; };
 
-        // Lines (XUIFONT::GetLine): fill up to the width; break at the last space (or after a hyphen), else mid-word;
+        // Lines (XUIFONT::GetLine): fill up to the width; break at the last space (or after a hyphen: SetHyphenBreaks),
+        // else mid-word;
         // NO_WORDWRAP cuts the line (truncated); trailing spaces do not count.
         struct Line { size_t start, count; int width; bool truncated; };
         std::vector<Line> lines;
         const bool noWrap = style & 0x10, singleLine = style & 0x20;
+        const bool hyphens = g_hyphenBreaks;
         size_t at = 0;
         while (at < text.size())
         {
@@ -1448,7 +1461,7 @@ namespace xui
                 {
                     size_t b = i;
                     int bw = w;
-                    while (b > at && !isSpace(text[b - 1]) && text[b - 1] != u'-')
+                    while (b > at && !isSpace(text[b - 1]) && !(hyphens && text[b - 1] == u'-'))
                     {
                         b--;
                         bw -= advance(text[b]);

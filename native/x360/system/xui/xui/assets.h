@@ -17,6 +17,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -49,7 +50,11 @@ namespace xui
         const Node* Visual(std::string_view name) const;
         // A visual for a control: the theme skins' first (SetThemeSkins), then the HUD skin's; with the scene it is
         // in and the package its paths are relative to. False if none has it.
-        bool FindVisual(std::string_view name, const Node*& node, const Scene*& scene, std::string& base) const;
+        // `from` / `fromPackage`: the scene and package of the element asking. While an older system update's skin is
+        // loaded (ReplacePackages), a scene of a base-folder package it did not replace (17559's Guide.Friends, Messages)
+        // and the base skin's own visuals take the base skin's visual first: they were laid out for it.
+        bool FindVisual(std::string_view name, const Node*& node, const Scene*& scene, std::string& base,
+                        const Scene* from = nullptr, std::string_view fromPackage = {}) const;
         // Skins whose visuals come before the HUD skin's (package, scene), first first: an older dashboard's (its
         // BladeSkin.xur and skin.xur) while the launcher shows its era; packages that are not there are skipped. An empty
         // list goes back to the HUD skin alone.
@@ -86,6 +91,13 @@ namespace xui
         std::map<std::string, std::unique_ptr<Font>, std::less<>> fonts_;
         std::unique_ptr<Scene> skin_ = std::make_unique<Scene>();
         std::map<std::string, const Node*, std::less<>> visuals_;
+        // The base folder's HUD skin and its visuals while an older one is loaded (else null / empty), and the base
+        // folder's packages no older system update replaced.
+        const Scene* baseSkin_ = nullptr;
+        std::map<std::string, const Node*, std::less<>> baseVisuals_;
+        std::set<std::string, std::less<>> basePackages_;
+        // The replaced HUD skins' visuals the current one does not have (LoadSkin), with their (retired) scene.
+        std::map<std::string, std::pair<const Node*, const Scene*>, std::less<>> skinFallback_;
         struct ThemeVisual
         {
             const Node* node;
