@@ -382,6 +382,12 @@ def _resuming(description, only, timeout, env, wanted):
         done = {int(m.group(1), 16) for m in _MARK.finditer(out)}
         # (the last one written may be cut off by the crash: it is done again)
         last = max(done) if done else None
+        if last is not None and last in left:
+            # (and those before it that it did not write it passed over -- no function there: it
+            # writes them in order. Kept, they stood before the one it died on, which was then
+            # never left out: USER's MSGTHKCONNECTIONDATALS, PrintL2 dying on it, was started
+            # again and again for hours)
+            left = [va for va in left if va >= last or va in done]
         if int(env.get("CB_THREADS") or 1) > 1:
             # Several threads at work: what ended the process was any of the functions in hand,
             # not the last one written -- P3's 1BCE4 went over its budget while 1BC01 was being
