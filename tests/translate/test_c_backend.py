@@ -450,3 +450,19 @@ def test_moved_far_addresses():
     assert '  b = *((int2 __far *)MK_FP(s, q + 2));' in text, text
     assert '  g(a, p);' in text, text
     assert 'xVar1' not in text, text
+
+
+def test_moved_far_casts():
+    """c_text._far_casts on the tree: a far pointer read as another type stays far, `*(int2 __far
+    *)p`; its halves put back together, CONCAT22(<high word>,p), are `(int4)p`."""
+    word = {'kind': 'i16'}
+    p = typed('p', ptr({'kind': 'void'}, 'far'))
+    read = {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(word, 'near'), 'x': p}}
+    high = {'node': 'Cast', 'type': word,
+            'x': binary('>>', {'node': 'Cast', 'type': {'kind': 'u32'}, 'x': p}, lit(16, text='0x10'))}
+    doc = sixteen([local('p', ptr({'kind': 'void'}, 'far')),
+                   stmt({'node': 'Assign', 'target': name('a'), 'value': read}),
+                   stmt({'node': 'Assign', 'target': name('b'), 'value': fcall('CONCAT22', high, p)})])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  a = *(int2 __far *)p;' in text, text
+    assert '  b = (int4)p;' in text, text

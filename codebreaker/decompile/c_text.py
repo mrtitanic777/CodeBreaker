@@ -1610,10 +1610,10 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _entry_sp and _stack_arguments are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp and _stack_arguments are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_far_casts(text))))))
+    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(text)))))
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2587,25 +2587,6 @@ def _shared_selector_structs(shared, texts):
             out.append("typedef _Packed struct %s { %s } %s;" % (own, " ".join(cback.seg_layout(fields)), own))
             texts[fname] = texts[fname].replace("SEG_PTR(%s," % name, "SEG_PTR(%s," % own)
     return out
-
-
-def _far_casts(text):
-    """A far pointer read as another type stays far: `*(int2 *)p`, p a `void __far *`, is
-    `*(int2 __far *)p` -- the near cast keeps only its offset, and reads it in DS.
-    And a far pointer's own halves put back as it: `CONCAT22(<p's high word>, p)` is `(int4)p`;
-    `<p's low word> = <p's offset> + k` -- the pointer moved on in its segment, as a far
-    pointer's arithmetic is -- is `p = (uint1 __far *)p + k`."""
-    for p in set(re.findall(r"__far\s*\*\s*(\w+)\s*[;,)]", text)):
-        text = re.sub(r"\(\s*((?:(?!__far)[\w ])+?)\s*\*\s*\)\s*(?=%s\b)" % re.escape(p), r"(\1 __far *)", text)
-        q = re.escape(p)
-        hi = (r"(?:\(\s*\*\s*\(\s*u?int2\s*(?:__far\s*)?\*\s*\)\s*\(\s*\(\s*char\s*(?:__far\s*)?\*\s*\)\s*&\s*%s\s*\+\s*2\s*\)\s*\)"
-              r"|\(\s*u?int2\s*\)\s*\(\s*\(\s*uint4\s*\)\s*%s\s*>>\s*0x10\s*\)|%s\._2_2_)" % (q, q, q))
-        lo = r"(?:\(\s*void\s*__far\s*\*\s*\)\s*)?%s" % q
-        text = re.sub(r"CONCAT22\(\s*%s\s*,\s*%s\s*\)" % (hi, lo), "(int4)%s" % p, text)
-        low_word = r"\(\s*\*\s*\(\s*u?int2\s*(?:__far\s*)?\*\s*\)\s*\(\s*\(\s*char\s*(?:__far\s*)?\*\s*\)\s*&\s*%s\s*\+\s*0\s*\)\s*\)" % q
-        offset = r"\(\s*void\s*(?:__far\s*)?\*\s*\)\s*\(\s*\(\s*u?int2\s*\)\s*(?:\(\s*void\s*__far\s*\*\s*\)\s*)?%s\s*([+-])\s*(0x[0-9a-fA-F]+|\d+)\s*\)" % q
-        text = re.sub(r"%s\s*=\s*%s\s*;" % (low_word, offset), r"%s = (uint1 __far *)%s \1 \2;" % (p, p), text)
-    return text
 
 
 def interrupt_helpers(used):
