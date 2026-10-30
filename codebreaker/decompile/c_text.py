@@ -503,7 +503,9 @@ def compilable32(module_path, funcs, outdir):
             # of its passes the 32-bit path shares done here: `x._1_2_` is the core's spelling
             # of "2 bytes of x starting at byte 1")
             t = _null_is_zero(_pieces(t, _BY_SIZE, "uint4"))
-        t = _compare_as_numbers(_keep_frame(t, _struct_sizes(struct_notes)))
+        t = _keep_frame(t, _struct_sizes(struct_notes))
+        if not facts.get("from_l2"):
+            t = _compare_as_numbers(t)            # (the back end's for C from L2: backends/c._compare_as_numbers)
         # a function's address stored in a pointer the core typed loosely (the back end's for C
         # written from L2: backends/c._code_pointers)
         if not facts.get("from_l2"):

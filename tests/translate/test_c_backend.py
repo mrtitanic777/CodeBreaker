@@ -768,6 +768,13 @@ def test_moved_32bit_heading():
                                      stmt({'node': 'Assign', 'target': name('b'), 'value': name('other')})])
     text = c.function(store, c.MOVED, facts={'functions': {'sub_004583', 'f'}})
     assert '  a3 = (code *)sub_004583;\n  b = other;' in text, text
+    # a pointer compared with a number is compared as one (compilable32's _compare_as_numbers)
+    cmp = dict(doc, mods=[], body=[local('pcVar2', ptr({'kind': 'char'})),
+                                   {'node': 'If', 'cond': binary('<', typed('pcVar2', ptr({'kind': 'char'})),
+                                                                 {'node': 'Cast', 'type': {'kind': 'u32'}, 'x': name('a1')}),
+                                    'then': [stmt({'node': 'Assign', 'target': name('x'), 'value': lit(1)})]}])
+    assert '  if ((uint4)pcVar2 < (uint4)a1) {' in c.function(cmp, c.MOVED, facts={})
+    assert '  if (pcVar2 < (uint4)a1) {' in c.function(cmp, c.MOVED)
     sixteen_doc = sixteen([], [])
     assert c.function(sixteen_doc, c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()')
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)

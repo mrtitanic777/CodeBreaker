@@ -32,18 +32,21 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
+         "compare_as_numbers")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers")
-FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
+             "compare_as_numbers")
+FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers",
+        "compare_as_numbers")
 # ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
 # C is the module's, given its facts)
-FLAT_ONLY = ("int_result", "register_arguments", "code_pointers")      # (... and the 32-bit path alone has)
+FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers")      # (... and the 32-bit path alone has)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
@@ -3756,6 +3759,65 @@ def _code_pointers(nodes, _arrays):
             _rewrite(e['value'], lambda x: '(code *)' + _name(x))
 
 
+_POINTER_LOCAL = re.compile(r"[A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?")
+_COMPARISONS = ("<=", ">=", "<", ">", "==", "!=")
+
+
+def _compare_as_numbers(nodes, _arrays):
+    """The core compares a pointer with a plain number freely (`if (pcVar2 < (uint4)a1)`); C does
+    not allow it. Where exactly one side is a pointer variable -- a local or a parameter declared
+    one -- or a cast to a pointer type, its value is compared as a number, `(uint4)pcVar2`; the
+    other side a variable, or one cast to int4 / uint4 (compilable32's _compare_as_numbers)."""
+    doc = _now['doc']
+    ptrs = set()
+    for v in _now['locals']:
+        n = (v.get('sym') or {}).get('name')
+        if n not in _now['drop']:
+            m = _POINTER_LOCAL.fullmatch(_decl_now(v))
+            if m:
+                ptrs.add(m.group(1))
+    for p in doc.get('params') or []:
+        if re.search(r"\*+\s*%s$" % re.escape(_param_name(p)), type_text(p.get('type'), _param_name(p))):
+            ptrs.add(_param_name(p))
+    cast_ptr = object()
+
+    def operand(n):
+        """the name a side is a pointer by (a variable; '' when cast to a number; cast_ptr for a cast
+        to a pointer type), None when it is no such side"""
+        if id(n) in _now['whole']:
+            return None
+        if n.get('node') == 'Cast' and _cast_type(n) in ('int4', 'uint4'):
+            v = n['x']
+            return '' if v.get('node') != 'Cast' and operand(v) is not None else None
+        if n.get('node') == 'Cast' and _cast_type(n).replace(' ', '').endswith('*'):
+            return cast_ptr
+        if n.get('node') == 'Name' and (n.get('sym') or {}).get('kind') != 'field':
+            return _name(n)
+        return None
+    seen = _seen()
+    for e, _p in nodes:
+        if e['node'] != 'Binary' or e.get('op') not in _COMPARISONS or id(e) in _now['whole'] or id(e) not in seen:
+            continue
+        sides = [e['left'], e['right']]
+        names = [operand(s) for s in sides]
+        if None in names or (cast_ptr in names and '' not in names):
+            continue
+        ptr = [x is cast_ptr or x in ptrs for x in names]
+        if ptr[0] != ptr[1]:
+            for s, is_ptr in zip(sides, ptr):
+                if is_ptr:
+                    _rewrite(s, lambda x: '(uint4)' + _raw_now(x))
+
+
+def _raw_now(x):
+    """`x` as it is written now, its own rewrite aside (a rewrite of it written around it)"""
+    _now['bare'].add(id(x))
+    try:
+        return expr(x)
+    finally:
+        _now['bare'].discard(id(x))
+
+
 def _ends_statement(e, parent):
     """Is `e` the end of its statement -- the statement's expression, or the value of an
     assignment that is (`a = b = f;`)?"""
@@ -3779,7 +3841,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
            ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
            ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads),
-           ("names_used", _names_used), ("heading_facts", _heading_facts), ("code_pointers", _code_pointers))
+           ("names_used", _names_used), ("heading_facts", _heading_facts), ("code_pointers", _code_pointers),
+           ("compare_as_numbers", _compare_as_numbers))
 
 
 # ---------------------------------------------------------------------------------------------- functions
