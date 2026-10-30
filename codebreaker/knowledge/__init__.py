@@ -39,6 +39,9 @@ prototypes.json, api16.*.json and xdk/ pickles, and the corpus's apiarity/ folde
 (an apiarity file still there is read into the base once).
 
 Platform names may be given as the lanes say them: ne, pe, le, mz, powerpc, 16, 32.
+
+What a step of the engine reads here is an input of the fact it makes (knowledge/reads.py): a
+changed prototype or argument size makes stale exactly the facts made from it.
 """
 import re
 
@@ -61,6 +64,8 @@ def open(path=None):                                    # noqa: A001
 
 # ---- anything ------------------------------------------------------------------------------------
 def known(platform_, kind, key, default=None):
+    from codebreaker.knowledge import reads
+    reads.record(platform(platform_), kind, key)
     return store.open().get(platform(platform_), kind, key, default)
 
 
@@ -70,7 +75,14 @@ def learn(platform_, kind, key, value, source=""):
 
 
 def table(platform_, kind):
-    """{key: value} of a kind (an authored kind is loaded from its file first when the file changed)."""
+    """{key: value} of a kind (an authored kind is loaded from its file first when the file changed).
+    A step reading it reads the whole kind (knowledge/reads.py)."""
+    from codebreaker.knowledge import reads
+    reads.record_kind(platform(platform_), kind)
+    return _table(platform_, kind)
+
+
+def _table(platform_, kind):
     from codebreaker.knowledge import sources
     p = platform(platform_)
     if (p, kind) in sources.AUTHORED:
@@ -155,5 +167,7 @@ def api_model(platform_, api):
     """What the emulator's stand-in for a system function does ({ax, dx, pop} for win16, with
     "arg<N>" and "heap" as knowledge/models/win16.json says; {argc} for win32; {answers_in} for a
     ring-0 service), or None when it is not modelled."""
-    model = table(platform_, "api_model").get(api)
+    from codebreaker.knowledge import reads
+    reads.record(platform(platform_), "api_model", api)
+    model = _table(platform_, "api_model").get(api)
     return {k: v for k, v in model.items() if not k.startswith("_")} if model else None

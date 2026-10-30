@@ -758,6 +758,7 @@ as inputs of their facts (an engine step asks symbols/ as before, so a changed p
 yet make the facts made from it stale by itself); that is the next step, with the service of
 phase B owning the one open base. verify/lanes/win32's argc and c_text's argument sizes go
 through api_arguments and so through the base, unchanged in their own code (other agents' areas).
+(Done 2026-10-30: "Built: the knowledge base's pieces as inputs of facts" below.)
 
 ## Built: every lane on the engine, one function store (2026-10-29)
 
@@ -935,6 +936,49 @@ functions as each writer lays them out; a fragment per function in the NASM/MASM
 function starts (they write by address, not by function). The trees hold assembly text: what each
 instruction is (an L1 or instruction node) is not yet in them. store/functions._Module (a database
 handle) and ui/terminal.Module (a screen) are not module models and keep their names.
+
+## Built: the knowledge base's pieces as inputs of facts (2026-10-30)
+
+A fact made by a step that read the knowledge base names each piece it read as an input, beside
+the facts it read: ("kb", "platform:kind:key", the piece's hash) -- "platform:kind:*" for a kind
+read whole (the runtime-library signatures, knowledge.table), "bodies:name:<digest>" and
+"bodies:names:<module sha>" for the name store. A piece not there is "absent", so one added later
+is a change too. The engine treats them as any input: a changed piece makes stale exactly the
+facts that read it, and nothing made only from those facts is made again unless their value
+changes (the engine's early cutoff).
+
+How the reads are known (knowledge/reads.py): the engine runs every step inside
+`reads.recording()` (a context variable), and the accessors that answer from the base record what
+they read -- knowledge/__init__ (known, table, api_model), symbols/prototypes.of,
+api_arguments.header_bytes / stack_bytes / arg_bytes (so argc, describe's sizes, c_text's argument
+sizes and verify/lanes/win32's `_argc` with no change of their own), ordinals' names,
+sdk_structs.layout / pointed_to, runtime_library.match, xdk_libraries.signatures, and the store's
+name / names_from_bodies. Work a step hands to threads (jobs/pool.threads, as_done) runs in a
+copy of the step's context; work handed to worker processes (pool.run) is wrapped in `reads.Carry`,
+which brings each item's reads back with its result. lane.K.verdict attributes each function's
+reads to that function's verdict (a batch step otherwise gives its reads to all its keys). A
+piece's hash is the base's own (store.hashes: read once per process, again when another process
+wrote the file -- SQLite's data_version); an authored or derived kind is brought up to date with
+its file or headers before its hashes are compared.
+
+Evidence (lz32.dll on the engine, a state folder of its own, CB_NO_FP_CACHE=1): cold 14.1s, the
+facts recording 99 pieces (lane.pe.module 29: argument sizes, prototypes, an ordinal name;
+lane.pe.verdict 70: the imports' argument sizes and two stand-in models); warm 1.0s, every fact
+kept; one learned argument size changed by hand (win32 argument_bytes.code KERNEL32.#41, read by
+the decompile and by two functions' judges): the module made again, and 2 verdicts judged, 37
+kept. Default C output the same (l2c --made lzexpand, keyboard, comm, lz32: 223 of 223).
+
+Tests: tests/test_knowledge_reads.py (7: a changed prototype remakes only the fact that read it
+and what changes with it; an absent piece that appears; argc through api_arguments; a named body;
+reads on threads, in-process and in worker processes; a batch step's keys keep their own reads;
+nothing recorded outside a step).
+
+**Left.** What a program of its own reads is not seen (the native decompiler reads the description
+a step wrote; the 16-bit gate's processes are pool.run's and are seen). The stages' inner caches
+(state/cache: c_text's, the decompiler's) are keyed as before -- a fact made again after a piece
+changed may take the inner cache's answer, as the lz32 run's 1.7s decompile did; they go as the
+stages become steps. A long-lived process keeps a kind's values as first read (store._tables)
+while its hashes follow other processes' writes: the service should own the one open base.
 
 ## Decisions, and what is left open
 

@@ -189,10 +189,16 @@ def table():
 
 def of(name, bits=32):
     """The prototype of a Windows function, or None. Capitals do not matter."""
+    from codebreaker.knowledge import reads
     t = table()
+    platform = "win16" if str(bits) == "16" else "win32"
     found = t[str(bits)].get(name)
+    reads.record(platform, "prototype", name)            # (the step asking is made from it: knowledge/reads.py)
     if found is None:
-        found = t[str(bits)].get(t["spelling"].get((name or "").upper(), ""))
+        spelled = t["spelling"].get((name or "").upper(), "")
+        if spelled and spelled != name:
+            reads.record(platform, "prototype", spelled)
+        found = t[str(bits)].get(spelled)
     return found
 
 

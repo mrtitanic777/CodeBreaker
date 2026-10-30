@@ -103,9 +103,11 @@ def _from_corpus(stem):
 
 def _from_file(stem):
     global _shipped
+    from codebreaker.knowledge import reads
     if _shipped is None:
         from codebreaker import knowledge
-        _shipped = knowledge.table("windows", "ordinal_names")      # ordinal_names.json, as the knowledge base has it
+        _shipped = knowledge._table("windows", "ordinal_names")     # ordinal_names.json, as the knowledge base has it
+    reads.record("windows", "ordinal_names", stem)
     entry = _shipped.get(stem) or {}
     return {int(o): nm for o, nm in (entry.get("names") or {}).items()}, entry.get("from", "")
 

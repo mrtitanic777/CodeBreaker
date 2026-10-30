@@ -33,6 +33,7 @@ every module with that body (symbols/names.py says how a body is digested).
 The file lives beside the program databases (state/db/) but is not one of them: the size rule
 that deletes those (facts.hold) leaves it alone -- what was learned and given is not made again.
 """
+import hashlib
 import os
 import sqlite3
 import threading
@@ -86,6 +87,8 @@ class KnowledgeBase(object):
         self.conn.commit()
         self._tables = {}                    # (platform, kind) -> {key: value}, read once
         self._ensured = {}                   # (platform, kind) -> stamp checked this process
+        self._hashes = {}                    # (platform, kind) -> {key: hash}, for knowledge/reads.py
+        self._version = None                 # the file's data_version when _hashes was read
 
     def close(self):
         with self.lock:
@@ -123,11 +126,15 @@ class KnowledgeBase(object):
         t = self._tables.get((platform, kind))
         if t is not None:
             t.update(values)
+        h = self._hashes.get((platform, kind))
+        if h is not None:
+            h.update((r[2], r[4]) for r in rows)
 
     def forget(self, platform, kind, key):
         with self.lock, self.conn:
             self.conn.execute("DELETE FROM knowledge WHERE platform=? AND kind=? AND key=?", (platform, kind, key))
         self._tables.get((platform, kind), {}).pop(key, None)
+        self._hashes.get((platform, kind), {}).pop(key, None)
 
     def about(self, platform, kind, key):
         """(source, origin, made, hash) of one piece, or None."""
@@ -146,6 +153,33 @@ class KnowledgeBase(object):
                                          "ORDER BY seq IS NULL, seq, rowid", (platform, kind)).fetchall()
             t = self._tables[(platform, kind)] = {k: decode(tag, v) for k, tag, v in rows}
         return t
+
+    def hashes(self, platform, kind):
+        """{key: hash} of every piece of a kind: what knowledge/reads.py compares a fact's reads
+        with. Read once per process, and again when another process wrote to the file since."""
+        with self.lock:
+            version = self.conn.execute("PRAGMA data_version").fetchone()[0]
+            if version != self._version:
+                self._hashes, self._version = {}, version
+            h = self._hashes.get((platform, kind))
+            if h is None:
+                h = self._hashes[(platform, kind)] = dict(self.conn.execute(
+                    "SELECT key, hash FROM knowledge WHERE platform=? AND kind=?", (platform, kind)))
+        return h
+
+    def hash_of(self, platform, kind, key):
+        """The hash of one piece's value, or None when it is not there."""
+        return self.hashes(platform, kind).get(key)
+
+    def kind_digest(self, platform, kind):
+        """A hash of every piece of a kind (a kind read whole), or None when it has none."""
+        h = self.hashes(platform, kind)
+        if not h:
+            return None
+        d = hashlib.sha1()
+        for k in sorted(h):
+            d.update(repr((k, h[k])).encode("utf-8", "replace"))
+        return d.hexdigest()
 
     def stamp(self, platform, kind):
         with self.lock:
@@ -171,6 +205,7 @@ class KnowledgeBase(object):
                 self.conn.execute("INSERT OR REPLACE INTO loaded(platform, kind, stamp, source, made) VALUES(?,?,?,?,?)",
                                   (platform, kind, stamp, source, now))
             self._tables.pop((platform, kind), None)
+            self._hashes.pop((platform, kind), None)
         self._ensured[(platform, kind)] = stamp
         return self.table(platform, kind)
 
@@ -200,6 +235,13 @@ class KnowledgeBase(object):
         return row[0] if row else None
 
     # ---- bodies and their names (the name store) -----------------------------------------------
+    def _read(self, kind, key):
+        """A read of the name store, for the step reading it (knowledge/reads.py): only of the base
+        the process uses -- a store given a path of its own has a base the engine does not ask."""
+        from codebreaker.knowledge import reads
+        if reads.active() and os.path.normcase(self.path) == os.path.normcase(os.path.abspath(default_path())):
+            reads.record("bodies", kind, key)
+
     def add_module(self, sha, name, platform=""):
         from codebreaker import knowledge
         platform = knowledge.platform(platform or "")
@@ -226,9 +268,11 @@ class KnowledgeBase(object):
             self.conn.execute("INSERT OR REPLACE INTO body_name(hash, name, source, ts) VALUES(?,?,?,?)",
                               (body_id, name, source, time.time()))
 
-    def name(self, body_id):
+    def name(self, body_id, record=True):
         """(name, where it is from) of a body: the name given to it, else the one every module that
         names it agrees on; or None."""
+        if record:
+            self._read("name", body_id)
         with self.lock:
             row = self.conn.execute("SELECT name, source FROM body_name WHERE hash=?", (body_id,)).fetchone()
             if row:
@@ -243,10 +287,12 @@ class KnowledgeBase(object):
             return name, "the same body in %s" % module
         return None
 
-    def names_from_bodies(self, module):
+    def names_from_bodies(self, module, record=True):
         """{addr: (name, where it is from)} for the functions of a module whose body has a name
         somewhere: one given to the body, else the name another module gives the same body
         (when the modules that name it agree)."""
+        if record:
+            self._read("names", module)
         out = {}
         with self.lock:
             given = self.conn.execute(

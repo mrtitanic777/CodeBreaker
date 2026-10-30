@@ -209,11 +209,14 @@ def _declare(p):
             else:
                 todo[k] = True
         if todo:
+            from codebreaker.knowledge import reads
             b = hint["ready"]()
-            judged = pool.run(_kind(p).judge, [b["items"][hint["names"][k]] for k in todo], context=b["context"],
-                              crashed=lambda item: reconstruct.NOT_RUN)
+            # (each function's judge brings back what it read of the knowledge base -- the argument
+            # counts of the imports it calls: verify/lanes/win32._argc -- as that verdict's inputs)
+            judged = pool.run(reads.Carry(_kind(p).judge), [b["items"][hint["names"][k]] for k in todo],
+                              context=b["context"], crashed=lambda item: reconstruct.NOT_RUN)
             for k in todo:
-                v, reason, limits, detail = judged.get(k, reconstruct.NOT_RUN)
+                v, reason, limits, detail = reads.unwrap(judged.get(k, reconstruct.NOT_RUN), ctxs[k].knowledge)
                 if hint["names"][k] in hint["tainted"] and v in reconstruct.GOOD:
                     limits = sorted(set(limits) | {"stub-callee"})   # a function it calls was a stand-in
                 out[k] = [v, reason, ",".join(limits), detail]

@@ -106,6 +106,8 @@ def _signatures():
 
 def match(bits, code):
     """(name, library) of the library function `code` starts with, or None."""
+    from codebreaker.knowledge import reads
+    reads.record_kind("win16" if str(bits) == "16" else "win32", "signature")     # (knowledge/reads.py)
     table = _signatures()[str(bits)]
     for n in range(_LEAD, 0, -1):
         for size, masked, digest, name, library in table.get(bytes(code[:n]), ()):

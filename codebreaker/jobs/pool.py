@@ -87,6 +87,13 @@ def run(work, items, context=None, key=_first, jobs=None, crashed=None, small=24
     process; progress(done, total) is told as each share comes back. below_normal=False: the
     workers keep normal priority -- for work the caller would otherwise do itself, and waits on
     (below normal, on a machine busy with other work, they were starved: slower than one process)."""
+    from codebreaker.knowledge import reads
+    if reads.active() and not isinstance(work, reads.Carry):
+        # (asked by a step of the engine: what each item read of the knowledge base comes back
+        # with its result and is the step's read -- knowledge/reads.py)
+        got = run(reads.Carry(work), items, context, key, jobs, crashed, small, init, initargs, progress, size,
+                  below_normal)
+        return {k: reads.unwrap(v) for k, v in got.items()}
     items = list(items)
     jobs = jobs or default_jobs()
     crashed = crashed or (lambda item: None)
@@ -156,7 +163,15 @@ def threads(work, items, jobs=None):
     exception is raised here, once every item has ended."""
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=_jobs(jobs)) as ex:
-        return list(ex.map(work, items))
+        return list(ex.map(_in_context(work), items))
+
+
+def _in_context(work):
+    """work run in a copy of the asker's context, one per item: what is read of the knowledge base
+    on the threads is the asker's read (knowledge/reads.py)."""
+    import contextvars
+    asker = contextvars.copy_context()
+    return lambda item: asker.copy().run(work, item)
 
 
 def as_done(work, items, jobs=None, processes=False, failed=None):
@@ -165,7 +180,7 @@ def as_done(work, items, jobs=None, processes=False, failed=None):
     when given, is the result of an item whose work raised; otherwise the error is raised here."""
     from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
     with (ProcessPoolExecutor if processes else ThreadPoolExecutor)(max_workers=_jobs(jobs)) as ex:
-        futs = {ex.submit(work, it): it for it in items}
+        futs = {ex.submit(work if processes else _in_context(work), it): it for it in items}
         for fut in as_completed(futs):
             try:
                 r = fut.result()

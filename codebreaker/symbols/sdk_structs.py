@@ -213,19 +213,26 @@ def _from_headers():
 
 
 def layout(name):
+    from codebreaker.knowledge import reads
     structs, _p = _read()
+    reads.record("win32", "struct", name)                    # (knowledge/reads.py)
     s = structs.get(name)
     return Struct(name, s[0], s[1]) if s else None
 
 
 def pointed_to(type_text):
     """The structure a parameter of this type points at, or None ("LPRECT", "CONST RECT *")."""
+    from codebreaker.knowledge import reads
     structs, pointers = _read()
     t = re.sub(r"\b(?:CONST|const|FAR|NEAR|far|near)\b", " ", type_text or "").strip()
     if t.endswith("*"):
         base = t[:-1].strip()
+        reads.record("win32", "struct", base)
         return base if structs.get(base) else None
     base = pointers.get(t)
+    reads.record("win32", "struct.pointer", t)
+    if base:
+        reads.record("win32", "struct", base)
     return base if base and structs.get(base) else None
 
 

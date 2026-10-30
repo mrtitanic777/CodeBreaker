@@ -43,6 +43,12 @@ hash: steps.file) and its value compared, so what depends on a file is stale whe
 A step may return `Unkept(value)`: the value is used this run and not kept (a verdict that could
 not be reached is not a verdict).
 
+What a step reads of the knowledge base (knowledge/: a prototype, the bytes of arguments an
+import removes, a body's name, the library signatures) is recorded as it runs, wherever in the
+code it is asked (knowledge/reads.py), and each piece is an input of the fact like any other:
+("kb", "platform:kind:key", the piece's hash). A changed piece makes stale exactly the facts that
+read it; a fact that read none is untouched by any change to the base.
+
 The facts of a step of another version are dropped from a database the first time the step is
 used on it in a process (facts.py: versions, and the cap on all databases).
 """
@@ -54,6 +60,7 @@ import threading
 import time
 
 from codebreaker.engine import facts
+from codebreaker.knowledge import reads
 
 STEPS = {}                      # kind -> Step
 def _step_modules():
@@ -210,6 +217,11 @@ class Run(object):
         got = self.done.get((kind, key))
         if got is not None:
             return got
+        if kind == reads.KIND:                   # a piece of the knowledge base: its hash now, once a run
+            h = reads.digest(key)
+            with self.lock:
+                got = self.done.setdefault((kind, key), (h, h))
+            return got
         with self._lock_for(kind, key):
             got = self.done.get((kind, key))
             if got is not None:
@@ -262,12 +274,19 @@ class Run(object):
         ctxs = {k: Context(self, s, k, hint) for k in keys}
         t = time.time()
         if s.batch:
-            values = s.fn(ctxs, hint)
+            with reads.recording() as r:         # (what the knowledge base was asked: inputs too)
+                values = s.fn(ctxs, hint)
+            for c in ctxs.values():
+                c.knowledge(r)
             missing = [k for k in keys if k not in values]
             if missing:
                 raise LookupError("step %s made no %s for %s" % (kind, kind, ", ".join(missing[:4])))
         else:
-            values = {k: s.fn(ctxs[k], k) for k in keys}
+            values = {}
+            for k in keys:
+                with reads.recording() as r:
+                    values[k] = s.fn(ctxs[k], k)
+                ctxs[k].knowledge(r)
         took = (time.time() - t) / max(1, len(keys))
         out = {}
         for k in keys:
@@ -379,6 +398,21 @@ class Context(object):
         """A file this fact is made from (its hash, through the step `file`)."""
         return self.need("file", os.path.abspath(path))
 
+    def knowledge(self, keys):
+        """Pieces of the knowledge base this fact is made from (knowledge/reads.py: "platform:kind:key"),
+        each with its hash now. The engine adds what the step read as it ran; a step adds what
+        its worker processes read (reads.Carry) for the one key it was for."""
+        have = {(k, key) for k, key, _h in self.inputs}
+        for read in keys:
+            if (reads.KIND, read) not in have:
+                have.add((reads.KIND, read))
+                # (read now, not as the run first saw it: a piece the step itself learned -- the
+                # bytes an export removes, read from its code -- is recorded as it now is)
+                h = reads.digest(read)
+                with self.run.lock:
+                    self.run.done[(reads.KIND, read)] = (h, h)
+                self.inputs.append((reads.KIND, read, h))
+
     def previous(self):
         """This fact's value as last kept (made by any version), or None. Not an input: a hint
         of where to start (the functions the gate ran last time)."""
@@ -480,6 +514,9 @@ def why(db, kind, key=""):
     except LookupError:
         out["version_now"] = None
     for k, key2, h in row.inputs:
+        if k == reads.KIND:
+            out["inputs"].append((k, key2, h, reads.digest(key2) == h))
+            continue
         now = db.row(k, key2)
         out["inputs"].append((k, key2, h, bool(now and now.hash == h)))
     return out

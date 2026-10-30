@@ -276,9 +276,11 @@ def header_bytes(name):
     win32_arguments.json beside this file (tools/make_api_table.py regenerates it), as the
     knowledge base has it."""
     global _TABLE
+    from codebreaker.knowledge import reads
     if _TABLE is None:
         from codebreaker import knowledge
-        _TABLE = knowledge.table("win32", "argument_bytes.header")
+        _TABLE = knowledge._table("win32", "argument_bytes.header")
+    reads.record("win32", "argument_bytes.header", name)       # (knowledge/reads.py)
     return _TABLE.get(name)
 
 
@@ -293,11 +295,13 @@ def stack_bytes(dll, name):
     h = header_bytes(name)
     if h is not None:
         return h
+    from codebreaker.knowledge import reads
     stem = _stem(dll)
     c = _load(stem)
     if name not in c:
         c[name] = _resolve(stem, name, _MAX_HOPS)
         _save(stem, name)
+    reads.record("win32", "argument_bytes.code", "%s.%s" % (stem, name))
     return c[name]
 
 
@@ -416,6 +420,8 @@ def arg_bytes(module, ordinal):
         from codebreaker.knowledge import store
         store.open().put("win16", "argument_bytes", _scoped + key, value,
                          "%s's code" % (os.path.basename(mod[0].path).lower() if mod else module.upper()))
+    from codebreaker.knowledge import reads
+    reads.record("win16", "argument_bytes", _scoped + key)
     return cache[key]
 
 

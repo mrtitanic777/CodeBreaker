@@ -69,6 +69,8 @@ def signatures(folder):
     stamp = "%d-%s" % (REV, hashlib.sha1(repr([(f, os.path.getsize(os.path.join(folder, f)),
                                                   int(os.path.getmtime(os.path.join(folder, f))))
                                                  for f in libs]).encode()).hexdigest()[:16])
+    from codebreaker.knowledge import reads
+    reads.record("xbox360", "library_signatures", stamp)      # (knowledge/reads.py)
     return store.open().ensure("xbox360", "library_signatures", stamp, lambda: {stamp: _read_signatures(folder)},
                                "the XDK's libraries in " + folder, store.DERIVED)[stamp]
 
