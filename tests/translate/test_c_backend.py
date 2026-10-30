@@ -575,3 +575,37 @@ def test_moved_callee_pops():
     doc = sixteen([stmt(call)])
     assert '  (*(code_callee_pops *)p)();' in c.function(doc, c.MOVED, facts={'distance': 'far', 'callee_pops': True})
     assert '  (*(code *)p)();' in c.function(doc, c.MOVED, facts={'distance': 'far'})
+
+
+def test_moved_caller_frame_slots():
+    """c_text._caller_frame_slots on the tree: KEYBOARD's sub_9_0A62 clears two of its caller's
+    locals through BP as the caller left it. Written once, each function reports what the module
+    decides from (facts["frame"]); the module's plan (c.caller_frame_plan) has the helper take
+    each place as a far pointer, in the older style, and each caller pass its own local's address
+    there -- one it never declared declared first."""
+    word = {'kind': 'class', 'name': 'xunknown2'}
+    slot = lambda less: {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(word, 'near'),
+                                                           'x': binary('+', name('unaff_BP', 'i16'), lit(-less, 'i16'))}}
+    helper = dict(sixteen([local('unaff_BP', {'kind': 'i16'}),
+                           stmt({'node': 'Assign', 'target': slot(4), 'value': lit(0, 'i16')}),
+                           stmt({'node': 'Assign', 'target': slot(6), 'value': lit(0, 'i16')})]), name='h')
+    caller = dict(sixteen([local('puStack_6', ptr({'kind': 'u8'}, 'near')), stmt(fcall('h'))]), name='g')
+    near, far = {'distance': 'near', 'model': '__cdecl16near'}, {'distance': 'far', 'model': '__stdcall16far'}
+    reports = {}
+    for doc, facts in ((helper, dict(near)), (caller, dict(far))):
+        c.function(doc, c.MOVED, facts=facts)
+        reports[doc['name']] = facts['frame']
+    assert reports['h']['slots'] == {4: 'xunknown2', 6: 'xunknown2'} and reports['g']['slots'] is None
+    plan = c.caller_frame_plan(reports, {'h': False, 'g': True})
+    assert plan['h'] == {'frame_slots': {4: 'xunknown2', 6: 'xunknown2'}}
+    assert plan['g']['frame_declare'] == [('xunknown2', 'xStack_8')]
+    text = c.function(helper, c.MOVED, facts=dict(near, **plan['h']))
+    assert text.startswith('xunknown2 __cdecl16near h(frame_4,frame_6)\nxunknown2 __far *frame_4;\n'
+                           'xunknown2 __far *frame_6;\n{\n'), text
+    assert '*frame_4 = 0;' in text and 'unaff_BP' not in text
+    text = c.function(caller, c.MOVED, facts=dict(far, **plan['g']))
+    assert '{\n  xunknown2 xStack_8;\n  uint1 *puStack_6;\n' in text, text
+    assert 'h((xunknown2 __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &puStack_6)),' \
+           '(xunknown2 __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &xStack_8)));' in text
+    # (a caller with no frame of its own: nothing is changed)
+    assert c.caller_frame_plan(reports, {'g': False}) == {}

@@ -32,21 +32,21 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
         "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set(),
-        "before": {}, "after": {}, "stmt_at": {}, "pops": False}
+        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": []}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -2489,6 +2489,142 @@ def _callee_pops(nodes, _arrays):
         _now['pops'] = True
 
 
+# A helper that works in its caller's frame -------------------------------------------------------------
+# It makes no frame of its own and reaches places through BP as its caller left it -- KEYBOARD's
+# sub_9_0A62, `xor ax, ax / mov [bp-4], ax / mov [bp-6], ax / ret`, which clears two of
+# OEMTOANSI's locals. The decompiler writes `*(xunknown2 *)(unaff_BP + -4) = 0`, a BP the C never
+# has, and the caller's locals stay unset. Each such place becomes a parameter -- a far pointer,
+# the frame being in SS -- and each call passes the address of the caller's own local there:
+# [bp-4] of a frame BP set up is entry SP - 6, the caller's xStack_6. The module decides which
+# helpers and callers (caller_frame_plan, from what each function's writing found: "frame"); the
+# functions it names are written again with what it decided ("frame_slots", "frame_calls").
+_CALLER_SLOT = re.compile(r"\*\((\w+) \*\)\(unaff_BP \+ -(0x[0-9a-f]+|\d+)\)")
+_CDECL16 = re.compile(r"__cdecl16(?:near|far)")
+_CALLER_LOCAL = re.compile(r"(?m)^\s+([\w ]+?\**) ?(\w*Stack_([0-9a-f]+));$")
+_CALLER_ARRAY = re.compile(r"(?m)^\s+[\w ]+?\**\s*\w*Stack_[0-9a-f]+ \[\d+\];")
+
+
+def _named_functions(nodes):
+    """{name: (times named, times called with no arguments)} of the names the function's text
+    writes that a call could be of: each Name, each call by name alone."""
+    out = {}
+    for e, _p in nodes:
+        if e['node'] == 'Name' and (e.get('sym') or {}).get('kind') != 'field':
+            n = out.setdefault(_name(e), [0, 0])
+            n[0] += 1
+        if e['node'] == 'Call' and not e.get('args'):
+            t = e.get('target')
+            name = _name(t) if t is not None and t.get('node') == 'Name' else \
+                (e.get('sym') or {}).get('name') if t is None else None
+            if name:
+                n = out.setdefault(name, [0, 0])
+                n[1] += 1
+                if t is None:
+                    n[0] += 1
+    return {k: tuple(v) for k, v in out.items()}
+
+
+def _caller_frame_slots(nodes, _arrays):
+    """What the module decides a helper working in its caller's frame from (above): the function's
+    places through BP (`frame_slots` where it is such a helper), its locals of the frame as they
+    are declared, whether it uses BP itself, the functions it names -- facts["frame"]; and, given
+    what the module decided, the helper's places as its parameters (its heading in the older style,
+    `f(frame_4,frame_6)` then `T __far *frame_4;`, BP's local gone) or each plain call of the
+    helper in a caller given the addresses of the caller's locals there, a local it does not
+    declare declared first (c_text._caller_frame_slots, which did it on the module's texts)."""
+    facts = _now['facts']
+    doc = _now['doc']
+    locs = [v for v in _now['locals'] if (v.get('sym') or {}).get('name') not in _now['drop']]
+    seen = _seen()
+    # (the locals' declarations as they are written: _Locals.region)
+    region = _now['locals_text'] if _now['locals_text'] is not None else \
+        ''.join('\n  %s;' % _decl_now(v) for v in locs) + ('\n  ' if locs else '')
+    own = {int(m.group(3), 16): (m.group(1), m.group(2)) for m in _CALLER_LOCAL.finditer(region)}
+    bp = 'unaff_BP' in region or any(e['node'] == 'Name' and _name(e) == 'unaff_BP' for e, _p in nodes if id(e) in seen)
+    report = {'locals': own, 'arrays': bool(_CALLER_ARRAY.search(region)), 'bp': bp,
+              'named': _named_functions([(e, p) for e, p in nodes if id(e) in seen]), 'region': region}
+    # (a helper: `__cdecl16near f(void)`, `int2 unaff_BP;`, every use of it a place below BP)
+    _result, mods, words, _far_model = _heading(doc)
+    heads = mods + words
+    slots, places = None, []
+    if heads and _CDECL16.fullmatch(heads[-1]) and not doc.get('params') and \
+            not ((doc.get('sym') or {}).get('type') or {}).get('variadic') and \
+            re.search(r"(?m)^\s+int2 unaff_BP;$", region):
+        uses = sum(1 for e, _p in nodes if id(e) in seen and e['node'] == 'Name' and _name(e) == 'unaff_BP')
+        for e, _p in nodes:
+            if id(e) in seen and e['node'] == 'Unary' and e.get('op') == '*' and not e.get('postfix'):
+                m = _CALLER_SLOT.fullmatch(expr(e))
+                if m:
+                    places.append((e, m.group(1), int(m.group(2), 0)))
+        found = {}
+        for _e, ty, less in places:
+            found.setdefault(less, ty)
+        if found and uses == len(places) and all(t in SIZEOF for t in found.values()):
+            slots = found
+    report['slots'] = slots
+    facts['frame'] = report
+    given = facts.get('frame_slots')
+    if given and slots:
+        _now['old_style'] = [('frame_%x' % less, '%s __far *frame_%x' % (given[less], less)) for less in sorted(given)]
+        for e, ty, less in places:
+            _rewrite(e, lambda _x, t=ty, k=less: '*frame_%x' % k if t == given[k] else '*(%s __far *)frame_%x' % (t, k))
+        if _now['locals_text'] is not None:
+            _now['locals_text'] = re.sub(r"(?m)^\s+int2 unaff_BP;\n", "", _now['locals_text'], count=1)
+        else:
+            _now['drop'].add('unaff_BP')
+    calls = facts.get('frame_calls') or {}
+    if calls:
+        for e, _p in nodes:
+            if e['node'] != 'Call' or e.get('args') or id(e) in _now['whole']:
+                continue
+            t = e.get('target')
+            name = _name(t) if t is not None and t.get('node') == 'Name' else \
+                (e.get('sym') or {}).get('name') if t is None else None
+            if name in calls:
+                _rewrite(e, lambda _x, n=name: '%s(%s)' % (n, calls[n]))
+        _now['declare_first'] = list(facts.get('frame_declare') or ())
+
+
+def caller_frame_plan(reports, frames):
+    """The module's decision for the helpers that work in their callers' frames (above), from what
+    writing each function found (`reports` {function: facts["frame"]}, in the module's order;
+    `frames` {function: does it set up BP as its frame}) -- only where every place is below BP,
+    every caller keeps a frame of its own, and every use of the helper is a plain call of it.
+    -> {function: the facts it is written again with}."""
+    plan = {}
+    region = {n: r['region'] for n, r in reports.items() if r}     # (with the declarations put first)
+    for name, rep in reports.items():
+        slots = (rep or {}).get('slots')
+        if not slots:
+            continue
+        callers = {n: r for n, r in reports.items() if n != name and r and name in r['named']}
+        if not callers or any(not frames.get(n) or r['bp'] or r['named'][name][0] != r['named'][name][1]
+                              for n, r in callers.items()):
+            continue
+        found, ok = {}, True
+        for n, r in callers.items():
+            for less, ty in slots.items():
+                got = r['locals'].get(less + 2)
+                width = 2 if got and "*" in got[0] else SIZEOF.get(got[0].strip()) if got else None
+                if got is None and r['arrays'] or got is not None and width != SIZEOF[ty]:
+                    ok = False
+                found[(n, less)] = got[1] if got else None
+        if not ok:
+            continue
+        plan.setdefault(name, {})['frame_slots'] = dict(slots)
+        for n in callers:
+            args = []
+            for less in sorted(slots):
+                local = found[(n, less)] or "xStack_%x" % (less + 2)      # (a place the caller's C never reads)
+                if not re.search(r"(?m)^\s+[\w ]+?\**\s*%s;$" % local, region[n]):
+                    plan.setdefault(n, {}).setdefault('frame_declare', []).append((slots[less], local))
+                    region[n] = "\n  %s %s;" % (slots[less], local) + region[n]
+                # (the far address as the back end writes one: _far_addresses)
+                args.append("(%s __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &%s))" % (slots[less], local))
+            plan.setdefault(n, {}).setdefault('frame_calls', {})[name] = ",".join(args)
+    return plan
+
+
 def _far_concat_casts(nodes, _arrays):
     """`(T *)CONCAT22(seg,off)` wherever it stands is `(T __far *)CONCAT22(seg,off)`: four bytes, a
     segment and an offset, cast to a near pointer keep the offset alone and C gives it DS (SETUPX's
@@ -3048,7 +3184,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("far_concat_casts", _far_concat_casts), ("buffer_fields", _buffer_fields),
            ("far_reads", _far_reads),
            ("near_to_far", _near_to_far),
-           ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops))
+           ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
+           ("caller_frame_slots", _caller_frame_slots))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -3187,6 +3324,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['at'], _now['top'], _now['virtual'], _now['ren'], _now['locals_text'] = {}, None, {}, {}, None
         _now['ss_casts'], _now['far_read'] = set(), set()
         _now['before'], _now['after'], _now['stmt_at'], _now['pops'] = {}, {}, {}, False
+        _now["declare_first"] = []
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
@@ -3260,6 +3398,10 @@ def _function(doc, locs, em=None):
     em.tag_line()
     em.start_indent()
     em.print('{')
+    for ty, name in reversed(_now['declare_first']):
+        # (a local a pass declares before the others, each put first: _caller_frame_slots)
+        em.tag_line()
+        em.print('', '%s %s;' % (ty, name))
     if _now['locals_text'] is not None:
         # (the locals as a pass rewrote their declarations' text, blank line after them included:
         # _buffer_fields, which c_text did on the text of them)
