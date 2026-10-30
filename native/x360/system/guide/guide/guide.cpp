@@ -1139,6 +1139,11 @@ namespace
                 auto back = g->joinBack;
                 back();
             }
+            else if (action.kind == xui::PaneAction::kChosen && !host::SignedIn(g->user))
+            {
+                auto toButton = [g] { GuideJoinLive(g, g->joinBack); };
+                GuideCreateProfile(g, toButton);
+            }
             else if (action.kind == xui::PaneAction::kChosen)
                 GuideJoinLiveSignup(g);
             break;
@@ -1681,11 +1686,10 @@ namespace
 
     // Join Xbox Live for an offline profile (the profile blade's Join Xbox Live, Save Profile's first button, the own
     // Profile's row, "Xbox Live Required"): hud.xex's InfoUpsellLive.xur, one big Join Xbox Live button that calls
-    // XamShowLiveSignupUI (hud 0x913F05B8); B goes to `back`.
+    // XamShowLiveSignupUI (hud 0x913F05B8); B goes to `back`. With nobody signed in (XamShowLiveUpsellUI from a
+    // signed-out dashboard) the button is Create Profile, as XamShowLiveSignupUI is then.
     void GuideJoinLive(const std::shared_ptr<GuideSession>& g, std::function<void()> back)
     {
-        if (!host::SignedIn(g->user))
-            return GuideBack(g);
         g->joinBack = std::move(back);
         Log("System UI: Guide: Join Xbox Live");
         g->mode = GuideSession::Mode::kJoinLive;
@@ -3637,6 +3641,32 @@ void guide::ShowCreateProfile(uint32_t user)
 {
     OpenGuide(user, [](const std::shared_ptr<GuideSession>& g) { GuideCreateProfile(g, [g] { GuideBack(g); }); },
               false);
+}
+
+uint32_t guide::ShowLiveUpsell(uint32_t user)
+{
+    if (user >= 4)
+        user = 0;
+    if (host::SignedIn(user) && host::OnLive(user))
+        return 0;
+    OpenGuide(user, [](const std::shared_ptr<GuideSession>& g) { GuideJoinLive(g, [g] { GuideBack(g); }); }, false);
+    return 0;
+}
+
+uint32_t guide::ShowLiveSignup(uint32_t user)
+{
+    if (user >= 4)
+        user = 0;
+    const auto profile = host::SignedIn(user);
+    if (profile && host::OnLive(user))
+        return 0;
+    OpenGuide(user, [profile](const std::shared_ptr<GuideSession>& g) {
+        if (!profile)
+            return GuideCreateProfile(g, [g] { GuideBack(g); });
+        g->joinBack = [g] { GuideBack(g); };
+        GuideJoinLiveSignup(g);
+    }, false);
+    return 0;
 }
 
 uint32_t guide::ShowGames(uint32_t user, uint64_t xuid)

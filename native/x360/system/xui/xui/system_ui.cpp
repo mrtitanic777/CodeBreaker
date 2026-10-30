@@ -2099,6 +2099,8 @@ namespace xui
             // 8 transfer cable, others USB).
             const Image* hdd = s.assets->LoadImage("ico_64x_HD_black.png", "deviceselector.media");
             const Image* mu = s.assets->LoadImage("ico_64x_BuiltInMU.png", "deviceselector.media");
+            if (!mu) // 1888's package: its memory unit's icon by its older name
+                mu = s.assets->LoadImage("ico_64x_MU_black.png", "deviceselector.media");
             const Image* cable = s.assets->LoadImage("ico_64x_TransferCable.png", "deviceselector.media");
             const Image* usb = s.assets->LoadImage("ico_96x_USB.png", "deviceselector.media");
             // Rows are filled again whenever the list scrolls or moves focus: their status lines are made here.

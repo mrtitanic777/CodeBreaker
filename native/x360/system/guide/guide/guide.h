@@ -58,6 +58,13 @@ namespace guide
     // the Guide's (Select a Device, Enter Profile Name, the waits; the new profile signs in to `user`'s controller,
     // which the title sees as its sign-in), then Save Profile; Done, or B on the device selector, closes it.
     void ShowCreateProfile(uint32_t user);
+    // XamShowLiveUpsellUI (XAM 0x816C2888: HUD message 0x2100F): hud's Join Xbox Live scene (InfoUpsellLive.xur, in the
+    // 1888 system update's hud package too); its button is XamShowLiveSignupUI's. Nothing for a profile on Xbox LIVE.
+    uint32_t ShowLiveUpsell(uint32_t user);
+    // XamShowLiveSignupUI (XAM 0x816C3628: HUD message 0x2100E, createprofile.xex): with nobody signed in, Create
+    // Profile; a signed-in profile not on Xbox LIVE, the signup (Exit Session, Checking network status, ...); a profile
+    // on Xbox LIVE, nothing.
+    uint32_t ShowLiveSignup(uint32_t user);
 
     // Games & Apps > Recent: its Games & Apps tab lists the profile's titles played (XamUserCreateTitlesPlayed-
     // Enumerator; `played`, else host::PlayedTitles), its Downloads and All tabs the console's content packages (hud

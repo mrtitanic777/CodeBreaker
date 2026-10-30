@@ -7,9 +7,11 @@
 // runs the title's filter funclets. A filter returning EXCEPTION_CONTINUE_EXECUTION (-1) resumes after the raise
 // with the (possibly modified) context; EXCEPTION_CONTINUE_SEARCH (0) keeps searching.
 //
+// RtlUnwind does the local unwind that leaves a __try early (its comment, at the end).
+//
 // Not implemented yet, and stopped with a message when reached: unwinding to an __except block (a filter returning
-// EXCEPTION_EXECUTE_HANDLER), frames handled by other language handlers (C++ __CxxFrameHandler), and modifications of
-// the resume address or stack pointer by a filter.
+// EXCEPTION_EXECUTE_HANDLER), frames handled by other language handlers (C++ __CxxFrameHandler), modifications of
+// the resume address or stack pointer by a filter, and RtlUnwind through more than one frame.
 //
 // Details established from the title's code:
 // - Scope records are {Begin, End, Filter, JumpTarget} with absolute addresses; End is the return address of the
@@ -29,6 +31,7 @@
 #include "modules.h"
 
 #include <cstring>
+#include <vector>
 
 namespace
 {
@@ -209,6 +212,45 @@ namespace
         }
         return 0;
     }
+
+    // __C_specific_handler while unwinding: the frame's __finally blocks to run, innermost first (scope records whose
+    // JumpTarget is 0; the Filter word is the termination handler) that hold controlPc and, in the target frame, not
+    // targetIp (pass 0 for a frame being unwound through).
+    std::vector<uint32_t> TerminationHandlers(const FunctionEntry& f, uint32_t controlPc, uint32_t targetIp)
+    {
+        auto& mem = guest::g_memory;
+        std::vector<uint32_t> handlers;
+        if (!f.hasHandler)
+            return handlers;
+        const uint32_t scopes = mem.Read32(f.begin - 4);
+        const uint32_t count = mem.Read32(scopes);
+        for (uint32_t i = 0; i < count; i++)
+        {
+            const uint32_t record = scopes + 4 + i * 16;
+            const uint32_t begin = mem.Read32(record), end = mem.Read32(record + 4);
+            if (controlPc < begin || controlPc >= end || mem.Read32(record + 12) != 0)
+                continue;
+            if (targetIp >= begin && targetIp < end) // the target is inside this __try: it is not left
+                continue;
+            handlers.push_back(mem.Read32(record + 8));
+        }
+        return handlers;
+    }
+
+    // A termination handler takes AbnormalTermination (TRUE) in r3 and the establisher frame in r4 and r12.
+    void RunTerminationHandlers(PPCContext& ctx, const std::vector<uint32_t>& handlers, uint32_t establisher,
+        uint32_t stack)
+    {
+        for (const uint32_t handler : handlers)
+        {
+            PPCContext call = ctx;
+            call.r1.u64 = stack;
+            call.r3.u64 = 1;
+            call.r4.u64 = establisher;
+            call.r12.u64 = establisher;
+            kernel::CallGuest(call, handler);
+        }
+    }
 }
 
 // VOID RtlCaptureContext(PCONTEXT ContextRecord): the caller's registers; it resumes at the return address.
@@ -276,4 +318,75 @@ GUEST_IMPORT(RtlRaiseException)
         controlPc = mem.Read32(establisher + lrOffset) - 4;
         frame = establisher;
     }
+}
+
+// VOID RtlUnwind(PVOID TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue)
+//
+// The local unwind a title's code makes to leave a __try early (the CRT's _local_unwind: RtlUnwind(establisher,
+// continuation, NULL, NULL), e.g. 1888's 0x92821050): the __finally blocks between the call and TargetIp run, then
+// the target function continues at TargetIp with ReturnValue in r3. Recompiled code cannot be resumed at an
+// arbitrary address, so the unwind returns: through RtlUnwind's caller (a wrapper with no __finally of its own),
+// back into the target function, whose code after the call goes on to TargetIp. Deeper unwinds (frames between the
+// wrapper and the target, as a C++ catch or an __except reached by dispatch needs) stop with a message.
+GUEST_IMPORT(RtlUnwind)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t targetFrame = ctx.r3.u32, targetIp = ctx.r4.u32, returnValue = ctx.r6.u32;
+    const kernel::GuestThread* thread = kernel::CurrentThread();
+    const uint32_t handlerThunk = kernel::LookupImportThunk("xboxkrnl.exe", 421); // __C_specific_handler
+
+    const uint32_t sp = ctx.r1.u32;
+    const uint32_t stack = (sp - 0x100) & ~0xFu; // room for calling termination handlers
+    if (stack < thread->stackLimit)
+        Fatal("RtlUnwind to {:08X}: no stack left", targetIp);
+    mem.Write32(stack, sp); // back chain
+
+    FunctionEntry caller, target;
+    const uint32_t controlPc = uint32_t(ctx.lr) - 4;
+    if (!LookupFunction(controlPc, caller) || !LookupFunction(targetIp, target))
+        Fatal("RtlUnwind from {:08X} to {:08X}: no .pdata entry", controlPc, targetIp);
+    for (const FunctionEntry* f : { &caller, &target })
+        if (f->hasHandler && mem.Read32(f->begin - 8) != handlerThunk)
+            Fatal("RtlUnwind to {:08X}: frame {:08X} is not a __C_specific_handler frame", targetIp, f->begin);
+
+    const uint32_t callerEstablisher = mem.Read32(sp);
+    if (callerEstablisher == targetFrame) // called by the target function itself
+    {
+        if (caller.begin != target.begin)
+            Fatal("RtlUnwind to {:08X}: frame {:08X} is not the target's function", targetIp, targetFrame);
+        RunTerminationHandlers(ctx, TerminationHandlers(target, controlPc, targetIp), targetFrame, stack);
+        ctx.r3.u64 = returnValue;
+        return;
+    }
+    if (mem.Read32(callerEstablisher) != targetFrame)
+        Fatal("RtlUnwind from {:08X} to {:08X} (frame {:08X}): unwinding through more than one frame is not "
+              "implemented", controlPc, targetIp, targetFrame);
+    if (!TerminationHandlers(caller, controlPc, 0).empty())
+        Fatal("RtlUnwind from {:08X}: the wrapper {:08X} has __finally blocks of its own", controlPc, caller.begin);
+
+    // The wrapper keeps its return address in a register (mflr r31), not in its frame, so the call into it is found
+    // in the target function's code: every `bl wrapper` must leave the same __finally blocks.
+    std::vector<uint32_t> handlers;
+    bool found = false;
+    for (uint32_t a = target.begin; a < target.end; a += 4)
+    {
+        const uint32_t w = mem.Read32(a);
+        if ((w & 0xFC000003) != 0x48000001)
+            continue;
+        int32_t disp = int32_t(w & 0x03FFFFFC);
+        if (disp & 0x02000000)
+            disp -= 0x04000000;
+        if (a + disp != caller.begin)
+            continue;
+        std::vector<uint32_t> these = TerminationHandlers(target, a, targetIp);
+        if (found && these != handlers)
+            Fatal("RtlUnwind to {:08X}: the calls to {:08X} in {:08X} leave different __finally blocks", targetIp,
+                caller.begin, target.begin);
+        handlers = std::move(these);
+        found = true;
+    }
+    if (!found)
+        Fatal("RtlUnwind to {:08X}: {:08X} does not call {:08X}", targetIp, target.begin, caller.begin);
+    RunTerminationHandlers(ctx, handlers, targetFrame, stack);
+    ctx.r3.u64 = returnValue;
 }
