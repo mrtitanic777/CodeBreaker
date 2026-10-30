@@ -26,7 +26,7 @@ from codebreaker.decompile import c_text                # noqa: E402
 
 # Every pass of the C text that is a function of its arguments (the ones that take the module's
 # file or its description are covered by the whole-module cases below)
-PASSES = ["_more_helpers", "_compare_as_numbers",
+PASSES = ["_more_helpers",
           "_far_loads",
           "_open_arguments", "declaration", "_global_type", "_loads_dgroup",
           "_near_to_far",

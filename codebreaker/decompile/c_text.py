@@ -138,64 +138,6 @@ _LIBM = ("sqrt", "sin", "cos", "tan", "atan2", "pow", "ldexp", "log", "floor", "
 _SIZEOF = cback.SIZEOF                                       # (bytes of each of the decompiler's scalar types)
 
 
-_PTR_DECL = re.compile(r"(?m)^  [A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?;[ \t]*$")
-
-
-_COMPARISONS = ("<=", ">=", "<", ">", "==", "!=")
-
-
-_CAST_PTR = "(cast to a pointer)"
-
-
-def _compare_as_numbers(t):
-    """The core compares a pointer with a plain number freely (`if (pcVar2 < (uint4)a1)`); C does
-    not allow it. Where exactly one side is a pointer variable, compare its value as a number."""
-    lines = _declaration_lines(t)
-    ptrs = {m.group(1) for m in _PTR_DECL.finditer(t) if m.group(0) in lines}
-    # (and the parameters declared pointers: `a1 == (uint4)psVar1`, a1 a structure's pointer)
-    head = t.split("{", 1)[0]
-    if "(" in head:
-        ptrs.update(re.findall(r"\*+\s*(\w+)\s*(?=[,)])", head[head.index("("):]))
-    for ln in t.split("\n"):
-        if "struct {" in ln and "} _f;" in ln:
-            ptrs.update(re.findall(r"\*+\s*(\w+)(?:\[\d+\])?;", ln))
-    if not ptrs and "*)" not in t:
-        return t
-
-    def operand(src, n):
-        """A variable -- itself, a field of the frame record `_f.x`, or it cast to a number: the
-        name it is a pointer by ('' when cast); None when it is not such an operand"""
-        if n.type == "cast_expression" and src.at(n.child_by_field_name("type")) in ("int4", "uint4"):
-            v = n.child_by_field_name("value")
-            return "" if v.type != "cast_expression" and operand(src, v) is not None else None
-        if n.type == "cast_expression" and src.at(n.child_by_field_name("type")).replace(" ", "").endswith("*"):
-            return _CAST_PTR                                 # (`(s_f_p *)(q + n)`: a pointer, as cast)
-        if n.type == "identifier":
-            return src.at(n)
-        if n.type == "field_expression" and src.at(n.child_by_field_name("argument")) == "_f" and \
-                src.at(n.child_by_field_name("operator")) == ".":
-            return src.at(n.child_by_field_name("field"))
-        return None
-
-    def fix(src):
-        for n in src.find("binary_expression"):
-            if n.child_by_field_name("operator").type not in _COMPARISONS:
-                continue
-            sides = [n.child_by_field_name("left"), n.child_by_field_name("right")]
-            names = [operand(src, s) for s in sides]
-            if None in names:
-                continue
-            if _CAST_PTR in names and "" not in names:
-                continue                                     # (a pointer cast only against a number cast:
-                                                             # a global's type is not seen here)
-            ptr = [x in ptrs or x == _CAST_PTR for x in names]
-            if ptr[0] != ptr[1]:
-                for s, is_ptr in zip(sides, ptr):
-                    if is_ptr:
-                        src.insert(s.start_byte, "(uint4)")
-    return ctree.rewrite(t, fix)
-
-
 def _called(text):
     """The names of the functions the text calls (`f(...)`; not a cast or a declaration the grammar
     read as a call)."""
@@ -1302,14 +1244,6 @@ def _keeps_frame(code, off):
     return describe.windows_far_prologue(code, off) or head in (b"\x55\x8b\xec", b"\x55\x89\xe5") or head[:1] == b"\xc8"
 
 
-def _declaration_lines(text):
-    """The lines of the function's body that are a declaration and nothing else, as written --
-    what a pattern for `  T name;` may take apart (it took `  return uStack_6;` for one, of type
-    `return`)."""
-    src = ctree.Source(text)
-    return {src.line(n) for n in src.find("declaration", under=src.body()) if src.at(n) == src.line(n).strip()}
-
-
 def interrupt_helper_name(vector, regs):
     return "int%02x_%s" % (vector, "_".join(regs) if regs else "none")
 
@@ -1522,7 +1456,6 @@ def compilable_powerpc(module_path, outdir):
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         t = out[n].strip()
-        t = _compare_as_numbers(t)
         t = _code_pointers(t, set(order))
         t = _homed_arguments(t)
         body = _without_notes(t)
