@@ -1610,10 +1610,10 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts and _buffer_fields (with _frame_block) are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block) and _far_reads are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(_far_reads(text))
+    out = _near_to_far(text)
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2069,27 +2069,6 @@ def _near_to_far(text):
                     or re.fullmatch(r"\(\s*0\s*\)", inner):          # (a null pointer stays null)
                 continue
             src.insert(value.start_byte, "(%s *)" % far.group(1))
-    return ctree.rewrite(text, fix)
-
-
-def _far_reads(text):
-    """`*(T *)((U __far *)MK_FP(s, o))` -- a far place read (or written) through a near cast:
-    the segment dropped, DS:o in its stead (a RECT read out of the caller's segment, read out of
-    the module's own). What is reached through a far pointer is reached far."""
-    def fix(src):
-        for cast in src.find("cast_expression"):
-            op = src.unary(cast) or _behind_cast(src, cast)      # (`a * (int4)*(T *)(...)` too)
-            if not op or op[0] != "*":
-                continue
-            ty = cast.child_by_field_name("type")
-            # (`T *`, and a pointer read so, `T **` -- KRNL386's INITTASK stores &param_1 at
-            # ss:[0Ch]: `*(xunknown1 **)((uint1 __far *)MK_FP(unaff_SS, 0xc))` wrote DS:0Ch)
-            near = re.fullmatch(r"(\w+(?: \w+)?(?: ?\*)*?) ?\*", src.at(ty))
-            inner = cast.child_by_field_name("value")
-            inner = inner.named_children[0] if inner.type == "parenthesized_expression" and inner.named_child_count == 1 else None
-            if near and "__far" not in src.at(ty) and inner is not None and inner.type == "cast_expression" and \
-                    re.fullmatch(r"\w+ __far \*", src.at(inner.child_by_field_name("type"))):
-                src.insert(ty.start_byte + len(near.group(1)), " __far")
     return ctree.rewrite(text, fix)
 
 

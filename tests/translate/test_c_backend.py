@@ -528,3 +528,16 @@ def test_moved_buffer_fields():
     text = c.function(doc, c.MOVED, facts={'distance': 'far'})
     assert '  _Packed struct {\n  int2 aiStack_20 [11];\n  int2 aiStack_a [4];\n  } codebreaker_frame;' in text, text
     assert '  g(codebreaker_frame.aiStack_20,codebreaker_frame.aiStack_a);' in text, text
+
+def test_moved_far_reads():
+    """c_text._far_reads on the tree: a far place read through a near cast is read far; behind two
+    casts after a product (c_text's parser read a product there) it is left as it was."""
+    word = {'kind': 'i16'}
+    read = lambda: {'node': 'Unary', 'op': '*',
+                    'x': {'node': 'Cast', 'type': ptr(word, 'near'), 'x': fcall('MK_FP', name('s'), name('o'))}}
+    two = {'node': 'Cast', 'type': {'kind': 'i32'}, 'x': {'node': 'Cast', 'type': word, 'x': read()}}
+    doc = sixteen([stmt({'node': 'Assign', 'target': name('a'), 'value': read()}),
+                   stmt({'node': 'Assign', 'target': name('b'), 'value': binary('*', name('b'), two)})])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  a = *(int2 __far *)((uint1 __far *)MK_FP(s, o));' in text, text
+    assert '  b = b * (int4)(int2)*(int2 *)((uint1 __far *)MK_FP(s, o));' in text, text

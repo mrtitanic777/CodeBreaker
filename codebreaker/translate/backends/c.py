@@ -32,20 +32,20 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
-        "owners": [], "owner_of": {}, "shown": {}}
+        "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set()}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -1307,7 +1307,10 @@ def _frame_through_ss(nodes, arrays):
         terms = _terms(sum_)
         if not (in_frame(terms[-1]) or len(terms) == 2 and in_frame(terms[0])):
             continue
-        _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s *)%s" % (t, _mk_fp_text('codebreaker_ss()', s, ',')))
+        _now['ss_casts'].add(id(cast))
+        # (` __far` where _far_reads found the place it reads far: the stack's)
+        _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s%s *)%s" % (
+            t, ' __far' if id(c) in _now['far_read'] else '', _mk_fp_text('codebreaker_ss()', s, ',')))
 
 
 _PIECE = re.compile(r"_(\d+)_(\d+)_")
@@ -2668,6 +2671,77 @@ def _buffer_fields(nodes, _arrays):
     _now['locals_text'] = region[:-1]
 
 
+_FAR_PLACE = re.compile(r"\(\(\w+ __far \*\)(?:MK_FP\(.*\)|\(.*\))\)", re.S)
+
+
+def _far_place(x):
+    """Is `x` written as one far cast in brackets -- `((U __far *)MK_FP(s, o))`, `((U __far *)(p +
+    2))` (_far_addresses' texts), `((U __far *)p)`?"""
+    shown = _now['whole'].get(id(x))
+    if shown is not None:
+        return bool(_FAR_PLACE.fullmatch(shown(x).strip()))
+    if x.get('node') == 'Paren':
+        inner = x['x']
+        return inner.get('node') == 'Cast' and id(inner) not in _now['whole'] and \
+            re.fullmatch(r"\w+ __far \*", _cast_type(inner)) is not None
+    return False
+
+
+def _far_reads(nodes, _arrays):
+    """`*(T *)((U __far *)MK_FP(s, o))` -- a far place read (or written) through a near cast: the
+    segment dropped, DS:o in its stead (a RECT read out of the caller's segment, read out of the
+    module's own). What is reached through a far pointer is reached far: `*(T __far *)(...)`
+    (also behind a cast, `(int4)*(T *)(...)`, which c_text's parser read as a product; KRNL386's
+    INITTASK stores &param_1 at ss:[0Ch] through `(xunknown1 **)`, written `xunknown1 * __far*`
+    as c_text wrote it; c_text._far_reads)."""
+    parent = {id(e): p for e, p in nodes}
+    for e, p in nodes:
+        if e['node'] != 'Cast' or _now['marks'].get(id(e)) or not _unary_parent(e, parent, '*') or \
+                _arrow_of(p, parent) or not _star_as_read(p, parent):
+            continue
+        if id(e) in _now['ss_casts']:
+            # (a frame buffer through its address, written with SS: _frame_through_ss)
+            if 'far_addresses' in _now['moved']:
+                _now['far_read'].add(id(e))
+            continue
+        if id(e) in _now['whole']:
+            continue
+        ty = _cast_type(e)
+        near = re.fullmatch(r"(\w+(?: \w+)?(?: ?\*)*?) ?\*", ty)
+        if not near or '__far' in ty or not _far_place(e['x']):
+            continue
+        if near.group(1) + ' *' == ty:
+            _now['marks'][id(e)] = '_far'
+        else:
+            k = len(near.group(1))
+            _rewrite(e, lambda c, t=ty[:k] + ' __far' + ty[k:]: '(%s)%s' % (t, _written(c['x'], c)))
+
+
+def _star_as_read(u, parent):
+    """Is the `*` of `u` an indirection as c_text's parser read the text (ctree's unary, and
+    _behind_cast)? Behind casts to types with no `*` -- `(int4)*p` -- the grammar reads a product
+    of the casts and p, which it takes for one; after a product or a quotient (`a * (int4)*p`,
+    left to right: `(a * (int4)) * p`) only behind a single cast, and never after a prefix
+    operator (`-(int4)*p`: `(-(int4)) * p`)."""
+    chain, t = 0, u
+    while True:
+        up = parent.get(id(t))
+        if up is not None and up.get('node') == 'Cast' and up.get('x') is t and id(up) not in _now['whole'] and \
+                '*' not in _cast_type(up):
+            chain, t = chain + 1, up
+        else:
+            break
+    if not chain:
+        return True
+    p = parent.get(id(t))
+    if p is not None and p.get('node') == 'Unary' and not p.get('postfix') and id(p) not in _now['whole']:
+        return False
+    if p is not None and p.get('node') == 'Binary' and p.get('op') in ('*', '/', '%') and p.get('right') is t and \
+            not _bracket(_token(p), t, 1):
+        return chain == 1
+    return True
+
+
 def _arrow_of(u, parent):
     """Is `u` the `*` of a `p->f` (L2's Select of *p, written `->`)?"""
     s = parent.get(id(u))
@@ -2694,7 +2768,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("own_segment_calls", _own_segment_calls), ("interrupts", _interrupts),
            ("far_addresses", _far_addresses), ("far_casts", _far_casts), ("entry_sp", _entry_sp),
            ("stack_arguments", _stack_arguments), ("far_locals", _far_locals),
-           ("far_concat_casts", _far_concat_casts), ("buffer_fields", _buffer_fields))
+           ("far_concat_casts", _far_concat_casts), ("buffer_fields", _buffer_fields),
+           ("far_reads", _far_reads))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -2831,6 +2906,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['old_style'], _now['room'], _now['gone'], _now['far_pointers'] = None, set(), set(), {}
         _now['gap_base'], _now['decls'], _now['seen'], _now['lines'] = {}, {}, set(), set()
         _now['at'], _now['top'], _now['virtual'], _now['ren'], _now['locals_text'] = {}, None, {}, {}, None
+        _now['ss_casts'], _now['far_read'] = set(), set()
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
