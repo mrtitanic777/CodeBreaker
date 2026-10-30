@@ -437,10 +437,11 @@ def generation():
     return REV, cache.tool(_exe()), languages
 
 
-def raw(module_path, funcs, outdir, timeout=3600, l2=None):
-    """The native program's own output for a PE module, before it is made compilable (`l2`: run's)."""
+def raw(module_path, funcs, outdir, timeout=3600, l2=None, write=True):
+    """The native program's own output for a PE module, before it is made compilable (`l2`,
+    `write`: run's)."""
     description, _names = describe.describe32(module_path, funcs, outdir)
-    return run(description, timeout=timeout, l2=l2)
+    return run(description, timeout=timeout, l2=l2, write=write)
 
 
 def decompile(module_path, funcs=None, outdir=None):

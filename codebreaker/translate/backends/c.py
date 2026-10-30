@@ -32,15 +32,18 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts")
-FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments")
+FLAT = ("pieces", "null_is_zero", "int_result", "register_arguments")
+# ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
+# C is the module's, given its facts)
+FLAT_ONLY = ("int_result", "register_arguments")      # (... and the 32-bit path alone has)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
@@ -1483,6 +1486,8 @@ def _result_shown(ret):
     its callers may read AX: c_text's void -> xunknown2), `int2`/`uint2` for a byte (returned in
     AX all the same: Windows' BOOL is an int, and callers test the whole of AX)."""
     mods, base = _stack(ret)
+    if base == 'void' and 'int_result' in _now['moved']:
+        return 'int'                                     # (32-bit: in EAX -- c_text's void -> int)
     if base == 'void' and 'void_result' in _now['moved']:
         return 'xunknown2'
     if not mods and base in _BYTES and 'byte_result' in _now['moved'] and not _lost(_now['doc'] or {}):
@@ -1495,7 +1500,8 @@ def flags(doc, facts):
     is not printed), wide (a result of four bytes, or a far pointer), novalue (it sets no result),
     exported_prologue -- as its heading is written (`facts` as `function` is given them)."""
     was = _now['moved'], _now['facts'], _now['far'], _now['doc']
-    _now['moved'], _now['facts'], _now['far'], _now['doc'] = MOVED, facts or {}, set(), doc
+    _now['moved'], _now['facts'], _now['far'], _now['doc'] = \
+        tuple(p for p in MOVED if p not in FLAT_ONLY), facts or {}, set(), doc      # (16-bit)
     try:
         ret = _ret(doc)
         result, mods, words, far_model = _heading(doc)
@@ -3770,6 +3776,11 @@ def _signature(em, doc):
     em.close_group()
     em.spaces(1)
     for m in doc.get('mods') or ():
+        if 'register_arguments' in _now['moved'] and m == _register_arguments(doc):
+            # (OpenWatcom has no word for it: left out, as c_text took it out of the heading, its
+            # place given no room -- a #pragma in the header says where the arguments are)
+            em.print(m + ' ', '')
+            continue
         em.print(m)
         em.spaces(1)
     em.open_group()
@@ -3839,6 +3850,19 @@ def _old_style(doc):
     return out
 
 
+def _register_arguments(doc):
+    """`__thiscall` (the first argument in ECX) or `__fastcall` (the first two in ECX and EDX): a
+    32-bit function's convention the module's compiler has no word for (c_text's compilable32 took
+    it out of the heading, the function in its in_ecx or in_edx) -- reported as the facts'
+    "registers", "ecx" or "edx"; else None."""
+    mods = doc.get('mods') or ()
+    for word, reg in (('__thiscall', 'ecx'), ('__fastcall', 'edx')):
+        if word in mods:
+            _now['facts']['registers'] = reg
+            return word
+    return None
+
+
 def signature(doc):
     """`int2 __cdecl16far sub_1_0000(void)`"""
     return _flat(_signature, doc)
@@ -3859,7 +3883,7 @@ def function(doc, moved=(), far=None, facts=None):
     if facts is None:
         moved = [p for p in moved if p not in IN_MODULE]
     _now['facts'], _now['doc'] = (facts if facts is not None else {}), doc
-    _now['moved'] = tuple(moved) if sixteen else tuple(p for p in moved if p in FLAT)
+    _now['moved'] = tuple(p for p in moved if p not in FLAT_ONLY) if sixteen else tuple(p for p in moved if p in FLAT)
     _now['sixteen'] = sixteen
     _now['locals'], _now['drop'] = locs, set()
     # the far pointers: the parameters and locals of four bytes

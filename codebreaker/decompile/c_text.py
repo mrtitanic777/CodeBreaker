@@ -474,7 +474,9 @@ def compilable32(module_path, funcs, outdir):
     from codebreaker.build import watcom as B
     from codebreaker.decompile import decompiler
     from codebreaker.decompile import describe
-    got = decompiler.raw(module_path, funcs, outdir, l2=True)
+    # (the L2 documents kept, and each function's C written from its own here: with the module's
+    # facts, the back end's passes of the 32-bit path among them -- backends/c.FLAT)
+    got = decompiler.raw(module_path, funcs, outdir, l2=True, write=False)
     out, order, by_va, _err = got
     imports = dict(B.import_map(module_path))
     # imports by number, under the names the description gave them: declared and linked too
@@ -489,6 +491,9 @@ def compilable32(module_path, funcs, outdir):
         for va, size, _elem in facts.get("globals") or ():
             sizes.setdefault(va, set()).add(size)
             own.setdefault(n, {}).setdefault(va, set()).add(size)
+        written = {}                              # (what the back end found of the function as it wrote it)
+        if facts.get("l2") is not None:
+            out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
         t = _without_notes(out[n].strip())
@@ -501,12 +506,21 @@ def compilable32(module_path, funcs, outdir):
         # a function's address stored in a pointer the core typed loosely
         t = _code_pointers(t, set(order))
         t = _struct_gaps(t)                      # an offset of a recovered structure with no field
-        # every function returns a value in EAX whether or not the core saw it used
-        if t.startswith("void") and t[4:5].isspace():
+        # every function returns a value in EAX whether or not the core saw it used; the compiler
+        # used here has no word for "first argument in ECX": the function is declared plainly, and
+        # a #pragma in the header says where its first argument is (both the back end's for C
+        # written from L2: backends/c._result_shown, _register_arguments)
+        if written.get("registers") == "ecx":
+            in_ecx.add(n)
+        elif written.get("registers") == "edx":
+            in_edx.add(n)
+        elif facts.get("from_l2"):
+            pass
+        elif t.startswith("void") and t[4:5].isspace():
             t = "int" + t[4:]
-        # the compiler used here has no word for "first argument in ECX": the function is
-        # declared plainly, and a #pragma in the header says where its first argument is
-        if "__thiscall" in t.split("{", 1)[0]:
+        if facts.get("from_l2"):
+            pass
+        elif "__thiscall" in t.split("{", 1)[0]:
             head, brace, body = t.partition("{")
             t = head.replace("__thiscall ", "").replace("__thiscall", "") + brace + body
             in_ecx.add(n)

@@ -739,4 +739,23 @@ def test_prototypes_where_the_calls_agree():
     assert c.argument_words('(uint4)x', {}) == 2 and c.argument_words('&x', {}) == 1
     # (c_text._arguments_at's frozen case)
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
+
+
+def test_moved_32bit_heading():
+    """compilable32's heading rules on the tree, for the module's C (given facts): a `void`
+    result is `int` (EAX is there whatever the core saw), and `__thiscall` -- OpenWatcom has no
+    word for it -- is left out and reported, for the header's #pragma. Without the module's facts
+    (the C the decompiler is read for) the heading is as the core printed it."""
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'void'}, 'mods': ['__thiscall'],
+           'origin': {'module': '', 'va': 0x401000}, 'params': [param('self', ptr({'kind': 'i32'}))],
+           'body': [stmt({'node': 'Assign', 'target': name('x'), 'value': lit(1)})]}
+    facts = {}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert text.startswith('int f(int4 *self)'), text
+    assert facts['registers'] == 'ecx'
+    assert c.function(doc, c.MOVED).startswith('void __thiscall f(int4 *self)')
+    assert c.function(dict(doc, mods=['__fastcall']), c.MOVED, facts=facts).startswith('int f(') and facts['registers'] == 'edx'
+    sixteen_doc = sixteen([], [])
+    assert c.function(sixteen_doc, c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()')
+    assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
