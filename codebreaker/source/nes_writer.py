@@ -89,15 +89,17 @@ def reconstruct(path, folder):
             labels.setdefault(insn.operand, "D_%04X" % insn.operand)
     used = sorted({i.operand for i in code.values() if i.mode in ("abs", "abx", "aby") and i.operand in HARDWARE})
     hardware = {a: HARDWARE[a] for a in used}
-    out = ["; %s -- written by CodeBreaker from %s" % (stem + ".s", os.path.basename(path)),
+    out = w.lines(["; %s -- written by CodeBreaker from %s" % (stem + ".s", os.path.basename(path)),
            "; mapper %d, %d KB PRG, %d KB CHR, %s mirroring%s" % (
                rom.mapper, len(rom.prg) // 1024, len(rom.chr) // 1024, rom.mirroring,
                ", battery-backed RAM" if rom.battery else ""),
            ""] + ["%-10s = $%04X" % (hardware[a], a) for a in used] + ([""] if used else []) + [
-           '.segment "HEADER"', "        .byte " + ", ".join("$%02X" % b for b in rom.header[:16]), ""]
+           '.segment "HEADER"', "        .byte " + ", ".join("$%02X" % b for b in rom.header[:16]), ""],
+                  "ca65", os.path.basename(path))
     if rom.trainer:
         out += ['.segment "TRAINER"', "        .byte " + ", ".join("$%02X" % b for b in rom.trainer), ""]
     for seg, base, off0, size in banks:
+        out.part(seg, "segment", length=size)
         out.append('.segment "%s"' % seg)
         end = off0 + size
         vectors_here = base + size == 0x10000
@@ -121,8 +123,9 @@ def reconstruct(path, folder):
     if rom.chr:
         with open(os.path.join(folder, stem + ".chr"), "wb") as f:
             f.write(rom.chr)
+        out.part("CHARS", "segment", length=len(rom.chr))
         out += ['.segment "CHARS"', '        .incbin "%s.chr"' % stem, ""]
-    source = "\n".join(out) + "\n"
+    source = w.text(out) + "\n"
     cfg = ["MEMORY {", "    HEADER: start = $0000, size = $0010, fill = yes, file = %O;"]
     if rom.trainer:
         cfg.append("    TRAINER: start = $7000, size = $0200, fill = yes, file = %O;")

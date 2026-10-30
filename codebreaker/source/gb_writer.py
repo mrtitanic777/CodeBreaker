@@ -83,10 +83,11 @@ def reconstruct(path, folder):
     used = sorted({i.values[0] for i in code.values() if i.pattern.startswith("LDH") and i.values[0] in known} |
                   {i.values[-1] for i in code.values() if "(nn)" in i.pattern and i.values and i.values[-1] in known})
     hardware = {a: known[a] for a in used}
-    out = ["; %s -- written by CodeBreaker from %s" % (stem + ".asm", os.path.basename(path)),
-           '; "%s", %s, %d KB ROM%s%s' % (rom.title, rom.mbc, len(rom.data) // 1024,
-                                         ", Game Boy Color (%s)" % rom.cgb if rom.cgb else "",
-                                         ", Super Game Boy" if rom.sgb else ""), ""]
+    out = w.lines(["; %s -- written by CodeBreaker from %s" % (stem + ".asm", os.path.basename(path)),
+                   '; "%s", %s, %d KB ROM%s%s' % (rom.title, rom.mbc, len(rom.data) // 1024,
+                                                 ", Game Boy Color (%s)" % rom.cgb if rom.cgb else "",
+                                                 ", Super Game Boy" if rom.sgb else ""), ""],
+                  "rgbds", os.path.basename(path))
     for a in used:
         out.append("DEF %-8s EQU $%04X" % (hardware[a], a))
     if used:
@@ -100,6 +101,7 @@ def reconstruct(path, folder):
         first = bank * gb.BANK
         end = first + len(rom.banks[bank])
         mapped = bank <= 1                   # (the banks seen at power-on: where flow was followed)
+        out.part("bank%d" % bank, "bank", length=len(rom.banks[bank]))
         out.append('SECTION "bank%d", %s' % (bank, "ROM0[$0000]" if bank == 0 else "ROMX[$4000], BANK[%d]" % bank))
 
         def header(offset, addr, flush, bank=bank):
@@ -117,7 +119,7 @@ def reconstruct(path, folder):
                code_at, labels if mapped else {}, functions, lambda insn: sm83.text(insn, names_for_text), lines,
                special=header)
         out.append("")
-    source = "\n".join(out) + "\n"
+    source = w.text(out) + "\n"
     r = w.result(folder, stem + ".asm", source, functions, code, **{"rom bytes": len(rom.data)})
     from codebreaker.build import sm83_asm
     w.assembled(r, lambda: sm83_asm.build(source, len(rom.data), folder), rom.data,

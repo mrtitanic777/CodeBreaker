@@ -243,8 +243,13 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    its L2 document (decompiler.run keeps them with CB_C_FROM_L2: `c_text.Module16.l2`), and one with
    no L2 its name and place. `backends/c.module` writes the whole tree back: the C of each
    function, a note in each fragment's place, and the assembly beside it, which the lane assembles
-   on its own as today. Not yet: the 32-bit and VxD lanes, source/image_writer.py and the NASM/MASM
-   writers producing the node; a fragment inside a function (a block). Test:
-   tests/translate/test_c_backend.py.
+   on its own as today. Not yet: the 32-bit and VxD lanes' module builds; a fragment inside a
+   function (a block). Test: tests/translate/test_c_backend.py.
+   **The assembly writers, 2026-10-30.** source/image_writer.py (the six console and home-computer
+   writers), the NASM writers (ne_writer, pe_writer, le_writer) and the MASM writers (driver_writer,
+   dos_writer) build their file as one Module of MachineFragments as they write it (`l2.Assembly`:
+   a section, segment, object, bank or function each), and the text is the assembly back end's
+   (`translate/backends/asm.py`); identical output on every module gated (docs/ARCHITECTURE.md,
+   "Built: one Module model, the writers as back ends"). Test: tests/translate/test_module_model.py.
 5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module
    writer from L2 provenance (module + address).

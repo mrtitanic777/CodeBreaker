@@ -4,7 +4,9 @@
     code, targets, starts = w.walk(starts, decode, inside, fits, follows, stops)
     functions = w.functions(starts, names, "sub_%04X")
     labels = w.labels(targets, names, line_start, "L_%04X")
+    out = w.lines(["; head"], syntax, module)      the source as one L2 Module, built as it is written
     w.emit(out, start, end, byte, address, code_at, labels, functions, text, lines)
+    source = w.text(out) + "\n"                    ... written by the assembly back end (backends/asm.py)
     r = w.result(folder, stem + ".asm", source, functions, code, size)
     w.assembled(r, build, original, built_path)
 
@@ -16,6 +18,11 @@ from its entry points; every byte it reaches is written as an instruction, every
 data. Function starts keep their entry point's name or are `sub_<address>`, jump targets
 `L_<address>`, and operands naming the start of a line get that line's label. The source is then
 assembled and the result compared with the original byte for byte.
+
+The source is built as one L2 tree as it is written (translate/l2.Assembly: emit() makes each
+function a MachineFragment, a writer's part() each bank or segment), and the text is the assembly
+back end's (translate/backends/asm.py) -- as for every lane whose output is assembly, the NASM and
+MASM writers too.
 
 What differs from one machine to the next -- its processor, the assembler's spelling, how the
 image is laid out in memory, which hardware has names -- stays in its writer (source/nes_writer.py,
@@ -34,6 +41,8 @@ import subprocess
 
 from codebreaker.base import settings
 from codebreaker.compare import image
+from codebreaker.translate import l2
+from codebreaker.translate.backends import asm
 
 
 class Function(object):
@@ -146,6 +155,17 @@ def _items(row):
     return items
 
 
+def lines(first=(), syntax=None, module=None):
+    """The source being written, as one L2 Module as it goes (l2.Assembly): lines are appended to it
+    as to a list, emit() begins a fragment at each function, part() begins one by hand."""
+    return l2.Assembly(first, syntax=syntax, module=module)
+
+
+def text(out):
+    """The source `out` holds: its L2 Module, written by the assembly back end (backends/asm.py)."""
+    return asm.module(out.document())
+
+
 def commented(lines, what):
     """`lines` with `what` as a comment on the first."""
     return ["%s  ; %s" % (line, what) if i == 0 else line for i, line in enumerate(lines)]
@@ -174,6 +194,8 @@ def emit(out, start, end, byte, address, code_at, labels, functions, text, lines
         if addr in labels:
             flush()
             if addr in functions:
+                if isinstance(out, l2.Assembly):             # (each function a fragment of the module's tree)
+                    out.part(functions[addr].name, "function", {"module": out.module, "va": addr})
                 out.append("")
             out.append("%s:" % labels[addr])
         insn = code_at(offset, addr)

@@ -37,6 +37,8 @@ from codebreaker.compare.image import first_difference
 from codebreaker.formats import dos
 from codebreaker.source import assembly
 from codebreaker.symbols import dos_interrupts
+from codebreaker.translate import l2
+from codebreaker.translate.backends import asm
 from codebreaker import platforms
 
 _MARK = 0x7AB3                           # stands in for a relocated segment word while decoding
@@ -230,12 +232,12 @@ class Writer(object):
 
     def source(self, good=None):
         p = self.p
-        out = ["; %s -- reconstructed from the program image by CodeBreaker." % p.name, ";",
+        out = l2.Assembly(["; %s -- reconstructed from the program image by CodeBreaker." % p.name, ";",
                "; One segment for each segment the program names. A word holding a segment is written as",
                "; that segment, so the program can be loaded anywhere; offsets inside a segment are the",
                "; original's numbers. Labels are L_<position in the load module>. Instructions written as",
                "; bytes are ones the assembler would encode differently; their mnemonic is in the comment.",
-               "", ".386p", ""]
+               "", ".386p", ""], syntax="masm", module=p.name)       # (the file as one L2 tree, as it is written)
         counts = {"instructions": 0, "raw": 0, "data": 0}
         img = self.img
         done = 0                                             # how far the segments before have got
@@ -247,6 +249,7 @@ class Writer(object):
             # starts where the one before stopped (byte-aligned), and its offsets count from its
             # paragraph all the same.
             over = max(done, lo) - lo
+            out.part("S%04X" % s, "segment", {"module": p.name, "segment": s, "offset": 0}, hi - lo)
             align = "byte" if over else "para"
             if s == self.stack_in and hi == len(img):        # the stack, in the program's last segment
                 out.append("S%04X segment %s stack use16 'STACK'" % (s, align))
@@ -290,6 +293,7 @@ class Writer(object):
             # (the stack's room behind the file's bytes is not written: a linker puts it in the
             # file as zeros; it is memory the header asks for -- the stack is set there after linking)
             out += ["S%04X ends" % s, ""]
+        out.part("end", "end")
         if not self.flat:
             stack = (p.ss - dos.LOAD) & 0xFFFF
             if stack >= self.top:                            # the stack lies behind the load module
@@ -304,7 +308,8 @@ class Writer(object):
             out.append("end %s" % self.label(self.origin))       # where it starts: the linker leaves out what is before
         else:
             out.append("end")
-        return "\n".join(out) + "\n", counts
+        self.l2 = out.document()
+        return asm.module(self.l2) + "\n", counts
 
     def pieces(self, good):
         """The image as the pieces the source is made of, for assembly.culprits: each

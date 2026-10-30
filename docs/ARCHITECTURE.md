@@ -804,6 +804,71 @@ objects are per text, not per binary: they need a compile step the build asks, a
 function.object). The engine path is behind its switch; the old reconstruct.run and module.build
 paths stay the default until the switch is turned on for all.
 
+## Built: one Module model, the writers as back ends (2026-10-30)
+
+**One Module model (item 6).** A module, of any lane and whatever each part came back as, is one
+L2 Module document (translate/l2.py, "the module model": `l2.module`, `l2.function`,
+`l2.fragment`, `l2.comment`, `l2.units`, `l2.texts`). Two schema fields were added for what is
+still text: `MethodDecl.text` (a function's C as the store holds it, which the readable pass's text
+passes read) and `Module.header` (the module's declarations). The separate Module classes went:
+
+    source/readable.Module(texts, string_at, header)   ->  readable.Readable(doc, string_at)
+    port/asm16.Module(text, ctypes, ...)               ->  asm16.Port(doc, ctypes, ...)    (asm16.module(name, text): a
+                                                           source file as a Module of one masm MachineFragment)
+    exact/library.Module(tag, name, raw, rank)         ->  library.Member(...): .l2 its Module (each public a
+                                                           MachineFragment at its segment and offset); .pubs read from it;
+                                                           the bytes, holes and segment lengths stay the object's facts
+
+**The writers as back ends (item 10).** Two back ends beside translate/backends/c.py:
+
+    translate/backends/asm.py           a Module of MachineFragments (and Comments) as the file its
+                                        assembler reads: module(doc), lines(doc) (the line each unit begins on)
+    translate/backends/module_file.py   the module's source file people read: c(doc, facts, split) and
+                                        asm(doc, facts) -- the tree's units under their status lines, the
+                                        status at the head from the store's facts (counts, digest, build, rows)
+
+Each assembly writer builds its file as one Module as it writes it (`l2.Assembly`, a list its
+helpers append to, `part()` beginning the next MachineFragment with its origin and length) and
+asks the back end for the text: ne_writer (a fragment per segment and per stretch between),
+pe_writer (headers, each section), le_writer (each object, the fixup tables), driver_writer (each
+object), dos_writer (each segment), image_writer.emit (each function; the console writers' banks
+and segments by hand: nes, sms, gb, genesis, z80 for zx and msx). The writer keeps its tree as
+`w.l2`. module_writer builds the module as the store holds it (one tree, through
+readable.Readable), then the module as written (MethodDecl: C + status line; Comment: a function
+with none) and hands both back ends the facts. Hand-written asm stays asm: the trees hold the
+writers' own text.
+
+Gate (state/work/items610/gate.py, each case a process of its own, before = e93d9f5d7): every file
+each writer wrote, its result, and the built image, compared byte for byte (the case's folder and
+the day of a status line normalised; two runs before the change agree with each other the same way):
+
+    ne_writer   lzexpand.dll, keyboard.drv, comm.drv, krnl386.exe       12 files the same (builds back THE SAME)
+    le_writer   splitter.vxd, vkd.vxd                                    6 the same
+    pe_writer   lz32.dll                                                 3 the same
+    driver_writer (MASM)  splitter.vxd, vkd.vxd                         10 the same (the .vxd linked as before)
+    dos_writer  choice.com                                               5 the same
+    consoles    HelloWorld.sms, ucity.gbc, genesis 2048, Icarus.tap, nohzdyve.rom   13 the same
+    module_writer   lzexpand.dll, lz32.dll (C + .h), splitter.vxd, choice.com (asm)  10 the same
+    port (asm16)    link-2.40, link-2.44 (their *64.asm, PORT.md, the C)              63 the same
+    exact library   MASM 4.00, MASM 5.10 (the CRTLIB map)                              4 the same
+    all: 126 files the same, 0 differ
+
+The trees are valid L2 (lzexpand 26 fragments, lz32 8, splitter LE 6, splitter MASM 3). Tests:
+tests/translate/test_module_model.py (7, new); test_frozen, test_verification, test_whole_module,
+test_engine, test_translate, test_plumbing, test_drivers, test_xex, test_readable, test_dos,
+test_nes, test_z80, test_m68k, test_port, test_platforms and tools/check_imports pass.
+
+**Left.** decompile/c_text.py's three Module classes (Module, Module16, ModulePowerPC) are
+another agent's, folding into this model now. build/module.module_document writes its Module as
+dicts of its own (the same shape; l2.fragment/l2.function would order the keys of module.l2.json
+differently, so it was left). The xbox360 lane has no assembly writer of its own (its module file is
+module_writer's C path, gated here only through the pe and ne cases); the java lane writes C++ by
+translate/backends/cpp03.py already. The assembly writers' fragments are whole sections, segments or
+functions as each writer lays them out; a fragment per function in the NASM/MASM writers needs their
+function starts (they write by address, not by function). The trees hold assembly text: what each
+instruction is (an L1 or instruction node) is not yet in them. store/functions._Module (a database
+handle) and ui/terminal.Module (a screen) are not module models and keep their names.
+
 ## Decisions, and what is left open
 
 - Python stays the language of the engine and the steps; the native decompiler stays a step. The

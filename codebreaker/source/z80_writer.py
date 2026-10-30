@@ -60,7 +60,7 @@ def write(image, origin, entries, folder, stem, ports=None, names=None, header=(
             used_names[v] = names[v]
         elif line_at(v) and (insn.pattern in pointer or (insn.flow == "" and "(nn)" in insn.pattern)):
             labels.setdefault(v, fnames.get(v, "L_%04X" % v) if v in code else "D_%04X" % v)
-    out = ["; %s.asm -- written by CodeBreaker" % stem] + ["; " + h for h in header] + [""]
+    out = w.lines(["; %s.asm -- written by CodeBreaker" % stem] + ["; " + h for h in header] + [""], "sjasmplus", stem)
     for p, n in sorted(used_ports.items()):
         out.append("%-16s EQU $%02X" % (n, p))
     for a, n in sorted(used_names.items()):
@@ -79,7 +79,7 @@ def write(image, origin, entries, folder, stem, ports=None, names=None, header=(
         return t
     w.emit(out, origin, end, lambda a: image[a - origin], lambda a: a, lambda a, addr: code.get(a), labels,
            functions, text, lambda data: w.data_lines(data, "DEFB", "DEFS %d,$%02X"))
-    source = "\n".join(out) + "\n"
+    source = w.text(out) + "\n"
     r = w.result(folder, stem + ".asm", source, functions, code, bytes=len(image))
     from codebreaker.build import z80_asm
     placed = {}

@@ -98,15 +98,17 @@ def reconstruct(path, folder):
                 labels.setdefault(v, names.get(v, ("L_%06X" if v in code else "D_%06X") % v))
     hardware = {a: HARDWARE[a] for a in sorted(used)}
     h = rom.header
-    out = ["; %s -- written by CodeBreaker from %s" % (stem + ".asm", os.path.basename(path)),
-           '; "%s" / "%s", %s, %d KB ROM%s' % (h["domestic name"], h["overseas name"], h["serial"],
-                                              len(rom.data) // 1024, ", from an .smd dump" if rom.smd else ""), ""]
+    out = w.lines(["; %s -- written by CodeBreaker from %s" % (stem + ".asm", os.path.basename(path)),
+                   '; "%s" / "%s", %s, %d KB ROM%s' % (h["domestic name"], h["overseas name"], h["serial"],
+                                                      len(rom.data) // 1024, ", from an .smd dump" if rom.smd else ""),
+                   ""], "asm68k", os.path.basename(path))
     for a, n in hardware.items():
         out.append("%-16s equ $%06X" % (n, a))
     if hardware:
         out.append("")
     text_names = {**labels, **hardware}
     # the vector table: 64 longs
+    out.part("vectors", "vector table", length=0x100)
     out.append("        org $0")
     for i in range(64):
         v = int.from_bytes(rom.data[i * 4:i * 4 + 4], "big")
@@ -131,7 +133,7 @@ def reconstruct(path, folder):
         return n
     w.emit(out, 0x100, limit, rom.data.__getitem__, lambda offset: offset, lambda offset, addr: code.get(offset),
            labels, functions, lambda insn: m68k.text(insn, text_names), lines, special=header, size=_length)
-    source = "\n".join(out) + "\n"
+    source = w.text(out) + "\n"
     r = w.result(folder, stem + ".asm", source, functions, code, _length, **{"rom bytes": len(rom.data)})
     from codebreaker.build import m68k_asm
     w.assembled(r, lambda: m68k_asm.build(source), rom.data, os.path.join(folder, stem + ".built.md"))

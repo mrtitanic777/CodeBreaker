@@ -29,6 +29,8 @@ import struct
 from codebreaker.base import settings
 from codebreaker.formats.ne import NEFile
 from codebreaker.source import assembly, image_writer, pe_writer
+from codebreaker.translate import l2
+from codebreaker.translate.backends import asm
 from codebreaker import platforms
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jcxz|jecxz)$")
@@ -243,8 +245,9 @@ class Writer(object):
                     raw = set(raw) | {(si, st)}
                 self.placed.setdefault((si, st), self.label(si, st))
         self._raw = raw
-        L, lines_of = [], {}
-        L.append("; %s -- assembled with NASM: nasm -f bin -o %s this-file" % (os.path.basename(self.path), os.path.basename(self.path)))
+        name = os.path.basename(self.path)
+        L, lines_of = l2.Assembly(syntax="nasm", module=name), {}     # (the file as one L2 tree, as it is written)
+        L.append("; %s -- assembled with NASM: nasm -f bin -o %s this-file" % (name, name))
         L.append("bits 16")
         L.append("SHIFT equ %d" % self.shift)
         L.append("; where each segment lies in the file: its section's place, and its sector in the segment table")
@@ -255,6 +258,7 @@ class Writer(object):
         segtab = self.ne.ne_off + self.ne.h["seg_tab"]
         for lo, hi, s in regions + [(len(self.d), len(self.d), None)]:
             if lo > pos:
+                L.part("part%d" % n, "outside the segments")
                 L.append("")
                 L.append("section part%d %s vstart=0x%x align=1" % (n, "start=0x%x" % pos if exact or not prev else "follows=" + prev, pos))
                 prev = "part%d" % n
@@ -265,6 +269,7 @@ class Writer(object):
                 n += 1
             if s is None:
                 break
+            L.part("seg%d" % s["idx"], "segment", {"module": name, "segment": s["idx"], "offset": 0}, s["length"])
             L.append("")
             # (while the rounds look for what NASM does not give back, a section that came out longer
             # must not run into the next: each follows the one before; the last round places them)
@@ -275,7 +280,8 @@ class Writer(object):
             self._segment(L, s, lines_of)
             pos = hi
         L.append("")
-        return "\n".join(L), lines_of
+        self.l2 = L.document()
+        return asm.module(self.l2), lines_of
 
     def _data_plain(self, L, a, end, segtab):
         """Bytes of the file outside the segments; the segment table's sectors and lengths as expressions."""

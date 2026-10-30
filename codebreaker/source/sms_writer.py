@@ -81,14 +81,15 @@ def reconstruct(path, folder):
     constants = {**{a: REGISTERS[a] for a in used_regs}}
     port_names = {a: ports[a] for a in used_ports}
     banks = len(rom.pages)
-    out = ["; %s -- written by CodeBreaker from %s" % (stem + ".asm", os.path.basename(path)),
+    out = w.lines(["; %s -- written by CodeBreaker from %s" % (stem + ".asm", os.path.basename(path)),
            "; %s, %d KB ROM%s" % (rom.system, len(rom.data) // 1024,
                                   ", header product %s version %d (%s)" % (rom.header["product"], rom.header["version"],
                                                                            rom.header["region"]) if rom.header else ""),
            "",
            ".MEMORYMAP", "SLOTSIZE $4000", "DEFAULTSLOT 2", "SLOT 0 $0000", "SLOT 1 $4000", "SLOT 2 $8000",
            ".ENDME", "",
-           ".ROMBANKMAP", "BANKSTOTAL %d" % banks, "BANKSIZE $4000", "BANKS %d" % banks, ".ENDRO", ""]
+           ".ROMBANKMAP", "BANKSTOTAL %d" % banks, "BANKSIZE $4000", "BANKS %d" % banks, ".ENDRO", ""],
+                  "wla-z80", os.path.basename(path))
     for a in sorted(port_names):
         out.append(".DEFINE %-16s $%02X" % (port_names[a], a))
     for a in sorted(constants):
@@ -104,6 +105,7 @@ def reconstruct(path, folder):
         return t
     for page in range(banks):
         base = [0x0000, 0x4000, 0x8000][_slot(page)]
+        out.part("bank%d" % page, "bank", length=len(rom.pages[page]))
         out += [".BANK %d SLOT %d" % (page, _slot(page)), ".ORG $0000"]
         first = page * sms.PAGE
         end = first + len(rom.pages[page])
@@ -115,7 +117,7 @@ def reconstruct(path, folder):
         w.emit(out, first, end, rom.data.__getitem__, lambda offset, base=base, first=first: base + offset - first,
                code_at, labels if mapped else {}, functions, text, w.data_lines)
         out.append("")
-    source = "\n".join(out) + "\n"
+    source = w.text(out) + "\n"
     r = w.result(folder, stem + ".asm", source, functions, code, **{"rom bytes": len(rom.data)})
     from codebreaker.build import z80_asm
     w.assembled(r, lambda: z80_asm.build(source, folder), rom.data,

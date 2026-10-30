@@ -33,6 +33,8 @@ from codebreaker.base import settings
 from codebreaker.formats import pe_functions
 from codebreaker.formats.pe import open_pe
 from codebreaker.source import assembly, image_writer
+from codebreaker.translate import l2
+from codebreaker.translate.backends import asm
 from codebreaker import platforms
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jecxz|jcxz)$")
@@ -308,12 +310,13 @@ class Writer(object):
                     self.placed[va] = self.name(va)
         for st in {self.covered[v] for v in want if v in self.covered and v not in self.insns}:
             self.placed[st] = self.name(st)
-        L, lines_of = [], {}
-        L.append("; %s -- assembled with NASM: nasm -f bin -o %s %s" % (
-            os.path.basename(self.path), os.path.basename(self.path), "this file"))
+        name = os.path.basename(self.path)
+        L, lines_of = l2.Assembly(syntax="nasm", module=name), {}     # (the file as one L2 tree, as it is written)
+        L.append("; %s -- assembled with NASM: nasm -f bin -o %s %s" % (name, name, "this file"))
         L.append("bits 32")
         L.append("IMAGE equ 0x%x" % self.B)
         L.extend(_PRELUDE)
+        L.part("hdr", "headers", {"module": name, "va": self.B}, self.headers)
         L.append("")
         L.append("section hdr start=0 vstart=0x%x align=1" % self.B)
         if stub:
@@ -329,6 +332,7 @@ class Writer(object):
                 gaps[s["nasm"]] = (ends, s["rawptr"])
             ends = max(ends, s["rawptr"] + s["rawsize"])
         for s in self.secs:
+            L.part(s["nasm"], "section", {"module": name, "va": s["va"]}, s["rawsize"] if s["file"] else None)
             L.append("")
             if s["nasm"] in gaps:
                 lo, hi = gaps[s["nasm"]]
@@ -360,11 +364,13 @@ class Writer(object):
             for v in sorted(x for x in self.placed if end <= x < s["va"] + s["extent"]):
                 L.append("%s equ $+0x%x" % (self.placed[v], v - end))
         if self.tail:
+            L.part("tail", "after the sections", length=self.tail)
             L.append("")
             L.append("section tail start=0x%x vstart=0 align=1" % (len(self.d) - self.tail))
             L.extend("    " + x for x in assembly.data_lines(self.d[len(self.d) - self.tail:]))
         L.append("")
-        return "\n".join(L), lines_of
+        self.l2 = L.document()
+        return asm.module(self.l2), lines_of
 
     def _bss(self, L, s):
         a, end = s["va"], s["va"] + s["extent"]

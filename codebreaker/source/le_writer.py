@@ -32,6 +32,8 @@ import struct
 from codebreaker.base import settings
 from codebreaker.formats import le
 from codebreaker.source import assembly, image_writer, pe_writer
+from codebreaker.translate import l2
+from codebreaker.translate.backends import asm
 from codebreaker import platforms
 
 _BRANCH = re.compile(r"^(j\w+|call|loop\w*|jcxz|jecxz)$")
@@ -251,8 +253,9 @@ class Writer(object):
                 regions.append((lf.fixup_rec, lf.fixup_rec + offs[-1], "fixrec", dr, offs))
                 regions.append((lf.fixup_page, lf.fixup_page + 4 * (lf.mpages + 1), "fixpage", dr, offs))
         regions.sort(key=lambda r: r[0])
-        L, lines_of = [], {}
-        L.append("; %s -- assembled with NASM: nasm -f bin -o %s this-file" % (os.path.basename(self.path), os.path.basename(self.path)))
+        name = os.path.basename(self.path)
+        L, lines_of = l2.Assembly(syntax="nasm", module=name), {}     # (the file as one L2 tree, as it is written)
+        L.append("; %s -- assembled with NASM: nasm -f bin -o %s this-file" % (name, name))
         L.extend(_PRELUDE)
         for dr in self.drivers:
             for o in dr.objs:
@@ -263,6 +266,7 @@ class Writer(object):
             if lo < pos:                                     # (overlapping tables: written with what they overlap)
                 continue
             if lo > pos:
+                L.part("part%d" % n, "outside the objects", length=lo - pos)
                 L.append("")
                 L.append("section part%d %s vstart=0x%x align=1" % (n, "start=0x%x" % pos if exact or not prev else "follows=" + prev, pos))
                 prev = "part%d" % n
@@ -270,6 +274,11 @@ class Writer(object):
                 n += 1
             if kind is None:
                 break
+            if kind == "obj":
+                L.part("%so%d" % (dr.tag, what["idx"]), "object", {"module": name, "segment": what["idx"], "offset": 0},
+                       what["size"])
+            else:
+                L.part(dr.tag + kind, "fixups", length=hi - lo)
             L.append("")
             if kind == "obj":
                 o = what
@@ -292,7 +301,8 @@ class Writer(object):
                     L.append("    dd %sfr_p%d-%sfr_p0" % (dr.tag, k, dr.tag))
             pos = hi
         L.append("")
-        return "\n".join(L), lines_of
+        self.l2 = L.document()
+        return asm.module(self.l2), lines_of
 
     def _object(self, L, dr, o, raw, lines_of):
         oi, base, size = o["idx"], o["start"], o["size"]

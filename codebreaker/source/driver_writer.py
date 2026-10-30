@@ -39,6 +39,8 @@ from codebreaker.build import vxdfile
 from codebreaker.formats import le
 from codebreaker.source import assembly
 from codebreaker.symbols import driver_services
+from codebreaker.translate import l2
+from codebreaker.translate.backends import asm
 from codebreaker import platforms
 
 _MARK = 0x7A000000                       # stands in for a patched address while decoding
@@ -317,17 +319,18 @@ class Writer(object):
         assembler error on a line names the instruction to write as bytes instead."""
         line_of = {}
         name = self.d.get("name", "DRIVER").strip()
-        out = ["; %s -- a virtual device driver, reconstructed from the image by CodeBreaker." % name,
+        out = l2.Assembly(["; %s -- a virtual device driver, reconstructed from the image by CodeBreaker." % name,
                ";",
                "; One segment per object of the original. Nothing here is an address: every place the",
                "; loader patches is written as the label it refers to. Labels are L<object>_<offset in the",
                "; original>; names the image itself carries (entry points, the descriptor block) are used",
                "; where there are any. Instructions written as bytes are ones the assembler would encode",
                "; differently from the original; their mnemonic is in the comment.",
-               "", ".386p", ".model flat", ""]
+               "", ".386p", ".model flat", ""], syntax="masm", module=name)   # (the file as one L2 tree)
         counts = {"instructions": 0, "raw": 0, "data": 0}
         for i in sorted(self.objects):
             ob = self.objects[i]
+            out.part("S%d" % i, "object", {"module": name, "segment": i, "offset": 0}, ob.size)
             cls = "O%d%s" % (i, "CODE" if ob.code else "DATA")
             out += ["; object %d: %d bytes, %s" % (i, ob.size, _attributes(ob.flags)),
                     "S%d segment dword public %s '%s'" % (i, "use32" if ob.wide else "use16", cls)]
@@ -390,8 +393,10 @@ class Writer(object):
             if ob.size in ob.labels:
                 out.append("%s:" % self.label(i, ob.size))
             out += ["S%d ends" % i, ""]
+        out.part("end", "end")
         out.append("end")
-        return "\n".join(out) + "\n", counts, line_of
+        self.l2 = out.document()
+        return asm.module(self.l2) + "\n", counts, line_of
 
     def classes(self):
         return [("O%d%s" % (i, "CODE" if ob.code else "DATA"), _attributes(ob.flags))
