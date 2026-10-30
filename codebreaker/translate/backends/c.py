@@ -3107,7 +3107,7 @@ def _heading_facts(nodes, _arrays):
         from_text(text)
     head = ' '.join(sig.split('(', 1)[0].split())
     _now['facts']['heading'] = {'params': params, 'types': types, 'calls': calls,
-                                'declaration': head + '();', 'fastcall': '__fastcall16near' in head}
+                                'declaration': head + '();', 'fastcall': '__fastcall16' in head}
 
 
 def prototypes(headings, order):

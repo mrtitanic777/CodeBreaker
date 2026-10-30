@@ -56,7 +56,7 @@ PLATFORM = Platform(
     cpu=Cpu("x86:LE:16:Protected Mode:default", bits=16, endian="little", decoder=("capstone", "x86", 16),
             registers=("AX", "BX", "CX", "DX", "SI", "DI", "BP", "SP", "CS", "DS", "ES", "SS"), stack="SP"),
     convention=Convention(names=("__stdcall16far", "__stdcall16near", "__cdecl16far", "__cdecl16near",
-                                 "__fastcall16near"),
+                                 "__fastcall16near", "__fastcall16far"),
                           arguments=8, word=2, order="pascal", results=("AX", "DX:AX"), pops="either",
                           preserved=("SI", "DI", "DS")),
     emulator=Emulator(engine="unicorn", run=Ref("codebreaker.emulate.windows16", "recorded"),

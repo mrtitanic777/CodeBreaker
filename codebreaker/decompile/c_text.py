@@ -393,6 +393,7 @@ uint2 codebreaker_entry_sp(void);
    named in a pragma after its declaration. */
 #pragma aux codebreaker_fastcall "_*" parm caller [ax] [dx] [bx] modify [ax bx cx dx es];
 #define __fastcall16near __near
+#define __fastcall16far __far
 #endif
 #define CONCAT11(a,b) ((uint2)(((uint2)(uint1)(a) << 8) | (uint1)(b)))
 #define CONCAT22(a,b) ((uint4)(((uint4)(uint2)(a) << 16) | (uint2)(b)))
@@ -988,7 +989,7 @@ def _compilable16(module_path, outdir=None):
                          "  return 0;\n}" % (" ".join(words), nm))
             head = "xunknown2 %s %s" % (" ".join(words), nm)          # (its heading, as the back end reports one)
             found_of[nm] = {"heading": {"params": (head, []), "types": {}, "calls": [], "declaration": head + "();",
-                                        "fastcall": "__fastcall16near" in head}}
+                                        "fastcall": "__fastcall16" in head}}
             flags_of[nm] = ({"exported_prologue"} if far and facts["export"] else set()) | (set() if far else {"near"})
             by_va[va] = nm
             m.failed.setdefault(nm, "the decompiler could not make it")
