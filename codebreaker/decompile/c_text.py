@@ -135,105 +135,13 @@ _X86_HELPERS = _more_helpers(_HELPERS)
 _LIBM = ("sqrt", "sin", "cos", "tan", "atan2", "pow", "ldexp", "log", "floor", "fmod")    # declared in it
 
 
-_LOCAL = re.compile(r"(?m)^  ([A-Za-z_][\w ]*?(?:\s*\*+\s*|\s))([a-z]+Stack_([0-9a-f]+))(?: \[(\d+)\])?;[ \t]*$")
-
-
 _SIZEOF = cback.SIZEOF                                       # (bytes of each of the decompiler's scalar types)
-
-
-def _keep_frame(t, sizes=None):
-    """Keep a function's stack locals where the original had them, relative to one another.
-
-    The original often builds a small structure in its frame and passes its address
-    (`mov [ebp-18h], hwnd / mov [ebp-14h], id / lea edx, [ebp-18h] / push edx`). The core
-    recovers the fields as separate locals; a C compiler then places them wherever it likes, and
-    the callee, reading through the pointer, finds something else. When any stack local's address
-    can escape, the locals are declared as the fields of one frame structure at their original
-    offsets, so every address taken still points at what the original put there. `sizes`: more
-    types' sizes -- the structures recovered for the function (_struct_sizes)."""
-    lines = _declaration_lines(t)                        # (`return x;` / `goto x;` are not declarations)
-    locs = [m for m in _LOCAL.finditer(t) if m.group(0) in lines]
-    if not locs:
-        return t
-    names = [m.group(2) for m in locs]
-    src = ctree.Source(t)
-    # (the stack pointer at entry, which the core writes `register0x00000010` when no local stands
-    # for the place -- MSVC's SEH frame saving ESP, a buffer reached from ESP: the frame says where)
-    esp = _ENTRY_ESP in t
-    if not (esp or any(m.group(4) for m in locs) or any(src.unary(n) and src.unary(n)[0] == "&"
-                                                       for n in src.find("identifier") if src.at(n) in names)):
-        return t
-    items = []
-    for m in locs:
-        ty = " ".join(m.group(1).split())
-        size = 4 if ty.endswith("*") else _SIZEOF.get(ty) or (sizes or {}).get(ty)
-        if size is None:
-            return t                                       # a type whose size we do not know
-        count = int(m.group(4)) if m.group(4) else 1
-        items.append((int(m.group(3), 16), size * count, ty, m.group(2), m.group(4)))
-    items.sort(reverse=True)                               # largest offset = lowest address, first
-    fields, pos = [], None
-    for off, size, ty, name, arr in items:
-        addr = -off
-        if pos is not None:
-            gap = addr - pos
-            if gap < 0:
-                return t                                   # overlapping locals: leave as they are
-            if gap:
-                fields.append("uint1 _gap_%x[%d];" % (off, gap))
-        fields.append("%s %s%s;" % (ty, name, "[%s]" % arr if arr else ""))
-        pos = addr + size
-    if pos is not None and pos < 0:
-        # the original's frame runs on to its return address: a callee handed the address of the
-        # last local may fill a whole structure there (a RECT the core saw only two fields of)
-        fields.append("uint1 _rest[%d];" % -pos)
-    decl = "  struct { %s } _f;   /* locals at their offsets in the original's frame */" % " ".join(fields)
-    first = [True]
-
-    def strip(_m):
-        if first[0]:
-            first[0] = False
-            return "/*codebreaker:frame*/"                # (a comment: the parser reads past it; it stopped at a NUL)
-        return ""
-    t = _LOCAL.sub(lambda m: strip(m) if m.group(0) in lines else m.group(0), t)
-    wanted = set(names)
-
-    def fields(src):
-        for n in src.find("identifier"):
-            if src.at(n) in wanted:
-                src.replace(n, "_f." + src.at(n))
-    t = ctree.rewrite(t, fields).replace("/*codebreaker:frame*/", decl)
-    # the frame structure ends where the original's locals end: at the stack pointer on entry
-    return t.replace(_ENTRY_ESP, "((int4)&_f + (int4)sizeof(_f))") if esp else t
-
-
-_ENTRY_ESP = "register0x00000010"
 
 
 _PTR_DECL = re.compile(r"(?m)^  [A-Za-z_][\w ]*?\*+\s*(\w+)(?: \[\d+\])?;[ \t]*$")
 
 
 _COMPARISONS = ("<=", ">=", "<", ">", "==", "!=")
-
-
-def _null_is_zero(t):
-    """`x == (int4 *)0x0` is `x == 0` whatever x is; written with the cast, it does not compile
-    when x is a number."""
-    def fix(src):
-        for n in src.find("binary_expression"):
-            if n.child_by_field_name("operator").type in ("==", "!="):
-                r = n.child_by_field_name("right")
-                if r.type == "cast_expression" and _null_pointer(src, r):
-                    src.replace(r, "0")
-    return ctree.rewrite(t, fix)
-
-
-def _null_pointer(src, cast):
-    """`(T *)0x0`: a pointer type, the value 0x0"""
-    ty, value = cast.child_by_field_name("type"), cast.child_by_field_name("value")
-    star = ty.child_by_field_name("declarator")
-    return value.type == "number_literal" and src.at(value) == "0x0" and star is not None and \
-        star.type == "abstract_pointer_declarator"
 
 
 _CAST_PTR = "(cast to a pointer)"
@@ -502,44 +410,21 @@ def compilable32(module_path, funcs, outdir):
             written["functions"] = set(order)
             written["struct_sizes"] = _struct_sizes(struct_notes)      # (the frame structure: backends/c._keep_frame)
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
+        if facts.get("l2") is not None and not facts.get("from_l2"):
+            # (a function the back end declines -- a node it does not write -- is one the
+            # decompiler could not make, as one whose decompile failed: no C, so no declaration,
+            # and the build stands something in for it)
+            out[n] = "/* %s: its C could not be written from L2 */" % n
         # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
         t = _without_notes(out[n].strip())
-        if not facts.get("from_l2"):
-            # (C the back end declined -- an Unsupported node -- is the printed C, and has those
-            # of its passes the 32-bit path shares done here: `x._1_2_` is the core's spelling
-            # of "2 bytes of x starting at byte 1")
-            t = _null_is_zero(_pieces(t, _BY_SIZE, "uint4"))
-            t = _keep_frame(t, _struct_sizes(struct_notes))       # (the back end's for C from L2: backends/c._keep_frame)
-        if not facts.get("from_l2"):
-            t = _compare_as_numbers(t)            # (the back end's for C from L2: backends/c._compare_as_numbers)
-        # a function's address stored in a pointer the core typed loosely (the back end's for C
-        # written from L2: backends/c._code_pointers)
-        if not facts.get("from_l2"):
-            t = _code_pointers(t, set(order))
-        if not facts.get("from_l2"):
-            t = _struct_gaps(t)                  # an offset of a recovered structure with no field
         # every function returns a value in EAX whether or not the core saw it used; the compiler
         # used here has no word for "first argument in ECX": the function is declared plainly, and
-        # a #pragma in the header says where its first argument is (both the back end's for C
-        # written from L2: backends/c._result_shown, _register_arguments)
+        # a #pragma in the header says where its first argument is (both the back end's:
+        # backends/c._result_shown, _register_arguments)
         if written.get("registers") == "ecx":
             in_ecx.add(n)
         elif written.get("registers") == "edx":
-            in_edx.add(n)
-        elif facts.get("from_l2"):
-            pass
-        elif t.startswith("void") and t[4:5].isspace():
-            t = "int" + t[4:]
-        if facts.get("from_l2"):
-            pass
-        elif "__thiscall" in t.split("{", 1)[0]:
-            head, brace, body = t.partition("{")
-            t = head.replace("__thiscall ", "").replace("__thiscall", "") + brace + body
-            in_ecx.add(n)
-        elif "__fastcall" in t.split("{", 1)[0]:             # ... or its first two in ECX and EDX
-            head, brace, body = t.partition("{")
-            t = head.replace("__fastcall ", "").replace("__fastcall", "") + brace + body
             in_edx.add(n)
         out[n] = t
     text = "\n".join(out.values())
