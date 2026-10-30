@@ -32,14 +32,14 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
@@ -2610,6 +2610,90 @@ def _selector_imports(nodes, _arrays):
             _rewrite(e, lambda _x, s="%s(&%s)" % ("FP_SEG" if how == "segment" else "FP_OFF", imp): s)
 
 
+_FAR_OFFSET = re.compile(r"(-?)0x([0-9a-f]+)")
+
+
+def _segment_values(nodes, _arrays):
+    """A segment of the module's own as a value -- its selector passed on, pushed, left in AX:
+    the decompiler shows the made-up selector the description gave it. Where the function's own
+    code holds a loader fix-up for that segment's selector (a number like 1000h is as often a
+    plain constant), the module says what it is (facts "segment_values" {spelled: C}): the
+    automatic data segment is `codebreaker_ds()`; a code segment, the selector of a far function
+    in it (the loader fixes that one up); another data segment, by the bytes the build carries
+    for it. And a far pointer passed whole -- its offset the argument before its selector: a
+    function's place ("segment_places" {(segment, offset): function}), written by the function's
+    name (USER's sub_1_3514 passes the callback 1:3452 to an enumeration as `0x3452, <segment
+    1>`: a number, it would still go where the function was if that one moved). c_text's
+    _compilable16 did both on the module's texts."""
+    values = _now['facts'].get('segment_values')
+    if not values:
+        return
+    seen = _seen()
+    for e, _p in nodes:
+        if e['node'] == 'Lit' and id(e) in seen and id(e) not in _now['whole'] and _lit(e) in values:
+            _rewrite(e, lambda _x, s=values[_lit(e)]: s)
+    by_expr = {s: sg for s, sg in (_now['facts'].get('segment_of') or {}).items()}
+    places = _now['facts'].get('segment_places') or {}
+    for e, _p in nodes:
+        args = [x for x in e.get('args') or [] if id(x) in seen] if e['node'] == 'Call' else []
+        for a, b in zip(args, args[1:]):
+            sg = by_expr.get(expr(b).strip())
+            if sg is None or id(a) in _now['whole'] or not (
+                    a['node'] == 'Lit' or a['node'] == 'Unary' and a.get('op') == '-' and not a.get('postfix')):
+                continue
+            lit_ = _FAR_OFFSET.fullmatch(expr(a).replace(' ', ''))
+            if not lit_:
+                continue
+            fn = places.get((sg, (-int(lit_.group(2), 16) if lit_.group(1) else int(lit_.group(2), 16)) & 0xFFFF))
+            if fn:
+                _rewrite(a, lambda _x, f=fn: "((uint2)(uint4)(void __far *)&%s)" % f)
+
+
+def segment_plan(functions, near, where, sites, code, data_segment, other_data, first_selector):
+    """Which functions' C names a segment of the module's own by its made-up selector, and what it
+    is there (_segment_values) -- `functions` [(address, name)] in address order, `near` the near
+    ones, `where` {address: (segment, offset)}, `sites` {segment: [(offset, segment whose selector
+    the loader puts there)]}, `code` the code segments. -> {function: its facts}"""
+    own = {}
+    for va, n in functions:
+        sg = (where.get(va) or (None,))[0]
+        if sg is not None and n not in near:
+            own.setdefault(sg, n)
+    sel_expr = {}
+    for sg in set(code) | ({data_segment} if data_segment else set()):
+        made_up = first_selector + 8 * (sg - 1)
+        if sg == data_segment:
+            sel_expr[made_up] = "codebreaker_ds()"
+        elif sg in own:
+            sel_expr[made_up] = "((uint2)((uint4)(void __far *)&%s >> 16))" % own[sg]
+    for sg in other_data:
+        sel_expr[first_selector + 8 * (sg - 1)] = "((uint2)((uint4)(void __far *)codebreaker_segment_%d >> 16))" % sg
+    if not sel_expr:
+        return {}
+    starts = {}
+    for va, n in functions:
+        if where.get(va):
+            starts.setdefault(where[va][0], []).append(where[va][1])
+    for sg in starts:
+        starts[sg].sort()
+    at_place = {where[va]: n for va, n in functions if where.get(va)}
+    plan = {}
+    for va, name in functions:
+        if not where.get(va):
+            continue
+        sg, off = where[va]
+        later = [o for o in starts[sg] if o > off]
+        end = later[0] if later else 0x10000
+        wanted = {first_selector + 8 * (t - 1) for (o, t) in sites.get(sg, ()) if off <= o < end}
+        here = {v: e for v, e in sel_expr.items() if v in wanted}
+        if here:
+            plan[name] = {"segment_values": {"0x%x" % v: e for v, e in here.items()},
+                          "segment_of": {e: (v - first_selector) // 8 + 1 for v, e in here.items()},
+                          "segment_places": {p: n for p, n in at_place.items()
+                                             if p[0] in {(v - first_selector) // 8 + 1 for v in here}}}
+    return plan
+
+
 def caller_frame_plan(reports, frames):
     """The module's decision for the helpers that work in their callers' frames (above), from what
     writing each function found (`reports` {function: facts["frame"]}, in the module's order;
@@ -3210,7 +3294,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("far_reads", _far_reads),
            ("near_to_far", _near_to_far),
            ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
-           ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports))
+           ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
+           ("segment_values", _segment_values))
 
 
 # ---------------------------------------------------------------------------------------------- functions

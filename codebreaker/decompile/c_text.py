@@ -1730,6 +1730,14 @@ def _compilable16(module_path, outdir=None):
         seg, off = d.where.get(va) or (None, None)
         frames[nm] = seg in d.images and _keeps_frame(d.images[seg], off)
     plan = cback.caller_frame_plan({nm: (found_of.get(nm) or {}).get("frame") for nm in texts}, frames)
+    # ... and the module's own segments as values, where the function's code holds a loader fix-up
+    # for one (backends/c._segment_values: which function is far is known once each is written)
+    near = {nm for nm, fl in flags_of.items() if "near" in fl}
+    for nm, extra in cback.segment_plan(sorted(by_va.items()), near, d.where, _selector_sites(module_path),
+                                        getattr(d, "code", {}), d.data_segment,
+                                        set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment},
+                                        describe.FIRST_SELECTOR).items():
+        plan.setdefault(nm, {}).update(extra)
     item_of = {by_va[item[0]]: item for item in items if item[0] in by_va}
     for nm, extra in plan.items():
         if nm in item_of:
@@ -1770,75 +1778,7 @@ def _compilable16(module_path, outdir=None):
         m.where[va] = d.where.get(va)
         # (an import's value used bare is the import: backends/c._selector_imports)
         m.selector_imports.update(found.get("selector_imports") or {})
-    # A segment of the module's own as a value -- its selector passed on, pushed, left in AX: the
-    # decompiler shows the made-up selector the description gave it. The automatic data segment
-    # is DS; a code segment, the selector of a far function in it (the loader fixes that one up).
-    own = {}
-    for va, n in m.by_va.items():
-        sg = (m.where.get(va) or (None,))[0]
-        if sg is not None and n not in m.near:
-            own.setdefault(sg, n)
-    sel_expr = {}
-    for sg in set(getattr(d, "code", {})) | ({d.data_segment} if d.data_segment else set()):
-        made_up = describe.FIRST_SELECTOR + 8 * (sg - 1)
-        if sg == d.data_segment:
-            sel_expr[made_up] = "codebreaker_ds()"
-        elif sg in own:
-            sel_expr[made_up] = "((uint2)((uint4)(void __far *)&%s >> 16))" % own[sg]
-    # ... and a data segment besides the automatic one, by the bytes the build carries for it
-    # (USER's segment 44 handed to GetProfileString as the far pointer to a string in it)
     other_data = set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment}
-    for sg in other_data:
-        sel_expr[describe.FIRST_SELECTOR + 8 * (sg - 1)] = \
-            "((uint2)((uint4)(void __far *)codebreaker_segment_%d >> 16))" % sg
-    # ... where the function's own code holds a loader fix-up for that segment's selector: a
-    # number like 1000h is as often a plain constant
-    sites = _selector_sites(module_path)
-    starts = {}
-    for va, n in m.by_va.items():
-        sg_off = m.where.get(va)
-        if sg_off:
-            starts.setdefault(sg_off[0], []).append(sg_off[1])
-    for sg in starts:
-        starts[sg].sort()
-    at_place = {m.where[va]: n for va, n in m.by_va.items() if m.where.get(va)}
-    if sel_expr:
-        for va, name in m.by_va.items():
-            sg_off = m.where.get(va)
-            if not sg_off or name not in m.texts:
-                continue
-            sg, off = sg_off
-            later = [o for o in starts[sg] if o > off]
-            end = later[0] if later else 0x10000
-            wanted = {describe.FIRST_SELECTOR + 8 * (t - 1) for (o, t) in sites.get(sg, ()) if off <= o < end}
-            here = {v: e for v, e in sel_expr.items() if v in wanted}
-            if not here:
-                continue
-            spelled = {"0x%x" % v: v for v in here}
-            src = ctree.Source(m.texts[name])
-            for num in _numbers(src, under=src.body()):
-                if src.at(num) in spelled:
-                    src.replace(num, here[spelled[src.at(num)]])
-            t = src.text()
-            # a far pointer passed whole -- its offset the argument before its selector: a
-            # function's place, written by the function's name (USER's sub_1_3514 passes the
-            # callback 1:3452 to an enumeration as `0x3452, <segment 1>`: a number, it would
-            # still go where the function was if that one moved)
-            src = ctree.Source(t)
-            by_expr = {expr: (v - describe.FIRST_SELECTOR) // 8 + 1 for v, expr in here.items()}
-            for args in src.find("argument_list", under=src.body()):
-                items = args.named_children
-                for a, b in zip(items, items[1:]):
-                    sg_t = by_expr.get(src.at(b).strip())
-                    # (an offset of 8000h or more the core writes negative: GetFilePortName's
-                    # dialog procedure 1:9D0F was `-0x62f1`, left a number)
-                    lit = re.fullmatch(r"(-?)0x([0-9a-f]+)", src.at(a).replace(" ", ""))
-                    if sg_t is None or a.type not in ("number_literal", "unary_expression") or not lit:
-                        continue
-                    fn = at_place.get((sg_t, (-int(lit.group(2), 16) if lit.group(1) else int(lit.group(2), 16)) & 0xFFFF))
-                    if fn:
-                        src.replace(a, "((uint2)(uint4)(void __far *)&%s)" % fn)
-            m.texts[name] = src.text()
     # the data a function reads through CS from beside its code: by name, in its own code segment
     code_decls, m.code_data, m.code_reads = _code_segment_data(m, d, module_path) \
         if os.environ.get("CB_CODE_DATA") != "0" else ([], {}, {})

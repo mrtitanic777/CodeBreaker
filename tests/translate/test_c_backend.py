@@ -622,3 +622,24 @@ def test_moved_selector_imports():
     text = c.function(doc, c.MOVED, facts=facts)
     assert '  x = FP_SEG(&__0040H);\n  y = FP_OFF(&__WINFLAGS);\n  z = 0xd018;' in text, text
     assert facts['selector_imports'] == {'__0040H': 'segment', '__WINFLAGS': 'offset'}
+
+
+def test_moved_segment_values():
+    """c_text's own segments as values on the tree: where a function's code holds the loader's
+    fix-up for a segment's selector, the made-up selector the decompiler shows is DS for the data
+    segment, a far function's selector for a code segment (c.segment_plan decides, for the module),
+    and a far pointer passed whole -- an offset, then that selector -- is the function there
+    (USER's sub_1_3514 passing the callback 1:3452 to an enumeration)."""
+    functions = [(0x10000, 'f'), (0x13452, 'cb'), (0x20000, 'g')]
+    where = {0x10000: (1, 0), 0x13452: (1, 0x3452), 0x20000: (2, 0)}
+    sites = {1: [(0x10, 1), (0x12, 2)]}                  # (two fix-ups in f: segment 1's selector, segment 2's)
+    plan = c.segment_plan(functions, {'g'}, where, sites, {1: b'', 2: b''}, 2, set(), 0x1000)
+    assert set(plan) == {'f'}
+    seg1 = '((uint2)((uint4)(void __far *)&f >> 16))'
+    assert plan['f']['segment_values'] == {'0x1000': seg1, '0x1008': 'codebreaker_ds()'}
+    doc = sixteen([stmt(fcall('EnumWindows', lit(0x3452, 'u16', text='0x3452'), lit(0x1000, 'u16', text='0x1000'))),
+                   stmt({'node': 'Assign', 'target': name('x'), 'value': lit(0x1008, 'u16', text='0x1008')}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': lit(0x1010, 'u16', text='0x1010')})])
+    text = c.function(doc, c.MOVED, facts=dict({'distance': 'far'}, **plan['f']))
+    assert '  EnumWindows(((uint2)(uint4)(void __far *)&cb),%s);' % seg1 in text, text
+    assert '  x = codebreaker_ds();\n  y = 0x1010;' in text, text
