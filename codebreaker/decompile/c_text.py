@@ -14,17 +14,19 @@ bound to where the original keeps them, and its stack locals kept where the orig
 whenever an address to one can escape. 16-bit code needs more said: which pointers are far, how
 arguments lie on the stack, what the segment registers hold.
 
-Every rule of the 16-bit path is the C back end's now, on the L2 tree (translate/backends/c.py,
-docs/IR_UNIFICATION.md step 3): this module writes each function's C with what the module says of
-it (_write16, module_facts16), makes the module's decisions from what each writing reported and
-writes the functions they name again, and builds the header. The 32-bit path does five of its
-rules on the tree (backends/c.FLAT) and the rest here, on the text; PowerPC's are all here.
+No rule here rewrites C text any more: every one is the C back end's, on the L2 tree
+(translate/backends/c.py, docs/IR_UNIFICATION.md step 3), for all three paths. What is left is the
+module's assembly: each function's C written from its L2 document with what the module says of it
+(16-bit: _write16, module_facts16; 32-bit and PowerPC: the module's decisions over every
+function's tree, backends/c.module_names32), the module's decisions made from what the trees name
+and what each writing reported, the functions they name written again, the header built -- and
+the facts read from the original's code bytes (16-bit: far argument widths, loads, the export
+prologue, SS stores, the code segment's data).
 """
 import os
 import re
 import struct
 
-from codebreaker.decompile import ctree
 from codebreaker.translate import l2
 from codebreaker.translate.backends import c as cback
 
@@ -136,48 +138,6 @@ _LIBM = ("sqrt", "sin", "cos", "tan", "atan2", "pow", "ldexp", "log", "floor", "
 
 
 _SIZEOF = cback.SIZEOF                                       # (bytes of each of the decompiler's scalar types)
-
-
-def _called(text):
-    """The names of the functions the text calls (`f(...)`; not a cast or a declaration the grammar
-    read as a call)."""
-    src = ctree.Source(text)
-    return {src.at(c.child_by_field_name("function")) for c in src.find("call_expression")
-            if c.child_by_field_name("function").type == "identifier" and src.is_call(c)}
-
-
-def _called_through(text):
-    """Globals the text calls through: `(*xRam0040c000)(...)`."""
-    src = ctree.Source(text)
-    out = set()
-    for c in src.find("call_expression"):
-        f = c.child_by_field_name("function")
-        if f.type == "parenthesized_expression" and f.named_child_count == 1:
-            p = f.named_children[0]
-            if p.type == "pointer_expression" and src.at(p.child_by_field_name("operator")) == "*" and \
-                    p.child_by_field_name("argument").type == "identifier" and \
-                    _RAM.fullmatch(src.at(p.child_by_field_name("argument"))):
-                out.add(src.at(p.child_by_field_name("argument")))
-    return out
-
-
-def _globals(text):
-    """(prefix, address) of every global the text names by its address (`iRam0040c000`)."""
-    src = ctree.Source(text)
-    return {m.groups() for m in (_RAM.fullmatch(src.at(n)) for n in src.find("identifier")) if m}
-
-
-def _without_notes(text):
-    """The text without the notes the decompiler put before the function (`/* WARNING: ... */`)."""
-    src = ctree.Source(text)
-    end = 0
-    for c in src.root.children:
-        if c.type != "comment" or not src.at(c).startswith("/*"):
-            break
-        end = c.end_byte
-    if not end:
-        return text
-    return src.data[end:].decode("utf-8").lstrip()
 
 
 # A structure the decompiler recovered from a variable's field accesses (CB_STRUCTS), as its facts
@@ -311,6 +271,7 @@ def compilable32(module_path, funcs, outdir):
         # end's passes of the 32-bit path -- backends/c.FLAT -- and its part of the module's
         # decisions)
         written = {"functions": set(order), "struct_sizes": struct_sizes[n], "called_through": called_through,
+                   "without_notes": True,
                    "aliases": aliases.get(n) or {}, "pointer_globals": pointers, "takes": takes}
         written_of[n] = dict(written)
         if facts.get("l2") is not None:
@@ -323,8 +284,9 @@ def compilable32(module_path, funcs, outdir):
         if facts.get("from_l2"):
             declared[n] = written["declared"]
         # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
-        # is not part of it: left in, it became the function's declaration and broke the header)
-        out[n] = _without_notes(out[n].strip())
+        # is not part of it: left in, it became the function's declaration and broke the header.
+        # The back end leaves them out, the facts' without_notes; one with no C has no text.)
+        out[n] = out[n].strip() if facts.get("from_l2") else ""
         # every function returns a value in EAX whether or not the core saw it used; the compiler
         # used here has no word for "first argument in ECX": the function is declared plainly, and
         # a #pragma in the header says where its first argument is (both the back end's:
@@ -387,7 +349,7 @@ def compilable32(module_path, funcs, outdir):
         if n not in planned:
             continue
         written = dict(written_of[n], struct_fields=planned[n])
-        out[n] = _without_notes(decompiler.c_from_l2(out[n], got.notes[n], None, written).strip())
+        out[n] = decompiler.c_from_l2(out[n], got.notes[n], None, written).strip()
         used_structs |= written.get("structs_used") or set()
     if planned:
         preamble += struct_text.declarations(planned, used_structs)
@@ -864,11 +826,6 @@ def compilable16(module_path, outdir=None):
     return m
 
 
-def _identifiers(text):
-    src = ctree.Source(text)
-    return [src.at(n) for n in src.find("identifier")]
-
-
 _IMAGES16 = {}                   # segment -> its bytes, for _write16 (in each worker: _write16_images)
 
 
@@ -1333,35 +1290,30 @@ def _ram_type(prefix, size, called):
     return _BY_SIZE.get(size, "uint4")
 
 
-def call_counts(texts, names):
-    """{name: number of arguments} for the functions in `names` that every call in `texts`
-    passes the same number of arguments to. Nothing in a PowerPC image states how many arguments
-    a function outside it takes; that all its callers set up the same number is the evidence
-    there is."""
-    seen = {}
-    for t in texts.values() if names else ():
-        src = ctree.Source(t)
-        for c in src.find("call_expression", under=src.body()):
-            f = c.child_by_field_name("function")
-            if f.type == "field_expression":                  # (`p->name(...)` counts as a call of name)
-                f = f.child_by_field_name("field")
-            if src.at(f) in names:
-                seen.setdefault(src.at(f), set()).add(len(c.child_by_field_name("arguments").named_children))
-    return {n: next(iter(c)) for n, c in seen.items() if len(c) == 1}
+def call_counts(calls, names):
+    """{name: number of arguments} for the functions in `names` that every call passes the same
+    number of arguments to (`calls`: {callee: the numbers of arguments its calls pass}, the
+    module's calls from the trees -- l2.Made.calls). Nothing in a PowerPC image states how many
+    arguments a function outside it takes; that all its callers set up the same number is the
+    evidence there is."""
+    return {n: next(iter(c)) for n, c in calls.items() if n in names and len(c) == 1}
 
 
 def compilable_powerpc(module_path, outdir):
-    """A PowerPC image decompiled and made compilable. -> an object with header, texts, order,
-    by_va, externs {name: address in the original}, argc {extern: argument count}, novalue
-    (names of functions that return nothing).
+    """A PowerPC image decompiled and made compilable. -> an l2.Made with header, texts, order,
+    by_va, externs {name: address in the original}, argc {extern: argument count}, calls
+    {callee: the numbers of arguments its calls pass}, novalue (names of functions that return
+    nothing).
 
-    Every function is written in the older style and declared with its argument list left
-    open: all arguments travel in registers whatever their number, so callers and definitions
-    need not agree for the code to mean the same, and the decompiler recovers each on its own
-    evidence. A global is bound to the address the original keeps it at. A value split by bytes
-    is taken from the end of its storage (the processor is big-endian). An address the
-    decompiler shows widened to 64 bits (registers are 64 bits wide, addresses 32) is written as
-    the 32-bit address it is."""
+    Each function's C is the C back end's, from its L2 document, with the PowerPC path's passes
+    (backends/c.POWERPC): every function is written in the older style and declared with its
+    argument list left open -- all arguments travel in registers whatever their number, so
+    callers and definitions need not agree for the code to mean the same, and the decompiler
+    recovers each on its own evidence; a value split by bytes is taken from the end of its
+    storage (the processor is big-endian); an address the decompiler shows widened to 64 bits
+    (registers are 64 bits wide, addresses 32) is the 32-bit address it is. Here, from what the
+    trees name: each global bound to the address the original keeps it at, the imports and
+    functions declared, how many arguments each callee is called with."""
     from codebreaker.decompile import decompiler, describe
     from codebreaker.formats import powerpc_image
     img = powerpc_image.read(module_path)
@@ -1369,7 +1321,7 @@ def compilable_powerpc(module_path, outdir):
     # with the PowerPC path's passes -- backends/c.POWERPC; the facts' lane says which)
     got = decompiler.raw(module_path, describe.function_starts(module_path), outdir, l2=True, write=False)
     out, order, by_va, _err = got
-    sizes, novalue = {}, set()
+    sizes, novalue, named, declared = {}, set(), {}, {}
     for n in order:
         facts = got.notes.get(n) or {}
         for va, size, _elem in facts.get("globals") or ():
@@ -1377,15 +1329,25 @@ def compilable_powerpc(module_path, outdir):
         written = {"lane": "powerpc", "functions": set(order)}
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
-        t = out[n].strip()
+        if not facts.get("from_l2"):
+            # (a function the back end declines -- a node it does not write -- is one the
+            # decompiler could not make, as one whose decompile failed: no C, so no declaration,
+            # and the build leaves it to the original)
+            if facts.get("l2") is not None:
+                out[n] = "/* %s: its C could not be written from L2 */" % n
+            out[n] = out[n].strip()
+            continue
+        named[n] = cback.module_names32(facts["l2"])     # (what its tree names, as its text does)
+        declared[n] = written["declared"]
+        out[n] = out[n].strip()
         if written.get("novalue"):
             # (every function leaves something in r3 and callers are free to use it: a `void`
             # result is uint8 -- the back end's, backends/c._result_shown -- and the module notes it)
             novalue.add(n)
-        out[n] = t
+    names = set().union(*(x["names"] for x in named.values())) if named else set()
     macros = []
-    called_through = set().union(*(_called_through(t) for t in out.values())) if out else set()
-    for pre, addr in sorted(set().union(*(_globals(t) for t in out.values())) if out else ()):
+    called_through = set().union(*(x["called_through"] for x in named.values())) if named else set()
+    for pre, addr in sorted({m2.groups() for m2 in (_RAM.fullmatch(n2) for n2 in names) if m2}):
         szs = sizes.get(int(addr, 16)) or {4}
         size = max((x for x in szs if x <= 8), default=4)
         macros.append("#define %sRam%s (*(%s *)0x%s)" % (
@@ -1394,14 +1356,14 @@ def compilable_powerpc(module_path, outdir):
     # in the original, which is in memory beside the rebuilt image when it is judged
     lo_image = min(va for va, _off, _size in img.spans)
     hi_image = max(va + size for va, _off, size in img.spans)
-    for addr in sorted({n[len("func_0x"):] for t in out.values() for n in _identifiers(t)
-                        if re.fullmatch(r"func_0x[0-9a-f]{8}", n)}):
+    for addr in sorted({n2[len("func_0x"):] for n2 in names if re.fullmatch(r"func_0x[0-9a-f]{8}", n2)}):
         if lo_image <= int(addr, 16) < hi_image and "func_0x" + addr not in out:
             macros.append("#define func_0x%s ((code *)0x%s)" % (addr, addr))
-    used = sorted({n for t in out.values() for n in _called(t) if re.fullmatch(r"import\d+_ord_\d+", n)})
+    called = set().union(*(x["calls"] for x in named.values())) if named else set()
+    used = sorted(n for n in called if re.fullmatch(r"import\d+_ord_\d+", n))
     decls = ["uint8 %s();" % n for n in used]
     for n in order:
-        head = " ".join(_without_notes(out[n]).split("{", 1)[0].split())
+        head = declared.get(n, "")
         if "(" not in head:
             continue
         decls.append(head[:head.index("(")] + "();")
@@ -1414,7 +1376,11 @@ def compilable_powerpc(module_path, outdir):
                 out, order, by_va, novalue=novalue)
     by_name = {name: va for va, name in img.imports.items()}
     m.externs = {n: by_name[n] for n in used if n in by_name}
-    m.argc = call_counts(out, set(m.externs))
+    m.calls = {}
+    for x in named.values():
+        for callee, k in x["arity"]:
+            m.calls.setdefault(callee, set()).add(k)
+    m.argc = call_counts(m.calls, set(m.externs))
     m.image = img
     return m
 

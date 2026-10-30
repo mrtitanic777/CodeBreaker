@@ -863,6 +863,44 @@ def test_moved_fit_calls():
     assert '  sub_001135(a);\n' in c.function(doc, c.MOVED)
 
 
+def test_moved_powerpc_passes():
+    """compilable_powerpc's passes on the tree (the facts' lane): an address widened to 64 bits is
+    the 32-bit one; a piece is PIECE(x, off, T), from the end of its storage; a slot the caller
+    keeps for a register argument is that argument, its declaration and the store of it into its
+    own slot gone; a function returning nothing returns uint8 (r3 is there) and says so; the
+    definition is in the older style."""
+    u8, w1 = {'kind': 'u64'}, {'kind': 'class', 'name': 'xunknown1'}
+    home = typed('xStack00000010', w1)
+    body = [local('iVar1', {'kind': 'i32'}), local('xStack00000010', w1),
+            stmt({'node': 'Assign', 'target': typed('_xStack00000010', w1), 'value': name('param_1')}),
+            stmt(fcall('sub_93012470', {'node': 'Unary', 'op': '&', 'x': home})),
+            stmt({'node': 'Assign', 'target': name('iVar1'), 'value': select(name('x'), '_4_4_')}),
+            stmt({'node': 'Assign', 'target': name('iVar1'), 'value': lit(0xffffffff913e16f8, 'u64', '0xffffffff913e16f8')})]
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'void'},
+           'origin': {'module': '', 'va': 0x913E5000}, 'params': [param('param_1', u8), param('param_2', u8)],
+           'body': body}
+    facts = {'lane': 'powerpc'}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert text.startswith('uint8 f(param_1,param_2)\nuint8 param_1;\nuint8 param_2;\n{\n  int4 iVar1;\n  \n'), text
+    assert 'xStack00000010' not in text and '  sub_93012470(&param_1);\n' in text, text
+    assert '  iVar1 = PIECE(x, 4, uint4);\n' in text and '  iVar1 = 0x913e16f8;\n' in text, text
+    assert facts['novalue']
+    assert c.function(doc, c.MOVED).startswith('void f(uint8 param_1,uint8 param_2)')
+    # how many arguments each callee is called with, from the trees (c_text.call_counts: where every
+    # call agrees; `p->name(...)` is a call of name)
+    member = {'node': 'Call', 'target': select({'node': 'Unary', 'op': '*', 'x': name('p')}, 'import1_ord_16'),
+              'args': [lit(1), lit(2)]}
+    calls = dict(doc, body=[stmt(fcall('import0_ord_5', lit(1))), stmt(fcall('import0_ord_5', lit(1), lit(2))),
+                            stmt(fcall('import0_ord_7')), stmt(member)])
+    arity = c.module_names32(calls)['arity']
+    assert arity == [('import0_ord_5', 1), ('import0_ord_5', 2), ('import0_ord_7', 0), ('import1_ord_16', 2)]
+    seen = {}
+    for callee, k in arity:
+        seen.setdefault(callee, set()).add(k)
+    assert c_text.call_counts(seen, {'import0_ord_5', 'import0_ord_7', 'import1_ord_16'}) == \
+        {'import0_ord_7': 0, 'import1_ord_16': 2}
+
+
 def test_moved_struct_fields():
     """struct_text on the tree: `*(T *)(p + N)` through an argument known to be a structure is
     `((S *)p)->f_N`, declared at that offset with the type most of the module's accesses there

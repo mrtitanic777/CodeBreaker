@@ -31,7 +31,7 @@ PASSES = ["_more_helpers",
           "declaration", "_global_type", "_loads_dgroup",
           "_near_to_far",
           "interrupt_helper_name",
-          "interrupt_helpers", "_ram_type", "call_counts", "interrupt_routines"]
+          "interrupt_helpers", "_ram_type", "interrupt_routines"]
 
 # Passes handed a whole segment's bytes read only a window of them: (buffer, start, end) argument
 # positions, or (buffer, start, None, length)
@@ -46,7 +46,7 @@ WHOLE = {"lzexpand.dll", "lz32.dll"}                    # kept whole as well: ev
 CHANGED_PER_PASS = 10          # inputs a pass changed, kept per pass (spread over their sizes)
 SAME_PER_PASS = 2              # ... and inputs it left as they were
 MAX_CASE = 12000               # characters of one case's arguments, at most
-LARGE = {"call_counts": 120000}  # (a pass given every function of the module at once)
+LARGE = {}  # (a pass given every function of the module at once: none now)
 
 
 def _windowed(name, args):
@@ -130,7 +130,6 @@ def freeze_c_text(modules):
         c_text._more_helpers(c_text._HELPERS)                 # (made once, when c_text is imported)
         if vectors:
             c_text.interrupt_routines(vectors)                # (build/module.py: the interrupts a module takes)
-        _powerpc()                                            # call_counts, _homed_arguments
     finally:
         for n, fn in originals.items():
             setattr(c_text, n, fn)
@@ -144,31 +143,6 @@ def freeze_c_text(modules):
         frozen.save("c_text", n, {"pass": n, "modules": modules, "cases": cases})
         print("  %-24s kept %2d of %4d changed, %4d unchanged%s" % (n, len(cases), changed, same,
                                                                     "   <- NEVER CHANGED ANYTHING" if not changed else ""))
-
-
-def _powerpc():
-    """The PowerPC lane, on the functions tests/test_powerpc.py compiles with the Xbox 360 compiler
-    (there is no PowerPC image in the corpus)."""
-    from codebreaker.build import functions
-    if not functions.powerpc_tools():
-        print("powerpc        no PowerPC compiler in settings.json: its passes are not recorded")
-        return
-    import tempfile
-    import test_powerpc as T
-    with tempfile.TemporaryDirectory(prefix="cbfreeze_ppc_") as work:
-        order = list(T.CASES)
-        dll, _where, dropped = functions.build_powerpc(T.HEADER, {n: T.CASES[n][0] for n in order}, order,
-                                                       ["outside"], work, 0x93000000)
-        if not dll or dropped:
-            print("powerpc        build failed: %s" % (dropped or "no image"))
-            return
-        m = c_text.compilable_powerpc(dll, os.path.join(work, "c"))
-        print("powerpc        %4d functions" % len(m.texts))
-        # call_counts is given the image's imports, and this image has none it can see: given its
-        # own functions instead, on the texts that call them (the smallest twenty)
-        names = set(m.texts)
-        callers = sorted((t for t in m.texts.values() if any(n + "(" in t.split("{", 1)[-1] for n in names)), key=len)
-        c_text.call_counts({"f%d" % k: t for k, t in enumerate(callers[:20])}, names)
 
 
 def freeze_subjects(names):

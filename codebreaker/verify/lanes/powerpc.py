@@ -380,12 +380,12 @@ def build(m, module_path, work):
     ext_rebuilt = {placed[name]: name for name in m.externs if name in placed}
     # Calls to code the image does not hold (func_0x<address>: a partial image calling into the
     # rest of its title) are recorded by the interpreter as calls to "@<address>"; their argument
-    # counts, where every call in the C agrees, from the C as for any function outside.
+    # counts, where every call agrees, from the module's calls (its trees), as for any function outside.
     import re
     from codebreaker.decompile import c_text
-    absent = {"func_0x" + h for h in re.findall(r"\bfunc_0x([0-9a-f]{8})\s*\(", "\n".join(m.texts.values()))}
+    absent = {n for n in m.calls if re.fullmatch(r"func_0x[0-9a-f]{8}", n)}
     argc = dict(m.argc)
-    argc.update({"@" + n[len("func_0x"):]: k for n, k in c_text.call_counts(m.texts, absent).items()})
+    argc.update({"@" + n[len("func_0x"):]: k for n, k in c_text.call_counts(m.calls, absent).items()})
     return (module_path, dll, ext_original, ext_rebuilt, argc), items, dropped
 
 
