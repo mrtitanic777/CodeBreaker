@@ -683,16 +683,6 @@ def _far_loads(code, start, end):
     return found
 
 
-def declaration(text):
-    """A declaration that fixes the function's convention and result but not its arguments.
-    The decompiler works out arguments one call at a time and callers do not always agree with
-    the definition; with the argument list left open each call compiles as it was recovered,
-    and a call that passes the wrong amount shows up when it is run, not as a compile error
-    that hides the whole function."""
-    head = " ".join(text.split("{", 1)[0].split())
-    return head[:head.index("(")] + "();"
-
-
 _RAM = re.compile(r"([a-z]+)Ram([0-9a-f]{8})")
 
 
@@ -1133,6 +1123,9 @@ def _compilable16(module_path, outdir=None):
     headings = {n: (found_of.get(n) or {}).get("heading") or {} for n in m.order}
     agreed = cback.prototypes(headings, m.order) if os.environ.get("CB_PROTOTYPES", "1") != "0" else {}
     m.prototyped = set(agreed)
+    # (each function's declaration with its argument list left open, from its heading as the back
+    # end wrote it from L2: the module's public header declares its exports with them -- build/module)
+    m.declarations = {n: headings[n]["declaration"] for n in m.order}
     decls += [agreed.get(n) or headings[n]["declaration"] for n in m.order]
     decls += ["#ifdef __WATCOMC__\n#pragma aux (codebreaker_fastcall) %s;\n#endif" % n for n in m.order
               if headings[n]["fastcall"]]

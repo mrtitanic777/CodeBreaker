@@ -950,3 +950,13 @@ def test_moved_struct_fields():
     assert "int4 f_8;" in near and "struct_1" not in match.needed_header(header, c.function(g, c.MOVED, facts={}))
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
+
+def test_heading_declaration_from_l2():
+    """The declaration a 16-bit function's heading gives, its argument list left open (build/module
+    declares the module's exports with it, Made.declarations): the back end's heading facts, from
+    L2 -- as c_text.declaration once read it off the text (`int2 __cdecl16far TIMEGETTIME();`)."""
+    doc = sixteen([{'node': 'Return', 'expr': lit(4)}], [param('a1', {'kind': 'i16'})])
+    doc = dict(doc, name='TIMEGETTIME', ret={'kind': 'i16'}, mods=['__cdecl16far'])
+    facts = {}
+    c.function(doc, c.MOVED, facts=facts)
+    assert facts['heading']['declaration'] == 'int2 __cdecl16far TIMEGETTIME();', facts['heading']

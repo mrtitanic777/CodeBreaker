@@ -1672,7 +1672,8 @@ def _build16(b, path, m, folder):
         mine = re.search(r"(?m)^([0-9a-fA-F]{4}):([0-9a-fA-F]{4})[+*]?\s+_codebreaker_data\s*$", text)
         if not (group and mine and group.groups() == mine.groups()):
             b.data_error = "the data did not land at the start of the automatic data segment"
-    _write_definitions(path, folder, lambda e: c_text.declaration(m.texts[at[e.address]]) if e.address in at else None)
+    # (each export declared as the back end wrote its function's heading from L2: m.declarations)
+    _write_definitions(path, folder, lambda e: m.declarations.get(at[e.address]) if e.address in at else None)
     # the module as one L2 tree, whatever each function came back as (docs/IR_UNIFICATION.md step 4)
     b.l2 = module_document(b.name, m, b.assembled, stems, folder, {n: s["length"] for n, s in segs.items()})
     with open(os.path.join(folder, "module.l2.json"), "w", newline="\n", encoding="utf-8") as fh:
