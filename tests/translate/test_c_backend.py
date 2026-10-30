@@ -685,4 +685,21 @@ def test_moved_code_segment_reads():
     again = c.function(doc, c.MOVED, facts={'distance': 'far', 'code_places': {k: '(uint2)codebreaker_code_9.at_0261'}})
     assert '  pcVar11 = (char *)(uint2)codebreaker_code_9.at_0261;' in again, again
     assert c_text._string_literal(b"type\0subtype\0") == '"type\\000subtype"'
+
+
+def test_names_used_for_the_header():
+    """What the header is written from, read off the tree as the function is written (c_text read
+    every text): the globals named by address -- `_pcRam..`, written pcRam.. by a pass, among them
+    -- those called through, the calls, MK_FP."""
+    fn = {'kind': 'fnptr', 'space': 'far', 'fn': {'kind': 'fn'}}
+    g = {'node': 'Name', 'sym': {'kind': 'global', 'name': '_pcRam1000001a'}, 'type': fn}
+    doc = sixteen([stmt({'node': 'Call', 'target': {'node': 'Unary', 'op': '*', 'x': g}, 'args': [lit(1, 'i16')]}),
+                   stmt({'node': 'Assign', 'target': name('iRam10080012', 'i16'), 'value': fcall('KERNEL_3', lit(2, 'i16'))}),
+                   stmt(fcall('MK_FP', lit(0, 'i16'), lit(1, 'i16')))])
+    facts = {'distance': 'far'}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '(*pcRam1000001a)(1);' in text, text
+    got = facts['names']
+    assert got['globals'] == {('pc', '1000001a'), ('i', '10080012')} and got['called_through'] == {'pcRam1000001a'}
+    assert {'KERNEL_3', 'MK_FP'} <= got['called'] and got['mk_fp'] and not got['segments']
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None

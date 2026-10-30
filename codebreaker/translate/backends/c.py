@@ -32,14 +32,14 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
@@ -2882,6 +2882,61 @@ def _code_segment_reads(nodes, _arrays):
                                    'unknown': unknown, 'each': each, 'unsafe': unsafe}
 
 
+_STRING = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*.*?\*/', re.S)
+_IDENT = re.compile(r"(?<![\w.>])[A-Za-z_]\w*")
+_CALL_IN = re.compile(r"(?<![\w.>])([A-Za-z_]\w*)\s*\(")
+_THROUGH_IN = re.compile(r"\(\*\s*([a-z]+Ram[0-9a-f]{8})\s*\)\s*\(")
+
+
+def _names_used(nodes, _arrays):
+    """What the module's header is written from, of the function as it is written now (c_text's
+    _compilable16 read it off every function's text): the globals it names by their address
+    (`iRam10080012`: "globals", as (prefix, address)), those it calls through ("called_through"),
+    the functions and helpers it calls ("called"), the other data segments it names
+    (codebreaker_segment_<n>: "segments") and whether it makes a far pointer with MK_FP -- from
+    the names and calls of the tree, and those in the text the passes wrote ->
+    facts["names"]."""
+    seen = _seen()
+    names, called, through = set(), set(), set()
+    plain = lambda x: id(x) in seen and id(x) not in _now['whole']
+    for e, _p in nodes:
+        if e['node'] == 'Name' and (e.get('sym') or {}).get('kind') != 'field' and plain(e) \
+                and not _now['marks'].get(id(e)):
+            names.add(_local_text(_name(e)))
+        elif e['node'] == 'Call':
+            t = e.get('target')
+            if t is None:
+                if plain(e):
+                    n = (e.get('sym') or {}).get('name')
+                    names.add(n)
+                    called.add(n)
+            elif t.get('node') == 'Name' and id(t) in seen:
+                called.add(_local_text(_name(t)) if plain(t) else expr(t))
+            else:
+                while t.get('node') == 'Paren' and plain(t):
+                    t = t['x']
+                if t.get('node') == 'Unary' and t.get('op') == '*' and not t.get('postfix') and plain(t) and \
+                        t['x'].get('node') == 'Name' and id(t['x']) in seen:
+                    through.add(_name(t['x']) if plain(t['x']) else expr(t['x']))
+    wrote = list(_now['shown'].values()) + [t for k in ('before', 'after') for ts in _now[k].values() for t in ts]
+    wrote += ['%s %s;' % d for d in _now['declare_first']] + [_now['locals_text'] or '']
+    for text in wrote:                                   # (what the passes wrote: its names, its calls)
+        plain = _STRING.sub('""', text)
+        names |= set(_IDENT.findall(plain))
+        called |= set(_CALL_IN.findall(plain))
+        through |= set(_THROUGH_IN.findall(plain))
+    for v in _now['locals']:                             # (a declaration a pass wrote: `= codebreaker_ss()`)
+        if (v.get('sym') or {}).get('name') not in _now['drop']:
+            plain = _decl_now(v)
+            names |= set(_IDENT.findall(plain))
+            called |= set(_CALL_IN.findall(plain))
+    _now['facts']['names'] = {
+        'globals': {m.groups() for m in (_RAM.fullmatch(n or '') for n in names) if m},
+        'called_through': {n for n in through if _RAM.fullmatch(n)},
+        'called': called, 'mk_fp': 'MK_FP' in called,
+        'segments': {int(m.group(1)) for m in (re.fullmatch(r"codebreaker_segment_(\d+)", n or '') for n in names) if m}}
+
+
 def segment_plan(functions, near, where, sites, code, data_segment, other_data, first_selector):
     """Which functions' C names a segment of the module's own by its made-up selector, and what it
     is there (_segment_values) -- `functions` [(address, name)] in address order, `near` the near
@@ -3528,7 +3583,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("near_to_far", _near_to_far),
            ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
            ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
-           ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads))
+           ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads),
+           ("names_used", _names_used))
 
 
 # ---------------------------------------------------------------------------------------------- functions

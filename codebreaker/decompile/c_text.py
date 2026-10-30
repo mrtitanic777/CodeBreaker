@@ -1397,7 +1397,7 @@ def _write16(context, item):
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
     found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared", "frame", "selector_imports",
-                                   "code_reads") if k in facts}
+                                   "code_reads", "names") if k in facts}
     if not known.get("from_l2"):
         return va, None, set(), known, {}
     return va, text, cback.flags(known["l2"], facts), known, found
@@ -1585,8 +1585,9 @@ def _compilable16(module_path, outdir=None):
         m.selector_imports.update(found.get("selector_imports") or {})
     other_data = set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment}
     m.code_data, m.code_reads = code_data, code_reads
-    body = "\n".join(m.texts.values())
-    called = set().union(*(_called(t) for t in m.texts.values())) if m.texts else set()
+    # what the functions name and call, as each was written (backends/c._names_used)
+    used = [(found_of.get(n) or {}).get("names") or {} for n in m.order]
+    called = set().union(*(u.get("called", ()) for u in used)) if used else set()
     m.imports = {}
     for nm in d.imports:
         if nm in called and nm not in m.texts:
@@ -1598,11 +1599,11 @@ def _compilable16(module_path, outdir=None):
     # the module carries that segment's bytes, and the global is a place in them.
     macros, m.segments = [], {}
     for sg in other_data:                                    # (a segment's selector used as a value)
-        if any(re.search(r"\bcodebreaker_segment_%d\b" % sg, t) for t in m.texts.values()):
+        if any(sg in u.get("segments", ()) for u in used):
             m.segments[sg] = d.images[sg]
     # a global the code calls through holds a function pointer -- near or far by its size
-    called_through = set().union(*(_called_through(t) for t in m.texts.values())) if m.texts else set()
-    for prefix, addr in sorted(set().union(*(_globals(t) for t in m.texts.values())) if m.texts else ()):
+    called_through = set().union(*(u.get("called_through", ()) for u in used)) if used else set()
+    for prefix, addr in sorted(set().union(*(u.get("globals", ()) for u in used)) if used else ()):
         va = int(addr, 16)
         seg, off = describe.where(va)
         ty = _global_type(prefix, sizes.get(va, 2), elems.get(va))
@@ -1657,7 +1658,7 @@ def _compilable16(module_path, outdir=None):
               if "__fastcall16near" in m.texts[n].split("(", 1)[0]]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if n in called]
     intrinsics += interrupt_helpers(m.interrupts)
-    if ("MK_FP(" in body or getattr(m, "bios_data", False)) and not m.selector_imports:
+    if (any(u.get("mk_fp") for u in used) or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
     selector_structs += _shared_selector_structs(shared_selectors, m.texts)
     if selector_structs:
