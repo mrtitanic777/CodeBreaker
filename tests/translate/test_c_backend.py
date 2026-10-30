@@ -503,3 +503,28 @@ def test_moved_far_concat_casts():
     doc = sixteen([stmt(fcall('g', concat))])
     assert '  g((xunknown1 __far *)CONCAT22(a4,a3));' in c.function(doc, c.MOVED, facts={'distance': 'far'})
     assert '  g((xunknown1 *)CONCAT22(a4,a3));' in c.function(doc, c.MOVED)
+
+def test_moved_buffer_fields():
+    """c_text._buffer_fields on the tree: words below one whose address is passed on are one array
+    of them, laid out to the saved BP; a local never set inside a buffer passed on is read where it
+    is, the buffer made to reach it; two buffers are one packed structure, as the frame had them."""
+    word = {'kind': 'i16'}
+    arr = lambda n: {'kind': 'array', 'elem': word, 'count': n}
+    addr = lambda n: {'node': 'Unary', 'op': '&', 'x': typed(n, word)}
+    doc = sixteen([local('iStack_10', word), local('iStack_e', word),
+                   stmt(fcall('g', addr('iStack_10'))),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': typed('iStack_e', word)})])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  int2 aiStack_10 [7];' in text and 'iStack_e' not in text, text
+    assert '  g(&aiStack_10[0]);' in text and '  y = aiStack_10[1];' in text, text
+    doc = sixteen([local('aiStack_a', arr(2)), local('iStack_6', word),
+                   stmt(fcall('g', typed('aiStack_a', arr(2)))),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': typed('iStack_6', word)})])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  int2 aiStack_a [4];' in text and 'int2 iStack_6' not in text, text
+    assert '  y = (*(int2 *)((uint1 *)aiStack_a + 0x4));' in text, text
+    doc = sixteen([local('aiStack_20', arr(2)), local('aiStack_a', arr(2)),
+                   stmt(fcall('g', typed('aiStack_20', arr(2)), typed('aiStack_a', arr(2))))])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  _Packed struct {\n  int2 aiStack_20 [11];\n  int2 aiStack_a [4];\n  } codebreaker_frame;' in text, text
+    assert '  g(codebreaker_frame.aiStack_20,codebreaker_frame.aiStack_a);' in text, text

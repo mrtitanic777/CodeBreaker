@@ -1610,10 +1610,10 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals and _far_concat_casts are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts and _buffer_fields (with _frame_block) are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(_far_reads(_buffer_fields(text)))
+    out = _near_to_far(_far_reads(text))
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2041,16 +2041,6 @@ def _caller_frame_slots(texts, frames):
 _SIZE = {"1": 1, "2": 2, "4": 4}
 
 
-def _elem16(typ):
-    """Bytes in one of a 16-bit local's type, as written: `int2`, `uint1`, `char`, `code *`."""
-    typ = (typ or "").strip()
-    if typ.endswith("*"):
-        return 2
-    return _SIZE.get(typ[-1:]) or (1 if typ in ("char", "uchar", "byte") else 2)
-# (a name of its own: it was `_LOCAL` too, and replaced the 32-bit one above for every pass that
-# read it -- _keep_frame among them. A near pointer local is two bytes, its type kept for casts.)
-_LOCAL16 = re.compile(r"(?m)^  (\w+?)(\d)?(\s*\*+\s*|\s+)(\w*Stack_([0-9a-f]+))( \[(\d+)\])?;\s*$")
-
 
 def _near_to_far(text):
     """`(T __far *)(n)` of a number `n` -- an offset in the data segment, as the original reads
@@ -2153,152 +2143,6 @@ def _addressed(text, name):
             if op and op[0] == "&" and op[1] + 1 == n.start_byte:
                 return True
     return False
-
-
-def _passed(text, name):
-    """Is `name` handed over -- right after a `(` or a `,`, through a cast of a word or a pointer
-    to one and an `&` at most (`f(x, &name)`, `CONCAT22(s, (int2)name)`)?"""
-    nodes, src = _uses(text, name)
-    return any(re.search(r"[(,]\s*(?:\(\w+\s*\*?\))?\s*&?\s*\Z", src.data[:n.start_byte].decode("utf-8")) for n in nodes)
-
-
-def _buffer_fields(text):
-    """A local the function never sets, lying past the end of an array local whose address it
-    passes on, is a field of that buffer: the callee fills the buffer, the function reads the
-    field (the analysis sized the array to reach the next thing it saw used, and made that a
-    variable of its own -- which no one writes). It is read where it is, in the buffer, and
-    the buffer is made to reach it."""
-    head, brace, body = text.partition("{")
-    lines = _declaration_lines(text)
-    decl = {}
-    for mm in _LOCAL16.finditer(body):
-        if mm.group(0).split("\n")[0] not in lines:
-            continue                                     # (a statement the pattern took for a declaration)
-        typ, width, stars, name, off, _a, count = mm.groups()
-        stars = (stars or "").strip()
-        elem = 2 if stars else _SIZE.get(width or "", 2) if width else _elem16(typ or "")
-        size = int(count) * elem if count else elem                  # (bytes)
-        decl[name] = (int(off, 16), size, bool(count), mm.group(0),
-                      (typ or "") + (width or "") + (" " + stars if stars else ""))
-    text = head + brace + body
-    # A local whose address is passed on, with locals of its width right after it in the frame:
-    # one buffer of them (a RECT copied into four words, its address given to a function that
-    # converts it in place -- four variables of their own, only the first where the callee
-    # writes). Made one array, as the frame has them.
-    by_off = {v[0]: n for n, v in decl.items() if not v[2]}
-    for name, (off, size, is_array, line, typ) in sorted(decl.items(), key=lambda kv: -kv[1][0]):
-        if is_array or name not in decl or not _addressed(text, name):
-            continue
-        run, at = [name], off - size
-        while at in by_off and decl.get(by_off[at], (0, 0))[1] == size and by_off[at] not in run \
-                and decl[by_off[at]][4] == typ \
-                and not _addressed(text, by_off[at]):
-            run.append(by_off[at])
-            at -= size
-        if len(run) < 2:
-            continue
-        arr = "a" + name
-        text = _replace_in_body(text, line, "  %s %s [%d];" % (typ or "int2", arr, len(run)))
-        for k, n in enumerate(run):
-            if k:
-                text = _replace_in_body(text, decl[n][3], "")
-            text = _rename(text, n, "%s[%d]" % (arr, k))
-            decl.pop(n, None)
-        decl[arr] = (off, size * len(run), True, "  %s %s [%d];" % (typ or "int2", arr, len(run)), typ)
-    arrays = {n: v for n, v in decl.items() if v[2] and _passed(text, n)}
-    if not arrays:
-        return head + brace + body if text == head + brace + body else text
-    # A buffer whose address is passed on is laid out as the original's frame had it: from its
-    # place up to the next buffer passed on, or the top of the frame (the saved BP, at 2) -- what
-    # the callee reads or fills is as long as the frame made room for (GetObject's 14-byte BITMAP;
-    # a WNDCLASS built word by word, then its address given to RegisterClass). Every local in that
-    # stretch, read or written, is a field of it, where it is: C would otherwise place them where
-    # it likes, and the callee would read past the buffer into whatever is there.
-    for owner, (ao, asz, _i, aline, _atyp) in list(arrays.items()):
-        others = [v[0] for k, v in arrays.items() if k != owner and v[0] < ao]
-        top = max(others + [2])
-        need = ao - top
-        if asz < need <= 0x400:
-            elem = _elem16(_atyp)
-            newline = _resized(aline, (need + elem - 1) // elem)
-            text = _replace_in_body(text, aline, newline)
-            arrays[owner] = (ao, need, True, newline, _atyp)
-    for name, (off, size, is_array, line, typ) in sorted(decl.items()):
-        if name in arrays:
-            continue
-        if not _uses(_replace_in_body(text, line, ""), name)[0]:
-            continue
-        owner = next((a for a, (ao, asz, _i, _l, _t) in arrays.items() if ao > off >= ao - asz), None)
-        if owner is None:
-            continue
-        ao, asz, _i, aline, _atyp = arrays[owner]
-        at = ao - off                                        # bytes into the buffer
-        text = _replace_in_body(text, line, "")
-        # (an array there is the rest of the buffer too: USER's sub_2_03A4 fills 'a'..'z' and
-        # 'A'..'Z' as two arrays of 26 and measures the 52 as one string -- two arrays of their
-        # own, the compiler put them apart, and every dialog came out the wrong width)
-        place = "(%s *)((uint1 *)%s + 0x%x)" % (typ or "int2", owner, at)
-        text = _rename(text, name, "(%s)" % place if is_array else "(*%s)" % place)
-        if is_array:
-            need = at + size
-            if need > asz:
-                elem = _elem16(_atyp)
-                newline = _resized(aline, (need + elem - 1) // elem)
-                text = _replace_in_body(text, aline, newline)
-                arrays[owner] = (ao, need, True, newline, _atyp)
-            continue
-        need = at + _elem16(typ)
-        if need > asz:
-            elem = _elem16(_atyp)
-            newline = _resized(aline, (need + elem - 1) // elem)
-            text = _replace_in_body(text, aline, newline)
-            arrays[owner] = (ao, need, True, newline, _atyp)
-    text = _frame_block(text, arrays)
-    head, brace, body = text.partition("{")
-    while "\n\n\n" in body:
-        body = body.replace("\n\n\n", "\n\n")
-    return head + brace + body
-
-
-def _replace_in_body(text, old, new):
-    """`old` (a line of the body, as written) replaced by `new`, once."""
-    head, brace, body = text.partition("{")
-    return head + brace + body.replace(old, new, 1)
-
-
-def _resized(line, count):
-    """An array's declaration with another element count: `  char a [4];` -> `  char a [6];`"""
-    left, _sep, right = line.rpartition("[")
-    return "%s[%d]%s" % (left, count, right[right.index("]") + 1:]) if _sep and "]" in right else line
-
-
-def _frame_block(text, arrays):
-    """The buffers a function passes on, kept in the order and at the distances the original's
-    frame had them: one packed structure. What a callee writes past one buffer then lands in the
-    next one, as in the original -- USER's sub_3_1C4E has GetObject write a 50-byte LOGFONT into
-    an 18-byte buffer, running on into the 32-byte one after it, which the function fills later
-    anyway. Laid out by the compiler instead, the 50 bytes went over the saved DS and the return
-    address. {name: (offset below BP, size, _, its declaration, type)}"""
-    if len(arrays) < 2:
-        return text
-    order = sorted(arrays.items(), key=lambda kv: -kv[1][0])          # (lowest address first)
-    fields, at = [], None
-    for k, (name, (off, size, _i, line, _typ)) in enumerate(order):
-        if at is not None and at > off:
-            fields.append("    uint1 codebreaker_gap%d [%d];" % (k, at - off))
-        elif at is not None and at < off:
-            return text                                                 # (overlapping: left alone)
-        fields.append("  " + line.strip())
-        at = off - size
-    for name, (off, size, _i, line, _typ) in order:
-        text = _replace_in_body(text, line, "")
-    decl = "  _Packed struct {\n%s\n  } codebreaker_frame;\n" % "\n".join(fields)
-    # (the declaration first among the locals: after the brace that opened the body)
-    head, brace, body = text.partition("{")
-    text = head + brace + "\n" + decl + (body[1:] if body.startswith("\n") else body)
-    for name in arrays:                                  # (the fields' own declarations keep their names)
-        text = _rename(text, name, "codebreaker_frame.%s" % name)
-    return text
 
 
 def _end_of(d, seg, off):
