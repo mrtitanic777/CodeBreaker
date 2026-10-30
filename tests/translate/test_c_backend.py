@@ -763,6 +763,11 @@ def test_moved_32bit_heading():
     flat = dict(doc, mods=[], body=[stmt({'node': 'Assign', 'target': name('x'), 'value': gap})])
     assert '  x = (*((uint1 *)(p) + 0x4));' in c.function(flat, c.MOVED, facts={})
     assert '  x = p->field_0x4;' in c.function(flat, c.MOVED)
+    # a function's address stored in a pointer the core typed loosely (compilable32's _code_pointers)
+    store = dict(doc, mods=[], body=[stmt({'node': 'Assign', 'target': name('a3'), 'value': name('sub_004583')}),
+                                     stmt({'node': 'Assign', 'target': name('b'), 'value': name('other')})])
+    text = c.function(store, c.MOVED, facts={'functions': {'sub_004583', 'f'}})
+    assert '  a3 = (code *)sub_004583;\n  b = other;' in text, text
     sixteen_doc = sixteen([], [])
     assert c.function(sixteen_doc, c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()')
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)

@@ -32,18 +32,18 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments")
-FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers")
+FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers")
 # ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
 # C is the module's, given its facts)
-FLAT_ONLY = ("int_result", "register_arguments")      # (... and the 32-bit path alone has)
+FLAT_ONLY = ("int_result", "register_arguments", "code_pointers")      # (... and the 32-bit path alone has)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
@@ -3742,6 +3742,29 @@ def _passed_on(arg, reg):
     return arg.strip() in ('in_' + r, 'in_E' + r, 'unaff_' + r, 'unaff_E' + r)
 
 
+def _code_pointers(nodes, _arrays):
+    """`p = sub_401000;` -- a function's address stored in a pointer the core typed loosely: `p =
+    (code *)sub_401000;`, where the assignment ends its statement (compilable32's _code_pointers;
+    the module's functions are the facts' "functions")."""
+    functions = _now['facts'].get('functions') or ()
+    if not functions:
+        return
+    parent = {id(e): p for e, p in nodes}
+    for e, _p in nodes:
+        if e['node'] == 'Assign' and not e.get('op') and e['value'].get('node') == 'Name' and \
+                id(e['value']) not in _now['whole'] and _name(e['value']) in functions and _ends_statement(e, parent):
+            _rewrite(e['value'], lambda x: '(code *)' + _name(x))
+
+
+def _ends_statement(e, parent):
+    """Is `e` the end of its statement -- the statement's expression, or the value of an
+    assignment that is (`a = b = f;`)?"""
+    up = parent.get(id(e))
+    while up is not None and up.get('node') == 'Assign' and up['value'] is e:
+        e, up = up, parent.get(id(up))
+    return up is not None and up.get('node') == 'ExprStmt' and up['expr'] is e
+
+
 # (each: c_text's pass, done on the tree -- in the order c_text runs them)
 _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joined_arguments", _joined_arguments),
            ("null_is_zero", _null_is_zero), ("global_pointer_steps", _global_pointer_steps),
@@ -3756,7 +3779,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
            ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
            ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads),
-           ("names_used", _names_used), ("heading_facts", _heading_facts))
+           ("names_used", _names_used), ("heading_facts", _heading_facts), ("code_pointers", _code_pointers))
 
 
 # ---------------------------------------------------------------------------------------------- functions

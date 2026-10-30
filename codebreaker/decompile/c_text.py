@@ -493,6 +493,7 @@ def compilable32(module_path, funcs, outdir):
             own.setdefault(n, {}).setdefault(va, set()).add(size)
         written = {}                              # (what the back end found of the function as it wrote it)
         if facts.get("l2") is not None:
+            written["functions"] = set(order)
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
@@ -503,8 +504,10 @@ def compilable32(module_path, funcs, outdir):
             # of "2 bytes of x starting at byte 1")
             t = _null_is_zero(_pieces(t, _BY_SIZE, "uint4"))
         t = _compare_as_numbers(_keep_frame(t, _struct_sizes(struct_notes)))
-        # a function's address stored in a pointer the core typed loosely
-        t = _code_pointers(t, set(order))
+        # a function's address stored in a pointer the core typed loosely (the back end's for C
+        # written from L2: backends/c._code_pointers)
+        if not facts.get("from_l2"):
+            t = _code_pointers(t, set(order))
         if not facts.get("from_l2"):
             t = _struct_gaps(t)                  # an offset of a recovered structure with no field
         # every function returns a value in EAX whether or not the core saw it used; the compiler
