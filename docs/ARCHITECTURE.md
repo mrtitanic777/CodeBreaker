@@ -244,6 +244,13 @@ pattern for structure fields misread `*(int4 *)a1->f_1c` as a field of a1 (COMDL
 SHELL32). c_text no longer imports ctree; it is the module assembly and the facts read from the
 original's code bytes, 1,420 lines (1,860 before).
 
+The 16-bit frame and shape passes (`CB_FRAME16=1`, off by default; from `wip/frame16`) are tree
+passes too: decompile/frame16.py lays a function's locals out as the original's frame and
+decompile/shape16.py writes its statements in the form C 8 makes them, on its L2 tree before the
+back end writes it (decompiler.c_from_l2, beside asm_blocks). The decompiler gives each L2 Local
+its place (`at`) only with the switch on, so the default output is unchanged (IR_UNIFICATION.md
+step 3).
+
 Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
 before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the
 module's tables (near, wide, novalue, exported_prologue, interrupts, selector imports,
