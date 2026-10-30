@@ -193,6 +193,26 @@ def test_build_16_bit_module():
     assert nef.segments()[nef.h["autodata_seg"] - 1]["kind"] == "DATA"
 
 
+def test_fixed_code_segment_keeps_its_size():
+    """A FIXED code segment is built no bigger than the original's (to the word): a function
+    rebuilt from C that finds no room in it stays as its instructions. FINDMVI's segment 1 grew
+    DA0h -> F94h before (CB_FIXED_GROWS=1 still does that)."""
+    from codebreaker.formats.ne import NEFile
+    if os.environ.get("CB_FIXED_GROWS") == "1":
+        raise Skip("CB_FIXED_GROWS=1 lets a fixed segment grow")
+    _need_compiler()
+    _need_decompiler()
+    original = _module("findmvi.dll")
+    b = module.build(original, outdir=tempfile.mkdtemp(), log=lambda *a: None)
+    assert b.linked and b.image, b.report()
+    before = {s["idx"]: s for s in NEFile(original).segments()}
+    fixed = [s for s in NEFile(b.image).segments()
+             if s["kind"] == "CODE" and not before[s["idx"]]["flags"] & 0x0010]
+    assert fixed
+    for s in fixed:
+        assert s["length"] <= (before[s["idx"]]["length"] + 1) & ~1, (s["idx"], hex(s["length"]))
+
+
 def test_16bit_dll_with_the_period_tools():
     """LZEXPAND's reconstruction compiled with Microsoft C 6 and linked with LINK 5.60."""
     from codebreaker.build import msc6, period16
@@ -239,7 +259,8 @@ def main():
                test_padding_is_not_a_difference,
                test_string_literals, test_resource_round_trip_32_bit, test_resource_round_trip_16_bit,
                test_definitions_32_bit, test_definitions_16_bit, test_data_objects,
-               test_build_32_bit_module, test_build_16_bit_module, test_16bit_dll_with_the_period_tools,
+               test_build_32_bit_module, test_build_16_bit_module, test_fixed_code_segment_keeps_its_size,
+               test_16bit_dll_with_the_period_tools,
                test_flat_thunk_dll):
         check(fn)
     for name, status, detail in RESULTS:

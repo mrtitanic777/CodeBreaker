@@ -75,7 +75,8 @@ _real_compile, _real_never_set = P.compiler.compile.target(), functions.never_se
 # (the options module._build16 compiles a function with, before its code segment's -nt=: the
 # medium model, the 8087, for size, the code class it lays out first)
 CFLAGS = [f for f in P.compiler.options() if f != "-ms"] + ["-mm", "-fpi87", "-os", "-nc=MCODE"]
-SWITCHES = ("CB_ASM_ONLY", "CB_ASM_SEGMENTS", "CB_FORCE_C", "CB_ASM_KEEP_C", "CB_NO_GATE", "CB_NO_GUIDED")
+SWITCHES = ("CB_ASM_ONLY", "CB_ASM_SEGMENTS", "CB_FORCE_C", "CB_ASM_KEEP_C", "CB_NO_GATE", "CB_NO_GUIDED",
+            "CB_FIXED_GROWS")
 
 
 def _sources(*patterns):
@@ -458,9 +459,9 @@ def ne_image(ctx, key):
             before = dict(count)
             image = P.packager.link(b, path, mm, folder)
             served = {k: count[k] - before[k] for k in count}
-        if getattr(b, "resident_overflow", None):            # (as module.build: again, and not gated)
-            gated, gate_now = dict(b.gated, **b.resident_overflow), False
-            continue
+        if getattr(b, "resident_overflow", None):            # (as module.build: again -- and gated still, if
+            gated = dict(b.gated, **b.resident_overflow)     #  this build was to be: the overflow is found
+            continue                                         #  before the gate runs)
         if not image:
             break
         b.image = os.path.join(folder, os.path.basename(path).lower())
