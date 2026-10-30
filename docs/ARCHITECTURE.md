@@ -189,8 +189,14 @@ Gate: `tools/l2c.py --made` holds each function's final C to the printed path's 
 before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the
 module's tables (near, wide, novalue, exported_prologue, interrupts, selector imports,
 prototypes, the header) the same as the printed path's. One fix in both paths before that, GDI's
-reads behind `(int4)*(T *)(...)` (seven functions: IR_UNIFICATION.md). USER: see the report of
-this step.
+reads behind `(int4)*(T *)(...)` (seven functions: IR_UNIFICATION.md). USER, gated for the first
+time: 2,288 of 2,317 functions the same. Of the 29 others, 2 the back end declines (sub_3_160A,
+sub_4_3FBE: now stand-ins), and the rest come from the decompiler's own runs, not a pass: with the
+L2 notes on, the native program dies on other functions (PrintL2: MSGTHKCONNECTIONDATALS and
+others), so it leaves out other ones (8 the printed run could not make now have C) and the
+functions after a crash are typed in another process. That run also looped for hours before
+decompiler._resuming took the last function written, in the description's order, as the one it
+died on. Making PrintL2 survive those functions is the next step for USER.
 
 ## Built: phase F (2026-10-29)
 
