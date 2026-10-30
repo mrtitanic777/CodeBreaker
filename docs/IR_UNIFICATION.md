@@ -272,16 +272,48 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    of its own), so more functions differ from the reference in line breaks alone (LZEXPAND 9,
    KEYBOARD 6, COMM 12, KRNL386 212, GDI 509, USER 427); every token, and each module's header
    and tables, is the same. c_text.py is 2,863 lines.
-   **Left in c_text, 2026-10-30.** Per 16-bit function (`_one16`), in order: `_far_locals`,
-   `_far_concat_casts`, `_buffer_fields`, `_far_reads`, `_near_to_far` (the rest of the
-   far-pointer chain: each reads what the ones before wrote; `_far_locals` changes locals'
-   declared types, so it is the next and the largest),
-   `_stack_segment_stores` (the code bytes: a fact for `module_facts16` next), `_callee_pops`
-   (last: it rewrites casts the chain writes). Module-wide in `_compilable16`, as listed above
-   (`_caller_frame_slots`, the selector values, own segments, far pointers passed whole,
-   `_code_segment_data`, the globals' macros, `prototypes` / `declaration`, the header), and
-   c_text's `Module16` / `Module` classes (not yet folded into the L2 Module); the 32-bit and
-   PowerPC paths not begun.
+   **Every 16-bit per-function pass on the tree, 2026-10-30** (backends/c, `MOVED`, `IN_MODULE`,
+   `_PASSES`; one commit each, c_text's function, frozen fixture and freeze_tests entry deleted,
+   its cases ported to tests/translate/test_c_backend.py): `_far_locals` (a four-byte local read
+   through declared `T __far *`, its casts far; `_p` beside a near p the far pointer, p its offset
+   where nothing sets p; a pointer set from one typed otherwise cast to its own type),
+   `_far_concat_casts`, `_buffer_fields` with `_frame_block` (runs of words made one array,
+   buffers laid out to the next one passed on or the saved BP, never-set locals inside one read
+   as its fields, two buffers or more one packed `codebreaker_frame`), `_far_reads`,
+   `_near_to_far`, `_stack_segment_stores` with `_far_record` (where the function stores SS into
+   its frame is a module fact now, "ss_stores": c_text._ss_store_places) and `_callee_pops` (a
+   fact too, "callee_pops", worked out before the C is written; the last pass). c_text's `_one16`
+   only takes the core's notes off each text.
+   What the back end gained for them: a local declared otherwise (`_now['decls']`); the locals'
+   declarations rewritten as a text (`_now['locals_text']`, written in their place -- c_text's
+   line edits, blank lines included, on that text alone); a local's uses renamed
+   (`_now['ren']`, read lazily, so a buffer's later frame name reaches every text written from
+   it, the entry-SP pass's included: `_local_text`); a statement put before or after another
+   (`_now['before']`, `_now['after']`; "before" is the statement C's grammar has the call in:
+   `_statement_keys`, an else-if's first if, a case's last label); and the text as it is written
+   now (`_seen`: one layout on one line, recording each node shown, each name's place and what is
+   before it -- through a moved pass's rewrite to the text around it -- so "passed on" and "its
+   address taken" read as c_text's parser read them, `(char *)&x` inside a piece of x included).
+   Quirks kept as c_text had them: `x->f` is no read through `*x` (L2's Select of *x);
+   `(int4)*p` is an indirection behind casts with no `*`, after a product or a quotient only
+   behind one cast, never after a prefix operator (`_star_as_read`); `T **` made far is written
+   `T * __far*`; a structure gap's far byte pointer gets `_near_to_far`'s `(uint1 *)` where its
+   brackets hold a number (`_gap_cast`). One change of order: c_text ran these passes after
+   `_caller_frame_slots` (module-wide, on the text); they now run before it, as the function is
+   written -- no gated module shows a difference, and moving `_caller_frame_slots` onto the
+   tree next removes the question.
+   Gate: the references were recorded again from master 2d2a195fc (the old ones were lost with
+   their worktree; a copy in state/work/item3c/refs/), and after every pass `l2c --made` gives
+   LZEXPAND 55, KEYBOARD 79, COMM 50, LZ32 39, KRNL386 1,175, GDI 1,666 and USER 2,326 entries
+   (functions, the header and the tables) the same as the reference character for character --
+   none different, none in line breaks only. c_text.py is 2,178 lines (2,863 before).
+   **Left in c_text.** Module-wide in `_compilable16`: `_caller_frame_slots` (a helper working in
+   its caller's frame, and its callers, rewritten together), an import's value used bare, the
+   module's own segments as values and far pointers passed whole, `_code_segment_data`, the
+   globals' macros, `prototypes` / `declaration` (read each heading from text), the header; then
+   c_text's `Module16` / `Module` / `ModulePowerPC` classes (to fold into the L2 Module); the
+   32-bit path's text passes (`compilable32`); the PowerPC path (`_pieces`, `_null_is_zero`,
+   `_open_arguments`, `_struct_gaps` still used there).
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
    **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`

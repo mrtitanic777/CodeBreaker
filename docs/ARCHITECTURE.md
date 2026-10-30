@@ -190,10 +190,23 @@ the calls through the function's own code segment, the interrupts, the definitio
 style, the entry SP and the caller's stack words (what they find for the module -- structures,
 interrupts -- comes back as facts that c_text gathers), and decompile16's rounds read calls and
 arguments off the L2 documents, and the far-pointer chain has begun (`_far_addresses`,
-`_far_casts`). What is left in c_text for 16-bit code is the rest of that chain (`_far_locals`
-... `_near_to_far`), `_stack_segment_stores`, `_callee_pops` and the module-wide assembly;
-c_text.py is 2,863 lines. `l2c --made` now also holds each module's header
-and tables to the reference (recorded again from e93d9f5d7).
+`_far_casts`). `l2c --made` now also holds each module's header and tables to the reference
+(recorded again from e93d9f5d7).
+
+Later on 2026-10-30 the rest of the 16-bit per-function passes moved: the far-pointer chain's
+`_far_locals`, `_far_concat_casts`, `_buffer_fields` (with `_frame_block`), `_far_reads` and
+`_near_to_far`, then `_stack_segment_stores` (where a function stores SS into its frame is now a
+module fact, `ss_stores`) and `_callee_pops` (a fact too, `callee_pops`, found before the C is
+written). c_text's `_one16` only takes the core's notes off each text now. To do what c_text did
+on the text, the back end can declare a local otherwise, rewrite the locals' declarations as a
+text, rename a local's uses, put a statement before or after another, and ask what the text shows
+as it is written now (`_seen`: one layout on one line, where each name is written and what is
+before it). Gate: references recorded again from master 2d2a195fc (a copy in
+state/work/item3c/refs/); after each pass every function, header and table of LZEXPAND, KEYBOARD,
+COMM, LZ32, KRNL386, GDI and USER the same, character for character. c_text.py is 2,178 lines.
+What is left in c_text: the module-wide assembly of the 16-bit module (`_caller_frame_slots`
+first -- the per-function passes now run before it, where c_text ran them after; no gated module
+showed a difference), its Module classes, the 32-bit and PowerPC paths.
 
 Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
 before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the
