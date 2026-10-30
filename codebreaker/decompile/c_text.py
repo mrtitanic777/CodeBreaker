@@ -791,10 +791,11 @@ def compilable16(module_path, outdir=None):
     # sizes, which the description is written with -- a change to it alone handed back C made
     # with the sizes before)
     from codebreaker.translate.backends import c as cback
-    from codebreaker.decompile import asm_blocks, inline_asm
+    from codebreaker.decompile import asm_blocks, inline_asm, frame16, shape16
     # (and the C back end's source: the C is written from L2)
     k = cache.key(body, _source_stamp(sys.modules[__name__], decompiler, describe, api_arguments, cback),
                   *(["asm blocks", _source_stamp(asm_blocks, inline_asm)] if os.environ.get("CB_ASM_BLOCKS") else []),
+                  *(["frame16", _source_stamp(frame16, shape16)] if decompiler.frame16_on() else []),
                   cache.tool(decompiler._exe()), decompiler._language_stamp(),
                   (settings.get("struct_recovery") or "off").strip().lower(),
                   os.environ.get("CB_SELECTOR_STRUCTS", ""),       # (_selector_structs' off switch)
@@ -928,7 +929,7 @@ def _compilable16(module_path, outdir=None):
     # Each function's C written from its L2 document by the C back end, with what the module says
     # of it (_write16, among worker processes: the back end's passes on the tree, its heading as
     # the description and its instructions give it)
-    asm_images = decompiler._segment_images(d.path) if os.environ.get("CB_ASM_BLOCKS") else None
+    asm_images = decompiler._segment_images(d.path) if decompiler.tree_images() else None
     # the functions whose calls through pointers remove nothing themselves: the callee does (the
     # arguments are listed in stack order, so __stdcall lays them out as the original pushed
     # them; backends/c._callee_pops). Each call is kept by its own place -- the function the

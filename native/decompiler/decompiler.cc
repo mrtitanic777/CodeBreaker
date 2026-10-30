@@ -661,6 +661,7 @@ bool g_structs = false;
 // default: the C is not changed. The body follows (PrintL2, below); codebreaker.translate.l2.validate
 // judges the document.
 bool g_l2 = false;
+bool g_frame16 = false;        // (CB_FRAME16: each L2 Local says where the original keeps it)
 
 std::string jsonText(const std::string& s) {
   std::string out = "\"";
@@ -1352,8 +1353,15 @@ class PrintL2 : public PrintC {
     std::set<std::string> said;
     for (const Symbol* s : declared_) {
       if (s->getType() == nullptr || !said.insert(s->getDisplayName()).second) continue;
+      // and, with CB_FRAME16=1, where the original keeps it: its stack place, a register (the frame
+      // pass lays a 16-bit source's locals out by these, decompile/frame16.py)
+      std::string at;
+      if (g_frame16) {
+        const MapEntry* me = dynamic_cast<const MapEntry*>(const_cast<Symbol*>(s)->getFirstWholeMap());
+        if (me != nullptr) at = ",\"at\":" + l2Location(*glb, me->getAddr(), me->getSize());   // (a dynamic entry has no storage of its own)
+      }
       locals += (locals.empty() ? "" : ",") + ("{\"node\":\"Local\",\"sym\":" + sym("local", s->getDisplayName()) +
-                ",\"type\":" + type(s->getType()) + "}");
+                ",\"type\":" + type(s->getType()) + at + "}");
     }
     std::string stmts = array(lists_.back());
     lists_.clear();
@@ -2024,6 +2032,7 @@ int main(int argc, char** argv) {
   d.flat = d.arch.rfind("x86:LE:16", 0) != 0;      // (PowerPC's L2 too: flat pointers, a function by its address)
   if (const char* sv = std::getenv("CB_STRUCTS")) g_structs = std::atoi(sv) != 0;
   if (const char* lv = std::getenv("CB_L2")) g_l2 = std::atoi(lv) != 0;
+  if (const char* fv = std::getenv("CB_FRAME16")) g_frame16 = std::atoi(fv) != 0;
 
   try {
     startDecompilerLibrary(std::vector<std::string>{});

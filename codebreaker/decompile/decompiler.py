@@ -75,7 +75,21 @@ def _l2_key():
     """What the L2 notes add to a cache key: a text made with them is another text. (Named "l2 2":
     the whole-module run once left it out, and per-function texts without notes were kept under
     the first name.)"""
-    return ["l2 2"] if os.environ.get("CB_L2") else []
+    return (["l2 2"] if os.environ.get("CB_L2") else []) + \
+        (["frame16"] if os.environ.get("CB_L2") and frame16_on() else [])   # (each Local's "at": another text)
+
+
+def frame16_on():
+    """CB_FRAME16=1: a 16-bit function's locals laid out as the original's frame and its statements
+    shaped as C 8 writes them (decompile/frame16.py, shape16.py: passes on its L2 tree); the
+    decompiler gives each L2 Local its place ("at") for them."""
+    return os.environ.get("CB_FRAME16", "0") not in ("", "0")
+
+
+def tree_images():
+    """Whether a 16-bit function's L2 tree is given passes that read its code (c_from_l2's `images`):
+    its _asm blocks (CB_ASM_BLOCKS), its frame and shape (CB_FRAME16)."""
+    return bool(os.environ.get("CB_ASM_BLOCKS")) or frame16_on()
 
 
 def _segment_images(description):
@@ -147,9 +161,12 @@ def c_from_l2(text, facts, images=None, module=None):
     """A function's C written by the hub's C back end from its L2 document (facts["l2"];
     translate/backends/c.py, docs/IR_UNIFICATION.md step 2) in place of the C the decompiler
     printed (`text`). Without a document, or one the back end declines, the printed C stays.
-    With `images` ({segment: code}, CB_ASM_BLOCKS=1) a 16-bit function's interrupts are first
-    made the _asm blocks its instructions say (decompile/asm_blocks.py), and facts["l2"] is the
-    document so placed (the module's L2 tree is made of them: build/module.module_document).
+    With `images` ({segment: code}; tree_images) a 16-bit function's tree is first given the passes
+    that read its instructions: with CB_ASM_BLOCKS=1 its interrupts made the _asm blocks its
+    instructions say (decompile/asm_blocks.py); with CB_FRAME16=1 its locals laid out as the
+    original's frame and its statements shaped as C 8 writes them (decompile/frame16.py, shape16.py)
+    -- once: facts["l2"] is the document so made (the module's L2 tree is made of them:
+    build/module.module_document), facts["placed"] says it is.
     `module`: what the module says of the function, for the back end's passes that need it
     (backends/c.IN_MODULE; c_text._write16 gives it). facts["from_l2"] says which C it is."""
     from codebreaker.translate.backends import c as cback
@@ -158,9 +175,14 @@ def c_from_l2(text, facts, images=None, module=None):
         return text
     origin = doc.get("origin") or {}
     if images and origin.get("segment") in images and not facts.get("placed"):
-        from codebreaker.decompile import asm_blocks
         code = images[origin["segment"]]
-        doc, _said = asm_blocks.place(doc, code, origin["offset"], len(code), seg=origin["segment"])
+        if os.environ.get("CB_ASM_BLOCKS"):
+            from codebreaker.decompile import asm_blocks
+            doc, _said = asm_blocks.place(doc, code, origin["offset"], len(code), seg=origin["segment"])
+        if frame16_on():                                  # (and its locals as the frame had them)
+            from codebreaker.decompile import frame16, shape16
+            doc, _said = frame16.lay_out(doc, code, origin["offset"], len(code))
+            doc, _said = shape16.reshape(doc, code)
         facts["l2"], facts["placed"] = doc, True
     try:
         body = cback.function(doc, cback.MOVED, facts=module)  # (its far pointers: L2's types say which)
@@ -187,7 +209,7 @@ def run(description, only=(), timeout=3600, max_instructions=None, l2=None, writ
             del os.environ["CB_L2"]
         elif l2:
             os.environ["CB_L2"] = was
-    images = _segment_images(description) if l2 and os.environ.get("CB_ASM_BLOCKS") else None
+    images = _segment_images(description) if l2 and tree_images() else None
     texts, notes = {}, {}
     for n, t in out.items():
         texts[n], notes[n] = split_notes(t)

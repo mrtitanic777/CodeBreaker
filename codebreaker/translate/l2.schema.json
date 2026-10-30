@@ -2692,6 +2692,10 @@
      "items": {
       "type": "string"
      }
+    },
+    "at": {
+     "$ref": "#/$defs/Location",
+     "description": "a decompiled function's local: where the original keeps it (its stack place, a register; the decompiler gives it with CB_FRAME16=1, decompile/frame16.py lays a 16-bit function's locals out by it)"
     }
    },
    "additionalProperties": false

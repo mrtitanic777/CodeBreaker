@@ -347,6 +347,9 @@ _MEMBER = {'.': _Op('.', '', 2, 66, True, 'binary'), '->': _Op('->', '', 2, 66, 
 _SUBSCRIPT = _Op('[', ']', 2, 66, False, 'postsurround')
 _CALL = _Op('(', ')', 2, 66, False, 'postsurround', 0, 10)
 _UNARY = {op: _Op(op, '', 1, 62, False, 'unary_prefix') for op in ('~', '!', '-', '+', '&', '*')}
+# x++ / x-- (PrintC's post_increment, post_decrement): the decompiler writes none, a pass on the tree
+# may (decompile/shape16.py, where the original's instruction is an inc or dec)
+_POSTFIX_OPS = {op: _Op(op, '', 1, 66, False, 'unary_postfix') for op in ('++', '--')}
 _CAST = _Op('(', ')', 2, 62, False, 'presurround')
 _BINOPS = {op: _Op(op, '', 2, p, op in _ASSOCIATIVE, 'binary', 0 if op == ',' else 1) for op, p in _BINARY.items()}
 _ASSIGNS = {}
@@ -399,6 +402,8 @@ class _Stack:
             if top[1] != top[0].stage:
                 break
             self._emit(top)
+            if top[0].kind == 'unary_postfix':          # (its symbol after its operand)
+                self.em.print(top[0].print1)
             if top[2]:
                 self.em.close_paren(')')
             else:
@@ -764,7 +769,7 @@ def _op_of(e):
     if n == 'Assign':
         return _assign_op(e.get('op'))
     if n == 'Unary':
-        return _UNARY.get(e['op'])
+        return (_POSTFIX_OPS if e.get('postfix') else _UNARY).get(e['op'])
     if n == 'Select':
         return _MEMBER['->' if _arrow(e) else '.']
     return {'Cast': _CAST, 'Call': _CALL, 'Index': _SUBSCRIPT, 'Paren': _HIDDEN}.get(n)
@@ -850,6 +855,11 @@ def _push(st, e, paren=None):
             n = _lit(e['x'])                             #  added after the lines are laid out, as c_text does)
             st.atom(n, _mk_fp_text('codebreaker_ds()', e['x'], shown=n))
             return
+        _push(st, e['x'])
+        return
+    if n == 'Unary' and e.get('postfix') and e['op'] in _POSTFIX_OPS:
+        _operands(e, tok, (e['x'],))
+        st.op(_POSTFIX_OPS[e['op']], paren)
         _push(st, e['x'])
         return
     if n == 'Unary':
