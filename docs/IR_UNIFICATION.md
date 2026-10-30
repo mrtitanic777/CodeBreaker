@@ -260,9 +260,22 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    same; where they differ only in line breaks (KRNL386 73, GDI 194, USER 75, LZEXPAND 1,
    KEYBOARD 1) a heading in the older style fits on one line where PrintC broke the longer one,
    or a rewrite is laid out by its own text. c_text.py is 3,026 lines (3,284 before).
-   **Left in c_text, 2026-10-30.** Per 16-bit function (`_one16`), in order: `_far_addresses`,
-   `_far_casts`, `_far_locals`, `_far_concat_casts`, `_buffer_fields`, `_far_reads`,
-   `_near_to_far` (the far-pointer chain: each reads what the ones before wrote),
+   **The far-pointer chain begun, 2026-10-30:** `_far_addresses` (with `_whole_far_arguments`:
+   MK_FP as a far pointer to what the offset names, a far pointer's halves as its own
+   arithmetic or passed whole, an unused high-half local and its statement gone -- the back end
+   can now leave a statement out, `_now['gone']`) and `_far_casts` (a cast before a far name
+   made far, CONCAT22 of its halves `(int4)p`, its low word moved on as its arithmetic) are the
+   back end's. The MK_FP texts the earlier passes write (a far pointer from the frame, a data
+   address, a frame buffer through its address, `_caller_frame_slots`' arguments) take the
+   far-address form where it is moved. Their rewrites are given no room in the layout (as long as
+   c_text made them: given the room of what PrintC printed, a `;` or `)(...)` was left on a line
+   of its own), so more functions differ from the reference in line breaks alone (LZEXPAND 9,
+   KEYBOARD 6, COMM 12, KRNL386 212, GDI 509, USER 427); every token, and each module's header
+   and tables, is the same. c_text.py is 2,863 lines.
+   **Left in c_text, 2026-10-30.** Per 16-bit function (`_one16`), in order: `_far_locals`,
+   `_far_concat_casts`, `_buffer_fields`, `_far_reads`, `_near_to_far` (the rest of the
+   far-pointer chain: each reads what the ones before wrote; `_far_locals` changes locals'
+   declared types, so it is the next and the largest),
    `_stack_segment_stores` (the code bytes: a fact for `module_facts16` next), `_callee_pops`
    (last: it rewrites casts the chain writes). Module-wide in `_compilable16`, as listed above
    (`_caller_frame_slots`, the selector values, own segments, far pointers passed whole,

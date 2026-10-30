@@ -189,9 +189,10 @@ Since 2026-10-30 the back end also does, on the tree, the selector structures an
 the calls through the function's own code segment, the interrupts, the definition in the older
 style, the entry SP and the caller's stack words (what they find for the module -- structures,
 interrupts -- comes back as facts that c_text gathers), and decompile16's rounds read calls and
-arguments off the L2 documents. What is left in c_text for 16-bit code is the far-pointer chain
-(`_far_addresses` ... `_near_to_far`), `_stack_segment_stores`, `_callee_pops` and the
-module-wide assembly; c_text.py is 3,026 lines. `l2c --made` now also holds each module's header
+arguments off the L2 documents, and the far-pointer chain has begun (`_far_addresses`,
+`_far_casts`). What is left in c_text for 16-bit code is the rest of that chain (`_far_locals`
+... `_near_to_far`), `_stack_segment_stores`, `_callee_pops` and the module-wide assembly;
+c_text.py is 2,863 lines. `l2c --made` now also holds each module's header
 and tables to the reference (recorded again from e93d9f5d7).
 
 Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
