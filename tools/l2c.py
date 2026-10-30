@@ -13,11 +13,14 @@ docs/IR_UNIFICATION.md step 2: the back end replaces the printed C where they ar
 
 --diff NAME prints one function's two texts where they part.
 
-    python tools/l2c.py --made MODULE ... [--show N]
+    python tools/l2c.py --made MODULE ... [--show N] [--record]
 
-the whole way to compilable C (c_text) for corpus modules, once from the printed C and once from
-the back end's (CB_C_FROM_L2), each function's final text compared: the gate for moving a c_text
-pass onto L2 (docs/IR_UNIFICATION.md step 3)."""
+the whole way to compilable C (c_text) for corpus modules, each function's final text held to
+the reference: the gate for moving a c_text pass onto L2 (docs/IR_UNIFICATION.md step 3). The
+reference is the printed path's texts, recorded (state/l2c/<module>.<sha256>.pickle) before its
+passes were deleted from c_text -- the C is now written from L2 alone, and the printed path
+cannot make them again. --record keeps what is made now as the new reference: for an intended
+change only (GDI's SS fix was the last one recorded so)."""
 import collections
 import json
 import os
@@ -32,7 +35,6 @@ from codebreaker.decompile import decompiler                 # noqa: E402
 from codebreaker.translate.backends import c as cback        # noqa: E402
 
 HEAD = re.compile(r"^/\*@@ (\S+) ", re.M)
-NOTE = re.compile(r"^/\*@L2 (\{.*\}) \*/$", re.M)
 _TOKEN = re.compile(r"0x[0-9a-fA-F]+|\d+(?:\.\d+)?(?:e[-+]?\d+)?|\w+|'(?:\\.|[^'])*'|\"(?:\\.|[^\"])*\"|"
                     r"->|\+\+|--|<<=|>>=|<<|>>|<=|>=|==|!=|&&|\|\||[-+*/%&|^]=|\S")
 
@@ -51,11 +53,15 @@ def functions(out):
     heads = list(HEAD.finditer(out))
     for i, h in enumerate(heads):
         chunk = out[h.start():heads[i + 1].start() if i + 1 < len(heads) else len(out)]
-        note = NOTE.search(chunk)
-        printed = chunk[note.end() + 2:] if note and chunk[note.end():note.end() + 2] == "\n\n" else chunk
+        body = chunk.split("\n", 1)[1] if "\n" in chunk else ""
+        printed, facts = decompiler.split_notes(body)          # (the notes are the function's facts)
+        if facts["l2"] is not None and printed.startswith("\n"):
+            printed = printed[1:]
+        elif facts["l2"] is None:
+            printed = chunk
         if printed.endswith("\n\n"):
             printed = printed[:-1]
-        found[h.group(1)] = (json.loads(note.group(1)) if note else None, printed)
+        found[h.group(1)] = (facts["l2"], printed)
     return found
 
 
@@ -144,8 +150,9 @@ shutil.rmtree(work, ignore_errors=True)
 """
 
 
-def made(module, l2):
-    """{function: its compilable C}, from the printed C or (l2) from the back end's."""
+def made(module, l2=True):
+    """{function: its compilable C} (`l2`: CB_C_FROM_L2 for the lanes that ask it of the
+    environment; the 16-bit and 32-bit x86 paths write C from L2 whatever it says)."""
     import pickle
     import subprocess
     import tempfile
@@ -167,21 +174,46 @@ def made(module, l2):
         shutil.rmtree(folder, ignore_errors=True)       # (nothing of a run is left behind)
 
 
-def check_made(module, show):
+def _record_path(module):
+    from codebreaker.base import corpus, settings
+    import hashlib
+    path = corpus.retail(module) or module
+    with open(path, "rb") as f:
+        sha = hashlib.sha256(f.read()).hexdigest()
+    return settings.state("l2c", "%s.%s.pickle" % (os.path.basename(module).lower(), sha[:16]))
+
+
+def reference(module, record=False):
+    """The recorded texts the C is held to (--record: what is made now, kept as them)."""
+    import pickle
+    where = _record_path(module)
+    if not record:
+        if not os.path.isfile(where):
+            raise SystemExit("%s: no reference recorded (%s)" % (module, where))
+        with open(where, "rb") as f:
+            return pickle.load(f)
+    texts = made(module)
+    with open(where, "wb") as f:
+        pickle.dump(texts, f)
+    return texts
+
+
+def check_made(module, show, record=False):
     """Functions whose compilable C is the same either way, and the first lines that differ."""
-    a, b = made(module, False), made(module, True)
+    a = reference(module, record)
+    b = dict(a) if record else made(module)
 
     def flat(t):                                         # (its tokens: comments, and where a line was broken, aside)
         return " ".join(tokens(t))
     same = [n for n in a if n in b and a[n] == b[n]]
     spaced = [n for n in a if n in b and a[n] != b[n] and flat(a[n]) == flat(b[n])]
     differ = [n for n in a if n in b and flat(a[n]) != flat(b[n])]
-    print("%-14s %5d functions  %5d the same  %4d but for comments and line breaks  %4d different  %d only one way" % (
+    print("%-14s %5d functions  %5d the same as the reference  %4d but for comments and line breaks  %4d different  %d only one way" % (
         module, len(a), len(same), len(spaced), len(differ), len(set(a) ^ set(b))), flush=True)
     for n in differ[:show]:
         ta, tb = flat(a[n]), flat(b[n])
         k = next((i for i, (x, y) in enumerate(zip(ta, tb)) if x != y), min(len(ta), len(tb)))
-        print("      %s:\n        printed  ...%s\n        from L2  ...%s" % (n, ta[max(0, k - 60):k + 60], tb[max(0, k - 60):k + 60]))
+        print("      %s:\n        reference ...%s\n        now       ...%s" % (n, ta[max(0, k - 60):k + 60], tb[max(0, k - 60):k + 60]))
     return len(a), len(same) + len(spaced)
 
 
@@ -191,7 +223,7 @@ def main(argv):
         names = [a for a in argv if not a.startswith("--") and a != str(show)]
         total = same = 0
         for name in names:
-            t, s = check_made(name, show)
+            t, s = check_made(name, show, "--record" in argv)
             total, same = total + t, same + s
         print("all: %d functions, %d made the same either way" % (total, same))
         return 0 if total and same == total else 1

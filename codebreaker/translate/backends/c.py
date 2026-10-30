@@ -29,9 +29,15 @@ import re
 
 # c_text's passes done on L2 (docs/IR_UNIFICATION.md step 3, L2_BINARY_TYPES.md's order)
 MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers",
-         "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result")
+         "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
+         "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds")
+# ... those of them that need what the module's facts say of the function (its model in the
+# description, what its instructions read and start with): done only when `function` is given
+# them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
+# run for at first (decompiler.c_from_l2) is written without them
+IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
-_now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False}
+_now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them)
@@ -477,15 +483,16 @@ def is_far(t):
     return bool(t) and t.get('kind') in ('ptr', 'fnptr') and t.get('space') == 'far'
 
 
-def _push_type(st, t, name=None, far=False, word=None, shown_name=None):
+def _push_type(st, t, name=None, far=False, word=None, shown_name=None, shown_base=None):
     """A type with its name (a declaration) or without (a cast, a return type), on the stack:
     PrintC::pushTypeStart, the name or a blank, pushTypeEnd. `far`: the outer pointer written
     __far (c_text._far: `int2 __far *p`); `word`: another word there (` __near`); `shown_name`:
-    what is shown for the name (`unaff_SS = codebreaker_ss()`)."""
+    what is shown for the name (`unaff_SS = codebreaker_ss()`); `shown_base`: ... for the base type
+    (a result of `void` written `xunknown2`)."""
     mods, base = _stack(t)
     st.op(_TYPE_NOSPACE if name is None and not mods else _TYPE_SPACE)
     word = ' __far' if far else word
-    shown = base + word if word and mods and all(m == 'ptr' for m in mods) else None
+    shown = (shown_base or base) + word if word and mods and all(m == 'ptr' for m in mods) else shown_base
     st.atom(base, shown)
     for m in reversed(mods):
         st.op(_PTR if m == 'ptr' else _ARRAY)
@@ -498,9 +505,9 @@ def _push_type(st, t, name=None, far=False, word=None, shown_name=None):
             st.atom(str(m[1]))
 
 
-def _put_type(em, t, name=None, far=False, shown_name=None):
+def _put_type(em, t, name=None, far=False, shown_name=None, shown_base=None):
     st = _Stack(em)
-    _push_type(st, t, name, far, shown_name=shown_name)
+    _push_type(st, t, name, far, shown_name=shown_name, shown_base=shown_base)
 
 
 def type_text(t, name='', far=False):
@@ -1222,7 +1229,6 @@ def _walk(x, parent=None):
                 yield from _walk(v, x)
 
 
-_C_TYPES = {'char', 'short', 'int', 'long', 'float', 'double', 'void', 'signed', 'unsigned', 'bool'}
 
 
 def _terms(e):
@@ -1247,14 +1253,10 @@ def _frame_through_ss(nodes, arrays):
         if v.get('node') == 'Unary' and v.get('op') == '&' and not v.get('postfix'):
             return v['x'].get('node') == 'Name' and _FRAME.fullmatch(_name(v['x'])) is not None
         return v.get('node') == 'Name' and _name(v) in arrays
-    for e, parent in nodes:
+    for e, _parent in nodes:
+        # (also behind a cast, `(int4)*(int2 *)(...)`: GDI's sub_35_0669, sub_35_0722 and
+        # sub_36_0000, which read their frame through DS while c_text took it for a product)
         if e['node'] != 'Unary' or e.get('op') != '*' or e.get('postfix') or e['x'].get('node') != 'Cast':
-            continue
-        if parent is not None and parent.get('node') == 'Cast' and \
-                re.fullmatch(r"\w+", type_text(parent.get('type'))) and type_text(parent.get('type')) not in _C_TYPES:
-            # (`(int4)*(int2 *)(...)`: a name of a type not C's own, so the C's parser reads
-            # `(int4) * ...` as a product -- c_text never saw a dereference there, and left it as
-            # the core printed it: GDI's sub_35_0669 reads its frame so, through DS)
             continue
         cast = e['x']
         ty = re.fullmatch(r"([\w ]+?) ?\*", type_text(cast.get('type')))
@@ -1366,9 +1368,176 @@ def _one_name_for_globals(nodes, _arrays):
             _rewrite(e, lambda x: _name(x)[1:])
 
 
+# ---------------------------------------------------------------------------------------------- what the module says
+# The passes after the pointer ones read what the module's facts say of the function: its model in
+# the description, how far its instructions read through an argument, which arguments they load as
+# far pointers, how they start (c_text._one16 works these out from the original's code and hands
+# them over: `function(..., facts=)`).
+_JOINED = re.compile(r"_(a\d+|param_\d+)")
+_WIDE = ('xunknown4', 'int4', 'uint4', 'undefined4', 'float4')
+_BYTES = ('bool', 'char', 'int1', 'uint1', 'xunknown1', 'undefined1', 'undefined')
+
+
+def _heading(doc):
+    """What c_text's passes after the pointer ones saw of the function's heading, as words: (the
+    result's type, the convention's words, the words put before the name, the name) -- the model
+    word where the decompiler left the convention out (`__stdcall16near`, or `__far`/`__near`:
+    a head with no model compiles with OpenWatcom's own, its arguments in registers), and
+    `__export` / `__loadds` where its instructions start so."""
+    ctx = _now['facts']
+    ret = _ret(doc)
+    result = type_text(ret)
+    mods = list(doc.get('mods') or ())
+    words = []
+    head0 = ' '.join([result] + mods)
+    if 'model_word' in _now['moved'] and ctx.get('distance') and '16near' not in head0 and '16far' not in head0:
+        said = set(head0.replace('(', ' ').replace(')', ' ').replace('*', ' ').split())
+        words.append(ctx.get('model') if ctx.get('model') and not said & {'__stdcall', '__cdecl', '__pascal'}
+                     else '__' + ctx['distance'])
+    far_model = any('__stdcall16far' in w or '__cdecl16far' in w for w in mods + words) or (mods + words)[-1:] == ['__far']
+    if far_model and 'export' in _now['moved'] and ctx.get('export') and not _lost(doc):
+        words.append('__export')
+    if 'loadds' in _now['moved'] and ctx.get('loadds') and not _lost(doc):
+        words.append('__loadds')
+    return result, mods, words, far_model
+
+
+_FASTCALL = re.compile(r"__fastcall\w+")
+
+
+def _lost(doc):
+    """A heading c_text's parser lost the name of: `int2 __fastcall16far f(void)` (it reads
+    `__fastcall` as Microsoft's word and the rest as another name). There c_text never wrote
+    __export, __loadds or a byte result made a word -- KRNL386's sub_2_7805, sub_2_79DB and
+    sub_2_7BA8 load DGROUP and are not __loadds -- and neither does this, until that change is
+    tried on its own (with the fastcall pragma, untried)."""
+    return not doc.get('params') and any(_FASTCALL.fullmatch(m) for m in doc.get('mods') or ())
+
+
+def _ret(doc):
+    ft = (doc.get('sym') or {}).get('type') or {}
+    return doc.get('ret') or (ft.get('result') or {}).get('type') or {'kind': 'void'}
+
+
+def _result_shown(ret):
+    """What is shown for the result's base type: `xunknown2` for `void` (it sets no result, but
+    its callers may read AX: c_text's void -> xunknown2), `int2`/`uint2` for a byte (returned in
+    AX all the same: Windows' BOOL is an int, and callers test the whole of AX)."""
+    mods, base = _stack(ret)
+    if base == 'void' and 'void_result' in _now['moved']:
+        return 'xunknown2'
+    if not mods and base in _BYTES and 'byte_result' in _now['moved'] and not _lost(_now['doc'] or {}):
+        return 'int2' if base in ('char', 'int1') else 'uint2'
+    return None
+
+
+def flags(doc, facts):
+    """The function's flags in the module (c_text's Module16 sets): near (near is the default and
+    is not printed), wide (a result of four bytes, or a far pointer), novalue (it sets no result),
+    exported_prologue -- as its heading is written (`facts` as `function` is given them)."""
+    was = _now['moved'], _now['facts'], _now['far'], _now['doc']
+    _now['moved'], _now['facts'], _now['far'], _now['doc'] = MOVED, facts or {}, set(), doc
+    try:
+        ret = _ret(doc)
+        result, mods, words, far_model = _heading(doc)
+        far_result = is_far(ret)
+        shown = _result_shown(ret)
+        out = set()
+        first = (shown or result).split()[0] if (shown or result) else ''
+        if _stack(ret)[1] == 'void' and first == 'xunknown2':
+            out.add('novalue')
+        if far_result or (facts or {}).get('far_return'):
+            out.add('wide')
+        if not far_model:
+            out.add('near')
+        elif (facts or {}).get('export'):
+            out.add('exported_prologue')
+        written = type_text(ret, far=far_result)
+        if shown:
+            written = shown + written[len(_stack(ret)[1]):]
+        before = ' '.join([written] + mods + words)
+        if first in _WIDE or '*' in before and '__far' in before:
+            out.add('wide')
+        return out
+    finally:
+        _now['moved'], _now['facts'], _now['far'], _now['doc'] = was
+
+
+def _joined_arguments(nodes, _arrays):
+    """`_a1` is the decompiler's "a1 and the argument after it, as one four-byte value" (a far
+    pointer or a long passed as two words): the four bytes from a1, `(*(uint4 *)&a1)` -- read
+    through, a far pointer, `*(*(int2 __far * *)&a1)`, a byte where the original reads one through
+    it (USER's sub_42_038E; c_text._joined_arguments)."""
+    ctx = _now['facts']
+    result, mods, words, _far_model = _heading(_now['doc'])
+    far_fn = 'far' in ' '.join([result] + mods + words + [_now['doc']['name']])
+    widths = (ctx.get('widths') or {}).get(far_fn) or {}
+    for e, p in nodes:
+        m = _JOINED.fullmatch(_name(e)) if e['node'] == 'Name' else None
+        if not m:
+            continue
+        if p is not None and p['node'] == 'Unary' and p.get('op') == '*' and not p.get('postfix') and p['x'] is e:
+            _rewrite(p, lambda _x, a=m.group(1): "*(*(%s __far * *)&%s)" % ("char" if widths.get(a) == 1 else "int2", a))
+        else:
+            _rewrite(e, lambda _x, a=m.group(1): "(*(uint4 *)&%s)" % a)
+
+
+def _far_arguments(nodes, _arrays):
+    """An argument the original loads as a far pointer (`les bx, [bp+6]`), the word after it its
+    segment, is one where it is read or written through: `*(T *)a1` is `*(T __far
+    *)CODEBREAKER_FAR(a2, a1)` (c_text._far_arguments). Arguments lie on the stack lowest first,
+    the first 6 bytes above BP in a far function and 4 in a near one -- as c_text told them, by
+    `far` anywhere in the heading as written then."""
+    doc, loads = _now['doc'], _now['facts'].get('loads')
+    params = doc.get('params') or []
+    if not loads or not params:
+        return
+    result, mods, words, _far_model = _heading(doc)
+    texts = [type_text(p.get('type'), _param_name(p), _param_name(p) in _now['far']) for p in params]
+    near = 'far' not in ' '.join([result] + mods + words + [doc['name']] + texts)
+    at, where = (4 if near else 6), {}
+    for prm in texts:
+        ws = prm.split()
+        name = ws[-1].lstrip('*')
+        wide = '*' in prm and '__far' in prm or ws[0] in _WIDE
+        where[at] = (name, ws[0], wide)
+        at += 4 if wide else 2
+    segment_of = {}
+    for off in sorted(loads):
+        if off not in where or off + 2 not in where:
+            continue
+        (name, kind, wide), (segment, kind2, wide2) = where[off], where[off + 2]
+        if wide or wide2 or kind not in _WORDS[:3] or kind2 not in _WORDS[:3]:
+            continue
+        segment_of.setdefault(name, segment)
+    if not segment_of:
+        return
+    for e, p in nodes:
+        if e['node'] != 'Unary' or e.get('op') != '*' or e.get('postfix') or e['x'].get('node') != 'Cast':
+            continue
+        cast = e['x']
+        ty = re.fullmatch(r"([A-Za-z_]\w*) \*", type_text(cast.get('type')))
+        if not ty or _now['marks'].get(id(cast)) or id(cast) in _now['whole']:
+            continue
+        v = cast['x']['x'] if cast['x'].get('node') == 'Paren' else cast['x']
+        if v.get('node') == 'Name' and _name(v) in segment_of:
+            name, rest = _name(v), ''
+        elif v.get('node') == 'Binary' and v.get('op') == '+' and v['left'].get('node') == 'Name' and \
+                _name(v['left']) in segment_of and not _bracket(_token(v), v['left'], 0):
+            name, inner = _name(v['left']), expr(v)
+            if '(' in inner or ')' in inner or not inner.startswith(name + ' + '):
+                continue
+            rest = ' + ' + inner.split('+', 1)[1].strip()
+        else:
+            continue
+        _rewrite(e, lambda _x, t=ty.group(1), s=segment_of[name], n=name, r=rest:
+                 "*(%s __far *)CODEBREAKER_FAR(%s, %s%s)" % (t, s, n, r))
+
+
 # (each: c_text's pass, done on the tree -- in the order c_text runs them)
-_PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("null_is_zero", _null_is_zero),
-           ("global_pointer_steps", _global_pointer_steps), ("one_name_for_globals", _one_name_for_globals))
+_PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joined_arguments", _joined_arguments),
+           ("null_is_zero", _null_is_zero), ("global_pointer_steps", _global_pointer_steps),
+           ("far_arguments", _far_arguments), ("one_name_for_globals", _one_name_for_globals))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -1383,18 +1552,22 @@ def _signature(em, doc):
     ft = sym.get('type') or {}
     em.open_group()                                      # (the prototype)
     em.open_group()                                      # (its result)
-    ret = doc.get('ret') or (ft.get('result') or {}).get('type') or {'kind': 'void'}
+    ret = _ret(doc)
     far = 'far_result' in _now['moved'] and is_far(ret)
     if far and _stack(ret)[0] != ['ptr']:
         raise Decline('a far result of a pointer to a pointer')      # (c_text._far_result writes `T *__far *`)
-    _put_type(em, ret, far=far)                          # (a far pointer: `T __far *`, c_text._far_result)
+    # (a far pointer: `T __far *`, c_text._far_result; `void` and a byte as _result_shown says)
+    _put_type(em, ret, far=far, shown_base=_result_shown(ret))
     em.close_group()
     em.spaces(1)
     for m in doc.get('mods') or ():
         em.print(m)
         em.spaces(1)
     em.open_group()
-    em.print(doc['name'])
+    # (the model word, __export, __loadds: before the name, given no room -- c_text put them in
+    # after PrintC's layout)
+    words = _heading(doc)[2] if _now['facts'] else []
+    em.print(doc['name'], ' '.join(words + [doc['name']]) if words else None)
     em.spaces(0, 10)
     em.open_paren('(')
     em.spaces(0, 10)
@@ -1421,15 +1594,21 @@ def signature(doc):
     return _flat(_signature, doc)
 
 
-def function(doc, moved=(), far=None):
+def function(doc, moved=(), far=None, facts=None):
     """C text of one function document (a MethodDecl), with the c_text passes `moved` done here.
     `far`: the names of its four-byte pointers where the decompiler said them apart from the types
-    (its /*@P name 4 */ notes, which c_text goes by: a variable can be four bytes wide and typed as
-    a near pointer); else they are read off the types."""
+    (its pointers' sizes, which c_text went by: a variable can be four bytes wide and typed as a
+    near pointer); else they are read off the types. `facts`: what the module says of it, for the
+    passes IN_MODULE (left out without them) -- distance and model (its description line), widths
+    ({far: {a<n>: bytes}}: c_text._far_argument_widths), loads (c_text._far_loads), export and
+    loadds (how its instructions start)."""
     if doc.get('node') != 'MethodDecl':
         raise Decline('document %s' % doc.get('node'))
     sixteen = 'segment' in (doc.get('origin') or {})
     locs = _locals(doc.get('body'), [])
+    if facts is None:
+        moved = [p for p in moved if p not in IN_MODULE]
+    _now['facts'], _now['doc'] = facts or {}, doc
     _now['moved'] = tuple(moved) if sixteen else tuple(p for p in moved if p in FLAT)
     _now['sixteen'] = sixteen
     # the far pointers: the parameters and locals of four bytes
@@ -1447,6 +1626,7 @@ def function(doc, moved=(), far=None):
         return _function(doc, locs)
     finally:
         _now['moved'], _now['far'], _now['marks'], _now['whole'], _now['bare'] = (), set(), {}, {}, set()
+        _now['facts'], _now['doc'] = {}, None
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")

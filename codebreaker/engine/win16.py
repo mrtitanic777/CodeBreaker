@@ -12,11 +12,18 @@ The facts, and what each is made from (a key is a function's address in the orig
     ne.segments           its segment table                                   <- binary
     ne.module             the module decompiled and made compilable (describe, the decompiler,
                           c_text: verify/lanes/win16.prepare) and its description <- binary
+    ne.description        the description's lines: what was said of the module before it was
+                          decompiled (the file the native decompiler reads is written from them)
+                                                                              <- ne.module
     ne.functions          every function: address, name, segment, near, its object's stem
                                                                               <- ne.module
     ne.header             the header every function compiles with           <- ne.module
     ne.lines              the description's line for each function           <- ne.module
     function.c   <key>    the function's C                                   <- ne.module, ne.functions
+    function.notes <key>  what the decompiler said of it besides its C (decompiler.split_notes:
+                          its pointers' sizes, the globals it touches, the structures it
+                          recovered)                                          <- ne.module, ne.functions
+    function.l2  <key>    its L2 document, the C is written from (or None)     <- function.notes
     function.source <key> the C as the build compiles it: calls left as addresses named, its
                           segment's code segment, the compiler's options     <- function.c, ne.functions
     function.object <key> the object the compiler makes of it (or why it would not, and the
@@ -96,12 +103,12 @@ def ne_segments(ctx, key):
 def _module_stamp():
     from codebreaker.base import settings
     from codebreaker.decompile import decompiler
-    switches = [os.environ.get(n, "") for n in ("CB_C_FROM_L2", "CB_SELECTOR_STRUCTS", "CB_CODE_DATA",
+    switches = [os.environ.get(n, "") for n in ("CB_SELECTOR_STRUCTS", "CB_CODE_DATA",
                                                  "CB_CALLER_ARGS", "CB_FASTCALL", "CB_INLINE_HELPERS",
                                                  "CB_PROTOTYPES", "CB_CALLER_RESULTS")]
     return (cache.tool(decompiler._exe()), decompiler._language_stamp(),
             (settings.get("struct_recovery") or "off").strip().lower(), switches,
-            _sources("translate/backends/c.py") if os.environ.get("CB_C_FROM_L2") else "")
+            _sources("translate/backends/c.py"))           # (the C is written from L2 by it)
 
 
 def _uses_module():
@@ -114,11 +121,16 @@ def _uses_module():
 @step("ne.module", reads=("binary",), platform=PLATFORM, uses=_uses_module(), stamp=_module_stamp)
 def ne_module(ctx, key):
     """The module decompiled and made compilable, as module.build prepares it (the lane's
-    prepare: describe16, the decompiler, c_text). -> (Module, the description's text)"""
+    prepare: describe16, the decompiler, c_text). -> (Module, the description's lines)"""
     from codebreaker.verify.lanes import win16 as lane
     m = lane.prepare(ctx.need("binary")["path"], ctx.work("decompiled"))
-    with open(m.description.path, encoding="utf-8") as f:
-        return m, f.read()
+    return m, list(m.description.lines)
+
+
+@step("ne.description", reads=("ne.module",), platform=PLATFORM)
+def ne_description(ctx, key):
+    """The description's lines (F a function, X an import, O a call's convention, bytes ...)."""
+    return ctx.need("ne.module")[1]
 
 
 @step("ne.functions", reads=("ne.module",), platform=PLATFORM)
@@ -145,11 +157,11 @@ def ne_header(ctx, key):
     return ctx.need("ne.module")[0].header
 
 
-@step("ne.lines", reads=("ne.module",), platform=PLATFORM)
+@step("ne.lines", reads=("ne.description",), platform=PLATFORM)
 def ne_lines(ctx, key):
     """{name: its line in the description} (F and X lines): how the gate answers a call to it."""
     out = {}
-    for line in ctx.need("ne.module")[1].splitlines():
+    for line in ctx.need("ne.description"):
         p = line.split("\t")
         if p[0] in ("F", "X") and len(p) > 2:
             out[p[2]] = line
@@ -162,6 +174,19 @@ def function_c(ctx, key):
     """The function's C, as the decompiler and c_text made it (or as given by hand)."""
     name = ctx.need("ne.functions")[key]["name"]
     return ctx.need("ne.module")[0].texts.get(name)
+
+
+@step("function.notes", reads=("ne.module", "ne.functions"), platform=PLATFORM)
+def function_notes(ctx, key):
+    """What the decompiler said of the function besides its C (decompiler.split_notes), or None."""
+    name = ctx.need("ne.functions")[key]["name"]
+    return (getattr(ctx.need("ne.module")[0], "notes", None) or {}).get(name)
+
+
+@step("function.l2", reads=("function.notes",), platform=PLATFORM)
+def function_l2(ctx, key):
+    """The function's L2 document, the C of it is written from (or None: the decompiler made none)."""
+    return (ctx.need("function.notes", key) or {}).get("l2")
 
 
 def _named(text, seg, funcs):
@@ -393,14 +418,14 @@ def _keepable(b):
 
 @step("ne.image", platform=PLATFORM, stamp=_image_stamp,
       uses=(module, _serving, _served_compile, _served_never_set, _keepable),
-      reads=("binary", "ne.module", "ne.functions", "function.c", "function.object", "function.never_set",
+      reads=("binary", "ne.module", "ne.description", "ne.functions", "function.c", "function.object", "function.never_set",
              "function.gate"))
 def ne_image(ctx, key):
     """The module linked: {image: its bytes, report, gated, gate_set, rejected, built: the Built}
     -- module.build's build of a 16-bit module, made of the facts above."""
     from codebreaker.verify.gate16 import contract16, isolated16
     path = ctx.need("binary")["path"]
-    m0, description = ctx.need("ne.module")
+    m0, _lines = ctx.need("ne.module")
     funcs = ctx.need("ne.functions")
     keys = sorted(k for k, f in funcs.items() if f["seg"] is not None)
     texts = ctx.need_many("function.c", keys)
@@ -409,10 +434,9 @@ def ne_image(ctx, key):
     ctx.file(module.KEPT_AS_ASM)
     folder = ctx.work("build")
     m = copy.deepcopy(m0)
-    m.description.path = os.path.join(folder, "decompiled", "description.txt")
-    os.makedirs(os.path.dirname(m.description.path), exist_ok=True)
-    with open(m.description.path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(description)
+    os.makedirs(os.path.join(folder, "decompiled"), exist_ok=True)
+    m.description.lines = ctx.need("ne.description")
+    m.description.write(os.path.join(folder, "decompiled", "description.txt"))     # (for the decompiler)
     for k in keys:
         if texts[k] is not None:
             m.texts[funcs[k]["name"]] = texts[k]

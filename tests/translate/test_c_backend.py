@@ -164,6 +164,12 @@ def test_moved_frame_through_ss():
     doc = sixteen([local('axStack_a8', buf), local('iVar1', {'kind': 'i16'}), {'node': 'ExprStmt', 'expr': store}])
     assert '  *(xunknown2 *)MK_FP(codebreaker_ss(),(int2)axStack_a8 + iVar1) = 0x5c;' in c.function(doc, c.MOVED)
     assert '  *(xunknown2 *)((int2)axStack_a8 + iVar1) = 0x5c;' in c.function(doc, ('far',))
+    # (behind a cast too, `(int4)*(T *)(...)`: GDI's sub_35_0669 -- once read as a product, through DS)
+    read = {'node': 'Cast', 'type': {'kind': 'i32'},
+            'x': {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(word, 'near'), 'x': at}}}
+    doc = sixteen([local('axStack_a8', buf), local('iVar1', {'kind': 'i16'}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': read})])
+    assert '  y = (int4)*(xunknown2 *)MK_FP(codebreaker_ss(),(int2)axStack_a8 + iVar1);' in c.function(doc, c.MOVED)
 
 
 def select(obj, field):
@@ -278,3 +284,31 @@ def test_a_long_line_broken_as_printc_breaks_it():
     assert '        iVar3 = sub_1_65AE(iStack_4,iStack_1e,iStack_1c,iStack_1a,iStack_18,iStack_16,iStack_14,\n' \
            '                           iStack_12,iStack_10,a5);\n' in text
     assert c.expr(stmt['expr']) == 'iVar3 = sub_1_65AE(%s)' % ','.join(args)     # (on its own: one line)
+
+
+def param(n, t):
+    return {'node': 'Param', 'sym': {'kind': 'param', 'name': n}, 'type': t}
+
+
+def test_moved_passes_that_read_the_module():
+    """c_text's passes after the pointer ones, done on the tree with what the module says of the
+    function (facts: c_text.module_facts16): the model word and __loadds before the name, `void`
+    written xunknown2, `_a1` as the four bytes from a1 and read through as a far pointer, an
+    argument loaded as a far pointer read through with its segment, and the module's flags."""
+    word = {'kind': 'i16'}
+    deref = {'node': 'Unary', 'op': '*', 'x': name('_a1')}
+    through = {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(word, 'near'), 'x': name('a3', 'i16')}}
+    doc = sixteen([stmt({'node': 'Assign', 'target': name('x'), 'value': deref}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': name('_a1')}),
+                   stmt({'node': 'Assign', 'target': name('z'), 'value': through})],
+                  [param('a1', word), param('a2', word), param('a3', word), param('a4', word)])
+    facts = {'distance': 'far', 'model': '__stdcall16far', 'widths': {True: {'a1': 1}, False: {}},
+             'loads': {10}, 'export': False, 'loadds': True}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert text.startswith('xunknown2 __stdcall16far __loadds f(int2 a1,int2 a2,int2 a3,int2 a4)')
+    assert '  x = *(*(char __far * *)&a1);' in text
+    assert '  y = (*(uint4 *)&a1);' in text
+    assert '  z = *(int2 __far *)CODEBREAKER_FAR(a4, a3);' in text
+    assert c.flags(doc, facts) == {'novalue'}
+    # without the module's facts (the C the decompiler is run for at first): none of them
+    assert c.function(doc, c.MOVED).startswith('void f(')
