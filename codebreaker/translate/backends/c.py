@@ -1772,6 +1772,8 @@ def _selector_structs(nodes, _arrays):
             tag = sel if re.fullmatch(r"[A-Za-z_]\w*", sel) else 'sel%d' % made
             name = 'seg_%s_%s' % (re.sub(r"\W", "_", fname), tag)   # (not s_..: the core's own structures)
             decls.append('typedef _Packed struct %s { %s } %s;' % (name, ' '.join(body), name))
+        # (a global selector's structure where the module has the function's own: its name)
+        name = (facts.get('selector_renames') or {}).get(name, name)
         for e, p, off, _ty in uses:
             _now['seg_ptrs'].append((id(p) if _unary_as_read(p, '*', parent) else id(e), name, e['args'][0]))
             if _unary_as_read(p, '*', parent):

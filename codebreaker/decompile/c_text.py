@@ -1327,7 +1327,6 @@ def _compilable16(module_path, outdir=None):
     sizes = {}                                               # address of a global -> bytes of the access
     struct_notes = []                                        # the structures the decompiler recovered
     selector_structs = []                                    # ... and those a segment holds (_selector_structs)
-    shared_selectors = {}                                    # ... a global selector's: the module's
     by_selector = decompiler._structs(d.path) == "1" and os.environ.get("CB_SELECTOR_STRUCTS") != "0"   # (with structures)
     elems = {}                                               # ... a pointer's -> bytes of what it points at
     ends, starts = {}, {}                                    # where each function's code stops: at the next one
@@ -1443,6 +1442,16 @@ def _compilable16(module_path, outdir=None):
         if os.environ.get("CB_CODE_DATA") != "0" else ([], {}, {}, {})
     for nm, extra in code_plan.items():
         plan.setdefault(nm, {}).update(extra)
+    # ... and the structures of global selectors: one for the module where every function's fields
+    # agree, else each function's own -- its uses then written by that name (backends/c
+    # ._selector_structs, given "selector_renames")
+    shared_selectors = {}
+    for _va, nm in sorted(by_va.items()):
+        for k, fields in ((found_of.get(nm) or {}).get("selector_shared") or {}).items():
+            shared_selectors.setdefault(k, {}).update(fields)
+    shared_decls, renames = _shared_selector_structs(shared_selectors)
+    for nm, names in renames.items():
+        plan.setdefault(nm, {})["selector_renames"] = names
     item_of = {by_va[item[0]]: item for item in items if item[0] in by_va}
     for nm, extra in plan.items():
         if nm in item_of:
@@ -1475,8 +1484,6 @@ def _compilable16(module_path, outdir=None):
         for flag in flags_of.get(name, ()):
             getattr(m, flag).add(name)
         selector_structs += found.get("selector_decls") or []
-        for k, fields in (found.get("selector_shared") or {}).items():
-            shared_selectors.setdefault(k, {}).update(fields)
         m.texts[name] = text
         m.order.append(name)
         m.by_va[va] = name
@@ -1563,7 +1570,7 @@ def _compilable16(module_path, outdir=None):
     intrinsics += interrupt_helpers(m.interrupts)
     if (any(u.get("mk_fp") for u in used) or getattr(m, "bios_data", False)) and not m.selector_imports:
         intrinsics.append("#define MK_FP(s, o) ((void __far *)(((uint4)(uint2)(s) << 16) | (uint2)(o)))")
-    selector_structs += _shared_selector_structs(shared_selectors, m.texts)
+    selector_structs += shared_decls
     if selector_structs:
         intrinsics.append(SEG_PTR)
     m.header = HEADER + "\n" + "\n".join(intrinsics + macros + _struct_decls(struct_notes, HEADER, True) +
@@ -1662,12 +1669,12 @@ def interrupt_helper_name(vector, regs):
 SEG_PTR = "#define SEG_PTR(T, s) ((T __far *)((uint4)(uint2)(s) << 16))   /* a structure at the start of a segment */"
 
 
-def _shared_selector_structs(shared, texts):
-    """The structures of global selectors (backends/c._selector_structs' `selector_shared`): one per global for the
-    whole module -- the fields every function saw, together -- where they agree (one type per
-    offset, none overlapping); where they do not, each function's own, as for a local selector.
-    `texts` {function: text} has the names put right. -> declarations"""
-    out = []
+def _shared_selector_structs(shared):
+    """The structures of global selectors (backends/c._selector_structs' `selector_shared`): one
+    per global for the whole module -- the fields every function saw, together -- where they agree
+    (one type per offset, none overlapping); where they do not, each function's own, as for a
+    local selector. -> (declarations, {function: {the module's name: its own}})"""
+    out, renames = [], {}
     for name, per in sorted(shared.items()):
         every = {}
         for fields in per.values():
@@ -1684,8 +1691,8 @@ def _shared_selector_structs(shared, texts):
         for fname, fields in sorted(per.items()):
             own = "seg_%s_%s" % (re.sub(r"\W", "_", fname), name[4:])
             out.append("typedef _Packed struct %s { %s } %s;" % (own, " ".join(cback.seg_layout(fields)), own))
-            texts[fname] = texts[fname].replace("SEG_PTR(%s," % name, "SEG_PTR(%s," % own)
-    return out
+            renames.setdefault(fname, {})[name] = own
+    return out, renames
 
 
 def interrupt_helpers(used):

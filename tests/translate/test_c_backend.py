@@ -370,6 +370,18 @@ def test_moved_selector_structs():
     assert '  b = SEG_PTR(seg_f_xVar2, xVar2)->f_40;' in text, text
     assert facts['selector_decls'] == ['typedef _Packed struct seg_f_xVar2 { uint1 _pad_0[62]; int2 f_3e; uint1 f_40; } seg_f_xVar2;']
     assert 'MK_FP' in c.function(doc, c.MOVED, facts={})          # (without structures: as it was)
+    # a global selector's: the module's, its fields reported; where the functions disagree the
+    # module gives this one its own (c_text._shared_selector_structs) and its uses are written so
+    glob = sixteen([stmt({'node': 'Assign', 'target': name('a'), 'value': at(name('xRam10000002'), 'i16', 0x3e)}),
+                    stmt({'node': 'Assign', 'target': name('b'), 'value': at(name('xRam10000002'), 'u8', 0x40)})])
+    facts = {'selector_structs': True}
+    assert '  a = SEG_PTR(seg_xRam10000002, xRam10000002)->f_3e;' in c.function(glob, c.MOVED, facts=facts)
+    assert facts['selector_shared'] == {'seg_xRam10000002': {'f': {0x3e: 'int2', 0x40: 'uint1'}}}
+    other = {'seg_xRam10000002': {'f': {0x3e: 'int2', 0x40: 'uint1'}, 'g': {0x3e: 'uint1'}}}
+    decls, renames = c_text._shared_selector_structs(other)
+    assert renames == {'f': {'seg_xRam10000002': 'seg_f_xRam10000002'}, 'g': {'seg_xRam10000002': 'seg_g_xRam10000002'}}
+    text = c.function(glob, c.MOVED, facts={'selector_structs': True, 'selector_renames': renames['f']})
+    assert '  a = SEG_PTR(seg_f_xRam10000002, xRam10000002)->f_3e;' in text, text
 
 
 def test_moved_old_style_definition():
