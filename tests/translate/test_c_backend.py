@@ -541,3 +541,15 @@ def test_moved_far_reads():
     text = c.function(doc, c.MOVED, facts={'distance': 'far'})
     assert '  a = *(int2 __far *)((uint1 __far *)MK_FP(s, o));' in text, text
     assert '  b = b * (int4)(int2)*(int2 *)((uint1 __far *)MK_FP(s, o));' in text, text
+
+def test_moved_near_to_far():
+    """c_text._near_to_far on the tree: a number made a far pointer is an offset in DS,
+    `(T __far *)(T *)(n)`; a four-byte variable's value is far already."""
+    word = {'kind': 'i16'}
+    p = typed('p', ptr(word))
+    sets = lambda v: stmt({'node': 'Assign', 'target': p,
+                           'value': {'node': 'Cast', 'type': ptr(word, 'near'), 'x': binary('+', v, lit(10))}})
+    doc = sixteen([local('p', ptr(word)), local('w', {'kind': 'i32'}), sets(name('n')), sets(typed('w', {'kind': 'i32'}))])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  p = (int2 __far *)(int2 *)(n + 10);' in text, text
+    assert '  p = (int2 __far *)(w + 10);' in text, text

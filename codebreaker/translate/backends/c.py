@@ -32,14 +32,14 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
@@ -1808,12 +1808,21 @@ def _struct_gaps(nodes, _arrays):
         dot = not arrow
         if _unary_as_read(p, '&', parent):
             _rewrite(p, lambda _x, b=base, pt=ptr, k=mm.group(1), dot=dot, e=e:
-                     '((%s)(%s) + 0x%s)' % (pt, _gap_base(e, b, dot), k))
+                     '(%s + 0x%s)' % (_gap_cast(pt, _gap_base(e, b, dot)), k))
             if not dot and id(p) in _now['whole']:
                 _now['gap_base'][id(p)] = base           # (a sum from the base, as the text reads)
         else:
             _rewrite(e, lambda _x, b=base, pt=ptr, k=mm.group(1), dot=dot, e=e:
-                     '(*((%s)(%s) + 0x%s))' % (pt, _gap_base(e, b, dot), k))
+                     '(*(%s + 0x%s))' % (_gap_cast(pt, _gap_base(e, b, dot)), k))
+
+
+def _gap_cast(pt, base):
+    """`(pt)(base)`, the byte pointer a gap's offset is counted from -- `(uint1 __far *)(uint1 *)(base)`
+    where _near_to_far finds a number in the brackets, as c_text's did in the text this wrote."""
+    inner = '(%s)' % base
+    if pt.endswith('__far *') and 'near_to_far' in _now['moved'] and _near_number(inner):
+        return '(%s)(%s *)%s' % (pt, pt[:-len(' __far *')], inner)
+    return '(%s)%s' % (pt, inner)
 
 
 def _gap_base(e, base, dot):
@@ -2717,6 +2726,60 @@ def _far_reads(nodes, _arrays):
             _rewrite(e, lambda c, t=ty[:k] + ' __far' + ty[k:]: '(%s)%s' % (t, _written(c['x'], c)))
 
 
+_WIDE_DECL = re.compile(r"(?m)^[ \t]*(int4|uint4|xunknown4|undefined4|float4) (\w+)(?: \[\d*\])?(?: = [^;\n]*)?;")
+
+
+def _wide_names():
+    """The function's four-byte variables (and arrays of them) as their declarations are written
+    now: the locals, and the arguments where they are declared apart (the older style)."""
+    if _now['locals_text'] is not None:
+        text = _now['locals_text']
+    else:
+        text = ''.join('\n  %s;' % _decl_now(v) for v in _now['locals']
+                       if (v.get('sym') or {}).get('name') not in _now['drop'])
+    text += ''.join('\n%s;' % d for _n, d in _now['old_style'] or ())
+    return {m.group(2) for m in _WIDE_DECL.finditer(text)}
+
+
+def _near_number(inner):
+    """Is `inner`, in brackets, no far value -- MK_FP, a far cast, CONCAT, an address, a four-byte
+    variable, a four-byte type, a null pointer (_near_to_far)?"""
+    if "__far" in inner or "MK_FP" in inner or "CONCAT" in inner or "&" in inner \
+            or re.search(r"\b(?:int4|uint4|xunknown4|undefined4)\b", inner) or re.fullmatch(r"\(\s*0\s*\)", inner):
+        return False
+    return not any(re.search(r"\b%s\b" % re.escape(w), inner) for w in _wide_names())
+
+
+def _parenthesized(t):
+    """Is `t` one expression in brackets, `(a + b)` (not `(a) + (b)`, nor a cast `(T)x`)?"""
+    t = t.strip()
+    if not t.startswith('(') or not t.endswith(')'):
+        return False
+    depth = 0
+    for k, ch in enumerate(t):
+        depth += {'(': 1, ')': -1}.get(ch, 0)
+        if depth == 0:
+            return k == len(t) - 1
+    return False
+
+
+def _near_to_far(nodes, _arrays):
+    """`(T __far *)(n)` of a number -- an offset in the data segment, as the original reads it
+    through DS: C makes a far pointer of a number with segment 0. Through a near pointer it gets
+    DS: `(T __far *)(T *)(n)`. Not where the value is far already (MK_FP, a far cast, CONCAT, an
+    address), nor a four-byte variable's, nor a null pointer (c_text._near_to_far)."""
+    for e, _p in nodes:
+        if e['node'] != 'Cast' or id(e) in _now['whole']:
+            continue
+        far = re.fullmatch(r"(\w+(?: \w+)?) __far \*", _cast_type(e))
+        if not far:
+            continue
+        inner = _written(e['x'], e)
+        if not _parenthesized(inner) or not _near_number(inner):
+            continue
+        _rewrite(e, lambda c, t=far.group(1): '(%s)(%s *)%s' % (_cast_type(c), t, _written(c['x'], c)))
+
+
 def _star_as_read(u, parent):
     """Is the `*` of `u` an indirection as c_text's parser read the text (ctree's unary, and
     _behind_cast)? Behind casts to types with no `*` -- `(int4)*p` -- the grammar reads a product
@@ -2769,7 +2832,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("far_addresses", _far_addresses), ("far_casts", _far_casts), ("entry_sp", _entry_sp),
            ("stack_arguments", _stack_arguments), ("far_locals", _far_locals),
            ("far_concat_casts", _far_concat_casts), ("buffer_fields", _buffer_fields),
-           ("far_reads", _far_reads))
+           ("far_reads", _far_reads),
+           ("near_to_far", _near_to_far))
 
 
 # ---------------------------------------------------------------------------------------------- functions

@@ -1610,10 +1610,10 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block) and _far_reads are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block), _far_reads and _near_to_far are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(text)
+    out = text
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2040,36 +2040,6 @@ def _caller_frame_slots(texts, frames):
 
 _SIZE = {"1": 1, "2": 2, "4": 4}
 
-
-
-def _near_to_far(text):
-    """`(T __far *)(n)` of a number `n` -- an offset in the data segment, as the original reads
-    it through DS: C makes a far pointer of a number with segment 0. Through a near pointer it
-    gets DS: `(T __far *)(T *)(n)`. (Not where the value is far already: MK_FP, a far cast.)"""
-    # (the function's four-byte variables already hold a segment and an offset: left as they are)
-    def fix(src):
-        wide = set()                                         # (four-byte variables and arrays of them)
-        for n in src.find("declaration"):
-            if src.at(n.child_by_field_name("type")) in ("int4", "uint4", "xunknown4", "undefined4", "float4"):
-                dcl = n.children_by_field_name("declarator")
-                dcl = dcl[0] if dcl else None
-                while dcl is not None and dcl.type in ("init_declarator", "array_declarator"):
-                    dcl = dcl.child_by_field_name("declarator")
-                if dcl is not None and dcl.type == "identifier":
-                    wide.add(src.at(dcl))
-        for n in src.find("cast_expression"):
-            far = re.fullmatch(r"(\w+(?: \w+)?) __far \*", src.at(n.child_by_field_name("type")))
-            value = n.child_by_field_name("value")
-            if not far or value.type != "parenthesized_expression":
-                continue
-            inner = src.at(value)
-            if "__far" in inner or "MK_FP" in inner or "CONCAT" in inner or "&" in inner \
-                    or re.search(r"\b(?:int4|uint4|xunknown4|undefined4)\b", inner) \
-                    or any(re.search(r"\b%s\b" % re.escape(w), inner) for w in wide) \
-                    or re.fullmatch(r"\(\s*0\s*\)", inner):          # (a null pointer stays null)
-                continue
-            src.insert(value.start_byte, "(%s *)" % far.group(1))
-    return ctree.rewrite(text, fix)
 
 
 def _declaration_lines(text):
