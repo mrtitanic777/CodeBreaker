@@ -423,6 +423,27 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    header texts and `_struct_decls`, `interrupt_helpers` / `interrupt_routines`, `call_counts` (on
    the trees' calls). The 32-bit lane's build/module still reads a prototype from each text
    (`functions.prototype`); that is no c_text pass. c_text.py is 1,420 lines (1,860 before).
+   **The 16-bit frame and shape passes, on the tree, 2026-10-30** (the Windows 95 session's
+   `wip/frame16`, ported; off unless `CB_FRAME16=1`). `decompile/frame16.py` lays a 16-bit
+   function's locals out as the original's frame, so that C 8 places them where the original had
+   them: the places every `[bp-k]` reaches (one whose address is taken a buffer, up to the next
+   place), each local's place from its L2 Local `at` or the instruction that assigns it, the
+   pieces of a buffer made one byte array read at their offsets, a bool kept in a word an int2,
+   the locals declared nearest the frame pointer first. `decompile/shape16.py` writes `x++` /
+   `x--` where the instruction is an inc / dec and the statement is x's own step of one (or a
+   place in the frame set to a number: the WIP rewrote any statement of an inc / dec, which
+   changed what `iVar6 = iVar6 + 3` or `bVar8 = pxVar5 == 0` do), and turns an if-return round
+   where the original has the other return first. Both are passes on the function's L2 tree before the C back end
+   writes it, beside asm_blocks (`decompiler.c_from_l2`, given the code when `tree_images()`;
+   once per function, `facts["placed"]`), so the module's L2 tree is made of the trees so laid
+   out. The decompiler gives each Local its place (`at`, a Location; a schema addition) only
+   with CB_FRAME16=1 (decompiler.cc `g_frame16`), and the switch is in the decompiler's and
+   compilable16's cache keys; the back end writes a postfix `++` / `--` (PrintC's
+   post_increment, which the decompiler never needs). Gate with the switch off: every function,
+   header and table of the seven `--made` modules the same (5,390), and the 32-bit and PowerPC
+   paths too. With it on, the functions it changes are the WIP's but for the wrong increments
+   (LZEXPAND 7 of 9, KEYBOARD 9 of 12, COMM 4, SUWIN 365 of 376), no function is declined, and
+   OpenWatcom gives the same errors as without it. Test: tests/translate/test_frame16.py.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
    **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`
