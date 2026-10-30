@@ -1610,10 +1610,10 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp and _stack_arguments are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments and _far_locals are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(text)))))
+    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(text))))
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2470,90 +2470,6 @@ def _far_concat_casts(text):
                 src.at(v.child_by_field_name("function")) == "CONCAT22":
             src.replace(ty, "%s __far *" % m.group(1))
     return src.text()
-
-
-def _far_locals(text):
-    """A four-byte local the code reads THROUGH holds a far pointer: it is set from a segment and
-    an offset (CONCAT22(seg, off)) and the decompiler casts that to a near pointer, which in C
-    would keep the offset alone. Declared as the far pointer it is, to what that cast names."""
-    def concat_sets(src, name, any_value=False):
-        """`name = (T *)CONCAT22(...)` (with `any_value`, `name = (T *)` anything): [(the cast's
-        type node, T)]"""
-        out = []
-        for a in src.find("assignment_expression"):
-            left, right = a.child_by_field_name("left"), a.child_by_field_name("right")
-            if src.at(a.child_by_field_name("operator")) != "=" or left.type != "identifier" or src.at(left) != name:
-                continue
-            cast = src.leading(right, "cast_expression")
-            ty = cast.child_by_field_name("type") if cast is not None else None
-            m = re.fullmatch(r"([\w ]+?) \*", src.at(ty)) if ty is not None else None
-            v = cast.child_by_field_name("value") if m else None
-            if v is not None and (any_value or v.type == "call_expression" and
-                                  src.at(v.child_by_field_name("function")) == "CONCAT22"):
-                out.append((ty, m.group(1)))
-        return out
-
-    def far_casts(t, name, any_value=False):
-        """`name = (T *)CONCAT22(` -> `name = (T __far *)CONCAT22(` (with `any_value`, any cast set)"""
-        src = ctree.Source(t)
-        for ty, to in concat_sets(src, name, any_value):
-            src.replace(ty, "%s __far *" % to)
-        return src.text()
-    lines = _declaration_lines(text)
-    for mm in list(re.finditer(r"(?m)^([ \t]+)(?:xunknown4|uint4|int4|undefined4) (\w+);[ \t]*$", text)):
-        if mm.group(0) not in lines:
-            continue
-        name = mm.group(2)
-        nodes, src = _uses(text, name)
-        if not any(src.unary(n) and src.unary(n)[0] == "*" for n in nodes):
-            continue                                     # (read through: `*name`, also after a cast)
-        sets = concat_sets(src, name, any_value=True)
-        to = sets[0][1] if sets else "xunknown1"
-        text = text.replace(mm.group(0), "%s%s __far *%s;" % (mm.group(1), to, name), 1)
-        # (whatever it is set from: a far pointer a call returns -- `(T *)GlobalLock(h)` -- cast
-        # near first kept the offset alone and C gave it DS: USER's sub_43_032F copied from its
-        # own data segment instead of the block GlobalLock locked)
-        text = far_casts(text, name, any_value=True)
-    # `_p` beside `p`: the decompiler's name for the whole four bytes whose low half is the near
-    # pointer p -- a far pointer, and p its offset
-    lines = _declaration_lines(text)
-    for mm in list(re.finditer(r"(?m)^([ \t]+)([\w ]+?) \*(\w+);[ \t]*$", text)):
-        if mm.group(0) not in lines:
-            continue
-        lead, to, name = mm.groups()
-        whole = "_" + name
-        nodes, src = _uses(text, whole)
-        if not nodes or any(_declares(src, n, whole) for n in src.find("declaration")):
-            continue
-        assigned = _addressed(text, name) or any(
-            src.at(a.child_by_field_name("operator")) == "=" and a.child_by_field_name("left").type == "identifier"
-            and src.at(a.child_by_field_name("left")) == name for a in src.find("assignment_expression"))
-        decl = "%s%s __far *%s;" % (lead, to, whole)
-        text = text.replace(mm.group(0), (mm.group(0) + "\n" if assigned else "") + decl, 1)
-        text = far_casts(text, whole)
-        if not assigned:
-            text = _rename(text, name, "((%s *)(uint2)(uint4)%s)" % (to, whole))
-    # one pointer local set from another the decompiler typed differently (int2 __far ** from
-    # int2 **): what is kept is the value, in the type of the one it goes into
-    lines = _declaration_lines(text)
-    types = {m2.group(2): m2.group(1).strip() for m2 in
-             re.finditer(r"(?m)^[ \t]+([\w ]+?[\w ]*\*+)\s*(\w+);[ \t]*$", text) if m2.group(0) in lines}
-    src = ctree.Source(text)
-    for st in src.find("expression_statement", under=src.body()):
-        a = st.named_children[0] if st.named_child_count == 1 else None
-        if a is None or a.type != "assignment_expression" or src.at(a.child_by_field_name("operator")) != "=":
-            continue
-        left, right = a.child_by_field_name("left"), a.child_by_field_name("right")
-        if left.type == "identifier" and right.type == "identifier" and src.line(st).strip() == src.at(st) and \
-                src.line(st)[:1].isspace() and src.at(left) in types and src.at(right) in types and \
-                types[src.at(left)] != types[src.at(right)]:
-            src.insert(right.start_byte, "(%s)" % types[src.at(left)])
-    return src.text()
-
-
-def _declares(src, decl, name):
-    """Does declaration node `decl` declare `name`?"""
-    return any(src.declared_name(dcl) == name for dcl in decl.children_by_field_name("declarator"))
 
 
 def interrupt_helper_name(vector, regs):

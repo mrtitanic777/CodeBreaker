@@ -32,18 +32,18 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
-        "gap_base": {}}
+        "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set()}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -747,12 +747,14 @@ def _op_of(e):
 def _raw(e):
     """An expression's text as PrintC printed it, the moved passes' rewrites of it and in it left out."""
     _now['bare'].add(id(e))
+    _now['raw'] += 1
     try:
         em = _Flat()
         _put(em, e)
         return ''.join(em.raw)
     finally:
         _now['bare'].discard(id(e))
+        _now['raw'] -= 1
 
 
 def _rewrite(e, shown, room=False):
@@ -770,6 +772,8 @@ def _push(st, e, paren=None):
     """One expression on the stack, as PrintC pushes it: the operator, then its operands in the
     order they are printed."""
     n = e['node']
+    if _now['seeing'] and not _now['raw']:
+        _now['seen'].add(id(e))                          # (shown in the text: _seen)
     rewrite = _now['whole'].get(id(e))
     if rewrite is not None and id(e) not in _now['bare']:
         # (a moved pass's text in its place: given the room of the text PrintC printed, as
@@ -1034,6 +1038,9 @@ def _stmt(em, s):
     if id(s) in _now['gone']:
         return                                   # (a pass took the statement away)
     if n == 'ExprStmt':
+        if _now['seeing']:
+            _now['seen'].add(id(s))
+            _now['lines'].add(id(s))                     # (a statement on a line of its own)
         _statement(em, s['expr'])
     elif n == 'Return':
         _statement(em, s.get('expr'), 'return')
@@ -2269,6 +2276,165 @@ def _stack_arguments(nodes, _arrays):
             _rewrite(e, lambda _x, t=ty, o=int(m.group(2), 16): 'codebreaker_stack(%s, 0x%x)' % (t, o))
 
 
+def _seen():
+    """The ids of the nodes the function's text shows as it is written now (each moved pass's
+    rewrites in it, a statement taken away left out): what c_text's passes found in the text."""
+    _now['seen'], _now['seeing'] = set(), True
+    try:
+        _function(_now['doc'], _now['locals'])
+        return _now['seen']
+    finally:
+        _now['seeing'] = False
+
+
+def _cast_type(cast):
+    """A cast's type as it is written now (`T __far *` where a pass marked it far)."""
+    mark = _now['marks'].get(id(cast))
+    if mark == '_near':
+        return _flat(lambda em: _push_type(_Stack(em), cast['type'], word=' __near'))
+    return type_text(cast.get('type'), far=mark in ('_far', '_ds'))
+
+
+def _leading_cast_now(e):
+    """The cast the text of `e` starts with as it is written now (none past a moved pass's rewrite)."""
+    while True:
+        if id(e) in _now['whole']:
+            return None
+        n = e.get('node')
+        if n == 'Cast':
+            return e
+        first = {'Binary': 'left', 'Assign': 'target', 'Cond': 'cond', 'Call': 'target', 'Index': 'arr',
+                 'Select': 'obj'}.get(n)
+        if n == 'Unary' and e.get('postfix'):
+            first = 'x'
+        if not first or not e.get(first):
+            return None
+        child = e[first]
+        if n == 'Select' and _arrow(e):
+            child = child['x']
+        if _bracket(_token(e), child, 0):
+            return None
+        e = child
+
+
+def _bare_name(e, name=None):
+    """Is `e` a variable's name written as it is (`name`, where given)?"""
+    return e.get('node') == 'Name' and (e.get('sym') or {}).get('kind') != 'field' and \
+        id(e) not in _now['whole'] and _now['marks'].get(id(e)) != '_ss' and (name is None or _name(e) == name)
+
+
+_WIDE_LOCAL = ('xunknown4', 'uint4', 'int4', 'undefined4')
+
+
+def _far_locals(nodes, _arrays):
+    """A four-byte local the code reads through (`*x`) holds a far pointer: declared as one, to
+    what the cast it is set from names (`x = (T *)CONCAT22(seg,off)`: `T __far *x`), and those
+    casts made far -- a near one keeps the offset alone, and C gives it DS (USER's sub_43_032F
+    copied from its own data segment instead of the block GlobalLock locked). `_p` beside a near
+    pointer `p` -- the decompiler's name for the four bytes whose low half is p -- is declared a far
+    pointer, its CONCAT22 casts far, and p read as its offset where nothing sets p. A pointer
+    local set from another typed otherwise is cast to its own type (c_text._far_locals)."""
+    seen = _seen()
+    parent = {id(e): p for e, p in nodes}
+    shown = [(e, p) for e, p in nodes if id(e) in seen]
+    decls = _now['decls']
+    locs = [v for v in _now['locals'] if (v.get('sym') or {}).get('name') not in _now['drop']]
+
+    def decl_text(v):
+        n = (v.get('sym') or {}).get('name') or ''
+        if n in decls:
+            return decls[n]
+        if _segment_register(n, v.get('type')):
+            return None                                  # (`T unaff_SS = codebreaker_ss()`)
+        return type_text(v.get('type'), n, n in _now['far'])
+
+    def sets(name, concat):
+        """[(cast, T)] of `name = (T *)...` (`concat`: of `name = (T *)CONCAT22(...)` alone)"""
+        out = []
+        for e, _p in shown:
+            if e['node'] != 'Assign' or e.get('op') or id(e) in _now['whole'] or not _bare_name(e['target'], name):
+                continue
+            cast = _leading_cast_now(e['value'])
+            m = re.fullmatch(r"([\w ]+?) \*", _cast_type(cast)) if cast is not None else None
+            v = cast['x'] if m else None
+            if v is not None and (not concat or v.get('node') == 'Call' and id(v) not in _now['whole'] and
+                                  _bare_name(v.get('target') or {}, 'CONCAT22')):
+                out.append((cast, m.group(1)))
+        return out
+
+    def far_casts(found):
+        for cast, to in found:
+            if _now['marks'].get(id(cast)) in ('_far', '_ds'):
+                _rewrite(cast, lambda c, to=to: '(%s __far *)%s' % (to, _written(c['x'], c)))
+            else:
+                _now['marks'][id(cast)] = '_far'
+    for v in locs:
+        n = (v.get('sym') or {}).get('name') or ''
+        if decl_text(v) not in tuple('%s %s' % (w, n) for w in _WIDE_LOCAL):
+            continue
+        # (`*x` as written: not the `*` L2 reads `x->f` with)
+        through = any(_bare_name(e, n) and _unary_parent(e, parent, '*') and not _arrow_of(parent.get(id(e)), parent)
+                      for e, p in shown)
+        if not through:
+            continue
+        found = sets(n, False)
+        decls[n] = '%s __far *%s' % (found[0][1] if found else 'xunknown1', n)
+        far_casts(found)
+    # `_p` beside `p`: the four bytes whose low half is the near pointer p
+    declared = {(v.get('sym') or {}).get('name') for v in locs}
+    for v in locs:
+        n = (v.get('sym') or {}).get('name') or ''
+        d = decl_text(v)
+        m = re.fullmatch(r"([\w ]+?) \*(\w+)", d or '')
+        whole = '_' + n
+        if not m or m.group(2) != n or whole in declared or \
+                not any(_bare_name(e, whole) for e, _p in shown):
+            continue
+        to = m.group(1)
+        assigned = any(_bare_name(e, n) and p is not None and (
+            p.get('node') == 'Unary' and p.get('op') == '&' and not p.get('postfix') and id(p) not in _now['whole'] or
+            p.get('node') == 'Index' and p['arr'] is e and id(p) not in _now['whole'] and
+            _unary_parent(p, parent, '&')) for e, p in shown) or \
+            any(e['node'] == 'Assign' and not e.get('op') and id(e) not in _now['whole'] and _bare_name(e['target'], n)
+                for e, _p in shown)
+        decls[n] = (d + ';\n  ' if assigned else '') + '%s __far *%s' % (to, whole)
+        far_casts(sets(whole, True))
+        if not assigned:
+            for e, _p in shown:
+                if _bare_name(e, n):
+                    _rewrite(e, lambda _x, to=to, w=whole: '((%s *)(uint2)(uint4)%s)' % (to, w))
+    # one pointer local set from another the decompiler typed otherwise: the value, in its type
+    types = {}
+    for v in locs:
+        n = (v.get('sym') or {}).get('name') or ''
+        for line in (decl_text(v) or '').split(';\n  '):
+            m = re.fullmatch(r"([\w ]+?[\w ]*\*+)\s*(\w+)", line)
+            if m:
+                types[m.group(2)] = m.group(1).strip()
+    for e, p in shown:
+        if e['node'] != 'ExprStmt' or id(e) not in _now['lines']:
+            continue
+        a = e['expr']
+        if a.get('node') != 'Assign' or a.get('op') or id(a) in _now['whole']:
+            continue
+        left, right = a['target'], a['value']
+        if _bare_name(left) and _bare_name(right) and _name(left) in types and _name(right) in types and \
+                types[_name(left)] != types[_name(right)]:
+            _rewrite(right, lambda x, t=types[_name(left)]: '(%s)%s' % (t, _name(x)))
+
+
+def _arrow_of(u, parent):
+    """Is `u` the `*` of a `p->f` (L2's Select of *p, written `->`)?"""
+    s = parent.get(id(u))
+    return s is not None and s.get('node') == 'Select' and s.get('obj') is u and _arrow(s)
+
+
+def _unary_parent(e, parent, op):
+    p = parent.get(id(e))
+    return p is not None and p.get('node') == 'Unary' and p.get('op') == op and not p.get('postfix') and \
+        id(p) not in _now['whole']
+
+
 def _passed_on(arg, reg):
     """Is `arg` the register `reg` itself as the function had it -- not set for the interrupt?"""
     r = reg.upper()
@@ -2282,7 +2448,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("selector_structs", _selector_structs), ("struct_gaps", _struct_gaps),
            ("own_segment_calls", _own_segment_calls), ("interrupts", _interrupts),
            ("far_addresses", _far_addresses), ("far_casts", _far_casts), ("entry_sp", _entry_sp),
-           ("stack_arguments", _stack_arguments))
+           ("stack_arguments", _stack_arguments), ("far_locals", _far_locals))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -2417,7 +2583,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['moved'], _now['far'], _now['marks'], _now['whole'], _now['bare'] = (), set(), {}, {}, set()
         _now['facts'], _now['doc'], _now['locals'], _now['drop'] = {}, None, [], set()
         _now['old_style'], _now['room'], _now['gone'], _now['far_pointers'] = None, set(), set(), {}
-        _now['gap_base'] = {}
+        _now['gap_base'], _now['decls'], _now['seen'], _now['lines'] = {}, {}, set(), set()
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
@@ -2497,7 +2663,10 @@ def _function(doc, locs):
             continue                                     # (a pass took its declaration's line away)
         em.tag_line()
         em.open_group()
-        _put_type(em, loc.get('type'), name, name in _now['far'], _segment_register(name, loc.get('type')))
+        if name in _now['decls']:                        # (a pass declared it otherwise: _far_locals)
+            em.print(type_text(loc.get('type'), name, name in _now['far']), _now['decls'][name])
+        else:
+            _put_type(em, loc.get('type'), name, name in _now['far'], _segment_register(name, loc.get('type')))
         em.close_group()
         em.print(';')
     if locs:

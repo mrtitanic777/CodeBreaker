@@ -466,3 +466,31 @@ def test_moved_far_casts():
     text = c.function(doc, c.MOVED, facts={'distance': 'far'})
     assert '  a = *(int2 __far *)p;' in text, text
     assert '  b = (int4)p;' in text, text
+
+
+def test_moved_far_locals():
+    """c_text._far_locals on the tree: a four-byte local read through is a far pointer to what it
+    is set from (`T __far *x`, its casts far); `_p` beside a near p, p never set, is the far
+    pointer and p its offset; a pointer set from one typed otherwise is cast to its own type.
+    (`x->f` is no read through `*x` as the text is written.)"""
+    wide = {'kind': 'class', 'name': 'xunknown4'}
+    char, word = {'kind': 'char'}, {'kind': 'i16'}
+    x, p, w = typed('x', wide), typed('p', ptr(char, 'near')), typed('_p', wide)
+    q, r = typed('q', ptr(word, 'near')), typed('r', ptr({'kind': 'i32'}, 'near'))
+    concat = fcall('CONCAT22', name('s'), name('o'))
+    doc = sixteen([local('x', wide), local('y', wide), local('p', ptr(char, 'near')),
+                   local('q', ptr(word, 'near')), local('r', ptr({'kind': 'i32'}, 'near')),
+                   stmt({'node': 'Assign', 'target': x, 'value': {'node': 'Cast', 'type': ptr(char, 'near'), 'x': concat}}),
+                   stmt({'node': 'Assign', 'target': name('a'), 'value': {'node': 'Unary', 'op': '*', 'x': x}}),
+                   stmt({'node': 'Assign', 'target': name('b'),
+                         'value': select({'node': 'Unary', 'op': '*', 'x': typed('y', wide)}, 'f_0')}),
+                   stmt({'node': 'Assign', 'target': w, 'value': {'node': 'Cast', 'type': ptr(char, 'near'), 'x': concat}}),
+                   stmt({'node': 'Assign', 'target': name('a'), 'value': binary('+', p, lit(1))}),
+                   stmt({'node': 'Assign', 'target': q, 'value': r})])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  char __far *x;' in text and '  xunknown4 y;' in text, text
+    assert '  x = (char __far *)CONCAT22(s,o);' in text, text
+    assert '  char __far *_p;' in text and 'char *p;' not in text, text
+    assert '  _p = (char __far *)CONCAT22(s,o);' in text, text
+    assert '  a = ((char *)(uint2)(uint4)_p) + 1;' in text, text
+    assert '  q = (int2 *)r;' in text, text
