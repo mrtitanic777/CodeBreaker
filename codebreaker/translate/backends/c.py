@@ -35,7 +35,7 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
-# them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
+# them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
@@ -1430,7 +1430,7 @@ def _one_name_for_globals(nodes, _arrays):
 # ---------------------------------------------------------------------------------------------- what the module says
 # The passes after the pointer ones read what the module's facts say of the function: its model in
 # the description, how far its instructions read through an argument, which arguments they load as
-# far pointers, how they start (c_text._one16 works these out from the original's code and hands
+# far pointers, how they start (c_text._write16 works these out from the original's code and hands
 # them over: `function(..., facts=)`).
 _JOINED = re.compile(r"_(a\d+|param_\d+)")
 _WIDE = ('xunknown4', 'int4', 'uint4', 'undefined4', 'float4')
@@ -3942,12 +3942,15 @@ def module(doc, moved=MOVED):
 
 def _function(doc, locs, em=None):
     """PrintC::docFunction: the comments above it, the declaration, `{` a line below, the locals,
-    the statements, `}`. (`em`: another emitter -- _seen's, on one line.)"""
+    the statements, `}`. (`em`: another emitter -- _seen's, on one line.) The module's C has
+    no comments above a function (the facts' "without_notes": c_text took the core's notes off
+    each text)."""
+    notes = (doc.get('comments') or ()) if em is not None or not _now['facts'].get('without_notes') else ()
     em = em or _Pretty()
     em.open_group()                                      # (the function)
-    for text in doc.get('comments') or ():
+    for text in notes:
         _comment(em, text, 0)
-    if doc.get('comments'):
+    if notes:
         em.tag_line()
     em.tag_line()
     _signature(em, doc)

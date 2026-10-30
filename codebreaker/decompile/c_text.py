@@ -712,23 +712,8 @@ uint2 codebreaker_entry_sp(void);
 #define CODEBREAKER_FAR(seg, off) ((void __far *)(((uint4)(uint2)(seg) << 16) | (uint2)(off)))
 """
 
-_WIDE = ("xunknown4", "int4", "uint4", "undefined4", "float4")
-
-
 class Module16(object):
     pass
-
-
-def data_address(text):
-    """Is `text` a constant address in the data segment: a number of one word, not 0? A far
-    pointer set to one is DS and it (LZEXPAND's LZDONE counts down the word at DS:32h through
-    one); cast to a far pointer, a word gets segment 0 and the write goes to 0000:0032 -- and
-    left near it does as well: OpenWatcom folds the constant near pointer made far to
-    `xor ax, ax / mov es, ax / dec word ptr es:[bx]`. Written with DS itself,
-    MK_FP(codebreaker_ds(), 0x32), as the original. (0 stays a far null; a number past a word
-    carries its own segment.)"""
-    m = re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", text.strip())
-    return bool(m) and 0 < int(m.group(1), 0) <= 0xFFFF
 
 
 # ---------------------------------------------------------------------------------------------
@@ -948,22 +933,6 @@ def _code_segment_data(reports, where, d, module_path):
         report[sg]["placed"] = sorted(ok_place)
         report[sg]["named"] = sum(1 for got in each_read[sg] if got and got <= ok_place)
     return decls, defs, report, plan
-
-
-def _behind_cast(src, node):
-    """('*', where) when `node` is the operand of a `*` the grammar read as a product with what
-    comes before: `a * (int4)*(int2 *)p` is `(a * (int4)) * (int2 *)p` to it (the cast ends the
-    left side, as in ctree.misread, but more is before it)."""
-    up = node.parent
-    if up is None or up.type != "binary_expression" or up.child_by_field_name("right") != node or \
-            up.child_by_field_name("operator").type != "*":
-        return None
-    left = up.child_by_field_name("left")
-    while left.type == "binary_expression":
-        left = left.child_by_field_name("right")
-    if left.type != "parenthesized_expression" or not ctree._CASTS.match(src.at(left)):
-        return None
-    return "*", up.child_by_field_name("operator").start_byte
 
 
 _SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
@@ -1231,10 +1200,10 @@ def _identifiers(text):
     return [src.at(n) for n in src.find("identifier")]
 
 
-_IMAGES16 = {}                   # segment -> its bytes, for _one16 (in each worker: _one16_images)
+_IMAGES16 = {}                   # segment -> its bytes, for _write16 (in each worker: _write16_images)
 
 
-def _one16_images(images):
+def _write16_images(images):
     _IMAGES16.clear()
     _IMAGES16.update(images)
 
@@ -1290,6 +1259,7 @@ def _write16(context, item):
     facts = module_facts16(_IMAGES16.get(seg), off, end, distance, model, dgroup, "return" in far, seg)
     facts["selector_structs"] = by_selector
     facts["callee_pops"] = bool(callee_pops)
+    facts["without_notes"] = True                        # (the module's C: no notes above a function)
     facts.update(item[10] if len(item) > 10 else {})     # (the module's own: "selector_values"; and what it decided of it since: "frame_slots" ...)
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
@@ -1298,20 +1268,6 @@ def _write16(context, item):
     if not known.get("from_l2"):
         return va, None, set(), known, {}
     return va, text, cback.flags(known["l2"], facts), known, found
-
-
-def _one16(context, item):
-    """One function of _compilable16 made compilable: its text alone, apart from the module's (a
-    worker process each share of them, jobs/pool.py): the passes after those the C back end did
-    as it wrote it (_write16). -> (address, text)"""
-    va, name, raw, seg, off, end_of, callee_pops = item
-    # (_far, _far_from_stack, _frame_through_ss, _pieces, _joined_arguments, _segment_registers,
-    # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
-    # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
-    # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block), _far_reads, _near_to_far, _stack_segment_stores and _callee_pops are the back end's, done on the tree as it writes the C from L2:
-    # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
-    return va, _without_notes(raw).strip()               # (the core's comments before the function)
 
 
 def _compilable16(module_path, outdir=None):
@@ -1350,7 +1306,7 @@ def _compilable16(module_path, outdir=None):
     images = dict(d.images)
     # (the segments given each worker once, as it starts: sent with every share of the work they
     # were most of what went down the pipes -- a minute of USER's)
-    _one16_images(images)                                    # (and here: a short list is done in this process)
+    _write16_images(images)                                    # (and here: a short list is done in this process)
     # Each function's C written from its L2 document by the C back end, with what the module says
     # of it (_write16, among worker processes: the back end's passes on the tree, its heading as
     # the description and its instructions give it)
@@ -1380,7 +1336,7 @@ def _compilable16(module_path, outdir=None):
         seg, off = d.where[va]
         items.append((va, distance.get(name), model_of.get(name), seg, off, ends.get(va, off), dgroup,
                       d.notes.get(name), by_selector, callee_pops.get(va), shared))
-    written = pool.run(_write16, items, context=asm_images, init=_one16_images, initargs=(images,),
+    written = pool.run(_write16, items, context=asm_images, init=_write16_images, initargs=(images,),
                        below_normal=False)
     for item in items:                                       # (a worker that could not start or died
         if written.get(item[0]) is None:                     # -- a calling script with no __main__
@@ -1458,22 +1414,10 @@ def _compilable16(module_path, outdir=None):
             _va, text, _flags, _known, _found = _write16(asm_images, item_of[nm][:10] + (dict(shared, **extra),))
             if text is not None:
                 texts[nm], found_of[nm] = text, _found
-    # each function on its own (_one16), shared among worker processes: the module's texts
-    # are thousands of tree passes, and none of them looks at another function's text
-    items = []
-    for va in sorted(by_va):
-        name = by_va[va]
-        seg, off = d.where[va]
-        items.append((va, name, texts[name], seg, off, _end_of(d, seg, off) if seg in d.images else None, None))
-    made = pool.run(_one16, items, init=_one16_images, initargs=(images,),
-                    below_normal=False)                   # (the build waits on it: as this process)
-    for item in items:
-        if made.get(item[0]) is None:
-            made[item[0]] = _one16(None, item)
     m.l2 = {n: f["l2"] for n, f in d.notes.items() if f.get("l2") is not None}   # each one's L2 document
     for va in sorted(by_va):
         name = by_va[va]
-        _va, text = made[va]
+        text = texts[name].strip()
         found = found_of.get(name) or {}
         known = d.notes.get(name) or {}
         struct_notes += known.get("structs") or []
@@ -1593,73 +1537,12 @@ def _keeps_frame(code, off):
     return describe.windows_far_prologue(code, off) or head in (b"\x55\x8b\xec", b"\x55\x89\xe5") or head[:1] == b"\xc8"
 
 
-_SIZE = {"1": 1, "2": 2, "4": 4}
-
-
-
 def _declaration_lines(text):
     """The lines of the function's body that are a declaration and nothing else, as written --
     what a pattern for `  T name;` may take apart (it took `  return uStack_6;` for one, of type
     `return`)."""
     src = ctree.Source(text)
     return {src.line(n) for n in src.find("declaration", under=src.body()) if src.at(n) == src.line(n).strip()}
-
-
-def _is_declarator(n):
-    """`n` is the name a declaration declares, not a use of it"""
-    up = n.parent
-    while up is not None and up.type in ("pointer_declarator", "array_declarator", "init_declarator",
-                                         "parenthesized_declarator"):
-        if up.type == "array_declarator" and up.child_by_field_name("declarator") != n and \
-                up.child_by_field_name("size") is not None and up.child_by_field_name("size").start_byte <= n.start_byte:
-            return False                                 # (in an array's size)
-        if up.type == "init_declarator" and up.child_by_field_name("value") is not None and \
-                up.child_by_field_name("value").start_byte <= n.start_byte:
-            return False                                 # (in an initial value)
-        n, up = up, up.parent
-    return up is not None and up.type in ("declaration", "parameter_declaration")
-
-
-def _uses(text, name):
-    """Where `name` is used (not declared), outside strings and comments: [node], and the source."""
-    src = ctree.Source(text)
-    return [n for n in src.find("identifier") if src.at(n) == name and not _is_declarator(n)], src
-
-
-def _rename(text, name, new):
-    """Every use of the variable `name` written as `new` (its declaration left as it is)."""
-    nodes, src = _uses(text, name)
-    for n in nodes:
-        src.replace(n, new)
-    return src.text()
-
-
-def _addressed(text, name):
-    """Is the address of `name` (or of an element of it) taken: `&name`, `&name[2]`?"""
-    nodes, src = _uses(text, name)
-    for n in nodes:
-        op = src.unary(n)
-        if op and op[0] == "&":
-            return True
-        up = n.parent
-        if up is not None and up.type == "subscript_expression" and up.child_by_field_name("argument") == n:
-            op = src.unary(up)
-            if op and op[0] == "&" and op[1] + 1 == n.start_byte:
-                return True
-    return False
-
-
-def _end_of(d, seg, off):
-    """Where the function at seg:off ends: the next function's start in its segment. (Kept on the
-    description: kept by id() it was given to the next module's description when that one came
-    to the same address -- and its functions were cut at the other module's starts.)"""
-    ends = d.__dict__.setdefault("_ends", {})
-    if seg not in ends:
-        ends[seg] = sorted(o for (s, o) in d.where.values() if s == seg)
-    starts = ends[seg]
-    import bisect
-    k = bisect.bisect_right(starts, off)
-    return starts[k] if k < len(starts) else len(d.images.get(seg, b""))
 
 
 def interrupt_helper_name(vector, regs):
