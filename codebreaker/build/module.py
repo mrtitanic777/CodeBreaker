@@ -64,6 +64,7 @@ from codebreaker.formats import resources as resource_reader
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 from codebreaker.jobs import pool
+from codebreaker.translate.backends import c as cback
 from codebreaker import platforms
 
 _UNDEFINED = re.compile(r"(\S+) is an undefined reference")
@@ -1259,7 +1260,7 @@ def _build16(b, path, m, folder):
             continue
         body = m.texts[n].split("{", 1)[-1]
         for mm in re.finditer(r"\b(%s)\s*\(" % "|".join(re.escape(x) for x in arity) if arity else r"(?!x)x", body):
-            args, _after = c_text._arguments_at(body, mm.end() - 1)
+            args, _after = cback.arguments_at(body, mm.end() - 1)
             words = arity[mm.group(1)]
             if len(args) * 2 < words or len(args) > words:
                 if n in b.origins:

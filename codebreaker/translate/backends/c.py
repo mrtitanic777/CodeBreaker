@@ -32,14 +32,14 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
@@ -2937,6 +2937,166 @@ def _names_used(nodes, _arrays):
         'segments': {int(m.group(1)) for m in (re.fullmatch(r"codebreaker_segment_(\d+)", n or '') for n in names) if m}}
 
 
+# Prototypes where the calls agree ------------------------------------------------------------------
+# The source had prototypes, and with none Microsoft C gives other code for a call (it keeps what it
+# passes in a register variable, and removes the arguments itself before a frame's `leave`). Each
+# function is written in the older style; one every call to which passes as many words in each
+# place as its definition takes there is declared with its parameters, the others with the list
+# left open (the decompiler recovers each call on its own evidence). Writing each function finds
+# its heading, its variables' types and its calls (_heading_facts: facts["heading"]); the module
+# decides (prototypes).
+_DEFINITION = re.compile(r"^([^\n#{};]*?\b(\w+))\(([^)]*)\)\n((?:[^{;\n]+;\n)*)\{", re.M)
+_WIDE_TYPES = re.compile(r"\b(u?int4|xunknown4|long|unkbyte3|unkint3|unkuint3|int3|float4)\b")
+_VARIABLE = re.compile(r"^\s+([A-Za-z_][\w ]*?[\w*])\s*\**\s*(\w+)(\s*\[[^\]]*\])?\s*;\s*$")
+_CALLED = re.compile(r"\b(\w+)\s*\(")
+
+
+def arguments_at(text, open_paren):
+    """The arguments of the call whose `(` is at `open_paren`. -> ([argument text], index after `)`)"""
+    depth, args, start, i = 0, [], open_paren + 1, open_paren
+    while i < len(text):
+        ch = text[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                if text[start:i].strip():
+                    args.append(text[start:i])
+                return args, i + 1
+        elif ch == "," and depth == 1:
+            args.append(text[start:i])
+            start = i + 1
+        i += 1
+    return args, len(text)
+
+
+def words(ty):
+    """the words a value of C type `ty` takes on the stack -- 1, 2 -- or None"""
+    ty = " ".join(ty.split())
+    if "*" in ty:
+        return 2 if "__far" in ty else 1
+    if _WIDE_TYPES.search(ty):
+        return 2
+    if re.search(r"\b(u?int2|xunknown2|int|unsigned|short|code|u?int1|char|xunknown1|bool)\b", ty):
+        return 1
+    return None
+
+
+def parameters(text):
+    """(the heading before the parameter list, [(name, type)]) of a definition as it is written in
+    the older style (`f(a1,a2)` then `int2 a1;` ...), or None. (A list in the brackets is taken
+    as names, each of the type `int`, as c_text read it.)"""
+    m = _DEFINITION.search(text)
+    if not m:
+        return None
+    decl = {}
+    for d in m.group(4).strip().splitlines():
+        d = d.strip().rstrip(";")
+        nm = re.findall(r"\w+", d)
+        if nm:
+            decl[nm[-1]] = d[:d.rindex(nm[-1])].strip()
+    names = [p.strip() for p in m.group(3).split(",") if p.strip()]
+    head = []                                        # (the head may run over lines: `int2 __stdcall16far` / `name(`)
+    for line in reversed(text[:m.end(2)].split("\n")):
+        s = line.strip()
+        if head and (not s or s.endswith((";", "}", "*/")) or s.startswith(("#", "extern ", "/*"))):
+            break
+        head.insert(0, s)
+    return " ".join(head), [(p, decl.get(p, "int")) for p in names]
+
+
+def argument_words(arg, types):
+    """the words an argument as written takes on the stack, as far as it can be told, else None"""
+    a = arg.strip()
+    while a.startswith("(") and arguments_at(a, 0)[1] == len(a):
+        a = a[1:-1].strip()                          # (the whole in brackets)
+    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)", a):
+        v = int(a, 0)
+        return 1 if -0x8000 <= v <= 0xFFFF else 2
+    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)[lL]", a):
+        return 2
+    cast = re.match(r"\(\s*([A-Za-z_][\w ]*\**)\s*\)", a)
+    if cast and arguments_at(a, 0)[1] == cast.end():
+        return words(cast.group(1))
+    if re.fullmatch(r"[A-Za-z_]\w*", a):
+        if a in ("unaff_SS", "unaff_DS", "unaff_ES", "unaff_CS"):
+            return 1
+        return words(types[a]) if a in types else None
+    if a.startswith("&") or a.startswith('"'):
+        return 1                                     # (a near address: the medium model's data is near)
+    return None
+
+
+def _heading_facts(nodes, _arrays):
+    """The function's heading as it is written (its words before the brackets; its parameters and
+    their types as its definition in the older style gives them), the types of its variables, and
+    each call it makes with its arguments as they are written (of the tree's calls, and of those
+    in the text the passes wrote) -> facts["heading"], for prototypes."""
+    doc = _now['doc']
+    seen = _seen()
+    sig = _flat(_signature, doc)
+    old = _now['old_style']
+    # (as _function lays it out: in the older style `{` follows the declarations; else a blank
+    # line is between -- which c_text's pattern for a definition did not take)
+    definition = sig + '\n' + (''.join('%s;\n' % d for _n, d in old) if old is not None else '\n') + '{'
+    params = parameters(definition)
+    locs = [v for v in _now['locals'] if (v.get('sym') or {}).get('name') not in _now['drop']]
+    region = ''.join('\n  %s %s;' % d for d in reversed(_now['declare_first'])) + (
+        _now['locals_text'] if _now['locals_text'] is not None else ''.join('\n  %s;' % _decl_now(v) for v in locs))
+    types = dict(params[1]) if params else {}
+    for line in region.splitlines():
+        mm = _VARIABLE.match(line)
+        if mm and mm.group(1) not in ("return", "goto"):
+            star = line.count("*")
+            types[mm.group(2)] = mm.group(1) + (" *" * star if star else "") + (" *" if mm.group(3) else "")
+    calls = []
+
+    def from_text(text):
+        for mm in _CALLED.finditer(text):
+            calls.append((mm.group(1), arguments_at(text, mm.end() - 1)[0]))
+    for e, _p in nodes:
+        if e['node'] == 'Call' and id(e) in seen and id(e) not in _now['whole']:
+            from_text(expr(e))
+    for text in list(_now['shown'].values()) + [t for k in ('before', 'after') for ts in _now[k].values() for t in ts]:
+        from_text(text)
+    head = ' '.join(sig.split('(', 1)[0].split())
+    _now['facts']['heading'] = {'params': params, 'types': types, 'calls': calls,
+                                'declaration': head + '();', 'fastcall': '__fastcall16near' in head}
+
+
+def prototypes(headings, order):
+    """{name: a declaration with its parameters} for each function every call to which, in all of
+    the module, passes as many words in each place as its definition takes there (`headings`
+    {function: facts["heading"]}) -- each parameter declared with the type its definition in the
+    older style gives it, as it is (`short`, not the `int` it is promoted to: both Microsoft C 8
+    and OpenWatcom take it so). A function a call disagrees with keeps the open declaration."""
+    params = {n: (headings.get(n) or {}).get('params') for n in order}
+    want = {n: [words(t) for _p, t in ps[1]] for n, ps in params.items() if ps and "..." not in ps[0]}
+    ok = {n: all(w is not None for w in ws) for n, ws in want.items()}
+    for caller in order:
+        h = headings.get(caller) or {}
+        types = h.get('types') or {}
+        for callee, args in h.get('calls') or ():
+            if not ok.get(callee):
+                continue
+            if len(args) != len(want[callee]) or \
+                    any(argument_words(a, types) != w for a, w in zip(args, want[callee])):
+                ok[callee] = False
+            elif "__stdcall" in params[callee][0] and \
+                    any(re.search(r"\b(unaff_[SD]S|codebreaker_[sd]s\(\))|>>\s*0x10", a) for a in args):
+                ok[callee] = False                   # (a far pointer passed as halves: build/msc6.py's
+                                                     #  pascal_order makes it one argument -- not two words)
+    out = {}
+    for n, good in ok.items():
+        if not good:
+            continue
+        head, ps = params[n]
+        listed = ", ".join("%s %s" % (t, p) for p, t in ps)
+        out[n] = " ".join(head.split()) + "(" + (listed or "void") + ");"
+    return out
+
+
 def segment_plan(functions, near, where, sites, code, data_segment, other_data, first_selector):
     """Which functions' C names a segment of the module's own by its made-up selector, and what it
     is there (_segment_values) -- `functions` [(address, name)] in address order, `near` the near
@@ -3584,7 +3744,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
            ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
            ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads),
-           ("names_used", _names_used))
+           ("names_used", _names_used), ("heading_facts", _heading_facts))
 
 
 # ---------------------------------------------------------------------------------------------- functions

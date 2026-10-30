@@ -702,4 +702,29 @@ def test_names_used_for_the_header():
     got = facts['names']
     assert got['globals'] == {('pc', '1000001a'), ('i', '10080012')} and got['called_through'] == {'pcRam1000001a'}
     assert {'KERNEL_3', 'MK_FP'} <= got['called'] and got['mk_fp'] and not got['segments']
+
+
+def test_prototypes_where_the_calls_agree():
+    """c_text.prototypes from what the back end wrote: g takes a word and every call passes one, so
+    it is declared with its parameter; h is passed a long where it takes a word, so its list is
+    left open; a heading in the newer style (`(void)`, a blank line before its `{`) is none
+    c_text's pattern read, and gets no prototype."""
+    word = {'kind': 'i16'}
+    far = {'distance': 'far', 'model': '__stdcall16far'}
+    g = dict(sixteen([stmt({'node': 'Assign', 'target': name('x'), 'value': name('a1', 'i16')})], [param('a1', word)]), name='g')
+    h = dict(g, name='h')
+    f = dict(sixteen([stmt(fcall('g', lit(1, 'i16'))), stmt(fcall('h', lit(0x12345, 'i32', '0x12345')))]), name='f')
+    lost = dict(sixteen([]), name='k', mods=['__fastcall16far'])
+    heads = {}
+    for doc in (f, g, h, lost):
+        facts = dict(far)
+        c.function(doc, c.MOVED, facts=facts)
+        heads[doc['name']] = facts['heading']
+    assert heads['g']['declaration'] == 'xunknown2 __stdcall16far g();'
+    assert ('g', ['1']) in heads['f']['calls']
+    assert c.prototypes(heads, ['f', 'g', 'h', 'k']) == {'f': 'xunknown2 __stdcall16far f(void);',
+                                                          'g': 'xunknown2 __stdcall16far g(int2 a1);'}
+    assert c.argument_words('(uint4)x', {}) == 2 and c.argument_words('&x', {}) == 1
+    # (c_text._arguments_at's frozen case)
+    assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None

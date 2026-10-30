@@ -1093,109 +1093,6 @@ def declaration(text):
     return head[:head.index("(")] + "();"
 
 
-_DEFINITION = re.compile(r"^([^\n#{};]*?\b(\w+))\(([^)]*)\)\n((?:[^{;\n]+;\n)*)\{", re.M)
-_WIDE_TYPES = re.compile(r"\b(u?int4|xunknown4|long|unkbyte3|unkint3|unkuint3|int3|float4)\b")
-
-
-def _words(ty):
-    """the words a value of C type `ty` takes on the stack -- 1, 2 -- or None"""
-    ty = " ".join(ty.split())
-    if "*" in ty:
-        return 2 if "__far" in ty else 1
-    if _WIDE_TYPES.search(ty):
-        return 2
-    if re.search(r"\b(u?int2|xunknown2|int|unsigned|short|code|u?int1|char|xunknown1|bool)\b", ty):
-        return 1
-    return None
-
-
-def _parameters(text):
-    """(head before the parameter list, [(name, type)]) of a definition as the decompiler writes it, or None"""
-    m = _DEFINITION.search(text)
-    if not m:
-        return None
-    decl = {}
-    for d in m.group(4).strip().splitlines():
-        d = d.strip().rstrip(";")
-        nm = re.findall(r"\w+", d)
-        if nm:
-            decl[nm[-1]] = d[:d.rindex(nm[-1])].strip()
-    names = [p.strip() for p in m.group(3).split(",") if p.strip()]
-    head = []                                        # (the head may run over lines: `int2 __stdcall16far` / `name(`)
-    for line in reversed(text[:m.end(2)].split("\n")):
-        s = line.strip()
-        if head and (not s or s.endswith((";", "}", "*/")) or s.startswith(("#", "extern ", "/*"))):
-            break
-        head.insert(0, s)
-    return " ".join(head), [(p, decl.get(p, "int")) for p in names]
-
-
-def _argument_words(arg, types):
-    """the words an argument expression takes on the stack, as far as it can be told, else None"""
-    a = arg.strip()
-    while a.startswith("(") and _arguments_at(a, 0)[1] == len(a):
-        a = a[1:-1].strip()                          # (the whole in brackets)
-    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)", a):
-        v = int(a, 0)
-        return 1 if -0x8000 <= v <= 0xFFFF else 2
-    if re.fullmatch(r"-?(0x[0-9a-fA-F]+|\d+)[lL]", a):
-        return 2
-    cast = re.match(r"\(\s*([A-Za-z_][\w ]*\**)\s*\)", a)
-    if cast and _arguments_at(a, 0)[1] == cast.end():
-        return _words(cast.group(1))
-    if re.fullmatch(r"[A-Za-z_]\w*", a):
-        if a in ("unaff_SS", "unaff_DS", "unaff_ES", "unaff_CS"):
-            return 1
-        return _words(types[a]) if a in types else None
-    if a.startswith("&") or a.startswith('"'):
-        return 1                                     # (a near address: the medium model's data is near)
-    return None
-
-
-def prototypes(texts, order):
-    """{name: a declaration with its parameters} for each function every call to which, in all of
-    `texts`, passes as many words in each place as its definition takes there -- the source had
-    prototypes, and with none Microsoft C gives other code for the call (it keeps what it passes
-    in a register variable, and removes the arguments itself before a frame's `leave`). A function
-    a call disagrees with keeps the open declaration (see declaration). Each parameter is declared
-    with the type its old-style definition gives it, as it is -- `short`, not the `int` it is
-    promoted to: both Microsoft C 8 (silent; C4028 for the promoted one) and OpenWatcom (E1129 for
-    the promoted one) take it so."""
-    params = {n: _parameters(texts[n]) for n in order}
-    want = {n: [_words(t) for _p, t in ps[1]] for n, ps in params.items() if ps and "..." not in ps[0]}
-    ok = {n: all(w is not None for w in ws) for n, ws in want.items()}
-    for caller in order:
-        t = texts[caller]
-        info = params.get(caller)
-        types = dict(info[1]) if info else {}
-        body = t[t.find("{"):] if "{" in t else t
-        for line in body.splitlines():                   # (the function's own variables)
-            mm = re.match(r"^\s+([A-Za-z_][\w ]*?[\w*])\s*\**\s*(\w+)(\s*\[[^\]]*\])?\s*;\s*$", line)
-            if mm and mm.group(1) not in ("return", "goto"):
-                star = line.count("*")
-                types[mm.group(2)] = mm.group(1) + (" *" * star if star else "") + (" *" if mm.group(3) else "")
-        for mm in re.finditer(r"\b(\w+)\s*\(", body):
-            callee = mm.group(1)
-            if not ok.get(callee):
-                continue
-            args, _end = _arguments_at(body, mm.end() - 1)
-            if len(args) != len(want[callee]) or \
-                    any(_argument_words(a, types) != w for a, w in zip(args, want[callee])):
-                ok[callee] = False
-            elif "__stdcall" in params[callee][0] and \
-                    any(re.search(r"\b(unaff_[SD]S|codebreaker_[sd]s\(\))|>>\s*0x10", a) for a in args):
-                ok[callee] = False                   # (a far pointer passed as halves: build/msc6.py's
-                                                     #  pascal_order makes it one argument -- not two words)
-    out = {}
-    for n, good in ok.items():
-        if not good:
-            continue
-        head, ps = params[n]
-        listed = ", ".join("%s %s" % (t, p) for p, t in ps)
-        out[n] = " ".join(head.split()) + "(" + (listed or "void") + ");"
-    return out
-
-
 _RAM = re.compile(r"([a-z]+)Ram([0-9a-f]{8})")
 
 
@@ -1397,7 +1294,7 @@ def _write16(context, item):
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
     found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared", "frame", "selector_imports",
-                                   "code_reads", "names") if k in facts}
+                                   "code_reads", "names", "heading") if k in facts}
     if not known.get("from_l2"):
         return va, None, set(), known, {}
     return va, text, cback.flags(known["l2"], facts), known, found
@@ -1516,6 +1413,9 @@ def _compilable16(module_path, outdir=None):
             words = [model] + (["__export"] if far and facts["export"] else []) + (["__loadds"] if facts["loadds"] else [])
             texts[nm] = ("xunknown2 %s %s()\n{\n  /* the decompiler could not make this function */\n"
                          "  return 0;\n}" % (" ".join(words), nm))
+            head = "xunknown2 %s %s" % (" ".join(words), nm)          # (its heading, as the back end reports one)
+            found_of[nm] = {"heading": {"params": (head, []), "types": {}, "calls": [], "declaration": head + "();",
+                                        "fastcall": "__fastcall16near" in head}}
             flags_of[nm] = ({"exported_prologue"} if far and facts["export"] else set()) | (set() if far else {"near"})
             by_va[va] = nm
             m.failed.setdefault(nm, "the decompiler could not make it")
@@ -1651,11 +1551,14 @@ def _compilable16(module_path, outdir=None):
             if mm:
                 m.imports[n] = (mm.group(1), int(mm.group(2)))
     decls += ["extern uint4 __far __stdcall %s();" % nm for nm in sorted(m.imports) if nm not in m.selector_imports]
-    agreed = prototypes(m.texts, m.order) if os.environ.get("CB_PROTOTYPES", "1") != "0" else {}
+    # each function declared: with its parameters where every call agrees with its definition
+    # (backends/c.prototypes, from each one's heading and calls as the back end wrote them)
+    headings = {n: (found_of.get(n) or {}).get("heading") or {} for n in m.order}
+    agreed = cback.prototypes(headings, m.order) if os.environ.get("CB_PROTOTYPES", "1") != "0" else {}
     m.prototyped = set(agreed)
-    decls += [agreed.get(n) or declaration(m.texts[n]) for n in m.order]
+    decls += [agreed.get(n) or headings[n]["declaration"] for n in m.order]
     decls += ["#ifdef __WATCOMC__\n#pragma aux (codebreaker_fastcall) %s;\n#endif" % n for n in m.order
-              if "__fastcall16near" in m.texts[n].split("(", 1)[0]]
+              if headings[n]["fastcall"]]
     intrinsics = [INTRINSICS16[n] for n in sorted(INTRINSICS16) if n in called]
     intrinsics += interrupt_helpers(m.interrupts)
     if (any(u.get("mk_fp") for u in used) or getattr(m, "bios_data", False)) and not m.selector_imports:
@@ -1673,26 +1576,6 @@ def _compilable16(module_path, outdir=None):
 # set for it (backends/c._interrupts); the header declares the helpers (interrupt_helpers) and the
 # build writes each vector's routine (build/module.py, interrupt_routines).
 INTERRUPT_REGISTERS = ("ax", "bx", "cx", "dx", "si", "di", "ds", "es")
-
-
-def _arguments_at(text, open_paren):
-    """The arguments of the call whose `(` is at `open_paren`. -> ([argument text], index after `)`)"""
-    depth, args, start, i = 0, [], open_paren + 1, open_paren
-    while i < len(text):
-        c = text[i]
-        if c == "(":
-            depth += 1
-        elif c == ")":
-            depth -= 1
-            if depth == 0:
-                if text[start:i].strip():
-                    args.append(text[start:i])
-                return args, i + 1
-        elif c == "," and depth == 1:
-            args.append(text[start:i])
-            start = i + 1
-        i += 1
-    return args, len(text)
 
 
 def _keeps_frame(code, off):
