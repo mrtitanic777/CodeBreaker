@@ -196,31 +196,6 @@ def _compare_as_numbers(t):
     return ctree.rewrite(t, fix)
 
 
-def _fit_calls(out, order):
-    """A call that passes another number of arguments than the function is declared with is made
-    through a pointer with the argument list left open. The decompiler recovers each call on the
-    evidence at that call, and sometimes sees fewer or more arguments than the definition has;
-    the compiler refuses such a call outright, and the whole calling function was lost. Written
-    this way the call compiles as it was recovered, and whether that is right is for the judge."""
-    takes = {}
-    for n in order:
-        head = out[n].split("{", 1)[0]
-        if "__cdecl" in head or "(" not in head:
-            continue
-        inside = head[head.index("(") + 1:head.rindex(")")].strip() if ")" in head else ""
-        takes[n] = 0 if inside in ("", "void") else inside.count(",") + 1
-    if not takes:
-        return out
-
-    def fit(src):
-        for c in src.find("call_expression", under=src.body()):
-            f = c.child_by_field_name("function")
-            if f.type == "identifier" and src.at(f) in takes and \
-                    len(c.child_by_field_name("arguments").named_children) != takes[src.at(f)]:
-                src.replace(f, "((int4 (*)())%s)" % src.at(f))
-    return {n: ctree.rewrite(out[n], fit) for n in order} if takes else out
-
-
 def _called(text):
     """The names of the functions the text calls (`f(...)`; not a cast or a declaration the grammar
     read as a call)."""
@@ -461,7 +436,7 @@ def compilable32(module_path, funcs, outdir):
         # end's passes of the 32-bit path -- backends/c.FLAT -- and its part of the module's
         # decisions)
         written = {"functions": set(order), "struct_sizes": struct_sizes[n], "called_through": called_through,
-                   "aliases": aliases.get(n) or {}, "pointer_globals": pointers}
+                   "aliases": aliases.get(n) or {}, "pointer_globals": pointers, "takes": takes}
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         if facts.get("l2") is not None and not facts.get("from_l2"):
@@ -505,7 +480,6 @@ def compilable32(module_path, funcs, outdir):
             decls.append('#pragma aux %s "_*" parm routine [ecx] value [eax] modify [eax ecx edx];' % n)
         elif n in in_edx:
             decls.append('#pragma aux %s "_*" parm routine [ecx] [edx] value [eax] modify [eax ecx edx];' % n)
-    out = _fit_calls(out, order)
     # the core's names for values of sizes C has no type for (5 bytes of a 64-bit product, 10 of a
     # floating-point register): each is given the next type that holds it. One left undeclared
     # in a function's heading broke the header, and with it every function of the module.

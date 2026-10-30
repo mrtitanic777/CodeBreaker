@@ -26,7 +26,7 @@ from codebreaker.decompile import c_text                # noqa: E402
 
 # Every pass of the C text that is a function of its arguments (the ones that take the module's
 # file or its description are covered by the whole-module cases below)
-PASSES = ["_more_helpers", "_compare_as_numbers", "_fit_calls",
+PASSES = ["_more_helpers", "_compare_as_numbers",
           "_pieces", "_far_loads",
           "_open_arguments", "declaration", "_global_type", "_loads_dgroup",
           "_near_to_far",
@@ -46,7 +46,7 @@ WHOLE = {"lzexpand.dll", "lz32.dll"}                    # kept whole as well: ev
 CHANGED_PER_PASS = 10          # inputs a pass changed, kept per pass (spread over their sizes)
 SAME_PER_PASS = 2              # ... and inputs it left as they were
 MAX_CASE = 12000               # characters of one case's arguments, at most
-LARGE = {"_fit_calls": 120000, "call_counts": 120000}  # (a pass given every function of the module at once)
+LARGE = {"call_counts": 120000}  # (a pass given every function of the module at once)
 
 
 def _windowed(name, args):

@@ -845,5 +845,21 @@ def test_moved_32bit_globals():
     assert '  (uint4)pcVar3 != (uint4)pcRam004094b0;\n' in text
     assert '  (*xRam0040c030)();\n' in text
     assert '  a = *iRam0040c000;\n' in c.function(doc, c.MOVED)
+
+
+def test_moved_fit_calls():
+    """compilable32's _fit_calls on the tree: a call passing another number of arguments than the
+    function's definition takes (takes32, from its heading: none for a __cdecl one) is made
+    through a pointer with the list left open; the others as they are."""
+    assert c.takes32('int4 CopyLZFile(int4 a1,int4 a2)') == 2
+    assert c.takes32('int4 f(void)') == 0
+    assert c.takes32('int4 __cdecl LZDone(void)') is None
+    body = [stmt(fcall('sub_001135', name('a'))), stmt(fcall('sub_001135', name('a'), name('b'))),
+            stmt(fcall('LZDone', name('a')))]
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': {'kind': 'i32'},
+           'origin': {'module': '', 'va': 0x401000}, 'params': [], 'body': body}
+    text = c.function(doc, c.MOVED, facts={'takes': {'sub_001135': 2}})
+    assert '  ((int4 (*)())sub_001135)(a);\n  sub_001135(a,b);\n  LZDone(a);\n' in text, text
+    assert '  sub_001135(a);\n' in c.function(doc, c.MOVED)
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
