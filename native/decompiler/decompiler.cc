@@ -473,6 +473,7 @@ struct Description {
   std::vector<uint64_t> retjumps;                  // returns that are jumps (`R <address>`)
   std::set<uint64_t> only;
   bool x86_32 = false;
+  bool flat = false;                               // (one address space: every processor but 16-bit x86)
 };
 
 // One analysis: a Machine over the description, every function, import and interrupt registered,
@@ -897,15 +898,23 @@ class PrintL2 : public PrintC {
   std::string sym(const std::string& kind, const std::string& name) {
     return "{\"kind\":\"" + kind + "\",\"name\":" + jsonText(name) + "}";
   }
+  // a constant's type as read where it is: its variable's -- or, for one with no variable (a
+  // constant the printer made up, as PowerPC's code has), its own
+  static const Datatype* readType(const Varnode* vn, const PcodeOp* op) {
+    HighVariable* h = nullptr;
+    try { h = vn->getHigh(); } catch (LowlevelError&) { return vn->getType(); }
+    if (h->getType()->needsResolution() && (op == nullptr || op->getSlot(vn) >= op->numInput())) return h->getType();
+    return vn->getHighTypeReadFacing(op);
+  }
   std::string lit(const Tree& t) {
     const Varnode* vn = t.vn;
-    std::string ty = (vn != nullptr) ? ",\"type\":" + type(vn->getHighTypeReadFacing(t.op)) : "";
+    std::string ty = (vn != nullptr) ? ",\"type\":" + type(readType(vn, t.op)) : "";
     // and PrintC's spelling of it (base, a U suffix, a character escape), which the C back end prints
     if (!t.name.empty() && t.name[0] != '"') ty += ",\"text\":" + jsonText(t.name);
     if (!t.name.empty() && t.name[0] == '"')         // a string: its C text, quotes taken off
       return "{\"node\":\"Lit\"" + ty + ",\"value\":" + jsonText(t.name.substr(1, t.name.size() - 2)) + "}";
     if (vn != nullptr && vn->isConstant()) {
-      const Datatype* ct = vn->getHighTypeReadFacing(t.op);
+      const Datatype* ct = readType(vn, t.op);
       if (ct->getMetatype() == TYPE_BOOL)
         return "{\"node\":\"Lit\"" + ty + ",\"value\":" + (vn->getOffset() ? "true" : "false") + "}";
       if (ct->getMetatype() != TYPE_FLOAT) {
@@ -1937,7 +1946,7 @@ void decompileOne(Analysis& a, const Description& d, size_t i, std::ostream& out
         out << "/*@P return " << rt->getSize() << " */" << std::endl;
     }
     out << struct_notes;
-    if (g_l2) out << "/*@L2 " << l2Document(m, t.first, d.x86_32, nullptr) << " */" << std::endl;
+    if (g_l2) out << "/*@L2 " << l2Document(m, t.first, d.flat, nullptr) << " */" << std::endl;
     m.print->docFunction(t.first);
   } catch (LowlevelError& e) {
     out << "/* decompile failed: " << e.explain << " */" << std::endl;
@@ -2012,6 +2021,7 @@ int main(int argc, char** argv) {
     if (std::string(argv[i]) == "--at")
       for (++i; i < argc && argv[i][0] != '-'; ++i) d.only.insert(strtoull(argv[i], nullptr, 16));
   d.x86_32 = d.arch.rfind("x86:LE:32", 0) == 0;
+  d.flat = d.arch.rfind("x86:LE:16", 0) != 0;      // (PowerPC's L2 too: flat pointers, a function by its address)
   if (const char* sv = std::getenv("CB_STRUCTS")) g_structs = std::atoi(sv) != 0;
   if (const char* lv = std::getenv("CB_L2")) g_l2 = std::atoi(lv) != 0;
 

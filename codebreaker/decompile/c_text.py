@@ -350,11 +350,6 @@ def _code_pointers(text, functions):
     return src.text()
 
 
-def _numbers(src, under=None):
-    """The number literals of the text (not inside strings or comments)."""
-    return src.find("number_literal", under=under)
-
-
 def compilable32(module_path, funcs, outdir):
     """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
     the core's output with its base types defined, its globals bound to the original's addresses,
@@ -1520,7 +1515,6 @@ static void codebreaker_trap(uint4 to, int8 a, int8 b, uint8 ua, uint8 ub) {
 #define trapWord(to, a, b) codebreaker_trap((uint4)(to), (int8)(int4)(a), (int8)(int4)(b), (uint8)(uint4)(a), (uint8)(uint4)(b))
 #define trapDoubleWord(to, a, b) codebreaker_trap((uint4)(to), (int8)(a), (int8)(b), (uint8)(a), (uint8)(b))
 """
-_WIDE_ADDRESS = re.compile(r"0xffffffff([89a-f][0-9a-f]{7})")
 
 
 _HOME = re.compile(r"_?([a-z]+)Stack(000000[0-9a-f]{2})")
@@ -1613,19 +1607,19 @@ def compilable_powerpc(module_path, outdir):
     from codebreaker.decompile import decompiler, describe
     from codebreaker.formats import powerpc_image
     img = powerpc_image.read(module_path)
-    got = decompiler.raw(module_path, describe.function_starts(module_path), outdir)
+    # (the L2 documents kept, and each function's C written from its own here, by the C back end
+    # with the PowerPC path's passes -- backends/c.POWERPC; the facts' lane says which)
+    got = decompiler.raw(module_path, describe.function_starts(module_path), outdir, l2=True, write=False)
     out, order, by_va, _err = got
     sizes, novalue = {}, set()
     for n in order:
-        for va, size, _elem in (got.notes.get(n) or {}).get("globals") or ():
+        facts = got.notes.get(n) or {}
+        for va, size, _elem in facts.get("globals") or ():
             sizes.setdefault(va, set()).add(size)
+        written = {"lane": "powerpc"}
+        if facts.get("l2") is not None:
+            out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         t = out[n].strip()
-        src = ctree.Source(t)
-        for num in _numbers(src):
-            wide = _WIDE_ADDRESS.fullmatch(src.at(num))
-            if wide:
-                src.replace(num, "0x" + wide.group(1))
-        t = src.text()
         t = _struct_gaps(t)                      # an offset of a recovered structure with no field
         t = _pieces(t, _BY_SIZE, "uint4", lambda x, off, ty: "PIECE(%s, %s, %s)" % (x, off, ty))
         t = _compare_as_numbers(t)

@@ -32,31 +32,39 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-         "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
-         "struct_fields")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads",
+         "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports",
+         "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments",
+         "code_pointers", "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast",
+         "fit_calls", "struct_fields", "wide_address", "homed_arguments", "uint8_result")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-             "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
-         "struct_fields")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields",
+             "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots",
+             "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts",
+             "int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame",
+             "globals_through", "global_widths", "same_cast", "fit_calls", "struct_fields", "wide_address",
+             "homed_arguments", "uint8_result")
+# ... those of them the 32-bit path has (compilable32)
 FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers",
         "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
-         "struct_fields")
-# ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
-# C is the module's, given its facts)
-FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
-         "struct_fields")      # (... and the 32-bit path alone has)
+        "struct_fields")
+# ... those the 16-bit path has not (the 32-bit path's own, and the PowerPC path's)
+FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame",
+             "globals_through", "global_widths", "same_cast", "fit_calls", "struct_fields",
+             "wide_address", "homed_arguments", "uint8_result")
+# ... and those of the PowerPC path (c_text.compilable_powerpc; the facts' "lane": "powerpc")
+POWERPC = ("wide_address",)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
         "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set(),
-        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": [], "seg_ptrs": [], "frame": set(), "alias": {}}
+        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": [], "seg_ptrs": [], "frame": set(), "alias": {}, "lane": None}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -1368,6 +1376,10 @@ def _pieces(nodes, _arrays):
         else:
             table = _SIGNED if p is not None and p['node'] == 'Binary' and p['op'] in _ORDERING else _SIZED
             other = 'uint2'
+        if _now['lane'] == 'powerpc':                   # (big-endian: from the end of its storage)
+            _rewrite(e, lambda s, off=m.group(1), ty=table.get(int(m.group(2)), other):
+                     "PIECE(%s, %s, %s)" % (_sub(_token(s), s['obj'], 0), off, ty))
+            continue
         _rewrite(e, lambda s, off=m.group(1), ty=table.get(int(m.group(2)), other):
                  "(*(%s *)((char *)&%s + %s))" % (ty, _sub(_token(s), s['obj'], 0), off))
 
@@ -1502,6 +1514,12 @@ def _result_shown(ret):
     mods, base = _stack(ret)
     if base == 'void' and 'int_result' in _now['moved']:
         return 'int'                                     # (32-bit: in EAX -- c_text's void -> int)
+    if base == 'void' and 'uint8_result' in _now['moved']:
+        # (PowerPC: every function leaves something in r3 and callers are free to use it -- the
+        # module notes it returns nothing, the facts' "novalue")
+        _now['facts']['novalue'] = True
+        return 'uint8'
+
     if base == 'void' and 'void_result' in _now['moved']:
         return 'xunknown2'
     if not mods and base in _BYTES and 'byte_result' in _now['moved'] and not _lost(_now['doc'] or {}):
@@ -3913,23 +3931,29 @@ def module_names32(doc):
     """What a 32-bit function's tree names, as its text will: {'names': every name it writes
     (its variables, globals and the functions it calls), 'calls': the functions it calls by name,
     'called_through': the globals it calls through, `(*xRam0040c000)(...)`}."""
-    names, calls, through = set(), set(), set()
+    names, calls, through, arity = set(), set(), set(), []
     for e, _p in _walk(doc.get('body')):
         if e['node'] == 'Name':
             names.add(_name(e))
         elif e['node'] == 'Call':
             t = e.get('target')
+            n = None
             if t is None:
                 n = (e.get('sym') or {}).get('name')
                 if n:
                     names.add(n)
                     calls.add(n)
             elif t.get('node') == 'Name':
-                calls.add(_name(t))
+                n = _name(t)
+                calls.add(n)
+            elif t.get('node') == 'Select':
+                n = _name(t)                             # (`p->name(...)` counts as a call of name)
             elif t.get('node') == 'Unary' and t.get('op') == '*' and not t.get('postfix') and \
                     t['x'].get('node') == 'Name' and _RAM.fullmatch(_name(t['x'])):
                 through.add(_name(t['x']))
-    return {'names': names, 'calls': calls, 'called_through': through}
+            if n:
+                arity.append((n, len(e.get('args') or ())))
+    return {'names': names, 'calls': calls, 'called_through': through, 'arity': arity}
 
 
 def type_names(doc):
@@ -4101,6 +4125,58 @@ def _struct_fields(nodes, _arrays):
         _rewrite(e, lambda _e, s=sname, p=param, o=off: "((%s *)%s)->f_%x" % (s, p, o))
 
 
+# ---------------------------------------------------------------------------------------------- PowerPC
+_WIDE_ADDRESS = re.compile(r"0xffffffff([89a-f][0-9a-f]{7})")
+_HOME = re.compile(r"_?([a-z]+)Stack(000000[0-9a-f]{2})")
+
+
+def _wide_address(nodes, _arrays):
+    """An address the decompiler shows widened to 64 bits (PowerPC's registers are 64 bits wide,
+    its addresses 32), `0xffffffff82000000`, is the 32-bit address it is, `0x82000000`
+    (compilable_powerpc's _WIDE_ADDRESS)."""
+    for e, _p in nodes:
+        if e['node'] == 'Lit' and id(e) not in _now['whole']:
+            m = _WIDE_ADDRESS.fullmatch(_lit(e))
+            if m:
+                _rewrite(e, lambda _e, a=m.group(1): '0x' + a)
+
+
+def _homed_arguments(nodes, _arrays):
+    """A caller leaves room on the stack for each of the eight register arguments (eight bytes
+    each, from 0x10 above the stack pointer at entry), and a function that needs an argument's
+    address stores it there. The decompiler shows that slot as a stack variable of the caller's
+    frame, `xStack00000010`; it is the argument, and is written as the argument -- its own
+    declaration gone, and the store of the argument into its own slot, `a1 = a1;`, with it
+    (compilable_powerpc's _homed_arguments)."""
+    doc = _now['doc']
+    names = [type_text(p.get('type'), _param_name(p)).split()[-1].lstrip('*') for p in doc.get('params') or []]
+
+    def slot(name):
+        m = _HOME.fullmatch(name)
+        if not m:
+            return None
+        off = int(m.group(2), 16)
+        k = (off - 0x10) // 8
+        return names[k] if 0 <= k < len(names) and off % 8 in (0, 4) else None
+    homes = {}
+    for v in _now['locals']:
+        n = (v.get('sym') or {}).get('name') or ''
+        if slot(n):
+            _now['drop'].add(n)
+    for e, _p in nodes:
+        if e['node'] == 'Name' and slot(_name(e)):
+            homes[_name(e)] = slot(_name(e))
+    _now['alias'].update(homes)                          # (written after the lines are laid out)
+    for e, _p in nodes:                                  # the store into its own slot: `a1 = a1;`
+        x = e.get('expr') if e['node'] == 'ExprStmt' else None
+        if x is not None and x.get('node') == 'Assign' and not x.get('op') and \
+                x['target'].get('node') == 'Name' and x['value'].get('node') == 'Name' and \
+                id(x) not in _now['whole'] and \
+                _now['alias'].get(_name(x['target']), _name(x['target'])) == \
+                _now['alias'].get(_name(x['value']), _name(x['value'])):
+            _now['gone'].add(id(e))
+
+
 def takes32(signature):
     """How many arguments a 32-bit function's definition takes, as compilable32 counted them in
     its heading (`signature`: the heading as written) -- None for one that is __cdecl."""
@@ -4130,7 +4206,7 @@ def _ends_statement(e, parent):
 
 
 # (each: c_text's pass, done on the tree -- in the order c_text runs them)
-_PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joined_arguments", _joined_arguments),
+_PASSES = (("wide_address", _wide_address), ("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joined_arguments", _joined_arguments),
            ("null_is_zero", _null_is_zero), ("global_pointer_steps", _global_pointer_steps),
            ("far_arguments", _far_arguments), ("one_name_for_globals", _one_name_for_globals),
            ("selector_structs", _selector_structs), ("struct_gaps", _struct_gaps),
@@ -4146,7 +4222,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("names_used", _names_used), ("heading_facts", _heading_facts), ("code_pointers", _code_pointers),
            ("compare_as_numbers", _compare_as_numbers), ("keep_frame", _keep_frame),
            ("globals_through", _globals_through), ("same_cast", _same_cast), ("fit_calls", _fit_calls),
-           ("struct_fields", _struct_fields))
+           ("struct_fields", _struct_fields), ("homed_arguments", _homed_arguments))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -4277,7 +4353,9 @@ def function(doc, moved=(), far=None, facts=None):
     if facts is None:
         moved = [p for p in moved if p not in IN_MODULE]
     _now['facts'], _now['doc'] = (facts if facts is not None else {}), doc
-    _now['moved'] = tuple(p for p in moved if p not in FLAT_ONLY) if sixteen else tuple(p for p in moved if p in FLAT)
+    _now['lane'] = (facts or {}).get('lane')
+    flat = POWERPC if _now['lane'] == 'powerpc' else FLAT
+    _now['moved'] = tuple(p for p in moved if p not in FLAT_ONLY) if sixteen else tuple(p for p in moved if p in flat)
     _now['sixteen'] = sixteen
     _now['locals'], _now['drop'] = locs, set()
     # the far pointers: the parameters and locals of four bytes
@@ -4314,6 +4392,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['ss_casts'], _now['far_read'] = set(), set()
         _now['before'], _now['after'], _now['stmt_at'], _now['pops'] = {}, {}, {}, False
         _now["declare_first"], _now["seg_ptrs"], _now["frame"], _now["alias"] = [], [], set(), {}
+        _now["lane"] = None
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
