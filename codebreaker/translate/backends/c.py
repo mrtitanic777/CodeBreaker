@@ -33,7 +33,7 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
          "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-         "compare_as_numbers")
+         "compare_as_numbers", "keep_frame")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
@@ -41,18 +41,18 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
              "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-             "compare_as_numbers")
+             "compare_as_numbers", "keep_frame")
 FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers",
-        "compare_as_numbers")
+        "compare_as_numbers", "keep_frame")
 # ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
 # C is the module's, given its facts)
-FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers")      # (... and the 32-bit path alone has)
+FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame")      # (... and the 32-bit path alone has)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
         "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set(),
-        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": [], "seg_ptrs": []}
+        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": [], "seg_ptrs": [], "frame": set()}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -808,6 +808,10 @@ def _push(st, e, paren=None):
         return
     if n == 'Name':
         name = _name(e)
+        if name in _now['frame'] and (e.get('sym') or {}).get('kind') != 'field':
+            # (a local of the frame structure, written after the lines are laid out: _keep_frame)
+            st.atom(name, '((int4)&_f + (int4)sizeof(_f))' if name == _ENTRY_SP else '_f.' + name, node=e)
+            return
         st.atom(name, _mk_fp_text('codebreaker_ss()', e, shown=name) if _now['marks'].get(id(e)) == '_ss' else None,
                 node=e)
         return
@@ -3809,6 +3813,86 @@ def _compare_as_numbers(nodes, _arrays):
                     _rewrite(s, lambda x: '(uint4)' + _raw_now(x))
 
 
+_FRAME_LOCAL = re.compile(r"(?m)^  ([A-Za-z_][\w ]*?(?:\s*\*+\s*|\s))([a-z]+Stack_([0-9a-f]+))(?: \[(\d+)\])?;[ \t]*$")
+
+
+def _keep_frame(nodes, _arrays):
+    """Keep a function's stack locals where the original had them, relative to one another
+    (compilable32's _keep_frame). The original often builds a small structure in its frame and
+    passes its address (`mov [ebp-18h], hwnd / mov [ebp-14h], id / lea edx, [ebp-18h] / push
+    edx`); the core recovers the fields as separate locals, which a C compiler places as it
+    likes, and the callee reading through the pointer finds something else. When a frame
+    local's address can escape -- one is an array, its address is taken (`&x`, in the text the
+    passes wrote too), or the function reads the stack pointer it was entered with -- the locals
+    are declared as the fields of one frame structure `_f` at their original offsets (filler
+    between, the rest of the frame up to the return address after the last), every use is
+    `_f.x`, and the entry SP is the end of `_f`. A type of unknown size (the facts'
+    "struct_sizes": the structures recovered so far in the module) or locals that overlap leave
+    the function as it is. As c_text did it on the text: the first declaration's line becomes
+    the structure's, the others' lines are left empty, and the names are written after the
+    lines are laid out."""
+    locs = [v for v in _now['locals'] if (v.get('sym') or {}).get('name') not in _now['drop']]
+    if not locs:
+        return
+    lv = _Locals(nodes, locs)
+    region = lv.region
+    found = list(_FRAME_LOCAL.finditer(region))
+    if not found:
+        return
+    names = {m.group(2) for m in found}
+    seen = _now['seen']
+    esp = any(e['node'] == 'Name' and _name(e) == _ENTRY_SP and id(e) in seen for e, _p in nodes) or \
+        any(_ENTRY_SP in t for t in _now['shown'].values())
+    parent = {id(e): p for e, p in nodes}
+
+    def addressed(e):
+        if _unary_parent(e, parent, '&'):
+            return True
+        up = parent.get(id(e))
+        if up is not None and id(up) in _now['whole']:
+            pre = _prefix(e)                             # (inside a pass's rewrite: `(char *)&x + 2`)
+            return bool(pre and re.search(r"&\s*\Z", pre))
+        return False
+    if not (esp or any(m.group(4) for m in found) or
+            any(e['node'] == 'Name' and _name(e) in names and id(e) in seen and addressed(e) for e, _p in nodes)):
+        return
+    sizes = _now['facts'].get('struct_sizes') or {}
+    items = []
+    for m in found:
+        ty = " ".join(m.group(1).split())
+        size = 4 if ty.endswith("*") else SIZEOF.get(ty) or sizes.get(ty)
+        if size is None:
+            return                                       # (a type whose size is not known)
+        count = int(m.group(4)) if m.group(4) else 1
+        items.append((int(m.group(3), 16), size * count, ty, m.group(2), m.group(4)))
+    items.sort(reverse=True)                             # (largest offset = lowest address, first)
+    fields, pos = [], None
+    for off, size, ty, name, arr in items:
+        addr = -off
+        if pos is not None:
+            gap = addr - pos
+            if gap < 0:
+                return                                   # (overlapping locals: left as they are)
+            if gap:
+                fields.append("uint1 _gap_%x[%d];" % (off, gap))
+        fields.append("%s %s%s;" % (ty, name, "[%s]" % arr if arr else ""))
+        pos = addr + size
+    if pos is not None and pos < 0:
+        # (the frame runs on to the return address: a callee handed the last local's address may
+        # fill a whole structure there -- a RECT the core saw two fields of)
+        fields.append("uint1 _rest[%d];" % -pos)
+    decl = "  struct { %s } _f;   /* locals at their offsets in the original's frame */" % " ".join(fields)
+    first = [True]
+
+    def strip(_m):
+        if first[0]:
+            first[0] = False
+            return decl
+        return ""
+    _now['locals_text'] = _FRAME_LOCAL.sub(strip, region)
+    _now['frame'] = names | ({_ENTRY_SP} if esp else set())
+
+
 def _raw_now(x):
     """`x` as it is written now, its own rewrite aside (a rewrite of it written around it)"""
     _now['bare'].add(id(x))
@@ -3842,7 +3926,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
            ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads),
            ("names_used", _names_used), ("heading_facts", _heading_facts), ("code_pointers", _code_pointers),
-           ("compare_as_numbers", _compare_as_numbers))
+           ("compare_as_numbers", _compare_as_numbers), ("keep_frame", _keep_frame))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -3999,7 +4083,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['at'], _now['top'], _now['virtual'], _now['ren'], _now['locals_text'] = {}, None, {}, {}, None
         _now['ss_casts'], _now['far_read'] = set(), set()
         _now['before'], _now['after'], _now['stmt_at'], _now['pops'] = {}, {}, {}, False
-        _now["declare_first"], _now["seg_ptrs"] = [], []
+        _now["declare_first"], _now["seg_ptrs"], _now["frame"] = [], [], set()
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")

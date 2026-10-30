@@ -500,6 +500,7 @@ def compilable32(module_path, funcs, outdir):
         written = {}                              # (what the back end found of the function as it wrote it)
         if facts.get("l2") is not None:
             written["functions"] = set(order)
+            written["struct_sizes"] = _struct_sizes(struct_notes)      # (the frame structure: backends/c._keep_frame)
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
         # is not part of it: left in, it became the function's declaration and broke the header)
@@ -509,7 +510,7 @@ def compilable32(module_path, funcs, outdir):
             # of its passes the 32-bit path shares done here: `x._1_2_` is the core's spelling
             # of "2 bytes of x starting at byte 1")
             t = _null_is_zero(_pieces(t, _BY_SIZE, "uint4"))
-        t = _keep_frame(t, _struct_sizes(struct_notes))
+            t = _keep_frame(t, _struct_sizes(struct_notes))       # (the back end's for C from L2: backends/c._keep_frame)
         if not facts.get("from_l2"):
             t = _compare_as_numbers(t)            # (the back end's for C from L2: backends/c._compare_as_numbers)
         # a function's address stored in a pointer the core typed loosely (the back end's for C

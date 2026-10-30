@@ -777,5 +777,40 @@ def test_moved_32bit_heading():
     assert '  if (pcVar2 < (uint4)a1) {' in c.function(cmp, c.MOVED)
     sixteen_doc = sixteen([], [])
     assert c.function(sixteen_doc, c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()')
+
+
+def test_moved_keep_frame():
+    """compilable32's _keep_frame on the tree: where a frame local's address escapes, the locals
+    are the fields of one frame structure at their offsets (filler between, the rest of the frame
+    to the return address after the last), each use `_f.x`, the other declarations' lines left
+    empty as c_text left them; without an escape, or without the module's facts, as printed."""
+    w2, w1, i4 = {'kind': 'class', 'name': 'xunknown2'}, {'kind': 'class', 'name': 'xunknown1'}, {'kind': 'i32'}
+
+    def addr(n, t):
+        return {'node': 'Cast', 'type': i4, 'x': {'node': 'Unary', 'op': '&', 'x': typed(n, t)}}
+    body = [local('iVar1', i4), local('xStack_c', w2), local('xStack_a', w1), local('xStack_8', w1),
+            local('xStack_7', w1),
+            stmt({'node': 'Assign', 'target': typed('xStack_c', w2), 'value': name('_cRam00405080')}),
+            stmt({'node': 'Assign', 'target': typed('xStack_7', w1), 'value': lit(0)}),
+            stmt({'node': 'Assign', 'target': name('iVar1'),
+                  'value': fcall('lstrcmpiA', addr('xStack_8', w1), addr('xStack_c', w2))}),
+            {'node': 'Return', 'value': name('iVar1')}]
+    doc = {'node': 'MethodDecl', 'name': 'sub_004419', 'kind': 'function', 'ret': i4, 'mods': ['__cdecl'],
+           'origin': {'module': '', 'va': 0x404419}, 'params': [], 'body': body}
+    text = c.function(doc, c.MOVED, facts={})
+    assert ('{\n  int4 iVar1;\n  struct { xunknown2 xStack_c; xunknown1 xStack_a; uint1 _gap_8[1]; xunknown1 xStack_8; '
+            'xunknown1 xStack_7; uint1 _rest[6]; } _f;   /* locals at their offsets in the original\'s frame */\n\n\n\n'
+            '  \n  _f.xStack_c = _cRam00405080;\n  _f.xStack_7 = 0;\n'
+            '  iVar1 = lstrcmpiA((int4)&_f.xStack_8,(int4)&_f.xStack_c);\n') in text, text
+    assert '  xStack_c = _cRam00405080;' in c.function(doc, c.MOVED)
+    # (no address taken, no array, no entry SP: the locals stay where the compiler puts them)
+    plain = dict(doc, body=body[:-2] + [{'node': 'Return', 'value': name('iVar1')}])
+    assert '  xunknown2 xStack_c;\n' in c.function(plain, c.MOVED, facts={})
+    # (a type of unknown size: left as it is; the structures recovered say theirs)
+    rec = {'kind': 'class', 'name': 's_f_p'}
+    odd = dict(doc, body=[local('xStack_c', rec), stmt(fcall('g', addr('xStack_c', rec)))])
+    assert '  s_f_p xStack_c;' in c.function(odd, c.MOVED, facts={})
+    assert 'struct { s_f_p xStack_c; uint1 _rest[4]; } _f;' in \
+        c.function(odd, c.MOVED, facts={'struct_sizes': {'s_f_p': 8}})
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
