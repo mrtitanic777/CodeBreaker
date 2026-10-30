@@ -31,7 +31,7 @@ PASSES = ["_more_helpers",
           "_open_arguments", "declaration", "_global_type", "_loads_dgroup",
           "_near_to_far",
           "interrupt_helper_name",
-          "interrupt_helpers", "_homed_arguments", "_ram_type", "call_counts", "interrupt_routines"]
+          "interrupt_helpers", "_ram_type", "call_counts", "interrupt_routines"]
 
 # Passes handed a whole segment's bytes read only a window of them: (buffer, start, end) argument
 # positions, or (buffer, start, None, length)

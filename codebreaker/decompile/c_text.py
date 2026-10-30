@@ -1340,46 +1340,6 @@ static void codebreaker_trap(uint4 to, int8 a, int8 b, uint8 ua, uint8 ub) {
 """
 
 
-_HOME = re.compile(r"_?([a-z]+)Stack(000000[0-9a-f]{2})")
-
-
-def _homed_arguments(t):
-    """A caller leaves room on the stack for each of the eight register arguments (eight bytes
-    each, from 0x10 above the stack pointer at entry), and a function that needs an argument's
-    address stores it there. The decompiler shows that slot as a stack variable of the CALLER's
-    frame; it is the argument, and is written as the argument."""
-    src = ctree.Source(t)
-    params = src.parameters()
-    names = [x.split()[-1].lstrip("*") for x in params] if params and ",".join(params).strip() not in ("", "void") else []
-
-    def slot(off):
-        k = (off - 0x10) // 8
-        return names[k] if 0 <= k < len(names) and off % 8 in (0, 4) else None
-
-    def home(src):
-        # the slot's own declaration goes; every other mention becomes the argument
-        for n in src.find("declaration", under=src.body()):
-            ds = n.children_by_field_name("declarator")
-            name = src.declared_name(ds[0]) if len(ds) == 1 else None
-            m = _HOME.fullmatch(name or "")
-            if m and src.line(n).startswith("  ") and src.at(n) == src.line(n).strip() and slot(int(m.group(2), 16)):
-                src.replace(src.line_span(n), "")
-        for n in src.find("identifier", under=src.body()):
-            m = _HOME.fullmatch(src.at(n))
-            if m and slot(int(m.group(2), 16)) and n.parent.type not in ("declaration", "pointer_declarator", "array_declarator"):
-                src.replace(n, slot(int(m.group(2), 16)))
-
-    def own_slot(src):                                       # the store into its own slot: `a1 = a1;`
-        for st in src.find("expression_statement", under=src.body()):
-            a = st.named_children[0] if st.named_child_count == 1 else None
-            if a is not None and a.type == "assignment_expression" and src.at(a.child_by_field_name("operator")) == "=" \
-                    and a.child_by_field_name("left").type == "identifier" \
-                    and src.at(a.child_by_field_name("left")) == src.at(a.child_by_field_name("right")) \
-                    and src.line(st).strip() == src.at(st):
-                src.replace(src.line_span(st), "")
-    return ctree.rewrite(ctree.rewrite(t, home), own_slot)
-
-
 def _ram_type(prefix, size, called):
     """The C type of a global from the decompiler's name prefix (p = pointer to what follows)."""
     stars = len(prefix) - len(prefix.lstrip("p"))
@@ -1443,7 +1403,6 @@ def compilable_powerpc(module_path, outdir):
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         t = out[n].strip()
-        t = _homed_arguments(t)
         body = _without_notes(t)
         lead = t[:len(t) - len(body)]
         if body.startswith("void") and not body[4:5].isalnum():
