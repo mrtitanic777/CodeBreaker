@@ -645,24 +645,6 @@ def test_every_kind_keeps_fingerprints_and_writes_calls_alike():
                        [0x1234], {"SS": 0x1F, "DS": 0x2F}) == "KERNEL.X(stack,SS,a0)"
 
 
-def test_a_call_through_a_word_stays_near():
-    # MSMOUS31's Disable, `call word ptr [18h]`, as the decompiler prints it: made a far call to
-    # segment 1000h it faulted at Setup's restart
-    from codebreaker.decompile import c_text
-    text = ("int2 f()\n{\n  int2 i;\n  i = (*MK_FP(0x1000, *(xunknown2 *)0x18))();\n"
-            "  return i + *((int2 __far *)MK_FP(0x1000, (int2 *)0x40));\n}\n")
-    out = c_text._own_segment_calls(text, 1)
-    assert "((*(code __near *)*(xunknown2 *)0x18))()" in out, out
-    assert "MK_FP(codebreaker_cs(), (int2 *)0x40)" in out and "0x1000" not in out, out
-    assert c_text._own_segment_calls(text, 2).count("0x1000") == 2      # (another segment's: as it was)
-    # segment 9 is the made-up selector 1040h (not 9000h); a call through a cast pointer too
-    text = ("int2 f()\n{\n  (*((code_callee_pops __far *)MK_FP(0x1040, pcVar3)))();\n"
-            "  return *((char __far *)MK_FP(0x1040, (char *)0x2e9));\n}\n")
-    out = c_text._own_segment_calls(text, 9)
-    assert "((*(code_callee_pops __near *)pcVar3))()" in out, out
-    assert "MK_FP(codebreaker_cs(), (char *)0x2e9)" in out and "0x1040" not in out, out
-
-
 def test_data_beside_the_code_is_read_by_its_place():
     # KEYBOARD's GetKeyNameText: tables beside its code at 9:0261 and 9:0290, read through CS by
     # a pointer set to the first and a number set to the second; a word table at 1C7h of places
@@ -809,7 +791,7 @@ def test_programs_stored_one_after_another_are_each_found():
 
 def main():
     for fn in (test_programs_stored_one_after_another_are_each_found, test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
-               test_chunks_come_back_in_address_order, test_a_call_through_a_word_stays_near,
+               test_chunks_come_back_in_address_order,
                test_data_beside_the_code_is_read_by_its_place,
                test_the_judge_s_build_has_the_original_s_code_segment_where_c_still_reads_it,
                test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,

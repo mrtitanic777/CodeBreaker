@@ -30,12 +30,14 @@ import re
 # c_text's passes done on L2 (docs/IR_UNIFICATION.md step 3, L2_BINARY_TYPES.md's order)
 MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers",
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
-         "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds")
+         "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
+         "own_segment_calls")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
-IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds")
+IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
+             "own_segment_calls")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
@@ -1534,10 +1536,56 @@ def _far_arguments(nodes, _arrays):
                  "*(%s __far *)CODEBREAKER_FAR(%s, %s%s)" % (t, s, n, r))
 
 
+def _mk_fp(e):
+    """(selector, offset) of `MK_FP(s,o)` -- the core's segmented address printed whole -- else None."""
+    if e.get('node') != 'Call' or len(e.get('args') or ()) != 2:
+        return None
+    t = e.get('target') or {}
+    return tuple(e['args']) if t.get('node') == 'Name' and _name(t) == 'MK_FP' else None
+
+
+def _own_segment_calls(nodes, _arrays):
+    """`(*MK_FP(0x1000,*(xunknown2 *)0x18))()` -- a near call through a word, `call word ptr
+    [18h]`, as the decompiler prints it: the segment is the function's own code segment, which it
+    takes as the made-up selector the description gave that segment (describe.selector: 1000h,
+    1008h, ...). Made a far call to that constant, it faulted (MSMOUS31's Disable, at Setup's
+    restart): a near call, `((*(code __near *)*(xunknown2 *)0x18))()`, as the original makes. And
+    any other MK_FP of that selector -- a read of the code segment's own bytes, `mov ax, cs:[si]`
+    (a table beside the code: KEYBOARD's GetKeyNameText) -- is through CS as it runs,
+    `MK_FP(codebreaker_cs(),...)`: no selector of that number exists (c_text._own_segment_calls)."""
+    own = _now['facts'].get('selector')
+    if own is None:
+        return
+    spelled = '0x%x' % own
+
+    def ours(lit_):
+        return lit_.get('node') == 'Lit' and re.fullmatch(r"0x[0-9a-fA-F]+|\d+", _lit(lit_)) is not None and \
+            int(_lit(lit_), 0) == own
+    for e, _p in nodes:
+        if e['node'] != 'Call':
+            continue
+        fn = e.get('target') or {}
+        while fn.get('node') == 'Paren':
+            fn = fn['x']
+        if fn.get('node') != 'Unary' or fn.get('op') not in ('*', '&') or fn.get('postfix'):
+            continue
+        target = fn['x']
+        while target.get('node') == 'Paren':
+            target = target['x']
+        parts = _mk_fp(target)
+        if fn['op'] == '*' and parts and ours(parts[0]):
+            _rewrite(fn, lambda _f, off=parts[1]: "(*(code __near *)%s)" % expr(off))
+    for e, _p in nodes:
+        parts = _mk_fp(e)
+        if parts and parts[0].get('node') == 'Lit' and _lit(parts[0]) == spelled:
+            _rewrite(parts[0], lambda _x: 'codebreaker_cs()')
+
+
 # (each: c_text's pass, done on the tree -- in the order c_text runs them)
 _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joined_arguments", _joined_arguments),
            ("null_is_zero", _null_is_zero), ("global_pointer_steps", _global_pointer_steps),
-           ("far_arguments", _far_arguments), ("one_name_for_globals", _one_name_for_globals))
+           ("far_arguments", _far_arguments), ("one_name_for_globals", _one_name_for_globals),
+           ("own_segment_calls", _own_segment_calls))
 
 
 # ---------------------------------------------------------------------------------------------- functions

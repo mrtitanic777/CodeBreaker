@@ -312,3 +312,27 @@ def test_moved_passes_that_read_the_module():
     assert c.flags(doc, facts) == {'novalue'}
     # without the module's facts (the C the decompiler is run for at first): none of them
     assert c.function(doc, c.MOVED).startswith('void f(')
+
+
+def fcall(fn, *args):
+    return {'node': 'Call', 'target': {'node': 'Name', 'sym': {'kind': 'function', 'name': fn}}, 'args': list(args)}
+
+
+def test_moved_own_segment_calls():
+    """c_text._own_segment_calls on the tree: MSMOUS31's Disable, `call word ptr [18h]`, as the
+    decompiler prints it -- `(*MK_FP(0x1000,...))()`, segment 1's made-up selector -- is a near
+    call (made a far call to 1000h it faulted at Setup's restart); any other MK_FP of the
+    function's own selector reads through CS as it runs. Another segment's selector stays."""
+    word = {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr({'kind': 'class', 'name': 'xunknown2'}, 'near'),
+                                              'x': lit(0x18, text='0x18')}}
+    call = {'node': 'Call', 'target': {'node': 'Unary', 'op': '*', 'x': fcall('MK_FP', lit(0x1000, text='0x1000'), word)},
+            'args': []}
+    read = {'node': 'Unary', 'op': '*', 'x': fcall('MK_FP', lit(0x1000, text='0x1000'),
+                                                   {'node': 'Cast', 'type': ptr({'kind': 'i16'}, 'near'),
+                                                    'x': lit(0x40, text='0x40')})}
+    doc = sixteen([stmt({'node': 'Assign', 'target': name('i'), 'value': call}), stmt(read)])
+    text = c.function(doc, c.MOVED, facts={'selector': 0x1000})
+    assert '  i = ((*(code __near *)*(xunknown2 *)0x18))();' in text, text
+    assert '  *MK_FP(codebreaker_cs(),(int2 *)0x40);' in text, text
+    other = c.function(doc, c.MOVED, facts={'selector': 0x1040})        # (segment 9's: 1040h)
+    assert other.count('MK_FP(0x1000,') == 2, other

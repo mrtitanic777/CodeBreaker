@@ -733,49 +733,6 @@ def data_address(text):
     return bool(m) and 0 < int(m.group(1), 0) <= 0xFFFF
 
 
-def _own_segment_calls(text, seg):
-    """`(*MK_FP(0x1000, *(xunknown2 *)0x18))()` -- a near call through a word, `call word ptr
-    [18h]`, as the decompiler prints it: the target is in the caller's own code segment (CS, which
-    it takes as the segment's number times 1000h). Made a far call to that constant, it faulted:
-    MSMOUS31's Disable took a GP at Setup's restart, after the file copy. A near call, as the
-    original makes -- `(*((code __far *)MK_FP(0x1058, pcVar3)))()`, the target cast first, too.
-
-    The segment's number is the made-up selector the description gives it (describe.selector:
-    1000h, 1008h, ... -- not its number times 1000h, which is the same for segment 1 alone: GDI's
-    segment 12 called through MK_FP(0x1058, ...) and KEYBOARD's GetKeyNameText read its key
-    names through MK_FP(0x1040, ...), selectors no segment has)."""
-    if "MK_FP(" not in text:
-        return text
-    from codebreaker.decompile import describe
-    own = describe.selector(seg)
-    src = ctree.Source(text)
-    for n in src.find("call_expression"):
-        fn = n.child_by_field_name("function")
-        while fn is not None and fn.type == "parenthesized_expression" and fn.named_child_count == 1:
-            fn = fn.named_children[0]
-        if fn is None or fn.type != "pointer_expression":
-            continue
-        target = fn.child_by_field_name("argument")
-        while target is not None and target.type == "parenthesized_expression" and target.named_child_count == 1:
-            target = target.named_children[0]
-        kind = "code"
-        if target is not None and target.type == "cast_expression":
-            mm = re.fullmatch(r"(\w+) __far \*", src.at(target.child_by_field_name("type")).strip())
-            if not mm:
-                continue
-            kind, target = mm.group(1), target.child_by_field_name("value")
-            while target is not None and target.type == "parenthesized_expression" and target.named_child_count == 1:
-                target = target.named_children[0]
-        if target is None or target.type != "call_expression" or src.at(target.child_by_field_name("function")) != "MK_FP":
-            continue
-        args = target.child_by_field_name("arguments").named_children
-        if len(args) == 2 and args[0].type == "number_literal" and int(src.at(args[0]), 0) == own:
-            src.replace(fn, "(*(%s __near *)%s)" % (kind, src.at(args[1])))
-    # and a read of the code segment's own bytes (`mov ax, cs:[si]`, a table beside the code):
-    # through CS as it runs, not the constant (no selector of that number exists)
-    return re.sub(r"\bMK_FP\(0x%x," % own, "MK_FP(codebreaker_cs(),", src.text())
-
-
 # ---------------------------------------------------------------------------------------------
 # Data kept in a code segment, read through CS
 # ---------------------------------------------------------------------------------------------
@@ -1605,16 +1562,19 @@ def _one16_images(images):
 _EXPORT_PROLOGUE = (b"\x8c\xd8\x90", b"\x1e\x58\x90")      # mov ax, ds / nop (either encoding)
 
 
-def module_facts16(code, off, end, distance, model, dgroup, far_return):
+def module_facts16(code, off, end, distance, model, dgroup, far_return, seg=None):
     """What the module says of a 16-bit function that its C is written with (backends/c.function's
     `facts`): its distance and model in the description; how wide the original reads through each
     far pointer it takes, as a far or a near function ({far: {a<n>: bytes}}); the argument words
     it loads as far pointers; whether it starts with Windows' export prologue (`mov ax, ds; nop`,
     which Windows rewrites to load the module's data segment: the source marked it _export) and
     whether it loads its own data segment whoever calls it (`mov ax, DGROUP / mov ds, ax`: _loadds);
-    whether it returns a far pointer."""
+    whether it returns a far pointer; the made-up selector the description gives its own code
+    segment (describe.selector), which the decompiler writes for CS."""
+    from codebreaker.decompile import describe
     have = code is not None
     return {"distance": distance, "model": model, "far_return": far_return,
+            "selector": describe.selector(seg) if seg is not None else None,
             "widths": {f: _far_argument_widths(code, off, end, f) for f in (True, False)} if have else {},
             "loads": _far_loads(code, off, end) if have else set(),
             "export": have and bytes(code[off:off + 3]) in _EXPORT_PROLOGUE,
@@ -1630,7 +1590,7 @@ def _write16(context, item):
     from codebreaker.decompile import decompiler
     from codebreaker.translate.backends import c as cback
     far = {n for n, size in ((known or {}).get("pointers") or {}).items() if size == 4}
-    facts = module_facts16(_IMAGES16.get(seg), off, end, distance, model, dgroup, "return" in far)
+    facts = module_facts16(_IMAGES16.get(seg), off, end, distance, model, dgroup, "return" in far, seg)
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
     if not known.get("from_l2"):
@@ -1649,13 +1609,13 @@ def _one16(context, item):
     interrupts, decls, shared = set(), [], {}
     # (_far, _far_from_stack, _frame_through_ss, _pieces, _joined_arguments, _segment_registers,
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
-    # made a word, the model word, __export, __loadds and _one_name_for_globals are the back end's,
-    # done on the tree as it writes the C from L2: backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
+    # made a word, the model word, __export, __loadds, _one_name_for_globals and _own_segment_calls
+    # are the back end's, done on the tree as it writes the C from L2: backends/c.MOVED,
+    # docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
     if by_selector:
         text = _selector_structs(text, name, decls, shared)
         text = _struct_gaps(text, _pointer_distances(text))
-    text = _own_segment_calls(text, seg)
     out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(_far_casts(_far_addresses(_interrupts(_open_arguments(text), interrupts))))))))))
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
@@ -1739,7 +1699,7 @@ def _compilable16(module_path, outdir=None):
         if va not in by_va and nm not in texts and d.where.get(va):
             model = parts[4] if len(parts) > 4 and parts[4] != "inline" else "__cdecl16near"
             seg, off = d.where[va]
-            facts = module_facts16(images.get(seg), off, ends.get(va, off), None, None, dgroup, False)
+            facts = module_facts16(images.get(seg), off, ends.get(va, off), None, None, dgroup, False, seg)
             far = "__stdcall16far" in model or "__cdecl16far" in model
             words = [model] + (["__export"] if far and facts["export"] else []) + (["__loadds"] if facts["loadds"] else [])
             texts[nm] = ("xunknown2 %s %s()\n{\n  /* the decompiler could not make this function */\n"
