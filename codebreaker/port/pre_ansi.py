@@ -38,6 +38,22 @@ TYPEWORDS = {"int", "char", "long", "short", "unsigned", "signed", "float", "dou
              "int32_t", "uint32_t", "int8_t", "uint8_t", "intptr_t", "uintptr_t"}
 PRINTF = {"printf", "fprintf", "sprintf"}
 
+# the rules MS C 3.00's P3 brought (its pools, size tables, views, NULL links), each by a name: those another
+# program's port does not keep are off here until they do. CB_PORT_RULES turns rules on or off over these defaults,
+# comma separated (+rule or rule on, -rule off; +all / -all every one) - a regression's bisection
+RULES_OFF = frozenset()
+
+
+def rule(name):
+    """whether the port's rule `name` runs (RULES_OFF, then CB_PORT_RULES in its order)"""
+    on = name not in RULES_OFF
+    for w in os.environ.get("CB_PORT_RULES", "").replace(" ", "").split(","):
+        if w in (name, "+" + name, "+all"):
+            on = True
+        elif w in ("-" + name, "-all"):
+            on = False
+    return on
+
 
 # ---------------------------------------------------------------- reading the text
 # (blank and sub_code, what is code apart from its strings and comments: base/ctext)
@@ -533,6 +549,9 @@ def struct_sizes(text, old, notes, fname, allocs=()):
             whole = [(a_, b_) for a_, b_ in args             #  arguments the old size itself)
                      if re.fullmatch(r"\s*(?:0[xX][0-9a-fA-F]+|[1-9]\d*)\s*", code[a_:b_]) and
                      int(code[a_:b_].strip(), 0) == old[s]["@size"]]
+            kn_ = allocs.get(m.group(2)) if isinstance(allocs, dict) else None
+            if len(whole) > 1 and kn_ and len(kn_) == 1 and min(kn_) < len(args) and args[min(kn_)] in whole:
+                whole = [args[min(kn_)]]                    # (f03e86(4, 4): the one its size is given at)
             if len(whole) != 1 and m.group(2) not in allocs:
                 continue                                    # (a part's size: only to an allocator's call)
             if len(whole) != 1:
@@ -549,7 +568,11 @@ def struct_sizes(text, old, notes, fname, allocs=()):
                           "the whole structure now"].append("%s:%d (%s: %s)" % (
                               fname, code.count("\n", 0, a_) + 1, s, code[a_:b_].strip()))
                     continue
-                a_, b_ = args[-1]                           # (its size the allocator's last argument: a block of
+                at_ = allocs.get(m.group(2)) if isinstance(allocs, dict) else None   # (the place its size was
+                if at_ and len(at_) == 1 and min(at_) < len(args):                 #  given at, where known)
+                    a_, b_ = args[min(at_)]
+                else:
+                    a_, b_ = args[-1]                       # (its size the allocator's last argument: a block of
                 lits = [x for x in re.finditer(r"(?<![\w.])(0[xX][0-9a-fA-F]+|[1-9]\d*)(?![\w.])", code[a_:b_])
                         if not re.search(r"(?:[=!<>]=|[<>])\s*$", code[a_:b_][:x.start()]) and   # (a
                         not re.match(r"\s*(?:[=!<>]=|[<>])", code[a_:b_][x.end():])]   #  compared one: no size)
@@ -872,6 +895,12 @@ class Port:
             for m in re.finditer(r"(?m)^\s*extern\s+((?:const\s+)?(?:struct\s+\w+|union\s+\w+|\w+)\s*\*+)\s*(\w+)\s*;",
                                  blank(t)):
                 ptrs.setdefault(m.group(2), re.sub(r"\s+", " ", m.group(1)).replace(" *", "*").replace("*", " *", 1))
+            for m in re.finditer(r"(?m)^\s*extern\s+((?:struct\s+\w+|union\s+\w+|(?:unsigned\s+)?char|int))\s+"
+                                 r"(\*\s*\w+(?:\s*,\s*\*\s*\w+)+)\s*;", blank(t)) if rule("agree_ptr_lists") else ():
+                # (extern char *a, *b;)
+                for w in m.group(2).split(","):
+                    ptrs.setdefault(w.replace("*", "").strip(), re.sub(r"\s+", " ", m.group(1)) + " *")
+        ext_ptrs = set(ptrs)                                # (what files declare extern: the program's variables)
         for n, t in self.files.items():                     # (and its definition's: FILE *g = 0;)
             for m in re.finditer(r"(?m)^((?:const\s+)?(?:struct\s+\w+|union\s+\w+|(?!static\b|extern\b|return\b)\w+)"
                                  r"\s*\*+)\s*(\w+)\s*(?:=[^;]*)?;", blank(t)):
@@ -899,7 +928,59 @@ class Port:
                 t = re.sub(r"\b(%s\s*=\s*)(?:0[xX][fF]{4}|65535)\b" % re.escape(name),
                            lambda m: "%s(%s)UINTPTR_MAX" % (m.group(1), typ), t)
                 self.agree_notes.append("%s (%s)" % (n, name))
+            heads_ = set()                                  # (an old-style definition's parameter lines - int v;
+            if rule("agree_ptr_defs") and n.endswith(".c"):  #  between f(v) and its { - are no definitions)
+                for f_, s_, j_, k_ in definitions(t.split("\n"), blank(t).split("\n")):
+                    heads_.update(range(s_, j_ + 1))
+            for m in reversed(list(re.finditer(r"(?m)^(?:unsigned\s+int|unsigned|int|short)\s+(\w+)\s*(=\s*0\s*)?;",
+                                               blank(t)) if rule("agree_ptr_defs") else ())):
+                # (and its definition: int g_0c6a = 0; - extern
+                name = m.group(1)                              #  char *g_0c6a; in the files that use it)
+                if name in ext_ptrs and blank(t).count("\n", 0, m.start()) not in heads_ and \
+                        not re.search(r"\b%s\s*\(" % re.escape(name), blank(t)[m.start():m.end()]):
+                    typ = ptrs[name]
+                    t = t[:m.start()] + "%s%s%s;" % (typ, "" if typ.endswith("*") else " ", name) + \
+                        (" /* (= 0) */" if m.group(2) else "") + t[m.end():]
+                    self.agree_notes.append("%s (%s)" % (n, name))
             self.files[n] = t
+        longs = {}                                          # (extern long g_0cb0; - its definition int g_0cb0 = 0;
+        for t in self.files.values():                       #  and int g_0cb2 = 0;, the two words of the long, the
+            for m in re.finditer(r"(?m)^\s*extern\s+((?:unsigned\s+)?long)\s+([\w\s,]+);", blank(t)) \
+                    if rule("agree_longs") else ():                                                 # old
+                for w in m.group(2).split(","):             #  data's layout: the long its definition)
+                    if re.fullmatch(r"\s*\w+\s*", w):
+                        longs.setdefault(w.strip(), m.group(1))
+        for n in sorted(self.files):
+            t = self.files[n]
+            code = blank(t)
+            edits = []
+            for m in re.finditer(r"(?m)^((?:unsigned\s+int|unsigned|int|short))\s+(\w+)\s*(=\s*([^;,]+))?;([^\n]*)", code):
+                nm = m.group(2)
+                if nm not in longs:
+                    continue
+                lo = m.group(4).strip() if m.group(4) else "0"
+                hi_m = re.match(r"\n(?:unsigned\s+int|unsigned|int|short)\s+(g_[0-9a-f]{4})\s*(?:=\s*([^;,]+))?;[^\n]*",
+                                code[m.end():])
+                nxt = "g_%04x" % (int(nm[2:], 16) + 2) if re.fullmatch(r"g_[0-9a-f]{4}", nm) else None
+                if not re.fullmatch(r"-?(?:0[xX][0-9a-fA-F]+|\d+)", lo):
+                    continue
+                val = int(lo, 0) & 0xffff
+                end = m.end()
+                if hi_m and hi_m.group(1) == nxt and not any(re.search(r"\b%s\b" % nxt, blank(o)) for k_, o in
+                                                              self.files.items() if k_ != n):
+                    hv = (hi_m.group(2) or "0").strip()
+                    if re.fullmatch(r"-?(?:0[xX][0-9a-fA-F]+|\d+)", hv):
+                        val |= (int(hv, 0) & 0xffff) << 16
+                        end = m.end() + hi_m.end()          # (the high word, no other file's: in the long now)
+                typ = longs[nm] if "unsigned" not in m.group(1) else "unsigned long"
+                edits.append((m.start(), end, "%s %s = %s;%s" % (typ, nm, "0x%xL" % val if val > 0xffff else
+                                                                str(int(lo, 0)), m.group(5))))
+            for a, b, new in reversed(edits):
+                t = t[:a] + new + t[b:]
+            if edits:
+                self.files[n] = t
+                self.long_notes = getattr(self, "long_notes", []) + ["%s (%s)" % (
+                    n, ", ".join(re.search(r"\s(\w+)\s=", e[2]).group(1) for e in edits))]
 
     def joins_next(self, var):
         """whether a table's definition is followed in its file by one of the same type (what an index past its
@@ -1010,7 +1091,10 @@ class Port:
                                          r"(?<![\w.>])%s\b(?!\s*[\[.(])\s*(>=|<=|<|>)\s*([\w.\->]+)" %
                                          (re.escape(b), re.escape(b)), code):
                         v = m.group(1) or m.group(4)
-                        last = re.findall(r"\w+", v)[-1]
+                        words_ = re.findall(r"\w+", v)
+                        if not words_:                      # (a -> or . alone: no name)
+                            continue
+                        last = words_[-1]
                         pt = self.pointee_of(t, last) if re.fullmatch(r"\w+", v) else None
                         if not pt and re.fullmatch(r"\w+", v):          # (or a number's: int *g_0524)
                             sm = re.search(r"\b((?:unsigned\s+)?(?:int|short|char|long|unsigned|u?int(?:8|16|32)_t))"
@@ -1273,7 +1357,494 @@ class Port:
                 i += 1
             self.files[n] = "\n".join(lines)
 
+    def numbered_tables(self):
+        """f06988(f021ff, 0x3a20), f06988(fn, tab) struct hsym **tab: a table's place in the old data segment given
+        as its number - the table there by name (g_3a20); and an int table given where a table of pointers is
+        wanted (struct hsym **, or cast to one) holding them - intptr_t, a pointer's width"""
+        if getattr(self, "_numbered_done", False):
+            return
+        self._numbered_done = True
+        decls = {}                                          # (g_3a20: "int g_3a20[64]", as declared somewhere)
+        for t in self.originals.values():
+            for m in re.finditer(r"(?m)^\s*(?:extern\s+|static\s+)?((?:unsigned\s+)?(?:int|short|unsigned|char))\s+"
+                                 r"(g_[0-9a-f]{4})\s*\[\s*(\d*)\s*\]\s*[;=,]", blank(t)):
+                if m.group(3) or m.group(2) not in decls:
+                    decls[m.group(2)] = (m.group(1), m.group(3))
+        if not decls:
+            return
+        defs_ = {}                                          # (the definitions' parameters: fns is not made yet)
+        for n, t in self.files.items():
+            if n.endswith(".c"):
+                for f, s, j, k in definitions(t.split("\n"), blank(t).split("\n")):
+                    defs_.setdefault(f.name, f)
+        ptrp = {nm_: [bool(re.search(r"\*", pt)) for pn, pt in f.params] for nm_, f in defs_.items()}
+        bodies = {}
+        for n, t in self.files.items():
+            if n.endswith(".c"):
+                cl_ = blank(t).split("\n")
+                for f, s, j, k in definitions(t.split("\n"), cl_):
+                    bodies.setdefault(f.name, "\n".join(cl_[j:k + 1]))
+        for _ in range(3):                                  # (f067e8(num, tab) { return f067b5(num, tab); } - a
+            for nm_, f in defs_.items():                    #  parameter given on to a pointer one: a pointer too)
+                for m in re.finditer(r"\b(\w+)\s*\(", bodies.get(nm_, "")):
+                    if m.group(1) not in ptrp or m.group(1) == nm_:
+                        continue
+                    sp = call_args(bodies[nm_][m.start():m.start() + 400], m.group(1)) or []
+                    for k, (a_, b_) in enumerate(sp):
+                        a = bodies[nm_][m.start() + a_:m.start() + b_].strip()
+                        if k < len(ptrp[m.group(1)]) and ptrp[m.group(1)][k]:
+                            for i_, (pn, pt) in enumerate(f.params):
+                                if pn == a:
+                                    ptrp[nm_][i_] = True
+        wide = set()
+        for n, t in list(self.files.items()):
+            if not n.endswith(".c"):
+                continue
+            code = blank(t)
+            edits, used = [], set()
+            for m in re.finditer(r"\b(%s)\s*\(" % "|".join(map(re.escape, sorted(ptrp))) if ptrp else r"(?!)", code):
+                sp = call_args(code[m.start():m.start() + 600], m.group(1)) or []
+                for k, (a_, b_) in enumerate(sp):
+                    if k >= len(ptrp[m.group(1)]) or not ptrp[m.group(1)][k]:
+                        continue
+                    arg = code[m.start() + a_:m.start() + b_]
+                    for h in re.finditer(r"\b0x([0-9a-fA-F]{4})\b", arg):
+                        nm = "g_" + h.group(1).lower()
+                        if nm in decls and re.fullmatch(r"\s*(?:[^?:]*\?\s*)?0x[0-9a-fA-F]{4}\s*(?::\s*0x[0-9a-fA-F]{4}\s*)?",
+                                                        arg):
+                            at = m.start() + a_ + h.start()
+                            edits.append((at, at + len(h.group(0)), nm))
+                            used.add(nm)
+            for a, b, new in sorted(set(edits), reverse=True):
+                t = t[:a] + new + t[b:]
+            if edits:
+                self.files[n] = t
+                for nm in used:
+                    if not re.search(r"\b%s\b\s*\[[^\]]*\]\s*[;,=]" % nm, blank(t)):
+                        self.extra_decls.setdefault(n, set()).add("extern %s %s[%s];" % (decls[nm][0], nm, decls[nm][1]))
+                self.notes["a table's place given as its number (the old data segment's): the table, by name"].append(
+                    "%s (%s)" % (n, ", ".join(sorted(used))))
+        for n, t in self.files.items():                     # (an int table where a table of pointers is wanted)
+            code = blank(t)
+            for nm in decls:
+                if not re.search(r"\b%s\b" % nm, code):
+                    continue
+                if re.search(r"\(\s*(?:(?:struct|union)\s+\w+|\w+)\s*\*\s*\*\s*\)\s*\(?\s*(?:[^()?:]*\?\s*)?(?:\w+\s*:\s*)?%s\b"
+                             % nm, code):
+                    wide.add(nm)
+                for m in re.finditer(r"\b(\w+)\s*\(", code):
+                    f = defs_.get(m.group(1))
+                    if not f:
+                        continue
+                    sp = call_args(code[m.start():m.start() + 600], m.group(1)) or []
+                    for k, (a_, b_) in enumerate(sp):
+                        if k < len(f.params) and re.search(r"\*\s*\*", f.params[k][1]) and \
+                                re.search(r"(?:^|[?:]\s*)%s\s*$|^\s*%s\b\s*(?::|$)" % (nm, nm),
+                                          code[m.start() + a_:m.start() + b_].strip()):
+                            wide.add(nm)
+        for nm in sorted(wide):
+            if decls[nm][0] in ("int", "short", "unsigned", "unsigned int"):
+                self.decl_rules.append((r"\b(?:unsigned\s+int|unsigned|short|u?int16_t|int)(\s+%s\s*\[)" % nm,
+                                        r"intptr_t\1"))
+                self.extra_decls ={f_: {d.replace("%s %s[" % (decls[nm][0], nm), "intptr_t %s[" % nm) for d in ds_}
+                                    for f_, ds_ in self.extra_decls.items()}
+                self.notes["an int table holding pointers (given where a table of them is wanted): intptr_t"].append(nm)
+
+    def size_tables(self):
+        """struct recfmt g_2096[] = { { "tknNdplbcga", 22 }, ..., { "tukNevrsma", 32 } }; n = g_2096[kind].n;
+        p = f03f02(n, 0, pool); f03fc9(p, s, n): a table of the old byte counts of a structure's first members, by
+        kind (32 the whole struct psym, 22 up to its member at 16h) - each the same part of today's structure
+        (offsetof the member that began there, sizeof the whole)"""
+        if getattr(self, "_size_tables_done", False):
+            return
+        self._size_tables_done = True
+        old = self.old_layouts()
+        allocs = self.allocators()
+        uses = collections.defaultdict(set)                 # ((table, field): the structures it gives sizes of)
+        for n, t in self.files.items():
+            if not n.endswith(".c"):
+                continue
+            code = blank(t)
+            ptr_of = {m.group(2): re.sub(r"\s+", " ", m.group(1)) for m in
+                      re.finditer(r"\b((?:struct|union)\s+\w+)\s*\*\s*(\w+)\s*[;,)=]", code)}
+            tv = {m.group(1): (m.group(2), m.group(3)) for m in   # (n = g_2096[s->kind].n;)
+                  re.finditer(r"\b(\w+)\s*=\s*(\w+)\s*\[[^\]]*\]\s*\.\s*(\w+)\s*;", code)}
+            for m in re.finditer(r"\b(\w+)\s*=\s*(?:\([^()]*\)\s*)?(\w+)\s*\(", code):
+                st_ = ptr_of.get(m.group(1))
+                at_ = allocs.get(m.group(2)) if isinstance(allocs, dict) else None
+                if not st_ or st_ not in old or not at_ or len(at_) != 1:
+                    continue
+                sp = call_args(code[m.start(2):m.start(2) + 400], m.group(2)) or []
+                k = min(at_)
+                if k >= len(sp):
+                    continue
+                a = code[m.start(2) + sp[k][0]:m.start(2) + sp[k][1]].strip()
+                d = re.fullmatch(r"(\w+)\s*\[[^\]]*\]\s*\.\s*(\w+)", a)
+                if d:
+                    uses[(d.group(1), d.group(2))].add(st_)
+                elif re.fullmatch(r"\w+", a) and a in tv:
+                    uses[tv[a]].add(st_)
+        for (tab, field), sts in sorted(uses.items()):
+            if len(sts) != 1:
+                continue
+            st_ = next(iter(sts))
+            lay = old[st_]
+            offs = {v[0]: k for k, v in lay.items() if k != "@size" and "." not in k}
+            for n, t in list(self.files.items()):
+                code = blank(t)
+                dm = re.search(r"(?m)^(?:static\s+)?(struct\s+\w+)\s+%s\s*\[[^\]]*\]\s*=\s*\{" % re.escape(tab), code)
+                if not dm:
+                    continue
+                tl = old.get(re.sub(r"\s+", " ", dm.group(1)))
+                if not tl:
+                    continue
+                if field in tl:
+                    k = [x for x in tl if x != "@size"].index(field)
+                else:                                       # (struct okind g_1010[] defined, extern struct recfmt
+                    ux = next((re.sub(r"\s+", " ", x_.group(1)) for t2 in self.files.values() for x_ in   # g_1010[]
+                               re.finditer(r"\bextern\s+((?:struct|union)\s+\w+)\s+%s\s*\[" % re.escape(tab),    # used:
+                                           blank(t2))), None)                                                # the
+                    ul = old.get(ux) if ux else None                                                          # place
+                    if not ul or field not in ul:                                                             # by
+                        continue                                                                              # order)
+                    k = [x for x in ul if x != "@size"].index(field)
+                    if k >= len([x for x in tl if x != "@size"]):
+                        continue
+                end = code.find("};", dm.end())
+                edits = []
+                for e in re.finditer(r"\{([^{}]*)\}", code[dm.end():end]):
+                    parts = split_top(e.group(1))
+                    if k >= len(parts):
+                        continue
+                    v = parts[k].strip()
+                    if not re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", v) or int(v, 0) == 0:
+                        continue
+                    nv = int(v, 0)
+                    new = "sizeof(%s)" % st_ if nv == lay["@size"] else \
+                        "offsetof(%s, %s)" % (st_, offs[nv]) if nv in offs else None
+                    if not new:
+                        continue
+                    at = dm.end() + e.start(1) + sum(len(p_) + 1 for p_ in parts[:k])
+                    lead = len(parts[k]) - len(parts[k].lstrip())
+                    edits.append((at + lead, at + lead + len(v), new))
+                for a, b, new in sorted(edits, reverse=True):
+                    t = t[:a] + new + t[b:]
+                if edits:
+                    if "<stddef.h>" not in t:
+                        t = "#include <stddef.h>\n" + t
+                    self.files[n] = t
+                    self.notes_size_tables = getattr(self, "notes_size_tables", []) + [
+                        "%s (%s[].%s: %s)" % (n, tab, field, st_)]
+
+    def pool_blocks(self):
+        """a pooled allocator - if (size > p->left) { ... malloc(p->size + 4) ... p->left = p->size; } - and its
+        table of pools, { (char **)g_2ea0, 8, g_2ea0 + 4, (char **)g_2ea0, 8, 1 }: each pool's blocks of a size for
+        the old pieces (their pointers two bytes); today's pieces up to four times that - the blocks so many times
+        the size, and none left in the first (static, of the old size: it only heads the pool's chain)"""
+        if getattr(self, "_pools_done", False):
+            return
+        self._pools_done = True
+        old = self.old_layouts()
+        ratio = 8 // max(1, self.profile.get("widths", {}).get("pointer", 16) // 8)
+        found = {}                                          # (struct pool: (its block size member, what is left))
+        for n, t in self.files.items():
+            if not n.endswith(".c"):
+                continue
+            cl_ = blank(t).split("\n")
+            for f, s, j, k in definitions(t.split("\n"), cl_):
+                body = "\n".join(cl_[j:k + 1])
+                for m in re.finditer(r"\bmalloc\s*\(\s*(\w+)\s*->\s*(\w+)", body):
+                    p_, a_ = m.group(1), m.group(2)
+                    b_ = re.search(r"\b%s\s*->\s*(\w+)\s*=\s*%s\s*->\s*%s\b" % (p_, p_, a_), body)
+                    st_ = re.search(r"\b(struct\s+\w+)\s*\*\s*%s\s*[;,)]" % p_, "\n".join(cl_[s:k + 1]))
+                    if b_ and st_ and re.search(r">\s*%s\s*->\s*%s\b" % (p_, b_.group(1)), body):
+                        found[re.sub(r"\s+", " ", st_.group(1))] = (a_, b_.group(1))
+        for st_, (a_, b_) in found.items():
+            lay = old.get(st_)
+            if not lay or a_ not in lay or b_ not in lay:
+                continue
+            names = [x for x in lay if x != "@size"]
+            ia, ib = names.index(a_), names.index(b_)
+            for n, t in list(self.files.items()):
+                code = blank(t)
+                dm = re.search(r"(?m)^(?:static\s+)?%s\s+\w+\s*\[[^\]]*\]\s*=\s*\{" % re.escape(st_).replace(r"\ ", r"\s+"),
+                               code)
+                if not dm:
+                    continue
+                end = code.find("};", dm.end())
+                edits = []
+                for e in re.finditer(r"\{([^{}]*)\}", code[dm.end():end]):
+                    parts = split_top(e.group(1))
+                    nv = parts[ia].strip() if ia < len(parts) else ""
+                    if re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", nv):   # (its first block, a BSS array of the old
+                        for g_ in set(re.findall(r"\b(g_[0-9a-f]{4})\b", e.group(1))):   # size: as big as the
+                            bss_ = getattr(self, "bss", None)                            # blocks now, a head's
+                            if isinstance(bss_, dict) and g_ in bss_:                    # room more)
+                                bss_[g_] = max(bss_[g_], int(nv, 0) * ratio + 16)
+                    for i_, new in ((ia, lambda v: str(int(v, 0) * ratio)), (ib, lambda v: str(int(v, 0) * ratio))):
+                        if i_ >= len(parts):
+                            continue
+                        v = parts[i_].strip()
+                        if not re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", v):
+                            continue
+                        at = dm.end() + e.start(1) + sum(len(p_) + 1 for p_ in parts[:i_])
+                        lead = len(parts[i_]) - len(parts[i_].lstrip())
+                        edits.append((at + lead, at + lead + len(v), new(v)))
+                for a, b, new in sorted(edits, reverse=True):
+                    t = t[:a] + new + t[b:]
+                if edits:
+                    self.files[n] = t
+                    self.notes_pools = getattr(self, "notes_pools", []) + ["%s (%s: %s and %s x%d)" % (
+                        n, st_, a_, b_, ratio)]
+
+    def local_copies(self):
+        """struct ins { int i0, i2; int kind; ... }; in a file, struct ins { struct ins *next, *prev; int kind; ... }
+        in a header: the file's own copy of the program's structure, its words where the other's pointers are (the
+        old layout the same) - the header's structure, the file's names of its members the header's"""
+        if getattr(self, "_local_copies_done", False):
+            return
+        self._local_copies_done = True
+        from codebreaker.port import asm16 as _a16
+        heads = {}
+        for h, t in self.files.items():
+            if h.endswith(".h"):
+                for m in re.finditer(r"\bstruct\s+(\w+)\s*\{", blank(t)):
+                    heads.setdefault(m.group(1), h)
+        if not heads:
+            return
+        hlay = _a16.CTypes._layouts([t for h, t in sorted(self.files.items()) if h.endswith(".h")], 2, 4)
+        for n in sorted(self.files):
+            if not n.endswith(".c"):
+                continue
+            t = self.files[n]
+            code = blank(t)
+            ds = depths(code.split("\n"))
+            done_tags = set()
+            while True:                                     # (one at a time: the text moves under each)
+                m = next((x for x in re.finditer(r"(?m)^struct\s+(\w+)\s*\{[^{}]*\}\s*;[ \t]*\n?", code)
+                          if x.group(1) not in done_tags), None)
+                if not m:
+                    break
+                tag = m.group(1)
+                done_tags.add(tag)
+                if tag not in heads or ds[code.count("\n", 0, m.start())]:
+                    continue
+                mine = _a16.CTypes._layouts([m.group(0)], 2, 4).get("struct " + tag)
+                theirs = hlay.get("struct " + tag)
+                if not mine or not theirs or mine["@size"] != theirs["@size"]:
+                    continue
+                at_t = {(v[0], v[1]): k for k, v in theirs.items() if k != "@size"}
+                ren, puns, ok = {}, {}, True
+                for k, v in mine.items():
+                    if k == "@size":
+                        continue
+                    o = at_t.get((v[0], v[1]))
+                    if o is None:                           # (int size; over char size, i9: the word there)
+                        cover = sorted((w[0], w[1], kk) for kk, w in theirs.items() if kk != "@size" and
+                                       v[0] <= w[0] < v[0] + v[1])
+                        ct_ = {2: "int16_t", 4: "int32_t"}.get(v[1])
+                        if ct_ and len(cover) > 1 and cover[0][0] == v[0] and \
+                                cover[-1][0] + cover[-1][1] == v[0] + v[1] and not v[4]:
+                            puns[k] = (cover[0][2], ct_)
+                            continue
+                        ok = False
+                        break
+                    if o != k:
+                        ren[k] = o
+                if not ok:
+                    continue
+                new = t[:m.start()] + t[m.end():]
+                for a, b in ren.items():                    # (its uses: ->i0 the header's ->next)
+                    new = sub_code(new, re.compile(r"((?:->|\.)\s*)%s\b" % re.escape(a)), lambda x, b=b: x.group(1) + b)
+                mine_vars = set(re.findall(r"\bstruct\s+%s\s*\*\s*(\w+)" % re.escape(tag), blank(new)))
+                for t2 in self.files.values():              # (and the program's variables of it, the header's)
+                    for vm in re.finditer(r"(?m)^\s*extern\s+struct\s+%s\s*\*\s*(\w+)" % re.escape(tag), blank(t2)):
+                        mine_vars.add(vm.group(1))
+                for a, (b, ct_) in puns.items():            # (p->size on a struct ins * alone: other structures'
+                    if not mine_vars:                       #  ->size are their own)
+                        break
+                    new = sub_code(new, re.compile(r"(?<![\w.>])(%s)\s*->\s*%s\b" % (
+                        "|".join(map(re.escape, sorted(mine_vars))), re.escape(a))),
+                        lambda x, b=b, ct_=ct_: "(*(%s *)&%s->%s)" % (ct_, x.group(1), b))
+                if not re.search(r'#\s*include\s*"%s"' % re.escape(heads[tag]), new):
+                    lines = new.split("\n")
+                    at = max((i for i, l in enumerate(lines) if l.startswith("#include")), default=-1) + 1
+                    lines.insert(at, '#include "%s"' % heads[tag])
+                    new = "\n".join(lines)
+                t = self.files[n] = new
+                code = blank(t)
+                ds = depths(code.split("\n"))
+                self.notes_local_copies = getattr(self, "notes_local_copies", []) + [
+                    "%s (struct %s%s)" % (n, tag, ": " + ", ".join("%s as %s" % kv for kv in ren.items()) if ren else "")]
+
+    def byte_places(self):
+        """f00002(op, p) char *p; { p[0xa] = 2; *(int *)(p + 6) = 0; } given a struct opnd * by every caller:
+        the bytes by their old places - the members there (p[0xa] its o10)"""
+        if getattr(self, "_byte_places_done", False):
+            return
+        self._byte_places_done = True
+        old = self.old_layouts()
+        defs_, where = {}, {}
+        for n, t in self.files.items():
+            if n.endswith(".c"):
+                for f, s, j, k in definitions(t.split("\n"), blank(t).split("\n")):
+                    defs_.setdefault(f.name, f)
+                    where.setdefault(f.name, (n, s, k))
+        cands = {nm: [i for i, (pn, pt) in enumerate(f.params) if re.fullmatch(r"(?:register\s+)?(?:unsigned\s+)?char\s*\*\s*\w+",
+                                                                              pt.strip())]
+                 for nm, f in defs_.items()}
+        cands = {nm: ks for nm, ks in cands.items() if ks}
+        if not cands:
+            return
+        given = collections.defaultdict(set)                # ((function, place): the structures given there)
+        for n, t in self.files.items():
+            if not n.endswith(".c"):
+                continue
+            code = blank(t)
+            ptr_of = {m.group(2): re.sub(r"\s+", " ", m.group(1)) for m in
+                      re.finditer(r"\b((?:struct|union)\s+\w+)\s*\*\s*(\w+)\s*[;,)=]", code)}
+            for m in re.finditer(r"\b(%s)\s*\(" % "|".join(map(re.escape, sorted(cands))), code):
+                if where[m.group(1)][0] == n and code.count("\n", 0, m.start()) <= where[m.group(1)][1] + 1 and \
+                        code.count("\n", 0, m.start()) >= where[m.group(1)][1] - 1:
+                    continue                                # (its own definition's head)
+                sp = call_args(code[m.start():m.start() + 400], m.group(1)) or []
+                for k in cands[m.group(1)]:
+                    if k < len(sp):
+                        a = re.sub(r"^\(\s*(?:unsigned\s+)?char\s*\*\s*\)\s*", "",
+                                   code[m.start() + sp[k][0]:m.start() + sp[k][1]].strip())
+                        given[(m.group(1), k)].add(ptr_of.get(a) if re.fullmatch(r"\w+", a) else None)
+        for (fn, k), sts in sorted(given.items()):
+            if len(sts) != 1 or None in sts:
+                continue
+            st_ = next(iter(sts))
+            lay = old.get(st_)
+            if not lay:
+                continue
+            at = {}
+            for mem, v in lay.items():
+                if mem != "@size" and "." not in mem and "[" not in str(v[3]):
+                    at[(v[0], v[1])] = mem
+            n, s, e = where[fn]
+            pn = defs_[fn].params[k][0]
+            lines = self.files[n].split("\n")
+            body = "\n".join(lines[s:e + 1])
+            num = r"(0[xX][0-9a-fA-F]+|\d+)"
+            new = re.sub(r"\b%s\s*\[\s*%s\s*\]" % (re.escape(pn), num),
+                         lambda m: "((%s *)%s)->%s" % (st_, pn, at[(int(m.group(1), 0), 1)])
+                         if (int(m.group(1), 0), 1) in at else m.group(0), body)
+            def word_at(m, st_=st_, pn=pn, lay=lay, at=at):
+                o = int(m.group(1), 0)
+                if (o, 2) in at:
+                    return "((%s *)%s)->%s" % (st_, pn, at[(o, 2)])
+                wide = [(mem, v) for mem, v in lay.items() if mem != "@size" and "." not in mem and v[1] == 4 and
+                        v[0] < o < v[0] + 4 and not v[4]]       # (the high word of a long there: its upper half)
+                if wide:
+                    return "(((int16_t *)&((%s *)%s)->%s)[%d])" % (st_, pn, wide[0][0], (o - wide[0][1][0]) // 2)
+                return m.group(0)
+            new = re.sub(r"\*\s*\(\s*(?:int|short|unsigned|int16_t)\s*\*\s*\)\s*\(\s*%s\s*\+\s*%s\s*\)" % (re.escape(pn), num),
+                         word_at, new)
+            if new != body:
+                self.files[n] = "\n".join(lines[:s] + new.split("\n") + lines[e + 1:])
+                self.notes_byte_places = getattr(self, "notes_byte_places", []) + ["%s (%s's %s: %s)" % (
+                    n, fn, pn, st_)]
+
+    def shared_blocks(self):
+        """cl = f03f02(0x14, 0, 0), struct cell *cl - 20 bytes, struct fix's old size, its cells cast to struct fix *
+        elsewhere: blocks for either - the larger of the two structures now"""
+        if getattr(self, "_shared_blocks_done", False):
+            return
+        self._shared_blocks_done = True
+        old = self.old_layouts()
+        allocs = self.allocators()
+        if not isinstance(allocs, dict):
+            return
+        casts = collections.defaultdict(set)                # (struct X: the structures its objects are cast to)
+        for n, t in self.files.items():
+            code = blank(t)
+            ptr_of = {m.group(2): re.sub(r"\s+", " ", m.group(1)) for m in
+                      re.finditer(r"\b((?:struct|union)\s+\w+)\s*\*\s*(\w+)\s*[;,)=]", code)}
+            for m in re.finditer(r"\(\s*((?:struct|union)\s+\w+)\s*\*\s*\)\s*(\w+)\b(?!\s*\()", code):
+                x = ptr_of.get(m.group(2))
+                s = re.sub(r"\s+", " ", m.group(1))
+                if x and x != s:
+                    casts[x].add(s)
+            rets = {m.group(2): re.sub(r"\s+", " ", m.group(1)) for m in   # (f = f03fec(); struct fix *f, struct
+                    re.finditer(r"\b((?:struct|union)\s+\w+)\s*\*\s*(\w+)\s*\(", code)}   # cell *f03fec(): the
+            for m in re.finditer(r"\b(\w+)\s*=\s*(\w+)\s*\(", code):                       #  same)
+                s, x = ptr_of.get(m.group(1)), rets.get(m.group(2))
+                if s and x and s != x:
+                    casts[x].add(s)
+        for n, t in list(self.files.items()):
+            if not n.endswith(".c"):
+                continue
+            code = blank(t)
+            ptr_of = {m.group(2): re.sub(r"\s+", " ", m.group(1)) for m in
+                      re.finditer(r"\b((?:struct|union)\s+\w+)\s*\*\s*(\w+)\s*[;,)=]", code)}
+            edits = []
+            for m in re.finditer(r"\b(\w+)\s*=\s*(?:\([^()]*\)\s*)?(\w+)\s*\(", code):
+                x = ptr_of.get(m.group(1))
+                ks = allocs.get(m.group(2))
+                if not x or x not in old or not ks or len(ks) != 1:
+                    continue
+                sp = call_args(code[m.start(2):m.start(2) + 400], m.group(2)) or []
+                k = min(ks)
+                if k >= len(sp):
+                    continue
+                a_, b_ = m.start(2) + sp[k][0], m.start(2) + sp[k][1]
+                v = code[a_:b_].strip()
+                if not re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", v):
+                    continue
+                nv = int(v, 0)
+                if nv <= old[x]["@size"]:
+                    continue
+                ss = sorted((s for s in casts.get(x, ()) if s in old and old[x]["@size"] < old[s]["@size"] <= nv),
+                            key=lambda s: -old[s]["@size"])   # (the largest it was made to hold: 18 of 20)
+                if not ss:
+                    continue
+                lead = len(code[a_:b_]) - len(code[a_:b_].lstrip())
+                edits.append((a_ + lead, a_ + lead + len(v), "(sizeof(%s) > sizeof(%s) ? sizeof(%s) : sizeof(%s))" % (
+                    ss[0], x, ss[0], x)))
+                self.notes_shared = getattr(self, "notes_shared", []) + ["%s (%s, %s: %d)" % (n, x, ss[0], nv)]
+            for a, b, new in sorted(edits, reverse=True):
+                t = t[:a] + new + t[b:]
+            if edits:
+                self.files[n] = t
+
+    def word_copies(self):
+        """*(int *)s = *(int *)p; s, p struct psym * - the first word copied, the chain's link (two bytes then):
+        the first member, as wide as it is now"""
+        if getattr(self, "_word_copies_done", False):
+            return
+        self._word_copies_done = True
+        old = self.old_layouts()
+        rx = re.compile(r"\*\s*\(\s*(?:unsigned\s+)?(?:int|short|unsigned)\s*\*\s*\)\s*(\w+)\s*=\s*"
+                        r"\*\s*\(\s*(?:unsigned\s+)?(?:int|short|unsigned)\s*\*\s*\)\s*(\w+)\s*;")
+        for n, t in list(self.files.items()):
+            if not n.endswith(".c"):
+                continue
+            code = blank(t)
+            ptr_of = {m.group(2): re.sub(r"\s+", " ", m.group(1)) for m in
+                      re.finditer(r"\b((?:struct|union)\s+\w+)\s*\*\s*(\w+)\s*[;,)=]", code)}
+            edits = []
+            for m in rx.finditer(code):
+                a, b = ptr_of.get(m.group(1)), ptr_of.get(m.group(2))
+                if not a or a != b or a not in old:
+                    continue
+                first = min(((v[0], k) for k, v in old[a].items() if k != "@size"), default=None)
+                if not first or first[0] != 0 or old[a][first[1]][1] != 2:
+                    continue
+                edits.append((m.start(), m.end(), "%s->%s = %s->%s;" % (m.group(1), first[1], m.group(2), first[1])))
+            for x, y, new in sorted(edits, reverse=True):
+                t = t[:x] + new + t[y:]
+            if edits:
+                self.files[n] = t
+                self.notes_word_copies = getattr(self, "notes_word_copies", []) + ["%s (%d)" % (n, len(edits))]
+
     def modernize(self):
+        for r_ in ("word_copies", "shared_blocks", "byte_places", "local_copies", "pool_blocks", "size_tables",
+                   "numbered_tables"):
+            if rule(r_):
+                getattr(self, r_)()
         self.array_bounds()
         self.word_stacks()
         self.merge_tables()
@@ -1283,6 +1854,33 @@ class Port:
         for x in getattr(self, "agree_notes", []):
             self.notes["a variable another file declares a pointer, declared a number here (the old linker did "
                        "not mind): the pointer; 0xffff, the top of the segment, the top of memory"].append(x)
+        for x in getattr(self, "notes_word_copies", []):
+            self.notes["a structure's first word copied as an int (its chain's link then): the first member, as "
+                       "wide as it is now"].append(x)
+        for x in getattr(self, "notes_shared", []):
+            self.notes["a block of one structure's old size made for another, cast to it elsewhere: the larger of "
+                       "the two now"].append(x)
+        for x in getattr(self, "notes_view_wide", []):
+            self.notes["a view's pointer where the other has a number (one thing cast to both): the number a "
+                       "pointer's width"].append(x)
+        for x in getattr(self, "view_puns_refused", []):
+            self.notes["a view only one thing cast to both gives, that would read a byte of the other's word: not "
+                       "taken (the other then a record of bytes)"].append(x)
+        for x in getattr(self, "notes_byte_places", []):
+            self.notes["a structure's bytes reached through a char * by their old places: the members that were "
+                       "there"].append(x)
+        for x in getattr(self, "notes_local_copies", []):
+            self.notes["a file's own copy of the program's structure, its words where the other has pointers (the "
+                       "old layout the same): the program's, by its names"].append(x)
+        for x in getattr(self, "notes_pools", []):
+            self.notes["a pooled allocator's blocks of a size for the old pieces: so many times the size (today's "
+                       "pointers), its first, static blocks as big"].append(x)
+        for x in getattr(self, "notes_size_tables", []):
+            self.notes["a table of a structure's old byte counts (its first members, by kind): the same parts of "
+                       "today's structure (offsetof, sizeof)"].append(x)
+        for x in getattr(self, "long_notes", []):
+            self.notes["a long the other files declare, defined as the two words it was in the old data: the "
+                       "long"].append(x)
         for x in getattr(self, "alloc_notes", []):
             self.notes["the program's own allocator of blocks of a structure's old size: the structure's size "
                        "now"].append(x)
@@ -1466,7 +2064,12 @@ class Port:
                 out[h] = "#ifndef %s\n#define %s\n%s\n#endif\n" % (g_, g_, out[h].rstrip("\n"))
         for n, t in out.items():
             out[n] = self.finish(n, t)
-        agree_wide(out, self.bss_definitions(), self.notes)
+        bss_ = self.bss_definitions()
+        agree_wide(out, bss_, self.notes)
+        if rule("numbered_places"):
+            numbered_places(out, bss_, self.notes)
+        if rule("old_c_ways"):
+            old_c_ways(out, self.notes)
         self.out = out
         return out
 
@@ -2174,8 +2777,9 @@ class Port:
         """struct f071f5_p { long v; int x; unsigned char c; } *p, given (struct f071f5_p *)s->type - a file's own
         view of another structure (a struct type) by its old places: each member the other's at its place; a long
         over two of its members, given as an argument, the two (the old callee read them off the stack so)"""
-        if not hasattr(self, "_views"):
-            self._views = {}
+        views_cast = rule("views_cast")                     # (one thing cast to both views: the surest evidence)
+        def build(views_cast):
+            found = {}
             from codebreaker.port import asm16              # (the old layouts of the port's texts: tags it gave
             old = asm16.CTypes._layouts(                    #  anonymous ones known, headers first)
                 [t_ for n_, t_ in sorted(self.files.items(), key=lambda x: not x[0].endswith(".h"))], 2, 4)
@@ -2198,7 +2802,7 @@ class Port:
                                 lambda u, x_=mm.group(3): "((%s *)%s)" % (x_, u.group(1)), b_)
                 exp_[n_] = b_
             alltext = "\n".join(exp_.values())
-            heads_ = {}
+            heads_, weak_ = {}, set()
             for n, t_ in self.files.items():               # (a header's structure that never has an object of
                 if n.endswith(".h"):                        #  its own - no variable, no sizeof: every pointer to
                     for m in re.finditer(r"\bstruct\s+(\w+)\s*\{", blank(t_)):   # it came from another's - a view
@@ -2206,15 +2810,28 @@ class Port:
                         if x_ in local:
                             continue
                         sx = re.escape(m.group(1))
-                        if re.search(r"\bstruct\s+%s\s+(?!\{)\**\s*\w+\s*(?:\[[^\]]*\]\s*)?[;=,](?<!\*)" % sx,
-                                     re.sub(r"\bstruct\s+%s\s*\*" % sx, "", alltext)) or \
+                        own_ = re.search(r"\bstruct\s+%s\s+(?!\{)\**\s*\w+\s*(?:\[[^\]]*\]\s*)?[;=,](?<!\*)" % sx,
+                                         re.sub(r"\bstruct\s+%s\s*\*" % sx, "", alltext)) or \
+                            re.search(r"sizeof\s*\(\s*struct\s+%s\s*\)" % sx, alltext)
+                        if not views_cast:
+                            if own_:
+                                continue
+                        elif re.search(r"(?m)^(?:static\s+|extern\s+)?struct\s+%s\s+(?!\{)\**\s*\w+\s*(?:\[[^\]]*\]\s*)?"
+                                       r"[;=,](?<!\*)" % sx,   # (an object of its own at a file's top; a function's
+                                       re.sub(r"\bstruct\s+%s\s*\*" % sx, "", alltext)) or \
+                                re.search(r"(?m)^[ \t]+(?:register\s+|static\s+)?struct\s+%s\s+\w+\s*\[" % sx,   #  own
+                                          alltext) or \
+                                re.search(r"\bstruct\s+%s\s+\w+\s*[,)]" % sx, alltext) or \
                                 re.search(r"sizeof\s*\(\s*struct\s+%s\s*\)" % sx, alltext):
                             continue
+                        if own_:                            # (a function's own object of it, struct targ t;: a
+                            weak_.add(x_)                   #  view only where one thing is cast to both)
                         heads_.setdefault(x_, n)
             for x, n in list(local.items()) + list(heads_.items()):
                 lx = old.get(x)
                 if not lx:
                     continue
+                strong_ = set()                             # (one thing cast to both: the surest evidence)
                 pmx = ptr_mem if x not in heads_ else \
                     {k_: v_ for k_, v_ in ptr_mem.items() if len(v_) == 1}   # (a header's: a member's name
                                                             #  that one structure has, alone)
@@ -2223,6 +2840,13 @@ class Port:
                                      alltext):
                     last = re.findall(r"\w+", m.group(1))
                     ys |= pmx.get(last[-1], set()) if last else set()
+                    if views_cast and x in heads_ and re.search(r"(?:->|\.)\s*\w+$", m.group(1)):   # ((struct targ *)p->op and
+                        for o in re.finditer(r"\(\s*((?:struct|union)\s+\w+)\s*\*\s*\)\s*\(?\s*%s(?![\w\[(])" %   # (struct
+                                             re.escape(m.group(1)), alltext):   # psym *)p->op: one thing, two views
+                            oy = re.sub(r"\s+", " ", o.group(1))                #  - the one with objects of its own)
+                            if oy != x and oy not in heads_:
+                                ys.add(oy)
+                                strong_.add(oy)
                     if last and re.fullmatch(r"\w+", m.group(1)):   # (a variable's: as it is declared)
                         n_ = next((n__ for n__, t__ in exp_.items() if
                                    re.search(r"\(\s*%s\s*\*\s*\)\s*%s\b" % (re.escape(x).replace(r"\ ", r"\s+"),
@@ -2281,12 +2905,14 @@ class Port:
                                                                re.escape(am.group(1)), alltext)
                                                 if rm and re.sub(r"\s+", " ", rm.group(1)) != x:
                                                     ys.add(re.sub(r"\s+", " ", rm.group(1)))
-                ys = {y_ for y_ in ys if y_ not in local and y_ != x}   # (the other a header's: two files' own copies of one
+                ys = {y_ for y_ in ys if y_ not in local and y_ != x}
+                if len(ys) > 1 and len(strong_) == 1:
+                    ys = set(strong_)   # (the other a header's: two files' own copies of one
                 if len(ys) != 1:                            #  structure are each as it is)
                     continue
                 y = ys.pop()
                 ly = old.get(y)
-                if not ly or y == x:
+                if not ly or y == x or x in weak_ and strong_ != {y}:
                     continue
                 ymem = []                                   # (and the members of a structure in it: c.op)
                 for k, v in ly.items():
@@ -2305,8 +2931,13 @@ class Port:
                              re.sub(r"\s+", " ", str(v[2])) == x}                       #  link is - one list, two
                     selfy = {ym[0] for ym in ymem if ym[3][4] and                       #  names)
                              re.sub(r"\s+", " ", str(ym[3][2])) == y}
-                    if not selfx or not selfx <= selfy:
+                    if selfx and not selfx <= selfy:
                         continue
+                    if not selfx:                           # (no link of its own - struct rseg over struct seg: its
+                        xptr = [v[0] for k, v in lx.items() if k != "@size" and v[4]]   # pointers each on one
+                        yptr = {ym[0] for ym in ymem if ym[3][4]}                       # of the
+                        if not views_cast or strong_ != {y} and (not xptr or not all(o in yptr for o in xptr)):
+                            continue                                    #  one thing cast to both)
                 mapping = {}
                 for k, v in lx.items():
                     if k == "@size":
@@ -2345,12 +2976,23 @@ class Port:
                 if mapping and x in heads_:                 # (a header's: only a view whose link is the other's
                     links = [k for k, v in lx.items() if k != "@size" and v[4] and   #  under another name - u6.n
                              re.sub(r"\s+", " ", str(v[2])) == x]                   #  for next: two structures
-                    if all(isinstance(mapping.get(k), list) and mapping[k] == [k] for k in links):   # sharing a
+                    if (links or not views_cast) and all(isinstance(mapping.get(k), list) and mapping[k] == [k]
+                                                         for k in links):   # sharing a
                         mapping = None                      #  head, each its own, are not one)
                     ytop = {ym[2]: ym[3] for ym in ymem}
-                    if mapping and any(v[4] and isinstance(mapping.get(k), list) and   # (nor one whose pointer
-                                       not all(ytop.get(w, (0, 0, "", "", False))[4] for w in mapping[k])
-                                       for k, v in lx.items() if k != "@size"):     #  lies on the other's number)
+                    on_num = [w for k, v in lx.items() if k != "@size" and v[4] and isinstance(mapping.get(k), list)
+                              for w in mapping[k] if not ytop.get(w, (0, 0, "", "", False))[4]] if mapping else []
+                    if on_num and strong_ == {y} and all(ytop.get(w, (0, 0, ""))[1] == 2 and
+                                                         re.fullmatch(r"(?:unsigned\s+)?(?:int|short|unsigned)",
+                                                                      str(ytop.get(w)[2]).strip()) for w in on_num):
+                        for w in on_num:                    # (struct lab over struct psym, its refs where psym's
+                            for h_, ht_ in list(self.files.items()):   # cls is - one thing cast to both: the
+                                nw_ = widen_member(ht_, y.split()[-1], w)   # number a pointer's width, to hold
+                                if nw_ is not None:                         # what the other view keeps there)
+                                    self.files[h_] = nw_
+                        self.notes_view_wide = getattr(self, "notes_view_wide", []) + [
+                            "%s (%s over %s: %s)" % (n, x, y, ", ".join(on_num))]
+                    elif on_num:                            # (nor one whose pointer lies on the other's number)
                         mapping = None
                     def ptr_union(w):                       # (a union of the other's whose members are all pointers)
                         if not re.match(r"union\b", str(ytop.get(w.split(".")[0], (0, 0, ""))[2])):
@@ -2363,12 +3005,31 @@ class Port:
                         mapping = None                      # (nor one with a number on the other's union of pointers:
                                                             #  MC2's stor's st_off over ruse's r_u - two kinds, not one)
                 if mapping:
-                    self._views[x] = (y, mapping, n)
+                    found[x] = (y, mapping, n)
+            if views_cast:
+                self._views_weak = set(weak_)
+            return found
+
+        if not hasattr(self, "_views"):
+            self._views = build(False)
+            if views_cast:                                  # (the views one thing cast to both adds, or changes:
+                plain = self._views                         #  none that reads a byte of the other's word - a
+                for x, v in build(True).items():            #  record then taken as bytes, MASM 4.00's opitem
+                    if plain.get(x) != v and any(isinstance(m_, tuple) and m_[0] == "pun"   #  over its node)
+                                                  for m_ in v[1].values()):
+                        self.view_puns_refused = getattr(self, "view_puns_refused", []) + ["%s over %s" % (x, v[0])]
+                        continue
+                    if plain.get(x) != v:
+                        self._views_new = getattr(self, "_views_new", set()) | {x}
+                    self._views[x] = v
         views = {x: v for x, v in self._views.items() if v[2] == fname or v[2].endswith(".h")}
         if not views:
             return t
         for x, (y, mapping, n) in views.items():
-            code = blank(t)
+            if x in getattr(self, "_views_weak", ()):      # (a view whose functions have objects of it)
+                t = re.sub(r"(?m)^([ \t]+(?:register\s+)?)%s(\s+\w+\s*;)" % re.escape(x).replace(r"\ ", r"\s+"),
+                           lambda m_: m_.group(1) + y + m_.group(2), t)   # (struct targ t; tp = &t: the room of the
+            code = blank(t)                                            #  other's, whose members the view reads)
             vars_ = set(re.findall(r"%s\s*\*\s*(\w+)" % re.escape(x).replace(r"\ ", r"\s+"), code))
             macs = [mm.group(1) for mm in re.finditer(r"(?m)^\s*#\s*define\s+(\w+)\s*\(\s*(\w+)\s*\)\s*\(\s*\(\s*%s"
                                                       r"\s*\*\s*\)\s*\(?\s*\2\s*\)?\s*\)\s*$" %
@@ -2379,6 +3040,10 @@ class Port:
                 pats.append(r"\b(?P<v>%s)\s*->\s*(?P<m>\w+)\b" % "|".join(map(re.escape, sorted(vars_))))
             if macs:                                        # (L(s)->num: the macro's cast, the other's member)
                 pats.append(r"\b(?:%s)\s*\(\s*(?P<v>\w+)\s*\)\s*->\s*(?P<m>\w+)\b" % "|".join(map(re.escape, macs)))
+            if x in getattr(self, "_views_new", ()):       # (the cast's too, for the views the casts gave)
+                pats.append(r"\(\s*\(\s*%s\s*\*\s*\)\s*(?P<v>[\w.\->\[\]]+?|\((?:[^()]|\([^()]*\))*\))\s*\)\s*->\s*"
+                            r"(?P<m>\w+)\b" %   # (((struct
+                            re.escape(x).replace(r"\ ", r"\s+"))  # targ *)g_2622->sym)->kind: the cast's too)
             found_ = []
             for p_ in pats:
                 found_ += [(m.start(), m.end(), m.group("v"), m.group("m")) for m in re.finditer(p_, code)]
@@ -2471,7 +3136,7 @@ class Port:
         somewhere ((struct inode *)f0a42b(2, 32)) - the evidence that a number given it is a size"""
         if not hasattr(self, "_allocs"):
             old = self.old_layouts()
-            out = set()
+            out = {}                                        # (name: the places of its arguments the size was at)
             for t in self.originals.values():
                 code = blank(t)
                 ptr_of = {m.group(2): re.sub(r"\s+", " ", m.group(1)) for m in
@@ -2481,9 +3146,33 @@ class Port:
                     st_ = re.sub(r"\s+", " ", m.group(1)) if m.group(1) else ptr_of.get(m.group(2))
                     if not st_ or st_ not in old or m.group(3) in KEYWORDS:
                         continue
-                    if any(re.fullmatch(r"\s*(?:0[xX][0-9a-fA-F]+|[1-9]\d*)\s*", a_) and
-                           int(a_.strip(), 0) == old[st_]["@size"] for a_ in m.group(4).split(",")):
-                        out.add(m.group(3))
+                    at_ = [k for k, a_ in enumerate(m.group(4).split(","))
+                           if re.fullmatch(r"\s*(?:0[xX][0-9a-fA-F]+|[1-9]\d*)\s*", a_) and
+                           int(a_.strip(), 0) == old[st_]["@size"]]
+                    if at_:
+                        out.setdefault(m.group(3), set()).update(at_)
+            if not rule("alloc_places"):                    # (the names alone: no place of the size known)
+                self._allocs = set(out)
+                return self._allocs
+            defs_, bodies = {}, {}                          # (and what one gives on to another: f03f02(n, v, pool)
+            for n, t in self.files.items():                 #  { f03e86(pool, n); } - f03e86's size its second)
+                if n.endswith(".c"):
+                    cl_ = blank(t).split("\n")
+                    for f, s, j, k in definitions(t.split("\n"), cl_):
+                        defs_.setdefault(f.name, f)
+                        bodies.setdefault(f.name, "\n".join(cl_[j:k + 1]))
+            for _ in range(3):
+                for a, ks in list(out.items()):
+                    if len(ks) != 1 or a not in defs_ or min(ks) >= len(defs_[a].params):
+                        continue
+                    pa = defs_[a].params[min(ks)][0]
+                    for m in re.finditer(r"\b(\w+)\s*\(", bodies.get(a, "")):
+                        if m.group(1) in KEYWORDS or m.group(1) == a or m.group(1) not in defs_:
+                            continue
+                        sp = call_args(bodies[a][m.start():m.start() + 400], m.group(1)) or []
+                        js = [j for j, (x_, y_) in enumerate(sp) if bodies[a][m.start() + x_:m.start() + y_].strip() == pa]
+                        if len(js) == 1:
+                            out[m.group(1)] = {js[0]}
             self._allocs = out
         return self._allocs
 
@@ -2555,7 +3244,9 @@ class Port:
                         if ext:                     # (extern int g in one file, char *g in another: the pointer)
                             was = decl.get(nm)
                             if was is None or (re.fullmatch(r"(?:unsigned\s+|signed\s+)?(?:int|short|unsigned)",
-                                                            was[0]) and was[1] == nm and dcl != nm):
+                                                            was[0]) and (was[1] == nm and dcl != nm or   # (and
+                                               "*" in dcl and "*" not in was[1] and rule("bss_ptr_tables"))):
+                                # (and int g[]; struct ins *g[];)
                                 decl[nm] = (r[0].strip(), dcl)
                         else:
                             defined.add(nm)
@@ -2582,15 +3273,15 @@ class Port:
             esz = 2 if "*" in el else old[base]["@size"] if base in old else OLD_SCALARS.get(base, 2)
             for d_ in inner:
                 esz *= int(d_)
+            room = 16 if base == "char" and esz == 1 else 0   # (bytes: a block's head may have grown)
             if len(parts) > 1:                              # (the names after it: places in it)
                 at_ = 0
-                full = "%s %s;" % (base, re.sub(r"\[\s*\]|\[[^\]]*\]", "[%d]" % max(1, size // max(1, esz)), dcl,
-                                                count=1))
+                full = "%s %s;" % (base, re.sub(r"\[\s*\]|\[[^\]]*\]", "[%d]" % (
+                    max(1, size // max(1, esz)) + (room if rule("bss_room") else 0)), dcl, count=1))
                 for p_ in parts:
                     if p_ != nm:
                         self.aliases[p_] = ("(&%s[%d])" % (nm, at_ // max(1, esz)), full)
                     at_ += bss.get(p_, 0)
-            room = 16 if base == "char" and esz == 1 else 0   # (bytes: a block's head may have grown)
             out.append("%s %s;\t/* (%d bytes then%s) */" % (base, re.sub(r"\[\s*\]|\[[^\]]*\]", "[%d]" % (max(
                 1, size // max(1, esz)) + room), dcl, count=1), size, ", and room" if room else ""))
         return out
@@ -2720,6 +3411,13 @@ class Port:
             if rule_[3:] == ("var",):
                 text = sub_code(text, re.compile(r"(?<![\w.>])(%s)(?=\s*->)" % re.escape(var_)),
                                 lambda m: "((%s)dos_np(%s))" % (typ_, m.group(1)))
+            elif rule_[3:] == ("assign",):                  # ((q = f06df2(p))->kind, NULL at the list's end)
+                text = sub_code(text, re.compile(r"\(\s*(%s\s*=\s*\w+\s*\([^()]*\))\s*\)(?=\s*->)" % re.escape(var_)),
+                                lambda m: "((%s)dos_np(%s))" % (typ_, m.group(1)))
+            elif rule_[3:] == ("mem",):                     # (p->next->prev = ..., the last's next NULL: its
+                text = sub_code(text, re.compile(          #  link read through the null segment, as on DOS)
+                    r"(?<![\w.>])((?:\(\s*\([^()]*\)\s*dos_np\(\s*\w+\s*\)\s*\)|\w+)\s*->\s*%s)(?=\s*->)" %
+                    re.escape(var_)), lambda m: "((%s)dos_np(%s))" % (typ_, m.group(1)))
             else:
                 text = sub_code(text, re.compile(r"(?<![\w.>])(%s\s*\[[^\[\]]*\])(?=\s*->)" % re.escape(var_)),
                                 lambda m: "((%s)dos_np(%s))" % (typ_, m.group(1)))
@@ -3712,10 +4410,93 @@ def word_unions(t, notes, fname, olds=()):
     return re.sub(r"\bunion(\s+\w+)?\s*\{([^{}]*)\}", one, t)
 
 
+def old_c_ways(out, notes):
+    """what old C allowed that today's does not, line by line: char *g = "xLIBCE"; *g = 'S'; - a string's text
+    written to (its own array now, (char []){"xLIBCE"}, writable); time(&t) with t a long of 4 bytes - today's time_t
+    is 8 (the time given back, made the long)"""
+    held = set()                                            # (*(int16_t *)&p->size = dos_ph(..): a handle kept in
+    for t in out.values():                                  #  the word over two bytes - read as a pointer: what it
+        for m in re.finditer(r"\*\s*\(\s*int16_t\s*\*\s*\)\s*&\s*[^=;]*?->\s*(\w+)\s*=\s*dos_ph\s*\(", blank(t or "")):
+            held.add(m.group(1))                            #  stands for)
+    if held:
+        hx = re.compile(r"\(\s*((?:struct|union)\s+\w+\s*\*|char\s*\*)\s*\)\s*\(\s*(\*\s*\(\s*int16_t\s*\*\s*\)\s*&"
+                        r"\s*[\w>\-.\s()*]*?->\s*(?:%s))\s*\)" % "|".join(map(re.escape, sorted(held))))
+        for n, t in list(out.items()):
+            if t and n.endswith(".c"):
+                t2 = sub_code(t, hx, lambda m: "(%s)dos_hp(%s)" % (m.group(1), t[m.start(2):m.end(2)]))
+                if t2 != t:
+                    out[n] = t2
+                    notes["a handle kept in a word over two bytes, read as a pointer: what it stands for "
+                          "(dos_hp)"].append(n)
+    sx = re.compile(r'(?m)^((?:static\s+)?(?:unsigned\s+)?char\s*\*\s*\w+\s*=\s*)("(?:[^"\\\n]|\\.)*")\s*;')
+    tx = re.compile(r"\btime\s*\(\s*(?:\(\s*(?:time_t|long|int32_t)\s*\*\s*\)\s*)?&\s*(\w+)\s*\)")
+    for n, t in list(out.items()):
+        if not t or not n.endswith(".c"):
+            continue
+        code = blank(t)
+        ds = depths(code.split("\n"))
+        edits = []
+        for m in sx.finditer(code):
+            if not ds[code.count("\n", 0, m.start())]:
+                edits.append((m.start(2), m.end(2), "(char []){%s}" % t[m.start(2):m.end(2)]))
+        for m in tx.finditer(code):
+            if re.search(r"\b(?:long|int32_t|uint32_t)\s+(?:\w+\s*,\s*)*%s\b" % re.escape(m.group(1)), code):
+                edits.append((m.start(), m.end(), "(%s = (int32_t)time(NULL))" % m.group(1)))
+        for a, b, new in sorted(edits, reverse=True):
+            t = t[:a] + new + t[b:]
+        if edits:
+            out[n] = t
+            notes["what old C allowed that today's does not: a string's text written to (an array of its own), "
+                  "time() into a long (today's time_t 8 bytes)"].append("%s (%d)" % (n, len(edits)))
+
+
+def numbered_places(out, extra, notes):
+    """f06988(f021ff, (struct hsym **)0x3a20): a variable's place in the old data segment given as its number (the
+    program gave the number) - the variable there, g_3a20, by name (its extern declared where it is not)"""
+    decls = {}                                              # (name: its declaration, as the definition says it)
+    for t in list(out.values()) + ["\n".join(extra)]:
+        code = blank(t or "")
+        ds = depths(code.split("\n"))
+        for i, l in enumerate(code.split("\n")):
+            m = re.match(r"\s*(?:static\s+)?((?:(?:struct|union)\s+\w+|(?:unsigned\s+)?\w+)\s*\**\s*(g_[0-9a-f]{4})"
+                         r"\s*(?:\[[^\]]*\])?)\s*(?:=|;)", l)
+            if m and not ds[i] and not l.lstrip().startswith(("extern", "typedef", "#")):
+                decls.setdefault(m.group(2), re.sub(r"\s+", " ", m.group(1)).strip())
+    if not decls:
+        return
+    cast = r"\(\s*(?:(?:struct|union)\s+\w+|\w+)\s*\*+\s*\)\s*"
+    for n, t in list(out.items()):
+        if not n.endswith(".c") or not t:
+            continue
+        code = blank(t)
+        edits, used = [], set()
+        for m in re.finditer(cast + r"(\((?:[^()]*)\)|0x[0-9a-fA-F]{4}\b)", code):
+            seg_at = m.start(1)
+            for h in re.finditer(r"\b0x([0-9a-fA-F]{4})\b", m.group(1)):
+                nm = "g_" + h.group(1).lower()
+                if nm in decls:
+                    edits.append((seg_at + h.start(), seg_at + h.end(), nm))
+                    used.add(nm)
+        if not edits:
+            continue
+        for a, b, new in sorted(edits, reverse=True):
+            t = t[:a] + new + t[b:]
+        need = [nm for nm in sorted(used) if not re.search(r"(?m)^[^\n(]*\b%s\b[^\n(]*;" % nm, blank(t))]
+        if need:
+            lines = t.split("\n")
+            at = max((i for i, l in enumerate(lines) if l.startswith("#include")), default=-1) + 1
+            lines[at:at] = ["extern %s;" % decls[nm] for nm in need]
+            t = "\n".join(lines)
+        out[n] = t
+        notes["a variable's place given as its number (the old data segment's): the variable"].append(
+            "%s (%s)" % (n, ", ".join(sorted(used))))
+
+
 def agree_wide(out, extra, notes):
     """extern intptr_t g_74be; in some files (a pointer held there), extern int16_t g_74be, g_8672; in another: one
     variable, one width - intptr_t in every file (a file that wrote 16 bits where the others read 64)"""
     wide = set()
+    more = rule("agree_wide_defs")                          # (definitions and tables' places too)
     for t in list(out.values()) + ["\n".join(extra)]:
         code = blank(t or "")
         ds = depths(code.split("\n"))
@@ -3723,9 +4504,12 @@ def agree_wide(out, extra, notes):
             m = re.match(r"\s*(?:extern\s+|static\s+)?intptr_t\s+([^;()]*);", l)
             if not ds[i] and m:
                 wide |= {d.strip() for d in m.group(1).split(",") if re.fullmatch(r"\s*\w+\s*", d)}
-    if not wide:
-        return
+        if more:
+            wide |= set(re.findall(r"\(\s*intptr_t\s*\*\s*\)\s*&\s*(\w+)\b(?!\s*(?:\[|\.|->))", code))   # (a table's
+    if not wide:                                            #  { "-FPc", (int *)&g_0cbc }: the place a word of
+        return                                              #  any row's width is written to - the variable that)
     rx = re.compile(r"(?m)^([ \t]*(?:extern\s+)?)((?:u?int16_t|int|short|unsigned))\s+([\w\s,]+);")
+    rd = re.compile(r"(?m)^([ \t]*(?:static\s+)?)((?:u?int16_t|int|short|unsigned))\s+(\w+)(\s*=[^;{}]*;)")
     for n, t in list(out.items()):
         if not t:
             continue
@@ -3747,12 +4531,51 @@ def agree_wide(out, extra, notes):
             new = ("%s%s %s; " % (m.group(1), m.group(2), ", ".join(rest)) if rest else m.group(1)) + \
                 ("intptr_t %s;" % ", ".join(hit) if not rest else "extern intptr_t %s;" % ", ".join(hit))
             edits.append((m.start(), m.end(), new))
+        for m in rd.finditer(code) if more else ():         # (its definition: int16_t g_0cbc = 0;)
+            line = code.count("\n", 0, m.start())
+            if not ds[line] and m.group(3) in wide:
+                edits.append((m.start(2), m.end(2), "intptr_t"))
+        for m in re.finditer(r"(?m)^([ \t]*(?:static\s+)?)((?:u?int16_t|int|short|unsigned))\s+(\w+)\s*;", code) \
+                if more else ():
+            line = code.count("\n", 0, m.start())           # (or without a value: int16_t g_0cbc;)
+            if not ds[line] and m.group(3) in wide and "extern" not in m.group(1):
+                edits.append((m.start(2), m.end(2), "intptr_t"))
+        for m in re.finditer(r"([{,]\s*)&\s*(\w+)\s*(?=[,}])", code) if more else ():   # (and given as the place of a 16-bit
+            line = code.count("\n", 0, m.start())                        #  one too - { 'a', 1, &g_0c92 }: the
+            top = next((j for j in range(line, -1, -1) if not ds[j]), None)   # (a file's table's, not a call's)
+            if m.group(2) in wide and top is not None and re.search(r"=\s*\{", code.split("\n")[top]):
+                edits.append((m.start() + len(m.group(1)), m.start() + len(m.group(1)), "(void *)"))
+        edits = sorted(set(edits))
         for a, b, new in reversed(edits):
             t = t[:a] + new + t[b:]
         if edits:
             out[n] = t
             notes["a variable intptr_t in some files (it holds a pointer), a number of 16 bits in another: intptr_t "
                   "in all"].append(n)
+
+
+def widen_member(text, tag, mem):
+    """the text with struct tag's integer member mem made an intptr_t - one of a list (int s4, s6, s8;) taken out
+    of it to a declaration of its own - or None (not there, a pointer's handle, or not a plain integer)"""
+    code = blank(text)
+    m = re.search(r"\bstruct\s+%s\s*\{" % re.escape(tag), code)
+    if not m:
+        return None
+    end = code.find("}", m.end())
+    if end < 0:
+        return None
+    for d in re.finditer(r"(?m)\b((?:u?int16_t|int|short|unsigned))\s+([\w\s,]+?)\s*;", code[m.end():end]):
+        names = [x.strip() for x in d.group(2).split(",")]
+        if mem not in names or not all(re.fullmatch(r"\w+", x) for x in names):
+            continue
+        a, b = m.end() + d.start(), m.end() + d.end()
+        if "(a handle" in text[b:text.find("\n", b)]:
+            return None
+        k = names.index(mem)                                # (in their order: an initializer gives them so)
+        parts = (["%s %s;" % (d.group(1), ", ".join(names[:k]))] if k else []) + ["intptr_t %s;" % mem] + \
+            (["%s %s;" % (d.group(1), ", ".join(names[k + 1:]))] if k + 1 < len(names) else [])
+        return text[:a] + " ".join(parts) + text[b:]
+    return None
 
 
 def stored_wide(port, out):
@@ -3778,21 +4601,25 @@ def stored_wide(port, out):
                                           blank(t)))
                     if len(tags) == 1:
                         wide.add((tags.pop(), m.group(2)))
+        for m in re.finditer(r"(?<![\w.>])(\w+)\s*->\s*(\w+)\s*=\s*\(\s*intptr_t\s*\)", blank(t)) \
+                if rule("stored_wide_cast") else ():                                               # (p->s6 =
+            tags = set(re.findall(r"\bstruct\s+(\w+)\s*\*\s*(?:\w+\s*,\s*\*?\s*)*%s\s*[;,=)]" %   # (int)name: a
+                                  re.escape(m.group(1)), blank(t)))   # pointer the old code kept in a member - its
+            if len(tags) == 1:                                        # width)
+                wide.add((tags.pop(), m.group(2)))
     changed = False
     done = set()
     for tag, mem in sorted(wide):                          # (in the port's own text: each round is made from it)
         for f, t in list(port.files.items()):
             if not t:
                 continue
-            m = re.search(r"\bstruct\s+%s\s*\{[^{}]*?\b((?:u?int16_t|int|short|unsigned))\s+%s\s*;" %
-                          (re.escape(tag), re.escape(mem)), blank(t))
-            if m and "(a handle" not in t[m.end(1):t.find("\n", m.end(1))]:
-                port.files[f] = t[:m.start(1)] + "intptr_t" + t[m.end(1):]
+            new_ = widen_member(t, tag, mem)
+            if new_ is not None:
+                port.files[f] = new_
                 if f in out and out[f]:
-                    m2 = re.search(r"\bstruct\s+%s\s*\{[^{}]*?\b((?:u?int16_t|int|short|unsigned))\s+%s\s*;" %
-                                   (re.escape(tag), re.escape(mem)), blank(out[f]))
-                    if m2:
-                        out[f] = out[f][:m2.start(1)] + "intptr_t" + out[f][m2.end(1):]
+                    new2 = widen_member(out[f], tag, mem)
+                    if new2 is not None:
+                        out[f] = new2
                 port.mended["a member given an intptr_t parameter (the pointer it carried kept there): "
                             "intptr_t"].append("%s (struct %s: %s)" % (f, tag, mem))
                 changed = True
@@ -4304,6 +5131,27 @@ def mend(port, out, diags):
                     fn_at = enclosing(out.get(f, ""), ln)
                     if vm and fn_at and declares_local(out[f], fn_at, vm.group(1)):
                         x = vm
+                    elif vm and eqat > 0 and l[eqat + 1:eqat + 2] != "=" and \
+                            "intptr_t" in (g("to") or "") + d["text"] and rule("mend_intptr_assign"):
+                        depth, k_ = 0, eqat + 1             # (if (!(g_0c58 = fopen(..))), g_0c58 made intptr_t
+                        while k_ < len(l):                  #  already: the value there its intptr_t - to the
+                            ch_ = l[k_]                     #  ')' that closes the assignment)
+                            if ch_ in "([":
+                                depth += 1
+                            elif ch_ in ")]":
+                                if depth == 0:
+                                    break
+                                depth -= 1
+                            elif ch_ in ",;" and depth == 0:
+                                break
+                            k_ += 1
+                        rhs_ = l[eqat + 1:k_].strip()
+                        if rhs_ and not rhs_.startswith("(intptr_t)"):
+                            l = l[:eqat + 1] + " (intptr_t)(%s)" % rhs_ + l[k_:]
+                            notes["a pointer's value given to an integer (both 16 bits then): (intptr_t)"].append(
+                                "%s:%d" % (f, ln))
+                            changed = True
+                        continue
                 if not x:                                   # (a member given a pointer's value - a = p = 0: the
                     eq = l.find("=", max(0, col - 1))       #  number it was, the pointer's bits)
                     mm = re.search(r"(?<![\w.>])(\w+)\s*(?:->|\.)\s*(\w+)\s*$", l[:eq]) if eq > 0 else None

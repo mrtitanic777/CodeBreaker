@@ -199,6 +199,51 @@ def low_reads(port, out, case, text):
         port.mended["a table's word read as a pointer, a small number at times (DOS read the null segment there): "
                     "dos_np"].append(why)
         return why
+    from codebreaker.port.pre_ansi import rule
+    chains = [(a_ or b_, c_) for a_, b_, c_ in re.findall(
+        r"(?<![\w.>])(?:\(\s*\([^()]*\)\s*dos_np\(\s*(\w+)\s*\)\s*\)|(\w+))\s*->\s*(\w+)\s*->", line)] \
+        if rule("np_chains") else []
+    for v, mem in chains:                                   # (p->next->prev = ..: p was read
+        if any(r[:2] == (f, mem) and r[3:] == ("mem",) for r in getattr(port, "np_rules", [])):   # through - the
+            continue                                        #  NULL its link, p->next, the list's last's)
+        tm = re.search(r"\b((?:struct|union)\s+\w+)\s*\*\s*%s\s*[;,=)]" % re.escape(v), out[f])
+        if not tm:
+            continue
+        texts = dict(getattr(port, "files", None) or {})
+        texts.update({k_: t_ for k_, t_ in out.items() if t_})
+        seen, todo, mine = set(), [f], []                   # (the definition the file sees: its own, its headers')
+        while todo:
+            x = todo.pop(0)
+            if x in seen or x not in texts:
+                continue
+            seen.add(x)
+            mine.append(texts[x])
+            todo += re.findall(r'#\s*include\s*"([^"]+)"', texts[x])
+        rx_ = r"\b%s\s*\{([^{}]*)\}" % re.escape(tm.group(1)).replace(r"\ ", r"\s+")
+        body = re.search(rx_, "\n".join(mine)) or re.search(rx_, "\n".join(texts.values()))
+        mt = re.search(r"\b((?:struct|union)\s+\w+)\s*\*\s*(?:\w+\s*,\s*\*\s*)*%s\s*[;,]" % re.escape(mem),
+                       body.group(1)) if body else None
+        if not mt:
+            continue
+        port.np_rules = getattr(port, "np_rules", []) + [(f, mem, mt.group(1) + " *", "mem")]
+        why = "%s: %s->%s a NULL at times (at %sh, case '%s'): through the null segment there" % (
+            f, v, mem, m.group("addr"), case)
+        port.mended["a pointer read through when NULL (DOS read the null segment there): dos_np"].append(why)
+        return why
+    for v in re.findall(r"\(\s*(\w+)\s*=\s*\w+\s*\([^()]*\)\s*\)\s*->", line) if rule("np_chains") else ():
+        # ((q = f06df2(p))->kind:
+        if any(r[:2] == (f, v) and r[3:] == ("assign",) for r in getattr(port, "np_rules", [])):   # the value
+            continue                                        #  given back NULL at the list's end)
+        d = re.search(r"\b((?:struct|union)\s+\w+)\s*\*\s*(?:\w+\s*,\s*\*\s*)*%s\s*[;,=)]" % re.escape(v), out[f])
+        if not d:
+            continue
+        port.np_rules = getattr(port, "np_rules", []) + [(f, v, d.group(1) + " *", "assign")] + \
+            ([(f, v, d.group(1) + " *", "var")] if not any(r[:2] == (f, v) and r[3:] == ("var",)   # (and q->op
+                                                           for r in getattr(port, "np_rules", [])) else [])   # after it)
+        why = "%s: %s as given a NULL at times (at %sh, case '%s'): read through the null segment there" % (
+            f, v, m.group("addr"), case)
+        port.mended["a pointer read through when NULL (DOS read the null segment there): dos_np"].append(why)
+        return why
     for v in re.findall(r"(?<![\w.>])(\w+)\s*->", line):    # (l->op, l a NULL there: as DOS read it)
         if any(r[:2] == (f, v) for r in getattr(port, "np_rules", [])):
             continue
