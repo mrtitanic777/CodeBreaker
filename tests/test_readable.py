@@ -13,6 +13,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from codebreaker.source import readable                     # noqa: E402
+from codebreaker.translate import l2                         # noqa: E402
 
 RESULTS = []
 SAMPLE = '''int4 sub_1(int4 a1)
@@ -67,7 +68,7 @@ def test_constants():
 
 def test_one_function():
     _need_sdk()
-    m = readable.Module({"sub_1": SAMPLE}, lambda address: "DllGetVersion" if address == 0x1000 else None)
+    m = readable.Readable(l2.module([l2.function("sub_1", SAMPLE)]), lambda address: "DllGetVersion" if address == 0x1000 else None)
     text = m.function("sub_1")
     for wanted in ("int4 sub_1(int4 hWnd)", "hMem = LocalAlloc(LMEM_ZEROINIT,100);", "ShowWindow(hWnd,SW_SHOW);",
                    "hdc = GetDC(hWnd);", "for (i = 0; i < 10; i = i + 1)", "MB_ICONQUESTION | MB_YESNO",
@@ -101,7 +102,7 @@ WNDPROC = """int4 wndproc(int4 a1, uint4 a2, int4 a3, int4 a4)
 def test_comparisons_fields_and_strings():
     _need_sdk()
     strings = {0x1000: "%s = %ld", 0x2000: "count"}
-    m = readable.Module({"w": WNDPROC}, strings.get)
+    m = readable.Readable(l2.module([l2.function("w", WNDPROC)]), strings.get)
     text = m.function("w")
     for wanted in ("if (Msg == WM_CLOSE)", "case WM_DESTROY:", "case WM_PAINT:",
                    "((RECT *)lpRect)->right = ((RECT *)lpRect)->right - 4;",
@@ -121,7 +122,7 @@ def test_same_object_code():
               "int4 __stdcall GetDC(int4);\nint4 __stdcall ReleaseDC(int4,int4);\n"
               "int4 __stdcall MessageBoxA(int4,char *,int4,int4);\nint4 __stdcall GetProcAddress(int4,int4);\n"
               "#define pcRam10094 (*(int4 *)0x10094)\n")         # globals are bound to their addresses
-    m = readable.Module({"sub_1": SAMPLE}, lambda address: "DllGetVersion" if address == 0x1000 else None)
+    m = readable.Readable(l2.module([l2.function("sub_1", SAMPLE)]), lambda address: "DllGetVersion" if address == 0x1000 else None)
     texts = {"before": SAMPLE, "after": m.function("sub_1")}
     env = watcom._ow_env(ow)
     out = {}

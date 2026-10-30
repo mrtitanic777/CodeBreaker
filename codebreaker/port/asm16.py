@@ -634,8 +634,17 @@ def merge(a, b):
 
 # ---------------------------------------------------------------- the module
 
-class Module:
-    offsets = {}                                            # ({label: (segment, offset)}: the old assembler's listing)
+def module(name, text):
+    """An assembler module's source file as its L2 Module: one MachineFragment, its text as written."""
+    from codebreaker.translate import l2
+    return l2.module([l2.fragment(text, name=name, syntax="masm", reason="hand-written")])
+
+
+class Port:
+    """The port of one assembler module. The module is its L2 Module (the one module model, l2.module):
+    its source a MachineFragment (syntax masm) -- or several, written as one file by the assembly back
+    end (backends/asm.py) -- which this reads and ports."""
+    offsets = {}                                          # ({label: (segment, offset)}: the old assembler's listing)
 
     def code_label(self, seg, value):
         """(label, distance) of a code address in a segment, by the old listing - None when it is none"""
@@ -714,11 +723,14 @@ class Module:
                 return False
         return False
 
-    def __init__(self, text, ctypes, cnames=(), pascal=(), cfuncs=None, asm_routines=(), underscore=True):
-        """text: the 16-bit source; ctypes: CTypes; cnames: the names the C program calls (to match the routines'
-        public names, in capitals for pascal ones); pascal: those it calls the pascal way; cfuncs: the C program's
-        functions (c_functions); asm_routines: the public routines of the program's other assembly modules"""
-        self.lines = parse(text)
+    def __init__(self, doc, ctypes, cnames=(), pascal=(), cfuncs=None, asm_routines=(), underscore=True):
+        """doc: the 16-bit module, as its L2 Module (module(name, text) makes one of a source file); ctypes:
+        CTypes; cnames: the names the C program calls (to match the routines' public names, in capitals for
+        pascal ones); pascal: those it calls the pascal way; cfuncs: the C program's functions (c_functions);
+        asm_routines: the public routines of the program's other assembly modules"""
+        from codebreaker.translate.backends import asm
+        self.doc = doc
+        self.lines = parse(asm.module(doc))
         self.cfuncs = cfuncs or {}
         self.data_used = set()
         for st_ in list(ctypes.old):                        # (the structures that begin with a pointer)

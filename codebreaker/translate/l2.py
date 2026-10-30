@@ -210,3 +210,90 @@ def validate(doc):
     """Raise jsonschema.ValidationError if `doc` is not L2."""
     import jsonschema
     jsonschema.Draft202012Validator(schema()).validate(doc)
+
+
+# ------------------------------------------------------------------------------------ the module model
+# A module, of any lane and whatever each part of it came back as, is one L2 Module document: its units
+# in order -- a function rebuilt as a tree (a MethodDecl with a body), one whose source is still text
+# (a MethodDecl with `text`), what stays machine code (a MachineFragment: its assembly, or only its name
+# and place), a comment at its place. Every lane's module is this one model (docs/ARCHITECTURE.md, "one
+# Module model"): the decompiler's (build/module.module_document), the readable pass's
+# (source/readable.Readable), the 16-bit port's (port/asm16.Port), a library's members
+# (exact/library.Member), and every assembly writer's (l2.Assembly, written by backends/asm.py).
+def module(units=(), header=None, origin=None):
+    """A Module document. -> {"node": "Module", "units": [...]}"""
+    d = {"node": "Module", "units": list(units)}
+    if header is not None:
+        d["header"] = header
+    if origin is not None:
+        d["origin"] = origin
+    return d
+
+
+def function(name, text=None, origin=None, comments=None, **fields):
+    """A function of a module: a MethodDecl (kind "function"), its source as `text` while it is not a tree."""
+    d = {"node": "MethodDecl", "name": name, "kind": "function"}
+    if origin is not None:
+        d["origin"] = origin
+    if comments is not None:
+        d["comments"] = list(comments)
+    if text is not None:
+        d["text"] = text
+    d.update(fields)
+    return d
+
+
+def fragment(asm=None, name=None, syntax=None, origin=None, reason=None, why=None, length=None, within=None):
+    """What stays machine code: a MachineFragment (L2_BINARY_TYPES.md section 7)."""
+    d = {"node": "MachineFragment"}
+    for k, v in (("origin", origin), ("name", name), ("reason", reason), ("why", why), ("length", length),
+                 ("syntax", syntax), ("asm", asm), ("within", within)):
+        if v is not None:
+            d[k] = v
+    return d
+
+
+def comment(text):
+    return {"node": "Comment", "text": text}
+
+
+def units(doc, node=None):
+    """The units of a Module document (those of one kind, given `node`)."""
+    us = doc.get("units") or []
+    us = us if isinstance(us, list) else [us]
+    return [u for u in us if node is None or u.get("node") == node]
+
+
+def texts(doc):
+    """{name: text} of a module's functions whose source is text, in their order."""
+    return {u["name"]: u["text"] for u in units(doc, "MethodDecl") if u.get("text") is not None}
+
+
+class Assembly(list):
+    """A module being written as assembly language, built as its L2 Module as it goes.
+
+        L = l2.Assembly(["; head ..."], syntax="nasm", module="lzexpand.dll")
+        L.append(...); L.extend(...)                 # lines, as to a list (every writer's helpers take one)
+        L.part("seg1", origin={"module": ..., "segment": 1, "offset": 0})   # the next fragment begins here
+        doc = L.document()                           # a Module of MachineFragments: backends/asm.py writes it
+
+    Each part() begins a MachineFragment at the next line; the lines before the first part are the
+    head's. A part with no lines is left out, so the fragments joined by a line break are the lines
+    joined, as they were written."""
+
+    def __init__(self, lines=(), syntax=None, module=None, name="head", reason="head"):
+        list.__init__(self, lines)
+        self.syntax, self.module = syntax, module
+        self._parts = [(0, name, reason, None, None)]
+
+    def part(self, name, reason="section", origin=None, length=None):
+        self._parts.append((len(self), name, reason, origin, length))
+
+    def document(self):
+        out = []
+        ends = [p[0] for p in self._parts[1:]] + [len(self)]
+        for (start, name, reason, origin, length), end in zip(self._parts, ends):
+            if end > start:
+                out.append(fragment("\n".join(self[start:end]), name=name, syntax=self.syntax, origin=origin,
+                                    reason=reason, length=length))
+        return module(out)

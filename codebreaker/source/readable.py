@@ -1,8 +1,10 @@
 """readable.py -- names in place of numbers and placeholders, in a function's written source.
 
     from codebreaker.source import readable
-    r = readable.Module(texts, string_at)      texts: {function name: C text}, the whole module;
-                                               string_at(address) -> the module's string there, or None
+    r = readable.Readable(doc, string_at)      doc: the whole module, as its L2 Module (l2.module: each
+                                               function a MethodDecl whose `text` is its C; the header
+                                               the Module's); string_at(address) -> the module's string
+                                               there, or None
     text = r.function(name)                    the text with the names below written in
     r.constants_used                           {NAME: value} of the SDK constants written in
     readable.calls_hint(text)                  "registry: RegOpenKeyExA, RegQueryValueExA" or ""
@@ -39,6 +41,7 @@ import os
 import re
 
 from codebreaker.symbols import prototypes
+from codebreaker.translate import l2
 
 # (function without its A/W ending, lower case; parameter name) -> (prefixes, "flags" | "enum")
 FAMILIES = {
@@ -347,12 +350,17 @@ def _struct_vars(text):
     return {v: next(iter(t)) for v, t in seen.items() if len(t) == 1 and None not in t}
 
 
-class Module(object):
-    def __init__(self, texts, string_at=None, header=""):
-        self.texts = texts
+class Readable(object):
+    """The readable pass over one module. The module is its L2 Module (the one module model,
+    l2.module): its functions' C is read from their MethodDecls' `text` (the passes here are still
+    text passes) and its header from the Module's."""
+
+    def __init__(self, doc, string_at=None):
+        self.doc = doc
+        self.texts = l2.texts(doc)
         self.string_at = string_at or (lambda address: None)
         self.structs_used = set()
-        self._header_text = header
+        self._header_text = doc.get("header") or ""
         self.constants_used = {}
         self.globals = self._global_names()
 

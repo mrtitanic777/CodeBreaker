@@ -184,17 +184,19 @@ def _node(name, slots, fields=None, base=Node):
 
 
 # -- declarations
-Module = _node('Module', ['units'])                                   # a whole program
+Module = _node('Module', ['units', 'header'], ['units'])              # a whole program, or one binary's module
+# (header: its declarations as text, where they are not yet a tree -- l2.module, the one module model)
 Unit = _node('Unit', ['path', 'package', 'imports', 'types'], ['types'])
 ClassDecl = _node('ClassDecl', ['name', 'qname', 'kind', 'mods', 'typeparams', 'extends', 'implements',
                                 'members', 'outer'], ['members'])
 # (a C struct, a frame, a data segment with a fixed layout is a 'record' Type, beside ClassDecl)     # kind: class interface enum record annotation
 FieldDecl = _node('FieldDecl', ['sym', 'type', 'init', 'mods'], ['init'])
 MethodDecl = _node('MethodDecl', ['sym', 'name', 'kind', 'params', 'ret', 'body', 'mods', 'throws', 'typeparams',
-                                  'comments'], ['params', 'body'])
+                                  'comments', 'text'], ['params', 'body'])
 # kind: method ctor static_init init, or function (a free function: C, a decompiled binary). A function
 # whose type carries a calling convention (an 'fn' Type) has it on sym.type, where callers read it too.
-# comments: the text of each comment written above it (a decompiler's warnings).
+# comments: the text of each comment written above it (a decompiler's warnings). text: its source as
+# text where its tree is not yet written (the C a function store holds).
 Param = _node('Param', ['sym', 'type', 'mods'], [])
 EnumConst = _node('EnumConst', ['sym', 'args', 'body', 'ctor'], ['args', 'body'])
 

@@ -546,7 +546,7 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
     routines, externs = {}, {}                              # (each module's public routines: the others call them)
     for n, t in asm.items():
         if roles[n][0] == "code":
-            m0 = asm16.Module(t, ct, cnames=calls)
+            m0 = asm16.Port(asm16.module(n, t), ct, cnames=calls)
             routines[n] = {p for p in m0.public if p in m0.labels}
             externs[n] = set(m0.extrn)
     for n, t in sorted(asm.items(), key=lambda x: (roles[x[0]][0] != "data", x[0])):   # (the data first: the
@@ -583,7 +583,7 @@ def asm_modules(port, out, res, asm, paths, roles, profile, opt, compilers):
             continue
         if role != "code":
             continue
-        m = asm16.Module(t, ct, cnames=calls, cfuncs=cfuncs,
+        m = asm16.Port(asm16.module(n, t), ct, cnames=calls, cfuncs=cfuncs,
                          asm_routines=set().union(*[r for k, r in routines.items() if k != n]),
                          underscore=profile.get("c_underscore", True))
         m.used_outside = set().union(*[e for k, e in externs.items() if k != n])

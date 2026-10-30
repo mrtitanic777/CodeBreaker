@@ -2942,6 +2942,17 @@
       "type": "string"
      },
      "description": "comments written above the declaration (a decompiler's warnings), each as its text"
+    },
+    "text": {
+     "description": "the function's source as text, where its tree is not yet written (the C a function store holds, which the text passes of source/readable.py read)",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     }
    },
    "additionalProperties": false,
@@ -3035,6 +3046,17 @@
       },
       {
        "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "header": {
+     "description": "the module's declarations as text (the header its functions' C is compiled with), where they are not yet a tree",
+     "anyOf": [
+      {
+       "type": "string"
       },
       {
        "type": "null"

@@ -35,14 +35,30 @@ from codebreaker.exact import omf
 W = lambda b, k: struct.unpack_from("<H", b, k)[0]
 
 
-class Module(object):
+class Member(object):
+    """One module of a library (an object module in a .LIB). What it holds is its L2 Module (the one
+    module model, l2.module): each public name a MachineFragment at its place (origin: the member,
+    its segment's number among the member's segments, the offset) -- code or data the program links
+    byte for byte. The bytes themselves, the places the linker fills in (holes) and the segments'
+    lengths are the object's facts, read from it (omf.read): .code, .data, .seglen."""
+
     def __init__(self, tag, name, raw, rank):
+        from codebreaker.translate import l2
         self.tag, self.name, self.raw, self.rank = tag, name, raw, rank
         self.o = o = omf.read(raw)
         self.code = [(s, o.seg[s][:o.filled.get(s, 0)], omf.holes(o, s)) for s in omf.code_segments(o) if o.filled.get(s)]
         d = o.seg.get("_DATA", b"")[:o.filled.get("_DATA", 0)]
         self.data = (d, omf.holes(o, "_DATA")) if d else None
-        self.pubs = {n: (s, off) for n, s, off in o.pubs}
+        self.segments = [x[0] for x in o.segs]
+        for _n, s, _off in o.pubs:
+            if s not in self.segments:
+                self.segments.append(s)
+        self.l2 = l2.module([l2.fragment(name=n, reason="library", why=s,
+                                         origin={"module": self.label, "segment": self.segments.index(s), "offset": off})
+                             for n, s, off in o.pubs])
+        # {public name: (its segment, its offset)}, read from the member's L2 Module
+        self.pubs = {u["name"]: (self.segments[u["origin"]["segment"]], u["origin"]["offset"])
+                     for u in self.l2["units"]}
 
     @property
     def label(self):
@@ -83,7 +99,7 @@ def modules(prj):
     for rank, (tag, path) in enumerate(candidates(prj)):
         for name, raw in omf.library(open(path, "rb").read()):
             try:
-                out.append(Module(tag, name, raw, rank))
+                out.append(Member(tag, name, raw, rank))
             except Exception:                               # (a record this reader does not know: not a candidate)
                 pass
     return out
@@ -483,7 +499,7 @@ def _objects(prj, img, dg):
     out = []
     for x in tc.p.get("objects", {}).get(prj.cfg.get("model", "S"), []):
         try:
-            m = Module("", x.split("/")[-1], open(toolchain.kit_path(tc.p["kit"], x), "rb").read(), -1)
+            m = Member("", x.split("/")[-1], open(toolchain.kit_path(tc.p["kit"], x), "rb").read(), -1)
         except OSError:
             continue
         if m.code and len(m.code[0][1]) - len(m.code[0][2]) >= 3:

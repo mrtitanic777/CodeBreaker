@@ -31,6 +31,12 @@ source/dos_writer.py) with the same status counts at its head; a Java program (a
 source) as the C++ folder it transpiles to (source/java_writer.py). Where a module's files go in the
 source tree is source/placement.py's business.
 
+The files are written by a back end (translate/backends/module_file.py) from the module as one L2
+tree -- each function a MethodDecl holding its C and its status line, one with no reconstruction a
+Comment; a driver's or a real-mode program's source a MachineFragment -- and the store's facts for
+the status at the head. The readable pass (source/readable.py) reads the module as the store holds
+it, as an L2 tree too.
+
 Nothing is counted as progress except what these labels say. Everything written here is read
 from the function store, so the file and the scoreboard cannot disagree with the results.
 """
@@ -43,6 +49,8 @@ from codebreaker.decompile import describe as description
 from codebreaker.formats import detect
 from codebreaker.store import functions as F
 from codebreaker.symbols import demangle, names
+from codebreaker.translate import l2
+from codebreaker.translate.backends import module_file
 
 WHY = {
     "ret-differs": "returns a different value",
@@ -172,19 +180,15 @@ def write_assembly(path, fs, sha, digest, out_dir, log=print):
     text = fs.get_text(sha, reconstruct.SOURCE, "header") or ""
     best = fs.best(sha, digest)
     how = next((r.get("detail") for r in best.values() if r.get("detail")), "")
-    banner = ["; %s -- reconstructed source." % name, ";",
-              "; STATUS, generated %s by CodeBreaker (verifier settings %s)." % (time.strftime("%Y-%m-%d"), digest),
-              "; %d entry points or functions:" % total]
-    banner += [";   %-28s %5d  %5.1f%%" % (TITLE[c], counts[c], 100.0 * counts[c] / max(1, total)) for c in ORDER]
-    if how:
-        banner += [";", "; " + how[:160]]
-    for va in fs.addresses(sha):
-        row = best.get(va)
-        if row and row["class"] not in ("verified",):
-            banner.append(";   %-10s %-28s %s %s" % (va, row["name"] or "", TITLE[row["class"]], describe(row)))
+    rows = [(va, best[va]["name"] or "", TITLE[best[va]["class"]], describe(best[va])) for va in fs.addresses(sha)
+            if best.get(va) and best[va]["class"] not in ("verified",)]
+    # the module as one L2 tree (its source, kept as its instructions), the status the store's facts
+    doc = l2.module([l2.fragment(text, name=stem, syntax="masm", reason="the module's whole source")] if text else [])
+    facts = dict(name=name, date=time.strftime("%Y-%m-%d"), digest=digest, order=ORDER, titles=TITLE,
+                 counts=counts, total=total, how=how, rows=rows)
     out = os.path.join(out_dir, stem + ".asm")
     with open(out, "w", encoding="latin1", errors="replace", newline="\r\n") as f:
-        f.write("\n".join(banner) + "\n;\n" + (text or "; (no source could be written)\n"))
+        f.write(module_file.asm(doc, facts))
     log("%s: %s" % (out, ", ".join("%s %d" % (TITLE[c], counts[c]) for c in ORDER if counts[c])))
     return out, counts, total
 
@@ -271,9 +275,13 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
     from codebreaker.source import readable
     texts = {va: spell.sub(lambda m: sub[m.group(1)], r["source"]) if spell else r["source"]
              for va, r in best.items() if r.get("source")}
-    words = readable.Module(texts, _string_reader(path, kind), fs.get_text(sha, reconstruct.SOURCE, "header") or "")
+    # the module as the store holds it, one L2 tree (each function's C as text, the header the module's),
+    # through the readable pass; then the module as it is written, each function under its status line
+    stored = l2.module([l2.function(va, text) for va, text in texts.items()],
+                       header=fs.get_text(sha, reconstruct.SOURCE, "header") or "")
+    words = readable.Readable(stored, _string_reader(path, kind))
     counts = dict.fromkeys(ORDER, 0)
-    parts = []
+    units = []
     for va in addrs:
         row = best.get(va)
         said = []
@@ -281,9 +289,9 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             said.append("exported as %s: %s" % (exported[va], demangle.readable(exported[va])))
         if not row:
             counts[F.IDENTIFIED if va in known else "no-source"] += 1
-            parts.append("/* [%s] %s@ %s -- %s */\n" % (
+            units.append(l2.comment("[%s] %s@ %s -- %s" % (
                 TITLE[F.IDENTIFIED if va in known else "no-source"], known[va][0] + "  " if va in known else "", va,
-                "; ".join(([known[va][1]] if va in known else []) + said + ["not measured on the current verifier"])))
+                "; ".join(([known[va][1]] if va in known else []) + said + ["not measured on the current verifier"]))))
             continue
         cls = row["class"]
         detail = describe(row)
@@ -304,47 +312,19 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
                 said.append(hint)
         if va not in exported and (row["name"] or "") in words.results_unused():
             said.append("no caller here uses what it returns")
-        parts.append("/* [%s] %s  @ %s%s */\n%s\n" % (
-            TITLE[shown], shown_name, va, (" -- " + "; ".join(said)) if said else "", source))
+        units.append(l2.function(shown_name, source, comments=["[%s] %s  @ %s%s" % (
+            TITLE[shown], shown_name, va, (" -- " + "; ".join(said)) if said else "")]))
     total = len(addrs)
-    banner = ["/* %s -- reconstructed source." % name, " *",
-              " * STATUS, generated %s by CodeBreaker (verifier settings %s)." % (time.strftime("%Y-%m-%d"), digest),
-              " * %d functions:" % total]
-    for cls in ORDER:
-        banner.append(" *   %-28s %5d  %5.1f%%" % (TITLE[cls], counts[cls], 100.0 * counts[cls] / max(1, total)))
     whole = None
     if build_whole:
         from codebreaker.build import module as whole_module
         whole = whole_module.build(path, outdir=os.path.join(out_dir, "build"), call=False, log=lambda s: None)
-    if whole and whole.linked:
-        banner += [" *", " * Builds as a whole module: YES (%s). Every original export is present; a function the" % (
-            "all the original's exports match" if whole.exports_same == whole.exports_total else
-            "%d of %d exports match" % (whole.exports_same, whole.exports_total)),
-            " * compiler rejected, or a call to code with no reconstruction, is a stand-in that returns 0",
-            " * (%d rejected, %d absent). The built image is %s." % (
-                len(whole.rejected), len(whole.absent), os.path.join(out_dir, "build", stem + os.path.splitext(name)[1])),
-            " * Runs in place of the original: NOT TESTED as a whole.", " *"]
-    else:
-        banner += [
-            " *", " * Builds as a whole module: " + ("NOT YET (%s)." % whole.error if whole else
-                  "not built here (run `codebreaker build %s`)." % name),
-            " * Functions are compiled and checked one at a time; the module's data (globals, tables,",
-            " * resources) is referred to by its address in the original unless the whole module is built.",
-            " * Runs in place of the original: NOT TESTED.", " *",
-        " * VERIFIED = rebuilt from this text with %s and run beside the original in %s:" % (
-            ("a PowerPC compiler", "a PowerPC interpreter") if kind == "powerpc" else ("OpenWatcom", "an x86 emulator")),
-        " * same return value, same calls out of the module with the same arguments, same memory changed,",
-        " * same stack and saved registers, on every input tried. It is evidence, not proof. Names of",
-        " * internal functions (sub_...) and locals are placeholders; no original names are claimed.",
-        " * Written in after judging, changing no code: the SDK's names for constants passed to",
-        " * Windows (with their values in %s.h), and names for locals, parameters and globals" % stem,
-        " * taken from the Windows functions they are passed to or hold the result of.",
-        " * IDENTIFIED = the function's bytes are those of a function in a library that came with the",
-        " * compiler; it is named after that function. It is reconstructed and judged all the same."]
-    if real:
-        banner += [" * Imports by number are written with their real names (%d of them; %s.h lists the" % (len(real), stem),
-                   " * module and number of each). The text that was built and judged calls them MODULE_number."]
-    banner += [" */", ""]
+    facts = dict(name=name, stem=stem, date=time.strftime("%Y-%m-%d"), digest=digest, order=ORDER, titles=TITLE,
+                 counts=counts, total=total, kind=kind, real=len(real), whole=whole and dict(
+                     linked=whole.linked, error=getattr(whole, "error", None),
+                     exports_same=getattr(whole, "exports_same", 0), exports_total=getattr(whole, "exports_total", 0),
+                     rejected=len(getattr(whole, "rejected", ()) or ()), absent=len(getattr(whole, "absent", ()) or ()),
+                     built=os.path.join(out_dir, "build", stem + os.path.splitext(name)[1])))
     header = fs.get_text(sha, reconstruct.SOURCE, "header")
     if header:
         if spell:
@@ -362,18 +342,13 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
             f.write("/* %s -- types, declarations and globals used by the functions in %s.c.\n"
                     " * Globals are bound to their addresses in the original until the module's data is\n"
                     " * reconstructed. */\n\n" % (name, stem) + header)
-        banner.append('#include "%s.h"' % stem)
-    banner.append("")
-    out = os.path.join(out_dir, stem + ".c")
-    pieces = [parts] if not split or len(parts) <= split else [parts[k:k + split] for k in range(0, len(parts), split)]
-    for n, piece in enumerate(pieces):
-        target = out if len(pieces) == 1 else os.path.join(out_dir, "%s_%d.c" % (stem, n + 1))
-        head = banner if n == 0 else ["/* %s -- reconstructed source, part %d of %d (the status is in %s_1.c). */" % (
-            name, n + 1, len(pieces), stem), ""] + [ln for ln in banner if ln.startswith("#include")] + [""]
-        with open(target, "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(head) + "\n" + "\n".join(piece))
-    if len(pieces) > 1:
-        out = os.path.join(out_dir, "%s_1.c" % stem)
+    facts["header"] = bool(header)
+    # the C, written by its back end from the module's tree and the store's facts
+    files = module_file.c(l2.module(units), facts, split)
+    for target, text in files:
+        with open(os.path.join(out_dir, target), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+    out = os.path.join(out_dir, files[0][0])
     # the module's C++ classes, each virtual function tied to the function above that implements it
     from codebreaker.source import classes_writer
 
