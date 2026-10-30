@@ -288,55 +288,6 @@ def _struct_decls(structs, header, far16=False):
     return lines
 
 
-_GAP_FIELD = re.compile(r"field_0x([0-9a-f]+)")
-
-
-def _struct_gaps(text, distance=None):
-    """`&p->field_0x1` -- the core's name for an offset of a recovered structure that holds no
-    field of it (`p` stepped a byte along, `p + 4` read where nothing else is): the bytes at that
-    offset, `((uint1 *)p + 0x1)`, and `p->field_0x1` the byte there. With `.` the same from the
-    structure's own address: `&p[1].field_0x4` (past its end) is `((uint1 *)&(p[1]) + 0x4)`.
-    `distance` (16-bit): {variable: "far" or "near"} -- the byte pointer keeps the variable's
-    distance (`uint1 __far *` for a far one); where the base is no variable of known distance the
-    offset is left as it is."""
-    if "field_0x" not in text:
-        return text
-    for _ in range(4):                                   # (one inside another: the outer first)
-        src = ctree.Source(text)
-        taken = []
-        for f in src.find("field_expression"):
-            name = f.child_by_field_name("field")
-            mm = _GAP_FIELD.fullmatch(src.at(name)) if name is not None else None
-            op = f.child_by_field_name("operator")
-            if not mm or op is None or src.at(op) not in ("->", ".") or \
-                    any(s <= f.start_byte and f.end_byte <= e for s, e in taken):
-                continue
-            arg = src.at(f.child_by_field_name("argument"))
-            ptr = "uint1 *"
-            if distance is not None:
-                root = re.match(r"\(*(\w+)", arg)
-                d = distance.get(root.group(1)) if root else None
-                cast = re.match(r"\(+\s*\w+\s*(__far\s*)?\*\s*\)", arg)    # (a cast says its own distance)
-                if cast:
-                    d = "far" if cast.group(1) else "near"
-                if d is None:
-                    continue                                 # (a base of unknown distance: as it was)
-                ptr = "uint1 __far *" if d == "far" else "uint1 *"
-            if src.at(op) == ".":
-                arg = "&(%s)" % arg
-            up = f.parent
-            if up is not None and up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "&":
-                src.replace(up, "((%s)(%s) + 0x%s)" % (ptr, arg, mm.group(1)))
-                taken.append((up.start_byte, up.end_byte))
-            else:
-                src.replace(f, "(*((%s)(%s) + 0x%s))" % (ptr, arg, mm.group(1)))
-                taken.append((f.start_byte, f.end_byte))
-        if not taken:
-            break
-        text = src.text()
-    return text
-
-
 def _code_pointers(text, functions):
     """`p = sub_401000;` -- a function's address stored in a pointer the core typed loosely:
     `p = (code *)sub_401000;` (where the statement ends its line)."""
@@ -1620,7 +1571,6 @@ def compilable_powerpc(module_path, outdir):
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         t = out[n].strip()
-        t = _struct_gaps(t)                      # an offset of a recovered structure with no field
         t = _pieces(t, _BY_SIZE, "uint4", lambda x, off, ty: "PIECE(%s, %s, %s)" % (x, off, ty))
         t = _compare_as_numbers(t)
         t = _code_pointers(t, set(order))
