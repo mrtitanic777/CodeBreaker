@@ -399,59 +399,24 @@ def compilable32(module_path, funcs, outdir):
     sizes, in_ecx, in_edx = {}, set(), set()
     own = {}                                  # function -> address of a global -> bytes of its uses there
     struct_notes = []                         # the structures the decompiler recovered (its facts)
+    struct_sizes = {}                         # function -> the sizes of those recovered up to it
+    named = {}                                # function -> what its tree names (backends/c.module_names32)
     for n in order:
         facts = got.notes.get(n) or {}
         struct_notes += facts.get("structs") or []
+        struct_sizes[n] = _struct_sizes(struct_notes)
         for va, size, _elem in facts.get("globals") or ():
             sizes.setdefault(va, set()).add(size)
             own.setdefault(n, {}).setdefault(va, set()).add(size)
-        written = {}                              # (what the back end found of the function as it wrote it)
         if facts.get("l2") is not None:
-            written["functions"] = set(order)
-            written["struct_sizes"] = _struct_sizes(struct_notes)      # (the frame structure: backends/c._keep_frame)
-            out[n] = decompiler.c_from_l2(out[n], facts, None, written)
-        if facts.get("l2") is not None and not facts.get("from_l2"):
-            # (a function the back end declines -- a node it does not write -- is one the
-            # decompiler could not make, as one whose decompile failed: no C, so no declaration,
-            # and the build stands something in for it)
-            out[n] = "/* %s: its C could not be written from L2 */" % n
-        # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
-        # is not part of it: left in, it became the function's declaration and broke the header)
-        t = _without_notes(out[n].strip())
-        # every function returns a value in EAX whether or not the core saw it used; the compiler
-        # used here has no word for "first argument in ECX": the function is declared plainly, and
-        # a #pragma in the header says where its first argument is (both the back end's:
-        # backends/c._result_shown, _register_arguments)
-        if written.get("registers") == "ecx":
-            in_ecx.add(n)
-        elif written.get("registers") == "edx":
-            in_edx.add(n)
-        out[n] = t
-    text = "\n".join(out.values())
-    macros = []
-    underscored = {"_" + "%sRam%s" % g for t in out.values() for g in
-                   (m2.groups() for m2 in (re.fullmatch(r"_([a-z]+)Ram([0-9a-f]{8})", n2) for n2 in _identifiers(t)) if m2)}
+            named[n] = cback.module_names32(facts["l2"])
+    # What the module decides over all of its functions, from their trees before any is written:
     # a global the code calls through holds a function pointer, whatever else it is compared with
-    called_through = set().union(*(_called_through(t) for t in out.values())) if out else set()
-    # A global the decompiler named as a number but reads through (`*iRam..`, `iRam..[n]`) is
-    # read through as a pointer THERE; it stays a number everywhere else, where it is added to
-    # and compared as one. (Declaring it a pointer would change what `iRam.. + 4` means.)
-    kind = {"i": "int4", "u": "uint4", "x": "xunknown4"}
-
-    def through(src):
-        for n in src.find("identifier"):
-            name = src.at(n)
-            if not _RAM.fullmatch(name) or name in called_through or name[0] not in kind:
-                continue
-            up = n.parent
-            if up.type == "pointer_expression" and src.at(up.child_by_field_name("operator")) == "*":
-                src.replace(n, "(%s *)%s" % (kind[name[0]], name))
-            elif up.type == "subscript_expression" and up.child_by_field_name("argument") == n:
-                src.replace(n, "((%s *)%s)" % (kind[name[0]], name))
-    for n in order:
-        out[n] = ctree.rewrite(out[n], through)
-    text = "\n".join(out.values())
-    for pre, addr in sorted(set().union(*(_globals(t) for t in out.values())) if out else ()):
+    called_through = set().union(*(x["called_through"] for x in named.values())) if named else set()
+    names = set().union(*(x["names"] for x in named.values())) if named else set()
+    underscored = {n2 for n2 in names if re.fullmatch(r"_([a-z]+)Ram([0-9a-f]{8})", n2)}
+    macros, aliases = [], {}
+    for pre, addr in sorted({m2.groups() for m2 in (_RAM.fullmatch(n2) for n2 in names) if m2}):
         szs = sizes.get(int(addr, 16)) or {4}
         size = min(szs) if len(szs) > 1 and pre[0] in "cb" else max(s for s in szs if s <= 8) if any(s <= 8 for s in szs) else 4
         # `pc` is the decompiler's prefix for a pointer to char; a global is a code pointer
@@ -466,7 +431,7 @@ def compilable32(module_path, funcs, outdir):
             macros.append("#define _%sRam%s (*(%s *)0x%s)" % (pre, addr, ty, addr))
         # A function that uses the place at one width other than the declared one (a byte
         # stored where other functions read a word) uses it at its own width: the declared
-        # width would store, or read, the bytes beside it too.
+        # width would store, or read, the bytes beside it too (backends/c._global_now).
         if ty in _BY_SIZE.values() or re.fullmatch(r"int\d", ty):
             name = "%sRam%s" % (pre, addr)
             for n in order:
@@ -474,40 +439,58 @@ def compilable32(module_path, funcs, outdir):
                 if mine and len(mine) == 1 and min(mine) != size and min(mine) in _BY_SIZE:
                     w = min(mine)
                     alias = "%s_%d" % (name, w)
-                    out[n] = re.sub(r"(?<![A-Za-z0-9_])%s\b" % name, alias, out[n])
+                    aliases.setdefault(n, {})[name] = alias
                     m = "#define %s (*(%s *)0x%s)" % (alias, "int%d" % w if pre[0] == "i" else _BY_SIZE[w], addr)
                     if m not in macros:
                         macros.append(m)
+    # (a pointer-typed global compared with a number the decompiler cast to an integer is compared
+    # as the same integer: backends/c._same_cast)
+    pointers = {m.group(1) for m in re.finditer(r"#define (\w+Ram[0-9a-f]{8}) \(\*\([^()]*\* \*\)", "\n".join(macros))}
+    # (how many arguments each function's definition takes, of those not __cdecl: a call that
+    # passes another number is made through a pointer -- backends/c._fit_calls)
+    takes = {}
+    for n in order:
+        doc = (got.notes.get(n) or {}).get("l2")
+        k = cback.takes32(cback.signature(doc)) if doc is not None else None
+        if k is not None:
+            takes[n] = k
+    declared = {}
+    for n in order:
+        facts = got.notes.get(n) or {}
+        # (each function's C written from its L2 document here, with the module's facts: the back
+        # end's passes of the 32-bit path -- backends/c.FLAT -- and its part of the module's
+        # decisions)
+        written = {"functions": set(order), "struct_sizes": struct_sizes[n], "called_through": called_through,
+                   "aliases": aliases.get(n) or {}, "pointer_globals": pointers}
+        if facts.get("l2") is not None:
+            out[n] = decompiler.c_from_l2(out[n], facts, None, written)
+        if facts.get("l2") is not None and not facts.get("from_l2"):
+            # (a function the back end declines -- a node it does not write -- is one the
+            # decompiler could not make, as one whose decompile failed: no C, so no declaration,
+            # and the build stands something in for it)
+            out[n] = "/* %s: its C could not be written from L2 */" % n
+        if facts.get("from_l2"):
+            declared[n] = written["declared"]
+        # (a comment the core put before the function -- "WARNING: Removing unreachable block" --
+        # is not part of it: left in, it became the function's declaration and broke the header)
+        out[n] = _without_notes(out[n].strip())
+        # every function returns a value in EAX whether or not the core saw it used; the compiler
+        # used here has no word for "first argument in ECX": the function is declared plainly, and
+        # a #pragma in the header says where its first argument is (both the back end's:
+        # backends/c._result_shown, _register_arguments)
+        if written.get("registers") == "ecx":
+            in_ecx.add(n)
+        elif written.get("registers") == "edx":
+            in_edx.add(n)
     text = "\n".join(out.values())
-    # a pointer-typed global compared with a number the decompiler cast to an integer
-    # (`(uint4)pcVar3 != pcRam004094b0`, `(uint4)piVar3 == piRambff4b328`) is compared as the
-    # same integer, whatever it points to
-    pointers = [m.group(1) for m in re.finditer(r"#define (\w+Ram[0-9a-f]{8}) \(\*\([^()]*\* \*\)", "\n".join(macros))]
-    if pointers:
-        pset = set(pointers)
-
-        def same_cast(src):
-            for b in src.find("binary_expression"):
-                if b.child_by_field_name("operator").type not in _COMPARISONS:
-                    continue
-                left, right = b.child_by_field_name("left"), b.child_by_field_name("right")
-                for g, other in ((right, left), (left, right)):
-                    if g.type == "identifier" and src.at(g) in pset and other.type == "cast_expression":
-                        ty = src.at(other.child_by_field_name("type"))
-                        if re.fullmatch(r"u?int\d", ty) and re.fullmatch(r"[\w.>\-]+", src.at(other.child_by_field_name("value"))):
-                            src.insert(g.start_byte, "(%s)" % ty)
-                            break
-        for n in order:
-            out[n] = ctree.rewrite(out[n], same_cast)
-        text = "\n".join(out.values())
-    called = set().union(*(_called(t) for t in out.values())) if out else set()
+    called = set().union(*(x["calls"] for x in named.values())) if named else set()
     used = sorted(n for n in called if n in imports and n not in out)
     decls = []
     for n in used:
         pop = numbered[n][2] if n in numbered else apiarity.stack_bytes(imports[n], n)
         decls.append("int %s %s();" % ("__cdecl" if pop == 0 else "__stdcall", n))
     for n in order:                                    # each function, declared before any use
-        head = " ".join(out[n].split("{", 1)[0].split())
+        head = declared.get(n, "")
         if not head.endswith(")"):
             continue
         if "__cdecl" in head:

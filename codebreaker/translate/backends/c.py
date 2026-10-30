@@ -33,7 +33,7 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
          "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-         "compare_as_numbers", "keep_frame")
+         "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
@@ -41,18 +41,18 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
              "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-             "compare_as_numbers", "keep_frame")
+             "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")
 FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers",
-        "compare_as_numbers", "keep_frame")
+        "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")
 # ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
 # C is the module's, given its facts)
-FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame")      # (... and the 32-bit path alone has)
+FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")      # (... and the 32-bit path alone has)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
         "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set(),
-        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": [], "seg_ptrs": [], "frame": set()}
+        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": [], "seg_ptrs": [], "frame": set(), "alias": {}}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -811,6 +811,9 @@ def _push(st, e, paren=None):
         if name in _now['frame'] and (e.get('sym') or {}).get('kind') != 'field':
             # (a local of the frame structure, written after the lines are laid out: _keep_frame)
             st.atom(name, '((int4)&_f + (int4)sizeof(_f))' if name == _ENTRY_SP else '_f.' + name, node=e)
+            return
+        if name in _now['alias']:                        # (a global at this function's own width: _global_now)
+            st.atom(name, _now['alias'][name], node=e)
             return
         st.atom(name, _mk_fp_text('codebreaker_ss()', e, shown=name) if _now['marks'].get(id(e)) == '_ss' else None,
                 node=e)
@@ -3893,6 +3896,129 @@ def _keep_frame(nodes, _arrays):
     _now['frame'] = names | ({_ENTRY_SP} if esp else set())
 
 
+# ---------------------------------------------------------------------------------------------- the 32-bit module's globals
+# What compilable32 decides over the whole module -- which globals are called through, read through
+# as pointers, used at another width, compared as numbers -- is decided from every function's tree
+# before any is written (module_names32), and each function written with its part of it (the facts'
+# "called_through", "aliases", "pointer_globals", "takes").
+_THROUGH = {"i": "int4", "u": "uint4", "x": "xunknown4"}
+_C_PRIMITIVE = ("char", "short", "int", "long", "unsigned", "signed", "double", "float", "void", "bool")
+
+
+def module_names32(doc):
+    """What a 32-bit function's tree names, as its text will: {'names': every name it writes
+    (its variables, globals and the functions it calls), 'calls': the functions it calls by name,
+    'called_through': the globals it calls through, `(*xRam0040c000)(...)`}."""
+    names, calls, through = set(), set(), set()
+    for e, _p in _walk(doc.get('body')):
+        if e['node'] == 'Name':
+            names.add(_name(e))
+        elif e['node'] == 'Call':
+            t = e.get('target')
+            if t is None:
+                n = (e.get('sym') or {}).get('name')
+                if n:
+                    names.add(n)
+                    calls.add(n)
+            elif t.get('node') == 'Name':
+                calls.add(_name(t))
+            elif t.get('node') == 'Unary' and t.get('op') == '*' and not t.get('postfix') and \
+                    t['x'].get('node') == 'Name' and _RAM.fullmatch(_name(t['x'])):
+                through.add(_name(t['x']))
+    return {'names': names, 'calls': calls, 'called_through': through}
+
+
+def _read_through(u, parent):
+    """Is the `*` of `u` a pointer expression as c_text's parser read the text -- not after a
+    cast to a type it did not know with no `*` (`(int4)*p`, which it read as a product)?"""
+    up = parent.get(id(u))
+    if up is not None and up.get('node') == 'Cast' and up.get('x') is u and id(up) not in _now['whole']:
+        ty = _cast_type(up)
+        return '*' in ty or ty.split()[-1] in _C_PRIMITIVE
+    return True
+
+
+def _globals_through(nodes, _arrays):
+    """A global the decompiler named as a number but reads through (`*iRam..`, `iRam..[n]`) is read
+    through as a pointer THERE -- `*(int4 *)iRam..`, `((int4 *)iRam..)[n]` -- and stays a number
+    everywhere else, where it is added to and compared as one (compilable32's `through`). Not one
+    the module calls through: that one holds a function pointer (the facts' "called_through")."""
+    called = _now['facts'].get('called_through')
+    if called is None:
+        return
+    parent = {id(e): p for e, p in nodes}
+    for e, p in nodes:
+        if e['node'] != 'Name' or id(e) in _now['whole'] or p is None or id(p) in _now['whole']:
+            continue
+        nm = _name(e)
+        if not _RAM.fullmatch(nm) or nm in called or nm[0] not in _THROUGH:
+            continue
+        kind = _THROUGH[nm[0]]
+        if p.get('node') == 'Unary' and p.get('op') == '*' and not p.get('postfix') and _read_through(p, parent):
+            _rewrite(e, lambda x, k=kind: '(%s *)%s' % (k, _global_now(_name(x))))
+        elif p.get('node') == 'Index' and p.get('arr') is e:
+            _rewrite(e, lambda x, k=kind: '((%s *)%s)' % (k, _global_now(_name(x))))
+
+
+def _global_now(name):
+    """A global's name as the function writes it: at its own width, where it uses the place at one
+    width other than the module's (the facts' "aliases": `iRam0040c000_2`)."""
+    return _now['alias'].get(name, name)
+
+
+def _same_cast(nodes, _arrays):
+    """A pointer-typed global compared with a number the decompiler cast to an integer
+    (`(uint4)pcVar3 != pcRam004094b0`) is compared as the same integer, whatever it points to
+    (compilable32's `same_cast`; the facts' "pointer_globals")."""
+    pointers = _now['facts'].get('pointer_globals')
+    if not pointers:
+        return
+    for e, _p in nodes:
+        if e['node'] != 'Binary' or e.get('op') not in _COMPARISONS or id(e) in _now['whole']:
+            continue
+        for g, other in ((e['right'], e['left']), (e['left'], e['right'])):
+            if g.get('node') != 'Name' or id(g) in _now['whole'] or _name(g) not in pointers:
+                continue
+            ty = value = None
+            if id(other) in _now['whole']:
+                m = re.fullmatch(r"\(\s*(\w+)\s*\)(.*)", expr(other), re.S)
+                if m:
+                    ty, value = m.group(1), m.group(2)
+            elif other.get('node') == 'Cast':
+                ty, value = _cast_type(other), expr(other['x'])
+            if ty and re.fullmatch(r"u?int\d", ty) and re.fullmatch(r"[\w.>\-]+", value):
+                _rewrite(g, lambda x, t=ty: '(%s)%s' % (t, _name(x)))
+                break
+
+
+def _fit_calls(nodes, _arrays):
+    """A call that passes another number of arguments than the function is defined with is made
+    through a pointer with the argument list left open, `((int4 (*)())f)(...)`: the decompiler
+    recovers each call on the evidence at that call, and a call the compiler refused lost the
+    whole calling function (compilable32's _fit_calls; the facts' "takes": {function: the
+    arguments its definition takes}, of those not __cdecl)."""
+    takes = _now['facts'].get('takes')
+    if not takes:
+        return
+    for e, _p in nodes:
+        if e['node'] != 'Call' or id(e) in _now['whole']:
+            continue
+        t = e.get('target')
+        if t is not None and t.get('node') == 'Name' and id(t) not in _now['whole'] and _name(t) in takes and \
+                len(e.get('args') or ()) != takes[_name(t)]:
+            _rewrite(t, lambda x: '((int4 (*)())%s)' % _name(x))
+
+
+def takes32(signature):
+    """How many arguments a 32-bit function's definition takes, as compilable32 counted them in
+    its heading (`signature`: the heading as written) -- None for one that is __cdecl."""
+    head = signature
+    if "__cdecl" in head or "(" not in head:
+        return None
+    inside = head[head.index("(") + 1:head.rindex(")")].strip() if ")" in head else ""
+    return 0 if inside in ("", "void") else inside.count(",") + 1
+
+
 def _raw_now(x):
     """`x` as it is written now, its own rewrite aside (a rewrite of it written around it)"""
     _now['bare'].add(id(x))
@@ -3926,7 +4052,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
            ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads),
            ("names_used", _names_used), ("heading_facts", _heading_facts), ("code_pointers", _code_pointers),
-           ("compare_as_numbers", _compare_as_numbers), ("keep_frame", _keep_frame))
+           ("compare_as_numbers", _compare_as_numbers), ("keep_frame", _keep_frame),
+           ("globals_through", _globals_through), ("same_cast", _same_cast), ("fit_calls", _fit_calls))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -4067,6 +4194,7 @@ def function(doc, moved=(), far=None, facts=None):
         if 'far' in _now['moved'] else set()
     _now['old_style'] = _old_style(doc) if 'open_arguments' in _now['moved'] else None
     _now['far_pointers'] = _far_pointers(locs) if 'far_addresses' in _now['moved'] else {}
+    _now['alias'] = dict(_now['facts'].get('aliases') or {}) if 'global_widths' in _now['moved'] else {}
     try:
         if 'far_from_stack' in _now['moved'] and _now['far']:
             _far_from_stack(doc.get('body'), locs)
@@ -4074,6 +4202,15 @@ def function(doc, moved=(), far=None, facts=None):
         for name, rule in _PASSES:
             if name in _now['moved']:
                 rule(nodes, arrays)
+        if not sixteen and facts is not None:
+            # (the heading as it is written, its words one space apart: the module declares the
+            # function with it -- compilable32)
+            em = _Pretty()
+            em.open_group()
+            em.tag_line()
+            _signature(em, doc)
+            em.close_group()
+            facts['declared'] = ' '.join(em.text().split())
         return _function(doc, locs)
     finally:
         _now['moved'], _now['far'], _now['marks'], _now['whole'], _now['bare'] = (), set(), {}, {}, set()
@@ -4083,7 +4220,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['at'], _now['top'], _now['virtual'], _now['ren'], _now['locals_text'] = {}, None, {}, {}, None
         _now['ss_casts'], _now['far_read'] = set(), set()
         _now['before'], _now['after'], _now['stmt_at'], _now['pops'] = {}, {}, {}, False
-        _now["declare_first"], _now["seg_ptrs"], _now["frame"] = [], [], set()
+        _now["declare_first"], _now["seg_ptrs"], _now["frame"], _now["alias"] = [], [], set(), {}
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")

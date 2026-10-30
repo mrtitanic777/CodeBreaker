@@ -812,5 +812,38 @@ def test_moved_keep_frame():
     assert '  s_f_p xStack_c;' in c.function(odd, c.MOVED, facts={})
     assert 'struct { s_f_p xStack_c; uint1 _rest[4]; } _f;' in \
         c.function(odd, c.MOVED, facts={'struct_sizes': {'s_f_p': 8}})
+
+
+def test_moved_32bit_globals():
+    """compilable32's rules over the module's globals on the tree, each function given its part of
+    what the module decided (module_names32): a global named as a number but read through is read
+    through as a pointer there, `*(int4 *)iRam..` (not after a cast the parser took for a product,
+    nor one the module calls through); one the function uses at another width is its alias; a
+    pointer global compared with a number cast to an integer is cast the same."""
+    i4 = {'kind': 'i32'}
+    deref = {'node': 'Unary', 'op': '*', 'x': name('iRam0040c000')}
+    body = [stmt({'node': 'Assign', 'target': name('a'), 'value': deref}),
+            stmt({'node': 'Assign', 'target': name('b'),
+                  'value': {'node': 'Index', 'arr': name('uRam0040c010'), 'index': lit(2)}}),
+            stmt({'node': 'Assign', 'target': name('d'),
+                  'value': {'node': 'Cast', 'type': i4, 'x': {'node': 'Unary', 'op': '*', 'x': name('iRam0040c000')}}}),
+            stmt({'node': 'Assign', 'target': name('e'), 'value': name('iRam0040c020')}),
+            stmt(binary('!=', {'node': 'Cast', 'type': {'kind': 'u32'}, 'x': name('pcVar3')}, name('pcRam004094b0'))),
+            stmt({'node': 'Call', 'target': {'node': 'Unary', 'op': '*', 'x': name('xRam0040c030')}, 'args': []})]
+    doc = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': i4,
+           'origin': {'module': '', 'va': 0x401000}, 'params': [], 'body': body}
+    named = c.module_names32(doc)
+    assert named['called_through'] == {'xRam0040c030'}
+    assert {'iRam0040c000', 'pcRam004094b0'} <= named['names']
+    facts = {'called_through': named['called_through'], 'aliases': {'iRam0040c020': 'iRam0040c020_2'},
+             'pointer_globals': {'pcRam004094b0'}}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '  a = *(int4 *)iRam0040c000;\n' in text
+    assert '  b = ((uint4 *)uRam0040c010)[2];\n' in text
+    assert '  d = (int4)*iRam0040c000;\n' in text          # (`(int4) * iRam..` to c_text's parser)
+    assert '  e = iRam0040c020_2;\n' in text
+    assert '  (uint4)pcVar3 != (uint4)pcRam004094b0;\n' in text
+    assert '  (*xRam0040c030)();\n' in text
+    assert '  a = *iRam0040c000;\n' in c.function(doc, c.MOVED)
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
