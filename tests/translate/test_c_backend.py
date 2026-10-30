@@ -755,6 +755,14 @@ def test_moved_32bit_heading():
     assert facts['registers'] == 'ecx'
     assert c.function(doc, c.MOVED).startswith('void __thiscall f(int4 *self)')
     assert c.function(dict(doc, mods=['__fastcall']), c.MOVED, facts=facts).startswith('int f(') and facts['registers'] == 'edx'
+    # an offset of a recovered structure that holds no field (compilable32's _struct_gaps): the
+    # byte there, counted from the structure's start as a byte pointer
+    rec = {'kind': 'class', 'name': 's_f_p'}
+    gap = {'node': 'Select', 'obj': {'node': 'Unary', 'op': '*', 'x': typed('p', ptr(rec))},
+           'sym': {'kind': 'field', 'name': 'field_0x4'}, 'type': {'kind': 'u8'}}
+    flat = dict(doc, mods=[], body=[stmt({'node': 'Assign', 'target': name('x'), 'value': gap})])
+    assert '  x = (*((uint1 *)(p) + 0x4));' in c.function(flat, c.MOVED, facts={})
+    assert '  x = p->field_0x4;' in c.function(flat, c.MOVED)
     sixteen_doc = sixteen([], [])
     assert c.function(sixteen_doc, c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()')
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)

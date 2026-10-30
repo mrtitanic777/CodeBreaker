@@ -505,7 +505,8 @@ def compilable32(module_path, funcs, outdir):
         t = _compare_as_numbers(_keep_frame(t, _struct_sizes(struct_notes)))
         # a function's address stored in a pointer the core typed loosely
         t = _code_pointers(t, set(order))
-        t = _struct_gaps(t)                      # an offset of a recovered structure with no field
+        if not facts.get("from_l2"):
+            t = _struct_gaps(t)                  # an offset of a recovered structure with no field
         # every function returns a value in EAX whether or not the core saw it used; the compiler
         # used here has no word for "first argument in ECX": the function is declared plainly, and
         # a #pragma in the header says where its first argument is (both the back end's for C

@@ -40,7 +40,7 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
              "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments")
-FLAT = ("pieces", "null_is_zero", "int_result", "register_arguments")
+FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments")
 # ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
 # C is the module's, given its facts)
 FLAT_ONLY = ("int_result", "register_arguments")      # (... and the 32-bit path alone has)
@@ -1809,8 +1809,10 @@ def _struct_gaps(nodes, _arrays):
     field of it: the bytes at that offset, `((uint1 *)(p) + 0x1)`, and `p->field_0x1` the byte
     there; with `.` the same from the structure's own address. The byte pointer keeps the base
     variable's distance (`uint1 __far *` for a far one); where the base is no variable of known
-    distance the offset is left as it is (c_text._struct_gaps)."""
-    if not _now['facts'].get('selector_structs'):
+    distance the offset is left as it is (c_text._struct_gaps). 32-bit: there is one distance, and
+    every such offset is so (compilable32's _struct_gaps)."""
+    flat = not _now['sixteen']
+    if not flat and not _now['facts'].get('selector_structs'):
         return
     distance = None
     parent = {id(e): p for e, p in nodes}
@@ -1819,7 +1821,7 @@ def _struct_gaps(nodes, _arrays):
         if not mm or id(e) in _now['whole']:
             continue
         if distance is None:
-            distance = _pointer_distances(_now['doc'])
+            distance = _pointer_distances(_now['doc']) if not flat else {}
         arrow = _arrow(e)
         base = e['obj']['x'] if arrow else e['obj']
         arg = _gap_base(e, base, False)
@@ -1828,6 +1830,8 @@ def _struct_gaps(nodes, _arrays):
         cast = re.match(r"\(+\s*\w+\s*(__far\s*)?\*\s*\)", arg)    # (a cast says its own distance)
         if cast:
             d = 'far' if cast.group(1) else 'near'
+        if flat:
+            d = 'near'
         if d is None:
             continue
         ptr = 'uint1 __far *' if d == 'far' else 'uint1 *'
