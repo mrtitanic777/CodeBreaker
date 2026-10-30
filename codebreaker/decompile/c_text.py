@@ -1610,10 +1610,10 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _entry_sp and _stack_arguments are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _entry_sp and _stack_arguments are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_far_casts(_far_addresses(text)))))))
+    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_far_casts(text))))))
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2032,7 +2032,8 @@ def _caller_frame_slots(texts, frames):
                     own = re.search(r"\b%s\(" % re.escape(n), t)
                     at = t.find("{\n", own.end() if own else 0)
                     t = t[:at] + "{\n  %s %s;\n" % (slots[less], local) + t[at + 2:]
-                args.append("(%s __far *)MK_FP(codebreaker_ss(),&%s)" % (slots[less], local))
+                # (the far address as the back end writes one: _far_addresses)
+                args.append("(%s __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &%s))" % (slots[less], local))
             out[n] = re.sub(r"\b%s\(\)" % re.escape(name), "%s(%s)" % (name, ",".join(args)), t)
     return out
 
@@ -2588,119 +2589,6 @@ def _shared_selector_structs(shared, texts):
     return out
 
 
-def _far_addresses(text, pointers=None):
-    """An address made of a segment the decompiler could not fold to a constant and an offset
-    (`MK_FP(seg, (T *)off)`, its printing) as a far pointer to T: `(T __far *)MK_FP(seg, off)`.
-    An offset with no cast is a pointer's own arithmetic (`MK_FP(seg, p + 2)`, p an `int2 *`:
-    the word two words on) -- the place is a T as the pointer is; only an offset that is no
-    pointer at all is taken a byte at a time."""
-    if "MK_FP(" not in text and "+ 2))" not in text and ">> 0x10" not in text:
-        return text
-    src = ctree.Source(text)
-    if pointers is None:                                    # (the function's own: `T *name;`)
-        pointers = {}
-        for n in src.find("declaration"):
-            if not src.line(n)[:1].isspace():
-                continue                                    # (a parameter's, in the older style: not the function's own)
-            ds = n.children_by_field_name("declarator")
-            ty = src.at(n.child_by_field_name("type"))
-            if len(ds) == 1 and ds[0].type == "pointer_declarator" and ds[0].child_by_field_name("declarator").type == "identifier" \
-                    and re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)?", ty) and src.at(ds[0]).startswith("*"):
-                pointers[src.at(ds[0].child_by_field_name("declarator"))] = ty
-
-    def leftmost(n):
-        """what an offset counts from: itself, or the first term of a sum or difference"""
-        while True:
-            while n.type == "parenthesized_expression" and n.named_child_count == 1:
-                n = n.named_children[0]
-            if n.type == "binary_expression" and n.child_by_field_name("operator").type in ("+", "-"):
-                n = n.child_by_field_name("left")
-            else:
-                return n
-
-    def pointer_cast(n):
-        """T of a cast to `T *`, else None"""
-        if n.type != "cast_expression":
-            return None
-        ty = src.at(n.child_by_field_name("type")).strip()
-        return ty[:-1].strip() if ty.endswith("*") and ty.count("*") == 1 else None
-
-    # A far pointer's own halves put back together -- `MK_FP((int2)((uint4)p >> 0x10), (T *)p + 2)`,
-    # or the high half kept in a variable first -- is the pointer's own arithmetic: `(T __far *)p + 2`.
-    # Written as halves, no compiler gives back the original's `les bx, p` / `es:[bx+2]`.
-    far_names = set(re.findall(r"__far\s*\*\s*(\w+)\s*[;,)]", text))
-    # (the high half: `(T)((uint4)p >> 0x10)`, the core's `p._2_2_`, or that as the word at &p + 2)
-    high = (r"(?:\(\s*\w+\s*\)\s*\(\s*\(\s*uint4\s*\)\s*(\w+)\s*>>\s*0x10\s*\)|(\w+)\._2_2_|"
-            r"\(?\s*\*\s*\(\s*u?int2\s*\*\s*\)\s*\(\s*\(\s*char\s*\*\s*\)\s*&\s*(\w+)\s*\+\s*2\s*\)\s*\)?)")
-    high_vars = {v: p or q or r for v, p, q, r in re.findall(r"(?m)^\s*(\w+)\s*=\s*" + high + r"\s*;", text)
-                 if (p or q or r) in far_names}
-
-    def own_halves(seg, off):
-        """the far pointer whose two halves seg and off are, else None"""
-        s = src.at(seg).strip()
-        m = re.fullmatch(high, s)
-        p = (m.group(1) or m.group(2) or m.group(3)) if m else high_vars.get(s)
-        if p not in far_names:
-            return None
-        base = off
-        for _ in range(12):                          # (through casts, brackets, a sum's first term)
-            if base.type == "parenthesized_expression" and base.named_child_count == 1:
-                base = base.named_children[0]
-            elif base.type == "cast_expression":
-                base = base.child_by_field_name("value")
-            elif base.type == "binary_expression" and base.child_by_field_name("operator").type in ("+", "-"):
-                base = base.child_by_field_name("left")
-            else:
-                break
-        return p if base is not None and base.type == "identifier" and src.at(base) == p else None
-
-    def far(n):
-        """MK_FP(seg, off) as a far pointer to what is there; None for any other node"""
-        if n.type != "call_expression" or src.at(n.child_by_field_name("function")) != "MK_FP":
-            return None
-        args = n.child_by_field_name("arguments").named_children
-        if len(args) != 2:
-            return None
-        seg, off = args
-        p = own_halves(seg, off)
-        if p is not None:
-            target = pointer_cast(off) or pointer_cast(leftmost(off)) or "uint1"
-            sum_ = src.render(off.child_by_field_name("value") if pointer_cast(off) else off, far)
-            # (the low half counted in bytes -- `(int2)(void *)p + 2` -- is the pointer moved on 2 bytes)
-            sum_ = re.sub(r"\(\s*u?int2\s*\)\s*(?:\(\s*void\s*\*\s*\)\s*)?%s\b" % re.escape(p), "(uint1 __far *)%s" % p, sum_)
-            sum_ = re.sub(r"\(\s*((?:(?!__far)[\w ])+?)\s*\*\s*\)\s*%s\b" % re.escape(p), r"(\1 __far *)%s" % p, sum_)
-            if not re.search(r"__far \*\)\s*%s\b" % re.escape(p), sum_):
-                sum_ = re.sub(r"\b%s\b" % re.escape(p), "(uint1 __far *)%s" % p, sum_, count=1)
-            return "((%s __far *)(%s))" % ("uint1" if target in ("void", "code") else target, sum_)
-        first = leftmost(off)
-        if pointer_cast(off):                              # (T *)x: a T there, at x
-            target, offset = pointer_cast(off), off.child_by_field_name("value")
-        elif pointer_cast(first):                          # (T *)x + n: a T there, the sum as written
-            target, offset = pointer_cast(first), off
-        else:                                              # p + n, p a T *: as the pointer is
-            target, offset = pointers.get(src.at(first) if first.type == "identifier" else None, "uint1"), off
-        if target in ("void", "code"):
-            target = "uint1"
-        up = n.parent
-        if up is not None and up.type == "pointer_expression" and up.parent is not None and \
-                up.parent.type == "parenthesized_expression" and up.parent.parent is not None and \
-                up.parent.parent.type == "call_expression" and up.parent.parent.child_by_field_name("function") == up.parent:
-            target = "code"                                # (*MK_FP(seg, off))(...): a call to code there
-        return "((%s __far *)MK_FP(%s, %s))" % (target, src.render(seg, far), src.render(offset, far))
-    for n in src.find("call_expression"):
-        if src.at(n.child_by_field_name("function")) == "MK_FP" and \
-                not any(src.at(up.child_by_field_name("function")) == "MK_FP" for up in src.ancestors(n, "call_expression")):
-            new = far(n)
-            if new is not None:
-                src.replace(n, new)
-    out = _whole_far_arguments(src.text(), far_names, high, high_vars)
-    for v in high_vars:                              # (a far pointer's high half no longer used: gone)
-        if len(re.findall(r"\b%s\b" % re.escape(v), out)) == 2:
-            out = re.sub(r"(?m)^\s*%s\s*=\s*%s\s*;\n" % (re.escape(v), high), "", out)
-            out = re.sub(r"(?m)^\s*\w+\s+%s\s*;\n" % re.escape(v), "", out)
-    return out
-
-
 def _far_casts(text):
     """A far pointer read as another type stays far: `*(int2 *)p`, p a `void __far *`, is
     `*(int2 __far *)p` -- the near cast keeps only its offset, and reads it in DS.
@@ -2718,38 +2606,6 @@ def _far_casts(text):
         offset = r"\(\s*void\s*(?:__far\s*)?\*\s*\)\s*\(\s*\(\s*u?int2\s*\)\s*(?:\(\s*void\s*__far\s*\*\s*\)\s*)?%s\s*([+-])\s*(0x[0-9a-fA-F]+|\d+)\s*\)" % q
         text = re.sub(r"%s\s*=\s*%s\s*;" % (low_word, offset), r"%s = (uint1 __far *)%s \1 \2;" % (p, p), text)
     return text
-
-
-def _whole_far_arguments(text, far_names, high, high_vars):
-    """A far pointer passed as its two halves, low then high -- `f((int2)(void *)p, p._2_2_)` -- is
-    the pointer passed: the same two words, in the same places, whatever the convention (the list
-    is in the order the words go on the stack), and what the original pushes (`push es` / `push bx`
-    from one `les`). As halves, the callee cannot be declared with the pointer it takes."""
-    low = r"\(\s*u?int2\s*\)\s*(?:\(\s*void\s*\*\s*\)\s*)?(\w+)"
-    out, i = [], 0
-    for mm in re.finditer(r"\b\w+\s*\(", text):
-        if mm.start() < i:
-            continue
-        args, end = _arguments_at(text, mm.end() - 1)
-        if len(args) < 2:
-            continue
-        new, k, changed = [], 0, False
-        while k < len(args):
-            lo = re.fullmatch(r"\s*" + low + r"\s*", args[k]) if k + 1 < len(args) else None
-            hi = re.fullmatch(r"\s*" + high + r"\s*", args[k + 1]) if lo else None
-            hp = (hi.group(1) or hi.group(2) or hi.group(3)) if hi else (high_vars.get(args[k + 1].strip()) if lo else None)
-            if lo and lo.group(1) in far_names and hp == lo.group(1):
-                new.append(" " + lo.group(1) if k else lo.group(1))
-                k += 2
-                changed = True
-            else:
-                new.append(args[k])
-                k += 1
-        if changed:
-            out.append(text[i:mm.end()] + ",".join(new) + ")")
-            i = end
-    out.append(text[i:])
-    return "".join(out)
 
 
 def interrupt_helpers(used):

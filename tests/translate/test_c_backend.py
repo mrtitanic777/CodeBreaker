@@ -333,9 +333,9 @@ def test_moved_own_segment_calls():
     doc = sixteen([stmt({'node': 'Assign', 'target': name('i'), 'value': call}), stmt(read)])
     text = c.function(doc, c.MOVED, facts={'selector': 0x1000})
     assert '  i = ((*(code __near *)*(xunknown2 *)0x18))();' in text, text
-    assert '  *MK_FP(codebreaker_cs(),(int2 *)0x40);' in text, text
+    assert '  *((int2 __far *)MK_FP(codebreaker_cs(), 0x40));' in text, text      # (and _far_addresses)
     other = c.function(doc, c.MOVED, facts={'selector': 0x1040})        # (segment 9's: 1040h)
-    assert other.count('MK_FP(0x1000,') == 2, other
+    assert other.count('MK_FP(0x1000') == 2, other
 
 
 def test_moved_interrupts():
@@ -426,3 +426,27 @@ def test_decompile16_counts_calls_in_l2():
     assert dc._own_arguments('', 'f', {'l2': doc, 'pointers': {'a2': 4}}) == (2, ['2', '4p'])
     # (without a document: the text, as before)
     assert dc._call_arguments('x = sub_1_0010(a,(b,c));', 'sub_1_0010') == [2]
+
+
+def test_moved_far_addresses():
+    """c_text._far_addresses on the tree: MK_FP(seg,(T *)off) is a far pointer to T, `p + n` as the
+    pointer p is; a far pointer's own halves put back together are its own arithmetic, and passed
+    as two halves the pointer passed; the variable that held the high half goes."""
+    word = {'kind': 'i16'}
+    p = typed('p', ptr(word, 'far'))
+    q = typed('q', ptr(word, 'near'))
+    high = {'node': 'Cast', 'type': {'kind': 'class', 'name': 'xunknown2'},
+            'x': binary('>>', {'node': 'Cast', 'type': {'kind': 'u32'}, 'x': p}, lit(16, text='0x10'))}
+    cast = {'node': 'Cast', 'type': ptr(word, 'near'), 'x': lit(0x40, text='0x40')}
+    low = {'node': 'Cast', 'type': word, 'x': {'node': 'Cast', 'type': ptr({'kind': 'void'}, 'near'), 'x': p}}
+    doc = sixteen([local('p', ptr(word, 'far')), local('q', ptr(word, 'near')), local('xVar1', {'kind': 'class', 'name': 'xunknown2'}),
+                   stmt({'node': 'Assign', 'target': name('xVar1'), 'value': high}),
+                   stmt({'node': 'Assign', 'target': name('a'), 'value': {'node': 'Unary', 'op': '*', 'x': fcall('MK_FP', name('s'), cast)}}),
+                   stmt({'node': 'Assign', 'target': name('b'), 'value': {'node': 'Unary', 'op': '*',
+                                                                          'x': fcall('MK_FP', name('s'), binary('+', q, lit(2, text='2')))}}),
+                   stmt(fcall('g', name('a'), low, name('xVar1')))])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  a = *((int2 __far *)MK_FP(s, 0x40));' in text, text
+    assert '  b = *((int2 __far *)MK_FP(s, q + 2));' in text, text
+    assert '  g(a, p);' in text, text
+    assert 'xVar1' not in text, text

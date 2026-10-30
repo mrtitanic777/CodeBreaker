@@ -30,7 +30,7 @@ PASSES = ["_more_helpers", "_keep_frame", "_null_is_zero", "_compare_as_numbers"
           "_pieces", "_far_loads",
           "_open_arguments", "declaration", "_global_type", "_loads_dgroup", "_arguments_at",
           "_near_to_far", "_far_reads", "_buffer_fields", "_frame_block",
-          "_stack_segment_stores", "_far_locals", "interrupt_helper_name", "_far_addresses",
+          "_stack_segment_stores", "_far_locals", "interrupt_helper_name",
           "interrupt_helpers", "_homed_arguments", "_ram_type", "call_counts", "interrupt_routines"]
 
 # Passes handed a whole segment's bytes read only a window of them: (buffer, start, end) argument

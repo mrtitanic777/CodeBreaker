@@ -31,18 +31,19 @@ import re
 MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers",
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
-         "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "entry_sp",
-         "stack_arguments")
+         "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
+         "entry_sp", "stack_arguments")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
-             "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "entry_sp",
-             "stack_arguments")
+             "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
+             "entry_sp", "stack_arguments")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
-        "locals": [], "drop": set(), "old_style": None, "room": set()}
+        "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
+        "gap_base": {}}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -781,7 +782,7 @@ def _push(st, e, paren=None):
         return
     if n == 'Name':
         name = _name(e)
-        st.atom(name, 'MK_FP(codebreaker_ss(), %s)' % name if _now['marks'].get(id(e)) == '_ss' else None)
+        st.atom(name, _mk_fp_text('codebreaker_ss()', e, shown=name) if _now['marks'].get(id(e)) == '_ss' else None)
         return
     if n == 'Paren':                                     # a hidden function's operand, bracketed
         _near_call(e['x'])
@@ -799,7 +800,7 @@ def _push(st, e, paren=None):
             _push_type(st, e['type'], far=mark in ('_far', '_ds'))
         if mark == '_ds':                                # (a data address: DS and it -- _data_address;
             n = _lit(e['x'])                             #  added after the lines are laid out, as c_text does)
-            st.atom(n, 'MK_FP(codebreaker_ds(), %s)' % n)
+            st.atom(n, _mk_fp_text('codebreaker_ds()', e['x'], shown=n))
             return
         _push(st, e['x'])
         return
@@ -1030,6 +1031,8 @@ def _stmt(em, s):
     n = s['node']
     if n == 'Local':
         return                                   # declared at the top, as the decompiler does
+    if id(s) in _now['gone']:
+        return                                   # (a pass took the statement away)
     if n == 'ExprStmt':
         _statement(em, s['expr'])
     elif n == 'Return':
@@ -1281,7 +1284,7 @@ def _frame_through_ss(nodes, arrays):
         terms = _terms(sum_)
         if not (in_frame(terms[-1]) or len(terms) == 2 and in_frame(terms[0])):
             continue
-        _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s *)MK_FP(codebreaker_ss(),%s)" % (t, expr(s)))
+        _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s *)%s" % (t, _mk_fp_text('codebreaker_ss()', s, ',')))
 
 
 _PIECE = re.compile(r"_(\d+)_(\d+)_")
@@ -1780,6 +1783,8 @@ def _struct_gaps(nodes, _arrays):
         if _unary_as_read(p, '&', parent):
             _rewrite(p, lambda _x, b=base, pt=ptr, k=mm.group(1), dot=dot, e=e:
                      '((%s)(%s) + 0x%s)' % (pt, _gap_base(e, b, dot), k))
+            if not dot and id(p) in _now['whole']:
+                _now['gap_base'][id(p)] = base           # (a sum from the base, as the text reads)
         else:
             _rewrite(e, lambda _x, b=base, pt=ptr, k=mm.group(1), dot=dot, e=e:
                      '(*((%s)(%s) + 0x%s))' % (pt, _gap_base(e, b, dot), k))
@@ -1911,12 +1916,11 @@ def _entry_sp(nodes, _arrays):
     that local, wherever the compiler keeps it (SUWIN's 2:819E called through the segment it kept
     in [bp-4], read as a place nothing had set: c_text._entry_sp)."""
     own = {}                                             # entry SP less -> (type, name)
-    gone = _unused_high_halves(nodes)
     for v in _now['locals']:
         n = (v.get('sym') or {}).get('name') or ''
         m = _OWN_FRAME.fullmatch(n)
         t = type_text(v.get('type'))
-        if m and n not in _now['drop'] and n not in gone and re.fullmatch(r"\w+", t):
+        if m and n not in _now['drop'] and re.fullmatch(r"\w+", t):
             own[int(m.group(1), 16)] = (t, n)
 
     def place(u):
@@ -1954,36 +1958,205 @@ def _entry_sp(nodes, _arrays):
             _rewrite(e, lambda _x, b=base: '((uint1 *)codebreaker_entry_sp() + (int2)0x%04x)' % b)
 
 
-def _high_half(e):
-    """The far pointer p whose high word `e` is, as c_text's _far_addresses reads it --
-    `(T)((uint4)p >> 0x10)`, or the piece `(*(uint2 *)((char *)&p + 2))` -- else None."""
-    shown = _now['whole'].get(id(e))
-    if shown is not None:
-        m = re.fullmatch(r"\(?\*\(u?int2 \*\)\(\(char \*\)&(\w+) \+ 2\)\)?", shown(e))
-        return m.group(1) if m else None
-    if e.get('node') == 'Cast' and re.fullmatch(r"\w+", type_text(e.get('type'))):
-        s = e['x']
-        if s.get('node') == 'Binary' and s.get('op') == '>>' and s['right'].get('node') == 'Lit' and \
-                _lit(s['right']) == '0x10' and s['left'].get('node') == 'Cast' and \
-                type_text(s['left'].get('type')) == 'uint4' and s['left']['x'].get('node') == 'Name':
-            return _name(s['left']['x'])
-    return None
+# (a far pointer's high word as c_text's _far_addresses read it in the text: `(T)((uint4)p >> 0x10)`,
+# the piece p._2_2_, or that piece as the word at &p + 2)
+_HIGH = (r"(?:\(\s*\w+\s*\)\s*\(\s*\(\s*uint4\s*\)\s*(\w+)\s*>>\s*0x10\s*\)|(\w+)\._2_2_|"
+         r"\(?\s*\*\s*\(\s*u?int2\s*\*\s*\)\s*\(\s*\(\s*char\s*\*\s*\)\s*&\s*(\w+)\s*\+\s*2\s*\)\s*\)?)")
+_LOW = re.compile(r"\s*\(\s*u?int2\s*\)\s*(?:\(\s*void\s*\*\s*\)\s*)?(\w+)\s*")
+_FAR_DECL = re.compile(r"__far\s*\*\s*(\w+)\s*[;,)]")
 
 
-def _unused_high_halves(nodes):
-    """The locals that hold a far pointer's high word and are read nowhere -- `xStack_4 =
-    (xunknown2)((uint4)pcVar2 >> 0x10);` and nothing more: c_text's _far_addresses takes them
-    away (a far pointer's halves are the pointer), so no pass after it sees them declared."""
-    sets, uses = {}, {}
-    for e, p in nodes:
-        if e['node'] == 'Name':
-            uses[_name(e)] = uses.get(_name(e), 0) + 1
+def _high_of(text):
+    m = re.fullmatch(_HIGH, text)
+    return (m.group(1) or m.group(2) or m.group(3)) if m else None
+
+
+def _strip(n):
+    while n.get('node') == 'Paren':
+        n = n['x']
+    return n
+
+
+def _leftmost(n):
+    """what an offset counts from: itself, or the first term of a sum or difference"""
+    while True:
+        n = _strip(n)
+        if n.get('node') == 'Binary' and n.get('op') in ('+', '-'):
+            n = n['left']
+        else:
+            return n
+
+
+def _pointer_cast(n):
+    """T of a cast to `T *`, else None"""
+    if n.get('node') != 'Cast' or id(n) in _now['whole']:
+        return None
+    ty = type_text(n.get('type')).strip()
+    return ty[:-1].strip() if ty.endswith('*') and ty.count('*') == 1 else None
+
+
+def _far_target(off):
+    """(T, the offset written) of a segmented address to `off` as a far pointer (_far_addresses):
+    `(T *)x` a T at x; `(T *)x + n` a T at the sum; `p + n`, p a T *, a T as the pointer is;
+    any other a byte."""
+    first = _leftmost(off)
+    if _pointer_cast(off):
+        target, offset = _pointer_cast(off), off['x']
+    elif _pointer_cast(first):
+        target, offset = _pointer_cast(first), off
+    else:
+        # (the pointer by its name as written then: a far pointer from the frame -- `_ss`, written
+        # MK_FP(codebreaker_ss(), p) -- by its own; an interrupt's result, whose local is gone, is none)
+        n = _name(first) if first.get('node') == 'Name' and _now['marks'].get(id(first)) == '_ss' else \
+            expr(first) if _shape(first) == 'identifier' else None
+        target, offset = (_now['far_pointers'].get(n, 'uint1') if n not in _now['drop'] else 'uint1'), off
+    return ('uint1' if target in ('void', 'code') else target), offset
+
+
+def _written(e, under):
+    """`e` as written as the operand of the cast `under` (in brackets where it takes them)."""
+    return _sub(_token(under), e, 1) if under is not None else expr(e)
+
+
+def _mk_fp_text(seg, off, comma=', ', shown=None):
+    """MK_FP(seg, off) -- the stack's or the data segment's, written by a pass -- as c_text's
+    _far_addresses made it: `((T __far *)MK_FP(seg, off))`, where it is moved (else as it was)."""
+    if 'far_addresses' not in _now['moved']:
+        return 'MK_FP(%s%s%s)' % (seg, comma, shown or expr(off))
+    t, o = _far_target(off)
+    return '((%s __far *)MK_FP(%s, %s))' % (t, seg, shown or _written(o, off if o is not off else None))
+
+
+def _far_addresses(nodes, _arrays):
+    """An address made of a segment the decompiler could not fold to a constant and an offset
+    (`MK_FP(seg,(T *)off)`, its printing) as a far pointer to T: `((T __far *)MK_FP(seg, off))`.
+    An offset with no cast is a pointer's own arithmetic (`MK_FP(seg,p + 2)`, p an `int2 *`: the
+    word two words on) -- the place is a T as the pointer is; only an offset that is no pointer at
+    all is taken a byte at a time. A far pointer's own halves put back together --
+    `MK_FP((int2)((uint4)p >> 0x10),(T *)p + 2)`, or the high half kept in a variable first -- is
+    the pointer's own arithmetic, `((T __far *)((T __far *)p + 2))`; a far pointer passed as its
+    two halves, low then high (`f((int2)(void *)p,p._2_2_)`), is the pointer passed; and a
+    variable that held the high half and is read nowhere else goes (c_text._far_addresses)."""
+    parent = {id(e): p for e, p in nodes}
+    params = [(_param_name(p), p.get('type')) for p in _now['doc'].get('params') or []]
+    locs = [((v.get('sym') or {}).get('name'), v.get('type')) for v in _now['locals']
+            if (v.get('sym') or {}).get('name') not in _now['drop']]
+    far_names = set()
+    for n, t in params + locs:
+        far_names.update(_FAR_DECL.findall(type_text(t, n, n in _now['far']) + ';'))
+    pointers = _now['far_pointers']
+    high_vars, high_sets = {}, []
+    for e, _p in nodes:
         if e['node'] == 'ExprStmt' and e['expr'].get('node') == 'Assign' and not e['expr'].get('op') and \
                 e['expr']['target'].get('node') == 'Name':
-            far = _high_half(e['expr']['value'])
-            if far in _now['far']:
-                sets.setdefault(_name(e['expr']['target']), []).append(far)
-    return {v for v, ps in sets.items() if len(ps) == 1 and uses.get(v) == 1}
+            hp = _high_of(expr(e['expr']['value']))
+            if hp is not None:
+                high_sets.append((_name(e['expr']['target']), e))
+                if hp in far_names:
+                    high_vars[_name(e['expr']['target'])] = hp
+    consumed = []                                        # (the high halves' names the rewrites take in)
+
+    pointer_cast, leftmost = _pointer_cast, _leftmost
+
+    def own_halves(seg, off):
+        s = expr(seg).strip()
+        p = _high_of(s) or high_vars.get(s)
+        if p not in far_names:
+            return None
+        base = off
+        for _ in range(12):                              # (through casts, brackets, a sum's first term)
+            if id(base) in _now['whole']:
+                if id(base) not in _now['gap_base']:
+                    break
+                base = _now['gap_base'][id(base)]        # (`((uint1 *)(p) + 0x1a)`: through its base)
+            elif base.get('node') == 'Paren':
+                base = base['x']
+            elif base.get('node') == 'Cast':
+                base = base['x']
+            elif base.get('node') == 'Binary' and base.get('op') in ('+', '-'):
+                base = base['left']
+            else:
+                break
+        if base.get('node') == 'Name' and _shape(base) == 'identifier' and _name(base) == p:
+            if s in high_vars and seg.get('node') == 'Name':
+                consumed.append(seg)
+            return p
+        return None
+
+    def halves_text(off, p, target):
+        sum_ = _written(off['x'], off) if pointer_cast(off) else expr(off)
+        # (the low half counted in bytes -- `(int2)(void *)p + 2` -- is the pointer moved on 2 bytes)
+        sum_ = re.sub(r"\(\s*u?int2\s*\)\s*(?:\(\s*void\s*\*\s*\)\s*)?%s\b" % re.escape(p), "(uint1 __far *)%s" % p, sum_)
+        sum_ = re.sub(r"\(\s*((?:(?!__far)[\w ])+?)\s*\*\s*\)\s*%s\b" % re.escape(p), r"(\1 __far *)%s" % p, sum_)
+        if not re.search(r"__far \*\)\s*%s\b" % re.escape(p), sum_):
+            sum_ = re.sub(r"\b%s\b" % re.escape(p), "(uint1 __far *)%s" % p, sum_, count=1)
+        return "((%s __far *)(%s))" % ("uint1" if target in ("void", "code") else target, sum_)
+
+    for e, p in nodes:
+        parts = _mk_fp(e)
+        if not parts or id(e) in _now['whole']:
+            continue
+        seg, off = parts
+        hp = own_halves(seg, off)
+        if hp is not None:
+            target = pointer_cast(off) or pointer_cast(leftmost(off)) or 'uint1'
+            _rewrite(e, lambda _x, off=off, hp=hp, t=target: halves_text(off, hp, t), room=True)
+            continue
+        target, offset = _far_target(off)
+        up = p
+        if up is not None and up.get('node') == 'Unary' and up.get('op') == '*' and not up.get('postfix'):
+            call = parent.get(id(up))
+            if call is not None and call.get('node') == 'Call' and call.get('target') is up:
+                target = 'code'                          # (*MK_FP(seg, off))(...): a call to code there
+        _rewrite(e, lambda _x, s=seg, o=offset, t=target, off=off:
+                 '((%s __far *)MK_FP(%s, %s))' % (t, expr(s), _written(o, off if o is not off else None)), room=True)
+    # a far pointer passed whole, as its two halves
+    merged = set()
+    for e, _p in nodes:
+        if e['node'] != 'Call' or id(e) in _now['whole'] or (e.get('target') or {}).get('node') != 'Name':
+            continue
+        up, inside = parent.get(id(e)), False
+        while up is not None:
+            if id(up) in merged:
+                inside = True                            # (inside one already written so: as it is)
+                break
+            up = parent.get(id(up))
+        args = e.get('args') or []
+        if inside or len(args) < 2:
+            continue
+        new, k, changed = [], 0, False
+        while k < len(args):
+            lo = _LOW.fullmatch(expr(args[k])) if k + 1 < len(args) else None
+            hi_text = expr(args[k + 1]).strip() if lo else ''
+            hp = (_high_of(hi_text) or high_vars.get(hi_text)) if lo else None
+            if lo and lo.group(1) in far_names and hp == lo.group(1):
+                new.append((None, (' ' if k else '') + lo.group(1)))
+                if hi_text in high_vars and args[k + 1].get('node') == 'Name':
+                    consumed.append(args[k + 1])
+                k += 2
+                changed = True
+            else:
+                new.append((args[k], None))
+                k += 1
+        if changed:
+            merged.add(id(e))
+            _rewrite(e, lambda c, new=new: '%s(%s)' % (_name(c['target']), ','.join(
+                t if a is None else expr(a) for a, t in new)))
+    # (a far pointer's high half no longer used: gone)
+    uses = {}
+    for e, _p in nodes:
+        if e['node'] == 'Name':
+            uses[_name(e)] = uses.get(_name(e), 0) + 1
+    for x in consumed:
+        uses[_name(x)] -= 1
+    for v in high_vars:
+        if uses.get(v, 0) == 1 and v in dict(locs):
+            for n, s in high_sets:
+                if n == v:
+                    _now['gone'].add(id(s))
+            t = dict(locs).get(v)
+            if t is not None and re.fullmatch(r"\w+", type_text(t)):
+                _now['drop'].add(v)
 
 
 _IN_STACK = re.compile(r"in_stack_([0-9a-f]{8})")
@@ -2028,7 +2201,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("null_is_zero", _null_is_zero), ("global_pointer_steps", _global_pointer_steps),
            ("far_arguments", _far_arguments), ("one_name_for_globals", _one_name_for_globals),
            ("selector_structs", _selector_structs), ("struct_gaps", _struct_gaps),
-           ("own_segment_calls", _own_segment_calls), ("interrupts", _interrupts), ("entry_sp", _entry_sp),
+           ("own_segment_calls", _own_segment_calls), ("interrupts", _interrupts),
+           ("far_addresses", _far_addresses), ("entry_sp", _entry_sp),
            ("stack_arguments", _stack_arguments))
 
 
@@ -2087,6 +2261,18 @@ def _signature(em, doc):
     em.close_group()
 
 
+def _far_pointers(locs):
+    """{name: T} of the function's own pointers, `T *name;` (or `T __far *name;`): what an offset
+    through one points at (_far_addresses)."""
+    out = {}
+    for v in locs:
+        n, t = (v.get('sym') or {}).get('name'), v.get('type')
+        m = re.fullmatch(r"([A-Za-z_]\w*(?: [A-Za-z_]\w*)?)(?: __far)? \*(\w+)", type_text(t, n, n in _now['far']))
+        if m:
+            out[m.group(2)] = m.group(1)
+    return out
+
+
 def _old_style(doc):
     """The definition in the older style, `f(a,b)` then `int2 a;` `int2 b;` before its `{`
     (c_text._open_arguments): written with its argument types in the brackets a definition also
@@ -2139,6 +2325,7 @@ def function(doc, moved=(), far=None, facts=None):
                     [((v.get('sym') or {}).get('name'), v.get('type')) for v in locs] if is_far(t)}) \
         if 'far' in _now['moved'] else set()
     _now['old_style'] = _old_style(doc) if 'open_arguments' in _now['moved'] else None
+    _now['far_pointers'] = _far_pointers(locs) if 'far_addresses' in _now['moved'] else {}
     try:
         if 'far_from_stack' in _now['moved'] and _now['far']:
             _far_from_stack(doc.get('body'), locs)
@@ -2150,7 +2337,8 @@ def function(doc, moved=(), far=None, facts=None):
     finally:
         _now['moved'], _now['far'], _now['marks'], _now['whole'], _now['bare'] = (), set(), {}, {}, set()
         _now['facts'], _now['doc'], _now['locals'], _now['drop'] = {}, None, [], set()
-        _now['old_style'], _now['room'] = None, set()
+        _now['old_style'], _now['room'], _now['gone'], _now['far_pointers'] = None, set(), set(), {}
+        _now['gap_base'] = {}
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
