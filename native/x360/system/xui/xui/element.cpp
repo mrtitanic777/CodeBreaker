@@ -31,6 +31,16 @@ namespace xui
             return false;
         }
 
+        // Scenes are controls in XUI's classes, but a new scene's start goes through them (each scene of the tree
+        // starts its own timelines: XuiSceneCreate).
+        bool IsSceneClass(const std::string& className)
+        {
+            for (const ClassDef* c : ClassChain(className))
+                if (std::string_view(c->name) == "XuiScene")
+                    return true;
+            return false;
+        }
+
         std::u16string Utf16(const std::string& s)
         {
             std::u16string out;
@@ -54,16 +64,34 @@ namespace xui
             return out;
         }
 
-        uint32_t MulColor(uint32_t a, uint32_t b)
-        {
-            uint32_t out = 0;
-            for (int shift = 0; shift < 32; shift += 8)
-                out |= ((((a >> shift) & 0xFF) * ((b >> shift) & 0xFF) + 127) / 255) << shift;
-            return out;
-        }
-
         // Linear interpolation of two key values (InterpolateValues): numbers and vectors per component, colours per
         // channel; other types do not interpolate.
+        // A glyph as a white image with its coverage as alpha and an empty texel around it, made once per glyph
+        // bitmap (the font's cache keeps those for good, so the image's address is stable: a GPU surface keys its
+        // textures on it).
+        const Image& GlyphImage(const GlyphBitmap& g)
+        {
+            static std::mutex mutex;
+            static std::map<const GlyphBitmap*, std::unique_ptr<Image>> images;
+            std::lock_guard lock(mutex);
+            std::unique_ptr<Image>& image = images[&g];
+            if (!image)
+            {
+                image = std::make_unique<Image>();
+                image->width = uint32_t(g.width + 2);
+                image->height = uint32_t(g.height + 2);
+                image->rgba.assign(size_t(image->width) * image->height * 4, 0);
+                for (int y = 0; y < g.height; y++)
+                    for (int x = 0; x < g.width; x++)
+                    {
+                        uint8_t* t = &image->rgba[(size_t(y + 1) * image->width + x + 1) * 4];
+                        t[0] = t[1] = t[2] = 255;
+                        t[3] = g.coverage[size_t(y) * g.width + x];
+                    }
+            }
+            return *image;
+        }
+
         Value Interpolate(const Value& a, const Value& b, float t)
         {
             Value v = a;
@@ -351,13 +379,24 @@ namespace xui
             text = Utf16(GetString("Text"));
             imagePath = GetString("ImagePath");
             imageBase = basePackage;
-            std::string visualName = GetString("Visual");
-            if (visualName.empty())
-                visualName = className_;
+            const std::string visualName = GetString("Visual");
             const Node* v = nullptr;
             const Scene* skin = nullptr;
             std::string skinBase;
-            if (assets.FindVisual(visualName, v, skin, skinBase))
+            bool found = false;
+            if (!visualName.empty())
+                found = assets.FindVisual(visualName, v, skin, skinBase);
+            else
+            {
+                // No Visual: the skin's visual named after the class, else after its nearest base class that has one
+                // (an XuiNavButton draws as XuiButton: the Blades skins have no XuiNavButton visual, 1888's Console
+                // Settings buttons have no Visual).
+                const std::vector<const ClassDef*> chain = ClassChain(className_);
+                found = assets.FindVisual(className_, v, skin, skinBase);
+                for (auto it = chain.rbegin(); !found && it != chain.rend(); ++it)
+                    found = assets.FindVisual((*it)->name, v, skin, skinBase);
+            }
+            if (found)
             {
                 visual_.reset(new Element());
                 visual_->owner_ = this;
@@ -581,6 +620,7 @@ namespace xui
         bool any = false;
         if (start >= 0)
         {
+            loop_ = false;
             frame_ = float(start);
             stopFrame_ = end;
             playing_ = true;
@@ -601,8 +641,34 @@ namespace xui
         return any;
     }
 
+    void Element::PlayLooping()
+    {
+        if (node_ && !node_->timelines.empty())
+        {
+            frame_ = 0;
+            stopFrame_ = -1;
+            playing_ = true;
+            loop_ = true;
+            // A stop command on frame 0 (a scene's Default / Normal state) holds it there.
+            for (const NamedFrame& f : node_->namedFrames)
+                if (f.frame == 0 && f.command == Command::kStop)
+                    playing_ = false;
+            Sample();
+        }
+        // Controls (other than scenes) play their visual states, except visuals that have none (pure animations: the Blades
+        // background control's BG_animation).
+        for (auto& c : children_)
+            if (!IsControlClass(c->className_) || IsSceneClass(c->className_))
+                c->PlayLooping();
+            else if (c->visual_ && c->visual_->node_ && c->visual_->node_->namedFrames.empty())
+                c->visual_->PlayLooping();
+        if (visual_ && visual_->node_ && visual_->node_->namedFrames.empty())
+            visual_->PlayLooping();
+    }
+
     void Element::ShowFrame(int frame)
     {
+        loop_ = false;
         frame_ = float(frame);
         stopFrame_ = -1;
         playing_ = false;
@@ -685,6 +751,12 @@ namespace xui
             {
                 next = float(stopFrame_);
                 playing_ = false;
+            }
+            if (loop_ && playing_)
+            {
+                const float length = float(LastKeyFrame() + 1);
+                if (length > 1 && next >= length)
+                    next = std::fmod(next, length);
             }
             frame_ = next;
             Sample();
@@ -782,6 +854,30 @@ namespace xui
         player({ e->data, e->size, file, GetFloat("Volume", 0.0f), this });
     }
 
+    void Element::RebuildVisual()
+    {
+        if (!assets_)
+            return;
+        const Node* v = nullptr;
+        const Scene* skin = nullptr;
+        std::string skinBase;
+        const std::string name = GetString("Visual");
+        if (name.empty() || !assets_->FindVisual(name, v, skin, skinBase))
+        {
+            visual_.reset();
+            return;
+        }
+        // A visual of states plays the control's resting state; one without (a pure animation) starts looping.
+        visual_.reset(new Element());
+        visual_->owner_ = this;
+        visual_->Build(*assets_, *skin, *v, skinBase, nullptr);
+        visual_->SetSize(Width(), Height());
+        if (visual_->node_ && visual_->node_->namedFrames.empty())
+            visual_->PlayLooping();
+        else
+            PlayVisualState(focused ? "Focus" : enabled ? "Normal" : "NormalDisable");
+    }
+
     void Element::ApplyTrack(Element& target, const Track& track, const Value& value)
     {
         const size_t dot = track.name.find('.');
@@ -793,6 +889,15 @@ namespace xui
                 const float w = track.name == "Width" ? value.f : target.Width();
                 const float h = track.name == "Height" ? value.f : target.Height();
                 target.SetSize(w, h);
+                return;
+            }
+            // A Visual key swaps the control's visual (the Blades RootScene's colour layers and tab jewels change
+            // from blade_1_bgcolor to blade_2_bgcolor ... as the blades turn).
+            if (track.name == "Visual" && value.type == Type::kString && IsControlClass(target.className_) &&
+                value.s != target.GetString("Visual"))
+            {
+                target.Set(track.name, value);
+                target.RebuildVisual();
                 return;
             }
             target.Set(track.name, value);
@@ -843,10 +948,10 @@ namespace xui
             .Then(Affine::Translate(position.x, position.y));
     }
 
-    void Element::Render(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
+    void Element::Render(Assets& assets, Surface& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
                          uint32_t colorFactor)
     {
-        if (!Shown())
+        if (!Shown() || debugHidden)
             return;
         const Affine world = LocalTransform().Then(toDevice);
         const float op = opacity * GetFloat("Opacity", 1.0f);
@@ -872,14 +977,18 @@ namespace xui
         // tiles drawn with 7). The overlay composites colour as it is drawn, so such an element is not drawn (its
         // rounded corners are lost); its children still are.
         if (GetInt("ColorWriteFlags", 0xF) & 7)
+        {
+            parentToDevice_ = toDevice;
+            SetProbeLabel(&id_);
             RenderSelf(assets, canvas, world, op, inner);
+        }
         if (visual_)
             visual_->Render(assets, canvas, world, op, inner, renderFactor_);
         for (auto& c : children_)
             c->Render(assets, canvas, world, op, inner, renderFactor_);
     }
 
-    void Element::RenderSelf(Assets& assets, Canvas& canvas, const Affine& world, float opacity, const ClipRect& clip)
+    void Element::RenderSelf(Assets& assets, Surface& canvas, const Affine& world, float opacity, const ClipRect& clip)
     {
         if (className_ == "XuiFigure")
             RenderFigure(assets, canvas, world, opacity, clip);
@@ -931,7 +1040,7 @@ namespace xui
         }
     }
 
-    void Element::RenderFigure(Assets& assets, Canvas& canvas, const Affine& world, float opacity,
+    void Element::RenderFigure(Assets& assets, Surface& canvas, const Affine& world, float opacity,
                                const ClipRect& clip)
     {
         const Value* points = Get("Points");
@@ -943,6 +1052,42 @@ namespace xui
             return;
         const float w = Width(), h = Height();
         const float sx = path->width > 0 ? w / path->width : 1.0f, sy = path->height > 0 ? h / path->height : 1.0f;
+        // XUI draws in 3D with a perspective divide: the matrix it hands the GPU per element (traced from the
+        // recompiled 1888's draws, MC_GPU_TRACE) ends in w = 0.001 z + 1, the device position divided by it about
+        // the target's origin (its top-left), what lies at w <= 0 clipped. Only an element tilted out of the screen
+        // (a rotation with x / y parts) has a z that matters: it goes through its full 3D transform here.
+        constexpr float perspective = 0.001f;
+        const Value* rotationValue = Get("Rotation");
+        const bool tilted = perspective != 0.0f && rotationValue && rotationValue->type == Type::kQuaternion &&
+            (std::abs(rotationValue->q.x) > 1e-4f || std::abs(rotationValue->q.y) > 1e-4f);
+        // An element point -> homogeneous device coordinates (x w, y w, w): device = (x w / w, y w / w). Linear in the
+        // point, so the element -> device map is a homography.
+        struct H3 { double x, y, w; };
+        auto homogeneous = [&](Vec2 p) -> H3 {
+            if (!tilted)
+            {
+                const Vec2 d = world.Apply(p);
+                return { d.x, d.y, 1.0 };
+            }
+            const Quat q = rotationValue->q;
+            const float r[3][3] = {
+                { 1 - 2 * (q.y * q.y + q.z * q.z), 2 * (q.x * q.y + q.z * q.w), 2 * (q.x * q.z - q.y * q.w) },
+                { 2 * (q.x * q.y - q.z * q.w), 1 - 2 * (q.x * q.x + q.z * q.z), 2 * (q.y * q.z + q.x * q.w) },
+                { 2 * (q.x * q.z + q.y * q.w), 2 * (q.y * q.z - q.x * q.w), 1 - 2 * (q.x * q.x + q.y * q.y) } };
+            const Vec3 pivot = GetVector("Pivot", {}), scale = GetVector("Scale", { 1, 1, 1 }),
+                       position = GetVector("Position", {});
+            const float v[3] = { (p.x - pivot.x) * scale.x, (p.y - pivot.y) * scale.y, (0 - pivot.z) * scale.z };
+            const float X = v[0] * r[0][0] + v[1] * r[1][0] + v[2] * r[2][0] + pivot.x + position.x;
+            const float Y = v[0] * r[0][1] + v[1] * r[1][1] + v[2] * r[2][1] + pivot.y + position.y;
+            const float Z = v[0] * r[0][2] + v[1] * r[1][2] + v[2] * r[2][2] + pivot.z + position.z;
+            const Vec2 d = parentToDevice_.Apply({ X, Y });
+            return { d.x, d.y, 1.0 + double(perspective) * Z };
+        };
+        std::vector<H3> hull;
+        auto project = [&](Vec2 p) -> Vec2 {
+            hull.push_back(homogeneous(p));
+            return world.Apply(p);
+        };
         // Flatten the cubic segments (point, its two controls, the next point) in element space, then to the device.
         std::vector<Vec2> polygon;
         const size_t n = path->points.size();
@@ -962,16 +1107,42 @@ namespace xui
             for (int s = 0; s < steps; s++)
             {
                 const float t = float(s) / float(steps), u = 1 - t;
-                polygon.push_back(world.Apply({ u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x +
-                                                    t * t * t * p3.x,
-                                                u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y +
-                                                    t * t * t * p3.y }));
+                polygon.push_back(project({ u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x +
+                                                t * t * t * p3.x,
+                                            u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y +
+                                                t * t * t * p3.y }));
             }
         }
         if (!closed)
         {
             const FigurePoint& last = path->points[n - 1];
-            polygon.push_back(world.Apply({ last.x * sx, last.y * sy }));
+            polygon.push_back(project({ last.x * sx, last.y * sy }));
+        }
+
+        if (tilted)
+        {
+            // The near plane: what lies at w <= 0.01 is behind the projection and clipped away (Sutherland-Hodgman),
+            // as the GPU clips before it divides.
+            constexpr double kNear = 0.01;
+            std::vector<H3> clipped;
+            for (size_t i = 0; i < hull.size(); i++)
+            {
+                const H3& a = hull[i];
+                const H3& b = hull[(i + 1) % hull.size()];
+                const bool ain = a.w >= kNear, bin = b.w >= kNear;
+                if (ain)
+                    clipped.push_back(a);
+                if (ain != bin)
+                {
+                    const double t = (kNear - a.w) / (b.w - a.w);
+                    clipped.push_back({ a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, kNear });
+                }
+            }
+            polygon.clear();
+            for (const H3& c : clipped)
+                polygon.push_back({ float(c.x / c.w), float(c.y / c.w) });
+            if (polygon.size() < 3)
+                return;
         }
 
         const Node& brush = *fill->object;
@@ -983,15 +1154,12 @@ namespace xui
         const uint32_t factor = renderFactor_;
         const Value* fillColorValue = prop("FillColor");
         const uint32_t fillColor = fillColorValue ? fillColorValue->color : 0xFF000000;
-        auto finish = [&](uint32_t argb) {
-            Rgba c = ArgbToRgba(MulColor(argb, factor));
-            c.a *= opacity;
-            return c;
-        };
+        Paint paint;
         if (type == 1)
         {
-            const Rgba c = finish(fillColor);
-            canvas.FillPolygon(polygon, [&](float, float) { return c; }, clip);
+            paint.color = ArgbToRgba(MulColor(fillColor, factor));
+            paint.color.a *= opacity;
+            canvas.FillPaint(polygon, paint, clip);
             return;
         }
         // Brush space (FillProperty::GetFillXForm). Transform version 1 (UpdateXFormV1): uv = ((p - centre +
@@ -1021,77 +1189,88 @@ namespace xui
         else
             gw = gh = type == 2 ? std::min(w, h) : std::max(w, h);
         const float cosT = std::cos(theta), sinT = std::sin(theta);
-        const Affine inverse = world.Inverse();
-        std::vector<std::pair<float, uint32_t>> stops;
-        if (type == 2 || type == 3)
+        const Affine rotate{ cosT, sinT, -sinT, cosT, 0, 0 };
+        // Element space -> brush space (u, v).
+        Affine brushSpace;
+        if (version1)
+            brushSpace = Affine::Translate(-w / 2 + T.x * w, -h / 2 + T.y * h)
+                .Then(rotate)
+                .Then(Affine::Scale(S.x / gw, S.y / gh))
+                .Then(Affine::Translate(0.5f, 0.5f));
+        else
         {
-            const Value* gradient = prop("Gradient");
-            if (gradient && gradient->object)
-            {
-                const Node& g = *gradient->object;
-                const Value* count = g.Find("NumStops");
-                std::vector<Value> colors, positions;
-                for (const Property& p : g.props)
-                {
-                    if (std::string_view(p.def->name) == "StopColor")
-                        colors = p.values;
-                    if (std::string_view(p.def->name) == "StopPos")
-                        positions = p.values;
-                }
-                const size_t n2 = std::min({ size_t(count ? count->i : 0), colors.size(), positions.size() });
-                for (size_t i = 0; i < n2; i++)
-                    stops.push_back({ positions[i].f, colors[i].color });
-            }
-            if (stops.empty())
-                stops.push_back({ 0.0f, fillColor });
+            // Gradients work in units of the figure's size, textures in element units.
+            const float bw = type == 4 ? 1.0f : w, bh = type == 4 ? 1.0f : h;
+            brushSpace = Affine::Translate(-w / 2, -h / 2).Then(Affine::Scale(S.x / bw, S.y / bh)).Then(rotate);
+            brushSpace = type == 4
+                ? brushSpace.Then(Affine::Translate(w / 2, h / 2))
+                      .Then(Affine::Scale(1 / gw, 1 / gh))
+                      .Then(Affine::Translate(T.x, T.y))
+                : brushSpace.Then(Affine::Translate(0.5f + T.x, 0.5f + T.y));
         }
-        auto gradientColor = [&](float t) {
-            // XUIDC::FillGradientTexture: clamped to the first and last stops, linear in between.
-            if (t <= stops.front().first)
-                return stops.front().second;
-            for (size_t i = 0; i + 1 < stops.size(); i++)
-                if (t < stops[i + 1].first)
-                {
-                    const float span = stops[i + 1].first - stops[i].first;
-                    if (span <= 0)
-                        return stops[i + 1].second;
-                    Value a{ Type::kColor }, b{ Type::kColor };
-                    a.color = stops[i].second;
-                    b.color = stops[i + 1].second;
-                    return Interpolate(a, b, (t - stops[i].first) / span).color;
-                }
-            return stops.back().second;
-        };
-        canvas.FillPolygon(polygon, [&](float x, float y) {
-            const Vec2 p = inverse.Apply({ x, y });
-            float u, v;
-            if (version1)
+        const Affine toBrush = world.Inverse().Then(brushSpace);
+        if (type == 4)
+        {
+            paint.kind = Paint::Kind::kTexture;
+            paint.image = texture;
+            paint.toTexel = toBrush.Then(Affine::Scale(gw, gh));
+            paint.wrapU = paint.wrapV = Wrap::kWrap;
+            paint.tint = ArgbToRgba(factor);
+            paint.tint.a *= opacity;
+            canvas.FillPaint(polygon, paint, clip);
+            return;
+        }
+        paint.kind = type == 2 ? Paint::Kind::kLinear : Paint::Kind::kRadial;
+        paint.toBrush = toBrush;
+        if (const char* traceId = std::getenv("XUI_TRACE_ID"); traceId && id_ == traceId)
+            Log("trace {}: opacity {:.4f} S ({:.4f} {:.4f}) T ({:.4f} {:.4f}) rotation {:.1f}", id_, opacity, S.x, S.y, T.x,
+                T.y, theta * 180.0f / std::numbers::pi_v<float>);
+        if (tilted)
+        {
+            // Device -> element: the inverse of the element -> device homography (its columns from the linear map's
+            // values at (0, 0), (1, 0), (0, 1)), then element -> brush.
+            const H3 o = homogeneous({ 0, 0 }), ux = homogeneous({ 1, 0 }), vy = homogeneous({ 0, 1 });
+            const double m[9] = { ux.x - o.x, vy.x - o.x, o.x, ux.y - o.y, vy.y - o.y, o.y, ux.w - o.w, vy.w - o.w, o.w };
+            const double inv[9] = { m[4] * m[8] - m[5] * m[7], m[2] * m[7] - m[1] * m[8], m[1] * m[5] - m[2] * m[4],
+                                    m[5] * m[6] - m[3] * m[8], m[0] * m[8] - m[2] * m[6], m[2] * m[3] - m[0] * m[5],
+                                    m[3] * m[7] - m[4] * m[6], m[1] * m[6] - m[0] * m[7], m[0] * m[4] - m[1] * m[3] };
+            // device -> element -> brush (the affine brushSpace)
+            const Affine& b = brushSpace;
+            const double ex[3] = { inv[0], inv[1], inv[2] }, ey[3] = { inv[3], inv[4], inv[5] };
+            const double ew[3] = { inv[6], inv[7], inv[8] };
+            for (int i = 0; i < 3; i++)
             {
-                const float qx = p.x - w / 2 + T.x * w, qy = p.y - h / 2 + T.y * h;
-                const float rx = qx * cosT - qy * sinT, ry = qx * sinT + qy * cosT;
-                u = rx * S.x / gw + 0.5f;
-                v = ry * S.y / gh + 0.5f;
+                paint.projection[i] = float(b.a * ex[i] + b.c * ey[i] + b.tx * ew[i]);
+                paint.projection[3 + i] = float(b.b * ex[i] + b.d * ey[i] + b.ty * ew[i]);
+                paint.projection[6 + i] = float(ew[i]);
             }
-            else
+            paint.projective = true;
+        }
+        paint.factor = factor;
+        paint.opacity = opacity;
+        if (const Value* gradient = prop("Gradient"); gradient && gradient->object)
+        {
+            const Node& g = *gradient->object;
+            const Value* count = g.Find("NumStops");
+            std::vector<Value> colors, positions;
+            for (const Property& p : g.props)
             {
-                // Gradients work in units of the figure's size, textures in element units.
-                const float bw = type == 4 ? 1.0f : w, bh = type == 4 ? 1.0f : h;
-                const float qx = (p.x - w / 2) / bw * S.x, qy = (p.y - h / 2) / bh * S.y;
-                const float rx = qx * cosT - qy * sinT, ry = qx * sinT + qy * cosT;
-                u = type == 4 ? (rx + w / 2) / gw + T.x : rx + 0.5f + T.x;
-                v = type == 4 ? (ry + h / 2) / gh + T.y : ry + 0.5f + T.y;
+                if (std::string_view(p.def->name) == "StopColor")
+                    colors = p.values;
+                if (std::string_view(p.def->name) == "StopPos")
+                    positions = p.values;
             }
-            if (type == 2)
-                return finish(gradientColor(u));
-            if (type == 3)
-                return finish(gradientColor(2.0f * std::hypot(u - 0.5f, v - 0.5f)));
-            Rgba s = SampleBilinear(*texture, u * gw, v * gh, Wrap::kWrap, Wrap::kWrap);
-            const Rgba f = ArgbToRgba(factor);
-            return Rgba{ s.r * f.r, s.g * f.g, s.b * f.b, s.a * f.a * opacity };
-        }, clip);
+            const size_t n2 = std::min({ size_t(count ? count->i : 0), colors.size(), positions.size() });
+            for (size_t i = 0; i < n2; i++)
+                paint.stops.push_back({ positions[i].f, colors[i].color });
+        }
+        if (paint.stops.empty())
+            paint.stops.push_back({ 0.0f, fillColor });
+        paint.table = GradientTable(paint.stops);
+        canvas.FillPaint(polygon, paint, clip);
     }
 
-    void Element::RenderImage(Assets&, Canvas& canvas, const Affine& world, float opacity, const ClipRect& clip,
+    void Element::RenderImage(Assets&, Surface& canvas, const Affine& world, float opacity, const ClipRect& clip,
                               const Image* image, uint32_t sizeMode)
     {
         if (!image || image->width == 0)
@@ -1138,7 +1317,7 @@ namespace xui
         canvas.DrawImage(*image, toDevice, tint, clip);
     }
 
-    void Element::RenderNineGrid(Assets& assets, Canvas& canvas, const Affine& world, float opacity,
+    void Element::RenderNineGrid(Assets& assets, Surface& canvas, const Affine& world, float opacity,
                                  const ClipRect& clip)
     {
         const Image* image = assets.LoadImage(GetString("TextureFileName"), basePackage_);
@@ -1188,7 +1367,10 @@ namespace xui
                 last--;
             int w = 0;
             for (size_t i = at; i < last; i++)
-                w += int(std::ceil(float(font.Advance(font.GlyphIndex(text[i]))) * unit));
+            {
+                Font& f = assets.FontFor(text[i]);
+                w += int(std::ceil(float(f.Advance(f.GlyphIndex(text[i]))) * pixelsPerEm / float(f.UnitsPerEm())));
+            }
             widest = std::max(widest, w);
             if (end < text.size() && text[end] == u'\r')
                 end++;
@@ -1197,7 +1379,7 @@ namespace xui
         return widest;
     }
 
-    void Element::RenderText(Assets& assets, Canvas& canvas, const Affine& world, float opacity, const ClipRect& clip,
+    void Element::RenderText(Assets& assets, Surface& canvas, const Affine& world, float opacity, const ClipRect& clip,
                              const std::u16string& text)
     {
         if (text.empty())
@@ -1229,7 +1411,8 @@ namespace xui
         if (width <= 0)
             return;
         auto advance = [&](char16_t c) {
-            return int(std::ceil(float(font.Advance(font.GlyphIndex(c))) * unit));
+            Font& f = assets.FontFor(c);
+            return int(std::ceil(float(f.Advance(f.GlyphIndex(c))) * pixelsPerEm / float(f.UnitsPerEm())));
         };
         auto isSpace = [](char16_t c) { return c == u' ' || c == 0x3000; };
 
@@ -1305,20 +1488,11 @@ namespace xui
         // layout in scene units with glyphs at the device size matches them to within 0.6 pixel.)
         const float scale = std::sqrt(std::abs(world.a * world.d - world.b * world.c));
         auto drawGlyph = [&](char16_t c, int penX, int lineTop, Rgba tint, float offset) {
-            const GlyphBitmap& g = font.Rasterize(font.GlyphIndex(c), unit * scale, 0.0f, 0.0f);
+            Font& f = assets.FontFor(c);
+            const GlyphBitmap& g = f.Rasterize(f.GlyphIndex(c), pixelsPerEm / float(f.UnitsPerEm()) * scale, 0.0f, 0.0f);
             if (g.width == 0)
                 return;
-            Image image;
-            image.width = uint32_t(g.width + 2);
-            image.height = uint32_t(g.height + 2);
-            image.rgba.assign(size_t(image.width) * image.height * 4, 0);
-            for (int y = 0; y < g.height; y++)
-                for (int x = 0; x < g.width; x++)
-                {
-                    uint8_t* t = &image.rgba[(size_t(y + 1) * image.width + x + 1) * 4];
-                    t[0] = t[1] = t[2] = 255;
-                    t[3] = g.coverage[size_t(y) * g.width + x];
-                }
+            const Image& image = GlyphImage(g);
             // The glyph's pixels follow the element's rotation (the Guide's blade labels are turned 90 degrees): its
             // upright device-size bitmap goes through the world transform's rotation (the scale is in the raster).
             const Vec2 p = world.Apply({ float(penX) + offset, float(lineTop) + ascent + offset });

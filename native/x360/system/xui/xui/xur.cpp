@@ -172,6 +172,13 @@ namespace xui
         // 17559's control pack MultiImage (dashuisk's skin.xur; its registration is XAM's): only the second property,
         // a string, is set in the skin, and the names are not known: placeholders.
         TABLE(kMultiImage, { "MultiImage0", T::kUnsigned }, { "MultiImage1", T::kString })
+        // The Blades dashboards' banner classes ("banner of the day": the Xbox Live blade's ad, Marketplace and
+        // Arcade banners). 1888's registrations (0x9218D010 / 0x9218D0A8) and property tables (0x9218CB30 /
+        // 0x9218CD50), both based on XuiScene.
+        TABLE(kBotdScene,
+            { "Link", T::kUnsigned }, { "TitleId", T::kString }, { "OfferId", T::kString }, { "Flags", T::kUnsigned },
+            { "ButtonVisual", T::kString })
+        TABLE(kBotdContainer, { "Area", T::kUnsigned }, { "DefaultBanner", T::kString })
         constexpr PropTable kNone = { nullptr, 0 };
 #undef TABLE
 
@@ -227,6 +234,8 @@ namespace xui
             { "DashScene", "XuiScene", kDashScene },
             { "ControlPackHubScene", "XuiScene", kHubScene },
             { "ControlPackAuraControl", "XuiElement", kAuraControl },
+            { "XuiBOTDScene", "XuiScene", kBotdScene },
+            { "XuiBOTDContainer", "XuiScene", kBotdContainer },
             { "ControlPackNuiBack", "XuiControl", kHandedness },
             { "ControlPackNuiButton", "XuiButton", kNone },
             { "ControlPackNuiCheckbox", "XuiCheckbox", kNone },

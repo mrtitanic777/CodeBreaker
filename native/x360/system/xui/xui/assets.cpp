@@ -34,7 +34,8 @@ namespace xui
                     return false;
                 }
                 const std::string name = font->Name();
-                fonts_.emplace(name, std::move(font));
+                if (!fonts_.emplace(name, std::move(font)).second)
+                    Log("System UI: font {} ({}) not loaded: a font of that name is", name, p.filename().string());
             }
         }
         if (files.empty())
@@ -48,6 +49,41 @@ namespace xui
             return false;
         }
         return LoadSkin(error);
+    }
+
+    bool Assets::ReplaceFont(const std::filesystem::path& file, std::string& error)
+    {
+        std::vector<uint8_t> data;
+        auto font = std::make_unique<Font>();
+        std::string why;
+        if (!ReadFile(file, data) || !font->Load(std::move(data), why))
+        {
+            error = std::format("{}: {}", file.filename().string(), why.empty() ? std::string("cannot be read") : why);
+            return false;
+        }
+        const std::string name = font->Name();
+        fonts_[name] = std::move(font);
+        return true;
+    }
+
+    Font& Assets::FontFor(char32_t c)
+    {
+        Font& main = DefaultFont();
+        if (c < 0x80 || main.GlyphIndex(c) != 0)
+            return main;
+        for (auto& [name, font] : fonts_)
+            if (font.get() != &main && font->GlyphIndex(c) != 0)
+                return *font;
+        static bool logged = false;
+        if (!logged)
+        {
+            logged = true;
+            std::string names;
+            for (auto& [name, font] : fonts_)
+                names += std::format(" [{}]", name);
+            Log("System UI: no font has U+{:04X} (fonts:{})", uint32_t(c), names);
+        }
+        return main;
     }
 
     bool Assets::LoadSkin(std::string& error)

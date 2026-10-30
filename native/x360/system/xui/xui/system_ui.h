@@ -514,4 +514,10 @@ namespace xui
     // nothing is visible. `vblank` is the emulated vblank count (the HUD's clock). `changed` tells whether it differs
     // from the previous call's.
     bool RenderOverlay(uint32_t width, uint32_t height, uint64_t vblank, std::vector<uint8_t>& rgba, bool& changed);
+    // The overlay drawn on another surface (a GPU one) over what is there, within `clip`, at the surface's size;
+    // false when nothing is visible. AdvanceOverlay runs its animations. `changed`: it differs from the last draw.
+    class Surface;
+    struct ClipRect;
+    bool DrawOverlay(Surface& surface, const ClipRect& clip, bool& changed);
+    bool OverlayVisible(); // the HUD, a popup, a toast or the full-screen scene is showing
 }

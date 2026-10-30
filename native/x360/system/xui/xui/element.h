@@ -89,9 +89,12 @@ namespace xui
         // XuiVisualCreateInstance handle: the Guide's recent players' Reputation stars), sized to the presenter.
         std::unique_ptr<Element> dataVisual[kDataSlots];
         bool focused = false, enabled = true;
+        bool debugHidden = false; // left out of every frame (a runtime's layer comparisons), whatever its timelines do
         // A checked list item (XM_GET_ITEMCHECK: a read message) plays the Check form of each state (NormalCheck,
         // FocusCheck ...: MessageListItem's icons at half opacity).
         bool checked = false;
+        // Builds the control's visual again from its Visual property (a timeline changed it).
+        void RebuildVisual();
         // Plays the control's visual state (Normal, Focus, Press, ...), with XUI's fallbacks.
         void PlayVisualState(std::string_view state);
 
@@ -103,6 +106,14 @@ namespace xui
         bool Playing() const;        // anything in the tree still animating
         bool TimelinePlaying() const { return playing_; } // this element's own timelines
         int FindNamedFrame(std::string_view name) const;
+        // XUI's start of a new scene's timelines (XuiElementPlayTimeline(h, 0, 0, -1, TRUE, TRUE): the scene
+        // transition's play when a scene has no TransTo frames, 17559 dash 0x921FD980): every element's own timeline
+        // from frame 0, its named frames' commands applying (a stop holds it, a goto loops it), the whole timeline
+        // looping at its last key when nothing stops it. Recurses into children that are not controls and into
+        // visuals without visual states (a skin's pure animations: the Blades background's BG_animation). INFER:
+        // DisableTimelineRecursion is not honoured here (the Blades banner's loop group under it animates on the
+        // console, started by its own class's code).
+        void PlayLooping();
         // Shows frame `frame` of this element's timelines and stays there (XuiElementPlayTimeline(h, f, f, f)).
         void ShowFrame(int frame);
         // The last key frame of this element's own timelines (0 if none).
@@ -120,7 +131,7 @@ namespace xui
         // Draws the tree; `toDevice` maps this element's parent's space to device pixels. `colorFactor` is the
         // parents' ColorFactor: XUI multiplies an element's ColorFactor into its visual and children, as Opacity
         // (ProfileRoot.xur's tab labels: a dark factor on a white-text label visual, the owner's 7_47_09).
-        void Render(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
+        void Render(Assets& assets, Surface& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
                     uint32_t colorFactor = 0xFFFFFFFF);
 
     private:
@@ -135,12 +146,12 @@ namespace xui
         Affine LocalTransform() const;
         Element* Control(); // the control a visual element presents data for
 
-        void RenderSelf(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip);
-        void RenderFigure(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip);
-        void RenderImage(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
+        void RenderSelf(Assets& assets, Surface& canvas, const Affine& toDevice, float opacity, const ClipRect& clip);
+        void RenderFigure(Assets& assets, Surface& canvas, const Affine& toDevice, float opacity, const ClipRect& clip);
+        void RenderImage(Assets& assets, Surface& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
                          const Image* image, uint32_t sizeMode);
-        void RenderNineGrid(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip);
-        void RenderText(Assets& assets, Canvas& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
+        void RenderNineGrid(Assets& assets, Surface& canvas, const Affine& toDevice, float opacity, const ClipRect& clip);
+        void RenderText(Assets& assets, Surface& canvas, const Affine& toDevice, float opacity, const ClipRect& clip,
                         const std::u16string& text);
 
         std::string className_, id_, basePackage_;
@@ -157,9 +168,11 @@ namespace xui
         float designWidth_ = 60, designHeight_ = 30;
         float frame_ = 0;
         bool playing_ = false;
+        bool loop_ = false; // PlayLooping: back to frame 0 after the last key
         int stopFrame_ = -1;
         bool sampled_ = false;
-        uint32_t renderFactor_ = 0xFFFFFFFF; // this element's ColorFactor times its parents' (set by Render)
+        uint32_t renderFactor_ = 0xFFFFFFFF;
+        Affine parentToDevice_; // the parent's space -> device, for elements drawn with a 3D transform // this element's ColorFactor times its parents' (set by Render)
     };
 
     // XUI's ease curve (_ComputeEaseCurve + XUISubtimeline_GotoTime): the eased fraction for time fraction t (an

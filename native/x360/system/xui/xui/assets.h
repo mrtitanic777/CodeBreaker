@@ -66,6 +66,14 @@ namespace xui
         const Package::Entry* FindEntry(std::string_view path, std::string_view basePackage) const;
 
         Font& DefaultFont() { return *fonts_.at("Xbox TC"); }
+        // The font a character is drawn with: the default's when it has the glyph, else the first other system font
+        // that does (xenonjklatin.xtt's Japanese / Korean, as the console's text falls back for the 1888 language
+        // list's names), else the default's.
+        Font& FontFor(char32_t c);
+        // A system font file in place of the loaded one of its name (or added): the console's full NAND fonts over the
+        // flash's Latin-only parts (system_ui's xenonclatin.xtt / xenonjklatin.xtt are those parts, without the Japanese
+        // and Korean glyphs). Before anything is drawn.
+        bool ReplaceFont(const std::filesystem::path& file, std::string& error);
 
     private:
         bool LoadSkin(std::string& error);

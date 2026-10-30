@@ -143,13 +143,54 @@ namespace xui
             error = std::format("string table size {} does not match the entry ({})", Be32(data + 6), size);
             return false;
         }
-        // Version 0x0202 holds the strings only; 0x0200 (vk.xex's table) holds each string followed by its id.
-        const bool withIds = data[5] == 0;
         const uint16_t count = Be16(data + 10);
         size_t at = 12;
         out.clear();
         if (ids)
             ids->clear();
+        // Version 0x0102 (the 1888 dashboard's tables): each string a big-endian 16-bit length in characters, then
+        // that many UTF-16BE characters; kept here as UTF-8 like the others.
+        if (Be16(data + 4) == 0x0102)
+        {
+            for (uint32_t i = 0; i < count; i++)
+            {
+                const size_t length = at + 2 <= size ? Be16(data + at) : 0;
+                if (at + 2 + length * 2 > size)
+                {
+                    error = std::format("string {} runs past the table", i);
+                    return false;
+                }
+                at += 2;
+                std::string text;
+                for (size_t k = 0; k < length; k++)
+                {
+                    uint32_t c = Be16(data + at + k * 2);
+                    if (c >= 0xD800 && c < 0xDC00 && k + 1 < length)
+                    {
+                        const uint32_t low = Be16(data + at + (k + 1) * 2);
+                        if (low >= 0xDC00 && low < 0xE000)
+                        {
+                            c = 0x10000 + ((c - 0xD800) << 10) + (low - 0xDC00);
+                            k++;
+                        }
+                    }
+                    if (c < 0x80)
+                        text += char(c);
+                    else if (c < 0x800)
+                        text += { char(0xC0 | c >> 6), char(0x80 | (c & 0x3F)) };
+                    else if (c < 0x10000)
+                        text += { char(0xE0 | c >> 12), char(0x80 | (c >> 6 & 0x3F)), char(0x80 | (c & 0x3F)) };
+                    else
+                        text += { char(0xF0 | c >> 18), char(0x80 | (c >> 12 & 0x3F)), char(0x80 | (c >> 6 & 0x3F)),
+                                  char(0x80 | (c & 0x3F)) };
+                }
+                out.push_back(std::move(text));
+                at += length * 2;
+            }
+            return true;
+        }
+        // Version 0x0202 holds the strings only; 0x0200 (vk.xex's table) holds each string followed by its id.
+        const bool withIds = data[5] == 0;
         for (uint32_t i = 0; i < uint32_t(count) * (withIds ? 2 : 1); i++)
         {
             const void* end = at < size ? std::memchr(data + at, 0, size - at) : nullptr;

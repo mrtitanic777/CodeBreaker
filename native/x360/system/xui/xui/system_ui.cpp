@@ -305,6 +305,11 @@ namespace xui
                 return false;
             s.hud = Element::Create(*s.assets, *scene, scene->Root(), package, nullptr);
             s.hudScene = s.hud->Find("HUDRootScene");
+            // The Blades HUD's blade label (GamerTag) holds the author's placeholder ("SniperMonkey"): empty until
+            // the Guide names the signed-in gamer (the sign-in pane opened from a dashboard shows no name).
+            if (s.hudScene)
+                if (Element* tag = s.hudScene->Find("GamerTag"))
+                    tag->SetString("Text", "");
             return s.hudScene != nullptr;
         }
 
@@ -1900,16 +1905,31 @@ namespace xui
         State& s = S();
         std::lock_guard lock(s.mutex);
         if (!Ready(s) || !EnsureHud(s))
+        {
+            Log("System UI: no sign-in pane (the HUD is not ready)");
             return;
+        }
         ShowWhenClosed(s, [=](State& s) {
             Element* pane = OpenPane(s, "signin.signin", "signin1.xur");
             if (!pane)
+            {
+                Log("System UI: signin1.xur cannot be opened");
                 return;
+            }
             s.pane = Pane::kSignIn;
-            Element* users = LoadInto(s, pane->Find("Scene_Pane0"), "signin.signin", "UserListSinglePane.xur");
+            // The one-pane user list (17559); the Blades updates' signin.xex (1888 ... 6770) has UserList.xur.
+            const Package* signin = s.assets->FindPackage("signin.signin");
+            const bool singlePane = signin && signin->Find("UserListSinglePane.xur");
+            Element* users = LoadInto(s, pane->Find("Scene_Pane0"), "signin.signin",
+                                      singlePane ? "UserListSinglePane.xur" : "UserList.xur");
             Element* list = users ? users->Find("listUser") : nullptr;
             if (!list)
+            {
+                Log("System UI: sign-in pane without its user list ({} {}, Scene_Pane0 {})",
+                    singlePane ? "UserListSinglePane.xur" : "UserList.xur", users ? "has no listUser" : "not loaded",
+                    pane->Find("Scene_Pane0") ? "found" : "missing");
                 return;
+            }
             // signin.xex's strings: #9 "Create Profile", #64 "Download Profile", with the module's icons.
             const auto* strings = s.assets->Strings(Base17559(s, "signin.signin"), "strings.xus");
             auto text = [&](size_t i, const char16_t* fallback) {
@@ -4982,6 +5002,96 @@ namespace xui
         s.dirty = true;
     }
 
+    namespace
+    {
+        // Where the overlay's layers go on a target of width x height.
+        struct OverlayLayout
+        {
+            Affine design, hudDesign, fullDesign, grid;
+        };
+
+        OverlayLayout Layout(State& s, uint32_t width, uint32_t height)
+        {
+            OverlayLayout l;
+            const float scale = float(height) / kDesignHeight;
+            l.design = Affine::Scale(scale, scale).Then(Affine::Translate((float(width) - kDesignWidth * scale) / 2, 0));
+            // The HUD: 17559's (852x480) by the height, centred; the Blades HUD (xam.xex 1888 ... 6770, 1120x770) as
+            // the Blades dashboards show their scenes: scaled to cover, the top and bottom cropped.
+            l.hudDesign = l.design;
+            if (s.hud && (s.hud->Width() != kDesignWidth || s.hud->Height() != kDesignHeight) && s.hud->Width() > 0 &&
+                s.hud->Height() > 0)
+            {
+                const float hw = s.hud->Width(), hh = s.hud->Height();
+                const float hs = std::max(float(width) / hw, float(height) / hh);
+                l.hudDesign = Affine::Scale(hs, hs).Then(Affine::Translate((float(width) - hw * hs) / 2,
+                                                                           (float(height) - hh * hs) / 2));
+            }
+            l.grid = l.hudDesign;
+            // The full-screen scene: its root's size scaled to cover the output, centred, on black. The Blades
+            // dashboards design at 1120x770 and show it so: scaled by the width, the top and bottom cropped; a
+            // 1280x720 scene is drawn 1:1.
+            if (s.full)
+            {
+                const float fw = s.full->Width(), fh = s.full->Height();
+                const float fs = std::max(float(width) / fw, float(height) / fh);
+                l.fullDesign = Affine::Scale(fs, fs).Then(Affine::Translate((float(width) - fw * fs) / 2,
+                                                                            (float(height) - fh * fs) / 2));
+                // Its images snap to its own units unless the HUD (on its grid) is drawn over it.
+                if (s.phase == Phase::kClosed && !s.toastScene)
+                    l.grid = l.fullDesign;
+            }
+            return l;
+        }
+
+        // The overlay's layers within `clip`: the full-screen scene on black, the dim, the HUD, the toast.
+        void DrawLayers(State& s, Surface& surface, const OverlayLayout& l, const ClipRect& clip)
+        {
+            const float width = float(surface.Width()), height = float(surface.Height());
+            const std::vector<Vec2> screen = { { 0, 0 }, { width, 0 }, { width, height }, { 0, height } };
+            Paint paint;
+            if (s.full)
+            {
+                paint.color = { 0, 0, 0, 1 };
+                surface.FillPaint(screen, paint, clip);
+                s.full->Render(*s.assets, surface, l.fullDesign, 1.0f, clip);
+            }
+            if (s.phase != Phase::kClosed)
+            {
+                // The held layer and the fading one over it (black over black: one fill of the combined alpha).
+                const DimLayers& layers = s.dimLayers;
+                paint.color = { 0, 0, 0, 1.0f - (1.0f - layers.hold) * (1.0f - layers.fade * s.dim) };
+                surface.FillPaint(screen, paint, clip);
+            }
+            if (s.hud && s.phase != Phase::kClosed)
+                s.hud->Render(*s.assets, surface, l.hudDesign, 1.0f, clip);
+            if (s.toastScene)
+                s.toastScene->Render(*s.assets, surface,
+                                     Affine::Translate(float(s.toastX), float(s.toastY)).Then(l.design), 1.0f, clip);
+        }
+    }
+
+    bool OverlayVisible()
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        return s.assets && (s.phase != Phase::kClosed || s.toastScene || s.full);
+    }
+
+    bool DrawOverlay(Surface& surface, const ClipRect& clip, bool& changed)
+    {
+        State& s = S();
+        RunDue due{ s };
+        std::lock_guard lock(s.mutex);
+        changed = s.dirty;
+        s.dirty = false;
+        if (!s.assets || (s.phase == Phase::kClosed && !s.toastScene && !s.full))
+            return false;
+        const OverlayLayout layout = Layout(s, uint32_t(surface.Width()), uint32_t(surface.Height()));
+        surface.SetUnitGrid(layout.grid);
+        DrawLayers(s, surface, layout, clip);
+        return true;
+    }
+
     bool RenderOverlay(uint32_t width, uint32_t height, uint64_t vblank, std::vector<uint8_t>& rgba, bool& changed)
     {
         State& s = S();
@@ -5008,34 +5118,8 @@ namespace xui
             s.canvas = std::make_unique<Canvas>(int(width), int(height));
         Canvas& canvas = *s.canvas;
         rgba.resize(size_t(width) * height * 4);
-        const float scale = float(height) / kDesignHeight;
-        const Affine design = Affine::Scale(scale, scale)
-            .Then(Affine::Translate((float(width) - kDesignWidth * scale) / 2, 0));
-        // The HUD: 17559's (852x480) by the height, centred; the Blades HUD (xam.xex 1888 ... 6770, 1120x770) as the
-        // Blades dashboards show their scenes: scaled to cover, the top and bottom cropped.
-        Affine hudDesign = design;
-        if (s.hud && (s.hud->Width() != kDesignWidth || s.hud->Height() != kDesignHeight) && s.hud->Width() > 0 &&
-            s.hud->Height() > 0)
-        {
-            const float hw = s.hud->Width(), hh = s.hud->Height();
-            const float hs = std::max(float(width) / hw, float(height) / hh);
-            hudDesign = Affine::Scale(hs, hs).Then(Affine::Translate((float(width) - hw * hs) / 2,
-                                                                     (float(height) - hh * hs) / 2));
-        }
-        canvas.SetUnitGrid(hudDesign);
-        // The full-screen scene: its root's size scaled to cover the output, centred, on black. The Blades dashboards
-        // design at 1120x770 and show it so: scaled by the width, the top and bottom cropped; a 1280x720 scene is drawn 1:1.
-        Affine fullDesign;
-        if (s.full)
-        {
-            const float fw = s.full->Width(), fh = s.full->Height();
-            const float fs = std::max(float(width) / fw, float(height) / fh);
-            fullDesign = Affine::Scale(fs, fs).Then(Affine::Translate((float(width) - fw * fs) / 2,
-                                                                      (float(height) - fh * fs) / 2));
-            // Its images snap to its own units unless the HUD (on its grid) is drawn over it.
-            if (s.phase == Phase::kClosed && !s.toastScene)
-                canvas.SetUnitGrid(fullDesign);
-        }
+        const OverlayLayout layout = Layout(s, width, height);
+        canvas.SetUnitGrid(layout.grid);
         // Drawn in horizontal bands on several threads: every draw is clipped to its band's rows, so each pixel
         // sees the same draws in the same order as in one pass (identical result). The overlay is drawn on the
         // GPU thread, which the title waits for: in one pass a message box took ~11 ms and the keyboard ~20 ms,
@@ -5044,27 +5128,7 @@ namespace xui
         DrawBands(bands, [&](int band) {
             const ClipRect clip{ 0, int(height) * band / bands, int(width), int(height) * (band + 1) / bands };
             canvas.ClearRows(clip.y0, clip.y1);
-            if (s.full)
-            {
-                const Rgba black{ 0, 0, 0, 1 };
-                canvas.FillPolygon({ { 0, 0 }, { float(width), 0 }, { float(width), float(height) },
-                                     { 0, float(height) } }, [&](float, float) { return black; }, clip);
-                s.full->Render(*s.assets, canvas, fullDesign, 1.0f, clip);
-            }
-            if (s.phase != Phase::kClosed)
-            {
-                // The held layer and the fading one over it (black over black: one fill of the combined alpha).
-                const DimLayers& layers = s.dimLayers;
-                const float alpha = 1.0f - (1.0f - layers.hold) * (1.0f - layers.fade * s.dim);
-                const Rgba black{ 0, 0, 0, alpha };
-                canvas.FillPolygon({ { 0, 0 }, { float(width), 0 }, { float(width), float(height) },
-                                     { 0, float(height) } }, [&](float, float) { return black; }, clip);
-            }
-            if (s.hud && s.phase != Phase::kClosed)
-                s.hud->Render(*s.assets, canvas, hudDesign, 1.0f, clip);
-            if (s.toastScene)
-                s.toastScene->Render(*s.assets, canvas,
-                                     Affine::Translate(float(s.toastX), float(s.toastY)).Then(design), 1.0f, clip);
+            DrawLayers(s, canvas, layout, clip);
             canvas.ToRgba8Rows(rgba, clip.y0, clip.y1);
         });
         s.last = rgba;
