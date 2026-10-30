@@ -230,19 +230,6 @@ def _struct_decls(structs, header, far16=False):
     return lines
 
 
-def _code_pointers(text, functions):
-    """`p = sub_401000;` -- a function's address stored in a pointer the core typed loosely:
-    `p = (code *)sub_401000;` (where the statement ends its line)."""
-    src = ctree.Source(text)
-    for n in src.find("assignment_expression", "init_declarator"):
-        v = n.child_by_field_name("right" if n.type == "assignment_expression" else "value")
-        if v is not None and v.type == "identifier" and src.at(v) in functions and \
-                src.data[v.end_byte:v.end_byte + 1] == b";" and src.data[v.end_byte + 1:v.end_byte + 2] in (b"\n", b"\r", b"") \
-                and src.data[v.start_byte - 2:v.start_byte] == b"= ":
-            src.insert(v.start_byte, "(code *)")
-    return src.text()
-
-
 def compilable32(module_path, funcs, outdir):
     """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
     the core's output with its base types defined, its globals bound to the original's addresses,
@@ -1452,11 +1439,10 @@ def compilable_powerpc(module_path, outdir):
         facts = got.notes.get(n) or {}
         for va, size, _elem in facts.get("globals") or ():
             sizes.setdefault(va, set()).add(size)
-        written = {"lane": "powerpc"}
+        written = {"lane": "powerpc", "functions": set(order)}
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         t = out[n].strip()
-        t = _code_pointers(t, set(order))
         t = _homed_arguments(t)
         body = _without_notes(t)
         lead = t[:len(t) - len(body)]
