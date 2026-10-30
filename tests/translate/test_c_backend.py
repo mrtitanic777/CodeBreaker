@@ -247,6 +247,28 @@ def test_a_module_as_one_tree_with_what_stayed_assembly(tmp_path):
     assert list(asm) == ['sub_1_0010'] and '_sub_1_0020: retf' in asm['sub_1_0010']
 
 
+def test_a_32_bit_module_as_one_tree():
+    """Step 4 for the 32-bit build: the module as one L2 Module, each function in address order its
+    L2 document placed by its address, one with no L2 (the decompiler could not make it) its name
+    and place; the C back end writes it back."""
+    from codebreaker.build import module as build_module
+
+    class M:
+        pass
+    m = M()
+    m.by_va = {0x401010: 'sub_401010', 0x401000: 'sub_401000'}
+    m.l2 = {'sub_401000': {'node': 'MethodDecl', 'name': 'sub_401000', 'kind': 'function', 'ret': {'kind': 'void'},
+                           'params': [], 'body': [{'node': 'Return', 'origin': {'at': [0x401000]}}]}}
+    doc = build_module.module_document32('test.dll', m)
+    assert not list(l2.validate(doc) or ())
+    assert [(u['node'], u['name'], u['origin']) for u in doc['units']] == [
+        ('MethodDecl', 'sub_401000', {'module': 'test.dll', 'va': 0x401000}),
+        ('MethodDecl', 'sub_401010', {'module': 'test.dll', 'va': 0x401010})]
+    assert 'body' not in doc['units'][1]
+    text, asm = c.module(doc)
+    assert 'void sub_401000(void)' in text and "/* sub_401010: not in L2" in text and not asm
+
+
 def test_comments_where_printc_writes_them():
     """PrintC's comments come with L2: the function's warnings above it (MethodDecl.comments, a
     line break in one written as the core writes it, the comment's fill after it), the others as

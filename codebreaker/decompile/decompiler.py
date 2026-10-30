@@ -474,11 +474,13 @@ def decompile(module_path, funcs=None, outdir=None):
         funcs = pipeline.LANES["pe"].functions(module_path)
     outdir = outdir or B._scratch("decompiler", os.path.basename(module_path).lower())
     from codebreaker.translate import l2
-    header, texts, order, by_va, used, in_ecx, in_edx = c_text.compilable32(module_path, funcs, outdir)
+    header, texts, order, by_va, used, in_ecx, in_edx, docs, declarations = c_text.compilable32(
+        module_path, funcs, outdir)
     # (one L2 Module: each function a MethodDecl with its C; the imports it calls, and those of its
-    # functions that take their first argument in ECX -- and their second in EDX -- beside it)
+    # functions that take their first argument in ECX -- and their second in EDX -- beside it; each
+    # function's L2 document, and its declaration as the back end wrote its heading from it)
     return l2.Made(os.path.basename(module_path).lower(), header, texts, order, by_va, imports=used,
-                   in_ecx=set(in_ecx), in_edx=set(in_edx))
+                   in_ecx=set(in_ecx), in_edx=set(in_edx), l2=docs, declarations=declarations)
 
 
 # 16-bit modules ---------------------------------------------------------------------------------

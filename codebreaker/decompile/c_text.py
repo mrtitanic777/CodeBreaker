@@ -191,9 +191,12 @@ def _struct_decls(structs, header, far16=False):
 
 
 def compilable32(module_path, funcs, outdir):
-    """-> (preamble, {name: text}, [names], {va: name}, [import names used]) for a whole-module build:
-    the core's output with its base types defined, its globals bound to the original's addresses,
-    and every function and import declared before use with its real convention."""
+    """-> (preamble, {name: text}, [names], {va: name}, [import names used], in_ecx, in_edx, {name:
+    its L2 document}, {name: its declaration}) for a whole-module build: the core's output with its
+    base types defined, its globals bound to the original's addresses, and every function and import
+    declared before use with its real convention. The declarations are each function's heading as
+    the back end last wrote it from its L2 document, `;` ended (the module's public header declares
+    its exports with them: build/module)."""
     from codebreaker.symbols import api_arguments as apiarity
     from codebreaker.build import watcom as B
     from codebreaker.decompile import decompiler
@@ -345,15 +348,20 @@ def compilable32(module_path, funcs, outdir):
     from codebreaker.decompile import struct_text
     planned = struct_text.plan(module_path, {n: got.notes[n]["l2"] for n in declared}, by_va, declared)
     used_structs = set()
+    final = dict(declared)                             # (each heading as last written: with its fields)
     for n in order:
         if n not in planned:
             continue
         written = dict(written_of[n], struct_fields=planned[n])
         out[n] = decompiler.c_from_l2(out[n], got.notes[n], None, written).strip()
         used_structs |= written.get("structs_used") or set()
+        if written.get("declared"):
+            final[n] = written["declared"]
     if planned:
         preamble += struct_text.declarations(planned, used_structs)
-    return preamble, out, order, by_va, used, in_ecx, in_edx
+    docs = {n: got.notes[n]["l2"] for n in order if (got.notes.get(n) or {}).get("l2") is not None}
+    return (preamble, out, order, by_va, used, in_ecx, in_edx, docs,
+            {n: h + ";" for n, h in final.items() if h.endswith(")")})
 
 
 HEADER = """typedef long long int8; typedef unsigned long long uint8; typedef unsigned long long xunknown8;

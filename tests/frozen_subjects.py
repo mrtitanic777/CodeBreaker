@@ -181,7 +181,7 @@ def c_text32(path):
     from codebreaker.verify.lanes import win32
     with tempfile.TemporaryDirectory(prefix="cbfrozen_") as work:
         header, texts, order, _by_va, used, in_ecx, in_edx = c_text.compilable32(
-            path, win32.LANES["pe"].functions(path), work)
+            path, win32.LANES["pe"].functions(path), work)[:7]
     return {"header": header, "texts": texts, "order": order, "imports": used,
             "in_ecx": sorted(in_ecx), "in_edx": sorted(in_edx)}
 
