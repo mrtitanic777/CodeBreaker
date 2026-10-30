@@ -231,6 +231,44 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    rounds still find the calls to places not yet known (`func_0x...`) and count each call's
    arguments in the printed C; the L2 documents' Call nodes say the same, and that is the next
    to move off text.
+   **More of c_text's 16-bit passes on the tree, 2026-10-30** (backends/c, `MOVED` and
+   `IN_MODULE`, run as `_write16` writes each function with the module's facts):
+   `_selector_structs` and `_struct_gaps` (each structure's declaration, and a global selector's
+   fields, go to the facts -- "selector_decls", "selector_shared" -- which c_text gathers in
+   address order and declares once with `_shared_selector_structs`, as before);
+   `_own_segment_calls` (the function's own made-up selector is a fact, "selector");
+   `_interrupts` (the interrupts taken are a fact, "interrupts"; an interrupt result's local goes:
+   the back end can now leave a declaration out, `_now['drop']`); the definition in the older
+   style (`_old_style`, c_text's `_open_arguments`: `_caller_frame_slots` now writes the helper's
+   heading in that style itself; `_open_arguments` stays for PowerPC); `_entry_sp` and
+   `_stack_arguments`. The last four moved ahead of `_far_addresses` and `_far_casts`, which do not
+   read or write what they do -- but for one thing each: the selector structures are named by the
+   selector as written before the interrupts' results are renamed (KEYBOARD's
+   `seg_sub_2_031F_int_DS_00`), so those two moved together; and `_far_addresses` takes away a
+   local that only holds a far pointer's high word, which `_entry_sp` then never saw as a local of
+   the frame (`backends/c._unused_high_halves`: five USER and GDI functions). The tree passes read
+   the text as c_text's parser read it: tree-sitter does not know the decompiler's type names, and
+   takes `(int2)&x` for a bitwise and unless what follows binds tighter (`(int2)&p->f + 2` is a
+   cast), `(int2)*p` for a product (`backends/c._unary_as_read`). `_struct_gaps` stays in c_text
+   for the 32-bit and PowerPC paths. decompile16's rounds read the calls, their arguments and
+   each function's own arguments and convention off the L2 documents (`decompiler._l2_calls`,
+   `_own_arguments`; a function without one from its text). Gate: `l2c --made` now also holds
+   each module's header and tables (near, wide, novalue, exported_prologue, interrupts,
+   prototyped, selector imports, failed) to the reference; the references were recorded again,
+   with them, from master as it was (e93d9f5d7): LZEXPAND 55, KEYBOARD 79, COMM 50, LZ32 39,
+   KRNL386 1,175, GDI 1,666 and USER 2,326 entries (functions and nine for the module), all the
+   same; where they differ only in line breaks (KRNL386 73, GDI 194, USER 75, LZEXPAND 1,
+   KEYBOARD 1) a heading in the older style fits on one line where PrintC broke the longer one,
+   or a rewrite is laid out by its own text. c_text.py is 3,026 lines (3,284 before).
+   **Left in c_text, 2026-10-30.** Per 16-bit function (`_one16`), in order: `_far_addresses`,
+   `_far_casts`, `_far_locals`, `_far_concat_casts`, `_buffer_fields`, `_far_reads`,
+   `_near_to_far` (the far-pointer chain: each reads what the ones before wrote),
+   `_stack_segment_stores` (the code bytes: a fact for `module_facts16` next), `_callee_pops`
+   (last: it rewrites casts the chain writes). Module-wide in `_compilable16`, as listed above
+   (`_caller_frame_slots`, the selector values, own segments, far pointers passed whole,
+   `_code_segment_data`, the globals' macros, `prototypes` / `declaration`, the header), and
+   c_text's `Module16` / `Module` classes (not yet folded into the L2 Module); the 32-bit and
+   PowerPC paths not begun.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
    **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`

@@ -185,6 +185,15 @@ A function the back end declines is one the decompiler could not make (GDI's sub
 statements PrintL2 cannot all write yet). docs/IR_UNIFICATION.md step 3 has the passes left in
 c_text and why; c_text.py is 3,284 lines (3,621 before).
 
+Since 2026-10-30 the back end also does, on the tree, the selector structures and structure gaps,
+the calls through the function's own code segment, the interrupts, the definition in the older
+style, the entry SP and the caller's stack words (what they find for the module -- structures,
+interrupts -- comes back as facts that c_text gathers), and decompile16's rounds read calls and
+arguments off the L2 documents. What is left in c_text for 16-bit code is the far-pointer chain
+(`_far_addresses` ... `_near_to_far`), `_stack_segment_stores`, `_callee_pops` and the
+module-wide assembly; c_text.py is 3,026 lines. `l2c --made` now also holds each module's header
+and tables to the reference (recorded again from e93d9f5d7).
+
 Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
 before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the
 module's tables (near, wide, novalue, exported_prologue, interrupts, selector imports,
