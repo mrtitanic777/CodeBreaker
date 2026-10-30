@@ -1357,9 +1357,13 @@ def results(d):
                     size[place], changed = got, True
         if not changed:
             break
-    # (off unless CB_CALLER_RESULTS=1 until Windows 95 Setup has been booted with it: before the
-    # callee had to hand back a DX of its own, USER's C stopped Setup -- "not enough memory to
-    # run Setup" -- see _DxReturns)
+    # (off unless CB_CALLER_RESULTS=1 until Windows 95 Setup has been booted with it. With it on,
+    # USER's C once stopped Setup -- "not enough memory to run Setup". That is now thought not a
+    # wrong result but what the C it lets USER have did to fixed segment 1: grown past the
+    # original's, the low memory Setup needs for its program was gone. build/module.py now keeps a
+    # fixed code segment at the original's size; the milestone boot, with the rule on and off,
+    # is to confirm it. Narrowed meanwhile to a callee that hands back a DX of its own on every
+    # way -- see _DxReturns)
     if os.environ.get("CB_CALLER_RESULTS") == "1" and getattr(d, "images", None):
         edges = []
         read = {p for p in callers_read_dx(d, edges) if p in size and size[p] < 4}   # (what the callers read after it)
@@ -1437,7 +1441,8 @@ class _DxReturns:
                     into.setdefault(ins[k + 1].address, []).append(i.address)
                 if i.group(capstone.CS_GRP_JUMP) and i.operands and i.operands[0].type == capstone.CS_OP_IMM                         and i.mnemonic != "ljmp":
                     into.setdefault(i.operands[0].imm & 0xFFFF, []).append(i.address)
-            self.code[place] = (ins, at, into, end, any(i.mnemonic == "push" and i.op_str == "dx" for i in ins))
+            self.code[place] = (ins, at, into, end, any(i.mnemonic == "push" and i.op_str == "dx" for i in ins),
+                                self._saves_ax(ins))
         return self.code[place]
 
     def _target(self, sg, i):
@@ -1454,7 +1459,7 @@ class _DxReturns:
         f = self._function(place)
         if f is None:
             return False
-        ins, at, into, end, saves_dx = f
+        ins, at, into, end, saves_dx, saves_ax = f
         sg, off = place
         dx = {capstone.x86.X86_REG_DX, capstone.x86.X86_REG_DL, capstone.x86.X86_REG_DH, capstone.x86.X86_REG_EDX}
 
@@ -1493,6 +1498,8 @@ class _DxReturns:
                     jumped_on = True
         if not ends and not jumped_on:
             return False
+        if saves_ax and self._gives_back_ax(ins, at, into, ends):
+            return False                                     # (no result at all: AX as it came)
         work, seen = [], set()
         for r in ends:
             work += into.get(r.address, []) or [None]
@@ -1522,6 +1529,51 @@ class _DxReturns:
                 return False                                 # (DX as the caller had it)
             work += into.get(a, []) or [None]
         return True
+
+    @staticmethod
+    def _saves_ax(ins):
+        """Does it push AX as it was given -- before anything sets AX, on the way in from its start?
+        (Not `push ebx / pop ax / pop dx`, KRNL386's 2:4C91 handing back a LONG made in EBX.)"""
+        ax = {capstone.x86.X86_REG_AX, capstone.x86.X86_REG_AL, capstone.x86.X86_REG_AH, capstone.x86.X86_REG_EAX}
+        for i in ins:
+            if i.mnemonic == "push" and i.op_str == "ax":
+                return True
+            if i.group(capstone.CS_GRP_JUMP) or i.group(capstone.CS_GRP_CALL) or i.group(capstone.CS_GRP_RET):
+                return False
+            try:
+                if ax & set(i.regs_access()[1]):
+                    return False
+            except capstone.CsError:
+                return False
+        return False
+
+    @staticmethod
+    def _gives_back_ax(ins, at, into, ends):
+        """Is AX, on some way to a return, last set by a `pop ax` -- the caller's own AX given back?
+        Then nothing comes back in DX:AX either, whatever a call before it did to DX: KEYBOARD's
+        9:0367 saves AX and BX, calls the keyboard VxD's entry through [20h] (a pointer, taken as
+        handing back its DX) and returns them as they were; its callers read their own DX."""
+        ax = {capstone.x86.X86_REG_AX, capstone.x86.X86_REG_AL, capstone.x86.X86_REG_AH, capstone.x86.X86_REG_EAX}
+        work, seen = [], set()
+        for r in ends:
+            work += into.get(r.address, [])
+        while work:
+            a = work.pop()
+            if a in seen or a not in at:
+                continue
+            seen.add(a)
+            p = ins[at[a]]
+            if p.mnemonic == "pop" and p.op_str == "ax":
+                return True
+            if p.group(capstone.CS_GRP_CALL) or p.mnemonic in ("int", "into"):
+                continue                                     # (AX from a call: not the caller's)
+            try:
+                if ax & set(p.regs_access()[1]):
+                    continue
+            except capstone.CsError:
+                continue
+            work += into.get(a, [])
+        return False
 
 
 def callers_read_dx(d, edges=None):

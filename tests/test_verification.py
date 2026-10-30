@@ -489,6 +489,24 @@ def test_a_function_reading_ax_dx_or_bx_before_writing_it_takes_them_as_fastcall
     assert not describe.register_arguments(plain, 0)
 
 
+def test_a_callee_that_gives_back_the_caller_s_ax_returns_no_dx_either():
+    """The caller-results rule (CB_CALLER_RESULTS=1) makes a callee four-byte only where it hands
+    back a DX of its own. KEYBOARD's 9:0367 saves AX and BX, calls the VxD's entry through [20h]
+    and gives both back: no result at all. The same call with AX left as the call set it hands
+    the call's DX:AX on; one that sets AX before it pushes it (KRNL386's 2:4C91) saves nothing."""
+    from types import SimpleNamespace
+    from codebreaker.decompile import describe
+    saved = bytes.fromhex("50" "53" "bb3a00" "b81400" "ff1e2000" "5b" "58" "c3")   # push ax/bx ... pop bx/ax; ret
+    passed = bytes.fromhex("b81400" "ff1e2000" "c3")                               # mov ax, 14h; lcall [20h]; ret
+    made = bytes.fromhex("b80100" "50" "ba0200" "58" "c3")                          # mov ax, 1; push ax; mov dx, 2; pop ax
+    code = saved.ljust(0x20, b"\x90") + passed.ljust(0x20, b"\x90") + made
+    d = SimpleNamespace(names={describe.address(1, o): "f%x" % o for o in (0, 0x20, 0x40)}, images={1: code})
+    own = describe._DxReturns(d)
+    assert not own.every_way((1, 0), set())
+    assert own.every_way((1, 0x20), set())
+    assert own.every_way((1, 0x40), set())
+
+
 def test_an_exported_function_s_parameters_are_typed_by_wine_s_spec():
     """IpFindFirstLine(word, str, str, ptr), pascal: in stack order a pointer, two strings, a word --
     seven words as decompiled, four parameters as written; a half used alone is FP_OFF / FP_SEG."""
@@ -748,7 +766,8 @@ def main():
                test_other_shapes_of_the_same_function,
                test_object_file_of_the_16_bit_compiler_is_read, test_a_verdict_is_for_the_compiled_code,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
-               test_reconstruct_is_incremental):
+               test_reconstruct_is_incremental,
+               test_a_callee_that_gives_back_the_caller_s_ax_returns_no_dx_either):
         try:
             fn()
             RESULTS.append((fn.__name__, "PASS", ""))
