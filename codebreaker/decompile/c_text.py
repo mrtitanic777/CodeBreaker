@@ -1568,7 +1568,8 @@ def module_facts16(code, off, end, distance, model, dgroup, far_return, seg=None
     which Windows rewrites to load the module's data segment: the source marked it _export) and
     whether it loads its own data segment whoever calls it (`mov ax, DGROUP / mov ds, ax`: _loadds);
     whether it returns a far pointer; the made-up selector the description gives its own code
-    segment (describe.selector), which the decompiler writes for CS."""
+    segment (describe.selector), which the decompiler writes for CS; where it stores SS into its
+    frame (_ss_store_places)."""
     from codebreaker.decompile import describe
     have = code is not None
     return {"distance": distance, "model": model, "far_return": far_return,
@@ -1576,7 +1577,21 @@ def module_facts16(code, off, end, distance, model, dgroup, far_return, seg=None
             "widths": {f: _far_argument_widths(code, off, end, f) for f in (True, False)} if have else {},
             "loads": _far_loads(code, off, end) if have else set(),
             "export": have and bytes(code[off:off + 3]) in _EXPORT_PROLOGUE,
-            "loadds": have and dgroup is not None and _loads_dgroup(code, off, dgroup)}
+            "loadds": have and dgroup is not None and _loads_dgroup(code, off, dgroup),
+            "ss_stores": _ss_store_places(code, off, end) if have else []}
+
+
+def _ss_store_places(code, start, end):
+    """Where the function stores SS into its frame, `mov [bp-0Ch], ss` -- the segment half of a
+    far pointer it builds there to a local, a store the decompiler drops (backends/c.
+    _stack_segment_stores puts it back): [the decompiler's offset of each, from the entry SP]."""
+    from codebreaker.decompile.describe import decoder16
+    places = []
+    for ins in decoder16().disasm(bytes(code[start:end]), start):
+        mm = re.fullmatch(r"word ptr \[bp - (0x[0-9a-f]+|\d+)\], ss", ins.op_str) if ins.mnemonic == "mov" else None
+        if mm:
+            places.append(int(mm.group(1), 0) + 2)
+    return places
 
 
 def _write16(context, item):
@@ -1605,17 +1620,14 @@ def _one16(context, item):
     worker process each share of them, jobs/pool.py): the passes after those the C back end did
     as it wrote it (_write16). -> (address, text)"""
     va, name, raw, seg, off, end_of, callee_pops = item
-    code = _IMAGES16.get(seg)
     # (_far, _far_from_stack, _frame_through_ss, _pieces, _joined_arguments, _segment_registers,
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block), _far_reads and _near_to_far are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block), _far_reads, _near_to_far and _stack_segment_stores are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
     out = text
-    if code is not None:
-        out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
         # its calls through pointers remove nothing themselves: the callee does (the arguments
         # are listed in stack order, so __stdcall lays them out as the original pushed them)
@@ -2105,147 +2117,6 @@ def _end_of(d, seg, off):
     import bisect
     k = bisect.bisect_right(starts, off)
     return starts[k] if k < len(starts) else len(d.images.get(seg, b""))
-
-
-def _stack_segment_stores(text, code, start, end):
-    """The original stores SS into its frame (`mov [bp-0Ch], ss`) as the segment half of a far
-    pointer it builds there to a local -- WNDCLASS.lpszClassName, CBT_CREATEWND.lpcs -- and the
-    decompiler drops that store (a copy of the incoming SS, taken for a register saved). Put back
-    where the buffer holding that place has it: SS written there just before the first call the
-    buffer's address is passed to."""
-    import capstone
-    from codebreaker.decompile.describe import decoder16
-    md = decoder16()
-    places = []
-    for ins in md.disasm(bytes(code[start:end]), start):
-        mm = re.fullmatch(r"word ptr \[bp - (0x[0-9a-f]+|\d+)\], ss", ins.op_str) if ins.mnemonic == "mov" else None
-        if mm:
-            places.append(int(mm.group(1), 0) + 2)              # (the decompiler's offset: from the entry SP)
-    if not places:
-        return text
-    src = ctree.Source(text)
-    arrays = {}
-    # (a buffer kept in the frame's layout is a field of codebreaker_frame's packed struct: a
-    # field declaration, not a declaration)
-    decls = list(src.find("declaration", under=src.body())) + list(src.find("field_declaration", under=src.body()))
-    for n in sorted(decls, key=lambda d: d.start_byte):
-        ds = n.children_by_field_name("declarator")
-        a = ds[0] if len(ds) == 1 else None
-        while a is not None and a.type == "pointer_declarator":
-            a = a.child_by_field_name("declarator")
-        if a is None or a.type != "array_declarator" or not src.line(n).startswith("  "):
-            continue
-        name, size = src.at(a.child_by_field_name("declarator")), a.child_by_field_name("size")
-        m = re.fullmatch(r"\w*Stack_([0-9a-f]+)", name)
-        if m and size is not None and size.type == "number_literal" and src.at(size).isdigit():
-            typ = src.at(n)[:src.at(n).index(name)].strip()
-            arrays.setdefault(name, (int(m.group(1), 16), int(src.at(size)), typ))
-    ss = "unaff_SS" if any(src.at(n) == "unaff_SS" for n in src.find("identifier")) else "codebreaker_ss()"
-    for place in sorted(set(places)):
-        for arr, (ao, count, typ) in arrays.items():
-            elem = 2 if "*" in typ else _SIZE.get(typ.strip()[-1:], 2)
-            if not ao > place >= ao - count * elem:
-                continue
-            at = ao - place
-            # (a buffer kept in the frame's layout is a field of codebreaker_frame by now: found
-            # by its bare name the store was never put in -- USER's eleven RegisterClass callers
-            # in segment 3 gave the class name's far pointer no segment)
-            ref = "codebreaker_frame." + arr if "codebreaker_frame." + arr in text else arr
-            store = "(*(int2 *)((uint1 *)%s + 0x%x)) = %s;" % (ref, at, ss)
-            if store in text:
-                break
-            before = _first_passing(ctree.Source(text), arr)
-            if before is not None:
-                text = text[:before[0]] + before[1] + store + "\n" + text[before[0]:]
-            break
-        else:
-            text = _far_record(text, place, ss)
-    return text
-
-
-def _first_passing(src, arr):
-    """(where its line starts, its indentation) of the first statement with a call whose
-    arguments use `arr` -- passed, or anything made from it (`f((int2)*(char **)(arr + 2), ss)`:
-    the far pointer kept in the buffer handed on) -- or None. A buffer kept in the frame's layout
-    is a field of codebreaker_frame by now, and found by that name too."""
-    best = None
-    framed = "codebreaker_frame." + arr
-    opening = src.text().find("{")
-    for c in src.find("call_expression", under=src.body()):
-        args = c.child_by_field_name("arguments")
-        if not src.is_call(c) or not (any(src.at(n) == arr for n in src.find("identifier", under=args)) or
-                                      any(src.at(n) == framed for n in src.find("field_expression", under=args))):
-            continue
-        st = c                                       # (the statement it is in: after a label, not before it)
-        while st.parent is not None and st.parent.type not in ("compound_statement", "labeled_statement"):
-            st = st.parent
-        if st.start_byte <= opening:
-            continue                                 # (not inside the body: a header the parser misread
-                                                     # -- SUWIN's sub_4_9324 got the store above it)
-        if best is None or st.start_byte < best.start_byte:
-            best = st
-    if best is None:
-        return None
-    start = src.line_span(best)[0]
-    line = src.line(best)
-    return start, line[:len(line) - len(line.lstrip())]
-
-
-def _far_record(text, place, ss):
-    """The far pointer is not in a buffer but in a record of single words the decompiler split
-    into separate locals -- USER's CreateWindow builds CBT_CREATEWND {lpcs = ss:&args,
-    hwndInsertAfter} at [bp-26h] and passes its address to the CBT hook: the offset half a local
-    of its own, the SS half dropped, the next field another local. Laid out by the compiler those
-    are anywhere, and the hook read a garbage selector. Kept as one packed record, from the word
-    whose address is passed on, through SS, through the words after it with no gap."""
-    lines = _declaration_lines(text)
-
-    def scalar(off):
-        """(its declaration, its name, 2) of the word-sized local at `off`, else None"""
-        for mm in re.finditer(r"(?m)^  ([\w ]*?\w(?:\s*\*+)?)\s*\b(\w*Stack_%x);[ \t]*$" % off, text):
-            if mm.group(0) not in lines:
-                continue
-            typ = mm.group(1)
-            size = 2 if "*" in typ else _SIZE.get(typ.strip()[-1:], 0)
-            return (mm.group(0), mm.group(2), size) if size == 2 else None
-        return None
-    first = scalar(place + 2)
-    if not first or not _addressed(text, first[1]):
-        return text
-    words = [first, None]
-    off = place - 2
-    while scalar(off):
-        words.append(scalar(off))
-        off -= 2
-    rec = "codebreaker_far_%x" % (place + 2)
-    fields = []
-    for w in words:
-        fields.append("    int2 codebreaker_ss;" if w is None else "  " + w[0].strip())
-    for w in words:
-        if w:
-            text = text.replace(w[0] + "\n", "", 1)
-    decl = "  _Packed struct {\n%s\n  } %s;\n" % ("\n".join(fields), rec)
-    brace = text.find("{\n")
-    if brace < 0:
-        return text
-    text = text[:brace + 2] + decl + text[brace + 2:]
-    for w in words:                                      # (the fields' own declarations keep their names)
-        if w:
-            text = _rename(text, w[1], "%s.%s" % (rec, w[1]))
-    # (SS written with the offset: where the offset is set -- a statement of its own line)
-    src = ctree.Source(text)
-    for st in src.find("expression_statement", under=src.body()):
-        a = st.named_children[0] if st.named_child_count == 1 else None
-        line = src.line(st)
-        if a is not None and a.type == "assignment_expression" and src.at(a.child_by_field_name("operator")) == "=" \
-                and src.at(a.child_by_field_name("left")) == "%s.%s" % (rec, first[1]) and line.strip() == src.at(st) \
-                and line[:1].isspace():
-            end = src.line_span(st)[1]
-            end -= 1 if src.data[end - 1:end] == b"\n" else 0
-            indent = line[:len(line) - len(line.lstrip())]
-            src.insert(end, "\n" + indent + "%s.codebreaker_ss = %s;" % (rec, ss))
-            break
-    return src.text()
 
 
 def interrupt_helper_name(vector, regs):

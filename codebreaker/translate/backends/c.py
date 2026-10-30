@@ -32,20 +32,21 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
-        "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set()}
+        "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set(),
+        "before": {}, "after": {}, "stmt_at": {}}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -1053,11 +1054,13 @@ def _stmt(em, s):
         return                                   # declared at the top, as the decompiler does
     if id(s) in _now['gone']:
         return                                   # (a pass took the statement away)
+    _inserted(em, s, 'before')
     if n == 'ExprStmt':
         if _now['seeing']:
             _now['seen'].add(id(s))
             _now['lines'].add(id(s))                     # (a statement on a line of its own)
         _statement(em, s['expr'])
+        _inserted(em, s, 'after')
     elif n == 'Return':
         _statement(em, s.get('expr'), 'return')
     elif n == 'If':
@@ -1121,11 +1124,14 @@ def _stmt(em, s):
         em.print('{')
         for c in _stmts(s.get('cases')):
             if c.get('default'):
+                _inserted(em, c, 'before')
                 em.tag_line()
                 em.print('default')
                 em.print(':')
             else:
-                for label in _stmts(c.get('labels')):
+                for k, label in enumerate(_stmts(c.get('labels'))):
+                    if k == len(_stmts(c.get('labels'))) - 1:
+                        _inserted(em, c, 'before')       # (the case its statements are of, to C's grammar)
                     em.tag_line()
                     em.print('case')
                     em.spaces(1)
@@ -1159,6 +1165,16 @@ def _stmt(em, s):
         out.append(pad + '}')
     else:
         raise Decline('statement %s' % n)
+
+
+def _inserted(em, s, where):
+    """The statements a pass puts before or after statement `s` (or before a case's last label),
+    each on a line of its own -- and, laying the text out for _seen, where `s` is written."""
+    if where == 'before' and _now['seeing'] and isinstance(em, _Flat):
+        _now['stmt_at'][id(s)] = len(em.out)
+    for text in _now[where].get(id(s), ()):
+        em.tag_line()
+        em.print('', text)
 
 
 def _locals(stmts, found):
@@ -2310,7 +2326,7 @@ def _seen():
     """The ids of the nodes the function's text shows as it is written now (each moved pass's
     rewrites in it, a statement taken away left out): what c_text's passes found in the text."""
     _now['seen'], _now['seeing'], _now['at'], _now['lines'] = set(), True, {}, set()
-    _now['owners'], _now['owner_of'], _now['shown'] = [], {}, {}
+    _now['owners'], _now['owner_of'], _now['shown'], _now['stmt_at'] = [], {}, {}, {}
     _now['top'] = _Flat()
     try:
         _function(_now['doc'], _now['locals'], _now['top'])
@@ -2530,42 +2546,37 @@ def _resized(line, count):
     return "%s[%d]%s" % (left, count, right[right.index("]") + 1:]) if _sep and "]" in right else line
 
 
-def _buffer_fields(nodes, _arrays):
-    """A local the function never sets, lying past the end of an array local whose address it
-    passes on, is a field of that buffer: the callee fills the buffer, the function reads the field
-    (the analysis sized the array to reach the next thing it saw used, and made that a variable of
-    its own). It is read where it is, `(*(T *)((uint1 *)a + 0x4))`, and the buffer made to reach
-    it. Before that, locals of one width right below one whose address is passed on are one array
-    of them (a RECT copied into four words). A buffer whose address is passed on is laid out as
-    the original's frame had it, up to the next buffer passed on or the saved BP; two of them or
-    more are kept in the frame's order and distances, one packed structure, codebreaker_frame
-    (USER's sub_3_1C4E has GetObject write a 50-byte LOGFONT into an 18-byte buffer, running on
-    into the next one). c_text._buffer_fields, which did it on the text: the declarations are
-    rewritten as that text, the locals' uses on the tree."""
-    locs = [v for v in _now['locals'] if (v.get('sym') or {}).get('name') not in _now['drop']]
-    if not locs:
-        return
-    seen = _seen()
-    parent = {id(e): p for e, p in nodes}
-    _now['nodes_by_id'] = {id(e): (e,) for e, _p in nodes}
-    before = ''.join('\n  %s;' % _decl_now(v) for v in locs) + '\n  '
-    region = before                                      # (the locals' text, as c_text read it)
-    names = {(v.get('sym') or {}).get('name') for v in locs}
-    # every place a local is written: its name (a node), or a moved pass's text naming it
-    refs = [(e, _name(e), 'plain') for e, _p in nodes if id(e) in seen and _bare_name(e) and _name(e) in names]
-    refs += [(e, n, form) for e, _p in nodes for n, form in [_now['virtual'].get(id(e), (None, None))]
-             if n is not None and id(e) in seen]
+class _Locals:
+    """The function's locals as its text is written now (one _seen layout): their declarations'
+    text (`region`, as c_text read the lines after the function's `{`), and every place one is
+    written -- its name, or a moved pass's text naming it (_entry_sp) -- as c_text's parser read
+    each: what the text there starts with, its address taken, passed on; a local renamed (its
+    uses written otherwise: `_now['ren']`)."""
 
-    def written(e, n):
-        """the name the text at `e` starts with now"""
+    def __init__(self, nodes, locs):
+        seen = _seen()
+        self.parent = {id(e): p for e, p in nodes}
+        _now['nodes_by_id'] = {id(e): (e,) for e, _p in nodes}
+        self.text = ''.join(_now['top'].out)
+        self.region = _now['locals_text'] if _now['locals_text'] is not None else \
+            ''.join('\n  %s;' % _decl_now(v) for v in locs) + ('\n  ' if locs else '')
+        names = {(v.get('sym') or {}).get('name') for v in locs}
+        self.refs = [(e, _name(e), 'plain') for e, _p in nodes if id(e) in seen and _bare_name(e) and _name(e) in names]
+        self.refs += [(e, n, form) for e, _p in nodes for n, form in [_now['virtual'].get(id(e), (None, None))]
+                      if n is not None and id(e) in seen]
+
+    @staticmethod
+    def written(n):
+        """the name the text of local `n` starts with now"""
         m = re.match(r"[A-Za-z_]\w*", _local_text(n))
         return m.group(0) if m else None
 
-    def occurs(name):
-        return [(e, form) for e, n, form in refs if written(e, n) == name]
+    def occurs(self, name):
+        return [(e, form) for e, n, form in self.refs if self.written(n) == name]
 
-    def addressed(name):
-        for e, form in occurs(name):
+    def addressed(self, name):
+        parent = self.parent
+        for e, form in self.occurs(name):
             if _local_text(name) != name:
                 continue
             if form == 'address':
@@ -2583,25 +2594,210 @@ def _buffer_fields(nodes, _arrays):
                     return True
         return False
 
-    def passed(name):
-        for e, form in occurs(name):
+    def passed(self, name):
+        for e, form in self.occurs(name):
             pre = _prefix(e) if form == 'plain' else None
             if pre and re.search(r"[(,]\s*(?:\(\w+\s*\*?\))?\s*&?\s*\Z", pre):
                 return True
         return False
 
+    def rename(self, name, made):
+        _now['ren'][name] = made
+        for e, n, form in self.refs:
+            if n == name and form == 'plain' and id(e) not in _now['whole'] and e['node'] == 'Name':
+                _rewrite(e, lambda _x, n=n: _local_text(n))
+
+
+def _statement_keys(body):
+    """{id(node): the statement C's grammar has it in} -- the statement whose line a pass puts
+    another before, as c_text found it, climbing from a node to a child of a block or a label: an
+    `else if`'s is its first if's; one in a case's statements (no block of their own) is that case,
+    written from its last label."""
+    keys = {}
+
+    def under(x, k):
+        for n, _p in _walk(x):
+            keys.setdefault(id(n), k)
+
+    def block(stmts, case=None):
+        for s in _stmts(stmts):
+            if isinstance(s, dict):
+                stmt(s, case if case is not None else s, case)
+
+    def stmt(s, k, case=None):
+        keys[id(s)] = k
+        n = s.get('node')
+        if n == 'If':
+            under(s.get('cond'), k)
+            then = s.get('then')
+            if isinstance(then, dict):
+                under(then, k)
+            else:
+                block(then)
+            orelse = s.get('orelse')
+            if isinstance(orelse, list) and len(orelse) == 1 and orelse[0].get('node') == 'If':
+                stmt(orelse[0], k)
+            else:
+                block(orelse)
+        elif n in ('While', 'DoWhile'):
+            under(s.get('cond'), k)
+            block(s.get('body'))
+        elif n == 'For':
+            for part in ('init', 'cond', 'update'):
+                under(s.get(part), k)
+            block(s.get('body'))
+        elif n == 'Switch':
+            under(s.get('expr'), k)
+            for c in _stmts(s.get('cases')):
+                under(c.get('labels'), c)
+                block(c.get('body'), c)
+        elif n == 'Labeled':
+            body = [x for x in _stmts(s.get('body')) if isinstance(x, dict)]
+            for i, x in enumerate(body):
+                stmt(x, x if not i or case is None else case, case)
+        elif n == 'Block':
+            block(s.get('stmts'), case)
+        else:
+            under(s, k)
+    block(body)
+    return keys
+
+
+def _calls_with(text, arr):
+    """Does `text` hold a call whose arguments name `arr` (or codebreaker_frame.arr)?"""
+    name = re.compile(r"(?<![\w.])%s\b|codebreaker_frame\.%s\b" % (re.escape(arr), re.escape(arr)))
+    for m in re.finditer(r"[A-Za-z_]\w*\s*\(", text):
+        depth, k = 0, m.end() - 1
+        for j in range(k, len(text)):
+            depth += {'(': 1, ')': -1}.get(text[j], 0)
+            if depth == 0:
+                if name.search(text, k + 1, j):
+                    return True
+                break
+    return False
+
+
+def _stack_segment_stores(nodes, _arrays):
+    """The original stores SS into its frame (`mov [bp-0Ch], ss`) as the segment half of a far
+    pointer it builds there to a local -- WNDCLASS.lpszClassName, CBT_CREATEWND.lpcs -- and the
+    decompiler drops that store (a copy of the incoming SS, taken for a register saved). Put back
+    where the buffer holding that place has it: SS written there just before the first statement
+    with a call the buffer is passed to. Where no buffer holds it, the words from the one whose
+    address is passed on are one packed record with SS in its place, written with the offset
+    (USER's CreateWindow builds CBT_CREATEWND so: c_text._stack_segment_stores, _far_record).
+    The places are the module's facts ("ss_stores": c_text._ss_store_places)."""
+    places = _now['facts'].get('ss_stores')
+    if not places:
+        return
+    locs = [v for v in _now['locals'] if (v.get('sym') or {}).get('name') not in _now['drop']]
+    lv = _Locals(nodes, locs)
+    seen = _now['seen']
+    region = lv.region
+    keys, at_of = _statement_keys(_now['doc'].get('body')), dict(_now['stmt_at'])
+    arrays = {}
+    for line in region.split('\n'):
+        m = re.fullmatch(r"  +(.+?)\b(\w*Stack_([0-9a-f]+)) \[(\d+)\];[ \t]*", line)
+        if m and m.group(1).count('(') == 0 and not m.group(1).strip().endswith('struct {'):
+            arrays.setdefault(m.group(2), (int(m.group(3), 16), int(m.group(4)), m.group(1).strip()))
+    ss = 'unaff_SS' if re.search(r"\bunaff_SS\b", lv.text) else 'codebreaker_ss()'
+    made = set()
+    for place in sorted(set(places)):
+        for arr, (ao, count, typ) in arrays.items():
+            elem = 2 if '*' in typ else _ELEM.get(typ.strip()[-1:], 2)
+            if not ao > place >= ao - count * elem:
+                continue
+            at = ao - place
+            store = "(*(int2 *)((uint1 *)%s + 0x%x)) = %s;" % (_local_text(arr), at, ss)
+            if store in lv.text or store in made:
+                break
+            best = None
+            for e, _p in nodes:
+                k = keys.get(id(e))
+                if k is None or id(k) not in at_of or id(e) not in seen:
+                    continue
+                shown = _now['shown'].get(id(e))
+                if shown is not None:
+                    hit = _calls_with(shown, arr)
+                elif e['node'] == 'Call':
+                    hit = any(_calls_with('f(%s)' % expr(a), arr) for a in e.get('args') or ())
+                else:
+                    continue
+                if hit and (best is None or at_of[id(k)] < at_of[id(best)]):
+                    best = k
+            if best is not None:
+                _now['before'].setdefault(id(best), []).append(store)
+                made.add(store)
+            break
+        else:
+            region = _far_record(lv, region, place, ss, nodes)
+    if region != lv.region:
+        _now['locals_text'] = region
+
+
+def _far_record(lv, region, place, ss, nodes):
+    """The far pointer is not in a buffer but in a record of single words the decompiler split
+    into separate locals (USER's CreateWindow builds CBT_CREATEWND {lpcs = ss:&args,
+    hwndInsertAfter} at [bp-26h] and passes its address to the CBT hook): kept as one packed
+    record, from the word whose address is passed on, through SS, through the words after it with
+    no gap; SS written with the offset (c_text._far_record). -> the locals' text"""
+    def scalar(off):
+        for mm in re.finditer(r"(?m)^  ([\w ]*?\w(?:\s*\*+)?)\s*\b(\w*Stack_%x);[ \t]*$" % off, region):
+            typ = mm.group(1)
+            size = 2 if '*' in typ else _ELEM.get(typ.strip()[-1:], 0)
+            return (mm.group(0), mm.group(2), size) if size == 2 else None
+        return None
+    first = scalar(place + 2)
+    if not first or not lv.addressed(first[1]):
+        return region
+    words = [first, None]
+    off = place - 2
+    while scalar(off):
+        words.append(scalar(off))
+        off -= 2
+    rec = "codebreaker_far_%x" % (place + 2)
+    fields = ["    int2 codebreaker_ss;" if w is None else "  " + w[0].strip() for w in words]
+    for w in words:
+        if w:
+            region = region.replace(w[0] + "\n", "", 1)
+    region = "\n" + "  _Packed struct {\n%s\n  } %s;\n" % ("\n".join(fields), rec) + \
+        (region[1:] if region.startswith("\n") else region)
+    for w in words:
+        if w:
+            lv.rename(w[1], lambda r=rec, n=w[1]: "%s.%s" % (r, n))
+    for e, _p in nodes:
+        if e['node'] == 'ExprStmt' and id(e) in _now['lines'] and e['expr'].get('node') == 'Assign' and \
+                not e['expr'].get('op') and _bare_name(e['expr']['target'], first[1]) or \
+                e['node'] == 'ExprStmt' and id(e) in _now['lines'] and e['expr'].get('node') == 'Assign' and \
+                not e['expr'].get('op') and id(e['expr']['target']) in _now['whole'] and \
+                e['expr']['target'].get('node') == 'Name' and _name(e['expr']['target']) == first[1]:
+            _now['after'].setdefault(id(e), []).append("%s.codebreaker_ss = %s;" % (rec, ss))
+            break
+    return region
+
+
+def _buffer_fields(nodes, _arrays):
+    """A local the function never sets, lying past the end of an array local whose address it
+    passes on, is a field of that buffer: the callee fills the buffer, the function reads the field
+    (the analysis sized the array to reach the next thing it saw used, and made that a variable of
+    its own). It is read where it is, `(*(T *)((uint1 *)a + 0x4))`, and the buffer made to reach
+    it. Before that, locals of one width right below one whose address is passed on are one array
+    of them (a RECT copied into four words). A buffer whose address is passed on is laid out as
+    the original's frame had it, up to the next buffer passed on or the saved BP; two of them or
+    more are kept in the frame's order and distances, one packed structure, codebreaker_frame
+    (USER's sub_3_1C4E has GetObject write a 50-byte LOGFONT into an 18-byte buffer, running on
+    into the next one). c_text._buffer_fields, which did it on the text: the declarations are
+    rewritten as that text, the locals' uses on the tree."""
+    locs = [v for v in _now['locals'] if (v.get('sym') or {}).get('name') not in _now['drop']]
+    if not locs:
+        return
+    lv = _Locals(nodes, locs)
+    before = lv.region
+    region = before                                      # (the locals' text, as c_text read it)
+    occurs, addressed, passed, rename = lv.occurs, lv.addressed, lv.passed, lv.rename
+
     def replace(old, new):
         nonlocal region
         region = region.replace(old, new, 1)
-
-    def rename(name, made):
-        if not any(n == name for _e, n, _f in refs):
-            pass
-        old = _now['ren'].get(name)
-        _now['ren'][name] = made if old is None else made
-        for e, n, form in refs:
-            if n == name and form == 'plain' and id(e) not in _now['whole'] and e['node'] == 'Name':
-                _rewrite(e, lambda _x, n=n: _local_text(n))
     decl = {}
     for mm in _LOCAL16.finditer(region):
         typ, width, stars, name, off, _a, count = mm.groups()
@@ -2833,7 +3029,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("stack_arguments", _stack_arguments), ("far_locals", _far_locals),
            ("far_concat_casts", _far_concat_casts), ("buffer_fields", _buffer_fields),
            ("far_reads", _far_reads),
-           ("near_to_far", _near_to_far))
+           ("near_to_far", _near_to_far),
+           ("stack_segment_stores", _stack_segment_stores))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -2971,6 +3168,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['gap_base'], _now['decls'], _now['seen'], _now['lines'] = {}, {}, set(), set()
         _now['at'], _now['top'], _now['virtual'], _now['ren'], _now['locals_text'] = {}, None, {}, {}, None
         _now['ss_casts'], _now['far_read'] = set(), set()
+        _now['before'], _now['after'], _now['stmt_at'] = {}, {}, {}
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")

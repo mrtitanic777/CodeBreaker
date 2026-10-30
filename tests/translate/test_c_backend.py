@@ -553,3 +553,15 @@ def test_moved_near_to_far():
     text = c.function(doc, c.MOVED, facts={'distance': 'far'})
     assert '  p = (int2 __far *)(int2 *)(n + 10);' in text, text
     assert '  p = (int2 __far *)(w + 10);' in text, text
+
+def test_moved_stack_segment_stores():
+    """c_text._stack_segment_stores on the tree: SS the original stores into its frame (`mov
+    [bp-0Ch], ss`, a fact of the module: c_text._ss_store_places) is put back in the buffer that
+    holds the place, before the first statement that passes the buffer on."""
+    from codebreaker.decompile import c_text
+    assert c_text._ss_store_places(b"\x90\x8c\x56\xf4\xc3", 0, 5) == [0xe]
+    buf = {'kind': 'array', 'elem': {'kind': 'class', 'name': 'xunknown2'}, 'count': 4}
+    doc = sixteen([local('axStack_10', buf), stmt({'node': 'Assign', 'target': name('a'), 'value': lit(1)}),
+                   stmt(fcall('g', typed('axStack_10', buf)))])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far', 'ss_stores': [0xc]})
+    assert '  a = 1;\n  (*(int2 *)((uint1 *)axStack_10 + 0x4)) = codebreaker_ss();\n  g(axStack_10);' in text, text

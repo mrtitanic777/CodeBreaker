@@ -30,12 +30,12 @@ PASSES = ["_more_helpers", "_keep_frame", "_null_is_zero", "_compare_as_numbers"
           "_pieces", "_far_loads",
           "_open_arguments", "declaration", "_global_type", "_loads_dgroup", "_arguments_at",
           "_near_to_far",
-          "_stack_segment_stores", "interrupt_helper_name",
+          "interrupt_helper_name",
           "interrupt_helpers", "_homed_arguments", "_ram_type", "call_counts", "interrupt_routines"]
 
 # Passes handed a whole segment's bytes read only a window of them: (buffer, start, end) argument
 # positions, or (buffer, start, None, length)
-WINDOWS = {"_far_loads": (0, 1, 2), "_stack_segment_stores": (1, 2, 3), "_loads_dgroup": (0, 1, None, 24)}
+WINDOWS = {"_far_loads": (0, 1, 2), "_loads_dgroup": (0, 1, None, 24)}
 
 # retail modules the passes are run on: 16-bit (with interrupts, far pointers, stack records), 32-bit
 MODULES16 = ["lzexpand.dll", "keyboard.drv", "comm.drv", "system.drv", "ver.dll", "commdlg.dll", "mmsystem.dll",
