@@ -1533,17 +1533,6 @@ def compilable16(module_path, outdir=None):
     return m
 
 
-def _callee_pops(text):
-    """Calls through pointers whose callee removes the arguments: `(code *)` -> `(code_callee_pops *)`."""
-    src = ctree.Source(text)
-    for c in src.find("cast_expression"):
-        ty = c.child_by_field_name("type")
-        m = re.fullmatch(r"code (__far |__near )?\*", src.at(ty))
-        if m:
-            src.replace(ty, "code_callee_pops %s*" % (m.group(1) or ""))
-    return src.text()
-
-
 def _identifiers(text):
     src = ctree.Source(text)
     return [src.at(n) for n in src.find("identifier")]
@@ -1601,12 +1590,13 @@ def _write16(context, item):
     for the module: {"interrupts": {(vector, registers)}, "selector_decls": [declaration],
     "selector_shared": {structure: {function: fields}}})."""
     images = context
-    va, distance, model, seg, off, end, dgroup, known, by_selector = item
+    va, distance, model, seg, off, end, dgroup, known, by_selector, callee_pops = item
     from codebreaker.decompile import decompiler
     from codebreaker.translate.backends import c as cback
     far = {n for n, size in ((known or {}).get("pointers") or {}).items() if size == 4}
     facts = module_facts16(_IMAGES16.get(seg), off, end, distance, model, dgroup, "return" in far, seg)
     facts["selector_structs"] = by_selector
+    facts["callee_pops"] = bool(callee_pops)
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
     found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared") if k in facts}
@@ -1624,15 +1614,9 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block), _far_reads, _near_to_far and _stack_segment_stores are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals, _far_concat_casts, _buffer_fields (with _frame_block), _far_reads, _near_to_far, _stack_segment_stores and _callee_pops are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
-    text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = text
-    if callee_pops:
-        # its calls through pointers remove nothing themselves: the callee does (the arguments
-        # are listed in stack order, so __stdcall lays them out as the original pushed them)
-        out = _callee_pops(out)
-    return va, out
+    return va, _without_notes(raw).strip()               # (the core's comments before the function)
 
 
 def _compilable16(module_path, outdir=None):
@@ -1677,12 +1661,28 @@ def _compilable16(module_path, outdir=None):
     # of it (_write16, among worker processes: the back end's passes on the tree, its heading as
     # the description and its instructions give it)
     asm_images = decompiler._segment_images(d.path) if os.environ.get("CB_ASM_BLOCKS") else None
+    # the functions whose calls through pointers remove nothing themselves: the callee does (the
+    # arguments are listed in stack order, so __stdcall lays them out as the original pushed
+    # them; backends/c._callee_pops). Each call is kept by its own place -- the function the
+    # description named for it may since have been found to be two: the call belongs to the one
+    # that holds it, of every function the module will have (those the decompiler could not make
+    # among them)
+    sites = [int(parts[1], 16) for parts in d.records("O") if parts[4].startswith("__stdcall")]
+    import bisect
+    starts_all = sorted(set(by_va) | {int(parts[1], 16) for parts in d.records("F")
+                                      if int(parts[1], 16) not in by_va and parts[2] not in texts
+                                      and d.where.get(int(parts[1], 16))})
+    callee_pops = {}
+    for site in sites:
+        k = bisect.bisect_right(starts_all, site) - 1
+        if k >= 0 and starts_all[k] >> 16 == site >> 16:
+            callee_pops[starts_all[k]] = True
     items = []
     for va in sorted(by_va):
         name = by_va[va]
         seg, off = d.where[va]
         items.append((va, distance.get(name), model_of.get(name), seg, off, ends.get(va, off), dgroup,
-                      d.notes.get(name), by_selector))
+                      d.notes.get(name), by_selector, callee_pops.get(va)))
     written = pool.run(_write16, items, context=asm_images, init=_one16_images, initargs=(images,),
                        below_normal=False)
     for item in items:                                       # (a worker that could not start or died
@@ -1724,27 +1724,13 @@ def _compilable16(module_path, outdir=None):
         seg, off = d.where.get(va) or (None, None)
         frames[nm] = seg in d.images and _keeps_frame(d.images[seg], off)
     texts = _caller_frame_slots(texts, frames)
-    callee_pops = {}                                         # function -> its pointer calls' callee removes the arguments
-    for parts in d.records("O"):
-        if parts[4].startswith("__stdcall"):
-            # (kept by the call's own place: the function the description named for it may
-            # since have been found to be two -- the call belongs to the one that holds it, below)
-            callee_pops[int(parts[1], 16)] = True
-    import bisect
-    starts_all = sorted(by_va)
-    held = {}
-    for site in callee_pops:
-        k = bisect.bisect_right(starts_all, site) - 1
-        if k >= 0 and starts_all[k] >> 16 == site >> 16:
-            held[starts_all[k]] = True
-    callee_pops = held
     # each function on its own (_one16), shared among worker processes: the module's texts
     # are thousands of tree passes, and none of them looks at another function's text
     items = []
     for va in sorted(by_va):
         name = by_va[va]
         seg, off = d.where[va]
-        items.append((va, name, texts[name], seg, off, _end_of(d, seg, off) if seg in d.images else None, callee_pops.get(va)))
+        items.append((va, name, texts[name], seg, off, _end_of(d, seg, off) if seg in d.images else None, None))
     made = pool.run(_one16, items, init=_one16_images, initargs=(images,),
                     below_normal=False)                   # (the build waits on it: as this process)
     for item in items:

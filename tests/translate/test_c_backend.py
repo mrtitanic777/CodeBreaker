@@ -565,3 +565,13 @@ def test_moved_stack_segment_stores():
                    stmt(fcall('g', typed('axStack_10', buf)))])
     text = c.function(doc, c.MOVED, facts={'distance': 'far', 'ss_stores': [0xc]})
     assert '  a = 1;\n  (*(int2 *)((uint1 *)axStack_10 + 0x4)) = codebreaker_ss();\n  g(axStack_10);' in text, text
+
+def test_moved_callee_pops():
+    """c_text._callee_pops on the tree: in a function whose calls through pointers the callee
+    cleans up after (a fact of the module), a cast to `code *` is `code_callee_pops *`."""
+    fn = {'kind': 'fnptr', 'space': 'far', 'fn': {'kind': 'fn'}}
+    call = {'node': 'Call', 'target': {'node': 'Unary', 'op': '*',
+                                       'x': {'node': 'Cast', 'type': fn, 'x': name('p')}}, 'args': []}
+    doc = sixteen([stmt(call)])
+    assert '  (*(code_callee_pops *)p)();' in c.function(doc, c.MOVED, facts={'distance': 'far', 'callee_pops': True})
+    assert '  (*(code *)p)();' in c.function(doc, c.MOVED, facts={'distance': 'far'})

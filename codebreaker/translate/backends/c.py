@@ -32,21 +32,21 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
         "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set(),
-        "before": {}, "after": {}, "stmt_at": {}}
+        "before": {}, "after": {}, "stmt_at": {}, "pops": False}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -815,10 +815,11 @@ def _push(st, e, paren=None):
         _operands(e, tok, (None, e['x']))
         mark = _now['marks'].get(id(e))
         st.op(_CAST, paren)
+        pops = 'code_callee_pops' if _pops(_cast_type(e)) != _cast_type(e) else None   # (_callee_pops)
         if mark == '_near':                              # (`code __near *`: c_text._near_calls)
-            _push_type(st, e['type'], word=' __near')
+            _push_type(st, e['type'], word=' __near', shown_base=pops)
         else:
-            _push_type(st, e['type'], far=mark in ('_far', '_ds'))
+            _push_type(st, e['type'], far=mark in ('_far', '_ds'), shown_base=pops)
         if mark == '_ds':                                # (a data address: DS and it -- _data_address;
             n = _lit(e['x'])                             #  added after the lines are laid out, as c_text does)
             st.atom(n, _mk_fp_text('codebreaker_ds()', e['x'], shown=n))
@@ -1325,8 +1326,8 @@ def _frame_through_ss(nodes, arrays):
             continue
         _now['ss_casts'].add(id(cast))
         # (` __far` where _far_reads found the place it reads far: the stack's)
-        _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s%s *)%s" % (
-            t, ' __far' if id(c) in _now['far_read'] else '', _mk_fp_text('codebreaker_ss()', s, ',')))
+        _rewrite(cast, lambda c, t=ty.group(1), s=sum_: "(%s)%s" % (
+            _pops('%s%s *' % (t, ' __far' if id(c) in _now['far_read'] else '')), _mk_fp_text('codebreaker_ss()', s, ',')))
 
 
 _PIECE = re.compile(r"_(\d+)_(\d+)_")
@@ -1888,7 +1889,7 @@ def _own_segment_calls(nodes, _arrays):
             target = target['x']
         parts = _mk_fp(target)
         if fn['op'] == '*' and parts and ours(parts[0]):
-            _rewrite(fn, lambda _f, off=parts[1]: "(*(code __near *)%s)" % expr(off))
+            _rewrite(fn, lambda _f, off=parts[1]: "(*(%s)%s)" % (_pops('code __near *'), expr(off)))
     for e, _p in nodes:
         parts = _mk_fp(e)
         if parts and parts[0].get('node') == 'Lit' and _lit(parts[0]) == spelled:
@@ -2002,7 +2003,7 @@ def _entry_sp(nodes, _arrays):
                 taken.add(id(v))
                 _now['virtual'][id(e)] = (hit[1], 'plain' if hit[0] == ty.group(1) else 'address')
                 _rewrite(e, lambda _x, h=hit, t=ty.group(1):
-                         _local_text(h[1]) if h[0] == t else '*(%s *)&%s' % (t, _local_text(h[1])))
+                         _local_text(h[1]) if h[0] == t else '*(%s)&%s' % (_pops(t + ' *'), _local_text(h[1])))
     for e, _p in nodes:
         if e['node'] == 'Name' and _name(e) == _ENTRY_SP:
             _rewrite(e, lambda _x: 'codebreaker_entry_sp()')
@@ -2077,7 +2078,7 @@ def _mk_fp_text(seg, off, comma=', ', shown=None):
     if 'far_addresses' not in _now['moved']:
         return 'MK_FP(%s%s%s)' % (seg, comma, shown or expr(off))
     t, o = _far_target(off)
-    return '((%s __far *)MK_FP(%s, %s))' % (t, seg, shown or _written(o, off if o is not off else None))
+    return '((%s)MK_FP(%s, %s))' % (_pops(t + ' __far *'), seg, shown or _written(o, off if o is not off else None))
 
 
 def _far_addresses(nodes, _arrays):
@@ -2164,7 +2165,8 @@ def _far_addresses(nodes, _arrays):
             if call is not None and call.get('node') == 'Call' and call.get('target') is up:
                 target = 'code'                          # (*MK_FP(seg, off))(...): a call to code there
         _rewrite(e, lambda _x, s=seg, o=offset, t=target, off=off:
-                 '((%s __far *)MK_FP(%s, %s))' % (t, expr(s), _written(o, off if o is not off else None)), room=True)
+                 '((%s)MK_FP(%s, %s))' % (_pops(t + ' __far *'), expr(s), _written(o, off if o is not off else None)),
+                 room=True)
     # a far pointer passed whole, as its two halves
     merged = set()
     for e, _p in nodes:
@@ -2413,7 +2415,7 @@ def _far_locals(nodes, _arrays):
     def far_casts(found):
         for cast, to in found:
             if _now['marks'].get(id(cast)) in ('_far', '_ds'):
-                _rewrite(cast, lambda c, to=to: '(%s __far *)%s' % (to, _written(c['x'], c)))
+                _rewrite(cast, lambda c, to=to: '(%s)%s' % (_pops(to + ' __far *'), _written(c['x'], c)))
             else:
                 _now['marks'][id(cast)] = '_far'
     for v in locs:
@@ -2450,7 +2452,7 @@ def _far_locals(nodes, _arrays):
         if not assigned:
             for e, _p in shown:
                 if _bare_name(e, n):
-                    _rewrite(e, lambda _x, to=to, w=whole: '((%s *)(uint2)(uint4)%s)' % (to, w))
+                    _rewrite(e, lambda _x, to=to, w=whole: '((%s)(uint2)(uint4)%s)' % (_pops(to + ' *'), w))
     # one pointer local set from another the decompiler typed otherwise: the value, in its type
     types = {}
     for v in locs:
@@ -2469,6 +2471,22 @@ def _far_locals(nodes, _arrays):
         if _bare_name(left) and _bare_name(right) and _name(left) in types and _name(right) in types and \
                 types[_name(left)] != types[_name(right)]:
             _rewrite(right, lambda x, t=types[_name(left)]: '(%s)%s' % (t, _name(x)))
+
+
+def _pops(ty):
+    """A cast's type, `code *`, as _callee_pops writes it in a function whose calls through pointers
+    remove nothing themselves: `code_callee_pops *` (`__far`, `__near` kept)."""
+    m = re.fullmatch(r"code (__far |__near )?\*", ty) if _now['pops'] else None
+    return "code_callee_pops %s*" % (m.group(1) or "") if m else ty
+
+
+def _callee_pops(nodes, _arrays):
+    """A function whose calls through pointers remove nothing themselves -- the callee does (the
+    arguments are listed in stack order, so __stdcall lays them out as the original pushed them):
+    each cast to `code *` written `code_callee_pops *`, the passes' casts too, as c_text wrote them
+    over the text (the module's facts: "callee_pops"; c_text._callee_pops)."""
+    if _now['facts'].get('callee_pops'):
+        _now['pops'] = True
 
 
 def _far_concat_casts(nodes, _arrays):
@@ -2845,7 +2863,7 @@ def _buffer_fields(nodes, _arrays):
         ao, asz, _i, aline, _atyp = arrays[owner]
         at = ao - off                                    # bytes into the buffer
         replace(line, "")
-        place = lambda t=typ or "int2", o=owner, at=at: "(%s *)((uint1 *)%s + 0x%x)" % (t, _local_text(o), at)
+        place = lambda t=typ or "int2", o=owner, at=at: "(%s)((uint1 *)%s + 0x%x)" % (_pops(t + ' *'), _local_text(o), at)
         rename(name, (lambda p=place: "(%s)" % p()) if is_array else (lambda p=place: "(*%s)" % p()))
         need = at + (size if is_array else _elem16(typ))
         if need > asz:
@@ -2919,7 +2937,7 @@ def _far_reads(nodes, _arrays):
             _now['marks'][id(e)] = '_far'
         else:
             k = len(near.group(1))
-            _rewrite(e, lambda c, t=ty[:k] + ' __far' + ty[k:]: '(%s)%s' % (t, _written(c['x'], c)))
+            _rewrite(e, lambda c, t=ty[:k] + ' __far' + ty[k:]: '(%s)%s' % (_pops(t), _written(c['x'], c)))
 
 
 _WIDE_DECL = re.compile(r"(?m)^[ \t]*(int4|uint4|xunknown4|undefined4|float4) (\w+)(?: \[\d*\])?(?: = [^;\n]*)?;")
@@ -2973,7 +2991,7 @@ def _near_to_far(nodes, _arrays):
         inner = _written(e['x'], e)
         if not _parenthesized(inner) or not _near_number(inner):
             continue
-        _rewrite(e, lambda c, t=far.group(1): '(%s)(%s *)%s' % (_cast_type(c), t, _written(c['x'], c)))
+        _rewrite(e, lambda c, t=far.group(1): '(%s)(%s)%s' % (_pops(_cast_type(c)), _pops(t + ' *'), _written(c['x'], c)))
 
 
 def _star_as_read(u, parent):
@@ -3030,7 +3048,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("far_concat_casts", _far_concat_casts), ("buffer_fields", _buffer_fields),
            ("far_reads", _far_reads),
            ("near_to_far", _near_to_far),
-           ("stack_segment_stores", _stack_segment_stores))
+           ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -3168,7 +3186,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['gap_base'], _now['decls'], _now['seen'], _now['lines'] = {}, {}, set(), set()
         _now['at'], _now['top'], _now['virtual'], _now['ren'], _now['locals_text'] = {}, None, {}, {}, None
         _now['ss_casts'], _now['far_read'] = set(), set()
-        _now['before'], _now['after'], _now['stmt_at'] = {}, {}, {}
+        _now['before'], _now['after'], _now['stmt_at'], _now['pops'] = {}, {}, {}, False
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
