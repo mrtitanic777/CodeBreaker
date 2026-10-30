@@ -1491,7 +1491,7 @@ def _result_shown(ret):
 
 
 def flags(doc, facts):
-    """The function's flags in the module (c_text's Module16 sets): near (near is the default and
+    """The function's flags in the module (the module's sets, c_text._compilable16): near (near is the default and
     is not printed), wide (a result of four bytes, or a far pointer), novalue (it sets no result),
     exported_prologue -- as its heading is written (`facts` as `function` is given them)."""
     was = _now['moved'], _now['facts'], _now['far'], _now['doc']

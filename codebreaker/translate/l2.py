@@ -269,6 +269,114 @@ def texts(doc):
     return {u["name"]: u["text"] for u in units(doc, "MethodDecl") if u.get("text") is not None}
 
 
+class Made(object):
+    """A module made compilable for a lane's build (decompile/c_text: compilable16, compilable32,
+    compilable_powerpc), as the one module model: an L2 Module document, `doc` -- each function a
+    MethodDecl with its C as `text` and its place as `origin` ({module, va}), in the module's
+    order, the header the Module's -- and, beside it, what the lane keeps
+    of the module as attributes (16-bit: near, wide, novalue, interrupts, selector_imports, ...;
+    32-bit: imports, in_ecx, in_edx; PowerPC: externs, argc, image).
+
+        m = l2.Made("lzexpand.dll", header, texts, order, by_va, where=...)
+        m.texts / m.order / m.by_va / m.header / m.functions               views of m.doc
+        m.texts[name] = text, m.texts = {...}, m.header = ...              rewrite m.doc (a copy of
+                                                                           the module keeps its own)
+        m.add(name, text, va)                                              one more function, last
+
+    (A change makes a new document rather than changing the one there: copy.copy(m) and m share
+    it until one of them changes.)"""
+
+    def __init__(self, name="", header="", texts=None, order=None, by_va=None, **facts):
+        self.name = name
+        self.doc = module(header=header)
+        texts = dict(texts or {})
+        place = {n: va for va, n in (by_va or {}).items()}
+        order = list(order) if order is not None else list(texts)
+        listed = set(order)
+        self.doc["units"] = [function(n, texts.get(n), origin={"module": name, "va": place[n]} if n in place else None)
+                             for n in order + [n for n in texts if n not in listed]]
+        self.__dict__.update(facts)
+
+    def add(self, name, text, va=None):
+        origin = {"module": self.name, "va": va} if va is not None else None
+        self.doc = dict(self.doc, units=units(self.doc) + [function(name, text, origin=origin)])
+
+    def _functions(self):
+        return units(self.doc, "MethodDecl")
+
+    def _view(self, key, make):
+        """a view of the document as it is now (kept until the document is another)"""
+        cache = self.__dict__.setdefault("_views", {})
+        got = cache.get(key)
+        if got is None or got[0] is not self.doc or got[1] is not self:
+            got = cache[key] = (self.doc, self, make())
+        return got[2]
+
+    def __getstate__(self):
+        return {k: v for k, v in self.__dict__.items() if k != "_views"}
+
+    def __copy__(self):
+        new = object.__new__(type(self))
+        new.__dict__.update(self.__getstate__())
+        return new
+
+    @property
+    def texts(self):
+        return self._view("texts", lambda: _Texts(self))
+
+    @texts.setter
+    def texts(self, new):
+        new = dict(new)
+        us = [dict(u, text=new[u["name"]]) if u.get("node") == "MethodDecl" and u["name"] in new else u
+              for u in units(self.doc)]
+        have = {u["name"] for u in us if u.get("node") == "MethodDecl"}
+        us += [function(n, t) for n, t in new.items() if n not in have]
+        self.doc = dict(self.doc, units=us)
+
+    @property
+    def header(self):
+        return self.doc.get("header") or ""
+
+    @header.setter
+    def header(self, text):
+        self.doc = dict(self.doc, header=text)
+
+    @property
+    def order(self):
+        return self._view("order", lambda: [u["name"] for u in self._functions()])
+
+    @property
+    def by_va(self):
+        return self._view("by_va", lambda: {u["origin"]["va"]: u["name"] for u in self._functions()
+                                            if "va" in (u.get("origin") or {})})
+
+    @property
+    def functions(self):
+        """{address: (name, text)}"""
+        return self._view("functions", lambda: {u["origin"]["va"]: (u["name"], u.get("text")) for u in self._functions()
+                                                if "va" in (u.get("origin") or {})})
+
+
+class _Texts(dict):
+    """Made.texts: {name: C text}, in the module's order; setting one rewrites the module's document."""
+
+    def __init__(self, made):
+        dict.__init__(self, texts(made.doc))
+        self._made = made
+
+    def __setitem__(self, name, text):
+        dict.__setitem__(self, name, text)
+        self._made.texts = {name: text}
+
+    def update(self, *args, **kw):
+        new = dict(*args, **kw)
+        dict.update(self, new)
+        self._made.texts = new
+
+    def __reduce__(self):                                # (pickled as the plain dict it is)
+        return dict, (dict(self),)
+
+
 class Assembly(list):
     """A module being written as assembly language, built as its L2 Module as it goes.
 

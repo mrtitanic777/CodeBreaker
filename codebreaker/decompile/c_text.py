@@ -19,6 +19,7 @@ import re
 import struct
 
 from codebreaker.decompile import ctree
+from codebreaker.translate import l2
 from codebreaker.translate.backends import c as cback
 
 
@@ -636,17 +637,6 @@ def compilable32(module_path, funcs, outdir):
     return preamble, out, order, by_va, used, in_ecx, in_edx
 
 
-class Module(object):
-    """A decompiled module: `header` (shared text), `functions` {address: (name, text)},
-    `order` (names by address), `imports` (the import names its functions call)."""
-
-    def __init__(self, header, texts, order, by_va, imports, in_ecx=(), in_edx=()):
-        self.header, self.texts, self.order, self.by_va, self.imports = header, texts, order, by_va, imports
-        self.in_ecx = set(in_ecx)                # names of functions that take their first argument in ECX
-        self.in_edx = set(in_edx)                # ... and their second in EDX
-        self.functions = {va: (n, texts[n]) for va, n in by_va.items()}
-
-
 HEADER = """typedef long long int8; typedef unsigned long long uint8; typedef unsigned long long xunknown8;
 typedef double float8; typedef long double float10;
 typedef unsigned long unkbyte3; typedef long unkint3; typedef unsigned long unkuint3; typedef long int3;
@@ -711,10 +701,6 @@ uint2 codebreaker_entry_sp(void);
 #define SCARRY4(a,b) ((int4)(((int4)(a) ^ (int4)((a) + (b))) & ((int4)(b) ^ (int4)((a) + (b)))) < 0)
 #define CODEBREAKER_FAR(seg, off) ((void __far *)(((uint4)(uint2)(seg) << 16) | (uint2)(off)))
 """
-
-class Module16(object):
-    pass
-
 
 # ---------------------------------------------------------------------------------------------
 # Data kept in a code segment, read through CS
@@ -1273,9 +1259,11 @@ def _write16(context, item):
 def _compilable16(module_path, outdir=None):
     from codebreaker.decompile import decompiler, describe
     texts, order, by_va, d = decompiler.decompile16(module_path, outdir)
-    m = Module16()
+    # the module made: one L2 Module (translate/l2.Made), each function a MethodDecl with its C, and
+    # what the 16-bit build needs said of the module beside it
+    m = l2.Made(os.path.basename(module_path).lower())
     m.notes = d.notes                                        # what the decompiler said of each besides its C
-    m.texts, m.order, m.by_va, m.where = {}, [], {}, {}
+    m.where = {}
     m.near, m.wide, m.novalue = set(), set(), set()
     m.interrupts = set()                                     # (vector, arguments) of the interrupts taken
     m.selector_imports = {}                                  # imports used for their selector
@@ -1428,9 +1416,7 @@ def _compilable16(module_path, outdir=None):
         for flag in flags_of.get(name, ()):
             getattr(m, flag).add(name)
         selector_structs += found.get("selector_decls") or []
-        m.texts[name] = text
-        m.order.append(name)
-        m.by_va[va] = name
+        m.add(name, text, va)
         m.where[va] = d.where.get(va)
         # (an import's value used bare is the import: backends/c._selector_imports)
         m.selector_imports.update(found.get("selector_imports") or {})
@@ -1658,10 +1644,6 @@ _WIDE_ADDRESS = re.compile(r"0xffffffff([89a-f][0-9a-f]{7})")
 _HOME = re.compile(r"_?([a-z]+)Stack(000000[0-9a-f]{2})")
 
 
-class ModulePowerPC(object):
-    pass
-
-
 def _homed_arguments(t):
     """A caller leaves room on the stack for each of the eight register arguments (eight bytes
     each, from 0x10 above the stack pointer at entry), and a function that needs an argument's
@@ -1800,9 +1782,9 @@ def compilable_powerpc(module_path, outdir):
     # a function returning a pointer to one names it in its prototype, which every body includes.
     types = _TYPES.replace("typedef int code();", "typedef uint8 code();") + _HELPERS + _POWERPC
     structs = _struct_decls([st for n in order for st in (got.notes.get(n) or {}).get("structs") or ()], types)
-    m = ModulePowerPC()
-    m.header = types + "".join(x + "\n" for x in structs) + "\n".join(decls) + "\n" + "\n".join(macros) + "\n"
-    m.texts, m.order, m.by_va, m.novalue = out, order, by_va, novalue
+    m = l2.Made(os.path.basename(module_path).lower(),
+                types + "".join(x + "\n" for x in structs) + "\n".join(decls) + "\n" + "\n".join(macros) + "\n",
+                out, order, by_va, novalue=novalue)
     by_name = {name: va for va, name in img.imports.items()}
     m.externs = {n: by_name[n] for n in used if n in by_name}
     m.argc = call_counts(out, set(m.externs))
