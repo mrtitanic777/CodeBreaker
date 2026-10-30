@@ -32,14 +32,14 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
@@ -2585,6 +2585,31 @@ def _caller_frame_slots(nodes, _arrays):
         _now['declare_first'] = list(facts.get('frame_declare') or ())
 
 
+_SELECTOR_VALUE = re.compile(r"0x[dD]0[0-9a-fA-F]{2}")
+
+
+def _selector_imports(nodes, _arrays):
+    """An import's value used bare -- `mov es, __0040H`, `test ax, __WINFLAGS`: the decompiler
+    shows the made-up number the description gave the import (describe: its selector_imports,
+    the module's facts "selector_values" {number: (import, "segment" or "offset")}). It is the
+    import, `FP_SEG(&__0040H)` (the loader fills in its selector) or `FP_OFF(&__WINFLAGS)`; the
+    imports so used are found for the module's header (facts["selector_imports"]; c_text's
+    _compilable16 did it on the module's texts)."""
+    values = _now['facts'].get('selector_values')
+    if not values:
+        return
+    seen = _seen()
+    used = _now['facts'].setdefault('selector_imports', {})
+    for e, _p in nodes:
+        if e['node'] != 'Lit' or id(e) not in seen or id(e) in _now['whole']:
+            continue
+        spelled = _lit(e)
+        if _SELECTOR_VALUE.fullmatch(spelled) and int(spelled, 16) in values:
+            imp, how = values[int(spelled, 16)]
+            used[imp] = how
+            _rewrite(e, lambda _x, s="%s(&%s)" % ("FP_SEG" if how == "segment" else "FP_OFF", imp): s)
+
+
 def caller_frame_plan(reports, frames):
     """The module's decision for the helpers that work in their callers' frames (above), from what
     writing each function found (`reports` {function: facts["frame"]}, in the module's order;
@@ -3185,7 +3210,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("far_reads", _far_reads),
            ("near_to_far", _near_to_far),
            ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
-           ("caller_frame_slots", _caller_frame_slots))
+           ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports))
 
 
 # ---------------------------------------------------------------------------------------------- functions

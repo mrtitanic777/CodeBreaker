@@ -609,3 +609,16 @@ def test_moved_caller_frame_slots():
            '(xunknown2 __far *)((uint1 __far *)MK_FP(codebreaker_ss(), &xStack_8)));' in text
     # (a caller with no frame of its own: nothing is changed)
     assert c.caller_frame_plan(reports, {'g': False}) == {}
+
+
+def test_moved_selector_imports():
+    """c_text's import values on the tree: the made-up number an import used for its value is
+    shown as (`mov es, __0040H`) is the import, FP_SEG(&__0040H) -- FP_OFF for one used for its
+    offset -- and the imports so used are found for the header. Another number stays."""
+    doc = sixteen([stmt({'node': 'Assign', 'target': name('x'), 'value': lit(0xd008, 'u16', text='0xd008')}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': lit(0xd010, 'u16', text='0xd010')}),
+                   stmt({'node': 'Assign', 'target': name('z'), 'value': lit(0xd018, 'u16', text='0xd018')})])
+    facts = {'distance': 'far', 'selector_values': {0xd008: ('__0040H', 'segment'), 0xd010: ('__WINFLAGS', 'offset')}}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '  x = FP_SEG(&__0040H);\n  y = FP_OFF(&__WINFLAGS);\n  z = 0xd018;' in text, text
+    assert facts['selector_imports'] == {'__0040H': 'segment', '__WINFLAGS': 'offset'}

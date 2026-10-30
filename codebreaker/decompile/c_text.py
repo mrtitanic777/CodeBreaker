@@ -1597,10 +1597,10 @@ def _write16(context, item):
     facts = module_facts16(_IMAGES16.get(seg), off, end, distance, model, dgroup, "return" in far, seg)
     facts["selector_structs"] = by_selector
     facts["callee_pops"] = bool(callee_pops)
-    facts.update(item[10] if len(item) > 10 else {})     # (what the module decided of it since: "frame_slots" ...)
+    facts.update(item[10] if len(item) > 10 else {})     # (the module's own: "selector_values"; and what it decided of it since: "frame_slots" ...)
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
-    found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared", "frame") if k in facts}
+    found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared", "frame", "selector_imports") if k in facts}
     if not known.get("from_l2"):
         return va, None, set(), known, {}
     return va, text, cback.flags(known["l2"], facts), known, found
@@ -1678,12 +1678,15 @@ def _compilable16(module_path, outdir=None):
         k = bisect.bisect_right(starts_all, site) - 1
         if k >= 0 and starts_all[k] >> 16 == site >> 16:
             callee_pops[starts_all[k]] = True
+    # what the module says that every function is written with: its imports used for their value
+    # (describe's selector_imports, the made-up number each is shown as)
+    shared = {"selector_values": dict(getattr(d, "selector_imports", {}) or {})}
     items = []
     for va in sorted(by_va):
         name = by_va[va]
         seg, off = d.where[va]
         items.append((va, distance.get(name), model_of.get(name), seg, off, ends.get(va, off), dgroup,
-                      d.notes.get(name), by_selector, callee_pops.get(va)))
+                      d.notes.get(name), by_selector, callee_pops.get(va), shared))
     written = pool.run(_write16, items, context=asm_images, init=_one16_images, initargs=(images,),
                        below_normal=False)
     for item in items:                                       # (a worker that could not start or died
@@ -1730,9 +1733,9 @@ def _compilable16(module_path, outdir=None):
     item_of = {by_va[item[0]]: item for item in items if item[0] in by_va}
     for nm, extra in plan.items():
         if nm in item_of:
-            _va, text, _flags, _known, _found = _write16(asm_images, item_of[nm] + (extra,))
+            _va, text, _flags, _known, _found = _write16(asm_images, item_of[nm][:10] + (dict(shared, **extra),))
             if text is not None:
-                texts[nm] = text
+                texts[nm], found_of[nm] = text, _found
     # each function on its own (_one16), shared among worker processes: the module's texts
     # are thousands of tree passes, and none of them looks at another function's text
     items = []
@@ -1765,24 +1768,8 @@ def _compilable16(module_path, outdir=None):
         m.order.append(name)
         m.by_va[va] = name
         m.where[va] = d.where.get(va)
-    # an import's value used bare (mov es, __0040H; test ax, __WINFLAGS) is the import
-    values = getattr(d, "selector_imports", {})
-
-    def _value(number):
-        if int(number, 16) not in values:
-            return number
-        imp, how = values[int(number, 16)]
-        m.selector_imports[imp] = how
-        return "%s(&%s)" % ("FP_SEG" if how == "segment" else "FP_OFF", imp)
-    if values:
-        for name in m.texts:
-            src = ctree.Source(m.texts[name])
-            for num in _numbers(src):
-                if re.fullmatch(r"0x[dD]0[0-9a-fA-F]{2}", src.at(num)):
-                    new = _value(src.at(num))
-                    if new != src.at(num):
-                        src.replace(num, new)
-            m.texts[name] = src.text()
+        # (an import's value used bare is the import: backends/c._selector_imports)
+        m.selector_imports.update(found.get("selector_imports") or {})
     # A segment of the module's own as a value -- its selector passed on, pushed, left in AX: the
     # decompiler shows the made-up selector the description gave it. The automatic data segment
     # is DS; a code segment, the selector of a far function in it (the loader fixes that one up).
