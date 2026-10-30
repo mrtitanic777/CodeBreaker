@@ -229,6 +229,21 @@ global rules, `_fit_calls`, odd types and struct_text; the PowerPC path, which d
 L2 and is still text throughout; the module assembly itself (orchestration and the facts read from
 the bytes), which is no text pass but still lives in c_text.
 
+Later still on 2026-10-30 c_text lost its last text pass (IR_UNIFICATION.md step 3 has each, one
+commit apiece). The 32-bit path's frame structure, global rules, call fitting, odd-size types and
+structure fields are the back end's, on the tree: what the module decides over all its functions is
+decided from their trees before any is written (backends/c.module_names32), each function written
+with its part, and struct_text only decides which accesses are fields (struct_text.plan). A
+function the back end declines is one the decompiler could not make (2 of 7,291 measured), so the
+printed C's fallback went. PowerPC decompiles with L2 now (the native decompiler writes a document
+for every processor but 16-bit x86, and no longer crashes on a constant with no variable), the back
+end's C matches the printed C on all 665 functions of the Xbox 360 HUD module, and its eight passes
+and the module's tables come from the trees (backends/c.POWERPC). The 16-bit build declares each
+export from the back end's L2 heading (Made.declarations). One output change, a fix: the old
+pattern for structure fields misread `*(int4 *)a1->f_1c` as a field of a1 (COMDLG32, COMCTL32,
+SHELL32). c_text no longer imports ctree; it is the module assembly and the facts read from the
+original's code bytes, 1,420 lines (1,860 before).
+
 Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
 before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the
 module's tables (near, wide, novalue, exported_prologue, interrupts, selector imports,

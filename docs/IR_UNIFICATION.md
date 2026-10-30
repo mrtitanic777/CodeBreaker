@@ -369,6 +369,60 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    `_pieces` with PIECE, `_compare_as_numbers`, `_code_pointers`, `_homed_arguments`, void ->
    uint8, `_open_arguments`, the globals, `call_counts`) is still on text; it needs PrintL2's
    PowerPC documents held to the printed C first (tools/l2c.py has no PowerPC corpus).
+   **The 32-bit and PowerPC paths on the tree, and c_text without text passes, 2026-10-30** (one
+   commit each). 32-bit: `_keep_frame` (backends/c._keep_frame: the frame structure `_f` where a
+   frame local's address escapes, the other declarations' lines left empty as c_text left them,
+   the names written after the layout; the structure sizes are the facts' `struct_sizes`); C the
+   back end declines is now a function the decompiler could not make (no C, as a failed decompile:
+   measured on LZ32, VERSION, IMM32, TAPI32, WINSPOOL, MPR, COMDLG32, KERNEL32, USER32, GDI32,
+   ADVAPI32, COMCTL32 and SHELL32 -- 7,291 functions -- the back end declines 2, COMCTL32's
+   sub_02C195 and SHELL32's sub_0252EC, each for an expression PrintL2 has no node for), so the
+   fallback's text rules went (`_null_is_zero`, `_keep_frame`, and the 32-bit uses of `_pieces`,
+   `_compare_as_numbers`, `_code_pointers`, `_struct_gaps`); the global rules -- what compilable32
+   decides over the module is decided from every function's tree before any is written
+   (backends/c.`module_names32`: the names each writes, its calls, the globals it calls through)
+   and each function written with its part (`_globals_through`, `_global_now` for the width
+   aliases, `_same_cast`), the imports used from the trees' calls, each function declared with its
+   heading as the back end writes it (the facts' `declared`), the comments before a function left
+   out by the back end (`without_notes`); `_fit_calls` (`takes32` from each heading,
+   `_fit_calls`); the odd-size typedefs (`type_names`: the types each tree writes); and
+   struct_text: `struct_text.plan` decides the fields from the trees and the headings and the
+   functions it names are written again with theirs (`_struct_fields`), `struct_text.apply` and
+   its patterns gone. One output change, a fix: the pattern over the text took `*(int4 *)a1->f_1c`
+   for `*(int4 *)a1` and wrote `((struct_7 *)a1)->f_0->f_1c` (another place, and no C: f_0 is an
+   int4); COMDLG32 (structures recovered) sub_00BF00, and 9 COMCTL32 and 9 SHELL32 functions
+   (and the headers) change so, four COMCTL32 structures whose only second field was that misreading no longer
+   declared. PowerPC: the native decompiler writes an L2 document for every processor but 16-bit
+   x86 (Description.flat), and a constant PrintC made up with no variable of its own no longer
+   crashes PrintL2 (PrintL2::readType: two HUD functions died there with the notes on); on the Xbox
+   360 HUD module the back end's C is the printed C for all 665 functions, character for character
+   (state/work/item3e/ppc_l2.py). compilable_powerpc writes each function from L2 with the passes
+   `backends/c.POWERPC` (the facts' `lane`): `_wide_address`, `_struct_gaps`, `_pieces` (spelled
+   `PIECE(x, off, T)`), `_compare_as_numbers`, `_code_pointers`, `_homed_arguments` (the slot the
+   caller keeps for a register argument is the argument), `uint8_result` (void is uint8, the facts'
+   `novalue`), `open_arguments` (the older style); and the module's globals, the calls through
+   them, the `func_0x` addresses, the imports, the declarations and how many arguments each callee
+   is called with (`Made.calls`, which the PowerPC lane reads too) come from the trees. c_text's
+   `_pieces`, `_compare_as_numbers`, `_code_pointers`, `_struct_gaps`, `_open_arguments`,
+   `_homed_arguments`, the text `call_counts` and the text readers (`_called`, `_called_through`,
+   `_globals`, `_identifiers`, `_without_notes`, `_declaration_lines`) are deleted, with their
+   frozen fixtures; c_text no longer imports ctree. 16-bit: build/module declares each export
+   with the declaration the back end wrote from the function's L2 heading (`Made.declarations`),
+   not `declaration(text)`, which is deleted.
+   Gate (state/work/item3e, references from fcf307c52 re-verified before the first change): after
+   each pass the seven 16-bit modules' 5,390 entries and tables the same; the 32-bit references
+   (LZ32 44, VERSION 49, IMM32 78, TAPI32 191, WINSPOOL 87, MPR 231; with structures recovered MPR,
+   VERSION, TAPI32, WINSPOOL, COMDLG32 239) and more recorded from fcf307c52 for rules the first set
+   barely reaches (KERNEL32 1,871, USER32 550, GDI32 832, ADVAPI32 177, COMCTL32 1,105, SHELL32
+   1,902) the same but for the two changes above (recorded again for them); PowerPC: the HUD
+   module's 670 entries the same.
+   **Left in c_text** (no text pass): the three paths' module assembly -- `compilable32` (the
+   module's decisions and header), `_compilable16` / `_write16` and the facts from the code bytes
+   (`module_facts16`, `_far_argument_widths`, `_far_loads`, `_loads_dgroup`, `_ss_store_places`,
+   `_selector_sites`, `_code_bytes`, `_code_segment_data`'s layout), `compilable_powerpc`, the
+   header texts and `_struct_decls`, `interrupt_helpers` / `interrupt_routines`, `call_counts` (on
+   the trees' calls). The 32-bit lane's build/module still reads a prototype from each text
+   (`functions.prototype`); that is no c_text pass. c_text.py is 1,420 lines (1,860 before).
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
    **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`
