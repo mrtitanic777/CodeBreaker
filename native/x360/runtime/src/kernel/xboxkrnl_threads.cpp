@@ -274,7 +274,9 @@ GUEST_IMPORT(NtResumeThread)
 }
 
 // NTSTATUS KeSetAffinityThread(PKTHREAD Thread, KAFFINITY Affinity, PKAFFINITY PreviousAffinity)
-// Unlike Windows NT the console returns a status and writes the previous affinity through the pointer.
+// Unlike Windows NT the console returns a status and writes the previous affinity through the pointer: the bit of
+// the hardware thread it ran on, not the mask (XSetThreadProcessor returns that bit's number; 1888's Pictures init
+// fails unless a new thread's is 0).
 GUEST_IMPORT(KeSetAffinityThread)
 {
     kernel::GuestThread* thread = kernel::FindThread(ctx.r3.u32);
@@ -284,7 +286,7 @@ GUEST_IMPORT(KeSetAffinityThread)
         return;
     }
     if (ctx.r5.u32)
-        guest::g_memory.Write32(ctx.r5.u32, thread->affinity);
+        guest::g_memory.Write32(ctx.r5.u32, 1u << kernel::CurrentCpu(thread));
     thread->affinity = ctx.r4.u32;
     // A thread outside its new mask moves to the mask's first hardware thread.
     if (const uint32_t mask = ctx.r4.u32 & 0x3F; mask && !((mask >> kernel::CurrentCpu(thread)) & 1))

@@ -301,7 +301,10 @@ class Scanner:
     def unchanged(self, reg, start, end):
         for a in range(start, end, 4):
             word = self.img.u32(a)
-            w = writes(decode(word), word)
+            d = decode(word)
+            if d[0] == 'rlwinm' and d[1] == reg and d[2] == reg and d[3:] == (0, 0, 31):
+                continue  # `rotlwi rX, rX, 0` (clrldi of the upper word): the 32-bit index is the same
+            w = writes(d, word)
             if w == 'unknown' or w == reg or (isinstance(w, set) and reg in w):
                 return False
         return True
