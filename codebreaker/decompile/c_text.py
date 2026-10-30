@@ -1609,10 +1609,10 @@ def _one16(context, item):
     # (_far, _far_from_stack, _frame_through_ss, _pieces, _joined_arguments, _segment_registers,
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
-    # _struct_gaps, _own_segment_calls and _interrupts are the back end's, done on the tree as it writes the C from L2: backends/c.MOVED,
-    # docs/IR_UNIFICATION.md step 3)
+    # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments) and
+    # _interrupts are the back end's, done on the tree as it writes the C from L2:
+    # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    text = _open_arguments(text)
     out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(
         _far_casts(_far_addresses(text)))))))))
     if code is not None:
@@ -2017,7 +2017,11 @@ def _caller_frame_slots(texts, frames):
         new_body = _CALLER_SLOT.sub(lambda m: "*frame_%x" % int(m.group(2), 0) if m.group(1) == slots[int(m.group(2), 0)]
                                     else "*(%s __far *)frame_%x" % (m.group(1), int(m.group(2), 0)), body)
         new_body = re.sub(r"(?m)^\s+int2 unaff_BP;\n", "", new_body, count=1)
-        out[name] = head[:hm.start()] + "%s %s(%s)" % (hm.group(1), name, ",".join(params)) + head[hm.end():] + new_body
+        # (in the older style the back end writes the definitions in: the names, then each declared)
+        rest = head[hm.end():]
+        out[name] = head[:hm.start()] + "%s %s(%s)\n%s" % (
+            hm.group(1), name, ",".join("frame_%x" % less for less in sorted(slots)),
+            "".join("%s;\n" % p for p in params)) + (rest[1:] if rest.startswith("\n") else rest) + new_body
         for n, t in callers.items():
             t = out[n]
             args = []

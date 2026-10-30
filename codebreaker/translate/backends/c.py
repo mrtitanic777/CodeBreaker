@@ -31,16 +31,16 @@ import re
 MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers",
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
-         "selector_structs", "struct_gaps", "own_segment_calls", "interrupts")
+         "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
-             "selector_structs", "struct_gaps", "own_segment_calls", "interrupts")
+             "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
-        "locals": [], "drop": set()}
+        "locals": [], "drop": set(), "old_style": None, "room": set()}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -752,9 +752,15 @@ def _raw(e):
         _now['bare'].discard(id(e))
 
 
-def _rewrite(e, shown):
-    """A moved pass writes `shown(e)` in place of expression `e` (the first pass to claim it)."""
-    _now['whole'].setdefault(id(e), shown)
+def _rewrite(e, shown, room=False):
+    """A moved pass writes `shown(e)` in place of expression `e` (the first pass to claim it).
+    `room`: given no room of its own, where the text PrintC printed there was laid out over
+    lines and what is written in its place is not (an interrupt helper's call: given the room of
+    the call it stands for, or of its own text, its `;` was left on a line of its own)."""
+    if id(e) not in _now['whole']:
+        _now['whole'][id(e)] = shown
+        if room:
+            _now['room'].add(id(e))
 
 
 def _push(st, e, paren=None):
@@ -765,7 +771,8 @@ def _push(st, e, paren=None):
     if rewrite is not None and id(e) not in _now['bare']:
         # (a moved pass's text in its place: given the room of the text PrintC printed, as
         # c_text rewrites the printed C after its layout)
-        st.whole(_op_of(e), _raw(e), rewrite(e), paren)
+        shown = rewrite(e)
+        st.whole(_op_of(e), '' if id(e) in _now['room'] else _raw(e), shown, paren)
         return
     if n == 'Lit':
         st.atom(_lit(e))
@@ -1875,7 +1882,8 @@ def _interrupts(nodes, _arrays):
         used.add((vector, regs))
         _rewrite(e, lambda c, v=vector, regs=regs, args=args:
                  "int%02x_%s(%s)" % (v, '_'.join(regs) if regs else 'none',
-                                     ','.join(expr(a) for r, a in zip(INTERRUPT_REGISTERS, args) if r in regs)))
+                                     ','.join(expr(a) for r, a in zip(INTERRUPT_REGISTERS, args) if r in regs)),
+                 room=True)
     for e, _p in nodes:
         if e['node'] == 'Name' and (e.get('sym') or {}).get('kind') != 'field':
             m = _INT_RESULT.fullmatch(_name(e))
@@ -1933,7 +1941,13 @@ def _signature(em, doc):
     em.open_paren('(')
     em.spaces(0, 10)
     params = doc.get('params') or []
-    if not params:
+    old = _now['old_style'] if _now['doc'] is doc else None
+    if old is not None:
+        # (the older style: the names alone here, their declarations below -- _old_style)
+        if old:
+            em.print(','.join(n for n, _d in old))
+        params, ft = [], {}
+    elif not params:
         em.print('void')
     for i, p in enumerate(params):
         if i:
@@ -1948,6 +1962,29 @@ def _signature(em, doc):
     em.close_paren(')')
     em.close_group()
     em.close_group()
+
+
+def _old_style(doc):
+    """The definition in the older style, `f(a,b)` then `int2 a;` `int2 b;` before its `{`
+    (c_text._open_arguments): written with its argument types in the brackets a definition also
+    fixes how every later call must look, and the decompiler recovers each call on its own
+    evidence (a caller that passes three words where the definition takes a far pointer and a
+    word passes the same bytes, not the same C). -> [(name, declaration)], or None where it stays
+    as it is: an argument whose declaration has brackets in it (a pointer to a function), `...`,
+    a heading c_text's parser lost (_lost)."""
+    ft = (doc.get('sym') or {}).get('type') or {}
+    if ft.get('variadic') or _lost(doc):
+        return None
+    if any(_FASTCALL.fullmatch(m) for m in doc.get('mods') or ()) and _stack(_ret(doc))[0]:
+        return None                                      # (`T * __fastcall16near f(...)`: lost too)
+    out = []
+    for p in doc.get('params') or []:
+        decl = type_text(p.get('type'), _param_name(p), _param_name(p) in _now['far'])
+        m = re.search(r"([A-Za-z_]\w*)\s*(?:\[\d*\])?$", decl)
+        if '(' in decl or ')' in decl or not m:
+            return None
+        out.append((m.group(1), decl))
+    return out
 
 
 def signature(doc):
@@ -1978,6 +2015,7 @@ def function(doc, moved=(), far=None, facts=None):
                    {n for n, t in [(_param_name(p), p.get('type')) for p in doc.get('params') or []] +
                     [((v.get('sym') or {}).get('name'), v.get('type')) for v in locs] if is_far(t)}) \
         if 'far' in _now['moved'] else set()
+    _now['old_style'] = _old_style(doc) if 'open_arguments' in _now['moved'] else None
     try:
         if 'far_from_stack' in _now['moved'] and _now['far']:
             _far_from_stack(doc.get('body'), locs)
@@ -1989,6 +2027,7 @@ def function(doc, moved=(), far=None, facts=None):
     finally:
         _now['moved'], _now['far'], _now['marks'], _now['whole'], _now['bare'] = (), set(), {}, {}, set()
         _now['facts'], _now['doc'], _now['locals'], _now['drop'] = {}, None, [], set()
+        _now['old_style'], _now['room'] = None, set()
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")
@@ -2054,7 +2093,11 @@ def _function(doc, locs):
         em.tag_line()
     em.tag_line()
     _signature(em, doc)
-    em.tag_line()
+    for _n, decl in _now['old_style'] or ():
+        em.tag_line(0)
+        em.print(decl + ';')
+    if _now['old_style'] is None:                     # (the older style: its `{` on the next line)
+        em.tag_line()
     em.tag_line()
     em.start_indent()
     em.print('{')

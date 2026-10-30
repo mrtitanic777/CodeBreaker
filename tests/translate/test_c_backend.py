@@ -305,7 +305,7 @@ def test_moved_passes_that_read_the_module():
     facts = {'distance': 'far', 'model': '__stdcall16far', 'widths': {True: {'a1': 1}, False: {}},
              'loads': {10}, 'export': False, 'loadds': True}
     text = c.function(doc, c.MOVED, facts=facts)
-    assert text.startswith('xunknown2 __stdcall16far __loadds f(int2 a1,int2 a2,int2 a3,int2 a4)')
+    assert text.startswith('xunknown2 __stdcall16far __loadds f(a1,a2,a3,a4)\nint2 a1;')
     assert '  x = *(*(char __far * *)&a1);' in text
     assert '  y = (*(uint4 *)&a1);' in text
     assert '  z = *(int2 __far *)CODEBREAKER_FAR(a4, a3);' in text
@@ -369,3 +369,18 @@ def test_moved_selector_structs():
     assert '  b = SEG_PTR(seg_f_xVar2, xVar2)->f_40;' in text, text
     assert facts['selector_decls'] == ['typedef _Packed struct seg_f_xVar2 { uint1 _pad_0[62]; int2 f_3e; uint1 f_40; } seg_f_xVar2;']
     assert 'MK_FP' in c.function(doc, c.MOVED, facts={})          # (without structures: as it was)
+
+
+def test_moved_old_style_definition():
+    """c_text._open_arguments on the tree (16-bit, with the module's facts): the definition in the
+    older style, the names in the brackets and each declared before the `{` (a far pointer
+    __far); none, `f()`. A pointer result with a fastcall word keeps its heading as it was
+    (c_text's parser lost that heading)."""
+    word = {'kind': 'i16'}
+    body = [stmt({'node': 'Assign', 'target': name('x'), 'value': name('a1')})]
+    doc = sixteen(body, [param('a1', word), param('a2', ptr(word, 'far'))])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far', 'model': '__stdcall16far'})
+    assert text.startswith('xunknown2 __stdcall16far f(a1,a2)\nint2 a1;\nint2 __far *a2;\n{\n  x = a1;'), text
+    assert c.function(sixteen(body), c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()\n{\n')
+    lost = dict(doc, ret=ptr(word, 'near'), mods=['__fastcall16near'])
+    assert '(int2 a1,int2 __far *a2)' in c.function(lost, c.MOVED, facts={'distance': 'near'})
