@@ -29,7 +29,7 @@ from codebreaker.decompile import c_text                # noqa: E402
 PASSES = ["_more_helpers", "_keep_frame", "_null_is_zero", "_compare_as_numbers", "_fit_calls",
           "_pieces", "_far_loads",
           "_open_arguments", "declaration", "_global_type", "_loads_dgroup", "_arguments_at",
-          "_entry_sp", "_stack_arguments", "_near_to_far", "_far_reads", "_buffer_fields", "_frame_block",
+          "_near_to_far", "_far_reads", "_buffer_fields", "_frame_block",
           "_stack_segment_stores", "_far_locals", "interrupt_helper_name", "_far_addresses",
           "interrupt_helpers", "_homed_arguments", "_ram_type", "call_counts", "interrupt_routines"]
 

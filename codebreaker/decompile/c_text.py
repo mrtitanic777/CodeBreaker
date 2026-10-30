@@ -1609,12 +1609,11 @@ def _one16(context, item):
     # (_far, _far_from_stack, _frame_through_ss, _pieces, _joined_arguments, _segment_registers,
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
-    # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments) and
-    # _interrupts are the back end's, done on the tree as it writes the C from L2:
+    # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
+    # _interrupts, _entry_sp and _stack_arguments are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_stack_arguments(_entry_sp(
-        _far_casts(_far_addresses(text)))))))))
+    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(_far_locals(_far_casts(_far_addresses(text)))))))
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2036,90 +2035,6 @@ def _caller_frame_slots(texts, frames):
                 args.append("(%s __far *)MK_FP(codebreaker_ss(),&%s)" % (slots[less], local))
             out[n] = re.sub(r"\b%s\(\)" % re.escape(name), "%s(%s)" % (name, ",".join(args)), t)
     return out
-
-
-def _entry_sp(text):
-    """The decompiler's name for SP as the function was entered, used as a value (code that keeps
-    the stack pointer, or makes an address on the stack from it): codebreaker_entry_sp(). A place
-    on the stack it names by that (stack0xffec: entry SP - 0x14, above the function's own frame,
-    the caller's) is that address -- unless it is one of the function's own locals (xStack_4:
-    entry SP - 4) read through its address: then it is that local, wherever the compiler keeps
-    it. (SUWIN's 2:819E keeps GetProcAddress's DX:AX in [bp-4] and calls `lcall [bp-4]`; the C
-    read the segment as `*(xunknown2 *)(&stack0xfffa + 2)`, a place in its own frame nothing had
-    set, and called into nowhere.)"""
-    own = {int(m.group(3), 16): (m.group(1), m.group(2))     # entry SP less -> (type, name)
-           for m in re.finditer(r"^\s+(\w+) (\w*Stack_([0-9a-f]+));$", text, re.M)}
-
-    def local(m):
-        ty, base, plus = m.group(1), int(m.group(2), 16), m.group(3)
-        hit = own.get(0x10000 - base - (int(plus, 0) if plus else 0))
-        if not hit:
-            return m.group(0)
-        return hit[1] if hit[0] == ty else "*(%s *)&%s" % (ty, hit[1])
-    if own:
-        text = re.sub(r"\*\((\w+) \*\)\(&stack0x([0-9a-f]{4}) \+ (\d+|0x[0-9a-f]+)\)", local, text)
-        text = re.sub(r"\*\((\w+) \*\)&stack0x([0-9a-f]{4})()\b", local, text)
-
-    def fix(src):
-        for n in src.find("identifier"):
-            name = src.at(n)
-            if name == "register0x00000010":
-                src.replace(n, "codebreaker_entry_sp()")
-                continue
-            m = re.fullmatch(r"stack0x([0-9a-f]{4})", name)
-            op = src.unary(n) if m else None
-            if op and op[0] == "&":
-                src.replace((op[1], n.end_byte), "((uint1 *)codebreaker_entry_sp() + (int2)0x%s)" % m.group(1))
-    return ctree.rewrite(text, fix)
-
-
-def _stack_arguments(text):
-    """Words of the caller's stack the function reads beyond its declared parameters: the
-    decompiler declares them as locals (in_stack_0000000c -- which in C would hold nothing) or
-    names a piece of them (_uStack000e). Each is that place: the stack segment, at the entry SP
-    plus its offset."""
-    def place(ty, off):
-        return "codebreaker_stack(%s, 0x%x)" % (ty, off)
-
-    def declared_alone(src, n):
-        """(type, name) of a declaration of one plain variable alone on its line, else None"""
-        ds = n.children_by_field_name("declarator")
-        if len(ds) != 1 or ds[0].type != "identifier":
-            return None
-        line = src.line(n)
-        if src.at(n) != line.strip():
-            return None
-        return line.strip()[:-1].rsplit(None, 1)[0].strip(), src.at(ds[0])
-
-    def arguments(src):
-        locals_ = {}
-        for n in src.find("declaration", under=src.body()):
-            got = declared_alone(src, n)
-            m = re.fullmatch(r"in_stack_([0-9a-f]{8})", got[1]) if got else None
-            if m and int(m.group(1), 16) < 0x10000 and got[1] not in locals_:
-                locals_[got[1]] = (got[0], int(m.group(1), 16))
-                src.replace(src.line_span(n), "")
-        for n in src.find("identifier"):
-            name = src.at(n)
-            if name in locals_ and n.parent.type != "declaration":
-                src.replace(n, place(*locals_[name]))
-    text = ctree.rewrite(text, arguments)
-
-    def pieces(src):
-        body = src.body()
-        declared = set()
-        for n in src.find("declaration", under=body):
-            if src.at(n) == src.line(n).strip():
-                for dcl in n.children_by_field_name("declarator"):
-                    while dcl.type in ("pointer_declarator", "array_declarator"):
-                        dcl = dcl.child_by_field_name("declarator")
-                    declared.add(src.at(dcl))
-        for n in src.find("identifier"):
-            m = re.fullmatch(r"_?([a-z]+)Stack([0-9a-f]{4})", src.at(n))
-            if m and src.at(n) not in declared:
-                ty = {"u": "uint2", "i": "int2", "c": "char", "b": "uint1", "x": "xunknown2"}.get(m.group(1)[:1], "uint2")
-                src.replace(n, place(ty, int(m.group(2), 16)))
-    return ctree.rewrite(text, pieces)
 
 
 _SIZE = {"1": 1, "2": 2, "4": 4}

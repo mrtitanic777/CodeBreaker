@@ -31,13 +31,15 @@ import re
 MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "segment_registers",
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
-         "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts")
+         "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "entry_sp",
+         "stack_arguments")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
-             "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts")
+             "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "entry_sp",
+             "stack_arguments")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set()}
@@ -1895,6 +1897,126 @@ def _interrupts(nodes, _arrays):
             _now['drop'].add(n)                          # (no variable of its own: the register)
 
 
+_ENTRY_SP = 'register0x00000010'                       # (the decompiler's SP as the function was entered)
+_STACK_PLACE = re.compile(r"stack0x([0-9a-f]{4})")
+_OWN_FRAME = re.compile(r"\w*Stack_([0-9a-f]+)")
+
+
+def _entry_sp(nodes, _arrays):
+    """The decompiler's name for SP as the function was entered, used as a value (code that keeps
+    the stack pointer, or makes an address on the stack from it): codebreaker_entry_sp(). A place
+    on the stack it names by that (`&stack0xffec`: entry SP - 0x14, above the function's own
+    frame, the caller's) is that address -- unless it is one of the function's own locals
+    (xStack_4: entry SP - 4) read through its address, `*(T *)(&stack0xfffa + 2)`: then it is
+    that local, wherever the compiler keeps it (SUWIN's 2:819E called through the segment it kept
+    in [bp-4], read as a place nothing had set: c_text._entry_sp)."""
+    own = {}                                             # entry SP less -> (type, name)
+    gone = _unused_high_halves(nodes)
+    for v in _now['locals']:
+        n = (v.get('sym') or {}).get('name') or ''
+        m = _OWN_FRAME.fullmatch(n)
+        t = type_text(v.get('type'))
+        if m and n not in _now['drop'] and n not in gone and re.fullmatch(r"\w+", t):
+            own[int(m.group(1), 16)] = (t, n)
+
+    def place(u):
+        """(name, plus) of `&stack0xNNNN`, else None"""
+        if u.get('node') == 'Unary' and u.get('op') == '&' and not u.get('postfix') and u['x'].get('node') == 'Name':
+            m = _STACK_PLACE.fullmatch(_name(u['x']))
+            return int(m.group(1), 16) if m else None
+        return None
+    taken = set()
+    if own:
+        for e, _p in nodes:
+            if e['node'] != 'Unary' or e.get('op') != '*' or e.get('postfix') or id(e) in _now['whole']:
+                continue
+            cast = e['x']
+            if cast.get('node') != 'Cast' or id(cast) in _now['whole']:
+                continue
+            ty = re.fullmatch(r"(\w+) \*", type_text(cast.get('type')))
+            v = cast['x']
+            base, plus = place(v), 0
+            if base is None and v.get('node') == 'Binary' and v.get('op') == '+' and \
+                    v['right'].get('node') == 'Lit' and re.fullmatch(r"\d+|0x[0-9a-f]+", _lit(v['right'])):
+                base, plus = place(v['left']), int(_lit(v['right']), 0)
+                v = v['left']
+            if not ty or base is None or id(v) in _now['whole']:
+                continue
+            hit = own.get(0x10000 - base - plus)
+            if hit:
+                taken.add(id(v))
+                _rewrite(e, lambda _x, h=hit, t=ty.group(1): h[1] if h[0] == t else '*(%s *)&%s' % (t, h[1]))
+    for e, _p in nodes:
+        if e['node'] == 'Name' and _name(e) == _ENTRY_SP:
+            _rewrite(e, lambda _x: 'codebreaker_entry_sp()')
+        base = place(e)
+        if base is not None and id(e) not in taken:
+            _rewrite(e, lambda _x, b=base: '((uint1 *)codebreaker_entry_sp() + (int2)0x%04x)' % b)
+
+
+def _high_half(e):
+    """The far pointer p whose high word `e` is, as c_text's _far_addresses reads it --
+    `(T)((uint4)p >> 0x10)`, or the piece `(*(uint2 *)((char *)&p + 2))` -- else None."""
+    shown = _now['whole'].get(id(e))
+    if shown is not None:
+        m = re.fullmatch(r"\(?\*\(u?int2 \*\)\(\(char \*\)&(\w+) \+ 2\)\)?", shown(e))
+        return m.group(1) if m else None
+    if e.get('node') == 'Cast' and re.fullmatch(r"\w+", type_text(e.get('type'))):
+        s = e['x']
+        if s.get('node') == 'Binary' and s.get('op') == '>>' and s['right'].get('node') == 'Lit' and \
+                _lit(s['right']) == '0x10' and s['left'].get('node') == 'Cast' and \
+                type_text(s['left'].get('type')) == 'uint4' and s['left']['x'].get('node') == 'Name':
+            return _name(s['left']['x'])
+    return None
+
+
+def _unused_high_halves(nodes):
+    """The locals that hold a far pointer's high word and are read nowhere -- `xStack_4 =
+    (xunknown2)((uint4)pcVar2 >> 0x10);` and nothing more: c_text's _far_addresses takes them
+    away (a far pointer's halves are the pointer), so no pass after it sees them declared."""
+    sets, uses = {}, {}
+    for e, p in nodes:
+        if e['node'] == 'Name':
+            uses[_name(e)] = uses.get(_name(e), 0) + 1
+        if e['node'] == 'ExprStmt' and e['expr'].get('node') == 'Assign' and not e['expr'].get('op') and \
+                e['expr']['target'].get('node') == 'Name':
+            far = _high_half(e['expr']['value'])
+            if far in _now['far']:
+                sets.setdefault(_name(e['expr']['target']), []).append(far)
+    return {v for v, ps in sets.items() if len(ps) == 1 and uses.get(v) == 1}
+
+
+_IN_STACK = re.compile(r"in_stack_([0-9a-f]{8})")
+_STACK_PIECE = re.compile(r"_?([a-z]+)Stack([0-9a-f]{4})")
+
+
+def _stack_arguments(nodes, _arrays):
+    """Words of the caller's stack the function reads beyond its declared parameters: the
+    decompiler declares them as locals (in_stack_0000000c -- which in C would hold nothing) or
+    names a piece of them (_uStack000e). Each is that place: the stack segment, at the entry SP
+    plus its offset, `codebreaker_stack(T, 0xc)` (c_text._stack_arguments)."""
+    places = {}
+    for v in _now['locals']:
+        n = (v.get('sym') or {}).get('name') or ''
+        m = _IN_STACK.fullmatch(n)
+        if m and n not in _now['drop'] and int(m.group(1), 16) < 0x10000 and not _stack(v.get('type'))[0] \
+                and n not in places:
+            places[n] = (type_text(v.get('type')), int(m.group(1), 16))
+            _now['drop'].add(n)
+    declared = {(v.get('sym') or {}).get('name') for v in _now['locals']} - _now['drop']
+    for e, _p in nodes:
+        if e['node'] != 'Name' or (e.get('sym') or {}).get('kind') == 'field':
+            continue
+        n = _name(e)
+        if n in places:
+            _rewrite(e, lambda _x, p=places[n]: 'codebreaker_stack(%s, 0x%x)' % p)
+            continue
+        m = _STACK_PIECE.fullmatch(n)
+        if m and n not in declared:
+            ty = {'u': 'uint2', 'i': 'int2', 'c': 'char', 'b': 'uint1', 'x': 'xunknown2'}.get(m.group(1)[:1], 'uint2')
+            _rewrite(e, lambda _x, t=ty, o=int(m.group(2), 16): 'codebreaker_stack(%s, 0x%x)' % (t, o))
+
+
 def _passed_on(arg, reg):
     """Is `arg` the register `reg` itself as the function had it -- not set for the interrupt?"""
     r = reg.upper()
@@ -1906,7 +2028,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("null_is_zero", _null_is_zero), ("global_pointer_steps", _global_pointer_steps),
            ("far_arguments", _far_arguments), ("one_name_for_globals", _one_name_for_globals),
            ("selector_structs", _selector_structs), ("struct_gaps", _struct_gaps),
-           ("own_segment_calls", _own_segment_calls), ("interrupts", _interrupts))
+           ("own_segment_calls", _own_segment_calls), ("interrupts", _interrupts), ("entry_sp", _entry_sp),
+           ("stack_arguments", _stack_arguments))
 
 
 # ---------------------------------------------------------------------------------------------- functions

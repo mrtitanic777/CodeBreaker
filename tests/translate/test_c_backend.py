@@ -384,3 +384,28 @@ def test_moved_old_style_definition():
     assert c.function(sixteen(body), c.MOVED, facts={'distance': 'far'}).startswith('xunknown2 __far f()\n{\n')
     lost = dict(doc, ret=ptr(word, 'near'), mods=['__fastcall16near'])
     assert '(int2 a1,int2 __far *a2)' in c.function(lost, c.MOVED, facts={'distance': 'near'})
+
+
+def test_moved_entry_sp_and_stack_arguments():
+    """c_text._entry_sp and _stack_arguments on the tree: SP as the function was entered is
+    codebreaker_entry_sp(); `&stack0xfff0` the address there; a read of one of its own locals
+    through that address (`*(int2 *)(&stack0xfffa + 2)`, entry SP - 4) is the local; the caller's
+    words it reads, in_stack_0000000c and the piece uStack000e, are those places on the stack."""
+    word = {'kind': 'i16'}
+
+    def amp(n):
+        return {'node': 'Unary', 'op': '&', 'x': name(n)}
+    read = {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(word, 'near'),
+                                              'x': binary('+', amp('stack0xfffa'), lit(2, text='2'))}}
+    doc = sixteen([local('iStack_4', word), local('in_stack_0000000c', word),
+                   stmt({'node': 'Assign', 'target': name('a'), 'value': read}),
+                   stmt({'node': 'Assign', 'target': name('b'), 'value': name('register0x00000010')}),
+                   stmt({'node': 'Assign', 'target': name('c'), 'value': amp('stack0xfff0')}),
+                   stmt({'node': 'Assign', 'target': name('d'),
+                         'value': binary('+', name('in_stack_0000000c'), name('uStack000e'))})])
+    text = c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  a = iStack_4;' in text, text
+    assert '  b = codebreaker_entry_sp();' in text, text
+    assert '  c = ((uint1 *)codebreaker_entry_sp() + (int2)0xfff0);' in text, text
+    assert '  d = codebreaker_stack(int2, 0xc) + codebreaker_stack(uint2, 0xe);' in text, text
+    assert 'int2 in_stack_0000000c;' not in text, text
