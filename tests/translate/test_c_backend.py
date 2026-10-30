@@ -4,6 +4,7 @@ here is one of PrintC's that the golden corpus showed (tools/l2c.py holds the wh
 
 from codebreaker.translate import l2
 from codebreaker.translate.backends import c
+from codebreaker.decompile import c_text
 
 
 def lit(v, kind='i32', text=None):
@@ -643,3 +644,45 @@ def test_moved_segment_values():
     text = c.function(doc, c.MOVED, facts=dict({'distance': 'far'}, **plan['f']))
     assert '  EnumWindows(((uint2)(uint4)(void __far *)&cb),%s);' % seg1 in text, text
     assert '  x = codebreaker_ds();\n  y = 0x1010;' in text, text
+
+
+def test_moved_code_segment_reads():
+    """c_text's _cs_reads and _cs_places on the tree (KEYBOARD's GetKeyNameText): tables beside
+    its code read through CS by a pointer set to the first (0x261) and a number set to the second
+    (0x290); a word table at 1C7h of places it then reads; a step (`+ 1`), a count (`iVar8 =
+    0x2f`) and an index (`uStack_c = 0`, set from arithmetic too) are no places; a far pointer
+    passed as (offset, CS) is read there too. Given "code_places", each is written as the member."""
+    char, word = {'kind': 'char'}, {'kind': 'class', 'name': 'xunknown2'}
+    cs, cs_call = name('unaff_CS', 'i16'), {'node': 'Call', 'target': name('codebreaker_cs'), 'args': []}
+    at = lambda seg, off, t=char: {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(t, 'far'),
+                                                                     'x': fcall('MK_FP', seg, off)}}
+    put = lambda v, x: stmt({'node': 'Assign', 'target': name(v), 'value': x})
+    p11, p12 = typed('pcVar11', ptr(char, 'near')), typed('pcVar12', ptr(char, 'near'))
+    body = [local('pcVar11', ptr(char, 'near')), local('pcVar12', ptr(char, 'near')), local('iVar10', {'kind': 'i16'}),
+            local('iVar8', {'kind': 'i16'}), local('uStack_c', {'kind': 'u16'}), local('unaff_CS', word),
+            put('pcVar11', {'node': 'Cast', 'type': ptr(char, 'near'), 'x': lit(0x261, 'i16', '0x261')}),
+            put('iVar10', lit(0x290, 'i16', '0x290')), put('iVar8', lit(0x2f, 'i16', '0x2f')), put('pcVar12', p11),
+            put('uStack_c', binary('*', binary('+', name('a5', 'i16'), lit(-1, 'i16')), lit(2, 'i16'))),
+            put('uStack_c', lit(0, 'i16')),
+            put('pcVar11', binary('+', p11, lit(1, 'i16'))),
+            put('iVar8', at(cs, binary('+', binary('+', p11, name('iVar10', 'i16')), p12))),
+            put('pcVar11', {'node': 'Cast', 'type': ptr(char, 'near'),
+                            'x': at(cs_call, binary('+', binary('*', name('a5', 'i16'), lit(2, 'i16')),
+                                                    lit(0x1c7, 'i16', '0x1c7')), word)}),
+            put('iVar8', at(cs, p11)),
+            stmt(at(cs, binary('+', name('uStack_c', 'u16'), lit(0x30, 'i16', '0x30')))),
+            stmt(fcall('KERNEL_128', lit(0x5a, 'i16', '0x5a'), cs, lit(0x3f, 'i16', '0x3f')))]
+    doc = sixteen(body, [param('a5', {'kind': 'i16'})])
+    facts = {'distance': 'far'}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '  xunknown2 unaff_CS = codebreaker_cs();' in text, text
+    rep = facts['code_reads']
+    assert rep['reads'] == 5 and not rep['unsafe'], rep
+    inside = lambda v: 0 < v < 0x305
+    assert sorted(v for v in rep['places'].values() if inside(v)) == [0x30, 0x5a, 0x1c7, 0x261, 0x290], rep['places']
+    assert {v for kind, (_k, v) in rep['events'] if inside(v)} == {0x1c7} and rep['events'][0][0] == 'pointers'
+    k = next(k for k, v in rep['places'].items() if v == 0x261)
+    again = c.function(doc, c.MOVED, facts={'distance': 'far', 'code_places': {k: '(uint2)codebreaker_code_9.at_0261'}})
+    assert '  pcVar11 = (char *)(uint2)codebreaker_code_9.at_0261;' in again, again
+    assert c_text._string_literal(b"type\0subtype\0") == '"type\\000subtype"'
+    assert c_text._string_literal(b"\x04\x00\x22\x00") is None

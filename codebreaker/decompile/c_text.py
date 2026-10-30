@@ -789,214 +789,6 @@ def _data_runs(code):
     return runs
 
 
-def _bare(src, n):
-    """`n` without the brackets and casts around it"""
-    while n is not None and n.type in ("parenthesized_expression", "cast_expression"):
-        n = n.child_by_field_name("value") if n.type == "cast_expression" else \
-            (n.named_children[0] if n.named_child_count == 1 else None)
-    return n
-
-
-def _terms(src, n, sign=1):
-    """The terms of a sum, each with its sign: `p + i - 1` -> [(p, 1), (i, 1), (1, -1)]"""
-    n = _bare(src, n)
-    if n is not None and n.type == "binary_expression" and not src.misread(n):
-        op = src.at(n.child_by_field_name("operator"))
-        if op in ("+", "-"):
-            return _terms(src, n.child_by_field_name("left"), sign) + \
-                _terms(src, n.child_by_field_name("right"), sign if op == "+" else -sign)
-    if n is not None and n.type == "unary_expression" and src.at(n.child_by_field_name("operator")) == "-":
-        return _terms(src, n.child_by_field_name("argument"), -sign)
-    return [(n, sign)] if n is not None else []
-
-
-def _cs_reads(text):
-    """Where a function's C reads its own code segment, and from what: -> (src, [(the offset
-    expression, what the read is used for: "call" or "")], [far pointer
-    (offset expression) passed as (offset, CS)], {variable: type}, {variable: [the right side of
-    each assignment to it]}, {the variables holding CS}), or None when it reads nothing through CS."""
-    if "codebreaker_cs()" not in text:
-        return None
-    src = ctree.Source(text)
-    body = src.body()
-    if body is None:
-        return None
-    cs = set()
-    types, sets = {}, {}
-    for dcl in src.find("declaration", under=body):
-        ty = src.at(dcl.child_by_field_name("type"))
-        for d in dcl.children_by_field_name("declarator"):
-            name = src.declared_name(d)
-            if not name:
-                continue
-            types[name] = ty + (" *" if "*" in src.at(d).split("=", 1)[0] else "")
-            if d.type == "init_declarator":
-                value = d.child_by_field_name("value")
-                if value is not None and src.at(value).strip() == "codebreaker_cs()":
-                    cs.add(name)
-                elif value is not None:
-                    sets.setdefault(name, []).append(value)
-    for a in src.find("assignment_expression", under=body):
-        left = a.child_by_field_name("left")
-        if left.type == "identifier" and src.at(a.child_by_field_name("operator")) == "=":
-            sets.setdefault(src.at(left), []).append(a.child_by_field_name("right"))
-
-    def is_cs(n):
-        n = _bare(src, n)
-        return n is not None and (src.at(n).strip() == "codebreaker_cs()" or (n.type == "identifier" and src.at(n) in cs))
-    reads, far = [], []
-    for call in src.find("call_expression", under=body):
-        if not src.is_call(call):
-            continue
-        fn = src.at(call.child_by_field_name("function"))
-        args = call.child_by_field_name("arguments").named_children
-        if fn == "MK_FP" and len(args) == 2 and is_cs(args[0]):
-            # (what is read there called: a table of the code's own addresses)
-            called = any(c.child_by_field_name("function").start_byte <= call.start_byte
-                         < c.child_by_field_name("function").end_byte for c in src.ancestors(call, "call_expression"))
-            reads.append((args[1], "call" if called else ""))
-        elif fn != "MK_FP":
-            for a, b in zip(args, args[1:]):
-                if is_cs(b) and not is_cs(a):
-                    far.append(a)
-    if not reads and not far:
-        return None
-    return src, reads, far, types, sets, cs
-
-
-def _cs_places(src, reads, far, types, sets, cs_names, inside):
-    """The numbers that are places in the code segment's data: -> ({number node: value}, {value:
-    "pointers" -- what is read there is itself a place read through CS -- or "call" -- the code's
-    own addresses, called}, [variables read for an offset whose numbers are not known])
-
-    In each offset read through CS: a number added to things that are not pointers is the place
-    (`(uVar6 & 0xff) * 2 + 0x1c7`, the table, indexed); a variable is followed to what is put in
-    it (`pcVar11 = (char *)0x261`), and so on; a number added to a pointer is a step from the
-    place (`psVar13 + 1`). A number outside the segment's data (`inside(value)`) is none. A
-    variable that is not a pointer and is also set from arithmetic (`uStack_c = (a5 + -1) * 2`)
-    is an index: its numbers are not places (MINIKBD's `uStack_c = 0`).
-
-    What is read through CS and then used as an offset makes the place it was read from a table
-    of places: a word read so ("pointers") is written as the place it holds; anything else (a
-    byte added to an index, a structure's field -- MINIKBD's GetKbdTable) cannot be, and the
-    function is left as it is (-> unsafe)."""
-    places, kinds, seen, unknown, unsafe = {}, {}, set(), [], []
-
-    def pointer(n):
-        n = n if n.type == "identifier" else None
-        return n is not None and "*" in types.get(src.at(n), "")
-
-    def read_through_cs(t):
-        """(a word or not, the offset expression) when `t` is a value read through CS"""
-        if t.type == "pointer_expression" and src.at(t.child_by_field_name("operator")) == "*":
-            arg = t.child_by_field_name("argument")
-            while arg is not None and arg.type == "parenthesized_expression" and arg.named_child_count == 1:
-                arg = arg.named_children[0]
-            ty = src.at(arg.child_by_field_name("type")) if arg is not None and arg.type == "cast_expression" else ""
-            word = bool(re.match(r"\s*(?:x?unknown2|u?int2|undefined2)\s+__far\s*\*\s*$", ty))
-        elif t.type == "field_expression":
-            arg, word = t.child_by_field_name("argument"), False
-        else:
-            return None
-        inner = _bare(src, arg)
-        if inner is not None and inner.type == "call_expression" and src.at(inner.child_by_field_name("function")) == "MK_FP":
-            args = inner.child_by_field_name("arguments").named_children
-            if len(args) == 2 and "codebreaker_cs()" in src.at(args[0]) or (
-                    len(args) == 2 and args[0].type == "identifier" and src.at(args[0]) in cs_names):
-                return word, args[1]
-        return None
-
-    def from_cs(t, depth):
-        got = read_through_cs(t)
-        if got is None:
-            return
-        word, e = got
-        if word:
-            for v in follow(e, None, depth + 1):
-                kinds.setdefault(v, "pointers")
-        else:
-            unsafe.append(src.at(t)[:60])
-
-    def index(name):
-        """an integer variable also set from arithmetic"""
-        if "*" in types.get(name, "*"):
-            return False
-        for rhs in sets.get(name, ()):
-            rb = _bare(src, rhs)
-            if rb is None or rb.type in ("number_literal", "identifier") or read_through_cs(rb):
-                continue
-            if rb.type == "binary_expression" and src.at(rb.child_by_field_name("operator")) in ("+", "-") \
-                    and not src.misread(rb):
-                continue
-            return True
-        return False
-
-    def node_terms(e):
-        out = []
-        for t, sign in _terms(src, e):
-            if t.type == "pointer_expression" and src.at(t.child_by_field_name("operator")) == "&":
-                arg = _bare(src, t.child_by_field_name("argument"))
-                if arg is not None and arg.type == "field_expression":       # &p->f: a place in p
-                    t = _bare(src, arg.child_by_field_name("argument"))
-                    if t is None:
-                        continue
-            out.append((t, sign))
-        return out
-
-    def follow(e, self_name=None, depth=0):
-        """the places an offset expression `e` comes from"""
-        if depth > 12:
-            return set()
-        found = set()
-        ts = node_terms(e)
-        numbers = []
-        for t, s in ts:
-            if t.type == "number_literal":
-                v = int(re.sub(r"[uUlL]+$", "", src.at(t)), 0)
-                if s > 0 and v > 0 or (v == 0 and len(ts) == 1 and (self_name is None or pointer_name(self_name))):
-                    numbers.append((t, v))                 # (a 0 only as a pointer's whole value: MINIKBD's
-                                                           # index `uStack_c = 0` is no place)
-        names = [t for t, _s in ts if t.type == "identifier"]
-        steps = any(pointer(t) for t in names) or (self_name is not None and self_name in [src.at(t) for t in names])
-        for t, v in numbers:
-            if not steps and inside(v):
-                places[t.start_byte] = (t, v)
-                found.add(v)
-        for t, _s in ts:
-            from_cs(t, depth)                              # (what is read through CS, used as an offset)
-        if numbers and not steps:
-            # the other terms are an index into it -- also where the number is no place in the
-            # data (VGA's `iVar2 + 0x22c`: iVar2 counts down from 5, which is not a place either)
-            return found
-        for t in names:
-            name = src.at(t)
-            if name == self_name or name in seen:
-                continue
-            seen.add(name)
-            if name not in sets:
-                unknown.append(name)
-            if index(name):
-                continue
-            for rhs in sets.get(name, ()):
-                found |= follow(rhs, name, depth + 1)
-        return found
-
-    def pointer_name(name):
-        return "*" in types.get(name, "")
-    each = []                                              # the places each read comes from
-    for e, use in reads:
-        seen.clear()
-        got = follow(e)
-        if use == "call":
-            for v in got:
-                kinds[v] = "call"
-        each.append(got)
-    for e in far:
-        seen.clear()
-        each.append(follow(e))
-    return places, kinds, unknown, each, unsafe
-
-
 def _string_literal(chunk):
     """The bytes as a C string -- its own NUL the last of them -- when they are text (names, NUL
     between them), else None"""
@@ -1015,20 +807,18 @@ def _rows(items, per):
     return "\n    " + ",\n    ".join(", ".join(items[k:k + per]) for k in range(0, len(items), per)) + "\n  "
 
 
-def _code_segment_data(m, d, module_path):
+def _code_segment_data(reports, where, d, module_path):
     """Each number in the C that is a place in a code segment's data, read through CS, written as
-    that place in the segment's codebreaker_code_<n> (above). -> (header declarations, {segment:
-    the C defining its structure}, {segment: {"read": places, "left": [why]}})"""
+    that place in the segment's codebreaker_code_<n> (above): from what writing each function
+    found (`reports` {function: backends/c._code_segment_reads' facts["code_reads"]}, in address
+    order; `where` {function: (segment, offset)}). -> (header declarations, {segment: the C
+    defining its structure}, {segment: {"read": places, "left": [why]}}, {function: the facts it
+    is written again with: "code_places" {its number's node: the member}})"""
     from codebreaker.build import data as data16
     from codebreaker.formats.ne import NEFile
-    found = {}                                               # name -> (_cs_reads, segment)
-    for va, name in m.by_va.items():
-        if name in m.texts and m.where.get(va):
-            got = _cs_reads(m.texts[name])
-            if got:
-                found[name] = (got, m.where[va][0])
+    found = {name: (r, where[name][0]) for name, r in reports.items() if r and where.get(name)}
     if not found:
-        return [], {}, {}
+        return [], {}, {}, {}
     nef = NEFile(module_path)
     segs = {s["idx"]: s for s in nef.segments()}
     starts = {}
@@ -1050,20 +840,30 @@ def _code_segment_data(m, d, module_path):
     report = {}                                              # segment -> {"read", "named", "left", "placed"}
     per = {}                                                 # segment -> {name: (src, places, kinds)}
     each_read = {}                                           # segment -> [the places of each read]
-    for name, ((src, reads, far, types, sets, cs), sg) in found.items():
-        places, kinds, unknown, each, unsafe = _cs_places(src, reads, far, types, sets, cs,
-                                                          lambda v, sg=sg: run_of(sg, v) is not None)
+    for name, (rep, sg) in found.items():
+        inside = lambda v, sg=sg: run_of(sg, v) is not None
+        places = {k: (k, v) for k, v in rep["places"].items() if inside(v)}
+        kinds = {}
+        for kind, (_k, v) in rep["events"]:                 # (in the order the reads found them)
+            if not inside(v):
+                continue
+            if kind == "call":
+                kinds[v] = "call"
+            else:
+                kinds.setdefault(v, kind)
+        each = [{v for _k, v in got if inside(v)} for got in rep["each"]]
+        unknown, unsafe = rep["unknown"], rep["unsafe"]
         r = report.setdefault(sg, {"read": 0, "named": 0, "left": []})
-        r["read"] += len(reads) + len(far)
+        r["read"] += rep["reads"]
         if unsafe:                                           # (a table of places it cannot write as places)
             r["left"].append("%s: an offset it reads through CS is a %s" % (name, unsafe[0]))
             continue
-        per.setdefault(sg, {})[name] = (src, places, kinds)
+        per.setdefault(sg, {})[name] = (None, places, kinds)
         each_read.setdefault(sg, []).extend(each)
         if not places:
             r["left"].append("%s: its offsets through CS come from %s" % (
                 name, ", ".join(sorted(set(unknown))) or "nothing it sets to a place in the data"))
-    decls, defs = [], {}
+    decls, defs, plan = [], {}, {}
     for sg in sorted(per):
         image = d.images.get(sg, b"")
         bases, kinds = set(), {}
@@ -1141,17 +941,13 @@ def _code_segment_data(m, d, module_path):
                   'extern _Packed struct %s __based(__segname("_CODE")) %s;' % (struct_name, struct_name)]
         defs[sg] = '_Packed struct %s __based(__segname("_CODE")) %s = {\n%s\n};\n' % (
             struct_name, struct_name, ",\n".join(inits))
-        for name, (src, places, _k) in per[sg].items():
-            done = False
-            for t, v in places.values():
-                if v in ok_place:
-                    src.replace(t, "(uint2)%s" % place(v))
-                    done = True
-            if done:
-                m.texts[name] = src.text()
+        for name, (_src, places, _k) in per[sg].items():
+            written = {k: "(uint2)%s" % place(v) for k, v in places.values() if v in ok_place}
+            if written:
+                plan[name] = {"code_places": written}
         report[sg]["placed"] = sorted(ok_place)
         report[sg]["named"] = sum(1 for got in each_read[sg] if got and got <= ok_place)
-    return decls, defs, report
+    return decls, defs, report, plan
 
 
 def _behind_cast(src, node):
@@ -1600,7 +1396,8 @@ def _write16(context, item):
     facts.update(item[10] if len(item) > 10 else {})     # (the module's own: "selector_values"; and what it decided of it since: "frame_slots" ...)
     known = dict(known or {})
     text = decompiler.c_from_l2(None, known, images, facts)
-    found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared", "frame", "selector_imports") if k in facts}
+    found = {k: facts[k] for k in ("interrupts", "selector_decls", "selector_shared", "frame", "selector_imports",
+                                   "code_reads") if k in facts}
     if not known.get("from_l2"):
         return va, None, set(), known, {}
     return va, text, cback.flags(known["l2"], facts), known, found
@@ -1738,6 +1535,14 @@ def _compilable16(module_path, outdir=None):
                                         set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment},
                                         describe.FIRST_SELECTOR).items():
         plan.setdefault(nm, {}).update(extra)
+    # ... and the data a function reads through CS from beside its code: by name, in its own code
+    # segment (backends/c._code_segment_reads finds the numbers, _code_segment_data lays it out)
+    code_decls, code_data, code_reads, code_plan = _code_segment_data(
+        {nm: (found_of.get(nm) or {}).get("code_reads") for _va, nm in sorted(by_va.items())},
+        {nm: d.where.get(va) for va, nm in by_va.items()}, d, module_path) \
+        if os.environ.get("CB_CODE_DATA") != "0" else ([], {}, {}, {})
+    for nm, extra in code_plan.items():
+        plan.setdefault(nm, {}).update(extra)
     item_of = {by_va[item[0]]: item for item in items if item[0] in by_va}
     for nm, extra in plan.items():
         if nm in item_of:
@@ -1779,9 +1584,7 @@ def _compilable16(module_path, outdir=None):
         # (an import's value used bare is the import: backends/c._selector_imports)
         m.selector_imports.update(found.get("selector_imports") or {})
     other_data = set(getattr(d, "images", {})) - set(getattr(d, "code", {})) - {d.data_segment}
-    # the data a function reads through CS from beside its code: by name, in its own code segment
-    code_decls, m.code_data, m.code_reads = _code_segment_data(m, d, module_path) \
-        if os.environ.get("CB_CODE_DATA") != "0" else ([], {}, {})
+    m.code_data, m.code_reads = code_data, code_reads
     body = "\n".join(m.texts.values())
     called = set().union(*(_called(t) for t in m.texts.values())) if m.texts else set()
     m.imports = {}

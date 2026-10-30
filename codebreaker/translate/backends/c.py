@@ -32,21 +32,21 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
         "at": {}, "top": None, "virtual": {}, "ren": {}, "locals_text": None,
         "owners": [], "owner_of": {}, "shown": {}, "ss_casts": set(), "far_read": set(),
-        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": []}
+        "before": {}, "after": {}, "stmt_at": {}, "pops": False, "declare_first": [], "seg_ptrs": []}
 # (the function being written: its passes, its far names, and the nodes they rewrite --
 #  {id(node): '_far' | '_near' | '_ss'} in a word of the text; `whole`: {id(node): shown(node)},
 #  an expression written whole in another way; `bare`: those being printed as PrintC printed them;
@@ -1773,6 +1773,7 @@ def _selector_structs(nodes, _arrays):
             name = 'seg_%s_%s' % (re.sub(r"\W", "_", fname), tag)   # (not s_..: the core's own structures)
             decls.append('typedef _Packed struct %s { %s } %s;' % (name, ' '.join(body), name))
         for e, p, off, _ty in uses:
+            _now['seg_ptrs'].append((id(p) if _unary_as_read(p, '*', parent) else id(e), name, e['args'][0]))
             if _unary_as_read(p, '*', parent):
                 _rewrite(p, lambda _x, n=name, s=e['args'][0], o=off: 'SEG_PTR(%s, %s)->f_%x' % (n, expr(s), o))
             else:
@@ -2649,6 +2650,238 @@ def _segment_values(nodes, _arrays):
                 _rewrite(a, lambda _x, f=fn: "((uint2)(uint4)(void __far *)&%s)" % f)
 
 
+# Data kept in a code segment, read through CS ------------------------------------------------------
+# KEYBOARD's GetKeyNameText looks a key up in tables beside its own code (9:0261, 9:02E9 ...) and
+# reads them through CS: `MK_FP(unaff_CS, pcVar11)` with pcVar11 set to 0x261. The rebuilt code
+# segment is laid out by the compiler, so CS:0261 is not the table any more. The source such a
+# module was written from named the table, in the code segment: so does this. Writing each
+# function finds the numbers that may be places in its code segment's data (_code_segment_reads:
+# facts["code_reads"]); the module lays the data out (c_text._code_segment_data) and writes each
+# place found as the member it is (facts "code_places" {the number's node: its C}).
+_CS_WORD = re.compile(r"\s*(?:x?unknown2|u?int2|undefined2)\s+__far\s*\*\s*$")
+_CS_NUMBER = re.compile(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*")
+
+
+def _code_segment_reads(nodes, _arrays):
+    """Where the function's C reads its own code segment, and the numbers each read's offset may
+    come from (c_text's _cs_reads and _cs_places, done on the tree as the text is written now):
+    in each offset read through CS, a number added to things that are not pointers is the place
+    (`(uVar6 & 0xff) * 2 + 0x1c7`, the table, indexed); a variable is followed to what is put in it
+    (`pcVar11 = (char *)0x261`), and so on; a number added to a pointer is a step from the place
+    (`psVar13 + 1`). A variable that is not a pointer and is also set from arithmetic (`uStack_c =
+    (a5 + -1) * 2`) is an index: its numbers are not places (MINIKBD's `uStack_c = 0`). What is
+    read through CS and then used as an offset makes the place it was read from a table of places:
+    a word read so ("pointers") is written as the place it holds; anything else cannot be (->
+    unsafe). Whether each number is in the segment's data is the module's to say: every one is
+    reported, by its node. Given "code_places", those numbers are written as the module says."""
+    given = _now['facts'].get('code_places')
+    if given:
+        for k, text in given.items():
+            _rewrite(nodes[k][0], lambda _x, t=text: t)
+        return
+    seen = _seen()
+    if 'codebreaker_cs()' not in ''.join(_now['top'].out):
+        return
+    parent = {id(e): p for e, p in nodes}
+    index_of = {id(e): k for k, (e, _p) in enumerate(nodes)}
+    shown = [e for e, _p in nodes if id(e) in seen]
+    types, sets, cs = {}, {}, set()
+    for v in _now['locals']:
+        n = (v.get('sym') or {}).get('name') or ''
+        if n in _now['drop']:
+            continue
+        left, eq, init = _decl_now(v).partition(' = ')
+        types[n] = 'p *' if '*' in left else 'v'
+        if init.strip() == 'codebreaker_cs()':
+            cs.add(n)
+        elif eq:                                         # (`unaff_SS = codebreaker_ss()`: a call)
+            sets.setdefault(n, []).append({'node': 'Call', 'target': {'node': 'Name', 'sym': {'name': init}}, 'args': []})
+
+    def ident(n):
+        """the name a variable is written as (a pass may write another: KRNL386's int_DI), or None"""
+        if n.get('node') != 'Name' or (n.get('sym') or {}).get('kind') == 'field':
+            return None
+        text = expr(n) if id(n) in _now['whole'] or _now['marks'].get(id(n)) else _local_text(_name(n))
+        return text if re.fullmatch(r"[A-Za-z_]\w*", text) else None
+    for e in shown:
+        if e['node'] == 'Assign' and not e.get('op') and ident(e['target']):
+            sets.setdefault(ident(e['target']), []).append(e['value'])
+
+    def opaque(n):
+        """`(T)-x`, `(T)*p`: read by c_text's parser as an operation on the cast and x"""
+        x = n.get('x') if n.get('node') == 'Cast' and id(n) not in _now['whole'] else None
+        return x is not None and x.get('node') == 'Unary' and not x.get('postfix') and \
+            x.get('op') in ('*', '&', '-', '+') and not _unary_as_read(x, x['op'], parent)
+
+    def bare(n):
+        while n is not None and n.get('node') in ('Paren', 'Cast') and id(n) not in _now['whole'] and not opaque(n):
+            n = n.get('x')
+        return n
+
+    def is_cs(n):
+        n = bare(n)
+        return n is not None and (expr(n).strip() == 'codebreaker_cs()' or
+                                  ident(n) in cs)
+
+    def printed(n):
+        """is `n` written in the text, or a part of it (a pass may write what is under a cast)?"""
+        return any(id(x) in seen for x, _p in _walk(n))
+
+    def mk_fp(n):
+        n = bare(n)
+        if n is None or n.get('node') != 'Call' or len(n.get('args') or ()) != 2:
+            return None
+        t = n.get('target')
+        fn = _name(t) if t is not None and t.get('node') == 'Name' else (n.get('sym') or {}).get('name')
+        return n['args'] if fn == 'MK_FP' and all(printed(a) for a in n['args']) else None
+
+    reads, far = [], []
+    for e, _p in nodes:
+        if e['node'] != 'Call':
+            continue
+        t = e.get('target')
+        fn = _name(t) if t is not None and t.get('node') == 'Name' else (e.get('sym') or {}).get('name') if t is None else None
+        args = [a for a in e.get('args') or () if printed(a)]
+        if fn == 'MK_FP' and len(args) == 2 and is_cs(args[0]):
+            # (what is read there called: a table of the code's own addresses)
+            up, called = e, False
+            while parent.get(id(up)) is not None:
+                p = parent[id(up)]
+                if p.get('node') == 'Call' and p.get('target') is up:
+                    called = True
+                up = p
+            reads.append((args[1], 'call' if called else ''))
+        elif fn != 'MK_FP':
+            for a, b in zip(args, args[1:]):
+                if is_cs(b) and not is_cs(a):
+                    far.append(a)
+    for at, struct, sel in _now['seg_ptrs']:
+        # (`SEG_PTR(seg_f_unaff_CS, unaff_CS)`, _selector_structs' text: a call whose second
+        # argument is CS, the structure's name before it, as c_text's parser read it)
+        if at in seen and is_cs(sel):
+            far.append({'node': 'Name', 'sym': {'kind': 'local', 'name': struct}})
+    if not reads and not far:
+        return
+    places, events, unknown, unsafe, visited = {}, [], [], [], set()
+
+    def pointer(n):
+        return '*' in types.get(ident(n) or '', '')
+
+    def through_cs(t):
+        """(a word or not, the offset) when `t` is a value read through CS"""
+        if t.get('node') == 'Unary' and t.get('op') == '*' and not t.get('postfix') and id(t) not in _now['whole'] \
+                and _star_as_read(t, parent) and not _arrow_of(t, parent):
+            arg = t['x']
+            while arg.get('node') == 'Paren':
+                arg = arg['x']
+            m = re.match(r"\(*\s*\(([^()]*\*\s*)\)", expr(arg))
+            word = bool(m and _CS_WORD.match(m.group(1)))
+        elif t.get('node') == 'Select' and id(t) not in _now['whole']:
+            arg, word = (t['obj']['x'] if _arrow(t) else t['obj']), False
+        else:
+            return None
+        args = mk_fp(arg)
+        if args and ('codebreaker_cs()' in expr(args[0]) or ident(args[0]) in cs):
+            return word, args[1]
+        return None
+
+    def from_cs(t, depth):
+        got = through_cs(t)
+        if got is None:
+            return
+        word, e = got
+        if word:
+            for k_v in follow(e, None, depth + 1):
+                events.append(('pointers', k_v))
+        else:
+            unsafe.append(expr(t)[:60])
+
+    def is_index(name):
+        if '*' in types.get(name, '*'):
+            return False
+        for rhs in sets.get(name, ()):
+            rb = bare(rhs)
+            if rb is None or rb.get('node') in ('Lit', 'Name') or through_cs(rb):
+                continue
+            if rb.get('node') == 'Binary' and rb.get('op') in ('+', '-'):
+                continue
+            return True
+        return False
+
+    def terms(n, sign=1):
+        n = bare(n)
+        if n is None:
+            return []
+        if n.get('node') == 'Binary' and n.get('op') in ('+', '-') and id(n) not in _now['whole']:
+            return terms(n['left'], sign) + terms(n['right'], sign if n['op'] == '+' else -sign)
+        if n.get('node') == 'Unary' and n.get('op') == '-' and not n.get('postfix') and id(n) not in _now['whole']:
+            return terms(n['x'], -sign)
+        return [(n, sign)]
+
+    def node_terms(e):
+        out = []
+        for t, sign in terms(e):
+            if t.get('node') == 'Unary' and t.get('op') == '&' and not t.get('postfix') and id(t) not in _now['whole']:
+                arg = bare(t['x'])
+                if arg is not None and arg.get('node') == 'Select':          # (&p->f: a place in p)
+                    t = bare(arg['obj']['x'] if _arrow(arg) else arg['obj'])
+                    if t is None:
+                        continue
+            out.append((t, sign))
+        return out
+
+    def number(t):
+        m = _CS_NUMBER.fullmatch(expr(t)) if t.get('node') == 'Lit' and id(t) in seen else None
+        return int(m.group(1), 0) if m else None
+
+    def follow(e, self_name=None, depth=0):
+        """the numbers an offset `e` may come from, each (node, value)"""
+        if depth > 12:
+            return set()
+        found = set()
+        ts = node_terms(e)
+        numbers = []
+        for t, s in ts:
+            v = number(t)
+            if v is not None and (s > 0 and v > 0 or (v == 0 and len(ts) == 1 and
+                                                      (self_name is None or '*' in types.get(self_name, '')))):
+                numbers.append((t, v))
+        names = [t for t, _s in ts if ident(t)]
+        steps = any(pointer(t) for t in names) or (self_name is not None and self_name in [ident(t) for t in names])
+        for t, v in numbers:
+            if not steps:
+                places[index_of[id(t)]] = v
+                found.add((index_of[id(t)], v))
+        for t, _s in ts:
+            from_cs(t, depth)
+        if numbers and not steps:
+            return found
+        for t in names:
+            name = ident(t)
+            if name == self_name or name in visited:
+                continue
+            visited.add(name)
+            if name not in sets:
+                unknown.append(name)
+            if is_index(name):
+                continue
+            for rhs in sets.get(name, ()):
+                found |= follow(rhs, name, depth + 1)
+        return found
+    each = []
+    for e, use in reads:
+        visited.clear()
+        got = follow(e)
+        if use == 'call':
+            events += [('call', k_v) for k_v in sorted(got)]
+        each.append(sorted(got))
+    for e in far:
+        visited.clear()
+        each.append(sorted(follow(e)))
+    _now['facts']['code_reads'] = {'reads': len(reads) + len(far), 'places': places, 'events': events,
+                                   'unknown': unknown, 'each': each, 'unsafe': unsafe}
+
+
 def segment_plan(functions, near, where, sites, code, data_segment, other_data, first_selector):
     """Which functions' C names a segment of the module's own by its made-up selector, and what it
     is there (_segment_values) -- `functions` [(address, name)] in address order, `near` the near
@@ -3295,7 +3528,7 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("near_to_far", _near_to_far),
            ("stack_segment_stores", _stack_segment_stores), ("callee_pops", _callee_pops),
            ("caller_frame_slots", _caller_frame_slots), ("selector_imports", _selector_imports),
-           ("segment_values", _segment_values))
+           ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads))
 
 
 # ---------------------------------------------------------------------------------------------- functions
@@ -3434,7 +3667,7 @@ def function(doc, moved=(), far=None, facts=None):
         _now['at'], _now['top'], _now['virtual'], _now['ren'], _now['locals_text'] = {}, None, {}, {}, None
         _now['ss_casts'], _now['far_read'] = set(), set()
         _now['before'], _now['after'], _now['stmt_at'], _now['pops'] = {}, {}, {}, False
-        _now["declare_first"] = []
+        _now["declare_first"], _now["seg_ptrs"] = [], []
 
 
 _SEGMENT_REGISTER = re.compile(r"unaff_(SS|DS|CS)")

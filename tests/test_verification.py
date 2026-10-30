@@ -645,34 +645,6 @@ def test_every_kind_keeps_fingerprints_and_writes_calls_alike():
                        [0x1234], {"SS": 0x1F, "DS": 0x2F}) == "KERNEL.X(stack,SS,a0)"
 
 
-def test_data_beside_the_code_is_read_by_its_place():
-    # KEYBOARD's GetKeyNameText: tables beside its code at 9:0261 and 9:0290, read through CS by
-    # a pointer set to the first and a number set to the second; a word table at 1C7h of places
-    # it then reads; a step (`+ 1`), a count (`iVar8 = 0x2f`) and an index (`uStack_c = 0`, set
-    # from arithmetic too) are no places
-    from codebreaker.decompile import c_text
-    text = ("int2 f(int2 a5)\n{\n  char *pcVar11;\n  char *pcVar12;\n  int2 iVar10;\n  int2 iVar8;\n"
-            "  uint2 uStack_c;\n  char __far *pcVar2;\n  int2 unaff_CS = codebreaker_cs();\n\n"
-            "  pcVar11 = (char *)0x261;\n  iVar10 = 0x290;\n  iVar8 = 0x2f;\n  pcVar12 = pcVar11;\n"
-            "  uStack_c = (a5 + -1) * 2;\n  if (a5 == 7) {\n    uStack_c = 0;\n  }\n"
-            "  pcVar2 = ((char __far *)MK_FP(unaff_CS, pcVar11));\n  pcVar11 = pcVar11 + 1;\n"
-            "  iVar8 = *((char __far *)MK_FP(unaff_CS, pcVar11 + iVar10 + (-1 - (int2)pcVar12)));\n"
-            "  pcVar11 = (char *)*((xunknown2 __far *)MK_FP(codebreaker_cs(), ((a5 & 0xff) * 2 + 0x1c7)));\n"
-            "  iVar8 = iVar8 + *((char __far *)MK_FP(unaff_CS, pcVar11));\n"
-            "  return iVar8 + *((char __far *)MK_FP(unaff_CS, uStack_c + 0x30));\n}\n")
-    src, reads, far, types, sets, cs = c_text._cs_reads(text)
-    assert cs == {"unaff_CS"} and len(reads) == 5 and not far
-    places, kinds, _unknown, _each, unsafe = c_text._cs_places(src, reads, far, types, sets, cs, lambda v: 0 < v < 0x305)
-    assert sorted(v for _t, v in places.values()) == [0x30, 0x1c7, 0x261, 0x290], places
-    assert kinds == {0x1c7: "pointers"} and not unsafe, (kinds, unsafe)
-    # a far pointer passed as (offset, CS): the offset is a place too
-    got = c_text._cs_reads("int2 g()\n{\n  int2 unaff_CS = codebreaker_cs();\n\n"
-                           "  return KERNEL_128(0x5a,unaff_CS,0x3f);\n}\n")
-    assert [got[0].at(e) for e in got[2]] == ["0x5a"]
-    assert c_text._string_literal(b"type\0subtype\0") == '"type\\000subtype"'
-    assert c_text._string_literal(b"\x04\x00\x22\x00") is None
-
-
 def test_the_judge_s_build_has_the_original_s_code_segment_where_c_still_reads_it():
     # KEYBOARD's ENABLE reads its segment through CS at offsets from a register: c_text could not
     # name them, so the judge's build puts the original's segment 10 first in the rebuilt one
@@ -792,7 +764,6 @@ def test_programs_stored_one_after_another_are_each_found():
 def main():
     for fn in (test_programs_stored_one_after_another_are_each_found, test_the_governor_shares_one_budget, test_an_instruction_is_decoded_once,
                test_chunks_come_back_in_address_order,
-               test_data_beside_the_code_is_read_by_its_place,
                test_the_judge_s_build_has_the_original_s_code_segment_where_c_still_reads_it,
                test_the_uart_and_the_interrupt_controller_answer_as_the_chips_do, test_function_store, test_variant_store, test_repair_knobs_preserve_meaning,
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
