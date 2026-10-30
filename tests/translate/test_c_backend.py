@@ -409,3 +409,20 @@ def test_moved_entry_sp_and_stack_arguments():
     assert '  c = ((uint1 *)codebreaker_entry_sp() + (int2)0xfff0);' in text, text
     assert '  d = codebreaker_stack(int2, 0xc) + codebreaker_stack(uint2, 0xe);' in text, text
     assert 'int2 in_stack_0000000c;' not in text, text
+
+
+def test_decompile16_counts_calls_in_l2():
+    """decompile16's rounds read each function's calls and arguments off its L2 document: the
+    places not known as functions yet (func_0x...), how many arguments each call passes, and
+    what the function itself declares (a far pointer as its facts say)."""
+    from codebreaker.decompile import decompiler as dc
+    word = {'kind': 'i16'}
+    doc = sixteen([stmt(fcall('func_0x10000123', name('a'))), stmt(fcall('sub_1_0010', name('a'), name('b'))),
+                   stmt(fcall('sub_1_0010'))],
+                  [param('a1', word), param('a2', ptr(word, 'near'))])
+    assert dc._placeholders('', doc) == {0x10000123}
+    assert dc._call_arguments('', 'sub_1_0010', doc) == [2, 0]
+    assert dc._calls('', doc, 'sub_1_0010') and not dc._calls('', doc, 'sub_1_0020')
+    assert dc._own_arguments('', 'f', {'l2': doc, 'pointers': {'a2': 4}}) == (2, ['2', '4p'])
+    # (without a document: the text, as before)
+    assert dc._call_arguments('x = sub_1_0010(a,(b,c));', 'sub_1_0010') == [2]

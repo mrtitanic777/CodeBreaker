@@ -455,6 +455,59 @@ def decompile(module_path, funcs=None, outdir=None):
 
 # 16-bit modules ---------------------------------------------------------------------------------
 _CALLED = re.compile(r"\bfunc_0x([0-9a-f]{8})\s*\(")
+_PLACEHOLDER = re.compile(r"func_0x([0-9a-f]{8})")
+
+
+def _l2_walk(x):
+    """Every node of an L2 document, the types and symbols left out."""
+    if isinstance(x, list):
+        for y in x:
+            yield from _l2_walk(y)
+    elif isinstance(x, dict):
+        if "node" in x:
+            yield x
+        for k, v in x.items():
+            if isinstance(v, (dict, list)) and k not in ("type", "sym", "ret"):
+                yield from _l2_walk(v)
+
+
+def _l2_calls(doc):
+    """[(name, arguments)] of each call of a function by its name in an L2 document (`f(a,b)`)."""
+    out = []
+    for e in _l2_walk(doc.get("body")):
+        t = e.get("target") if e.get("node") == "Call" else None
+        if t and t.get("node") == "Name":
+            out.append(((t.get("sym") or {}).get("name") or "", len(e.get("args") or ())))
+    return out
+
+
+def _l2_names(doc):
+    """Every name an L2 document's body uses."""
+    return {(e.get("sym") or {}).get("name") for e in _l2_walk(doc.get("body")) if e.get("node") == "Name"}
+
+
+def _doc(notes, name):
+    return ((notes or {}).get(name) or {}).get("l2")
+
+
+def _placeholders(text, doc):
+    """The addresses of places a function calls that are not known as functions yet (func_0x...):
+    from its L2 document's calls, or without one from its text."""
+    if doc is None:
+        return {int(x, 16) for x in _CALLED.findall(text)}
+    return {int(m.group(1), 16) for n, _k in _l2_calls(doc) for m in [_PLACEHOLDER.fullmatch(n)] if m}
+
+
+def _mentions(text, doc, name):
+    """Does the function name `name` anywhere (L2: among its body's names)?"""
+    return name in _l2_names(doc) if doc is not None else name in text
+
+
+def _calls(text, doc, name):
+    """Does the function call `name`?"""
+    if doc is None:
+        return re.search(r"\b%s\s*\(" % re.escape(name), text) is not None
+    return any(n == name for n, _k in _l2_calls(doc))
 
 
 def decompile16(module_path, outdir=None, rounds=4):
@@ -470,7 +523,7 @@ def decompile16(module_path, outdir=None, rounds=4):
     out, order, by_va, _err = got
     notes = dict(got.notes)                                  # {name: its facts} (split_notes)
     for _ in range(rounds):
-        new = {int(x, 16) for t in out.values() for x in _CALLED.findall(t)} - set(d.names)
+        new = {va for n, t in out.items() for va in _placeholders(t, _doc(notes, n))} - set(d.names)
         new = {va for va in new if describe.inside(d, va)}
         if not new:
             break
@@ -483,7 +536,7 @@ def decompile16(module_path, outdir=None, rounds=4):
         # was unknown, a default near function (a far call's pushed CS read as its first
         # argument, the last one lost); now its prototype is known
         callers = {va for va, n in by_va.items()
-                   if any("func_0x%08x" % c in out.get(n, "") for c in new)}
+                   if any(_mentions(out.get(n, ""), _doc(notes, n), "func_0x%08x" % c) for c in new)}
         more = run(d.path, only=sorted(new | callers), l2=True, write=False)
         out.update(more[0])
         notes.update(more.notes)
@@ -499,14 +552,14 @@ def decompile16(module_path, outdir=None, rounds=4):
         _state_arguments(d, lost)
         names = {by_va[va] for va in lost}
         callers = {va for va, n in by_va.items()
-                   if any(re.search(r"\b%s\s*\(" % re.escape(c), out.get(n, "")) for c in names if c != n)}
+                   if any(_calls(out.get(n, ""), _doc(notes, n), c) for c in names if c != n)}
         more = run(d.path, only=sorted(set(lost) | callers), l2=True, write=False)
         # (and of what is done again, only the callers that passed too few are taken: the rest --
         # the stated functions themselves, callers that passed all -- kept as they were. Taken
         # whole, the analysis's second look made other mistakes: 25:0F96 lost one of its own two
         # arguments, 30:00F6 wrote through a pointer it had read right before)
         short = {n for va in callers for n in [by_va[va]]
-                 if any(any(k < own for k in _call_arguments(out.get(n, ""), by_va[c]))
+                 if any(any(k < own for k in _call_arguments(out.get(n, ""), by_va[c], _doc(notes, n)))
                         for c, own in ((c, len(lost[c])) for c in lost) if by_va[c] != n)}
         # (and one whose own arguments the second look changed is not taken either: 25:0F96, two
         # words become one, faulted -- its calls passed in full, its own frame read wrong)
@@ -538,8 +591,11 @@ def decompile16(module_path, outdir=None, rounds=4):
     return out, order, by_va, d
 
 
-def _call_arguments(text, name):
-    """The number of arguments each call to `name` in `text` passes."""
+def _call_arguments(text, name, doc=None):
+    """The number of arguments each call to `name` passes: in its L2 document's calls (`doc`), or
+    without one in `text`."""
+    if doc is not None:
+        return [k for n, k in _l2_calls(doc) if n == name]
     out = []
     for m in re.finditer(r"\b%s\s*\(" % re.escape(name), text):
         depth, k, n, seen = 1, m.end(), 0, False
@@ -559,16 +615,26 @@ def _call_arguments(text, name):
 
 
 def _own_arguments(text, name, facts=None):
-    """(count, [bytes of each]) of the arguments a function's own text declares, or None
-    (`facts`: its facts, split_notes -- which pointers are four bytes)."""
+    """(count, [bytes of each]) of the arguments a function declares -- in its L2 document
+    (facts["l2"]), or without one in its own text -- or None (`facts`: its facts, split_notes --
+    which pointers are four bytes)."""
+    doc = (facts or {}).get("l2")
+    if doc is not None:
+        from codebreaker.translate.backends import c as cback
+        return _argument_sizes([cback.type_text(p.get("type"), cback._param_name(p)) for p in doc.get("params") or ()],
+                               facts)
     head = text.split("{", 1)[0]
     m = re.search(r"\b%s\(([^)]*)\)" % re.escape(name), head)
     if not m:
         return None
-    # (the analysis's own text: `type name` in the list, and a far pointer as its facts say --
-    # `char *param_1` alone reads as a near one)
+    return _argument_sizes([p.strip() for p in m.group(1).split(",") if p.strip() and p.strip() != "void"], facts)
+
+
+def _argument_sizes(params, facts):
+    """(count, [bytes of each]) of arguments declared so (`int2 a1`, `char *a2`): the analysis's
+    own declarations, and a far pointer as its facts say -- `char *param_1` alone reads as a near
+    one."""
     pointers = (facts or {}).get("pointers") or {}
-    params = [p.strip() for p in m.group(1).split(",") if p.strip() and p.strip() != "void"]
     sizes = []
     for p in params:
         name_ = re.findall(r"\w+", p)[-1]
@@ -583,9 +649,12 @@ def _own_arguments(text, name, facts=None):
 def _own_if_read(out, va, name, d, notes=None):
     """A cdecl function's own arguments' sizes, when they come to the bytes its instructions
     read through BP (describe.args_read); otherwise None -- its own text is wrong too (SETUPX's
-    25:0F96 once declared one word and read a far pointer)."""
+    25:0F96 once declared one word and read a far pointer). Its convention from its L2 document
+    (the words before its name), or without one from its text."""
     text = out.get(name, "")
-    if "__cdecl16" not in text.split("{", 1)[0]:
+    doc = _doc(notes, name)
+    head = " ".join(doc.get("mods") or ()) if doc is not None else text.split("{", 1)[0]
+    if "__cdecl16" not in head:
         return None
     own = _own_arguments(text, name, (notes or {}).get(name))
     if not own or not own[0]:
@@ -595,7 +664,7 @@ def _own_if_read(out, va, name, d, notes=None):
         code = d.segment_bytes.get(seg, b"")
         later = [o for v in d.names for (sg, o) in [describe.where(v)] if sg == seg and o > off]
         read = describe.args_read(code, off, min(later) if later else len(code),
-                                  "far" if "16far" in text.split("{", 1)[0] else "near")
+                                  "far" if "16far" in head else "near")
         if read is None or read != sum(int(s.rstrip("p")) for s in own[1]):
             return None
     return own
@@ -611,7 +680,8 @@ def _arguments_lost(out, by_va, d=None, notes=None):
         if own is None:
             continue
         for other, t in out.items():
-            if other != name and name in t and any(n < own[0] for n in _call_arguments(t, name)):
+            doc = _doc(notes, other)
+            if other != name and _mentions(t, doc, name) and any(n < own[0] for n in _call_arguments(t, name, doc)):
                 lost[va] = own[1]
                 break
     return lost
