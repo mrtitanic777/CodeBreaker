@@ -32,14 +32,14 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "null_is_zero", "global_pointer_steps", "one_name_for_globals", "far_result",
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-         "far_casts", "entry_sp", "stack_arguments", "far_locals")
+         "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._one16); the C the decompiler is
 # run for at first (decompiler.c_from_l2) is written without them
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
-             "far_casts", "entry_sp", "stack_arguments", "far_locals")
+             "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts")
 FLAT = ("pieces", "null_is_zero")      # ... those of them c_text's 32-bit path has too (compilable32)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
@@ -2423,6 +2423,19 @@ def _far_locals(nodes, _arrays):
             _rewrite(right, lambda x, t=types[_name(left)]: '(%s)%s' % (t, _name(x)))
 
 
+def _far_concat_casts(nodes, _arrays):
+    """`(T *)CONCAT22(seg,off)` wherever it stands is `(T __far *)CONCAT22(seg,off)`: four bytes, a
+    segment and an offset, cast to a near pointer keep the offset alone and C gives it DS (SETUPX's
+    sub_31_002A passed four far pointers on so; c_text._far_concat_casts)."""
+    for e, _p in nodes:
+        if e['node'] != 'Cast' or id(e) in _now['whole'] or _now['marks'].get(id(e)):
+            continue
+        v = e['x']
+        if v.get('node') == 'Call' and id(v) not in _now['whole'] and _bare_name(v.get('target') or {}, 'CONCAT22') \
+                and re.fullmatch(r"([\w ]+?) \*", type_text(e.get('type'))):
+            _now['marks'][id(e)] = '_far'
+
+
 def _arrow_of(u, parent):
     """Is `u` the `*` of a `p->f` (L2's Select of *p, written `->`)?"""
     s = parent.get(id(u))
@@ -2448,7 +2461,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("selector_structs", _selector_structs), ("struct_gaps", _struct_gaps),
            ("own_segment_calls", _own_segment_calls), ("interrupts", _interrupts),
            ("far_addresses", _far_addresses), ("far_casts", _far_casts), ("entry_sp", _entry_sp),
-           ("stack_arguments", _stack_arguments), ("far_locals", _far_locals))
+           ("stack_arguments", _stack_arguments), ("far_locals", _far_locals),
+           ("far_concat_casts", _far_concat_casts))
 
 
 # ---------------------------------------------------------------------------------------------- functions

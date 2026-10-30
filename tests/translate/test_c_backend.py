@@ -494,3 +494,12 @@ def test_moved_far_locals():
     assert '  _p = (char __far *)CONCAT22(s,o);' in text, text
     assert '  a = ((char *)(uint2)(uint4)_p) + 1;' in text, text
     assert '  q = (int2 *)r;' in text, text
+
+
+def test_moved_far_concat_casts():
+    """c_text._far_concat_casts on the tree: `(T *)CONCAT22(seg,off)` wherever it stands is far."""
+    concat = {'node': 'Cast', 'type': ptr({'kind': 'class', 'name': 'xunknown1'}, 'near'),
+              'x': fcall('CONCAT22', name('a4'), name('a3'))}
+    doc = sixteen([stmt(fcall('g', concat))])
+    assert '  g((xunknown1 __far *)CONCAT22(a4,a3));' in c.function(doc, c.MOVED, facts={'distance': 'far'})
+    assert '  g((xunknown1 *)CONCAT22(a4,a3));' in c.function(doc, c.MOVED)

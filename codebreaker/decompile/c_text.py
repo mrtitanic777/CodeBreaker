@@ -1610,10 +1610,10 @@ def _one16(context, item):
     # _null_is_zero, _near_calls, _global_pointer_steps, _far_arguments, _far_result, the result
     # made a word, the model word, __export, __loadds, _one_name_for_globals, _selector_structs,
     # _struct_gaps, _own_segment_calls, the definition in the older style (_open_arguments),
-    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments and _far_locals are the back end's, done on the tree as it writes the C from L2:
+    # _interrupts, _far_addresses, _far_casts, _entry_sp, _stack_arguments, _far_locals and _far_concat_casts are the back end's, done on the tree as it writes the C from L2:
     # backends/c.MOVED, docs/IR_UNIFICATION.md step 3)
     text = _without_notes(raw).strip()                   # (the core's comments before the function)
-    out = _near_to_far(_far_reads(_buffer_fields(_far_concat_casts(text))))
+    out = _near_to_far(_far_reads(_buffer_fields(text)))
     if code is not None:
         out = _stack_segment_stores(out, code, off, end_of)
     if callee_pops:
@@ -2452,23 +2452,6 @@ def _far_record(text, place, ss):
             indent = line[:len(line) - len(line.lstrip())]
             src.insert(end, "\n" + indent + "%s.codebreaker_ss = %s;" % (rec, ss))
             break
-    return src.text()
-
-
-def _far_concat_casts(text):
-    """`(T *)CONCAT22(seg, off)` -> `(T __far *)CONCAT22(seg, off)` wherever it stands: four
-    bytes, a segment and an offset, cast to a near pointer keep the offset alone and C gives it
-    DS. (SETUPX's sub_31_002A passed four far pointers on as `(xunknown1 *)CONCAT22(a4,a3)` once
-    its callee's arguments were stated as the far pointers they are.)"""
-    if "CONCAT22" not in text:
-        return text
-    src = ctree.Source(text)
-    for cast in src.find("cast_expression"):
-        ty, v = cast.child_by_field_name("type"), cast.child_by_field_name("value")
-        m = re.fullmatch(r"([\w ]+?) \*", src.at(ty)) if ty is not None else None
-        if m and "__far" not in m.group(1) and v is not None and v.type == "call_expression" and \
-                src.at(v.child_by_field_name("function")) == "CONCAT22":
-            src.replace(ty, "%s __far *" % m.group(1))
     return src.text()
 
 
