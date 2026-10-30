@@ -457,7 +457,6 @@ def compilable32(module_path, funcs, outdir):
             in_ecx.add(n)
         elif written.get("registers") == "edx":
             in_edx.add(n)
-    text = "\n".join(out.values())
     called = set().union(*(x["calls"] for x in named.values())) if named else set()
     used = sorted(n for n in called if n in imports and n not in out)
     decls = []
@@ -482,10 +481,11 @@ def compilable32(module_path, funcs, outdir):
             decls.append('#pragma aux %s "_*" parm routine [ecx] [edx] value [eax] modify [eax ecx edx];' % n)
     # the core's names for values of sizes C has no type for (5 bytes of a 64-bit product, 10 of a
     # floating-point register): each is given the next type that holds it. One left undeclared
-    # in a function's heading broke the header, and with it every function of the module.
+    # in a function's heading broke the header, and with it every function of the module. (The
+    # types each written function's tree uses: backends/c.type_names.)
     odd = []
-    for name in sorted(set(re.findall(r"\b(unk(?:byte|int|uint)\d+|u?int[3567]|xunknown[3567])\b",
-                                      text + "\n".join(decls)))):
+    types = set().union(*(cback.type_names(got.notes[n]["l2"]) for n in declared)) if declared else set()
+    for name in sorted(t for t in types if re.fullmatch(r"unk(?:byte|int|uint)\d+|u?int[3567]|xunknown[3567]", t)):
         if re.search(r"\b%s;" % name, _TYPES):
             continue
         size = int(re.search(r"\d+$", name).group(0))

@@ -3928,6 +3928,27 @@ def module_names32(doc):
     return {'names': names, 'calls': calls, 'called_through': through}
 
 
+def type_names(doc):
+    """The names of the decompiler's own types a function's tree uses (`unkbyte10`, `uint3`,
+    `s_f_p`): every nominal type in it -- its result, parameters, locals and casts -- for the
+    module's header to declare (compilable32's odd-size typedefs). Only the types written: a
+    variable's own type in the tree is not."""
+    out = set()
+    todo = [doc.get('ret')] + [p.get('type') for p in doc.get('params') or []]
+    todo += [e.get('type') for e, _p in _walk(doc.get('body')) if e['node'] in ('Local', 'Cast')]
+    while todo:
+        t = todo.pop()
+        if not isinstance(t, dict):
+            continue
+        if t.get('kind') == 'class' and isinstance(t.get('name'), str):
+            out.add(t['name'])
+        todo += [t.get('to'), t.get('elem')]
+        fn = t.get('fn') if t.get('kind') == 'fnptr' else None
+        if isinstance(fn, dict):
+            todo += [p.get('type') for p in fn.get('params') or []] + [(fn.get('result') or {}).get('type')]
+    return out
+
+
 def _read_through(u, parent):
     """Is the `*` of `u` a pointer expression as c_text's parser read the text -- not after a
     cast to a type it did not know with no `*` (`(int4)*p`, which it read as a product)?"""
