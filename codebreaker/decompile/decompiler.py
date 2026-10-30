@@ -379,15 +379,14 @@ def _resuming(description, only, timeout, env, wanted):
         errs.append((r.stderr or "")[-1000:])
         if r.returncode == 0:
             return "".join(outs), "".join(errs)[-2000:], True
-        done = {int(m.group(1), 16) for m in _MARK.finditer(out)}
-        # (the last one written may be cut off by the crash: it is done again)
-        last = max(done) if done else None
-        if last is not None and last in left:
-            # (and those before it that it did not write it passed over -- no function there: it
-            # writes them in order. Kept, they stood before the one it died on, which was then
-            # never left out: USER's MSGTHKCONNECTIONDATALS, PrintL2 dying on it, was started
-            # again and again for hours)
-            left = [va for va in left if va >= last or va in done]
+        marks = list(_MARK.finditer(out))
+        done = {int(m.group(1), 16) for m in marks}
+        # (the last one written may be cut off by the crash: it is done again. Last as it wrote
+        # them -- in the description's order, not the addresses': a function found in a later
+        # round is described at the end. Taken as the highest address, the one it died on was
+        # never the first of the list, and never left out: USER's MSGTHKCONNECTIONDATALS, which
+        # PrintL2 dies on, was started again and again for hours)
+        last = int(marks[-1].group(1), 16) if marks else None
         if int(env.get("CB_THREADS") or 1) > 1:
             # Several threads at work: what ended the process was any of the functions in hand,
             # not the last one written -- P3's 1BCE4 went over its budget while 1BC01 was being
@@ -409,8 +408,8 @@ def _resuming(description, only, timeout, env, wanted):
         left = [va for va in left if va not in done or (va == last and not governed)]
         if done and last is not None and not governed:
             outs[-1] = out[:list(_MARK.finditer(out))[-1].start()]
-        if not done or done == {last} and left and left[0] == last:
-            dead = left.pop(0)                               # dies at once on this one: left out
+        if not done or done == {last} and last in left:
+            dead = left.pop(left.index(last) if done else 0)  # dies at once on this one: left out
             errs.append("\n[decompiler died on %x; left out]\n" % dead)
         first = False
         if not left:
