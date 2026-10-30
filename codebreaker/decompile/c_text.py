@@ -1403,12 +1403,10 @@ def compilable_powerpc(module_path, outdir):
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         t = out[n].strip()
-        body = _without_notes(t)
-        lead = t[:len(t) - len(body)]
-        if body.startswith("void") and not body[4:5].isalnum():
-            # every function leaves something in r3 and callers are free to use it
+        if written.get("novalue"):
+            # (every function leaves something in r3 and callers are free to use it: a `void`
+            # result is uint8 -- the back end's, backends/c._result_shown -- and the module notes it)
             novalue.add(n)
-            t = lead + "uint8" + body[4:]
         out[n] = _open_arguments(t)
     macros = []
     called_through = set().union(*(_called_through(t) for t in out.values())) if out else set()

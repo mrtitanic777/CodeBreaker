@@ -59,7 +59,7 @@ FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_nu
              "wide_address", "homed_arguments", "uint8_result")
 # ... and those of the PowerPC path (c_text.compilable_powerpc; the facts' "lane": "powerpc")
 POWERPC = ("wide_address", "struct_gaps", "pieces", "compare_as_numbers", "code_pointers",
-           "homed_arguments")
+           "homed_arguments", "uint8_result")
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
