@@ -794,7 +794,7 @@ def test_moved_keep_frame():
             stmt({'node': 'Assign', 'target': typed('xStack_7', w1), 'value': lit(0)}),
             stmt({'node': 'Assign', 'target': name('iVar1'),
                   'value': fcall('lstrcmpiA', addr('xStack_8', w1), addr('xStack_c', w2))}),
-            {'node': 'Return', 'value': name('iVar1')}]
+            {'node': 'Return', 'expr': name('iVar1')}]
     doc = {'node': 'MethodDecl', 'name': 'sub_004419', 'kind': 'function', 'ret': i4, 'mods': ['__cdecl'],
            'origin': {'module': '', 'va': 0x404419}, 'params': [], 'body': body}
     text = c.function(doc, c.MOVED, facts={})
@@ -804,7 +804,7 @@ def test_moved_keep_frame():
             '  iVar1 = lstrcmpiA((int4)&_f.xStack_8,(int4)&_f.xStack_c);\n') in text, text
     assert '  xStack_c = _cRam00405080;' in c.function(doc, c.MOVED)
     # (no address taken, no array, no entry SP: the locals stay where the compiler puts them)
-    plain = dict(doc, body=body[:-2] + [{'node': 'Return', 'value': name('iVar1')}])
+    plain = dict(doc, body=body[:-2] + [{'node': 'Return', 'expr': name('iVar1')}])
     assert '  xunknown2 xStack_c;\n' in c.function(plain, c.MOVED, facts={})
     # (a type of unknown size: left as it is; the structures recovered say theirs)
     rec = {'kind': 'class', 'name': 's_f_p'}
@@ -861,5 +861,54 @@ def test_moved_fit_calls():
     text = c.function(doc, c.MOVED, facts={'takes': {'sub_001135': 2}})
     assert '  ((int4 (*)())sub_001135)(a);\n  sub_001135(a,b);\n  LZDone(a);\n' in text, text
     assert '  sub_001135(a);\n' in c.function(doc, c.MOVED)
+
+
+def test_moved_struct_fields():
+    """struct_text on the tree: `*(T *)(p + N)` through an argument known to be a structure is
+    `((S *)p)->f_N`, declared at that offset with the type most of the module's accesses there
+    use; an access of another type at the same place is left alone, and so is `*(T *)p->f` (a
+    field's deref, which the old pattern over the text took for `*(T *)p` -- COMCTL32's
+    `((struct_7 *)a1)->f_0->f_1c`)."""
+    from codebreaker.analyze import image, structures
+    from codebreaker.decompile import struct_text
+    from codebreaker.verify.authored import match
+    i4, u1 = {'kind': 'i32'}, {'kind': 'u8'}
+    code = {'kind': 'class', 'name': 'code'}
+
+    def at(t, off=None, p='a1'):
+        x = name(p) if off is None else binary('+', name(p), lit(off))
+        return {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(t, 'flat'), 'x': x}}
+    rec = {'kind': 'ptr', 'space': 'flat', 'to': {'kind': 'class', 'name': 's_f_a1'}}
+    deref_field = {'node': 'Unary', 'op': '*', 'x': {'node': 'Cast', 'type': ptr(i4, 'flat'),
+                                                     'x': {'node': 'Select', 'obj': {'node': 'Unary', 'op': '*', 'x': typed('a1', rec)},
+                                                           'sym': {'kind': 'field', 'name': 'f_1c'}}}}
+    call = {'node': 'Call', 'target': {'node': 'Unary', 'op': '*', 'x': at(ptr(code, 'flat'), 0x10)}, 'args': [name('a2')]}
+    f = {'node': 'MethodDecl', 'name': 'f', 'kind': 'function', 'ret': i4, 'origin': {'module': '', 'va': 0x1000},
+         'params': [param('a1', i4), param('a2', i4)],
+         'body': [stmt({'node': 'Assign', 'target': at(i4, 8), 'value': binary('+', at(i4), name('a2'))}),
+                  {'node': 'Return', 'expr': binary('+', binary('+', at(u1, 8), at(i4, 8)), call)},
+                  stmt({'node': 'Assign', 'target': name('x'), 'value': deref_field})]}
+    g = {'node': 'MethodDecl', 'name': 'g', 'kind': 'function', 'ret': i4, 'origin': {'module': '', 'va': 0x2000},
+         'params': [param('a1', i4)], 'body': [{'node': 'Return', 'expr': at(i4, 8)}]}
+    assert c.parameter_names(f) == ['a1', 'a2']
+    found = [{"name": "struct_1", "roots": [("arg", 0x1000, 0)]}]
+    real = (image.load, structures.recover)
+    image.load, structures.recover = (lambda path: None), (lambda img: found)
+    try:
+        planned = struct_text.plan("x.dll", {'f': f, 'g': g}, {0x1000: "f", 0x2000: "g"},
+                                   {'f': 'int4 f(int4 a1,int4 a2)', 'g': 'int4 g(int4 a1)'})
+    finally:
+        image.load, structures.recover = real
+    assert set(planned) == {'f'}                         # (g's argument is not known to be one)
+    facts = {'struct_fields': planned['f']}
+    text = c.function(f, c.MOVED, facts=facts)
+    assert "((struct_1 *)a1)->f_8 = ((struct_1 *)a1)->f_0 + a2;" in text, text
+    assert "*(uint1 *)(a1 + 8) + ((struct_1 *)a1)->f_8 + (*((struct_1 *)a1)->f_10)(a2)" in text, text
+    assert "x = *(int4 *)a1->f_1c;" in text, text
+    assert facts['structs_used'] == {'struct_1'}
+    header = "typedef int int4;\n" + struct_text.declarations(planned, facts['structs_used'])
+    assert "typedef struct struct_1 {\n  int4 f_0;\n  uint1 _gap_4[4];\n  int4 f_8;\n  uint1 _gap_c[4];\n  code *f_10;\n} struct_1;" in header, header
+    near = match.needed_header(header, text)
+    assert "int4 f_8;" in near and "struct_1" not in match.needed_header(header, c.function(g, c.MOVED, facts={}))
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None

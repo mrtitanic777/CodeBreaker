@@ -33,7 +33,8 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
          "model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
          "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
          "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-         "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")
+         "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
+         "struct_fields")
 # ... those of them that need what the module's facts say of the function (its model in the
 # description, what its instructions read and start with): done only when `function` is given
 # them, as c_text gives them when it makes the module (c_text._write16); the C the decompiler is
@@ -41,12 +42,15 @@ MOVED = ("far", "near_calls", "far_from_stack", "frame_through_ss", "pieces", "s
 IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "byte_result", "export", "loadds",
              "selector_structs", "struct_gaps", "own_segment_calls", "open_arguments", "interrupts", "far_addresses",
              "far_casts", "entry_sp", "stack_arguments", "far_locals", "far_concat_casts", "buffer_fields", "far_reads", "near_to_far", "stack_segment_stores", "callee_pops", "caller_frame_slots", "selector_imports", "segment_values", "code_segment_reads", "names_used", "heading_facts", "int_result", "register_arguments", "code_pointers",
-             "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")
+             "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
+         "struct_fields")
 FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers",
-        "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")
+        "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
+         "struct_fields")
 # ... those of them c_text's 32-bit path has too (compilable32; the last two, which need to know the
 # C is the module's, given its facts)
-FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls")      # (... and the 32-bit path alone has)
+FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
+         "struct_fields")      # (... and the 32-bit path alone has)
 _now = {"moved": (), "far": set(), "marks": {}, "whole": {}, "bare": set(), "sixteen": False, "facts": {}, "doc": None,
         "locals": [], "drop": set(), "old_style": None, "room": set(), "gone": set(), "far_pointers": {},
         "gap_base": {}, "decls": {}, "seen": set(), "seeing": False, "raw": 0, "lines": set(),
@@ -4030,6 +4034,73 @@ def _fit_calls(nodes, _arrays):
             _rewrite(t, lambda x: '((int4 (*)())%s)' % _name(x))
 
 
+def parameter_names(doc):
+    """The names of a function's parameters as its heading writes them, as struct_text read them
+    from the text: none where a declaration has brackets in it (a pointer to a function)."""
+    decls = [type_text(p.get('type'), _param_name(p)) for p in doc.get('params') or []]
+    if ((doc.get('sym') or {}).get('type') or {}).get('variadic'):
+        decls.append('...')
+    if any('(' in d or ')' in d for d in decls):
+        return []
+    return [d.strip().split()[-1].lstrip('*') for d in decls]
+
+
+_ACCESS = r"\((\w+) ?(\*+)\)(?:\(%s \+ (0x[0-9a-fA-F]+|\d+)\)|%s)"
+
+
+def _struct_access(u, params):
+    """(parameter, base type, stars, offset) of `*(T *)(param + N)` or `*(T *)param` -- the
+    deref `u` of one of `params` at a constant offset, as it is written -- else None."""
+    if u.get('node') != 'Unary' or u.get('op') != '*' or u.get('postfix') or u['x'].get('node') != 'Cast':
+        return None
+    inner = u['x']['x']
+    if inner.get('node') == 'Name':
+        p = _name(inner)
+    elif inner.get('node') == 'Binary' and inner.get('op') == '+' and inner['left'].get('node') == 'Name' and \
+            inner['right'].get('node') == 'Lit':
+        p = _name(inner['left'])
+    else:
+        return None
+    if p not in params:
+        return None
+    m = re.fullmatch(_ACCESS % (re.escape(p), re.escape(p)), expr(u['x']))
+    if not m:
+        return None
+    return p, m.group(1), m.group(2), int(m.group(3), 0) if m.group(3) else 0
+
+
+def struct_accesses(doc, param):
+    """[(base type, stars, offset)] of every access through `param` at a constant offset in a
+    function's tree (struct_text.plan counts the types each offset is read as)."""
+    return [a[1:] for a in (_struct_access(e, (param,)) for e, _p in _walk(doc.get('body'))) if a]
+
+
+def _struct_fields(nodes, _arrays):
+    """An access through a parameter known to point at a structure, at a constant offset and of
+    the type the module reads that field as, is the field: `*(int4 *)(a1 + 0x48)` is
+    `((struct_7 *)a1)->f_48` (struct_text.apply did it on the texts; the module's plan is the
+    facts' "struct_fields": {param: (structure, {offset: (type, size)})}; the structures written
+    are reported, "structs_used")."""
+    planned = _now['facts'].get('struct_fields')
+    if not planned:
+        return
+    from codebreaker.decompile import struct_text
+    used = _now['facts'].setdefault('structs_used', set())
+    for e, _p in nodes:
+        if id(e) in _now['whole']:
+            continue
+        a = _struct_access(e, planned)
+        if not a:
+            continue
+        param, base, stars, off = a
+        sname, fields = planned[param]
+        k, _size = struct_text.kind(base, stars)
+        if k is None or fields.get(off, (None,))[0] != k:
+            continue
+        used.add(sname)
+        _rewrite(e, lambda _e, s=sname, p=param, o=off: "((%s *)%s)->f_%x" % (s, p, o))
+
+
 def takes32(signature):
     """How many arguments a 32-bit function's definition takes, as compilable32 counted them in
     its heading (`signature`: the heading as written) -- None for one that is __cdecl."""
@@ -4074,7 +4145,8 @@ _PASSES = (("frame_through_ss", _frame_through_ss), ("pieces", _pieces), ("joine
            ("segment_values", _segment_values), ("code_segment_reads", _code_segment_reads),
            ("names_used", _names_used), ("heading_facts", _heading_facts), ("code_pointers", _code_pointers),
            ("compare_as_numbers", _compare_as_numbers), ("keep_frame", _keep_frame),
-           ("globals_through", _globals_through), ("same_cast", _same_cast), ("fit_calls", _fit_calls))
+           ("globals_through", _globals_through), ("same_cast", _same_cast), ("fit_calls", _fit_calls),
+           ("struct_fields", _struct_fields))
 
 
 # ---------------------------------------------------------------------------------------------- functions

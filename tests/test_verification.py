@@ -201,30 +201,6 @@ def test_breaks_change_what_a_function_does():
     assert all(t.startswith("int4 f(int4 a1,int4 a2)") for t in made.values())
 
 
-def test_field_accesses_are_written_as_fields():
-    """`*(T *)(p + N)` through an argument known to be a structure becomes `p->f_N`, declared at
-    that offset with that type; an access of another type at the same place is left alone."""
-    from codebreaker.analyze import image, structures
-    from codebreaker.decompile import struct_text
-    from codebreaker.verify.authored import match
-    texts = {"f": "int4 f(int4 a1,int4 a2)\n{\n  *(int4 *)(a1 + 8) = *(int4 *)a1 + a2;\n"
-                  "  return *(uint1 *)(a1 + 8) + *(int4 *)(a1 + 8) + (**(code **)(a1 + 0x10))(a2);\n}",
-             "g": "int4 g(int4 a1)\n{\n  return *(int4 *)(a1 + 8);\n}"}
-    found = [{"name": "struct_1", "roots": [("arg", 0x1000, 0)]}]
-    real = (image.load, structures.recover)
-    image.load, structures.recover = (lambda path: None), (lambda img: found)
-    try:
-        header, out = struct_text.apply("x.dll", "typedef int int4;\n", texts, {0x1000: "f", 0x2000: "g"})
-    finally:
-        image.load, structures.recover = real
-    assert "((struct_1 *)a1)->f_8 = ((struct_1 *)a1)->f_0 + a2;" in out["f"], out["f"]
-    assert "*(uint1 *)(a1 + 8) + ((struct_1 *)a1)->f_8 + (*((struct_1 *)a1)->f_10)(a2)" in out["f"], out["f"]
-    assert out["g"] == texts["g"]                                   # g's argument is not known to be one
-    assert "typedef struct struct_1 {\n  int4 f_0;\n  uint1 _gap_4[4];\n  int4 f_8;\n  uint1 _gap_c[4];\n  code *f_10;\n} struct_1;" in header, header
-    near = match.needed_header(header, out["f"])
-    assert "int4 f_8;" in near and "struct_1" not in match.needed_header(header, out["g"])
-
-
 def test_other_shapes_of_the_same_function():
     """An if-chain on one value is offered as a switch, and `r = x;` before the final `return r;`
     as `return x;` -- but not through a variable narrower than what the function returns, nor
@@ -769,7 +745,7 @@ def main():
                test_a_verdict_holds_until_what_it_was_for_changes, test_cache_files_results_under_what_made_them,
                test_every_kind_keeps_fingerprints_and_writes_calls_alike,
                test_period_source_gives_the_declarations_an_author_had, test_breaks_change_what_a_function_does,
-               test_field_accesses_are_written_as_fields, test_other_shapes_of_the_same_function,
+               test_other_shapes_of_the_same_function,
                test_object_file_of_the_16_bit_compiler_is_read, test_a_verdict_is_for_the_compiled_code,
                test_repair_search_with_any_compiler, test_period_compiler_gives_the_original_back,
                test_reconstruct_is_incremental):

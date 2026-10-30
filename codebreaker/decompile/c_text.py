@@ -429,7 +429,7 @@ def compilable32(module_path, funcs, outdir):
         k = cback.takes32(cback.signature(doc)) if doc is not None else None
         if k is not None:
             takes[n] = k
-    declared = {}
+    declared, written_of = {}, {}
     for n in order:
         facts = got.notes.get(n) or {}
         # (each function's C written from its L2 document here, with the module's facts: the back
@@ -437,6 +437,7 @@ def compilable32(module_path, funcs, outdir):
         # decisions)
         written = {"functions": set(order), "struct_sizes": struct_sizes[n], "called_through": called_through,
                    "aliases": aliases.get(n) or {}, "pointer_globals": pointers, "takes": takes}
+        written_of[n] = dict(written)
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         if facts.get("l2") is not None and not facts.get("from_l2"):
@@ -501,8 +502,20 @@ def compilable32(module_path, funcs, outdir):
     structs = _struct_decls(struct_notes, _TYPES + "\n".join(odd))
     preamble = (_TYPES + "\n".join(odd) + "\n" + "".join(t + "\n" for t in structs) + _HELPERS + helpers +
                 "\n".join(decls) + "\n" + "\n".join(macros) + "\n")
+    # `p->field` for `*(T *)(p + N)`: which accesses through a parameter are a structure's fields
+    # is the module's decision (struct_text.plan, from the trees and the headings as written), and
+    # the functions it names are written again with theirs (backends/c._struct_fields)
     from codebreaker.decompile import struct_text
-    preamble, out = struct_text.apply(module_path, preamble, out, by_va)       # `p->field` for `*(T *)(p + N)`
+    planned = struct_text.plan(module_path, {n: got.notes[n]["l2"] for n in declared}, by_va, declared)
+    used_structs = set()
+    for n in order:
+        if n not in planned:
+            continue
+        written = dict(written_of[n], struct_fields=planned[n])
+        out[n] = _without_notes(decompiler.c_from_l2(out[n], got.notes[n], None, written).strip())
+        used_structs |= written.get("structs_used") or set()
+    if planned:
+        preamble += struct_text.declarations(planned, used_structs)
     return preamble, out, order, by_va, used, in_ecx, in_edx
 
 
