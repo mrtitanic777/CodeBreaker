@@ -336,3 +336,36 @@ def test_moved_own_segment_calls():
     assert '  *MK_FP(codebreaker_cs(),(int2 *)0x40);' in text, text
     other = c.function(doc, c.MOVED, facts={'selector': 0x1040})        # (segment 9's: 1040h)
     assert other.count('MK_FP(0x1000,') == 2, other
+
+
+def test_moved_interrupts():
+    """c_text._interrupts on the tree: a call of int21 is its helper with the registers set for it
+    (in_BX, passed on, is none), an interrupt's result is the register (`int_EBX_12` is int_BX)
+    and has no local of its own; the interrupts taken go to the facts, for the header."""
+    word = {'kind': 'i16'}
+    call = fcall('int21', lit(0x3d00, text='0x3d00'), name('in_BX'), name('x'))
+    doc = sixteen([local('x', word), local('int_EBX_12', word),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': call}),
+                   stmt({'node': 'Assign', 'target': name('y'), 'value': name('int_EBX_12')})])
+    facts = {}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '  y = int21_ax_cx(0x3d00,x);' in text, text
+    assert '  y = int_BX;' in text and 'int_EBX_12' not in text, text
+    assert facts['interrupts'] == {(0x21, ('ax', 'cx'))}
+
+
+def test_moved_selector_structs():
+    """c_text._selector_structs on the tree: a segment read through a selector at two constant
+    offsets is a structure it holds, SEG_PTR(seg_<function>_<selector>, selector)->f_<offset>;
+    its declaration goes to the facts. A global selector's is the module's."""
+    def at(sel, kind, off):
+        return {'node': 'Unary', 'op': '*', 'x': fcall('MK_FP', sel, {'node': 'Cast', 'type': ptr({'kind': kind}, 'near'),
+                                                                        'x': lit(off, text='0x%x' % off)})}
+    doc = sixteen([stmt({'node': 'Assign', 'target': name('a'), 'value': at(name('xVar2'), 'i16', 0x3e)}),
+                   stmt({'node': 'Assign', 'target': name('b'), 'value': at(name('xVar2'), 'u8', 0x40)})])
+    facts = {'selector_structs': True}
+    text = c.function(doc, c.MOVED, facts=facts)
+    assert '  a = SEG_PTR(seg_f_xVar2, xVar2)->f_3e;' in text, text
+    assert '  b = SEG_PTR(seg_f_xVar2, xVar2)->f_40;' in text, text
+    assert facts['selector_decls'] == ['typedef _Packed struct seg_f_xVar2 { uint1 _pad_0[62]; int2 f_3e; uint1 f_40; } seg_f_xVar2;']
+    assert 'MK_FP' in c.function(doc, c.MOVED, facts={})          # (without structures: as it was)

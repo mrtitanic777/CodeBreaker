@@ -141,6 +141,12 @@ work = tempfile.mkdtemp(prefix="l2made_")
 if reconstruct.kind_of(path).KIND == "ne":
     m = c_text.compilable16(path, work)
     texts = dict(m.texts)
+    # (and the module's own: its header and tables, held to the reference as one text each)
+    texts["(header)"] = m.header
+    for t in ("near", "wide", "novalue", "exported_prologue", "interrupts", "prototyped"):
+        texts["(%%s)" %% t] = repr(sorted(getattr(m, t, ()) or ()))
+    texts["(selector imports)"] = repr(sorted((getattr(m, "selector_imports", {}) or {}).items()))
+    texts["(failed)"] = repr(sorted(getattr(m, "failed", {}) or {}))
 else:
     from codebreaker.verify.lanes import win32
     texts = c_text.compilable32(path, win32.LANES["pe"].functions(path), work)[1]
