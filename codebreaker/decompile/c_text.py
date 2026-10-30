@@ -749,55 +749,6 @@ def _code_segment_data(reports, where, d, module_path):
     return decls, defs, report, plan
 
 
-_SIZED = {1: "uint1", 2: "uint2", 4: "uint4"}
-
-
-_SIGNED = {1: "int1", 2: "int2", 4: "int4"}
-_ORDERING = ("<", ">", "<=", ">=")
-
-
-def _pieces(text, sized=None, default="uint2", spell=None):
-    """`x._2_2_` is the decompiler's spelling of "2 bytes of x starting at byte 2": the bytes at
-    that place, as the type of that size (`spell(x, offset, type)` writes it another way).
-    Unsigned, except as one side of an ordering comparison: the core prints its signed compare
-    (INT_SLESS) with no cast there, and an unsigned piece made it unsigned -- USER's sub_10_2F28
-    `xRam116001bc._2_2_ < a1` took the other branch for a1 = FFFFh. (Against an unsigned other
-    side a signed piece of the same size still compares unsigned in C.)"""
-    spell = spell or (lambda x, off, ty: "(*(%s *)((char *)&%s + %s))" % (ty, x, off))
-
-    def fix(src):
-        for n in src.find("field_expression"):
-            m = re.fullmatch(r"_(\d+)_(\d+)_", src.at(n.child_by_field_name("field")))
-            if m and src.at(n.child_by_field_name("operator")) == "." and not _has_piece(n.child_by_field_name("argument")):
-                table = sized or (_SIGNED if _ordered(src, n) else _SIZED)
-                src.replace(n, spell(src.at(n.child_by_field_name("argument")), m.group(1),
-                                     table.get(int(m.group(2)), default)))
-    before = None
-    while before != text:                                # (a piece of a piece: the inner one first)
-        before, text = text, ctree.rewrite(text, fix)
-    return text
-
-
-def _ordered(src, n):
-    """Is this expression (in parentheses or not) one side of <, >, <= or >=?"""
-    up = n.parent
-    while up is not None and up.type == "parenthesized_expression":
-        up = up.parent
-    return up is not None and up.type == "binary_expression" and \
-        src.at(up.child_by_field_name("operator")) in _ORDERING
-
-
-def _has_piece(n):
-    todo = [n]
-    while todo:
-        c = todo.pop()
-        f = c.child_by_field_name("field") if c.type == "field_expression" else None
-        if f is not None and re.fullmatch(rb"_\d+_\d+_", f.text or b""):
-            return True
-        todo.extend(c.children)
-    return False
-
-
 def _far_argument_widths(code, start, end, far_fn):
     """{a<n>: bytes} -- how wide the original reads through the far pointer it takes as
     argument n: `les reg, [bp+N]`, then the first `es:[reg...]` through it."""
@@ -1571,7 +1522,6 @@ def compilable_powerpc(module_path, outdir):
         if facts.get("l2") is not None:
             out[n] = decompiler.c_from_l2(out[n], facts, None, written)
         t = out[n].strip()
-        t = _pieces(t, _BY_SIZE, "uint4", lambda x, off, ty: "PIECE(%s, %s, %s)" % (x, off, ty))
         t = _compare_as_numbers(t)
         t = _code_pointers(t, set(order))
         t = _homed_arguments(t)
