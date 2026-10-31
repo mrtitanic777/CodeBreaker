@@ -1136,6 +1136,42 @@ test_drivers (16), test_xex (4, 1 skipped), test_service (11), test_ui (10), tes
 test_plumbing (17), check_imports (524); l2c --made lzexpand/keyboard/comm/lz32 223 of 223 the same.
 (No Setup boot, no full sweep -- those are the milestone.)
 
+## Built: the engine and the store in C++ (2026-10-31)
+
+NATIVE.md step 6. The program database, the engine's core, the function store, the knowledge
+base's database and the verdict vocabulary are `native/engine` (cbengine.dll, on SQLite's C API;
+the shim is engine/native_engine.py), behind `CB_NATIVE_ENGINE` -- on by default since the gate,
+0 for the Python. The on-disk schema is unchanged: every database, store and knowledge base written
+before reads unchanged, and either side reads what the other wrote.
+
+What the engine is, part by part, now:
+
+    facts.py's Database                 C++ (open_at gives the C++ one; Row, encode/decode stay Python)
+    engine.py's Run, Context            C++: the registry, staleness, inputs, early cutoff, the pool
+    engine.step, Step.version           Python (the step is a Python function; its version a digest of its source)
+    the steps themselves                Python, called back from the C++ run (win16.py's, lanes.py's)
+    store/functions.py                  C++ (FunctionStore gives the C++ one)
+    knowledge/store.py                  C++ (values decoded in Python; the per-process tables Python's)
+    knowledge/reads.py                  recording stays Python (the accessors are Python); digests C++
+    verify/verdicts.py                  C++ (verdict, klass, match, classify; the tables are the words)
+
+Gate (NATIVE.md step 6): eight modules -- lzexpand.dll, keyboard.drv, comm.drv (16-bit), lz32.dll,
+version.dll, imm32.dll (32-bit), splitter.vxd, choice.com -- measured from an empty state with the
+switch off and on: all 30,974 stored rows identical (facts with their inputs, the store's rows, the
+index, the knowledge base); the warm re-run made the same one fact per module on both sides; one
+knowledge piece changed made the same 87 facts again on both sides (3 of lz32's verdicts judged,
+36 kept), and putting it back did the same. Two things found, the same on both sides: lane.ne.module
+pickles Python sets, so its hash follows the process's string-hash seed (an equal value; early cutoff
+stops it at the functions); splitter's lane.le.profile records a knowledge read on a warm run that
+the cold run did not record.
+
+**Left.** The steps are the engine's to move next: each is still a Python callback, and on a warm
+check the always-run profile step and the decoding of the values asked for are most of the time, so
+the C++ core alone is level with the Python there. The value encoding (JSON, pickles) is Python's
+while values are Python objects. The Python Database, Run/Context, FunctionStore and KnowledgeBase
+go at the next milestone. SQLite comes from an installed toolchain (MSYS2's UCRT64 header and DLL);
+vendoring the amalgamation would make native/engine build alone.
+
 ## Decisions, and what is left open
 
 - C++ wherever possible (Logan, 2026-10-30; this reverses "Python stays the language of the
@@ -1143,7 +1179,8 @@ test_plumbing (17), check_imports (524); l2c --made lzexpand/keyboard/comm/lz32 
   switch, gated on identical output, then made the default, then the Python deleted at the next
   milestone; Python keeps the glue (command line, terminal UI, MCP). The plan, in measured-cost
   order, is docs/NATIVE.md. Step 1 is done: the 32-bit run recorder (native/tracer, cbtrace.dll:
-  trace_function's hooks, `CB_NATIVE_TRACE`).
+  trace_function's hooks, `CB_NATIVE_TRACE`). Step 6 is gated and the default: the engine and the
+  store (native/engine, cbengine.dll, `CB_NATIVE_ENGINE`; "Built: the engine and the store in C++").
 - SQLite, not a server database: one file per binary is easy to delete, copy and inspect.
 - Open: how a fact made by a period compiler (DOSBox-X) is keyed (the kit's files' hashes); how the
   service and other sessions share a machine (the load setting). (Decided: verdicts from before the

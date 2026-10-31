@@ -165,6 +165,121 @@ on -- a self-judge of these smaller functions is dominated by the comparer and t
 machinery, not the per-instruction loop; the per-instruction win (the 18 M register and 22 M
 memory reads USER's full gate made) shows on the instruction-heavy full gate, not a capped sample.
 `cbtrace.dll` now carries the 32-bit tracer, the driver recorder and the 16-bit recorder.
+## Step 6 (gated): the engine and the store -- `native/engine`
+
+**What moved.** `cbengine.dll` (native/engine; C interface cbengine.h; ctypes in
+codebreaker/engine/native_engine.py), on SQLite's C API directly:
+
+- the program database (facts.py's Database): the fact, blob and about tables in the same schema,
+  values kept inline or once in the blob table past 4 KB, the SHA-1 of tag and bytes, remake,
+  forget, other versions dropped once per process, the blobs no fact holds collected, the cap on all
+  databases (`hold`, a database holding verdicts emptied of facts, not deleted), the binary's SHA-256
+  kept by path, size and time;
+- the engine's core (engine.py's Run and Context): the step registry, which facts are current (each
+  decided once per run from the bottom up, the step's version and every input's hash), the inputs
+  recorded as a step asks (`need`, `need_many`, `peek`, `knowledge`, undeclared reads refused),
+  early cutoff (the same hash: the row's provenance remade, nothing past it), unkept values, batch
+  steps, and the scheduler: stale facts made side by side on a C++ worker pool (`low_load`'s count,
+  the first item's error raised once every item has ended, one log line for the lot);
+- the function store (store/functions.py): the index (module, profile, summary, store_about) and
+  every module's tables on the engine's own connection to its database -- record_many, best, tally,
+  scores, latest, stored, variants, the summaries, the overview, and the carry-over of a store from
+  before the databases;
+- the knowledge base's database (knowledge/store.py: pieces, kinds made whole under a stamp, the
+  name store) and the digests reads.py gives the engine (a piece's hash, a whole kind's, the name
+  store's answers), with the per-process hash table reread when another process wrote the file;
+- the verdict vocabulary (verify/verdicts.py: verdict, klass, match, classify and the tables).
+
+**What stays Python, called back.** A step's code (each step is still a Python function: the C++
+run calls it for the contexts it makes, in a copy of the asker's context on the pool's threads, so
+knowledge reads and the service's captured output behave as before); a step's version (a digest of
+its source through `inspect`); a knowledge piece's hash when its kind must first be brought up to
+date by Python's table builders (reads._fresh); what a value IS (facts.encode/decode: bytes, text,
+JSON, a pickle). An exception a step raises comes out of the C++ run as itself, with its kind
+(a LookupError is still one to the staleness check).
+
+**SQLite.** The repository has no SQLite source, and Python's sqlite3.dll ships without a header.
+The build takes the header and the DLL of an installed SQLite: MSYS2's UCRT64 build by default
+(C:/msys64/ucrt64: sqlite3.h 3.53.4 and libsqlite3-0.dll, which imports only KERNEL32 and the UCRT,
+so MSVC code calls it); `SQLITE_DIR` names another. CMake makes the import library from the DLL's
+exports and copies the DLL beside cbengine.dll. (Vendoring the SQLite amalgamation into native/
+would make the build stand alone; it needs Logan's go-ahead to download.)
+
+**The switch.** `CB_NATIVE_ENGINE` (DEFAULT in native_engine.py; 0 = the Python engine and store).
+It is read when a database, a store or a knowledge base is opened, and the object stays on the side
+it was opened on, so one process can hold both (tests/test_native_engine.py does). Without the
+built DLL the Python runs (native_engine.why_not() says why). The switch is not part of any step's
+stamp (engine/lanes.py `_SKIP`), so both sides make facts of the same versions. Build:
+
+    (vcvars64)  cmake -S native/engine -B native/engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                cmake --build native/engine/build
+                ctest --test-dir native/engine/build
+
+**The gate** (harness outside the repository, state/work/native-engine: gate.py, drive.py). `measure`
+of eight modules from an empty state folder (the same folder path both times, so a path a fact
+keeps is the same), the switch off and then on, CB_NO_FP_CACHE=1, CB_LOW_LOAD=2, the same
+decompiler binary; then the warm re-run of every module; then one knowledge piece changed by hand
+(win32 argument_bytes.code KERNEL32.#20, 4 -> 8, which lz32's judge reads) and lz32 measured again;
+then the piece put back and lz32 measured again. Every row compared: each database's facts (kind,
+key, hash, tag, size, step, version, inputs, the value or its blob), blobs and notes; each module's
+store tables (functions, candidates, verdicts with reason, limits, detail and carried, texts,
+identified, built signatures, variants); the index (modules, profiles, summaries); the knowledge
+base (pieces, loads, bodies) -- all but the times:
+
+| module | lane | facts | store rows | verdicts (off == on) | every row identical |
+|---|---|---|---|---|---|
+| lzexpand.dll | ne | 313 | 420 | equivalent 49, divergent 50, consistent 1, no-compile 2 | yes |
+| keyboard.drv | ne | 217 | 290 | equivalent 40, divergent 21, consistent 4, no-compile 5 | yes |
+| comm.drv | ne | 130 | 165 | equivalent 20, divergent 3, consistent 18 | yes |
+| lz32.dll | pe | 124 | 176 | equivalent 17, divergent 3, no-compile 19 | yes |
+| version.dll | pe | 139 | 189 | equivalent 28, divergent 4, no-compile 12 | yes |
+| imm32.dll | pe | 226 | 293 | equivalent 73 | yes |
+| splitter.vxd | le | 25 | 19 | equivalent 6 | yes |
+| choice.com | dos | 73 | 67 | equivalent 22 | yes |
+| the index, the knowledge base | | | 20, 28,031 | | yes |
+
+30,974 rows in ten databases, every one the same. The warm re-run: on both sides each module made
+exactly one fact, its lane's always-run profile, and the same eight facts were touched. The
+knowledge change: on both sides the same 87 facts were made again, lz32's judge 3 verdicts judged
+and 36 kept; putting the piece back did the same, and the verdicts came back as they were.
+tests/test_knowledge_reads.py's cases pass both ways.
+
+Found on the way, the same on both sides (not this step's to fix): the 16-bit lane's
+`lane.ne.module` value holds Python sets (Made.wide, .near, .prototyped, .exported_prologue), whose
+pickle follows the process's string-hash seed, so its hash differs from one process to the next
+with an equal value (the first gate run, without PYTHONHASHSEED, showed exactly that and nothing
+else; early cutoff stops it at the functions, whose hashes are the same). And splitter.vxd's
+`lane.le.profile` records a read of `vxd:device:*` on a warm run that it does not record on the cold
+run (the kind was already read in that process before the step recorded it).
+
+**Speed** (the machine shared with three other sessions; seconds):
+
+| | Python | C++ |
+|---|---|---|
+| cold, eight modules, each its own process (wall) | 438.0 | 257.3 |
+| ... without lzexpand.dll (whose 314 s off was the machine) | 123.9 | 118.5 |
+| warm, eight processes (wall, Python starting included) | 9.7 | 11.2 |
+| the engine's warm check alone, in process (lanes.judged, best of 5, CPU) | 0.72-0.86 | 0.73-0.88 |
+
+The cold time is the steps' (the decompiler, the compilers, the judge), the same code on both
+sides. On a warm check of these modules (about 1,250 facts) the C++ core is level with the Python:
+each check is mostly the always-run profile step and decoding the values asked for, still Python.
+What the C++ engine opens is the steps' turn: with the store and the scheduler native, a step
+moved to C++ no longer crosses into Python at all.
+
+Identical everywhere tested, so the switch is on by default (`CB_NATIVE_ENGINE=0` falls back). The
+Python Database, Run/Context, FunctionStore and KnowledgeBase are deleted at the next milestone.
+
+**Tests.** `ctest --test-dir native/engine/build` (cbengine_test: the C interface alone, 43 checks:
+digests and blobs, a run with steps written in C++ -- made once then kept, early cutoff, a changed
+source remade, side by side on two threads, a batch with an unkept value, a callback's failure and
+an unknown kind with their kinds --, the vocabulary, the store, the knowledge base's digests);
+tests/test_native_engine.py (4: the same pipeline, store, knowledge base and every vocabulary word
+through both sides in one process, each whole record compared); the fast suites pass with the
+switch unset (on) and at 0: test_engine 13, test_knowledge_reads 7, test_verdicts 6, test_store 3,
+test_service 11, test_ui 10, test_verification 20 (1 skipped), test_whole_module 15, test_frozen 22,
+test_plumbing 17, tools/check_imports 557.
+
 ## The porting engine: Python into C++ by translation (2026-10-31)
 
 Every step above can be written by hand. The engine is the other road: CodeBreaker's own
@@ -280,7 +395,7 @@ order is trusted; the order below is what is known today.
 | 3 | **The path explorer** | emulate/shadow.py (Shadow32 / the 16-bit shadow), emulate/symbolic.py, verify/guided.py | a symbolic step per instruction, kept in Python beside the run | the shadow inside the recorder, so a shadowed run stops calling Python per step; then step 1's last Python path goes |
 | 4 | **Formats and loaders** | formats/ (PE, NE, LE, MZ, OMF, XEX ...), formats/pe_functions.py carving | reading and carving whole images in Python, per process, every run of a tool | a loader library (one per format, the decompiler's loaders reused) giving the same facts |
 | 5 | **The L2 passes and the C back end** | the L2 tree passes and the C writer in Python, after the native decompiler | tree walks over every function, every build | into native/decompiler: L2 built and rewritten there, C written there; Python reads the result |
-| 6 | **The engine and the store** | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | SQLite's C API directly, the engine's scheduler in C++ |
+| 6 | **The engine and the store** (gated: "Step 6" above) | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | native/engine: SQLite's C API directly, the engine's scheduler in C++; left: the steps themselves |
 | 7 | **Build orchestration** | build/ (OpenWatcom, MASM, period compilers under DOSBox-X) | process starts and file handling around the compilers | a C++ driver: one process starts the compilers and gathers their output |
 | 8 | **The rest** | everything else that computes | -- | case by case; the glue (CLI, terminal UI, MCP) stays Python |
 

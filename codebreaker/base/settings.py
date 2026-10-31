@@ -21,6 +21,7 @@ and are named in one file, `settings.json` at the top of the checkout:
     decompiler_bin  folder of the native decompiler executables   (default: native/decompiler/build/bin)
     xex_bin         folder of the Xbox 360 executable reader, xex.exe (default: native/xex/build/bin)
     tracer_bin      folder of the run recorder, cbtrace.dll: the 32-bit tracer's hooks in C++
+    engine_bin      folder of cbengine.dll: the engine and the store in C++ (native/engine)
                     (default: native/tracer/build/bin)
     visual_studio   a Visual Studio install with clang-cl (VC/Tools/Llvm), which builds XenonRecomp
                     and recompiled Xbox 360 projects  (default: the newest vswhere finds)
@@ -75,6 +76,7 @@ DEFAULTS = {
     "decompiler_bin": os.path.join("native", "decompiler", "build", "bin"),
     "xex_bin": os.path.join("native", "xex", "build", "bin"),
     "tracer_bin": os.path.join("native", "tracer", "build", "bin"),
+    "engine_bin": os.path.join("native", "engine", "build", "bin"),
     "ppc_binutils": os.path.join("toolchains", "binutils-ppc"),
     "converted": "Converted",
     "nasm": os.path.join("native", "nasm", "build", "bin", "nasm.exe"),
@@ -85,7 +87,7 @@ DEFAULTS = {
                                        # with the functions shared among processes as the governor allows (base/parallel.py)
     "struct_recovery": "all",          # structures from field accesses: off, 32 (32-bit x86 only), all
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "tracer_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "tracer_bin", "engine_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
           "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays",
           "win95_installed_hd")

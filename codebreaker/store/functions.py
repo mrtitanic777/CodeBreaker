@@ -42,6 +42,11 @@ has to be re-judged to see what a change did, and old results stay comparable.
     fs.best(sha, profile)                          # {address: the best candidate's row}
     fs.tally(profile, sha)                         # {class: count}
     fs.module_rows()                               # [(sha, name, path, kind)] (the index)
+
+The C++ store (native/engine, CB_NATIVE_ENGINE: engine/native_engine.py's FunctionStore) keeps the
+same files in the same schema, with the module tables on the engine's own connection to each
+database; a store opened while it is on is its. FunctionStore below is the Python store it
+replaces, until the next milestone.
 """
 import json
 import os
@@ -120,6 +125,8 @@ def overview(path=None):
     if fs is None:
         return []
     try:
+        if hasattr(fs, "overview"):                       # (the C++ store works it out itself)
+            return fs.overview()
         out = []
         summaries = fs.summaries()
         for sha, name, p, kind in fs.module_rows():
@@ -205,6 +212,13 @@ class _Empty(object):
 
 
 class FunctionStore(object):
+    def __new__(cls, path=None, readonly=False):
+        if cls is FunctionStore:
+            from codebreaker.engine import native_engine
+            if native_engine.enabled():
+                return native_engine.FunctionStore(path, readonly)
+        return object.__new__(cls)
+
     def __init__(self, path=None, readonly=False):
         self.own_path = bool(path or os.environ.get("CB_FUNCTIONS_DB"))
         self.path = path or default_path()

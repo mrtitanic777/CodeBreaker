@@ -64,7 +64,7 @@ _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))       # code
 # the code a module's decompiling and building may run (the judge's is the lane's profile)
 _CODE = ("decompile", "translate", "symbols", "analyze", "formats", "knowledge", "source", "build", "java",
          "base", "platforms", "exact", "recompile", "xbox", "x360")
-_SKIP = ("CB_ENGINE", "CB_LOW_LOAD", "CB_FUNCTIONS_DB", "CB_STATE", "CB_KNOWLEDGE_DB", "CB_NO_FP_CACHE",
+_SKIP = ("CB_ENGINE", "CB_NATIVE_ENGINE", "CB_LOW_LOAD", "CB_FUNCTIONS_DB", "CB_STATE", "CB_KNOWLEDGE_DB", "CB_NO_FP_CACHE",
          "CB_RESULTS_DB")
 _SEEN = {}                      # (path, mtime, size) -> SHA-1 of the file, of this process
 
