@@ -1424,6 +1424,13 @@ class Method(object):
             vals = [self.conv(*(self.expr(a) + (_OBJ,))) for a in e.args[1:]]
             f = self.conv(*(self.expr(e.args[0]) + (_STR,)))
             return 'jrt_String_format(%s, %d%s)' % (f, len(vals), ''.join(', ' + v for v in vals)), _STR
+        if s.name in ('toString', 'equals', 'hashCode') and len(s.params) == (1 if s.name == 'equals' else 0) \
+                and not s.static and e.target is not None and not isinstance(e.target, ir.TypeName) \
+                and s.owner != 'java.lang.String':
+            recv, rt = self.receiver(e.target, s)             # Object's methods: through the class's table
+            fn = {'toString': 'jrt_toString', 'equals': 'jrt_equals', 'hashCode': 'jrt_hashCode'}[s.name]
+            args = [self.conv(recv, rt, _OBJ)] + [self.conv(*(self.expr(a) + (_OBJ,))) for a in e.args]
+            return '%s(%s)' % (fn, ', '.join(args)), {'toString': _STR, 'equals': 'bool', 'hashCode': 'int32_t'}[s.name]
         if s.owner == 'java.lang.Comparable' and s.name == 'compareTo':
             a, at = self.expr(e.target)
             b, bt = self.expr(e.args[0])

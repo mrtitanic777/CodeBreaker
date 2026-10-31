@@ -61,9 +61,33 @@ class Writer(_Base):
     def _stmt(self, s, out, ind):
         if isinstance(s, ir.ForEach):
             return self.foreach(s, out, ind)
+        if isinstance(s, ir.Local) and _null(s.init):
+            ct = self.ctype(s.type)
+            if cpp03.is_pointer(ct):                    # a pointer starts as nullptr
+                name = self.name(s.sym.name)
+                if name in self.vars:
+                    raise Decline('shadowed local %s' % name)
+                self.vars[name] = ct
+                out.append(ind + '%s %s = nullptr;' % (ct, name))
+                return
         if isinstance(s, ir.Local) and s.init is not None and self.spelled(s):
             return self.auto_local(s, out, ind)
         return _Base._stmt(self, s, out, ind)
+
+    def x_Binary(self, e):
+        """A comparison with null: nullptr against a pointer. Against the runtime's value types (JavaString,
+        JList, JObject: their null is a state, compared with 0) the null stays what C++03 wrote."""
+        if e.op in ('==', '!=') and (_null(e.left) or _null(e.right)):
+            other = e.right if _null(e.left) else e.left
+            try:
+                pointer = other.type is not None and other.type.is_ref and cpp03.is_pointer(self.ctype(other.type))
+            except Decline:
+                pointer = False
+            if pointer:
+                code, ct = self.expr(other)
+                if cpp03.is_pointer(ct):
+                    return '%s %s nullptr' % (code, e.op), 'bool'
+        return _Base.x_Binary(self, e)
 
     def spelled(self, s):
         """The initialiser names the local's own type: `new T(..)` of the same T, or a cast to it."""
@@ -144,13 +168,36 @@ class Writer(_Base):
         return '\n'.join(lines), t
 
 
+def _null(e):
+    e = cpp03._strip_paren(e) if e is not None else None
+    return isinstance(e, ir.Lit) and e.value is None
+
+
+_NULL_WORD = re.compile(r'\bNULL\b')
+
+
+def _keep_null(x):
+    """The NULLs cpp03's rules wrote where the target is one of the runtime's value types (a JavaString,
+    JList or JObject compared with or made from null): spelled __null, what NULL is to GCC and clang, so they
+    resolve as they did under C++03 -- the C++11 text pass would make them nullptr, which those types do not
+    take (`JavaString != nullptr` has no operator; `JObject(nullptr)` is ambiguous)."""
+    if isinstance(x, str):
+        from codebreaker.java.emit.std_transforms import _sub_outside_literals
+        return _sub_outside_literals(_NULL_WORD, '__null', x) if 'NULL' in x else x
+    if isinstance(x, list):
+        return [_keep_null(y) for y in x]
+    if isinstance(x, tuple):
+        return tuple(_keep_null(y) for y in x)
+    return x
+
+
 def _with_writer(fn):
     """Run one of cpp03's module-level helpers with this module's Writer in place of cpp03's."""
     def run(*a, **k):
         saved = cpp03.Writer
         cpp03.Writer = Writer
         try:
-            return fn(*a, **k)
+            return _keep_null(fn(*a, **k))
         finally:
             cpp03.Writer = saved
     return run
