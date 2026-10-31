@@ -409,7 +409,7 @@ def test_a_lane_on_the_lanes_steps():
         rows = {r["addr"]: r for r in got["rows"]}
         assert sorted(lane.JUDGED) == ["0000", "0001", "0002", "0003"]
         assert rows["0000"]["verdict"] == "equivalent" and rows["0001"]["verdict"] == "divergent"
-        assert rows["ffff"]["verdict"] == "no-synth" and got["profile"] == "p1" and got["header"]
+        assert rows["ffff"]["verdict"] == "no-source" and got["profile"] == "p1" and got["header"]
         assert sorted(got["built"]) == ["0000", "0001", "0002", "0003"]
         lane.JUDGED[:] = []
         assert engine.get(p.db, "lane.tfake.rows") == got and lane.JUDGED == []     # nothing judged again

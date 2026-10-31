@@ -43,7 +43,7 @@ def test_reconstruct_is_incremental():
     assert t["verified"] >= 8 and t["verified"] + t["weak"] >= 24, t     # 8 and 18 today
     assert sum(t.values()) == len(pipeline.functions("pe", p)), t
     assert all(r["reason"] for r in first if r["verdict"] == "divergent")
-    assert all(r["source"] for r in first if r["verdict"] != "no-synth")
+    assert all(r["source"] for r in first if r["verdict"] not in ("no-synth", "no-source"))
     log[:] = []
     reconstruct.run(p, fs=fs, log=log.append)
     assert " 0 judged now" in log[0], log

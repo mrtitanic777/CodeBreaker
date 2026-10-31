@@ -1030,12 +1030,18 @@ Wording a person sees that changed (only where it said one thing two ways):
 Everything else -- the module files' status lines, the terminal, the MCP classes, the ledger,
 the port's report -- reads as before.
 
-Gate: the module writer's files for lzexpand.dll, lz32.dll, choice.com and splitter.vxd, written
-from nothing (each tree a state folder of its own) before and after: WRITEGATE. Default C output
+Gate: the module writer's files for lzexpand.dll, lz32.dll (C and .h), choice.com and
+splitter.vxd (asm), and each module's stored rows (address, verdict, class, reason) as read back,
+measured and written from nothing (a state folder of its own each) by the tree before and after
+the change: 10 files, all the same. Default C output
 the same (l2c --made lzexpand, keyboard, comm, lz32: 223 of 223). Tests: tests/test_verdicts.py
 (6: the classes as they were for every word and limit, every older spelling read as now, one
 title and label per class, a store written before read in today's words, the module writer's
-lookup by provenance, the producers on it).
+lookup by provenance, the producers on it); test_engine's made-up lane now expects no-source for
+a function with no C; test_frozen, test_verification, test_whole_module, test_engine, test_store,
+test_knowledge(_reads), test_ui, test_service, test_port, test_dos, test_translate, test_plumbing,
+test_drivers, test_xex and tools/check_imports pass (test_mcp's test_what_was_made needs the
+temporary folder outside the project: it is, in a normal run).
 
 **Left.** exact/'s byte ledger (src/LEDGER files: identical, differs, no place, does not compile,
 and "equivalent" for bytes equal up to another compiler state's habits) and exact/draft's free-form
