@@ -39,6 +39,7 @@
 // `/*@G <hexVA> <bytes> <bytes pointed at, or 0> */` (the printed name of an unnamed global
 // carries neither its size nor, for a pointer, the size of what it points at).
 // CB_LANGUAGES names the folder of language files (*.sla, *.ldefs, *.pspec, *.cspec).
+// CB_CRASH_TRACE=1: a crash writes where it happened on stderr (crash_trace, below).
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -318,6 +319,63 @@ void set_up() {
   }).detach();
 }
 }  // namespace governor
+
+// CB_CRASH_TRACE=1: a crash (an access violation, a stack overflow) writes where it happened on
+// stderr -- each frame's function, file and line, read from the program's .pdb where there is one
+// (a RelWithDebInfo build) -- before the process ends as it would. Where the native program dies
+// on a function, this says in what part of the analysis or the printers.
+#ifdef _WIN32
+LONG WINAPI crash_trace(EXCEPTION_POINTERS* ep) {
+  DWORD code = ep->ExceptionRecord->ExceptionCode;
+  // (a crash only: the analysis's own C++ exceptions pass through here too, and are caught)
+  if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_STACK_OVERFLOW && code != EXCEPTION_INT_DIVIDE_BY_ZERO &&
+      code != EXCEPTION_ILLEGAL_INSTRUCTION && code != EXCEPTION_ARRAY_BOUNDS_EXCEEDED)
+    return EXCEPTION_CONTINUE_SEARCH;
+  HMODULE dh = LoadLibraryA("dbghelp.dll");
+  char buf[600];
+  int n = std::snprintf(buf, sizeof buf, "[crash: exception %08lx at %p]\n",
+                        ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress);
+  _write(2, buf, n);
+  if (dh == nullptr) return EXCEPTION_CONTINUE_SEARCH;
+  // (DbgHelp by its entry points, so the program needs no import library for it)
+  typedef BOOL(WINAPI * Init)(HANDLE, PCSTR, BOOL);
+  typedef DWORD(WINAPI * Opt)(DWORD);
+  typedef BOOL(WINAPI * FromAddr)(HANDLE, DWORD64, PDWORD64, void*);
+  typedef BOOL(WINAPI * Line)(HANDLE, DWORD64, PDWORD, void*);
+  typedef USHORT(WINAPI * Capture)(ULONG, ULONG, PVOID*, PULONG);
+  auto init = (Init)GetProcAddress(dh, "SymInitialize");
+  auto opt = (Opt)GetProcAddress(dh, "SymSetOptions");
+  auto from = (FromAddr)GetProcAddress(dh, "SymFromAddr");
+  auto line = (Line)GetProcAddress(dh, "SymGetLineFromAddr64");
+  if (!init || !opt || !from || !line) return EXCEPTION_CONTINUE_SEARCH;
+  HANDLE proc = GetCurrentProcess();
+  opt(0x00000002 | 0x00000010);                       // SYMOPT_UNDNAME | SYMOPT_LOAD_LINES
+  init(proc, nullptr, TRUE);
+  // the faulting instruction first, then the stack as it stands from the handler: the exception
+  // dispatcher's frames, then the crashed ones
+  void* frames[64];
+  USHORT got = RtlCaptureStackBackTrace(0, 64, frames, nullptr);
+  for (int k = -1; k < (int)got; ++k) {
+    void* pc = k < 0 ? ep->ExceptionRecord->ExceptionAddress : frames[k];
+    alignas(8) char symbuf[sizeof(DWORD) * 32 + 512];
+    std::memset(symbuf, 0, sizeof symbuf);
+    struct Sym { ULONG SizeOfStruct, TypeIndex; ULONG64 Reserved[2]; ULONG Index, Size; ULONG64 ModBase;
+                 ULONG Flags; ULONG64 Value, Address; ULONG Register, Scope, Tag, NameLen, MaxNameLen; CHAR Name[1]; };
+    Sym* s = (Sym*)symbuf;
+    s->SizeOfStruct = 88;                              // sizeof(SYMBOL_INFO)
+    s->MaxNameLen = 400;
+    DWORD64 disp = 0;
+    struct { DWORD SizeOfStruct; PVOID Key; DWORD LineNumber; PCHAR FileName; DWORD64 Address; } ln = {sizeof ln};
+    DWORD d2 = 0;
+    const char* name = from(proc, (DWORD64)pc, &disp, s) ? s->Name : "?";
+    bool hasLine = line(proc, (DWORD64)pc, &d2, &ln) != 0;
+    n = std::snprintf(buf, sizeof buf, "  %p %s%s%s:%lu\n", pc, name, hasLine ? "  " : "",
+                      hasLine ? ln.FileName : "", hasLine ? ln.LineNumber : 0);
+    _write(2, buf, n);
+  }
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
 
 using namespace ghidra;
 
@@ -874,19 +932,40 @@ class PrintL2 : public PrintC {
     auto t = std::make_unique<Tree>();
     t->tok = tok;
     t->op = op;
+    if (spell_ != nullptr) {
+      // (a case label being spelled: an operator PrintC puts before its number -- the cast it
+      // gives a label of a pointer type, `case (T *)0x8:` -- is kept aside, never in the
+      // expression being built: there it waited for operands and took the statements after
+      // the switch as its own, which became Unsupported)
+      if (spellType_) return;                         // (the cast's type, written out: `*`)
+      spellCast_ = tok->type == OpToken::presurround ? t.get() : nullptr;
+      spellOps_.push_back(std::move(t));
+      return;
+    }
     cast_ = tok->type == OpToken::presurround ? t.get() : nullptr;
     attach(std::move(t));
   }
   void pushType(const Datatype* ct) override {
+    if (spell_ != nullptr) {
+      if (spellCast_ != nullptr && spellCast_->ct == nullptr) spellCast_->ct = ct;
+      spellCast_ = nullptr;
+      spellType_ = true;
+      PrintC::pushType(ct);
+      spellType_ = false;
+      return;
+    }
     // (only while that cast is still waiting for its operands: compared, never followed, before)
     if (cast_ != nullptr && !stack_.empty() && stack_.back().first == cast_ && cast_->ct == nullptr) cast_->ct = ct;
     cast_ = nullptr;
     PrintC::pushType(ct);
   }
+  std::vector<std::unique_ptr<Tree>> spellOps_;     // the operators placed while a label was spelled
+  Tree* spellCast_ = nullptr;
+  bool spellType_ = false;                          // inside that cast's pushType
   std::string* spell_ = nullptr;                    // set: the next leaf is only read for its text
   void placeAtom(const Atom& a) override {
     if (spell_ != nullptr) {
-      *spell_ = a.name;
+      if (!spellType_) *spell_ = a.name;              // (not the name of the cast's type)
       return;
     }
     auto t = std::make_unique<Tree>();
@@ -957,6 +1036,21 @@ class PrintL2 : public PrintC {
     case syntax:                                              // a number PrintC writes as plain text
       if (!t.name.empty() && std::all_of(t.name.begin(), t.name.end(), [](char c) { return std::isdigit((unsigned char)c); }))
         return "{\"node\":\"Lit\",\"value\":" + t.name + "}";
+      if (!t.name.empty()) {
+        // (and one past 9, which PrintC writes in hexadecimal, or below 0: an array's constant
+        // index, `auStack_40c[0xb]` -- COMCTL32's sub_02C195 -- its value and its spelling)
+        bool neg = t.name[0] == '-';
+        std::string digits = t.name.substr(neg ? 1 : 0);
+        bool hex = digits.size() > 2 && digits[0] == '0' && (digits[1] == 'x' || digits[1] == 'X');
+        std::string body = hex ? digits.substr(2) : digits;
+        if (!body.empty() && body.size() <= 16 && (hex || neg) &&
+            std::all_of(body.begin(), body.end(), [hex](char c) {
+              return hex ? std::isxdigit((unsigned char)c) != 0 : std::isdigit((unsigned char)c) != 0; })) {
+          unsigned long long v = std::stoull(body, nullptr, hex ? 16 : 10);
+          return "{\"node\":\"Lit\",\"value\":" + (neg ? "-" : std::string()) + std::to_string(v) +
+                 ",\"text\":" + jsonText(t.name) + "}";
+        }
+      }
       return unsupported("syntax", t.name);
     default:
       return unsupported("token", t.name);
@@ -1076,9 +1170,25 @@ class PrintL2 : public PrintC {
   std::vector<std::set<uintb>> capturedEach_;       // ... each of them
   // the expressions PrintC placed while `f` ran
   std::vector<std::string> capture(const std::function<void()>& f) {
+    // (an operator still waiting for operands from before -- placed where no expression was being
+    // captured -- would take this expression's parts as its own, and the statement would be
+    // empty: the case labels' casts did so, and `return x + 1` came out `return`. Never silently:
+    // the expression is said to be unfinished, and the back end declines the function)
+    bool dangling = !stack_.empty();
+    stack_.clear();
+    open_.reset();
     size_t before = done_.size();
     f();
+    dangling = dangling || !stack_.empty();
+    stack_.clear();
     std::vector<std::string> out;
+    if (dangling) {
+      done_.resize(before);
+      captured_.clear();
+      capturedEach_.assign(1, {});
+      out.push_back(unsupported("unfinished", ""));
+      return out;
+    }
     captured_.clear();
     capturedEach_.clear();
     for (size_t i = before; i < done_.size(); ++i) {
@@ -1365,11 +1475,25 @@ class PrintL2 : public PrintC {
           std::string text;
           uint4 format = bl->getDisplayFormat() != 0 ? bl->getDisplayFormat() : ct->getDisplayFormat();
           spell_ = &text;
+          spellOps_.clear();
+          spellCast_ = nullptr;
           pushConstant(v, ct, casetoken, nullptr, bl->getCaseBlock(i)->firstOp(), format);
           recurse();
           spell_ = nullptr;
-          labels += (labels.empty() ? "" : ",") + ("{\"node\":\"Lit\",\"type\":" + type(ct) + ",\"value\":" + value +
-                    (text.empty() ? "" : ",\"text\":" + jsonText(text)) + "}");
+          std::string lab = "{\"node\":\"Lit\",\"type\":" + type(ct) + ",\"value\":" + value +
+                            (text.empty() ? "" : ",\"text\":" + jsonText(text)) + "}";
+          // and the cast PrintC writes before it, where it writes one (a switch on a pointer)
+          for (auto it = spellOps_.rbegin(); it != spellOps_.rend(); ++it) {
+            const Tree& o = **it;
+            if (o.tok->type == OpToken::presurround && o.tok->print1 == "(" && o.ct != nullptr)
+              lab = "{\"node\":\"Cast\",\"type\":" + type(o.ct) + ",\"x\":" + lab + "}";
+            else if (o.tok->type == OpToken::hiddenfunction || o.tok->type == OpToken::space)
+              continue;                                       // (nothing printed: as expr() reads one)
+            else
+              lab = unsupported("case label", o.tok->print1 + o.tok->print2);
+          }
+          spellOps_.clear();
+          labels += (labels.empty() ? "" : ",") + lab;
         }
       std::vector<Item> body;
       if (bl->getGotoType(i) != 0) body.push_back({jump(bl->getCaseBlock(i), bl->getGotoType(i)), "", false});
@@ -2029,6 +2153,13 @@ int main(int argc, char** argv) {
   }
   const char* specs = std::getenv("CB_LANGUAGES");
   if (!specs) { std::fprintf(stderr, "FAIL: CB_LANGUAGES is not set\n"); return 1; }
+#ifdef _WIN32
+  if (std::getenv("CB_CRASH_TRACE")) {
+    ULONG room = 256 * 1024;                          // (stack left for the handler after an overflow)
+    SetThreadStackGuarantee(&room);
+    AddVectoredExceptionHandler(0, crash_trace);
+  }
+#endif
   governor::set_up();
 
   Description d;

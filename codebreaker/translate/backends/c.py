@@ -986,6 +986,36 @@ def _stmts(s):
     return s if isinstance(s, list) else [s]
 
 
+def _integer_switch(s):
+    """A switch on a pointer as C can write it. The decompiler switches on the variable it
+    found, typed a pointer when the code also reads through it, and PrintC casts each label to
+    that type, `switch (p) { case (int2 *)0x8: ...`; L2 says as much (a Cast on each label) --
+    but C switches on integers only (OpenWatcom E1078, GDI's sub_22_0B96, USER's sub_4_3FBE). The
+    pointer is switched on as the unsigned integer of its width, `switch ((uint2)p)`, and each
+    label is its number. Any other switch comes back as it is."""
+    def pointer(lab):                            # (the label's pointer type, or None)
+        t = lab.get('type') or {}
+        return t if lab.get('node') in ('Cast', 'Lit') and t.get('kind') in ('ptr', 'fnptr') else None
+    widths = {2 if pointer(lab).get('space') == 'near' else 4
+              for c in _stmts(s.get('cases')) for lab in _stmts(c.get('labels')) if pointer(lab)}
+    if len(widths) != 1:
+        return s
+    u = {'kind': 'u16' if widths == {2} else 'u32'}
+
+    def number(lab):
+        if not pointer(lab):
+            return lab
+        lit = lab['x'] if lab.get('node') == 'Cast' else lab
+        if lit.get('node') != 'Lit' or not isinstance(lit.get('value'), int):
+            raise Decline('a case label of a pointer type that is no number')
+        out = dict(lit, type=u)
+        if not re.fullmatch(r"0x[0-9a-fA-F]+|\d+", str(out.get('text', '0'))):
+            out.pop('text', None)                # (`NULL`: the number itself)
+        return out
+    cases = [dict(c, labels=[number(lab) for lab in _stmts(c.get('labels'))]) for c in _stmts(s.get('cases'))]
+    return dict(s, expr={'node': 'Cast', 'type': u, 'x': s['expr']}, cases=cases)
+
+
 def _block(em, stmts):
     for s in _stmts(stmts):
         _stmt(em, s)
@@ -1155,6 +1185,7 @@ def _stmt(em, s):
         em.close_paren(')')
         _braced(em, s.get('body'))
     elif n == 'Switch':
+        s = _integer_switch(s)
         em.tag_line()
         em.print('switch')
         em.open_paren('(')

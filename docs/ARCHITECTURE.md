@@ -268,6 +268,25 @@ functions after a crash are typed in another process. That run also looped for h
 decompiler._resuming took the last function written, in the description's order, as the one it
 died on. Making PrintL2 survive those functions is the next step for USER.
 
+**No function lost while writing L2 (2026-10-30).** A census of every function the decompiler
+gives no C with L2 on -- the 16-bit gate set, the 32-bit sets, the golden corpus, the Xbox 360 HUD --
+found three causes, each now fixed: (1) the core died (an
+access violation) on a supplied jump table (`J` line) whose jump the function's flow never
+reaches: USER's MSGTHKCONNECTIONDATALS and sub_28_444E, the two the process "died on" (fork
+change C21, GHIDRA_FORK.md); (2) a switch on a pointer: PrintC casts each case label, and the cast
+PrintL2 met while it spelled the label was left waiting for operands, swallowing every statement
+after the switch -- Unsupported, so declined (USER sub_3_160A, sub_4_3FBE, GDI sub_22_0B96); the
+labels are now Cast nodes, and the back end writes such a switch on the pointer's integer
+(`switch((uint2)p) { case 0x8:`), since C switches on integers only; (3) an array element's
+constant index past 9, which PrintC writes as hexadecimal text (`auStack_40c[0xb]`): Unsupported
+(COMCTL32 sub_02C195, SHELL32 sub_0252EC), now a literal. An operator left waiting across
+expressions now always gives Unsupported (the back end declines) instead of a statement silently
+emptied. `CB_CRASH_TRACE=1` makes the decompiler write a crash's stack (function, file, line,
+from a RelWithDebInfo build's .pdb). What is left without C fails in the core with L2 off too:
+flow past the instruction limit or bad instructions (data the description lists as functions --
+the THKCONNECTIONDATA tables, USER32/GDI32 flat thunks), then over the memory budget at the larger
+limit.
+
 ## Built: phase F (2026-10-29)
 
 The 16-bit judge (verify/lanes/win16.py) and the 16-bit gate (verify/gate16/isolated16.py) now

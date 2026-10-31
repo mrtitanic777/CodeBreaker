@@ -703,6 +703,19 @@ void Funcdata::switchOverJumpTables(const FlowInfo &flow)
 {
   vector<JumpTable *>::iterator iter;
 
+  // CodeBreaker: a table installed before flow (an override, installJumpTable) whose BRANCHIND
+  // flow never reached has no op linked to it; every pass after this one reads its op, and
+  // switchOver itself dereferenced it (USER's MSGTHKCONNECTIONDATALS crashed). It is dropped.
+  vector<JumpTable *> linked;
+  for(iter=jumpvec.begin();iter!=jumpvec.end();++iter) {
+    if ((*iter)->getIndirectOp() == (PcodeOp *)0) {
+      warningHeader("Supplied jumptable not reached by flow: dropped");
+      delete *iter;
+      continue;
+    }
+    linked.push_back(*iter);
+  }
+  jumpvec = linked;
   for(iter=jumpvec.begin();iter!=jumpvec.end();++iter)
     (*iter)->switchOver(flow);
 }
