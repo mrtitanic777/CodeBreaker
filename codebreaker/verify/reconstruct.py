@@ -195,7 +195,8 @@ def run(module_path, fs=None, log=print):
     from codebreaker.symbols import names, runtime_library
     kind = kind_of(module_path)
     fs = fs or functions.open()
-    if os.environ.get("CB_ENGINE") == "1":
+    from codebreaker import engine
+    if engine.enabled():
         from codebreaker.engine import lanes
         if lanes.on(module_path):
             return _run_on_engine(module_path, kind, fs, log)

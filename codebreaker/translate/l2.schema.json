@@ -32,6 +32,14 @@
     "signed": {
      "type": "boolean",
      "description": "for char: stated, not assumed"
+    },
+    "enc": {
+     "enum": [
+      "utf16",
+      "utf8",
+      "utf32"
+     ],
+     "description": "a character in this encoding, not a number (C#'s char beside ushort)"
     }
    },
    "additionalProperties": false
@@ -72,6 +80,10 @@
      "items": {
       "$ref": "#/$defs/Type"
      }
+    },
+    "nullable": {
+     "type": "boolean",
+     "description": "a reference that may be null, as the source declared it (C#'s string?)"
     }
    }
   },
@@ -184,6 +196,10 @@
     },
     "to": {
      "$ref": "#/$defs/Type"
+    },
+    "ref": {
+     "type": "boolean",
+     "description": "a C++ reference (T&, T&&): a pointer never null nor reseated. Its uses are explicit in the tree as for a pointer (a read is Unary '*', a binding Unary '&'); a C++ back end writes neither"
     }
    },
    "additionalProperties": false
@@ -307,6 +323,11 @@
     "count": {
      "type": "integer",
      "minimum": 0
+    },
+    "rank": {
+     "type": "integer",
+     "minimum": 2,
+     "description": "a rectangular array of this many dimensions (C#'s int[,]); absent: one (jagged arrays nest)"
     }
    },
    "additionalProperties": false
@@ -579,7 +600,9 @@
       "package",
       "global",
       "function",
-      "label"
+      "label",
+      "property",
+      "event"
      ]
     },
     "name": {
@@ -626,6 +649,25 @@
     },
     "varargs": {
      "type": "boolean"
+    },
+    "refs": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "",
+       "ref",
+       "out",
+       "in"
+      ]
+     },
+     "description": "how each parameter is passed, where any is not by value"
+    },
+    "flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "extension, indexer, operator, readonly, virtual, abstract, override, ..."
     }
    }
   },
@@ -1181,6 +1223,10 @@
        "type": "null"
       }
      ]
+    },
+    "implicit": {
+     "type": "boolean",
+     "description": "a conversion the source language makes by itself (C's integer promotions, array-to-pointer decay, an upcast): explicit in the tree so every back end sees it, unwritten by a back end of the same language"
     }
    },
    "additionalProperties": false
@@ -1349,6 +1395,26 @@
        "type": "null"
       }
      ]
+    },
+    "tparams": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "layout": {
+     "$ref": "#/$defs/Record",
+     "description": "a C or C++ struct/union whose bytes the source can see: each field's offset and the size, as the source's compiler lays them out for its target (Unit.target)"
     }
    },
    "additionalProperties": false
@@ -1809,6 +1875,16 @@
      "anyOf": [
       {
        "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "value": {
+     "anyOf": [
+      {
+       "type": "integer"
       },
       {
        "type": "null"
@@ -2317,6 +2393,16 @@
        "items": {
         "$ref": "#/$defs/Node"
        }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
       },
       {
        "type": "null"
@@ -2957,6 +3043,22 @@
        "type": "null"
       }
      ]
+    },
+    "tparams": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
     }
    },
    "additionalProperties": false,
@@ -3402,6 +3504,94 @@
     },
     "width": {
      "type": "integer"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Property": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Property"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "mods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "params": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "accessors": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "init": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
     }
    },
    "additionalProperties": false
@@ -3932,6 +4122,66 @@
    },
    "additionalProperties": false
   },
+  "TypeParam": {
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "TypeParam"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "name": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "bounds": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "variance": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "additionalProperties": false
+  },
   "Unary": {
    "type": "object",
    "required": [
@@ -4072,6 +4322,45 @@
        "type": "null"
       }
      ]
+    },
+    "lang": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "the source language whose semantics the unit's library calls and string conversions carry"
+    },
+    "target": {
+     "type": "object",
+     "description": "a C/C++ unit: the target its compiler was asked for and the sizes it gave the types whose width is the target's (pointer, long, plain char's sign)",
+     "properties": {
+      "triple": {
+       "type": "string"
+      },
+      "pointer": {
+       "type": "integer"
+      },
+      "long": {
+       "type": "integer"
+      },
+      "wchar": {
+       "type": "integer"
+      },
+      "char_signed": {
+       "type": "boolean"
+      },
+      "language": {
+       "type": "string"
+      },
+      "std": {
+       "type": "string"
+      }
+     },
+     "additionalProperties": false
     }
    },
    "additionalProperties": false
@@ -4277,6 +4566,7 @@
       "Param",
       "Paren",
       "Piece",
+      "Property",
       "Return",
       "Select",
       "Super",
@@ -4287,6 +4577,7 @@
       "Throw",
       "Try",
       "TypeName",
+      "TypeParam",
       "Unary",
       "Unit",
       "Unsupported",
@@ -4852,6 +5143,18 @@
      "if": {
       "properties": {
        "node": {
+        "const": "Property"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Property"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
         "const": "Return"
        }
       }
@@ -4966,6 +5269,18 @@
      },
      "then": {
       "$ref": "#/$defs/TypeName"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "TypeParam"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/TypeParam"
      }
     },
     {

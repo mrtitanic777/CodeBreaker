@@ -35,7 +35,9 @@ add_library(cbtrace SHARED
   recorder.cc   # per instruction / per block, settle
   memory.cc     # reads and writes, pages mapped on demand, interrupts, putting pages back
   imports.cc    # the stand-in for an import entered
-  branches.cc)  # the branch log
+  branches.cc   # the branch log
+  driver_rec.cc # the flat ring-0 driver recorder (driver.py run)
+  w16_rec.cc)   # the 16-bit recorder (windows16.py trace_function16)
 target_include_directories(cbtrace PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${UNICORN_DIR}/include ${CAPSTONE_DIR}/include)
 if(MSVC)
   target_compile_options(cbtrace PRIVATE /EHsc /O2 /W3)
