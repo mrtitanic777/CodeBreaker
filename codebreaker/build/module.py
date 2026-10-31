@@ -1853,8 +1853,9 @@ def build(module, outdir=None, call=True, log=print, gated=None, _gate=False):
     path = corpus.retail(module)
     if not path:
         raise SystemExit("no module %r in the corpus" % module)
-    if os.environ.get("CB_ENGINE") == "1" and gated is None:
-        # (on the engine: the same build made of facts, only what changed made again -- engine/win16.py, engine/lanes.py for a 32-bit one)
+    from codebreaker import engine
+    if engine.enabled() and gated is None:
+        # (on the engine, the default: the same build made of facts, only what changed made again -- engine/win16.py, engine/lanes.py for a 32-bit one; CB_ENGINE=0 falls back to the old path below)
         from codebreaker import platforms
         p = platforms.identify(path)
         if p is not None and p.steps:
@@ -2044,13 +2045,16 @@ def _gate16(path, folder, names, m):
 
 
 def main(argv):
-    """python -m codebreaker build <module> [--out DIR] [--no-run] [--engine]
+    """python -m codebreaker build <module> [--out DIR] [--no-run] [--engine] [--no-engine]
 
+    The engine is the default (engine/win16.py, engine/lanes.py); --no-engine is the old path.
     Without --out the build goes into the module's project folder: Converted/<name>/build/."""
     out = argv[argv.index("--out") + 1] if "--out" in argv else None
     names = [a for a in argv if not a.startswith("--") and a != out]
-    if "--engine" in argv:                                   # (a 16-bit or 32-bit module made by the engine)
+    if "--engine" in argv:                                   # (the default; kept for scripts)
         os.environ["CB_ENGINE"] = "1"
+    if "--no-engine" in argv:                                # (the old direct build path)
+        os.environ["CB_ENGINE"] = "0"
     if not names:
         print(__doc__)
         return 2

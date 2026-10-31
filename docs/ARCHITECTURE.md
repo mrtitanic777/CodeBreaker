@@ -64,7 +64,8 @@ F. **Path-exploring judge** (6): concolic execution on the emulators, judging a 
 
 The database and the engine are `codebreaker/engine/`, and the 16-bit module build runs on them
 behind a switch: `python -m codebreaker build <module> --engine`, or `CB_ENGINE=1` (module.build
-then hands a 16-bit module to the engine). The old path is still the default.
+then hands a 16-bit module to the engine). (Since 2026-10-31 the engine is the default and
+`CB_ENGINE=0` is the fallback -- "Built: the engine is the default" below.)
 
 **The database** (engine/facts.py). One SQLite file per binary, state/db/<sha256>.sqlite. A fact
 is (kind, key, value): `function.object` at `1:7cd4` (a function's address in the original), or
@@ -886,13 +887,16 @@ change to one function's code judges that one, one that does not compile is not 
 with the build's files gone builds again there and judges all); test_platforms (every lane
 platform's steps named); test_ui, test_mcp, test_service, test_plumbing, test_frozen, test_verification, test_whole_module, test_drivers, test_dos, test_powerpc, test_knowledge, test_symbols, test_analysis and tests/java/test_kind pass; tools/check_imports passes, tools/tidy reports nothing in these files (its findings are in c_text, describe, windows16 and translate/backends/c.py, other work).
 
-**Left.** The inner caches of the stages (state/cache: the compiler's objects in build/functions,
-masm, msc6, the period compiler's in verify/authored/match, origin16, and the 16-bit gate's and the
-decompiler's, which are other work now) are still base/cache.py: the lanes' steps are the outer
-layer, as phase A's were, and each goes as its stage becomes steps of its own (the compiler's
-objects are per text, not per binary: they need a compile step the build asks, as engine/win16.py's
-function.object). The engine path is behind its switch; the old reconstruct.run and module.build
-paths stay the default until the switch is turned on for all.
+**Left.** The inner caches of the stages (state/cache: masm, msc6, the period compiler's in
+verify/authored/match, origin16, and the 16-bit gate's and the decompiler's, which are other work
+now) are still base/cache.py: the lanes' steps are the outer layer, as phase A's were, and each
+goes as its stage becomes steps of its own. (Since 2026-10-31 the 16-bit compiler object cache has
+moved: engine/win16.py's function.object and function.never_set run the compiler directly through
+build/functions._run_compile / _run_never_set, so that fact IS the per-text object cache, keyed by
+the engine's inputs (function.source, ne.header, the tool), not base/cache.py's objects/never_set
+kinds -- those stay for the old reconstruct.run/module.build paths and for the link's un-served
+compiles. See "Built: the engine is the default".) The 32-bit build still caches whole in
+base/cache under its lane.pe.build fact.
 
 ## Built: one Module model, the writers as back ends (2026-10-30)
 
@@ -1075,6 +1079,62 @@ headers keep their own words: a ledger of bytes, written into other repositories
 writers' printed "builds back THE SAME" and build/driver's same/DIFFERS checks are bools, not
 verdicts. driver.py's limit `layout-differs` is not in V.WEAK_LIMITS (so it does not make a match
 weak), as before. coverage/reach.md's "Unverified" column counts no-compile too.
+
+## Built: the engine is the default (2026-10-31)
+
+The engine path is now the default. `reconstruct.run` (so `measure` and `sweep`), `build/module.build`
+and `measure` route to it unless `CB_ENGINE=0`; `engine.enabled()` is the one reader (CB_ENGINE unset
+or not "0"), and `build`/`measure` take `--no-engine` for the fallback. The old direct paths
+(reconstruct.run's own decompile-build-judge, module.build's own build loop) stay reachable under
+`CB_ENGINE=0`, to be deleted at the next milestone (docs/NATIVE.md's four moves: full regression --
+Setup boots, the slow suites, a full sweep -- before deletion), not now.
+
+`lanes.on(path)` gates which binaries the engine's judge handles: every platform that has a lane,
+which today is all thirteen but the original Xbox (xbe: loader and CPU only, no lane -- it is judged
+through its PE image elsewhere). So ne, pe, le, dos, powerpc, java and the six console/home-computer
+machines all go through the engine.
+
+**Confirmed identical to the old path** (fresh state each, the function store's verdict rows -- addr,
+verdict, reason, limits, name -- and the linked image compared, old vs engine):
+
+    module         lane   verdict counts (old == engine)                               identical
+    lzexpand.dll   ne     equivalent 30, divergent 14, no-compile 2                     yes; image byte-identical
+    keyboard.drv   ne     equivalent 40, divergent 21, consistent 4, no-compile 5       yes
+    comm.drv       ne     equivalent 20, divergent 3, consistent 18                     yes
+    krnl386.exe    ne     equivalent 222, divergent 504, consistent 399, no-compile 41  yes (1166 rows; old 661 s, engine 355 s cold)
+    version.dll    pe     equivalent 28, divergent 4, no-compile 12                     yes
+    imm32.dll      pe     equivalent 73                                                 yes
+    lz32.dll       pe     equivalent 17, divergent 3, no-compile 19                     yes; image == but for the PE time stamps (5 bytes)
+    splitter.vxd   le     equivalent 6                                                  yes
+    srammtd.vxd    le     equivalent 1                                                  yes
+    dblbuff.sys    dos    equivalent 9                                                  yes
+
+(The powerpc, java and console lanes were gated the same way in phase D/F -- their before==after
+evidence and tests are above and in test_powerpc / test_nes / test_z80 / test_m68k; they are
+unchanged here.)
+
+**The cold vs warm re-sweep** (20 PE modules, one state folder, the engine default, low_load 3):
+
+    cold (empty state and cache)   220.2 s   239 functions, VERIFIED 174, weak 5, runtime 51, UNVERIFIED 9
+    warm (facts kept, nothing changed)  1.5 s   the same 239, nothing remade
+
+The warm re-sweep makes no function again -- every fact is current -- so a re-sweep after a change
+redoes only the functions it touched, which is the point of the engine being the default (a cold
+sweep/census under the old default re-did everything every time).
+
+**The compiler object cache moved** to being an engine step (item 3, "Left" above): engine/win16.py's
+function.object and function.never_set run the compiler through build/functions._run_compile /
+_run_never_set (a cacheless core split out of _compile / never_set, with _adjust_flags), so the
+fact store is the per-text object cache, keyed by function.source, ne.header and the tool. base/cache.py's
+objects/never_set kinds stay for the old paths and the link's un-served compiles (data, stand-ins the
+linker decides). Left as base/cache for now, each to move as its stage becomes a step: the 32-bit
+build (cached whole under lane.pe.build), masm, msc6, the period compiler's byte-match cache, origin16,
+the 16-bit gate's and the decompiler's.
+
+Tests (fresh): test_frozen (22), test_engine (13), test_verification (21), test_whole_module (15),
+test_drivers (16), test_xex (4, 1 skipped), test_service (11), test_ui (10), test_translate,
+test_plumbing (17), check_imports (524); l2c --made lzexpand/keyboard/comm/lz32 223 of 223 the same.
+(No Setup boot, no full sweep -- those are the milestone.)
 
 ## Decisions, and what is left open
 

@@ -1,7 +1,7 @@
 """lanes.py -- every lane's reconstruct-and-judge as steps of the engine, and the 32-bit module build.
 
-    CB_ENGINE=1 python -m codebreaker measure <module>     (verify/reconstruct.run goes here)
-    CB_ENGINE=1 python -m codebreaker build <module>       (a 32-bit module: module.build goes here)
+    python -m codebreaker measure <module>     (verify/reconstruct.run goes here by default; CB_ENGINE=0 for the old path)
+    python -m codebreaker build <module>       (a 32-bit module: module.build goes here by default)
 
     from codebreaker.engine import engine, lanes
     rows = lanes.judged(path)                      # -> Judged: the rows reconstruct.run records

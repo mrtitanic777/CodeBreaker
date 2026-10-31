@@ -62,22 +62,21 @@ def _plain(symbol):
     return symbol.split("@")[0].strip("_")
 
 
-def _compile(cc, cflags, env, outdir, stem, text):
-    """Compile one function. -> "" or the first error. What the compiler made of this text
-    with this header and these options is kept (base/cache.py) and not made again."""
-    from codebreaker.base import cache
+def _adjust_flags(cflags, text):
+    """The options one function's text asks for on top of the module's -- the Windows prologue for
+    an export, the frame kept for a function that reads where SP stood on entry."""
     if "__export " in text and "-zW" not in cflags:
         cflags = list(cflags) + ["-zW"]        # (the Windows prologue, which the loader rewrites for an export)
     if ("codebreaker_entry_sp(" in text or "codebreaker_stack(" in text) and "-of+" not in cflags:
         cflags = list(cflags) + ["-of+"]       # (it reads the frame: BP+2 is where SP stood on entry)
-    k = cache.key(cache.tool(cc), cflags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
-    had = cache.get("objects", k) if k else None
-    if had is not None:
-        if had[:2] == b"ER":
-            return had[2:].decode("utf-8", "replace")
-        with open(os.path.join(outdir, stem + ".obj"), "wb") as f:
-            f.write(had[2:])
-        return ""
+    return cflags
+
+
+def _run_compile(cc, cflags, env, outdir, stem, text):
+    """Compile one function, running the compiler (no cache). `cflags` are already adjusted
+    (_adjust_flags). -> (why, keepable): why is "" on success, else the first error; keepable says
+    whether the outcome may be remembered (a rejection with a line is; a compiler that fell over is
+    not). On success the object is at outdir/stem.obj."""
     with open(os.path.join(outdir, stem + ".c"), "w", newline="\n", encoding="utf-8") as f:
         f.write('#include "m.h"\n\n' + text + "\n")
     for ext in (".obj", ".err"):
@@ -88,10 +87,7 @@ def _compile(cc, cflags, env, outdir, stem, text):
     r = subprocess.run([cc] + cflags + [stem + ".c"], cwd=outdir, env=env, capture_output=True, text=True,
                        errors="replace", timeout=600)
     if r.returncode == 0 and os.path.isfile(os.path.join(outdir, stem + ".obj")):
-        if k:
-            with open(os.path.join(outdir, stem + ".obj"), "rb") as f:
-                cache.put("objects", k, b"OK" + f.read())
-        return ""
+        return "", True
     log = (r.stdout or "") + (r.stderr or "")
     try:
         log += open(os.path.join(outdir, stem + ".err"), errors="replace").read()
@@ -104,7 +100,29 @@ def _compile(cc, cflags, env, outdir, stem, text):
         n = int(m.group(1))
         if 0 < n <= len(src):
             why += " -- " + src[n - 1].strip()[:200]
-    if k and m:                                  # a rejection is kept; a compiler that fell over is not
+    return why, bool(m)
+
+
+def _compile(cc, cflags, env, outdir, stem, text):
+    """Compile one function. -> "" or the first error. What the compiler made of this text
+    with this header and these options is kept (base/cache.py) and not made again. (The engine's
+    function.object step is its own cache: it calls _run_compile directly -- engine/win16.py.)"""
+    from codebreaker.base import cache
+    cflags = _adjust_flags(cflags, text)
+    k = cache.key(cache.tool(cc), cflags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    had = cache.get("objects", k) if k else None
+    if had is not None:
+        if had[:2] == b"ER":
+            return had[2:].decode("utf-8", "replace")
+        with open(os.path.join(outdir, stem + ".obj"), "wb") as f:
+            f.write(had[2:])
+        return ""
+    why, keep = _run_compile(cc, cflags, env, outdir, stem, text)
+    if not why:
+        if k:
+            with open(os.path.join(outdir, stem + ".obj"), "rb") as f:
+                cache.put("objects", k, b"OK" + f.read())
+    elif k and keep:                             # a rejection is kept; a compiler that fell over is not
         cache.put("objects", k, b"ER" + why.encode("utf-8", "replace"))
     return why
 
@@ -112,18 +130,9 @@ def _compile(cc, cflags, env, outdir, stem, text):
 _NEVER_SET = re.compile(r"W200: '(\w+)' has been referenced but never assigned a value")
 
 
-def never_set(cc, cflags, env, outdir, stem, text):
-    """The variables a function reads that nothing in it ever sets, as the compiler sees them
-    (W200, its flow check, which the build's -w0 keeps quiet). -> [name, ...]
-    One the decompiler made up -- a register on entry (`in_AX`, `unaff_ES`), or a stack slot it
-    split off from a buffer whose address it passes on (`iStack_1b` beside `axStack_34`) -- is a
-    value the original got from somewhere this C does not: what it reads is whatever is there."""
-    from codebreaker.base import cache
+def _run_never_set(cc, cflags, env, outdir, stem, text):
+    """never_set, running the compiler (no cache). -> [name, ...]"""
     flags = [f for f in cflags if not f.startswith("-w")] + ["-w2", "-zs"]
-    k = cache.key(cache.tool(cc), flags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
-    had = cache.get("never_set", k) if k else None
-    if had is not None:
-        return [s for s in had.decode().split(",") if s]
     name = stem + "_w.c"
     with open(os.path.join(outdir, name), "w", newline="\n", encoding="utf-8") as f:
         f.write('#include "m.h"\n\n' + text + "\n")
@@ -133,7 +142,23 @@ def never_set(cc, cflags, env, outdir, stem, text):
         os.remove(os.path.join(outdir, name))
     except OSError:
         pass
-    found = sorted(set(_NEVER_SET.findall((r.stdout or "") + (r.stderr or ""))))
+    return sorted(set(_NEVER_SET.findall((r.stdout or "") + (r.stderr or ""))))
+
+
+def never_set(cc, cflags, env, outdir, stem, text):
+    """The variables a function reads that nothing in it ever sets, as the compiler sees them
+    (W200, its flow check, which the build's -w0 keeps quiet). -> [name, ...]
+    One the decompiler made up -- a register on entry (`in_AX`, `unaff_ES`), or a stack slot it
+    split off from a buffer whose address it passes on (`iStack_1b` beside `axStack_34`) -- is a
+    value the original got from somewhere this C does not: what it reads is whatever is there.
+    (The engine's function.never_set step is its own cache: it calls _run_never_set -- engine/win16.py.)"""
+    from codebreaker.base import cache
+    flags = [f for f in cflags if not f.startswith("-w")] + ["-w2", "-zs"]
+    k = cache.key(cache.tool(cc), flags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    had = cache.get("never_set", k) if k else None
+    if had is not None:
+        return [s for s in had.decode().split(",") if s]
+    found = _run_never_set(cc, cflags, env, outdir, stem, text)
     if k:
         cache.put("never_set", k, ",".join(found).encode())
     return found
