@@ -4552,3 +4552,9 @@ def _function(doc, locs, em=None):
     em.tag_line()
     em.close_group()
     return em.text()[1:]                                 # (the line it starts with: the caller's)
+
+
+# The native writer (native/l2, docs/NATIVE.md step 5): with CB_NATIVE_L2 on, each entry point above is
+# the C++ port's -- the same text, facts and exceptions -- and this Python stays the fallback (0).
+from codebreaker.translate import native_l2 as _native_l2   # noqa: E402
+_native_l2.install(globals())
