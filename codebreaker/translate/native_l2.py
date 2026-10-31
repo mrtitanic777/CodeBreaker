@@ -322,15 +322,27 @@ _ENTRIES = {
 
 def install(namespace):
     """Each of backends/c.py's entry points dispatched by the switch: the native writer where it is on,
-    the Python (kept as namespace["_py_<name>"]) where it is off."""
+    the Python (kept as namespace["_py_<name>"]) where it is off. Inside the Python writer every call
+    stays Python's: its own calls of these names go to its own functions, which share its state."""
+    import threading
+    inside = threading.local()
+
     for name, native in _ENTRIES.items():
         py = namespace[name]
-        namespace["_py_" + name] = py
 
-        def dispatch(*args, _py=py, _native=native, **kw):
-            if enabled():
+        def python(*args, _py=py, **kw):
+            inside.depth = getattr(inside, "depth", 0) + 1
+            try:
+                return _py(*args, **kw)
+            finally:
+                inside.depth -= 1
+        functools.update_wrapper(python, py)
+        namespace["_py_" + name] = python
+
+        def dispatch(*args, _python=python, _native=native, **kw):
+            if not getattr(inside, "depth", 0) and enabled():
                 return _native(*args, **kw)
-            return _py(*args, **kw)
+            return _python(*args, **kw)
         functools.update_wrapper(dispatch, py)
         namespace[name] = dispatch
 
