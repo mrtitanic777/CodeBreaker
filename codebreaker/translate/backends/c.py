@@ -989,6 +989,9 @@ def _stmts(s):
 def _block(em, stmts):
     for s in _stmts(stmts):
         _stmt(em, s)
+    last = _stmts(stmts)[-1:] or [None]
+    if isinstance(last[0], dict) and last[0].get('node') == 'Labeled' and not _stmts(last[0].get('body')):
+        em.print(';')                            # (a label ends the block: C wants a statement after it -- asm_blocks' "after")
 
 
 def _braced(em, stmts):
@@ -1196,10 +1199,22 @@ def _stmt(em, s):
     elif n == 'MachineFragment' and s.get('reason') == 'inline':
         # an _asm block of Microsoft C (decompile/asm_blocks.py): its instructions as the inline
         # assembler takes them, C's names in its operands, labels at the left
-        out.append(pad + '_asm {')
+        # (written through the emitter: the lines PrintC's way, which the back end's printer
+        # replaced -- this branch still wrote to the old printer's list and failed every function
+        # with a block)
+        em.tag_line()
+        em.print('_asm {')
+        em.start_indent()
         for ln in _stmts(s.get('asm')):
-            out.append(ln if ln.endswith(':') else pad + '  ' + ln)
-        out.append(pad + '}')
+            if ln.endswith(':'):
+                em.tag_line(0)
+                em.print(ln)
+            else:
+                em.tag_line()
+                em.print(ln)
+        em.stop_indent()
+        em.tag_line()
+        em.print('}')
     else:
         raise Decline('statement %s' % n)
 
