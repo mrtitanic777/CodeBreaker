@@ -28,6 +28,7 @@ SOURCE_REV = "java-%d" % REV  # who made the candidates: the transpiler, not the
 LIBRARY = False              # no runtime-library functions to identify
 PER_FUNCTION = True          # a class's verdict depends on its text, the support headers and the classes it names
 STD = "c++03"
+CPP_STD = "C++03"            # the back end: transpile.convert's cpp_std (C++17: backends/cpp17.py)
 PLATFORM = None              # no platform: the generic stdafx.h, nothing a host compiler lacks
 FLAGS = ("-std=" + STD, "-fsyntax-only", "-w")
 COMPILES = "compiles (%s %s); not run: %s"
@@ -146,7 +147,7 @@ def prepare(module_path, work):
         shutil.rmtree(out)
     m = Prepared()
     m.out = out
-    m.summary = transpile.convert(src, out, platform=PLATFORM, write_report=False)
+    m.summary = transpile.convert(src, out, platform=PLATFORM, write_report=False, cpp_std=CPP_STD)
     m.src = src
     m.java = dict((os.path.splitext(os.path.basename(p))[0], p) for p in transpile.discover(src))
     classes = sorted(set(m.java) - set(m.summary.get('markers') or ()))   # not the dropped empty markers

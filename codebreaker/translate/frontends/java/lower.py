@@ -145,6 +145,8 @@ class Lowering(object):
                          members=[], outer=outer, **self.pos(n))
         for m in n.get('members', []):
             c.members.append(self.member(m, c, n))
+        if c.kind == 'record':
+            record_members(c)
         return c
 
     def member(self, m, cls, raw_cls):
@@ -310,6 +312,8 @@ class Lowering(object):
             return self.call(n, t, p)
         if k == 'NEW_CLASS':
             body = self.decl(dict(n['classBody'], k='CLASS'), None) if n.get('classBody') else None
+            if body is not None and body.extends is None and n.get('identifier'):
+                body.extends = self.ty(n['identifier'])      # what an anonymous class extends or implements
             return ir.New(sym=sym(n.get('$sym')), args=[self.expr(a) for a in n.get('arguments', [])], body=body,
                           outer=self.expr(n['enclosingExpression']) if n.get('enclosingExpression') else None, type=t, **p)
         if k == 'NEW_ARRAY':
@@ -345,8 +349,17 @@ class Lowering(object):
         if k == 'TYPE_CAST':
             return ir.Cast(x=self.expr(n['expression']), type=t, **p)
         if k == 'INSTANCE_OF':
-            test = n.get('type') or (n.get('pattern') or {}).get('var', {})
-            return ir.InstanceOf(x=self.expr(n['expression']), test=self.ty(test) if test else ir.ANY, binding=None,
+            pat = n.get('pattern') or {}
+            test = n.get('type') or pat.get('variable') or pat.get('var', {})
+            binding = None
+            if pat.get('k') == 'BINDING_PATTERN':          # `x instanceof T v`: v is bound where it matched
+                v = pat.get('variable') or pat['var']
+                binding = ir.Local(sym=sym(v.get('$sym')), type=self.ty(v), init=None,
+                                   mods=self.mods(v.get('modifiers')), **self.pos(v))
+                test = test or v
+            elif pat:                                      # a record pattern (deconstruction): not yet
+                return ir.Unsupported(kind='INSTANCE_OF:' + pat.get('k', '?'), raw=None, type=t, **p)
+            return ir.InstanceOf(x=self.expr(n['expression']), test=self.ty(test) if test else ir.ANY, binding=binding,
                                  type=t, **p)
         if k == 'SWITCH_EXPRESSION':
             return ir.SwitchExpr(expr=self.expr(n['expression']), cases=[self.case(c, True) for c in n.get('cases', [])],
@@ -427,6 +440,102 @@ class Lowering(object):
         else:
             return ir.Unsupported(kind='METHOD_INVOCATION:' + sel['k'], raw=None, type=t, **p)
         return ir.Call(target=target, sym=s, args=args, typeargs=[], type=t, **p)
+
+
+# -------------------------------------------------------------------------------------- records
+# What javac writes for a record only when it lowers it (after the tree TreeDump sees): the canonical
+# constructor's field assignments, an accessor per component, equals, hashCode and toString -- made here as
+# IR, as java.lang.runtime.ObjectMethods defines them, each marked GENERATED.
+_STRING = ir.Type('class', 'java.lang.String')
+_OBJECT = ir.Type('class', 'java.lang.Object')
+_HASH_OWNER = {'i32': 'java.lang.Integer', 'i64': 'java.lang.Long', 'i16': 'java.lang.Short', 'i8': 'java.lang.Byte',
+               'u16': 'java.lang.Character', 'bool': 'java.lang.Boolean', 'f32': 'java.lang.Float',
+               'f64': 'java.lang.Double'}
+
+
+def record_members(c):
+    """Add a record's implicit members to ClassDecl `c` (those it does not declare itself)."""
+    comps = [m for m in c.members if isinstance(m, ir.FieldDecl) and m.sym is not None and not m.sym.static]
+    me = ir.Type('class', c.qname)
+    pos = dict(line=c.line, col=c.col)
+
+    def lit(v, t):
+        return ir.Lit(value=v, type=t, **pos)
+
+    def this_field(f):
+        return ir.Select(obj=ir.This(qualifier=None, type=me, **pos), sym=f.sym, type=f.type, **pos)
+
+    def static_call(owner, name, params, ret, args):
+        s = ir.Sym('method', name, owner, True, params=params, ret=ret)
+        return ir.Call(target=ir.TypeName(type=ir.Type('class', owner), **pos), sym=s, args=args, typeargs=[],
+                       type=ret, **pos)
+
+    def method(name, params, ret, stmts):
+        s = ir.Sym('method', name, c.qname, False, params=[p.type for p in params], ret=ret)
+        c.members.append(ir.MethodDecl(sym=s, name=name, kind='method', params=params, ret=ret,
+                                       body=ir.Block(stmts=stmts, **pos), mods=['public', 'GENERATED'], throws=[],
+                                       typeparams=[], **pos))
+
+    def declared(name, nparams):
+        return any(isinstance(m, ir.MethodDecl) and m.name == name and len(m.params or []) == nparams
+                   for m in c.members)
+
+    # the canonical constructor (javac's own, or a compact one) assigns each component from its parameter
+    want = [f.type for f in comps]
+    for m in c.members:
+        if not (isinstance(m, ir.MethodDecl) and m.kind == 'ctor' and [p.type for p in m.params] == want):
+            continue
+        assigned = [x for x in ir.walk(m.body) if isinstance(x, ir.Assign) and isinstance(x.target, ir.Select)
+                    and isinstance(x.target.obj, ir.This)] if m.body is not None else []
+        if m.body is not None and not assigned:
+            for f, p in zip(comps, m.params):
+                m.body.stmts.append(ir.ExprStmt(expr=ir.Assign(op=None, target=this_field(f), overflow=None,
+                                                               value=ir.Name(sym=p.sym, type=p.type, **pos),
+                                                               type=f.type, **pos), **pos))
+    for f in comps:                                        # x() for each component x
+        if not declared(f.sym.name, 0):
+            method(f.sym.name, [], f.type, [ir.Return(expr=this_field(f), **pos)])
+    if not declared('toString', 0):                        # Point[x=1, y=2]
+        parts = [lit(c.name + '[', _STRING)]
+        for i, f in enumerate(comps):
+            parts += [lit(('' if i == 0 else ', ') + f.sym.name + '=', _STRING), this_field(f)]
+        parts.append(lit(']', _STRING))
+        method('toString', [], _STRING, [ir.Return(expr=ir.Concat(parts=parts, type=_STRING, **pos), **pos)])
+    if not declared('hashCode', 0):                        # h = 31 * h + hash(component), from 0
+        h = ir.Sym('local', 'h', c.qname + '.hashCode', type=ir.I32)
+        stmts = [ir.Local(sym=h, type=ir.I32, init=lit(0, ir.I32), mods=[], **pos)]
+        for f in comps:
+            prim = f.type.kind in _HASH_OWNER
+            call = static_call(_HASH_OWNER[f.type.kind] if prim else 'java.util.Objects', 'hashCode',
+                               [f.type if prim else _OBJECT], ir.I32, [this_field(f)])
+            times = ir.Binary(op='*', left=lit(31, ir.I32), right=ir.Name(sym=h, type=ir.I32, **pos), type=ir.I32, **pos)
+            stmts.append(ir.ExprStmt(expr=ir.Assign(op=None, target=ir.Name(sym=h, type=ir.I32, **pos), overflow=None,
+                                                    value=ir.Binary(op='+', left=times, right=call, type=ir.I32, **pos),
+                                                    type=ir.I32, **pos), **pos))
+        stmts.append(ir.Return(expr=ir.Name(sym=h, type=ir.I32, **pos), **pos))
+        method('hashCode', [], ir.I32, stmts)
+    if not declared('equals', 1):                          # the same record type, every component equal
+        o = ir.Sym('param', 'o', c.qname + '.equals', type=_OBJECT)
+        that = ir.Sym('local', 'that', c.qname + '.equals', type=me)
+        isit = ir.InstanceOf(x=ir.Name(sym=o, type=_OBJECT, **pos), test=me, binding=None, type=ir.BOOL, **pos)
+        stmts = [ir.If(cond=ir.Unary(op='!', x=ir.Paren(x=isit, type=ir.BOOL, **pos), postfix=False, type=ir.BOOL, **pos),
+                       then=ir.Return(expr=lit(False, ir.BOOL), **pos), orelse=None, **pos),
+                 ir.Local(sym=that, type=me, init=ir.Cast(x=ir.Name(sym=o, type=_OBJECT, **pos), type=me, **pos),
+                          mods=[], **pos)]
+        cond = None
+        for f in comps:
+            mine = this_field(f)
+            theirs = ir.Select(obj=ir.Name(sym=that, type=me, **pos), sym=f.sym, type=f.type, **pos)
+            if f.type.kind in ('f32', 'f64'):              # Float.compare / Double.compare == 0 (NaN equals NaN)
+                eq = ir.Binary(op='==', left=static_call(_HASH_OWNER[f.type.kind], 'compare', [f.type, f.type], ir.I32,
+                                                         [mine, theirs]), right=lit(0, ir.I32), type=ir.BOOL, **pos)
+            elif f.type.is_prim:
+                eq = ir.Binary(op='==', left=mine, right=theirs, type=ir.BOOL, **pos)
+            else:
+                eq = static_call('java.util.Objects', 'equals', [_OBJECT, _OBJECT], ir.BOOL, [mine, theirs])
+            cond = eq if cond is None else ir.Binary(op='&&', left=cond, right=eq, type=ir.BOOL, **pos)
+        stmts.append(ir.Return(expr=cond if cond is not None else lit(True, ir.BOOL), **pos))
+        method('equals', [ir.Param(sym=o, type=_OBJECT, mods=[], **pos)], ir.BOOL, stmts)
 
 
 def lower(tree, path=None):
