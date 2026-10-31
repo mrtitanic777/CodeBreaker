@@ -592,8 +592,10 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             intercept[seg_bases[cseg] + coff] = what
     rec["calls_out"] = []
 
-    def answer(address):
+    def answer(address, n=None):
         """A call into another of the module's functions, recorded and answered."""
+        if n is None:
+            n = rec["insn_count"]
         name, pop, far = intercept[address]
         if pop < 0:                                          # (how many it removes is not known:
             rec["unsure"] = True                             # the stack after it is not either)
@@ -604,7 +606,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         first = spn + (4 if far else 2)
         words = [int.from_bytes(uc.mem_read(STACK_BASE + ((first + 2 * k) & 0xFFFF), 2), "little")
                  for k in range(pop // 2)]
-        rec["calls_out"].append({"name": name, "args": words, "sp": spn, "n": rec["insn_count"],
+        rec["calls_out"].append({"name": name, "args": words, "sp": spn, "n": n,
                                  "ret_ip": ip})
         # (the made-up result is made from the words as they compare between builds: a place in
         # the stack, or the stack's or data's selector, legitimately differs -- USER's eleven
@@ -635,6 +637,59 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         uc.reg_write(UC_X86_REG_CS, cs)
         uc.reg_write(UC_X86_REG_EIP, ip)
 
+    def _sentinel(address, n):
+        # import sentinel landing: a far call/jmp reached SENT -> stub a far return (AX=0). `n` is
+        # the instruction count then (the native recorder keeps it; the Python hook passes its own).
+        slot = address - SENT_BASE
+        spn = uc.reg_read(UC_X86_REG_ESP) & 0xFFFF
+        ip = int.from_bytes(uc.mem_read(STACK_BASE + spn, 2), "little")
+        cs = int.from_bytes(uc.mem_read(STACK_BASE + spn + 2, 2), "little")
+        # capture the Pascal args pushed above the far-return addr (for caller reconstruction)
+        args_stack = [int.from_bytes(uc.mem_read(STACK_BASE + ((spn + 4 + 2 * k) & 0xFFFF), 2),
+                                     "little") for k in range(12)]
+        hit = dict(imports.get(slot, {"slot": slot}))
+        hit["args_stack"] = args_stack
+        hit["n"] = n
+        hit["ret_ip"] = ip
+        hit["ret_cs"] = cs                                   # (the caller's own code segment)
+        # (and what a far pointer into one of the module's code segments points at: up to 32
+        # bytes, to the first zero -- a string kept in the code, at its own offset in each build)
+        for k in range(len(args_stack) - 1):
+            base = code_at.get(args_stack[k + 1] & ~3)
+            if base is not None:
+                try:
+                    hit.setdefault("pointed", {})[k] = bytes(uc.mem_read(base + args_stack[k], 32)).split(b"\0")[0]
+                except U.UcError:
+                    pass
+        called = uc.reg_read(UC_X86_REG_CS)
+        if context and called != sent_sel:
+            called |= 3                                      # (loaded as conforming code: RPL 0)
+            # (a far call into the recorded system's code: named by where it went, the same in
+            # any build, and its arguments removed as that code's own `retf n` removes them --
+            # left on the stack, the frame below them came apart: sub_22_33B8 "lost" DI)
+            size = _retf_bytes(context, called, slot)
+            hit = {"api": "far %04x:%04x" % (called, slot), "slot": slot, "foreign": True,
+                   "args_stack": args_stack, "n": n, "ret_ip": ip, "arg_bytes": size}
+            rec["imports_hit"].append(hit)
+            h = int(hashlib.sha1(hit["api"].encode()).hexdigest()[:8], 16)
+            res = {"ax": h & 0xFFFF, "dx": (h >> 16) & 0xFFFF, "pop": size}
+        else:
+            rec["imports_hit"].append(hit)
+            res = import_stub(hit, uc, U) if import_stub else None
+        ax = (res or {}).get("ax", 0) & 0xFFFF
+        dx = (res or {}).get("dx", 0) & 0xFFFF
+        pop = (res or {}).get("pop", 0)
+        uc.reg_write(UC_X86_REG_ESP, (spn + 4 + pop) & 0xFFFF)   # far-ret addr + callee's pascal args
+        uc.reg_write(UC_X86_REG_EAX, (dx << 16) | ax)
+        uc.reg_write(UC_X86_REG_EDX, dx)
+        uc.reg_write(UC_X86_REG_CS, cs); uc.reg_write(UC_X86_REG_EIP, ip)
+        if shadow is not None:
+            # (an unmodelled call's result is an input, `ret`; a modelled one's is made from
+            # its arguments, which the shadow does not follow into the model)
+            free = bool(hit.get("unmodelled"))
+            shadow.after_call(uc, free, (dx << 16) | ax, STACK_BASE + ((spn + 4) & 0xFFFF), pop // 2,
+                              None if free else "call:%s" % hit.get("api"))
+
     def hook_code(uc, address, size, _ud):
         if OWN_BASE <= address < OWN_BASE + 0x1000000 and context:
             # (the module's own code reached through a recorded far pointer: that function of this
@@ -658,57 +713,8 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         rec["insn_count"] += 1
         if len(rec["path"]) < 20000:
             rec["path"].append(address)
-        # import sentinel landing: a far call/jmp reached SENT -> stub a far return (AX=0)
         if SENT_BASE <= address < SENT_BASE + 0x10000:
-            slot = address - SENT_BASE
-            spn = uc.reg_read(UC_X86_REG_ESP) & 0xFFFF
-            ip = int.from_bytes(uc.mem_read(STACK_BASE + spn, 2), "little")
-            cs = int.from_bytes(uc.mem_read(STACK_BASE + spn + 2, 2), "little")
-            # capture the Pascal args pushed above the far-return addr (for caller reconstruction)
-            args_stack = [int.from_bytes(uc.mem_read(STACK_BASE + ((spn + 4 + 2 * k) & 0xFFFF), 2),
-                                         "little") for k in range(12)]
-            hit = dict(imports.get(slot, {"slot": slot}))
-            hit["args_stack"] = args_stack
-            hit["n"] = rec["insn_count"]
-            hit["ret_ip"] = ip
-            hit["ret_cs"] = cs                               # (the caller's own code segment)
-            # (and what a far pointer into one of the module's code segments points at: up to 32
-            # bytes, to the first zero -- a string kept in the code, at its own offset in each build)
-            for k in range(len(args_stack) - 1):
-                base = code_at.get(args_stack[k + 1] & ~3)
-                if base is not None:
-                    try:
-                        hit.setdefault("pointed", {})[k] = bytes(uc.mem_read(base + args_stack[k], 32)).split(b"\0")[0]
-                    except U.UcError:
-                        pass
-            called = uc.reg_read(UC_X86_REG_CS)
-            if context and called != sent_sel:
-                called |= 3                                  # (loaded as conforming code: RPL 0)
-                # (a far call into the recorded system's code: named by where it went, the same in
-                # any build, and its arguments removed as that code's own `retf n` removes them --
-                # left on the stack, the frame below them came apart: sub_22_33B8 "lost" DI)
-                size = _retf_bytes(context, called, slot)
-                hit = {"api": "far %04x:%04x" % (called, slot), "slot": slot, "foreign": True,
-                       "args_stack": args_stack, "n": rec["insn_count"], "ret_ip": ip, "arg_bytes": size}
-                rec["imports_hit"].append(hit)
-                h = int(hashlib.sha1(hit["api"].encode()).hexdigest()[:8], 16)
-                res = {"ax": h & 0xFFFF, "dx": (h >> 16) & 0xFFFF, "pop": size}
-            else:
-                rec["imports_hit"].append(hit)
-                res = import_stub(hit, uc, U) if import_stub else None
-            ax = (res or {}).get("ax", 0) & 0xFFFF
-            dx = (res or {}).get("dx", 0) & 0xFFFF
-            pop = (res or {}).get("pop", 0)
-            uc.reg_write(UC_X86_REG_ESP, (spn + 4 + pop) & 0xFFFF)   # far-ret addr + callee's pascal args
-            uc.reg_write(UC_X86_REG_EAX, (dx << 16) | ax)
-            uc.reg_write(UC_X86_REG_EDX, dx)
-            uc.reg_write(UC_X86_REG_CS, cs); uc.reg_write(UC_X86_REG_EIP, ip)
-            if shadow is not None:
-                # (an unmodelled call's result is an input, `ret`; a modelled one's is made from
-                # its arguments, which the shadow does not follow into the model)
-                free = bool(hit.get("unmodelled"))
-                shadow.after_call(uc, free, (dx << 16) | ax, STACK_BASE + ((spn + 4) & 0xFFFF), pop // 2,
-                                  None if free else "call:%s" % hit.get("api"))
+            _sentinel(address, rec["insn_count"])
         elif shadow is not None:
             shadow.step(uc, address, shadow.segbase(uc, uc.reg_read(UC_X86_REG_CS)))
 
@@ -728,14 +734,16 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             return
         return hook_mem(uc, access, address, msize, value, ud)
 
-    def hook_intr(uc, intno, _ud):
+    def _intr(intno, n=None):
         # `int 21h` in a Windows module is DOS3Call by another door -- the same service, which
         # Windows documents as the faster way in; a module's own code picks one by a flag its
         # start-up sets (LZEXPAND's sub_11_0042 tests CS:[71h]), and a rebuild in C calls
         # DOS3Call. So it is answered as that import is, recorded as that call. Any other
         # interrupt, or a processor exception, ends the run as it did without this hook.
+        if n is None:
+            n = rec["insn_count"]
         if intno == 0x21 and import_stub is not None:
-            hit = {"api": "KERNEL.@102", "slot": None, "args_stack": [], "n": rec["insn_count"], "int": 0x21}
+            hit = {"api": "KERNEL.@102", "slot": None, "args_stack": [], "n": n, "int": 0x21}
             rec["imports_hit"].append(hit)
             res = import_stub(hit, uc, U) or {}
             ax, dx = res.get("ax", 0) & 0xFFFF, res.get("dx", 0) & 0xFFFF
@@ -748,18 +756,40 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         rec["interrupt"] = intno
         uc.emu_stop()
 
-    uc.hook_add(U.UC_HOOK_CODE, hook_code)
-    uc.hook_add(U.UC_HOOK_INTR, hook_intr)
+    def hook_intr(uc, intno, _ud):
+        _intr(intno)
+
+    # The same per-instruction and memory hooks in C++ (native/tracer: cbtrace.dll) when
+    # CB_NATIVE_TRACE16 is on and the DLL loads; else the Python hooks above. A run beside a shadow,
+    # a recorded-system context, or with a prelude stays entirely on the Python hooks.
+    nr = None
+    if shadow is None and context is None and not prelude:
+        from codebreaker.emulate import native_win16
+        if native_win16.enabled():
+            from codebreaker.emulate.emulator import _GOV
+            try:
+                nr = native_win16.Run(
+                    uc, eip_id=UC_X86_REG_EIP, near=near, fill=not os.environ.get("CB_GATE_ZERO"),
+                    cap=insn_cap, cs_base=cs_base, near_ret=cs_base + NEAR_RET, far_ret=SENT_BASE + FAR_RET,
+                    sent_lo=SENT_BASE, sent_hi=SENT_BASE + 0x10000, snap_base=SNAP_BASE, gov=_GOV,
+                    intercept=list(intercept.keys()), on_sentinel=_sentinel,
+                    on_intercept=lambda a, n: answer(a, n), on_intr=lambda i, n: _intr(i, n))
+            except Exception:
+                nr = None
+    if nr is None:
+        uc.hook_add(U.UC_HOOK_CODE, hook_code)
+        uc.hook_add(U.UC_HOOK_INTR, hook_intr)
     if branches:
         uc.hook_add(U.UC_HOOK_CODE, _branch_hook16(rec, cs_base, branches[0], branches[1]), None,
                     cs_base + branches[0], cs_base + branches[1] - 1)
-    uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_limited)
-    uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
-                | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
+    if nr is None:
+        uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_limited)
+        uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
+                    | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
     devices = None
     if ports:
         from codebreaker.emulate import ports16
-        devices = ports16.Devices(clock=lambda: rec["insn_count"])
+        devices = ports16.Devices(clock=(nr.count if nr is not None else (lambda: rec["insn_count"])))
         ports16.hook(uc, U, devices)
 
     # prelude: run setup calls first (sharing this uc's DGROUP state + the import_stub ctx), then
@@ -798,6 +828,14 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     failed = None
     try:
         uc.emu_start(offset, SENT_BASE, count=insn_cap + 1)
+    except U.UcError as e:
+        failed = str(e)
+    if nr is not None:                                       # the native record, then what a Python
+        nr.collect(rec)                                      # hook would have raised in the run
+        exc = nr.raised()
+        if exc is not None:
+            raise exc
+    if failed is None:
         # (neither returned nor stopped by a hook: emu_start's own instruction count ran out --
         # just short of the cap, the skipped calls counting too. That is a run cut off, as much
         # as one the hook stops: "stopped" made a long loop in each build look like an ending)
@@ -806,8 +844,6 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             rec["exit"] = "exception: past the end of a segment"
         if rec.get("interrupt") is not None:                 # (hook_intr: as Unicorn says it unhooked)
             failed = "Unhandled CPU exception (UC_ERR_EXCEPTION)"
-    except U.UcError as e:
-        failed = str(e)
     if failed:
         rec["exit"] = "exception: %s" % failed
         # fault detail: disassemble the instruction at the faulting CS:EIP (helps triage which

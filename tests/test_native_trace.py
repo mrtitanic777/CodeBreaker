@@ -171,6 +171,120 @@ def test_python_raises_through():
         _uninstall()
 
 
+# ---- the flat driver recorder (emulate/driver.py run, emulate/native_driver.py) ----------------
+DRV_BASE = 0x80010000
+# a flat ring-0 routine: set EAX, store it through a far address (an unmapped page), poll a UART
+# port and write it, make an INT 20h service call (VMM 0001:0001), call out through a pointer
+# (EAX, nothing there), then return.
+DRV_CODE = bytes.fromhex(
+    "B844332211"          # mov eax, 0x11223344
+    "A300000090"          # mov [0x90000000], eax   (an unmapped write -> a page mapped on demand)
+    "66BAF803"            # mov dx, 0x3F8
+    "EC"                  # in al, dx               (a UART port read)
+    "EE"                  # out dx, al              (a UART port write)
+    "CD20" "01000100"     # int 20h ; dd 0001:0001  (a VMM service call)
+    "FFD0"                # call eax                (a call out through a pointer)
+    "C3")                 # ret
+
+
+class _DrvImage:
+    def __init__(self, base, code):
+        self.regions = [(base, code)]
+        self.spans = [(base, base + len(code), 0)]
+
+    def holds(self, a):
+        return any(lo <= a < hi for lo, hi, _i in self.spans)
+
+
+def _need_drv():
+    os.environ["CB_NATIVE_TRACE_DRV"] = "1"
+    from codebreaker.emulate import native_driver
+    if not native_driver.enabled():
+        raise Skip("cbtrace.dll not usable: %s" % native_driver.why_not())
+
+
+def _drv_both(image, entry, **kw):
+    from codebreaker.emulate import driver
+    out = []
+    for mode in ("0", "1"):
+        os.environ["CB_NATIVE_TRACE_DRV"] = mode
+        try:
+            out.append(driver.run(image, entry, **kw))
+        except Exception as e:
+            out.append(("raised", type(e).__name__, str(e)))
+    os.environ.pop("CB_NATIVE_TRACE_DRV", None)
+    return out
+
+
+def test_driver_same_record():
+    """A flat driver run traced with the Python hooks and the C++ ones gives the same rec --
+    every field: the cover, the service and outside calls, the ports, the writes, the page
+    mapped on demand, the exit and the result registers. No corpus needed."""
+    _need_drv()
+    image = _DrvImage(DRV_BASE, DRV_CODE)
+    for extra in ({}, {"service_eax": 0x1234, "service_carry": 1}, {"cap": 4}, {"stack": (7, 8, 9)}):
+        a, b = _drv_both(image, DRV_BASE, **extra)
+        assert isinstance(a, dict) and isinstance(b, dict), (extra, a, b)
+        if a != b:
+            keys = sorted(k for k in set(a) | set(b) if a.get(k, "-") != b.get(k, "-"))
+            raise AssertionError("driver %s: records differ in %s\n  py=%r\n  na=%r"
+                                 % (extra, keys, {k: a.get(k) for k in keys}, {k: b.get(k) for k in keys}))
+    # and what the run did is actually present
+    r = _drv_both(image, DRV_BASE)[1]
+    assert r["exit"] == "ret", r["exit"]
+    assert any(d is not None and s == 1 for d, s, _re, _wo in r["calls"]), r["calls"]      # the service
+    assert any(d is None for d, _s, _re, _wo in r["calls"]), r["calls"]                     # the call out
+    assert r["ports"] and r["outside"] == 1, (r["ports"], r["outside"])
+    assert any(w["addr"] == 0x90000000 and w["value"] == 0x11223344 for w in r["mem_writes"]), r["mem_writes"]
+    assert any(m["page"] == 0x90000000 for m in r["lazy_maps"]), r["lazy_maps"]
+
+
+# ---- the 16-bit recorder (emulate/windows16.py trace_function16, emulate/native_win16.py) -------
+def _win16_both(path, seg, off, **kw):
+    from codebreaker.emulate import windows16 as ne
+    out = []
+    for mode in ("0", "1"):
+        os.environ["CB_NATIVE_TRACE16"] = mode
+        try:
+            out.append(ne.probe(path, seg=seg, offset=off, **kw))
+        except Exception as e:
+            out.append(("raised", type(e).__name__, str(e)))
+    os.environ.pop("CB_NATIVE_TRACE16", None)
+    return out
+
+
+def test_win16_same_record():
+    """A 16-bit NE function traced with the Python hooks and the C++ ones gives the same record --
+    the path, the instruction count, the imports hit, the writes, the pages mapped on demand, the
+    ports, the exit and the result. Uses lzexpand.dll's functions; skipped without the corpus."""
+    _need()
+    from codebreaker.emulate import native_win16
+    os.environ["CB_NATIVE_TRACE16"] = "1"
+    if not native_win16.enabled():
+        raise Skip("cbtrace.dll not usable: %s" % native_win16.why_not())
+    from codebreaker.base import corpus
+    from codebreaker.formats.ne import NEFile
+    try:
+        path = corpus.retail("lzexpand.dll")
+    except Exception:
+        path = None
+    if not path or not os.path.isfile(path):
+        raise Skip("lzexpand.dll is not in the corpus")
+    ents = NEFile(path).entries()
+    funcs = [e for e in ents if e and e.get("kind") != "UNUSED" and e.get("seg")][:12]
+    n = 0
+    for e in funcs:
+        for extra in ({}, {"ports": True}, {"insn_cap": 64}):
+            a, b = _win16_both(path, e["seg"], e["offset"], args=[0, 0, 0, 0], **extra)
+            if a != b:
+                keys = sorted(k for k in set(a) | set(b) if a.get(k, "-") != b.get(k, "-")) \
+                    if isinstance(a, dict) and isinstance(b, dict) else ["(raised)"]
+                raise AssertionError("lz16 %d:%04x %s: records differ in %s"
+                                     % (e["seg"], e["offset"], extra, ", ".join(map(str, keys))))
+            n += 1
+    assert n == 3 * len(funcs) and funcs
+
+
 def test_same_record_lz32():
     _need()
     from codebreaker.base import corpus
@@ -190,7 +304,7 @@ def test_same_record_lz32():
 
 def main():
     for fn in (test_same_record_synthetic, test_record_has_what_was_run, test_python_raises_through,
-               test_same_record_lz32):
+               test_driver_same_record, test_win16_same_record, test_same_record_lz32):
         check(fn)
     for name, status, why in RESULTS:
         print("%-32s %s %s" % (name, status, why))

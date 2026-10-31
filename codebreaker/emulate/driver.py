@@ -238,24 +238,59 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
         else:
             record(_uc, access, address, size, value, user)
 
-    uc.hook_add(U.UC_HOOK_CODE, on_code)
-    uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, on_memory)
-    uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED | U.UC_HOOK_MEM_FETCH_UNMAPPED,
-                on_unmapped)
-    uc.hook_add(U.UC_HOOK_INTR, on_interrupt)
-    uc.hook_add(U.UC_HOOK_INSN, on_in, None, 1, 0, X.UC_X86_INS_IN)
-    uc.hook_add(U.UC_HOOK_INSN, on_out, None, 1, 0, X.UC_X86_INS_OUT)
+    # The same hooks in C++ (native/tracer: cbtrace.dll) when CB_NATIVE_TRACE_DRV is on and the
+    # DLL loads; else the Python hooks above. A run kept beside a shadow stays Python's (step 3).
+    nr = None
+    if shadow is None:
+        from codebreaker.emulate import native_driver
+        if native_driver.enabled():
+
+            def _answers(device, service):
+                where = answers_in(driver_services.service_name(device, service))
+                if not where:
+                    return -1
+                try:
+                    return REGISTERS.index(where)
+                except ValueError:
+                    return -1
+            try:
+                nr = native_driver.Run(
+                    uc, reg_ids=[reg[n] for n in ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp",
+                                                  "esp", "eip", "eflags")],
+                    ins_in=X.UC_X86_INS_IN, ins_out=X.UC_X86_INS_OUT, vm_addr=VM, ret=RETURN,
+                    scratch=(SCRATCH, SCRATCH + emulator._SCRATCH_SIZE),
+                    spans=[(lo, hi) for lo, hi, _i in image.spans], cap=cap,
+                    service_eax=service_eax, service_carry=service_carry, gov=emulator._GOV,
+                    answers=_answers)
+            except Exception:
+                nr = None
+    if nr is None:
+        uc.hook_add(U.UC_HOOK_CODE, on_code)
+        uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, on_memory)
+        uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED | U.UC_HOOK_MEM_FETCH_UNMAPPED,
+                    on_unmapped)
+        uc.hook_add(U.UC_HOOK_INTR, on_interrupt)
+        uc.hook_add(U.UC_HOOK_INSN, on_in, None, 1, 0, X.UC_X86_INS_IN)
+        uc.hook_add(U.UC_HOOK_INSN, on_out, None, 1, 0, X.UC_X86_INS_OUT)
+    uc_error = None
     try:
         # No clock: a run ends by returning, faulting, or at a count (instructions, memory
         # accesses, pages) -- so the same run always ends the same way and can be remembered.
         uc.emu_start(entry, RETURN, count=cap + 1)
+    except U.UcError as e:
+        uc_error = e
+    if nr is not None:
+        exc = nr.raised()                                # a resolver that raised comes out here
+        if exc is not None:
+            raise exc
+        nr.collect(rec)
+    if uc_error is None:
         at = uc.reg_read(reg["eip"])
         if rec["exit"] is None:
             rec["exit"] = "truncated" if rec["truncated"] else "ret" if at == RETURN else \
                 "exception: stopped at 0x%x" % at
-    except U.UcError as e:
-        if rec["exit"] is None:
-            rec["exit"] = "exception: %s" % e
+    elif rec["exit"] is None:
+        rec["exit"] = "exception: %s" % uc_error
     rec["eax"] = uc.reg_read(reg["eax"])
     rec["flags"] = uc.reg_read(reg["eflags"]) & 0x41         # carry and zero
     rec["registers"] = tuple(uc.reg_read(reg[n]) for n in RESULT_REGISTERS)
