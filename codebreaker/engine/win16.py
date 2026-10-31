@@ -1,6 +1,6 @@
 """win16.py -- the 16-bit module build as steps of the engine: describe, decompile, compile, gate, link.
 
-    python -m codebreaker build <module> --engine      (or CB_ENGINE=1: module.build goes here)
+    python -m codebreaker build <module>               (module.build goes here by default; CB_ENGINE=0 for the old path)
 
     from codebreaker.engine import engine, win16
     b = win16.build("USER.EXE")                        # -> module.Built, b.image the linked file
@@ -73,6 +73,10 @@ PLATFORM = "win16"
 P = platforms.named(PLATFORM)                           # its six slots: loader, cpu, ... packager
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))       # codebreaker/
 _real_compile, _real_never_set = P.compiler.compile.target(), functions.never_set
+# (the function.object/function.never_set steps are their own cache -- the fact store, keyed by the
+#  engine's inputs -- so they run the compiler directly, not through base/cache.py's objects/never_set
+#  kinds. _real_compile/_real_never_set stay the cached forms for the link's un-served compiles.)
+_raw_compile, _raw_never_set, _adjust_flags = functions._run_compile, functions._run_never_set, functions._adjust_flags
 # (the options module._build16 compiles a function with, before its code segment's -nt=: the
 # medium model, the 8087, for size, the code class it lays out first)
 CFLAGS = [f for f in P.compiler.options() if f != "-ms"] + ["-mm", "-fpi87", "-os", "-nc=MCODE"]
@@ -242,7 +246,9 @@ def _read(path):
       uses=(functions, _folder, _read), stamp=lambda: cache.tool(_wcc()))
 def function_object(ctx, key):
     """The object file the compiler makes of the function: {flags, text, obj} -- or, when it is
-    rejected, {error, stand_in: the object of a stand-in with its signature (or None)}."""
+    rejected, {error, stand_in: the object of a stand-in with its signature (or None)}. This fact
+    is the compiler object cache (keyed by function.source and ne.header): the compiler runs
+    directly here, not through base/cache.py's objects kind."""
     src = ctx.need("function.source", key)
     if src is None:
         return None
@@ -250,12 +256,13 @@ def function_object(ctx, key):
     d = _folder(ctx, src["seg"], header)
     env = P.compiler.env()
     out = {"flags": src["flags"], "text": src["text"]}
-    why = _real_compile(_wcc(), src["flags"], env, d, src["stem"], src["text"])
+    why, _keep = _raw_compile(_wcc(), _adjust_flags(src["flags"], src["text"]), env, d, src["stem"], src["text"])
     if why:
         out["error"] = why
         out["stand_in_text"] = functions.stand_in(src["text"])
         out["stand_in"] = None
-        if not _real_compile(_wcc(), src["flags"], env, d, src["stem"], out["stand_in_text"]):
+        si = out["stand_in_text"]
+        if not _raw_compile(_wcc(), _adjust_flags(src["flags"], si), env, d, src["stem"], si)[0]:
             out["stand_in"] = _read(os.path.join(d, src["stem"] + ".obj"))
     else:
         out["obj"] = _read(os.path.join(d, src["stem"] + ".obj"))
@@ -273,7 +280,7 @@ def function_never_set(ctx, key):
     d = _folder(ctx, src["seg"], ctx.need("ne.header"))
     stem = "n" + key.replace(":", "_")                       # (only its scratch file's name)
     return {"flags": CFLAGS, "text": src["text"],
-            "names": _real_never_set(_wcc(), CFLAGS, P.compiler.env(), d, stem, src["text"])}
+            "names": _raw_never_set(_wcc(), CFLAGS, P.compiler.env(), d, stem, src["text"])}
 
 
 @step("function.contract", reads=("function.c", "ne.functions", "ne.lines"), platform=PLATFORM)
