@@ -166,7 +166,78 @@ def ne_all(path, data):
     return ok, out
 
 
-READERS = {"pe": pe_all, "ne": ne_all}     # reader -> its facts(path, data), asked once of each side
+def le_image_facts(lf, prefix):
+    from codebreaker.formats import le
+    out = [(prefix + "attrs", canon({k: v for k, v in vars(lf).items() if not k.startswith("_")}))]
+    for m in ("fixups", "import_modules", "resident_name", "header", "description", "ddb"):
+        out.append((prefix + m, ask(getattr(lf, m))))
+    for pg in list(range(0, min(lf.mpages, 64) + 2)) + [lf.mpages, lf.mpages + 1, 10 ** 6]:
+        out.append((prefix + "page_to_obj(%d)" % pg, ask(lambda: lf.page_to_obj(pg))))
+    for f in ("header_fields", "is_member", "page_map", "names", "entries", "_entry_table_size", "exports",
+              "fixup_records", "references", "pointers", "descriptor", "service_table", "entry_points",
+              "service_calls"):
+        out.append((prefix + f, ask(lambda: getattr(le, f)(lf))))
+    for o in lf.objects[:16]:
+        out.append((prefix + "object_bytes(%d)" % o["idx"], ask(lambda: lf.object_bytes(o))))
+        out.append((prefix + "object_data(%d)" % o["idx"], ask(lambda: le.object_data(lf, o))))
+        for off in (0, 1, o["vsize"] - 1, o["vsize"], 0x1234, -1):
+            out.append((prefix + "file_offset(%d,%d)" % (o["idx"], off), ask(lambda: le.file_offset(lf, o["idx"], off))))
+    out.append((prefix + "file_offset(0,0)", ask(lambda: le.file_offset(lf, 0, 0))))
+    try:
+        d = le.descriptor(lf)
+    except Exception:                           # noqa: BLE001
+        d = None
+    if d:
+        out.append((prefix + "service_table(d)", ask(lambda: le.service_table(lf, d))))
+    try:
+        recs = le.fixup_records(lf)
+    except Exception:                           # noqa: BLE001
+        recs = []
+    out.append((prefix + "encode_fixup", ask(lambda: [le.encode_fixup(r) for _pg, r in recs[:400]])))
+    out.append((prefix + "_names", ask(lambda: le._names(lf.d, lf.resnames))))
+    out.append((prefix + "_plausible", ask(lambda: [le._plausible(lf.d, at) for at in (0, 4, lf.lfa, -1)])))
+    out.append((prefix + "read_image", ask(lambda: le.read_image(lf))))
+    out.append((prefix + "write_image", ask(lambda: le.write_image(le.read_image(lf)))))
+    return out
+
+
+def le_all(path, data):
+    from codebreaker.formats import le
+    with open(path, "rb") as fh:
+        whole = fh.read()
+    out = [("container", ask(lambda: le.container(whole)))]
+    try:
+        c = le.container(whole)
+    except Exception:                           # noqa: BLE001
+        c = None
+    if c:
+        out.append(("expand", ask(lambda: le.expand(whole))))
+        if c["kind"] == "W4":                   # a page or two through the compressor and back
+            plain = timed(le.expand, whole)
+            at = c["at"]
+            pages = [plain[at + 0x10 + k * 0x2000:at + 0x10 + (k + 1) * 0x2000].ljust(0x2000, b"\0") for k in range(2)]
+            out.append(("compress_page", ask(lambda: [le.compress_page(p) for p in pages])))
+            out.append(("expand_page", ask(lambda: [le.expand_page(le.compress_page(p)) for p in pages])))
+        else:
+            out.append(("pack_directory", ask(lambda: le.pack_directory(c))))
+            w3 = timed(le.W3File, whole, c["at"])
+            out.append(("w3.attrs", canon({k: v for k, v in vars(w3).items() if not k.startswith("_")})))
+            out.append(("w3.modules", ask(lambda: [n for n, _lf in w3.modules()])))
+    out.append(("open_vxds", ask(lambda: [n for n, _lf in le.open_vxds(path)])))
+    out.append(("from_buffer", ask(lambda: le.LEFile.from_buffer(whole).lfa)))
+    try:
+        mods = timed(le.members, path)
+        ok = bool(mods)
+    except Exception as e:                      # noqa: BLE001
+        out.append(("members", ("raise", ename(e))))
+        return False, out
+    out.append(("members", canon([n for n, _lf in mods])))
+    for name, lf in mods[:40]:
+        out += le_image_facts(lf, "%s." % name)
+    return ok, out
+
+
+READERS = {"pe": pe_all, "ne": ne_all, "le": le_all}     # reader -> its facts(path, data), asked once of each side
 
 
 # ---- the corpus -------------------------------------------------------------------------------

@@ -115,6 +115,24 @@ bool b_is_upper_form(Bytes b) {
     return true;
 }
 
+std::string to_latin1(const std::string &utf8) {
+    std::string out;
+    for (size_t i = 0; i < utf8.size();) {
+        uint8_t c = uint8_t(utf8[i]);
+        uint32_t cp;
+        size_t n;
+        if (c < 0x80) cp = c, n = 1;
+        else if ((c & 0xE0) == 0xC0) cp = c & 0x1F, n = 2;
+        else if ((c & 0xF0) == 0xE0) cp = c & 0x0F, n = 3;
+        else cp = c & 0x07, n = 4;
+        for (size_t k = 1; k < n && i + k < utf8.size(); ++k) cp = (cp << 6) | (uint8_t(utf8[i + k]) & 0x3F);
+        if (cp > 0xFF) raise("UnicodeEncodeError", "'latin-1' codec can't encode character: ordinal not in range(256)");
+        out += char(cp);
+        i += n;
+    }
+    return out;
+}
+
 std::string hex(uint64_t v, bool upper) {
     char buf[24];
     std::snprintf(buf, sizeof buf, upper ? "%llX" : "%llx", static_cast<unsigned long long>(v));

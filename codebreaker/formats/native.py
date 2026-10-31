@@ -97,6 +97,8 @@ def _exception(kind, message):
         return struct.error(message)
     if kind == "UnicodeDecodeError":
         return UnicodeDecodeError("ascii", b"", 0, 1, message)
+    if kind == "UnicodeEncodeError":
+        return UnicodeEncodeError("latin-1", "", 0, 1, message)
     if kind == "KeyError":
         return KeyError(message.strip("'"))
     return _BUILTIN.get(kind, RuntimeError)(message)
@@ -144,26 +146,31 @@ def _positional(sig, args, kw, skip=0):
     return bound.args[skip:]
 
 
-def asker(question, python, where=lambda self: (), data="data"):
+def asker(question, python, where=lambda self: (), data="data", result=None):
     """A method that asks `question` about self.<data>, after the object's place where(self) and
-    the call's own arguments; the Python reader's own `python` answers what the C++ leaves."""
+    the call's own arguments; the Python reader's own `python` answers what the C++ leaves.
+    `result(self, answer)` turns an answer into what the method returns, when it is not the
+    answer itself (an object the instance already holds, say)."""
     sig = _inspect.signature(python)
 
     def method(self, *args, **kw):
         args = _positional(sig, (self,) + args, kw, 1) if kw else args
         try:
-            return call(question, getattr(self, data), *where(self), *args)
+            answer = call(question, getattr(self, data), *where(self), *args)
         except Fallback:
             return python(self, *args)
+        return result(self, answer) if result else answer
     method.__name__, method.__doc__, method.__qualname__ = python.__name__, python.__doc__, python.__qualname__
     return method
 
 
-def native_first(question, reader, data_arg=0, args_of=None):
+def native_first(question, reader, data_arg=0, args_of=None, result=None):
     """A reader's module-level function, answered by the C++ while `reader` is switched on.
     `data_arg`: which argument is the bytes (None: none); or `args_of(*args) -> (data, args)`
-    for a function that takes an object. The Python function stays as f.python, and answers
-    whatever the C++ leaves to it; f.cpp asks the C++ whatever the switch says (the gate)."""
+    for a function that takes an object (or a path); `result(answer, data, *args)` turns the
+    answer into the function's value when it is not the answer itself. The Python function stays
+    as f.python, and answers whatever the C++ leaves to it; f.cpp asks the C++ whatever the
+    switch says (the gate)."""
     def wrap(python):
         sig = _inspect.signature(python)
 
@@ -176,9 +183,10 @@ def native_first(question, reader, data_arg=0, args_of=None):
                     data, rest = None, args
                 else:
                     data, rest = args[data_arg], args[:data_arg] + args[data_arg + 1:]
-                return call(question, data, *rest)
+                answer = call(question, data, *rest)
             except Fallback:
                 return python(*args)
+            return result(answer, data, *args) if result else answer
 
         @functools.wraps(python)
         def function(*args, **kw):

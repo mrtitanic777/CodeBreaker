@@ -23,6 +23,9 @@ bool b_isdigit(Bytes b);
 // b == b.upper()
 bool b_is_upper_form(Bytes b);
 
+// str.encode("latin1") of a str given as UTF-8: UnicodeEncodeError past U+00FF
+std::string to_latin1(const std::string &utf8);
+
 // "%x" / "%X" / "%d"
 std::string hex(uint64_t v, bool upper = false);
 std::string dec(int64_t v);

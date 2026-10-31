@@ -22,6 +22,9 @@ set(FORMATS_SOURCES
   pe/questions.cc
   ne/ne.cc            # NE, the Windows 1.x boot image (formats/ne.py)
   ne/questions.cc
+  le/le.cc            # LE and the W3/W4 containers (formats/le.py)
+  le/image.cc         #   an image taken apart and written back
+  le/questions.cc
 )
 
 add_library(formats SHARED ${FORMATS_SOURCES})
