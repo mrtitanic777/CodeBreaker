@@ -199,13 +199,30 @@ know is a node or a flag, and lowering is left to the back end or a pass.
 | Back end | Targets | Memory from a GC source | Notes |
 |---|---|---|---|
 | C++03 | Xbox 360, older consoles | ownership inference, reference counting where undecidable | today's path |
-| C++17 | PC (Windows, Linux) | Boehm GC | templates, lambdas, CMake |
+| C++17 | PC (Windows, Linux) | Boehm GC | templates, lambdas, CMake; one back end for every front end, in C++ (below) |
 | C (C99) | anything with a C compiler | Boehm GC | classes as structs and function tables, exceptions as `setjmp` |
 | Java | JVM | native | pointer-heavy C/C++ through the emulated memory |
 | C# | .NET | native | structs and unsafe code available for C sources |
 | Python | CPython | native | typed source -> type hints |
 | JavaScript / TypeScript | Node, browsers | native | integers are doubles: 64-bit through `BigInt`, 32-bit by masking |
 | Lua | Lua 5.4, LuaJIT | native | tables for objects, 1-based arrays adjusted |
+
+Each target language has **one** back end, and every front end pairs with it: an emitter (the target's
+forms: declarations, statements, expressions, its idioms) plus one rule set per source language, chosen
+by the unit's `Unit.lang` -- what the source's arithmetic, integers, strings, collection order and
+construction mean in the target, and which runtime holds the rest. The C++17 back end is the model, and
+it is C++ (native/l2/src/cpp17_*.cc in cbl2.dll, since 2026-10-31; docs/NATIVE.md step 5): `Emitter`
+writes the block, the if/else-if chain, while, the range-for (with a structured binding), `auto`,
+lambdas and immediately invoked ones, `std::make_shared`, `std::optional` for every source; the Python
+rules (`cpp17_python.cc`, py.hpp: int64_t where the range is proved, floor division and modulo signs,
+UTF-8 str and bytes, dict insertion order, value records) and the Java rules (`cpp17_java.cc` over the
+object model `cpp17_jmodel.cc`, jrt.hpp: wrapping ints, masked shifts, truncating division that throws
+on zero, saturating double-to-int, UTF-16 strings, two-phase construction where a constructor's virtual
+call could reach an override) are its rule sets; 'csharp', 'c' and 'cpp' have a place and decline until
+their rules are written. `backends/cpp17.py` is only the shim its Python callers go through
+(`write_unit`, `program`). Inside the Java transpiler (`convert(..., cpp_std='C++17')`) the bodies are
+the C++03 back end's writer with the C++17 forms (`cpp03.Bodies17`): the transpiler's declarations are
+C++03's, so those bodies move to C++ with cpp03.
 
 ### Runtimes: one per (source semantics, target language)
 
@@ -325,7 +342,7 @@ number of working pairs.
    sequences the operands into temporaries); without it every world differed from Java's for the same
    seed, on the 360 as well. Still to do: the C++17 back end proper, Boehm GC, modern Java front-end
    features.)
-   (Progress 2026-10-31: **the C++17 back end proper for Java**, `translate/backends/cpp17_java.py` (beside the Python front end's `cpp17.py`, on its own runtime: to be one back end), two ways in.
+   (Progress 2026-10-31: **the C++17 back end proper for Java**, two ways in (since the same day one back end with the Python front end's, in C++: native/l2/src/cpp17_java.cc; the transpiler's bodies are cpp03.Bodies17).
    *Inside the transpiler* (`convert(..., cpp_std='C++17')`): cpp17.Bodies, cpp03's Writer with the C++17
    forms -- a for-each over a container as a range-for, a switch expression as an immediately invoked
    lambda, `auto` where the initialiser spells the type, nullptr against pointers (the runtime's value

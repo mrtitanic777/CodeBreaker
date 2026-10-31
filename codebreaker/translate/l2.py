@@ -21,6 +21,11 @@ _NODES = dict((c.__name__, c) for c in vars(ir).values()
 
 
 # ---------------------------------------------------------------------------------------------- types
+# what the Python front end says of a class type (frontends/python/lower.py): a record (a value struct,
+# or shared when `ref`), held by reference or not, an exception (made and thrown as a value)
+_CLASS_FACTS = ('record', 'ref', 'exception')
+
+
 def type_json(t):
     if t is None:
         return None
@@ -40,6 +45,9 @@ def type_json(t):
             d['args'] = [type_json(a) for a in t.args]
         if t.info.get('nullable'):
             d['nullable'] = True
+        for key in _CLASS_FACTS:                     # (the Python front end's: kept as given, False too)
+            if key in t.info:
+                d[key] = t.info[key]
         return d
     if k == 'typevar':
         return {'kind': 'typevar', 'name': t.name}
@@ -97,8 +105,9 @@ def type_from(d):
     if k in ('null', 'any', 'dynamic'):
         return ir.Type(k)
     if k == 'class':
-        return ir.Type('class', d['name'], [type_from(a) for a in d.get('args', [])],
-                       **({'nullable': True} if d.get('nullable') else {}))
+        info = {'nullable': True} if d.get('nullable') else {}
+        info.update((key, d[key]) for key in _CLASS_FACTS if key in d)
+        return ir.Type('class', d['name'], [type_from(a) for a in d.get('args', [])], **info)
     if k == 'typevar':
         return ir.Type('typevar', d['name'])
     if k == 'wildcard':

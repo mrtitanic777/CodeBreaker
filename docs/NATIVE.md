@@ -170,7 +170,8 @@ memory reads USER's full gate made) shows on the instruction-heavy full gate, no
 Every step above can be written by hand. The engine is the other road: CodeBreaker's own
 core idea -- reconstruct readable source and prove it behaves as the original -- turned on
 CodeBreaker. `codebreaker/translate/frontends/python` lowers Python into L2 with types it infers
-over the whole package, `backends/cpp17.py` writes C++17 over `native/ported/include/py.hpp`
+over the whole package, the C++17 back end (C++: `native/l2/src/cpp17_python.cc`, through the shim
+`backends/cpp17.py`) writes C++17 over `native/ported/include/py.hpp`
 (docs/PYTHON_FRONTEND.md says how, and what is refused). A function either becomes C++ that
 reads as written by hand -- int64_t, structs, py::list, C++'s own operators where the intervals
 prove them -- or it is left in Python with its reason; never a variant type.
@@ -330,6 +331,52 @@ Validation: jsonschema took 155.6 s for the 332 sampled documents, the native ch
 round trip is about even through the shim (its JSON both ways dominates); in C++, between C++ callers,
 there is no JSON at all. tests/translate/test_native_l2_core.py holds both cores to each other on
 documents of every kind; native/l2's CTest (`l2_tests`) holds the core to Python's json, str and repr.
+
+### The C++17 back end -- `l2cpp17` (2026-10-31)
+
+One back end per target language, in C++: the translator's C++17 back end is `native/l2/src/cpp17_*.cc`
+(the static library `l2cpp17`, in cbl2.dll), and it replaced both Python C++17 back ends
+(backends/cpp17.py's emitter and backends/cpp17_java.py, deleted). One emitter (`cpp17::Emitter`: the
+block, the if/else-if chain, while, the range-for and its structured bindings, `auto`, lambdas and
+immediately invoked ones, `std::make_shared`, `std::optional`), the source language's rules chosen by
+`Unit.lang`:
+
+- `cpp17_python.cc` -- 'python' (the Python front end; each unit now says `lang='python'`): a module's
+  header and source over `native/ported/include/py.hpp`, Python's own operations from py.hpp or the API
+  map (codebreaker/java/api_maps, read by the C++ as apimap.py resolves it, dialect c++17);
+- `cpp17_java.cc` over `cpp17_jmodel.cc` (jmodel.py's object model in C++) -- 'java' or none: a whole
+  program over `codebreaker/translate/runtime/cpp17/jrt.hpp`;
+- 'csharp', 'c', 'cpp' decline until their rules are written.
+
+    cpp17::write_unit(unit_doc, api_maps)   -> (header, source, spans)
+    cpp17::program(unit_docs, main)         -> the program's text
+
+The Python callers (tools/py2cpp.py, the Python front end, javajudge, the tests) go through the shim
+`backends/cpp17.py` (`write_unit`, `program`: l2.to_json in, text out; a `Decline` comes back as
+cpp17.Decline). There is no Python fallback and so no switch: without cbl2.dll the shim says why. L2
+JSON now carries what the Python front end says of a class type (`record`, `ref`, `exception`;
+l2.schema.json, l2.py and l2.cc), so its units cross whole. desugar.py still runs before `program` (a
+pass, Python, shared with c_java and cpp03). Inside the Java transpiler (`convert(..., cpp_std='C++17')`)
+the bodies are the C++03 back end's writer with the C++17 forms, now `cpp03.Bodies17` (the transpiler's
+declarations are C++03's; those bodies move to C++ with cpp03).
+
+**The gate -- identical generated text** (state/work/native-cpp17/gate.py against the capture of both
+Python back ends, state/work/cpp-port-gate/translator-before, 3,566 files; inputs as captured: the
+Python front end over codebreaker/ at 514599a20):
+
+| group | what | files | identical | changed, judged equal | regressed |
+|---|---|---|---|---|---|
+| py | test_python_frontend's snippets, strict and checked | 4 | 4 | 0 | 0 |
+| ne-strict | codebreaker.formats.ne (+ spans) | 3 | 3 | 0 | 0 |
+| cov-strict | every module of codebreaker/ (+ spans) | 1,113 | 1,113 | 0 | 0 |
+| cov-checked | the same, checked ints (+ spans) | 1,109 | 1,109 | 0 | 0 |
+| java | java_modern, MathHelper, MCHashTable, Modern: C++17 and (unchanged) C | 16 | 16 | 0 | 0 |
+| tree-Tally | the transpiler at C++17 | 208 | 208 | 0 | 0 |
+| tree-alpha | Minecraft Alpha through the transpiler at C++17 | 1,113 | 1,113 | 0 | 0 |
+
+Writing all 556 modules of codebreaker/ takes 1.9 s through the shim. CTest `cpp17_tests` holds the
+rules' choice, a Python module and a Java program to the gate's text; tests/translate (the MSVC
+semantics test, the java_modern programs beside the JVM) judge it compiled and run.
 
 ## The rest, in measured-cost order
 
