@@ -989,6 +989,7 @@ T Program::join(const T& a, const T& b) {
         T j = join(strip_opt(a), strip_opt(b));
         return j.kind == TK::Top ? j : opt(j);
     }
+    if (demand_enabled && !no_variants && variant_ok(a) && variant_ok(b) && (ka != kb || ka == TK::Variant)) return variant_join(a, b);   // (new)
     if (ka != kb) {
         if ((ka == TK::Bytes && kb == TK::Bytearray) || (ka == TK::Bytearray && kb == TK::Bytes)) return top("bytes and bytearray mixed");
         return top(tname(a) + " and " + tname(b) + " mixed");
@@ -1019,6 +1020,41 @@ T Program::join(const T& a, const T& b) {
         }
         default: return top(tname(a) + " and " + tname(b) + " mixed");
     }
+}
+
+// (new) tagged variants: scalars of different kinds meeting in one place
+bool variant_ok(const T& t) {
+    switch (t.kind) {
+        case TK::Int:
+        case TK::Str:
+        case TK::Float:
+        case TK::Bool:
+        case TK::Bytes:
+        case TK::Variant: return true;
+        default: return false;
+    }
+}
+
+T Program::variant_join(const T& a, const T& b) {
+    std::vector<T> alts;
+    auto add = [&](const T& x) {
+        for (auto& y : alts)
+            if (y.kind == x.kind) {
+                if (x.kind == TK::Int) y = int_join(y, x);
+                else if (x.kind == TK::Bytes) y = BYTES();
+                return;
+            }
+        alts.push_back(x);
+    };
+    for (const T* t : {&a, &b}) {
+        if (t->kind == TK::Variant)
+            for (auto& x : t->args()) add(x);
+        else add(*t);
+    }
+    if (alts.size() > 4) return top(tname(a) + " and " + tname(b) + " mixed");
+    std::sort(alts.begin(), alts.end(), [](const T& x, const T& y) { return (int)x.kind < (int)y.kind; });
+    if (alts.size() == 1) return alts[0];
+    return T(TK::Variant, alts);
 }
 
 std::string Program::common_base(const std::string& x, const std::string& y) {
@@ -1067,6 +1103,32 @@ void Program::freeze() {
         if (pi == params.end()) continue;
         for (auto& [name, t] : pi->second)
             if (t.kind == TK::Top && t.why().find(" mixed") != std::string::npos) spec_candidates.insert(q);
+    }
+    // a fact the classic rules left with no single type is read by no translated function: it is
+    // recomputed under the new rules (facts only grow, so it would stay so otherwise)
+    for (auto& [q, t] : returns)
+        if (t.kind == TK::Top) t = BOTTOM();
+    for (auto& [q, ps] : params)
+        for (auto& [n, t] : ps)
+            if (t.kind == TK::Top) t = BOTTOM();
+    for (auto& [c, as] : attrs)
+        for (auto& [n, t] : as)
+            if (t.kind == TK::Top) t = BOTTOM();
+    frozen_params = params;
+    frozen_attrs = attrs;
+    for (int s = 1; s < (int)parent.size(); s++) {
+        if (parent[s] != s) continue;
+        bool any = elem[s].kind == TK::Top || keys[s].kind == TK::Top;
+        for (auto& [k, t] : fields[s])
+            if (t.kind == TK::Top) {
+                any = true;
+                t = BOTTOM();
+            }
+        if (any) {
+            if (elem[s].kind == TK::Top) elem[s] = BOTTOM();
+            if (keys[s].kind == TK::Top) keys[s] = BOTTOM();
+            unfrozen.insert(s);
+        }
     }
 }
 

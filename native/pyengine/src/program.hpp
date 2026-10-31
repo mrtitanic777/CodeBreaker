@@ -230,6 +230,8 @@ public:
     void hint(int s, const std::string& name);
 
     T join(const T& a, const T& b);
+    T variant_join(const T& a, const T& b);   // (new)
+    int no_variants = 0;                      // > 0: the classic join (where a clash is a signal, not a refusal)
     std::string common_base(const std::string& x, const std::string& y);
     std::vector<std::string> mro(const std::string& cq);
     std::vector<std::string> descendants(const std::string& cq);
@@ -260,7 +262,8 @@ public:
     Fn* spec_for(Fn* f, const std::string& sig);
     void index_fn(Fn* f);
     void index_nested(Fn* parent);
-    bool site_frozen(int root) const { return frozen && root < frozen_sites; }
+    std::unordered_set<int> unfrozen;     // frozen-era sites whose items had no single type: recomputed
+    bool site_frozen(int root) const { return frozen && root < frozen_sites && !unfrozen.count(root); }
     void veto(const std::string& why) { vetoes.push_back(why); }
 
 private:
@@ -274,6 +277,7 @@ private:
 };
 
 std::string tname(const T& t);
+bool variant_ok(const T& t);
 std::set<std::string> assigned_names(const A::FunctionDef* fn);
 std::vector<std::string> target_names(const A::Expr* t);
 std::string deco_name(const A::Expr* d);

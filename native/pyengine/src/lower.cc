@@ -286,6 +286,11 @@ TyP Context::ty(const T& t, int line, const std::string& what) {
         return cls_flag(t.name(), "ref");
     }
     if (k == TK::Closure) throw Refused("dynamic", "a nested function used as a value", line);
+    if (k == TK::Variant) {   // (new) py.variant<A, B ...>: its alternatives are its tags
+        std::vector<TyP> alts;
+        for (auto& a : t.args()) alts.push_back(ty(a, line, what));
+        return cls("py.variant", alts);
+    }
     if (k == TK::Extern && t.name() == "file") return cls("py.file");
     if (k == TK::Extern && p.extended) {   // (new) the extensions' library objects
         const std::string& nm = t.name();
@@ -1849,8 +1854,21 @@ public:
         return mk_pyfn("truthy", {e}, BOOLT());
     }
 
+    static std::string tag_of(const TyP& t) {
+        if (!t) return "?";
+        if (t->kind == "i64") return "int";
+        if (t->kind == "f64") return "float";
+        if (t->kind == "bool") return "bool";
+        if (t->is_class("py.str")) return "str";
+        if (t->is_class("py.bytes")) return "bytes";
+        return ty_repr(t);
+    }
     IRP coerce(const IRP& e, const TyP& want) {
         if (!want || ty_eq(e->type, want)) return e;
+        if (want->is_class("py.variant") && e->type && !e->type->is_class("py.variant"))   // (new)
+            return mk_pyfn("variant.of", {e}, want, nullptr, 0, {py::V(tag_of(e->type))});
+        if (e->type && e->type->is_class("py.variant") && !want->is_class("py.variant"))   // (new) narrowed by a test
+            return mk_pyfn("variant.get", {e}, want, nullptr, 0, {py::V(tag_of(want))});
         if (e->k == "Lit" && !e->has_value) return mk_lit_none(want);
         if (is_opt_t(e->type) && !is_opt_t(want))
             if (ty_eq(e->type->args[0], want)) return mk_pyfn("unwrap", {e}, want);
@@ -1993,6 +2011,8 @@ public:
     }
 
     IRP narrowed(const IRP& e, const TyP& flow) {
+        if (e->type && e->type->is_class("py.variant") && flow && !flow->is_class("py.variant") && !ty_eq(flow, VOID()))   // (new)
+            return mk_pyfn("variant.get", {e}, flow, nullptr, 0, {py::V(tag_of(flow))});
         if (is_opt_t(e->type) && !is_opt_t(flow)) {
             if (ty_eq(flow, VOID())) return e;
             return mk_pyfn("unwrap", {e}, flow);
@@ -2487,6 +2507,20 @@ public:
             return c;
         }
         if (kind == "std") return std_call(n, *r, t);
+        if (kind == "isinstance_variant") {   // (new) a test of the variant's tag
+            IRP x = expr(n->args[0]);
+            std::vector<py::V> tags;
+            std::string ts = r->A();
+            size_t a = 0;
+            while (!ts.empty() && a <= ts.size()) {
+                size_t b = ts.find(',', a);
+                tags.push_back(py::V(ts.substr(a, b == std::string::npos ? std::string::npos : b - a)));
+                if (b == std::string::npos) break;
+                a = b + 1;
+            }
+            if (tags.empty()) return mk_lit(py::V(false), BOOLT());
+            return mk_pyfn("variant.is", {x}, BOOLT(), nullptr, line, tags);
+        }
         if (kind == "isinstance") {
             for (auto* a : n->args)
                 if (effects(expr(a))) throw Refused("syntax", "isinstance of a computed value", line);

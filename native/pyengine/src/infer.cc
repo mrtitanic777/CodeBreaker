@@ -1123,7 +1123,31 @@ SP Eval::refine(const A::Expr* test, const SP& state, bool truth) {
     }
     if (auto* c = as<pyfront::Call>(test)) {
         auto* f = as<pyfront::Name>(c->func);
-        if (f && f->id == "isinstance" && c->args.size() == 2 && as<pyfront::Name>(c->args[0])) return state;
+        if (f && f->id == "isinstance" && c->args.size() == 2 && as<pyfront::Name>(c->args[0])) {
+            const std::string& nm = cast<pyfront::Name>(c->args[0])->id;
+            const T* t = state->get(nm);
+            if (p.extended && t && t->kind == TK::Variant) {   // (new) the alternatives that pass the test
+                std::set<TK> want;
+                std::vector<const A::Expr*> specs;
+                if (auto* tu = as<pyfront::Tuple>(c->args[1])) specs.assign(tu->elts.begin(), tu->elts.end());
+                else specs.push_back(c->args[1]);
+                for (auto* sp : specs)
+                    if (auto* sn = as<pyfront::Name>(sp)) {
+                        if (sn->id == "int") want.insert({TK::Int, TK::Bool});
+                        else if (sn->id == "str") want.insert(TK::Str);
+                        else if (sn->id == "float") want.insert(TK::Float);
+                        else if (sn->id == "bool") want.insert(TK::Bool);
+                        else if (sn->id == "bytes") want.insert(TK::Bytes);
+                    }
+                T keep = BOTTOM();
+                for (auto& alt : t->args())
+                    if (want.count(alt.kind) == (truth ? 1u : 0u)) keep = keep.kind == TK::Bottom ? alt : p.variant_join(keep, alt);
+                State s = *state;
+                if (keep.kind != TK::Bottom) s.set(nm, keep);
+                return s;
+            }
+            return state;
+        }
     }
     if (auto* c = as<Compare>(test)) {
         if (!c->ops.empty()) {
@@ -1550,7 +1574,9 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
                 s = refine(v, s, n->op == BoolOpKind::And);
             }
             T j = BOTTOM();
+            p.no_variants++;   // (new) and/or: a clash only means the value is used for its truth
             for (auto& t : ts) j = p.join(j, t);
+            p.no_variants--;
             bool allb = true;
             for (auto& t : ts)
                 if (t.kind != TK::Bool && t.kind != TK::Bottom) allb = false;
@@ -1895,6 +1921,7 @@ void Eval::check_percent(AnyNode n, const A::Expr* ln, const A::Expr*, const T& 
 
 void Eval::check_str(AnyNode node, const T& t, bool as_repr) {
     TK k = t.kind;
+    if (k == TK::Variant) return;   // (new) each alternative prints
     if (k == TK::Int || k == TK::Str || k == TK::Bool || k == TK::None || k == TK::Bytes || k == TK::Bytearray || k == TK::Bottom ||
         k == TK::Top || k == TK::Float)
         return;
@@ -2000,6 +2027,14 @@ void Eval::comparable(AnyNode n, const T& a, const T& b, bool eq, bool order) {
     }
     if (eq && ka == TK::List && kb == TK::List) {
         comparable(n, p.elem[p.find(a.site)], p.elem[p.find(b.site)], eq);
+        return;
+    }
+    if (eq && (ka == TK::Variant || kb == TK::Variant)) {   // (new) == against one of its alternatives
+        const T& v = ka == TK::Variant ? a : b;
+        const T& o = ka == TK::Variant ? b : a;
+        for (auto& alt : v.args())
+            if (alt.kind == o.kind || (alt.kind == TK::Bool && o.kind == TK::Int) || (alt.kind == TK::Int && o.kind == TK::Bool)) return;
+        issue(n, "conflict", "comparing a variant with a " + std::string(kind_name(o.kind)));
         return;
     }
     if (eq && ka == TK::Inst && kb == TK::Inst) {

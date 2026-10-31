@@ -476,6 +476,19 @@ static TR isinstance_(Eval& ev, const A::Call* n, const std::optional<T>& t) {
         {"float", {TK::Float}}, {"list", {TK::List}}, {"dict", {TK::Dict}}, {"tuple", {TK::Tuple}}, {"set", {TK::Set}}};
     if (!t || n->args.size() != 2) return ev.issue(n, "conflict", "isinstance arguments");
     if (t->kind == TK::Bottom || t->kind == TK::Top) return BOOL();
+    if (t->kind == TK::Variant) {   // (new) a run-time test of the variant's tag
+        std::vector<const A::Expr*> specs;
+        if (auto* tu = as<pyfront::Tuple>(n->args[1])) specs.assign(tu->elts.begin(), tu->elts.end());
+        else specs.push_back(n->args[1]);
+        std::string tags;
+        for (auto* sp : specs) {
+            auto* sn = as<pyfront::Name>(sp);
+            if (!sn || !IST.count(sn->id)) return ev.issue(n, "dynamic", "isinstance of a variant against " + unparse(sp));
+            for (auto& alt : t->args())
+                if (IST.at(sn->id).count(alt.kind)) tags += (tags.empty() ? "" : ",") + std::string(kind_name(alt.kind));
+        }
+        return TR(BOOL(), Res("isinstance_variant", tags));
+    }
     const A::Expr* spec = n->args[1];
     std::vector<const A::Expr*> names;
     if (auto* tu = as<pyfront::Tuple>(spec)) names.assign(tu->elts.begin(), tu->elts.end());
