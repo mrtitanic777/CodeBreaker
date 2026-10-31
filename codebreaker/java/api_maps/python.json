@@ -1,32 +1,1630 @@
 {
-  "subsystem": "python.builtins",
-  "language": "python",
-  "description": "CPython builtins / stdlib -> C++ and C. A demonstrator that the registry is genuinely multi-language (a Python->C conversion resolves against exactly these rows), not a Java->C++ tool wearing a general coat.",
-  "symbols": {
-    "len": {"signature": "(seq)",
-      "maps": {"cpp": {"target": "std::size", "kind": "direct",
-                 "by_version": {"c++98": {"target": ".size()", "kind": "macro",
-                   "note": "Pre-C++17 has no std::size; call the container's .size() member."}}},
-               "c": {"target": "(explicit length arg)", "kind": "unsupported",
-                 "note": "C arrays carry no length; the caller must thread an explicit count."}}},
-    "print": {"signature": "(*args)",
-      "maps": {"cpp": {"target": "std::cout <<", "kind": "macro", "note": "Join args with ' ', append '\\n'."},
-               "c": {"target": "printf", "kind": "signature-adapted", "note": "Needs a format string built from arg types."}}},
-    "range": {"signature": "(start,stop,step)",
-      "maps": {"cpp": {"target": "(for-loop)", "kind": "macro", "note": "Lower to a counted for-loop; no lazy sequence object."},
-               "c": {"target": "(for-loop)", "kind": "macro"}}},
-    "str.upper": {"signature": "()",
-      "maps": {"cpp": {"target": "j2c::toUpper", "kind": "shim", "note": "std::toupper per char over the string."},
-               "c": {"target": "toupper (per char)", "kind": "shim"}}},
-    "str.split": {"signature": "(sep)",
-      "maps": {"cpp": {"target": "j2c::split", "kind": "shim", "note": "Returns std::vector<std::string>."},
-               "c": {"target": "strtok_r", "kind": "signature-adapted", "note": "Destructive; different ownership model."}}},
-    "math.sqrt": {"signature": "(x)",
-      "maps": {"cpp": {"target": "std::sqrt", "kind": "direct"}, "c": {"target": "sqrt", "kind": "direct"}}},
-    "list.append": {"signature": "(x)",
-      "maps": {"cpp": {"target": "std::vector::push_back", "kind": "direct"},
-               "c": {"target": "(manual realloc)", "kind": "unsupported", "note": "No growable array in C stdlib."}}},
-    "dict.get": {"signature": "(k,default)",
-      "maps": {"cpp": {"target": "j2c::mapGet", "kind": "shim", "note": "std::map::find with a default; not operator[] (which inserts)."}}}
+ "subsystem": "python.builtins",
+ "language": "python",
+ "description": "CPython builtins / stdlib -> C++ and C. The cpp targets (C++17 forms) are what the Python front end (codebreaker/translate/frontends/python) writes through backends/cpp17.py: a target is a template ({recv} the receiver, {0}.. the arguments, {args} all of them, {T} the result type) over native/ported/include/py.hpp.",
+ "symbols": {
+  "len": {
+   "signature": "(seq)",
+   "maps": {
+    "cpp": {
+     "target": "std::size",
+     "kind": "direct",
+     "by_version": {
+      "c++98": {
+       "target": ".size()",
+       "kind": "macro",
+       "note": "Pre-C++17 has no std::size; call the container's .size() member."
+      }
+     }
+    },
+    "c": {
+     "target": "(explicit length arg)",
+     "kind": "unsupported",
+     "note": "C arrays carry no length; the caller must thread an explicit count."
+    }
+   }
+  },
+  "print": {
+   "signature": "(*args)",
+   "maps": {
+    "cpp": {
+     "target": "std::cout <<",
+     "kind": "macro",
+     "note": "Join args with ' ', append '\\n'."
+    },
+    "c": {
+     "target": "printf",
+     "kind": "signature-adapted",
+     "note": "Needs a format string built from arg types."
+    }
+   }
+  },
+  "range": {
+   "signature": "(start,stop,step)",
+   "maps": {
+    "cpp": {
+     "target": "(for-loop)",
+     "kind": "macro",
+     "note": "Lower to a counted for-loop; no lazy sequence object."
+    },
+    "c": {
+     "target": "(for-loop)",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.upper": {
+   "signature": "()",
+   "maps": {
+    "cpp": {
+     "target": "j2c::toUpper",
+     "kind": "shim",
+     "note": "std::toupper per char over the string.",
+     "by_version": {
+      "c++17": {
+       "target": "{recv}.upper({args})",
+       "kind": "macro"
+      }
+     }
+    },
+    "c": {
+     "target": "toupper (per char)",
+     "kind": "shim"
+    }
+   }
+  },
+  "str.split": {
+   "signature": "(sep)",
+   "maps": {
+    "cpp": {
+     "target": "j2c::split",
+     "kind": "shim",
+     "note": "Returns std::vector<std::string>.",
+     "by_version": {
+      "c++17": {
+       "target": "py::split({recv}{,args})",
+       "kind": "shim"
+      }
+     }
+    },
+    "c": {
+     "target": "strtok_r",
+     "kind": "signature-adapted",
+     "note": "Destructive; different ownership model."
+    }
+   }
+  },
+  "math.sqrt": {
+   "signature": "(x)",
+   "maps": {
+    "cpp": {
+     "target": "std::sqrt",
+     "kind": "direct"
+    },
+    "c": {
+     "target": "sqrt",
+     "kind": "direct"
+    }
+   }
+  },
+  "list.append": {
+   "signature": "(x)",
+   "maps": {
+    "cpp": {
+     "target": "std::vector::push_back",
+     "kind": "direct",
+     "by_version": {
+      "c++17": {
+       "target": "{recv}.append({args})",
+       "kind": "macro",
+       "note": "index-checked as Python (IndexError, ValueError)"
+      }
+     }
+    },
+    "c": {
+     "target": "(manual realloc)",
+     "kind": "unsupported",
+     "note": "No growable array in C stdlib."
+    }
+   }
+  },
+  "dict.get": {
+   "signature": "(k,default)",
+   "maps": {
+    "cpp": {
+     "target": "j2c::mapGet",
+     "kind": "shim",
+     "note": "std::map::find with a default; not operator[] (which inserts).",
+     "by_version": {
+      "c++17": {
+       "target": "{recv}.get({args})",
+       "kind": "macro",
+       "note": "insertion-ordered, as Python"
+      }
+     }
+    }
+   }
+  },
+  "builtins.len": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::len({0})",
+     "kind": "shim",
+     "note": "Python len: the size as int64_t"
+    }
+   }
+  },
+  "builtins.abs": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::abs({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.min": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::min({args})",
+     "kind": "shim",
+     "note": "the first least, as Python"
+    }
+   }
+  },
+  "builtins.max": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::max({args})",
+     "kind": "shim",
+     "note": "the first greatest, as Python"
+    }
+   }
+  },
+  "builtins.min_iter": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::min_of({0})",
+     "kind": "shim",
+     "note": "ValueError on an empty sequence"
+    }
+   }
+  },
+  "builtins.max_iter": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::max_of({0})",
+     "kind": "shim",
+     "note": "ValueError on an empty sequence"
+    }
+   }
+  },
+  "builtins.sum": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::sum({args})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.ord": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::ord({0})",
+     "kind": "shim",
+     "note": "TypeError unless one character"
+    }
+   }
+  },
+  "builtins.chr": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::chr({0})",
+     "kind": "shim",
+     "note": "ValueError outside 0..0x10FFFF"
+    }
+   }
+  },
+  "builtins.hex": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::hex({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.oct": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::oct({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.bin": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bin({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.int": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{0}",
+     "kind": "macro",
+     "note": "int of an int: itself"
+    }
+   }
+  },
+  "builtins.int_str": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::int_from_str({args})",
+     "kind": "shim",
+     "note": "ValueError on bad text; OverflowError past int64"
+    }
+   }
+  },
+  "builtins.int_float": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::int_from_float({0})",
+     "kind": "shim",
+     "note": "truncates toward zero; OverflowError past int64"
+    }
+   }
+  },
+  "builtins.float": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "static_cast<double>({0})",
+     "kind": "macro",
+     "note": "exact: the front end proved |x| <= 2**53"
+    }
+   }
+  },
+  "builtins.bool": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::truthy({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.str": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::to_str({0})",
+     "kind": "shim",
+     "note": "Python's str()"
+    }
+   }
+  },
+  "builtins.repr": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::repr({0})",
+     "kind": "shim",
+     "note": "Python's repr()"
+    }
+   }
+  },
+  "builtins.bytes": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytes()",
+     "kind": "macro"
+    }
+   }
+  },
+  "builtins.bytes_zeros": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytes::zeros({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.bytes_copy": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytes({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.bytes_list": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytes::from_list({0})",
+     "kind": "shim",
+     "note": "ValueError outside 0..255"
+    }
+   }
+  },
+  "builtins.bytearray": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytearray()",
+     "kind": "macro"
+    }
+   }
+  },
+  "builtins.bytearray_zeros": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytearray::zeros({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.bytearray_copy": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytearray({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.bytearray_list": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytearray::from_list({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.list": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{T}::from({0})",
+     "kind": "shim",
+     "note": "a new list of the items"
+    }
+   }
+  },
+  "builtins.set": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{T}::from({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.tuple": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{0}",
+     "kind": "macro"
+    }
+   }
+  },
+  "builtins.divmod": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::divmod({0}, {1})",
+     "kind": "shim",
+     "note": "floor division and its modulo"
+    }
+   }
+  },
+  "builtins.pow": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::ipow({0}, {1})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.pow3": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::powmod({0}, {1}, {2})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.round": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::round_int({0})",
+     "kind": "shim",
+     "note": "banker's rounding, as Python 3"
+    }
+   }
+  },
+  "builtins.round2": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::round({0}, {1})",
+     "kind": "shim"
+    }
+   }
+  },
+  "builtins.format": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::format({0}, {1})",
+     "kind": "shim",
+     "note": "the format-spec mini-language"
+    }
+   }
+  },
+  "builtins.open_rb": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::open_rb({0})",
+     "kind": "shim",
+     "note": "OSError subclasses as Python"
+    }
+   }
+  },
+  "builtins.range": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::range({args})",
+     "kind": "shim",
+     "note": "a range as a value (a loop over one is a for loop)"
+    }
+   }
+  },
+  "file.read": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.read()",
+     "kind": "macro"
+    }
+   }
+  },
+  "int.bit_length": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bit_length({recv})",
+     "kind": "shim"
+    }
+   }
+  },
+  "int.to_bytes": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::to_bytes({recv}, {args})",
+     "kind": "shim"
+    }
+   }
+  },
+  "int.from_bytes": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::from_bytes({0}, {1}, {2})",
+     "kind": "shim",
+     "note": "at most 8 bytes (the front end proves it)"
+    }
+   }
+  },
+  "bytes.fromhex": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bytes::fromhex({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "struct.unpack": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::unpack<...>(fmt, buffer)",
+     "kind": "shim",
+     "note": "std::tuple of the values; StructError on a short buffer"
+    }
+   }
+  },
+  "struct.unpack_from": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::unpack_from<...>(fmt, buffer, offset)",
+     "kind": "shim",
+     "note": "negative offsets from the end, as Python"
+    }
+   }
+  },
+  "struct.pack": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::pack(fmt, values...)",
+     "kind": "shim",
+     "note": "StructError when a value is out of range"
+    }
+   }
+  },
+  "struct.pack_into": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::pack_into(fmt, buffer, offset, values...)",
+     "kind": "shim"
+    }
+   }
+  },
+  "struct.calcsize": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "(constant)",
+     "kind": "constant",
+     "note": "folded by the front end"
+    }
+   }
+  },
+  "os.path.join": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::join({args})",
+     "kind": "shim",
+     "note": "ntpath.join's drive and root rules"
+    }
+   }
+  },
+  "os.path.basename": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::basename({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.dirname": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::dirname({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.split": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::split({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.splitext": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::splitext({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.exists": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::exists({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.isfile": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::isfile({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.isdir": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::isdir({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.getsize": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::getsize({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.path.normcase": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::path::normcase({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "os.listdir": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::os::listdir({0})",
+     "kind": "shim",
+     "note": "in the order the file system gives, as Python"
+    }
+   }
+  },
+  "binascii.crc32": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::crc32({args})",
+     "kind": "shim"
+    }
+   }
+  },
+  "zlib.crc32": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::crc32({args})",
+     "kind": "shim"
+    }
+   }
+  },
+  "bisect.bisect_left": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bisect_left({0}, {1})",
+     "kind": "shim"
+    }
+   }
+  },
+  "bisect.bisect_right": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bisect_right({0}, {1})",
+     "kind": "shim"
+    }
+   }
+  },
+  "bisect.bisect": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::bisect_right({0}, {1})",
+     "kind": "shim"
+    }
+   }
+  },
+  "math.floor": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::floor_int({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "math.ceil": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::ceil_int({0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "sys.maxsize": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "INT64_MAX",
+     "kind": "constant"
+    }
+   }
+  },
+  "os.sep": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::str(\"\\\\\")",
+     "kind": "constant",
+     "note": "Windows"
+    }
+   }
+  },
+  "os.linesep": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::str(\"\\r\\n\")",
+     "kind": "constant",
+     "note": "Windows"
+    }
+   }
+  },
+  "os.pathsep": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::str(\";\")",
+     "kind": "constant",
+     "note": "Windows"
+    }
+   }
+  },
+  "math.pi": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "3.141592653589793",
+     "kind": "constant"
+    }
+   }
+  },
+  "string.hexdigits": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::str(\"0123456789abcdefABCDEF\")",
+     "kind": "constant"
+    }
+   }
+  },
+  "string.digits": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::str(\"0123456789\")",
+     "kind": "constant"
+    }
+   }
+  },
+  "string.ascii_letters": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::str(\"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\")",
+     "kind": "constant"
+    }
+   }
+  },
+  "record.get": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "(a field, or value_or)",
+     "kind": "macro",
+     "note": "a record field read with a default"
+    }
+   }
+  },
+  "str.lower": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.lower({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.title": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.title({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.capitalize": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.capitalize({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.strip": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.strip({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.lstrip": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.lstrip({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.rstrip": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rstrip({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.startswith": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.startswith({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.endswith": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.endswith({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.find": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.find({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.rfind": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rfind({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.index": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.index({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.rindex": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rindex({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.count": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.count({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.replace": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.replace({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isdigit": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isdigit({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isalpha": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isalpha({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isalnum": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isalnum({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isspace": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isspace({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isupper": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isupper({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.islower": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.islower({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isidentifier": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isidentifier({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.ljust": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.ljust({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.rjust": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rjust({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.center": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.center({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.zfill": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.zfill({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.removeprefix": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.removeprefix({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.removesuffix": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.removesuffix({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isprintable": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isprintable({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.isascii": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isascii({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.splitlines": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::splitlines({recv})",
+     "kind": "shim"
+    }
+   }
+  },
+  "str.join": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::join({recv}, {0})",
+     "kind": "shim"
+    }
+   }
+  },
+  "str.partition": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.partition({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.rpartition": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rpartition({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "str.encode": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.encode({0}, {1})",
+     "kind": "macro",
+     "note": "latin1 / ascii / utf-8 / cp437 / cp1252; strict, replace, ignore"
+    }
+   }
+  },
+  "bytes.upper": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.upper({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.lower": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.lower({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.strip": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.strip({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.lstrip": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.lstrip({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.rstrip": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rstrip({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.startswith": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.startswith({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.endswith": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.endswith({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.find": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.find({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.rfind": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rfind({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.index": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.index({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.count": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.count({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.replace": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.replace({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.isalnum": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isalnum({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.isalpha": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isalpha({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.isdigit": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isdigit({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.isspace": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isspace({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.isupper": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isupper({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.islower": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.islower({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.hex": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.hex({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.ljust": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.ljust({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.rjust": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.rjust({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.join": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.join({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytes.split": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "py::split({recv}{,args})",
+     "kind": "shim"
+    }
+   }
+  },
+  "bytes.decode": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.decode({0}, {1})",
+     "kind": "macro",
+     "note": "latin1 / ascii / utf-8 / cp437 / cp1252; strict, replace, ignore"
+    }
+   }
+  },
+  "bytearray.append": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.append({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "bytearray.extend": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.extend({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "list.extend": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.extend({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.insert": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.insert({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.pop": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.pop({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.index": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.index({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.count": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.count({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.remove": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.remove({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.reverse": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.reverse({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.clear": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.clear({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "list.copy": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.copy({args})",
+     "kind": "macro",
+     "note": "index-checked as Python (IndexError, ValueError)"
+    }
+   }
+  },
+  "dict.setdefault": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.setdefault({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "dict.pop": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.pop({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "dict.update": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.update({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "dict.copy": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.copy({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "dict.clear": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.clear({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "dict.items": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.items({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "dict.keys": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.keys({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "dict.values": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.values({args})",
+     "kind": "macro",
+     "note": "insertion-ordered, as Python"
+    }
+   }
+  },
+  "set.add": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.add({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "set.discard": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.discard({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "set.remove": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.remove({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "set.update": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.update({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "set.issubset": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.issubset({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "set.issuperset": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.issuperset({args})",
+     "kind": "macro"
+    }
+   }
+  },
+  "set.isdisjoint": {
+   "signature": "",
+   "maps": {
+    "cpp": {
+     "target": "{recv}.isdisjoint({args})",
+     "kind": "macro"
+    }
+   }
   }
+ }
 }
