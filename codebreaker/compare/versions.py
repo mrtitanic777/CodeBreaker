@@ -88,6 +88,7 @@ from codebreaker.formats.pe import open_pe
 from codebreaker.jobs import pool
 from codebreaker.store import functions as store
 from codebreaker import platforms
+from codebreaker.verify import verdicts as V
 
 LEVELS = ("bytes", "text", "shape")
 ENGINE = "carried"                      # who a candidate carried across builds came from
@@ -654,7 +655,7 @@ class Comparison(object):
         fs.record_many(sha, ENGINE, old[:12], digest, [
             dict(addr=r["to"], name=self.b.functions[r["to"]].name if self.b.functions[r["to"]].named else r["name"],
                  source=r["source"], sig=hashlib.sha1(r["source"].encode("utf-8", "replace")).hexdigest(),
-                 verdict="inconclusive", reason="carried: identical to %s %s (%s there); not judged here" % (
+                 verdict=V.INCONCLUSIVE, reason="carried: identical to %s %s (%s there); not judged here" % (
                      self.a.name, r["from"], r["class"])) for r in found])
         return len(found)
 

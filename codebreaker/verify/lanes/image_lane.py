@@ -15,6 +15,7 @@ it touched), and WHAT names each place in it, so a difference says which.
 """
 import hashlib
 import os
+from codebreaker.verify import verdicts as V
 
 SAME = "the cartridge built from this source is the original, byte for byte"
 
@@ -73,14 +74,14 @@ class Lane(object):
     def judge(self, context, item):
         same, original, rebuilt = context
         if same:
-            return "equivalent", "", [], self.SAME
+            return V.EQUIVALENT, "", [], self.SAME
         _key, entry = item
         for state in self._states:
             a, b = self._effects(original, entry, state), self._effects(rebuilt, entry, state)
             if a != b:
                 first = next(w for w, x, y in zip(self._what, a, b) if x != y)
-                return "divergent", first + "-differs", [], self._start(state)
-        return "equivalent", "", [], "the same effects from %d register states" % len(self._states)
+                return V.DIVERGENT, first + "-differs", [], self._start(state)
+        return V.EQUIVALENT, "", [], "the same effects from %d register states" % len(self._states)
 
     def export(self, namespace):
         """Make the module `namespace` belongs to a kind: KIND, REV, SAME and the four functions

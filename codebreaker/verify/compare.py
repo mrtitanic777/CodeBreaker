@@ -17,6 +17,7 @@ than it looks are the same for all of them.
     inconclusive   the original could not be observed on any input
 """
 import hashlib
+from codebreaker.verify import verdicts as V
 
 
 # Bump when the oracle changes what a trace of the SAME code observes, so fingerprints cached under
@@ -177,13 +178,13 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
 
     d = run(vectors)
     if d:
-        return "divergent", d, []
+        return V.DIVERGENT, d, []
     if not seen:
-        return "inconclusive", "; ".join(sorted(errs)), sorted(limits)
+        return V.INCONCLUSIVE, "; ".join(sorted(errs)), sorted(limits)
     if clean and confirm:
         d = run(confirm)
         if d:
-            return "divergent", d, []
+            return V.DIVERGENT, d, []
     # `directed(covered, reached)` supplies inputs aimed at code no input has reached yet -- also
     # for a body no input has yet returned from: an input that gets it past what makes it fault
     # is what turns "only ever fails alike" into a comparison of what it does.
@@ -191,11 +192,11 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
         before = clean
         d = run(directed(covered, reached))
         if d:
-            return "divergent", d, []
+            return V.DIVERGENT, d, []
         if clean and not before and confirm:
             d = run(confirm)
             if d:
-                return "divergent", d, []
+                return V.DIVERGENT, d, []
     if insns:
         pct = min(100, 100 * len(covered) // insns)
         if pct < 50:
@@ -203,8 +204,8 @@ def compare(fp_retail, fp_rebuilt, vectors, confirm=(), insns=0, directed=None, 
         limits.add("coverage=%d" % pct)
     if not clean:
         limits.add("fault-only")
-        return "consistent", "", sorted(limits)
-    return "equivalent", "", sorted(limits)
+        return V.CONSISTENT, "", sorted(limits)
+    return V.EQUIVALENT, "", sorted(limits)
 
 
 # Fingerprints are kept in the one cache (base/cache.py), kind "fingerprints", its generation

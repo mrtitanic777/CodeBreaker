@@ -49,6 +49,8 @@ import sqlite3
 import threading
 import time
 
+from codebreaker.verify import verdicts as V
+
 # the index: the store's own file
 _INDEX = """
 CREATE TABLE IF NOT EXISTS module(
@@ -90,39 +92,22 @@ CREATE TABLE IF NOT EXISTS variant(
 CREATE INDEX IF NOT EXISTS variant_function ON variant(function);
 """
 
-# How good a result is, best first. A candidate's class is what the module writer prints.
-ORDER = ("verified", "weak", "unverified", "not-judged", "no-compile", "no-source")
-TITLE = {"verified": "VERIFIED", "weak": "VERIFIED (weak)", "unverified": "UNVERIFIED",
-         "not-judged": "NOT JUDGED", "no-compile": "DOES NOT COMPILE", "no-source": "NO SOURCE"}
-# limits that make a match weaker than it looks
-WEAK = {"fault-only": "the two sides only ever fail alike; neither returned normally",
-        "low-coverage": "under half of the original's instructions ran",
-        "truncated": "a run was cut off at the step limit",
-        "unobserved": "some inputs could not be run on one side",
-        "writes-capped": "too many memory writes to compare them all",
-        "stub-callee": "a function it calls was a stand-in, not that function's reconstruction",
-        "argc-unknown": "an API call was compared by name only",
-        "calls-capped": "it makes more calls than are compared",
-        "methods-partial": "only some of the class's methods could be run beside the original (java)"}
-
-
+# How good a result is, best first. A candidate's class is what the module writer prints. The
+# words -- the judge's, the classes', their titles, the limits that make a match weak -- are the
+# one vocabulary's (verify/verdicts.py); they are named here too, as the store's readers know them.
+ORDER, TITLE, WEAK = V.ORDER, V.TITLE, V.WEAK_LIMITS
 # A function recognised as a runtime library's is counted on its own, not as a failure of
 # reconstruction -- unless it was also verified, which is the stronger statement and stays.
-IDENTIFIED = "identified"
-SCORED = ORDER[:2] + (IDENTIFIED,) + ORDER[2:]
-TITLE[IDENTIFIED] = "IDENTIFIED (runtime library)"
+IDENTIFIED, SCORED = V.IDENTIFIED, V.SCORED
+classify = V.classify
 
 
-def classify(verdict, limits=""):
-    """(class, weak reasons) for one verdict row."""
-    codes = [c for c in (limits or "").split(",") if c]
-    weak = [c for c in codes if c in WEAK]
-    if verdict == "equivalent":
-        return ("weak" if weak else "verified"), weak
-    if verdict == "consistent":
-        return "weak", weak or ["fault-only"]
-    return {"divergent": "unverified", "inconclusive": "not-judged", "no-compile": "no-compile"}.get(
-        verdict, "no-source"), []
+def _judged(row):
+    """A row read from the verdict table, its word as the vocabulary says it now (a store written
+    before keeps meaning what it meant: no-synth is no-source)."""
+    if row.get("verdict") is not None:
+        row["verdict"] = V.verdict(row["verdict"])
+    return row
 
 
 def overview(path=None):
@@ -381,7 +366,7 @@ class FunctionStore(object):
                                                     r.get("source"), r.get("problem"), now)).lastrowid
                 db.execute(
                     "INSERT OR REPLACE INTO verdict(candidate, profile, sig, verdict, reason, limits, detail, ts, carried) "
-                    "VALUES(?,?,?,?,?,?,?,?,0)", (cid, profile, r.get("sig"), r["verdict"], r.get("reason") or "",
+                    "VALUES(?,?,?,?,?,?,?,?,0)", (cid, profile, r.get("sig"), V.verdict(r["verdict"]), r.get("reason") or "",
                                                   r.get("limits") or "", r.get("detail") or "", now))
         self._summarize(module)
 
@@ -415,7 +400,7 @@ class FunctionStore(object):
         if engine:
             q += " AND c.engine=?"
             args.append(engine)
-        return [dict(zip(self._ROW, r)) for r in self._m(module).rows(q, args)]
+        return [_judged(dict(zip(self._ROW, r))) for r in self._m(module).rows(q, args)]
 
     def stored(self, module, addr):
         """[{engine, rev, name, source, problem, verdicts: [{profile, verdict, reason, limits, carried}]}]
@@ -426,7 +411,7 @@ class FunctionStore(object):
                                           "JOIN function f ON f.id=c.function WHERE f.module=? AND f.addr=?",
                                           (module, addr)):
             out.append({"engine": e, "rev": r, "name": n, "source": s or "", "problem": pr or "", "verdicts": [
-                {"profile": p, "verdict": v, "reason": why or "", "limits": lim or "", "carried": bool(car)}
+                {"profile": p, "verdict": V.verdict(v), "reason": why or "", "limits": lim or "", "carried": bool(car)}
                 for p, v, why, lim, car in m.rows("SELECT profile, verdict, reason, limits, carried FROM verdict "
                                                   "WHERE candidate=? ORDER BY ts DESC", (cid,))]})
         return out
@@ -572,7 +557,7 @@ class FunctionStore(object):
                 "behaves, ts) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(function, compiler, knobs) DO UPDATE SET "
                 "source=excluded.source, parent=excluded.parent, distance=excluded.distance, "
                 "total=excluded.total, verdict=excluded.verdict, behaves=excluded.behaves, ts=excluded.ts",
-                (f, compiler, source, parent, knobs, distance, total, verdict, behaves, now))
+                (f, compiler, source, parent, knobs, distance, total, V.match(verdict), V.verdict(behaves), now))
             return db.execute("SELECT id FROM variant WHERE function=? AND compiler=? AND knobs=?",
                               (f, compiler, knobs)).fetchone()[0]
 
@@ -586,14 +571,17 @@ class FunctionStore(object):
         if compiler:
             q += " AND v.compiler=?"
             args.append(compiler)
-        return [dict(zip(self._VROW, r)) for r in self._m(module).rows(q, args)]
+        out = [dict(zip(self._VROW, r)) for r in self._m(module).rows(q, args)]
+        for r in out:                                   # (older spellings read as the words now)
+            r["verdict"], r["behaves"] = V.match(r["verdict"]), V.verdict(r["behaves"])
+        return out
 
     def best_variant(self, module, compiler):
         """{addr: the closest variant row} -- the one with the smallest byte distance that still
         behaves alike (or, if none behaves, the smallest distance), per function."""
         out = {}
         for r in self.variants(module, compiler):
-            ok = r["behaves"] in ("equivalent", "consistent", "")
+            ok = r["behaves"] in V.GOOD + ("",)
             key = (0 if ok else 1, r["distance"] if r["distance"] is not None else 1 << 30)
             if r["addr"] not in out or key < out[r["addr"]]["_key"]:
                 r["_key"] = key
@@ -605,8 +593,8 @@ class FunctionStore(object):
     def match_tally(self, module, compiler):
         """(functions with a variant, identical, same size, different) for one compiler."""
         best = self.best_variant(module, compiler)
-        ident = sum(1 for r in best.values() if r["verdict"] == "identical")
-        same = sum(1 for r in best.values() if r["verdict"] == "same size")
+        ident = sum(1 for r in best.values() if r["verdict"] == V.IDENTICAL)
+        same = sum(1 for r in best.values() if r["verdict"] == V.SAME_SIZE)
         return len(best), ident, same, len(best) - ident - same
 
     # ---- across modules: the index ---------------------------------------------------------

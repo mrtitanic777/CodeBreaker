@@ -17,6 +17,7 @@ import hashlib
 import os
 
 from codebreaker import platforms
+from codebreaker.verify import verdicts as V
 
 KIND = "dos"
 P = platforms.of(KIND)
@@ -70,5 +71,5 @@ def build(m, module_path, work):
 def judge(context, item):
     same, why = context
     if same:
-        return "equivalent", "", [], SAME
-    return "divergent", "image-differs", [], why
+        return V.EQUIVALENT, "", [], SAME
+    return V.DIVERGENT, "image-differs", [], why

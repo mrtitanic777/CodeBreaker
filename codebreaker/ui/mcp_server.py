@@ -43,6 +43,7 @@ from codebreaker.base import corpus, settings
 from codebreaker.formats import inspect
 from codebreaker.store import functions as F
 from codebreaker.ui import service
+from codebreaker.verify import verdicts as V
 
 MOST = 60000                     # characters in one answer, at most
 INTERACTIVE = {"ui", "progress", "mcp"}                 # interfaces and servers: not jobs
@@ -394,7 +395,7 @@ def functions(module: str, cls: str = "", find: str = "", offset: int = 0, limit
     for r in found["functions"]:
         if made.get(r["addr"]):                    # made by a tool or a runtime library: not authored code
             r = dict(r, library=made[r["addr"]])
-            if r["class"] == "no-compile":
+            if r["class"] == V.NO_COMPILE:
                 r["why"] = "identified, not reconstructed by design (%s)" % made[r["addr"]]
         if (not cls or r["class"] == cls or (cls == "identified" and r.get("library"))) and \
                 (not find or find.lower() in r["name"].lower() or _addr(find) in r["addr"]):
@@ -1020,7 +1021,7 @@ def triage(module: str) -> dict:
     try:
         fns = functions(p, limit=5000)
         out["store"] = {k: fns[k] for k in ("counts", "reasons")}
-        bad = [r for r in fns["rows"] if r["class"] in ("unverified", "weak", "no-compile", "no-source")
+        bad = [r for r in fns["rows"] if r["class"] in (V.UNVERIFIED, V.WEAK, V.NO_COMPILE, V.NO_SOURCE)
                and not r.get("library")]
         out["to_look_at"] = []
         for r in bad[:12]:

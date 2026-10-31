@@ -48,6 +48,7 @@ from codebreaker.formats import le
 from codebreaker.symbols import driver_services
 from codebreaker.verify import compare
 from codebreaker.verify import lane_common
+from codebreaker.verify import verdicts as V
 
 KIND = "le"
 P = platforms.of(KIND)            # device drivers: the six slots this lane asks
@@ -398,11 +399,11 @@ def judge(context, item):
     try:
         a, b = _image(original), _image(rebuilt)
     except Exception as e:
-        return "inconclusive", "judge: %s: %s" % (type(e).__name__, e), [], ""
+        return V.INCONCLUSIVE, "judge: %s: %s" % (type(e).__name__, e), [], ""
     if label not in a.entries:
-        return "inconclusive", "the original has no such entry point", [], ""
+        return V.INCONCLUSIVE, "the original has no such entry point", [], ""
     if label not in b.entries:
-        return "divergent", "entry-missing", [], "the rebuilt driver has no %s" % label
+        return V.DIVERGENT, "entry-missing", [], "the rebuilt driver has no %s" % label
     aligned = a.shape == b.shape
     first, more = inputs(label)
     info, seen = {}, {}
@@ -429,14 +430,14 @@ def judge(context, item):
     except ImportError:
         raise
     except Exception as e:                                  # one entry point must not sink the rest
-        return "inconclusive", "judge: %s: %s" % (type(e).__name__, e), [], ""
+        return V.INCONCLUSIVE, "judge: %s: %s" % (type(e).__name__, e), [], ""
     limits = list(limits)
     if verdict != "divergent":
         limits += lane_common.path_limits(found.get("got"))
     if not aligned:
         limits.append("layout-differs")
     detail = info.get("detail", "")
-    if verdict == "divergent" and reason == "writes-differ" and "a" in seen and "b" in seen:
+    if verdict == V.DIVERGENT and reason == "writes-differ" and "a" in seen and "b" in seen:
         detail = explain(seen["a"], seen["b"]) + detail[detail.find("  [input"):] if "  [input" in detail else \
             explain(seen["a"], seen["b"])
     if verdict != "divergent":
@@ -452,7 +453,7 @@ def judge_files(rebuilt, original, labels=None):
     order = sorted(a.entries, key=_entry_order)
     order = [n for n in order if labels is None or n in labels]
     got = pool.run(judge, [(n, n) for n in order], context=(original, rebuilt),
-                   crashed=lambda item: ("inconclusive", "judge: the emulator crashed on this entry point", [], ""))
+                   crashed=lambda item: (V.INCONCLUSIVE, "judge: the emulator crashed on this entry point", [], ""))
     return {n: got[n] for n in order}
 
 
@@ -508,7 +509,7 @@ def self_check(original, work=None, per_entry=3, entries=12):
     out = {"self": {}, "broken": 0, "caught": 0, "missed": []}
     for verdict, _reason, _limits, _detail in own.values():
         out["self"][verdict] = out["self"].get(verdict, 0) + 1
-    good = [n for n, v in own.items() if v[0] == "equivalent"][:entries]
+    good = [n for n, v in own.items() if v[0] == V.EQUIVALENT][:entries]
     ext = os.path.splitext(original)[1]
 
     def broken():                                            # (a round each: one entry point, one break)
@@ -526,7 +527,7 @@ def self_check(original, work=None, per_entry=3, entries=12):
         return {label: judge((original, copy), (label, label))[0]}
 
     for (label, text, _copy, verdict, got), in teeth.plant(broken(), judged,
-                                                           lambda v: "caught" if v == "divergent" else "missed"):
+                                                           lambda v: "caught" if v == V.DIVERGENT else "missed"):
         out["broken"] += 1
         if got == "caught":
             out["caught"] += 1
@@ -547,7 +548,7 @@ def main(argv):
         print("one instruction broken: %d copies, %d reported divergent" % (r["broken"], r["caught"]))
         for label, text, verdict in r["missed"]:
             print("    not caught: %s with `%s` changed -> %s" % (label, text, verdict))
-        return 0 if not r["self"].get("divergent") and not r["self"].get("inconclusive") else 1
+        return 0 if not r["self"].get(V.DIVERGENT) and not r["self"].get(V.INCONCLUSIVE) else 1
     if len(argv) != 2:
         print(main.__doc__)
         return 2
@@ -562,4 +563,4 @@ def main(argv):
                                       ("  " + detail) if detail else ""))
     print("%s vs %s: %s" % (os.path.basename(rebuilt), os.path.basename(original),
                              ", ".join("%s %d" % kv for kv in sorted(counts.items())) or "no entry points"))
-    return 1 if counts.get("divergent") else 0
+    return 1 if counts.get(V.DIVERGENT) else 0

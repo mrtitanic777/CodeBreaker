@@ -24,6 +24,7 @@ import re
 import subprocess
 import tempfile
 from codebreaker import platforms
+from codebreaker.verify import verdicts as V
 
 # what the decompiler writes that a programmer does not, and that a compiler turns into more code
 PATTERNS = {
@@ -123,7 +124,7 @@ def run(module_path, segment=None, log=print):
     for n in names:
         ms, orig = match16.run.code[n]
         o = ow.get(n)
-        msv = match.distance(ms, orig)[:3] if ms else ("does not compile", 0, 0)
+        msv = match.distance(ms, orig)[:3] if ms else (V.NO_COMPILE, 0, 0)
         orig_len = len(match._trim(*orig)[0])
         rows[n] = {
             "segment": seg_of.get(n),
@@ -137,7 +138,7 @@ def run(module_path, segment=None, log=print):
             "fits": bool(o) and len(match._trim(*o)[0]) <= orig_len,
             "patterns": {p: len(rx.findall(texts.get(n, ""))) for p, rx in PATTERNS.items()
                          if rx.search(texts.get(n, ""))},
-            "library": results[n][0] == "run-time library",
+            "library": V.match(results[n][0]) == V.IDENTIFIED,
             "c": texts.get(n, ""),
             "hex": {"original": orig[0].hex(), "msc8": ms[0].hex() if ms else "", "watcom": o[0].hex() if o else ""},
         }
@@ -147,10 +148,10 @@ def run(module_path, segment=None, log=print):
 def report(rows, out=print):
     c = [r for r in rows.values() if not r["library"]]
     n = len(c)
-    ident = sum(r["msc8_vs_original"] == "identical" for r in c)
+    ident = sum(V.match(r["msc8_vs_original"]) == V.IDENTICAL for r in c)
     same_ow = sum(r["watcom_vs_msc8"] == "same" for r in c)
     fits = sum(r["fits"] for r in c)
-    out("%d functions (run-time library aside)" % n)
+    out("%d functions (runtime library aside)" % n)
     out("  C        Microsoft C 8 gives the original's bytes: %4d   (decompiler's work: %d)" % (ident, n - ident))
     out("  compiler OpenWatcom -zmsc gives Microsoft C 8's:   %4d   (compiler's work: %d)" % (same_ow, n - same_ow))
     out("  fits     OpenWatcom's no longer than the original:  %4d   (would move: %d)" % (fits, n - fits))
@@ -158,7 +159,7 @@ def report(rows, out=print):
     out("  bytes over the original's length, all together: %d" % off)
     tally = {}
     for r in c:
-        if r["msc8_vs_original"] == "identical":
+        if V.match(r["msc8_vs_original"]) == V.IDENTICAL:
             continue
         for p in r["patterns"]:
             t = tally.setdefault(p, [0, 0])

@@ -2010,12 +2010,13 @@ def _gate16(path, folder, names, m):
         elif had[:1] == b"D":
             differ[n] = had[1:].decode("utf-8", "replace")
     _gate16.not_run = []
+    from codebreaker.verify import verdicts as V
     for n, verdict, why in isolated16.check(path, folder, run) if run else ():
-        if verdict == "not run":                             # (no verdict: not kept, and said)
+        if verdict == V.INCONCLUSIVE:                        # (no verdict: not kept, and said)
             _gate16.not_run.append((n, why))
             continue
-        cache.put("gate16", keys[n], (b"D" + (why or "").encode("utf-8", "replace")) if verdict == "differs" else b"S")
-        if verdict == "differs":
+        cache.put("gate16", keys[n], (b"D" + (why or "").encode("utf-8", "replace")) if verdict == V.DIVERGENT else b"S")
+        if verdict == V.DIVERGENT:
             differ[n] = why
     return differ
 

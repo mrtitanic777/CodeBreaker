@@ -17,6 +17,7 @@ import os
 
 from codebreaker.verify.authored import match
 from codebreaker import platforms
+from codebreaker.verify import verdicts as V
 
 def source_files(names, where, originals, address):
     """[[function, ...], ...] -- the original's source files, as far as its calls tell: a far call
@@ -61,7 +62,7 @@ def source_files(names, where, originals, address):
 def _score(results):
     """how near a set of functions came: each counts the share of its bytes that are the original's
     (a function that does not compile, nothing), an identical one counting double"""
-    return sum((2.0 if v[0] == "identical" else 1.0 - v[1] / max(v[2], 1)) if v[0] != "does not compile" else 0.0
+    return sum((2.0 if v[0] == V.IDENTICAL else 1.0 - v[1] / max(v[2], 1)) if v[0] != V.NO_COMPILE else 0.0
                for v in results.values())
 
 
@@ -143,7 +144,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
             built = msc6.compile_many({fn: texts[v][fn] for fn in names}, heads[v], fl, work,
                                       compiler=cc, names={fn: fn for fn in names}, together=files)
             for fn in names:
-                got = match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else ("does not compile", 0, 0)
+                got = match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else (V.NO_COMPILE, 0, 0)
                 if fn not in best or _score({0: got}) > _score({0: best[fn]}):
                     best[fn] = got
                     winner[fn] = v
@@ -221,12 +222,12 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
     from codebreaker.verify.gate16 import runtime16         # (the compiler's run-time library: linked, not written)
     run.library = runtime16.identify({fn: originals[address[fn]] for fn in todo})
     for fn, lib in run.library.items():
-        if out.get(fn, ("",))[0] != "identical":
-            out[fn] = ("run-time library", 0, len(originals[address[fn]][0]))
+        if out.get(fn, ("",))[0] != V.IDENTICAL:
+            out[fn] = (V.IDENTIFIED, 0, len(originals[address[fn]][0]))
     if search:                                       # the last bytes of the near misses (verify/authored/search16.py)
         from codebreaker.verify.authored import search16
         near = {fn: (texts[winner[fn]][fn], v, setting[fn] + (winner[fn],))
-                for fn, v in out.items() if v[0] in ("same size", "different") and v[1] <= 0.4 * v[2]}
+                for fn, v in out.items() if v[0] in (V.SAME_SIZE, V.DIFFERENT) and v[1] <= 0.4 * v[2]}
 
         def compile_group(g, sources):
             mates = {fn: texts[winner[fn]][fn] for k in {file_of[s] for s in sources} for fn in files[k]
@@ -234,7 +235,7 @@ def run(module_path, flags=None, limit=0, log=print, compiler=None, choose=False
             built = msc6.compile_many(dict(mates, **sources), heads.get(g[2], header), g[1], work, compiler=g[0],
                                       names={fn: fn for fn in list(sources) + list(mates)}, together=files)
             return {fn: match.distance(built[fn], originals[address[fn]])[:3] if built.get(fn) else
-                    ("does not compile", 0, 0) for fn in sources}
+                    (V.NO_COMPILE, 0, 0) for fn in sources}
         found = search16.search(near, compile_group, lambda v: _score({0: v}), search, log=log)
         for fn, (t, v) in found.items():
             if _score({0: v}) > _score({0: out[fn]}):
@@ -266,15 +267,15 @@ def main(argv):
         counts[v[0]] = counts.get(v[0], 0) + 1
     print("%s: %d functions compiled with Microsoft C (%s): %s" % (
         os.path.basename(path), len(results), "; ".join(sorted({"%s %s" % c for c in getattr(run, "settings", chosen.values())})),
-        ", ".join("%s %d" % (k, counts[k]) for k in ("identical", "run-time library", "same size", "different", "does not compile")
-                  if counts.get(k))))
+        ", ".join("%s %d" % (V.MATCH_LABEL[k], counts[k])
+                  for k in (V.IDENTICAL, V.IDENTIFIED, V.SAME_SIZE, V.DIFFERENT, V.NO_COMPILE) if counts.get(k))))
     won = {}
     for fn, v in getattr(run, "winner", {}).items():
-        if results.get(fn, ("",))[0] == "identical":
+        if results.get(fn, ("",))[0] == V.IDENTICAL:
             won[v] = won.get(v, 0) + 1
     if won:
         print("  identical by way of saying: %s" % ", ".join("%s %d" % kv for kv in sorted(won.items())))
-    near = sorted((v[1] / max(v[2], 1), n, v) for n, v in results.items() if v[0] in ("same size", "different"))[:8]
+    near = sorted((v[1] / max(v[2], 1), n, v) for n, v in results.items() if v[0] in (V.SAME_SIZE, V.DIFFERENT))[:8]
     for _share, n, v in near:
-        print("  %-28s %-10s %d of %d bytes differ" % (n, v[0], v[1], v[2]))
+        print("  %-28s %-10s %d of %d bytes differ" % (n, V.MATCH_LABEL[v[0]], v[1], v[2]))
     return 0

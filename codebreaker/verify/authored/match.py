@@ -49,6 +49,7 @@ from concurrent.futures import ThreadPoolExecutor
 from codebreaker.compare import mask as masks
 from codebreaker.symbols.libraries import coff
 from codebreaker import platforms
+from codebreaker.verify import verdicts as V
 
 FLAG_SETS = ("/O2 /Gz", "/Oxs /Gz", "/O1 /Gz", "/Ox /Gz", "/O2 /Gz /Oy-", "/Od /Gz", "/O2 /Gd")
 # Microsoft C 8.00c (Visual C++ 1.52c) built Setup's SUWIN, without /Gw, with switches that differ
@@ -281,14 +282,15 @@ ARCH = {"x86": Arch(1, "little", FLAG_SETS, _trim, object_functions, original_fu
 
 # ---- comparing ------------------------------------------------------------------------------------------
 def compare(built, original):
-    """-> ("identical" | "same size" | "different", share of bytes equal outside masked places)"""
+    """-> (identical | same size | different -- verify/verdicts.py's byte words, share of bytes equal
+    outside masked places)"""
     (a, ma), (b, mb) = _trim(*built), original
     if len(a) != len(b):
         import difflib
-        return "different", difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
+        return V.DIFFERENT, difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
     free = sum(1 for i in range(len(a)) if not ma[i] and not mb[i])
     same = free - len(masks.differing(a, b, ma, mb))
-    return ("identical" if same == free else "same size"), (same / free if free else 1.0)
+    return (V.IDENTICAL if same == free else V.SAME_SIZE), (same / free if free else 1.0)
 
 
 def distance(built, original, arch="x86"):
@@ -511,12 +513,12 @@ def run(module_path, flags, work, jobs=4):
     for name, funcs in zip(names, objects):
         orig = originals.get(address[name])
         if funcs is None or orig is None:
-            results[name] = ("does not compile" if funcs is None else "no original extent", 0.0, 0, len(orig[0]) if orig else 0)
+            results[name] = (V.NO_COMPILE if funcs is None else V.NO_EXTENT, 0.0, 0, len(orig[0]) if orig else 0)
             continue
         mine = next((v for k, v in funcs.items() if k.lstrip("_@").split("@")[0] == name), None) or \
             (next(iter(funcs.values())) if len(funcs) == 1 else None)
         if mine is None:
-            results[name] = ("does not compile", 0.0, 0, len(orig[0]))
+            results[name] = (V.NO_COMPILE, 0.0, 0, len(orig[0]))
             continue
         verdict, share = compare(mine, orig)
         results[name] = (verdict, share, len(_trim(*mine)[0]), len(orig[0]))
@@ -580,7 +582,7 @@ def run_powerpc(module_path, flags, work, jobs=4):
     for name in names:
         orig = originals.get(address.get(name))
         if built[name] is None or orig is None:
-            results[name] = ("does not compile" if built[name] is None else "no original extent", 0, 0,
+            results[name] = (V.NO_COMPILE if built[name] is None else V.NO_EXTENT, 0, 0,
                              len(orig[0]) // 4 if orig else 0)
             continue
         verdict, diff, words, _first = distance(built[name], orig, "powerpc")
@@ -588,7 +590,7 @@ def run_powerpc(module_path, flags, work, jobs=4):
     return results
 
 
-_ORDER = ("identical", "same size", "different", "no original extent", "does not compile")
+_ORDER = V.MATCHES                      # (best first)
 
 
 def _main_powerpc(argv):
@@ -605,7 +607,7 @@ def _main_powerpc(argv):
     for fl in sets:
         r = run_powerpc(path, fl, work)
         if len(sets) > 1:
-            print("  %-12s %d identical" % (fl, sum(1 for v in r.values() if v[0] == "identical")), flush=True)
+            print("  %-12s %d identical" % (fl, sum(1 for v in r.values() if v[0] == V.IDENTICAL)), flush=True)
         for name, v in r.items():
             rank = (_ORDER.index(v[0]), v[1])
             if name not in best or rank < best[name][0]:
@@ -616,7 +618,7 @@ def _main_powerpc(argv):
     print("%s: %d functions" % (os.path.basename(args[0]), len(best)))
     for verdict in _ORDER:
         if tally.get(verdict):
-            print("  %-20s %d" % (verdict, tally[verdict]))
+            print("  %-20s %d" % (V.MATCH_LABEL[verdict], tally[verdict]))
     if out_json:
         with open(out_json, "w", encoding="utf-8") as f:
             json.dump({n: {"verdict": v[0], "words differing": v[1], "words": v[2], "original words": v[3],
@@ -648,9 +650,9 @@ def main(argv):
     best, per_set = {}, {}
     for fl in sets:
         r = run(path, fl, work)
-        per_set[fl] = sum(1 for v in r.values() if v[0] == "identical")
+        per_set[fl] = sum(1 for v in r.values() if v[0] == V.IDENTICAL)
         for name, v in r.items():
-            rank = ("identical", "same size", "different", "no original extent", "does not compile").index(v[0])
+            rank = _ORDER.index(v[0])
             if name not in best or (rank, -v[1]) < best[name][0]:
                 best[name] = ((rank, -v[1]), v, fl)
         if len(sets) > 1:
@@ -659,11 +661,12 @@ def main(argv):
     for _rank, v, _fl in best.values():
         counts[v[0]] = counts.get(v[0], 0) + 1
     print("%s: %d functions compiled with the period compiler: %s" % (
-        os.path.basename(path), len(best), ", ".join("%s %d" % (k, counts[k]) for k in (
-            "identical", "same size", "different", "does not compile", "no original extent") if counts.get(k))))
-    close = sorted(((v[1], n, v) for n, (_r, v, _f) in best.items() if v[0] != "identical"), reverse=True)[:8]
+        os.path.basename(path), len(best), ", ".join("%s %d" % (V.MATCH_LABEL[k], counts[k]) for k in _ORDER
+                                                     if counts.get(k))))
+    close = sorted(((v[1], n, v) for n, (_r, v, _f) in best.items() if v[0] != V.IDENTICAL), reverse=True)[:8]
     for share, n, v in close:
-        print("  %-28s %-9s %3d%% of bytes equal  (%d bytes, original %d)" % (n, v[0], 100 * share, v[2], v[3]))
+        print("  %-28s %-9s %3d%% of bytes equal  (%d bytes, original %d)" % (n, V.MATCH_LABEL[v[0]], 100 * share,
+                                                                          v[2], v[3]))
     if "--json" in argv:
         with open(argv[argv.index("--json") + 1], "w", encoding="utf-8") as f:
             json.dump({n: {"verdict": v[0], "share": v[1], "size": v[2], "original": v[3], "flags": fl}

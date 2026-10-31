@@ -12,6 +12,7 @@ from collections import defaultdict
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from codebreaker.base import corpus, settings
+from codebreaker.verify import verdicts as V
 from codebreaker.verify.gate16 import isolated16
 sys.path.insert(0, HERE)
 import memmap16
@@ -64,5 +65,6 @@ for name in sorted(calls):
         for got in isolated16.check(original, folder, [name], inputs=[v], workers=1, tables=tables,
                                     chain=bool(mem)):
             count[got[1]] += 1
-            print("%-28s %-3s %-8s %s" % (got[0], os.path.basename(p).rsplit("_", 1)[1][:-4], got[1], got[2][:160]), flush=True)
+            print("%-28s %-3s %-8s %s" % (got[0], os.path.basename(p).rsplit("_", 1)[1][:-4], V.SAID.get(got[1], got[1]),
+                                          got[2][:160]), flush=True)
 print(dict(count))

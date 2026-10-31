@@ -32,10 +32,11 @@ A new kind of module is one such file.
 import os
 import re
 import time
+from codebreaker.verify import verdicts as V
 
 SOURCE = "decompiler"                  # who a candidate in the store came from
-NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
-GOOD = ("equivalent", "consistent")
+NOT_RUN = V.NOT_RUN                    # (the judge's words: verify/verdicts.py)
+GOOD = V.GOOD
 
 
 # the name results are filed under -> the module that knows that kind (each platform's lane)
@@ -216,7 +217,7 @@ def run(module_path, fs=None, log=print):
     known = fs.judged(sha, digest, SOURCE)
     fresh = [n for n in m.order if n in m.key and (known.get(m.key[n]) or {}).get("sig") != sig[n]]
     have = set(m.key.values())
-    rows = [dict(addr=k, sig="-", name="", source=None, verdict="no-synth",
+    rows = [dict(addr=k, sig="-", name="", source=None, verdict=V.NO_SOURCE,
                  reason="the decompiler produced nothing for this function", problem="none")
             for k in m.all_keys if k not in have]
     t2 = t3 = time.time()
@@ -237,7 +238,7 @@ def run(module_path, fs=None, log=print):
             for n in fresh:
                 k = m.key[n]
                 if n in items and before.get(k) and before[k] == built_now.get(n) and k in had and \
-                        had[k]["verdict"] not in ("no-compile", "no-synth"):
+                        had[k]["verdict"] not in (V.NO_COMPILE, V.NO_SOURCE):
                     r = had[k]
                     rows.append(dict(addr=k, sig=sig[n], name=n, source=m.texts[n], verdict=r["verdict"],
                                      reason=r.get("reason"), limits=r.get("limits"), detail=r.get("detail")))
@@ -248,7 +249,7 @@ def run(module_path, fs=None, log=print):
         tainted = _reaches(m.texts, list(items), dropped)
         for n in fresh:
             if n not in items:
-                rows.append(dict(addr=m.key[n], sig=sig[n], name=n, source=m.texts[n], verdict="no-compile",
+                rows.append(dict(addr=m.key[n], sig=sig[n], name=n, source=m.texts[n], verdict=V.NO_COMPILE,
                                  reason=dropped.get(n, "") or "not in the build", problem="compile"))
         name_of = {m.key[n]: n for n in fresh if n in items}
         judged = pool.run(kind.judge, [items[n] for n in fresh if n in items], context=context,

@@ -288,7 +288,9 @@ def guided_inputs(original, original_key, name, oseg, ooff, far, span, seeds, ca
 
 def check(original, folder, names, image=None, inputs=None, workers=None, tables=None, chain=False):
     """Each named function (one the build has as C) beside the original's. Yields
-    (name, "same" | "differs" | "not run", why). Many at once: shared out over processes."""
+    (name, verdict, why): equivalent, divergent, or inconclusive (not run) -- the judge's words
+    (verify/verdicts.py). Many at once: shared out over processes."""
+    from codebreaker.verify import verdicts as V
     names = list(names)
     # (as many as the machine's budget, base/parallel.py workers() -- the setting low_load holds
     # it to four, for when the machine is Logan's to work on while it runs. More than one per
@@ -325,14 +327,14 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
                 try:
                     for item in json.loads(out.strip().splitlines()[-1]):
                         got.add(item[0])
-                        items.append(tuple(item))
+                        items.append((item[0], V.verdict(item[1])) + tuple(item[2:]))
                 except (ValueError, IndexError):
                     pass
                 # (a share the worker did not answer for is NOT the same as the original: it was
                 # not run, and says why)
                 err.seek(0)
                 why = (err.read().strip().splitlines() or ["the worker gave no answer"])[-1][:200]
-            return items + [(n, "not run", "the checker failed: " + why) for n in share if n not in got]
+            return items + [(n, V.INCONCLUSIVE, "the checker failed: " + why) for n in share if n not in got]
         for items in pool.threads(one, shares, jobs=workers):
             yield from items
         return
@@ -407,7 +409,7 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
                              data_end, insn_cap, known=known, explored=explored)
     for name in names:
         if name not in place or name not in ours or name not in funcs:
-            yield name, "not run", "not found on both sides"
+            yield name, V.INCONCLUSIVE, "not found on both sides"
             continue
         pop, far = funcs[name]
         wide = name in wide_set
@@ -453,16 +455,16 @@ def check(original, folder, names, image=None, inputs=None, workers=None, tables
                 # use it, went on. What the original did before it faulted must still be done.
                 x, y = fa.get("calls") or (), fb.get("calls") or ()
                 if tuple(y[:len(x)]) != tuple(x):
-                    yield name, "differs", "%s: calls: original %s, ours %s" % (_input(v), list(x[:2]), list(y[:2]))
+                    yield name, V.DIVERGENT, "%s: calls: original %s, ours %s" % (_input(v), list(x[:2]), list(y[:2]))
                     break
                 continue
             d = _differ(fa, fb)
             if d:
-                yield name, "differs", "%s: %s" % (_input(v), d)
+                yield name, V.DIVERGENT, "%s: %s" % (_input(v), d)
                 break
         else:
             # (and, when it passes, how much of the original that was: the paths of its own jumps
             # the runs took -- all there are, when the explorer found no more)
             seen = "paths %d%s" % (explored["paths"], " (all)" if explored.get("all") else "") \
                 if explored.get("paths") is not None else ""
-            yield name, ("not run" if why else "same"), why or seen
+            yield name, (V.INCONCLUSIVE if why else V.EQUIVALENT), why or seen

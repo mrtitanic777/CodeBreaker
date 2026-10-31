@@ -51,6 +51,7 @@ from codebreaker.store import functions as F
 from codebreaker.symbols import demangle, names
 from codebreaker.translate import l2
 from codebreaker.translate.backends import module_file
+from codebreaker.verify import verdicts as V
 
 WHY = {
     "ret-differs": "returns a different value",
@@ -61,7 +62,7 @@ WHY = {
     "registers-differ": "changes a register it must preserve",
     "retail: call-into-nothing": "the original calls through a pointer the loader fills in (a thunk entry)",
 }
-ORDER, TITLE = F.SCORED, F.TITLE
+ORDER, TITLE = V.SCORED, V.TITLE
 
 
 def describe(row):
@@ -69,13 +70,13 @@ def describe(row):
     limits = [c for c in (row.get("limits") or "").split(",") if c]
     cov = next((int(c[9:]) for c in limits if c.startswith("coverage=")), None)
     cls = row["class"]
-    if cls == "verified":
+    if cls == V.VERIFIED:
         return ("%d%% of it exercised" % cov) if cov is not None else ""
-    if cls == "weak":
-        return "; ".join(F.WEAK[c] for c in row["weak"]) + (" (%d%% ran)" % cov if cov is not None else "")
-    if cls in ("unverified", "not-judged"):
+    if cls == V.WEAK:
+        return "; ".join(V.WEAK_LIMITS[c] for c in row["weak"]) + (" (%d%% ran)" % cov if cov is not None else "")
+    if cls in (V.UNVERIFIED, V.NOT_JUDGED):
         return WHY.get(row.get("reason") or "", row.get("reason") or "")
-    if cls == "no-compile":
+    if cls == V.NO_COMPILE:
         return (row.get("reason") or "")[:90]
     return (row.get("reason") or "")[:80]
 
@@ -247,6 +248,7 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
     if kind in ("le", "dos"):
         return write_assembly(path, fs, sha, digest, out_dir, log)
     best = fs.best(sha, digest)
+    judged = V.Index(sha, best)           # each function's verdict, by its L2 provenance (module + address)
     addrs = fs.addresses(sha)             # every function the module is known to have
     known = fs.identified(sha)            # the runtime library's among them: {address: (name, library)}
     exported = {names.key(path, a): n for a, n in description.decorated_names(path).items()}
@@ -277,27 +279,28 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
              for va, r in best.items() if r.get("source")}
     # the module as the store holds it, one L2 tree (each function's C as text, the header the module's),
     # through the readable pass; then the module as it is written, each function under its status line
-    stored = l2.module([l2.function(va, text) for va, text in texts.items()],
+    stored = l2.module([l2.function(va, text, origin=judged.origin(va)) for va, text in texts.items()],
                        header=fs.get_text(sha, reconstruct.SOURCE, "header") or "")
     words = readable.Readable(stored, _string_reader(path, kind))
     counts = dict.fromkeys(ORDER, 0)
     units = []
     for va in addrs:
-        row = best.get(va)
+        origin = judged.origin(va)
+        row = judged.at(origin)               # (the verdict of the function this node stands for)
         said = []
         if va in exported:
             said.append("exported as %s: %s" % (exported[va], demangle.readable(exported[va])))
         if not row:
-            counts[F.IDENTIFIED if va in known else "no-source"] += 1
+            counts[V.IDENTIFIED if va in known else V.NO_SOURCE] += 1
             units.append(l2.comment("[%s] %s@ %s -- %s" % (
-                TITLE[F.IDENTIFIED if va in known else "no-source"], known[va][0] + "  " if va in known else "", va,
+                TITLE[V.IDENTIFIED if va in known else V.NO_SOURCE], known[va][0] + "  " if va in known else "", va,
                 "; ".join(([known[va][1]] if va in known else []) + said + ["not measured on the current verifier"]))))
             continue
         cls = row["class"]
         detail = describe(row)
-        shown = F.IDENTIFIED if va in known and cls not in ("verified", "weak") else cls
+        shown = V.IDENTIFIED if va in known and cls not in (V.VERIFIED, V.WEAK) else cls
         counts[shown] += 1
-        if shown == F.IDENTIFIED:
+        if shown == V.IDENTIFIED:
             said.insert(0, "%s of %s; reconstructed below: %s%s" % (
                 known[va] + (TITLE[cls], (", " + detail) if detail else "")))
         else:
@@ -312,7 +315,7 @@ def write_module(module, verify=True, out_dir=None, log=print, split=0, build_wh
                 said.append(hint)
         if va not in exported and (row["name"] or "") in words.results_unused():
             said.append("no caller here uses what it returns")
-        units.append(l2.function(shown_name, source, comments=["[%s] %s  @ %s%s" % (
+        units.append(l2.function(shown_name, source, origin=origin, comments=["[%s] %s  @ %s%s" % (
             TITLE[shown], shown_name, va, (" -- " + "; ".join(said)) if said else "")]))
     total = len(addrs)
     whole = None

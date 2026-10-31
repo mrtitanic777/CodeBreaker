@@ -29,15 +29,17 @@ from textual.theme import Theme
 from textual.widgets import (DataTable, Footer, Header, Input, Label, LoadingIndicator, RichLog, Static,
                              TabbedContent, TabPane)
 
+from codebreaker.verify import verdicts as V
+
 # ---------------------------------------------------------------------------------------------- look
-# One colour per verdict, the same everywhere: the bars, the tables, the detail panes.
-VERDICTS = ("verified", "weak", "unverified", "not-judged", "no-compile", "no-source", "identified")
-COLOR = {"verified": "#4ec9a0", "weak": "#e5b454", "unverified": "#e06c75", "not-judged": "#7f8796",
-         "no-compile": "#c678dd", "no-source": "#4b5263", "identified": "#61afef"}
-TITLE = {"verified": "verified", "weak": "weak", "unverified": "unverified", "not-judged": "not judged",
-         "no-compile": "does not compile", "no-source": "no source", "identified": "runtime library"}
-MARK = {"verified": "●", "weak": "◐", "unverified": "✕", "not-judged": "○", "no-compile": "▲",
-        "no-source": "·", "identified": "◆"}
+# One colour per verdict, the same everywhere: the bars, the tables, the detail panes. The classes
+# and how each is said are the one vocabulary's (verify/verdicts.py: LABEL, the short form).
+VERDICTS = V.ORDER + (V.IDENTIFIED,)
+COLOR = {V.VERIFIED: "#4ec9a0", V.WEAK: "#e5b454", V.UNVERIFIED: "#e06c75", V.NOT_JUDGED: "#7f8796",
+         V.NO_COMPILE: "#c678dd", V.NO_SOURCE: "#4b5263", V.IDENTIFIED: "#61afef"}
+TITLE = V.LABEL
+MARK = {V.VERIFIED: "●", V.WEAK: "◐", V.UNVERIFIED: "✕", V.NOT_JUDGED: "○", V.NO_COMPILE: "▲",
+        V.NO_SOURCE: "·", V.IDENTIFIED: "◆"}
 
 THEME = Theme(
     name="codebreaker",
@@ -507,8 +509,7 @@ class Module(Screen):
         if cls and cls != "no-source":
             g.add_row("verdict", Text("%s %s" % (MARK.get(cls, ""), TITLE.get(cls, cls)), style="bold " + COLOR.get(cls, "")))
         elif earlier:
-            from codebreaker.store import functions as F
-            last = F.classify(earlier[0][1]["verdict"], earlier[0][1].get("limits"))[0]
+            last = V.classify(earlier[0][1]["verdict"], earlier[0][1].get("limits"))[0]
             g.add_row("last verdict", Text.assemble(("%s %s" % (MARK.get(last, ""), TITLE.get(last, last)),
                                                      "bold " + COLOR.get(last, "")),
                                                     ("   by an earlier judge", "#7f8796")))

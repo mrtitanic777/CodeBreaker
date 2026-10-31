@@ -31,6 +31,8 @@ import subprocess
 import sys
 import tempfile
 
+from codebreaker.verify import verdicts as V
+
 
 @functools.lru_cache(maxsize=None)
 def _emulator_key():
@@ -218,7 +220,7 @@ def main(argv):
                 bad.append("%s %s" % (n, what))
         given = [x.upper() for x in case.get("files", []) + list(case.get("make", {}))]
         made = sorted(n for n in A if n not in given)
-        rows.append((case["name"], cmd, not bad, ", ".join(bad) or "same: console%s" % (
+        rows.append((case["name"], cmd, V.pair(not bad), ", ".join(bad) or "same: console%s" % (
             ", " + ", ".join(made) if made else "")))
         for c in case.get("then", []):
             one(c, fa, fb, rows, detail)
@@ -236,12 +238,13 @@ def main(argv):
     for r, d in pool.threads(top, cfg["cases"]):                # (the cases at once, the machine's budget of
         rows += r                                               #  them; reported in their order)
         detail += d
-    same = sum(1 for r in rows if r[2])
+    same = sum(1 for r in rows if r[2] == V.EQUIVALENT)
     L = ["# Behaviour: the original against the port", "",
          "`%s` (under CodeBreaker's emulator) against `%s` (native): **%d of %d cases the same**." % (
              os.path.basename(orig), os.path.relpath(port, base), same, len(rows)), "",
          "| case | command | | what |", "|---|---|---|---|"]
-    L += ["| %s | `%s` | %s | %s |" % (n, c or "(none)", "same" if ok else "**DIFFERS**", w) for n, c, ok, w in rows]
+    L += ["| %s | `%s` | %s | %s |" % (n, c or "(none)", V.SAID[v] if v == V.EQUIVALENT else "**%s**" % V.SAID[v].upper(), w)
+          for n, c, v, w in rows]
     if detail:
         L += ["", "## Differences", ""] + detail
     text = "\n".join(L) + "\n"

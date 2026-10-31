@@ -24,6 +24,7 @@ import capstone  # noqa: E402  (before the workers: the disassembler's DLL)
 
 from codebreaker.formats.ne import NEFile  # noqa: E402
 from codebreaker.verify.teeth import plant  # noqa: E402  (the harness every lane's self-test runs on)
+from codebreaker.verify import verdicts as V  # noqa: E402
 from codebreaker.verify.gate16 import isolated16  # noqa: E402
 
 ORIG = os.path.join(ROOT, "state", "mini", "original")
@@ -41,7 +42,7 @@ def self_test(module):
             f.write("%04x:%04x      _%s\n" % (seg, off, name))
     shutil.copyfile(original, os.path.join(folder, module.lower()))
     names = sorted(n for n in tables["place"] if n in tables["funcs"])
-    differ = [(n, w) for n, v, w in isolated16.check(original, folder, names, tables=tables) if v == "differs"]
+    differ = [(n, w) for n, v, w in isolated16.check(original, folder, names, tables=tables) if v == V.DIVERGENT]
     shutil.rmtree(folder, ignore_errors=True)
     print("%s against itself: %d functions, %d called different" % (module, len(names), len(differ)))
     for n, w in differ[:20]:
@@ -143,7 +144,7 @@ def teeth(module, build, n=40, seed=1):
     pool = [x for x in names if x in c_names]
     rnd = random.Random(seed)
     rnd.shuffle(pool)
-    passing = [x for x, v, _w in isolated16.check(original, build, pool[:n * 2], tables=tables) if v == "same"][:n]
+    passing = [x for x, v, _w in isolated16.check(original, build, pool[:n * 2], tables=tables) if v == V.EQUIVALENT][:n]
     nef = NEFile(image)
     segs = {s["idx"]: s for s in nef.segments()}
     raw = open(image, "rb").read()
@@ -167,9 +168,9 @@ def teeth(module, build, n=40, seed=1):
     def judge(batch):
         (name, _what, mut), = batch
         got = list(isolated16.check(original, build, [name], image=mut, tables=tables, workers=1))
-        return {name: got[0][1] if got else "not run"}
+        return {name: got[0][1] if got else V.INCONCLUSIVE}
 
-    planted = [x for batch in plant(broken(), judge, {"differs": "caught", "same": "missed"}.get) for x in batch]
+    planted = [x for batch in plant(broken(), judge, {V.DIVERGENT: "caught", V.EQUIVALENT: "missed"}.get) for x in batch]
     caught = [(name, what) for name, what, _m, _v, got in planted if got == "caught"]
     missed = [(name, what) for name, what, _m, _v, got in planted if got == "missed"]
     unrun = [(name, what) for name, what, _m, _v, got in planted if got is None]

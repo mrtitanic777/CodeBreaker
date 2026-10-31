@@ -10,6 +10,7 @@ This is the number to watch while changing the decompiler or the verifier.
 """
 import collections
 import os
+from codebreaker.verify import verdicts as V
 
 
 def main(argv):
@@ -28,10 +29,10 @@ def main(argv):
     fs = F.open()
     sha, digest = reconstruct.run(path, fs=fs)
     rows = fs.candidates(sha, digest)
-    why = collections.Counter(r["reason"] for r in rows if r["verdict"] == "divergent")
+    why = collections.Counter(r["reason"] for r in rows if r["verdict"] == V.DIVERGENT)
     if why:
         print("unverified by cause: " + ", ".join("%s %d" % kv for kv in why.most_common()))
-    bad = collections.Counter((r["reason"] or "")[:60] for r in rows if r["verdict"] == "no-compile")
+    bad = collections.Counter((r["reason"] or "")[:60] for r in rows if r["verdict"] == V.NO_COMPILE)
     if bad:
         print("does not compile: " + "; ".join("%s (%d)" % kv for kv in bad.most_common(4)))
     return 0

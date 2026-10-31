@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+from codebreaker.verify import verdicts as V
 
 KIND = "java"
 REV = 3                      # bump when what a verdict means changes (flags, the judge, the transpile call)
@@ -203,21 +204,21 @@ def judge(context, item):
     ok, errors = check(cxx, include_dir, unit, prefix)
     if not ok:
         first = errors[0] if errors else "the compiler rejected it"
-        return "no-compile", first[:200], [], "\n".join(errors[:20])
+        return V.NO_COMPILE, first[:200], [], "\n".join(errors[:20])
     how = (os.path.basename(cxx), " ".join(FLAGS))
     if not javac or not source:
-        return "inconclusive", "not-run", [], COMPILES % (how + ("no JDK (settings.json: java)",))
+        return V.INCONCLUSIVE, "not-run", [], COMPILES % (how + ("no JDK (settings.json: java)",))
     from codebreaker.java import parse, probe
     try:
         cls = parse.parse_file(source)
     except Exception as e:                                   # the transpiler parsed it; say so if this did not
-        return "inconclusive", "not-run", [], COMPILES % (how + ("could not read %s: %s" % (source, e),))
+        return V.INCONCLUSIVE, "not-run", [], COMPILES % (how + ("could not read %s: %s" % (source, e),))
     r = probe.run(staged, include_dir, cls, work, cxx, javac, java, prefix, compiled)
     if not r["judged"]:
-        return "inconclusive", "not-run", [], COMPILES % (how + (r["why"],))
+        return V.INCONCLUSIVE, "not-run", [], COMPILES % (how + (r["why"],))
     said = "%d of %d methods run beside the JVM on %d inputs" % (r["judged"], r["total"], r["cases"])
     if r["differs"]:
         lines = ["%s(%s): Java %s, C++ %s" % (m, ", ".join(a), j, c) for m, a, j, c in r["differs"][:12]]
-        return "divergent", "result-differs", [], said + "; %d differ:\n" % len(r["differs"]) + "\n".join(lines)
+        return V.DIVERGENT, "result-differs", [], said + "; %d differ:\n" % len(r["differs"]) + "\n".join(lines)
     limits = ["methods-partial"] if r["judged"] < r["total"] else []
-    return "equivalent", "", limits, said + ": every result alike"
+    return V.EQUIVALENT, "", limits, said + ": every result alike"

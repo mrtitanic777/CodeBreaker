@@ -39,13 +39,14 @@ from codebreaker.base import corpus, settings
 from codebreaker.formats import inspect, ne, pe
 from codebreaker.store import functions as F
 from codebreaker.verify import reconstruct
+from codebreaker.verify import verdicts as V
 
 KINDS = (("pe", "32-bit"), ("ne", "16-bit"), ("le", "driver"), ("dos", "DOS"), ("java", "Java"))
 TITLE = dict(KINDS)
 _SWEPT = (".dll", ".exe", ".drv", ".ocx", ".cpl")                # what `sweep` goes through
 _EXTS = {"pe": _SWEPT, "ne": _SWEPT, "le": (".vxd", ".386", ".pdr", ".sys", ".drv", ".exe"),
          "dos": (".exe", ".com", ".sys", ".vxd", ".386")}
-_BUILT = ("verified", "weak", "unverified", "not-judged")        # classes that mean "compiled and run"
+_BUILT = V.BUILT                                                 # classes that mean "compiled and run"
 COUNTS = ("functions", "decompiled", "compiled") + F.ORDER + (
     "code_bytes", "bytes_known", "bytes_verified", "bytes_weak")
 _rows = {}                                                       # (sha, digest) -> (stamp, counts)

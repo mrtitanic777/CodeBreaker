@@ -35,6 +35,7 @@ import re
 from codebreaker.base import ctext
 from codebreaker.verify.authored import match
 from codebreaker import platforms
+from codebreaker.verify import verdicts as V
 
 MAX_LOCALS = 6           # the leading locals whose order and storage are tried
 MAX_SITES = 6            # places in the body each kind of rewrite is tried at
@@ -397,7 +398,7 @@ def truth(profile, limit=0, log=print):
     n = same = knocked = back = 0
     for u in units[:limit or None]:
         n += 1
-        if match.distance(compile(u.source), u.original)[0] != "identical":
+        if match.distance(compile(u.source), u.original)[0] != V.IDENTICAL:
             continue
         same += 1
         one = list(_knobs(u.source, 0, None))
@@ -436,7 +437,7 @@ def best_flags(cl, env, header, texts, order, originals, address, work, sample=6
             built = match.compile_function(cl, env, header, texts[n], n, work, flags)
             if built:
                 v = match.distance(built, originals[address[n]])[0]
-                score += 3 if v == "identical" else 1 if v == "same size" else 0
+                score += 3 if v == V.IDENTICAL else 1 if v == V.SAME_SIZE else 0
         if score > best[0]:
             best = (score, flags)
     return best[1]
@@ -468,7 +469,7 @@ def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
                 b = match.compile_powerpc(cl, m.header, m.texts[n], n, os.path.join(work, "flags"), f)
                 if b:
                     v = match.distance(b, originals[address[n]], "powerpc")[0]
-                    got += 3 if v == "identical" else 1 if v == "same size" else 0
+                    got += 3 if v == V.IDENTICAL else 1 if v == V.SAME_SIZE else 0
             best = max(best, (got, f))
         flags = best[1]
         if log:
@@ -491,7 +492,7 @@ def run_powerpc(module_path, flags, work, fs=None, log=print, limit=0):
         fs.record_variant(sha, m.key[name], "xbox 360 cl " + flags, r["source"], r["distance"], r["total"],
                           r["verdict"], knobs=r["knobs"], behaves="")
         counts[0] += 1
-        counts[1 if r["verdict"] == "identical" else 2 if r["verdict"] == "same size" else 3] += 1
+        counts[1 if r["verdict"] == V.IDENTICAL else 2 if r["verdict"] == V.SAME_SIZE else 3] += 1
         if log and r["knobs"]:
             log("  %-28s %-9s distance %d/%d  via %s" % (name, r["verdict"], r["distance"], r["total"], r["knobs"]))
     return tuple(counts)
@@ -540,7 +541,7 @@ def run(module_path, flags, work, fs=None, log=print, limit=0):
         fs.record_variant(sha, key, os.path.basename(cl).lower() + " " + flags, r["source"], r["distance"],
                           r["total"], r["verdict"], knobs=r["knobs"], behaves=behaves.get(key) or "")
         counts[0] += 1
-        counts[1 if r["verdict"] == "identical" else 2 if r["verdict"] == "same size" else 3] += 1
+        counts[1 if r["verdict"] == V.IDENTICAL else 2 if r["verdict"] == V.SAME_SIZE else 3] += 1
         if log and r["knobs"]:
             log("  %-28s %-9s distance %d/%d  via %s" % (name, r["verdict"], r["distance"], r["total"], r["knobs"]))
     return tuple(counts)

@@ -27,6 +27,7 @@ from codebreaker import platforms
 from codebreaker.base import corpus
 from codebreaker.verify import compare
 from codebreaker.verify import lane_common
+from codebreaker.verify import verdicts as V
 
 P = platforms.of("powerpc")             # the Xbox 360: the six slots this lane asks
 REV = 5                                 # 4: branch-guided inputs (verify/guided.py); calls into absent code;
@@ -329,7 +330,7 @@ def _judge(context, item):
             vectors(), (), insns=insns, info=info,
             directed=lambda covered, reached: directed_and_guided(module_path, alone, va, span, ext_original,
                                                                   images[0], found))
-        if verdict != "divergent":
+        if verdict != V.DIVERGENT:
             limits = list(limits) + lane_common.path_limits(found.get("got"))
         return verdict, reason, limits
     return lane_common.judged(compare_one)

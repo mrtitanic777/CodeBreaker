@@ -57,6 +57,7 @@ import time
 from codebreaker import platforms
 from codebreaker.base import cache
 from codebreaker.engine import engine
+from codebreaker.verify import verdicts as V
 
 step = engine.step
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))       # codebreaker/
@@ -205,7 +206,7 @@ def _declare(p):
             b = ctx.need(L + "built", k)
             ctx.need(L + "profile")
             if b[0] == "dropped":
-                out[k] = ["no-compile", b[1], "", ""]
+                out[k] = [V.NO_COMPILE, b[1], "", ""]
             else:
                 todo[k] = True
         if todo:
@@ -234,7 +235,7 @@ def _declare(p):
         out = {"profile": digest, "settings": settings, "header": t["header"], "all_keys": t["all_keys"],
                "rows": [], "built": {}}
         have = set(fns)
-        out["rows"] = [dict(addr=k, sig="-", name="", source=None, verdict="no-synth",
+        out["rows"] = [dict(addr=k, sig="-", name="", source=None, verdict=V.NO_SOURCE,
                             reason="the decompiler produced nothing for this function", problem="none")
                        for k in t["all_keys"] if k not in have]
         if not have:
@@ -255,7 +256,7 @@ def _declare(p):
             n, sig, text = fns[k]
             v, reason, limits, detail = verdicts[k]
             row = dict(addr=k, sig=sig, name=n, source=text, verdict=v, reason=reason, limits=limits, detail=detail)
-            if v == "no-compile":
+            if v == V.NO_COMPILE:
                 row["problem"] = "compile"
             out["rows"].append(row)
         out["built"] = {k: b["built"][n] for k, n in names.items() if b["built"] and n in b["built"]}

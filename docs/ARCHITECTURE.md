@@ -980,6 +980,70 @@ changed may take the inner cache's answer, as the lz32 run's 1.7s decompile did;
 stages become steps. A long-lived process keeps a kind's values as first read (store._tables)
 while its hashes follow other processes' writes: the service should own the one open base.
 
+## Built: one verdict vocabulary (2026-10-30)
+
+IR_UNIFICATION item 5. `codebreaker/verify/verdicts.py` (V) holds the words; every producer emits
+them and every consumer reads them through it. Three things are said, each in one set:
+
+    a judge of a pair      equivalent  consistent  divergent  inconclusive  no-compile  no-source
+    (binary or source)     V.GOOD = equivalent, consistent; V.NOT_RUN; V.SAID (a report's word)
+    what it amounts to     verified  weak  identified  unverified  not-judged  no-compile  no-source
+                           V.ORDER, V.SCORED, V.BUILT, V.TITLE (files, reports), V.LABEL (the
+                           terminal's short form), V.WEAK_LIMITS, V.classify(verdict, limits)
+    a byte comparison      identical  same size  different  no original extent  no-compile
+                           (identified: a runtime library's, linked not written); V.MATCH_LABEL
+
+Older spellings are read as the words now -- V.verdict(), V.klass(), V.match() -- so a store or
+a cache written before keeps meaning what it meant:
+
+    old word                      where it came from                              now
+    no-synth                      reconstruct.run, engine/lanes (no C for it)     no-source
+    same / differs / not run      verify/gate16/isolated16, engine/win16's gate   equivalent / divergent / inconclusive
+    same / DIFFERS (a bool)       port/verify's cases                             equivalent / divergent
+    alike, different, untested    IR_UNIFICATION's proposal                       equivalent, divergent, inconclusive
+    does not compile              verify/authored/match, match16, scoreboard16    no-compile
+    run-time library              match16, scoreboard16                           identified
+    same length, different / different length   build/period16's log (kept)    same size / different
+    VERIFIED (weak), not judged, runtime library  (titles and labels)            weak, not-judged, identified
+
+Producers on it: verify/compare, lane_common, every lane (win32, win16, powerpc, driver, java,
+image_lane, dos), reconstruct, engine/lanes, engine/win16, verify/gate16/isolated16,
+compare/versions, compare/mask, verify/authored (match, match16, repair, search16), gate16's
+scoreboard16, port/verify. Consumers: store/functions (ORDER, TITLE, WEAK, classify are V's; the
+verdict and variant tables are written in today's words and read through V), the terminal (its
+TITLE is V.LABEL), the MCP server, the module writer, coverage/ledger, measure, teeth, tools
+(verdict_diff, gate_teeth16, record16/replay). The module writer builds its tree with each
+function's provenance, origin {module, va}, and reads the function's verdict by it (V.Index): a
+function renamed in the file keeps its verdict.
+
+Wording a person sees that changed (only where it said one thing two ways):
+
+    scoreboard16's report          "(run-time library aside)"  ->  "(runtime library aside)"
+    match16's tally                "run-time library N"        ->  "runtime library N"
+    match's 32-bit tally order     ..., does not compile, no original extent  ->  ..., no original extent,
+                                   does not compile (as the PowerPC tally and the ranking had it)
+    match --json "verdict"         "does not compile"          ->  "no-compile" (read back through V.match)
+    a stored row's raw verdict     "no-synth"                  ->  "no-source" (its class was no-source already)
+    the 16-bit gate's facts        "same" / "differs" / "not run"  ->  "equivalent" / "divergent" / "inconclusive"
+                                   (engine `facts`/`why`; record16/replay still prints same / differs / not run)
+
+Everything else -- the module files' status lines, the terminal, the MCP classes, the ledger,
+the port's report -- reads as before.
+
+Gate: the module writer's files for lzexpand.dll, lz32.dll, choice.com and splitter.vxd, written
+from nothing (each tree a state folder of its own) before and after: WRITEGATE. Default C output
+the same (l2c --made lzexpand, keyboard, comm, lz32: 223 of 223). Tests: tests/test_verdicts.py
+(6: the classes as they were for every word and limit, every older spelling read as now, one
+title and label per class, a store written before read in today's words, the module writer's
+lookup by provenance, the producers on it).
+
+**Left.** exact/'s byte ledger (src/LEDGER files: identical, differs, no place, does not compile,
+and "equivalent" for bytes equal up to another compiler state's habits) and exact/draft's free-form
+headers keep their own words: a ledger of bytes, written into other repositories. The whole-image
+writers' printed "builds back THE SAME" and build/driver's same/DIFFERS checks are bools, not
+verdicts. driver.py's limit `layout-differs` is not in V.WEAK_LIMITS (so it does not make a match
+weak), as before. coverage/reach.md's "Unverified" column counts no-compile too.
+
 ## Decisions, and what is left open
 
 - Python stays the language of the engine and the steps; the native decompiler stays a step. The

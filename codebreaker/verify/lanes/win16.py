@@ -36,9 +36,10 @@ from codebreaker import platforms
 from codebreaker.base import corpus
 from codebreaker.verify import compare
 from codebreaker.verify import lane_common
+from codebreaker.verify import verdicts as V
 
 P = platforms.of("ne")                  # 16-bit Windows: the six slots this lane asks
-NOT_RUN = ("inconclusive", "judge: the emulator crashed on this function", [], "")
+NOT_RUN = V.NOT_RUN
 ARG_WORDS = P.convention.arguments      # the words of arguments every function is given
 LEFTOVER = 0x7EF707E5                  # stands for "AX held no result" in a fingerprint
 REV = 23                                # bump when what is built or compared changes

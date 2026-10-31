@@ -18,6 +18,7 @@ from codebreaker.formats.pe import open_pe
 from codebreaker.emulate import emulator as tracer
 import struct as _struct
 import hashlib as _hashlib
+from codebreaker.verify import verdicts as V
 
 
 KIND = "pe"
@@ -112,7 +113,7 @@ PIPE_REV = 48                  # what a verdict means (13: one build per batch; 
                                 # a verdict's limits saying paths=N / paths-all)
 ROOM = 25 * tracer._MAX_INSNS   # the steps a rebuild is given then
 MAX_SUPPORT = 1500              # out-of-batch callee bodies pulled in per batch
-GOOD = ("equivalent", "consistent")
+GOOD = V.GOOD
 
 
 _PROFILES = {}

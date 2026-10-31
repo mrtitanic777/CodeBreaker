@@ -66,6 +66,7 @@ from codebreaker import platforms
 from codebreaker.base import cache
 from codebreaker.build import functions, module
 from codebreaker.engine import engine
+from codebreaker.verify import verdicts as V
 
 step = engine.step
 PLATFORM = "win16"
@@ -311,9 +312,9 @@ def _uses_gate():
 @step("function.gate", reads=("binary", "ne.header", "function.c", "function.contract"), platform=PLATFORM,
       uses=_uses_gate(), stamp=_gate_stamp, batch=True)
 def function_gate(ctxs, hint):
-    """The function's C run beside the original's (verify/gate16/isolated16.py): ["same", ""] or
-    ["differs", how]. Made in a build (the hint: its folder and the gate's tables), so it is
-    asked for by ne.image; one that could not be run is not kept."""
+    """The function's C run beside the original's (verify/gate16/isolated16.py): ["equivalent", ""]
+    or ["divergent", how] (verify/verdicts.py). Made in a build (the hint: its folder and the gate's
+    tables), so it is asked for by ne.image; one that could not be run is not kept."""
     from codebreaker.verify.gate16 import isolated16
     for k, ctx in ctxs.items():
         ctx.need("binary"), ctx.need("ne.header"), ctx.need("function.c", k), ctx.need("function.contract", k)
@@ -325,10 +326,10 @@ def function_gate(ctxs, hint):
     for n, verdict, why in isolated16.check(path, hint["folder"], sorted(by_name), tables=hint["tables"]):
         if n not in by_name:
             continue
-        out[by_name[n]] = ["same", ""] if verdict == "same" else ["differs", why or ""] if verdict == "differs" \
-            else engine.Unkept(["not run", why or ""])
+        out[by_name[n]] = [V.EQUIVALENT, ""] if verdict == V.EQUIVALENT else [V.DIVERGENT, why or ""] \
+            if verdict == V.DIVERGENT else engine.Unkept([V.INCONCLUSIVE, why or ""])
     for k in ctxs:
-        out.setdefault(k, engine.Unkept(["not run", "the checker gave no answer"]))
+        out.setdefault(k, engine.Unkept([V.INCONCLUSIVE, "the checker gave no answer"]))
     return out
 
 
@@ -446,7 +447,7 @@ def ne_image(ctx, key):
     gated = {}
     for n in (ctx.previous() or {}).get("gate_set", []):
         v = ctx.peek("function.gate", key_of[n]) if n in key_of else None
-        if v and v[0] == "differs":
+        if v and V.verdict(v[0]) == V.DIVERGENT:              # (a fact kept before says "differs")
             gated[n] = v[1]
     gate_now, gate_set, served = not os.environ.get("CB_NO_GATE"), [], {}
     tables = {"funcs": isolated16._functions(m), "wide": sorted(m.wide),
@@ -473,8 +474,9 @@ def ne_image(ctx, key):
         c = sorted(b.placed_c | getattr(b, "moved_c", set()))
         verdicts = ctx.need_many("function.gate", [key_of[n] for n in c if n in key_of],
                                  hint={"folder": folder, "tables": tables, "names": {key_of[n]: n for n in c}})
-        differ = {n: verdicts[key_of[n]][1] for n in c if n in key_of and verdicts[key_of[n]][0] == "differs"}
-        failed = [(n, verdicts[key_of[n]][1]) for n in c if n in key_of and verdicts[key_of[n]][0] == "not run"
+        differ = {n: verdicts[key_of[n]][1] for n in c if n in key_of and V.verdict(verdicts[key_of[n]][0]) == V.DIVERGENT}
+        failed = [(n, verdicts[key_of[n]][1]) for n in c if n in key_of
+                  and V.verdict(verdicts[key_of[n]][0]) == V.INCONCLUSIVE
                   and verdicts[key_of[n]][1].startswith("the checker failed")]
         if failed:
             b.gate_error = "%d functions (%s)" % (len(failed), failed[0][1][:120])

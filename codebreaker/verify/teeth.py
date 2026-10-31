@@ -25,6 +25,7 @@ import os
 import re
 
 from codebreaker.base import ctext
+from codebreaker.verify import verdicts as V
 
 _NAME = r"[A-Za-z_]\w*"
 
@@ -184,7 +185,7 @@ def run(module_path, rounds=3, log=print):
         return {n: judged[items[n][0]] if n in items else (None, dropped.get(n, ""), (), None) for n, _k, _t in batch}
 
     def outcome(said):
-        return "missed" if said[0] in reconstruct.GOOD else "caught" if said[0] == "divergent" else said[0]
+        return "missed" if said[0] in reconstruct.GOOD else "caught" if said[0] == V.DIVERGENT else said[0]
 
     results = []
     for r, batch in enumerate(plant(broken(), judge, outcome)):

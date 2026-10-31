@@ -10,11 +10,15 @@ in each, and the counts of each change: better (unverified -> verified ...), wor
 function that got worse is listed with both verdicts' reasons, so it can be looked at.
 """
 import collections
+import os
 import sqlite3
 import sys
 
-RANK = {"equivalent": 3, "consistent": 2, "inconclusive": 1, "divergent": 0, "no-compile": -1,
-        "no-synth": -2, None: -3}
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from codebreaker.verify import verdicts as V   # noqa: E402
+
+RANK = {V.EQUIVALENT: 3, V.CONSISTENT: 2, V.INCONCLUSIVE: 1, V.DIVERGENT: 0, V.NO_COMPILE: -1,
+        V.NO_SOURCE: -2, None: -3}
 
 
 def verdicts(path):
@@ -24,7 +28,7 @@ def verdicts(path):
          "JOIN verdict v ON v.candidate=c.id")
     out = {}
     for mod, addr, name, verdict, reason, source in db.execute(q):
-        out[(mod, addr)] = (name, verdict, reason or "", source or "")
+        out[(mod, addr)] = (name, V.verdict(verdict), reason or "", source or "")     # (older words read as now)
     return out
 
 

@@ -466,3 +466,13 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    "Built: one Module model, the writers as back ends"). Test: tests/translate/test_module_model.py.
 5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module
    writer from L2 provenance (module + address).
+   **Done 2026-10-30** (codebreaker/verify/verdicts.py; docs/ARCHITECTURE.md, "Built: one verdict
+   vocabulary"). Three sets of words, one each: what a judge says of a pair (equivalent,
+   consistent, divergent, inconclusive, no-compile, no-source -- the emulator lanes, the 16-bit
+   gate, the port's cases, Java, the whole-image lanes), what it amounts to (verified, weak,
+   identified, unverified, not-judged, no-compile, no-source, with one TITLE and one LABEL each),
+   and what a byte comparison says (identical, same size, different, no original extent,
+   no-compile). Older spellings map on read (no-synth, same, differs, not run, does not compile,
+   run-time library ...). The module writer builds its tree with each function's origin
+   {module, va} and reads its verdict by that (`V.Index`). Left: exact/'s byte ledger keeps its own
+   words (its "equivalent" is "equal up to another compiler state's habits", not the judge's).

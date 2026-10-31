@@ -19,6 +19,7 @@ one from a set of offsets). For code made of fixed-size words (PowerPC) it says,
 which bits of the word are left out -- a relocation there fills a field of the instruction, and
 its opcode and registers are still compared.
 """
+from codebreaker.verify import verdicts as V
 
 
 def of(offsets, size):
@@ -85,5 +86,5 @@ def distance(a, b, ma=None, mb=None, unit=1, byteorder="little"):
     diff += extra
     if first < 0 and extra:
         first = n
-    verdict = "identical" if diff == 0 else "same size" if len(a) == len(b) else "different"
+    verdict = V.IDENTICAL if diff == 0 else V.SAME_SIZE if len(a) == len(b) else V.DIFFERENT     # (verify/verdicts.py)
     return verdict, diff, max(len(a), len(b)) // unit, first

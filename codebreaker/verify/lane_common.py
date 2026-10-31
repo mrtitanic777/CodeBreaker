@@ -23,6 +23,7 @@ import hashlib
 import os
 
 from codebreaker.verify import compare
+from codebreaker.verify import verdicts as V
 
 
 # --- the switches -----------------------------------------------------------------------------
@@ -259,5 +260,5 @@ def judged(compare_one):
     except ImportError:
         raise
     except Exception as e:
-        verdict, reason, limits = "inconclusive", "judge: %s" % type(e).__name__, []
+        verdict, reason, limits = V.INCONCLUSIVE, "judge: %s" % type(e).__name__, []
     return verdict, reason, list(limits), info.get("detail", "")

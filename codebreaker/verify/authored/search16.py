@@ -13,6 +13,8 @@ that comes out identical is source: the compiler says so, byte for byte.
 import random
 import re
 
+from codebreaker.verify import verdicts as V
+
 _DECL = re.compile(r"^(\s+)((?:unsigned |signed )?\w+)(\s+\**\s*)(\w+)(\s*(?:\[[^\]]*\])?\s*;)\s*$")
 _SIGN = {"int1": "uint1", "uint1": "int1", "int2": "uint2", "uint2": "int2", "int4": "uint4", "uint4": "int4",
          "xunknown2": "int2", "xunknown4": "int4", "xunknown1": "int1"}
@@ -179,7 +181,7 @@ def search(near, compile_group, score, rounds, seed=1995, log=print):
     for r in range(rounds):
         tries = {}
         for fn, (t, v) in best.items():
-            if v[0] == "identical":
+            if v[0] == V.IDENTICAL:
                 continue
             new = rewrite(t, rng)
             if new and new != t:
@@ -195,5 +197,5 @@ def search(near, compile_group, score, rounds, seed=1995, log=print):
                     gained += 1
         if log:
             log("  round %d: %d rewrites, %d nearer, %d identical" % (
-                r + 1, len(tries), gained, sum(v[0] == "identical" for _t, v in best.values())))
+                r + 1, len(tries), gained, sum(v[0] == V.IDENTICAL for _t, v in best.values())))
     return best
