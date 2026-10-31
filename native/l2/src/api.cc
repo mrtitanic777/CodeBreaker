@@ -211,48 +211,43 @@ void run(Call* c) {
 }
 
 #ifdef _WIN32
-// Threads with a large stack, kept and reused: a call is handed to an idle one (made the first time
-// none is idle), so calls on several threads at once each get their own.
-struct Worker {
-    HANDLE thread = nullptr, go = nullptr, done = nullptr;
-    Call* job = nullptr;
-};
-std::mutex pool_mu;
-std::vector<Worker*> idle;
+// A large stack for the deep entries, on the caller's own thread: a fiber per thread, made once
+// (512 MB reserved), switched to for the call and back -- no other thread, so no wait to be scheduled
+// (handing calls to a worker thread cost more than writing a small function).
+thread_local LPVOID big_fiber = nullptr;
+thread_local LPVOID caller_fiber = nullptr;
+thread_local Call* fiber_job = nullptr;
 
-DWORD WINAPI worker_main(LPVOID p) {
-    Worker* w = static_cast<Worker*>(p);
+VOID CALLBACK fiber_main(LPVOID) {
     while (true) {
-        WaitForSingleObject(w->go, INFINITE);
-        run(w->job);
-        SetEvent(w->done);
+        run(fiber_job);
+        SwitchToFiber(caller_fiber);
     }
 }
 
 void run_on_worker(Call* c) {
-    Worker* w = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(pool_mu);
-        if (!idle.empty()) {
-            w = idle.back();
-            idle.pop_back();
-        }
+    bool converted = false;
+    LPVOID me;
+    if (IsThreadAFiber())
+        me = GetCurrentFiber();
+    else {
+        me = ConvertThreadToFiber(nullptr);
+        converted = me != nullptr;
     }
-    if (!w) {
-        w = new Worker();
-        w->go = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        w->done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        w->thread = CreateThread(nullptr, 512u << 20, worker_main, w, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
-        if (!w->thread) {
-            run(c);
-            return;
-        }
+    if (!me) {
+        run(c);
+        return;
     }
-    w->job = c;
-    SetEvent(w->go);
-    WaitForSingleObject(w->done, INFINITE);
-    std::lock_guard<std::mutex> lock(pool_mu);
-    idle.push_back(w);
+    if (!big_fiber) big_fiber = CreateFiberEx(1u << 20, 512u << 20, FIBER_FLAG_FLOAT_SWITCH, fiber_main, nullptr);
+    if (!big_fiber) {
+        if (converted) ConvertFiberToThread();
+        run(c);
+        return;
+    }
+    caller_fiber = me;
+    fiber_job = c;
+    SwitchToFiber(big_fiber);
+    if (converted) ConvertFiberToThread();
 }
 #else
 void run_on_worker(Call* c) { run(c); }
@@ -273,8 +268,6 @@ int l2_call(const char* fn, const char* in, size_t inlen, char** out, size_t* ou
     static const char* deep[] = {"function", "module", "expr", "condition", "flags", "cpp17_unit", "cpp17_program"};
     bool big = false;
     for (auto d : deep) big = big || c.fn == d;
-    // (a small document's writing stays here too: handing it to another thread cost more than writing it)
-    if (big && inlen < 16384) big = false;
     if (big) run_on_worker(&c);
     else run(&c);
     char* buf = static_cast<char*>(std::malloc(c.out.size() + 1));

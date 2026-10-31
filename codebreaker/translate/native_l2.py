@@ -24,7 +24,7 @@ import os
 
 from codebreaker.base import settings
 
-DEFAULT = "0"             # CB_NATIVE_L2 when it is not set
+DEFAULT = "1"             # CB_NATIVE_L2 when it is not set (identical everywhere gated: docs/NATIVE.md step 5)
 _LIB = []
 _WHY = []
 
@@ -100,24 +100,22 @@ def _text(v):
     t = type(v)
     if t in (set, frozenset, list, dict) and len(v) >= 32:
         n = len(v)
-        for obj, text in _BIG:                           # (an equal one first: compared at C's speed)
+        for obj, number in _BIG:                         # (an equal one first: compared at C's speed)
             if type(obj) is t and len(obj) == n and obj == v:
-                return text
+                return '{"$big":%d}' % number            # (the DLL keeps it: handed over by its number)
     if t in (set, frozenset, list, dict) and len(v) >= 32 and (
             all(type(k) is str and type(x) in (str, int) for k, x in v.items()) if t is dict else
             all(type(x) in (str, int) for x in v)):
         # (of strings and ints alone -- no bool, which == would take for an int -- kept as a copy,
         # so a change to the container later is no stale hit)
-        for obj, text in _BIG:
-            if type(obj) is t and obj == v:
-                return text
         if t is dict:
             text = json.dumps(v, separators=_SEP) if not any(k.startswith("$") for k in v) else json.dumps(_enc(v), separators=_SEP)
         else:
             text = json.dumps(v if t is list else {"$s": list(v)}, separators=_SEP)
-        _BIG.append((t(v), text))
-        del _BIG[:-16]
-        return text
+        _NEXT[0] += 1
+        _BIG.append((t(v), _NEXT[0]))
+        del _BIG[:-32]                                   # (the DLL keeps the latest 64)
+        return '{"$keep":%d,"$v":%s}' % (_NEXT[0], text)
     if t is dict and all(type(k) is str and not k.startswith("$") for k in v):
         return "{" + ",".join(json.dumps(k) + ":" + _text(x) for k, x in v.items()) + "}"
     return json.dumps(_enc(v), separators=_SEP)
@@ -214,15 +212,21 @@ def call(fn, *args, plain=None, facts=None):
     """An entry point of the DLL with `args` -> its result. `plain`: the index of an argument that is
     plain JSON already (an L2 document: written by json.dumps, which is quicker). `facts`: a dict the
     call changes in place (backends/c.function's): the keys it wrote are put back, also when it raises."""
-    parts = []
-    held = None
-    for k, a in enumerate(args):
-        if k == plain and isinstance(a, dict):
-            held = _held(a)
-            parts.append(held[0])
-        else:
-            parts.append(json.dumps(a, separators=_SEP) if k == plain else _text(a))
+    def arguments():
+        parts, held = [], None
+        for k, a in enumerate(args):
+            if k == plain and isinstance(a, dict):
+                held = _held(a)
+                parts.append(held[0])
+            else:
+                parts.append(json.dumps(a, separators=_SEP) if k == plain else _text(a))
+        return parts, held
+    parts, held = arguments()
     status, got = call_raw(fn, "[" + ",".join(parts) + "]")
+    if status and "no longer kept" in got:              # (the DLL let a large value go: all of them again)
+        del _BIG[:]
+        parts, held = arguments()
+        status, got = call_raw(fn, "[" + ",".join(parts) + "]")
     if status and held is not None and held[1] is not None and "no longer held" in got:
         parts[plain] = held[1]()                         # (the DLL let it go: handed over whole again)
         status, got = call_raw(fn, "[" + ",".join(parts) + "]")

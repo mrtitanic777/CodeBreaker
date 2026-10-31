@@ -3,12 +3,46 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <mutex>
+#include <vector>
 
 #include "pystr.hpp"
 
 namespace py {
 
 namespace {
+
+// Large flat values the shim hands over once and then by number ({"$keep": n, "$v": value}, then
+// {"$big": n}): a module's sets each of its functions is written with. Each use gets its own copy.
+std::mutex kept_mu;
+std::vector<std::pair<int64_t, V>> kept_values;           // the latest few, newest last
+
+V copy_flat(const V& v) {
+    if (v.is_dict()) return copy_dict(v);
+    if (v.is_list() || v.is_set() || v.is_tuple()) {
+        V out = v.is_dict() ? V::dict() : V::list();
+        out.k = v.k;
+        out.seq() = v.seq();
+        return out;
+    }
+    return v;
+}
+
+V keep(const V& d) {
+    int64_t n = d.items()[0].second.as_int();
+    V v = d.items().size() == 2 ? d.items()[1].second : V();
+    std::lock_guard<std::mutex> lock(kept_mu);
+    kept_values.push_back({n, v});
+    if (kept_values.size() > 64) kept_values.erase(kept_values.begin());
+    return copy_flat(v);
+}
+
+V kept(int64_t n) {
+    std::lock_guard<std::mutex> lock(kept_mu);
+    for (auto& kv : kept_values)
+        if (kv.first == n) return copy_flat(kv.second);
+    raise("RuntimeError", "native/l2: value " + std::to_string(n) + " no longer kept");
+}
 
 struct Parser {
     const std::string& s;
@@ -204,6 +238,8 @@ struct Parser {
         fail("Expecting value");
     }
     V untag(const V& d) {
+        if (tagged && (d.items().size() == 2 || d.items().size() == 1) && d.items()[0].first.str() == "$keep") return keep(d);
+        if (tagged && d.items().size() == 1 && d.items()[0].first.str() == "$big") return kept(d.items()[0].second.as_int());
         if (!tagged || d.items().size() != 1) return d;
         auto& kv = d.items()[0];
         const std::string& k = kv.first.str();
