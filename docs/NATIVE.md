@@ -435,6 +435,47 @@ in the tests all match, as do Lib/test's `badsyntax_*` files, message text inclu
 pyfront deliberately does not yet provide a generic child walker or a parent map. The scope
 pass is the first thing that needs them, so they should be built there.
 
+### The engine in C++, piece 2: scopes, inference and lowering -- `native/pyengine`
+
+Items 1-3 above, done (2026-10-31): `pyengine.exe <package dir> --coverage --out DIR` writes L2 per
+module and the coverage ledger; a C ABI (`pyengine_api.dll`) gives the same to any caller.
+native/pyengine/README.md has the whole design. In short:
+
+- **Scopes** by CPython's symtable rules (module, class, function, lambda, comprehension;
+  global/nonlocal; free names and cells), on a child walker, `ast.walk` and a parent map built here.
+- **Inference**: infer.py and methods.py rule for rule over pyfront's tree (intervals on unbounded
+  ints, union-find containers, records, branch narrowing, loop fixpoints, contracts at calls, the
+  rounds to a fixpoint). `--old` runs exactly these rules.
+- **Contracts, then the extensions**: the classic facts are frozen once they settle; code typed
+  afterwards that would change one is refused at that statement. That keeps every function the old
+  engine translated byte-identical. The extensions: *demand typing* (a parameter no caller types
+  takes the type its uses demand), *per-caller specialization* (copies per argument signature,
+  written as overloads), *closures* (capturing lambdas in `py.fn<R, P...>` locals), *generators*
+  (a class deriving `py.generator<T>` whose `next()` resumes after each yield), *tagged variants*
+  (`py.variant<...>` where scalar kinds meet, narrowed by `isinstance`), *Optional* as before and
+  wider, *`re`* (patterns read for which groups may be unset; every call carries its pattern for the
+  Python-compatible regex engine), *files and os/os.path/shutil/time/hashlib* rows.
+- **Lowering** to the same L2 shapes the Python front end produced, written exactly as l2.to_json
+  writes them.
+
+**Gate 1 -- equals or beats the old engine** (all of codebreaker/: 564 modules, 8,158 functions):
+
+| run | old engine translated | L2 byte-identical | refusal reasons the same | units identical |
+|---|---|---|---|---|
+| `--old` strict | 277 | 277 | 7,881 / 7,881 | 564 / 564 |
+| `--old --checked` | 359 | 359 | 7,799 / 7,799 | -- |
+| extended strict / checked | 277 / 359 | 277 / 359 (none refused) | -- | -- |
+
+**Gate 2 -- coverage**: translated functions 277 -> **517** strict (1.1% -> **2.4%** of lines),
+359 -> **656** checked (1.5% -> **3.2%**); formats 3.7% -> 6.0% (9.3% checked), java 1.5% -> 7.0%,
+decompile 1.2% -> 3.7%, build 1.4% -> 2.9% (the per-package table is in the README). stdlib refusals
+1,435 -> 512, syntax 620 -> 476; the remaining roots are untyped parameters no use pins down
+(1,205: many are visitors over Python's own `ast` nodes), callers passing values of no type, getattr,
+mixed-value dicts, `id`, `next`, `*args`. A run takes ~50 s (the Python engine: 115-130 s).
+CTest: 8 suites, 70 checks (scopes, inference, specialization, closures, generators, variants,
+regex, files). Left: the C++17 back end over this L2; `next()`/`zip()` over generators, escaping
+closures, variants beyond scalars.
+
 ## Step 5 (now first): the L2 core and the C back end -- `native/l2`
 
 Logan, 2026-10-31: "All of it needs to be C++." The translator's core moves first: the L2 tree, and the

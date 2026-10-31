@@ -27,13 +27,6 @@ using Args = std::vector<std::optional<T>>;
 using Kw = OMap<std::optional<T>>;
 
 // ------------------------------------------------------------------------------------ regex groups
-struct ReInfo {
-    bool ok = true;
-    int groups = 0;
-    std::map<std::string, int> names;
-    std::vector<bool> optional;    // [1..groups]
-};
-
 ReInfo re_analyze(const std::string& pat, bool verbose) {
     ReInfo info;
     info.optional.push_back(false);

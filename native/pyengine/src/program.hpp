@@ -142,6 +142,8 @@ class Program {
 public:
     Program();
     ~Program();
+    Program(const Program&) = delete;
+    Program& operator=(const Program&) = delete;
     // loading
     Module* add_module(const std::string& name, const std::string& path, const std::string& source, std::string* err = nullptr);
     void add_tree(const std::string& root, const std::string& package);

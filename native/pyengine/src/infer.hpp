@@ -167,6 +167,16 @@ public:
     T safe_ev(const A::Expr* v);
 };
 
+// (new) a regular expression's groups, read from its pattern (ext.cc): how many, their names, and
+// which may be left unset (inside ?, *, {0,}, an alternative, a negative look-around, a conditional)
+struct ReInfo {
+    bool ok = true;
+    int groups = 0;
+    std::map<std::string, int> names;
+    std::vector<bool> optional;    // [1..groups]
+};
+ReInfo re_analyze(const std::string& pat, bool verbose);
+
 std::string fmt_big(const std::optional<Big>& b);
 std::string py_repr(const std::string& s);       // repr() of a str (UTF-8)
 std::string py_repr_list(const std::vector<std::string>& v);
