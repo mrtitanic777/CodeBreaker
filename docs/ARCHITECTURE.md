@@ -1101,6 +1101,7 @@ verdict, reason, limits, name -- and the linked image compared, old vs engine):
     lzexpand.dll   ne     equivalent 30, divergent 14, no-compile 2                     yes; image byte-identical
     keyboard.drv   ne     equivalent 40, divergent 21, consistent 4, no-compile 5       yes
     comm.drv       ne     equivalent 20, divergent 3, consistent 18                     yes
+    krnl386.exe    ne     equivalent 222, divergent 504, consistent 399, no-compile 41  yes (1166 rows; old 661 s, engine 355 s cold)
     version.dll    pe     equivalent 28, divergent 4, no-compile 12                     yes
     imm32.dll      pe     equivalent 73                                                 yes
     lz32.dll       pe     equivalent 17, divergent 3, no-compile 19                     yes; image == but for the PE time stamps (5 bytes)
