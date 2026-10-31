@@ -322,7 +322,7 @@ class Writer(object):
                 return 'py::%s(%s)' % (n, ', '.join(self.expr(a) for a in e.args))
             if n in ('dict.items', 'dict.keys', 'dict.values'):
                 return '%s.%s()' % (self.operand(e.target), n.split('.')[1])
-        return self.expr(e)
+        return self.operand(e) if isinstance(e, ir.Lit) else self.expr(e)
 
     # ------------------------------------------------------------------------------------ expressions
     def operand(self, e):
@@ -552,7 +552,14 @@ class Writer(object):
         if n == 'empty':
             return '%s{}' % self.ctype(e.type)
         if n == 'tuple':
-            return 'std::make_tuple(%s)' % ', '.join(self.typed_item(x, t) for x, t in zip(a, e.type.args))
+            items = ', '.join(self.typed_item(x, t) for x, t in zip(a, e.type.args))
+            if any(isinstance(x, ir.Lit) for x in a):           # (a literal's C++ type is not the tuple's)
+                return '%s{%s}' % (self.ctype(e.type), items)
+            return 'std::make_tuple(%s)' % items
+        if n == 'in':
+            return 'py::in(%s, %s)' % (self.expr(a[0]), self.expr(a[1]))
+        if n in ('any', 'all'):
+            return 'py::%s_of(%s)' % (n, self.expr(a[0]))
         if n == 'get':
             x = a[0]
             if isinstance(x, ir.Call) and x.sym.owner == 'py' and x.sym.name in ('struct.unpack_from', 'struct.unpack') \
@@ -591,9 +598,12 @@ class Writer(object):
                  'checked_shl', 'checked_pow', 'checked_neg', 'pow'):
             return 'py::%s(%s)' % (n, ', '.join(X(x) for x in a))
         if n == 'concat':
+            if e.type is not None and e.type.kind == 'class' and e.type.name == 'py.tuple':
+                return 'std::tuple_cat(%s, %s)' % (X(a[0]), X(a[1]))
             return '%s + %s' % (self.operand(a[0]), self.operand(a[1]))
         if n == 'repeat':
-            return 'py::repeat(%s, %s)' % (X(a[0]), X(a[1]))
+            first = cpp_bytes(a[0].value) if isinstance(a[0], ir.Lit) and a[0].type.name == 'py.bytes' else self.operand(a[0])
+            return 'py::repeat(%s, %s)' % (first, X(a[1]))
         if n == 'percent':
             return 'py::percent(%s)' % ', '.join([self.str_arg(a[0])] + [X(x) for x in a[1:]])
         if n == 'format':
@@ -628,6 +638,8 @@ class Writer(object):
             return 'py::print(%s)' % ', '.join(X(x) for x in a if not (isinstance(x, ir.Call) and x.sym.name == 'kw'))
         if n == 'enumerate':
             return 'py::enumerate(%s)' % ', '.join(X(x) for x in a)
+        if n in ('builtins.list', 'builtins.set', 'builtins.dict') and not a:
+            return '%s{}' % self.ctype(e.type)
         tpl = api(n)
         if tpl is None:
             raise Decline('no C++ for %s' % n)
@@ -640,9 +652,11 @@ class Writer(object):
             return 'py::str(%s)' % cpp_string(x.value)
         return self.expr(x)
 
+    _BARE = frozenset(('bytes.decode', 'str.encode', 'builtins.format', 'int.from_bytes', 'int.to_bytes'))     # (they take const char*)
+
     def template(self, tpl, e):
-        args = [self.str_arg(x) if not (isinstance(x, ir.Call) and x.sym.name == 'kw') else self.expr(x.args[0])
-                for x in e.args]
+        args = [(self.str_arg(x) if e.sym.name in self._BARE else self.typed_item(x, x.type))
+                if not (isinstance(x, ir.Call) and x.sym.name == 'kw') else self.expr(x.args[0]) for x in e.args]
         recv = self.operand(e.target) if e.target is not None else ''
         out = tpl.replace('{recv}', recv).replace('{,args}', ''.join(', ' + x for x in args)).replace('{args}', ', '.join(args))
         if '{T}' in out:

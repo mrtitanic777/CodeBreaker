@@ -97,15 +97,55 @@ def translate(prog, modules=None, int_policy='strict', fns=None):
                 lowered[q] = (L.Refused('calls-refused', 'module name %s (%s)' % (g[1], bad_globals[g].issue.reason[:60])), fl)
                 break
     L.close_refusals(prog, lowered)
+    used = used_types(prog, ctx, lowered, global_decls)
     results = {}
-    for mod in sorted(wanted):
-        if mod not in prog.modules:
+    todo = sorted(m for m in wanted if m in prog.modules)
+    while todo:                                          # (and the modules whose declarations they need)
+        mod = todo.pop(0)
+        if mod in results:
             continue
-        results[mod] = build_unit(prog, ctx, mod, lowered, global_decls)
+        results[mod] = build_unit(prog, ctx, mod, lowered, global_decls, used)
+        for dep in results[mod].unit.imports:
+            if dep not in results and dep not in todo:
+                todo.append(dep)
     return results
 
 
-def build_unit(prog, ctx, mod, lowered, global_decls):
+def used_types(prog, ctx, lowered, global_decls):
+    """the qualified names of the records and classes every translated function (and every module name
+    they read) uses -- and the types of those records' fields and classes' attributes, to a fixpoint"""
+    used = set()
+    for q, (md, fl) in lowered.items():
+        if fl is not None and not isinstance(md, L.Refused):
+            used |= _types_in(md)
+    for d in global_decls.values():
+        used |= _types_of(d.type)
+    recs = dict(('%s.%s' % (ctx.records.module[s], n), s) for s, n in ctx.records.names.items())
+    todo = list(used)
+    while todo:
+        q = todo.pop()
+        more = set()
+        if q in recs:
+            for key, ft, req in ctx.records.fields(recs[q]):
+                try:
+                    more |= _types_of(ctx.ty(ft, 0, 'field ' + key))
+                except L.Refused:
+                    pass
+        elif q in prog.classes:
+            for attr in prog.attrs.get(q, {}):
+                try:
+                    more |= _types_of(ctx.ty(prog.attr_type(q, attr), 0, 'attribute ' + attr))
+                except L.Refused:
+                    pass
+            for b in prog.classes[q].bases:
+                more.add(b)
+        for x in more - used:
+            used.add(x)
+            todo.append(x)
+    return used
+
+
+def build_unit(prog, ctx, mod, lowered, global_decls, used_all=None):
     m = prog.modules[mod]
     r = L.ModuleResult(mod)
     fns = [f for f in prog.fns.values() if f.module is m]
@@ -128,10 +168,11 @@ def build_unit(prog, ctx, mod, lowered, global_decls):
     for (gm, gname), d in global_decls.items():
         if gm == mod:
             used |= _types_of(d.type)
+    everywhere = used_all if used_all is not None else used
     recs = []
     for s, name in ctx.records.names.items():
         q = '%s.%s' % (ctx.records.module[s], name)
-        if ctx.records.module[s] == mod and (q in used or _any_ref(prog, ctx, s, used)):
+        if ctx.records.module[s] == mod and (q in everywhere or q in used or _any_ref(prog, ctx, s, used)):
             recs.append((s, q, name))
     for s, q, name in recs:
         members = []
@@ -147,7 +188,7 @@ def build_unit(prog, ctx, mod, lowered, global_decls):
     # classes
     for c in m.classes.values():
         methods = [r.translated[f.qname] for f in c.methods.values() if f.qname in r.translated]
-        if not methods and c.qname not in used:
+        if not methods and c.qname not in used and c.qname not in everywhere:
             continue
         members = []
         attrs = dict(prog.attrs.get(c.qname, {}))
@@ -211,6 +252,17 @@ def build_unit(prog, ctx, mod, lowered, global_decls):
                 own = s.owner if s.owner in prog.modules else s.owner.rsplit('.', 1)[0]
                 if own in prog.modules and own != mod:
                     deps.add(own)
+    for decl in types:                                   # what the declarations name: their modules too
+        names = set()
+        if decl.extends is not None:
+            names.add(decl.extends.name)
+        for x in decl.members:
+            if isinstance(x, ir.FieldDecl):
+                names |= _types_of(x.type)
+        for q in names:
+            owner = q if q in prog.modules else q.rsplit('.', 1)[0]
+            if owner != mod and owner in prog.modules:
+                deps.add(owner)
     r.unit = ir.Unit(path=m.path, package=mod, imports=sorted(deps), types=types)
     return r
 

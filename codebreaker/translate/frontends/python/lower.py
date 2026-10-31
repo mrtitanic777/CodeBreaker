@@ -194,6 +194,8 @@ class Context(object):
         if k == 'float':
             return F64
         if k == 'none':
+            if what not in ('value', 'return value'):
+                raise Refused('untyped', '%s is only ever None' % what, line)
             return VOID
         if k == 'str':
             return STR
@@ -1396,6 +1398,9 @@ class FnLower(object):
                         e = ir.Binary(op='&&' if neg else '||', left=e, right=x, type=BOOL)
                     return ir.Paren(x=e, type=BOOL) if len(parts) > 1 else e
             bt = self.T(bn)
+            if bt.kind == 'tuple':                           # `x in t` of a tuple: each item compared
+                e = pyfn('in', [a, b], BOOL, line=line)
+                return ir.Unary(op='!', x=e, postfix=False, type=BOOL) if neg else e
             if bt.kind == 'dict' and self.p.is_record(bt.site):
                 key = _str_const(an)
                 fields = dict((k, req) for k, _t, req in self.ctx.records.fields(bt.site))

@@ -561,7 +561,11 @@ inline const char32_t* cp1252_high_() {  // 0x80..0x9F; 0 = undefined in Python'
     return t;
 }
 
+class bytearray;
+
 class bytes {
+    friend class bytearray;
+
   protected:
     std::string b_;
 
@@ -841,13 +845,23 @@ class bytes {
     }
 };
 
-class bytearray : public bytes {
+// bytearray: Python's is a mutable object shared by every name that holds it, so this is a handle to
+// the bytes; it reads as bytes (it converts to const bytes&) and changes in place
+class bytearray {
+    std::shared_ptr<bytes> p_;
+
   public:
-    using bytes::bytes;
-    bytearray() = default;
-    explicit bytearray(const bytes& b) : bytes(b.raw()) {}
+    bytearray() : p_(std::make_shared<bytes>()) {}
+    bytearray(const char* s, size_t n) : p_(std::make_shared<bytes>(s, n)) {}
+    explicit bytearray(const bytes& b) : p_(std::make_shared<bytes>(b)) {}
     static bytearray zeros(int64_t n) { return bytearray(bytes::zeros(n)); }
     template <class L> static bytearray from_list(const L& items) { return bytearray(bytes::from_list(items)); }
+    const bytes& view() const { return *p_; }
+    operator const bytes&() const { return *p_; }
+    const std::string& raw() const { return p_->raw(); }
+    std::string& raw_mut() const { return p_->b_; }
+    int64_t size() const { return p_->size(); }
+    bool empty() const { return p_->empty(); }
     struct item_ref {
         std::string* s;
         size_t i;
@@ -858,15 +872,42 @@ class bytearray : public bytes {
             return *this;
         }
     };
-    item_ref operator[](int64_t i) { return {&b_, static_cast<size_t>(index_(i, size(), "bytearray"))}; }
-    int64_t operator[](int64_t i) const { return bytes::operator[](i); }
-    void append(int64_t v) {
+    item_ref operator[](int64_t i) const { return {&p_->b_, static_cast<size_t>(index_(i, size(), "bytearray"))}; }
+    bytearray slice(int64_t lo, int64_t hi) const { return bytearray(p_->slice(lo, hi)); }
+    bytearray slice(none_t, int64_t hi) const { return bytearray(p_->slice(0, hi)); }
+    bytearray slice(int64_t lo, none_t) const { return bytearray(p_->slice(lo, size())); }
+    template <class A, class B> bytearray slice(A lo, B hi, int64_t step) const { return bytearray(p_->slice(lo, hi, step)); }
+    bytearray slice_from(int64_t lo) const { return bytearray(p_->slice_from(lo)); }
+    bytearray slice_to(int64_t hi) const { return bytearray(p_->slice_to(hi)); }
+    void append(int64_t v) const {
         if (v < 0 || v > 255) throw ValueError("byte must be in range(0, 256)");
-        b_.push_back(static_cast<char>(v));
+        p_->b_.push_back(static_cast<char>(v));
     }
-    void extend(const bytes& b) { b_ += b.raw(); }
-    std::string& raw_mut() { return b_; }
-    bytearray& operator+=(const bytes& b) { b_ += b.raw(); return *this; }
+    void extend(const bytes& b) const { p_->b_ += b.raw(); }
+    const bytearray& operator+=(const bytes& b) const { p_->b_ += b.raw(); return *this; }
+    bytes::iterator begin() const { return p_->begin(); }
+    bytes::iterator end() const { return p_->end(); }
+    template <class X> bool contains(const X& x) const { return p_->contains(x); }
+    template <class... A> int64_t find(const A&... a) const { return p_->find(a...); }
+    template <class... A> int64_t rfind(const A&... a) const { return p_->rfind(a...); }
+    template <class... A> int64_t index(const A&... a) const { return p_->index(a...); }
+    template <class X> int64_t count(const X& x) const { return p_->count(x); }
+    template <class X> bool startswith(const X& x) const { return p_->startswith(x); }
+    template <class X> bool endswith(const X& x) const { return p_->endswith(x); }
+    str decode(const char* enc = "utf-8", const char* errors = "strict") const { return p_->decode(enc, errors); }
+    str hex() const { return p_->hex(); }
+    bytearray upper() const { return bytearray(p_->upper()); }
+    bytearray lower() const { return bytearray(p_->lower()); }
+    bytearray strip() const { return bytearray(p_->strip()); }
+    bytearray rstrip() const { return bytearray(p_->rstrip()); }
+    bytearray lstrip() const { return bytearray(p_->lstrip()); }
+    bool isalnum() const { return p_->isalnum(); }
+    bool isalpha() const { return p_->isalpha(); }
+    bool isdigit() const { return p_->isdigit(); }
+    friend bool operator==(const bytearray& a, const bytes& b) { return a.view() == b; }
+    friend bool operator!=(const bytearray& a, const bytes& b) { return !(a.view() == b); }
+    friend bool operator<(const bytearray& a, const bytes& b) { return a.view() < b; }
+    friend bytearray operator+(const bytearray& a, const bytes& b) { return bytearray(a.view() + b); }
 };
 
 struct bytes_hash {
@@ -1163,6 +1204,13 @@ template <class T> class set {
     friend bool operator==(const set& a, const set& b) { return a.size() == b.size() && a.issubset(b); }
 };
 
+// `x in (a, b, c)`
+template <class X, class... T> bool in(const X& x, const std::tuple<T...>& t) {
+    return std::apply([&](const auto&... y) { return ((x == y) || ...); }, t);
+}
+template <class L> bool any_of(const L& xs);
+template <class L> bool all_of(const L& xs);
+
 // ------------------------------------------------------------------------------------------ len, truth
 template <class T> int64_t len(const T& x) { return x.size(); }
 template <class... T> int64_t len(const std::tuple<T...>&) { return sizeof...(T); }
@@ -1180,6 +1228,17 @@ template <class T> bool truthy(const set<T>& x) { return !x.empty(); }
 template <class T> bool truthy(const std::optional<T>& x) { return x.has_value() && truthy(*x); }
 template <class T> bool truthy(const ref<T>& x) { return x != nullptr; }
 template <class... T> bool truthy(const std::tuple<T...>&) { return sizeof...(T) != 0; }
+inline bool truthy(const bytearray& b) { return !b.empty(); }
+template <class L> bool any_of(const L& xs) {
+    for (const auto& x : xs)
+        if (truthy(x)) return true;
+    return false;
+}
+template <class L> bool all_of(const L& xs) {
+    for (const auto& x : xs)
+        if (!truthy(x)) return false;
+    return true;
+}
 
 // a or b / a and b as values (Python gives back an operand); b is a plain value here: the front end
 // writes these only when evaluating b first cannot be told apart
@@ -1264,6 +1323,8 @@ inline str repr(const bytes& b) {
     o.push_back(q);
     return str(o);
 }
+inline str repr(const bytearray& b) { return str("bytearray(") + repr(b.view()) + str(")"); }
+inline str to_str(const bytearray& b) { return repr(b); }
 inline str repr(int64_t v) { return to_str(v); }
 inline str repr(bool v) { return to_str(v); }
 inline str repr(double v) { return to_str(v); }
@@ -1857,7 +1918,7 @@ template <class... A> bytes pack(const char* f, const A&... args) {
     }
     return bytes(out);
 }
-template <class... A> void pack_into(const char* f, bytearray& buf, int64_t off, const A&... args) {
+template <class... A> void pack_into(const char* f, const bytearray& buf, int64_t off, const A&... args) {
     bytes b = pack(f, args...);
     int64_t n = buf.size();
     if (off < 0) {
@@ -1932,6 +1993,7 @@ class file {  // open(path, "rb"): one open, read() reads the rest
     std::shared_ptr<std::ifstream> f_;
 
   public:
+    file() = default;
     explicit file(std::shared_ptr<std::ifstream> f) : f_(std::move(f)) {}
     bytes read() const {
         auto& f = *f_;

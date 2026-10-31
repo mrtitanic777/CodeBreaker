@@ -7,7 +7,9 @@ namespace codebreaker::formats::ne {
 
 class NEFile;
 struct Entry;
+struct Segment;
 struct HeaderRecord;
+struct Relocation;
 
 struct Entry {
     std::optional<int64_t> ordinal;
@@ -22,6 +24,29 @@ template <class F> void for_each_field(const Entry& r, F&& f) {
     if (r.seg) f("seg", *r.seg);
     if (r.offset) f("offset", *r.offset);
     if (r.flags) f("flags", *r.flags);
+}
+
+struct Segment {
+    std::optional<int64_t> idx;
+    std::optional<int64_t> file_off;
+    std::optional<int64_t> length;
+    std::optional<int64_t> flags;
+    std::optional<int64_t> minalloc;
+    std::optional<py::str> kind;
+    std::optional<py::list<Relocation>> relocs;
+    std::optional<int64_t> table;
+    std::optional<bool> code;
+};
+template <class F> void for_each_field(const Segment& r, F&& f) {
+    if (r.idx) f("idx", *r.idx);
+    if (r.file_off) f("file_off", *r.file_off);
+    if (r.length) f("length", *r.length);
+    if (r.flags) f("flags", *r.flags);
+    if (r.minalloc) f("minalloc", *r.minalloc);
+    if (r.kind) f("kind", *r.kind);
+    if (r.relocs) f("relocs", *r.relocs);
+    if (r.table) f("table", *r.table);
+    if (r.code) f("code", *r.code);
 }
 
 struct HeaderRecord {
@@ -77,6 +102,33 @@ template <class F> void for_each_field(const HeaderRecord& r, F&& f) {
     f("n_resources", r.n_resources);
     f("exetype", r.exetype);
     f("expect_winver", r.expect_winver);
+}
+
+struct Relocation {
+    int64_t src = 0;
+    int64_t rel_type = 0;
+    bool additive = false;
+    int64_t offset = 0;
+    py::str kind;
+    std::optional<int64_t> seg;
+    std::optional<int64_t> entry;
+    std::optional<int64_t> module;
+    std::optional<int64_t> ordinal;
+    std::optional<int64_t> name_off;
+    std::optional<int64_t> ftype;
+};
+template <class F> void for_each_field(const Relocation& r, F&& f) {
+    f("src", r.src);
+    f("rel_type", r.rel_type);
+    f("additive", r.additive);
+    f("offset", r.offset);
+    f("kind", r.kind);
+    if (r.seg) f("seg", *r.seg);
+    if (r.entry) f("entry", *r.entry);
+    if (r.module) f("module", *r.module);
+    if (r.ordinal) f("ordinal", *r.ordinal);
+    if (r.name_off) f("name_off", *r.name_off);
+    if (r.ftype) f("ftype", *r.ftype);
 }
 
 class NEFile : public py::object {

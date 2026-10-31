@@ -217,7 +217,7 @@ def report(prog, status, out_json, out_md, policy):
         row = rows.setdefault(pkg, collections.Counter())
         row['functions'] += 1
         row['lines'] += f.lines
-        if st in ('translated', 'compiles', 'compiles?'):
+        if st in ('translated', 'compiles', 'compiles?', 'no-compile', 'no-c++'):
             row['translated'] += 1
             row['translated_lines'] += f.lines
         if st == 'compiles':
