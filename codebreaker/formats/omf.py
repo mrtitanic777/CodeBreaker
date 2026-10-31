@@ -24,11 +24,41 @@
 """
 import struct
 
+from codebreaker.formats import native
+
+
+# ---- the C++ reader, while switched on (docs/NATIVE.md; codebreaker/formats/native_omf.py) ----
+def _no():
+    from codebreaker.formats import native_omf
+    return native_omf
+
+
+def _no_obj(*a):
+    return _no().obj(*a)
+
+
+def _no_walk(*a):
+    return _no().walk(*a)
+
+
+def _no_holes_args(*a):
+    return _no().holes_args(*a)
+
+
+def _no_code_segments_args(*a):
+    return _no().code_segments_args(*a)
+
+
+def _no_functions_args(*a):
+    return _no().functions_args(*a)
+
+
 
 def _idx(r, q):
     return (((r[q] & 0x7F) << 8) | r[q + 1], q + 2) if r[q] & 0x80 else (r[q], q + 1)
 
 
+@native.native_first("omf.records", "omf")
 def records(data):
     out = []
     p = 0
@@ -42,6 +72,7 @@ def records(data):
     return out
 
 
+@native.native_first("omf.record", "omf", data_arg=1)
 def record(t, payload):
     b = bytes([t]) + struct.pack("<H", len(payload) + 1) + bytes(payload)
     return b + bytes([(-sum(b)) & 0xFF])
@@ -77,6 +108,7 @@ def patched(raw, spec):
     return out
 
 
+@native.native_first("omf.name", "omf", data_arg=None)
 def name(s):
     s = s.encode("latin1") if isinstance(s, str) else s
     return bytes([len(s)]) + s
@@ -86,6 +118,7 @@ class Obj(object):
     pass
 
 
+@native.native_first("omf.read", "omf", result=_no_obj)
 def read(data):
     from codebreaker.exact import aout
     if aout.is_aout(data):                                  # (a Version 7 a.out: XENIX's compiler)
@@ -277,6 +310,7 @@ def read(data):
     return o
 
 
+@native.native_first("omf.library", "omf")
 def library(data):
     """[(name, module bytes)] of an OMF library (.LIB), in its order; a name met again is NAME#2, #3 ..."""
     if data[0] != 0xF0:
@@ -308,6 +342,7 @@ def library(data):
 FIXLEN = {"lo": 1, "off": 2, "base": 2, "ptr": 4, "rel": 2}
 
 
+@native.native_first("omf.holes", "omf", args_of=_no_holes_args)
 def holes(o, seg):
     """the offsets of a segment's bytes the linker fills in"""
     out = set()
@@ -317,12 +352,14 @@ def holes(o, seg):
     return out
 
 
+@native.native_first("omf.code_segments", "omf", args_of=_no_code_segments_args)
 def code_segments(o):
     """the object's code segments, the first named first (a compiler's NAME_TEXT, or more by #pragma alloc_text)"""
     return [s for s, cls, ln, al in o.segs if s.endswith("_TEXT") or cls.upper() in ("CODE", "PROG") or
             s.upper() in ("PROG", "_PROG", "_CODE")]       # (Lattice-lineage C: PROG)
 
 
+@native.native_first("omf.functions", "omf", args_of=_no_functions_args)
 def functions(o, seg="_TEXT"):
     """[(name, offset, length)] of a code segment, in order. The last ends where the segment's data end (a SEGDEF
     may count a byte more: C 5.0 at times counts one past a closing NOP); code before the first name is
@@ -334,6 +371,7 @@ def functions(o, seg="_TEXT"):
     return [(nm, off, (ps[k + 1][0] if k + 1 < len(ps) else n) - off) for k, (off, nm) in enumerate(ps)]
 
 
+@native.native_first("omf.rename_externs", "omf")
 def rename_externs(data, mapping):
     """the object with external names changed (a compiler that calls its helpers by other names than the
     library the program was linked with)"""
@@ -402,6 +440,7 @@ def rename_symbols(data, fn):
     return out
 
 
+@native.native_first("omf.raw_object", "omf", data_arg=None)
 def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT", dalign=1):
     """an object module of the program's own bytes: a run of its code (and of its data), with the public names
     others call it by - a stand-in for a part no source and no library module gives. Its words for the linker
@@ -423,6 +462,7 @@ def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT", dalign=1):
     return out + record(0x8A, b"\x00")
 
 
+@native.native_first("omf.bss_object", "omf", data_arg=None)
 def bss_object(names, start, end, title="bssvars", seg="_BSS", para=False):
     """an object module of variables without a value, each a public name at its place in _BSS (start..end): the
     linker places communal names by its own table's order (a hash of the names), and ours are not the original
@@ -444,12 +484,14 @@ def bss_object(names, start, end, title="bssvars", seg="_BSS", para=False):
     return out + record(0x8A, b"\x00")
 
 
+@native.native_first("omf.names_of", "omf")
 def names_of(data):
     """(the public names an object module defines, the external names it needs)"""
     o = read(data)
     return {n for n, s, off in o.pubs}, set(o.ext)
 
 
+@native.native_first("omf.publics", "omf")
 def publics(data):
     """Exact public symbol names from an OMF object's PUBDEF records (0x90/0x91). Length-prefixed
     names, so no greedy-match errors -- the authoritative `_name@N` decorations wcc386 emitted.
@@ -485,6 +527,7 @@ def publics(data):
     return out
 
 
+@native.native_first("omf.externs", "omf")
 def externs(data):
     """External symbol names an OMF object refers to (EXTDEF records, 0x8C)."""
     out, i, n = [], 0, len(data)
@@ -505,6 +548,7 @@ def externs(data):
 
 
 # ---- record by record, for the readers that walk the records themselves (invert's quad_align)
+@native.native_first("omf.walk", "omf", result=_no_walk)
 def walk(data, start=0):
     """(offset, type, payload) of each record from `start`, the payload without its checksum: zero bytes
     between records (a library's padding) passed over, the walk ended by a LIBEND"""
@@ -529,6 +573,7 @@ index = _idx                                                # an OMF index at q:
 _WIDTH = {0: 1, 1: 2, 2: 2, 3: 4, 4: 1, 5: 2, 9: 4, 11: 6, 13: 4}
 
 
+@native.native_first("omf._code", "omf")
 def _code(data):
     """(code segment's name, its bytes, {offsets the linker fills in}, {public: (segment, offset)}): the code
     segment is the first whose class is CODE or whose name ends TEXT; its bytes run to the end of its data;
@@ -546,12 +591,14 @@ def _code(data):
     return code_seg, bytes(o.seg.get(code_seg, b"")[:o.filled.get(code_seg, 0)]), mask, pubs
 
 
+@native.native_first("omf.code_segment", "omf")
 def code_segment(data):
     """(name, bytes, {offsets the linker fills in}) of an object file's code segment."""
     seg, code, mask, _pubs = _code(data)
     return seg, code, mask
 
 
+@native.native_first("omf.function_bytes", "omf")
 def function_bytes(data):
     """{public name: (bytes, {offsets the linker fills in})} of an object file's code segment, cut between
     consecutive public names. A name keeps the compiler's leading underscore."""
