@@ -859,7 +859,14 @@ class PrintL2 : public PrintC {
   void emitLineComment(int4 indent, const Comment* comm) override {
     std::string text = jsonText(comm->getText());
     if (indent >= 0) header_.push_back(text);
-    else if (!lists_.empty()) lists_.back().push_back({"{\"node\":\"Comment\",\"text\":" + text + "}", "", false, {}, true});
+    else if (!lists_.empty()) {
+      // (and the instruction it is attached to, as its origin -- not the Item's, which a condition's
+      // comma list would take for one of its own instructions)
+      std::set<uintb> at;
+      const AddrSpace* sp = comm->getAddr().getSpace();
+      if (sp != nullptr && sp->getType() == IPTR_PROCESSOR) at.insert(comm->getAddr().getOffset());
+      lists_.back().push_back({"{\"node\":\"Comment\"" + origin(at) + ",\"text\":" + text + "}", "", false, {}, true});
+    }
     comm->setEmitted(true);
   }
 
@@ -1043,16 +1050,42 @@ class PrintL2 : public PrintC {
     for (uintb a : at) s += (s.empty() ? "" : ",") + std::to_string((unsigned long long)a);
     return "[" + s + "]";
   }
+  // a statement's origin, `,"origin":{"at":[...]}` -- none where no instruction made it (a break the
+  // structure adds after a case, the loop of a `do { } while (true)`)
+  static std::string origin(const std::set<uintb>& at) {
+    return at.empty() ? "" : ",\"origin\":{\"at\":" + atJson(at) + "}";
+  }
+  // the address of an op of the code (not of a constant or a temporary), into `at`
+  static void opAt(const PcodeOp* op, std::set<uintb>& at) {
+    const AddrSpace* sp = op != nullptr ? op->getAddr().getSpace() : nullptr;
+    if (sp != nullptr && sp->getType() == IPTR_PROCESSOR) at.insert(op->getAddr().getOffset());
+  }
+  // where a block begins (its first basic block's entry), as the origin of a label or a case
+  static std::set<uintb> entryAt(const FlowBlock* bl) {
+    std::set<uintb> at;
+    bl = bl != nullptr ? bl->getFrontLeaf() : nullptr;
+    if (bl == nullptr) return at;
+    const FlowBlock* b = bl->getType() == FlowBlock::t_copy ? bl->subBlock(0) : bl;
+    if (b != nullptr && b->getType() == FlowBlock::t_basic) {
+      Address a = ((const BlockBasic*)b)->getEntryAddr();
+      if (a.getSpace() != nullptr && a.getSpace()->getType() == IPTR_PROCESSOR) at.insert(a.getOffset());
+    }
+    return at;
+  }
   std::set<uintb> captured_;                        // what the last capture's expressions came from
+  std::vector<std::set<uintb>> capturedEach_;       // ... each of them
   // the expressions PrintC placed while `f` ran
   std::vector<std::string> capture(const std::function<void()>& f) {
     size_t before = done_.size();
     f();
     std::vector<std::string> out;
     captured_.clear();
+    capturedEach_.clear();
     for (size_t i = before; i < done_.size(); ++i) {
       out.push_back(expr(*done_[i]));
-      addresses(*done_[i], captured_);
+      capturedEach_.emplace_back();
+      addresses(*done_[i], capturedEach_.back());
+      captured_.insert(capturedEach_.back().begin(), capturedEach_.back().end());
     }
     done_.resize(before);
     return out;
@@ -1076,17 +1109,20 @@ class PrintL2 : public PrintC {
   void add(const std::string& stmt) { lists_.back().push_back({stmt, "", false}); }
   void addLabel(const FlowBlock* bl) {                        // PrintC::emitLabelStatement
     if (isSet(only_branch) || !bl->isUnstructuredTarget() || bl->getType() != FlowBlock::t_copy) return;
-    add("{\"node\":\"Labeled\",\"label\":" + jsonText(label(bl)) + ",\"body\":[]}");
+    add("{\"node\":\"Labeled\"" + origin(entryAt(bl)) + ",\"label\":" + jsonText(label(bl)) + ",\"body\":[]}");
   }
   void addAnyLabel(const FlowBlock* bl) {
     if (bl->isLabelBumpUp()) return;
     bl = bl->getFrontLeaf();
     if (bl != nullptr) addLabel(bl);
   }
-  std::string jump(const FlowBlock* target, uint4 type) {
-    if (type == FlowBlock::f_break_goto) return "{\"node\":\"Break\"}";
-    if (type == FlowBlock::f_continue_goto) return "{\"node\":\"Continue\"}";
-    return "{\"node\":\"Goto\",\"label\":" + jsonText(target ? label(target) : "") + "}";
+  // (`op`: the branch instruction the jump is, where there is one -- its origin)
+  std::string jump(const FlowBlock* target, uint4 type, const PcodeOp* op = nullptr) {
+    std::set<uintb> at;
+    if (op != nullptr && op->isBranch()) opAt(op, at);
+    if (type == FlowBlock::f_break_goto) return "{\"node\":\"Break\"" + origin(at) + "}";
+    if (type == FlowBlock::f_continue_goto) return "{\"node\":\"Continue\"" + origin(at) + "}";
+    return "{\"node\":\"Goto\"" + origin(at) + ",\"label\":" + jsonText(target ? label(target) : "") + "}";
   }
   // the statements `bl` prints with these modes
   std::vector<Item> collect(const FlowBlock* bl, uint4 on, uint4 off = 0) {
@@ -1181,7 +1217,7 @@ class PrintL2 : public PrintC {
   }
   void emitBlockGoto(const BlockGoto* bl) override {
     for (auto& i : collect(bl->getBlock(0), no_branch)) lists_.back().push_back(i);
-    if (bl->gotoPrints()) add(jump(bl->getGotoTarget(), bl->getGotoType()));
+    if (bl->gotoPrints()) add(jump(bl->getGotoTarget(), bl->getGotoType(), bl->getBlock(0)->lastOp()));
   }
   void emitBlockLs(const BlockList* bl) override {
     if (isSet(only_branch)) {
@@ -1227,7 +1263,7 @@ class PrintL2 : public PrintC {
     std::vector<Item> after;
     if (t == FlowBlock::t_ifgoto) {
       const BlockIfGoto* g = (const BlockIfGoto*)bl;
-      s += jump(g->getGotoTarget(), g->getGotoType());       // one statement, not a block: PrintC
+      s += jump(g->getGotoTarget(), g->getGotoType(), cb->lastOp());   // one statement, not a block: PrintC
                                                              // writes it braceless, `if (c) goto x;`
     }
     else {
@@ -1254,27 +1290,40 @@ class PrintL2 : public PrintC {
     if (bl->getIterateOp() != nullptr) {                      // PrintC::emitForLoop
       for (auto& i : comments(cb)) lists_.back().push_back(i);
       std::string init, step;
-      if (const PcodeOp* op = bl->getInitializeOp())
-        for (auto& e : capture([&] { pushMod(); setMod(comma_separate); emitExpression(op); popMod(); }))
-          init += (init.empty() ? "" : ",") + ("{\"node\":\"ExprStmt\",\"expr\":" + e + "}");
+      // (each part's origin: the instructions of its expression and the op it is, as a statement's)
+      auto parts = [&](const PcodeOp* op, std::string& into) {
+        std::vector<std::string> got = capture([&] { pushMod(); setMod(comma_separate); emitExpression(op); popMod(); });
+        for (size_t i = 0; i < got.size(); ++i) {
+          std::set<uintb> at = capturedEach_[i];
+          opAt(op, at);
+          into += (into.empty() ? "" : ",") + ("{\"node\":\"ExprStmt\",\"expr\":" + got[i] + origin(at) + "}");
+        }
+      };
+      if (const PcodeOp* op = bl->getInitializeOp()) parts(op, init);
       std::string cond = condition(cb, comma_separate);
-      for (auto& e : capture([&] { pushMod(); setMod(comma_separate); emitExpression(bl->getIterateOp()); popMod(); }))
-        step += (step.empty() ? "" : ",") + ("{\"node\":\"ExprStmt\",\"expr\":" + e + "}");
-      add("{\"node\":\"For\",\"init\":[" + init + "],\"cond\":" + cond + ",\"update\":[" + step + "],\"body\":" +
-          array(collect(bl->getBlock(1), no_branch)) + "}");
+      std::set<uintb> condAt = conditionAt_;
+      parts(bl->getIterateOp(), step);
+      add("{\"node\":\"For\"" + origin(condAt) + ",\"init\":[" + init + "],\"cond\":" + cond + ",\"update\":[" + step +
+          "],\"body\":" + array(collect(bl->getBlock(1), no_branch)) + "}");
     }
     else if (bl->hasOverflowSyntax()) {                       // while (true) { cond's statements; if (c) break; ...
       std::vector<Item> body = collect(cb, no_branch);
       for (auto& i : comments(cb)) body.push_back(i);
-      body.push_back({"{\"node\":\"If\",\"cond\":" + condition(cb, only_branch) + ",\"then\":{\"node\":\"Break\"}}", "", false});   // (braceless)
+      std::string test = condition(cb, only_branch);
+      std::set<uintb> condAt = conditionAt_, br;
+      opAt(cb->lastOp(), br);
+      body.push_back({"{\"node\":\"If\"" + origin(condAt) + ",\"cond\":" + test + ",\"then\":{\"node\":\"Break\"" +
+                      origin(br) + "}}", "", false});   // (braceless)
       for (auto& i : collect(bl->getBlock(1), no_branch)) body.push_back(i);
-      add("{\"node\":\"While\",\"cond\":{\"node\":\"Lit\",\"type\":{\"kind\":\"bool\"},\"value\":true},\"body\":" +
+      add("{\"node\":\"While\"" + origin(condAt) + ",\"cond\":{\"node\":\"Lit\",\"type\":{\"kind\":\"bool\"},\"value\":true},\"body\":" +
           array(body) + "}");
     }
     else {
       for (auto& i : comments(cb)) lists_.back().push_back(i);
       std::string cond = condition(cb, comma_separate);
-      add("{\"node\":\"While\",\"cond\":" + cond + ",\"body\":" + array(collect(bl->getBlock(1), no_branch)) + "}");
+      std::set<uintb> condAt = conditionAt_;
+      add("{\"node\":\"While\"" + origin(condAt) + ",\"cond\":" + cond + ",\"body\":" +
+          array(collect(bl->getBlock(1), no_branch)) + "}");
     }
     popMod();
   }
@@ -1283,7 +1332,8 @@ class PrintL2 : public PrintC {
     unsetMod(no_branch | only_branch);
     addAnyLabel(bl);
     std::string body = array(collect(bl->getBlock(0), no_branch));
-    add("{\"node\":\"DoWhile\",\"body\":" + body + ",\"cond\":" + condition(bl->getBlock(0), only_branch) + "}");
+    std::string cond = condition(bl->getBlock(0), only_branch);
+    add("{\"node\":\"DoWhile\"" + origin(conditionAt_) + ",\"body\":" + body + ",\"cond\":" + cond + "}");
     popMod();
   }
   void emitBlockInfLoop(const BlockInfLoop* bl) override {
@@ -1299,6 +1349,7 @@ class PrintL2 : public PrintC {
     unsetMod(no_branch | only_branch);
     for (auto& i : collect(bl->getSwitchBlock(), no_branch)) lists_.back().push_back(i);
     std::string sel = condition(bl->getSwitchBlock(), only_branch | comma_separate);
+    std::set<uintb> selAt = conditionAt_;
     const Datatype* ct = bl->getSwitchType();
     std::string cases;
     int n = bl->getNumCaseBlocks();
@@ -1326,10 +1377,11 @@ class PrintL2 : public PrintC {
         body = collect(bl->getCaseBlock(i), 0);
         if (bl->isExit(i) && i != n - 1) body.push_back({"{\"node\":\"Break\"}", "", false});
       }
-      cases += (cases.empty() ? "" : ",") + ("{\"node\":\"Case\",\"labels\":[" + labels + "],\"default\":" +
+      cases += (cases.empty() ? "" : ",") + ("{\"node\":\"Case\"" + origin(entryAt(bl->getCaseBlock(i))) +
+               ",\"labels\":[" + labels + "],\"default\":" +
                (bl->isDefaultCase(i) ? "true" : "false") + ",\"body\":" + array(body) + "}");
     }
-    add("{\"node\":\"Switch\",\"expr\":" + sel + ",\"cases\":[" + cases + "]}");
+    add("{\"node\":\"Switch\"" + origin(selAt) + ",\"expr\":" + sel + ",\"cases\":[" + cases + "]}");
     popMod();
   }
 

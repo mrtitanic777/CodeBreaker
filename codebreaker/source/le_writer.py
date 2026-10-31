@@ -104,6 +104,7 @@ class _Driver(object):
                 seeds.append(tuple(ddb["control"]))
         except Exception:
             pass
+        entries = list(seeds)                                # (where the system enters: each a function)
         for (oi, a), (_k, _w, rec) in self.sites.items():
             if rec["kind"] == "internal" and rec.get("target") is not None and rec["obj"] in self.by_idx:
                 seeds.append((rec["obj"], rec["target"]))
@@ -137,6 +138,27 @@ class _Driver(object):
                 if one.mnemonic in _STOP:
                     break
                 a += one.size
+        self.starts = self._function_starts(entries)
+
+    def _function_starts(self, entries):
+        """Where each function begins, for the fragment each is in the file's L2 tree: the entry
+        points and every place a call lands -- a near call inside an object, or one into another
+        object through a fix-up -- where an instruction was found."""
+        out = set(entries)
+        try:                                                 # (and the services, the API procedures)
+            out |= set(tuple(x) for x in le.entry_points(self.lf).values())
+        except Exception:
+            pass
+        for (oi, a), i in self.insns.items():
+            t = _target(i)
+            if i.mnemonic == "call" and t is not None:
+                out.add((oi, t))
+        for (oi, at), (_k, _w, rec) in self.sites.items():
+            st = self.covered.get((oi, at))
+            if rec["kind"] == "internal" and rec.get("target") is not None and st == at - 1 and \
+                    self.insns[(oi, st)].mnemonic == "call":
+                out.add((rec["obj"], rec["target"]))
+        return {x for x in out if x in self.insns}
 
 
 def _target(i):
@@ -308,9 +330,15 @@ class Writer(object):
         oi, base, size = o["idx"], o["start"], o["size"]
         limit = size
         a = 0
+        mine = sorted(x for (oj, x) in dr.starts if oj == oi and x < size)
+        ends = dict(zip(mine, mine[1:] + [size]))            # (a function runs to the next one)
+        module = os.path.basename(self.path)
         while a < limit:
             if (oi, a) in dr.insns:
                 i = dr.insns[(oi, a)]
+                if a in ends:                                # (each function a fragment of its own)
+                    L.part(dr.placed.get((oi, a)) or dr.name(oi, a), "function",
+                           {"module": module, "segment": oi, "offset": a}, ends[a] - a)
                 if (oi, a) in dr.placed:
                     L.append("%s:" % dr.placed[(oi, a)])
                 for t in self._text(dr, oi, i, (dr.tag, oi, a) in raw, o["bits"]):

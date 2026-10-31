@@ -1122,8 +1122,30 @@ def _build32(b, path, m, folder):
     image = _link_resolving(b, ow["wlink"], env, folder, lines, lambda s: _from_header(header, s),
                             lambda stem, text: extra(stem, text))
     b.stand_in_addresses = {m.va[n] for n in b.rejected}
-    _write_definitions(path, folder, lambda e: functions.prototype(m.texts[at[e.address]]) if e.address in at else None)
+    # (each export declared as the back end wrote its function's heading from L2: m.declarations, as
+    # the 16-bit build does -- not read back off the text; a function with no C has none)
+    declarations = getattr(m, "declarations", None) or {}
+    _write_definitions(path, folder, lambda e: declarations.get(at[e.address]) if e.address in at else None)
+    # the module as one L2 tree, whatever each function came back as (docs/IR_UNIFICATION.md step 4)
+    b.l2 = module_document32(b.name, m)
+    with open(os.path.join(folder, "module.l2.json"), "w", newline="\n", encoding="utf-8") as fh:
+        json.dump(b.l2, fh)
     return image
+
+
+def module_document32(module, m):
+    """A 32-bit module as one L2 tree (docs/IR_UNIFICATION.md step 4), as module_document has a
+    16-bit one: its functions in address order, each rebuilt from C its L2 document (its MethodDecl:
+    m.l2, which compilable32 keeps), placed by its address (origin {module, va}); one with no L2 (the
+    decompiler could not make it) its name and place alone. (No
+    32-bit function is kept as its instructions: one the compiler rejects is a stand-in.)"""
+    docs = getattr(m, "l2", None) or {}
+    units = []
+    for va, name in sorted(m.by_va.items()):
+        origin = {"module": module, "va": va}
+        units.append(dict(docs[name], origin=origin) if name in docs else
+                     {"node": "MethodDecl", "name": name, "kind": "function", "origin": origin})
+    return {"node": "Module", "units": units}
 
 
 # ---------------------------------------------------------------------------------------------

@@ -186,6 +186,14 @@ def test_source_written_from_the_image_builds_back():
     assert r["instructions"] > 1000 and r["raw"] * 10 < r["instructions"], (r["instructions"], r["raw"])
     text = open(r["source"], encoding="latin1").read()
     assert "VKD_DDB:" in text and "VKD_Get_Version" in text and "dd   offset L" in text
+    # the file as one L2 tree (module.l2.json): each function a fragment at its place, the text the same
+    import json
+    from codebreaker.translate.backends import asm
+    doc = json.load(open(r["l2"], encoding="utf-8"))
+    funcs = {u["name"]: u for u in doc["units"] if u.get("reason") == "function"}
+    assert "VKD_control" in funcs and "VKD_Get_Version" in funcs and len(funcs) > 20, sorted(funcs)[:8]
+    assert funcs["VKD_control"]["origin"]["segment"] >= 1 and funcs["VKD_control"]["length"] > 0
+    assert asm.module(doc) + "\n" == text.replace("\r\n", "\n")
     assert driver_judge_all_equivalent(r["image"])
 
 

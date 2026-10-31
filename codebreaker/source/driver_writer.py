@@ -27,6 +27,7 @@ bytes, with the mnemonic beside it. Then the whole file is assembled and linked 
 compared with the original outside the patched places; an instruction at a place that still
 differs is written as bytes too, until nothing differs.
 """
+import json
 import os
 import re
 import struct
@@ -106,6 +107,7 @@ class Writer(object):
         if self.d:
             self.names[(self.d["obj"], self.d["offset"])] = "%s_DDB" % self.d["name"].strip()
         self._within = None
+        self.l2 = None                       # the file as one L2 tree, once written (source)
         self._decode()
         # places inside an instruction, and every name that will be needed, before writing starts
         self._within = {(i, x): off for i, ob in self.objects.items() for off, t in ob.ins.items()
@@ -312,6 +314,23 @@ class Writer(object):
             lines[0] = "%-44s ; %s" % (lines[0], text)
         return lines
 
+    def function_starts(self):
+        """{(object, offset): its label} of each place a function begins: the driver's entry points
+        and every place a call lands (a near call inside an object, or one across objects through
+        a fix-up), where code was found -- for the fragment each function is in the file's L2 tree."""
+        out = {}
+        for o, a in le.entry_points(self.lf).values():
+            out[(o, a)] = None
+        for i, ob in self.objects.items():
+            for off, ins in ob.ins.items():
+                if ins[1] == "call" and ins[4] is not None:
+                    out[(i, ins[4])] = None
+            for a, (kind, to, ta) in ob.fix.items():
+                if kind == 8 and a >= 1 and ob.raw[a - 1] == 0xE8 and a - 1 in ob.ins:
+                    out[(to, ta)] = None
+        return {(o, a): self.label(o, a) for (o, a) in out
+                if o in self.objects and a in self.objects[o].ins and a in self.objects[o].labels}
+
     def source(self, good=None):
         """-> (the assembly text, counts, {source line number: (object, offset)}). `good` is the
         set of (object, offset) of the instructions to write as mnemonics; None writes every one
@@ -328,9 +347,12 @@ class Writer(object):
                "; differently from the original; their mnemonic is in the comment.",
                "", ".386p", ".model flat", ""], syntax="masm", module=name)   # (the file as one L2 tree)
         counts = {"instructions": 0, "raw": 0, "data": 0}
+        starts = self.function_starts()
         for i in sorted(self.objects):
             ob = self.objects[i]
             out.part("S%d" % i, "object", {"module": name, "segment": i, "offset": 0}, ob.size)
+            mine = sorted(a for o, a in starts if o == i)
+            ends = dict(zip(mine, mine[1:] + [ob.size]))      # (a function runs to the next one)
             cls = "O%d%s" % (i, "CODE" if ob.code else "DATA")
             out += ["; object %d: %d bytes, %s" % (i, ob.size, _attributes(ob.flags)),
                     "S%d segment dword public %s '%s'" % (i, "use32" if ob.wide else "use16", cls)]
@@ -366,6 +388,8 @@ class Writer(object):
                     continue
                 if a in ob.labels:
                     flush()
+                    if a in ends:                            # (each function a fragment of its own)
+                        out.part(starts[(i, a)], "function", {"module": name, "segment": i, "offset": a}, ends[a] - a)
                     if (i, a) == (self.d.get("obj"), self.d.get("offset")):
                         out.append("public %s" % self.label(i, a))
                     out.append("%s:" % self.label(i, a))
@@ -554,6 +578,13 @@ def reconstruct(module_path, outdir, member=0, log=None):
             result.update(checks=checks, notes=notes, same=same, differing_objects=differing)
             break
         good -= bad
+    # the driver as one L2 tree, as the file was last written: each object's head and each function
+    # a MachineFragment (docs/IR_UNIFICATION.md step 4; build/module.py writes a 16-bit or 32-bit
+    # module's so)
+    if w.l2 is not None:
+        with open(os.path.join(outdir, "module.l2.json"), "w", newline="\n", encoding="utf-8") as fh:
+            json.dump(w.l2, fh)
+        result["l2"] = os.path.join(outdir, "module.l2.json")
     return result
 
 

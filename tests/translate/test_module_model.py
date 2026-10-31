@@ -133,3 +133,20 @@ def test_a_made_module_is_its_tree():
     assert m.texts == {"a": "A", "b": "B"} and other.texts == {"a": "Z", "b": "Y"}
     m.add("c", "C", 0x30)
     assert m.order == ["a", "b", "c"] and pickle.loads(pickle.dumps(m)).texts["c"] == "C"
+
+
+def test_the_nasm_writers_make_each_function_a_fragment():
+    """The NE, PE and LE NASM writers each give every function a MachineFragment of its own (its
+    origin, its length to the next), the file's text unchanged: the fragments joined are the file."""
+    from codebreaker.base import corpus
+    from codebreaker.source import le_writer, ne_writer, pe_writer
+    for name, writer in (("lzexpand.dll", ne_writer), ("lz32.dll", pe_writer), ("splitter.vxd", le_writer)):
+        path = corpus.retail(name)
+        if not path:
+            pytest.skip("%s is not in the corpus" % name)
+        w = writer.Writer(path)
+        text, _lines = w.source()
+        _valid(w.l2)
+        funcs = [u for u in w.l2["units"] if u.get("reason") == "function"]
+        assert len(funcs) > 5 and all(u["length"] > 0 and u["origin"]["module"] == name for u in funcs), name
+        assert asm.module(w.l2) == text

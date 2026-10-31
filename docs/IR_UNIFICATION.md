@@ -113,7 +113,7 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    C19, `placeOp`/`placeAtom`), so the tree has PrintC's casts, fields, indexing and negated
    conditions. `python tools/l2check.py`: all 6,808 golden functions the core decompiles give a valid
    document, with no Unsupported node left (45 more fail in the core itself and have no C either).
-   The C is unchanged: `tools/golden.py check` gives the same differences as master's build. (Not yet carried: the address of each statement as `origin`. Comments: carried since 2026-10-28, step 3.)
+   The C is unchanged: `tools/golden.py check` gives the same differences as master's build. (Each statement's addresses as `origin` {"at": [...]}: ExprStmt, Return and If since 2026-10-28, every other statement since 2026-10-30 -- step 4. Comments: carried since 2026-10-28, step 3.)
 2. **The C back end** (`translate/backends/c.py`): L2 to C that compiles with OpenWatcom. Done when,
    on the golden corpus, it compiles everywhere today's C compiles and the judge gives the same
    verdicts. Today's path stays the default until then.
@@ -421,8 +421,9 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    (`module_facts16`, `_far_argument_widths`, `_far_loads`, `_loads_dgroup`, `_ss_store_places`,
    `_selector_sites`, `_code_bytes`, `_code_segment_data`'s layout), `compilable_powerpc`, the
    header texts and `_struct_decls`, `interrupt_helpers` / `interrupt_routines`, `call_counts` (on
-   the trees' calls). The 32-bit lane's build/module still reads a prototype from each text
-   (`functions.prototype`); that is no c_text pass. c_text.py is 1,420 lines (1,860 before).
+   the trees' calls). (The 32-bit lane's build/module read a prototype from each text,
+   `functions.prototype`; since 2026-10-30 it declares each export from L2, `Made.declarations`:
+   step 4.) c_text.py is 1,420 lines (1,860 before).
    **The 16-bit frame and shape passes, on the tree, 2026-10-30** (the Windows 95 session's
    `wip/frame16`, ported; off unless `CB_FRAME16=1`). `decompile/frame16.py` lays a 16-bit
    function's locals out as the original's frame, so that C 8 places them where the original had
@@ -456,14 +457,36 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    its L2 document (decompiler.run keeps them with CB_C_FROM_L2: `c_text.Module16.l2`), and one with
    no L2 its name and place. `backends/c.module` writes the whole tree back: the C of each
    function, a note in each fragment's place, and the assembly beside it, which the lane assembles
-   on its own as today. Not yet: the 32-bit and VxD lanes' module builds; a fragment inside a
-   function (a block). Test: tests/translate/test_c_backend.py.
+   on its own as today. Not yet: a fragment inside a function (a block) outside the _asm-block
+   pass. Test: tests/translate/test_c_backend.py.
    **The assembly writers, 2026-10-30.** source/image_writer.py (the six console and home-computer
    writers), the NASM writers (ne_writer, pe_writer, le_writer) and the MASM writers (driver_writer,
    dos_writer) build their file as one Module of MachineFragments as they write it (`l2.Assembly`:
    a section, segment, object, bank or function each), and the text is the assembly back end's
    (`translate/backends/asm.py`); identical output on every module gated (docs/ARCHITECTURE.md,
    "Built: one Module model, the writers as back ends"). Test: tests/translate/test_module_model.py.
+   **L2 everywhere, 2026-10-30** (one commit each). *The 32-bit and VxD module builds*: `_build32`
+   writes its module as one Module too (`module_document32`, `b.l2`, module.l2.json): each function
+   in address order its L2 document (compilable32 keeps them: `Made.l2`) placed by its address, one
+   with no L2 its name and place; driver_writer (the VxD lane's build) gives every function a
+   MachineFragment of its own (`Writer.function_starts`: the entry points and every place a call
+   lands) and writes its tree as module.l2.json beside the source. *Prototypes from L2*: `_build32`
+   declares each export with the back end's heading (`Made.declarations`: compilable32's, as last
+   written -- after the structure fields' second writing), not `functions.prototype` of its text;
+   checked first on every function of LZ32, VERSION, IMM32, TAPI32, WINSPOOL, MPR, the structures-on
+   five, KERNEL32, USER32, GDI32, ADVAPI32, COMCTL32 and SHELL32 (7,829 functions): they agree on
+   every function with C (the two the back end declines have neither). *Statement provenance*: PrintL2 gives every statement its instructions as
+   `origin` -- While, DoWhile, For and Switch their test's (as If), each part of a for's init and
+   update its own, a Goto, Break or Continue the branch it is (none for a break the structure adds),
+   a label and a case where their block begins, a comment the instruction it is attached to.
+   On the golden corpus (6,808 functions, all valid L2) every ExprStmt, Return, If, While, For, Switch, Case, Labeled and Comment has an origin; DoWhile 2,091 of 2,314, Goto 3,625 of 5,040 and Break 1,525 of 1,948 (the rest made by no instruction: an endless loop, a fall-through goto, a case's break); a Block has none. The C is unchanged. *A fragment per function in the NASM writers*: ne_writer (entries, CS:IP, near calls, far
+   calls through a relocation into the module), pe_writer (the entry, pe_functions' starts, near
+   calls) and le_writer (the entry points, services and calls) cut their trees at each function as
+   driver_writer does; nothing is decoded differently. Gate: the C of every gate set the same as the
+   references (the seven `--made` modules, the 32-bit six, the structures-on five, refs_extra's six,
+   the PowerPC HUD), the module builds of lz32.dll and version.dll and the driver builds of vkd.vxd and
+   splitter.vxd the same but for timestamps (module.l2.json added), the NASM writers' 21 files of
+   seven modules byte for byte.
 5. **One verdict vocabulary** for binaries and source pairs (item 5 above), read by the module
    writer from L2 provenance (module + address).
    **Done 2026-10-30** (codebreaker/verify/verdicts.py; docs/ARCHITECTURE.md, "Built: one verdict
