@@ -1677,3 +1677,181 @@ def java_units(java_dir, classpath=()):
         return [L.lower(t, p) for p, t in sorted(units.items())]
     finally:
         shutil.rmtree(out, ignore_errors=True)
+
+
+# ============================================================================================ the C++17 dialect
+# Inside the transpiler, `convert(..., cpp_std='C++17')` writes every body with this module's Writer and the
+# C++17 forms where the language has them: a for-each over a container as a range-for, a switch expression as
+# an immediately invoked lambda, `auto` where the initialiser spells the type, nullptr against pointers. It
+# is this back end's body writer -- the transpiler's declarations and runtime are C++03's -- so it lives
+# here, and moves to C++ with it (docs/NATIVE.md step 5). Whole C++17 programs from L2 are the C++17 back
+# end's own (native/l2/src/cpp17_*.cc, through backends/cpp17.py). Whatever has no idiomatic form that is
+# provably the same falls back to the faithful form above.
+_Writer03 = Writer                                  # (the module attribute is swapped while Bodies17 runs)
+
+
+class Writer17(_Writer03):
+    """The Writer with the C++17 forms: range-for, switch expressions, auto."""
+
+    def _stmt(self, s, out, ind):
+        if isinstance(s, ir.ForEach):
+            return self.foreach(s, out, ind)
+        if isinstance(s, ir.Local) and _null17(s.init):
+            ct = self.ctype(s.type)
+            if is_pointer(ct):                          # a pointer starts as nullptr
+                name = self.name(s.sym.name)
+                if name in self.vars:
+                    raise Decline('shadowed local %s' % name)
+                self.vars[name] = ct
+                out.append(ind + '%s %s = nullptr;' % (ct, name))
+                return
+        if isinstance(s, ir.Local) and s.init is not None and self.spelled(s):
+            return self.auto_local(s, out, ind)
+        return _Writer03._stmt(self, s, out, ind)
+
+    def x_Binary(self, e):
+        """A comparison with null: nullptr against a pointer. Against the runtime's value types (JavaString,
+        JList, JObject: their null is a state, compared with 0) the null stays what C++03 wrote."""
+        if e.op in ('==', '!=') and (_null17(e.left) or _null17(e.right)):
+            other = e.right if _null17(e.left) else e.left
+            try:
+                pointer = other.type is not None and other.type.is_ref and is_pointer(self.ctype(other.type))
+            except Decline:
+                pointer = False
+            if pointer:
+                code, ct = self.expr(other)
+                if is_pointer(ct):
+                    return '%s %s nullptr' % (code, e.op), 'bool'
+        return _Writer03.x_Binary(self, e)
+
+    def spelled(self, s):
+        """The initialiser names the local's own type: `new T(..)` of the same T, or a cast to it."""
+        init = s.init
+        while isinstance(init, ir.Paren):
+            init = init.x
+        if not isinstance(init, (ir.New, ir.Cast)) or s.type is None or init.type is None:
+            return False
+        return init.type == s.type and s.type.kind == 'class' and not (isinstance(init, ir.New) and init.body is not None)
+
+    def auto_local(self, s, out, ind):
+        """`auto x = new T(...)` / `auto x = (T*)y`: the type is written once, where it is made."""
+        lines = []
+        _Writer03._stmt(self, s, lines, ind)
+        ct = self.vars.get(self.name(s.sym.name), '')
+        if len(lines) == 1 and ct and lines[0].startswith(ind + ct + ' '):
+            star = '*' if is_pointer(ct) else ''
+            if star or ct.startswith(('JavaString', 'JList', 'JMap', 'JSet')):
+                lines[0] = ind + 'auto%s ' % star + lines[0][len(ind + ct) + 1:]
+        out.extend(lines)
+
+    def foreach(self, s, out, ind):
+        """for (T x : xs): a range-for over a JList (a std::vector, iterated in order as Java's Iterator
+        does); over an array, the counted loop (JArray has no iterators)."""
+        coll, ct = self.expr(s.iterable)
+        name = self.name(s.var.sym.name)
+        vt = self.ctype(s.var.type)
+        if name in self.vars:
+            raise Decline('shadowed loop variable %s' % name)
+        if ct.startswith('JList<') or ct.startswith('const JList<'):
+            self.vars[name] = vt
+            out.append(ind + 'for (%s %s : %s) {' % (vt, name, coll))
+            self.loop_body(s.body, out, ind)
+            out.append(ind + '}')
+            self.vars.pop(name, None)
+            return
+        if ct.startswith('JArray<'):
+            self.temps += 1
+            arr, idx = 'j2x_a%d' % self.temps, 'j2x_i%d' % self.temps
+            out.append(ind + '{')
+            out.append(ind + '\t%s %s = %s;' % (ct, arr, coll))
+            out.append(ind + '\tfor (int %s = 0; %s < %s.length; %s++) {' % (idx, idx, arr, idx))
+            self.vars[name] = vt
+            out.append(ind + '\t\t%s %s = %s[%s];' % (vt, name, arr, idx))
+            self.loop_body(s.body, out, ind + '\t')
+            out.append(ind + '\t}')
+            out.append(ind + '}')
+            self.vars.pop(name, None)
+            return
+        raise Decline('for-each over %s' % ct)
+
+    def x_SwitchExpr(self, e):
+        """A switch expression as an immediately invoked lambda: each `yield v` is `return v`."""
+        t = self.ctype(e.type)
+        x, xt = self.expr(e.expr.x if isinstance(e.expr, ir.Paren) else e.expr)
+        if 'JavaString' in xt:
+            raise Decline('switch on a string')
+        lines = ['[&]() -> %s {' % t, '\tswitch(%s) {' % x]
+        saved_ret, self.ret = self.ret, t
+        saved_two, self.two_phase = self.two_phase, False
+        try:
+            for c in e.cases:
+                for lab in c.labels:
+                    lines.append('\tcase %s:' % self.expr(lab)[0])
+                if c.default:
+                    lines.append('\tdefault:')
+                body = [ir.Return(expr=b.expr, line=b.line, col=b.col) if isinstance(b, ir.Yield) else b for b in c.body]
+                for b in ir.walk(ir.Block(stmts=body)):
+                    if isinstance(b, ir.Yield):
+                        raise Decline('a yield inside a nested statement')
+                lines.append('\t{')
+                for b in body:
+                    self.stmt(b, lines, '\t\t')
+                lines.append('\t}')
+        finally:
+            self.ret, self.two_phase = saved_ret, saved_two
+        lines += ['\t}', '\tthrow 0;', '}()']
+        return '\n'.join(lines), t
+
+
+def _null17(e):
+    e = _strip_paren(e) if e is not None else None
+    return isinstance(e, ir.Lit) and e.value is None
+
+
+_NULL_WORD = re.compile(r'\bNULL\b')
+
+
+def _keep_null(x):
+    """The NULLs the C++03 rules wrote where the target is one of the runtime's value types (a JavaString,
+    JList or JObject compared with or made from null): spelled __null, what NULL is to GCC and clang, so they
+    resolve as they did under C++03 -- the C++11 text pass would make them nullptr, which those types do not
+    take (`JavaString != nullptr` has no operator; `JObject(nullptr)` is ambiguous)."""
+    if isinstance(x, str):
+        from codebreaker.java.emit.std_transforms import _sub_outside_literals
+        return _sub_outside_literals(_NULL_WORD, '__null', x) if 'NULL' in x else x
+    if isinstance(x, list):
+        return [_keep_null(y) for y in x]
+    if isinstance(x, tuple):
+        return tuple(_keep_null(y) for y in x)
+    return x
+
+
+def _with_writer17(fn):
+    """Run one of the module-level helpers with Writer17 in place of Writer."""
+    def run(*a, **k):
+        global Writer
+        saved = Writer
+        Writer = Writer17
+        try:
+            return _keep_null(fn(*a, **k))
+        finally:
+            Writer = saved
+    return run
+
+
+class Bodies17(Bodies):
+    """The tree's bodies for one conversion, written by Writer17. The modern forms C++17 has no direct
+    word for (a switch on a String, instanceof patterns) are lowered first (translate/desugar.py)."""
+
+    def __init__(self, ctx, units):
+        from codebreaker.translate import desugar
+        desugar.run(units, keep=('foreach', 'switchexpr'))
+        Bodies.__init__(self, ctx, units)
+
+    ctor = _with_writer17(Bodies.ctor)
+    field_init = _with_writer17(Bodies.field_init)
+    enum_args = _with_writer17(Bodies.enum_args)
+    array_items = _with_writer17(Bodies.array_items)
+    instance_inits = _with_writer17(Bodies.instance_inits)
+    static_blocks = _with_writer17(Bodies.static_blocks)
+    body = _with_writer17(Bodies.body)

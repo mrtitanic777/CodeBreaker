@@ -1,8 +1,10 @@
 # The Python front end: Python into L2, and from there C++
 
 `codebreaker/translate/frontends/python/` turns Python modules into L2 (the typed tree every
-language shares, `codebreaker/translate/ir.py`), and `codebreaker/translate/backends/cpp17.py`
-writes that tree as C++17 over one support header, `native/ported/include/py.hpp`. It exists to
+language shares, `codebreaker/translate/ir.py`; each unit says `lang='python'`), and the translator's
+one C++17 back end -- C++ itself, native/l2/src/cpp17_python.cc, reached through the shim
+`codebreaker/translate/backends/cpp17.py` -- writes that tree as C++17 with its Python rules over one
+support header, `native/ported/include/py.hpp`. It exists to
 carry the mechanical part of moving CodeBreaker's own code to C++ (docs/NATIVE.md), and it is held
 to the same rule as everything CodeBreaker makes: readable source that behaves as the original,
 proven by running both.

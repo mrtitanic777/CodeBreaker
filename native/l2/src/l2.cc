@@ -167,6 +167,7 @@ TypeP type_from(const V& d) {
         if (d.has("args"))
             for (auto& a : d.at("args").seq()) t->args.push_back(type_from(a));
         if (py::truthy(d.get("nullable"))) t->info.set("nullable", V(true));
+        keep(d, *t, {"record", "ref", "exception"});   // the Python front end's (l2._CLASS_FACTS)
     } else if (k == "typevar") {
         t->name = d.at("name");
     } else if (k == "wildcard") {
@@ -238,6 +239,8 @@ V type_json(const TypeP& tp) {
             d.set("args", a);
         }
         if (py::truthy(t.info.get("nullable"))) d.set("nullable", V(true));
+        for (auto key : {"record", "ref", "exception"})
+            if (t.info.has(key)) d.set(key, t.info.get(key));
         return d;
     }
     if (k == "typevar") {

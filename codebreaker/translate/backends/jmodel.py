@@ -1,5 +1,5 @@
 """jmodel.py -- a Java program's object model read off L2, for the back ends that write whole programs
-(cpp17_java.Program and c_java.Program).
+(c_java.Program; the C++17 back end's Java rules have it in C++, native/l2/src/cpp17_jmodel.cc).
 
 What every such back end has to know and Java leaves implicit: every class (nested, local, anonymous and
 enum-constant bodies included) with its C name, its supertypes, whether it needs its outer instance, what
@@ -458,3 +458,54 @@ def _refs(t):
     if t.kind in ('typevar', 'wildcard'):
         out.append(OBJECT)
     return out
+
+
+# ---------------------------------------------------------------------------------------------- the runtimes' names
+# library classes -> the runtime's class names (C++17's jrt.hpp: native/l2/src/cpp17_java.cc has the
+# same table; c_java's C runtime), in this order (the first library class of a runtime name is the one
+# it stands for)
+LIB = {
+    'java.lang.Object': 'Object', 'java.lang.String': 'String', 'java.lang.CharSequence': 'Object',
+    'java.lang.Integer': 'Integer', 'java.lang.Long': 'Long', 'java.lang.Short': 'Short', 'java.lang.Byte': 'Byte',
+    'java.lang.Character': 'Character', 'java.lang.Boolean': 'Boolean', 'java.lang.Float': 'Float',
+    'java.lang.Double': 'Double', 'java.lang.Number': 'Object', 'java.lang.StringBuilder': 'StringBuilder',
+    'java.lang.StringBuffer': 'StringBuilder', 'java.lang.AbstractStringBuilder': 'StringBuilder',
+    'java.lang.Math': 'Math', 'java.lang.StrictMath': 'Math',
+    'java.lang.System': 'System', 'java.lang.Comparable': 'Comparable', 'java.lang.Iterable': 'Iterable',
+    'java.lang.Runnable': 'Runnable', 'java.lang.Enum': 'Enum', 'java.lang.Record': 'Object',
+    'java.lang.Throwable': 'Throwable', 'java.io.PrintStream': 'PrintStream',
+    'java.util.List': 'List', 'java.util.ArrayList': 'ArrayList', 'java.util.LinkedList': 'LinkedList',
+    'java.util.Collection': 'Collection', 'java.util.Iterator': 'Iterator', 'java.util.Map': 'Map',
+    'java.util.HashMap': 'HashMap', 'java.util.LinkedHashMap': 'LinkedHashMap', 'java.util.TreeMap': 'TreeMap',
+    'java.util.Map.Entry': 'MapEntry', 'java.util.Set': 'Set', 'java.util.HashSet': 'HashSet',
+    'java.util.LinkedHashSet': 'LinkedHashSet', 'java.util.TreeSet': 'TreeSet', 'java.util.Deque': 'LinkedList',
+    'java.util.Queue': 'LinkedList', 'java.util.ArrayDeque': 'ArrayDeque', 'java.util.Arrays': 'Arrays',
+    'java.util.Collections': 'Collections', 'java.util.Objects': 'Objects', 'java.util.Optional': 'Optional',
+    'java.util.OptionalInt': 'OptionalInt', 'java.util.OptionalDouble': 'OptionalDouble',
+    'java.util.Comparator': 'Comparator', 'java.util.stream.Stream': 'Stream', 'java.util.stream.IntStream': 'IntStream',
+    'java.util.stream.Collectors': 'Collectors', 'java.util.stream.Collector': 'Collector',
+}
+for _q in SAMS:
+    LIB.setdefault(_q, _q.rsplit('.', 1)[-1])
+for _q in LIB_SUPERS:
+    if _q.endswith(('Exception', 'Error')) or _q == 'java.lang.Throwable':
+        LIB.setdefault(_q, _q.rsplit('.', 1)[-1])
+
+
+def char_literal(c):
+    """A Java char as a char16_t literal."""
+    o = ord(c) if isinstance(c, str) else int(c)
+    if 32 <= o < 127 and chr(o) not in '\\\'':
+        return "u'%s'" % chr(o)
+    return '(char16_t)%d' % o
+
+
+def constant_init(f):
+    """A static field whose initialiser is a literal number, char or boolean (no class initialisation needed)."""
+    init = f.init
+    while isinstance(init, ir.Paren):
+        init = init.x
+    if isinstance(init, ir.Unary) and init.op == '-' and isinstance(init.x, ir.Lit):
+        init = init.x
+    return isinstance(init, ir.Lit) and init.value is not None and not isinstance(init.value, str) \
+        and f.type is not None and f.type.is_prim

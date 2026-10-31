@@ -111,6 +111,9 @@ def _raise(err):
     if t == "Decline":
         from codebreaker.translate.backends import c as cback
         raise cback.Decline(msg)
+    if t == "Cpp17Decline":
+        from codebreaker.translate.backends import cpp17
+        raise cpp17.Decline(msg)
     exc = {"KeyError": KeyError, "ValueError": ValueError, "TypeError": TypeError, "IndexError": IndexError,
            "AttributeError": AttributeError}.get(t)
     if exc is KeyError:
