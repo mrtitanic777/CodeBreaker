@@ -4,6 +4,7 @@
 #include "l2api.h"
 
 #include <cstdlib>
+#include <functional>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -46,6 +47,14 @@ V facts_out(const V& facts) {
 
 const V& arg(const V& args, size_t n) { return n < args.size() ? args[n] : py::NONE; }
 
+V err_of(const std::string& type, const std::string& msg) {
+    V e = V::dict(), l = V::list();
+    l.append(V(type));
+    l.append(V(msg));
+    e.set("$err", l);
+    return e;
+}
+
 V dispatch(const std::string& fn, const V& args, V& facts_seen) {
 #ifdef CBL2_CBACK
     using namespace cb;
@@ -61,6 +70,28 @@ V dispatch(const std::string& fn, const V& args, V& facts_seen) {
     if (fn == "expr") return V(cb::expr(arg(args, 0)));
     if (fn == "condition") return V(cb::condition(arg(args, 0), py::truthy(arg(args, 1))));
     if (fn == "module_names32") return cb::module_names32(arg(args, 0));
+    if (fn == "describe") {
+        // what a module asks of each function's document, loop after loop, in one call: each entry's
+        // value, or {"$err": [its exception's name, message]}
+        const V& doc = arg(args, 0);
+        V out = V::dict();
+        auto one = [&](const char* name, const std::function<V()>& f) {
+            try {
+                Scope s;
+                out.set(name, f());
+            } catch (cb::Decline& e) {
+                out.set(name, err_of("Decline", e.what()));
+            } catch (py::PyError& e) {
+                out.set(name, err_of(e.type, e.what()));
+            }
+        };
+        one("module_names32", [&] { return cb::module_names32(doc); });
+        one("type_names", [&] { return cb::type_names(doc); });
+        one("parameter_names", [&] { return cb::parameter_names(doc); });
+        one("signature", [&] { return V(cb::signature(doc)); });
+        if (out.get("signature").is_str()) one("takes32", [&] { return cb::takes32(out.get("signature").str()); });
+        return out;
+    }
     if (fn == "type_names") return cb::type_names(arg(args, 0));
     if (fn == "parameter_names") return cb::parameter_names(arg(args, 0));
     if (fn == "struct_accesses") return cb::struct_accesses(arg(args, 0), arg(args, 1));
@@ -237,7 +268,15 @@ int l2_call(const char* fn, const char* in, size_t inlen, char** out, size_t* ou
     Call c;
     c.fn = fn;
     c.in.assign(in, inlen);
-    run_on_worker(&c);
+    // (the entries that write a function or an expression recurse as the Python did: on a thread with a
+    // large stack; the others, small and shallow, here)
+    static const char* deep[] = {"function", "module", "expr", "condition", "flags", "cpp17_unit", "cpp17_program"};
+    bool big = false;
+    for (auto d : deep) big = big || c.fn == d;
+    // (a small document's writing stays here too: handing it to another thread cost more than writing it)
+    if (big && inlen < 16384) big = false;
+    if (big) run_on_worker(&c);
+    else run(&c);
     char* buf = static_cast<char*>(std::malloc(c.out.size() + 1));
     std::memcpy(buf, c.out.data(), c.out.size());
     buf[c.out.size()] = 0;

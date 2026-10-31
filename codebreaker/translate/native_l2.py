@@ -15,6 +15,7 @@ a dict of other keys {"$d": [[k, v], ...]}, a float that is not finite {"$f": "n
 The switch: CB_NATIVE_L2 (default 1 since the gate, docs/NATIVE.md; 0 = the Python). Without the DLL
 the Python runs (why_not() says why). Build: native/l2/CMakeLists.txt (cmake + ninja, vcvars64).
 """
+import copy
 import ctypes
 import functools
 import json
@@ -97,6 +98,11 @@ def _text(v):
     sets each function is written with: its functions, the globals called through ...) takes the text it
     had; a set or list of strings alone is written by json itself."""
     t = type(v)
+    if t in (set, frozenset, list, dict) and len(v) >= 32:
+        n = len(v)
+        for obj, text in _BIG:                           # (an equal one first: compared at C's speed)
+            if type(obj) is t and len(obj) == n and obj == v:
+                return text
     if t in (set, frozenset, list, dict) and len(v) >= 32 and (
             all(type(k) is str and type(x) in (str, int) for k, x in v.items()) if t is dict else
             all(type(x) in (str, int) for x in v)):
@@ -133,13 +139,27 @@ def _held(doc):
     return _put(doc), None
 
 
+_TEXTS = {}               # {id: (an L2 document, the JSON text it was read from)}
+
+
+def known_text(doc, text):
+    """The decompiler's note an L2 document was read from (decompiler.split_notes): handed to the DLL as
+    it is, the document is not written out again. (Kept only while the native writer is on.)"""
+    if enabled():
+        _TEXTS[id(doc)] = (doc, text)
+        while len(_TEXTS) > 2 * _KEEP:
+            _TEXTS.pop(next(iter(_TEXTS)))
+
+
 def _put(doc):
     _NEXT[0] += 1
     _HELD.pop(id(doc), None)
     _HELD[id(doc)] = (doc, _NEXT[0])                     # (holding the document: its id is not reused)
     while len(_HELD) > _KEEP:
         _HELD.pop(next(iter(_HELD)))
-    return '{"$put":%d,"$v":%s}' % (_NEXT[0], json.dumps(doc, separators=_SEP))
+    known = _TEXTS.pop(id(doc), None)
+    text = known[1] if known is not None and known[0] is doc else json.dumps(doc, separators=_SEP)
+    return '{"$put":%d,"$v":%s}' % (_NEXT[0], text)
 
 
 def _dec(d):
@@ -254,13 +274,46 @@ def _doc1(name):
     return run
 
 
+_DESCRIBED = {}           # {id: (an L2 document, what describe said of it)} -- the same documents as _HELD
+_TAKES = {}               # {a heading: takes32 of it}, from describe
+
+
+def _described(name):
+    """module_names32, type_names, parameter_names, signature of a function's document: all four
+    asked of the DLL once (`describe`), each handed out from that -- a module asks them of every
+    function, loop after loop, and each crossing cost more than the answer."""
+    def run(doc):
+        got = _DESCRIBED.get(id(doc))
+        if got is None or got[0] is not doc:
+            said = call("describe", doc, plain=0)
+            got = _DESCRIBED[id(doc)] = (doc, said)
+            while len(_DESCRIBED) > _KEEP:
+                _DESCRIBED.pop(next(iter(_DESCRIBED)))
+            if isinstance(said.get("signature"), str) and "takes32" in said:
+                _TAKES[said["signature"]] = said["takes32"]
+                if len(_TAKES) > 4 * _KEEP:
+                    _TAKES.clear()
+        v = got[1][name]
+        if isinstance(v, dict) and "$err" in v:
+            _raise({"type": v["$err"][0], "message": v["$err"][1]})
+        return copy.deepcopy(v) if isinstance(v, (dict, list, set)) else v
+    return run
+
+
+def _takes32(signature):
+    if signature in _TAKES:
+        return _TAKES[signature]
+    return call("takes32", signature)
+
+
 # backends/c.py's entry points the native writer has, with how each is called
 _ENTRIES = {
     "function": _function, "flags": _flags, "type_text": _type_text, "module": _module,
-    "signature": _doc1("signature"), "module_names32": _doc1("module_names32"), "type_names": _doc1("type_names"),
-    "parameter_names": _doc1("parameter_names"), "struct_accesses": _doc1("struct_accesses"),
+    "signature": _described("signature"), "module_names32": _described("module_names32"),
+    "type_names": _described("type_names"), "parameter_names": _described("parameter_names"),
+    "struct_accesses": _doc1("struct_accesses"),
     "expr": _doc1("expr"), "condition": _doc1("condition"), "fragment": _doc1("fragment"),
-    "takes32": _plain("takes32"), "prototypes": _plain("prototypes"), "segment_plan": _segment_plan,
+    "takes32": _takes32, "prototypes": _plain("prototypes"), "segment_plan": _segment_plan,
     "caller_frame_plan": _plain("caller_frame_plan"), "seg_layout": _plain("seg_layout"),
     "arguments_at": _plain("arguments_at"), "words": _plain("words"), "parameters": _plain("parameters"),
     "argument_words": _plain("argument_words"),
