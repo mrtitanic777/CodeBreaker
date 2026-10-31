@@ -444,7 +444,7 @@ PrintL2). `native/l2` (CMake + Ninja, VS 18 toolset) builds two static libraries
 
 - **`l2core`** -- the L2 core (`src/value.hpp`, `src/json.hpp`, `src/l2.hpp`): what the translator back
   ends (C++03, C++17, Java, C#) and the porting engine's lowering sit on;
-- **`l2c`** -- the C back end on it (codebreaker/translate/backends/c.py);
+- **`l2c`** -- the C back end on it (codebreaker/translate/backends/c.py; below: gated, on by default);
 - **`cbl2.dll`** -- the C interface (`include/l2api.h`: `l2_call(fn, json_args) -> json_result`), loaded by
   codebreaker/translate/native_l2.py through ctypes.
 
@@ -497,6 +497,73 @@ Validation: jsonschema took 155.6 s for the 332 sampled documents, the native ch
 round trip is about even through the shim (its JSON both ways dominates); in C++, between C++ callers,
 there is no JSON at all. tests/translate/test_native_l2_core.py holds both cores to each other on
 documents of every kind; native/l2's CTest (`l2_tests`) holds the core to Python's json, str and repr.
+
+### The C back end -- `l2c` (gated, on by default)
+
+**What moved.** All of codebreaker/translate/backends/c.py: the layout (`cemit.cc`: PrintC's pretty
+printer, its operator tokens and reverse-Polish stack), the writer (`cback.cc`: types, expressions,
+conditions, statements, the heading and the function), every c_text pass done on the tree
+(`cpasses.cc`, `cpasses2.cc`: the pointer passes, the module-facts passes, `_Locals`, `_buffer_fields`,
+the stack-segment stores, the 32-bit path's and the PowerPC path's own) and what the module decides
+(`cmodule.cc`: function, flags, signature, module_names32, type_names, parameter_names,
+struct_accesses, takes32, prototypes, segment_plan, caller_frame_plan, seg_layout, fragment, module).
+A port line by line: the same names, the same order of work, the same text; c.py's regular expressions
+are carried over as written on a port of Python's `re` (`pyre.cc`, now the core's: backtracking, Unicode
+\w\d\s, lookbehind, lazy quantifiers, MULTILINE/DOTALL, finditer/sub with Python 3.7's empty-match rule).
+
+**What stayed Python.** c_text's module assembly (compilable16, compilable32, compilable_powerpc: the
+glue that calls the writer); struct_text.plan (its analysis is analyze.structures over analyze.image,
+the loaders step's -- native/formats is there to build on); the passes before the writer that read a
+16-bit function's instructions, asm_blocks, frame16 and shape16 (CB_ASM_BLOCKS / CB_FRAME16, off by
+default; an uncommitted capstone wrapper for them waits in the worktree).
+
+**The switch.** `CB_NATIVE_L2` (default 1; 0 = the Python). backends/c.py's entry points dispatch by it
+(native_l2.install); inside the Python writer its own calls stay Python's. Without cbl2.dll the Python
+runs (native_l2.why_not()). The shim hands values over as JSON: an L2 document once and then by number
+(the decompiler's note handed over as the text it was read from), a function document's four small
+answers in one call (`describe`), a module's large flat sets once and then by number; the deep entries
+run on a fiber with a 512 MB stack on the caller's own thread.
+
+**The gate** (state/work/native-l2/gate.py): each module made compilable twice, `CB_NATIVE_L2=0` and
+`=1`, each in a fresh process (compilable16's cache bypassed), one worker; every function's C, the
+header and the module's tables (near, wide, novalue, exported prologue, interrupts, prototyped,
+selector imports, failed, code data and reads, declarations, imports, order; 32-bit: imports, in_ecx,
+in_edx; PowerPC: novalue, externs, argc):
+
+| set | modules | entries | identical |
+|---|---|---|---|
+| 16-bit (l2c --made's) | lzexpand keyboard comm lz32 krnl386 gdi user | 5,425 | 5,425 |
+| 32-bit | version imm32 tapi32 winspool mpr advapi32 user32 gdi32 comctl32 kernel32 shell32 | 7,073 | 7,073 |
+| 32-bit, structures on (`CB_STRUCT_RECOVERY=32`) | mpr version tapi32 winspool comdlg32 | 797 | 797 |
+| PowerPC | hud-b0ab65e560b6.exe | 670 | 670 |
+
+And every recorded call (capture_site + compare.py: text, exception, the facts written) of the 16-bit
+set (6,510 function calls, 42,434 arguments_at, 21,044 words ...), the small 32-bit set, shell32 and the
+PowerPC module identical; tests/translate/test_native_l2.py makes every call test_c_backend.py makes
+through both writers and compares the whole outcome.
+
+**Speed.** Seconds inside backends/c's entry points (the C writing), off vs on, in the final gate run
+(the machine shared with other sessions; DLL load and first use outside the clock, as the Python's
+module import and pattern compiling are). On is faster than off on every module of the gate:
+
+| module | off | on | | module | off | on |
+|---|---|---|---|---|---|---|
+| krnl386.exe | 17.2 | 6.2 | | kernel32.dll | 12.3 | 8.5 |
+| gdi.exe | 61.7 | 15.5 | | comctl32.dll | 11.2 | 6.4 |
+| user.exe | 49.4 | 14.7 | | shell32.dll | 10.9 | 7.0 |
+| keyboard.drv | 1.02 | 0.34 | | gdi32.dll | 3.13 | 1.46 |
+| comdlg32 (structs) | 1.99 | 0.92 | | user32.dll | 0.58 | 0.35 |
+| hud (PowerPC) | 1.23 | 0.75 | | mpr.dll (structs) | 1.36 | 0.36 |
+
+On the pure writing step (recorded calls, JSON both ways) the native writer is about 3x the Python on a
+loaded machine (7x measured once on a quieter one); end to end the Python glue around it (c_text's
+module assembly, the shim's JSON) is the rest. The profile build (`-DCBL2_PROFILE`) writes per-pass
+seconds to cbl2_profile.txt: what is left is spread over the passes (far_locals, buffer_fields,
+caller_frame_slots, names_used, heading_facts each about a tenth), the layouts about a tenth.
+
+**Left.** The module assembly (c_text) and struct_text.plan into C++, after which nothing crosses the
+shim per function; asm_blocks / frame16 / shape16 (off by default); the Python writer deleted at the
+next milestone.
 ## Step 4 (readers moved, gated, on): formats and loaders -- `native/formats`
 
 Logan, 2026-10-31: "All of it needs to be C++." The file-format readers of codebreaker/formats/
