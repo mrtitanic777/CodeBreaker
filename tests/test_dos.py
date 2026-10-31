@@ -227,9 +227,10 @@ def test_native_dos_switch():
         assert native_dos.enabled("masm") is False
         os.environ["CB_NATIVE_DOS"] = "1"
         assert native_dos.enabled("masm") is native_dos.available()
-        os.environ.pop("CB_NATIVE_DOS", None)                  # "auto": MASM yes, ML no (DPMI, deferred)
+        os.environ.pop("CB_NATIVE_DOS", None)                  # "auto": the proven tools (MASM, TNT ML)
         assert native_dos.enabled("masm") is native_dos.available()
-        assert native_dos.enabled("ml") is False
+        assert native_dos.enabled("ml") is native_dos.available()
+        assert native_dos.enabled("cl") is False                # (not proven: DOSBox)
         # CB_NO_DOSBOX makes a byte-match spot-check refuse rather than silently spawn the emulator
         os.environ["CB_NO_DOSBOX"] = "1"
         assert settings.dosbox_x() == ""
@@ -400,13 +401,141 @@ def test_dpmi_host_protected_mode():
     assert os.path.isfile(out) and open(out, "rb").read() == b"hi\n"   # reflected INT 21h create+write
 
 
+# --- the DOS memory arena (exact/emu/dos.py keeps real MCBs in guest RAM) -------------------------
+# A hand-built program that does what a DOS extender's loader does: shrink its block (4Ah), allocate
+# (48h), ask for too much (error 8, BX = the largest), find the first MCB through the list of lists
+# (52h, ES:[BX-2]), walk the chain printing each header's signature, check the last block ends at the
+# PSP's memory top, free (49h), free a non-block (error 9), and see the freed block coalesce.
+def _mcb_walker_exe():
+    code, labels, fix = bytearray(), {}, []
+
+    def e(b):
+        code.extend(b)
+
+    def jcc(op, label):                          # a short jump to a label (resolved below)
+        code.extend(bytes([op, 0]))
+        fix.append((len(code) - 1, label))
+
+    def label(name):
+        labels[name] = len(code)
+    e(b"\xBB\x00\x01\xB4\x4A\xCD\x21"); jcc(0x72, "fail")          # mov bx,100h ; mov ah,4Ah ; int 21h ; jc
+    e(b"\xBB\x10\x00\xB4\x48\xCD\x21"); jcc(0x72, "fail")          # mov bx,10h ; mov ah,48h ; int 21h ; jc
+    e(b"\x8B\xE8")                                                  # mov bp,ax   (block A)
+    e(b"\xBB\xFF\xFF\xB4\x48\xCD\x21"); jcc(0x73, "fail")          # mov bx,0FFFFh ; 48h ; jnc fail
+    e(b"\x3D\x08\x00"); jcc(0x75, "fail")                           # cmp ax,8 ; jne fail
+    e(b"\x8B\xF3")                                                  # mov si,bx   (the largest)
+    e(b"\xB4\x52\xCD\x21\x26\x8B\x47\xFE")                          # mov ah,52h ; int 21h ; mov ax,es:[bx-2]
+    label("walk")
+    e(b"\x8E\xC0\x26\x8A\x16\x00\x00\xB4\x02\xCD\x21")              # mov es,ax ; mov dl,es:[0] ; ah=2 ; int 21h
+    e(b"\x80\xFA\x5A"); jcc(0x74, "done")                           # cmp dl,'Z' ; je done
+    e(b"\x80\xFA\x4D"); jcc(0x75, "fail")                           # cmp dl,'M' ; jne fail
+    e(b"\x8C\xC0\x26\x03\x06\x03\x00\x40"); jcc(0xEB, "walk")       # ax = es + es:[3] + 1 ; jmp walk
+    label("done")
+    e(b"\x8C\xC0\x26\x03\x06\x03\x00\x40\x8B\xF8")                  # di = end of the last block
+    e(b"\xB4\x62\xCD\x21\x8E\xC3\x26\x3B\x3E\x02\x00"); jcc(0x75, "fail")   # == PSP:[2] (memory top)
+    e(b"\x8E\xC5\xB4\x49\xCD\x21"); jcc(0x72, "fail")              # mov es,bp ; 49h ; jc fail
+    e(b"\xB8\x00\x50\x8E\xC0\xB4\x49\xCD\x21"); jcc(0x73, "fail")  # es=5000h (not a block) ; 49h ; jnc fail
+    e(b"\x3D\x09\x00"); jcc(0x75, "fail")                           # cmp ax,9 ; jne fail
+    e(b"\xBB\xFF\xFF\xB4\x48\xCD\x21\x2B\xDE\x83\xFB\x11"); jcc(0x75, "fail")   # largest now = old + 10h + 1
+    e(b"\xB8\x00\x4C\xCD\x21")                                      # exit 0
+    label("fail")
+    e(b"\xB8\x01\x4C\xCD\x21")                                      # exit 1
+    for at, name in fix:
+        code[at] = (labels[name] - (at + 1)) & 0xFF
+    sp = (len(code) + 0x100) & ~1
+    mz = bytearray(32)
+    struct.pack_into("<2sHHHHHHHHHHH", mz, 0, b"MZ", (32 + len(code)) % 512, (32 + len(code) + 511) // 512, 0, 2,
+                     0x10, 0xFFFF, 0, sp, 0, 0, 0)
+    struct.pack_into("<H", mz, 0x18, 0x1C)
+    return bytes(mz) + bytes(code)
+
+
+def test_mcb_arena_walk():
+    try:
+        import unicorn  # noqa: F401
+    except Exception:
+        raise Skip("unicorn is not installed")
+    from codebreaker.exact.emu import dos as emu
+    import re
+    work = tempfile.mkdtemp(prefix="cb_mcb_")
+    try:
+        with open(os.path.join(work, "W.EXE"), "wb") as f:
+            f.write(_mcb_walker_exe())
+        for psp in (None, 0x1000):                # the default load and a high one (DOS's own block over the gap)
+            r = emu.run(os.path.join(work, "W.EXE"), work, "", psp=psp, fast=True)
+            assert r.exit == 0, "the walker failed a check (psp %r, console %r)" % (psp, r.console)
+            assert re.fullmatch(rb"M{3,}Z", bytes(r.console)), bytes(r.console)
+    finally:
+        import shutil
+        shutil.rmtree(work, ignore_errors=True)
+
+
+# --- TNT ML (the Win95 DDK's Phar Lap ML.EXE) on the executive + DPMI host --------------------------
+_TINY32 = ("\t.386p\n_TEXT\tSEGMENT DWORD PUBLIC USE32 'CODE'\n\tPUBLIC foo\nfoo\tPROC NEAR\n"
+           "\tmov\teax, 1\n\tadd\teax, ebx\n\tret\nfoo\tENDP\n_TEXT\tENDS\n\tEND\n")
+
+
+def _ml_set_up():
+    from codebreaker.build import native_dos
+    try:
+        native_dos.ml_files()
+    except native_dos.NativeDosError as e:
+        raise Skip(str(e))
+    try:
+        import unicorn  # noqa: F401
+    except Exception:
+        raise Skip("unicorn is not installed")
+
+
+def test_native_tnt_ml_assembles():
+    """The 32-bit DOS-extended ML.EXE runs to completion on our own CPU and makes an object."""
+    _ml_set_up()
+    from codebreaker.build import native_dos
+    made, console = native_dos.ml("/c /Fom.obj m.asm", {"m.asm": _TINY32}, ["m.obj"])
+    obj = made.get("m.obj")
+    assert obj and obj[0] == 0x80, "no OMF object (console %r)" % console[-300:]
+    assert bytes.fromhex("b801000000" "03c3" "c3") in obj, obj.hex()   # mov eax,1 / add eax,ebx / ret
+    made, console = native_dos.ml("-coff -c -Fom.obj m.asm", {"m.asm": _TINY32}, ["m.obj"])
+    assert made.get("m.obj") and made["m.obj"][:2] == b"\x4c\x01", "no COFF object (console %r)" % console[-300:]
+
+
+def test_native_tnt_ml_matches_dosbox():
+    """The same source through TNT ML under DOSBox-X: byte-identical objects (OMF and COFF)."""
+    _ml_set_up()
+    from codebreaker.base import settings
+    if not (settings.get("dosbox_x") and os.path.isfile(settings.get("dosbox_x"))):
+        raise Skip("DOSBox-X is not set up (settings: dosbox_x)")
+    os.environ.pop("CB_NO_DOSBOX", None)
+    import shutil
+    from codebreaker.build import native_dos, dos_tools
+    tc = tempfile.mkdtemp(prefix="cb_tc_")
+    try:
+        for n, p in native_dos.ml_files().items():
+            shutil.copy(p, os.path.join(tc, n))
+        for cmd in ("/c /Fom.obj m.asm", "-coff -c -Fom.obj m.asm"):
+            made, _con = native_dos.ml(cmd, {"m.asm": _TINY32}, ["m.obj"])
+            ok, out, work = dos_tools.run({"c": tc}, ["c:\\ml.exe %s > asm.txt" % cmd], ["m.obj", "asm.txt"],
+                                          files={"m.asm": _TINY32}, timeout=180)
+            if work:
+                shutil.rmtree(work, ignore_errors=True)
+            a, b = made.get("m.obj") or b"", out.get("m.obj") or b""
+            if cmd.startswith("-coff"):                       # (the COFF header's TimeDateStamp is the clock)
+                a, b = a[:4] + a[8:], b[:4] + b[8:]
+            assert b and a == b, (
+                "%s: native and DOSBox objects differ (%d vs %d bytes)" % (cmd, len(made.get("m.obj") or b""),
+                                                                           len(out.get("m.obj") or b"")))
+    finally:
+        shutil.rmtree(tc, ignore_errors=True)
+
+
 def main():
     for fn in (test_kinds, test_com_and_driver_layout, test_relocations_are_applied,
                test_exepack_static_equals_emulated, test_unpacked_file, test_kernel_image_parts, test_function_discovery,
                test_installed_handler_is_found, test_interrupt_names, test_description_for_the_decompiler,
                test_boot_floppy, test_cd_image, test_not_an_image,
                test_native_dos_switch, test_native_masm_assembles, test_native_masm_matches_dosbox,
-               test_dpmi_host_protected_mode):
+               test_dpmi_host_protected_mode, test_mcb_arena_walk, test_native_tnt_ml_assembles,
+               test_native_tnt_ml_matches_dosbox):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
