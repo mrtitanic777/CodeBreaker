@@ -7,6 +7,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -83,6 +84,11 @@ struct V {
     // dict access by key
     const V& get(const V& key) const;                       // d.get(key) (None when absent or not a dict)
     const V& get(const char* key) const;
+    const V& getn(const char* key, size_t len) const;
+    template <size_t N>
+    const V& get(const char (&key)[N]) const {
+        return getn(key, N - 1);
+    }
     const V& at(const char* key) const;                     // d[key] (KeyError when absent)
     const V& at(const V& key) const;
     bool has(const char* key) const;                        // key in d
@@ -102,13 +108,23 @@ struct StrH : Heap {
     std::string s;
     explicit StrH(std::string v) : s(std::move(v)) {}
 };
+// (a large dict or set is looked up through a hash index, made when first needed and made again
+// when its size has changed: keys are never changed in place)
+struct Index {
+    std::unordered_map<size_t, std::vector<int>> by;
+    size_t made_for = (size_t)-1;
+};
 struct SeqH : Heap {
     std::vector<V> v;
+    mutable Index idx;
+    int find(const V& item) const;               // (a set's)
 };
 struct DictH : Heap {
     std::vector<std::pair<V, V>> items;
+    mutable Index idx;
     int find(const V& key) const;
     int find(const char* key) const;
+    int findn(const char* key, size_t len) const;
 };
 
 extern const V NONE;

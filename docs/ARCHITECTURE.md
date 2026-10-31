@@ -1172,6 +1172,27 @@ while values are Python objects. The Python Database, Run/Context, FunctionStore
 go at the next milestone. SQLite comes from an installed toolchain (MSYS2's UCRT64 header and DLL);
 vendoring the amalgamation would make native/engine build alone.
 
+## Built: the L2 core and the C back end in C++ (2026-10-31)
+
+NATIVE.md step 5. The L2 tree -- ir.py's node model, l2.to_json / from_json, l2.validate -- is
+`native/l2`'s `l2core` (value.hpp: a value with Python's semantics; json.hpp: Python's json; l2.hpp:
+the nodes, types, symbols and the schema), the base the translator back ends sit on (the C++17 back end,
+`l2cpp17`, already does). The decompiler's C writer, backends/c.py with every c_text pass done on the
+tree, is `l2c` on it, in cbl2.dll; backends/c.py's entry points dispatch to it by `CB_NATIVE_L2` (on by
+default since the gate, 0 for the Python; shim: translate/native_l2.py). So decompile -> L2 -> C is C++
+but for c_text's module assembly, which stays the Python glue that calls the writer.
+
+    l2.py / ir.py                       C++ core (Python's own stays for the Python front ends' trees)
+    backends/c.py                       C++ (l2c), behind CB_NATIVE_L2; the Python the fallback
+    c_text.compilable16/32/powerpc      Python glue around it
+    struct_text.plan                    Python (analyze.structures: the loaders step's)
+    asm_blocks, frame16, shape16        Python (off by default)
+
+Gate: the core round-trips 6,644 recorded L2 documents byte for byte and agrees with jsonschema on
+every one checked; the writer makes every function's C, the header and the tables identical off and on
+for 13,965 entries over the 16-bit set, the 32-bit set (structures on and off) and the PowerPC module.
+The Python writer goes at the next milestone.
+
 ## Decisions, and what is left open
 
 - C++ wherever possible (Logan, 2026-10-30; this reverses "Python stays the language of the
@@ -1181,6 +1202,8 @@ vendoring the amalgamation would make native/engine build alone.
   order, is docs/NATIVE.md. Step 1 is done: the 32-bit run recorder (native/tracer, cbtrace.dll:
   trace_function's hooks, `CB_NATIVE_TRACE`). Step 6 is gated and the default: the engine and the
   store (native/engine, cbengine.dll, `CB_NATIVE_ENGINE`; "Built: the engine and the store in C++").
+  Step 5 is gated and the default: the L2 core and the C back end (native/l2, cbl2.dll,
+  `CB_NATIVE_L2`; "Built: the L2 core and the C back end in C++").
 - SQLite, not a server database: one file per binary is easy to delete, copy and inspect.
 - Open: how a fact made by a period compiler (DOSBox-X) is keyed (the kit's files' hashes); how the
   service and other sessions share a machine (the load setting). (Decided: verdicts from before the

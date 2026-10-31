@@ -15,6 +15,7 @@ a dict of other keys {"$d": [[k, v], ...]}, a float that is not finite {"$f": "n
 The switch: CB_NATIVE_L2 (default 1 since the gate, docs/NATIVE.md; 0 = the Python). Without the DLL
 the Python runs (why_not() says why). Build: native/l2/CMakeLists.txt (cmake + ninja, vcvars64).
 """
+import copy
 import ctypes
 import functools
 import json
@@ -23,7 +24,7 @@ import os
 
 from codebreaker.base import settings
 
-DEFAULT = "0"             # CB_NATIVE_L2 when it is not set
+DEFAULT = "1"             # CB_NATIVE_L2 when it is not set (identical everywhere gated: docs/NATIVE.md step 5)
 _LIB = []
 _WHY = []
 
@@ -88,6 +89,77 @@ def _enc(v):
     raise TypeError("no L2 shim form for %r" % type(v).__name__)
 
 
+_BIG = []                 # [(a large container, its JSON)]: the same value handed over again is not encoded again
+_SEP = (",", ":")
+
+
+def _text(v):
+    """`v` as the tagged JSON text. A large set, list or dict equal to one handed over lately (the module's
+    sets each function is written with: its functions, the globals called through ...) takes the text it
+    had; a set or list of strings alone is written by json itself."""
+    t = type(v)
+    if t in (set, frozenset, list, dict) and len(v) >= 32:
+        n = len(v)
+        for obj, number in _BIG:                         # (an equal one first: compared at C's speed)
+            if type(obj) is t and len(obj) == n and obj == v:
+                return '{"$big":%d}' % number            # (the DLL keeps it: handed over by its number)
+    if t in (set, frozenset, list, dict) and len(v) >= 32 and (
+            all(type(k) is str and type(x) in (str, int) for k, x in v.items()) if t is dict else
+            all(type(x) in (str, int) for x in v)):
+        # (of strings and ints alone -- no bool, which == would take for an int -- kept as a copy,
+        # so a change to the container later is no stale hit)
+        if t is dict:
+            text = json.dumps(v, separators=_SEP) if not any(k.startswith("$") for k in v) else json.dumps(_enc(v), separators=_SEP)
+        else:
+            text = json.dumps(v if t is list else {"$s": list(v)}, separators=_SEP)
+        _NEXT[0] += 1
+        _BIG.append((t(v), _NEXT[0]))
+        del _BIG[:-32]                                   # (the DLL keeps the latest 64)
+        return '{"$keep":%d,"$v":%s}' % (_NEXT[0], text)
+    if t is dict and all(type(k) is str and not k.startswith("$") for k in v):
+        return "{" + ",".join(json.dumps(k) + ":" + _text(x) for k, x in v.items()) + "}"
+    return json.dumps(_enc(v), separators=_SEP)
+
+
+_HELD = {}                # {id: (an L2 document, its number in the DLL)}, oldest first
+_KEEP = 2048              # (a module's functions: each document goes to several entry points, loop after loop)
+_NEXT = [0]
+
+
+def _held(doc):
+    """An L2 document as an argument: the first time whole, numbered (the DLL keeps the latest few),
+    then by its number -- one function's document goes to several entry points in turn. (Documents
+    handed to the writer are read, never changed in place: backends/c.py's own rule.)
+    -> (the argument's text, a way to make the whole text again or None)"""
+    got = _HELD.get(id(doc))
+    if got is not None and got[0] is doc:
+        return '{"$doc":%d}' % got[1], lambda: _put(doc)
+    return _put(doc), None
+
+
+_TEXTS = {}               # {id: (an L2 document, the JSON text it was read from)}
+
+
+def known_text(doc, text):
+    """The decompiler's note an L2 document was read from (decompiler.split_notes): handed to the DLL as
+    it is, the document is not written out again. (Kept only while the native writer is on.)"""
+    if enabled():
+        _TEXTS[id(doc)] = (doc, text)
+        while len(_TEXTS) > 2 * _KEEP:
+            _TEXTS.pop(next(iter(_TEXTS)))
+
+
+def _put(doc):
+    _NEXT[0] += 1
+    _HELD.pop(id(doc), None)
+    _HELD[id(doc)] = (doc, _NEXT[0])                     # (holding the document: its id is not reused)
+    while len(_HELD) > _KEEP:
+        _HELD.pop(next(iter(_HELD)))
+    known = _TEXTS.pop(id(doc), None)
+    text = known[1] if known is not None and known[0] is doc else json.dumps(doc, separators=_SEP)
+    return '{"$put":%d,"$v":%s}' % (_NEXT[0], text)
+
+
 def _dec(d):
     if len(d) == 1:
         k = next(iter(d))
@@ -140,10 +212,24 @@ def call(fn, *args, plain=None, facts=None):
     """An entry point of the DLL with `args` -> its result. `plain`: the index of an argument that is
     plain JSON already (an L2 document: written by json.dumps, which is quicker). `facts`: a dict the
     call changes in place (backends/c.function's): the keys it wrote are put back, also when it raises."""
-    parts = []
-    for k, a in enumerate(args):
-        parts.append(json.dumps(a, separators=(",", ":")) if k == plain else json.dumps(_enc(a), separators=(",", ":")))
+    def arguments():
+        parts, held = [], None
+        for k, a in enumerate(args):
+            if k == plain and isinstance(a, dict):
+                held = _held(a)
+                parts.append(held[0])
+            else:
+                parts.append(json.dumps(a, separators=_SEP) if k == plain else _text(a))
+        return parts, held
+    parts, held = arguments()
     status, got = call_raw(fn, "[" + ",".join(parts) + "]")
+    if status and "no longer kept" in got:              # (the DLL let a large value go: all of them again)
+        del _BIG[:]
+        parts, held = arguments()
+        status, got = call_raw(fn, "[" + ",".join(parts) + "]")
+    if status and held is not None and held[1] is not None and "no longer held" in got:
+        parts[plain] = held[1]()                         # (the DLL let it go: handed over whole again)
+        status, got = call_raw(fn, "[" + ",".join(parts) + "]")
     res = json.loads(got, object_hook=_dec)
     if status:
         if facts is not None:
@@ -192,13 +278,46 @@ def _doc1(name):
     return run
 
 
+_DESCRIBED = {}           # {id: (an L2 document, what describe said of it)} -- the same documents as _HELD
+_TAKES = {}               # {a heading: takes32 of it}, from describe
+
+
+def _described(name):
+    """module_names32, type_names, parameter_names, signature of a function's document: all four
+    asked of the DLL once (`describe`), each handed out from that -- a module asks them of every
+    function, loop after loop, and each crossing cost more than the answer."""
+    def run(doc):
+        got = _DESCRIBED.get(id(doc))
+        if got is None or got[0] is not doc:
+            said = call("describe", doc, plain=0)
+            got = _DESCRIBED[id(doc)] = (doc, said)
+            while len(_DESCRIBED) > _KEEP:
+                _DESCRIBED.pop(next(iter(_DESCRIBED)))
+            if isinstance(said.get("signature"), str) and "takes32" in said:
+                _TAKES[said["signature"]] = said["takes32"]
+                if len(_TAKES) > 4 * _KEEP:
+                    _TAKES.clear()
+        v = got[1][name]
+        if isinstance(v, dict) and "$err" in v:
+            _raise({"type": v["$err"][0], "message": v["$err"][1]})
+        return copy.deepcopy(v) if isinstance(v, (dict, list, set)) else v
+    return run
+
+
+def _takes32(signature):
+    if signature in _TAKES:
+        return _TAKES[signature]
+    return call("takes32", signature)
+
+
 # backends/c.py's entry points the native writer has, with how each is called
 _ENTRIES = {
     "function": _function, "flags": _flags, "type_text": _type_text, "module": _module,
-    "signature": _doc1("signature"), "module_names32": _doc1("module_names32"), "type_names": _doc1("type_names"),
-    "parameter_names": _doc1("parameter_names"), "struct_accesses": _doc1("struct_accesses"),
+    "signature": _described("signature"), "module_names32": _described("module_names32"),
+    "type_names": _described("type_names"), "parameter_names": _described("parameter_names"),
+    "struct_accesses": _doc1("struct_accesses"),
     "expr": _doc1("expr"), "condition": _doc1("condition"), "fragment": _doc1("fragment"),
-    "takes32": _plain("takes32"), "prototypes": _plain("prototypes"), "segment_plan": _segment_plan,
+    "takes32": _takes32, "prototypes": _plain("prototypes"), "segment_plan": _segment_plan,
     "caller_frame_plan": _plain("caller_frame_plan"), "seg_layout": _plain("seg_layout"),
     "arguments_at": _plain("arguments_at"), "words": _plain("words"), "parameters": _plain("parameters"),
     "argument_words": _plain("argument_words"),
@@ -207,15 +326,27 @@ _ENTRIES = {
 
 def install(namespace):
     """Each of backends/c.py's entry points dispatched by the switch: the native writer where it is on,
-    the Python (kept as namespace["_py_<name>"]) where it is off."""
+    the Python (kept as namespace["_py_<name>"]) where it is off. Inside the Python writer every call
+    stays Python's: its own calls of these names go to its own functions, which share its state."""
+    import threading
+    inside = threading.local()
+
     for name, native in _ENTRIES.items():
         py = namespace[name]
-        namespace["_py_" + name] = py
 
-        def dispatch(*args, _py=py, _native=native, **kw):
-            if enabled():
+        def python(*args, _py=py, **kw):
+            inside.depth = getattr(inside, "depth", 0) + 1
+            try:
+                return _py(*args, **kw)
+            finally:
+                inside.depth -= 1
+        functools.update_wrapper(python, py)
+        namespace["_py_" + name] = python
+
+        def dispatch(*args, _python=python, _native=native, **kw):
+            if not getattr(inside, "depth", 0) and enabled():
                 return _native(*args, **kw)
-            return _py(*args, **kw)
+            return _python(*args, **kw)
         functools.update_wrapper(dispatch, py)
         namespace[name] = dispatch
 

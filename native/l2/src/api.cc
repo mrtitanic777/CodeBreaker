@@ -4,6 +4,7 @@
 #include "l2api.h"
 
 #include <cstdlib>
+#include <functional>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -46,6 +47,14 @@ V facts_out(const V& facts) {
 
 const V& arg(const V& args, size_t n) { return n < args.size() ? args[n] : py::NONE; }
 
+V err_of(const std::string& type, const std::string& msg) {
+    V e = V::dict(), l = V::list();
+    l.append(V(type));
+    l.append(V(msg));
+    e.set("$err", l);
+    return e;
+}
+
 V dispatch(const std::string& fn, const V& args, V& facts_seen) {
 #ifdef CBL2_CBACK
     using namespace cb;
@@ -61,6 +70,28 @@ V dispatch(const std::string& fn, const V& args, V& facts_seen) {
     if (fn == "expr") return V(cb::expr(arg(args, 0)));
     if (fn == "condition") return V(cb::condition(arg(args, 0), py::truthy(arg(args, 1))));
     if (fn == "module_names32") return cb::module_names32(arg(args, 0));
+    if (fn == "describe") {
+        // what a module asks of each function's document, loop after loop, in one call: each entry's
+        // value, or {"$err": [its exception's name, message]}
+        const V& doc = arg(args, 0);
+        V out = V::dict();
+        auto one = [&](const char* name, const std::function<V()>& f) {
+            try {
+                Scope s;
+                out.set(name, f());
+            } catch (cb::Decline& e) {
+                out.set(name, err_of("Decline", e.what()));
+            } catch (py::PyError& e) {
+                out.set(name, err_of(e.type, e.what()));
+            }
+        };
+        one("module_names32", [&] { return cb::module_names32(doc); });
+        one("type_names", [&] { return cb::type_names(doc); });
+        one("parameter_names", [&] { return cb::parameter_names(doc); });
+        one("signature", [&] { return V(cb::signature(doc)); });
+        if (out.get("signature").is_str()) one("takes32", [&] { return cb::takes32(out.get("signature").str()); });
+        return out;
+    }
     if (fn == "type_names") return cb::type_names(arg(args, 0));
     if (fn == "parameter_names") return cb::parameter_names(arg(args, 0));
     if (fn == "struct_accesses") return cb::struct_accesses(arg(args, 0), arg(args, 1));
@@ -105,6 +136,35 @@ V dispatch(const std::string& fn, const V& args, V& facts_seen) {
     py::raise("AttributeError", "cbl2 has no entry " + fn);
 }
 
+// L2 documents the shim hands over once and then by number ({"$put": n, "$v": doc}, then {"$doc": n}):
+// a function's document goes to several entry points in turn (module_names32, signature, function ...)
+std::mutex docs_mu;
+std::vector<std::pair<int64_t, V>> docs;              // the latest few, newest last
+
+void held_documents(V& args) {
+    if (!args.is_list()) return;
+    for (auto& a : args.seq()) {
+        if (!a.is_dict() || a.size() > 2) continue;
+        std::lock_guard<std::mutex> lock(docs_mu);
+        if (a.has("$put")) {
+            int64_t n = a.get("$put").as_int();
+            V doc = a.get("$v");
+            docs.push_back({n, doc});
+            if (docs.size() > 2048) docs.erase(docs.begin());
+            a = doc;
+        } else if (a.has("$doc") && a.size() == 1) {
+            int64_t n = a.get("$doc").as_int();
+            bool found = false;
+            for (auto& d : docs)
+                if (d.first == n) {
+                    a = d.second;
+                    found = true;
+                }
+            if (!found) py::raise("RuntimeError", "native/l2: document " + std::to_string(n) + " no longer held");
+        }
+    }
+}
+
 struct Call {
     std::string fn, in;
     std::string out;
@@ -115,6 +175,7 @@ void run(Call* c) {
     V facts;
     try {
         V args = py::json_parse(c->in, true);
+        held_documents(args);
         V result = dispatch(c->fn, args, facts);
         c->out = py::json_tagged(result);
         c->status = 0;
@@ -150,48 +211,43 @@ void run(Call* c) {
 }
 
 #ifdef _WIN32
-// Threads with a large stack, kept and reused: a call is handed to an idle one (made the first time
-// none is idle), so calls on several threads at once each get their own.
-struct Worker {
-    HANDLE thread = nullptr, go = nullptr, done = nullptr;
-    Call* job = nullptr;
-};
-std::mutex pool_mu;
-std::vector<Worker*> idle;
+// A large stack for the deep entries, on the caller's own thread: a fiber per thread, made once
+// (512 MB reserved), switched to for the call and back -- no other thread, so no wait to be scheduled
+// (handing calls to a worker thread cost more than writing a small function).
+thread_local LPVOID big_fiber = nullptr;
+thread_local LPVOID caller_fiber = nullptr;
+thread_local Call* fiber_job = nullptr;
 
-DWORD WINAPI worker_main(LPVOID p) {
-    Worker* w = static_cast<Worker*>(p);
+VOID CALLBACK fiber_main(LPVOID) {
     while (true) {
-        WaitForSingleObject(w->go, INFINITE);
-        run(w->job);
-        SetEvent(w->done);
+        run(fiber_job);
+        SwitchToFiber(caller_fiber);
     }
 }
 
 void run_on_worker(Call* c) {
-    Worker* w = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(pool_mu);
-        if (!idle.empty()) {
-            w = idle.back();
-            idle.pop_back();
-        }
+    bool converted = false;
+    LPVOID me;
+    if (IsThreadAFiber())
+        me = GetCurrentFiber();
+    else {
+        me = ConvertThreadToFiber(nullptr);
+        converted = me != nullptr;
     }
-    if (!w) {
-        w = new Worker();
-        w->go = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        w->done = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        w->thread = CreateThread(nullptr, 512u << 20, worker_main, w, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
-        if (!w->thread) {
-            run(c);
-            return;
-        }
+    if (!me) {
+        run(c);
+        return;
     }
-    w->job = c;
-    SetEvent(w->go);
-    WaitForSingleObject(w->done, INFINITE);
-    std::lock_guard<std::mutex> lock(pool_mu);
-    idle.push_back(w);
+    if (!big_fiber) big_fiber = CreateFiberEx(1u << 20, 512u << 20, FIBER_FLAG_FLOAT_SWITCH, fiber_main, nullptr);
+    if (!big_fiber) {
+        if (converted) ConvertFiberToThread();
+        run(c);
+        return;
+    }
+    caller_fiber = me;
+    fiber_job = c;
+    SwitchToFiber(big_fiber);
+    if (converted) ConvertFiberToThread();
 }
 #else
 void run_on_worker(Call* c) { run(c); }
@@ -207,7 +263,13 @@ int l2_call(const char* fn, const char* in, size_t inlen, char** out, size_t* ou
     Call c;
     c.fn = fn;
     c.in.assign(in, inlen);
-    run_on_worker(&c);
+    // (the entries that write a function or an expression recurse as the Python did: on a thread with a
+    // large stack; the others, small and shallow, here)
+    static const char* deep[] = {"function", "module", "expr", "condition", "flags", "cpp17_unit", "cpp17_program"};
+    bool big = false;
+    for (auto d : deep) big = big || c.fn == d;
+    if (big) run_on_worker(&c);
+    else run(&c);
     char* buf = static_cast<char*>(std::malloc(c.out.size() + 1));
     std::memcpy(buf, c.out.data(), c.out.size());
     buf[c.out.size()] = 0;

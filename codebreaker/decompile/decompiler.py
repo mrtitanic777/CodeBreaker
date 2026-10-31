@@ -132,6 +132,8 @@ def split_notes(text):
         kind, rest = m.groups()
         if kind == "L2":
             facts["l2"] = json.loads(rest)
+            from codebreaker.translate import native_l2      # (the native writer reads the text itself)
+            native_l2.known_text(facts["l2"], rest)
         elif kind == "S":
             name, size, *fields = rest.split()
             facts["structs"].append([name, int(size), [[int(o, 16), int(z), t] for o, z, t in

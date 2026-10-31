@@ -418,7 +418,54 @@ static bool passed_on(const std::string& arg, const std::string& reg) {
 }
 
 // ---------------------------------------------------------------------------------------------- _seen
+// What the function's text is laid out from, as one number: a layout made in the same state is the
+// same layout (the Python made it again each time; the text, and all it records, come out the same).
+static uint64_t layout_key() {
+    std::hash<std::string> hs;
+    std::hash<const void*> hp;
+    uint64_t k = 1469598103934665603ULL;
+    auto mix = [&](uint64_t v) { k = (k ^ v) * 1099511628211ULL; };
+    auto bag = [&](uint64_t v) { return v * 0x9E3779B97F4A7C15ULL; };
+    mix(now->mut);
+    uint64_t s = 0;
+    for (auto& kv : now->marks) s += bag(hp(kv.first) ^ hs(kv.second));
+    mix(s);
+    s = 0;
+    for (auto& kv : now->decls) s += bag(hs(kv.first) ^ (hs(kv.second) << 1));
+    mix(s);
+    for (auto& d : now->drop) mix(hs(d));
+    for (auto& d : now->frame) mix(hs(d));
+    for (auto& kv : now->alias) mix(hs(kv.first) ^ (hs(kv.second) << 1));
+    s = 0;
+    for (auto x : now->gone) s += bag(hp(x));
+    mix(s);
+    s = 0;
+    for (auto x : now->far_read) s += bag(hp(x));
+    mix(s);
+    for (auto* m : {&now->before, &now->after})
+        for (auto& kv : m->items) {
+            mix(hp(kv.first));
+            for (auto& t : kv.second) mix(hs(t));
+        }
+    for (auto& d : now->declare_first) mix(hs(d.first) ^ (hs(d.second) << 1));
+    mix(now->old_style ? 1 + now->old_style->size() : 0);
+    if (now->old_style)
+        for (auto& d : *now->old_style) mix(hs(d.second));
+    mix(now->locals_text ? hs(*now->locals_text) + 1 : 0);
+    mix(now->pops);
+    mix(now->far.size());
+    return k;
+}
+
+#ifdef CBL2_PROFILE
+void prof_add(const std::string& k, double t);
+#endif
+
 IdSet seen_now() {
+    uint64_t key = layout_key();
+    if (now->seen_valid && key == now->seen_key) return now->seen;
+    now->seen_key = key;
+    now->seen_valid = true;
     now->seen.clear();
     now->seeing = true;
     now->at.clear();
@@ -431,7 +478,13 @@ IdSet seen_now() {
     struct Done {
         ~Done() { now->seeing = false; }
     } done;
+#ifdef CBL2_PROFILE
+    auto t0 = std::chrono::steady_clock::now();
     function_text(now->doc, now->locals, now->top);
+    prof_add("(a layout)", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+#else
+    function_text(now->doc, now->locals, now->top);
+#endif
     return now->seen;
 }
 
@@ -1334,17 +1387,51 @@ static V leading_cast_now(const V& e0) {
     }
 }
 
+static bool name_is(const V& e, const std::string& n) {
+    // _name(e) == n, without making the name (the passes ask it of every node, for every local)
+    const V& sym = e.get("sym");
+    if (py::truthy(sym)) {
+        const V& s = sym.get("name");
+        if (py::truthy(s)) return s.is_str() ? s.str() == n : py::str_of(s) == n;
+    }
+    const V& n2 = e.get("name");
+    if (py::truthy(n2)) return n2.is_str() ? n2.str() == n : py::str_of(n2) == n;
+    return n == "?";
+}
+
 static bool bare_name(const V& e, const Opt& name = std::nullopt) {
-    return e.get("node") == "Name" && !field_sym(e) && !in_whole(e) && mark(e) != "_ss" && (!name || name_of(e) == *name);
+    // (the name first: it rules out nearly every node, and every test here is free of side effects)
+    return e.get("node") == "Name" && (!name || name_is(e, *name)) && !field_sym(e) && !in_whole(e) && mark(e) != "_ss";
 }
 
 static void p_far_locals(Nodes& nodes, const std::set<std::string>&) {
     static const re::Regex SETR("([\\w ]+?) \\*"), PTRDECL("([\\w ]+?) \\*(\\w+)"), LINE("([\\w ]+?[\\w ]*\\*+)\\s*(\\w+)");
+#ifdef CBL2_PROFILE
+    auto pt0 = std::chrono::steady_clock::now();
+    auto pmark = [&](const char* k) {
+        auto t = std::chrono::steady_clock::now();
+        prof_add(k, std::chrono::duration<double>(t - pt0).count());
+        pt0 = t;
+    };
+#else
+    auto pmark = [](const char*) {};
+#endif
     IdSet seen = seen_now();
+    pmark("fl.seen");
     ParentMap parent = parents(nodes);
     Nodes shown;
     for (auto& np : nodes)
         if (seen.count(id(np.e))) shown.push_back(np);
+    pmark("fl.parents");
+    // (where each name is written among the nodes shown, in order: the loops below ask it of every local)
+    std::unordered_map<std::string, std::vector<size_t>> by_name;
+    for (size_t k = 0; k < shown.size(); k++)
+        if (shown[k].e.get("node") == "Name") by_name[name_of(shown[k].e)].push_back(k);
+    static const std::vector<size_t> none_shown;
+    auto named = [&](const std::string& n) -> const std::vector<size_t>& {
+        auto it = by_name.find(n);
+        return it == by_name.end() ? none_shown : it->second;
+    };
     auto& decls = now->decls;
     std::vector<V> locs = live_locals();
     auto decl_text = [&](const V& v) -> Opt {
@@ -1386,16 +1473,19 @@ static void p_far_locals(Nodes& nodes, const std::set<std::string>&) {
             if (d && *d == std::string(w) + " " + n) wide = true;
         if (!wide) continue;
         bool through = false;
-        for (auto& np : shown)
-            if (bare_name(np.e, n) && unary_parent(np.e, parent, "*") && !arrow_of(parent_of(parent, np.e), parent)) {
+        for (size_t k : named(n)) {
+            const V& e = shown[k].e;
+            if (bare_name(e, n) && unary_parent(e, parent, "*") && !arrow_of(parent_of(parent, e), parent)) {
                 through = true;
                 break;
             }
+        }
         if (!through) continue;
         auto found = sets_of(n, false);
         decls[n] = (found.empty() ? std::string("xunknown1") : found[0].second) + " __far *" + n;
         far_casts(found);
     }
+    pmark("fl.loop1");
     std::set<std::string> declared;
     for (auto& v : locs) declared.insert(loc_name(v));
     for (auto& v : locs) {
@@ -1405,17 +1495,17 @@ static void p_far_locals(Nodes& nodes, const std::set<std::string>&) {
         std::string whole = "_" + n;
         if (!m || m.group(2) != n || declared.count(whole)) continue;
         bool any = false;
-        for (auto& np : shown)
-            if (bare_name(np.e, whole)) {
+        for (size_t k : named(whole))
+            if (bare_name(shown[k].e, whole)) {
                 any = true;
                 break;
             }
         if (!any) continue;
         std::string to = m.group(1);
         bool assigned = false;
-        for (auto& np : shown) {
-            const V& e = np.e;
-            const V& p = np.p;
+        for (size_t k : named(n)) {
+            const V& e = shown[k].e;
+            const V& p = shown[k].p;
             if (bare_name(e, n) && !p.is_none() &&
                 ((p.get("node") == "Unary" && p.get("op") == "&" && !py::truthy(p.get("postfix")) && !in_whole(p)) ||
                  (p.get("node") == "Index" && same(at(p, "arr"), e) && !in_whole(p) && unary_parent(p, parent, "&")))) {
@@ -1434,8 +1524,9 @@ static void p_far_locals(Nodes& nodes, const std::set<std::string>&) {
         decls[n] = (assigned ? *d + ";\n  " : std::string()) + to + " __far *" + whole;
         far_casts(sets_of(whole, true));
         if (!assigned)
-            for (auto& np : shown)
-                if (bare_name(np.e, n)) rewrite(np.e, [to, whole](const V&) { return "((" + pops(to + " *") + ")(uint2)(uint4)" + whole + ")"; });
+            for (size_t k : named(n))
+                if (bare_name(shown[k].e, n))
+                    rewrite(shown[k].e, [to, whole](const V&) { return "((" + pops(to + " *") + ")(uint2)(uint4)" + whole + ")"; });
     }
     std::map<std::string, std::string> types;
     for (auto& v : locs) {

@@ -79,19 +79,54 @@ size_t V::size() const {
     }
 }
 
+static const size_t INDEXED = 24;
+
 int DictH::find(const V& key) const {
+    if (items.size() > INDEXED) {
+        if (idx.made_for != items.size()) {
+            idx.by.clear();
+            for (size_t n = 0; n < items.size(); n++) idx.by[hash(items[n].first)].push_back((int)n);
+            idx.made_for = items.size();
+        }
+        auto it = idx.by.find(hash(key));
+        if (it == idx.by.end()) return -1;
+        for (int n : it->second)
+            if (eq(items[(size_t)n].first, key)) return n;
+        return -1;
+    }
     if (key.k == K::Str) return find(key.str().c_str());
     for (size_t n = 0; n < items.size(); n++)
         if (eq(items[n].first, key)) return (int)n;
     return -1;
 }
-int DictH::find(const char* key) const {
-    size_t len = std::strlen(key);
+
+int SeqH::find(const V& item) const {
+    if (v.size() > INDEXED) {
+        if (idx.made_for != v.size()) {
+            idx.by.clear();
+            for (size_t n = 0; n < v.size(); n++) idx.by[hash(v[n])].push_back((int)n);
+            idx.made_for = v.size();
+        }
+        auto it = idx.by.find(hash(item));
+        if (it == idx.by.end()) return -1;
+        for (int n : it->second)
+            if (eq(v[(size_t)n], item)) return n;
+        return -1;
+    }
+    for (size_t n = 0; n < v.size(); n++)
+        if (eq(v[n], item)) return (int)n;
+    return -1;
+}
+
+int DictH::find(const char* key) const { return findn(key, std::strlen(key)); }
+
+int DictH::findn(const char* key, size_t len) const {
+    if (items.size() > INDEXED) return find(V(std::string(key, len)));
     for (size_t n = 0; n < items.size(); n++) {
         const V& k = items[n].first;
         if (k.k == K::Str) {
             const std::string& s = static_cast<StrH*>(k.h.get())->s;
-            if (s.size() == len && std::memcmp(s.data(), key, len) == 0) return (int)n;
+            if (s.size() == len && (len == 0 || s[0] == key[0]) && std::memcmp(s.data(), key, len) == 0) return (int)n;
         }
     }
     return -1;
@@ -101,6 +136,12 @@ const V& V::get(const V& key) const {
     if (k != K::Dict) return NONE;
     auto& d = dict_();
     int n = d.find(key);
+    return n < 0 ? NONE : d.items[n].second;
+}
+const V& V::getn(const char* key, size_t len) const {
+    if (k != K::Dict) return NONE;
+    auto& d = dict_();
+    int n = d.findn(key, len);
     return n < 0 ? NONE : d.items[n].second;
 }
 const V& V::get(const char* key) const {
@@ -130,12 +171,21 @@ const V& V::at(const V& key) const {
 }
 bool V::has(const char* key) const { return k == K::Dict && dict_().find(key) >= 0; }
 bool V::has(const V& key) const { return k == K::Dict && dict_().find(key) >= 0; }
+static void indexed_append(Index& idx, size_t old, const V& key) {
+    if (idx.made_for == old) {                           // (kept up as it grows)
+        idx.by[hash(key)].push_back((int)old);
+        idx.made_for = old + 1;
+    }
+}
+
 void V::set(const V& key, V value) const {
     auto& d = dict_();
     int n = d.find(key);
-    if (n < 0)
+    if (n < 0) {
+        size_t old = d.items.size();
         d.items.emplace_back(key, std::move(value));
-    else
+        indexed_append(d.idx, old, key);
+    } else
         d.items[n].second = std::move(value);
 }
 void V::set(const char* key, V value) const { set(V(key), std::move(value)); }
@@ -143,7 +193,9 @@ V& V::setdefault(const V& key, V dflt) const {
     auto& d = dict_();
     int n = d.find(key);
     if (n < 0) {
+        size_t old = d.items.size();
         d.items.emplace_back(key, std::move(dflt));
+        indexed_append(d.idx, old, key);
         return d.items.back().second;
     }
     return d.items[n].second;
@@ -153,6 +205,7 @@ bool V::erase(const V& key) const {
     int n = d.find(key);
     if (n < 0) return false;
     d.items.erase(d.items.begin() + n);
+    d.idx.made_for = (size_t)-1;
     return true;
 }
 std::vector<std::pair<V, V>>& V::items() const { return dict_().items; }
@@ -266,7 +319,8 @@ size_t hash(const V& v) {
 
 bool contains(const V& c, const V& item) {
     switch (c.k) {
-        case K::List: case K::Tuple: case K::Set:
+        case K::Set: return static_cast<SeqH*>(c.h.get())->find(item) >= 0;
+        case K::List: case K::Tuple:
             for (auto& x : c.seq())
                 if (eq(x, item)) return true;
             return false;
@@ -331,17 +385,20 @@ V copy_dict(const V& d) {
 }
 
 V set_add(const V& s, const V& item) {
-    if (!contains(s, item)) s.seq().push_back(item);
+    if (!contains(s, item)) {
+        auto* h = static_cast<SeqH*>(s.h.get());
+        size_t old = h->v.size();
+        h->v.push_back(item);
+        indexed_append(h->idx, old, item);
+    }
     return s;
 }
 bool set_discard(const V& s, const V& item) {
-    auto& v = s.seq();
-    for (size_t n = 0; n < v.size(); n++)
-        if (eq(v[n], item)) {
-            v.erase(v.begin() + n);
-            return true;
-        }
-    return false;
+    int n = static_cast<SeqH*>(s.h.get())->find(item);
+    if (n < 0) return false;
+    s.seq().erase(s.seq().begin() + n);
+    static_cast<SeqH*>(s.h.get())->idx.made_for = (size_t)-1;
+    return true;
 }
 
 }  // namespace py

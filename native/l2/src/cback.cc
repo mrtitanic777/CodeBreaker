@@ -76,6 +76,11 @@ Flat* make_flat() {
 }
 
 std::string flat_text(const std::function<void(Em*)>& put_) {
+    if (!now->seeing) {                                  // (kept only while a layout records where things are)
+        Flat local;
+        put_(&local);
+        return local.text();
+    }
     Flat* em = make_flat();
     if (now->seeing && !now->owners.empty()) now->owner_of[em] = now->owners.back();
     put_(em);
@@ -188,8 +193,20 @@ void put_type(Em* em, const V& t, const Opt& name, bool far, const Opt& shown_na
 
 std::string type_text(const V& t, const std::string& name, bool far) {
     if (t.is_none()) return py::strip("void " + name);
+    // (the same type, name and distance: the same text -- the passes ask it over and over. The
+    // emitter it is laid out on holds no node, so no layout's record of places needs it)
+    // (keyed by the type's object, held in the table so its address is not another's later)
     Opt nm = name.empty() ? Opt() : Opt(name);
-    return flat_text([&](Em* em) { put_type(em, t, nm, far); });
+    if (!t.is_dict()) return flat_text([&](Em* em) { put_type(em, t, nm, far); });
+    const void* p = t.id();
+    std::string key((const char*)&p, sizeof p);
+    key += far ? '1' : '0';
+    key += name;
+    auto it = now->type_texts.find(key);
+    if (it != now->type_texts.end()) return it->second.second;
+    std::string s = flat_text([&](Em* em) { put_type(em, t, nm, far); });
+    now->type_texts.emplace(std::move(key), std::make_pair(t, s));
+    return s;
 }
 
 // ---------------------------------------------------------------------------------------------- expressions
@@ -440,10 +457,10 @@ std::string raw_text(const V& e) {
             now->raw -= 1;
         }
     } done{id(e)};
-    Flat* em = make_flat();
-    put(em, e);
+    Flat em;
+    put(&em, e);
     std::string s;
-    for (auto& x : em->raw) s += x;
+    for (auto& x : em.raw) s += x;
     return s;
 }
 
@@ -451,6 +468,7 @@ void rewrite(const V& e, Rewrite shown, bool room) {
     if (!now->whole.count(id(e))) {
         now->whole[id(e)] = std::move(shown);
         if (room) now->room.insert(id(e));
+        now->mut++;
     }
 }
 
