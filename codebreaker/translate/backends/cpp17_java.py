@@ -1,4 +1,5 @@
-"""cpp17.py -- the translator's C++17 back end (docs/TRANSLATOR_DESIGN.md, phase 4).
+"""cpp17_java.py -- the translator's C++17 back end for Java (docs/TRANSLATOR_DESIGN.md, phase 4); beside
+cpp17.py (the Python front end's L2 -> C++17 on py.hpp) until the two are folded into one back end.
 
 Two ways in, one set of idiom rules:
 

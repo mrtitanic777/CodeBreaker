@@ -1,5 +1,5 @@
 """jmodel.py -- a Java program's object model read off L2, for the back ends that write whole programs
-(cpp17.Program and c_java.Program).
+(cpp17_java.Program and c_java.Program).
 
 What every such back end has to know and Java leaves implicit: every class (nested, local, anonymous and
 enum-constant bodies included) with its C name, its supertypes, whether it needs its outer instance, what

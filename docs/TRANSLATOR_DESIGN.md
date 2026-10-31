@@ -325,7 +325,7 @@ number of working pairs.
    sequences the operands into temporaries); without it every world differed from Java's for the same
    seed, on the 360 as well. Still to do: the C++17 back end proper, Boehm GC, modern Java front-end
    features.)
-   (Progress 2026-10-31: **the C++17 back end proper**, `translate/backends/cpp17.py`, two ways in.
+   (Progress 2026-10-31: **the C++17 back end proper for Java**, `translate/backends/cpp17_java.py` (beside the Python front end's `cpp17.py`, on its own runtime: to be one back end), two ways in.
    *Inside the transpiler* (`convert(..., cpp_std='C++17')`): cpp17.Bodies, cpp03's Writer with the C++17
    forms -- a for-each over a container as a range-for, a switch expression as an immediately invoked
    lambda, `auto` where the initialiser spells the type, nullptr against pointers (the runtime's value

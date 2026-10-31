@@ -33,7 +33,7 @@ import subprocess
 from codebreaker.translate import desugar, ir
 from codebreaker.translate.backends import cpp03, jmodel
 from codebreaker.translate.backends.cpp03 import Decline
-from codebreaker.translate.backends.cpp17 import _LIB, _char, _constant_init
+from codebreaker.translate.backends.cpp17_java import _LIB, _char, _constant_init
 
 RUNTIME = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'runtime', 'c')
 CLANG = r'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin\clang.exe'

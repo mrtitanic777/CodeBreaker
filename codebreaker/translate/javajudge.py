@@ -3,11 +3,11 @@
 Two ways a Java program reaches native code, and a judge for each:
 
   * through the transpiler (codebreaker/java): declarations from its front end, every body from the IR
-    by a body back end -- cpp03 (the 360's) or cpp17 (backends/cpp17.Bodies). Judged class by class by
+    by a body back end -- cpp03 (the 360's) or cpp17 (backends/cpp17_java.Bodies). Judged class by class by
     the java lane and probe.py: each class compiled on its own, its methods run on the same inputs in
     the JVM and natively.        judge_tree(src, work, backend)
 
-  * whole programs from L2 (declarations and bodies), with a runtime of their own: backends/cpp17.Program
+  * whole programs from L2 (declarations and bodies), with a runtime of their own: backends/cpp17_java.Program
     and backends/c_java.Program. Judged per program: every static method with primitive or String
     parameters and a primitive or String result is run on probe.py's inputs in the JVM and natively,
     and the program's main is run on both sides and its output compared.   judge_program(src, work, backend)
@@ -281,7 +281,7 @@ def build(units, work, backend):
         shutil.rmtree(out)
     os.makedirs(out)
     if backend == 'cpp17':
-        from codebreaker.translate.backends import cpp17
+        from codebreaker.translate.backends import cpp17_java as cpp17
         text = cpp17.program(units)
         src = os.path.join(out, 'program.cpp')
         with open(src, 'w', encoding='utf-8') as f:
