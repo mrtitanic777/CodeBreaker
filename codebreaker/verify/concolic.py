@@ -71,9 +71,9 @@ class Exploration(object):
 TURNED = ("jump", "inner")      # the conditions a question may turn: a jump's, a string instruction's
 
 
-def _as_went(entry, memo):
+def _as_went(entry, memo, ctx=None):
     _site, taken, cond, _kind = entry
-    t = symbolic.z3_of(cond, memo)
+    t = symbolic.z3_of(cond, memo, ctx)
     return t if taken else z3.Not(t)
 
 
@@ -82,17 +82,17 @@ def _assert(s, term):
     z3.Z3_solver_assert(s.ctx.ref(), s.solver, term.as_ast())
 
 
-def _edges(cond, memo):
+def _edges(cond, memo, ctx=None):
     """For a comparison, the inputs at its bound: what was compared equal to what it was compared
     with, one above, one below (a zero test: the value 1) -- as z3 conditions to try in turn."""
     op = cond[0]
     if op == "bnot":
-        return _edges(cond[2], memo)
+        return _edges(cond[2], memo, ctx)
     if op == "nz":
-        x = symbolic.z3_of(cond[2], memo)
+        x = symbolic.z3_of(cond[2], memo, ctx)
         return [x == 1]
     if op in ("eq", "ult", "ule", "slt", "sle"):
-        a, b = symbolic.z3_of(cond[2], memo), symbolic.z3_of(cond[3], memo)
+        a, b = symbolic.z3_of(cond[2], memo, ctx), symbolic.z3_of(cond[3], memo, ctx)
         return [a == b, a == b + 1, a == b - 1]
     return []
 
@@ -107,6 +107,11 @@ def explore(run, seeds, derive, own=lambda site: True, budget=24, keep=24, known
     pool = []                           # (input, observation)
     queue, order = [], [0]
     memo = {}                           # the solver's terms of the conditions, made once
+    # (in a z3 context of this exploration's own: z3's main context keeps every term made in it
+    # and what it learnt, and its answers -- which input a question gets, whether the step limit
+    # runs out -- then depended on what was explored before in the same process. A function's
+    # verdict changed with the functions a worker had judged before it: LZEXPAND's 4:015c)
+    ctx = z3.Context()
     solvers = {}                        # run -> (its solver, how many of its conditions it holds)
 
     def took(v, o):
@@ -174,20 +179,20 @@ def explore(run, seeds, derive, own=lambda site: True, budget=24, keep=24, known
         # one run come mostly in the order of its path, each one condition further on)
         s, k = solvers.get(idx) or (None, 0)
         if s is None or k > j:
-            s, k = z3.Solver(), 0
+            s, k = z3.Solver(ctx=ctx), 0
             s.set("rlimit", steps)
         for p in o["path"][k:j]:
-            _assert(s, _as_went(p, memo))
+            _assert(s, _as_went(p, memo, ctx))
         solvers[idx] = (s, j)
         s.push()
-        _assert(s, z3.Not(_as_went(e, memo)))
+        _assert(s, z3.Not(_as_went(e, memo, ctx)))
         got.queries += 1
         r = s.check()
         m = s.model() if r == z3.sat else None
         if m is not None:
             # (and on the edge: of the inputs that turn it, one where what was compared is what
             # it was compared with, or one past -- a bound written one off is seen there)
-            for edge in _edges(e[2], memo):
+            for edge in _edges(e[2], memo, ctx):
                 s.push()
                 _assert(s, edge)
                 if s.check() == z3.sat:

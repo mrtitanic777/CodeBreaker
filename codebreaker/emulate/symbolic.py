@@ -123,20 +123,21 @@ def inputs(e, memo):
     return out
 
 
-def z3_of(e, memo):
-    """The z3 term of expression `e` (made once per node: `memo`, by identity)."""
+def z3_of(e, memo, ctx=None):
+    """The z3 term of expression `e` (made once per node: `memo`, by identity), in z3 context
+    `ctx` (None: z3's main context). One memo is for one context."""
     got = memo.get(id(e))
     if got is not None:
         return got[1]
     op = e[0]
     if op == "var":
-        t = z3.BitVec(e[2], e[1])
+        t = z3.BitVec(e[2], e[1], ctx)
     elif op == "const":
-        t = z3.BitVecVal(e[2], e[1])
+        t = z3.BitVecVal(e[2], e[1], ctx)
     elif op == "true":
-        t = z3.BoolVal(True)
+        t = z3.BoolVal(True, ctx)
     else:
-        args = [z3_of(x, memo) for x in e[2:] if isinstance(x, tuple)]
+        args = [z3_of(x, memo, ctx) for x in e[2:] if isinstance(x, tuple)]
         if op in _BV2:
             t = _BV2[op](*args)
         elif op == "neg":
@@ -154,10 +155,10 @@ def z3_of(e, memo):
         elif op == "ite":
             t = z3.If(args[0], args[1], args[2])
         elif op == "bool":
-            t = z3.If(args[0], z3.BitVecVal(1, 8), z3.BitVecVal(0, 8))
+            t = z3.If(args[0], z3.BitVecVal(1, 8, ctx), z3.BitVecVal(0, 8, ctx))
         elif op == "popcount":
             a, width = args[0], e[2][1]
-            t = z3.BitVecVal(0, e[1])
+            t = z3.BitVecVal(0, e[1], ctx)
             for k in range(width):
                 t = t + z3.ZeroExt(e[1] - 1, z3.Extract(k, k, a))
         elif op in _CMP:
