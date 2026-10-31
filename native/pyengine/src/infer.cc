@@ -114,6 +114,10 @@ void Eval::contribute_param(const std::string& fq, const std::string& name, cons
         nw = p.join(old, t);
     }
     if (p.round > 3 && nw.kind == TK::Int && old.kind == TK::Int) nw = widen_int(old, nw);
+    if (nw != old && p.frozen && old.kind != TK::Bottom) {   // (new) the parameter's contract is fixed
+        p.veto("passes " + t.repr() + " as " + name + " of " + f->name + ", which takes " + old.repr());
+        return;
+    }
     if (nw != old) {
         ps[name] = nw;
         p.touch("p:" + fq);
@@ -156,6 +160,13 @@ void Eval::contribute_attr(const std::string& cq, const std::string& attr, const
     if (live() && bad) {
         std::string owner = p.attr_owner(cq, attr);
         if (owner.empty()) owner = cq;
+        if (p.frozen && !p.poisoned.count({owner, attr})) {
+            auto fa = p.frozen_attrs.find(owner);
+            if (fa != p.frozen_attrs.end() && fa->second.has(attr)) {
+                p.veto("stores a value of no single type to " + attr + ", typed by other code");
+                return;
+            }
+        }
         if (!p.poisoned.count({owner, attr})) {
             p.poisoned[{owner, attr}] = fn ? fn->qname : "?";
             p.touch("a:" + owner);
@@ -169,6 +180,10 @@ void Eval::contribute_attr(const std::string& cq, const std::string& attr, const
     T old = a.has(attr) ? *a.get(attr) : BOTTOM();
     T nw = p.join(old, t);
     if (p.round > 3 && nw.kind == TK::Int && old.kind == TK::Int) nw = widen_int(old, nw);
+    if (nw != old && p.frozen && old.kind != TK::Bottom) {   // (new) the attribute's type is fixed
+        p.veto("stores " + t.repr() + " to " + attr + ", which holds " + old.repr());
+        return;
+    }
     if (nw != old) {
         p.attrs[owner].set(attr, nw);
         p.touch("a:" + owner);
@@ -183,8 +198,11 @@ Eval& Eval::run() {
     State state;
     if (!f->varargs.empty() || !f->kwargs.empty()) issue(node, "dynamic", !f->varargs.empty() ? "*args" : "**kwargs");
     if (f->kind == "async") issue(node, "dynamic", "async");
+    // (new) decorators that leave the function's own behaviour as written: native_first answers by
+    // the C++ the gate already holds equal to this body; the caches only remember results
+    static const std::set<std::string> TRANSPARENT = {"native_first", "lru_cache", "cache"};
     for (auto& d : f->decorators)
-        if (d != "staticmethod" && d != "property") issue(node, "dynamic", "decorator " + d);
+        if (d != "staticmethod" && d != "property" && !(p.extended && TRANSPARENT.count(d))) issue(node, "dynamic", "decorator " + d);
     std::vector<std::string> all = f->params;
     all.insert(all.end(), f->kwonly.begin(), f->kwonly.end());
     for (size_t i = 0; i < all.size(); i++) {
@@ -223,6 +241,10 @@ SP Eval::block(const std::vector<A::Stmt*>& stmts, SP state) {
     for (auto* st : stmts) {
         if (!state) return std::nullopt;
         state = stmt(st, *state);
+        if (!p.vetoes.empty()) {   // (new) a contract this statement breaks: its function is refused here
+            issue(st, "conflict", p.vetoes.front());
+            p.vetoes.clear();
+        }
     }
     return state;
 }
@@ -384,7 +406,7 @@ SP Eval::s_With(const A::With* st, const State& state0) {
     State state = state0;
     for (auto* item : st->items) {
         T t = ev(item->context_expr, state);
-        bool ok = t.kind == TK::Extern && t.name() == "file";
+        bool ok = t.kind == TK::Extern && (t.name() == "file" || (p.extended && t.name().rfind("file:", 0) == 0));
         if (!ok) issue(st, "syntax", "with");
         if (item->optional_vars) state = assign(item->optional_vars, t, state, nullptr);
     }
@@ -845,6 +867,10 @@ std::pair<T, std::optional<Big>> Eval::iteration(const A::Expr* node, const T& t
         case TK::Bytes:
         case TK::Bytearray: return {u(8), t.hi() ? *t.hi() : MEM};
         case TK::Iter: return {t.args()[0], t.lo()};
+        case TK::Extern:
+            if (p.extended && t.name().rfind("file:", 0) == 0 && t.name().find('r') != std::string::npos)
+                return {t.name().find('b') != std::string::npos ? BYTES() : STR(), MEM};   // (new) a file's lines
+            break;
         default: break;
     }
     return {issue(node, "conflict", std::string("iterating a ") + kind_name(t.kind)), std::nullopt};
@@ -1297,6 +1323,13 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
                     auto& sa = std_attrs();
                     auto it = sa.find(full);
                     if (it != sa.end()) return TR(it->second, Res("stdattr", full));
+                    if (p.extended) {   // (new) the re module's flags
+                        static const std::map<std::string, int> RE_FLAGS = {{"re.I", 2}, {"re.IGNORECASE", 2}, {"re.M", 8}, {"re.MULTILINE", 8},
+                                                                           {"re.S", 16}, {"re.DOTALL", 16}, {"re.X", 64}, {"re.VERBOSE", 64},
+                                                                           {"re.A", 256}, {"re.ASCII", 256}};
+                        auto rf = RE_FLAGS.find(full);
+                        if (rf != RE_FLAGS.end()) return TR(const_int(Big(rf->second)), Res("stdattr", full));
+                    }
                     return TR(named(TK::Extern, "std:" + full), Res("stdattr", full));
                 }
                 Module* mod = *p.modules.get(ot.name());
@@ -1416,7 +1449,18 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
                 return TR(p.elem[s], Res("dict_get", std::nullopt));
             }
             if (k == TK::Bottom || k == TK::Top) return ot;
-            if (k == TK::Extern && ot.name() == "std:os.environ") return issue(node, "stdlib", "os.environ");
+            if (k == TK::Extern && ot.name() == "std:os.environ") {
+                if (p.extended) {   // (new) os.environ[k]
+                    if (it.kind != TK::Str && it.kind != TK::Bottom && it.kind != TK::Top) return issue(node, "conflict", "os.environ of a non-str");
+                    return TR(STR(), Res("index", std::string("os.environ")));
+                }
+                return issue(node, "stdlib", "os.environ");
+            }
+            if (p.extended && k == TK::Extern && ot.name().rfind("re.Match", 0) == 0) {   // (new) m[g] is m.group(g)
+                std::string pat = ot.name().substr(ot.name().find('', 9) + 1);
+                bool verbose = ot.name().substr(9, ot.name().find('', 9) - 9) == "x";
+                return ext_match_index(n, pat, verbose);
+            }
             if (k == TK::Opt) return issue(node, "conflict", "subscript of a value that may be None");
             return issue(node, "conflict", std::string("subscript of a ") + kind_name(k));
         }
@@ -2215,7 +2259,7 @@ int Program::solve(int max_rounds, bool log) {
     for (auto& [_, f] : fns) map_blocks(f->node);
     std::unordered_map<std::string, std::unordered_set<std::string>> deps;
     std::optional<std::unordered_set<std::string>> prev;
-    for (int r = 0; r < max_rounds; r++) {
+    for (int r = 0; r < max_rounds + 20; r++) {
         round = r;
         changed = false;
         dirty.clear();
@@ -2246,6 +2290,15 @@ int Program::solve(int max_rounds, bool log) {
             reads = nullptr;
         }
         if (log) fprintf(stderr, "round %d: ran %d, %zu facts changed\n", r, ran, dirty.size());
+        if (dirty.empty() && extended && !demand_enabled) {
+            // (new) the classic rules have settled: fix their facts as contracts, then let the
+            // parameters no caller types take what their uses demand, and run everything again
+            freeze();
+            demand_enabled = true;
+            vetoes.clear();
+            prev.reset();
+            continue;
+        }
         if (dirty.empty()) return r + 1;
         std::unordered_set<std::string> pv = dirty;
         for (auto& k : dirty)

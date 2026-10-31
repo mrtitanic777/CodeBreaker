@@ -36,6 +36,7 @@ add_library(pyengine STATIC
   src/program.cc    # modules, symbols, imports, containers, the join
   src/infer.cc      # the abstract interpreter, solving to a fixpoint
   src/methods.cc    # builtins, builtin types' methods, the standard library rows
+  src/demand.cc     # parameters typed by what their uses demand
   src/ext.cc        # the extensions: re, files, os, closures, variants, specialization
   src/ir.cc         # the L2 nodes and their JSON
   src/lower.cc      # typed functions into L2; the module units; the ledger

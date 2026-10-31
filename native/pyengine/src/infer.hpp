@@ -155,6 +155,7 @@ public:
     // (new) extensions: the stdlib rows the old engine refused, re, files, closures
     TR ext_std(const A::Call* n, const std::string& name, const std::vector<std::optional<T>>& args,
                const OMap<std::optional<T>>& kw, const State& state, bool& handled);
+    TR ext_match_index(const A::Subscript* n, const std::string& pat, bool verbose);
     TR ext_method(const A::Call* n, const T& recv, const std::string& attr, const std::vector<std::optional<T>>& args,
                   const OMap<std::optional<T>>& kw, const State& state, bool& handled);
 };

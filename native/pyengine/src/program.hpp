@@ -189,6 +189,7 @@ public:
     T annotation_type(Fn* f, const std::string& name);
     T ann_to_type(Module* m, const A::Expr* a);
     T param_type(Fn* f, const std::string& name);
+    T demand_type(Fn* f, const std::string& name);      // (new) demand.cc
     T global_type(const std::string& mod, const std::string& name);
     Fn* find_method(const std::string& cq, const std::string& name);
     const std::set<std::string>& assigned_attrs(const std::string& cq);
@@ -233,6 +234,17 @@ public:
 
     // (new) the engine's extensions; off reproduces the old engine exactly
     bool extended = true;
+    // (new) contracts: the facts the classic rules settle are frozen before the demand-typed code
+    // runs; a contribution that would change one is vetoed and refused where it is made
+    bool demand_enabled = false;
+    bool frozen = false;
+    int frozen_sites = 0;
+    std::unordered_map<std::string, std::unordered_map<std::string, T>> frozen_params;
+    std::unordered_map<std::string, OMap<T>> frozen_attrs;
+    std::vector<std::string> vetoes;
+    void freeze();
+    bool site_frozen(int root) const { return frozen && root < frozen_sites; }
+    void veto(const std::string& why) { vetoes.push_back(why); }
 
 private:
     void index_stmt(Module* m, const A::Stmt* st);

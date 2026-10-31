@@ -529,6 +529,11 @@ T Program::param_type(Fn* f, const std::string& name) {
         auto it = default_types.find(f->qname + "\x1f" + name);
         if (it != default_types.end()) t = join(t, it->second);
     }
+    // (new) no caller types it: the type its uses demand (demand.cc)
+    if (demand_enabled && (t.kind == TK::Bottom || t.kind == TK::None) && !f->annotations.has(name)) {
+        T d = demand_type(f, name);
+        if (d.kind != TK::Bottom) t = t.kind == TK::None ? opt(d) : d;
+    }
     return t;
 }
 
@@ -734,6 +739,16 @@ int Program::unite(int a, int b) {
     b = find(b);
     if (a == b) return a;
     if (a > b) std::swap(a, b);
+    if (site_frozen(a)) {   // (new) a frozen container may only absorb one that adds nothing
+        bool adds = site_frozen(b) || (elem[b].kind != TK::Bottom && !(elem[b] == elem[a])) ||
+                    (keys[b].kind != TK::Bottom && !(keys[b] == keys[a]));
+        for (auto& [k, t] : fields[b])
+            if (!fields[a].has(k) || !(*fields[a].get(k) == t)) adds = true;
+        if (adds) {
+            veto("joins two containers whose item types are fixed by other code");
+            return a;
+        }
+    }
     parent[b] = a;
     touch("s:" + std::to_string(a));
     touch("s:" + std::to_string(b));
@@ -771,6 +786,10 @@ int Program::unite(int a, int b) {
 
 void Program::mark_mutated(int s) {
     s = find(s);
+    if (!mutated.count(s) && site_frozen(s)) {
+        veto("changes a record that other code keeps as a value");
+        return;
+    }
     if (!mutated.count(s)) {
         mutated.insert(s);
         touch("s:" + std::to_string(s));
@@ -780,11 +799,20 @@ void Program::mark_mutated(int s) {
 void Program::grow(std::vector<T>& table, int s, const T& t) {
     s = find(s);
     if (t.kind == TK::Top && !suspend && !poisoned_sites.count(s)) {
+        if (site_frozen(s)) {
+            veto("adds an item of no single type to a container other code reads");
+            return;
+        }
         poisoned_sites[s] = t.why().empty() ? "?" : t.why();
         touch("s:" + std::to_string(s));
     }
     if (suspend || t.kind == TK::Top) return;
     T old = table[s];
+    if (site_frozen(s)) {   // (new) the items of a frozen container: only what fits them
+        if (old.kind != TK::Bottom && !(join(old, t) == old)) veto("adds a " + t.repr() + " to a container of " + old.repr() + " fixed by other code");
+        else if (old.kind == TK::Bottom && t.kind != TK::Bottom) veto("fills a container other code keeps empty");
+        return;
+    }
     T nw = settle(old, join(old, t));
     if (nw != old) {
         table[s] = nw;
@@ -803,10 +831,14 @@ void Program::grow_field(int s, const std::string& key, const T& t) {
         return;
     }
     if (suspend) {
-        if (!fields[s].has(key)) fields[s].set(key, BOTTOM());
+        if (!fields[s].has(key) && !site_frozen(s)) fields[s].set(key, BOTTOM());
         return;
     }
     bool had = fields[s].has(key);
+    if (site_frozen(s)) {   // (new) a frozen record: its fields stay as they are
+        if (!had || !(join(*fields[s].get(key), t) == *fields[s].get(key))) veto("changes field " + key + " of a record fixed by other code");
+        return;
+    }
     T old = had ? *fields[s].get(key) : BOTTOM();
     T nw = settle(old, join(old, t));
     if (!had || nw != old) {
@@ -820,6 +852,15 @@ void Program::grow_field(int s, const std::string& key, const T& t) {
 void Program::created(int s, const std::vector<std::string>& ks) {
     s = find(s);
     if (suspend) return;
+    if (site_frozen(s)) {
+        if (required[s])
+            for (auto& k : *required[s])
+                if (std::find(ks.begin(), ks.end(), k) == ks.end()) {
+                    veto("makes a record without its field " + k);
+                    return;
+                }
+        return;
+    }
     std::set<std::string> k(ks.begin(), ks.end());
     auto old = required[s];
     std::set<std::string> nw;
@@ -835,6 +876,10 @@ void Program::created(int s, const std::vector<std::string>& ks) {
 
 void Program::make_dynamic(int s, const std::string& why) {
     s = find(s);
+    if (!dynamic.count(s) && site_frozen(s) && ckind[s] == TK::Dict) {
+        veto("uses a record as a dict (" + why + ")");
+        return;
+    }
     if (!dynamic.count(s)) {
         dynamic[s] = why;
         touch("s:" + std::to_string(s));
@@ -942,6 +987,13 @@ std::vector<std::string> Program::descendants(const std::string& cq) {
             }
     }
     return out;
+}
+
+void Program::freeze() {
+    frozen = true;
+    frozen_sites = (int)parent.size();
+    frozen_params = params;
+    frozen_attrs = attrs;
 }
 
 T Program::canon(const T& t) {

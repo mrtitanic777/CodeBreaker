@@ -286,6 +286,13 @@ TyP Context::ty(const T& t, int line, const std::string& what) {
         return cls_flag(t.name(), "ref");
     }
     if (k == TK::Extern && t.name() == "file") return cls("py.file");
+    if (k == TK::Extern && p.extended) {   // (new) the extensions' library objects
+        const std::string& nm = t.name();
+        if (nm.rfind("file:", 0) == 0) return cls("py.file");
+        if (nm.rfind("re.Pattern", 0) == 0) return cls("py.re.Pattern");
+        if (nm.rfind("re.Match", 0) == 0) return cls("py.re.Match");
+        if (nm == "hash") return cls("py.hashlib.Hash");
+    }
     if (k == TK::Iter) {
         if (what != "value") throw Refused("syntax", "an iterator as a " + what, line);
         return cls("py.iter", {ty(t.args()[0], line, "value")});
@@ -1752,6 +1759,7 @@ public:
         }
         if (r->k == "field_get") return field_ref(obj, r->A(), n->value, line);
         IRP idx = expr(n->slice);
+        if (r->k == "re_group") return mk_pyfn("re.Match.group", {idx}, t, obj, line, {py::V(r->B())});
         if (r->k == "dict_get") return mk_pyfn("dict.at", {idx}, t, obj, line);
         auto ix = node("Index", line);
         ix->arr = obj;
@@ -2143,7 +2151,11 @@ public:
             return nw;
         }
         if (kind == "builtin") return builtin_call(n, r->A(), t);
-        if (kind == "bmethod") return method_call(n, r->A(), t);
+        if (kind == "bmethod") {
+            IRP c = method_call(n, r->A(), t);
+            if (p.extended && r->b && r->A().rfind("re.", 0) == 0 && c->k == "Call") c->typeargs = {py::V(r->B())};
+            return c;
+        }
         if (kind == "std") return std_call(n, *r, t);
         if (kind == "isinstance") {
             for (auto* a : n->args)
@@ -2203,6 +2215,18 @@ public:
         int line = n->pos.lineno;
         TyP rt = t.kind != TK::None ? ty(t, n) : VOID();
         if (name == "any" || name == "all") return any_all(n, name);
+        if (name == "open" && p.extended) {   // (new) open(path, mode, encoding=..., errors=..., newline=...)
+            std::vector<IRP> args = {expr(n->args[0])};
+            std::string mode = "r";
+            const A::Expr* me = n->args.size() > 1 ? n->args[1] : nullptr;
+            for (auto* k : n->keywords)
+                if (k->has_arg && k->arg == "mode") me = k->value;
+            if (me) is_str_const(me, &mode);
+            args.push_back(mk_lit(py::V(mode), STRT()));
+            for (auto* k : n->keywords)
+                if (k->has_arg && k->arg != "mode") args.push_back(mk_pyfn("kw", {expr(k->value)}, VOID(), nullptr, 0, {py::V(k->arg)}));
+            return mk_pyfn("open", args, rt, nullptr, line);
+        }
         std::vector<IRP> args;
         for (auto* a : n->args) {
             if (auto* g = as<GeneratorExp>(a)) args.push_back(gen_as_list(g));
@@ -2353,8 +2377,20 @@ public:
                 }
             return mk_pyfn(name, {args[0], mk_lit(py::V(order), STRT()), mk_lit(py::V(sg), BOOLT())}, rt, nullptr, line);
         }
+        if (p.extended && name.rfind("re.", 0) == 0 && r.b) {
+            for (auto* k : n->keywords) args.push_back(mk_pyfn("kw", {expr(k->value)}, VOID(), nullptr, 0, {py::V(k->arg)}));
+            return mk_pyfn(name, args, rt, nullptr, line, {py::V(r.B())});
+        }
+        if (p.extended && !n->keywords.empty() && ext_keywords(name)) {
+            for (auto* k : n->keywords) args.push_back(mk_pyfn("kw", {expr(k->value)}, VOID(), nullptr, 0, {py::V(k->arg)}));
+            return mk_pyfn(name, args, rt, nullptr, line);
+        }
         if (!n->keywords.empty()) throw Refused("syntax", name + " keywords", line);
         return mk_pyfn(name, args, rt, nullptr, line);
+    }
+
+    static bool ext_keywords(const std::string& name) {
+        return name == "os.makedirs" || name == "shutil.rmtree" || name.rfind("re.", 0) == 0;
     }
 };
 
