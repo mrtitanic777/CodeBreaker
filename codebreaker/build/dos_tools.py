@@ -20,7 +20,7 @@ import tempfile
 
 def emulator():
     from codebreaker.base import settings
-    path = settings.get("dosbox_x") or ""
+    path = settings.dosbox_x() or ""          # "" when CB_NO_DOSBOX forbids it (byte-match spot-check only)
     return path if path and os.path.isfile(path) else ""
 
 
