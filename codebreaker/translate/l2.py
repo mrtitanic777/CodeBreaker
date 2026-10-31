@@ -29,6 +29,8 @@ def type_json(t):
         d = {'kind': k}
         if 'signed' in t.info:
             d['signed'] = t.info['signed']
+        if 'enc' in t.info:                          # a character, not a number (C#'s char beside ushort)
+            d['enc'] = t.info['enc']
         return d
     if k in ('null', 'any', 'dynamic'):
         return {'kind': k}
@@ -36,6 +38,8 @@ def type_json(t):
         d = {'kind': 'class', 'name': t.name}
         if t.args:
             d['args'] = [type_json(a) for a in t.args]
+        if t.info.get('nullable'):
+            d['nullable'] = True
         return d
     if k == 'typevar':
         return {'kind': 'typevar', 'name': t.name}
@@ -48,6 +52,8 @@ def type_json(t):
         d = {'kind': 'array', 'elem': type_json(t.elem)}
         if 'count' in t.info:
             d['count'] = t.info['count']
+        if t.info.get('rank', 1) != 1:
+            d['rank'] = t.info['rank']
         return d
     if k == 'ptr':
         d = {'kind': 'ptr', 'space': t.info.get('space', 'flat'), 'to': type_json(t.elem)}
@@ -85,17 +91,18 @@ def type_from(d):
         return None
     k = d['kind']
     if k in ir.PRIMS or k == 'void':
-        return ir.Type(k, **({'signed': d['signed']} if 'signed' in d else {}))
+        return ir.Type(k, **dict((key, d[key]) for key in ('signed', 'enc') if key in d))
     if k in ('null', 'any', 'dynamic'):
         return ir.Type(k)
     if k == 'class':
-        return ir.Type('class', d['name'], [type_from(a) for a in d.get('args', [])])
+        return ir.Type('class', d['name'], [type_from(a) for a in d.get('args', [])],
+                       **({'nullable': True} if d.get('nullable') else {}))
     if k == 'typevar':
         return ir.Type('typevar', d['name'])
     if k == 'wildcard':
         return ir.Type('wildcard', bound=(d['bound'], type_from(d['type'])) if 'bound' in d else None)
     if k == 'array':
-        return ir.Type('array', elem=type_from(d['elem']), **({'count': d['count']} if 'count' in d else {}))
+        return ir.Type('array', elem=type_from(d['elem']), **dict((key, d[key]) for key in ('count', 'rank') if key in d))
     if k == 'ptr':
         return ir.Type('ptr', elem=type_from(d['to']), space=d['space'], **({'seg': d['seg']} if 'seg' in d else {}))
     if k == 'selector':
@@ -134,6 +141,10 @@ def sym_json(s):
         d['ret'] = type_json(s.ret)
     if s.varargs:
         d['varargs'] = True
+    if any(s.refs):
+        d['refs'] = list(s.refs)
+    if s.flags:
+        d['flags'] = list(s.flags)
     return d
 
 
@@ -141,7 +152,8 @@ def sym_from(d):
     if d is None:
         return None
     return ir.Sym(d['kind'], d['name'], d.get('owner'), d.get('static', False), type_from(d.get('type')),
-                  [type_from(p) for p in d.get('params', [])], type_from(d.get('ret')), d.get('varargs', False))
+                  [type_from(p) for p in d.get('params', [])], type_from(d.get('ret')), d.get('varargs', False),
+                  d.get('refs', ()), d.get('flags', ()))
 
 
 # ---------------------------------------------------------------------------------------------- nodes
@@ -176,7 +188,7 @@ def to_json(node):
 
 
 _TYPED = frozenset(('type', 'extends', 'ret', 'elem', 'test', 'of', 'qualifier'))
-_TYPE_LISTS = frozenset(('implements', 'throws', 'types', 'typeargs'))
+_TYPE_LISTS = frozenset(('implements', 'throws', 'types', 'typeargs', 'bounds'))
 
 
 def from_json(d):
