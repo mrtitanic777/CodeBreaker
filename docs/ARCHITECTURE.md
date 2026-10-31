@@ -930,9 +930,12 @@ L2 Module document with the lane's tables beside it. build/module.module_documen
 dicts of its own (the same shape; l2.fragment/l2.function would order the keys of module.l2.json
 differently, so it was left). The xbox360 lane has no assembly writer of its own (its module file is
 module_writer's C path, gated here only through the pe and ne cases); the java lane writes C++ by
-translate/backends/cpp03.py already. The assembly writers' fragments are whole sections, segments or
-functions as each writer lays them out; a fragment per function in the NASM/MASM writers needs their
-function starts (they write by address, not by function). The trees hold assembly text: what each
+translate/backends/cpp03.py already. Since later on 2026-10-30 (IR_UNIFICATION.md step 4, "L2
+everywhere") the 32-bit build writes its module as one tree too (module_document32, module.l2.json)
+and declares its exports from L2 (Made.declarations), the VxD build (driver_writer) writes its tree
+as module.l2.json, every statement of the decompiler's L2 carries its instructions as `origin`, and
+the NASM and MASM driver writers (ne_writer, pe_writer, le_writer, driver_writer) cut their trees at
+each function -- output unchanged. The trees hold assembly text: what each
 instruction is (an L1 or instruction node) is not yet in them. store/functions._Module (a database
 handle) and ui/terminal.Module (a screen) are not module models and keep their names.
 
