@@ -46,9 +46,20 @@ def canon(x):
     return ("other", repr(x))
 
 
+SPENT = [0.0]               # seconds inside the readers (the comparison's own work not counted)
+
+
+def timed(fn, *args):
+    t0 = time.perf_counter()
+    try:
+        return fn(*args)
+    finally:
+        SPENT[0] += time.perf_counter() - t0
+
+
 def ask(fn):
     try:
-        return canon(fn())
+        return canon(timed(fn))
     except Exception as e:                      # noqa: BLE001 -- an exception is a fact
         return ("raise", ename(e))
 
@@ -56,7 +67,7 @@ def ask(fn):
 # ---- the facts of each reader -----------------------------------------------------------------
 def pe_facts(open_pe, path, _data):
     try:
-        f = open_pe(path)
+        f = timed(open_pe, path)
     except Exception as e:                      # noqa: BLE001
         return False, [("open", ("raise", ename(e)))]
     out = [("attrs", canon({k: v for k, v in vars(f).items() if not k.startswith("_")}))]
@@ -85,20 +96,77 @@ def pe_facts(open_pe, path, _data):
     return True, out
 
 
-def pe_side(open_pe, is_dotnet):
-    def facts(path, data):
-        ok, out = pe_facts(open_pe, path, data)
-        out.append(("is_dotnet", ask(lambda: is_dotnet(path))))
-        return ok, out
-    return facts
-
-
-READERS = {}     # reader -> (the Python side's facts(path, data), the C++ side's)
-
-
-def _register():
+def pe_all(path, data):
     from codebreaker.formats import pe
-    READERS["pe"] = (pe_side(pe.PEFile, pe._is_dotnet), pe_side(native.PEFile, native.is_dotnet))
+    ok, out = pe_facts(pe.open_pe, path, data)
+    out.append(("is_dotnet", ask(lambda: pe.is_dotnet(path))))
+    return ok, out
+
+
+def ne_module_facts(f, prefix=""):
+    from codebreaker.formats import ne
+    out = [(prefix + "attrs", canon({k: v for k, v in vars(f).items() if not k.startswith("_")}))]
+    for m in ("resident_names", "nonresident_names", "module_name", "module_refs", "entries", "export_ordinals",
+              "resources", "segments"):
+        out.append((prefix + m, ask(getattr(f, m))))
+    try:
+        segs = f.segments()
+    except Exception:                           # noqa: BLE001
+        segs = []
+    for s in segs:
+        out.append((prefix + "relocations(%d)" % s["idx"], ask(lambda: f.relocations(s))))
+    out.append((prefix + "relocations(nodict)", ask(lambda: f.relocations({"flags": 0x100}))))
+    h = f.h
+    out.append((prefix + "imported_names", ask(lambda: [f.imported_name(f.u16(f.ne_off + h["mod_tab"] + 2 * i))
+                                                        for i in range(h["n_modrefs"])])))
+    for off in (-1, 0, 1, 5000, 10 ** 6):
+        out.append((prefix + "imported_name(%d)" % off, ask(lambda: f.imported_name(off))))
+    n = len(f.data)
+    for off in (0, 0x3C, f.ne_off, n - 3, n - 2, n - 1, n, -2):
+        out.append((prefix + "u16(%d)" % off, ask(lambda: f.u16(off))))
+        out.append((prefix + "u32(%d)" % off, ask(lambda: f.u32(off))))
+    out.append((prefix + "_read_name_table(ne_off)", ask(lambda: f._read_name_table(f.ne_off))))
+    out.append((prefix + "_rsrc_string", ask(lambda: f._rsrc_string(f.ne_off + h["rsrc_tab"], 6))))
+    out.append((prefix + "_tables_end", ask(lambda: ne._tables_end(f))))
+    out.append((prefix + "standalone", ask(lambda: ne.standalone(f))))
+    return out
+
+
+def ne_all(path, data):
+    from codebreaker.formats import ne
+    out = []
+    with open(path, "rb") as fh:
+        whole = fh.read()
+    out.append(("embedded", ask(lambda: ne.embedded(whole))))
+    out.append(("embedded(0)", ask(lambda: ne.embedded(whole, 0))))
+    try:
+        f = timed(ne.NEFile, path)
+        ok = True
+        out += ne_module_facts(f)
+    except Exception as e:                      # noqa: BLE001
+        ok = False
+        out.append(("open", ("raise", ename(e))))
+    try:
+        mods = timed(ne.embedded, whole)
+    except Exception:                           # noqa: BLE001
+        mods = []
+    if mods:
+        for off, _name in mods[:8]:             # each module read from its own header (no MZ stub)
+            try:
+                m = timed(ne.NEFile.from_buffer, whole, off, path)
+                out += ne_module_facts(m, "buf%x." % off)
+            except Exception as e:              # noqa: BLE001
+                out.append(("buf%x" % off, ("raise", ename(e))))
+        if path.lower().endswith(".bin"):       # a Windows 1.x boot image: modules over resident + overlay
+            try:
+                for name, m in timed(ne.open_boot_image, path).items():
+                    out += ne_module_facts(m, "boot.%s." % name)
+            except Exception as e:              # noqa: BLE001
+                out.append(("boot", ("raise", ename(e))))
+    return ok, out
+
+
+READERS = {"pe": pe_all, "ne": ne_all}     # reader -> its facts(path, data), asked once of each side
 
 
 # ---- the corpus -------------------------------------------------------------------------------
@@ -121,17 +189,52 @@ def roots_of(names):
     return [known.get(n, n) for n in names]
 
 
+CALLS = [0]                 # questions the C++ was asked (the Python side must ask none)
+_real_call = native.call
+
+
+def _counted_call(*a, **k):
+    CALLS[0] += 1
+    return _real_call(*a, **k)
+
+
+native.call = _counted_call
+
+
+def side(reader, on, facts, path):
+    """facts(path) with the reader's switch set: on = the C++, off = the Python."""
+    key = "CB_NATIVE_FORMATS_" + reader.upper()
+    old = os.environ.get(key)
+    os.environ[key] = "1" if on else "0"
+    before = CALLS[0]
+    try:
+        return facts(path, None)
+    finally:
+        if not on and CALLS[0] != before:
+            raise AssertionError("the Python side of %s asked the C++ (%s)" % (reader, path))
+        if on:
+            SIDE_CALLS[0] += CALLS[0] - before
+        if old is None:
+            del os.environ[key]
+        else:
+            os.environ[key] = old
+
+
+SIDE_CALLS = [0]
+
+
 def gate(reader, files, show=5):
-    py, cpp = READERS[reader]
+    facts = READERS[reader]
+    SIDE_CALLS[0] = 0
     accepted = identical = 0
     t_py = t_cpp = 0.0
     shown = 0
     for path in files:
-        t0 = time.perf_counter()
-        ok_py, f_py = py(path, None)
-        t1 = time.perf_counter()
-        ok_cpp, f_cpp = cpp(path, None)
-        t2 = time.perf_counter()
+        t0 = SPENT[0]
+        ok_py, f_py = side(reader, False, facts, path)
+        t1 = SPENT[0]
+        ok_cpp, f_cpp = side(reader, True, facts, path)
+        t2 = SPENT[0]
         t_py += t1 - t0
         t_cpp += t2 - t1
         accepted += ok_py
@@ -146,7 +249,8 @@ def gate(reader, files, show=5):
             for k in diff[:2]:
                 print("     py : %.300r" % (a.get(k),))
                 print("     c++: %.300r" % (b.get(k),))
-    return {"files": len(files), "accepted": accepted, "identical": identical, "py": t_py, "cpp": t_cpp}
+    return {"files": len(files), "accepted": accepted, "identical": identical, "py": t_py, "cpp": t_cpp,
+            "asked": SIDE_CALLS[0]}
 
 
 def main(argv=None):
@@ -159,19 +263,18 @@ def main(argv=None):
     if native.why_not():
         print("formats.dll not usable:", native.why_not())
         return 2
-    _register()
     readers = [r for r in args.readers.split(",") if r] or list(READERS)
     roots = roots_of(args.corpus)
     files = corpus_files(roots, args.limit)
     print("corpus: %d files from %s" % (len(files), ", ".join(roots)))
-    print("| reader | files | accepted | identical | Python s | C++ s |")
-    print("|---|---|---|---|---|---|")
+    print("| reader | files | accepted | identical | Python s | C++ s | questions asked of the C++ |")
+    print("|---|---|---|---|---|---|---|")
     bad = 0
     for r in readers:
         res = gate(r, files, args.show)
-        bad += res["files"] - res["identical"]
-        print("| %s | %d | %d | %d | %.2f | %.2f |" % (r, res["files"], res["accepted"], res["identical"],
-                                                       res["py"], res["cpp"]))
+        bad += res["files"] - res["identical"] + (0 if res["asked"] else 1)
+        print("| %s | %d | %d | %d | %.2f | %.2f | %d |" % (r, res["files"], res["accepted"], res["identical"],
+                                                            res["py"], res["cpp"], res["asked"]))
         sys.stdout.flush()
     return 1 if bad else 0
 

@@ -15,6 +15,8 @@ separate, later concern; this does not attempt it.
 """
 import struct
 
+from codebreaker.formats import native
+
 _MACHINE = {0x014C: "i386", 0x8664: "x64", 0x01C0: "arm", 0xAA64: "arm64"}
 _SUBSYSTEM = {1: "native", 2: "GUI", 3: "console", 5: "OS/2", 7: "POSIX",
               9: "Windows CE GUI", 10: "EFI application", 14: "Xbox"}
@@ -535,9 +537,9 @@ class PEFile:
 
 
 def open_pe(path):
-    from codebreaker.formats import native          # the C++ reader, when switched on (docs/NATIVE.md)
-    if native.enabled("pe"):
-        return native.PEFile(path)
+    if native.enabled("pe"):                         # the C++ reader (docs/NATIVE.md)
+        from codebreaker.formats import native_pe
+        return native_pe.PEFile(path)
     return PEFile(path)
 
 
@@ -547,16 +549,10 @@ def _clr_directory(datadirs):
     return (va, size) if va and size else (0, 0)
 
 
+@native.native_first("pe.is_dotnet", "pe", data_arg=None)
 def is_dotnet(path):
     """Whether the file is a .NET assembly: a PE image with a CLR runtime header (data directory
     14). Reads the headers only."""
-    from codebreaker.formats import native
-    if native.enabled("pe"):
-        return native.is_dotnet(path)
-    return _is_dotnet(path)
-
-
-def _is_dotnet(path):
     try:
         with open(path, "rb") as f:
             head = f.read(0x40)

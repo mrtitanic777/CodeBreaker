@@ -38,6 +38,22 @@ public:
     void begin_set() { op('\x8f'); op('('); }
     void end_set() { op('\x90'); }
 
+    // one object met again: memo() right after writing it keeps it (-> its number), again(n)
+    // writes that same object once more (one Python object, not a copy)
+    size_t memo() {
+        op('\x94');
+        return memos_++;
+    }
+    void again(size_t n) {
+        if (n < 0x100) {
+            op('h');
+            buf_ += static_cast<char>(n);
+        } else {
+            op('j');
+            u32le(static_cast<uint32_t>(n));
+        }
+    }
+
     // shorthands
     void key(const char *k) { text(k); }
     void item(const char *k, int64_t v) { key(k); integer(v); }
@@ -47,9 +63,13 @@ public:
         op('.');
         return buf_;
     }
-    void reset() { buf_.assign("\x80\x04", 2); }
+    void reset() {
+        buf_.assign("\x80\x04", 2);
+        memos_ = 0;
+    }
 
 private:
+    size_t memos_ = 0;
     void op(char c) { buf_ += c; }
     void raw(const void *p, size_t n) { buf_.append(static_cast<const char *>(p), n); }
     void u32le(uint32_t v) {

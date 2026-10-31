@@ -20,6 +20,8 @@ set(FORMATS_SOURCES
   core/files.cc       # files read by path
   pe/pe.cc            # PE (formats/pe.py)
   pe/questions.cc
+  ne/ne.cc            # NE, the Windows 1.x boot image (formats/ne.py)
+  ne/questions.cc
 )
 
 add_library(formats SHARED ${FORMATS_SOURCES})
