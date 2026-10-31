@@ -263,7 +263,7 @@ def build_unit(prog, ctx, mod, lowered, global_decls, used_all=None):
             owner = q if q in prog.modules else q.rsplit('.', 1)[0]
             if owner != mod and owner in prog.modules:
                 deps.add(owner)
-    r.unit = ir.Unit(path=m.path, package=mod, imports=sorted(deps), types=types)
+    r.unit = ir.Unit(path=m.path, package=mod, imports=sorted(deps), types=types, lang='python')
     return r
 
 

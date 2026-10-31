@@ -1,0 +1,9567 @@
+{
+"node": "Unit",
+"path": "<snip>",
+"package": "snip",
+"types": [
+{
+"node": "ClassDecl",
+"name": "Segment",
+"qname": "snip.Segment",
+"kind": "record",
+"members": [
+{
+"node": "FieldDecl",
+"sym": {
+"kind": "field",
+"name": "idx",
+"owner": "snip.Segment",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+{
+"node": "FieldDecl",
+"sym": {
+"kind": "field",
+"name": "kind",
+"owner": "snip.Segment",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+{
+"node": "FieldDecl",
+"sym": {
+"kind": "field",
+"name": "flags",
+"owner": "snip.Segment",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+]
+},
+{
+"node": "ClassDecl",
+"name": "Shape",
+"qname": "snip.Shape",
+"kind": "class",
+"members": [
+{
+"node": "FieldDecl",
+"sym": {
+"kind": "field",
+"name": "w",
+"owner": "snip.Shape",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+{
+"node": "MethodDecl",
+"line": 68,
+"sym": {
+"kind": "ctor",
+"name": "__init__",
+"owner": "snip.Shape",
+"params": [
+{
+"kind": "i64"
+}
+],
+"ret": {
+"kind": "void"
+}
+},
+"name": "__init__",
+"kind": "ctor",
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "w",
+"owner": "snip.Shape.__init__",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+],
+"ret": {
+"kind": "void"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"line": 69,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Select",
+"line": 69,
+"type": {
+"kind": "i64"
+},
+"obj": {
+"node": "This",
+"line": 69,
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+},
+"sym": {
+"kind": "field",
+"name": "w",
+"owner": "snip.Shape",
+"type": {
+"kind": "i64"
+}
+}
+},
+"value": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "w",
+"owner": "snip.Shape.__init__",
+"type": {
+"kind": "i64"
+}
+}
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 71,
+"sym": {
+"kind": "method",
+"name": "area",
+"owner": "snip.Shape",
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"name": "area",
+"kind": "method",
+"params": [],
+"ret": {
+"kind": "i64"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 72,
+"expr": {
+"node": "Binary",
+"line": 72,
+"type": {
+"kind": "i64"
+},
+"op": "*",
+"left": {
+"node": "Select",
+"line": 72,
+"type": {
+"kind": "i64"
+},
+"obj": {
+"node": "This",
+"line": 72,
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+},
+"sym": {
+"kind": "field",
+"name": "w",
+"owner": "snip.Shape",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Select",
+"line": 72,
+"type": {
+"kind": "i64"
+},
+"obj": {
+"node": "This",
+"line": 72,
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+},
+"sym": {
+"kind": "field",
+"name": "w",
+"owner": "snip.Shape",
+"type": {
+"kind": "i64"
+}
+}
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 74,
+"sym": {
+"kind": "method",
+"name": "describe",
+"owner": "snip.Shape",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"name": "describe",
+"kind": "method",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 75,
+"expr": {
+"node": "Call",
+"line": 75,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "percent",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "%s:%d"
+},
+{
+"node": "Call",
+"line": 75,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "This",
+"line": 75,
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+},
+"sym": {
+"kind": "method",
+"name": "name",
+"owner": "snip.Shape",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"args": []
+},
+{
+"node": "Call",
+"line": 75,
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "This",
+"line": 75,
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+},
+"sym": {
+"kind": "method",
+"name": "area",
+"owner": "snip.Shape",
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"args": []
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 77,
+"sym": {
+"kind": "method",
+"name": "name",
+"owner": "snip.Shape",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"name": "name",
+"kind": "method",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 78,
+"expr": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "square"
+}
+}
+]
+}
+}
+]
+},
+{
+"node": "ClassDecl",
+"name": "Rect",
+"qname": "snip.Rect",
+"kind": "class",
+"extends": {
+"kind": "class",
+"name": "snip.Shape"
+},
+"members": [
+{
+"node": "FieldDecl",
+"sym": {
+"kind": "field",
+"name": "h",
+"owner": "snip.Rect",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+{
+"node": "MethodDecl",
+"line": 81,
+"sym": {
+"kind": "ctor",
+"name": "__init__",
+"owner": "snip.Rect",
+"params": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+],
+"ret": {
+"kind": "void"
+}
+},
+"name": "__init__",
+"kind": "ctor",
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "w",
+"owner": "snip.Rect.__init__",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "h",
+"owner": "snip.Rect.__init__",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+],
+"ret": {
+"kind": "void"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"line": 82,
+"expr": {
+"node": "Call",
+"line": 82,
+"type": {
+"kind": "void"
+},
+"sym": {
+"kind": "ctor",
+"name": "__init__",
+"owner": "snip.Shape",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "w",
+"owner": "snip.Rect.__init__",
+"type": {
+"kind": "i64"
+}
+}
+}
+],
+"typeargs": [
+"base"
+]
+}
+},
+{
+"node": "ExprStmt",
+"line": 83,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Select",
+"line": 83,
+"type": {
+"kind": "i64"
+},
+"obj": {
+"node": "This",
+"line": 83,
+"type": {
+"kind": "class",
+"name": "snip.Rect",
+"ref": true
+}
+},
+"sym": {
+"kind": "field",
+"name": "h",
+"owner": "snip.Rect",
+"type": {
+"kind": "i64"
+}
+}
+},
+"value": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "h",
+"owner": "snip.Rect.__init__",
+"type": {
+"kind": "i64"
+}
+}
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 85,
+"sym": {
+"kind": "method",
+"name": "area",
+"owner": "snip.Rect",
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"name": "area",
+"kind": "method",
+"params": [],
+"ret": {
+"kind": "i64"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 86,
+"expr": {
+"node": "Binary",
+"line": 86,
+"type": {
+"kind": "i64"
+},
+"op": "*",
+"left": {
+"node": "Select",
+"line": 86,
+"type": {
+"kind": "i64"
+},
+"obj": {
+"node": "This",
+"line": 86,
+"type": {
+"kind": "class",
+"name": "snip.Rect",
+"ref": true
+}
+},
+"sym": {
+"kind": "field",
+"name": "w",
+"owner": "snip.Shape",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Select",
+"line": 86,
+"type": {
+"kind": "i64"
+},
+"obj": {
+"node": "This",
+"line": 86,
+"type": {
+"kind": "class",
+"name": "snip.Rect",
+"ref": true
+}
+},
+"sym": {
+"kind": "field",
+"name": "h",
+"owner": "snip.Rect",
+"type": {
+"kind": "i64"
+}
+}
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 88,
+"sym": {
+"kind": "method",
+"name": "name",
+"owner": "snip.Rect",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"name": "name",
+"kind": "method",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 89,
+"expr": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "rect"
+}
+}
+]
+}
+}
+]
+},
+{
+"node": "ClassDecl",
+"name": "snip",
+"qname": "snip",
+"kind": "module",
+"members": [
+{
+"node": "MethodDecl",
+"line": 4,
+"sym": {
+"kind": "function",
+"name": "divs",
+"owner": "snip",
+"params": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"name": "divs",
+"kind": "function",
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "a",
+"owner": "snip.divs",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "b",
+"owner": "snip.divs",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 5,
+"expr": {
+"node": "Call",
+"line": 5,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 5,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "floordiv",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.divs",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.divs",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+},
+{
+"node": "Call",
+"line": 5,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "mod",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.divs",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.divs",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 7,
+"sym": {
+"kind": "function",
+"name": "run_divs",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+]
+}
+},
+"name": "run_divs",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 8,
+"expr": {
+"node": "Call",
+"line": 8,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 8,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "divs",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"args": [
+{
+"node": "Unary",
+"line": 8,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 7,
+"text": "7"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+{
+"node": "Call",
+"line": 8,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "divs",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 7,
+"text": "7"
+},
+{
+"node": "Unary",
+"line": 8,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+},
+"postfix": false
+}
+]
+},
+{
+"node": "Call",
+"line": 8,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "divs",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"args": [
+{
+"node": "Unary",
+"line": 8,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 7,
+"text": "7"
+},
+"postfix": false
+},
+{
+"node": "Unary",
+"line": 8,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+},
+"postfix": false
+}
+]
+},
+{
+"node": "Call",
+"line": 8,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "divs",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 7,
+"text": "7"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+{
+"node": "Call",
+"line": 8,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "divs",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"args": [
+{
+"node": "Unary",
+"line": 8,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+}
+]
+},
+{
+"node": "Call",
+"line": 8,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "divs",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+},
+{
+"node": "Unary",
+"line": 8,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 5,
+"text": "5"
+},
+"postfix": false
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 10,
+"sym": {
+"kind": "function",
+"name": "shifts",
+"owner": "snip",
+"params": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+],
+"ret": {
+"kind": "i64"
+}
+},
+"name": "shifts",
+"kind": "function",
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "a",
+"owner": "snip.shifts",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "n",
+"owner": "snip.shifts",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+],
+"ret": {
+"kind": "i64"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 11,
+"expr": {
+"node": "Call",
+"line": 11,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "shr",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.shifts",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.shifts",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 13,
+"sym": {
+"kind": "function",
+"name": "run_shifts",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"name": "run_shifts",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 14,
+"expr": {
+"node": "Call",
+"line": 14,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 14,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "shifts",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"args": [
+{
+"node": "Unary",
+"line": 14,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 9,
+"text": "9"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+}
+]
+},
+{
+"node": "Call",
+"line": 14,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "shifts",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"args": [
+{
+"node": "Unary",
+"line": 14,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 70,
+"text": "70"
+}
+]
+},
+{
+"node": "Call",
+"line": 14,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "shifts",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 9,
+"text": "9"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+{
+"node": "Call",
+"line": 14,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "shifts",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"args": [
+{
+"node": "Unary",
+"line": 14,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 256,
+"text": "256"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 4,
+"text": "4"
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 16,
+"sym": {
+"kind": "function",
+"name": "run_index",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"name": "run_index",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 17,
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"value": "ABCDEFG"
+}
+},
+{
+"node": "Local",
+"line": 18,
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "h\u00e9llo w\u00f6rld"
+}
+},
+{
+"node": "Return",
+"line": 19,
+"expr": {
+"node": "Call",
+"line": 19,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Index",
+"line": 19,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"index": {
+"node": "Unary",
+"line": 19,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+}
+},
+{
+"node": "Index",
+"line": 19,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"index": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+},
+{
+"node": "Call",
+"line": 19,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Call",
+"line": 19,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "bytes.decode",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "latin1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "strict"
+}
+]
+},
+{
+"node": "Call",
+"line": 19,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Call",
+"line": 19,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Unary",
+"line": 19,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "void"
+}
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "bytes.decode",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "latin1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "strict"
+}
+]
+},
+{
+"node": "Call",
+"line": 19,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Call",
+"line": 19,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 5,
+"text": "5"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 100,
+"text": "100"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "bytes.decode",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "latin1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "strict"
+}
+]
+},
+{
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 4,
+"text": "4"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "bytes.decode",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "latin1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "strict"
+}
+]
+},
+{
+"node": "Index",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+},
+"index": {
+"node": "Unary",
+"line": 20,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+}
+},
+{
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 4,
+"text": "4"
+}
+]
+},
+{
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "void"
+}
+},
+{
+"node": "Unary",
+"line": 20,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 6,
+"text": "6"
+},
+"postfix": false
+}
+]
+},
+{
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "void"
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "void"
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+{
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "builtins.len",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+}
+]
+},
+{
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Call",
+"line": 20,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "void"
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "void"
+}
+},
+{
+"node": "Unary",
+"line": 20,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "bytes.decode",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "latin1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "strict"
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 22,
+"sym": {
+"kind": "function",
+"name": "run_index_error",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"name": "run_index_error",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "i64"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 23,
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index_error",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"value": "AB"
+}
+},
+{
+"node": "Return",
+"line": 24,
+"expr": {
+"node": "Index",
+"line": 24,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_index_error",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"index": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 26,
+"sym": {
+"kind": "function",
+"name": "run_dict",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"name": "run_dict",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 27,
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 27,
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "dict",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+},
+{
+"node": "ExprStmt",
+"line": 28,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Index",
+"line": 28,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"index": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "z"
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+}
+}
+},
+{
+"node": "ExprStmt",
+"line": 29,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Index",
+"line": 29,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"index": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "a"
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+}
+},
+{
+"node": "ExprStmt",
+"line": 30,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Index",
+"line": 30,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"index": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "m"
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+}
+}
+},
+{
+"node": "ExprStmt",
+"line": 31,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Index",
+"line": 31,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"index": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "a"
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 4,
+"text": "4"
+}
+}
+},
+{
+"node": "Local",
+"line": 32,
+"sym": {
+"kind": "local",
+"name": "out",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 32,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+},
+{
+"node": "ForEach",
+"line": 33,
+"var": {
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "k",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"iterable": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"line": 34,
+"expr": {
+"node": "Call",
+"line": 34,
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "out",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "k",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "ExprStmt",
+"line": 35,
+"expr": {
+"node": "Call",
+"line": 35,
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "dict.pop",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "z"
+}
+]
+}
+},
+{
+"node": "ExprStmt",
+"line": 36,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Index",
+"line": 36,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"index": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "z"
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 9,
+"text": "9"
+}
+}
+},
+{
+"node": "Return",
+"line": 37,
+"expr": {
+"node": "Call",
+"line": 37,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "out",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+{
+"node": "Call",
+"line": 37,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "builtins.list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 37,
+"type": {
+"kind": "class",
+"name": "py.iter",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "dict.keys",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+]
+},
+{
+"node": "Call",
+"line": 37,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "builtins.list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 37,
+"type": {
+"kind": "class",
+"name": "py.iter",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "dict.values",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+]
+},
+{
+"node": "Call",
+"line": 37,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "builtins.len",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+}
+]
+},
+{
+"node": "Call",
+"line": 37,
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_dict",
+"type": {
+"kind": "class",
+"name": "py.dict",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "dict.get",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "q"
+},
+{
+"node": "Unary",
+"line": 37,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 39,
+"sym": {
+"kind": "function",
+"name": "run_struct",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"name": "run_struct",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 40,
+"sym": {
+"kind": "local",
+"name": "data",
+"owner": "snip.run_struct",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"init": {
+"node": "Call",
+"line": 40,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "function",
+"name": "concat",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 40,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "function",
+"name": "struct.pack",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "<HhI"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 48879,
+"text": "0xBEEF"
+},
+{
+"node": "Unary",
+"line": 40,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 305419896,
+"text": "0x12345678"
+}
+],
+"typeargs": [
+"<HhI"
+]
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"value": "\u00ff\u00fe"
+}
+]
+}
+},
+{
+"node": "ExprStmt",
+"line": 41,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"target": {
+"node": "Call",
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "bind",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "c",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+},
+"value": {
+"node": "Call",
+"line": 41,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "struct.unpack_from",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "<HhI"
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "data",
+"owner": "snip.run_struct",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+],
+"typeargs": [
+"<HhI"
+]
+}
+}
+},
+{
+"node": "Local",
+"line": 42,
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+},
+"init": {
+"node": "Call",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "get",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 42,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "struct.unpack_from",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": ">H"
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "data",
+"owner": "snip.run_struct",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 8,
+"text": "8"
+}
+],
+"typeargs": [
+">H"
+]
+}
+],
+"typeargs": [
+0
+]
+}
+},
+{
+"node": "Local",
+"line": 43,
+"sym": {
+"kind": "local",
+"name": "e",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+},
+"init": {
+"node": "Call",
+"line": 43,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "get",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 43,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "struct.unpack_from",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "<h"
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "data",
+"owner": "snip.run_struct",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+{
+"node": "Unary",
+"line": 43,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+},
+"postfix": false
+}
+],
+"typeargs": [
+"<h"
+]
+}
+],
+"typeargs": [
+0
+]
+}
+},
+{
+"node": "Return",
+"line": 44,
+"expr": {
+"node": "Call",
+"line": 44,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+},
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "c",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "d",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "e",
+"owner": "snip.run_struct",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Call",
+"line": 44,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "builtins.len",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "data",
+"owner": "snip.run_struct",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+}
+]
+},
+{
+"node": "Call",
+"line": 44,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "data",
+"owner": "snip.run_struct",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "bytes.hex",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 46,
+"sym": {
+"kind": "function",
+"name": "run_from_bytes",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"name": "run_from_bytes",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 47,
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_from_bytes",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"value": "\u0001\u0002\u00ff\u00ff"
+}
+},
+{
+"node": "Return",
+"line": 48,
+"expr": {
+"node": "Call",
+"line": 48,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 48,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "int.from_bytes",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 48,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_from_bytes",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "little"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": false
+}
+]
+},
+{
+"node": "Call",
+"line": 48,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "int.from_bytes",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 48,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_from_bytes",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "big"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": false
+}
+]
+},
+{
+"node": "Call",
+"line": 49,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "int.from_bytes",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 49,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_from_bytes",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 4,
+"text": "4"
+}
+]
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "little"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": true
+}
+]
+},
+{
+"node": "Call",
+"line": 49,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "int.from_bytes",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 49,
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_from_bytes",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "slice",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 4,
+"text": "4"
+}
+]
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "little"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": false
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 51,
+"sym": {
+"kind": "function",
+"name": "run_alias",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+]
+}
+},
+"name": "run_alias",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 52,
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 52,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+}
+},
+{
+"node": "Local",
+"line": 53,
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"init": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+}
+},
+{
+"node": "ExprStmt",
+"line": 54,
+"expr": {
+"node": "Call",
+"line": 54,
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+}
+]
+}
+},
+{
+"node": "Local",
+"line": 55,
+"sym": {
+"kind": "local",
+"name": "c",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 55,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "builtins.list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+}
+]
+}
+},
+{
+"node": "ExprStmt",
+"line": 56,
+"expr": {
+"node": "Call",
+"line": 56,
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "c",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 4,
+"text": "4"
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 57,
+"expr": {
+"node": "Call",
+"line": 57,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "a",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "b",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "c",
+"owner": "snip.run_alias",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 59,
+"sym": {
+"kind": "function",
+"name": "segment",
+"owner": "snip",
+"params": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+],
+"ret": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+},
+"name": "segment",
+"kind": "function",
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "i",
+"owner": "snip.segment",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "flags",
+"owner": "snip.segment",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+],
+"ret": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 60,
+"expr": {
+"node": "Call",
+"line": 60,
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+},
+"sym": {
+"kind": "function",
+"name": "record",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Binary",
+"line": 60,
+"type": {
+"kind": "i64"
+},
+"op": "+",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.segment",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+}
+},
+{
+"node": "Cond",
+"line": 60,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"cond": {
+"node": "Call",
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "function",
+"name": "truthy",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Binary",
+"line": 60,
+"type": {
+"kind": "i64"
+},
+"op": "&",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "flags",
+"owner": "snip.segment",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+}
+}
+]
+},
+"then": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "DATA"
+},
+"orelse": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "CODE"
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "flags",
+"owner": "snip.segment",
+"type": {
+"kind": "i64"
+}
+}
+}
+],
+"typeargs": [
+"idx",
+"kind",
+"flags"
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 62,
+"sym": {
+"kind": "function",
+"name": "run_records",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+]
+}
+},
+"name": "run_records",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "segs",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+"init": {
+"node": "Call",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "empty",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+},
+{
+"node": "ForEach",
+"var": {
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "i,f",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"mods": [
+"bind"
+]
+},
+"iterable": {
+"node": "Call",
+"line": 63,
+"type": {
+"kind": "class",
+"name": "py.iter",
+"args": [
+{
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "enumerate",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 63,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 257,
+"text": "0x101"
+}
+]
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"expr": {
+"node": "Call",
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "segs",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 63,
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+},
+"sym": {
+"kind": "function",
+"name": "segment",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_records",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "f",
+"owner": "snip.run_records",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "names",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"init": {
+"node": "Call",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "empty",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+},
+{
+"node": "ForEach",
+"var": {
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+},
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+},
+"iterable": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "segs",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+}
+}
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "If",
+"cond": {
+"node": "Binary",
+"line": 64,
+"type": {
+"kind": "bool"
+},
+"op": "==",
+"left": {
+"node": "Binary",
+"line": 64,
+"type": {
+"kind": "i64"
+},
+"op": "&",
+"left": {
+"node": "Select",
+"line": 64,
+"type": {
+"kind": "i64"
+},
+"obj": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+}
+},
+"sym": {
+"kind": "field",
+"name": "flags",
+"owner": "snip.Segment",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 256,
+"text": "0x100"
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+},
+"then": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"expr": {
+"node": "Call",
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "names",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Select",
+"line": 64,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"obj": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+}
+},
+"sym": {
+"kind": "field",
+"name": "kind",
+"owner": "snip.Segment",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+}
+]
+}
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 65,
+"expr": {
+"node": "Call",
+"line": 65,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "segs",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Segment",
+"record": true,
+"ref": false
+}
+]
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "names",
+"owner": "snip.run_records",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 91,
+"sym": {
+"kind": "function",
+"name": "run_classes",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"name": "run_classes",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 92,
+"sym": {
+"kind": "local",
+"name": "shapes",
+"owner": "snip.run_classes",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 92,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "New",
+"line": 92,
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+},
+"sym": {
+"kind": "ctor",
+"name": "Shape",
+"owner": "snip.Shape",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+}
+],
+"memory": "gc"
+},
+{
+"node": "New",
+"line": 92,
+"type": {
+"kind": "class",
+"name": "snip.Rect",
+"ref": true
+},
+"sym": {
+"kind": "ctor",
+"name": "Rect",
+"owner": "snip.Rect",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 5,
+"text": "5"
+}
+],
+"memory": "gc"
+}
+]
+}
+},
+{
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "result",
+"owner": "snip.run_classes",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"init": {
+"node": "Call",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "empty",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+},
+{
+"node": "ForEach",
+"var": {
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_classes",
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+},
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+},
+"iterable": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "shapes",
+"owner": "snip.run_classes",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+]
+}
+}
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"expr": {
+"node": "Call",
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "result",
+"owner": "snip.run_classes",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 93,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+},
+"sym": {
+"kind": "local",
+"name": "s",
+"owner": "snip.run_classes",
+"type": {
+"kind": "class",
+"name": "snip.Shape",
+"ref": true
+}
+}
+},
+"sym": {
+"kind": "method",
+"name": "describe",
+"owner": "snip.Shape",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"args": []
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 93,
+"expr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "result",
+"owner": "snip.run_classes",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 95,
+"sym": {
+"kind": "function",
+"name": "run_sort",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+]
+}
+},
+"name": "run_sort",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 96,
+"sym": {
+"kind": "local",
+"name": "words",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 96,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "pear"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "Fig"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "apple"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "fig"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "Pear"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "kiwi"
+}
+]
+}
+},
+{
+"node": "Local",
+"line": 97,
+"sym": {
+"kind": "local",
+"name": "by_len",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 97,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "sorted",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "words",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+{
+"node": "Lambda",
+"type": {
+"kind": "i64"
+},
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "w",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+],
+"body": {
+"node": "Call",
+"line": 97,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "builtins.len",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "w",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 98,
+"expr": {
+"node": "Call",
+"line": 98,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 98,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "sorted",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "words",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "void"
+}
+}
+]
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "by_len",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+{
+"node": "Call",
+"line": 98,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "sorted",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "words",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+}
+}
+},
+{
+"node": "Lambda",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "w",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+],
+"body": {
+"node": "Call",
+"line": 98,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "w",
+"owner": "snip.run_sort",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "str.lower",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": true
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 100,
+"sym": {
+"kind": "function",
+"name": "probe",
+"owner": "snip",
+"params": [
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+{
+"kind": "i64"
+}
+],
+"ret": {
+"kind": "bool"
+}
+},
+"name": "probe",
+"kind": "function",
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "xs",
+"owner": "snip.probe",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "i",
+"owner": "snip.probe",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+],
+"ret": {
+"kind": "bool"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Return",
+"line": 101,
+"expr": {
+"node": "Binary",
+"line": 101,
+"type": {
+"kind": "bool"
+},
+"op": ">",
+"left": {
+"node": "Index",
+"line": 101,
+"type": {
+"kind": "i64"
+},
+"arr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "xs",
+"owner": "snip.probe",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"index": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.probe",
+"type": {
+"kind": "i64"
+}
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 103,
+"sym": {
+"kind": "function",
+"name": "run_any_all",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "bool"
+},
+{
+"kind": "bool"
+},
+{
+"kind": "bool"
+}
+]
+}
+},
+"name": "run_any_all",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "bool"
+},
+{
+"kind": "bool"
+},
+{
+"kind": "bool"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 104,
+"sym": {
+"kind": "local",
+"name": "xs",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 104,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+},
+{
+"node": "Unary",
+"line": 104,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+}
+]
+}
+},
+{
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "found",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+},
+"type": {
+"kind": "bool"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": false
+}
+},
+{
+"node": "ForEach",
+"var": {
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "x",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+"iterable": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "xs",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "If",
+"cond": {
+"node": "Binary",
+"line": 105,
+"type": {
+"kind": "bool"
+},
+"op": "<",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "x",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+},
+"then": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "bool"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "local",
+"name": "found",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": true
+}
+}
+},
+{
+"node": "Break"
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "every_2",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+},
+"type": {
+"kind": "bool"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": true
+}
+},
+{
+"node": "ForEach",
+"var": {
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "x",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+"iterable": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "xs",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "If",
+"cond": {
+"node": "Unary",
+"type": {
+"kind": "bool"
+},
+"op": "!",
+"x": {
+"node": "Paren",
+"type": {
+"kind": "bool"
+},
+"x": {
+"node": "Binary",
+"line": 105,
+"type": {
+"kind": "bool"
+},
+"op": ">",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "x",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+}
+},
+"postfix": false
+},
+"then": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "bool"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "local",
+"name": "every_2",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": false
+}
+}
+},
+{
+"node": "Break"
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "found_3",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+},
+"type": {
+"kind": "bool"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": false
+}
+},
+{
+"node": "For",
+"init": [
+{
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0
+}
+}
+],
+"cond": {
+"node": "Binary",
+"type": {
+"kind": "bool"
+},
+"op": "<",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 5,
+"text": "5"
+}
+},
+"update": [
+{
+"node": "Unary",
+"type": {
+"kind": "i64"
+},
+"op": "++",
+"x": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+}
+},
+"postfix": false
+}
+],
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "If",
+"cond": {
+"node": "Call",
+"line": 105,
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "function",
+"name": "probe",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "bool"
+}
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "xs",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+},
+"then": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "bool"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "local",
+"name": "found_3",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "bool"
+},
+"value": true
+}
+}
+},
+{
+"node": "Break"
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 105,
+"expr": {
+"node": "Call",
+"line": 105,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "bool"
+},
+{
+"kind": "bool"
+},
+{
+"kind": "bool"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "local",
+"name": "found",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "local",
+"name": "every_2",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "bool"
+},
+"sym": {
+"kind": "local",
+"name": "found_3",
+"owner": "snip.run_any_all",
+"type": {
+"kind": "bool"
+}
+}
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 107,
+"sym": {
+"kind": "function",
+"name": "check",
+"owner": "snip",
+"params": [
+{
+"kind": "i64"
+}
+],
+"ret": {
+"kind": "i64"
+}
+},
+"name": "check",
+"kind": "function",
+"params": [
+{
+"node": "Param",
+"sym": {
+"kind": "param",
+"name": "n",
+"owner": "snip.check",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+}
+],
+"ret": {
+"kind": "i64"
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "If",
+"line": 108,
+"cond": {
+"node": "Binary",
+"line": 108,
+"type": {
+"kind": "bool"
+},
+"op": "<",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.check",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+},
+"then": {
+"node": "Block",
+"stmts": [
+{
+"node": "Throw",
+"line": 109,
+"expr": {
+"node": "New",
+"line": 109,
+"type": {
+"kind": "class",
+"name": "py.ValueError"
+},
+"sym": {
+"kind": "ctor",
+"name": "ValueError",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 109,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "percent",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "negative: %d"
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.check",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 110,
+"expr": {
+"node": "Binary",
+"line": 110,
+"type": {
+"kind": "i64"
+},
+"op": "*",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.check",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 112,
+"sym": {
+"kind": "function",
+"name": "run_raise",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"name": "run_raise",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 113,
+"sym": {
+"kind": "local",
+"name": "out",
+"owner": "snip.run_raise",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+},
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"init": {
+"node": "Call",
+"line": 113,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": []
+}
+},
+{
+"node": "ForEach",
+"line": 114,
+"var": {
+"node": "Local",
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.run_raise",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+}
+},
+"iterable": {
+"node": "Call",
+"line": 114,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+{
+"node": "Unary",
+"line": 114,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 1,
+"text": "1"
+},
+"postfix": false
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 2,
+"text": "2"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Try",
+"line": 115,
+"resources": [],
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"line": 116,
+"expr": {
+"node": "Call",
+"line": 116,
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "out",
+"owner": "snip.run_raise",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 116,
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "function",
+"name": "check",
+"owner": "snip",
+"static": true,
+"params": [],
+"ret": {
+"kind": "i64"
+}
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.run_raise",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+}
+]
+}
+}
+]
+},
+"catches": [
+{
+"node": "Catch",
+"line": 117,
+"types": [
+{
+"kind": "class",
+"name": "py.ValueError"
+}
+],
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"line": 118,
+"expr": {
+"node": "Call",
+"line": 118,
+"type": {
+"kind": "void"
+},
+"target": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "out",
+"owner": "snip.run_raise",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+},
+"sym": {
+"kind": "function",
+"name": "list.append",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Unary",
+"line": 118,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 100,
+"text": "100"
+},
+"postfix": false
+}
+]
+}
+}
+]
+}
+}
+]
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 119,
+"expr": {
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "local",
+"name": "out",
+"owner": "snip.run_raise",
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "i64"
+}
+]
+}
+}
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 121,
+"sym": {
+"kind": "function",
+"name": "run_format",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"name": "run_format",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 122,
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.run_format",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 255,
+"text": "255"
+}
+},
+{
+"node": "Local",
+"line": 123,
+"sym": {
+"kind": "local",
+"name": "name",
+"owner": "snip.run_format",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+},
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "NE"
+}
+},
+{
+"node": "Return",
+"line": 124,
+"expr": {
+"node": "Call",
+"line": 124,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "class",
+"name": "py.str"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Concat",
+"line": 124,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"parts": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "0x"
+},
+{
+"node": "Call",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "format",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.run_format",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "x"
+}
+]
+}
+]
+},
+{
+"node": "Call",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "format",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "n",
+"owner": "snip.run_format",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "08X"
+}
+]
+},
+{
+"node": "Call",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "repr",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "name",
+"owner": "snip.run_format",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+}
+]
+},
+{
+"node": "Call",
+"line": 124,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "percent",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "%-5s|%3d|%#x"
+},
+{
+"node": "Name",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "local",
+"name": "name",
+"owner": "snip.run_format",
+"type": {
+"kind": "class",
+"name": "py.str"
+}
+}
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 7,
+"text": "7"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 26,
+"text": "26"
+}
+]
+},
+{
+"node": "Call",
+"line": 124,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "builtins.str",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Unary",
+"line": 124,
+"type": {
+"kind": "i64"
+},
+"op": "-",
+"x": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+},
+"postfix": false
+}
+]
+},
+{
+"node": "Call",
+"line": 124,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"sym": {
+"kind": "function",
+"name": "builtins.repr",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.bytes"
+},
+"value": "a\u0000'"
+}
+]
+},
+{
+"node": "Call",
+"line": 125,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"target": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "a,b,,c"
+},
+"sym": {
+"kind": "function",
+"name": "str.split",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": ","
+}
+]
+},
+{
+"node": "Call",
+"line": 125,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "-"
+},
+"sym": {
+"kind": "function",
+"name": "str.join",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Call",
+"line": 125,
+"type": {
+"kind": "class",
+"name": "py.list",
+"args": [
+{
+"kind": "class",
+"name": "py.str"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "list",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "x"
+},
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "y"
+}
+]
+}
+]
+},
+{
+"node": "Call",
+"line": 125,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "  pad "
+},
+"sym": {
+"kind": "function",
+"name": "str.strip",
+"owner": "py",
+"params": []
+},
+"args": []
+},
+{
+"node": "Call",
+"line": 125,
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"target": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "MiXeD"
+},
+"sym": {
+"kind": "function",
+"name": "str.upper",
+"owner": "py",
+"params": []
+},
+"args": []
+},
+{
+"node": "Call",
+"line": 125,
+"type": {
+"kind": "i64"
+},
+"target": {
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "Abc"
+},
+"sym": {
+"kind": "function",
+"name": "str.find",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Lit",
+"type": {
+"kind": "class",
+"name": "py.str"
+},
+"value": "c"
+}
+]
+}
+]
+}
+}
+]
+}
+},
+{
+"node": "MethodDecl",
+"line": 127,
+"sym": {
+"kind": "function",
+"name": "run_counter",
+"owner": "snip",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+}
+},
+"name": "run_counter",
+"kind": "function",
+"params": [],
+"ret": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "Local",
+"line": 128,
+"sym": {
+"kind": "local",
+"name": "total",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+},
+{
+"node": "Local",
+"line": 129,
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+},
+"type": {
+"kind": "i64"
+},
+"init": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 0,
+"text": "0"
+}
+},
+{
+"node": "While",
+"line": 130,
+"cond": {
+"node": "Binary",
+"line": 130,
+"type": {
+"kind": "bool"
+},
+"op": "<",
+"left": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+}
+},
+"right": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 100,
+"text": "100"
+}
+},
+"body": {
+"node": "Block",
+"stmts": [
+{
+"node": "ExprStmt",
+"line": 131,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"op": "+",
+"target": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "total",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+}
+},
+"value": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+}
+}
+}
+},
+{
+"node": "ExprStmt",
+"line": 132,
+"expr": {
+"node": "Assign",
+"type": {
+"kind": "i64"
+},
+"op": "+",
+"target": {
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+}
+},
+"value": {
+"node": "Lit",
+"type": {
+"kind": "i64"
+},
+"value": 3,
+"text": "3"
+}
+}
+}
+]
+}
+},
+{
+"node": "Return",
+"line": 133,
+"expr": {
+"node": "Call",
+"line": 133,
+"type": {
+"kind": "class",
+"name": "py.tuple",
+"args": [
+{
+"kind": "i64"
+},
+{
+"kind": "i64"
+}
+]
+},
+"sym": {
+"kind": "function",
+"name": "tuple",
+"owner": "py",
+"params": []
+},
+"args": [
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "total",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+}
+},
+{
+"node": "Name",
+"type": {
+"kind": "i64"
+},
+"sym": {
+"kind": "local",
+"name": "i",
+"owner": "snip.run_counter",
+"type": {
+"kind": "i64"
+}
+}
+}
+]
+}
+}
+]
+}
+}
+]
+}
+],
+"lang": "python"
+}

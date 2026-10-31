@@ -13,6 +13,7 @@
 #ifdef CBL2_CBACK
 #include "cback.hpp"
 #endif
+#include "cpp17.hpp"
 #include "json.hpp"
 #include "l2.hpp"
 
@@ -78,6 +79,9 @@ V dispatch(const std::string& fn, const V& args, V& facts_seen) {
 #else
     (void)facts_seen;
 #endif
+    // the C++17 back end (cpp17.hpp): a Python module, a whole Java program
+    if (fn == "cpp17_unit") return cpp17::write_unit(arg(args, 0), py::truthy(arg(args, 1)) ? arg(args, 1).str() : std::string());
+    if (fn == "cpp17_program") return V(cpp17::program(arg(args, 0), arg(args, 1)));
     // the L2 core
     if (fn == "roundtrip") return l2::roundtrip(arg(args, 0));
     if (fn == "roundtrip_text") return V(py::json_dump(l2::roundtrip(arg(args, 0))));
@@ -153,6 +157,12 @@ void run(Call* c) {
         err.set("facts", facts_out(facts));
         c->out = py::json_tagged(err);
 #endif
+    } catch (cpp17::Decline& e) {
+        V err = V::dict();
+        err.set("type", V("Cpp17Decline"));
+        err.set("message", V(std::string(e.what())));
+        err.set("facts", V::dict());
+        c->out = py::json_tagged(err);
     } catch (py::PyError& e) {
         V err = V::dict();
         err.set("type", V(e.type));

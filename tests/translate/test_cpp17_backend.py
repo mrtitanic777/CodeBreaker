@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The C++17 back end (codebreaker/translate/backends/cpp17_java.py), its modern-Java front end and desugar pass:
+"""The C++17 back end for Java (native/l2/src/cpp17_java.cc through backends/cpp17.py), its modern-Java front end and desugar pass:
 whole programs from L2 with the idiomatic forms (lambdas, range-for, switch expressions as lambdas,
 real constructors for records, auto), and inside the transpiler (cpp17.Bodies) beside cpp03. The programs
 are compiled and run beside the JVM where a JDK and a C++ compiler are present."""
@@ -10,7 +10,7 @@ import subprocess
 import pytest
 
 from codebreaker.translate import desugar, ir, javajudge
-from codebreaker.translate.backends import cpp17_java as cpp17, jmodel
+from codebreaker.translate.backends import cpp17, jmodel
 from codebreaker.verify.lanes import java as lane
 
 PROGRAM = '''import java.util.*;

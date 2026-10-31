@@ -9,7 +9,8 @@
         refused (with the reason); prints the table by package and the top refusal reasons
 
 The front end is codebreaker/translate/frontends/python (docs/PYTHON_FRONTEND.md), the back end
-codebreaker/translate/backends/cpp17.py, the support header native/ported/include/py.hpp.
+the translator's C++17 back end (native/l2/src/cpp17_python.cc, through backends/cpp17.py), the support
+header native/ported/include/py.hpp.
 Working files go under state/work/py2cpp/.
 """
 import collections

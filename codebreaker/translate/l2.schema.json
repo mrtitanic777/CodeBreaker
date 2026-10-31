@@ -84,6 +84,18 @@
     "nullable": {
      "type": "boolean",
      "description": "a reference that may be null, as the source declared it (C#'s string?)"
+    },
+    "record": {
+     "type": "boolean",
+     "description": "a record the front end made of a fixed-key dict (Python): a value struct unless `ref`"
+    },
+    "ref": {
+     "type": "boolean",
+     "description": "held by reference (shared), as the front end proved; false: a value it copies"
+    },
+    "exception": {
+     "type": "boolean",
+     "description": "an exception class: made and thrown as a value"
     }
    }
   },
