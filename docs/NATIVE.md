@@ -114,14 +114,21 @@ order.  During a run Python is asked one thing, once per distinct service: which
 service answers in (driver_services + the knowledge base), kept for the run.  A run kept beside a
 shadow stays on the Python hooks (step 3).
 
-The switch is **`CB_NATIVE_TRACE_DRV`** (default 0 until the corpus gate is run; without the DLL,
-or on any setup failure, the Python hooks run).  Record identity is checked both ways on a
-hand-built flat image in tests/test_native_trace.py (`test_driver_same_record`): the cover, the
-service and outside calls, the ports, the writes, the page mapped on demand, the exit and the
-result registers, all identical with the switch off and on, across four configurations.  The
-module gate (a couple of VxDs, e.g. vkd.vxd and splitter.vxd: every function's full record and
-its verdict identical) is **not yet run here** -- this working tree has no corpus
-(`corpus.root()` is absent) -- so the switch stays 0 (off) until it is.
+The switch is **`CB_NATIVE_TRACE_DRV`** (default 1; 0 = the Python hooks, as also without the DLL
+or on any setup failure).  Record identity is checked both ways on a hand-built flat image in
+tests/test_native_trace.py (`test_driver_same_record`): the cover, the service and outside calls,
+the ports, the writes, the page mapped on demand, the exit and the result registers, all identical
+with the switch off and on, across four configurations.
+
+The module gate (every entry point's full trace record AND its isolated verdict, the switch off vs
+on, `CB_NO_FP_CACHE=1`, in a fresh process each) on two VxDs:
+
+| module | entry points | records identical | verdicts | judge CPU off | on |
+|---|---|---|---|---|---|
+| vkd.vxd | 23 | 23 / 23 | equivalent 23 | 38.6 s | 27.3 s (x1.41) |
+| splitter.vxd | 6 | 6 / 6 | equivalent 6 | 15.1 s | 10.5 s (x1.43) |
+
+Identical everywhere tested, so the switch is on by default.
 
 **The 16-bit tracer (not yet done).** emulate/windows16.py `trace_function16` is the larger half
 (GDT/selector layout, far calls, the NE import-thunk stand-ins, int 21h as DOS3Call, ports16's

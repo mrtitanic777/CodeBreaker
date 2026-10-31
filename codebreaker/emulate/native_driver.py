@@ -23,7 +23,7 @@ import struct
 from codebreaker.emulate import native_trace     # the loaded DLL, the register ids, dll_path
 
 _CALL_WORDS, _PORT_WORDS, _MEM_WORDS, _LAZY_WORDS = 15, 4, 8, 5
-DEFAULT = "0"                                      # CB_NATIVE_TRACE_DRV when not set (off until gated)
+DEFAULT = "1"             # CB_NATIVE_TRACE_DRV when not set (gated identical: docs/NATIVE.md)
 
 ANSWERS = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(ctypes.c_int32))
 _P64 = ctypes.POINTER(ctypes.c_uint64)

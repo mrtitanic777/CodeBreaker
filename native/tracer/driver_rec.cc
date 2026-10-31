@@ -174,7 +174,7 @@ static void on_intr(uc_engine *, uint32_t intno, void *user) {
             r->stop();
             return;
         }
-        push_call(r, false, device, service, r->ncalls < D_MAX_CALLS);
+        push_call(r, false, device, service, r->ncalls <= D_MAX_CALLS);   // driver: len(calls) <= MAX_CALLS
         int32_t place = where_for(r, int32_t(device), int32_t(service));
         if (place == -2)
             return;                                // Python raised in the resolver
