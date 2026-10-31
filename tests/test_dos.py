@@ -202,11 +202,97 @@ def test_not_an_image():
     raise AssertionError("garbage was read as an image")
 
 
+# --- the native DOS runner (build/native_dos.py) vs DOSBox -----------------------------------
+# A tiny 16-bit source, assembled with the real MASM.EXE on CodeBreaker's own Unicorn executive
+# (no DOSBox) and -- when DOSBox is also set up -- proven byte-identical to the same tool there.
+_TINY_ASM = ("_TEXT\tSEGMENT BYTE PUBLIC 'CODE'\n\tASSUME CS:_TEXT\n\tPUBLIC foo\n"
+             "foo\tPROC NEAR\n\tmov\tax, 1\n\tadd\tax, bx\n\tret\nfoo\tENDP\n"
+             "_TEXT\tENDS\n\tEND\n")
+
+
+def _masm_set_up():
+    from codebreaker.base import settings
+    root = settings.get("masm")
+    return bool(root and os.path.isfile(os.path.join(root, "BIN", "MASM.EXE")))
+
+
+def test_native_dos_switch():
+    """CB_NATIVE_DOS and CB_NO_DOSBOX decide the runner; the routine boundary is enforceable."""
+    from codebreaker.build import native_dos
+    from codebreaker.base import settings
+    saved = {k: os.environ.get(k) for k in ("CB_NATIVE_DOS", "CB_NO_DOSBOX")}
+    try:
+        os.environ.pop("CB_NO_DOSBOX", None)
+        os.environ["CB_NATIVE_DOS"] = "0"
+        assert native_dos.enabled("masm") is False
+        os.environ["CB_NATIVE_DOS"] = "1"
+        assert native_dos.enabled("masm") is native_dos.available()
+        os.environ.pop("CB_NATIVE_DOS", None)                  # "auto": MASM yes, ML no (DPMI, deferred)
+        assert native_dos.enabled("masm") is native_dos.available()
+        assert native_dos.enabled("ml") is False
+        # CB_NO_DOSBOX makes a byte-match spot-check refuse rather than silently spawn the emulator
+        os.environ["CB_NO_DOSBOX"] = "1"
+        assert settings.dosbox_x() == ""
+        try:
+            settings.dosbox_x(require=True)
+            raise AssertionError("dosbox_x(require=True) did not refuse under CB_NO_DOSBOX")
+        except RuntimeError:
+            pass
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_native_masm_assembles():
+    """The real MASM.EXE on our own emulator turns a tiny proc into a valid OMF object."""
+    if not _masm_set_up():
+        raise Skip("MASM is not set up (settings: masm)")
+    try:
+        import unicorn  # noqa: F401
+    except Exception:
+        raise Skip("unicorn is not installed")
+    from codebreaker.build import native_dos, msc6
+    out = native_dos.assemble(_TINY_ASM, stem="T")
+    assert out.get("obj") and out["obj"][0] == 0x80, "no OMF object was produced"
+    code, _mask = msc6.object_code(out["obj"])
+    assert code == bytes.fromhex("b8010003c3c3"), code.hex()   # mov ax,1 / add ax,bx / ret
+
+
+def test_native_masm_matches_dosbox():
+    """One sample assembled both ways is byte-identical (the native runner's acceptance gate)."""
+    if not _masm_set_up():
+        raise Skip("MASM is not set up (settings: masm)")
+    from codebreaker.base import settings
+    if not (settings.get("dosbox_x") and os.path.isfile(settings.get("dosbox_x"))):
+        raise Skip("DOSBox-X is not set up (settings: dosbox_x)")
+    import importlib
+    from codebreaker.build import masm as masm_mod
+    saved = os.environ.get("CB_NATIVE_DOS")
+    os.environ.pop("CB_NO_DOSBOX", None)
+    try:
+        os.environ["CB_NATIVE_DOS"] = "1"
+        importlib.reload(masm_mod)
+        native = masm_mod.assemble(_TINY_ASM, stem="T").get("obj")
+        os.environ["CB_NATIVE_DOS"] = "0"
+        importlib.reload(masm_mod)
+        dosbox = masm_mod.assemble(_TINY_ASM, stem="T").get("obj")
+        assert native and dosbox and native == dosbox, (
+            "native and DOSBox .OBJ differ (%s vs %s bytes)" % (len(native or b""), len(dosbox or b"")))
+    finally:
+        os.environ.pop("CB_NATIVE_DOS", None)
+        if saved is not None:
+            os.environ["CB_NATIVE_DOS"] = saved
+        importlib.reload(masm_mod)
+
+
 def main():
     for fn in (test_kinds, test_com_and_driver_layout, test_relocations_are_applied,
                test_exepack_static_equals_emulated, test_unpacked_file, test_kernel_image_parts, test_function_discovery,
                test_installed_handler_is_found, test_interrupt_names, test_description_for_the_decompiler,
-               test_boot_floppy, test_cd_image, test_not_an_image):
+               test_boot_floppy, test_cd_image, test_not_an_image,
+               test_native_dos_switch, test_native_masm_assembles, test_native_masm_matches_dosbox):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
