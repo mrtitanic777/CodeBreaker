@@ -382,6 +382,59 @@ several kinds (they want hand-written structs or variants chosen by a person), a
 Unicorn or Capstone's Python bindings. The engine is worth running on every module before it is
 moved by hand: what it translates is gated and done, and its refusal list is the hand-port's to-do.
 
+### The engine in C++, piece 1: the Python parser -- `native/pyfront`
+
+All of CodeBreaker is to be C++ (2026-10-31), so the engine above is being rewritten in C++,
+and that rewrite can then port the rest of CodeBreaker. Its first piece is a complete
+Python 3 parser: a hand-written tokenizer (INDENT/DEDENT, implicit joining, PEP 701 f-string
+modes, every string prefix and escape, numbers with underscores, hex, octal, binary,
+unbounded ints and complex) and a recursive-descent parser over CPython's
+`Grammar/python.gram`. The parser covers all statements and expressions, f-strings and
+t-strings, decorators, comprehensions, lambdas, async/await, match, walrus, star-args,
+annotations, PEP 695 type parameters and `type` aliases. Its output is an AST with
+CPython's shape: one plain C++ struct per `ast` node class, the same fields, the same
+positions.
+
+**Gate: identical trees.** For every `.py` under codebreaker/, tools/ and tests/, the dump
+equals CPython 3.14's `ast.dump(ast.parse(src), include_attributes=True)` byte for byte.
+
+| corpus | files | identical | pyfront parse | CPython ast.parse |
+|---|---|---|---|---|
+| codebreaker/ + tools/ + tests/ (10.7 MB, 1.25 M nodes) | 727 | **727** | 0.65-1.2 s | 2.5-5.1 s |
+| CPython's own Lib/ (extra check) | 2,436 | 2,435 | -- | -- |
+
+Both parsers are timed best of 3 under the same load: pyfront is about 4x faster. The one
+file of CPython's Lib that differs uses characters new in Unicode 16 that Windows' ICU does
+not know yet. Syntax errors are refused with CPython's line and offset: the 33 error cases
+in the tests all match, as do Lib/test's `badsyntax_*` files, message text included. CTest
+`pyfront_grammar` runs 301 grammar cases against dumps CPython made once. The gate script is
+`state/work/pyfront/gate.py`, and Python is used only as its oracle.
+
+**The API the next pieces consume** (native/pyfront/README.md has the full version):
+
+- `pyfront::parse(bytes, filename)` returns a `pyfront::Module` (or a `SyntaxError`), and
+  `pyfront::dump(module)` returns the canonical text.
+- `Expr`, `Stmt`, `Pattern` and `TypeParam` each carry a `kind`. `as<T>()` and `cast<T>()`
+  downcast to the per-class struct, such as `BinOp{left, op, right}` or
+  `FunctionDef{name, args, body, decorator_list, returns, type_params}`.
+- Operators and contexts are enums. Constants are a `ConstValue`: an Int keeps its decimal
+  digits plus an `i64`, and a Str is UTF-8.
+- Every node lives in the Module's arena and children are raw pointers, so the inference
+  stage can key side tables on node addresses without copying the tree.
+- The C ABI is in `pyfront/pyfront.h` (`pyfront.dll`).
+
+**Left for the inference + lowering stage** (piece 2, on the native L2 core in native/l2):
+1. A scope pass: names to their bindings (module, class, function, comprehension), with
+   `global`/`nonlocal` and the attributes each class and its instances gain.
+2. Whole-package type inference as `codebreaker/translate/frontends/python` does it today:
+   types flow from annotations and from callers, ints are given ranges, and anything left
+   untyped gets a reason. These are the same rules, rewritten over `pyfront::Module`.
+3. Lowering to L2: from typed pyfront nodes to the L2 core's tree, with refusal reasons kept.
+   That replaces the Python front end's lowering.
+4. The C++17 back end (`backends/cpp17.py` and `py.hpp`), rewritten over L2 in C++.
+pyfront deliberately does not yet provide a generic child walker or a parent map. The scope
+pass is the first thing that needs them, so they should be built there.
+
 ## Step 5 (now first): the L2 core and the C back end -- `native/l2`
 
 Logan, 2026-10-31: "All of it needs to be C++." The translator's core moves first: the L2 tree, and the
