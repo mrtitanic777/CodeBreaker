@@ -219,6 +219,7 @@ struct Now {
     std::map<std::string, std::string> alias;
     V lane;
     std::unordered_map<Id, V> nodes_by_id;
+    std::unordered_map<std::string, std::pair<V, std::string>> type_texts;   // (type_text's: a type's text is its own -- kept per call)
     uint64_t mut = 0;                             // (rewrites and renames made: part of the layout's key)
     uint64_t seen_key = 0;                        // (the state the last layout was made in: seen_now reuses it)
     bool seen_valid = false;

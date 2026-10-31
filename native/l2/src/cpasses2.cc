@@ -2,10 +2,20 @@
 // heading a module is written from, the locals' layout (_Locals, _buffer_fields, the stack-segment
 // stores), far reads, the 32-bit path's own and the PowerPC path's.
 #include <algorithm>
+#include <chrono>
 
 #include "cback.hpp"
 
 namespace cb {
+
+#ifdef CBL2_PROFILE
+void prof_add(const std::string& k, double t);
+#define PMARK(k) do { auto _t = std::chrono::steady_clock::now(); prof_add(k, std::chrono::duration<double>(_t - pt0).count()); pt0 = _t; } while (0)
+#define PSTART auto pt0 = std::chrono::steady_clock::now()
+#else
+#define PMARK(k) do {} while (0)
+#define PSTART do {} while (0)
+#endif
 
 using ParentMap = std::unordered_map<Id, V>;
 bool x_unary_as_read(const V& u, const char* op, const ParentMap& parent);
@@ -675,10 +685,19 @@ struct Locals {
         re::Match m = R.match(local_text(n));
         return m ? Opt(m.group(0)) : std::nullopt;
     }
+    // (written(n) of each local, kept until a rename: occurs() is asked for every local, of every ref)
+    mutable std::unordered_map<std::string, Opt> written_of;
+    mutable uint64_t written_mut = (uint64_t)-1;
     std::vector<std::pair<V, std::string>> occurs(const std::string& name) const {
+        if (written_mut != now->mut) {
+            written_of.clear();
+            written_mut = now->mut;
+        }
         std::vector<std::pair<V, std::string>> out;
         for (auto& r : refs) {
-            Opt w = written(r.n);
+            auto it = written_of.find(r.n);
+            if (it == written_of.end()) it = written_of.emplace(r.n, written(r.n)).first;
+            const Opt& w = it->second;
             if (w && *w == name) out.push_back({r.e, r.form});
         }
         return out;
@@ -926,7 +945,9 @@ void p_buffer_fields(Nodes& nodes, const std::set<std::string>&) {
     static const re::Regex LOCAL16("(?m)^  (\\w+?)(\\d)?(\\s*\\*+\\s*|\\s+)(\\w*Stack_([0-9a-f]+))( \\[(\\d+)\\])?;\\s*$");
     std::vector<V> locs = live_locals();
     if (locs.empty()) return;
+    PSTART;
     Locals lv(nodes, locs);
+    PMARK("bf.locals");
     std::string before = lv.region;
     std::string region = before;
     auto replace = [&](const std::string& o, const std::string& n) { region = py::replace(region, o, n, 1); };
@@ -993,9 +1014,11 @@ void p_buffer_fields(Nodes& nodes, const std::set<std::string>&) {
         }
         dset(arr, {d.off, d.size * (int64_t)run.size(), true, "  " + t + " " + arr + " [" + std::to_string(run.size()) + "];", d.typ});
     }
+    PMARK("bf.runs");
     std::vector<std::pair<std::string, D>> arrays;
     for (auto& nd : decl)
         if (nd.second.is_array && lv.passed(nd.first)) arrays.push_back(nd);
+    PMARK("bf.passed");
     if (arrays.empty()) {
         if (region != before) now->locals_text = region;
         return;
