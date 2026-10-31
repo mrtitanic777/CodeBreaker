@@ -80,7 +80,11 @@ def jump_buffers(img, code):
     out = {}
     words = [int.from_bytes(code[o:o + 4], "big") for o in range(0, len(code) - 3, 4)]
     for i, w in enumerate(words):
-        if w == 0xF8230090 and "setjmp_address" not in out:                # std r1,0x90(r3)
+        # setjmp stores the caller's r1 at 0x90 of the jmp_buf. The buffer pointer is its first
+        # argument (r3) by the ABI, but some system modules (XAM, Guide.TFA) reach it through
+        # another register, so match `std r1,0x90(rA)` for any rA -- keying on r3 alone misses
+        # those and would leave longjmp below without a setjmp.
+        if w >> 26 == 62 and (w >> 21) & 31 == 1 and (w & 0xFFFF) == 0x90 and "setjmp_address" not in out:
             out["setjmp_address"] = _start_before(code, lo, lo + 4 * i)
         # lwz rD,0x134(rA) then lwz rE,0x90(rA) (D-form, opcode 32) within a few words
         if w >> 26 == 32 and w & 0xFFFF == 0x134 and "longjmp_address" not in out:
@@ -91,6 +95,11 @@ def jump_buffers(img, code):
                     starts = [s for s, (n, _p, _h) in img.extents.items() if s <= a < s + n]
                     out["longjmp_address"] = starts[0] if starts else _start_before(code, lo, a)
                     break
+    # A longjmp_address with no setjmp_address is the silent crash: XenonRecomp reads setJmpAddress
+    # as 0, the guest's setjmp never fills the host jump buffer, and the first longjmp jumps through
+    # zeros (rip=0) -- uncatchable. Never emit one without the other.
+    if "longjmp_address" in out and "setjmp_address" not in out:
+        del out["longjmp_address"]
     return out
 
 

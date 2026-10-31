@@ -39,6 +39,34 @@ def test_helpers_and_jump_buffers():
         "setjmp_address": 0x821690E0, "longjmp_address": 0x82168FC0}, found
 
 
+class _Img:
+    def __init__(self, lo, code, extents):
+        self.code = (lo, lo + len(code))
+        self.extents = extents
+
+
+def _words(ws):
+    return b"".join(struct.pack(">I", w) for w in ws)
+
+
+def test_setjmp_through_a_register_other_than_r3():
+    """setjmp that stores r1 at 0x90 of a buffer reached through r4 (not r3) is still found, so a
+    longjmp below it is never emitted alone (the XAM / Guide.TFA system-module crash)."""
+    lo = 0x82000000
+    code = _words([0, 0xF8240090, 0x4E800020,          # std r1,0x90(r4); blr  -> setjmp at lo+4
+                   0, 0x80A60134, 0x80E60090, 0x4E800020])  # lwz r5,0x134(r6); lwz r7,0x90(r6) -> longjmp at lo+16
+    out = config.jump_buffers(_Img(lo, code, {lo + 16: (16, 0, 0)}), code)
+    assert out == {"setjmp_address": lo + 4, "longjmp_address": lo + 16}, out
+
+
+def test_longjmp_without_setjmp_emits_neither():
+    """A longjmp with no setjmp found is the silent rip=0 crash, so neither address is emitted."""
+    lo = 0x82000000
+    code = _words([0, 0x80A60134, 0x80E60090, 0x4E800020])   # longjmp pattern, no `std r1,0x90(rA)`
+    out = config.jump_buffers(_Img(lo, code, {lo + 4: (12, 0, 0)}), code)
+    assert out == {}, out
+
+
 def test_switch_tables():
     """switches.py finds the halfword table XenonAnalyse misses (no bounds check right before it,
     the index shifted into r0), and no table's labels leave their function."""
