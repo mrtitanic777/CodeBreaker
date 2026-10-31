@@ -33,31 +33,41 @@ THE NATIVE/C++ SPLIT:
     would save little and is not warranted. The native tracer work in native/tracer is a separate
     lane (the behaviour oracle), not needed here.
 
-THE DPMI PASSES (deferred, with a plan):
-    The executive above is real-mode only. Two period tools do NOT run in plain real mode:
-      * the Win95 DDK's ML.EXE (the VxD/driver assembler) is a Phar Lap TNT bound program -- it
-        switches to 32-bit protected mode through a DPMI host at start-up; and
-      * Microsoft C's P3 code generator (c2.exe / the later CL back-end passes) runs protected via
-        a DPMI host too ("Invalid DPMI return" is what a real-mode run gives).
-    Those keep using DOSBox (native_dos.enabled() returns False for them under "auto"). Bringing
-    them onto our emulator needs a DPMI host beside the real-mode executive:
-      1. INT 2Fh AX=1687h -- report a DPMI host and hand back the mode-switch entry (AX=0, the real
-         -> protected entry in ES:DI, the host-data paragraph count).
-      2. The mode-switch entry: build a tiny protected context -- a flat/para GDT with the LDT
-         selectors DPMI clients expect (CS/DS/the PSP and environment selectors), switch Unicorn to
-         UC_MODE_32, and run the client's protected entry.
-      3. INT 31h DPMI services the tools actually use: 0000/0001 allocate/free LDT descriptors,
-         0006/0007/0008 get/set segment base and limit, 0100/0101 allocate/free DOS (real-mode)
-         memory with both a selector and a segment, 0200-0205 real-mode interrupt vectors, 0300/0301
-         simulate a real-mode interrupt/far call (this is how a protected client reaches the INT 21h
-         file API -- route it back through the existing real-mode int21()), 0500/0501 memory-info
-         and allocate, 0e00/0e01 the 80x87 state. Unicorn gives GDT/LDT and mode switching, so this
-         is service plumbing on top of the executive we already have, not a new CPU.
-      4. Load a Phar Lap TNT / bound (.exp-style) image: parse its extender header, lay the 32-bit
-         segments out, and start the extended entry in protected mode.
-    Scope: a focused module (dpmi.py) of a few hundred lines reusing exact/emu/dos.py's int21().
-    Gate, as here: byte-identical .OBJ from the DDK ML and from CL's P3 pass versus DOSBox. Until
-    it lands, _PROVEN stays {"masm"} and the DPMI tools fall back to DOSBox automatically.
+THE DPMI PASSES (host built; the DDK ML tool still DOSBox -- see below):
+    The executive above is real-mode only. The Win95 DDK's ML.EXE (the VxD/driver assembler) is a
+    Phar Lap TNT bound program that switches to 32-bit protected mode through a DPMI host. (The other
+    candidate, "Microsoft C's protected-mode pass", is NOT in our toolchain as a DPMI/DOS-extended
+    tool -- MSC 6.0a is plain real-mode DOS, and the C/C++ 8.00c passes of Visual C++ 1.52c are Win32
+    console programs that already run natively on Windows, see msc6.py::_native. So the Phar Lap TNT
+    ML.EXE is the one real DPMI tool here.)
+
+    A DPMI host IS now implemented: exact/emu/dpmi.py, plugged into dos.run(dpmi=True). It runs in the
+    SAME UC_MODE_16 engine (Unicorn honours the descriptor D-bit in protected mode, so one engine
+    decodes real mode, the 16-bit stub and the 32-bit extender), switches real->protected the hardware
+    way (a host trampoline runs mov cr0 + a far jump), manages GDT/LDT descriptors, serves INT 2Fh
+    /1687h and INT 31h (0000/0001/0003/0006-000C descriptors, 0100/0101 DOS memory, 0200-0205 vectors,
+    0300 simulate-real-mode-interrupt routed back through int21(), 0400 version, 0500-0503 extended
+    memory, 0600/0E00 no-ops), and reflects INT 21h via a selector-base override so int21() resolves
+    the right linear byte without a mid-run segment reg_write. It is PROVEN end-to-end by a tiny
+    hand-built 16-bit protected-mode DPMI client (tests/test_dos.py::test_dpmi_host_protected_mode):
+    switch, allocate+base a descriptor, reflected INT 21h file create+write, direct protected-mode
+    console, exit -- no DOSBox.
+
+    WHY TNT ML.EXE IS STILL ON DOSBox (the one remaining blocker): with DOSXNT.EXE staged in the
+    workdir and the host on, ML.EXE gets through DPMI detection and reads the extender's header, then
+    STALLS in its real-mode loader (before the protected-mode switch) in an infinite INT 21h 0x48
+    retry. The stub at 0130:46c0 WALKS THE DOS MCB ARENA CHAIN in guest RAM -- it reads each arena
+    header's signature ('M'/'Z' at +0), owner PSP (+1) and size (+3). Our executive keeps the memory
+    map as a Python list (st["mcb"]) with NO real MCB paragraphs in guest memory, so the walk reads
+    zeros, never finds a valid chain, and loops. MASM never walked the MCB chain, so it never needed
+    one. The fix is a real in-RAM MCB arena (an arena header before the PSP, the program block, the
+    environment and each free block; INT 21h 0x48/0x49/0x4A keeping it consistent; and INT 21h 0x52
+    get-list-of-lists so the loader can find the first MCB) in exact/emu/dos.py. That touches the
+    PROVEN real-mode path, so it needs full MASM re-validation; left for a follow-up. Beyond it lies
+    the full 32-bit extender + the 32-bit assembler run, which the host above is built to carry.
+
+    So _PROVEN stays {"masm"} and the DPMI tools fall back to DOSBox automatically. The gate is
+    unchanged: byte-identical .OBJ versus DOSBox once a tool is brought across.
 """
 import os
 import shutil

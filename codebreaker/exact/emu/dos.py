@@ -140,7 +140,10 @@ def ropen(path, mode="rb", **kw):
             if k == 39: raise
             time.sleep(0.05 * (k + 1))
 
-def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSRUN_MAX_BLOCKS", "60000000")), trace_calls=False, env=b"PATH=\0", instrument=None, instrument_when=None, driver=None, psp=None, top=None, fast=False, fs=None):
+def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSRUN_MAX_BLOCKS", "60000000")), trace_calls=False, env=b"PATH=\0", instrument=None, instrument_when=None, driver=None, psp=None, top=None, fast=False, fs=None, dpmi=None):
+    # dpmi: a DPMI host (exact/emu/dpmi.py). None/False keeps plain real mode (unchanged). True builds
+    # a host; an object is used as given. The host adds the INT 2Fh/1687h + INT 31h + protected-mode
+    # switch on top of this same engine and routes protected-mode INT 21h back through int21() below.
     # fast: no hook on every basic block (the blocks are not counted or kept - Result.blocks is empty); a run
     # that does not end is stopped by a time limit instead (FAST_LIMIT seconds). Most of a compile's time
     # went to that hook.
@@ -183,6 +186,16 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
 
     st = dict(blocks=set(), n=0, console=bytearray(), exit=None, stdin=bytearray(stdin), dta=PSP * 16 + 0x80,
               mcb=[[PSP, TOP - PSP, True]], vec={}, calls=collections.Counter())   # memory blocks: [seg, paras, used]
+    st["pm"] = False                 # protected mode active (the DPMI host turns this on at the switch)
+    st["desc"] = {}                  # selector (sel & 0xFFFC: RPL off, LDT bit kept) -> (base, limit, access)
+    def lin(seg, off):
+        # a (segment/selector : offset) -> the linear byte. Real mode: segment*16 + offset (UNCHANGED,
+        # so every existing caller is byte-for-byte identical). Protected mode: descriptor base + offset.
+        if st["pm"]:
+            d = st["desc"].get(seg & 0xFFFC)
+            if d is not None:
+                return d[0] + off
+        return seg * 16 + off
     files = {}; nexth = [5]
     def newh():                                             # the next handle; past 19 (where a C library's table of
         if nexth[0] < 20: nexth[0] += 1; return nexth[0] - 1    # files ends) the lowest free one, as DOS gives them
@@ -190,7 +203,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
     R = lambda r: mu.reg_read(r)
     def W(r, v): mu.reg_write(r, v & 0xFFFF)
     def cstr(seg, off):
-        a = seg * 16 + off; out = bytearray()
+        a = lin(seg, off); out = bytearray()
         while True:
             c = mu.mem_read(a, 1)[0]
             if c == 0: break
@@ -220,21 +233,27 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
 
     def int21():
         ax = R(UC_X86_REG_AX); ah = ax >> 8; al = ax & 0xFF
-        bx, cx, dx, ds, es = R(UC_X86_REG_BX), R(UC_X86_REG_CX), R(UC_X86_REG_DX), R(UC_X86_REG_DS), R(UC_X86_REG_ES)
+        bx, cx, dx = R(UC_X86_REG_BX), R(UC_X86_REG_CX), R(UC_X86_REG_DX)
+        # ds/es: the DPMI host, reflecting a protected-mode INT 21h to real mode (INT 31h 0300), sets
+        # these overrides to the selectors whose descriptors map the client's real-mode segments, so
+        # lin() resolves the right linear byte without a mid-run reg_write (which would corrupt the
+        # segment's hidden base). Unset everywhere else -> the real registers, byte-for-byte as before.
+        ds = st["ov_ds"] if st.get("ov_ds") is not None else R(UC_X86_REG_DS)
+        es = st["ov_es"] if st.get("ov_es") is not None else R(UC_X86_REG_ES)
         if os.environ.get("DOSRUN_DEBUG"): print("int21 ax=%04x bx=%04x cx=%04x dx=%04x" % (ax, bx, cx, dx), file=sys.stderr)
         if ah == 0x4C or ah == 0x00: st["exit"] = al if ah == 0x4C else 0; raise DosExit()
         if ah in (0x02, 0x06):
             if ah == 0x06 and (dx & 0xFF) == 0xFF: carry(False); W(UC_X86_REG_AX, ax & 0xFF00); return
             st["console"].append(dx & 0xFF); return
         if ah == 0x09:
-            a = ds * 16 + dx
+            a = lin(ds, dx)
             while True:
                 c = mu.mem_read(a, 1)[0]
                 if c == 0x24: break
                 st["console"].append(c); a += 1
             return
         if ah == 0x0A:                                           # buffered line input
-            a = ds * 16 + dx; mx = mu.mem_read(a, 1)[0]
+            a = lin(ds, dx); mx = mu.mem_read(a, 1)[0]
             line = bytearray()
             while st["stdin"]:
                 c = st["stdin"].pop(0)
@@ -250,7 +269,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         if ah == 0x0B: W(UC_X86_REG_AX, (ah << 8) | (0xFF if st["stdin"] else 0)); return
         if ah == 0x0E: W(UC_X86_REG_AX, (ah << 8) | 3); return
         if ah == 0x19: W(UC_X86_REG_AX, (ah << 8) | int(os.environ.get("DOSRUN_DRIVE", "2"))); return   # current drive C: (DOSRUN_DRIVE=3: D:)
-        if ah == 0x1A: st["dta"] = ds * 16 + dx; return
+        if ah == 0x1A: st["dta"] = lin(ds, dx); return
         # ---- DOS 1.x file control blocks (programs from before the handle calls of DOS 2)
         # FCB: +0 drive, +1 name[8], +9 ext[3], +0C current block, +0E record size, +10 file size,
         #      +20 current record, +21 random record (4 bytes)
@@ -388,9 +407,9 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
                     if c == 0x0A: break
             elif bx in files and files[bx]["f"]: data = files[bx]["f"].read(cx)
             else: data = b""
-            mu.mem_write(ds * 16 + dx, bytes(data)); carry(False, len(data)); return
+            mu.mem_write(lin(ds, dx), bytes(data)); carry(False, len(data)); return
         if ah == 0x40:
-            data = bytes(mu.mem_read(ds * 16 + dx, cx))
+            data = bytes(mu.mem_read(lin(ds, dx), cx))
             if bx in (1, 2) or (bx in files and files[bx]["dev"] == "CON"): st["console"] += data
             elif bx in files and files[bx]["f"]:
                 if cx == 0: files[bx]["f"].truncate()
@@ -416,7 +435,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             else: carry(False, 0)
             return
         if ah == 0x45 or ah == 0x46: carry(False, bx); return
-        if ah == 0x47: mu.mem_write(ds * 16 + R(UC_X86_REG_SI), b"\0"); carry(False); return
+        if ah == 0x47: mu.mem_write(lin(ds, R(UC_X86_REG_SI)), b"\0"); carry(False); return
         if ah == 0x48:
             s_ = alloc(bx)
             if s_ is None: W(UC_X86_REG_BX, largest()); carry(True, 8)
@@ -478,6 +497,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         raise RuntimeError("INT 21h AH=%02X not implemented (AX=%04X)" % (ah, ax))
 
     def intr(uc, intno, _):
+        if host is not None and host.handle(intno): return  # DPMI: INT 2Fh/1687h, INT 31h, the switch
         if intno == 0x21: int21()
         elif intno == 0x20: st["exit"] = 0; raise DosExit()
         elif intno in (0x10, 0x1A, 0x12, 0x11, 0x16, 0x2F): pass
@@ -499,6 +519,20 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             st["arm"] = False; st["resume"] = True; uc.emu_stop(); return   # attach the heavy hooks now
         if st["n"] > max_blocks: err.append(RuntimeError("block limit at image %05x; console so far: %r" % (addr - load * 16, bytes(st["console"])[-400:]))); uc.emu_stop()
     fast = fast and not instrument and not instrument_when and not trace_calls and not driver
+    host = None
+    if dpmi:
+        if dpmi is True:
+            from codebreaker.exact.emu import dpmi as _dpmi
+            host = _dpmi.Host()
+        else:
+            host = dpmi
+        class _Ctx(object):
+            pass
+        ctx = _Ctx()
+        ctx.mu, ctx.st, ctx.int21, ctx.R, ctx.W, ctx.carry = mu, st, int21, R, W, carry
+        ctx.alloc, ctx.largest, ctx.load, ctx.psp = alloc, largest, load, PSP
+        host.attach(ctx)
+    _until = 0x1000000 if host is not None else 0x10FFFF   # protected-mode code/tables live above 1 MB
     mu.hook_add(UC_HOOK_INTR, intr_safe)
     if not fast: mu.hook_add(UC_HOOK_BLOCK, block)
     lim = {"timeout": int(FAST_LIMIT * 1e6)} if fast else {}
@@ -517,9 +551,9 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             driver(mu, load, st, err, (cs + load) * 16 + ip)
             raise StopIteration
         t_start = time.time()
-        mu.emu_start((cs + load) * 16 + ip, 0x10FFFF, **lim)
+        mu.emu_start((cs + load) * 16 + ip, _until, **lim)
         while st.get("again") and st["exit"] is None and not err:
-            st["again"] = False; mu.emu_start(R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP), 0x10FFFF, **lim)
+            st["again"] = False; mu.emu_start(R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP), _until, **lim)
         if fast and st["exit"] is None and not err and time.time() - t_start >= FAST_LIMIT * 0.9:
             err.append(RuntimeError("time limit at %05x; console so far: %r" % (R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP) - load * 16, bytes(st["console"])[-400:])))
         if st.get("resume") and st["exit"] is None and not err:
