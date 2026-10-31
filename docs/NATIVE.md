@@ -269,6 +269,68 @@ several kinds (they want hand-written structs or variants chosen by a person), a
 Unicorn or Capstone's Python bindings. The engine is worth running on every module before it is
 moved by hand: what it translates is gated and done, and its refusal list is the hand-port's to-do.
 
+## Step 5 (now first): the L2 core and the C back end -- `native/l2`
+
+Logan, 2026-10-31: "All of it needs to be C++." The translator's core moves first: the L2 tree, and the
+C back end on it, so decompile -> C is native end to end (the decompiler already builds L2 in C++,
+PrintL2). `native/l2` (CMake + Ninja, VS 18 toolset) builds two static libraries and one DLL:
+
+- **`l2core`** -- the L2 core (`src/value.hpp`, `src/json.hpp`, `src/l2.hpp`): what the translator back
+  ends (C++03, C++17, Java, C#) and the porting engine's lowering sit on;
+- **`l2c`** -- the C back end on it (codebreaker/translate/backends/c.py);
+- **`cbl2.dll`** -- the C interface (`include/l2api.h`: `l2_call(fn, json_args) -> json_result`), loaded by
+  codebreaker/translate/native_l2.py through ctypes.
+
+    (vcvars64)  cmake -S native/l2 -B native/l2/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                cmake --build native/l2/build && ctest --test-dir native/l2/build
+
+### The core's C++ API (for the back ends and the porting engine)
+
+`py::V` (value.hpp) is a value with Python's semantics, the material an L2 document and the C back end's
+facts are made of: None, bool, int (to 2**64-1), float, str (UTF-8), list, tuple, dict (any key, insertion
+order kept, a key set twice keeps its first place), set. Containers are shared -- copying a V copies a
+reference -- so a dict is one object wherever it is held, and `v.id()` is Python's id(). Access as the
+Python reads: `d.get("k")` (None when absent), `d.at("k")` (throws `py::PyError` "KeyError"), `d.has`,
+`d.set`, `d.setdefault`, `v.seq()`, `py::truthy`, `py::eq` (Python's ==: True == 1), `py::lt` (sorted's
+order), `py::repr`. Errors are `py::PyError{type, message}` with Python's exception name.
+
+`py::json_parse(text)` / `py::json_dump(v)` (json.hpp) read and write JSON exactly as Python's json.loads
+/ json.dumps with its defaults (", " and ": ", ensure_ascii, a float as its repr, NaN/Infinity, a lone
+surrogate kept); `json_tagged` is the shim's form (tuples, sets and dicts of other keys tagged).
+
+`l2.hpp` is ir.py + l2.py:
+
+    l2::NodeP n = l2::from_json(doc);       // as l2.from_json: same slots kept, same KeyError/TypeError
+    py::V d = l2::to_json(*n);              // as l2.to_json: keys in ir.py's slot order, empty lists left
+                                            // out where ir.py leaves them out
+    py::V same = l2::roundtrip(doc);        // to_json(from_json(doc))
+    l2::Schema s(py::json_parse(schema_text));  s.valid(doc, &why);    // as l2.validate (draft 2020-12)
+
+A `l2::Node` has its class (`n->kind()`: the ir class name; `l2::node_class(name)` gives every slot in
+ir.py's order and the child fields walk() follows -- every node of ir.py, the C#, clang and Python kits'
+optional slots included: Unit.lang/target, ClassDecl.tparams/layout, TypeParam, Property ...), its place
+(`line`, `col`, `origin`) and its slots by name (`n->slot("cond")`, `n->find("x")`). A slot is an
+`l2::Item`: another Node, a list of Nodes, a `l2::Type`, a list of Types, a `l2::Sym`, or a raw value (a
+string, a number, a dict such as origin or Unit.target), decided as l2.from_json decides it. `l2::Type`
+holds each kind's fields (prim/class/typevar/wildcard/array/ptr/selector/fn/fnptr/record, the
+binary-facing ones of L2_BINARY_TYPES.md), `l2::Sym` a symbol's (kind, name, owner, static, type, params,
+ret, varargs, refs, flags). From Python: `native_l2.roundtrip_text(doc)` (= json.dumps(l2.to_json(
+l2.from_json(doc)))) and `native_l2.validate(doc)` -> (valid, why).
+
+**The core's gate** (state/work/native-l2/l2gate.py): every L2 document recorded from the decompiler on
+the gate modules (the 16-bit set, the 32-bit set, the PowerPC module) and every one the translator kits'
+tests made or read (`pytest tests/translate`, recorded at l2.from_json / to_json / validate):
+
+| documents | round trip byte-identical | schema verdict the same |
+|---|---|---|
+| 6,601 decompiler (unique) | 6,601 / 6,601 | 330 / 330 (every 20th; all 46 of lzexpand earlier) |
+| 43 translator kits | 43 / 43 | 43 / 43 |
+
+Validation: jsonschema took 155.6 s for the 332 sampled documents, the native check 5.4 s (x29). The
+round trip is about even through the shim (its JSON both ways dominates); in C++, between C++ callers,
+there is no JSON at all. tests/translate/test_native_l2_core.py holds both cores to each other on
+documents of every kind; native/l2's CTest (`l2_tests`) holds the core to Python's json, str and repr.
+
 ## The rest, in measured-cost order
 
 Each is measured again at its start (a profile of the slowest real job it serves) before the
