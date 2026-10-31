@@ -37,6 +37,7 @@ from codebreaker.java import twophase
 REV = 11
 TIMEOUT = 60
 _STEP = 180             # seconds any one compile or link may take
+CXX_STD = 'c++03'       # the dialect the program and harnesses compile as (c++17 for the C++17 back end)
 
 # Java primitive -> (C++ type, inputs). Inputs are the same on both sides, written as literals.
 _INPUTS = {
@@ -500,7 +501,7 @@ def _compile(cxx, cpp_dir, unit, obj, prefix):
         return ''
     tmp = '%s.%d.tmp' % (obj, os.getpid())
     first = ['-include', prefix] if prefix else []
-    r = subprocess.run([cxx, '-std=c++03', '-w', '-O0', '-iquote', cpp_dir] + first + ['-c', unit, '-o', tmp],
+    r = subprocess.run([cxx, '-std=' + CXX_STD, '-w', '-O0', '-iquote', cpp_dir] + first + ['-c', unit, '-o', tmp],
                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=_STEP)
     if r.returncode != 0:
         if os.path.exists(tmp):

@@ -1118,7 +1118,13 @@ def _convert(java_dir, out_dir, value_types=None, ledger=None, write_report=True
     # the console's fixes to the game's own logic, made on the tree before it is written (by shape, so no
     # printing of the C++ hides a site): sound routed to XACT, the applet ping, the render budget and NaN
     _patched = _PROJECT.ir_patches(_units, platform)
-    tree = _cpp03.Bodies(_ctx, _units)
+    if std_version.year >= 2017:                     # the C++17 back end (backends/cpp17_java.py): its own idioms
+        from codebreaker.translate.backends import cpp17_java as _cpp17
+        tree = _cpp17.Bodies(_ctx, _units)
+    else:                                            # modern Java lowered to what C++03 can say (desugar.py)
+        from codebreaker.translate import desugar as _desugar
+        _desugar.run(_units)
+        tree = _cpp03.Bodies(_ctx, _units)
     emit_source.TREE_BODIES = tree
     _prog('[translate] the IR front end lowered %d classes' % len(tree.decls))
 

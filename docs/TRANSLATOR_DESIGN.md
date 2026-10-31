@@ -325,6 +325,34 @@ number of working pairs.
    sequences the operands into temporaries); without it every world differed from Java's for the same
    seed, on the 360 as well. Still to do: the C++17 back end proper, Boehm GC, modern Java front-end
    features.)
+   (Progress 2026-10-31: **the C++17 back end proper for Java**, `translate/backends/cpp17_java.py` (beside the Python front end's `cpp17.py`, on its own runtime: to be one back end), two ways in.
+   *Inside the transpiler* (`convert(..., cpp_std='C++17')`): cpp17.Bodies, cpp03's Writer with the C++17
+   forms -- a for-each over a container as a range-for, a switch expression as an immediately invoked
+   lambda, `auto` where the initialiser spells the type, nullptr against pointers (the runtime's value
+   types keep their C++03 null: `JavaString != nullptr` has no operator) -- cpp03's faithful form
+   everywhere else. *Whole programs from L2* (`cpp17.Program`, on `translate/runtime/cpp17/jrt.hpp`):
+   declarations and bodies; references are `std::shared_ptr` (reference counting instead of Boehm,
+   which is a download: the classes whose fields can form a cycle are listed at the top of the output,
+   the place a collector is needed); records and final classes that never hand `this` out get real
+   constructors (`std::make_shared<Point>(x, y)`), the rest two-phase construction as the JVM does it;
+   lambdas and method references are C++ lambdas held by the interface (`jrt::fn<I>`, `[=]` captures,
+   `this` held strongly); for-each a range-for (`jrt::each<T>`); `for (Map.Entry e : m.entrySet())`
+   that only reads the entry a structured binding; switch expressions immediately invoked lambdas;
+   static fields `static inline` with Java's lazy class initialisation; erased generics with checked
+   casts back; java.util.Optional on std::optional; lazy streams; Java's own HashMap table so iteration
+   order is Java's (the judge found HashMap.merge inserting at the bin's head). *Modern Java in the
+   front end*: records (their implicit members, as ObjectMethods defines them), instanceof patterns,
+   the anonymous class's supertype; `translate/desugar.py` lowers for-each, switch expressions,
+   switches on strings and patterns for the back ends that cannot say them (cpp03, C). *Judged*
+   (`translate/javajudge.py`): Minecraft Alpha through the transpiler on both back ends, 161 classes
+   alike and 0 different on each, the same classes (297 run nothing comparable); five modern programs
+   written for this (tests/translate/fixtures/java_modern: records, sealed interfaces, switch
+   expressions, patterns, generics, lambdas, method references, streams, collectors, Optional,
+   exceptions, maps), each with a probe harness generated from L2 and translated with the program:
+   all five alike as whole C++17 programs (37 methods, 635 cases, every main's output); through the
+   transpiler all five are refused on both back ends -- its declaration front end (parse.py) and the
+   2010 runtime do not read records, bounded generics or the newer library. Minecraft's MathHelper and
+   MCHashTable as whole programs: alike. Still to do: the transpiler's declarations from L2, Boehm.)
 5. **C and C++ in (clang), Java out.** The pointer analysis and the emulated memory; the Java back
    end; the C library in Java. *Exit:* a C corpus and a C++ corpus judged as Java; Java -> C++ -> Java
    round trips judged.
@@ -332,6 +360,15 @@ number of working pairs.
    161 idiomatic, 23 faithful -- and 3 refused, none divergent; C++ corpus 7 of 9 equivalent, the 2
    refused the ones meant to be; the Java -> C++ -> Java round trip equivalent.)
 6. **C out.** The C back end. *Exit:* the Java corpus judged as C.
+   (Progress 2026-10-31: `translate/backends/c_java.py`, beside the decompiler's `backends/c.py`
+   (untouched): a whole Java program as C11 on `translate/runtime/c` (jrt.h, jrt.c). A class is a
+   struct starting with its base's; virtual methods a table whose prefix is each base's; interfaces
+   through per-class itabs; lambdas and method references closure records; X_init/X_new two-phase
+   construction; setjmp/longjmp exceptions (a return or jump out of a try pops its handler, locals
+   volatile); Java's HashMap order. Memory: nothing is freed while the program runs -- a collector or
+   reference counting is still to do here. Compiled with clang, judged beside the JVM: Shapes,
+   Generics, Bank and TextStats alike (29 methods, 510 cases, every main); Streams refused (no streams
+   in the C runtime yet); Minecraft's MathHelper and MCHashTable alike.)
 7. **C# in and out.** Roslyn front end, C# back end, the .NET adapter in the judge.
    (Progress 2026-10-31: the kit is in. Front end `translate/frontends/csharp`: CsTreeDump.cs, built
    by the installed SDK's own csc.dll against its Microsoft.CodeAnalysis assemblies by path -- no
