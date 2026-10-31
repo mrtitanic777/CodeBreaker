@@ -169,6 +169,11 @@ def digest(read):
     from codebreaker.knowledge import store
     platform, kind, key = split(read)
     kb = store.open()
+    if hasattr(kb, "digest"):                       # (the C++ base: its own answer, once the kind is fresh)
+        if platform != "bodies" and (platform, kind) not in _FRESH:
+            _fresh(platform, kind)
+            _FRESH.add((platform, kind))
+        return kb.digest(read)
     if platform == "bodies":
         if kind == "name":
             got = kb.name(key, record=False)

@@ -38,6 +38,10 @@ The size of it all is looked after the way base/cache.py looks after the cache's
 
 Facts a person gives -- a function's C edited by hand -- are made by the step "given" and are
 never dropped by either rule.
+
+The C++ fact store (native/engine, CB_NATIVE_ENGINE: engine/native_engine.py) keeps the same file
+in the same schema; a database opened while it is on is its, and everything here answers through
+it -- Database below is the Python one it replaces, until the next milestone.
 """
 import hashlib
 import json
@@ -124,8 +128,19 @@ class Row(object):
         return self.step == GIVEN
 
 
+def _native():
+    from codebreaker.engine import native_engine
+    return native_engine.enabled()
+
+
 class Database(object):
     """The facts of one binary (see the module's text)."""
+
+    def __new__(cls, path):
+        if cls is Database and _native():
+            from codebreaker.engine import native_engine
+            return native_engine.Database(path)
+        return object.__new__(cls)
 
     def __init__(self, path):
         self.path = path
@@ -259,6 +274,9 @@ _SHA = {}                       # (path, size, mtime) -> SHA-256, of this proces
 
 
 def sha(path):
+    if _native():
+        from codebreaker.engine import native_engine
+        return native_engine.sha(path)
     st = os.stat(path)
     seen = (os.path.normcase(os.path.abspath(path)), st.st_size, st.st_mtime_ns)
     got = _SHA.get(seen)
@@ -326,6 +344,9 @@ def databases(folder=None):
     knowledge base beside them, knowledge.sqlite: it holds what was learned and given by hand,
     which nothing would make again; the cap never deletes it.)"""
     folder = folder or root()
+    if _native():
+        from codebreaker.engine import native_engine
+        return native_engine.databases(folder)
     out = []
     for n in (os.listdir(folder) if os.path.isdir(folder) else ()):
         if n.endswith(".sqlite") and n != "knowledge.sqlite":
@@ -343,6 +364,9 @@ def hold(cap=None, folder=None):
     never one open in this process (and of one holding the function store's verdicts only its
     facts). -> [path gone or emptied of facts]"""
     cap = max_bytes() if cap is None else cap
+    if _native():
+        from codebreaker.engine import native_engine
+        return native_engine.hold(cap, folder or root())
     dbs = databases(folder)
     total = sum(s for _p, s, _t in dbs)
     gone = []

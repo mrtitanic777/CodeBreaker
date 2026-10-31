@@ -37,8 +37,17 @@ Older spellings are read as the words now (verdict(), klass(), match()): a store
 written before keeps meaning what it meant. "equivalent" is the judge's word for behaving alike
 and nothing else: exact/'s byte ledger (identical, differs, "equivalent" up to another compiler
 state's habits) is a ledger of bytes, not a verdict, and keeps its own words.
+
+The vocabulary is also C++ (native/engine/verdicts.cc: the function store's classes are worked out
+there); with CB_NATIVE_ENGINE on, verdict(), klass(), match() and classify() answer from it. The
+tables below are the words themselves, which the C++ is held to (tests/test_verdicts.py).
 """
 import collections
+
+
+def _native():
+    from codebreaker.engine import native_engine
+    return native_engine.enabled()
 
 # ---- 1. what a judge says ------------------------------------------------------------------------
 EQUIVALENT = "equivalent"
@@ -76,6 +85,9 @@ def verdict(word):
     stays itself (classify() counts it as no-source)."""
     if word is None:
         return None
+    if isinstance(word, str) and _native():
+        from codebreaker.engine import native_engine
+        return native_engine.verdicts_call("verdict", word)[0]
     return OLD.get(word, word)
 
 
@@ -129,6 +141,9 @@ def klass(word):
     """A class as it is now: its TITLE or LABEL, or an older spelling, read back."""
     if word is None:
         return None
+    if isinstance(word, str) and _native():
+        from codebreaker.engine import native_engine
+        return native_engine.verdicts_call("klass", word)[0]
     w = word.strip()
     if w in TITLE:
         return w
@@ -140,6 +155,10 @@ def klass(word):
 
 def classify(word, limits=""):
     """(class, weak reasons) for one verdict and its limits."""
+    if (word is None or isinstance(word, str)) and isinstance(limits or "", str) and _native():
+        from codebreaker.engine import native_engine
+        got = native_engine.verdicts_call("classify", word, limits or "")
+        return got[0], got[1:]
     v = verdict(word)
     codes = [c for c in (limits or "").split(",") if c]
     weak = [c for c in codes if c in WEAK_LIMITS]
@@ -166,6 +185,9 @@ def match(word):
     """A byte comparison's word as it is now (an older spelling mapped)."""
     if word is None:
         return None
+    if isinstance(word, str) and _native():
+        from codebreaker.engine import native_engine
+        return native_engine.verdicts_call("match", word)[0]
     return MATCH_OLD.get(word, word)
 
 
