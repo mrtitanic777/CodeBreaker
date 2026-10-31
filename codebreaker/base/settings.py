@@ -123,6 +123,26 @@ def tool(key, name=None):
     return shutil.which(name or key)
 
 
+def dosbox_x(require=False):
+    """The DOSBox-X emulator path (settings: dosbox_x), used ONLY for the optional period-compiler
+    byte-match spot-check -- the `match`, `score16`, `build16`, `vxd masm`, `ne-asm`, `repair
+    --truth`, `invert` and `exact` lanes. The routine paths (`sweep`, `build`, `driver-build`,
+    the native behaviour gate) never ask for it and so never spawn it.
+
+    Set CB_NO_DOSBOX=1 to forbid every DOSBox launch: a routine run then provably spawns none,
+    and the on-demand byte-match lanes refuse with a clear message instead of silently running
+    the emulator. With it set, this returns "" (a lane that degrades gracefully reports "not set
+    up") or, with require=True, raises so an explicitly-asked byte-match says why it stopped."""
+    if os.environ.get("CB_NO_DOSBOX"):
+        if require:
+            raise RuntimeError(
+                "DOSBox is disabled (CB_NO_DOSBOX=1): the optional period-compiler byte-match "
+                "cannot run. Unset CB_NO_DOSBOX to allow the spot-check (the native behaviour "
+                "gate does not need it).")
+        return ""
+    return get("dosbox_x")
+
+
 def corpora():
     """{name: folder} of every product's original binaries: the "corpora" setting, and the
     single "corpus" under the name in "target" when that name is not listed there."""

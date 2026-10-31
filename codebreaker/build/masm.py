@@ -27,8 +27,18 @@ import zlib
 
 from codebreaker.base import cache
 from codebreaker.base import settings as _settings
+from codebreaker.build import native_dos
 DBX = _settings.get("dosbox_x") or ""                          # settings.json: dosbox_x
 MASMROOT = _settings.get("masm") or ""                         # settings.json: masm (BIN, INC, LIB)
+
+
+def _dbx():
+    """The DOSBox-X path for an asm byte-match re-assemble, read at call time so CB_NO_DOSBOX is
+    honoured (this is a byte-match spot-check path, never a routine sweep/build path)."""
+    dbx = _settings.dosbox_x(require=True)                      # raises when CB_NO_DOSBOX forbids it
+    if not dbx or not os.path.exists(dbx):
+        raise RuntimeError("dosbox-x not found: %s (set it: CodeBreaker config dosbox_x <path>)" % dbx)
+    return dbx
 
 # DOSBox CPU core. `normal` is the safe interpreter; `dynamic` JITs the emulated x86
 # (much faster on cache MISSES). MASM output is deterministic, so a correct core yields
@@ -86,14 +96,22 @@ def _wait_dosbox(proc, work, timeout, aborted):
 
 
 def assemble(asm_src, stem="t", timeout=180, masmroot=None):
-    """Assemble asm_src with MASM under DOSBox-X. Returns {obj, lst, log, work}.
+    """Assemble asm_src with MASM and return {obj, lst, log, work}.
 
-    masmroot selects the assembler: the default (MASM 4.00, 16-bit, proven
-    byte-exact for the NE core) or an override such as the vendored MASM 5.10A
-    (32-bit `.386`/USE32) that the PE path in asmrecon32 needs."""
+    By default this runs on CodeBreaker's OWN in-process emulator (build/native_dos.py) -- proven
+    byte-identical to DOSBox for MASM, ~20x faster -- and falls back to DOSBox-X automatically if
+    the native run cannot complete. CB_NATIVE_DOS forces one or the other (see native_dos.py).
+
+    masmroot selects the assembler: the default (MASM 4.00, 16-bit, proven byte-exact for the NE
+    core) or an override such as the vendored MASM 5.10A (32-bit `.386`/USE32) that the PE path
+    in asmrecon32 needs."""
     masm = masmroot or MASMROOT
-    if not os.path.exists(DBX):
-        raise RuntimeError("dosbox-x not found: %s (set it: CodeBreaker config dosbox_x <path>)" % DBX)
+    if native_dos.enabled("masm"):
+        try:
+            return native_dos.assemble(asm_src, stem=stem, masmroot=masm)
+        except native_dos.NativeDosError:
+            pass                                      # the native runner could not; fall back to DOSBox
+    dbx = _dbx()
     if not os.path.exists(os.path.join(masm, "BIN", "MASM.EXE")):
         raise RuntimeError("MASM.EXE not found under %s\\BIN (set it: CodeBreaker config masm <path>)" % masm)
     work = tempfile.mkdtemp(prefix="masm_")
@@ -110,7 +128,7 @@ def assemble(asm_src, stem="t", timeout=180, masmroot=None):
         aborted = lambda: False
     except Exception:
         aborted = lambda: False
-    proc = subprocess.Popen([DBX, "-conf", conf, "-nolog"], env=env,
+    proc = subprocess.Popen([dbx, "-conf", conf, "-nolog"], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if _wait_dosbox(proc, work, timeout, aborted) == "aborted":
         return {"work": work, "aborted": True}
@@ -159,7 +177,7 @@ def _get_pool(masmroot):
     with _POOLS_LOCK:
         p = _POOLS.get(masmroot)
         if p is None:
-            p = dosworker.WorkerPool(masmroot, DBX, POOL_MAX)
+            p = dosworker.WorkerPool(masmroot, _dbx(), POOL_MAX)
             _POOLS[masmroot] = p
         return p
 
@@ -250,12 +268,18 @@ def assemble_many(items, timeout=None, masmroot=None):
 
 
 def _assemble_uncached(items, timeout=None, masmroot=None):
-    """Assemble (stem, asm_src) pairs WITHOUT the cache -- the real MASM run. By default
-    leases a WARM DOSBox worker (no re-boot); falls back to a fresh boot if the pool is
+    """Assemble (stem, asm_src) pairs WITHOUT the cache -- the real MASM run. By default this
+    runs on CodeBreaker's OWN in-process emulator (native_dos), falling the whole call back to
+    DOSBox if the native runner cannot complete; CB_NATIVE_DOS forces one or the other. The
+    DOSBox path leases a WARM worker (no re-boot) and falls back to a fresh boot if the pool is
     off/unavailable. Stems must be unique and DOS 8.3-safe (callers use F0..FN)."""
     masm = masmroot or MASMROOT
-    if not os.path.exists(DBX):
-        raise RuntimeError("dosbox-x not found: %s (set it: CodeBreaker config dosbox_x <path>)" % DBX)
+    if native_dos.enabled("masm"):
+        try:
+            return native_dos.assemble_many(items, masmroot=masm)
+        except native_dos.NativeDosError:
+            pass                                      # the native runner could not; fall back to DOSBox
+    dbx = _dbx()                                      # honours CB_NO_DOSBOX; also used by the cold fallback
     if not os.path.exists(os.path.join(masm, "BIN", "MASM.EXE")):
         raise RuntimeError("MASM.EXE not found under %s\\BIN (set it: CodeBreaker config masm <path>)" % masm)
 
@@ -323,7 +347,7 @@ def _assemble_uncached(items, timeout=None, masmroot=None):
         aborted = lambda: False
     except Exception:
         aborted = lambda: False
-    proc = subprocess.Popen([DBX, "-conf", conf, "-nolog"], env=env,
+    proc = subprocess.Popen([dbx, "-conf", conf, "-nolog"], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if _wait_dosbox(proc, work, timeout, aborted) == "aborted":
         return {"work": work, "aborted": True}
