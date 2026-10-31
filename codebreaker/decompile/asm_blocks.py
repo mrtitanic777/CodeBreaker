@@ -255,5 +255,8 @@ def _unused(doc):
     used = {(n.get("sym") or {}).get("name") for n in _walk(body) if n.get("node") != "Local" and isinstance(n.get("sym"), dict)}
     text = " ".join(" ".join(n.get("asm") or ()) for n in _walk(body) if n.get("node") == "MachineFragment")
     used |= set(re.findall(r"[A-Za-z_]\w*", text))
+    # (the decompiler's `_x` is x joined with the word above it, a far pointer's halves: the back end
+    # declares it in x's place, so x is used where `_x` is -- SUWIN 8:1704's _pcStack_10c)
+    used |= {n[1:] for n in used if n and n.startswith("_")}
     for lst in [body] + list(_lists(body)):
         lst[:] = [s for s in lst if not (s.get("node") == "Local" and (s.get("sym") or {}).get("name") not in used)]

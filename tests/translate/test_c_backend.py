@@ -973,6 +973,25 @@ def test_moved_struct_fields():
     assert c.arguments_at("*MK_FP(iVar2,piVar1 + 1)", 6) == (["iVar2", "piVar1 + 1"], 24)
     assert c_text._string_literal(b"\x04\x00\x22\x00") is None
 
+def test_inline_asm_block_and_a_label_ending_a_block():
+    """An inline MachineFragment (decompile/asm_blocks.py) written as an _asm block -- the branch
+    once wrote to the old printer's list and failed every function with one -- and a label that ends
+    a block followed by `;` (asm_blocks' label after a then-part: `L_2c1a: }` did not compile)."""
+    frag = {'node': 'MachineFragment', 'reason': 'inline', 'length': 4, 'why': 'INT 21h',
+            'asm': ['mov ax, 0x4405', 'int 0x21', 'L_1:', 'jb L_2']}
+    doc = sixteen([{'node': 'If', 'cond': name('x'), 'then': [
+        frag, {'node': 'Labeled', 'label': 'L_2', 'body': []}]}])
+    text = c.function(doc)
+    assert '_asm {\n      mov ax, 0x4405\n      int 0x21\nL_1:\n      jb L_2\n    }' in text, text
+    assert 'L_2:;\n  }' in text, text
+    # (asm_blocks keeps a local whose joined name `_x` the C uses: the back end declares it in x's place)
+    from codebreaker.decompile import asm_blocks
+    doc = sixteen([local('pcStack_10c', {'kind': 'i16'}), local('iUnused', {'kind': 'i16'}),
+                   {'node': 'ExprStmt', 'expr': {'node': 'Assign', 'target': name('_pcStack_10c'), 'value': lit(0)}}])
+    asm_blocks._unused(doc)
+    assert [s['sym']['name'] for s in doc['body'] if s['node'] == 'Local'] == ['pcStack_10c']
+
+
 def test_heading_declaration_from_l2():
     """The declaration a 16-bit function's heading gives, its argument list left open (build/module
     declares the module's exports with it, Made.declarations): the back end's heading facts, from

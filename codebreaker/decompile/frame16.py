@@ -39,6 +39,24 @@ import capstone.x86 as X
 from codebreaker.decompile import describe
 
 _WIDTH = {1: {"kind": "u8"}, 2: {"kind": "i16"}, 4: {"kind": "i32"}}
+_UNSIGNED = {1: {"kind": "u8"}, 2: {"kind": "u16"}, 3: {"kind": "u16"}, 4: {"kind": "u32"}}   # (3: as the back end writes x._1_3_)
+_PIECE = re.compile(r"_(\d+)_(\d+)_")                # (the decompiler's x._2_2_: 2 bytes of x from byte 2)
+_SIZES = {"u8": 1, "i8": 1, "char": 1, "bool": 1, "u16": 2, "i16": 2, "u32": 4, "i32": 4, "ptr": 2}
+
+
+def _bytes(t):
+    """A type's size in bytes (an array's elements times their size; a far pointer 4; xunknownN N),
+    or 0 where it is not known."""
+    t = t or {}
+    k = t.get("kind")
+    if k == "array":
+        return _bytes(t.get("elem")) * int(t.get("count") or 0)
+    if k == "ptr":
+        return 4 if t.get("space") == "far" else 2
+    if k == "class":
+        m = re.fullmatch(r"\w*?(\d+)", t.get("name") or "")
+        return int(m.group(1)) if m else 0
+    return _SIZES.get(k, 0)
 
 
 def _walk(n):
@@ -126,19 +144,67 @@ def lay_out(doc, code, start, end):
             if b <= p < b + n and not (p == b and len([q for q in place.values() if b <= q < b + n]) == 1 and
                                         span.get(b) == n):
                 piece_of[nm] = (b, p - b)
+    # a buffer one of whose pieces holds a far pointer -- declared so, or used so, or the decompiler's
+    # `_x` (x and the word above it, joined: a far pointer's halves) -- is left as it was: the back end
+    # writes a far pointer's __far on a declaration, and inside a cast `*(T __far **)` would lose it
+    # and move two bytes for four (SUWIN 2:410C passed SETUPX.2 a pointer's offset and 0)
+    def _far(t):
+        return isinstance(t, dict) and t.get("kind") == "ptr" and t.get("space") == "far"
+    held = {b for nm, (b, _o) in piece_of.items() if _far(by_name[nm].get("type"))}
+    for n in _walk(body):
+        nm = (n.get("sym") or {}).get("name") if n.get("node") == "Name" else None
+        if nm in piece_of and _far(n.get("type")):
+            held.add(piece_of[nm][0])
+        elif nm and nm.startswith("_") and nm[1:] in piece_of and nm not in by_name:
+            held.add(piece_of[nm[1:]][0])
+    # In a frame with an array local the buffers are left too, as is one another local overlaps: the
+    # back end lays such a frame out itself (backends/c._buffer_fields, after this pass was written):
+    # an array the function reads past the end of made to reach over what it reads, the words a
+    # callee fills above an array whose address is passed on read as its fields, two buffers or more
+    # kept in the frame's order and distances as one packed structure (codebreaker_frame). Cut into
+    # pieces under it, the bytes were no longer shared -- SUWIN 4:503E's axStack_52 + 0x3c reached
+    # over the pieces at [bp-30h], VERX's VERQUERYVALUE lost the words its callee fills -- or C 8 at
+    # /Ox placed them elsewhere (SUWIN 6:6562, which matched byte for byte, no longer did).
+    for nm, p in place.items():
+        t = by_name[nm].get("type") or {}
+        size = _bytes(t) or 2
+        for b, n in buffers.items():
+            if not any(v[0] == b for v in piece_of.values()):
+                continue
+            if t.get("kind") == "array" or (nm not in piece_of and p < b + n and b < p + size and p != b):
+                held.add(b)
+    for nm in [nm for nm, (b, _o) in piece_of.items() if b in held]:
+        del piece_of[nm]
+    if held:
+        said.append("a buffer left as it was: a far pointer in it, an array in the frame, or a local over it (%s)" % ", ".join(
+            "[bp%d]" % b for b in sorted(held)))
     # rewrite: pieces read through one array; scalars typed by their width
     names = {b: "local_%x" % -b for b in buffers if any(v[0] == b for v in piece_of.values())}
+
+    def piece(b, off, width):
+        arr = {"node": "Name", "sym": {"kind": "local", "name": names[b]},
+               "type": {"kind": "array", "elem": {"kind": "u8"}, "count": buffers[b]}}
+        addr = {"node": "Binary", "op": "+", "left": arr, "right": {"node": "Lit", "value": off, "text": str(off)}} \
+            if off else arr
+        cast = {"node": "Cast", "type": {"kind": "ptr", "space": "near", "seg": "ss", "to": width}, "x": addr}
+        return {"node": "Unary", "op": "*", "x": cast, "type": width}
+
+    for n in list(_walk(body)):                          # (a piece of one first: x._2_2_, 2 bytes at x + 2 --
+        if n.get("node") != "Select":                    # written `->_2_2_` of the cast, it did not compile)
+            continue
+        obj = n.get("obj") or {}
+        m = _PIECE.fullmatch((n.get("sym") or {}).get("name") or "")
+        nm = (obj.get("sym") or {}).get("name")
+        if m and obj.get("node") == "Name" and nm in piece_of and int(m.group(2)) in _UNSIGNED:
+            b, off = piece_of[nm]
+            n.clear()
+            n.update(piece(b, off + int(m.group(1)), dict(_UNSIGNED[int(m.group(2))])))
     for nm, (b, off) in piece_of.items():
-        width = by_name[nm].get("type")
+        width = by_name[nm].get("type")                  # (at its declared type)
         for n in _walk(body):
             if n.get("node") == "Name" and (n.get("sym") or {}).get("name") == nm:
-                arr = {"node": "Name", "sym": {"kind": "local", "name": names[b]},
-                       "type": {"kind": "array", "elem": {"kind": "u8"}, "count": buffers[b]}}
-                addr = {"node": "Binary", "op": "+", "left": arr, "right": {"node": "Lit", "value": off, "text": str(off)}} \
-                    if off else arr
-                cast = {"node": "Cast", "type": {"kind": "ptr", "space": "near", "seg": "ss", "to": width}, "x": addr}
                 n.clear()
-                n.update({"node": "Unary", "op": "*", "x": cast, "type": width})
+                n.update(piece(b, off, width))
         for n in _walk(body):                            # (and in an _asm block: the array, at the offset)
             if n.get("node") == "MachineFragment":
                 n["asm"] = [re.sub(r"\b%s\b" % re.escape(nm), names[b] + ("[%d]" % off if off else ""), ln)
@@ -149,7 +215,9 @@ def lay_out(doc, code, start, end):
             continue
         w = places.get(p)
         t = by_name[nm].get("type") or {}
-        if w in _WIDTH and (t.get("kind") == "bool" or t.get("kind") == "class"):
+        # (a bool only: a local of the decompiler's unknown type, xunknownN, takes the type its uses
+        # give it in the back end -- `xStack_16`, a pointer, made an int2 was dereferenced, SUWIN 9:0924)
+        if w in _WIDTH and t.get("kind") == "bool":
             by_name[nm]["type"] = dict(_WIDTH[w])
             said.append("%s: %d bytes at [bp%d]" % (nm, w, p))
     # declarations: the frame's, nearest the frame pointer first; the rest as they were, after

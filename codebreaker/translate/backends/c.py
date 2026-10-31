@@ -989,6 +989,9 @@ def _stmts(s):
 def _block(em, stmts):
     for s in _stmts(stmts):
         _stmt(em, s)
+    last = _stmts(stmts)[-1:] or [None]
+    if isinstance(last[0], dict) and last[0].get('node') == 'Labeled' and not _stmts(last[0].get('body')):
+        em.print(';')                            # (a label ends the block: C wants a statement after it -- asm_blocks' "after")
 
 
 def _braced(em, stmts):
