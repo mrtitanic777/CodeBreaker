@@ -184,6 +184,10 @@
     },
     "to": {
      "$ref": "#/$defs/Type"
+    },
+    "ref": {
+     "type": "boolean",
+     "description": "a C++ reference (T&, T&&): a pointer never null nor reseated. Its uses are explicit in the tree as for a pointer (a read is Unary '*', a binding Unary '&'); a C++ back end writes neither"
     }
    },
    "additionalProperties": false
@@ -1181,6 +1185,10 @@
        "type": "null"
       }
      ]
+    },
+    "implicit": {
+     "type": "boolean",
+     "description": "a conversion the source language makes by itself (C's integer promotions, array-to-pointer decay, an upcast): explicit in the tree so every back end sees it, unwritten by a back end of the same language"
     }
    },
    "additionalProperties": false
@@ -1349,6 +1357,10 @@
        "type": "null"
       }
      ]
+    },
+    "layout": {
+     "$ref": "#/$defs/Record",
+     "description": "a C or C++ struct/union whose bytes the source can see: each field's offset and the size, as the source's compiler lays them out for its target (Unit.target)"
     }
    },
    "additionalProperties": false
@@ -4072,6 +4084,34 @@
        "type": "null"
       }
      ]
+    },
+    "target": {
+     "type": "object",
+     "description": "a C/C++ unit: the target its compiler was asked for and the sizes it gave the types whose width is the target's (pointer, long, plain char's sign)",
+     "properties": {
+      "triple": {
+       "type": "string"
+      },
+      "pointer": {
+       "type": "integer"
+      },
+      "long": {
+       "type": "integer"
+      },
+      "wchar": {
+       "type": "integer"
+      },
+      "char_signed": {
+       "type": "boolean"
+      },
+      "language": {
+       "type": "string"
+      },
+      "std": {
+       "type": "string"
+      }
+     },
+     "additionalProperties": false
     }
    },
    "additionalProperties": false

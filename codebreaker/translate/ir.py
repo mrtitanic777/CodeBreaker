@@ -25,7 +25,8 @@ class Type(object):
       'typevar', 'wildcard' (`bound`);
       'array'    `elem`, and info['count'] for a fixed-size array (C);
       and the binary-facing kinds of docs/L2_BINARY_TYPES.md (agreed with the decompiler, 2026-10-19):
-      'ptr'      `elem` what it points at; info: space (SPACES), seg (a near pointer's segment);
+      'ptr'      `elem` what it points at; info: space (SPACES), seg (a near pointer's segment),
+                 ref (True: a C++ reference -- its reads and bindings explicit, as for a pointer);
       'selector' info['of']: what segment it names;
       'fn'       info: conv, distance, pops, loadds, params [{name, type, at}], result {type, at},
                  preserves, variadic;
@@ -186,9 +187,11 @@ def _node(name, slots, fields=None, base=Node):
 # -- declarations
 Module = _node('Module', ['units', 'header'], ['units'])              # a whole program, or one binary's module
 # (header: its declarations as text, where they are not yet a tree -- l2.module, the one module model)
-Unit = _node('Unit', ['path', 'package', 'imports', 'types'], ['types'])
+Unit = _node('Unit', ['path', 'package', 'imports', 'types', 'target'], ['types'])
+# (target: a C/C++ unit's target and the widths its compiler gave pointer, long and plain char -- a dict)
 ClassDecl = _node('ClassDecl', ['name', 'qname', 'kind', 'mods', 'typeparams', 'extends', 'implements',
-                                'members', 'outer'], ['members'])
+                                'members', 'outer', 'layout'], ['members'])
+# (layout: a C/C++ struct or union whose bytes the source can see -- its 'record' Type: offsets, size)
 # (a C struct, a frame, a data segment with a fixed layout is a 'record' Type, beside ClassDecl)     # kind: class interface enum record annotation
 FieldDecl = _node('FieldDecl', ['sym', 'type', 'init', 'mods'], ['init'])
 MethodDecl = _node('MethodDecl', ['sym', 'name', 'kind', 'params', 'ret', 'body', 'mods', 'throws', 'typeparams',
@@ -268,7 +271,8 @@ Binary = _expr('Binary', ['op', 'left', 'right', 'overflow', 'signed'], ['left',
 Concat = _expr('Concat', ['parts'])                      # string concatenation, flattened
 Assign = _expr('Assign', ['op', 'target', 'value', 'overflow'], ['target', 'value'])   # op None, or the compound operator
 Cond = _expr('Cond', ['cond', 'then', 'orelse'])
-Cast = _expr('Cast', ['x', 'overflow'], ['x'])                          # .type is the target type
+Cast = _expr('Cast', ['x', 'overflow', 'implicit'], ['x'])              # .type is the target type
+# (implicit: True for a conversion the source language makes by itself -- C's promotions, array decay)
 InstanceOf = _expr('InstanceOf', ['x', 'test', 'binding'], ['x'])   # test: a Type; binding: a pattern's Local
 ClassLit = _expr('ClassLit', ['of'], [])             # X.class; of: a Type
 Lambda = _expr('Lambda', ['params', 'body'])         # body: an Expr or a Block

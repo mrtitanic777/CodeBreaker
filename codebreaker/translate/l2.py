@@ -53,6 +53,8 @@ def type_json(t):
         d = {'kind': 'ptr', 'space': t.info.get('space', 'flat'), 'to': type_json(t.elem)}
         if 'seg' in t.info:
             d['seg'] = t.info['seg']
+        if t.info.get('ref'):
+            d['ref'] = True
         return d
     if k == 'selector':
         return dict({'kind': 'selector'}, **({'of': t.info['of']} if 'of' in t.info else {}))
@@ -97,7 +99,8 @@ def type_from(d):
     if k == 'array':
         return ir.Type('array', elem=type_from(d['elem']), **({'count': d['count']} if 'count' in d else {}))
     if k == 'ptr':
-        return ir.Type('ptr', elem=type_from(d['to']), space=d['space'], **({'seg': d['seg']} if 'seg' in d else {}))
+        extra = dict((k, d[k]) for k in ('seg', 'ref') if d.get(k) is not None and d.get(k) is not False)
+        return ir.Type('ptr', elem=type_from(d['to']), space=d['space'], **extra)
     if k == 'selector':
         return ir.Type('selector', **({'of': d['of']} if 'of' in d else {}))
     if k == 'fn':
@@ -175,7 +178,7 @@ def to_json(node):
     return d
 
 
-_TYPED = frozenset(('type', 'extends', 'ret', 'elem', 'test', 'of', 'qualifier'))
+_TYPED = frozenset(('type', 'extends', 'ret', 'elem', 'test', 'of', 'qualifier', 'layout'))
 _TYPE_LISTS = frozenset(('implements', 'throws', 'types', 'typeargs'))
 
 
