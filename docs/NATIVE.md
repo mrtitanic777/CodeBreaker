@@ -198,12 +198,10 @@ date by Python's table builders (reads._fresh); what a value IS (facts.encode/de
 JSON, a pickle). An exception a step raises comes out of the C++ run as itself, with its kind
 (a LookupError is still one to the staleness check).
 
-**SQLite.** The repository has no SQLite source, and Python's sqlite3.dll ships without a header.
-The build takes the header and the DLL of an installed SQLite: MSYS2's UCRT64 build by default
-(C:/msys64/ucrt64: sqlite3.h 3.53.4 and libsqlite3-0.dll, which imports only KERNEL32 and the UCRT,
-so MSVC code calls it); `SQLITE_DIR` names another. CMake makes the import library from the DLL's
-exports and copies the DLL beside cbengine.dll. (Vendoring the SQLite amalgamation into native/
-would make the build stand alone; it needs Logan's go-ahead to download.)
+**SQLite.** The SQLite 3.54.1 amalgamation is vendored in native/engine/third_party/sqlite (from
+sqlite.org, its SHA3-256 checked against the one published; public domain; downloaded with Logan's
+go-ahead, 2026-10-31) and compiled into cbengine.dll statically: the build needs nothing outside
+the project and no SQLite DLL is shipped beside it.
 
 **The switch.** `CB_NATIVE_ENGINE` (DEFAULT in native_engine.py; 0 = the Python engine and store).
 It is read when a database, a store or a knowledge base is opened, and the object stays on the side
