@@ -92,7 +92,7 @@ The parser is exec mode (`ast.parse(src)`). `type_comments=True`, `feature_versi
 ## Errors
 
 A file with a syntax error is refused with CPython's line and offset. The 33 error cases in
-`tests/cases/errors.py` all match, for example unclosed brackets, unterminated strings,
+`tests/cases/errors.cases` all match, for example unclosed brackets, unterminated strings,
 missing `:`, bad indentation, invalid targets, f-string errors and bad escapes, and so do
 the `badsyntax_*` files in CPython's `Lib/test`, message text included. pyfront reproduces
 CPython's messages for the common errors only. It does not reproduce every hint that
@@ -112,7 +112,7 @@ there.
 
 ## Tests
 
-`tests/cases/*.py`: 301 grammar cases separated by `#----` lines, covering every expression
+`tests/cases/*.cases`: 301 grammar cases (Python source; not `.py`, so no Python tool trips on the deliberate syntax errors) separated by `#----` lines, covering every expression
 and statement form, f-strings and t-strings, match statements, type parameters, numbers,
 escapes and errors. `tests/cases/*.expected` holds CPython's dump of each case, or
 `ERROR line offset` for a case CPython refuses. The expected files were made once by running

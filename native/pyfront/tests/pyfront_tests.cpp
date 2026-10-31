@@ -1,6 +1,6 @@
 // pyfront_tests -- the grammar cases.
 //
-// tests/cases/NAME.py holds one or more cases separated by a line "#----"; NAME.expected
+// tests/cases/NAME.cases holds one or more cases separated by a line "#----"; NAME.expected
 // holds, for each case in order, one line: CPython 3.14's
 // ast.dump(ast.parse(case), include_attributes=True), or for a case CPython rejects
 // "ERROR <lineno> <offset>".  The expected files were made once with CPython as the oracle
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     int pass = 0, fail = 0;
     std::vector<fs::path> files;
     for (auto& e : fs::directory_iterator(argv[1]))
-        if (e.path().extension() == ".py") files.push_back(e.path());
+        if (e.path().extension() == ".cases") files.push_back(e.path());
     std::sort(files.begin(), files.end());
     for (const fs::path& py : files) {
         fs::path exp = py;
