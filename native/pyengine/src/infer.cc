@@ -102,7 +102,7 @@ void Eval::contribute_param(const std::string& fq, const std::string& name, cons
     if (live() && t.kind == TK::Top && !p.param_poison.count({fq, name}))
         p.param_poison[{fq, name}] = {fn ? fn->qname : "?", t.why()};
     if (!live() || t.kind == TK::Bottom || t.kind == TK::Top || ((t.kind == TK::Tuple || t.kind == TK::Opt) && has_top(t))) return;
-    Fn* f = *p.fns.get(fq);
+    Fn* f = p.any_fn(fq);
     auto& ps = p.params[fq];
     T old = ps.count(name) ? ps[name] : BOTTOM();
     T nw;
@@ -212,17 +212,40 @@ Eval& Eval::run() {
         else t = p.param_type(f, all[i]);
         state.set(all[i], t);
     }
+    bool gen = p.extended && f->generator;
     for (const AnyNode& n : walk(AnyNode(node))) {
         const A::Expr* e = n.expr();
         if (e && (e->kind == ExprKind::Yield || e->kind == ExprKind::YieldFrom)) {
-            issue(n, "dynamic", "generator");
+            if (!gen) issue(n, "dynamic", "generator");
+            else if (e->kind == ExprKind::YieldFrom) issue(n, "syntax", "yield from");
             break;
         }
     }
     SP out = block(node->body, state);
+    if (gen) {   // (new) calling it makes an iterator over what it yields (consumed where it is made)
+        if (returns_value) issue(node, "syntax", "a generator that returns a value");
+        returns_value = true;
+        ret_t = iter_of(yield_t, MEM);
+        out.reset();
+    }
     if (out && returns_value) ret_t = p.join(ret_t, NONE());
     if (!returns_value) ret_t = NONE();
     if (ret_t.kind == TK::Int && !ret_t.fits_i64()) ret_t = fit(node, ret_t, "return value");
+    if (live() && f->has_nested) {   // (new) what the nested functions see of this one's names
+        for (auto& [k, v] : state.v)
+            if (!bound_types.count(k)) bound_types.emplace(k, v);
+        auto& cv = p.closure_vars[f->qname];
+        for (auto& [k, v] : bound_types) {
+            if (v.kind == TK::Bottom) continue;
+            auto it = cv.find(k);
+            T old = it == cv.end() ? BOTTOM() : it->second;
+            T nw = p.join(old, v);
+            if (!(nw == old)) {
+                cv[k] = nw;
+                p.touch("cv:" + f->qname);
+            }
+        }
+    }
     if (live()) {
         const std::string& fq = f->qname;
         T old = p.returns.count(fq) ? p.returns[fq] : BOTTOM();
@@ -346,8 +369,34 @@ SP Eval::stmt(const A::Stmt* st, const State& state) {
     }
 }
 
-SP Eval::s_FunctionDef(const A::FunctionDef* st, const State& state) {
-    issue(st, "syntax", "nested function");
+SP Eval::s_FunctionDef(const A::FunctionDef* st, const State& state0) {
+    auto it = p.nested_by_node.find(st);
+    if (!p.extended || it == p.nested_by_node.end()) {
+        issue(st, "syntax", "nested function");
+        return state0;
+    }
+    // (new) a closure: its name holds it; its defaults are evaluated here, as Python does
+    Fn* nf = it->second;
+    for (auto& [name, d] : nf->defaults) {
+        T t = (d->kind == ExprKind::List || d->kind == ExprKind::Dict || d->kind == ExprKind::Set || d->kind == ExprKind::Call)
+                  ? top("mutable default") : ev(d, state0);
+        if (!live()) continue;
+        std::string key = nf->qname + "\x1f" + name;
+        T old = p.default_types.count(key) ? p.default_types[key] : BOTTOM();
+        T nw = p.join(old, t);
+        if (!(nw == old)) {
+            p.default_types[key] = nw;
+            p.touch("d");
+        }
+    }
+    State state = state0;
+    T ct = named(TK::Closure, nf->qname);
+    state.set(st->name, ct);
+    if (fn && fn->has_nested && live()) {
+        auto bt = bound_types.find(st->name);
+        if (bt == bound_types.end()) bound_types.emplace(st->name, ct);
+        else bt->second = p.join(bt->second, ct);
+    }
     return state;
 }
 
@@ -881,6 +930,11 @@ State Eval::assign(const A::Expr* tgt, const T& t0, State state, const A::Expr* 
     T t = t0;
     if (auto* nm = as<pyfront::Name>(tgt)) {
         state.set(nm->id, t);
+        if (fn && fn->has_nested && live()) {
+            auto bt = bound_types.find(nm->id);
+            if (bt == bound_types.end()) bound_types.emplace(nm->id, t);
+            else bt->second = p.join(bt->second, t);
+        }
         Res r("local");
         note(tgt, t, &r);
         if (t.kind == TK::List || t.kind == TK::Dict || t.kind == TK::Set) p.hint(t.site, nm->id);
@@ -1181,7 +1235,7 @@ std::string Eval::res_fn(const A::Expr* call) {
         auto it = res_quiet.find(call);
         if (it != res_quiet.end()) r = &it->second;
     }
-    if (r && (r->k == "fn" || r->k == "method")) return r->A();
+    if (r && (r->k == "fn" || r->k == "method") && p.fns.has(r->A())) return r->A();
     return "";
 }
 
@@ -1296,6 +1350,8 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
             const std::string& name = cast<pyfront::Name>(node)->id;
             if (const T* t = state.get(name)) return TR(*t, Res("local"));
             if (locals.count(name)) return TR(BOTTOM(), Res("local"));
+            for (Fn* up = fn ? fn->parent : nullptr; up; up = up->parent)   // (new) a name of an enclosing function
+                if (p.fn_locals(up).count(name)) return TR(p.closure_var(up, name), Res("free", up->qname));
             Ref r = lookup(name);
             if (!r) return issue(node, "unresolved", name);
             return TR(ref_type(node, r), ref_res(r));
@@ -1534,9 +1590,11 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
             ev(cast<Starred>(node)->value, state);
             return issue(node, "syntax", "starred");
         case ExprKind::Await: return issue(node, "dynamic", "await");
-        case ExprKind::Yield:
-            if (cast<pyfront::Yield>(node)->value) ev(cast<pyfront::Yield>(node)->value, state);
-            return BOTTOM();
+        case ExprKind::Yield: {
+            T yt = cast<pyfront::Yield>(node)->value ? ev(cast<pyfront::Yield>(node)->value, state) : NONE();
+            if (p.extended && fn && fn->generator && live()) yield_t = p.join(yield_t, fit(node, yt, "yielded value"));
+            return p.extended && fn && fn->generator ? NONE() : BOTTOM();
+        }
         case ExprKind::YieldFrom:
             if (cast<YieldFrom>(node)->value) ev(cast<YieldFrom>(node)->value, state);
             return BOTTOM();
@@ -2017,6 +2075,13 @@ TR Eval::call_value(const A::Call* n, const T& ft, const std::vector<std::option
         if (ft.name().rfind("std:", 0) == 0) return std_call(n, ft.name().substr(4), args, kw, state);
         return issue(n, "extern", ft.name().substr(0, ft.name().find('.')));
     }
+    if (k == TK::Closure) {   // (new) a nested function, called where it is in scope
+        Fn* nf = p.nested.has(ft.name()) ? *p.nested.get(ft.name()) : nullptr;
+        if (!nf) return issue(n, "unresolved", ft.name());
+        TR r = call_fn(n, nf, args, kw);
+        r.r = Res("closure", ft.name());
+        return r;
+    }
     return issue(n, "conflict", std::string("calling a ") + kind_name(k));
 }
 
@@ -2036,8 +2101,32 @@ TR Eval::construct(const A::Call* n, const std::string& cq, const std::vector<st
     return TR(named(TK::Inst, cq), Res("ctor", cq));
 }
 
+static std::string sig_of(const T& t) {
+    switch (t.kind) {
+        case TK::Inst: return t.name().substr(t.name().rfind('.') + 1);
+        case TK::Tuple: {
+            std::string s = "tuple(";
+            for (size_t i = 0; i < t.args().size(); i++) s += (i ? "," : "") + sig_of(t.args()[i]);
+            return s + ")";
+        }
+        case TK::Opt: return "optional(" + sig_of(t.args()[0]) + ")";
+        default: return kind_name(t.kind);
+    }
+}
+
 TR Eval::call_fn(const A::Call* n, Fn* f, const std::vector<std::optional<T>>& args, const OMap<std::optional<T>>& kw, bool bound) {
     if (f->kind == "property") return issue(n, "conflict", "calling a property");
+    if (p.demand_enabled && !bound && p.spec_candidates.count(f->qname)) {   // (new) this caller's own copy
+        std::string sig;
+        for (auto& a : args) sig += (sig.empty() ? "" : ",") + (a ? sig_of(*a) : std::string("lambda"));
+        for (auto& [k, v] : kw) sig += (sig.empty() ? "" : ",") + k + "=" + (v ? sig_of(*v) : std::string("lambda"));
+        if (sig.find("bottom") != std::string::npos || sig.find("top") != std::string::npos) return BOTTOM();
+        Fn* c = p.spec_for(f, sig);
+        bind_args(n, c, args, kw, false);
+        T r = p.ret(c->qname);
+        if (r.kind == TK::Top) r = top("calls-refused:" + f->name);
+        return TR(r, Res("fn", c->qname));
+    }
     bind_args(n, f, args, kw, bound);
     std::vector<Fn*> targets = {f};
     if (bound && f->cls) {
@@ -2275,6 +2364,38 @@ int Program::solve(int max_rounds, bool log) {
             reads = nullptr;
         }
         for (auto& [q, f] : fns) {
+            if (crashes.count(q)) continue;
+            if (prev && !intersects(deps[q], *prev)) continue;
+            ran++;
+            std::unordered_set<std::string> rd;
+            reads = &rd;
+            suspend = 0;
+            try {
+                Eval(*this, f).run();
+            } catch (const std::exception& e) {
+                crashes[q] = std::string("RuntimeError: ") + e.what();
+            }
+            deps[q] = std::move(rd);
+            reads = nullptr;
+        }
+        std::vector<std::pair<std::string, Fn*>> spec_list(specs.begin(), specs.end());
+        for (auto& [q, f] : spec_list) {   // (new) the specializations (a new one runs at once)
+            if (crashes.count(q)) continue;
+            auto di = deps.find(q);
+            if (prev && di != deps.end() && !intersects(di->second, *prev)) continue;
+            ran++;
+            std::unordered_set<std::string> rd;
+            reads = &rd;
+            suspend = 0;
+            try {
+                Eval(*this, f).run();
+            } catch (const std::exception& e) {
+                crashes[q] = std::string("RuntimeError: ") + e.what();
+            }
+            deps[q] = std::move(rd);
+            reads = nullptr;
+        }
+        for (auto& [q, f] : nested) {
             if (crashes.count(q)) continue;
             if (prev && !intersects(deps[q], *prev)) continue;
             ran++;

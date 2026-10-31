@@ -285,6 +285,7 @@ TyP Context::ty(const T& t, int line, const std::string& what) {
         if (c && !(*c)->exception.empty()) return cls_flag(t.name(), "exception");
         return cls_flag(t.name(), "ref");
     }
+    if (k == TK::Closure) throw Refused("dynamic", "a nested function used as a value", line);
     if (k == TK::Extern && t.name() == "file") return cls("py.file");
     if (k == TK::Extern && p.extended) {   // (new) the extensions' library objects
         const std::string& nm = t.name();
@@ -557,6 +558,22 @@ public:
                             else loads.insert(nm->id);
                         }
                     }
+                    if (p.extended && (st->kind == StmtKind::FunctionDef || st->kind == StmtKind::AsyncFunctionDef) &&
+                        p.nested_by_node.count(st)) {
+                        // (new) the names of ours a closure reads are used where it is defined
+                        Fn* nf = p.nested_by_node[st];
+                        const auto& inner = p.fn_locals(nf);
+                        std::set<std::string> seen_here;
+                        for (auto& x : walk(AnyNode(st))) {
+                            auto* nm = as<pyfront::Name>(x.expr());
+                            if (nm && ev.locals.count(nm->id) && !inner.count(nm->id) && !declared.count(nm->id) && !seen_here.count(nm->id)) {
+                                seen_here.insert(nm->id);
+                                occ[nm->id].push_back(Use{here, st});
+                                loads.insert(nm->id);
+                            }
+                        }
+                        continue;
+                    }
                     // body, orelse, finalbody; then the handlers
                     std::vector<const std::vector<A::Stmt*>*> lists;
                     switch (st->kind) {
@@ -700,6 +717,7 @@ public:
             case StmtKind::Pass: return {};
             case StmtKind::Expr: {
                 auto* e = cast<ExprStmt>(st);
+                if (gen_mode && e->value->kind == ExprKind::Yield) return gen_yield(cast<pyfront::Yield>(e->value), line);
                 if (auto* c = as<Constant>(e->value)) {
                     if (c->value.kind == ConstValue::Kind::Str) {
                         auto cm = node("Comment");
@@ -762,6 +780,7 @@ public:
             case StmtKind::With: return s_With(cast<With>(st));
             case StmtKind::Import:
             case StmtKind::ImportFrom: return {};
+            case StmtKind::FunctionDef: return {s_FunctionDef(cast<FunctionDef>(st))};
             default: break;
         }
         throw Refused("syntax", lower_s(type_name(st)), line);
@@ -784,6 +803,301 @@ public:
         IRP value = expr(st->value);
         return store(tgt, value, st);
     }
+
+    // ---- (new) generators: a class deriving py.generator<T>; next() resumes after each yield
+    bool gen_mode = false;
+    int gen_points = 0;
+    TyP gen_elem;
+    std::string gen_class;
+
+    IRP this_sel(const std::string& field, const TyP& t) {
+        auto th = node("This");
+        th->type = cls_flag(gen_class, "ref");
+        return select_n(th, sym("field", field, gen_class, false, t), t);
+    }
+    IRP state_is(int k) { return binary("==", this_sel("state", I64()), mk_lit(py::V(k), I64()), BOOLT()); }
+    IRP set_state(int k) { return exprstmt(assign_e(std::nullopt, this_sel("state", I64()), mk_lit(py::V(k), I64()), I64())); }
+    IRP label(const std::string& l) {
+        auto n = node("Labeled");
+        n->text = l;
+        n->body = node("Empty");
+        return n;
+    }
+
+    std::vector<IRP> gen_yield(const pyfront::Yield* y, int line) {
+        int k = ++gen_points;
+        IRP v = y->value ? coerce(expr(y->value), gen_elem) : mk_lit_none(gen_elem);
+        auto r = node("Return", line);
+        r->expr = mk_pyfn("some", {v}, opt_t(gen_elem));
+        return {set_state(k), r, label("resume_" + std::to_string(k))};
+    }
+
+    // the generator's body, rewritten for resumption: locals and parameters are fields; a loop a
+    // resume jumps into keeps its state in fields too
+    bool has_label(const IRP& n) {
+        bool found = false;
+        ir_walk(n, [&](const IRP& x) {
+            if (x->k == "Labeled") found = true;
+        });
+        return found;
+    }
+    void gen_rewrite(IRP& n, const std::map<std::string, TyP>& fields, int& loop_id) {
+        if (!n) return;
+        if (n->k == "Name" && n->sym && (n->sym->kind == "local" || n->sym->kind == "param") && fields.count(n->sym->name) &&
+            n->sym->owner && *n->sym->owner == f->qname) {
+            n = this_sel(n->sym->name, n->type);
+            return;
+        }
+        if (n->k == "Block") {
+            std::vector<IRP> out;
+            for (auto& s : n->stmts) {
+                if (s->k == "Local") {   // a declaration: an assignment to its field
+                    if (s->init) {
+                        IRP init = s->init;
+                        gen_rewrite(init, fields, loop_id);
+                        out.push_back(exprstmt(assign_e(std::nullopt, this_sel(s->sym->name, s->type), init, s->type)));
+                    }
+                    continue;
+                }
+                if (s->k == "ForEach" && has_label(s)) {   // a loop a resume jumps into: an index loop over fields
+                    TyP it = s->iterable->type;
+                    if (!(it && it->kind == "class" && (it->name == "py.list" || it->name == "py.str" || it->name == "py.bytes" ||
+                                                        it->name == "py.bytearray" || it->name == "py.tuple")))
+                        throw Refused("syntax", "a yield inside a loop over a " + ty_repr(it), s->line);
+                    if (s->var->mods.size()) throw Refused("syntax", "a yield inside a loop that unpacks", s->line);
+                    int id = ++loop_id;
+                    std::string seq = "seq_" + std::to_string(id), idx = "index_" + std::to_string(id);
+                    gen_fields.emplace_back(seq, it);
+                    gen_fields.emplace_back(idx, I64());
+                    IRP iterable = s->iterable;
+                    gen_rewrite(iterable, fields, loop_id);
+                    out.push_back(exprstmt(assign_e(std::nullopt, this_sel(seq, it), iterable, it)));
+                    auto fo = node("For", s->line);
+                    fo->inits = {exprstmt(assign_e(std::nullopt, this_sel(idx, I64()), mk_lit(py::V(0), I64()), I64()))};
+                    fo->cond = binary("<", this_sel(idx, I64()), mk_pyfn("builtins.len", {this_sel(seq, it)}, I64()), BOOLT());
+                    fo->update = {unary("++", this_sel(idx, I64()), I64())};
+                    TyP vt = s->var->type;
+                    auto ix = node("Index");
+                    ix->arr = this_sel(seq, it);
+                    ix->index = this_sel(idx, I64());
+                    ix->type = vt;
+                    IRP body = s->body;
+                    gen_rewrite(body, fields, loop_id);
+                    body->stmts.insert(body->stmts.begin(), exprstmt(assign_e(std::nullopt, this_sel(s->var->sym->name, vt), ix, vt)));
+                    fo->body = body;
+                    out.push_back(fo);
+                    continue;
+                }
+                if (s->k == "ForEach" && !has_label(s)) {   // its own variables, copied to their fields each pass
+                    IRP body = s->body;
+                    IRP iterable = s->iterable;
+                    gen_rewrite(iterable, fields, loop_id);
+                    gen_rewrite(body, fields, loop_id);
+                    std::string names = s->var->sym->name;
+                    std::vector<IRP> pro;
+                    size_t a = 0;
+                    while (a <= names.size()) {
+                        size_t b = names.find(',', a);
+                        std::string nm = names.substr(a, b == std::string::npos ? std::string::npos : b - a);
+                        auto fi = fields.find(nm);
+                        if (fi != fields.end())
+                            pro.push_back(exprstmt(assign_e(std::nullopt, this_sel(nm, fi->second),
+                                                            mk_name(sym("local", nm, std::string("<loop>"), false, fi->second), fi->second), fi->second)));
+                        if (b == std::string::npos) break;
+                        a = b + 1;
+                    }
+                    body->stmts.insert(body->stmts.begin(), pro.begin(), pro.end());
+                    s->body = body;
+                    s->iterable = iterable;
+                    out.push_back(s);
+                    continue;
+                }
+                if (s->k == "For") {   // its counter is a field: no declaration is jumped over
+                    for (auto& in : s->inits)
+                        if (in->k == "Local") {
+                            IRP init = in->init;
+                            gen_rewrite(init, fields, loop_id);
+                            in = exprstmt(assign_e(std::nullopt, this_sel(in->sym->name, in->type), init, in->type));
+                        }
+                }
+                if ((s->k == "Try" || s->k == "Block") && has_label(s) && s->k == "Try") throw Refused("syntax", "a yield inside try", s->line);
+                if (s->k == "Return" && !(s->expr && s->expr->k == "Call" && s->expr->sym && s->expr->sym->name == "some")) {   // the generator ends
+                    out.push_back(set_state(-1));
+                    auto r = node("Return", s->line);
+                    r->expr = mk_lit_none(opt_t(gen_elem));
+                    out.push_back(r);
+                    continue;
+                }
+                IRP x = s;
+                gen_rewrite(x, fields, loop_id);
+                out.push_back(x);
+            }
+            n->stmts = out;
+            return;
+        }
+        if (n->k == "Return" && n->expr && n->expr->k == "Call" && n->expr->sym && n->expr->sym->name == "some") {
+            gen_rewrite(n->expr->args[0], fields, loop_id);
+            return;
+        }
+        for (IRP* slot : {&n->target, &n->x, &n->left, &n->right, &n->cond, &n->then, &n->orelse, &n->body, &n->init, &n->iterable,
+                          &n->arr, &n->index, &n->obj, &n->value, &n->expr})
+            if (*slot) gen_rewrite(*slot, fields, loop_id);
+        for (auto* lst : {&n->args, &n->stmts, &n->parts, &n->update, &n->inits})
+            for (auto& x : *lst) gen_rewrite(x, fields, loop_id);
+    }
+    std::vector<std::pair<std::string, TyP>> gen_fields;
+
+    // the generator: its class, and the function that makes one
+    std::vector<IRP> lower_generator() {
+        int line = f->node->pos.lineno;
+        for (auto& i : ev.issues) throw Refused(i.cls, i.detail, i.line);
+        if (f->kind != "function") throw Refused("syntax", "a generator method", line);
+        auto rt = p.returns.find(f->qname);
+        T it = rt == p.returns.end() ? BOTTOM() : rt->second;
+        if (it.kind != TK::Iter) throw Refused("untyped", "the items of a generator", line);
+        gen_elem = ctx.ty(it.args()[0], line, "yielded value");
+        gen_class = f->module->name + "." + camel(f->name) + "Generator";
+        gen_mode = true;
+        std::vector<IRP> params;
+        for (auto& name : f->params) {
+            T t = p.param_type(f, name);
+            if (t.kind == TK::Bottom) throw Refused("untyped", "parameter " + name + " (no annotation, no call site)", line);
+            TyP pt = ctx.ty(t, line, "parameter " + name);
+            local_types[name] = pt;
+            declared.insert(name);
+            auto prm = node("Param");
+            prm->sym = sym("param", name, f->qname, false, pt);
+            prm->type = pt;
+            params.push_back(prm);
+        }
+        if (!f->kwonly.empty()) throw Refused("syntax", "a generator with keyword-only parameters", line);
+        ret = VOID();
+        plan_locals();
+        IRP body = block(body_stmts(f->node->body));
+        // every name of the function is a field
+        std::map<std::string, TyP> fields;
+        for (auto& [name, t] : local_types) fields[name] = t;
+        int loop_id = 0;
+        gen_rewrite(body, fields, loop_id);
+        std::vector<IRP> stmts;
+        for (int k = 1; k <= gen_points; k++) {   // resume where the last yield left off
+            auto g = node("Goto");
+            g->text = "resume_" + std::to_string(k);
+            auto i = node("If");
+            i->cond = state_is(k);
+            i->then = block_n({g});
+            stmts.push_back(i);
+        }
+        auto done = node("If");
+        done->cond = binary("<", this_sel("state", I64()), mk_lit(py::V(0), I64()), BOOLT());
+        auto r0 = node("Return");
+        r0->expr = mk_lit_none(opt_t(gen_elem));
+        done->then = block_n({r0});
+        stmts.push_back(done);
+        stmts.insert(stmts.end(), body->stmts.begin(), body->stmts.end());
+        stmts.push_back(set_state(-1));
+        auto r1 = node("Return");
+        r1->expr = mk_lit_none(opt_t(gen_elem));
+        stmts.push_back(r1);
+        auto next = node("MethodDecl", line);
+        next->sym = sym("method", "next", gen_class, false, nullptr, {}, opt_t(gen_elem));
+        next->name = "next";
+        next->dkind = "method";
+        next->ret = opt_t(gen_elem);
+        next->body = block_n(stmts);
+        next->mods = {"override"};
+        // the constructor: the arguments into their fields, at the start
+        std::vector<IRP> cbody;
+        for (auto& prm : params)
+            cbody.push_back(exprstmt(assign_e(std::nullopt, this_sel(prm->sym->name, prm->type), mk_name(prm->sym, prm->type), prm->type)));
+        auto ctor = node("MethodDecl", line);
+        std::vector<TyP> ptypes;
+        for (auto& prm : params) ptypes.push_back(prm->type);
+        ctor->sym = sym("ctor", camel(f->name) + "Generator", gen_class, false, nullptr, ptypes, VOID());
+        ctor->name = "__init__";
+        ctor->dkind = "ctor";
+        ctor->params = params;
+        ctor->ret = VOID();
+        ctor->body = block_n(cbody);
+        auto cd = node("ClassDecl", line);
+        cd->name = camel(f->name) + "Generator";
+        cd->qname = gen_class;
+        cd->dkind = "class";
+        cd->mods = {"generator"};
+        cd->extends = cls("py.generator", {gen_elem});
+        for (auto& [name, t] : fields) {
+            auto fd = node("FieldDecl");
+            fd->sym = sym("field", name, gen_class, false, t);
+            fd->type = t;
+            cd->members.push_back(fd);
+        }
+        for (auto& [name, t] : gen_fields) {
+            auto fd = node("FieldDecl");
+            fd->sym = sym("field", name, gen_class, false, t);
+            fd->type = t;
+            cd->members.push_back(fd);
+        }
+        auto sf = node("FieldDecl");
+        sf->sym = sym("field", "state", gen_class, false, I64());
+        sf->type = I64();
+        sf->init = mk_lit(py::V(0), I64());
+        cd->members.push_back(sf);
+        cd->members.push_back(ctor);
+        cd->members.push_back(next);
+        // the function: makes the generator
+        TyP itt = cls("py.iter", {gen_elem});
+        std::vector<IRP> args;
+        for (auto& prm : params) args.push_back(mk_name(prm->sym, prm->type));
+        auto nw = node("New", line);
+        nw->sym = sym("ctor", cd->name, gen_class);
+        nw->args = args;
+        nw->type = cls_flag(gen_class, "ref");
+        nw->memory = "gc";
+        auto rr = node("Return", line);
+        rr->expr = nw;
+        auto md = node("MethodDecl", line);
+        md->sym = sym("function", f->name, f->module->name, false, nullptr, ptypes, itt);
+        md->name = f->name;
+        md->dkind = "function";
+        md->params = params;
+        md->ret = itt;
+        md->body = block_n({rr});
+        md->mods = {"generator"};
+        std::string doc;
+        if (docstring(f->node->body, doc)) md->comments.push_back(doc);
+        return {cd, md};
+    }
+
+    // (new) a nested function: a capturing lambda in a local of type py.fn<R, P...>
+    IRP s_FunctionDef(const A::FunctionDef* st) {
+        int line = st->pos.lineno;
+        auto it = p.nested_by_node.find(st);
+        if (it == p.nested_by_node.end()) throw Refused("syntax", "nested function", line);
+        Fn* nf = it->second;
+        Eval ev2(p, nf, true);
+        p.suspend = 0;
+        ev2.run();
+        FnLower fl2(ctx, nf, ev2);
+        IRP md;
+        try {
+            md = fl2.lower();
+        } catch (const Refused& r) {
+            throw Refused("calls-refused", "nested function " + nf->name + " (" + trunc(r.issue.reason(), 60) + ")", r.issue.line);
+        }
+        calls.insert(fl2.calls.begin(), fl2.calls.end());
+        globals_used.insert(fl2.globals_used.begin(), fl2.globals_used.end());
+        std::vector<TyP> fargs = {md->ret};
+        for (auto& prm : md->params) fargs.push_back(prm->type);
+        TyP ft = cls("py.fn", fargs);
+        auto lam = node("Lambda", line);
+        lam->params = md->params;
+        lam->body = md->body;
+        lam->type = md->ret;
+        declared.insert(st->name);
+        closure_types[st->name] = ft;
+        return local(st->name, ft, lam, {"closure"}, line);
+    }
+    std::map<std::string, TyP> closure_types;
 
     IRP s_AugAssign(const A::AugAssign* st) {
         int line = st->pos.lineno;
@@ -1671,6 +1985,10 @@ public:
             TyP gt = ty(p.global_type(r->A(), r->B()), n, "global " + r->B());
             return select_n(typename_n(r->A()), sym("global", r->B(), r->A(), true, gt), gt, line);
         }
+        if (r->k == "free") {   // (new) a variable of an enclosing function, captured by reference
+            TyP ft = ty(t, n, "captured " + n->id);
+            return mk_name(sym("local", n->id, r->A(), false, ft), ft);
+        }
         throw Refused("dynamic", r->k + " " + n->id + " as a value", line);
     }
 
@@ -2067,7 +2385,7 @@ public:
         const std::string& kind = r->k;
         T t = Tof(n);
         if (kind == "fn" || kind == "method" || kind == "super" || kind == "basecall") {
-            Fn* cf = *p.fns.get(r->A());
+            Fn* cf = p.any_fn(r->A());
             calls.insert(cf->qname);
             std::vector<IRP> args = call_args(n, cf, kind != "fn" || cf->kind == "method");
             TyP rt = call_ret(cf, n);
@@ -2108,6 +2426,18 @@ public:
             auto c = node("Call", line);
             c->target = recv;
             c->sym = sym("method", cf->name, cf->cls->qname, false, nullptr, {}, rt);
+            c->args = args;
+            c->type = rt;
+            return c;
+        }
+        if (kind == "closure") {   // (new) a nested function's call
+            Fn* nf = *p.nested.get(r->A());
+            std::vector<IRP> args = call_args(n, nf, false);
+            TyP rt = call_ret(nf, n);
+            const std::string& fname = cast<pyfront::Name>(n->func)->id;
+            std::string owner = nf->parent->qname;
+            auto c = node("Call", line);
+            c->sym = sym("local", fname, owner, false, nullptr, {}, rt);
             c->args = args;
             c->type = rt;
             return c;
@@ -2466,6 +2796,11 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
         FnLower fl(ctx, f, *ev);
         L.has_fl = true;
         try {
+            if (p.extended && f->generator) {   // (new) a generator: its class, and the function making one
+                auto both = fl.lower_generator();
+                L.extra = both[0];
+                L.md = both[1];
+            } else
             L.md = fl.lower();
         } catch (const Refused& r) {
             L.refused = r;
@@ -2474,6 +2809,28 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
         }
         L.calls = fl.calls;
         L.globals_used = fl.globals_used;
+        out.lowered[q] = std::move(L);
+    }
+    // (new) the specializations, each lowered as its own overload
+    std::vector<std::pair<std::string, Fn*>> spec_list(p.specs.begin(), p.specs.end());
+    for (auto& [q, f] : spec_list) {
+        Lowered L;
+        Eval ev(p, f, true);
+        try {
+            p.suspend = 0;
+            ev.run();
+            FnLower fl(ctx, f, ev);
+            L.has_fl = true;
+            try {
+                L.md = fl.lower();
+            } catch (const Refused& r) {
+                L.refused = r;
+            }
+            L.calls = fl.calls;
+            L.globals_used = fl.globals_used;
+        } catch (const std::exception& e) {
+            L.refused = Refused("frontend-error", std::string("RuntimeError: ") + e.what(), f->node->pos.lineno);
+        }
         out.lowered[q] = std::move(L);
     }
     // module names the translations read
@@ -2632,6 +2989,7 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             r.lines[q] = f->lines;
             if (!it->second.md) r.refused.emplace_back(q, it->second.refused->issue);
             else {
+                if (it->second.extra) r.extra.push_back(it->second.extra);
                 r.translated.emplace_back(q, it->second.md);
                 auto s = types_in(it->second.md);
                 used.insert(s.begin(), s.end());
@@ -2773,6 +3131,7 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             cd->members = members;
             types.push_back(cd);
         }
+        types.insert(types.end(), r.extra.begin(), r.extra.end());   // (new) generator classes
         // the module's functions and names
         std::vector<IRP> members;
         std::vector<std::pair<int, IRP>> gd;
@@ -2781,6 +3140,16 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
         std::stable_sort(gd.begin(), gd.end(), [](auto& a, auto& b) { return a.first < b.first; });
         for (auto& [_, d] : gd) members.push_back(d);
         for (auto& [_, f] : m->functions) {
+            auto so = p.specs_of.find(f->qname);
+            if (so != p.specs_of.end() && !translated_md(f->qname)) {   // (new) its overloads, when all translate
+                bool all = true;
+                for (Fn* c : so->second)
+                    if (!out.lowered[c->qname].md) all = false;
+                if (all) {
+                    for (Fn* c : so->second) members.push_back(out.lowered[c->qname].md);
+                    continue;
+                }
+            }
             if (IRP md = translated_md(f->qname)) members.push_back(md);
             else if (const Issue* is = refused_issue(f->qname)) {
                 auto cm = node("Comment");

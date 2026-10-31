@@ -77,8 +77,11 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
     Program p;
     p.extended = o.extended;
     p.int_policy = o.policy;
+    if (o.log) fprintf(stderr, "loading %s\n", rs.c_str());
     p.add_tree(rs, package);
+    if (o.log) fprintf(stderr, "indexing %zu modules\n", p.modules.size());
     p.index();
+    if (o.log) fprintf(stderr, "solving %zu functions, %zu nested\n", p.fns.size(), p.nested.size());
     r.rounds = p.solve(40, o.log);
     auto t1 = std::chrono::steady_clock::now();
     TranslateResult tr = translate(p, o.policy, o.modules.empty() ? nullptr : &o.modules);
@@ -90,6 +93,30 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
         FnStatus st;
         st.lines = f->lines;
         auto it = tr.lowered.find(q);
+        auto so = p.specs_of.find(q);
+        if ((it == tr.lowered.end() || !it->second.md) && so != p.specs_of.end()) {   // (new) translated as its overloads
+            bool all = true;
+            std::string l2, why;
+            for (Fn* c : so->second) {
+                auto ci = tr.lowered.find(c->qname);
+                if (ci == tr.lowered.end() || !ci->second.md) {
+                    all = false;
+                    if (why.empty() && ci != tr.lowered.end() && ci->second.refused) why = ci->second.refused->issue.reason();
+                } else {
+                    l2 += (l2.empty() ? "" : "\n") + py::json_dump(to_json(ci->second.md));
+                }
+            }
+            if (all) {
+                st.status = "translated";
+                st.l2 = l2;
+                r.translated++;
+                r.translated_lines += f->lines;
+                r.functions++;
+                r.lines += f->lines;
+                r.fns[q] = std::move(st);
+                continue;
+            }
+        }
         if (it != tr.lowered.end() && it->second.md) {
             st.status = "translated";
             st.l2 = py::json_dump(to_json(it->second.md));

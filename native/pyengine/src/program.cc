@@ -176,7 +176,73 @@ void Program::index() {
         while (k->exception.empty() && !k->bases.empty() && guard++ < 100) k = *classes.get(k->bases[0]);
         if (c->exception.empty()) c->exception = k->exception;
     }
-    for (auto& [q, f] : fns) {
+    if (extended) {
+        std::vector<Fn*> all;
+        for (auto& [q, f] : fns) all.push_back(f);
+        for (Fn* f : all) index_nested(f);
+    }
+    for (auto& [q, f] : fns) index_fn(f);
+    for (auto& [q, f] : nested) index_fn(f);
+}
+
+void Program::index_nested(Fn* parent) {
+    // the defs of a function's body (in its compound statements, not in nested defs or classes)
+    std::vector<const A::Stmt*> todo(parent->node->body.begin(), parent->node->body.end());
+    while (!todo.empty()) {
+        const A::Stmt* s = todo.back();
+        todo.pop_back();
+        if (s->kind == StmtKind::FunctionDef || s->kind == StmtKind::AsyncFunctionDef) {
+            auto* fd = cast<FunctionDef>(s);
+            auto f = std::make_unique<Fn>(parent->qname + ".<locals>." + fd->name, fd, parent->module, nullptr);
+            if (s->kind == StmtKind::AsyncFunctionDef) f->kind = "async";
+            f->parent = parent;
+            Fn* raw = f.get();
+            owned_fns.push_back(std::move(f));
+            if (nested.has(raw->qname)) raw->qname += "@" + std::to_string(fd->pos.lineno);   // two defs of one name
+            nested.set(raw->qname, raw);
+            nested_by_node[fd] = raw;
+            parent->has_nested = true;
+            index_nested(raw);
+            continue;
+        }
+        if (s->kind == StmtKind::ClassDef) continue;
+        for (auto* l : stmt_lists(s, true))
+            for (auto* b : *l) todo.push_back(b);
+    }
+}
+
+Fn* Program::any_fn(const std::string& q) {
+    if (Fn** f = fns.get(q)) return *f;
+    if (Fn** f = nested.get(q)) return *f;
+    if (Fn** f = specs.get(q)) return *f;
+    return nullptr;
+}
+
+Fn* Program::spec_for(Fn* f, const std::string& sig) {
+    std::string key = f->qname + "<" + sig + ">";
+    if (Fn** got = specs.get(key)) return *got;
+    auto c = std::make_unique<Fn>(*f);
+    c->qname = key;
+    c->spec_of = f;
+    c->spec_sig = sig;
+    Fn* raw = c.get();
+    owned_fns.push_back(std::move(c));
+    specs.set(key, raw);
+    specs_of[f->qname].push_back(raw);
+    touch("spec");
+    return raw;
+}
+
+T Program::closure_var(Fn* f, const std::string& name) {
+    read("cv:" + f->qname);
+    auto it = closure_vars.find(f->qname);
+    if (it == closure_vars.end()) return BOTTOM();
+    auto jt = it->second.find(name);
+    return jt == it->second.end() ? BOTTOM() : jt->second;
+}
+
+void Program::index_fn(Fn* f) {
+    {
         // the parameters indexed with in the first statement (a successful call bounds them)
         std::vector<const A::Stmt*> body;
         for (auto* s : f->node->body) {
@@ -994,6 +1060,14 @@ void Program::freeze() {
     frozen_sites = (int)parent.size();
     frozen_params = params;
     frozen_attrs = attrs;
+    // the functions whose callers disagree on a parameter's kind
+    for (auto& [q, f] : fns) {
+        if ((f->kind != "function" && f->kind != "static") || !f->varargs.empty() || !f->kwargs.empty() || f->generator) continue;
+        auto pi = params.find(q);
+        if (pi == params.end()) continue;
+        for (auto& [name, t] : pi->second)
+            if (t.kind == TK::Top && t.why().find(" mixed") != std::string::npos) spec_candidates.insert(q);
+    }
 }
 
 T Program::canon(const T& t) {

@@ -181,6 +181,8 @@ std::vector<IRP> ir_children(const IRP& n) {
     } else if (k == "Lambda") {
         many(n->params);
         one(n->body);
+    } else if (k == "Labeled") {
+        one(n->body);
     }
     return out;
 }
@@ -395,6 +397,11 @@ py::V to_json(const IRP& n) {
         node_slot("body", n->body);
     } else if (k == "Paren") {
         node_slot("x", n->x);
+    } else if (k == "Labeled") {
+        str_opt("label", n->text);
+        node_slot("body", n->body);
+    } else if (k == "Goto") {
+        str_opt("label", n->text);
     }
     for (auto& [key, v] : n->extra) d.set(key.c_str(), v);
     return d;

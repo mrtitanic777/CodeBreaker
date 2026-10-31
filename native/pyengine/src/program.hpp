@@ -96,6 +96,9 @@ struct Fn {
     std::set<std::string> none_aware;
     std::set<std::string> index_params;
     bool generator = false;              // (new) the body yields
+    bool has_nested = false;             // (new) it defines nested functions
+    Fn* spec_of = nullptr;               // (new) a specialization: the function it is a copy of
+    std::string spec_sig;                //       and the kinds of the arguments it is for
     std::vector<std::string> bound() const;
     Fn(std::string q, const A::FunctionDef* n, Module* m, Class* c);
 };
@@ -243,6 +246,20 @@ public:
     std::unordered_map<std::string, OMap<T>> frozen_attrs;
     std::vector<std::string> vetoes;
     void freeze();
+    // (new) nested functions: kept beside fns (not in it: the old tables stay as they were)
+    OMap<Fn*> nested;
+    std::unordered_map<const void*, Fn*> nested_by_node;
+    std::unordered_map<std::string, std::unordered_map<std::string, T>> closure_vars;   // definer -> name -> every value bound
+    T closure_var(Fn* f, const std::string& name);
+    Fn* any_fn(const std::string& q);
+    // (new) per-caller specialization: a function whose callers pass kinds that do not join is
+    // copied per argument signature (written as C++ overloads of one name)
+    std::set<std::string> spec_candidates;
+    OMap<Fn*> specs;
+    std::map<std::string, std::vector<Fn*>> specs_of;
+    Fn* spec_for(Fn* f, const std::string& sig);
+    void index_fn(Fn* f);
+    void index_nested(Fn* parent);
     bool site_frozen(int root) const { return frozen && root < frozen_sites; }
     void veto(const std::string& why) { vetoes.push_back(why); }
 

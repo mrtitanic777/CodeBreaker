@@ -51,6 +51,7 @@ public:
     std::unordered_map<const void*, Res> res, res_quiet;
     std::vector<Issue> issues;
     T ret_t;
+    T yield_t;                                // (new) a generator: the join of what it yields
     bool returns_value = false;
     std::vector<std::pair<std::vector<State>, std::vector<State>>> loops;
     std::set<std::string> locals;
@@ -59,8 +60,7 @@ public:
     const void* builder = nullptr;
     std::unordered_map<std::string, State> loop_memo;
     // (new) a nested function sees its definer's names (closure); the definer's final state
-    const State* outer = nullptr;
-    Fn* outer_fn = nullptr;
+    std::map<std::string, T> bound_types;     // (new) every value bound to each local (for nested functions)
 
     // bookkeeping
     T note(const void* node, const T& t, const Res* r = nullptr);

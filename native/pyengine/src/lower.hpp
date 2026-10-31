@@ -51,6 +51,7 @@ public:
 
 struct Lowered {
     IRP md;                        // the MethodDecl, or null when refused
+    IRP extra;                     // (new) a declaration it needs beside it (a generator's class)
     std::optional<Refused> refused;
     std::set<std::string> calls;
     std::set<std::pair<std::string, std::string>> globals_used;
@@ -62,6 +63,7 @@ struct ModuleResult {
     IRP unit;
     std::vector<std::pair<std::string, IRP>> translated;   // in the module's order
     std::vector<std::pair<std::string, Issue>> refused;
+    std::vector<IRP> extra;
     std::map<std::string, int> lines;
 };
 
