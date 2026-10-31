@@ -1071,29 +1071,56 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
             return
         uc.emu_stop()
 
-    hooks = [uc.hook_add(U.UC_HOOK_BLOCK, hook_block) if fast else uc.hook_add(U.UC_HOOK_CODE, hook_code),
-             # (reads nobody asked for are not even reported: every repeat of a `rep` instruction
-             # comes through hook_code, so the step limit bounds them without a count of accesses)
-             uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE if reads else U.UC_HOOK_MEM_WRITE, hook_mem)
-             if not lean else uc.hook_add(U.UC_HOOK_MEM_WRITE, hook_write, None, 0, _STACK_BASE - 1),
-             uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
-                         | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped),
-             uc.hook_add(U.UC_HOOK_INTR, hook_intr)]
-    if lean:
-        hooks.append(uc.hook_add(U.UC_HOOK_MEM_WRITE, hook_write, None, _STACK_BASE + _STACK_SIZE, 0xFFFFFFFF))
-    if branches:
-        hooks.append(uc.hook_add(U.UC_HOOK_CODE, _branch_hook(rec, md, sha, func_lo, func_hi), None,
-                                 func_lo, func_hi - 1))
+    # NATIVE (emulate/native_trace.py, CB_NATIVE_TRACE=0 to turn off): the same hooks in C++,
+    # attached in the same order, keeping the same record -- no Python per instruction. A run
+    # kept beside a shadow stays here.
+    nrun = None
+    if shadow is None and not os.environ.get("WT_DBG"):
+        from codebreaker.emulate import native_trace
+        if native_trace.enabled():
+            nrun = native_trace.Run(
+                uc, statics=statics, init_pages=init_pages, mapped=mapped, sentinels=sentinel_map,
+                sentinel_from=(mach["sentinels"], stub_at if stub_at and stub_externals else None),
+                saved=saved, sha=sha, gov=_GOV, fast=fast, lean=lean, reads=reads,
+                quiet=(_STACK_BASE, _STACK_BASE + _STACK_SIZE) if quiet_stack else None, stop_wild=stop_wild,
+                stub=bool(stub_externals), unique=stub_ret_unique, branches=branches, pads=pads,
+                insn_cap=insn_cap, stub_ret=stub_ret, stub_cleanup=stub_cleanup, func=(func_lo, func_hi),
+                sec=(sec_lo, sec_hi), lean_ranges=(_STACK_BASE - 1, _STACK_BASE + _STACK_SIZE),
+                sig_resolver=sig_resolver, outs=_outs, cache=mach)
+    if nrun is not None:
+        hooks = []
+        start, switched, add_code = (lambda b, u, count=0: nrun.start(uc, b, u, count)), nrun.switched, nrun.attach_code
+
+        def settle():
+            nrun.settle(rec)
+    else:
+        hooks = [uc.hook_add(U.UC_HOOK_BLOCK, hook_block) if fast else uc.hook_add(U.UC_HOOK_CODE, hook_code),
+                 # (reads nobody asked for are not even reported: every repeat of a `rep` instruction
+                 # comes through hook_code, so the step limit bounds them without a count of accesses)
+                 uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE if reads else U.UC_HOOK_MEM_WRITE, hook_mem)
+                 if not lean else uc.hook_add(U.UC_HOOK_MEM_WRITE, hook_write, None, 0, _STACK_BASE - 1),
+                 uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
+                             | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped),
+                 uc.hook_add(U.UC_HOOK_INTR, hook_intr)]
+        if lean:
+            hooks.append(uc.hook_add(U.UC_HOOK_MEM_WRITE, hook_write, None, _STACK_BASE + _STACK_SIZE, 0xFFFFFFFF))
+        if branches:
+            hooks.append(uc.hook_add(U.UC_HOOK_CODE, _branch_hook(rec, md, sha, func_lo, func_hi), None,
+                                     func_lo, func_hi - 1))
+        start, switched = uc.emu_start, (lambda: switch[0])
+
+        def add_code():
+            hooks.append(uc.hook_add(U.UC_HOOK_CODE, hook_code))
 
     try:
         if fast:
-            uc.emu_start(fva, _RET)
-            if switch[0]:                                    # from here on, one instruction at a time
-                hooks.append(uc.hook_add(U.UC_HOOK_CODE, hook_code))
+            start(fva, _RET)
+            if switched():                                   # from here on, one instruction at a time
+                add_code()
                 uc.ctl_flush_tb()
-                uc.emu_start(uc.reg_read(UC_X86_REG_EIP), _RET, count=insn_cap + 1)
+                start(uc.reg_read(UC_X86_REG_EIP), _RET, count=insn_cap + 1)
         else:
-            uc.emu_start(fva, _RET, count=insn_cap + 1)
+            start(fva, _RET, count=insn_cap + 1)
         settle()
         rec["exit"] = "truncated" if rec["truncated"] else "ret"
         # The emulator can stop without raising (a divide by zero does): it only RETURNED if it
@@ -1124,21 +1151,27 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
         except Exception:
             pass
 
+    if nrun is not None:
+        nrun.collect(rec)
     # mnemonics keyed by int va -> stringify for JSON friendliness
     rec["mnemonics"] = {("0x%x" % k): v for k, v in rec["mnemonics"].items()}
     if lean:
-        rec["writes_seen"] = lean_seen[0]
+        rec["writes_seen"] = nrun.lean_seen if nrun is not None else lean_seen[0]
     if reuse:                                                # the machine, as it was, for the next run
         try:
             if lean:                                         # (its writes were not followed)
                 uc.mem_write(_STACK_BASE, bytes(_STACK_SIZE))
             for h in hooks:
                 uc.hook_del(h)
+            if nrun is not None:
+                nrun.detach()
             for base, data in saved.items():
                 if data is None:
                     uc.mem_unmap(base, _PAGE)
                 else:
                     uc.mem_write(base, data)
+            if nrun is not None:                             # (the pages its hooks saved, after Python's)
+                nrun.restore()
             while len(_MACHINES) >= _MAX_MACHINES:
                 _MACHINES.pop(next(iter(_MACHINES)))
             _MACHINES[mkey] = mach
