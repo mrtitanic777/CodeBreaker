@@ -1055,8 +1055,12 @@ weak), as before. coverage/reach.md's "Unverified" column counts no-compile too.
 
 ## Decisions, and what is left open
 
-- Python stays the language of the engine and the steps; the native decompiler stays a step. The
-  Rust core of CORE_ROADMAP Track 2 can later replace steps one at a time, behind the same facts.
+- C++ wherever possible (Logan, 2026-10-30; this reverses "Python stays the language of the
+  engine and the steps"). The computing parts move to C++ one step at a time, each behind a
+  switch, gated on identical output, then made the default, then the Python deleted at the next
+  milestone; Python keeps the glue (command line, terminal UI, MCP). The plan, in measured-cost
+  order, is docs/NATIVE.md. Step 1 is done: the 32-bit run recorder (native/tracer, cbtrace.dll:
+  trace_function's hooks, `CB_NATIVE_TRACE`).
 - SQLite, not a server database: one file per binary is easy to delete, copy and inspect.
 - Open: how a fact made by a period compiler (DOSBox-X) is keyed (the kit's files' hashes); how the
   service and other sessions share a machine (the load setting). (Decided: verdicts from before the
