@@ -1122,7 +1122,10 @@ def _build32(b, path, m, folder):
     image = _link_resolving(b, ow["wlink"], env, folder, lines, lambda s: _from_header(header, s),
                             lambda stem, text: extra(stem, text))
     b.stand_in_addresses = {m.va[n] for n in b.rejected}
-    _write_definitions(path, folder, lambda e: functions.prototype(m.texts[at[e.address]]) if e.address in at else None)
+    # (each export declared as the back end wrote its function's heading from L2: m.declarations, as
+    # the 16-bit build does -- not read back off the text; a function with no C has none)
+    declarations = getattr(m, "declarations", None) or {}
+    _write_definitions(path, folder, lambda e: declarations.get(at[e.address]) if e.address in at else None)
     # the module as one L2 tree, whatever each function came back as (docs/IR_UNIFICATION.md step 4)
     b.l2 = module_document32(b.name, m)
     with open(os.path.join(folder, "module.l2.json"), "w", newline="\n", encoding="utf-8") as fh:
