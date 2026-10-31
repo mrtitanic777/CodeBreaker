@@ -249,7 +249,11 @@ passes too: decompile/frame16.py lays a function's locals out as the original's 
 decompile/shape16.py writes its statements in the form C 8 makes them, on its L2 tree before the
 back end writes it (decompiler.c_from_l2, beside asm_blocks). The decompiler gives each L2 Local
 its place (`at`) only with the switch on, so the default output is unchanged (IR_UNIFICATION.md
-step 3).
+step 3). Measured by Microsoft C 8.00c byte matches, the gate and OpenWatcom on SUWIN, VERX, COMM
+and LZEXPAND, neither it nor `CB_ASM_BLOCKS` gains a function (SUWIN 37 of 779 identical with
+every setting), so both stay off; the frame half now leaves the frames the back end's
+`_buffer_fields` lays out itself, and the blocks' carry test jumps to C labels OpenWatcom's inline
+assembler cannot reach (IR_UNIFICATION.md step 3, "Measured").
 
 Gate: `tools/l2c.py --made` holds each function's final C to the printed path's texts, recorded
 before the deletions: LZEXPAND, KEYBOARD, COMM, LZ32, KRNL386 the same, GDI but sub_22_0B96; the

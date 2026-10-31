@@ -144,3 +144,77 @@ def test_an_if_return_is_turned_round_where_the_original_has_the_other_first():
     got, said = shape16.reshape(function(doc['body'][:1] + [dict(doc['body'][1], then=[
         {'node': 'Return', 'expr': lit(1), 'origin': {'at': [3]}}]), doc['body'][2]]), bytes(16))
     assert said == []
+
+
+HELD = 'a buffer left as it was: a far pointer in it, an array in the frame, or a local over it ([bp-16])'
+
+
+def _select(obj, field, kind='u16'):
+    return {'node': 'Select', 'type': {'kind': kind}, 'obj': obj, 'sym': {'kind': 'field', 'name': field}}
+
+
+def _piece_doc(extra=()):
+    return function([
+        local('xStack_12', 'i16', {'stack': -0x12}),
+        local('xStack_e', 'i16', {'stack': -0xe})] + list(extra) + [
+        {'node': 'Return', 'expr': {'node': 'Binary', 'op': '+', 'left': _select(name('xStack_12'), '_1_1_', 'u8'),
+                                    'right': name('xStack_e'), 'type': {'kind': 'i16'}}, 'origin': {'at': [16, 19]}}])
+
+
+def test_a_piece_of_a_buffer_piece_is_read_at_its_place():
+    # x._1_1_ of a piece: the byte at its place + 1 (written `->_1_1_` of a cast it did not compile,
+    # SUWIN 3:00F6)
+    got, said = frame16.lay_out(_piece_doc(), BUFFER, 0, len(BUFFER))
+    names = {n['sym']['name'] for n in frame16._walk(got['body']) if n.get('node') == 'Name'}
+    assert names == {'local_10'}
+    assert not any(n.get('node') == 'Select' for n in frame16._walk(got['body']))
+    text = c.function(got)
+    assert '*(uint1 *)(local_10 + 1)' in text and '_1_1_' not in text
+
+
+def test_a_buffer_holding_a_far_pointer_is_left():
+    # `_x`, the decompiler's x joined with the word above it (a far pointer's halves), or a piece
+    # used as a far pointer: inside a cast its __far is lost and two bytes move for four (SUWIN
+    # 2:410C passed SETUPX.2 a pointer's offset and 0) -- the buffer is left as it was
+    far = {'kind': 'ptr', 'space': 'far', 'to': {'kind': 'char', 'signed': True}}
+    for target in ({'node': 'Name', 'type': far, 'sym': {'kind': 'local', 'name': '_xStack_12'}},
+                   {'node': 'Name', 'type': far, 'sym': {'kind': 'local', 'name': 'xStack_e'}}):
+        doc = _piece_doc([{'node': 'ExprStmt', 'origin': {'at': [16]},
+                           'expr': {'node': 'Assign', 'target': target, 'value': lit(0), 'type': far}}])
+        got, said = frame16.lay_out(doc, BUFFER, 0, len(BUFFER))
+        assert said == [HELD]
+        assert [s['sym']['name'] for s in got['body'] if s['node'] == 'Local'] == ['xStack_e', 'xStack_12']
+    # (and one with an array below it: the back end makes such an array reach up over what it reads,
+    # backends/c._buffer_fields -- SUWIN 4:503E's axStack_52 over the pieces at [bp-30h])
+    doc = _piece_doc()
+    doc['body'].insert(0, {'node': 'Local', 'sym': {'kind': 'local', 'name': 'axStack_14'}, 'at': {'stack': -0x14},
+                           'type': {'kind': 'array', 'elem': {'kind': 'u8'}, 'count': 2}})
+    got, said = frame16.lay_out(doc, BUFFER, 0, len(BUFFER))
+    assert said[0] == HELD
+
+
+
+def test_a_buffer_with_an_array_among_its_pieces_is_left():
+    # (the back end reads the words a callee fills above an array whose address is passed on as its
+    # fields, backends/c._buffer_fields: cut out as a piece of its own, VERX's VERQUERYVALUE lost them)
+    arr = {'kind': 'array', 'elem': {'kind': 'char', 'signed': True}, 'count': 4}
+    doc = function([
+        local('xStack_12', 'i16', {'stack': -0x12}),
+        {'node': 'Local', 'sym': {'kind': 'local', 'name': 'acStack_e'}, 'at': {'stack': -0xe}, 'type': arr},
+        {'node': 'Return', 'origin': {'at': [16, 19]}, 'expr': {
+            'node': 'Index', 'type': {'kind': 'char', 'signed': True}, 'index': lit(1),
+            'arr': {'node': 'Name', 'type': arr, 'sym': {'kind': 'local', 'name': 'acStack_e'}}}}])
+    got, said = frame16.lay_out(doc, BUFFER, 0, len(BUFFER))
+    assert said == [HELD]
+    assert 'local_10' not in c.function(got)
+
+
+def test_an_unknown_local_in_a_place_of_its_own_keeps_its_type():
+    # only a bool takes its place's width: an xunknown local's type is its uses' (a pointer made
+    # an int2 was dereferenced, SUWIN 9:0924)
+    doc = flag_doc()
+    doc['body'][0]['type'] = {'kind': 'class', 'name': 'xunknown2'}
+    for s in doc['body'][1:3]:
+        s['expr']['target']['type'] = s['expr']['type'] = {'kind': 'class', 'name': 'xunknown2'}
+    got, said = frame16.lay_out(doc, FLAG, 0, len(FLAG))
+    assert got['body'][0]['type'] == {'kind': 'class', 'name': 'xunknown2'} and said == []

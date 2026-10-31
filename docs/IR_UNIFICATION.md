@@ -445,6 +445,32 @@ The order, each step gated by `tools/golden.py` and the emulator judge before th
    paths too. With it on, the functions it changes are the WIP's but for the wrong increments
    (LZEXPAND 7 of 9, KEYBOARD 9 of 12, COMM 4, SUWIN 365 of 376), no function is declined, and
    OpenWatcom gives the same errors as without it. Test: tests/translate/test_frame16.py.
+   **Measured, 2026-10-30, and left off.** Both switches, by the measure they exist for: Microsoft
+   C 8.00c (match16, Visual C++ 1.52c's CL run on Windows, the module's own switches per segment,
+   the SDK way of saying each function among its ways) turning each function back into the
+   original's bytes, with the 16-bit gate (isolated16 + contract16) and OpenWatcom per function.
+   SUWIN (779 functions): 37 identical with every setting -- CB_FRAME16, CB_ASM_BLOCKS and both
+   change no function's verdict, gain none and lose none (3:5DAA comes from 91 differing bytes to
+   34 with the blocks, not to 0); VERX 9 of 61, COMM 1 of 41 and LZEXPAND (LINK 5.10, the C 6
+   generation) 0 of 46 the same each way. The frame half had to be mended first: on SUWIN it
+   lost 6:6562 (matched) and made 59 functions C 8 refuses, and the gate found four that no longer
+   behaved as the original (2:410C, 4:503E, 4:7210, and VERX's VERQUERYVALUE, which the build
+   left to assembly unjudged). What it did wrong is what backends/c._buffer_fields does since --
+   the frame's buffers laid out as the original's, one packed structure, the words a callee fills
+   read as fields -- and the two fought: it now leaves a buffer holding a far pointer (inside a
+   cast its __far was lost), a frame with an array local, and a buffer another local overlaps;
+   reads a piece of a piece (`x._2_2_`) at its place; and retypes only a bool, not an xunknown.
+   After that FRAME16 changes no gate verdict but SUWIN 3:5E72, where the call contract check now
+   counts the 6 bytes its call of SETUPX.132 pushes against the original's 18 -- the same call in
+   the C either way -- and of the functions C 8 compiles both ways it brings 18 of SUWIN's nearer
+   the original's bytes and 20 further (VERX 1 and 4). CB_ASM_BLOCKS failed every function with a block (the back end's branch
+   still wrote to the old printer's list); mended, with a `;` after a label that ends a block and
+   a local kept whose joined name `_x` the C uses, it changes no verdict, but OpenWatcom's inline
+   assembler cannot jump to a C label (`jb L_5dde`): the four functions whose carry test it makes a
+   second block (3:2BD2, 3:5DAA, 8:1704, 8:1794) no longer compile with OpenWatcom and the build
+   assembles them. So neither switch is turned on for Microsoft C 8 modules; the C 8 form the
+   frame was to give is the back end's already, and what still differs round the blocks is
+   elsewhere in the decompiler's C.
 4. **Opaque machine fragments**: the assembly lanes' functions (source/image_writer.py, the NASM
    writers) as L2 `asm` nodes, so one tree holds a whole module whatever each part came back as.
    **Begun 2026-10-29, for the 16-bit module build.** The node is L2's `MachineFragment`
