@@ -328,6 +328,9 @@ number of working pairs.
 5. **C and C++ in (clang), Java out.** The pointer analysis and the emulated memory; the Java back
    end; the C library in Java. *Exit:* a C corpus and a C++ corpus judged as Java; Java -> C++ -> Java
    round trips judged.
+   (Done 2026-10-31, see "Phase 5 as built" below: C corpus 184 of 187 judged programs equivalent --
+   161 idiomatic, 23 faithful -- and 3 refused, none divergent; C++ corpus 7 of 9 equivalent, the 2
+   refused the ones meant to be; the Java -> C++ -> Java round trip equivalent.)
 6. **C out.** The C back end. *Exit:* the Java corpus judged as C.
 7. **C# in and out.** Roslyn front end, C# back end, the .NET adapter in the judge.
 8. **Python in and out.** The `ast` front end, type inference, the `dynamic` runtime, the Python back
@@ -343,6 +346,59 @@ number of working pairs.
 Phases 1 and 2 cannot move: everything else stands on them. The L2 schema is written during phase 1,
 with the binary-facing items, so the decompiler work and the translator converge on one IR. After phase 11 the waves continue
 language by language (waves 5-8), each one a kit.
+
+## Phase 5 as built (2026-10-31): C and C++ in, Java out
+
+**Front end** (`codebreaker/translate/frontends/clang/`). clang parses and attributes each file
+(`-Xclang -ast-dump=json`, target `x86_64-pc-windows-msvc`: the data model the judge's own clang build
+runs with). `lower.py` lowers the declarations of the program's own files (the file and the headers
+beside it) into one `ir.Unit`; `ctypes.py` reads clang's type spellings back through C's declarator
+grammar (typedefs, tags, C++ names, `__attribute__`s and conventions dropped) and lays structs out.
+What C says implicitly is explicit in L2: every conversion is a `Cast` (marked `implicit`), sizeof is a
+`Lit` of the target's value (its spelling in `text`), `p->f` is `Select` on `*p`, a C++ reference is a
+`ptr` with `ref` whose reads and bindings are `Unary '*'/'&'`, `this` is a pointer, C enum constants are
+int globals, a string literal's value is its bytes. C++: classes (fields, methods, constructors with the
+base initialiser as `CtorCall super`, destructors, static members defined outside the class), single
+inheritance, virtual/pure methods, operators as calls, templates by instance (`Box<f64, 2>`), new/delete,
+`enum class`, range-for over arrays. L2 additions, all optional: `Ptr.ref`, `Cast.implicit`,
+`ClassDecl.layout` (a `record`), `Unit.target`. A document per file is cached (`clang.l2_file`).
+
+**Back end** (`codebreaker/translate/backends/java.py`, `java_objects.py`, `java_libc.py`, runtime
+`java_runtime/crt/`). The pointer analysis (`java.Analysis`) picks the tier per program:
+- *idiomatic* when every pointer is disciplined -- structs and C++ classes are Java classes, a struct
+  pointer a reference, an array (and a pointer that only indexes) a Java array, a scalar whose address is
+  taken a one-element array (`int[] n = {5}`: C's out-parameters and C++'s `int &`), struct values copied as
+  C copies them (copy constructors, `set`), malloc `new`, free the collector's, function pointers functional
+  interfaces;
+- *faithful* otherwise -- unions, pointer arithmetic, punning, raw memory functions, varargs definitions:
+  everything reachable through a pointer lives in `crt.Mem` (a little-endian byte array; an address is an
+  int; a struct its address, its fields at offsets named in a class per struct; frames on an emulated
+  stack; MSVC's own va_list model for `...`), variables whose address is never taken stay Java locals.
+Both share C's arithmetic on Java types (unsigned division/comparison/widening written out), structure
+`goto` where it nests (labeled `break`/`continue`), and C's library: `crt.LibC` (printf with C's exact
+formatting, string/memory/ctype/stdlib, MSVC's rand and ctype masks), chosen through the API map's new
+C rows (`codebreaker/java/api_maps/libc.json`). A function it cannot write is an explicit gap (its body
+throws, the Java lane's J2X-GAP); a program whose run reaches a gap is refused with that gap's reason.
+
+**Judge** (`codebreaker/translate/judge_native_jvm.py`, `python tools/judge_c_java.py [c|cpp|roundtrip]`):
+the original built with clang `-O0` and run; the translation compiled with javac and run; stdout, stderr
+and exit code compared ("\r\n" as "\n"). Verdicts: equivalent, divergent, refused, no-compile,
+no-original. Corpus: `frontends/clang/corpus/manifest.json` -- Logan's CodingTeacher C course, the MS C
+compiler project's K&R test programs (printf, fp, diff, diff300; bdos output as putchar), the MSC 3.00
+verify inputs, tiny-AES-c's test, zlib's `enough.c`, Reko's C subjects; for C++, Reko's
+LocalStackVariables and eight classic programs written for the corpus (`corpus/cpp/`, two of them meant to
+be refused: iostream/vector and RAII).
+
+**Round trip:** `judge_native_jvm.roundtrip` -- the Java lane's fixture classes (Vec3D, MathHelper,
+AxisAlignedBB), the C++03 back end's test classes (Base, Sub) and a driver go javac -> IR -> C++03
+(`codebreaker/java`), then clang -> L2, where `frontends/clang/j2x.py` maps the Java runtime in C++
+(JavaString, JArray, JCat, System::out, j2xToInt, s_ statics, initStatics, the sequencing temporaries)
+back onto Java's library, then the Java back end: equivalent to the original on the JVM.
+
+**Not yet:** bit-fields; files (fopen); setjmp/longjmp; RAII (stack objects with destructors: try/finally);
+the C++ standard library (iostream, string, containers); multiple inheritance; lambdas; exceptions in the
+faithful tier; a C++ program that needs the faithful tier; argument evaluation order follows Java's
+left-to-right where C leaves it open.
 
 ## Still open
 
