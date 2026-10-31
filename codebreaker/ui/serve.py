@@ -256,6 +256,16 @@ def _bind(first, secret, idle):
                 if time.time() >= end:
                     break
                 time.sleep(0.25)
+    # (all twenty refused: Windows keeps whole ranges of ports for itself -- Hyper-V's and WinNAT's
+    # excluded port ranges, a hundred at a time -- and a folder's port can fall inside one. Then any
+    # port the system gives: the clients find it in the record, not by working it out)
+    try:
+        svc = Service(0, secret, idle)
+        svc.server = Server(("127.0.0.1", 0), handler(svc))
+        svc.port = svc.server.server_address[1]
+        return svc
+    except OSError:
+        pass
     raise OSError("no port free from %d to %d" % (first, first + 19))
 
 

@@ -1196,10 +1196,18 @@ def _stmt(em, s):
     elif n == 'MachineFragment' and s.get('reason') == 'inline':
         # an _asm block of Microsoft C (decompile/asm_blocks.py): its instructions as the inline
         # assembler takes them, C's names in its operands, labels at the left
-        out.append(pad + '_asm {')
+        em.tag_line()
+        em.print('_asm {')
+        em.start_indent()
         for ln in _stmts(s.get('asm')):
-            out.append(ln if ln.endswith(':') else pad + '  ' + ln)
-        out.append(pad + '}')
+            if ln.endswith(':'):
+                em.tag_line(0)
+            else:
+                em.tag_line()
+            em.print(ln)
+        em.stop_indent()
+        em.tag_line()
+        em.print('}')
     else:
         raise Decline('statement %s' % n)
 

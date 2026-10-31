@@ -85,8 +85,9 @@ The real software put through each lane, and what came of it, is listed in
 `docs/TESTED_SOFTWARE.md`. In short:
 
 - **Windows 95**: the 15 MINI.CAB modules rebuilt from their reconstructed source (KRNL386, GDI and
-  USER with their C) boot together and take Setup to the License page (re-checked 2026-10-23 on
-  current master); with the 7 Setup programs, Setup has installed Windows to the desktop on them.
+  USER with their C) boot together and take Setup to the License page (re-checked 2026-10-30 on
+  af5ffb910, with the caller-results rule off and on: see the milestone below); with the 7 Setup
+  programs, Setup has installed Windows to the desktop on them.
 - **Xbox 360**: Tetris Splash, Minecraft (TU0), Up and PAC-MAN CE play recompiled; nine more titles
   run.
 - **XNA**: Arcadecraft and Block World build and run as MonoGame projects, their shaders recovered
@@ -128,6 +129,66 @@ calling into nothing: 61 returns with the stack off (most in msjava.dll: one poi
 between two functions of different argument counts -- CoTaskMemAlloc(size) or
 CoTaskMemRealloc(p, size) -- each path pushing its own before one shared call, which one C call
 cannot say), 57 calls through a pointer the test leaves empty, 14 jumps through one.
+
+## Milestone regression, 2026-10-30 (master af5ffb910)
+
+Run in a worktree of af5ffb910 with a state folder of its own (the main checkout's knowledge base
+copied in; caches empty).
+
+**Test suites** (`tests/run_all.py`, slow suites included, 4:46 to 5:13 PM): 40 of 46 suites
+passed. Of the six that failed, two were bugs, fixed in commits of their own, and three were the
+worktree's environment; one is stale frozen references:
+
+| Suite | Cause | Now |
+|---|---|---|
+| tools/tidy.py | six undefined names: the C back end's inline `_asm` block (19fcc15da) wrote to an `out` and `pad` its function does not have -- a NameError on any function with a Microsoft C `_asm` block | fixed (548605574); seven unused imports still listed (c_text.py 444/647/675/709, describe.py 1117, windows16.py 343/854) |
+| test_service.py | the service's port, worked out from the state folder's path, fell in one of Windows' excluded port ranges (Hyper-V/WinNAT, 39583-39882 here) and all twenty ports tried were refused | fixed (fe03f3c84): any free port then; 11 of 11 |
+| test_mcp.py (test_what_was_made) | environment: TEMP set inside the project, so the "file outside" it reads was inside | not a fault |
+| test_invert.py (test_16bit_assembly_source) | environment: source/vxd/masm.py copies DOSXNT.EXE from `toolchains/` relative to the working directory, and a worktree has none | passes with it (15 of 15) |
+| test_java.py (does_not_compile_says_why) | environment: the long TEMP path cut the compiler's message before the name the test looks for | not a fault |
+| test_frozen_slow.py | describe.ne_keyboard (sub_9_04B4 now `__fastcall16far`) and c_text_module.lzexpand_dll (header's new `#define __fastcall16far __far`): both the intended output of 5d4d60281, whose frozen cases were not recorded again | to record again (`tools/freeze_tests.py subjects` / `c_text`) |
+
+**The all-15 Setup boot**: all 15 MINI.CAB modules rebuilt from source and Setup booted on them
+(`setup16.continue_test`'s boot, 150 polls for the Welcome page). PASS = the License page, each
+first result looked at, each run twice:
+
+| Build | USER C / gated | GDI C / gated | USER fixed segment 1 | Boot 1 | Boot 2 |
+|---|---|---|---|---|---|
+| caller-results rule off (default) | 509 / 61 | 118 / 24 | BAC4h | PASS | PASS |
+| rule on (`CB_CALLER_RESULTS=1`) | 514 / 60 | 118 / 24 | BAC4h | PASS | PASS |
+| rule on, fixed segments may grow (`CB_FIXED_GROWS=1`) | 597 / 57 | 131 / 13 | C642h | PASS | PASS |
+
+(The original's segment 1 is BA2Eh.) With the rule on, Setup reaches the License page: the old
+"There is not enough memory to run Setup" did not come back. That the fixed-segment cap is what
+cured it is consistent but not proven by this run: without the cap USER's segment 1 grows only to
+C642h on this build, under the C778h at which 14a68ca2f saw the failure (C63Ch still ran), so the
+uncapped control passed too.
+
+**The sweep**: `sweep --all` is far longer than one sitting (1,232 modules, about ten an hour once
+past the smallest 32-bit ones). Measured: the 95 smallest 32-bit modules, and the 90 smallest of
+each of the 16-bit modules, drivers and DOS programs (`sweep --16|--drivers|--dos --only`). Against
+each module's latest earlier results (the main checkout's store), 363 modules compared:
+
+| | Verified | Weak | Identified | Unverified | Not judged | Does not compile |
+|---|---|---|---|---|---|---|
+| before | 10,033 | 742 | 347 | 869 | 21 | 131 |
+| 2026-10-30 | 10,688 | 714 | 587 | 803 | 21 | 90 |
+
+DOS programs 90 of 90 verified (7,678 functions); drivers 227 verified, 23 weak, 1 unverified. 40
+modules have fewer verified+weak or more unverified+no-compile; most of the 16-bit ones gained
+judged functions on the whole. Losses worth a look:
+
+- 16-bit: system.drv 11 -> 6 good (GET80X87SAVESIZE `*(xunknown2 *)0xd` is now
+  `*((int2 __far *)MK_FP(xRam10000000, 0xd))`, which faults in the judge), mouse.drv 22 -> 17
+  (two no longer compile: `(uint2)codebreaker_code_1.at_11a4` passed to KERNEL_50 -- E1010 type
+  mismatch, the code-segment data names of 19c0c7cdd; four `ret` values differ), rasapi16.dll
+  6 -> 2 (thunks 3:002a.. now fault), scandskw.exe 3 -> 1, umdm16.dll 5 -> 3.
+- 32-bit: rpcltc5.dll 23 -> 20 and rpclts5.dll 29 -> 27 (one function each "not in the build"
+  now; others exit-differs where the C is unchanged -- the judge's later rules), awadpr32.exe,
+  awcapi32.dll, msrle32.dll, rundll32.exe one each.
+
+Not measured this time: the other 1,000-odd 32-bit modules, the rest of the 16-bit modules,
+drivers and DOS programs, and the per-function teeth.
 
 ## Gaps found by this run
 

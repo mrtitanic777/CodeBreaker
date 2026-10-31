@@ -55,7 +55,10 @@ the Xbox 360 Dashboard's games section.
 The Windows 95 corpus (the Windows95 repository): every executable class through the native
 decompiler -- 363 NE, 636 PE, 223 VxD and 92 DOS modules. Rebuilt and running: the 15 MINI.CAB
 modules (KRNL386, USER, GDI, ...) boot together to Setup's Wizard and install Windows to the
-desktop; the 7 Setup programs; 212 of 215 VxDs build, 40 boot-set VxDs load in the running system.
+desktop (2026-10-30, master af5ffb910: rebuilt from source, Setup's License page reached twice
+each with the caller-results rule off, on, and on with fixed segments allowed to grow; the
+milestone sweep of that day -- the smallest 95 32-bit and 90 each of 16-bit, VxD and DOS modules
+-- is in docs/STATUS.md); the 7 Setup programs; 212 of 215 VxDs build, 40 boot-set VxDs load in the running system.
 `vxd boot` (2026-10-28, docs/VXD.md): VMM32.VXD (build_w3) and DOSMGR, IFSMGR, SHELL, VDMAD, VFAT,
 VMPOLL, VPICD, VTD, VTDAPI, VXDLDR (build_le), each loaded and started, boot an installed Windows 95
 to the desktop; DRVSPACX and VDHCP rebuilt too but not loaded on that machine.
