@@ -16,58 +16,37 @@ no external process.
     native_dos.assemble_many(items, masmroot)   -> {stem: {obj, lst, log}} (mirrors the warm DOSBox worker)
 
 THE SWITCH -- CB_NATIVE_DOS:
-    unset / "auto"   native for the tools PROVEN byte-identical to DOSBox on the sample (MASM), with
-                     DOSBox as the automatic fallback when the native run cannot complete
+    unset / "auto"   native for the tools PROVEN byte-identical to DOSBox (_PROVEN: MASM and the DDK's
+                     TNT ML), with DOSBox as the automatic fallback when the native run cannot complete
     "1" / "on"       force the native runner (no DOSBox)
     "0" / "off"      force DOSBox (the native runner is not used)
-MASM is proven byte-identical (tests/test_dos.py::test_native_masm_matches_dosbox and the gate in
-state/work/dos-runner/gate.py); only MASM is defaulted on. The DPMI passes (the Win95 DDK's Phar
-Lap TNT ML.EXE, and Microsoft C's protected-mode P3 code generator) run under a DPMI host, not
-plain real mode -- they keep using DOSBox until a DPMI host is built (see the module notes / report).
+MASM is proven byte-identical (tests/test_dos.py::test_native_masm_matches_dosbox). The Win95 DDK's
+Phar Lap TNT ML.EXE ("ml") is proven byte-identical on real Win95 VxD sources, OMF and COFF
+(test_native_tnt_ml_matches_dosbox and the gate of state/work/mcb-arena/gate.py; a COFF header's
+TimeDateStamp is the run's clock -- ours a fixed date, DOSBox's the host's -- and is the one field
+that differs, as it does between two DOSBox runs).
 
 THE NATIVE/C++ SPLIT:
     The hot loop -- the millions of 8086 instructions MASM executes -- already runs inside Unicorn's
     native C engine. With fast=True the executive adds NO per-instruction or per-block Python hook;
     only the INT 21h service runs in Python, and that fires a few thousand times per assemble, not
     per instruction. So the emulation hot path is native already; a C++ rewrite of the INT 21h shim
-    would save little and is not warranted. The native tracer work in native/tracer is a separate
-    lane (the behaviour oracle), not needed here.
+    would save little and is not warranted.
 
-THE DPMI PASSES (host built; the DDK ML tool still DOSBox -- see below):
-    The executive above is real-mode only. The Win95 DDK's ML.EXE (the VxD/driver assembler) is a
-    Phar Lap TNT bound program that switches to 32-bit protected mode through a DPMI host. (The other
-    candidate, "Microsoft C's protected-mode pass", is NOT in our toolchain as a DPMI/DOS-extended
-    tool -- MSC 6.0a is plain real-mode DOS, and the C/C++ 8.00c passes of Visual C++ 1.52c are Win32
-    console programs that already run natively on Windows, see msc6.py::_native. So the Phar Lap TNT
-    ML.EXE is the one real DPMI tool here.)
-
-    A DPMI host IS now implemented: exact/emu/dpmi.py, plugged into dos.run(dpmi=True). It runs in the
-    SAME UC_MODE_16 engine (Unicorn honours the descriptor D-bit in protected mode, so one engine
-    decodes real mode, the 16-bit stub and the 32-bit extender), switches real->protected the hardware
-    way (a host trampoline runs mov cr0 + a far jump), manages GDT/LDT descriptors, serves INT 2Fh
-    /1687h and INT 31h (0000/0001/0003/0006-000C descriptors, 0100/0101 DOS memory, 0200-0205 vectors,
-    0300 simulate-real-mode-interrupt routed back through int21(), 0400 version, 0500-0503 extended
-    memory, 0600/0E00 no-ops), and reflects INT 21h via a selector-base override so int21() resolves
-    the right linear byte without a mid-run segment reg_write. It is PROVEN end-to-end by a tiny
-    hand-built 16-bit protected-mode DPMI client (tests/test_dos.py::test_dpmi_host_protected_mode):
-    switch, allocate+base a descriptor, reflected INT 21h file create+write, direct protected-mode
-    console, exit -- no DOSBox.
-
-    WHY TNT ML.EXE IS STILL ON DOSBox (the one remaining blocker): with DOSXNT.EXE staged in the
-    workdir and the host on, ML.EXE gets through DPMI detection and reads the extender's header, then
-    STALLS in its real-mode loader (before the protected-mode switch) in an infinite INT 21h 0x48
-    retry. The stub at 0130:46c0 WALKS THE DOS MCB ARENA CHAIN in guest RAM -- it reads each arena
-    header's signature ('M'/'Z' at +0), owner PSP (+1) and size (+3). Our executive keeps the memory
-    map as a Python list (st["mcb"]) with NO real MCB paragraphs in guest memory, so the walk reads
-    zeros, never finds a valid chain, and loops. MASM never walked the MCB chain, so it never needed
-    one. The fix is a real in-RAM MCB arena (an arena header before the PSP, the program block, the
-    environment and each free block; INT 21h 0x48/0x49/0x4A keeping it consistent; and INT 21h 0x52
-    get-list-of-lists so the loader can find the first MCB) in exact/emu/dos.py. That touches the
-    PROVEN real-mode path, so it needs full MASM re-validation; left for a follow-up. Beyond it lies
-    the full 32-bit extender + the 32-bit assembler run, which the host above is built to carry.
-
-    So _PROVEN stays {"masm"} and the DPMI tools fall back to DOSBox automatically. The gate is
-    unchanged: byte-identical .OBJ versus DOSBox once a tool is brought across.
+THE DPMI TOOL (TNT ML.EXE):
+    The Win95 DDK's ML.EXE (the VxD/driver assembler) is a Phar Lap TNT bound program: its real-mode
+    stub walks the DOS MCB chain, loads DOSXNT.EXE as an overlay (INT 21h 4B03h), and DOSXNT enters
+    32-bit protected mode through a DPMI host, copies itself above 1 MB, and from then on raw-switches
+    back to real mode (INT 31h 0306h) for every DOS call its 32-bit application makes through its own
+    protected-mode INT 21h handler. (MSC 6.0a is plain real mode and the VC++ 1.52c passes are Win32,
+    so ML is the one DPMI tool in our toolchains.) What that needed:
+      * exact/emu/dos.py: a real in-RAM MCB arena (INT 21h 48h/49h/4Ah on it, 52h list of lists, 58h
+        allocation strategy), 4B03h overlay load, 50h/51h/55h PSPs, 67h, 2Bh/2Dh, INT 15h (no
+        extended memory by BIOS), and the program's own path after the environment strings;
+      * exact/emu/dpmi.py: raw mode switches, 0305h, protected-mode interrupt dispatch to the
+        client's 0205h handlers, 000Dh, 0002h, 0604h, 0702h/0703h, 0800h, 0900h-0902h, the PIC bases
+        in 0400h, and descriptor reads from the tables themselves (D/B bits).
+    ml() below runs it entirely in memory (a MemFS: nothing written to the disk).
 """
 import os
 import shutil
@@ -99,7 +78,7 @@ def enabled(tool="masm"):
     return tool in _PROVEN                       # "auto": only the proven tools
 
 
-_PROVEN = {"masm"}                               # tools proven byte-identical to DOSBox on the sample
+_PROVEN = {"masm", "ml"}                         # tools proven byte-identical to DOSBox (MASM; the DDK TNT ML)
 
 
 def _run_tool(exe, work, cmdline, fast=True):
@@ -161,6 +140,53 @@ def assemble(asm_src, stem="t", masmroot=None):
     out["work"] = work
     out.setdefault("log", console.decode("latin1"))
     return out
+
+
+def run_extended(tool_files, exe, cmdline, files, artifacts, env=b"PATH=C:\\\0"):
+    """Run a DOS-extended (DPMI) tool -- the Phar Lap TNT ML.EXE -- on the executive with the DPMI host,
+    entirely in memory: the tool's own files and the inputs are given ({name: path or bytes}), what it
+    writes stays in a MemFS, nothing touches the disk. -> ({artifact: bytes} of the ones made,
+    console bytes). Raises NativeDosError if the run could not complete (the caller uses DOSBox)."""
+    from codebreaker.exact.emu import dos
+    from codebreaker.base import settings
+    work = os.path.join(settings.ROOT, "state", "native-dos-mem")     # a name only: nothing is written there
+    fs = dos.MemFS()
+    for name, src in tool_files.items():
+        fs.put(os.path.join(work, name.upper()), fs.disk(src))       # (read once, kept for every run after)
+    for name, src in files.items():                                   # text: CRLF on "disk", as a text-mode write
+        if isinstance(src, str):
+            src = src.replace("\r\n", "\n").replace("\n", "\r\n").encode("latin1")
+        fs.put(os.path.join(work, name.upper()), src)
+    try:
+        r = dos.run(os.path.join(work, exe.upper()), work, cmdline, fast=True, dpmi=True, fs=fs, env=env)
+    except Exception as e:
+        raise NativeDosError("%s: %s" % (type(e).__name__, e))
+    made = {}
+    for name in artifacts:
+        p = os.path.join(work, name.upper())
+        if fs.isfile(p) and fs.key(p) in fs.files:
+            made[name] = fs.read(p)
+    return made, r.console
+
+
+def ml_files(root=None):
+    """The Win95 DDK's Phar Lap TNT ML.EXE, its ML.ERR and the DOSXNT.EXE extender: {name: path}."""
+    from codebreaker.base import corpus, settings
+    ml = corpus.reference("Microsoft Windows 95 DDK", "MASM611C")
+    dx = os.path.join(settings.get("msvc152") or os.path.join(root or settings.ROOT, "toolchains", "period",
+                                                              "compilers", "msvc-1.52c"), "BIN", "DOSXNT.EXE")
+    out = {"ML.EXE": os.path.join(ml, "ML.EXE"), "ML.ERR": os.path.join(ml, "ML.ERR"), "DOSXNT.EXE": dx}
+    missing = [p for p in out.values() if not os.path.isfile(p)]
+    if missing:
+        raise NativeDosError("TNT ML toolchain not found: %s" % ", ".join(missing))
+    return out
+
+
+def ml(args, files, artifacts, root=None):
+    """TNT ML.EXE natively: ml("/c /Fom.obj m.asm", {"m.asm": text}, ["m.obj"]) -> ({artifact: bytes},
+    console text). Raises NativeDosError when the run could not complete."""
+    made, console = run_extended(ml_files(root), "ML.EXE", args, files, artifacts)
+    return made, console.decode("latin1")
 
 
 def assemble_many(items, masmroot=None):

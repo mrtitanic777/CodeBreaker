@@ -251,7 +251,25 @@ def cross_range_force(D, oi, lo, hi):
 
 
 # ---- assemble + compare ----------------------------------------------------------
+def _tnt_ml(args, masm_text, root):
+    """The Phar Lap TNT ML.EXE on CodeBreaker's own DOS executive + DPMI host (build/native_dos.py)
+    when CB_NATIVE_DOS allows it -- byte-identical objects to DOSBox-X's (a COFF header's timestamp
+    is the run's clock either way). -> (obj, log), or None to use DOSBox (not enabled, or the native
+    run could not complete)."""
+    from codebreaker.build import native_dos
+    if not native_dos.enabled("ml"):
+        return None
+    try:
+        made, log = native_dos.ml(args, {"m.asm": masm_text}, ["m.obj"], root=root)
+    except native_dos.NativeDosError:
+        return None
+    return made.get("m.obj"), log
+
+
 def assemble(masm_text, root):
+    got = _tnt_ml("/c /Fom.obj m.asm", masm_text, root)
+    if got is not None:
+        return got
     tc = _stage_toolchain(root)
     # a large all-raw object is thousands of db lines; give ML headroom (DOSBox at 20k cycles is
     # slow) so a big object's fallback assembly doesn't time out and spuriously "fail".
@@ -388,6 +406,9 @@ def assemble_coff(masm_text, root):
         return _assemble_coff_nasm(masm_text, nasm)
     if _native_ml_ok():
         return _assemble_coff_native_ml(masm_text, root)
+    got = _tnt_ml("-coff -c -Fom.obj m.asm", masm_text, root)
+    if got is not None:
+        return got
     tc = _stage_toolchain(root)
     tmo = 300 if len(masm_text) > 60000 else 120
     ok, out, work = run_dos({"c": tc},
@@ -412,10 +433,19 @@ def assemble_coff_batch(masm_list, root, budget=300000, maxfiles=32):
         return [_assemble_coff_nasm(m, nasm) for m in masm_list]
     if _native_ml_ok():                                    # native DDK ML.EXE: no cold start either
         return [_assemble_coff_native_ml(m, root) for m in masm_list]
-    tc = _stage_toolchain(root)
     results = [(None, "")] * len(masm_list)
+    rest = []
+    for i, m in enumerate(masm_list):                      # TNT ML on our own executive: no cold start
+        got = _tnt_ml("-coff -c -Fom.obj m.asm", m, root)
+        if got is None:
+            rest.append(i)
+        else:
+            results[i] = got
+    if not rest:
+        return results
+    tc = _stage_toolchain(root)
     batches, cur, cl = [], [], 0
-    for i in sorted(range(len(masm_list)), key=lambda k: len(masm_list[k])):
+    for i in sorted(rest, key=lambda k: len(masm_list[k])):
         sz = len(masm_list[i])
         if sz > budget:
             batches.append([i]); continue

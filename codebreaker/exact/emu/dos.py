@@ -25,6 +25,141 @@ Result = collections.namedtuple("Result", "exit console blocks load_seg files st
 class DosExit(Exception): pass
 
 
+# ---- the DOS memory arena, kept in guest RAM the way DOS keeps it -------------------------------
+# Every block is preceded by a 16-byte arena header (memory control block) one paragraph before it:
+#   +0 'M' (another block follows) or 'Z' (the last), +1 owner PSP (0 free, 8 DOS), +3 size in
+#   paragraphs (not counting the header), +8 name. The next header is at mcb + 1 + size. Programs read
+#   this chain themselves (a DOS extender's loader walks it from its PSP - 1 to size the memory it may
+#   take), so it is the one source of truth: INT 21h 48h/49h/4Ah work on it directly, as DOS does.
+ENVSEG = 0x00C0              # the environment block (its header at ENVSEG - 1 is the first in the chain)
+DOSSEG, LOL_OFF, LOL_SIZE = 0x0080, 0x0026, 0x40   # INT 21h 52h's list of lists (first MCB at -2)
+MCB_FREE, MCB_DOS = 0, 8
+
+
+class ArenaError(Exception):
+    """a DOS memory error: args[0] is the DOS error code (7 arena trashed, 9 bad block)."""
+
+
+def _mcb_write(mu, seg, sig, owner, size):
+    mu.mem_write(seg * 16, sig + struct.pack("<HH", owner & 0xFFFF, size & 0xFFFF) + bytes(11))
+
+
+def _mcb_set(mu, seg, sig=None, owner=None, size=None):
+    if sig is not None: mu.mem_write(seg * 16, sig)
+    if owner is not None: mu.mem_write(seg * 16 + 1, struct.pack("<H", owner & 0xFFFF))
+    if size is not None: mu.mem_write(seg * 16 + 3, struct.pack("<H", size & 0xFFFF))
+
+
+def _mcb_read(mu, seg):
+    """-> (sig byte, owner, size) of the header at `seg`; ArenaError(7) if it is not one."""
+    h = bytes(mu.mem_read(seg * 16, 5))
+    if h[0] not in (0x4D, 0x5A):
+        raise ArenaError(7)
+    return h[0], h[1] | h[2] << 8, h[3] | h[4] << 8
+
+
+def mcb_chain(mu, first):
+    """-> [(mcb segment, sig, owner, size)], the whole arena from `first` to the 'Z' header."""
+    out, seg = [], first
+    for _ in range(0x10000):
+        sig, owner, size = _mcb_read(mu, seg)
+        out.append((seg, sig, owner, size))
+        if sig == 0x5A:
+            return out
+        seg += 1 + size
+        if seg > 0xFFFF:
+            break
+    raise ArenaError(7)
+
+
+def _mcb_coalesce(mu, first):
+    """join each run of free blocks into one (DOS does this before it allocates or resizes)."""
+    chain = mcb_chain(mu, first)
+    i = 0
+    while i < len(chain):
+        seg, sig, owner, size = chain[i]
+        j = i
+        while owner == MCB_FREE and j + 1 < len(chain) and chain[j + 1][2] == MCB_FREE:
+            j += 1
+            size += 1 + chain[j][3]
+            sig = chain[j][1]
+        if j > i:
+            _mcb_set(mu, seg, sig=bytes([sig]), size=size)
+        i = j + 1
+
+
+def _mcb_largest(mu, first):
+    try:
+        _mcb_coalesce(mu, first)
+        return max([c[3] for c in mcb_chain(mu, first) if c[2] == MCB_FREE] + [0])
+    except ArenaError:
+        return 0
+
+
+def _split(mu, seg, sig, size, keep):
+    """block at header `seg` (size paragraphs) keeps `keep`; the rest becomes a free block behind it."""
+    if size > keep:
+        _mcb_write(mu, seg + 1 + keep, bytes([sig]), MCB_FREE, size - keep - 1)
+        _mcb_set(mu, seg, sig=b"M", size=keep)
+
+
+def _mcb_alloc(mu, first, paras, owner, strategy=0):
+    """-> the new block's segment, or None when no free block is large enough. The strategy is DOS's
+    (INT 21h 58h): 0 first fit, 1 best fit (the smallest that fits), 2 last fit (the top of the last)."""
+    try:
+        _mcb_coalesce(mu, first)
+        chain = mcb_chain(mu, first)
+    except ArenaError:
+        return None
+    fits = [c for c in chain if c[2] == MCB_FREE and c[3] >= paras]
+    if not fits:
+        return None
+    strategy &= 3
+    seg, sig, own, size = (fits[0] if strategy == 0 else fits[-1] if strategy == 2
+                           else min(fits, key=lambda c: c[3]))
+    if strategy == 2 and size > paras:                        # the block at the free block's top end
+        _mcb_set(mu, seg, sig=b"M", size=size - paras - 1)
+        seg += size - paras
+        _mcb_write(mu, seg, bytes([sig]), owner, paras)
+        return seg + 1
+    _split(mu, seg, sig, size, paras)
+    _mcb_set(mu, seg, owner=owner)
+    return seg + 1
+
+
+def _mcb_free(mu, first, block):
+    """free the block at segment `block` (INT 21h 49h)."""
+    try:
+        if block < 1: raise ArenaError(9)
+        _mcb_read(mu, block - 1)
+    except ArenaError:
+        raise ArenaError(9)                                   # no header there: not a block
+    if all(c[0] != block - 1 for c in mcb_chain(mu, first)):
+        raise ArenaError(9)
+    _mcb_set(mu, block - 1, owner=MCB_FREE)
+    _mcb_coalesce(mu, first)
+
+
+def _mcb_resize(mu, first, block, paras):
+    """resize the block at segment `block` (INT 21h 4Ah) -> None, or the most it could have (error 8)."""
+    _mcb_coalesce(mu, first)
+    chain = mcb_chain(mu, first)
+    k = next((i for i, c in enumerate(chain) if c[0] == block - 1), None)
+    if k is None:
+        raise ArenaError(9)
+    seg, sig, owner, size = chain[k]
+    nxt = chain[k + 1] if k + 1 < len(chain) else None
+    avail = size + (1 + nxt[3] if nxt and nxt[2] == MCB_FREE else 0)
+    if paras > avail:
+        return avail
+    if paras > size:                                          # grow into the free block behind
+        sig, size = nxt[1], avail
+        _mcb_set(mu, seg, sig=bytes([sig]), size=size)
+    _split(mu, seg, sig, size, paras)
+    _mcb_coalesce(mu, first)
+    return None
+
+
 class MemFS:
     """the files a run sees, kept in memory: what the program writes stays here (its passes share them), what it
     reads and was not written comes from the disk - read once, kept for every run after (DISK) - except under the
@@ -150,7 +285,7 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
     PSP = psp or globals()["PSP"]                # (the PSP's segment: some passes need to be loaded low, some high)
     TOP = top or globals()["TOP"]                # (the top of memory: some programs fail above 512K)
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INTR, UC_HOOK_BLOCK, UC_HOOK_CODE, UcError
-    from unicorn.x86_const import UC_X86_REG_AX, UC_X86_REG_BX, UC_X86_REG_CX, UC_X86_REG_DX, UC_X86_REG_SI, UC_X86_REG_DI, UC_X86_REG_SP, UC_X86_REG_IP, UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_ES, UC_X86_REG_SS, UC_X86_REG_EFLAGS
+    from unicorn.x86_const import UC_X86_REG_AX, UC_X86_REG_BX, UC_X86_REG_CX, UC_X86_REG_DX, UC_X86_REG_SI, UC_X86_REG_DI, UC_X86_REG_SP, UC_X86_REG_IP, UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_ES, UC_X86_REG_SS, UC_X86_REG_EFLAGS, UC_X86_REG_CR0, UC_X86_REG_EIP
     # fs: a MemFS - the files the program opens, makes, removes kept in memory (the disk only read)
     fsopen = fs.open if fs else ropen
     fsisfile = fs.isfile if fs else os.path.isfile
@@ -173,10 +308,30 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
     mu = Uc(UC_ARCH_X86, UC_MODE_16); mu.mem_map_ptr(0, 0x110000, 7, ctypes.addressof(membuf))
     mu.mem_write(load * 16, bytes(image))
     # environment block + PSP
-    envseg = 0x00C0
-    mu.mem_write(envseg * 16, env + b"\0" + b"\x01\0" + b"C:\\MASM.EXE\0")
+    envseg = ENVSEG
+    # (after the strings: the program's own path, as DOS gives it - a DOS extender finds the program it
+    #  is to load there; the drive is the working folder's)
+    rel = os.path.relpath(os.path.abspath(exe), os.path.abspath(workdir))
+    if rel.startswith(".."): rel = os.path.basename(exe)
+    envb = env + b"\0" + b"\x01\0" + b"C:\\" + rel.replace("/", "\\").upper().encode("latin1") + b"\0"
+    mu.mem_write(envseg * 16, envb)
+    # the DOS memory arena, in guest RAM as DOS keeps it (see the MCB helpers below): the environment,
+    # DOS's own block over any gap up to the program, and the program's block to the top of memory
+    envparas = min((len(envb) + 15) // 16, PSP - 1 - envseg)
+    _mcb_write(mu, envseg - 1, b"M", PSP, envparas)
+    gap = PSP - 1 - (envseg + envparas)
+    if gap > 0:
+        _mcb_write(mu, envseg + envparas, b"M", MCB_DOS, gap - 1)
+    _mcb_write(mu, PSP - 1, b"Z", PSP, TOP - PSP)
+    lol = bytearray(LOL_SIZE)                         # INT 21h 52h's list of lists: the first MCB just before it
+    struct.pack_into("<H", lol, 0, envseg - 1)       # (the rest - drive tables, device chain - not kept: zero)
+    mu.mem_write(DOSSEG * 16 + LOL_OFF - 2, bytes(lol))
     psp = bytearray(256)
     psp[0:2] = b"\xCD\x20"; struct.pack_into("<H", psp, 2, TOP); struct.pack_into("<H", psp, 0x2C, envseg)
+    struct.pack_into("<H", psp, 0x16, PSP)                  # (parent: itself, as the shell's)
+    psp[0x18:0x2C] = b"\x01\x01\x01\x00\x02" + b"\xFF" * 15     # the job file table: CON CON CON AUX PRN
+    struct.pack_into("<HHH", psp, 0x32, 20, 0x18, PSP)      # its size and far pointer
+    psp[0x50:0x53] = b"\xCD\x21\xCB"                        # the INT 21h / RETF entry
     tail = (" " + cmdline if cmdline else "").encode("latin1")[:126]
     psp[0x80] = len(tail); psp[0x81:0x81 + len(tail)] = tail; psp[0x81 + len(tail)] = 0x0D
     mu.mem_write(PSP * 16, bytes(psp))
@@ -185,7 +340,9 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         mu.reg_write(r, v)
 
     st = dict(blocks=set(), n=0, console=bytearray(), exit=None, stdin=bytearray(stdin), dta=PSP * 16 + 0x80,
-              mcb=[[PSP, TOP - PSP, True]], vec={}, calls=collections.Counter())   # memory blocks: [seg, paras, used]
+              vec={}, calls=collections.Counter())          # (memory blocks: the MCB arena in guest RAM)
+    st["cur_psp"] = PSP              # INT 21h 50h/51h/62h
+    st["strategy"] = 0               # INT 21h 58h: first fit
     st["pm"] = False                 # protected mode active (the DPMI host turns this on at the switch)
     st["desc"] = {}                  # selector (sel & 0xFFFC: RPL off, LDT bit kept) -> (base, limit, access)
     def lin(seg, off):
@@ -218,18 +375,10 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         f = R(UC_X86_REG_EFLAGS)
         mu.reg_write(UC_X86_REG_EFLAGS, (f | 1) if on else (f & ~1))
         if ax is not None: W(UC_X86_REG_AX, ax)
-    def alloc(paras):
-        for blk in st["mcb"]:
-            if not blk[2] and blk[1] >= paras:
-                if blk[1] > paras: st["mcb"].insert(st["mcb"].index(blk) + 1, [blk[0] + paras, blk[1] - paras, False])
-                blk[1] = paras; blk[2] = True; return blk[0]
-        return None
-    def largest(): return max([blk[1] for blk in st["mcb"] if not blk[2]] + [0])
-    def merge():
-        m = st["mcb"]; i = 0
-        while i + 1 < len(m):
-            if not m[i][2] and not m[i+1][2]: m[i][1] += m[i+1][1]; del m[i+1]
-            else: i += 1
+    first_mcb = envseg - 1
+    def alloc(paras):                                       # -> the block's segment, or None (no room)
+        return _mcb_alloc(mu, first_mcb, paras, PSP)
+    def largest(): return _mcb_largest(mu, first_mcb)
 
     def int21():
         ax = R(UC_X86_REG_AX); ah = ax >> 8; al = ax & 0xFF
@@ -240,6 +389,9 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         # segment's hidden base). Unset everywhere else -> the real registers, byte-for-byte as before.
         ds = st["ov_ds"] if st.get("ov_ds") is not None else R(UC_X86_REG_DS)
         es = st["ov_es"] if st.get("ov_es") is not None else R(UC_X86_REG_ES)
+        def Wseg(name, v):                                  # a segment the call returns: when reflected from
+            if st.get("ov_" + name) is not None: st["out_" + name] = v   # protected mode it goes back into the
+            else: W(UC_X86_REG_ES if name == "es" else UC_X86_REG_DS, v)  # real-mode call structure, not a register
         if os.environ.get("DOSRUN_DEBUG"): print("int21 ax=%04x bx=%04x cx=%04x dx=%04x" % (ax, bx, cx, dx), file=sys.stderr)
         if ah == 0x4C or ah == 0x00: st["exit"] = al if ah == 0x4C else 0; raise DosExit()
         if ah in (0x02, 0x06):
@@ -375,8 +527,12 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             W(UC_X86_REG_SI, si_ + (q - a_)); W(UC_X86_REG_AX, (ah << 8) | (1 if (w1 or w2) else 0)); return
         if ah == 0x25: st["vec"][al] = (ds, dx); return
         if ah == 0x35:
-            s_, o_ = st["vec"].get(al, (0, 0)); W(UC_X86_REG_ES, s_); W(UC_X86_REG_BX, o_); return
+            s_, o_ = st["vec"].get(al, (0, 0)); Wseg("es", s_); W(UC_X86_REG_BX, o_); return
         if ah == 0x2A: W(UC_X86_REG_CX, 1989); W(UC_X86_REG_DX, 0x0110); W(UC_X86_REG_AX, (ah << 8)); return
+        if ah == 0x2B:                                           # set date: accepted when valid (DESQview's check is not)
+            ok_ = 1980 <= cx <= 2099 and 1 <= dx >> 8 <= 12 and 1 <= dx & 0xFF <= 31
+            W(UC_X86_REG_AX, (ah << 8) | (0 if ok_ else 0xFF)); return
+        if ah == 0x2D: W(UC_X86_REG_AX, (ah << 8) | (0 if cx >> 8 < 24 and cx & 0xFF < 60 and dx >> 8 < 60 else 0xFF)); return
         if ah == 0x2C: W(UC_X86_REG_CX, 0x0C00); W(UC_X86_REG_DX, 0); return
         if ah == 0x30: W(UC_X86_REG_AX, 0x1E03); W(UC_X86_REG_BX, 0); W(UC_X86_REG_CX, 0); return   # DOS 3.30
         if ah == 0x33: W(UC_X86_REG_DX, dx & 0xFF00); return
@@ -436,25 +592,31 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             return
         if ah == 0x45 or ah == 0x46: carry(False, bx); return
         if ah == 0x47: mu.mem_write(lin(ds, R(UC_X86_REG_SI)), b"\0"); carry(False); return
-        if ah == 0x48:
-            s_ = alloc(bx)
-            if s_ is None: W(UC_X86_REG_BX, largest()); carry(True, 8)
-            else: carry(False, s_)
+        if ah in (0x48, 0x49, 0x4A):                             # memory: the MCB arena in guest RAM
+            try:
+                if ah == 0x48:
+                    s_ = _mcb_alloc(mu, first_mcb, bx, PSP, st["strategy"])
+                    if s_ is None: W(UC_X86_REG_BX, _mcb_largest(mu, first_mcb)); carry(True, 8)
+                    else: carry(False, s_)
+                elif ah == 0x49:
+                    _mcb_free(mu, first_mcb, es); carry(False)
+                else:
+                    got = _mcb_resize(mu, first_mcb, es, bx)
+                    if got is None: carry(False)
+                    else: W(UC_X86_REG_BX, got); carry(True, 8)
+            except ArenaError as e:
+                carry(True, e.args[0])
             return
-        if ah == 0x49:
-            for blk in st["mcb"]:
-                if blk[0] == es: blk[2] = False
-            merge(); carry(False); return
-        if ah == 0x4A:
-            m = st["mcb"]
-            for i, blk in enumerate(m):
-                if blk[0] == es:
-                    avail = blk[1] + (m[i+1][1] if i + 1 < len(m) and not m[i+1][2] else 0)
-                    if bx > avail: W(UC_X86_REG_BX, avail); carry(True, 8); return
-                    if i + 1 < len(m) and not m[i+1][2]: del m[i+1]
-                    if avail > bx: m.insert(i + 1, [blk[0] + bx, avail - bx, False])
-                    blk[1] = bx; carry(False); return
-            carry(True, 9); return
+        if ah == 0x58:                                           # the allocation strategy (UMBs: none, not linked)
+            if al == 0: carry(False, st["strategy"])
+            elif al == 1: st["strategy"] = bx & 0xFF; carry(False)
+            elif al == 2: carry(False, 0)
+            elif al == 3: carry(False)
+            else: carry(True, 1)
+            return
+        if ah == 0x67: carry(False); return                      # set handle count: the handle table has room
+        if ah == 0x52:                                           # list of lists: the first MCB at ES:[BX-2]
+            Wseg("es", DOSSEG); W(UC_X86_REG_BX, LOL_OFF); return
         if ah == 0x4E:                                           # find first: an exact name only
             name = cstr(ds, dx); hp = hostpath(name)
             if "*" in name or "?" in name or not fsisfile(hp): carry(True, 18); return
@@ -471,12 +633,37 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             fsreplace(old, new); carry(False); return
         if ah == 0x57: W(UC_X86_REG_CX, 0); W(UC_X86_REG_DX, 0x1221); carry(False); return
         if ah == 0x59: W(UC_X86_REG_AX, 2); return
-        if ah == 0x62 or ah == 0x51: W(UC_X86_REG_BX, PSP); return
+        if ah == 0x62 or ah == 0x51: W(UC_X86_REG_BX, st["cur_psp"]); return
+        if ah == 0x50: st["cur_psp"] = bx; return               # set the current PSP
+        if ah in (0x26, 0x55):                                   # create a (child) PSP at DX, from the current one
+            new_ = bytearray(mu.mem_read(st["cur_psp"] * 16, 256))
+            if ah == 0x55:
+                struct.pack_into("<H", new_, 2, R(UC_X86_REG_SI)); struct.pack_into("<H", new_, 0x16, st["cur_psp"])
+                struct.pack_into("<HHH", new_, 0x32, 20, 0x18, dx)
+                st["cur_psp"] = dx
+            mu.mem_write(dx * 16, bytes(new_))
+            if ah == 0x55: W(UC_X86_REG_AX, (ah << 8) | 0xF0)
+            return
         if ah == 0x0D or ah == 0x68: return
         if ah == 0x87: W(UC_X86_REG_AX, ax & 0xFF00); return        # no such function on MS-DOS (a C run-time asks: XENIX answers it)
         if ah == 0x4B:                                           # EXEC: the child runs to its end in an emulator of its own
             name = cstr(ds, dx); hp = hostpath(name)
             if not fsisfile(hp): carry(True, 2); return
+            if al == 3:                                          # load an overlay: the image (relocated) at a segment, not run
+                lseg, rfac = struct.unpack("<HH", bytes(mu.mem_read(lin(es, bx), 4)))
+                if fs: ob = fs.read(hp)
+                else:
+                    with ropen(hp, "rb") as f_: ob = f_.read()
+                if ob[:2] in (b"MZ", b"ZM"):
+                    (lp_, pg_, nr_, hp_) = struct.unpack_from("<4H", ob, 2); ro_ = struct.unpack_from("<H", ob, 0x18)[0]
+                    oimg = bytearray(ob[hp_ * 16:pg_ * 512 - ((512 - lp_) if lp_ else 0)])
+                    for k in range(nr_):
+                        o_, s_ = struct.unpack_from("<HH", ob, ro_ + 4 * k); a_ = s_ * 16 + o_
+                        struct.pack_into("<H", oimg, a_, (struct.unpack_from("<H", oimg, a_)[0] + rfac) & 0xFFFF)
+                else: oimg = ob
+                mu.mem_write(lseg * 16, bytes(oimg))
+                if os.environ.get("DOSRUN_DEBUG"): print("overlay %s at %04x reloc %04x: %d bytes" % (name, lseg, rfac, len(oimg)), file=sys.stderr)
+                carry(False); return
             blk = es * 16 + bx; envs, toff, tseg = struct.unpack("<HHH", bytes(mu.mem_read(blk, 6)))
             n = mu.mem_read(tseg * 16 + toff, 1)[0]; tail = bytes(mu.mem_read(tseg * 16 + toff + 1, n)).decode("latin1")
             cenv = env
@@ -493,21 +680,31 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             carry(False); return
         if ah == 0x4D: W(UC_X86_REG_AX, st.get("child", 0) & 0xFF); return
         if ah == 0x63:                                           # the table of lead bytes (two-byte characters): none
-            mu.mem_write(PSP * 16 + 0x48, bytes(2)); W(UC_X86_REG_DS, PSP); W(UC_X86_REG_SI, 0x48); carry(False); return
+            mu.mem_write(PSP * 16 + 0x48, bytes(2)); Wseg("ds", PSP); W(UC_X86_REG_SI, 0x48); carry(False); return
         raise RuntimeError("INT 21h AH=%02X not implemented (AX=%04X)" % (ah, ax))
 
     def intr(uc, intno, _):
         if host is not None and host.handle(intno): return  # DPMI: INT 2Fh/1687h, INT 31h, the switch
+        dos_int(intno)
+    def dos_int(intno):                                     # the executive's own service of an interrupt
+        uc = mu
         if intno == 0x21: int21()
         elif intno == 0x20: st["exit"] = 0; raise DosExit()
         elif intno in (0x10, 0x1A, 0x12, 0x11, 0x16, 0x2F): pass
+        elif intno == 0x15:                                  # BIOS system services: no extended memory by INT 15h
+            if os.environ.get("DOSRUN_DEBUG"): print("int15 ax=%04x" % R(UC_X86_REG_AX), file=sys.stderr)
+            if R(UC_X86_REG_AX) >> 8 == 0x88: W(UC_X86_REG_AX, 0); carry(False)   # (what a DPMI host - Windows - says)
+            else: W(UC_X86_REG_AX, (0x86 << 8) | (R(UC_X86_REG_AX) & 0xFF)); carry(True)
         elif st["vec"].get(intno, (0, 0)) != (0, 0):         # a handler the program installed itself (an 8087 emulator's INT 34h-3Dh):
             sp_ = (R(UC_X86_REG_SP) - 6) & 0xFFFF            # do what the processor does, and go on there
             mu.mem_write(R(UC_X86_REG_SS) * 16 + sp_, struct.pack("<HHH", R(UC_X86_REG_IP), R(UC_X86_REG_CS), R(UC_X86_REG_EFLAGS) & 0xFFFF))
             W(UC_X86_REG_SP, sp_); s_, o_ = st["vec"][intno]
             mu.reg_write(UC_X86_REG_EFLAGS, R(UC_X86_REG_EFLAGS) & ~0x300)
             W(UC_X86_REG_CS, s_); W(UC_X86_REG_IP, o_); st["again"] = True; uc.emu_stop()
-        else: raise RuntimeError("INT %02Xh not implemented" % intno)
+        else:
+            at = pc()
+            raise RuntimeError("INT %02Xh not implemented (at %04x:%08x = %x: %s)" % (
+                intno, R(UC_X86_REG_CS), R(UC_X86_REG_EIP), at, bytes(mu.mem_read(at, 12)).hex()))
     err = []
     def intr_safe(uc, intno, u):
         try: intr(uc, intno, u)
@@ -518,6 +715,13 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         if st.get("arm") and instrument_when(uc, addr, load):      # the program proper has started:
             st["arm"] = False; st["resume"] = True; uc.emu_stop(); return   # attach the heavy hooks now
         if st["n"] > max_blocks: err.append(RuntimeError("block limit at image %05x; console so far: %r" % (addr - load * 16, bytes(st["console"])[-400:]))); uc.emu_stop()
+    def pc():
+        # the linear address the CPU is at (for messages): real mode CS*16 + IP; protected mode (CR0.PE -
+        # the CPU's own mode, which a host's switch code may not have reached yet) the selector's base + EIP
+        if host is not None and R(UC_X86_REG_CR0) & 1:
+            d = st["desc"].get(R(UC_X86_REG_CS) & 0xFFFC)
+            return (d[0] if d else 0) + R(UC_X86_REG_EIP)
+        return R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP)
     fast = fast and not instrument and not instrument_when and not trace_calls and not driver
     host = None
     if dpmi:
@@ -531,11 +735,26 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
         ctx = _Ctx()
         ctx.mu, ctx.st, ctx.int21, ctx.R, ctx.W, ctx.carry = mu, st, int21, R, W, carry
         ctx.alloc, ctx.largest, ctx.load, ctx.psp = alloc, largest, load, PSP
+        ctx.dos_int = dos_int
+        ctx.free = lambda seg: _mcb_free(mu, first_mcb, seg)
+        ctx.resize = lambda seg, paras: _mcb_resize(mu, first_mcb, seg, paras)
+        ctx.ArenaError = ArenaError
         host.attach(ctx)
     _until = 0x1000000 if host is not None else 0x10FFFF   # protected-mode code/tables live above 1 MB
     mu.hook_add(UC_HOOK_INTR, intr_safe)
     if not fast: mu.hook_add(UC_HOOK_BLOCK, block)
     lim = {"timeout": int(FAST_LIMIT * 1e6)} if fast else {}
+    watchdog = None
+    if fast and host is not None:
+        # A DOS extender restarts the CPU at every raw mode switch (hundreds a run), and Unicorn's own
+        # timeout costs a timer thread per emu_start (~24 ms each on Windows: most of such a run). So
+        # one watchdog thread stops the whole run at the limit instead (emu_stop is thread-safe).
+        import threading
+        limit = max(FAST_LIMIT, float(os.environ.get("DOSRUN_DPMI_LIMIT", "300")))
+        def _expire():
+            st["timedout"] = True; mu.emu_stop()
+        watchdog = threading.Timer(limit, _expire); watchdog.daemon = True
+        lim = {}
     if trace_calls:
         def code(uc, addr, sz, _):
             b0 = uc.mem_read(addr, 1)[0]
@@ -551,17 +770,22 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
             driver(mu, load, st, err, (cs + load) * 16 + ip)
             raise StopIteration
         t_start = time.time()
+        if watchdog is not None: watchdog.start()
         mu.emu_start((cs + load) * 16 + ip, _until, **lim)
-        while st.get("again") and st["exit"] is None and not err:
+        while st.get("again") and st["exit"] is None and not err and not st.get("timedout"):
+            # (Unicorn's 16-bit mode takes a start address as CS*16 + IP and sets IP = start - CS*16 in
+            #  either CPU mode, so this resumes at CS:IP in protected mode too - IP below 64 KB)
             st["again"] = False; mu.emu_start(R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP), _until, **lim)
-        if fast and st["exit"] is None and not err and time.time() - t_start >= FAST_LIMIT * 0.9:
-            err.append(RuntimeError("time limit at %05x; console so far: %r" % (R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP) - load * 16, bytes(st["console"])[-400:])))
+        if fast and st["exit"] is None and not err and (st.get("timedout") or watchdog is None and time.time() - t_start >= FAST_LIMIT * 0.9):
+            err.append(RuntimeError("time limit at %05x%s; console so far: %r" % (pc() - load * 16, (" (cr0 %x cs:eip %04x:%08x)" % (R(UC_X86_REG_CR0), R(UC_X86_REG_CS), R(UC_X86_REG_EIP))) if host is not None else "", bytes(st["console"])[-400:])))
         if st.get("resume") and st["exit"] is None and not err:
             st["resume"] = False; instrument(mu, load)
             mu.emu_start(R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP), 0x10FFFF)
     except StopIteration: pass
     except UcError as e:
-        err.append(RuntimeError("cpu fault %s at %05x" % (e, R(UC_X86_REG_CS) * 16 + R(UC_X86_REG_IP))))
+        err.append(RuntimeError("cpu fault %s at %05x" % (e, pc())))
+    finally:
+        if watchdog is not None: watchdog.cancel()
     for e in files.values():
         if e["f"]: e["f"].close()
     if err and st["exit"] is None: raise err[0]
