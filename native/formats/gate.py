@@ -322,7 +322,20 @@ def omf_all(path, data):
     return True, out
 
 
-READERS = {"pe": pe_all, "ne": ne_all, "le": le_all, "dos": dos_all, "omf": omf_all}   # reader -> its facts(path, data)
+def xex_all(path, data):
+    from codebreaker.formats import xex
+    with open(path, "rb") as fh:
+        whole = fh.read()
+    out = [("is_xex", ask(lambda: xex.is_xex(path))), ("ids", ask(lambda: xex.ids(whole))),
+           ("optional_headers", ask(lambda: list(xex.optional_headers(whole))))]
+    if not whole.startswith(b"XEX2"):
+        return False, out
+    out.append(("header", ask(lambda: xex.header(path))))
+    return True, out
+
+
+READERS = {"pe": pe_all, "ne": ne_all, "le": le_all, "dos": dos_all, "omf": omf_all,   # reader -> its facts(path, data)
+           "xex": xex_all}
 
 
 # ---- the corpus -------------------------------------------------------------------------------
@@ -420,13 +433,16 @@ def main(argv=None):
     ap.add_argument("--corpus", nargs="*", default=[])
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--show", type=int, default=5)
+    ap.add_argument("--ext", default="")
     args = ap.parse_args(argv)
     if native.why_not():
         print("formats.dll not usable:", native.why_not())
         return 2
     readers = [r for r in args.readers.split(",") if r] or list(READERS)
     roots = roots_of(args.corpus)
-    files = corpus_files(roots, args.limit)
+    files = corpus_files(roots, None if args.ext else args.limit)
+    if args.ext:                                    # only files of these extensions (a library of games: its .xex)
+        files = [f for f in files if os.path.splitext(f)[1].lower() in args.ext.split(",")][:args.limit]
     print("corpus: %d files from %s" % (len(files), ", ".join(roots)))
     print("| reader | files | accepted | identical | Python s | C++ s | questions asked of the C++ |")
     print("|---|---|---|---|---|---|---|")

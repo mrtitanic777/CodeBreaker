@@ -29,10 +29,14 @@ set(FORMATS_SOURCES
   dos/questions.cc
   omf/omf.cc          # OMF-86 objects and libraries (formats/omf.py)
   omf/questions.cc
+  xex/questions.cc    # the Xbox 360 executable's header (formats/xex.py), by native/xex's reader
 )
 
-add_library(formats SHARED ${FORMATS_SOURCES})
-target_include_directories(formats PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# CodeBreaker's one XEX parser (native/xex), compiled in as its other users do
+include(${CMAKE_CURRENT_SOURCE_DIR}/../xex/reader.cmake)
+
+add_library(formats SHARED ${FORMATS_SOURCES} ${XEX_READER_SOURCES})
+target_include_directories(formats PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${XEX_READER_INCLUDE_DIR})
 if(MSVC)
   target_compile_options(formats PRIVATE /EHsc /O2 /W3 /utf-8)
   target_compile_definitions(formats PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
