@@ -96,6 +96,42 @@ unique stand-in returns with reads, the judge's fast+lean+reuse, with a step cap
 log, one instruction at a time on a kept machine, no resolver): 1,062 runs, every record
 identical in every key and in the order of its instruction texts.
 
+## Step 2 (in progress): the 16-bit tracer and the driver runner -- the same DLL
+
+The same four moves as step 1, beside it in `native/tracer`.  The memory and branch machinery is
+the model step 1 already moved; what 16-bit/flat add is the segment/far model, the thunks, the
+ports, and the flat driver's service calls.
+
+**The driver runner (done, hand-gated).** `driver_rec.cc` (C interface `cbt_drv_*` in cbtrace.h;
+ctypes in codebreaker/emulate/native_driver.py) holds emulate/driver.py `run`'s hooks: the per-
+instruction code hook (the driver's own code, told from a call out through a pointer, with the
+cover set and the outside-call stand-in), the shared memory hooks (reads and writes, pages mapped
+on demand -- fill off, as driver.run's), the INT 20h service calls (recorded with the registers
+and stack words they were given, answered as the input says, the service's answer register set),
+and the I/O ports.  Python still lays the regions out, sets the registers, starts the run
+(uc_emu_start to _RET) and reads the result; it attaches the DLL's hooks to uc._uch in driver.run's
+order.  During a run Python is asked one thing, once per distinct service: which register the
+service answers in (driver_services + the knowledge base), kept for the run.  A run kept beside a
+shadow stays on the Python hooks (step 3).
+
+The switch is **`CB_NATIVE_TRACE_DRV`** (default 0 until the corpus gate is run; without the DLL,
+or on any setup failure, the Python hooks run).  Record identity is checked both ways on a
+hand-built flat image in tests/test_native_trace.py (`test_driver_same_record`): the cover, the
+service and outside calls, the ports, the writes, the page mapped on demand, the exit and the
+result registers, all identical with the switch off and on, across four configurations.  The
+module gate (a couple of VxDs, e.g. vkd.vxd and splitter.vxd: every function's full record and
+its verdict identical) is **not yet run here** -- this working tree has no corpus
+(`corpus.root()` is absent) -- so the switch stays 0 (off) until it is.
+
+**The 16-bit tracer (not yet done).** emulate/windows16.py `trace_function16` is the larger half
+(GDT/selector layout, far calls, the NE import-thunk stand-ins, int 21h as DOS3Call, ports16's
+I/O, the branch log, and the recorded-system context replay).  The design is the same: a native
+`cbt_w16_*` recorder holding the per-instruction code hook, the shared memory hook wrapped by the
+segment-limit check, the interrupt hook, the ports and the branch log, with Python still asked the
+rare events (the import_stub model, device/service naming) -- the context-replay and shadow paths
+staying Python at first.  Switch **`CB_NATIVE_TRACE16`** (default 0).  Build is shared with the
+32-bit tracer (native/tracer/CMakeLists.txt; `cbtrace.dll` now carries the driver recorder too).
+
 ## The rest, in measured-cost order
 
 Each is measured again at its start (a profile of the slowest real job it serves) before the

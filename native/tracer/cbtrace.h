@@ -130,6 +130,60 @@ CBT_API int cbt_detach(void *run);               /* uc_hook_del of every hook at
 CBT_API int cbt_restore(void *run);              /* put back the pages this run's hooks saved */
 CBT_API void cbt_free(void *run);
 
+/* ============================================================================================
+ * The flat driver recorder (codebreaker/emulate/driver.py `run`): a VxD's ring-0 entry points.
+ * The same model as the 32-bit tracer -- Python lays memory out, sets the registers, starts the
+ * run (uc_emu_start to _RET) and reads the result; this holds driver.run's hooks (the per-
+ * instruction code hook that tells the image's own code from a call out through a pointer, the
+ * shared memory hooks, the INT 20h service calls, and the I/O ports) and keeps what they
+ * recorded.  During a run Python is asked one thing, once per distinct service: which register
+ * the service answers in (driver_services + the knowledge base), a lookup kept for the run.
+ * ============================================================================================ */
+
+/* A service was called (INT 20h): `device` and `service` (the 0x8000 jump bit kept).  out[0] =
+ * the place in driver.RESULT/REGISTERS (0 eax, 1 ebx, 2 ecx, 3 edx, 4 esi, 5 edi, 6 ebp) the
+ * service answers in, or -1 (it answers in EAX, as most do).  Returns 0, or nonzero when Python
+ * raised (the run stops and Python raises the same exception after it). */
+typedef int (*cbt_drv_answers)(int32_t device, int32_t service, int32_t *out);
+
+#define CBT_DRV_CALL_WORDS 15  /* none_first, first, second, nregs, regs[6], nwords, words[4] */
+#define CBT_DRV_PORT_WORDS 4   /* kind (0 in, 1 out), port, size, value */
+
+typedef struct cbt_drv_config {
+    void *uch;                         /* Python's uc._uch */
+    int32_t reg_ids[10];               /* Unicorn ids: eax,ebx,ecx,edx,esi,edi,ebp,esp,eip,eflags */
+    int32_t ins_in, ins_out;           /* UC_X86_INS_IN, UC_X86_INS_OUT */
+    uint64_t vm_addr;                  /* driver.VM: an answering register is set to it */
+    uint64_t ret;                      /* emulator._RET */
+    uint64_t scratch_lo, scratch_hi;   /* emulator._SCRATCH_BASE .. +_SCRATCH_SIZE */
+    const uint64_t *spans; int64_t nspans;   /* image.spans as (lo, hi) pairs: the driver's own code */
+    int64_t cap;                       /* the instruction cap */
+    int64_t service_eax, service_carry;
+    int64_t gov_n, gov_ceil;           /* emulator._GOV, carried through the run */
+    cbt_drv_answers answers;
+} cbt_drv_config;
+
+typedef struct cbt_drv_result {
+    int64_t exit_code;                 /* 0 none, 1 "wild", 2 service number unreadable, 3 int:intno */
+    int64_t exit_int;
+    int64_t insns, truncated, governed, outside;
+    int64_t memops, writes_seen, stuck;    /* -1: never set (the key is left out) */
+    int64_t gov_n, hook_error, uc_err;
+    const uint64_t *cover; int64_t ncover;
+    const uint64_t *calls; int64_t ncalls;      /* CBT_DRV_CALL_WORDS each */
+    const uint64_t *ports; int64_t nports;      /* CBT_DRV_PORT_WORDS each */
+    const uint64_t *reads; int64_t nreads;      /* CBT_MEM_WORDS each */
+    const uint64_t *writes; int64_t nwrites;    /* CBT_MEM_WORDS each */
+    const uint64_t *lazy; int64_t nlazy;        /* CBT_LAZY_WORDS each */
+} cbt_drv_result;
+
+CBT_API void *cbt_drv_begin(const cbt_drv_config *cfg);
+CBT_API int cbt_drv_attach(void *run);                  /* the hooks, in driver.run's order */
+CBT_API void cbt_drv_state(void *run, int64_t *out);    /* [0] hook_error, [1] uc_err, [2] gov_n */
+CBT_API const cbt_drv_result *cbt_drv_result_get(void *run);
+CBT_API int cbt_drv_detach(void *run);
+CBT_API void cbt_drv_free(void *run);
+
 #ifdef __cplusplus
 }
 #endif
