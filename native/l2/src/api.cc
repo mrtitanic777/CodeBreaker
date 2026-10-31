@@ -101,6 +101,35 @@ V dispatch(const std::string& fn, const V& args, V& facts_seen) {
     py::raise("AttributeError", "cbl2 has no entry " + fn);
 }
 
+// L2 documents the shim hands over once and then by number ({"$put": n, "$v": doc}, then {"$doc": n}):
+// a function's document goes to several entry points in turn (module_names32, signature, function ...)
+std::mutex docs_mu;
+std::vector<std::pair<int64_t, V>> docs;              // the latest few, newest last
+
+void held_documents(V& args) {
+    if (!args.is_list()) return;
+    for (auto& a : args.seq()) {
+        if (!a.is_dict() || a.size() > 2) continue;
+        std::lock_guard<std::mutex> lock(docs_mu);
+        if (a.has("$put")) {
+            int64_t n = a.get("$put").as_int();
+            V doc = a.get("$v");
+            docs.push_back({n, doc});
+            if (docs.size() > 2048) docs.erase(docs.begin());
+            a = doc;
+        } else if (a.has("$doc") && a.size() == 1) {
+            int64_t n = a.get("$doc").as_int();
+            bool found = false;
+            for (auto& d : docs)
+                if (d.first == n) {
+                    a = d.second;
+                    found = true;
+                }
+            if (!found) py::raise("RuntimeError", "native/l2: document " + std::to_string(n) + " no longer held");
+        }
+    }
+}
+
 struct Call {
     std::string fn, in;
     std::string out;
@@ -111,6 +140,7 @@ void run(Call* c) {
     V facts;
     try {
         V args = py::json_parse(c->in, true);
+        held_documents(args);
         V result = dispatch(c->fn, args, facts);
         c->out = py::json_tagged(result);
         c->status = 0;

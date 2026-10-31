@@ -88,6 +88,60 @@ def _enc(v):
     raise TypeError("no L2 shim form for %r" % type(v).__name__)
 
 
+_BIG = []                 # [(a large container, its JSON)]: the same value handed over again is not encoded again
+_SEP = (",", ":")
+
+
+def _text(v):
+    """`v` as the tagged JSON text. A large set, list or dict equal to one handed over lately (the module's
+    sets each function is written with: its functions, the globals called through ...) takes the text it
+    had; a set or list of strings alone is written by json itself."""
+    t = type(v)
+    if t in (set, frozenset, list, dict) and len(v) >= 32 and (
+            all(type(k) is str and type(x) in (str, int) for k, x in v.items()) if t is dict else
+            all(type(x) in (str, int) for x in v)):
+        # (of strings and ints alone -- no bool, which == would take for an int -- kept as a copy,
+        # so a change to the container later is no stale hit)
+        for obj, text in _BIG:
+            if type(obj) is t and obj == v:
+                return text
+        if t is dict:
+            text = json.dumps(v, separators=_SEP) if not any(k.startswith("$") for k in v) else json.dumps(_enc(v), separators=_SEP)
+        else:
+            text = json.dumps(v if t is list else {"$s": list(v)}, separators=_SEP)
+        _BIG.append((t(v), text))
+        del _BIG[:-16]
+        return text
+    if t is dict and all(type(k) is str and not k.startswith("$") for k in v):
+        return "{" + ",".join(json.dumps(k) + ":" + _text(x) for k, x in v.items()) + "}"
+    return json.dumps(_enc(v), separators=_SEP)
+
+
+_HELD = {}                # {id: (an L2 document, its number in the DLL)}, oldest first
+_KEEP = 2048              # (a module's functions: each document goes to several entry points, loop after loop)
+_NEXT = [0]
+
+
+def _held(doc):
+    """An L2 document as an argument: the first time whole, numbered (the DLL keeps the latest few),
+    then by its number -- one function's document goes to several entry points in turn. (Documents
+    handed to the writer are read, never changed in place: backends/c.py's own rule.)
+    -> (the argument's text, a way to make the whole text again or None)"""
+    got = _HELD.get(id(doc))
+    if got is not None and got[0] is doc:
+        return '{"$doc":%d}' % got[1], lambda: _put(doc)
+    return _put(doc), None
+
+
+def _put(doc):
+    _NEXT[0] += 1
+    _HELD.pop(id(doc), None)
+    _HELD[id(doc)] = (doc, _NEXT[0])                     # (holding the document: its id is not reused)
+    while len(_HELD) > _KEEP:
+        _HELD.pop(next(iter(_HELD)))
+    return '{"$put":%d,"$v":%s}' % (_NEXT[0], json.dumps(doc, separators=_SEP))
+
+
 def _dec(d):
     if len(d) == 1:
         k = next(iter(d))
@@ -138,9 +192,17 @@ def call(fn, *args, plain=None, facts=None):
     plain JSON already (an L2 document: written by json.dumps, which is quicker). `facts`: a dict the
     call changes in place (backends/c.function's): the keys it wrote are put back, also when it raises."""
     parts = []
+    held = None
     for k, a in enumerate(args):
-        parts.append(json.dumps(a, separators=(",", ":")) if k == plain else json.dumps(_enc(a), separators=(",", ":")))
+        if k == plain and isinstance(a, dict):
+            held = _held(a)
+            parts.append(held[0])
+        else:
+            parts.append(json.dumps(a, separators=_SEP) if k == plain else _text(a))
     status, got = call_raw(fn, "[" + ",".join(parts) + "]")
+    if status and held is not None and held[1] is not None and "no longer held" in got:
+        parts[plain] = held[1]()                         # (the DLL let it go: handed over whole again)
+        status, got = call_raw(fn, "[" + ",".join(parts) + "]")
     res = json.loads(got, object_hook=_dec)
     if status:
         if facts is not None:

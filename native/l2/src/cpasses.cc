@@ -1377,8 +1377,21 @@ static V leading_cast_now(const V& e0) {
     }
 }
 
+static bool name_is(const V& e, const std::string& n) {
+    // _name(e) == n, without making the name (the passes ask it of every node, for every local)
+    const V& sym = e.get("sym");
+    if (py::truthy(sym)) {
+        const V& s = sym.get("name");
+        if (py::truthy(s)) return s.is_str() ? s.str() == n : py::str_of(s) == n;
+    }
+    const V& n2 = e.get("name");
+    if (py::truthy(n2)) return n2.is_str() ? n2.str() == n : py::str_of(n2) == n;
+    return n == "?";
+}
+
 static bool bare_name(const V& e, const Opt& name = std::nullopt) {
-    return e.get("node") == "Name" && !field_sym(e) && !in_whole(e) && mark(e) != "_ss" && (!name || name_of(e) == *name);
+    // (the name first: it rules out nearly every node, and every test here is free of side effects)
+    return e.get("node") == "Name" && (!name || name_is(e, *name)) && !field_sym(e) && !in_whole(e) && mark(e) != "_ss";
 }
 
 static void p_far_locals(Nodes& nodes, const std::set<std::string>&) {
