@@ -535,6 +535,9 @@ class PEFile:
 
 
 def open_pe(path):
+    from codebreaker.formats import native          # the C++ reader, when switched on (docs/NATIVE.md)
+    if native.enabled("pe"):
+        return native.PEFile(path)
     return PEFile(path)
 
 
@@ -547,6 +550,13 @@ def _clr_directory(datadirs):
 def is_dotnet(path):
     """Whether the file is a .NET assembly: a PE image with a CLR runtime header (data directory
     14). Reads the headers only."""
+    from codebreaker.formats import native
+    if native.enabled("pe"):
+        return native.is_dotnet(path)
+    return _is_dotnet(path)
+
+
+def _is_dotnet(path):
     try:
         with open(path, "rb") as f:
             head = f.read(0x40)
