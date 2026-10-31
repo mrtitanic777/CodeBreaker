@@ -1158,13 +1158,67 @@ def _implicit_body(b):
     return b.get('implicit', False) and len(ops) == 1 and ops[0].get('implicit', False)
 
 
+_PREC = {'*': 14, '/': 14, '%': 14, '+': 13, '-': 13, '<<': 12, '>>': 12, '>>>': 12, '<': 11, '>': 11, '<=': 11,
+         '>=': 11, '==': 10, '!=': 10, '&': 9, '^': 8, '|': 7, '&&': 6, '||': 5, '??': 4}
+
+
+def _prec(e):
+    if isinstance(e, ir.Binary):
+        return _PREC.get(e.op, 0)
+    if isinstance(e, ir.Concat):
+        return 13
+    if isinstance(e, ir.Cond):
+        return 3
+    if isinstance(e, (ir.Assign, ir.Lambda)):
+        return 2
+    if isinstance(e, ir.InstanceOf):
+        return 11
+    if isinstance(e, (ir.Unary, ir.Cast)):
+        return 15 if not (isinstance(e, ir.Unary) and e.postfix) else 16
+    return 16
+
+
+def group(node):
+    """Roslyn's bound tree keeps no parentheses; the source had them wherever an operand binds looser than
+    its operator. Put those back as Paren nodes (as javac's tree has them), so a back end that prints the
+    grouping the source wrote groups the operands as C# does."""
+    def wrap(child, need):
+        if isinstance(child, ir.Expr) and not isinstance(child, ir.Paren) and _prec(child) < need:
+            return ir.Paren(x=child, type=child.type, line=child.line, col=child.col)
+        return child
+    for n in list(ir.walk(node)):
+        if isinstance(n, ir.Binary):
+            p = _PREC.get(n.op, 0)
+            n.left = wrap(n.left, p if n.op != '??' else p + 1)
+            n.right = wrap(n.right, p + 1 if n.op != '??' else p)
+        elif isinstance(n, ir.Concat):
+            n.parts = [wrap(x, 13 if i == 0 else 14) for i, x in enumerate(n.parts)]
+        elif isinstance(n, (ir.Unary, ir.Cast)):
+            n.x = wrap(n.x, 15)
+        elif isinstance(n, ir.InstanceOf):
+            n.x = wrap(n.x, 12)
+        elif isinstance(n, ir.Cond):
+            n.cond = wrap(n.cond, 4)
+            n.then = wrap(n.then, 3)
+            n.orelse = wrap(n.orelse, 3)
+        elif isinstance(n, ir.Select) and isinstance(n.obj, ir.Expr):
+            n.obj = wrap(n.obj, 16)
+        elif isinstance(n, ir.Call) and isinstance(n.target, ir.Expr):
+            n.target = wrap(n.target, 16)
+        elif isinstance(n, ir.Index):
+            n.arr = wrap(n.arr, 16)
+        elif isinstance(n, ir.Length):
+            n.arr = wrap(n.arr, 16)
+    return node
+
+
 def lower(tree, path=None):
     """One file's CsTreeDump JSON -> ir.Unit."""
-    return Lowering(path).unit(tree)
+    return group(Lowering(path).unit(tree))
 
 
 def lower_with_refusals(tree, path=None):
     """-> (ir.Unit, [(line, kind, why)]): what became Unsupported, and why."""
     L = Lowering(path)
-    u = L.unit(tree)
+    u = group(L.unit(tree))
     return u, L.refused

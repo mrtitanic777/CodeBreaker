@@ -27,7 +27,6 @@ anonymous class) is a ledger entry and the unit is declined.
     prog.ledger                     # [(where, kind, why)]
 """
 import os
-import re
 
 from codebreaker.translate import ir
 
@@ -148,9 +147,23 @@ def _strip(e):
     return e
 
 
+# library constants a constant expression may use (Java's Integer.MAX_VALUE is a field, not a literal)
+_LIB_CONSTS = {('java.lang.Integer', 'MAX_VALUE'): 2 ** 31 - 1, ('java.lang.Integer', 'MIN_VALUE'): -2 ** 31,
+               ('java.lang.Long', 'MAX_VALUE'): 2 ** 63 - 1, ('java.lang.Long', 'MIN_VALUE'): -2 ** 63,
+               ('java.lang.Short', 'MAX_VALUE'): 32767, ('java.lang.Short', 'MIN_VALUE'): -32768,
+               ('java.lang.Byte', 'MAX_VALUE'): 127, ('java.lang.Byte', 'MIN_VALUE'): -128,
+               ('java.lang.Character', 'MAX_VALUE'): 65535, ('java.lang.Character', 'MIN_VALUE'): 0}
+
+
+def _lib_const(e):
+    return isinstance(e, ir.Select) and e.sym is not None and (e.sym.owner, e.sym.name) in _LIB_CONSTS
+
+
 def _is_const(e):
     """A compile-time constant expression (where Java folds with wrapping and C# refuses to overflow)."""
     e = _strip(e)
+    if _lib_const(e):
+        return True
     if isinstance(e, ir.Lit):
         return e.value is not None and not isinstance(e.value, str) or (isinstance(e.value, str) and len(e.value) == 1)
     if isinstance(e, ir.Unary) and e.op in ('-', '+', '~'):
@@ -176,6 +189,8 @@ def _overflows(e):
         if isinstance(x, ir.Lit):
             v = x.value
             return ord(v) if isinstance(v, str) else (int(v) if isinstance(v, (int, bool)) else None)
+        if _lib_const(x):
+            return _LIB_CONSTS[(x.sym.owner, x.sym.name)]
         if isinstance(x, ir.Unary):
             a = val(x.x)
             r = None if a is None else {'-': -a if a is not None else None, '+': a, '~': ~a}[x.op]
@@ -279,6 +294,7 @@ class Program(object):
                 self._index(c)
         self.ledger = []
         self.runtime = set()
+        self.inits = {}                        # id(FieldDecl) -> the initialiser written (None: moved elsewhere)
         self._files = None
 
     def _index(self, c):
@@ -291,6 +307,9 @@ class Program(object):
 
     def files(self):
         if self._files is None:
+            if any((u.lang or 'java') == 'java' for u in self.units):
+                from codebreaker.translate.backends import csharp_java
+                csharp_java.prepare(self)
             out = {}
             for u in self.units:
                 w = Writer(self, u)
@@ -352,7 +371,37 @@ class Writer(object):
         self.cls = None
         self.method = None
         self.labels = {}                       # a Java label -> its loop, for break/continue as goto
+        self.loop_labels = {}                  # id(loop) -> its label
         self.locals = set()
+        self.block_names = []                  # the locals each enclosing block declares (all of the block)
+        self.scopes = [{}]                     # a local's name -> the name it is written with
+
+    # ---- locals: Java's scope of a local begins at its declaration, C#'s is its whole block, so a name an
+    # inner block declares before an outer one declares it is given a number
+    def declare(self, name, nested=False):
+        self.locals.add(name)
+        enclosing = self.block_names if nested else self.block_names[:-1]
+        new = name
+        if any(name in b for b in enclosing):
+            used = set().union(*self.block_names) if self.block_names else set()
+            k = 2
+            while name + str(k) in used or any(name + str(k) in sc.values() for sc in self.scopes):
+                k += 1
+            new = name + str(k)
+        self.scopes[-1][name] = new
+        return ident(new)
+
+    def lookup(self, name):
+        for sc in reversed(self.scopes):
+            if name in sc:
+                return ident(sc[name])
+        return ident(name)
+
+    def push(self):
+        self.scopes.append({})
+
+    def pop(self):
+        self.scopes.pop()
 
     def note(self, kind, why):
         where = (self.cls.qname if self.cls else self.u.path or '') + ('.' + self.method.name if self.method and self.method.name else '')
@@ -602,7 +651,7 @@ class Writer(object):
     def field(self, f, c, ind):
         mods = self.lib.field_mods(f, c) if self.lang == 'java' else list(f.mods or [])
         text = ind + ''.join(x + ' ' for x in mods) + self.ctype(f.type) + ' ' + ident(f.sym.name)
-        init = getattr(f, '_init', f.init)
+        init = self.prog.inits.get(id(f), f.init)
         if init is not None:
             self.method = None
             try:
@@ -623,7 +672,7 @@ class Writer(object):
                 try:
                     self.method = accs[0]
                     return [head + ' => ' + self.expr(b[0].expr)[0] + ';']
-                except Decline as d:
+                except Decline:
                     pass
         if all(a.body is None for a in accs):
             text = head + ' { ' + ' '.join(''.join(x + ' ' for x in a.mods or []) + a.kind + ';' for a in accs) + ' }'
@@ -652,10 +701,12 @@ class Writer(object):
             lines[-1] += ' = ' + self.coerce(p.init, p.type) + ';'
         return lines
 
-    def params_text(self, params):
+    def params_text(self, params, varargs=False):
         out = []
-        for p in params or []:
+        for i, p in enumerate(params or []):
             mods = [m for m in (p.mods or []) if m in ('ref', 'out', 'in', 'params', 'this', 'scoped')]
+            if varargs and i == len(params) - 1 and 'params' not in mods:
+                mods.append('params')
             if p.sym is not None and p.sym.refs and p.sym.refs[0] and p.sym.refs[0] not in mods:
                 mods.insert(0, p.sym.refs[0])
             out.append(''.join(m + ' ' for m in mods) + self.ctype(p.type) + ' ' + ident(p.sym.name if p.sym else 'p'))
@@ -671,11 +722,13 @@ class Writer(object):
             return [head] + self.method_body(m, ind)
         if m.kind == 'init':
             return []                                         # (Java's instance blocks run in each constructor)
+        if m.kind == 'cctor':                                 # Java's statics, in their one textual order
+            return [ind + 'static ' + ident(c.name) + '()'] + self.method_body(m, ind)
         if m.kind == 'ctor':
             if 'IMPLICIT' in (m.mods or []) and not (self.lang == 'java' and self.lib.ctor_needed(c, m)):
                 return []
             mods = self.lib.method_mods(m, c) if self.lang == 'java' else [x for x in m.mods or [] if x != 'IMPLICIT']
-            head = ind + ''.join(x + ' ' for x in mods) + ident(c.name) + '(' + self.params_text(m.params) + ')'
+            head = ind + ''.join(x + ' ' for x in mods) + ident(c.name) + '(' +                 self.params_text(m.params, varargs=self.lang == 'java' and m.sym is not None and m.sym.varargs) + ')'
             stmts = list(m.body.stmts) if m.body else []
             call = stmts[0] if stmts and isinstance(stmts[0], ir.CtorCall) else None
             if call is not None:
@@ -699,10 +752,8 @@ class Writer(object):
             head = ind + ''.join(x + ' ' for x in mods) + ('implicit' if m.name == 'op_Implicit' else 'explicit') + \
                 ' operator ' + self.ctype(m.ret)
         else:
-            if self.lang == 'java' and name in ('ToString', 'Equals', 'GetHashCode') and 'override' not in mods:
-                pass
             head = ind + ''.join(x + ' ' for x in mods) + self.ctype(m.ret) + ' ' + name + self.tparams_text(m)
-        head += '(' + self.params_text(m.params) + ')'
+        head += '(' + self.params_text(m.params, varargs=self.lang == 'java' and m.sym is not None and m.sym.varargs) + ')'
         wheres = [self.where_text(tp) for tp in m.tparams or []]
         wheres = [w for w in wheres if w]
         if m.body is None:
@@ -726,10 +777,11 @@ class Writer(object):
     def body_lines(self, body, ind, m):
         if ir.unsupported(body):
             u = ir.unsupported(body)[0]
-            return self.gap(None, Decline(u.kind, u.raw or u.kind), ind)[0 if False else 0:]
+            return self.gap(None, Decline(u.kind, u.raw or u.kind), ind)
         try:
             out = []
             self.locals = set(p.sym.name for p in (m.params or []) if p.sym is not None) if m is not None else set()
+            self.block_names, self.scopes = [set(self.locals)], [{}]
             self.block_into(body, out, ind)
             return out
         except Decline as d:
@@ -747,8 +799,14 @@ class Writer(object):
         stmts = b.stmts if isinstance(b, ir.Block) else [b]
         if self.lang == 'csharp':
             stmts = _initializers(stmts)
-        for s in stmts:
-            self.stmt(s, out, ind + '    ')
+        self.block_names.append(set(x.sym.name for x in stmts if isinstance(x, ir.Local) and x.sym is not None))
+        self.push()
+        try:
+            for s in stmts:
+                self.stmt(s, out, ind + '    ')
+        finally:
+            self.pop()
+            self.block_names.pop()
         out.append(ind + '}')
 
     def sub(self, s, out, ind):
@@ -775,13 +833,15 @@ class Writer(object):
         out.append(ind + '// ' + s.text)
 
     def s_Local(self, s, out, ind):
-        name = ident(s.sym.name)
-        self.locals.add(s.sym.name)
         mods = 'const ' if 'const' in (s.mods or []) and self.lang == 'csharp' else ''
         if s.init is None:
+            name = self.declare(s.sym.name)
             out.append(ind + mods + self.ctype(s.type) + ' ' + name + ';')
             return
         init = self.coerce(s.init, s.type)
+        name = self.declare(s.sym.name)
+        if self.lang == 'java':
+            self.lib.record(s.sym, s.init)
         tn = self.ctype(s.type)
         if isinstance(_strip(s.init), (ir.New, _Init)) and s.init.type == s.type and not mods:
             out.append(ind + 'var ' + name + ' = ' + init + ';')
@@ -812,11 +872,11 @@ class Writer(object):
                 e = None
 
     def cond(self, e):
-        return self.coerce(e, ir.BOOL)
+        return self.coerce(_strip(e), ir.BOOL)           # (the parentheses an if or a loop writes anyway)
 
     def loop_body(self, s, body, out, ind):
         """A loop's body, with the label a Java `continue label` jumps to at its end."""
-        lab = getattr(s, '_label', None)
+        lab = self.loop_labels.get(id(s))
         if lab is None or not self.labels.get(lab, {}).get('continue'):
             self.sub(body, out, ind)
             return
@@ -837,11 +897,18 @@ class Writer(object):
         out.append(ind + 'while (' + self.cond(s.cond) + ');')
 
     def s_For(self, s, out, ind):
+        self.push()
+        try:
+            self._for(s, out, ind)
+        finally:
+            self.pop()
+
+    def _for(self, s, out, ind):
         inits = []
         for i in s.init or []:
             if isinstance(i, ir.Local):
-                self.locals.add(i.sym.name)
-                inits.append((self.ctype(i.type), ident(i.sym.name) + (' = ' + self.coerce(i.init, i.type) if i.init is not None else '')))
+                v = self.coerce(i.init, i.type) if i.init is not None else None
+                inits.append((self.ctype(i.type), self.declare(i.sym.name, nested=True) + (' = ' + v if v is not None else '')))
             elif isinstance(i, ir.ExprStmt):
                 inits.append((None, self.expr(i.expr, statement=True)[0]))
             else:
@@ -861,12 +928,15 @@ class Writer(object):
 
     def s_ForEach(self, s, out, ind):
         v = s.var
-        self.locals.add(v.sym.name)
         coll = self.lib.iterable(s.iterable) if self.lang == 'java' else None
         if coll is None:
             coll = self.expr(s.iterable)[0]
-        out.append(ind + 'foreach (%s %s in %s)' % (self.ctype(v.type), ident(v.sym.name), coll))
-        self.loop_body(s, s.body, out, ind)
+        self.push()
+        try:
+            out.append(ind + 'foreach (%s %s in %s)' % (self.ctype(v.type), self.declare(v.sym.name, nested=True), coll))
+            self.loop_body(s, s.body, out, ind)
+        finally:
+            self.pop()
 
     def s_Labeled(self, s, out, ind):
         lab = ident(s.label)
@@ -874,7 +944,7 @@ class Writer(object):
         if isinstance(body, (ir.While, ir.DoWhile, ir.For, ir.ForEach)):
             uses = self._label_uses(body, s.label)
             self.labels[lab] = uses
-            body._label = lab
+            self.loop_labels[id(body)] = lab
             self.stmt(body, out, ind)
             if uses.get('break'):
                 out.append(ind + lab + '_break:;')
@@ -1002,29 +1072,40 @@ class Writer(object):
         tn = self.lib.exception(t) if self.lang == 'java' else (self.ctype(t) if t is not None else None)
         if tn is None:
             out.append(ind + 'catch')
+            self.block_into(c.body, out, ind)
         elif c.sym is not None:
-            self.locals.add(c.sym.name)
-            out.append(ind + 'catch (%s %s)' % (tn, ident(c.sym.name)))
+            self.push()
+            try:
+                out.append(ind + 'catch (%s %s)' % (tn, self.declare(c.sym.name, nested=True)))
+                self.block_into(c.body, out, ind)
+            finally:
+                self.pop()
         else:
             out.append(ind + 'catch (%s)' % tn)
-        self.block_into(c.body, out, ind)
+            self.block_into(c.body, out, ind)
 
     def using(self, res, body, out, ind):
         r = res[0]
         if isinstance(r, ir.Local):
-            self.locals.add(r.sym.name)
-            head = 'using (%s %s = %s)' % (self.ctype(r.type), ident(r.sym.name), self.coerce(r.init, r.type))
+            init = self.coerce(r.init, r.type)
+            self.push()
+            tn = 'var' if isinstance(_strip(r.init), ir.New) and r.init.type == r.type else self.ctype(r.type)
+            head = 'using (%s %s = %s)' % (tn, self.declare(r.sym.name, nested=True), init)
         elif isinstance(r, ir.ExprStmt):
             head = 'using (%s)' % self.expr(r.expr)[0]
         else:
             raise Decline('using', 'a resource %s' % type(r).__name__)
         out.append(ind + head)
-        if len(res) > 1:
-            out.append(ind + '{')
-            self.using(res[1:], body, out, ind + '    ')
-            out.append(ind + '}')
-        else:
-            self.block_into(body, out, ind)
+        try:
+            if len(res) > 1:
+                out.append(ind + '{')
+                self.using(res[1:], body, out, ind + '    ')
+                out.append(ind + '}')
+            else:
+                self.block_into(body, out, ind)
+        finally:
+            if isinstance(r, ir.Local):
+                self.pop()
 
     def s_Yield(self, s, out, ind):
         raise Decline('yield', 'a switch-expression arm with statements')
@@ -1039,7 +1120,7 @@ class Writer(object):
         if f is None:
             raise Decline(k, 'the expression %s' % k)
         r = f(e)
-        if not statement and not isinstance(_strip(e), (ir.Lit, ir.Paren)) and e.type is not None \
+        if not statement and not isinstance(_strip(e), (ir.Lit, ir.Paren)) and not _lib_const(_strip(e)) and e.type is not None \
                 and e.type.kind in _RANGE and _is_const(e) and _overflows(e):
             return 'unchecked(' + r[0] + ')', P_PRIMARY     # a constant that wraps: C# would refuse to fold it
         return r
@@ -1068,7 +1149,7 @@ class Writer(object):
         return self.expr(e)[0]
 
     def x_Paren(self, e):
-        return '(' + self.expr(e.x)[0] + ')', P_PRIMARY
+        return self.expr(e.x)              # (grouping is written from the operators' precedence, where needed)
 
     def x_Lit(self, e):
         v, t = e.value, e.type
@@ -1098,7 +1179,7 @@ class Writer(object):
         raise Decline('literal', 'a literal %r' % (v,))
 
     def x_Name(self, e):
-        return ident(e.sym.name), P_PRIMARY
+        return self.lookup(e.sym.name), P_PRIMARY
 
     def x_This(self, e):
         if e.qualifier is not None and self.cls is not None and e.qualifier.name != self.cls.qname:
@@ -1247,8 +1328,7 @@ class Writer(object):
     def x_InstanceOf(self, e):
         text = self.wrap(e.x, P_REL) + ' is ' + self.ctype(e.test)
         if e.binding is not None and e.binding.sym is not None:
-            self.locals.add(e.binding.sym.name)
-            text += ' ' + ident(e.binding.sym.name)
+            text += ' ' + self.declare(e.binding.sym.name)
         return text, P_REL
 
     def x_ClassLit(self, e):
@@ -1258,14 +1338,14 @@ class Writer(object):
         if self.lang == 'java':
             self.lib.check_lambda(e)
         # untyped parameters: a lambda here always has a target type (an argument, a typed local, a return)
-        names = [ident(p.sym.name) for p in e.params or []]
-        ps = names[0] if len(names) == 1 else '(' + ', '.join(names) + ')'
         saved = self.locals
-        self.locals = set(saved) | set(p.sym.name for p in e.params or [])
+        self.locals = set(saved)
+        self.push()
+        names = [self.declare(p.sym.name, nested=True) for p in e.params or []]
+        ps = names[0] if len(names) == 1 else '(' + ', '.join(names) + ')'
         try:
             if isinstance(e.body, ir.Block):
                 out = []
-                prev_m = self.method
                 self.block_into(e.body, out, '')
                 body = '\n'.join(out)
                 # keep it on lines of its own, re-indented by the caller's line
@@ -1273,6 +1353,7 @@ class Writer(object):
             return ps + ' => ' + self.expr(e.body)[0], P_ASSIGN
         finally:
             self.locals = saved
+            self.pop()
 
     def x_MethodRef(self, e):
         if e.mode == 'new':

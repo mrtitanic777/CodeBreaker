@@ -70,12 +70,13 @@ def _fresh(work):
 
 
 # ---------------------------------------------------------------------------------------------- .NET
-def csharp(files, work, args=(), timeout=TIMEOUT, name='Program'):
-    """Compile C# files with the SDK's csc and run the program on the installed runtime."""
+def csharp(files, work, args=(), timeout=TIMEOUT, name='Program', main=None):
+    """Compile C# files with the SDK's csc and run the program on the installed runtime (main: the class
+    whose Main is the entry point, where several have one)."""
     from codebreaker.translate import dotnet
     _fresh(work)
     dll = os.path.join(work, name + '.dll')
-    ok, log = dotnet.compile(files, dll, tmp=os.path.join(work, 'tmp'))
+    ok, log = dotnet.compile(files, dll, tmp=os.path.join(work, 'tmp'), main=main)
     if not ok:
         return Run(False, log=_errors(log))
     code, out, err = dotnet.run(dll, args, timeout=timeout, tmp=os.path.join(work, 'tmp'))
@@ -111,6 +112,38 @@ def java(src_dir, main, work, args=(), timeout=TIMEOUT, classpath=()):
     try:
         p = subprocess.run([jvm, '-cp', cp, main] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                            timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return Run(True, None, '', 'timeout')
+    return Run(True, p.returncode, p.stdout.decode('utf-8', 'replace'), p.stderr.decode('utf-8', 'replace'))
+
+
+# ---------------------------------------------------------------------------------------------- C++
+def cpp(cpp_dir, main_class, work, args=(), timeout=TIMEOUT, jobs=2):
+    """Build a program the Java transpiler's C++03 back end wrote (every .cpp of cpp_dir, with its runtime
+    headers) with the host C++ compiler, and run `main_class::main` after the static initialisers."""
+    from codebreaker.java import probe
+    from codebreaker.verify.lanes import java as vj
+    cxx = vj.compiler()
+    if not cxx:
+        return Run(False, log='no host C++ compiler (settings.json: host_cxx)')
+    _fresh(work)
+    lib = probe.library(cxx, cpp_dir, work, jobs=jobs)
+    if not lib:
+        return Run(False, log='the program did not compile into a library')
+    harness = os.path.join(work, 'cb_main.cpp')
+    simple = main_class.rsplit('.', 1)[-1]
+    with open(harness, 'w', encoding='utf-8') as f:
+        f.write('#include "stdafx.h"\n#include "JavaRT.h"\n#include "%s.h"\n#include "j2x_init.h"\n'
+                'int main() {\n\tj2x_initAll();\n\t%s::main(JArray<JavaString >());\n\treturn 0;\n}\n' % (simple, simple))
+    exe = os.path.join(work, 'program.exe')
+    ok, why, _linked = probe.build_native(cxx, cpp_dir, harness, exe, lib)
+    if not ok:
+        missing = [f for f in sorted(os.listdir(cpp_dir)) if f.endswith('.cpp')
+                   and not os.path.isfile(os.path.join(work, 'probe', '_objects', f[:-4] + '.o'))]
+        return Run(False, log=why + ('; did not compile: ' + ', '.join(missing) if missing else ''))
+    try:
+        p = subprocess.run([exe] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout,
+                           cwd=work)
     except subprocess.TimeoutExpired:
         return Run(True, None, '', 'timeout')
     return Run(True, p.returncode, p.stdout.decode('utf-8', 'replace'), p.stderr.decode('utf-8', 'replace'))

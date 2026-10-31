@@ -107,7 +107,7 @@ def runtimeconfig(dll):
     return path
 
 
-def compile(sources, out_dll, references=(), target='exe', nullable=True, unsafe=False, warn=False, tmp=None):
+def compile(sources, out_dll, references=(), target='exe', nullable=True, unsafe=False, warn=False, tmp=None, main=None):
     """Compile C# sources to out_dll with the SDK's csc. -> (ok, compiler output)."""
     os.makedirs(os.path.dirname(os.path.abspath(out_dll)), exist_ok=True)
     rdir = refs()
@@ -118,6 +118,8 @@ def compile(sources, out_dll, references=(), target='exe', nullable=True, unsafe
         args.append('-nullable:enable')
     if unsafe:
         args.append('-unsafe+')
+    if main:
+        args.append('-main:' + main)
     if not warn:
         args.append('-nowarn:CS8600,CS8601,CS8602,CS8603,CS8604,CS8618,CS8625,CS0168,CS0219,CS0162,CS8321,CS0649,CS0169')
     args += ['-r:' + os.path.join(rdir, f) for f in sorted(os.listdir(rdir)) if f.endswith('.dll')]
