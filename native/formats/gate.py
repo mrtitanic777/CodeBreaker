@@ -276,7 +276,53 @@ def dos_all(path, data):
     return True, out
 
 
-READERS = {"pe": pe_all, "ne": ne_all, "le": le_all, "dos": dos_all}   # reader -> its facts(path, data)
+def omf_module_facts(module, prefix):
+    from codebreaker.formats import omf
+    out = []
+    for f in ("records", "names_of", "publics", "externs", "_code", "code_segment", "function_bytes"):
+        out.append((prefix + f, ask(lambda: getattr(omf, f)(module))))
+    out.append((prefix + "walk", ask(lambda: list(omf.walk(module)))))
+    out.append((prefix + "walk(5)", ask(lambda: list(omf.walk(module, 5)))))
+    try:
+        o = timed(omf.read, module)
+    except Exception as e:                      # noqa: BLE001
+        out.append((prefix + "read", ("raise", ename(e))))
+        return out
+    out.append((prefix + "read", canon(o)))
+    out.append((prefix + "code_segments", ask(lambda: omf.code_segments(o))))
+    for s in [s for s, _c, _l, _a in o.segs][:12] + ["_TEXT", "NOSUCH"]:
+        out.append((prefix + "holes(%s)" % s, ask(lambda: sorted(omf.holes(o, s)))))
+        out.append((prefix + "functions(%s)" % s, ask(lambda: omf.functions(o, s))))
+    out.append((prefix + "functions()", ask(lambda: omf.functions(o))))
+    if o.ext:
+        out.append((prefix + "rename_externs", ask(lambda: omf.rename_externs(module, {o.ext[0]: "RENAMED"}))))
+    pubs = {n: off & 0xFFFF for n, _s, off in o.pubs[:40]}
+    out.append((prefix + "raw_object", ask(lambda: omf.raw_object("T", module[:3000], pubs, module[:50], pubs))))
+    out.append((prefix + "bss_object", ask(lambda: omf.bss_object({n: a + 0x100 for n, a in pubs.items()}, 0x100,
+                                                                   0x100 + 0x10000 - 1, para=True))))
+    out.append((prefix + "record", ask(lambda: omf.record(0x88, module[:300]))))
+    out.append((prefix + "name", ask(lambda: [omf.name("ABC"), omf.name(b"xy")])))
+    return out
+
+
+def omf_all(path, data):
+    from codebreaker.formats import omf
+    with open(path, "rb") as fh:
+        whole = fh.read()
+    if not whole or whole[0] not in (0x80, 0x82, 0xF0) or os.path.splitext(path)[1].lower() not in (".obj", ".lib", ".o"):
+        return False, [("skipped", ("str", "not an object or library"))]
+    out = []
+    try:
+        mods = timed(omf.library, whole)
+    except Exception as e:                      # noqa: BLE001
+        return False, [("library", ("raise", ename(e)))]
+    out.append(("library", canon([(n, len(b)) for n, b in mods])))
+    for name, module in mods[:60]:
+        out += omf_module_facts(module, name + ".")
+    return True, out
+
+
+READERS = {"pe": pe_all, "ne": ne_all, "le": le_all, "dos": dos_all, "omf": omf_all}   # reader -> its facts(path, data)
 
 
 # ---- the corpus -------------------------------------------------------------------------------
@@ -294,8 +340,13 @@ def corpus_files(roots, limit=None):
 
 def roots_of(names):
     known = settings.corpora()
+    kits = settings._load().get("kits") or {}       # the period toolkits: their objects and libraries
+    for k, v in kits.items():
+        known.setdefault("kit:" + k, v if os.path.isabs(v) else os.path.normpath(os.path.join(settings.ROOT, v)))
     if not names:
-        return list(dict.fromkeys(known.values()))
+        return list(dict.fromkeys(v for k, v in known.items() if not k.startswith("kit:")))
+    if names == ["kits"]:
+        return [v for k, v in known.items() if k.startswith("kit:") and os.path.isdir(v)]
     return [known.get(n, n) for n in names]
 
 

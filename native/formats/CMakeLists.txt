@@ -27,6 +27,8 @@ set(FORMATS_SOURCES
   le/questions.cc
   dos/dos.cc          # real-mode programs: MZ, .COM, drivers, IO.SYS, EXEPACK (formats/dos.py)
   dos/questions.cc
+  omf/omf.cc          # OMF-86 objects and libraries (formats/omf.py)
+  omf/questions.cc
 )
 
 add_library(formats SHARED ${FORMATS_SOURCES})

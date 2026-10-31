@@ -24,6 +24,7 @@ Build: native/formats/CMakeLists.txt (cmake + ninja in a vcvars64 shell).
 import ctypes
 import functools
 import inspect as _inspect
+import io
 import os
 import pickle
 import struct
@@ -108,6 +109,16 @@ _QUESTION = {}            # question -> its bytes
 _NO_ARGS = pickle.dumps((), 4)
 
 
+def _dumps(args):
+    """The arguments pickled without a memo: an object passed twice is written twice, so the C++
+    reads each value whole where it stands (it keeps no memo of objects still being filled)."""
+    f = io.BytesIO()
+    p = pickle.Pickler(f, 4)
+    p.fast = True
+    p.dump(args)
+    return f.getvalue()
+
+
 def call(question, data, *args):
     """Ask the C++ one question about `data` (bytes, bytearray or memoryview; None for none)."""
     lib = _LIB[0] if _LIB else _load()
@@ -123,7 +134,7 @@ def call(question, data, *args):
     else:
         data = bytes(data)
         buf, size = data, len(data)
-    blob = pickle.dumps(args, 4) if args else _NO_ARGS
+    blob = _dumps(args) if args else _NO_ARGS
     out, n = ctypes.c_void_p(), ctypes.c_size_t()
     status = lib.cbf_call(q, buf, size, blob, len(blob), ctypes.byref(out), ctypes.byref(n))
     raw = ctypes.string_at(out.value, n.value) if n.value else b""
