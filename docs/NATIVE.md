@@ -269,6 +269,83 @@ several kinds (they want hand-written structs or variants chosen by a person), a
 Unicorn or Capstone's Python bindings. The engine is worth running on every module before it is
 moved by hand: what it translates is gated and done, and its refusal list is the hand-port's to-do.
 
+## Step 4 (readers moved, gated, on): formats and loaders -- `native/formats`
+
+Logan, 2026-10-31: "All of it needs to be C++." The file-format readers of codebreaker/formats/
+are moving into one library, `formats.dll` (native/formats; setting `formats_bin`, default
+native/formats/build/bin):
+
+    (vcvars64)  cmake -S native/formats -B native/formats/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                cmake --build native/formats/build
+                ctest --test-dir native/formats/build          (the library alone, hand-made files)
+
+**The design.** Each reader is plain C++ over the file's bytes -- `pe/pe.h` (pe::Image),
+`ne/ne.h` (ne::Module), `le/le.h` (le::Image, le::W3, the writer in le/image.cc), `dos/dos.h`,
+`omf/omf.h`, and for XEX native/xex's own parser compiled in (reader.cmake) -- with structs a C++
+caller can use as they are. Every read goes through `core/bytes.h`, which keeps Python's rules
+(a slice comes back short, `data[i]` raises IndexError, unpack_from raises struct.error with
+Python's own message, a negative offset counts from the end), so a damaged file fails here
+exactly where and how it failed in Python. Beside each reader a `questions.cc` writes its
+answers in the Python reader's shapes (the same dict keys in the same order, tuples where it had
+tuples). The C interface (`cbformats.h`) is one function, `cbf_call(question, bytes, args)`:
+nothing is kept between calls, so there is no handle, and calls may run on any thread.
+Arguments and answers are a pickle subset (`core/pyvalue.h`), which Python reads and writes at C
+speed with no Python headers in the DLL. A case the C++ leaves to Python (an int past 64 bits,
+a program whose unpacker runs in the emulator, an a.out object) is a Fallback: the Python reader
+answers that call.
+
+**The shim** (temporary, until the Python readers are deleted): codebreaker/formats/native.py
+(loading, `call`, the switch, `asker` for methods, `native_first` for module functions -- each
+keeps the Python function as `.python` and asks the C++ through `.cpp`) and one small module per
+reader (native_pe, native_ne, native_le, native_dos, native_omf) holding the classes. The
+readers' classes pick the C++ one in `__new__` (NEFile, BootImageModule, LEFile, W3File; PE
+through open_pe), so callers change nothing. **Switch:** `CB_NATIVE_FORMATS` (all) or
+`CB_NATIVE_FORMATS_<READER>` (PE, NE, LE, DOS, OMF, XEX); default on for the six gated readers
+(native.READERS_ON); `0` falls back to Python; without the DLL Python runs (native.why_not()).
+
+**The gate** (native/formats/gate.py): every file of every corpus through the reader with its
+switch off and on; every attribute of every object and every method's answer (with probes:
+RVAs, offsets, each segment's relocations, each object's bytes, every member of a container,
+write_image of read_image, embedded and boot-image modules, both run_movers settings ...),
+compared with their types and dict order, or the exception's name; the C++ side is checked to
+have been asked. Seconds are the readers' own time (the comparison's work not counted).
+
+| reader | corpus | files | accepted | identical | Python s | C++ s |
+|---|---|---|---|---|---|---|
+| PE (pe.py) | Win 1.0/3.1/95/98 | 10,042 | 2,050 | 10,042 | 7.95 | 8.87 |
+| NE (ne.py) | Win 1.0/3.1/95/98 | 10,042 | 1,240 | 10,042 | 35.32 | 12.60 |
+| LE (le.py) | Win 1.0/3.1/95/98 | 10,042 | 542 | 10,042 | 16.44 | 12.50 |
+| MZ/DOS (dos.py) | Win 1.0/3.1/95/98 | 10,042 | 316 | 10,042 | 57.28 | 53.54 |
+| OMF (omf.py) | the period toolkits ("kits") | 810 | 102 | 810 | 2.31 | 2.57 |
+| XEX (xex.py) | the Xbox 360 library's .xex | 90 | 87 | 90 | 565.83 | 8.86 |
+
+(Seconds from each reader's own gate run. A final run of PE, NE, LE and DOS together with the
+finished code, on a machine shared with three other sessions, was again identical on every file:
+PE 7.76 / 8.17 s, NE 66.49 / 26.09 s, LE 23.03 / 18.90 s, DOS 81.47 / 88.69 s.)
+
+The speed column is honest about one thing: a ctypes call costs a few microseconds, so the
+gate's many one-line probes (`_u`, `file_offset`, `directory`, ~150 per PE file) cost more in C++
+than in Python, while the tables that walk a file are 3-6x faster (exports, resource_tree,
+export_table on KERNEL32; NE overall x2.8). DOS time is dominated by the packed programs both
+sides unpack in the emulator; XEX's by xex.exe's listing, which the C++ no longer runs.
+
+Also with the readers on: test_frozen 22/22, test_plumbing 17/17, test_dos 20/20,
+test_drivers 16/16, test_xex 6/6, test_whole_module 15/15, test_exepack, test_pklite,
+tests/test_native_formats.py 14/14 (each reader both ways on corpus samples and a damaged file),
+check_imports 562/562, and `tools/l2c.py --made lzexpand.dll keyboard.drv comm.drv lz32.dll`
+223/223 the same as the reference.
+
+**Left in Python, and why.** In the moved readers: omf.patched (its spec is a regular
+expression), omf.rename_symbols (applies a Python function to every name), omf._idx (a two-line
+helper; per-call ctypes would only slow its Python callers), dos.kernel_parts/exepack_stub
+(assembly over build/exepack, reading nothing), xex.basefile/basic (they run the xex program),
+the corpus walks (le.corpus_files, dos.programs). Not yet moved: pe_functions.py (PeCarve keeps
+Capstone's Python instruction objects, which its callers read; function_spans and
+disasm_whole32 can move once formats.dll loads Capstone as cbtrace.dll does), inspect.py,
+detect.py, resources.py, fonts.py, mscompress/cab/lzx, media/gfx/xnb, powerpc_image.py,
+xex_imports/xex_edit, the console ROM readers (gb, genesis, sms, nes, msx, zx) and formats/xbox/
+(the container readers and the crypto tools). Each follows the same pattern.
+
 ## The rest, in measured-cost order
 
 Each is measured again at its start (a profile of the slowest real job it serves) before the

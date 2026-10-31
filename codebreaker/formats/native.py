@@ -31,7 +31,7 @@ import struct
 
 from codebreaker.base import settings
 
-READERS_ON = ()           # readers gated identical and on by default (docs/NATIVE.md); each may be set off
+READERS_ON = ("pe", "ne", "le", "dos", "omf", "xex")   # gated identical, so on by default (docs/NATIVE.md); 0 sets one off
 _VERSION = 1
 _LIB = []
 _WHY = []
