@@ -239,6 +239,52 @@ def test_driver_same_record():
     assert any(m["page"] == 0x90000000 for m in r["lazy_maps"]), r["lazy_maps"]
 
 
+# ---- the 16-bit recorder (emulate/windows16.py trace_function16, emulate/native_win16.py) -------
+def _win16_both(path, seg, off, **kw):
+    from codebreaker.emulate import windows16 as ne
+    out = []
+    for mode in ("0", "1"):
+        os.environ["CB_NATIVE_TRACE16"] = mode
+        try:
+            out.append(ne.probe(path, seg=seg, offset=off, **kw))
+        except Exception as e:
+            out.append(("raised", type(e).__name__, str(e)))
+    os.environ.pop("CB_NATIVE_TRACE16", None)
+    return out
+
+
+def test_win16_same_record():
+    """A 16-bit NE function traced with the Python hooks and the C++ ones gives the same record --
+    the path, the instruction count, the imports hit, the writes, the pages mapped on demand, the
+    ports, the exit and the result. Uses lzexpand.dll's functions; skipped without the corpus."""
+    _need()
+    from codebreaker.emulate import native_win16
+    os.environ["CB_NATIVE_TRACE16"] = "1"
+    if not native_win16.enabled():
+        raise Skip("cbtrace.dll not usable: %s" % native_win16.why_not())
+    from codebreaker.base import corpus
+    from codebreaker.formats.ne import NEFile
+    try:
+        path = corpus.retail("lzexpand.dll")
+    except Exception:
+        path = None
+    if not path or not os.path.isfile(path):
+        raise Skip("lzexpand.dll is not in the corpus")
+    ents = NEFile(path).entries()
+    funcs = [e for e in ents if e and e.get("kind") != "UNUSED" and e.get("seg")][:12]
+    n = 0
+    for e in funcs:
+        for extra in ({}, {"ports": True}, {"insn_cap": 64}):
+            a, b = _win16_both(path, e["seg"], e["offset"], args=[0, 0, 0, 0], **extra)
+            if a != b:
+                keys = sorted(k for k in set(a) | set(b) if a.get(k, "-") != b.get(k, "-")) \
+                    if isinstance(a, dict) and isinstance(b, dict) else ["(raised)"]
+                raise AssertionError("lz16 %d:%04x %s: records differ in %s"
+                                     % (e["seg"], e["offset"], extra, ", ".join(map(str, keys))))
+            n += 1
+    assert n == 3 * len(funcs) and funcs
+
+
 def test_same_record_lz32():
     _need()
     from codebreaker.base import corpus
@@ -258,7 +304,7 @@ def test_same_record_lz32():
 
 def main():
     for fn in (test_same_record_synthetic, test_record_has_what_was_run, test_python_raises_through,
-               test_driver_same_record, test_same_record_lz32):
+               test_driver_same_record, test_win16_same_record, test_same_record_lz32):
         check(fn)
     for name, status, why in RESULTS:
         print("%-32s %s %s" % (name, status, why))

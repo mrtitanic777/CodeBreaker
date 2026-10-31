@@ -130,14 +130,41 @@ on, `CB_NO_FP_CACHE=1`, in a fresh process each) on two VxDs:
 
 Identical everywhere tested, so the switch is on by default.
 
-**The 16-bit tracer (not yet done).** emulate/windows16.py `trace_function16` is the larger half
-(GDT/selector layout, far calls, the NE import-thunk stand-ins, int 21h as DOS3Call, ports16's
-I/O, the branch log, and the recorded-system context replay).  The design is the same: a native
-`cbt_w16_*` recorder holding the per-instruction code hook, the shared memory hook wrapped by the
-segment-limit check, the interrupt hook, the ports and the branch log, with Python still asked the
-rare events (the import_stub model, device/service naming) -- the context-replay and shadow paths
-staying Python at first.  Switch **`CB_NATIVE_TRACE16`** (default 0).  Build is shared with the
-32-bit tracer (native/tracer/CMakeLists.txt; `cbtrace.dll` now carries the driver recorder too).
+**The 16-bit tracer (done, gated).** `w16_rec.cc` (C interface `cbt_w16_*`; ctypes in
+codebreaker/emulate/native_win16.py) holds emulate/windows16.py `trace_function16`'s per-
+instruction code hook (the plain path: the callee-intercept, instruction-cap, near-and-far-return
+and import-sentinel decisions, the instruction count and the path) and its memory hooks (the
+segment-limit check wrapping the shared reads/writes, and the pages mapped on demand, filled with
+emulator._pattern as trace_function16's).  trace_function16 still lays the NE module out (GDT,
+segments, the frame), enters the function, starts the run (uc_emu_start to SENT_BASE) and reads the
+result; it attaches the DLL's hooks to uc._uch in its own order.
+
+What stays Python, called from the native hooks (rare relative to instructions): the import stand-
+in (`import_stub`, the NE oracle), a call into another of the module's functions (`answer`), and
+interrupts (`_intr`: int 21h as DOS3Call).  The branch log and the ports' device model (ports16)
+stay Python hooks, which trace_function16 attaches itself; the ports' clock reads the live
+instruction count the native recorder keeps.  A run beside a shadow, a recorded-system context, or
+with a prelude stays entirely on the Python hooks.
+
+The switch is **`CB_NATIVE_TRACE16`** (default 1; 0 = the Python hooks).  Record identity is
+checked both ways on lzexpand.dll's functions in tests/test_native_trace.py
+(`test_win16_same_record`; skipped without the corpus).  The module gate (`CB_NO_FP_CACHE=1`, a
+fresh process each) on a spread of each module's exported functions:
+
+| module | funcs (record) | records identical | funcs (verdict) | verdicts |
+|---|---|---|---|---|
+| lzexpand.dll | 12 | 12 / 12 | 6 | equivalent 6 |
+| keyboard.drv | 27 | 27 / 27 | 6 | equivalent 6 |
+| comm.drv | 19 | 19 / 19 | 6 | equivalent 6 |
+| krnl386.exe | 30 | 30 / 30 | 6 | consistent 4, equivalent 2 |
+| user.exe (USER) | 40 | 40 / 40 | 8 | equivalent 8 |
+
+Every function's full trace record and its (self-judge) verdict is identical with the switch off
+and on, so the switch is on by default.  The judge's CPU over these samples is about flat off vs
+on -- a self-judge of these smaller functions is dominated by the comparer and the concolic
+machinery, not the per-instruction loop; the per-instruction win (the 18 M register and 22 M
+memory reads USER's full gate made) shows on the instruction-heavy full gate, not a capped sample.
+`cbtrace.dll` now carries the 32-bit tracer, the driver recorder and the 16-bit recorder.
 
 ## The rest, in measured-cost order
 

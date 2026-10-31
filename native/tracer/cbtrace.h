@@ -184,6 +184,54 @@ CBT_API const cbt_drv_result *cbt_drv_result_get(void *run);
 CBT_API int cbt_drv_detach(void *run);
 CBT_API void cbt_drv_free(void *run);
 
+/* ============================================================================================
+ * The 16-bit recorder (codebreaker/emulate/windows16.py `trace_function16`): one NE function run.
+ * The same model again -- Python lays the module out (the GDT, the segments, the frame), starts
+ * the run (uc_emu_start to SENT_BASE) and reads the result; this holds the per-instruction code
+ * hook's plain path (the intercept/cap/near-and-far-return/import-sentinel decisions, the
+ * instruction count and the path) and the memory hooks (the segment-limit check and the shared
+ * reads/writes/pages-on-demand, filled with the pattern as trace_function16's).  The heavy, rare
+ * events stay Python, called from the hooks: the import stand-in (import_stub, the NE oracle), a
+ * call into another of the module's functions (answer), and interrupts (int 21h as DOS3Call).
+ * The branch log and the ports' device model stay Python hooks too; the ports' clock reads the
+ * live instruction count this recorder keeps (`count`).  A run beside a shadow, a recorded-system
+ * context, or with a prelude stays entirely on the Python hooks.
+ * ============================================================================================ */
+
+/* An event the code hook met: a is the address (sentinel/intercept) or the interrupt number; n is
+ * the instruction count then.  Returns 0, or nonzero when Python raised (the run stops; Python
+ * raises the same exception after it). */
+typedef int (*cbt_w16_event)(int64_t a, int64_t n);
+
+typedef struct cbt_w16_config {
+    void *uch;                         /* Python's uc._uch */
+    int32_t eip_id;                    /* Unicorn id of EIP (the record's pc, the limit check) */
+    int32_t near_fn, fill;             /* near entry; fill newly mapped pages with the pattern */
+    int64_t cap;                       /* insn_cap */
+    uint64_t cs_base, near_ret, far_ret, sent_lo, sent_hi, snap_base;
+    int64_t gov_n, gov_ceil;           /* emulator._GOV, carried through */
+    int64_t *count;                    /* the live instruction count (ports16's clock reads it) */
+    const uint64_t *intercept; int64_t nintercept;   /* callee-intercept landing addresses */
+    cbt_w16_event on_sentinel, on_intercept, on_intr;
+} cbt_w16_config;
+
+typedef struct cbt_w16_result {
+    int64_t insn_count, truncated, returned, limit_fault;
+    int64_t memops, writes_seen, stuck;    /* -1: never set */
+    int64_t gov_n, hook_error, uc_err;
+    const uint64_t *path; int64_t npath;
+    const uint64_t *reads; int64_t nreads;      /* CBT_MEM_WORDS each */
+    const uint64_t *writes; int64_t nwrites;    /* CBT_MEM_WORDS each */
+    const uint64_t *lazy; int64_t nlazy;        /* CBT_LAZY_WORDS each */
+} cbt_w16_result;
+
+CBT_API void *cbt_w16_begin(const cbt_w16_config *cfg);
+CBT_API int cbt_w16_attach(void *run);                  /* code, interrupt, memory, unmapped */
+CBT_API void cbt_w16_state(void *run, int64_t *out);    /* [0] hook_error, [1] uc_err, [2] gov_n */
+CBT_API const cbt_w16_result *cbt_w16_result_get(void *run);
+CBT_API int cbt_w16_detach(void *run);
+CBT_API void cbt_w16_free(void *run);
+
 #ifdef __cplusplus
 }
 #endif
