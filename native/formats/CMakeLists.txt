@@ -25,6 +25,8 @@ set(FORMATS_SOURCES
   le/le.cc            # LE and the W3/W4 containers (formats/le.py)
   le/image.cc         #   an image taken apart and written back
   le/questions.cc
+  dos/dos.cc          # real-mode programs: MZ, .COM, drivers, IO.SYS, EXEPACK (formats/dos.py)
+  dos/questions.cc
 )
 
 add_library(formats SHARED ${FORMATS_SOURCES})

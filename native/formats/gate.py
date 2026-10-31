@@ -237,7 +237,46 @@ def le_all(path, data):
     return ok, out
 
 
-READERS = {"pe": pe_all, "ne": ne_all, "le": le_all}     # reader -> its facts(path, data), asked once of each side
+def dos_all(path, data):
+    from codebreaker.formats import dos
+    with open(path, "rb") as fh:
+        whole = fh.read()
+    name = os.path.basename(path)
+    out = [("kind", ask(lambda: dos.kind(path)))]
+    for f, call in (("_kind", lambda: dos._kind(whole, name)), ("_mz", lambda: dos._mz(whole)),
+                    ("_mz(stub)", lambda: dos._mz(whole, True)), ("chain", lambda: dos.chain(whole)),
+                    ("driver_and_vxd", lambda: dos.driver_and_vxd(whole)),
+                    ("dos_and_windows", lambda: dos.dos_and_windows(whole)), ("packer", lambda: dos.packer(path)),
+                    ("devices", lambda: dos.devices(whole[:0x10000])),
+                    ("devices(2)", lambda: dos.devices(whole[:0x10000], 2, (0x70,), 8))):
+        out.append((f, ask(call)))
+    h = dos._mz(whole)
+    if h:
+        out.append(("_packer", ask(lambda: dos._packer(whole, h))))
+        out.append(("_kernel_body", ask(lambda: dos._kernel_body(whole, h))))
+        if dos._packer(whole, h) == "EXEPACK":
+            module = whole[h["header"]:h["size"]]
+            out.append(("unpack_exepack", ask(lambda: dos.unpack_exepack(module, h["cs"], h["ip"]))))
+        if dos._packer(whole, h) == "PKLITE":
+            out.append(("pklite_head", ask(lambda: dos.pklite_head(path, 0x100))))
+    if dos.driver_and_vxd(whole):
+        out.append(("driver_part", ask(lambda: dos.driver_part(path))))
+    if not dos._kind(whole, name):
+        return False, out
+    for movers in (True, False):
+        try:
+            p = timed(dos.read, path, movers)
+        except Exception as e:                  # noqa: BLE001
+            out.append(("read(%s)" % movers, ("raise", ename(e))))
+            continue
+        out.append(("read(%s)" % movers, canon(p)))
+        if p.entries:
+            out.append(("_data_segment(%s)" % movers, ask(lambda: dos._data_segment(p, p.entries[0][0]))))
+        out.append(("unpacked_file(%s)" % movers, ask(lambda: dos.unpacked_file(p))))
+    return True, out
+
+
+READERS = {"pe": pe_all, "ne": ne_all, "le": le_all, "dos": dos_all}   # reader -> its facts(path, data)
 
 
 # ---- the corpus -------------------------------------------------------------------------------
