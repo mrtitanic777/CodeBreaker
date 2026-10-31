@@ -90,6 +90,7 @@ class Writer(object):
         cs = self.ne.h["csip"] >> 16
         if cs in self.by_idx:
             seeds.append((cs, self.ne.h["csip"] & 0xFFFF))
+        entries = list(seeds)                                # (where the module is entered: each a function)
         for s in self.segs:
             for r in s["relocs"]:
                 if r["kind"] == "INTERNAL" and r["seg"] != 0xFF and r["seg"] in self.by_idx:
@@ -120,6 +121,24 @@ class Writer(object):
                 if one.mnemonic in _STOP:
                     break
                 a += one.size
+        self.starts = self._function_starts(entries)
+
+    def _function_starts(self, entries):
+        """Where each function begins, for the fragment each is in the file's L2 tree: the entry
+        points and every place a call lands -- a near call, or a far call through a relocation to a
+        segment of the module's own -- where an instruction was found."""
+        out = set(entries)
+        for (si, a), i in self.insns.items():
+            t = self._target(i)
+            if i.mnemonic == "call" and t is not None:
+                out.add((si, t))
+        for (si, at), (k, _w, _c, _n) in self.sites.items():
+            st = self.covered.get((si, at))
+            r = self.by_idx[si]["relocs"][k]
+            if st == at - 1 and self.insns[(si, st)].mnemonic == "lcall" and r["kind"] == "INTERNAL" and \
+                    r["seg"] != 0xFF:
+                out.add((r["seg"], r["entry"]))
+        return {x for x in out if x in self.insns}
 
     @staticmethod
     def _target(i):
@@ -303,9 +322,15 @@ class Writer(object):
     def _segment(self, L, s, lines_of):
         si, base, length = s["idx"], s["file_off"], s["length"]
         a = 0
+        mine = sorted(x for (sj, x) in self.starts if sj == si and x < length)
+        ends = dict(zip(mine, mine[1:] + [length]))          # (a function runs to the next one)
+        module = os.path.basename(self.path)
         while a < length:
             if (si, a) in self.insns:
                 i = self.insns[(si, a)]
+                if a in ends:                                # (each function a fragment of its own)
+                    L.part(self.placed.get((si, a)) or self.label(si, a), "function",
+                           {"module": module, "segment": si, "offset": a}, ends[a] - a)
                 if (si, a) in self.placed:
                     L.append("%s:" % self.placed[(si, a)])
                 for t in self.text(si, i, (si, a) in self._raw):

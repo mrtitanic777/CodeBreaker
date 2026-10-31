@@ -145,6 +145,7 @@ class Writer(object):
             return any(s["va"] <= a < s["va"] + s["rawsize"] for s in code)
         seeds = [self.B + self.pe.entry] if self.pe.entry else []
         seeds += sorted(pe_functions.function_spans(self.path))
+        entries = list(seeds)                                # (the entry and the functions found: each a function)
         seeds += sorted(v for v in self.sites.values() if in_code(v))
         work = [a for a in seeds if in_code(a)]
         while work:
@@ -168,6 +169,10 @@ class Writer(object):
                     break
                 a += one.size
         self.covered = covered
+        # where each function begins, for the fragment each is in the file's L2 tree: those and every
+        # place a near call lands, where an instruction was found
+        self.starts = {a for a in entries if a in self.insns} | {
+            t for t in (self._target(i) for i in self.insns.values() if i.mnemonic == "call") if t in self.insns}
 
     def _fits(self, i):
         """Every relocated place inside the instruction is its whole 4-byte displacement or immediate."""
@@ -345,9 +350,13 @@ class Writer(object):
                 continue
             L.append("section %s progbits start=0x%x vstart=0x%x align=1" % (s["nasm"], s["rawptr"], s["va"]))
             a, end = s["va"], s["va"] + s["rawsize"]
+            mine = sorted(x for x in self.starts if a <= x < end)
+            starts = dict(zip(mine, mine[1:] + [end]))       # (a function runs to the next one)
             while a < end:
                 if a in self.insns:
                     i = self.insns[a]
+                    if a in starts:                          # (each function a fragment of its own)
+                        L.part(self.placed.get(a) or self.name(a), "function", {"module": name, "va": a}, starts[a] - a)
                     if a in self.placed:
                         L.append("%s:" % self.placed[a])
                     for k, t in enumerate(self.text(i, a in raw)):
