@@ -12,6 +12,8 @@ Usage:
 """
 import struct
 
+from codebreaker.formats import native
+
 RSRC_TYPES = {  # predefined resource type ids (high bit set)
     1:"CURSOR",2:"BITMAP",3:"ICON",4:"MENU",5:"DIALOG",6:"STRING",
     7:"FONTDIR",8:"FONT",9:"ACCELERATOR",10:"RCDATA",11:"MESSAGETABLE",
@@ -19,7 +21,18 @@ RSRC_TYPES = {  # predefined resource type ids (high bit set)
 }
 
 
+def _native_class(cls):
+    """The C++ reader's class for `cls` while it is switched on (docs/NATIVE.md), else None."""
+    if cls in (NEFile, BootImageModule) and native.enabled("ne"):
+        from codebreaker.formats import native_ne
+        return native_ne.CLASSES[cls]
+    return None
+
+
 class NEFile:
+    def __new__(cls, *args, **kw):
+        return object.__new__(_native_class(cls) or cls)
+
     def __init__(self, path):
         self.path = path
         self.data = open(path, "rb").read()
@@ -37,6 +50,8 @@ class NEFile:
     def from_buffer(cls, data, ne_off, path="<buffer>"):
         """Parse an NE module that begins directly at ne_off (no MZ stub).
         Segment sector offsets are relative to ne_off for such embedded modules."""
+        if _native_class(cls) is not None:
+            return _native_class(cls).from_buffer(data, ne_off, path)
         self = cls.__new__(cls)
         self.path = path
         self.data = data
@@ -286,6 +301,12 @@ class BootImageModule(NEFile):
         return self._read_name_table(self.overlay_at + (self.h["nonres_off"] << self.h["align_shift"]))
 
 
+def _place(nef):
+    """(bytes, the module's place) as the C++ reader takes a module (native_ne.where)."""
+    return nef.data, (nef.ne_off, nef.base, nef.overlay_at if isinstance(nef, BootImageModule) else None)
+
+
+@native.native_first("ne.embedded", "ne")
 def embedded(data, start=0x40):
     """[(offset, module name)] of every NE header inside a file that holds several modules."""
     out = []
@@ -327,6 +348,7 @@ def open_boot_image(path, overlay=None):
     return out
 
 
+@native.native_first("ne._tables_end", "ne", args_of=_place)
 def _tables_end(nef):
     """Offset just past the header and every table that belongs with it."""
     h, d, o = nef.h, nef.data, nef.ne_off
@@ -353,6 +375,7 @@ def _tables_end(nef):
     return end
 
 
+@native.native_first("ne.standalone", "ne", args_of=_place)
 def standalone(nef):
     """The bytes of an ordinary one-file executable holding the module `nef` -- for a module
     read out of a boot image, so that everything that takes a path can take it. Header and

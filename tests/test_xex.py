@@ -58,7 +58,7 @@ def main():
     subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, LISTING, "")
     xex.program = lambda: "xex.exe"
     try:
-        h = xex.header(x)
+        h = xex.header.python(x)          # the listing's reader (the C++ reads the file itself: gate.py)
     finally:
         subprocess.run = real
     check("header", (h.name, h.base, h.entry, h.imports, h.libraries) ==

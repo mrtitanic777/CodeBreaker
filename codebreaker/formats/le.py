@@ -12,10 +12,43 @@ Begin_Control_Dispatch, and service table).
     print(v.ddb())                       # {'name': 'VMD', 'version': 0x40a, 'device_id': ...}
     code = v.object_bytes(v.objects[0])  # 32-bit code of the first object
 """
+import os
 import struct
+
+from codebreaker.formats import native
+
+
+# ---- the C++ reader, while switched on (docs/NATIVE.md; codebreaker/formats/native_le.py) -----
+def _native_class(cls):
+    if cls in (LEFile, W3File) and native.enabled("le"):
+        from codebreaker.formats import native_le
+        return native_le.CLASSES[cls]
+    return None
+
+
+def _image_args(lf, *rest):
+    return lf.d, (lf.lfa,) + rest
+
+
+def _file_args(path):
+    with open(path, "rb") as f:
+        return f.read(), (os.path.basename(path),)
+
+
+def _vxds_result(answer, data, path):
+    from codebreaker.formats import native_le
+    return native_le.vxds_result(answer, data, path)
+
+
+def _members_result(answer, data, path):
+    from codebreaker.formats import native_le
+    return native_le.members_result(answer, data, path)
 
 
 class LEFile:
+    def __new__(cls, *args, **kw):
+        return object.__new__(_native_class(cls) or cls)
+
     def __init__(s, data, lfa):
         s.d = data; s.lfa = lfa
         u = lambda o: struct.unpack_from("<I", data, lfa + o)[0]
@@ -39,6 +72,8 @@ class LEFile:
 
     @classmethod
     def from_buffer(cls, data):
+        if _native_class(cls) is not None:
+            return _native_class(cls).from_buffer(data)
         lfa = struct.unpack_from("<I", data, 0x3c)[0]
         if data[lfa:lfa + 2] not in (b"LE", b"LX"):
             raise ValueError("not an LE/LX image (sig=%r)" % data[lfa:lfa + 2])
@@ -214,6 +249,9 @@ class W3File:
     a version word, a module count dword, then `count` 16-byte entries (8-char name + dword file
     offset + dword size) starting at +0x10. Win95 builds vmm32.vxd by packing VMM (and, on some
     machines, the statically-loaded VxDs) into one W3 so the loader maps them together."""
+    def __new__(cls, *args, **kw):
+        return object.__new__(_native_class(cls) or cls)
+
     def __init__(s, data, lfa):
         s.d = data; s.lfa = lfa
         s.version = struct.unpack_from("<H", data, lfa + 2)[0]
@@ -237,6 +275,7 @@ class W3File:
         return cls(d, struct.unpack_from("<I", d, 0x3c)[0])
 
 
+@native.native_first("le.open_vxds", "le", args_of=_file_args, result=_vxds_result)
 def open_vxds(path):
     """[(name, LEFile), ...] for any VxD file: one entry for a plain LE/LX, all embedded modules
     for a W3 container. The single entry point for feeding the disassembler."""
@@ -287,17 +326,20 @@ _DESCRIPTOR_AT = {name: off for name, off, _fmt in DESCRIPTOR}
 _FIELD_AT = {name: off for name, off, _fmt in _FIELDS}
 
 
+@native.native_first("le.header_fields", "le", args_of=_image_args)
 def header_fields(lf):
     """The LE header's fields as a dict (table offsets are as stored: relative to the header,
     except data_pages, nonresident_names, debug_info and resource_data, which are file offsets)."""
     return {name: struct.unpack_from("<" + fmt, lf.d, lf.lfa + off)[0] for name, off, fmt in _FIELDS}
 
 
+@native.native_first("le.is_member", "le", args_of=_image_args)
 def is_member(lf):
     """Is this image one inside a container (its header is not the one the file points at)?"""
     return struct.unpack_from("<I", lf.d, 0x3C)[0] != lf.lfa
 
 
+@native.native_first("le.page_map", "le", args_of=_image_args)
 def page_map(lf):
     """[(page in the file, kind)] for each of the image's pages in order. kind: 0 present,
     1 iterated, 2 invalid, 3 zero-filled."""
@@ -315,6 +357,7 @@ def _page(lf, number, kind, last):
     return bytes(lf.d[off:off + (lf.last_page_bytes if number == last and lf.last_page_bytes else lf.pagesize)])
 
 
+@native.native_first("le.object_data", "le", args_of=_image_args)
 def object_data(lf, obj):
     """One object's bytes as loaded: its pages found through the page map (they need not be in
     order or all present in the file), cut or zero-filled to its virtual size."""
@@ -326,6 +369,7 @@ def object_data(lf, obj):
     return bytes(out[:obj["vsize"]].ljust(obj["vsize"], b"\0"))
 
 
+@native.native_first("le.file_offset", "le", args_of=_image_args)
 def file_offset(lf, obj_index, off):
     """Where byte `off` of object `obj_index` (1-based) is in the file, or None."""
     obj = lf.objects[obj_index - 1]
@@ -336,6 +380,7 @@ def file_offset(lf, obj_index, off):
     return lf.datapages + (pm[i][0] - 1) * lf.pagesize + off % lf.pagesize
 
 
+@native.native_first("le._names", "le")
 def _names(d, p, end=None):
     out = []
     while 0 < p < len(d) and d[p] and (end is None or p < end):
@@ -347,6 +392,7 @@ def _names(d, p, end=None):
     return out
 
 
+@native.native_first("le.names", "le", args_of=_image_args)
 def names(lf):
     """([(name, ordinal)] resident, [(name, ordinal)] non-resident). The first resident name
     (ordinal 0) is the module's own, the first non-resident one its description; the others
@@ -360,6 +406,7 @@ def names(lf):
     return _names(lf.d, lf.resnames), non
 
 
+@native.native_first("le.entries", "le", args_of=_image_args)
 def entries(lf):
     """[(ordinal, object, offset, flags)] from the entry table: the places the image exports.
     A driver has one, its device descriptor block."""
@@ -383,6 +430,7 @@ def entries(lf):
     return out
 
 
+@native.native_first("le._entry_table_size", "le", args_of=_image_args)
 def _entry_table_size(lf):
     d, p = lf.d, lf.entrytab
     while p + 2 <= len(d) and d[p]:
@@ -394,6 +442,7 @@ def _entry_table_size(lf):
     return p + 1 - lf.entrytab
 
 
+@native.native_first("le.exports", "le", args_of=_image_args)
 def exports(lf):
     """[(name, ordinal, object, offset)] -- the entry table joined with the name tables."""
     res, non = names(lf)
@@ -401,6 +450,7 @@ def exports(lf):
     return [(by.get(o, ""), o, obj, off) for o, obj, off, _f in entries(lf)]
 
 
+@native.native_first("le.fixup_records", "le", args_of=_image_args)
 def fixup_records(lf):
     """Every fix-up record of the image, page by page: [(page, record)] with page 1-based and
     record a dict -- raw (its bytes), source (kind of place patched: 7 = 32-bit offset, 8 =
@@ -458,6 +508,7 @@ def fixup_records(lf):
     return out
 
 
+@native.native_first("le.encode_fixup", "le", data_arg=None)
 def encode_fixup(rec):
     """The bytes of a fix-up record as fixup_records gives it (or one built the same way)."""
     fl, src = rec["flags"], rec["source"] | rec.get("source_flags", 0)
@@ -480,6 +531,7 @@ def encode_fixup(rec):
     return bytes(out)
 
 
+@native.native_first("le.references", "le", args_of=_image_args)
 def references(lf):
     """[(object, offset, source kind, target object, target offset)] -- every place in the
     image the loader patches with the address of another place in it (source kind 7: the
@@ -495,12 +547,14 @@ def references(lf):
     return out
 
 
+@native.native_first("le.pointers", "le", args_of=_image_args)
 def pointers(lf):
     """{(object, offset): (target object, target offset)} for every place that holds the
     32-bit address of another place in the image."""
     return {(o, a): (to, ta) for o, a, kind, to, ta in references(lf) if kind == 7}
 
 
+@native.native_first("le._plausible", "le")
 def _plausible(b, at):
     """Does a device descriptor block start at `at`?"""
     if at < 0 or at + 0x38 > len(b):
@@ -510,6 +564,7 @@ def _plausible(b, at):
     return 0x0300 <= version <= 0x04FF and name[:1].isalnum() and all(32 <= c < 127 for c in name)
 
 
+@native.native_first("le.descriptor", "le", args_of=_image_args)
 def descriptor(lf):
     """The device descriptor block, every field, or None: where it is (obj, offset -- from the
     entry table, which exports exactly it; else found by its shape), the numbers it holds
@@ -541,6 +596,7 @@ def descriptor(lf):
     return out
 
 
+@native.native_first("le.service_table", "le", args_of=_image_args)
 def service_table(lf, d=None):
     """[(object, offset) or None] -- where each service the driver offers is, by service number
     (None: a number kept free). Empty for a driver that offers none."""
@@ -552,6 +608,7 @@ def service_table(lf, d=None):
     return [ptr.get((obj, off + 4 * i)) for i in range(d["service_count"])]
 
 
+@native.native_first("le.entry_points", "le", args_of=_image_args)
 def entry_points(lf):
     """{label: (object, offset)} -- everywhere the system or another driver can enter this one:
     'control' (the control procedure), 'service_N', 'v86_api', 'pm_api'."""
@@ -568,6 +625,7 @@ def entry_points(lf):
     return out
 
 
+@native.native_first("le.service_calls", "le", args_of=_image_args)
 def service_calls(lf):
     """[(object, offset, device, service, is_jump)] -- every `int 20h` service call in the
     executable objects (CD 20, service number, device number; bit 15 of the service number
@@ -589,6 +647,7 @@ def service_calls(lf):
 
 
 # Writing an image back ----------------------------------------------------------------------------
+@native.native_first("le.read_image", "le", args_of=_image_args)
 def read_image(lf):
     """An LE image taken apart into what write_image puts together again: {"stub" (what is in
     front of the header), "header" (the header's own bytes), "objects" [{vsize, base, flags,
@@ -651,6 +710,7 @@ def read_image(lf):
                       "from": max(pages_end, names_end)}}
 
 
+@native.native_first("le._name_table", "le", data_arg=None)
 def _name_table(pairs):
     """A name table: its bytes when given as stored, else built from [(name, ordinal)]."""
     if isinstance(pairs, (bytes, bytearray)):
@@ -658,6 +718,7 @@ def _name_table(pairs):
     return b"".join(bytes([len(n)]) + n.encode("latin1") + struct.pack("<H", o) for n, o in pairs) + b"\0"
 
 
+@native.native_first("le.object_table", "le", data_arg=None)
 def object_table(objects):
     """The object table: each object's size, base, flags, first page and page count, and the four
     bytes behind them ("reserved"; a driver's linker leaves the object's name there)."""
@@ -665,6 +726,7 @@ def object_table(objects):
                     + o.get("reserved", b"\0\0\0\0") for o in objects)
 
 
+@native.native_first("le.fixup_tables", "le", data_arg=None)
 def fixup_tables(fixups, pages):
     """The fix-up page table and record table for {page: [record bytes]} over pages 1..`pages`:
     where each page's records start, and where the last one's end. -> (page table, records)"""
@@ -676,6 +738,7 @@ def fixup_tables(fixups, pages):
     return bytes(table), bytes(records)
 
 
+@native.native_first("le.write_image", "le", data_arg=None)
 def write_image(image):
     """The file for an image as read_image describes it: the stub (the header sits right behind
     it), the header with every offset and size worked out again, the object table, the page
@@ -751,6 +814,7 @@ def write_image(image):
 
 
 # Containers -------------------------------------------------------------------------------------
+@native.native_first("le.container", "le")
 def container(data):
     """The directory of a container of drivers (VMM32.VXD, WIN386.EXE), or None when `data` is
     not one: {"kind": 'W3' or 'W4', "at": where its header is, "version", "members":
@@ -773,6 +837,7 @@ def container(data):
             "reserved": bytes(data[at + 6:at + 0x10]), "members": found}
 
 
+@native.native_first("le.pack_directory", "le", data_arg=None)
 def pack_directory(c):
     """The header and directory bytes of a W3 container, from container()'s dict."""
     out = bytearray(b"W3" + struct.pack("<HH", c["version"], len(c["members"])) + c["reserved"])
@@ -793,6 +858,7 @@ class _Bits(object):
         return v
 
 
+@native.native_first("le.expand_page", "le")
 def expand_page(buf, size=0x2000):
     """One compressed page of a W4 container -> its bytes. Bits are read low first. Two equal
     bits start a copy from earlier in the page (00: distance in 6 bits; 110: 8 bits + 64;
@@ -821,6 +887,7 @@ def expand_page(buf, size=0x2000):
     return bytes(out)
 
 
+@native.native_first("le.compress_page", "le")
 def compress_page(page):
     """One page -> compressed bytes expand_page turns back into it (longest earlier match,
     never across a 512-byte boundary, each stretch closed with the end marker)."""
@@ -869,6 +936,7 @@ def compress_page(page):
     return bytes(sum(bits[k + j] << j for j in range(8)) for k in range(0, len(bits), 8))
 
 
+@native.native_first("le.expand", "le")
 def expand(data):
     """A compressed (W4) container as the plain (W3) one it holds; anything else unchanged.
     The result keeps the program in front of the header, so member offsets are as stored."""
@@ -883,6 +951,7 @@ def expand(data):
     return bytes(data[:at]) + body
 
 
+@native.native_first("le.compress", "le")
 def compress(data, like):
     """A plain (W3) container `data` as a compressed one, reusing the program and header in
     front of `like` (a W4 container: its loader is what expands the pages at start-up)."""
@@ -899,6 +968,7 @@ def compress(data, like):
     return bytes(head) + bytes(table) + b"".join(pages)
 
 
+@native.native_first("le.members", "le", args_of=_file_args, result=_members_result)
 def members(path):
     """[(name, LEFile)] for any file of drivers: one for a plain LE image (also one behind a
     DOS program, like DRVSPACE.BIN), every member of a W3 container, and the same for a

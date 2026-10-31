@@ -165,6 +165,119 @@ on -- a self-judge of these smaller functions is dominated by the comparer and t
 machinery, not the per-instruction loop; the per-instruction win (the 18 M register and 22 M
 memory reads USER's full gate made) shows on the instruction-heavy full gate, not a capped sample.
 `cbtrace.dll` now carries the 32-bit tracer, the driver recorder and the 16-bit recorder.
+## Step 6 (gated): the engine and the store -- `native/engine`
+
+**What moved.** `cbengine.dll` (native/engine; C interface cbengine.h; ctypes in
+codebreaker/engine/native_engine.py), on SQLite's C API directly:
+
+- the program database (facts.py's Database): the fact, blob and about tables in the same schema,
+  values kept inline or once in the blob table past 4 KB, the SHA-1 of tag and bytes, remake,
+  forget, other versions dropped once per process, the blobs no fact holds collected, the cap on all
+  databases (`hold`, a database holding verdicts emptied of facts, not deleted), the binary's SHA-256
+  kept by path, size and time;
+- the engine's core (engine.py's Run and Context): the step registry, which facts are current (each
+  decided once per run from the bottom up, the step's version and every input's hash), the inputs
+  recorded as a step asks (`need`, `need_many`, `peek`, `knowledge`, undeclared reads refused),
+  early cutoff (the same hash: the row's provenance remade, nothing past it), unkept values, batch
+  steps, and the scheduler: stale facts made side by side on a C++ worker pool (`low_load`'s count,
+  the first item's error raised once every item has ended, one log line for the lot);
+- the function store (store/functions.py): the index (module, profile, summary, store_about) and
+  every module's tables on the engine's own connection to its database -- record_many, best, tally,
+  scores, latest, stored, variants, the summaries, the overview, and the carry-over of a store from
+  before the databases;
+- the knowledge base's database (knowledge/store.py: pieces, kinds made whole under a stamp, the
+  name store) and the digests reads.py gives the engine (a piece's hash, a whole kind's, the name
+  store's answers), with the per-process hash table reread when another process wrote the file;
+- the verdict vocabulary (verify/verdicts.py: verdict, klass, match, classify and the tables).
+
+**What stays Python, called back.** A step's code (each step is still a Python function: the C++
+run calls it for the contexts it makes, in a copy of the asker's context on the pool's threads, so
+knowledge reads and the service's captured output behave as before); a step's version (a digest of
+its source through `inspect`); a knowledge piece's hash when its kind must first be brought up to
+date by Python's table builders (reads._fresh); what a value IS (facts.encode/decode: bytes, text,
+JSON, a pickle). An exception a step raises comes out of the C++ run as itself, with its kind
+(a LookupError is still one to the staleness check).
+
+**SQLite.** The SQLite 3.54.1 amalgamation is vendored in native/engine/third_party/sqlite (from
+sqlite.org, its SHA3-256 checked against the one published; public domain; downloaded with Logan's
+go-ahead, 2026-10-31) and compiled into cbengine.dll statically: the build needs nothing outside
+the project and no SQLite DLL is shipped beside it.
+
+**The switch.** `CB_NATIVE_ENGINE` (DEFAULT in native_engine.py; 0 = the Python engine and store).
+It is read when a database, a store or a knowledge base is opened, and the object stays on the side
+it was opened on, so one process can hold both (tests/test_native_engine.py does). Without the
+built DLL the Python runs (native_engine.why_not() says why). The switch is not part of any step's
+stamp (engine/lanes.py `_SKIP`), so both sides make facts of the same versions. Build:
+
+    (vcvars64)  cmake -S native/engine -B native/engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                cmake --build native/engine/build
+                ctest --test-dir native/engine/build
+
+**The gate** (harness outside the repository, state/work/native-engine: gate.py, drive.py). `measure`
+of eight modules from an empty state folder (the same folder path both times, so a path a fact
+keeps is the same), the switch off and then on, CB_NO_FP_CACHE=1, CB_LOW_LOAD=2, the same
+decompiler binary; then the warm re-run of every module; then one knowledge piece changed by hand
+(win32 argument_bytes.code KERNEL32.#20, 4 -> 8, which lz32's judge reads) and lz32 measured again;
+then the piece put back and lz32 measured again. Every row compared: each database's facts (kind,
+key, hash, tag, size, step, version, inputs, the value or its blob), blobs and notes; each module's
+store tables (functions, candidates, verdicts with reason, limits, detail and carried, texts,
+identified, built signatures, variants); the index (modules, profiles, summaries); the knowledge
+base (pieces, loads, bodies) -- all but the times:
+
+| module | lane | facts | store rows | verdicts (off == on) | every row identical |
+|---|---|---|---|---|---|
+| lzexpand.dll | ne | 313 | 420 | equivalent 49, divergent 50, consistent 1, no-compile 2 | yes |
+| keyboard.drv | ne | 217 | 290 | equivalent 40, divergent 21, consistent 4, no-compile 5 | yes |
+| comm.drv | ne | 130 | 165 | equivalent 20, divergent 3, consistent 18 | yes |
+| lz32.dll | pe | 124 | 176 | equivalent 17, divergent 3, no-compile 19 | yes |
+| version.dll | pe | 139 | 189 | equivalent 28, divergent 4, no-compile 12 | yes |
+| imm32.dll | pe | 226 | 293 | equivalent 73 | yes |
+| splitter.vxd | le | 25 | 19 | equivalent 6 | yes |
+| choice.com | dos | 73 | 67 | equivalent 22 | yes |
+| the index, the knowledge base | | | 20, 28,031 | | yes |
+
+30,974 rows in ten databases, every one the same. The warm re-run: on both sides each module made
+exactly one fact, its lane's always-run profile, and the same eight facts were touched. The
+knowledge change: on both sides the same 87 facts were made again, lz32's judge 3 verdicts judged
+and 36 kept; putting the piece back did the same, and the verdicts came back as they were.
+tests/test_knowledge_reads.py's cases pass both ways.
+
+Found on the way, the same on both sides (not this step's to fix): the 16-bit lane's
+`lane.ne.module` value holds Python sets (Made.wide, .near, .prototyped, .exported_prologue), whose
+pickle follows the process's string-hash seed, so its hash differs from one process to the next
+with an equal value (the first gate run, without PYTHONHASHSEED, showed exactly that and nothing
+else; early cutoff stops it at the functions, whose hashes are the same). And splitter.vxd's
+`lane.le.profile` records a read of `vxd:device:*` on a warm run that it does not record on the cold
+run (the kind was already read in that process before the step recorded it).
+
+**Speed** (the machine shared with three other sessions; seconds):
+
+| | Python | C++ |
+|---|---|---|
+| cold, eight modules, each its own process (wall) | 438.0 | 257.3 |
+| ... without lzexpand.dll (whose 314 s off was the machine) | 123.9 | 118.5 |
+| warm, eight processes (wall, Python starting included) | 9.7 | 11.2 |
+| the engine's warm check alone, in process (lanes.judged, best of 5, CPU) | 0.72-0.86 | 0.73-0.88 |
+
+The cold time is the steps' (the decompiler, the compilers, the judge), the same code on both
+sides. On a warm check of these modules (about 1,250 facts) the C++ core is level with the Python:
+each check is mostly the always-run profile step and decoding the values asked for, still Python.
+What the C++ engine opens is the steps' turn: with the store and the scheduler native, a step
+moved to C++ no longer crosses into Python at all.
+
+Identical everywhere tested, so the switch is on by default (`CB_NATIVE_ENGINE=0` falls back). The
+Python Database, Run/Context, FunctionStore and KnowledgeBase are deleted at the next milestone.
+
+**Tests.** `ctest --test-dir native/engine/build` (cbengine_test: the C interface alone, 43 checks:
+digests and blobs, a run with steps written in C++ -- made once then kept, early cutoff, a changed
+source remade, side by side on two threads, a batch with an unkept value, a callback's failure and
+an unknown kind with their kinds --, the vocabulary, the store, the knowledge base's digests);
+tests/test_native_engine.py (4: the same pipeline, store, knowledge base and every vocabulary word
+through both sides in one process, each whole record compared); the fast suites pass with the
+switch unset (on) and at 0: test_engine 13, test_knowledge_reads 7, test_verdicts 6, test_store 3,
+test_service 11, test_ui 10, test_verification 20 (1 skipped), test_whole_module 15, test_frozen 22,
+test_plumbing 17, tools/check_imports 557.
+
 ## The porting engine: Python into C++ by translation (2026-10-31)
 
 Every step above can be written by hand. The engine is the other road: CodeBreaker's own
@@ -269,6 +382,59 @@ several kinds (they want hand-written structs or variants chosen by a person), a
 Unicorn or Capstone's Python bindings. The engine is worth running on every module before it is
 moved by hand: what it translates is gated and done, and its refusal list is the hand-port's to-do.
 
+### The engine in C++, piece 1: the Python parser -- `native/pyfront`
+
+All of CodeBreaker is to be C++ (2026-10-31), so the engine above is being rewritten in C++,
+and that rewrite can then port the rest of CodeBreaker. Its first piece is a complete
+Python 3 parser: a hand-written tokenizer (INDENT/DEDENT, implicit joining, PEP 701 f-string
+modes, every string prefix and escape, numbers with underscores, hex, octal, binary,
+unbounded ints and complex) and a recursive-descent parser over CPython's
+`Grammar/python.gram`. The parser covers all statements and expressions, f-strings and
+t-strings, decorators, comprehensions, lambdas, async/await, match, walrus, star-args,
+annotations, PEP 695 type parameters and `type` aliases. Its output is an AST with
+CPython's shape: one plain C++ struct per `ast` node class, the same fields, the same
+positions.
+
+**Gate: identical trees.** For every `.py` under codebreaker/, tools/ and tests/, the dump
+equals CPython 3.14's `ast.dump(ast.parse(src), include_attributes=True)` byte for byte.
+
+| corpus | files | identical | pyfront parse | CPython ast.parse |
+|---|---|---|---|---|
+| codebreaker/ + tools/ + tests/ (10.7 MB, 1.25 M nodes) | 727 | **727** | 0.65-1.2 s | 2.5-5.1 s |
+| CPython's own Lib/ (extra check) | 2,436 | 2,435 | -- | -- |
+
+Both parsers are timed best of 3 under the same load: pyfront is about 4x faster. The one
+file of CPython's Lib that differs uses characters new in Unicode 16 that Windows' ICU does
+not know yet. Syntax errors are refused with CPython's line and offset: the 33 error cases
+in the tests all match, as do Lib/test's `badsyntax_*` files, message text included. CTest
+`pyfront_grammar` runs 301 grammar cases against dumps CPython made once. The gate script is
+`state/work/pyfront/gate.py`, and Python is used only as its oracle.
+
+**The API the next pieces consume** (native/pyfront/README.md has the full version):
+
+- `pyfront::parse(bytes, filename)` returns a `pyfront::Module` (or a `SyntaxError`), and
+  `pyfront::dump(module)` returns the canonical text.
+- `Expr`, `Stmt`, `Pattern` and `TypeParam` each carry a `kind`. `as<T>()` and `cast<T>()`
+  downcast to the per-class struct, such as `BinOp{left, op, right}` or
+  `FunctionDef{name, args, body, decorator_list, returns, type_params}`.
+- Operators and contexts are enums. Constants are a `ConstValue`: an Int keeps its decimal
+  digits plus an `i64`, and a Str is UTF-8.
+- Every node lives in the Module's arena and children are raw pointers, so the inference
+  stage can key side tables on node addresses without copying the tree.
+- The C ABI is in `pyfront/pyfront.h` (`pyfront.dll`).
+
+**Left for the inference + lowering stage** (piece 2, on the native L2 core in native/l2):
+1. A scope pass: names to their bindings (module, class, function, comprehension), with
+   `global`/`nonlocal` and the attributes each class and its instances gain.
+2. Whole-package type inference as `codebreaker/translate/frontends/python` does it today:
+   types flow from annotations and from callers, ints are given ranges, and anything left
+   untyped gets a reason. These are the same rules, rewritten over `pyfront::Module`.
+3. Lowering to L2: from typed pyfront nodes to the L2 core's tree, with refusal reasons kept.
+   That replaces the Python front end's lowering.
+4. The C++17 back end (`backends/cpp17.py` and `py.hpp`), rewritten over L2 in C++.
+pyfront deliberately does not yet provide a generic child walker or a parent map. The scope
+pass is the first thing that needs them, so they should be built there.
+
 ## Step 5 (now first): the L2 core and the C back end -- `native/l2`
 
 Logan, 2026-10-31: "All of it needs to be C++." The translator's core moves first: the L2 tree, and the
@@ -330,6 +496,82 @@ Validation: jsonschema took 155.6 s for the 332 sampled documents, the native ch
 round trip is about even through the shim (its JSON both ways dominates); in C++, between C++ callers,
 there is no JSON at all. tests/translate/test_native_l2_core.py holds both cores to each other on
 documents of every kind; native/l2's CTest (`l2_tests`) holds the core to Python's json, str and repr.
+## Step 4 (readers moved, gated, on): formats and loaders -- `native/formats`
+
+Logan, 2026-10-31: "All of it needs to be C++." The file-format readers of codebreaker/formats/
+are moving into one library, `formats.dll` (native/formats; setting `formats_bin`, default
+native/formats/build/bin):
+
+    (vcvars64)  cmake -S native/formats -B native/formats/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                cmake --build native/formats/build
+                ctest --test-dir native/formats/build          (the library alone, hand-made files)
+
+**The design.** Each reader is plain C++ over the file's bytes -- `pe/pe.h` (pe::Image),
+`ne/ne.h` (ne::Module), `le/le.h` (le::Image, le::W3, the writer in le/image.cc), `dos/dos.h`,
+`omf/omf.h`, and for XEX native/xex's own parser compiled in (reader.cmake) -- with structs a C++
+caller can use as they are. Every read goes through `core/bytes.h`, which keeps Python's rules
+(a slice comes back short, `data[i]` raises IndexError, unpack_from raises struct.error with
+Python's own message, a negative offset counts from the end), so a damaged file fails here
+exactly where and how it failed in Python. Beside each reader a `questions.cc` writes its
+answers in the Python reader's shapes (the same dict keys in the same order, tuples where it had
+tuples). The C interface (`cbformats.h`) is one function, `cbf_call(question, bytes, args)`:
+nothing is kept between calls, so there is no handle, and calls may run on any thread.
+Arguments and answers are a pickle subset (`core/pyvalue.h`), which Python reads and writes at C
+speed with no Python headers in the DLL. A case the C++ leaves to Python (an int past 64 bits,
+a program whose unpacker runs in the emulator, an a.out object) is a Fallback: the Python reader
+answers that call.
+
+**The shim** (temporary, until the Python readers are deleted): codebreaker/formats/native.py
+(loading, `call`, the switch, `asker` for methods, `native_first` for module functions -- each
+keeps the Python function as `.python` and asks the C++ through `.cpp`) and one small module per
+reader (native_pe, native_ne, native_le, native_dos, native_omf) holding the classes. The
+readers' classes pick the C++ one in `__new__` (NEFile, BootImageModule, LEFile, W3File; PE
+through open_pe), so callers change nothing. **Switch:** `CB_NATIVE_FORMATS` (all) or
+`CB_NATIVE_FORMATS_<READER>` (PE, NE, LE, DOS, OMF, XEX); default on for the six gated readers
+(native.READERS_ON); `0` falls back to Python; without the DLL Python runs (native.why_not()).
+
+**The gate** (native/formats/gate.py): every file of every corpus through the reader with its
+switch off and on; every attribute of every object and every method's answer (with probes:
+RVAs, offsets, each segment's relocations, each object's bytes, every member of a container,
+write_image of read_image, embedded and boot-image modules, both run_movers settings ...),
+compared with their types and dict order, or the exception's name; the C++ side is checked to
+have been asked. Seconds are the readers' own time (the comparison's work not counted).
+
+| reader | corpus | files | accepted | identical | Python s | C++ s |
+|---|---|---|---|---|---|---|
+| PE (pe.py) | Win 1.0/3.1/95/98 | 10,042 | 2,050 | 10,042 | 7.95 | 8.87 |
+| NE (ne.py) | Win 1.0/3.1/95/98 | 10,042 | 1,240 | 10,042 | 35.32 | 12.60 |
+| LE (le.py) | Win 1.0/3.1/95/98 | 10,042 | 542 | 10,042 | 16.44 | 12.50 |
+| MZ/DOS (dos.py) | Win 1.0/3.1/95/98 | 10,042 | 316 | 10,042 | 57.28 | 53.54 |
+| OMF (omf.py) | the period toolkits ("kits") | 810 | 102 | 810 | 2.31 | 2.57 |
+| XEX (xex.py) | the Xbox 360 library's .xex | 90 | 87 | 90 | 565.83 | 8.86 |
+
+(Seconds from each reader's own gate run. A final run of PE, NE, LE and DOS together with the
+finished code, on a machine shared with three other sessions, was again identical on every file:
+PE 7.76 / 8.17 s, NE 66.49 / 26.09 s, LE 23.03 / 18.90 s, DOS 81.47 / 88.69 s.)
+
+The speed column is honest about one thing: a ctypes call costs a few microseconds, so the
+gate's many one-line probes (`_u`, `file_offset`, `directory`, ~150 per PE file) cost more in C++
+than in Python, while the tables that walk a file are 3-6x faster (exports, resource_tree,
+export_table on KERNEL32; NE overall x2.8). DOS time is dominated by the packed programs both
+sides unpack in the emulator; XEX's by xex.exe's listing, which the C++ no longer runs.
+
+Also with the readers on: test_frozen 22/22, test_plumbing 17/17, test_dos 20/20,
+test_drivers 16/16, test_xex 6/6, test_whole_module 15/15, test_exepack, test_pklite,
+tests/test_native_formats.py 14/14 (each reader both ways on corpus samples and a damaged file),
+check_imports 562/562, and `tools/l2c.py --made lzexpand.dll keyboard.drv comm.drv lz32.dll`
+223/223 the same as the reference.
+
+**Left in Python, and why.** In the moved readers: omf.patched (its spec is a regular
+expression), omf.rename_symbols (applies a Python function to every name), omf._idx (a two-line
+helper; per-call ctypes would only slow its Python callers), dos.kernel_parts/exepack_stub
+(assembly over build/exepack, reading nothing), xex.basefile/basic (they run the xex program),
+the corpus walks (le.corpus_files, dos.programs). Not yet moved: pe_functions.py (PeCarve keeps
+Capstone's Python instruction objects, which its callers read; function_spans and
+disasm_whole32 can move once formats.dll loads Capstone as cbtrace.dll does), inspect.py,
+detect.py, resources.py, fonts.py, mscompress/cab/lzx, media/gfx/xnb, powerpc_image.py,
+xex_imports/xex_edit, the console ROM readers (gb, genesis, sms, nes, msx, zx) and formats/xbox/
+(the container readers and the crypto tools). Each follows the same pattern.
 
 ## The rest, in measured-cost order
 
@@ -342,7 +584,7 @@ order is trusted; the order below is what is known today.
 | 3 | **The path explorer** | emulate/shadow.py (Shadow32 / the 16-bit shadow), emulate/symbolic.py, verify/guided.py | a symbolic step per instruction, kept in Python beside the run | the shadow inside the recorder, so a shadowed run stops calling Python per step; then step 1's last Python path goes |
 | 4 | **Formats and loaders** | formats/ (PE, NE, LE, MZ, OMF, XEX ...), formats/pe_functions.py carving | reading and carving whole images in Python, per process, every run of a tool | a loader library (one per format, the decompiler's loaders reused) giving the same facts |
 | 5 | **The L2 passes and the C back end** | the L2 tree passes and the C writer in Python, after the native decompiler | tree walks over every function, every build | into native/decompiler: L2 built and rewritten there, C written there; Python reads the result |
-| 6 | **The engine and the store** | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | SQLite's C API directly, the engine's scheduler in C++ |
+| 6 | **The engine and the store** (gated: "Step 6" above) | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | native/engine: SQLite's C API directly, the engine's scheduler in C++; left: the steps themselves |
 | 7 | **Build orchestration** | build/ (OpenWatcom, MASM, period compilers under DOSBox-X) | process starts and file handling around the compilers | a C++ driver: one process starts the compilers and gathers their output |
 | 8 | **The rest** | everything else that computes | -- | case by case; the glue (CLI, terminal UI, MCP) stays Python |
 

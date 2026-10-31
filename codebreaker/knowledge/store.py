@@ -32,6 +32,10 @@ every module with that body (symbols/names.py says how a body is digested).
 
 The file lives beside the program databases (state/db/) but is not one of them: the size rule
 that deletes those (facts.hold) leaves it alone -- what was learned and given is not made again.
+
+The C++ knowledge base (native/engine, CB_NATIVE_ENGINE: engine/native_engine.py) keeps the same
+file in the same schema, values decoded on this side; one opened while it is on is its.
+KnowledgeBase below is the Python one it replaces, until the next milestone.
 """
 import hashlib
 import os
@@ -76,6 +80,13 @@ def beside(store_path):
 
 
 class KnowledgeBase(object):
+    def __new__(cls, path):
+        if cls is KnowledgeBase:
+            from codebreaker.engine import native_engine
+            if native_engine.enabled():
+                return native_engine.KnowledgeBase(path)
+        return object.__new__(cls)
+
     def __init__(self, path):
         self.path = path
         self.lock = threading.RLock()

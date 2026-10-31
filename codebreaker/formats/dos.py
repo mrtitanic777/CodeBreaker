@@ -33,6 +33,39 @@ A Program's `image` is one flat stretch of real-mode memory starting at linear a
 import os
 import struct
 
+from codebreaker.formats import native
+
+
+# ---- the C++ reader, while switched on (docs/NATIVE.md; codebreaker/formats/native_dos.py) ----
+def _nd():
+    from codebreaker.formats import native_dos
+    return native_dos
+
+
+def _nd_file_args(*a):
+    return _nd().file_args(*a)
+
+
+def _nd_lower_name_args(*a):
+    return _nd().lower_name_args(*a)
+
+
+def _nd_program_args(*a):
+    return _nd().program_args(*a)
+
+
+def _nd_data_segment_args(*a):
+    return _nd().data_segment_args(*a)
+
+
+def _nd_program(*a):
+    return _nd().program_result(*a)
+
+
+def _nd_devices(*a):
+    return _nd().devices(*a)
+
+
 LOAD = 0x1000                       # the segment a program is loaded at
 KERNEL_SEGMENT = 0x0070             # where the boot sector and the loader put IO.SYS
 LOADER_SEGMENT = 0x9000             # where the loader moves itself with 640 KB of memory
@@ -80,6 +113,7 @@ class Program(object):
 
 
 # what a file is -------------------------------------------------------------------------------
+@native.native_first("dos._mz", "dos")
 def _mz(data, stub=False):
     """The fields of an MZ header, or None. `size` is the end of the load module in the file.
     A Windows module's DOS stub is None unless `stub`."""
@@ -96,6 +130,7 @@ def _mz(data, stub=False):
     return h
 
 
+@native.native_first("dos.devices", "dos", result=_nd_devices)
 def devices(image, at=0, segments=(0, 0xFFFF), limit=64):
     """The device headers chained from offset `at` of one segment's bytes. [] when what is there
     is not a device header: the routines must lie inside the image, a character device must
@@ -122,6 +157,7 @@ def devices(image, at=0, segments=(0, 0xFFFF), limit=64):
     return out if out and out[-1].next is None else []
 
 
+@native.native_first("dos._kernel_body", "dos")
 def _kernel_body(data, h):
     """Where the BIOS/DOS part of an IO.SYS starts in the file: a sector boundary holding a jump
     followed at once by the chain of built-in devices (CON, AUX, PRN, ...) whose links name
@@ -138,6 +174,7 @@ def _kernel_body(data, h):
     return None
 
 
+@native.native_first("dos._kind", "dos")
 def _kind(data, name=""):
     h = _mz(data)
     if h:
@@ -156,6 +193,7 @@ def _kind(data, name=""):
     return None
 
 
+@native.native_first("dos.chain", "dos")
 def chain(data):
     """Programs stored one after another in one file, each with its own MZ header: [(offset,
     bytes)], or [] for one alone. CodeView 4.1's CV.EXE is three -- a stub that checks the CPU and
@@ -177,6 +215,7 @@ def chain(data):
     return parts if len(parts) > 1 else []
 
 
+@native.native_first("dos.driver_and_vxd", "dos")
 def driver_and_vxd(data):
     """A real-mode device driver and a VxD in one file (DRVSPACE.BIN): an MZ header whose load
     module is the driver -- device headers at its start -- and whose new-header field points at
@@ -193,6 +232,7 @@ def driver_and_vxd(data):
 STUB_PROGRAM = 0x400        # a stub this big is a program of its own, not "cannot be run in DOS mode"
 
 
+@native.native_first("dos.dos_and_windows", "dos")
 def dos_and_windows(data):
     """A DOS program and a Windows module in one file (REGEDIT.EXE, XCOPY32.EXE, UNINSTAL.EXE):
     the module's DOS stub is itself a real program -- run from DOS, it does the work there.
@@ -206,6 +246,7 @@ def dos_and_windows(data):
     return (h, lfa) if h["size"] - h["header"] >= STUB_PROGRAM else None
 
 
+@native.native_first("dos.driver_part", "dos", args_of=_nd_lower_name_args, result=_nd_program)
 def driver_part(path):
     """The real-mode driver of a driver+vxd file, as a Program (a driver image)."""
     with open(path, "rb") as f:
@@ -228,6 +269,7 @@ def driver_part(path):
     return p
 
 
+@native.native_first("dos.kind", "dos", data_arg=None)
 def kind(path):
     """What kind of real-mode program a file is, or None. See the module docstring."""
     try:
@@ -237,6 +279,7 @@ def kind(path):
         return None
 
 
+@native.native_first("dos._packer", "dos")
 def _packer(data, h):
     entry = h["header"] + h["cs"] * 16 + h["ip"]
     if 2 <= entry <= len(data) and data[entry - 2:entry] == b"RB" and h["ip"] in (0x10, 0x12, 0x14):
@@ -258,6 +301,7 @@ def _packer(data, h):
     return None
 
 
+@native.native_first("dos.packer", "dos", args_of=_nd_file_args)
 def packer(path):
     """How an MZ program's load module is stored compressed, or None when it is not (or the
     scheme is not one this knows by its marks)."""
@@ -275,6 +319,7 @@ def programs(extensions=EXTENSIONS):
 
 
 # EXEPACK --------------------------------------------------------------------------------------
+@native.native_first("dos.unpack_exepack", "dos")
 def unpack_exepack(module, cs, ip):
     """Undo EXEPACK on a load module. -> (load module, [relocation offsets], cs, ip, ss, sp)
 
@@ -332,6 +377,7 @@ def unpack_exepack(module, cs, ip):
     return bytes(buf[:out_paras * 16]), relocs, real_cs, real_ip, real_ss, real_sp
 
 
+@native.native_first("dos.unpacked_file", "dos", args_of=_nd_program_args)
 def unpacked_file(p):
     """A Program read from a packed MZ file, written back as a plain MZ file that DOS runs the
     same way: the unpacked load module with its relocation table (grouped per 64 KB, as EXEPACK
@@ -391,6 +437,7 @@ def _load_module(data, h, p, segment, notes, run_movers=True):
     return bytes(img), sorted(relocs), cs, ip, ss, sp
 
 
+@native.native_first("dos._data_segment", "dos", args_of=_nd_data_segment_args)
 def _data_segment(p, entry):
     """The data segment a program sets up: the first `mov ds, reg` after its entry point, when
     the register was loaded with a relocated constant or copied from CS just before."""
@@ -418,6 +465,7 @@ def _data_segment(p, entry):
     return None
 
 
+@native.native_first("dos.read", "dos", args_of=_nd_file_args, result=_nd_program)
 def read(path, run_movers=True):
     """Read a real-mode program. -> Program. ValueError when the file is not one. With
     run_movers False a program that moves itself is read as stored (see the top)."""
@@ -553,6 +601,7 @@ def kernel_parts(path):
     return out, layout
 
 
+@native.native_first("dos.pklite_head", "dos", args_of=_nd_lower_name_args, result=_nd_program)
 def pklite_head(path, start):
     """PKLITE's entry code and decompressor (the first `start` bytes of the load module it
     stored) as a program of its own: it runs at the start of the program, in the program prefix's

@@ -29,11 +29,32 @@ import struct
 import subprocess
 import sys
 
+from codebreaker.formats import native
+
+
+# ---- the C++ reader, while switched on (docs/NATIVE.md; native/formats/xex) -------------------
+def _headers_result(answer, data, *_):
+    entries, error = answer
+
+    def entries_then_error():
+        yield from entries
+        if error is not None:
+            raise native._exception(*error)
+    return entries_then_error()
+
+
+def _header_result(answer, data, path):
+    h = Header()
+    h.name, h.base, h.entry = answer["name"], answer["base"], answer["entry"]
+    h.imports, h.libraries = answer["imports"], [tuple(lib) for lib in answer["libraries"]]
+    return h
+
 MAGIC = b"XEX2"
 FILE_FORMAT_INFO = 0x000003FF
 EXECUTION_INFO = 0x00040006
 
 
+@native.native_first("xex.is_xex", "xex", data_arg=None)
 def is_xex(path):
     try:
         with open(path, "rb") as f:
@@ -42,6 +63,7 @@ def is_xex(path):
         return False
 
 
+@native.native_first("xex.optional_headers", "xex", result=_headers_result)
 def optional_headers(data):
     """(the entry's offset, key, value) of each entry of the header's optional-header table, in order (read
     as asked: a reader that stops at the key it wants reads no further). A value is the data itself for a
@@ -52,6 +74,7 @@ def optional_headers(data):
         yield 0x18 + i * 8, key, value
 
 
+@native.native_first("xex.ids", "xex")
 def ids(data):
     """(media id, title id) from the header's execution info, or (0, 0) for a header without one (or what is
     not an XEX2 header)"""
@@ -145,6 +168,7 @@ class Header:
         self.libraries = []
 
 
+@native.native_first("xex.header", "xex", data_arg=None, result=_header_result)
 def header(path):
     """What the .xex header states, read from the native program's listing."""
     r = subprocess.run([program(), "list", path], capture_output=True, text=True)

@@ -51,6 +51,12 @@ read it; a fact that read none is untouched by any change to the base.
 
 The facts of a step of another version are dropped from a database the first time the step is
 used on it in a process (facts.py: versions, and the cap on all databases).
+
+The core of this -- the registry, which facts are current, the inputs recorded, what is written,
+kept or remade, the order and the worker threads -- is C++ when the database was opened on the C++
+fact store (CB_NATIVE_ENGINE: native/engine, engine/native_engine.py): Run below hands itself
+over, and the steps still written in Python are called back from there. The Python Run and
+Context stay as the fallback until the next milestone.
 """
 import hashlib
 import io
@@ -114,7 +120,9 @@ def step(kind, reads=(), platform="", uses=(), stamp=None, batch=False, always=F
     """Declare the function below as the step that makes facts of `kind` (see the module's text).
     `version` fixes the version instead of the code's digest (tests)."""
     def declare(fn):
-        STEPS[kind] = Step(kind, fn, reads, platform, uses, stamp, batch, always, version)
+        s = STEPS[kind] = Step(kind, fn, reads, platform, uses, stamp, batch, always, version)
+        from codebreaker.engine import native_engine
+        native_engine.declared(s)                    # (the C++ registry, once its DLL is loaded)
         return fn
     return declare
 
@@ -172,6 +180,12 @@ def _file(ctx, key):
 # --- a run ------------------------------------------------------------------------------------
 class Run(object):
     """One asking of the engine: each fact decided current or made again at most once in it."""
+
+    def __new__(cls, db, log=None):
+        if cls is Run and getattr(db, "native", False):          # (a database on the C++ fact store)
+            from codebreaker.engine import native_engine
+            return native_engine.Run(db, log)
+        return object.__new__(cls)
 
     def __init__(self, db, log=None):
         self.db, self.log = db, log
@@ -465,6 +479,9 @@ def _binary_hash(db):
 def _give_binary(db, value):
     """The binary's fact: its value where it is, its hash its bytes' (moving it changes nothing)."""
     tag, data = facts.encode(value)
+    if getattr(db, "native", False):
+        db.write_raw("binary", "", _binary_hash(db), tag, data, facts.GIVEN, "", "[]", 0)
+        return
     with db.lock:
         db.conn.execute("INSERT OR REPLACE INTO fact(kind, key, hash, tag, value, blob, size, step, version, inputs, "
                         "made, took) VALUES('binary','',?,?,?,NULL,?,?,'','[]',?,0)",
