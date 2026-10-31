@@ -78,3 +78,8 @@ answer: cJSON, zlib, sds, tiny-AES-c, inih, Lua, miniz.
 ## Java
 
 Minecraft (alpha, PC): its classes as C++03 through the Java lane, built and running.
+
+Minecraft Alpha (decompiled source), as C#: NoiseGenerator, NoiseGeneratorPerlin, NoiseGeneratorOctaves and
+MathHelper through the javac front end and the C# back end (translator phase 7), judged beside the JVM with a
+driver of seeded world-generation calls: the same output, java.util.Random and Java's text for doubles included
+(tests/translate/test_csharp_kit.py).

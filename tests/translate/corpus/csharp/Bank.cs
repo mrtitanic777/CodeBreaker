@@ -1,0 +1,153 @@
+// Bank: exceptions (a custom exception type, try/catch/finally, rethrow), using and IDisposable, a struct
+// with value semantics, an enum with explicit values, a switch on it, static state.
+using System;
+using System.Collections.Generic;
+
+namespace Corpus.Bank
+{
+    public enum Kind { Checking = 1, Savings = 2, Loan = 10 }
+
+    public class InsufficientFunds : Exception
+    {
+        public int Short { get; }
+
+        public InsufficientFunds(int shortBy) : base("short by " + shortBy)
+        {
+            Short = shortBy;
+        }
+    }
+
+    public struct Money
+    {
+        public int Cents;
+
+        public Money(int cents)
+        {
+            Cents = cents;
+        }
+
+        public Money Add(Money o) => new Money(Cents + o.Cents);
+
+        public override string ToString() => (Cents / 100) + "." + (Cents % 100).ToString("D2");
+    }
+
+    public class Account
+    {
+        private static int nextId = 100;
+        public readonly int Id;
+        public Kind Kind;
+        public Money Balance;
+
+        public Account(Kind kind, int cents)
+        {
+            Id = nextId++;
+            Kind = kind;
+            Balance = new Money(cents);
+        }
+
+        public void Withdraw(int cents)
+        {
+            if (cents > Balance.Cents)
+                throw new InsufficientFunds(cents - Balance.Cents);
+            Balance.Cents -= cents;
+        }
+
+        public int Rate()
+        {
+            switch (Kind)
+            {
+                case Kind.Checking:
+                    return 0;
+                case Kind.Savings:
+                    return 3;
+                default:
+                    return -7;
+            }
+        }
+    }
+
+    public class Ledger : IDisposable
+    {
+        private readonly List<string> lines = new List<string>();
+        private readonly string name;
+
+        public Ledger(string name)
+        {
+            this.name = name;
+            Console.WriteLine("open " + name);
+        }
+
+        public void Write(string line)
+        {
+            lines.Add(line);
+        }
+
+        public void Dispose()
+        {
+            Console.WriteLine("close " + name + " with " + lines.Count + " lines");
+        }
+    }
+
+    public static class Program
+    {
+        static int attempts;
+
+        static void Try(Account a, int cents, Ledger log)
+        {
+            attempts++;
+            try
+            {
+                a.Withdraw(cents);
+                log.Write("ok " + a.Id + " " + cents);
+            }
+            catch (InsufficientFunds e)
+            {
+                log.Write("fail " + a.Id);
+                Console.WriteLine("account " + a.Id + ": " + e.Message + " (" + e.Short + ")");
+            }
+            finally
+            {
+                Console.WriteLine("attempt " + attempts + " balance " + a.Balance);
+            }
+        }
+
+        static int Divide(int a, int b)
+        {
+            try
+            {
+                return a / b;
+            }
+            catch (DivideByZeroException)
+            {
+                Console.WriteLine("divide by zero caught");
+                throw;
+            }
+        }
+
+        public static void Main()
+        {
+            var acct = new Account(Kind.Savings, 12345);
+            var loan = new Account(Kind.Loan, 50);
+            using (var log = new Ledger("day1"))
+            {
+                Try(acct, 2345, log);
+                Try(loan, 100, log);
+                Try(acct, 10001, log);
+            }
+            Money m = acct.Balance;
+            m.Cents += 1;
+            Console.WriteLine("copy " + m + " original " + acct.Balance);
+            Console.WriteLine("rates " + acct.Rate() + " " + loan.Rate() + " " + (int)loan.Kind);
+            try
+            {
+                Divide(7, 0);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("outer caught " + e.GetType().Name);
+            }
+            Money total = acct.Balance.Add(loan.Balance);
+            Console.WriteLine("total " + total);
+        }
+    }
+}

@@ -330,6 +330,27 @@ number of working pairs.
    round trips judged.
 6. **C out.** The C back end. *Exit:* the Java corpus judged as C.
 7. **C# in and out.** Roslyn front end, C# back end, the .NET adapter in the judge.
+   (Progress 2026-10-31: the kit is in. Front end `translate/frontends/csharp`: CsTreeDump.cs, built
+   by the installed SDK's own csc.dll against its Microsoft.CodeAnalysis assemblies by path -- no
+   project, no restore, nothing downloaded -- dumps declarations and Roslyn's IOperation tree;
+   lower.py makes L2. Back end `translate/backends/csharp.py` (+ `csharp_java.py`, Java's library and
+   semantics in C#, through `api_maps/java.csharp.json` and the runtime `dotnet/runtime/JavaRt.cs`).
+   Judge `translate/dotnet/judge.py` (csc + the installed runtime; javac + the JVM; the host C++
+   compiler), pairs in `dotnet/pairs.py`. Judged: C# -> C# 10 of 10 equivalent; Java -> C# 4 of 4
+   (the Java lane's Calc/Base/Sub and fixtures, a modern-Java program, and real Minecraft Alpha
+   NoiseGeneratorPerlin/Octaves + MathHelper through java.util.Random to the same doubles); C# ->
+   C++03 through `dotnet/cs2cpp.py`: Shapes equivalent, the rest refused with reasons. Where L2 was
+   Java-shaped, and what was added (additive): a Sym could not name a property or say a parameter is
+   ref/out (kinds property/event, Sym.refs, Sym.flags); nothing said whose semantics a unit's string
+   conversions and library calls carry (Unit.lang); no property or indexer (Property, Index.sym); type
+   parameters lost their bounds (TypeParam); an enum could not be a named integer (EnumConst.value);
+   u16 meant Java's char, but C# has both char and ushort (Prim.enc); no nullable reference, no
+   rectangular array (Class.nullable, Array.rank); no `??` (Binary op). Beyond the schema: grouping
+   was carried only by javac's Paren nodes (the C++03 back end prints no precedence), so the C# front
+   end puts back the parentheses C# needs; and the C++03 back end is L2 for bodies only -- its
+   declarations still come from Java source text, its runtime is Java's library (System.out a no-op),
+   and it writes no for-each -- which `cs2cpp.py` crosses with a Java declaration skeleton, a library
+   rebinding and C#'s properties lowered to methods.)
 8. **Python in and out.** The `ast` front end, type inference, the `dynamic` runtime, the Python back
    end.
 9. **JavaScript / TypeScript in and out.** The TypeScript compiler front end, the JS back end.

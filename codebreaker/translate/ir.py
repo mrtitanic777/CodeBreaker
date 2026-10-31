@@ -108,11 +108,16 @@ I32 = Type('i32')
 # ---------------------------------------------------------------------------------------------- symbols
 class Sym(object):
     """What a name refers to. kind: 'local', 'param', 'field', 'method', 'ctor', 'class', 'enumconst',
-    'typevar', 'package'. owner: the qualified name of the declaring type (or method, for a local).
-    For a method or constructor: params (Types), ret (Type), varargs."""
-    __slots__ = ('kind', 'name', 'owner', 'static', 'type', 'params', 'ret', 'varargs')
+    'typevar', 'package', and 'property' / 'event' (C#: a member read and written through accessors).
+    owner: the qualified name of the declaring type (or method, for a local).
+    For a method or constructor: params (Types), ret (Type), varargs; refs: how each parameter is passed
+    where any is not by value ('ref', 'out', 'in'; '' for by value). flags: what else the source says of
+    it ('extension': a static method called as if on its first argument; 'indexer'; 'operator';
+    'readonly'; 'virtual', 'abstract', 'override')."""
+    __slots__ = ('kind', 'name', 'owner', 'static', 'type', 'params', 'ret', 'varargs', 'refs', 'flags')
 
-    def __init__(self, kind, name, owner=None, static=False, type=None, params=(), ret=None, varargs=False):
+    def __init__(self, kind, name, owner=None, static=False, type=None, params=(), ret=None, varargs=False,
+                 refs=(), flags=()):
         self.kind = kind
         self.name = name
         self.owner = owner
@@ -121,6 +126,8 @@ class Sym(object):
         self.params = tuple(params)
         self.ret = ret
         self.varargs = varargs
+        self.refs = tuple(refs)
+        self.flags = tuple(flags)
 
     def __repr__(self):
         return '<%s %s.%s>' % (self.kind, self.owner, self.name)
@@ -186,19 +193,29 @@ def _node(name, slots, fields=None, base=Node):
 # -- declarations
 Module = _node('Module', ['units', 'header'], ['units'])              # a whole program, or one binary's module
 # (header: its declarations as text, where they are not yet a tree -- l2.module, the one module model)
-Unit = _node('Unit', ['path', 'package', 'imports', 'types'], ['types'])
+Unit = _node('Unit', ['path', 'package', 'imports', 'types', 'lang'], ['types'])
+# (lang: the source language -- 'java', 'csharp', ... -- whose semantics the unit's library calls, string
+# conversions (Concat) and enum and struct kinds carry; a back end maps them by it)
 ClassDecl = _node('ClassDecl', ['name', 'qname', 'kind', 'mods', 'typeparams', 'extends', 'implements',
-                                'members', 'outer'], ['members'])
+                                'members', 'outer', 'tparams'], ['members'])
+# (kind also: struct -- a value type, copied on assignment --, 'record struct', delegate -- a named function
+# type whose one member is its Invoke --; tparams: the type parameters with their bounds, as TypeParam)
 # (a C struct, a frame, a data segment with a fixed layout is a 'record' Type, beside ClassDecl)     # kind: class interface enum record annotation
 FieldDecl = _node('FieldDecl', ['sym', 'type', 'init', 'mods'], ['init'])
 MethodDecl = _node('MethodDecl', ['sym', 'name', 'kind', 'params', 'ret', 'body', 'mods', 'throws', 'typeparams',
-                                  'comments', 'text'], ['params', 'body'])
+                                  'comments', 'text', 'tparams'], ['params', 'body'])
 # kind: method ctor static_init init, or function (a free function: C, a decompiled binary). A function
 # whose type carries a calling convention (an 'fn' Type) has it on sym.type, where callers read it too.
 # comments: the text of each comment written above it (a decompiler's warnings). text: its source as
 # text where its tree is not yet written (the C a function store holds).
 Param = _node('Param', ['sym', 'type', 'mods'], [])
-EnumConst = _node('EnumConst', ['sym', 'args', 'body', 'ctor'], ['args', 'body'])
+EnumConst = _node('EnumConst', ['sym', 'args', 'body', 'ctor', 'value'], ['args', 'body'])
+# (value: an enum that is a named integer -- C, C# -- gives each constant's number; Java's are objects)
+Property = _node('Property', ['sym', 'type', 'mods', 'params', 'accessors', 'init'], ['params', 'accessors', 'init'])
+# a member read and written through accessors (C# properties and indexers): accessors are MethodDecls of
+# kind get / set / init, each with body None where the compiler supplies it (an auto-property's field)
+TypeParam = _node('TypeParam', ['name', 'bounds', 'flags', 'variance'], [])
+# a type parameter: bounds (Types it must extend or implement), flags (class, struct, new)
 
 
 # -- statements
@@ -260,11 +277,12 @@ Super = _expr('Super', ['qualifier'], [])
 Call = _expr('Call', ['target', 'sym', 'args', 'typeargs'], ['target', 'args'])   # target None: own method, implicit
 New = _expr('New', ['sym', 'args', 'body', 'outer', 'memory'], ['outer', 'args', 'body'])   # memory: MEMORY   # body: an anonymous ClassDecl
 NewArray = _expr('NewArray', ['elem', 'dims', 'init'], ['dims', 'init'])        # elem: the element Type
-Index = _expr('Index', ['arr', 'index'])
+Index = _expr('Index', ['arr', 'index', 'sym'], ['arr', 'index'])   # sym: an indexer (C#), when not an array
 Length = _expr('Length', ['arr'])                    # an array's length
 Unary = _expr('Unary', ['op', 'x', 'postfix', 'overflow'], ['x'])     # op: - + ! ~ ++ --
 Binary = _expr('Binary', ['op', 'left', 'right', 'overflow', 'signed'], ['left', 'right'])
 # (signed: for a comparison in a binary, from the instruction (jl vs jb), not the operand types)        # op: + - * / % << >> >>> & | ^ && || == != < <= > >=
+# (and ??: the left operand unless it is null, the right evaluated only then)
 Concat = _expr('Concat', ['parts'])                      # string concatenation, flattened
 Assign = _expr('Assign', ['op', 'target', 'value', 'overflow'], ['target', 'value'])   # op None, or the compound operator
 Cond = _expr('Cond', ['cond', 'then', 'orelse'])
