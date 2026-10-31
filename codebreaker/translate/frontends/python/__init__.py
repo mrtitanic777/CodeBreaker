@@ -201,7 +201,7 @@ def build_unit(prog, ctx, mod, lowered, global_decls):
                               extends=None, implements=[], members=members, outer=None))
     deps = set()
     for q in used:
-        owner = q.rsplit('.', 1)[0]
+        owner = q if q in prog.modules else q.rsplit('.', 1)[0]      # (a module's own names: the module)
         if owner != mod and owner in prog.modules:
             deps.add(owner)
     for md in r.translated.values():
