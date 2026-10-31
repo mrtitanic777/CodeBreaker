@@ -76,6 +76,11 @@ Flat* make_flat() {
 }
 
 std::string flat_text(const std::function<void(Em*)>& put_) {
+    if (!now->seeing) {                                  // (kept only while a layout records where things are)
+        Flat local;
+        put_(&local);
+        return local.text();
+    }
     Flat* em = make_flat();
     if (now->seeing && !now->owners.empty()) now->owner_of[em] = now->owners.back();
     put_(em);
@@ -440,10 +445,10 @@ std::string raw_text(const V& e) {
             now->raw -= 1;
         }
     } done{id(e)};
-    Flat* em = make_flat();
-    put(em, e);
+    Flat em;
+    put(&em, e);
     std::string s;
-    for (auto& x : em->raw) s += x;
+    for (auto& x : em.raw) s += x;
     return s;
 }
 
@@ -451,6 +456,7 @@ void rewrite(const V& e, Rewrite shown, bool room) {
     if (!now->whole.count(id(e))) {
         now->whole[id(e)] = std::move(shown);
         if (room) now->room.insert(id(e));
+        now->mut++;
     }
 }
 

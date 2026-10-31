@@ -418,7 +418,50 @@ static bool passed_on(const std::string& arg, const std::string& reg) {
 }
 
 // ---------------------------------------------------------------------------------------------- _seen
+// What the function's text is laid out from, as one number: a layout made in the same state is the
+// same layout (the Python made it again each time; the text, and all it records, come out the same).
+static uint64_t layout_key() {
+    std::hash<std::string> hs;
+    std::hash<const void*> hp;
+    uint64_t k = 1469598103934665603ULL;
+    auto mix = [&](uint64_t v) { k = (k ^ v) * 1099511628211ULL; };
+    auto bag = [&](uint64_t v) { return v * 0x9E3779B97F4A7C15ULL; };
+    mix(now->mut);
+    uint64_t s = 0;
+    for (auto& kv : now->marks) s += bag(hp(kv.first) ^ hs(kv.second));
+    mix(s);
+    s = 0;
+    for (auto& kv : now->decls) s += bag(hs(kv.first) ^ (hs(kv.second) << 1));
+    mix(s);
+    for (auto& d : now->drop) mix(hs(d));
+    for (auto& d : now->frame) mix(hs(d));
+    for (auto& kv : now->alias) mix(hs(kv.first) ^ (hs(kv.second) << 1));
+    s = 0;
+    for (auto x : now->gone) s += bag(hp(x));
+    mix(s);
+    s = 0;
+    for (auto x : now->far_read) s += bag(hp(x));
+    mix(s);
+    for (auto* m : {&now->before, &now->after})
+        for (auto& kv : m->items) {
+            mix(hp(kv.first));
+            for (auto& t : kv.second) mix(hs(t));
+        }
+    for (auto& d : now->declare_first) mix(hs(d.first) ^ (hs(d.second) << 1));
+    mix(now->old_style ? 1 + now->old_style->size() : 0);
+    if (now->old_style)
+        for (auto& d : *now->old_style) mix(hs(d.second));
+    mix(now->locals_text ? hs(*now->locals_text) + 1 : 0);
+    mix(now->pops);
+    mix(now->far.size());
+    return k;
+}
+
 IdSet seen_now() {
+    uint64_t key = layout_key();
+    if (now->seen_valid && key == now->seen_key) return now->seen;
+    now->seen_key = key;
+    now->seen_valid = true;
     now->seen.clear();
     now->seeing = true;
     now->at.clear();

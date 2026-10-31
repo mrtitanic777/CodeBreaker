@@ -219,6 +219,9 @@ struct Now {
     std::map<std::string, std::string> alias;
     V lane;
     std::unordered_map<Id, V> nodes_by_id;
+    uint64_t mut = 0;                             // (rewrites and renames made: part of the layout's key)
+    uint64_t seen_key = 0;                        // (the state the last layout was made in: seen_now reuses it)
+    bool seen_valid = false;
     std::vector<std::shared_ptr<Flat>> keep;      // every one-line emitter made while laying out (ids stay unique)
     bool has(const char* pass) const { return moved.count(pass) != 0; }
 };

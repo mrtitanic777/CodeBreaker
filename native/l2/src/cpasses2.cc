@@ -709,6 +709,7 @@ struct Locals {
     }
     void rename(const std::string& name, Made made) {
         now->ren[name] = made;
+        now->mut++;
         for (auto& r : refs)
             if (r.n == name && r.form == "plain" && !in_whole(r.e) && r.e.get("node") == "Name") {
                 std::string n = r.n;
