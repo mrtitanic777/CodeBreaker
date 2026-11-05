@@ -8,11 +8,6 @@ A temporary shim (docs/NATIVE.md, step 4).
 from codebreaker.formats import le, native
 
 
-def image_args(lf, *rest):
-    """(bytes, arguments) for a question about an image: its header's offset first."""
-    return lf.d, (lf.lfa,) + rest
-
-
 def _opened(data, pairs):
     """[(name, LEFile)] for (name, lfa) pairs found in `data`, opened in order (as the Python
     opens them: one that fails raises there)."""

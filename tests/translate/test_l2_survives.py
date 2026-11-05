@@ -12,7 +12,6 @@ could not write, run through the native program with CB_L2=1.
     JumpTable::switchOver read the op it had none of, and the process died (USER's
     MSGTHKCONNECTIONDATALS, sub_28_444E)
 """
-import json
 import os
 import re
 import subprocess

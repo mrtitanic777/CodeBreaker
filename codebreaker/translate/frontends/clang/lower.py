@@ -20,7 +20,6 @@ C's model in the IR:
 Anything not handled becomes ir.Unsupported(kind), never a guess.
 """
 import os
-import re
 
 from codebreaker.translate import ir
 from codebreaker.translate.frontends.clang import ctypes

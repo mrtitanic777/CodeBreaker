@@ -28,7 +28,6 @@ F64 = ir.Type('f64')
 VOID = ir.VOID
 STR = ir.Type('class', 'py.str')
 BYTES = ir.Type('class', 'py.bytes')
-PURE_BUILTINS = frozenset('len str int bool float abs min max ord chr hex repr isinstance range enumerate zip reversed sorted'.split())
 
 
 class Refused(Exception):
@@ -261,10 +260,6 @@ class Context(object):
         if k == 'bottom':
             raise Refused('untyped', what, line)
         raise Refused('conflict', 'a %s as a value' % k, line)
-
-
-def is_ref_type(t):
-    return t is not None and t.kind == 'class' and t.info.get('ref')
 
 
 def is_opt(t):

@@ -27,7 +27,6 @@ switches on strings, instanceof patterns). What it cannot write raises Decline; 
 (translate/javajudge.py) reports that program as refused.
 """
 import os
-import re
 import subprocess
 
 from codebreaker.translate import desugar, ir

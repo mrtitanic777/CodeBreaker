@@ -29,15 +29,6 @@ _STRINGS = ('JavaString', 'JCat', 'std.string', 'std.basic_string', 'StringBuild
 _MATH = {'javaMathSqrt': 'sqrt', 'javaMathRound': 'round', 'javaMathSignum': 'signum', 'javaMathRandom': 'random'}
 
 
-def is_j2x(unit):
-    """Does this unit come from the Java lane (does it use the Java runtime in C++)?"""
-    for n in ir.walk(unit):
-        t = getattr(n, 'type', None)
-        if isinstance(t, ir.Type) and t.kind == 'class' and t.name in ('JavaString', 'JArray', 'JCat'):
-            return True
-    return False
-
-
 def lift_type(t):
     if t is None or not isinstance(t, ir.Type):
         return t

@@ -449,7 +449,6 @@ def _code_bytes(image, starts):
     """Which bytes of a code segment are its functions' instructions: each function followed
     from its start, every branch it can take. -> bytearray, 1 at a byte of code. (A place only a
     jump table reaches is taken for data -- its bytes copied as data is all that comes of it.)"""
-    import capstone
     from codebreaker.decompile.describe import decoder16
     md = decoder16()
     code, seen = bytearray(len(image)), set()
@@ -652,7 +651,6 @@ def _code_segment_data(reports, where, d, module_path):
 def _far_argument_widths(code, start, end, far_fn):
     """{a<n>: bytes} -- how wide the original reads through the far pointer it takes as
     argument n: `les reg, [bp+N]`, then the first `es:[reg...]` through it."""
-    import capstone
     from codebreaker.decompile.describe import decoder16
     md = decoder16()
     first = 6 if far_fn else 4                             # (the first argument above the return address)
@@ -680,7 +678,6 @@ _FAR_LOAD = re.compile(r"\[bp \+ (0x[0-9a-f]+|\d+)\]")
 def _far_loads(code, start, end):
     """The offsets from BP of the argument words a function loads as far pointers: `les bx,
     [bp+6]` takes the word at +6 as an offset and the one above it as its segment."""
-    import capstone
     from codebreaker.decompile.describe import decoder16
     md = decoder16()
     found = set()
@@ -714,7 +711,6 @@ def _global_type(prefix, size, elem=None):
 def _loads_dgroup(code, off, dgroup):
     """Whether a function's prologue loads DS with its own data segment: `mov ax, DGROUP`
     then `mov ds, ax`, among its first instructions (before or after `enter`/`push bp`, saves)."""
-    import capstone
     from codebreaker.decompile.describe import decoder16
     md = decoder16()
     loaded = False

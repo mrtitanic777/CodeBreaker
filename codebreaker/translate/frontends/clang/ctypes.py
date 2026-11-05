@@ -303,13 +303,6 @@ def decay(t):
     return t
 
 
-def fnptr_of(t):
-    """A pointer to a function type -> the 'fnptr' kind the IR uses for it."""
-    if t.kind == 'ptr' and t.elem is not None and t.elem.kind == 'fn' and not t.info.get('ref'):
-        return ir.Type('fnptr', space='flat', fn=t.elem)
-    return t
-
-
 def normalise(t):
     """Every pointer to a function as an 'fnptr', all the way down."""
     if t is None:

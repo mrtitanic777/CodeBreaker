@@ -340,7 +340,6 @@ def _decode16(md, raw, off):
 def _branch_hook16(rec, cs_base, lo, hi):
     """A code hook for the offsets [lo, hi) of the segment at `cs_base`: appends (jump, taken,
     compare) to rec["branches"] as emulator._branch_hook does, every address a linear one."""
-    import capstone
     from codebreaker.emulate.emulator import _BRANCH_CAP
     from codebreaker.decompile.describe import decoder16
     md = decoder16(detail=True)
@@ -887,7 +886,6 @@ def _retf_bytes(context, sel, offset):
     at = base - SNAP_BASE + offset
     key = (context.get("key"), at)
     if key not in _RETF:
-        import capstone
         from codebreaker.decompile.describe import decoder16
         md = decoder16()
         got = 0

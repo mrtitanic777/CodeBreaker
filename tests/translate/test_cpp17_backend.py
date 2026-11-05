@@ -4,7 +4,6 @@ whole programs from L2 with the idiomatic forms (lambdas, range-for, switch expr
 real constructors for records, auto), and inside the transpiler (cpp17.Bodies) beside cpp03. The programs
 are compiled and run beside the JVM where a JDK and a C++ compiler are present."""
 import os
-import shutil
 import subprocess
 
 import pytest

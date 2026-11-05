@@ -1114,7 +1114,6 @@ def jump_tables(d):
     half the segment (sub_1_032E: 1.5 GB). Here the table is read as the code bounds it: the
     compare that guards the jump (`cmp reg, n` / `ja`), the index a byte offset unless doubled
     before (`shl bx, 1` / `add bx, bx`) -- and no further than where the code it sends to begins."""
-    import capstone
     md = decoder16()
     lines = []
     for sg, code in d.segment_bytes.items():
