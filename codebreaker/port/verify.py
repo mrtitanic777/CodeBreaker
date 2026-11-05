@@ -44,6 +44,10 @@ def _emulator_key():
     for n in sorted(os.listdir(d)):
         if n.endswith(".py"):
             h.update(n.encode() + open(os.path.join(d, n), "rb").read())
+    # the C++ executive, when it is what runs: its DLL's bytes (a rebuild runs the originals again)
+    from codebreaker.exact.emu import native_dosexec
+    if native_dosexec.enabled():
+        h.update(b"cbdos" + open(native_dosexec.dll_path(), "rb").read())
     return h.hexdigest()
 
 
