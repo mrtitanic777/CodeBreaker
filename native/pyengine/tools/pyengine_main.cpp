@@ -20,11 +20,105 @@
 #include <cstring>
 #include <string>
 
+#include <map>
+#include <vector>
+
+#include "census.hpp"
+#include "dyn.hpp"
 #include "engine.hpp"
 
 int main(int argc, char** argv) {
     pyengine::EngineOptions o;
     bool coverage = false;
+
+    // pyengine --dynamic --root R --dyn-out DIR [--dyn-main M] [--dyn-closure] [--dyn-exclude P] module|name=file ...
+    if (argc > 1 && std::string(argv[1]) == "--dynamic") {
+        pyengine::DynOptions d;
+        for (int i = 2; i < argc; i++) {
+            std::string a = argv[i];
+            if (a == "--root" && i + 1 < argc) d.root = argv[++i];
+            else if (a == "--dyn-out" && i + 1 < argc) d.out = argv[++i];
+            else if (a == "--dyn-main" && i + 1 < argc) d.main_module = argv[++i];
+            else if (a == "--dyn-closure") d.closure = true;
+            else if (a == "--dyn-top") d.top_only = true;
+            else if (a == "--dyn-full" && i + 1 < argc) d.full_closure.push_back(argv[++i]);
+            else if (a == "--dyn-exclude" && i + 1 < argc) d.exclude.push_back(argv[++i]);
+            else if (a == "--pyrt" && i + 1 < argc) d.pyrt = argv[++i];
+            else d.modules.push_back(a);
+        }
+        if (d.root.empty() || d.out.empty() || d.modules.empty()) {
+            fprintf(stderr, "usage: pyengine --dynamic --root R --dyn-out DIR [--dyn-main M] [--dyn-closure] module ...\n");
+            return 2;
+        }
+        std::vector<pyengine::DynModule> mods;
+        pyengine::run_dynamic(d, mods);
+        size_t lines = 0, refused = 0, fns = 0;
+        for (auto& m : mods) {
+            lines += (size_t)m.lines;
+            refused += m.refused.size();
+            fns += (size_t)m.functions;
+            if (!m.error.empty()) fprintf(stderr, "%s: %s\n", m.name.c_str(), m.error.c_str());
+            for (auto& r : m.refused) fprintf(stderr, "%s:%d: refused: %s\n", m.name.c_str(), r.line, r.what.c_str());
+        }
+        fprintf(stderr, "%zu modules, %zu lines, %zu functions written; %zu constructs refused\n", mods.size(), lines, fns, refused);
+        return 0;
+    }
+    // pyengine --judge-traces <python trace> <C++ trace>: per function, are its calls (arguments and
+    // outcomes, in order) the same in both runs? (the traces: state/work's trace_py.py and PYRT_TRACE)
+    if (argc > 3 && std::string(argv[1]) == "--judge-traces") {
+        auto load = [](const char* path, std::map<std::string, std::vector<std::string>>& by_fn) {
+            FILE* f = fopen(path, "rb");
+            if (!f) return false;
+            char buf[1 << 16];
+            while (fgets(buf, sizeof buf, f)) {
+                std::string l = buf;
+                while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
+                size_t p = l.find('(');
+                if (p == std::string::npos) continue;
+                by_fn[l.substr(0, p)].push_back(l.substr(p));
+            }
+            fclose(f);
+            return true;
+        };
+        std::map<std::string, std::vector<std::string>> py, cpp;
+        if (!load(argv[2], py) || !load(argv[3], cpp)) { fprintf(stderr, "cannot read the traces\n"); return 2; }
+        size_t agree = 0, differ = 0, only_py = 0, only_cpp = 0, calls = 0;
+        for (auto& [fn, calls_py] : py) {
+            auto it = cpp.find(fn);
+            if (it == cpp.end()) { only_py++; printf("only in Python (called directly in C++): %s (%zu calls)\n", fn.c_str(), calls_py.size()); continue; }
+            calls += calls_py.size();
+            if (it->second == calls_py) agree++;
+            else {
+                differ++;
+                size_t k = 0;
+                while (k < calls_py.size() && k < it->second.size() && calls_py[k] == it->second[k]) k++;
+                printf("DIFFERS %s: %zu / %zu calls, first difference at call %zu\n  py:  %s\n  cpp: %s\n", fn.c_str(), calls_py.size(), it->second.size(), k,
+                       k < calls_py.size() ? calls_py[k].c_str() : "(none)", k < it->second.size() ? it->second[k].c_str() : "(none)");
+            }
+        }
+        for (auto& [fn, c] : cpp) if (!py.count(fn)) { only_cpp++; printf("only in C++: %s (%zu calls)\n", fn.c_str(), c.size()); }
+        printf("functions: %zu agree, %zu differ, %zu only in Python, %zu only in C++ (%zu calls compared)\n", agree, differ, only_py, only_cpp, calls);
+        return differ ? 1 : 0;
+    }
+    // pyengine --census <root>... [--census-out FILE]: the libraries, builtins, methods and features used
+    if (argc > 1 && std::string(argv[1]) == "--census") {
+        std::vector<std::string> roots;
+        std::string out;
+        for (int i = 2; i < argc; i++) {
+            std::string a = argv[i];
+            if (a == "--census-out" && i + 1 < argc) out = argv[++i];
+            else roots.push_back(a);
+        }
+        std::string md = pyengine::run_census(roots, "codebreaker");
+        if (out.empty()) fputs(md.c_str(), stdout);
+        else {
+            FILE* f = fopen(out.c_str(), "wb");
+            if (!f) return 1;
+            fwrite(md.data(), 1, md.size(), f);
+            fclose(f);
+        }
+        return 0;
+    }
 
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
