@@ -1149,6 +1149,7 @@ which iterates in the very order Python's does for the same adds.
 | analyze/conventions | _functions and every helper it used (_frame, _argument_slots, _register_inputs, _returns, _result_use, _cleanup, _loaded_before, _pushed_inputs, _entry16, _callback): conventions.cc. Kept: stack_delta (structures uses it), duplicates, thunk_layer, analyse | the same 3,680 files: the reference module and the new one on the same image, the Graph whole and analyse() as JSON: 3,680 identical, 0 different; tests/test_analysis.py, test_mcp.py | 413 |
 | analyze/strings | _table (the referenced set unioned with the held pointers' targets, in CPython's set_merge order: PySet::merge), _uses, stack_strings with _assemble, _formats with _formatter, and image.definition/arguments for them: strings.cc. Kept: at (classes, module_writer), literal (dispatch), conversions, analyse | 368 files (every 10th of the 3,680: state/work/analyze-native3/sample.txt), on the commit's final code: the reference module and the new one on the same image: table (dict order) and uses, the table after uses (16-bit uses mark strings referenced), stack_strings, formats, analyse, and formats first on a fresh memo: 368 identical; tests/test_analysis.py, test_mcp.py | 156 (20 added) |
 | analyze/globals | _variables, _type, _operand, _dereferenced, _pointer_tables, _slot_kind: globals.cc (over strings.cc's table, kept per image in the DLL). Kept: variables (sets rebuilt from the answer's lists), pointer_tables, analyse | the same 368 files, the same way: variables (in order), pointer_tables, analyse: 368 identical; the same tests | 194 (15 added) |
+| analyze/resources | _uses (the loader and control calls, their identifiers among the pushes), _stem, _identifier: resources.cc. Kept: carried (the format readers), whether each load is present, uses, analyse | the same 368 files, on the commit's final code, strings, globals and resources together: analyse whole: 368 identical; the same tests | 68 (20 added) |
 
 No cache or knowledge-base key takes these modules' code: what they feed (describe32's ECX/EDX
 functions, the struct and global text) reaches the caches as content (the description text, the
@@ -1156,17 +1157,18 @@ bodies), so a different answer is a different key by itself; and the answers are
 
 Known, deliberate limits of the C++ (none met in the corpus): the callback-name patterns read `\w`
 as ASCII and fold case in ASCII only (Python's `re.I` folds Unicode); `upper()` of an import name
-is ASCII.
+is ASCII; strings' and resources' import names are lower-cased in ASCII, a name with any other
+character matching no formatter or loader (Python's lower() would map the Kelvin sign to `k`).
 
 The image blob now carries each span's name (strings skips .rsrc, .reloc, .edata and .idata), so
 CBA_VERSION is 4. A variable's readers, writers and values come back as sorted lists and are made
 sets again: nothing iterates them unsorted (len, sorted and membership only), and its notes are
 strings, whose set order Python randomises per process anyway.
 
-**HANDOFF (2026-11-05, second session).** Done here: strings, globals. Left in analyze/, by
-importers: structures (it needs conventions' facts: port it as one question that runs
+**HANDOFF (2026-11-05, second session).** Done here: strings, globals, resources. Left in analyze/,
+by importers: structures (it needs conventions' facts: port it as one question that runs
 conventions.cc's facts in the DLL rather than marshalling them back), dispatch, classes,
-resources, dos_functions (its own 16-bit decoder, no Image), origin, observe, ppc_calls, report,
+dos_functions (its own 16-bit decoder, no Image), origin, observe, ppc_calls, report,
 facts. Then symbols/ (api_arguments, ordinals, runtime_library, driver_services, names,
 dos_interrupts, debug_build, sdk_structs and the rest). What was learned:
 

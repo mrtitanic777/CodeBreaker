@@ -10,7 +10,8 @@
                                                  "call_graph.build", "conventions.functions",
                                                  "strings.table", "strings.uses", "strings.stack",
                                                  "strings.formats", "globals.variables",
-                                                 "globals.tables" (after discover and names)
+                                                 "globals.tables", "resources.uses" (after discover
+                                                 and names)
                                                  -> 1 and the answer (JSON, ASCII), -1 unknown
    int cba_names(img, blob, n)                   the functions' and imports' names (native.py's _names)
    void cba_free(char *answer), void cba_close(void *img) */

@@ -3,6 +3,7 @@
 #include "call_graph.h"
 #include "conventions.h"
 #include "globals.h"
+#include "resources.h"
 #include "strings.h"
 #include "image.h"
 #include "json.h"
@@ -231,6 +232,8 @@ extern "C" int cba_ask(void *handle, const char *question, long long arg, char *
         if (!strings_answer(*img, question + 8, o)) return -1;
     } else if (!std::strncmp(question, "globals.", 8)) {
         if (!globals_answer(*img, question + 8, o)) return -1;
+    } else if (!std::strncmp(question, "resources.", 10)) {
+        if (!resources_answer(*img, question + 10, o)) return -1;
     } else if (!std::strcmp(question, "call_graph.build")) {
         o = call_graph(*img);
     } else if (!std::strcmp(question, "image.linear")) {   // arg: the address, and the count above bit 40
