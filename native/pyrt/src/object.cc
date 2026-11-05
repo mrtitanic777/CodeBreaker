@@ -8,6 +8,9 @@
 
 namespace py {
 
+var gen_name_(const var& g, bool qual);   // gen.cc: a generator's / coroutine's function's names
+var code_of_(const var& f);                // lib_async.cc: a function's __code__ (its names, file, flags)
+
 TypeObj *T_object, *T_type, *T_none, *T_bool, *T_int, *T_float, *T_complex, *T_str, *T_bytes,
     *T_bytearray, *T_list, *T_tuple, *T_dict, *T_set, *T_frozenset, *T_range, *T_slice, *T_function,
     *T_native, *T_method, *T_module, *T_cell, *T_generator, *T_iter, *T_property, *T_staticmethod,
@@ -369,12 +372,15 @@ static var getattr_impl(const var& o, const var& name, bool& found) {
             if (n == "__module__") return new_str(f->module);
             if (n == "__doc__") return f->doc.is_unbound() ? var(None) : f->doc;
             if (n == "__wrapped__" && !f->wrapped.is_unbound()) return f->wrapped;
+            if (n == "__code__") return code_of_(o);
             if (n == "__defaults__") {
                 std::vector<var> d;
                 for (auto& x : f->defaults) if (!x.is_unbound()) d.push_back(x);
                 return d.empty() ? var(None) : new_tuple(d);
             }
             if (n == "__annotations__") return f->annotations.is_unbound() ? new_dict_obj() : f->annotations;
+        } else if (t->layout == Layout::Generator && (n == "__name__" || n == "__qualname__")) {
+            return gen_name_(o, n == "__qualname__");
         } else if (t == T_native) {
             if (n == "__name__" || n == "__qualname__") return new_str(static_cast<NativeObj*>(p)->name);
             if (n == "__self__") return static_cast<NativeObj*>(p)->self;
@@ -498,6 +504,7 @@ static void setattr_v(const var& o, const var& name, const var& v) {
         if (n == "__module__") { f->module = v.is_none() ? "" : utf8_of(v); return; }
         if (n == "__wrapped__") { f->wrapped = v; return; }
     }
+    if (t == T_property && utf8_of(name) == "__doc__") { static_cast<PropertyObj*>(p)->doc = v; return; }   // (namedtuple fields' docs)
     if (t->is_exception) {
         const std::string& n = utf8_of(name);
         auto* e = static_cast<ExcObj*>(p);

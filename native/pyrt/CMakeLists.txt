@@ -46,6 +46,10 @@ add_library(pyrt STATIC
   src/lib_ctypes.cc   # ctypes: calls straight into DLLs (structures, pointers, arrays, callbacks)
   src/lib_pytest.cc   # pytest: the API the test files use, and the runner (-m pytest)
   src/lib_crypto.cc   # cryptography (hashes, HMAC, AES / 3DES / ARC4, RSA numbers) and DES over bcrypt
+  src/match.cc        # what match statements ask of a subject (sequence, mapping and class patterns)
+  src/lib_async.cc    # sys's async generator hooks; the networking modules' registration
+  src/lib_net.cc      # _socket and select over Winsock, _overlapped (IOCP) and _winapi: under CPython's socket, selectors, asyncio
+  src/lib_mcp.cc      # the mcp package's surface CodeBreaker's MCP server uses (MCPServer over stdio, Client, ToolAnnotations): mcp 2.3's wire behaviour
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)
   ${L2}/src/pyre.cc)         # Python-compatible regular expressions (shared with native/l2)
@@ -71,7 +75,7 @@ target_include_directories(pyrt_zlib PUBLIC ${ZLIB_SRC})
 if(MSVC)
   target_compile_options(pyrt_zlib PRIVATE /O2 /W0)
 endif()
-target_link_libraries(pyrt PUBLIC pyrt_sqlite3 pyrt_pyfront pyrt_zlib bcrypt shell32)
+target_link_libraries(pyrt PUBLIC pyrt_sqlite3 pyrt_pyfront pyrt_zlib bcrypt shell32 ws2_32 mswsock)
 
 enable_testing()
 add_executable(pyrt_tests tests/pyrt_tests.cpp)
@@ -80,3 +84,10 @@ if(MSVC)
   target_link_options(pyrt_tests PRIVATE /STACK:268435456)
 endif()
 add_test(NAME pyrt_core COMMAND pyrt_tests)
+# coroutines, async generators, async for / with and the match helpers, in the shapes the emitter writes
+add_executable(pyrt_async_tests tests/pyrt_async_tests.cpp)
+target_link_libraries(pyrt_async_tests PRIVATE pyrt)
+if(MSVC)
+  target_link_options(pyrt_async_tests PRIVATE /STACK:268435456)
+endif()
+add_test(NAME pyrt_async COMMAND pyrt_async_tests)

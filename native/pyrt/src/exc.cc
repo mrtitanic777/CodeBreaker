@@ -17,6 +17,7 @@ TypeObj *E_BaseException, *E_Exception, *E_TypeError, *E_ValueError, *E_KeyError
     *E_MemoryError, *E_TimeoutError, *E_EOFError, *E_KeyboardInterrupt, *E_UnicodeError, *E_SyntaxError;
 
 static thread_local std::vector<var>* t_handling = nullptr;   // exceptions being handled (innermost last)
+void*& handling_slot_() { return reinterpret_cast<void*&>(t_handling); }   // (gen.cc: per generator)
 
 static std::vector<var>& handling_stack() {
     if (!t_handling) t_handling = new std::vector<var>();
@@ -215,6 +216,12 @@ void init_exceptions() {
             self.setattr("strerror", args[1]);
             self.setattr("filename", args.size() >= 3 ? args[2] : var(None));
             self.setattr("filename2", args.size() >= 5 ? args[4] : var(None));
+            if (args.size() >= 4 && !args[3].is_none()) {
+                // OSError(errno, strerror, filename, winerror): Winsock's codes are their own errno, "[WinError N] ..."
+                self.setattr("winerror", args[3]);
+                if (is_int(args[3]) && args[3].as_int64() >= 10000 && args[3].as_int64() < 12000) self.setattr("errno", args[3]);
+                self.setattr("_winerror_str", var(true));
+            }
             if (args.size() >= 3) e->args = new_tuple({args[0], args[1]});
         } else {
             self.setattr("errno", None);
@@ -229,7 +236,8 @@ void init_exceptions() {
         var fn = getattr(s, interned("filename"), None), en = getattr(s, interned("errno"), None);
         var se = getattr(s, interned("strerror"), None);
         if (!en.is_none() && !se.is_none()) {
-            std::string r = "[Errno " + str_(en) + "] " + str_(se);
+            bool win = getattr(s, interned("_winerror_str"), None).truthy();
+            std::string r = win ? "[WinError " + str_(getattr(s, interned("winerror"), None)) + "] " + str_(se) : "[Errno " + str_(en) + "] " + str_(se);
             if (!fn.is_none()) r += ": " + repr_(fn);
             var fn2 = getattr(s, interned("filename2"), None);
             if (!fn2.is_none()) r += " -> " + repr_(fn2);

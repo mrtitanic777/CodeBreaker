@@ -951,6 +951,29 @@ void init_modules() {
         add_getter(T_partial, "func", [](const var& s) { return static_cast<PartialObj*>(s.ref())->func; });
         add_getter(T_partial, "args", [](const var& s) { return new_tuple(static_cast<PartialObj*>(s.ref())->args); });
         mod_set(m, "partial", tv(T_partial));
+        // partialmethod(func, *args, **kw): a partial bound to the instance it is reached through
+        {
+            var pns = new_dict();
+            pns.setitem("__module__"_s, "functools"_s);
+            pns.setitem("__init__"_s, def("__init__", "self, func, *args, **keywords", {}, [](var self, var func, var args, var kw) {
+                self.setattr("func", func);
+                self.setattr("args", args);
+                self.setattr("keywords", kw);
+                return var(None);
+            }));
+            pns.setitem("__get__"_s, def("__get__", "self, obj, cls=", {None}, [](var self, var obj, var cls) -> var {
+                (void)cls;
+                if (obj.is_none()) return self;
+                CallArgs c;
+                c.pos.push_back(self.getattr("func"));
+                c.pos.push_back(obj);
+                for (var x : each(self.getattr("args"))) c.pos.push_back(x);
+                var kw = self.getattr("keywords");
+                for (var k : each(kw)) c.kw.push_back({k, kw.getitem(k)});
+                return call_type(T_partial, c);
+            }));
+            mod_set(m, "partialmethod", make_class("partialmethod", "partialmethod", {}, pns, {}, "functools"));
+        }
         mod_def(m, "reduce", [](const CallArgs& a) {
             var f = a.pos.at(0), it = iter(a.pos.at(1));
             var acc;
@@ -1410,6 +1433,79 @@ void init_modules() {
             std::vector<var> o;
             for (var w : each(words)) o.push_back(w.call("capitalize"));
             return " "_s.call("join", new_list(o));
+        });
+        // Template and Formatter: CPython's own (string.py, translated as _pystring when stdlib.txt lists it)
+        mod_def(m, "__getattr__", [](const CallArgs& a) -> var {
+            std::string n = str_utf8(a.pos.at(0));
+            if ((n == "Template" || n == "Formatter") && module_registered_("_pystring")) {
+                var v = import("_pystring").getattr(n.c_str());
+                mod_set(import("string"), n.c_str(), v);
+                return v;
+            }
+            raise(E_AttributeError, "module 'string' has no attribute '" + n + "'");
+        });
+    });
+    // _string: string.Formatter's parsing (CPython's C half of string.py)
+    reg("_string", [](const var& m) {
+        // formatter_parser("a{b!r:>3}c") -> [('a', 'b', '>3', 'r'), ('c', None, None, None)]
+        mod_def(m, "formatter_parser", [](const CallArgs& a) {
+            std::string s = str_utf8(a.pos.at(0));
+            std::vector<var> out;
+            std::string lit;
+            size_t i = 0;
+            while (i < s.size()) {
+                char c = s[i];
+                if (c == '{' && i + 1 < s.size() && s[i + 1] == '{') { lit += '{'; i += 2; continue; }
+                if (c == '}' && i + 1 < s.size() && s[i + 1] == '}') { lit += '}'; i += 2; continue; }
+                if (c == '}') raise(E_ValueError, "Single '}' encountered in format string");
+                if (c != '{') { lit += c; i++; continue; }
+                int depth = 1;
+                size_t j = i + 1;
+                while (j < s.size() && depth) {
+                    if (s[j] == '{') depth++;
+                    else if (s[j] == '}') depth--;
+                    if (depth) j++;
+                }
+                if (depth) raise(E_ValueError, "expected '}' before end of string");
+                std::string field = s.substr(i + 1, j - i - 1), name = field, spec, conv;
+                size_t bang = std::string::npos, colon = std::string::npos;
+                int br = 0;
+                for (size_t k = 0; k < field.size(); k++) {
+                    if (field[k] == '[') br++;
+                    else if (field[k] == ']') br--;
+                    else if (!br && field[k] == '!' && bang == std::string::npos && colon == std::string::npos) bang = k;
+                    else if (!br && field[k] == ':' && colon == std::string::npos) { colon = k; break; }
+                }
+                if (colon != std::string::npos) { spec = field.substr(colon + 1); name = field.substr(0, colon); }
+                if (bang != std::string::npos) { conv = name.substr(bang + 1); name = name.substr(0, bang); }
+                out.push_back(new_tuple({new_str(lit), new_str(name), new_str(spec), conv.empty() ? var(None) : new_str(conv)}));
+                lit.clear();
+                i = j + 1;
+            }
+            if (!lit.empty()) out.push_back(new_tuple({new_str(lit), None, None, None}));
+            return iter(new_list(out));
+        });
+        // formatter_field_name_split("a.b[0]") -> ('a', iter([(True, 'b'), (False, 0)]))
+        mod_def(m, "formatter_field_name_split", [](const CallArgs& a) {
+            std::string s = str_utf8(a.pos.at(0));
+            size_t k = s.find_first_of(".[");
+            std::string first = s.substr(0, k);
+            std::vector<var> rest;
+            while (k != std::string::npos && k < s.size()) {
+                if (s[k] == '.') {
+                    size_t e = s.find_first_of(".[", k + 1);
+                    rest.push_back(new_tuple({var(true), new_str(s.substr(k + 1, e == std::string::npos ? std::string::npos : e - k - 1))}));
+                    k = e;
+                } else {
+                    size_t e = s.find(']', k);
+                    std::string key = s.substr(k + 1, e - k - 1);
+                    bool digits = !key.empty() && key.find_first_not_of("0123456789") == std::string::npos;
+                    rest.push_back(new_tuple({var(false), digits ? int_from(key) : new_str(key)}));
+                    k = e == std::string::npos ? e : e + 1;
+                }
+            }
+            bool fd = !first.empty() && first.find_first_not_of("0123456789") == std::string::npos;
+            return new_tuple({fd ? int_from(first) : new_str(first), iter(new_list(rest))});
         });
     });
 

@@ -11,6 +11,10 @@
 
 namespace py {
 
+var coroutine_type_();                    // gen.cc
+var async_generator_type_();
+bool is_coroutine_function_(const var& f, int kind);
+
 static var g_ast;   // the module
 static std::map<std::string, TypeObj*>* g_node_types = new std::map<std::string, TypeObj*>();
 
@@ -933,12 +937,14 @@ void init_inspect_module(const var& m) {
             p.setattr("name", new_str(pr.name));
             p.setattr("kind", var((int64_t)(pr.kind == Param::PosOnly ? 0 : pr.kind == Param::Normal ? 1 : pr.kind == Param::VarArgs ? 2 : pr.kind == Param::KwOnly ? 3 : 4)));
             p.setattr("default", pr.has_default && i < fo->defaults.size() && !fo->defaults[i].is_unbound() ? fo->defaults[i] : empty);
-            p.setattr("annotation", empty);
+            var* an = fo->annotations.is_ref() ? static_cast<DictObj*>(fo->annotations.ref())->get(new_str(pr.name)) : nullptr;
+            p.setattr("annotation", an ? *an : empty);   // (the annotation's source text, as the translation keeps it)
             params.setitem(new_str(pr.name), p);
         }
         var s = call0(sig_cls);
         s.setattr("parameters", params);
-        s.setattr("return_annotation", empty);
+        var* rn = fo->annotations.is_ref() ? static_cast<DictObj*>(fo->annotations.ref())->get("return"_s) : nullptr;
+        s.setattr("return_annotation", rn ? *rn : empty);
         return s;
     });
     // (frames are not kept by translated code)
@@ -970,6 +976,35 @@ void init_inspect_module(const var& m) {
     mod_def(m, "ismodule", [](const CallArgs& a) { return var(type_of(a.pos.at(0)) == T_module); });
     mod_def(m, "isclass", [](const CallArgs& a) { return var(a.pos.at(0).is_ref() && a.pos[0].ref()->type->layout == Layout::Type); });
     mod_def(m, "isfunction", [](const CallArgs& a) { return var(type_of(a.pos.at(0)) == T_function); });
+    {
+        // async def: coroutine functions, async generator functions, and their objects
+        mod_def(m, "iscoroutinefunction", [](const CallArgs& a) {
+            var f = a.pos.at(0);
+            if (is_coroutine_function_(f, 1)) return var(true);
+            var mark = getattr(f, "_is_coroutine_marker"_s, None);
+            return var(!mark.is_none() && !mark.is_unbound());
+        });
+        mod_def(m, "markcoroutinefunction", [](const CallArgs& a) {
+            a.pos.at(0).setattr("_is_coroutine_marker", var(true));
+            return a.pos[0];
+        });
+        mod_def(m, "isasyncgenfunction", [](const CallArgs& a) { return var(is_coroutine_function_(a.pos.at(0), 2)); });
+        mod_def(m, "isgeneratorfunction", [](const CallArgs& a) {
+            var f = a.pos.at(0);
+            while (f.is_ref() && f.ref()->type == T_method) f = static_cast<MethodObj*>(f.ref())->func;
+            return var(f.is_ref() && f.ref()->type == T_function && static_cast<FuncObj*>(f.ref())->generator &&
+                       static_cast<FuncObj*>(f.ref())->async_kind != 1 && static_cast<FuncObj*>(f.ref())->async_kind != 2);
+        });
+        mod_def(m, "iscoroutine", [](const CallArgs& a) { return var(is(tv(type_of(a.pos.at(0))), coroutine_type_())); });
+        mod_def(m, "isasyncgen", [](const CallArgs& a) { return var(is(tv(type_of(a.pos.at(0))), async_generator_type_())); });
+        mod_def(m, "isgenerator", [](const CallArgs& a) { return var(type_of(a.pos.at(0)) == T_generator); });
+        mod_def(m, "isawaitable", [](const CallArgs& a) {
+            var x = a.pos.at(0);
+            if (is(tv(type_of(x)), coroutine_type_())) return var(true);
+            var aw;
+            return var(lookup_special(x, "__await__", aw));
+        });
+    }
     mod_def(m, "getdoc", [](const CallArgs& a) {
         var d = getattr(a.pos.at(0), "__doc__"_s, None);
         if (!is_str(d)) return var(None);

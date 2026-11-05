@@ -16,6 +16,10 @@
 
 namespace py {
 
+var coroutine_type_();                    // gen.cc
+var async_generator_type_();
+var types_coroutine_(const var& f);
+
 extern var g_sys;
 var type_new_(TypeObj* meta, const CallArgs& a);
 bool module_registered_(const std::string& name);
@@ -103,6 +107,25 @@ static var enum_new_class(const CallArgs& a) {
         if (alias) continue;
         var member;
         std::vector<var> init_args = is_tuple(v) && lay == Layout::Object ? tuple_items(v) : std::vector<var>{v};
+        // the class's own __new__ (HTTPStatus's: int.__new__(cls, value) and the phrase): it makes the member
+        var* own_new = t->dict->get("__new__");
+        if (own_new && own_new->is_ref() && (own_new->ref()->type == T_function || own_new->ref()->type == T_staticmethod)) {
+            var f = own_new->ref()->type == T_staticmethod ? static_cast<WrapObj*>(own_new->ref())->f : *own_new;
+            CallArgs c;
+            c.pos.push_back(cls);
+            for (auto& x : (is_tuple(v) ? tuple_items(v) : std::vector<var>{v})) c.pos.push_back(x);
+            member = call_obj(f, c);
+            member.setattr("_name_", k);
+            var* own = member.is_ref() && member.ref()->attrs ? static_cast<DictObj*>(member.ref()->attrs)->get("_value_") : nullptr;
+            if (!own) member.setattr("_value_", lay == Layout::Int ? new_int(to_big(member)) : v);
+            var mv = member.getattr("_value_");
+            t->dict->set(k, member);
+            map.setitem(k, member);
+            try { v2m.setitem(mv, member); } catch (error&) {}
+            order.push_back(member);
+            if (is_int(mv)) last = mv.as_int64();
+            continue;
+        }
         if (lay == Layout::Int) {
             auto* o = new BigObj();
             o->type = t;
@@ -163,7 +186,30 @@ static void init_enum(const var& m) {
     add_static(T_EnumMeta, "__new__", enum_new_class);
     add_method(T_EnumMeta, "__call__", [](const CallArgs& a) {
         if (a.pos.size() == 2 && a.kw.empty()) return enum_lookup(a.pos[0], a.pos[1]);
-        raise(E_TypeError, "functional Enum creation is not supported in translated code");
+        // the functional API: Enum('Name', names, module=, qualname=, start=): names a string, a sequence of
+        // names or of (name, value) pairs, or a mapping
+        var cls = a.pos.at(0), name = arg(a, 1, "value"), names = arg(a, 2, "names", None);
+        var module = kwarg(a, "module", None), start = kwarg(a, "start", var(1));
+        var ns = new_dict();
+        if (is_str(names)) names = names.call("replace", ","_s, " "_s).call("split");
+        if (isinstance_(names, T_dict)) {
+            for (var k : each(names)) ns.setitem(k, names.getitem(k));
+        } else {
+            int64_t i = 0;
+            bool is_flag = false;
+            for (TypeObj* m2 : T(cls)->mro) if (!Flag_.is_unbound() && m2 == T(Flag_)) is_flag = true;
+            for (var it : each(names)) {
+                if (is_str(it)) ns.setitem(it, is_flag ? var((int64_t)1 << i) : start + var(i));
+                else ns.setitem(it.getitem(var(0)), it.getitem(var(1)));
+                i++;
+            }
+        }
+        ns.setitem("__module__"_s, module.is_none() ? var("__main__"_s) : module);
+        var q = kwarg(a, "qualname", None);
+        if (!q.is_none()) ns.setitem("__qualname__"_s, q);
+        CallArgs c;
+        c.pos = {tv(type_of(cls)), name, new_tuple({cls}), ns};
+        return enum_new_class(c);
     });
     add_method(T_EnumMeta, "__iter__", [](const CallArgs& a) {
         var* ord = T(a.pos[0])->dict->get("__members_order__");
@@ -204,6 +250,34 @@ static void init_enum(const var& m) {
     pv->fget = nat("value", [](const CallArgs& a) { return a.pos[0].getattr("_value_"); });
     ns.setitem("value"_s, var(static_cast<Obj*>(pv)));
     ns.setitem("__module__"_s, "enum"_s);
+    // Enum._convert_(name, module, filter, source=None, *, boundary=None, as_global=False): an enum of a module's
+    // names that pass filter (socket's AddressFamily ...), sorted by value, its members put back in the module
+    ns.setitem("_convert_"_s, classmethod(def("_convert_", "cls, name, module, filter, source=, *, boundary=, as_global=", {None, None, var(false)},
+                                              [](var cls, var name, var module, var filter, var source, var boundary, var as_global) -> var {
+        (void)boundary;
+        var mod = import("sys").getattr("modules").getitem(module);
+        var src = source.is_none() ? mod.getattr("__dict__") : source.getattr("__dict__");
+        std::vector<std::pair<var, var>> members;
+        for (var k : each(src))
+            if (call1(filter, k).truthy()) members.push_back({k, src.getitem(k)});
+        bool by_value = true;
+        for (auto& m2 : members) if (!is_int(m2.second)) by_value = false;
+        std::stable_sort(members.begin(), members.end(), [&](const std::pair<var, var>& x, const std::pair<var, var>& y) {
+            if (by_value && !(x.second == y.second)) return lt_(x.second, y.second);
+            return str_utf8(x.first) < str_utf8(y.first);
+        });
+        var body = new_dict();
+        for (auto& m2 : members) body.setitem(m2.first, m2.second);
+        body.setitem("__module__"_s, module);
+        CallArgs c2;
+        c2.pos = {tv(type_of(cls)), name, new_tuple({cls}), body};
+        var e = enum_new_class(c2);
+        var mm = e.getattr("__members__");
+        for (var k : each(mm)) mod.setattr(str_utf8(k).c_str(), mm.getitem(k));
+        (void)as_global;
+        mod.setattr(str_utf8(name).c_str(), e);
+        return e;
+    })));
     CallArgs c;
     c.pos = {tv(T_EnumMeta), "Enum"_s, new_tuple(), ns};
     Enum_ = enum_new_class(c);
@@ -247,6 +321,23 @@ static void init_enum(const var& m) {
         if (!mod.is_none())
             for (var k : each(cls.getattr("__members__"))) mod.setattr(str_utf8(k).c_str(), cls.getattr("__members__").getitem(k));
         return cls;
+    });
+    // @_simple_enum(etype): a plain class's body made an enum of etype (http.HTTPStatus ...)
+    mod_def(m, "_simple_enum", [](const CallArgs& a) {
+        var etype = a.pos.empty() ? kwarg(a, "etype", Enum_) : a.pos[0];
+        return new_native("_simple_enum", [etype](const CallArgs& b) {
+            var cls = b.pos.at(0);
+            var ns = new_dict();
+            var d = cls.getattr("__dict__");
+            for (var k : each(d)) {
+                std::string ks = str_utf8(k);
+                if (ks == "__dict__" || ks == "__weakref__") continue;
+                ns.setitem(k, d.getitem(k));
+            }
+            CallArgs c;
+            c.pos = {tv(T_EnumMeta), cls.getattr("__name__"), new_tuple({etype}), ns};
+            return enum_new_class(c);
+        });
     });
     mod_set(m, "Flag", Flag_);
     mod_set(m, "IntFlag", IntFlag_);
@@ -986,6 +1077,13 @@ void make_collections_abc(const var& m) {
     var iterator = mk("Iterator", {iterable}, {"__iter__", "__next__"}, {});
     mk("Reversible", {iterable}, {"__reversed__", "__iter__"}, {});
     mk("Generator", {iterator}, {"__iter__", "__next__", "send", "throw", "close"}, {t::generator});
+    {
+        var awaitable = mk("Awaitable", {}, {"__await__"}, {});
+        mk("Coroutine", {awaitable}, {"__await__", "send", "throw", "close"}, {coroutine_type_()});
+        var aiterable = mk("AsyncIterable", {}, {"__aiter__"}, {});
+        var aiterator = mk("AsyncIterator", {aiterable}, {"__aiter__", "__anext__"}, {});
+        mk("AsyncGenerator", {aiterator}, {"__aiter__", "__anext__", "asend", "athrow", "aclose"}, {async_generator_type_()});
+    }
     var sized = mk("Sized", {}, {"__len__"}, {});
     var container = mk("Container", {}, {"__contains__"}, {});
     mk("Callable", {}, {"__call__"}, {});
@@ -1386,11 +1484,23 @@ void init_more_modules() {
             return var(a.pos[0].getattr("__dict__") == a.pos[1].getattr("__dict__"));
         }));
         mod_set(m, "SimpleNamespace", make_class("SimpleNamespace", "SimpleNamespace", {}, sns, {}, "types"));
+        // traceback and frame objects: translated code keeps neither, so these are types nothing is an instance of
+        // (annotations and isinstance checks name them)
+        for (const char* n : {"TracebackType", "FrameType", "CodeType"}) {
+            var tns = new_dict();
+            tns.setitem("__module__"_s, "builtins"_s);
+            mod_set(m, n, make_class(n, n, {}, tns, {}, "builtins"));
+        }
         mod_set(m, "ModuleType", t::module);
         mod_set(m, "FunctionType", t::function);
         mod_set(m, "BuiltinFunctionType", t::builtin_function);
         mod_set(m, "MethodType", t::method);
         mod_set(m, "GeneratorType", t::generator);
+        {
+            mod_set(m, "CoroutineType", coroutine_type_());
+            mod_set(m, "AsyncGeneratorType", async_generator_type_());
+            mod_def(m, "coroutine", [](const CallArgs& a) { return types_coroutine_(a.pos.at(0)); });
+        }
         mod_set(m, "NoneType", t::NoneType);
         // list[int] and its kind: the origin itself (annotations are not evaluated for meaning)
         mod_def(m, "GenericAlias", [](const CallArgs& a) { return a.pos.at(0); });
@@ -1524,6 +1634,9 @@ void init_more_modules() {
             return None;
         });
         for (const char* n : {"simplefilter", "filterwarnings", "resetwarnings"}) mod_def(m, n, [](const CallArgs&) { return None; });
+        // warnings._deprecated(name, message=, *, remove): a DeprecationWarning, which CPython's default filters
+        // do not show outside __main__
+        mod_def(m, "_deprecated", [](const CallArgs&) { return None; });
         mod_set(m, "catch_warnings", import("contextlib").getattr("nullcontext"));
     });
     register_native_module("atexit", [](const var& m) {

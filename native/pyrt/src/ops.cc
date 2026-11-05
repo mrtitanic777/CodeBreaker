@@ -54,7 +54,12 @@ static double fval(const var& x) {
 }
 int64_t var::as_int64() const {
     if (tag_ == Tag::Int || tag_ == Tag::Bool) return i_;
-    if (is_big(*this)) raise(E_OverflowError, "Python int too large to convert to C long");
+    if (is_big(*this)) {
+        // (an int subclass's value -- an IntEnum member -- is kept as a Big even when it fits)
+        const Big& b = static_cast<BigObj*>(ref())->v;
+        if (b.fits_i64()) return b.i64();
+        raise(E_OverflowError, "Python int too large to convert to C long");
+    }
     var r;
     if (lookup_special(*this, "__index__", r)) return call0(r).as_int64();
     raise(E_TypeError, "'" + tname(*this) + "' object cannot be interpreted as an integer");

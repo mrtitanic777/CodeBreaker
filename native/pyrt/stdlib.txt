@@ -33,4 +33,20 @@ _pyio
 _pycollections = collections/__init__.py
 reprlib
 _pyntpath = ntpath.py
+_pystring = string/__init__.py
 fnmatch
+# networking and asyncio (their C halves: src/lib_net.cc's _socket, select, _overlapped, _winapi)
+socket
+selectors
+socketserver
+http.*
+email.*
+html.*
+urllib.*
+mimetypes
+quopri
+logging
+asyncio.*
+linecache
+ipaddress
+_markupbase
