@@ -6,6 +6,7 @@ marked carried, and the databases' cap leaves the verdicts.
 Run:  python tests/test_store.py     (exit code 0 = all passed)
 
 Every test is on a store in a folder of its own with made-up modules: no toolchain, no corpus, seconds."""
+import json
 import os
 import shutil
 import sqlite3
@@ -136,7 +137,7 @@ def test_an_older_store_is_carried_over_once():
         path = os.path.join(d, "functions.sqlite")
         _old_store(path)
         fs = F.open(path)
-        carried = F.json.loads(fs._about("carried"))
+        carried = json.loads(fs._about("carried"))
         assert (carried["modules"], carried["functions"], carried["candidates"], carried["verdicts"],
                 carried["variants"], carried["identified"]) == (2, 6, 4, 8, 2, 2), carried
         assert fs.tally("p1", SHA_A) == dict(dict.fromkeys(F.ORDER, 0), verified=1, unverified=1, **{"no-source": 1})

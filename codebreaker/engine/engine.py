@@ -53,17 +53,15 @@ The facts of a step of another version are dropped from a database the first tim
 used on it in a process (facts.py: versions, and the cap on all databases).
 
 The core of this -- the registry, which facts are current, the inputs recorded, what is written,
-kept or remade, the order and the worker threads -- is C++ when the database was opened on the C++
-fact store (CB_NATIVE_ENGINE: native/engine, engine/native_engine.py): Run below hands itself
-over, and the steps still written in Python are called back from there. The Python Run and
-Context stay as the fallback until the next milestone.
+kept or remade, the order and the worker threads -- is C++, on the C++
+fact store (native/engine, engine/native_engine.py): Run below is its, and the steps still written
+in Python are called back from there. (The Python Run and Context it replaced are gone: the
+milestone of 2026-11-04.)
 """
 import hashlib
 import io
 import inspect
 import os
-import threading
-import time
 
 from codebreaker.engine import facts
 from codebreaker.knowledge import reads
@@ -178,273 +176,11 @@ def _file(ctx, key):
 
 
 # --- a run ------------------------------------------------------------------------------------
-class Run(object):
-    """One asking of the engine: each fact decided current or made again at most once in it."""
-
-    def __new__(cls, db, log=None):
-        if cls is Run and getattr(db, "native", False):          # (a database on the C++ fact store)
-            from codebreaker.engine import native_engine
-            return native_engine.Run(db, log)
-        return object.__new__(cls)
-
-    def __init__(self, db, log=None):
-        self.db, self.log = db, log
-        self.done = {}                       # (kind, key) -> (hash, value or _UNREAD)
-        self.locks = {}
-        self.lock = threading.RLock()
-        self.versions = {}
-        self.counts = {}                     # kind -> [kept, made]
-
-    def version(self, kind):
-        with self.lock:
-            v = self.versions.get(kind)
-            if v is None:
-                s = _step_of(kind)
-                v = self.versions[kind] = s.version()
-                self.db.drop_other_versions(kind, v)
-        return v
-
-    def _lock_for(self, kind, key):
-        with self.lock:
-            return self.locks.setdefault((kind, key), threading.RLock())
-
-    def _count(self, kind, made):
-        with self.lock:
-            c = self.counts.setdefault(kind, [0, 0])
-            c[1 if made else 0] += 1
-
-    def hash_of(self, kind, key):
-        """The fact's hash, once it is current (made again first if it is stale)."""
-        return self._current(kind, key)[0]
-
-    def value(self, kind, key):
-        h, v = self._current(kind, key)
-        if v is _UNREAD:
-            with self._lock_for(kind, key):
-                h, v = self.done[(kind, key)]
-                if v is _UNREAD:
-                    v = self.db.row(kind, key).value()
-                    self.done[(kind, key)] = (h, v)
-        return v
-
-    def _current(self, kind, key):
-        got = self.done.get((kind, key))
-        if got is not None:
-            return got
-        if kind == reads.KIND:                   # a piece of the knowledge base: its hash now, once a run
-            h = reads.digest(key)
-            with self.lock:
-                got = self.done.setdefault((kind, key), (h, h))
-            return got
-        with self._lock_for(kind, key):
-            got = self.done.get((kind, key))
-            if got is not None:
-                return got
-            row = self.db.row(kind, key)
-            if row is not None and self._still(row):
-                self.done[(kind, key)] = got = (row.hash, _UNREAD)
-                self._count(kind, False)
-                return got
-            return self._make(kind, [key], {key: row})[key]
-
-    def _still(self, row):
-        """Is a kept fact current? (its step's version, and each input's hash as it was)"""
-        if row.given:
-            return True
-        s = _step_of(row.kind)
-        if s.always or row.version != self.version(row.kind):
-            return False
-        for kind, key, h in row.inputs:
-            try:
-                if self.hash_of(kind, key) != h:
-                    return False
-            except LookupError:
-                return False
-        return True
-
-    def stale(self, kind, keys):
-        """The keys of `kind` whose facts are not current (each decided once: current ones are
-        then known current for the run)."""
-        out = []
-        for key in keys:
-            if (kind, key) in self.done:
-                continue
-            with self._lock_for(kind, key):
-                if (kind, key) in self.done:
-                    continue
-                row = self.db.row(kind, key)
-                if row is not None and self._still(row):
-                    self.done[(kind, key)] = (row.hash, _UNREAD)
-                    self._count(kind, False)
-                else:
-                    out.append(key)
-        return out
-
-    def _make(self, kind, keys, rows=None, hint=None):
-        """Make the facts of `kind` at `keys`. -> {key: (hash, value)}"""
-        s = _step_of(kind)
-        version = self.version(kind)
-        rows = rows or {}
-        ctxs = {k: Context(self, s, k, hint) for k in keys}
-        t = time.time()
-        if s.batch:
-            with reads.recording() as r:         # (what the knowledge base was asked: inputs too)
-                values = s.fn(ctxs, hint)
-            for c in ctxs.values():
-                c.knowledge(r)
-            missing = [k for k in keys if k not in values]
-            if missing:
-                raise LookupError("step %s made no %s for %s" % (kind, kind, ", ".join(missing[:4])))
-        else:
-            values = {}
-            for k in keys:
-                with reads.recording() as r:
-                    values[k] = s.fn(ctxs[k], k)
-                ctxs[k].knowledge(r)
-        took = (time.time() - t) / max(1, len(keys))
-        out = {}
-        for k in keys:
-            v = values[k]
-            if isinstance(v, Unkept):
-                self.db.forget(kind, k)                   # (what was kept before is no longer it)
-                out[k] = (None, v.value)
-                self.done[(kind, k)] = out[k]
-                self._count(kind, True)
-                continue
-            enc = facts.encode(v)
-            h = facts.digest(*enc)
-            row = rows.get(k, _NO) if k in rows else self.db.row(kind, k)
-            if row is not None and row is not _NO and row.hash == h and not row.given:
-                self.db.remake(kind, k, version, ctxs[k].inputs)      # (the same as before: what
-            else:                                                     # was made from it holds)
-                self.db.write(kind, k, v, step=kind, version=version, inputs=ctxs[k].inputs,
-                              took=took, encoded=enc)
-            out[k] = self.done[(kind, k)] = (h, v)
-            self._count(kind, True)
-        if self.log and keys and (len(keys) > 1 or time.time() - t > 1.0):
-            self.log("  made %d %s (%.1fs)" % (len(keys), kind, time.time() - t))
-        return out
-
-    def many(self, kind, keys, hint=None):
-        """{key: value} for every key, the stale ones made side by side."""
-        keys = list(dict.fromkeys(keys))
-        todo = self.stale(kind, keys)
-        if todo:
-            s = _step_of(kind)
-            locks = [self._lock_for(kind, k) for k in todo]
-            if s.batch:
-                for lk in locks:
-                    lk.acquire()
-                try:
-                    todo = [k for k in todo if (kind, k) not in self.done]
-                    if todo:
-                        self._make(kind, todo, hint=hint)
-                finally:
-                    for lk in locks:
-                        lk.release()
-            else:
-                from codebreaker.jobs import pool
-
-                def one(k):
-                    with self._lock_for(kind, k):
-                        if (kind, k) not in self.done:
-                            self._make(kind, [k], hint=hint)
-                n = min(jobs(), len(todo))
-                if n <= 1:
-                    for k in todo:
-                        one(k)
-                else:
-                    t = time.time()
-                    log, self.log = self.log, None           # (one line for the lot, not one each)
-                    try:
-                        pool.threads(one, todo, jobs=n)
-                    finally:
-                        self.log = log
-                    if self.log:
-                        self.log("  made %d %s, %d at once (%.1fs)" % (len(todo), kind, n, time.time() - t))
-        return {k: self.value(kind, k) for k in keys}
-
-
-_UNREAD = object()
-_NO = object()
-
-
-class Context(object):
-    """What a step is given: the facts it asks for, recorded as it asks."""
-
-    def __init__(self, run, s, key, hint=None):
-        self.run, self.step, self.key, self.hint = run, s, key, hint
-        self.inputs = []
-        self.db = run.db
-
-    def _may(self, kind):
-        if kind not in self.step.reads and kind not in ("binary", "file"):
-            raise LookupError("step %s reads %s, which it does not declare (reads=%r)"
-                              % (self.step.kind, kind, self.step.reads))
-
-    def need(self, kind, key=""):
-        """The fact's value (made first if stale); this fact is made from it."""
-        self._may(kind)
-        v = self.run.value(kind, key)
-        self._record(kind, key)
-        return v
-
-    def need_many(self, kind, keys, hint=None):
-        """{key: value} -- made side by side where stale; `hint` is handed to the step as how to
-        make them (a build to run them in), not as something they are made from."""
-        self._may(kind)
-        got = self.run.many(kind, keys, hint=hint)
-        for k in got:
-            self._record(kind, k)
-        return got
-
-    def peek(self, kind, key=""):
-        """The fact's value when it is current, else None -- nothing is made. A value seen is
-        one this fact is made from."""
-        self._may(kind)
-        if not self.run.stale(kind, [key]) and self.run.done[(kind, key)][0] is not None:
-            v = self.run.value(kind, key)
-            self._record(kind, key)
-            return v
-        return None
-
-    def file(self, path):
-        """A file this fact is made from (its hash, through the step `file`)."""
-        return self.need("file", os.path.abspath(path))
-
-    def knowledge(self, keys):
-        """Pieces of the knowledge base this fact is made from (knowledge/reads.py: "platform:kind:key"),
-        each with its hash now. The engine adds what the step read as it ran; a step adds what
-        its worker processes read (reads.Carry) for the one key it was for."""
-        have = {(k, key) for k, key, _h in self.inputs}
-        for read in keys:
-            if (reads.KIND, read) not in have:
-                have.add((reads.KIND, read))
-                # (read now, not as the run first saw it: a piece the step itself learned -- the
-                # bytes an export removes, read from its code -- is recorded as it now is)
-                h = reads.digest(read)
-                with self.run.lock:
-                    self.run.done[(reads.KIND, read)] = (h, h)
-                self.inputs.append((reads.KIND, read, h))
-
-    def previous(self):
-        """This fact's value as last kept (made by any version), or None. Not an input: a hint
-        of where to start (the functions the gate ran last time)."""
-        row = self.db.row(self.step.kind, self.key)
-        try:
-            return row.value() if row is not None else None
-        except Exception:
-            return None
-
-    def work(self, *parts):
-        """A folder for files this step writes as it works (not facts)."""
-        return facts.work(self.db, *parts)
-
-    def _record(self, kind, key):
-        h = self.run.done[(kind, key)][0]
-        if h is None:                          # (an unkept value: this fact cannot hold beyond the run)
-            h = "unkept"
-        self.inputs.append((kind, key, h))
+def Run(db, log=None):
+    """One asking of the engine: each fact decided current or made again at most once in it -- the
+    C++ core's (native_engine.Run), which calls the steps written in Python back."""
+    from codebreaker.engine import native_engine
+    return native_engine.Run(db, log)
 
 
 def _step_of(kind):
@@ -479,14 +215,7 @@ def _binary_hash(db):
 def _give_binary(db, value):
     """The binary's fact: its value where it is, its hash its bytes' (moving it changes nothing)."""
     tag, data = facts.encode(value)
-    if getattr(db, "native", False):
-        db.write_raw("binary", "", _binary_hash(db), tag, data, facts.GIVEN, "", "[]", 0)
-        return
-    with db.lock:
-        db.conn.execute("INSERT OR REPLACE INTO fact(kind, key, hash, tag, value, blob, size, step, version, inputs, "
-                        "made, took) VALUES('binary','',?,?,?,NULL,?,?,'','[]',?,0)",
-                        (_binary_hash(db), tag, data, len(data), facts.GIVEN, time.time()))
-        db.conn.commit()
+    db.write_raw("binary", "", _binary_hash(db), tag, data, facts.GIVEN, "", "[]", 0)
 
 
 def get(db, kind, key="", log=None):

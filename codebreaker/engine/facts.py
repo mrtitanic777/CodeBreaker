@@ -39,33 +39,19 @@ The size of it all is looked after the way base/cache.py looks after the cache's
 Facts a person gives -- a function's C edited by hand -- are made by the step "given" and are
 never dropped by either rule.
 
-The C++ fact store (native/engine, CB_NATIVE_ENGINE: engine/native_engine.py) keeps the same file
-in the same schema; a database opened while it is on is its, and everything here answers through
-it -- Database below is the Python one it replaces, until the next milestone.
+The fact store is C++ (native/engine: cbengine.dll, through engine/native_engine.py), on SQLite's C
+API: Database below is its. The Python store it replaced is gone (the milestone of 2026-11-04);
+what stays here is what the C++ calls back or callers read: a value's encoding, Row, where the
+databases are.
 """
-import hashlib
 import json
 import os
 import pickle
-import shutil
-import sqlite3
 import threading
-import time
 
 BLOB_AT = 4096                  # values larger than this are kept once, in the blob table
 DEFAULT_MAX_GB = 4
 GIVEN = "given"                 # the step of a fact a person (or the engine's caller) set
-
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS fact(
-    kind TEXT NOT NULL, key TEXT NOT NULL, hash TEXT NOT NULL, tag TEXT NOT NULL,
-    value BLOB, blob TEXT, size INTEGER, step TEXT NOT NULL, version TEXT, inputs TEXT,
-    made REAL, took REAL,
-    PRIMARY KEY (kind, key));
-CREATE INDEX IF NOT EXISTS fact_step ON fact(step, version);
-CREATE TABLE IF NOT EXISTS blob(hash TEXT PRIMARY KEY, data BLOB);
-CREATE TABLE IF NOT EXISTS about(name TEXT PRIMARY KEY, value TEXT);
-"""
 
 _OPEN = {}                      # path -> Database, of this process
 _LOCK = threading.RLock()
@@ -97,12 +83,6 @@ def decode(tag, data):
     return pickle.loads(data)
 
 
-def digest(tag, data):
-    h = hashlib.sha1(tag.encode("ascii"))
-    h.update(data)
-    return h.hexdigest()
-
-
 class Row(object):
     """One fact as it is kept: its value is read only when asked for."""
     __slots__ = ("db", "kind", "key", "hash", "tag", "size", "step", "version", "inputs", "made", "took",
@@ -128,139 +108,10 @@ class Row(object):
         return self.step == GIVEN
 
 
-def _native():
+def Database(path):
+    """The facts of one binary (see the module's text): the C++ store's."""
     from codebreaker.engine import native_engine
-    return native_engine.enabled()
-
-
-class Database(object):
-    """The facts of one binary (see the module's text)."""
-
-    def __new__(cls, path):
-        if cls is Database and _native():
-            from codebreaker.engine import native_engine
-            return native_engine.Database(path)
-        return object.__new__(cls)
-
-    def __init__(self, path):
-        self.path = path
-        self.lock = threading.RLock()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        self.conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
-        self.conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
-        self.conn.executescript(_SCHEMA)
-        self.conn.commit()
-        self.cleaned = set()                 # steps whose other versions' facts are gone, this process
-        try:                                 # (when it was last opened: the cap goes by it)
-            os.utime(path, None)
-        except OSError:
-            pass
-
-    # --- reading ---------------------------------------------------------------------------
-    def row(self, kind, key=""):
-        with self.lock:
-            r = self.conn.execute("SELECT kind, key, hash, tag, value, blob, size, step, version, inputs, made, took "
-                                  "FROM fact WHERE kind=? AND key=?", (kind, key)).fetchone()
-        return Row(self, *r) if r else None
-
-    def rows(self, kind=None):
-        """Every fact (of one kind), in key order."""
-        q = "SELECT kind, key, hash, tag, value, blob, size, step, version, inputs, made, took FROM fact"
-        with self.lock:
-            got = self.conn.execute(q + (" WHERE kind=? ORDER BY key" if kind else " ORDER BY kind, key"),
-                                    (kind,) if kind else ()).fetchall()
-        return [Row(self, *r) for r in got]
-
-    def kinds(self):
-        """[(kind, facts, bytes, steps)]"""
-        with self.lock:
-            return self.conn.execute("SELECT kind, COUNT(*), SUM(size), GROUP_CONCAT(DISTINCT step) "
-                                     "FROM fact GROUP BY kind ORDER BY kind").fetchall()
-
-    def blob(self, h):
-        with self.lock:
-            r = self.conn.execute("SELECT data FROM blob WHERE hash=?", (h,)).fetchone()
-        if r is None:
-            raise KeyError("blob %s is missing from %s" % (h, self.path))
-        return bytes(r[0])
-
-    def about(self, name, value=None):
-        """A note about the database itself (the binary's path, its name): read, or with
-        `value` written."""
-        with self.lock:
-            if value is None:
-                r = self.conn.execute("SELECT value FROM about WHERE name=?", (name,)).fetchone()
-                return r[0] if r else None
-            self.conn.execute("INSERT OR REPLACE INTO about(name, value) VALUES(?,?)", (name, value))
-            self.conn.commit()
-            return value
-
-    # --- writing ---------------------------------------------------------------------------
-    def write(self, kind, key, value, step, version="", inputs=(), took=0.0, encoded=None):
-        """Keep a fact (in place of any before it). -> its hash"""
-        tag, data = encoded or encode(value)
-        h = digest(tag, data)
-        inline, blob = (data, None) if len(data) <= BLOB_AT else (None, h)
-        with self.lock:
-            if blob:
-                self.conn.execute("INSERT OR IGNORE INTO blob(hash, data) VALUES(?,?)", (h, sqlite3.Binary(data)))
-            self.conn.execute("INSERT OR REPLACE INTO fact(kind, key, hash, tag, value, blob, size, step, version, "
-                              "inputs, made, took) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                              (kind, key, h, tag, sqlite3.Binary(inline) if inline is not None else None, blob,
-                               len(data), step, version, json.dumps([list(i) for i in inputs]), time.time(), took))
-            self.conn.commit()
-        return h
-
-    def remake(self, kind, key, version, inputs):
-        """A fact found the same as it was when made again: only how it was made is new."""
-        with self.lock:
-            self.conn.execute("UPDATE fact SET version=?, inputs=?, made=? WHERE kind=? AND key=?",
-                              (version, json.dumps([list(i) for i in inputs]), time.time(), kind, key))
-            self.conn.commit()
-
-    def forget(self, kind, key=None):
-        """A fact (or every fact of a kind) gone. -> how many"""
-        with self.lock:
-            if key is None:
-                n = self.conn.execute("DELETE FROM fact WHERE kind=?", (kind,)).rowcount
-            else:
-                n = self.conn.execute("DELETE FROM fact WHERE kind=? AND key=?", (kind, key)).rowcount
-            self.conn.commit()
-        return n
-
-    def drop_other_versions(self, step, version):
-        """The facts `step` made in other versions of its code, gone (once per process). -> how many"""
-        if step in self.cleaned or step == GIVEN:
-            return 0
-        with self.lock:
-            n = self.conn.execute("DELETE FROM fact WHERE step=? AND version<>?", (step, version)).rowcount
-            self.conn.commit()
-            self.cleaned.add(step)
-        if n:
-            self.collect()
-        return n
-
-    def collect(self):
-        """The blobs no fact holds, gone, and their space given back."""
-        with self.lock:
-            self.conn.execute("DELETE FROM blob WHERE hash NOT IN (SELECT blob FROM fact WHERE blob IS NOT NULL)")
-            self.conn.commit()
-            try:
-                self.conn.execute("PRAGMA incremental_vacuum").fetchall()
-                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
-            except sqlite3.Error:
-                pass
-
-    def close(self):
-        with _LOCK:
-            _OPEN.pop(self.path, None)
-        with self.lock:
-            try:
-                self.conn.close()
-            except sqlite3.Error:
-                pass
+    return native_engine.Database(path)
 
 
 # --- where the databases are ------------------------------------------------------------------
@@ -270,25 +121,10 @@ def root():
     return settings.state("db")
 
 
-_SHA = {}                       # (path, size, mtime) -> SHA-256, of this process (the service asks again and again)
-
-
 def sha(path):
-    if _native():
-        from codebreaker.engine import native_engine
-        return native_engine.sha(path)
-    st = os.stat(path)
-    seen = (os.path.normcase(os.path.abspath(path)), st.st_size, st.st_mtime_ns)
-    got = _SHA.get(seen)
-    if got is None:
-        h = hashlib.sha256()
-        with open(path, "rb") as f:
-            for block in iter(lambda: f.read(1 << 20), b""):
-                h.update(block)
-        got = h.hexdigest()
-        if time.time() - st.st_mtime > 2.0:          # (a file written just now may be written again within the clock's tick)
-            _SHA[seen] = got
-    return got
+    """The binary's SHA-256 (kept by path, size and time, in the C++)."""
+    from codebreaker.engine import native_engine
+    return native_engine.sha(path)
 
 
 def open_at(path):
@@ -329,33 +165,12 @@ def max_bytes():
     return int(gb * (1 << 30))
 
 
-def _size(p):
-    total = 0
-    for suffix in ("", "-wal", "-shm"):
-        try:
-            total += os.path.getsize(p + suffix)
-        except OSError:
-            pass
-    return total
-
-
 def databases(folder=None):
     """[(path, bytes, last opened)] of every database, the one opened longest ago first. (Not the
     knowledge base beside them, knowledge.sqlite: it holds what was learned and given by hand,
     which nothing would make again; the cap never deletes it.)"""
-    folder = folder or root()
-    if _native():
-        from codebreaker.engine import native_engine
-        return native_engine.databases(folder)
-    out = []
-    for n in (os.listdir(folder) if os.path.isdir(folder) else ()):
-        if n.endswith(".sqlite") and n != "knowledge.sqlite":
-            p = os.path.join(folder, n)
-            try:
-                out.append((p, _size(p), os.path.getmtime(p)))
-            except OSError:
-                pass
-    return sorted(out, key=lambda d: d[2])
+    from codebreaker.engine import native_engine
+    return native_engine.databases(folder or root())
 
 
 def hold(cap=None, folder=None):
@@ -363,62 +178,5 @@ def hold(cap=None, folder=None):
     opened longest ago go, whole, with their work folders, until four fifths of the cap is used;
     never one open in this process (and of one holding the function store's verdicts only its
     facts). -> [path gone or emptied of facts]"""
-    cap = max_bytes() if cap is None else cap
-    if _native():
-        from codebreaker.engine import native_engine
-        return native_engine.hold(cap, folder or root())
-    dbs = databases(folder)
-    total = sum(s for _p, s, _t in dbs)
-    gone = []
-    if total <= cap:
-        return gone
-    with _LOCK:
-        mine = {os.path.normcase(p) for p in _OPEN}
-    for p, size, _t in dbs:
-        if total <= cap * 0.8:
-            break
-        if os.path.normcase(os.path.abspath(p)) in mine:
-            continue
-        shutil.rmtree(os.path.splitext(p)[0] + ".work", ignore_errors=True)
-        if _holds_verdicts(p):                       # (the function store's tables stay: only the facts go)
-            total -= size - _facts_dropped(p)
-            gone.append(p)
-            continue
-        for suffix in ("", "-wal", "-shm"):
-            try:
-                os.remove(p + suffix)
-            except OSError:
-                pass
-        total -= size
-        gone.append(p)
-    return gone
-
-
-def _holds_verdicts(p):
-    """Does the database hold the function store's tables of its binary (store/functions.py)? Those
-    are not made again by a step: past the cap they stay, and only the facts go."""
-    try:
-        conn = sqlite3.connect("file:%s?mode=ro" % p.replace("\\", "/"), uri=True, timeout=5.0)
-        try:
-            return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='verdict'").fetchone() is not None
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        return False
-
-
-def _facts_dropped(p):
-    """The facts and blobs of a database gone, its space given back. -> its size now"""
-    try:
-        conn = sqlite3.connect(p, timeout=30.0)
-        try:
-            conn.execute("DELETE FROM fact")
-            conn.execute("DELETE FROM blob")
-            conn.commit()
-            conn.execute("VACUUM")
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        pass
-    return _size(p)
+    from codebreaker.engine import native_engine
+    return native_engine.hold(max_bytes() if cap is None else cap, folder or root())

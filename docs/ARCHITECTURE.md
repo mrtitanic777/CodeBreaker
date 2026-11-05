@@ -1140,9 +1140,10 @@ test_plumbing (17), check_imports (524); l2c --made lzexpand/keyboard/comm/lz32 
 
 NATIVE.md step 6. The program database, the engine's core, the function store, the knowledge
 base's database and the verdict vocabulary are `native/engine` (cbengine.dll, on SQLite's C API;
-the shim is engine/native_engine.py), behind `CB_NATIVE_ENGINE` -- on by default since the gate,
-0 for the Python. The on-disk schema is unchanged: every database, store and knowledge base written
-before reads unchanged, and either side reads what the other wrote.
+the shim is engine/native_engine.py). The Python engine and store it replaced, and the
+`CB_NATIVE_ENGINE` switch, were deleted at the 2026-11-04 milestone: the DLL is required. The
+on-disk schema is unchanged: every database, store and knowledge base written before reads
+unchanged.
 
 What the engine is, part by part, now:
 
@@ -1178,12 +1179,12 @@ NATIVE.md step 5. The L2 tree -- ir.py's node model, l2.to_json / from_json, l2.
 `native/l2`'s `l2core` (value.hpp: a value with Python's semantics; json.hpp: Python's json; l2.hpp:
 the nodes, types, symbols and the schema), the base the translator back ends sit on (the C++17 back end,
 `l2cpp17`, already does). The decompiler's C writer, backends/c.py with every c_text pass done on the
-tree, is `l2c` on it, in cbl2.dll; backends/c.py's entry points dispatch to it by `CB_NATIVE_L2` (on by
-default since the gate, 0 for the Python; shim: translate/native_l2.py). So decompile -> L2 -> C is C++
+tree, is `l2c` on it, in cbl2.dll; backends/c.py's entry points are its (shim: translate/native_l2.py;
+the Python writer and the `CB_NATIVE_L2` switch were deleted at the 2026-11-04 milestone). So decompile -> L2 -> C is C++
 but for c_text's module assembly, which stays the Python glue that calls the writer.
 
     l2.py / ir.py                       C++ core (Python's own stays for the Python front ends' trees)
-    backends/c.py                       C++ (l2c), behind CB_NATIVE_L2; the Python the fallback
+    backends/c.py                       C++ (l2c); the Python writer deleted (2026-11-04)
     c_text.compilable16/32/powerpc      Python glue around it
     struct_text.plan                    Python (analyze.structures: the loaders step's)
     asm_blocks, frame16, shape16        Python (off by default)
@@ -1201,9 +1202,10 @@ The Python writer goes at the next milestone.
   milestone; Python keeps the glue (command line, terminal UI, MCP). The plan, in measured-cost
   order, is docs/NATIVE.md. Step 1 is done: the 32-bit run recorder (native/tracer, cbtrace.dll:
   trace_function's hooks, `CB_NATIVE_TRACE`). Step 6 is gated and the default: the engine and the
-  store (native/engine, cbengine.dll, `CB_NATIVE_ENGINE`; "Built: the engine and the store in C++").
-  Step 5 is gated and the default: the L2 core and the C back end (native/l2, cbl2.dll,
-  `CB_NATIVE_L2`; "Built: the L2 core and the C back end in C++").
+  store (native/engine, cbengine.dll; "Built: the engine and the store in C++"), its Python deleted
+  at the 2026-11-04 milestone. Step 5 is gated and the default: the L2 core and the C back end
+  (native/l2, cbl2.dll; "Built: the L2 core and the C back end in C++"), the Python writer deleted
+  at the same milestone.
 - SQLite, not a server database: one file per binary is easy to delete, copy and inspect.
 - Open: how a fact made by a period compiler (DOSBox-X) is keyed (the kit's files' hashes); how the
   service and other sessions share a machine (the load setting). (Decided: verdicts from before the

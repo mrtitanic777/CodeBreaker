@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""The C++ engine and store (native/engine, CB_NATIVE_ENGINE) beside the Python ones: the same
-small cases through both, and the whole record compared -- every fact row (hash, tag, size, step,
-version, inputs), what each run kept and made, every store reader's answer, the knowledge base's
-digests, every word of the verdict vocabulary.
-Run:  python tests/test_native_engine.py     (exit code 0 = all passed; skipped without the DLL)
+"""The C++ engine and store (native/engine) held to what the Python engine and store answered: the
+same small cases, and the whole record compared -- every fact row (hash, tag, size, step, version,
+inputs), what each run kept and made, every store reader's answer, the knowledge base's digests,
+every word of the verdict vocabulary.
+Run:  python tests/test_native_engine.py     (exit code 0 = all passed)
 
-The switch is read when a database, a store or a knowledge base is opened, so one process opens a
-Python one and a C++ one side by side."""
-import contextlib
+The Python engine and store are gone (the milestone of 2026-11-04). Before they went, these four
+cases were run through them and their answers recorded in tests/data/native_engine_golden.txt (as
+Python literals); the C++ must give the same answers still."""
+import ast
 import os
 import shutil
 import sys
@@ -31,19 +32,6 @@ def check(fn):
         RESULTS.append((fn.__name__, "PASS", ""))
     except Exception as e:
         RESULTS.append((fn.__name__, "FAIL", "%s: %s" % (type(e).__name__, e)))
-
-
-@contextlib.contextmanager
-def switch(on):
-    old = os.environ.get("CB_NATIVE_ENGINE")
-    os.environ["CB_NATIVE_ENGINE"] = "1" if on else "0"
-    try:
-        yield
-    finally:
-        if old is None:
-            os.environ.pop("CB_NATIVE_ENGINE", None)
-        else:
-            os.environ["CB_NATIVE_ENGINE"] = old
 
 
 # a pipeline of its own: n.words -> n.word <i> -> n.upper <i> -> n.joined; n.len <i> (early cutoff);
@@ -116,24 +104,55 @@ def record(db, d):
              r.given) for r in db.rows()]
 
 
-def place(on, text):
+GOLDEN = os.path.join(ROOT, "tests", "data", "native_engine_golden.txt")
+_GOLDEN = []
+
+
+def golden(case):
+    """What the Python engine and store answered for `case` (facts, store, kb, verdicts)."""
+    if not _GOLDEN:
+        with open(GOLDEN, encoding="utf-8") as f:
+            _GOLDEN.append(ast.literal_eval(f.read()))
+    return _GOLDEN[0][case]
+
+
+def same(value):
+    """`value` as the recorded literals read back (tuples and lists, sets, dicts: as written)."""
+    return ast.literal_eval(repr(value))
+
+
+def unplaced(out):
+    """The scenario's record with the one thing that depends on where it ran taken out: the size of
+    the `binary` fact, whose value holds the binary's path (each row of it, and its kind's bytes)."""
+    def row(r):
+        return r[:4] + (None,) + r[5:] if isinstance(r, tuple) and r and r[0] == "binary" else r
+    got = []
+    for x in out:
+        if x[0] == "kinds":
+            x = ("kinds", [(k, n, None if k == "binary" else size) for k, n, size in x[1]])
+        elif len(x) == 5 and isinstance(x[4], list):
+            x = x[:4] + ([row(r) for r in x[4]],)
+        got.append(x)
+    return got
+
+
+def place(text):
     d = tempfile.mkdtemp(prefix="cbnative")
     b = os.path.join(d, "thing.bin")
     with open(b, "w") as f:
         f.write(text)
     with open(os.path.join(d, "side.txt"), "w") as f:
         f.write("side")
-    with switch(on):
-        db = engine.open(b, folder=os.path.join(d, "db"))
+    db = engine.open(b, folder=os.path.join(d, "db"))
     return d, b, db
 
 
-def scenario(on):
+def scenario():
     """The same asks, the same changes; -> [(what, value, kept/made, record)] after each."""
-    d, b, db = place(on, "alpha beta skip gamma")
+    d, b, db = place("alpha beta skip gamma")
     out = []
     try:
-        assert getattr(db, "native", False) == on, type(db)
+        assert getattr(db, "native", False), type(db)
 
         def step(what, fn):
             MADE.clear()
@@ -178,27 +197,19 @@ def scenario(on):
 
 
 def test_the_same_facts_and_runs():
-    if not _built():
-        return
-    a, b = scenario(False), scenario(True)
+    a, b = unplaced(golden("facts")), unplaced(same(scenario()))
     assert len(a) == len(b)
     for x, y in zip(a, b):
-        assert x == y, "\n off: %r\n on:  %r" % (x[:4], y[:4])
+        assert x == y, "\n Python: %r\n C++:    %r" % (x[:4], y[:4])
 
 
-def _built():
-    with switch(True):
-        return native_engine.enabled()
-
-
-def _store_answers(on):
+def _store_answers():
     from codebreaker.store import functions as F
     d = tempfile.mkdtemp(prefix="cbnative")
     sha, other = "a" * 64, "b" * 64
     try:
-        with switch(on):
-            fs = F.open(os.path.join(d, "functions.sqlite"))
-        assert type(fs).__module__.endswith("native_engine") == on
+        fs = F.open(os.path.join(d, "functions.sqlite"))
+        assert type(fs).__module__.endswith("native_engine")
         fs.add_module(sha, "A.DLL", "C:/a.dll", "pe")
         fs.add_module(other, "b.exe", "C:/b.exe", "pe")
         fs.add_profile("p1", "{}")
@@ -228,8 +239,7 @@ def _store_answers(on):
         fs.close()
         out.append([dict(m, path=m["path"]) for m in F.overview(os.path.join(d, "functions.sqlite"))])
         out.append(F.latest(sha, os.path.join(d, "functions.sqlite")))
-        with switch(on):
-            ro = F.open(os.path.join(d, "functions.sqlite"), readonly=True)
+        ro = F.open(os.path.join(d, "functions.sqlite"), readonly=True)
         out.append((ro.best(sha, "p1"), ro.addresses(other), ro.candidates(other, "p1")))
         try:
             ro.add_functions(sha, ["2000"])
@@ -243,20 +253,17 @@ def _store_answers(on):
 
 
 def test_the_same_store_answers():
-    if not _built():
-        return
-    a, b = _store_answers(False), _store_answers(True)
+    a, b = golden("store"), same(_store_answers())
     for i, (x, y) in enumerate(zip(a, b)):
-        assert x == y, "answer %d:\n off: %r\n on:  %r" % (i, x, y)
+        assert x == y, "answer %d:\n Python: %r\n C++:    %r" % (i, x, y)
     assert len(a) == len(b)
 
 
-def _kb_answers(on):
+def _kb_answers():
     from codebreaker.knowledge import store
     d = tempfile.mkdtemp(prefix="cbnative")
     try:
-        with switch(on):
-            kb = store.KnowledgeBase(os.path.join(d, "knowledge.sqlite"))
+        kb = store.KnowledgeBase(os.path.join(d, "knowledge.sqlite"))
         kb.put_many("win32", "prototype", {"GetDlgItem": "HWND GetDlgItem(HWND,int)", "Ünïcode": [1, "two"],
                                            "it's": {"a": 1}})
         kb.put("win32", "argument_bytes.code", "KERNEL32.#41", 8, source="code")
@@ -272,15 +279,8 @@ def _kb_answers(on):
                kb.kind_digest("win32", "nothing"), kb.stamp("win16", "ordinal"), kb.about("win32", "prototype", "it's")[:2],
                [k[:5] for k in kb.kinds()], kb.bodies("m1"), kb.name("h1"), kb.name("h2"), kb.name("h9"),
                kb.names_from_bodies("m2"), kb.shared_bodies()]
-        if on:
-            out.append([kb.digest(r) for r in ("win32:prototype:GetDlgItem", "win32:prototype:*", "win32:nope:x",
-                                                "bodies:name:h1", "bodies:names:m2", "bodies:name:none")])
-        else:
-            import hashlib
-            out.append([kb.hash_of("win32", "prototype", "GetDlgItem"), kb.kind_digest("win32", "prototype"), "absent",
-                        hashlib.sha1(repr(kb.name("h1")).encode()).hexdigest(),
-                        hashlib.sha1(repr(sorted(kb.names_from_bodies("m2").items())).encode()).hexdigest(),
-                        "absent"])
+        out.append([kb.digest(r) for r in ("win32:prototype:GetDlgItem", "win32:prototype:*", "win32:nope:x",
+                                            "bodies:name:h1", "bodies:names:m2", "bodies:name:none")])
         kb.forget("win32", "prototype", "it's")
         out.append(kb.hashes("win32", "prototype"))
         kb.close()
@@ -290,16 +290,13 @@ def _kb_answers(on):
 
 
 def test_the_same_knowledge_answers():
-    if not _built():
-        return
-    a, b = _kb_answers(False), _kb_answers(True)
+    a, b = golden("kb"), same(_kb_answers())
     for i, (x, y) in enumerate(zip(a, b)):
-        assert x == y, "answer %d:\n off: %r\n on:  %r" % (i, x, y)
+        assert x == y, "answer %d:\n Python: %r\n C++:    %r" % (i, x, y)
+    assert len(a) == len(b)
 
 
 def test_the_same_verdict_words():
-    if not _built():
-        return
     from codebreaker.verify import verdicts as V
     words = list(V.VERDICTS) + list(V.OLD) + list(V.MATCHES) + list(V.MATCH_OLD) + ["", "other", None]
     limits = ["", "truncated", "low-coverage,stub-callee", "x,,fault-only", "nonsense", None]
@@ -307,11 +304,7 @@ def test_the_same_verdict_words():
     def answers():
         return ([V.classify(w, lim) for w in words for lim in limits], [V.verdict(w) for w in words],
                 [V.match(w) for w in words], [V.klass(c) for c in classes])
-    with switch(False):
-        a = answers()
-    with switch(True):
-        b = answers()
-    assert a == b
+    assert same(answers()) == golden("verdicts")
     for name in ("VERDICTS", "GOOD", "ORDER", "SCORED", "BUILT", "MATCHES"):        # the C++ tables are verdicts.py's
         assert tuple(native_engine.verdicts_call("table", name)) == tuple(getattr(V, name)), name
     for name in ("OLD", "CLASS_OLD", "MATCH_OLD", "CLASS", "TITLE", "LABEL", "SAID", "MATCH_LABEL", "WEAK_LIMITS"):
@@ -320,10 +313,6 @@ def test_the_same_verdict_words():
 
 
 def main():
-    if not _built():
-        print("  SKIP (cbengine.dll not built: %s)" % native_engine.why_not())
-        print("0 passed, 0 failed")
-        return 0
     for fn in (test_the_same_facts_and_runs, test_the_same_store_answers, test_the_same_knowledge_answers,
                test_the_same_verdict_words):
         check(fn)
