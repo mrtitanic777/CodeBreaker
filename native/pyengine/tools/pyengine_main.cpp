@@ -43,6 +43,7 @@ int main(int argc, char** argv) {
             else if (a == "--dyn-out" && i + 1 < argc) d.out = argv[++i];
             else if (a == "--dyn-main" && i + 1 < argc) d.main_module = argv[++i];
             else if (a == "--dyn-exe" && i + 1 < argc) d.exe = argv[++i];
+            else if (a == "--dyn-stdlib" && i + 1 < argc) d.stdlib_dir = argv[++i];
             else if (a == "--dyn-closure") d.closure = true;
             else if (a == "--dyn-top") d.top_only = true;
             else if (a == "--dyn-full" && i + 1 < argc) d.full_closure.push_back(argv[++i]);

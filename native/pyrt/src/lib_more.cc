@@ -230,6 +230,15 @@ static void init_enum(const var& m) {
     auto_cls = mkcls("auto", {}, {{"__init__", def("__init__", "self", {}, [](var self) { (void)self; return var(None); })}}, "enum");
     mod_set(m, "Enum", Enum_);
     mod_set(m, "IntEnum", IntEnum_);
+    // @global_enum: the members become names of the enum's module (calendar's MONDAY ...)
+    mod_def(m, "global_enum", [](const CallArgs& a) {
+        var cls = a.pos.at(0);
+        var mods = import("sys").getattr("modules");
+        var mod = mods.call("get", cls.getattr("__module__"));
+        if (!mod.is_none())
+            for (var k : each(cls.getattr("__members__"))) mod.setattr(str_utf8(k).c_str(), cls.getattr("__members__").getitem(k));
+        return cls;
+    });
     mod_set(m, "Flag", Flag_);
     mod_set(m, "IntFlag", IntFlag_);
     mod_set(m, "StrEnum", StrEnum_);
@@ -686,6 +695,61 @@ static void init_threading(const var& m) {
         return var(true);
     }));
     mod_set(m, "Event", make_class("Event", "Event", {}, ens, {}, "threading"));
+    // Condition: CPython's algorithm (a waiter token per wait, notify sets n of them), waiting as Event does
+    var cns = new_dict();
+    cns.setitem("__init__"_s, def("__init__", "self, lock=", {None}, [](var self, var lock) {
+        self.setattr("_lock", lock.is_none() ? new_lock(true) : lock);
+        self.setattr("_waiters", new_list());
+        return var(None);
+    }));
+    cns.setitem("acquire"_s, def("acquire", "self, *args", {}, [](var self, var args) { return call_obj(self.getattr("_lock").getattr("acquire"), CallArgs{collect(args), {}}); }));
+    cns.setitem("release"_s, def("release", "self", {}, [](var self) { return self.getattr("_lock").call("release"); }));
+    cns.setitem("__enter__"_s, def("__enter__", "self", {}, [](var self) { return self.getattr("_lock").call("acquire"); }));
+    cns.setitem("__exit__"_s, def("__exit__", "self, *args", {}, [](var self, var) { self.getattr("_lock").call("release"); return var(None); }));
+    cns.setitem("wait"_s, def("wait", "self, timeout=", {None}, [](var self, var timeout) {
+        var token = new_list({var(false)});
+        self.getattr("_waiters").call("append", token);
+        self.getattr("_lock").call("release");
+        auto start = GetTickCount64();
+        bool got = true;
+        while (!token[0].truthy()) {
+            if (!timeout.is_none() && (double)(GetTickCount64() - start) / 1000.0 >= timeout.as_double()) { got = false; break; }
+            gil_release g;
+            Sleep(1);
+        }
+        self.getattr("_lock").call("acquire");
+        if (!got) {
+            var w = self.getattr("_waiters");
+            for (int64_t i = 0; i < len_(w); i++) if (is(w[var(i)], token)) { w.call("pop", var(i)); break; }
+        }
+        return var(got);
+    }));
+    cns.setitem("wait_for"_s, def("wait_for", "self, predicate, timeout=", {None}, [](var self, var pred, var timeout) {
+        auto start = GetTickCount64();
+        var r = call0(pred);
+        while (!r.truthy()) {
+            var left = None;
+            if (!timeout.is_none()) {
+                double l = timeout.as_double() - (double)(GetTickCount64() - start) / 1000.0;
+                if (l <= 0) break;
+                left = var(l);
+            }
+            self.call("wait", left);
+            r = call0(pred);
+        }
+        return r;
+    }));
+    cns.setitem("notify"_s, def("notify", "self, n=", {var(1)}, [](var self, var n) {
+        var w = self.getattr("_waiters");
+        for (int64_t k = n.as_int64(); k > 0 && len_(w) > 0; k--) w.call("pop", var(0)).setitem(var(0), var(true));
+        return var(None);
+    }));
+    cns.setitem("notify_all"_s, def("notify_all", "self", {}, [](var self) {
+        var w = self.getattr("_waiters");
+        while (len_(w) > 0) w.call("pop", var(0)).setitem(var(0), var(true));
+        return var(None);
+    }));
+    mod_set(m, "Condition", make_class("Condition", "Condition", {}, cns, {}, "threading"));
     // local: an object whose attributes are per thread (one thread per value here unless threads run)
     mod_set(m, "local", mkcls("local", {}, {}, "threading"));
     var sns = new_dict();
@@ -868,6 +932,221 @@ static void init_contextvars(const var& m) {
 void init_db_modules();
 void init_ast_module(const var& m);
 void init_inspect_module(const var& m);
+// ------------------------------------------------------------------------------------------ abc
+static TypeObj* g_abcmeta = nullptr;
+// is sub a subclass of the ABC t: really, through t's registry (and its subclasses'), or by t's hook
+static bool abc_subclass(TypeObj* t, TypeObj* sub) {
+    if (is_subtype(sub, t)) return true;
+    if (var* reg = t->dict->get("_abc_registry"))
+        for (var r : each(*reg)) {
+            TypeObj* rt = T(r);
+            if (rt->metatype == g_abcmeta ? abc_subclass(rt, sub) : is_subtype(sub, rt)) return true;
+        }
+    if (var* hook = t->dict->get("_abc_hook")) {
+        bool all = true;
+        for (var n : each(*hook)) {
+            const var* v = sub->lookup(n);
+            if (!v || v->is_none()) { all = false; break; }
+        }
+        if (all) return true;
+    }
+    // the ABC's own subclasses' registries (Sequence's include MutableSequence's)
+    return false;
+}
+// collections.abc: ABCs over the builtins (registered) and the protocols (hooks), as CPython's
+void make_collections_abc(const var& m) {
+    import("abc");
+    auto mk = [&](const char* name, std::vector<var> bases, std::vector<const char*> hook, std::vector<var> builtins) {
+        var ns = new_dict();
+        ns.setitem("__module__"_s, "collections.abc"_s);
+        if (!hook.empty()) {
+            std::vector<var> h;
+            for (auto* x : hook) h.push_back(new_str(x));
+            ns.setitem("_abc_hook"_s, new_tuple(h));
+        }
+        CallArgs c;
+        c.pos = {new_str(name), new_tuple(bases), ns};
+        var cls = type_new_(g_abcmeta, c);
+        add_classmethod(T(cls), "__class_getitem__", [](const CallArgs& a) { return a.pos[0]; });   // (Iterable[str]: the class)
+        for (auto& b : builtins) cls.call("register", b);
+        mod_set(m, name, cls);
+        return cls;
+    };
+    var hashable = mk("Hashable", {}, {"__hash__"}, {});
+    var iterable = mk("Iterable", {}, {"__iter__"}, {});
+    var iterator = mk("Iterator", {iterable}, {"__iter__", "__next__"}, {});
+    mk("Reversible", {iterable}, {"__reversed__", "__iter__"}, {});
+    mk("Generator", {iterator}, {"__iter__", "__next__", "send", "throw", "close"}, {t::generator});
+    var sized = mk("Sized", {}, {"__len__"}, {});
+    var container = mk("Container", {}, {"__contains__"}, {});
+    mk("Callable", {}, {"__call__"}, {});
+    var collection = mk("Collection", {sized, iterable, container}, {"__len__", "__iter__", "__contains__"}, {});
+    var set_ = mk("Set", {collection}, {}, {t::frozenset, t::set});
+    var mset = mk("MutableSet", {set_}, {}, {t::set});
+    var mapping = mk("Mapping", {collection}, {}, {t::dict});
+    var mmap = mk("MutableMapping", {mapping}, {}, {t::dict});
+    var seq = mk("Sequence", {collection}, {}, {t::tuple, t::str, t::range, t::list, t::bytes, t::bytearray});
+    var mseq = mk("MutableSequence", {seq}, {}, {t::list, t::bytearray});
+    // the mixin methods (CPython's _collections_abc), over the abstract ones a subclass defines
+    auto key_error = [](const var& e) { return isinstance_(e, E_KeyError); };
+    TypeObj* M = T(mapping);
+    add_method(M, "get", [key_error](const CallArgs& a) -> var {
+        try { return a.pos[0].getitem(a.pos.at(1)); } catch (error& e) { if (!key_error(e.value)) throw; }
+        return a.pos.size() > 2 ? a.pos[2] : var(None);
+    });
+    add_method(M, "__contains__", [key_error](const CallArgs& a) -> var {
+        try { a.pos[0].getitem(a.pos.at(1)); return var(true); } catch (error& e) { if (!key_error(e.value)) throw; }
+        return var(false);
+    });
+    add_method(M, "keys", [](const CallArgs& a) { return new_list(collect(a.pos[0])); });
+    add_method(M, "items", [](const CallArgs& a) {
+        std::vector<var> o;
+        for (var k : each(a.pos[0])) o.push_back(new_tuple({k, a.pos[0].getitem(k)}));
+        return new_list(o);
+    });
+    add_method(M, "values", [](const CallArgs& a) {
+        std::vector<var> o;
+        for (var k : each(a.pos[0])) o.push_back(a.pos[0].getitem(k));
+        return new_list(o);
+    });
+    add_method(M, "__eq__", [M](const CallArgs& a) -> var {
+        if (!isinstance_(a.pos.at(1), M) && !is_dict(a.pos[1])) return NotImplemented;
+        return var(call1(t::dict, a.pos[0].call("items")) == call1(t::dict, a.pos[1].call("items")));
+    });
+    TypeObj* MM = T(mmap);
+    add_method(MM, "pop", [key_error](const CallArgs& a) -> var {
+        try {
+            var v = a.pos[0].getitem(a.pos.at(1));
+            a.pos[0].delitem(a.pos[1]);
+            return v;
+        } catch (error& e) {
+            if (!key_error(e.value) || a.pos.size() < 3) throw;
+        }
+        return a.pos[2];
+    });
+    add_method(MM, "popitem", [](const CallArgs& a) -> var {
+        var it = iter(a.pos[0]), k;
+        if (!next_(it, k)) raise(E_KeyError, "popitem(): dictionary is empty");
+        var v = a.pos[0].getitem(k);
+        a.pos[0].delitem(k);
+        return new_tuple({k, v});
+    });
+    add_method(MM, "clear", [](const CallArgs& a) {
+        for (var k : collect(a.pos[0])) a.pos[0].delitem(k);
+        return None;
+    });
+    add_method(MM, "update", [](const CallArgs& a) {
+        var self = a.pos[0];
+        if (a.pos.size() > 1) {
+            var o = a.pos[1];
+            if (hasattr(o, "keys"_s).truthy()) for (var k : each(o.call("keys"))) self.setitem(k, o.getitem(k));
+            else for (var kv : each(o)) { auto p = collect(kv); self.setitem(p.at(0), p.at(1)); }
+        }
+        for (auto& [k, v] : a.kw) self.setitem(k, v);
+        return None;
+    });
+    add_method(MM, "setdefault", [key_error](const CallArgs& a) -> var {
+        try { return a.pos[0].getitem(a.pos.at(1)); } catch (error& e) { if (!key_error(e.value)) throw; }
+        var d = a.pos.size() > 2 ? a.pos[2] : var(None);
+        a.pos[0].setitem(a.pos[1], d);
+        return d;
+    });
+    TypeObj* S = T(seq);
+    add_method(S, "__iter__", [](const CallArgs& a) {
+        var self = a.pos[0];
+        auto i = std::make_shared<int64_t>(0);
+        return new_iter([self, i](var& out) -> bool {
+            try { out = self.getitem(var((*i)++)); return true; } catch (error& e) { if (isinstance_(e.value, E_IndexError)) return false; throw; }
+        });
+    });
+    add_method(S, "__contains__", [](const CallArgs& a) {
+        for (var x : each(a.pos[0])) if (is(x, a.pos.at(1)) || x == a.pos[1]) return var(true);
+        return var(false);
+    });
+    add_method(S, "__reversed__", [](const CallArgs& a) {
+        auto v = collect(a.pos[0]);
+        std::reverse(v.begin(), v.end());
+        return iter(new_list(v));
+    });
+    add_method(S, "index", [](const CallArgs& a) -> var {
+        int64_t i = 0;
+        for (var x : each(a.pos[0])) { if (is(x, a.pos.at(1)) || x == a.pos[1]) return var(i); i++; }
+        raise(E_ValueError, "value not in sequence");
+    });
+    add_method(S, "count", [](const CallArgs& a) {
+        int64_t n = 0;
+        for (var x : each(a.pos[0])) if (is(x, a.pos.at(1)) || x == a.pos[1]) n++;
+        return var(n);
+    });
+    TypeObj* MS = T(mseq);
+    add_method(MS, "append", [](const CallArgs& a) { a.pos[0].call("insert", var(len_(a.pos[0])), a.pos.at(1)); return None; });
+    add_method(MS, "extend", [](const CallArgs& a) {
+        var self = a.pos[0], vals = a.pos.at(1);
+        if (is(vals, self)) vals = new_list(collect(vals));
+        for (var v : each(vals)) self.call("append", v);
+        return None;
+    });
+    add_method(MS, "clear", [](const CallArgs& a) {
+        for (int64_t n = len_(a.pos[0]); n > 0; n--) a.pos[0].call("pop");
+        return None;
+    });
+    add_method(MS, "reverse", [](const CallArgs& a) {
+        var self = a.pos[0];
+        int64_t n = len_(self);
+        for (int64_t i = 0; i < n / 2; i++) {
+            var x = self.getitem(var(i)), y = self.getitem(var(n - i - 1));
+            self.setitem(var(i), y);
+            self.setitem(var(n - i - 1), x);
+        }
+        return None;
+    });
+    add_method(MS, "pop", [](const CallArgs& a) {
+        var idx = a.pos.size() > 1 ? a.pos[1] : var(-1);
+        var v = a.pos[0].getitem(idx);
+        a.pos[0].delitem(idx);
+        return v;
+    });
+    add_method(MS, "remove", [](const CallArgs& a) { a.pos[0].delitem(a.pos[0].call("index", a.pos.at(1))); return None; });
+    add_method(MS, "__iadd__", [](const CallArgs& a) { a.pos[0].call("extend", a.pos.at(1)); return a.pos[0]; });
+    TypeObj* ST = T(set_);
+    add_method(ST, "isdisjoint", [](const CallArgs& a) {
+        for (var x : each(a.pos.at(1))) if (in(x, a.pos[0])) return var(false);
+        return var(true);
+    });
+    add_method(ST, "__le__", [](const CallArgs& a) {
+        if (len_(a.pos[0]) > len_(a.pos.at(1))) return var(false);
+        for (var x : each(a.pos[0])) if (!in(x, a.pos[1])) return var(false);
+        return var(true);
+    });
+    add_method(ST, "__eq__", [](const CallArgs& a) -> var {
+        if (len_(a.pos[0]) != len_(a.pos.at(1))) return var(false);
+        for (var x : each(a.pos[0])) if (!in(x, a.pos[1])) return var(false);
+        return var(true);
+    });
+    TypeObj* MST = T(mset);
+    add_method(MST, "remove", [](const CallArgs& a) {
+        if (!in(a.pos.at(1), a.pos[0])) raise(make_exc_args(E_KeyError, {a.pos[1]}));
+        a.pos[0].call("discard", a.pos[1]);
+        return None;
+    });
+    add_method(MST, "clear", [](const CallArgs& a) {
+        for (var x : collect(a.pos[0])) a.pos[0].call("discard", x);
+        return None;
+    });
+    add_method(MST, "__ior__", [](const CallArgs& a) { for (var x : each(a.pos.at(1))) a.pos[0].call("add", x); return a.pos[0]; });
+    mk("ByteString", {seq}, {}, {t::bytes, t::bytearray});
+    var view = mk("MappingView", {sized}, {}, {});
+    mk("KeysView", {view, set_}, {}, {});
+    mk("ItemsView", {view, set_}, {}, {});
+    mk("ValuesView", {view, collection}, {}, {});
+    mk("Awaitable", {}, {"__await__"}, {});
+    mk("Coroutine", {}, {"__await__", "send", "throw", "close"}, {});
+    mk("AsyncIterable", {}, {"__aiter__"}, {});
+    mk("AsyncIterator", {}, {"__aiter__", "__anext__"}, {});
+    mk("Buffer", {}, {"__buffer__"}, {t::bytes, t::bytearray});
+}
+
+void init_extra_modules();
 void init_more_modules() {
     init_db_modules();
     register_native_module("ast", init_ast_module);
@@ -1066,6 +1345,25 @@ void init_more_modules() {
         mod_set(m, "MethodType", t::method);
         mod_set(m, "GeneratorType", t::generator);
         mod_set(m, "NoneType", t::NoneType);
+        // list[int] and its kind: the origin itself (annotations are not evaluated for meaning)
+        mod_def(m, "GenericAlias", [](const CallArgs& a) { return a.pos.at(0); });
+        {
+            // mappingproxy: a read-only view of a mapping (a type of its own: pprint dispatches on its __repr__)
+            var ns = new_dict();
+            ns.setitem("__init__"_s, def("__init__", "self, mapping", {}, [](var self, var mp) { self.setattr("_mapping", mp); return var(None); }));
+            ns.setitem("__getitem__"_s, def("__getitem__", "self, key", {}, [](var self, var k) { return self.getattr("_mapping").getitem(k); }));
+            ns.setitem("__iter__"_s, def("__iter__", "self", {}, [](var self) { return iter(self.getattr("_mapping")); }));
+            ns.setitem("__len__"_s, def("__len__", "self", {}, [](var self) { return var(len_(self.getattr("_mapping"))); }));
+            ns.setitem("__contains__"_s, def("__contains__", "self, key", {}, [](var self, var k) { return var(in(k, self.getattr("_mapping"))); }));
+            for (const char* meth : {"keys", "values", "items", "copy"})
+                ns.setitem(new_str(meth), nat(meth, [meth](const CallArgs& a) { return a.pos.at(0).getattr("_mapping").call(meth); }));
+            ns.setitem("get"_s, def("get", "self, key, default=", {None}, [](var self, var k, var d) { return self.getattr("_mapping").call("get", k, d); }));
+            ns.setitem("__repr__"_s, def("__repr__", "self", {}, [](var self) { return new_str("mappingproxy(" + repr_(self.getattr("_mapping")) + ")"); }));
+            ns.setitem("__eq__"_s, def("__eq__", "self, other", {}, [](var self, var o) { return var(self.getattr("_mapping") == o); }));
+            mod_set(m, "MappingProxyType", make_class("mappingproxy", "mappingproxy", {}, ns, {}, "builtins"));
+        }
+        mod_set(m, "BuiltinMethodType", t::builtin_function);
+        mod_set(m, "LambdaType", t::function);
     });
     add_static(T_module, "__new__", [](const CallArgs& a) {
         auto* mo = new ModuleObj();
@@ -1098,8 +1396,34 @@ void init_more_modules() {
         mod_set(m, "TypedDict", t::dict);
     });
     register_native_module("abc", [](const var& m) {
-        mod_set(m, "ABC", mkcls("ABC", {}, {}, "abc"));
-        mod_set(m, "ABCMeta", t::type);
+        // ABCMeta: a metaclass of its own, for register() (virtual subclasses are not consulted by isinstance)
+        static TypeObj* T_abcmeta = new_type("ABCMeta", {T_type}, Layout::Type, true, "abc");
+        add_static(T_abcmeta, "__new__", [](const CallArgs& a) {
+            CallArgs b;
+            b.pos.assign(a.pos.begin() + 1, a.pos.end());
+            return type_new_(T(a.pos.at(0)), b);
+        });
+        // register(): a virtual subclass, in the class's own _abc_registry; isinstance / issubclass consult
+        // it, and the structural hook (_abc_hook: the methods an instance's type must have: Iterable's
+        // __iter__ ...), as collections.abc's __subclasshook__s do
+        add_method(T_abcmeta, "register", [](const CallArgs& a) {
+            TypeObj* t = T(a.pos.at(0));
+            var* reg = t->dict->get("_abc_registry");
+            if (!reg) { t->dict->set(interned("_abc_registry"), new_list()); reg = t->dict->get("_abc_registry"); }
+            reg->call("append", a.pos.at(1));
+            return a.pos[1];
+        });
+        add_method(T_abcmeta, "__subclasscheck__", [](const CallArgs& a) { return var(abc_subclass(T(a.pos.at(0)), T(a.pos.at(1)))); });
+        add_method(T_abcmeta, "__instancecheck__", [](const CallArgs& a) { return var(abc_subclass(T(a.pos.at(0)), type_of(a.pos.at(1)))); });
+        add_method(T_abcmeta, "_abc_registry_clear", [](const CallArgs&) { return None; });
+        g_abcmeta = T_abcmeta;
+        mod_set(m, "ABCMeta", tv(T_abcmeta));
+        CallArgs c;
+        c.pos = {"ABC"_s, new_tuple(), new_dict()};
+        c.pos[2].setitem("__module__"_s, "abc"_s);
+        c.pos[2].setitem("__slots__"_s, new_tuple());
+        mod_set(m, "ABC", type_new_(T_abcmeta, c));
+        mod_def(m, "get_cache_token", [](const CallArgs&) { return var(0); });
         mod_def(m, "abstractmethod", [](const CallArgs& a) { return a.pos.at(0); });
         mod_def(m, "abstractproperty", [](const CallArgs& a) { return property(a.pos.at(0)); });
     });
@@ -1185,6 +1509,63 @@ void init_more_modules() {
         mod_def(m, "b2a_hex", [](const CallArgs& a) { return new_bytes(str_utf8(a.pos.at(0).call("hex"))); });
         mod_def(m, "unhexlify", [](const CallArgs& a) { return t::bytes.call("fromhex", is_str(a.pos.at(0)) ? a.pos[0] : new_str(raw_of(a.pos[0]))); });
         mod_def(m, "a2b_hex", [](const CallArgs& a) { return t::bytes.call("fromhex", is_str(a.pos.at(0)) ? a.pos[0] : new_str(raw_of(a.pos[0]))); });
+        var err = mkcls("Error", {t::ValueError}, {}, "binascii");
+        mod_set(m, "Error", err);
+        mod_set(m, "Incomplete", mkcls("Incomplete", {t::Exception}, {}, "binascii"));
+        static const char* B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        mod_def(m, "b2a_base64", [](const CallArgs& a) {
+            const std::string& s = raw_of(a.pos.at(0));
+            bool nl = kwarg(a, "newline", true).truthy();
+            std::string o;
+            size_t i = 0;
+            for (; i + 2 < s.size(); i += 3) {
+                uint32_t v = ((unsigned char)s[i] << 16) | ((unsigned char)s[i + 1] << 8) | (unsigned char)s[i + 2];
+                o += B64[v >> 18]; o += B64[(v >> 12) & 63]; o += B64[(v >> 6) & 63]; o += B64[v & 63];
+            }
+            if (i + 1 == s.size()) {
+                uint32_t v = (unsigned char)s[i] << 16;
+                o += B64[v >> 18]; o += B64[(v >> 12) & 63]; o += "==";
+            } else if (i + 2 == s.size()) {
+                uint32_t v = ((unsigned char)s[i] << 16) | ((unsigned char)s[i + 1] << 8);
+                o += B64[v >> 18]; o += B64[(v >> 12) & 63]; o += B64[(v >> 6) & 63]; o += '=';
+            }
+            if (nl) o += '\n';
+            return new_bytes(o);
+        });
+        mod_def(m, "a2b_base64", [err](const CallArgs& a) {
+            // CPython's non-strict decoding: characters outside the alphabet skipped, padding ends a quad
+            std::string s = is_str(a.pos.at(0)) ? str_utf8(a.pos[0]) : raw_of(a.pos[0]);
+            bool strict = kwarg(a, "strict_mode", false).truthy();
+            std::string o;
+            uint32_t acc = 0;
+            int bits = 0, quad = 0, pads = 0;
+            for (unsigned char c : s) {
+                if (c == '=') {
+                    if (quad >= 2 && quad + ++pads >= 4) { quad = 0; pads = 0; acc = 0; bits = 0; }
+                    continue;
+                }
+                const char* p = c ? strchr(B64, c) : nullptr;
+                if (!p) {
+                    if (strict) raise(make_exc_args(T(err), {"Only base64 data is allowed"_s}));
+                    continue;
+                }
+                pads = 0;
+                acc = (acc << 6) | (uint32_t)(p - B64);
+                bits += 6;
+                quad = (quad + 1) & 3;
+                if (bits >= 8) {
+                    bits -= 8;
+                    o += (char)((acc >> bits) & 0xFF);
+                }
+            }
+            if (quad == 1) {
+                size_t nd = 0;
+                for (unsigned char c : s) if (c && c != '=' && strchr(B64, c)) nd++;
+                raise(make_exc_args(T(err), {new_str("Invalid base64-encoded string: number of data characters (" + std::to_string(nd) + ") cannot be 1 more than a multiple of 4")}));
+            }
+            if (quad != 0) raise(make_exc_args(T(err), {"Incorrect padding"_s}));
+            return new_bytes(o);
+        });
     });
     register_native_module("zlib", [](const var& m) {
         mod_set(m, "crc32", import("binascii").getattr("crc32"));
@@ -1225,6 +1606,7 @@ void init_more_modules() {
             });
         });
     }
+    init_extra_modules();   // (after the placeholders: the modules it has replace theirs)
 }
 
 }  // namespace py

@@ -766,7 +766,19 @@ static var str_list(const std::vector<std::string>& v, const var& like) {
     return new_list(o);
 }
 
+bool module_registered_(const std::string& name);
 static void init_path(const var& m) {
+    // what the C++ does not have (splitroot, commonpath ...) comes from CPython's ntpath, translated as
+    // _pyntpath when stdlib.txt lists it
+    mod_def(m, "__getattr__", [](const CallArgs& a) -> var {
+        std::string n = str_utf8(a.pos.at(0));
+        if (n.size() < 2 || n.compare(0, 2, "__") != 0)
+            if (module_registered_("_pyntpath")) {
+                var py = import("_pyntpath");
+                if (hasattr(py, a.pos[0]).truthy()) return py.getattr(n.c_str());
+            }
+        raise(E_AttributeError, "module 'ntpath' has no attribute '" + n + "'");
+    });
     mod_set(m, "sep", "\\"_s);
     mod_set(m, "altsep", "/"_s);
     mod_set(m, "extsep", "."_s);
@@ -925,8 +937,81 @@ void init_os_modules() {
         mod_set(m, "O_TRUNC", _O_TRUNC);
         mod_set(m, "O_BINARY", _O_BINARY);
         mod_set(m, "O_APPEND", _O_APPEND);
+        mod_set(m, "O_TEXT", _O_TEXT);
+        mod_set(m, "O_NOINHERIT", _O_NOINHERIT);
+        mod_set(m, "O_TEMPORARY", _O_TEMPORARY);
+        mod_set(m, "O_RANDOM", _O_RANDOM);
+        mod_set(m, "O_SEQUENTIAL", _O_SEQUENTIAL);
+        mod_set(m, "O_SHORT_LIVED", _O_SHORT_LIVED);
+        // descriptors (the CRT's, as CPython's on Windows)
+        auto fd_err = []() -> var { int e = errno; return make_exc_args(E_OSError, {var((int64_t)e), new_str(strerror(e))}); };
+        mod_def(m, "open", [fd_err](const CallArgs& a) {
+            std::string p = fs_path(a.pos.at(0));
+            int flags = (int)arg(a, 1, "flags").as_int64(), mode = (int)arg(a, 2, "mode", var(0777)).as_int64();
+            int fd;
+            {
+                gil_release g;
+                fd = _wopen(wide_(p).c_str(), flags | _O_NOINHERIT, mode & 0600 ? _S_IREAD | _S_IWRITE : _S_IREAD);
+            }
+            if (fd < 0) {
+                int e = errno;
+                raise(make_exc_args(e == ENOENT ? E_FileNotFoundError : e == EEXIST ? E_FileExistsError : e == EACCES ? E_PermissionError : E_OSError,
+                                    {var((int64_t)e), new_str(strerror(e)), a.pos[0]}));
+            }
+            return var((int64_t)fd);
+        });
+        mod_def(m, "read", [fd_err](const CallArgs& a) {
+            std::string buf((size_t)a.pos.at(1).as_int64(), '\0');
+            int n;
+            {
+                gil_release g;
+                n = _read((int)a.pos.at(0).as_int64(), buf.data(), (unsigned)buf.size());
+            }
+            if (n < 0) raise(fd_err());
+            buf.resize((size_t)n);
+            return new_bytes(buf);
+        });
+        mod_def(m, "write", [fd_err](const CallArgs& a) {
+            const std::string& b = raw_of(a.pos.at(1));
+            int n;
+            {
+                gil_release g;
+                n = _write((int)a.pos.at(0).as_int64(), b.data(), (unsigned)b.size());
+            }
+            if (n < 0) raise(fd_err());
+            return var((int64_t)n);
+        });
+        mod_def(m, "lseek", [fd_err](const CallArgs& a) {
+            int64_t r = _lseeki64((int)a.pos.at(0).as_int64(), a.pos.at(1).as_int64(), (int)a.pos.at(2).as_int64());
+            if (r < 0) raise(fd_err());
+            return var(r);
+        });
+        mod_def(m, "isatty", [](const CallArgs& a) { return var(_isatty((int)a.pos.at(0).as_int64()) != 0); });
+        mod_def(m, "fsync", [fd_err](const CallArgs& a) {
+            int fd = is_int(a.pos.at(0)) ? (int)a.pos[0].as_int64() : (int)a.pos[0].call("fileno").as_int64();
+            if (_commit(fd) != 0) raise(fd_err());
+            return None;
+        });
+        mod_def(m, "strerror", [](const CallArgs& a) { return new_str(strerror((int)a.pos.at(0).as_int64())); });
+        mod_def(m, "readlink", [](const CallArgs& a) -> var {
+            // (reparse points are not followed here: every path is "not a link", as CPython says for a plain file)
+            raise(make_exc_args(E_OSError, {var((int64_t)22), "The file or directory is not a reparse point"_s, a.pos.at(0)}));
+        });
+        // the types of os.stat's and os.scandir's answers (made by their first use: here, of the current folder)
+        mod_set(m, "stat_result", tv(type_of(do_stat("."))));
+        mod_set(m, "DirEntry", tv(type_of(scandir_entry(".", "."))));
+        mod_set(m, "supports_follow_symlinks", new_set());
+        mod_set(m, "supports_fd", new_set());
+        mod_set(m, "supports_dir_fd", new_set());
+        mod_set(m, "supports_effective_ids", new_set());
         mod_set(m, "error", t::OSError);
-        mod_set(m, "PathLike", t::object);
+        {
+            // os.PathLike: an ABC whose instances are what has __fspath__ (and what is registered: pathlib's PurePath)
+            var ns = new_dict();
+            ns.setitem("__module__"_s, "os"_s);
+            ns.setitem("_abc_hook"_s, new_tuple({"__fspath__"_s}));
+            mod_set(m, "PathLike", call_obj(import("abc").getattr("ABCMeta"), CallArgs{{"PathLike"_s, new_tuple(), ns}, {}}));
+        }
         // environ: the process environment as a dict (subprocess and getenv read it)
         environ_dict = new_dict_obj();
         wchar_t* blk = GetEnvironmentStringsW();
@@ -971,7 +1056,20 @@ void init_os_modules() {
             std::string d = a.pos.empty() ? "." : P0(a);
             std::vector<var> v;
             for (auto& n : listdir_(d)) v.push_back(scandir_entry(d, n));
-            var it = iter(new_list(v));
+            // ScandirIterator: an iterator that is also a context manager (with os.scandir(p) as it)
+            static TypeObj* T_sd = nullptr;
+            if (!T_sd) {
+                T_sd = new_type("ScandirIterator", {}, Layout::NativeData, true, "nt");
+                add_method(T_sd, "__iter__", [](const CallArgs& a) { return a.pos[0]; });
+                add_method(T_sd, "__next__", [](const CallArgs& a) { return next(a.pos[0].getattr("_it")); });
+                add_method(T_sd, "__enter__", [](const CallArgs& a) { return a.pos[0]; });
+                add_method(T_sd, "__exit__", [](const CallArgs&) { return var(false); });
+                add_method(T_sd, "close", [](const CallArgs&) { return None; });
+            }
+            auto* o = new DataObj();
+            o->type = T_sd;
+            var it(static_cast<Obj*>(o));
+            it.setattr("_it", iter(new_list(v)));
             return it;
         });
         mod_def(m, "mkdir", [](const CallArgs& a) {
@@ -1110,7 +1208,8 @@ void init_os_modules() {
             CONSOLE_SCREEN_BUFFER_INFO ci;
             int64_t c = 80, r = 24;
             if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &ci)) { c = ci.srWindow.Right - ci.srWindow.Left + 1; r = ci.srWindow.Bottom - ci.srWindow.Top + 1; }
-            return new_tuple({var(c), var(r)});
+            static var ts = import("collections").call("namedtuple", "terminal_size"_s, new_list({"columns"_s, "lines"_s}));
+            return ts(var(c), var(r));
         });
         mod_def(m, "add_dll_directory", [](const CallArgs& a) { AddDllDirectory(wide_(P0(a)).c_str()); return None; });
         mod_def(m, "close", [](const CallArgs& a) { _close((int)a.pos.at(0).as_int64()); return None; });
@@ -1123,6 +1222,14 @@ void init_os_modules() {
     });
 
     register_native_module("shutil", [](const var& m) {
+        mod_def(m, "get_terminal_size", [](const CallArgs&) {
+            // CPython's: COLUMNS / LINES when set and positive, else the console's, else the fallback (80, 24)
+            var size = import("os").call("get_terminal_size");
+            int64_t c = size[0].as_int64(), r = size[1].as_int64();
+            if (const char* e = getenv("COLUMNS")) { int64_t v = atoll(e); if (v > 0) c = v; }
+            if (const char* e = getenv("LINES")) { int64_t v = atoll(e); if (v > 0) r = v; }
+            return call_obj(tv(type_of(size)), CallArgs{{var(c), var(r)}, {}});
+        });
         mod_def(m, "rmtree", [](const CallArgs& a) {
             rmtree_(P0(a), arg(a, 1, "ignore_errors", false).truthy(), kwarg(a, "onerror", kwarg(a, "onexc", None)));
             return None;
@@ -1493,7 +1600,7 @@ void init_os_modules() {
             Sleep((DWORD)(s * 1000));
             return None;
         });
-        static TypeObj* T_tm = new_type("struct_time", {T_tuple}, Layout::Tuple, true, "time");
+        static TypeObj* T_tm = new_type("struct_time", {T_tuple}, Layout::Tuple, false, "time");   // (not builtin: its instances carry the tm_ attributes)
         auto tm_of = [](const std::tm& t) {
             int yday = t.tm_yday + 1;
             int wday = (t.tm_wday + 6) % 7;
@@ -1507,8 +1614,24 @@ void init_os_modules() {
             r.setattr("tm_sec", t.tm_sec);
             r.setattr("tm_wday", wday);
             r.setattr("tm_yday", yday);
+            r.setattr("tm_isdst", t.tm_isdst);
+            r.setattr("tm_zone", None);
+            r.setattr("tm_gmtoff", None);
             return r;
         };
+        // struct_time(sequence): what _pydatetime's timetuple() makes
+        add_static(T_tm, "__new__", [](const CallArgs& a) {
+            auto v = collect(a.pos.at(1));
+            if (v.size() < 9) raise(E_TypeError, "time.struct_time() takes an at least 9-sequence (" + std::to_string(v.size()) + "-sequence given)");
+            var r = new_tuple(std::vector<var>(v.begin(), v.begin() + 9));
+            r.ref()->type = T_tm;
+            const char* names[] = {"tm_year", "tm_mon", "tm_mday", "tm_hour", "tm_min", "tm_sec", "tm_wday", "tm_yday", "tm_isdst"};
+            for (int i = 0; i < 9; i++) r.setattr(names[i], v[(size_t)i]);
+            r.setattr("tm_zone", v.size() > 9 ? v[9] : var(None));
+            r.setattr("tm_gmtoff", v.size() > 10 ? v[10] : var(None));
+            return r;
+        });
+        mod_set(m, "struct_time", tv(T_tm));
         mod_def(m, "localtime", [tm_of](const CallArgs& a) {
             __time64_t t = a.pos.empty() || a.pos[0].is_none() ? _time64(nullptr) : (__time64_t)a.pos[0].as_double();
             std::tm tm;
@@ -1570,8 +1693,27 @@ void init_os_modules() {
         for (auto& [n, v] : std::vector<std::pair<const char*, int>>{{"ENOENT", ENOENT}, {"EEXIST", EEXIST}, {"EACCES", EACCES}, {"EPERM", EPERM},
                                                                     {"EISDIR", EISDIR}, {"ENOTDIR", ENOTDIR}, {"EINVAL", EINVAL},
                                                                     {"ENOTEMPTY", ENOTEMPTY}, {"EAGAIN", EAGAIN}, {"EINTR", EINTR}, {"EPIPE", EPIPE},
-                                                                    {"EBADF", EBADF}, {"ENOSPC", ENOSPC}, {"EXDEV", EXDEV}, {"ESRCH", ESRCH}})
+                                                                    {"EBADF", EBADF}, {"ENOSPC", ENOSPC}, {"EXDEV", EXDEV}, {"ESRCH", ESRCH},
+                                                                    {"ELOOP", ELOOP}, {"ENAMETOOLONG", ENAMETOOLONG}, {"ENOTSUP", ENOTSUP},
+                                                                    {"EOPNOTSUPP", EOPNOTSUPP}, {"ENOSYS", ENOSYS}, {"EBUSY", EBUSY},
+                                                                    {"ENOTSOCK", ENOTSOCK}, {"ECONNREFUSED", ECONNREFUSED}, {"ECONNRESET", ECONNRESET},
+                                                                    {"ECONNABORTED", ECONNABORTED}, {"ETIMEDOUT", ETIMEDOUT}, {"EWOULDBLOCK", EWOULDBLOCK},
+                                                                    {"EINPROGRESS", EINPROGRESS}, {"EALREADY", EALREADY}, {"EADDRINUSE", EADDRINUSE},
+                                                                    {"ENODEV", ENODEV}, {"ENXIO", ENXIO}, {"EROFS", EROFS}, {"EMFILE", EMFILE},
+                                                                    {"ENFILE", ENFILE}, {"EFBIG", EFBIG}, {"ESPIPE", ESPIPE}, {"EDOM", EDOM},
+                                                                    {"ERANGE", ERANGE}, {"EDEADLK", EDEADLK}, {"ENOLCK", ENOLCK}, {"EILSEQ", EILSEQ},
+                                                                    {"ECHILD", ECHILD}, {"ENOMEM", ENOMEM}, {"EFAULT", EFAULT}, {"E2BIG", E2BIG},
+                                                                    {"ENOEXEC", ENOEXEC}, {"EIO", EIO}, {"ENOTTY", ENOTTY}, {"EMLINK", EMLINK},
+                                                                    {"ETXTBSY", ETXTBSY}, {"ENODATA", ENODATA}, {"ECANCELED", ECANCELED}})
             mod_set(m, n, v);
+        // errorcode: number -> name, as CPython's (the first name of a number wins)
+        var ec = new_dict();
+        for (var k : each(m.getattr("__dict__")))
+            if (is_str(k) && str_utf8(k).size() > 1 && str_utf8(k)[0] == 'E') {
+                var v = m.getattr(str_utf8(k).c_str());
+                if (is_int(v) && !in(v, ec)) ec.setitem(v, k);
+            }
+        mod_set(m, "errorcode", ec);
     });
     register_native_module("stat", [](const var& m) {
         mod_set(m, "S_IFDIR", 0040000);

@@ -731,7 +731,9 @@ var type_new_(TypeObj* meta, const CallArgs& a) {
     var mod;
     if (var* m = static_cast<DictObj*>(nsd.ref())->get("__module__")) mod = *m;
     std::string ms = mod.is_unbound() ? "__main__" : (is_str(mod) ? str_utf8(mod) : "__main__");
-    std::vector<std::pair<const char*, var>> kw;
+    // type.__new__ makes the class itself: make_class must not hand it back to the bases' metaclass (whose
+    // __new__ is what called this: IntEnum(int, Enum) under EnumType looped until the stack overflowed)
+    std::vector<std::pair<const char*, var>> kw = {{"metaclass", tv(T_type)}};
     var cls = make_class(n.c_str(), n.c_str(), bv, nsd, kw, ms.c_str());
     TypeObj* t = T(cls);
     if (meta != T_type) {

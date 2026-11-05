@@ -81,6 +81,14 @@ static std::string ident(const std::string& n) {
         }
     }
     if (cpp_reserved().count(o)) o = "py_" + o;
+    // errno names (EOPNOTSUPP, ENOTSOCK ...): <errno.h> has dozens as macros beyond the list above; the C++
+    // name is only the cell's handle (the Python name is kept), so every E<CAPS> name is renamed
+    else if (o.size() > 2 && o[0] == 'E' && std::all_of(o.begin() + 1, o.end(), [](char c) { return isupper((unsigned char)c) || isdigit((unsigned char)c); }))
+        o = "py_" + o;
+    // likewise the families <sys/stat.h> and <fcntl.h> define (S_IFDIR, S_IREAD ..., O_BINARY ...)
+    else if ((o.compare(0, 3, "S_I") == 0 || o.compare(0, 2, "O_") == 0 || o == "MB_CUR_MAX") &&
+             std::all_of(o.begin(), o.end(), [](char c) { return isupper((unsigned char)c) || isdigit((unsigned char)c) || c == '_'; }))
+        o = "py_" + o;
     if (o.size() >= 2 && o[0] == '_' && (o[1] == '_' || isupper((unsigned char)o[1]))) o = "py" + o;   // (reserved in C++)
     return o;
 }
@@ -100,6 +108,12 @@ static std::string adl_safe(const std::string& n) {
         "staticmethod", "str", "str_from", "super_", "to_vector", "truthy", "truthy_", "tuple", "type", "unpack", "vars",
         "with_enter", "yield_from", "each", "kw", "star"};
     return s.count(n) ? "(" + n + ")" : n;
+}
+// a line of Python as a // comment: no trailing blanks, and no trailing backslash (it would splice the
+// comment's next line, the code, into it)
+static std::string comment_text(std::string l) {
+    while (!l.empty() && (l.back() == 13 || l.back() == 32 || l.back() == 9 || l.back() == 92)) l.pop_back();
+    return l;
 }
 // Class.method -> Class__method
 static std::string dotted_ident(std::string n) {
@@ -221,7 +235,7 @@ private:
         size_t a = starts_[(size_t)n->pos.lineno - 1];
         size_t b = src_.find('\n', a);
         std::string l = src_.substr(a, b == std::string::npos ? std::string::npos : b - a);
-        while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back();
+        l = comment_text(l);
         size_t k = l.find_first_not_of(' ');
         return k == std::string::npos ? "" : l.substr(k);
     }
@@ -1053,7 +1067,7 @@ private:
         if (docstring(f->body, doc)) {
             std::istringstream ds(doc);
             std::string line;
-            while (std::getline(ds, line)) o += ind + "// " + line + "\n";
+            while (std::getline(ds, line)) o += ind + "// " + comment_text(line) + "\n";
         }
         if (!fn_->file_scope) {
             std::string fd = free_decls(s);
@@ -1681,6 +1695,67 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             queue.push_back(name);
         } else queue.push_back(spec);
     }
+    // the standard modules whose Python is CPython's own (native/pyrt/stdlib.txt), translated from its Lib
+    // folder with the program: `name` one module, `name.*` a package and every module under it
+    std::set<std::string> from_stdlib;
+    if (!o.stdlib_dir.empty()) {
+        std::string pyrt_dir = o.pyrt.empty() ? (fs::path(o.root) / "native" / "pyrt").string() : o.pyrt;
+        std::string list = read_file((fs::path(pyrt_dir) / "stdlib.txt").string());
+        size_t st = 0;
+        while (st < list.size()) {
+            size_t e = list.find('\n', st);
+            if (e == std::string::npos) e = list.size();
+            std::string ln = list.substr(st, e - st);
+            st = e + 1;
+            if (auto h = ln.find('#'); h != std::string::npos) ln.resize(h);
+            while (!ln.empty() && isspace((unsigned char)ln.back())) ln.pop_back();
+            while (!ln.empty() && isspace((unsigned char)ln.front())) ln.erase(ln.begin());
+            if (ln.empty()) continue;
+            std::vector<std::string> names;
+            if (auto eq = ln.find('='); eq != std::string::npos) {
+                // `alias = path`: a module of Lib under another name (_pycollections = collections/__init__.py: the
+                // Python half of a module the runtime has in C++)
+                std::string alias = ln.substr(0, eq), path = ln.substr(eq + 1);
+                while (!alias.empty() && isspace((unsigned char)alias.back())) alias.pop_back();
+                while (!path.empty() && isspace((unsigned char)path.front())) path.erase(path.begin());
+                fs::path f = fs::path(o.stdlib_dir) / path;
+                if (!fs::exists(f)) {
+                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", path.c_str(), o.stdlib_dir.c_str());
+                    continue;
+                }
+                explicit_files[alias] = f.generic_string();
+                from_stdlib.insert(alias);
+                queue.push_back(alias);
+                continue;
+            }
+            if (ln.size() > 2 && ln.compare(ln.size() - 2, 2, ".*") == 0) {
+                std::string pkg = ln.substr(0, ln.size() - 2), rel = pkg;
+                std::replace(rel.begin(), rel.end(), '.', '/');
+                fs::path base = fs::path(o.stdlib_dir) / rel;
+                std::error_code ec;
+                for (auto it = fs::recursive_directory_iterator(base, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+                    if (!it->is_regular_file() || it->path().extension() != ".py") continue;
+                    std::string r = fs::relative(it->path(), o.stdlib_dir).generic_string();
+                    r.resize(r.size() - 3);
+                    if (r.size() >= 9 && r.compare(r.size() - 9, 9, "/__init__") == 0) r.resize(r.size() - 9);
+                    if (r.find("/test") != std::string::npos) continue;
+                    std::replace(r.begin(), r.end(), '/', '.');
+                    names.push_back(r);
+                }
+                std::sort(names.begin(), names.end());
+            } else names.push_back(ln);
+            for (auto& n : names) {
+                ModSpec m;
+                if (!find_module(o.stdlib_dir, n, m)) {
+                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", n.c_str(), o.stdlib_dir.c_str());
+                    continue;
+                }
+                explicit_files[n] = m.file;
+                from_stdlib.insert(n);
+                queue.push_back(n);
+            }
+        }
+    }
     auto excluded = [&](const std::string& n) {
         for (auto& x : o.exclude) if (n == x || n.rfind(x + ".", 0) == 0) return true;
         return false;
@@ -1692,7 +1767,14 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         seen.insert(name);
         ModSpec m;
         if (explicit_files.count(name)) m = {name, explicit_files[name], fs::path(explicit_files[name]).filename() == "__init__.py"};
-        else if (!find_module(o.root, name, m)) continue;
+        else if (!find_module(o.root, name, m)) {
+            // a parent package of a standard module (xml for xml.dom.minidom): CPython's too
+            std::string top = name.substr(0, name.find('.'));
+            bool std_parent = false;
+            for (auto& s : from_stdlib) if (s.substr(0, s.find('.')) == top) std_parent = true;
+            if (!std_parent || !find_module(o.stdlib_dir, name, m)) continue;
+            from_stdlib.insert(name);
+        }
         for (size_t p = name.find('.'); p != std::string::npos; p = name.find('.', p + 1)) queue.push_back(name.substr(0, p));
         todo.push_back(m);
         if (!o.closure) continue;
@@ -1753,6 +1835,7 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         std::string rel = m.name;
         std::replace(rel.begin(), rel.end(), '.', '/');
         if (m.package) rel += "/__init__";
+        if (from_stdlib.count(m.name)) rel = "_stdlib/" + rel;
         rel += ".cpp";
         write_if_changed(fs::path(o.out) / rel, cpp);
         res.cpp = rel;

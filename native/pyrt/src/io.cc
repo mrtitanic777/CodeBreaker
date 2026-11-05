@@ -259,6 +259,7 @@ void print_exception_(const var& e) {
     fflush(stderr);
 }
 
+bool module_registered_(const std::string& name);
 void set_sys_argv_() {
     std::vector<var> a;
     for (size_t i = 0; i < g_argv.size(); i++) a.push_back(new_str(g_argv[i]));
@@ -473,7 +474,6 @@ void init_io() {
     mod_set(g_sys, "maxsize", var(INT64_MAX));
     mod_set(g_sys, "version", "3.14.0 (CodeBreaker pyrt)"_s);
     mod_set(g_sys, "version_info", new_tuple({3, 14, 0, "final"_s, 0}));
-    mod_set(g_sys, "implementation", None);
     {
         wchar_t buf[MAX_PATH];
         GetModuleFileNameW(nullptr, buf, MAX_PATH);
@@ -484,7 +484,27 @@ void init_io() {
     }
     if (g_sys_modules.is_unbound()) g_sys_modules = new_dict_obj();
     mod_set(g_sys, "modules", g_sys_modules);
-    mod_set(g_sys, "flags", None);
+    {
+        // sys.flags (every flag off: a translated program takes no interpreter options) and sys.implementation
+        auto ns = [](const char* name) {
+            auto* mo = new ModuleObj();
+            mo->type = T_module;
+            mo->name = name;
+            return var(static_cast<Obj*>(mo));
+        };
+        var flags = ns("sys.flags");
+        for (const char* f : {"debug", "inspect", "interactive", "optimize", "dont_write_bytecode", "no_user_site", "no_site",
+                              "ignore_environment", "verbose", "bytes_warning", "quiet", "hash_randomization", "isolated",
+                              "dev_mode", "utf8_mode", "warn_default_encoding", "safe_path", "int_max_str_digits", "gil",
+                              "thread_inherit_context", "context_aware_warnings"})
+            mod_set(flags, f, var(0));
+        mod_set(g_sys, "flags", flags);
+        var impl = ns("sys.implementation");
+        mod_set(impl, "name", "cpython"_s);
+        mod_set(impl, "cache_tag", None);
+        mod_set(impl, "version", new_tuple({3, 14, 0, "final"_s, 0}));
+        mod_set(g_sys, "implementation", impl);
+    }
     mod_def(g_sys, "exit", [](const CallArgs& a) -> var { raise(make_exc_args(E_SystemExit, a.pos.empty() ? std::vector<var>{} : std::vector<var>{a.pos[0]})); });
     mod_def(g_sys, "getrecursionlimit", [](const CallArgs&) { return var(g_recursion_limit); });
     mod_def(g_sys, "setrecursionlimit", [](const CallArgs& a) { g_recursion_limit = (int)a.pos.at(0).as_int64(); return None; });
@@ -498,6 +518,10 @@ void init_io() {
     mod_def(g_sys, "getfilesystemencoding", [](const CallArgs&) { return "utf-8"_s; });
     mod_def(g_sys, "intern", [](const CallArgs& a) { return a.pos.at(0); });
     mod_def(g_sys, "getsizeof", [](const CallArgs&) { return var(64); });
+    mod_def(g_sys, "audit", [](const CallArgs&) { return None; });
+    mod_def(g_sys, "addaudithook", [](const CallArgs&) { return None; });
+    mod_def(g_sys, "getfilesystemencodeerrors", [](const CallArgs&) { return "surrogatepass"_s; });
+    mod_def(g_sys, "is_finalizing", [](const CallArgs&) { return var(false); });
     mod_def(g_sys, "_getframe", [](const CallArgs&) -> var { raise(E_NotImplementedError, "sys._getframe: frame introspection is not available in translated code"); });
     static_cast<DictObj*>(g_sys_modules.ref())->set("sys"_s, g_sys);
     extern var g_builtins;
@@ -512,12 +536,36 @@ void init_io() {
         mod_set(mod, "SEEK_SET", 0);
         mod_set(mod, "SEEK_CUR", 1);
         mod_set(mod, "SEEK_END", 2);
-        mod_set(mod, "IOBase", t::object);
-        mod_set(mod, "RawIOBase", t::object);
-        mod_set(mod, "BufferedIOBase", t::object);
-        mod_set(mod, "TextIOBase", t::object);
         mod_set(mod, "UnsupportedOperation", t::OSError);
         mod_set(mod, "DEFAULT_BUFFER_SIZE", 8192);
+        mod_set(mod, "Reader", t::object);
+        mod_set(mod, "Writer", t::object);
+        mod_set(mod, "__all__", new_list({"BlockingIOError"_s, "open"_s, "open_code"_s, "IOBase"_s, "RawIOBase"_s, "FileIO"_s,
+                                          "BytesIO"_s, "StringIO"_s, "BufferedIOBase"_s, "BufferedReader"_s, "BufferedWriter"_s,
+                                          "BufferedRWPair"_s, "BufferedRandom"_s, "TextIOBase"_s, "TextIOWrapper"_s,
+                                          "UnsupportedOperation"_s, "SEEK_SET"_s, "SEEK_CUR"_s, "SEEK_END"_s, "DEFAULT_BUFFER_SIZE"_s,
+                                          "text_encoding"_s, "IncrementalNewlineDecoder"_s, "Reader"_s, "Writer"_s}));
+        mod_def(mod, "text_encoding", [](const CallArgs& a) {
+            var e = a.pos.empty() ? var(None) : a.pos[0];
+            return e.is_none() ? "utf-8"_s : e;
+        });
+        mod_def(mod, "open_code", [](const CallArgs& a) { return builtin("open")(a.pos.at(0), "rb"_s); });
+        // the stream classes Python code derives from or wraps (IOBase ... BufferedReader, FileIO): CPython's
+        // own, from _pyio (translated with the program when stdlib.txt lists it); open/StringIO/BytesIO
+        // stay the runtime's
+        mod_def(mod, "__getattr__", [](const CallArgs& a) -> var {
+            std::string n = str_utf8(a.pos.at(0));
+            static const char* from_pyio[] = {"IOBase", "RawIOBase", "BufferedIOBase", "TextIOBase", "BufferedReader", "BufferedWriter",
+                                              "BufferedRandom", "BufferedRWPair", "FileIO", "IncrementalNewlineDecoder"};
+            for (const char* k : from_pyio)
+                if (n == k) {
+                    if (!module_registered_("_pyio")) raise(E_AttributeError, "module 'io' has no attribute '" + n + "' (_pyio is not in this program)");
+                    var v = import("_pyio").getattr(k);
+                    mod_set(import("io"), k, v);
+                    return v;
+                }
+            raise(E_AttributeError, "module 'io' has no attribute '" + n + "'");
+        });
     });
 }
 

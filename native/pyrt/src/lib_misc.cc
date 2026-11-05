@@ -535,6 +535,12 @@ void init_more_modules();
 
 static void reg(const char* name, native_module_init init) { register_native_module(name, init); }
 
+// a struct format: str, or bytes as CPython also takes (zipfile's b"<4s4H2LH")
+static std::string fmt_str(const var& f) { return is_str(f) ? str_utf8(f) : raw_of(f); }
+
+void make_collections_abc(const var& m);
+std::string dict_repr_(const var& d);
+bool module_registered_(const std::string& name);
 void init_modules() {
     init_os_modules();
     reg("re", init_re_module);
@@ -550,18 +556,19 @@ void init_modules() {
 
     reg("struct", [](const var& m) {
         mod_set(m, "error", make_class("error", "error", {t::Exception}, new_dict(), {}, "struct"));
-        mod_def(m, "pack", [](const CallArgs& a) { return new_bytes(pack(str_utf8(a.pos.at(0)), a.pos, 1)); });
+        mod_def(m, "pack", [](const CallArgs& a) { return new_bytes(pack(fmt_str(a.pos.at(0)), a.pos, 1)); });
         mod_def(m, "unpack", [](const CallArgs& a) {
             bool l, al;
-            const std::string& f = str_utf8(a.pos.at(0));
-            int64_t need = calcsize(parse_fmt(f, l, al), al);
+            const std::string& f = fmt_str(a.pos.at(0));
+            auto items = parse_fmt(f, l, al);   // (first: calcsize reads the alignment it sets)
+            int64_t need = calcsize(items, al);
             const std::string& b = raw_of(a.pos.at(1));
             if ((int64_t)b.size() != need) raise(struct_error("unpack requires a buffer of " + std::to_string(need) + " bytes"));
             return unpack_from(f, b, 0);
         });
-        mod_def(m, "unpack_from", [](const CallArgs& a) { return unpack_from(str_utf8(a.pos.at(0)), raw_of(arg(a, 1, "buffer")), arg(a, 2, "offset", 0).as_int64()); });
+        mod_def(m, "unpack_from", [](const CallArgs& a) { return unpack_from(fmt_str(a.pos.at(0)), raw_of(arg(a, 1, "buffer")), arg(a, 2, "offset", 0).as_int64()); });
         mod_def(m, "pack_into", [](const CallArgs& a) {
-            std::string data = pack(str_utf8(a.pos.at(0)), a.pos, 3);
+            std::string data = pack(fmt_str(a.pos.at(0)), a.pos, 3);
             var buf = a.pos.at(1);
             int64_t off = a.pos.at(2).as_int64();
             auto& s = static_cast<BytesObj*>(buf.ref())->s;
@@ -572,11 +579,12 @@ void init_modules() {
             s.replace((size_t)off, data.size(), data);
             return None;
         });
-        mod_def(m, "calcsize", [](const CallArgs& a) { bool l, al; auto it = parse_fmt(str_utf8(a.pos.at(0)), l, al); return var(calcsize(it, al)); });
+        mod_def(m, "calcsize", [](const CallArgs& a) { bool l, al; auto it = parse_fmt(fmt_str(a.pos.at(0)), l, al); return var(calcsize(it, al)); });
         mod_def(m, "iter_unpack", [](const CallArgs& a) {
-            std::string f = str_utf8(a.pos.at(0)), b = raw_of(a.pos.at(1));
+            std::string f = fmt_str(a.pos.at(0)), b = raw_of(a.pos.at(1));
             bool l, al;
-            int64_t n = calcsize(parse_fmt(f, l, al), al);
+            auto items = parse_fmt(f, l, al);
+            int64_t n = calcsize(items, al);
             std::vector<var> out;
             for (int64_t off = 0; off + n <= (int64_t)b.size(); off += n) out.push_back(unpack_from(f, b, off));
             return iter(new_list(out));
@@ -586,7 +594,8 @@ void init_modules() {
         sns.setitem("__init__"_s, def("__init__", "self, format", {}, [](var self, var f) {
             self.setattr("format", f);
             bool l, al;
-            self.setattr("size", var(calcsize(parse_fmt(str_utf8(f), l, al), al)));
+            auto items = parse_fmt(fmt_str(f), l, al);
+            self.setattr("size", var(calcsize(items, al)));
             return var(None);
         }));
         sns.setitem("unpack"_s, def("unpack", "self, buffer", {}, [](var self, var b) { return import("struct").call("unpack", self.getattr("format"), b); }));
@@ -643,6 +652,8 @@ void init_modules() {
                 static_cast<DictObj*>(d.ref())->ordered_kind = kind;
                 return d;
             });
+            // a __repr__ of its own (not dict's object): pprint dispatches on type(x).__repr__'s identity
+            add_method(t, "__repr__", [](const CallArgs& a) { return new_str(dict_repr_(a.pos[0])); });
             return t;
         };
         TypeObj* dd = dict_kind("defaultdict", 3);
@@ -818,11 +829,26 @@ void init_modules() {
         add_method(T_deque, "__repr__", [](const CallArgs& a) { return new_str("deque(" + repr_(new_list(DQ(a.pos[0])->v)) + ")"); });
         add_method(T_deque, "__bool__", [](const CallArgs& a) { return var(!DQ(a.pos[0])->v.empty()); });
         mod_set(m, "deque", tv(T_deque));
-        mod_set(m, "abc", None);
+        mod_set(m, "abc", import("collections.abc"));
+        // ChainMap, UserDict, UserList, UserString: CPython's own Python (collections/__init__.py, translated
+        // as _pycollections when stdlib.txt lists it)
+        mod_def(m, "__getattr__", [](const CallArgs& a) -> var {
+            std::string n = str_utf8(a.pos.at(0));
+            for (const char* k : {"ChainMap", "UserDict", "UserList", "UserString"})
+                if (n == k) {
+                    if (!module_registered_("_pycollections")) break;
+                    var v = import("_pycollections").getattr(k);
+                    mod_set(import("collections"), k, v);
+                    return v;
+                }
+            raise(E_AttributeError, "module 'collections' has no attribute '" + n + "'");
+        });
     });
-    reg("collections.abc", [](const var& m) {
-        for (const char* n : {"Mapping", "MutableMapping", "Sequence", "MutableSequence", "Iterable", "Iterator", "Callable", "Set", "MutableSet", "Hashable", "Sized", "Container", "Generator"})
-            mod_set(m, n, t::object);
+    reg("collections.abc", [](const var& m) { make_collections_abc(m); });   // (lib_more.cc: ABCs over the builtins and the protocols)
+    reg("_collections_abc", [](const var& m) {
+        var src = import("collections.abc");
+        for (var k : each(src.getattr("__dict__")))
+            if (str_utf8(k)[0] != '_') mod_set(m, str_utf8(k).c_str(), src.getattr(str_utf8(k).c_str()));
     });
 
     reg("functools", [](const var& m) {
@@ -1206,6 +1232,11 @@ void init_modules() {
         f1("exp", std::exp); f1("fabs", std::fabs); f1("log10", [](double x) { return x <= 0 ? NAN : std::log10(x); });
         f1("log2", [](double x) { return x <= 0 ? NAN : std::log2(x); });
         f1("sinh", std::sinh); f1("cosh", std::cosh); f1("tanh", std::tanh);
+        f1("gamma", [](double x) { return x <= 0 && x == std::floor(x) ? NAN : std::tgamma(x); });
+        f1("lgamma", [](double x) { return x <= 0 && x == std::floor(x) ? NAN : std::lgamma(x); });
+        f1("erf", std::erf); f1("erfc", std::erfc); f1("expm1", std::expm1); f1("log1p", [](double x) { return x <= -1 ? NAN : std::log1p(x); });
+        f1("asinh", std::asinh); f1("acosh", [](double x) { return x < 1 ? NAN : std::acosh(x); }); f1("atanh", [](double x) { return x <= -1 || x >= 1 ? NAN : std::atanh(x); });
+        f1("cbrt", std::cbrt); f1("exp2", std::exp2);
         mod_def(m, "log", [](const CallArgs& a) {
             double x = a.pos.at(0).as_double();
             if (x <= 0) raise(E_ValueError, "math domain error");
