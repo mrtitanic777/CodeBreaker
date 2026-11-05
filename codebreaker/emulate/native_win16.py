@@ -10,19 +10,16 @@ another of the module's functions (answer), and interrupts (int 21h as DOS3Call)
 and the ports' device model stay Python hooks, which trace_function16 attaches itself; the ports'
 clock reads the live instruction count this recorder keeps (count()).
 
-The switch: CB_NATIVE_TRACE16=0 runs the Python hooks instead (off until gated, then on). A run
-kept beside a shadow, a recorded-system context, or with a prelude stays entirely on the Python
-hooks. Build is shared with the 32-bit tracer (native/tracer/CMakeLists.txt).
+The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
+(require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
 """
 import ctypes
-import os
 import struct
 
 from codebreaker.emulate import native_trace     # the loaded DLL, dll_path
 
 _MEM_WORDS, _LAZY_WORDS = 8, 5
 _ACCESS = ("read", "write", "fetch", "?")
-DEFAULT = "1"             # CB_NATIVE_TRACE16 when not set (gated identical: docs/NATIVE.md)
 
 EVENT = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int64, ctypes.c_int64)
 _P64 = ctypes.POINTER(ctypes.c_uint64)
@@ -37,7 +34,9 @@ class _Config(ctypes.Structure):
                 ("gov_n", ctypes.c_int64), ("gov_ceil", ctypes.c_int64),
                 ("count", ctypes.c_void_p),
                 ("intercept", _P64), ("nintercept", ctypes.c_int64),
-                ("on_sentinel", EVENT), ("on_intercept", EVENT), ("on_intr", EVENT)]
+                ("on_sentinel", EVENT), ("on_intercept", EVENT), ("on_intr", EVENT),
+                ("shadow", ctypes.c_void_p), ("own_lo", ctypes.c_uint64), ("own_hi", ctypes.c_uint64),
+                ("on_own", EVENT)]
 
 
 class _Result(ctypes.Structure):
@@ -65,6 +64,8 @@ def _lib():
             getattr(lib, name).restype = ctypes.c_int
         lib.cbt_w16_free.argtypes = (ctypes.c_void_p,)
         lib.cbt_w16_free.restype = None
+        lib.cbt_w16_reset.argtypes = (ctypes.c_void_p,)
+        lib.cbt_w16_reset.restype = None
         lib.cbt_w16_state.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64))
         lib.cbt_w16_state.restype = None
         lib.cbt_w16_result_get.argtypes = (ctypes.c_void_p,)
@@ -74,9 +75,8 @@ def _lib():
 
 
 def enabled():
-    """Native 16-bit hooks for this process: CB_NATIVE_TRACE16 is not 0 and the DLL loads."""
-    if os.environ.get("CB_NATIVE_TRACE16", DEFAULT) == "0" or os.environ.get("WT_DBG"):
-        return False
+    """The 16-bit recorder for this process: the DLL loads here (the Python hooks it replaced are gone;
+    require() raises with why_not() when it does not)."""
     return _lib() is not None
 
 
@@ -102,7 +102,8 @@ class Run:
     each may raise, and the exception comes back out of trace_function16. `gov` emulator._GOV."""
 
     def __init__(self, uc, *, eip_id, near, fill, cap, cs_base, near_ret, far_ret, sent_lo, sent_hi,
-                 snap_base, gov, intercept, on_sentinel, on_intercept, on_intr):
+                 snap_base, gov, intercept, on_sentinel, on_intercept, on_intr, shadow=None, own=None,
+                 on_own=None):
         lib = self.lib = _lib()
         self.uc, self.gov, self.exc = uc, gov, None
         self._fns = (on_sentinel, on_intercept, on_intr)
@@ -120,6 +121,11 @@ class Run:
         c.count = ctypes.cast(ctypes.pointer(self._count), ctypes.c_void_p)
         c.intercept, c.nintercept = self._inter
         c.on_sentinel, c.on_intercept, c.on_intr = self._cb
+        c.shadow = shadow
+        if own is not None:
+            c.own_lo, c.own_hi = int(own[0]), int(own[1])
+            self._own_cb = EVENT(self._wrap_own(on_own))
+            c.on_own = self._own_cb
         self.handle = lib.cbt_w16_begin(ctypes.byref(c))
         if not self.handle:
             raise RuntimeError("cbtrace: a 16-bit run could not be set up")
@@ -139,6 +145,20 @@ class Run:
                     self.exc = e
                 return 1
         return cb
+
+    def _wrap_own(self, fn):
+        def cb(a, n):
+            try:
+                return 1 if fn(a, n) else 0
+            except BaseException as e:
+                if self.exc is None:
+                    self.exc = e
+                return 2
+        return cb
+
+    def reset(self):
+        """A prelude ran: its path, count, reads and writes are dropped (cbt_w16_reset)."""
+        self.lib.cbt_w16_reset(self.handle)
 
     def count(self):
         return self._count.value
@@ -180,3 +200,10 @@ class Run:
         h, self.handle = getattr(self, "handle", None), None
         if h:
             self.lib.cbt_w16_free(h)
+
+
+def require():
+    """The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
+    be used here, saying why."""
+    if not enabled():
+        raise RuntimeError("the run recorder is native (native/tracer, cbtrace.dll): %s" % why_not())

@@ -14,6 +14,7 @@
 
 #include "cbtrace.h"
 #include "libs.h"
+#include "shadow.h"
 
 namespace cbt {
 
@@ -48,7 +49,9 @@ struct W16Run {
     uint64_t cs_base = 0, near_ret = 0, far_ret = 0, sent_lo = 0, sent_hi = 0, snap_base = 0;
     int64_t *count = nullptr;
     std::unordered_set<uint64_t> intercept;
-    cbt_w16_event on_sentinel = nullptr, on_intercept = nullptr, on_intr = nullptr;
+    cbt_w16_event on_sentinel = nullptr, on_intercept = nullptr, on_intr = nullptr, on_own = nullptr;
+    Shadow *shadow = nullptr;
+    uint64_t own_lo = 0, own_hi = 0;
 
     // the record
     int64_t insn_count = 0;
@@ -67,8 +70,18 @@ struct W16Run {
 
 static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
     W16Run *r = static_cast<W16Run *>(user);
-    // (the context/OWN_BASE redirect is handled by the Python fallback: native runs only when
-    //  there is no recorded-system context)
+    if (r->own_lo <= address && address < r->own_hi && r->on_own) {
+        // (a recorded-system context: the module's own code reached through a recorded far
+        //  pointer -- that function of this side's build run, by name, Python's to redirect)
+        int got = r->on_own(int64_t(address), r->insn_count);
+        if (got == 2) {
+            r->hook_error = 1;
+            r->stop();
+            return;
+        }
+        if (got == 1)
+            return;
+    }
     if (!r->intercept.empty() && r->intercept.count(address) && r->insn_count) {
         if (r->on_intercept(int64_t(address), r->insn_count)) {
             r->hook_error = 1;
@@ -101,7 +114,8 @@ static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
         }
         return;
     }
-    // else an ordinary instruction (shadow is None in the native path, so nothing more)
+    if (r->shadow)                     // (an ordinary instruction: the shadow steps)
+        sh_step(r->shadow, r->uc, address, sh_segbase(r->shadow, r->uc, reg(r->uc, UC_X86_REG_CS)));
 }
 
 static void on_intr(uc_engine *, uint32_t intno, void *user) {
@@ -225,6 +239,10 @@ CBT_API void *cbt_w16_begin(const cbt_w16_config *c) {
     r->on_sentinel = c->on_sentinel;
     r->on_intercept = c->on_intercept;
     r->on_intr = c->on_intr;
+    r->shadow = static_cast<Shadow *>(c->shadow);
+    r->own_lo = c->own_lo;
+    r->own_hi = c->own_hi;
+    r->on_own = c->on_own;
     return r;
 }
 
@@ -290,6 +308,16 @@ CBT_API int cbt_w16_detach(void *run) {
             bad = 1;
     r->hooks.clear();
     return bad;
+}
+
+CBT_API void cbt_w16_reset(void *run) {
+    W16Run *r = static_cast<W16Run *>(run);
+    r->insn_count = 0;
+    if (r->count)
+        *r->count = 0;
+    r->path.clear();
+    r->reads.clear();
+    r->writes.clear();
 }
 
 CBT_API void cbt_w16_free(void *run) { delete static_cast<W16Run *>(run); }

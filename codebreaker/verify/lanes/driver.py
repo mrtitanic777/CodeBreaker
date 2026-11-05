@@ -202,7 +202,7 @@ def explore_vectors(image, entry, seeds):
     scratch = (SCRATCH, SCRATCH + emulator._SCRATCH_SIZE)
 
     def run(v):
-        sh = shadow.ShadowLE(lifter, lambda b: scratch[0] <= b < scratch[1])
+        sh = shadow.ShadowLE(lifter, [scratch])
         stack = list(v.get("stack") or ())
         esp = tracer._STACK_TOP - 4 * len(stack) - 4
         sh.enter([(esp + 4 + 4 * k, w & 0xFFFFFFFF, k) for k, w in enumerate(stack)] +

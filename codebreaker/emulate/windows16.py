@@ -7,13 +7,13 @@ The module's segments are laid out in protected mode, each behind a selector of 
 its relocations applied; every import is a far address in a segment of landing places, so a
 call to Windows is seen, named, and returned from with the arguments it was given. The function
 is entered the way it is really called (far or near). Memory is kept by the same hooks as the
-32-bit emulator's (emulator._memory_hooks). What a run did is judged in verify/lanes/win16.py.
+32-bit emulator's (native/tracer, in C++: native_win16.py). What a run did is judged in verify/lanes/win16.py.
 """
 import hashlib
 import os
 import sys
 from codebreaker.emulate import fast_uc
-from codebreaker.emulate.emulator import _MAX_INSNS, _PAGE, _memory_hooks
+from codebreaker.emulate.emulator import _MAX_INSNS, _PAGE
 from codebreaker.formats.ne import NEFile
 import json
 from codebreaker import platforms
@@ -689,50 +689,6 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             shadow.after_call(uc, free, (dx << 16) | ax, STACK_BASE + ((spn + 4) & 0xFFFF), pop // 2,
                               None if free else "call:%s" % hit.get("api"))
 
-    def hook_code(uc, address, size, _ud):
-        if OWN_BASE <= address < OWN_BASE + 0x1000000 and context:
-            # (the module's own code reached through a recorded far pointer: that function of this
-            # side's build run, by name; or, not a function's start, answered as foreign code is)
-            n, off = (address - OWN_BASE) >> 16, address & 0xFFFF
-            tgt = (context.get("redirect") or {}).get((n, off))
-            if tgt:
-                rec["imports_hit"].append({"api": "callback " + tgt[2], "n": rec["insn_count"]})
-                uc.reg_write(UC_X86_REG_CS, sels[tgt[0]])
-                uc.reg_write(UC_X86_REG_EIP, tgt[1])
-                return
-        if address in intercept and rec["insn_count"]:
-            answer(address)
-            return
-        if rec["insn_count"] >= insn_cap:
-            rec["truncated"] = True; uc.emu_stop(); return
-        if near and address == cs_base + NEAR_RET:           # the near function returned
-            rec["returned"] = True; uc.emu_stop(); return
-        if address == SENT_BASE + FAR_RET:                   # the far function returned
-            rec["returned"] = True; uc.emu_stop(); return
-        rec["insn_count"] += 1
-        if len(rec["path"]) < 20000:
-            rec["path"].append(address)
-        if SENT_BASE <= address < SENT_BASE + 0x10000:
-            _sentinel(address, rec["insn_count"])
-        elif shadow is not None:
-            shadow.step(uc, address, shadow.segbase(uc, uc.reg_read(UC_X86_REG_CS)))
-
-    hook_mem, hook_unmapped = _memory_hooks(U, rec, set(), fill=not os.environ.get("CB_GATE_ZERO"))
-
-    def hook_limited(uc, access, address, msize, value, ud):
-        # A word read at offset FFFFh runs past the end of its segment: on the processor a
-        # protection fault, here (Unicorn checks no limit) a byte of whatever lies after the
-        # segment in this run's layout -- another in each build. It ends the run as a fault, on
-        # either side alike, and is not itself recorded. (Every segment's window is 64K-aligned.)
-        if rec.get("limit_fault"):
-            return
-        if (address & 0xFFFF) + msize > 0x10000 and address < SNAP_BASE:   # (a recorded memory's
-                                                             # segments sit where they sat, not 64K apart)
-            rec["limit_fault"] = True
-            uc.emu_stop()
-            return
-        return hook_mem(uc, access, address, msize, value, ud)
-
     def _intr(intno, n=None):
         # `int 21h` in a Windows module is DOS3Call by another door -- the same service, which
         # Windows documents as the faster way in; a module's own code picks one by a flag its
@@ -755,40 +711,39 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         rec["interrupt"] = intno
         uc.emu_stop()
 
-    def hook_intr(uc, intno, _ud):
-        _intr(intno)
+    def _own(address, n):
+        """The module's own code reached through a recorded far pointer (a context's run): that
+        function of this side's build, by name -- True when redirected."""
+        tgt = (context.get("redirect") or {}).get(((address - OWN_BASE) >> 16, address & 0xFFFF))
+        if not tgt:
+            return False
+        rec["imports_hit"].append({"api": "callback " + tgt[2], "n": n})
+        uc.reg_write(UC_X86_REG_CS, sels[tgt[0]])
+        uc.reg_write(UC_X86_REG_EIP, tgt[1])
+        return True
 
-    # The same per-instruction and memory hooks in C++ (native/tracer: cbtrace.dll) when
-    # CB_NATIVE_TRACE16 is on and the DLL loads; else the Python hooks above. A run beside a shadow,
-    # a recorded-system context, or with a prelude stays entirely on the Python hooks.
-    nr = None
-    if shadow is None and context is None and not prelude:
-        from codebreaker.emulate import native_win16
-        if native_win16.enabled():
-            from codebreaker.emulate.emulator import _GOV
-            try:
-                nr = native_win16.Run(
-                    uc, eip_id=UC_X86_REG_EIP, near=near, fill=not os.environ.get("CB_GATE_ZERO"),
-                    cap=insn_cap, cs_base=cs_base, near_ret=cs_base + NEAR_RET, far_ret=SENT_BASE + FAR_RET,
-                    sent_lo=SENT_BASE, sent_hi=SENT_BASE + 0x10000, snap_base=SNAP_BASE, gov=_GOV,
-                    intercept=list(intercept.keys()), on_sentinel=_sentinel,
-                    on_intercept=lambda a, n: answer(a, n), on_intr=lambda i, n: _intr(i, n))
-            except Exception:
-                nr = None
-    if nr is None:
-        uc.hook_add(U.UC_HOOK_CODE, hook_code)
-        uc.hook_add(U.UC_HOOK_INTR, hook_intr)
+    # The per-instruction and memory hooks are C++ (native/tracer: cbtrace.dll; emulate/
+    # native_win16.py), attached in trace_function16's order; the events above are its callbacks,
+    # and a shadow (the path explorer's) is stepped there too. The branch log and the ports' device
+    # model stay Python hooks.
+    from codebreaker.emulate import native_shadow, native_win16
+    from codebreaker.emulate.emulator import _GOV
+    native_win16.require()
+    nr = native_win16.Run(
+        uc, eip_id=UC_X86_REG_EIP, near=near, fill=not os.environ.get("CB_GATE_ZERO"),
+        cap=insn_cap, cs_base=cs_base, near_ret=cs_base + NEAR_RET, far_ret=SENT_BASE + FAR_RET,
+        sent_lo=SENT_BASE, sent_hi=SENT_BASE + 0x10000, snap_base=SNAP_BASE, gov=_GOV,
+        intercept=list(intercept.keys()), on_sentinel=_sentinel,
+        on_intercept=lambda a, n: answer(a, n), on_intr=lambda i, n: _intr(i, n),
+        shadow=native_shadow.handle_of(shadow), own=(OWN_BASE, OWN_BASE + 0x1000000) if context else None,
+        on_own=_own)
     if branches:
         uc.hook_add(U.UC_HOOK_CODE, _branch_hook16(rec, cs_base, branches[0], branches[1]), None,
                     cs_base + branches[0], cs_base + branches[1] - 1)
-    if nr is None:
-        uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, hook_limited)
-        uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED
-                    | U.UC_HOOK_MEM_FETCH_UNMAPPED, hook_unmapped)
     devices = None
     if ports:
         from codebreaker.emulate import ports16
-        devices = ports16.Devices(clock=(nr.count if nr is not None else (lambda: rec["insn_count"])))
+        devices = ports16.Devices(clock=nr.count)
         ports16.hook(uc, U, devices)
 
     # prelude: run setup calls first (sharing this uc's DGROUP state + the import_stub ctx), then
@@ -803,7 +758,11 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             uc.emu_start(poff, SENT_BASE, count=insn_cap + 1)
         except U.UcError:
             pass
+        exc = nr.raised()                                    # (what a callback raised in it)
+        if exc is not None:
+            raise exc
     if prelude:
+        nr.reset()
         rec["mem_reads"] = []; rec["mem_writes"] = []; rec["imports_hit"] = []
         rec["path"] = []; rec["insn_count"] = 0; rec["prelude_ran"] = len(prelude)
         if devices:
@@ -829,11 +788,10 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         uc.emu_start(offset, SENT_BASE, count=insn_cap + 1)
     except U.UcError as e:
         failed = str(e)
-    if nr is not None:                                       # the native record, then what a Python
-        nr.collect(rec)                                      # hook would have raised in the run
-        exc = nr.raised()
-        if exc is not None:
-            raise exc
+    nr.collect(rec)                                          # the record, then what a callback
+    exc = nr.raised()                                        # raised in the run
+    if exc is not None:
+        raise exc
     if failed is None:
         # (neither returned nor stopped by a hook: emu_start's own instruction count ran out --
         # just short of the cap, the skipped calls counting too. That is a run cut off, as much

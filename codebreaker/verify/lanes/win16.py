@@ -546,8 +546,7 @@ def explore_vectors(module_path, seg, off, near, span, seeds, known=None, **prob
     lifter = pcode.lifter()
     made = []                                                # (input, record) of every run
 
-    def inputs(b):
-        return (ds is not None and ds <= b < ds + 0x10000) or scratch <= b < scratch + 0x10000
+    inputs = ([(ds, ds + 0x10000)] if ds is not None else []) + [(scratch, scratch + 0x10000)]
 
     def run(v):
         sh = shadow.Shadow16(lifter, ne_probe.selector_base, inputs, span=(lo, hi))

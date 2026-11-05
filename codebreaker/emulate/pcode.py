@@ -80,6 +80,14 @@ class Lifter(object):
         self.memo = {}
         self.lock = threading.Lock()
 
+    def line(self, code, offset):
+        """pcodecheck's line for the instruction at the start of `code` at `offset` (the C++
+        shadow parses it, and keeps it for the process: emulate/native_shadow.py)."""
+        with self.lock:
+            self.p.stdin.write("%s %x\n" % (bytes(code).hex(), offset))
+            self.p.stdin.flush()
+            return self.p.stdout.readline().rstrip("\n")
+
     def lift(self, code, offset):
         """The p-code of the instruction at the start of `code` (bytes; 16 are enough for x86),
         at `offset`. -> Lifted, or None when it does not decode."""

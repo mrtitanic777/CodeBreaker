@@ -149,7 +149,7 @@ def _snippet(lifter):
         uc.mem_write(0x1000, CODE)
         uc.mem_write(0x100, v["word"].to_bytes(2, "little"))
         uc.reg_write(X.UC_X86_REG_SP, 0x8000)
-        sh = shadow.Shadow16(lifter, lambda _uc, sel: sel * 16, lambda b: 0x100 <= b < 0x102)
+        sh = shadow.Shadow16(lifter, shadow.real_mode, [(0x100, 0x102)])
         sh.enter([])
         uc.hook_add(U.UC_HOOK_CODE, lambda u, a, _s, _d: sh.step(u, a, 0))
         uc.emu_start(0x1000, 0x1000 + len(CODE) - 1)
@@ -208,7 +208,7 @@ def test_a_run_with_its_shadow_is_the_same_run():
         for v in inputs:
             runs = []
             for watched in (False, True):
-                sh = shadow.Shadow16(lifter, emu.selector_base, lambda b: ds <= b < ds + 0x10000) if watched else None
+                sh = shadow.Shadow16(lifter, emu.selector_base, [(ds, ds + 0x10000)]) if watched else None
                 runs.append(seen(emu.probe(path, seg=e["seg"], offset=e["offset"], args=v["args"], near=False,
                                            stub_ret=v.get("stub_ret"), mem_init=v.get("mem"), ports=True, shadow=sh)))
             assert runs[0] == runs[1], ("%d:%04x" % (e["seg"], e["offset"]), v, runs[0][:3], runs[1][:3])
@@ -261,7 +261,7 @@ def test_a_32_bit_run_with_its_shadow_is_the_same_run():
         for v in seeds:
             runs = []
             for watched in (False, True):
-                sh = shadow.Shadow32(lifter, lambda b: 0x200000 <= b < 0x210000) if watched else None
+                sh = shadow.Shadow32(lifter, [(0x200000, 0x210000)]) if watched else None
                 r = win32.P.emulator.run(path, func=va, args=v["args"], mem_init=v.get("mem_init"),
                                          stub_externals=True, stub_ret=int(v.get("stub_ret", 0)), reads=False,
                                          stop_wild=True, quiet_stack=True, reuse=True, fast=True, lean=True,

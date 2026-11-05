@@ -37,7 +37,8 @@ add_library(cbtrace SHARED
   imports.cc    # the stand-in for an import entered
   branches.cc   # the branch log
   driver_rec.cc # the flat ring-0 driver recorder (driver.py run)
-  w16_rec.cc)   # the 16-bit recorder (windows16.py trace_function16)
+  w16_rec.cc    # the 16-bit recorder (windows16.py trace_function16)
+  shadow.cc)    # the path explorer's symbolic shadow (was emulate/shadow.py)
 target_include_directories(cbtrace PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${UNICORN_DIR}/include ${CAPSTONE_DIR}/include)
 if(MSVC)
   target_compile_options(cbtrace PRIVATE /EHsc /O2 /W3)

@@ -165,6 +165,102 @@ on -- a self-judge of these smaller functions is dominated by the comparer and t
 machinery, not the per-instruction loop; the per-instruction win (the 18 M register and 22 M
 memory reads USER's full gate made) shows on the instruction-heavy full gate, not a capped sample.
 `cbtrace.dll` now carries the 32-bit tracer, the driver recorder and the 16-bit recorder.
+
+## Step 3 (done): the path explorer's shadow -- the same DLL; the tracers' Python hooks deleted
+
+**What moved.** `shadow.cc` (C interface `cbt_sh_*` in cbtrace.h; ctypes in
+codebreaker/emulate/native_shadow.py) is emulate/shadow.py's x86 shadow (Shadow16, Shadow32,
+ShadowLE) and the per-step half of emulate/symbolic.py (its expression constructors, with their
+folds): before each instruction the decompiler's p-code of it is evaluated concretely and
+symbolically at once, the register and memory bytes made from an input kept, and a conditional
+jump over them is a condition of the path. Every step is shadow.py's, in the same order, making
+the same expressions; Python reads them back as symbolic.py's tuples (path, trail, vars, lost) after
+the run. The recorders step it themselves -- recorder.cc / imports.cc (32-bit: each instruction,
+the zero-landing and import stand-ins' `after_call`, an out-parameter's `written`), driver_rec.cc
+(the driver's own code and the landing pads; a service's `after_call` with its carry; the answering
+register's `forget`), w16_rec.cc (each ordinary instruction, its CS base read from the GDT) -- so a
+shadowed run calls no Python per instruction. Python is asked one thing: the p-code of an
+instruction not lifted before in the process (pcode.Lifter.line, pcodecheck's line; parsed and kept
+in C++ by mode, bytes and offset). Values are at most 128 bits (an XMM register): an instruction
+with a wider one ends the shadow ("shadow: wide") where Python's integers went on -- none met.
+
+What stayed Python: symbolic.z3_of and inputs (the solver's side, once per path, not per step),
+verify/concolic.py, and verify/guided.py (it has no per-step part: it runs whole inputs). The
+PowerPC shadow (ShadowPPC) stays Python: the PowerPC interpreter that steps it is Python itself.
+The `inputs` test a shadow is made with is now a list of (low, high) ranges (the three lanes and
+test_concolic changed to say so); a 16-bit shadow's selector bases are the GDT's
+(windows16.selector_base) or real mode's (shadow.real_mode).
+
+**The 16-bit recorder's last Python-only runs.** A recorded-system context (the module's own code
+reached through a recorded far pointer, OWN_BASE: `on_own`, a callback once per such landing) and a
+prelude (`cbt_w16_reset` after the prelude's calls: the path, the count, the reads and writes start
+again, the other counters carry on as trace_function16's did) now run on the C++ hooks too.
+
+**The switch** was `CB_NATIVE_SHADOW` (off, gated, then on); with the Python hooks deleted it is
+gone, as are `CB_NATIVE_TRACE`, `CB_NATIVE_TRACE16` and `CB_NATIVE_TRACE_DRV`: without cbtrace.dll a
+run raises (native_trace / native_win16 / native_driver / native_shadow `require()`, saying why).
+
+**The gate** (state/work/shadow-native: gate.py, runall.py; a fresh CB_STATE each, CB_NO_FP_CACHE=1,
+one worker in-process, the switch off vs on): every verdict row (verdict, reason, limits, detail),
+every exploration's kept inputs and summary, and every shadowed run's (trail, path, vars, lost, cut)
+through measure's own reconstruct.run:
+
+| module | lane | verdict rows identical | explorations | shadowed runs identical | verdicts |
+|---|---|---|---|---|---|
+| ping.exe | 32-bit | 30 / 30 | 27 | 74 / 74 | equivalent 27, divergent 1, no-compile 2 |
+| lz32.dll | 32-bit | 39 / 39 | 18 | 61 / 61 | equivalent 17, divergent 3, no-compile 19 |
+| version.dll | 32-bit | 44 / 44 | 28 | 45 / 45 | equivalent 28, divergent 4, no-compile 12 |
+| tapi32.dll | 32-bit | 186 / 186 | 38 | 59 / 59 | equivalent 37, divergent 24, no-compile 125 |
+| imm32.dll | 32-bit | 73 / 73 | 73 | 73 / 73 | equivalent 73 |
+| lzexpand.dll | Win16 | 46 / 46 | 33 | 450 / 450 | equivalent 30, divergent 14, no-compile 2 |
+| comm.drv | Win16 | 41 / 41 | 38 | 323 / 323 | equivalent 20, consistent 18, divergent 3 |
+| ver.dll | Win16 | 31 / 31 | 21 | 254 / 254 | equivalent 17, divergent 12, no-compile 2 |
+| vkd.vxd | driver | 23 / 23 | 23 | 564 / 564 | equivalent 23 |
+| splitter.vxd | driver | 6 / 6 | 6 | 155 / 155 | equivalent 6 |
+| vpd.vxd | driver | 2 / 2 | 2 | 89 / 89 | equivalent 2 |
+
+Then tests/test_native_trace.py (129 cases, shadowed 32-bit, 16-bit and driver runs and prelude
+runs among them: every record identical both ways -- their agreed digests are now
+tests/data/native_trace_golden.txt, which the C++ is held to), test_concolic, test_run_record and
+test_verification all pass.
+
+**Speed** (CPU seconds of the shadowed runs alone, the same runs; the judge's total in brackets):
+
+| module | Python shadow + hooks | C++ | |
+|---|---|---|---|
+| vkd.vxd | 17.2 s | 4.4 s | x3.9 (judge 310 -> 288 s) |
+| splitter.vxd | 6.6 s | 0.8 s | x7.8 (judge 9.3 -> 3.5 s) |
+| ping.exe | 2.3 s | 0.5 s | x4.2 (judge 29.4 -> 27.3 s) |
+| lzexpand.dll | 16.6 s | 10.0 s | x1.7 (judge 47.3 -> 39.7 s) |
+| vpd.vxd | 0.45 s | 0.30 s | -- |
+
+The 16-bit runs keep Python per call (the NE import oracle, the callees' stand-in) and the branch
+log and ports hooks, so lzexpand gains less. The judge's totals are now spent in the comparer, the
+solver and the build, not the shadow.
+
+**Deleted** (with the Python hooks): emulator.trace_function's hook_code, hook_block, settle,
+hook_write, hook_intr and their state, _memory_hooks, _branch_hook, _decode_branchy, _address,
+_operand_value, _straight_run, _callee_pops, _pattern and five constants only they used;
+trace_function16's hook_code, hook_limited and hook_intr; driver.run's on_code, on_interrupt, on_in,
+on_out and on_memory; shadow.py's UnicornX86 and its Python x86 shadows; the four switches and
+their off branches (WT_DBG's Python-hook path with them). About 1,000 lines. Nothing in the other
+repositories under GitHub/ referred to any of it (Dashboard, Windows95, Win95VM and the rest searched
+for every deleted name and for any use of codebreaker.emulate).
+
+After the deletions: run_all --quick passes (all suites; again with l2, engine, tracer, formats and
+dosexec all built in the worktree), tools/check_imports 559/559, tools/tidy
+clean.
+
+**HANDOFF (2026-11-04): the all-15 Setup boot is not yet run on this.** In a fresh state folder
+GDI.EXE does not link (`E2052: asm/frame38_00.obj: relocation at 0026:0def not in the same
+segment`, 1,473 functions assembled, the gate never reached) -- and master's own code (c4009dd6b,
+the Python hooks still there) fails the same way in a fresh state, so it is older than step 3 and
+not of the tracer's making (state/work/shadow-native/gdi_main.py reproduces it). The boot
+(state/work/shadow-native/boot15.py: the 15 modules built from source, then setup16.continue_test
+on all of them) wants GDI building first. Left: that link fault, then the boot (all 15 to the
+License page); the 16-bit recorded-system context path has no record-level case of its own in
+test_native_trace (prelude runs do), only the judge's.
+
 ## Step 6 (gated): the engine and the store -- `native/engine`
 
 **What moved.** `cbengine.dll` (native/engine; C interface cbengine.h; ctypes in
@@ -899,11 +995,8 @@ boot together to Setup's License page again.
 
 Kept, and why:
 
-- **`CB_NATIVE_TRACE`, `CB_NATIVE_TRACE16`, `CB_NATIVE_TRACE_DRV`:** the Python hooks still run every
-  run beside a shadow (the path explorer, step 3 not done), and the 16-bit recorded-system and
-  prelude runs. The only replaced-only Python is the 32-bit fast path's hook_block and settle (~70
-  lines), which is also the oracle tests/test_native_trace.py holds the fast configurations to; it
-  goes with the rest at step 3.
+- **`CB_NATIVE_TRACE`, `CB_NATIVE_TRACE16`, `CB_NATIVE_TRACE_DRV`:** kept at this milestone for the runs
+  beside a shadow; deleted with step 3 (above).
 - **`CB_NATIVE_FORMATS(_<READER>)`:** kept at this milestone; deleted later the same day with the six
   readers' Python, once the Fallbacks were closed (step 4, "the six readers' Python deleted").
 - **`CB_NATIVE_NE`** never existed: native/ported/ne is the porting engine's gate, not a loader.
@@ -924,7 +1017,7 @@ order is trusted; the order below is what is known today.
 | # | Step | Today (Python) | What makes it cost | Native form |
 |---|---|---|---|---|
 | 2 | **The 16-bit tracer and the driver runner** | emulate/windows16.py `trace_function16` (the Win16 lane's judge), emulate/driver.py `run` (VxD and other flat ring-0 code) | the same per-instruction and per-memory callbacks as step 1; USER's gate made 18 M register reads and 22 M memory reads for 81 functions (fast_uc.py) | the same DLL: a 16-bit recorder (segments, far calls, the NE import thunks, ports) and the flat driver runner, beside step 1's |
-| 3 | **The path explorer** | emulate/shadow.py (Shadow32 / the 16-bit shadow), emulate/symbolic.py, verify/guided.py | a symbolic step per instruction, kept in Python beside the run | the shadow inside the recorder, so a shadowed run stops calling Python per step; then step 1's last Python path goes |
+| 3 | **The path explorer** (done, above) | -- | -- | the shadow inside the recorder (shadow.cc); the tracers' Python hooks deleted |
 | 4 | **Formats and loaders** | formats/ (PE, NE, LE, MZ, OMF, XEX ...), formats/pe_functions.py carving | reading and carving whole images in Python, per process, every run of a tool | a loader library (one per format, the decompiler's loaders reused) giving the same facts |
 | 5 | **The L2 passes and the C back end** | the L2 tree passes and the C writer in Python, after the native decompiler | tree walks over every function, every build | into native/decompiler: L2 built and rewritten there, C written there; Python reads the result |
 | 6 | **The engine and the store** (gated: "Step 6" above) | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | native/engine: SQLite's C API directly, the engine's scheduler in C++; left: the steps themselves |

@@ -22,11 +22,10 @@ half is kept: which register bytes and memory bytes hold an expression over the 
 conditional jump whose condition is such an expression is a condition of the path; its
 direction is the one the emulator then takes (the next instruction says which).
 
-What is particular to a processor and an emulator is a View (the platform's cpu slot: its
-register names as the specification has them, its word, its byte order; and how to read the
-emulator's registers and memory without disturbing it): UnicornX86 for both x86 runners,
-PowerPCView for the interpreter. Everything else -- the p-code's evaluation, the inputs, the
-conditions -- is the same for all of them.
+The x86 shadows (Shadow16, Shadow32, ShadowLE) are C++ now (native/tracer shadow.cc, the same
+steps as Shadow below, through emulate/native_shadow.py): the recorder of the run steps them, so a
+shadowed run calls no Python per instruction. Shadow here is the PowerPC run's (its View is
+PowerPCView: the interpreter's registers and memory, read without disturbing them).
 
 The inputs are the function's argument words (a0, a1 ... : in memory where they were pushed, or
 in the registers they are passed in), any byte of memory the `inputs(address)` test names (the
@@ -88,41 +87,6 @@ def mode(cpu):
     return None
 
 
-class UnicornX86(object):
-    """The view of an x86 run in Unicorn (emulate/windows16.py, emulate/emulator.py): the
-    specification's register names are Unicorn's, its flags bits of EFLAGS; memory little-endian.
-    `bits`: 16 (a jump's target an offset in its segment) or 32 (flat)."""
-    endian = "little"
-    addresses = 0xFFFFFFFF                  # (what of an address reaches memory)
-
-    def __init__(self, bits=16):
-        from unicorn import x86_const as X
-        self.X = X
-        self.mask = 0xFFFF if bits == 16 else 0xFFFFFFFF
-        self._ids = {}
-
-    def known(self, name):
-        return name in _FLAGS or getattr(self.X, "UC_X86_REG_" + name, None) is not None
-
-    def reg(self, uc, name):
-        bit = _FLAGS.get(name)
-        if bit is not None:
-            return (uc.reg_read(self.X.UC_X86_REG_EFLAGS) >> bit) & 1
-        r = self._ids.get(name)
-        if r is None:
-            r = self._ids[name] = getattr(self.X, "UC_X86_REG_" + name)
-        return uc.reg_read(r)
-
-    def code(self, uc, address):
-        try:
-            return bytes(uc.mem_read(address, 16))
-        except Exception:
-            return bytes(uc.mem_read(address, (address | 0xFFF) + 1 - address))
-
-    def mem(self, uc, at, size):
-        return bytes(uc.mem_read(at, size))
-
-
 class PowerPCView(object):
     """The view of a run in CodeBreaker's PowerPC interpreter (emulate/powerpc.py): r0-r31, LR,
     CTR, the condition register's eight fields, XER's bits, f0-f31 as the interpreter keeps them;
@@ -174,7 +138,7 @@ class PowerPCView(object):
 
 class Shadow(object):
     """The shadow of one run. `lifter`: emulate/pcode.py's for the processor; `view`: how the
-    emulator's registers and memory are read (UnicornX86, PowerPCView); `inputs(address)`: whether
+    emulator's registers and memory are read (PowerPCView); `inputs(address)`: whether
     a byte of memory is one of the run's inputs until written; `span`: (low, high) addresses of the
     function's own code (its jumps are the path's); `segbase(machine, selector)`: the base a
     selector names (x86; a flat program's are all 0). `result`: [(register, byte of it, byte of
@@ -524,47 +488,6 @@ class Shadow(object):
                 self.mem[b] = e
 
 
-class Shadow16(Shadow):
-    """The shadow of one 16-bit run (emulate/windows16.py trace_function16, `shadow`). `lifter`:
-    emulate/pcode.py's for x86-16-real. `segbase(uc, selector)`: the base a selector names.
-    `inputs(address)`: whether a linear byte is one of the run's inputs until written. `span`:
-    (low, high) linear addresses of the function's own code (its jumps are the path's). What an
-    unmodelled Windows call returns lands in DX:AX (and the high half of EAX)."""
-
-    def __init__(self, lifter, segbase, inputs, span=None):
-        Shadow.__init__(self, lifter, UnicornX86(16), inputs, span, segbase,
-                        result=(("EAX", 0, 0), ("EAX", 1, 1), ("EAX", 2, 2), ("EAX", 3, 3), ("EDX", 0, 2), ("EDX", 1, 3)),
-                        clobbered=("EAX", "EDX", "ESP", "EIP", "CS"))
-
-    def enter(self, arg_places, bits=16):
-        """The run is about to start: argument word k sits at linear address arg_places[k]."""
-        Shadow.enter(self, arg_places, bits)
-
-
-class Shadow32(Shadow):
-    """The shadow of one flat 32-bit run (emulate/emulator.py trace_function, `shadow`): every
-    segment based at 0; an import or callback the tracer answers sets EAX to `ret` and moves ESP
-    and EIP, nothing else. Arguments: dwords on the stack, or ECX / EDX (enter)."""
-
-    def __init__(self, lifter, inputs, span=None):
-        Shadow.__init__(self, lifter, UnicornX86(32), inputs, span, None,
-                        result=(("EAX", 0, 0), ("EAX", 1, 1), ("EAX", 2, 2), ("EAX", 3, 3)),
-                        clobbered=("EAX", "ESP", "EIP"))
-
-
-class ShadowLE(Shadow32):
-    """The shadow of one run of a driver's flat ring-0 code (emulate/driver.py run, `shadow`): a
-    service call (or a call out through a pointer) the emulator answers sets EAX to `ret` and the
-    carry flag to `carry`, as the input says. Inputs: the registers a procedure is entered with,
-    the carry and zero flags, its stack words, the scratch memory its pointers lead into."""
-
-    def _after_call(self, m, symbolic_result, value, *a, carry=0, **k):
-        Shadow._after_call(self, m, symbolic_result, value, *a, **k)
-        if symbolic_result and not self.off:
-            off = self.lifter.regs["CF"][0]
-            self.reg[off] = (self.var("carry", 8, "carry", None, carry & 1), 0)
-
-
 class ShadowPPC(Shadow):
     """The shadow of one PowerPC run (emulate/powerpc.py run, `shadow`): a call out of the code
     given returns `ret` (64 bits) in r3 and changes nothing else. Arguments: r3-r10 (enter)."""
@@ -724,3 +647,35 @@ _BINARY = {"INT_ADD": "add", "INT_SUB": "sub", "INT_AND": "and", "INT_OR": "or",
            "INT_MULT": "mul", "INT_DIV": "udiv", "INT_REM": "urem", "INT_SDIV": "sdiv", "INT_SREM": "srem"}
 _COMPARE = {"INT_EQUAL": ("eq", False), "INT_NOTEQUAL": ("eq", True), "INT_LESS": ("ult", False),
             "INT_LESSEQUAL": ("ule", False), "INT_SLESS": ("slt", False), "INT_SLESSEQUAL": ("sle", False)}
+
+
+# --- the x86 shadows: in C++ (native/tracer shadow.cc, through emulate/native_shadow.py), stepped by
+# the recorder of the run they are handed to. `inputs`: [(low, high)] -- the memory bytes that are
+# inputs of the run until written.
+def real_mode(_uc, sel):
+    """A selector's base in real mode (Shadow16's `segbase` for a real-mode run)."""
+    return sel * 16
+
+
+def Shadow16(lifter, segbase, inputs, span=None):
+    """A 16-bit run's (windows16.trace_function16): `segbase` -- windows16.selector_base (the GDT's)
+    or real_mode."""
+    from codebreaker.emulate import native_shadow, windows16
+    if segbase not in (windows16.selector_base, real_mode):
+        raise ValueError("Shadow16: a selector's base is the GDT's or real mode's")
+    native_shadow.require()
+    return native_shadow.Shadow(16, lifter, inputs, span, real_mode=segbase is real_mode)
+
+
+def Shadow32(lifter, inputs, span=None):
+    """A flat 32-bit run's (emulator.trace_function)."""
+    from codebreaker.emulate import native_shadow
+    native_shadow.require()
+    return native_shadow.Shadow(32, lifter, inputs, span)
+
+
+def ShadowLE(lifter, inputs, span=None):
+    """A driver's flat ring-0 run's (driver.run): a service call also sets the carry flag."""
+    from codebreaker.emulate import native_shadow
+    native_shadow.require()
+    return native_shadow.Shadow(33, lifter, inputs, span)

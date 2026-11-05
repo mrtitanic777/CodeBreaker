@@ -88,7 +88,8 @@ int stand_in(Run *r, uint64_t address, int64_t hit) {
                 uint64_t v = given >= 0 ? uint64_t(given) : OUT_HANDLE + 4 * uint64_t(i);
                 if (v <= 0xFFFFFFFFull) {
                     uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)};
-                    UC.mem_write(uc, p, b, 4);
+                    if (UC.mem_write(uc, p, b, 4) == UC_ERR_OK && r->shadow)
+                        sh_written(r->shadow, p, 4);
                 }
             }
         }
@@ -98,6 +99,8 @@ int stand_in(Run *r, uint64_t address, int64_t hit) {
     set_reg(uc, UC_X86_REG_EAX, uint64_t(rv) & 0xFFFFFFFFull);
     set_reg(uc, UC_X86_REG_EIP, ret_addr);
     r->stubbed = nstub + 1;
+    if (r->shadow)                             // (its result: stub_ret, an input of the run)
+        sh_after_call(r->shadow, uc, !r->unique, uint64_t(rv));
     if (r->pending >= 0) {                     // annotate the call record, if via CALL
         Call &cr = r->calls[size_t(r->pending)];
         cr.state = 2;

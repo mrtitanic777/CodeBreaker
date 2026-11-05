@@ -104,6 +104,7 @@ CBT_API void *cbt_begin(const cbt_config *c) {
                                                     //  built in this order would keep the last -- Python
                                                     //  passes each address once)
     r->resolver = c->resolver;
+    r->shadow = static_cast<Shadow *>(c->shadow);
     uint32_t f = c->flags;
     r->fast = f & CBT_FAST;
     r->lean = f & CBT_LEAN;
