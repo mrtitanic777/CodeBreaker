@@ -293,6 +293,34 @@ static var do_stat(const std::string& p) {
     return stat_result(st, p);
 }
 
+// a folder's names with whether each is a folder, from the directory listing itself (as scandir's d_type:
+// no stat per entry); a reparse point (a link, a junction) is looked through as is_dir() follows it
+static std::vector<std::pair<std::string, bool>> listdir_typed_(const std::string& p) {
+    std::string q = p.empty() ? "." : p;
+    std::wstring pat = wide_(q);
+    if (!pat.empty() && pat.back() != L'\\' && pat.back() != L'/') pat += L"\\";
+    pat += L"*";
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileExW(pat.c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+    std::vector<std::pair<std::string, bool>> out;
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        if (e == ERROR_FILE_NOT_FOUND) return out;
+        if (isfile(q)) raise(win_error(ERROR_DIRECTORY, q));
+        raise(win_error(e == ERROR_PATH_NOT_FOUND ? ERROR_PATH_NOT_FOUND : e, q));
+    }
+    do {
+        std::wstring n = fd.cFileName;
+        if (n == L"." || n == L"..") continue;
+        std::string name = narrow(n);
+        bool dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ? isdir(path_join({q, name}))
+                                                                        : (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        out.push_back({std::move(name), dir});
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return out;
+}
+
 static std::vector<std::string> listdir_(const std::string& p) {
     std::string q = p.empty() ? "." : p;
     std::wstring pat = wide_(q);
@@ -892,12 +920,20 @@ static void init_path(const var& m) {
     });
 }
 
-static var scandir_entry(const std::string& dir, const std::string& name) {
+static var scandir_entry(const std::string& dir, const std::string& name, int is_dir = -1) {
     static TypeObj* T_entry = nullptr;
     if (!T_entry) {
         T_entry = new_type("DirEntry", {}, Layout::NativeData, true, "os");
-        add_method(T_entry, "is_dir", [](const CallArgs& a) { return var(isdir(str_utf8(a.pos[0].getattr("path")))); });
-        add_method(T_entry, "is_file", [](const CallArgs& a) { return var(isfile(str_utf8(a.pos[0].getattr("path")))); });
+        // (from the listing when scandir made it: no stat; else the path's)
+        add_method(T_entry, "is_dir", [](const CallArgs& a) {
+            var* k = a.pos[0].ref()->attrs ? static_cast<DictObj*>(a.pos[0].ref()->attrs)->get("_is_dir") : nullptr;
+            return k ? *k : var(isdir(str_utf8(a.pos[0].getattr("path"))));
+        });
+        add_method(T_entry, "is_file", [](const CallArgs& a) {
+            var* k = a.pos[0].ref()->attrs ? static_cast<DictObj*>(a.pos[0].ref()->attrs)->get("_is_dir") : nullptr;
+            if (k && k->truthy()) return var(false);
+            return var(isfile(str_utf8(a.pos[0].getattr("path"))));
+        });
         add_method(T_entry, "is_symlink", [](const CallArgs&) { return var(false); });
         add_method(T_entry, "stat", [](const CallArgs& a) { return do_stat(str_utf8(a.pos[0].getattr("path"))); });
         add_method(T_entry, "__fspath__", [](const CallArgs& a) { return a.pos[0].getattr("path"); });
@@ -907,6 +943,7 @@ static var scandir_entry(const std::string& dir, const std::string& name) {
     var ev(static_cast<Obj*>(e));
     ev.setattr("name", new_str(name));
     ev.setattr("path", new_str(path_join({dir, name})));
+    if (is_dir >= 0) ev.setattr("_is_dir", var(is_dir == 1));
     return ev;
 }
 
@@ -1055,7 +1092,7 @@ void init_os_modules() {
         mod_def(m, "scandir", [](const CallArgs& a) {
             std::string d = a.pos.empty() ? "." : P0(a);
             std::vector<var> v;
-            for (auto& n : listdir_(d)) v.push_back(scandir_entry(d, n));
+            for (auto& [n, dir] : listdir_typed_(d)) v.push_back(scandir_entry(d, n, dir ? 1 : 0));
             // ScandirIterator: an iterator that is also a context manager (with os.scandir(p) as it)
             static TypeObj* T_sd = nullptr;
             if (!T_sd) {
@@ -1169,10 +1206,10 @@ void init_os_modules() {
             struct Frame { std::string dir; var dirs; var files; };
             std::vector<var> out;
             std::function<void(const std::string&)> rec = [&](const std::string& d) {
-                std::vector<std::string> names;
-                try { names = listdir_(d); } catch (error& e) { if (!onerror.is_none()) call1(onerror, e.value); return; }
+                std::vector<std::pair<std::string, bool>> names;
+                try { names = listdir_typed_(d); } catch (error& e) { if (!onerror.is_none()) call1(onerror, e.value); return; }
                 std::vector<var> dirs, files;
-                for (auto& n : names) (isdir(path_join({d, n})) ? dirs : files).push_back(new_str(n));
+                for (auto& [n, dir] : names) (dir ? dirs : files).push_back(new_str(n));
                 var dl = new_list(dirs), fl = new_list(files);
                 var row = new_tuple({new_str(d), dl, fl});
                 if (topdown) out.push_back(row);
@@ -1195,10 +1232,10 @@ void init_os_modules() {
                     while (!stack->empty()) {
                         std::string d = stack->back();
                         stack->pop_back();
-                        std::vector<std::string> names;
-                        try { names = listdir_(d); } catch (error& e) { if (!on.is_none()) call1(on, e.value); continue; }
+                        std::vector<std::pair<std::string, bool>> names;
+                        try { names = listdir_typed_(d); } catch (error& e) { if (!on.is_none()) call1(on, e.value); continue; }
                         std::vector<var> dirs, files;
-                        for (auto& n : names) (isdir(path_join({d, n})) ? dirs : files).push_back(new_str(n));
+                        for (auto& [n, dir] : names) (dir ? dirs : files).push_back(new_str(n));
                         var dl = new_list(dirs);
                         res = new_tuple({new_str(d), dl, new_list(files)});
                         *pending = {d, dl};

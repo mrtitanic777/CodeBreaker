@@ -86,7 +86,19 @@ var::operator bool() const {
 bool not_(const var& a) { return !a; }
 
 // ------------------------------------------------------------------------------------------ interned
+var interned_slow_(const char* name);
 var interned(const char* name) {
+    // (a direct-mapped table by address first: the names the generated code passes are literals)
+    struct Recent { const char* p; Obj* o; };
+    static Recent recent[1024];
+    Recent& r = recent[((uintptr_t)name >> 3) & 1023];
+    if (r.p == name && static_cast<StrObj*>(r.o)->s == name) return var(r.o);
+    var got = interned_slow_(name);
+    r.p = name;
+    r.o = got.ref();
+    return got;
+}
+var interned_slow_(const char* name) {
     static std::unordered_map<const char*, Obj*>* byptr = new std::unordered_map<const char*, Obj*>();
     static std::unordered_map<std::string, Obj*>* bytext = new std::unordered_map<std::string, Obj*>();
     auto it = byptr->find(name);
@@ -105,12 +117,24 @@ var interned(const char* name) {
     return var(o);
 }
 var str_lit_(const char* p, size_t n) {
+    // (every "..."_s the program evaluates comes here: a direct-mapped table by the literal's address first,
+    // the map behind it -- a literal's address is its own for the program's life)
+    struct Recent { const char* p; Obj* o; };
+    static Recent recent[4096];
+    Recent& r = recent[((uintptr_t)p >> 3) & 4095];
+    if (r.p == p) return var(r.o);
     static std::unordered_map<const char*, Obj*>* lits = new std::unordered_map<const char*, Obj*>();
     auto it = lits->find(p);
-    if (it != lits->end()) return var(it->second);
+    if (it != lits->end()) {
+        r.p = p;
+        r.o = it->second;
+        return var(it->second);
+    }
     var s = new_str(std::string(p, n));
     incref(s.ref());
     (*lits)[p] = s.ref();
+    r.p = p;
+    r.o = s.ref();
     return s;
 }
 var bytes_lit_(const char* p, size_t n) {
@@ -132,18 +156,43 @@ var int_lit_(const char* digits) {
 }
 
 // ------------------------------------------------------------------------------------------ types
+// An attribute of a type through its MRO, cached as CPython's method cache is: a direct-mapped table keyed
+// by (type, name), valid while g_type_epoch is unchanged -- any class namespace's change, and any type
+// made, moves it (dict.cc / new_type / type_new_), so a cached slot never outlives the entry it points at.
+uint64_t g_type_epoch = 1;
+namespace {
+struct LookupSlot { const TypeObj* t = nullptr; Obj* name = nullptr; uint64_t epoch = 0; const var* v = nullptr; };
+constexpr size_t kLookupSlots = 4096;
+LookupSlot g_lookup[kLookupSlots];
+const var* lookup_mro_(const std::vector<TypeObj*>& mro, const var& name) {
+    for (TypeObj* t : mro)
+        if (t->dict)
+            if (var* v = t->dict->get(name)) return v;
+    return nullptr;
+}
+inline size_t lookup_slot_(const void* t, const void* n) {
+    uintptr_t h = (uintptr_t)t * 0x9E3779B97F4A7C15ull ^ ((uintptr_t)n >> 4) * 0xC2B2AE3D27D4EB4Full;
+    return (size_t)(h >> 52) & (kLookupSlots - 1);
+}
+}  // namespace
 const var* TypeObj::lookup(const var& name) const {
-    for (TypeObj* t : mro)
-        if (t->dict)
-            if (var* v = t->dict->get(name)) return v;
-    return nullptr;
+    if (!name.is_ref() || name.ref()->type != T_str) return lookup_mro_(mro, name);
+    Obj* n = name.ref();
+    LookupSlot& s = g_lookup[lookup_slot_(this, n)];
+    if (s.t == this && s.name == n && s.epoch == g_type_epoch) return s.v;
+    const var* v = lookup_mro_(mro, name);
+    if (s.name != n) {               // (the slot holds its name: a freed str's address is never mistaken for it)
+        incref(n);
+        Obj* old = s.name;
+        s.name = n;
+        decref(old);
+    }
+    s.t = this;
+    s.epoch = g_type_epoch;
+    s.v = v;
+    return v;
 }
-const var* TypeObj::lookup(const char* name) const {
-    for (TypeObj* t : mro)
-        if (t->dict)
-            if (var* v = t->dict->get(name)) return v;
-    return nullptr;
-}
+const var* TypeObj::lookup(const char* name) const { return lookup(interned(name)); }
 
 bool is_subtype(TypeObj* a, TypeObj* b) {
     if (a == b || b == T_object) return true;
@@ -187,6 +236,7 @@ TypeObj* new_type(const char* name, std::vector<TypeObj*> bases, Layout layout, 
     t->layout = layout;
     t->builtin = builtin;
     if (T_object || std::strcmp(name, "object") == 0) t->mro = c3(t, bases);
+    g_type_epoch++;
     var d = new_dict_obj();
     t->dict = static_cast<DictObj*>(d.ref());
     incref(t->dict);
@@ -425,9 +475,10 @@ static var getattr_impl(const var& o, const var& name, bool& found) {
 
 var var::getattr(const var& name) const {
     bool found;
-    if (const TypeObj* t = type_of(*this); t->lookup("__getattribute__") && !t->builtin) {
-        const var* ga = t->lookup("__getattribute__");
-        if (ga->is_ref() && ga->ref()->type == T_function) return call1(bind(*ga, *this, type_of(*this)), name);
+    if (const TypeObj* t = type_of(*this); !t->builtin) {
+        static const var k_getattribute = interned("__getattribute__");
+        const var* ga = t->lookup(k_getattribute);
+        if (ga && ga->is_ref() && ga->ref()->type == T_function) return call1(bind(*ga, *this, type_of(*this)), name);
     }
     var v = getattr_impl(*this, name, found);
     if (!found) no_attr(*this, name);
@@ -592,6 +643,7 @@ CellObj* ModuleObj::cell(const std::string& n) {
     auto* c = new CellObj();
     c->type = T_cell;
     incref(c);
+    if (n == "__debug__") c->v = var(true);   // (the builtin constant, which the translated code reads as a global)
     cells[n] = c;
     order.push_back(n);
     return c;
@@ -673,6 +725,7 @@ var make_class(const char* name, const char* qualname, const std::vector<var>& b
     if (bases.empty()) bases.push_back(T_object);
     t->bases = bases;
     t->mro = c3(t, bases);
+    g_type_epoch++;
     t->layout = layout;
     for (TypeObj* b : bases) {
         if (b->is_exception) t->is_exception = true;
@@ -719,6 +772,7 @@ var make_class(const char* name, const char* qualname, const std::vector<var>& b
     t->dict = dict;
     incref(dict);
     dict->owner_type = t;
+    g_type_epoch++;
     // __set_name__ on the attributes
     for (auto& e : dict->entries) {
         if (e.key.is_unbound() || !e.value.is_ref()) continue;

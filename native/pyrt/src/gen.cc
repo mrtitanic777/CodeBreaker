@@ -31,6 +31,7 @@ struct GenObj : Obj {
     var returned;                   // StopIteration's value
     std::exception_ptr exc;         // raised inside, to rethrow in the caller
     var throw_in;                   // an exception to raise at the yield (throw / close)
+    bool closing = false;           // close(): a GeneratorExit that ends the body is the close working, not raised again
     ~GenObj() override;
 };
 
@@ -53,6 +54,10 @@ static void WINAPI fiber_main(LPVOID p) {
             t_starting = &g->y;
             var r = g->f->fn(g->slots.data());
             g->returned = r;
+        } catch (error& e) {
+            // (a close that ended the body: nothing to hand back -- rethrowing it in the caller only to drop it
+            // there was a second C++ throw for every generator dropped unfinished: next(gen, None) on a decoder)
+            if (!(g->closing && isinstance_(e.value, E_GeneratorExit))) g->exc = std::current_exception();
         } catch (...) {
             g->exc = std::current_exception();
         }
@@ -183,6 +188,7 @@ GenObj::~GenObj() {
     if (state == Suspended && fiber) {
         // close(): GeneratorExit at the yield, the body's finally blocks run
         throw_in = make_exc_args(E_GeneratorExit, {});
+        closing = true;
         try {
             resume(this);
         } catch (...) {
@@ -229,8 +235,11 @@ void init_gen() {
         auto* g = static_cast<GenObj*>(a.pos[0].ref());
         if (g->state != GenObj::Suspended) { if (g->state == GenObj::Fresh) g->state = GenObj::Done; return None; }
         g->throw_in = make_exc_args(E_GeneratorExit, {});
+        g->closing = true;
         try {
-            if (resume(g)) raise(E_RuntimeError, "generator ignored GeneratorExit");
+            bool again = resume(g);
+            g->closing = false;
+            if (again) raise(E_RuntimeError, "generator ignored GeneratorExit");
         } catch (error& e) {
             if (!isinstance_(e.value, E_GeneratorExit) && !isinstance_(e.value, E_StopIteration)) throw;
         }
