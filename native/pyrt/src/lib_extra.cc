@@ -753,7 +753,14 @@ static void init_collections_c(const var& m) {
     });
 }
 
+void init_ctypes(const var& m);
+void init_ctypes_util(const var& m);
+void init_wintypes(const var& m);
+
 void init_extra_modules() {
+    register_native_module("ctypes", init_ctypes);          // (lib_ctypes.cc)
+    register_native_module("ctypes.util", init_ctypes_util);
+    register_native_module("ctypes.wintypes", init_wintypes);
     register_native_module("codecs", init_codecs);
     register_native_module("_collections", init_collections_c);
     register_native_module("gettext", init_gettext);

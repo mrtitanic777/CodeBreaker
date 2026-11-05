@@ -43,7 +43,7 @@ add_library(pyrt STATIC
   src/lib_db.cc       # sqlite3 (over native/engine's vendored SQLite), pickle
   src/lib_ast.cc      # ast (over native/pyfront), inspect
   src/lib_extra.cc    # the C halves of standard modules translated from CPython (gettext, _random, _csv, zlib ...)
-  src/lib_extra.cc    # the C halves of the standard modules translated from CPython (gettext, _random, _csv, zlib ...)
+  src/lib_ctypes.cc   # ctypes: calls straight into DLLs (structures, pointers, arrays, callbacks)
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)
   ${L2}/src/pyre.cc)         # Python-compatible regular expressions (shared with native/l2)

@@ -29,6 +29,10 @@ void gil_release_() { t_gil_held = 0; g_gil->unlock(); }
 static bool g_threads_started = false;
 gil_release::gil_release() { if (g_threads_started && t_gil_held) gil_release_(); }
 gil_release::~gil_release() { if (g_threads_started && !t_gil_held) gil_acquire_(); }
+bool gil_ensure_() {   // (a ctypes callback on a thread of its own, or while its caller had released the lock)
+    if (g_threads_started && !t_gil_held) { gil_acquire_(); return true; }
+    return false;
+}
 
 static var nat(const char* n, native_fn f) { return new_native(n, std::move(f)); }
 static var mkcls(const char* name, std::vector<var> bases, std::vector<std::pair<const char*, var>> members, const char* module) {
