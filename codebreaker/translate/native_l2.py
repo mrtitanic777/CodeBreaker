@@ -194,7 +194,7 @@ def call_raw(fn, text):
     """One entry point with its arguments already as the tagged JSON array -> (status, the result's text)."""
     lib = _load()
     if lib is None:
-        raise RuntimeError("the C back end is native (native/l2, cbl2.dll): %s" % why_not())
+        raise RuntimeError("the C back end is native (native/l2, cbl2.dll): %s -- run tools\build_native.cmd in this checkout" % why_not())
     out, n = ctypes.c_void_p(), ctypes.c_size_t()
     data = text.encode("utf-8", "surrogatepass")
     status = lib.l2_call(fn.encode("ascii"), data, len(data), ctypes.byref(out), ctypes.byref(n))

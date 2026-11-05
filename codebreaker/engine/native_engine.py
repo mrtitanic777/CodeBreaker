@@ -113,7 +113,7 @@ def _need():
     """The DLL, or the reason it cannot be had, raised."""
     lib = _load()
     if lib is None:
-        raise RuntimeError("the engine and store are native (native/engine, cbengine.dll): %s" % why_not())
+        raise RuntimeError("the engine and store are native (native/engine, cbengine.dll): %s -- run tools\build_native.cmd in this checkout" % why_not())
     return lib
 
 
