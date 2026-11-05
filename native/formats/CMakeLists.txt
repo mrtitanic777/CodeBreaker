@@ -8,7 +8,7 @@
 #   cmake --build native/formats/build
 #   ctest --test-dir native/formats/build
 cmake_minimum_required(VERSION 3.16)
-project(codebreaker_formats CXX)
+project(codebreaker_formats C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -32,7 +32,24 @@ set(FORMATS_SOURCES
   omf/omf.cc          # OMF-86 objects and libraries (formats/omf.py)
   omf/questions.cc
   xex/questions.cc    # the Xbox 360 executable's header (formats/xex.py), by native/xex's reader
+  core/codecs.cc      # cp437, utf-16-be, utf-8 with replace
+  detect/detect.cc    # what kind of file a file is (formats/detect.py)
+  zx/zx.cc            # ZX Spectrum snapshots and tapes (formats/zx.py)
+  lzx/lzx.cc          # LZX (LZXD) decoding (formats/lzx.py)
+  cab/cab.cc          # Microsoft cabinets: read, decompress, extract, write (formats/cab.py)
+  media/media.cc      # FAT, ISO-9660, partitions, El Torito, put (formats/media.py)
 )
+
+# zlib 1.3.1 (MSZIP): the copy native/decompiler carries, and crc32() (core/zcrc32.c)
+set(ZLIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../decompiler/core/zlib)
+file(GLOB ZLIB_SOURCES ${ZLIB_DIR}/*.c)
+add_library(cbf_zlib STATIC ${ZLIB_SOURCES} core/zcrc32.c)
+target_include_directories(cbf_zlib PUBLIC ${ZLIB_DIR})
+if(MSVC)
+  target_compile_options(cbf_zlib PRIVATE /O2 /W0)
+  target_compile_definitions(cbf_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
+  set_property(TARGET cbf_zlib PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+endif()
 
 # Unicorn's headers, from the Python package that carries its DLL (nothing of it is linked)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -46,6 +63,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../xex/reader.cmake)
 
 add_library(formats SHARED ${FORMATS_SOURCES} ${XEX_READER_SOURCES})
 target_include_directories(formats PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${XEX_READER_INCLUDE_DIR} ${UNICORN_DIR}/include)
+target_link_libraries(formats PRIVATE cbf_zlib)
 if(MSVC)
   target_compile_options(formats PRIVATE /EHsc /O2 /W3 /utf-8)
   target_compile_definitions(formats PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)

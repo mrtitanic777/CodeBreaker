@@ -2,6 +2,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "bytes.h"
 
@@ -29,5 +30,17 @@ std::string to_latin1(const std::string &utf8);
 // "%x" / "%X" / "%d"
 std::string hex(uint64_t v, bool upper = false);
 std::string dec(int64_t v);
+
+// (codecs.cc) data.decode("cp437") -- every byte maps; cp437_byte: the byte a code point encodes to
+std::string cp437(Bytes b);
+bool cp437_byte(uint32_t cp, uint8_t &byte);
+// data.decode("utf-16-be", "replace")
+std::string utf16be(Bytes b);
+// data.decode("utf-8", "replace"): CPython's rule, one U+FFFD per maximal ill-formed subpart
+std::string utf8_replace(Bytes b);
+// a str (UTF-8) as code points and back; one code point appended as UTF-8
+std::vector<uint32_t> codepoints(const std::string &utf8);
+std::string from_codepoints(const std::vector<uint32_t> &cps);
+void put_codepoint(std::string &out, uint32_t cp);
 
 }  // namespace cbf
