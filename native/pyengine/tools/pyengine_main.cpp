@@ -20,11 +20,34 @@
 #include <cstring>
 #include <string>
 
+#include <vector>
+
+#include "census.hpp"
 #include "engine.hpp"
 
 int main(int argc, char** argv) {
     pyengine::EngineOptions o;
     bool coverage = false;
+
+    // pyengine --census <root>... [--census-out FILE]: the libraries, builtins, methods and features used
+    if (argc > 1 && std::string(argv[1]) == "--census") {
+        std::vector<std::string> roots;
+        std::string out;
+        for (int i = 2; i < argc; i++) {
+            std::string a = argv[i];
+            if (a == "--census-out" && i + 1 < argc) out = argv[++i];
+            else roots.push_back(a);
+        }
+        std::string md = pyengine::run_census(roots, "codebreaker");
+        if (out.empty()) fputs(md.c_str(), stdout);
+        else {
+            FILE* f = fopen(out.c_str(), "wb");
+            if (!f) return 1;
+            fwrite(md.data(), 1, md.size(), f);
+            fclose(f);
+        }
+        return 0;
+    }
 
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
