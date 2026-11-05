@@ -121,6 +121,21 @@ def same(value):
     return ast.literal_eval(repr(value))
 
 
+def unplaced(out):
+    """The scenario's record with the one thing that depends on where it ran taken out: the size of
+    the `binary` fact, whose value holds the binary's path (each row of it, and its kind's bytes)."""
+    def row(r):
+        return r[:4] + (None,) + r[5:] if isinstance(r, tuple) and r and r[0] == "binary" else r
+    got = []
+    for x in out:
+        if x[0] == "kinds":
+            x = ("kinds", [(k, n, None if k == "binary" else size) for k, n, size in x[1]])
+        elif len(x) == 5 and isinstance(x[4], list):
+            x = x[:4] + ([row(r) for r in x[4]],)
+        got.append(x)
+    return got
+
+
 def place(text):
     d = tempfile.mkdtemp(prefix="cbnative")
     b = os.path.join(d, "thing.bin")
@@ -182,7 +197,7 @@ def scenario():
 
 
 def test_the_same_facts_and_runs():
-    a, b = golden("facts"), same(scenario())
+    a, b = unplaced(golden("facts")), unplaced(same(scenario()))
     assert len(a) == len(b)
     for x, y in zip(a, b):
         assert x == y, "\n Python: %r\n C++:    %r" % (x[:4], y[:4])
