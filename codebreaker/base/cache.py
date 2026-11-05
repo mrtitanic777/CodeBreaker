@@ -34,6 +34,14 @@ the cache looks after its own size, by two rules:
                (default 2). As results are written, past the cap the ones used longest ago go
                first, from any kind, until four fifths of it is used.
 
+SHARED       the kinds in SHARED below -- what an assembler or a compiler made of its inputs --
+               are kept apart from any one state folder, in the build cache (the setting
+               build_cache, default the main checkout's state/build_cache), so a fresh state
+               or another worktree reuses them. Their keys name every input by its bytes
+               (tool_bytes, files_bytes), never by a path or a date; their generations are
+               never dropped (another checkout may run other code), only the cap
+               (build_cache_max_gb, default 6) holds them.
+
 Each kind is one sqlite file, state/cache/<kind>/<generation>.sqlite, its results rows in it (many
 small results are one file, not millions); a kind whose results are files a tool writes itself
 (path()) has a folder, state/cache/<kind>/<generation>/, instead. Deleting state/cache costs time
@@ -62,6 +70,10 @@ GENERATIONS = {
     "compilable16": ("codebreaker.decompile.c_text", "generation"),
 }
 DEFAULT_MAX_GB = 2
+# The kinds every state folder and checkout shares (settings.build_cache): results that are a pure
+# function of the inputs their keys name, all of them by content.
+SHARED = frozenset(("wasm16", "objects", "never_set", "masm", "assembled16", "omf_publics"))
+DEFAULT_SHARED_MAX_GB = 6
 CHECK_EVERY = 32 << 20          # bytes a process writes between looks at the cap
 TOUCH = 3600                    # a result's time of use is renewed at most this often (seconds)
 DROPPED = "_dropped"            # where what is going waits for its deletion, out of the way
@@ -94,6 +106,40 @@ def tool(path):
         return "%s:missing" % os.path.basename(path or "")
 
 
+_BYTES = {}                     # (path, size, mtime) -> digest of the file's bytes
+
+
+def tool_bytes(path):
+    """What identifies a program by its bytes (for a key the shared build cache files under: a
+    copy of the same tool elsewhere, or touched, is the same tool; a rebuilt one is not)."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return "%s:missing" % os.path.basename(path or "")
+    k = (os.path.normcase(os.path.abspath(path)), st.st_size, st.st_mtime_ns)
+    got = _BYTES.get(k)
+    if got is None:
+        h = hashlib.sha1()
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1 << 20), b""):
+                h.update(block)
+        got = _BYTES[k] = "%s:%s" % (os.path.basename(path).lower(), h.hexdigest())
+    return got
+
+
+def files_bytes(*folders):
+    """The same for folders of files a tool reads (a compiler's headers): every file's name below
+    the folder and its bytes."""
+    parts = []
+    for top in folders:
+        for where, dirs, files in os.walk(top):
+            dirs.sort()
+            for f in sorted(files):
+                p = os.path.join(where, f)
+                parts.append(os.path.relpath(p, top).replace("\\", "/").lower() + "=" + tool_bytes(p))
+    return key(parts)
+
+
 def folder(path):
     """The same for a folder of files a tool reads (a compiler's headers, a language's rules)."""
     parts = []
@@ -112,10 +158,22 @@ def off():
     return bool(os.environ.get("CB_NO_CACHE"))
 
 
-def root():
-    """state/cache, where every kind is kept."""
+def root(kind=None):
+    """state/cache, where every kind is kept -- or, for a SHARED kind, the shared build cache."""
     from codebreaker.base import settings
+    if kind in SHARED:
+        return settings.build_cache()
     return settings.state("cache")
+
+
+def roots():
+    """[(folder, cap in bytes)]: state's caches, then the shared build cache."""
+    from codebreaker.base import settings
+    try:
+        gb = float(settings.get("build_cache_max_gb") or DEFAULT_SHARED_MAX_GB)
+    except (TypeError, ValueError):
+        gb = DEFAULT_SHARED_MAX_GB
+    return [(settings.state("cache"), max_bytes()), (settings.build_cache(), int(gb * (1 << 30)))]
 
 
 def max_bytes():
@@ -195,8 +253,8 @@ def _db(kind):
             return had[1] or None
         db, gen = False, generation(kind)
         try:
-            path = os.path.join(root(), kind)
-            if gen is not None:
+            path = os.path.join(root(kind), kind)
+            if gen is not None and kind not in SHARED:   # (a shared kind: another checkout's generation stays)
                 _drop_others(path, gen)
             os.makedirs(path, exist_ok=True)
             db = _connect(os.path.join(path, (gen or "g0") + ".sqlite"))
@@ -277,10 +335,10 @@ def path(kind, k):
     gen = _FOLDERS.get(kind)
     if gen is None:
         gen = generation(kind)
-        if gen is not None:
-            _drop_others(os.path.join(root(), kind), gen)
+        if gen is not None and kind not in SHARED:
+            _drop_others(os.path.join(root(kind), kind), gen)
         gen = _FOLDERS[kind] = gen or "g0"
-    return os.path.join(root(), kind, gen, k[:2], k)
+    return os.path.join(root(kind), kind, gen, k[:2], k)
 
 
 def counts():
@@ -289,10 +347,12 @@ def counts():
 
 
 # --- the cap ----------------------------------------------------------------------------------
-def _stores():
+def _stores(base=None):
     """{kind: [(path, is a database)]} of everything kept on disk now, of any generation."""
     out = {}
-    base = root()
+    base = base or root()
+    if not os.path.isdir(base):
+        return out
     for kind in sorted(os.listdir(base)):
         if kind == DROPPED or not os.path.isdir(os.path.join(base, kind)):
             continue
@@ -321,11 +381,12 @@ def _size(path):
     return total
 
 
-def sizes():
+def sizes(base=None):
     """{kind: bytes on disk}, every generation of it, and what is waiting to be deleted."""
-    out = {kind: sum(_size(p) for p, _db in where) for kind, where in _stores().items()}
-    if os.path.isdir(os.path.join(root(), DROPPED)):
-        out[DROPPED] = _size(os.path.join(root(), DROPPED))
+    base = base or root()
+    out = {kind: sum(_size(p) for p, _db in where) for kind, where in _stores(base).items()}
+    if os.path.isdir(os.path.join(base, DROPPED)):
+        out[DROPPED] = _size(os.path.join(base, DROPPED))
     return out
 
 
@@ -378,20 +439,27 @@ def _oldest(stores, n=4000):
 
 
 def hold(cap=None):
-    """Bring all of state's caches back under `cap` bytes (default the setting cache_max_gb):
-    past it, the results used longest ago go first, from any kind, until four fifths of the cap
-    is used. -> bytes freed (as the results counted them)."""
-    cap = max_bytes() if cap is None else cap
+    """Bring all of state's caches back under `cap` bytes (default the setting cache_max_gb), and
+    the shared build cache under its own (build_cache_max_gb): past it, the results used longest
+    ago go first, from any kind, until four fifths of the cap is used. -> bytes freed (as the
+    results counted them)."""
+    freed = 0
+    for n, (base, its_cap) in enumerate(roots()):
+        freed += _hold(base, its_cap if cap is None or n else cap)
+    return freed
+
+
+def _hold(base, cap):
     freed, shrunk = 0, False
     with _LOCK:
         for _round in range(16):
             try:
-                total = sum(sizes().values())
+                total = sum(sizes(base).values())
             except OSError:
                 return freed
             if total <= cap:
                 return freed
-            stores = _stores()
+            stores = _stores(base)
             if not shrunk:                       # (the logs folded in first: they may be most of it)
                 for where in stores.values():
                     for p, is_db in where:
@@ -472,9 +540,12 @@ def _gb(n):
 
 
 def stats():
-    """[(kind, bytes, results, generations on disk, the generation of now)]"""
+    """[(kind, bytes, results, generations on disk, the generation of now)] -- state's kinds, then
+    the shared build cache's (each named "shared:<kind>")."""
     out = []
-    for kind, where in _stores().items():
+    shared = root("objects")
+    both = list(_stores().items()) + [("shared:" + k, w) for k, w in _stores(shared).items()]
+    for kind, where in both:
         rows = 0
         for p, is_db in where:
             if is_db:
@@ -488,7 +559,7 @@ def stats():
             else:
                 rows += sum(len(names) for _d, _dirs, names in os.walk(p))
         out.append((kind, sum(_size(p) for p, _db in where), rows,
-                    [os.path.basename(p).split(".")[0] for p, _db in where], generation(kind)))
+                    [os.path.basename(p).split(".")[0] for p, _db in where], generation(kind.split(":")[-1])))
     return out
 
 

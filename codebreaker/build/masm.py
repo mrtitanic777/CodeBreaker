@@ -212,9 +212,18 @@ def _cancelled():
 CACHE_VER = 1
 
 
-def _cache_key(src, masmroot):
-    return cache.key(CACHE_VER, os.path.basename(os.path.normpath(masmroot or "")),
-                     cache.tool(os.path.join(masmroot or "", "BIN", "MASM.EXE")), src)
+_ROOTS = {}
+
+
+def _cache_key(src, masmroot, stem=""):
+    """Every input of what MASM makes (kept in the shared build cache): the invocation's version
+    (CACHE_VER), every file under the assembler's folder by its bytes (MASM.EXE and the INCLUDE
+    files a source may read), the source, and the stem -- the object's THEADR and the listing's
+    title name the source file."""
+    root = os.path.normpath(masmroot or "")
+    if root not in _ROOTS:
+        _ROOTS[root] = cache.files_bytes(root) if os.path.isdir(root) else cache.tool_bytes(root)
+    return cache.key("masm", CACHE_VER, _ROOTS[root], stem.upper(), src)
 
 
 def _cache_get(key):
@@ -246,7 +255,7 @@ def assemble_many(items, timeout=None, masmroot=None):
     masm = masmroot or MASMROOT
     hits, misses, mkeys = {}, [], {}
     for stem, src in items:
-        key = _cache_key(src, masm)
+        key = _cache_key(src, masm, stem)
         c = _cache_get(key)
         if c is not None:
             hits[stem] = c
