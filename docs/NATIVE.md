@@ -1055,6 +1055,64 @@ rest. What was learned:
 - The method that worked: a corpus-wide harvest of real inputs plus random truncations of each,
   compared whole (JSON dumps, order included), before the Python is deleted.
 
+## Step 8, first piece: the compiler models -- `native/invert` (2026-11-04)
+
+codebreaker/invert/ (the models that read 16-bit functions back into the source their compiler
+was given: early_c, msc6, msc6_registers, msvc2, msvc2_forward, msvc2_registers, flow16, run;
+about 9,300 lines with their helpers) is being ported by hand into `cbinvert.dll` (C interface
+cbinvert.h; text in, JSON out, a Python exception's kind and message back).  The shim is
+codebreaker/invert/native_invert.py.  Build it like the others (vcvars64 shell):
+`cmake -S native/invert -B native/invert/build -G Ninja -DCMAKE_BUILD_TYPE=Release`, then
+`cmake --build native/invert/build -j 1`; its folder is the `invert_bin` setting.
+
+**Piece 1, flow16 (done, Python deleted).** flow16.py's analysis -- the leaders and blocks, the
+edges, unreachable blocks, switches by compares and by a bounds-tested jump table (CMPSWITCH),
+dominators, post-dominators, natural loops and the whole dominator-guided structurer -- is
+flow16.cc, decision for decision.  flow16.py keeps the Python API its callers use (Block, SWITCH,
+CMPSWITCH, build_cfg, structure; callers: early_c.recover_cfg, exact/draft, tests/test_invert.py):
+the SWITCH hook is asked in Python for every indirect jmp and its answers sent with the
+instructions.  The one place the Python's answer hung on a set's order (ipdom's first candidate,
+only ambiguous for blocks that never reach an exit, whose candidate sets are dense small ints)
+is CPython's order there: ascending.
+
+The gate (state/work/invert-native/gate_flow16.py, both in one process, the switch toggled per
+call): every `push bp; mov bp,sp` chunk (to the next, at most 4 KB) of every NE code segment, DOS
+MZ load image and .COM file under the two corpora, decoded by Capstone, through build_cfg and
+structure with CMPSWITCH off and on, and with no SWITCH hook and with one reading a word table out
+of the chunk (raising for some).  Compared whole: each block's every field and its instructions'
+addresses, idx2blk, the tree's repr, or the exception.
+
+| corpus | calls | identical | Python | C++ (with the shim) |
+|---|---|---|---|---|
+| Windows95/design/corpus/files | 133,324 | 133,324 | 383 s | 239 s |
+| Microsoft-Assemblers-Compilers (every compiler, assembler and tool kit there) | 1,780,844 | 1,780,844 | 2,465 s | 1,480 s |
+
+1,914,168 / 1,914,168 identical.  tests/test_invert.py with the C++: 14 passed, 1 skipped
+(Microsoft C 2.03 is not set up in settings.json: kits.msc203), including test_against_the_real_compiler,
+test_a_module, test_dos_tools and test_16bit_assembly_source.  The speed-up is 1.6x end to end;
+the shim's text and JSON (and the Block objects over the caller's instructions) are most of what
+is left: the analysis itself is no longer the cost.
+
+**HANDOFF: what is left.**
+
+- **run.py** stays Python: it is orchestration (win16.prepare, the compilers through build/msc6,
+  verify/authored/match, the SDK prototypes), all of it other packages' Python; there is nothing
+  in it that computes on its own.  It goes native when the pieces it calls do.
+- **The models** (msc6 + msc6_function/_calls/_walk/_templates/_idioms, msc6_registers, msvc2,
+  msvc2_forward, msvc2_registers, early_c + early_c_frame) decode with Capstone themselves
+  (platforms.decoder(16)) and read `op_str` text, so the C++ needs the very capstone.dll Python's
+  `capstone` 5.0.7 package carries (its include/ and lib/capstone.dll are in the package), loaded
+  by path as dosexec loads Python's unicorn.dll, so every mnemonic and operand text is the same.
+  native/decompiler's Capstone is 4.0.2 (WT_CAPSTONE) and prints differently in places: do not
+  reuse it here.  Order: msc6 (the `invert <module>` path: run.module calls msc6.invert, with
+  segment_thunk, whole_function, grammars and msc6_calls), then msvc2_forward + msvc2 +
+  msvc2_registers, then msc6_registers, then early_c (3,129 lines, the 1983-84 compiler, uses flow16
+  through recover_cfg; port it last, onto flow16.cc directly, which removes the shim's cost).
+- The gate for each model: `invert` over every NE module of the Windows95 corpus, the models'
+  texts and reasons compared per function before the compilers run (the compile is a pure
+  function of the text), plus tests/test_invert.py; and for early_c, exact/draft over the period
+  corpora.  gate_flow16.py's chunker and toggle are the pattern.
+
 ## The rest, in measured-cost order
 
 Each is measured again at its start (a profile of the slowest real job it serves) before the
