@@ -251,15 +251,31 @@ After the deletions: run_all --quick passes (all suites; again with l2, engine, 
 dosexec all built in the worktree), tools/check_imports 559/559, tools/tidy
 clean.
 
-**HANDOFF (2026-11-04): the all-15 Setup boot is not yet run on this.** In a fresh state folder
-GDI.EXE does not link (`E2052: asm/frame38_00.obj: relocation at 0026:0def not in the same
-segment`, 1,473 functions assembled, the gate never reached) -- and master's own code (c4009dd6b,
-the Python hooks still there) fails the same way in a fresh state, so it is older than step 3 and
-not of the tracer's making (state/work/shadow-native/gdi_main.py reproduces it). The boot
-(state/work/shadow-native/boot15.py: the 15 modules built from source, then setup16.continue_test
-on all of them) wants GDI building first. Left: that link fault, then the boot (all 15 to the
-License page); the 16-bit recorded-system context path has no record-level case of its own in
-test_native_trace (prelude runs do), only the judge's.
+**The GDI link fault of 2026-11-04 (fixed 2026-11-05).** In a fresh state folder `gdi.exe` did
+not link (`E2052: asm/frame38_00.obj: relocation at 0026:0def not in the same segment`). The
+reproduction builds the corpus's `gdi.exe` -- Windows' full GDI (WINDOWS/SYSTEM, 45 segments), not
+MINI.CAB's 36-segment GDI.EXE that the all-15 boot uses (state/mini/original), which has no 32-bit
+segment and builds from a fresh state (24 gated). The fault is the full GDI's own, not a cache's. The full GDI's segments 36 and 38 are 32-bit
+(NE flag 2000h, its flat thunks), and the frame writer (build/asm16.py) decoded them as 16-bit
+code: `66 B8 iw` took the `66 8E` of the next `mov gs, ax` for the rest of an imm32, and the
+`E8 58 73` left over became a near call to 38:7358, past the segment's 13ECh bytes. That place
+became an entry no piece defines, absent.c gave it a stand-in in XCODE, and the near call crossed
+segments. The fix: a 32-bit segment is read with the 32-bit decoder and its functions are all
+rebuilt from their instructions. A near call or jump past a segment's end is bytes, and so is a far
+place past it. The full GDI then links from a fresh state, segments 36 and 38 at their numbers and
+sizes. The all-15 MINI.CAB boot, built from a fresh state: PASS, the License page.
+
+**The linker's backlog.** A 32-bit segment is written into the 16-bit MCODE class, each
+instruction as its bytes with its 32-bit spelling beside them, not as use32 mnemonics. wlink keys a
+class on its name and its bitness (objpass1.c, FindALeader), so `order clname MCODE ...` cannot
+place a use32 segment among the 16-bit ones. Written use32, CODE36 and CODE38 went after every
+16-bit segment and renumbered them. wlink's Windows NE writer also sets no 2000h flag for a use32
+segment, so the built GDI's 36 and 38 carry 1D10h where the original has 3D10h. To write them as
+use32 source that keeps both: wlink's ORDER taking use32 segments into a 16-bit class's sequence,
+and the NE writer setting 2000h.
+
+The 16-bit recorded-system context path has no record-level case of its own in test_native_trace
+(prelude runs do), only the judge's.
 
 ## Step 6 (gated): the engine and the store -- `native/engine`
 
