@@ -1129,23 +1129,65 @@ caller: they are self-test tools.)  tests/test_invert.py with the C++: 14 passed
 not set up), including test_a_module, test_against_the_real_compiler and test_routing_thunks_and_grammars;
 check_imports and tidy clean.
 
+**Piece 3, the MSVC 2.0 models (done, Python deleted, 2026-11-05).**  msvc2_forward (emit: every
+construct -> its exact bytes, framed, frameless /Oy and __fastcall, the statement lists; to_c;
+frame_layout), msvc2 (invert: the candidates from the bytes, each accepted only when emit gives the
+bytes back under the relocation mask) and msvc2_registers (interp, the straight-line register walk)
+are msvc2.cc.  The nodes are Python values in the Python's own shapes, so pyval.h/pyval.cc carry
+them: None, bool, int, str, tuple, list and dict with Python's indexing errors, dict.get / d[k]
+(KeyError), and == (1 == True; a tuple is never a list); on the wire a tuple is a JSON array, a list
+{"L": [..]}, a dict {"D": [[k, v]..]} (native_invert._enc/_dec).  cs.cc opens a third handle,
+32-bit x86 (disasm32, as platforms.decoder(32)).  Python generator laziness kept: the candidates are
+collected until the Python's generator would have raised, tried in order, and the exception raised
+only when none matched (a KeyError out of interp's `env["eax"]` reaches invert's caller, as before).
+The self-tests (battery, the frame battery, the oracle round trips) stay Python.  Python 2,021 ->
+325 lines over the three modules (1,696 removed; the shim +61).
+
+The gate (state/work/invert-native3/gate_msvc2.py, both sides in one process, 2 workers): every
+executable section of the 635 PE modules of Windows95/design/corpus/files; every chunk from
+`push ebp; mov ebp,esp` to the next or 1 KB, that chunk cut after its first ret, and every frameless
+chunk (after a ret and its padding, to the next ret); 204,359 distinct chunks (2,137 recovered).
+Calls: invert with mask None and an empty mask, interp with nargs 0 and the chunk's own, emit + to_c
+on every candidate the Python generated and its fpo form, and the batteries.
+
+| model | calls | identical | Python | C++ (with the shim) |
+|---|---|---|---|---|
+| msvc2 + msvc2_forward + msvc2_registers | 822,993 | 822,993 | 750.1 s | 284.9 s |
+
+**Piece 4, msc6_registers (done, Python deleted, 2026-11-05).**  invert_reg and invert_loop are
+msc6_registers.cc (cbinv_msc6reg).  msc6_function's PROLOGUE and EPI went with it (their last
+user).  Python 201 -> 42 lines (159 removed, 3 more from msc6_function).  The gate
+(gate_msc6reg.py): every chunk from a prologue of every CODE segment of the 388 NE modules (the
+other two prologue encodings given the model's own), cut after its first epilogue too, and the
+model's prologue before every `mov di,[bp+N]`, `push si` and `push di` (to 512 bytes), each with no
+imports and with three; 237,247 inputs, 130 recovered.
+
+| model | calls | identical | Python | C++ (with the shim) |
+|---|---|---|---|---|
+| msc6_registers.invert_reg + invert_loop | 948,988 | 948,988 | 9.3 s | 59.4 s |
+
+(Like the byte readers, msc6_registers declines at the first instruction it does not know, so the
+Python was already cheap; no hot path calls it, only its self-test and tests/test_invert.py.)
+
 **HANDOFF: what is left.**
 
 - **run.py** stays Python: it is orchestration (win16.prepare, the compilers through build/msc6,
   verify/authored/match, the SDK prototypes), all of it other packages' Python; there is nothing
   in it that computes on its own.  It goes native when the pieces it calls do.
-- **The models left** (msvc2, msvc2_forward, msvc2_registers, msc6_registers, early_c +
-  early_c_frame) decode with Capstone themselves and read `op_str` text: use cs.h's disasm16 (the
-  package's capstone.dll, already loaded) and pyutil.h's int0/int16/cursors, as msc6.cc does.
-  Order: msvc2_forward + msvc2 + msvc2_registers, then msc6_registers (it imports _mask, PROLOGUE,
-  EPI from msc6_function: those stay), then early_c (3,129 lines, the 1983-84 compiler, uses flow16
-  through recover_cfg; port it last, onto flow16.cc directly, which removes the shim's cost).  The
-  gate pattern: gate_msc6.py (chunks from each prologue of every NE code segment; both sides in one
-  process; compare text, meta, reason or exception type).
-- The gate for each model: `invert` over every NE module of the Windows95 corpus, the models'
-  texts and reasons compared per function before the compilers run (the compile is a pure
-  function of the text), plus tests/test_invert.py; and for early_c, exact/draft over the period
-  corpora.  gate_flow16.py's chunker and toggle are the pattern.
+- **early_c** (+ early_c_frame), the last model: 3,129 lines, the 1983-84 compiler.  Most of it is
+  `class R` (lines 124-2336, the MC 2.03 register tracker) and the text passes after it (_tidy,
+  _fold_longs, _dead_regs with the `_DR_TOK` lookbehind regex, _fold_ladders, _fold_goto_or,
+  _strip_tail_returns, _fold_shortcircuit, detect_copies).  Entry points: recover, recover_cfg
+  (onto flow16.cc directly: build_cfg and structure without the shim's text), detect_copies,
+  local_decls, to_c, framemodel (early_c_frame); callers: early_c_check, early_c_round_trip,
+  early_c_forward, run.TOOLS, tests/test_invert.py (no other importer in codebreaker/, Dashboard, Windows95/tools, Win95VM or XboxMCP on 2026-11-05).  Use cs.h's
+  disasm16, pyutil.h's int0/cursors, pyval.h if a value must cross as a Python object.  The gate: the
+  gate_flow16.py chunker (every `push bp; mov bp,sp` chunk of every NE segment, MZ image and .COM
+  under both corpora, Windows95 and Microsoft-Assemblers-Compilers), recover and recover_cfg
+  compared whole, plus tests/test_invert.py.
+- Pattern pitfall: pyutil's Cur::lit and std::string::compare throw std::out_of_range ("invalid
+  string position") when the start is past the end; test the cheap prefix first (msc6_registers'
+  gate caught one: it came back as RuntimeError where the Python declined).
 
 ## The rest, in measured-cost order
 
