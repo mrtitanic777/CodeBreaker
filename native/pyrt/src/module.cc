@@ -172,7 +172,7 @@ static std::string norm_path_(const std::string& p) {
     for (auto& c : a) c = c == '/' ? '\\' : (char)tolower((unsigned char)c);
     return a;
 }
-static const char* module_for_file_(const std::string& path) {
+const char* module_for_file_(const std::string& path) {
     std::string want = norm_path_(path);
     for (auto& [name, def] : reg().defs)
         if (def->file_ && norm_path_(def->file_) == want) return name.c_str();
@@ -216,6 +216,30 @@ int run_main(const char* module, int argc, char** argv) {
     if (d != r.defs.end() && d->second->package_) {       // python -m package: its __main__
         name += ".__main__";
         d = r.defs.find(name);
+    }
+    if (d == r.defs.end() && r.natives.count(name)) {
+        // -m of a module the runtime has in C++ (pytest): its _main(argv)
+        g_argv.clear();
+        g_argv.push_back(name);
+        g_argv.insert(g_argv.end(), rest.begin(), rest.end());
+        extern void set_sys_argv_();
+        set_sys_argv_();
+        extern void flush_std_();
+        try {
+            var mod = import(name.c_str());
+            var rc = mod.call("_main", import("sys").getattr("argv"));
+            flush_std_();
+            return rc.is_none() ? 0 : (int)rc.as_int64();
+        } catch (error& e) {
+            flush_std_();
+            if (isinstance_(e.value, E_SystemExit)) {
+                var code = e.value.getattr("code");
+                return code.is_none() ? 0 : is_int(code) ? (int)code.as_int64() : 1;
+            }
+            extern void print_exception_(const var& e);
+            print_exception_(e.value);
+            return 1;
+        }
     }
     if (d == r.defs.end()) {
         fprintf(stderr, "No module named %s\n", name.c_str());

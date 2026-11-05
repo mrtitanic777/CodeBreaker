@@ -756,6 +756,7 @@ static void init_collections_c(const var& m) {
 void init_ctypes(const var& m);
 void init_ctypes_util(const var& m);
 void init_wintypes(const var& m);
+void init_pytest(const var& m);
 
 // memoryview: a view of bytes, a bytearray or a ctypes object (raw_of reads it through .obj)
 static void make_memoryview() {
@@ -810,6 +811,12 @@ void init_extra_modules() {
     register_native_module("ctypes", init_ctypes);          // (lib_ctypes.cc)
     register_native_module("ctypes.util", init_ctypes_util);
     register_native_module("ctypes.wintypes", init_wintypes);
+    register_native_module("pytest", init_pytest);          // (lib_pytest.cc: the API and the runner)
+    // z3: not in the C++ runtime until libz3 is vendored (a decision pending): importing it says so
+    register_native_module("z3", [](const var&) {
+        raise(E_ImportError, "z3 is not in the C++ runtime: libz3 is not vendored yet (emulate/symbolic.py and "
+                             "verify/concolic.py need it; its C API is the way in once it is)");
+    });
     register_native_module("codecs", init_codecs);
     register_native_module("_collections", init_collections_c);
     register_native_module("gettext", init_gettext);

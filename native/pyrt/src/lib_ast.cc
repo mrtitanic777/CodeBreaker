@@ -480,6 +480,149 @@ void init_inspect_module(const var& m) {
         return sm.getattr("__file__");
     });
     mod_def(m, "getsourcefile", [](const CallArgs& a) { return import("inspect").call("getfile", a.pos.at(0)); });
+    // signature(fn): Parameter / Signature / BoundArguments over the function's own parameter table
+    var empty = make_class("_empty", "_empty", {}, new_dict(), {}, "inspect");
+    mod_set(m, "_empty", empty);
+    var pns = new_dict();
+    const char* kinds[] = {"POSITIONAL_ONLY", "POSITIONAL_OR_KEYWORD", "VAR_POSITIONAL", "KEYWORD_ONLY", "VAR_KEYWORD"};
+    for (int k = 0; k < 5; k++) pns.setitem(new_str(kinds[k]), var((int64_t)k));
+    pns.setitem("empty"_s, empty);
+    pns.setitem("__repr__"_s, new_native("__repr__", [](const CallArgs& a) { return new_str("<Parameter \"" + str_utf8(a.pos.at(0).getattr("name")) + "\">"); }));
+    var param_cls = make_class("Parameter", "Parameter", {}, pns, {}, "inspect");
+    mod_set(m, "Parameter", param_cls);
+    var bns = new_dict();
+    bns.setitem("args"_s, property(new_native("args", [](const CallArgs& a) {
+        var self = a.pos.at(0), args = self.getattr("arguments");
+        std::vector<var> out;
+        for (var p : each(self.getattr("_params"))) {
+            int64_t k = p.getattr("kind").as_int64();
+            var n = p.getattr("name");
+            if (k == 3 || k == 4) break;
+            if (!in(n, args)) break;
+            if (k == 2) for (var x : each(args.getitem(n))) out.push_back(x);
+            else out.push_back(args.getitem(n));
+        }
+        return new_tuple(out);
+    })));
+    bns.setitem("kwargs"_s, property(new_native("kwargs", [](const CallArgs& a) {
+        var self = a.pos.at(0), args = self.getattr("arguments"), out = new_dict();
+        bool kw_started = false;
+        for (var p : each(self.getattr("_params"))) {
+            int64_t k = p.getattr("kind").as_int64();
+            var n = p.getattr("name");
+            if (!kw_started && (k == 3 || k == 4 || !in(n, args))) kw_started = true;
+            if (!kw_started || !in(n, args)) continue;
+            if (k == 4) { var d = args.getitem(n); for (var x : each(d)) out.setitem(x, d.getitem(x)); }
+            else if (k != 2) out.setitem(n, args.getitem(n));
+        }
+        return out;
+    })));
+    bns.setitem("apply_defaults"_s, new_native("apply_defaults", [empty](const CallArgs& a) {
+        var self = a.pos.at(0), args = self.getattr("arguments"), out = new_dict();
+        for (var p : each(self.getattr("_params"))) {
+            var n = p.getattr("name");
+            int64_t k = p.getattr("kind").as_int64();
+            if (in(n, args)) out.setitem(n, args.getitem(n));
+            else if (!is(p.getattr("default"), empty)) out.setitem(n, p.getattr("default"));
+            else if (k == 2) out.setitem(n, new_tuple());
+            else if (k == 4) out.setitem(n, new_dict());
+        }
+        self.setattr("arguments", out);
+        return None;
+    }));
+    var bound_cls = make_class("BoundArguments", "BoundArguments", {}, bns, {}, "inspect");
+    var sns = new_dict();
+    auto bind = [empty, bound_cls](const CallArgs& a, bool partial) -> var {
+        var self = a.pos.at(0);
+        auto params = collect(self.getattr("parameters").call("values"));
+        var args = new_dict();
+        size_t ai = 1;
+        std::vector<std::pair<var, var>> kws = a.kw;
+        auto take_kw = [&](const var& n, var& out) {
+            for (size_t i = 0; i < kws.size(); i++)
+                if (kws[i].first == n) { out = kws[i].second; kws.erase(kws.begin() + (long long)i); return true; }
+            return false;
+        };
+        for (auto& p : params) {
+            int64_t k = p.getattr("kind").as_int64();
+            var n = p.getattr("name"), v;
+            if (k == 0 || k == 1) {
+                if (ai < a.pos.size()) {
+                    if (k == 1 && take_kw(n, v)) raise(E_TypeError, "multiple values for argument '" + str_utf8(n) + "'");
+                    args.setitem(n, a.pos[ai++]);
+                } else if (k == 1 && take_kw(n, v)) args.setitem(n, v);
+                else if (is(p.getattr("default"), empty) && !partial) raise(E_TypeError, "missing a required argument: '" + str_utf8(n) + "'");
+            } else if (k == 2) {
+                std::vector<var> rest(a.pos.begin() + (long long)std::min(ai, a.pos.size()), a.pos.end());
+                ai = a.pos.size();
+                if (!rest.empty()) args.setitem(n, new_tuple(rest));
+            } else if (k == 3) {
+                if (take_kw(n, v)) args.setitem(n, v);
+                else if (is(p.getattr("default"), empty) && !partial) raise(E_TypeError, "missing a required argument: '" + str_utf8(n) + "'");
+            } else {
+                var d = new_dict();
+                for (auto& [kk, vv] : kws) d.setitem(kk, vv);
+                kws.clear();
+                if (len_(d)) args.setitem(n, d);
+            }
+        }
+        if (ai < a.pos.size()) raise(E_TypeError, "too many positional arguments");
+        if (!kws.empty()) raise(E_TypeError, "got an unexpected keyword argument '" + str_utf8(kws[0].first) + "'");
+        var b = call0(bound_cls);
+        b.setattr("arguments", args);
+        b.setattr("_params", new_list(params));
+        b.setattr("signature", self);
+        return b;
+    };
+    sns.setitem("bind"_s, new_native("bind", [bind](const CallArgs& a) { return bind(a, false); }));
+    sns.setitem("bind_partial"_s, new_native("bind_partial", [bind](const CallArgs& a) { return bind(a, true); }));
+    sns.setitem("__str__"_s, new_native("__str__", [empty](const CallArgs& a) {
+        std::string s = "(";
+        int i = 0;
+        for (var p : each(a.pos.at(0).getattr("parameters").call("values"))) {
+            int64_t k = p.getattr("kind").as_int64();
+            s += i++ ? ", " : "";
+            s += (k == 2 ? "*" : k == 4 ? "**" : "") + str_utf8(p.getattr("name"));
+            if (!is(p.getattr("default"), empty)) s += "=" + repr_(p.getattr("default"));
+        }
+        return new_str(s + ")");
+    }));
+    var sig_cls = make_class("Signature", "Signature", {}, sns, {}, "inspect");
+    mod_set(m, "Signature", sig_cls);
+    mod_set(m, "BoundArguments", bound_cls);
+    mod_def(m, "signature", [empty, param_cls, sig_cls](const CallArgs& a) -> var {
+        var f = a.pos.at(0);
+        bool drop_first = false;
+        for (int depth = 0; depth < 20; depth++) {
+            if (f.is_ref() && f.ref()->type == T_method) { drop_first = true; f = static_cast<MethodObj*>(f.ref())->func; continue; }
+            if (f.is_ref() && f.ref()->type->layout == Layout::Type) {
+                const var* init = static_cast<TypeObj*>(f.ref())->lookup("__init__");
+                if (!init || !init->is_ref() || init->ref()->type != T_function) raise(E_ValueError, "no signature found for " + repr_(f));
+                f = *init;
+                drop_first = true;
+                continue;
+            }
+            var w = getattr(f, "__wrapped__"_s, var());
+            if (!w.is_unbound() && !w.is_none() && kwarg(a, "follow_wrapped", var(true)).truthy()) { f = w; continue; }
+            break;
+        }
+        if (!f.is_ref() || f.ref()->type != T_function) raise(E_ValueError, "no signature found for builtin " + repr_(f));
+        auto* fo = static_cast<FuncObj*>(f.ref());
+        var params = new_dict();
+        for (size_t i = drop_first ? 1 : 0; i < fo->params.size(); i++) {
+            auto& pr = fo->params[i];
+            var p = call0(param_cls);
+            p.setattr("name", new_str(pr.name));
+            p.setattr("kind", var((int64_t)(pr.kind == Param::PosOnly ? 0 : pr.kind == Param::Normal ? 1 : pr.kind == Param::VarArgs ? 2 : pr.kind == Param::KwOnly ? 3 : 4)));
+            p.setattr("default", pr.has_default && i < fo->defaults.size() && !fo->defaults[i].is_unbound() ? fo->defaults[i] : empty);
+            p.setattr("annotation", empty);
+            params.setitem(new_str(pr.name), p);
+        }
+        var s = call0(sig_cls);
+        s.setattr("parameters", params);
+        s.setattr("return_annotation", empty);
+        return s;
+    });
     // (frames are not kept by translated code)
     mod_def(m, "currentframe", [](const CallArgs&) { return None; });
     mod_def(m, "cleandoc", [](const CallArgs& a) {
@@ -514,7 +657,7 @@ void init_inspect_module(const var& m) {
         if (!is_str(d)) return var(None);
         return import("inspect").call("cleandoc", d);
     });
-    for (const char* n : {"getsource", "signature", "getsourcelines", "stack"})
+    for (const char* n : {"getsource", "getsourcelines", "stack"})
         mod_def(m, n, [n](const CallArgs&) -> var {
             raise(E_NotImplementedError, std::string("inspect.") + n + ": the translated program has no Python source or frames to inspect");
         });

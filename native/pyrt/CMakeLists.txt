@@ -44,6 +44,7 @@ add_library(pyrt STATIC
   src/lib_ast.cc      # ast (over native/pyfront), inspect
   src/lib_extra.cc    # the C halves of standard modules translated from CPython (gettext, _random, _csv, zlib ...)
   src/lib_ctypes.cc   # ctypes: calls straight into DLLs (structures, pointers, arrays, callbacks)
+  src/lib_pytest.cc   # pytest: the API the test files use, and the runner (-m pytest)
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)
   ${L2}/src/pyre.cc)         # Python-compatible regular expressions (shared with native/l2)

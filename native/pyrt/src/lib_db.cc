@@ -308,14 +308,15 @@ static var E_PicklingError, E_UnpicklingError;
 struct Pickler {
     std::string out;
     std::unordered_map<const Obj*, uint32_t> memo;
+    bool fast = false;   // (Pickler.fast: no memo, an object passed twice written twice)
     void memoize(const var& v) {
-        if (!v.is_ref()) return;
+        if (!v.is_ref() || fast) return;
         uint32_t i = (uint32_t)memo.size();
         memo[v.ref()] = i;
         out.push_back('\x94');
     }
     bool get(const var& v) {
-        if (!v.is_ref()) return false;
+        if (!v.is_ref() || fast) return false;
         auto it = memo.find(v.ref());
         if (it == memo.end()) return false;
         if (it->second < 256) { out.push_back('h'); out.push_back((char)it->second); }
@@ -655,9 +656,33 @@ static void init_pickle(const var& m) {
     mod_set(m, "UnpicklingError", E_UnpicklingError);
     mod_set(m, "HIGHEST_PROTOCOL", 5);
     mod_set(m, "DEFAULT_PROTOCOL", 5);
+    // Pickler(file, protocol): .fast, .dump(obj) -- one pickle per dump, written to the file
+    var pns = new_dict();
+    pns.setitem("__init__"_s, new_native("__init__", [](const CallArgs& a) {
+        var self = a.pos.at(0);
+        self.setattr("_file", a.pos.at(1));
+        var proto = arg(a, 2, "protocol", None);
+        self.setattr("_protocol", proto.is_none() ? var(5) : proto);
+        self.setattr("fast", var(false));
+        return None;
+    }));
+    pns.setitem("dump"_s, new_native("dump", [](const CallArgs& a) {
+        var self = a.pos.at(0);
+        Pickler p;
+        p.fast = self.getattr("fast").truthy();
+        int proto = (int)self.getattr("_protocol").as_int64();
+        p.out = std::string("\x80", 1) + (char)(proto < 2 ? 2 : proto > 5 ? 5 : proto);
+        p.dump(a.pos.at(1));
+        p.out.push_back('.');
+        self.getattr("_file").call("write", new_bytes(p.out));
+        return None;
+    }));
+    mod_set(m, "Pickler", make_class("Pickler", "Pickler", {}, pns, {}, "pickle"));
     mod_def(m, "dumps", [](const CallArgs& a) {
         Pickler p;
-        p.out = "\x80\x05";
+        var proto = arg(a, 1, "protocol", None);
+        int pv = proto.is_none() ? 5 : (int)proto.as_int64();
+        p.out = std::string("\x80", 1) + (char)(pv < 2 ? 2 : pv > 5 ? 5 : pv);
         p.dump(a.pos.at(0));
         p.out.push_back('.');
         return new_bytes(p.out);
