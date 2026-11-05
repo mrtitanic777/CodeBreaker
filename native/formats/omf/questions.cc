@@ -2,6 +2,7 @@
 // read() comes back as the attributes of omf.Obj (but raw, the caller's own bytes); the readers
 // that take an Obj (holes, code_segments, functions) are handed the attributes they read.
 #include <algorithm>
+#include <functional>
 #include <set>
 
 #include "../core/questions.h"
@@ -478,9 +479,156 @@ void bss_object_q(Call &c) {
     c.out.bytes(Bytes(out + rec(0x8A, std::string(1, '\0'))));
 }
 
+// ---- patched (a segment's bytes replaced) and rename_symbols (every external and public name) ----
+std::pair<int64_t, int64_t> omf_ix(Bytes r, int64_t q) {   // an index: one byte, or two when the top bit is set
+    if (r.at(q) < 0x80) return {r.at(q), q + 1};
+    return {(int64_t(r.at(q) & 0x7F) << 8) | r.at(q + 1), q + 2};
+}
+std::pair<int64_t, int64_t> omf_idx(Bytes r, int64_t q) {  // (the same, tested on the top bit)
+    if (r.at(q) & 0x80) return {(int64_t(r.at(q) & 0x7F) << 8) | r.at(q + 1), q + 2};
+    return {r.at(q), q + 1};
+}
+
+// omf.patched(raw, segment, offset, value bytes) -> the module with the value written into the segment's LEDATA
+void patched_q(Call &c) {
+    const std::string seg = c.str_arg(0);
+    const int64_t off = c.int_arg(1);
+    const std::string val = c.arg(2).as_bytes().str();
+    std::vector<std::string> names, segs;
+    std::string out;
+    for (const Record &rec : records(c.data)) {
+        int64_t t = rec.type;
+        std::string r = rec.payload.str();
+        Bytes rb(r);
+        if (t == 0x96) {
+            int64_t q = 0;
+            while (q < rb.size()) {
+                names.push_back(latin1(rb.slice(q + 1, q + 1 + rb.at(q))));
+                q += 1 + rb.at(q);
+            }
+        } else if (t == 0x98) {
+            int64_t q = rb.at(0) >> 5 ? 1 : 4;
+            auto ni = omf_ix(rb, q + 2);
+            segs.push_back(py_at(names, ni.first - 1));
+        } else if (t == 0xA0) {
+            auto si = omf_ix(rb, 0);
+            int64_t q = si.second;
+            int64_t lo = rb.at(q) | (int64_t(rb.at(q + 1)) << 8);
+            if (py_at(segs, si.first - 1) == seg) {
+                for (size_t k = 0; k < val.size(); ++k)
+                    if (lo <= off + int64_t(k) && off + int64_t(k) < lo + int64_t(r.size()) - q - 2) r[size_t(q + 2 + off + int64_t(k) - lo)] = val[k];
+            }
+        }
+        out += record(t, Bytes(r));
+    }
+    c.out.bytes(Bytes(out));
+}
+
+// the walk of rename_symbols: each name passed through `fn` (latin1 text in, latin1 text out)
+std::string rename_walk(Bytes data, const std::function<std::string(const std::string &)> &fn) {
+    std::string out;
+    auto put_name = [&](std::string &nb, Bytes nm, const std::string &rest) {
+        std::string neu = to_latin1(fn(latin1(nm)));
+        if (neu.size() > 255) raise("ValueError", "bytes must be in range(0, 256)");
+        nb += char(neu.size()) + neu + rest;
+    };
+    for (const Record &rec : records(data)) {
+        int64_t t = rec.type;
+        std::string r = rec.payload.str();
+        Bytes rb(r);
+        if (t == 0x8C || t == 0xB0) {
+            int64_t q = 0;
+            std::string nb;
+            while (q < rb.size()) {
+                Bytes nm = rb.slice(q + 1, q + 1 + rb.at(q));
+                q += 1 + rb.at(q);
+                std::string rest;
+                if (t == 0x8C) {
+                    rest = rb.slice(q, q + 1).str();
+                    q += 1;
+                } else {
+                    int64_t st = q;
+                    q += 1;
+                    int64_t kind = rb.at(q);
+                    q += 1;
+                    for (int k = 0; k < (kind == 0x61 ? 2 : 1); ++k) {
+                        int64_t b0 = rb.at(q);
+                        q += 1 + (b0 == 0x81 ? 2 : b0 == 0x84 ? 3 : b0 == 0x88 ? 4 : 0);
+                    }
+                    rest = rb.slice(st, q).str();
+                }
+                put_name(nb, nm, rest);
+            }
+            r = nb;
+        } else if (t == 0x90 || t == 0x91) {
+            int64_t q = 0;
+            q = omf_idx(rb, q).second;
+            auto s = omf_idx(rb, q);
+            q = s.second;
+            if (s.first == 0) q += 2;
+            std::string nb = rb.slice(0, q).str();
+            int64_t w = t == 0x91 ? 4 : 2;
+            while (q < rb.size()) {
+                Bytes nm = rb.slice(q + 1, q + 1 + rb.at(q));
+                q += 1 + rb.at(q);
+                std::string rest = rb.slice(q, q + w).str();
+                q += w;
+                int64_t q2 = omf_idx(rb, q).second;
+                rest += rb.slice(q, q2).str();
+                q = q2;
+                put_name(nb, nm, rest);
+            }
+            r = nb;
+        }
+        out += record(t, Bytes(r));
+    }
+    return out;
+}
+
+// omf.symbol_names(data) -> ([the external and public names, in the order rename_symbols meets them],
+// None | (exception, message) the walk raised after them): the caller names them in that order before the
+// exception is raised, as the one Python walk did
+void symbol_names_q(Call &c) {
+    Out &o = c.out;
+    std::vector<std::string> seen;
+    std::string kind, message;
+    try {
+        rename_walk(c.data, [&](const std::string &n) { seen.push_back(n); return n; });
+    } catch (const PyError &e) {
+        kind = e.kind;
+        message = e.message;
+    }
+    o.begin_tuple();
+    o.begin_list();
+    for (auto &n : seen) o.text(n);
+    o.end_list();
+    if (kind.empty()) o.none();
+    else {
+        o.begin_tuple();
+        o.text(kind);
+        o.text(message);
+        o.end_tuple();
+    }
+    o.end_tuple();
+}
+
+// omf.rename_symbols(data, [new names in that order]) -> the object
+void rename_symbols_q(Call &c) {
+    const Value &names = c.arg(0);
+    size_t k = 0;
+    std::string out = rename_walk(c.data, [&](const std::string &) {
+        if (k >= names.items.size()) raise("IndexError", "list index out of range");
+        return names.items[k++].as_str();
+    });
+    c.out.bytes(Bytes(out));
+}
+
 }  // namespace
 
 CBF_QUESTIONS(omf) {
+    add("omf.patched", patched_q);
+    add("omf.symbol_names", symbol_names_q);
+    add("omf.rename_symbols", rename_symbols_q);
     add("omf.records", records_q);
     add("omf.record", record_q);
     add("omf.name", name_q);

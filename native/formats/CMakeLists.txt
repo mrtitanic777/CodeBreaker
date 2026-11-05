@@ -46,6 +46,7 @@ set(FORMATS_SOURCES
   win/inspect.cc      # strings, hex listing, categorize (formats/inspect.py)
   win/xex_edit.cc     # an Xbox 360 executable's privilege bits (formats/xex_edit.py)
   xbox/assets.cc      # Xbox assets: xsb, xbe, xzp, xdbf, ...
+  xbox/graphics.cc    # Xbox textures, XPR bundles, Scaleform GFx movies, XNA content (texture, xpr, gfx, xnb)
   xbox/discs.cc       # Xbox discs: devices, XDVDFS, GoD parts, CSO / CCI, LZ4 (formats/xbox/{gdf,god,ciso,lz4block}.py)
 )
 

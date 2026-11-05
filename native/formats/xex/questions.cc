@@ -121,14 +121,14 @@ void header(Call &c) {
     o.key("imports");
     o.begin_list();
     for (auto &l : x.import_libraries())
-        if (listed(l.name, word)) o.text(word);
+        if (listed(l.name, word)) o.latin1(Bytes(word));   // (the listing's single-byte text: a name padded with 0xCD stays valid UTF-8)
     o.end_list();
     o.key("libraries");
     o.begin_list();
     for (auto &l : x.static_libraries())
         if (listed(l.name, word)) {
             o.begin_tuple();
-            o.text(word);
+            o.latin1(Bytes(word));
             o.text(version(l.version));
             o.end_tuple();
         }

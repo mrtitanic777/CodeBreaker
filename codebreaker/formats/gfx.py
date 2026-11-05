@@ -16,10 +16,10 @@ ends in an End tag -- an incidental "GFX" in shader source is not a movie. Read:
 A DefineFont3 font is vector outlines (SWF shape records: moves, lines, quadratic curves on a
 20480-unit em), a code table and layout; font_to_ttf rebuilds it as a TrueType file (fontTools).
 """
-import re
 import struct
 import sys
-import zlib
+
+from codebreaker.formats import native
 
 
 class Bits:
@@ -59,170 +59,51 @@ u16 = lambda d, o: struct.unpack_from("<H", d, o)[0]
 u32 = lambda d, o: struct.unpack_from("<I", d, o)[0]
 
 
+@native.answered("gfx.find_movies")
+def _find_movies(data):
+    """[(offset, magic, body)] of each *valid* GFx (uncompressed) / CFX (zlib) movie in data: the version byte, the
+    declared length, and a tag stream that parses and ends in an End tag (so incidental "GFX"/"CFX" byte runs, e.g. in
+    shader source, are not movies)."""
+
+
 def find_movies(data):
-    """Yield (offset, magic, body) for each *valid* GFx (uncompressed) / CFX (zlib) movie in data.
-
-    Validates the version byte, declared length, that the tag stream parses and ends in an End
-    tag -- so incidental "GFX"/"CFX" byte runs (e.g. in shader source) are not reported as movies.
-    """
-    n = len(data)
-    for m in re.finditer(rb"GFX|CFX", data):
-        i = m.start()
-        if i + 8 > n:
-            continue
-        if not 1 <= data[i + 3] <= 20:                  # GFx/SWF version byte is small
-            continue
-        flen = u32(data, i + 4)
-        if not 8 <= flen <= n - i:                      # plausible declared length
-            continue
-        body = data[i + 8:i + 8 + flen]
-        if data[i:i + 3] == b"CFX":
-            try:
-                body = zlib.decompress(body)
-            except Exception:
-                continue
-        try:
-            codes = {c for c, _ in parse_tags(body)}
-        except Exception:
-            continue
-        if 0 not in codes or 1 not in codes:               # real movie: ShowFrame(1) + End(0)
-            continue
-        yield i, data[i:i + 3].decode("latin1"), body
+    """Yield (offset, magic, body) for each *valid* GFx (uncompressed) / CFX (zlib) movie in data."""
+    yield from _find_movies(data)
 
 
+@native.answered("gfx.wrapper_name")
 def wrapper_name(data, gfx_off):
     """Best-effort movie name from the GoodEngine wrapper preceding the GFX magic.
     Returns "" instead of junk when there's no clean identifier (e.g. for FONT.ho)."""
-    chunk = data[max(0, gfx_off - 512):gfx_off]
-    for s in reversed(re.findall(rb"[\x20-\x7e]{2,}", chunk)):
-        t = s.decode("latin1").strip()
-        if re.fullmatch(r"[A-Za-z0-9_.\-]{2,48}", t) and re.search(r"[A-Za-z]", t) and len(set(t)) > 1:
-            return t
-    return ""
 
 
+@native.answered("gfx.parse_tags", data_arg=0)
 def parse_tags(body):
-    br = Bits(body, 0)
-    nb = br.read(5)
-    for _ in range(4):
-        br.read(nb)
-    br.align()
-    return read_tags(body, br.p + 4)          # skip frameRate(u16) + frameCount(u16)
+    """The SWF tag stream of a movie's body: [(code, bytes)]."""
 
 
-def read_tags(body, p):
-    tags = []
-    while p + 2 <= len(body):
-        tc = u16(body, p); p += 2
-        code, length = tc >> 6, tc & 0x3F
-        if length == 0x3F:
-            length = u32(body, p); p += 4
-        tags.append((code, body[p:p + length])); p += length
-        if code == 0:
-            break
-    return tags
-
-
+@native.answered("gfx.ext_images")
 def ext_images(body):
     """DefineExternalImage (1001/1008/1009): (charId, w, h, name)."""
-    out = []
-    for code, d in parse_tags(body):
-        if code in (1001, 1008, 1009) and len(d) >= 10:
-            cid, w, h = u16(d, 0), u16(d, 4), u16(d, 6)
-            nlen = d[8]
-            out.append((cid, w, h, d[9:9 + nlen].decode("latin1", "replace")))
-    return out
 
 
+@native.answered("gfx.fonts")
 def fonts(body):
     """DefineFont2/3: (version, fontId, name, numGlyphs, bold, hasLayout).
     `version` is the SWF font version (2 or 3), not the raw tag code (48/75)."""
-    out = []
-    for code, d in parse_tags(body):
-        if code in (48, 75) and len(d) >= 6:
-            fid, flags, nlen = u16(d, 0), d[2], d[4]
-            name = d[5:5 + nlen].split(b"\x00")[0].decode("latin1", "replace")
-            ng = u16(d, 5 + nlen)
-            out.append((2 if code == 48 else 3, fid, name, ng, bool(flags & 1), bool(flags & 0x80)))
-    return out
 
 
-def parse_matrix(br):
-    """SWF MATRIX -> (scaleX, scaleY, translateX_px, translateY_px)."""
-    sx = sy = 1.0
-    if br.read(1):
-        n = br.read(5); sx = br.read(n) / 65536.0; sy = br.read(n) / 65536.0
-    if br.read(1):
-        n = br.read(5); br.read(n); br.read(n)
-    n = br.read(5)
-    tx = br.reads(n); ty = br.reads(n)
-    return sx, sy, tx / 20.0, ty / 20.0
-
-
+@native.answered("gfx.placements")
 def placements(body):
-    """PlaceObject2(26)/PlaceObject3(70): (depth, charId, matrix)."""
-    out = []
-    for code, d in parse_tags(body):
-        if code not in (26, 70):
-            continue
-        try:
-            flags = d[0]; p = 2 if code == 70 else 1
-            depth = u16(d, p); p += 2
-            cid = None
-            if flags & 0x02:
-                cid = u16(d, p); p += 2
-            mat = parse_matrix(Bits(d, p)) if flags & 0x04 else None
-            out.append((depth, cid, mat))
-        except Exception:
-            pass
-    return out
+    """PlaceObject2(26)/PlaceObject3(70): (depth, charId, matrix); matrix is (scaleX, scaleY, translateX_px, translateY_px)."""
 
 
 s16 = lambda d, o: struct.unpack_from("<h", d, o)[0]
 
 
+@native.answered("gfx.glyph_contours")
 def _glyph_contours(data, start):
     """Parse one SWF glyph SHAPE into [[(op, *pts)...]] contours (m/l/q, SWF coords)."""
-    br = Bits(data, start)
-    nfill, nline = br.read(4), br.read(4)
-    x = y = 0
-    contours, cur = [], None
-    while True:
-        if br.read(1) == 0:                               # style-change / end
-            f = br.read(5)
-            if f == 0:
-                break
-            if f & 0x01:                                  # moveTo (absolute)
-                mb = br.read(5); x = br.reads(mb); y = br.reads(mb)
-                if cur:
-                    contours.append(cur)
-                cur = [("m", x, y)]
-            if f & 0x02:
-                br.read(nfill)
-            if f & 0x04:
-                br.read(nfill)
-            if f & 0x08:
-                br.read(nline)
-            if f & 0x10:
-                break
-        else:                                             # edge
-            if br.read(1):                                # straight
-                nb = br.read(4) + 2
-                if br.read(1):
-                    dx, dy = br.reads(nb), br.reads(nb)
-                elif br.read(1):
-                    dx, dy = 0, br.reads(nb)
-                else:
-                    dx, dy = br.reads(nb), 0
-                x += dx; y += dy; cur.append(("l", x, y))
-            else:                                         # quadratic curve
-                nb = br.read(4) + 2
-                cdx, cdy, adx, ady = br.reads(nb), br.reads(nb), br.reads(nb), br.reads(nb)
-                cx, cy = x + cdx, y + cdy; x = cx + adx; y = cy + ady
-                cur.append(("q", cx, cy, x, y))
-    if cur:
-        contours.append(cur)
-    return contours
 
 
 def _find_font_tag(data, font_id):

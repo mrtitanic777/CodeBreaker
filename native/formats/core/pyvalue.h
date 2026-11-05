@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,21 @@ public:
     void boolean(bool v) { op(v ? '\x88' : '\x89'); }
     void integer(int64_t v);
     void uinteger(uint64_t v);
+    void bigint(std::vector<uint8_t> le) {      // an unsigned int of any size (little-endian bytes): LONG1 / LONG4
+        while (!le.empty() && le.back() == 0) le.pop_back();
+        if (le.empty()) { integer(0); return; }
+        if (le.back() & 0x80) le.push_back(0);
+        if (le.size() < 256) { op(static_cast<char>(0x8a)); buf_ += static_cast<char>(le.size()); }
+        else { op(static_cast<char>(0x8b)); u32le(static_cast<uint32_t>(le.size())); }
+        for (uint8_t b : le) buf_ += static_cast<char>(b);
+    }
+    void real(double v) {                     // a float: BINFLOAT, the IEEE double big-endian
+        op('G');
+        uint64_t b;
+        static_assert(sizeof b == sizeof v, "double");
+        std::memcpy(&b, &v, sizeof b);
+        for (int k = 7; k >= 0; --k) buf_ += static_cast<char>((b >> (8 * k)) & 0xFF);
+    }
     void uinteger65(uint64_t low);            // 2**64 + low (a sum that carried past 64 bits)
     void text(const std::string &utf8);      // a str, given as UTF-8
     void text(const char *utf8) { text(std::string(utf8)); }

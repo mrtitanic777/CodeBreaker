@@ -22,53 +22,15 @@ back, confirm format/size/pixels and a valid DDS).
 import struct
 import sys
 
+from codebreaker.formats import native
+
 DESCRIPTION = "extract textures from Xbox .xpr resource bundles (XPR0 original / XPR2 360) -> DDS"
-
-# nv2a X_D3DFMT codes we can turn into a DDS FourCC surface
-_XFMT_DXT = {0x0C: "dxt1", 0x0E: "dxt3", 0x0F: "dxt5"}
-_XFMT_NAME = {0x00: "L8", 0x01: "AL8", 0x02: "A1R5G5B5", 0x05: "R5G6B5",
-              0x06: "A8R8G8B8", 0x07: "X8R8G8B8", 0x0B: "P8", 0x0C: "DXT1",
-              0x0E: "DXT3", 0x0F: "DXT5", 0x19: "A8", 0x1A: "A8L8",
-              0x3F: "LIN_A8R8G8B8"}
-
 
 class XprError(Exception):
     pass
 
 
-# ── XPR0 (original Xbox) ────────────────────────────────────────────────────
-def _decode_format_dword(f):
-    """Unpack an Xbox D3DTexture.Format dword -> (xfmt, log2w, log2h, mips, dim)."""
-    return {
-        "dma": f & 0x3,
-        "cubemap": bool(f & 0x4),
-        "dimension": (f >> 4) & 0xF,
-        "xfmt": (f >> 8) & 0xFF,
-        "mipmaps": (f >> 16) & 0xF,
-        "log2w": (f >> 20) & 0xF,
-        "log2h": (f >> 24) & 0xF,
-        "log2p": (f >> 28) & 0xF,
-    }
-
-
-def parse_xpr0(data):
-    """Parse an XPR0 bundle -> dict(fmt, xfmt, width, height, mipmaps, cubemap,
-    data_offset, pixels). Raises XprError if not a well-formed XPR0."""
-    if len(data) < 0x1C or data[:4] != b"XPR0":
-        raise XprError("not an XPR0 bundle")
-    total, header_size = struct.unpack_from("<II", data, 4)
-    # D3DResource header: Common, Data, Lock, Format (all u32 LE) at 0x0C
-    _common, _dataref, _lock, fmtdw = struct.unpack_from("<IIII", data, 0x0C)
-    d = _decode_format_dword(fmtdw)
-    w, h = 1 << d["log2w"], 1 << d["log2h"]
-    off = header_size if header_size else 0x1C
-    pixels = data[off:total] if total and total <= len(data) else data[off:]
-    fmt = _XFMT_DXT.get(d["xfmt"])
-    return {"container": "XPR0", "xfmt": d["xfmt"],
-            "format_name": _XFMT_NAME.get(d["xfmt"], "0x%02X" % d["xfmt"]),
-            "dds_fmt": fmt, "width": w, "height": h,
-            "mipmaps": d["mipmaps"], "cubemap": d["cubemap"],
-            "data_offset": off, "pixels": pixels, "total": total or len(data)}
+native.RAISES["XprError"] = XprError
 
 
 def build_xpr0(pixels, width, height, xfmt=0x0C, mipmaps=1):
@@ -84,28 +46,12 @@ def build_xpr0(pixels, width, height, xfmt=0x0C, mipmaps=1):
     return hdr + pixels
 
 
-# ── XPR2 (Xbox 360) ─────────────────────────────────────────────────────────
-def parse_xpr2(data):
-    """Parse an XPR2 bundle header -> dict(header_size, data_size, data_offset,
-    pixels). The 360 pixel region is tiled DXT; hand `pixels` to texture.untile
-    + texture.to_dds with the surface's real dimensions."""
-    if len(data) < 0x10 or data[:4] != b"XPR2":
-        raise XprError("not an XPR2 bundle")
-    header_size, data_size = struct.unpack_from(">II", data, 4)
-    off = header_size
-    pixels = data[off:off + data_size] if data_size else data[off:]
-    return {"container": "XPR2", "header_size": header_size,
-            "data_size": data_size or len(pixels), "data_offset": off,
-            "pixels": pixels}
-
-
-# ── unified ─────────────────────────────────────────────────────────────────
+@native.answered("xpr.parse")
 def parse(data):
-    if data[:4] == b"XPR0":
-        return parse_xpr0(data)
-    if data[:4] == b"XPR2":
-        return parse_xpr2(data)
-    raise XprError("unknown magic %r (expected XPR0 or XPR2)" % data[:4])
+    """An XPR0 / XPR2 bundle -> {container, ... pixels}: XPR0 {xfmt, format_name, dds_fmt, width, height, mipmaps,
+    cubemap, data_offset, pixels, total}, XPR2 {header_size, data_size, data_offset, pixels} (the 360 pixel region
+    is tiled DXT: hand it to texture.untile + texture.to_dds with the surface's real dimensions).  XprError when it
+    is neither (formats.dll's, native/formats/xbox/graphics.cc)."""
 
 
 def to_dds(info, width=None, height=None):

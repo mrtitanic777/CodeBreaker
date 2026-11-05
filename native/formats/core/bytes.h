@@ -91,6 +91,9 @@ public:
     uint16_t be16(int64_t off) const { return static_cast<uint16_t>(be(off, 2)); }
     uint32_t be32(int64_t off) const { return static_cast<uint32_t>(be(off, 4)); }
 
+    // struct.unpack_from of a whole format of `width` bytes at off: the struct.error it raises when it does not fit
+    void need(int64_t off, int width) const { checked(off, width); }
+
     // struct.unpack(fmt, data[a:b]) of a value of `width` bytes: the slice must be exactly that
     // long.  `exact(width)` checks a slice already taken.
     const Bytes &exact(int64_t width) const {

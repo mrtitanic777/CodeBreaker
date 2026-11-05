@@ -976,30 +976,71 @@ Outside callers checked: Dashboard, Windows95/tools, Win95VM and XboxMCP import 
 _sec_of), symbols/runtime_library.py, verify/lanes/win32.py, compare/versions.py,
 source/pe_writer.py, verify/authored/match.py (function_spans), recompile/discover.py (Image).
 
-## HANDOFF: the rest of formats/ (left for the next session)
+### 2026-11-05: group 4 (in part) -- the Xbox containers and assets, gfx, xnb -- in C++, their Python deleted
 
-Done: groups 1, 2 and 3 (above). Not started, in this order, each by the same process (C++ in
-native/formats, the module made its API with `@native.answered` / `native.call`, gated against the
-Python kept aside in state/work/formats-native3/orig/ by a gate in the style of gate2.py / gate3*.py,
-then deleted). The gate harness, `with_orig`-style swap and settings script are in
-state/work/formats-native3/ (copy them; settings.json needs absolute paths: mksettings.py).
+`native/formats/xbox/`: `discs.cc` (byte devices kept in a table so a gigabyte image is streamed: a file, a
+Games-on-Demand folder de-interleaved, a CSO / CCI image; the XDVDFS walk / read / build_xdvdfs; GoD's part layout, header
+and NXE install transform; CSO / CCI read and write; LZ4 raw blocks), `assets.cc` (XACT sound banks, XBE, XUIZ, XDBF),
+`graphics.cc` (the 360 texture layout and DXT decode, XPR, Scaleform GFx movies, XNA content), `pyfmt.h` (Python's bytes repr,
+checked struct packing, bytearray slice assignment).  Deleted: lz4block.py (the greedy encoder is the only one now:
+python-lz4's HC was an optional upgrade, not installed), and the bodies of gdf, god, ciso, xsb, xbe, xzp, xdbf, texture,
+xpr, gfx, xnb.  The classes stay as thin shims (GDF keeps `dev`, `base`, `root_sector`, `root_size`, `_walk_dir`, which the
+Dashboard's prepare_game.unpack_disc reads; XBE, XDBF and Xnb keep their attributes); what needs Pillow, fontTools,
+ffmpeg or the file system (decode_dxt's image, font_to_ttf, xnb.convert, xzp.build, god's command line) stays Python
+around the native bytes.  omf.patched and omf.rename_symbols went too: the records are walked in C++, the caller's
+function names the symbols between two calls (`omf.symbol_names`, `omf.rename_symbols`).
 
-4. Xbox formats CodeBreaker wrote: xbox/ (stfs, fatx, zar, god, ciso, xdbf, xsb, xbe, xzp, gdf,
-   volumes, texture, xpr, effect, heavyiron), gfx.py, xnb.py (lzx.h is there for it). The
-   Dashboard imports xbox.gdf (`gdf._open`, `GDF`) and xex.basic and runs `python -m codebreaker
-   xenon-recompile`: their APIs must stay exactly. Notes from reading gdf.py: it reads a "device"
-   (`read_at(offset, length)`: a file, or god.SvodReader over a .data folder), so port god (the SVOD
-   reader) with it, and let the C++ open the file or folder itself; `build_xdvdfs` is a pure builder.
-5. formats/xbox/crypto/ -- ALL of it (Logan, 2026-11-05): CodeBreaker's own files (bootchain,
-   cpukey_ecd, flashplan, fuses, hypervisor, keyvault, nand, smc, StreamIO) AND the vendored
-   upstream tools ATTRIBUTION.md lists, each C++ port keeping its upstream attribution and
-   license notice, and ATTRIBUTION.md updated to say what each became. Same gate: identical
-   outputs on real inputs and the test samples (tests/test_xbox_crypto.py and its other users).
+| gate (answers with their types, damaged copies included) | inputs | identical | Python | C++ |
+|---|---|---|---|---|
+| gdf (3 ISOs, the GoD folders, synthetic and damaged volumes) | 47 | 47 | 1.4 s | 1.7 s |
+| god (write_god over 4 volumes: every file byte-identical; install, header, SVOD reads) | 14 | 14 | 0.00 s | 0.00 s |
+| lz4 (compress, decode, damaged blocks, junk) | 820 | 820 | 0.36 s | 0.28 s |
+| ciso (write_cso / write_cci byte-identical, to_iso, damaged images) | 50 | 50 | 0.97 s | 0.17 s |
+| xsb (52 banks + damaged copies) | 885 | 885 | 2.5 s | 2.6 s |
+| xbe (the test XBE, 100 damaged / edited copies) | 107 | 107 | 2.9 s | 2.3 s |
+| xzp (2,628 packs + damaged) | 3,756 | 3,756 | 32 s | 19 s |
+| xdbf (1,519 GPD / FIT files: parse, achievements, unlock_all, build) | 4,403 | 4,403 | 14.6 s | 19 s |
+| texture (every format and size, tiled and linear, all flags) | 1,818 | 1,818 | 8.4 s | 0.39 s |
+| xpr (515 bundles + built + damaged) | 1,124 | 1,124 | 1.4 s | 2.0 s |
+| gfx (376 LCE .swf re-wrapped as GFX and CFX movies, synthetic, junk) | 3,703 | 3,703 | 1.8 s | 0.8 s |
+| xnb (690 files: parse, textures, fonts, sounds, effects, convert() records and every file it writes) | 2,225 | 2,225 | 242 s | 165 s |
+| omf.patched / rename_symbols (1,200 objects and library members of the OMF corpora and Microsoft-Assemblers-Compilers, damaged copies, 5 renamers, 4 patches each) | 33,203 | 33,203 | 125 s | 28 s |
+| formats.xex (is_xex, ids, optional_headers, header) over the library: Library, Games, content, TUs, 17559Dash, the Dashboard's .xex | 400 | 400 | 27.6 s (xex.exe's listing) | 3.1 s |
 
-Also open: omf.patched / rename_symbols could move (the C++ walks the records; the shim applies
-the regex/function to the names it returns); the XEX gate re-run over the Xbox 360 library; the
-Python left in group 3 (inspect.describe and the rest of the presentation, PeCarve's instruction
-queries) moves when the Capstone detail (operands) is wanted in C++.
+0 fallbacks.  The gates are state/work/formats-native4/gate4a.py .. gate4d.py over harvest.py's list of every Xbox file
+under the repo's neighbours (the Nexia360 library, the Dashboard, the SDK ...).  Where the C++ is slower (xdbf, xzp
+reading, gdf.read of a huge file) the file bytes cross the pickle: one copy per side more than Python's one read.  An
+error's message is the Python's (xnb.convert records it in its JSON).
+
+**HANDOFF: what is left of group 4, and group 5.**  (Logan, 2026-11-05: the rest is not to be hand-ported; CodeBreaker's port is
+moving to the automatic engine, a dynamic mode in native/pyengine.  Nothing below is started; it is the list for that engine, and
+the gates, harvest.py and orig copies in state/work/formats-native4/ are its check.)
+
+- Group 4 left: **effect.py** (the D3DX effect reader: a Parameter / State / Pass / Technique object model over
+  `_typedef` / `_value` / `_state`; native/formats/xbox would return a nested dict and the classes would be built from it,
+  _copy's shared-member identity checked), **heavyiron.py** (parse -> a dict tree, the writer patching offsets, textures
+  through Pillow), **stfs.py** (530 lines; resign needs RSA modpow: native/xex/src/crypto has SHA-1 and AES, no big
+  integers), **fatx.py** (760, the reader / writer / carver), **zar.py** (1,030), **volumes.py** (the media adapters: glue
+  over the above, move it last).  Also not in the user's list but in the same folder: bink, chd, nand, pck, shader,
+  system_ui, xma, xur, xwb.
+- Group 5 (formats/xbox/crypto/, ALL of it, each C++ port keeping its upstream attribution and license, ATTRIBUTION.md
+  updated, tests/test_xbox_crypto.py in the gate) is not started: XeCrypt.py (1,277 lines of RC4 / RSA / SHA / HMAC /
+  DES on top of cryptography), MemCrypto, shadowboot (853), nand_tool, xcp_dumper, build_lib, harness, xsm3, lzx (653: the
+  vendored copy; native/formats/lzx has the core) and the small tools.  SHA-1 / AES-128 are in native/xex/src/crypto
+  (xex::crypto, linked into formats.dll).
+- The method (the same for each): harvest.py's list, a gate that runs the orig copy (mk_orig.py writes it from git HEAD,
+  pointing the other xbox imports at their orig copies) against the shim on every input and on damaged copies, ask() for
+  the exception's name; then delete.  Notes: Bytes::need(off, width) makes the struct.error of a whole format; pyfmt.h's
+  slice_assign is bytearray's slice assignment (a short slice shortens the array); Out::real writes a float; ids above
+  2**63 cannot cross as ints (the pickle reader is int64: send 8 bytes).  xnb's 7-bit ints are Python's unbounded ones (the manifest's `shared` of a damaged file): Out::bigint writes any size.  Tool pitfall: a Bash heredoc eats doubled
+  backslashes: write C++ / Python that contains them with the Write or Edit tool.
+- The XEX gate (gate4e_xex.py) runs the Python reader as it was before the C++ header (72689b950^, xex.exe's listing)
+  against formats.xex.  It found one bug of the old C++ header: six of the Dashboard's `Dashboard Versions/converted`
+  .xex have import library names padded with 0xCD, which the C++ wrote as invalid UTF-8 (the pickle failed to read
+  them); the names are now written as the listing's single-byte text (latin1), as the Python decoded them.
+
+Also open: the Python left in group 3 (inspect.describe and the rest of the presentation, PeCarve's instruction queries)
+moves when the Capstone detail (operands) is wanted in C++.
 
 ### The C++17 back end -- `l2cpp17` (2026-10-31)
 
