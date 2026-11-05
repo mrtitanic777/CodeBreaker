@@ -32,12 +32,20 @@ class NEFile(ne.NEFile):
     def from_buffer(cls, data, ne_off, path="<buffer>"):
         self = object.__new__(cls)
         self.path, self.data, self.ne_off = path, data, ne_off
-        self.h = native.call("ne.from_buffer", data, ne_off)
+        try:
+            self.h = native.call("ne.from_buffer", data, ne_off)
+        except native.Fallback:
+            if data[ne_off:ne_off + 2] != b"NE":
+                raise ValueError(f"no NE at 0x{ne_off:x}")
+            ne.NEFile._parse_header(self)
         self.base = ne_off
         return self
 
     def _parse_header(self):
-        self.h = native.call("ne._parse_header", self.data, self.ne_off)
+        try:
+            self.h = native.call("ne._parse_header", self.data, self.ne_off)
+        except native.Fallback:
+            ne.NEFile._parse_header(self)
 
 
 class BootImageModule(NEFile, ne.BootImageModule):

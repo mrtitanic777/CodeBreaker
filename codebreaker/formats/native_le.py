@@ -44,7 +44,13 @@ class LEFile(le.LEFile):
 
     @classmethod
     def from_buffer(cls, data):
-        return cls(data, native.call("le.from_buffer", data))
+        try:
+            lfa = native.call("le.from_buffer", data)
+        except native.Fallback:
+            lfa = int.from_bytes(data[0x3c:0x40], "little")
+            if data[lfa:lfa + 2] not in (b"LE", b"LX"):
+                raise ValueError("not an LE/LX image (sig=%r)" % data[lfa:lfa + 2])
+        return cls(data, lfa)
 
 
 def _object_of(lf, answer):
