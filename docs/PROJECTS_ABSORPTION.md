@@ -187,7 +187,7 @@ Logan's rule: what something better has replaced is worthless.
 
 - **TetrisPC** (2026-10-22, with Logan's yes): Tetris Splash runs on CodeBreaker's own recompile
   lane and Xbox 360 runtime (docs/RECOMPILE.md), with sound, which the earlier port never had. Kept: the
-  `bin.tort` archive reader (`codebreaker/formats/xbox/tort.py`); the game's original LIVE package
+  `bin.tort` archive reader (`codebreaker/formats/xbox/tort.py`, unused, deleted 2026-11-04; in git history); the game's original LIVE package
   and XEX and its files moved into `Converted/TetrisSplash/` (not in the repo). Its earlier ports,
   extracted copies, Ghidra project, raw audio dumps and audio diagnosis were superseded.
 - **ghidra, ghidra_12.1.3_PUBLIC** (2026-10-22, Logan: no Ghidra at all): CodeBreaker decompiles with its

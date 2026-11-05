@@ -847,7 +847,7 @@ Kept, and why:
 - **Dead by import** (nothing imports them; each a `python -m` tool or a library, none a fallback):
   exact/fleet.py, formats/mscompress.py, verify/gate16/diverge16.py, formats/xbox/tort.py,
   formats/xbox/crypto/forensics.py and kdnet.py (1,296 lines), and 11 tools/ scripts run by path
-  (958). Not deleted: features, for Logan to keep or drop. `score16` and `exact` are commands in
+  (958). Deleted with Logan's yes (2026-11-04) after the merge; git history keeps them. `score16` and `exact` are commands in
   __main__'s table missing from its listing.
 
 ## The rest, in measured-cost order
