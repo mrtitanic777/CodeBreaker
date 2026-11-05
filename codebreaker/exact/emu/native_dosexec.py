@@ -16,7 +16,7 @@ import os
 
 from codebreaker.base import settings
 
-DEFAULT = "0"             # CB_NATIVE_DOSEXEC when it is not set
+DEFAULT = "1"             # CB_NATIVE_DOSEXEC when it is not set (identical on the gate: docs/NATIVE.md)
 _LIB = []                 # [the DLL, or None when it cannot be used here]
 _WHY = []
 _RAISE = {1: RuntimeError, 4: AssertionError, 5: ValueError, 8: RuntimeError}
