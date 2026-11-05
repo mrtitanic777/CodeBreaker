@@ -45,6 +45,7 @@ add_library(pyrt STATIC
   src/lib_extra.cc    # the C halves of standard modules translated from CPython (gettext, _random, _csv, zlib ...)
   src/lib_ctypes.cc   # ctypes: calls straight into DLLs (structures, pointers, arrays, callbacks)
   src/lib_pytest.cc   # pytest: the API the test files use, and the runner (-m pytest)
+  src/lib_xml.cc      # pyexpat: the XML parser xml.etree / xml.dom.minidom (CPython's Python) call
   src/lib_crypto.cc   # cryptography (hashes, HMAC, AES / 3DES / ARC4, RSA numbers) and DES over bcrypt
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)

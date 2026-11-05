@@ -241,7 +241,7 @@ var bind(const var& attr, const var& self, TypeObj* t) {
         return var(m);
     }
     if (at == T_native) {
-        if (self.is_unbound()) return attr;
+        if (self.is_unbound() || !static_cast<NativeObj*>(o)->self.is_unbound()) return attr;   // (a builtin already bound, gen.__next__ kept in a class, is not bound again)
         return bind_native(attr, self);
     }
     if (at == T_staticmethod) return static_cast<WrapObj*>(o)->f;

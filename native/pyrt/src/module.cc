@@ -67,6 +67,7 @@ static var load_one(const std::string& name) {
         std::string pkg = def->package_ ? name : (name.rfind('.') == std::string::npos ? "" : name.substr(0, name.rfind('.')));
         mo->cell("__package__")->v = new_str(pkg);
         if (mo->cells.find("__doc__") == mo->cells.end() || mo->cell("__doc__")->v.is_unbound()) mo->cell("__doc__")->v = None;
+        if (auto dbg = mo->cells.find("__debug__"); dbg != mo->cells.end() && dbg->second->v.is_unbound()) dbg->second->v = var(true);   // (`if __debug__:` is the constant True)
         sysmods()->set(new_str(name), mod);
         try {
             def->init_();
@@ -308,6 +309,7 @@ var run_module_(const std::string& name_in, const std::string& run_name) {
     auto* mo = static_cast<ModuleObj*>(mod.ref());
     mo->def = def;
     if (def->file_) mo->cell("__file__")->v = new_str(def->file_);
+    if (auto dbg = mo->cells.find("__debug__"); dbg != mo->cells.end() && dbg->second->v.is_unbound()) dbg->second->v = var(true);
     try {
         def->init_();
     } catch (...) {
