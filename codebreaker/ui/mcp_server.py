@@ -828,8 +828,7 @@ def _thunk(img, va):
     """The import a `jmp [slot]` at `va` goes to, or None."""
     from codebreaker.analyze import image
     s = img.span(va)
-    ci = next(img._md.disasm(bytes(s[1][va - s[0]:va - s[0] + 16]), va), None) if s and s[2] else None
-    ins = img._convert(ci) if ci is not None else None
+    ins = next(iter(img.linear(va, 1)), None) if s and s[2] else None
     slot = image._slot(ins) if ins is not None and ins.flow == "jmp" and ins.target is None else None
     return (slot, img.imports[slot]) if slot in img.imports else None
 
@@ -890,11 +889,7 @@ def disasm(module: str, addr: str, count: int = 0) -> dict:
         s = img.span(va)
         if not s:
             raise ValueError("%x is not in %s" % (va, img.name))
-        insns = []
-        for ci in img._md.disasm(bytes(s[1][va - s[0]:va - s[0] + 16 * n]), va):
-            insns.append(img._convert(ci))
-            if len(insns) >= n:
-                break
+        insns = img.linear(va, n)
         how = "%d instructions read straight on" % len(insns)
         owner = img.owner(va)
         head = {"inside": "%s+%x" % (img.names[owner], va - owner) if owner is not None else None}
