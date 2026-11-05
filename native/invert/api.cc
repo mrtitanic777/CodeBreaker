@@ -10,6 +10,8 @@
 #include "flow16.h"
 #include "msc6.h"
 #include "msvc2.h"
+#include "early_c.h"
+#include "pyval.h"
 
 using namespace cbinv;
 
@@ -141,7 +143,7 @@ int cbinv_msvc2(const char *in, int which, char **out) {
   return guarded(out, [&] { return msvc2_call(in, which); });
 }
 
-int cbinv_version(void) { return 3; }
+int cbinv_version(void) { return 4; }
 
 void cbinv_free(char *p) { std::free(p); }
 
@@ -214,6 +216,148 @@ int cbinv_small(const char *in, int which, char **out) {
     if (which == 0) return msc6_cleanup(code, names);
     if (which == 1) return msc6_walk(code, syms, callee);
     return msc6_templates(code);
+  });
+}
+
+
+int cbinv_early_c(const char *in, int which, cbinv_hook_t hook, char **out) {
+  return guarded(out, [&]() -> std::string {
+    auto strs = [](const V &v) {
+      std::vector<std::string> o;
+      for (auto &x : v.a) o.push_back(x.s);
+      return o;
+    };
+    auto ints = [](const V &v) {
+      std::vector<long long> o;
+      for (auto &x : v.a) o.push_back(x.i);
+      return o;
+    };
+    auto jl = [](const std::vector<std::string> &v) {
+      std::string o = "[";
+      for (size_t k = 0; k < v.size(); k++) o += (k ? "," : "") + jstr(v[k]);
+      return o + "]";
+    };
+    if (which >= 2) {
+      V a = from_json(in);
+      if (which == 2)
+        return jstr(ec_to_c(a[0].s, a[1].i, strs(a[2]), strs(a[3]), a[4].s, ints(a[5]), ints(a[6])));
+      if (which == 3) return jl(ec_fold_ladders(strs(a[0]), a[1].truthy()));
+      std::string o = "[";
+      auto c = ec_detect_copies(strs(a[0]));
+      for (size_t k = 0; k < c.size(); k++)
+        o += (k ? "," : "") + std::string("[") + std::to_string(c[k].first) + "," + std::to_string(c[k].second) + "]";
+      return o + "]";
+    }
+    std::vector<uint8_t> code;
+    long long base = 0;
+    std::map<long long, std::string> cxmap;
+    EcCfg C;
+    EcLast L;
+    std::istringstream is(in);
+    std::string line;
+    auto items = [](const std::string &s) {
+      std::vector<std::string> o;
+      if (s.empty()) return o;
+      return split(s, '\x1f');
+    };
+    while (std::getline(is, line)) {
+      auto f = split(line, '\t');
+      const std::string &k = f[0];
+      std::string v = f.size() > 1 ? f[1] : "";
+      if (k == "C") code = unhex(v);
+      else if (k == "B") base = std::stoll(v);
+      else if (k == "X" && f.size() >= 3) cxmap[std::stoll(f[1])] = f[2];
+      else if (k == "F") {
+        bool *fl[] = {&C.mark, &C.farptr, &C.deadregs, &C.unsigned_cast, &C.fpcasts, &C.regvars_eager,
+                      &C.frame_after_bp, &C.regparam_reread, &C.masm_cret, &C.cmpswitch, &C.nocap};
+        for (size_t q = 0; q < 11 && q < v.size(); q++) *fl[q] = v[q] == '1';
+      } else if (k == "V") C.retval = std::stoi(v);
+      else if (k == "H") {
+        auto h = split(v, ',');
+        for (size_t q = 0; q < 7 && q < h.size(); q++) C.hash[q] = std::stoll(h[q]);
+      } else if (k == "K" && hook) {
+        if (v.find('s') != std::string::npos)
+          C.hooks.sw = [hook](long long a, std::vector<long long> &t) {
+            std::vector<char> buf(1 << 16);
+            int st = hook(0, a, "", "", buf.data(), (int)buf.size());
+            if (st == 1) t = nums(std::string(buf.data()));
+            return st;
+          };
+        if (v.find('i') != std::string::npos)
+          C.hooks.callinfo = [hook](long long a, const std::string &kind, const std::string &tg, long long &n) {
+            std::vector<char> buf(256);
+            int st = hook(1, a, kind.c_str(), tg.c_str(), buf.data(), (int)buf.size());
+            if (st == 1) n = std::stoll(std::string(buf.data()));
+            return st;
+          };
+        if (v.find('r') != std::string::npos)
+          C.hooks.callregs = [hook](long long a, const std::string &kind, const std::string &tg,
+                                    std::vector<std::string> &rr) {
+            std::vector<char> buf(4096);
+            int st = hook(2, a, kind.c_str(), tg.c_str(), buf.data(), (int)buf.size());
+            if (st == 1) {
+              std::string s(buf.data());
+              rr.clear();
+              if (!s.empty()) rr = split(s, ',');
+            }
+            return st;
+          };
+      } else if (k == "Ls") {
+        L.has_saved = true;
+        L.saved = items(v);
+      } else if (k == "Lr") {
+        L.has_regparam = true;
+        for (auto &x : items(v)) {
+          size_t c = x.find('\x1e');
+          L.regparam.push_back({x.substr(0, c), std::stoll(x.substr(c + 1))});
+        }
+      } else if (k == "Lt") {
+        L.has_fptypes = true;
+        for (auto &x : items(v)) {
+          size_t c = x.find('\x1e');
+          L.fptypes.push_back({x.substr(0, c), x.substr(c + 1)});
+        }
+      } else if (k == "Lf") {
+        L.has_fpret = true;
+        L.fpret = v;
+      } else if (k == "Lu") {
+        L.has_ul = true;
+        L.unsigned_longs = items(v);
+      }
+    }
+    // (the Python changed LAST in place before it raised: the exception comes back with LAST)
+    EcResult r;
+    std::string o;
+    try {
+      r = which == 0 ? ec_recover(code, base, cxmap, C, L) : ec_recover_cfg(code, base, cxmap, C, L);
+      o = "{\"fs\":" + std::to_string(r.fs) + ",\"params\":" + jl(r.params) + ",\"stmts\":" + jl(r.stmts) +
+          ",\"pt\":" + jstr(r.pt) + ",\"loc\":[";
+      for (size_t q = 0; q < r.loc.size(); q++) o += (q ? "," : "") + std::to_string(r.loc[q]);
+      o += "],";
+    } catch (const PyError &e) {
+      o = "{\"err\":" + std::to_string(e.kind) + ",\"msg\":" + jstr(e.msg) + ",";
+    } catch (const std::exception &e) {
+      o = "{\"err\":" + std::to_string(CBINV_OTHER) + ",\"msg\":" + jstr(e.what()) + ",";
+    }
+    o += "\"last\":{";
+    std::vector<std::string> parts;
+    if (L.has_saved) parts.push_back("\"saved\":" + jl(L.saved));
+    if (L.has_regparam) {
+      std::string x = "\"regparam\":[";
+      for (size_t q = 0; q < L.regparam.size(); q++)
+        x += (q ? "," : "") + std::string("[") + jstr(L.regparam[q].first) + "," + std::to_string(L.regparam[q].second) + "]";
+      parts.push_back(x + "]");
+    }
+    if (L.has_fptypes) {
+      std::string x = "\"fptypes\":[";
+      for (size_t q = 0; q < L.fptypes.size(); q++)
+        x += (q ? "," : "") + std::string("[") + jstr(L.fptypes[q].first) + "," + jstr(L.fptypes[q].second) + "]";
+      parts.push_back(x + "]");
+    }
+    if (L.has_fpret) parts.push_back("\"fpret\":" + jstr(L.fpret));
+    if (L.has_ul) parts.push_back("\"unsigned_longs\":" + jl(L.unsigned_longs));
+    for (size_t q = 0; q < parts.size(); q++) o += (q ? "," : "") + parts[q];
+    return o + "}}";
   });
 }
 
