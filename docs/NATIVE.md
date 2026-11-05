@@ -1130,3 +1130,13 @@ order is trusted; the order below is what is known today.
 
 Not moved: the period compilers, OpenWatcom, MASM and DOSBox-X (other people's programs, run as
 they are), and Unicorn and Capstone themselves (already native).
+
+## The test kit -- `native/testkit` (2026-11-05)
+
+`testkit.exe` is what tests/run_all.py asks of native code, so the runner itself stays small. `testkit plan` reads
+what changed since a git revision and says which suites reach it (the import graph, plus what each suite's last good
+run loaded, plus the data files a suite reads; anything it cannot place runs everything). `testkit lookup` / `store`
+are the compile cache for g++ and javac (keyed on the compiler's bytes, the flags, the preprocessed source or the
+sources and class path; only runs that succeeded and printed nothing are kept), and `prune` keeps the cache under
+its size limit. Built by `tools\build_native.cmd testkit`; see the head of native/testkit/main.cc and the docstring
+of tests/run_all.py.

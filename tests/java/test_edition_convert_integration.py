@@ -9,6 +9,7 @@ from codebreaker.java import transpile as pipeline, profiles
 
 @pytest.fixture(autouse=True)
 def _restore_default():
+    profiles.use('minecraft_xbox360')       # (the default, whichever tests ran before this file)
     yield
     profiles.use('minecraft_xbox360')
 

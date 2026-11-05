@@ -5,7 +5,23 @@ import tempfile
 import shutil
 import unittest
 
-from codebreaker.java import reflection_factory as rf
+import re
+
+import pytest
+
+from codebreaker.java import profiles, reflection_factory as rf
+from codebreaker.java.projects import minecraft
+
+
+@pytest.fixture(autouse=True)
+def _minecraft_registrars():
+    """The registration calls the factory pass looks for: the Minecraft project's, which convert() leaves in
+    reflection_factory (run(registrars=...)) -- set here so the tests do not depend on a convert() that ran before."""
+    profiles.use('minecraft_xbox360')
+    saved = rf._REG_LINE
+    rf._REG_LINE = re.compile(r'\b(?:%s)\s*\(' % '|'.join(minecraft.Minecraft.registrars))
+    yield
+    rf._REG_LINE = saved
 
 
 WORLD_ARG_CPP = '''\
