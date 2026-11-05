@@ -595,6 +595,113 @@ void init_more_modules();
 
 static void reg(const char* name, native_module_init init) { register_native_module(name, init); }
 
+// ------------------------------------------------------------------------------------------ copy
+// copy.copy / deepcopy of a class's instance, as CPython's copy module does it: the class's __copy__ /
+// __deepcopy__, else its own __reduce_ex__ / __reduce__ (_reconstruct of what it gives), else object's
+// default reduce (copyreg.__newobj__: the same class made empty, its state -- __getstate__ or the
+// instance dict -- set (__setstate__ or the dict updated), then its list items appended / dict items set)
+static const var* own_attr_(TypeObj* t, const char* name) {   // defined by a class (not a builtin) in the MRO
+    for (TypeObj* m : t->mro) {
+        if (m->builtin) continue;
+        if (m->dict)
+            if (var* v = m->dict->get(name)) return v;
+    }
+    return nullptr;
+}
+using copy_fn_ = std::function<var(const var&)>;   // the copy of a part: identity (copy) or deepcopy with the memo
+static void set_state_(const var& y, const var& state, const copy_fn_& part) {
+    if (state.is_none() || state.is_unbound()) return;
+    var st = part(state);
+    var ss;
+    if (lookup_special(y, "__setstate__", ss)) { call1(ss, st); return; }
+    var slotstate;
+    if (is_tuple(st) && tuple_items(st).size() == 2) { slotstate = tuple_items(st)[1]; st = tuple_items(st)[0]; }
+    if (!st.is_none()) {
+        Obj* o = y.ref();
+        if (!o->attrs) { var d = new_dict_obj(); o->attrs = d.ref(); incref(o->attrs); }
+        dict_update_(var(o->attrs), st);
+    }
+    if (!slotstate.is_none() && !slotstate.is_unbound())
+        for (var k : each(slotstate)) y.setattr(str_utf8(k).c_str(), slotstate.getitem(k));
+}
+static var reconstruct_(const var& x, const var& rv, bool deep, const copy_fn_& part, const var& memo) {
+    if (is_str(rv)) return x;
+    const auto& r = tuple_items(rv);
+    var args = r.size() > 1 ? r[1] : new_tuple();
+    if (deep) args = part(args);
+    var y = call_obj(r.at(0), CallArgs{to_vector(args), {}});
+    if (deep) memo.setitem(id(x), y);
+    if (r.size() > 2) set_state_(y, r[2], part);
+    if (r.size() > 3 && !r[3].is_none()) {
+        if (deep) for (var it : each(r[3])) y.call("append", part(it));
+        else y.call("extend", r[3]);
+    }
+    if (r.size() > 4 && !r[4].is_none())
+        for (var kv : each(r[4])) {
+            auto p = unpack(kv, 2);
+            y.setitem(part(p[0]), part(p[1]));
+        }
+    return y;
+}
+static var copy_instance_(const var& x, bool deep, const copy_fn_& part, const var& memo) {
+    TypeObj* t = x.ref()->type;
+    if (t->layout == Layout::NativeData) return x;   // (ctypes' and the library modules' data: as before)
+    if (const var* f = own_attr_(t, "__reduce_ex__")) return reconstruct_(x, call1(bind(*f, x, t), var(4)), deep, part, memo);
+    if (const var* f = own_attr_(t, "__reduce__")) return reconstruct_(x, call0(bind(*f, x, t)), deep, part, memo);
+    var y;
+    switch (t->layout) {
+    case Layout::Tuple: {        // (a namedtuple: __getnewargs__ is its fields)
+        std::vector<var> v;
+        for (auto& e : tuple_items(x)) v.push_back(part(e));
+        y = new_tuple(v);
+        y.ref()->type = t;
+        break;
+    }
+    case Layout::Set:            // set.__reduce__: (type(s), (list(s),), state)
+        y = call_type(t, CallArgs{{new_list(collect(x))}, {}});
+        break;
+    case Layout::Exception: {    // BaseException.__reduce__: (type(e), e.args, state)
+        auto* e = new ExcObj();
+        e->type = t;
+        e->args = part(static_cast<ExcObj*>(x.ref())->args);
+        y = var(static_cast<Obj*>(e));
+        break;
+    }
+    case Layout::Object: {
+        auto* o = new Obj();
+        o->type = t;
+        y = var(o);
+        break;
+    }
+    case Layout::Dict:           // (dict.__new__(cls) / list.__new__(cls): the class's empty storage)
+        y = new_dict_obj(t);
+        static_cast<DictObj*>(y.ref())->ordered_kind = static_cast<DictObj*>(x.ref())->ordered_kind;
+        static_cast<DictObj*>(y.ref())->default_factory = static_cast<DictObj*>(x.ref())->default_factory;
+        break;
+    case Layout::List:
+        y = new_list();
+        y.ref()->type = t;
+        break;
+    default:                     // (other native storage: the value itself, as before)
+        return x;
+    }
+    if (deep) memo.setitem(id(x), y);
+    var state;
+    if (const var* gs = own_attr_(t, "__getstate__")) state = call0(bind(*gs, x, t));
+    else if (x.ref()->attrs && static_cast<DictObj*>(x.ref()->attrs)->used) state = var(x.ref()->attrs);
+    set_state_(y, state, part);
+    if (t->layout == Layout::List) {
+        if (deep) for (auto& it : list_items(x)) y.call("append", part(it));
+        else y.call("extend", new_list(list_items(x)));
+    } else if (t->layout == Layout::Dict) {
+        std::vector<std::pair<var, var>> items;
+        for (auto& e : static_cast<DictObj*>(x.ref())->entries)
+            if (!e.key.is_unbound()) items.emplace_back(e.key, e.value);
+        for (auto& [k, v] : items) y.setitem(part(k), part(v));
+    }
+    return y;
+}
+
 // a struct format: str, or bytes as CPython also takes (zipfile's b"<4s4H2LH")
 static std::string fmt_str(const var& f) { return is_str(f) ? str_utf8(f) : raw_of(f); }
 
@@ -604,6 +711,13 @@ bool module_registered_(const std::string& name);
 void init_modules() {
     init_os_modules();
     reg("re", init_re_module);
+    // _sre's numbers (re._constants and re._parser, CPython's own Python, are translated: stdlib.txt)
+    reg("_sre", [](const var& m) {
+        mod_set(m, "MAXREPEAT", var((int64_t)4294967295LL));
+        mod_set(m, "MAXGROUPS", var((int64_t)1073741823LL));
+        mod_set(m, "MAGIC", var((int64_t)20230612));
+        mod_set(m, "CODESIZE", var((int64_t)4));
+    });
 
     reg("json", [](const var& m) {
         var dec = make_class("JSONDecodeError", "JSONDecodeError", {t::ValueError}, new_dict(), {}, "json");
@@ -1504,6 +1618,11 @@ void init_modules() {
     reg("copy", [](const var& m) {
         mod_def(m, "copy", [](const CallArgs& a) {
             var x = a.pos.at(0);
+            if (x.is_ref() && !x.ref()->type->builtin) {
+                var cp;
+                if (lookup_special(x, "__copy__", cp)) return call0(cp);
+                return copy_instance_(x, false, [](const var& v) { return v; }, var());
+            }
             if (is_list(x)) return new_list(list_items(x));
             if (is_dict(x)) {
                 var d = new_dict_obj(x.ref()->type == T_dict ? nullptr : type_of(x));
@@ -1516,13 +1635,6 @@ void init_modules() {
             if (x.is_ref() && x.ref()->type->layout == Layout::ByteArray) return new_bytes(raw_of(x), true);
             var cp;
             if (lookup_special(x, "__copy__", cp)) return call0(cp);
-            if (x.is_ref() && !x.ref()->type->builtin && x.ref()->type->layout == Layout::Object) {
-                auto* o = new Obj();
-                o->type = x.ref()->type;
-                var r(o);
-                if (x.ref()->attrs) { var d = new_dict_obj(); dict_update_(d, var(x.ref()->attrs)); o->attrs = d.ref(); incref(o->attrs); }
-                return r;
-            }
             return x;
         });
         mod_def(m, "deepcopy", [](const CallArgs& a) {
@@ -1532,6 +1644,11 @@ void init_modules() {
                 if (var* v = static_cast<DictObj*>(memo.ref())->get(key)) return *v;
                 TypeObj* t = x.ref()->type;
                 var r;
+                if (!t->builtin) {
+                    var cp;
+                    if (lookup_special(x, "__deepcopy__", cp)) return call1(cp, memo);
+                    return copy_instance_(x, true, [&](const var& v) { return dc(v, memo); }, memo);
+                }
                 if (t->layout == Layout::List) {
                     r = new_list();
                     memo.setitem(key, r);
@@ -1552,30 +1669,11 @@ void init_modules() {
                     for (var k : each(x)) r.call("add", dc(k, memo));
                 } else if (t->layout == Layout::ByteArray) {
                     r = new_bytes(raw_of(x), true);
-                } else if (!t->builtin && (t->layout == Layout::Object || t->layout == Layout::Exception)) {
-                    var cp;
-                    if (lookup_special(x, "__deepcopy__", cp)) return call1(cp, memo);
-                    if (t->layout == Layout::Exception) {
-                        auto* e = new ExcObj();
-                        e->type = t;
-                        e->args = static_cast<ExcObj*>(x.ref())->args;
-                        r = var(static_cast<Obj*>(e));
-                    } else {
-                        auto* o = new Obj();
-                        o->type = t;
-                        r = var(o);
-                    }
-                    memo.setitem(key, r);
-                    if (x.ref()->attrs) {
-                        var d = new_dict_obj();
-                        for (var k : each(var(x.ref()->attrs))) d.setitem(k, dc(var(x.ref()->attrs).getitem(k), memo));
-                        r.ref()->attrs = d.ref();
-                        incref(d.ref());
-                    }
                 } else r = x;
                 return r;
             };
-            var memo = new_dict_obj();
+            var memo = a.pos.size() > 1 ? a.pos[1] : kwarg(a, "memo", None);
+            if (memo.is_none()) memo = new_dict_obj();
             return dc(a.pos.at(0), memo);
         });
     });
