@@ -984,6 +984,7 @@ void make_collections_abc(const var& m) {
     var hashable = mk("Hashable", {}, {"__hash__"}, {});
     var iterable = mk("Iterable", {}, {"__iter__"}, {});
     var iterator = mk("Iterator", {iterable}, {"__iter__", "__next__"}, {});
+    add_method(T(iterator), "__iter__", [](const CallArgs& a) { return a.pos.at(0); });   // (Iterator's mixin: iter(it) is it)
     mk("Reversible", {iterable}, {"__reversed__", "__iter__"}, {});
     mk("Generator", {iterator}, {"__iter__", "__next__", "send", "throw", "close"}, {t::generator});
     var sized = mk("Sized", {}, {"__len__"}, {});

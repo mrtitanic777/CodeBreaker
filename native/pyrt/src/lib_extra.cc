@@ -759,6 +759,8 @@ void init_wintypes(const var& m);
 void init_pytest(const var& m);
 void init_unittest(const var& m);
 void init_crypto_modules();
+void init_xml_modules();   // (lib_xml.cc: pyexpat)
+void init_pil_modules();   // (lib_pil.cc: PIL.Image)
 
 // memoryview: a view of bytes, a bytearray or a ctypes object (raw_of reads it through .obj)
 static void make_memoryview() {
@@ -942,6 +944,7 @@ void init_extra_modules() {
     {
         // eval of an expression (lib_ast.cc evaluates pyfront's tree); exec / compile still need Python
         extern var g_builtins;
+        mod_set(g_builtins, "__debug__", var(true));   // (xml.dom.expatbuilder: `if __debug__:` in a class body)
         mod_def(g_builtins, "eval", [](const CallArgs& a) {
             return eval_expr_(a.pos.at(0), arg(a, 1, "globals", None), arg(a, 2, "locals", None));
         });
@@ -966,6 +969,8 @@ void init_extra_modules() {
     register_native_module("pytest", init_pytest);          // (lib_pytest.cc: the API and the runner)
     register_native_module("unittest", init_unittest);      // (lib_pytest.cc: TestCase, the skips, main)
     init_crypto_modules();                                  // (lib_crypto.cc: cryptography / Crypto over bcrypt)
+    init_xml_modules();
+    init_pil_modules();
     register_native_module("jsonschema", init_jsonschema);
     // z3: not in the C++ runtime until libz3 is vendored (a decision pending): importing it says so
     register_native_module("z3", [](const var&) {

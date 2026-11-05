@@ -34,3 +34,13 @@ _pycollections = collections/__init__.py
 reprlib
 _pyntpath = ntpath.py
 fnmatch
+xml.dom
+xml.dom.NodeFilter
+xml.dom.domreg
+xml.dom.minicompat
+xml.dom.xmlbuilder
+xml.dom.expatbuilder
+xml.dom.minidom
+xml.etree.ElementPath
+xml.etree.ElementTree
+xml.parsers.expat
