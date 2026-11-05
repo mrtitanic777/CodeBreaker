@@ -203,11 +203,9 @@ sqlite.org, its SHA3-256 checked against the one published; public domain; downl
 go-ahead, 2026-10-31) and compiled into cbengine.dll statically: the build needs nothing outside
 the project and no SQLite DLL is shipped beside it.
 
-**The switch.** `CB_NATIVE_ENGINE` (DEFAULT in native_engine.py; 0 = the Python engine and store).
-It is read when a database, a store or a knowledge base is opened, and the object stays on the side
-it was opened on, so one process can hold both (tests/test_native_engine.py does). Without the
-built DLL the Python runs (native_engine.why_not() says why). The switch is not part of any step's
-stamp (engine/lanes.py `_SKIP`), so both sides make facts of the same versions. Build:
+**The switch** (gone: deleted with the Python at the 2026-11-04 milestone, below). It was
+`CB_NATIVE_ENGINE`, read when a database, a store or a knowledge base was opened; without the built
+DLL opening one now raises (native_engine.why_not() says why). Build:
 
     (vcvars64)  cmake -S native/engine -B native/engine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
                 cmake --build native/engine/build
@@ -265,8 +263,10 @@ each check is mostly the always-run profile step and decoding the values asked f
 What the C++ engine opens is the steps' turn: with the store and the scheduler native, a step
 moved to C++ no longer crosses into Python at all.
 
-Identical everywhere tested, so the switch is on by default (`CB_NATIVE_ENGINE=0` falls back). The
-Python Database, Run/Context, FunctionStore and KnowledgeBase are deleted at the next milestone.
+Identical everywhere tested, so the switch went on by default; the Python Database, Run/Context,
+FunctionStore and KnowledgeBase were deleted at the 2026-11-04 milestone (below), and
+tests/test_native_engine.py now holds the C++ to the Python's answers as recorded before they went
+(tests/data/native_engine_golden.txt).
 
 **Tests.** `ctest --test-dir native/engine/build` (cbengine_test: the C interface alone, 43 checks:
 digests and blobs, a run with steps written in C++ -- made once then kept, early cutoff, a changed
@@ -558,9 +558,9 @@ the loaders step's -- native/formats is there to build on); the passes before th
 16-bit function's instructions, asm_blocks, frame16 and shape16 (CB_ASM_BLOCKS / CB_FRAME16, off by
 default; an uncommitted capstone wrapper for them waits in the worktree).
 
-**The switch.** `CB_NATIVE_L2` (default 1; 0 = the Python). backends/c.py's entry points dispatch by it
-(native_l2.install); inside the Python writer its own calls stay Python's. Without cbl2.dll the Python
-runs (native_l2.why_not()). The shim hands values over as JSON: an L2 document once and then by number
+**The switch** (gone: the Python writer and `CB_NATIVE_L2` were deleted at the 2026-11-04 milestone,
+below). backends/c.py's entry points are native_l2's; without cbl2.dll a call raises
+(native_l2.why_not()). The shim hands values over as JSON: an L2 document once and then by number
 (the decompiler's note handed over as the text it was read from), a function document's four small
 answers in one call (`describe`), a module's large flat sets once and then by number; the deep entries
 run on a fiber with a 512 MB stack on the caller's own thread.
@@ -603,8 +603,7 @@ seconds to cbl2_profile.txt: what is left is spread over the passes (far_locals,
 caller_frame_slots, names_used, heading_facts each about a tenth), the layouts about a tenth.
 
 **Left.** The module assembly (c_text) and struct_text.plan into C++, after which nothing crosses the
-shim per function; asm_blocks / frame16 / shape16 (off by default); the Python writer deleted at the
-next milestone.
+shim per function; asm_blocks / frame16 / shape16 (off by default). (The Python writer: deleted, 2026-11-04.)
 ## Step 4 (readers moved, gated, on): formats and loaders -- `native/formats`
 
 Logan, 2026-10-31: "All of it needs to be C++." The file-format readers of codebreaker/formats/
@@ -727,6 +726,51 @@ Python front end over codebreaker/ at 514599a20):
 Writing all 556 modules of codebreaker/ takes 1.9 s through the shim. CTest `cpp17_tests` holds the
 rules' choice, a Python module and a Java program to the gate's text; tests/translate (the MSVC
 semantics test, the java_modern programs beside the JVM) judge it compiled and run.
+
+## The milestone of 2026-11-04: the replaced Python deleted
+
+The regression, every native switch at its default (on), in a worktree with every native piece
+built from its own sources and a fresh state folder:
+
+- **run_all, the slow suites included:** 47 of 48 suites pass. The one failure is tools/tidy.py (19
+  unused imports and definitions, static, older than this milestone and untouched by any switch).
+- **The all-15 MINI.CAB Setup boot:** all 15 modules rebuilt from source (module.build: GDI 118
+  functions as C, USER 514, KRNL386 18 ...), booted together: PASS, Setup's License page.
+- **A sample sweep** (43 modules: about ten each of PE, NE, LE and DOS spread by size, plus the
+  10-30 milestone's flagged system.drv, mouse.drv, rasapi16.dll), against the main store's last
+  results: 38 the same or better, 5 worse (netcpl.cpl, awdevl16.dll, system.drv, mouse.drv,
+  rasapi16.dll -- all 16-bit). Each of the 5 measured again with every native switch at 0 in a
+  fresh state folder gave exactly the same counts: older regressions, none caused by the C++.
+
+So the Python behind two switches is deleted:
+
+| switch | deleted | lines removed |
+|---|---|---|
+| `CB_NATIVE_L2` | backends/c.py's Python writer (all but MOVED and the pass lists, Decline, SIZEOF, _param_name; the 21 entry points bound to native_l2's), native_l2's switch and dispatcher, tests/translate/test_native_l2.py (test_c_backend.py runs every case through the C++). The compilable16 cache key and the 16-bit lane's module stamp now carry cbl2.dll's identity. | 4,625 |
+| `CB_NATIVE_ENGINE` | facts.py's Python Database and its helpers, engine.py's Run and Context, store/functions.py's FunctionStore, knowledge/store.py's KnowledgeBase, reads.digest's fallback, the switch in native_engine.py and verdicts.py | 1,653 |
+
+Kept, and why:
+
+- **`CB_NATIVE_TRACE`, `CB_NATIVE_TRACE16`, `CB_NATIVE_TRACE_DRV`:** the Python hooks still run every
+  run beside a shadow (the path explorer, step 3 not done), and the 16-bit recorded-system and
+  prelude runs. The only replaced-only Python is the 32-bit fast path's hook_block and settle (~70
+  lines), which is also the oracle tests/test_native_trace.py holds the fast configurations to; it
+  goes with the rest at step 3.
+- **`CB_NATIVE_FORMATS(_<READER>)`:** the Python readers answer every call the C++ leaves to them
+  (a Fallback: an int past 64 bits, a packed program's unpacker in the emulator, an a.out object, a
+  place past memory; about 725 lines), and native.asker's catch-all makes about 1,600 more reachable
+  on any C++ exception. Only 42 lines are unreachable with the switch on (ne.py's from_buffer body
+  and _parse_header, le.py's from_buffer body), and ne.py is native/ported/ne's source. They go
+  when the catch-all becomes an error.
+- **`CB_NATIVE_NE`** never existed: native/ported/ne is the porting engine's gate, not a loader.
+- **`CB_ENGINE`** (the old direct reconstruct.run / module.build path, ~250 lines) is Python replaced
+  by Python, not by C++; the module.build half also still reports conventions disputes the engine
+  path does not.
+- **Dead by import** (nothing imports them; each a `python -m` tool or a library, none a fallback):
+  exact/fleet.py, formats/mscompress.py, verify/gate16/diverge16.py, formats/xbox/tort.py,
+  formats/xbox/crypto/forensics.py and kdnet.py (1,296 lines), and 11 tools/ scripts run by path
+  (958). Not deleted: features, for Logan to keep or drop. `score16` and `exact` are commands in
+  __main__'s table missing from its listing.
 
 ## The rest, in measured-cost order
 

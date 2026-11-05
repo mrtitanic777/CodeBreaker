@@ -49,10 +49,6 @@ IN_MODULE = ("model_word", "joined_arguments", "far_arguments", "void_result", "
 FLAT = ("pieces", "null_is_zero", "struct_gaps", "int_result", "register_arguments", "code_pointers",
         "compare_as_numbers", "keep_frame", "globals_through", "global_widths", "same_cast", "fit_calls",
         "struct_fields")
-# ... those the 16-bit path has not (the 32-bit path's own, and the PowerPC path's)
-FLAT_ONLY = ("int_result", "register_arguments", "code_pointers", "compare_as_numbers", "keep_frame",
-             "globals_through", "global_widths", "same_cast", "fit_calls", "struct_fields",
-             "wide_address", "homed_arguments", "uint8_result")
 # ... and those of the PowerPC path (c_text.compilable_powerpc; the facts' "lane": "powerpc")
 POWERPC = ("wide_address", "struct_gaps", "pieces", "compare_as_numbers", "code_pointers",
            "homed_arguments", "uint8_result", "open_arguments")
