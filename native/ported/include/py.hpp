@@ -38,7 +38,10 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
+
+#include "py_unicode.hpp"   // str.isalpha / isdigit / isnumeric over all of Unicode
 
 // the C library's macros that share a name with a Python method
 #ifdef isascii
@@ -202,6 +205,8 @@ inline double truediv(int64_t a, int64_t b) {
     if (b == 0) throw ZeroDivisionError("division by zero");
     return static_cast<double>(a) / static_cast<double>(b);
 }
+inline double truediv(int64_t a, double b) { return truediv(static_cast<double>(a), b); }
+inline double truediv(double a, int64_t b) { return truediv(a, static_cast<double>(b)); }
 inline double pow(double a, double b) { return std::pow(a, b); }
 inline int64_t bit_length(int64_t x) {
     uint64_t v = x < 0 ? 0 - static_cast<uint64_t>(x) : static_cast<uint64_t>(x);
@@ -439,13 +444,14 @@ class str {
         return str(o);
     }
     static bool alpha_(char32_t c) {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == 0xAA || c == 0xB5 || c == 0xBA ||
-               (c >= 0xC0 && c <= 0xFF && c != 0xD7 && c != 0xF7) || c > 0xFF;
+        return c < 0x80 ? ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) : unicode_::isalpha(c);
     }
     static bool digit_(char32_t c) { return c >= '0' && c <= '9'; }
-    bool isdigit() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), [](char32_t c) { return digit_(c) || c == 0xB2 || c == 0xB3 || c == 0xB9; }); }
+    bool isdigit() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), [](char32_t c) { return digit_(c) || (c >= 0x80 && unicode_::isdigit(c)); }); }
+    bool isdecimal() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), [](char32_t c) { return digit_(c) || (c >= 0x80 && unicode_::isdecimal(c)); }); }
+    bool isnumeric() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), [](char32_t c) { return digit_(c) || (c >= 0x80 && unicode_::isnumeric(c)); }); }
     bool isalpha() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), alpha_); }
-    bool isalnum() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), [](char32_t c) { return alpha_(c) || digit_(c) || c == 0xB2 || c == 0xB3 || c == 0xB9 || c == 0xBC || c == 0xBD || c == 0xBE; }); }
+    bool isalnum() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), [](char32_t c) { return alpha_(c) || digit_(c) || (c >= 0x80 && unicode_::isnumeric(c)); }); }
     bool isspace() const { return !s_.empty() && std::all_of(s_.begin(), s_.end(), space_); }
     bool isupper() const {
         bool cased = false;
@@ -946,6 +952,11 @@ inline bytes str::encode(const char* enc, const char* errors) const {
 template <class T, class = void> struct hasher { size_t operator()(const T& v) const { return std::hash<T>()(v); } };
 template <> struct hasher<str> : str_hash {};
 template <> struct hasher<bytes> : bytes_hash {};
+template <class... A> struct hasher<std::variant<A...>> {   // (a dict keyed by values of several kinds)
+    size_t operator()(const std::variant<A...>& v) const {
+        return std::visit([](const auto& x) { return hasher<std::decay_t<decltype(x)>>()(x); }, v) * 31 + v.index();
+    }
+};
 template <class... T> struct hasher<std::tuple<T...>> {
     size_t operator()(const std::tuple<T...>& t) const {
         size_t h = 0x345678;
@@ -966,6 +977,11 @@ template <class T> class list {
     template <class It> static list from(const It& items) {
         list out;
         for (const auto& x : items) out.v_->push_back(x);
+        return out;
+    }
+    template <class... A> static list from(const std::tuple<A...>& items) {   // list(a_tuple)
+        list out;
+        std::apply([&](const auto&... x) { (out.v_->push_back(x), ...); }, items);
         return out;
     }
     std::vector<T>& vec() const { return *v_; }
@@ -1039,6 +1055,8 @@ template <class T> class list {
 };
 
 // ------------------------------------------------------------------------------------------ dict
+template <class T> struct is_shared_ptr_ : std::false_type {};
+template <class T> struct is_shared_ptr_<std::shared_ptr<T>> : std::true_type {};
 template <class K, class V> class dict {
     struct impl {
         std::vector<std::optional<std::pair<K, V>>> items;  // insertion order; removed ones are empty
@@ -1076,9 +1094,18 @@ template <class K, class V> class dict {
         if (it != d_->where.end()) return d_->items[it->second]->second;
         return set(k, V());
     }
-    V get(const K& k, const V& dflt = V()) const {
+    V get(const K& k, const V& dflt) const {
         auto it = d_->where.find(k);
         return it == d_->where.end() ? dflt : d_->items[it->second]->second;
+    }
+    auto get(const K& k) const {   // d.get(k): None when absent (a shared object's None is nullptr)
+        auto it = d_->where.find(k);
+        if constexpr (is_shared_ptr_<V>::value) {
+            return it == d_->where.end() ? V() : d_->items[it->second]->second;
+        } else {
+            if (it == d_->where.end()) return std::optional<V>();
+            return std::optional<V>(d_->items[it->second]->second);
+        }
     }
     V& setdefault(const K& k, const V& v) const {
         auto it = d_->where.find(k);
@@ -1603,6 +1630,25 @@ inline list<str> split(const str& s, const str& sep) {
     out.append(str(u.substr(i)));
     return out;
 }
+inline list<str> split(const str& s, const str& sep, int64_t maxsplit) {   // s.split(sep, maxsplit)
+    if (maxsplit < 0) return split(s, sep);
+    if (sep.empty()) throw ValueError("empty separator");
+    list<str> out;
+    const auto& u = s.u32();
+    size_t i = 0;
+    for (size_t p = u.find(sep.u32()); p != std::u32string::npos && maxsplit > 0; p = u.find(sep.u32(), i), --maxsplit) {
+        out.append(str(u.substr(i, p - i)));
+        i = p + sep.u32().size();
+    }
+    out.append(str(u.substr(i)));
+    return out;
+}
+// iterating a tuple whose items are of one type (for x in (a, b, c))
+template <class T, class... R> std::vector<T> tuple_items(const std::tuple<T, R...>& t) {
+    std::vector<T> out;
+    std::apply([&](const auto&... x) { (out.push_back(x), ...); }, t);
+    return out;
+}
 inline list<bytes> split(const bytes& s, const bytes& sep) {
     if (sep.empty()) throw ValueError("empty separator");
     list<bytes> out;
@@ -1647,6 +1693,10 @@ template <class T> T min(const T& a) { return a; }
 template <class T, class... R> T min(const T& a, const T& b, const R&... rest) { return min(b < a ? b : a, rest...); }
 template <class T> T max(const T& a) { return a; }
 template <class T, class... R> T max(const T& a, const T& b, const R&... rest) { return max(a < b ? b : a, rest...); }
+inline int64_t min(int64_t a, int64_t b) { return b < a ? b : a; }   // (a literal beside an int64_t)
+inline int64_t max(int64_t a, int64_t b) { return a < b ? b : a; }
+inline double min(double a, double b) { return b < a ? b : a; }
+inline double max(double a, double b) { return a < b ? b : a; }
 template <class L> auto min_of(const L& xs) {
     bool any = false;
     std::decay_t<decltype(*std::begin(xs))> best{};
@@ -1989,33 +2039,7 @@ inline int64_t crc32(const bytes& b, int64_t start = 0) {
 }
 
 // ------------------------------------------------------------------------------------------ files, paths
-class file {  // open(path, "rb"): one open, read() reads the rest
-    std::shared_ptr<std::ifstream> f_;
-
-  public:
-    file() = default;
-    explicit file(std::shared_ptr<std::ifstream> f) : f_(std::move(f)) {}
-    bytes read() const {
-        auto& f = *f_;
-        std::streamoff at = f.tellg();
-        f.seekg(0, std::ios::end);
-        std::streamoff end = f.tellg();
-        f.seekg(at);
-        std::string s(static_cast<size_t>(std::max<std::streamoff>(end - at, 0)), '\0');
-        f.read(&s[0], static_cast<std::streamsize>(s.size()));
-        return bytes(std::move(s));
-    }
-};
-inline file open_rb(const str& path) {
-    auto p = std::filesystem::u8path(path.utf8());
-    auto f = std::make_shared<std::ifstream>(p, std::ios::binary);
-    if (!*f) {  // which error Python gives (a folder cannot be opened: Permission denied, on Windows)
-        std::error_code ec;
-        if (!std::filesystem::exists(p, ec)) throw FileNotFoundError("No such file or directory: " + path.utf8());
-        throw PermissionError("Permission denied: " + path.utf8());
-    }
-    return file(std::move(f));
-}
+// (files: py_os.hpp, included at the end)
 
 namespace os {
 namespace path {
@@ -2154,3 +2178,5 @@ inline int64_t int_from_str(const str& s, int64_t base = 10) {
 }
 
 }  // namespace py
+
+#include "py_os.hpp"   // files in every mode, os / os.path / shutil / time, hashlib, re, generators, variants

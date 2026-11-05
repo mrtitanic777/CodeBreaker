@@ -1709,6 +1709,11 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
         }
         case ExprKind::Call: {
             auto* n = cast<pyfront::Call>(node);
+            if (p.extended) {   // (new) getattr with a constant name: the attribute, or the default
+                int c = getattr_form(n, state);
+                if (c == 1) return ev(p.getattr_attr(n, getattr_name(n)), state);
+                if (c == 2) return ev(n->args[2], state);
+            }
             std::optional<T> recv;
             auto* fa = as<Attribute>(n->func);
             if (fa) recv = ev(fa->value, state);
@@ -2450,6 +2455,7 @@ int Program::solve(int max_rounds, bool log) {
             // (new) the classic rules have settled: fix their facts as contracts, then let the
             // parameters no caller types take what their uses demand, and run everything again
             freeze();
+            apply_type_hints();
             demand_enabled = true;
             vetoes.clear();
             prev.reset();

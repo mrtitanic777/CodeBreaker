@@ -519,6 +519,28 @@ static TR isinstance_(Eval& ev, const A::Call* n, const std::optional<T>& t) {
     return TR(BOOL(), Res("isinstance", answer ? "True" : ""));
 }
 
+std::string Eval::getattr_name(const A::Call* n) {
+    std::string s;
+    is_str_const(n->args[1], &s);
+    return s;
+}
+
+int Eval::getattr_form(const A::Call* n, const State& state) {
+    auto* fname = as<pyfront::Name>(n->func);
+    if (!fname || fname->id != "getattr" || !n->keywords.empty() || (n->args.size() != 2 && n->args.size() != 3)) return 0;
+    std::string a;
+    if (!is_str_const(n->args[1], &a) || a.empty()) return 0;
+    for (auto* x : n->args)
+        if (x->kind == ExprKind::Starred) return 0;
+    T ft = ev(n->func, state);
+    if (ft.kind != TK::Fn || ft.name() != "builtin:getattr") return 0;
+    T ot = ev(n->args[0], state);
+    if (ot.kind != TK::Inst) return 0;
+    int c = p.getattr_choice(ot.name(), a);
+    if (c == 2 && n->args.size() != 3) return 0;   // (an AttributeError: left to the classic rule)
+    return c;
+}
+
 TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, const Kw& kw, const State& state) {
     if (DYNAMIC_BUILTINS.count(name)) return issue(n, "dynamic", name);
     T bad;

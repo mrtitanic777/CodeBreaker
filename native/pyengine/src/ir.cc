@@ -218,6 +218,10 @@ py::V type_json(const TyP& t) {
         for (auto& x : t->args) a.append(type_json(x));
         d.set("args", a);
     }
+    // what the front end says of a class type, as l2.to_json writes it (the back end reads them)
+    if (t->record) d.set("record", true);
+    if (t->has_ref) d.set("ref", t->ref);
+    if (t->exception) d.set("exception", true);
     return d;
 }
 

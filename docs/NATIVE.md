@@ -477,6 +477,31 @@ CTest: 8 suites, 70 checks (scopes, inference, specialization, closures, generat
 regex, files). Left: the C++17 back end over this L2; `next()`/`zip()` over generators, escaping
 closures, variants beyond scalars.
 
+**Translated => compiles => agrees (2026-11-04).** The numbers above counted functions nothing had
+compiled. Now `l2cpp17` is linked into the engine: a function counts as translated only when the
+back end writes it (declines refuse that one function and its callers), `--cpp DIR` writes every
+module, and the judge (state/work/pyengine2/judge.py, oracle side) compiles all of it with MSVC,
+links one driver and runs every module-level function on generated inputs beside the Python,
+comparing results and exception names; what does not compile or agree is refused through
+`native/pyengine/hints/refuse.json` with the judge's reason. Getting there was mostly back-end and
+runtime work the judge found: no C++ had existed for the extensions' library rows (now
+`native/ported/include/py_os.hpp`: open/files, os/os.path/shutil/time, hashlib, re over pyre,
+generators, variants; `py_unicode.hpp`: Unicode's isalpha/isdigit/isnumeric), the engine's L2 had
+dropped class types' record/ref flags, `1 << 32` on a C++ int, `d.get(k)` not None when absent, NUL in
+string literals, CRT macros as names. Also new: getattr with a constant name (the attribute when it
+is always there, the default when it never is), hand-written parameter hints
+(`hints/types.json`), module names whose value calls a refused function refused with their readers.
+
+| policy | translated | compile | run | agree | old engine's, byte-identical |
+|---|---|---|---|---|---|
+| strict | 472 (2.1% of lines) | 472 | 287 | 287 | 264 / 274 (10 refused: do not compile or agree) |
+| checked | 582 (2.8%) | 581 | 332 | 332 | 339 / 356 (17) |
+
+The leaf packages (coverage, jobs, store, knowledge) are glue over sqlite3, threads, contextvars,
+process pools, csv and json: parameter hints do not move them (8 hints on knowledge's facade: 2
+functions). The engine carries computation -- format readers, decoders, text helpers; glue is
+cheaper to write by hand. CTest: 10 suites, 87 checks (+ `dynamic`, `backend`).
+
 ## Step 5 (now first): the L2 core and the C back end -- `native/l2`
 
 Logan, 2026-10-31: "All of it needs to be C++." The translator's core moves first: the L2 tree, and the

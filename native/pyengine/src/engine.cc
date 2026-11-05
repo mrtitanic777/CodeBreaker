@@ -6,7 +6,10 @@
 #include <filesystem>
 #include <fstream>
 #include <regex>
+#include <sstream>
+#include <set>
 
+#include "cpp17.hpp"
 #include "json.hpp"
 #include "lower.hpp"
 
@@ -68,6 +71,165 @@ static void write_text(const fs::path& p, const std::string& s) {
     f << s;
 }
 
+// ---------------------------------------------------------------------------------------------- the back end
+// Every translated function must be one the C++17 back end writes: a unit is written, a function the
+// back end declines is refused ("backend: <why>") and taken out of the unit, a function calling a
+// refused one is refused in turn ("calls-refused"), until every unit is written whole.
+static void refuse(EngineResult& r, const std::string& q, const std::string& why) {
+    auto it = r.fns.find(q);
+    if (it == r.fns.end() || it->second.status != "translated") return;
+    it->second.status = "refused";
+    it->second.reason = why;
+    it->second.l2.clear();
+    r.translated--;
+    r.translated_lines -= it->second.lines;
+}
+
+static std::string sv(const py::V& v) { return v.is_str() ? v.str() : std::string(); }
+
+// take the MethodDecls of q (every specialized copy) out of a unit, leaving a Comment as the front end does
+static bool drop_method(py::V& unit, const std::string& q, const std::string& why) {
+    bool any = false;
+    const py::V& types = unit.get("types");
+    if (!types.is_list()) return false;
+    for (auto& t : types.seq()) {
+        const py::V& mem = t.get("members");
+        if (!mem.is_list()) continue;
+        auto& v = mem.seq();
+        for (size_t i = 0; i < v.size(); i++) {
+            if (sv(v[i].get("node")) != "MethodDecl") continue;
+            const py::V& s = v[i].get("sym");
+            if (sv(s.get("owner")) + "." + sv(s.get("name")) != q) continue;
+            py::V c = py::V::dict();
+            c.set("node", std::string("Comment"));
+            c.set("text", "not translated: " + q.substr(q.rfind('.') + 1) + " -- " + why);
+            if (any) {
+                v.erase(v.begin() + i);
+                i--;
+            } else {
+                v[i] = c;
+            }
+            any = true;
+        }
+    }
+    return any;
+}
+
+static std::string mod_rel(const std::string& m) {
+    std::string rel = m;
+    for (char& c : rel)
+        if (c == '.') c = '/';
+    return rel;
+}
+
+static void backend_pass(const EngineOptions& o, EngineResult& r, const std::string& api,
+                         const std::map<std::string, std::string>& judged) {
+    std::map<std::string, py::V> docs;
+    std::set<std::string> touched, lang_added;
+    for (auto& [m, text] : r.units) {
+        py::V d = py::json_parse(text);
+        if (d.get("lang").is_none()) {
+            d.set("lang", std::string("python"));   // (as the shim does)
+            lang_added.insert(m);
+        }
+        docs[m] = d;
+    }
+    auto module_of = [&](const std::string& q) -> std::string {
+        std::string best;
+        for (auto& [m, d] : docs)
+            if (q.size() > m.size() && q.compare(0, m.size(), m) == 0 && q[m.size()] == '.' && m.size() > best.size()) best = m;
+        return best;
+    };
+    auto translated_in = [&](const std::string& m) {
+        std::vector<std::string> v;
+        std::string pre = m + ".";
+        for (auto it = r.fns.lower_bound(pre); it != r.fns.end() && it->first.compare(0, pre.size(), pre) == 0; ++it)
+            if (it->second.status == "translated" && module_of(it->first) == m) v.push_back(it->first);
+        return v;
+    };
+    std::map<std::string, py::V> written;
+    // what the judge found does not compile or does not behave as the Python (hints/refuse.json)
+    std::vector<std::string> pending;
+    for (auto& [q, why] : judged) {
+        auto it = r.fns.find(q);
+        if (it == r.fns.end() || it->second.status != "translated") continue;
+        std::string m = module_of(q);
+        refuse(r, q, "judge: " + why);
+        if (!m.empty() && drop_method(docs[m], q, "judge: " + why)) touched.insert(m);
+        pending.push_back(q);
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        std::vector<std::string> refused_now;
+        refused_now.swap(pending);
+        for (auto& [m, doc] : docs) {
+            if (translated_in(m).empty()) {
+                written.erase(m);
+                continue;
+            }
+            for (;;) {
+                try {
+                    written[m] = cpp17::write_unit(doc, api);
+                    break;
+                } catch (const cpp17::Decline& e) {
+                    std::string why = std::string("backend: ") + e.what();
+                    if (!e.where.empty() && r.fns.count(e.where) && drop_method(doc, e.where, why)) {
+                        touched.insert(m);
+                        refuse(r, e.where, why);
+                        refused_now.push_back(e.where);
+                    } else {
+                        for (auto& q : translated_in(m)) {   // (not one function's: the unit's own)
+                            refuse(r, q, why);
+                            refused_now.push_back(q);
+                        }
+                        written.erase(m);
+                        break;
+                    }
+                    changed = true;
+                } catch (const std::exception& e) {
+                    for (auto& q : translated_in(m)) refuse(r, q, std::string("backend: ") + e.what());
+                    written.erase(m);
+                    break;
+                }
+            }
+        }
+        // calls to what is refused now
+        for (auto& q : refused_now) {
+            auto dot = q.rfind('.');
+            std::string needle = "\"name\": \"" + q.substr(dot + 1) + "\", \"owner\": \"" + q.substr(0, dot) + "\"";
+            for (auto& [c, st] : r.fns) {
+                if (st.status != "translated" || c == q || st.l2.find(needle) == std::string::npos) continue;
+                std::string why = "calls-refused: " + q + " (" + r.fns[q].reason + ")";
+                std::string cm = module_of(c);
+                refuse(r, c, why);
+                if (!cm.empty() && drop_method(docs[cm], c, why)) touched.insert(cm);
+                changed = true;
+            }
+        }
+    }
+    // a module none of whose functions translate is still written when it can be: others include its
+    // header for its records, classes and names
+    for (auto& [m, doc] : docs) {
+        if (o.cpp.empty() || written.count(m)) continue;
+        try {
+            written[m] = cpp17::write_unit(doc, api);
+        } catch (const std::exception&) {
+        }
+    }
+    for (auto& m : touched) {
+        if (lang_added.count(m)) docs[m].erase(py::V(std::string("lang")));
+        r.units[m] = py::json_dump(docs[m]);
+    }
+    if (o.cpp.empty()) return;
+    py::V spans = py::V::dict();
+    for (auto& [m, out] : written) {
+        write_text(fs::path(o.cpp) / (mod_rel(m) + ".hpp"), out[0].str());
+        write_text(fs::path(o.cpp) / (mod_rel(m) + ".cpp"), out[1].str());
+        spans.set(m, out[2]);
+    }
+    write_text(fs::path(o.cpp) / "spans.json", py::json_dump(spans));
+}
+
 int run_engine(const EngineOptions& o, EngineResult& r) {
     auto t0 = std::chrono::steady_clock::now();
     fs::path root = fs::absolute(fs::path(o.root)).make_preferred();
@@ -81,6 +243,30 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
     p.add_tree(rs, package);
     if (o.log) fprintf(stderr, "indexing %zu modules\n", p.modules.size());
     p.index();
+    // (extended) the hints: hand-written parameter types, and functions the judge refused
+    std::map<std::string, std::string> judged_refused;
+    if (o.extended) {
+        fs::path hd = o.hints.empty() ? root.parent_path() / "native" / "pyengine" / "hints" : fs::path(o.hints);
+        auto load = [&](const char* name) {
+            std::ifstream f(hd / name, std::ios::binary);
+            if (!f) return py::V();
+            std::stringstream ss;
+            ss << f.rdbuf();
+            return py::json_parse(ss.str());
+        };
+        py::V th = load("types.json");
+        if (th.is_dict())
+            for (auto& [q, ps] : th.items())
+                if (ps.is_dict())
+                    for (auto& [name, text] : ps.items())
+                        if (name.is_str() && text.is_str() && name.str().rfind("#", 0) != 0) p.type_hints[q.str()][name.str()] = text.str();
+        for (std::string f : {std::string("refuse.json"), "refuse." + o.policy + ".json"}) {   // (both policies; this one's)
+            py::V rf = load(f.c_str());
+            if (rf.is_dict())
+                for (auto& [q, why] : rf.items())
+                    if (why.is_str()) judged_refused[q.str()] = why.str();
+        }
+    }
     if (o.log) fprintf(stderr, "solving %zu functions, %zu nested\n", p.fns.size(), p.nested.size());
     r.rounds = p.solve(40, o.log);
     auto t1 = std::chrono::steady_clock::now();
@@ -92,6 +278,15 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
     for (auto& [q, f] : p.fns) {
         FnStatus st;
         st.lines = f->lines;
+        {   // the ranges the callers give its int parameters (what the translation may assume: the judge's inputs)
+            auto pi = p.params.find(q);
+            if (pi != p.params.end()) {
+                py::V rg = py::V::dict();
+                for (auto& [name, t] : pi->second)
+                    if (t.kind == TK::Int) rg.set(name, py::V::list({py::V(bstr(t.lo())), py::V(bstr(t.hi()))}));
+                if (rg.size()) st.ranges = py::json_dump(rg);
+            }
+        }
         auto it = tr.lowered.find(q);
         auto so = p.specs_of.find(q);
         if ((it == tr.lowered.end() || !it->second.md) && so != p.specs_of.end()) {   // (new) translated as its overloads
@@ -132,6 +327,7 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
     }
     for (auto& [m, mr] : tr.modules)
         if (mr.unit) r.units[m] = py::json_dump(to_json(mr.unit));
+    if (o.extended && o.backend) backend_pass(o, r, o.api.empty() ? (root / "java" / "api_maps").string() : o.api, judged_refused);
     if (!o.out.empty()) {
         fs::path out(o.out);
         for (auto& [m, text] : r.units) write_text(out / "l2" / (m + ".json"), text);
@@ -143,6 +339,7 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
             d.set("lines", st.lines);
             d.set("package", package_of(q));
             if (!st.l2.empty()) d.set("l2", st.l2);
+            if (!st.ranges.empty() && st.status == "translated") d.set("ranges", py::json_parse(st.ranges));
             fns.set(q, d);
         }
         py::V doc = py::V::dict();

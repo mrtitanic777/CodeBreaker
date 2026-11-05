@@ -3,14 +3,16 @@
 Python source in (parsed by `native/pyfront`), L2 out (the documents `native/l2` reads and writes),
 with every function's type found by whole-package inference and every refusal kept with its reason.
 It is piece 2 of the porting engine's rewrite in C++ (docs/NATIVE.md, "The porting engine in C++").
-The C++17 back end (L2 -> C++ over `native/ported/include/py.hpp`) is a separate piece and is not
-written here.
+The C++17 back end (L2 -> C++ over `native/ported/include/py.hpp`) is native/l2's `l2cpp17`, linked
+in: with the extensions on, **a function counts as translated only when the back end writes it**,
+and the judge (below) holds every translated function to compiling and behaving as the Python.
 
     (vcvars64)  cmake -S native/pyengine -B native/pyengine/build -G Ninja -DCMAKE_BUILD_TYPE=Release
                 cmake --build native/pyengine/build
                 ctest --test-dir native/pyengine/build
 
-    pyengine <package dir> [--coverage] [--out DIR] [--checked] [--old] [--package NAME] [--module M] [--log]
+    pyengine <package dir> [--coverage] [--out DIR] [--cpp DIR] [--checked] [--old] [--package NAME]
+             [--module M] [--hints DIR] [--no-backend] [--log]
 
 | target | what |
 |---|---|
@@ -22,8 +24,50 @@ written here.
 `--out DIR` writes `DIR/l2/<module>.json` (each module's L2 `Unit`), `DIR/coverage.json` (per
 function: translated or refused, the reason, its lines, its L2) and `DIR/coverage.md` (the table by
 package and the top refusal reasons). `--old` runs the old engine's rules exactly (no extensions);
-`--checked` is the checked int policy (ints past int64 raise OverflowError in C++). The whole of
+`--checked` is the checked int policy (ints past int64 raise OverflowError in C++). `--cpp DIR`
+writes every module through the C++17 back end (`DIR/<module path>.hpp/.cpp`, `DIR/spans.json`: each
+function's source lines), modules with nothing translated too (others include their headers).
+`--hints DIR` (default `native/pyengine/hints`) is where the hints are read from. The whole of
 codebreaker/ takes about 50 s extended, 25 s with `--old` (the Python engine: 115-130 s).
+
+## Translated => compiles => agrees
+
+**The back end pass** (engine.cc, extended runs): every unit is written by `cpp17::write_unit`; a
+function the back end declines (`cpp17::Decline::where` names it) is refused as `backend: <why>`,
+taken out of its unit and the unit written again; a translated function calling a refused one is
+refused in turn (`calls-refused`), to a fixpoint. A module name whose value reads a refused name or
+calls a refused function is not written either, nor are its readers (lower.cc).
+
+**The judge** (`state/work/pyengine2/judge.py`, the oracle side, not committed): compiles every module
+`--cpp` wrote with MSVC (`/std:c++17`, py.hpp and native/l2's pyre on the include path; errors pinned
+on functions by spans.json), links one driver over all of them, and runs each module-level function on
+generated inputs (its parameters' types; int parameters within the ranges the engine says its callers
+give, `ranges` in coverage.json; the string and number literals of its own body) beside the Python
+original, comparing results and exception names. A run that hangs or crashes is a case's verdict and
+the run restarts after it. Functions that write files, sleep or touch the environment, methods (no
+instance to call them on) and functions returning objects are compiled but not run.
+
+**hints/refuse.json, refuse.<policy>.json**: what the judge found does not compile or does not agree,
+with the reason; the engine refuses each (`judge: <why>`) with its cascade. A recurring entry is a bug
+to fix in the engine, the back end or py.hpp (most of this work was that: see below), the file is
+what is left.
+
+**hints/types.json**: `{function: {parameter: annotation text}}`, applied when the classic rules
+have settled, to parameters they left untyped, as if the source were annotated (Python files are not
+edited). A strict `int` hint is unbounded, so it is refused as int-range unless the code bounds it.
+
+The numbers are in Gate 2 below.
+
+What it took (each found by the judge): the back end had no C++ for any of the extensions' rows
+(re, open/files, os/os.path/shutil/time, hashlib, variants, generators, closures with statements) --
+now `native/ported/include/py_os.hpp`; class types lost their record/ref/exception flags in the
+engine's L2 JSON (`.` for `->`, records built as values where refs were declared); `1 << 32` with a
+C++ int literal; `d.get(k)` returning a default-constructed value instead of None; string literals
+holding NUL cut short; `os.path.abspath` via str.join (ADL); `environ` a CRT macro; record keys that
+are not identifiers; CRT macros as names (`_MAX_DIR`); str.isalpha/isalnum outside Latin-1 (now
+Unicode's tables, py_unicode.hpp); max/min of a literal and an int64_t; `int64_t / double`; tuple
+iteration; `list(a_tuple)`; `split(sep, maxsplit)`; exceptions' Python names; Windows file-name
+rules (`<`, `:`, NUL -> OSError / ValueError as Python's); trailing spaces/dots in abspath.
 
 ## Design
 
@@ -85,63 +129,57 @@ newline), `file.read/readline/readlines/write/writelines/seek/tell/close/flush`,
 `closure` on the `Local`), `Labeled`, `Goto`, `Empty` (generators); a call of a closure is a `Call`
 whose `Sym` is the `local` that holds it.
 
-## Gate 1: equals or beats the old engine
+## Gate 1: the old engine's functions
 
-On all of codebreaker/ (564 modules, 8,158 functions), against the Python engine's own results
-(`state/work/pyengine/baseline.py`, compared by `gate1.py`):
+On all of codebreaker/ (563 modules, 8,030 functions at this commit), against the Python engine's
+own results (`state/work/pyengine2/baseline.py`, compared by `gate1.py`). The Python front end's L2
+now carries class types' `record` / `ref` / `exception` flags (l2.to_json), and so does this
+engine's (it had dropped them: the back end then wrote `.` for `->`).
 
-| run | the old engine translated | L2 byte-identical | refused now | refusal reasons the same | module units identical |
-|---|---|---|---|---|---|
-| `--old` strict | 277 | **277** | 0 | 7,881 / 7,881 | 564 / 564 |
-| `--old --checked` | 359 | **359** | 0 | 7,799 / 7,799 | -- |
-| extended strict | 277 | **277** | 0 | (240 more translated) | -- |
-| extended checked | 359 | **359** | 0 | (297 more translated) | -- |
+| run | the old engine translated | L2 byte-identical | refused now | refusal reasons the same |
+|---|---|---|---|---|
+| `--old` strict | 274 | **274** | 0 | 7,756 / 7,756 |
+| extended strict | 274 | **264** | 10: the judge found they do not compile (8) or differ (1), or the back end declines (1) | -- |
+| extended checked | 356 | **339** | 17: likewise | -- |
 
-## Gate 2: coverage
+The ten (seventeen) were never compiled before; the old pipeline's own `coverage --compile` had
+found 16 of its 274 did not compile. Identical L2 for everything else translated.
 
-| package | functions | lines | old strict | new strict | % lines | old checked | new checked | % lines |
-|---|---|---|---|---|---|---|---|---|
-| translate | 1756 | 25777 | 29 | 47 | 0.5% -> 0.9% | 33 | 58 | 0.5% -> 1.1% |
-| formats | 1351 | 18426 | 100 | 152 | 3.7% -> 6.0% | 160 | 221 | 6.0% -> 9.3% |
-| exact | 535 | 13729 | 15 | 24 | 0.4% -> 0.9% | 15 | 28 | 0.4% -> 1.3% |
-| java | 572 | 10912 | 34 | 92 | 1.5% -> 7.0% | 36 | 97 | 1.7% -> 7.5% |
-| source | 484 | 10534 | 7 | 12 | 0.3% -> 0.6% | 8 | 15 | 0.6% -> 1.2% |
-| port | 270 | 9483 | 2 | 13 | 0.2% -> 1.1% | 2 | 17 | 0.2% -> 1.8% |
-| build | 385 | 8637 | 25 | 42 | 1.4% -> 2.9% | 28 | 51 | 1.6% -> 3.9% |
-| invert | 285 | 7930 | 12 | 15 | 1.1% -> 1.3% | 13 | 19 | 1.5% -> 1.9% |
-| decompile | 333 | 7363 | 15 | 36 | 1.2% -> 3.7% | 17 | 41 | 1.3% -> 4.2% |
-| verify | 322 | 6553 | 2 | 12 | 0.1% -> 0.9% | 2 | 12 | 0.1% -> 0.9% |
-| emulate | 368 | 6439 | 10 | 13 | 0.7% -> 0.8% | 14 | 17 | 0.8% -> 1.0% |
-| recompile | 171 | 5604 | 6 | 13 | 2.6% -> 3.1% | 7 | 20 | 2.7% -> 3.7% |
-| analyze | 208 | 4419 | 2 | 6 | 0.1% -> 0.6% | 2 | 8 | 0.1% -> 0.8% |
-| symbols | 182 | 3176 | 6 | 8 | 1.2% -> 2.2% | 9 | 15 | 1.7% -> 4.0% |
-| others (ui, engine, base, xna, compare, store, coverage, knowledge, platforms, jobs, __main__) | 936 | 9730 | 12 | 32 | -- | 13 | 37 | -- |
-| **all** | **8158** | **148712** | **277** | **517** | **1.1% -> 2.4%** | **359** | **656** | **1.5% -> 3.2%** |
+## Gate 2: translated, compiled, run
 
-Top refusal reasons now (strict; first reason per function): untyped parameter with no typed call
-site and no demand 1,205 (was 1,575: many are visitor methods over Python's own `ast` nodes, an
-outside type), callers passing values of no type 333, calls-refused 287, getattr 164, dicts given
-items of no single type 145, int-range of an argument 140, attributes stored values of no type 140,
-untyped locals 123, `id` 93, `next` 91, containers other code keeps empty 89 (the contracts at work),
-lambdas/generators as arguments 85, `*args` 82, `with` other than open 81. By class: untyped 2,264,
-conflict 1,843, dynamic 1,510, stdlib 512 (was 1,435), syntax 476 (was 620), int-range 466,
-calls-refused 287. Fixing a root frees its cascade: the extensions moved the first refusal of about
-2,700 functions to a later one.
+| policy | translated | lines | compile | run beside the Python | agree | compiled, not run |
+|---|---|---|---|---|---|---|
+| strict | 472 | 3,109 | 472 | 287 | **287** | 185 (methods, objects, no input generator, side effects) |
+| checked | 582 | -- | 581 | 332 | **332** | 249 |
 
-**Honestly**: the engine now carries 2.4% of CodeBreaker's lines strict (3.2% checked), twice the
-old engine, and its refusal list is a much more exact to-do list. It does not carry the bulk, for
-the reasons docs/NATIVE.md gives: almost nothing is annotated, and the dynamic core (getattr
-dispatch, `ast`-node visitors, argparse namespaces, dicts used as objects of several kinds) has no
-static type to find.
+(checked: measured one cycle earlier, before the last runtime fixes.) By package (strict):
+(5.7%), build 40, decompile 34, translate 31, exact 22 -- 2.1% of CodeBreaker's lines, 1.5% run and
+agreeing. The README's earlier 517 / 656 counted functions nothing had compiled: 47 were declined by
+the back end, the rest were held to compile and agree here.
+
+Top refusals now (strict, first reason): untyped parameter with no typed call site 1,172 (functions
+nothing in the package calls: entry points, getattr-dispatched visitors, test-only helpers), callers
+passing values of no type 324, calls-refused 281, getattr 143 (was 164: constant names now carried),
+dicts of mixed values 143, int-range of an argument 139, attributes stored values of no type 139,
+`id` 93, `next` 91, `with` other than open 81, `*args` 82, lambdas as values 73.
+
+**Honestly**: the leaf packages (coverage, jobs, store, knowledge) are glue -- sqlite3, threads and
+locks, contextvars, process pools, csv, json, argparse, `with` / `finally` / `except as`, lambdas as
+values. Hints do not move them: of eight parameter hints written for knowledge's facade, two
+functions translated (`_bare`, `reads.join`); the rest call functions refused for library reasons.
+The engine carries computation (format readers, decoders, text helpers); glue wants writing by hand.
 
 ## Tests
 
-`ctest --test-dir native/pyengine/build` -- 8 suites, 70 checks, each running the whole engine on
+`ctest --test-dir native/pyengine/build` -- 10 suites, 87 checks, each running the whole engine on
 Python modules held in `tests/pyengine_tests.cpp`: `scopes` (17: bindings, cells and free names,
 class-scope skipping, comprehensions, walrus, global), `inference` (11: caller types, intervals,
 records, narrowing, int-range, old = new rules, checked policy, demand typing), `specialization`
 (7), `closures` (6), `generators` (7), `variants` (6), `regex` (11: group analysis, optional groups,
-patterns carried, compiled patterns, findall), `files` (5).
+patterns carried, compiled patterns, findall), `files` (5), `dynamic` (10: getattr with a constant
+name -- the attribute, the default, refused when it may or may not be there; a type hint; a module
+name whose value calls a refused function), `backend` (7: re, os.path, hashlib, open with keywords in
+their slots, text reads, written by l2cpp17).
 
 ## C ABI
 
@@ -162,18 +200,25 @@ patterns carried, compiled patterns, findall), `files` (5).
     src/ext.cc       re (with the group analysis), files, os/shutil/time/hashlib
     src/ir.*         L2 nodes and their JSON
     src/lower.*      lowering, closures, generators, variants, units, the ledger
-    src/engine.*     the whole run; coverage tables
+    src/engine.*     the whole run; the back end pass; hints; coverage tables
     src/capi.cc      the C ABI
     tools/           pyengine.exe
     tests/           the CTest suites
+    hints/           types.json (parameter hints), refuse.json / refuse.<policy>.json (the judge's refusals)
 
-The gate scripts are in the working folder (`state/work/pyengine/`: baseline.py, gate1.py,
-table.py, why.py); Python runs there only as the oracle.
+The gate scripts are in the working folder (`state/work/pyengine2/`: baseline.py, gate1.py,
+judge.py, why.py, roots.py, merge_refuse.py, gen_unicode.py); Python runs there only as the oracle.
 
 ## What is left
 
-- The C++17 back end over this L2 (another piece), then compiling and running what is translated
-  against the Python, as `native/ported/ne` was.
+- Methods are compiled but not run by the judge (139 strict): it has no instance to call them on.
+  Recorded inputs (arguments captured while the Python tests run) would judge them and the rest.
+- The recurring compile failures behind hints/refuse.json: a class of another module named in a
+  header before its include; `py::list<bool>` (std::vector<bool>'s reference); a caller passing a
+  bool where a str is declared; a module name rebound by a later import; module state filled at
+  import by registration calls.
+- Library rows the glue packages need before the engine carries them at all: sqlite3, threading,
+  contextvars, subprocess, csv, json; `with` on other context managers, `finally`, `except ... as e`.
 - A generator consumed by `next()` / `zip()`, generator methods, `yield from`; closures that escape
   (they would need captures by value or shared cells); `nonlocal` rebinding.
 - Variants of containers and instances (only scalars now); records whose fields are variants

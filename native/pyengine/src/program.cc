@@ -1091,6 +1091,101 @@ std::vector<std::string> Program::descendants(const std::string& cq) {
     return out;
 }
 
+const pyfront::Attribute* Program::getattr_attr(const pyfront::Call* n, const std::string& attr) {
+    auto& slot = getattr_synth[n];
+    if (!slot) {
+        slot = std::make_unique<pyfront::Attribute>();
+        slot->value = n->args[0];
+        slot->attr = attr;
+        slot->pos = n->pos;
+    }
+    return slot.get();
+}
+
+int Program::getattr_choice(const std::string& cq, const std::string& attr) {
+    auto self_store = [&](const A::Expr* t) {
+        auto* a = dynamic_cast<const pyfront::Attribute*>(t);
+        auto* s = a ? dynamic_cast<const pyfront::Name*>(a->value) : nullptr;
+        return s && s->id == "self" && a->attr == attr;
+    };
+    std::vector<std::string> up = mro(cq);
+    for (auto& c : up) {
+        Class* const* cl = classes.get(c);
+        if (!cl || !(*cl)->foreign_base.empty()) return 0;
+    }
+    if (find_method(cq, attr)) return 1;
+    for (auto& c : up) {
+        Class* k = *classes.get(c);
+        if (k->class_attrs.has(attr)) return 1;
+        Fn* const* init = k->methods.get("__init__");
+        if (init && (*init)->node)
+            for (auto* s : (*init)->node->body) {   // (set at the top of __init__: always there after it)
+                if (auto* as = dynamic_cast<const pyfront::Assign*>(s)) {
+                    for (auto* t : as->targets)
+                        if (self_store(t)) return 1;
+                } else if (auto* an = dynamic_cast<const pyfront::AnnAssign*>(s)) {
+                    if (an->value && self_store(an->target)) return 1;
+                }
+            }
+    }
+    // never there: nothing up or down the hierarchy has it or stores it, and no fact says otherwise
+    if (attr_type(cq, attr)) return 0;
+    std::vector<std::string> all = up, todo{cq};
+    while (!todo.empty()) {
+        std::string c = todo.back();
+        todo.pop_back();
+        Class* const* cl = classes.get(c);
+        if (!cl) continue;
+        for (auto& s : (*cl)->subclasses)
+            if (std::find(all.begin(), all.end(), s) == all.end()) {
+                all.push_back(s);
+                todo.push_back(s);
+            }
+    }
+    for (auto& c : all) {
+        Class* const* cl = classes.get(c);
+        if (!cl) return 0;
+        Class* k = *cl;
+        if (k->methods.has(attr) || k->class_attrs.has(attr) || !k->foreign_base.empty()) return 0;
+        bool stored = false;
+        if (k->node)
+            walk_each(AnyNode(k->node), [&](const AnyNode& x) {
+                auto* a = dynamic_cast<const pyfront::Attribute*>(x.expr());
+                if (a && a->attr == attr && a->ctx == pyfront::ExprCtx::Store) stored = true;
+            });
+        if (stored) return 0;
+    }
+    return 2;
+}
+
+int Program::apply_type_hints() {
+    int n = 0;
+    for (auto& [q, ps] : type_hints) {
+        Fn* const* fp = fns.get(q);
+        if (!fp) continue;
+        Fn* f = *fp;
+        for (auto& [name, text] : ps) {
+            if (std::find(f->params.begin(), f->params.end(), name) == f->params.end() &&
+                std::find(f->kwonly.begin(), f->kwonly.end(), name) == f->kwonly.end())
+                continue;
+            if (f->annotations.has(name)) continue;
+            auto pit = params.find(q);
+            if (pit != params.end() && pit->second.count(name) && pit->second[name].kind != TK::Bottom &&
+                pit->second[name].kind != TK::None)
+                continue;   // (the classic rules typed it: its contract stands)
+            auto pr = pyfront::parse("_hint: " + text + "\n", "<hint " + q + ">");
+            if (!pr || pr.module->body.empty()) continue;
+            auto* aa = dynamic_cast<const pyfront::AnnAssign*>(pr.module->body[0]);
+            if (!aa) continue;
+            f->annotations.set(name, aa->annotation);
+            hint_trees.push_back(std::move(pr.module));
+            touch("p:" + q);
+            n++;
+        }
+    }
+    return n;
+}
+
 void Program::freeze() {
     frozen = true;
     frozen_sites = (int)parent.size();

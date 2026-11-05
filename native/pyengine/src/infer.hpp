@@ -133,6 +133,10 @@ public:
     T lambda_type(const A::Expr* lam, const std::vector<T>& params, const State& state);
     std::pair<T, State> gen_elem(const A::GeneratorExp* g, const State& state);
 
+    // (new) getattr(obj, 'name'[, default]): 1 the attribute, 2 the default, 0 neither (Program::getattr_choice)
+    int getattr_form(const A::Call* n, const State& state);
+    static std::string getattr_name(const A::Call* n);
+
     // methods.cc: builtins, builtin types' methods, the standard library
     TR builtin(const A::Call* n, const std::string& name, const std::vector<std::optional<T>>& args,
                const OMap<std::optional<T>>& kw, const State& state);

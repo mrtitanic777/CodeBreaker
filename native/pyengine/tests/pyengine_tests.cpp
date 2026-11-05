@@ -2,12 +2,14 @@
 // checks what it found (types, refusals) and what it wrote (L2).
 //
 //   pyengine_tests <suite>      scopes inference specialization closures generators variants regex files
+//                               dynamic backend
 #include <cstdio>
 #include <cstring>
 #include <functional>
 #include <map>
 #include <string>
 
+#include "cpp17.hpp"
 #include "json.hpp"
 #include "lower.hpp"
 #include "pyfront/pyfront.hpp"
@@ -413,8 +415,104 @@ def home():
     CHECK(has(o.why("pkg.m.w"), "open"), "the old rules refuse write mode: %s", o.why("pkg.m.w").c_str());
 }
 
+// getattr with a constant name; hand-written type hints; module names whose value cannot be written
+static void t_dynamic() {
+    Run r(Srcs{{"pkg.m", R"PY(
+class Box:
+    LIMIT = 4
+    def __init__(self, n: int):
+        self.n = n
+    def later(self):
+        self.cache = 1
+
+def size(b: Box) -> int:
+    return getattr(b, 'n', 0)
+
+def limit(b: Box) -> int:
+    return getattr(b, 'LIMIT')
+
+def missing(b: Box) -> int:
+    return getattr(b, 'nothing', 7)
+
+def maybe(b: Box) -> int:
+    return getattr(b, 'cache', 0)
+
+def use():
+    b = Box(3)
+    return size(b) + limit(b) + missing(b) + maybe(b)
+)PY"}});
+    CHECK(r.ok("pkg.m.size") && has(r.l2("pkg.m.size"), "\"Select\""), "set at the top of __init__: the attribute: %s", r.why("pkg.m.size").c_str());
+    CHECK(r.ok("pkg.m.limit"), "a class attribute: %s", r.why("pkg.m.limit").c_str());
+    CHECK(r.ok("pkg.m.missing") && has(r.l2("pkg.m.missing"), "\"value\": 7"), "never there: the default: %s", r.why("pkg.m.missing").c_str());
+    CHECK(!r.ok("pkg.m.maybe") && has(r.why("pkg.m.maybe"), "getattr"), "set only in another method: refused: %s", r.why("pkg.m.maybe").c_str());
+    Run o(Srcs{{"pkg.m", "class A:\n    def __init__(self):\n        self.n = 1\n\ndef f(a: A) -> int:\n    return getattr(a, 'n', 0)\n"}}, false);
+    CHECK(!o.ok("pkg.m.f"), "the old rules refuse getattr");
+
+    // a hint types a parameter no caller or use pins down
+    Srcs hs{{"pkg.m", "def entry(n, name):\n    return n.upper() + name\n"}};
+    Run plain(hs);
+    CHECK(!plain.ok("pkg.m.entry"), "no hint: refused: %s", plain.why("pkg.m.entry").c_str());
+    {
+        Program p;
+        std::string err;
+        p.add_module("pkg.m", "pkg.m.py", hs["pkg.m"], &err);
+        p.index();
+        p.type_hints["pkg.m.entry"]["n"] = "str";
+        p.type_hints["pkg.m.entry"]["name"] = "str";
+        p.solve();
+        TranslateResult tr = translate(p, "strict");
+        auto it = tr.lowered.find("pkg.m.entry");
+        CHECK(it != tr.lowered.end() && it->second.md, "hinted: translated: %s",
+              it != tr.lowered.end() && it->second.refused ? it->second.refused->issue.reason().c_str() : "");
+        T t = p.param_type(p.any_fn("pkg.m.entry"), "n");
+        CHECK(t.kind == TK::Str, "the hint is the parameter's type (%s)", t.repr().c_str());
+    }
+
+    // a module name whose value calls a refused function is not written, and neither is its reader
+    Run g(Srcs{{"pkg.m", "import json\n\ndef load():\n    return json.loads('{}')\n\nTABLE = load()\n\ndef read() -> int:\n    return len(TABLE)\n"}});
+    CHECK(!g.ok("pkg.m.read"), "a reader of a refused name: refused: %s", g.why("pkg.m.read").c_str());
+    CHECK(!has(g.unit("pkg.m"), "\"name\": \"TABLE\", \"owner\""), "the refused name is not in the unit");
+}
+
+// what the extensions carry, written by the C++17 back end (native/l2's l2cpp17)
+static void t_backend() {
+    Run r(Srcs{{"pkg.m", R"PY(
+import re, os, hashlib
+
+def word(s: str) -> str:
+    m = re.search(r'(\w+)', s)
+    return m.group(1) if m else ''
+
+def where(p: str) -> str:
+    return os.path.abspath(p)
+
+def digest(b: bytes) -> str:
+    return hashlib.md5(b).hexdigest()
+
+def first_line(p: str) -> str:
+    with open(p, encoding='utf-8') as f:
+        return f.readline()
+
+def run():
+    return word('a b') + where('x') + digest(b'') + first_line('x')
+)PY"}});
+    for (auto q : {"pkg.m.word", "pkg.m.where", "pkg.m.digest", "pkg.m.first_line"}) CHECK(r.ok(q), "%s: %s", q, r.why(q).c_str());
+    py::V doc = py::json_parse(r.unit("pkg.m"));
+    doc.set("lang", std::string("python"));
+    std::string src;
+    try {
+        src = cpp17::write_unit(doc, "")[1].str();
+    } catch (const std::exception& e) {
+        CHECK(false, "the back end declines: %s", e.what());
+    }
+    CHECK(has(src, "py::re::search(") && has(src, "group(1)"), "re over py::re");
+    CHECK(has(src, "py::os::path::abspath(") && has(src, "py::hashlib::md5("), "os.path / hashlib rows");
+    CHECK(has(src, "py::open(p, py::str(\"r\"), ") && has(src, "utf-8") && has(src, ".readline_text()"), "open with a keyword in its slot, text reads: %s", src.c_str());
+}
+
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> suites = {
+        {"dynamic", t_dynamic},   {"backend", t_backend},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
         {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};
     std::vector<std::string> run;

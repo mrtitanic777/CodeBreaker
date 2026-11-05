@@ -15,6 +15,10 @@ struct EngineOptions {
     bool extended = true;             // the engine's extensions (false: exactly the old engine's rules)
     bool log = false;
     std::vector<std::string> modules; // the units to write (empty: all)
+    bool backend = true;              // (extended) every translated function written by the C++17 back end
+    std::string cpp;                  // where to write the C++17 (empty: nothing written)
+    std::string api;                  // the API maps the back end reads (default: <root>/java/api_maps)
+    std::string hints;                // the hints folder (default: <root>/../native/pyengine/hints)
 };
 
 struct FnStatus {
@@ -22,6 +26,7 @@ struct FnStatus {
     std::string reason;
     int lines = 0;
     std::string l2;                   // the MethodDecl's JSON when translated
+    std::string ranges;               // {int parameter: [lo, hi]} the callers give (JSON; "None" unbounded)
 };
 
 struct EngineResult {
