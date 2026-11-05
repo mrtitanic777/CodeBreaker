@@ -244,7 +244,22 @@ _operand_value, _straight_run, _callee_pops, _pattern and five constants only th
 trace_function16's hook_code, hook_limited and hook_intr; driver.run's on_code, on_interrupt, on_in,
 on_out and on_memory; shadow.py's UnicornX86 and its Python x86 shadows; the four switches and
 their off branches (WT_DBG's Python-hook path with them). About 1,000 lines. Nothing in the other
-repositories under GitHub/ referred to any of it.
+repositories under GitHub/ referred to any of it (Dashboard, Windows95, Win95VM and the rest searched
+for every deleted name and for any use of codebreaker.emulate).
+
+After the deletions: run_all --quick passes (all suites; again with l2, engine, tracer, formats and
+dosexec all built in the worktree), tools/check_imports 559/559, tools/tidy
+clean.
+
+**HANDOFF (2026-11-04): the all-15 Setup boot is not yet run on this.** In a fresh state folder
+GDI.EXE does not link (`E2052: asm/frame38_00.obj: relocation at 0026:0def not in the same
+segment`, 1,473 functions assembled, the gate never reached) -- and master's own code (c4009dd6b,
+the Python hooks still there) fails the same way in a fresh state, so it is older than step 3 and
+not of the tracer's making (state/work/shadow-native/gdi_main.py reproduces it). The boot
+(state/work/shadow-native/boot15.py: the 15 modules built from source, then setup16.continue_test
+on all of them) wants GDI building first. Left: that link fault, then the boot (all 15 to the
+License page); the 16-bit recorded-system context path has no record-level case of its own in
+test_native_trace (prelude runs do), only the judge's.
 
 ## Step 6 (gated): the engine and the store -- `native/engine`
 
