@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core/questions.h"
+#include "core/uc.h"
 
 namespace cbf {
 std::map<std::string, Answer> &registry() {
@@ -52,12 +53,21 @@ extern "C" CBF_API int cbf_call(const char *question, const uint8_t *data, size_
         err.text("");
         err.end_tuple();
         return hand_back(CBF_RAISED, err.finish(), out, out_size);
-    } catch (const std::exception &e) {
-        return hand_back(CBF_FALLBACK, std::string("the native reader failed: ") + e.what(), out, out_size);
+    } catch (const std::exception &e) {           // a fault of the C++ itself: raised, never hidden
+        Out err;
+        err.begin_tuple();
+        err.text("RuntimeError");
+        err.text(std::string("formats.dll: ") + e.what());
+        err.end_tuple();
+        return hand_back(CBF_RAISED, err.finish(), out, out_size);
     }
 }
 
 extern "C" CBF_API int cbf_version(void) { return CBF_VERSION; }
+
+extern "C" CBF_API int cbf_unicorn(const wchar_t *path, char *err, size_t errlen) {
+    return cbf::load_unicorn(path, err, errlen);
+}
 
 extern "C" CBF_API const char *cbf_questions(void) {
     static std::string list;

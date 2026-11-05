@@ -37,7 +37,7 @@ const char *subsystem_label(uint32_t subsystem) {
 namespace {
 // image_base + rva as Python adds them: an address past 64 bits is the Python reader's
 uint64_t add_address(uint64_t base, uint64_t rva) {
-    if (rva > UINT64_MAX - base) fallback("an address past 64 bits");
+    if (rva > UINT64_MAX - base) raise("OverflowError", "an address past 64 bits");
     return base + rva;
 }
 }  // namespace
@@ -119,7 +119,7 @@ std::vector<Export> Image::exports() const {
     const uint32_t funcs_rva = dir.u32(28), names_rva = dir.u32(32), ords_rva = dir.u32(36);
     auto fo = rva_to_off(funcs_rva);
     const bool have_funcs = fo && *fo;                       // (an offset of 0 counts as none, as there)
-    if (!have_funcs && n_funcs > (1u << 26)) fallback("an export table of more slots than memory");
+    if (!have_funcs && n_funcs > (1u << 26)) raise("MemoryError", "");
     std::vector<Export> out;
     out.reserve(have_funcs ? n_funcs : 0);
     if (have_funcs)

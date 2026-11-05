@@ -117,7 +117,7 @@ void program_answer(Out &o, const Program &p) {
 }
 
 int64_t key(const Value &h, const char *k) {
-    if (h.kind != Value::Dict) fallback("a header that is not a dict");
+    if (h.kind != Value::Dict) raise("TypeError", "a header that is not a dict");
     const Value *v = h.get(k);
     if (!v) raise("KeyError", std::string("'") + k + "'");
     return v->as_int();
@@ -235,6 +235,25 @@ void unpack_exepack_q(Call &c) {
     o.end_tuple();
 }
 
+std::vector<int64_t> ints(const Value &v);
+
+// unpack_emulated(module, relocations, cs, ip, ss, sp, moved=False): the unpacker run (emulate/unpack.py's unpacked)
+void unpack_emulated_q(Call &c) {
+    Exepack e = unpack_emulated(c.data.str(), ints(c.arg(0)), c.int_arg(1), c.int_arg(2), c.int_arg(3), c.int_arg(4),
+                                c.bool_arg(5, false));
+    Out &o = c.out;
+    o.begin_tuple();
+    o.bytes(Bytes(e.module));
+    o.begin_list();
+    for (int64_t r : e.relocs) o.integer(r);
+    o.end_list();
+    o.integer(e.cs);
+    o.integer(e.ip);
+    o.integer(e.ss);
+    o.integer(e.sp);
+    o.end_tuple();
+}
+
 std::vector<int64_t> ints(const Value &v) {
     std::vector<int64_t> out;
     for (const Value &x : v.items) out.push_back(x.as_int());
@@ -259,6 +278,17 @@ void unpacked_file_q(Call &c) {
     p.ip = c.int_arg(6);
     p.overlay = c.arg(7).as_bytes().str();
     c.out.bytes(Bytes(unpacked_file(p, c.str_arg(1))));
+}
+
+// _read_mz(data, _mz(data), Program(path, "mz"), "mz"): the MZ program an image's header describes
+// (kernel_parts: IO.SYS's SYSINIT)
+void read_mz_q(Call &c) {
+    std::optional<Mz> h = mz(c.data);
+    if (!h) raise("TypeError", "'NoneType' object is not subscriptable");
+    Program p;
+    p.kind = "mz";
+    read_mz(c.data, *h, p, "mz", true);
+    program_answer(c.out, p);
 }
 
 void read_q(Call &c) { program_answer(c.out, read(c.data, c.str_arg(0), c.bool_arg(1, true))); }
@@ -289,9 +319,11 @@ CBF_QUESTIONS(dos) {
     add("dos._packer", packer_q);
     add("dos.packer", packer_path_q);
     add("dos.unpack_exepack", unpack_exepack_q);
+    add("dos.unpack_emulated", unpack_emulated_q);
     add("dos._data_segment", data_segment_q);
     add("dos.unpacked_file", unpacked_file_q);
     add("dos.read", read_q);
+    add("dos.read_mz", read_mz_q);
     add("dos.driver_part", driver_part_q);
     add("dos.pklite_head", pklite_head_q);
 }

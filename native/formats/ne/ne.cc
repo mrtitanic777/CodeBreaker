@@ -313,7 +313,7 @@ void pack_into(std::string &out, int64_t at, uint64_t v, int width) {
 
 // place(blob, sh): the blob appended at the next multiple of 1 << sh -> where, in those units
 int64_t place(std::string &out, Bytes blob, int64_t sh) {
-    if (sh > 40) fallback("an alignment past memory");
+    if (sh > 40) raise("MemoryError", "");
     const int64_t unit = int64_t(1) << sh;
     const int64_t pad = (unit - int64_t(out.size()) % unit) % unit;
     out.append(size_t(pad), '\0');

@@ -24,7 +24,6 @@ PowerPC image (corpus.resolve hands every stage the basefile in its place).
 import hashlib
 import json
 import os
-import re
 import struct
 import subprocess
 import sys
@@ -32,7 +31,7 @@ import sys
 from codebreaker.formats import native
 
 
-# ---- the C++ reader, while switched on (docs/NATIVE.md; native/formats/xex) -------------------
+# ---- the C++ reader (native/formats/xex): its Python is gone (docs/NATIVE.md, step 4) ----------
 def _headers_result(answer, data, *_):
     entries, error = answer
 
@@ -51,38 +50,24 @@ def _header_result(answer, data, path):
 
 MAGIC = b"XEX2"
 FILE_FORMAT_INFO = 0x000003FF
-EXECUTION_INFO = 0x00040006
 
 
-@native.native_first("xex.is_xex", "xex", data_arg=None)
+@native.answered("xex.is_xex", data_arg=None)
 def is_xex(path):
-    try:
-        with open(path, "rb") as f:
-            return f.read(4) == MAGIC
-    except OSError:
-        return False
+    """Whether the file starts with XEX2."""
 
 
-@native.native_first("xex.optional_headers", "xex", result=_headers_result)
+@native.answered("xex.optional_headers", result=_headers_result)
 def optional_headers(data):
     """(the entry's offset, key, value) of each entry of the header's optional-header table, in order (read
     as asked: a reader that stops at the key it wants reads no further). A value is the data itself for a
     key whose low byte is 0 or 1, else the offset of the data in the header."""
-    count, = struct.unpack_from(">I", data, 0x14)
-    for i in range(count):
-        key, value = struct.unpack_from(">II", data, 0x18 + i * 8)
-        yield 0x18 + i * 8, key, value
 
 
-@native.native_first("xex.ids", "xex")
+@native.answered("xex.ids")
 def ids(data):
     """(media id, title id) from the header's execution info, or (0, 0) for a header without one (or what is
     not an XEX2 header)"""
-    if data[:4] == MAGIC:
-        for _at, key, value in optional_headers(data):
-            if key == EXECUTION_INFO:
-                return struct.unpack_from(">I", data, value)[0], struct.unpack_from(">I", data, value + 0x0C)[0]
-    return 0, 0
 
 
 def program():
@@ -168,33 +153,9 @@ class Header:
         self.libraries = []
 
 
-@native.native_first("xex.header", "xex", data_arg=None, result=_header_result)
+@native.answered("xex.header", data_arg=None, result=_header_result)
 def header(path):
     """What the .xex header states, read from the native program's listing."""
-    r = subprocess.run([program(), "list", path], capture_output=True, text=True)
-    if r.returncode != 0:
-        raise ValueError("%s: %s" % (path, (r.stderr or r.stdout).strip()))
-    h, section = Header(), None
-    for line in r.stdout.splitlines():
-        if line and not line.startswith(" "):
-            section = line.strip()
-            continue
-        m = re.match(r"\s+(Original PE Name|Load Address|Entry Point):\s+(\S+)", line)
-        if m:
-            key, value = m.groups()
-            if key == "Original PE Name":
-                h.name = value
-            elif key == "Load Address":
-                h.base = int(value, 16)
-            else:
-                h.entry = int(value, 16)
-            continue
-        m = re.match(r"\s+\d+\)\s+(\S+)\s+v(\S+)", line)
-        if m and section == "Import Libraries":
-            h.imports.append(m.group(1))
-        elif m and section == "Static Libraries":
-            h.libraries.append((m.group(1), m.group(2)))
-    return h
 
 
 def run(argv):

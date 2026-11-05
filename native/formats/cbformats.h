@@ -22,6 +22,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <wchar.h>
 
 #ifdef _WIN32
 #define CBF_API __declspec(dllexport)
@@ -50,6 +51,11 @@ CBF_API int cbf_call(const char *question, const uint8_t *data, size_t size,
 
 /* CBF_VERSION, to tell a stale build from the one the shim expects. */
 CBF_API int cbf_version(void);
+
+/* The unicorn.dll to run emulated reads on (a packed DOS program's unpacker): 0, or nonzero with
+   `err` filled. Without it such a read reports the unpacker not undone, as Python without
+   `unicorn` did. */
+CBF_API int cbf_unicorn(const wchar_t *path, char *err, size_t errlen);
 
 /* The questions answered, one per line ("pe.exports\npe.imports\n..."). */
 CBF_API const char *cbf_questions(void);

@@ -22,14 +22,14 @@ bool ascii_space(uint8_t c) { return c == ' ' || c == '\t' || c == '\n' || c == 
 
 uint64_t Bytes::from_le() const {
     uint64_t v = 0;
-    if (n_ > 8) fallback("an int past 64 bits");
+    if (n_ > 8) raise("OverflowError", "an int past 64 bits");
     for (int64_t k = n_ - 1; k >= 0; --k) v = (v << 8) | p_[k];
     return v;
 }
 
 uint64_t Bytes::from_be() const {
     uint64_t v = 0;
-    if (n_ > 8) fallback("an int past 64 bits");
+    if (n_ > 8) raise("OverflowError", "an int past 64 bits");
     for (int64_t k = 0; k < n_; ++k) v = (v << 8) | p_[k];
     return v;
 }

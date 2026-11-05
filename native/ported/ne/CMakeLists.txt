@@ -1,5 +1,7 @@
-# The NE reader (codebreaker/formats/ne.py) as C++, written by CodeBreaker's Python front end
-# (tools/py2cpp.py port codebreaker.formats.ne native/ported/ne/src), and the gate's facts program.
+# The NE reader (codebreaker/formats/ne.py as it was, kept in src_python/ne.py since formats.dll
+# answers ne.py) as C++, written by CodeBreaker's Python front end (tools/py2cpp.py port
+# codebreaker.formats.ne native/ported/ne/src, with src_python/ne.py in ne.py's place), and the
+# gate's facts program.
 #
 #   (in a vcvars64 shell)
 #   cmake -S native/ported/ne -B native/ported/ne/build -G Ninja -DCMAKE_BUILD_TYPE=Release

@@ -155,8 +155,8 @@ void build_meta(Call &c) {
     o.item("entry_rva", im.entry);
     o.key("entry_va");
     if (im.entry) {
-        if (im.entry > UINT64_MAX - im.image_base) fallback("an address past 64 bits");
-        o.uinteger(im.image_base + im.entry);
+        if (im.entry > UINT64_MAX - im.image_base) o.uinteger65(im.image_base + im.entry);   // past 64 bits, as Python adds
+        else o.uinteger(im.image_base + im.entry);
     } else {
         o.integer(0);
     }
@@ -196,7 +196,7 @@ std::optional<int64_t> opt_int(const Value &v) {
 
 void u(Call &c) {
     std::string fmt = c.str_arg(0);
-    if (fmt.size() != 1 || std::string("BHIQ").find(fmt[0]) == std::string::npos) fallback("a struct format other than B H I Q");
+    if (fmt.size() != 1 || std::string("BHIQ").find(fmt[0]) == std::string::npos) raise("struct.error", "bad char in struct format");
     c.out.uinteger(opened(c).u(fmt[0], opt_int(c.arg(1))));
 }
 void text(Call &c) { c.out.text(opened(c).text(opt_int(c.arg(0)), c.int_arg(1, 512))); }

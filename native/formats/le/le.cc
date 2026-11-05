@@ -325,7 +325,7 @@ static std::string object_bytes_from(const Image &lf, const std::vector<PageEntr
     int64_t last = 0;
     for (const PageEntry &e : pm) last = std::max(last, e.number);
     auto [a, b] = list_range(int64_t(pm.size()), pmidx - 1, pmidx - 1 + pcnt);
-    if ((b - a) * int64_t(lf.pagesize) > kBig || vsize > kBig || vsize < 0) fallback("an object past memory");
+    if ((b - a) * int64_t(lf.pagesize) > kBig || vsize > kBig || vsize < 0) raise("MemoryError", "");
     std::string out;
     for (int64_t k = a; k < b; ++k) {
         Bytes page = page_bytes(lf, pm[size_t(k)].number, pm[size_t(k)].kind, last);
@@ -686,7 +686,7 @@ std::string expand_page(Bytes buf, int64_t size) {
         }
         int k = 0;
         while (br.take() == 0) {
-            if (++k > 30) fallback("a copy longer than memory");
+            if (++k > 30) raise("MemoryError", "");
         }
         const int64_t n = (int64_t(1) << k) + int64_t(br.take(k)) + 1;
         for (int64_t j = 0; j < n; ++j) {

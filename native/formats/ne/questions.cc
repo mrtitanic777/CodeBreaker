@@ -124,7 +124,7 @@ int64_t key_int(const Value &d, const char *k) {
 
 void relocations(Call &c) {
     const Value &seg = c.arg(kArgs);
-    if (seg.kind != Value::Dict) fallback("a segment that is not a dict");
+    if (seg.kind != Value::Dict) raise("TypeError", "a segment that is not a dict");
     Module m = module(c);
     const int64_t flags = key_int(seg, "flags");
     std::vector<Relocation> recs;

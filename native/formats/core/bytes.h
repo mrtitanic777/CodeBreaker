@@ -175,7 +175,7 @@ inline int64_t py_shl(int64_t a, int64_t b) {
     if (a == 0) return 0;
     if (b < 0) raise("ValueError", "negative shift count");
     if (b >= 63 || (a > 0 ? a > (std::numeric_limits<int64_t>::max() >> b) : a < (std::numeric_limits<int64_t>::min() >> b)))
-        fallback("an int past 64 bits");
+        raise("OverflowError", "an int past 64 bits");
     return a << b;
 }
 
