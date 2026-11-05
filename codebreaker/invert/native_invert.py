@@ -29,7 +29,7 @@ def _load():
     if not os.path.isfile(path):
         raise OSError("cbinvert.dll is not built: %s (native/invert/CMakeLists.txt)" % path)
     lib = settings.load_native(path)
-    if lib.cbinv_version() != 2:
+    if lib.cbinv_version() != 3:
         raise OSError("cbinvert.dll is another version: rebuild native/invert")
     import capstone                          # the models decode with the very capstone.dll Python's package carries
     cs = os.path.join(os.path.dirname(capstone.__file__), "lib", "capstone.dll")
@@ -37,6 +37,8 @@ def _load():
     for name in ("cbinv_msc6", "cbinv_msc6_sigs", "cbinv_wf", "cbinv_mask"):
         getattr(lib, name).argtypes = (ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p))
     lib.cbinv_small.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
+    lib.cbinv_msvc2.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
+    lib.cbinv_msc6reg.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
     lib.cbinv_thunk.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
     lib.cbinv_cfg.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
     lib.cbinv_structure.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
@@ -137,3 +139,62 @@ def small(which, code, syms=None, callee="G"):
     if which == 0:
         return a
     return (a["t"], a["m"]) if a["t"] is not None else (None, a["w"])
+
+
+def msc6_registers(which, code, imports=None):
+    """0: msc6_registers.invert_reg, 1: invert_loop -> (text, meta) or (None, why)."""
+    rows = ["C\t" + bytes(code).hex()] + ["I\t%d\t%s" % (k, v) for k, v in (imports or {}).items()]
+    a = json.loads(_call(_load().cbinv_msc6reg, "\n".join(rows) + "\n", which))
+    return (a["t"], a["m"]) if a["t"] is not None else (None, a["w"])
+
+
+def _enc(x):
+    """A model's value as pyval JSON (native/invert/pyval.h): a tuple an array, a list {"L": [..]},
+    a dict {"D": [[key, value], ..]}."""
+    if isinstance(x, tuple):
+        return [_enc(v) for v in x]
+    if isinstance(x, list):
+        return {"L": [_enc(v) for v in x]}
+    if isinstance(x, dict):
+        return {"D": [[k, _enc(v)] for k, v in x.items()]}
+    return x
+
+
+def _dec(x):
+    if isinstance(x, list):
+        return tuple(_dec(v) for v in x)
+    if isinstance(x, dict):
+        if "L" in x:
+            return [_dec(v) for v in x["L"]]
+        return {k: _dec(v) for k, v in x["D"]}
+    return x
+
+
+def msvc2_invert(code, mask=None):
+    """msvc2.invert: {nargs, expr, c, node} or None."""
+    rows = ["C\t" + bytes(code).hex()]
+    if mask is not None:
+        rows.append("M\t" + ",".join(str(int(i)) for i in mask))
+    return _dec(json.loads(_call(_load().cbinv_msvc2, "\n".join(rows) + "\n", 0)))
+
+
+def msvc2_interp(code, nargs):
+    """msvc2_registers.interp: a list of seq nodes, or None."""
+    return _dec(json.loads(_call(_load().cbinv_msvc2, "C\t%s\nN\t%d\n" % (bytes(code).hex(), nargs), 1)))
+
+
+def msvc2_emit(node):
+    """msvc2_forward.emit: the bytes, or None."""
+    h = json.loads(_call(_load().cbinv_msvc2, json.dumps(_enc(node)), 2))
+    return None if h is None else bytes.fromhex(h)
+
+
+def msvc2_to_c(node):
+    """msvc2_forward.to_c."""
+    return json.loads(_call(_load().cbinv_msvc2, json.dumps(_enc(node)), 3))
+
+
+def msvc2_frame_layout(locals_):
+    """msvc2_forward.frame_layout: (framesize, {decl_index: ebp_offset})."""
+    cum, offs = json.loads(_call(_load().cbinv_msvc2, json.dumps(_enc(list(locals_))), 4))
+    return cum, {i: off for i, off in offs}

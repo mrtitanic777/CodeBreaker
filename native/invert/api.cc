@@ -9,6 +9,7 @@
 #include "cs.h"
 #include "flow16.h"
 #include "msc6.h"
+#include "msvc2.h"
 
 using namespace cbinv;
 
@@ -117,7 +118,30 @@ int cbinv_mask(const char *in, char **out) {
   });
 }
 
-int cbinv_version(void) { return 2; }
+int cbinv_msc6reg(const char *in, int which, char **out) {
+  return guarded(out, [&] {
+    std::string code;
+    std::map<long long, std::string> imports;
+    std::istringstream is(in);
+    std::string line;
+    while (std::getline(is, line)) {
+      auto f = split(line, '\t');
+      if (f[0] == "C" && f.size() >= 2) {
+        auto b = unhex(f[1]);
+        code.assign(b.begin(), b.end());
+      } else if (f[0] == "I" && f.size() >= 3) {
+        imports[std::stoll(f[1])] = f[2];
+      }
+    }
+    return which == 0 ? msc6_invert_reg(code, imports) : msc6_invert_loop(code, imports);
+  });
+}
+
+int cbinv_msvc2(const char *in, int which, char **out) {
+  return guarded(out, [&] { return msvc2_call(in, which); });
+}
+
+int cbinv_version(void) { return 3; }
 
 void cbinv_free(char *p) { std::free(p); }
 

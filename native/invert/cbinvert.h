@@ -23,6 +23,11 @@
  * cbinv_mask      msc6_function._mask.  Out: hex.
  * cbinv_small     which 0: msc6_function.invert_cleanup ("C <hex>", "Y off name"), 1: msc6_walk.invert
  *                 ("C", "Y off name kind", "K <callee>"), 2: msc6_templates.invert ("C"); tab-separated.
+ * cbinv_msc6reg   which 0 msc6_registers.invert_reg, 1 invert_loop ("C <hex>", "I k name" per import);
+ *                 out {"t": text, "m": meta} or {"t": null, "w": why}.
+ * cbinv_msvc2     the MSVC 2.0 models (msvc2.h): which 0 msvc2.invert ("C <hex>", "M <offsets>" for a
+ *                 mask), 1 msvc2_registers.interp ("C <hex>", "N <nargs>"), 2 msvc2_forward.emit,
+ *                 3 to_c, 4 frame_layout (the node or the locals as pyval JSON, pyval.h).
  */
 #ifndef CBINVERT_H
 #define CBINVERT_H
@@ -47,6 +52,8 @@ __declspec(dllexport) int cbinv_thunk(const char *in, const char *name, int exac
 __declspec(dllexport) int cbinv_wf(const char *in, char **out);
 __declspec(dllexport) int cbinv_mask(const char *in, char **out);
 __declspec(dllexport) int cbinv_small(const char *in, int which, char **out);
+__declspec(dllexport) int cbinv_msc6reg(const char *in, int which, char **out);
+__declspec(dllexport) int cbinv_msvc2(const char *in, int which, char **out);
 __declspec(dllexport) void cbinv_free(char *p);
 #ifdef __cplusplus
 }

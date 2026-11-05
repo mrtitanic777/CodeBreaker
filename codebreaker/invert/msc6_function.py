@@ -8,9 +8,6 @@ Both are C++ (native/invert/msc6_small.cc, msc6_helpers.cc; docs/NATIVE.md); thi
 """
 from codebreaker.invert import native_invert
 
-PROLOGUE = bytes.fromhex("1e589045558bec1e8ed8")
-EPI = bytes.fromhex("4d4d8be51f5d4d")
-
 
 def _mask(code):
     """The bytes with the relocated operands zeroed: a far call's target, a near call's rel16, the

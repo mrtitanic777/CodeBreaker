@@ -16,7 +16,10 @@ add_library(cbinvert SHARED
   cs.cc        # Capstone: the capstone.dll of Python's `capstone` package, loaded by path
   msc6.cc      # invert/msc6.py: the Microsoft C 6.0a model
   msc6_helpers.cc    # msc6_calls, segment_thunk, whole_function, msc6_function._mask
-  msc6_small.cc)     # msc6_function.invert_cleanup, msc6_walk, msc6_templates
+  msc6_small.cc      # msc6_function.invert_cleanup, msc6_walk, msc6_templates
+  msc6_registers.cc  # msc6_registers.invert_reg, invert_loop
+  pyval.cc         # Python values (tuples, lists, dicts) and their JSON form for the shim
+  msvc2.cc)          # msvc2_forward, msvc2, msvc2_registers: the MSVC 2.0 32-bit models
 # capstone.h: the headers Python's `capstone` package carries (the same version as its DLL)
 if(NOT CAPSTONE_INCLUDE)
   execute_process(COMMAND python -c "import capstone, os; print(os.path.join(os.path.dirname(capstone.__file__), 'include'))"
