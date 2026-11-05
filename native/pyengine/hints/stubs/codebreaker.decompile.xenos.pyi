@@ -1,0 +1,19 @@
+from typing import List
+
+
+def _mask(m: int) -> str: ...
+
+
+def _register(selected: int, number: int) -> str: ...
+
+
+def _swizzle(sw: int) -> str: ...
+
+
+def alu(d0: int, d1: int, d2: int) -> List[str]: ...
+
+
+def control(d0: int, d1: int, d2: int) -> List[str]: ...
+
+
+def disassemble(dwords: List[int]) -> List[str]: ...

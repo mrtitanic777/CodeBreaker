@@ -18,7 +18,8 @@ struct EngineOptions {
     bool backend = true;              // (extended) every translated function written by the C++17 back end
     std::string cpp;                  // where to write the C++17 (empty: nothing written)
     std::string api;                  // the API maps the back end reads (default: <root>/java/api_maps)
-    std::string hints;                // the hints folder (default: <root>/../native/pyengine/hints)
+    std::string stubs;                // a folder of <module>.pyi stubs (MonkeyType's output), read as parameter hints
+    std::string hints;              // the hints folder (default: <root>/../native/pyengine/hints)
 };
 
 struct FnStatus {
@@ -36,6 +37,7 @@ struct EngineResult {
     std::map<std::string, FnStatus> fns;
     std::map<std::string, std::string> units;   // module -> its Unit's L2 JSON
     std::string error;
+    size_t stub_files = 0, stub_applied = 0, stub_agree = 0, stub_conflicts = 0, stub_ignored = 0;
 };
 
 int run_engine(const EngineOptions& o, EngineResult& r);

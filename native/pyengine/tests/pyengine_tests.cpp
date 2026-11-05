@@ -2,7 +2,7 @@
 // checks what it found (types, refusals) and what it wrote (L2).
 //
 //   pyengine_tests <suite>      scopes inference specialization closures generators variants regex files
-//                               dynamic backend
+//                               dynamic backend stubs
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -510,9 +510,62 @@ def run():
     CHECK(has(src, "py::open(p, py::str(\"r\"), ") && has(src, "utf-8") && has(src, ".readline_text()"), "open with a keyword in its slot, text reads: %s", src.c_str());
 }
 
+// MonkeyType-style .pyi stubs read as parameter hints (--stubs): applied where nothing else types the
+// parameter, inference wins where it does, a type the engine cannot model is ignored with a reason
+static void t_stubs() {
+    Srcs ss{{"pkg.m", R"PY(
+class Box:
+    pass
+
+def entry(n, name):
+    return n.upper() + name
+
+def typed(x):
+    return x + 1
+
+def wild(v):
+    return v
+
+def boxed(b):
+    return b
+
+def use():
+    return typed(3)
+)PY"}};
+    Program p;
+    std::string err;
+    p.add_module("pkg.m", "pkg.m.py", ss["pkg.m"], &err);
+    p.index();
+    p.load_stub("pkg.m",
+                "from typing import Any, Union\n"
+                "from pkg.m import Box\n"
+                "def entry(n: str, name: <class 'Union'>[str]) -> str: ...\n"
+                "def typed(x: str) -> int: ...\n"
+                "def wild(v: Mystery) -> Any: ...\n"
+                "def boxed(b: Box) -> Box: ...\n");
+    CHECK(p.stub_files == 1 && p.stub_hints.count("pkg.m.entry"), "the stub is read");
+    p.solve();
+    auto note = [&](const char* fn, const char* param) -> const Program::StubNote* {
+        for (auto& n : p.stub_notes)
+            if (n.fn == fn && n.param == param) return &n;
+        return nullptr;
+    };
+    auto* a = note("pkg.m.entry", "n");
+    CHECK(a && a->status == "applied", "an untyped parameter takes the stub's type (%s)", a ? a->status.c_str() : "no note");
+    CHECK(p.param_type(p.any_fn("pkg.m.entry"), "n").kind == TK::Str, "the stub type is the parameter's type");
+    auto* u = note("pkg.m.entry", "name");
+    CHECK(u && u->status == "applied", "<class 'Union'>[str] is read as Union[str] (%s)", u ? u->status.c_str() : "no note");
+    auto* c = note("pkg.m.typed", "x");
+    CHECK(c && c->status == "conflict" && p.param_type(p.any_fn("pkg.m.typed"), "x").kind == TK::Int, "inference wins and the conflict is reported");
+    auto* w = note("pkg.m.wild", "v");
+    CHECK(w && w->status == "ignored" && !w->detail.empty(), "a type the engine cannot model is ignored with a reason");
+    auto* b = note("pkg.m.boxed", "b");
+    CHECK(b && b->status == "applied" && p.param_type(p.any_fn("pkg.m.boxed"), "b").kind == TK::Inst, "a class named through a stub import (%s)", b ? b->detail.c_str() : "no note");
+}
+
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> suites = {
-        {"dynamic", t_dynamic},   {"backend", t_backend},
+        {"dynamic", t_dynamic},   {"backend", t_backend}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
         {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};
     std::vector<std::string> run;

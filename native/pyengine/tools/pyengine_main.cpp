@@ -14,6 +14,7 @@
 //                module, each function's first and last source line; a declined unit's reason)
 //   --api DIR    the API maps the back end reads (default: <package dir>/java/api_maps)
 //   --no-backend do not hold translated functions to what the back end writes (see README)
+//   --stubs DIR  a folder of <module>.pyi stubs (MonkeyType's output), read as parameter hints (inference wins; conflicts reported)
 //   --hints DIR  the hints (types.json, refuse.json, refuse.<policy>.json; default native/pyengine/hints)
 #include <cstdio>
 #include <cstring>
@@ -37,6 +38,7 @@ int main(int argc, char** argv) {
         else if (a == "--no-backend") o.backend = false;
         else if (a == "--cpp" && i + 1 < argc) o.cpp = argv[++i];
         else if (a == "--api" && i + 1 < argc) o.api = argv[++i];
+        else if (a == "--stubs" && i + 1 < argc) o.stubs = argv[++i];
         else if (a == "--hints" && i + 1 < argc) o.hints = argv[++i];
         else if (!a.empty() && a[0] != '-' && o.root.empty()) o.root = a;
         else {

@@ -12,7 +12,7 @@ and the judge (below) holds every translated function to compiling and behaving 
                 ctest --test-dir native/pyengine/build
 
     pyengine <package dir> [--coverage] [--out DIR] [--cpp DIR] [--checked] [--old] [--package NAME]
-             [--module M] [--hints DIR] [--no-backend] [--log]
+             [--module M] [--hints DIR] [--stubs DIR] [--no-backend] [--log]
 
 | target | what |
 |---|---|
@@ -51,6 +51,14 @@ instance to call them on) and functions returning objects are compiled but not r
 with the reason; the engine refuses each (`judge: <why>`) with its cascade. A recurring entry is a bug
 to fix in the engine, the back end or py.hpp (most of this work was that: see below), the file is
 what is left.
+
+**--stubs DIR (committed copy: hints/stubs/)**: `<module>.pyi` files written by MonkeyType from a traced
+run of the package (`python -m monkeytype run tests/X.py`, then `monkeytype stub <module>`), read by
+pyfront and applied like types.json (after it), to parameters nothing else types. Inference wins where
+it typed the parameter: a differing stub is a *conflict*, reported, not applied. A stub type the engine
+cannot model (stdlib classes, unions with no single type) is *ignored* with its reason. `--out` also
+writes `stubs_report.json` (every stub parameter: applied / agree / conflict / ignored). Return types
+are not used. MonkeyType on Python 3.14 writes `Union` as `<class 'Union'>[...]`; the reader accepts it.
 
 **hints/types.json**: `{function: {parameter: annotation text}}`, applied when the classic rules
 have settled, to parameters they left untyped, as if the source were annotated (Python files are not

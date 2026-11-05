@@ -267,6 +267,18 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
                     if (why.is_str()) judged_refused[q.str()] = why.str();
         }
     }
+    if (o.extended && !o.stubs.empty()) {   // (new) --stubs: <module>.pyi files, read as parameter hints
+        std::vector<fs::path> files;
+        for (auto& e : fs::directory_iterator(fs::path(o.stubs)))
+            if (e.is_regular_file() && e.path().extension() == ".pyi") files.push_back(e.path());
+        std::sort(files.begin(), files.end());
+        for (auto& fpath : files) {
+            std::ifstream f(fpath, std::ios::binary);
+            std::stringstream ss;
+            ss << f.rdbuf();
+            p.load_stub(fpath.stem().string(), ss.str());
+        }
+    }
     if (o.log) fprintf(stderr, "solving %zu functions, %zu nested\n", p.fns.size(), p.nested.size());
     r.rounds = p.solve(40, o.log);
     auto t1 = std::chrono::steady_clock::now();
@@ -275,6 +287,13 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
     r.seconds_solve = std::chrono::duration<double>(t1 - t0).count();
     r.seconds_lower = std::chrono::duration<double>(t2 - t1).count();
     r.modules = p.modules.size();
+    r.stub_files = (size_t)p.stub_files;
+    for (auto& n : p.stub_notes) {
+        if (n.status == "applied") r.stub_applied++;
+        else if (n.status == "agree") r.stub_agree++;
+        else if (n.status == "conflict") r.stub_conflicts++;
+        else r.stub_ignored++;
+    }
     for (auto& [q, f] : p.fns) {
         FnStatus st;
         st.lines = f->lines;
@@ -349,6 +368,26 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
         doc.set("functions", fns);
         write_text(out / "coverage.json", py::json_dump(doc));
         write_text(out / "coverage.md", coverage_markdown(r));
+        if (!o.stubs.empty()) {   // (new) what each stub parameter became: applied | agree | conflict | ignored, and why
+            py::V notes = py::V::list({});
+            for (auto& n : p.stub_notes) {
+                py::V d = py::V::dict();
+                d.set("function", n.fn);
+                d.set("parameter", n.param);
+                d.set("stub", n.stub);
+                d.set("status", n.status);
+                d.set("detail", n.detail);
+                notes.append(d);
+            }
+            py::V rep = py::V::dict();
+            rep.set("stub_files", (long long)r.stub_files);
+            rep.set("applied", (long long)r.stub_applied);
+            rep.set("agree", (long long)r.stub_agree);
+            rep.set("conflicts", (long long)r.stub_conflicts);
+            rep.set("ignored", (long long)r.stub_ignored);
+            rep.set("notes", notes);
+            write_text(out / "stubs_report.json", py::json_dump(rep));
+        }
     }
     return 0;
 }

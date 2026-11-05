@@ -1,0 +1,9 @@
+def where(
+    m: <class 'Union'>[codebreaker.formats.native_ne.NEFile, codebreaker.formats.native_ne.BootImageModule]
+) -> <class 'Union'>[Tuple[int, int, int], Tuple[int, int, None]]: ...
+
+
+class NEFile:
+    def __init__(self, path: str) -> None: ...
+    @classmethod
+    def from_buffer(cls, data: bytes, ne_off: int, path: str = ...) -> BootImageModule: ...

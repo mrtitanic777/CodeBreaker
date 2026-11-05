@@ -1,0 +1,29 @@
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Union,
+)
+
+
+def _parameter(p: _P, element: bool = ...) -> bytes: ...
+
+
+def _skip_parameters(r: _Reader, names: None = ...) -> None: ...
+
+
+def _string(s: str) -> bytes: ...
+
+
+def add_parameters(data: bytes, parameters: List[<class 'Union'>]) -> bytes: ...
+
+
+class _P:
+    def __init__(self, d: Dict[str, <class 'Union'>]) -> None: ...
+
+
+class _Reader:
+    def __init__(self, data: bytes, at: int) -> None: ...
+    def annotations(self) -> None: ...
+    def string(self) -> str: ...
+    def take(self, fmt: str) -> <class 'Union'>[bool, int]: ...
