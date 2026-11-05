@@ -314,10 +314,21 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
     from codebreaker.build import asm16
     from codebreaker.source import assembly as _assembly
     from codebreaker.build import msc6 as _msc6
+    import capstone
+    from codebreaker.build import data as _data16
     wasm = platforms.of("ne").packager.assembler()
-    asm_stamp = cache.key(cache.tool(wasm) if wasm else "", open(asm16.__file__, "rb").read(),
+    # (what the rounds of a piece come to, below, is kept in the shared build cache by every input
+    # of them: the assembler (functions.tool_inputs: its bytes, INCLUDE, WASM), the code that
+    # writes, probes and checks the text (asm16 and the data writer it uses, source/assembly,
+    # msc6's object reader, this function -- the rounds are in it -- and _wasm), the decoder
+    # (capstone's version), and the original module's bytes, which say each instruction's
+    # bytes, its segment's width (16- or 32-bit) and its relocations; then, per piece, its text,
+    # place and stem)
+    module_bytes = cache.key(nef.data)
+    asm_stamp = cache.key("assembled16", functions.tool_inputs(wasm, env, "WASM") if wasm else "",
+                          open(asm16.__file__, "rb").read(), open(_data16.__file__, "rb").read(),
                           open(_assembly.__file__, "rb").read(), open(_msc6.__file__, "rb").read(),
-                          _source_of(_assembled16))         # (this function's own code: the rounds are in it)
+                          _source_of(_assembled16), _source_of(_wasm), capstone.__version__, module_bytes)
     b.lead_ins, b.placed_c, b.moved_c, b._publics = [], set(), set(), dict(public)
     if not wasm:
         return {}
@@ -380,7 +391,7 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
         # (what the rounds came to is kept by what decides it -- the module, where the piece is,
         # its names and holes, this code and the assembler: the same piece in a later build is
         # written once, as it ended, and not probed and assembled round after round again)
-        k = cache.key(f.text, f.start, f.end, asm_stamp)
+        k = cache.key(f.text, f.seg, f.start, f.end, stem, asm_stamp)
         had = cache.get("assembled16", k)
         if had is not None:
             why, good = pickle.loads(had)
@@ -846,14 +857,20 @@ def _wasm(wasm, env, folder, stem, text, flags=("-q", "-zcm")):
     with open(os.path.join(folder, stem + ".asm"), "w", newline="\n") as fh:
         fh.write(text)
     obj = os.path.join(folder, stem + ".obj")
-    k = cache.key(cache.tool(wasm), list(flags), text)
+    # (every input of the object, in the shared build cache: the assembler by its bytes, the
+    # INCLUDE files it may read and the WASM variable of options (functions.tool_inputs), the
+    # options, the text, and the stem -- the object names its source file, stem.asm, and the
+    # messages of a failure name it too)
+    k = cache.key("wasm16", functions.tool_inputs(wasm, env, "WASM"), list(flags), stem, text)
     had = cache.get("wasm16", k)
     if had is not None:
-        if had[:2] == b"OK":
+        if had[:2] != b"OK":
+            return 1, functions.message_here(had[2:], folder)
+        here = functions.omf_here(had[2:], os.path.dirname(obj))     # (as wasm writes it in this folder, now)
+        if here is not None:
             with open(obj, "wb") as fh:
-                fh.write(had[2:])
+                fh.write(here)
             return 0, ""
-        return 1, had[2:].decode("utf-8", "replace")
     try:
         os.remove(obj)
     except OSError:
@@ -869,7 +886,7 @@ def _wasm(wasm, env, folder, stem, text, flags=("-q", "-zcm")):
     # not the text: kept, every later build of the module found that piece "not assembling" and
     # gave up its whole frame, USER's segment 1 with all its C)
     if msg.strip():
-        cache.put("wasm16", k, b"ER" + msg.encode("utf-8", "replace"))
+        cache.put("wasm16", k, b"ER" + functions.message_kept(msg, folder))
     return r.returncode or 1, msg
 
 
@@ -969,6 +986,17 @@ def _assembled_one(b, name, stems, stem):
     b.rejected.pop(name, None)
 
 
+_PUBLICS = []
+
+
+def _publics_code():
+    """The reader of an object's publics (formats/omf.py), by its source: in a kept result's key."""
+    if not _PUBLICS:
+        with open(omf.__file__, "rb") as fh:
+            _PUBLICS.append(cache.key(fh.read()))
+    return _PUBLICS[0]
+
+
 def _publics(folder, stems):
     """{function name: (object-file symbol, object path relative to folder)}"""
     out = {}
@@ -978,7 +1006,7 @@ def _publics(folder, stems):
                 body = f.read()
         except OSError:
             continue
-        k = cache.key(body)                                  # (an object's publics: read once, kept by its bytes)
+        k = cache.key(body, _publics_code())                   # (an object's publics: read once, kept by its bytes and the reader)
         had = cache.get("omf_publics", k)
         if had is None:
             symbols = omf.publics(body)
@@ -1932,6 +1960,45 @@ def build(module, outdir=None, call=True, log=print, gated=None, _gate=False):
     return b
 
 
+def build_many(modules, outdir_of=None, call=True, log=print, jobs=None):
+    """Several modules built side by side -> {module: Built}, in the order given. Each is built
+    as build() builds it, in a Python of its own (modules share nothing but the caches, which
+    are made for many processes); together they take the machine's budget (parallel.workers()):
+    as many modules at once as that, each with its share of it for its own compiles and gate,
+    the largest first so that the longest is not the one started last. One module, or a budget
+    of one, is built here, in this process. `outdir_of(module)` names each one's folder."""
+    import pickle
+    import sys
+    jobs = jobs or parallel.workers()
+    modules = list(modules)
+    procs = max(1, min(jobs, len(modules)))
+    if procs == 1:
+        return {m: build(m, outdir=outdir_of(m) if outdir_of else None, call=call, log=log) for m in modules}
+    each = max(1, jobs // procs)
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    code = ("import sys, pickle; sys.path.insert(0, %r); from codebreaker.build import module; "
+            "from codebreaker.engine import win16; a = pickle.loads(sys.stdin.buffer.read()); "
+            "b = module.build(a[0], outdir=a[1], call=a[2], log=lambda *x: None); "
+            "sys.stdout.buffer.write(b'\\n--built--\\n' + pickle.dumps(win16._keepable(b), protocol=4))" % root)
+    env = dict(os.environ, CB_JOBS=str(each))
+
+    def size(m):
+        p = corpus.retail(m)
+        return -(os.path.getsize(p) if p and os.path.isfile(p) else 0)
+
+    def one(m):
+        log("%s: building (one of %d at once)" % (os.path.basename(m), procs))
+        r = subprocess.run([sys.executable, "-c", code], input=pickle.dumps(
+            (m, outdir_of(m) if outdir_of else None, call)), capture_output=True, env=env)
+        out = r.stdout.split(b"\n--built--\n", 1)
+        if r.returncode or len(out) < 2:
+            raise RuntimeError("%s: the build stopped (exit %s): %s" % (
+                m, r.returncode, r.stderr.decode("utf-8", "replace").strip()[-600:]))
+        return m, pickle.loads(out[1])
+    made = dict(pool.threads(one, sorted(modules, key=size), jobs=procs))
+    return {m: made[m] for m in modules}
+
+
 def _disputes(d):
     """[(name, who the callers say removes the arguments)] for each function the description
     says otherwise of -- the original's own calls are the evidence (describe.callers_say)."""
@@ -2070,16 +2137,21 @@ def main(argv):
         print(__doc__)
         return 2
     bad = 0
+    projects, where_of = {}, {}
     for name in names:
-        proj = None
-        where = out
-        if not where:
+        where_of[name] = out
+        if not out:
             from codebreaker.base import converted
             path = corpus.retail(name)
             if path:
-                proj = converted.project(path)
-                where = proj.build
-        b = build(name, outdir=where, call="--no-run" not in argv)
+                projects[name] = converted.project(path)
+                where_of[name] = projects[name].build
+    # (several: side by side, as many at once as the budget -- build_many; one: here)
+    made = build_many(names, outdir_of=where_of.get, call="--no-run" not in argv) if len(names) > 1 and not out \
+        else {}
+    for name in names:
+        proj = projects.get(name)
+        b = made.get(name) or build(name, outdir=where_of[name], call="--no-run" not in argv)
         print(b.report())
         if proj:
             proj.record("build", [proj.build], notes="the whole module built from its recovered source: %s"

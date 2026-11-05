@@ -73,9 +73,9 @@ PLATFORM = "win16"
 P = platforms.named(PLATFORM)                           # its six slots: loader, cpu, ... packager
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))       # codebreaker/
 _real_compile, _real_never_set = P.compiler.compile.target(), functions.never_set
-# (the function.object/function.never_set steps are their own cache -- the fact store, keyed by the
-#  engine's inputs -- so they run the compiler directly, not through base/cache.py's objects/never_set
-#  kinds. _real_compile/_real_never_set stay the cached forms for the link's un-served compiles.)
+# (the function.object/function.never_set steps compile through the shared build cache --
+#  functions.compile_kept / never_set_kept -- so a fresh state reuses what any compiled before;
+#  _real_compile/_real_never_set stay the cached forms for the link's un-served compiles.)
 _raw_compile, _raw_never_set, _adjust_flags = functions._run_compile, functions._run_never_set, functions._adjust_flags
 # (the options module._build16 compiles a function with, before its code segment's -nt=: the
 # medium model, the 8087, for size, the code class it lays out first)
@@ -248,9 +248,10 @@ def _read(path):
       uses=(functions, _folder, _read), stamp=lambda: cache.tool(_wcc()))
 def function_object(ctx, key):
     """The object file the compiler makes of the function: {flags, text, obj} -- or, when it is
-    rejected, {error, stand_in: the object of a stand-in with its signature (or None)}. This fact
-    is the compiler object cache (keyed by function.source and ne.header): the compiler runs
-    directly here, not through base/cache.py's objects kind."""
+    rejected, {error, stand_in: the object of a stand-in with its signature (or None)}. The
+    compiler's work goes through the shared build cache (functions.compile_kept: base/cache.py's
+    objects kind, keyed by every input of the object), so a fresh state or another worktree
+    compiles nothing one compiled before."""
     src = ctx.need("function.source", key)
     if src is None:
         return None
@@ -258,13 +259,15 @@ def function_object(ctx, key):
     d = _folder(ctx, src["seg"], header)
     env = P.compiler.env()
     out = {"flags": src["flags"], "text": src["text"]}
-    why, _keep = _raw_compile(_wcc(), _adjust_flags(src["flags"], src["text"]), env, d, src["stem"], src["text"])
+    hk = cache.key(header)
+    why, _keep = functions.compile_kept(_wcc(), _adjust_flags(src["flags"], src["text"]), env, d, src["stem"],
+                                        src["text"], hk)
     if why:
         out["error"] = why
         out["stand_in_text"] = functions.stand_in(src["text"])
         out["stand_in"] = None
         si = out["stand_in_text"]
-        if not _raw_compile(_wcc(), _adjust_flags(src["flags"], si), env, d, src["stem"], si)[0]:
+        if not functions.compile_kept(_wcc(), _adjust_flags(src["flags"], si), env, d, src["stem"], si, hk)[0]:
             out["stand_in"] = _read(os.path.join(d, src["stem"] + ".obj"))
     else:
         out["obj"] = _read(os.path.join(d, src["stem"] + ".obj"))
@@ -282,7 +285,8 @@ def function_never_set(ctx, key):
     d = _folder(ctx, src["seg"], ctx.need("ne.header"))
     stem = "n" + key.replace(":", "_")                       # (only its scratch file's name)
     return {"flags": CFLAGS, "text": src["text"],
-            "names": _raw_never_set(_wcc(), CFLAGS, P.compiler.env(), d, stem, src["text"])}
+            "names": functions.never_set_kept(_wcc(), CFLAGS, P.compiler.env(), d, stem, src["text"],
+                                              cache.key(ctx.need("ne.header")))}
 
 
 @step("function.contract", reads=("function.c", "ne.functions", "ne.lines"), platform=PLATFORM)
@@ -410,6 +414,18 @@ def _image_stamp():
             [os.environ.get(n, "") for n in SWITCHES])
 
 
+def _copy(m):
+    """A copy of the decompiled module that shares nothing with it: as copy.deepcopy makes, by a
+    pickle round trip (the fact store keeps ne.module pickled, so it pickles; much faster
+    than deepcopy, which took 115 s of GDI's build over the gate's rounds). What does not
+    pickle is copied as before."""
+    import pickle
+    try:
+        return pickle.loads(pickle.dumps(m, protocol=pickle.HIGHEST_PROTOCOL))
+    except Exception:
+        return copy.deepcopy(m)
+
+
 def _keepable(b):
     """The Built as it can be kept: what does not pickle left out."""
     import pickle
@@ -444,7 +460,7 @@ def ne_image(ctx, key):
     never = ctx.need_many("function.never_set", keys)
     ctx.file(module.KEPT_AS_ASM)
     folder = ctx.work("build")
-    m = copy.deepcopy(m0)
+    m = _copy(m0)
     os.makedirs(os.path.join(folder, "decompiled"), exist_ok=True)
     m.description.lines = ctx.need("ne.description")
     m.description.write(os.path.join(folder, "decompiled", "description.txt"))     # (for the decompiler)
@@ -464,7 +480,7 @@ def ne_image(ctx, key):
     while True:
         b = module.Built(path)
         b.gated, b.folder, b.functions = dict(gated), folder, len(m.all_keys)
-        mm = copy.deepcopy(m)                                # (_build16 adds to its segments)
+        mm = _copy(m)                                        # (_build16 adds to its segments)
         with _serving(m.header, objects.values(), never.values()) as count:
             before = dict(count)
             image = P.packager.link(b, path, mm, folder)

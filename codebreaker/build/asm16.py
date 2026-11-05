@@ -34,12 +34,16 @@ from codebreaker.build import data as data16
 from codebreaker import platforms
 
 
-_DECODED = {}                           # (bytes, place) -> the instruction: a segment's code is decoded
+_DECODED = {}                           # (inputs) -> the instruction: a segment's code is decoded
                                         # once, not again for every run and pass that goes over it
 
 
 def _decoded(md, data, at, bits=16):
-    k = (data, at, bits)                                # (the same bytes read as 16- or 32-bit code differ)
+    # (the key, every input of the instruction: the bytes, the place, and the decoder as it is
+    # set -- its architecture, its mode (16- or 32-bit: the same bytes read as either differ,
+    # GDI's use32 segments), its syntax and whether it gives details -- read off `md` itself,
+    # not trusted to `bits`, which says only what the caller meant)
+    k = (data, at, bits, md.arch, md.mode, md.syntax, md.detail)
     if k not in _DECODED:
         if len(_DECODED) > 400000:
             _DECODED.clear()

@@ -54,6 +54,10 @@ and are named in one file, `settings.json` at the top of the checkout:
     state           where results and caches are kept             (default: state/)
     cache_max_gb    the cap on all of state's caches together, in GB (default 2): past it the
                     results used longest ago go first (base/cache.py)
+    build_cache     the build cache every state folder and every worktree shares: what an
+                    assembler or a compiler made of its inputs (base/cache.SHARED) (default:
+                    state/build_cache of the main checkout -- of this one when it is not a worktree)
+    build_cache_max_gb  its cap, in GB (default 6)
     target          what is being reconstructed                   (default: win95)
     service_idle_minutes  the CodeBreaker service (`serve`) exits after this long with no call and
                     no job (default 20)
@@ -97,7 +101,7 @@ DEFAULTS = {
                                        # with the functions shared among processes as the governor allows (base/parallel.py)
     "struct_recovery": "all",          # structures from field accesses: off, 32 (32-bit x86 only), all
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "tracer_bin", "formats_bin", "engine_bin", "dosexec_bin", "symbols_bin", "invert_bin", "analyze_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
+_PATHS = ("corpus", "openwatcom", "build_cache", "decompiler_bin", "xex_bin", "tracer_bin", "formats_bin", "engine_bin", "dosexec_bin", "symbols_bin", "invert_bin", "analyze_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
           "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays",
           "win95_installed_hd")
@@ -169,6 +173,31 @@ def state(*parts):
     """A path inside the state folder, which is created if it is not there."""
     path = os.path.join(get("state"), *parts)
     os.makedirs(os.path.dirname(path) if parts else path, exist_ok=True)
+    return path
+
+
+def main_checkout():
+    """The main checkout this one belongs to: itself, or -- for a worktree, whose .git is a file
+    naming <main>/.git/worktrees/<name> -- the main one."""
+    dot = os.path.join(ROOT, ".git")
+    if os.path.isfile(dot):
+        try:
+            with open(dot, encoding="utf-8") as f:
+                line = f.read().strip()
+        except OSError:
+            line = ""
+        if line.startswith("gitdir:"):
+            where = os.path.normpath(line[len("gitdir:"):].strip())
+            up = os.path.dirname(where)                      # <main>/.git/worktrees
+            if os.path.basename(up) == "worktrees" and os.path.basename(os.path.dirname(up)) == ".git":
+                return os.path.dirname(os.path.dirname(up))
+    return ROOT
+
+
+def build_cache():
+    """The shared build cache's folder (the setting build_cache), created on demand."""
+    path = get("build_cache") or os.path.join(main_checkout(), "state", "build_cache")
+    os.makedirs(path, exist_ok=True)
     return path
 
 

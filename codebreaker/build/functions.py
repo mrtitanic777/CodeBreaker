@@ -21,6 +21,7 @@ the original module's data and every global is then where the original had it.
 """
 import os
 import re
+import struct
 import subprocess
 
 from codebreaker import platforms
@@ -103,28 +104,126 @@ def _run_compile(cc, cflags, env, outdir, stem, text):
     return why, bool(m)
 
 
-def _compile(cc, cflags, env, outdir, stem, text):
-    """Compile one function. -> "" or the first error. What the compiler made of this text
-    with this header and these options is kept (base/cache.py) and not made again. (The engine's
-    function.object step is its own cache: it calls _run_compile directly -- engine/win16.py.)"""
+_TOOL_INPUTS = {}
+
+
+def _dos_stamp(path):
+    """(time, date) as DOS keeps them, of a file's modification (OpenWatcom's dependency record)."""
+    import time
+    t = time.gmtime(os.stat(path).st_mtime)           # (OpenWatcom's C library: with no TZ, its local time is UTC)
+    return ((t.tm_hour << 11) | (t.tm_min << 5) | (t.tm_sec // 2),
+            ((t.tm_year - 1980) << 9) | (t.tm_mon << 5) | t.tm_mday)
+
+
+def omf_here(obj, folder):
+    """An OpenWatcom object kept from a run in another folder, as the tool writes it run in
+    `folder` -> bytes, or None when it cannot be said (then the tool is run). wasm and wcc name
+    the source by its full path (THEADR: <the folder they ran in>\\<stem>.asm or .c) and, in
+    their dependency records (COMENT class E9h), each file they read with its date: the folder
+    named is the one of now, the date that of the file there now (written before this is asked),
+    and every record's checksum again as the tool makes it."""
+    if os.environ.get("TZ"):                             # (its dates are then of that zone: the tool says)
+        return None
+    recs, i, n = [], 0, len(obj)
+    while i + 3 <= n:
+        end = i + 3 + (obj[i + 1] | (obj[i + 2] << 8))
+        if end > n or end < i + 4:
+            return None
+        recs.append((obj[i], bytearray(obj[i + 3:end - 1]), obj[end - 1]))
+        i = end
+    if i != n or not recs or recs[0][0] != 0x80 or not recs[0][1]:
+        return None
+    name = bytes(recs[0][1][1:1 + recs[0][1][0]])
+    cut = name.rfind(b"\\")
+    if cut < 0:
+        return None
+    was, now = name[:cut], os.path.abspath(folder).encode("latin1", "replace")
+    out = bytearray()
+    for kind, body, check in recs:
+        if kind == 0x80:
+            if len(now) + len(name) - cut > 255:
+                return None
+            body = bytearray([len(now) + len(name) - cut]) + now + name[cut:]
+        elif kind == 0x88 and len(body) > 7 and body[1] == 0xE9:
+            dep = bytes(body[7:7 + body[6]])
+            if dep.startswith(was + b"\\"):
+                dep = now + dep[len(was):]
+                if len(dep) > 255:
+                    return None
+                there = dep.decode("latin1")
+                if not os.path.isfile(there):
+                    return None
+                tm, dt = _dos_stamp(there)
+                body = bytearray(body[:2]) + struct.pack("<HH", tm, dt) + bytes([len(dep)]) + dep + body[7 + body[6]:]
+        rec = bytearray([kind]) + struct.pack("<H", len(body) + 1) + body
+        out += rec + bytes([(-sum(rec)) & 0xFF if check else 0])
+    return bytes(out)
+
+
+_HERE = "\x00here\x00"
+
+
+def message_kept(msg, folder):
+    """A tool's message as the shared build cache keeps it: the folder it ran in (which a
+    message may name) as a mark, put back by message_here -- bytes."""
+    return msg.replace(os.path.abspath(folder), _HERE).encode("utf-8", "replace")
+
+
+def message_here(kept, folder):
+    """message_kept's message, naming `folder` as the tool run there names it."""
+    return kept.decode("utf-8", "replace").replace(_HERE, os.path.abspath(folder))
+
+
+def tool_inputs(cc, env, variable):
+    """What a compiler reads besides its command line and the source, by content: the program's
+    bytes, the headers it may include (every file of the INCLUDE folders, by its bytes) and the
+    environment variable of options it reads too (OpenWatcom's WCC, WASM)."""
     from codebreaker.base import cache
-    cflags = _adjust_flags(cflags, text)
-    k = cache.key(cache.tool(cc), cflags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    env = env or {}
+    k = (cc, env.get("INCLUDE", ""), env.get(variable, ""))
+    if k not in _TOOL_INPUTS:
+        folders = [d for d in env.get("INCLUDE", "").split(os.pathsep) if d and os.path.isdir(d)]
+        _TOOL_INPUTS[k] = cache.key(cache.tool_bytes(cc), cache.files_bytes(*folders), variable, env.get(variable, ""))
+    return _TOOL_INPUTS[k]
+
+
+def compile_kept(cc, cflags, env, outdir, stem, text, header_key):
+    """_run_compile, kept in the shared build cache (base/cache.SHARED, kind "objects"). `cflags`
+    are already adjusted. -> (why, keepable), the object at outdir/stem.obj on success.
+    The key is every input of the object: the compiler, its INCLUDE headers and its WCC variable
+    (tool_inputs), the options, the header m.h the function includes (`header_key`, the digest of
+    its text), the function's text, and the stem (the object names its source file, stem.c, and
+    an error names it too). The object also carries m.h's date (the compiler's dependency record),
+    which is not an input of what is linked: a kept object has the date of the first compile."""
+    from codebreaker.base import cache
+    k = cache.key("wcc-object", tool_inputs(cc, env, "WCC"), list(cflags), header_key, stem, text) \
+        if header_key else None
     had = cache.get("objects", k) if k else None
     if had is not None:
+        with open(os.path.join(outdir, stem + ".c"), "w", newline="\n", encoding="utf-8") as f:
+            f.write('#include "m.h"\n\n' + text + "\n")
         if had[:2] == b"ER":
-            return had[2:].decode("utf-8", "replace")
-        with open(os.path.join(outdir, stem + ".obj"), "wb") as f:
-            f.write(had[2:])
-        return ""
+            return message_here(had[2:], outdir), True
+        here = omf_here(had[2:], os.path.dirname(os.path.join(outdir, stem + ".c")))  # (as wcc writes it here, now)
+        if here is not None:
+            with open(os.path.join(outdir, stem + ".obj"), "wb") as f:
+                f.write(here)
+            return "", True
     why, keep = _run_compile(cc, cflags, env, outdir, stem, text)
     if not why:
         if k:
             with open(os.path.join(outdir, stem + ".obj"), "rb") as f:
                 cache.put("objects", k, b"OK" + f.read())
     elif k and keep:                             # a rejection is kept; a compiler that fell over is not
-        cache.put("objects", k, b"ER" + why.encode("utf-8", "replace"))
-    return why
+        cache.put("objects", k, b"ER" + message_kept(why, outdir))
+    return why, keep
+
+
+def _compile(cc, cflags, env, outdir, stem, text):
+    """Compile one function. -> "" or the first error. What the compiler made of this text
+    with this header and these options is kept (compile_kept: the shared build cache) and not
+    made again. (The engine's function.object step goes through compile_kept too.)"""
+    return compile_kept(cc, _adjust_flags(cflags, text), env, outdir, stem, text, _HEADER.get(outdir))[0]
 
 
 _NEVER_SET = re.compile(r"W200: '(\w+)' has been referenced but never assigned a value")
@@ -152,9 +251,16 @@ def never_set(cc, cflags, env, outdir, stem, text):
     split off from a buffer whose address it passes on (`iStack_1b` beside `axStack_34`) -- is a
     value the original got from somewhere this C does not: what it reads is whatever is there.
     (The engine's function.never_set step is its own cache: it calls _run_never_set -- engine/win16.py.)"""
+    return never_set_kept(cc, cflags, env, outdir, stem, text, _HEADER.get(outdir))
+
+
+def never_set_kept(cc, cflags, env, outdir, stem, text, header_key):
+    """_run_never_set, kept in the shared build cache (kind "never_set"). The key: the compiler,
+    its INCLUDE headers and WCC variable (tool_inputs), the options it is run with, the header's
+    digest, the function's text (the names come out of its warnings: the stem is not in them)."""
     from codebreaker.base import cache
     flags = [f for f in cflags if not f.startswith("-w")] + ["-w2", "-zs"]
-    k = cache.key(cache.tool(cc), flags, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    k = cache.key("wcc-never-set", tool_inputs(cc, env, "WCC"), flags, header_key, text) if header_key else None
     had = cache.get("never_set", k) if k else None
     if had is not None:
         return [s for s in had.decode().split(",") if s]
@@ -486,11 +592,15 @@ def powerpc_tools():
 
 def _compile_powerpc(cl, outdir, stem, text):
     from codebreaker.base import cache
-    k = cache.key(cache.tool(cl), CFLAGS_POWERPC, _HEADER.get(outdir, ""), text) if outdir in _HEADER else None
+    # (the key, every input of the object: the compiler by its bytes and its folder -- cl.exe runs
+    # c1/c2 beside it -- the INCLUDE headers and CL variable it reads, the options, the header,
+    # the stem the object and an error name, and the text; kept in the shared build cache)
+    k = cache.key("cl-ppc-object", tool_inputs(cl, os.environ, "CL"), cache.folder(os.path.dirname(cl)),
+                  CFLAGS_POWERPC, _HEADER[outdir], stem, text) if outdir in _HEADER else None
     had = cache.get("objects", k) if k else None
     if had is not None:
         if had[:2] == b"ER":
-            return had[2:].decode("utf-8", "replace")
+            return message_here(had[2:], outdir)
         with open(os.path.join(outdir, stem + ".obj"), "wb") as f:
             f.write(had[2:])
         return ""
@@ -511,7 +621,7 @@ def _compile_powerpc(cl, outdir, stem, text):
     m = _CL_ERR.search(log)
     why = (m.group(2) if m else log.strip()[-100:] or "the compiler failed")[:100]
     if k and m:
-        cache.put("objects", k, b"ER" + why.encode("utf-8", "replace"))
+        cache.put("objects", k, b"ER" + message_kept(why, outdir))
     return why
 
 
