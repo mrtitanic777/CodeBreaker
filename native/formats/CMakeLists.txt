@@ -19,6 +19,7 @@ set(FORMATS_SOURCES
   core/pyvalue.cc     # the values that cross the interface (a pickle subset)
   core/files.cc       # files read by path
   core/uc.cc          # Unicorn, by the DLL Python's unicorn package carries
+  core/cs32.cc        # Capstone (x86-32), by the DLL Python's capstone package carries
   pe/pe.cc            # PE (formats/pe.py)
   pe/questions.cc
   ne/ne.cc            # NE, the Windows 1.x boot image (formats/ne.py)
@@ -38,6 +39,12 @@ set(FORMATS_SOURCES
   lzx/lzx.cc          # LZX (LZXD) decoding (formats/lzx.py)
   cab/cab.cc          # Microsoft cabinets: read, decompress, extract, write (formats/cab.py)
   media/media.cc      # FAT, ISO-9660, partitions, El Torito, put (formats/media.py)
+  win/fonts.cc        # raster fonts (formats/fonts.py)
+  win/resources.cc    # the resources of a Windows module, decoded (formats/resources.py)
+  win/powerpc_image.cc # what a PowerPC PE image states about its code (formats/powerpc_image.py)
+  win/pe_functions.cc # the 32-bit function carve over Capstone (formats/pe_functions.py)
+  win/inspect.cc      # strings, hex listing, categorize (formats/inspect.py)
+  win/xex_edit.cc     # an Xbox 360 executable's privilege bits (formats/xex_edit.py)
 )
 
 # zlib 1.3.1 (MSZIP): the copy native/decompiler carries, and crc32() (core/zcrc32.c)
@@ -58,11 +65,17 @@ if(NOT UNICORN_DIR)
                   OUTPUT_VARIABLE UNICORN_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
 
+# Capstone's headers, from the Python package that carries its DLL (the same version; nothing of it is linked)
+if(NOT CAPSTONE_INCLUDE)
+  execute_process(COMMAND ${Python3_EXECUTABLE} -c "import capstone, os; print(os.path.join(os.path.dirname(capstone.__file__), 'include'))"
+                  OUTPUT_VARIABLE CAPSTONE_INCLUDE OUTPUT_STRIP_TRAILING_WHITESPACE)
+endif()
+
 # CodeBreaker's one XEX parser (native/xex), compiled in as its other users do
 include(${CMAKE_CURRENT_SOURCE_DIR}/../xex/reader.cmake)
 
 add_library(formats SHARED ${FORMATS_SOURCES} ${XEX_READER_SOURCES})
-target_include_directories(formats PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${XEX_READER_INCLUDE_DIR} ${UNICORN_DIR}/include)
+target_include_directories(formats PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${XEX_READER_INCLUDE_DIR} ${UNICORN_DIR}/include ${CAPSTONE_INCLUDE})
 target_link_libraries(formats PRIVATE cbf_zlib)
 if(MSVC)
   target_compile_options(formats PRIVATE /EHsc /O2 /W3 /utf-8)

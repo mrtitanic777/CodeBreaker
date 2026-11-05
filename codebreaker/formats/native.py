@@ -77,6 +77,17 @@ def _unicorn_dll():
     return None
 
 
+def capstone_dll():
+    """The capstone.dll Python's `capstone` package carries (formats.dll decodes with that very one)."""
+    import importlib.util
+    spec = importlib.util.find_spec("capstone")
+    for where in (spec.submodule_search_locations or []) if spec else []:
+        path = os.path.join(where, "lib", "capstone.dll")
+        if os.path.isfile(path):
+            return os.path.abspath(path)
+    raise OSError("capstone.dll not found: is the `capstone` package installed?")
+
+
 def why_not():
     _load()
     return _WHY[0] if _WHY else None

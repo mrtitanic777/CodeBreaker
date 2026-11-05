@@ -25,6 +25,7 @@ comes with up to a unit of padding after it (`same_data` compares with that in m
 """
 import struct
 
+from codebreaker.formats import native
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
 
@@ -92,34 +93,11 @@ def read_pe(pe):
 
 
 def read_ne(nef):
-    """The resource table of a 16-bit module: per type, a list of (offset, length, flags, name)."""
-    h, d = nef.h, nef.data
-    if h["rsrc_tab"] == h["resname_tab"]:
-        return []
-    base = nef.ne_off + h["rsrc_tab"]
-
-    def ident(v):
-        if v & 0x8000:
-            return v & 0x7FFF
-        n = d[base + v]
-        return d[base + v + 1:base + v + 1 + n].decode("latin-1")
-
-    shift = nef.u16(base)
-    if shift > 15:
-        return []
-    p, out = base + 2, []
-    while p + 8 <= len(d):
-        tid, count = nef.u16(p), nef.u16(p + 2)
-        if tid == 0:
-            break
-        p += 8
-        for _ in range(count):
-            if p + 12 > len(d):
-                return out
-            off, length, flags, rid = nef.u16(p) << shift, nef.u16(p + 2) << shift, nef.u16(p + 4), nef.u16(p + 6)
-            out.append(Resource(ident(tid), ident(rid), None, flags, d[off:off + length]))
-            p += 12
-    return out
+    """The resource table of a 16-bit module: per type, a list of (offset, length, flags, name)
+    (formats.dll: native/formats/win/resources.cc)."""
+    h = nef.h
+    return [Resource(t, n, None, f, d)
+            for t, n, f, d in native.call("resources.read_ne", nef.data, nef.ne_off, h["rsrc_tab"], h["resname_tab"])]
 
 
 def same_data(a, b):
@@ -130,346 +108,62 @@ def same_data(a, b):
 
 
 # ---------------------------------------------------------------------------------------------
-# reading fields
+# decoding each kind (formats.dll: native/formats/win/resources.cc)
 # ---------------------------------------------------------------------------------------------
-class _Reader(object):
-    """A cursor over a resource body; text and alignment follow `wide`."""
-
-    def __init__(self, data, wide, at=0):
-        self.d, self.wide, self.p = data, wide, at
-
-    def u8(self):
-        self.p += 1
-        return self.d[self.p - 1]
-
-    def u16(self):
-        self.p += 2
-        return struct.unpack_from("<H", self.d, self.p - 2)[0]
-
-    def i16(self):
-        self.p += 2
-        return struct.unpack_from("<h", self.d, self.p - 2)[0]
-
-    def u32(self):
-        self.p += 4
-        return struct.unpack_from("<I", self.d, self.p - 4)[0]
-
-    def take(self, n):
-        if self.p + n > len(self.d):
-            raise ValueError("resource body ends early")
-        self.p += n
-        return self.d[self.p - n:self.p]
-
-    def align(self, n=4):
-        self.p = (self.p + n - 1) // n * n
-
-    def text(self):
-        """A zero-terminated string."""
-        if self.wide:
-            e = self.p
-            while e + 2 <= len(self.d) and self.d[e:e + 2] != b"\0\0":
-                e += 2
-            if e + 2 > len(self.d):
-                raise ValueError("unterminated text")
-            s = self.d[self.p:e].decode("utf-16-le", "surrogatepass")
-            self.p = e + 2
-            return s
-        e = self.d.index(b"\0", self.p)
-        s = self.d[self.p:e].decode("latin-1")
-        self.p = e + 1
-        return s
-
-    def text_or_ordinal(self):
-        """A string, or an ordinal in its place (an int): 0xFFFF + word in a 32-bit resource,
-        0xFF + word in a 16-bit one."""
-        if self.wide:
-            if struct.unpack_from("<H", self.d, self.p)[0] == 0xFFFF:
-                self.p += 2
-                return self.u16()
-        elif self.d[self.p] == 0xFF:
-            self.p += 1
-            return self.u16()
-        return self.text()
-
-
-# ---------------------------------------------------------------------------------------------
-# decoding each kind
-# ---------------------------------------------------------------------------------------------
+@native.answered("resources.strings", args_of=lambda data, wide: (data, (wide,)))
 def strings(data, wide):
     """A string-table block: its 16 strings (block n holds the ids (n-1)*16 .. (n-1)*16+15)."""
-    r, out = _Reader(data, wide), []
-    for _ in range(16):
-        if r.p >= len(data):
-            out.append("")
-            continue
-        if wide:
-            n = r.u16()
-            out.append(r.take(2 * n).decode("utf-16-le", "surrogatepass"))
-        else:
-            out.append(r.take(r.u8()).decode("latin-1"))
-    if any(data[r.p:]):
-        raise ValueError("data after the sixteenth string")
-    return out
 
 
+@native.answered("resources.dialog", args_of=lambda data, wide: (data, (wide,)))
 def dialog(data, wide):
     """A dialog template -> {extended, style, exstyle, help, x, y, cx, cy, menu, class, title,
     font, controls}. `font` is None or (points, face) -- (points, weight, italic, charset, face)
     for an extended template. A control's `class` is a str or one of CONTROL_CLASSES' atoms."""
-    r = _Reader(data, wide)
-    dlg = {"extended": False, "help": 0, "exstyle": 0}
-    if wide and data[:4] == b"\x01\x00\xff\xff":
-        r.p = 4
-        dlg["extended"] = True
-        dlg["help"], dlg["exstyle"], dlg["style"] = r.u32(), r.u32(), r.u32()
-        count = r.u16()
-    else:
-        dlg["style"] = r.u32()
-        if wide:
-            dlg["exstyle"] = r.u32()
-        count = r.u16() if wide else r.u8()
-    dlg["x"], dlg["y"], dlg["cx"], dlg["cy"] = r.i16(), r.i16(), r.i16(), r.i16()
-    dlg["menu"], dlg["class"], dlg["title"] = r.text_or_ordinal(), r.text_or_ordinal(), r.text()
-    dlg["font"] = None
-    if dlg["style"] & 0x40:                                  # DS_SETFONT
-        if dlg["extended"]:
-            points, weight = r.u16(), r.u16()
-            italic, charset = r.u8(), r.u8()
-            dlg["font"] = (points, weight, italic, charset, r.text())
-        else:
-            points = r.u16()
-            dlg["font"] = (points, r.text())
-    dlg["controls"] = []
-    for _ in range(count):
-        c = {"help": 0, "exstyle": 0}
-        if wide:
-            r.align()
-        if dlg["extended"]:
-            c["help"], c["exstyle"], c["style"] = r.u32(), r.u32(), r.u32()
-            c["x"], c["y"], c["cx"], c["cy"] = r.i16(), r.i16(), r.i16(), r.i16()
-            c["id"] = r.u32()
-        elif wide:
-            c["style"], c["exstyle"] = r.u32(), r.u32()
-            c["x"], c["y"], c["cx"], c["cy"] = r.i16(), r.i16(), r.i16(), r.i16()
-            c["id"] = r.u16()
-        else:
-            c["x"], c["y"], c["cx"], c["cy"] = r.i16(), r.i16(), r.i16(), r.i16()
-            c["id"], c["style"] = r.u16(), r.u32()
-        if wide:
-            c["class"] = r.text_or_ordinal()
-        else:
-            c["class"] = r.u8() if data[r.p] & 0x80 else r.text()
-        c["text"] = r.text_or_ordinal()
-        c["extra"] = bytes(r.take(r.u16() if wide else r.u8()))
-        dlg["controls"].append(c)
-    return dlg
 
 
+@native.answered("resources.menu", args_of=lambda data, wide: (data, (wide,)))
 def menu(data, wide):
     """A menu template -> {extended, help, items}. An item is {text, id, flags, items} (items is
     None unless it opens a submenu); in an extended menu it is {text, id, type, state, help, items}."""
-    r = _Reader(data, wide)
-    version, offset = r.u16(), r.u16()
-    if version == 1 and wide:
-        out = {"extended": True, "help": r.u32()}
-        r.p = 4 + offset
-
-        def level():
-            items = []
-            while True:
-                r.align()
-                item = {"type": r.u32(), "state": r.u32(), "id": r.u32(), "help": 0, "items": None}
-                kind = r.u16()
-                item["text"] = r.text()
-                if kind & 0x01:                              # opens a submenu
-                    r.align()
-                    item["help"] = r.u32()
-                    item["items"] = level()
-                items.append(item)
-                if kind & 0x80:
-                    return items
-    elif version == 0:
-        out = {"extended": False, "help": 0}
-        r.p = 4 + offset
-
-        def level():
-            items = []
-            while True:
-                flags = r.u16()
-                item = {"flags": flags & ~0x80, "id": 0, "items": None}
-                if not flags & 0x10:                         # MF_POPUP has no id
-                    item["id"] = r.u16()
-                item["text"] = r.text()
-                if flags & 0x10:
-                    item["items"] = level()
-                items.append(item)
-                if flags & 0x80:                             # MF_END
-                    return items
-    else:
-        raise ValueError("menu template version %d" % version)
-    out["items"] = level()
-    return out
 
 
+@native.answered("resources.accelerators", args_of=lambda data, wide: (data, (wide,)))
 def accelerators(data, wide):
     """An accelerator table -> [(flags, key, id)]; the last entry's end mark is not in flags."""
-    size, out = (8 if wide else 5), []
-    for p in range(0, len(data) - size + 1, size):
-        if wide:
-            flags, key, ident = struct.unpack_from("<HHH", data, p)
-        else:
-            flags, key, ident = struct.unpack_from("<BHH", data, p)
-        out.append((flags & 0x7F, key, ident))
-        if flags & 0x80:
-            break
-    return out
 
 
+@native.answered("resources.version", args_of=lambda data, wide: (data, (wide,)))
 def version(data, wide):
     """A version block -> (fixed, strings, translations): the 13 numbers of the fixed part (or
     None), {language block: [(key, text)]} and the translation words."""
-    def node(p, limit):
-        """-> (key, value bytes, is text, [children], end). A block that claims to run past
-        the one holding it (some compilers of the time counted wrongly) is cut off there."""
-        if wide:
-            length, vlen, kind = struct.unpack_from("<HHH", data, p)
-            r = _Reader(data, True, p + 6)
-        else:
-            length, vlen = struct.unpack_from("<HH", data, p)
-            kind, r = 0, _Reader(data, False, p + 4)
-        if length < 4:
-            raise ValueError("version block length")
-        end = min(p + length, limit)
-        key = r.text()
-        r.align()
-        if wide and kind == 1 and r.p + 2 * vlen <= end:
-            vlen *= 2                                        # counted in characters
-        value = data[r.p:min(r.p + vlen, end)]
-        q, kids = (r.p + vlen + 3) & ~3, []
-        while q + 4 <= end:
-            k = node(q, end)
-            kids.append(k)
-            q = (k[4] + 3) & ~3
-        return key, value, kind == 1, kids, end
-
-    def text_of(value):
-        s = value.decode("utf-16-le", "replace") if wide else value.decode("latin-1")
-        return s.split("\0", 1)[0]
-
-    key, value, _t, kids, _e = node(0, len(data))
-    if key != "VS_VERSION_INFO":
-        raise ValueError("not a version block")
-    fixed = struct.unpack_from("<13I", value) if len(value) >= 52 else None
-    table, translations = {}, []
-    for k, v, _t, sub, _e in kids:
-        if k == "StringFileInfo":
-            for lang, _v, _t2, entries, _e2 in sub:
-                table[lang] = [(ek, text_of(ev)) for ek, ev, _t3, _s, _e3 in entries]
-        elif k == "VarFileInfo":
-            for _vk, vv, _t2, _s, _e2 in sub:
-                translations += list(struct.unpack_from("<%dH" % (len(vv) // 2), vv))
-        else:
-            raise ValueError("a version block with a %r part" % k)
-    return fixed, table, translations
 
 
+@native.answered("resources.group")
 def group(data):
     """An icon or cursor group -> (kind, [entry]): kind 1 = icons, 2 = cursors; an entry is
     (width, height, colours, planes, bits, bytes, member id)."""
-    _zero, kind, count = struct.unpack_from("<HHH", data)
-    if kind not in (1, 2) or 6 + 14 * count > len(data):
-        raise ValueError("not an icon or cursor group")
-    out = []
-    for i in range(count):
-        p = 6 + 14 * i
-        if kind == 1:
-            w, h, colours, _r, planes, bits, size, ident = struct.unpack_from("<BBBBHHIH", data, p)
-        else:
-            w, h, planes, bits, size, ident = struct.unpack_from("<HHHHIH", data, p)
-            colours = 0
-        out.append((w, h, colours, planes, bits, size, ident))
-    return kind, out
 
 
 def icon_file(group_data, member_data):
     """The .ico (or .cur) file a group resource and its members came from. `member_data(id)`
     gives a member's bytes. A cursor member starts with its hot spot, which a .cur file keeps in
     the directory instead."""
-    kind, entries = group(group_data)
-    head = struct.pack("<HHH", 0, kind, len(entries))
-    at, table, body = 6 + 16 * len(entries), b"", b""
-    for w, h, colours, planes, bits, _size, ident in entries:
-        image = member_data(ident)
-        if kind == 2:
-            hot_x, hot_y = struct.unpack_from("<HH", image)
-            image = image[4:]
-            table += struct.pack("<BBBBHHII", w & 0xFF, (h // 2) & 0xFF, 0, 0, hot_x, hot_y, len(image), at)
-        else:
-            table += struct.pack("<BBBBHHII", w, h, colours, 0, planes, bits, len(image), at)
-        body += image
-        at += len(image)
-    return head + table + body
+    members = [member_data(entry[6]) for entry in group(group_data)[1]]
+    return native.call("resources.icon_file", group_data, members)
 
 
+@native.answered("resources.bitmap_file")
 def bitmap_file(data):
     """The .bmp file of a bitmap resource (the resource is the file without its 14-byte header)."""
-    size = struct.unpack_from("<I", data)[0] if len(data) >= 4 else 0
-    palette = 0
-    if size == 12 and len(data) >= 12:                       # the OS/2 1.x header: 3-byte palette entries
-        bits = struct.unpack_from("<H", data, 10)[0]
-        palette = 3 * (1 << bits) if bits <= 8 else 0
-    elif size >= 40 and len(data) >= 40:
-        bits, compression = struct.unpack_from("<HI", data, 14)
-        used = struct.unpack_from("<I", data, 32)[0]
-        palette = 4 * (used or ((1 << bits) if bits <= 8 else 0)) + (12 if compression == 3 and size == 40 else 0)
-    return b"BM" + struct.pack("<IHHI", 14 + len(data), 0, 0, 14 + size + palette) + data
 
 
-_TYPE_KINDS = ("enum", "struct", "module", "interface", "dispinterface", "coclass", "typedef", "union")
-
-
+@native.answered("resources.type_library")
 def type_library(data):
     """What a type library says of itself -> {format, name, guid, types: [(kind, name, guid)]},
     or None when `data` is not one. Only the documented layout (MSFT) is read that far; of the
     earlier one (SLTG) just the format is reported. Either way a type library is carried as a
     binary payload: rebuilding one needs the interface compiler, which is not in this toolchain."""
-    kind = {b"MSFT": "MSFT", b"SLTG": "SLTG"}.get(bytes(data[:4]))
-    if not kind:
-        return None
-    out = {"format": kind, "name": "", "guid": "", "types": []}
-    if kind == "SLTG" or len(data) < 0x54:
-        return out
-    try:
-        own_guid, flags = struct.unpack_from("<i", data, 8)[0], struct.unpack_from("<I", data, 0x14)[0]
-        count, own_name = struct.unpack_from("<I", data, 0x20)[0], struct.unpack_from("<i", data, 0x38)[0]
-        # after the header: one offset per type (and one more word when the library names a
-        # help-string DLL), then the directory of the file's fifteen segments
-        directory = 0x54 + 4 * count + (4 if flags & 0x100 else 0)
-        segments = [struct.unpack_from("<ii", data, directory + 16 * i) for i in range(15)]
-        info_at, guid_at, name_at = segments[0][0], segments[5][0], segments[7][0]
-
-        def guid(at):
-            if at < 0:
-                return ""
-            b = data[guid_at + at:guid_at + at + 16]
-            a, c, e = struct.unpack_from("<IHH", b)
-            return "%08X-%04X-%04X-%s-%s" % (a, c, e, b[8:10].hex().upper(), b[10:16].hex().upper())
-
-        def name(at):
-            if at < 0:
-                return ""
-            length = data[name_at + at + 8]
-            return data[name_at + at + 12:name_at + at + 12 + length].decode("latin-1")
-        out["name"], out["guid"] = name(own_name), guid(own_guid)
-        for n in range(count):
-            at = info_at + 0x64 * n                          # one fixed-size record per type
-            k = struct.unpack_from("<I", data, at)[0] & 0xF
-            out["types"].append((_TYPE_KINDS[k] if k < len(_TYPE_KINDS) else "type %d" % k,
-                                 name(struct.unpack_from("<i", data, at + 0x34)[0]),
-                                 guid(struct.unpack_from("<i", data, at + 0x2C)[0])))
-    except (struct.error, IndexError):
-        pass
-    return out
 
 
 def type_library_outline(library):
