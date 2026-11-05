@@ -754,7 +754,8 @@ digests of the Python readers' facts recorded before the deletion (14 cases).
 
 Checks after the deletion: test_native_formats 14/14, test_dos 20/20, test_xex 5/5, test_frozen
 22/22, test_drivers 16/16, test_plumbing 17/17, test_whole_module 15/15, test_exepack and
-test_pklite pass, check_imports 553/553, tidy clean.
+test_pklite pass, check_imports 553/553, tidy clean; run_all --quick 45/45 suites, again with every
+native library (l2, engine, tracer, formats, dosexec) built from this branch's own sources.
 
 ## HANDOFF: the rest of formats/ (left for the next session)
 
