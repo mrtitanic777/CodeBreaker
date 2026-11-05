@@ -10,19 +10,16 @@ another of the module's functions (answer), and interrupts (int 21h as DOS3Call)
 and the ports' device model stay Python hooks, which trace_function16 attaches itself; the ports'
 clock reads the live instruction count this recorder keeps (count()).
 
-The switch: CB_NATIVE_TRACE16=0 runs the Python hooks instead (off until gated, then on). A run
-kept beside a shadow, a recorded-system context, or with a prelude stays entirely on the Python
-hooks. Build is shared with the 32-bit tracer (native/tracer/CMakeLists.txt).
+The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
+(require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
 """
 import ctypes
-import os
 import struct
 
 from codebreaker.emulate import native_trace     # the loaded DLL, dll_path
 
 _MEM_WORDS, _LAZY_WORDS = 8, 5
 _ACCESS = ("read", "write", "fetch", "?")
-DEFAULT = "1"             # CB_NATIVE_TRACE16 when not set (gated identical: docs/NATIVE.md)
 
 EVENT = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int64, ctypes.c_int64)
 _P64 = ctypes.POINTER(ctypes.c_uint64)
@@ -78,9 +75,8 @@ def _lib():
 
 
 def enabled():
-    """Native 16-bit hooks for this process: CB_NATIVE_TRACE16 is not 0 and the DLL loads."""
-    if os.environ.get("CB_NATIVE_TRACE16", DEFAULT) == "0" or os.environ.get("WT_DBG"):
-        return False
+    """The 16-bit recorder for this process: the DLL loads here (the Python hooks it replaced are gone;
+    require() raises with why_not() when it does not)."""
     return _lib() is not None
 
 
@@ -204,3 +200,10 @@ class Run:
         h, self.handle = getattr(self, "handle", None), None
         if h:
             self.lib.cbt_w16_free(h)
+
+
+def require():
+    """The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
+    be used here, saying why."""
+    if not enabled():
+        raise RuntimeError("the run recorder is native (native/tracer, cbtrace.dll): %s" % why_not())

@@ -120,29 +120,11 @@ class _DrvImage:
 
 
 # ---- the cases ----------------------------------------------------------------------------------
-_SWITCHES = ("CB_NATIVE_TRACE", "CB_NATIVE_TRACE16", "CB_NATIVE_TRACE_DRV", "CB_NATIVE_SHADOW")
-
-
-def _modes(both):
-    """("1",) -- the C++; both: ("0", "1"), the Python hooks and shadow first (golden.py, while they were there)."""
-    return ("0", "1") if both else (None,)
-
-
-def _call(mode, fn):
-    saved = {k: os.environ.get(k) for k in _SWITCHES}
-    if mode is not None:
-        for k in _SWITCHES:
-            os.environ[k] = mode
+def _call(fn):
     try:
         return fn()
-    except Exception as e:                           # (both must raise alike too)
+    except Exception as e:                           # (a raise is a record too)
         return ("raised", type(e).__name__, str(e))
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
 
 
 def _with_shadow(make, run):
@@ -157,26 +139,22 @@ def _lifter(mode):
     return pcode.lifter(mode)
 
 
-def cases(both=False):
-    """(test, key, record[, record]) of every case: one record each, or both=True two (Python, C++)."""
+def cases():
+    """(test, key, record) of every case."""
     from codebreaker.emulate import driver, shadow
     _install()
     try:
         for name, cfg in CONFIGS.items():
             for args, mem in (([5, P], [(P, (7).to_bytes(4, "little"))]),
                               ([7, P], [(P, (7).to_bytes(4, "little"))])):
-                yield ("synthetic", "f %s %s" % (name, args)) + tuple(
-                    _call(m, lambda: E.trace_function(MODULE, func=VA0, args=args, mem_init=mem, **cfg))
-                    for m in _modes(both))
+                yield ("synthetic", "f %s %s" % (name, args), _call(lambda: E.trace_function(MODULE, func=VA0, args=args, mem_init=mem, **cfg)))
             for off in (0x30, 0x40):
-                yield ("synthetic", "0x%x %s" % (off, name)) + tuple(
-                    _call(m, lambda: E.trace_function(MODULE, func=VA0 + off, args=[0, 0], **cfg)) for m in _modes(both))
+                yield ("synthetic", "0x%x %s" % (off, name), _call(lambda: E.trace_function(MODULE, func=VA0 + off, args=[0, 0], **cfg)))
 
         def bad(dll, name):
             raise KeyError(name)
-        yield ("raises", "f raises") + tuple(
-            _call(m, lambda: E.trace_function(MODULE, func=VA0, args=[5, P], mem_init=[(P, (7).to_bytes(4, "little"))],
-                                              stub_externals=True, sig_resolver=bad)) for m in _modes(both))
+        yield ("raises", "f raises", _call(lambda: E.trace_function(MODULE, func=VA0, args=[5, P], mem_init=[(P, (7).to_bytes(4, "little"))],
+                                              stub_externals=True, sig_resolver=bad)))
         lifter = _lifter("x86-32-flat")
         if lifter is not None:
             for args, cfg in (([5, P], dict(stub_externals=True, sig_resolver=_resolver)),
@@ -190,14 +168,13 @@ def cases(both=False):
                         return sh
                     return _with_shadow(make, lambda sh: E.trace_function(
                         MODULE, func=VA0, args=args, mem_init=[(P, (7).to_bytes(4, "little"))], shadow=sh, **cfg))
-                yield ("shadow32", "f shadow %s %s" % (args, sorted(cfg))) + tuple(_call(m, one) for m in _modes(both))
+                yield ("shadow32", "f shadow %s %s" % (args, sorted(cfg)), _call(one))
     finally:
         _uninstall()
 
     image = _DrvImage(DRV_BASE, DRV_CODE)
     for extra in ({}, {"service_eax": 0x1234, "service_carry": 1}, {"cap": 4}, {"stack": (7, 8, 9)}):
-        yield ("driver", "driver %s" % sorted(extra.items())) + tuple(
-            _call(m, lambda: driver.run(image, DRV_BASE, **extra)) for m in _modes(both))
+        yield ("driver", "driver %s" % sorted(extra.items()), _call(lambda: driver.run(image, DRV_BASE, **extra)))
     if lifter is not None:
         def drv_shadow():
             def make():
@@ -207,7 +184,7 @@ def cases(both=False):
                 return sh
             return _with_shadow(make, lambda sh: driver.run(image, DRV_BASE, {"eax": 3, "edx": 0x3F8},
                                                             service_eax=5, service_carry=1, shadow=sh))
-        yield ("driver", "driver shadow") + tuple(_call(m, drv_shadow) for m in _modes(both))
+        yield ("driver", "driver shadow", _call(drv_shadow))
 
     from codebreaker.base import corpus
     try:
@@ -221,15 +198,11 @@ def cases(both=False):
         funcs = [e for e in ents if e and e.get("kind") != "UNUSED" and e.get("seg")][:12]
         for e in funcs:
             for extra in ({}, {"ports": True}, {"insn_cap": 64}):
-                yield ("win16", "lz16 %d:%04x %s" % (e["seg"], e["offset"], sorted(extra))) + tuple(
-                    _call(m, lambda: ne.probe(lz16, seg=e["seg"], offset=e["offset"], args=[0, 0, 0, 0], **extra))
-                    for m in _modes(both))
+                yield ("win16", "lz16 %d:%04x %s" % (e["seg"], e["offset"], sorted(extra)), _call(lambda: ne.probe(lz16, seg=e["seg"], offset=e["offset"], args=[0, 0, 0, 0], **extra)))
         first = funcs[0]
         for e in funcs[1:5]:                         # (a prelude: another function run first, its trace dropped)
-            yield ("win16", "lz16 %d:%04x prelude" % (e["seg"], e["offset"])) + tuple(
-                _call(m, lambda: ne.probe(lz16, seg=e["seg"], offset=e["offset"], args=[0, 0, 0, 0],
-                                          prelude=[{"seg": first["seg"], "offset": first["offset"], "args": [1, 2]}]))
-                for m in _modes(both))
+            yield ("win16", "lz16 %d:%04x prelude" % (e["seg"], e["offset"]), _call(lambda: ne.probe(lz16, seg=e["seg"], offset=e["offset"], args=[0, 0, 0, 0],
+                                          prelude=[{"seg": first["seg"], "offset": first["offset"], "args": [1, 2]}])))
         lifter16 = _lifter("x86-16-real")
         if lifter16 is not None:
             auto = NEFile(lz16).h.get("autodata_seg")
@@ -243,7 +216,7 @@ def cases(both=False):
                                                 span=(base + e["offset"], base + e["offset"] + 0x400)),
                         lambda sh: ne.probe(lz16, seg=e["seg"], offset=e["offset"], args=[0, 0, 0, 0],
                                             shadow=sh, ports=True))
-                yield ("win16", "lz16 %d:%04x shadow" % (e["seg"], e["offset"])) + tuple(_call(m, w16) for m in _modes(both))
+                yield ("win16", "lz16 %d:%04x shadow" % (e["seg"], e["offset"]), _call(w16))
 
     try:
         corpus.resolve("lz32.dll")
@@ -257,9 +230,8 @@ def cases(both=False):
         cfg = dict(JUDGE, sig_resolver=win32._argc)
         for off in offs:
             for extra in ({}, {"branches": True}, {"fast": False, "lean": False}):
-                yield ("lz32", "lz32 0x%x %s" % (off, sorted(extra))) + tuple(
-                    _call(m, lambda: E.trace_function("lz32.dll", func=va0 + off, args=[P, 0, 3, 0xFFFFFFFF],
-                                                      **dict(cfg, **extra))) for m in _modes(both))
+                yield ("lz32", "lz32 0x%x %s" % (off, sorted(extra)), _call(lambda: E.trace_function("lz32.dll", func=va0 + off, args=[P, 0, 3, 0xFFFFFFFF],
+                                                      **dict(cfg, **extra))))
 
 
 def _canon(v):
@@ -295,7 +267,7 @@ def _golden():
 
 def _run_cases():
     if not _ALL:
-        _ALL.extend(c[:3] for c in cases())
+        _ALL.extend(cases())
     return _ALL
 
 

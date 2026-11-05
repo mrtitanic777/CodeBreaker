@@ -12,18 +12,15 @@ a service answers in (driver_services + the knowledge base), once per distinct s
     run.collect(rec)                   # the rec fields the Python hooks would have left
     run.detach()
 
-The switch: CB_NATIVE_TRACE_DRV=0 runs the Python hooks instead (off until gated, then on). A run
-kept beside a shadow (the path explorer's) is always Python's for now (step 3). Build is the same
-as the 32-bit tracer's (native/tracer/CMakeLists.txt); it shares cbtrace.dll.
+The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
+(require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
 """
 import ctypes
-import os
 import struct
 
 from codebreaker.emulate import native_trace     # the loaded DLL, the register ids, dll_path
 
 _CALL_WORDS, _PORT_WORDS, _MEM_WORDS, _LAZY_WORDS = 15, 4, 8, 5
-DEFAULT = "1"             # CB_NATIVE_TRACE_DRV when not set (gated identical: docs/NATIVE.md)
 
 ANSWERS = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(ctypes.c_int32))
 _P64 = ctypes.POINTER(ctypes.c_uint64)
@@ -78,9 +75,8 @@ def _lib():
 
 
 def enabled():
-    """Native driver hooks for this process: CB_NATIVE_TRACE_DRV is not 0 and the DLL loads."""
-    if os.environ.get("CB_NATIVE_TRACE_DRV", DEFAULT) == "0" or os.environ.get("WT_DBG"):
-        return False
+    """The driver recorder for this process: the DLL loads here (the Python hooks it replaced are gone;
+    require() raises with why_not() when it does not)."""
     return _lib() is not None
 
 
@@ -199,3 +195,10 @@ class Run:
         h, self.handle = getattr(self, "handle", None), None
         if h:
             self.lib.cbt_drv_free(h)
+
+
+def require():
+    """The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
+    be used here, saying why."""
+    if not enabled():
+        raise RuntimeError("the run recorder is native (native/tracer, cbtrace.dll): %s" % why_not())

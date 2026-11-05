@@ -26,18 +26,6 @@ STACK_LO, STACK_HI = emulator._STACK_BASE, emulator._STACK_BASE + emulator._STAC
 INSN_CAP = 10000
 
 
-MAX_CALLS_RUN = 400              # service calls and port accesses after which a run is cut off (a wait loop)
-
-
-MAX_COVER = 6000
-
-
-MAX_OUTSIDE = 64                 # calls to nowhere stood in for before a run is given up
-
-
-MAX_MEMORY_STEPS = 200000        # memory accesses in one run (one `rep` can make millions)
-
-
 # Places the inputs point at, inside the emulator's scratch region.
 SCRATCH = emulator._SCRATCH_BASE
 VM, CLIENT, BUFFER, OBJECT, SAFE = SCRATCH + 0x1000, SCRATCH + 0x2000, SCRATCH + 0x3000, SCRATCH + 0x6000, SCRATCH + 0x7800
@@ -158,122 +146,28 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
         if shadow is not None:
             shadow.after_call(uc, True, service_eax, carry=service_carry)
 
-    def on_code(_uc, address, _size, _user):
-        if rec["insns"] >= cap:
-            rec["truncated"] = True
-            uc.emu_stop()
-            return
-        rec["insns"] += 1
-        if image.holds(address):
-            if len(rec["cover"]) < MAX_COVER:
-                rec["cover"].add(address)
-            if shadow is not None:
-                shadow.step(uc, address)
-        elif SCRATCH <= address < SCRATCH + emulator._SCRATCH_SIZE:
-            if shadow is not None:                           # (a pointer's landing pad: a plain `ret`)
-                shadow.step(uc, address)
-        else:
-            # Through a pointer nothing here fills in (a callback, a hooked vector): a call out.
-            rec["outside"] += 1
-            if rec["outside"] > MAX_OUTSIDE:
-                rec["exit"] = "wild"
-                uc.emu_stop()
-                return
-            rec["calls"].append((None, address) + given())
-            try:
-                answer(True)
-            except U.UcError:
-                rec["exit"] = "wild"
-                uc.emu_stop()
+    # The hooks are C++ (native/tracer: cbtrace.dll; emulate/native_driver.py), attached in this
+    # order: the code (the driver's own, told from a call out), memory, the INT 20h service calls,
+    # the ports; and a shadow (the path explorer's) stepped there too. Python is asked once per
+    # distinct service which register it answers in.
+    from codebreaker.emulate import native_driver, native_shadow
 
-    def on_interrupt(_uc, number, _user):
-        eip = uc.reg_read(reg["eip"])                        # just past the two-byte `int`
-        if number == 0x20:
-            try:
-                service, device = struct.unpack("<HH", uc.mem_read(eip, 4))
-            except U.UcError:
-                rec["exit"] = "exception: service number unreadable"
-                uc.emu_stop()
-                return
-            if len(rec["calls"]) >= MAX_CALLS_RUN:
-                rec["truncated"] = True
-                uc.emu_stop()
-                return
-            rec["calls"].append((device, service) + (given() if len(rec["calls"]) <= MAX_CALLS else ((), ())))
-            where = answers_in(driver_services.service_name(device, service))
-            if service & 0x8000:                             # jump: the service returns to our caller
-                answer(True)
-            else:
-                answer(False)
-                uc.reg_write(reg["eip"], eip + 4)
-            if where:
-                uc.reg_write(reg[where], VM)
-                if shadow is not None:
-                    shadow.forget((where.upper(),))
-        elif number != 0x41:                                 # 41h talks to a debugger: nothing happens
-            rec["exit"] = "int:%02x" % number
-            uc.emu_stop()
-
-    def on_in(_uc, port, size, _user):
-        if len(rec["ports"]) >= MAX_CALLS_RUN:
-            rec["truncated"] = True
-            uc.emu_stop()
-        else:
-            rec["ports"].append(("in", port, size, 0))
-        return 0
-
-    def on_out(_uc, port, size, value, _user):
-        if len(rec["ports"]) >= MAX_CALLS_RUN:
-            rec["truncated"] = True
-            uc.emu_stop()
-        else:
-            rec["ports"].append(("out", port, size, value & ((1 << (8 * size)) - 1)))
-
-    record, on_unmapped = emulator._memory_hooks(U, rec, set())
-
-    def on_memory(_uc, access, address, size, value, user):
-        if rec.get("memops", 0) >= MAX_MEMORY_STEPS:
-            rec["truncated"] = True
-            uc.emu_stop()
-        else:
-            record(_uc, access, address, size, value, user)
-
-    # The same hooks in C++ (native/tracer: cbtrace.dll) when CB_NATIVE_TRACE_DRV is on and the
-    # DLL loads; else the Python hooks above. A run kept beside a shadow stays Python's (step 3).
-    nr = None
-    from codebreaker.emulate import native_shadow
-    sh_handle = native_shadow.handle_of(shadow)
-    if shadow is None or sh_handle:
-        from codebreaker.emulate import native_driver
-        if native_driver.enabled():
-
-            def _answers(device, service):
-                where = answers_in(driver_services.service_name(device, service))
-                if not where:
-                    return -1
-                try:
-                    return REGISTERS.index(where)
-                except ValueError:
-                    return -1
-            try:
-                nr = native_driver.Run(
-                    uc, reg_ids=[reg[n] for n in ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp",
-                                                  "esp", "eip", "eflags")],
-                    ins_in=X.UC_X86_INS_IN, ins_out=X.UC_X86_INS_OUT, vm_addr=VM, ret=RETURN,
-                    scratch=(SCRATCH, SCRATCH + emulator._SCRATCH_SIZE),
-                    spans=[(lo, hi) for lo, hi, _i in image.spans], cap=cap,
-                    service_eax=service_eax, service_carry=service_carry, gov=emulator._GOV,
-                    answers=_answers, shadow=sh_handle)
-            except Exception:
-                nr = None
-    if nr is None:
-        uc.hook_add(U.UC_HOOK_CODE, on_code)
-        uc.hook_add(U.UC_HOOK_MEM_READ | U.UC_HOOK_MEM_WRITE, on_memory)
-        uc.hook_add(U.UC_HOOK_MEM_READ_UNMAPPED | U.UC_HOOK_MEM_WRITE_UNMAPPED | U.UC_HOOK_MEM_FETCH_UNMAPPED,
-                    on_unmapped)
-        uc.hook_add(U.UC_HOOK_INTR, on_interrupt)
-        uc.hook_add(U.UC_HOOK_INSN, on_in, None, 1, 0, X.UC_X86_INS_IN)
-        uc.hook_add(U.UC_HOOK_INSN, on_out, None, 1, 0, X.UC_X86_INS_OUT)
+    def _answers(device, service):
+        where = answers_in(driver_services.service_name(device, service))
+        if not where:
+            return -1
+        try:
+            return REGISTERS.index(where)
+        except ValueError:
+            return -1
+    native_driver.require()
+    nr = native_driver.Run(
+        uc, reg_ids=[reg[n] for n in ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp", "eip", "eflags")],
+        ins_in=X.UC_X86_INS_IN, ins_out=X.UC_X86_INS_OUT, vm_addr=VM, ret=RETURN,
+        scratch=(SCRATCH, SCRATCH + emulator._SCRATCH_SIZE),
+        spans=[(lo, hi) for lo, hi, _i in image.spans], cap=cap,
+        service_eax=service_eax, service_carry=service_carry, gov=emulator._GOV,
+        answers=_answers, shadow=native_shadow.handle_of(shadow))
     uc_error = None
     try:
         # No clock: a run ends by returning, faulting, or at a count (instructions, memory
@@ -281,11 +175,10 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
         uc.emu_start(entry, RETURN, count=cap + 1)
     except U.UcError as e:
         uc_error = e
-    if nr is not None:
-        exc = nr.raised()                                # a resolver that raised comes out here
-        if exc is not None:
-            raise exc
-        nr.collect(rec)
+    exc = nr.raised()                                    # a resolver that raised comes out here
+    if exc is not None:
+        raise exc
+    nr.collect(rec)
     if uc_error is None:
         at = uc.reg_read(reg["eip"])
         if rec["exit"] is None:

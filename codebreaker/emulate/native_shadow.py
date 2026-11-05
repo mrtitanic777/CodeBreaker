@@ -12,16 +12,14 @@ of an instruction not lifted before in the process (pcode.Lifter.line).
 
 `inputs`: [(low, high)] -- the memory bytes that are inputs of the run until written.
 
-The switch: CB_NATIVE_SHADOW (see DEFAULT); 0, or without the DLL, the Python shadow in
-emulate/shadow.py runs instead.
+The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
+(require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
 """
 import ctypes
-import os
 import struct
 
 from codebreaker.emulate import native_trace     # the loaded DLL
 
-DEFAULT = "1"             # CB_NATIVE_SHADOW when not set (gated identical: docs/NATIVE.md)
 LIFT = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.POINTER(ctypes.c_uint8), ctypes.c_int32, ctypes.c_uint64,
                         ctypes.c_void_p, ctypes.c_int32)
 _FLAGS = {"CF": 0, "PF": 2, "AF": 4, "ZF": 6, "SF": 7, "TF": 8, "IF": 9, "DF": 10, "OF": 11}
@@ -77,16 +75,21 @@ def _lib():
 
 
 def enabled():
-    """The C++ shadow for this process: CB_NATIVE_SHADOW is not 0 and the DLL has it."""
-    if os.environ.get("CB_NATIVE_SHADOW", DEFAULT) == "0" or os.environ.get("WT_DBG"):
-        return False
+    """The shadow for this process: the DLL loads here (the Python hooks it replaced are gone;
+    require() raises with why_not() when it does not)."""
     return _lib() is not None
+
+
+def why_not():
+    return native_trace.why_not()
 
 
 def handle_of(shadow):
     """The DLL's handle of a shadow a recorder can step itself, or None (a Python shadow)."""
-    if not isinstance(shadow, Shadow):
+    if shadow is None:
         return None
+    if not isinstance(shadow, Shadow):
+        raise TypeError("an x86 run's shadow is native_shadow.Shadow (emulate/shadow.py Shadow16/32/LE)")
     shadow._got = None                    # (the recorder steps it from here on)
     return shadow.handle
 
@@ -227,3 +230,10 @@ class Shadow(object):
     pins = property(lambda self: self._export()[4])
     steps = property(lambda self: self._export()[5])
     off = property(lambda self: self._export()[6])
+
+
+def require():
+    """The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
+    be used here, saying why."""
+    if not enabled():
+        raise RuntimeError("the run recorder is native (native/tracer, cbtrace.dll): %s" % why_not())

@@ -14,9 +14,8 @@ argument count and what it gives back through a pointer, once per import entered
     run.collect(rec)                  # the record's fields
     run.detach(); run.restore()       # (a kept machine: hooks off, pages back)
 
-The switch: CB_NATIVE_TRACE=0 runs the Python hooks instead (they stay until the next milestone).
-A run kept beside a shadow (the path explorer's symbolic re-run) is always Python's for now.
-Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell).
+The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
+(require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
 """
 import ctypes
 import os
@@ -71,7 +70,6 @@ class _Result(ctypes.Structure):
                 ("branches", ctypes.c_void_p), ("nbranches", ctypes.c_int64)]
 
 
-DEFAULT = "1"             # CB_NATIVE_TRACE when it is not set (identical verdicts: docs/NATIVE.md)
 _LIB = []                 # [the DLL, or None when it cannot be used here]
 _WHY = []                 # why not, once
 _STATICS = {}             # id(an emulator._INSN table) -> (its native id, the table: kept alive)
@@ -130,10 +128,8 @@ def _load():
 
 
 def enabled():
-    """Native hooks for this process: CB_NATIVE_TRACE is not 0 and the DLL loads. (WT_DBG's
-    progress prints are the Python hooks' own.)"""
-    if os.environ.get("CB_NATIVE_TRACE", DEFAULT) == "0" or os.environ.get("WT_DBG"):
-        return False
+    """The 32-bit recorder for this process: the DLL loads here (the Python hooks it replaced are gone;
+    require() raises with why_not() when it does not)."""
     return _load() is not None
 
 
@@ -385,3 +381,10 @@ class Run:
         h, self.handle = getattr(self, "handle", None), None
         if h:
             self.lib.cbt_free(h)
+
+
+def require():
+    """The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
+    be used here, saying why."""
+    if not enabled():
+        raise RuntimeError("the run recorder is native (native/tracer, cbtrace.dll): %s" % why_not())
