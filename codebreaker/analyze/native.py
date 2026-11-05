@@ -17,7 +17,7 @@ import struct
 
 from codebreaker.base import settings
 
-_VERSION = 3
+_VERSION = 4
 _LIB = []
 _WHY = []
 _POINTER_KINDS = {"abs32": 0, "far": 1, "selector": 2, "offset": 3, "byte": 4}
@@ -73,12 +73,13 @@ def library():
 
 def _blob(img):
     """The image as the DLL reads it (little-endian): kind, bits, flat, has pointers; the spans
-    (va, length, executable, writable, initialised length, bytes); the function starts with their
+    (va, length, executable, writable, initialised length, name, bytes); the function starts with their
     limits; the import addresses; the pointers in the file's order (site, kind, has target, target)."""
     out = [struct.pack("<BBBB", ord(img.kind[0]), img.bits, 1 if img.flat else 0, 1 if img.pointers is not None else 0),
            struct.pack("<I", len(img.spans))]
-    for va, data, exe, wr, _name, init in img.spans:
-        out.append(struct.pack("<qIBBq", va, len(data), 1 if exe else 0, 1 if wr else 0, init))
+    for va, data, exe, wr, name, init in img.spans:
+        raw = (name or "").encode("utf-8", "surrogatepass")
+        out.append(struct.pack("<qIBBqI", va, len(data), 1 if exe else 0, 1 if wr else 0, init, len(raw)) + raw)
         out.append(bytes(data))
     starts = sorted(img.names)
     out.append(struct.pack("<I", len(starts)))

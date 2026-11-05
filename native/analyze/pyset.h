@@ -5,7 +5,7 @@
 // 16-bit instruction holds). This is CPython's own table (Objects/setobject.c: open addressing,
 // LINEAR_PROBES 9, PERTURB_SHIFT 5, resized at 3/5 full to used*4, or used*2 past 50,000), with
 // an int's hash being the int itself, so a set built by the same adds iterates the same.
-// Adds only: nothing here is ever removed from such a set.
+// Adds and unions (|=) only: nothing here is ever removed from such a set.
 #pragma once
 #include <cstdint>
 #include <vector>
@@ -49,6 +49,27 @@ public:
         }
     }
 
+    // this |= other (CPython's set_merge): one resize up front; an empty table of the same size
+    // takes the other's slots as they are, an empty one of another size reinserts in table order,
+    // else each member is added in the other's table order
+    void merge(const PySet &other) {
+        if (&other == this || other.used_ == 0) return;
+        if ((used_ + other.used_) * 5 >= mask_ * 3) resize((used_ + other.used_) * 2);
+        if (used_ == 0 && mask_ == other.mask_) {
+            table_ = other.table_;
+            used_ = other.used_;
+            return;
+        }
+        if (used_ == 0) {
+            for (int64_t v : other.table_)
+                if (v != EMPTY) insert_clean(v);
+            used_ = other.used_;
+            return;
+        }
+        for (int64_t v : other.table_)
+            if (v != EMPTY) add(v);
+    }
+
     size_t size() const { return used_; }
     bool empty() const { return used_ == 0; }
 
@@ -67,6 +88,25 @@ private:
     std::vector<int64_t> table_;
     size_t mask_, used_ = 0;
 
+    void insert_clean(int64_t v) {        // set_insert_clean: v is known not to be there
+        size_t i = (size_t)v & mask_, perturb = (size_t)v;
+        while (true) {
+            if (table_[i] == EMPTY) {
+                table_[i] = v;
+                return;
+            }
+            if (i + LINEAR <= mask_) {
+                for (size_t j = 1; j <= LINEAR; j++)
+                    if (table_[i + j] == EMPTY) {
+                        table_[i + j] = v;
+                        return;
+                    }
+            }
+            perturb >>= SHIFT;
+            i = (i * 5 + 1 + perturb) & mask_;
+        }
+    }
+
     void resize(size_t minused) {
         size_t size = 8;
         while (size <= minused) size <<= 1;
@@ -74,28 +114,8 @@ private:
         old.swap(table_);
         table_.assign(size, EMPTY);
         mask_ = size - 1;
-        for (int64_t v : old) {
-            if (v == EMPTY) continue;
-            size_t i = (size_t)v & mask_, perturb = (size_t)v;
-            while (true) {
-                if (table_[i] == EMPTY) {
-                    table_[i] = v;
-                    break;
-                }
-                bool put = false;
-                if (i + LINEAR <= mask_) {
-                    for (size_t j = 1; j <= LINEAR; j++)
-                        if (table_[i + j] == EMPTY) {
-                            table_[i + j] = v;
-                            put = true;
-                            break;
-                        }
-                }
-                if (put) break;
-                perturb >>= SHIFT;
-                i = (i * 5 + 1 + perturb) & mask_;
-            }
-        }
+        for (int64_t v : old)
+            if (v != EMPTY) insert_clean(v);
     }
 };
 

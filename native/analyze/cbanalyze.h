@@ -7,8 +7,10 @@
                                                  pointers; the layout is native.py's _blob), or NULL
    int cba_ask(img, question, arg, answer, len)  "image.discover", "image.function" (arg: start),
                                                  "image.linear" (arg: address | count << 40),
-                                                 "call_graph.build", "conventions.functions" (after
-                                                 discover and names)
+                                                 "call_graph.build", "conventions.functions",
+                                                 "strings.table", "strings.uses", "strings.stack",
+                                                 "strings.formats", "globals.variables",
+                                                 "globals.tables" (after discover and names)
                                                  -> 1 and the answer (JSON, ASCII), -1 unknown
    int cba_names(img, blob, n)                   the functions' and imports' names (native.py's _names)
    void cba_free(char *answer), void cba_close(void *img) */
@@ -16,7 +18,7 @@
 #define CBANALYZE_H
 #include <stddef.h>
 #include <wchar.h>
-#define CBA_VERSION 3
+#define CBA_VERSION 4
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -74,6 +74,7 @@ struct Span {
     std::string data;
     bool exec = false, writable = false;
     int64_t init = 0;
+    std::string name;       // the section's name (".rsrc", ...), as the file gives it
 };
 
 struct Pointer {
@@ -104,6 +105,13 @@ public:
     struct Call { int64_t site; const char *kind; bool has_dest; int64_t dest; };
     bool graph_built = false;
     std::unordered_map<int64_t, std::vector<Call>> calls;   // the call graph's calls, by function
+    struct Ref { int64_t fn, ins, va; const char *how; };
+    std::vector<Ref> refs;                     // the call graph's references, in its order
+    // strings.table, kept for strings.uses and strings.formats: in the table's order
+    struct Str { int64_t va; std::string text; char kind; bool referenced; };
+    bool strings_built = false;
+    std::vector<Str> strings;
+    std::unordered_map<int64_t, size_t> string_at;
     std::string label(int64_t va) const;       // the function, the import, or the address in hex
 
     ~Image();
@@ -132,8 +140,8 @@ private:
     bool jump_table(const Function &fn, const Ins &ins, const std::map<int64_t, Ins> &seen, Table &out);
     std::set<int64_t> held_code_addresses();
     bool looks_like_code(int64_t va, int most = 48);
-    const Ins *covering(int64_t va);
 public:
+    const Ins *covering(int64_t va);
     bool owner(int64_t va, int64_t &start) const;
     void finish();
 };

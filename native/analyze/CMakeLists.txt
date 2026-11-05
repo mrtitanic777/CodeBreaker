@@ -23,7 +23,9 @@ add_library(cbanalyze SHARED
   api.cc        # the C interface: an image handed over once, questions about it as JSON
   image.cc      # the image's decoding: functions, jump tables, discovery (was analyze/image.py)
   call_graph.cc  # calls, references, reach (was analyze/call_graph.py's _build)
-  conventions.cc) # each function's convention, arguments, result, shape (was analyze/conventions.py's _functions)
+  conventions.cc  # each function's convention, arguments, result, shape (was analyze/conventions.py's _functions)
+  strings.cc      # the strings table, their uses, stack strings, format strings (was analyze/strings.py's cores)
+  globals.cc)     # global variables typed from their use, pointer tables (was analyze/globals.py's cores)
 target_include_directories(cbanalyze PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CAPSTONE_DIR}/include)
 if(MSVC)
   target_compile_options(cbanalyze PRIVATE /EHsc /O2 /W3 /utf-8)
