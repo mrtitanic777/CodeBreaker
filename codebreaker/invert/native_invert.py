@@ -28,7 +28,7 @@ def _load():
     path = dll_path()
     if not os.path.isfile(path):
         raise OSError("cbinvert.dll is not built: %s (native/invert/CMakeLists.txt)" % path)
-    lib = ctypes.CDLL(path)
+    lib = settings.load_native(path)
     if lib.cbinv_version() != 1:
         raise OSError("cbinvert.dll is another version: rebuild native/invert")
     lib.cbinv_cfg.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))

@@ -14,7 +14,7 @@ if not defined VCINSTALLDIR (
   call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul || (echo vcvars64.bat failed & popd & exit /b 1)
 )
 set LIBS=%*
-if "%LIBS%"=="" set LIBS=l2 engine tracer formats dosexec
+if "%LIBS%"=="" set LIBS=l2 engine tracer formats dosexec symbols invert
 set FAILED=
 for %%L in (%LIBS%) do (
   echo == native/%%L

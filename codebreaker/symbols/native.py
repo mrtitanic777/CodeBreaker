@@ -32,7 +32,7 @@ def _load():
         path = dll_path()
         if not os.path.isfile(path):
             raise OSError("not built: %s (native/symbols/CMakeLists.txt)" % path)
-        lib = ctypes.CDLL(path)
+        lib = settings.load_native(path)
         lib.cbs_version.restype = ctypes.c_int
         if lib.cbs_version() != _VERSION:
             raise OSError("cbsymbols.dll is another version: rebuild native/symbols")
