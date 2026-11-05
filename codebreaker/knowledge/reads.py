@@ -27,7 +27,6 @@ back with its result. What a program of its own reads (the native decompiler, a 
 seen here: it reads files a step wrote, and those are the step's.
 """
 import contextvars
-import hashlib
 import threading
 
 _CURRENT = contextvars.ContextVar("codebreaker_knowledge_reads", default=None)
@@ -169,22 +168,7 @@ def digest(read):
     from codebreaker.knowledge import store
     platform, kind, key = split(read)
     kb = store.open()
-    if hasattr(kb, "digest"):                       # (the C++ base: its own answer, once the kind is fresh)
-        if platform != "bodies" and (platform, kind) not in _FRESH:
-            _fresh(platform, kind)
-            _FRESH.add((platform, kind))
-        return kb.digest(read)
-    if platform == "bodies":
-        if kind == "name":
-            got = kb.name(key, record=False)
-        elif kind == "names":
-            got = sorted(kb.names_from_bodies(key, record=False).items())
-        else:
-            return ABSENT
-        return hashlib.sha1(repr(got).encode("utf-8", "replace")).hexdigest() if got else ABSENT
-    if (platform, kind) not in _FRESH:
+    if platform != "bodies" and (platform, kind) not in _FRESH:     # (the C++ base answers, once the kind is fresh)
         _fresh(platform, kind)
         _FRESH.add((platform, kind))
-    if key == "*":
-        return kb.kind_digest(platform, kind) or ABSENT
-    return kb.hash_of(platform, kind, key) or ABSENT
+    return kb.digest(read)

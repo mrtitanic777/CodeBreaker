@@ -1,6 +1,6 @@
 r"""native_engine.py -- the engine and the store in C++ (native/engine: cbengine.dll), through ctypes.
 
-A temporary shim (docs/NATIVE.md step 6): the program database (facts.py's Database), the engine's
+The shim (docs/NATIVE.md step 6): the program database (facts.py's Database), the engine's
 core (engine.py's Run and Context: which facts are current, the inputs recorded, what is written,
 kept or remade, the order and the worker threads), the function store (store/functions.py), the
 knowledge base's database (knowledge/store.py, reads.py's digests) and the verdict vocabulary
@@ -12,9 +12,9 @@ Python that remains:
     a knowledge piece's hash now    reads.digest: its kind brought up to date by Python first
     what a value IS                 facts.encode / decode (bytes, text, JSON, a pickle)
 
-The switch: CB_NATIVE_ENGINE (DEFAULT below; 0 = the Python engine and store). It is read when a
-database, a store or a knowledge base is opened: an object opened under one stays on it. Without
-the built DLL the Python runs (why_not() says why). Build: native/engine/CMakeLists.txt.
+There is no switch and no fallback any more: the Python engine and store it replaced are gone (the
+milestone of 2026-11-04). Without the built DLL opening a database, a store or a knowledge base
+raises, with why_not()'s reason. Build: native/engine/CMakeLists.txt.
 """
 import contextvars
 import ctypes
@@ -29,7 +29,6 @@ import weakref
 
 from codebreaker.base import settings
 
-DEFAULT = "1"             # CB_NATIVE_ENGINE when it is not set (identical facts, verdicts and re-runs: docs/NATIVE.md step 6)
 _LIB = []                 # [the DLL, or None when it cannot be used here]
 _WHY = []
 
@@ -105,16 +104,17 @@ def _load():
     return _LIB[0]
 
 
-_ON = {}
-
-
 def enabled():
-    """The C++ engine and store for what is opened now: CB_NATIVE_ENGINE is not 0 and the DLL loads."""
-    want = os.environ.get("CB_NATIVE_ENGINE", DEFAULT) != "0"
-    got = _ON.get(want)
-    if got is None:
-        got = _ON[want] = want and _load() is not None
-    return got
+    """The DLL loads in this process."""
+    return _load() is not None
+
+
+def _need():
+    """The DLL, or the reason it cannot be had, raised."""
+    lib = _load()
+    if lib is None:
+        raise RuntimeError("the engine and store are native (native/engine, cbengine.dll): %s" % why_not())
+    return lib
 
 
 def why_not():
@@ -227,7 +227,7 @@ def _fail(lib, rc):
 
 
 def _call(name, *args):
-    lib = _LIB[0]
+    lib = _need()
     rc = getattr(lib, name)(*args)
     if rc:
         _fail(lib, rc)
@@ -235,7 +235,7 @@ def _call(name, *args):
 
 def _out(name, *args):
     """A call that hands back a buffer: -> its bytes."""
-    lib = _LIB[0]
+    lib = _need()
     p, n = ctypes.c_void_p(), ctypes.c_int64()
     rc = getattr(lib, name)(*(args + (ctypes.byref(p), ctypes.byref(n))))
     if rc:
@@ -380,7 +380,7 @@ class Database(object):
     """facts.Database on the C++ fact store (the same file, the same schema)."""
 
     def __init__(self, path):
-        _load()
+        _need()
         self.path = path
         self.lock = threading.RLock()
         h = ctypes.c_void_p()
@@ -646,7 +646,7 @@ class FunctionStore(object):
 
     def __init__(self, path=None, readonly=False):
         from codebreaker.store import functions
-        _load()
+        _need()
         self.own_path = bool(path or os.environ.get("CB_FUNCTIONS_DB"))
         self.path = path or functions.default_path()
         self.readonly = readonly
@@ -881,7 +881,7 @@ class KnowledgeBase(object):
     """knowledge.store.KnowledgeBase on the C++ database: values decoded here, as Python's."""
 
     def __init__(self, path):
-        _load()
+        _need()
         self.path = path
         self.lock = threading.RLock()
         p = ctypes.c_void_p()
