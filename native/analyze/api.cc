@@ -2,6 +2,9 @@
 #include "cbanalyze.h"
 #include "call_graph.h"
 #include "conventions.h"
+#include "globals.h"
+#include "resources.h"
+#include "strings.h"
 #include "image.h"
 #include "json.h"
 
@@ -147,6 +150,13 @@ extern "C" void *cba_open(const unsigned char *blob, size_t n, char *err, int er
         s.exec = r.u8() != 0;
         s.writable = r.u8() != 0;
         s.init = r.i64();
+        uint32_t nl = r.u32();
+        if ((size_t)(r.end - r.p) < nl) {
+            r.ok = false;
+            break;
+        }
+        s.name.assign((const char *)r.p, nl);
+        r.p += nl;
         if ((size_t)(r.end - r.p) < len) {
             r.ok = false;
             break;
@@ -218,6 +228,12 @@ extern "C" int cba_ask(void *handle, const char *question, long long arg, char *
         o += "]}";
     } else if (!std::strcmp(question, "conventions.functions")) {
         o = conventions(*img);
+    } else if (!std::strncmp(question, "strings.", 8)) {
+        if (!strings_answer(*img, question + 8, o)) return -1;
+    } else if (!std::strncmp(question, "globals.", 8)) {
+        if (!globals_answer(*img, question + 8, o)) return -1;
+    } else if (!std::strncmp(question, "resources.", 10)) {
+        if (!resources_answer(*img, question + 10, o)) return -1;
     } else if (!std::strcmp(question, "call_graph.build")) {
         o = call_graph(*img);
     } else if (!std::strcmp(question, "image.linear")) {   // arg: the address, and the count above bit 40
@@ -226,6 +242,10 @@ extern "C" int cba_ask(void *handle, const char *question, long long arg, char *
         put_function(o, img->function((int64_t)arg));
     } else return -1;
     return answer(o, out, len);
+}
+
+extern "C" int cba_assemble(const char *stores, int least, char **out, size_t *len) {
+    return answer(assemble_json(stores, (size_t)least), out, len);
 }
 
 extern "C" int cba_names(void *handle, const unsigned char *blob, size_t n) {

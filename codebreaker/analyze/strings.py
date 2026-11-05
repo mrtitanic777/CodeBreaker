@@ -21,15 +21,9 @@ conversions in it, at the same position, from several places.
 """
 import re
 
-from codebreaker.analyze import call_graph, image
-from codebreaker.analyze.image import family
+from codebreaker.analyze import native
 
 _SPEC = re.compile(r"%([-+ 0#]*)(\*|\d+)?(?:\.(\*|\d+))?(hh|h|ll|l|L|w|I64|I32)?([diouxXeEfgGcCsSpn%])")
-# printf-like imports: position of the format argument
-_FORMATTERS = {"wsprintf": 1, "wvsprintf": 1, "sprintf": 1, "swprintf": 1, "vsprintf": 1, "printf": 0,
-               "wprintf": 0, "fprintf": 1, "fwprintf": 1, "_snprintf": 2, "_snwprintf": 2, "sscanf": 1,
-               "swscanf": 1, "fscanf": 1, "_vsnprintf": 2, "wnsprintf": 2, "_wsprintf": 1, "_cprintf": 0}
-_NO_LIST = ("wvsprintf", "vsprintf", "_vsnprintf")          # the arguments are elsewhere (a va_list)
 
 
 def _ascii(data, start, least):
@@ -69,72 +63,29 @@ def at(img, va, least=2):
     return None
 
 
+def _ask(img, what):
+    """A strings question to the DLL, with the image's names as they are now."""
+    h = img._handle()
+    h.names(img)
+    return h.ask("strings." + what)
+
+
 def _table(img):
-    graph = call_graph.build(img)
-    out = {}
-    referenced = {va for _f, _i, va, how in graph.refs if how == "a"}
-    if img.pointers:
-        referenced |= {t for site, (_k, t) in img.pointers.items() if t is not None and not img.is_code(site)}
-    for va in referenced:
-        if va in img.names:
-            continue
-        s = at(img, va)
-        if s:
-            out[va] = (s[0], s[1], True)
-    for base, data, executable, _w, _n, held in img.spans:          # what nothing refers to
-        if executable or _n in (".rsrc", ".reloc", ".edata", ".idata"):
-            continue
-        off = 0
-        while off < held:
-            if 0x20 <= data[off] < 0x7F:
-                found = _ascii(data, off, 5 if img.bits == 32 else 4)
-                size = 1
-                if found is None and img.bits == 32 and off + 1 < held and data[off + 1] == 0:
-                    found, size = _wide(data, off, 5), 2
-                if found is not None:
-                    out.setdefault(base + off, (found, "A" if size == 1 else "W", False))
-                    off += (len(found) + 1) * size
-                    continue
-                while off < held and 0x20 <= data[off] < 0x7F:      # skip the rest of a run that is not one
-                    off += 1
-            off += 1
-    return out
+    return {va: (text, kind, referenced) for va, text, kind, referenced in _ask(img, "table")}
 
 
 def table(img):
     return img.memo("strings", _table)
 
 
-def _near_ds(fn, i):
-    """Is the data segment pushed or stored right beside instruction i (a far pointer being built)?"""
-    for b in fn.insns[max(0, i - 2):i + 3]:
-        if any(op[0] == "r" and op[1] == "ds" for op in b.ops):
-            return True
-    return False
-
-
 def _uses(img):
     tab = table(img)
     out = {}
-    if img.bits == 32:
-        for f, ins, va, how in call_graph.build(img).refs:
-            if how == "a" and va in tab:
-                out.setdefault(f, []).append((ins.addr, va, tab[va][0]))
-        return out
-    lo = img.data_segment
-    for fn in img.each():                               # 16-bit: an offset into the data segment, beside DS
-        for i, ins in enumerate(fn.insns):
-            if ins.mn not in ("push", "mov", "lea") or ins.flow:
-                continue
-            for op in ins.ops[-1:]:
-                va = None
-                if op[0] == "i" and op[2] == 2 and op[1] >= 0x10:
-                    va = lo + op[1]
-                elif op[0] == "m" and ins.mn == "lea" and op[1] is None and op[2] is None:
-                    va = lo + (op[4] & 0xFFFF)
-                if va is not None and lo and va in tab and (ins.mn == "lea" or _near_ds(fn, i)):
-                    out.setdefault(fn.start, []).append((ins.addr, va, tab[va][0]))
-                    tab[va] = (tab[va][0], tab[va][1], True)
+    for f, rows in _ask(img, "uses"):
+        out[f] = [tuple(r) for r in rows]
+        if img.bits == 16:                              # a use from 16-bit code makes the string referenced
+            for _site, va, _text in rows:
+                tab[va] = (tab[va][0], tab[va][1], True)
     return out
 
 
@@ -143,55 +94,13 @@ def uses(img):
 
 
 def _assemble(stores, least=4):
-    """Printable runs in {(base, offset): (byte, store number)} -> [(base, offset, text, wide)]"""
-    out = []
-    keys = sorted(stores)
-    i = 0
-    while i < len(keys):
-        base, off = keys[i]
-        j = i
-        while j + 1 < len(keys) and keys[j + 1] == (base, keys[j][1] + 1):
-            j += 1
-        run = [stores[k] for k in keys[i:j + 1]]
-        start = 0
-        for k in range(len(run) + 1):
-            if k == len(run) or not 0x20 <= run[k][0] < 0x7F:
-                seg = run[start:k]
-                text = "".join(chr(b) for b, _n in seg)
-                if len(seg) >= least and len({n for _b, n in seg}) >= 2 and re.search("[A-Za-z]{2}", text):
-                    out.append((base, off + start, text, False))
-                start = k + 1
-        # 16-bit characters: letter, 0, letter, 0
-        k = 0
-        while k + 1 < len(run):
-            m = k
-            while m + 1 < len(run) and 0x20 <= run[m][0] < 0x7F and run[m + 1][0] == 0:
-                m += 2
-            if (m - k) // 2 >= 3:
-                text = "".join(chr(run[x][0]) for x in range(k, m, 2))
-                if re.search("[A-Za-z]{2}", text):
-                    out.append((base, off + k, text, True))
-            k = max(m, k + 1)
-        i = j + 1
-    return out
+    """Printable runs in {(base, offset): (byte, store number)} -> [(base, offset, text, wide)] (in C++)."""
+    return [tuple(r) for r in native.assemble(stores, least)]
 
 
 def stack_strings(img):
     """[(function, "ebp-0x20", text, wide)] -- strings built by storing immediates into the frame."""
-    out = []
-    for fn in img.each():
-        stores, n = {}, 0
-        for ins in fn.insns:
-            ops = ins.ops
-            if ins.mn == "mov" and len(ops) == 2 and ops[0][0] == "m" and ops[1][0] == "i" and ops[0][1] \
-                    and family(ops[0][1]) in ("ebp", "esp") and ops[0][2] is None:
-                n += 1
-                for k in range(ops[0][6]):
-                    stores[(family(ops[0][1]), ops[0][4] + k)] = ((ops[1][1] >> (8 * k)) & 0xFF, n)
-        if len(stores) >= 4:
-            for base, off, text, wide in _assemble(stores):
-                out.append((fn.start, "%s%+#x" % (base, off), text, wide))
-    return out
+    return [tuple(r) for r in _ask(img, "stack")]
 
 
 def conversions(fmt, wide=False):
@@ -224,16 +133,6 @@ def conversions(fmt, wide=False):
     return types
 
 
-def _formatter(name):
-    """(position of the format argument, takes a wide format) for a printf-like import, or None."""
-    bare = name.split("!")[-1]
-    stem = bare[:-1] if bare[-1:] in "AW" and bare[:-1].lower() in _FORMATTERS else bare
-    k = _FORMATTERS.get(stem.lower())
-    if k is None:
-        return None
-    return k, bare.endswith("W") or "w" in stem.lower().replace("wsprintf", "").replace("wvsprintf", "").replace("wnsprintf", "")
-
-
 def literal(img, args, k):
     """The string a call's k-th argument points at: (address, text, kind), or None."""
     tab = table(img)
@@ -254,40 +153,12 @@ def literal(img, args, k):
 
 
 def _formats(img):
-    graph = call_graph.build(img)
-    out, seen_sites, candidates = [], 0, {}
-    for f in img.functions:
-        fn = img.function(f)
-        for site, kind, dest in graph.calls[f]:
-            if dest is None:
-                continue
-            i = fn.at(site)
-            if dest in img.imports:
-                fm = _formatter(img.imports[dest])
-                if fm is None:
-                    continue
-                seen_sites += 1
-                args = image.arguments(fn, i, 2 * (fm[0] + 1) if img.bits == 16 else fm[0] + 1)
-                lit = literal(img, args, fm[0])
-                if lit:
-                    api = img.imports[dest]
-                    listed = not any(api.split("!")[-1].lower().startswith(n) for n in _NO_LIST)
-                    out.append({"addr": f, "kind": "format", "site": site, "function": api, "format": lit[1],
-                                "arguments": conversions(lit[1], fm[1] or lit[2] == "W") if listed else None})
-            elif kind == "call" and img.bits == 32:      # the module's own printf-like functions
-                args = image.arguments(fn, i, 4)
-                for k, a in enumerate(args):
-                    if a[0] == "i" and a[1] in table(img) and _SPEC.search(table(img)[a[1]][0].replace("%%", "")):
-                        candidates.setdefault((dest, k), []).append((f, site, a[1]))
-    own = {}
-    for (dest, k), sites in candidates.items():
-        if len(sites) >= 2 and len({s[2] for s in sites}) >= 2:
-            own[dest] = k
-            for f, site, va in sites:
-                text, kind = table(img)[va][:2]
-                out.append({"addr": f, "kind": "format", "site": site, "function": img.label(dest), "format": text,
-                            "arguments": conversions(text, kind == "W")})
-    return out, seen_sites, own
+    table(img)
+    got = _ask(img, "formats")
+    out = [{"addr": f, "kind": "format", "site": site, "function": api, "format": text,
+            "arguments": conversions(text, wide) if listed else None}
+           for f, site, api, text, wide, listed in got["rows"]]
+    return out, got["sites"], {dest: k for dest, k in got["own"]}
 
 
 def formats(img):

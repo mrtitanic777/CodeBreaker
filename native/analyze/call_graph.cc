@@ -232,6 +232,8 @@ std::string call_graph(Image &img) {
     }
     calls_json += ']';
     img.graph_built = true;
+    img.refs.clear();
+    for (const Ref &r : refs) img.refs.push_back({r.fn, r.ins, r.va, r.how});
     // function addresses held in data
     std::set<int64_t> data_taken;
     if (img.has_pointers) {

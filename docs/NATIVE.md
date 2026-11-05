@@ -1208,6 +1208,9 @@ which iterates in the very order Python's does for the same adds.
 | analyze/image | _convert, function decoding, _jump_table, discover, _held_code_addresses, _looks_like_code: image.cc. Kept: the loaders, Ins/Function/Image (made from the answer), definition, arguments, destination; new: Image.linear (n instructions straight on, which ui/mcp_server read through the removed `_md`/`_convert`) | every pe/ne/le file of the 5 corpora in settings.json, deduplicated by hash (3,680): the reference image.py (from git) and the DLL, whole images as JSON (names in order, functions, limits, discovered, every instruction, tables): 3,680 identical, 0 different; plus comctl32, shell32, user.exe, vmm32.vxd by hand | 256 (46 added: the shim's side, `linear` for ui/mcp_server's straight-on reads) |
 | analyze/call_graph | _build (calls, callers, users, refs, taken, Tarjan order and cycles, reach), _references, _relocated, _strongly_connected: call_graph.cc. Kept: Graph, READS/PURE_WRITES, analyse (the report) | the same 3,680 files: the reference module and the new one on the same image, the Graph whole and analyse() as JSON: 3,680 identical, 0 different; tests/test_analysis.py, test_mcp.py | 152 |
 | analyze/conventions | _functions and every helper it used (_frame, _argument_slots, _register_inputs, _returns, _result_use, _cleanup, _loaded_before, _pushed_inputs, _entry16, _callback): conventions.cc. Kept: stack_delta (structures uses it), duplicates, thunk_layer, analyse | the same 3,680 files: the reference module and the new one on the same image, the Graph whole and analyse() as JSON: 3,680 identical, 0 different; tests/test_analysis.py, test_mcp.py | 413 |
+| analyze/strings | _table (the referenced set unioned with the held pointers' targets, in CPython's set_merge order: PySet::merge), _uses, stack_strings with _assemble, _formats with _formatter, and image.definition/arguments for them: strings.cc. Kept: at (classes, module_writer), literal (dispatch), conversions, analyse | 368 files (every 10th of the 3,680: state/work/analyze-native3/sample.txt), on the commit's final code: the reference module and the new one on the same image: table (dict order) and uses, the table after uses (16-bit uses mark strings referenced), stack_strings, formats, analyse, and formats first on a fresh memo: 368 identical; tests/test_analysis.py, test_mcp.py | 156 (20 added) |
+| analyze/globals | _variables, _type, _operand, _dereferenced, _pointer_tables, _slot_kind: globals.cc (over strings.cc's table, kept per image in the DLL). Kept: variables (sets rebuilt from the answer's lists), pointer_tables, analyse | the same 368 files, the same way: variables (in order), pointer_tables, analyse: 368 identical; the same tests | 194 (15 added) |
+| analyze/resources | _uses (the loader and control calls, their identifiers among the pushes), _stem, _identifier: resources.cc. Kept: carried (the format readers), whether each load is present, uses, analyse | the same 368 files, on the commit's final code, strings, globals and resources together: analyse whole: 368 identical; the same tests | 68 (20 added) |
 
 No cache or knowledge-base key takes these modules' code: what they feed (describe32's ECX/EDX
 functions, the struct and global text) reaches the caches as content (the description text, the
@@ -1215,26 +1218,49 @@ bodies), so a different answer is a different key by itself; and the answers are
 
 Known, deliberate limits of the C++ (none met in the corpus): the callback-name patterns read `\w`
 as ASCII and fold case in ASCII only (Python's `re.I` folds Unicode); `upper()` of an import name
-is ASCII.
+is ASCII; strings' and resources' import names are lower-cased in ASCII, a name with any other
+character matching no formatter or loader (Python's lower() would map the Kelvin sign to `k`).
 
-**HANDOFF (2026-11-05).** Left in analyze/, by importers: strings (5: table, uses; feeds globals,
-classes, module_writer), structures and globals (4), dispatch, classes, resources, dos_functions
-(its own 16-bit decoder, no Image), origin, observe, ppc_calls, report, facts. Then symbols/
-(api_arguments, ordinals, runtime_library, driver_services, names, dos_interrupts, debug_build,
-sdk_structs and the rest). What was learned:
+The image blob now carries each span's name (strings skips .rsrc, .reloc, .edata and .idata), so
+CBA_VERSION is 4. A variable's readers, writers and values come back as sorted lists and are made
+sets again: nothing iterates them unsorted (len, sorted and membership only), and its notes are
+strings, whose set order Python randomises per process anyway.
+
+The whole corpus, once, on the final code (a7abdad0e, the DLL copied aside): every PE, NE and LE
+file of the 5 corpora in settings.json, deduplicated by hash (3,680), strings, globals and
+resources together, the reference modules against the new ones on the same image as JSON with
+order: 3,680 identical, 0 different, 0 failing to load (the earlier commit's own partial whole-list
+run had 2,232 of 2,232 identical before it was stopped for this one).
+
+**HANDOFF (2026-11-05, second session).** Done here: strings, globals, resources. The hand ports
+stop here: Logan moved the rest of the port to the automatic engine (a dynamic mode in
+native/pyengine). Exactly what is left as Python, with its lines:
+
+- analyze/: structures (421; needs conventions' facts, which conventions.cc already makes in the
+  DLL), dispatch (404; uses strings.literal, globals.pointer_tables, conventions, describe),
+  classes (533), dos_functions (514; its own 16-bit decoder, no Image), origin (485), observe
+  (360), ppc_calls (268), report (214, the CLI), facts (91), and the kept parts of image (524),
+  call_graph, conventions, strings (184), globals (105), resources (100).
+- symbols/: api_arguments (434), ordinals (377), runtime_library (382), driver_services (280),
+  names (545), dos_interrupts (101), debug_build (168), debug_build_estimate (196), sdk_structs
+  (265), cpp_classes (214), xdk_libraries (151), wine16 (87), and the kept parts of demangle and
+  prototypes. Their table-file reads must stay identical, and any knowledge-base or cache key their
+  output feeds must take the DLL's hash (as prototypes' does).
+
+What was learned, for whoever (or whatever) ports the rest:
 
 - Port a pass as one question on the handle: the image is already in the DLL, decoded, with its
-  call graph (Image::calls, built once by call_graph.cc) and its names (name_text, import_text,
-  label()). A pass's answer is JSON built in Python's key order; Python makes its objects from it
-  (a reference's instruction is found again by `fn.index[addr]`).
-- strings.table iterates `referenced`, a set comprehension unioned with another (`|=`): the
-  answer's dict order is that set's order. PySet has add only; the union needs set_merge's
-  behaviour (CPython copies the table outright when the target is empty and the masks match, else
-  inserts the other's entries in table order).
-- The gates: state/work/analyze-native2/ (gate_image.py: the reference image.py from git against
-  the DLL, whole images as JSON; gate_pass.py: a pass's reference module against the new one on
-  the same image, several passes per load). An NE file's load is mostly describe16 (Python), so
-  the gate's time goes there, not to the analyses.
+  call graph (Image::calls and now Image::refs, built once by call_graph.cc), its strings table
+  (Image::strings, built by strings.cc on "strings.table" and kept for the passes over it) and its
+  names (name_text, import_text, label()). Send the names again before each question
+  (`h.names(img)`): passes read `va in img.names` and labels, which can change after discover.
+- strings.cc exports what later passes need: ensure_table/in_table, fam, Arg, definition and
+  arguments (image.definition/arguments; dispatch and structures use them too).
+- The gates: state/work/analyze-native3/ (gate_pass.py: a pass's reference module, copied before
+  the edit, against the new one on the same image, with per-pass dumps for strings and globals;
+  run_gate.py PASSES LIST TAG runs two workers and prints the counts; sample.txt is every 10th of
+  files.txt; callers.py REGEX greps the other repositories and this tree). The sample takes about
+  5 minutes, the whole list about 50.
 
 ## Step 8, first piece: the compiler models -- `native/invert` (2026-11-04)
 

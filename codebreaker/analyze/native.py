@@ -17,7 +17,7 @@ import struct
 
 from codebreaker.base import settings
 
-_VERSION = 3
+_VERSION = 5
 _LIB = []
 _WHY = []
 _POINTER_KINDS = {"abs32": 0, "far": 1, "selector": 2, "offset": 3, "byte": 4}
@@ -50,6 +50,9 @@ def _load():
         lib.cba_ask.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_longlong,
                                 ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t))
         lib.cba_names.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t)
+        lib.cba_assemble.restype = ctypes.c_int
+        lib.cba_assemble.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
+                                     ctypes.POINTER(ctypes.c_size_t))
         lib.cba_free.argtypes = (ctypes.c_void_p,)
         lib.cba_close.argtypes = (ctypes.c_void_p,)
     except OSError as e:
@@ -73,12 +76,13 @@ def library():
 
 def _blob(img):
     """The image as the DLL reads it (little-endian): kind, bits, flat, has pointers; the spans
-    (va, length, executable, writable, initialised length, bytes); the function starts with their
+    (va, length, executable, writable, initialised length, name, bytes); the function starts with their
     limits; the import addresses; the pointers in the file's order (site, kind, has target, target)."""
     out = [struct.pack("<BBBB", ord(img.kind[0]), img.bits, 1 if img.flat else 0, 1 if img.pointers is not None else 0),
            struct.pack("<I", len(img.spans))]
-    for va, data, exe, wr, _name, init in img.spans:
-        out.append(struct.pack("<qIBBq", va, len(data), 1 if exe else 0, 1 if wr else 0, init))
+    for va, data, exe, wr, name, init in img.spans:
+        raw = (name or "").encode("utf-8", "surrogatepass")
+        out.append(struct.pack("<qIBBqI", va, len(data), 1 if exe else 0, 1 if wr else 0, init, len(raw)) + raw)
         out.append(bytes(data))
     starts = sorted(img.names)
     out.append(struct.pack("<I", len(starts)))
@@ -103,6 +107,18 @@ def _names(img):
             raw = name.encode("utf-8", "surrogatepass")
             out.append(struct.pack("<qI", va, len(raw)) + raw)
     return b"".join(out)
+
+
+def assemble(stores, least):
+    """strings' _assemble in the DLL: {(base, offset): (byte, store number)} -> its JSON answer."""
+    lib = library()
+    text = "".join("%s %d %d %d\n" % (b, o, v, n) for (b, o), (v, n) in stores.items()).encode("ascii")
+    out, size = ctypes.c_void_p(), ctypes.c_size_t()
+    lib.cba_assemble(text, least, ctypes.byref(out), ctypes.byref(size))
+    try:
+        return json.loads(ctypes.string_at(out.value, size.value).decode("ascii"))
+    finally:
+        lib.cba_free(out)
 
 
 class Handle(object):

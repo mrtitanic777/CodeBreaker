@@ -7,16 +7,21 @@
                                                  pointers; the layout is native.py's _blob), or NULL
    int cba_ask(img, question, arg, answer, len)  "image.discover", "image.function" (arg: start),
                                                  "image.linear" (arg: address | count << 40),
-                                                 "call_graph.build", "conventions.functions" (after
-                                                 discover and names)
+                                                 "call_graph.build", "conventions.functions",
+                                                 "strings.table", "strings.uses", "strings.stack",
+                                                 "strings.formats", "globals.variables",
+                                                 "globals.tables", "resources.uses" (after discover
+                                                 and names)
                                                  -> 1 and the answer (JSON, ASCII), -1 unknown
+   int cba_assemble(stores, least, answer, len)  strings' _assemble without an image: stores as
+                                                 text, "base offset byte number" per line -> 1
    int cba_names(img, blob, n)                   the functions' and imports' names (native.py's _names)
    void cba_free(char *answer), void cba_close(void *img) */
 #ifndef CBANALYZE_H
 #define CBANALYZE_H
 #include <stddef.h>
 #include <wchar.h>
-#define CBA_VERSION 3
+#define CBA_VERSION 5
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -24,6 +29,7 @@ __declspec(dllexport) int cba_version(void);
 __declspec(dllexport) int cba_init(const wchar_t *capstone_dll, char *err, int errlen);
 __declspec(dllexport) void *cba_open(const unsigned char *blob, size_t n, char *err, int errlen);
 __declspec(dllexport) int cba_ask(void *img, const char *question, long long arg, char **answer, size_t *len);
+__declspec(dllexport) int cba_assemble(const char *stores, int least, char **answer, size_t *len);
 __declspec(dllexport) int cba_names(void *img, const unsigned char *blob, size_t n);
 __declspec(dllexport) void cba_free(char *answer);
 __declspec(dllexport) void cba_close(void *img);

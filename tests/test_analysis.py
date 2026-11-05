@@ -128,6 +128,7 @@ def test_globals_and_strings():
     assert strings.conversions("%s = %ld, %5.2f %c%%") == ["char *", "long", "double", "char"]
     assert strings.conversions("%*d %S", wide=False) == ["int", "int", "wchar_t *"]
     assert strings._assemble({("ebp", -8 + k): (b, k // 4) for k, b in enumerate(b"Hello\0")}) == [("ebp", -8, "Hello", False)]
+    assert all(len(r) == 4 and r[1][:3] in ("ebp", "esp") for r in strings.stack_strings(img))
 
 
 def test_structures():
