@@ -1232,3 +1232,53 @@ order is trusted; the order below is what is known today.
 
 Not moved: the period compilers, OpenWatcom, MASM and DOSBox-X (other people's programs, run as
 they are), and Unicorn and Capstone themselves (already native).
+
+## HANDOFF: module build speed (2026-11-05)
+
+Logan: rebuilding the 15 MINI.CAB modules from a fresh state took about an hour. Measured (state/
+work/build-speed/profile.md, prof15.py; workers 2, cold, master c8e0e7a74): **4,617 s** of build,
+USER 2,726, GDI 1,092, KRNL386 217. By stage, summed: the link rounds (_build16: frame writing,
+assembly, wlink -- 38 rounds, GDI 10 and USER 11, one per gate or overflow verdict) 1,908 s; the
+gate (isolated16) 1,126; decompile 766; contract16 255; C objects and the rest ~560. Process
+starts: wcc 7,656 (two per C function: the compile and the -zs flow check; one start costs
+0.14-0.28 s here even on an empty file), wasm 1,889 (for 13,832 pieces asked), decompiler 82.
+**MASM in the DOS executive: 0 sessions** -- the 16-bit Windows lane assembles with OpenWatcom's
+wasm; native/dosexec is not on this path, so its batch mode and a post-load snapshot cannot move
+these numbers. wcc refuses a second source (E1139) and wasm crashes on one (0xC0000005): neither
+batches without changing OpenWatcom.
+
+Done (worktree branch, commits 8967cf243, 2231b87a2 and the one with this note):
+- base/cache.SHARED (wasm16, objects, never_set, masm, assembled16, omf_publics) live in the build
+  cache shared by every state and worktree (setting `build_cache`, default the main checkout's
+  state/build_cache; cap `build_cache_max_gb`, 6). Keys name tools and headers by content
+  (cache.tool_bytes, files_bytes) and list every input in a comment. Missing inputs fixed: the stem
+  (wasm/wcc/MASM objects name their source file -- the old keys served USER, KRNL and others objects
+  naming another piece's or another module's file), INCLUDE headers, WCC/WASM/CL variables, the
+  original module's bytes for assembled16 (16/32-bit width, relocations), capstone's version, the
+  decoder's own mode in asm16's memo, the omf reader.
+- functions.omf_here: a kept OpenWatcom object rewritten as the tool writes it in this folder
+  (THEADR and dependency paths, dates in UTC, checksums) -- identical to a fresh wcc/wasm run
+  (state/work/build-speed/here_test.py).
+- The engine's function.object / function.never_set compile through the shared cache.
+- module.build_many: modules side by side, each in its own Python with its share of `workers`,
+  largest first; `build A B C` uses it.
+- ne.image copies the decompiled module by pickle round trip, not deepcopy (115 s on GDI).
+
+Gate, cold after vs before (fresh state, empty build cache, build_many at workers 2): all 15 images
+byte-identical, all 15 gate verdict sets (b.gated: 0..61 per module, 92 in all) and rejected sets
+identical. Objects: 8,482 identical with dates, the state's path and the source file's name masked
+(the last because the old keys gave wrong names); the 84 left are USER's, whose baseline build folder
+was half rewritten by an interrupted re-run of mine, plus each module's scratch probe.obj.
+**Cold: 4,617 s -> 3,817 s (-17%).**
+
+Not done (stopped to save tokens):
+- The warm number (filled shared cache, new state folder) and the all-15 Setup boot with the final
+  code. In a warm fresh state the objects are hits, but decompile and the gate still run: per
+  VER.DLL, 58 s cold -> 52 s warm, the gate's 8 worker Pythons most of it.
+- Share decompile and gate results across states: their kinds (decompiled, decompiled_fn,
+  compilable16, gate16_*) still name tools by path and date, compilable16 pickles a module naming
+  state paths, and the native decompiler reads CB_* switches the keys do not list -- audit first.
+- assembly.probe writes state/assembly_probes.json without a temp-and-replace: harmless (a torn read
+  is a re-probe) but should be atomic now that modules build side by side.
+- The two wcc runs per function (compile, flow check) are the largest cold cost left; one run would
+  need proof that -w2 changes no object and that W200 is the same under the compile's options.

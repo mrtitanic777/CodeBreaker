@@ -540,12 +540,9 @@ def _gb(n):
 
 
 def stats():
-    """[(kind, bytes, results, generations on disk, the generation of now)] -- state's kinds, then
-    the shared build cache's (each named "shared:<kind>")."""
+    """[(kind, bytes, results, generations on disk, the generation of now)]"""
     out = []
-    shared = root("objects")
-    both = list(_stores().items()) + [("shared:" + k, w) for k, w in _stores(shared).items()]
-    for kind, where in both:
+    for kind, where in _stores().items():
         rows = 0
         for p, is_db in where:
             if is_db:
@@ -559,7 +556,7 @@ def stats():
             else:
                 rows += sum(len(names) for _d, _dirs, names in os.walk(p))
         out.append((kind, sum(_size(p) for p, _db in where), rows,
-                    [os.path.basename(p).split(".")[0] for p, _db in where], generation(kind.split(":")[-1])))
+                    [os.path.basename(p).split(".")[0] for p, _db in where], generation(kind)))
     return out
 
 
