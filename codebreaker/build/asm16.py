@@ -38,8 +38,8 @@ _DECODED = {}                           # (bytes, place) -> the instruction: a s
                                         # once, not again for every run and pass that goes over it
 
 
-def _decoded(md, data, at):
-    k = (data, at)
+def _decoded(md, data, at, bits=16):
+    k = (data, at, bits)                                # (the same bytes read as 16- or 32-bit code differ)
     if k not in _DECODED:
         if len(_DECODED) > 400000:
             _DECODED.clear()
@@ -80,6 +80,14 @@ class Function(object):
         public = self.publics[0][1]
         self.cs_labels = {}                                 # offset of an instruction -> the place in the run it reads through CS
         s = nef.segments()[seg - 1]
+        # a 32-bit code segment (NE flag 2000h: GDI's 36 and 38, its flat thunks) is read as 32-bit
+        # code -- read as 16-bit, `66 B8 iw` took the next two bytes for its immediate and the
+        # `mov gs, ax` after it became a near call far past the segment's end. It is written into
+        # the 16-bit code class all the same, each instruction as its bytes with its 32-bit
+        # spelling beside them: the linker keeps a class's 16- and 32-bit segments apart, and a
+        # use32 segment went after all of the original's, renumbering both (and it sets no 2000h
+        # flag in a Windows module either way -- docs/NATIVE.md, the linker's backlog)
+        self.bits = 32 if s["flags"] & 0x2000 else 16
         blob = bytes(nef.data[s["file_off"]:s["file_off"] + s["length"]]) if s["file_off"] else b""
         # what the loader allocates past the stored bytes is zeros it then fixes up: a far jump at
         # the very end of a segment has its selector there (GDI's segment 15)
@@ -161,7 +169,7 @@ class Function(object):
                 internal_selector[off] = tseg
         self.sites = sites
         # the instructions: near calls and jumps leaving the function, and references to its own segment
-        md = platforms.decoder(16, detail=True)
+        md = platforms.decoder(self.bits, detail=True)
         calls = {}                                          # offset -> (size, text)
         self.ins = {}                                       # offset -> (bytes, mnemonic, operands, label target)
         self.symbolic = {}                                  # offset -> (size, text): an instruction whose fixup has a name
@@ -176,7 +184,7 @@ class Function(object):
         while work:
             at = work.pop()
             while start <= at < end and at not in seen and not hole_at(at):
-                ins = _decoded(md, blob[at:min(end, at + 16)], at)
+                ins = _decoded(md, blob[at:min(end, at + 16)], at, self.bits)
                 if ins is None or at + ins.size > end or hole_at(at + ins.size - 1):
                     break                                   # (nothing runs on into a function rebuilt from C)
                 seen.add(at)
@@ -225,7 +233,7 @@ class Function(object):
                             return
                         if start <= disp < end and ins.size >= 3:
                             self.cs_labels[at] = disp       # a table or a variable of the run: a label
-                            if mn in ("jmp", "call") and op.mem.index == 0 and op.mem.base != 0:
+                            if mn in ("jmp", "call") and op.mem.index == 0 and op.mem.base != 0 and self.bits == 16:
                                 # a jump or call table: its words are places in the run to go on from
                                 # (it ends, at the latest, where the first place it sends to
                                 # after it begins: past that is the code it goes on to)
@@ -248,7 +256,7 @@ class Function(object):
                 target = None
                 if not covered and (X.X86_GRP_JUMP in groups or X.X86_GRP_CALL in groups) and ins.operands \
                         and ins.operands[0].type == X.X86_OP_IMM and b0 not in (0x9A, 0xEA):
-                    target = ins.operands[0].imm & 0xFFFF
+                    target = ins.operands[0].imm & (0xFFFF if self.bits == 16 else 0xFFFFFFFF)
                     h = hole_at(target)
                     if h and target == h[0] and b0 in (0xE8, 0xE9):
                         self.externs[h[2]] = "near"          # a function rebuilt from C: by its name
@@ -260,11 +268,14 @@ class Function(object):
                     elif start <= target < end:
                         self.ins[at] = (bytes(ins.bytes), mn, ins.op_str, target)
                         work.append(target)
-                    elif b0 not in (0xE8, 0xE9) and target >= len(blob):
-                        # (past the end of the segment: no code jumps there -- bytes read as code.
-                        # NETDI's segment 54 ends in strings far pointers name ("NETDI: ",
+                    elif target >= len(blob):
+                        # (past the end of the segment: no code jumps or calls there -- bytes read
+                        # as code. NETDI's segment 54 ends in strings far pointers name ("NETDI: ",
                         # "netlog.txt"), described as functions: `ja 316C` in a segment 310A
-                        # long refused all 666 of its functions. Followed no further: bytes.)
+                        # long refused all 666 of its functions. Followed no further: bytes. A
+                        # near call there was taken for one to a function at that place: an
+                        # entry no piece defines, a stand-in in another segment, and a link that
+                        # failed -- "relocation not in the same segment")
                         break
                     elif b0 not in (0xE8, 0xE9):
                         self.why = "a short jump out of itself (%s at %04x)" % (mn, at)
@@ -288,8 +299,13 @@ class Function(object):
                 "%04x" % t for t in sorted(self.missing))
             self.reaches = min(self.missing)
             return
+        if calls and self.bits == 32:
+            # (a near call or jump out of the run, by its name, would be written as 16-bit code)
+            self.why = "a near call or jump out of a 32-bit segment's run (%04x)" % min(calls)
+            return
         self.calls = calls
-        self._far_pointer_offsets(md, symbol_for, internal_selector, seg)
+        if self.bits == 16:                                 # (its numbers are imm16s: see there)
+            self._far_pointer_offsets(md, symbol_for, internal_selector, seg)
         self._raw_far_pointers(symbol_for, internal_selector)
         self.module, self.seg, self.public = nef.module_name(), seg, public
         # a jump into the middle of an instruction: that instruction is not written as one
@@ -363,7 +379,7 @@ class Function(object):
             if self.blob[at - 3:at - 2] == b"\x68" and (at - 2) in selectors:
                 return selectors[at - 2]
             return None
-        me = _decoded(md, self.blob[at:at + 16], at)
+        me = _decoded(md, self.blob[at:at + 16], at, self.bits)
         mem = [o for o in (me.operands if me else ()) if o.type == X.X86_OP_MEM]
         if not mem:
             return None
@@ -377,7 +393,7 @@ class Function(object):
             site = other + sizes[other] - 2
             if site not in selectors:
                 continue
-            ins = _decoded(md, self.blob[other:other + 16], other)
+            ins = _decoded(md, self.blob[other:other + 16], other, self.bits)
             om = [o for o in (ins.operands if ins else ()) if o.type == X.X86_OP_MEM]
             if om and (om[0].mem.base, om[0].mem.index, om[0].mem.segment) == (m.base, m.index, m.segment) \
                     and om[0].mem.disp == m.disp + 2:
@@ -480,7 +496,7 @@ class Function(object):
     def candidates(self):
         """{offset: (text, bytes, mask)} of the instructions the assembler's spelling is probed for."""
         out = {}
-        for at, (data, _m, _o, target) in self.ins.items():
+        for at, (data, _m, _o, target) in self.ins.items() if self.bits == 16 else ():   # (see write)
             if target is None and at not in self.cs_labels:  # (a CS label is checked in the whole)
                 out[at] = (self.mnemonic(at), data, bytes(len(data)))
         return out
@@ -490,7 +506,8 @@ class Function(object):
         the part of the frame NOT followed as code -- written out as its bytes -- goes to: the
         bytes hold the displacement to where the function was, and it is placed elsewhere
         (USER's 25:2460 `E8 59 FB`, call 1FBC, in code reached only through a table)."""
-        md = platforms.decoder(16)
+        md = platforms.decoder(self.bits)
+        size, rel = (3, "<h") if self.bits == 16 else (5, "<i")
         decoded = set()
         for a, t in self.ins.items():
             decoded.update(range(a, a + len(t[0])))
@@ -506,8 +523,8 @@ class Function(object):
             while stop < self.end and stop not in decoded and not any(lo <= stop < hi for lo, hi in hole_spans):
                 stop += 1
             for ins in md.disasm(bytes(self.blob[at:stop]), at):
-                if ins.bytes[0] in (0xE8, 0xE9) and ins.size == 3:
-                    target = (ins.address + 3 + struct.unpack_from("<h", bytes(ins.bytes), 1)[0]) & 0xFFFF
+                if ins.bytes[0] in (0xE8, 0xE9) and ins.size == size and self.bits == 16:
+                    target = (ins.address + size + struct.unpack_from(rel, bytes(ins.bytes), 1)[0]) & 0xFFFF
                     if target in holes:
                         out.setdefault(holes[target], ins.address)
                         self.raw_hole_calls[ins.address] = (holes[target], ins.bytes[0])
@@ -521,6 +538,8 @@ class Function(object):
         read through CS, a table's entry) is written as the original's bytes, which stay right."""
         lo = self.start if lo is None else lo
         hi = self.end if hi is None else hi
+        if self.bits == 32:                                 # (its instructions as their bytes: see __init__)
+            good = set()
         if self.holes and not hasattr(self, "_raw_scanned"):
             # (a call in bytes not followed as code to a function rebuilt from C is written by its
             # name: the function is placed elsewhere, and the displacement in the bytes would not)
@@ -608,7 +627,7 @@ class Function(object):
                 flush()
                 sym, b0 = self.raw_hole_calls[at]
                 out.append("        %-4s near ptr %s" % ("call" if b0 == 0xE8 else "jmp", sym))
-                at += 3
+                at += 3 if self.bits == 16 else 5
             else:
                 run.append(self.blob[at])
                 at += 1
