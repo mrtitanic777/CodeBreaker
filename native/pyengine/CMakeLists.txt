@@ -27,6 +27,11 @@ add_library(pyfront_lib STATIC ${PYFRONT}/src/lexer.cpp ${PYFRONT}/src/literals.
 target_include_directories(pyfront_lib PUBLIC ${PYFRONT}/include)
 add_library(l2core_lib STATIC ${L2}/src/value.cc ${L2}/src/pystr.cc ${L2}/src/json.cc ${L2}/src/l2.cc)
 target_include_directories(l2core_lib PUBLIC ${L2}/src ${L2}/include)
+# the C++17 back end (native/l2's l2cpp17), for pyengine --cpp
+add_library(l2cpp17_lib STATIC ${L2}/src/pyre.cc ${L2}/src/cpp17_core.cc ${L2}/src/cpp17_python.cc
+            ${L2}/src/cpp17_jmodel.cc ${L2}/src/cpp17_java.cc)
+target_link_libraries(l2cpp17_lib PUBLIC l2core_lib)
+set_target_properties(l2cpp17_lib PROPERTIES CXX_STANDARD 17)   # (native/l2 is C++17: u8path)
 
 add_library(pyengine STATIC
   src/big.cc        # Python's unbounded ints, for interval bounds
@@ -42,7 +47,7 @@ add_library(pyengine STATIC
   src/lower.cc      # typed functions into L2; the module units; the ledger
   src/engine.cc)    # the whole run: load, solve, translate, write L2 and the coverage ledger
 target_include_directories(pyengine PUBLIC src include)
-target_link_libraries(pyengine PUBLIC pyfront_lib l2core_lib)
+target_link_libraries(pyengine PUBLIC pyfront_lib l2core_lib l2cpp17_lib)
 
 add_library(pyengine_c SHARED src/capi.cc)
 target_link_libraries(pyengine_c PRIVATE pyengine)
@@ -62,6 +67,6 @@ target_link_libraries(pyengine_tests PRIVATE pyengine)
 if(MSVC)
   target_link_options(pyengine_tests PRIVATE /STACK:268435456)
 endif()
-foreach(t scopes inference specialization closures generators variants regex files)
+foreach(t scopes inference specialization closures generators variants regex files dynamic backend)
   add_test(NAME pyengine_${t} COMMAND pyengine_tests ${t})
 endforeach()

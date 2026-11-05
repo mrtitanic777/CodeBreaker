@@ -250,6 +250,18 @@ public:
     std::unordered_map<std::string, OMap<T>> frozen_attrs;
     std::vector<std::string> vetoes;
     void freeze();
+    // (new) hand-written type hints (native/pyengine/hints/types.json): function -> parameter -> a
+    // Python annotation's text; applied when the classic rules have settled, to parameters they left
+    // untyped, as if the source had the annotation
+    std::map<std::string, std::map<std::string, std::string>> type_hints;
+    std::vector<std::unique_ptr<pyfront::Module>> hint_trees;
+    int apply_type_hints();
+    // (new) getattr(obj, 'name'[, default]) with a constant name: 1 the attribute is always there (a
+    // method, a class attribute, or set at the top of __init__ in obj's class or a base), 2 it is never
+    // there (no class of the hierarchy, up or down, has or stores it), 0 it may or may not be
+    int getattr_choice(const std::string& cq, const std::string& attr);
+    const pyfront::Attribute* getattr_attr(const pyfront::Call* n, const std::string& attr);   // obj.name, made once
+    std::unordered_map<const void*, std::unique_ptr<pyfront::Attribute>> getattr_synth;
     // (new) nested functions: kept beside fns (not in it: the old tables stay as they were)
     OMap<Fn*> nested;
     std::unordered_map<const void*, Fn*> nested_by_node;

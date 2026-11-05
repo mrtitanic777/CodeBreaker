@@ -9,6 +9,12 @@
 //   --coverage   prints the coverage table
 //   --checked    the checked int policy (ints past int64 raise OverflowError in C++)
 //   --old        the old engine's rules exactly (no extensions): gate 1's reference run
+//   --cpp DIR    writes each module that translated anything through the C++17 back end
+//                (native/l2's l2cpp17): DIR/<module path>.hpp / .cpp, and DIR/spans.json (per
+//                module, each function's first and last source line; a declined unit's reason)
+//   --api DIR    the API maps the back end reads (default: <package dir>/java/api_maps)
+//   --no-backend do not hold translated functions to what the back end writes (see README)
+//   --hints DIR  the hints (types.json, refuse.json, refuse.<policy>.json; default native/pyengine/hints)
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -18,6 +24,7 @@
 int main(int argc, char** argv) {
     pyengine::EngineOptions o;
     bool coverage = false;
+
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
         if (a == "--coverage") coverage = true;
@@ -27,6 +34,10 @@ int main(int argc, char** argv) {
         else if (a == "--package" && i + 1 < argc) o.package = argv[++i];
         else if (a == "--module" && i + 1 < argc) o.modules.push_back(argv[++i]);
         else if (a == "--log") o.log = true;
+        else if (a == "--no-backend") o.backend = false;
+        else if (a == "--cpp" && i + 1 < argc) o.cpp = argv[++i];
+        else if (a == "--api" && i + 1 < argc) o.api = argv[++i];
+        else if (a == "--hints" && i + 1 < argc) o.hints = argv[++i];
         else if (!a.empty() && a[0] != '-' && o.root.empty()) o.root = a;
         else {
             fprintf(stderr, "pyengine: unknown argument %s\n", a.c_str());

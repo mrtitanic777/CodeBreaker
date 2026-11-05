@@ -2399,6 +2399,19 @@ public:
 
     // -- calls
     IRP e_Call(const pyfront::Call* n) {
+        if (p.extended) {   // (new) getattr with a constant name, as inference chose it
+            auto* fname = as<pyfront::Name>(n->func);
+            std::string a;
+            if (fname && fname->id == "getattr" && n->keywords.empty() && (n->args.size() == 2 || n->args.size() == 3) &&
+                is_str_const(n->args[1], &a) && !a.empty() && ev.types.count(n->func)) {
+                T ft = Tof(n->func), ot = ev.types.count(n->args[0]) ? Tof(n->args[0]) : BOTTOM();
+                if (ft.kind == TK::Fn && ft.name() == "builtin:getattr" && ot.kind == TK::Inst) {
+                    int c = p.getattr_choice(ot.name(), a);
+                    if (c == 1) return expr(p.getattr_attr(n, a));
+                    if (c == 2 && n->args.size() == 3) return expr(n->args[2]);
+                }
+            }
+        }
         const Res* r = R(n);
         int line = n->pos.lineno;
         if (!r) throw Refused("dynamic", "call", line);
@@ -2870,6 +2883,8 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
     // module names the translations read
     std::map<std::pair<std::string, std::string>, Refused> bad_globals;
     std::map<std::pair<std::string, std::string>, IRP> global_decls;
+    std::map<std::pair<std::string, std::string>, std::set<std::string>> global_calls;   // what each name's value calls
+    std::map<std::pair<std::string, std::string>, std::set<std::pair<std::string, std::string>>> global_reads;
     std::set<std::pair<std::string, std::string>> needed;
     for (auto& [q, L] : out.lowered)
         if (L.has_fl && L.md) needed.insert(L.globals_used.begin(), L.globals_used.end());
@@ -2914,6 +2929,8 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             if (t->kind == "i64" || t->kind == "bool" || t->kind == "f64" || t->name == "py.str" || t->name == "py.bytes" || t->name == "py.tuple")
                 fd->mods.push_back("const");
             global_decls[key] = fd;
+            global_calls[key] = fl.calls;
+            global_reads[key] = fl.globals_used;
             for (auto& g : fl.globals_used)
                 if (!needed.count(g) && g != key) bad_globals.insert_or_assign(key, Refused("syntax", "module name " + name + " refers to another"));
         } catch (const Refused& r) {
@@ -2922,6 +2939,8 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             bad_globals.insert_or_assign(key, Refused("frontend-error", std::string("RuntimeError: ") + e.what()));
         }
     }
+    for (bool again = true; again;) {   // (extended: a name whose value reads a refused name or calls a refused function is refused too)
+    again = false;
     for (auto& [q, L] : out.lowered) {
         if (!L.has_fl || !L.md) continue;
         for (auto& g : L.globals_used) {
@@ -2958,6 +2977,31 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             }
         }
     }
+    if (p.extended)
+        for (auto& [key, d] : global_decls) {
+            if (bad_globals.count(key)) continue;
+            for (auto& g : global_reads[key]) {
+                auto bg = bad_globals.find(g);
+                if (g != key && (bg != bad_globals.end() || !global_decls.count(g))) {
+                    bad_globals.insert_or_assign(key, Refused("calls-refused", "module name " + g.second +
+                                                 (bg != bad_globals.end() ? " (" + trunc(bg->second.issue.reason(), 60) + ")" : "")));
+                    again = true;
+                    break;
+                }
+            }
+            if (bad_globals.count(key)) continue;
+            for (auto& c : global_calls[key]) {
+                auto it = out.lowered.find(c);
+                if (it == out.lowered.end() || !it->second.md) {
+                    bad_globals.insert_or_assign(key, Refused("calls-refused", split2_last(c) + " (from module name " + key.second + ")"));
+                    again = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (p.extended)   // (a refused name is not written)
+        for (auto& [key, _] : bad_globals) global_decls.erase(key);
     // the types every translated function uses (and the types of their fields, to a fixpoint)
     std::set<std::string> used_all;
     for (auto& [q, L] : out.lowered)

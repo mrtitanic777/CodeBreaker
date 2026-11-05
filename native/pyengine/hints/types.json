@@ -1,0 +1,10 @@
+{
+ "codebreaker.knowledge._bare": {"name": "str"},
+ "codebreaker.knowledge.spelling": {"name": "str"},
+ "codebreaker.knowledge.declaration": {"platform_": "str", "name": "str"},
+ "codebreaker.knowledge.prototype": {"platform_": "str", "name": "str"},
+ "codebreaker.knowledge.declared_argument_bytes": {"name": "str"},
+ "codebreaker.knowledge.import_name": {"module": "str", "ordinal": "int"},
+ "codebreaker.knowledge.reads.join": {"platform": "str", "kind": "str", "key": "str"},
+ "codebreaker.knowledge.reads.split": {"read": "str"}
+}
