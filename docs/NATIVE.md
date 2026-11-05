@@ -749,6 +749,10 @@ So the Python behind two switches is deleted:
 | `CB_NATIVE_L2` | backends/c.py's Python writer (all but MOVED and the pass lists, Decline, SIZEOF, _param_name; the 21 entry points bound to native_l2's), native_l2's switch and dispatcher, tests/translate/test_native_l2.py (test_c_backend.py runs every case through the C++). The compilable16 cache key and the 16-bit lane's module stamp now carry cbl2.dll's identity. | 4,625 |
 | `CB_NATIVE_ENGINE` | facts.py's Python Database and its helpers, engine.py's Run and Context, store/functions.py's FunctionStore, knowledge/store.py's KnowledgeBase, reads.digest's fallback, the switch in native_engine.py and verdicts.py | 1,653 |
 
+After the deletions: run_all --quick passes but tools/tidy.py (17 now, the same older ones),
+tools/check_imports 563/563, and the all-15 MINI.CAB modules rebuilt with the deleted code gone
+boot together to Setup's License page again.
+
 Kept, and why:
 
 - **`CB_NATIVE_TRACE`, `CB_NATIVE_TRACE16`, `CB_NATIVE_TRACE_DRV`:** the Python hooks still run every
