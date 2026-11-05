@@ -1,3 +1,124 @@
+# pyengine -- handoff (2026-11-05, phase 2): CodeBreaker as one C++ program
+
+**State.** All of CodeBreaker -- codebreaker/ (554 modules), tests/, tools/, native/nasm/test/masm --
+plus the standard modules CPython writes in Python (native/pyrt/stdlib.txt) and unicorn's and capstone's
+bindings (native/pyrt/site.txt) translate into one program, 826 modules / 249k lines / 11,915 functions,
+11 constructs refused (8 `async def`: ui/mcp_server, ui/terminal, 3 test files; 1 `match`: MemCrypto).
+It **compiles and links** (MSVC, unity batches of 24 over a precompiled py_object.hpp; ~15 min cold /Od
+with 2 jobs, a pyrt-only change relinks in ~2 min):
+
+    tools\build_native.cmd pyengine pyrt
+    tools\build_codebreaker_exe.cmd fast          -> state\cxx\codebreaker\build-fast\codebreaker.exe
+    codebreaker.exe identify lz32.dll              (python -m codebreaker identify lz32.dll: the same bytes out)
+    codebreaker.exe tests\run_all.py --quick      (the suite runner itself as C++; its jobs run codebreaker.exe)
+    codebreaker.exe -m pytest tests\translate     (pytest in C++: lib_pytest.cc)
+
+The program reads its command line as `python` does (module.cc run_main): `-m module` (a package: its
+__main__; a C++ module like pytest: its _main), `script.py` (the module translated from that file),
+interpreter flags skipped (-u -B -I -X opt ...); with no arguments it is `python -m codebreaker`. So
+`sys.executable` children (`[sys.executable, "-m", "codebreaker", ...]`, run_all's `-X importtime path`,
+`-m pytest`) run the same program.
+
+### The general fixes (engine and runtime only; no generated C++ was edited)
+
+Engine (src/dyn.cc, tools/pyengine_main.cpp): `--dyn-tree PKG`, `--dyn-files DIR` (files named as pytest
+names them), `--dyn-exe`, `--dyn-stdlib LIB` / `--dyn-site DIR` (stdlib.txt / site.txt: `name`, `pkg.*`,
+`alias = path`); unity + PCH CMake; MSVC's old keyword spellings (cdecl, _asm ...), errno / S_I* / O_*
+macro names mangled; direct calls of names py:: also has kept out of ADL (`(is_int)(t)`); a lambda in a
+default no longer drops the outer signature's cell parameters; a lambda in a nested comprehension's range
+hoisted (MSVC miscompiled it); `//` comments never end in a backslash; private names mangled in classes
+(`_Class__name`); `locals()`; a module name that is also a builtin falls back to the builtin until bound.
+
+Runtime (native/pyrt): type.__new__ under a metaclass recursed (IntEnum); struct's alignment was read before
+parse set it (`calcsize(parse_fmt(f, l, al), al)`); classes are never freed (instances do not own their
+type: a class made and dropped left instances dangling -- pytest.mark was one); globals() is a live mapping
+over the module's cells; `__slots__`; real ABCs (abc.ABCMeta register / hooks, collections.abc with mixins,
+os.PathLike); eval of expressions (pyfront's tree evaluated); inspect.signature / getsource (by qualified
+name in the source file: cache keys hash it); open(fd), os.utime on folders, os fd calls, errno names;
+pow(b, -e, m); utf-32; sys.flags / implementation / version_info; memoryview; pickle.Pickler (fast).
+
+### Libraries added
+
+| library | how |
+|---|---|
+| argparse, difflib, random, datetime, csv, gzip, zipfile, pathlib, tomllib, shlex, pprint, queue, base64, hmac, secrets, calendar, filecmp, wave, glob, stat, posixpath, _pyio (io's classes), collections' User*/ChainMap (as _pycollections), ntpath's rest (as _pyntpath), reprlib, compression.* | **CPython's own Python, translated with the program** (stdlib.txt; read from CPython's Lib at translation): their behaviour is CPython's by construction |
+| _random (Mersenne Twister), _csv, zlib (zlib 1.3.1 from native/decompiler + crc32), codecs, gettext, _operator, msvcrt, signal, weakref (strong), locale, faulthandler, runpy, _collections, sysconfig, importlib.resources | C++, lib_extra.cc |
+| ctypes (+ util, wintypes) | C++, lib_ctypes.cc: simple types, POINTER, arrays, Structure / Union / BigEndian* from _fields_ (alignment, _pack_, bit fields), byref / cast / memmove / string_at, CDLL / WinDLL / windll, x64 calls (a caller per float pattern of the first four arguments), CFUNCTYPE callbacks (2,048 entry points; a DLL's own threads take the global lock) |
+| unicorn, capstone | **their own ctypes bindings translated** (site.txt) over pyrt's ctypes: calls go straight to unicorn.dll / capstone.dll, loaded by path from the package folders (importlib.resources.files) |
+| cryptography (hashes, HMAC, AES / 3DES / ARC4 ECB / CBC, RSA numbers), Crypto.Cipher.DES | C++ over bcrypt, lib_crypto.cc |
+| pytest, unittest, jsonschema | C++, lib_pytest.cc / lib_extra.cc |
+| z3 | **stubbed** (importing raises ImportError with the reason). Needed by emulate/symbolic.py and verify/concolic.py, which emulate/shadow.py and engine/win16.py import at module level -- so 6 suites. The installed z3-solver package is itself ctypes over libz3.dll, so it is one line in site.txt (`z3.*`) once Logan decides; nothing to download |
+| asyncio | not added. The 3 `async def` of the product are ui/: the MCP server (mcp + uvicorn over asyncio), the terminal UI (textual + rich). A C++ front end needs: an MCP stdio JSON-RPC loop (small, hand-written), a terminal UI over the service's calls, and for `serve`/service: socket + socketserver + http.server (a winsock _socket, then CPython's Python for the rest) |
+| PIL, mcp, textual / rich, http.*, socket, xml (pyexpat) | not added (counted below) |
+
+### The suites as C++ (tests/run_all.py --quick, run by codebreaker.exe; Python: all 45 pass)
+
+**31 of 45 pass as C++** (state/work/pyengine-dyn2/runall5.txt; /Od build, 1,054 s vs CPython's ~600 s):
+tidy, assembler (176), dos, frozen, invert, m68k, z80, media, nes, pklite, exepack, converted, platforms,
+port, powerpc, match_powerpc, ppc_calls, readable, recompile, store, symbols, vmx128, xbe, xbox_crypto,
+xbox_effect, xbox_formats, xenos, xex, xex_edit, concolic, mcp (all 13 skipped: no mcp library).
+
+| suite | as C++ | why not |
+|---|---|---|
+| check_imports | 546 / 603 | 8 modules do not import: 4 need z3 (emulate.shadow, emulate.symbolic, engine.win16, verify.concolic), 4 are the UI (ui.mcp_server, serve, service, terminal: http / socketserver / rich / mcp); the 49 "dangling" are imports of those 8 |
+| java (pytest folder) | 400 / 416 directly (`-m pytest tests\java`: the same 416 Python collects); run_all's 8 shards report 28 / 32 | PIL x6, xml (pyexpat) x2, `-c` x1, 4 single bugs (test_finally, test_probe_libraries, test_kind's module named by a string, test_review_fixes DID NOT RAISE); the shards' low count: a shard ends early (to look at: likely the heap corruption below) |
+| translate (pytest folder) | 143 / 148 directly (the same 148) | compile() of a source string x1, test_port_semantics x3 (a built program's file not found), test_clang_frontend x1 (`MethodDecl.implicit`) |
+| run_record | crashes | **heap corruption** (0xC0000374) with no output: in the unicorn hook / ctypes path, not found yet |
+| native_trace | 1 / 7 | z3 |
+| native_engine, versions | 3 / 4, 8 / 9 | z3 |
+| drivers | 13 / 16 | z3 x2, PIL x1 |
+| whole_module | 12 / 15 | z3 x2, a dict subclass's attribute missing after a copy (`_Texts._made`) |
+| analysis | 10 / 11 | test_conventions (an assertion; not looked at) |
+| plumbing | 16 / 17 | `-c` source text |
+| xna | 7 / 9 (6 skipped as in Python) | PIL |
+| ui, service | do not start | http.server / socket (the UI front ends) |
+
+Harness bugs found and fixed on the way (each made tests pass silently): a script outside the program
+(native/nasm/test/masm/run.py) answered nothing and test_assembler counted 0 of 0 -- it is now in the
+program (176 pass); pytest marks with arguments applied to a function did not decorate it, so skipif-marked
+tests were never collected (translate collected 96 of 148, java 346 of 416) -- fixed, the counts now equal
+Python's.
+
+### Typed where proven (step 4): not done
+
+The typed path's C++ (l2cpp17 over native/ported/include/py.hpp) is in its own `namespace py`, which
+collides with pyrt's: the two cannot share a translation unit or a link as they stand. The way in: the typed
+units compiled in their own TUs with py.hpp's namespace renamed (pyt), exporting each proven function with a
+plain signature (int64_t / double / bool / std::string), and dyn.cc emitting, for a function coverage.json
+marks translated and the judge agreed, a wrapper that unboxes the py::vars, calls it, and boxes the
+result (`--dyn-typed <coverage dir>`); the judge (PYRT_TRACE + --judge-traces) compares the wrapped run with
+the all-dynamic run. 472 functions (2.1% of lines) qualify today. Gate 1 holds: `pyengine codebreaker
+--out` gives byte-identical coverage.json, coverage.md and 554 l2/*.json with this branch's engine and
+master's (only dyn.* and the --dynamic part of the main changed).
+
+### The cut-over plan (written, not executed; no Python deleted)
+
+| caller | what it does | how it keeps working without the package |
+|---|---|---|
+| Dashboard tools/scripts/codebreaker_xenon.py (both trees) | `subprocess.run([sys.executable, "-m", "codebreaker", *args], cwd=CB)` (xenon-recompile ...) | point it at `CB\bin\codebreaker.exe` (one line), or keep the line and put a `codebreaker.exe` there: the program accepts `-m codebreaker ...` itself |
+| Dashboard prepare_game.py, prepare_module*.py, prepare_unified.py, prepare_dash_versions.py, decompile_17559_modules.py | in-process: codebreaker.recompile.config / xenon, codebreaker.formats.xbox.gdf (`gdf._open`), codebreaker.formats.xex (`basic`) | (a, recommended) translate the scripts with CodeBreaker into their own program: `pyengine --dynamic --dyn-files <Dashboard>\tools\scripts --dyn-tree codebreaker --dyn-exe dashboard_tools`, then `dashboard_tools.exe prepare_game.py ...` -- the scripts unchanged, no Python; (b) commands for the four calls (`codebreaker.exe xex-basic`, `gdf-extract`, `recompile-config`, `xenon build/analyse`) and the scripts call them |
+| Windows95/tools/place_map.py | codebreaker.base.corpus (executables), codebreaker.formats.detect (format_of) | the same two ways: translated with CodeBreaker (`--dyn-files Windows95\tools`), or `codebreaker.exe corpus --executables --json` and `codebreaker.exe detect --json <paths>` |
+| Win95VM, XboxMCP | (no reference to codebreaker found) | nothing |
+| .mcp.json (`python -m codebreaker mcp`), the terminal UI, `serve` | asyncio + mcp / textual / http.server | the front-end rewrite above; until then these stay Python clients |
+| CodeBreaker's own `-c` children | build/module.py's parallel builds and test_plumbing's child pass source text to `sys.executable -c` | the two sites run a module instead (`-m codebreaker.build.child`): a two-line Python change, then C++ |
+
+A minimal import surface for scripts that must stay Python (if any): none is needed if (a) is taken; the
+alternative is a py::var <-> PyObject* bridge module, which the plan avoids.
+
+### The honest distance to deleting the Python
+
+1. **Correctness**: the suites that fail as C++ (above) -- z3 (a decision, 6 suites), the heap corruption in
+   test_run_record, the UI front ends, PIL (images in 3 suites),
+   xml.dom (pyexpat), `-c` (two sites), and a handful of single-test semantics bugs.
+2. **The UI and MCP front ends** (a C++ rewrite, the only hand work left).
+3. **Speed**: the /O2 build has not been timed; the /Od program is ~3x slower than CPython on short commands
+   (identify lz32.dll: 1.9 s vs 0.56 s, start-up included).
+4. **Build inputs**: the standard modules are translated from CPython's Lib at build time; to drop CPython
+   the generated C++ of stdlib.txt/site.txt (or the .py files, PSF-licensed) is vendored once.
+5. **The oracle**: CPython stays as the judge's reference (trace_py.py) until the C++ is the reference.
+
+---
+
 # pyengine -- handoff (2026-11-05): the dynamic mode
 
 The new direction (Logan, 2026-11-05): the engine translates the rest of CodeBreaker's Python, not hand

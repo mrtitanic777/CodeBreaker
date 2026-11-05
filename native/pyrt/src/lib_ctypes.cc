@@ -7,7 +7,7 @@
 // alive. A call converts each argument by its argtypes entry (or by its kind), releases the global lock,
 // calls through the Windows x64 convention (integers in RCX..R9, doubles in XMM0..3, the rest on the
 // stack: one caller per float/integer pattern of the first four), and converts the result by restype.
-// A Python callable given to a CFUNCTYPE gets one of a pool of C entry points.
+// A Python callable given to a CFUNCTYPE gets one of a pool of 2,048 C entry points.
 #include <cstring>
 #include <memory>
 #include <mutex>
