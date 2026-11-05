@@ -104,7 +104,8 @@ def test_prototypes():
         f.write("/* c */\n#define X 1\nWINUSERAPI HWND WINAPI GetThing( HWND hWnd, int nIndex );\n"
                 "int WINAPIV Printf( LPSTR, LPCSTR, ... );\nSTDAPI_(ULONG) Count( void );\n"
                 "BOOL CALLBACK Each( WNDENUMPROC lpfn, void (*pfn)(int, int) );\n")
-    got = prototypes.read_header(p)
+    got = prototypes._build({"32": [d], "16": []})["32"]
+    assert got["GetThing"]["header"] == "x.h"
     assert got["GetThing"]["returns"] == "HWND" and got["GetThing"]["convention"] == "stdcall"
     assert got["GetThing"]["parameters"] == [["HWND", "hWnd"], ["int", "nIndex"]]
     assert got["Printf"]["convention"] == "cdecl" and got["Printf"]["parameters"][-1] == ["...", ""]
