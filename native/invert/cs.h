@@ -30,6 +30,12 @@ inline std::vector<CsIns> disasm16(const std::vector<uint8_t> &code, long long a
   return disasm16(code.data(), code.size(), address, detail);
 }
 
+// platforms.decoder(32).disasm(code, address), no detail (the MSVC 2.0 models)
+std::vector<CsIns> disasm32(const uint8_t *code, size_t n, long long address);
+inline std::vector<CsIns> disasm32(const std::vector<uint8_t> &code, long long address) {
+  return disasm32(code.data(), code.size(), address);
+}
+
 // once per process: the DLL's path; false (and a message) if it does not load
 bool cs_load(const wchar_t *dll, std::string &err);
 

@@ -1,6 +1,7 @@
 // cs.cc -- the capstone.dll Python's package carries, its entry points looked up by name (LoadLibraryW
-// of a path Python already loaded hands back that same module).  Two handles, 16-bit x86, without
-// and with detail, as platforms.decoder(16) and platforms.decoder(16, detail=True) make them.
+// of a path Python already loaded hands back that same module).  Three handles: 16-bit x86 without
+// and with detail, as platforms.decoder(16) and platforms.decoder(16, detail=True) make them, and
+// 32-bit x86 without, as platforms.decoder(32) (the MSVC 2.0 models).
 #include "cs.h"
 
 #include <capstone/capstone.h>
@@ -21,7 +22,7 @@ open_t p_open;
 option_t p_option;
 disasm_t p_disasm;
 free_t p_free;
-csh plain_h, detail_h;
+csh plain_h, detail_h, plain32_h;
 bool loaded;
 std::mutex mu;
 }  // namespace
@@ -42,7 +43,8 @@ bool cs_load(const wchar_t *dll, std::string &err) {
     err = "capstone.dll lacks cs_open/cs_option/cs_disasm/cs_free";
     return false;
   }
-  if (p_open(CS_ARCH_X86, CS_MODE_16, &plain_h) != CS_ERR_OK || p_open(CS_ARCH_X86, CS_MODE_16, &detail_h) != CS_ERR_OK) {
+  if (p_open(CS_ARCH_X86, CS_MODE_16, &plain_h) != CS_ERR_OK || p_open(CS_ARCH_X86, CS_MODE_16, &detail_h) != CS_ERR_OK ||
+      p_open(CS_ARCH_X86, CS_MODE_32, &plain32_h) != CS_ERR_OK) {
     err = "cs_open failed";
     return false;
   }
@@ -51,11 +53,12 @@ bool cs_load(const wchar_t *dll, std::string &err) {
   return true;
 }
 
-std::vector<CsIns> disasm16(const uint8_t *code, size_t n, long long address, bool detail) {
+namespace {
+std::vector<CsIns> run(csh h, const uint8_t *code, size_t n, long long address, bool detail) {
   std::vector<CsIns> out;
   if (!loaded || n == 0) return out;
   cs_insn *all = nullptr;
-  size_t k = p_disasm(detail ? detail_h : plain_h, code, n, (uint64_t)address, 0, &all);
+  size_t k = p_disasm(h, code, n, (uint64_t)address, 0, &all);
   out.resize(k);
   for (size_t i = 0; i < k; i++) {
     CsIns &o = out[i];
@@ -80,6 +83,15 @@ std::vector<CsIns> disasm16(const uint8_t *code, size_t n, long long address, bo
   }
   if (all) p_free(all, k);
   return out;
+}
+}  // namespace
+
+std::vector<CsIns> disasm16(const uint8_t *code, size_t n, long long address, bool detail) {
+  return run(detail ? detail_h : plain_h, code, n, address, detail);
+}
+
+std::vector<CsIns> disasm32(const uint8_t *code, size_t n, long long address) {
+  return run(plain32_h, code, n, address, false);
 }
 
 }  // namespace cbinv

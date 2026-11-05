@@ -40,4 +40,8 @@ std::string msc6_walk(const std::vector<uint8_t> &b, const std::map<long long, s
                       const std::string &callee);
 std::string msc6_templates(const std::vector<uint8_t> &b);
 
+// msc6_registers.invert_reg / invert_loop (msc6_registers.cc); imports: call index -> name
+std::string msc6_invert_reg(const std::string &b, const std::map<long long, std::string> &imports);
+std::string msc6_invert_loop(const std::string &b, const std::map<long long, std::string> &imports);
+
 }  // namespace cbinv
