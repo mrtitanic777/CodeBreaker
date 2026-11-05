@@ -757,7 +757,56 @@ void init_ctypes(const var& m);
 void init_ctypes_util(const var& m);
 void init_wintypes(const var& m);
 
+// memoryview: a view of bytes, a bytearray or a ctypes object (raw_of reads it through .obj)
+static void make_memoryview() {
+    var ns = new_dict();
+    ns.setitem("__init__"_s, def("__init__", "self, obj", {}, [](var self, var obj) {
+        if (!is_bytes(obj) && !has_layout(obj, Layout::ByteArray) && !hasattr(obj, "__bytes__"_s).truthy() &&
+            !(obj.is_ref() && type_of(obj)->name == "memoryview"))
+            raise(E_TypeError, "memoryview: a bytes-like object is required, not '" + tname(obj) + "'");
+        if (obj.is_ref() && type_of(obj)->name == "memoryview") obj = obj.getattr("obj");
+        self.setattr("obj", obj);
+        self.setattr("readonly", var(is_bytes(obj) && !has_layout(obj, Layout::ByteArray)));
+        self.setattr("itemsize", var(1));
+        self.setattr("format", "B"_s);
+        self.setattr("ndim", var(1));
+        return var(None);
+    }));
+    auto raw = [](const var& self) -> std::string {
+        var o = self.getattr("obj");
+        if (is_bytes(o) || has_layout(o, Layout::ByteArray)) return raw_of(o);
+        return raw_of(call1(t::bytes, o));
+    };
+    ns.setitem("tobytes"_s, def("tobytes", "self, order=", {None}, [raw](var self, var) { return new_bytes(raw(self)); }));
+    ns.setitem("__bytes__"_s, def("__bytes__", "self", {}, [raw](var self) { return new_bytes(raw(self)); }));
+    ns.setitem("hex"_s, def("hex", "self", {}, [raw](var self) { return new_bytes(raw(self)).call("hex"); }));
+    ns.setitem("tolist"_s, def("tolist", "self", {}, [raw](var self) { return call1(t::list, new_bytes(raw(self))); }));
+    ns.setitem("__len__"_s, def("__len__", "self", {}, [raw](var self) { return var((int64_t)raw(self).size()); }));
+    ns.setitem("nbytes"_s, property(nat("nbytes", [raw](const CallArgs& a) { return var((int64_t)raw(a.pos.at(0)).size()); })));
+    ns.setitem("__getitem__"_s, def("__getitem__", "self, key", {}, [raw](var self, var k) -> var {
+        var b = new_bytes(raw(self));
+        if (has_layout(k, Layout::Slice)) return call1(import("builtins").getattr("memoryview"), b.getitem(k));
+        return b.getitem(k);
+    }));
+    ns.setitem("__setitem__"_s, def("__setitem__", "self, key, value", {}, [](var self, var k, var v) {
+        var o = self.getattr("obj");
+        if (!has_layout(o, Layout::ByteArray)) raise(E_TypeError, "cannot modify read-only memory");
+        o.setitem(k, v);
+        return var(None);
+    }));
+    ns.setitem("__eq__"_s, def("__eq__", "self, other", {}, [raw](var self, var o) { return var(raw(self) == raw_of(is_bytes(o) ? o : call1(t::bytes, o))); }));
+    ns.setitem("cast"_s, def("cast", "self, format, shape=", {None}, [](var self, var, var) { return self; }));
+    ns.setitem("release"_s, def("release", "self", {}, [](var) { return var(None); }));
+    ns.setitem("__enter__"_s, def("__enter__", "self", {}, [](var self) { return self; }));
+    ns.setitem("__exit__"_s, def("__exit__", "self, *args", {}, [](var, var) { return var(false); }));
+    var mv = make_class("memoryview", "memoryview", {}, ns, {}, "builtins");
+    extern var g_builtins;
+    mod_set(g_builtins, "memoryview", mv);
+    t::memoryview = mv;
+}
+
 void init_extra_modules() {
+    make_memoryview();
     register_native_module("ctypes", init_ctypes);          // (lib_ctypes.cc)
     register_native_module("ctypes.util", init_ctypes_util);
     register_native_module("ctypes.wintypes", init_wintypes);

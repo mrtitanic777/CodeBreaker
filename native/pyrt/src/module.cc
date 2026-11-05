@@ -154,6 +154,14 @@ var globals_of(module_def& m) {
 }
 
 bool module_registered_(const std::string& name) { return reg().defs.count(name) || reg().natives.count(name); }
+// a translated module's source file and whether it is a package (false: not translated, or native)
+bool module_source_(const std::string& name, std::string& file, bool& package) {
+    auto d = reg().defs.find(name);
+    if (d == reg().defs.end() || !d->second->file_) return false;
+    file = d->second->file_;
+    package = d->second->package_;
+    return true;
+}
 
 // a script path given as `python path.py`: the module registered for that file (compared as absolute,
 // case-insensitive paths with either slash)

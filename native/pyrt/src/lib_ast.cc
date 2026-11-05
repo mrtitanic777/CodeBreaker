@@ -469,6 +469,19 @@ void init_ast_module(const var& m) {
 }
 
 void init_inspect_module(const var& m) {
+    // getfile: a module's __file__, or that of the module a function or class was defined in
+    mod_def(m, "getfile", [](const CallArgs& a) -> var {
+        var o = a.pos.at(0);
+        if (o.is_ref() && o.ref()->type == T_module) return o.getattr("__file__");
+        var mod = getattr(o, "__module__"_s, None);
+        if (mod.is_none()) raise(E_TypeError, "module, class, method, function, traceback, frame, or code object was expected, got " + tname(o));
+        var sm = import("sys").getattr("modules").call("get", mod);
+        if (sm.is_none()) raise(E_TypeError, "no file for " + repr_(o));
+        return sm.getattr("__file__");
+    });
+    mod_def(m, "getsourcefile", [](const CallArgs& a) { return import("inspect").call("getfile", a.pos.at(0)); });
+    // (frames are not kept by translated code)
+    mod_def(m, "currentframe", [](const CallArgs&) { return None; });
     mod_def(m, "cleandoc", [](const CallArgs& a) {
         // inspect.cleandoc: tabs expanded, the common indent of the lines after the first removed, blank edges dropped
         std::string doc = str_utf8(a.pos.at(0).call("expandtabs"));
@@ -501,7 +514,7 @@ void init_inspect_module(const var& m) {
         if (!is_str(d)) return var(None);
         return import("inspect").call("cleandoc", d);
     });
-    for (const char* n : {"getsource", "signature", "getsourcelines", "getfile", "currentframe", "stack"})
+    for (const char* n : {"getsource", "signature", "getsourcelines", "stack"})
         mod_def(m, n, [n](const CallArgs&) -> var {
             raise(E_NotImplementedError, std::string("inspect.") + n + ": the translated program has no Python source or frames to inspect");
         });

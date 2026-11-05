@@ -401,6 +401,11 @@ CType* layout_struct(TypeObj* t, CType* ct) {
                 if (is_signed(fd.t->code) && fd.bits < 64 && (v >> (fd.bits - 1)) & 1) return var((int64_t)(v | ~((1ull << fd.bits) - 1)));
                 return var((int64_t)v);
             }
+            // a char / wchar array field reads as its string (to the first NUL), as CPython's
+            if (fd.t->kind == CK::Array && fd.t->elem->kind == CK::Simple && fd.t->elem->code == 'c')
+                return new_bytes(std::string((const char*)d->p + fd.offset, strnlen((const char*)d->p + fd.offset, fd.t->length)));
+            if (fd.t->kind == CK::Array && fd.t->elem->kind == CK::Simple && fd.t->elem->code == 'u')
+                return new_str(from_w((const wchar_t*)(d->p + fd.offset), wcsnlen((const wchar_t*)(d->p + fd.offset), fd.t->length)));
             return read_value(fd.t, d->p + fd.offset, a.pos[0]);
         });
         pr->fset = new_native(fd.name.c_str(), [fd, key](const CallArgs& a) -> var {
@@ -447,6 +452,8 @@ CType* array_of(CType* e, size_t n) {
     ct->size = e->size * n;
     ct->align = e->align;
     ct->py = new_ctype_class(e->py->name + "_Array_" + std::to_string(n), T_array);
+    ct->py->dict->set(interned("_type_"), tv(e->py));
+    ct->py->dict->set(interned("_length_"), var((int64_t)n));
     types_()[ct->py] = ct;
     m[key] = ct;
     return ct;
@@ -460,6 +467,7 @@ CType* pointer_to(CType* e) {
     ct->size = 8;
     ct->align = 8;
     ct->py = new_ctype_class("LP_" + e->py->name, T_pointer);
+    ct->py->dict->set(interned("_type_"), tv(e->py));
     types_()[ct->py] = ct;
     m[e] = ct;
     return ct;
@@ -861,6 +869,7 @@ void init_ctypes(const var& m) {
     add_classmethod(T_cdata, "from_buffer", [](const CallArgs& a) -> var {
         CType* ct = ctype_of(T(a.pos.at(0)));
         var buf = a.pos.at(1);
+        if (buf.is_ref() && type_of(buf)->name == "memoryview") buf = buf.getattr("obj");   // (a memoryview: what it views)
         int64_t off = arg(a, 2, "offset", var(0)).as_int64();
         uint8_t* p;
         size_t n;

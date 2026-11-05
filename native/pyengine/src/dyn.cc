@@ -371,7 +371,11 @@ private:
         switch (r.kind) {
         case NameRes::Local:
         case NameRes::Free: return local_name(id);
-        case NameRes::Global: return gref(id);
+        case NameRes::Global:
+            // a module name that is also a builtin (capstone's `range = xrange` under Python 2 only): the builtin
+            // while the module has not bound it, as Python's lookup falls through
+            if (Scopes::is_builtin(id)) return "py::or_builtin(" + gref(id) + ", " + cstr(id) + ")";
+            return gref(id);
         case NameRes::Builtin: return builtin_value(id);
         default:
             // a name the module never binds: maybe made at run time (from x import *, globals())
@@ -675,6 +679,20 @@ private:
         }
         if (id == "print") return "py::print(" + call_args(c) + ")";
         if (id == "globals" && n == 0) return "py::globals_of(py_module_)";
+        if (id == "locals" && n == 0) {
+            // locals(): the module's dict at module level (and in a comprehension there), the namespace in a
+            // class body, else a dict of the function's bound names at the call (as CPython's snapshot)
+            const Scope* s = fn_ ? fn_->scope : nullptr;
+            while (s && s->kind == Scope::Comprehension && s->parent) s = s->parent;
+            if (!s || s->kind == Scope::Module) return "py::globals_of(py_module_)";
+            if (s->kind == Scope::Class && fn_ && !fn_->class_var.empty()) return fn_->class_var;
+            std::set<std::string> names(s->params.begin(), s->params.end());
+            for (auto& b : s->bound) if (s->binds(b)) names.insert(b);
+            for (auto& f : s->free) if (f != "__class__") names.insert(f);
+            std::string o = "[&]() -> py::var { py::var py_d = py::dict(); ";
+            for (auto& nm : names) o += "if (!" + ident(nm) + ".is_unbound()) py_d.setitem(" + cstr(nm) + "_s, " + ident(nm) + "); ";
+            return o + "return py_d; }()";
+        }
         if ((id == "any" || id == "all") && n == 1) {
             if (auto* g = as<GeneratorExp>(c->args[0])) return any_all(g, id == "any");
         }
@@ -1698,9 +1716,10 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
     // the standard modules whose Python is CPython's own (native/pyrt/stdlib.txt), translated from its Lib
     // folder with the program: `name` one module, `name.*` a package and every module under it
     std::set<std::string> from_stdlib;
-    if (!o.stdlib_dir.empty()) {
+    for (auto& [lib_dir, list_name] : std::vector<std::pair<std::string, std::string>>{{o.stdlib_dir, "stdlib.txt"}, {o.site_dir, "site.txt"}}) {
+        if (lib_dir.empty()) continue;   // (site.txt: outside packages taken the same way from site-packages: unicorn, capstone)
         std::string pyrt_dir = o.pyrt.empty() ? (fs::path(o.root) / "native" / "pyrt").string() : o.pyrt;
-        std::string list = read_file((fs::path(pyrt_dir) / "stdlib.txt").string());
+        std::string list = read_file((fs::path(pyrt_dir) / list_name).string());
         size_t st = 0;
         while (st < list.size()) {
             size_t e = list.find('\n', st);
@@ -1718,9 +1737,9 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
                 std::string alias = ln.substr(0, eq), path = ln.substr(eq + 1);
                 while (!alias.empty() && isspace((unsigned char)alias.back())) alias.pop_back();
                 while (!path.empty() && isspace((unsigned char)path.front())) path.erase(path.begin());
-                fs::path f = fs::path(o.stdlib_dir) / path;
+                fs::path f = fs::path(lib_dir) / path;
                 if (!fs::exists(f)) {
-                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", path.c_str(), o.stdlib_dir.c_str());
+                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", path.c_str(), lib_dir.c_str());
                     continue;
                 }
                 explicit_files[alias] = f.generic_string();
@@ -1731,11 +1750,11 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             if (ln.size() > 2 && ln.compare(ln.size() - 2, 2, ".*") == 0) {
                 std::string pkg = ln.substr(0, ln.size() - 2), rel = pkg;
                 std::replace(rel.begin(), rel.end(), '.', '/');
-                fs::path base = fs::path(o.stdlib_dir) / rel;
+                fs::path base = fs::path(lib_dir) / rel;
                 std::error_code ec;
                 for (auto it = fs::recursive_directory_iterator(base, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
                     if (!it->is_regular_file() || it->path().extension() != ".py") continue;
-                    std::string r = fs::relative(it->path(), o.stdlib_dir).generic_string();
+                    std::string r = fs::relative(it->path(), lib_dir).generic_string();
                     r.resize(r.size() - 3);
                     if (r.size() >= 9 && r.compare(r.size() - 9, 9, "/__init__") == 0) r.resize(r.size() - 9);
                     if (r.find("/test") != std::string::npos) continue;
@@ -1746,8 +1765,8 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             } else names.push_back(ln);
             for (auto& n : names) {
                 ModSpec m;
-                if (!find_module(o.stdlib_dir, n, m)) {
-                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", n.c_str(), o.stdlib_dir.c_str());
+                if (!find_module(lib_dir, n, m)) {
+                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", n.c_str(), lib_dir.c_str());
                     continue;
                 }
                 explicit_files[n] = m.file;

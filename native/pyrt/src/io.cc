@@ -473,7 +473,16 @@ void init_io() {
     mod_set(g_sys, "byteorder", "little"_s);
     mod_set(g_sys, "maxsize", var(INT64_MAX));
     mod_set(g_sys, "version", "3.14.0 (CodeBreaker pyrt)"_s);
-    mod_set(g_sys, "version_info", new_tuple({3, 14, 0, "final"_s, 0}));
+    {
+        // sys.version_info: a tuple with names (major, minor ...), as CPython's struct sequence
+        TypeObj* vt = new_type("version_info", {T_tuple}, Layout::Tuple, false, "sys");
+        var vi = new_tuple({3, 14, 0, "final"_s, 0});
+        vi.ref()->type = vt;
+        const char* names[] = {"major", "minor", "micro", "releaselevel", "serial"};
+        for (int i = 0; i < 5; i++) vi.setattr(names[i], vi[var(i)]);
+        mod_set(g_sys, "version_info", vi);
+        mod_set(g_sys, "hexversion", var((int64_t)0x030E00F0));
+    }
     {
         wchar_t buf[MAX_PATH];
         GetModuleFileNameW(nullptr, buf, MAX_PATH);

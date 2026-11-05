@@ -25,6 +25,7 @@ struct DynOptions {
     std::string pyrt;                    // native/pyrt (for the CMakeLists); default <root>/native/pyrt
     std::string exe = "program";         // the executable's name
     std::string stdlib_dir;              // CPython's Lib folder: the modules native/pyrt/stdlib.txt names are translated from it
+    std::string site_dir;                // site-packages: the outside packages native/pyrt/site.txt names (unicorn, capstone)
 };
 
 struct DynRefusal {

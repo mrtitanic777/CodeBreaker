@@ -19,6 +19,7 @@ namespace py {
 extern var g_sys;
 var type_new_(TypeObj* meta, const CallArgs& a);
 bool module_registered_(const std::string& name);
+bool module_source_(const std::string& name, std::string& file, bool& package);
 void print_exception_(const var& e);
 
 // ------------------------------------------------------------------------------------------ the GIL
@@ -1319,10 +1320,48 @@ void init_more_modules() {
     });
     register_native_module("importlib.util", [](const var& m) {
         mod_def(m, "find_spec", [](const CallArgs& a) {
+            // a ModuleSpec of the program's modules: name, origin (the source file it was translated from, or
+            // "built-in"), submodule_search_locations (a package's folder)
             std::string n = str_utf8(a.pos.at(0));
-            if (module_registered_(n)) return var(true);
-            return var(None);
+            if (!module_registered_(n)) return var(None);
+            var spec = call0(import("types").getattr("SimpleNamespace"));
+            spec.setattr("name", a.pos[0]);
+            std::string file;
+            bool pkg = false;
+            if (module_source_(n, file, pkg)) {
+                spec.setattr("origin", new_str(file));
+                spec.setattr("has_location", true);
+                std::string dir = file.substr(0, file.find_last_of("/\\"));
+                spec.setattr("submodule_search_locations", pkg ? new_list({new_str(dir)}) : var(None));
+            } else {
+                spec.setattr("origin", "built-in"_s);
+                spec.setattr("has_location", false);
+                spec.setattr("submodule_search_locations", None);
+            }
+            spec.setattr("parent", new_str(pkg ? n : n.substr(0, n.rfind('.') == std::string::npos ? 0 : n.rfind('.'))));
+            spec.setattr("loader", None);
+            spec.setattr("cached", None);
+            return spec;
         });
+    });
+    register_native_module("importlib.resources", [](const var& m) {
+        // files(package): the folder of the package's source (the DLLs a package ships sit beside it)
+        mod_def(m, "files", [](const CallArgs& a) {
+            var p = a.pos.at(0);
+            std::string n = is_str(p) ? str_utf8(p) : str_utf8(p.getattr("__name__"));
+            std::string file;
+            bool pkg = false;
+            if (!module_source_(n, file, pkg)) raise(E_ModuleNotFoundError, "No module named '" + n + "'");
+            return call1(import("pathlib").getattr("Path"), new_str(file.substr(0, file.find_last_of("/\\"))));
+        });
+        mod_def(m, "as_file", [](const CallArgs& a) { return call1(import("contextlib").getattr("nullcontext"), a.pos.at(0)); });
+    });
+    register_native_module("sysconfig", [](const var& m) {
+        mod_def(m, "get_path", [](const CallArgs&) { return ""_s; });
+        mod_def(m, "get_platform", [](const CallArgs&) { return "win-amd64"_s; });
+        mod_def(m, "get_config_var", [](const CallArgs&) { return None; });
+        mod_def(m, "get_config_vars", [](const CallArgs&) { return new_dict(); });
+        mod_def(m, "get_python_version", [](const CallArgs&) { return "3.14"_s; });
     });
     register_native_module("types", [](const var& m) {
         var sns = new_dict();
