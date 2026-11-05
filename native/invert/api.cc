@@ -6,7 +6,9 @@
 #include <cstring>
 #include <sstream>
 
+#include "cs.h"
 #include "flow16.h"
+#include "msc6.h"
 
 using namespace cbinv;
 
@@ -51,11 +53,71 @@ int guarded(char **out, F f) {
   }
 }
 
+std::vector<uint8_t> unhex(const std::string &h) {
+  std::vector<uint8_t> b;
+  auto d = [](char c) { return c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10; };
+  for (size_t i = 0; i + 1 < h.size(); i += 2) b.push_back((uint8_t)(d(h[i]) * 16 + d(h[i + 1])));
+  return b;
+}
+
 }  // namespace
 
 extern "C" {
 
-int cbinv_version(void) { return 1; }
+int cbinv_init(const wchar_t *capstone_dll, char **out) {
+  std::string err;
+  if (!cs_load(capstone_dll, err)) {
+    *out = dup(err);
+    return CBINV_OTHER;
+  }
+  *out = dup("ok");
+  return CBINV_OK;
+}
+
+int cbinv_msc6(const char *in, char **out) {
+  return guarded(out, [&] {
+    Msc6In m;
+    std::istringstream is(in);
+    std::string line;
+    while (std::getline(is, line)) {
+      auto f = split(line, '\t');
+      const std::string &k = f[0];
+      if (k == "C" && f.size() >= 2) m.code = unhex(f[1]);
+      else if (k == "R" && f.size() >= 2) m.rtype = f[1];
+      else if (k == "B" && f.size() >= 2) m.func_base = std::stoll(f[1]);
+      else if (k == "P" && f.size() >= 2) { if (std::stoll(f[1]) >= 0) m.params = Params(); }
+      else if (k == "p" && f.size() >= 3) m.params->push_back({f[1], f[2]});
+      else if (k == "I" && f.size() >= 3) m.imports[std::stoll(f[1])] = f[2];
+      else if (k == "Y" && f.size() >= 4) m.syms[std::stoll(f[1])] = {f[2], f[3]};
+      else if (k == "N" && f.size() >= 3) m.nearmap[std::stoll(f[1])] = f[2];
+    }
+    return msc6_invert(m);
+  });
+}
+
+int cbinv_msc6_sigs(const char *in, char **out) {
+  return guarded(out, [&] { return msc6_segment_sigs(unhex(in)); });
+}
+
+int cbinv_thunk(const char *in, const char *name, int exact, char **out) {
+  return guarded(out, [&] { return segment_thunk(unhex(in), name, exact != 0); });
+}
+
+int cbinv_wf(const char *in, char **out) {
+  return guarded(out, [&] { return whole_function_candidates(unhex(in)); });
+}
+
+int cbinv_mask(const char *in, char **out) {
+  return guarded(out, [&] {
+    auto b = msc6_mask(unhex(in));
+    static const char *D = "0123456789abcdef";
+    std::string s;
+    for (auto x : b) s += D[x >> 4], s += D[x & 15];
+    return s;
+  });
+}
+
+int cbinv_version(void) { return 2; }
 
 void cbinv_free(char *p) { std::free(p); }
 
@@ -108,6 +170,26 @@ int cbinv_structure(const char *in, int entry, int nocap, char **out) {
       blocks.push_back(b);
     }
     return json_seq(structure(blocks, entry, nocap != 0));
+  });
+}
+
+int cbinv_small(const char *in, int which, char **out) {
+  return guarded(out, [&] {
+    std::vector<uint8_t> code;
+    std::map<long long, std::string> names;
+    std::map<long long, std::pair<std::string, std::string>> syms;
+    std::string callee = "G";
+    std::istringstream is(in);
+    std::string line;
+    while (std::getline(is, line)) {
+      auto f = split(line, '\t');
+      if (f[0] == "C" && f.size() >= 2) code = unhex(f[1]);
+      else if (f[0] == "Y" && f.size() >= 3) names[std::stoll(f[1])] = f[2], syms[std::stoll(f[1])] = {f[2], f.size() > 3 ? f[3] : ""};
+      else if (f[0] == "K" && f.size() >= 2) callee = f[1];
+    }
+    if (which == 0) return msc6_cleanup(code, names);
+    if (which == 1) return msc6_walk(code, syms, callee);
+    return msc6_templates(code);
   });
 }
 

@@ -14,7 +14,7 @@ import os
 from codebreaker.base import settings
 
 _LIB = []
-_RAISE = {1: IndexError, 2: ValueError, 3: RuntimeError}
+_RAISE = {1: IndexError, 2: ValueError, 3: RuntimeError, 4: KeyError, 5: AssertionError, 6: TypeError}
 
 
 def dll_path():
@@ -29,12 +29,26 @@ def _load():
     if not os.path.isfile(path):
         raise OSError("cbinvert.dll is not built: %s (native/invert/CMakeLists.txt)" % path)
     lib = settings.load_native(path)
-    if lib.cbinv_version() != 1:
+    if lib.cbinv_version() != 2:
         raise OSError("cbinvert.dll is another version: rebuild native/invert")
+    import capstone                          # the models decode with the very capstone.dll Python's package carries
+    cs = os.path.join(os.path.dirname(capstone.__file__), "lib", "capstone.dll")
+    lib.cbinv_init.argtypes = (ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_void_p))
+    for name in ("cbinv_msc6", "cbinv_msc6_sigs", "cbinv_wf", "cbinv_mask"):
+        getattr(lib, name).argtypes = (ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p))
+    lib.cbinv_small.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
+    lib.cbinv_thunk.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
     lib.cbinv_cfg.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
     lib.cbinv_structure.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
     lib.cbinv_free.argtypes = (ctypes.c_void_p,)
     _LIB.append(lib)
+    p = ctypes.c_void_p()
+    status = lib.cbinv_init(cs, ctypes.byref(p))
+    answer = ctypes.string_at(p.value).decode("utf-8")
+    lib.cbinv_free(p)
+    if status:
+        _LIB.clear()
+        raise OSError(answer)
     return lib
 
 
@@ -71,3 +85,55 @@ def structure(blocks, entry, nocap):
         "-" if b.cases is None else ",".join("%d:%d" % (v, t) for v, t in b.cases),
         "-" if b.default is None else b.default, "-" if b.table is None else ints(b.table)) for b in blocks]
     return json.loads(_call(_load().cbinv_structure, "\n".join(rows) + "\n", int(entry), 1 if nocap else 0))
+
+
+def msc6(code, imports, syms, rtype, params, nearmap, func_base):
+    """msc6.invert: (text, meta) or (None, the reason it declined)."""
+    rows = ["C\t" + bytes(code).hex(), "R\t%s" % rtype, "B\t%d" % func_base,
+            "P\t%d" % (-1 if params is None else len(params))]
+    rows += ["p\t%s\t%s" % (n, t) for n, t in (params or ())]
+    rows += ["I\t%d\t%s" % (k, v) for k, v in (imports or {}).items()]
+    rows += ["Y\t%d\t%s\t%s" % (k, v[0], v[1]) for k, v in (syms or {}).items()]
+    rows += ["N\t%d\t%s" % (k, v) for k, v in (nearmap or {}).items()]
+    a = json.loads(_call(_load().cbinv_msc6, "\n".join(rows) + "\n"))
+    return (a["t"], a["m"]) if a["t"] is not None else (None, a["w"])
+
+
+def segment_sigs(segb):
+    """msc6_calls.infer_segment_sigs: {offset: [(name, kind), ...]}."""
+    return {off: [tuple(p) for p in ps] for off, ps in json.loads(_call(_load().cbinv_msc6_sigs, bytes(segb).hex()))}
+
+
+def thunk(fb, name="thunk", exact=True):
+    """segment_thunk.verify (exact) or parse: None, or the parsed thunk with its MASM text."""
+    p = ctypes.c_void_p()
+    status = _load().cbinv_thunk(bytes(fb).hex().encode(), name.encode("utf-8"), 1 if exact else 0, ctypes.byref(p))
+    try:
+        answer = ctypes.string_at(p.value).decode("utf-8")
+    finally:
+        _load().cbinv_free(p)
+    if status:
+        raise _RAISE.get(status, RuntimeError)(answer)
+    return json.loads(answer)
+
+
+def candidates(fb):
+    """whole_function.candidates: [(template, text), ...]."""
+    return [tuple(c) for c in json.loads(_call(_load().cbinv_wf, bytes(fb).hex()))]
+
+
+def mask(code):
+    """msc6_function._mask."""
+    return bytes.fromhex(_call(_load().cbinv_mask, bytes(code).hex()))
+
+
+def small(which, code, syms=None, callee="G"):
+    """0: msc6_function.invert_cleanup (syms {off: name}) -> text; 1: msc6_walk.invert (syms {off: (name,
+    kind)}) and 2: msc6_templates.invert -> (text, meta) or (None, why)."""
+    rows = ["C\t" + bytes(code).hex(), "K\t" + callee]
+    for k, v in (syms or {}).items():
+        rows.append("Y\t%d\t%s" % (k, v) if which == 0 else "Y\t%d\t%s\t%s" % (k, v[0], v[1]))
+    a = json.loads(_call(_load().cbinv_small, "\n".join(rows) + "\n", which))
+    if which == 0:
+        return a
+    return (a["t"], a["m"]) if a["t"] is not None else (None, a["w"])

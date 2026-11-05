@@ -12,8 +12,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(cbinvert SHARED
   api.cc       # the C interface: text in, JSON out, the Python exception kinds
-  flow16.cc)   # invert/flow16.py: blocks, edges, switches, dominators, the structure tree
-target_include_directories(cbinvert PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  flow16.cc    # invert/flow16.py: blocks, edges, switches, dominators, the structure tree
+  cs.cc        # Capstone: the capstone.dll of Python's `capstone` package, loaded by path
+  msc6.cc      # invert/msc6.py: the Microsoft C 6.0a model
+  msc6_helpers.cc    # msc6_calls, segment_thunk, whole_function, msc6_function._mask
+  msc6_small.cc)     # msc6_function.invert_cleanup, msc6_walk, msc6_templates
+# capstone.h: the headers Python's `capstone` package carries (the same version as its DLL)
+if(NOT CAPSTONE_INCLUDE)
+  execute_process(COMMAND python -c "import capstone, os; print(os.path.join(os.path.dirname(capstone.__file__), 'include'))"
+                  OUTPUT_VARIABLE CAPSTONE_INCLUDE OUTPUT_STRIP_TRAILING_WHITESPACE)
+endif()
+message(STATUS "capstone headers: ${CAPSTONE_INCLUDE}")
+target_include_directories(cbinvert PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CAPSTONE_INCLUDE})
 if(MSVC)
   target_compile_options(cbinvert PRIVATE /EHsc /O2 /W3 /utf-8)
   target_compile_definitions(cbinvert PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)

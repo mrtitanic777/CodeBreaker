@@ -11,9 +11,22 @@
  * cbinv_structure flow16.structure(blocks, entry).  `in`: one block a line, "term\tlo\thi\tsucc\t
  *                 cases\tdefault\ttable\n" (lists comma-separated, "-" = None, a case "value:block").
  *                 Out: the tree, nodes as JSON lists in the Python tuples' order.
+ * cbinv_init      once: the path of the capstone.dll Python's `capstone` package carries (5.0.7);
+ *                 the models decode with it, so every operand text is the one Python saw.
+ * cbinv_msc6      msc6.invert.  `in`, one field a tab: "C <code hex>", "R <rtype>", "B <func_base>",
+ *                 "P <count, -1 for None>", then "p name kind" per parameter, "I k name" (imports),
+ *                 "Y off name kind" (syms), "N off name" (nearmap).  Out: {"t": text, "m": meta} or
+ *                 {"t": null, "w": why}.
+ * cbinv_msc6_sigs msc6_calls.infer_segment_sigs.  `in`: the segment's bytes as hex.  Out: [[off, [[n, k]..]]..].
+ * cbinv_thunk     segment_thunk.verify (exact=1) or parse (0) + emit_asm(name).  Out: null or the thunk.
+ * cbinv_wf        whole_function.candidates.  Out: [[template, text], ...].
+ * cbinv_mask      msc6_function._mask.  Out: hex.
+ * cbinv_small     which 0: msc6_function.invert_cleanup ("C <hex>", "Y off name"), 1: msc6_walk.invert
+ *                 ("C", "Y off name kind", "K <callee>"), 2: msc6_templates.invert ("C"); tab-separated.
  */
 #ifndef CBINVERT_H
 #define CBINVERT_H
+#include <wchar.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,9 +34,19 @@ extern "C" {
 #define CBINV_INDEX 1
 #define CBINV_VALUE 2
 #define CBINV_OTHER 3
+#define CBINV_KEY 4
+#define CBINV_ASSERT 5
+#define CBINV_TYPE 6
 __declspec(dllexport) int cbinv_version(void);
 __declspec(dllexport) int cbinv_cfg(const char *in, int cmpswitch, char **out);
 __declspec(dllexport) int cbinv_structure(const char *in, int entry, int nocap, char **out);
+__declspec(dllexport) int cbinv_init(const wchar_t *capstone_dll, char **out);
+__declspec(dllexport) int cbinv_msc6(const char *in, char **out);
+__declspec(dllexport) int cbinv_msc6_sigs(const char *in, char **out);
+__declspec(dllexport) int cbinv_thunk(const char *in, const char *name, int exact, char **out);
+__declspec(dllexport) int cbinv_wf(const char *in, char **out);
+__declspec(dllexport) int cbinv_mask(const char *in, char **out);
+__declspec(dllexport) int cbinv_small(const char *in, int which, char **out);
 __declspec(dllexport) void cbinv_free(char *p);
 #ifdef __cplusplus
 }
