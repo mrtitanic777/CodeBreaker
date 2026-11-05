@@ -49,7 +49,7 @@ class _Config(ctypes.Structure):
                 ("mapped", _P64), ("nmapped", ctypes.c_int64),
                 ("presaved", _P64), ("npresaved", ctypes.c_int64),
                 ("sentinels", _P64), ("nsentinels", ctypes.c_int64),
-                ("resolver", RESOLVER)]
+                ("resolver", RESOLVER), ("shadow", ctypes.c_void_p)]
 
 
 class _Result(ctypes.Structure):
@@ -175,7 +175,7 @@ class Run:
 
     def __init__(self, uc, *, statics, init_pages, mapped, sentinels, saved, sha, gov, fast, lean, reads,
                  quiet, stop_wild, stub, unique, branches, pads, insn_cap, stub_ret, stub_cleanup,
-                 func, sec, lean_ranges, sig_resolver, outs, cache=None, sentinel_from=()):
+                 func, sec, lean_ranges, sig_resolver, outs, cache=None, sentinel_from=(), shadow=None):
         lib = self.lib = _load()
         self.uc, self.gov, self.exc, self.handle = uc, gov, None, None
         self.outs, self.sig_resolver = outs, sig_resolver
@@ -217,6 +217,7 @@ class Run:
         c.presaved, c.npresaved = self._keep[3]
         c.sentinels, c.nsentinels = sent
         c.resolver = self._resolver
+        c.shadow = shadow
         self.handle = lib.cbt_begin(ctypes.byref(c))
         if not self.handle:
             raise RuntimeError("cbtrace: a run could not be set up")

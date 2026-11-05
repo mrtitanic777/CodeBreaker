@@ -524,7 +524,7 @@ class Shadow(object):
                 self.mem[b] = e
 
 
-class Shadow16(Shadow):
+class PyShadow16(Shadow):
     """The shadow of one 16-bit run (emulate/windows16.py trace_function16, `shadow`). `lifter`:
     emulate/pcode.py's for x86-16-real. `segbase(uc, selector)`: the base a selector names.
     `inputs(address)`: whether a linear byte is one of the run's inputs until written. `span`:
@@ -541,7 +541,7 @@ class Shadow16(Shadow):
         Shadow.enter(self, arg_places, bits)
 
 
-class Shadow32(Shadow):
+class PyShadow32(Shadow):
     """The shadow of one flat 32-bit run (emulate/emulator.py trace_function, `shadow`): every
     segment based at 0; an import or callback the tracer answers sets EAX to `ret` and moves ESP
     and EIP, nothing else. Arguments: dwords on the stack, or ECX / EDX (enter)."""
@@ -552,7 +552,7 @@ class Shadow32(Shadow):
                         clobbered=("EAX", "ESP", "EIP"))
 
 
-class ShadowLE(Shadow32):
+class PyShadowLE(PyShadow32):
     """The shadow of one run of a driver's flat ring-0 code (emulate/driver.py run, `shadow`): a
     service call (or a call out through a pointer) the emulator answers sets EAX to `ret` and the
     carry flag to `carry`, as the input says. Inputs: the registers a procedure is entered with,
@@ -724,3 +724,40 @@ _BINARY = {"INT_ADD": "add", "INT_SUB": "sub", "INT_AND": "and", "INT_OR": "or",
            "INT_MULT": "mul", "INT_DIV": "udiv", "INT_REM": "urem", "INT_SDIV": "sdiv", "INT_SREM": "srem"}
 _COMPARE = {"INT_EQUAL": ("eq", False), "INT_NOTEQUAL": ("eq", True), "INT_LESS": ("ult", False),
             "INT_LESSEQUAL": ("ule", False), "INT_SLESS": ("slt", False), "INT_SLESSEQUAL": ("sle", False)}
+
+
+# --- the x86 shadows: in C++ (emulate/native_shadow.py, CB_NATIVE_SHADOW) or the Python above.
+# `inputs`: [(low, high)] -- the memory bytes that are inputs of the run until written.
+def _inputs_test(inputs):
+    ranges = [(int(lo), int(hi)) for lo, hi in inputs]
+    return lambda b: any(lo <= b < hi for lo, hi in ranges)
+
+
+def real_mode(_uc, sel):
+    """A selector's base in real mode (Shadow16's `segbase` for a real-mode run)."""
+    return sel * 16
+
+
+def Shadow16(lifter, segbase, inputs, span=None):
+    """A 16-bit run's (windows16.trace_function16): `segbase(uc, selector)` -- windows16.selector_base
+    (the GDT's), or real_mode."""
+    from codebreaker.emulate import native_shadow, windows16
+    if native_shadow.enabled() and segbase in (windows16.selector_base, real_mode):
+        return native_shadow.Shadow(16, lifter, inputs, span, real_mode=segbase is real_mode)
+    return PyShadow16(lifter, segbase, _inputs_test(inputs), span)
+
+
+def Shadow32(lifter, inputs, span=None):
+    """A flat 32-bit run's (emulator.trace_function)."""
+    from codebreaker.emulate import native_shadow
+    if native_shadow.enabled():
+        return native_shadow.Shadow(32, lifter, inputs, span)
+    return PyShadow32(lifter, _inputs_test(inputs), span)
+
+
+def ShadowLE(lifter, inputs, span=None):
+    """A driver's flat ring-0 run's (driver.run)."""
+    from codebreaker.emulate import native_shadow
+    if native_shadow.enabled():
+        return native_shadow.Shadow(33, lifter, inputs, span)
+    return PyShadowLE(lifter, _inputs_test(inputs), span)

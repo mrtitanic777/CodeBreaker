@@ -241,7 +241,9 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
     # The same hooks in C++ (native/tracer: cbtrace.dll) when CB_NATIVE_TRACE_DRV is on and the
     # DLL loads; else the Python hooks above. A run kept beside a shadow stays Python's (step 3).
     nr = None
-    if shadow is None:
+    from codebreaker.emulate import native_shadow
+    sh_handle = native_shadow.handle_of(shadow)
+    if shadow is None or sh_handle:
         from codebreaker.emulate import native_driver
         if native_driver.enabled():
 
@@ -261,7 +263,7 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
                     scratch=(SCRATCH, SCRATCH + emulator._SCRATCH_SIZE),
                     spans=[(lo, hi) for lo, hi, _i in image.spans], cap=cap,
                     service_eax=service_eax, service_carry=service_carry, gov=emulator._GOV,
-                    answers=_answers)
+                    answers=_answers, shadow=sh_handle)
             except Exception:
                 nr = None
     if nr is None:

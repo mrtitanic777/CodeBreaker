@@ -37,7 +37,9 @@ class _Config(ctypes.Structure):
                 ("gov_n", ctypes.c_int64), ("gov_ceil", ctypes.c_int64),
                 ("count", ctypes.c_void_p),
                 ("intercept", _P64), ("nintercept", ctypes.c_int64),
-                ("on_sentinel", EVENT), ("on_intercept", EVENT), ("on_intr", EVENT)]
+                ("on_sentinel", EVENT), ("on_intercept", EVENT), ("on_intr", EVENT),
+                ("shadow", ctypes.c_void_p), ("own_lo", ctypes.c_uint64), ("own_hi", ctypes.c_uint64),
+                ("on_own", EVENT)]
 
 
 class _Result(ctypes.Structure):
@@ -65,6 +67,8 @@ def _lib():
             getattr(lib, name).restype = ctypes.c_int
         lib.cbt_w16_free.argtypes = (ctypes.c_void_p,)
         lib.cbt_w16_free.restype = None
+        lib.cbt_w16_reset.argtypes = (ctypes.c_void_p,)
+        lib.cbt_w16_reset.restype = None
         lib.cbt_w16_state.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64))
         lib.cbt_w16_state.restype = None
         lib.cbt_w16_result_get.argtypes = (ctypes.c_void_p,)
@@ -102,7 +106,8 @@ class Run:
     each may raise, and the exception comes back out of trace_function16. `gov` emulator._GOV."""
 
     def __init__(self, uc, *, eip_id, near, fill, cap, cs_base, near_ret, far_ret, sent_lo, sent_hi,
-                 snap_base, gov, intercept, on_sentinel, on_intercept, on_intr):
+                 snap_base, gov, intercept, on_sentinel, on_intercept, on_intr, shadow=None, own=None,
+                 on_own=None):
         lib = self.lib = _lib()
         self.uc, self.gov, self.exc = uc, gov, None
         self._fns = (on_sentinel, on_intercept, on_intr)
@@ -120,6 +125,11 @@ class Run:
         c.count = ctypes.cast(ctypes.pointer(self._count), ctypes.c_void_p)
         c.intercept, c.nintercept = self._inter
         c.on_sentinel, c.on_intercept, c.on_intr = self._cb
+        c.shadow = shadow
+        if own is not None:
+            c.own_lo, c.own_hi = int(own[0]), int(own[1])
+            self._own_cb = EVENT(self._wrap_own(on_own))
+            c.on_own = self._own_cb
         self.handle = lib.cbt_w16_begin(ctypes.byref(c))
         if not self.handle:
             raise RuntimeError("cbtrace: a 16-bit run could not be set up")
@@ -139,6 +149,20 @@ class Run:
                     self.exc = e
                 return 1
         return cb
+
+    def _wrap_own(self, fn):
+        def cb(a, n):
+            try:
+                return 1 if fn(a, n) else 0
+            except BaseException as e:
+                if self.exc is None:
+                    self.exc = e
+                return 2
+        return cb
+
+    def reset(self):
+        """A prelude ran: its path, count, reads and writes are dropped (cbt_w16_reset)."""
+        self.lib.cbt_w16_reset(self.handle)
 
     def count(self):
         return self._count.value

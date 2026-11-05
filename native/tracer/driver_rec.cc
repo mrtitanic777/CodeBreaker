@@ -14,6 +14,7 @@
 
 #include "cbtrace.h"
 #include "libs.h"
+#include "shadow.h"
 
 namespace cbt {
 
@@ -38,6 +39,7 @@ struct DrvRun {
     int64_t cap = 0, service_eax = 0, service_carry = 0, gov_n = 0, gov_ceil = 0;
     std::vector<std::pair<uint64_t, uint64_t>> spans;
     cbt_drv_answers answers = nullptr;
+    Shadow *shadow = nullptr;
     std::unordered_map<uint64_t, int32_t> answer_cache;   // device<<32 | service -> place (-2 unknown)
 
     // the record
@@ -97,6 +99,9 @@ static bool answer(DrvRun *r, bool jump_back) {
         r->setr(R_EIP, back);
         r->setr(R_ESP, (sp + 4) & 0xFFFFFFFFull);
     }
+    if (r->shadow)
+        sh_after_call(r->shadow, r->uc, true, uint64_t(r->service_eax), false, 0, 0, nullptr, 2,
+                      uint64_t(r->service_carry));
     return true;
 }
 
@@ -123,8 +128,11 @@ static void on_code(uc_engine *, uint64_t address, uint32_t, void *user) {
     if (r->holds(address)) {
         if (int64_t(r->cover_set.size()) < D_MAX_COVER && r->cover_set.insert(address).second)
             r->cover.push_back(address);
+        if (r->shadow)
+            sh_step(r->shadow, r->uc, address, 0);
     } else if (r->scratch_lo <= address && address < r->scratch_hi) {
-        // (a pointer's landing pad: a plain `ret`; shadow-only in Python)
+        if (r->shadow)                     // (a pointer's landing pad: a plain `ret`)
+            sh_step(r->shadow, r->uc, address, 0);
     } else {
         // through a pointer nothing fills in (a callback, a hooked vector): a call out
         r->outside++;
@@ -184,8 +192,12 @@ static void on_intr(uc_engine *, uint32_t intno, void *user) {
             answer(r, false);
             r->setr(R_EIP, (eip + 4) & 0xFFFFFFFFull);
         }
-        if (place >= 0 && place < 7)
+        if (place >= 0 && place < 7) {
             r->setr(place, r->vm_addr & 0xFFFFFFFFull);
+            static const char *const NAMES[7] = {"EAX", "EBX", "ECX", "EDX", "ESI", "EDI", "EBP"};
+            if (r->shadow)
+                sh_forget(r->shadow, NAMES[place]);
+        }
     } else if (intno != 0x41) {                    // 41h talks to a debugger: nothing happens
         r->exit_code = 3;
         r->exit_int = intno;
@@ -320,6 +332,7 @@ CBT_API void *cbt_drv_begin(const cbt_drv_config *c) {
     r->gov_n = c->gov_n;
     r->gov_ceil = c->gov_ceil;
     r->answers = c->answers;
+    r->shadow = static_cast<Shadow *>(c->shadow);
     for (int64_t i = 0; i < c->nspans; i++)
         r->spans.emplace_back(c->spans[2 * i], c->spans[2 * i + 1]);
     r->ins_in = c->ins_in;

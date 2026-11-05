@@ -36,7 +36,8 @@ class _Config(ctypes.Structure):
                 ("scratch_lo", ctypes.c_uint64), ("scratch_hi", ctypes.c_uint64),
                 ("spans", _P64), ("nspans", ctypes.c_int64),
                 ("cap", ctypes.c_int64), ("service_eax", ctypes.c_int64), ("service_carry", ctypes.c_int64),
-                ("gov_n", ctypes.c_int64), ("gov_ceil", ctypes.c_int64), ("answers", ANSWERS)]
+                ("gov_n", ctypes.c_int64), ("gov_ceil", ctypes.c_int64), ("answers", ANSWERS),
+                ("shadow", ctypes.c_void_p)]
 
 
 class _Result(ctypes.Structure):
@@ -110,7 +111,7 @@ class Run:
     `gov` emulator._GOV. Raises nothing; `enabled()` gates its use."""
 
     def __init__(self, uc, *, reg_ids, ins_in, ins_out, vm_addr, ret, scratch, spans, cap,
-                 service_eax, service_carry, gov, answers):
+                 service_eax, service_carry, gov, answers, shadow=None):
         lib = self.lib = _lib()
         self.uc, self.gov, self.answers_fn, self.exc = uc, gov, answers, None
         self._answers = ANSWERS(self._resolve)
@@ -126,6 +127,7 @@ class Run:
         c.service_eax, c.service_carry = int(service_eax) & 0xFFFFFFFF, int(service_carry)
         c.gov_n, c.gov_ceil = int(gov["n"]), int(gov["ceil"] or 0)
         c.answers = self._answers
+        c.shadow = shadow
         self.handle = lib.cbt_drv_begin(ctypes.byref(c))
         if not self.handle:
             raise RuntimeError("cbtrace: a driver run could not be set up")

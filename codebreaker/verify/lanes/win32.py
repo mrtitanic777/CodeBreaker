@@ -839,8 +839,7 @@ def explore_vectors(path, func, seeds, shape=None):
     data = _writable(path)
     scratch = (tracer._SCRATCH_BASE, tracer._SCRATCH_BASE + tracer._SCRATCH_SIZE)
 
-    def inputs(b):
-        return scratch[0] <= b < scratch[1] or any(a <= b < z for a, z in data)
+    inputs = [scratch] + list(data)
 
     seen, known = [], {}
     for i, v in enumerate(seeds):

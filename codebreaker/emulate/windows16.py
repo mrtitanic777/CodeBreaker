@@ -761,8 +761,21 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
     # The same per-instruction and memory hooks in C++ (native/tracer: cbtrace.dll) when
     # CB_NATIVE_TRACE16 is on and the DLL loads; else the Python hooks above. A run beside a shadow,
     # a recorded-system context, or with a prelude stays entirely on the Python hooks.
+    def _own(address, n):
+        """The module's own code reached through a recorded far pointer (a context's run): that
+        function of this side's build, by name -- True when redirected."""
+        tgt = (context.get("redirect") or {}).get(((address - OWN_BASE) >> 16, address & 0xFFFF))
+        if not tgt:
+            return False
+        rec["imports_hit"].append({"api": "callback " + tgt[2], "n": n})
+        uc.reg_write(UC_X86_REG_CS, sels[tgt[0]])
+        uc.reg_write(UC_X86_REG_EIP, tgt[1])
+        return True
+
     nr = None
-    if shadow is None and context is None and not prelude:
+    from codebreaker.emulate import native_shadow
+    sh_handle = native_shadow.handle_of(shadow)
+    if shadow is None or sh_handle:
         from codebreaker.emulate import native_win16
         if native_win16.enabled():
             from codebreaker.emulate.emulator import _GOV
@@ -772,7 +785,9 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
                     cap=insn_cap, cs_base=cs_base, near_ret=cs_base + NEAR_RET, far_ret=SENT_BASE + FAR_RET,
                     sent_lo=SENT_BASE, sent_hi=SENT_BASE + 0x10000, snap_base=SNAP_BASE, gov=_GOV,
                     intercept=list(intercept.keys()), on_sentinel=_sentinel,
-                    on_intercept=lambda a, n: answer(a, n), on_intr=lambda i, n: _intr(i, n))
+                    on_intercept=lambda a, n: answer(a, n), on_intr=lambda i, n: _intr(i, n),
+                    shadow=sh_handle, own=(OWN_BASE, OWN_BASE + 0x1000000) if context else None,
+                    on_own=_own)
             except Exception:
                 nr = None
     if nr is None:
@@ -803,7 +818,13 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
             uc.emu_start(poff, SENT_BASE, count=insn_cap + 1)
         except U.UcError:
             pass
+        if nr is not None:                                   # (what a Python hook raised in it)
+            exc = nr.raised()
+            if exc is not None:
+                raise exc
     if prelude:
+        if nr is not None:
+            nr.reset()
         rec["mem_reads"] = []; rec["mem_writes"] = []; rec["imports_hit"] = []
         rec["path"] = []; rec["insn_count"] = 0; rec["prelude_ran"] = len(prelude)
         if devices:

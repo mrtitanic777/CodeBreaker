@@ -77,6 +77,8 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
                     set_reg(uc, UC_X86_REG_EIP, ret_addr);
                     r->bogus = (r->bogus < 0 ? 0 : r->bogus) + 1;
                     r->zeros = 0;
+                    if (r->shadow)
+                        sh_after_call(r->shadow, uc, false, 0);
                     return;
                 }
                 r->zeros = 0;                  // (the read failed: as Python's except)
@@ -193,6 +195,8 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
             r->pending = int64_t(r->calls.size()) - 1;
         }
     }
+    if (r->shadow)
+        sh_step(r->shadow, uc, address, 0);
 }
 
 void hook_code(uc_engine *, uint64_t address, uint32_t size, void *user) {

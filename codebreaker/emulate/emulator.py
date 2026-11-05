@@ -1075,7 +1075,9 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     # attached in the same order, keeping the same record -- no Python per instruction. A run
     # kept beside a shadow stays here.
     nrun = None
-    if shadow is None and not os.environ.get("WT_DBG"):
+    from codebreaker.emulate import native_shadow
+    sh_handle = native_shadow.handle_of(shadow)
+    if (shadow is None or sh_handle) and not os.environ.get("WT_DBG"):
         from codebreaker.emulate import native_trace
         if native_trace.enabled():
             nrun = native_trace.Run(
@@ -1086,7 +1088,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
                 stub=bool(stub_externals), unique=stub_ret_unique, branches=branches, pads=pads,
                 insn_cap=insn_cap, stub_ret=stub_ret, stub_cleanup=stub_cleanup, func=(func_lo, func_hi),
                 sec=(sec_lo, sec_hi), lean_ranges=(_STACK_BASE - 1, _STACK_BASE + _STACK_SIZE),
-                sig_resolver=sig_resolver, outs=_outs, cache=mach)
+                sig_resolver=sig_resolver, outs=_outs, cache=mach, shadow=sh_handle)
     if nrun is not None:
         hooks = []
         start, switched, add_code = (lambda b, u, count=0: nrun.start(uc, b, u, count)), nrun.switched, nrun.attach_code

@@ -13,6 +13,7 @@
 #include "cbtrace.h"
 #include "decode.h"
 #include "libs.h"
+#include "shadow.h"
 
 namespace cbt {
 
@@ -76,6 +77,7 @@ struct Run {
     std::unordered_set<uint64_t> init_pages, mapped;
     std::unordered_map<uint64_t, int64_t> sentinels;          // landing address -> place
     cbt_resolver resolver = nullptr;
+    Shadow *shadow = nullptr;                               // the path explorer's, or none
     std::unordered_map<int64_t, std::vector<int64_t>> answers; // the resolver's answer per import, this run
     bool fast = false, lean = false, reads = false, quiet = false, stop_wild = false, stub = false;
     bool unique = false, branches = false, pads = false, saving = false;
