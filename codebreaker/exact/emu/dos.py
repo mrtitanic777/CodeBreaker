@@ -282,7 +282,13 @@ def run(exe, workdir, cmdline="", stdin=b"", max_blocks=int(os.environ.get("DOSR
     # fast: no hook on every basic block (the blocks are not counted or kept - Result.blocks is empty); a run
     # that does not end is stopped by a time limit instead (FAST_LIMIT seconds). Most of a compile's time
     # went to that hook.
-    PSP = psp or globals()["PSP"]                # (the PSP's segment: some passes need to be loaded low, some high)
+    if (not (instrument or instrument_when or driver) and (dpmi is None or dpmi is False or dpmi is True)
+            and (fs is None or type(fs) is MemFS)):           # the C++ executive (CB_NATIVE_DOSEXEC: native_dosexec.py)
+        from codebreaker.exact.emu import native_dosexec
+        if native_dosexec.enabled():
+            return native_dosexec.run(exe, workdir, cmdline, stdin, max_blocks, trace_calls, env, psp, top, fast,
+                                      fs, dpmi, FAST_LIMIT)
+    PSP = psp or globals()["PSP"]               # (the PSP's segment: some passes need to be loaded low, some high)
     TOP = top or globals()["TOP"]                # (the top of memory: some programs fail above 512K)
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_16, UC_HOOK_INTR, UC_HOOK_BLOCK, UC_HOOK_CODE, UcError
     from unicorn.x86_const import UC_X86_REG_AX, UC_X86_REG_BX, UC_X86_REG_CX, UC_X86_REG_DX, UC_X86_REG_SI, UC_X86_REG_DI, UC_X86_REG_SP, UC_X86_REG_IP, UC_X86_REG_CS, UC_X86_REG_DS, UC_X86_REG_ES, UC_X86_REG_SS, UC_X86_REG_EFLAGS, UC_X86_REG_CR0, UC_X86_REG_EIP

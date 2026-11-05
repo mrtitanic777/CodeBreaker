@@ -753,6 +753,55 @@ Writing all 556 modules of codebreaker/ takes 1.9 s through the shim. CTest `cpp
 rules' choice, a Python module and a Java program to the gate's text; tests/translate (the MSVC
 semantics test, the java_modern programs beside the JVM) judge it compiled and run.
 
+## Step 7, first piece (gated, on): the DOS executive -- `native/dosexec`
+
+exact/emu/dos.py `run()` (the real-mode DOS executive: PSP, the MCB arena in guest RAM, MZ load and
+relocation, INT 20h/21h -- console, files by handle and by FCB over a MemFS or the disk, memory,
+EXEC and 4B03h overlays, the PSP calls, version and clock -- installed real-mode vectors, INT 15h)
+and exact/emu/dpmi.py (the DPMI host TNT ML runs under: the mode switch, INT 31h, raw switches,
+protected-mode dispatch, real-mode interrupt reflection) are ported by hand, line for line, into
+`cbdos.dll` (exec.cc, dpmi.cc, mcb.cc, fs.cc; C interface cbdos.h).  It calls the very unicorn.dll
+Python loaded, maps the low megabyte from its own buffer, and keeps Python's error texts (the
+block and time limits, cpu faults, "not implemented") because callers keep them (port/verify.py).
+Done by hand, not through the porting engine.
+
+The shim is codebreaker/exact/emu/native_dosexec.py: dos.run hands it a run when the switch is
+on and the run has no Python hooks of its own (`instrument`, `instrument_when`, `driver` -- the
+replay and hybrid tools), no DPMI host object made by the caller, and a plain `dos.MemFS` or none.
+A MemFS's files, hidden folders and removals go over; what the run set or removed comes back into
+the same MemFS.  Every caller (build/native_dos.py, exact/toolchain.py, link.py, linkwhole.py,
+mspascal.py, port/asm16.py, port/verify.py) is unchanged.
+
+One deliberate difference: disk files are unbuffered CRT descriptors, where Python's were buffered
+file objects; what a program writes is on the disk at once, so an EXEC child sees all its parent
+wrote (under Python a parent's last unflushed bytes were invisible to it).  No gated run differs.
+
+The switch is **`CB_NATIVE_DOSEXEC`** (default 1; 0 = the Python executive, as also without the
+DLL).  The gate (state/work/dos-native/gate*.py, Python vs C++, each in a fresh process, every
+output kept and compared whole):
+
+| set | entries | identical | Python | C++ |
+|---|---|---|---|---|
+| MASM 5.10A on 60 self-contained DOS 4.5 sources (build/masm.py's native path: .OBJ, .LST, log) | 60 | 60 | 38.1 / 36.4 s | 17.2 / 4.9 s |
+| the same, 15 in one work folder (`assemble_many`) | 1 | 1 | 5.8 / 8.3 s | 2.7 / 0.8 s |
+| TNT ML (DPMI) on 40 Win95 VxD sources, OMF and COFF (objects, console) | 80 | 80 | 70.2 / 76.6 s | 39.1 / 22.9 s |
+| dos.run not fast (exit, console, the executed-block set, steps, trace_calls counts, files left) | 6 | 6 | 13.0 / 10.4 s | 1.0 / 0.7 s |
+| dos.run on a MemFS (the files and removals it leaves) | 10 | 10 | 1.0 / 0.8 s | 0.8 / 0.7 s |
+| exact/toolchain.py: MSC 3.00, 4.00, 5.00 (CL EXECs C1/C2/C3), MASM 5.10, MASM 1.00 on 12 recovered C / asm sources each, MemFS | 60 | 60 | 35.9 s | 32.6 s |
+| the same on the disk (CB_MEMFS=0) | 60 | 60 | 26.5 s | 16.4 s |
+| MSC 5.00's LINK (response file, PSP 1000h, not fast) + EXEMOD; DOS 2.0 LINK and MASM (FCB I/O, block limit); SORT/FIND/FC with stdin | 34 | 34 | 22.9 s | 14.8 s |
+
+311 / 311 identical.  tests/test_dos.py with the switch on: 19 passed, 1 skipped (the native
+decompiler not built), including test_native_masm_matches_dosbox, test_native_tnt_ml_matches_dosbox
+and the DPMI and MCB-walker programs.  The time is now Unicorn's own (translation and execution of
+the tools); a run that called Python per block (not fast) is 12-15x faster; MASM 2.2-7.5x and TNT ML 1.8-3.3x
+(the first five rows were run twice, "first / second": the machine was shared with another session's
+builds, and the first C++ run overlapped the Python one).
+
+Left: exact/emu/isis.py (an 8080 interpreter in Python for the ISIS-II tools, PL/M-86) and
+exact/emu/xenix.py (a XENIX a.out runner on Unicorn with its own syscall trap) share nothing of
+the executive and are their own pieces.  The runs with Python hooks stay Python.
+
 ## The rest, in measured-cost order
 
 Each is measured again at its start (a profile of the slowest real job it serves) before the
@@ -765,7 +814,7 @@ order is trusted; the order below is what is known today.
 | 4 | **Formats and loaders** | formats/ (PE, NE, LE, MZ, OMF, XEX ...), formats/pe_functions.py carving | reading and carving whole images in Python, per process, every run of a tool | a loader library (one per format, the decompiler's loaders reused) giving the same facts |
 | 5 | **The L2 passes and the C back end** | the L2 tree passes and the C writer in Python, after the native decompiler | tree walks over every function, every build | into native/decompiler: L2 built and rewritten there, C written there; Python reads the result |
 | 6 | **The engine and the store** (gated: "Step 6" above) | engine/, store/ on Python's sqlite3 | per-fact Python overhead around SQLite | native/engine: SQLite's C API directly, the engine's scheduler in C++; left: the steps themselves |
-| 7 | **Build orchestration** | build/ (OpenWatcom, MASM, period compilers under DOSBox-X) | process starts and file handling around the compilers | a C++ driver: one process starts the compilers and gathers their output |
+| 7 | **Build orchestration** | build/ (OpenWatcom, MASM, period compilers under DOSBox-X) | process starts and file handling around the compilers | a C++ driver: one process starts the compilers and gathers their output; the in-process DOS executive is done ("Step 7, first piece" above) |
 | 8 | **The rest** | everything else that computes | -- | case by case; the glue (CLI, terminal UI, MCP) stays Python |
 
 Not moved: the period compilers, OpenWatcom, MASM and DOSBox-X (other people's programs, run as

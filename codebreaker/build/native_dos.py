@@ -27,11 +27,10 @@ TimeDateStamp is the run's clock -- ours a fixed date, DOSBox's the host's -- an
 that differs, as it does between two DOSBox runs).
 
 THE NATIVE/C++ SPLIT:
-    The hot loop -- the millions of 8086 instructions MASM executes -- already runs inside Unicorn's
-    native C engine. With fast=True the executive adds NO per-instruction or per-block Python hook;
-    only the INT 21h service runs in Python, and that fires a few thousand times per assemble, not
-    per instruction. So the emulation hot path is native already; a C++ rewrite of the INT 21h shim
-    would save little and is not warranted.
+    The hot loop -- the millions of 8086 instructions MASM executes -- runs inside Unicorn's native C
+    engine. The executive itself (load, the MCB arena, INT 20h/21h, EXEC, the DPMI host) is C++ too:
+    native/dosexec (cbdos.dll), behind CB_NATIVE_DOSEXEC (exact/emu/native_dosexec.py; docs/NATIVE.md),
+    gated byte-identical to the Python executive on MASM, TNT ML and the period compilers.
 
 THE DPMI TOOL (TNT ML.EXE):
     The Win95 DDK's ML.EXE (the VxD/driver assembler) is a Phar Lap TNT bound program: its real-mode
