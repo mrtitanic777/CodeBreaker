@@ -1237,22 +1237,59 @@ imports and with three; 237,247 inputs, 130 recovered.
 (Like the byte readers, msc6_registers declines at the first instruction it does not know, so the
 Python was already cheap; no hot path calls it, only its self-test and tests/test_invert.py.)
 
+**Piece 5, early_c (done, Python deleted, 2026-11-05).**  The Microsoft C 2.03 / 3.00 model:
+class R (the register value tracker: memory names, the lazy register values and their pinning,
+the 8087 stack, longs through the carry, calls and their arguments, the linear walker and the
+structure-tree emitter), recover, recover_cfg (onto flow16.cc directly: build_cfg and structure
+called in C++, no shim text for the CFG) and the text passes (_tidy, _strip_tail_returns,
+_dead_regs, _fold_ladders, _fold_goto_or, _fold_longs, _fold_shortcircuit, _dead_store_recover,
+detect_copies, to_c) are early_c.cc + early_c_walk.inc + early_c_text.cc (cbinv_early_c).  What
+made it exact:
+- **Python's re:** every pattern is the Python's, run by native/l2's pyre (compiled into
+  cbinvert.dll from native/l2/src: pyre.cc, pystr.cc, value.cc).  Patterns built from the data
+  (re.escape of a statement's left side, `\bgoto L_x;`) are compiled uncached.
+- **str identity:** `s.ax is not old` decides retlive, so a register value is an ecu::Str (a
+  shared object): literals and one-character strings are one object (CPython's interned constants
+  and latin-1 singletons), str(int) and every other string made is new, a value copied keeps its
+  object.
+- **set order:** _kill_aliases iterates _wregs' set of register names, and the statements it
+  emits follow that order: the shim sends this process's hash() of the seven names and the C++
+  iterates CPython's small-table set in the same order.
+- **evaluation order:** Python evaluates `"%s %s" % (f(), g())` left to right; C++'s `+` does not,
+  so every pair of side-effecting reads (rsrc's hoists, memname's locals) is sequenced explicitly.
+- **LAST** (the module dict, which carries over from recover to recover_cfg) goes in and comes back
+  with every call, also when the model raises (the Python had changed it first).  The hooks SWITCH,
+  CALLINFO and CALLREGS are asked through one ctypes callback (native_invert._HOOK).
+early_c.py keeps the module API (the settings, read at each call; LAST; recover, recover_cfg, to_c,
+local_decls, detect_copies, _fold_ladders, _MD, framemodel).  early_c_frame.py stays Python (the
+frame-layout model and its self-test, used by early_c_check, early_c_round_trip and the tests with
+names of any type); to_c's copy of emit_local_decls is in C++.  Python 3,129 -> 89 lines.
+
+The gate (state/work/invert-native4/gate_early_c.py, both sides in one process, 2 workers): chunks
+from every `push bp; mov bp,sp` / `push bp; sub sp,N` (to the next or 2 KB; at most 12 per code
+image, spread over it) of every NE CODE segment, MZ load image and .COM file; per chunk
+exact/draft.model_texts on each side (the model's real path: recover, recover_cfg with compare
+switches and the table hook, the FPCASTS and UNSIGNED_CAST re-reads, _fold_ladders, to_c, with
+draft's FPINFO / LONGINFO / FRAME), then recover and recover_cfg under MARK, MARK + FARPTR + DEADREGS,
+DEADREGS + UNSIGNED_CAST, MASM_CRET and the defaults, and detect_copies + _fold_ladders + to_c on
+each recover_cfg result.  Compared whole: the result or the exception's type, and LAST.
+
+| corpus | chunks | calls | identical | Python | C++ (with the shim) |
+|---|---|---|---|---|---|
+| Windows95/design/corpus/files | 14,714 | 205,620 | 205,620 | 3,855 s | 2,386 s |
+
+(Both times include exact/draft's own Python around the model, the same on each side.)  Not run:
+the Microsoft-Assemblers-Compilers corpus (the port's plan changed to the automatic engine on
+2026-11-05 before it was swept; `gate_early_c.py W N mac` runs it).
+
 **HANDOFF: what is left.**
 
 - **run.py** stays Python: it is orchestration (win16.prepare, the compilers through build/msc6,
   verify/authored/match, the SDK prototypes), all of it other packages' Python; there is nothing
   in it that computes on its own.  It goes native when the pieces it calls do.
-- **early_c** (+ early_c_frame), the last model: 3,129 lines, the 1983-84 compiler.  Most of it is
-  `class R` (lines 124-2336, the MC 2.03 register tracker) and the text passes after it (_tidy,
-  _fold_longs, _dead_regs with the `_DR_TOK` lookbehind regex, _fold_ladders, _fold_goto_or,
-  _strip_tail_returns, _fold_shortcircuit, detect_copies).  Entry points: recover, recover_cfg
-  (onto flow16.cc directly: build_cfg and structure without the shim's text), detect_copies,
-  local_decls, to_c, framemodel (early_c_frame); callers: early_c_check, early_c_round_trip,
-  early_c_forward, run.TOOLS, tests/test_invert.py (no other importer in codebreaker/, Dashboard, Windows95/tools, Win95VM or XboxMCP on 2026-11-05).  Use cs.h's
-  disasm16, pyutil.h's int0/cursors, pyval.h if a value must cross as a Python object.  The gate: the
-  gate_flow16.py chunker (every `push bp; mov bp,sp` chunk of every NE segment, MZ image and .COM
-  under both corpora, Windows95 and Microsoft-Assemblers-Compilers), recover and recover_cfg
-  compared whole, plus tests/test_invert.py.
+- invert/ is now C++ but for orchestration and self-tests (run, compilers, msc6_idioms, grammars,
+  known_differences, quad_*, the early_c_* probes and checkers, early_c_frame).  The early_c gate
+  sampled 12 chunks per image; a full sweep of every chunk is ~0.4 s a chunk for both sides.
 - Pattern pitfall: pyutil's Cur::lit and std::string::compare throw std::out_of_range ("invalid
   string position") when the start is past the end; test the cheap prefix first (msc6_registers'
   gate caught one: it came back as RuntimeError where the Python declined).

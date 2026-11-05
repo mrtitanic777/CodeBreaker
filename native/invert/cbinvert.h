@@ -28,6 +28,12 @@
  * cbinv_msvc2     the MSVC 2.0 models (msvc2.h): which 0 msvc2.invert ("C <hex>", "M <offsets>" for a
  *                 mask), 1 msvc2_registers.interp ("C <hex>", "N <nargs>"), 2 msvc2_forward.emit,
  *                 3 to_c, 4 frame_layout (the node or the locals as pyval JSON, pyval.h).
+ * cbinv_early_c   early_c (early_c.h): which 0 recover, 1 recover_cfg (one field a tab: "C <hex>",
+ *                 "B <base>", "X <target> <operator>" per cxmap entry, "F <eleven 0/1 flags>",
+ *                 "V <RETVAL -1/0/1>", "H <7 str hashes>", "K <hooks set>", "Ls/Lr/Lt/Lf/Lu" LAST's
+ *                 keys); `hook` answers SWITCH (0), CALLINFO (1), CALLREGS (2): -1 it raised, 0 None,
+ *                 1 its text in buf.  Out {"fs", "params", "stmts", "pt", "loc", "last"}.  which 2
+ *                 to_c, 3 _fold_ladders, 4 detect_copies: a pyval JSON tuple of the arguments in.
  */
 #ifndef CBINVERT_H
 #define CBINVERT_H
@@ -42,6 +48,7 @@ extern "C" {
 #define CBINV_KEY 4
 #define CBINV_ASSERT 5
 #define CBINV_TYPE 6
+#define CBINV_ATTR 7
 __declspec(dllexport) int cbinv_version(void);
 __declspec(dllexport) int cbinv_cfg(const char *in, int cmpswitch, char **out);
 __declspec(dllexport) int cbinv_structure(const char *in, int entry, int nocap, char **out);
@@ -54,6 +61,8 @@ __declspec(dllexport) int cbinv_mask(const char *in, char **out);
 __declspec(dllexport) int cbinv_small(const char *in, int which, char **out);
 __declspec(dllexport) int cbinv_msc6reg(const char *in, int which, char **out);
 __declspec(dllexport) int cbinv_msvc2(const char *in, int which, char **out);
+typedef int (*cbinv_hook_t)(int which, long long addr, const char *kind, const char *target, char *buf, int buflen);
+__declspec(dllexport) int cbinv_early_c(const char *in, int which, cbinv_hook_t hook, char **out);
 __declspec(dllexport) void cbinv_free(char *p);
 #ifdef __cplusplus
 }
