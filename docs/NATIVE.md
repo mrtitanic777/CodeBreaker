@@ -853,21 +853,73 @@ Checks after the deletion: test_native_formats 14/14, test_dos 20/20, test_xex 5
 test_pklite pass, check_imports 553/553, tidy clean; run_all --quick 45/45 suites, again with every
 native library (l2, engine, tracer, formats, dosexec) built from this branch's own sources.
 
+### 2026-11-05: group 2 -- detect, zx, lzx, cab, media -- in C++, their Python deleted
+
+New in formats.dll: `detect/detect.cc` (signatures, lanes, the DOS header, identify), `zx/zx.cc`
+(.sna, .z80 v1/v2/128K, .tap), `lzx/lzx.cc` (LZXD and the XEX block chain, SHA-1 by native/xex's
+crypto; `lzx.h` for the C++ readers that hold LZX, xnb next), `cab/cab.cc` (headers, stored /
+MSZIP / Quantum folders across a set's cabinets, extract with the files' times, write) and
+`media/media.cc` (FAT12/16/32 with long names, the partition table and logical drives, ISO-9660
+with Joliet and raw sectors, El Torito's floppy, put()); core/codecs.cc (cp437, utf-16-be,
+utf-8 with "replace" by CPython's rule) and file helpers in core/files (sizes, folders, writes,
+times, ntpath's abspath/dirname/join). MSZIP uses zlib 1.3.1, the copy native/decompiler carries
+(its static library `cbf_zlib`, crc32 in core/zcrc32.c). native.py gained `RAISES` (a reader's
+own exception: cab.CabError) and zlib.error, FileNotFoundError, PermissionError, RecursionError.
+
+Each module is its API over formats.dll. Kept as Python, and why: detect.kind (lane, then
+dos.kind -- both C++), flat and wide_resources (one comparison on a name); cab.Cabinet (its
+folder_of), cab.main and _gather (the command); media.FatVolume / IsoVolume (their attributes
+are the C++'s dicts; files/read/_next/_chain/boot_image ask it with the volume's place, the FAT
+passed as the call's bytes), media.BundleVolume (over formats.ne), media.volumes' first step
+(xbox.volumes, group 4) and media.extract / main / _safe (a walk over every kind of volume,
+Xbox's and the bundle's included, writing files).
+
+**One difference, by design: cab.write's MSZIP bytes.** Python's zlib module is zlib-ng 1.3.1;
+formats.dll's deflate is zlib 1.3.1, so a written cabinet's compressed blocks differ (both are
+valid deflate; inflate is the same in both). The gate checks that every cabinet written either
+way reads back to the same files, that each side decodes the other's, and that a stored
+(`compress="none"`) cabinet is byte-identical (file dates masked). A block's short/stored choice
+follows the compressed size, so it can fall differently on data that barely compresses.
+
+**The gate** (state/work/formats-native2/gate2.py: the Python modules as they were, kept in
+state/work/formats-native2/orig/, against the shims; every answer compared with its type, or the
+exception's name; fallbacks counted and failing):
+
+| module | inputs | files | identical | fallbacks | Python s | C++ s |
+|---|---|---|---|---|---|---|
+| detect | the four corpora, Win95 disc folder, tests/data, state/win95 | 11,835 | 11,835 | 0 | 141.10 | 170.53 |
+| zx | test_z80's demo (.sna, .tap), .z80 v1 / v1 packed / v2 / 128K made from it, and cut copies | 36 | 36 | 0 | 0.02 | 0.04 |
+| lzx | 400 compressed XNBs (Arcadecraft), each whole, cut twice and damaged | 400 | 400 | 0 | 303.71 | 8.36 |
+| media | every disk/CD image under those roots, both name modes, attrs, files, reads; put() on copies | 136 | 136 | 0 | 5.07 | 4.50 |
+| cab | 171 cabinets (105 MSZIP, 73 Quantum, 13 stored, 10 LZX folders): read, every folder, extract (names, bytes, times); checksum; write x16 | 192 | 192 | 0 | 2,669.96 | 108.66 |
+
+detect is slower in C++ only by the ctypes calls (seven questions a file, each opening it).
+Also with the shims: test_media 12/12 (put() into FAT16 partitions and FAT32), test_z80 11/11,
+test_xbox_formats 18/18 (4 skipped), test_plumbing 17/17, test_xna 9/9 (6 skipped), test_drivers
+16/16, test_frozen 22/22, test_native_formats 14/14, test_dos 20/20, check_imports 555/555, tidy
+clean; run_all --quick all but test_native_trace's test_same_record_lz32, which fails the same
+with group 2's Python put back (state/work/formats-native2/with_orig.py): not this change.
+Outside callers checked: Windows95/tools/place_map.py (detect.format_of); Dashboard, Win95VM and
+XboxMCP use none of the five.
+
 ## HANDOFF: the rest of formats/ (left for the next session)
 
-Done: group 1 (the six readers above). Not started, in the brief's order, each by the same
-process (C++ in native/formats beside the readers, a questions.cc, the module made its API with
-`@native.answered`/`@native.ask`, gated against the Python on the corpus and the samples the
-tests use, then the Python deleted):
+Done: group 1 (the six readers above) and group 2 (above). Not started, in this order, each by
+the same process (C++ in native/formats, the module made its API with `@native.answered` /
+`@native.ask`, gated against the Python kept aside as group 2's gate2.py does, then deleted):
 
-1. Compression and containers: cab.py, lzx.py, media.py, zx.py, detect.py.
-2. Windows readers: resources.py, fonts.py, inspect.py, pe_functions.py (carving: needs Capstone
+3. Windows readers: resources.py, fonts.py, inspect.py, pe_functions.py (carving: needs Capstone
    in formats.dll as cbtrace.dll loads it; PeCarve hands out Capstone's Python instruction
    objects, which its callers read), powerpc_image.py, xex_edit.py.
-3. Xbox formats CodeBreaker wrote: xbox/ (stfs, fatx, zar, god, ciso, xdbf, xsb, xbe, xzp, gdf,
-   volumes, texture, xpr, effect, heavyiron), gfx.py, xnb.py.
-4. Out of scope, a question for Logan: formats/xbox/crypto/ (ATTRIBUTION.md marks most of it as
-   vendored upstream tools: port, keep as a fork, or leave as Python?).
+4. Xbox formats CodeBreaker wrote: xbox/ (stfs, fatx, zar, god, ciso, xdbf, xsb, xbe, xzp, gdf,
+   volumes, texture, xpr, effect, heavyiron), gfx.py, xnb.py (lzx.h is there for it). The
+   Dashboard imports xbox.gdf and xex.basic and runs `python -m codebreaker xenon-recompile`:
+   their APIs must stay exactly.
+5. formats/xbox/crypto/ -- ALL of it (Logan, 2026-11-05): CodeBreaker's own files (bootchain,
+   cpukey_ecd, flashplan, fuses, hypervisor, keyvault, nand, smc, StreamIO) AND the vendored
+   upstream tools ATTRIBUTION.md lists, each C++ port keeping its upstream attribution and
+   license notice, and ATTRIBUTION.md updated to say what each became. Same gate: identical
+   outputs on real inputs and the test samples (tests/test_xbox_crypto.py and its other users).
 
 Also open: omf.patched / rename_symbols could move (the C++ walks the records; the shim applies
 the regex/function to the names it returns); the XEX gate re-run over the Xbox 360 library.

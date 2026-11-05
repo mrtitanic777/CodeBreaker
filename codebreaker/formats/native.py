@@ -88,12 +88,19 @@ def questions():
 
 
 _BUILTIN = {e.__name__: e for e in (ValueError, IndexError, KeyError, TypeError, MemoryError, ZeroDivisionError,
-                                    OverflowError, AttributeError, OSError, RuntimeError, StopIteration)}
+                                    OverflowError, AttributeError, OSError, RuntimeError, StopIteration,
+                                    FileNotFoundError, PermissionError, RecursionError)}
+RAISES = {}               # a reader's own exception classes by name (cab: "CabError"), filled by its module
 
 
 def _exception(kind, message):
     if kind == "struct.error":
         return struct.error(message)
+    if kind in RAISES:
+        return RAISES[kind](message)
+    if kind == "zlib.error":
+        import zlib
+        return zlib.error(message)
     if kind == "UnicodeDecodeError":
         return UnicodeDecodeError("ascii", b"", 0, 1, message)
     if kind == "UnicodeEncodeError":
