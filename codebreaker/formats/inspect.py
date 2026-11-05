@@ -37,7 +37,7 @@ import struct
 import time
 
 from codebreaker.base import corpus
-from codebreaker.formats import detect, le, ne, pe, resources
+from codebreaker.formats import detect, le, native, ne, pe, resources
 
 SECTIONS = ("summary", "dos", "headers", "directories", "sections", "exports", "imports", "resources",
             "relocations", "tls", "debug", "certificates", "clr", "rich", "driver", "members",
@@ -541,26 +541,6 @@ def xex_facts(path):
 
 
 # ---- strings, bytes, resource bodies ---------------------------------------------------------
-_FORMAT = re.compile(r"%[-+ 0-9.*#hlLIw]*[sdiouxXeEfgGcpn]")
-_MODULE_EXT = (".dll", ".exe", ".sys", ".drv", ".vxd", ".386", ".ocx", ".cpl", ".scr", ".inf", ".ini", ".hlp")
-
-
-def categorize(text):
-    """What a string looks like, from its content alone: format, module, path, constant, error, other."""
-    t = text.strip()
-    if _FORMAT.search(t):
-        return "format"
-    if t.lower().endswith(_MODULE_EXT):
-        return "module"
-    if "\\" in t or "/" in t:
-        return "path"
-    if re.fullmatch(r"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+", t):
-        return "constant"
-    if re.search(r"(?i)error|fail|invalid|cannot|unexpected|exception", t):
-        return "error"
-    return "other"
-
-
 def _locator(path):
     """file offset -> where that byte is loaded: an address in a 32-bit image, 'segment:offset' in
     a 16-bit one, None elsewhere."""
@@ -584,20 +564,12 @@ def strings(path, min_len=4, wide=True, limit=None):
     with open(path, "rb") as fh:
         data = fh.read()
     where = _locator(path)
-    found = [(m.start(), "ascii", m.group().decode("latin1"))
-             for m in re.finditer(rb"[\t\r\n\x20-\x7e]{%d,}" % min_len, data)]
-    if wide:
-        found += [(m.start(), "utf16", m.group().decode("utf-16-le", "replace"))
-                  for m in re.finditer(rb"(?:[\t\r\n\x20-\x7e]\x00){%d,}" % min_len, data)]
-    found.sort()
-    return [{"offset": off, "address": where(off), "kind": kind, "category": categorize(text), "text": text}
-            for off, kind, text in found[:limit]]
+    return [{"offset": off, "address": where(off), "kind": kind, "category": category, "text": text}
+            for off, kind, category, text in native.call("inspect.strings", data, min_len, wide, limit)]
 
 
 def _hex_lines(data, base=0):
-    return ["%08X  %-47s  %s" % (base + i, " ".join("%02X" % b for b in data[i:i + 16]),
-                                 "".join(chr(b) if 32 <= b < 127 else "." for b in data[i:i + 16]))
-            for i in range(0, len(data), 16)]
+    return native.call("inspect.hex_lines", data, base)
 
 
 def hexdump(path, offset=0, length=256):

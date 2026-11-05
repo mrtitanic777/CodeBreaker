@@ -918,19 +918,78 @@ with group 2's Python put back (state/work/formats-native2/with_orig.py): not th
 Outside callers checked: Windows95/tools/place_map.py (detect.format_of); Dashboard, Win95VM and
 XboxMCP use none of the five.
 
+### 2026-11-05: group 3 -- fonts, resources, inspect, pe_functions, powerpc_image, xex_edit -- in C++
+
+New in formats.dll (`native/formats/win/`): `fonts.cc` (the .FNT header, the glyph table, glyph and
+render), `resources.cc` (strings, dialog, menu, accelerators, version, icon/cursor groups and the
+.ico/.cur and .bmp makers, type libraries, the 16-bit resource table), `powerpc_image.cc` (the
+function table both ways and the layout whose entries point at code, import stubs, register
+save/restore runs, `bl` targets; the virtual methods run-time type information names),
+`pe_functions.cc` (the sweep, the starts, the extents, the whole-section listing), `inspect.cc`
+(strings, the hex listing, categorize), `xex_edit.cc` (privilege bits read and changed in place).
+Core additions: `core/build.h` (an answer built as a tree and written at the end: put() is a dict
+assignment, emit() writes it), `core/cs32.cc` (Capstone x86-32 by the capstone.dll Python's package
+carries, found by path -- `native.capstone_dll()` -- the very decoder `platforms.decoder(32)` gives).
+
+Each module is its API over formats.dll. Kept as Python, and why: `Resource` and the PE walk over
+`pe.resource_tree` and `decode()`'s choice of decoder (resources); `Font`'s attributes (the C++
+answers them as a dict; glyph/render/describe ask or format); `Image.offset/word/bytes_at` and the
+`.json` base beside a basefile (powerpc_image); PeCarve's queries that read Capstone's own
+instruction objects (`resolve_call`, `calls_in`, `disasm_func`, `data_refs`, `xrefs_to`,
+`string_refs`) and `PeSeg` (base-relocation mask); `PeCarve.insn` is now a lazy mapping: the decoded
+addresses come from the C++ and an instruction (Capstone's Python object, which `symbols/names.py`
+reads) is decoded when asked for; inspect's `describe`, `markdown`, `render`, `folder_map`,
+`resource_body` and the command (they assemble the readers' answers: the readers they call are C++);
+xex_edit's `Image`, `hook` and the command (the XEX writer and the PowerPC assembler).
+
+Differences, by design: `PeCarve(path, progress_cb)` and `disasm_whole32(..., progress_cb)` call
+`progress_cb` once, when the work is done (formats.dll sweeps whole); `inspect.categorize` is gone
+from the module (nothing used it; `strings` does it in C++, ASCII-exact -- every string it is
+given is ASCII).
+
+**The gate** (state/work/formats-native3/gate3*.py: the Python modules as they were, kept in
+state/work/formats-native3/orig/, against the shims; every answer compared with its type and its
+order; fallbacks counted and failing):
+
+| module | inputs | files | identical | fallbacks | Python s | C++ s |
+|---|---|---|---|---|---|---|
+| fonts | every .FON/.FNT/NE under the corpora (fonts_in, describe, render, 9 glyphs, damaged .FNT) | 3,928 | 3,928 | 0 | 8.74 | 6.14 |
+| resources | every PE and NE module under the corpora: read, decode of each resource, each decoder both ways on every resource and 5 damaged copies of every 7th, groups + icon_file, bitmap_file, type libraries | 3,929 | 3,929 | 0 | 24.98 | 29.35 |
+| powerpc_image | the basefiles of the Xbox 360 library (11 XEX; 3 are not XEX2 files and skipped): read, virtual_methods, regions, word | 11 | 11 | 0 | 63.46 | 25.69 |
+| xex_edit | the 15 XEX of the library: privileges, six change sets, damaged copies | 15 | 15 | 0 | 1.01 | 1.51 |
+| pe_functions | function_spans on 643 PE32 modules; PeCarve (funcs, starts, call targets, every insn address, 400 sampled instructions, calls_in, disasm_func) on 60; disasm_whole32 on 60 (two inputs each) | 643 / 60 / 60 | all | 0 | | |
+| inspect | strings (5 option sets), hexdump (5 ranges) on 301 files; 31 categorize strings (non-ASCII ones too); resource_body for 40 modules' resources | 301 / 40 | all | 0 | 59.08 | 72.51 (the harness; see below) |
+
+The resources gate found one difference at first (bitmap_file of a damaged header: `struct.pack("<I")`
+raises `struct.error` past 32 bits, where the C++ wrapped) -- fixed with a checked pack.
+
+Speed (one call, kernel32.dll / shell32.dll): `PeCarve` 3.6 s -> 0.74 s (4.9x; the sweep is native, the
+instructions are no longer 2 KB Python objects each); `function_spans` 0.55 s -> 0.41 s (Python's was
+already Capstone's C iterator); `inspect.strings` 0.09 s -> 0.035 s (2.7x). The gate's wall times are the
+harness's (it builds and compares the answers); powerpc_image's 63 s -> 26 s is `virtual_methods`' regex scan.
+Python lines: 791 removed, 117 added (codebreaker/formats/: fonts, resources, inspect, pe_functions,
+powerpc_image, xex_edit, native). Also with the shims: check_imports 555/555, tidy clean, test_powerpc,
+test_versions, test_xex_edit, test_xbox_formats, test_x360, test_vmx128, test_frozen, test_native_formats.
+Outside callers checked: Dashboard, Windows95/tools, Win95VM and XboxMCP import none of the six
+(searched their .py for the module names and their functions); in CodeBreaker: analyze/image.py
+(PeCarve.funcs/exports), emulate/emulator.py (PeCarve, PeSeg), symbols/names.py (carve.insn,
+_sec_of), symbols/runtime_library.py, verify/lanes/win32.py, compare/versions.py,
+source/pe_writer.py, verify/authored/match.py (function_spans), recompile/discover.py (Image).
+
 ## HANDOFF: the rest of formats/ (left for the next session)
 
-Done: group 1 (the six readers above) and group 2 (above). Not started, in this order, each by
-the same process (C++ in native/formats, the module made its API with `@native.answered` /
-`@native.ask`, gated against the Python kept aside as group 2's gate2.py does, then deleted):
+Done: groups 1, 2 and 3 (above). Not started, in this order, each by the same process (C++ in
+native/formats, the module made its API with `@native.answered` / `native.call`, gated against the
+Python kept aside in state/work/formats-native3/orig/ by a gate in the style of gate2.py / gate3*.py,
+then deleted). The gate harness, `with_orig`-style swap and settings script are in
+state/work/formats-native3/ (copy them; settings.json needs absolute paths: mksettings.py).
 
-3. Windows readers: resources.py, fonts.py, inspect.py, pe_functions.py (carving: needs Capstone
-   in formats.dll as cbtrace.dll loads it; PeCarve hands out Capstone's Python instruction
-   objects, which its callers read), powerpc_image.py, xex_edit.py.
 4. Xbox formats CodeBreaker wrote: xbox/ (stfs, fatx, zar, god, ciso, xdbf, xsb, xbe, xzp, gdf,
    volumes, texture, xpr, effect, heavyiron), gfx.py, xnb.py (lzx.h is there for it). The
-   Dashboard imports xbox.gdf and xex.basic and runs `python -m codebreaker xenon-recompile`:
-   their APIs must stay exactly.
+   Dashboard imports xbox.gdf (`gdf._open`, `GDF`) and xex.basic and runs `python -m codebreaker
+   xenon-recompile`: their APIs must stay exactly. Notes from reading gdf.py: it reads a "device"
+   (`read_at(offset, length)`: a file, or god.SvodReader over a .data folder), so port god (the SVOD
+   reader) with it, and let the C++ open the file or folder itself; `build_xdvdfs` is a pure builder.
 5. formats/xbox/crypto/ -- ALL of it (Logan, 2026-11-05): CodeBreaker's own files (bootchain,
    cpukey_ecd, flashplan, fuses, hypervisor, keyvault, nand, smc, StreamIO) AND the vendored
    upstream tools ATTRIBUTION.md lists, each C++ port keeping its upstream attribution and
@@ -938,7 +997,9 @@ the same process (C++ in native/formats, the module made its API with `@native.a
    outputs on real inputs and the test samples (tests/test_xbox_crypto.py and its other users).
 
 Also open: omf.patched / rename_symbols could move (the C++ walks the records; the shim applies
-the regex/function to the names it returns); the XEX gate re-run over the Xbox 360 library.
+the regex/function to the names it returns); the XEX gate re-run over the Xbox 360 library; the
+Python left in group 3 (inspect.describe and the rest of the presentation, PeCarve's instruction
+queries) moves when the Capstone detail (operands) is wanted in C++.
 
 ### The C++17 back end -- `l2cpp17` (2026-10-31)
 

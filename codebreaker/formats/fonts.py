@@ -24,61 +24,16 @@ listed with their metrics but have no bitmaps to draw.
 """
 import struct
 
+from codebreaker.formats import native
+
 
 class Font(object):
-    """One font. `widths` is {character code: pixels} for raster fonts."""
+    """One font. `widths` is {character code: pixels} for raster fonts. Read by formats.dll
+    (native/formats/win/fonts.cc), which also draws glyph() and render()."""
 
     def __init__(self, data, at):
-        def u16(o):
-            return struct.unpack_from("<H", data, at + o)[0]
-
-        def u32(o):
-            return struct.unpack_from("<I", data, at + o)[0]
         self.data, self.at = data, at
-        self.version, self.size = u16(0), u32(2)
-        self.copyright = data[at + 6:at + 66].split(b"\0")[0].decode("latin1", "replace")
-        self.vector = bool(u16(0x42) & 1)
-        self.points, self.ascent = u16(0x44), u16(0x4A)
-        self.italic, self.weight, self.charset = bool(data[at + 0x50]), u16(0x53), data[at + 0x55]
-        self.width, self.height = u16(0x56), u16(0x58)          # width 0: proportional
-        self.average_width, self.max_width = u16(0x5B), u16(0x5D)
-        self.first, self.last, self.default = data[at + 0x5F], data[at + 0x60], data[at + 0x61]
-        self.row_bytes = u16(0x63)
-        face = u32(0x69)
-        end = data.find(b"\0", at + face, at + face + 64) if face and at + face < len(data) else -1
-        self.name = data[at + face:end].decode("latin1", "replace") if end > 0 else ""
-        self.bits = u32(0x71)
-        n = self.last - self.first + 1
-        self._where = {}                                         # code -> (width, where its bits are)
-        if self.vector or self.last < self.first:
-            pass
-        elif self.version < 0x0200:
-            self._strike(n)
-        else:
-            table, step = (0x76, 4) if self.version < 0x0300 else (0x94, 6)
-            for i in range(n):
-                p = at + table + step * i
-                if p + step > len(data):
-                    break
-                w = struct.unpack_from("<H", data, p)[0]
-                off = struct.unpack_from("<H" if step == 4 else "<I", data, p + 2)[0]
-                self._where[self.first + i] = (w, off)
-        self.widths = {c: w for c, (w, _o) in self._where.items()}
-
-    def _strike(self, n):
-        if self.width:
-            offs = [i * self.width for i in range(n + 1)]
-        else:
-            offs = []
-            for table in (0x75, 0x76, 0x74):                    # the header's length varied in 1.x
-                if self.at + table + 2 * (n + 1) > len(self.data):
-                    continue
-                got = struct.unpack_from("<%dH" % (n + 1), self.data, self.at + table)
-                if all(a <= b for a, b in zip(got, got[1:])) and got[-1] <= self.row_bytes * 8:
-                    offs = list(got)
-                    break
-        for i in range(len(offs) - 1):
-            self._where[self.first + i] = (offs[i + 1] - offs[i], offs[i])
+        self.__dict__.update(native.call("fonts.font", data, at))
 
     @property
     def kind(self):
@@ -87,32 +42,10 @@ class Font(object):
     def glyph(self, ch):
         """One character as `height` strings of '#' and ' '. A character the font does not have
         is drawn as its default character; a vector font draws nothing."""
-        code = ord(ch) if isinstance(ch, str) else ch
-        if code not in self._where:
-            code = self.first + self.default
-        if code not in self._where:
-            return [""] * self.height
-        w, off = self._where[code]
-        d, rows = self.data, []
-        for y in range(self.height):
-            line = []
-            for x in range(w):
-                if self.version < 0x0200:                        # shared strike, a row at a time
-                    p = self.at + self.bits + y * self.row_bytes + ((off + x) >> 3)
-                    bit = (off + x) & 7
-                else:                                            # own bitmap, a byte-column at a time
-                    p = self.at + off + (x >> 3) * self.height + y
-                    bit = x & 7
-                line.append("#" if p < len(d) and (d[p] >> (7 - bit)) & 1 else " ")
-            rows.append("".join(line))
-        return rows
+        return native.call("fonts.glyph", self.data, self.at, ord(ch) if isinstance(ch, str) else ch)
 
     def render(self, text):
-        rows = [""] * self.height
-        for ch in text:
-            for y, line in enumerate(self.glyph(ch)):
-                rows[y] += line + " "
-        return rows
+        return native.call("fonts.render", self.data, self.at, text)
 
     def describe(self):
         return "%-14s %2dpt %2dpx  %-12s chars %d..%d  version %x.%02x" % (

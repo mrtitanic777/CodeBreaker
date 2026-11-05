@@ -26,40 +26,20 @@ import sys
 import tempfile
 
 from codebreaker.build import ppc_asm
-from codebreaker.formats import xex
+from codebreaker.formats import native, xex
 
-PRIVILEGE_KEYS = (0x00030000, 0x00030100)             # bits 0-31, bits 32-63
 NAMED_BITS = {"pal50": 10}                             # PAL-50 incompatible
 NOP = b"\x60\x00\x00\x00"
 
 
+@native.answered("xex_edit.privileges")
 def privileges(data):
     """{bit: True} for each privilege bit set, and the entries' offsets {key: value offset}."""
-    if data[:4] != xex.MAGIC:
-        raise ValueError("not an XEX2 module")
-    bits, where = {}, {}
-    for offset, key, value in xex.optional_headers(data):
-        if key in PRIVILEGE_KEYS:
-            first = 32 * PRIVILEGE_KEYS.index(key)
-            where[key] = offset + 4
-            for b in range(32):
-                if value >> b & 1:
-                    bits[first + b] = True
-    return sorted(bits), where
 
 
+@native.answered("xex_edit.set_privileges")
 def set_privileges(data, changes):
     """`data` with each (bit, on) change made. A bit in a privilege entry the header lacks stops."""
-    out = bytearray(data)
-    _bits, where = privileges(data)
-    for bit, on in changes:
-        key = PRIVILEGE_KEYS[bit // 32]
-        if key not in where:
-            raise ValueError("the header has no privilege entry for bit %d (key %X)" % (bit, key))
-        value, = struct.unpack_from(">I", out, where[key])
-        mask = 1 << (bit % 32)
-        struct.pack_into(">I", out, where[key], (value | mask) if on else (value & ~mask))
-    return bytes(out)
 
 
 def _parse_bit(token):

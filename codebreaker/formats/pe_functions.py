@@ -29,6 +29,7 @@ modern decoder — cross-check anything surprising against objdump/Ghidra.
 import bisect
 from codebreaker.base import corpus
 import capstone
+from codebreaker.formats import native
 from codebreaker.formats.pe import open_pe
 import os
 from codebreaker.base import settings as paths
@@ -38,10 +39,48 @@ from codebreaker import platforms
 
 
 
+class _Insns(object):
+    """{address: (mnemonic, op_str, size, Capstone's instruction, call target)} of every address
+    the sweep decoded: the addresses come from formats.dll, an instruction is decoded (by
+    Capstone, as the sweep did) when it is asked for."""
+
+    def __init__(self, carve, addresses):
+        self._carve, self._addresses = carve, frozenset(addresses)
+
+    def __contains__(self, va):
+        return va in self._addresses
+
+    def __len__(self):
+        return len(self._addresses)
+
+    def __iter__(self):
+        return iter(sorted(self._addresses))
+
+    keys = __iter__
+
+    def __getitem__(self, va):
+        base, data = self._carve._sec_of(va)
+        if va not in self._addresses or base is None:
+            raise KeyError(va)
+        ins = next(iter(self._carve.md.disasm(data[va - base:va - base + 15], va, 1)))
+        tgt = None
+        if ins.mnemonic == "call" and ins.operands and ins.operands[0].type == capstone.x86.X86_OP_IMM:
+            tgt = ins.operands[0].imm
+        return (ins.mnemonic, ins.op_str, ins.size, ins, tgt)
+
+    def get(self, va, default=None):
+        return self[va] if va in self._addresses else default
+
+    def items(self):
+        return ((va, self[va]) for va in self)
+
+    def values(self):
+        return (self[va] for va in self)
+
+
 class PeCarve:
     def __init__(self, path, progress_cb=None):
-        # progress_cb(bytes_swept) is called periodically during the (dominant)
-        # linear capstone sweep, so a caller can drive a disassembly progress bar.
+        # progress_cb(bytes_swept) is called when the sweep is done (formats.dll sweeps whole)
         self._progress_cb = progress_cb
         self.pe = open_pe(corpus.resolve(path))
         self.md = platforms.decoder(32, detail=True)
@@ -50,9 +89,16 @@ class PeCarve:
         self.exports = {}                                 # export_va -> name
         for o, n, rva in self.pe.exports():
             self.exports[self.pe.image_base + rva] = n or ("Ord%d" % o)
-        self._sweep()
-        self.starts = self._find_starts()
-        self.funcs = self._carve()
+        # the linear sweep, the function starts and the extents (native/formats/win/pe_functions.cc)
+        addresses, targets, funcs = native.call(
+            "pe_functions.carve", None, native.capstone_dll(), self.sections, list(self.exports.items()),
+            self.pe.image_base, self.pe.entry or 0, True)
+        self.call_targets = set(targets)
+        self.insn = _Insns(self, addresses)
+        self.funcs = {s: {"start": s, "end": e, "name": n} for s, e, n in funcs}
+        self.starts = set(self.funcs)
+        if progress_cb:
+            progress_cb(sum(len(data) for _b, data, _n in self.sections))
 
     # -- section helpers --------------------------------------------------
     def _sec_of(self, va):
@@ -60,96 +106,6 @@ class PeCarve:
             if base <= va < base + len(data):
                 return base, data
         return None, None
-
-    def _sweep(self):
-        """One linear capstone pass per code section. Collects every decoded
-        instruction (va -> (mnem, op_str, size, call_target)) and the set of
-        direct-call targets. Linear sweep drifts on embedded data — same caveat
-        as trace.Seg — so starts are corroborated by exports/prologues too."""
-        self.insn = {}
-        self.call_targets = set()
-        cb = self._progress_cb
-        swept = 0                                 # bytes swept across prior sections
-        cnt = 0
-        for base, data, _name in self.sections:
-            n = len(data)
-            off = 0
-            while off < n:
-                made = 0
-                for ins in self.md.disasm(data[off:], base + off):
-                    tgt = None
-                    if ins.mnemonic == "call" and ins.operands:
-                        op = ins.operands[0]
-                        if op.type == capstone.x86.X86_OP_IMM:
-                            tgt = op.imm
-                            self.call_targets.add(tgt)
-                    self.insn[ins.address] = (ins.mnemonic, ins.op_str, ins.size, ins, tgt)
-                    off = ins.address - base + ins.size
-                    made += 1
-                    cnt += 1
-                    if cb and cnt % 2000 == 0:     # report every ~2000 instructions
-                        cb(swept + off)
-                if made == 0:
-                    # capstone hit a byte it can't decode (data-in-code) and
-                    # stopped; skip it and resync, or the rest of the section —
-                    # and every function in it — is lost (oleaut32 carved 0).
-                    off += 1
-            swept += n
-        if cb:
-            cb(swept)
-
-    def _find_starts(self):
-        starts = set(self.exports)
-        # entry point
-        if self.pe.entry:
-            starts.add(self.pe.image_base + self.pe.entry)
-        # direct-call targets that land in a code section
-        for t in self.call_targets:
-            if self._sec_of(t)[0] is not None:
-                starts.add(t)
-        # prologue scan
-        for base, data, _name in self.sections:
-            n = len(data)
-            for i in range(n - 4):
-                b = data[i:i + 5]
-                if b[:3] == b"\x55\x8b\xec":                     # push ebp; mov ebp,esp
-                    starts.add(base + i)
-                elif b[:5] == b"\x8b\xff\x55\x8b\xec":           # mov edi,edi; push ebp; mov ebp,esp
-                    starts.add(base + i)
-        # a start the linear sweep stepped over -- it ran through data just before it (a
-        # table) and decoded an instruction across it -- is decoded from where it is, until
-        # that falls into step with the sweep again
-        for s in sorted(starts - set(self.insn)):
-            if s in self.exports or s in self.call_targets or s == self.pe.image_base + (self.pe.entry or 0):
-                self._decode_from(s)
-        # keep only addresses we actually decoded an instruction at
-        return {s for s in starts if s in self.insn}
-
-    def _decode_from(self, va):
-        base, data = self._sec_of(va)
-        if base is None:
-            return
-        for ins in self.md.disasm(data[va - base:], va):
-            if ins.address in self.insn and ins.address != va:
-                break                                     # in step with the sweep again
-            tgt = None
-            if ins.mnemonic == "call" and ins.operands and ins.operands[0].type == capstone.x86.X86_OP_IMM:
-                tgt = ins.operands[0].imm
-                self.call_targets.add(tgt)
-            self.insn[ins.address] = (ins.mnemonic, ins.op_str, ins.size, ins, tgt)
-
-    def _carve(self):
-        order = sorted(self.starts)
-        out = {}
-        for i, s in enumerate(order):
-            # end = next start in the SAME section, else section end
-            base, data = self._sec_of(s)
-            secend = base + len(data)
-            end = secend
-            if i + 1 < len(order) and order[i + 1] < secend:
-                end = order[i + 1]
-            out[s] = {"start": s, "end": end, "name": self.exports.get(s)}
-        return out
 
     # -- queries ----------------------------------------------------------
     def resolve_call(self, ins):
@@ -293,7 +249,6 @@ class PeCarve:
         return out
 
 
-_MD = platforms.decoder(32)
 _CARVE = {}
 
 # Bootstrap: put the target dir on sys.path so bare sibling imports (cc32,
@@ -322,9 +277,6 @@ def carve(module):
     return _CARVE[module]
 
 
-_MD32 = platforms.decoder(32)
-
-
 def disasm_whole32(code, base=0, progress_cb=None):
     """Linearly decode the blob as 32-bit code with capstone; return
     [(offset, asm_text), ...] with CONTIGUOUS coverage (undecodable bytes become
@@ -334,27 +286,10 @@ def disasm_whole32(code, base=0, progress_cb=None):
     reconcile then cannot realign. capstone decodes each prefixed instruction as
     one unit with the correct length, so the reconcile converges cleanly.
 
-    progress_cb(bytes_done) is called periodically so a caller can drive a
-    per-section disassembly progress bar."""
-    rows = []
-    n = len(code)
-    pos = 0
-    cnt = 0
-    while pos < n:
-        ins = next(iter(_MD32.disasm(bytes(code[pos:pos + 15]), base + pos, count=1)),
-                   None)
-        if ins is None:
-            rows.append((base + pos, "(bad)"))
-            pos += 1
-        else:
-            text = ins.mnemonic if not ins.op_str else "%s %s" % (ins.mnemonic, ins.op_str)
-            rows.append((base + pos, text))
-            pos += ins.size
-        cnt += 1
-        if progress_cb and cnt % 2000 == 0:
-            progress_cb(pos)
+    progress_cb(bytes_done) is called when the listing is done (formats.dll lists whole)."""
+    rows = native.call("pe_functions.disasm_whole32", code, native.capstone_dll(), base)
     if progress_cb:
-        progress_cb(n)
+        progress_cb(len(code))
     return rows
 
 
@@ -419,57 +354,13 @@ class PeSeg:
 
 def function_spans(path):
     """{start: (end, exported name or None)} -- the functions PeCarve finds, by the same rule
-    and with the same answer, without keeping an object for every instruction of the module.
-    PeCarve holds each decoded instruction with its operands, about two kilobytes apiece: a
-    module with a megabyte of code takes over a gigabyte. This keeps only where instructions
-    start and what is called, which is all the rule needs."""
+    and with the same answer, without keeping an object for every instruction of the module
+    (formats.dll: native/formats/win/pe_functions.cc)."""
     pe = open_pe(corpus.resolve(path))
-    md = platforms.decoder(32)
-    sections = pe.code_sections()
-    decoded, called = set(), set()
-    for base, data, _name in sections:
-        n, off = len(data), 0
-        while off < n:
-            made = 0
-            for addr, size, mnemonic, operands in md.disasm_lite(data[off:], base + off):
-                decoded.add(addr)
-                if mnemonic == "call" and operands.startswith("0x"):
-                    try:
-                        called.add(int(operands, 16))
-                    except ValueError:
-                        pass
-                off = addr - base + size
-                made += 1
-            if made == 0:                                    # a byte that is not code: step over it
-                off += 1
     exports = {}
     for ordinal, name, rva in pe.exports():
         exports[pe.image_base + rva] = name or ("Ord%d" % ordinal)
-    starts = set(exports)
-    if pe.entry:
-        starts.add(pe.image_base + pe.entry)
-    spans = [(base, base + len(data)) for base, data, _name in sections]
-    starts.update(t for t in called if any(lo <= t < hi for lo, hi in spans))
-    for base, data, _name in sections:
-        for prologue in (b"\x55\x8b\xec", b"\x8b\xff\x55\x8b\xec"):
-            i = data.find(prologue)
-            while i != -1 and i < len(data) - 4:
-                starts.add(base + i)
-                i = data.find(prologue, i + 1)
-    # (as PeCarve: a declared or called start the sweep stepped over is decoded from where it is)
-    named = set(exports) | called | ({pe.image_base + pe.entry} if pe.entry else set())
-    for s in sorted((starts & named) - decoded):
-        for base, data, _name in sections:
-            if base <= s < base + len(data):
-                for addr, _size, _m, _o in md.disasm_lite(data[s - base:], s):
-                    if addr in decoded and addr != s:
-                        break
-                    decoded.add(addr)
-    order = sorted(s for s in starts if s in decoded)
-    out = {}
-    for i, s in enumerate(order):
-        end = next(hi for lo, hi in spans if lo <= s < hi)
-        if i + 1 < len(order) and order[i + 1] < end:
-            end = order[i + 1]
-        out[s] = (end, exports.get(s))
-    return out
+    _addresses, _targets, funcs = native.call(
+        "pe_functions.carve", None, native.capstone_dll(), pe.code_sections(), list(exports.items()),
+        pe.image_base, pe.entry or 0, False)
+    return {s: (e, n) for s, e, n in funcs}
