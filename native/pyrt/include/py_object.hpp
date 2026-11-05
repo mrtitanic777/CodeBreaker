@@ -412,6 +412,7 @@ var import_top(const char* dotted);              // import a.b.c binds a: the to
 var import_from(const var& module, const char* name);   // from m import name (a submodule too)
 void import_star(const var& module, module_def& into);  // from m import *
 var builtin(const char* name);                   // builtins.name (a module may rebind its own)
+inline var or_builtin(const var& v, const char* name) { return v.is_unbound() ? builtin(name) : v; }   // a module name a builtin stands in for until bound
 
 // ------------------------------------------------------------------------------------------ builtins
 // (the type objects: py::t::str, py::t::int_, py::t::ValueError ... in py_builtins.hpp's namespace t)

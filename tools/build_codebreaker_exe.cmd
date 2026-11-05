@@ -1,0 +1,31 @@
+@echo off
+rem build_codebreaker_exe.cmd [fast] [OUT] -- CodeBreaker as one C++ program: every module of codebreaker/, the
+rem tests and tools, the standard modules native/pyrt/stdlib.txt takes from CPython's Lib and the outside
+rem packages native/pyrt/site.txt takes from site-packages, translated by pyengine --dynamic into OUT
+rem (default state\cxx\codebreaker) and built with Ninja, 2 jobs, unity batches over a precompiled header.
+rem
+rem     tools\build_codebreaker_exe.cmd fast        /Od: OUT\build-fast\codebreaker.exe (~15 min cold)
+rem     tools\build_codebreaker_exe.cmd             /O2: OUT\build\codebreaker.exe
+rem
+rem The program reads its command line as python does: codebreaker.exe <command> ... (python -m codebreaker),
+rem codebreaker.exe -m pytest tests\java, codebreaker.exe tests\test_port.py, codebreaker.exe tests\run_all.py.
+rem Needs tools\build_native.cmd pyengine pyrt first; CPython's Lib and site-packages are read at translation only.
+setlocal
+set ROOT=%~dp0..
+set OUT=%2
+if "%OUT%"=="" set OUT=%ROOT%\state\cxx\codebreaker
+for /f "delims=" %%P in ('python -c "import sysconfig;print(sysconfig.get_path('stdlib'))"') do set PYLIB=%%P
+for /f "delims=" %%P in ('python -c "import site;print(site.getusersitepackages())"') do set PYSITE=%%P
+"%ROOT%\native\pyengine\build\bin\pyengine.exe" --dynamic --root "%ROOT%" --dyn-out "%OUT%" --dyn-main codebreaker --dyn-exe codebreaker ^
+    --dyn-stdlib "%PYLIB%" --dyn-site "%PYSITE%" --dyn-tree codebreaker --dyn-files tests --dyn-files tools ^
+    --dyn-files native\nasm\test\masm 2>&1 | findstr /V /C:"refused: async"
+if not defined VCINSTALLDIR call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
+set B=%OUT%\build
+set EXTRA=
+if "%1"=="fast" (
+  set B=%OUT%\build-fast
+  set EXTRA=-DCMAKE_CXX_FLAGS_RELEASE=/Od
+)
+if not exist "%B%\build.ninja" cmake -S "%OUT%" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release %EXTRA% >nul || exit /b 1
+cmake --build "%B%" -j 2
+exit /b %ERRORLEVEL%

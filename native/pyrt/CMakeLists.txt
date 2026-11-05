@@ -42,6 +42,10 @@ add_library(pyrt STATIC
   src/lib_more.cc     # enum, dataclasses, contextlib, threading, heapq, operator, importlib, typing ...; the GIL
   src/lib_db.cc       # sqlite3 (over native/engine's vendored SQLite), pickle
   src/lib_ast.cc      # ast (over native/pyfront), inspect
+  src/lib_extra.cc    # the C halves of standard modules translated from CPython (gettext, _random, _csv, zlib ...)
+  src/lib_ctypes.cc   # ctypes: calls straight into DLLs (structures, pointers, arrays, callbacks)
+  src/lib_pytest.cc   # pytest: the API the test files use, and the runner (-m pytest)
+  src/lib_crypto.cc   # cryptography (hashes, HMAC, AES / 3DES / ARC4, RSA numbers) and DES over bcrypt
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)
   ${L2}/src/pyre.cc)         # Python-compatible regular expressions (shared with native/l2)
@@ -59,7 +63,15 @@ set_target_properties(pyrt_sqlite3 PROPERTIES LINKER_LANGUAGE CXX)
 add_library(pyrt_pyfront STATIC ${PYFRONT}/src/lexer.cpp ${PYFRONT}/src/literals.cpp ${PYFRONT}/src/unicode.cpp ${PYFRONT}/src/parser.cpp ${PYFRONT}/src/dump.cpp)
 target_include_directories(pyrt_pyfront PUBLIC ${PYFRONT}/include)
 set_target_properties(pyrt_pyfront PROPERTIES CXX_STANDARD 20)
-target_link_libraries(pyrt PUBLIC pyrt_sqlite3 pyrt_pyfront bcrypt shell32)
+# zlib 1.3.1, the copy native/decompiler carries (its crc32: src/zcrc32.c), for the zlib module
+set(ZLIB_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../decompiler/core/zlib)
+add_library(pyrt_zlib STATIC ${ZLIB_SRC}/adler32.c ${ZLIB_SRC}/deflate.c ${ZLIB_SRC}/inflate.c ${ZLIB_SRC}/inffast.c
+            ${ZLIB_SRC}/inftrees.c ${ZLIB_SRC}/trees.c ${ZLIB_SRC}/zutil.c src/zcrc32.c)
+target_include_directories(pyrt_zlib PUBLIC ${ZLIB_SRC})
+if(MSVC)
+  target_compile_options(pyrt_zlib PRIVATE /O2 /W0)
+endif()
+target_link_libraries(pyrt PUBLIC pyrt_sqlite3 pyrt_pyfront pyrt_zlib bcrypt shell32)
 
 enable_testing()
 add_executable(pyrt_tests tests/pyrt_tests.cpp)

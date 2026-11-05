@@ -27,8 +27,14 @@ Where the typed path (below) cannot prove a type it refuses; the dynamic mode wr
 **`py::var`** instead (native/pyrt: any Python value, Python's object model, the builtins and the
 library modules CodeBreaker uses), so the engine, not a hand port, translates the rest.
 
-    pyengine --dynamic --root <repo> --dyn-out DIR [--dyn-main M] [--dyn-closure [--dyn-top]] [--dyn-full PKG]
+    pyengine --dynamic --root <repo> --dyn-out DIR [--dyn-main M] [--dyn-exe NAME] [--dyn-closure [--dyn-top]]
+             [--dyn-full PKG] [--dyn-tree PKG] [--dyn-files DIR] [--dyn-stdlib LIB] [--dyn-site DIR]
              module | name=file.py ...
+
+`--dyn-tree PKG` takes every module of a package folder, `--dyn-files DIR` every .py file under a folder
+(named as pytest names test files), `--dyn-stdlib` / `--dyn-site` the CPython modules native/pyrt/stdlib.txt
+and site.txt list (translated from CPython's Lib and site-packages). The whole of CodeBreaker as one
+program: tools/build_codebreaker_exe.cmd (see HANDOFF.md, phase 2).
     pyengine --judge-traces <python trace> <C++ trace>
     pyengine --census <tree> ... [--census-out FILE]
 

@@ -1,0 +1,36 @@
+# The standard modules a translated program takes from CPython's own Python (its Lib folder), translated
+# with the program by `pyengine --dynamic --dyn-stdlib <Lib>`: their behaviour is CPython's by
+# construction (argparse's help text, difflib's ratios, random's seeded sequences ...). Their C halves are
+# native/pyrt (src/lib_extra.cc: gettext, _random, _csv, zlib, _operator ...). `name.*` is a package and
+# every module under it. Modules pyrt has in C++ itself (os, re, json, struct ...) are not listed.
+__future__
+argparse
+_colorize
+difflib
+random
+datetime
+_pydatetime
+csv
+shlex
+pprint
+queue
+filecmp
+gzip
+compression.*
+tomllib.*
+zipfile.*
+genericpath
+posixpath
+pathlib.*
+glob
+secrets
+base64
+hmac
+wave
+calendar
+stat
+_pyio
+_pycollections = collections/__init__.py
+reprlib
+_pyntpath = ntpath.py
+fnmatch

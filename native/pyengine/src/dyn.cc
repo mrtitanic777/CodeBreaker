@@ -50,6 +50,10 @@ static const std::set<std::string>& cpp_reserved() {
         "environ", "unix", "linux", "_WIN32", "BUFSIZ", "FILENAME_MAX", "CHAR_BIT", "INT_MAX", "INT_MIN", "SIZE_MAX", "EXIT_SUCCESS",
         "EXIT_FAILURE", "RAND_MAX", "MAX_PATH", "INFINITY", "NAN", "HUGE_VAL", "signbit", "isnan", "isinf", "isfinite",
         "fpclassify", "setjmp", "longjmp", "y", "py_module_", "py_init_",
+        // MSVC's own keywords and their old spellings (cdecl, _asm ...: synonyms of __cdecl, __asm unless /Za)
+        "cdecl", "_cdecl", "_asm", "_fastcall", "_stdcall", "_thiscall", "_vectorcall", "_inline", "_forceinline", "_based",
+        "_declspec", "_except", "_finally", "_try", "_leave", "_int8", "_int16", "_int32", "_int64", "_alignof", "_uuidof",
+        "_ptr32", "_ptr64", "_restrict", "_sptr", "_uptr", "_unaligned", "_w64", "_pascal", "_fortran", "_syscall",
         // <cmath>, <cerrno>, <cstdio>, <climits>, <cstdint>, <cfloat> macros
         "OVERFLOW", "UNDERFLOW", "DOMAIN", "SING", "TLOSS", "PLOSS", "EPERM", "ENOENT", "ESRCH", "EINTR", "EIO", "ENXIO", "E2BIG",
         "ENOEXEC", "EBADF", "ECHILD", "EAGAIN", "ENOMEM", "EACCES", "EFAULT", "EBUSY", "EEXIST", "EXDEV", "ENODEV", "ENOTDIR",
@@ -77,8 +81,39 @@ static std::string ident(const std::string& n) {
         }
     }
     if (cpp_reserved().count(o)) o = "py_" + o;
+    // errno names (EOPNOTSUPP, ENOTSOCK ...): <errno.h> has dozens as macros beyond the list above; the C++
+    // name is only the cell's handle (the Python name is kept), so every E<CAPS> name is renamed
+    else if (o.size() > 2 && o[0] == 'E' && std::all_of(o.begin() + 1, o.end(), [](char c) { return isupper((unsigned char)c) || isdigit((unsigned char)c); }))
+        o = "py_" + o;
+    // likewise the families <sys/stat.h> and <fcntl.h> define (S_IFDIR, S_IREAD ..., O_BINARY ...)
+    else if ((o.compare(0, 3, "S_I") == 0 || o.compare(0, 2, "O_") == 0 || o == "MB_CUR_MAX") &&
+             std::all_of(o.begin(), o.end(), [](char c) { return isupper((unsigned char)c) || isdigit((unsigned char)c) || c == '_'; }))
+        o = "py_" + o;
     if (o.size() >= 2 && o[0] == '_' && (o[1] == '_' || isupper((unsigned char)o[1]))) o = "py" + o;   // (reserved in C++)
     return o;
+}
+// a direct call of a module function whose name is also one of py::'s free functions (py_object.hpp): the
+// name in parentheses, so argument-dependent lookup does not bring py::'s in beside it (`(is_int)(t)`)
+static std::string adl_safe(const std::string& n) {
+    static const std::set<std::string> s = {
+        "abs", "add", "advance_", "and_", "as_double", "as_int64", "ascii", "assert_", "attr", "bin", "builtin", "bytes_from",
+        "call", "call_", "callable", "callmethod_", "chr", "class_name", "classmethod", "current_exception", "def",
+        "def_generator", "delattr", "delitem", "dict", "dir", "divmod", "eq", "floordiv", "flt", "fmt", "format",
+        "frozenset_from", "fstr", "getattr", "getitem", "global", "hasattr", "hash", "hash_", "hex", "id", "import",
+        "import_from", "import_star", "import_top", "in", "is", "is_bool", "is_bytes", "is_dict", "is_float", "is_int", "is_list",
+        "is_none", "is_not", "is_ref", "is_small_int", "is_str", "is_tuple", "is_unbound", "isinstance", "issubclass", "iter",
+        "len", "len_", "list", "list_from", "lt", "make_class", "make_function", "matches", "matmul", "module", "native",
+        "new_dict", "next", "next_", "not_", "not_in", "oct", "operator", "or_", "ord", "pow", "print", "print_", "property",
+        "raise", "raise_from", "range", "repr", "reraise", "round", "set", "setattr", "setitem", "slice", "slice_obj", "small",
+        "staticmethod", "str", "str_from", "super_", "to_vector", "truthy", "truthy_", "tuple", "type", "unpack", "vars",
+        "with_enter", "yield_from", "each", "kw", "star"};
+    return s.count(n) ? "(" + n + ")" : n;
+}
+// a line of Python as a // comment: no trailing blanks, and no trailing backslash (it would splice the
+// comment's next line, the code, into it)
+static std::string comment_text(std::string l) {
+    while (!l.empty() && (l.back() == 13 || l.back() == 32 || l.back() == 9 || l.back() == 92)) l.pop_back();
+    return l;
 }
 // Class.method -> Class__method
 static std::string dotted_ident(std::string n) {
@@ -192,6 +227,17 @@ private:
         int loop_depth = 0;
     };
     Fn* fn_ = nullptr;
+    // private names: inside a class (its body and the functions in it) __name is _Class__name, as Python mangles
+    std::vector<std::string> classes_;
+    std::string mangle(const std::string& n) const {
+        if (classes_.empty() || n.size() < 3 || n.compare(0, 2, "__") != 0 || (n.size() >= 4 && n.compare(n.size() - 2, 2, "__") == 0) ||
+            n.find('.') != std::string::npos)
+            return n;
+        std::string c = classes_.back();
+        size_t k = c.find_first_not_of('_');
+        if (k == std::string::npos) return n;
+        return "_" + c.substr(k) + n;
+    }
 
     std::string t() { return std::to_string(++tmp_); }
     void refuse(const Node* n, const std::string& what) { res_.refused.push_back({n ? n->pos.lineno : 0, what}); }
@@ -200,7 +246,7 @@ private:
         size_t a = starts_[(size_t)n->pos.lineno - 1];
         size_t b = src_.find('\n', a);
         std::string l = src_.substr(a, b == std::string::npos ? std::string::npos : b - a);
-        while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back();
+        l = comment_text(l);
         size_t k = l.find_first_not_of(' ');
         return k == std::string::npos ? "" : l.substr(k);
     }
@@ -330,13 +376,17 @@ private:
         if (where && where->kind == Scope::Class && r.kind != NameRes::Free) {
             // a class body reads its namespace first
             std::string fb = r.kind == NameRes::Global || (r.kind == NameRes::Local && where->binds(id)) ? global_or_builtin(id) : global_or_builtin(id);
-            if (where->binds(id)) return "py::class_name(" + fn_->class_var + ", " + slit(id) + ", " + fb + ")";
+            if (where->binds(id)) return "py::class_name(" + fn_->class_var + ", " + slit(mangle(id)) + ", " + fb + ")";
             return fb;
         }
         switch (r.kind) {
         case NameRes::Local:
         case NameRes::Free: return local_name(id);
-        case NameRes::Global: return gref(id);
+        case NameRes::Global:
+            // a module name that is also a builtin (capstone's `range = xrange` under Python 2 only): the builtin
+            // while the module has not bound it, as Python's lookup falls through
+            if (Scopes::is_builtin(id)) return "py::or_builtin(" + gref(id) + ", " + cstr(id) + ")";
+            return gref(id);
         case NameRes::Builtin: return builtin_value(id);
         default:
             // a name the module never binds: maybe made at run time (from x import *, globals())
@@ -592,7 +642,7 @@ private:
                 const FunctionDef* f = module_defs_[n->id];
                 size_t np = f->args->posonlyargs.size() + f->args->args.size();
                 if (c->args.size() == np) {
-                    std::string o = ident(n->id) + "(";
+                    std::string o = adl_safe(ident(n->id)) + "(";
                     for (size_t i = 0; i < c->args.size(); i++) o += (i ? ", " : "") + expr(c->args[i]);
                     return o + ")";
                 }
@@ -604,11 +654,11 @@ private:
             static const std::set<std::string> eager = {"join", "extend", "update", "union", "intersection", "difference", "issubset", "issuperset"};
             if (eager.count(a->attr) && c->args.size() == 1 && c->keywords.empty() && c->args[0]->kind == ExprKind::GeneratorExp) {
                 auto* g = cast<GeneratorExp>(c->args[0]);
-                return obj + ".call(" + cstr(a->attr) + ", " + comprehension_list(g->elt, g->generators, c->args[0]) + ")";
+                return obj + ".call(" + cstr(mangle(a->attr)) + ", " + comprehension_list(g->elt, g->generators, c->args[0]) + ")";
             }
             std::string args = call_args(c);
-            if (ordered_args(c)) return obj + ".call(" + cstr(a->attr) + ", {" + args + "})";
-            return obj + ".call(" + cstr(a->attr) + (args.empty() ? "" : ", " + args) + ")";
+            if (ordered_args(c)) return obj + ".call(" + cstr(mangle(a->attr)) + ", {" + args + "})";
+            return obj + ".call(" + cstr(mangle(a->attr)) + (args.empty() ? "" : ", " + args) + ")";
         }
         std::string f = expr(c->func);
         if (ordered_args(c)) return paren(f) + "({" + call_args(c) + "})";
@@ -640,6 +690,20 @@ private:
         }
         if (id == "print") return "py::print(" + call_args(c) + ")";
         if (id == "globals" && n == 0) return "py::globals_of(py_module_)";
+        if (id == "locals" && n == 0) {
+            // locals(): the module's dict at module level (and in a comprehension there), the namespace in a
+            // class body, else a dict of the function's bound names at the call (as CPython's snapshot)
+            const Scope* s = fn_ ? fn_->scope : nullptr;
+            while (s && s->kind == Scope::Comprehension && s->parent) s = s->parent;
+            if (!s || s->kind == Scope::Module) return "py::globals_of(py_module_)";
+            if (s->kind == Scope::Class && fn_ && !fn_->class_var.empty()) return fn_->class_var;
+            std::set<std::string> names(s->params.begin(), s->params.end());
+            for (auto& b : s->bound) if (s->binds(b)) names.insert(b);
+            for (auto& f : s->free) if (f != "__class__") names.insert(f);
+            std::string o = "[&]() -> py::var { py::var py_d = py::dict(); ";
+            for (auto& nm : names) o += "if (!" + ident(nm) + ".is_unbound()) py_d.setitem(" + cstr(nm) + "_s, " + ident(nm) + "); ";
+            return o + "return py_d; }()";
+        }
         if ((id == "any" || id == "all") && n == 1) {
             if (auto* g = as<GeneratorExp>(c->args[0])) return any_all(g, id == "any");
         }
@@ -653,7 +717,7 @@ private:
         return "";
     }
 
-    std::string attribute(const Attribute* a) { return expr(a->value) + ".attr(" + cstr(a->attr) + ")"; }
+    std::string attribute(const Attribute* a) { return expr(a->value) + ".attr(" + cstr(mangle(a->attr)) + ")"; }
 
     std::string subscript_key(const Expr* s) {
         if (auto* sl = as<Slice>(s))
@@ -739,6 +803,11 @@ private:
             const pyfront::comprehension* g = gens[i];
             std::string it = i == 0 ? first_iter : expr(g->iter);
             std::string v = "py_it" + t();
+            if (it.find("[&]") != std::string::npos) {   // (MSVC: a lambda in a range-for's range inside a lambda miscompiles)
+                o += "{ py::var " + v + "r = " + it + "; ";
+                it = v + "r";
+                depth++;
+            }
             o += "for (py::var " + v + " : py::each(" + it + ")) { " + assign_target(g->target, v) + " ";
             depth++;
             for (auto* f : g->ifs) {
@@ -832,9 +901,10 @@ private:
     std::string lambda(const Lambda* l) {
         const Scope* s = sc_.scope_of(l);
         std::string sig, params, defaults;
+        const Scope* saved_scope = cur_param_scope_;   // (a lambda in a default: the outer signature goes on after it)
         cur_param_scope_ = s;
         signature(l->args, sig, params, defaults);
-        cur_param_scope_ = nullptr;
+        cur_param_scope_ = saved_scope;
         Fn* outer = fn_;
         Fn inner;
         inner.scope = s;
@@ -924,7 +994,7 @@ private:
         const Scope* where = sc_.enclosing(n);
         NameRes r = sc_.resolve(n);
         if (where && where->kind == Scope::Class && r.kind != NameRes::Free && !where->globals.count(n->id))
-            return "py::at(" + fn_->class_var + ", " + slit(n->id) + ")";
+            return "py::at(" + fn_->class_var + ", " + slit(mangle(n->id)) + ")";
         if (r.kind == NameRes::Global) return gref(n->id);
         return local_name(n->id);
     }
@@ -934,7 +1004,7 @@ private:
         case ExprKind::Name: return store_name_expr(cast<Name>(tgt)) + " = " + v + ";";
         case ExprKind::Attribute: {
             auto* a = cast<Attribute>(tgt);
-            return expr(a->value) + ".setattr(" + cstr(a->attr) + ", " + v + ");";
+            return expr(a->value) + ".setattr(" + cstr(mangle(a->attr)) + ", " + v + ");";
         }
         case ExprKind::Subscript: {
             auto* s = cast<Subscript>(tgt);
@@ -1026,7 +1096,7 @@ private:
         if (docstring(f->body, doc)) {
             std::istringstream ds(doc);
             std::string line;
-            while (std::getline(ds, line)) o += ind + "// " + line + "\n";
+            while (std::getline(ds, line)) o += ind + "// " + comment_text(line) + "\n";
         }
         if (!fn_->file_scope) {
             std::string fd = free_decls(s);
@@ -1061,9 +1131,10 @@ private:
         std::string sig, params, defaults;
         Fn* outer = fn_;
         // defaults are evaluated where the def is
+        const Scope* saved_scope = cur_param_scope_;   // (a lambda in a default: the outer signature goes on after it)
         cur_param_scope_ = s;
         signature(f->args, sig, params, defaults);
-        cur_param_scope_ = nullptr;
+        cur_param_scope_ = saved_scope;
         Fn inner;
         inner.scope = s;
         inner.generator = gen;
@@ -1139,6 +1210,7 @@ private:
         // a class body inside a function: its defs are closures
         bool in_function = outer && outer->scope && outer->scope->kind != Scope::Module && outer->scope->kind != Scope::Class;
         fn_ = &body;
+        classes_.push_back(c->name);
         std::string annotations;
         size_t start = 0;
         std::string doc;
@@ -1153,7 +1225,7 @@ private:
                 std::string cpp = in_function ? "" : unique_fn(dotted_ident(qual + "." + f->name));
                 std::string v = make_def(f, cpp, qual + "." + f->name, in, cell_name, true);
                 v = decorate(f->decorator_list, v);
-                o += in + ns + ".setitem(" + slit(f->name) + ", " + v + ");\n";
+                o += in + ns + ".setitem(" + slit(mangle(f->name)) + ", " + v + ");\n";
             } else if (st->kind == StmtKind::ClassDef) {
                 auto* cc = cast<ClassDef>(st);
                 std::string inner_cls = class_def(cc, in, qual);
@@ -1175,6 +1247,7 @@ private:
             }
         }
         fn_ = outer;
+        classes_.pop_back();
         std::string bases;
         for (auto* b : c->bases) bases += (bases.empty() ? "" : ", ") + expr(b);
         std::string kws;
@@ -1194,7 +1267,7 @@ private:
         const Scope* cs = sc_.scope_of(c);
         if (cs) where = cs->parent;
         if (!where || where->kind == Scope::Module) return gref(c->name);
-        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(c->name) + ")";
+        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(mangle(c->name)) + ")";
         (void)prefix;
         if (where->globals.count(c->name)) return gref(c->name);
         return local_name(c->name);
@@ -1226,14 +1299,14 @@ private:
     std::string local_or_global(const std::string& n) {
         const Scope* where = fn_ ? fn_->scope : nullptr;
         if (!where || where->kind == Scope::Module || where->globals.count(n)) return gref(n);
-        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(n) + ")";
+        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(mangle(n)) + ")";
         return local_name(n);
     }
     std::string bind_name(const std::string& n) {
         // a name bound by an import, a def or a class in the current scope
         const Scope* where = fn_ ? fn_->scope : nullptr;
         if (!where || where->kind == Scope::Module || where->globals.count(n)) return gref(n);
-        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(n) + ")";
+        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(mangle(n)) + ")";
         return local_name(n);
     }
 
@@ -1326,8 +1399,8 @@ std::string Emitter::stmt(const Stmt* s, const std::string& ind) {
         if (auto* at = as<Attribute>(a->target)) {
             std::string o = "py_o" + t();
             std::string op = it != ops.end() ? "py_c " + it->second + " " + v + ";" : "py_c = " + binop_s(a->op, "py_c", v) + ";";
-            return ind + "{ py::var " + o + " = " + expr(at->value) + "; py::var py_c = " + o + ".getattr(" + cstr(at->attr) + "); " + op + " " + o +
-                   ".setattr(" + cstr(at->attr) + ", py_c); }\n";
+            return ind + "{ py::var " + o + " = " + expr(at->value) + "; py::var py_c = " + o + ".getattr(" + cstr(mangle(at->attr)) + "); " + op + " " + o +
+                   ".setattr(" + cstr(mangle(at->attr)) + ", py_c); }\n";
         }
         if (auto* sb = as<Subscript>(a->target)) {
             std::string o = "py_o" + t();
@@ -1410,7 +1483,7 @@ std::string Emitter::stmt(const Stmt* s, const std::string& ind) {
                 const Scope* where = sc_.enclosing(n);
                 if (where && where->kind == Scope::Class) o += ind + fn_->class_var + ".delitem(" + slit(n->id) + ");\n";
                 else o += ind + store_name_expr(n) + " = py::var();\n";
-            } else if (auto* at = as<Attribute>(tg)) o += ind + expr(at->value) + ".delattr(" + cstr(at->attr) + ");\n";
+            } else if (auto* at = as<Attribute>(tg)) o += ind + expr(at->value) + ".delattr(" + cstr(mangle(at->attr)) + ");\n";
             else if (auto* sb = as<Subscript>(tg)) o += ind + expr(sb->value) + ".delitem(" + subscript_key(sb->slice) + ");\n";
             else if (auto* tu = as<Tuple>(tg)) {
                 Delete d2;
@@ -1653,6 +1726,68 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             queue.push_back(name);
         } else queue.push_back(spec);
     }
+    // the standard modules whose Python is CPython's own (native/pyrt/stdlib.txt), translated from its Lib
+    // folder with the program: `name` one module, `name.*` a package and every module under it
+    std::set<std::string> from_stdlib;
+    for (auto& [lib_dir, list_name] : std::vector<std::pair<std::string, std::string>>{{o.stdlib_dir, "stdlib.txt"}, {o.site_dir, "site.txt"}}) {
+        if (lib_dir.empty()) continue;   // (site.txt: outside packages taken the same way from site-packages: unicorn, capstone)
+        std::string pyrt_dir = o.pyrt.empty() ? (fs::path(o.root) / "native" / "pyrt").string() : o.pyrt;
+        std::string list = read_file((fs::path(pyrt_dir) / list_name).string());
+        size_t st = 0;
+        while (st < list.size()) {
+            size_t e = list.find('\n', st);
+            if (e == std::string::npos) e = list.size();
+            std::string ln = list.substr(st, e - st);
+            st = e + 1;
+            if (auto h = ln.find('#'); h != std::string::npos) ln.resize(h);
+            while (!ln.empty() && isspace((unsigned char)ln.back())) ln.pop_back();
+            while (!ln.empty() && isspace((unsigned char)ln.front())) ln.erase(ln.begin());
+            if (ln.empty()) continue;
+            std::vector<std::string> names;
+            if (auto eq = ln.find('='); eq != std::string::npos) {
+                // `alias = path`: a module of Lib under another name (_pycollections = collections/__init__.py: the
+                // Python half of a module the runtime has in C++)
+                std::string alias = ln.substr(0, eq), path = ln.substr(eq + 1);
+                while (!alias.empty() && isspace((unsigned char)alias.back())) alias.pop_back();
+                while (!path.empty() && isspace((unsigned char)path.front())) path.erase(path.begin());
+                fs::path f = fs::path(lib_dir) / path;
+                if (!fs::exists(f)) {
+                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", path.c_str(), lib_dir.c_str());
+                    continue;
+                }
+                explicit_files[alias] = f.generic_string();
+                from_stdlib.insert(alias);
+                queue.push_back(alias);
+                continue;
+            }
+            if (ln.size() > 2 && ln.compare(ln.size() - 2, 2, ".*") == 0) {
+                std::string pkg = ln.substr(0, ln.size() - 2), rel = pkg;
+                std::replace(rel.begin(), rel.end(), '.', '/');
+                fs::path base = fs::path(lib_dir) / rel;
+                std::error_code ec;
+                for (auto it = fs::recursive_directory_iterator(base, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+                    if (!it->is_regular_file() || it->path().extension() != ".py") continue;
+                    std::string r = fs::relative(it->path(), lib_dir).generic_string();
+                    r.resize(r.size() - 3);
+                    if (r.size() >= 9 && r.compare(r.size() - 9, 9, "/__init__") == 0) r.resize(r.size() - 9);
+                    if (r.find("/test") != std::string::npos) continue;
+                    std::replace(r.begin(), r.end(), '/', '.');
+                    names.push_back(r);
+                }
+                std::sort(names.begin(), names.end());
+            } else names.push_back(ln);
+            for (auto& n : names) {
+                ModSpec m;
+                if (!find_module(lib_dir, n, m)) {
+                    fprintf(stderr, "stdlib.txt: %s is not in %s\n", n.c_str(), lib_dir.c_str());
+                    continue;
+                }
+                explicit_files[n] = m.file;
+                from_stdlib.insert(n);
+                queue.push_back(n);
+            }
+        }
+    }
     auto excluded = [&](const std::string& n) {
         for (auto& x : o.exclude) if (n == x || n.rfind(x + ".", 0) == 0) return true;
         return false;
@@ -1664,7 +1799,14 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         seen.insert(name);
         ModSpec m;
         if (explicit_files.count(name)) m = {name, explicit_files[name], fs::path(explicit_files[name]).filename() == "__init__.py"};
-        else if (!find_module(o.root, name, m)) continue;
+        else if (!find_module(o.root, name, m)) {
+            // a parent package of a standard module (xml for xml.dom.minidom): CPython's too
+            std::string top = name.substr(0, name.find('.'));
+            bool std_parent = false;
+            for (auto& s : from_stdlib) if (s.substr(0, s.find('.')) == top) std_parent = true;
+            if (!std_parent || !find_module(o.stdlib_dir, name, m)) continue;
+            from_stdlib.insert(name);
+        }
         for (size_t p = name.find('.'); p != std::string::npos; p = name.find('.', p + 1)) queue.push_back(name.substr(0, p));
         todo.push_back(m);
         if (!o.closure) continue;
@@ -1725,6 +1867,7 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         std::string rel = m.name;
         std::replace(rel.begin(), rel.end(), '.', '/');
         if (m.package) rel += "/__init__";
+        if (from_stdlib.count(m.name)) rel = "_stdlib/" + rel;
         rel += ".cpp";
         write_if_changed(fs::path(o.out) / rel, cpp);
         res.cpp = rel;
@@ -1743,8 +1886,13 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
                      "if(NOT CMAKE_BUILD_TYPE)\n  set(CMAKE_BUILD_TYPE Release)\nendif()\n"
                      "if(MSVC)\n  add_compile_options(/W1 /permissive- /utf-8 /EHsc /bigobj)\nendif()\n"
                      "add_subdirectory(" + pyrt + " pyrt)\n"
-                     "add_executable(program\n" + cmake_srcs + ")\ntarget_link_libraries(program PRIVATE pyrt)\n"
-                     "if(MSVC)\n  target_link_options(program PRIVATE /STACK:268435456)\nendif()\n";
+                     "add_executable(" + o.exe + "\n" + cmake_srcs + ")\ntarget_link_libraries(" + o.exe + " PRIVATE pyrt)\n"
+                     "# a whole tree is hundreds of modules: unity batches over one precompiled py_object.hpp (each module is\n"
+                     "# its own namespace, so batching them is safe); -DPYDYN_UNITY=OFF builds one object per module\n"
+                     "option(PYDYN_UNITY \"unity batches\" ON)\nset(PYDYN_BATCH 24 CACHE STRING \"modules per unity batch\")\n"
+                     "target_precompile_headers(" + o.exe + " PRIVATE <py_object.hpp>)\n"
+                     "if(PYDYN_UNITY)\n  set_target_properties(" + o.exe + " PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${PYDYN_BATCH})\nendif()\n"
+                     "if(MSVC)\n  target_link_options(" + o.exe + " PRIVATE /STACK:268435456)\nendif()\n";
     write_if_changed(fs::path(o.out) / "CMakeLists.txt", cm);
     std::string j = "{\n";
     for (size_t i = 0; i < out.size(); i++) {

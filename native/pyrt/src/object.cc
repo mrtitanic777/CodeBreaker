@@ -16,7 +16,12 @@ TypeObj *T_object, *T_type, *T_none, *T_bool, *T_int, *T_float, *T_complex, *T_s
 Obj::~Obj() {
     if (attrs) decref(attrs);
 }
-void dealloc_(Obj* o) { delete o; }
+// classes are never freed: instances do not hold a reference to their type (a class made and dropped
+// while its instances live -- a native helper's, a namedtuple's -- would leave them pointing at freed memory)
+void dealloc_(Obj* o) {
+    if (o->type && o->type->layout == Layout::Type) { o->rc = 1; return; }
+    delete o;
+}
 
 TypeObj::~TypeObj() {
     if (dict) decref(dict);
@@ -347,6 +352,7 @@ static var getattr_impl(const var& o, const var& name, bool& found) {
     if (a) return bind(*a, o, t);
     const std::string& n = utf8_of(name);
     if (n == "__class__") return tv(t);
+    if (n == "__dict__" && t->no_dict) { found = false; return var(); }   // (__slots__: none)
     if (n == "__dict__" && o.is_ref()) {
         Obj* p = o.ref();
         if (!p->attrs && !t->builtin) { var d = new_dict_obj(); p->attrs = d.ref(); incref(p->attrs); }
@@ -502,6 +508,13 @@ static void setattr_v(const var& o, const var& name, const var& v) {
     }
     if (t->builtin && t != T_function && !t->is_exception && t != T_data && t->layout != Layout::NativeData)
         raise(E_AttributeError, "'" + t->name + "' object has no attribute '" + utf8_of(name) + "' (it cannot be set)");
+    if (t->no_dict) {
+        // __slots__: only the slot names of the classes in the MRO
+        const std::string& sn = utf8_of(name);
+        bool ok = false;
+        for (TypeObj* b : t->mro) for (auto& s : b->slots) if (s == sn) ok = true;
+        if (!ok) raise(E_AttributeError, "'" + t->name + "' object has no attribute '" + sn + "' and no __dict__ for setting new attributes");
+    }
     if (!p->attrs) {
         var d = new_dict_obj();
         p->attrs = d.ref();
@@ -688,6 +701,21 @@ var make_class(const char* name, const char* qualname, const std::vector<var>& b
     if (!dict->get("__qualname__")) dict->set(interned("__qualname__"), new_str(t->qualname));
     else t->qualname = utf8_of(*dict->get("__qualname__"));
     if (!dict->get("__doc__")) dict->set(interned("__doc__"), None);
+    if (var* sl = dict->get("__slots__")) {
+        // __slots__: no instance __dict__ unless a base has one (or "__dict__" is a slot)
+        std::vector<std::string> names;
+        if (is_str(*sl)) names.push_back(utf8_of(*sl));
+        else for (var x : each(*sl)) names.push_back(utf8_of(x));
+        bool base_dict = false;
+        for (TypeObj* b : bases)
+            if (b != T_object && ((!b->builtin && !b->no_dict) || b->is_exception)) base_dict = true;
+        bool wants_dict = false;
+        for (auto& n2 : names) {
+            if (n2 == "__dict__") wants_dict = true;
+            else if (n2 != "__weakref__") t->slots.push_back(n2);
+        }
+        t->no_dict = !base_dict && !wants_dict;
+    }
     t->dict = dict;
     incref(dict);
     dict->owner_type = t;
@@ -731,7 +759,9 @@ var type_new_(TypeObj* meta, const CallArgs& a) {
     var mod;
     if (var* m = static_cast<DictObj*>(nsd.ref())->get("__module__")) mod = *m;
     std::string ms = mod.is_unbound() ? "__main__" : (is_str(mod) ? str_utf8(mod) : "__main__");
-    std::vector<std::pair<const char*, var>> kw;
+    // type.__new__ makes the class itself: make_class must not hand it back to the bases' metaclass (whose
+    // __new__ is what called this: IntEnum(int, Enum) under EnumType looped until the stack overflowed)
+    std::vector<std::pair<const char*, var>> kw = {{"metaclass", tv(T_type)}};
     var cls = make_class(n.c_str(), n.c_str(), bv, nsd, kw, ms.c_str());
     TypeObj* t = T(cls);
     if (meta != T_type) {

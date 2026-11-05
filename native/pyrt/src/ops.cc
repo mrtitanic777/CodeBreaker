@@ -345,7 +345,18 @@ var pow(const var& a, const var& b, const var& m) {
     if (m.is_none()) return pow(a, b);
     Big base = to_big(a), e = to_big(b), mod = to_big(m);
     if (mod.sign() == 0) raise(E_ValueError, "pow() 3rd argument cannot be 0");
-    if (e.sign() < 0) raise(E_ValueError, "base is not invertible for the given modulus");
+    if (e.sign() < 0) {
+        // pow(b, -e, m): the inverse of b modulo m (extended Euclid), to the power e
+        var mv = new_int(mod.sign() < 0 ? -mod : mod);
+        var r0 = a % mv, r1 = mv, s0 = var(1), s1 = var(0);
+        while (r1 != var(0)) {
+            var q = floordiv(r0, r1);
+            var r2 = r0 - q * r1, s2 = s0 - q * s1;
+            r0 = r1; r1 = r2; s0 = s1; s1 = s2;
+        }
+        if (r0 != var(1)) raise(E_ValueError, "base is not invertible for the given modulus");
+        return pow(s0 % mv, new_int(-e), m);
+    }
     Big r(1);
     base = floormod(base, mod);
     while (e.sign() > 0) {

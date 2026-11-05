@@ -20,6 +20,8 @@
 #include <cstring>
 #include <string>
 
+#include <algorithm>
+#include <filesystem>
 #include <map>
 #include <vector>
 
@@ -34,20 +36,61 @@ int main(int argc, char** argv) {
     // pyengine --dynamic --root R --dyn-out DIR [--dyn-main M] [--dyn-closure] [--dyn-exclude P] module|name=file ...
     if (argc > 1 && std::string(argv[1]) == "--dynamic") {
         pyengine::DynOptions d;
+        std::vector<std::string> tree, files;
         for (int i = 2; i < argc; i++) {
             std::string a = argv[i];
             if (a == "--root" && i + 1 < argc) d.root = argv[++i];
             else if (a == "--dyn-out" && i + 1 < argc) d.out = argv[++i];
             else if (a == "--dyn-main" && i + 1 < argc) d.main_module = argv[++i];
+            else if (a == "--dyn-exe" && i + 1 < argc) d.exe = argv[++i];
+            else if (a == "--dyn-stdlib" && i + 1 < argc) d.stdlib_dir = argv[++i];
+            else if (a == "--dyn-site" && i + 1 < argc) d.site_dir = argv[++i];
             else if (a == "--dyn-closure") d.closure = true;
             else if (a == "--dyn-top") d.top_only = true;
             else if (a == "--dyn-full" && i + 1 < argc) d.full_closure.push_back(argv[++i]);
             else if (a == "--dyn-exclude" && i + 1 < argc) d.exclude.push_back(argv[++i]);
             else if (a == "--pyrt" && i + 1 < argc) d.pyrt = argv[++i];
+            else if (a == "--dyn-tree" && i + 1 < argc) tree.push_back(argv[++i]);
+            else if (a == "--dyn-files" && i + 1 < argc) files.push_back(argv[++i]);
             else d.modules.push_back(a);
         }
+        // --dyn-files DIR: every .py file under DIR, each named as pytest names a test file: its path from the
+        // nearest folder above it that is not a package (tests/java/test_x.py, java a package: java.test_x)
+        for (auto& dir : files) {
+            std::error_code ec;
+            for (auto it = std::filesystem::recursive_directory_iterator(dir, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+                if (!it->is_regular_file() || it->path().extension() != ".py") continue;
+                std::filesystem::path p = std::filesystem::absolute(it->path());
+                std::filesystem::path base = p.parent_path();
+                while (std::filesystem::exists(base / "__init__.py") && base.has_parent_path() && base.parent_path() != base) base = base.parent_path();
+                std::string r = std::filesystem::relative(p, base).generic_string();
+                r.resize(r.size() - 3);
+                if (r.size() >= 9 && r.compare(r.size() - 9, 9, "/__init__") == 0) r.resize(r.size() - 9);
+                for (auto& c : r) if (c == '/') c = '.';
+                if (r.find('-') != std::string::npos || r.find(' ') != std::string::npos) continue;   // (not importable)
+                d.modules.push_back(r + "=" + p.generic_string());
+            }
+        }
+        // --dyn-tree PKG: every module of the package's folder (what importlib.import_module may reach)
+        for (auto& pkg : tree) {
+            std::string rel = pkg;
+            for (auto& c : rel) if (c == '.') c = '/';
+            std::filesystem::path base = std::filesystem::path(d.root) / rel;
+            std::vector<std::string> found;
+            std::error_code ec;
+            for (auto it = std::filesystem::recursive_directory_iterator(base, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+                if (!it->is_regular_file() || it->path().extension() != ".py") continue;
+                std::string r = std::filesystem::relative(it->path(), d.root).generic_string();
+                r.resize(r.size() - 3);
+                if (r.size() >= 9 && r.compare(r.size() - 9, 9, "/__init__") == 0) r.resize(r.size() - 9);
+                for (auto& c : r) if (c == '/') c = '.';
+                found.push_back(r);
+            }
+            std::sort(found.begin(), found.end());
+            d.modules.insert(d.modules.end(), found.begin(), found.end());
+        }
         if (d.root.empty() || d.out.empty() || d.modules.empty()) {
-            fprintf(stderr, "usage: pyengine --dynamic --root R --dyn-out DIR [--dyn-main M] [--dyn-closure] module ...\n");
+            fprintf(stderr, "usage: pyengine --dynamic --root R --dyn-out DIR [--dyn-main M] [--dyn-exe NAME] [--dyn-closure] [--dyn-tree PKG] module ...\n");
             return 2;
         }
         std::vector<pyengine::DynModule> mods;

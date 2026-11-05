@@ -36,6 +36,8 @@ struct TypeObj : Obj {
     bool abstract_instances = false;      // (instances may not be made: NoneType ...)
     uint64_t version = 0;                 // bumped when the dict (or a base's) changes
     TypeObj* metatype = nullptr;          // the metaclass when not type
+    bool no_dict = false;                 // __slots__ (and no base with a __dict__): instances have only those
+    std::vector<std::string> slots;       // (this class's own slot names)
     ~TypeObj() override;
     // attribute of the type through its MRO (null: absent); borrowed
     const var* lookup(const var& name) const;

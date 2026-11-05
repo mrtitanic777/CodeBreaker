@@ -246,7 +246,7 @@ struct Parser {
                     case 'b': return make(NK::WordB);
                     case 'B': return make(NK::NWordB);
                     case 'A': return make(NK::Start);
-                    case 'Z': return make(NK::End);
+                    case 'Z': case 'z': return make(NK::End);   // (\z: Python 3.14's spelling of \Z)
                     case 'w': case 'W': case 'd': case 'D': case 's': case 'S': {
                         auto n = make(NK::Class);
                         escape_item(n->items, e);

@@ -66,9 +66,12 @@ static std::string norm_enc(std::string e) {
     if (e == "windows-1252") return "cp1252";
     if (e == "utf-16le") return "utf-16-le";
     if (e == "utf-16be") return "utf-16-be";
+    if (e == "utf-32le") return "utf-32-le";
+    if (e == "utf-32be") return "utf-32-be";
     if (e == "utf-8-sig") return "utf-8-sig";
     return e;
 }
+static const std::string BOM32LE = std::string{(char)0xFF, (char)0xFE, 0, 0}, BOM32BE = std::string{0, 0, (char)0xFE, (char)0xFF};
 static const char32_t cp437_hi[128] = {
     0xC7, 0xFC, 0xE9, 0xE2, 0xE4, 0xE0, 0xE5, 0xE7, 0xEA, 0xEB, 0xE8, 0xEF, 0xEE, 0xEC, 0xC4, 0xC5,
     0xC9, 0xE6, 0xC6, 0xF4, 0xF6, 0xF2, 0xFB, 0xF9, 0xFF, 0xD6, 0xDC, 0xA2, 0xA3, 0xA5, 0x20A7, 0x192,
@@ -183,6 +186,22 @@ var bytes_decode_(const std::string& raw, const std::string& enc_in, const std::
         if (i < raw.size()) bad(i, 1, "truncated data");
         return new_str(out);
     }
+    if (enc == "utf-32-le" || enc == "utf-32-be" || enc == "utf-32") {
+        bool be = enc == "utf-32-be";
+        size_t i = 0;
+        if (enc == "utf-32" && raw.size() >= 4) {
+            if (raw.compare(0, 4, BOM32LE) == 0) i = 4;
+            else if (raw.compare(0, 4, BOM32BE) == 0) { i = 4; be = true; }
+        }
+        for (; i + 3 < raw.size(); i += 4) {
+            uint32_t c = 0;
+            for (int k = 0; k < 4; k++) c |= (uint32_t)(unsigned char)raw[i + k] << (be ? 24 - 8 * k : 8 * k);
+            if (c > 0x10FFFF || (c >= 0xD800 && c < 0xE000)) bad(i, 4, "code point not in range(0x110000)");
+            else append_utf8(out, (char32_t)c);
+        }
+        if (i < raw.size()) bad(i, raw.size() - i, "truncated data");
+        return new_str(out);
+    }
     raise(make_exc(E_LookupError, "unknown encoding: " + enc_in));
 }
 
@@ -258,6 +277,13 @@ var str_encode_(const std::string& s, const std::string& enc_in, const std::stri
             if (c >= 0x10000) { c -= 0x10000; put((uint16_t)(0xD800 + (c >> 10))); put((uint16_t)(0xDC00 + (c & 0x3FF))); }
             else put((uint16_t)c);
         }
+        return new_bytes(out);
+    }
+    if (enc == "utf-32-le" || enc == "utf-32-be" || enc == "utf-32") {
+        bool be = enc == "utf-32-be";
+        if (enc == "utf-32") out += BOM32LE;
+        for (char32_t c : u)
+            for (int k = 0; k < 4; k++) out.push_back((char)(be ? c >> (24 - 8 * k) : c >> (8 * k)));
         return new_bytes(out);
     }
     raise(make_exc(E_LookupError, "unknown encoding: " + enc_in));

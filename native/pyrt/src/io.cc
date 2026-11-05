@@ -83,6 +83,28 @@ static var decode_text(FileObj* f, const std::string& raw) {
 var open_file(const var& file, const std::string& mode, int64_t buffering, const var& encoding, const var& errors,
               const var& newline) {
     (void)buffering;
+    if (is_int(file)) {
+        // open(fd, mode) / os.fdopen: a file object over a CRT descriptor (closed with it)
+        std::string m;
+        for (char c : mode) if (c != 't' && c != 'x') m += c;
+        if (m.find('b') == std::string::npos) m += 'b';
+        FILE* fp = _fdopen((int)file.as_int64(), m.c_str());
+        if (!fp) raise(os_error(errno, std::to_string(file.as_int64())));
+        auto* f = new FileObj();
+        f->type = T_file;
+        f->fp = fp;
+        f->binary = mode.find('b') != std::string::npos;
+        f->readable = mode.find('r') != std::string::npos || mode.find('+') != std::string::npos;
+        f->writable = mode.find('r') == std::string::npos || mode.find('+') != std::string::npos;
+        f->name = std::to_string(file.as_int64());
+        f->mode = mode;
+        if (!encoding.is_none() && !encoding.is_unbound()) f->encoding = str_utf8(encoding);
+        if (!errors.is_none() && !errors.is_unbound()) f->errors = str_utf8(errors);
+        f->newline = newline.is_unbound() ? var(None) : newline;
+        var r(static_cast<Obj*>(f));
+        r.setattr("name", file);
+        return r;
+    }
     std::string path = fs_path(file);
     bool b = mode.find('b') != std::string::npos;
     char kind = 0;
@@ -259,6 +281,7 @@ void print_exception_(const var& e) {
     fflush(stderr);
 }
 
+bool module_registered_(const std::string& name);
 void set_sys_argv_() {
     std::vector<var> a;
     for (size_t i = 0; i < g_argv.size(); i++) a.push_back(new_str(g_argv[i]));
@@ -472,8 +495,16 @@ void init_io() {
     mod_set(g_sys, "byteorder", "little"_s);
     mod_set(g_sys, "maxsize", var(INT64_MAX));
     mod_set(g_sys, "version", "3.14.0 (CodeBreaker pyrt)"_s);
-    mod_set(g_sys, "version_info", new_tuple({3, 14, 0, "final"_s, 0}));
-    mod_set(g_sys, "implementation", None);
+    {
+        // sys.version_info: a tuple with names (major, minor ...), as CPython's struct sequence
+        TypeObj* vt = new_type("version_info", {T_tuple}, Layout::Tuple, false, "sys");
+        var vi = new_tuple({3, 14, 0, "final"_s, 0});
+        vi.ref()->type = vt;
+        const char* names[] = {"major", "minor", "micro", "releaselevel", "serial"};
+        for (int i = 0; i < 5; i++) vi.setattr(names[i], vi[var(i)]);
+        mod_set(g_sys, "version_info", vi);
+        mod_set(g_sys, "hexversion", var((int64_t)0x030E00F0));
+    }
     {
         wchar_t buf[MAX_PATH];
         GetModuleFileNameW(nullptr, buf, MAX_PATH);
@@ -484,7 +515,34 @@ void init_io() {
     }
     if (g_sys_modules.is_unbound()) g_sys_modules = new_dict_obj();
     mod_set(g_sys, "modules", g_sys_modules);
-    mod_set(g_sys, "flags", None);
+    {
+        // sys.stdlib_module_names: CPython 3.14's (its Windows build's) list
+        std::vector<var> names;
+        for (const char* n : {"__future__","_abc","_aix_support","_android_support","_apple_support","_ast","_ast_unparse","_asyncio","_bisect","_blake2","_bz2","_codecs","_codecs_cn","_codecs_hk","_codecs_iso2022","_codecs_jp","_codecs_kr","_codecs_tw","_collections","_collections_abc","_colorize","_compat_pickle","_contextvars","_csv","_ctypes","_curses","_curses_panel","_datetime","_dbm","_decimal","_elementtree","_frozen_importlib","_frozen_importlib_external","_functools","_gdbm","_hashlib","_heapq","_hmac","_imp","_interpchannels","_interpqueues","_interpreters","_io","_ios_support","_json","_locale","_lsprof","_lzma","_markupbase","_md5","_multibytecodec","_multiprocessing","_opcode","_opcode_metadata","_operator","_osx_support","_overlapped","_pickle","_posixshmem","_posixsubprocess","_py_abc","_py_warnings","_pydatetime","_pydecimal","_pyio","_pylong","_pyrepl","_queue","_random","_remote_debugging","_scproxy","_sha1","_sha2","_sha3","_signal","_sitebuiltins","_socket","_sqlite3","_sre","_ssl","_stat","_statistics","_string","_strptime","_struct","_suggestions","_symtable","_sysconfig","_thread","_threading_local","_tkinter","_tokenize","_tracemalloc","_types","_typing","_uuid","_warnings","_weakref","_weakrefset","_winapi","_wmi","_zoneinfo","_zstd","abc","annotationlib","antigravity","argparse","array","ast","asyncio","atexit","base64","bdb","binascii","bisect","builtins","bz2","cProfile","calendar","cmath","cmd","code","codecs","codeop","collections","colorsys","compileall","compression","concurrent","configparser","contextlib","contextvars","copy","copyreg","csv","ctypes","curses","dataclasses","datetime","dbm","decimal","difflib","dis","doctest","email","encodings","ensurepip","enum","errno","faulthandler","fcntl","filecmp","fileinput","fnmatch","fractions","ftplib","functools","gc","genericpath","getopt","getpass","gettext","glob","graphlib","grp","gzip","hashlib","heapq","hmac","html","http","idlelib","imaplib","importlib","inspect","io","ipaddress","itertools","json","keyword","linecache","locale","logging","lzma","mailbox","marshal","math","mimetypes","mmap","modulefinder","msvcrt","multiprocessing","netrc","nt","ntpath","nturl2path","numbers","opcode","operator","optparse","os","pathlib","pdb","pickle","pickletools","pkgutil","platform","plistlib","poplib","posix","posixpath","pprint","profile","pstats","pty","pwd","py_compile","pyclbr","pydoc","pydoc_data","pyexpat","queue","quopri","random","re","readline","reprlib","resource","rlcompleter","runpy","sched","secrets","select","selectors","shelve","shlex","shutil","signal","site","smtplib","socket","socketserver","sqlite3","sre_compile","sre_constants","sre_parse","ssl","stat","statistics","string","stringprep","struct","subprocess","symtable","sys","sysconfig","syslog","tabnanny","tarfile","tempfile","termios","textwrap","this","threading","time","timeit","tkinter","token","tokenize","tomllib","trace","traceback","tracemalloc","tty","turtle","turtledemo","types","typing","unicodedata","unittest","urllib","uuid","venv","warnings","wave","weakref","webbrowser","winreg","winsound","wsgiref","xml","xmlrpc","zipapp","zipfile","zipimport","zlib","zoneinfo"})
+            names.push_back(new_str(n));
+        mod_set(g_sys, "stdlib_module_names", call1(t::frozenset, new_list(names)));
+    }
+    {
+        // sys.flags (every flag off: a translated program takes no interpreter options) and sys.implementation
+        auto ns = [](const char* name) {
+            auto* mo = new ModuleObj();
+            mo->type = T_module;
+            mo->name = name;
+            return var(static_cast<Obj*>(mo));
+        };
+        var flags = ns("sys.flags");
+        for (const char* f : {"debug", "inspect", "interactive", "optimize", "dont_write_bytecode", "no_user_site", "no_site",
+                              "ignore_environment", "verbose", "bytes_warning", "quiet", "hash_randomization", "isolated",
+                              "dev_mode", "utf8_mode", "warn_default_encoding", "safe_path", "int_max_str_digits", "gil",
+                              "thread_inherit_context", "context_aware_warnings"})
+            mod_set(flags, f, var(0));
+        mod_set(g_sys, "flags", flags);
+        var impl = ns("sys.implementation");
+        mod_set(impl, "name", "cpython"_s);
+        mod_set(impl, "cache_tag", None);
+        mod_set(impl, "version", new_tuple({3, 14, 0, "final"_s, 0}));
+        mod_set(g_sys, "implementation", impl);
+    }
     mod_def(g_sys, "exit", [](const CallArgs& a) -> var { raise(make_exc_args(E_SystemExit, a.pos.empty() ? std::vector<var>{} : std::vector<var>{a.pos[0]})); });
     mod_def(g_sys, "getrecursionlimit", [](const CallArgs&) { return var(g_recursion_limit); });
     mod_def(g_sys, "setrecursionlimit", [](const CallArgs& a) { g_recursion_limit = (int)a.pos.at(0).as_int64(); return None; });
@@ -498,6 +556,10 @@ void init_io() {
     mod_def(g_sys, "getfilesystemencoding", [](const CallArgs&) { return "utf-8"_s; });
     mod_def(g_sys, "intern", [](const CallArgs& a) { return a.pos.at(0); });
     mod_def(g_sys, "getsizeof", [](const CallArgs&) { return var(64); });
+    mod_def(g_sys, "audit", [](const CallArgs&) { return None; });
+    mod_def(g_sys, "addaudithook", [](const CallArgs&) { return None; });
+    mod_def(g_sys, "getfilesystemencodeerrors", [](const CallArgs&) { return "surrogatepass"_s; });
+    mod_def(g_sys, "is_finalizing", [](const CallArgs&) { return var(false); });
     mod_def(g_sys, "_getframe", [](const CallArgs&) -> var { raise(E_NotImplementedError, "sys._getframe: frame introspection is not available in translated code"); });
     static_cast<DictObj*>(g_sys_modules.ref())->set("sys"_s, g_sys);
     extern var g_builtins;
@@ -512,12 +574,36 @@ void init_io() {
         mod_set(mod, "SEEK_SET", 0);
         mod_set(mod, "SEEK_CUR", 1);
         mod_set(mod, "SEEK_END", 2);
-        mod_set(mod, "IOBase", t::object);
-        mod_set(mod, "RawIOBase", t::object);
-        mod_set(mod, "BufferedIOBase", t::object);
-        mod_set(mod, "TextIOBase", t::object);
         mod_set(mod, "UnsupportedOperation", t::OSError);
         mod_set(mod, "DEFAULT_BUFFER_SIZE", 8192);
+        mod_set(mod, "Reader", t::object);
+        mod_set(mod, "Writer", t::object);
+        mod_set(mod, "__all__", new_list({"BlockingIOError"_s, "open"_s, "open_code"_s, "IOBase"_s, "RawIOBase"_s, "FileIO"_s,
+                                          "BytesIO"_s, "StringIO"_s, "BufferedIOBase"_s, "BufferedReader"_s, "BufferedWriter"_s,
+                                          "BufferedRWPair"_s, "BufferedRandom"_s, "TextIOBase"_s, "TextIOWrapper"_s,
+                                          "UnsupportedOperation"_s, "SEEK_SET"_s, "SEEK_CUR"_s, "SEEK_END"_s, "DEFAULT_BUFFER_SIZE"_s,
+                                          "text_encoding"_s, "IncrementalNewlineDecoder"_s, "Reader"_s, "Writer"_s}));
+        mod_def(mod, "text_encoding", [](const CallArgs& a) {
+            var e = a.pos.empty() ? var(None) : a.pos[0];
+            return e.is_none() ? "utf-8"_s : e;
+        });
+        mod_def(mod, "open_code", [](const CallArgs& a) { return builtin("open")(a.pos.at(0), "rb"_s); });
+        // the stream classes Python code derives from or wraps (IOBase ... BufferedReader, FileIO): CPython's
+        // own, from _pyio (translated with the program when stdlib.txt lists it); open/StringIO/BytesIO
+        // stay the runtime's
+        mod_def(mod, "__getattr__", [](const CallArgs& a) -> var {
+            std::string n = str_utf8(a.pos.at(0));
+            static const char* from_pyio[] = {"IOBase", "RawIOBase", "BufferedIOBase", "TextIOBase", "BufferedReader", "BufferedWriter",
+                                              "BufferedRandom", "BufferedRWPair", "FileIO", "IncrementalNewlineDecoder"};
+            for (const char* k : from_pyio)
+                if (n == k) {
+                    if (!module_registered_("_pyio")) raise(E_AttributeError, "module 'io' has no attribute '" + n + "' (_pyio is not in this program)");
+                    var v = import("_pyio").getattr(k);
+                    mod_set(import("io"), k, v);
+                    return v;
+                }
+            raise(E_AttributeError, "module 'io' has no attribute '" + n + "'");
+        });
     });
 }
 
