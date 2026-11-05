@@ -215,6 +215,16 @@ def test_progress_reading():
 # --- the query layer under the interfaces ------------------------------------------------------
 def test_service_reads_the_store():
     _fill_store()
+    # The test's store, answered in this process: a service running for this checkout (the MCP
+    # server starts one) would answer from the real store instead.
+    real_find, service.find = service.find, (lambda: None)
+    try:
+        _service_reads_the_store()
+    finally:
+        service.find = real_find
+
+
+def _service_reads_the_store():
     fns = service.functions("version.dll")
     assert len(fns["functions"]) == 6 and fns["counts"]["verified"] == 1 and "unverified" in fns["reasons"]
     good = [f for f in fns["functions"] if f["class"] == "verified"][0]

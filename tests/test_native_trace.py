@@ -247,6 +247,9 @@ def _canon(v):
 
 
 def digest(rec):
+    if isinstance(rec, dict) and isinstance(rec.get("module_path"), str):
+        # (the file's name, not where this checkout's settings say the corpus is)
+        rec = dict(rec, module_path=os.path.basename(rec["module_path"].replace("\\", "/")).lower())
     text = _canon(rec)
     if isinstance(rec, dict):                        # (and the instruction texts in their order)
         text += repr(list(rec.get("mnemonics", {}).items()))
