@@ -1093,21 +1093,55 @@ test_a_module, test_dos_tools and test_16bit_assembly_source.  The speed-up is 1
 the shim's text and JSON (and the Block objects over the caller's instructions) are most of what
 is left: the analysis itself is no longer the cost.
 
+**Piece 2, msc6 (done, Python deleted, 2026-11-05).**  The `invert <module>` path's models:
+msc6.invert (msc6.cc: the register walk, if/else, do-while, short-circuit and materialised
+conditions, far/near/cdecl/vtable calls, far pointers, longs, globals, locals, the parameter
+inference from the body and retf N), msc6_calls.infer_segment_sigs, segment_thunk (parse, verify,
+emit_asm), whole_function.candidates and msc6_function._mask (msc6_helpers.cc), and the three
+byte-level readers msc6_function.invert_cleanup, msc6_walk.invert and msc6_templates.invert
+(msc6_small.cc).  **Capstone:** cs.cc loads the capstone.dll of Python's `capstone` 5.0.7 package
+by path (cbinv_init, called by the shim with `<package>/lib/capstone.dll`; CMake reads the package's
+include/ through `python -c "import capstone"`), so every mnemonic and operand text is the one the
+Python saw; native/decompiler's Capstone 4.0.2 is not used.  pyutil.h makes the Python behaviours
+the text depends on exact: int(x, 0) / int(x, 16) with their ValueError (a `[bp + si]` operand made
+the Python raise, and so does the C++), "%x", chr() as UTF-8, split/partition, and small cursors
+standing for each regular expression; the exception kinds the Python raised (IndexError,
+ValueError, KeyError for a near jcc's 0x0f opcode, AssertionError) come back as the same types.
+The Python modules are shims keeping their API and their self-tests (the compiler orchestration);
+msc6_idioms.py (compiles snippets, nothing else) and grammars.py (text enumeration, no decoder)
+stay Python.  Python 1,948 -> 282 lines over the seven modules (1,666 removed; the shim +66).
+
+The gate (state/work/invert-native2/gate_msc6.py and gate_small.py, both in one process, 2
+workers): every CODE segment of the 388 NE modules of Windows95/design/corpus/files through
+infer_segment_sigs, and every chunk from a prologue (far loadds in both encodings, near loadds) to
+the next or 4 KB through segment_thunk verify and parse (+ emit_asm), whole_function.candidates,
+_mask and msc6.invert five ways (no parameters; the segment's inferred ones; void; long; a typed
+far/int/long list with imports and a near map), and the three byte readers on each chunk and on it
+cut at its first epilogue.  Compared whole: text and meta, or the reason, or the exception's type.
+
+| models | calls | identical | Python | C++ (with the shim) |
+|---|---|---|---|---|
+| msc6 + msc6_calls + segment_thunk + whole_function + _mask | 144,845 | 144,845 | 103.7 s | 27.4 s |
+| invert_cleanup + msc6_walk + msc6_templates | 55,215 | 55,215 | 0.2 s | 3.1 s |
+
+(The byte readers were already cheap in Python; through the shim they cost more, which matters to no
+caller: they are self-test tools.)  tests/test_invert.py with the C++: 14 passed, 1 skipped (kits.msc203
+not set up), including test_a_module, test_against_the_real_compiler and test_routing_thunks_and_grammars;
+check_imports and tidy clean.
+
 **HANDOFF: what is left.**
 
 - **run.py** stays Python: it is orchestration (win16.prepare, the compilers through build/msc6,
   verify/authored/match, the SDK prototypes), all of it other packages' Python; there is nothing
   in it that computes on its own.  It goes native when the pieces it calls do.
-- **The models** (msc6 + msc6_function/_calls/_walk/_templates/_idioms, msc6_registers, msvc2,
-  msvc2_forward, msvc2_registers, early_c + early_c_frame) decode with Capstone themselves
-  (platforms.decoder(16)) and read `op_str` text, so the C++ needs the very capstone.dll Python's
-  `capstone` 5.0.7 package carries (its include/ and lib/capstone.dll are in the package), loaded
-  by path as dosexec loads Python's unicorn.dll, so every mnemonic and operand text is the same.
-  native/decompiler's Capstone is 4.0.2 (WT_CAPSTONE) and prints differently in places: do not
-  reuse it here.  Order: msc6 (the `invert <module>` path: run.module calls msc6.invert, with
-  segment_thunk, whole_function, grammars and msc6_calls), then msvc2_forward + msvc2 +
-  msvc2_registers, then msc6_registers, then early_c (3,129 lines, the 1983-84 compiler, uses flow16
-  through recover_cfg; port it last, onto flow16.cc directly, which removes the shim's cost).
+- **The models left** (msvc2, msvc2_forward, msvc2_registers, msc6_registers, early_c +
+  early_c_frame) decode with Capstone themselves and read `op_str` text: use cs.h's disasm16 (the
+  package's capstone.dll, already loaded) and pyutil.h's int0/int16/cursors, as msc6.cc does.
+  Order: msvc2_forward + msvc2 + msvc2_registers, then msc6_registers (it imports _mask, PROLOGUE,
+  EPI from msc6_function: those stay), then early_c (3,129 lines, the 1983-84 compiler, uses flow16
+  through recover_cfg; port it last, onto flow16.cc directly, which removes the shim's cost).  The
+  gate pattern: gate_msc6.py (chunks from each prologue of every NE code segment; both sides in one
+  process; compare text, meta, reason or exception type).
 - The gate for each model: `invert` over every NE module of the Windows95 corpus, the models'
   texts and reasons compared per function before the compilers run (the compile is a pure
   function of the text), plus tests/test_invert.py; and for early_c, exact/draft over the period
