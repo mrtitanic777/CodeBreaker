@@ -1,7 +1,15 @@
 # -*- coding: utf-8 -*-
 """Tests for the vcxproj filter classification, incl. the Debug filter for the debug file."""
 
+import pytest
+
+from codebreaker.java import profiles
 from codebreaker.java.console import vcxproj
+
+
+@pytest.fixture(autouse=True)
+def _default_profile():
+    profiles.use('minecraft_xbox360')       # (the profile the tests before this file leave active)
 
 
 def test_debug_file_goes_to_debug_filter():
