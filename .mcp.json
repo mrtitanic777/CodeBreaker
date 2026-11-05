@@ -3,8 +3,8 @@
     "codebreaker": {
       "type": "stdio",
       "command": "C:/Python314/python.exe",
-      "args": ["-m", "codebreaker", "mcp"],
-      "env": {}
+      "args": ["-P", "-m", "codebreaker", "mcp"],
+      "env": {"PYTHONPATH": "C:/Users/mrtit/Documents/GitHub/CodeBreaker"}
     }
   }
 }

@@ -86,7 +86,7 @@ def _load():
         path = dll_path()
         if not os.path.isfile(path):
             raise OSError("not built: %s (native/engine/CMakeLists.txt)" % path)
-        lib = ctypes.CDLL(path)
+        lib = settings.load_native(path)
         for name, (args, res) in _SIGS.items():
             fn = getattr(lib, name)
             fn.argtypes, fn.restype = args, res

@@ -54,7 +54,7 @@ def _load():
         path = dll_path()
         if not os.path.isfile(path):
             raise OSError("not built: %s (native/formats/CMakeLists.txt)" % path)
-        lib = ctypes.CDLL(path)
+        lib = settings.load_native(path)
         lib.cbf_version.restype = ctypes.c_int
         if lib.cbf_version() != _VERSION:
             raise OSError("formats.dll is another version: rebuild native/formats")

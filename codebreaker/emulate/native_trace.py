@@ -94,7 +94,7 @@ def _load():
         from unicorn.unicorn_py3.unicorn import uclib                      # the DLLs Python loaded
         import capstone
         uc_dll, cs_dll = uclib._name, capstone._cs._name
-        lib = ctypes.CDLL(path)
+        lib = settings.load_native(path)
         lib.cbt_version.restype = ctypes.c_int
         if lib.cbt_version() != 1:
             raise OSError("cbtrace.dll is another version: rebuild native/tracer")

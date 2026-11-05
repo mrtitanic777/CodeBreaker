@@ -39,7 +39,7 @@ def _load():
         path = dll_path()
         if not os.path.isfile(path):
             raise OSError("not built: %s (native/l2/CMakeLists.txt)" % path)
-        lib = ctypes.CDLL(path)
+        lib = settings.load_native(path)
         lib.l2_version.restype = ctypes.c_int
         if lib.l2_version() != 1:
             raise OSError("cbl2.dll is another version: rebuild native/l2")

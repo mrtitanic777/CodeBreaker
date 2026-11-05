@@ -56,7 +56,7 @@ def _load():
         if not os.path.isfile(path):
             raise OSError("not built: %s (native/dosexec/CMakeLists.txt)" % path)
         from unicorn.unicorn_py3.unicorn import uclib                      # the DLL Python loaded
-        lib = ctypes.CDLL(path)
+        lib = settings.load_native(path)
         if lib.cbd_version() != 1:
             raise OSError("cbdos.dll is another version: rebuild native/dosexec")
         lib.cbd_init.argtypes = (ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_int32)

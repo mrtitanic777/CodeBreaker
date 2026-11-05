@@ -166,6 +166,27 @@ def state(*parts):
     return path
 
 
+def load_native(path):
+    """ctypes.CDLL of a native library, loaded from a copy keyed on its bytes (state/dll/<hash>/), so a
+    running process (the MCP servers, `serve`) never holds the build's own file open and a rebuild is
+    never blocked. The original's folder stays on the DLL search path for anything it depends on."""
+    import ctypes
+    import hashlib
+    import shutil
+    data = open(path, "rb").read()
+    copy = state("dll", hashlib.sha256(data).hexdigest()[:16], os.path.basename(path))
+    if not os.path.isfile(copy):
+        tmp = "%s.%d.tmp" % (copy, os.getpid())
+        shutil.copyfile(path, tmp)
+        try:
+            os.replace(tmp, copy)
+        except OSError:                                      # (another process put the same copy there)
+            os.remove(tmp)
+    if hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(os.path.dirname(os.path.abspath(path)))
+    return ctypes.CDLL(copy)
+
+
 def export_for_carried_over_code():
     """The modules carried over from the previous layout read their locations from environment
     variables. Fill in the ones not already set, from the settings. Goes away as each is changed
