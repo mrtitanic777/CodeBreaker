@@ -3,6 +3,8 @@
 // made from C++ functions and closures, builtins, bound methods, calling a class, a callable instance.
 #include <algorithm>
 #include <cstring>
+#include <process.h>
+#include <unordered_set>
 
 #include "rt.hpp"
 
@@ -187,21 +189,42 @@ struct depth_guard {
 // the judge's call trace: PYRT_TRACE=<file> PYRT_TRACE_PREFIX=<module prefix> records every call of a
 // function of those modules -- its parameters' reprs and its result's (or the exception's type), each as
 // the FNV-1a hash of the repr with addresses masked -- for comparing with the Python run's
+// PYRT_TRACE_FUNCS=<file of module:qualname lines> narrows it to those functions (the typed islands' judge)
 struct Trace {
     FILE* f = nullptr;
     std::string prefix;
     bool on = false;
     int depth = 0;
+    bool only_on = false;
+    std::unordered_set<std::string> only;
+    bool wants(const std::string& module, const std::string& qualname) const {
+        return !only_on || only.count(module + ":" + qualname) != 0;
+    }
 };
 static Trace& trace() {
     static Trace* t = [] {
         auto* x = new Trace();
         const char* p = getenv("PYRT_TRACE");
         if (p && *p) {
-            x->f = fopen(p, "wb");
+            // %p in the name: the process id (a suite's children inherit the variable: one file each)
+            std::string path = p;
+            if (size_t k = path.find("%p"); k != std::string::npos) path.replace(k, 2, std::to_string(_getpid()));
+            x->f = fopen(path.c_str(), "wb");
             const char* pre = getenv("PYRT_TRACE_PREFIX");
             x->prefix = pre ? pre : "";
             x->on = x->f != nullptr;
+            if (const char* fl = getenv("PYRT_TRACE_FUNCS"); fl && *fl) {
+                x->only_on = true;
+                if (FILE* lf = fopen(fl, "rb")) {
+                    char buf[4096];
+                    while (fgets(buf, sizeof buf, lf)) {
+                        std::string l = buf;
+                        while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
+                        if (!l.empty()) x->only.insert(l);
+                    }
+                    fclose(lf);
+                }
+            }
         }
         return x;
     }();
@@ -325,7 +348,7 @@ std::string call_stack_() {
 static var call_function(FuncObj* f, const var* self, const CallArgs& a) {
     size_t n = f->params.size();
     call_frame frame(f);
-    if (trace().on && !f->generator && f->module.compare(0, trace().prefix.size(), trace().prefix) == 0) {
+    if (trace().on && !f->generator && f->module.compare(0, trace().prefix.size(), trace().prefix) == 0 && trace().wants(f->module, f->qualname)) {
         depth_guard g;
         std::vector<var> slots(n);
         bind_args(f, self, a, slots.data());

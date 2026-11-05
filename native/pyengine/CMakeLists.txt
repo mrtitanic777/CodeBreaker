@@ -47,6 +47,7 @@ add_library(pyengine STATIC
   src/lower.cc      # typed functions into L2; the module units; the ledger
   src/census.cc     # what a tree uses: libraries, builtins, methods, features (--census)
   src/dyn.cc        # the dynamic mode: modules to C++ over py::var (native/pyrt) (--dynamic)
+  src/islands.cc    # typed islands in the dynamic build: the typed path's proven functions behind wrappers (--dyn-typed)
   src/engine.cc)    # the whole run: load, solve, translate, write L2 and the coverage ledger
 target_include_directories(pyengine PUBLIC src include)
 target_link_libraries(pyengine PUBLIC pyfront_lib l2core_lib l2cpp17_lib)

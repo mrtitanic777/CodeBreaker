@@ -1504,4 +1504,6 @@ V write_unit(const V& unit_doc, const std::string& api_root) {
     return write_unit_python(unit, api_root);
 }
 
+std::string cpp_name(const std::string& python_name) { return ident(python_name); }
+
 }  // namespace cpp17

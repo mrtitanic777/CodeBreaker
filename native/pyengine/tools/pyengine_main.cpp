@@ -28,12 +28,15 @@
 #include "census.hpp"
 #include "dyn.hpp"
 #include "engine.hpp"
+#include "islands.hpp"
 
 int main(int argc, char** argv) {
     pyengine::EngineOptions o;
     bool coverage = false;
 
     // pyengine --dynamic --root R --dyn-out DIR [--dyn-main M] [--dyn-closure] [--dyn-exclude P] module|name=file ...
+    //   --dyn-typed DIR (the typed path's --out DIR --cpp DIR/cpp): its proven functions as typed islands (src/islands.hpp);
+    //   --dyn-islands FILE: only those the judge's verdicts agreed
     if (argc > 1 && std::string(argv[1]) == "--dynamic") {
         pyengine::DynOptions d;
         std::vector<std::string> tree, files;
@@ -52,6 +55,8 @@ int main(int argc, char** argv) {
             else if (a == "--pyrt" && i + 1 < argc) d.pyrt = argv[++i];
             else if (a == "--dyn-tree" && i + 1 < argc) tree.push_back(argv[++i]);
             else if (a == "--dyn-files" && i + 1 < argc) files.push_back(argv[++i]);
+            else if (a == "--dyn-typed" && i + 1 < argc) d.typed_dir = argv[++i];
+            else if (a == "--dyn-islands" && i + 1 < argc) d.islands_file = argv[++i];
             else d.modules.push_back(a);
         }
         // --dyn-files DIR: every .py file under DIR, each named as pytest names a test file: its path from the
@@ -143,6 +148,10 @@ int main(int argc, char** argv) {
         printf("functions: %zu agree, %zu differ, %zu only in Python, %zu only in C++ (%zu calls compared)\n", agree, differ, only_py, only_cpp, calls);
         return differ ? 1 : 0;
     }
+    // pyengine --judge-islands <islands.json> <traces with islands> <traces without> <verdicts out>: per typed island,
+    // do its calls give the same outcomes with its typed body (PYRT_TRACE in the --dyn-typed program) as with its
+    // dynamic body (the same program under PYISL_OFF=1)? (src/islands.hpp)
+    if (argc > 5 && std::string(argv[1]) == "--judge-islands") return pyengine::judge_islands(argv[2], argv[3], argv[4], argv[5]);
     // pyengine --census <root>... [--census-out FILE]: the libraries, builtins, methods and features used
     if (argc > 1 && std::string(argv[1]) == "--census") {
         std::vector<std::string> roots;
