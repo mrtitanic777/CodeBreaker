@@ -1165,12 +1165,28 @@ CBA_VERSION is 4. A variable's readers, writers and values come back as sorted l
 sets again: nothing iterates them unsorted (len, sorted and membership only), and its notes are
 strings, whose set order Python randomises per process anyway.
 
-**HANDOFF (2026-11-05, second session).** Done here: strings, globals, resources. Left in analyze/,
-by importers: structures (it needs conventions' facts: port it as one question that runs
-conventions.cc's facts in the DLL rather than marshalling them back), dispatch, classes,
-dos_functions (its own 16-bit decoder, no Image), origin, observe, ppc_calls, report,
-facts. Then symbols/ (api_arguments, ordinals, runtime_library, driver_services, names,
-dos_interrupts, debug_build, sdk_structs and the rest). What was learned:
+The whole corpus, once, on the final code (a7abdad0e, the DLL copied aside): every PE, NE and LE
+file of the 5 corpora in settings.json, deduplicated by hash (3,680), strings, globals and
+resources together, the reference modules against the new ones on the same image as JSON with
+order: 3,680 identical, 0 different, 0 failing to load (the earlier commit's own partial whole-list
+run had 2,232 of 2,232 identical before it was stopped for this one).
+
+**HANDOFF (2026-11-05, second session).** Done here: strings, globals, resources. The hand ports
+stop here: Logan moved the rest of the port to the automatic engine (a dynamic mode in
+native/pyengine). Exactly what is left as Python, with its lines:
+
+- analyze/: structures (421; needs conventions' facts, which conventions.cc already makes in the
+  DLL), dispatch (404; uses strings.literal, globals.pointer_tables, conventions, describe),
+  classes (533), dos_functions (514; its own 16-bit decoder, no Image), origin (485), observe
+  (360), ppc_calls (268), report (214, the CLI), facts (91), and the kept parts of image (524),
+  call_graph, conventions, strings (184), globals (105), resources (100).
+- symbols/: api_arguments (434), ordinals (377), runtime_library (382), driver_services (280),
+  names (545), dos_interrupts (101), debug_build (168), debug_build_estimate (196), sdk_structs
+  (265), cpp_classes (214), xdk_libraries (151), wine16 (87), and the kept parts of demangle and
+  prototypes. Their table-file reads must stay identical, and any knowledge-base or cache key their
+  output feeds must take the DLL's hash (as prototypes' does).
+
+What was learned, for whoever (or whatever) ports the rest:
 
 - Port a pass as one question on the handle: the image is already in the DLL, decoded, with its
   call graph (Image::calls and now Image::refs, built once by call_graph.cc), its strings table
