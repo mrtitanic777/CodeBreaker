@@ -16,7 +16,8 @@ it), and so is a driver; an address an analysis reports is therefore the address
 and the function store use.
 
 A function is decoded by following its code from its start: fall through, direct branches and
-recognised jump tables, never past the next function. Bytes nothing reaches (tables and padding
+recognised jump tables, never past the next function (in C++: native/analyze, cbanalyze.dll, through
+analyze/native.py, with the capstone.dll Python's package carries). Bytes nothing reaches (tables and padding
 inside the code) are not read as instructions, so they produce no false references. Function
 starts are the ones V2 already finds (formats/pe_functions.py, describe.py).
 
@@ -32,9 +33,7 @@ import os
 import re
 import struct
 
-import capstone
-from capstone import x86 as X
-
+from codebreaker.analyze import native
 from codebreaker.base import corpus, settings
 from codebreaker.decompile import describe
 from codebreaker.formats import detect
@@ -42,7 +41,6 @@ from codebreaker.formats import le as le_format
 from codebreaker.formats import pe_functions
 from codebreaker.formats.ne import NEFile
 from codebreaker.formats.pe import open_pe
-from codebreaker import platforms
 
 _FAMILY = {}
 for _fam, _names in (("eax", "rax eax ax al ah"), ("ecx", "rcx ecx cx cl ch"), ("edx", "rdx edx dx dl dh"),
@@ -50,13 +48,7 @@ for _fam, _names in (("eax", "rax eax ax al ah"), ("ecx", "rcx ecx cx cl ch"), (
                      ("esi", "rsi esi si sil"), ("edi", "rdi edi di dil")):
     for _n in _names.split():
         _FAMILY[_n] = _fam
-RETURNS = ("ret", "retf", "retn", "lret", "iret", "iretd")
-# instructions compiled 32-bit code does not contain: reading data as code soon meets one
-_NEVER = frozenset("arpl daa das aaa aas aam aad into bound salc xlatb les lds lcall ljmp iretd iret int1 "
-                   "insb insd insw outsb outsd outsw cmc hlt".split())
-_PRIVILEGED = frozenset("in out cli sti lgdt lidt ltr lmsw clts invd wbinvd".split())
-_LOOPS = ("loop", "loope", "loopne", "jcxz", "jecxz")
-MAX_TABLE = 1024                       # entries read from one jump table
+_FLOWS = (None, "call", "jmp", "jcc", "ret")     # Ins.flow by the DLL's number
 
 
 def family(reg):
@@ -110,8 +102,8 @@ class Image(object):
         self._starts = []
         self._fn = {}
         self._memo = {}
-        self._md = platforms.decoder(32 if bits == 32 else 16, detail=True)
-        self._regs = {}
+        self._rows = {}                # decoded functions the DLL handed back, not yet made objects
+        self._native = None
 
     @property
     def flat(self):
@@ -175,56 +167,40 @@ class Image(object):
             self._memo[key] = make(self)
         return self._memo[key]
 
-    # ---- instructions ------------------------------------------------------------------------
-    def _reg(self, rid):
-        r = self._regs.get(rid)
-        if r is None:
-            r = self._regs[rid] = self._md.reg_name(rid) or "?"
-        return r
+    # ---- instructions (decoded in C++: native/analyze, image.cc) -------------------------------
+    def _handle(self):
+        if self._native is None:
+            self._native = native.Handle(self)
+        return self._native
 
-    def _convert(self, ci):
-        ins = Ins()
-        ins.addr, ins.size, ins.mn = ci.address, ci.size, ci.mnemonic
-        ins.text = ("%s %s" % (ci.mnemonic, ci.op_str)).strip()
-        wide = 0xFFFFFFFF if self.bits == 32 else 0xFFFF
-        ops = []
-        for o in ci.operands:
-            if o.type == X.X86_OP_REG:
-                ops.append(("r", self._reg(o.reg), o.size))
-            elif o.type == X.X86_OP_IMM:
-                ops.append(("i", o.imm & ((1 << (8 * o.size)) - 1 if o.size in (1, 2, 4) else wide), o.size))
-            elif o.type == X.X86_OP_MEM:
-                m = o.mem
-                base = self._reg(m.base) if m.base else None
-                ops.append(("m", base, self._reg(m.index) if m.index else None, m.scale,
-                            m.disp if base else m.disp & wide, self._reg(m.segment) if m.segment else None, o.size))
-        ins.ops = tuple(ops)
-        try:
-            rd, wr = ci.regs_access()
-            ins.rd = frozenset(family(self._reg(r)) for r in rd)
-            ins.wr = frozenset(family(self._reg(r)) for r in wr)
-        except capstone.CsError:
-            ins.rd = ins.wr = frozenset()
-        mn = ins.mn
-        ins.flow = ins.target = None
-        if mn in RETURNS:
-            ins.flow = "ret"
-        elif mn in ("call", "lcall", "jmp", "ljmp") or mn[0] == "j" or mn in _LOOPS:
-            ins.flow = "call" if mn.endswith("call") else "jmp" if mn.endswith("jmp") else "jcc"
-            code = bytes(ci.bytes)
-            if self.bits == 16 and len(code) >= 5 and code[-5] in (0x9A, 0xEA) and mn[0] == "l":
-                ins.target = (struct.unpack_from("<H", code, len(code) - 2)[0] << 16) | \
-                    struct.unpack_from("<H", code, len(code) - 4)[0]          # far: segment:offset
-            elif ops and ops[0][0] == "i":
-                ins.target = ops[0][1] if self.bits == 32 else (ins.addr & ~0xFFFF) | (ops[0][1] & 0xFFFF)
-        return ins
+    def _function(self, row):
+        fn = Function()
+        fn.start, fn.limit, fn.end = row[0], row[1], row[2]
+        fn.name = self.names.get(fn.start, "%x" % fn.start)
+        insns = []
+        for addr, size, mn, text, ops, rd, wr, flow, target in row[3]:
+            ins = Ins()
+            ins.addr, ins.size, ins.mn, ins.text = addr, size, mn, text
+            ins.ops = tuple(tuple(o) for o in ops)
+            ins.rd, ins.wr = frozenset(rd), frozenset(wr)
+            ins.flow, ins.target = _FLOWS[flow], target
+            insns.append(ins)
+        fn.insns = insns
+        fn.index = {ins.addr: i for i, ins in enumerate(insns)}
+        fn.tables = row[4]
+        return fn
 
     def function(self, start):
         """The decoded function starting at `start` (decoded once)."""
         fn = self._fn.get(start)
         if fn is None:
-            fn = self._fn[start] = self._decode(start)
+            row = self._rows.pop(start, None) or self._handle().ask("image.function", start)
+            fn = self._fn[start] = self._function(row)
         return fn
+
+    def linear(self, va, n):
+        """Up to `n` instructions read straight on from `va` (no branch followed): [Ins]."""
+        return self._function(self._handle().ask("image.linear", (n << 40) | va)).insns
 
     def each(self):
         for start in list(self.functions):
@@ -246,38 +222,18 @@ class Image(object):
           * an address the file marks as an address (a relocation) that points at code no known
             function reaches: a virtual function, a callback, a handler handed to the system.
 
-        Both are repeated until nothing new turns up. -> the starts added"""
-        pending = list(self.functions)
-        while True:
-            new = set()
-            for start in pending:
-                for ins in self.function(start).insns:
-                    t = ins.target
-                    if ins.flow == "call" and t is not None and t not in self.names and t not in self.imports \
-                            and self.is_code(t):
-                        new.add(t)
-            if not new:
-                new = self._held_code_addresses()
-                if not new:
-                    break
-            redo = set(new)
-            for va in sorted(new):
-                self.names[va] = self._auto_name(va)
-                i = bisect.bisect_left(self.functions, va)
-                span = self.span(va)
-                end = span[0] + len(span[1])
-                if self.kind == "ne":
-                    end = min(end, span[0] + max(span[5], 1))
-                nxt = self.functions[i] if i < len(self.functions) else None
-                self.limits[va] = nxt if nxt is not None and nxt < end else end
-                if i and self.limits[self.functions[i - 1]] > va:
-                    prev = self.functions[i - 1]
-                    self.limits[prev] = va
-                    self._fn.pop(prev, None)
-                    redo.add(prev)
-                self.functions.insert(i, va)
-            self.discovered |= new
-            pending = sorted(redo)
+        Both are repeated until nothing new turns up. Every function is decoded on the way.
+        -> the starts added"""
+        got = self._handle().ask("image.discover")
+        for va in got["discovered"]:
+            self.names[va] = self._auto_name(va)
+        self.discovered |= set(got["discovered"])
+        self.functions[:] = [f for f, _l in got["functions"]]
+        for f, limit in got["functions"]:
+            self.limits[f] = limit
+        self._fn.clear()
+        self._rows = {row[0]: row for row in got["decoded"]}
+        self._native.names(self)
         return self.discovered
 
     def covering(self, va):
@@ -294,172 +250,6 @@ class Image(object):
             else:
                 hi = mid
         return fn.insns[lo - 1] if lo and va < fn.insns[lo - 1].addr + fn.insns[lo - 1].size else None
-
-    def _held_code_addresses(self):
-        """Function starts given away by an address the file marks as one: a word of data, or an
-        immediate operand, that holds the address of code no decoded function reaches (a virtual
-        function, a callback, a handler handed to the system)."""
-        if not self.pointers or self.bits != 32:
-            return set()
-        new = set()
-        for site, (kind, t) in self.pointers.items():
-            if kind != "abs32" or t is None or t in self.names or t in self.imports or not self.is_code(t):
-                continue
-            if self.covering(t) is not None:
-                continue                                 # a label inside a function, or not code at all
-            if self.is_code(site):
-                ins = self.covering(site)
-                if ins is None:
-                    # a word among bytes no function reaches: a table kept in the code section.
-                    # Believed when it stands in a run of such words one of which is a known
-                    # function (a virtual table); a lone run of unknown addresses is as likely a
-                    # jump table of a function not found.
-                    run = [site]
-                    for step in (-4, 4):
-                        at = site + step
-                        while at in self.pointers and len(run) < 256:
-                            run.append(at)
-                            at += step
-                    if len(run) < 2 or not any(self.pointers[a][1] in self.names for a in run):
-                        continue
-                elif not any(op[0] == "i" and op[1] == t for op in ins.ops) or ins.flow:
-                    continue
-            if self._looks_like_code(t):
-                new.add(t)
-        return new
-
-    def _looks_like_code(self, va, most=48):
-        """Do the bytes at `va` read as the start of a compiled function? Early linkers keep
-        constants in the code section, so an address there may be a string, a GUID or a table.
-        Those do not survive being read as instructions: within a few they hit an instruction
-        no compiler emits, or bytes that are none at all."""
-        span = self.span(va)
-        head = self.read(va, 8)
-        if not span or len(head) < 8 or head[:2] in (b"\x00\x00", b"\xcc\xcc", b"\x90\x90") \
-                or all(0x20 <= c < 0x7F for c in head[:4]):
-            return False
-        off, n = va - span[0], 0
-        for ci in self._md.disasm(bytes(span[1][off:off + 16 * most]), va):
-            mn = ci.mnemonic
-            if mn.split()[-1] in _NEVER or (self.flat and mn in _PRIVILEGED) \
-                    or bytes(ci.bytes[:2]) == b"\x00\x00":
-                return False
-            if self.pointers:                            # an address the loader writes must be an operand
-                fits = {ci.address + ci.disp_offset if ci.disp_size == 4 else -1,
-                        ci.address + ci.imm_offset if ci.imm_size == 4 else -1}
-                if any(a in self.pointers and a not in fits for a in range(ci.address, ci.address + ci.size)):
-                    return False
-            n += 1
-            if mn in RETURNS or mn == "jmp":
-                return mn != "retf"
-            if n >= most:
-                return True
-        return False                                     # ran into bytes that are not an instruction
-
-    def _decode(self, start):
-        fn = Function()
-        fn.start, fn.limit, fn.name = start, self.limits.get(start, start), self.names.get(start, "%x" % start)
-        seen, tables, work = {}, [], [start]
-        span = self.span(start)
-        while work and span:
-            at = work.pop()
-            if at in seen or not start <= at < fn.limit:
-                continue
-            while at is not None and at < fn.limit:         # a run of code, read a piece at a time
-                off, nxt = at - span[0], None
-                for ci in self._md.disasm(bytes(span[1][off:min(off + 48, fn.limit - span[0])]), at):
-                    if ci.address in seen:
-                        nxt = None
-                        break
-                    ins = seen[ci.address] = self._convert(ci)
-                    nxt = ci.address + ci.size
-                    if ins.flow == "ret" or ins.mn in ("hlt", "ud2"):
-                        nxt = None
-                        break
-                    if ins.flow == "jmp":
-                        if ins.target is not None:
-                            work.append(ins.target)
-                        elif ins.ops:
-                            table = self._jump_table(fn, ins, seen)
-                            if table:
-                                tables.append(table)
-                                work.extend(table["targets"])
-                        nxt = None
-                        break
-                    if ins.flow == "jcc" and ins.target is not None:
-                        work.append(ins.target)
-                at = nxt                                    # None: the run ended, or its bytes are no instruction
-        fn.insns = [seen[a] for a in sorted(seen)]
-        fn.index = {ins.addr: i for i, ins in enumerate(fn.insns)}
-        fn.tables = tables
-        fn.end = (fn.insns[-1].addr + fn.insns[-1].size) if fn.insns else start
-        return fn
-
-    def _jump_table(self, fn, ins, seen):
-        """The table an indirect jump goes through, when it is one: `jmp [T + reg*4]`, or in
-        16-bit code `jmp cs:[T + reg]`. -> {site, table, targets, low, selector, default, bytes}
-        `targets[i]` is where case `low + i` goes; with a byte table in front (`bytes`), case
-        `low + i` goes to targets[bytes[i]]."""
-        op = ins.ops[0]
-        if op[0] != "m":
-            return None
-        if self.bits == 32:
-            if op[1] is not None or op[2] is None or op[3] != 4 or not self.is_data(op[4]):
-                return None
-            table, width, reg = op[4], 4, op[2]
-        else:
-            reg = op[1] or op[2]
-            if op[5] != "cs" or reg is None or op[6] != 2:
-                return None
-            table, width, reg = (ins.addr & ~0xFFFF) | (op[4] & 0xFFFF), 2, reg
-        back = [seen[a] for a in sorted(a for a in seen if a < ins.addr)[-10:]]
-        count = low = default = byte_table = None
-        selector = family(reg)
-        for i in range(len(back) - 1, -1, -1):
-            b = back[i]
-            if b.mn in ("mov", "movzx") and len(b.ops) == 2 and b.ops[0][0] == "r" and b.ops[1][0] == "m" \
-                    and family(b.ops[0][1]) == selector and b.ops[1][6] == 1 and byte_table is None \
-                    and b.ops[1][1] is not None and self.bits == 32 and self.is_data(b.ops[1][4] & 0xFFFFFFFF):
-                byte_table, selector = b.ops[1][4] & 0xFFFFFFFF, family(b.ops[1][1])
-            elif b.mn == "cmp" and len(b.ops) == 2 and b.ops[1][0] == "i" and count is None \
-                    and i + 1 < len(back) and back[i + 1].mn in ("ja", "jae", "jnbe", "jnb", "jg", "jge"):
-                count = b.ops[1][1] + (1 if back[i + 1].mn in ("ja", "jnbe", "jg") else 0)
-                default = back[i + 1].target
-                selector = b.text.split(None, 1)[1].rsplit(",", 1)[0]
-                for p in back[max(0, i - 3):i]:                # `sub reg, K` / `dec reg` before the bound
-                    if p.ops and p.ops[0][0] == "r" and b.ops[0][0] == "r" and family(p.ops[0][1]) == family(b.ops[0][1]):
-                        if p.mn == "sub" and p.ops[1][0] == "i":
-                            low = p.ops[1][1]
-                        elif p.mn == "dec":
-                            low = 1
-                        elif p.mn == "add" and p.ops[1][0] == "i":
-                            low = -signed(p.ops[1][1], p.ops[1][2])
-                        elif p.mn == "lea" and p.ops[1][0] == "m" and p.ops[1][1] and not p.ops[1][2]:
-                            low = -p.ops[1][4]
-                break
-        if count is not None and not 0 < count <= MAX_TABLE:
-            count = None
-        index = None
-        if byte_table is not None and count:
-            index = list(self.read(byte_table, count))
-            entries = (max(index) + 1) if len(index) == count else 0
-        else:
-            byte_table, entries = None, count
-        targets, known = [], set(self.functions)
-        for i in range(entries if entries is not None else MAX_TABLE):
-            at = table + width * i
-            v = self.u32(at) if width == 4 else self.u16(at)
-            if v is None:
-                break
-            if width == 2:
-                v |= ins.addr & ~0xFFFF
-            if not fn.start <= v < fn.limit or (entries is None and i and (at in known or at in seen)):
-                break
-            targets.append(v)
-        if not targets or (entries is not None and len(targets) != entries):
-            return None
-        return {"site": ins.addr, "table": table, "targets": targets, "low": low or 0, "selector": selector,
-                "default": default, "bytes": index, "bounded": count is not None}
 
 
 # ---- arguments at a call ---------------------------------------------------------------------

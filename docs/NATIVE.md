@@ -1055,6 +1055,58 @@ rest. What was learned:
 - The method that worked: a corpus-wide harvest of real inputs plus random truncations of each,
   compared whole (JSON dumps, order included), before the Python is deleted.
 
+## Step 8, analyze/: the image and its passes -- `native/analyze` (2026-11-05)
+
+`cbanalyze.dll` (native/analyze; C interface cbanalyze.h; shim codebreaker/analyze/native.py; folder
+setting `analyze_bin`, default native/analyze/build/bin; built by `tools\build_native.cmd analyze`).
+Like native/tracer it is compiled against the headers Python's `capstone` package carries and links
+no Capstone: at run time it calls the very capstone.dll Python loaded (5.0.x), so every
+instruction's mnemonic, operand text, operands and register sets are the ones Python's had.
+
+The image is handed over once (`native.Handle(img)`: spans, function starts and limits, the
+import addresses, the pointers in the file's order, the data segment, the roots; then the names)
+and stays in the DLL; each pass is one question on the handle and answers JSON whose order is the
+Python's. analyze/image.py keeps the loaders (they are glue over formats/ and decompile/describe,
+other lanes' code) and the cheap address helpers (span, read, owner, label, covering); the
+decoding, the jump tables, `discover` (call targets, then held code addresses, pass by pass) are
+image.cc. A Python set's iteration order reaches the output in places (Tarjan's walk over each
+function's callees, the far addresses a 16-bit instruction holds, `max(set(pops), key=count)`),
+so pyset.h is CPython's own set table (open addressing, 9 linear probes, perturb 5, resize at 3/5),
+which iterates in the very order Python's does for the same adds.
+
+| module | what moved | gate | Python lines removed |
+|---|---|---|---|
+| analyze/image | _convert, function decoding, _jump_table, discover, _held_code_addresses, _looks_like_code: image.cc. Kept: the loaders, Ins/Function/Image (made from the answer), definition, arguments, destination; new: Image.linear (n instructions straight on, which ui/mcp_server read through the removed `_md`/`_convert`) | every pe/ne/le file of the 5 corpora in settings.json, deduplicated by hash (3,680): the reference image.py (from git) and the DLL, whole images as JSON (names in order, functions, limits, discovered, every instruction, tables): 3,621 identical, 0 different (the 59 largest still running at the commit); plus comctl32, shell32, user.exe, vmm32.vxd by hand | 256 (46 added: the shim's side, `linear` for ui/mcp_server's straight-on reads) |
+| analyze/call_graph | _build (calls, callers, users, refs, taken, Tarjan order and cycles, reach), _references, _relocated, _strongly_connected: call_graph.cc. Kept: Graph, READS/PURE_WRITES, analyse (the report) | the same 3,621 files: the reference module and the new one on the same image, the Graph whole and analyse() as JSON: 3,621 identical, 0 different; tests/test_analysis.py, test_mcp.py | 152 |
+| analyze/conventions | _functions and every helper it used (_frame, _argument_slots, _register_inputs, _returns, _result_use, _cleanup, _loaded_before, _pushed_inputs, _entry16, _callback): conventions.cc. Kept: stack_delta (structures uses it), duplicates, thunk_layer, analyse | the same 3,621 files: the reference module and the new one on the same image, the Graph whole and analyse() as JSON: 3,621 identical, 0 different; tests/test_analysis.py, test_mcp.py | 413 |
+
+No cache or knowledge-base key takes these modules' code: what they feed (describe32's ECX/EDX
+functions, the struct and global text) reaches the caches as content (the description text, the
+bodies), so a different answer is a different key by itself; and the answers are identical.
+
+Known, deliberate limits of the C++ (none met in the corpus): the callback-name patterns read `\w`
+as ASCII and fold case in ASCII only (Python's `re.I` folds Unicode); `upper()` of an import name
+is ASCII.
+
+**HANDOFF (2026-11-05).** Left in analyze/, by importers: strings (5: table, uses; feeds globals,
+classes, module_writer), structures and globals (4), dispatch, classes, resources, dos_functions
+(its own 16-bit decoder, no Image), origin, observe, ppc_calls, report, facts. Then symbols/
+(api_arguments, ordinals, runtime_library, driver_services, names, dos_interrupts, debug_build,
+sdk_structs and the rest). What was learned:
+
+- Port a pass as one question on the handle: the image is already in the DLL, decoded, with its
+  call graph (Image::calls, built once by call_graph.cc) and its names (name_text, import_text,
+  label()). A pass's answer is JSON built in Python's key order; Python makes its objects from it
+  (a reference's instruction is found again by `fn.index[addr]`).
+- strings.table iterates `referenced`, a set comprehension unioned with another (`|=`): the
+  answer's dict order is that set's order. PySet has add only; the union needs set_merge's
+  behaviour (CPython copies the table outright when the target is empty and the masks match, else
+  inserts the other's entries in table order).
+- The gates: state/work/analyze-native2/ (gate_image.py: the reference image.py from git against
+  the DLL, whole images as JSON; gate_pass.py: a pass's reference module against the new one on
+  the same image, several passes per load). An NE file's load is mostly describe16 (Python), so
+  the gate's time goes there, not to the analyses.
+
 ## Step 8, first piece: the compiler models -- `native/invert` (2026-11-04)
 
 codebreaker/invert/ (the models that read 16-bit functions back into the source their compiler

@@ -15,6 +15,8 @@
                     functions that behave as strlen, memcpy, ...
     facts.py        the fact table of the function store
     report.py       python -m codebreaker analyze <module>
+    native.py       the shim of cbanalyze.dll (native/analyze), where the image's decoding, the
+                    call graph and the conventions are worked out in C++
 
 Every analysis is `analyse(image) -> {"counts": {...}, "facts": [...], ...}`; a fact is a dict with
 `addr` (None for a fact about the whole module), `kind` and whatever describes it.
