@@ -33,3 +33,4 @@ _pyio
 _pycollections = collections/__init__.py
 reprlib
 _pyntpath = ntpath.py
+fnmatch
