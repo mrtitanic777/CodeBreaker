@@ -43,6 +43,8 @@ public:
     std::string sub_fn(const std::function<std::string(const Match&)>& fn, const std::string& s, int count = 0) const;
     int groups() const { return ngroups_; }
     const std::string& pattern() const { return pattern_; }
+    int flags() const { return flags_; }
+    const std::vector<std::pair<std::string, int>>& names() const { return names_; }   // (?P<name>...): name, group
 
 private:
     std::shared_ptr<Node> root_;
