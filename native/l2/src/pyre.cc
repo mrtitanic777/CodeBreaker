@@ -174,7 +174,17 @@ struct Parser {
             case 'f': return '\f';
             case 'v': return '\v';
             case 'a': return 7;
-            case '0': return 0;
+            case '0': {   // \0, \0o, \0oo: octal (as sre_parse)
+                uint32_t v = 0;
+                for (int k = 0; k < 2 && more() && p[i] >= '0' && p[i] <= '7'; k++) v = v * 8 + (uint32_t)(p[i++] - '0');
+                return v;
+            }
+            case '1': case '2': case '3': case '4': case '5': case '6': case '7': {
+                // in a class: up to three octal digits (\041); outside one the caller has taken back-references
+                uint32_t v = c - '0';
+                for (int k = 0; k < 2 && more() && p[i] >= '0' && p[i] <= '7'; k++) v = v * 8 + (uint32_t)(p[i++] - '0');
+                return v;
+            }
             case 'x': {
                 uint32_t v = 0;
                 for (int k = 0; k < 2; k++) {
@@ -252,6 +262,13 @@ struct Parser {
                         escape_item(n->items, e);
                         return n;
                     }
+                }
+                // \ooo (three octal digits, the first 0-3) is a character, as sre_parse reads it; else a back-reference
+                if (e >= '0' && e <= '3' && i + 1 < p.size() && p[i] >= '0' && p[i] <= '7' && p[i + 1] >= '0' && p[i + 1] <= '7') {
+                    auto n = make(NK::Char);
+                    n->ch = (uint32_t)((e - '0') * 64 + (p[i] - '0') * 8 + (p[i + 1] - '0'));
+                    i += 2;
+                    return n;
                 }
                 if (e >= '1' && e <= '9') {
                     int v = (int)(e - '0');

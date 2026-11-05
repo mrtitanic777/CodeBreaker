@@ -361,7 +361,7 @@ static var getattr_impl(const var& o, const var& name, bool& found) {
         if (!p->attrs && !t->builtin) { var d = new_dict_obj(); p->attrs = d.ref(); incref(p->attrs); }
         if (p->attrs) return var(p->attrs);
     }
-    if (n == "__doc__") return None;
+    if (n == "__doc__" && t != T_function) return None;   // (a function's own: below)
     // FuncObj and friends: their own attributes
     if (o.is_ref()) {
         Obj* p = o.ref();

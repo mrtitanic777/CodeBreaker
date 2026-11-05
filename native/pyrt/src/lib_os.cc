@@ -550,9 +550,24 @@ static var popen_new(const CallArgs& a) {
     self.setattr("args", args);
     self.setattr("pid", var((int64_t)p->pid));
     self.setattr("returncode", None);
-    self.setattr("stdin", None);
-    self.setattr("stdout", None);
-    self.setattr("stderr", None);
+    // p.stdin / p.stdout / p.stderr: file objects over the pipes (each over its own duplicate of the handle, so
+    // communicate() still reads the original)
+    auto pipe_file = [&](HANDLE h, bool writing) -> var {
+        if (!h) return None;
+        HANDLE d;
+        if (!DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), &d, 0, FALSE, DUPLICATE_SAME_ACCESS)) return None;
+        int fd = _open_osfhandle((intptr_t)d, writing ? 0 : _O_RDONLY);
+        if (fd < 0) { CloseHandle(d); return None; }
+        if (!text) return builtin("open")(var((int64_t)fd), writing ? "wb"_s : "rb"_s);
+        CallArgs c;
+        c.pos = {var((int64_t)fd), writing ? "w"_s : "r"_s};
+        c.kw.push_back({"encoding"_s, new_str(p->encoding)});
+        if (!p->errors.empty()) c.kw.push_back({"errors"_s, new_str(p->errors)});
+        return call_obj(builtin("open"), c);
+    };
+    self.setattr("stdin", pipe_file(p->in_w, true));
+    self.setattr("stdout", pipe_file(p->out_r, false));
+    self.setattr("stderr", pipe_file(p->err_r, false));
     return self;
 }
 static void read_handle(HANDLE h, std::string* out) {

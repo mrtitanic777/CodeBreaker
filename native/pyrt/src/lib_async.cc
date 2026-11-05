@@ -157,7 +157,10 @@ void init_async_modules() {
             };
             std::string w = norm(want);
             var os = import("os");
-            for (var d : each(import("sys").getattr("path"))) {
+            // (sys.path, then the current folder: what `python -m` puts first on sys.path, which this program's is not)
+            var dirs = new_list(collect(import("sys").getattr("path")));
+            dirs.call("append", os.call("getcwd"));
+            for (var d : each(dirs)) {
                 if (!is_str(d)) continue;
                 std::string dir = str_utf8(d).empty() ? "." : str_utf8(d);
                 if (!os.attr("path").call("isdir", new_str(dir)).truthy()) continue;
