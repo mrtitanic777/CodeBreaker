@@ -210,6 +210,10 @@ private:
     std::set<std::string> global_names_;
     std::map<std::string, int> module_binds_;        // name -> binding sites at module scope
     std::set<std::string> def_only_;                 // module functions bound only by their def
+    std::set<std::string> def_marks_;                // (those called directly: `name_def_` holds the function object its def made)
+    void def_mark(const std::string& n) {
+        if (def_marks_.insert(n).second) globals_ += "static py::Obj* " + ident(n) + "_def_ = nullptr;\n";
+    }
     std::map<std::string, const FunctionDef*> module_defs_;
     std::set<std::pair<const Scope*, std::string>> cells_;
     std::set<std::string> used_fn_names_;
@@ -308,7 +312,10 @@ private:
                 }
             }
             if (gen) gen = is_generator(f);
-            if (module_binds_[n] == 1 && !gen && !f->args->vararg && !f->args->kwarg && f->args->kwonlyargs.empty()) def_only_.insert(n);
+            // (a decorated def binds what the decorator gave back, not the function: called through its name)
+            if (module_binds_[n] == 1 && !gen && !f->args->vararg && !f->args->kwarg && f->args->kwonlyargs.empty() &&
+                f->decorator_list.empty())
+                def_only_.insert(n);
         }
         // cells: what a nested function, lambda or generator expression shares with its definer
         for (auto& sp : sc_.all()) {
@@ -555,6 +562,43 @@ private:
         }
         return o + "return true; }()";
     }
+    // a comparison as a value: what the rich comparison returned (an __eq__ / __lt__ may return anything --
+    // z3's expressions), a < b < c the first false one's or the last's; is / in are bools
+    static int rich_op(CmpOpKind op) {
+        switch (op) {
+        case CmpOpKind::Lt: return 0;
+        case CmpOpKind::LtE: return 1;
+        case CmpOpKind::Eq: return 2;
+        case CmpOpKind::NotEq: return 3;
+        case CmpOpKind::Gt: return 4;
+        case CmpOpKind::GtE: return 5;
+        default: return -1;
+        }
+    }
+    std::string compare_value(const Compare* c) {
+        bool rich = false;
+        for (auto op : c->ops) rich = rich || rich_op(op) >= 0;
+        if (!rich) return "py::var(" + compare(c) + ")";
+        auto one = [&](size_t i, const std::string& a, const std::string& b) {
+            int op = rich_op(c->ops[i]);
+            if (op < 0) return "py::var(" + compare_one(c->ops[i], a, b, c->comparators[i]) + ")";
+            return "py::compare_value_(" + a + ", " + b + ", " + std::to_string(op) + ")";
+        };
+        if (c->ops.size() == 1) {
+            const Expr* r = c->comparators[0];
+            std::string a = expr(c->left), b = operand(r);
+            if (effects(c->left) && effects(r))
+                return "[&]() -> py::var { py::var py_l = " + a + "; return " + one(0, "py_l", b) + "; }()";
+            return one(0, a, b);
+        }
+        std::string o = "[&]() -> py::var { py::var py_l = " + expr(c->left) + ", py_v; ";
+        for (size_t i = 0; i < c->ops.size(); i++) {
+            o += "py::var py_r" + std::to_string(i) + " = " + expr(c->comparators[i]) + "; ";
+            o += "py_v = " + one(i, i == 0 ? "py_l" : "py_r" + std::to_string(i - 1), "py_r" + std::to_string(i)) + "; ";
+            o += "if (!py::truthy_(py_v)) return py_v; ";
+        }
+        return o + "return py_v; }()";
+    }
     // a condition: C++ bool
     std::string cond(const Expr* e) {
         if (auto* c = as<Compare>(e)) return compare(c);
@@ -642,9 +686,13 @@ private:
                 const FunctionDef* f = module_defs_[n->id];
                 size_t np = f->args->posonlyargs.size() + f->args->args.size();
                 if (c->args.size() == np) {
+                    // directly while the module's name still holds the function its def made; else through the
+                    // name, as Python calls it (monkeypatch.setattr(module, "f", ...) from outside is seen)
                     std::string o = adl_safe(ident(n->id)) + "(";
                     for (size_t i = 0; i < c->args.size(); i++) o += (i ? ", " : "") + expr(c->args[i]);
-                    return o + ")";
+                    std::string cellv = gref(n->id);
+                    def_mark(n->id);
+                    return "(" + cellv + ".ref() == " + ident(n->id) + "_def_ ? " + o + ") : " + cellv + "(" + call_args(c) + "))";
                 }
             }
         }
@@ -947,13 +995,15 @@ private:
             for (size_t i = b->values.size() - 1; i-- > 0;) {
                 const Expr* rhs = b->values[i + 1];
                 std::string r = i + 2 == b->values.size() ? o : o;
-                bool lazy = !simple(rhs) || i + 2 < b->values.size();
+                // (only a name or a constant is read without a lambda: an attribute may raise or run a property --
+                // isinstance(x, T) and x.label reads label only of a T)
+                bool lazy = !(rhs->kind == ExprKind::Name || rhs->kind == ExprKind::Constant) || i + 2 < b->values.size();
                 std::string rr = lazy ? "[&] { return py::var(" + r + "); }" : r;
                 o = std::string(b->op == BoolOpKind::And ? "py::and_(" : "py::or_(") + expr(b->values[i]) + ", " + rr + ")";
             }
             return o;
         }
-        case ExprKind::Compare: return "py::var(" + compare(cast<Compare>(e)) + ")";
+        case ExprKind::Compare: return compare_value(cast<Compare>(e));
         case ExprKind::IfExp: {
             auto* i = cast<IfExp>(e);
             return "(" + cond(i->test) + " ? py::var(" + expr(i->body) + ") : py::var(" + expr(i->orelse) + "))";
@@ -1507,6 +1557,11 @@ std::string Emitter::stmt(const Stmt* s, const std::string& ind) {
             // a module function the module calls directly keeps the plain name
             if (!def_only_.count(f->name) && cpp == ident(f->name)) cpp = unique_fn(ident(f->name) + "_impl");
             v = make_def(f, cpp, f->name, ind, "", false);
+            if (def_only_.count(f->name)) {
+                def_mark(f->name);
+                return ind + "// " + src_line(f) + "\n" + ind + target + " = " + decorate(f->decorator_list, v) + ";\n" + ind +
+                       ident(f->name) + "_def_ = " + target + ".ref();\n";
+            }
         } else {
             std::string qual = (fn_ && !fn_->qual.empty() ? fn_->qual + ".<locals>." : std::string()) + f->name;
             v = make_def(f, "", qual, ind, "", false);
@@ -1717,6 +1772,7 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
     std::set<std::string> seen;
     std::deque<std::string> queue;
     std::map<std::string, std::string> explicit_files;
+    std::set<std::string> aliased;   // `alias = path` modules: a dotted one is a module of a package the runtime has in C++
     for (auto& spec : o.modules) {
         auto eq = spec.find('=');
         if (eq != std::string::npos) {
@@ -1756,6 +1812,7 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
                     continue;
                 }
                 explicit_files[alias] = f.generic_string();
+                aliased.insert(alias);
                 from_stdlib.insert(alias);
                 queue.push_back(alias);
                 continue;
@@ -1807,7 +1864,9 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             if (!std_parent || !find_module(o.stdlib_dir, name, m)) continue;
             from_stdlib.insert(name);
         }
-        for (size_t p = name.find('.'); p != std::string::npos; p = name.find('.', p + 1)) queue.push_back(name.substr(0, p));
+        // (its packages too -- but not an alias's: re._constants = re/_constants.py is a module of pyrt's own re)
+        if (!aliased.count(name))
+            for (size_t p = name.find('.'); p != std::string::npos; p = name.find('.', p + 1)) queue.push_back(name.substr(0, p));
         todo.push_back(m);
         if (!o.closure) continue;
         std::string src = read_file(m.file);

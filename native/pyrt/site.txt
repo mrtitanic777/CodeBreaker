@@ -1,6 +1,8 @@
 # Outside packages a translated program takes from site-packages, translated the same way as stdlib.txt
 # (`pyengine --dynamic --dyn-site <site-packages>`): unicorn's and capstone's bindings are Python over
 # ctypes, so under pyrt (src/lib_ctypes.cc) their calls go straight to unicorn.dll's and capstone.dll's C
-# APIs, the DLLs loaded by path from the package folders they ship in.
+# APIs, the DLLs loaded by path from the package folders they ship in. z3-solver is the same: Python over
+# ctypes, its calls straight to libz3.dll (z3/lib).
 unicorn.*
 capstone.*
+z3.*

@@ -260,6 +260,7 @@ bool operator>(const var& a, const var& b);
 bool operator>=(const var& a, const var& b);
 var eq(const var& a, const var& b);          // a == b as Python's value (an __eq__ may return anything)
 var lt(const var& a, const var& b);
+var compare_value_(const var& a, const var& b, int op);   // a comparison as Python's value (op: 0 < 1 <= 2 == 3 != 4 > 5 >=)
 bool is(const var& a, const var& b);         // a is b
 bool in(const var& x, const var& container); // x in container
 inline bool not_in(const var& x, const var& c) { return !in(x, c); }

@@ -34,3 +34,7 @@ _pycollections = collections/__init__.py
 reprlib
 _pyntpath = ntpath.py
 fnmatch
+numbers
+fractions
+re._constants = re/_constants.py
+re._parser = re/_parser.py
