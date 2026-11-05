@@ -850,6 +850,52 @@ Kept, and why:
   (958). Deleted with Logan's yes (2026-11-04) after the merge; git history keeps them. `score16` and `exact` are commands in
   __main__'s table missing from its listing.
 
+## Step 8, first pieces (on, Python deleted): symbols/ -- `native/symbols`
+
+codebreaker/symbols/ and codebreaker/analyze/ (about 9,900 lines) are being ported by hand, module
+by module, into `cbsymbols.dll` (native/symbols; C interface cbsymbols.h: one call, `cbs_ask(question,
+text as UTF-32)`, the answer as JSON in ASCII with `\u` escapes, so Python's str values come back
+exactly). The shim is codebreaker/symbols/native.py (`native.ask`); the folder is the setting
+`symbols_bin` (default native/symbols/build/bin). Build:
+
+    (vcvars64)  cmake -S native/symbols -B native/symbols/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+                cmake --build native/symbols/build
+
+Each module was gated before its Python went, so there is no fallback and no switch: without the
+DLL the questions raise (native.why_not() says why). Gate harnesses: state/work/analyze-native/.
+
+| module | what moved | gate | Python lines removed |
+|---|---|---|---|
+| symbols/demangle | the reader (`parse`, `type_name`): demangle.cc. Kept in the shim: declaration, short, plain, readable, stack_bytes, main (one-line wrappers over parse, and plain's regex) | every `?`-name and `.?A`-name found as text in the 2,562 corpus files (17,385 names) plus 4 random truncations of each and non-ASCII cases: 43,433 names, `parse` and `type_name` identical on all (4,033 readable); tests/test_symbols.py | 342 |
+| symbols/prototypes | read_header, _split, _parameter and _build (every header of every folder, the merge of parameter names): prototypes.cc. Kept: _folders, _stamp, table, of, spelling, declaration | the whole table from the 5 header folders (OpenWatcom h/nt, h/win; the Win32 SDK; the Win95 DDK INC32, INC16): 10,166 prototypes, the JSON identical byte for byte, order included (Python 2.4 s, C++ 0.5 s); 360 mutated headers (truncated anywhere, lone CR, Latin-1 bytes, odd STDAPI_ forms): 1,984 prototypes identical; tests/test_symbols.py | 97 |
+
+The knowledge-base stamp of the prototype table now carries a hash of cbsymbols.dll (the reader is
+an input of the table), so the table is read again once.
+
+Known, deliberate limits of the C++ (none met in the corpus): demangle treats only ASCII digits (and
+Latin-1's superscripts, as unreadable) as digits where Python's isdigit() took any Unicode digit;
+its nesting limit (400) stands in for Python's recursion limit; prototypes lower-cases file names
+past Latin-1 as `?`.
+
+**HANDOFF (2026-11-04).** Left, by importers across codebreaker/ (most used first): analyze/image
+(15), symbols/api_arguments (12), analyze/call_graph (10), symbols/ordinals (8), runtime_library
+(7), driver_services (7), analyze/conventions (7), symbols/names (6), analyze/dos_functions (6),
+dos_interrupts, debug_build, analyze/strings (5), sdk_structs, structures, globals (4), and the
+rest. What was learned:
+
+- analyze/image is the keystone: call_graph, conventions, classes, structures, dispatch, globals
+  and strings all take its `Image` (functions and instructions from the native decompiler, the
+  module's spans, pointers and imports). Porting any of them alone means marshalling the whole
+  image across ctypes per call; port image first (into native/symbols or a native/analyze beside
+  it, reading the decompiler's output and the formats DLL directly), then the passes over it.
+- The symbols/ modules left are mostly glue around JSON tables, the corpus and the formats readers
+  (ordinals, driver_services, runtime_library, api_arguments); their computing cores (an import
+  library's members, the VxD include-file reader, the signature matcher, api_arguments' stack
+  scan) are what moves; each needs the table files' reads kept identical, and every knowledge-base
+  or cache key that their output feeds must take the DLL's hash, as prototypes' does.
+- The method that worked: a corpus-wide harvest of real inputs plus random truncations of each,
+  compared whole (JSON dumps, order included), before the Python is deleted.
+
 ## The rest, in measured-cost order
 
 Each is measured again at its start (a profile of the slowest real job it serves) before the

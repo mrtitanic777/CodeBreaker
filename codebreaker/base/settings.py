@@ -25,6 +25,7 @@ and are named in one file, `settings.json` at the top of the checkout:
                     (default: native/tracer/build/bin)
     formats_bin     folder of the file-format readers in C++, formats.dll (default: native/formats/build/bin)
     dosexec_bin     folder of cbdos.dll: the DOS executive and DPMI host in C++ (default: native/dosexec/build/bin)
+    symbols_bin     folder of cbsymbols.dll: codebreaker/symbols/ in C++ (default: native/symbols/build/bin)
     visual_studio   a Visual Studio install with clang-cl (VC/Tools/Llvm), which builds XenonRecomp
                     and recompiled Xbox 360 projects  (default: the newest vswhere finds)
     ppc_binutils    folder of PowerPC binutils that know VMX128 (powerpc-none-elf-as/objdump), for
@@ -81,6 +82,7 @@ DEFAULTS = {
     "formats_bin": os.path.join("native", "formats", "build", "bin"),
     "engine_bin": os.path.join("native", "engine", "build", "bin"),
     "dosexec_bin": os.path.join("native", "dosexec", "build", "bin"),
+    "symbols_bin": os.path.join("native", "symbols", "build", "bin"),
     "ppc_binutils": os.path.join("toolchains", "binutils-ppc"),
     "converted": "Converted",
     "nasm": os.path.join("native", "nasm", "build", "bin", "nasm.exe"),
@@ -91,7 +93,7 @@ DEFAULTS = {
                                        # with the functions shared among processes as the governor allows (base/parallel.py)
     "struct_recovery": "all",          # structures from field accesses: off, 32 (32-bit x86 only), all
 }
-_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "tracer_bin", "formats_bin", "engine_bin", "dosexec_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
+_PATHS = ("corpus", "openwatcom", "decompiler_bin", "xex_bin", "tracer_bin", "formats_bin", "engine_bin", "dosexec_bin", "symbols_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6", "xenix_c", "masm", "nasm", "msvc152",
           "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
           "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays",
           "win95_installed_hd")
