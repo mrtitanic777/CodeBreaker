@@ -85,7 +85,8 @@ var interned(const char* name) {
     static std::unordered_map<const char*, Obj*>* byptr = new std::unordered_map<const char*, Obj*>();
     static std::unordered_map<std::string, Obj*>* bytext = new std::unordered_map<std::string, Obj*>();
     auto it = byptr->find(name);
-    if (it != byptr->end()) return var(it->second);
+    // (keyed by the address for string literals; a name in a buffer that is reused is checked by its text)
+    if (it != byptr->end() && static_cast<StrObj*>(it->second)->s == name) return var(it->second);
     auto jt = bytext->find(name);
     Obj* o;
     if (jt != bytext->end()) o = jt->second;

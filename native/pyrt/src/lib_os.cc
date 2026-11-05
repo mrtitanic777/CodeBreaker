@@ -932,6 +932,7 @@ void init_os_modules() {
         wchar_t* blk = GetEnvironmentStringsW();
         for (wchar_t* p = blk; *p; p += wcslen(p) + 1) {
             std::wstring s = p;
+            if (s.empty() || s[0] == L'=') continue;   // (=C: and the like: not in os.environ)
             size_t eq = s.find(L'=', 1);
             if (eq == std::wstring::npos) continue;
             std::string k = narrow(s.substr(0, eq));

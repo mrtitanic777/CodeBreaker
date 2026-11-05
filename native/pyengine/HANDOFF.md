@@ -24,8 +24,14 @@ ports. The typed path (below the line) refuses ~98% of lines; the **dynamic mode
 | translated | 29 modules (port's 9 = 10,411 lines, and everything they import at module level: base, jobs, translate.l2/ir, exact.emu.dos, verify.verdicts ...) = 13,939 lines, 544 functions; **0 constructs refused** (100% of lines) |
 | compiles | **100%**: the 29 modules' 17k lines of port C++ (+ the rest) build with MSVC /O2 and /Od, no hand edits |
 | tests | tests/test_port.py as C++: **5/5 pass**, the cache on (reading pickles CPython wrote) and off (CB_NO_CACHE=1); the same 5/5 as the Python. test_builds_and_runs runs the whole pipeline: pre_ansi's rewriting, sqlite3+pickle cache, gcc/clang builds of the ported program and its output |
-| agrees (judge) | JUDGE_RESULT |
-| speed | TIMING |
+| agrees (judge) | the test run's calls of every codebreaker.port function (first 200 calls of each, 4,820 compared; built with `PYENGINE_NO_DIRECT=1` so module-internal calls are traced too): **137 functions agree, 8 differ, 0 C++-only**; the 19 Python-only are module and class bodies. The 8 are all in port/__main__ and environment-bound: the object folder is named by `os.getpid()` (args, build, build.one, build.text, run), the process environment differs by the trace's own PYRT_TRACE variables (env_for), files checked in a set's order (Python's own order changes per run: str hashes are salted), and `memory_used` (ctypes is not in pyrt: None instead of the process's private bytes -- the one real gap) |
+| speed | the 5 tests, cache off: C++ /O2 4.5 s, CPython 5.4 s (most of it is gcc/clang); the traced runs 99 s / 63 s (repr hashing) |
+
+Bugs the judge found and fixed on the way (all general): Match's repr is `%.50R` (truncated to 50);
+`=C:`-style keys are not in os.environ; interned attribute names were cached by a buffer's address
+(a reused `std::string` buffer gave a wrong name: ast nodes' fields); the trace's set order and closure
+counts. Also kept as checks: state/work/pyengine-dyn/samples/features.py (32 lines of output over the
+constructs: identical to CPython's) and samples/seg.py (ast segments of arith16.py: identical).
 
 Readability: each function keeps its Python name and signature, its docstring as a comment, its first
 source line above it; locals are hoisted `py::var`s; see state/work/pyengine-dyn/port1/codebreaker/base/ctext.cpp

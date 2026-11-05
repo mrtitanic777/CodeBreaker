@@ -437,7 +437,7 @@ void init_re_module(const var& mod) {
         const std::string& s = *mo->m.s;
         int64_t st = cp_at(s, mo->m.start(0), mo->ascii), en = cp_at(s, mo->m.end(0), mo->ascii);
         return new_str("<re.Match object; span=(" + std::to_string(st) + ", " + std::to_string(en) + "), match=" +
-                       repr_(group_value(mo, 0)) + ">");
+                       from_u32(to_u32(repr_(group_value(mo, 0))).substr(0, 50)) + ">");   // (%.50R, as CPython)
     });
     add_getter(t, "string", [](const var& s) { return MO(s)->string; });
     add_getter(t, "re", [](const var& s) { return MO(s)->pattern; });

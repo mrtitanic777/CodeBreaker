@@ -1,6 +1,7 @@
 // call.cc -- calling: Python's argument binding (positional, keyword, defaults, *args, **kwargs,
 // positional-only and keyword-only parameters, with CPython's TypeError messages), function objects
 // made from C++ functions and closures, builtins, bound methods, calling a class, a callable instance.
+#include <algorithm>
 #include <cstring>
 
 #include "rt.hpp"
@@ -206,15 +207,61 @@ static Trace& trace() {
     }();
     return *t;
 }
+// repr with sets' items sorted (a set of strs is in a different order in every CPython run: its hash
+// is salted), into lists, tuples and dicts; as trace_py.py's canon()
+static std::string canon(const var& v, int depth = 0) {
+    if (depth > 6 || !v.is_ref()) return repr_(v);
+    TypeObj* t = v.ref()->type;
+    if (t == T_set || t == T_frozenset) {
+        std::vector<std::string> items;
+        for (var x : each(v)) items.push_back(canon(x, depth + 1));
+        std::sort(items.begin(), items.end());
+        std::string o = t == T_set ? "{" : "frozenset({";
+        for (size_t i = 0; i < items.size(); i++) o += (i ? ", " : "") + items[i];
+        return o + (t == T_set ? "}" : "})");
+    }
+    if (t == T_list || t == T_tuple) {
+        auto items = collect(v);
+        std::string o = t == T_list ? "[" : "(";
+        for (size_t i = 0; i < items.size(); i++) o += (i ? ", " : "") + canon(items[i], depth + 1);
+        if (t == T_tuple && items.size() == 1) o += ",";
+        return o + (t == T_list ? "]" : ")");
+    }
+    if (t == T_dict) {
+        std::string o = "{";
+        bool first = true;
+        for (var k : each(v)) {
+            o += (first ? "" : ", ") + canon(k, depth + 1) + ": " + canon(v.getitem(k), depth + 1);
+            first = false;
+        }
+        return o + "}";
+    }
+    return repr_(v);
+}
 static std::string masked_hash(const var& v) {
     std::string r;
     try {
-        r = repr_(v);
+        // a str: the repr of its first 2048 characters and its length (as trace_py.py)
+        if (v.is_ref() && v.ref()->type == T_str && static_cast<StrObj*>(v.ref())->n > 2048)
+            r = repr_(v.slice(0, 2048)) + "#" + std::to_string(static_cast<StrObj*>(v.ref())->n);
+        else
+            r = canon(v);
     } catch (...) {
         r = "<repr failed>";
     }
     std::string m;
     for (size_t i = 0; i < r.size(); i++) {
+        // tempfile's random names (tmp + 8 characters): masked, as trace_py.py masks them
+        if (r.compare(i, 3, "tmp") == 0 && i + 11 <= r.size()) {
+            bool ok = true;
+            for (size_t k = i + 3; k < i + 11; k++)
+                if (!(islower((unsigned char)r[k]) || isdigit((unsigned char)r[k]) || r[k] == '_')) ok = false;
+            if (ok) {
+                m += "tmp?";
+                i += 10;
+                continue;
+            }
+        }
         if (r[i] == '0' && i + 1 < r.size() && r[i + 1] == 'x') {
             m += "0x?";
             i += 2;
@@ -226,6 +273,8 @@ static std::string masked_hash(const var& v) {
     }
     // (the first 4096 bytes and the length: a long text's whole repr is not hashed at every call)
     std::string key = m.substr(0, 4096) + ":" + std::to_string(m.size());
+    static bool text = getenv("PYRT_TRACE_TEXT") != nullptr;   // (the text itself, for finding a difference)
+    if (text) { std::string t = m.substr(0, 400); for (auto& c : t) if (c == 10 || c == 13 || c == 44 || c == 40 || c == 41) c = 95; return "[" + t + "]"; }
     uint64_t h = 1469598103934665603ULL;
     for (unsigned char c : key) { h ^= c; h *= 1099511628211ULL; }
     char b[24];
@@ -234,8 +283,13 @@ static std::string masked_hash(const var& v) {
 }
 static var traced_call(FuncObj* f, var* slots, size_t n) {
     Trace& tr = trace();
+    // the first 200 calls of each function (both sides keep the same prefix)
+    static std::unordered_map<std::string, int>* counts = new std::unordered_map<std::string, int>();   // (per qualname, as trace_py.py)
+    if (tr.depth > 0 || ++(*counts)[f->module + ":" + f->qualname] > 200) return f->fn(slots);   // (not the reprs the trace itself makes)
     std::string head = f->module + ":" + f->qualname + "(";
+    tr.depth++;
     for (size_t i = 0; i < n; i++) head += (i ? "," : "") + masked_hash(slots[i]);
+    tr.depth--;
     head += ")";
     var r;
     try {
@@ -244,7 +298,10 @@ static var traced_call(FuncObj* f, var* slots, size_t n) {
         fprintf(tr.f, "%s raise %s\n", head.c_str(), type_of(e.value)->name.c_str());
         throw;
     }
-    fprintf(tr.f, "%s -> %s\n", head.c_str(), masked_hash(r).c_str());
+    tr.depth++;
+    std::string rh = masked_hash(r);
+    tr.depth--;
+    fprintf(tr.f, "%s -> %s\n", head.c_str(), rh.c_str());
     return r;
 }
 
