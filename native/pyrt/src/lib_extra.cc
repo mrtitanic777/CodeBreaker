@@ -758,6 +758,7 @@ void init_ctypes_util(const var& m);
 void init_wintypes(const var& m);
 void init_pytest(const var& m);
 void init_unittest(const var& m);
+void init_crypto_modules();
 
 // memoryview: a view of bytes, a bytearray or a ctypes object (raw_of reads it through .obj)
 static void make_memoryview() {
@@ -807,6 +808,131 @@ static void make_memoryview() {
     t::memoryview = mv;
 }
 
+// ------------------------------------------------------------------------------------------ jsonschema
+// Draft 2020-12 validation over the keywords CodeBreaker's schemas use (L2's: type, properties, required,
+// additionalProperties, items, minItems, enum, const, anyOf / oneOf / allOf, if / then / else, minimum,
+// $ref into the document's $defs): validate() raises ValidationError with the first failure
+namespace {
+struct SchemaCheck {
+    var root;
+    std::string why;
+    var resolve(const std::string& ref) {
+        if (ref.empty() || ref[0] != '#') raise(E_NotImplementedError, "jsonschema: only local $ref (" + ref + ")");
+        var s = root;
+        size_t i = 1;
+        while (i < ref.size()) {
+            if (ref[i] == '/') i++;
+            size_t j = ref.find('/', i);
+            std::string part = ref.substr(i, j == std::string::npos ? std::string::npos : j - i);
+            s = s.getitem(new_str(part));
+            if (j == std::string::npos) break;
+            i = j;
+        }
+        return s;
+    }
+    bool type_ok(const std::string& t, const var& v) {
+        if (t == "string") return is_str(v);
+        if (t == "integer") return (is_int(v) && !v.is_bool()) || (v.is_float() && v.as_double() == std::floor(v.as_double()));
+        if (t == "number") return (is_int(v) && !v.is_bool()) || v.is_float();
+        if (t == "boolean") return v.is_bool();
+        if (t == "object") return is_dict(v);
+        if (t == "array") return is_list(v);
+        if (t == "null") return v.is_none();
+        return true;
+    }
+    bool ok(const var& s, const var& v, const std::string& at) {
+        if (s.is_bool()) { if (!s.truthy()) why = at + ": False schema does not allow " + repr_(v); return s.truthy(); }
+        if (!is_dict(s)) return true;
+        auto has = [&](const char* k) { return in(new_str(k), s); };
+        auto get = [&](const char* k) { return s.getitem(new_str(k)); };
+        if (has("$ref") && !ok(resolve(str_utf8(get("$ref"))), v, at)) return false;
+        if (has("type")) {
+            var t = get("type");
+            bool any = false;
+            if (is_str(t)) any = type_ok(str_utf8(t), v);
+            else for (var x : each(t)) if (type_ok(str_utf8(x), v)) any = true;
+            if (!any) { why = at + ": " + repr_(v) + " is not of type " + repr_(t); return false; }
+        }
+        if (has("const") && !(get("const") == v && (get("const").is_bool() == v.is_bool()))) { why = at + ": " + repr_(get("const")) + " was expected"; return false; }
+        if (has("enum")) {
+            bool found = false;
+            for (var x : each(get("enum"))) if (x == v && x.is_bool() == v.is_bool()) found = true;
+            if (!found) { why = at + ": " + repr_(v) + " is not one of " + repr_(get("enum")); return false; }
+        }
+        if (has("minimum") && (is_int(v) || v.is_float()) && v < get("minimum")) { why = at + ": " + repr_(v) + " is less than the minimum of " + repr_(get("minimum")); return false; }
+        if (is_dict(v)) {
+            if (has("required"))
+                for (var k : each(get("required")))
+                    if (!in(k, v)) { why = at + ": " + repr_(k) + " is a required property"; return false; }
+            var props = has("properties") ? get("properties") : var(None);
+            for (var k : each(v)) {
+                std::string p = at + "/" + str_(k);
+                if (!props.is_none() && in(k, props)) { if (!ok(props.getitem(k), v.getitem(k), p)) return false; }
+                else if (has("additionalProperties")) {
+                    var ap = get("additionalProperties");
+                    if (ap.is_bool() && !ap.truthy()) { why = at + ": Additional properties are not allowed (" + repr_(k) + " was unexpected)"; return false; }
+                    if (!ap.is_bool() && !ok(ap, v.getitem(k), p)) return false;
+                }
+            }
+        }
+        if (is_list(v)) {
+            if (has("minItems") && len_(v) < get("minItems").as_int64()) { why = at + ": " + repr_(v) + " is too short"; return false; }
+            if (has("items")) {
+                int64_t i = 0;
+                for (var x : each(v)) if (!ok(get("items"), x, at + "/" + std::to_string(i++))) return false;
+            }
+        }
+        if (has("allOf")) for (var x : each(get("allOf"))) if (!ok(x, v, at)) return false;
+        if (has("anyOf")) {
+            bool any = false;
+            std::string keep = why;
+            for (var x : each(get("anyOf"))) if (ok(x, v, at)) { any = true; break; }
+            if (!any) { why = at + ": " + repr_(v) + " is not valid under any of the given schemas"; return false; }
+            why = keep;
+        }
+        if (has("oneOf")) {
+            int n = 0;
+            for (var x : each(get("oneOf"))) if (ok(x, v, at)) n++;
+            if (n != 1) { why = at + ": " + repr_(v) + (n ? " is valid under each of several schemas" : " is not valid under any of the given schemas"); return false; }
+        }
+        if (has("if")) {
+            std::string keep = why;
+            bool cond = ok(get("if"), v, at);
+            why = keep;
+            if (cond && has("then") && !ok(get("then"), v, at)) return false;
+            if (!cond && has("else") && !ok(get("else"), v, at)) return false;
+        }
+        return true;
+    }
+};
+}  // namespace
+static void init_jsonschema(const var& m) {
+    var err = mkcls("ValidationError", {t::Exception}, {}, "jsonschema.exceptions");
+    mod_set(m, "ValidationError", err);
+    mod_set(m, "SchemaError", mkcls("SchemaError", {t::Exception}, {}, "jsonschema.exceptions"));
+    var ns = new_dict();
+    ns.setitem("__init__"_s, def("__init__", "self, schema", {}, [](var self, var schema) { self.setattr("schema", schema); return var(None); }));
+    ns.setitem("validate"_s, def("validate", "self, instance", {}, [err](var self, var inst) {
+        SchemaCheck c;
+        c.root = self.getattr("schema");
+        if (!c.ok(c.root, inst, "$")) raise(make_exc_args(T(err), {new_str(c.why)}));
+        return var(None);
+    }));
+    ns.setitem("is_valid"_s, def("is_valid", "self, instance", {}, [](var self, var inst) {
+        SchemaCheck c;
+        c.root = self.getattr("schema");
+        return var(c.ok(c.root, inst, "$"));
+    }));
+    var v = make_class("Draft202012Validator", "Draft202012Validator", {}, ns, {}, "jsonschema");
+    add_static(T(v), "check_schema", [](const CallArgs& a) -> var {
+        if (!is_dict(a.pos.at(0)) && !a.pos[0].is_bool()) raise(T(import("jsonschema").getattr("SchemaError")), "a schema is an object or a boolean");
+        return None;
+    });
+    mod_set(m, "Draft202012Validator", v);
+    mod_set(m, "Draft7Validator", v);
+    mod_def(m, "validate", [v](const CallArgs& a) { call1(v, a.pos.at(1)).call("validate", a.pos.at(0)); return None; });
+}
+
 var eval_expr_(const var& src, const var& globals, const var& locals);   // lib_ast.cc
 var run_module_(const std::string& name, const std::string& run_name);  // module.cc
 const char* module_for_file_(const std::string& path);                  // module.cc
@@ -839,6 +965,8 @@ void init_extra_modules() {
     register_native_module("ctypes.wintypes", init_wintypes);
     register_native_module("pytest", init_pytest);          // (lib_pytest.cc: the API and the runner)
     register_native_module("unittest", init_unittest);      // (lib_pytest.cc: TestCase, the skips, main)
+    init_crypto_modules();                                  // (lib_crypto.cc: cryptography / Crypto over bcrypt)
+    register_native_module("jsonschema", init_jsonschema);
     // z3: not in the C++ runtime until libz3 is vendored (a decision pending): importing it says so
     register_native_module("z3", [](const var&) {
         raise(E_ImportError, "z3 is not in the C++ runtime: libz3 is not vendored yet (emulate/symbolic.py and "

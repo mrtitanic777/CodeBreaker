@@ -2,6 +2,7 @@
 // initialisation; import runs its init once (sys.modules first, the parents before the child, a
 // partially initialised module visible to circular imports as in CPython); the library modules
 // (os, re, json ...) are native and made on first import.
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <set>
@@ -21,6 +22,7 @@ static Registry& reg() {
     return *r;
 }
 var g_sys_modules;   // sys.modules (a dict)
+const char* module_for_file_(const std::string& path);
 
 static var new_module_obj(const std::string& name) {
     auto* m = new ModuleObj();
@@ -87,6 +89,39 @@ static var load_one(const std::string& name) {
             throw;
         }
         return mod;
+    }
+    // by path, as Python's finders: a sys.path entry holding the dotted name as a file the program has under
+    // another name (tests.java.x is java.x), or as a folder (a namespace package: tests)
+    if (name != "sys" && name.find('/') == std::string::npos) {
+        var sp = sysmods()->get(new_str("sys")) ? sysmods()->get(new_str("sys"))->getattr("path") : var(None);
+        std::vector<std::string> entries;
+        if (!sp.is_none()) for (var p : each(sp)) if (is_str(p)) entries.push_back(str_utf8(p));
+        entries.push_back(".");
+        std::string rel = name;
+        std::replace(rel.begin(), rel.end(), '.', '\\');
+        for (auto& en : entries) {
+            std::string base = (en.empty() ? std::string(".") : en) + "\\" + rel;
+            for (const std::string& f : {base + ".py", base + "\\__init__.py"}) {
+                if (GetFileAttributesA(f.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+                const char* mn = module_for_file_(f);
+                if (mn && name != mn) {
+                    var mod = import(mn);
+                    sysmods()->set(new_str(name), mod);
+                    return mod;
+                }
+            }
+            DWORD at = GetFileAttributesA(base.c_str());
+            if (at != INVALID_FILE_ATTRIBUTES && (at & FILE_ATTRIBUTE_DIRECTORY) && name.find('.') == std::string::npos) {
+                var mod = new_module_obj(name);
+                auto* mo = static_cast<ModuleObj*>(mod.ref());
+                mo->cell("__name__")->v = new_str(name);
+                mo->cell("__path__")->v = new_list({new_str(base)});
+                mo->cell("__package__")->v = new_str(name);
+                mo->cell("__doc__")->v = None;
+                sysmods()->set(new_str(name), mod);
+                return mod;
+            }
+        }
     }
     var e = make_exc(E_ModuleNotFoundError, "No module named '" + name + "'");
     e.setattr("name", new_str(name));

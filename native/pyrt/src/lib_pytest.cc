@@ -61,6 +61,10 @@ std::vector<var> marks_of(const var& fn, const var& cls, const var& mod) {
         var m = getattr(o, "pytestmark"_s, None);
         if (m.is_none()) continue;
         if (is_tuple(m) && len_(m) == 3 && is_str(m[var(0)])) { out.push_back(m); continue; }
+        if (m.is_ref() && type_of(m)->name == "MarkDecorator") {   // (pytestmark = pytest.mark.x: one mark, not a list)
+            out.push_back(mark_of(str_utf8(m.getattr("name")), m.getattr("args"), m.getattr("kwargs")));
+            continue;
+        }
         for (var x : each(m)) out.push_back(is_tuple(x) ? x : mark_of(str_utf8(x.getattr("name")), x.getattr("args"), x.getattr("kwargs")));
     }
     return out;
@@ -800,7 +804,7 @@ void init_pytest(const var& m) {
     mdns.setitem("__call__"_s, nat("__call__", [](const CallArgs& a) -> var {
         var self = a.pos.at(0);
         std::string name = str_utf8(self.getattr("name"));
-        if (a.pos.size() == 2 && a.kw.empty() && len_(self.getattr("args")) == 0 && callable(a.pos[1]).truthy() &&
+        if (a.pos.size() == 2 && a.kw.empty() && callable(a.pos[1]).truthy() &&   // (pytest's rule: one callable: decorate it)
             (a.pos[1].ref()->type == T_function || a.pos[1].ref()->type->layout == Layout::Type)) {
             add_mark(a.pos[1], mark_of(name, self.getattr("args"), self.getattr("kwargs")));
             return a.pos[1];
