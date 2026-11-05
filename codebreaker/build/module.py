@@ -536,8 +536,10 @@ def _assembled16(b, nef, at, segs, stems, public, folder, env, carried=(), force
             # segment 4 and GDI's 45, reached far from a run's bytes -- the build stopped there)
             inside = max([o for o in starts.get(seg, ()) if o <= t] or [None])
             name = at.get((seg, inside)) if inside is not None else None
-            if name is None:
-                continue
+            if name is None or seg not in segs or t >= max(segs[seg]["length"], segs[seg]["minalloc"] or 0):
+                continue                                   # (nor does a place past the segment's end:
+                #                                            no piece would define it -- a stand-in
+                #                                            elsewhere, and the link refused the near call)
             if name in forced:
                 entries[(seg, t)] = "_sub_%d_%04X" % (seg, t)
                 for run in [r for r in done if name in r]:
@@ -1221,6 +1223,15 @@ def _build16(b, path, m, folder):
     from codebreaker.analyze import origin
     b.origins = {o.name: o for o in origin.module16(path, more=m.by_va).functions.values()}
     forced = {n for n in m.order if n in stems and n in b.origins and b.origins[n].language == "assembly"}
+    # A function of a 32-bit code segment (NE flag 2000h: GDI's 36 and 38, its flat thunks, which
+    # the thunk compiler wrote as use32 assembly) is its instructions: the C compiler here makes
+    # 16-bit code, which would run as 32-bit code in that segment
+    for n in m.order:
+        sg = segment_of.get(n)
+        if n in stems and n not in forced and sg in segs and segs[sg]["kind"] == "CODE" and segs[sg]["flags"] & 0x2000:
+            forced.add(n)
+            if n in b.origins:
+                b.origins[n].evidence.append("in a 32-bit code segment (%d): not 16-bit C" % sg)
     # C the decompiler got wrong in a way that can be seen: a call it gives the caller's CS as
     # an argument (a far call whose arguments it read a word off -- see the decompiler's
     # far-call argument recovery). Until that is put right, such a function is rebuilt from
