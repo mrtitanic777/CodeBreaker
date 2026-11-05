@@ -23,6 +23,7 @@ struct DynOptions {
     bool top_only = false;               // closure: module-level imports only ...
     std::vector<std::string> full_closure;   // ... but every import of these packages' modules
     std::string pyrt;                    // native/pyrt (for the CMakeLists); default <root>/native/pyrt
+    std::string exe = "program";         // the executable's name
 };
 
 struct DynRefusal {

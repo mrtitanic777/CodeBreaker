@@ -4,6 +4,9 @@
 // (os, re, json ...) are native and made on first import.
 #include <cstring>
 #include <map>
+#include <set>
+#include <vector>
+#include <windows.h>
 
 #include "rt.hpp"
 
@@ -152,17 +155,71 @@ var globals_of(module_def& m) {
 
 bool module_registered_(const std::string& name) { return reg().defs.count(name) || reg().natives.count(name); }
 
+// a script path given as `python path.py`: the module registered for that file (compared as absolute,
+// case-insensitive paths with either slash)
+static std::string norm_path_(const std::string& p) {
+    std::string a = p;
+    char buf[4096];
+    if (DWORD n = GetFullPathNameA(p.c_str(), sizeof buf, buf, nullptr); n > 0 && n < sizeof buf) a = buf;
+    for (auto& c : a) c = c == '/' ? '\\' : (char)tolower((unsigned char)c);
+    return a;
+}
+static const char* module_for_file_(const std::string& path) {
+    std::string want = norm_path_(path);
+    for (auto& [name, def] : reg().defs)
+        if (def->file_ && norm_path_(def->file_) == want) return name.c_str();
+    return nullptr;
+}
+
+extern std::vector<std::string> g_argv;
 int run_main(const char* module, int argc, char** argv) {
     init_runtime(argc, argv);
     auto& r = reg();
-    auto d = r.defs.find(module);
+    // the command line as python's: interpreter flags skipped (-u -B -I -E -s -S -O, -X opt, -W opt),
+    // then `-m module args`, `script.py args`, or (none) the program's own main module
+    std::string name = module;
+    size_t i = 1;
+    static const std::set<std::string> flags = {"-u", "-B", "-I", "-E", "-s", "-S", "-O", "-OO", "-q", "-P"};
+    while (i < g_argv.size()) {
+        const std::string& f = g_argv[i];
+        if (flags.count(f)) i++;
+        else if (f == "-X" || f == "-W") i += 2;
+        else if (f.size() > 2 && (f.compare(0, 2, "-X") == 0 || f.compare(0, 2, "-W") == 0)) i++;
+        else break;
+    }
+    std::vector<std::string> rest;
+    if (i + 1 < g_argv.size() && g_argv[i] == "-m") {
+        name = g_argv[i + 1];
+        rest.assign(g_argv.begin() + (long long)i + 2, g_argv.end());
+    } else if (i < g_argv.size() && g_argv[i] == "-c") {
+        fprintf(stderr, "-c: a translated program runs no source text\n");
+        return 2;
+    } else if (i < g_argv.size() && g_argv[i].size() > 3 && g_argv[i].compare(g_argv[i].size() - 3, 3, ".py") == 0) {
+        const char* m = module_for_file_(g_argv[i]);
+        if (!m) {
+            fprintf(stderr, "%s: not a module of this program\n", g_argv[i].c_str());
+            return 2;
+        }
+        name = m;
+        rest.assign(g_argv.begin() + (long long)i + 1, g_argv.end());
+    } else
+        rest.assign(g_argv.begin() + (long long)(i < g_argv.size() ? i : g_argv.size()), g_argv.end());
+    auto d = r.defs.find(name);
+    if (d != r.defs.end() && d->second->package_) {       // python -m package: its __main__
+        name += ".__main__";
+        d = r.defs.find(name);
+    }
     if (d == r.defs.end()) {
-        fprintf(stderr, "no module named %s\n", module);
+        fprintf(stderr, "No module named %s\n", name.c_str());
         return 1;
     }
+    g_argv.clear();
+    g_argv.push_back(d->second->file_ ? d->second->file_ : name);
+    g_argv.insert(g_argv.end(), rest.begin(), rest.end());
+    extern void set_sys_argv_();
+    set_sys_argv_();
     try {
         // python -m: the module runs as __main__ (its parents imported first)
-        std::string name = module;
         if (name.find('.') != std::string::npos) import(name.substr(0, name.rfind('.')).c_str());
         module_def* def = d->second;
         def->global("__name__") = new_str("__main__");
@@ -176,7 +233,9 @@ int run_main(const char* module, int argc, char** argv) {
         sysmods()->set(new_str("__main__"), mod);
         def->init_();
     } catch (error& e) {
+        extern void flush_std_();
         if (isinstance_(e.value, E_SystemExit)) {
+            flush_std_();
             var code = e.value.getattr("code");
             if (code.is_none()) return 0;
             if (is_int(code)) return (int)code.as_int64();
@@ -185,6 +244,7 @@ int run_main(const char* module, int argc, char** argv) {
             return 1;
         }
         extern void print_exception_(const var& e);
+        flush_std_();
         print_exception_(e.value);
         return 1;
     }

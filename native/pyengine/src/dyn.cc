@@ -50,6 +50,10 @@ static const std::set<std::string>& cpp_reserved() {
         "environ", "unix", "linux", "_WIN32", "BUFSIZ", "FILENAME_MAX", "CHAR_BIT", "INT_MAX", "INT_MIN", "SIZE_MAX", "EXIT_SUCCESS",
         "EXIT_FAILURE", "RAND_MAX", "MAX_PATH", "INFINITY", "NAN", "HUGE_VAL", "signbit", "isnan", "isinf", "isfinite",
         "fpclassify", "setjmp", "longjmp", "y", "py_module_", "py_init_",
+        // MSVC's own keywords and their old spellings (cdecl, _asm ...: synonyms of __cdecl, __asm unless /Za)
+        "cdecl", "_cdecl", "_asm", "_fastcall", "_stdcall", "_thiscall", "_vectorcall", "_inline", "_forceinline", "_based",
+        "_declspec", "_except", "_finally", "_try", "_leave", "_int8", "_int16", "_int32", "_int64", "_alignof", "_uuidof",
+        "_ptr32", "_ptr64", "_restrict", "_sptr", "_uptr", "_unaligned", "_w64", "_pascal", "_fortran", "_syscall",
         // <cmath>, <cerrno>, <cstdio>, <climits>, <cstdint>, <cfloat> macros
         "OVERFLOW", "UNDERFLOW", "DOMAIN", "SING", "TLOSS", "PLOSS", "EPERM", "ENOENT", "ESRCH", "EINTR", "EIO", "ENXIO", "E2BIG",
         "ENOEXEC", "EBADF", "ECHILD", "EAGAIN", "ENOMEM", "EACCES", "EFAULT", "EBUSY", "EEXIST", "EXDEV", "ENODEV", "ENOTDIR",
@@ -79,6 +83,23 @@ static std::string ident(const std::string& n) {
     if (cpp_reserved().count(o)) o = "py_" + o;
     if (o.size() >= 2 && o[0] == '_' && (o[1] == '_' || isupper((unsigned char)o[1]))) o = "py" + o;   // (reserved in C++)
     return o;
+}
+// a direct call of a module function whose name is also one of py::'s free functions (py_object.hpp): the
+// name in parentheses, so argument-dependent lookup does not bring py::'s in beside it (`(is_int)(t)`)
+static std::string adl_safe(const std::string& n) {
+    static const std::set<std::string> s = {
+        "abs", "add", "advance_", "and_", "as_double", "as_int64", "ascii", "assert_", "attr", "bin", "builtin", "bytes_from",
+        "call", "call_", "callable", "callmethod_", "chr", "class_name", "classmethod", "current_exception", "def",
+        "def_generator", "delattr", "delitem", "dict", "dir", "divmod", "eq", "floordiv", "flt", "fmt", "format",
+        "frozenset_from", "fstr", "getattr", "getitem", "global", "hasattr", "hash", "hash_", "hex", "id", "import",
+        "import_from", "import_star", "import_top", "in", "is", "is_bool", "is_bytes", "is_dict", "is_float", "is_int", "is_list",
+        "is_none", "is_not", "is_ref", "is_small_int", "is_str", "is_tuple", "is_unbound", "isinstance", "issubclass", "iter",
+        "len", "len_", "list", "list_from", "lt", "make_class", "make_function", "matches", "matmul", "module", "native",
+        "new_dict", "next", "next_", "not_", "not_in", "oct", "operator", "or_", "ord", "pow", "print", "print_", "property",
+        "raise", "raise_from", "range", "repr", "reraise", "round", "set", "setattr", "setitem", "slice", "slice_obj", "small",
+        "staticmethod", "str", "str_from", "super_", "to_vector", "truthy", "truthy_", "tuple", "type", "unpack", "vars",
+        "with_enter", "yield_from", "each", "kw", "star"};
+    return s.count(n) ? "(" + n + ")" : n;
 }
 // Class.method -> Class__method
 static std::string dotted_ident(std::string n) {
@@ -592,7 +613,7 @@ private:
                 const FunctionDef* f = module_defs_[n->id];
                 size_t np = f->args->posonlyargs.size() + f->args->args.size();
                 if (c->args.size() == np) {
-                    std::string o = ident(n->id) + "(";
+                    std::string o = adl_safe(ident(n->id)) + "(";
                     for (size_t i = 0; i < c->args.size(); i++) o += (i ? ", " : "") + expr(c->args[i]);
                     return o + ")";
                 }
@@ -739,6 +760,11 @@ private:
             const pyfront::comprehension* g = gens[i];
             std::string it = i == 0 ? first_iter : expr(g->iter);
             std::string v = "py_it" + t();
+            if (it.find("[&]") != std::string::npos) {   // (MSVC: a lambda in a range-for's range inside a lambda miscompiles)
+                o += "{ py::var " + v + "r = " + it + "; ";
+                it = v + "r";
+                depth++;
+            }
             o += "for (py::var " + v + " : py::each(" + it + ")) { " + assign_target(g->target, v) + " ";
             depth++;
             for (auto* f : g->ifs) {
@@ -832,9 +858,10 @@ private:
     std::string lambda(const Lambda* l) {
         const Scope* s = sc_.scope_of(l);
         std::string sig, params, defaults;
+        const Scope* saved_scope = cur_param_scope_;   // (a lambda in a default: the outer signature goes on after it)
         cur_param_scope_ = s;
         signature(l->args, sig, params, defaults);
-        cur_param_scope_ = nullptr;
+        cur_param_scope_ = saved_scope;
         Fn* outer = fn_;
         Fn inner;
         inner.scope = s;
@@ -1061,9 +1088,10 @@ private:
         std::string sig, params, defaults;
         Fn* outer = fn_;
         // defaults are evaluated where the def is
+        const Scope* saved_scope = cur_param_scope_;   // (a lambda in a default: the outer signature goes on after it)
         cur_param_scope_ = s;
         signature(f->args, sig, params, defaults);
-        cur_param_scope_ = nullptr;
+        cur_param_scope_ = saved_scope;
         Fn inner;
         inner.scope = s;
         inner.generator = gen;
@@ -1743,8 +1771,13 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
                      "if(NOT CMAKE_BUILD_TYPE)\n  set(CMAKE_BUILD_TYPE Release)\nendif()\n"
                      "if(MSVC)\n  add_compile_options(/W1 /permissive- /utf-8 /EHsc /bigobj)\nendif()\n"
                      "add_subdirectory(" + pyrt + " pyrt)\n"
-                     "add_executable(program\n" + cmake_srcs + ")\ntarget_link_libraries(program PRIVATE pyrt)\n"
-                     "if(MSVC)\n  target_link_options(program PRIVATE /STACK:268435456)\nendif()\n";
+                     "add_executable(" + o.exe + "\n" + cmake_srcs + ")\ntarget_link_libraries(" + o.exe + " PRIVATE pyrt)\n"
+                     "# a whole tree is hundreds of modules: unity batches over one precompiled py_object.hpp (each module is\n"
+                     "# its own namespace, so batching them is safe); -DPYDYN_UNITY=OFF builds one object per module\n"
+                     "option(PYDYN_UNITY \"unity batches\" ON)\nset(PYDYN_BATCH 24 CACHE STRING \"modules per unity batch\")\n"
+                     "target_precompile_headers(" + o.exe + " PRIVATE <py_object.hpp>)\n"
+                     "if(PYDYN_UNITY)\n  set_target_properties(" + o.exe + " PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${PYDYN_BATCH})\nendif()\n"
+                     "if(MSVC)\n  target_link_options(" + o.exe + " PRIVATE /STACK:268435456)\nendif()\n";
     write_if_changed(fs::path(o.out) / "CMakeLists.txt", cm);
     std::string j = "{\n";
     for (size_t i = 0; i < out.size(); i++) {
