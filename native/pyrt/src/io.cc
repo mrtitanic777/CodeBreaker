@@ -258,15 +258,15 @@ void flush_std_() {
     fflush(stderr);
 }
 
-void print_exception_(const var& e) {
+// a traceback's text (the cause first, as Python prints it) to f: stderr, or stdout for pytest's reports
+void print_exception_to_(const var& e, FILE* f) {
     flush_std_();
-    std::string msg;
     var ctx = getattr(e, interned("__cause__"), None);
     if (!ctx.is_none()) {
-        print_exception_(ctx);
-        fputs("\nThe above exception was the direct cause of the following exception:\n\n", stderr);
+        print_exception_to_(ctx, f);
+        fputs("\nThe above exception was the direct cause of the following exception:\n\n", f);
     }
-    fputs("Traceback (most recent call last):\n  (translated code)\n", stderr);
+    fputs("Traceback (most recent call last):\n  (translated code)\n", f);
     std::string s;
     try {
         s = str_(e);
@@ -275,10 +275,11 @@ void print_exception_(const var& e) {
     }
     TypeObj* t = type_of(e);
     std::string name = t->module == "builtins" ? t->qualname : t->module + "." + t->qualname;
-    if (s.empty()) fprintf(stderr, "%s\n", name.c_str());
-    else fprintf(stderr, "%s: %s\n", name.c_str(), s.c_str());
-    fflush(stderr);
+    if (s.empty()) fprintf(f, "%s\n", name.c_str());
+    else fprintf(f, "%s: %s\n", name.c_str(), s.c_str());
+    fflush(f);
 }
+void print_exception_(const var& e) { print_exception_to_(e, stderr); }
 
 bool module_registered_(const std::string& name);
 void set_sys_argv_() {

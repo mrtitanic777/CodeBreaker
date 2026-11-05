@@ -21,6 +21,7 @@ namespace py {
 TypeObj* T(const var& v);
 const char* module_for_file_(const std::string& path);
 void print_exception_(const var& e);
+void print_exception_to_(const var& e, FILE* f);   // io.cc (pytest reports on stdout, as pytest does)
 
 namespace {
 
@@ -229,7 +230,7 @@ void finish(std::vector<var>& fins) {
                 next_(g, dummy);
             } else call0(g);
         } catch (error& e) {
-            print_exception_(e.value);
+            print_exception_to_(e.value, stdout);
         }
     }
     fins.clear();
@@ -406,7 +407,7 @@ int run_main_(const var& argv) {
             errors++;
             fprintf(stdout, "_ ERROR collecting %s _\n", rel.c_str());
             fflush(stdout);
-            print_exception_(e.value);
+            print_exception_to_(e.value, stdout);
             fail_lines.push_back("ERROR " + rel + " - " + tname(e.value) + ": " + short_repr(e.value));
             continue;
         }
@@ -517,6 +518,10 @@ int run_main_(const var& argv) {
                             run.class_fin.push_back(nat("tearDownClass", [cls](const CallArgs&) { cls.call("tearDownClass"); return None; }));
                         }
                         t.instance = call1(base_item.cls, new_str(base_item.name));
+                        {   // (autouse fixtures apply to a TestCase's tests too, as pytest's do)
+                            std::vector<std::string> stack;
+                            for (auto& [fname, fx] : fixtures) if (fx.autouse) fixture_value(fname, t, stack);
+                        }
                         t.instance.call("setUp");
                         try {
                             t.instance.call(base_item.name.c_str());
@@ -556,7 +561,7 @@ int run_main_(const var& argv) {
                     failed++;
                     fprintf(stdout, "_______ %s _______\n", nodeid.c_str());
                     fflush(stdout);
-                    print_exception_(err);
+                    print_exception_to_(err, stdout);
                     std::string msg = short_repr(err);
                     if (msg.size() > 160) msg.resize(160);
                     for (auto& ch : msg) if (ch == '\n') ch = ' ';
