@@ -41,6 +41,7 @@ using Strs = std::vector<std::string>;
 
 struct Decline : std::runtime_error {
     explicit Decline(const std::string& m) : std::runtime_error(m) {}
+    std::string where;    // the function (its Sym's owner.name) being written, when it is one
 };
 
 // ---------------------------------------------------------------------------------------------- entry points

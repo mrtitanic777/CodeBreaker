@@ -33,7 +33,11 @@ const std::unordered_set<std::string>& keywords() {
             "export extern false float for friend goto if inline int long mutable namespace new noexcept not not_eq nullptr "
             "operator or or_eq private protected public register reinterpret_cast return short signed sizeof static static_assert "
             "static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using "
-            "virtual void volatile wchar_t while xor xor_eq NULL errno assert min max small near far stdin stdout stderr");
+            "virtual void volatile wchar_t while xor xor_eq NULL errno assert min max small near far stdin stdout stderr "
+            // (the C runtime's macros: a Python name spelled like one cannot be a C++ name)
+            "_MAX_DIR _MAX_PATH _MAX_FNAME _MAX_EXT _MAX_DRIVE EOF BUFSIZ FILENAME_MAX INFINITY NAN HUGE_VAL DOMAIN OVERFLOW "
+            "UNDERFLOW TLOSS PLOSS SING EXIT_SUCCESS EXIT_FAILURE RAND_MAX CHAR_BIT CHAR_MIN CHAR_MAX INT_MAX INT_MIN UINT_MAX "
+            "LONG_MAX LONG_MIN SHRT_MAX SHRT_MIN SEEK_SET SEEK_CUR SEEK_END L_tmpnam TMP_MAX CLOCKS_PER_SEC");
         std::string w;
         while (in >> w) s.insert(w);
         return s;
@@ -49,7 +53,16 @@ int prec(const std::string& op) {
     return it == p.end() ? 16 : it->second;
 }
 
-std::string ident(const std::string& name) { return keywords().count(name) ? name + "_" : name; }
+// a C++ name for a Python one: a keyword or macro gets "_"; a record key that is not an identifier ("bytes per
+// sector") has its other characters as "_"
+std::string ident(const std::string& name) {
+    if (keywords().count(name)) return name + "_";
+    std::string out = name;
+    for (char& c : out)
+        if (!(std::isalnum((unsigned char)c) || c == '_' || (unsigned char)c >= 0x80)) c = '_';
+    if (!out.empty() && std::isdigit((unsigned char)out[0])) out = "_" + out;
+    return out;
+}
 
 // ---------------------------------------------------------------------------------------------- the API map
 // codebreaker/java/apimap.py's registry, the part this back end reads: a Python symbol's C++ target
@@ -182,7 +195,10 @@ std::string cpp_string(const std::string& s) {
         else if (ch >= 0x20 && ch < 0x7F) out += (char)ch;
         else out += oct3(ch);
     }
-    return out + "\"";
+    out += "\"";
+    if (s.find('\0') != std::string::npos)   // (a NUL inside: the literal keeps its length)
+        return "std::string(" + out + ", " + std::to_string(s.size()) + ")";
+    return out;
 }
 
 // a py::bytes literal from a latin-1 string
@@ -258,13 +274,20 @@ struct PyWriter : Emitter {
                 for (auto& x : t->args) a.push_back(ctype(x));
                 return "std::tuple<" + join(a, ", ") + ">";
             }
-            if (n == "py.iter") throw Decline("an iterator as a declared type");
+            if (n == "py.iter" || n == "py.generator") return "py::" + n.substr(3) + "<" + ctype(t->args[0]) + ">";
             if (n == "py.list" || n == "py.set" || n == "py.dict") {
                 Strs a;
                 for (auto& x : t->args) a.push_back(ctype(x));
                 return "py::" + n.substr(3) + "<" + join(a, ", ") + ">";
             }
-            if (starts(n, "py.")) return "py::" + n.substr(3);
+            if (n == "py.variant" || n == "py.fn") {
+                Strs a;
+                for (auto& x : t->args) a.push_back(ctype(x));
+                if (n == "py.variant") return "py::variant<" + join(a, ", ") + ">";
+                std::string r = a.empty() ? "void" : a[0];
+                return "std::function<" + r + "(" + join(Strs(a.begin() + (a.empty() ? 0 : 1), a.end()), ", ") + ")>";
+            }
+            if (starts(n, "py.")) return "py::" + py::replace(n.substr(3), ".", "::");   // (py.re.Match: py::re::Match)
             if (tinfo(t, "record")) {
                 std::string base = qual(n);
                 return tinfo(t, "ref") ? "py::ref<" + base + ">" : base;
@@ -417,6 +440,11 @@ struct PyWriter : Emitter {
             auto lines = py::splitlines(py::strip(str(raw(s, "text"))));
             if (lines.empty()) lines.push_back("");
             for (auto& line : lines) out.push_back(pad + "// " + py::rstrip(line));
+        } else if (k == "Labeled") {   // (a generator's resume points)
+            out.push_back(pad + str(raw(s, "label")) + ":;");
+            if (node(s, "body")) stmt(node(s, "body"), out, pad);
+        } else if (k == "Goto") {
+            out.push_back(pad + "goto " + str(raw(s, "label")) + ";");
         } else if (k == "Empty") {
         } else {
             throw Decline("statement " + k);
@@ -452,6 +480,7 @@ struct PyWriter : Emitter {
             if (n == "dict.items" || n == "dict.keys" || n == "dict.values")
                 return operand(node(e, "target")) + "." + py::split(n, ".")[1] + "()";
         }
+        if (is_class(type(e), "py.tuple")) return "py::tuple_items(" + expr(e) + ")";   // (its items are of one type)
         return is(e, "Lit") ? operand(e) : expr(e);
     }
 
@@ -495,7 +524,14 @@ struct PyWriter : Emitter {
         if (k == "Binary") {
             std::string op = str(raw(e, "op"));
             int p = prec(op);
-            return sub(node(e, "left"), p) + " " + op + " " + sub(node(e, "right"), p, true);
+            NodeP l = node(e, "left");
+            if (op == "<<" && tkind(type(l)) == "i64" && !(is(l, "Name") || is(l, "Select") || is(l, "Call") || is(l, "Index"))) {
+                // (a literal, or an expression of literals, is a C++ int: shifted as Python's int, it is int64_t)
+                std::string ls = is(l, "Lit") ? "INT64_C(" + expr(l) + ")" : "static_cast<int64_t>(" + expr(l) + ")";
+                if (starts(ls, "INT64_C(INT64_C(")) ls = expr(l);
+                return ls + " " + op + " " + sub(node(e, "right"), p, true);
+            }
+            return sub(l, p) + " " + op + " " + sub(node(e, "right"), p, true);
         }
         if (k == "Concat") return x_concat(e);
         if (k == "Assign") return x_assign(e);
@@ -505,7 +541,18 @@ struct PyWriter : Emitter {
         if (k == "Lambda") {
             Strs ps;
             for (auto& p : nodes(e, "params")) ps.push_back(param_type(type(p), false) + " " + ident(sname(sym(p))));
-            return "[&](" + join(ps, ", ") + ") { return " + expr(node(e, "body")) + "; }";
+            NodeP body = node(e, "body");
+            if (is(body, "Block")) {   // (a nested def: a closure with statements)
+                TypeP ft = is_class(type(e), "py.fn") ? type(e) : want;
+                std::string r = ft && is_class(ft, "py.fn") && !ft->args.empty() ? ctype(ft->args[0]) : "void";
+                TypeP saved = ret;
+                ret = ft && !ft->args.empty() ? ft->args[0] : nullptr;
+                Strs lines;
+                inner(body, lines, "        ");
+                ret = saved;
+                return "[&](" + join(ps, ", ") + ") -> " + r + " {\n" + join(lines, "\n") + "\n    }";
+            }
+            return "[&](" + join(ps, ", ") + ") { return " + expr(body) + "; }";
         }
         return x_call(e);
     }
@@ -677,6 +724,134 @@ struct PyWriter : Emitter {
         return expr(x);
     }
 
+    // -- the porting engine's library rows (py_os.hpp): open and files, os / os.path / shutil / time,
+    // hashlib, re, variants. Keyword arguments go to their slot; a slot left out before a given one takes
+    // Python's default.
+    std::string variant_tag(const std::string& tag) {
+        if (tag == "int") return "int64_t";
+        if (tag == "float") return "double";
+        if (tag == "bool") return "bool";
+        if (tag == "str" || tag == "bytes" || tag == "bytearray") return "py::" + tag;
+        throw Decline("variant tag " + tag);
+    }
+
+    bool ext_call(const NodeP& e, const std::string& n, std::string& out) {
+        static const std::map<std::string, std::vector<std::pair<std::string, std::string>>> slots = {
+            // name -> [(keyword, default)] for every slot after the receiver
+            {"open", {{"file", ""}, {"mode", "py::str(\"r\")"}, {"encoding", "std::nullopt"}, {"errors", "std::nullopt"}, {"newline", "std::nullopt"}}},
+            {"os.makedirs", {{"name", ""}, {"mode", "0777"}, {"exist_ok", "false"}}},
+            {"shutil.rmtree", {{"path", ""}, {"ignore_errors", "false"}}},
+            {"re.sub", {{"pattern", ""}, {"repl", ""}, {"string", ""}, {"count", "0"}, {"flags", "0"}}},
+            {"re.subn", {{"pattern", ""}, {"repl", ""}, {"string", ""}, {"count", "0"}, {"flags", "0"}}},
+            {"re.split", {{"pattern", ""}, {"string", ""}, {"maxsplit", "0"}, {"flags", "0"}}},
+            {"re.match", {{"pattern", ""}, {"string", ""}, {"flags", "0"}}},
+            {"re.search", {{"pattern", ""}, {"string", ""}, {"flags", "0"}}},
+            {"re.fullmatch", {{"pattern", ""}, {"string", ""}, {"flags", "0"}}},
+            {"re.findall", {{"pattern", ""}, {"string", ""}, {"flags", "0"}}},
+            {"re.finditer", {{"pattern", ""}, {"string", ""}, {"flags", "0"}}},
+            {"re.compile", {{"pattern", ""}, {"flags", "0"}}},
+            {"re.Pattern.sub", {{"repl", ""}, {"string", ""}, {"count", "0"}}},
+            {"re.Pattern.subn", {{"repl", ""}, {"string", ""}, {"count", "0"}}},
+            {"re.Pattern.split", {{"string", ""}, {"maxsplit", "0"}}},
+        };
+        static const char* prefixes[] = {"os.", "shutil.", "time.", "hashlib.", "re.", "file.", "hash.", "variant."};
+        bool mine = n == "open";
+        for (auto p : prefixes) mine = mine || starts(n, p);
+        if (!mine) return false;
+        static const std::set<std::string> old_rows = {"os.listdir", "os.path.join", "os.path.exists", "os.path.isdir", "os.path.isfile",
+                                                       "os.path.getsize", "os.path.basename", "os.path.dirname", "os.path.split",
+                                                       "os.path.splitext", "os.path.normcase"};
+        if (old_rows.count(n)) return false;   // (the API map's rows, as the old front end wrote them)
+        const auto& a = nodes(e, "args");
+        TypeP et = type(e);
+        NodeP tgt = node(e, "target");
+        // the arguments in slot order
+        Strs pos, args;
+        std::map<std::string, std::string> kws;
+        for (auto& x : a) {
+            if (is(x, "Call") && sname(sym(x)) == "kw") kws[str(raw(x, "typeargs")[0])] = expr(nodes(x, "args")[0]);
+            else pos.push_back(typed_item(x, type(x)));
+        }
+        auto sl = slots.find(n);
+        if (sl != slots.end()) {
+            const auto& sv = sl->second;
+            size_t last = pos.size();
+            for (size_t i = 0; i < sv.size(); i++)
+                if (kws.count(sv[i].first)) last = std::max(last, i + 1);
+            for (size_t i = 0; i < last; i++) {
+                if (i < pos.size()) args.push_back(pos[i]);
+                else if (kws.count(sv[i].first)) args.push_back(kws[sv[i].first]);
+                else if (!sv[i].second.empty()) args.push_back(sv[i].second);
+                else throw Decline(n + " without its " + sv[i].first);
+                kws.erase(sv[i].first);
+            }
+        } else {
+            args = pos;
+        }
+        if (!kws.empty()) throw Decline(n + "(" + kws.begin()->first + "=)");
+        if (starts(n, "re."))   // (py::re is over str: a bytes pattern's \w and \s are ASCII's)
+            for (auto& x : a)
+                if (tname_is(type(x), "py.bytes") || tname_is(type(x), "py.bytearray")) throw Decline(n + " over bytes");
+        std::string recv = tgt ? recv_of(tgt) : std::string();
+        std::string as = join(args, ", ");
+        auto list_of_tuples = [&](const TypeP& t) {
+            return is_class(t, "py.list") && !t->args.empty() && is_class(t->args[0], "py.tuple");
+        };
+        std::string tuple_types = list_of_tuples(et) ? struct_types(et->args[0]) : std::string();
+        if (n == "open") {
+            out = "py::open(" + as + ")";
+        } else if (starts(n, "file.")) {
+            std::string m = n.substr(5);
+            bool text = tname_is(et, "py.str") || (is_class(et, "py.list") && !et->args.empty() && tname_is(et->args[0], "py.str"));
+            if ((m == "read" || m == "readline" || m == "readlines") && !et) throw Decline("file." + m + " of no type");
+            if ((m == "read" || m == "readline" || m == "readlines") && text) m += "_text";
+            out = recv + "." + m + "(" + as + ")";
+        } else if (starts(n, "hash.")) {
+            out = recv + "." + n.substr(5) + "(" + as + ")";
+        } else if (n == "variant.of" || n == "variant.is" || n == "variant.get") {
+            std::string tag = variant_tag(str(raw(e, "typeargs")[0]));
+            if (n == "variant.of") out = ctype(et) + "(std::in_place_type<" + tag + ">, " + as + ")";
+            else if (n == "variant.is") out = "std::holds_alternative<" + tag + ">(" + as + ")";
+            else out = "py::variant_get_<" + tag + ">(" + as + ")";
+        } else if (starts(n, "re.Match.")) {
+            std::string m = n.substr(9);
+            if (m == "group" && is_class(et, "py.optional")) m = "group_opt";
+            if (m == "groups") m = "groups_opt";
+            out = recv + "." + m + "(" + as + ")";
+        } else if (starts(n, "re.Pattern.")) {
+            std::string m = n.substr(11);
+            if (m == "findall" && !tuple_types.empty()) out = recv + ".template findall_groups<" + tuple_types + ">(" + as + ")";
+            else out = recv + "." + m + "(" + as + ")";
+        } else if (starts(n, "re.") && n.size() > 3 && std::isupper((unsigned char)n[3])) {
+            out = "py::re::" + n.substr(3);   // re.M, re.DOTALL ...
+        } else if (n == "re.findall" && !tuple_types.empty()) {
+            Strs rest(args.begin() + 1, args.end());
+            out = "py::re::compile(" + args[0] + (args.size() > 2 ? ", " + args[2] : std::string()) + ").template findall_groups<" +
+                  tuple_types + ">(" + args[1] + ")";
+        } else if (n == "os.sep" || n == "os.linesep" || n == "os.pathsep" || n == "os.curdir" || n == "os.pardir" || n == "os.altsep") {
+            out = "py::" + py::replace(n, ".", "::");   // (values, not calls)
+        } else if (n == "os.environ.get" || n == "os.getenv") {
+            out = "py::os::environ_::get(" + as + ")";
+        } else {
+            out = "py::" + py::replace(n, ".", "::") + "(" + as + ")";
+        }
+        return true;
+    }
+
+    // a method's receiver: an optional value the front end narrowed is read as its value
+    std::string recv_of(const NodeP& t) {
+        TypeP tt = type(t);
+        if (is_class(tt, "py.optional") && !is_nullable_ref(tt)) return operand(t) + ".value()";
+        std::string s = operand(t);
+        return starts(s, "*") ? "(" + s + ")" : s;   // (an unwrapped optional: (*m).group(1))
+    }
+
+    bool api_has(const std::string& n) {
+        bool has = false;
+        api_target(api_root, n, has);
+        return has;
+    }
+
     // -- Python's operations
     std::string py_call(const NodeP& e) {
         std::string n = sname(sym(e));
@@ -689,6 +864,11 @@ struct PyWriter : Emitter {
             return v;
         };
         if (n == "truthy") return truthy(a[0]);
+        if (n == "some") return ctype(et) + "(" + X(a[0]) + ")";   // (a generator's next value)
+        {
+            std::string r;
+            if (ext_call(e, n, r)) return r;
+        }
         if (n == "is_none" || n == "is_not_none") {
             const NodeP& x = a[0];
             bool neg = n == "is_not_none";
@@ -830,7 +1010,7 @@ struct PyWriter : Emitter {
             else args.push_back(bare.count(n) ? str_arg(x) : typed_item(x, type(x)));
         }
         NodeP t = node(e, "target");
-        std::string recv = t ? operand(t) : std::string();
+        std::string recv = t ? recv_of(t) : std::string();
         std::string commas;
         for (auto& x : args) commas += ", " + x;
         std::string out = py::replace(tpl, "{recv}", recv);
@@ -876,6 +1056,15 @@ struct PyWriter : Emitter {
         throw Decline(n);
     }
 
+    // a value whose truth is always True: a record (a non-empty dict), a non-empty tuple, a library object
+    bool always_true(const TypeP& t) {
+        if (!t || t->kind != "class") return false;
+        std::string n = tname(t);
+        if (tinfo(t, "record") && !tinfo(t, "ref")) return true;
+        if (n == "py.tuple") return !t->args.empty();
+        return n == "py.re.Match" || n == "py.re.Pattern" || n == "py.file" || n == "py.hashlib.Hash";
+    }
+
     std::string truthy(const NodeP& x) {
         TypeP t = type(x);
         std::string s = operand(x);
@@ -890,10 +1079,11 @@ struct PyWriter : Emitter {
                 if (is_nullable_ref(t)) return s + " != nullptr";
                 if (inner->kind == "i64") return s + ".value_or(0) != 0";
                 if (inner->kind == "bool") return s + ".value_or(false)";
+                if (always_true(inner)) return s + ".has_value()";
                 return "(" + s + ".has_value() && !" + s + "->empty())";
             }
             if (tinfo(t, "ref")) return s + " != nullptr";
-            if (tinfo(t, "record")) return "true";
+            if (always_true(t)) return "true";
             if (tname(t) == "py.tuple") return !t->args.empty() ? "true" : "false";
             return "!" + s + ".empty()";
         }
@@ -1068,7 +1258,18 @@ bool sub_has(const ByQ& by, const NodeP& c, const std::string& name) {
     return false;
 }
 
+std::string signature_(PyWriter& w, const NodeP& m, const NodeP& c, bool decl, const ByQ* classes);
+// (a Decline names the function it was met in: the porting engine refuses that one function)
+std::string decline_where(const NodeP& m) { return sowner(sym(m)) + "." + str(raw(m, "name")); }
 std::string signature(PyWriter& w, const NodeP& m, const NodeP& c, bool decl, const ByQ* classes = nullptr) {
+    try {
+        return signature_(w, m, c, decl, classes);
+    } catch (Decline& e) {
+        if (e.where.empty()) e.where = decline_where(m);
+        throw;
+    }
+}
+std::string signature_(PyWriter& w, const NodeP& m, const NodeP& c, bool decl, const ByQ* classes) {
     auto as = assigned(m);
     Strs parts;
     for (auto& p : nodes(m, "params")) {
@@ -1088,7 +1289,7 @@ std::string signature(PyWriter& w, const NodeP& m, const NodeP& c, bool decl, co
     if (!c) return ret + " " + mname + "(" + params + ")";
     if (!decl) return ret + " " + ident(cname_of(c)) + "::" + mname + "(" + params + ")";
     bool stat = has_mod(m, "static");
-    std::string virt, override_;
+    std::string virt, override_ = has_mod(m, "override") ? " override" : "";
     if (classes && !stat) {
         if (base_has(*classes, c, str(raw(m, "name")))) override_ = " override";
         else if (sub_has(*classes, c, str(raw(m, "name")))) virt = "virtual ";
@@ -1096,7 +1297,16 @@ std::string signature(PyWriter& w, const NodeP& m, const NodeP& c, bool decl, co
     return std::string(stat ? "static " : "") + virt + ret + " " + mname + "(" + params + ")" + override_;
 }
 
+Strs definition_(PyWriter& w, const NodeP& m, const NodeP& c);
 Strs definition(PyWriter& w, const NodeP& m, const NodeP& c) {
+    try {
+        return definition_(w, m, c);
+    } catch (Decline& e) {
+        if (e.where.empty()) e.where = decline_where(m);
+        throw;
+    }
+}
+Strs definition_(PyWriter& w, const NodeP& m, const NodeP& c) {
     w.locals.clear();
     for (auto& p : nodes(m, "params")) w.locals.insert(sname(sym(p)));
     w.ret = type(m, "ret");
@@ -1134,7 +1344,9 @@ Strs class_decl(PyWriter& w, const NodeP& c, const std::vector<NodeP>& classes) 
             break;
         }
     std::string head;
-    if (!base.empty()) head = "class " + ident(cname_of(c)) + " : public " + w.qual(base) + " {";
+    TypeP ext = type(c, "extends");
+    if (ext && is_class(ext, "py.generator")) head = "class " + ident(cname_of(c)) + " : public " + w.ctype(ext) + " {";
+    else if (!base.empty()) head = "class " + ident(cname_of(c)) + " : public " + w.qual(base) + " {";
     else if (has_exc && !exc.empty()) head = "class " + ident(cname_of(c)) + " : public py::" + exc + " {";
     else head = "class " + ident(cname_of(c)) + " : public py::object {";
     Strs out{head, "public:"};
@@ -1162,6 +1374,8 @@ Strs class_decl(PyWriter& w, const NodeP& c, const std::vector<NodeP>& classes) 
     for (auto& m : methods) ctor = ctor || str(raw(m, "kind")) == "ctor";
     if (!ctor && !base.empty() && has_ctor(by, base)) out.push_back("    using " + w.qual(base) + "::" + ident(cname_of(by.get(base))) + ";");
     if (has_exc && !exc.empty() && !ctor) out.push_back("    using py::" + exc + "::" + exc + ";");
+    if (has_exc)   // (its Python name, as an uncaught exception reports it)
+        out.push_back("    const char* type() const override { return \"" + cname_of(c) + "\"; }");
     if (!methods.empty() || any_field) out.push_back("");
     for (auto& m : methods) out.push_back("    " + signature(w, m, c, true, &by) + ";");
     bool self_used = false;

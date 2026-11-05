@@ -2,6 +2,7 @@
 // gates and tests that compare a port's results with the Python's.
 #pragma once
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <type_traits>
@@ -43,6 +44,10 @@ template <class T> void put(std::string& o, const list<T>& v);
 template <class K, class V> void put(std::string& o, const dict<K, V>& v);
 template <class... T> void put(std::string& o, const std::tuple<T...>& t);
 template <class T> void put(std::string& o, const std::vector<T>& v);
+template <class T> void put(std::string& o, const set<T>& v);
+template <class... A> void put(std::string& o, const std::variant<A...>& v) {   // (a variant is its value)
+    std::visit([&](const auto& x) { put(o, x); }, v);
+}
 template <class R, class = decltype(for_each_field(std::declval<const R&>(), std::declval<void (*)(const char*, int)>()))>
 void put(std::string& o, const R& r);
 template <class R> void put(std::string& o, const std::shared_ptr<R>& r) {
@@ -65,6 +70,18 @@ template <class L> void put_seq_(std::string& o, const L& v) {
 }
 template <class T> void put(std::string& o, const list<T>& v) { put_seq_(o, v); }
 template <class T> void put(std::string& o, const std::vector<T>& v) { put_seq_(o, v); }
+// a set has no JSON form or order; the tests write it as a list ordered by repr()
+template <class T> void put(std::string& o, const set<T>& s) {
+    std::vector<std::pair<std::string, T>> v;
+    for (const auto& x : s) v.emplace_back(repr(x).utf8(), x);
+    std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    o += '[';
+    for (size_t i = 0; i < v.size(); i++) {
+        if (i) o += ", ";
+        put(o, v[i].second);
+    }
+    o += ']';
+}
 template <class K, class V> void put(std::string& o, const dict<K, V>& d) {  // keys as JSON keys: text
     o += '{';
     bool first = true;
