@@ -48,6 +48,8 @@ struct CType {
     size_t length = 0;      // array
     std::vector<Field> fields;
     bool laid_out = false;
+    bool swap = false;      // simple: stored big-endian (a BigEndianStructure's field)
+    CType* plain = nullptr; // (swap: the same type in native order)
     // a function prototype
     CType* res = nullptr;   // null: None (void) -- unless res_none is false and res_py is set
     bool res_void = false;
@@ -58,7 +60,7 @@ std::unordered_map<TypeObj*, CType*>& types_() {
     static auto* m = new std::unordered_map<TypeObj*, CType*>();
     return *m;
 }
-TypeObj *T_meta, *T_cdata, *T_simple, *T_pointer, *T_array, *T_struct, *T_union, *T_funcptr, *T_lib, *T_loader;
+TypeObj *T_meta, *T_cdata, *T_simple, *T_pointer, *T_array, *T_struct, *T_union, *T_funcptr, *T_lib, *T_loader, *T_bigstruct, *T_bigunion;
 CType* layout_struct(TypeObj* t, CType* ct);
 
 CType* ctype_of(TypeObj* t, bool must = true) {
@@ -185,6 +187,11 @@ void write_value(CType* ct, uint8_t* p, const var& v, CData* owner, const var& k
 u64 pointer_bits(const var& v, CData* owner, const var& key, CType* want_elem = nullptr);
 
 var read_value(CType* ct, uint8_t* p, const var& base) {
+    if (ct->swap) {
+        uint8_t tmp[8];
+        for (size_t i = 0; i < ct->size; i++) tmp[i] = p[ct->size - 1 - i];
+        return read_value(ct->plain, tmp, base);
+    }
     switch (ct->kind) {
     case CK::Simple: {
         u64 raw = 0;
@@ -212,6 +219,12 @@ var read_value(CType* ct, uint8_t* p, const var& base) {
 }
 
 void write_value(CType* ct, uint8_t* p, const var& v, CData* owner, const var& key) {
+    if (ct->swap) {   // big-endian: written in native order, then reversed
+        uint8_t tmp[8] = {0};
+        write_value(ct->plain, tmp, v, owner, key);
+        for (size_t i = 0; i < ct->size; i++) p[i] = tmp[ct->size - 1 - i];
+        return;
+    }
     switch (ct->kind) {
     case CK::Simple: {
         if (is_cdata(v) && CD(v)->ct->kind == CK::Simple && CD(v)->ct->size == ct->size && CD(v)->ct->code == ct->code) {
@@ -323,7 +336,22 @@ u64 pointer_bits(const var& v, CData* owner, const var& key, CType*) {
 
 // ------------------------------------------------------------------------------------------ layout
 size_t align_up(size_t n, size_t a) { return a ? (n + a - 1) / a * a : n; }
+CType* array_of(CType* e, size_t n);
+u64 bswap_n(u64 v, size_t n) { u64 r = 0; for (size_t i = 0; i < n; i++) r |= ((v >> (8 * i)) & 0xFF) << (8 * (n - 1 - i)); return r; }
+// a BigEndianStructure's field types: simple ones stored byte-reversed, arrays of them likewise
+CType* swapped_of(CType* t) {
+    static std::map<CType*, CType*> made;
+    if (t->kind == CK::Array) return array_of(swapped_of(t->elem), t->length);
+    if (t->kind != CK::Simple || t->size < 2 || strchr("zZP", t->code) || t->swap) return t;
+    if (auto it = made.find(t); it != made.end()) return it->second;
+    auto* s = new CType(*t);
+    s->swap = true;
+    s->plain = t;
+    made[t] = s;
+    return s;
+}
 CType* layout_struct(TypeObj* t, CType* ct) {
+    bool big = is_subtype(t, T_bigstruct) || is_subtype(t, T_bigunion);
     const var* fl = nullptr;
     for (TypeObj* b : t->mro) {
         if (var* f = b->dict->get("_fields_")) { fl = f; break; }
@@ -351,6 +379,7 @@ CType* layout_struct(TypeObj* t, CType* ct) {
         Field fd;
         fd.name = str_utf8(parts.at(0));
         fd.t = ctype_of_var(parts.at(1));
+        if (big) fd.t = swapped_of(fd.t);
         size_t a = fd.t->align;
         if (pack && a > pack) a = pack;
         if (parts.size() > 2) {   // a bit field
@@ -397,7 +426,9 @@ CType* layout_struct(TypeObj* t, CType* ct) {
             if (fd.bits) {
                 u64 raw = 0;
                 memcpy(&raw, d->p + fd.offset, fd.t->size);
-                u64 v = (raw >> fd.bitpos) & ((fd.bits >= 64 ? ~0ull : (1ull << fd.bits) - 1));
+                if (fd.t->swap) raw = bswap_n(raw, fd.t->size);
+                int sh = fd.t->swap ? (int)fd.t->size * 8 - fd.bitpos - fd.bits : fd.bitpos;   // (big-endian bit fields count from the top)
+                u64 v = (raw >> sh) & ((fd.bits >= 64 ? ~0ull : (1ull << fd.bits) - 1));
                 if (is_signed(fd.t->code) && fd.bits < 64 && (v >> (fd.bits - 1)) & 1) return var((int64_t)(v | ~((1ull << fd.bits) - 1)));
                 return var((int64_t)v);
             }
@@ -413,8 +444,11 @@ CType* layout_struct(TypeObj* t, CType* ct) {
             if (fd.bits) {
                 u64 raw = 0;
                 memcpy(&raw, d->p + fd.offset, fd.t->size);
-                u64 mask = (fd.bits >= 64 ? ~0ull : (1ull << fd.bits) - 1) << fd.bitpos;
-                raw = (raw & ~mask) | ((int_bits(a.pos.at(1)) << fd.bitpos) & mask);
+                if (fd.t->swap) raw = bswap_n(raw, fd.t->size);
+                int sh = fd.t->swap ? (int)fd.t->size * 8 - fd.bitpos - fd.bits : fd.bitpos;
+                u64 mask = (fd.bits >= 64 ? ~0ull : (1ull << fd.bits) - 1) << sh;
+                raw = (raw & ~mask) | ((int_bits(a.pos.at(1)) << sh) & mask);
+                if (fd.t->swap) raw = bswap_n(raw, fd.t->size);
                 memcpy(d->p + fd.offset, &raw, fd.t->size);
                 return None;
             }
@@ -632,7 +666,7 @@ struct Callback {
     Proto proto;
     bool used = false;
 };
-constexpr int kSlots = 256;
+constexpr int kSlots = 2048;   // (objects in reference cycles are not collected: a run of emulators may hold many)
 Callback g_cb[kSlots];
 std::mutex g_cb_mu;
 template <int I>
@@ -793,6 +827,8 @@ void init_ctypes(const var& m) {
     T_array = base("Array", {T_cdata});
     T_struct = base("Structure", {T_cdata});
     T_union = base("Union", {T_cdata});
+    T_bigstruct = base("BigEndianStructure", {T_struct});
+    T_bigunion = base("BigEndianUnion", {T_union});
     T_funcptr = base("CFuncPtr", {T_cdata});
 
     // instances: zeroed memory of the type's size, then __init__ fills it
@@ -954,6 +990,8 @@ void init_ctypes(const var& m) {
     mod_set(m, "Structure", tv(T_struct));
     mod_set(m, "Union", tv(T_union));
     mod_set(m, "LittleEndianStructure", tv(T_struct));
+    mod_set(m, "BigEndianStructure", tv(T_bigstruct));
+    mod_set(m, "BigEndianUnion", tv(T_bigunion));
     mod_set(m, "LittleEndianUnion", tv(T_union));
     mod_set(m, "_CFuncPtr", tv(T_funcptr));
     mod_set(m, "_FuncPointer", tv(T_funcptr));

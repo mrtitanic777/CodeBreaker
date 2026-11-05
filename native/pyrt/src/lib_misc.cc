@@ -468,6 +468,7 @@ struct HashObj : DataObj {
     BCRYPT_HASH_HANDLE h = nullptr;
     std::string name;
     std::string data;   // (kept so copy() and digest() can run more than once)
+    std::string key;    // (blake2b)
     int size = 0, block = 64;
 };
 static TypeObj* T_hash;
@@ -478,6 +479,7 @@ static LPCWSTR alg_of(const std::string& n, int& size, int& block) {
     if (n == "md5") { size = 16; return BCRYPT_MD5_ALGORITHM; }
     if (n == "sha384") { size = 48; block = 128; return BCRYPT_SHA384_ALGORITHM; }
     if (n == "sha512") { size = 64; block = 128; return BCRYPT_SHA512_ALGORITHM; }
+    if (n == "blake2b") { size = 64; block = 128; return L"blake2b"; }   // (written out below, not bcrypt's)
     return nullptr;
 }
 static std::string digest_of(const std::string& name, const std::string& data) {
@@ -494,6 +496,64 @@ static std::string digest_of(const std::string& name, const std::string& data) {
     BCryptDestroyHash(h);
     BCryptCloseAlgorithmProvider(alg, 0);
     return out;
+}
+// BLAKE2b (RFC 7693), digest_size 1..64, with an optional key: hashlib.blake2b
+static std::string blake2b_(const std::string& data, size_t outlen, const std::string& key) {
+    static const uint64_t IV[8] = {0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, 0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL,
+                                   0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL, 0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL};
+    static const uint8_t S[12][16] = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3},
+        {11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4}, {7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8},
+        {9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13}, {2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9},
+        {12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11}, {13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10},
+        {6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5}, {10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0},
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3}};
+    uint64_t h[8];
+    for (int i = 0; i < 8; i++) h[i] = IV[i];
+    h[0] ^= 0x01010000ULL ^ ((uint64_t)key.size() << 8) ^ outlen;
+    auto rotr = [](uint64_t x, int n) { return (x >> n) | (x << (64 - n)); };
+    auto compress = [&](const uint8_t* block, uint64_t t, bool last) {
+        uint64_t v[16], mm[16];
+        for (int i = 0; i < 8; i++) { v[i] = h[i]; v[i + 8] = IV[i]; }
+        v[12] ^= t;
+        if (last) v[14] = ~v[14];
+        for (int i = 0; i < 16; i++) memcpy(&mm[i], block + 8 * i, 8);
+        for (int r = 0; r < 12; r++) {
+            auto G = [&](int a, int b, int c, int d, uint64_t x, uint64_t y) {
+                v[a] = v[a] + v[b] + x; v[d] = rotr(v[d] ^ v[a], 32);
+                v[c] = v[c] + v[d]; v[b] = rotr(v[b] ^ v[c], 24);
+                v[a] = v[a] + v[b] + y; v[d] = rotr(v[d] ^ v[a], 16);
+                v[c] = v[c] + v[d]; v[b] = rotr(v[b] ^ v[c], 63);
+            };
+            const uint8_t* s = S[r];
+            G(0, 4, 8, 12, mm[s[0]], mm[s[1]]); G(1, 5, 9, 13, mm[s[2]], mm[s[3]]);
+            G(2, 6, 10, 14, mm[s[4]], mm[s[5]]); G(3, 7, 11, 15, mm[s[6]], mm[s[7]]);
+            G(0, 5, 10, 15, mm[s[8]], mm[s[9]]); G(1, 6, 11, 12, mm[s[10]], mm[s[11]]);
+            G(2, 7, 8, 13, mm[s[12]], mm[s[13]]); G(3, 4, 9, 14, mm[s[14]], mm[s[15]]);
+        }
+        for (int i = 0; i < 8; i++) h[i] ^= v[i] ^ v[i + 8];
+    };
+    std::string in = data;
+    if (!key.empty()) { std::string kb = key; kb.resize(128, '\0'); in = kb + data; }
+    uint8_t block[128];
+    uint64_t t = 0;
+    size_t off = 0, n = in.size();
+    while (n - off > 128) {
+        t += 128;
+        compress((const uint8_t*)in.data() + off, t, false);
+        off += 128;
+    }
+    memset(block, 0, sizeof block);
+    memcpy(block, in.data() + off, n - off);
+    t += n - off;
+    compress(block, t, true);
+    std::string out((const char*)h, 64);
+    out.resize(outlen);
+    return out;
+}
+static std::string digest_obj(HashObj* h) {
+    if (h->name == "blake2b") return blake2b_(h->data, (size_t)h->size, h->key);
+    return digest_of(h->name, h->data);
 }
 static var new_hash(const std::string& name, const var& data) {
     int size, block;
@@ -613,10 +673,10 @@ void init_modules() {
     reg("hashlib", [](const var& m) {
         T_hash = new_type("HASH", {}, Layout::NativeData, true, "_hashlib");
         add_method(T_hash, "update", [](const CallArgs& a) { static_cast<HashObj*>(a.pos[0].ref())->data += raw_of(a.pos.at(1)); return None; });
-        add_method(T_hash, "digest", [](const CallArgs& a) { auto* h = static_cast<HashObj*>(a.pos[0].ref()); return new_bytes(digest_of(h->name, h->data)); });
+        add_method(T_hash, "digest", [](const CallArgs& a) { auto* h = static_cast<HashObj*>(a.pos[0].ref()); return new_bytes(digest_obj(h)); });
         add_method(T_hash, "hexdigest", [](const CallArgs& a) {
             auto* h = static_cast<HashObj*>(a.pos[0].ref());
-            std::string d = digest_of(h->name, h->data), o;
+            std::string d = digest_obj(h), o;
             static const char* hx = "0123456789abcdef";
             for (unsigned char c : d) { o.push_back(hx[c >> 4]); o.push_back(hx[c & 15]); }
             return new_str(o);
@@ -625,6 +685,8 @@ void init_modules() {
             auto* h = static_cast<HashObj*>(a.pos[0].ref());
             var c = new_hash(h->name, None);
             static_cast<HashObj*>(c.ref())->data = h->data;
+            static_cast<HashObj*>(c.ref())->key = h->key;
+            static_cast<HashObj*>(c.ref())->size = h->size;
             return c;
         });
         add_getter(T_hash, "name", [](const var& s) { return new_str(static_cast<HashObj*>(s.ref())->name); });
@@ -634,6 +696,17 @@ void init_modules() {
             std::string name = n;
             mod_def(m, n, [name](const CallArgs& a) { return new_hash(name, a.pos.empty() ? kwarg(a, "data", kwarg(a, "string", None)) : a.pos[0]); });
         }
+        mod_def(m, "blake2b", [](const CallArgs& a) {
+            var h = new_hash("blake2b", a.pos.empty() ? kwarg(a, "data", None) : a.pos[0]);
+            auto* o = static_cast<HashObj*>(h.ref());
+            int64_t ds = kwarg(a, "digest_size", var(64)).as_int64();
+            if (ds < 1 || ds > 64) raise(E_ValueError, "digest_size must be between 1 and 64 bytes");
+            o->size = (int)ds;
+            var key = kwarg(a, "key", None);
+            if (!key.is_none()) o->key = raw_of(key);
+            if (o->key.size() > 64) raise(E_ValueError, "maximum key length is 64 bytes");
+            return h;
+        });
         mod_def(m, "new", [](const CallArgs& a) {
             std::string n = str_utf8(a.pos.at(0));
             for (auto& c : n) c = (char)tolower((unsigned char)c);

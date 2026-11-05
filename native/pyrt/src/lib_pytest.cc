@@ -237,6 +237,7 @@ struct Item {
     var fn, cls, module;
     var params;                                      // a dict, or None
     std::vector<var> marks;
+    bool unit = false;                               // a unittest.TestCase method
 };
 
 bool eval_cond(const var& c, const var& module) {
@@ -424,9 +425,10 @@ int run_main_(const var& argv) {
                 it.cls = None;
                 it.module = module;
                 items.push_back(it);
-            } else if (n.compare(0, 4, "Test") == 0 && v.is_ref() && v.ref()->type->layout == Layout::Type) {
+            } else if (v.is_ref() && v.ref()->type->layout == Layout::Type && (n.compare(0, 4, "Test") == 0 || is_subtype(T(v), T(import("unittest").getattr("TestCase"))))) {
+                bool unit = is_subtype(T(v), T(import("unittest").getattr("TestCase")));
                 TypeObj* ct = T(v);
-                if (ct->dict->get("__init__")) continue;   // (pytest does not collect a class with __init__)
+                if (!unit && ct->dict->get("__init__")) continue;   // (pytest does not collect a class with __init__)
                 std::vector<std::string> meths;
                 for (TypeObj* b : ct->mro) {
                     if (b == T_object) continue;
@@ -442,6 +444,7 @@ int run_main_(const var& argv) {
                     it.nodeid = rel + "::" + n + "::" + mname;
                     it.fn = *ct->lookup(new_str(mname));
                     it.cls = v;
+                    it.unit = unit;
                     it.module = module;
                     items.push_back(it);
                 }
@@ -498,20 +501,43 @@ int run_main_(const var& argv) {
                 std::string outcome = "passed", detail;
                 var err;
                 try {
-                    if (!base_item.cls.is_none()) {
-                        t.instance = call0(base_item.cls);
-                        fn = t.instance.getattr(base_item.name.c_str());
-                        if (hasattr(t.instance, "setup_method"_s).truthy()) t.instance.call("setup_method", fn);
+                    if (base_item.unit) {
+                        // a unittest.TestCase: setUpClass once, then setUp / the method / tearDown, its skips
+                        for (const var& o : {base_item.cls, base_item.fn})
+                            if (getattr(o, "__unittest_skip__"_s, var(false)).truthy())
+                                skip_(str_utf8(call1(t::str, getattr(o, "__unittest_skip_why__"_s, ""_s))));
+                        if (!getattr(base_item.cls, "_pyrt_class_set_up"_s, var(false)).truthy()) {
+                            base_item.cls.setattr("_pyrt_class_set_up", var(true));
+                            base_item.cls.call("setUpClass");
+                            var cls = base_item.cls;
+                            run.class_fin.push_back(nat("tearDownClass", [cls](const CallArgs&) { cls.call("tearDownClass"); return None; }));
+                        }
+                        t.instance = call1(base_item.cls, new_str(base_item.name));
+                        t.instance.call("setUp");
+                        try {
+                            t.instance.call(base_item.name.c_str());
+                        } catch (...) {
+                            try { t.instance.call("tearDown"); t.instance.call("doCleanups"); } catch (...) {}
+                            throw;
+                        }
+                        t.instance.call("tearDown");
+                        t.instance.call("doCleanups");
+                    } else {
+                        if (!base_item.cls.is_none()) {
+                            t.instance = call0(base_item.cls);
+                            fn = t.instance.getattr(base_item.name.c_str());
+                            if (hasattr(t.instance, "setup_method"_s).truthy()) t.instance.call("setup_method", fn);
+                        }
+                        std::vector<std::string> stack;
+                        for (auto& [fname, fx] : fixtures) if (fx.autouse) fixture_value(fname, t, stack);
+                        for (auto& u : use) fixture_value(u, t, stack);
+                        CallArgs ca;
+                        for (auto& p : param_names(fn)) ca.kw.push_back({new_str(p), fixture_value(p, t, stack)});
+                        call_obj(fn, ca);
+                        if (!t.instance.is_none() && hasattr(t.instance, "teardown_method"_s).truthy()) t.instance.call("teardown_method", fn);
                     }
-                    std::vector<std::string> stack;
-                    for (auto& [fname, fx] : fixtures) if (fx.autouse) fixture_value(fname, t, stack);
-                    for (auto& u : use) fixture_value(u, t, stack);
-                    CallArgs ca;
-                    for (auto& p : param_names(fn)) ca.kw.push_back({new_str(p), fixture_value(p, t, stack)});
-                    call_obj(fn, ca);
-                    if (!t.instance.is_none() && hasattr(t.instance, "teardown_method"_s).truthy()) t.instance.call("teardown_method", fn);
                 } catch (error& e) {
-                    if (isinstance_(e.value, T(E_Skipped))) { outcome = "skipped"; detail = short_repr(e.value); }
+                    if (isinstance_(e.value, T(E_Skipped)) || isinstance_(e.value, T(import("unittest").getattr("SkipTest")))) { outcome = "skipped"; detail = short_repr(e.value); }
                     else { outcome = "failed"; err = e.value; }
                 }
                 try { finish(t.fn_fin); } catch (...) {}
@@ -566,16 +592,199 @@ int run_main_(const var& argv) {
 
 }  // namespace
 
+// unittest: TestCase and its assertions (the messages unittest prints), SkipTest, the skip decorators,
+// and main() over the __main__ module's TestCase classes (unittest's summary: "Ran N tests ... OK")
+void init_unittest(const var& m) {
+    var skip_exc = make_class("SkipTest", "SkipTest", {t::Exception}, new_dict(), {}, "unittest");
+    mod_set(m, "SkipTest", skip_exc);
+    var ns = new_dict();
+    auto fail_with = [](const CallArgs& a, size_t msg_at, const std::string& std_msg) -> var {
+        var msg = arg(a, msg_at, "msg", None);
+        raise(make_exc_args(E_AssertionError, {new_str(msg.is_none() ? std_msg : std_msg + " : " + str_(msg))}));
+    };
+    auto def2 = [&](const char* name, std::function<bool(const var&, const var&)> ok, const char* fmt) {
+        std::string f = fmt;
+        ns.setitem(new_str(name), new_native(name, [ok, f, fail_with](const CallArgs& a) -> var {
+            var x = a.pos.at(1), y = a.pos.at(2);
+            if (ok(x, y)) return None;
+            std::string s = f;
+            size_t p = s.find("%a");
+            if (p != std::string::npos) s.replace(p, 2, repr_(x));
+            p = s.find("%b");
+            if (p != std::string::npos) s.replace(p, 2, repr_(y));
+            return fail_with(a, 3, s);
+        }));
+    };
+    auto def1 = [&](const char* name, std::function<bool(const var&)> ok, const char* fmt) {
+        std::string f = fmt;
+        ns.setitem(new_str(name), new_native(name, [ok, f, fail_with](const CallArgs& a) -> var {
+            var x = a.pos.at(1);
+            if (ok(x)) return None;
+            std::string s = f;
+            size_t p = s.find("%a");
+            if (p != std::string::npos) s.replace(p, 2, repr_(x));
+            return fail_with(a, 2, s);
+        }));
+    };
+    def2("assertEqual", [](const var& x, const var& y) { return x == y; }, "%a != %b");
+    for (const char* n : {"assertListEqual", "assertTupleEqual", "assertDictEqual", "assertSetEqual", "assertSequenceEqual", "assertMultiLineEqual"})
+        def2(n, [](const var& x, const var& y) { return x == y; }, "%a != %b");
+    def2("assertNotEqual", [](const var& x, const var& y) { return x != y; }, "%a == %b");
+    def2("assertIn", [](const var& x, const var& y) { return in(x, y); }, "%a not found in %b");
+    def2("assertNotIn", [](const var& x, const var& y) { return !in(x, y); }, "%a unexpectedly found in %b");
+    def2("assertIs", [](const var& x, const var& y) { return is(x, y); }, "%a is not %b");
+    def2("assertIsNot", [](const var& x, const var& y) { return !is(x, y); }, "unexpectedly identical: %a");
+    def2("assertLess", [](const var& x, const var& y) { return x < y; }, "%a not less than %b");
+    def2("assertLessEqual", [](const var& x, const var& y) { return x <= y; }, "%a not less than or equal to %b");
+    def2("assertGreater", [](const var& x, const var& y) { return x > y; }, "%a not greater than %b");
+    def2("assertGreaterEqual", [](const var& x, const var& y) { return x >= y; }, "%a not greater than or equal to %b");
+    def2("assertIsInstance", [](const var& x, const var& y) { return isinstance(x, y).truthy(); }, "%a is not an instance of %b");
+    def2("assertNotIsInstance", [](const var& x, const var& y) { return !isinstance(x, y).truthy(); }, "%a is an instance of %b");
+    def2("assertCountEqual", [](const var& x, const var& y) {
+        var cx = call1(import("collections").getattr("Counter"), new_list(collect(x)));
+        var cy = call1(import("collections").getattr("Counter"), new_list(collect(y)));
+        return cx == cy;
+    }, "Element counts were not equal: %a, %b");
+    def2("assertRegex", [](const var& x, const var& y) { return !import("re").call("search", y, x).is_none(); }, "Regex didn't match: %b not found in %a");
+    def2("assertNotRegex", [](const var& x, const var& y) { return import("re").call("search", y, x).is_none(); }, "Regex matched: %b in %a");
+    def1("assertTrue", [](const var& x) { return x.truthy(); }, "%a is not true");
+    def1("assertFalse", [](const var& x) { return !x.truthy(); }, "%a is not false");
+    def1("assertIsNone", [](const var& x) { return x.is_none(); }, "%a is not None");
+    def1("assertIsNotNone", [](const var& x) { return !x.is_none(); }, "unexpectedly None");
+    ns.setitem("assertAlmostEqual"_s, new_native("assertAlmostEqual", [fail_with](const CallArgs& a) -> var {
+        var x = a.pos.at(1), y = a.pos.at(2);
+        if (x == y) return None;
+        int64_t places = kwarg(a, "places", a.pos.size() > 3 && !a.pos[3].is_none() ? a.pos[3] : var(7)).as_int64();
+        var delta = kwarg(a, "delta", None);
+        double d = std::fabs(x.as_double() - y.as_double());
+        if (!delta.is_none() ? d <= delta.as_double() : std::round(d * std::pow(10.0, (double)places)) == 0) return None;
+        return fail_with(a, 99, repr_(x) + " != " + repr_(y) + " within " + std::to_string(places) + " places");
+    }));
+    ns.setitem("fail"_s, new_native("fail", [](const CallArgs& a) -> var {
+        raise(make_exc_args(E_AssertionError, {a.pos.size() > 1 ? a.pos[1] : var(None)}));
+    }));
+    ns.setitem("skipTest"_s, new_native("skipTest", [skip_exc](const CallArgs& a) -> var { raise(make_exc_args(T(skip_exc), {a.pos.at(1)})); }));
+    ns.setitem("assertRaises"_s, new_native("assertRaises", [](const CallArgs& a) -> var {
+        CallArgs b;
+        b.pos.assign(a.pos.begin() + 1, a.pos.end());
+        b.kw = a.kw;
+        return call_obj(import("pytest").getattr("raises"), b);
+    }));
+    ns.setitem("assertRaisesRegex"_s, new_native("assertRaisesRegex", [](const CallArgs& a) -> var {
+        CallArgs b;
+        b.pos = {a.pos.at(1)};
+        b.kw.push_back({"match"_s, a.pos.at(2)});
+        for (size_t i = 3; i < a.pos.size(); i++) b.pos.push_back(a.pos[i]);
+        return call_obj(import("pytest").getattr("raises"), b);
+    }));
+    ns.setitem("__init__"_s, new_native("__init__", [](const CallArgs& a) {
+        a.pos.at(0).setattr("_testMethodName", a.pos.size() > 1 ? a.pos[1] : var("runTest"_s));
+        a.pos[0].setattr("_cleanups", new_list());
+        a.pos[0].setattr("maxDiff", var(640));
+        return None;
+    }));
+    for (const char* n : {"setUp", "tearDown"}) ns.setitem(new_str(n), new_native(n, [](const CallArgs&) { return None; }));
+    ns.setitem("addCleanup"_s, new_native("addCleanup", [](const CallArgs& a) {
+        CallArgs rest;
+        rest.pos.assign(a.pos.begin() + 2, a.pos.end());
+        rest.kw = a.kw;
+        var f = a.pos.at(1);
+        a.pos[0].getattr("_cleanups").call("append", new_native("cleanup", [f, rest](const CallArgs&) { return call_obj(f, rest); }));
+        return None;
+    }));
+    ns.setitem("doCleanups"_s, new_native("doCleanups", [](const CallArgs& a) {
+        var cl = a.pos.at(0).getattr("_cleanups");
+        while (len_(cl)) call0(cl.call("pop"));
+        return None;
+    }));
+    ns.setitem("subTest"_s, new_native("subTest", [](const CallArgs&) { return call0(import("contextlib").getattr("nullcontext")); }));
+    ns.setitem("id"_s, new_native("id", [](const CallArgs& a) { return new_str(type_of(a.pos.at(0))->qualname + "." + str_utf8(a.pos[0].getattr("_testMethodName"))); }));
+    var tc = make_class("TestCase", "TestCase", {}, ns, {}, "unittest");
+    add_classmethod(T(tc), "setUpClass", [](const CallArgs&) { return None; });
+    add_classmethod(T(tc), "tearDownClass", [](const CallArgs&) { return None; });
+    mod_set(m, "TestCase", tc);
+    auto skipper = [](const var& why) {
+        return new_native("skip", [why](const CallArgs& a) {
+            a.pos.at(0).setattr("__unittest_skip__", var(true));
+            a.pos[0].setattr("__unittest_skip_why__", why);
+            return a.pos[0];
+        });
+    };
+    var identity = new_native("noskip", [](const CallArgs& a) { return a.pos.at(0); });
+    mod_def(m, "skip", [skipper](const CallArgs& a) { return skipper(a.pos.at(0)); });
+    mod_def(m, "skipIf", [skipper, identity](const CallArgs& a) { return a.pos.at(0).truthy() ? skipper(a.pos.at(1)) : identity; });
+    mod_def(m, "skipUnless", [skipper, identity](const CallArgs& a) { return !a.pos.at(0).truthy() ? skipper(a.pos.at(1)) : identity; });
+    mod_def(m, "expectedFailure", [](const CallArgs& a) { a.pos.at(0).setattr("__unittest_expecting_failure__", var(true)); return a.pos[0]; });
+    // main(): the TestCase classes of __main__, in order; unittest's report on stderr, the exit status
+    mod_def(m, "main", [tc, skip_exc](const CallArgs& a) -> var {
+        auto t0 = std::chrono::steady_clock::now();
+        var mod = import("sys").getattr("modules").getitem("__main__"_s);
+        var d = mod.getattr("__dict__");
+        int ran = 0, failures = 0, errors = 0, skipped = 0;
+        var err = import("sys").getattr("stderr");
+        for (var k : each(d)) {
+            var c = d.getitem(k);
+            if (!c.is_ref() || c.ref()->type->layout != Layout::Type || !is_subtype(T(c), T(tc)) || is(c, tc)) continue;
+            std::vector<std::string> meths;
+            for (TypeObj* b : T(c)->mro)
+                for (auto& e : b->dict->entries)
+                    if (!e.key.is_unbound() && is_str(e.key) && str_utf8(e.key).compare(0, 4, "test") == 0 &&
+                        std::find(meths.begin(), meths.end(), str_utf8(e.key)) == meths.end())
+                        meths.push_back(str_utf8(e.key));
+            std::sort(meths.begin(), meths.end());
+            c.call("setUpClass");
+            for (auto& mn : meths) {
+                ran++;
+                var inst = call1(c, new_str(mn));
+                try {
+                    if (getattr(c, "__unittest_skip__"_s, var(false)).truthy() || getattr(inst.getattr(mn.c_str()), "__unittest_skip__"_s, var(false)).truthy()) {
+                        skipped++;
+                        continue;
+                    }
+                    inst.call("setUp");
+                    inst.call(mn.c_str());
+                    inst.call("tearDown");
+                    inst.call("doCleanups");
+                } catch (error& e) {
+                    if (isinstance_(e.value, T(skip_exc))) { skipped++; continue; }
+                    bool f = isinstance_(e.value, E_AssertionError);
+                    (f ? failures : errors)++;
+                    err.call("write", new_str(std::string(70, '=') + "\n" + (f ? "FAIL" : "ERROR") + ": " + mn + " (" + T(c)->qualname + ")\n" +
+                                              std::string(70, '-') + "\n" + tname(e.value) + ": " + str_(e.value) + "\n\n"));
+                }
+            }
+            c.call("tearDownClass");
+        }
+        double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        char buf[64];
+        snprintf(buf, sizeof buf, "%.3fs", secs);
+        std::string tail = failures || errors ? "FAILED (" + std::string(failures ? "failures=" + std::to_string(failures) : "") +
+                                                   (failures && errors ? ", " : "") + (errors ? "errors=" + std::to_string(errors) : "") +
+                                                   (skipped ? ", skipped=" + std::to_string(skipped) : "") + ")"
+                                             : "OK" + std::string(skipped ? " (skipped=" + std::to_string(skipped) + ")" : "");
+        err.call("write", new_str(std::string(70, '-') + "\nRan " + std::to_string(ran) + " test" + (ran == 1 ? "" : "s") + " in " + buf + "\n\n" + tail + "\n"));
+        bool ok = !failures && !errors;
+        if (kwarg(a, "exit", var(true)).truthy()) raise(make_exc_args(E_SystemExit, {var(ok ? 0 : 1)}));
+        return None;
+    });
+}
+
 void init_pytest(const var& m) {
     g_mod = m;
     E_Skipped = make_class("Skipped", "Skipped", {t::BaseException}, new_dict(), {}, "_pytest.outcomes");
     E_Failed = make_class("Failed", "Failed", {t::BaseException}, new_dict(), {}, "_pytest.outcomes");
     E_XFailed = make_class("XFailed", "XFailed", {E_Failed}, new_dict(), {}, "_pytest.outcomes");
-    var skip = nat("skip", [](const CallArgs& a) -> var { skip_(a.pos.empty() ? str_utf8(kwarg(a, "reason", ""_s)) : str_utf8(a.pos[0])); });
-    skip.setattr("Exception", E_Skipped);
+    // skip and fail: callables carrying their exception class (pytest.skip.Exception), as pytest's
+    auto with_exc = [](const char* name, native_fn f, const var& exc) {
+        var ns = new_dict();
+        ns.setitem("__call__"_s, new_native(name, [f](const CallArgs& a) { CallArgs b; b.pos.assign(a.pos.begin() + 1, a.pos.end()); b.kw = a.kw; return f(b); }));
+        var o = call0(make_class(name, name, {}, ns, {}, "_pytest.outcomes"));
+        o.setattr("Exception", exc);
+        return o;
+    };
+    var skip = with_exc("skip", [](const CallArgs& a) -> var { skip_(a.pos.empty() ? str_utf8(kwarg(a, "reason", ""_s)) : str_utf8(a.pos[0])); }, E_Skipped);
     mod_set(m, "skip", skip);
-    var fail = nat("fail", [](const CallArgs& a) -> var { raise(make_exc_args(T(E_Failed), {a.pos.empty() ? kwarg(a, "reason", ""_s) : a.pos[0]})); });
-    fail.setattr("Exception", E_Failed);
+    var fail = with_exc("fail", [](const CallArgs& a) -> var { raise(make_exc_args(T(E_Failed), {a.pos.empty() ? kwarg(a, "reason", ""_s) : a.pos[0]})); }, E_Failed);
     mod_set(m, "fail", fail);
     mod_def(m, "xfail", [](const CallArgs& a) -> var { raise(make_exc_args(T(E_XFailed), {a.pos.empty() ? ""_s : a.pos[0]})); });
     mod_def(m, "importorskip", [](const CallArgs& a) -> var {

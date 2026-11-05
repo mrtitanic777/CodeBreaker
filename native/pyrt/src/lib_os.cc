@@ -1115,17 +1115,39 @@ void init_os_modules() {
         mod_def(m, "stat", [](const CallArgs& a) { return do_stat(P0(a)); });
         mod_def(m, "lstat", [](const CallArgs& a) { return do_stat(P0(a)); });
         mod_def(m, "utime", [](const CallArgs& a) {
+            // SetFileTime on a handle opened for its attributes (directories too: backup semantics)
             std::string p = P0(a);
             var times = a.pos.size() > 1 ? a.pos[1] : kwarg(a, "times", None);
-            struct __utimbuf64 ub;
-            if (times.is_none()) {
-                if (_wutime64(wide_(p).c_str(), nullptr) != 0) raise(os_error(errno, p));
-                return None;
+            var ns = kwarg(a, "ns", None);
+            auto ft_of = [](double secs) {
+                ULONGLONG t = (ULONGLONG)((secs + 11644473600.0) * 10000000.0);
+                FILETIME f;
+                f.dwLowDateTime = (DWORD)t;
+                f.dwHighDateTime = (DWORD)(t >> 32);
+                return f;
+            };
+            FILETIME at, mt;
+            if (!ns.is_none()) {
+                auto v = collect(ns);
+                at = ft_of(v[0].as_double() / 1e9);
+                mt = ft_of(v[1].as_double() / 1e9);
+            } else if (!times.is_none()) {
+                auto v = collect(times);
+                at = ft_of(v[0].as_double());
+                mt = ft_of(v[1].as_double());
+            } else {
+                SYSTEMTIME st;
+                GetSystemTime(&st);
+                SystemTimeToFileTime(&st, &at);
+                mt = at;
             }
-            auto tv2 = collect(times);
-            ub.actime = (__time64_t)tv2[0].as_double();
-            ub.modtime = (__time64_t)tv2[1].as_double();
-            if (_wutime64(wide_(p).c_str(), &ub) != 0) raise(os_error(errno, p));
+            HANDLE h = CreateFileW(wide_(p).c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                                   OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+            if (h == INVALID_HANDLE_VALUE) raise(win_error(GetLastError(), p));
+            BOOL ok = SetFileTime(h, nullptr, &at, &mt);
+            DWORD e = GetLastError();
+            CloseHandle(h);
+            if (!ok) raise(win_error(e, p));
             return None;
         });
         mod_def(m, "getpid", [](const CallArgs&) { return var((int64_t)GetCurrentProcessId()); });
@@ -1215,9 +1237,7 @@ void init_os_modules() {
         mod_def(m, "close", [](const CallArgs& a) { _close((int)a.pos.at(0).as_int64()); return None; });
         mod_def(m, "fdopen", [](const CallArgs& a) -> var {
             int fd = (int)a.pos.at(0).as_int64();
-            // a file object over the descriptor: re-opened by its path when known
-            (void)fd;
-            raise(E_NotImplementedError, "os.fdopen: use open() on the path");
+            return builtin("open")(var((int64_t)fd), arg(a, 1, "mode", "r"_s));
         });
     });
 

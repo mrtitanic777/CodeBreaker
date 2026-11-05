@@ -757,6 +757,7 @@ void init_ctypes(const var& m);
 void init_ctypes_util(const var& m);
 void init_wintypes(const var& m);
 void init_pytest(const var& m);
+void init_unittest(const var& m);
 
 // memoryview: a view of bytes, a bytearray or a ctypes object (raw_of reads it through .obj)
 static void make_memoryview() {
@@ -806,12 +807,38 @@ static void make_memoryview() {
     t::memoryview = mv;
 }
 
+var eval_expr_(const var& src, const var& globals, const var& locals);   // lib_ast.cc
+var run_module_(const std::string& name, const std::string& run_name);  // module.cc
+const char* module_for_file_(const std::string& path);                  // module.cc
+
 void init_extra_modules() {
     make_memoryview();
+    {
+        // eval of an expression (lib_ast.cc evaluates pyfront's tree); exec / compile still need Python
+        extern var g_builtins;
+        mod_def(g_builtins, "eval", [](const CallArgs& a) {
+            return eval_expr_(a.pos.at(0), arg(a, 1, "globals", None), arg(a, 2, "locals", None));
+        });
+    }
+    register_native_module("runpy", [](const var& m) {
+        mod_def(m, "run_module", [](const CallArgs& a) {
+            var run_name = kwarg(a, "run_name", a.pos.size() > 2 ? a.pos[2] : var(None));
+            std::string mod = str_utf8(a.pos.at(0));
+            var g = run_module_(mod, run_name.is_none() ? mod : str_utf8(run_name));
+            return g;
+        });
+        mod_def(m, "run_path", [](const CallArgs& a) -> var {
+            const char* mn = module_for_file_(fs_path(a.pos.at(0)));
+            if (!mn) raise(E_NotImplementedError, "runpy.run_path: " + fs_path(a.pos[0]) + " is not a module of this program");
+            var run_name = kwarg(a, "run_name", var("<run_path>"_s));
+            return run_module_(mn, str_utf8(run_name));
+        });
+    });
     register_native_module("ctypes", init_ctypes);          // (lib_ctypes.cc)
     register_native_module("ctypes.util", init_ctypes_util);
     register_native_module("ctypes.wintypes", init_wintypes);
     register_native_module("pytest", init_pytest);          // (lib_pytest.cc: the API and the runner)
+    register_native_module("unittest", init_unittest);      // (lib_pytest.cc: TestCase, the skips, main)
     // z3: not in the C++ runtime until libz3 is vendored (a decision pending): importing it says so
     register_native_module("z3", [](const var&) {
         raise(E_ImportError, "z3 is not in the C++ runtime: libz3 is not vendored yet (emulate/symbolic.py and "

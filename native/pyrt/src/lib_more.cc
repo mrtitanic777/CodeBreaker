@@ -28,9 +28,13 @@ static thread_local int t_gil_held = 0;
 void gil_acquire_() { g_gil->lock(); t_gil_held = 1; }
 void gil_release_() { t_gil_held = 0; g_gil->unlock(); }
 static bool g_threads_started = false;
+static const DWORD g_main_tid = GetCurrentThreadId();   // (at static initialisation: the main thread)
 gil_release::gil_release() { if (g_threads_started && t_gil_held) gil_release_(); }
 gil_release::~gil_release() { if (g_threads_started && !t_gil_held) gil_acquire_(); }
 bool gil_ensure_() {   // (a ctypes callback on a thread of its own, or while its caller had released the lock)
+    // a callback on a thread the program did not start (a DLL's worker): from now on the program has threads, so
+    // the global lock is taken and given as CPython's is (the main thread is in the foreign call meanwhile)
+    if (!g_threads_started && GetCurrentThreadId() != g_main_tid) g_threads_started = true;
     if (g_threads_started && !t_gil_held) { gil_acquire_(); return true; }
     return false;
 }

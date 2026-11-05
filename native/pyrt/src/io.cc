@@ -83,6 +83,28 @@ static var decode_text(FileObj* f, const std::string& raw) {
 var open_file(const var& file, const std::string& mode, int64_t buffering, const var& encoding, const var& errors,
               const var& newline) {
     (void)buffering;
+    if (is_int(file)) {
+        // open(fd, mode) / os.fdopen: a file object over a CRT descriptor (closed with it)
+        std::string m;
+        for (char c : mode) if (c != 't' && c != 'x') m += c;
+        if (m.find('b') == std::string::npos) m += 'b';
+        FILE* fp = _fdopen((int)file.as_int64(), m.c_str());
+        if (!fp) raise(os_error(errno, std::to_string(file.as_int64())));
+        auto* f = new FileObj();
+        f->type = T_file;
+        f->fp = fp;
+        f->binary = mode.find('b') != std::string::npos;
+        f->readable = mode.find('r') != std::string::npos || mode.find('+') != std::string::npos;
+        f->writable = mode.find('r') == std::string::npos || mode.find('+') != std::string::npos;
+        f->name = std::to_string(file.as_int64());
+        f->mode = mode;
+        if (!encoding.is_none() && !encoding.is_unbound()) f->encoding = str_utf8(encoding);
+        if (!errors.is_none() && !errors.is_unbound()) f->errors = str_utf8(errors);
+        f->newline = newline.is_unbound() ? var(None) : newline;
+        var r(static_cast<Obj*>(f));
+        r.setattr("name", file);
+        return r;
+    }
     std::string path = fs_path(file);
     bool b = mode.find('b') != std::string::npos;
     char kind = 0;

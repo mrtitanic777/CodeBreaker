@@ -148,12 +148,142 @@ void import_star(const var& module, module_def& into) {
     }
 }
 
+// globals() / module.__dict__: a live mapping over the module's cells (what the translated code reads
+// and writes), so globals()[name] = v and LANE.export(globals()) reach the module as in Python
+struct ModDictObj : DataObj { var mod; };
+static TypeObj* T_moddict = nullptr;
+static ModuleObj* MD(const var& self) { return static_cast<ModuleObj*>(static_cast<ModDictObj*>(self.ref())->mod.ref()); }
+static std::vector<std::string> mod_keys(ModuleObj* m) {
+    std::vector<std::string> out;
+    for (auto& k : m->order) {
+        auto it = m->cells.find(k);
+        if (it != m->cells.end() && !it->second->v.is_unbound()) out.push_back(k);
+    }
+    return out;
+}
+var module_dict_(const var& mod) {
+    if (!T_moddict) {
+        T_moddict = new_type("module_dict", {}, Layout::NativeData, false, "builtins");
+        auto get = [](const CallArgs& a, bool must) -> var {
+            ModuleObj* m = MD(a.pos.at(0));
+            auto it = m->cells.find(utf8_of(a.pos.at(1)));
+            if (it == m->cells.end() || it->second->v.is_unbound()) {
+                if (must) raise(make_exc_args(E_KeyError, {a.pos[1]}));
+                return a.pos.size() > 2 ? a.pos[2] : var(None);
+            }
+            return it->second->v;
+        };
+        add_method(T_moddict, "__getitem__", [get](const CallArgs& a) { return get(a, true); });
+        add_method(T_moddict, "get", [get](const CallArgs& a) { return get(a, false); });
+        add_method(T_moddict, "__setitem__", [](const CallArgs& a) { MD(a.pos.at(0))->cell(utf8_of(a.pos.at(1)))->v = a.pos.at(2); return None; });
+        add_method(T_moddict, "__delitem__", [](const CallArgs& a) {
+            ModuleObj* m = MD(a.pos.at(0));
+            auto it = m->cells.find(utf8_of(a.pos.at(1)));
+            if (it == m->cells.end() || it->second->v.is_unbound()) raise(make_exc_args(E_KeyError, {a.pos[1]}));
+            it->second->v = var();
+            return None;
+        });
+        add_method(T_moddict, "__contains__", [](const CallArgs& a) {
+            if (!is_str(a.pos.at(1))) return var(false);
+            ModuleObj* m = MD(a.pos.at(0));
+            auto it = m->cells.find(utf8_of(a.pos[1]));
+            return var(it != m->cells.end() && !it->second->v.is_unbound());
+        });
+        add_method(T_moddict, "__len__", [](const CallArgs& a) { return var((int64_t)mod_keys(MD(a.pos.at(0))).size()); });
+        add_method(T_moddict, "keys", [](const CallArgs& a) {
+            std::vector<var> v;
+            for (auto& k : mod_keys(MD(a.pos.at(0)))) v.push_back(new_str(k));
+            return new_list(v);
+        });
+        add_method(T_moddict, "__iter__", [](const CallArgs& a) { return iter(a.pos.at(0).call("keys")); });
+        add_method(T_moddict, "values", [](const CallArgs& a) {
+            ModuleObj* m = MD(a.pos.at(0));
+            std::vector<var> v;
+            for (auto& k : mod_keys(m)) v.push_back(m->cells[k]->v);
+            return new_list(v);
+        });
+        add_method(T_moddict, "items", [](const CallArgs& a) {
+            ModuleObj* m = MD(a.pos.at(0));
+            std::vector<var> v;
+            for (auto& k : mod_keys(m)) v.push_back(new_tuple({new_str(k), m->cells[k]->v}));
+            return new_list(v);
+        });
+        add_method(T_moddict, "copy", [](const CallArgs& a) {
+            ModuleObj* m = MD(a.pos.at(0));
+            var d = new_dict_obj();
+            for (auto& k : mod_keys(m)) static_cast<DictObj*>(d.ref())->set(new_str(k), m->cells[k]->v);
+            return d;
+        });
+        add_method(T_moddict, "update", [](const CallArgs& a) {
+            ModuleObj* m = MD(a.pos.at(0));
+            if (a.pos.size() > 1) {
+                var o = a.pos[1];
+                for (var k : each(hasattr(o, "keys"_s).truthy() ? o.call("keys") : o)) m->cell(utf8_of(k))->v = o.getitem(k);
+            }
+            for (auto& [k, v] : a.kw) m->cell(utf8_of(k))->v = v;
+            return None;
+        });
+        add_method(T_moddict, "setdefault", [](const CallArgs& a) {
+            ModuleObj* m = MD(a.pos.at(0));
+            CellObj* c = m->cell(utf8_of(a.pos.at(1)));
+            if (c->v.is_unbound()) c->v = a.pos.size() > 2 ? a.pos[2] : var(None);
+            return c->v;
+        });
+        add_method(T_moddict, "pop", [](const CallArgs& a) {
+            ModuleObj* m = MD(a.pos.at(0));
+            auto it = m->cells.find(utf8_of(a.pos.at(1)));
+            if (it == m->cells.end() || it->second->v.is_unbound()) {
+                if (a.pos.size() > 2) return a.pos[2];
+                raise(make_exc_args(E_KeyError, {a.pos[1]}));
+            }
+            var v = it->second->v;
+            it->second->v = var();
+            return v;
+        });
+        add_method(T_moddict, "__repr__", [](const CallArgs& a) { return new_str(repr_(a.pos.at(0).call("copy"))); });
+        add_method(T_moddict, "__eq__", [](const CallArgs& a) { return var(a.pos.at(0).call("copy") == a.pos.at(1)); });
+    }
+    auto* o = new ModDictObj();
+    o->type = T_moddict;
+    o->mod = mod;
+    return var(static_cast<Obj*>(o));
+}
+
 var globals_of(module_def& m) {
     var mod = m.module();
-    return mod.getattr("__dict__");
+    return module_dict_(mod);
 }
 
 bool module_registered_(const std::string& name) { return reg().defs.count(name) || reg().natives.count(name); }
+// runpy.run_module: the module's statements run again with __name__ = run_name (a package: its
+// __main__), its globals returned
+var run_module_(const std::string& name_in, const std::string& run_name) {
+    std::string name = name_in;
+    auto d = reg().defs.find(name);
+    if (d != reg().defs.end() && d->second->package_) d = reg().defs.find(name += ".__main__");
+    if (d == reg().defs.end()) {
+        var e = make_exc(E_ImportError, "No module named " + name);
+        raise(e);
+    }
+    if (name.find('.') != std::string::npos) import(name.substr(0, name.rfind('.')).c_str());
+    module_def* def = d->second;
+    var saved = def->global("__name__");
+    def->global("__name__") = new_str(run_name);
+    var mod = def->module();
+    auto* mo = static_cast<ModuleObj*>(mod.ref());
+    mo->def = def;
+    if (def->file_) mo->cell("__file__")->v = new_str(def->file_);
+    try {
+        def->init_();
+    } catch (...) {
+        def->global("__name__") = saved.is_unbound() ? new_str(name) : saved;
+        throw;
+    }
+    var g = mod.getattr("__dict__");
+    def->global("__name__") = saved.is_unbound() ? new_str(name) : saved;
+    return g;
+}
+
 // a translated module's source file and whether it is a package (false: not translated, or native)
 bool module_source_(const std::string& name, std::string& file, bool& package) {
     auto d = reg().defs.find(name);

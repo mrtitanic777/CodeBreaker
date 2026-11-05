@@ -227,6 +227,17 @@ private:
         int loop_depth = 0;
     };
     Fn* fn_ = nullptr;
+    // private names: inside a class (its body and the functions in it) __name is _Class__name, as Python mangles
+    std::vector<std::string> classes_;
+    std::string mangle(const std::string& n) const {
+        if (classes_.empty() || n.size() < 3 || n.compare(0, 2, "__") != 0 || (n.size() >= 4 && n.compare(n.size() - 2, 2, "__") == 0) ||
+            n.find('.') != std::string::npos)
+            return n;
+        std::string c = classes_.back();
+        size_t k = c.find_first_not_of('_');
+        if (k == std::string::npos) return n;
+        return "_" + c.substr(k) + n;
+    }
 
     std::string t() { return std::to_string(++tmp_); }
     void refuse(const Node* n, const std::string& what) { res_.refused.push_back({n ? n->pos.lineno : 0, what}); }
@@ -365,7 +376,7 @@ private:
         if (where && where->kind == Scope::Class && r.kind != NameRes::Free) {
             // a class body reads its namespace first
             std::string fb = r.kind == NameRes::Global || (r.kind == NameRes::Local && where->binds(id)) ? global_or_builtin(id) : global_or_builtin(id);
-            if (where->binds(id)) return "py::class_name(" + fn_->class_var + ", " + slit(id) + ", " + fb + ")";
+            if (where->binds(id)) return "py::class_name(" + fn_->class_var + ", " + slit(mangle(id)) + ", " + fb + ")";
             return fb;
         }
         switch (r.kind) {
@@ -643,11 +654,11 @@ private:
             static const std::set<std::string> eager = {"join", "extend", "update", "union", "intersection", "difference", "issubset", "issuperset"};
             if (eager.count(a->attr) && c->args.size() == 1 && c->keywords.empty() && c->args[0]->kind == ExprKind::GeneratorExp) {
                 auto* g = cast<GeneratorExp>(c->args[0]);
-                return obj + ".call(" + cstr(a->attr) + ", " + comprehension_list(g->elt, g->generators, c->args[0]) + ")";
+                return obj + ".call(" + cstr(mangle(a->attr)) + ", " + comprehension_list(g->elt, g->generators, c->args[0]) + ")";
             }
             std::string args = call_args(c);
-            if (ordered_args(c)) return obj + ".call(" + cstr(a->attr) + ", {" + args + "})";
-            return obj + ".call(" + cstr(a->attr) + (args.empty() ? "" : ", " + args) + ")";
+            if (ordered_args(c)) return obj + ".call(" + cstr(mangle(a->attr)) + ", {" + args + "})";
+            return obj + ".call(" + cstr(mangle(a->attr)) + (args.empty() ? "" : ", " + args) + ")";
         }
         std::string f = expr(c->func);
         if (ordered_args(c)) return paren(f) + "({" + call_args(c) + "})";
@@ -706,7 +717,7 @@ private:
         return "";
     }
 
-    std::string attribute(const Attribute* a) { return expr(a->value) + ".attr(" + cstr(a->attr) + ")"; }
+    std::string attribute(const Attribute* a) { return expr(a->value) + ".attr(" + cstr(mangle(a->attr)) + ")"; }
 
     std::string subscript_key(const Expr* s) {
         if (auto* sl = as<Slice>(s))
@@ -983,7 +994,7 @@ private:
         const Scope* where = sc_.enclosing(n);
         NameRes r = sc_.resolve(n);
         if (where && where->kind == Scope::Class && r.kind != NameRes::Free && !where->globals.count(n->id))
-            return "py::at(" + fn_->class_var + ", " + slit(n->id) + ")";
+            return "py::at(" + fn_->class_var + ", " + slit(mangle(n->id)) + ")";
         if (r.kind == NameRes::Global) return gref(n->id);
         return local_name(n->id);
     }
@@ -993,7 +1004,7 @@ private:
         case ExprKind::Name: return store_name_expr(cast<Name>(tgt)) + " = " + v + ";";
         case ExprKind::Attribute: {
             auto* a = cast<Attribute>(tgt);
-            return expr(a->value) + ".setattr(" + cstr(a->attr) + ", " + v + ");";
+            return expr(a->value) + ".setattr(" + cstr(mangle(a->attr)) + ", " + v + ");";
         }
         case ExprKind::Subscript: {
             auto* s = cast<Subscript>(tgt);
@@ -1199,6 +1210,7 @@ private:
         // a class body inside a function: its defs are closures
         bool in_function = outer && outer->scope && outer->scope->kind != Scope::Module && outer->scope->kind != Scope::Class;
         fn_ = &body;
+        classes_.push_back(c->name);
         std::string annotations;
         size_t start = 0;
         std::string doc;
@@ -1213,7 +1225,7 @@ private:
                 std::string cpp = in_function ? "" : unique_fn(dotted_ident(qual + "." + f->name));
                 std::string v = make_def(f, cpp, qual + "." + f->name, in, cell_name, true);
                 v = decorate(f->decorator_list, v);
-                o += in + ns + ".setitem(" + slit(f->name) + ", " + v + ");\n";
+                o += in + ns + ".setitem(" + slit(mangle(f->name)) + ", " + v + ");\n";
             } else if (st->kind == StmtKind::ClassDef) {
                 auto* cc = cast<ClassDef>(st);
                 std::string inner_cls = class_def(cc, in, qual);
@@ -1235,6 +1247,7 @@ private:
             }
         }
         fn_ = outer;
+        classes_.pop_back();
         std::string bases;
         for (auto* b : c->bases) bases += (bases.empty() ? "" : ", ") + expr(b);
         std::string kws;
@@ -1254,7 +1267,7 @@ private:
         const Scope* cs = sc_.scope_of(c);
         if (cs) where = cs->parent;
         if (!where || where->kind == Scope::Module) return gref(c->name);
-        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(c->name) + ")";
+        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(mangle(c->name)) + ")";
         (void)prefix;
         if (where->globals.count(c->name)) return gref(c->name);
         return local_name(c->name);
@@ -1286,14 +1299,14 @@ private:
     std::string local_or_global(const std::string& n) {
         const Scope* where = fn_ ? fn_->scope : nullptr;
         if (!where || where->kind == Scope::Module || where->globals.count(n)) return gref(n);
-        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(n) + ")";
+        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(mangle(n)) + ")";
         return local_name(n);
     }
     std::string bind_name(const std::string& n) {
         // a name bound by an import, a def or a class in the current scope
         const Scope* where = fn_ ? fn_->scope : nullptr;
         if (!where || where->kind == Scope::Module || where->globals.count(n)) return gref(n);
-        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(n) + ")";
+        if (where->kind == Scope::Class) return "py::at(" + fn_->class_var + ", " + slit(mangle(n)) + ")";
         return local_name(n);
     }
 
@@ -1386,8 +1399,8 @@ std::string Emitter::stmt(const Stmt* s, const std::string& ind) {
         if (auto* at = as<Attribute>(a->target)) {
             std::string o = "py_o" + t();
             std::string op = it != ops.end() ? "py_c " + it->second + " " + v + ";" : "py_c = " + binop_s(a->op, "py_c", v) + ";";
-            return ind + "{ py::var " + o + " = " + expr(at->value) + "; py::var py_c = " + o + ".getattr(" + cstr(at->attr) + "); " + op + " " + o +
-                   ".setattr(" + cstr(at->attr) + ", py_c); }\n";
+            return ind + "{ py::var " + o + " = " + expr(at->value) + "; py::var py_c = " + o + ".getattr(" + cstr(mangle(at->attr)) + "); " + op + " " + o +
+                   ".setattr(" + cstr(mangle(at->attr)) + ", py_c); }\n";
         }
         if (auto* sb = as<Subscript>(a->target)) {
             std::string o = "py_o" + t();
@@ -1470,7 +1483,7 @@ std::string Emitter::stmt(const Stmt* s, const std::string& ind) {
                 const Scope* where = sc_.enclosing(n);
                 if (where && where->kind == Scope::Class) o += ind + fn_->class_var + ".delitem(" + slit(n->id) + ");\n";
                 else o += ind + store_name_expr(n) + " = py::var();\n";
-            } else if (auto* at = as<Attribute>(tg)) o += ind + expr(at->value) + ".delattr(" + cstr(at->attr) + ");\n";
+            } else if (auto* at = as<Attribute>(tg)) o += ind + expr(at->value) + ".delattr(" + cstr(mangle(at->attr)) + ");\n";
             else if (auto* sb = as<Subscript>(tg)) o += ind + expr(sb->value) + ".delitem(" + subscript_key(sb->slice) + ");\n";
             else if (auto* tu = as<Tuple>(tg)) {
                 Delete d2;
