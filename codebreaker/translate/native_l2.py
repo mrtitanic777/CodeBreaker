@@ -1,30 +1,27 @@
 """native_l2.py -- the L2 core and the C back end in C++ (native/l2: cbl2.dll), through ctypes.
 
 A thin shim, kept only until each caller's own turn to move (docs/NATIVE.md step 5): the callers of
-codebreaker/translate/backends/c.py and of l2.py's round trip keep calling them, and with the switch
-on the work is done by the DLL -- the same text, the same facts, the same exceptions (Decline,
-KeyError, ValueError where the Python raised them).
+codebreaker/translate/backends/c.py keep calling it, and the work is done by the DLL -- the same
+text, the same facts, the same exceptions (Decline, KeyError, ValueError where the Python raised
+them). The Python writer is gone (2026-11-04): c.py's entry points are _ENTRIES below.
 
-    native_l2.enabled()                      CB_NATIVE_L2 is not 0 and the DLL loads
+    native_l2.enabled()                      the DLL loads
     native_l2.call("function", doc, moved, far, facts)
-    native_l2.install(namespace)             (backends/c.py: its entry points dispatched by the switch)
 
 Values cross as JSON; what JSON has no form for goes tagged (a tuple {"$t": [...]}, a set {"$s": [...]},
 a dict of other keys {"$d": [[k, v], ...]}, a float that is not finite {"$f": "nan"}).
 
-The switch: CB_NATIVE_L2 (default 1 since the gate, docs/NATIVE.md; 0 = the Python). Without the DLL
-the Python runs (why_not() says why). Build: native/l2/CMakeLists.txt (cmake + ninja, vcvars64).
+There is no switch and no fallback: without the DLL a call raises, and why_not() says why. Build:
+native/l2/CMakeLists.txt (cmake + ninja, vcvars64).
 """
 import copy
 import ctypes
-import functools
 import json
 import math
 import os
 
 from codebreaker.base import settings
 
-DEFAULT = "1"             # CB_NATIVE_L2 when it is not set (identical everywhere gated: docs/NATIVE.md step 5)
 _LIB = []
 _WHY = []
 
@@ -51,7 +48,7 @@ def _load():
         lib.l2_call.restype = ctypes.c_int
         lib.l2_free.argtypes = (ctypes.c_void_p,)
         lib.l2_free.restype = None
-    except Exception as e:                                   # (no DLL: the Python runs)
+    except Exception as e:                                   # (no DLL: a call says why)
         _WHY.append("%s: %s" % (type(e).__name__, e))
         lib = None
     _LIB.append(lib)
@@ -59,9 +56,7 @@ def _load():
 
 
 def enabled():
-    """The native writer for this process: CB_NATIVE_L2 is not 0 and the DLL loads."""
-    if os.environ.get("CB_NATIVE_L2", DEFAULT) in ("", "0"):
-        return False
+    """The native writer loads in this process."""
     return _load() is not None
 
 
@@ -142,7 +137,7 @@ _TEXTS = {}               # {id: (an L2 document, the JSON text it was read from
 
 def known_text(doc, text):
     """The decompiler's note an L2 document was read from (decompiler.split_notes): handed to the DLL as
-    it is, the document is not written out again. (Kept only while the native writer is on.)"""
+    it is, the document is not written out again. (Kept only while the native writer loads.)"""
     if enabled():
         _TEXTS[id(doc)] = (doc, text)
         while len(_TEXTS) > 2 * _KEEP:
@@ -198,6 +193,8 @@ def _raise(err):
 def call_raw(fn, text):
     """One entry point with its arguments already as the tagged JSON array -> (status, the result's text)."""
     lib = _load()
+    if lib is None:
+        raise RuntimeError("the C back end is native (native/l2, cbl2.dll): %s" % why_not())
     out, n = ctypes.c_void_p(), ctypes.c_size_t()
     data = text.encode("utf-8", "surrogatepass")
     status = lib.l2_call(fn.encode("ascii"), data, len(data), ctypes.byref(out), ctypes.byref(n))
@@ -322,33 +319,6 @@ _ENTRIES = {
     "arguments_at": _plain("arguments_at"), "words": _plain("words"), "parameters": _plain("parameters"),
     "argument_words": _plain("argument_words"),
 }
-
-
-def install(namespace):
-    """Each of backends/c.py's entry points dispatched by the switch: the native writer where it is on,
-    the Python (kept as namespace["_py_<name>"]) where it is off. Inside the Python writer every call
-    stays Python's: its own calls of these names go to its own functions, which share its state."""
-    import threading
-    inside = threading.local()
-
-    for name, native in _ENTRIES.items():
-        py = namespace[name]
-
-        def python(*args, _py=py, **kw):
-            inside.depth = getattr(inside, "depth", 0) + 1
-            try:
-                return _py(*args, **kw)
-            finally:
-                inside.depth -= 1
-        functools.update_wrapper(python, py)
-        namespace["_py_" + name] = python
-
-        def dispatch(*args, _python=python, _native=native, **kw):
-            if not getattr(inside, "depth", 0) and enabled():
-                return _native(*args, **kw)
-            return _python(*args, **kw)
-        functools.update_wrapper(dispatch, py)
-        namespace[name] = dispatch
 
 
 # ---------------------------------------------------------------------------------------------- the L2 core

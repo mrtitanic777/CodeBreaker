@@ -109,12 +109,14 @@ def ne_segments(ctx, key):
 def _module_stamp():
     from codebreaker.base import settings
     from codebreaker.decompile import decompiler
+    from codebreaker.translate import native_l2
     switches = [os.environ.get(n, "") for n in ("CB_SELECTOR_STRUCTS", "CB_CODE_DATA",
                                                  "CB_CALLER_ARGS", "CB_FASTCALL", "CB_INLINE_HELPERS",
                                                  "CB_PROTOTYPES", "CB_CALLER_RESULTS")]
     return (cache.tool(decompiler._exe()), decompiler._language_stamp(),
             (settings.get("struct_recovery") or "off").strip().lower(), switches,
-            _sources("translate/backends/c.py"))           # (the C is written from L2 by it)
+            _sources("translate/backends/c.py"),           # (the C is written from L2 by it ...
+            cache.tool(native_l2.dll_path()))               # ... that is, by native/l2's cbl2.dll)
 
 
 def _uses_module():
