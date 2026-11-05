@@ -21,6 +21,8 @@ import os
 import struct
 import sys
 
+from codebreaker.formats import native
+
 MAGIC = b"XDBF"
 NS = {1: "achievement", 2: "image", 3: "setting", 4: "title",
       5: "string", 6: "avatar-award", 7: "avatar-award-1"}
@@ -28,17 +30,10 @@ NS = {1: "achievement", 2: "image", 3: "setting", 4: "title",
 
 class XDBF:
     def __init__(self, data):
-        if data[:4] != MAGIC:
-            raise ValueError("not an XDBF file (magic %r)" % data[:4])
         self.d = data
-        (self.version, self.entry_table_len, self.entry_count,
-         self.free_table_len, self.free_count) = struct.unpack_from(">IIIII", data, 4)
+        (self.version, self.entry_table_len, self.entry_count, self.free_table_len, self.free_count,
+         self.entries) = native.call("xdbf.parse", data)          # entries: (namespace, id, off, length)
         self.data_start = 0x18 + self.entry_table_len * 0x12 + self.free_table_len * 8
-        self.entries = []                                # (namespace, id, off, length)
-        for i in range(self.entry_count):
-            o = 0x18 + i * 0x12
-            ns, eid, off, length = struct.unpack_from(">HQII", data, o)
-            self.entries.append((ns, eid, off, length))
 
     def payload(self, ns, eid):
         for n, i, off, length in self.entries:
@@ -54,33 +49,8 @@ class XDBF:
     def achievements(self):
         """Decode namespace-1 achievement records. Each record: fixed fields
         then a UTF-16BE name + unlocked-description + locked-description."""
-        out = []
-        for ns, eid, off, length in self.entries:
-            if ns != 1:
-                continue
-            b = self._entry_bytes(off, length)
-            if len(b) < 0x1C:
-                continue
-            # struct size, achievement id, image id, gamerscore, flags, unlock time
-            size = struct.unpack_from(">I", b, 0)[0]
-            ach_id = struct.unpack_from(">I", b, 4)[0]
-            image_id = struct.unpack_from(">I", b, 8)[0]
-            score = struct.unpack_from(">I", b, 0x0C)[0]
-            flags = struct.unpack_from(">I", b, 0x10)[0]
-            # three null-terminated UTF-16BE strings follow at 0x1C
-            strs = b[0x1C:].split(b"\x00\x00")
-            def dec(x):
-                try:
-                    return x.decode("utf-16-be", "replace").rstrip("\x00")
-                except Exception:
-                    return ""
-            name = dec(strs[0]) if len(strs) > 0 else ""
-            unlocked_desc = dec(strs[1]) if len(strs) > 1 else ""
-            locked_desc = dec(strs[2]) if len(strs) > 2 else ""
-            out.append(dict(id=ach_id, image=image_id, score=score, flags=flags,
-                            unlocked=bool(flags & 0x20000), name=name,
-                            unlocked_desc=unlocked_desc, locked_desc=locked_desc))
-        return out
+        return native.call("xdbf.achievements", self.d, self.data_start,
+                           [(ns, off, length) for ns, _eid, off, length in self.entries])
 
     def counts(self):
         c = {}
@@ -137,22 +107,8 @@ class XDBF:
         """Serialise back to a valid XDBF byte stream (compacted heap). Entry
         order is preserved; edited/new payloads are honoured."""
         pm = self._payload_map()
-        ents = list(self.entries)
-        cap = max(self.entry_table_len, len(ents))
-        free_cap = max(self.free_table_len, 1)
-        data_start = 0x18 + cap * 0x12 + free_cap * 8
-        heap = bytearray()
-        table = bytearray()
-        for ns, eid, _off, _length in ents:
-            payload = pm[(ns, eid)]
-            table += struct.pack(">HQII", ns, eid, len(heap), len(payload))
-            heap += payload
-        table += b"\x00" * ((cap - len(ents)) * 0x12)           # unused slots
-        free = struct.pack(">II", len(heap), 0)                 # sentinel: no free
-        free += b"\x00" * ((free_cap - 1) * 8)
-        hdr = MAGIC + struct.pack(">IIIII", self.version, cap, len(ents), free_cap, 1)
-        assert len(hdr) + len(table) + len(free) == data_start
-        return bytes(hdr + table + free + heap)
+        return native.call("xdbf.build", None, self.version, self.entry_table_len, self.free_table_len,
+                           [(ns, eid.to_bytes(8, "big"), pm[(ns, eid)]) for ns, eid, _off, _length in self.entries])
 
     def extract_all(self, outdir):
         os.makedirs(outdir, exist_ok=True)

@@ -28,6 +28,8 @@ packs controlp/xam/skin/gamercrd (18/29/33/9 PNG signatures all valid).
 DESCRIPTION = "unpack XUIZ .xzp containers (Minecraft v1 + dashboard v3)"
 import os, sys, struct
 
+from codebreaker.formats import native
+
 BASE_REL = 0x16     # payload base is relative to this
 TBL = 0x17          # entry table starts here
 PNG = bytes.fromhex('89504e470d0a1a0a')
@@ -41,57 +43,9 @@ IEND = bytes.fromhex('49454e44ae426082')
 # Both put the payload base at 0x16 + (u32be @0x10).
 def parse(path):
     d = path if isinstance(path, (bytes, bytearray)) else open(path, 'rb').read()
-    if d[:4] != b'XUIZ':
-        raise ValueError('%s: not a XUIZ container'
-                         % (path if isinstance(path, str) else '<bytes>'))
-    ver = struct.unpack_from('>I', d, 4)[0]
-    return _parse_v3(d) if ver >= 3 else _parse_v1(d)
-
-
-def _parse_v1(d):
-    ver, fsize = struct.unpack_from('>II', d, 4)
-    base = BASE_REL + struct.unpack_from('>I', d, 0x10)[0]
-    p = TBL
-    entries = []
-    while p + 9 <= len(d):
-        size = int.from_bytes(d[p:p + 3], 'big')      # uint24, not uint32
-        off = int.from_bytes(d[p + 3:p + 7], 'big')
-        nl = struct.unpack_from('<H', d, p + 7)[0]
-        if nl == 0 or nl > 512 or p + 9 + nl * 2 > len(d):
-            break
-        # The table cannot extend past the payload base.  The final entry's
-        # name is truncated by one byte when it butts up against the payload
-        # (the last character's high byte is elided), so clamp and recover it.
-        raw = d[p + 9:min(p + 9 + nl * 2, base)]
-        if len(raw) % 2:
-            name = raw[:-1].decode('utf-16-le', 'replace') + chr(raw[-1])
-        else:
-            name = raw.decode('utf-16-le', 'replace')
-        name = ''.join(c for c in name if 32 <= ord(c) < 127)
-        if not name or base + off + size > len(d):
-            break
-        entries.append(dict(size=size, offset=off, name=name))
-        p = min(p + 9 + nl * 2, base)
-    return dict(version=ver, file_size=fsize, base=base, table_end=p,
-                entries=entries, data=d)
-
-
-def _parse_v3(d):
-    fsize = struct.unpack_from('>I', d, 8)[0]
-    base = BASE_REL + struct.unpack_from('>I', d, 0x10)[0]
-    count = struct.unpack_from('>H', d, 0x14)[0]
-    p = BASE_REL
-    entries = []
-    for _ in range(count):
-        if p + 9 > len(d):
-            break
-        size, off = struct.unpack_from('>II', d, p)
-        nl = d[p + 8]
-        name = d[p + 9:p + 9 + nl].decode('latin-1', 'replace')
-        entries.append(dict(size=size, offset=off, name=name))
-        p += 9 + nl
-    return dict(version=3, file_size=fsize, base=base, table_end=p,
-                entries=entries, data=d)
+    r = native.call("xzp.parse", d, path if isinstance(path, str) else '<bytes>')
+    r['data'] = d
+    return r
 
 
 def verify(r):
@@ -103,25 +57,10 @@ def verify(r):
     return len(png), hit, tail
 
 
-def _safe_rel(name):
-    """Turn a stored entry name into a path safely under the output dir. v3
-    (dashboard) names carry backslash paths with leading '..\\' segments; drop
-    any '..' / absolute components so extraction can't escape the target dir."""
-    parts = name.replace('\\', '/').split('/')
-    parts = [p for p in parts if p not in ('', '.', '..') and ':' not in p]
-    return os.path.join(*parts) if parts else ''
-
-
 def payloads(path):
-    """Every stored file as (relative path, bytes), names made safe."""
-    r = parse(path)
-    d, base = r['data'], r['base']
-    out = []
-    for e in r['entries']:
-        rel = _safe_rel(e['name'])
-        if rel:
-            out.append((rel.replace(os.sep, '/'), d[base + e['offset']:base + e['offset'] + e['size']]))
-    return out
+    """Every stored file as (relative path, bytes), names made safe (no '..', no absolute parts)."""
+    d = path if isinstance(path, (bytes, bytearray)) else open(path, 'rb').read()
+    return native.call("xzp.payloads", d, path if isinstance(path, str) else '<bytes>')
 
 
 def extract(path, outdir):

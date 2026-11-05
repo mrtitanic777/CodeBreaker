@@ -9,7 +9,7 @@ Containers are read through formats/media.py (volumes.py adapts each one), so
     stfs.py      STFS packages (CON / LIVE / PIRS): read, pack, resign with your console's keyvault
     gdf.py       XDVDFS / GDF disc filesystem (XISO, redump XGD1-3)
     god.py       Games on Demand (SVOD): read, and ISO / XEX / NXE install -> GoD
-    ciso.py      CSO and CCI compressed disc images (lz4block.py: their LZ4 blocks)
+    ciso.py      CSO and CCI compressed disc images (their LZ4 blocks are formats.dll's)
     chd.py       CHD disc images (header read here; conversion through chdman)
     fatx.py      FATX filesystems of drives and memory units: list, extract, deleted-file recovery, carving
     zar.py       ZArchive (.zar)

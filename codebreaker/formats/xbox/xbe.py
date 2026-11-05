@@ -26,8 +26,9 @@ contents.
 
 import hashlib
 import os
-import struct
 import sys
+
+from codebreaker.formats import native
 
 MAGIC = b"XBEH"
 ENTRY_KEYS = {"retail": 0xA8FC57AB, "debug": 0x94859D4B, "chihiro": 0x40B5C16E}
@@ -43,35 +44,7 @@ MEDIA = {0x1: "HDD", 0x2: "DVD-X2", 0x4: "DVD-CD", 0x8: "CD", 0x10: "DVD-5-RO",
 class XBE:
     def __init__(self, data):
         self.d = data
-        if data[:4] != MAGIC:
-            raise ValueError("not an XBE (magic %r)" % data[:4])
-        self.base = struct.unpack_from("<I", data, 0x104)[0]
-        self.size_of_image = struct.unpack_from("<I", data, 0x10C)[0]
-        self.size_of_headers = struct.unpack_from("<I", data, 0x108)[0]
-        self.cert_addr = struct.unpack_from("<I", data, 0x118)[0]
-        self.section_count = struct.unpack_from("<I", data, 0x11C)[0]
-        self.section_hdr_addr = struct.unpack_from("<I", data, 0x120)[0]
-        self.init_flags = struct.unpack_from("<I", data, 0x124)[0]
-        self._entry_raw = struct.unpack_from("<I", data, 0x128)[0]
-        self._thunk_raw = struct.unpack_from("<I", data, 0x148)[0]
-        self._parse_cert()
-
-    def _off(self, va):
-        return va - self.base
-
-    def _wstr(self, off, wchars):
-        return self.d[off:off + wchars * 2].decode("utf-16-le", "replace").split("\x00", 1)[0]
-
-    def _parse_cert(self):
-        c = self._off(self.cert_addr)
-        self.cert_size = struct.unpack_from("<I", self.d, c)[0]
-        self.title_id = struct.unpack_from("<I", self.d, c + 0x08)[0]
-        self.title_name = self._wstr(c + 0x0C, 40)
-        self.allowed_media = struct.unpack_from("<I", self.d, c + 0x9C)[0]
-        self.region = struct.unpack_from("<I", self.d, c + 0xA0)[0]
-        self.ratings = struct.unpack_from("<I", self.d, c + 0xA4)[0]
-        self.disk_number = struct.unpack_from("<I", self.d, c + 0xA8)[0]
-        self.version = struct.unpack_from("<I", self.d, c + 0xAC)[0]
+        self.__dict__.update(native.call("xbe.parse", data))        # (the header and certificate: formats.dll's)
 
     def title_id_str(self):
         """Title id -> 'AA-nnn' (two publisher letters + 3-digit game number)."""
@@ -95,18 +68,7 @@ class XBE:
         return self._decrypt(self._thunk_raw, THUNK_KEYS)
 
     def sections(self):
-        out = []
-        for i in range(self.section_count):
-            o = self._off(self.section_hdr_addr) + i * 0x38
-            flags, va, vsize, raw_addr, raw_size, name_va = struct.unpack_from("<IIIIII", self.d, o)
-            name = ""
-            if name_va:
-                no = self._off(name_va)
-                end = self.d.find(b"\x00", no)
-                name = self.d[no:end].decode("latin-1", "replace")
-            out.append({"name": name, "flags": flags, "vaddr": va, "vsize": vsize,
-                        "raw_addr": raw_addr, "raw_size": raw_size})
-        return out
+        return native.call("xbe.sections", self.d, self.base, self.section_count, self.section_hdr_addr)
 
     def region_str(self):
         return "|".join(n for m, n in REGION.items() if self.region & m) or "0x%X" % self.region
@@ -129,53 +91,8 @@ def to_pe(path):
 
 
 def pe_image(x):
-    """The bytes of the PE image for an XBE (see the module's notes)."""
-    base, size = x.base, x.size_of_image
-    sections = [s for s in x.sections() if s["vsize"] or s["raw_size"]]
-    entry, _k = x.entry_point()
-    thunk, _k = x.kernel_thunk()
-    image = bytearray(max(size, max((s["vaddr"] - base + max(s["vsize"], s["raw_size"]) for s in sections), default=0)))
-    head = min(len(x.d), x.size_of_headers, len(image))
-    image[:head] = x.d[:head]                                     # (overwritten below by the PE headers)
-    for s in sections:
-        raw = x.d[s["raw_addr"]:s["raw_addr"] + min(s["raw_size"], s["vsize"] or s["raw_size"])]
-        at = s["vaddr"] - base
-        image[at:at + len(raw)] = raw
-    # the import directory: one descriptor for the kernel, its name, in a section of its own
-    imp = (len(image) + 0xFFF) & ~0xFFF
-    name = b"xboxkrnl.exe\0"
-    thunk_rva = thunk - base
-    directory = struct.pack("<5I", thunk_rva, 0, 0, imp + 40, thunk_rva) + bytes(20) + name
-    count = 0
-    while thunk_rva + 4 * count + 4 <= len(image) and struct.unpack_from("<I", image, thunk_rva + 4 * count)[0]:
-        count += 1
-    image += bytes(imp - len(image)) + directory
-    image += bytes((-len(image)) % 0x1000)
-    names = [s["name"][:8].encode("latin-1", "replace") for s in sections] + [b".cbimp"]
-    spans = [(s["vaddr"] - base, max(s["vsize"], s["raw_size"]), s["flags"]) for s in sections]
-    spans.append((imp, len(directory), 0))
-    nsec = len(spans)
-    headers = 0x40 + 4 + 20 + 224 + 40 * nsec
-    if sections and headers > min(sp[0] for sp in spans):
-        raise ValueError("the XBE's first section starts too low for PE headers")
-    pe = bytearray(headers)
-    pe[0:2] = b"MZ"
-    struct.pack_into("<I", pe, 0x3C, 0x40)
-    pe[0x40:0x44] = b"PE\0\0"
-    struct.pack_into("<HHIIIHH", pe, 0x44, 0x014C, nsec, 0, 0, 0, 224, 0x0102)
-    o = 0x58
-    struct.pack_into("<HBBIIIIIIIIIHHHHHHIIIIHHIIIIII", pe, o, 0x10B, 0, 0, 0, 0, 0, entry - base, 0, 0,
-                     base, 0x20, 0x20, 4, 0, 0, 0, 4, 0, 0, len(image), headers, 0, 14, 0,
-                     0x100000, 0x1000, 0x100000, 0x1000, 0, 16)
-    struct.pack_into("<II", pe, o + 96 + 8, imp, len(directory))                       # import directory
-    struct.pack_into("<II", pe, o + 96 + 12 * 8, thunk_rva, 4 * (count + 1))           # import address table
-    for i, ((rva, vsize, flags), nm) in enumerate(zip(spans, names)):
-        chars = 0x40000040 | (0x20000020 if flags & 0x4 else 0) | (0x80000000 if flags & 0x1 else 0)
-        if nm == b".cbimp":
-            chars = 0x40000040
-        struct.pack_into("<8sIIIIIIHHI", pe, 0x58 + 224 + 40 * i, nm, vsize, rva, vsize, rva, 0, 0, 0, 0, chars)
-    image[:headers] = pe
-    return bytes(image)
+    """The bytes of the PE image for an XBE (see the module's notes; formats.dll's)."""
+    return native.call("xbe.pe_image", x.d)
 
 
 DESCRIPTION = "read an Original Xbox XBE executable: header/certificate/sections + entry decrypt"

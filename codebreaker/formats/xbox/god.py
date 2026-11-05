@@ -19,100 +19,32 @@ Commands:
 """
 DESCRIPTION = "Xbox 360 GoD/SVOD: read (de-interleave) and convert ISO -> GoD"
 
-import hashlib
 import os
-import struct
 import sys
+
+from codebreaker.formats import native
+from codebreaker.formats.xbox import gdf
 
 BLOCK = 0x1000
 BLOCKS_PER_SUBPART = 0xCC          # 204 data blocks per subpart
-SUBPARTS_PER_PART = 0xCB           # 203 subparts per part
 BLOCKS_PER_PART = 0xA1C4           # = 0xCB * 0xCC data blocks per part
 SUBPART_SIZE = BLOCK * BLOCKS_PER_SUBPART
 
 
-def _phys_offset_in_part(block_in_part):
-    """Physical byte offset of a data block within its part file (past hashes)."""
-    subpart = block_in_part // BLOCKS_PER_SUBPART
-    in_sub = block_in_part % BLOCKS_PER_SUBPART
-    return (BLOCK                                    # master hash block
-            + subpart * (BLOCK + SUBPART_SIZE)       # prior subparts
-            + BLOCK                                   # this subpart's hash block
-            + in_sub * BLOCK)
-
-
-class SvodReader:
+class SvodReader(gdf.Device):
     """De-interleaves a GoD `.data` directory into the logical disc volume,
     exposing read_at(logical_offset, length) so a GDF reader can walk it."""
     def __init__(self, data_dir):
-        parts = sorted(n for n in os.listdir(data_dir)
-                       if n.lower().startswith("data"))
-        if not parts:
-            raise ValueError("no Data#### part files in %r" % data_dir)
-        self.paths = [os.path.join(data_dir, n) for n in parts]
-        self._fh = {}
-
-    def _f(self, idx):
-        if idx not in self._fh:
-            self._fh[idx] = open(self.paths[idx], "rb")
-        return self._fh[idx]
-
-    def read_at(self, offset, length):
-        out = bytearray()
-        while length > 0:
-            block = offset // BLOCK
-            in_block = offset % BLOCK
-            part = block // BLOCKS_PER_PART
-            if part >= len(self.paths):
-                break
-            block_in_part = block % BLOCKS_PER_PART
-            phys = _phys_offset_in_part(block_in_part) + in_block
-            take = min(length, BLOCK - in_block)
-            f = self._f(part)
-            f.seek(phys)
-            chunk = f.read(take)
-            if not chunk:
-                break
-            out += chunk
-            offset += len(chunk)
-            length -= len(chunk)
-        return bytes(out)
-
-    def close(self):
-        for f in self._fh.values():
-            f.close()
+        self._id, self.paths = native.call("xdev.open_svod", None, os.fspath(data_dir))
 
 
 # ------------------------------------------------------------------- writer
-def _con_header(template, *, title_id, media_id, content_type, blocks_allocated,
-                part_count, parts_total_size, mht_hash, title=""):
-    """Build the GoD CON/LIVE header from the empty_live template (0xB000)."""
-    b = bytearray(template)
-    struct.pack_into(">I", b, 0x0344, content_type)
-    struct.pack_into(">I", b, 0x0354, media_id)
-    struct.pack_into(">I", b, 0x0360, title_id)
-    # block counts: u24 BE allocated @0x392, u16 BE not-allocated @0x395
-    b[0x0392] = (blocks_allocated >> 16) & 0xFF
-    b[0x0393] = (blocks_allocated >> 8) & 0xFF
-    b[0x0394] = blocks_allocated & 0xFF
-    struct.pack_into(">H", b, 0x0395, 0)
-    struct.pack_into("<I", b, 0x03A0, part_count)        # part count is LE (sic)
-    struct.pack_into(">I", b, 0x03A4, parts_total_size // 0x100)
-    b[0x037D:0x037D + 20] = mht_hash
-    if title:
-        t = title.encode("utf-16-be")[:0x7E]
-        b[0x0411:0x0411 + len(t)] = t
-        b[0x1691:0x1691 + len(t)] = t
-    b[0x035B] = 0; b[0x035F] = 0; b[0x0391] = 0
-    b[0x032C:0x032C + 20] = hashlib.sha1(bytes(b[0x0344:0x0344 + 0xACBC])).digest()
-    return bytes(b)
-
-
 def write_god(volume_read, volume_size, out_dir, template, *, title_id, media_id,
               content_type=0x7000, title=""):
     """Write a GoD package: `<out_dir>/<mediaid>.data/Data####` parts plus the
     CON header file `<out_dir>/<mediaid>`. `volume_read(off, len)` streams the
-    de-interleaved (logical) disc volume to pack.
+    de-interleaved (logical) disc volume to pack.  (The block hashes and the part files'
+    layout are formats.dll's; this reads the volume a part at a time and writes the files.)
     """
     tid = "%08X" % title_id
     mid = "%08X" % media_id
@@ -127,41 +59,19 @@ def write_god(volume_read, volume_size, out_dir, template, *, title_id, media_id
 
     for pidx in range(part_count):
         part_path = os.path.join(data_dir, "Data%04d" % pidx)
-        master = bytearray(BLOCK)
-        subpart_blobs = []
-        for sidx in range(SUBPARTS_PER_PART):
-            base_block = pidx * BLOCKS_PER_PART + sidx * BLOCKS_PER_SUBPART
-            if base_block >= total_blocks:
-                break
-            sub_hash = bytearray(BLOCK)
-            data_blocks = bytearray()
-            filled = 0
-            for k in range(BLOCKS_PER_SUBPART):
-                gblk = base_block + k
-                if gblk >= total_blocks:
-                    break
-                chunk = volume_read(gblk * BLOCK, BLOCK)
-                chunk = chunk.ljust(BLOCK, b"\x00")
-                sub_hash[k * 20:k * 20 + 20] = hashlib.sha1(chunk).digest()
-                data_blocks += chunk
-                filled += 1
-            master[sidx * 20:sidx * 20 + 20] = hashlib.sha1(bytes(sub_hash)).digest()
-            subpart_blobs.append((bytes(sub_hash), bytes(data_blocks)))
-            if filled < BLOCKS_PER_SUBPART:
-                break
+        first = pidx * BLOCKS_PER_PART
+        blocks = []
+        for gblk in range(first, min(first + BLOCKS_PER_PART, total_blocks)):
+            blocks.append(volume_read(gblk * BLOCK, BLOCK).ljust(BLOCK, b"\x00"))
+        part, master_hash = native.call("god.part", None, b"".join(blocks))
         with open(part_path, "wb") as f:
-            f.write(bytes(master))
-            for sub_hash, data_blocks in subpart_blobs:
-                f.write(sub_hash)
-                f.write(data_blocks)
+            f.write(part)
         parts_total_size += os.path.getsize(part_path)
         if pidx == 0:
-            first_master_hash = hashlib.sha1(bytes(master)).digest()
+            first_master_hash = master_hash
 
-    header = _con_header(template, title_id=title_id, media_id=media_id,
-                         content_type=content_type, blocks_allocated=total_blocks,
-                         part_count=part_count, parts_total_size=parts_total_size,
-                         mht_hash=first_master_hash, title=title)
+    header = native.call("god.con_header", None, template, title_id, media_id, content_type, total_blocks,
+                         part_count, parts_total_size, first_master_hash, title)
     con_path = os.path.join(base, mid)
     with open(con_path, "wb") as f:
         f.write(header)
@@ -178,9 +88,7 @@ def _template():
 
 
 # ---- NXE-installed STFS package -> GoD/LIVE header (NXE2GOD transform) ----
-import hashlib as _hashlib
-
-
+@native.answered("god.install_to_god")
 def install_to_god(data):
     """Convert an NXE-installed game's STFS/CON header into a GoD/LIVE header
     (the NXE2GOD 'MakeGOD' transform): retype the package to LIVE / content-type
@@ -188,26 +96,6 @@ def install_to_god(data):
     (>= 0xB000); the sibling .data block folder is copied unchanged by the user.
     Facts reimplemented clean-room from NXE2GOD; on modded consoles this needs no
     RSA signature (the header hash is what is checked)."""
-    if len(data) < 0x413:
-        raise ValueError("not an STFS package header (need >= 0x413 bytes)")
-    b = bytearray(data)
-    b[0x0:0x4] = b"LIVE"
-    for i in range(0x22C, 0x234):
-        b[i] = 0xFF
-    b[0x340] = 0x00
-    b[0x341] = 0x00
-    b[0x342] = 0xAD
-    b[0x343] = 0x0E
-    b[0x346] = 0x70
-    b[0x379] = 0x24
-    b[0x37A] = 0x05
-    b[0x37B] = 0x05
-    b[0x37C] = 0x11
-    for i in range(0x3FD, 0x412):
-        b[i] = 0x00
-    digest = _hashlib.sha1(bytes(b[0x344:0x344 + 0xACBC])).digest()
-    b[0x32C:0x32C + 20] = digest
-    return bytes(b)
 
 
 def is_nxe_install(data):
@@ -233,7 +121,6 @@ def main():
         print("GoD/LIVE header written -> %s (copy the sibling .data folder alongside)" % a[2])
         return
     if op in ("info", "list"):
-        from codebreaker.formats.xbox import gdf
         data_dir = a[1]
         if not os.path.isdir(data_dir):
             print("give the .data directory of a GoD package"); sys.exit(2)
@@ -272,7 +159,6 @@ def main():
     elif op == "iso2god" or op == "convert":
         if len(a) < 3:
             print("usage: iso2god <image.iso> <out-dir> [--title NAME]"); sys.exit(2)
-        from codebreaker.formats.xbox import gdf
         from codebreaker.formats import xex
         iso, outdir = a[1], a[2]
         title = ""
@@ -303,7 +189,6 @@ def main():
     elif op == "xex2god":
         if len(a) < 3:
             print("usage: xex2god <default.xex> <out-dir> [--title NAME]"); sys.exit(2)
-        from codebreaker.formats.xbox import gdf
         from codebreaker.formats import xex
         xexpath, outdir = a[1], a[2]
         title = a[a.index("--title") + 1] if "--title" in a else ""
