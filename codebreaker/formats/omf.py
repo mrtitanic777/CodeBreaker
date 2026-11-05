@@ -1,4 +1,7 @@
 """omf.py -- Intel/Microsoft OMF-86 object modules: read one whole, write the few kinds exact makes.
+Answered by the C++ (native/formats/omf: formats.dll); its Python reader is gone (docs/NATIVE.md,
+step 4), but for patched and rename_symbols (a spec read by a regular expression; a Python function
+applied to every name).
 (Also the 32-bit records -- SEGDEF, PUBDEF, LEDATA, LIDATA, FIXUPP with 4-byte offsets -- that a
 32-bit compiler of the period writes, e.g. MSVC 2.0's: build/masm.py, invert/msvc2.)
 
@@ -22,60 +25,54 @@
     omf.record(type, payload)      -> one record's bytes, checksum included
     omf.name(s)                    -> a length-prefixed name
 """
-import struct
 
 from codebreaker.formats import native
 
 
-# ---- the C++ reader, while switched on (docs/NATIVE.md; codebreaker/formats/native_omf.py) ----
-def _no():
-    from codebreaker.formats import native_omf
-    return native_omf
+# ---- the C++ reader (native/formats/omf): its Python is gone (docs/NATIVE.md, step 4) ----------
+def _no_obj(answer, data, *_):
+    o = Obj()
+    o.__dict__.update(answer)
+    o.raw = bytes(data)
+    return o
 
 
-def _no_obj(*a):
-    return _no().obj(*a)
+def _no_walk(answer, data, *_):
+    items, error = answer
+    if isinstance(data, bytearray):
+        items = [(i, t, bytearray(body)) for i, t, body in items]
+
+    def records():
+        yield from items
+        if error is not None:
+            raise native._exception(*error)
+    return records()
 
 
-def _no_walk(*a):
-    return _no().walk(*a)
+def _no_holes_args(o, seg):
+    return None, (o.fix, seg)
 
 
-def _no_holes_args(*a):
-    return _no().holes_args(*a)
+def _no_code_segments_args(o):
+    return None, (o.segs,)
 
 
-def _no_code_segments_args(*a):
-    return _no().code_segments_args(*a)
-
-
-def _no_functions_args(*a):
-    return _no().functions_args(*a)
-
+def _no_functions_args(o, seg="_TEXT"):
+    return None, (o.pubs, len(o.seg.get(seg, b"")), o.filled.get(seg, 0), seg)
 
 
 def _idx(r, q):
     return (((r[q] & 0x7F) << 8) | r[q + 1], q + 2) if r[q] & 0x80 else (r[q], q + 1)
 
 
-@native.native_first("omf.records", "omf")
+@native.answered("omf.records")
 def records(data):
-    out = []
-    p = 0
-    while p + 3 <= len(data):
-        t = data[p]
-        n = data[p + 1] | data[p + 2] << 8
-        out.append((t, bytes(data[p + 3:p + 3 + n - 1])))
-        p += 3 + n
-        if t in (0x8A, 0x8B):
-            break
-    return out
+    ...
 
 
-@native.native_first("omf.record", "omf", data_arg=1)
+@native.answered("omf.record", data_arg=1)
 def record(t, payload):
-    b = bytes([t]) + struct.pack("<H", len(payload) + 1) + bytes(payload)
-    return b + bytes([(-sum(b)) & 0xFF])
+    ...
 
 
 def patched(raw, spec):
@@ -108,288 +105,54 @@ def patched(raw, spec):
     return out
 
 
-@native.native_first("omf.name", "omf", data_arg=None)
+@native.answered("omf.name", data_arg=None)
 def name(s):
-    s = s.encode("latin1") if isinstance(s, str) else s
-    return bytes([len(s)]) + s
+    ...
 
 
 class Obj(object):
     pass
 
 
-@native.native_first("omf.read", "omf", result=_no_obj)
+@native.answered("omf.read", result=_no_obj)
+def _read(data):
+    ...
+
+
 def read(data):
+    """The object module `data` read whole (an omf.Obj: see the module docstring)."""
     from codebreaker.exact import aout
     if aout.is_aout(data):                                  # (a Version 7 a.out: XENIX's compiler)
         return aout.read(data)
-    o = Obj()
-    names = []
-    segs = []
-    seginfo = []
-    buf = {}
-    o.pubs, o.ext, o.fix, o.groups, o.comm = [], [], [], {}, {}
-    o.fixloc = []
-    o.combine, o.start = {}, None
-    last = None
-    thr = {}
-    filled = {}
-    for t, r in records(data):
-        if t == 0x96:
-            q = 0
-            while q < len(r):
-                names.append(r[q + 1:q + 1 + r[q]].decode("latin1"))
-                q += 1 + r[q]
-        elif t in (0x98, 0x99):
-            align = r[0] >> 5
-            q = 1 if align else 4
-            w = 4 if t == 0x99 else 2
-            ln = int.from_bytes(r[q:q + w], "little")
-            if r[0] & 2:
-                ln = 0x10000 if t == 0x98 else 0         # (a 4 GB 32-bit segment: its data say how much)
-            ni, q = _idx(r, q + w)
-            ci, q = _idx(r, q)
-            segs.append(names[ni - 1])
-            seginfo.append((names[ni - 1], names[ci - 1] if ci else "", ln, align))
-            o.combine[names[ni - 1]] = (r[0] >> 2) & 7      # (5: a stack segment)
-            buf.setdefault(len(segs), bytearray(min(ln, 1 << 24)))
-        elif t in (0x8A, 0x8B) and r and r[0] & 0x40:     # MODEND with the program's start: (segment, offset)
-            fd = r[1]
-            q = 2
-            if not fd & 0x80 and (fd >> 4) & 7 < 3:
-                _, q = _idx(r, q)
-            if not fd & 8:
-                ti, q = _idx(r, q)
-                disp = r[q] | r[q + 1] << 8 if not fd & 4 else 0
-                if fd & 3 == 0 and ti:
-                    o.start = (segs[ti - 1], disp)
-        elif t == 0x9A:
-            gi, q = _idx(r, 0)
-            mem = []
-            while q < len(r):
-                si, q = _idx(r, q + 1)
-                mem.append(segs[si - 1])
-            o.groups[names[gi - 1]] = mem
-        elif t in (0x8C, 0xB0, 0xB4, 0xB5, 0xB8):   # EXTDEF COMDEF, and the local (static) LEXTDEF LCOMDEF:
-                                                    # one numbering, so a fixup's external index reaches them
-            q = 0
-            while q < len(r):
-                nm = r[q + 1:q + 1 + r[q]].decode("latin1")
-                o.ext.append(nm)
-                q += 1 + r[q]
-                _, q = _idx(r, q)
-                if t in (0xB0, 0xB8):               # a communal variable: its kind and size follow
-                    far = r[q] == 0x61
-                    q += 1
-                    vals = []
-                    for _ in range(2 if far else 1):
-                        c = r[q]
-                        k = {0x81: 2, 0x84: 3, 0x88: 4}.get(c, 0)
-                        vals.append(int.from_bytes(r[q + 1:q + 1 + k], "little") if k else c)
-                        q += 1 + k
-                    o.comm[nm] = (vals[0] * vals[1] if far else vals[0], far)
-        elif t == 0xBC:                              # CEXTDEF: externals named by a name index (COMDAT
-            q = 0                                    # references, MS C 8): numbered with the others
-            while q < len(r):
-                ni, q = _idx(r, q)
-                _, q = _idx(r, q)
-                o.ext.append(names[ni - 1] if 0 < ni <= len(names) else "?")
-        elif t in (0x90, 0x91):
-            w = 4 if t == 0x91 else 2
-            gi, q = _idx(r, 0)
-            si, q = _idx(r, q)
-            if si == 0:
-                q += 2
-            while q < len(r):
-                nm = r[q + 1:q + 1 + r[q]].decode("latin1")
-                q += 1 + r[q]
-                off = int.from_bytes(r[q:q + w], "little")
-                _, q = _idx(r, q + w)
-                o.pubs.append((nm, segs[si - 1] if si else None, off))
-        elif t in (0xA0, 0xA1):
-            w = 4 if t == 0xA1 else 2
-            si, q = _idx(r, 0)
-            off = int.from_bytes(r[q:q + w], "little")
-            d = r[q + w:]
-            b = buf[si]
-            if off + len(d) > len(b):
-                b.extend(bytes(off + len(d) - len(b)))
-            b[off:off + len(d)] = d
-            last = (si, off)
-            filled[si] = max(filled.get(si, 0), off + len(d))
-        elif t in (0xA2, 0xA3):
-            w = 4 if t == 0xA3 else 2                # (offset and repeat counts)
-            si, q = _idx(r, 0)
-            off = int.from_bytes(r[q:q + w], "little")
-            q += w
-
-            def block(q):
-                rep = int.from_bytes(r[q:q + w], "little")
-                cnt = r[q + w] | r[q + w + 1] << 8
-                q += w + 2
-                if cnt == 0:
-                    return bytes(r[q + 1:q + 1 + r[q]]) * rep, q + 1 + r[q]
-                s = b""
-                for _ in range(cnt):
-                    x, q = block(q)
-                    s += x
-                return s * rep, q
-            out = b""
-            while q < len(r):
-                x, q = block(q)
-                out += x
-            b = buf[si]
-            if off + len(out) > len(b):
-                b.extend(bytes(off + len(out) - len(b)))
-            b[off:off + len(out)] = out
-            last = (si, off)
-            filled[si] = max(filled.get(si, 0), off + len(out))
-        elif t in (0x9C, 0x9D):
-            w = 4 if t == 0x9D else 2
-            q = 0
-            while q < len(r):
-                c = r[q]
-                if not c & 0x80:                     # a thread
-                    q += 1
-                    d = (c >> 6) & 1
-                    meth = (c >> 2) & 7
-                    ix = None
-                    if not (d and meth >= 4):
-                        ix, q = _idx(r, q)
-                    thr[(d, c & 3)] = (meth, ix)
-                    continue
-                segrel = (c >> 6) & 1
-                loc = (c >> 2) & 7
-                off = ((c & 3) << 8) | r[q + 1]
-                fd = r[q + 2]
-                q += 3
-                if fd & 0x80:                        # (a thread never defined: frame unknown)
-                    fm, fi = thr.get((1, (fd >> 4) & 3), (None, None))
-                else:
-                    fm = (fd >> 4) & 7
-                    fi = None
-                    if fm < 3:
-                        fi, q = _idx(r, q)
-                if fd & 8:
-                    tm, ti = thr.get((0, fd & 3), (None, None))
-                else:
-                    tm = fd & 3
-                    ti, q = _idx(r, q)
-                disp = 0
-                if not fd & 4:
-                    disp = int.from_bytes(r[q:q + w], "little")
-                    q += w
-                tgt = (("?", None) if tm is None else
-                       ("seg", segs[ti - 1]) if tm & 3 == 0 else
-                       ("grp", names[ti - 1] if ti and ti - 1 < len(names) else ti) if tm & 3 == 1 else
-                       ("ext", o.ext[ti - 1]))
-                kind = {1: "off", 2: "base", 3: "ptr", 0: "lo", 5: "off"}.get(loc, "?%d" % loc)
-                if not segrel:
-                    kind = "rel"
-                if last is None:                     # (a fix-up before any data: nothing to place it in)
-                    continue
-                o.fix.append((segs[last[0] - 1], last[1] + off, kind, tgt, disp))
-                o.fixloc.append((c >> 2) & 0x0F)
-        elif t in (0xB2, 0xB3):                      # BAKPAT: values added in once the segment is written
-            w = 4 if t == 0xB3 else 2                # (Microsoft C 7/8 /Od: the frame size of `sub sp, N`)
-            si, q = _idx(r, 0)
-            size = {0: 1, 1: 2, 2: 4}.get(r[q], 2)
-            q += 1
-            b = buf[si]
-            while q + 2 * w <= len(r):
-                at = int.from_bytes(r[q:q + w], "little")
-                val = int.from_bytes(r[q + w:q + 2 * w], "little")
-                q += 2 * w
-                if at + size <= len(b):
-                    cur = int.from_bytes(b[at:at + size], "little")
-                    b[at:at + size] = ((cur + val) & ((1 << (8 * size)) - 1)).to_bytes(size, "little")
-    o.seg = {segs[i - 1]: bytes(d) for i, d in buf.items()}
-    o.segs = seginfo
-    o.filled = {segs[i - 1]: n for i, n in filled.items()}
-    o.raw = bytes(data)
-    return o
+    return _read(data)
 
 
-@native.native_first("omf.library", "omf")
+@native.answered("omf.library")
 def library(data):
     """[(name, module bytes)] of an OMF library (.LIB), in its order; a name met again is NAME#2, #3 ..."""
-    if data[0] != 0xF0:
-        return [("(object)", data)]
-    page = (data[1] | data[2] << 8) + 3
-    dict_off = struct.unpack_from("<I", data, 3)[0]
-    out = []
-    seen = {}
-    p = page
-    while p < dict_off:
-        if data[p] != 0x80:
-            p += page - (p % page) if p % page else page
-            continue
-        q = p
-        while q + 3 <= len(data):
-            t = data[q]
-            q += 3 + (data[q + 1] | data[q + 2] << 8)
-            if t in (0x8A, 0x8B):
-                break
-        nm = data[p + 4:p + 4 + data[p + 3]].decode("latin1")
-        seen[nm] = seen.get(nm, 0) + 1
-        out.append((nm + ("#%d" % seen[nm] if seen[nm] > 1 else ""), data[p:q]))
-        p = q
-        if p % page:
-            p += page - p % page
-    return out
 
 
-FIXLEN = {"lo": 1, "off": 2, "base": 2, "ptr": 4, "rel": 2}
-
-
-@native.native_first("omf.holes", "omf", args_of=_no_holes_args)
+@native.answered("omf.holes", args_of=_no_holes_args)
 def holes(o, seg):
     """the offsets of a segment's bytes the linker fills in"""
-    out = set()
-    for s, at, kind, tgt, disp in o.fix:
-        if s == seg:
-            out.update(range(at, at + FIXLEN.get(kind, 2)))
-    return out
 
 
-@native.native_first("omf.code_segments", "omf", args_of=_no_code_segments_args)
+@native.answered("omf.code_segments", args_of=_no_code_segments_args)
 def code_segments(o):
     """the object's code segments, the first named first (a compiler's NAME_TEXT, or more by #pragma alloc_text)"""
-    return [s for s, cls, ln, al in o.segs if s.endswith("_TEXT") or cls.upper() in ("CODE", "PROG") or
-            s.upper() in ("PROG", "_PROG", "_CODE")]       # (Lattice-lineage C: PROG)
 
 
-@native.native_first("omf.functions", "omf", args_of=_no_functions_args)
+@native.answered("omf.functions", args_of=_no_functions_args)
 def functions(o, seg="_TEXT"):
     """[(name, offset, length)] of a code segment, in order. The last ends where the segment's data end (a SEGDEF
     may count a byte more: C 5.0 at times counts one past a closing NOP); code before the first name is
     "(module start)" (an assembly module's)"""
-    ps = sorted((off, nm) for nm, s, off in o.pubs if s == seg)
-    n = min(len(o.seg.get(seg, b"")), o.filled.get(seg, 0))
-    if ps and ps[0][0] > 0 or not ps and n:
-        ps.insert(0, (0, "(module start)"))             # (a module none of whose code is public: all of it)
-    return [(nm, off, (ps[k + 1][0] if k + 1 < len(ps) else n) - off) for k, (off, nm) in enumerate(ps)]
 
 
-@native.native_first("omf.rename_externs", "omf")
+@native.answered("omf.rename_externs")
 def rename_externs(data, mapping):
     """the object with external names changed (a compiler that calls its helpers by other names than the
     library the program was linked with)"""
-    out = b""
-    for t, r in records(data):
-        if t == 0x8C:
-            q = 0
-            nb = b""
-            while q < len(r):
-                nm = r[q + 1:q + 1 + r[q]]
-                q += 1 + r[q]
-                ty = r[q:q + 1]
-                q += 1
-                nm = mapping.get(nm.decode("latin1"), nm.decode("latin1")).encode("latin1")
-                nb += bytes([len(nm)]) + nm + ty
-            r = nb
-        out += record(t, r)
-    return out
 
 
 def rename_symbols(data, fn):
@@ -440,129 +203,42 @@ def rename_symbols(data, fn):
     return out
 
 
-@native.native_first("omf.raw_object", "omf", data_arg=None)
+@native.answered("omf.raw_object", data_arg=None)
 def raw_object(title, code, pubs, data=b"", dpubs=None, text="_TEXT", dalign=1):
     """an object module of the program's own bytes: a run of its code (and of its data), with the public names
     others call it by - a stand-in for a part no source and no library module gives. Its words for the linker
     are the program's already, so it stands only where it stood."""
-    out = record(0x80, name(title))
-    out += record(0x96, name("") + name("DGROUP") + name(text) + name("CODE") + name("_DATA") + name("DATA"))
-    out += record(0x98, bytes([0x28]) + struct.pack("<H", len(code)) + bytes([3, 4, 1]))      # byte aligned, public
-    out += record(0x98, bytes([0x48 if dalign == 2 else 0x28]) + struct.pack("<H", len(data)) + bytes([5, 6, 1]))
-    out += record(0x9A, bytes([2, 0xFF, 2]))                                                  # DGROUP: _DATA
-    for seg, b in ((1, code), (2, data)):
-        for k in range(0, len(b), 1000):
-            out += record(0xA0, bytes([seg]) + struct.pack("<H", k) + b[k:k + 1000])
-    for grp, seg, ps in ((0, 1, pubs), (1, 2, dpubs or {})):
-        if ps:
-            body = bytes([grp, seg])
-            for n, a in sorted(ps.items(), key=lambda kv: kv[1]):
-                body += name(n) + struct.pack("<H", a) + b"\x00"
-            out += record(0x90, body)
-    return out + record(0x8A, b"\x00")
 
 
-@native.native_first("omf.bss_object", "omf", data_arg=None)
+@native.answered("omf.bss_object", data_arg=None)
 def bss_object(names, start, end, title="bssvars", seg="_BSS", para=False):
     """an object module of variables without a value, each a public name at its place in _BSS (start..end): the
     linker places communal names by its own table's order (a hash of the names), and ours are not the original
     names - so they are given their places outright and nothing communal is left to place"""
-    out = record(0x80, name(title))
-    out += record(0x96, name("") + name("DGROUP") + name(seg) + name("BSS"))
-    out += record(0x98, bytes([0x68 if para else 0x48]) + struct.pack("<H", end - start) + bytes([3, 4, 1]))   # word (or
-                                                                                    # paragraph) aligned, public
-    out += record(0x9A, bytes([2, 0xFF, 1]))
-    items = sorted(names.items(), key=lambda kv: (kv[1], kv[0]))
-    k = 0
-    while k < len(items):
-        body = bytes([1, 1])
-        while k < len(items) and len(body) < 900:
-            n, a = items[k]
-            body += name(n) + struct.pack("<H", a - start) + b"\x00"
-            k += 1
-        out += record(0x90, body)
-    return out + record(0x8A, b"\x00")
 
 
-@native.native_first("omf.names_of", "omf")
+@native.answered("omf.names_of")
 def names_of(data):
     """(the public names an object module defines, the external names it needs)"""
-    o = read(data)
-    return {n for n, s, off in o.pubs}, set(o.ext)
 
 
-@native.native_first("omf.publics", "omf")
+@native.answered("omf.publics")
 def publics(data):
     """Exact public symbol names from an OMF object's PUBDEF records (0x90/0x91). Length-prefixed
     names, so no greedy-match errors -- the authoritative `_name@N` decorations wcc386 emitted.
     It reads only those records, so it reads objects read() cannot (names_of: the full reader)."""
-    out, i, n = set(), 0, len(data)
-
-    def idx(p):                                          # OMF index: 1 byte, or 2 if high bit set
-        b = data[p]
-        return (((b & 0x7f) << 8) | data[p + 1], p + 2) if (b & 0x80) else (b, p + 1)
-
-    while i + 3 <= n:
-        rectype = data[i]
-        length = data[i + 1] | (data[i + 2] << 8)
-        body, end = i + 3, i + 3 + length
-        if end > n:
-            break
-        if rectype in (0x90, 0x91):
-            p = body
-            _grp, p = idx(p)
-            seg, p = idx(p)
-            if seg == 0:
-                p += 2                                   # base frame present when segment index == 0
-            offsz = 2 if rectype == 0x90 else 4
-            while p < end - 1:                           # end-1 is the record checksum
-                ln = data[p]
-                p += 1
-                if p + ln > end:
-                    break
-                out.add(data[p:p + ln].decode("latin1"))
-                p += ln + offsz
-                _t, p = idx(p)
-        i = end
-    return out
 
 
-@native.native_first("omf.externs", "omf")
+@native.answered("omf.externs")
 def externs(data):
     """External symbol names an OMF object refers to (EXTDEF records, 0x8C)."""
-    out, i, n = [], 0, len(data)
-    while i + 3 <= n:
-        rectype = data[i]
-        end = i + 3 + (data[i + 1] | (data[i + 2] << 8))
-        if end > n:
-            break
-        if rectype == 0x8C:
-            q = i + 3
-            while q < end - 1:                           # end-1 is the record checksum
-                ln = data[q]
-                out.append(data[q + 1:q + 1 + ln].decode("latin1"))
-                q += 1 + ln
-                q += 2 if (q < end and data[q] & 0x80) else 1     # type index
-        i = end
-    return out
 
 
 # ---- record by record, for the readers that walk the records themselves (invert's quad_align)
-@native.native_first("omf.walk", "omf", result=_no_walk)
+@native.answered("omf.walk", result=_no_walk)
 def walk(data, start=0):
     """(offset, type, payload) of each record from `start`, the payload without its checksum: zero bytes
     between records (a library's padding) passed over, the walk ended by a LIBEND"""
-    i = start
-    while i < len(data):
-        t = data[i]
-        if t == 0:
-            i += 1
-            continue
-        n = struct.unpack_from("<H", data, i + 1)[0]
-        yield i, t, data[i + 3:i + 3 + n - 1]
-        i += 3 + n
-        if t == 0xF1:
-            break
 
 
 index = _idx                                                # an OMF index at q: (value, the offset past it)
@@ -573,44 +249,22 @@ index = _idx                                                # an OMF index at q:
 _WIDTH = {0: 1, 1: 2, 2: 2, 3: 4, 4: 1, 5: 2, 9: 4, 11: 6, 13: 4}
 
 
-@native.native_first("omf._code", "omf")
+@native.answered("omf._code")
 def _code(data):
     """(code segment's name, its bytes, {offsets the linker fills in}, {public: (segment, offset)}): the code
     segment is the first whose class is CODE or whose name ends TEXT; its bytes run to the end of its data;
     a fix-up covers the bytes of its kind."""
-    o = read(data)
-    pubs = {nm: (seg if seg is not None else "?", off) for nm, seg, off in o.pubs}
-    segs = [(nm, cls) for nm, cls, _ln, _al in o.segs]
-    code_seg = next((n for n, c in segs if "CODE" in c.upper() or n.upper().endswith("TEXT")), segs[0][0] if segs else None)
-    if code_seg is None:
-        return None, b"", set(), pubs
-    mask = set()
-    for (seg, at, _kind, _tgt, _disp), loc in zip(o.fix, o.fixloc):
-        if seg == code_seg:
-            mask.update(range(at, at + _WIDTH.get(loc, 2)))
-    return code_seg, bytes(o.seg.get(code_seg, b"")[:o.filled.get(code_seg, 0)]), mask, pubs
 
 
-@native.native_first("omf.code_segment", "omf")
+@native.answered("omf.code_segment")
 def code_segment(data):
     """(name, bytes, {offsets the linker fills in}) of an object file's code segment."""
-    seg, code, mask, _pubs = _code(data)
-    return seg, code, mask
 
 
-@native.native_first("omf.function_bytes", "omf")
+@native.answered("omf.function_bytes")
 def function_bytes(data):
     """{public name: (bytes, {offsets the linker fills in})} of an object file's code segment, cut between
     consecutive public names. A name keeps the compiler's leading underscore."""
-    seg, code, mask, pubs = _code(data)
-    if seg is None:
-        return {}
-    here = sorted((off, nm) for nm, (sg, off) in pubs.items() if sg == seg)
-    out = {}
-    for i, (off, nm) in enumerate(here):
-        end = here[i + 1][0] if i + 1 < len(here) else len(code)
-        out[nm] = (code[off:end], {m - off for m in mask if off <= m < end})
-    return out
 
 
 # ---- a listing: python -m codebreaker.formats.omf <file.obj | file.lib> [--raw]

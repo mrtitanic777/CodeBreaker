@@ -1,24 +1,18 @@
 r"""native.py -- the file-format readers in C++ (native/formats: formats.dll), through ctypes.
 
-A thin, temporary shim: each reader's C++ (native/formats/<reader>/) answers the questions the
-Python reader answered -- PEFile.exports(), NEFile.segments(), ... -- and hands its answers back
-as the very Python objects the callers already use, so no caller changes. Until a reader's
-Python is deleted (docs/NATIVE.md, step 4), it stays beside it as the fallback. This module is
-the plumbing; native_<reader>.py holds each reader's classes (native_pe.PEFile ...).
+The readers of codebreaker/formats/ whose Python is gone (pe, ne, le, dos, omf, xex: docs/NATIVE.md,
+step 4) are their APIs only -- each def a signature and a docstring -- answered by formats.dll:
+their answers come back as the very Python objects the callers use, so no caller changed.
 
-    native.enabled("pe")                   the switch for one reader (CB_NATIVE_FORMATS)
     native.call("pe.exports", data, *args) one question: the answer, or the exception the
-                                           Python reader would raise
-    @native.native_first("ne.embedded", "ne")   a reader's function answered by the C++ when
-                                           switched on (f.python is the Python one)
-
-The switch: CB_NATIVE_FORMATS (default: READERS_ON below; 0 = the Python readers), or per reader
-CB_NATIVE_FORMATS_PE=0/1 and so on, which wins over it. Without the built DLL the Python readers
-run (why_not() says why). A question the C++ leaves to Python (an int past 64 bits, a branch that
-runs the emulator) is answered by the Python reader, as if the switch were off for that call.
+                                           Python reader raised
+    @native.ask("ne.segments", where)      a method answered about self.data (where(self): the
+                                           object's place, passed first)
+    @native.answered("dos.read", ...)      a module function answered
 
 Answers and arguments cross as pickle streams (native/formats/cbformats.h): Python reads them at
-C speed, and the DLL depends on no Python version.
+C speed, and the DLL depends on no Python version. Without the built DLL the readers raise the
+OSError native.required() gives (why_not() says why).
 Build: native/formats/CMakeLists.txt (cmake + ninja in a vcvars64 shell).
 """
 import ctypes
@@ -31,7 +25,6 @@ import struct
 
 from codebreaker.base import settings
 
-READERS_ON = ("pe", "ne", "le", "dos", "omf", "xex")   # gated identical, so on by default (docs/NATIVE.md); 0 sets one off
 _VERSION = 1
 _LIB = []
 _WHY = []
@@ -39,7 +32,7 @@ _OK, _RAISED, _FALLBACK, _NO_SUCH = 0, 1, 2, 3
 
 
 class Fallback(Exception):
-    """The C++ leaves this question to the Python reader."""
+    """The C++ leaves this question to its caller (omf.read: an a.out object, which exact/aout.py reads)."""
 
 
 def dll_path():
@@ -62,6 +55,10 @@ def _load():
         lib.cbf_call.argtypes = (ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p, ctypes.c_size_t,
                                  ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t))
         lib.cbf_questions.restype = ctypes.c_char_p
+        lib.cbf_unicorn.argtypes = (ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_size_t)
+        uc = _unicorn_dll()
+        if uc:                                   # emulated reads (a packed program's unpacker) run on it
+            lib.cbf_unicorn(uc, ctypes.create_string_buffer(256), 256)
     except OSError as e:
         _WHY.append(str(e))
         lib = None
@@ -69,19 +66,20 @@ def _load():
     return lib
 
 
+def _unicorn_dll():
+    """The unicorn.dll Python's `unicorn` package carries, found without importing it."""
+    import importlib.util
+    spec = importlib.util.find_spec("unicorn")
+    for where in (spec.submodule_search_locations or []) if spec else []:
+        path = os.path.join(where, "lib", "unicorn.dll")
+        if os.path.isfile(path):
+            return os.path.abspath(path)
+    return None
+
+
 def why_not():
     _load()
     return _WHY[0] if _WHY else None
-
-
-def enabled(reader):
-    """Is `reader` ("pe", "ne", ...) answered by the C++?"""
-    value = os.environ.get("CB_NATIVE_FORMATS_" + reader.upper())
-    if value is None:
-        value = os.environ.get("CB_NATIVE_FORMATS")
-    if value is None:
-        value = "1" if reader in READERS_ON else "0"
-    return value not in ("", "0") and _load() is not None
 
 
 def questions():
@@ -122,6 +120,8 @@ def _dumps(args):
 def call(question, data, *args):
     """Ask the C++ one question about `data` (bytes, bytearray or memoryview; None for none)."""
     lib = _LIB[0] if _LIB else _load()
+    if lib is None:
+        lib = required()
     q = _QUESTION.get(question)
     if q is None:
         q = _QUESTION[question] = question.encode("ascii")
@@ -157,53 +157,48 @@ def _positional(sig, args, kw, skip=0):
     return bound.args[skip:]
 
 
-def asker(question, python, where=lambda self: (), data="data", result=None):
-    """A method that asks `question` about self.<data>, after the object's place where(self) and
-    the call's own arguments; the Python reader's own `python` answers what the C++ leaves.
-    `result(self, answer)` turns an answer into what the method returns, when it is not the
-    answer itself (an object the instance already holds, say)."""
-    sig = _inspect.signature(python)
 
-    def method(self, *args, **kw):
-        args = _positional(sig, (self,) + args, kw, 1) if kw else args
-        try:
+
+# ---- readers whose Python is gone: the C++ answers every call -------------------------------------
+def required():
+    """The loaded DLL, or the OSError saying why a reader has none."""
+    lib = _LIB[0] if _LIB else _load()
+    if lib is None:
+        raise OSError("formats.dll is required: %s" % why_not())
+    return lib
+
+
+def ask(question, where=lambda self: (), data="data", result=None):
+    """Decorator: the method (its def a signature and a docstring) answered by the C++ about
+    self.<data>, after the object's place where(self) and the call's own arguments;
+    `result(self, answer)` turns an answer into what the method returns."""
+    def wrap(stub):
+        sig = _inspect.signature(stub)
+
+        def method(self, *args, **kw):
+            args = _positional(sig, (self,) + args, kw, 1) if kw else args
             answer = call(question, getattr(self, data), *where(self), *args)
-        except Fallback:
-            return python(self, *args)
-        return result(self, answer) if result else answer
-    method.__name__, method.__doc__, method.__qualname__ = python.__name__, python.__doc__, python.__qualname__
-    return method
+            return result(self, answer) if result else answer
+        return functools.wraps(stub)(method)
+    return wrap
 
 
-def native_first(question, reader, data_arg=0, args_of=None, result=None):
-    """A reader's module-level function, answered by the C++ while `reader` is switched on.
-    `data_arg`: which argument is the bytes (None: none); or `args_of(*args) -> (data, args)`
-    for a function that takes an object (or a path); `result(answer, data, *args)` turns the
-    answer into the function's value when it is not the answer itself. The Python function stays
-    as f.python, and answers whatever the C++ leaves to it; f.cpp asks the C++ whatever the
-    switch says (the gate)."""
-    def wrap(python):
-        sig = _inspect.signature(python)
+def answered(question, data_arg=0, args_of=None, result=None):
+    """Decorator: the module function (its def a signature and a docstring) answered by the C++.
+    `data_arg`: which argument is the bytes (None: none); or `args_of(*args) -> (data, args)`;
+    `result(answer, data, *args)` turns the answer into the function's value."""
+    def wrap(stub):
+        sig = _inspect.signature(stub)
 
-        def cpp(*args, **kw):
-            args = _positional(sig, args, kw)
-            try:
-                if args_of is not None:
-                    data, rest = args_of(*args)
-                elif data_arg is None:
-                    data, rest = None, args
-                else:
-                    data, rest = args[data_arg], args[:data_arg] + args[data_arg + 1:]
-                answer = call(question, data, *rest)
-            except Fallback:
-                return python(*args)
-            return result(answer, data, *args) if result else answer
-
-        @functools.wraps(python)
         def function(*args, **kw):
-            if enabled(reader):
-                return cpp(*args, **kw)
-            return python(*args, **kw)
-        function.python, function.cpp = python, cpp
-        return function
+            args = _positional(sig, args, kw)
+            if args_of is not None:
+                data, rest = args_of(*args)
+            elif data_arg is None:
+                data, rest = None, args
+            else:
+                data, rest = args[data_arg], args[:data_arg] + args[data_arg + 1:]
+            answer = call(question, data, *rest)
+            return result(answer, data, *args) if result else answer
+        return functools.wraps(stub)(function)
     return wrap

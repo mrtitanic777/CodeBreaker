@@ -2,8 +2,8 @@
 // device drivers, the IO.SYS kernel image), and EXEPACK undone statically.
 //
 // The C++ form of codebreaker/formats/dos.py.  A program packed by anything but EXEPACK (or one
-// EXEPACK could not undo statically) is unpacked by running its unpacker in the emulator, which
-// stays with the Python reader: such a read is a Fallback.
+// EXEPACK could not undo statically) is unpacked by running its unpacker in the emulator
+// (unpack.cc, on Unicorn's C API: core/uc.h).
 #pragma once
 
 #include <cstdint>
@@ -85,7 +85,14 @@ Exepack unpack_exepack(Bytes module, int64_t cs, int64_t ip);
 std::optional<int64_t> data_segment(Bytes image, int64_t base, int64_t ip, const std::string &kind,
                                     const std::vector<int64_t> &relocations, int64_t entry);
 
-// read(path): the program; Fallback when its unpacker must run in the emulator
+// unpack_emulated: a packed load module's unpacker run to the real entry point (unpack.cc)
+Exepack unpack_emulated(const std::string &module, const std::vector<int64_t> &relocations, int64_t cs, int64_t ip,
+                        int64_t ss, int64_t sp, bool moved, int64_t limit = 60000000);
+
+// read_mz: an MZ program (or a driver linked as one) loaded at kLoad, unpacked when stored packed
+void read_mz(Bytes data, const Mz &h, Program &p, const std::string &what, bool run_movers = true);
+
+// read(path): the program
 Program read(Bytes data, const std::string &basename, bool run_movers);
 Program driver_part(Bytes data);
 Program pklite_head(Bytes data, int64_t start);

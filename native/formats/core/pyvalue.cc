@@ -48,6 +48,15 @@ void Out::uinteger(uint64_t v) {
     raw(b, 9);
 }
 
+void Out::uinteger65(uint64_t low) {
+    char b[9];
+    for (int k = 0; k < 8; ++k) b[k] = static_cast<char>(low >> (8 * k));
+    b[8] = 1;
+    op('\x8a');
+    buf_ += static_cast<char>(9);
+    raw(b, 9);
+}
+
 void Out::text(const std::string &utf8) {
     if (utf8.size() < 0x100) {
         op('\x8c');
@@ -115,24 +124,24 @@ struct Reader {
     std::vector<Value> memo;
 
     uint64_t take(int n) {
-        if (e - p < n) fallback("a cut-off argument stream");
+        if (e - p < n) raise("TypeError", "a cut-off argument stream");
         uint64_t v = 0;
         for (int k = n - 1; k >= 0; --k) v = (v << 8) | p[k];
         p += n;
         return v;
     }
     std::string take_str(uint64_t n) {
-        if (static_cast<uint64_t>(e - p) < n) fallback("a cut-off argument stream");
+        if (static_cast<uint64_t>(e - p) < n) raise("TypeError", "a cut-off argument stream");
         std::string s(reinterpret_cast<const char *>(p), static_cast<size_t>(n));
         p += n;
         return s;
     }
     Value &top() {
-        if (stack.empty()) fallback("a malformed argument stream");
+        if (stack.empty()) raise("TypeError", "a malformed argument stream");
         return stack.back();
     }
     std::vector<Value> pop_mark() {
-        if (marks.empty()) fallback("a malformed argument stream");
+        if (marks.empty()) raise("TypeError", "a malformed argument stream");
         size_t m = marks.back();
         marks.pop_back();
         std::vector<Value> out(std::make_move_iterator(stack.begin() + m), std::make_move_iterator(stack.end()));
@@ -159,7 +168,7 @@ struct Reader {
             case 0x80: take(1); break;                                       // PROTO
             case 0x95: take(8); break;                                       // FRAME
             case '.': {                                                      // STOP
-                if (stack.size() != 1) fallback("a malformed argument stream");
+                if (stack.size() != 1) raise("TypeError", "a malformed argument stream");
                 return std::move(stack.back());
             }
             case 'N': push(make(Value::None)); break;
@@ -170,7 +179,7 @@ struct Reader {
             case 'J': push(make_int(static_cast<int32_t>(take(4)))); break;
             case 0x8a: {                                                     // LONG1
                 int n = static_cast<int>(take(1));
-                if (n > 8) fallback("an int past 64 bits");
+                if (n > 8) raise("TypeError", "an int past 64 bits");
                 uint64_t u = n ? take(n) : 0;
                 if (n && n < 8 && (u >> (8 * n - 1)) & 1) u |= ~0ULL << (8 * n);
                 push(make_int(static_cast<int64_t>(u)));
@@ -187,7 +196,7 @@ struct Reader {
             case 0x86:
             case 0x87: {                                                     // TUPLE1..3
                 size_t n = c - 0x84;
-                if (stack.size() < n) fallback("a malformed argument stream");
+                if (stack.size() < n) raise("TypeError", "a malformed argument stream");
                 Value v = make(Value::Tuple);
                 v.items.assign(std::make_move_iterator(stack.end() - n), std::make_move_iterator(stack.end()));
                 stack.resize(stack.size() - n);
@@ -213,7 +222,7 @@ struct Reader {
                 break;
             }
             case 's': {                                                      // SETITEM
-                if (stack.size() < 3) fallback("a malformed argument stream");
+                if (stack.size() < 3) raise("TypeError", "a malformed argument stream");
                 Value v = std::move(stack.back());
                 stack.pop_back();
                 Value k = std::move(stack.back());
@@ -226,12 +235,12 @@ struct Reader {
             case 0x94: memo.push_back(top()); break;                         // MEMOIZE
             case 'q': { size_t k = static_cast<size_t>(take(1)); if (memo.size() <= k) memo.resize(k + 1); memo[k] = top(); break; }
             case 'r': { size_t k = static_cast<size_t>(take(4)); if (memo.size() <= k) memo.resize(k + 1); memo[k] = top(); break; }
-            case 'h': { size_t k = static_cast<size_t>(take(1)); if (k >= memo.size()) fallback("a malformed argument stream"); push(memo[k]); break; }
-            case 'j': { size_t k = static_cast<size_t>(take(4)); if (k >= memo.size()) fallback("a malformed argument stream"); push(memo[k]); break; }
-            default: fallback("an argument this library does not read (pickle opcode " + std::to_string(c) + ")");
+            case 'h': { size_t k = static_cast<size_t>(take(1)); if (k >= memo.size()) raise("TypeError", "a malformed argument stream"); push(memo[k]); break; }
+            case 'j': { size_t k = static_cast<size_t>(take(4)); if (k >= memo.size()) raise("TypeError", "a malformed argument stream"); push(memo[k]); break; }
+            default: raise("TypeError", "an argument this library does not read (pickle opcode " + std::to_string(c) + ")");
             }
         }
-        fallback("a cut-off argument stream");
+        raise("TypeError", "a cut-off argument stream");
     }
 };
 }  // namespace

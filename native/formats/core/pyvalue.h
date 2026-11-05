@@ -23,6 +23,7 @@ public:
     void boolean(bool v) { op(v ? '\x88' : '\x89'); }
     void integer(int64_t v);
     void uinteger(uint64_t v);
+    void uinteger65(uint64_t low);            // 2**64 + low (a sum that carried past 64 bits)
     void text(const std::string &utf8);      // a str, given as UTF-8
     void text(const char *utf8) { text(std::string(utf8)); }
     void latin1(Bytes b);                     // a str decoded from latin1

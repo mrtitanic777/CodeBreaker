@@ -367,9 +367,17 @@ CALLS = [0]                 # questions the C++ was asked (the Python side must 
 _real_call = native.call
 
 
+FALLBACKS = {}             # the C++'s Fallback reasons (question: reason -> count): none once closed
+
+
 def _counted_call(*a, **k):
     CALLS[0] += 1
-    return _real_call(*a, **k)
+    try:
+        return _real_call(*a, **k)
+    except native.Fallback as e:
+        key = "%s: %s" % (a[0], e)
+        FALLBACKS[key] = FALLBACKS.get(key, 0) + 1
+        raise
 
 
 native.call = _counted_call
@@ -453,6 +461,9 @@ def main(argv=None):
         print("| %s | %d | %d | %d | %.2f | %.2f | %d |" % (r, res["files"], res["accepted"], res["identical"],
                                                             res["py"], res["cpp"], res["asked"]))
         sys.stdout.flush()
+    for k, n in sorted(FALLBACKS.items()):
+        print("  fallback x%d  %s" % (n, k))
+    bad += sum(FALLBACKS.values())
     return 1 if bad else 0
 
 

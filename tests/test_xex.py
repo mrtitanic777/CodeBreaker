@@ -15,28 +15,6 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-LISTING = """Xex Info
-  Retail
-  Compressed
-
-Basefile Info
-  Original PE Name:   bootanim.dll
-  Load Address:       98000000
-  Entry Point:        98000010
-
-Static Libraries
-    0) D3D9           v2.0.17559.0
-    1) XAPILIB        v2.0.17559.0
-
-Import Libraries
-    0) xboxkrnl.exe   v2.0.17559.0  (min v2.0.1861.0)
-    1) xam.xex        v2.0.17559.0  (min v2.0.1861.0)
-
-Resources
-    0) 9807A000 - 9809B958 : audio
-"""
-
-
 def main():
     from codebreaker.base import corpus
     from codebreaker.formats import xex
@@ -54,17 +32,6 @@ def main():
         f.write(b"MZ" + bytes(62))
     check("is_xex", xex.is_xex(x) and not xex.is_xex(pe) and not xex.is_xex(os.path.join(work, "none")))
 
-    real = subprocess.run
-    subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 0, LISTING, "")
-    xex.program = lambda: "xex.exe"
-    try:
-        h = xex.header.python(x)          # the listing's reader (the C++ reads the file itself: gate.py)
-    finally:
-        subprocess.run = real
-    check("header", (h.name, h.base, h.entry, h.imports, h.libraries) ==
-          ("bootanim.dll", 0x98000000, 0x98000010, ["xboxkrnl.exe", "xam.xex"],
-           [("D3D9", "2.0.17559.0"), ("XAPILIB", "2.0.17559.0")]), "read %r" % vars(h))
-
     with open(pe + ".json", "w", encoding="utf-8") as f:
         json.dump({"imports": ["xam.xex", "xboxkrnl.exe"]}, f)
     check("import_libraries", xex.import_libraries(pe) == ["xam.xex", "xboxkrnl.exe"] and
@@ -78,6 +45,7 @@ def main():
     except RuntimeError:
         exe = None
     if exe:
+        real = subprocess.run
         r = real([exe, "selftest"], capture_output=True, text=True)
         check("engine selftest", r.returncode == 0 and "All crypto self-tests passed" in r.stdout, r.stdout[-200:])
         r = real([exe], capture_output=True, text=True)

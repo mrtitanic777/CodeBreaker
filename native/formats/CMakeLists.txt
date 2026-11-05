@@ -18,6 +18,7 @@ set(FORMATS_SOURCES
   core/text.cc        # Python's decoders (latin1, utf-16-le with replace, ascii)
   core/pyvalue.cc     # the values that cross the interface (a pickle subset)
   core/files.cc       # files read by path
+  core/uc.cc          # Unicorn, by the DLL Python's unicorn package carries
   pe/pe.cc            # PE (formats/pe.py)
   pe/questions.cc
   ne/ne.cc            # NE, the Windows 1.x boot image (formats/ne.py)
@@ -26,17 +27,25 @@ set(FORMATS_SOURCES
   le/image.cc         #   an image taken apart and written back
   le/questions.cc
   dos/dos.cc          # real-mode programs: MZ, .COM, drivers, IO.SYS, EXEPACK (formats/dos.py)
+  dos/unpack.cc       #   a packed program's unpacker run in the emulator (emulate/unpack.py)
   dos/questions.cc
   omf/omf.cc          # OMF-86 objects and libraries (formats/omf.py)
   omf/questions.cc
   xex/questions.cc    # the Xbox 360 executable's header (formats/xex.py), by native/xex's reader
 )
 
+# Unicorn's headers, from the Python package that carries its DLL (nothing of it is linked)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+if(NOT UNICORN_DIR)
+  execute_process(COMMAND ${Python3_EXECUTABLE} -c "import unicorn, os; print(os.path.dirname(unicorn.__file__))"
+                  OUTPUT_VARIABLE UNICORN_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+endif()
+
 # CodeBreaker's one XEX parser (native/xex), compiled in as its other users do
 include(${CMAKE_CURRENT_SOURCE_DIR}/../xex/reader.cmake)
 
 add_library(formats SHARED ${FORMATS_SOURCES} ${XEX_READER_SOURCES})
-target_include_directories(formats PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${XEX_READER_INCLUDE_DIR})
+target_include_directories(formats PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${XEX_READER_INCLUDE_DIR} ${UNICORN_DIR}/include)
 if(MSVC)
   target_compile_options(formats PRIVATE /EHsc /O2 /W3 /utf-8)
   target_compile_definitions(formats PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)

@@ -347,7 +347,7 @@ std::string write_image(const Value &image) {
     std::map<int64_t, int64_t> at;                          // {page number: place in the map}, last place wins
     for (auto &kv : number) at[kv.second] = kv.first;
     const int64_t top = at.empty() ? 0 : at.rbegin()->first;
-    if (top > 0 && page_size * top > (int64_t(1) << 31)) fallback("an image past memory");
+    if (top > 0 && page_size * top > (int64_t(1) << 31)) raise("MemoryError", "");
     std::string data;
     for (int64_t n = 1; n <= top; ++n) {
         auto it = at.find(n);
@@ -457,8 +457,8 @@ std::string write_image(const Value &image) {
         Bytes rest = f.slice(int64_t(out.size()));
         out.append(reinterpret_cast<const char *>(rest.data()), size_t(rest.size()));
     }
-    if (base + kHeaderSize <= int64_t(out.size())) out.replace(size_t(base), size_t(kHeaderSize), hdr);
-    else fallback("a header past the image");
+    // out[base:base + HEADER_SIZE] = hdr: the slice clamped to the end, so past it the header is appended
+    out.replace(size_t(std::min<int64_t>(base, int64_t(out.size()))), size_t(kHeaderSize), hdr);
     return out;
 }
 

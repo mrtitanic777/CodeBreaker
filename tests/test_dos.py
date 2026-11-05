@@ -78,7 +78,6 @@ def test_relocations_are_applied():
 
 
 def test_exepack_static_equals_emulated():
-    from codebreaker.emulate import unpack
     path = _retail("find.exe")
     assert dos.packer(path) == "EXEPACK"
     data = open(path, "rb").read()
@@ -86,7 +85,7 @@ def test_exepack_static_equals_emulated():
     module = bytes(data[h["header"]:h["size"]])
     static = dos.unpack_exepack(module, h["cs"], h["ip"])
     assert len(static[0]) == 12016 and static[2:4] == (0, 0x18DA), (len(static[0]), static[2:])
-    ran = unpack.unpacked(module, [], h["cs"], h["ip"], h["ss"], h["sp"], h["min_alloc"])
+    ran = dos.unpack_emulated(module, [], h["cs"], h["ip"], h["ss"], h["sp"])
     assert ran[0] == static[0] and ran[1] == sorted(static[1]) and ran[2:] == static[2:]
     p = dos.read(path)
     assert p.unpacked == "static" and p.image == static[0] and p.entries[0][0] == dos.LOAD * 16 + 0x18DA

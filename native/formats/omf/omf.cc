@@ -78,7 +78,7 @@ std::string name(const std::string &s) {
 }
 
 Object read(Bytes data) {
-    if (is_aout(data)) fallback("a Version 7 a.out object (exact/aout.py)");
+    if (is_aout(data)) fallback("a Version 7 a.out object (exact/aout.py reads it)");
     Object o;
     std::vector<std::string> names, segs;
     std::vector<std::pair<int64_t, std::string>> buf;      // {segment index: its bytes}, in the order made
@@ -184,7 +184,7 @@ Object read(Bytes data) {
             const int64_t off = int64_t(le_bytes(r, q, q + w));
             const std::string d = r.slice(q + w).str();
             std::string &b = buffer(si);
-            if (off + int64_t(d.size()) > kBig) fallback("a segment past memory");
+            if (off + int64_t(d.size()) > kBig) raise("MemoryError", "");
             lay(b, off, d);
             last = std::make_pair(si, off);
             note_filled(si, off + int64_t(d.size()));
@@ -204,7 +204,7 @@ Object read(Bytes data) {
                 } else {
                     for (int64_t k = 0; k < cnt; ++k) s += block(q);
                 }
-                if (rep > 0 && int64_t(s.size()) * rep > kBig) fallback("a repeat past memory");
+                if (rep > 0 && int64_t(s.size()) * rep > kBig) raise("MemoryError", "");
                 std::string out;
                 for (int64_t k = 0; k < rep; ++k) out += s;
                 return out;
@@ -212,7 +212,7 @@ Object read(Bytes data) {
             std::string out;
             while (q < r.size()) out += block(q);
             std::string &b = buffer(si);
-            if (off + int64_t(out.size()) > kBig) fallback("a segment past memory");
+            if (off + int64_t(out.size()) > kBig) raise("MemoryError", "");
             lay(b, off, out);
             last = std::make_pair(si, off);
             note_filled(si, off + int64_t(out.size()));

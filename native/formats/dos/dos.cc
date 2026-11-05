@@ -322,8 +322,17 @@ Loaded load_module(Bytes data, const Mz &h, Program &p, int64_t segment, bool ru
             p.notes.push_back("EXEPACK not undone statically (" + e.message + ")");
         }
     }
-    if (p.packer && !p.unpacked && (run_movers || *p.packer != "moves itself"))
-        fallback("a program whose unpacker runs in the emulator");
+    if (p.packer && !p.unpacked && (run_movers || *p.packer != "moves itself")) {
+        try {
+            Exepack e = unpack_emulated(L.image, L.relocs, L.cs, L.ip, L.ss, L.sp, *p.packer == "moves itself");
+            L.image = e.module;
+            L.relocs = e.relocs;
+            L.cs = e.cs, L.ip = e.ip, L.ss = e.ss, L.sp = e.sp;
+            p.unpacked = std::string("emulated");
+        } catch (const PyError &e) {                 // the program is then read as stored
+            p.notes.push_back(*p.packer + " not undone (" + e.kind + ": " + e.message + "); this is the unpacker");
+        }
+    }
     for (int64_t at : L.relocs)
         if (at + 2 <= int64_t(L.image.size())) {
             const uint16_t v = uint16_t(uint8_t(L.image[size_t(at)]) | (uint8_t(L.image[size_t(at + 1)]) << 8));
@@ -334,6 +343,8 @@ Loaded load_module(Bytes data, const Mz &h, Program &p, int64_t segment, bool ru
     std::sort(L.relocs.begin(), L.relocs.end());
     return L;
 }
+
+}  // namespace
 
 void read_mz(Bytes data, const Mz &h, Program &p, const std::string &what, bool run_movers) {
     Loaded L = load_module(data, h, p, kLoad, run_movers);
@@ -356,6 +367,8 @@ void read_mz(Bytes data, const Mz &h, Program &p, const std::string &what, bool 
     if (!p.entries.empty()) p.ds = data_segment(Bytes(p.image), p.base, p.ip, p.kind, p.relocations, entry);
     if (!p.ds) p.ds = p.relocations.empty() || p.cs < kLoad ? p.cs : kLoad;   // one segment for all, or the first
 }
+
+namespace {
 
 void read_kernel(Bytes data, Program &p, const std::string &name) {
     Mz h = *mz(data);
@@ -488,9 +501,10 @@ std::string unpacked_file(const Program &p, const std::string &name) {
     const int64_t base = kLoad * 16;
     std::vector<std::pair<int64_t, int64_t>> table;
     for (int64_t r : p.relocations) {
-        const int64_t at = r - base;
-        if (at < 0 || at + 2 > int64_t(img.size())) fallback("a relocation outside the image");
-        const uint16_t v = uint16_t(uint8_t(img[size_t(at)]) | (uint8_t(img[size_t(at + 1)]) << 8));
+        int64_t at = r - base;
+        // struct.unpack_from / pack_into: a negative offset counts from the end, else struct.error
+        const uint16_t v = uint16_t(Bytes(reinterpret_cast<const uint8_t *>(img.data()), img.size()).u16(at));
+        if (at < 0) at += int64_t(img.size());
         const uint16_t w = uint16_t((v - kLoad) & 0xFFFF);
         img[size_t(at)] = char(w);
         img[size_t(at + 1)] = char(w >> 8);

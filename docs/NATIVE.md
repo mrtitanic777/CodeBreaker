@@ -629,7 +629,7 @@ caller_frame_slots, names_used, heading_facts each about a tenth), the layouts a
 
 **Left.** The module assembly (c_text) and struct_text.plan into C++, after which nothing crosses the
 shim per function; asm_blocks / frame16 / shape16 (off by default). (The Python writer: deleted, 2026-11-04.)
-## Step 4 (readers moved, gated, on): formats and loaders -- `native/formats`
+## Step 4 (six readers moved and their Python deleted; the rest of formats/ to go): formats and loaders -- `native/formats`
 
 Logan, 2026-10-31: "All of it needs to be C++." The file-format readers of codebreaker/formats/
 are moving into one library, `formats.dll` (native/formats; setting `formats_bin`, default
@@ -705,6 +705,75 @@ disasm_whole32 can move once formats.dll loads Capstone as cbtrace.dll does), in
 detect.py, resources.py, fonts.py, mscompress/cab/lzx, media/gfx/xnb, powerpc_image.py,
 xex_imports/xex_edit, the console ROM readers (gb, genesis, sms, nes, msx, zx) and formats/xbox/
 (the container readers and the crypto tools). Each follows the same pattern.
+
+### 2026-11-04 (evening): the six readers' Python deleted
+
+**The Fallbacks closed.** Counted over the whole corpus with the gate (native/formats/gate.py
+now lists every Fallback reason it meets and fails on any), the only one ever reached was
+`dos.read: a program whose unpacker runs in the emulator` (10 files). That is now C++:
+dos/unpack.cc is emulate/unpack.py on Unicorn's C API (core/uc.h, the very unicorn.dll Python's
+`unicorn` package carries, handed over once by native.py through `cbf_unicorn`; nothing linked).
+The rest, never reached by any file, now answer instead of falling back: a PE entry past 64 bits
+is written as the 65-bit int Python made (`Out::uinteger65`); `out[base:base+HEADER_SIZE] = hdr`
+past an LE image's end appends as Python's slice does; unpacked_file's relocation outside the
+image reads with unpack_from's rules (negative counts from the end, else struct.error); an int
+past 64 bits raises OverflowError; an allocation past memory (an LE object/page copy, an NE
+alignment past 2**40, an OMF segment or repeat, a PE export table of 2**26+ slots) raises
+MemoryError; an argument that is not the expected dict, or a malformed argument stream, raises
+TypeError; and any other C++ exception is raised as RuntimeError("formats.dll: ...") instead of
+handing the call to Python. The one Fallback left is omf.read's a.out object, which omf.read
+itself hands to exact/aout.py before asking the C++.
+
+**The gate** (switch off = the Python readers, on = the C++, every fact compared), after the change:
+
+| reader | corpus | files | identical | fallbacks | Python s | C++ s |
+|---|---|---|---|---|---|---|
+| MZ/DOS | Win 1.0/3.1/95/98 | 10,042 | 10,042 | 0 (was 10) | 50.59 | 6.99 |
+| PE | Win 1.0/3.1/95/98 | 10,042 | 10,042 | 0 | 9.68 | 11.50 |
+| NE | Win 1.0/3.1/95/98 | 10,042 | 10,042 | 0 | 47.95 | 19.43 |
+| LE | Win 1.0/3.1/95/98 | 10,042 | 10,042 | 0 | 25.84 | 20.13 |
+| OMF | the kits | 810 | 810 | 0 | 6.76 | 8.34 |
+
+(DOS is 7x faster: the 10 packed programs' unpackers now run in C++.) XEX's questions did not
+change (90/90 identical at its own gate); its re-run over the Xbox 360 library was stopped at the
+library walk. A new question, `dos.read_mz` (kernel_parts' SYSINIT: the MZ program an image's
+header describes), matched dos._read_mz on 582 of 582 MZ files sampled from the corpora.
+
+**Deleted:** the Python readers of pe.py, ne.py, le.py, dos.py, omf.py and xex.py (their
+`header` listing parser too), native_pe/ne/le/dos/omf.py, native.py's switch, `asker` and
+`native_first`, and emulate/unpack.py (its one other caller, test_dos, now asks `dos.unpack_emulated`). Each module is now its API: a def with its signature and docstring under
+`@native.ask` (a method) or `@native.answered` (a function), formats.dll answering; without the
+DLL a reader raises native.required()'s OSError. `CB_NATIVE_FORMATS(_<READER>)` is gone. Kept as
+Python, and why: omf.patched and rename_symbols (a regular expression; a Python function on every
+name), dos.kernel_parts / exepack_stub / programs and le.corpus_files (assembly over
+build/exepack and corpus walks, reading no format), ne.open_boot_image (reads two files and asks
+embedded/from_buffer), xex.basefile / basic / import_libraries (the xex program). native/ported/ne's
+input, ne.py as it was, is kept at native/ported/ne/src_python/ne.py (py2cpp ports it with that
+file in codebreaker/formats/ne.py's place). tests/test_native_formats.py now holds the C++ to
+digests of the Python readers' facts recorded before the deletion (14 cases).
+
+Checks after the deletion: test_native_formats 14/14, test_dos 20/20, test_xex 5/5, test_frozen
+22/22, test_drivers 16/16, test_plumbing 17/17, test_whole_module 15/15, test_exepack and
+test_pklite pass, check_imports 553/553, tidy clean.
+
+## HANDOFF: the rest of formats/ (left for the next session)
+
+Done: group 1 (the six readers above). Not started, in the brief's order, each by the same
+process (C++ in native/formats beside the readers, a questions.cc, the module made its API with
+`@native.answered`/`@native.ask`, gated against the Python on the corpus and the samples the
+tests use, then the Python deleted):
+
+1. Compression and containers: cab.py, lzx.py, media.py, zx.py, detect.py.
+2. Windows readers: resources.py, fonts.py, inspect.py, pe_functions.py (carving: needs Capstone
+   in formats.dll as cbtrace.dll loads it; PeCarve hands out Capstone's Python instruction
+   objects, which its callers read), powerpc_image.py, xex_edit.py.
+3. Xbox formats CodeBreaker wrote: xbox/ (stfs, fatx, zar, god, ciso, xdbf, xsb, xbe, xzp, gdf,
+   volumes, texture, xpr, effect, heavyiron), gfx.py, xnb.py.
+4. Out of scope, a question for Logan: formats/xbox/crypto/ (ATTRIBUTION.md marks most of it as
+   vendored upstream tools: port, keep as a fork, or leave as Python?).
+
+Also open: omf.patched / rename_symbols could move (the C++ walks the records; the shim applies
+the regex/function to the names it returns); the XEX gate re-run over the Xbox 360 library.
 
 ### The C++17 back end -- `l2cpp17` (2026-10-31)
 
@@ -834,12 +903,8 @@ Kept, and why:
   prelude runs. The only replaced-only Python is the 32-bit fast path's hook_block and settle (~70
   lines), which is also the oracle tests/test_native_trace.py holds the fast configurations to; it
   goes with the rest at step 3.
-- **`CB_NATIVE_FORMATS(_<READER>)`:** the Python readers answer every call the C++ leaves to them
-  (a Fallback: an int past 64 bits, a packed program's unpacker in the emulator, an a.out object, a
-  place past memory; about 725 lines), and native.asker's catch-all makes about 1,600 more reachable
-  on any C++ exception. Only 42 lines are unreachable with the switch on (ne.py's from_buffer body
-  and _parse_header, le.py's from_buffer body), and ne.py is native/ported/ne's source. They go
-  when the catch-all becomes an error.
+- **`CB_NATIVE_FORMATS(_<READER>)`:** kept at this milestone; deleted later the same day with the six
+  readers' Python, once the Fallbacks were closed (step 4, "the six readers' Python deleted").
 - **`CB_NATIVE_NE`** never existed: native/ported/ne is the porting engine's gate, not a loader.
 - **`CB_ENGINE`** (the old direct reconstruct.run / module.build path, ~250 lines) is Python replaced
   by Python, not by C++; the module.build half also still reports conventions disputes the engine

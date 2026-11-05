@@ -179,7 +179,7 @@ void ddb(Call &c) {
 }
 
 int64_t key_int(const Value &d, const char *k) {
-    if (d.kind != Value::Dict) fallback("an object that is not a dict");
+    if (d.kind != Value::Dict) raise("TypeError", "an object that is not a dict");
     const Value *v = d.get(k);
     if (!v) raise("KeyError", std::string("'") + k + "'");
     return v->as_int();
@@ -475,7 +475,7 @@ void service_table_q(Call &c) {
     std::optional<Place> st;
     int64_t count = 0;
     if (given.truthy()) {                                // a descriptor the caller holds
-        if (given.kind != Value::Dict) fallback("a descriptor that is not a dict");
+        if (given.kind != Value::Dict) raise("TypeError", "a descriptor that is not a dict");
         const Value *t = given.get("service_table");
         if (!t) raise("KeyError", "'service_table'");
         if (!t->truthy()) {
@@ -573,7 +573,7 @@ void object_table_q(Call &c) { c.out.bytes(Bytes(object_table(c.arg(0)))); }
 
 void fixup_tables_q(Call &c) {
     const Value &fx = c.arg(0);
-    if (fx.kind != Value::Dict) fallback("fix-ups that are not a dict");
+    if (fx.kind != Value::Dict) raise("TypeError", "fix-ups that are not a dict");
     std::map<int64_t, std::vector<std::string>> m;
     for (size_t k = 0; k + 1 < fx.items.size(); k += 2) {
         std::vector<std::string> recs;
