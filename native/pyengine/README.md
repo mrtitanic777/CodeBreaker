@@ -21,6 +21,54 @@ and the judge (below) holds every translated function to compiling and behaving 
 | `pyengine.exe` | the command line: L2 per module plus the coverage ledger |
 | `pyengine_tests.exe` | the CTest suites |
 
+## The dynamic mode (2026-11-05): `pyengine --dynamic`
+
+Where the typed path (below) cannot prove a type it refuses; the dynamic mode writes C++ over
+**`py::var`** instead (native/pyrt: any Python value, Python's object model, the builtins and the
+library modules CodeBreaker uses), so the engine, not a hand port, translates the rest.
+
+    pyengine --dynamic --root <repo> --dyn-out DIR [--dyn-main M] [--dyn-closure [--dyn-top]] [--dyn-full PKG]
+             module | name=file.py ...
+    pyengine --judge-traces <python trace> <C++ trace>
+    pyengine --census <tree> ... [--census-out FILE]
+
+`--dynamic` writes `DIR/<module path>.cpp` per module, `main.cpp` (`python -m M`), a CMakeLists.txt
+linking native/pyrt, and `dynamic.json` (per module: lines, functions, refusals with their line).
+`--dyn-closure` follows the root's own imports (`--dyn-top`: module-level ones only; `--dyn-full PKG`:
+every import of that package's modules). `--census` is what a tree uses (libraries and their
+attributes, builtins, methods, language features), the dynamic mode's to-do list.
+
+**The shapes** (src/dyn.cc), each readable as the Python it comes from:
+
+| Python | C++ |
+|---|---|
+| module names | `static py::var& name = py_module_.global("name");` -- cells, so `mod.name = x` from outside is what the code reads; the module's statements are `py_init_()`, run on first import |
+| `def f(a, b=1, *r, k=None, **kw)` | `static py::var f(py::var a, py::var b, py::var r, py::var k, py::var kw)` and, where the def runs, `f_fn = py::def("f", "a, b=, *r, k=, **kw", {1, None}, f, ...)`; a module function bound only by its def is called directly (`f(x, y)`) |
+| methods | `static py::var Class__method(py::var self, ...)`, put in the class namespace; `super()` is `py::super_(Class__class, self)` |
+| classes | the body fills a dict, `py::make_class(name, qualname, {bases}, ns, {kw}, module)` (C3 MRO, metaclasses, `__init_subclass__`, `__set_name__`) |
+| closures, lambdas | C++ lambdas; the variables shared with the definer are `py::cell`s (`py::var& x = *x_cell;`) |
+| generators, genexps | the body yields through `py::yielder& y` (`y(v)`, `y.yield_from(it)`); the runtime runs it on a pooled fiber, so yield works anywhere (loops, try/finally, nested calls) |
+| comprehensions | immediately-run `[&]` lambdas; a genexp handed to `list/sorted/sum/any/all/''.join ...` is consumed at once (any/all short-circuit) |
+| `try/except/else/finally`, `with` | C++ `try/catch (py::error&)`; `finally` and `__exit__` run on every way out -- `return`, `break`, `continue` go through them (`goto py_finN` and an exit code) |
+| expressions | Python's operators on `py::var` (`/` true division, `//` `py::floordiv`, `**` `py::pow`, `%` modulo or formatting, comparisons by value, `and`/`or` as values with a lazy right side); `x.attr("n")`, `x.setattr("n", v)`, `x[k]`, `x.setitem(k, v)`, `x.slice(a, b)`, `x.call("method", args...)`, `py::kw("k", v)`, `py::star(xs)` |
+| evaluation order | where two arguments or operands could do something (a call, a yield), the C++ evaluates them left to right as Python does (`f({a(), b()})`, a temporary for the left operand) |
+
+Refused, each with its line in dynamic.json: `async def` / `await` / `async with|for`, `match` (not
+lowered yet), `exec`/`eval`/`compile` of runtime strings and frame introspection (they raise
+NotImplementedError when run). On all of codebreaker/ (556 modules, 172,930 lines, 8,312 functions):
+**4 constructs refused** (three async defs in ui/, one match), written in 2.8 s.
+
+**The proof** is the program's own tests run as C++: tests/test_port.py with codebreaker/port and
+everything it imports at module level (29 modules, 13,939 lines; `--dyn-closure --dyn-top --dyn-full
+codebreaker.port`) builds into one program that passes **5/5**, including test_builds_and_runs (the
+whole port pipeline: pre_ansi's rewriting, the cache over sqlite3 + pickle -- reading pickles CPython
+wrote --, gcc/clang builds of the ported program, its output checked), with the cache on and off. The
+per-function judge: `PYRT_TRACE=<file> PYRT_TRACE_PREFIX=<module prefix>` makes the program record every
+call of those modules' functions (each parameter's repr and the result's, hashed, addresses masked),
+state/work/pyengine-dyn/trace_py.py records the Python run the same way (sys.monitoring), and
+`--judge-traces` compares them function by function (calls between module functions that the C++
+makes directly are judged through their callers).
+
 `--out DIR` writes `DIR/l2/<module>.json` (each module's L2 `Unit`), `DIR/coverage.json` (per
 function: translated or refused, the reason, its lines, its L2) and `DIR/coverage.md` (the table by
 package and the top refusal reasons). `--old` runs the old engine's rules exactly (no extensions);

@@ -1,88 +1,102 @@
-# pyengine -- handoff (2026-11-04)
+# pyengine -- handoff (2026-11-05): the dynamic mode
 
-The porting engine is now a side project (direct ports come first). Where it stands:
+The new direction (Logan, 2026-11-05): the engine translates the rest of CodeBreaker's Python, not hand
+ports. The typed path (below the line) refuses ~98% of lines; the **dynamic mode** writes C++ over
+`py::var` (native/pyrt) wherever a type is not proven, and refuses only what needs an interpreter.
 
-## Counts (all of codebreaker/, 563 modules, 8,030 functions)
+## What exists
 
-| policy | translated | compiles | run beside the Python | agrees | disagrees | not judged |
-|---|---|---|---|---|---|---|
-| strict | 472 (3,109 lines, 2.1%) | 472 | 287 | 287 | 0 | 185 |
-| checked (one cycle earlier) | 582 (2.8%) | 581 | 332 | 332 | 0 | 249 |
+| piece | where | state |
+|---|---|---|
+| census | `pyengine --census codebreaker tests` (src/census.cc) | the libraries and attributes, builtins, methods, features used; full output and the refusal-class table in state/work/pyengine-dyn/census.md (not in git: summary below) |
+| runtime | native/pyrt (include/py_object.hpp, src/*.cc, ~9k lines) | `py::var`: None/bool/unbounded int (int64 inline, pyengine's `Big` past it)/float/str (UTF-8, code points counted)/bytes/bytearray/list/tuple/dict (CPython's ordered layout)/set+frozenset (CPython's table: CPython's iteration order)/range/slice; classes (C3 MRO, metaclasses, descriptors, properties, classmethod/staticmethod, `__init_subclass__`, `__set_name__`, `__getattr__`, `super`), exceptions (the hierarchy, CPython's messages, context/cause), generators on pooled fibers (send/throw/close, yield from), closures with cells, modules with cells and import; Python's operators, comparisons, hashing, repr/str, %-formatting, format specs, str.format, f-strings, argument binding with CPython's TypeErrors. Library modules: os, os.path, shutil, glob, fnmatch, tempfile, subprocess, time, stat, errno, platform, sys, io, re (over l2's pyre), json, struct, hashlib (bcrypt), collections, functools, itertools, math, string, textwrap, copy, bisect, heapq, operator, enum, dataclasses, contextlib, threading (a GIL), concurrent.futures (tasks run at submit), contextvars, importlib, types, typing, abc, uuid, traceback, warnings, atexit, binascii, zlib (crc32/adler32), keyword, sqlite3 (over native/engine's SQLite), pickle (CPython's protocol, both ways), ast (over pyfront), inspect (cleandoc/getdoc). 37 runtime checks (pyrt_tests) |
+| emitter | `pyengine --dynamic` (src/dyn.cc, ~1.8k lines) | every statement and expression; shapes in README "The dynamic mode" |
+| judge | `PYRT_TRACE` in pyrt + state/work/pyengine-dyn/trace_py.py + `pyengine --judge-traces` | per function, the calls (argument and result repr hashes, addresses masked, in order) of both runs compared |
 
-"Not judged" = compiled but not run: methods (no instance), functions returning objects, parameters
-the judge has no generator for, side effects (file writes, rmtree, sleep).
+## The prototype: codebreaker/port (chosen over exact: self-contained tests, no corpus, no unicorn)
 
-**Gate 1** (the old engine's functions, against `baseline.py`): `--old` strict 274/274 L2
-byte-identical, 7,756/7,756 refusal reasons the same. Extended: strict 264/274 identical, 10
-refused because the judge found they do not compile or agree (they never compiled before either);
-checked 339/356, 17 refused the same way.
+    pyengine --dynamic --root . --dyn-out state/work/pyengine-dyn/port1 --dyn-main test_port \
+             --dyn-closure --dyn-top --dyn-full codebreaker.port test_port=tests/test_port.py
+    state/work/pyengine-dyn/dynbuild.cmd state/work/pyengine-dyn/port1 [fast]
 
-## The check loop (state/work/pyengine2: cycle.sh, judge.py, cachegate.sh)
+| measure | result |
+|---|---|
+| translated | 29 modules (port's 9 = 10,411 lines, and everything they import at module level: base, jobs, translate.l2/ir, exact.emu.dos, verify.verdicts ...) = 13,939 lines, 544 functions; **0 constructs refused** (100% of lines) |
+| compiles | **100%**: the 29 modules' 17k lines of port C++ (+ the rest) build with MSVC /O2 and /Od, no hand edits |
+| tests | tests/test_port.py as C++: **5/5 pass**, the cache on (reading pickles CPython wrote) and off (CB_NO_CACHE=1); the same 5/5 as the Python. test_builds_and_runs runs the whole pipeline: pre_ansi's rewriting, sqlite3+pickle cache, gcc/clang builds of the ported program and its output |
+| agrees (judge) | JUDGE_RESULT |
+| speed | TIMING |
 
-- Engine run with `--cpp`: ~45-60 s.
-- Judge: precompiled py.hpp/py_os/py_json/py_unicode (`/Yc` once per runtime hash, `/Yu` + `/FI`),
-  module objects cached on their text + transitive generated headers + runtime + flags, verdicts
-  cached per function on its own C++ span, the spans of every function it calls (transitively),
-  the non-function part of their modules (names' values, records, classes; prototypes and comments
-  left out), their Python sources, its cases, the runtime, flags and the judge itself. Cache in
-  `state/work/pyengine2/cache/`; no timestamps anywhere. 2 compile workers.
-- Gate (s11, same engine output): no-cache 1,356 s, cold 280 s, warm 6 s -- identical counts all
-  three (472 / 472 / 287 / 287 / 0 / 185). Warm reuse 285 of 287 verdicts (99%).
+Readability: each function keeps its Python name and signature, its docstring as a comment, its first
+source line above it; locals are hoisted `py::var`s; see state/work/pyengine-dyn/port1/codebreaker/base/ctext.cpp
+for a small module. Not yet typed anywhere (see next steps).
 
-## Recorded runtime types as hints (2026-11-05): `--stubs DIR`, hints/stubs/
+## All of codebreaker/, emitted (not yet compiled as a whole)
 
-MonkeyType 23.3.0 traced every suite tests/run_all.py runs (slow ones too, each capped at 4 minutes:
-the ones that did not finish lose all their traces, since MonkeyType writes at exit -- test_mcp,
-test_service, test_symbols, test_analysis, test_drivers, test_powerpc, test_whole_module, test_invert,
-test_readable, test_frozen_slow timed out) plus `info/names/identify/analyze/decompile` over lz32.dll,
-attrib.exe, version.dll, fc.exe, into one database; 205 codebreaker modules seen, **191 stubs**
-(`hints/stubs/*.pyi`, MonkeyType's output untouched; 13 more failed in MonkeyType's own renderer).
-pyengine reads them (`--stubs DIR`, C++ only: `Program::load_stub` / `apply_stub_hints`), applied
-after types.json to parameters nothing else types; inference wins, a differing stub is a conflict
-(reported in `stubs_report.json` under `--out`); a type the engine cannot model is ignored with its
-reason. Return types are not used. Reproduce: `pyengine codebreaker --coverage --stubs
-native/pyengine/hints/stubs --out DIR`.
+556 modules, 172,930 lines, 8,312 functions written in 2.8 s; **4 constructs refused**: three `async def`
+(ui/) and one `match`. What will fail at run time is the library surface pyrt does not have yet: those
+modules import and raise NotImplementedError when a function of theirs is called (argparse, difflib,
+random, csv, zipfile, gzip, socket, ctypes, asyncio, datetime, hmac, secrets, multiprocessing,
+faulthandler, msvcrt, locale, shlex, queue, signal, weakref, pprint, tomllib, unittest), and the
+outside libraries (unicorn 434 refs, capstone 301, textual+rich 222, cryptography 62, z3 37, PIL 19,
+pytest 140 in tests, mcp 15). Approach per library: census.md section 4 (C++ over each one's C API:
+unicorn.dll, capstone, bcrypt for the crypto, libz3; ctypes callers call CodeBreaker's own DLLs' C ABI
+directly; textual/mcp are front ends: a C++ terminal UI / a hand-written MCP over stdio).
 
-MonkeyType on Python 3.14 needed more local patches in site-packages (typing.py: `rewrite` and
-`_rewrite_container` for classes with an `__args__` slot, `get_type` for `Type[Generic]`; stubs.py:
-`_is_optional`, `get_imports_for_annotation`); it still writes `Union` as `<class 'Union'>[...]`,
-which the reader accepts.
+## The census, in short
 
-| policy | before: translated (lines) | after, with stubs | gained / lost | conflicts |
-|---|---|---|---|---|
-| strict | 466 (3,048 lines, 2.2%) | **491 (3,225, 2.3%)** | +26 / -1 | 485 (stub differs, inference wins) |
-| checked | 574 (3,957 lines, 2.8%) | **612 (4,198, 3.0%)** | +41 / -3 | same |
+codebreaker/ is 172k lines (194k with tests/). Typed path today: 416 functions, 2.0% of function
+lines. Refusal classes the dynamic mode absorbs (functions / lines): conflict 1,714 / 44,634;
+dynamic 1,482 / 31,458 (getattr 138, next 85, call 84, lambdas as values 145, *args/**kwargs 155,
+global 50, id 48, set order 44, computed regex 53); untyped 1,995 / 19,455; stdlib 533 / 10,648;
+int-range 365 / 6,896; syntax 381 / 6,853; unresolved+extern 289 / 6,613; calls-refused 271 / 1,963.
+Stdlib by files importing: os 370, re 203, sys 174, struct 170, json 90, tempfile 88, subprocess 82,
+shutil 79, hashlib 60, time 38, collections 35, glob 27, ctypes 25, threading 24, argparse 22,
+importlib 20, io 20, bisect 16, pathlib 15, unittest 13, pickle 12 ...
 
-Stub parameters: 1,270 applied (675 functions), 713 agree with inference, 485 conflict, 276 ignored
-(150 types the engine cannot model, 76 annotated in the source, the rest no single type). The
-untyped class barely moves: the traced suites call mostly the same functions the engine already
-types, and most untyped-parameter functions are never called by a quick test.
-**Gate 1** (HEAD engine rebuilt from git, `--old`): coverage.json (every function's status and L2)
-byte-identical with and without this change, in `--old`, strict and checked modes without stubs.
-The tree now has 7,664 functions (modules deleted since the 2026-11-04 counts), so the older
-totals above (472 / 582) are not comparable: HEAD itself gives 466 strict / 574 checked today.
-Not re-run: the judge (state/work/pyengine2 no longer exists), so compiles / agrees / disagrees for
-the 25 + 38 newly translated functions are unknown -- rebuild the judge from this file's description
-first. Next: trace the timed-out suites in smaller pieces (or with MonkeyType's `--limit`-style
-sampling), trace real commands over more corpus samples, then use the recorded *return* types too.
+## Why the Python of port is not deleted yet
 
-## Open refusal classes, biggest first (strict, first reason per function)
+The dynamic mode builds whole programs. port's Python has an in-process caller outside the package
+(tests/translate/test_module_model.py imports codebreaker.port.asm16), and the rest of CodeBreaker is
+still Python. Deleting a package's Python needs either (a) its callers translated too (whole programs:
+`codebreaker` itself as one C++ program with `-m codebreaker` as main), or (b) a bridge exposing a
+translated package to CPython (py::var <-> PyObject* at the module boundary). (a) is the direction:
+the package switches stay, and the deletion happens when the program its callers are in is C++.
 
-untyped 2,202 (parameters nothing in the package calls: 1,172; callers passing values of no type:
-324; mixed-value dicts 143; lists 90), conflict 1,821, dynamic 1,485 (getattr 143, id 93, call 91,
-next 91, lambdas as arguments 82, *args 82, first-class lambdas 73, set order 54), stdlib 511
-(sqlite3, json, csv, subprocess, threading, collections.*), syntax 469 (with on other context
-managers 81, finally, except-as 49), int-range 465, calls-refused 283, unresolved 197, judge 33
-(hints/refuse.json), backend 8.
+## Next steps, in order
 
-## Next steps
+1. **Compile the whole tree** (`--dynamic` on all 556 modules, state/work/pyengine-dyn/all_cpp; fast
+   build ~30-60 min with 2 jobs) and fix what fails to compile in the emitter (each error class is an
+   emitter or runtime fix, never a per-module edit).
+2. **Run the whole test suite as C++**: translate tests/* with their closures (one program per test
+   file, or one program over all with a runner) and drive tests/run_all.py's list (do not touch
+   run_all.py itself: another agent owns it). unittest and pytest's marks/fixtures/raises need pyrt
+   harnesses (census: unittest 13 files, pytest 140 refs).
+3. **The missing library surface**, by the census's counts: argparse (22 files), random (11; CPython's
+   Mersenne Twister for the same sequences), difflib (8; CPython's SequenceMatcher), pathlib (15),
+   datetime, csv, zipfile, gzip/zlib deflate (vendored zlib: ask), ctypes callers rewritten as direct
+   calls, then unicorn/capstone over their C APIs.
+4. **Typed islands**: where the typed path proves a function (its 2%), emit l2cpp17's typed C++ for it
+   and box/unbox at the boundary (scalars and str first; containers only by copy where no aliasing).
+   Also direct calls with defaults (now only all-positional calls of single-def module functions are
+   direct), and generator expressions in other consumers without fibers.
+5. `match`, async (asyncio.run of simple coroutines can run on the same fibers).
+6. Then package by package behind switches, Python deleted per docs/NATIVE.md once every caller is C++.
 
-1. Batch the judge's compiles: a few large translation units (unity builds of ~20 modules each)
-   instead of one object per module; the cold run is dominated by ~270 separate cl starts.
-2. Keys are already narrowed to the function and its callees; the module cache could narrow the
-   same way once compiles are batched.
-3. Step 2's one-package test: drive one package to 100% with hints. Measured so far: the leaf
-   packages (coverage, jobs, store, knowledge) are glue over sqlite3 / threads / contextvars /
-   process pools / csv / json; 8 parameter hints on knowledge's facade freed 2 functions. A package
-   of computation (a format reader, a decoder) is the right test.
-4. The recurring causes behind hints/refuse.json (README "What is left").
+**Projection, honest**: emission is done for all 172k lines (4 refusals). Compiling the port closure took
+~12 emitter/runtime fixes, all general (evaluation order, proxies, macro names, precedence); expect a
+few dozen more for the whole tree, not per-module work. Behaviour is bounded by the library surface:
+the computational packages (formats, decompile, translate, java, build, source, verify) mostly use
+what pyrt has; exact/emulate need unicorn, ui needs a rewrite, invert/verify need z3. The real cost now
+is runtime breadth and the test-suite harness, not translation.
+
+---
+
+# The typed path (2026-11-04, unchanged)
+
+Counts on all of codebreaker/ (strict): 472 translated (3,109 lines, 2.1%), 472 compile, 287 run beside
+the Python, all agree. Gate 1: `--old` strict 274/274 L2 byte-identical, 7,756/7,756 refusal reasons the
+same. The dynamic mode does not touch this path: `pyengine codebreaker --out` gives byte-identical
+coverage.json, coverage.md and l2/* before and after this work. The check loop is state/work/pyengine2
+(cycle.sh, judge.py, cachegate.sh); its next steps (batched judge compiles, one-package-to-100% with
+hints) are superseded by the dynamic mode for coverage, and stay for the typed islands (step 4 above).

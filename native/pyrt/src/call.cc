@@ -224,8 +224,10 @@ static std::string masked_hash(const var& v) {
         }
         m.push_back(r[i]);
     }
+    // (the first 4096 bytes and the length: a long text's whole repr is not hashed at every call)
+    std::string key = m.substr(0, 4096) + ":" + std::to_string(m.size());
     uint64_t h = 1469598103934665603ULL;
-    for (unsigned char c : m) { h ^= c; h *= 1099511628211ULL; }
+    for (unsigned char c : key) { h ^= c; h *= 1099511628211ULL; }
     char b[24];
     snprintf(b, sizeof b, "%016llx", (unsigned long long)h);
     return b;
