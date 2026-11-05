@@ -1,0 +1,23 @@
+# CodeBreaker's compiler models in C++: codebreaker/invert/ ported by hand, piece by piece (first:
+# flow16, the control-flow graph and the structurer the 16-bit models share).  A DLL with a C
+# interface (cbinvert.h), loaded by codebreaker/invert/native_invert.py through ctypes.
+#
+#   (in a vcvars64 shell)
+#   cmake -S native/invert -B native/invert/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+#   cmake --build native/invert/build
+cmake_minimum_required(VERSION 3.16)
+project(codebreaker_invert CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_library(cbinvert SHARED
+  api.cc       # the C interface: text in, JSON out, the Python exception kinds
+  flow16.cc)   # invert/flow16.py: blocks, edges, switches, dominators, the structure tree
+target_include_directories(cbinvert PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+  target_compile_options(cbinvert PRIVATE /EHsc /O2 /W3 /utf-8)
+  target_compile_definitions(cbinvert PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
+  set_property(TARGET cbinvert PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+endif()
+set_target_properties(cbinvert PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+                                          LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
