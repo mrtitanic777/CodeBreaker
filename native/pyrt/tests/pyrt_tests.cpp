@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
         CHECK("{:>6}|{:08.3f}|{!r}"_s.call("format", "ab"_s, var(2.5), "x"_s), "\"    ab|0002.500|'x'\"");
         CHECK(py::set({var(3), var(1), var(2), var(100), var(-5)}), "{1, 2, 3, 100, -5}");
         var d = py::dict({{"b"_s, var(1)}, {"a"_s, var(2)}});
-        d["c"_s] = var(3);
+        d.setitem("c"_s, var(3));
         CHECK(d, "{'b': 1, 'a': 2, 'c': 3}");
         CHECK(py::hash(py::tuple({var(1), var(2)})), "-3550055125485641917");
         CHECK(py::hash(var(-1)), "-2");
@@ -69,8 +69,8 @@ int main(int argc, char** argv) {
         CHECK(py::list_from(py::to_vector(gen(var(4)))), "[0, 1, 4, 9]");
         // classes, super, properties
         var ns = py::new_dict();
-        ns["__init__"_s] = py::def("__init__", "self, x", {}, [](var self, var x) { self.attr("x") = x; return var(py::None); });
-        ns["double"_s] = py::def("double", "self", {}, [](var self) { return self.attr("x").get() * 2; });
+        ns.setitem("__init__"_s, py::def("__init__", "self, x", {}, [](var self, var x) { self.setattr("x", x); return var(py::None); }));
+        ns.setitem("double"_s, py::def("double", "self", {}, [](var self) { return self.attr("x") * 2; }));
         var A = py::make_class("A", "A", {}, ns);
         var a = A(var(21));
         CHECK(a.call("double"), "42");
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
             CHECK(py::repr(e.value), "\"IndexError('pop from empty list')\"");
         }
         try {
-            var k = py::dict({})["missing"_s].get();
+            var k = py::dict({})["missing"_s];
             (void)k;
         } catch (py::error& e) {
             CHECK(py::str(e.value), "\"'missing'\"");

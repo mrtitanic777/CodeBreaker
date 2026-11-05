@@ -5,7 +5,7 @@
 #               cmake --build native/pyrt/build
 #               ctest --test-dir native/pyrt/build
 cmake_minimum_required(VERSION 3.20)
-project(pyrt LANGUAGES CXX)
+project(pyrt LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +22,7 @@ endif()
 
 set(L2 ${CMAKE_CURRENT_SOURCE_DIR}/../l2)
 set(PYENGINE ${CMAKE_CURRENT_SOURCE_DIR}/../pyengine)
+set(PYFRONT ${CMAKE_CURRENT_SOURCE_DIR}/../pyfront)
 add_library(pyrt STATIC
   src/object.cc       # types, truth, attribute lookup and descriptors, classes, super, isinstance
   src/call.cc         # argument binding, functions, natives, bound methods, calling a class
@@ -39,11 +40,26 @@ add_library(pyrt STATIC
   src/lib_re.cc       # re over native/l2's pyre
   src/lib_misc.cc     # json, struct, hashlib, collections, functools, itertools, math, string, textwrap, copy ...
   src/lib_more.cc     # enum, dataclasses, contextlib, threading, heapq, operator, importlib, typing ...; the GIL
+  src/lib_db.cc       # sqlite3 (over native/engine's vendored SQLite), pickle
+  src/lib_ast.cc      # ast (over native/pyfront), inspect
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)
   ${L2}/src/pyre.cc)         # Python-compatible regular expressions (shared with native/l2)
-target_include_directories(pyrt PUBLIC include PRIVATE src ${PYENGINE}/src ${L2}/src)
-target_link_libraries(pyrt PUBLIC bcrypt shell32)
+target_include_directories(pyrt PUBLIC include PRIVATE src ${PYENGINE}/src ${L2}/src ${PYFRONT}/include ${PYFRONT}/src)
+# SQLite: the amalgamation native/engine vendors (third_party/sqlite), for the sqlite3 module
+set(SQLITE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../engine/third_party/sqlite)
+add_library(pyrt_sqlite3 STATIC ${SQLITE_SRC}/sqlite3.c)
+target_include_directories(pyrt_sqlite3 PUBLIC ${SQLITE_SRC})
+target_compile_definitions(pyrt_sqlite3 PRIVATE SQLITE_THREADSAFE=1)
+if(MSVC)
+  target_compile_options(pyrt_sqlite3 PRIVATE /O2 /W0)
+endif()
+set_target_properties(pyrt_sqlite3 PROPERTIES LINKER_LANGUAGE CXX)
+# the parser (native/pyfront), for the ast module
+add_library(pyrt_pyfront STATIC ${PYFRONT}/src/lexer.cpp ${PYFRONT}/src/literals.cpp ${PYFRONT}/src/unicode.cpp ${PYFRONT}/src/parser.cpp ${PYFRONT}/src/dump.cpp)
+target_include_directories(pyrt_pyfront PUBLIC ${PYFRONT}/include)
+set_target_properties(pyrt_pyfront PROPERTIES CXX_STANDARD 20)
+target_link_libraries(pyrt PUBLIC pyrt_sqlite3 pyrt_pyfront bcrypt shell32)
 
 enable_testing()
 add_executable(pyrt_tests tests/pyrt_tests.cpp)

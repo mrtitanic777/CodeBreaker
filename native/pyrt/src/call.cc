@@ -11,6 +11,18 @@ static int g_depth = 0;
 int g_recursion_limit = 1000;
 
 void CallArgs::add(const kw_arg& k) { kw.push_back({interned(k.name), k.value}); }
+CallArgs args_of_(std::initializer_list<call_item> a) {
+    CallArgs c;
+    for (auto& x : a) {
+        switch (x.kind) {
+        case 0: c.pos.push_back(x.v); break;
+        case 1: c.kw.push_back({interned(x.name), x.v}); break;
+        case 2: c.add(star_arg{x.v}); break;
+        default: c.add(starstar_arg{x.v}); break;
+        }
+    }
+    return c;
+}
 void CallArgs::add(const star_arg& s) {
     if (is_list(s.value)) { for (auto& x : list_items(s.value)) pos.push_back(x); return; }
     if (is_tuple(s.value)) { for (auto& x : tuple_items(s.value)) pos.push_back(x); return; }
@@ -171,8 +183,95 @@ struct depth_guard {
     ~depth_guard() { --g_depth; }
 };
 
+// the judge's call trace: PYRT_TRACE=<file> PYRT_TRACE_PREFIX=<module prefix> records every call of a
+// function of those modules -- its parameters' reprs and its result's (or the exception's type), each as
+// the FNV-1a hash of the repr with addresses masked -- for comparing with the Python run's
+struct Trace {
+    FILE* f = nullptr;
+    std::string prefix;
+    bool on = false;
+    int depth = 0;
+};
+static Trace& trace() {
+    static Trace* t = [] {
+        auto* x = new Trace();
+        const char* p = getenv("PYRT_TRACE");
+        if (p && *p) {
+            x->f = fopen(p, "wb");
+            const char* pre = getenv("PYRT_TRACE_PREFIX");
+            x->prefix = pre ? pre : "";
+            x->on = x->f != nullptr;
+        }
+        return x;
+    }();
+    return *t;
+}
+static std::string masked_hash(const var& v) {
+    std::string r;
+    try {
+        r = repr_(v);
+    } catch (...) {
+        r = "<repr failed>";
+    }
+    std::string m;
+    for (size_t i = 0; i < r.size(); i++) {
+        if (r[i] == '0' && i + 1 < r.size() && r[i + 1] == 'x') {
+            m += "0x?";
+            i += 2;
+            while (i < r.size() && isxdigit((unsigned char)r[i])) i++;
+            i--;
+            continue;
+        }
+        m.push_back(r[i]);
+    }
+    uint64_t h = 1469598103934665603ULL;
+    for (unsigned char c : m) { h ^= c; h *= 1099511628211ULL; }
+    char b[24];
+    snprintf(b, sizeof b, "%016llx", (unsigned long long)h);
+    return b;
+}
+static var traced_call(FuncObj* f, var* slots, size_t n) {
+    Trace& tr = trace();
+    std::string head = f->module + ":" + f->qualname + "(";
+    for (size_t i = 0; i < n; i++) head += (i ? "," : "") + masked_hash(slots[i]);
+    head += ")";
+    var r;
+    try {
+        r = f->fn(slots);
+    } catch (error& e) {
+        fprintf(tr.f, "%s raise %s\n", head.c_str(), type_of(e.value)->name.c_str());
+        throw;
+    }
+    fprintf(tr.f, "%s -> %s\n", head.c_str(), masked_hash(r).c_str());
+    return r;
+}
+
+// the functions being run (their qualnames), for tracebacks; direct C++ calls between module functions are
+// not in it
+static thread_local std::vector<const FuncObj*>* t_calls = nullptr;
+struct call_frame {
+    explicit call_frame(const FuncObj* f) {
+        if (!t_calls) t_calls = new std::vector<const FuncObj*>();
+        t_calls->push_back(f);
+    }
+    ~call_frame() { t_calls->pop_back(); }
+};
+std::string call_stack_() {
+    std::string o;
+    if (!t_calls) return o;
+    for (auto* f : *t_calls) o += "  in " + f->module + "." + f->qualname + "\n";
+    return o;
+}
+
 static var call_function(FuncObj* f, const var* self, const CallArgs& a) {
     size_t n = f->params.size();
+    call_frame frame(f);
+    if (trace().on && !f->generator && f->module.compare(0, trace().prefix.size(), trace().prefix) == 0) {
+        depth_guard g;
+        std::vector<var> slots(n);
+        bind_args(f, self, a, slots.data());
+        return traced_call(f, slots.data(), n);
+    }
     if (f->generator) {
         std::vector<var> slots(n);
         bind_args(f, self, a, slots.data());
@@ -226,7 +325,11 @@ var call_obj(const var& f, const CallArgs& a) {
     }
     if (t == T_staticmethod) return call_obj(static_cast<WrapObj*>(o)->f, a);
     const var* c = t->lookup("__call__");
-    if (!c) raise(E_TypeError, "'" + t->name + "' object is not callable");
+    if (!c) {
+        static bool debug = getenv("PYRT_DEBUG") != nullptr;
+        if (debug) fprintf(stderr, "pyrt: calling %.200s\n", repr_(f).c_str());
+        raise(E_TypeError, "'" + t->name + "' object is not callable");
+    }
     if (c->is_ref() && c->ref()->type == T_function) return call_function(static_cast<FuncObj*>(c->ref()), &f, a);
     return call_obj(bind(*c, f, t), a);
 }

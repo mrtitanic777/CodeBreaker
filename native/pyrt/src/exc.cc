@@ -37,7 +37,14 @@ static void set_context(const var& exc) {
     if (e->context.is_unbound() && !is(st.back(), exc)) e->context = st.back();
 }
 
+std::string call_stack_();
 [[noreturn]] void raise(const var& x) {
+    static bool debug = getenv("PYRT_DEBUG") != nullptr;
+    if (debug) {
+        std::string s;
+        try { s = repr_(x); } catch (...) {}
+        fprintf(stderr, "pyrt: raise %.300s\n%s", s.c_str(), call_stack_().c_str());
+    }
     var e = x;
     if (x.is_ref() && x.ref()->type->layout == Layout::Type) {
         TypeObj* t = static_cast<TypeObj*>(x.ref());
@@ -60,7 +67,10 @@ static void set_context(const var& exc) {
     set_context(e);
     throw error(e);
 }
+std::string call_stack_();
 [[noreturn]] void raise(TypeObj* cls, const std::string& msg) {
+    static bool debug = getenv("PYRT_DEBUG") != nullptr;
+    if (debug) fprintf(stderr, "pyrt: %s: %s\n%s", cls->name.c_str(), msg.c_str(), call_stack_().c_str());
     var e = make_exc(cls, msg);
     set_context(e);
     throw error(e);

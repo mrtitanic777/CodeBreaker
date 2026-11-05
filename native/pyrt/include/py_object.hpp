@@ -28,6 +28,7 @@
 #include <functional>
 #include <initializer_list>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -60,8 +61,8 @@ struct unbound_t {};
 inline constexpr none_t None{};
 
 // ------------------------------------------------------------------------------------------ var
-class item_ref;
-class attr_ref;
+
+
 struct CallArgs;
 template <class... A> CallArgs pack_args_(A&&... a);
 
@@ -122,8 +123,8 @@ public:
     explicit operator bool() const;
     bool truthy() const { return static_cast<bool>(*this); }
 
-    // attributes: x.attr("name") reads, x.attr("name") = v writes (see attr_ref)
-    attr_ref attr(const char* name) const;
+    // attributes: x.attr("name") reads (getattr), x.setattr("name", v) writes
+    var attr(const char* name) const;
     var getattr(const char* name) const;
     var getattr(const var& name) const;
     void setattr(const char* name, const var& v) const;
@@ -131,7 +132,7 @@ public:
     bool hasattr(const char* name) const;
 
     // items: x[k] reads, x[k] = v writes, py::del(x[k]) deletes
-    item_ref operator[](const var& key) const;
+    var operator[](const var& key) const;          // x[k] reads; x.setitem(k, v) writes
     var getitem(const var& key) const;
     void setitem(const var& key, const var& v) const;
     void delitem(const var& key) const;
@@ -139,6 +140,8 @@ public:
 
     // calls: f(a, b, py::kw("k", v), py::star(xs), py::starstar(d))
     template <class... A> var operator()(A&&... a) const { return call_(pack_args_(std::forward<A>(a)...)); }
+    var operator()(std::initializer_list<struct call_item> a) const;      // f({a, b}): left-to-right evaluation
+    var call(const char* name, std::initializer_list<struct call_item> a) const;
     var call_(const CallArgs& a) const;
     // a method call: x.call("name", args...) == x.name(args...), without making the bound method
     template <class... A> var call(const char* name, A&&... a) const { return callmethod_(name, pack_args_(std::forward<A>(a)...)); }
@@ -201,38 +204,26 @@ template <class... A> CallArgs pack_args_(A&&... a) {
     (c.add(std::forward<A>(a)), ...);
     return c;
 }
+// arguments in braces, f({a(), b()}): evaluated left to right, as Python evaluates them (a C++ call's
+// own arguments are evaluated in no set order)
+struct call_item {
+    int kind;                 // 0 positional, 1 keyword, 2 *star, 3 **starstar
+    const char* name = nullptr;
+    var v;
+    call_item(const var& x) : kind(0), v(x) {}
+    call_item(var&& x) : kind(0), v(std::move(x)) {}
+    template <class T, class = std::enable_if_t<!std::is_same_v<std::decay_t<T>, var> && std::is_constructible_v<var, T>>>
+    call_item(T&& x) : kind(0), v(std::forward<T>(x)) {}
+    call_item(const kw_arg& k) : kind(1), name(k.name), v(k.value) {}
+    call_item(const star_arg& s) : kind(2), v(s.value) {}
+    call_item(const starstar_arg& s) : kind(3), v(s.value) {}
+};
+CallArgs args_of_(std::initializer_list<call_item> a);
+inline var var::operator()(std::initializer_list<call_item> a) const { return call_(args_of_(a)); }
+inline var var::call(const char* name, std::initializer_list<call_item> a) const { return callmethod_(name, args_of_(a)); }
 
-// ------------------------------------------------------------------------------------------ proxies
-class attr_ref {
-public:
-    attr_ref(const var& o, const char* n) : o_(o), n_(n) {}
-    operator var() const { return o_.getattr(n_); }
-    attr_ref& operator=(const var& v) { o_.setattr(n_, v); return *this; }
-    attr_ref& operator=(const attr_ref& r) { o_.setattr(n_, var(r)); return *this; }
-    template <class... A> var operator()(A&&... a) const { return o_.call(n_, std::forward<A>(a)...); }
-    template <class... A> var call(const char* m, A&&... a) const { return get().call(m, std::forward<A>(a)...); }
-    attr_ref attr(const char* n) const;
-    var get() const { return o_.getattr(n_); }
-private:
-    var o_;
-    const char* n_;
-};
-class item_ref {
-public:
-    item_ref(const var& o, const var& k) : o_(o), k_(k) {}
-    operator var() const { return o_.getitem(k_); }
-    item_ref& operator=(const var& v) { o_.setitem(k_, v); return *this; }
-    item_ref& operator=(const item_ref& r) { o_.setitem(k_, var(r)); return *this; }
-    var get() const { return o_.getitem(k_); }
-    const var& obj() const { return o_; }
-    const var& key() const { return k_; }
-private:
-    var o_, k_;
-};
-inline attr_ref var::attr(const char* name) const { return attr_ref(*this, name); }
-inline attr_ref attr_ref::attr(const char* n) const { return attr_ref(get(), n); }
-inline item_ref var::operator[](const var& key) const { return item_ref(*this, key); }
-inline void del(const item_ref& r) { r.obj().delitem(r.key()); }
+inline var var::attr(const char* name) const { return getattr(name); }
+inline var var::operator[](const var& key) const { return getitem(key); }
 
 // ------------------------------------------------------------------------------------------ literals
 var str_lit_(const char* p, size_t n);       // made once per literal (keyed by its address)
@@ -275,8 +266,8 @@ inline bool not_in(const var& x, const var& c) { return !in(x, c); }
 inline bool is_not(const var& a, const var& b) { return !is(a, b); }
 bool not_(const var& a);
 // a or b / a and b as values; the right side evaluated only when needed
-template <class F> var or_(const var& a, F&& b) { if (a) return a; return var(b()); }
-template <class F> var and_(const var& a, F&& b) { if (!a) return a; return var(b()); }
+template <class F, class = std::enable_if_t<std::is_invocable_v<F> && !std::is_convertible_v<F, var>>> var or_(const var& a, F&& b) { if (a) return a; return var(b()); }
+template <class F, class = std::enable_if_t<std::is_invocable_v<F> && !std::is_convertible_v<F, var>>> var and_(const var& a, F&& b) { if (!a) return a; return var(b()); }
 inline var or_(const var& a, const var& b) { return a ? a : b; }
 inline var and_(const var& a, const var& b) { return a ? b : a; }
 
@@ -495,6 +486,23 @@ void dict_update_(const var& d, const var& mapping);   // {**m}
 // f-strings: format(value, spec) after !r / !s / !a
 var fstr(std::initializer_list<var> parts);           // ''.join of the pieces
 var fmt(const var& v, char conv, const var& spec);    // one {v!conv:spec}
+
+// what translated statements use
+inline bool truthy_(const var& v) { return static_cast<bool>(v); }
+// a name of a class body being run: py::at(ns, "x"_s) = v stores it (an unbound value deletes it)
+struct slot_ {
+    var d, k;
+    slot_& operator=(const var& v) {
+        if (v.is_unbound()) d.delitem(k);
+        else d.setitem(k, v);
+        return *this;
+    }
+};
+inline slot_ at(const var& d, const var& k) { return {d, k}; }
+var class_name(const var& ns, const var& key, const var& fallback);   // a class body's name: its namespace, then outside
+var with_exit_of(const var& mgr);                // with: the manager's bound __exit__ (looked up before __enter__)
+var with_enter(const var& mgr);                  // with: __enter__()
+bool with_exit_exc(const var& exit_fn, const error& e);   // with: __exit__(type, value, tb) -- true: suppressed
 
 // raw access for native modules
 const std::string& str_utf8(const var& s);

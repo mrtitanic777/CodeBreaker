@@ -726,7 +726,158 @@ static var special_form(const char* name) {
     return v;
 }
 
+// concurrent.futures: the executors run each task when it is submitted (in order, under the global lock),
+// so results, exceptions and their order are the program's; only the parallelism is not
+static void init_futures(const var& m) {
+    var fns = new_dict();
+    fns.setitem("__init__"_s, def("__init__", "self", {}, [](var self) {
+        self.setattr("_done", false);
+        self.setattr("_result", None);
+        self.setattr("_exc", None);
+        self.setattr("_cbs", new_list());
+        return var(None);
+    }));
+    fns.setitem("result"_s, def("result", "self, timeout=", {None}, [](var self, var timeout) {
+        (void)timeout;
+        var e = self.getattr("_exc");
+        if (!e.is_none()) raise(e);
+        return self.getattr("_result");
+    }));
+    fns.setitem("exception"_s, def("exception", "self, timeout=", {None}, [](var self, var timeout) { (void)timeout; return self.getattr("_exc"); }));
+    fns.setitem("done"_s, def("done", "self", {}, [](var self) { return self.getattr("_done"); }));
+    fns.setitem("running"_s, def("running", "self", {}, [](var self) { (void)self; return var(false); }));
+    fns.setitem("cancelled"_s, def("cancelled", "self", {}, [](var self) { (void)self; return var(false); }));
+    fns.setitem("cancel"_s, def("cancel", "self", {}, [](var self) { (void)self; return var(false); }));
+    fns.setitem("add_done_callback"_s, def("add_done_callback", "self, fn", {}, [](var self, var fn) { call1(fn, self); return var(None); }));
+    var Future = make_class("Future", "Future", {}, fns, {}, "concurrent.futures");
+    mod_set(m, "Future", Future);
+    var ens = new_dict();
+    ens.setitem("__init__"_s, def("__init__", "self, max_workers=, *args, **kwargs", {None}, [](var self, var mw, var a, var k) {
+        (void)a; (void)k;
+        self.setattr("_max_workers", mw);
+        return var(None);
+    }));
+    ens.setitem("submit"_s, def("submit", "self, fn, *args, **kwargs", {}, [Future](var self, var fn, var args, var kwargs) {
+        (void)self;
+        var f = call0(Future);
+        CallArgs c;
+        c.pos = collect(args);
+        for (var k : each(kwargs)) c.kw.push_back({k, kwargs.getitem(k)});
+        try {
+            f.setattr("_result", call_obj(fn, c));
+        } catch (error& e) {
+            if (isinstance_(e.value, E_SystemExit) || isinstance_(e.value, E_KeyboardInterrupt)) throw;
+            f.setattr("_exc", e.value);
+        }
+        f.setattr("_done", true);
+        return f;
+    }));
+    ens.setitem("map"_s, def("map", "self, fn, *iterables, timeout=, chunksize=", {None, 1}, [](var self, var fn, var its, var timeout, var cs) {
+        (void)self; (void)timeout; (void)cs;
+        CallArgs c;
+        c.pos.push_back(fn);
+        for (auto& x : collect(its)) c.pos.push_back(x);
+        // (submitted at once, as an executor's map does; results in order)
+        return iter(new_list(collect(call_obj(builtin("map"), c))));
+    }));
+    ens.setitem("shutdown"_s, def("shutdown", "self, wait=, *, cancel_futures=", {true, false}, [](var self, var w, var c) { (void)self; (void)w; (void)c; return var(None); }));
+    ens.setitem("__enter__"_s, def("__enter__", "self", {}, [](var self) { return self; }));
+    ens.setitem("__exit__"_s, def("__exit__", "self, *exc", {}, [](var self, var exc) { (void)self; (void)exc; return var(false); }));
+    var Exec = make_class("Executor", "Executor", {}, ens, {}, "concurrent.futures");
+    mod_set(m, "Executor", Exec);
+    mod_set(m, "ThreadPoolExecutor", make_class("ThreadPoolExecutor", "ThreadPoolExecutor", {Exec}, new_dict(), {}, "concurrent.futures"));
+    mod_set(m, "ProcessPoolExecutor", make_class("ProcessPoolExecutor", "ProcessPoolExecutor", {Exec}, new_dict(), {}, "concurrent.futures"));
+    mod_def(m, "as_completed", [](const CallArgs& a) { return iter(new_list(collect(a.pos.at(0)))); });
+    mod_def(m, "wait", [](const CallArgs& a) {
+        var done = new_set();
+        for (var f : each(a.pos.at(0))) done.call("add", f);
+        return new_tuple({done, new_set()});
+    });
+    mod_set(m, "FIRST_COMPLETED", "FIRST_COMPLETED"_s);
+    mod_set(m, "FIRST_EXCEPTION", "FIRST_EXCEPTION"_s);
+    mod_set(m, "ALL_COMPLETED", "ALL_COMPLETED"_s);
+    mod_set(m, "TimeoutError", t::TimeoutError);
+    mod_set(m, "CancelledError", make_class("CancelledError", "CancelledError", {t::Exception}, new_dict(), {}, "concurrent.futures"));
+    var bp = make_class("BrokenExecutor", "BrokenExecutor", {t::RuntimeError}, new_dict(), {}, "concurrent.futures");
+    mod_set(m, "BrokenExecutor", bp);
+}
+
+// contextvars: a ContextVar's value is the current context's; Context.run(fn) runs fn with a copy, so
+// what fn sets does not outlive it
+static std::vector<var>* g_ctxvars = new std::vector<var>();
+static void init_contextvars(const var& m) {
+    var missing = new_tuple({"<missing>"_s});
+    var cns = new_dict();
+    cns.setitem("__init__"_s, def("__init__", "self, name, *, default=", {var()}, [](var self, var name, var dflt) {
+        self.setattr("name", name);
+        self.setattr("_default", dflt.is_unbound() ? var(None) : dflt);
+        self.setattr("_has_default", var(!dflt.is_unbound()));
+        self.setattr("_value", None);
+        self.setattr("_set", false);
+        g_ctxvars->push_back(self);
+        return var(None);
+    }));
+    cns.setitem("get"_s, def("get", "self, *default", {}, [](var self, var dflt) {
+        if (self.getattr("_set").truthy()) return self.getattr("_value");
+        if (len_(dflt)) return tuple_items(dflt)[0];
+        if (self.getattr("_has_default").truthy()) return self.getattr("_default");
+        raise(make_exc_args(E_LookupError, {self}));
+    }));
+    cns.setitem("set"_s, def("set", "self, value", {}, [](var self, var value) {
+        var token = new_tuple({self, self.getattr("_value"), self.getattr("_set")});
+        self.setattr("_value", value);
+        self.setattr("_set", true);
+        return token;
+    }));
+    cns.setitem("reset"_s, def("reset", "self, token", {}, [](var self, var token) {
+        self.setattr("_value", tuple_items(token)[1]);
+        self.setattr("_set", tuple_items(token)[2]);
+        return var(None);
+    }));
+    mod_set(m, "ContextVar", make_class("ContextVar", "ContextVar", {}, cns, {}, "contextvars"));
+    var xns = new_dict();
+    xns.setitem("run"_s, def("run", "self, fn, *args, **kwargs", {}, [](var self, var fn, var args, var kwargs) {
+        (void)self;
+        std::vector<std::pair<var, var>> saved;
+        for (auto& v : *g_ctxvars) saved.push_back({v.getattr("_value"), v.getattr("_set")});
+        auto restore = [&] {
+            for (size_t i = 0; i < saved.size(); i++) {
+                (*g_ctxvars)[i].setattr("_value", saved[i].first);
+                (*g_ctxvars)[i].setattr("_set", saved[i].second);
+            }
+        };
+        CallArgs c;
+        c.pos = collect(args);
+        for (var k : each(kwargs)) c.kw.push_back({k, kwargs.getitem(k)});
+        try {
+            var r = call_obj(fn, c);
+            restore();
+            return r;
+        } catch (...) {
+            restore();
+            throw;
+        }
+    }));
+    xns.setitem("copy"_s, def("copy", "self", {}, [](var self) { return call0(tv(type_of(self))); }));
+    var Context = make_class("Context", "Context", {}, xns, {}, "contextvars");
+    mod_set(m, "Context", Context);
+    mod_def(m, "copy_context", [Context](const CallArgs&) { return call0(Context); });
+    (void)missing;
+}
+
+void init_db_modules();
+void init_ast_module(const var& m);
+void init_inspect_module(const var& m);
 void init_more_modules() {
+    init_db_modules();
+    register_native_module("ast", init_ast_module);
+    register_native_module("inspect", init_inspect_module);
+    register_native_module("contextvars", init_contextvars);
+    register_native_module("concurrent", [](const var& m) { (void)m; });
+    register_native_module("concurrent.futures", init_futures);
+    register_native_module("concurrent.futures.process", [](const var& m) {
+        mod_set(m, "BrokenProcessPool", import("concurrent.futures").getattr("BrokenExecutor"));
+    });
     register_native_module("enum", init_enum);
     register_native_module("dataclasses", init_dataclasses);
     register_native_module("contextlib", init_contextlib);
@@ -1058,8 +1209,8 @@ void init_more_modules() {
         mod_def(m, "iskeyword", [kl](const CallArgs& a) { return var(in(a.pos.at(0), kl)); });
     });
     // modules with no C++ yet: importing works, using them says so
-    for (const char* n : {"pickle", "sqlite3", "random", "argparse", "difflib", "inspect", "ast", "csv", "zipfile", "gzip", "socket", "ctypes",
-                          "concurrent", "concurrent.futures", "asyncio", "datetime", "hmac", "secrets", "multiprocessing", "contextvars",
+    for (const char* n : {"random", "argparse", "difflib", "csv", "zipfile", "gzip", "socket",
+                          "ctypes", "asyncio", "datetime", "hmac", "secrets", "multiprocessing",
                           "faulthandler", "msvcrt", "locale", "shlex", "queue", "signal", "weakref", "pprint", "tomllib", "unittest"}) {
         std::string name = n;
         register_native_module(n, [](const var& m) {

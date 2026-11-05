@@ -1069,7 +1069,8 @@ void init_str() {
 // str(x), str(b, encoding, errors)
 var str_new_(TypeObj* cls, const CallArgs& a) {
     var r;
-    if (a.pos.size() <= 1 && a.kw.empty()) r = a.pos.size() == 0 ? str_lit_("", 0) : new_str(str_(a.pos[0]));
+    if (a.pos.size() <= 2 && a.kw.empty()) r = a.pos.size() <= 1 ? str_lit_("", 0) : new_str(str_(a.pos[1]));
+    else if (a.pos.size() <= 2 && kwarg(a, "encoding").is_unbound() && kwarg(a, "errors").is_unbound()) r = new_str(str_(arg(a, 1, "object", str_lit_("", 0))));
     else {
         var obj = arg(a, 1, "object", str_lit_("", 0));
         var enc = kwarg(a, "encoding", a.pos.size() > 2 ? a.pos[2] : var("utf-8"_s));

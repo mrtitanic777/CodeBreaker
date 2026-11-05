@@ -822,6 +822,28 @@ var issubclass(const var& c, const var& cls) {
 }
 var type(const var& x) { return tv(type_of(x)); }
 
+// ------------------------------------------------------------------------------------------ statements
+var class_name(const var& ns, const var& key, const var& fallback) {
+    if (var* v = static_cast<DictObj*>(ns.ref())->get(key)) return *v;
+    return fallback;
+}
+var with_exit_of(const var& mgr) {
+    TypeObj* t = type_of(mgr);
+    const var* ex = t->lookup("__exit__");
+    if (!ex || !t->lookup("__enter__"))
+        raise(E_TypeError, "'" + t->name + "' object does not support the context manager protocol");
+    return bind(*ex, mgr, t);
+}
+var with_enter(const var& mgr) {
+    TypeObj* t = type_of(mgr);
+    return call0(bind(*t->lookup("__enter__"), mgr, t));
+}
+bool with_exit_exc(const var& exit_fn, const error& e) {
+    CallArgs a;
+    a.pos = {tv(type_of(e.value)), e.value, None};
+    return call_obj(exit_fn, a).truthy();
+}
+
 // ------------------------------------------------------------------------------------------ wrappers
 var classmethod(const var& f) {
     auto* w = new WrapObj();

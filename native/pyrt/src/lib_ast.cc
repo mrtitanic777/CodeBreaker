@@ -1,0 +1,510 @@
+// lib_ast.cc -- the ast module over native/pyfront (a parser whose trees are CPython's, node for node):
+// ast.parse gives the same nodes, with the same fields and positions, as CPython's; walk,
+// iter_child_nodes, iter_fields, get_source_segment, get_docstring, dump, literal_eval, NodeVisitor and
+// NodeTransformer as the module's. (The tree crosses from pyfront through its canonical dump text.)
+#include <map>
+
+#include "pyfront/pyfront.hpp"
+#include "rt.hpp"
+
+namespace py {
+
+static var g_ast;   // the module
+static std::map<std::string, TypeObj*>* g_node_types = new std::map<std::string, TypeObj*>();
+
+// every node class: its fields (CPython 3.14's _fields) and its base
+struct NodeSpec {
+    const char* name;
+    const char* base;
+    const char* fields;   // space separated; a trailing * marks a list field
+};
+static const NodeSpec kNodes[] = {
+    {"Module", "mod", "body* type_ignores*"}, {"Interactive", "mod", "body*"}, {"Expression", "mod", "body"},
+    {"FunctionDef", "stmt", "name args body* decorator_list* returns type_comment type_params*"},
+    {"AsyncFunctionDef", "stmt", "name args body* decorator_list* returns type_comment type_params*"},
+    {"ClassDef", "stmt", "name bases* keywords* body* decorator_list* type_params*"}, {"Return", "stmt", "value"},
+    {"Delete", "stmt", "targets*"}, {"Assign", "stmt", "targets* value type_comment"}, {"TypeAlias", "stmt", "name type_params* value"},
+    {"AugAssign", "stmt", "target op value"}, {"AnnAssign", "stmt", "target annotation value simple"},
+    {"For", "stmt", "target iter body* orelse* type_comment"}, {"AsyncFor", "stmt", "target iter body* orelse* type_comment"},
+    {"While", "stmt", "test body* orelse*"}, {"If", "stmt", "test body* orelse*"}, {"With", "stmt", "items* body* type_comment"},
+    {"AsyncWith", "stmt", "items* body* type_comment"}, {"Match", "stmt", "subject cases*"}, {"Raise", "stmt", "exc cause"},
+    {"Try", "stmt", "body* handlers* orelse* finalbody*"}, {"TryStar", "stmt", "body* handlers* orelse* finalbody*"},
+    {"Assert", "stmt", "test msg"}, {"Import", "stmt", "names*"}, {"ImportFrom", "stmt", "module names* level"},
+    {"Global", "stmt", "names*"}, {"Nonlocal", "stmt", "names*"}, {"Expr", "stmt", "value"}, {"Pass", "stmt", ""},
+    {"Break", "stmt", ""}, {"Continue", "stmt", ""},
+    {"BoolOp", "expr", "op values*"}, {"NamedExpr", "expr", "target value"}, {"BinOp", "expr", "left op right"},
+    {"UnaryOp", "expr", "op operand"}, {"Lambda", "expr", "args body"}, {"IfExp", "expr", "test body orelse"},
+    {"Dict", "expr", "keys* values*"}, {"Set", "expr", "elts*"}, {"ListComp", "expr", "elt generators*"},
+    {"SetComp", "expr", "elt generators*"}, {"DictComp", "expr", "key value generators*"}, {"GeneratorExp", "expr", "elt generators*"},
+    {"Await", "expr", "value"}, {"Yield", "expr", "value"}, {"YieldFrom", "expr", "value"},
+    {"Compare", "expr", "left ops* comparators*"}, {"Call", "expr", "func args* keywords*"},
+    {"FormattedValue", "expr", "value conversion format_spec"}, {"Interpolation", "expr", "value str conversion format_spec"},
+    {"JoinedStr", "expr", "values*"}, {"TemplateStr", "expr", "values*"}, {"Constant", "expr", "value kind"},
+    {"Attribute", "expr", "value attr ctx"}, {"Subscript", "expr", "value slice ctx"}, {"Starred", "expr", "value ctx"},
+    {"Name", "expr", "id ctx"}, {"List", "expr", "elts* ctx"}, {"Tuple", "expr", "elts* ctx"}, {"Slice", "expr", "lower upper step"},
+    {"Load", "expr_context", ""}, {"Store", "expr_context", ""}, {"Del", "expr_context", ""},
+    {"And", "boolop", ""}, {"Or", "boolop", ""},
+    {"Add", "operator", ""}, {"Sub", "operator", ""}, {"Mult", "operator", ""}, {"MatMult", "operator", ""}, {"Div", "operator", ""},
+    {"Mod", "operator", ""}, {"Pow", "operator", ""}, {"LShift", "operator", ""}, {"RShift", "operator", ""}, {"BitOr", "operator", ""},
+    {"BitXor", "operator", ""}, {"BitAnd", "operator", ""}, {"FloorDiv", "operator", ""},
+    {"Invert", "unaryop", ""}, {"Not", "unaryop", ""}, {"UAdd", "unaryop", ""}, {"USub", "unaryop", ""},
+    {"Eq", "cmpop", ""}, {"NotEq", "cmpop", ""}, {"Lt", "cmpop", ""}, {"LtE", "cmpop", ""}, {"Gt", "cmpop", ""}, {"GtE", "cmpop", ""},
+    {"Is", "cmpop", ""}, {"IsNot", "cmpop", ""}, {"In", "cmpop", ""}, {"NotIn", "cmpop", ""},
+    {"comprehension", "AST", "target iter ifs* is_async"}, {"ExceptHandler", "excepthandler", "type name body*"},
+    {"arguments", "AST", "posonlyargs* args* vararg kwonlyargs* kw_defaults* kwarg defaults*"},
+    {"arg", "AST", "arg annotation type_comment"}, {"keyword", "AST", "arg value"}, {"alias", "AST", "name asname"},
+    {"withitem", "AST", "context_expr optional_vars"}, {"match_case", "AST", "pattern guard body*"},
+    {"MatchValue", "pattern", "value"}, {"MatchSingleton", "pattern", "value"}, {"MatchSequence", "pattern", "patterns*"},
+    {"MatchMapping", "pattern", "keys* patterns* rest"}, {"MatchClass", "pattern", "cls patterns* kwd_attrs* kwd_patterns*"},
+    {"MatchStar", "pattern", "name"}, {"MatchAs", "pattern", "pattern name"}, {"MatchOr", "pattern", "patterns*"},
+    {"TypeVar", "type_param", "name bound default_value"}, {"ParamSpec", "type_param", "name default_value"},
+    {"TypeVarTuple", "type_param", "name default_value"}, {"TypeIgnore", "type_ignore", "lineno tag"},
+};
+static std::map<std::string, std::vector<std::pair<std::string, bool>>>* g_fields = new std::map<std::string, std::vector<std::pair<std::string, bool>>>();
+
+static TypeObj* node_type(const std::string& name) {
+    auto it = g_node_types->find(name);
+    return it == g_node_types->end() ? nullptr : it->second;
+}
+
+// ------------------------------------------------------------------------------------------ the dump text, read back
+struct DumpReader {
+    const std::string& s;
+    size_t i = 0;
+    [[noreturn]] void fail() { raise(E_SyntaxError, "ast: unreadable tree text at " + std::to_string(i)); }
+    void ws() { while (i < s.size() && (s[i] == ' ' || s[i] == '\n')) i++; }
+    bool eat(char c) { ws(); if (i < s.size() && s[i] == c) { i++; return true; } return false; }
+    std::string ident() {
+        ws();
+        size_t st = i;
+        while (i < s.size() && (isalnum((unsigned char)s[i]) || s[i] == '_')) i++;
+        return s.substr(st, i - st);
+    }
+    std::string quoted(char q) {
+        // a Python repr's string body: \\ \' \" \n \r \t \xhh \uhhhh \Uhhhhhhhh
+        std::string o;
+        while (i < s.size() && s[i] != q) {
+            char c = s[i++];
+            if (c != '\\') { o.push_back(c); continue; }
+            char e = s[i++];
+            switch (e) {
+            case 'n': o.push_back('\n'); break;
+            case 'r': o.push_back('\r'); break;
+            case 't': o.push_back('\t'); break;
+            case '\\': o.push_back('\\'); break;
+            case '\'': o.push_back('\''); break;
+            case '"': o.push_back('"'); break;
+            case 'x': { uint32_t v = (uint32_t)std::stoul(s.substr(i, 2), nullptr, 16); i += 2; append_utf8(o, v); break; }
+            case 'u': { uint32_t v = (uint32_t)std::stoul(s.substr(i, 4), nullptr, 16); i += 4; append_utf8(o, v); break; }
+            case 'U': { uint32_t v = (uint32_t)std::stoul(s.substr(i, 8), nullptr, 16); i += 8; append_utf8(o, v); break; }
+            default: o.push_back('\\'); o.push_back(e);
+            }
+        }
+        i++;
+        return o;
+    }
+    std::string quoted_bytes(char q) {
+        std::string o;
+        while (i < s.size() && s[i] != q) {
+            char c = s[i++];
+            if (c != '\\') { o.push_back(c); continue; }
+            char e = s[i++];
+            switch (e) {
+            case 'n': o.push_back('\n'); break;
+            case 'r': o.push_back('\r'); break;
+            case 't': o.push_back('\t'); break;
+            case '\\': o.push_back('\\'); break;
+            case '\'': o.push_back('\''); break;
+            case '"': o.push_back('"'); break;
+            case 'x': o.push_back((char)std::stoul(s.substr(i, 2), nullptr, 16)); i += 2; break;
+            default: o.push_back('\\'); o.push_back(e);
+            }
+        }
+        i++;
+        return o;
+    }
+    var value() {
+        ws();
+        char c = s[i];
+        if (c == '[') {
+            i++;
+            std::vector<var> v;
+            if (eat(']')) return new_list(v);
+            for (;;) {
+                v.push_back(value());
+                if (eat(',')) continue;
+                if (eat(']')) return new_list(v);
+                fail();
+            }
+        }
+        if (c == '\'' || c == '"') { i++; return new_str(quoted(c)); }
+        if (c == 'b' && i + 1 < s.size() && (s[i + 1] == '\'' || s[i + 1] == '"')) { char q = s[i + 1]; i += 2; return new_bytes(quoted_bytes(q)); }
+        if (c == '-' || isdigit((unsigned char)c)) {
+            size_t st = i;
+            if (s[i] == '-') i++;
+            while (i < s.size() && (isalnum((unsigned char)s[i]) || s[i] == '.' || s[i] == '+' || (s[i] == '-' && (s[i - 1] == 'e' || s[i - 1] == 'E')))) i++;
+            std::string t = s.substr(st, i - st);
+            if (t.find_first_of(".eE") != std::string::npos && t.find_first_of("xX") == std::string::npos) return var(std::strtod(t.c_str(), nullptr));
+            if (!t.empty() && (t.back() == 'j' || t.back() == 'J')) return var(std::strtod(t.c_str(), nullptr));
+            return int_from(t, 10);
+        }
+        if (s.compare(i, 3, "...") == 0) { i += 3; return Ellipsis; }
+        std::string id = ident();
+        if (id == "None") return None;
+        if (id == "True") return true;
+        if (id == "False") return false;
+        if (id == "inf") return var(HUGE_VAL);
+        if (!eat('(')) fail();
+        return node(id);
+    }
+    var node(const std::string& cls) {
+        TypeObj* t = node_type(cls);
+        if (!t) fail();
+        auto* o = new Obj();
+        o->type = t;
+        var n(o);
+        // the fields left out of the text (None, or an empty list)
+        for (auto& [f, is_list] : (*g_fields)[cls]) n.setattr(f.c_str(), is_list ? new_list() : var(None));
+        if (eat(')')) return n;
+        for (;;) {
+            std::string f = ident();
+            if (!eat('=')) fail();
+            n.setattr(f.c_str(), value());
+            if (eat(',')) continue;
+            if (eat(')')) return n;
+            fail();
+        }
+    }
+};
+
+static var parse_source(const std::string& src, const std::string& filename) {
+    auto r = pyfront::parse(src, filename);
+    if (!r) {
+        var e = make_exc(E_SyntaxError, r.error->msg);
+        e.setattr("lineno", var((int64_t)r.error->lineno));
+        e.setattr("offset", var((int64_t)r.error->offset));
+        e.setattr("filename", new_str(filename));
+        e.setattr("msg", new_str(r.error->msg));
+        raise(e);
+    }
+    std::string text = pyfront::dump(*r.module);
+    DumpReader d{text};
+    return d.value();
+}
+
+static std::vector<var> child_nodes(const var& n) {
+    std::vector<var> out;
+    TypeObj* t = type_of(n);
+    auto it = g_fields->find(t->name);
+    if (it == g_fields->end()) return out;
+    TypeObj* ast_t = node_type("AST");
+    for (auto& [f, is_list] : it->second) {
+        var v = getattr(n, new_str(f), None);
+        if (is_list) {
+            for (var x : each(v))
+                if (x.is_ref() && isinstance_(x, ast_t)) out.push_back(x);
+        } else if (v.is_ref() && isinstance_(v, ast_t)) out.push_back(v);
+    }
+    return out;
+}
+
+static std::string dump_node(const var& v, bool attrs) {
+    TypeObj* ast_t = node_type("AST");
+    if (is_list(v)) {
+        std::string o = "[";
+        bool first = true;
+        for (auto& x : list_items(v)) { o += (first ? "" : ", ") + dump_node(x, attrs); first = false; }
+        return o + "]";
+    }
+    if (!(v.is_ref() && isinstance_(v, ast_t))) return repr_(v);
+    TypeObj* t = type_of(v);
+    std::string o = t->name + "(";
+    bool first = true;
+    auto it = g_fields->find(t->name);
+    if (it != g_fields->end())
+        for (auto& [f, is_list] : it->second) {
+            var x = getattr(v, new_str(f), None);
+            if (x.is_none() && !(t->name == "Constant" && f == "value")) continue;
+            if (is_list && len_(x) == 0) continue;
+            o += (first ? "" : ", ") + f + "=" + dump_node(x, attrs);
+            first = false;
+        }
+    if (attrs)
+        for (const char* a : {"lineno", "col_offset", "end_lineno", "end_col_offset"}) {
+            var x = getattr(v, new_str(a), None);
+            if (x.is_none()) continue;
+            o += (first ? "" : ", ") + std::string(a) + "=" + repr_(x);
+            first = false;
+        }
+    return o + ")";
+}
+
+static var literal_eval(const var& n) {
+    std::string k = type_of(n)->name;
+    if (k == "Expression") return literal_eval(n.getattr("body"));
+    if (k == "Constant") return n.getattr("value");
+    if (k == "Tuple" || k == "List" || k == "Set") {
+        std::vector<var> v;
+        for (var x : each(n.getattr("elts"))) v.push_back(literal_eval(x));
+        if (k == "Tuple") return new_tuple(v);
+        if (k == "List") return new_list(v);
+        var s = new_set();
+        for (auto& x : v) s.call("add", x);
+        return s;
+    }
+    if (k == "Dict") {
+        var d = new_dict();
+        auto keys = collect(n.getattr("keys")), vals = collect(n.getattr("values"));
+        for (size_t i = 0; i < keys.size(); i++) d.setitem(literal_eval(keys[i]), literal_eval(vals[i]));
+        return d;
+    }
+    if (k == "UnaryOp") {
+        std::string op = type_of(n.getattr("op"))->name;
+        var x = literal_eval(n.getattr("operand"));
+        if (op == "USub") return -x;
+        if (op == "UAdd") return +x;
+    }
+    if (k == "BinOp") {
+        std::string op = type_of(n.getattr("op"))->name;
+        var l = literal_eval(n.getattr("left")), r = literal_eval(n.getattr("right"));
+        if (op == "Add") return l + r;
+        if (op == "Sub") return l - r;
+    }
+    if (k == "Call" && n.getattr("func").attr("id") == "set"_s && len_(n.getattr("args")) == 0) return new_set();
+    raise(E_ValueError, "malformed node or string: " + repr_(n));
+}
+
+void init_ast_module(const var& m) {
+    g_ast = m;
+    // the class tree
+    auto mk = [&](const char* name, const char* base) {
+        TypeObj* b = std::string(base) == "object" ? T_object : node_type(base);
+        TypeObj* t = new_type(name, {b}, Layout::Object, false, "ast");
+        (*g_node_types)[name] = t;
+        mod_set(m, name, tv(t));
+        return t;
+    };
+    TypeObj* AST = mk("AST", "object");
+    add_method(AST, "__init__", [](const CallArgs& a) {
+        var self = a.pos.at(0);
+        auto it = g_fields->find(type_of(self)->name);
+        if (it != g_fields->end()) {
+            for (size_t i = 0; i < it->second.size(); i++) {
+                auto& [f, is_list] = it->second[i];
+                var v = i + 1 < a.pos.size() ? a.pos[i + 1] : kwarg(a, f.c_str(), is_list ? new_list() : var(None));
+                self.setattr(f.c_str(), v);
+            }
+        }
+        for (auto& [k, v] : a.kw) self.setattr(str_utf8(k).c_str(), v);
+        return None;
+    });
+    for (const char* b : {"mod", "stmt", "expr", "expr_context", "boolop", "operator", "unaryop", "cmpop", "excepthandler", "pattern", "type_param", "type_ignore"})
+        mk(b, "AST");
+    for (auto& spec : kNodes) {
+        TypeObj* t = mk(spec.name, spec.base);
+        std::vector<std::pair<std::string, bool>> fs;
+        std::vector<var> names;
+        std::string f = spec.fields;
+        size_t st = 0;
+        for (size_t i = 0; i <= f.size(); i++)
+            if (i == f.size() || f[i] == ' ') {
+                if (i > st) {
+                    std::string w = f.substr(st, i - st);
+                    bool lst = w.back() == '*';
+                    if (lst) w.pop_back();
+                    fs.push_back({w, lst});
+                    names.push_back(new_str(w));
+                }
+                st = i + 1;
+            }
+        (*g_fields)[spec.name] = fs;
+        t->dict->set("_fields"_s, new_tuple(names));
+        std::string base = spec.base;
+        bool positioned = base == "stmt" || base == "expr" || base == "excepthandler" || base == "pattern" || base == "type_param" ||
+                          std::string(spec.name) == "arg" || std::string(spec.name) == "keyword" || std::string(spec.name) == "alias";
+        t->dict->set("_attributes"_s, positioned ? new_tuple({"lineno"_s, "col_offset"_s, "end_lineno"_s, "end_col_offset"_s}) : new_tuple());
+    }
+    mod_set(m, "PyCF_ONLY_AST", 1024);
+    mod_def(m, "parse", [](const CallArgs& a) {
+        var src = arg(a, 0, "source");
+        std::string text = is_bytes(src) ? raw_of(src) : str_utf8(src);
+        std::string fn = str_utf8(arg(a, 1, "filename", "<unknown>"_s));
+        var mode = arg(a, 2, "mode", "exec"_s);
+        if (str_utf8(mode) == "eval") {
+            var mod = parse_source("(" + text + "\n)", fn);
+            var body = mod.getattr("body");
+            var e = call0(tv(node_type("Expression")));
+            e.setattr("body", list_items(body).at(0).getattr("value"));
+            return e;
+        }
+        return parse_source(text, fn);
+    });
+    mod_def(m, "iter_child_nodes", [](const CallArgs& a) { return iter(new_list(child_nodes(a.pos.at(0)))); });
+    mod_def(m, "iter_fields", [](const CallArgs& a) {
+        var n = a.pos.at(0);
+        std::vector<var> out;
+        auto it = g_fields->find(type_of(n)->name);
+        if (it != g_fields->end())
+            for (auto& [f, l] : it->second) out.push_back(new_tuple({new_str(f), getattr(n, new_str(f), None)}));
+        return iter(new_list(out));
+    });
+    mod_def(m, "walk", [](const CallArgs& a) {
+        // breadth first, the node itself first (CPython's deque order)
+        std::vector<var> out{a.pos.at(0)};
+        for (size_t i = 0; i < out.size(); i++)
+            for (auto& c : child_nodes(out[i])) out.push_back(c);
+        return iter(new_list(out));
+    });
+    mod_def(m, "dump", [](const CallArgs& a) {
+        return new_str(dump_node(a.pos.at(0), kwarg(a, "include_attributes", false).truthy()));
+    });
+    mod_def(m, "literal_eval", [](const CallArgs& a) {
+        var n = a.pos.at(0);
+        if (is_str(n)) {
+            var mod = parse_source("(" + str_utf8(n) + "\n)", "<unknown>");
+            n = list_items(mod.getattr("body")).at(0).getattr("value");
+        }
+        return literal_eval(n);
+    });
+    mod_def(m, "get_source_segment", [](const CallArgs& a) {
+        std::string src = str_utf8(a.pos.at(0));
+        var n = a.pos.at(1);
+        var l0 = getattr(n, "lineno"_s, None), l1 = getattr(n, "end_lineno"_s, None);
+        var c0 = getattr(n, "col_offset"_s, None), c1 = getattr(n, "end_col_offset"_s, None);
+        if (l0.is_none() || l1.is_none() || c0.is_none() || c1.is_none()) return var(None);
+        // lines as str.splitlines(keepends) would split them; offsets are UTF-8 bytes
+        std::vector<std::string> lines;
+        size_t st = 0;
+        for (size_t i = 0; i < src.size(); i++) {
+            if (src[i] == '\n' || src[i] == '\r') {
+                size_t e = i + 1;
+                if (src[i] == '\r' && i + 1 < src.size() && src[i + 1] == '\n') e++;
+                lines.push_back(src.substr(st, e - st));
+                st = e;
+                i = e - 1;
+            }
+        }
+        if (st < src.size()) lines.push_back(src.substr(st));
+        int64_t a0 = l0.as_int64() - 1, a1 = l1.as_int64() - 1;
+        if (a0 < 0 || a1 >= (int64_t)lines.size()) return var(None);
+        size_t cs = (size_t)c0.as_int64(), ce = (size_t)c1.as_int64();
+        if (a0 == a1) return new_str(lines[(size_t)a0].substr(cs, ce - cs));
+        std::string o = lines[(size_t)a0].substr(cs);
+        for (int64_t k = a0 + 1; k < a1; k++) o += lines[(size_t)k];
+        o += lines[(size_t)a1].substr(0, ce);
+        return new_str(o);
+    });
+    mod_def(m, "get_docstring", [](const CallArgs& a) {
+        var n = a.pos.at(0);
+        bool clean = arg(a, 1, "clean", true).truthy();
+        std::string k = type_of(n)->name;
+        if (k != "FunctionDef" && k != "AsyncFunctionDef" && k != "ClassDef" && k != "Module")
+            raise(E_TypeError, "'" + k + "' can't have docstrings");
+        var body = n.getattr("body");
+        if (len_(body) == 0) return var(None);
+        var first = list_items(body)[0];
+        if (type_of(first)->name != "Expr") return var(None);
+        var v = first.getattr("value");
+        if (type_of(v)->name != "Constant" || !is_str(v.getattr("value"))) return var(None);
+        var s = v.getattr("value");
+        if (!clean) return s;
+        return import("inspect").call("cleandoc", s);
+    });
+    // NodeVisitor / NodeTransformer
+    var vns = new_dict();
+    vns.setitem("visit"_s, def("visit", "self, node", {}, [](var self, var node) {
+        var m2 = getattr(self, new_str("visit_" + type_of(node)->name), None);
+        if (m2.is_none()) return self.call("generic_visit", node);
+        return call1(m2, node);
+    }));
+    vns.setitem("generic_visit"_s, def("generic_visit", "self, node", {}, [](var self, var node) {
+        TypeObj* ast_t = node_type("AST");
+        auto it = g_fields->find(type_of(node)->name);
+        if (it == g_fields->end()) return var(None);
+        for (auto& [f, is_list] : it->second) {
+            var v = getattr(node, new_str(f), None);
+            if (is_list) {
+                for (var x : each(new_list(collect(v)))) if (x.is_ref() && isinstance_(x, ast_t)) self.call("visit", x);
+            } else if (v.is_ref() && isinstance_(v, ast_t)) self.call("visit", v);
+        }
+        return var(None);
+    }));
+    var visitor = make_class("NodeVisitor", "NodeVisitor", {}, vns, {}, "ast");
+    mod_set(m, "NodeVisitor", visitor);
+    var tns = new_dict();
+    tns.setitem("generic_visit"_s, def("generic_visit", "self, node", {}, [](var self, var node) {
+        TypeObj* ast_t = node_type("AST");
+        auto it = g_fields->find(type_of(node)->name);
+        if (it == g_fields->end()) return node;
+        for (auto& [f, is_list] : it->second) {
+            var v = getattr(node, new_str(f), None);
+            if (is_list) {
+                std::vector<var> nv;
+                for (var x : each(v)) {
+                    if (x.is_ref() && isinstance_(x, ast_t)) {
+                        var r = self.call("visit", x);
+                        if (r.is_none()) continue;
+                        if (py::is_list(r)) { for (auto& y : list_items(r)) nv.push_back(y); continue; }
+                        nv.push_back(r);
+                    } else nv.push_back(x);
+                }
+                node.setattr(f.c_str(), new_list(nv));
+            } else if (v.is_ref() && isinstance_(v, ast_t)) {
+                var r = self.call("visit", v);
+                node.setattr(f.c_str(), r);
+            }
+        }
+        return node;
+    }));
+    mod_set(m, "NodeTransformer", make_class("NodeTransformer", "NodeTransformer", {visitor}, tns, {}, "ast"));
+    mod_def(m, "copy_location", [](const CallArgs& a) {
+        for (const char* at : {"lineno", "col_offset", "end_lineno", "end_col_offset"}) {
+            var v = getattr(a.pos.at(1), new_str(at), None);
+            if (!v.is_none()) a.pos.at(0).setattr(at, v);
+        }
+        return a.pos[0];
+    });
+    mod_def(m, "fix_missing_locations", [](const CallArgs& a) { return a.pos.at(0); });
+    mod_def(m, "unparse", [](const CallArgs&) -> var { raise(E_NotImplementedError, "ast.unparse is not in the C++ runtime yet"); });
+}
+
+void init_inspect_module(const var& m) {
+    mod_def(m, "cleandoc", [](const CallArgs& a) {
+        // inspect.cleandoc: tabs expanded, the common indent of the lines after the first removed, blank edges dropped
+        std::string doc = str_utf8(a.pos.at(0).call("expandtabs"));
+        std::vector<std::string> lines;
+        size_t st = 0;
+        for (size_t i = 0; i <= doc.size(); i++)
+            if (i == doc.size() || doc[i] == '\n') { lines.push_back(doc.substr(st, i - st)); st = i + 1; }
+        size_t margin = std::string::npos;
+        for (size_t i = 1; i < lines.size(); i++) {
+            size_t k = lines[i].find_first_not_of(' ');
+            if (k == std::string::npos) continue;
+            margin = std::min(margin, k);
+        }
+        auto lstrip = [](const std::string& s) { size_t k = s.find_first_not_of(" \t"); return k == std::string::npos ? std::string() : s.substr(k); };
+        if (!lines.empty()) lines[0] = lstrip(lines[0]);
+        if (margin != std::string::npos)
+            for (size_t i = 1; i < lines.size(); i++) lines[i] = lines[i].size() > margin ? lines[i].substr(margin) : lstrip(lines[i]);
+        auto blank = [](const std::string& s) { return s.find_first_not_of(" \t\r") == std::string::npos; };
+        while (!lines.empty() && blank(lines.back())) lines.pop_back();
+        while (!lines.empty() && blank(lines.front())) lines.erase(lines.begin());
+        std::string o;
+        for (size_t i = 0; i < lines.size(); i++) o += (i ? "\n" : "") + lines[i];
+        return new_str(o);
+    });
+    mod_def(m, "ismodule", [](const CallArgs& a) { return var(type_of(a.pos.at(0)) == T_module); });
+    mod_def(m, "isclass", [](const CallArgs& a) { return var(a.pos.at(0).is_ref() && a.pos[0].ref()->type->layout == Layout::Type); });
+    mod_def(m, "isfunction", [](const CallArgs& a) { return var(type_of(a.pos.at(0)) == T_function); });
+    mod_def(m, "getdoc", [](const CallArgs& a) {
+        var d = getattr(a.pos.at(0), "__doc__"_s, None);
+        if (!is_str(d)) return var(None);
+        return import("inspect").call("cleandoc", d);
+    });
+    for (const char* n : {"getsource", "signature", "getsourcelines", "getfile", "currentframe", "stack"})
+        mod_def(m, n, [n](const CallArgs&) -> var {
+            raise(E_NotImplementedError, std::string("inspect.") + n + ": the translated program has no Python source or frames to inspect");
+        });
+}
+
+}  // namespace py
