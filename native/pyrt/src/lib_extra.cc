@@ -597,6 +597,18 @@ static void init_signal(const var& m) {
     });
     mod_def(m, "getsignal", [](const CallArgs& a) { return handlers.call("get", a.pos.at(0), var(0)); });
     mod_def(m, "default_int_handler", [](const CallArgs&) -> var { raise(E_KeyboardInterrupt, ""); });
+    // the file (a socket on Windows) a signal's number is written to (asyncio's loops wake on it): kept, given back
+    static int64_t wakeup_fd = -1;
+    mod_def(m, "set_wakeup_fd", [](const CallArgs& a) {
+        int64_t old = wakeup_fd;
+        wakeup_fd = a.pos.at(0).as_int64();
+        return var(old);
+    });
+    mod_def(m, "valid_signals", [](const CallArgs&) {
+        var s = new_set();
+        for (int64_t n : {2, 4, 8, 11, 15, 21, 22}) s.call("add", var(n));
+        return s;
+    });
 }
 static void init_weakref(const var& m) {
     // references are strong here (the runtime counts references and has no cycle collector, so a weak
@@ -761,6 +773,7 @@ void init_unittest(const var& m);
 void init_crypto_modules();
 void init_xml_modules();   // (lib_xml.cc: pyexpat)
 void init_pil_modules();   // (lib_pil.cc: PIL.Image)
+void init_async_modules();
 
 // memoryview: a view of bytes, a bytearray or a ctypes object (raw_of reads it through .obj)
 static void make_memoryview() {
@@ -971,6 +984,7 @@ void init_extra_modules() {
     init_crypto_modules();                                  // (lib_crypto.cc: cryptography / Crypto over bcrypt)
     init_xml_modules();
     init_pil_modules();
+    init_async_modules();                                   // (lib_async.cc: sys's asyncgen hooks; _socket, select, _overlapped, _winapi)
     register_native_module("jsonschema", init_jsonschema);
     // z3: not in the C++ runtime until libz3 is vendored (a decision pending): importing it says so
     register_native_module("z3", [](const var&) {

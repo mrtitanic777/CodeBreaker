@@ -326,8 +326,20 @@ class yielder {
 public:
     var operator()(const var& v);                // yield v
     var yield_from(const var& it);               // yield from it
+    var await_(const var& awaitable);            // await x (in an async def)
+    bool async_next(const var& ait, var& out);   // async for: out = await anext(ait); false at StopAsyncIteration
     void* impl_ = nullptr;
 };
+var aiter_(const var& x);                        // async for: type(x).__aiter__(x)
+var awith_exit_of(const var& mgr);               // async with: the bound __aexit__ (__aenter__ checked too)
+var awith_enter(const var& mgr);                 // async with: __aenter__() (awaited by the caller)
+var with_exit_call(const var& exit_fn, const error& e);   // exit_fn(type, value, tb)'s value
+// match: the subject's items as a list ([before..., [starred], after...]), or None when it is not a sequence of that length
+var match_sequence_(const var& subj, size_t before, size_t after, bool star);
+// match: the values of the keys in order (then, with rest, a dict of the other items), or None
+var match_mapping_(const var& subj, const var& keys, bool rest);
+// match: the attributes a class pattern names (npos by __match_args__, then the keywords'), or None
+var match_class_(const var& subj, const var& cls, size_t npos, const var& kwd_names);
 
 // ------------------------------------------------------------------------------------------ functions
 // a function object from a C++ function or closure of N vars. sig is the Python parameter list:
@@ -361,6 +373,19 @@ template <class F> var def_generator(const char* name, const char* sig, std::vec
     constexpr size_t N = fn_arity_<std::decay_t<F>>::n - 1;
     return make_function(name, qualname ? qualname : name, sig, std::move(defaults),
                          bind_gen_slots_(fn, std::make_index_sequence<N>{}), (int)N, true, module);
+}
+// a def's annotations, as their source text: {"param", "text", ..., "return", "text"} (__annotations__)
+var annotate_(const var& f, std::initializer_list<const char*> name_text);
+var doc_(const var& f, const char* doc);         // a def's __doc__
+// async def: a coroutine function (kind 1) or an async generator function (kind 2); fn as def_generator's
+var mark_async_(const var& f, int kind);
+template <class F> var def_coroutine(const char* name, const char* sig, std::vector<var> defaults, F fn,
+                                     const char* qualname = nullptr, const char* module = nullptr) {
+    return mark_async_(def_generator(name, sig, std::move(defaults), fn, qualname, module), 1);
+}
+template <class F> var def_async_generator(const char* name, const char* sig, std::vector<var> defaults, F fn,
+                                           const char* qualname = nullptr, const char* module = nullptr) {
+    return mark_async_(def_generator(name, sig, std::move(defaults), fn, qualname, module), 2);
 }
 // a native builtin taking the call's arguments as they come
 using native_fn = std::function<var(const CallArgs&)>;

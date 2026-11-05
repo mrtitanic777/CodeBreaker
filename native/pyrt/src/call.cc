@@ -9,6 +9,7 @@
 namespace py {
 
 static int g_depth = 0;
+int& depth_slot_() { return g_depth; }   // (gen.cc: each generator / coroutine keeps its own depth)
 int g_recursion_limit = 1000;
 
 void CallArgs::add(const kw_arg& k) { kw.push_back({interned(k.name), k.value}); }
@@ -308,6 +309,7 @@ static var traced_call(FuncObj* f, var* slots, size_t n) {
 // the functions being run (their qualnames), for tracebacks; direct C++ calls between module functions are
 // not in it
 static thread_local std::vector<const FuncObj*>* t_calls = nullptr;
+void*& calls_slot_() { return reinterpret_cast<void*&>(t_calls); }   // (gen.cc: per generator)
 struct call_frame {
     explicit call_frame(const FuncObj* f) {
         if (!t_calls) t_calls = new std::vector<const FuncObj*>();

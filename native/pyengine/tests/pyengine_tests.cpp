@@ -2,14 +2,18 @@
 // checks what it found (types, refusals) and what it wrote (L2).
 //
 //   pyengine_tests <suite>      scopes inference specialization closures generators variants regex files
-//                               dynamic backend stubs
+//                               dynamic backend stubs async match
 #include <cstdio>
 #include <cstring>
 #include <functional>
 #include <map>
 #include <string>
 
+#include <filesystem>
+#include <fstream>
+
 #include "cpp17.hpp"
+#include "dyn.hpp"
 #include "json.hpp"
 #include "lower.hpp"
 #include "pyfront/pyfront.hpp"
@@ -563,8 +567,147 @@ def use():
     CHECK(b && b->status == "applied" && p.param_type(p.any_fn("pkg.m.boxed"), "b").kind == TK::Inst, "a class named through a stub import (%s)", b ? b->detail.c_str() : "no note");
 }
 
+// the dynamic mode on one module: its C++ and its refusals (the module written under the test's folder)
+static DynModule dyn_one(const std::string& name, const std::string& src) {
+    namespace fs = std::filesystem;
+    fs::path root = fs::current_path() / "dyn_tests" / name;
+    fs::create_directories(root);
+    {
+        std::ofstream f(root / (name + ".py"), std::ios::binary);
+        f << src;
+    }
+    DynOptions o;
+    o.root = root.string();
+    o.out = (root / "out").string();
+    o.modules = {name};
+    o.pyrt = (root / "pyrt").string();
+    std::vector<DynModule> mods;
+    run_dynamic(o, mods);
+    for (auto& m : mods)
+        if (m.name == name) {
+            DynModule r = m;   // (cpp: the C++ itself, read back from where it was written)
+            std::ifstream f(fs::path(o.out) / m.cpp, std::ios::binary);
+            r.cpp.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+            return r;
+        }
+    return DynModule{};
+}
+static std::string refusals(const DynModule& m) {
+    std::string o;
+    for (auto& r : m.refused) o += std::to_string(r.line) + ": " + r.what + "; ";
+    return o + m.error;
+}
+
+// async def / await / async for / async with / async comprehensions: coroutines on the generators' fibers
+static void t_async() {
+    DynModule m = dyn_one("am", R"PY(
+import asyncio
+
+async def leaf(x):
+    return x * 2
+
+async def mid(x):
+    a = await leaf(x)
+    return a + await leaf(a)
+
+async def agen(n):
+    for i in range(n):
+        await asyncio.sleep(0)
+        yield i
+
+async def collect():
+    out = []
+    async for v in agen(3):
+        if v == 5:
+            break
+        out.append(v)
+    else:
+        out.append('done')
+    return out + [w async for w in agen(2) if w]
+
+class Lock:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *exc):
+        return False
+
+async def guarded(lock):
+    async with lock as held, Lock():
+        return await mid(1)
+
+def plain():
+    async def inner():
+        return 1
+    return inner
+)PY");
+    CHECK(m.refused.empty() && m.error.empty(), "async code is translated: %s", refusals(m).c_str());
+    CHECK(m.cpp.find("py::def_coroutine(\"leaf\"") != std::string::npos, "async def: a coroutine function");
+    CHECK(m.cpp.find("py::def_async_generator(\"agen\"") != std::string::npos, "async def with yield: an async generator function");
+    CHECK(m.cpp.find("y.await_(leaf(") != std::string::npos || m.cpp.find("y.await_(") != std::string::npos, "await: y.await_");
+    CHECK(m.cpp.find("py::aiter_(") != std::string::npos && m.cpp.find("y.async_next(") != std::string::npos, "async for: __aiter__ / __anext__");
+    CHECK(m.cpp.find("py::awith_exit_of(") != std::string::npos && m.cpp.find("py::awith_enter(") != std::string::npos &&
+              m.cpp.find("py::with_exit_call(") != std::string::npos, "async with: __aenter__ / __aexit__ awaited");
+    CHECK(m.cpp.find("py::def_coroutine(\"inner\"") != std::string::npos, "a nested async def is a coroutine closure");
+    DynModule bad = dyn_one("am2", "def f(x):\n    return await x\n");
+    CHECK(bad.refused.size() == 1 && bad.refused[0].what.find("await outside") != std::string::npos, "await outside an async def is refused: %s",
+          refusals(bad).c_str());
+}
+
+// match statements: value, singleton, capture, wildcard, sequence (with a star), mapping (with **rest),
+// class (positional and keyword), or-patterns, as-patterns and guards
+static void t_match() {
+    DynModule m = dyn_one("mm", R"PY(
+class Point:
+    __match_args__ = ('x', 'y')
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+def what(v):
+    match v:
+        case 0 | 1 as small:
+            return 'small %d' % small
+        case None:
+            return 'none'
+        case [first, *rest] if rest:
+            return ('seq', first, rest)
+        case {'kind': 'pt', **others}:
+            return ('map', others)
+        case Point(0, y=yy):
+            return ('on y', yy)
+        case Point(x, y):
+            return ('pt', x, y)
+        case str() | bytes():
+            return 'text'
+        case _:
+            return 'other'
+
+def loop(xs):
+    out = []
+    for x in xs:
+        match x:
+            case 'stop':
+                break
+            case _:
+                out.append(x)
+    return out
+
+mode = 'a'
+match mode:
+    case 'a':
+        chosen = 1
+    case other:
+        chosen = other
+)PY");
+    CHECK(m.refused.empty() && m.error.empty(), "match is translated: %s", refusals(m).c_str());
+    CHECK(m.cpp.find("py::match_sequence_(") != std::string::npos, "a sequence pattern");
+    CHECK(m.cpp.find("py::match_mapping_(") != std::string::npos, "a mapping pattern");
+    CHECK(m.cpp.find("py::match_class_(") != std::string::npos, "a class pattern");
+    CHECK(m.cpp.find("NotImplementedError") == std::string::npos, "nothing left unlowered");
+}
+
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> suites = {
+        {"async", t_async},       {"match", t_match},
         {"dynamic", t_dynamic},   {"backend", t_backend}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
         {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};

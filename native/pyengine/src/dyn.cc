@@ -9,6 +9,9 @@
 //   methods          `static py::var Class__method(py::var self, ...)`, put in the class namespace
 //   closures         C++ lambdas; the variables they share with their definer are py::cell
 //   generators       the body yields through a py::yielder (the runtime runs it on a fiber)
+//   async def        a coroutine (an async generator when it yields) on the same fibers: `await x` is
+//                    y.await_(x); async for / async with await __anext__ / __aenter__ / __aexit__ through it
+//   match            the cases tested in order, each pattern lowered to tests on the subject
 //   classes          the body fills a namespace dict, py::make_class makes the class
 //   try / with       C++ try/catch on py::error; finally and with-exit run on every way out
 //                    (return / break / continue go through them)
@@ -218,7 +221,8 @@ private:
     struct Fn {
         const Scope* scope = nullptr;
         bool generator = false;
-        bool file_scope = true;         // a static function (false: a lambda)
+        bool async_ = false;            // async def: await allowed (a coroutine or an async generator)
+        bool file_scope = true;        // a static function (false: a lambda)
         std::string class_var;          // the class being built (class bodies): its namespace var
         std::string class_cell;         // the class object for super() / __class__
         std::string self_name;          // the first parameter
@@ -285,6 +289,13 @@ private:
                 case StmtKind::Try: case StmtKind::TryStar:
                     for (auto* h : cast<Try>(s)->handlers) if (h->has_name) module_binds_[h->name]++;
                     break;
+                case StmtKind::Match:
+                    for (auto* c : cast<Match>(s)->cases) {
+                        std::vector<std::string> names;
+                        pattern_names(c->pattern, names);
+                        for (auto& n : names) module_binds_[n]++;
+                    }
+                    break;
                 default: break;
                 }
                 if (s->kind != StmtKind::FunctionDef && s->kind != StmtKind::AsyncFunctionDef && s->kind != StmtKind::ClassDef)
@@ -321,6 +332,34 @@ private:
             }
         }
     }
+    // the names a match pattern binds
+    static void pattern_names(const Pattern* p, std::vector<std::string>& out) {
+        if (!p) return;
+        switch (p->kind) {
+        case PatternKind::MatchSequence: for (auto* x : cast<MatchSequence>(p)->patterns) pattern_names(x, out); break;
+        case PatternKind::MatchMapping: {
+            auto* m = cast<MatchMapping>(p);
+            for (auto* x : m->patterns) pattern_names(x, out);
+            if (m->has_rest) out.push_back(m->rest);
+            break;
+        }
+        case PatternKind::MatchClass: {
+            auto* m = cast<MatchClass>(p);
+            for (auto* x : m->patterns) pattern_names(x, out);
+            for (auto* x : m->kwd_patterns) pattern_names(x, out);
+            break;
+        }
+        case PatternKind::MatchStar: if (cast<MatchStar>(p)->has_name) out.push_back(cast<MatchStar>(p)->name); break;
+        case PatternKind::MatchAs: {
+            auto* m = cast<MatchAs>(p);
+            pattern_names(m->pattern, out);
+            if (m->has_name) out.push_back(m->name);
+            break;
+        }
+        case PatternKind::MatchOr: for (auto* x : cast<MatchOr>(p)->patterns) pattern_names(x, out); break;
+        default: break;
+        }
+    }
     bool is_generator(const FunctionDef* f) {
         std::function<bool(const std::vector<Stmt*>&)> in_body;
         std::function<bool(const Expr*)> in_expr = [&](const Expr* e) -> bool {
@@ -346,6 +385,11 @@ private:
                 if (k.cat == AnyNode::WithItem && in_expr(static_cast<const withitem*>(k.p)->context_expr)) return true;
                 if (k.cat == AnyNode::Handler)
                     for (auto* b : static_cast<const ExceptHandler*>(k.p)->body) if (in_stmt(b)) return true;
+                if (k.cat == AnyNode::MatchCase) {
+                    auto* mc = static_cast<const match_case*>(k.p);
+                    if (in_expr(mc->guard)) return true;
+                    for (auto* b : mc->body) if (in_stmt(b)) return true;
+                }
             }
             return false;
         };
@@ -390,10 +434,21 @@ private:
         case NameRes::Builtin: return builtin_value(id);
         default:
             // a name the module never binds: maybe made at run time (from x import *, globals())
+            if (extra_builtin(id)) return "py::or_builtin(" + gref(id) + ", " + cstr(id) + ")";
             return gref(id);
         }
     }
+    // builtins the scope analysis does not list (it is shared with the typed path, whose output must not change):
+    // read as a module global that falls back to the builtin, as Python's lookup does
+    static bool extra_builtin(const std::string& id) {
+        static const std::set<std::string> more = {
+            "ConnectionResetError", "ConnectionRefusedError", "ConnectionAbortedError", "BaseExceptionGroup", "ExceptionGroup",
+            "FutureWarning", "PendingDeprecationWarning", "ResourceWarning", "SyntaxWarning", "ImportWarning", "EncodingWarning",
+            "UnicodeWarning", "BytesWarning", "ReferenceError", "SystemError", "FloatingPointError", "WindowsError", "aiter", "anext"};
+        return more.count(id) != 0;
+    }
     std::string global_or_builtin(const std::string& id) {
+        if (extra_builtin(id)) return "py::or_builtin(" + gref(id) + ", " + cstr(id) + ")";
         if (sc_.module()->binds(id) || !Scopes::is_builtin(id)) return gref(id);
         return builtin_value(id);
     }
@@ -808,8 +863,15 @@ private:
                 it = v + "r";
                 depth++;
             }
-            o += "for (py::var " + v + " : py::each(" + it + ")) { " + assign_target(g->target, v) + " ";
-            depth++;
+            if (g->is_async) {   // [x async for x in xs]: __anext__() awaited (inside an async def)
+                if (!fn_ || !fn_->async_) refuse(g->target, "async comprehension outside an async function");
+                o += "{ py::var " + v + "a = py::aiter_(" + it + "); for (;;) { py::var " + v + "; if (!y.async_next(" + v + "a, " + v + ")) break; " +
+                     assign_target(g->target, v) + " ";
+                depth += 2;
+            } else {
+                o += "for (py::var " + v + " : py::each(" + it + ")) { " + assign_target(g->target, v) + " ";
+                depth++;
+            }
             for (auto* f : g->ifs) {
                 o += "if (" + cond(f) + ") { ";
                 depth++;
@@ -982,7 +1044,9 @@ private:
             if (!fn_ || !fn_->generator) { refuse(e, "yield from outside a generator"); return "py::None"; }
             return "y.yield_from(" + expr(cast<YieldFrom>(e)->value) + ")";
         }
-        case ExprKind::Await: refuse(e, "await (async code is not translated)"); return "py::None";
+        case ExprKind::Await:
+            if (!fn_ || !fn_->async_) { refuse(e, "await outside an async function"); return "py::None"; }
+            return "y.await_(" + expr(cast<Await>(e)->value) + ")";
         case ExprKind::Starred: return "py::star(" + expr(cast<Starred>(e)->value) + ")";
         case ExprKind::Slice: return subscript_key(e);
         default: refuse(e, std::string("expression ") + name_of(e->kind)); return "py::None";
@@ -1089,6 +1153,42 @@ private:
         return o + cells;
     }
 
+    // the __doc__ CPython (3.13+) keeps: the string with its tabs expanded, the first line's leading spaces and the
+    // other lines' common indent removed; blank lines and the trailing newline stay (inspect.cleandoc does more)
+    static bool doc_value(const std::vector<Stmt*>& body, std::string& out) {
+        if (body.empty()) return false;
+        auto* e = as<ExprStmt>(body[0]);
+        std::string s;
+        if (!e || !is_str_const(e->value, &s)) return false;
+        std::vector<std::string> lines;
+        size_t st = 0;
+        for (size_t i = 0; i <= s.size(); i++)
+            if (i == s.size() || s[i] == '\n') {
+                std::string l = s.substr(st, i - st), x;
+                for (char c : l) {
+                    if (c == '\t') x.append(8 - x.size() % 8, ' ');
+                    else x += c;
+                }
+                lines.push_back(x);
+                st = i + 1;
+            }
+        size_t margin = std::string::npos;
+        for (size_t i = 1; i < lines.size(); i++) {
+            size_t k = lines[i].find_first_not_of(' ');
+            if (k != std::string::npos) margin = std::min(margin, k);
+        }
+        out.clear();
+        for (size_t i = 0; i < lines.size(); i++) {
+            std::string l = lines[i];
+            if (i == 0) l.erase(0, std::min(l.size(), l.find_first_not_of(' ') == std::string::npos ? l.size() : l.find_first_not_of(' ')));
+            else {
+                size_t k = l.find_first_not_of(' ');
+                l.erase(0, std::min(k == std::string::npos ? l.size() : k, margin == std::string::npos ? l.size() : margin));
+            }
+            out += (i ? "\n" : "") + l;
+        }
+        return true;
+    }
     // a def's body as C++ statements; `decl` gets the C++ head
     std::string function_body(const FunctionDef* f, const Scope* s, bool generator, const std::string& ind) {
         std::string o;
@@ -1121,12 +1221,10 @@ private:
     // the function object for a def (and, at file scope, the C++ function written out)
     std::string make_def(const FunctionDef* f, const std::string& cpp_name, const std::string& qualname, const std::string& ind,
                          const std::string& class_cell, bool method) {
-        if (f->kind == StmtKind::AsyncFunctionDef) {
-            refuse(f, "async def " + f->name);
-            return "py::None";
-        }
         const Scope* s = sc_.scope_of(f);
-        bool gen = is_generator(f);
+        bool is_async = f->kind == StmtKind::AsyncFunctionDef;
+        bool yields = is_generator(f);
+        bool gen = yields || is_async;   // (a coroutine runs on a fiber as a generator does)
         res_.functions++;
         std::string sig, params, defaults;
         Fn* outer = fn_;
@@ -1138,6 +1236,7 @@ private:
         Fn inner;
         inner.scope = s;
         inner.generator = gen;
+        inner.async_ = is_async;
         inner.qual = qualname;
         inner.file_scope = cpp_name != "";
         inner.class_cell = method ? class_cell : (outer ? outer->class_cell : "");
@@ -1152,18 +1251,39 @@ private:
         fn_ = &inner;
         std::string body = function_body(f, s, gen, inner.file_scope ? "    " : ind + "    ");
         fn_ = outer;
-        std::string maker = gen ? "py::def_generator" : "py::def";
+        std::string maker = is_async ? (yields ? "py::def_async_generator" : "py::def_coroutine") : gen ? "py::def_generator" : "py::def";
         std::string tail = ", " + cstr(qualname) + ", " + cstr(m_.name) + ")";
+        // the annotations, as their source text (what `from __future__ import annotations` keeps): __annotations__
+        // and inspect.signature give them
+        std::string anns;
+        auto ann = [&](const std::string& name, const Expr* e) {
+            if (!e) return;
+            std::string text;
+            if (!source_segment(src_, starts_, e->pos, text)) return;
+            anns += (anns.empty() ? "" : ", ") + cstr(name) + ", " + cstr(text);
+        };
+        for (auto* p : f->args->posonlyargs) ann(p->arg, p->annotation);
+        for (auto* p : f->args->args) ann(p->arg, p->annotation);
+        if (f->args->vararg) ann(f->args->vararg->arg, f->args->vararg->annotation);
+        for (auto* p : f->args->kwonlyargs) ann(p->arg, p->annotation);
+        if (f->args->kwarg) ann(f->args->kwarg->arg, f->args->kwarg->annotation);
+        ann("return", f->returns);
+        std::string pre = anns.empty() ? "" : "py::annotate_(", post = anns.empty() ? "" : ", {" + anns + "})";
+        std::string fdoc;
+        if (doc_value(f->body, fdoc)) {   // (its __doc__)
+            pre = "py::doc_(" + pre;
+            post += ", " + cstr(fdoc) + ")";
+        }
         if (inner.file_scope) {
             protos_ += "static " + head + ";\n";
             std::string comment = "// " + src_line(f) + "\n";
             funcs_ += comment + "static " + head + " {\n" + body + "}\n\n";
-            return maker + "(" + cstr(f->name) + ", " + cstr(sig) + ", {" + defaults + "}, " + cpp_name + tail;
+            return pre + maker + "(" + cstr(f->name) + ", " + cstr(sig) + ", {" + defaults + "}, " + cpp_name + tail + post;
         }
         // a closure
         std::string caps = captures(s);
-        return maker + "(" + cstr(f->name) + ", " + cstr(sig) + ", {" + defaults + "}, [" + caps + "](" + yparam + params + ") -> py::var {\n" +
-               body + ind + "}" + tail;
+        return pre + maker + "(" + cstr(f->name) + ", " + cstr(sig) + ", {" + defaults + "}, [" + caps + "](" + yparam + params + ") -> py::var {\n" +
+               body + ind + "}" + tail + post;
     }
 
     std::string decorate(const std::vector<Expr*>& decos, const std::string& v) {
@@ -1214,7 +1334,7 @@ private:
         std::string annotations;
         size_t start = 0;
         std::string doc;
-        if (docstring(c->body, doc)) {
+        if (doc_value(c->body, doc)) {
             o += in + ns + ".setitem(\"__doc__\"_s, " + slit(doc) + ");\n";
             start = 1;
         }
@@ -1292,6 +1412,9 @@ private:
     bool has_escape(const std::vector<Stmt*>& body, bool loops_too);
     std::string try_stmt(const Try* t, const std::string& ind);
     std::string with_stmt(const With* w, size_t item, const std::string& ind);
+    std::string async_with_stmt(const With* w, size_t item, const std::string& ind);
+    std::string match_stmt(const Match* m, const std::string& ind);
+    std::string pattern(const Pattern* p, const std::string& subj, const std::string& ok, const std::string& ind);
     std::string escape(const char* kind, const std::string& value, const std::string& ind);
     std::string escape_after(const Region& r, const std::string& ind);
     std::string plain_try(const Try* t, const std::string& ind);
@@ -1517,8 +1640,35 @@ std::string Emitter::stmt(const Stmt* s, const std::string& ind) {
     case StmtKind::Try: return try_stmt(cast<Try>(s), ind);
     case StmtKind::TryStar: refuse(s, "except*"); return "";
     case StmtKind::With: return with_stmt(cast<With>(s), 0, ind);
-    case StmtKind::AsyncWith: case StmtKind::AsyncFor: refuse(s, "async with / async for"); return "";
-    case StmtKind::Match: refuse(s, "match statement"); return ind + "py::raise(py::t::NotImplementedError);   // (match: not lowered)\n";
+    case StmtKind::AsyncWith:
+        if (!fn_ || !fn_->async_) { refuse(s, "async with outside an async function"); return ""; }
+        return async_with_stmt(cast<With>(s), 0, ind);
+    case StmtKind::AsyncFor: {
+        if (!fn_ || !fn_->async_) { refuse(s, "async for outside an async function"); return ""; }
+        auto* f = cast<For>(s);
+        std::string o;
+        std::string flag;
+        if (!f->orelse.empty()) {
+            flag = "py_broke" + t();
+            o += ind + "bool " + flag + " = false;\n";
+        }
+        std::string v = "py_it" + t();
+        Region lr;
+        lr.is_loop = true;
+        lr.else_flag = flag;
+        fn_->regions.push_back(lr);
+        std::string body = block(f->body, ind + "        ");
+        fn_->regions.pop_back();
+        // async for: __anext__() awaited until StopAsyncIteration
+        o += ind + "{   // async for " + src_line(f) + "\n";
+        o += ind + "    py::var " + v + "a = py::aiter_(" + expr(f->iter) + ");\n";
+        o += ind + "    for (;;) {\n" + ind + "        py::var " + v + ";\n";
+        o += ind + "        if (!y.async_next(" + v + "a, " + v + ")) break;\n";
+        o += ind + "        " + assign_target(f->target, v) + "\n" + body + ind + "    }\n" + ind + "}\n";
+        if (!flag.empty()) o += ind + "if (!" + flag + ") {\n" + block(f->orelse, ind + "    ") + ind + "}\n";
+        return o;
+    }
+    case StmtKind::Match: return match_stmt(cast<Match>(s), ind);
     case StmtKind::TypeAlias: refuse(s, "type alias statement"); return "";
     default: refuse(s, std::string("statement ") + name_of(s->kind)); return "";
     }
@@ -1634,6 +1784,157 @@ std::string Emitter::with_stmt(const With* w, size_t item, const std::string& in
     return o;
 }
 
+// async with: __aenter__() and __aexit__(...) awaited. The exception is taken out of its catch block
+// before __aexit__ is awaited (the coroutine's fiber may switch away while it waits).
+std::string Emitter::async_with_stmt(const With* w, size_t item, const std::string& ind) {
+    if (item >= w->items.size()) return block(w->body, ind);
+    const withitem* wi = w->items[item];
+    int id = ++tmp_;
+    std::string sid = std::to_string(id);
+    std::string in = ind + "    ";
+    std::string o = ind + "{   // async with " + (item == 0 ? src_line(w) : std::string("...")) + "\n";
+    o += in + "py::var py_mgr" + sid + " = " + expr(wi->context_expr) + ";\n";
+    o += in + "py::var py_exitfn" + sid + " = py::awith_exit_of(py_mgr" + sid + ");\n";
+    if (wi->optional_vars) o += in + assign_target(wi->optional_vars, "y.await_(py::awith_enter(py_mgr" + sid + "))") + "\n";
+    else o += in + "y.await_(py::awith_enter(py_mgr" + sid + "));\n";
+    o += in + "py::var py_ret" + sid + "; int py_exit" + sid + " = 0; bool py_exited" + sid + " = false; py::error py_err" + sid + "{py::None};\n";
+    Region r;
+    r.id = id;
+    fn_->regions.push_back(r);
+    std::string body = async_with_stmt(w, item + 1, in + "    ");
+    Region done = fn_->regions.back();
+    fn_->regions.pop_back();
+    o += in + "try {\n" + body + in + "} catch (py::error& e" + sid + ") {\n";
+    o += in + "    py_exited" + sid + " = true;\n";
+    o += in + "    py_err" + sid + " = e" + sid + ";\n";
+    o += in + "}\n";
+    o += in + "if (py_exited" + sid + ") {\n";
+    o += in + "    py::handling_ py_h" + sid + "(py_err" + sid + ");\n";
+    o += in + "    if (!py::truthy_(y.await_(py::with_exit_call(py_exitfn" + sid + ", py_err" + sid + ")))) throw py_err" + sid + ";\n";
+    o += in + "}\n";
+    o += in + "py_fin" + sid + ":\n";
+    o += in + "if (!py_exited" + sid + ") y.await_(py_exitfn" + sid + "(py::None, py::None, py::None));\n";
+    o += escape_after(done, in);
+    o += ind + "}\n";
+    return o;
+}
+
+// match: each case's pattern tested on the subject in order; the first that matches (and whose guard
+// holds) runs. Names a pattern captures are bound as it matches (as CPython's are).
+std::string Emitter::match_stmt(const Match* m, const std::string& ind) {
+    std::string sid = t();
+    std::string subj = "py_subj" + sid, done = "py_matched" + sid;
+    std::string in = ind + "    ";
+    std::string o = ind + "{   // " + src_line(m) + "\n";
+    o += in + "py::var " + subj + " = " + expr(m->subject) + ";\n";
+    o += in + "bool " + done + " = false;\n";
+    for (auto* c : m->cases) {
+        std::string ok = "py_ok" + t();
+        std::string cin = in + "    ";
+        std::string casesrc = src_line(c->pattern);
+        o += in + "if (!" + done + ") {   // " + (casesrc.empty() ? std::string("case") : casesrc) + "\n";
+        o += cin + "bool " + ok + " = true;\n";
+        o += pattern(c->pattern, subj, ok, cin);
+        std::string test = ok + (c->guard ? " && " + paren(cond(c->guard)) : std::string());
+        o += cin + "if (" + test + ") {\n" + cin + "    " + done + " = true;\n" + block(c->body, cin + "    ") + cin + "}\n";
+        o += in + "}\n";
+    }
+    return o + ind + "}\n";
+}
+
+// statements that leave `ok` true when `subj` matches p (binding its captures), false when not
+std::string Emitter::pattern(const Pattern* p, const std::string& subj, const std::string& ok, const std::string& ind) {
+    std::string in = ind + "    ";
+    switch (p->kind) {
+    case PatternKind::MatchValue:
+        return ind + "if (!(" + subj + " == " + operand(cast<MatchValue>(p)->value) + ")) " + ok + " = false;\n";
+    case PatternKind::MatchSingleton: {
+        auto* s = cast<MatchSingleton>(p);
+        std::string v = s->value.kind == ConstValue::Kind::None ? "py::None" : s->value.kind == ConstValue::Kind::True ? "py::var(true)" : "py::var(false)";
+        return ind + "if (!py::is(" + subj + ", " + v + ")) " + ok + " = false;\n";
+    }
+    case PatternKind::MatchAs: {
+        auto* a = cast<MatchAs>(p);
+        std::string o;
+        if (a->pattern) o += pattern(a->pattern, subj, ok, ind);
+        if (a->has_name) o += ind + "if (" + ok + ") " + local_or_global(a->name) + " = " + subj + ";\n";
+        return o;
+    }
+    case PatternKind::MatchOr: {
+        auto* mo = cast<MatchOr>(p);
+        std::string any = "py_any" + t();
+        std::string o = ind + "bool " + any + " = false;\n";
+        for (auto* alt : mo->patterns) {
+            std::string ok2 = "py_ok" + t();
+            o += ind + "if (!" + any + ") {\n" + in + "bool " + ok2 + " = true;\n" + pattern(alt, subj, ok2, in) + in + "if (" + ok2 + ") " + any + " = true;\n" + ind + "}\n";
+        }
+        return o + ind + "if (!" + any + ") " + ok + " = false;\n";
+    }
+    case PatternKind::MatchSequence: {
+        auto* sq = cast<MatchSequence>(p);
+        size_t star = sq->patterns.size();
+        for (size_t i = 0; i < sq->patterns.size(); i++)
+            if (sq->patterns[i]->kind == PatternKind::MatchStar) star = i;
+        bool has_star = star < sq->patterns.size();
+        size_t before = has_star ? star : sq->patterns.size(), after = has_star ? sq->patterns.size() - star - 1 : 0;
+        std::string items = "py_seq" + t();
+        // the items as a list ([before..., [starred], after...]), or None: not a sequence of that length
+        std::string o = ind + "py::var " + items + " = py::match_sequence_(" + subj + ", " + std::to_string(before) + ", " + std::to_string(after) + ", " +
+                        (has_star ? "true" : "false") + ");\n";
+        o += ind + "if (" + items + ".is_none()) " + ok + " = false;\n";
+        for (size_t i = 0; i < sq->patterns.size(); i++) {
+            const Pattern* sub = sq->patterns[i];
+            std::string item = items + ".getitem(py::var(" + std::to_string(i) + "))";
+            if (sub->kind == PatternKind::MatchStar) {
+                auto* st = cast<MatchStar>(sub);
+                if (st->has_name) o += ind + "if (" + ok + ") " + local_or_global(st->name) + " = " + item + ";\n";
+                continue;
+            }
+            std::string iv = "py_el" + t();
+            o += ind + "if (" + ok + ") {\n" + in + "py::var " + iv + " = " + item + ";\n" + pattern(sub, iv, ok, in) + ind + "}\n";
+        }
+        return o;
+    }
+    case PatternKind::MatchMapping: {
+        auto* mm = cast<MatchMapping>(p);
+        std::string vals = "py_map" + t();
+        std::string keys;
+        for (auto* k : mm->keys) keys += (keys.empty() ? "" : ", ") + expr(k);
+        // the values of the keys in order (and the rest as a dict), or None: not a mapping holding them all
+        std::string o = ind + "py::var " + vals + " = py::match_mapping_(" + subj + ", py::tuple({" + keys + "}), " + (mm->has_rest ? "true" : "false") + ");\n";
+        o += ind + "if (" + vals + ".is_none()) " + ok + " = false;\n";
+        for (size_t i = 0; i < mm->patterns.size(); i++) {
+            std::string iv = "py_mv" + t();
+            o += ind + "if (" + ok + ") {\n" + in + "py::var " + iv + " = " + vals + ".getitem(py::var(" + std::to_string(i) + "));\n" +
+                 pattern(mm->patterns[i], iv, ok, in) + ind + "}\n";
+        }
+        if (mm->has_rest) o += ind + "if (" + ok + ") " + local_or_global(mm->rest) + " = " + vals + ".getitem(py::var(" + std::to_string(mm->patterns.size()) + "));\n";
+        return o;
+    }
+    case PatternKind::MatchClass: {
+        auto* mc = cast<MatchClass>(p);
+        std::string vals = "py_cls" + t();
+        std::string kw;
+        for (auto& k : mc->kwd_attrs) kw += (kw.empty() ? "" : ", ") + slit(k);
+        // the positional (by __match_args__) and keyword attributes' values in order, or None: no match
+        std::string o = ind + "py::var " + vals + " = py::match_class_(" + subj + ", " + expr(mc->cls) + ", " + std::to_string(mc->patterns.size()) +
+                        ", py::tuple({" + kw + "}));\n";
+        o += ind + "if (" + vals + ".is_none()) " + ok + " = false;\n";
+        size_t n = 0;
+        auto sub = [&](const Pattern* sp) {
+            std::string iv = "py_ca" + t();
+            o += ind + "if (" + ok + ") {\n" + in + "py::var " + iv + " = " + vals + ".getitem(py::var(" + std::to_string(n++) + "));\n" + pattern(sp, iv, ok, in) +
+                 ind + "}\n";
+        };
+        for (auto* sp : mc->patterns) sub(sp);
+        for (auto* sp : mc->kwd_patterns) sub(sp);
+        return o;
+    }
+    case PatternKind::MatchStar: return "";   // (only inside a sequence pattern)
+    }
+    return "";
+}
+
 std::string Emitter::import_stmt(const Stmt* s, const std::string& ind) {
     std::string o;
     if (auto* im = as<Import>(s)) {
@@ -1675,7 +1976,7 @@ std::string Emitter::run() {
     std::string body;
     size_t start = 0;
     std::string doc;
-    if (docstring(tree_.body, doc)) {
+    if (doc_value(tree_.body, doc)) {
         body += "    " + gref("__doc__") + " = " + slit(doc) + ";\n";
         start = 1;
     }

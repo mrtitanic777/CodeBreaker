@@ -109,6 +109,7 @@ struct FuncObj : Obj {
     invoker fn;
     int nslots = 0;
     bool generator = false;
+    uint8_t async_kind = 0;               // 1: async def (a coroutine), 2: an async generator, 3: @types.coroutine
     int npos = 0;                         // PosOnly + Normal
     int varargs = -1, varkw = -1;
     var doc, annotations, wrapped, dict_extra;

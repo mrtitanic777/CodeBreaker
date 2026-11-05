@@ -550,9 +550,24 @@ static var popen_new(const CallArgs& a) {
     self.setattr("args", args);
     self.setattr("pid", var((int64_t)p->pid));
     self.setattr("returncode", None);
-    self.setattr("stdin", None);
-    self.setattr("stdout", None);
-    self.setattr("stderr", None);
+    // p.stdin / p.stdout / p.stderr: file objects over the pipes (each over its own duplicate of the handle, so
+    // communicate() still reads the original)
+    auto pipe_file = [&](HANDLE h, bool writing) -> var {
+        if (!h) return None;
+        HANDLE d;
+        if (!DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), &d, 0, FALSE, DUPLICATE_SAME_ACCESS)) return None;
+        int fd = _open_osfhandle((intptr_t)d, writing ? 0 : _O_RDONLY);
+        if (fd < 0) { CloseHandle(d); return None; }
+        if (!text) return builtin("open")(var((int64_t)fd), writing ? "wb"_s : "rb"_s);
+        CallArgs c;
+        c.pos = {var((int64_t)fd), writing ? "w"_s : "r"_s};
+        c.kw.push_back({"encoding"_s, new_str(p->encoding)});
+        if (!p->errors.empty()) c.kw.push_back({"errors"_s, new_str(p->errors)});
+        return call_obj(builtin("open"), c);
+    };
+    self.setattr("stdin", pipe_file(p->in_w, true));
+    self.setattr("stdout", pipe_file(p->out_r, false));
+    self.setattr("stderr", pipe_file(p->err_r, false));
     return self;
 }
 static void read_handle(HANDLE h, std::string* out) {
@@ -1226,6 +1241,16 @@ void init_os_modules() {
             return None;
         });
         mod_def(m, "_exit", [](const CallArgs& a) -> var { flush_std_(); ExitProcess((UINT)a.pos.at(0).as_int64()); });
+        // os._get_exports_list(module): its __all__, else its public names (socket.py extends its __all__ with _socket's)
+        mod_def(m, "_get_exports_list", [](const CallArgs& a) -> var {
+            var mod = a.pos.at(0);
+            var all = getattr(mod, "__all__"_s, None);
+            if (!all.is_none()) return new_list(collect(all));
+            std::vector<var> out;
+            for (var n : each(dir(mod)))
+                if (!str_utf8(n).empty() && str_utf8(n)[0] != '_') out.push_back(n);
+            return new_list(out);
+        });
         mod_def(m, "get_terminal_size", [](const CallArgs&) {
             CONSOLE_SCREEN_BUFFER_INFO ci;
             int64_t c = 80, r = 24;
@@ -1602,6 +1627,17 @@ void init_os_modules() {
         };
         mod_def(m, "perf_counter", perf);
         mod_def(m, "monotonic", perf);
+        // time.get_clock_info(name): what asyncio's loop reads (the monotonic clock's resolution)
+        mod_def(m, "get_clock_info", [](const CallArgs& a) {
+            std::string n = str_utf8(a.pos.at(0));
+            var ns = import("types").getattr("SimpleNamespace")();
+            bool mono = n == "monotonic" || n == "perf_counter";
+            ns.setattr("implementation", new_str(mono ? "QueryPerformanceCounter()" : n == "time" ? "GetSystemTimePreciseAsFileTime()" : "GetProcessTimes()"));
+            ns.setattr("monotonic", var(n != "time"));
+            ns.setattr("adjustable", var(n == "time"));
+            ns.setattr("resolution", var(1e-07));
+            return ns;
+        });
         mod_def(m, "process_time", [](const CallArgs&) {
             FILETIME c, e, k, u;
             GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u);

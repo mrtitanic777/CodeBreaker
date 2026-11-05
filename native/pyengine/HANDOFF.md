@@ -1,3 +1,33 @@
+# pyengine -- handoff (2026-11-05, front ends): async, match, networking, MCP
+
+**State.** The engine refuses nothing in the tree any more (914 modules, 296k lines, 0 constructs refused).
+`codebreaker.exe mcp` answers a real MCP client over stdio with the same bytes as `python -m codebreaker mcp`
+(state/work/pyrt-async-ui/mcp_python.txt vs mcp_cxx.txt: initialize, tools/list (32 tools, schemas and
+descriptions), prompts/list and get, resource templates, resources/read errors, tools/call results, pydantic's
+validation texts, unknown tool / method, ping -- every protocol line identical; only stderr's log format differs).
+.mcp.json is not repointed (that cut-over is Logan's, after review).
+
+| piece | where | what |
+|---|---|---|
+| async def / await / async for / async with / async comprehensions | dyn.cc; pyrt gen.cc | coroutines and async generators are GenObjs on the generators' fibers (`py::def_coroutine`, `def_async_generator`); `await x` is `y.await_(x)`, delegating to `x.__await__()` as PEP 380 says (send / throw / close); async generators tell a `yield v` (completes `__anext__`'s awaitable) from an await (passes up); each fiber keeps its own call depth and exception / call stacks |
+| match | dyn.cc; pyrt match.cc | each case's pattern lowered to tests (`py::match_sequence_` / `match_mapping_` / `match_class_`, PEP 634's rules and TypeErrors), captures bound as they match, guards, or / as |
+| annotations, __doc__ | dyn.cc | a def's annotations kept as their source text (`py::annotate_`: inspect.signature and __annotations__ give them); __doc__ as CPython 3.13 keeps it (was None) |
+| _socket, select, _overlapped, _winapi | pyrt lib_net.cc | Winsock and IOCP in C++ under CPython's own socket, selectors, socketserver, http.*, email.*, urllib.*, logging, asyncio.* (stdlib.txt): asyncio's default ProactorEventLoop runs as CPython's |
+| mcp | pyrt lib_mcp.cc | the surface CodeBreaker calls (MCPServer stdio, Client, ToolAnnotations, Image, ToolError), mcp 2.3's wire behaviour; why not translated: state/work/pyrt-async-ui/thirdparty.md (pydantic's core is Rust) |
+
+**Suites as C++** (CB_CORPUS_ROOT at the sibling Windows95 corpus): test_mcp 12/13 and test_service 11/11 -- the
+same as Python in this worktree (test_one_function_cut_out fails in both: native/decompiler is not built here);
+test_ui 5 pass / 5 skip (Python: 10 pass) -- 4 skip on z3 (the pe lane's profile imports emulate.shadow), 1 on
+textual. tools/check_imports: 549 / 587, the 5 that fail are the 4 z3 modules and ui.terminal (rich).
+ctest: pyengine 13/13 (new: async, match), pyrt 2/2 (new: pyrt_async). Gate 1: byte-identical (556 files).
+
+**Open.** (1) textual + rich: pure Python, translatable through site.txt; the cost is runtime breadth (real
+weakrefs, unicodedata, fractions, ...): thirdparty.md. (2) `mcp --http` (streamable HTTP: uvicorn/starlette) is
+not in lib_mcp.cc -- a C++ HTTP front over the same dispatch. (3) z3 (Logan's decision) still skips 4 test_ui checks.
+(4) stdio tool calls run one at a time (mcp runs them on worker threads; answers are the same for a sequential client).
+
+---
+
 # pyengine -- handoff (2026-11-05, phase 2): CodeBreaker as one C++ program
 
 **State.** All of CodeBreaker -- codebreaker/ (554 modules), tests/, tools/, native/nasm/test/masm --
