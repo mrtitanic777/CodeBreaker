@@ -414,6 +414,18 @@ def _image_stamp():
             [os.environ.get(n, "") for n in SWITCHES])
 
 
+def _copy(m):
+    """A copy of the decompiled module that shares nothing with it: as copy.deepcopy makes, by a
+    pickle round trip (the fact store keeps ne.module pickled, so it pickles; much faster
+    than deepcopy, which took 115 s of GDI's build over the gate's rounds). What does not
+    pickle is copied as before."""
+    import pickle
+    try:
+        return pickle.loads(pickle.dumps(m, protocol=pickle.HIGHEST_PROTOCOL))
+    except Exception:
+        return copy.deepcopy(m)
+
+
 def _keepable(b):
     """The Built as it can be kept: what does not pickle left out."""
     import pickle
@@ -448,7 +460,7 @@ def ne_image(ctx, key):
     never = ctx.need_many("function.never_set", keys)
     ctx.file(module.KEPT_AS_ASM)
     folder = ctx.work("build")
-    m = copy.deepcopy(m0)
+    m = _copy(m0)
     os.makedirs(os.path.join(folder, "decompiled"), exist_ok=True)
     m.description.lines = ctx.need("ne.description")
     m.description.write(os.path.join(folder, "decompiled", "description.txt"))     # (for the decompiler)
@@ -468,7 +480,7 @@ def ne_image(ctx, key):
     while True:
         b = module.Built(path)
         b.gated, b.folder, b.functions = dict(gated), folder, len(m.all_keys)
-        mm = copy.deepcopy(m)                                # (_build16 adds to its segments)
+        mm = _copy(m)                                        # (_build16 adds to its segments)
         with _serving(m.header, objects.values(), never.values()) as count:
             before = dict(count)
             image = P.packager.link(b, path, mm, folder)
