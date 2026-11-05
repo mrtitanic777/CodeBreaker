@@ -21,7 +21,7 @@ import struct
 
 from codebreaker.emulate import native_trace     # the loaded DLL
 
-DEFAULT = "0"             # CB_NATIVE_SHADOW when not set
+DEFAULT = "1"             # CB_NATIVE_SHADOW when not set (gated identical: docs/NATIVE.md)
 LIFT = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.POINTER(ctypes.c_uint8), ctypes.c_int32, ctypes.c_uint64,
                         ctypes.c_void_p, ctypes.c_int32)
 _FLAGS = {"CF": 0, "PF": 2, "AF": 4, "ZF": 6, "SF": 7, "TF": 8, "IF": 9, "DF": 10, "OF": 11}
