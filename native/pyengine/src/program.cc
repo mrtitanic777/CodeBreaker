@@ -529,6 +529,14 @@ T Program::ann(Module* m, const A::Expr* a) {
         if (as<pyfront::Name>(a)) {
             Ref r = resolve_global(m, name);
             if (r.k == "class") return named(TK::Inst, r.a);
+        } else if (auto* at2 = as<Attribute>(a); at2 && extended) {   // (new) pkg.module.Class, as a stub spells another module's class
+            std::string full = unparse(a);
+            std::string mod = full.substr(0, full.size() - name.size() - 1);
+            if (Module* const* om = modules.get(mod)) {
+                Ref r = resolve_global(*om, name);
+                if (r.k == "class") return named(TK::Inst, r.a);
+            }
+            (void)at2;
         }
         return BOTTOM();
     }
@@ -1180,6 +1188,146 @@ int Program::apply_type_hints() {
             f->annotations.set(name, aa->annotation);
             hint_trees.push_back(std::move(pr.module));
             touch("p:" + q);
+            n++;
+        }
+    }
+    n += apply_stub_hints();
+    return n;
+}
+
+// stub text: every bare name a stub imports (from codebreaker.x import Y) is spelled out in full, so it
+// resolves from any function's module (names after a '.' are left alone)
+static std::string qualify_stub_names(const std::string& t, const std::map<std::string, std::string>& alias) {
+    std::string out;
+    size_t i = 0;
+    auto idc = [](char c) { return std::isalnum((unsigned char)c) || c == '_'; };
+    while (i < t.size()) {
+        if (idc(t[i]) && !std::isdigit((unsigned char)t[i])) {
+            size_t j = i;
+            while (j < t.size() && idc(t[j])) j++;
+            std::string w = t.substr(i, j - i);
+            bool dotted = i > 0 && t[i - 1] == '.';
+            auto it = alias.find(w);
+            out += (!dotted && it != alias.end()) ? it->second : w;
+            i = j;
+        } else if (t[i] == '\'' || t[i] == '"') {   // a string: copied
+            size_t j = t.find(t[i], i + 1);
+            if (j == std::string::npos) j = t.size() - 1;
+            out += t.substr(i, j - i + 1);
+            i = j + 1;
+        } else {
+            out += t[i++];
+        }
+    }
+    return out;
+}
+
+void Program::load_stub(const std::string& module, const std::string& source_) {
+    // MonkeyType on Python 3.14 writes typing.Union as <class 'Union'>[...]: read it as Union[...]
+    std::string source = source_;
+    for (size_t at = 0; (at = source.find("<class '", at)) != std::string::npos;) {
+        size_t end = source.find("'>", at);
+        size_t nl = source.find('\n', at);
+        if (end == std::string::npos || (nl != std::string::npos && nl < end)) {
+            at += 8;
+            continue;
+        }
+        std::string nm = source.substr(at + 8, end - at - 8);
+        source.replace(at, end + 2 - at, nm);
+    }
+    auto pr = pyfront::parse(source, module + ".pyi");
+    if (!pr) return;
+    stub_files++;
+    std::map<std::string, std::string> alias;
+    for (auto* st : pr.module->body)
+        if (auto* im = as<ImportFrom>(st))
+            if (im->level == 0 && im->has_module && im->module != "typing" && im->module != "__future__")
+                for (auto* a : im->names) alias[a->has_asname ? a->asname : a->name] = im->module + "." + a->name;
+    std::function<void(const std::vector<Stmt*>&, const std::string&)> walk = [&](const std::vector<Stmt*>& body, const std::string& prefix) {
+        for (auto* st : body) {
+            if (st->kind == StmtKind::FunctionDef || st->kind == StmtKind::AsyncFunctionDef) {
+                auto* fd = cast<FunctionDef>(st);
+                std::string q = prefix + "." + fd->name;
+                auto add = [&](const arg* x) {
+                    if (x->annotation) stub_hints[q][x->arg] = qualify_stub_names(unparse(x->annotation), alias);
+                };
+                for (auto* x : fd->args->posonlyargs) add(x);
+                for (auto* x : fd->args->args) add(x);
+                for (auto* x : fd->args->kwonlyargs) add(x);
+            } else if (auto* cd = as<ClassDef>(st)) {
+                walk(cd->body, prefix + "." + cd->name);
+            }
+        }
+    };
+    walk(pr.module->body, module);
+    hint_trees.push_back(std::move(pr.module));
+}
+
+int Program::apply_stub_hints() {
+    int n = 0;
+    for (auto& [q, ps] : stub_hints) {
+        Fn* const* fp = fns.get(q);
+        if (!fp) continue;
+        Fn* f = *fp;
+        for (auto& [name, text] : ps) {
+            if (name == "self" || name == "cls") continue;
+            StubNote note{q, name, text, "", ""};
+            auto done = [&](const char* st, const std::string& d) {
+                note.status = st;
+                note.detail = d;
+                stub_notes.push_back(note);
+            };
+            if (std::find(f->params.begin(), f->params.end(), name) == f->params.end() &&
+                std::find(f->kwonly.begin(), f->kwonly.end(), name) == f->kwonly.end()) {
+                done("ignored", "no such parameter");
+                continue;
+            }
+            auto th = type_hints.find(q);
+            if (th != type_hints.end() && th->second.count(name)) {
+                done("ignored", "types.json hints it");
+                continue;
+            }
+            if (f->annotations.has(name)) {
+                done("ignored", "annotated in the source");
+                continue;
+            }
+            auto pr = pyfront::parse("_hint: " + text + "\n", "<stub hint " + q + ">");
+            const pyfront::AnnAssign* aa = (pr && !pr.module->body.empty()) ? dynamic_cast<const pyfront::AnnAssign*>(pr.module->body[0]) : nullptr;
+            if (!aa) {
+                done("ignored", "the engine cannot read the type text");
+                continue;
+            }
+            const A::Expr* ann_node = aa->annotation;
+            hint_trees.push_back(std::move(pr.module));
+            T t = ann_to_type(f->module, ann_node);
+            if (t.kind == TK::Bottom) {
+                done("ignored", "type the engine cannot model");
+                continue;
+            }
+            if (t.kind == TK::Top) {
+                done("ignored", "no single type: " + t.why());
+                continue;
+            }
+            auto pit = params.find(q);
+            if (pit != params.end() && pit->second.count(name) && pit->second[name].kind != TK::Bottom &&
+                pit->second[name].kind != TK::None) {
+                auto plain = [](const T& x) {   // the type's text without the container sites' numbers
+                    std::string r = x.repr(), o;
+                    for (size_t i = 0; i < r.size(); i++) {
+                        if (r[i] == '#') {
+                            while (i + 1 < r.size() && std::isdigit((unsigned char)r[i + 1])) i++;
+                        } else o += r[i];
+                    }
+                    return o;
+                };
+                std::string inferred = plain(pit->second[name]);
+                if (inferred == plain(t)) done("agree", inferred);
+                else done("conflict", "inference wins: " + inferred + " (stub " + plain(t) + ")");
+                continue;
+            }
+            f->annotations.set(name, ann_node);
+            touch("p:" + q);
+            done("applied", t.repr());
             n++;
         }
     }

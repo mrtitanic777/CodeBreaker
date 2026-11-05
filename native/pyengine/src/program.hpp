@@ -256,6 +256,16 @@ public:
     std::map<std::string, std::map<std::string, std::string>> type_hints;
     std::vector<std::unique_ptr<pyfront::Module>> hint_trees;
     int apply_type_hints();
+    // (new) MonkeyType-style .pyi stubs (--stubs DIR): the recorded parameter types of a run of the
+    // package, read as hints. Applied after types.json, to parameters the classic rules left untyped;
+    // where the rules typed one, inference wins and a differing stub is reported as a conflict; a stub
+    // type the engine cannot model is ignored with the reason.
+    struct StubNote { std::string fn, param, stub, status, detail; };   // status: applied | agree | conflict | ignored
+    std::map<std::string, std::map<std::string, std::string>> stub_hints;   // function -> parameter -> annotation text
+    std::vector<StubNote> stub_notes;
+    int stub_files = 0;
+    int apply_stub_hints();
+    void load_stub(const std::string& module, const std::string& source);
     // (new) getattr(obj, 'name'[, default]) with a constant name: 1 the attribute is always there (a
     // method, a class attribute, or set at the top of __init__ in obj's class or a base), 2 it is never
     // there (no class of the hierarchy, up or down, has or stores it), 0 it may or may not be

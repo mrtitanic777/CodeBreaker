@@ -29,6 +29,43 @@ checked 339/356, 17 refused the same way.
 - Gate (s11, same engine output): no-cache 1,356 s, cold 280 s, warm 6 s -- identical counts all
   three (472 / 472 / 287 / 287 / 0 / 185). Warm reuse 285 of 287 verdicts (99%).
 
+## Recorded runtime types as hints (2026-11-05): `--stubs DIR`, hints/stubs/
+
+MonkeyType 23.3.0 traced every suite tests/run_all.py runs (slow ones too, each capped at 4 minutes:
+the ones that did not finish lose all their traces, since MonkeyType writes at exit -- test_mcp,
+test_service, test_symbols, test_analysis, test_drivers, test_powerpc, test_whole_module, test_invert,
+test_readable, test_frozen_slow timed out) plus `info/names/identify/analyze/decompile` over lz32.dll,
+attrib.exe, version.dll, fc.exe, into one database; 205 codebreaker modules seen, **191 stubs**
+(`hints/stubs/*.pyi`, MonkeyType's output untouched; 13 more failed in MonkeyType's own renderer).
+pyengine reads them (`--stubs DIR`, C++ only: `Program::load_stub` / `apply_stub_hints`), applied
+after types.json to parameters nothing else types; inference wins, a differing stub is a conflict
+(reported in `stubs_report.json` under `--out`); a type the engine cannot model is ignored with its
+reason. Return types are not used. Reproduce: `pyengine codebreaker --coverage --stubs
+native/pyengine/hints/stubs --out DIR`.
+
+MonkeyType on Python 3.14 needed more local patches in site-packages (typing.py: `rewrite` and
+`_rewrite_container` for classes with an `__args__` slot, `get_type` for `Type[Generic]`; stubs.py:
+`_is_optional`, `get_imports_for_annotation`); it still writes `Union` as `<class 'Union'>[...]`,
+which the reader accepts.
+
+| policy | before: translated (lines) | after, with stubs | gained / lost | conflicts |
+|---|---|---|---|---|
+| strict | 466 (3,048 lines, 2.2%) | **491 (3,225, 2.3%)** | +26 / -1 | 485 (stub differs, inference wins) |
+| checked | 574 (3,957 lines, 2.8%) | **612 (4,198, 3.0%)** | +41 / -3 | same |
+
+Stub parameters: 1,270 applied (675 functions), 713 agree with inference, 485 conflict, 276 ignored
+(150 types the engine cannot model, 76 annotated in the source, the rest no single type). The
+untyped class barely moves: the traced suites call mostly the same functions the engine already
+types, and most untyped-parameter functions are never called by a quick test.
+**Gate 1** (HEAD engine rebuilt from git, `--old`): coverage.json (every function's status and L2)
+byte-identical with and without this change, in `--old`, strict and checked modes without stubs.
+The tree now has 7,664 functions (modules deleted since the 2026-11-04 counts), so the older
+totals above (472 / 582) are not comparable: HEAD itself gives 466 strict / 574 checked today.
+Not re-run: the judge (state/work/pyengine2 no longer exists), so compiles / agrees / disagrees for
+the 25 + 38 newly translated functions are unknown -- rebuild the judge from this file's description
+first. Next: trace the timed-out suites in smaller pieces (or with MonkeyType's `--limit`-style
+sampling), trace real commands over more corpus samples, then use the recorded *return* types too.
+
 ## Open refusal classes, biggest first (strict, first reason per function)
 
 untyped 2,202 (parameters nothing in the package calls: 1,172; callers passing values of no type:
