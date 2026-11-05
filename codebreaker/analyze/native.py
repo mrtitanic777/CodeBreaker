@@ -17,7 +17,7 @@ import struct
 
 from codebreaker.base import settings
 
-_VERSION = 4
+_VERSION = 5
 _LIB = []
 _WHY = []
 _POINTER_KINDS = {"abs32": 0, "far": 1, "selector": 2, "offset": 3, "byte": 4}
@@ -50,6 +50,9 @@ def _load():
         lib.cba_ask.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_longlong,
                                 ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t))
         lib.cba_names.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t)
+        lib.cba_assemble.restype = ctypes.c_int
+        lib.cba_assemble.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
+                                     ctypes.POINTER(ctypes.c_size_t))
         lib.cba_free.argtypes = (ctypes.c_void_p,)
         lib.cba_close.argtypes = (ctypes.c_void_p,)
     except OSError as e:
@@ -104,6 +107,18 @@ def _names(img):
             raw = name.encode("utf-8", "surrogatepass")
             out.append(struct.pack("<qI", va, len(raw)) + raw)
     return b"".join(out)
+
+
+def assemble(stores, least):
+    """strings' _assemble in the DLL: {(base, offset): (byte, store number)} -> its JSON answer."""
+    lib = library()
+    text = "".join("%s %d %d %d\n" % (b, o, v, n) for (b, o), (v, n) in stores.items()).encode("ascii")
+    out, size = ctypes.c_void_p(), ctypes.c_size_t()
+    lib.cba_assemble(text, least, ctypes.byref(out), ctypes.byref(size))
+    try:
+        return json.loads(ctypes.string_at(out.value, size.value).decode("ascii"))
+    finally:
+        lib.cba_free(out)
 
 
 class Handle(object):

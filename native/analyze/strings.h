@@ -11,6 +11,10 @@ namespace cba {
 // what: "table", "uses", "stack" or "formats"; the answer as JSON in out -> false: unknown
 bool strings_answer(Image &img, const char *what, std::string &out);
 
+// _assemble on stores given as text ("base offset byte number" per line) -> JSON
+// [[base, offset, text, wide], ...]
+std::string assemble_json(const char *stores, size_t least);
+
 // the strings table (built once per image unless asked again), and the entry at an address
 void ensure_table(Image &img);
 const Image::Str *in_table(const Image &img, int64_t va);

@@ -21,6 +21,8 @@ conversions in it, at the same position, from several places.
 """
 import re
 
+from codebreaker.analyze import native
+
 _SPEC = re.compile(r"%([-+ 0#]*)(\*|\d+)?(?:\.(\*|\d+))?(hh|h|ll|l|L|w|I64|I32)?([diouxXeEfgGcCsSpn%])")
 
 
@@ -89,6 +91,11 @@ def _uses(img):
 
 def uses(img):
     return img.memo("strings.uses", _uses)
+
+
+def _assemble(stores, least=4):
+    """Printable runs in {(base, offset): (byte, store number)} -> [(base, offset, text, wide)] (in C++)."""
+    return [tuple(r) for r in native.assemble(stores, least)]
 
 
 def stack_strings(img):

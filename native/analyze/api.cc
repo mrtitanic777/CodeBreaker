@@ -244,6 +244,10 @@ extern "C" int cba_ask(void *handle, const char *question, long long arg, char *
     return answer(o, out, len);
 }
 
+extern "C" int cba_assemble(const char *stores, int least, char **out, size_t *len) {
+    return answer(assemble_json(stores, (size_t)least), out, len);
+}
+
 extern "C" int cba_names(void *handle, const unsigned char *blob, size_t n) {
     Image *img = (Image *)handle;
     Reader r{blob, blob + n};

@@ -212,7 +212,11 @@ bool has_letters(const std::string &t) {   // re.search("[A-Za-z]{2}", t)
     return false;
 }
 
+}  // namespace
+
 struct Piece { std::string base; int64_t off; std::string text; bool wide; };
+
+namespace {
 
 // _assemble: printable runs in {(base, offset): (byte, store number)}
 std::vector<Piece> assemble(const std::map<std::pair<std::string, int64_t>, std::pair<int, int>> &stores, size_t least = 4) {
@@ -554,6 +558,29 @@ std::string formats_json(Image &img) {
 }
 
 }  // namespace
+
+std::string assemble_json(const char *stores, size_t least) {
+    std::map<std::pair<std::string, int64_t>, std::pair<int, int>> m;
+    const char *p = stores;
+    while (*p) {                                          // "base offset byte number" per line
+        char base[64];
+        long long off;
+        int byte, n, used = 0;
+        if (sscanf(p, "%63s %lld %d %d%n", base, &off, &byte, &n, &used) != 4) break;
+        m[{base, (int64_t)off}] = {byte, n};
+        p += used;
+        while (*p == '\n' || *p == '\r' || *p == ' ') p++;
+    }
+    std::string o = "[";
+    bool first = true;
+    for (const Piece &x : assemble(m, least)) {
+        if (!first) o += ',';
+        first = false;
+        o += '[', put_str(o, x.base), o += ',', put_int(o, x.off), o += ',', put_str(o, x.text);
+        o += x.wide ? ",true]" : ",false]";
+    }
+    return o + "]";
+}
 
 bool strings_answer(Image &img, const char *what, std::string &out) {
     if (!std::strcmp(what, "table")) {
