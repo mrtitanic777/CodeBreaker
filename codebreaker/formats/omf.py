@@ -79,30 +79,7 @@ def patched(raw, spec):
     """the module with bytes of a segment's data replaced: spec SEG+OFF=HEXBYTES (in its LEDATA records)"""
     import re
     m = re.fullmatch(r"(\w+)\+([0-9a-fA-F]+)=([0-9a-fA-F]+)", spec)
-    seg, off, val = m.group(1), int(m.group(2), 16), bytes.fromhex(m.group(3))
-    ix = lambda r, q: (r[q], q + 1) if r[q] < 0x80 else (((r[q] & 0x7F) << 8) | r[q + 1], q + 2)
-    names, segs, out = [], [], b""
-    for t, r in records(raw):
-        if t == 0x96:
-            q = 0
-            while q < len(r):
-                names.append(r[q + 1:q + 1 + r[q]].decode("latin1"))
-                q += 1 + r[q]
-        elif t == 0x98:
-            q = 1 if r[0] >> 5 else 4
-            ni, _ = ix(r, q + 2)
-            segs.append(names[ni - 1])
-        elif t == 0xA0:
-            si, q = ix(r, 0)
-            lo = r[q] | r[q + 1] << 8
-            if segs[si - 1] == seg:
-                r = bytearray(r)
-                for k, b in enumerate(val):
-                    if lo <= off + k < lo + len(r) - q - 2:
-                        r[q + 2 + off + k - lo] = b
-                r = bytes(r)
-        out += record(t, r)
-    return out
+    return native.call("omf.patched", raw, m.group(1), int(m.group(2), 16), bytes.fromhex(m.group(3)))
 
 
 @native.answered("omf.name", data_arg=None)
@@ -157,50 +134,18 @@ def rename_externs(data, mapping):
 
 def rename_symbols(data, fn):
     """the object with every external and public name nm made fn(nm) (EXTDEF, COMDEF, PUBDEF): the names a batch
-    of candidates was compiled under given back"""
-    out = b""
-    for t, r in records(data):
-        if t in (0x8C, 0xB0):                               # (EXTDEF: name, type; COMDEF: name, type, kind, sizes)
-            q, nb = 0, b""
-            while q < len(r):
-                nm = r[q + 1:q + 1 + r[q]]
-                q += 1 + r[q]
-                if t == 0x8C:
-                    rest = r[q:q + 1]
-                    q += 1
-                else:                                       # (COMDEF: the rest of the entry as it is - type index,
-                    st = q                                  #  data type, then the communal's length fields)
-                    q += 1
-                    kind = r[q]
-                    q += 1
-                    for _ in range(2 if kind == 0x61 else 1):
-                        b0 = r[q]
-                        q += 1 + ({0x81: 2, 0x84: 3, 0x88: 4}.get(b0, 0))
-                    rest = r[st:q]
-                nm = fn(nm.decode("latin1")).encode("latin1")
-                nb += bytes([len(nm)]) + nm + rest
-            r = nb
-        elif t in (0x90, 0x91):                             # (PUBDEF: group, segment [, frame], then name, offset, type)
-            q = 0
-            g, q = _idx(r, q)
-            s, q = _idx(r, q)
-            if s == 0:
-                q += 2
-            nb = r[:q]
-            w = 4 if t == 0x91 else 2
-            while q < len(r):
-                nm = r[q + 1:q + 1 + r[q]]
-                q += 1 + r[q]
-                rest = r[q:q + w]
-                q += w
-                ti, q2 = _idx(r, q)
-                rest += r[q:q2]
-                q = q2
-                nm = fn(nm.decode("latin1")).encode("latin1")
-                nb += bytes([len(nm)]) + nm + rest
-            r = nb
-        out += record(t, r)
-    return out
+    of candidates was compiled under given back.  formats.dll walks the records: it names the symbols, fn renames
+    each (in the order the records hold them), and it writes the object back."""
+    names, failed = native.call("omf.symbol_names", data)
+    renamed = []
+    for n in names:                                         # (fn, the encoding and the length are checked in the order
+        new = fn(n)                                         #  the single walk met them; a damaged record raises after)
+        if len(new.encode("latin1")) > 255:
+            raise ValueError("bytes must be in range(0, 256)")
+        renamed.append(new)
+    if failed:
+        raise native._exception(*failed)
+    return native.call("omf.rename_symbols", data, renamed)
 
 
 @native.answered("omf.raw_object", data_arg=None)

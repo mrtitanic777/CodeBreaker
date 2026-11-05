@@ -100,7 +100,8 @@ def questions():
 
 _BUILTIN = {e.__name__: e for e in (ValueError, IndexError, KeyError, TypeError, MemoryError, ZeroDivisionError,
                                     OverflowError, AttributeError, OSError, RuntimeError, StopIteration,
-                                    FileNotFoundError, PermissionError, RecursionError)}
+                                    FileNotFoundError, PermissionError, RecursionError,
+                                    AssertionError)}
 RAISES = {}               # a reader's own exception classes by name (cab: "CabError"), filled by its module
 
 
