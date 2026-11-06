@@ -1177,6 +1177,27 @@ void init_os_modules() {
         });
         mod_def(m, "stat", [](const CallArgs& a) { return do_stat(P0(a)); });
         mod_def(m, "lstat", [](const CallArgs& a) { return do_stat(P0(a)); });
+        // fstat(fd): the open file's, its times exact from its handle as stat's are
+        mod_def(m, "fstat", [](const CallArgs& a) {
+            int fd = (int)a.pos.at(0).as_int64();
+            struct _stat64 st;
+            if (_fstat64(fd, &st) != 0) raise(os_error(errno, ""));
+            var r = stat_result(st, "");
+            HANDLE h = (HANDLE)_get_osfhandle(fd);
+            BY_HANDLE_FILE_INFORMATION fi;
+            if (h != INVALID_HANDLE_VALUE && GetFileInformationByHandle(h, &fi)) {
+                auto ft = [](const FILETIME& f) {
+                    uint64_t v = ((uint64_t)f.dwHighDateTime << 32) | f.dwLowDateTime;
+                    return (double)(v - 116444736000000000ULL) / 1e7;
+                };
+                uint64_t mw = ((uint64_t)fi.ftLastWriteTime.dwHighDateTime << 32) | fi.ftLastWriteTime.dwLowDateTime;
+                r.setattr("st_mtime", var(ft(fi.ftLastWriteTime)));
+                r.setattr("st_atime", var(ft(fi.ftLastAccessTime)));
+                r.setattr("st_ctime", var(ft(fi.ftCreationTime)));
+                r.setattr("st_mtime_ns", var((int64_t)((mw - 116444736000000000ULL) * 100)));
+            }
+            return r;
+        });
         mod_def(m, "utime", [](const CallArgs& a) {
             // SetFileTime on a handle opened for its attributes (directories too: backup semantics)
             std::string p = P0(a);

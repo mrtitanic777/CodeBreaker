@@ -805,6 +805,32 @@ static void init_threading(const var& m) {
         return var(true);
     }));
     mod_set(m, "Event", make_class("Event", "Event", {}, ens, {}, "threading"));
+    // Timer: CPython's -- a thread that waits `interval` on an Event and calls function unless cancelled
+    var tmns = new_dict();
+    tmns.setitem("__init__"_s, def("__init__", "self, interval, function, args=, kwargs=", {None, None}, [thread](var self, var interval, var function, var args, var kwargs) {
+        call1(thread.getattr("__init__"), self);
+        self.setattr("interval", interval);
+        self.setattr("function", function);
+        self.setattr("args", args.is_none() ? new_list() : args);
+        self.setattr("kwargs", kwargs.is_none() ? new_dict() : kwargs);
+        self.setattr("finished", call0(import("threading").getattr("Event")));
+        return var(None);
+    }));
+    tmns.setitem("cancel"_s, def("cancel", "self", {}, [](var self) { self.getattr("finished").call("set"); return var(None); }));
+    tmns.setitem("run"_s, def("run", "self", {}, [](var self) {
+        var fin = self.getattr("finished");
+        fin.call("wait", self.getattr("interval"));
+        if (!fin.call("is_set").truthy()) {
+            CallArgs b;
+            b.pos = collect(self.getattr("args"));
+            var kw = self.getattr("kwargs");
+            for (var k : each(kw)) b.kw.push_back({k, kw.getitem(k)});
+            call_obj(self.getattr("function"), b);
+        }
+        fin.call("set");
+        return var(None);
+    }));
+    mod_set(m, "Timer", make_class("Timer", "Timer", {thread}, tmns, {}, "threading"));
     // Condition: CPython's algorithm (a waiter token per wait, notify sets n of them), waiting as Event does
     var cns = new_dict();
     cns.setitem("__init__"_s, def("__init__", "self, lock=", {None}, [](var self, var lock) {
