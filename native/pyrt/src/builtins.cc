@@ -370,7 +370,7 @@ static void init_object_type() {
         // object.__setattr__(self, name, value): the generic store, past any override
         var self = a.pos.at(0);
         Obj* p = self.ref();
-        if (!p->attrs) { var d = new_dict_obj(); p->attrs = d.ref(); incref(p->attrs); }
+        if (!p->attrs) { var d = new_dict_obj(); p->attrs = d.ref(); incref(p->attrs); track_instance_(p); }
         static_cast<DictObj*>(p->attrs)->set(a.pos.at(1), a.pos.at(2));
         return None;
     });

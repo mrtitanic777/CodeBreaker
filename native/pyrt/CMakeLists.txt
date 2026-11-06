@@ -52,6 +52,7 @@ add_library(pyrt STATIC
   src/lib_async.cc    # sys's async generator hooks; the networking modules' registration
   src/lib_net.cc      # _socket and select over Winsock, _overlapped (IOCP) and _winapi: under CPython's socket, selectors, asyncio
   src/lib_mcp.cc      # the mcp package's surface CodeBreaker's MCP server uses (MCPServer over stdio, Client, ToolAnnotations): mcp 2.3's wire behaviour
+  src/gc.cc           # the cycle collector (generations, finalizers, weak references): gc, weakref
   src/alloc.cc        # operator new / delete: small blocks from per-thread free lists (pymalloc's role)
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)
@@ -94,3 +95,11 @@ if(MSVC)
   target_link_options(pyrt_async_tests PRIVATE /STACK:268435456)
 endif()
 add_test(NAME pyrt_async COMMAND pyrt_async_tests)
+# the cycle collector: cycles of each kind freed, __del__ once, weak references and their callbacks,
+# closures, generators in cycles, generations, the gc module
+add_executable(pyrt_gc_tests tests/pyrt_gc_tests.cpp)
+target_link_libraries(pyrt_gc_tests PRIVATE pyrt)
+if(MSVC)
+  target_link_options(pyrt_gc_tests PRIVATE /STACK:268435456)
+endif()
+add_test(NAME pyrt_gc COMMAND pyrt_gc_tests)

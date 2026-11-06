@@ -577,16 +577,67 @@ static var nat(const char* n, native_fn f) { return new_native(n, std::move(f));
 
 // functools.partial
 static TypeObj* T_partial;
-struct PartialObj : DataObj { var func; std::vector<var> args; std::vector<std::pair<var, var>> kw; };
+struct PartialObj : DataObj {
+    var func;
+    std::vector<var> args;
+    std::vector<std::pair<var, var>> kw;
+    PartialObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override {
+        Obj::gc_traverse(visit, arg);
+        gc_visit_var(func, visit, arg);
+        for (const var& a : args) gc_visit_var(a, visit, arg);
+        for (const auto& [k, v] : kw) {
+            gc_visit_var(k, visit, arg);
+            gc_visit_var(v, visit, arg);
+        }
+    }
+    void gc_clear() override {
+        var f = std::move(func);
+        std::vector<var> a;
+        a.swap(args);
+        std::vector<std::pair<var, var>> k;
+        k.swap(kw);
+        Obj::gc_clear();
+    }
+};
 
 // collections.deque
 static TypeObj* T_deque;
-struct DequeObj : DataObj { std::vector<var> v; int64_t maxlen = -1; };
+struct DequeObj : DataObj {
+    std::vector<var> v;
+    int64_t maxlen = -1;
+    DequeObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override {
+        Obj::gc_traverse(visit, arg);
+        for (const var& x : v) gc_visit_var(x, visit, arg);
+    }
+    void gc_clear() override {
+        std::vector<var> old;
+        old.swap(v);
+        Obj::gc_clear();
+    }
+};
 static DequeObj* DQ(const var& v) { return static_cast<DequeObj*>(v.ref()); }
 
 // lru_cache
 static TypeObj* T_lru;
-struct LruObj : DataObj { var func; var cache; int64_t maxsize = 128; int64_t hits = 0, misses = 0; bool typed = false; };
+struct LruObj : DataObj {
+    var func;
+    var cache;
+    int64_t maxsize = 128;
+    int64_t hits = 0, misses = 0;
+    bool typed = false;
+    LruObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override {
+        Obj::gc_traverse(visit, arg);
+        gc_visit_var(func, visit, arg);
+        gc_visit_var(cache, visit, arg);
+    }
+    void gc_clear() override {
+        var f = std::move(func), c = std::move(cache);
+        Obj::gc_clear();
+    }
+};
 
 
 
@@ -618,7 +669,7 @@ static void set_state_(const var& y, const var& state, const copy_fn_& part) {
     if (is_tuple(st) && tuple_items(st).size() == 2) { slotstate = tuple_items(st)[1]; st = tuple_items(st)[0]; }
     if (!st.is_none()) {
         Obj* o = y.ref();
-        if (!o->attrs) { var d = new_dict_obj(); o->attrs = d.ref(); incref(o->attrs); }
+        if (!o->attrs) { var d = new_dict_obj(); o->attrs = d.ref(); incref(o->attrs); track_instance_(o); }
         dict_update_(var(o->attrs), st);
     }
     if (!slotstate.is_none() && !slotstate.is_unbound())

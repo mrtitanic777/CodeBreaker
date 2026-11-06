@@ -581,6 +581,8 @@ static var rich_compare(const var& a, const var& b, int op) {
             }
         }
     }
+    bool weq;
+    if ((op == EQ || op == NE) && ta->layout == Layout::NativeData && weakref_eq_(a, b, weq)) return var(op == EQ ? weq : !weq);
     int r = builtin_compare(a, b, op);
     if (r >= 0) return var(r != 0);
     if (op == EQ) return var(is(a, b));
@@ -751,6 +753,8 @@ int64_t hash_(const var& x) {
         return tuple_hash_(static_cast<TupleObj*>(new_tuple({r->start, r->stop, r->step}).ref()));
     }
     default: {
+        int64_t wh;
+        if (t->layout == Layout::NativeData && weakref_hash_(o, wh)) return wh;   // (a weak reference: its object's)
         // object.__hash__: the address, rotated by 4 as CPython
         uint64_t p = (uint64_t)(uintptr_t)o;
         int64_t r = (int64_t)((p >> 4) | (p << 60));

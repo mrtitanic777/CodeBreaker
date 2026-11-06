@@ -112,6 +112,16 @@ struct CData : DataObj {
     var base;          // what p points into (kept alive)
     var keep;          // objects this one's memory refers to (a dict, made on demand)
     CType* ct = nullptr;
+    // (followed once it is tracked: a callback object always, any other once it has an attribute dict)
+    void gc_traverse(gc_visit visit, void* arg) override {
+        Obj::gc_traverse(visit, arg);
+        gc_visit_var(base, visit, arg);
+        gc_visit_var(keep, visit, arg);
+    }
+    void gc_clear() override {
+        var k = std::move(keep);   // (base stays: p may point into it)
+        Obj::gc_clear();
+    }
 };
 CData* CD(const var& v) {
     if (!v.is_ref() || !isinstance_(v, T_cdata)) raise(E_TypeError, "a ctypes instance is expected, not " + tname(v) + (getenv("PYRT_DEBUG") ? " [" + repr_(v) + "]" : std::string()));
@@ -119,7 +129,10 @@ CData* CD(const var& v) {
 }
 bool is_cdata(const var& v) { return v.is_ref() && v.ref()->type->layout != Layout::Type && isinstance_(v, T_cdata); }
 void keep_(CData* d, const var& key, const var& v) {
-    if (d->keep.is_unbound()) d->keep = new_dict();
+    if (d->keep.is_unbound()) {
+        d->keep = new_dict();
+        gc_track(d);   // (what it keeps may refer back to its holder: a structure of callbacks in an object)
+    }
     d->keep.setitem(key, v);
 }
 var make_cdata(CType* ct, uint8_t* at = nullptr, const var& base = var()) {
@@ -678,12 +691,14 @@ var do_call(void* f, const Proto& pr, const CallArgs& a, const var& errcheck, co
 }
 
 // ------------------------------------------------------------------------------------------ callbacks
+// (the slot names the Python callable; the CFUNCTYPE object holds it, so a callback that refers back to its
+// holder -- an emulator's hook, a bound method of the emulator -- is a cycle the collector can free)
 struct Callback {
-    var fn;
+    Obj* fn = nullptr;    // borrowed from the FuncPtr that has the slot
     Proto proto;
     bool used = false;
 };
-constexpr int kSlots = 2048;   // (objects in reference cycles are not collected: a run of emulators may hold many)
+constexpr int kSlots = 2048;   // (a run of emulators may hold many at once)
 Callback g_cb[kSlots];
 std::mutex g_cb_mu;
 template <int I>
@@ -692,7 +707,9 @@ u64 trampoline(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5, u64 a6, u64 a7, u
     bool took = gil_ensure_();
     u64 ret = 0;
     Callback& cb = g_cb[I];
+    var fn = cb.fn ? var(cb.fn) : var(None);
     try {
+        if (fn.is_none()) raise(E_RuntimeError, "the ctypes callback object is gone");
         std::vector<var> args;
         for (size_t i = 0; i < cb.proto.args.size() && i < 12; i++) {
             CType* at = cb.proto.args[i];
@@ -704,14 +721,14 @@ u64 trampoline(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5, u64 a6, u64 a7, u
                 args.push_back(p);
             } else args.push_back(read_item(at, buf, var()));
         }
-        var r = call_obj(cb.fn, CallArgs{args, {}});
+        var r = call_obj(fn, CallArgs{args, {}});
         if (!cb.proto.res_void && cb.proto.res && !r.is_none()) {
             if (cb.proto.res->kind == CK::Simple && !strchr("zZP", cb.proto.res->code)) ret = is_int(r) && is_big(r) ? big_bits(r) : int_bits(r);
             else if (is_int(r)) ret = int_bits(r);
             else if (is_cdata(r)) ret = cdata_address_for_pointer(CD(r));
         } else if (!cb.proto.res_void && !cb.proto.res && is_int(r)) ret = int_bits(r);
     } catch (error& e) {
-        fprintf(stderr, "Exception ignored on calling ctypes callback function: %s\n", repr_(cb.fn).c_str());
+        fprintf(stderr, "Exception ignored on calling ctypes callback function: %s\n", repr_(fn).c_str());
         print_exception_(e.value);
     }
     if (took) gil_release_();
@@ -727,12 +744,23 @@ struct FuncPtr : CData {
     int slot = -1;
     Proto proto;          // from the CFUNCTYPE type (argtypes / restype attributes override)
     std::string name;
+    var callable;         // a callback's Python callable (its slot's fn)
+    FuncPtr() { gc_track(this); }
     ~FuncPtr() override {
         if (slot >= 0) {
             std::lock_guard<std::mutex> l(g_cb_mu);
             g_cb[slot].used = false;
-            g_cb[slot].fn = var();
+            g_cb[slot].fn = nullptr;
         }
+    }
+    void gc_traverse(gc_visit visit, void* arg) override {
+        CData::gc_traverse(visit, arg);
+        gc_visit_var(callable, visit, arg);
+    }
+    void gc_clear() override {
+        if (slot >= 0) g_cb[slot].fn = nullptr;   // (a call from C now finds nothing to run)
+        var c = std::move(callable);
+        CData::gc_clear();
     }
 };
 Proto proto_of_type(TypeObj* t) {
@@ -870,11 +898,12 @@ void init_ctypes(const var& m) {
                     for (int i = 0; i < kSlots; i++) if (!g_cb[i].used) { slot = i; break; }
                     if (slot < 0) raise(E_MemoryError, "no more ctypes callback entry points (" + std::to_string(kSlots) + " in use)");
                     g_cb[slot].used = true;
-                    g_cb[slot].fn = a.pos[1];
+                    g_cb[slot].fn = a.pos[1].ref();
                     g_cb[slot].proto = pr;
                 }
                 var f = new_funcptr(t, (void*)g_tramps[(size_t)slot], "");
                 static_cast<FuncPtr*>(f.ref())->slot = slot;
+                static_cast<FuncPtr*>(f.ref())->callable = a.pos[1];
                 return f;
             }
             return new_funcptr(t, nullptr, "");

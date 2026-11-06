@@ -17,12 +17,22 @@ TypeObj *T_object, *T_type, *T_none, *T_bool, *T_int, *T_float, *T_complex, *T_s
     *T_classmethod, *T_super, *T_notimpl, *T_ellipsis, *T_data;
 
 Obj::~Obj() {
+    if (gc & GC_TRACKED) gc_untrack(this);   // (dealloc_ has done it; an object deleted otherwise)
     if (attrs) decref(attrs);
 }
 // classes are never freed: instances do not hold a reference to their type (a class made and dropped
-// while its instances live -- a native helper's, a namedtuple's -- would leave them pointing at freed memory)
+// while its instances live -- a native helper's, a namedtuple's -- would leave them pointing at freed memory).
+// An instance of a class with a __del__ runs it first (once; it may live on). The collector stops following
+// the object before its destructor takes it apart, and its weak references die (their callbacks run).
 void dealloc_(Obj* o) {
-    if (o->type && o->type->layout == Layout::Type) { o->rc = 1; return; }
+    if (TypeObj* t = o->type) {
+        if (t->layout == Layout::Type) { o->rc = 1; return; }
+        if (!t->builtin && !(o->gc & GC_FINALIZED) && finalize_from_dealloc_(o)) return;
+    }
+    if (o->gc & (GC_TRACKED | GC_WEAKREFD)) {
+        if (o->gc & GC_TRACKED) gc_untrack(o);
+        if (o->gc & GC_WEAKREFD) clear_weakrefs_(o);
+    }
     delete o;
 }
 
@@ -408,7 +418,7 @@ static var getattr_impl(const var& o, const var& name, bool& found) {
     if (n == "__dict__" && t->no_dict) { found = false; return var(); }   // (__slots__: none)
     if (n == "__dict__" && o.is_ref()) {
         Obj* p = o.ref();
-        if (!p->attrs && !t->builtin) { var d = new_dict_obj(); p->attrs = d.ref(); incref(p->attrs); }
+        if (!p->attrs && !t->builtin) { var d = new_dict_obj(); p->attrs = d.ref(); incref(p->attrs); track_instance_(p); }
         if (p->attrs) return var(p->attrs);
     }
     if (n == "__doc__" && t != T_function) return None;   // (a function's own: below)
@@ -580,6 +590,7 @@ static void setattr_v(const var& o, const var& name, const var& v) {
         var d = new_dict_obj();
         p->attrs = d.ref();
         incref(p->attrs);
+        track_instance_(p);
     }
     static_cast<DictObj*>(p->attrs)->set(name, v);
 }

@@ -46,10 +46,44 @@ struct GenObj : Obj {
     void* handling = nullptr;       // its own stack of exceptions being handled
     void* calls = nullptr;          // its own stack of functions being run (tracebacks)
     bool closing = false;           // close(): a GeneratorExit that ends the body is the close working, not raised again
+    GenObj() { gc_track(this); }
     ~GenObj() override;
+    // (what its body's own stack holds while it is suspended is not followed: a cycle through a suspended
+    // generator's locals is not found)
+    void gc_traverse(gc_visit visit, void* arg) override {
+        Obj::gc_traverse(visit, arg);
+        gc_visit_var(func, visit, arg);
+        for (const var& s : slots) gc_visit_var(s, visit, arg);
+        gc_visit_var(sent, visit, arg);
+        gc_visit_var(value, visit, arg);
+        gc_visit_var(returned, visit, arg);
+        gc_visit_var(throw_in, visit, arg);
+        gc_visit_var(awaiting, visit, arg);
+        if (handling)
+            for (const var& e : *static_cast<std::vector<var>*>(handling)) gc_visit_var(e, visit, arg);
+    }
+    // (its function stays: the body's code is its lambda; the function's own clear breaks a cycle through it)
+    void gc_clear() override {
+        if (state == Running) return;
+        std::vector<var> s;
+        s.swap(slots);
+        var a = std::move(sent), b = std::move(value), c = std::move(returned), d = std::move(throw_in), e = std::move(awaiting);
+        Obj::gc_clear();
+    }
 };
 
-struct WrapperObj : Obj { var coro; };   // what coroutine.__await__() returns
+struct WrapperObj : Obj {               // what coroutine.__await__() returns
+    var coro;
+    WrapperObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override {
+        Obj::gc_traverse(visit, arg);
+        gc_visit_var(coro, visit, arg);
+    }
+    void gc_clear() override {
+        var c = std::move(coro);
+        Obj::gc_clear();
+    }
+};
 
 TypeObj* T(const var& v);   // object.cc
 int& depth_slot_();      // call.cc
@@ -352,20 +386,26 @@ bool gen_next_(const var& gv, var& out) {
     return true;
 }
 
-GenObj::~GenObj() {
-    if (state == Suspended && fiber) {
-        // close(): GeneratorExit at the yield, the body's finally blocks run
-        throw_in = make_exc_args(E_GeneratorExit, {});
-        closing = true;
-        try {
-            resume(this);
-        } catch (...) {
-        }
-        if (state != Done) {
-            // it yielded again while closing: abandon the fiber (its stack's references leak)
-            fiber = nullptr;
-        }
+// close() of an unfinished generator that is going: GeneratorExit at the yield, the body's finally blocks run
+static bool close_dropped(GenObj* g) {
+    if (g->state != GenObj::Suspended || !g->fiber) return false;
+    g->throw_in = make_exc_args(E_GeneratorExit, {});
+    g->closing = true;
+    try {
+        resume(g);
+    } catch (...) {
     }
+    if (g->state != GenObj::Done) {
+        // it yielded again while closing: abandon the fiber (its stack's references leak)
+        g->fiber = nullptr;
+    }
+    return true;
+}
+// the collector's finalizer of a generator in a cycle of garbage (before the cycle is cleared)
+bool gen_finalize_(Obj* g) { return close_dropped(static_cast<GenObj*>(g)); }
+
+GenObj::~GenObj() {
+    close_dropped(this);
     if (fiber) put_fiber(fiber);
     delete static_cast<std::vector<var>*>(handling);
     delete static_cast<std::vector<const FuncObj*>*>(calls);
@@ -438,6 +478,16 @@ struct AsendObj : Obj {
     var arg;                 // what to send, or the exception to throw
     int mode = 0;            // 0 send, 1 throw, 2 close
     int state = 0;           // 0 not started, 1 running, 2 done
+    AsendObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override {
+        Obj::gc_traverse(visit, arg);
+        gc_visit_var(gen, visit, arg);
+        gc_visit_var(this->arg, visit, arg);
+    }
+    void gc_clear() override {
+        var g = std::move(gen), a = std::move(arg);
+        Obj::gc_clear();
+    }
 };
 static var asend_step(AsendObj* a, const var& v, const var* thrown) {
     if (a->state == 2) raise(E_RuntimeError, a->mode == 0 ? "cannot reuse already awaited __anext__()/asend()" : "cannot reuse already awaited aclose()/athrow()");

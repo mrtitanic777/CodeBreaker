@@ -38,7 +38,11 @@ struct TypeObj : Obj {
     TypeObj* metatype = nullptr;          // the metaclass when not type
     bool no_dict = false;                 // __slots__ (and no base with a __dict__): instances have only those
     std::vector<std::string> slots;       // (this class's own slot names)
+    uint64_t del_epoch = 0;               // has_del is good while g_type_epoch is this (0: not looked up)
+    bool has_del = false;                 // a __del__ in the MRO (instances are finalized)
     ~TypeObj() override;
+    void gc_traverse(gc_visit, void*) override {}   // (classes are never freed nor tracked)
+    void gc_clear() override {}
     // attribute of the type through its MRO (null: absent); borrowed
     const var* lookup(const var& name) const;
     const var* lookup(const char* name) const;
@@ -57,8 +61,46 @@ struct StrObj : Obj {
     const std::u32string& u32() const;
 };
 struct BytesObj : Obj { std::string s; mutable int64_t h = -1; };   // bytes and bytearray
-struct ListObj : Obj { std::vector<var> v; };
-struct TupleObj : Obj { std::vector<var> v; mutable int64_t h = -1; };
+
+// ------------------------------------------------------------------------------------------ the cycle collector (gc.cc)
+// An object's `gc` word: its place in its generation's list, the generation, and three marks.
+constexpr uint32_t GC_INDEX_MASK = (1u << 27) - 1;
+constexpr int GC_GEN_SHIFT = 27;                  // 0, 1, 2: the generations; 3: being collected
+constexpr uint32_t GC_GEN_MASK = 3u << GC_GEN_SHIFT;
+constexpr uint32_t GC_TRACKED = 1u << 29;
+constexpr uint32_t GC_FINALIZED = 1u << 30;       // its __del__ has run: never again
+constexpr uint32_t GC_WEAKREFD = 1u << 31;        // weak references to it exist (gc.cc's registry)
+void gc_track(Obj* o);                            // the collector follows o from now on (again: nothing)
+void gc_untrack(Obj* o);
+inline bool gc_is_tracked(const Obj* o) { return (o->gc & GC_TRACKED) != 0; }
+// Collections run at safe points (a call of a Python function), never inside an allocation: a container
+// is tracked from its constructor on, before its type or its items are set.
+extern bool g_gc_due;
+void gc_collect_due_();
+inline void gc_safe_point() { if (g_gc_due) gc_collect_due_(); }
+inline void gc_visit_var(const var& v, gc_visit visit, void* arg) { if (Obj* o = v.ref()) visit(o, arg); }
+// an object that has just been given its attribute dict: an instance, followed from now on (not a class)
+inline void track_instance_(Obj* p) { if (!p->type || p->type->layout != Layout::Type) gc_track(p); }
+bool finalize_from_dealloc_(Obj* o);              // __del__ of an instance whose count reached 0: true when it lived on
+void clear_weakrefs_(Obj* o);                     // o is going: its weak references die, their callbacks run
+void write_unraisable_(const char* where, const var& obj, const var& exc);   // "Exception ignored in: ..."
+bool weakref_hash_(Obj* o, int64_t& h);           // o a weak reference: its object's hash (TypeError once it is dead)
+bool weakref_eq_(const var& a, const var& b, bool& eq);   // both weak references: eq as Python's (false: not both)
+void runtime_exiting_();                          // the program is done: no more collections, __del__ or weakref callbacks
+
+struct ListObj : Obj {
+    std::vector<var> v;
+    ListObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
+struct TupleObj : Obj {
+    std::vector<var> v;
+    mutable int64_t h = -1;
+    TupleObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
 
 // dict: insertion ordered (entries in order, a hash index over them), as CPython's
 struct DictObj : Obj {
@@ -77,6 +119,9 @@ struct DictObj : Obj {
     void rebuild_(size_t cap);
     var default_factory;                  // collections.defaultdict
     int ordered_kind = 0;                 // 0 dict, 1 OrderedDict, 2 Counter, 3 defaultdict
+    DictObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
 };
 
 // set: CPython's own table (linear probes then perturbation), so iteration order is CPython's
@@ -86,7 +131,9 @@ struct SetObj : Obj {
     int64_t fill = 0, used = 0;
     int64_t finger = 0;                   // pop()
     mutable int64_t h = -1;               // frozenset
-    SetObj() { table.resize(8); }
+    SetObj() { table.resize(8); gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
     bool contains(const var& key, int64_t h) const;
     bool add(const var& key, int64_t h);
     bool discard(const var& key, int64_t h);
@@ -114,10 +161,31 @@ struct FuncObj : Obj {
     int varargs = -1, varkw = -1;
     var doc, annotations, wrapped, dict_extra;
     int firstlineno = 0;                  // a lambda's line in its file (co_firstlineno; inspect.getsource finds it by it)
+    std::vector<Obj*> closure;            // the cells fn's lambda captured (fn holds their references)
+    FuncObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
 };
-struct NativeObj : Obj { std::string name; native_fn fn; var self; };   // a builtin (bound to self when set)
-struct MethodObj : Obj { var func, self; };
-struct CellObj : Obj { var v; };
+struct NativeObj : Obj {                  // a builtin (bound to self when set)
+    std::string name;
+    native_fn fn;                         // (what its lambda captured is not followed)
+    var self;
+    NativeObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
+struct MethodObj : Obj {
+    var func, self;
+    MethodObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
+struct CellObj : Obj {
+    var v;
+    CellObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
 struct ModuleObj : Obj {
     std::string name;
     std::unordered_map<std::string, CellObj*> cells;   // owned (one reference each)
@@ -131,10 +199,29 @@ struct ExcObj : Obj {
     var args;                             // a tuple
     var cause, context, traceback;
     bool suppress_context = false;
+    ExcObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
 };
-struct PropertyObj : Obj { var fget, fset, fdel, doc; std::string name; };
-struct WrapObj : Obj { var f; };          // staticmethod / classmethod
-struct SuperObj : Obj { var cls, self; };
+struct PropertyObj : Obj {
+    var fget, fset, fdel, doc;
+    std::string name;
+    PropertyObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
+struct WrapObj : Obj {                    // staticmethod / classmethod
+    var f;
+    WrapObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
+struct SuperObj : Obj {
+    var cls, self;
+    SuperObj() { gc_track(this); }
+    void gc_traverse(gc_visit visit, void* arg) override;
+    void gc_clear() override;
+};
 // native data for the library modules (a compiled pattern, a match, a file, a hash ...)
 struct DataObj : Obj {
     virtual ~DataObj() override = default;

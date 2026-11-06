@@ -43,14 +43,23 @@ class var;
 // CPython does, so counts are not atomic) and its type. Instances of classes also carry an attribute
 // dict (`attrs`); builtin values subclassed by a class (class Foo(dict)) are that builtin's object
 // with the class as its type.
+//
+// Counting references frees everything but cycles; the cycle collector (src/gc.cc, CPython's gc)
+// finds those. The objects that can hold references (containers, instances, functions, cells ...)
+// are tracked by it (`gc`: where it keeps them, and their finalized / weakly-referenced marks), and
+// say what they hold (gc_traverse: each reference they own, once) and how to let go of it (gc_clear).
+using gc_visit = void (*)(Obj* referent, void* arg);
 struct Obj {
-    int64_t rc = 0;
+    int32_t rc = 0;
+    uint32_t gc = 0;                // (the collector's: src/gc.cc)
     TypeObj* type = nullptr;
     Obj* attrs = nullptr;           // a DictObj, or null
     Obj() = default;
     Obj(const Obj&) = delete;
     Obj& operator=(const Obj&) = delete;
     virtual ~Obj();
+    virtual void gc_traverse(gc_visit visit, void* arg);   // the references it owns (here: attrs)
+    virtual void gc_clear();                               // let go of them (garbage in a cycle)
 };
 void dealloc_(Obj* o);
 inline void incref(Obj* o) { if (o) ++o->rc; }
@@ -361,19 +370,56 @@ template <class R, class... P> struct fn_arity_<R (*)(P...)> { static constexpr 
 template <class R, class... P> struct fn_arity_<R(P...)> { static constexpr size_t n = sizeof...(P); };
 template <class C, class R, class... P> struct fn_arity_<R (C::*)(P...) const> { static constexpr size_t n = sizeof...(P); };
 template <class C, class R, class... P> struct fn_arity_<R (C::*)(P...)> { static constexpr size_t n = sizeof...(P); };
+// a closure cell (a local an inner function captures). A def's C++ lambda captures the cells it
+// shares by value; def() copies the lambda once with a recorder on, so the function object knows
+// which cells its lambda holds and the cycle collector can follow them (a nested function that calls
+// itself is a cycle through its own cell).
+struct CellObj;
+inline thread_local std::vector<Obj*>* cell_recorder_ = nullptr;
+class cell {
+public:
+    cell();
+    cell(const cell& o) : c_(o.c_) { if (cell_recorder_) cell_recorder_->push_back(c_.ref()); }
+    cell(cell&& o) noexcept : c_(std::move(o.c_)) {}
+    cell& operator=(const cell&) = default;
+    cell& operator=(cell&&) = default;
+    var& operator*() const;
+    var* operator->() const { return &**this; }
+private:
+    var c_;
+};
+// a copy of a closure made while recording the cells it captures (the copy is what the function keeps)
+template <class F> F record_cells_(const F& fn, std::vector<Obj*>& cells) {
+    if constexpr (std::is_class_v<F>) {
+        std::vector<Obj*>* prev = cell_recorder_;
+        cell_recorder_ = &cells;
+        F copy(fn);
+        cell_recorder_ = prev;
+        return copy;
+    } else {
+        return fn;
+    }
+}
+void set_closure_(const var& f, std::vector<Obj*> cells);   // the cells a function's lambda holds
 // def name(sig): fn is a C++ function of as many py::var parameters as sig names
 template <class F> var def(const char* name, const char* sig, std::vector<var> defaults, F fn,
                            const char* qualname = nullptr, const char* module = nullptr) {
     constexpr size_t N = fn_arity_<std::decay_t<F>>::n;
-    return make_function(name, qualname ? qualname : name, sig, std::move(defaults),
-                         bind_slots_(fn, std::make_index_sequence<N>{}), (int)N, false, module);
+    std::vector<Obj*> cells;
+    var f = make_function(name, qualname ? qualname : name, sig, std::move(defaults),
+                          bind_slots_(record_cells_(fn, cells), std::make_index_sequence<N>{}), (int)N, false, module);
+    if (!cells.empty()) set_closure_(f, std::move(cells));
+    return f;
 }
 // a generator function: fn's first parameter is the py::yielder&
 template <class F> var def_generator(const char* name, const char* sig, std::vector<var> defaults, F fn,
                                      const char* qualname = nullptr, const char* module = nullptr) {
     constexpr size_t N = fn_arity_<std::decay_t<F>>::n - 1;
-    return make_function(name, qualname ? qualname : name, sig, std::move(defaults),
-                         bind_gen_slots_(fn, std::make_index_sequence<N>{}), (int)N, true, module);
+    std::vector<Obj*> cells;
+    var f = make_function(name, qualname ? qualname : name, sig, std::move(defaults),
+                          bind_gen_slots_(record_cells_(fn, cells), std::make_index_sequence<N>{}), (int)N, true, module);
+    if (!cells.empty()) set_closure_(f, std::move(cells));
+    return f;
 }
 // a def's annotations, as their source text: {"param", "text", ..., "return", "text"} (__annotations__)
 var annotate_(const var& f, std::initializer_list<const char*> name_text);
@@ -392,17 +438,6 @@ template <class F> var def_async_generator(const char* name, const char* sig, st
 // a native builtin taking the call's arguments as they come
 using native_fn = std::function<var(const CallArgs&)>;
 var native(const char* name, native_fn fn);
-
-// a closure cell (a local an inner function captures)
-struct CellObj;
-class cell {
-public:
-    cell();
-    var& operator*() const;
-    var* operator->() const { return &**this; }
-private:
-    var c_;
-};
 
 // ------------------------------------------------------------------------------------------ classes
 // class Name(bases, **kw): body fills ns; the class is made by its metaclass (type, or the bases')
