@@ -409,6 +409,12 @@ static void copyfile_(const std::string& src, const std::string& dst) {
 }
 
 static var environ_dict;
+// the environment as os.environ holds it: filled by the os module's init, which a native module (subprocess,
+// shutil) can run before -- so import os first
+static var& environ_() {
+    if (environ_dict.is_unbound()) import("os");
+    return environ_dict;
+}
 
 // ------------------------------------------------------------------------------------------ subprocess
 static std::string list2cmdline(const std::vector<std::string>& args) {
@@ -498,7 +504,7 @@ static HANDLE handle_for(const var& v, bool write, HANDLE& parent_end, bool& mad
 
 static std::wstring env_block(const var& env) {
     std::vector<std::wstring> items;
-    var e = env.is_none() || env.is_unbound() ? environ_dict : env;
+    var e = env.is_none() || env.is_unbound() ? environ_() : env;
     for (var k : each(e)) items.push_back(wide_(str_utf8(k)) + L"=" + wide_(str_utf8(e.getitem(k))));
     std::sort(items.begin(), items.end(), [](const std::wstring& a, const std::wstring& b) { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
     std::wstring blk;
@@ -614,10 +620,15 @@ static var communicate(const var& self, const var& input, const var& timeout) {
         if (!input.is_none() && !input.is_unbound()) {
             std::string data = is_str(input) ? raw_of(input.call("encode", new_str(p->encoding))) : raw_of(input);
             DWORD w;
+            gil_release g;      // a child slow to read must not stop the other threads
             WriteFile(p->in_w, data.data(), (DWORD)data.size(), &w, nullptr);
         }
         CloseHandle(p->in_w);
         p->in_w = nullptr;
+        // p.stdin holds a duplicate of the pipe: closed too, or the child never reads end of file (as CPython's
+        // communicate closes self.stdin)
+        var f = self.getattr("stdin");
+        if (!f.is_none() && !f.getattr("closed").truthy()) f.call("close");
     }
     DWORD ms = timeout.is_none() || timeout.is_unbound() ? INFINITE : (DWORD)(timeout.as_double() * 1000);
     DWORD r;
@@ -888,7 +899,7 @@ static void init_path(const var& m) {
                 size_t j = p.find('%', i + 1);
                 if (j != std::string::npos) {
                     std::string n = p.substr(i + 1, j - i - 1);
-                    var* v = static_cast<DictObj*>(environ_dict.ref())->get(new_str(n));
+                    var* v = static_cast<DictObj*>(environ_().ref())->get(new_str(n));
                     if (v) { o += str_utf8(*v); i = j; continue; }
                 }
             }
@@ -1375,10 +1386,10 @@ void init_os_modules() {
             var pathv = kwarg(a, "path", None);
             std::string path;
             if (!pathv.is_none()) path = fs_path(pathv);
-            else if (var* v = static_cast<DictObj*>(environ_dict.ref())->get("PATH"_s)) path = str_utf8(*v);
+            else if (var* v = static_cast<DictObj*>(environ_().ref())->get("PATH"_s)) path = str_utf8(*v);
             std::vector<std::string> exts;
             std::string pathext = ".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC";
-            if (var* v = static_cast<DictObj*>(environ_dict.ref())->get("PATHEXT"_s)) pathext = str_utf8(*v);
+            if (var* v = static_cast<DictObj*>(environ_().ref())->get("PATHEXT"_s)) pathext = str_utf8(*v);
             size_t st = 0;
             for (size_t i = 0; i <= pathext.size(); i++)
                 if (i == pathext.size() || pathext[i] == ';') { if (i > st) exts.push_back(pathext.substr(st, i - st)); st = i + 1; }
