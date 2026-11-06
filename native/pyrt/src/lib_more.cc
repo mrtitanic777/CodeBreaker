@@ -568,16 +568,25 @@ static void init_contextlib(const var& m) {
         }
         raise(E_RuntimeError, "generator didn't stop after throw()");
     });
-    add_method(T_gcm, "__call__", [](const CallArgs& a) {
+    // contextlib's functions are Python functions (*args, **kwds), each @wraps(func): they carry the
+    // function's names, module, __dict__ and __wrapped__ (inspect.getsource of one finds the function)
+    auto spread = [](const var& args, const var& kwds) {
+        CallArgs c;
+        c.pos = collect(args);
+        if (!kwds.is_none()) for (var k : each(kwds)) c.kw.push_back({k, kwds.getitem(k)});
+        return c;
+    };
+    add_method(T_gcm, "__call__", [spread](const CallArgs& a) {
         // used as a decorator: a fresh manager around each call
         var factory = a.pos[0].getattr("factory"), fargs = a.pos[0].getattr("fargs");
+        var fkwds = getattr(a.pos[0], "fkwds"_s, None);
         var f = a.pos.at(1);
-        return nat("inner", [factory, fargs, f](const CallArgs& c) {
-            var cm = call_obj(factory, [&] { CallArgs b; b.pos = collect(fargs); return b; }());
+        var inner = def("inner", "*args, **kwds", {}, [spread, factory, fargs, fkwds, f](var args, var kwds) {
+            var cm = call_obj(factory, spread(fargs, fkwds));
             var v = cm.call("__enter__");
             (void)v;
             try {
-                var r = call_obj(f, c);
+                var r = call_obj(f, spread(args, kwds));
                 cm.call("__exit__", None, None, None);
                 return r;
             } catch (error& e) {
@@ -585,20 +594,21 @@ static void init_contextlib(const var& m) {
                 return var(None);
             }
         });
+        return call2(import("functools").getattr("update_wrapper"), inner, f);
     });
-    mod_def(m, "contextmanager", [](const CallArgs& a) {
+    mod_def(m, "contextmanager", [spread](const CallArgs& a) {
         var f = a.pos.at(0);
-        var w = nat("helper", [f](const CallArgs& c) {
+        var w = def("helper", "*args, **kwds", {}, [spread, f](var args, var kwds) {
             auto* o = new DataObj();
             o->type = T_gcm;
             var cm(static_cast<Obj*>(o));
-            cm.setattr("gen", call_obj(f, c));
+            cm.setattr("gen", call_obj(f, spread(args, kwds)));
             cm.setattr("factory", f);
-            cm.setattr("fargs", new_tuple(c.pos));
+            cm.setattr("fargs", args);
+            cm.setattr("fkwds", kwds);
             return cm;
         });
-        try { w.setattr("__name__", f.getattr("__name__")); } catch (error&) {}
-        return w;
+        return call2(import("functools").getattr("update_wrapper"), w, f);
     });
     mod_set(m, "closing", mkcls("closing", {}, {
         {"__init__", def("__init__", "self, thing", {}, [](var self, var thing) { self.setattr("thing", thing); return var(None); })},
