@@ -2184,6 +2184,175 @@ static void write_if_changed(const fs::path& dst, const std::string& text) {
     f << text;
 }
 
+// ------------------------------------------------------------------------------------------ py_emit.hpp
+// The helpers translated statements call are declared in native/pyrt/include/py_emit.hpp, not in the
+// precompiled py_object.hpp (a new helper would rebuild every module): each module gets the declarations
+// of the ones it calls, each under its own guard, since a unity batch holds several modules.
+struct EmitDecl {
+    std::string name, text;
+    std::vector<size_t> needs;           // the entries its text names (at's slot_)
+};
+static bool ident_char(char c) { return isalnum((unsigned char)c) || c == '_'; }
+static std::vector<EmitDecl> load_emit_decls(const std::string& path) {
+    std::vector<EmitDecl> out;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return out;
+    std::string line, cur;
+    bool in_ns = false;
+    int depth = 0;
+    auto name_of = [](const std::string& t) {
+        size_t i = 0;
+        if (t.compare(0, 8, "template") == 0) {   // template <...>: skipped
+            int a = 0;
+            for (i = 8; i < t.size(); i++) {
+                if (t[i] == '<') a++;
+                else if (t[i] == '>' && --a == 0) { i++; break; }
+            }
+        }
+        while (i < t.size() && isspace((unsigned char)t[i])) i++;
+        if (t.compare(i, 7, "struct ") == 0) {
+            size_t b = i + 7, e = b;
+            while (e < t.size() && ident_char(t[e])) e++;
+            return t.substr(b, e - b);
+        }
+        size_t p = t.find('(', i);
+        if (p == std::string::npos) return std::string();
+        size_t e = p;
+        while (e > i && isspace((unsigned char)t[e - 1])) e--;
+        size_t b = e;
+        while (b > i && ident_char(t[b - 1])) b--;
+        return t.substr(b, e - b);
+    };
+    while (std::getline(f, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!in_ns) { in_ns = line.rfind("namespace py {", 0) == 0; continue; }
+        if (line.rfind("}  // namespace py", 0) == 0) break;
+        std::string code = line.substr(0, line.find("//"));
+        while (!code.empty() && isspace((unsigned char)code.back())) code.pop_back();
+        if (code.empty() && cur.empty()) continue;   // comments and blanks between entries
+        cur += line + "\n";
+        for (char c : code) depth += c == '{' ? 1 : c == '}' ? -1 : 0;
+        if (depth == 0 && !code.empty() && (code.back() == ';' || code.back() == '}')) {
+            EmitDecl d;
+            d.name = name_of(cur);
+            d.text = cur;
+            if (!d.name.empty()) out.push_back(d);
+            cur.clear();
+        }
+    }
+    auto names = [](const std::string& text, const std::string& n) {
+        for (size_t p = text.find(n); p != std::string::npos; p = text.find(n, p + 1))
+            if ((p == 0 || !ident_char(text[p - 1])) && (p + n.size() >= text.size() || !ident_char(text[p + n.size()]))) return true;
+        return false;
+    };
+    for (auto& d : out)
+        for (size_t j = 0; j < out.size(); j++)
+            if (out[j].name != d.name && names(d.text, out[j].name)) d.needs.push_back(j);
+    return out;
+}
+// cpp with the declarations of the py_emit.hpp helpers it calls (py::name) after its #include "py_object.hpp"
+static std::string with_emit_decls(const std::string& cpp, const std::vector<EmitDecl>& decls) {
+    std::set<std::string> used;
+    for (size_t p = cpp.find("py::"); p != std::string::npos; p = cpp.find("py::", p + 4)) {
+        size_t e = p + 4;
+        while (e < cpp.size() && ident_char(cpp[e])) e++;
+        used.insert(cpp.substr(p + 4, e - p - 4));
+    }
+    std::vector<bool> take(decls.size(), false);
+    std::function<void(size_t)> add = [&](size_t i) {
+        if (take[i]) return;
+        take[i] = true;
+        for (size_t j : decls[i].needs) add(j);
+    };
+    for (size_t i = 0; i < decls.size(); i++)
+        if (used.count(decls[i].name)) add(i);
+    std::string block;
+    for (size_t i = 0; i < decls.size(); i++)
+        if (take[i]) block += "#ifndef PYE_" + decls[i].name + "\n#define PYE_" + decls[i].name + "\n" + decls[i].text + "#endif\n";
+    if (block.empty()) return cpp;
+    const std::string inc = "#include \"py_object.hpp\"\n";
+    size_t at = cpp.find(inc);
+    if (at == std::string::npos) return cpp;
+    at += inc.size();
+    return cpp.substr(0, at) + "namespace py {   // the py_emit.hpp helpers this module calls\n" + block + "}  // namespace py\n" + cpp.substr(at);
+}
+
+// ------------------------------------------------------------------------------------------ unity batches
+// The modules compile in batches (one unity file includes several; each module is its own namespace).
+// A batch is about kBatchLines of C++, so no batch is the one the build waits on, and a module keeps its
+// batch from run to run (<out>/unity.txt), so a change rebuilds only its own batch: a module that is new
+// goes to the smallest batch it fits in, and only a batch grown past half again its size is redealt.
+// The modules of native/pyrt/hot.txt are batched apart: they are the ones compiled with inlining.
+static const size_t kBatchLines = 8000;
+struct UnitSrc {
+    std::string name, rel;
+    size_t lines = 0;
+    bool hot = false;
+};
+static std::vector<std::string> load_hot(const std::string& path) {
+    std::vector<std::string> out;
+    std::ifstream f(path, std::ios::binary);
+    std::string line;
+    while (std::getline(f, line)) {
+        line = line.substr(0, line.find('#'));
+        while (!line.empty() && isspace((unsigned char)line.back())) line.pop_back();
+        size_t b = 0;
+        while (b < line.size() && isspace((unsigned char)line[b])) b++;
+        if (b < line.size()) out.push_back(line.substr(b));
+    }
+    return out;
+}
+static bool is_hot(const std::string& mod, const std::vector<std::string>& hot) {
+    for (auto& h : hot) {
+        if (h == mod) return true;
+        if (h.size() > 2 && h.compare(h.size() - 2, 2, ".*") == 0) {
+            std::string p = h.substr(0, h.size() - 2);
+            if (mod == p || mod.rfind(p + ".", 0) == 0) return true;
+        }
+    }
+    return false;
+}
+// module -> batch name ("c3": compiled without inlining; "h1": a hot batch)
+static std::map<std::string, std::string> unity_batches(const std::vector<UnitSrc>& srcs, const fs::path& record) {
+    std::map<std::string, std::string> prev, out;
+    {
+        std::ifstream f(record, std::ios::binary);
+        std::string g, m;
+        while (f >> g >> m) prev[m] = g;
+    }
+    std::map<std::string, size_t> cost;
+    std::map<std::string, const UnitSrc*> by_name;
+    for (auto& s : srcs) by_name[s.name] = &s;
+    auto tier = [](const UnitSrc& s) { return std::string(s.hot ? "h" : "c"); };
+    for (auto& s : srcs) {
+        auto it = prev.find(s.name);
+        if (it != prev.end() && it->second.compare(0, 1, tier(s)) == 0) {
+            out[s.name] = it->second;
+            cost[it->second] += s.lines;
+        }
+    }
+    for (auto& [g, c] : cost)   // a batch grown past half again its size is redealt
+        if (c > kBatchLines * 3 / 2)
+            for (auto it = out.begin(); it != out.end();) it = it->second == g ? out.erase(it) : std::next(it);
+    cost.clear();
+    for (auto& [m, g] : out) cost[g] += by_name[m]->lines;
+    std::vector<const UnitSrc*> rest;
+    for (auto& s : srcs)
+        if (!out.count(s.name)) rest.push_back(&s);
+    std::stable_sort(rest.begin(), rest.end(), [](const UnitSrc* a, const UnitSrc* b) { return a->lines > b->lines; });
+    std::map<std::string, int> next_id;
+    for (auto& [g, c] : cost) next_id[g.substr(0, 1)] = std::max(next_id[g.substr(0, 1)], std::stoi(g.substr(1)) + 1);
+    for (auto* s : rest) {
+        std::string t = tier(*s), best;
+        for (auto& [g, c] : cost)
+            if (g.compare(0, 1, t) == 0 && c + s->lines <= kBatchLines && (best.empty() || c < cost[best])) best = g;
+        if (best.empty()) best = t + std::to_string(next_id[t]++);
+        out[s->name] = best;
+        cost[best] += s->lines;
+    }
+    return out;
+}
+
 int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
     std::vector<ModSpec> todo;
     std::set<std::string> seen;
@@ -2335,7 +2504,10 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             return 1;
         }
     }
-    std::string cmake_srcs;
+    std::string pyrt = fs::absolute(o.pyrt.empty() ? fs::path(o.root) / "native" / "pyrt" : fs::path(o.pyrt)).lexically_normal().generic_string();
+    std::vector<EmitDecl> emit_decls = load_emit_decls(pyrt + "/include/py_emit.hpp");
+    std::vector<std::string> hot = load_hot(pyrt + "/hot.txt");
+    std::vector<UnitSrc> units;
     for (auto& m : todo) {
         DynModule res;
         res.name = m.name;
@@ -2351,7 +2523,7 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         }
         Emitter em(m, src, *r.module, res);
         if (islands_on) em.use_islands(&islands, &island_log);
-        std::string cpp = em.run();
+        std::string cpp = with_emit_decls(em.run(), emit_decls);
         std::string rel = m.name;
         std::replace(rel.begin(), rel.end(), '.', '/');
         if (m.package) rel += "/__init__";
@@ -2359,27 +2531,59 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         rel += ".cpp";
         write_if_changed(fs::path(o.out) / rel, cpp);
         res.cpp = rel;
-        cmake_srcs += "  " + rel + "\n";
+        UnitSrc u;
+        u.name = m.name;
+        u.rel = rel;
+        u.lines = (size_t)std::count(cpp.begin(), cpp.end(), '\n');
+        u.hot = is_hot(m.name, hot);
+        units.push_back(u);
         out.push_back(res);
     }
+    // the sources: unity batches (or, -DPYDYN_UNITY=OFF, one per module); the modules not in hot.txt
+    // compile without inlining (/Ob0): inlining var's operations into the large functions translated code
+    // is made of is most of the compile's time, and only the hot modules' speed shows
+    std::map<std::string, std::string> batch_of = unity_batches(units, fs::path(o.out) / "unity.txt");
+    std::map<std::string, std::vector<const UnitSrc*>> batches;
+    for (auto& u : units) batches[batch_of[u.name]].push_back(&u);
+    std::string record, unity_srcs, module_srcs, cold_unity, cold_modules;
+    for (auto& [g, mods] : batches) {
+        std::string text = "// unity batch " + g + " (pyengine --dynamic): these modules compile as one unit\n";
+        for (auto* u : mods) {
+            text += "#include \"../" + u->rel + "\"\n";
+            record += g + " " + u->name + "\n";
+            module_srcs += "  " + u->rel + "\n";
+            if (!u->hot) cold_modules += "  " + u->rel + "\n";
+        }
+        write_if_changed(fs::path(o.out) / "_unity" / (g + ".cpp"), text);
+        unity_srcs += "  _unity/" + g + ".cpp\n";
+        if (g[0] == 'c') cold_unity += "  _unity/" + g + ".cpp\n";
+    }
+    if (fs::exists(fs::path(o.out) / "_unity"))   // batches no module is in any more
+        for (auto& e : fs::directory_iterator(fs::path(o.out) / "_unity"))
+            if (!batches.count(e.path().stem().string())) fs::remove(e.path());
+    write_if_changed(fs::path(o.out) / "unity.txt", record);
+    std::string cmake_srcs = "  ${PYDYN_SRCS}\n";
     if (!o.main_module.empty()) {
         std::string main = "// the program: python -m " + o.main_module + ", translated (pyengine --dynamic)\n#include \"py_object.hpp\"\n\n"
                            "int main(int argc, char** argv) { return py::run_main(" + cstr(o.main_module) + ", argc, argv); }\n";
         write_if_changed(fs::path(o.out) / "main.cpp", main);
         cmake_srcs += "  main.cpp\n";
     }
-    std::string pyrt = fs::absolute(o.pyrt.empty() ? fs::path(o.root) / "native" / "pyrt" : fs::path(o.pyrt)).lexically_normal().generic_string();
-    std::string cm = "# the translated program: every module's C++ and main.cpp, over native/pyrt (written by pyengine --dynamic)\n"
+    std::string cm ="# the translated program: every module's C++ and main.cpp, over native/pyrt (written by pyengine --dynamic)\n"
                      "cmake_minimum_required(VERSION 3.20)\nproject(pydyn LANGUAGES C CXX)\nset(CMAKE_CXX_STANDARD 17)\n"
                      "if(NOT CMAKE_BUILD_TYPE)\n  set(CMAKE_BUILD_TYPE Release)\nendif()\n"
                      "if(MSVC)\n  add_compile_options(/W1 /permissive- /utf-8 /EHsc /bigobj)\nendif()\n"
                      "add_subdirectory(" + pyrt + " pyrt)\n"
+                     "# a whole tree is hundreds of modules: unity batches of about " + std::to_string(kBatchLines) + " lines (_unity/, the\n"
+                     "# assignment kept in unity.txt) over one precompiled py_object.hpp (each module is its own namespace,\n"
+                     "# so batching them is safe); -DPYDYN_UNITY=OFF builds one object per module\n"
+                     "option(PYDYN_UNITY \"unity batches\" ON)\n"
+                     "if(PYDYN_UNITY)\n  set(PYDYN_SRCS\n" + unity_srcs + "  )\n  set(PYDYN_COLD\n" + cold_unity + "  )\n"
+                     "else()\n  set(PYDYN_SRCS\n" + module_srcs + "  )\n  set(PYDYN_COLD\n" + cold_modules + "  )\nendif()\n"
                      "add_executable(" + o.exe + "\n" + cmake_srcs + ")\ntarget_link_libraries(" + o.exe + " PRIVATE pyrt)\n"
-                     "# a whole tree is hundreds of modules: unity batches over one precompiled py_object.hpp (each module is\n"
-                     "# its own namespace, so batching them is safe); -DPYDYN_UNITY=OFF builds one object per module\n"
-                     "option(PYDYN_UNITY \"unity batches\" ON)\nset(PYDYN_BATCH 24 CACHE STRING \"modules per unity batch\")\n"
                      "target_precompile_headers(" + o.exe + " PRIVATE <py_object.hpp>)\n"
-                     "if(PYDYN_UNITY)\n  set_target_properties(" + o.exe + " PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${PYDYN_BATCH})\nendif()\n"
+                     "# the modules not in native/pyrt/hot.txt: no inlining (most of the compile's time; their speed does not show)\n"
+                     "if(MSVC AND PYDYN_COLD)\n  set_source_files_properties(${PYDYN_COLD} PROPERTIES COMPILE_OPTIONS /Ob0)\nendif()\n"
                      "if(MSVC)\n  target_link_options(" + o.exe + " PRIVATE /STACK:268435456)\nendif()\n";
     if (islands_on) {
         // only the islands a module's def was written as (a module not in this program, or a def of another shape, is not one)
@@ -2413,7 +2617,7 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
               "target_include_directories(pyisl_typed PRIVATE " + typed_cpp + " " + native("native/ported/include") + " " + native("native/l2/src") +
               " " + native("native/pyengine/islands") + " ${CMAKE_CURRENT_SOURCE_DIR}/_typed)\n"
               "target_precompile_headers(pyisl_typed PRIVATE <py.hpp>)\n"
-              "if(PYDYN_UNITY)\n  set_target_properties(pyisl_typed PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${PYDYN_BATCH})\nendif()\n"
+              "if(PYDYN_UNITY)\n  set_target_properties(pyisl_typed PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 24)\nendif()\n"
               "target_include_directories(" + o.exe + " PRIVATE " + native("native/pyengine/islands") + " ${CMAKE_CURRENT_SOURCE_DIR}/_typed)\n"
               "target_link_libraries(" + o.exe + " PRIVATE pyisl_typed)\n";
         fprintf(stderr, "typed islands: %zu written, %zu held back by the judge's verdicts, %zu translated functions not islands\n",

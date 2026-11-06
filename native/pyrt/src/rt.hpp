@@ -9,6 +9,7 @@
 
 #include "big.hpp"
 #include "py_object.hpp"
+#include "py_emit.hpp"
 
 namespace py {
 

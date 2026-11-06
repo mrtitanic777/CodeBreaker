@@ -7,6 +7,7 @@
 #include <string>
 
 #include "py_object.hpp"
+#include "py_emit.hpp"
 
 static int g_fail = 0, g_n = 0;
 static void check(const py::var& v, const char* want, const char* what) {

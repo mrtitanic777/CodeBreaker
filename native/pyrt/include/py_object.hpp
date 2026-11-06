@@ -269,7 +269,6 @@ bool operator>(const var& a, const var& b);
 bool operator>=(const var& a, const var& b);
 var eq(const var& a, const var& b);          // a == b as Python's value (an __eq__ may return anything)
 var lt(const var& a, const var& b);
-var compare_value_(const var& a, const var& b, int op);   // a comparison as Python's value (op: 0 < 1 <= 2 == 3 != 4 > 5 >=)
 bool is(const var& a, const var& b);         // a is b
 bool in(const var& x, const var& container); // x in container
 inline bool not_in(const var& x, const var& c) { return !in(x, c); }
@@ -340,16 +339,6 @@ public:
     bool async_next(const var& ait, var& out);   // async for: out = await anext(ait); false at StopAsyncIteration
     void* impl_ = nullptr;
 };
-var aiter_(const var& x);                        // async for: type(x).__aiter__(x)
-var awith_exit_of(const var& mgr);               // async with: the bound __aexit__ (__aenter__ checked too)
-var awith_enter(const var& mgr);                 // async with: __aenter__() (awaited by the caller)
-var with_exit_call(const var& exit_fn, const error& e);   // exit_fn(type, value, tb)'s value
-// match: the subject's items as a list ([before..., [starred], after...]), or None when it is not a sequence of that length
-var match_sequence_(const var& subj, size_t before, size_t after, bool star);
-// match: the values of the keys in order (then, with rest, a dict of the other items), or None
-var match_mapping_(const var& subj, const var& keys, bool rest);
-// match: the attributes a class pattern names (npos by __match_args__, then the keywords'), or None
-var match_class_(const var& subj, const var& cls, size_t npos, const var& kwd_names);
 
 // ------------------------------------------------------------------------------------------ functions
 // a function object from a C++ function or closure of N vars. sig is the Python parameter list:
@@ -421,20 +410,6 @@ template <class F> var def_generator(const char* name, const char* sig, std::vec
     if (!cells.empty()) set_closure_(f, std::move(cells));
     return f;
 }
-// a def's annotations, as their source text: {"param", "text", ..., "return", "text"} (__annotations__)
-var annotate_(const var& f, std::initializer_list<const char*> name_text);
-var doc_(const var& f, const char* doc);         // a def's __doc__
-var at_line_(const var& f, int line);           // a lambda's first line
-// async def: a coroutine function (kind 1) or an async generator function (kind 2); fn as def_generator's
-var mark_async_(const var& f, int kind);
-template <class F> var def_coroutine(const char* name, const char* sig, std::vector<var> defaults, F fn,
-                                     const char* qualname = nullptr, const char* module = nullptr) {
-    return mark_async_(def_generator(name, sig, std::move(defaults), fn, qualname, module), 1);
-}
-template <class F> var def_async_generator(const char* name, const char* sig, std::vector<var> defaults, F fn,
-                                           const char* qualname = nullptr, const char* module = nullptr) {
-    return mark_async_(def_generator(name, sig, std::move(defaults), fn, qualname, module), 2);
-}
 // a native builtin taking the call's arguments as they come
 using native_fn = std::function<var(const CallArgs&)>;
 var native(const char* name, native_fn fn);
@@ -474,7 +449,6 @@ var import_top(const char* dotted);              // import a.b.c binds a: the to
 var import_from(const var& module, const char* name);   // from m import name (a submodule too)
 void import_star(const var& module, module_def& into);  // from m import *
 var builtin(const char* name);                   // builtins.name (a module may rebind its own)
-inline var or_builtin(const var& v, const char* name) { return v.is_unbound() ? builtin(name) : v; }   // a module name a builtin stands in for until bound
 
 // ------------------------------------------------------------------------------------------ builtins
 // (the type objects: py::t::str, py::t::int_, py::t::ValueError ... in py_builtins.hpp's namespace t)
@@ -523,8 +497,6 @@ var vars(const var& x);
 var dir(const var& x);
 template <class... A> var print(A&&... a) { return print_(pack_args_(std::forward<A>(a)...)); }
 var print_(const CallArgs& a);
-var globals_of(module_def& m);                   // globals()
-var exec_unsupported(const char* what);          // exec / eval of a runtime string: refused at run time
 
 // containers
 var list(std::initializer_list<var> items = {});
@@ -540,32 +512,9 @@ var slice_obj(const var& lo, const var& hi, const var& step);
 var bytes_from(const std::string& raw);
 var str_from(const std::string& utf8);
 var int_from(const std::string& text, int base = 10);
-// list displays with *spread, dict displays with **spread
-var list_display(std::initializer_list<var> items, std::initializer_list<int> starred);
-var tuple_display(std::initializer_list<var> items, std::initializer_list<int> starred);
-var set_display(std::initializer_list<var> items, std::initializer_list<int> starred);
-void dict_update_(const var& d, const var& mapping);   // {**m}
 
-// f-strings: format(value, spec) after !r / !s / !a
-var fstr(std::initializer_list<var> parts);           // ''.join of the pieces
-var fmt(const var& v, char conv, const var& spec);    // one {v!conv:spec}
-
-// what translated statements use
-inline bool truthy_(const var& v) { return static_cast<bool>(v); }
-// a name of a class body being run: py::at(ns, "x"_s) = v stores it (an unbound value deletes it)
-struct slot_ {
-    var d, k;
-    slot_& operator=(const var& v) {
-        if (v.is_unbound()) d.delitem(k);
-        else d.setitem(k, v);
-        return *this;
-    }
-};
-inline slot_ at(const var& d, const var& k) { return {d, k}; }
-var class_name(const var& ns, const var& key, const var& fallback);   // a class body's name: its namespace, then outside
-var with_exit_of(const var& mgr);                // with: the manager's bound __exit__ (looked up before __enter__)
-var with_enter(const var& mgr);                  // with: __enter__()
-bool with_exit_exc(const var& exit_fn, const error& e);   // with: __exit__(type, value, tb) -- true: suppressed
+// (the helpers translated statements call -- with, match, f-strings, displays, a def's doc and line -- are in
+// py_emit.hpp: not in this precompiled header, so adding one does not rebuild every module)
 
 // raw access for native modules
 const std::string& str_utf8(const var& s);
