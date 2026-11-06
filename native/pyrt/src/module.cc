@@ -366,9 +366,35 @@ int run_main(const char* module, int argc, char** argv) {
     if (i + 1 < g_argv.size() && g_argv[i] == "-m") {
         name = g_argv[i + 1];
         rest.assign(g_argv.begin() + (long long)i + 2, g_argv.end());
-    } else if (i < g_argv.size() && g_argv[i] == "-c") {
-        fprintf(stderr, "-c: a translated program runs no source text\n");
-        return 2;
+    } else if (i + 1 < g_argv.size() && g_argv[i] == "-c") {
+        // python -c text args: the text runs as __main__ (lib_ast.cc runs pyfront's tree); sys.argv[0] is '-c'
+        std::string text = g_argv[i + 1];
+        rest.assign(g_argv.begin() + (long long)i + 2, g_argv.end());
+        g_argv.clear();
+        g_argv.push_back("-c");
+        g_argv.insert(g_argv.end(), rest.begin(), rest.end());
+        extern void set_sys_argv_();
+        set_sys_argv_();
+        extern int run_source_main_(const std::string& text);
+        extern void flush_std_();
+        extern void print_exception_(const var& e);
+        try {
+            run_source_main_(text);
+        } catch (error& e) {
+            flush_std_();
+            if (isinstance_(e.value, E_SystemExit)) {
+                var code = e.value.getattr("code");
+                if (code.is_none()) return 0;
+                if (is_int(code)) return (int)code.as_int64();
+                fprintf(stderr, "%s\n", str_(code).c_str());
+                fflush(stderr);
+                return 1;
+            }
+            print_exception_(e.value);
+            return 1;
+        }
+        flush_std_();
+        return 0;
     } else if (i < g_argv.size() && g_argv[i].size() > 3 && g_argv[i].compare(g_argv[i].size() - 3, 3, ".py") == 0) {
         const char* m = module_for_file_(g_argv[i]);
         if (!m) {

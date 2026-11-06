@@ -52,6 +52,7 @@ add_library(pyrt STATIC
   src/lib_async.cc    # sys's async generator hooks; the networking modules' registration
   src/lib_net.cc      # _socket and select over Winsock, _overlapped (IOCP) and _winapi: under CPython's socket, selectors, asyncio
   src/lib_mcp.cc      # the mcp package's surface CodeBreaker's MCP server uses (MCPServer over stdio, Client, ToolAnnotations): mcp 2.3's wire behaviour
+  src/alloc.cc        # operator new / delete: small blocks from per-thread free lists (pymalloc's role)
   ${L2}/src/pystr.cc         # (pyre's code point helpers)
   ${PYENGINE}/src/big.cc     # Python's unbounded int (shared with pyengine)
   ${L2}/src/pyre.cc)         # Python-compatible regular expressions (shared with native/l2)

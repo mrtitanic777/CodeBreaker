@@ -3,8 +3,12 @@
 // iter_child_nodes, iter_fields, get_source_segment, get_docstring, dump, literal_eval, NodeVisitor and
 // NodeTransformer as the module's. (The tree crosses from pyfront through its canonical dump text.)
 #include <cstring>
+#include <deque>
 #include <filesystem>
+#include <functional>
 #include <map>
+#include <memory>
+#include <set>
 
 #include "pyfront/pyfront.hpp"
 #include "rt.hpp"
@@ -475,30 +479,99 @@ void init_ast_module(const var& m) {
     mod_def(m, "unparse", [](const CallArgs&) -> var { raise(E_NotImplementedError, "ast.unparse is not in the C++ runtime yet"); });
 }
 
-// ------------------------------------------------------------------------------------------ eval
-// eval(text, globals, locals) of an expression: parsed by pyfront and evaluated over the tree (names,
-// constants, operators, comparisons, and/or, conditional expressions, displays, subscripts, attributes,
-// calls). What needs Python's compiler (lambda, comprehensions, walrus) raises NotImplementedError.
+// ------------------------------------------------------------------------------------------ eval / exec
+// eval / exec / compile of source text, and `-c`: parsed by pyfront and run over the tree. Names are
+// Python's scopes (a function's locals, the functions around it, the globals, the builtins); def, class,
+// lambda, comprehensions and generator expressions (lazy), f-strings, try / with / for / while, import.
+// What needs a frame of the compiled program (exec with no globals) or Python's compiler (yield,
+// await, match) raises NotImplementedError.
 namespace {
 using namespace pyfront;
+
+struct Tree {                                  // a parsed text, kept alive by the functions it defines
+    pyfront::ParseResult r;
+    std::deque<std::string> names;             // (stable strings for make_function)
+    const char* keep(const std::string& s) { names.push_back(s); return names.back().c_str(); }
+};
+using TreeP = std::shared_ptr<Tree>;
+
+[[noreturn]] void syntax_error_(const pyfront::SyntaxError& se, const std::string& filename) {
+    var e = make_exc_args(E_SyntaxError, {new_str(se.msg), new_tuple({new_str(filename), var((int64_t)se.lineno),
+                                                                       var((int64_t)se.offset), new_str(se.text)})});
+    e.setattr("lineno", var((int64_t)se.lineno));
+    e.setattr("offset", var((int64_t)se.offset));
+    e.setattr("filename", new_str(filename));
+    e.setattr("msg", new_str(se.msg));
+    e.setattr("text", new_str(se.text));
+    raise(e);
+}
+TreeP parse_tree_(const std::string& text, const std::string& filename) {
+    auto t = std::make_shared<Tree>();
+    t->r = pyfront::parse(text, filename);
+    if (!t->r) syntax_error_(*t->r.error, filename);
+    return t;
+}
+
+enum class Flow { Normal, Break, Continue, Return };
+
 struct Evaluator {
     var globals, locals, builtins;
+    std::vector<var> outer;                    // the enclosing functions' locals, innermost last
+    std::set<std::string> global_names, nonlocal_names;
+    bool function = false;                     // locals are a function's (not the module's, not a class body's)
+    TreeP tree;
+    var retval;
+
+    var builtins_mod() { return import("builtins"); }
     var name(const std::string& n) {
         var k = new_str(n);
-        if (!locals.is_none() && in(k, locals)) return locals.getitem(k);
+        if (!global_names.count(n)) {
+            if (!locals.is_none() && in(k, locals)) return locals.getitem(k);
+            for (size_t i = outer.size(); i-- > 0;)
+                if (in(k, outer[i])) return outer[i].getitem(k);
+        }
         if (!globals.is_none() && in(k, globals)) return globals.getitem(k);
-        if (builtins.is_none()) return import("builtins").getattr(n.c_str());
-        if (is_dict(builtins)) {
+        if (builtins.is_none()) {
+            var b = builtins_mod();
+            if (hasattr(b, k).truthy()) return b.getattr(n.c_str());
+        } else if (is_dict(builtins)) {
             if (in(k, builtins)) return builtins.getitem(k);
         } else if (hasattr(builtins, k).truthy()) return builtins.getattr(n.c_str());
         raise(E_NameError, "name '" + n + "' is not defined");
     }
+    var& scope_of_(const std::string& n) {     // where a store of n goes
+        if (global_names.count(n) || locals.is_none()) return globals;
+        if (nonlocal_names.count(n)) {
+            var k = new_str(n);
+            for (size_t i = outer.size(); i-- > 0;)
+                if (in(k, outer[i])) return outer[i];
+        }
+        return locals;
+    }
+    void store(const std::string& n, const var& v) { scope_of_(n).setitem(new_str(n), v); }
+    void del_name(const std::string& n) { scope_of_(n).delitem(new_str(n)); }
+    std::vector<var> chain() {                 // the scopes a function defined here reads through
+        std::vector<var> c = outer;
+        if (function) c.push_back(locals);
+        return c;
+    }
+    Evaluator child(const var& new_locals) {
+        Evaluator e;
+        e.globals = globals;
+        e.builtins = builtins;
+        e.locals = new_locals;
+        e.outer = chain();
+        e.function = true;
+        e.tree = tree;
+        return e;
+    }
+
     var constant(const ConstValue& c) {
         switch (c.kind) {
         case ConstValue::Kind::None: return None;
         case ConstValue::Kind::True: return var(true);
         case ConstValue::Kind::False: return var(false);
-        case ConstValue::Kind::Ellipsis: return import("builtins").getattr("Ellipsis");
+        case ConstValue::Kind::Ellipsis: return builtins_mod().getattr("Ellipsis");
         case ConstValue::Kind::Int: return c.fits_i64 ? var(c.i64) : int_lit_(c.text.c_str());
         case ConstValue::Kind::Float: return var(c.f);
         case ConstValue::Kind::Str: return new_str(c.text);
@@ -524,6 +597,32 @@ struct Evaluator {
         }
         return None;
     }
+    var inplace(OpKind op, var a, const var& b) {   // x op= y: __iop__, else __op__
+        switch (op) {
+        case OpKind::Add: a += b; return a;
+        case OpKind::Sub: a -= b; return a;
+        case OpKind::Mult: a *= b; return a;
+        case OpKind::Div: a /= b; return a;
+        case OpKind::Mod: a %= b; return a;
+        case OpKind::BitOr: a |= b; return a;
+        case OpKind::BitAnd: a &= b; return a;
+        case OpKind::BitXor: a ^= b; return a;
+        case OpKind::LShift: a <<= b; return a;
+        case OpKind::RShift: a >>= b; return a;
+        default: return binop(op, a, b);
+        }
+    }
+    var cmp_value(CmpOpKind op, const var& a, const var& b) {   // (the rich comparisons' values)
+        switch (op) {
+        case CmpOpKind::Eq: return compare_value_(a, b, 2);
+        case CmpOpKind::NotEq: return compare_value_(a, b, 3);
+        case CmpOpKind::Lt: return compare_value_(a, b, 0);
+        case CmpOpKind::LtE: return compare_value_(a, b, 1);
+        case CmpOpKind::Gt: return compare_value_(a, b, 4);
+        case CmpOpKind::GtE: return compare_value_(a, b, 5);
+        default: return var(cmp(op, a, b));
+        }
+    }
     bool cmp(CmpOpKind op, const var& a, const var& b) {
         switch (op) {
         case CmpOpKind::Eq: return a == b;
@@ -547,6 +646,176 @@ struct Evaluator {
         }
         return out;
     }
+    var key_of(const Expr* sl) {                  // a subscript's key (a slice object for a:b:c)
+        if (sl->kind == ExprKind::Slice) {
+            auto* s = static_cast<const Slice*>(sl);
+            var lo = s->lower ? ev(s->lower) : var(None), hi = s->upper ? ev(s->upper) : var(None), st = s->step ? ev(s->step) : var(None);
+            return slice_obj(lo, hi, st);
+        }
+        return ev(sl);
+    }
+
+    // ---- assignment targets
+    void assign(const Expr* t, const var& v) {
+        switch (t->kind) {
+        case ExprKind::Name: store(static_cast<const Name*>(t)->id, v); return;
+        case ExprKind::Attribute: { auto* a = static_cast<const Attribute*>(t); ev(a->value).setattr(a->attr.c_str(), v); return; }
+        case ExprKind::Subscript: { auto* s = static_cast<const Subscript*>(t); var o = ev(s->value); o.setitem(key_of(s->slice), v); return; }
+        case ExprKind::Tuple:
+        case ExprKind::List: {
+            const auto& elts = t->kind == ExprKind::Tuple ? static_cast<const Tuple*>(t)->elts : static_cast<const List*>(t)->elts;
+            size_t star = elts.size();
+            for (size_t i = 0; i < elts.size(); i++)
+                if (elts[i]->kind == ExprKind::Starred) star = i;
+            std::vector<var> vals = star == elts.size() ? unpack(v, elts.size()) : unpack_star(v, star, elts.size() - star - 1);
+            for (size_t i = 0; i < elts.size(); i++)
+                assign(i == star ? static_cast<const Starred*>(elts[i])->value : elts[i], vals[i]);
+            return;
+        }
+        default: raise(E_SyntaxError, std::string("cannot assign to ") + name_of(t->kind));
+        }
+    }
+    void del(const Expr* t) {
+        switch (t->kind) {
+        case ExprKind::Name: del_name(static_cast<const Name*>(t)->id); return;
+        case ExprKind::Attribute: { auto* a = static_cast<const Attribute*>(t); ev(a->value).delattr(a->attr.c_str()); return; }
+        case ExprKind::Subscript: { auto* s = static_cast<const Subscript*>(t); var o = ev(s->value); o.delitem(key_of(s->slice)); return; }
+        case ExprKind::Tuple: for (auto* e : static_cast<const Tuple*>(t)->elts) del(e); return;
+        case ExprKind::List: for (auto* e : static_cast<const List*>(t)->elts) del(e); return;
+        default: raise(E_SyntaxError, std::string("cannot delete ") + name_of(t->kind));
+        }
+    }
+
+    // ---- functions: a real function object (pyrt binds the arguments), its body run over a new scope
+    static void declared_(const std::vector<Stmt*>& body, std::set<std::string>& g, std::set<std::string>& nl) {
+        for (auto* s : body) {
+            switch (s->kind) {
+            case StmtKind::Global: for (auto& n : static_cast<const pyfront::Global*>(s)->names) g.insert(n); break;
+            case StmtKind::Nonlocal: for (auto& n : static_cast<const Nonlocal*>(s)->names) nl.insert(n); break;
+            case StmtKind::If: declared_(static_cast<const If*>(s)->body, g, nl); declared_(static_cast<const If*>(s)->orelse, g, nl); break;
+            case StmtKind::For: declared_(static_cast<const For*>(s)->body, g, nl); declared_(static_cast<const For*>(s)->orelse, g, nl); break;
+            case StmtKind::While: declared_(static_cast<const While*>(s)->body, g, nl); declared_(static_cast<const While*>(s)->orelse, g, nl); break;
+            case StmtKind::With: declared_(static_cast<const With*>(s)->body, g, nl); break;
+            case StmtKind::Try: {
+                auto* t = static_cast<const Try*>(s);
+                declared_(t->body, g, nl);
+                for (auto* h : t->handlers) declared_(h->body, g, nl);
+                declared_(t->orelse, g, nl);
+                declared_(t->finalbody, g, nl);
+                break;
+            }
+            default: break;
+            }
+        }
+    }
+    var make_fn(const std::string& fname, const arguments* args, const Expr* lambda_body, const std::vector<Stmt*>* body) {
+        std::string sig;
+        std::vector<var> defaults;
+        std::vector<std::string> pnames;
+        size_t npos = args->posonlyargs.size() + args->args.size();
+        size_t first_default = npos - args->defaults.size();
+        auto add = [&](const std::string& s) { if (!sig.empty()) sig += ", "; sig += s; };
+        for (size_t i = 0; i < npos; i++) {
+            const pyfront::arg* p = i < args->posonlyargs.size() ? args->posonlyargs[i] : args->args[i - args->posonlyargs.size()];
+            bool d = i >= first_default;
+            add(p->arg + (d ? "=" : ""));
+            if (d) defaults.push_back(ev(args->defaults[i - first_default]));
+            pnames.push_back(p->arg);
+            if (!args->posonlyargs.empty() && i + 1 == args->posonlyargs.size()) add("/");
+        }
+        if (args->vararg) { add("*" + args->vararg->arg); pnames.push_back(args->vararg->arg); }
+        else if (!args->kwonlyargs.empty()) add("*");
+        for (size_t i = 0; i < args->kwonlyargs.size(); i++) {
+            bool d = i < args->kw_defaults.size() && args->kw_defaults[i];
+            add(args->kwonlyargs[i]->arg + (d ? "=" : ""));
+            if (d) defaults.push_back(ev(args->kw_defaults[i]));
+            pnames.push_back(args->kwonlyargs[i]->arg);
+        }
+        if (args->kwarg) { add("**" + args->kwarg->arg); pnames.push_back(args->kwarg->arg); }
+        std::set<std::string> g, nl;
+        if (body) declared_(*body, g, nl);
+        var gl = globals, bl = builtins;
+        std::vector<var> ch = chain();
+        TreeP tr = tree;
+        var modname = in("__name__"_s, globals) ? globals.getitem("__name__"_s) : var(None);
+        const char* mod = tr->keep(is_str(modname) ? str_utf8(modname) : std::string());
+        const char* nm = tr->keep(fname);
+        const char* sg = tr->keep(sig);
+        int n = (int)pnames.size();
+        invoker fn = [gl, bl, ch, tr, pnames, g, nl, lambda_body, body](var* slots) -> var {
+            Evaluator e;
+            e.globals = gl;
+            e.builtins = bl;
+            e.outer = ch;
+            e.function = true;
+            e.tree = tr;
+            e.global_names = g;
+            e.nonlocal_names = nl;
+            e.locals = new_dict();
+            for (size_t i = 0; i < pnames.size(); i++) e.locals.setitem(new_str(pnames[i]), slots[i]);
+            if (lambda_body) return e.ev(lambda_body);
+            if (e.run(*body) == Flow::Return) return e.retval;
+            return None;
+        };
+        return make_function(nm, nm, sg, std::move(defaults), std::move(fn), n, false, mod);
+    }
+
+    // ---- comprehensions: their own scope; a generator expression is lazy (an iterator)
+    void comp_run(Evaluator& e, const std::vector<comprehension*>& gens, size_t k, const var& first, const std::function<void()>& emit) {
+        var src = k == 0 ? first : e.ev(gens[k]->iter);
+        for (var x : each(src)) {
+            e.assign(gens[k]->target, x);
+            bool ok = true;
+            for (auto* c : gens[k]->ifs)
+                if (!e.ev(c).truthy()) { ok = false; break; }
+            if (!ok) continue;
+            if (k + 1 < gens.size()) comp_run(e, gens, k + 1, first, emit);
+            else emit();
+        }
+    }
+    var genexp(const GeneratorExp* g) {
+        struct CompState {
+            Evaluator e;
+            const std::vector<comprehension*>* gens;
+            std::vector<var> its;
+        };
+        auto st = std::make_shared<CompState>();
+        st->e = child(new_dict());
+        st->gens = &g->generators;
+        st->its.push_back(iter(ev(g->generators[0]->iter)));   // (the first iterable: evaluated here, as Python does)
+        const Expr* elt = g->elt;
+        TreeP keep = tree;
+        return new_iter([st, elt, keep](var& out) -> bool {
+            auto& gens = *st->gens;
+            while (!st->its.empty()) {
+                size_t k = st->its.size() - 1;
+                var x;
+                if (!next_(st->its[k], x)) { st->its.pop_back(); continue; }
+                st->e.assign(gens[k]->target, x);
+                bool ok = true;
+                for (auto* c : gens[k]->ifs)
+                    if (!st->e.ev(c).truthy()) { ok = false; break; }
+                if (!ok) continue;
+                if (k + 1 < gens.size()) { st->its.push_back(iter(st->e.ev(gens[k + 1]->iter))); continue; }
+                out = st->e.ev(elt);
+                return true;
+            }
+            return false;
+        });
+    }
+
+    var joined(const std::vector<Expr*>& values) {
+        std::string out;
+        for (auto* v : values) {
+            if (v->kind == ExprKind::FormattedValue) {
+                auto* f = static_cast<const FormattedValue*>(v);
+                var spec = f->format_spec ? ev(f->format_spec) : var(None);
+                out += str_utf8(fmt(ev(f->value), f->conversion < 0 ? (char)0 : (char)f->conversion, spec));
+            } else out += str_utf8(ev(v));
+        }
+        return new_str(std::move(out));
+    }
+
     var ev(const Expr* e) {
         switch (e->kind) {
         case ExprKind::Constant: return constant(static_cast<const Constant*>(e)->value);
@@ -574,18 +843,21 @@ struct Evaluator {
         }
         case ExprKind::Compare: {
             auto* c = static_cast<const Compare*>(e);
-            var l = ev(c->left);
+            // a < b < c is (a < b) and (b < c), each comparison's own value (an __eq__ may return anything)
+            var l = ev(c->left), v;
             for (size_t i = 0; i < c->ops.size(); i++) {
                 var r = ev(c->comparators[i]);
-                if (!cmp(c->ops[i], l, r)) return var(false);
+                v = cmp_value(c->ops[i], l, r);
+                if (!v.truthy()) return v;
                 l = r;
             }
-            return var(true);
+            return v;
         }
         case ExprKind::IfExp: { auto* x = static_cast<const IfExp*>(e); return ev(x->test).truthy() ? ev(x->body) : ev(x->orelse); }
+        case ExprKind::NamedExpr: { auto* x = static_cast<const NamedExpr*>(e); var v = ev(x->value); assign(x->target, v); return v; }
         case ExprKind::Tuple: return new_tuple(items(static_cast<const Tuple*>(e)->elts));
         case ExprKind::List: return new_list(items(static_cast<const List*>(e)->elts));
-        case ExprKind::Set: { var s = call0(import("builtins").getattr("set")); for (var x : items(static_cast<const Set*>(e)->elts)) s.call("add", x); return s; }
+        case ExprKind::Set: { var s = call0(builtins_mod().getattr("set")); for (var x : items(static_cast<const Set*>(e)->elts)) s.call("add", x); return s; }
         case ExprKind::Dict: {
             auto* d = static_cast<const Dict*>(e);
             var o = new_dict();
@@ -595,16 +867,8 @@ struct Evaluator {
             }
             return o;
         }
-        case ExprKind::Subscript: {
-            auto* s = static_cast<const Subscript*>(e);
-            var v = ev(s->value);
-            if (s->slice->kind == ExprKind::Slice) {
-                auto* sl = static_cast<const Slice*>(s->slice);
-                var lo = sl->lower ? ev(sl->lower) : var(None), hi = sl->upper ? ev(sl->upper) : var(None), st = sl->step ? ev(sl->step) : var(None);
-                return v.getitem(call_obj(import("builtins").getattr("slice"), CallArgs{{lo, hi, st}, {}}));
-            }
-            return v.getitem(ev(s->slice));
-        }
+        case ExprKind::Subscript: { auto* s = static_cast<const Subscript*>(e); var v = ev(s->value); return v.getitem(key_of(s->slice)); }
+        case ExprKind::Slice: return key_of(e);
         case ExprKind::Attribute: { auto* a = static_cast<const Attribute*>(e); return ev(a->value).getattr(a->attr.c_str()); }
         case ExprKind::Call: {
             auto* c = static_cast<const Call*>(e);
@@ -617,25 +881,345 @@ struct Evaluator {
             }
             return call_obj(f, ca);
         }
+        case ExprKind::Lambda: { auto* l = static_cast<const Lambda*>(e); return make_fn("<lambda>", l->args, l->body, nullptr); }
+        case ExprKind::JoinedStr: return joined(static_cast<const JoinedStr*>(e)->values);
+        case ExprKind::FormattedValue: return joined({const_cast<Expr*>(e)});
+        case ExprKind::ListComp: {
+            auto* c = static_cast<const ListComp*>(e);
+            var first = ev(c->generators[0]->iter);
+            Evaluator s = child(new_dict());
+            std::vector<var> out;
+            comp_run(s, c->generators, 0, first, [&] { out.push_back(s.ev(c->elt)); });
+            return new_list(out);
+        }
+        case ExprKind::SetComp: {
+            auto* c = static_cast<const SetComp*>(e);
+            var first = ev(c->generators[0]->iter);
+            Evaluator s = child(new_dict());
+            var out = call0(builtins_mod().getattr("set"));
+            comp_run(s, c->generators, 0, first, [&] { out.call("add", s.ev(c->elt)); });
+            return out;
+        }
+        case ExprKind::DictComp: {
+            auto* c = static_cast<const DictComp*>(e);
+            var first = ev(c->generators[0]->iter);
+            Evaluator s = child(new_dict());
+            var out = new_dict();
+            comp_run(s, c->generators, 0, first, [&] { var k = s.ev(c->key); out.setitem(k, s.ev(c->value)); });
+            return out;
+        }
+        case ExprKind::GeneratorExp: return genexp(static_cast<const GeneratorExp*>(e));
         default: raise(E_NotImplementedError, std::string("eval: ") + name_of(e->kind) + " needs Python's compiler");
         }
     }
+
+    // ---- statements
+    Flow run(const std::vector<Stmt*>& body) {
+        for (auto* s : body) {
+            Flow f = exec(s);
+            if (f != Flow::Normal) return f;
+        }
+        return Flow::Normal;
+    }
+    Flow run_with(const With* w, size_t k) {
+        if (k == w->items.size()) return run(w->body);
+        var mgr = ev(w->items[k]->context_expr);
+        var exit_fn = with_exit_of(mgr);
+        var v = with_enter(mgr);
+        Flow f;
+        try {
+            if (w->items[k]->optional_vars) assign(w->items[k]->optional_vars, v);
+            f = run_with(w, k + 1);
+        } catch (error& e) {
+            bool suppressed;
+            {
+                handling_ h(e);
+                suppressed = with_exit_exc(exit_fn, e);
+            }
+            if (!suppressed) throw;
+            return Flow::Normal;
+        }
+        call_obj(exit_fn, CallArgs{{None, None, None}, {}});
+        return f;
+    }
+    Flow run_try(const Try* t) {
+        Flow f = Flow::Normal;
+        try {
+            bool raised = false;
+            try {
+                f = run(t->body);
+            } catch (error& e) {
+                raised = true;
+                bool handled = false;
+                for (auto* h : t->handlers) {
+                    if (h->type && !e.matches(ev(h->type))) continue;
+                    handled = true;
+                    handling_ hg(e);
+                    if (h->has_name) store(h->name, e.value);
+                    f = run(h->body);
+                    if (h->has_name) {
+                        var k = new_str(h->name);
+                        var& sc = scope_of_(h->name);
+                        if (in(k, sc)) sc.delitem(k);
+                    }
+                    break;
+                }
+                if (!handled) throw;
+            }
+            if (!raised && f == Flow::Normal) f = run(t->orelse);
+        } catch (error&) {
+            if (!t->finalbody.empty()) {
+                Flow ff = run(t->finalbody);
+                if (ff != Flow::Normal) return ff;     // (a return / break in finally drops the exception)
+            }
+            throw;
+        }
+        if (!t->finalbody.empty()) {
+            var keep = retval;
+            Flow ff = run(t->finalbody);
+            if (ff != Flow::Normal) return ff;
+            retval = keep;
+        }
+        return f;
+    }
+    Flow exec(const Stmt* s) {
+        switch (s->kind) {
+        case StmtKind::Expr: ev(static_cast<const ExprStmt*>(s)->value); return Flow::Normal;
+        case StmtKind::Assign: {
+            auto* a = static_cast<const Assign*>(s);
+            var v = ev(a->value);
+            for (auto* t : a->targets) assign(t, v);
+            return Flow::Normal;
+        }
+        case StmtKind::AugAssign: {
+            auto* a = static_cast<const AugAssign*>(s);
+            const Expr* t = a->target;
+            if (t->kind == ExprKind::Name) {
+                var cur = name(static_cast<const Name*>(t)->id);
+                store(static_cast<const Name*>(t)->id, inplace(a->op, cur, ev(a->value)));
+            } else if (t->kind == ExprKind::Attribute) {
+                auto* at = static_cast<const Attribute*>(t);
+                var o = ev(at->value);
+                var cur = o.getattr(at->attr.c_str());
+                o.setattr(at->attr.c_str(), inplace(a->op, cur, ev(a->value)));
+            } else if (t->kind == ExprKind::Subscript) {
+                auto* sb = static_cast<const Subscript*>(t);
+                var o = ev(sb->value);
+                var k = key_of(sb->slice);
+                var cur = o.getitem(k);
+                o.setitem(k, inplace(a->op, cur, ev(a->value)));
+            } else raise(E_SyntaxError, "illegal expression for augmented assignment");
+            return Flow::Normal;
+        }
+        case StmtKind::AnnAssign: {
+            auto* a = static_cast<const AnnAssign*>(s);
+            if (a->value) assign(a->target, ev(a->value));
+            return Flow::Normal;
+        }
+        case StmtKind::Delete: for (auto* t : static_cast<const Delete*>(s)->targets) del(t); return Flow::Normal;
+        case StmtKind::Pass: return Flow::Normal;
+        case StmtKind::Break: return Flow::Break;
+        case StmtKind::Continue: return Flow::Continue;
+        case StmtKind::Return: {
+            auto* r = static_cast<const Return*>(s);
+            retval = r->value ? ev(r->value) : var(None);
+            return Flow::Return;
+        }
+        case StmtKind::If: {
+            auto* i = static_cast<const If*>(s);
+            return ev(i->test).truthy() ? run(i->body) : run(i->orelse);
+        }
+        case StmtKind::While: {
+            auto* w = static_cast<const While*>(s);
+            while (ev(w->test).truthy()) {
+                Flow f = run(w->body);
+                if (f == Flow::Break) return Flow::Normal;
+                if (f == Flow::Return) return f;
+            }
+            return run(w->orelse);
+        }
+        case StmtKind::For: {
+            auto* fr = static_cast<const For*>(s);
+            var src = ev(fr->iter);
+            for (var x : each(src)) {
+                assign(fr->target, x);
+                Flow f = run(fr->body);
+                if (f == Flow::Break) return Flow::Normal;
+                if (f == Flow::Return) return f;
+            }
+            return run(fr->orelse);
+        }
+        case StmtKind::With: return run_with(static_cast<const With*>(s), 0);
+        case StmtKind::Try: return run_try(static_cast<const Try*>(s));
+        case StmtKind::Raise: {
+            auto* r = static_cast<const Raise*>(s);
+            if (!r->exc) reraise();
+            var x = ev(r->exc);
+            if (r->cause) raise_from(x, ev(r->cause));
+            raise(x);
+        }
+        case StmtKind::Assert: {
+            auto* a = static_cast<const Assert*>(s);
+            if (!ev(a->test).truthy()) assert_(var(false), a->msg ? ev(a->msg) : var(None));
+            return Flow::Normal;
+        }
+        case StmtKind::Import:
+            for (auto* al : static_cast<const Import*>(s)->names) {
+                if (al->has_asname) store(al->asname, import(al->name.c_str()));
+                else store(al->name.substr(0, al->name.find('.')), import_top(al->name.c_str()));
+            }
+            return Flow::Normal;
+        case StmtKind::ImportFrom: {
+            auto* f = static_cast<const ImportFrom*>(s);
+            if (f->level > 0) raise(E_NotImplementedError, "exec: a relative import needs the importing module");
+            var m = import(f->module.c_str());
+            for (auto* al : f->names) {
+                if (al->name == "*") {
+                    var all = getattr(m, "__all__"_s, None);
+                    if (all.is_none()) {
+                        for (var k : each(dir(m)))
+                            if (str_utf8(k).rfind("_", 0) != 0) store(str_utf8(k), m.getattr(str_utf8(k).c_str()));
+                    } else for (var k : each(all)) store(str_utf8(k), m.getattr(str_utf8(k).c_str()));
+                    continue;
+                }
+                store(al->has_asname ? al->asname : al->name, import_from(m, al->name.c_str()));
+            }
+            return Flow::Normal;
+        }
+        case StmtKind::Global: for (auto& n : static_cast<const pyfront::Global*>(s)->names) global_names.insert(n); return Flow::Normal;
+        case StmtKind::Nonlocal: for (auto& n : static_cast<const Nonlocal*>(s)->names) nonlocal_names.insert(n); return Flow::Normal;
+        case StmtKind::FunctionDef: {
+            auto* d = static_cast<const FunctionDef*>(s);
+            std::vector<var> decos;
+            for (auto* x : d->decorator_list) decos.push_back(ev(x));
+            var f = make_fn(d->name, d->args, nullptr, &d->body);
+            for (size_t i = decos.size(); i-- > 0;) f = call1(decos[i], f);
+            store(d->name, f);
+            return Flow::Normal;
+        }
+        case StmtKind::ClassDef: {
+            auto* c = static_cast<const ClassDef*>(s);
+            std::vector<var> decos;
+            for (auto* x : c->decorator_list) decos.push_back(ev(x));
+            std::vector<var> bases = items(c->bases);
+            std::vector<std::pair<const char*, var>> kws;
+            for (auto* k : c->keywords) kws.push_back({tree->keep(k->arg), ev(k->value)});
+            var ns = new_dict();
+            var modname = in("__name__"_s, globals) ? globals.getitem("__name__"_s) : var(None);
+            if (is_str(modname)) ns.setitem("__module__"_s, modname);
+            ns.setitem("__qualname__"_s, new_str(c->name));
+            Evaluator body;                  // (a class body's names are not seen by the functions in it)
+            body.globals = globals;
+            body.builtins = builtins;
+            body.locals = ns;
+            body.outer = chain();
+            body.function = false;
+            body.tree = tree;
+            body.run(c->body);
+            var cls = make_class(tree->keep(c->name), tree->keep(c->name), bases, ns, kws, is_str(modname) ? tree->keep(str_utf8(modname)) : nullptr);
+            for (size_t i = decos.size(); i-- > 0;) cls = call1(decos[i], cls);
+            store(c->name, cls);
+            return Flow::Normal;
+        }
+        default: raise(E_NotImplementedError, std::string("exec: ") + name_of(s->kind) + " needs Python's compiler");
+        }
+    }
 };
+
+TypeObj* T_code = nullptr;
+struct CodeObj : DataObj {
+    TreeP tree;
+    std::string filename, mode;
+    bool expr = false;                         // mode 'eval': the body is one expression
+};
+
+Evaluator evaluator_(const var& globals, const var& locals, const TreeP& tree) {
+    Evaluator ev;
+    ev.globals = globals;
+    ev.locals = locals.is_none() ? globals : locals;
+    ev.builtins = None;
+    ev.tree = tree;
+    if (!globals.is_none()) {
+        if (in("__builtins__"_s, globals)) ev.builtins = globals.getitem("__builtins__"_s);
+        else globals.setitem("__builtins__"_s, import("builtins"));   // (as CPython puts it there)
+    }
+    return ev;
+}
+TreeP tree_of_(const var& src, const std::string& filename, bool expr) {
+    std::string text = is_str(src) ? str_utf8(src) : raw_of(src);
+    if (!expr) return parse_tree_(text, filename);
+    size_t k = text.find_first_not_of(" \t\r\n");
+    text = k == std::string::npos ? "" : text.substr(k);
+    auto t = std::make_shared<Tree>();
+    t->r = pyfront::parse("(" + text + "\n)", filename);
+    if (!t->r || t->r.module->body.size() != 1 || t->r.module->body[0]->kind != pyfront::StmtKind::Expr) {
+        if (!t->r) syntax_error_(*t->r.error, filename);
+        raise(E_SyntaxError, "invalid syntax");
+    }
+    return t;
+}
 }  // namespace
 
 var eval_expr_(const var& src, const var& globals, const var& locals) {
-    std::string text = is_str(src) ? str_utf8(src) : raw_of(src);
-    size_t k = text.find_first_not_of(" \t\r\n");
-    text = k == std::string::npos ? "" : text.substr(k);
-    auto r = pyfront::parse("(" + text + "\n)", "<string>");
-    if (!r || r.module->body.size() != 1 || r.module->body[0]->kind != pyfront::StmtKind::Expr)
-        raise(E_SyntaxError, "invalid syntax" + std::string(r ? "" : ": " + r.error->msg));
-    Evaluator ev;
-    ev.globals = globals;
-    ev.locals = locals;
-    ev.builtins = None;
-    if (!globals.is_none() && in("__builtins__"_s, globals)) ev.builtins = globals.getitem("__builtins__"_s);
-    return ev.ev(static_cast<pyfront::ExprStmt*>(r.module->body[0])->value);
+    TreeP t;
+    if (src.is_ref() && src.ref()->type == T_code) {
+        auto* c = static_cast<CodeObj*>(src.ref());
+        if (!c->expr) {
+            if (globals.is_none()) raise(E_NotImplementedError, "eval of statements with no globals needs the caller's frame");
+            Evaluator ev = evaluator_(globals, locals, c->tree);
+            ev.run(c->tree->r.module->body);
+            return None;
+        }
+        t = c->tree;
+    } else t = tree_of_(src, "<string>", true);
+    Evaluator ev = evaluator_(globals, locals, t);
+    if (globals.is_none()) ev.locals = None;
+    return ev.ev(static_cast<pyfront::ExprStmt*>(t->r.module->body[0])->value);
+}
+
+var exec_source_(const var& src, const var& globals, const var& locals) {
+    if (globals.is_none()) raise(E_NotImplementedError, "exec with no globals needs the caller's frame (pass a namespace)");
+    TreeP t;
+    if (src.is_ref() && src.ref()->type == T_code) {
+        auto* c = static_cast<CodeObj*>(src.ref());
+        if (c->expr) { Evaluator ev = evaluator_(globals, locals, c->tree); ev.ev(static_cast<pyfront::ExprStmt*>(c->tree->r.module->body[0])->value); return None; }
+        t = c->tree;
+    } else t = tree_of_(src, "<string>", false);
+    Evaluator ev = evaluator_(globals, locals, t);
+    ev.run(t->r.module->body);
+    return None;
+}
+
+var compile_source_(const CallArgs& a) {
+    var src = arg(a, 0, "source");
+    std::string filename = fs_path(arg(a, 1, "filename"));
+    std::string mode = str_utf8(arg(a, 2, "mode"));
+    int64_t flags = arg(a, 3, "flags", 0).as_int64();
+    if (flags & 1024) return call_obj(import("ast").getattr("parse"), CallArgs{{src, new_str(filename), new_str(mode)}, {}});
+    if (!is_str(src) && !is_bytes(src)) raise(E_NotImplementedError, "compile of an AST needs Python's compiler (give the source text)");
+    if (mode != "exec" && mode != "eval" && mode != "single") raise(E_ValueError, "compile() mode must be 'exec', 'eval' or 'single'");
+    if (!T_code) T_code = new_type("code", {T_object}, Layout::NativeData, true, "builtins");
+    auto* c = new CodeObj();
+    c->type = T_code;
+    c->filename = filename;
+    c->mode = mode;
+    c->expr = mode == "eval";
+    c->tree = tree_of_(src, filename, c->expr);
+    var r(static_cast<Obj*>(c));
+    return r;
+}
+
+// `python -c text args`: the text runs as __main__
+int run_source_main_(const std::string& text) {
+    var g = new_dict();
+    g.setitem("__name__"_s, "__main__"_s);
+    g.setitem("__doc__"_s, None);
+    g.setitem("__package__"_s, None);
+    g.setitem("__builtins__"_s, import("builtins"));
+    TreeP t = parse_tree_(text, "<string>");
+    Evaluator ev = evaluator_(g, None, t);
+    ev.run(t->r.module->body);
+    return 0;
 }
 
 // ------------------------------------------------------------------------------------------ getsource
@@ -758,6 +1342,19 @@ var getsource_(const var& obj, int64_t* first_line) {
         size_t n;
         while ((n = fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n);
         fclose(f);
+    }
+    // universal newlines, as linecache reads it (a CRLF checkout gives the same source, and the same cache keys)
+    if (text.find('\r') != std::string::npos) {
+        std::string u;
+        u.reserve(text.size());
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text[i] != '\r') u.push_back(text[i]);
+            else {
+                u.push_back('\n');
+                if (i + 1 < text.size() && text[i + 1] == '\n') i++;
+            }
+        }
+        text.swap(u);
     }
     if (qual.empty()) { if (first_line) *first_line = 0; return new_str(text); }
     SrcLines s = read_lines(text);

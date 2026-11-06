@@ -639,6 +639,8 @@ bool operator>=(const var& a, const var& b) {
 }
 var eq(const var& a, const var& b) { return rich_compare(a, b, EQ); }
 var lt(const var& a, const var& b) { return rich_compare(a, b, LT); }
+// a rich comparison's value by operator (0 <, 1 <=, 2 ==, 3 !=, 4 >, 5 >=): operator.ne and eval's a != b
+var compare_value_(const var& a, const var& b, int op) { return rich_compare(a, b, op); }
 bool eq_(const var& a, const var& b) { return a == b; }
 bool lt_(const var& a, const var& b) { return a < b; }
 bool same_or_eq(const var& a, const var& b) { return is(a, b) || a == b; }

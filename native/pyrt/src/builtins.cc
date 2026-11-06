@@ -635,6 +635,7 @@ void init_builtins() {
     put("WindowsError", t::OSError);
     put("NotImplemented", NotImplemented);
     put("Ellipsis", Ellipsis);
+    put("__debug__", var(true));
     put("None", None);
     put("True", true);
     put("False", false);

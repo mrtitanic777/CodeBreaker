@@ -1389,11 +1389,12 @@ void init_more_modules() {
         bin("lshift", [](const var& x, const var& y) { return x << y; });
         bin("rshift", [](const var& x, const var& y) { return x >> y; });
         bin("eq", [](const var& x, const var& y) { return eq(x, y); });
-        bin("ne", [](const var& x, const var& y) { return var(x != y); });
-        bin("lt", [](const var& x, const var& y) { return var(x < y); });
-        bin("le", [](const var& x, const var& y) { return var(x <= y); });
-        bin("gt", [](const var& x, const var& y) { return var(x > y); });
-        bin("ge", [](const var& x, const var& y) { return var(x >= y); });
+        // (each comparison's own value, as an __lt__ ... returns it: z3's expressions, numpy's arrays)
+        bin("ne", [](const var& x, const var& y) { return compare_value_(x, y, 3); });
+        bin("lt", [](const var& x, const var& y) { return compare_value_(x, y, 0); });
+        bin("le", [](const var& x, const var& y) { return compare_value_(x, y, 1); });
+        bin("gt", [](const var& x, const var& y) { return compare_value_(x, y, 4); });
+        bin("ge", [](const var& x, const var& y) { return compare_value_(x, y, 5); });
         bin("getitem", [](const var& x, const var& y) { return x.getitem(y); });
         bin("contains", [](const var& x, const var& y) { return var(in(y, x)); });
         bin("is_", [](const var& x, const var& y) { return var(is(x, y)); });

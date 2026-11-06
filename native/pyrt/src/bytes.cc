@@ -376,18 +376,29 @@ void init_bytes() {
             }
             return new_bytes(o, ba);
         });
-        add_method(t, "startswith", [](const CallArgs& a) {
+        // startswith / endswith (prefix[, start[, end]]): within s[start:end], the bounds as a slice's
+        auto starts_ends = [](const CallArgs& a, bool ends) {
             const std::string& s = B(a.pos[0])->s;
-            auto test = [&](const var& p) { std::string q = barg(p); return s.compare(0, q.size(), q) == 0 && q.size() <= s.size(); };
+            int64_t n = (int64_t)s.size();
+            auto bound = [n](const var& v, int64_t dflt) {
+                if (v.is_none() || v.is_unbound()) return dflt;
+                int64_t i = v.as_int64();
+                if (i < 0) i = std::max<int64_t>(0, i + n);
+                return std::min(i, n);
+            };
+            int64_t lo = bound(a.pos.size() > 2 ? a.pos[2] : var(None), 0);
+            int64_t hi = bound(a.pos.size() > 3 ? a.pos[3] : var(None), n);
+            auto test = [&](const var& p) {
+                std::string q = barg(p);
+                int64_t m = (int64_t)q.size();
+                if (lo > n || hi - lo < m) return false;
+                return s.compare((size_t)(ends ? hi - m : lo), (size_t)m, q) == 0;
+            };
             if (is_tuple(a.pos.at(1))) { for (auto& p : tuple_items(a.pos[1])) if (test(p)) return var(true); return var(false); }
             return var(test(a.pos[1]));
-        });
-        add_method(t, "endswith", [](const CallArgs& a) {
-            const std::string& s = B(a.pos[0])->s;
-            auto test = [&](const var& p) { std::string q = barg(p); return q.size() <= s.size() && s.compare(s.size() - q.size(), q.size(), q) == 0; };
-            if (is_tuple(a.pos.at(1))) { for (auto& p : tuple_items(a.pos[1])) if (test(p)) return var(true); return var(false); }
-            return var(test(a.pos[1]));
-        });
+        };
+        add_method(t, "startswith", [starts_ends](const CallArgs& a) { return starts_ends(a, false); });
+        add_method(t, "endswith", [starts_ends](const CallArgs& a) { return starts_ends(a, true); });
         for (int which = 0; which < 4; which++) {
             static const char* names[] = {"find", "rfind", "index", "rindex"};
             add_method(t, names[which], [which](const CallArgs& a) {

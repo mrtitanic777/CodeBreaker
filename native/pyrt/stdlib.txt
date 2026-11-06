@@ -60,3 +60,7 @@ asyncio.*
 linecache
 ipaddress
 _markupbase
+numbers
+fractions
+re._constants = re/_constants.py
+re._parser = re/_parser.py

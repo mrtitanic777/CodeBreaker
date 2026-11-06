@@ -45,6 +45,7 @@ struct GenObj : Obj {
     int depth = 0;                  // its own call depth (kept apart from the caller's)
     void* handling = nullptr;       // its own stack of exceptions being handled
     void* calls = nullptr;          // its own stack of functions being run (tracebacks)
+    bool closing = false;           // close(): a GeneratorExit that ends the body is the close working, not raised again
     ~GenObj() override;
 };
 
@@ -76,6 +77,10 @@ static void WINAPI fiber_main(LPVOID p) {
             t_starting = &g->y;
             var r = g->f->fn(g->slots.data());
             g->returned = r;
+        } catch (error& e) {
+            // (a close that ended the body: nothing to hand back -- rethrowing it in the caller only to drop it
+            // there was a second C++ throw for every generator dropped unfinished: next(gen, None) on a decoder)
+            if (!(g->closing && isinstance_(e.value, E_GeneratorExit))) g->exc = std::current_exception();
         } catch (...) {
             g->exc = std::current_exception();
         }
@@ -351,6 +356,7 @@ GenObj::~GenObj() {
     if (state == Suspended && fiber) {
         // close(): GeneratorExit at the yield, the body's finally blocks run
         throw_in = make_exc_args(E_GeneratorExit, {});
+        closing = true;
         try {
             resume(this);
         } catch (...) {
@@ -406,8 +412,11 @@ static var gen_throw(GenObj* g, const var& e) {
 static var gen_close(GenObj* g) {
     if (g->state != GenObj::Suspended) { if (g->state == GenObj::Fresh) g->state = GenObj::Done; return None; }
     g->throw_in = make_exc_args(E_GeneratorExit, {});
+    g->closing = true;
     try {
-        if (resume(g)) raise(E_RuntimeError, std::string(noun(g)) + " ignored GeneratorExit");
+        bool again = resume(g);
+        g->closing = false;
+        if (again) raise(E_RuntimeError, std::string(noun(g)) + " ignored GeneratorExit");
     } catch (error& e) {
         if (!isinstance_(e.value, E_GeneratorExit) && !isinstance_(e.value, E_StopIteration)) throw;
     }

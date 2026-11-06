@@ -949,18 +949,24 @@ static void init_jsonschema(const var& m) {
 }
 
 var eval_expr_(const var& src, const var& globals, const var& locals);   // lib_ast.cc
+var exec_source_(const var& src, const var& globals, const var& locals); // lib_ast.cc
+var compile_source_(const CallArgs& a);                                  // lib_ast.cc
 var run_module_(const std::string& name, const std::string& run_name);  // module.cc
 const char* module_for_file_(const std::string& path);                  // module.cc
 
 void init_extra_modules() {
     make_memoryview();
     {
-        // eval of an expression (lib_ast.cc evaluates pyfront's tree); exec / compile still need Python
+        // eval / exec / compile of source text (lib_ast.cc runs pyfront's tree)
         extern var g_builtins;
         mod_set(g_builtins, "__debug__", var(true));   // (xml.dom.expatbuilder: `if __debug__:` in a class body)
         mod_def(g_builtins, "eval", [](const CallArgs& a) {
             return eval_expr_(a.pos.at(0), arg(a, 1, "globals", None), arg(a, 2, "locals", None));
         });
+        mod_def(g_builtins, "exec", [](const CallArgs& a) {
+            return exec_source_(a.pos.at(0), arg(a, 1, "globals", None), arg(a, 2, "locals", None));
+        });
+        mod_def(g_builtins, "compile", [](const CallArgs& a) { return compile_source_(a); });
     }
     register_native_module("runpy", [](const var& m) {
         mod_def(m, "run_module", [](const CallArgs& a) {
@@ -986,11 +992,6 @@ void init_extra_modules() {
     init_pil_modules();
     init_async_modules();                                   // (lib_async.cc: sys's asyncgen hooks; _socket, select, _overlapped, _winapi)
     register_native_module("jsonschema", init_jsonschema);
-    // z3: not in the C++ runtime until libz3 is vendored (a decision pending): importing it says so
-    register_native_module("z3", [](const var&) {
-        raise(E_ImportError, "z3 is not in the C++ runtime: libz3 is not vendored yet (emulate/symbolic.py and "
-                             "verify/concolic.py need it; its C API is the way in once it is)");
-    });
     register_native_module("codecs", init_codecs);
     register_native_module("_collections", init_collections_c);
     register_native_module("gettext", init_gettext);

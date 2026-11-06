@@ -130,7 +130,10 @@ var make_cdata(CType* ct, uint8_t* at = nullptr, const var& base = var()) {
         d->p = at;
         d->base = base;
     } else {
-        size_t n = ct->size ? ct->size : 1;
+        // at least 16 bytes, as CPython's ctypes keeps a value of up to 16 inline (CDataObject's b_value):
+        // a DLL may write past a small type's size and CPython never sees it -- unicorn's reg_read of an
+        // x87 register writes its 10 bytes into the c_uint64 the binding passes
+        size_t n = std::max<size_t>(ct->size, 16);
         d->own.reset(new uint8_t[n]());
         d->p = d->own.get();
     }
@@ -181,6 +184,7 @@ u64 big_bits(const var& v) {
 }
 
 var read_value(CType* ct, uint8_t* p, const var& base);
+var read_item(CType* ct, uint8_t* p, const var& base);
 void write_value(CType* ct, uint8_t* p, const var& v, CData* owner, const var& key);
 
 // the address a value stands for where a pointer is wanted
@@ -216,6 +220,19 @@ var read_value(CType* ct, uint8_t* p, const var& base) {
         return make_cdata(ct, p, base);
     }
     return None;
+}
+
+// a value read out of memory as a field, an item, a result or a callback's argument (CPython's CData_get): a
+// fundamental simple type's is the Python value; a subclass of one (class Sort(c_void_p)) stays an instance
+// of it -- over base's memory when there is a base, else a copy
+var read_item(CType* ct, uint8_t* p, const var& base) {
+    if (ct->kind == CK::Simple && ct->py && !ct->py->bases.empty() && ct->py->bases[0] != T_simple) {
+        if (!base.is_unbound()) return make_cdata(ct, p, base);
+        var o = make_cdata(ct);
+        memcpy(CD(o)->p, p, ct->size);
+        return o;
+    }
+    return read_value(ct, p, base);
 }
 
 void write_value(CType* ct, uint8_t* p, const var& v, CData* owner, const var& key) {
@@ -437,7 +454,7 @@ CType* layout_struct(TypeObj* t, CType* ct) {
                 return new_bytes(std::string((const char*)d->p + fd.offset, strnlen((const char*)d->p + fd.offset, fd.t->length)));
             if (fd.t->kind == CK::Array && fd.t->elem->kind == CK::Simple && fd.t->elem->code == 'u')
                 return new_str(from_w((const wchar_t*)(d->p + fd.offset), wcsnlen((const wchar_t*)(d->p + fd.offset), fd.t->length)));
-            return read_value(fd.t, d->p + fd.offset, a.pos[0]);
+            return read_item(fd.t, d->p + fd.offset, a.pos[0]);
         });
         pr->fset = new_native(fd.name.c_str(), [fd, key](const CallArgs& a) -> var {
             CData* d = CD(a.pos.at(0));
@@ -614,7 +631,7 @@ var result_of(CType* rt, bool res_void, const var& res_py, u64 r, double rd) {
         if (rt->code == 'f') { float f; memcpy(&f, &rd, 4); return var((double)f); }
         uint8_t buf[8];
         memcpy(buf, &r, 8);
-        return read_value(rt, buf, var());
+        return read_item(rt, buf, var());
     }
     if (rt->kind == CK::Pointer || rt->kind == CK::Func) {
         var p = make_cdata(rt);
@@ -685,7 +702,7 @@ u64 trampoline(u64 a0, u64 a1, u64 a2, u64 a3, u64 a4, u64 a5, u64 a6, u64 a7, u
                 var p = make_cdata(at);
                 memcpy(CD(p)->p, buf, 8);
                 args.push_back(p);
-            } else args.push_back(read_value(at, buf, var()));
+            } else args.push_back(read_item(at, buf, var()));
         }
         var r = call_obj(cb.fn, CallArgs{args, {}});
         if (!cb.proto.res_void && cb.proto.res && !r.is_none()) {
@@ -761,7 +778,7 @@ var new_funcptr(TypeObj* t, void* addr, const std::string& name) {
         ct = fct;
     }
     f->ct = ct;
-    f->own.reset(new uint8_t[8]());
+    f->own.reset(new uint8_t[16]());
     f->p = f->own.get();
     f->addr = addr;
     memcpy(f->p, &addr, 8);
@@ -1019,12 +1036,12 @@ void init_ctypes(const var& m) {
             auto* sl = as<SliceObj>(a.pos[1]);
             int64_t lo = sl->start.is_none() ? 0 : sl->start.as_int64(), hi = sl->stop.as_int64();
             std::vector<var> out;
-            for (int64_t i = lo; i < hi; i++) out.push_back(read_value(e, (uint8_t*)(uintptr_t)adr + i * (int64_t)e->size, var()));
+            for (int64_t i = lo; i < hi; i++) out.push_back(read_item(e, (uint8_t*)(uintptr_t)adr + i * (int64_t)e->size, a.pos[0]));
             if (e->kind == CK::Simple && e->code == 'c') { std::string s; for (auto& x : out) s += raw_of(x); return new_bytes(s); }
             return new_list(out);
         }
         int64_t i = a.pos[1].as_int64();
-        return read_value(e, (uint8_t*)(uintptr_t)adr + i * (int64_t)e->size, var());
+        return read_item(e, (uint8_t*)(uintptr_t)adr + i * (int64_t)e->size, a.pos[0]);
     });
     add_method(T_pointer, "__setitem__", [](const CallArgs& a) {
         CData* d = CD(a.pos[0]);
@@ -1156,13 +1173,13 @@ void init_ctypes(const var& m) {
             int64_t lo, hi, st, cnt;
             slice_indices(sl->start, sl->stop, sl->step, n, lo, hi, st, cnt);
             std::vector<var> out;
-            for (int64_t i = 0, k = lo; i < cnt; i++, k += st) out.push_back(read_value(e, d->p + k * (int64_t)e->size, a.pos[0]));
+            for (int64_t i = 0, k = lo; i < cnt; i++, k += st) out.push_back(read_item(e, d->p + k * (int64_t)e->size, a.pos[0]));
             if (e->kind == CK::Simple && e->code == 'c') { std::string s; for (auto& x : out) s += raw_of(x); return new_bytes(s); }
             if (e->kind == CK::Simple && e->code == 'u') { std::string s; for (auto& x : out) s += str_utf8(x); return new_str(s); }
             return new_list(out);
         }
         int64_t i = norm_index(a.pos[1].as_int64(), n, "invalid index");
-        return read_value(e, d->p + i * (int64_t)e->size, a.pos[0]);
+        return read_item(e, d->p + i * (int64_t)e->size, a.pos[0]);
     });
     add_method(T_array, "__setitem__", [](const CallArgs& a) {
         CData* d = CD(a.pos[0]);
@@ -1187,7 +1204,7 @@ void init_ctypes(const var& m) {
         return new_iter([self, i](var& out) -> bool {
             CData* d = CD(self);
             if (*i >= (int64_t)d->ct->length) return false;
-            out = read_value(d->ct->elem, d->p + (*i)++ * (int64_t)d->ct->elem->size, self);
+            out = read_item(d->ct->elem, d->p + (*i)++ * (int64_t)d->ct->elem->size, self);
             return true;
         });
     });

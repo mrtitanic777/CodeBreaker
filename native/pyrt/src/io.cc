@@ -168,7 +168,6 @@ static var file_write(FileObj* f, const var& data) {
     if (!is_str(data)) raise(E_TypeError, "write() argument must be str, not " + tname(data));
     const std::string& s = str_utf8(data);
     std::string nl = f->newline.is_none() ? "\r\n" : str_utf8(f->newline);
-    if (f->console) nl = "\n";
     std::string text;
     if (nl == "\n" || nl.empty()) text = s;
     else {
@@ -251,7 +250,7 @@ static var std_stream(FILE* fp, const char* name, bool write) {
     f->name = name;
     f->mode = write ? "w" : "r";
     f->console = write;
-    f->newline = "\n"_s;
+    f->newline = None;          // (text mode as CPython's on Windows: \n written as \r\n, universal on read)
     return var(static_cast<Obj*>(f));
 }
 void flush_std_() {
@@ -259,15 +258,15 @@ void flush_std_() {
     fflush(stderr);
 }
 
-void print_exception_(const var& e) {
+// a traceback's text (the cause first, as Python prints it) to f: stderr, or stdout for pytest's reports
+void print_exception_to_(const var& e, FILE* f) {
     flush_std_();
-    std::string msg;
     var ctx = getattr(e, interned("__cause__"), None);
     if (!ctx.is_none()) {
-        print_exception_(ctx);
-        fputs("\nThe above exception was the direct cause of the following exception:\n\n", stderr);
+        print_exception_to_(ctx, f);
+        fputs("\nThe above exception was the direct cause of the following exception:\n\n", f);
     }
-    fputs("Traceback (most recent call last):\n  (translated code)\n", stderr);
+    fputs("Traceback (most recent call last):\n  (translated code)\n", f);
     std::string s;
     try {
         s = str_(e);
@@ -276,10 +275,11 @@ void print_exception_(const var& e) {
     }
     TypeObj* t = type_of(e);
     std::string name = t->module == "builtins" ? t->qualname : t->module + "." + t->qualname;
-    if (s.empty()) fprintf(stderr, "%s\n", name.c_str());
-    else fprintf(stderr, "%s: %s\n", name.c_str(), s.c_str());
-    fflush(stderr);
+    if (s.empty()) fprintf(f, "%s\n", name.c_str());
+    else fprintf(f, "%s: %s\n", name.c_str(), s.c_str());
+    fflush(f);
 }
+void print_exception_(const var& e) { print_exception_to_(e, stderr); }
 
 bool module_registered_(const std::string& name);
 void set_sys_argv_() {
@@ -481,7 +481,7 @@ void init_io() {
     m->name = "sys";
     g_sys = var(static_cast<Obj*>(m));
     mod_set(g_sys, "__name__", "sys"_s);
-    // stdout / stderr in binary mode: text written as UTF-8 with \n kept
+    // stdout / stderr in binary mode: text written as UTF-8, \n as \r\n (file_write), as CPython's
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
     mod_set(g_sys, "stdout", std_stream(stdout, "<stdout>", true));
@@ -506,12 +506,25 @@ void init_io() {
         mod_set(g_sys, "hexversion", var((int64_t)0x030E00F0));
     }
     {
+        // sys.hash_info: the numbers hash() works by (ops.cc's are CPython's: mod 2**61 - 1)
+        TypeObj* ht = new_type("hash_info", {T_tuple}, Layout::Tuple, false, "sys");
+        var hi = new_tuple({64, (int64_t)((1ull << 61) - 1), 314159, 0, 1000003, "siphash13"_s, 64, 128, 0});
+        hi.ref()->type = ht;
+        const char* names[] = {"width", "modulus", "inf", "nan", "imag", "algorithm", "hash_bits", "seed_bits", "cutoff"};
+        for (int i = 0; i < 9; i++) hi.setattr(names[i], hi[var(i)]);
+        mod_set(g_sys, "hash_info", hi);
+    }
+    {
         wchar_t buf[MAX_PATH];
         GetModuleFileNameW(nullptr, buf, MAX_PATH);
         int len = WideCharToMultiByte(CP_UTF8, 0, buf, -1, nullptr, 0, nullptr, nullptr);
         std::string s((size_t)(len - 1), '\0');
         WideCharToMultiByte(CP_UTF8, 0, buf, -1, s.data(), len, nullptr, nullptr);
         mod_set(g_sys, "executable", new_str(s));
+        // the installation's folder is the program's own (sys.prefix: where an embedded Python's lib is)
+        size_t cut = s.find_last_of("\\/");
+        var prefix = new_str(cut == std::string::npos ? std::string(".") : s.substr(0, cut));
+        for (const char* n : {"prefix", "exec_prefix", "base_prefix", "base_exec_prefix"}) mod_set(g_sys, n, prefix);
     }
     if (g_sys_modules.is_unbound()) g_sys_modules = new_dict_obj();
     mod_set(g_sys, "modules", g_sys_modules);

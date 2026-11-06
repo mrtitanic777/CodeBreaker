@@ -87,11 +87,13 @@ var* DictObj::get(const char* name) const {
         j = (j * 5 + 1 + (size_t)perturb) & mask;
     }
 }
+extern uint64_t g_type_epoch;   // (object.cc: the attribute cache's validity)
 static void bump(DictObj* d) {
     d->version++;
     if (d->owner_type) {
         // a class namespace changed: the class and its subclasses' caches
         d->owner_type->version++;
+        g_type_epoch++;
     }
 }
 void DictObj::set(const var& key, const var& v) {
@@ -99,7 +101,7 @@ void DictObj::set(const var& key, const var& v) {
     int64_t i = find(key, h);
     if (i >= 0) {
         entries[(size_t)i].value = v;
-        if (owner_type) owner_type->version++;
+        if (owner_type) { owner_type->version++; g_type_epoch++; }
         return;
     }
     if ((entries.size() + 1) * 3 >= index.size() * 2) rebuild_((size_t)used + 1);
