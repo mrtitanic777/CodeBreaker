@@ -556,6 +556,9 @@ static void setattr_v(const var& o, const var& name, const var& v) {
         if (n == "__wrapped__") { f->wrapped = v; return; }
     }
     if (t == T_property && utf8_of(name) == "__doc__") { static_cast<PropertyObj*>(p)->doc = v; return; }   // (namedtuple fields' docs)
+    // a native function standing in for a Python one (contextmanager's helper, a wraps() wrapper): attributes as a
+    // function's, so __wrapped__ / __module__ / __qualname__ set by functools.wraps are kept
+    if (t == T_native && utf8_of(name) == "__name__") { static_cast<NativeObj*>(p)->name = utf8_of(v); return; }
     if (t->is_exception) {
         const std::string& n = utf8_of(name);
         auto* e = static_cast<ExcObj*>(p);
@@ -564,7 +567,7 @@ static void setattr_v(const var& o, const var& name, const var& v) {
         if (n == "args") { e->args = new_tuple(collect(v)); return; }
         if (n == "__traceback__") return;
     }
-    if (t->builtin && t != T_function && !t->is_exception && t != T_data && t->layout != Layout::NativeData)
+    if (t->builtin && t != T_function && t != T_native && !t->is_exception && t != T_data && t->layout != Layout::NativeData)
         raise(E_AttributeError, "'" + t->name + "' object has no attribute '" + utf8_of(name) + "' (it cannot be set)");
     if (t->no_dict) {
         // __slots__: only the slot names of the classes in the MRO

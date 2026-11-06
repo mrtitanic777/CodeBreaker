@@ -1358,6 +1358,17 @@ var getsource_(const var& obj, int64_t* first_line) {
     }
     if (qual.empty()) { if (first_line) *first_line = 0; return new_str(text); }
     SrcLines s = read_lines(text);
+    // a lambda: found by its first line, as inspect's getblock reads it -- that line and the lines it
+    // continues onto while a bracket is open
+    if (o.is_ref() && o.ref()->type == T_function && static_cast<FuncObj*>(o.ref())->firstlineno > 0 &&
+        qual.size() >= 8 && qual.compare(qual.size() - 8, 8, "<lambda>") == 0) {
+        size_t i = (size_t)static_cast<FuncObj*>(o.ref())->firstlineno - 1;
+        if (i >= s.lines.size()) raise(E_OSError, "could not get source code");
+        std::string out = s.lines[i];
+        for (size_t j = i + 1; j < s.lines.size() && s.continued[j]; j++) out += s.lines[j];
+        if (first_line) *first_line = (int64_t)i + 1;
+        return new_str(out);
+    }
     size_t lo = 0, hi = s.lines.size(), indent = 0;
     int at = -1;
     size_t st = 0;
