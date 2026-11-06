@@ -79,17 +79,44 @@ program (176 pass); pytest marks with arguments applied to a function did not de
 tests were never collected (translate collected 96 of 148, java 346 of 416) -- fixed, the counts now equal
 Python's.
 
-### Typed where proven (step 4): not done
+### Typed where proven (step 4): typed islands, `--dyn-typed` (2026-11-05)
 
-The typed path's C++ (l2cpp17 over native/ported/include/py.hpp) is in its own `namespace py`, which
-collides with pyrt's: the two cannot share a translation unit or a link as they stand. The way in: the typed
-units compiled in their own TUs with py.hpp's namespace renamed (pyt), exporting each proven function with a
-plain signature (int64_t / double / bool / std::string), and dyn.cc emitting, for a function coverage.json
-marks translated and the judge agreed, a wrapper that unboxes the py::vars, calls it, and boxes the
-result (`--dyn-typed <coverage dir>`); the judge (PYRT_TRACE + --judge-traces) compares the wrapped run with
-the all-dynamic run. 472 functions (2.1% of lines) qualify today. Gate 1 holds: `pyengine codebreaker
---out` gives byte-identical coverage.json, coverage.md and 554 l2/*.json with this branch's engine and
-master's (only dyn.* and the --dynamic part of the main changed).
+    pyengine codebreaker --out T --cpp T/cpp                                     (the typed path, as before)
+    pyengine --dynamic ... --dyn-typed T --dyn-islands native/pyengine/hints/islands.json
+
+The typed path's C++ (l2cpp17 over py.hpp) is compiled in a library of its own with `py=pyt` (py.hpp and
+pyrt both name their namespace py; they never share a translation unit), only the modules the islands reach.
+src/islands.cc picks the islands (value parameters -- int within the range the proof assumed, bool, float,
+str, bytes, None-or / tuples of those --, value results or fresh lists / dicts of values, no file writes /
+environment / clock in the body or anything it calls, module names read only when typed constants); dyn.cc
+writes each one's dynamic body as `<name>_dyn` and under its own name a wrapper that checks and unboxes the
+arguments exactly, calls the typed body through the generated `_typed/islands.cpp`, boxes the result, and
+runs the dynamic body for any other argument and whenever the typed body raises (so Python's exception and
+message are the dynamic body's). The boundary is plain C++ (native/pyengine/islands). README "Typed islands".
+
+| measure | result |
+|---|---|
+| translated by the typed path (strict, this tree) | 392 (HANDOFF's 472 was an older tree) |
+| islands written (candidates) | **169**; 223 not islands: 116 methods, 46 container / record / None-or-int parameters or results, 38 effects (open 18, os.environ 11, shutil 6, os.makedirs 2, os.remove 1), 20 module names that are not typed constants, 2 translated as overloads, 1 int parameter with no recorded range |
+| judged (PYRT_TRACE + `--judge-islands`, run_all --quick twice: islands on / PYISL_OFF=1, program built with PYENGINE_NO_DIRECT=1, traces per process via `%p`, only the islands via PYRT_TRACE_FUNCS) | **67 agree**, **1 differs**, 101 not run by the suites |
+| dropped | `codebreaker.port.__main__.sound(path)`: the same path gave a different result in the two runs (3 of 3 argument lists). It reads an object file the test builds (`os.path.getsize(path) > 64` and its first bytes), and the two runs build into folders of their own: its answer is the file system's at the time, not a function of its argument, so the judge cannot hold it to one answer -- dropped as differing, as the rule says |
+| kept (hints/islands.json, `--dyn-islands`) | **67** (the 101 not run are held back until a suite runs them) |
+| suites, final program (direct calls, 67 islands, /Od) | the same as the program without islands, suite for suite and count for count (run_all --quick in this worktree; the baseline program built from master's emission): 35 ok, the same 10 failing for the reasons in the table above. test_native_trace crashes (0xC0000374 / 0xC0000005) in most runs of *both* programs -- the heap corruption HANDOFF already names, not the islands |
+| typed calls answered | 86,222 over one --quick run (63 islands reached), 1 raised (it ran the dynamic body) |
+
+**Speed** (bench: the islands called through their function objects as dynamic callers call them, /O2,
+best of 3 on a loaded machine, ns per call, islands on / PYISL_OFF=1): `_match_brace(src, i)` (a loop over a
+1.7k-character str) 73k / 517k (**7x**); `m6502_asm._split_args` (a loop over characters) 4.3k / 15.6k
+(**3.6x**); `m68k._reg` (a %-format) 0.9k / 1.4k (1.5x); `m68k._s8` (one conditional on an int) 0.41k / 0.28k
+and `rules._strip_block_comments` (one re.sub: both sides use pyre) 37k / 26k -- **slower**: boxing a str
+in and out (UTF-8 to code points and back) costs more than a one-expression body saves. On the suites the
+effect is inside the noise (the islands are a few thousand calls of small helpers in runs of minutes).
+Next: a cost rule for islands -- a body that is one expression or one library call (re.sub) is left
+dynamic; loops over str / bytes are where the typed body wins.
+
+Gate 1 holds: `pyengine codebreaker --out` gives byte-identical coverage.json, coverage.md and 554 l2/*.json
+with this branch's engine and master's (built from `git archive master`), and without --dyn-typed the
+dynamic output of the whole tree (826 modules) is byte-identical to master's engine's.
 
 ### The cut-over plan (written, not executed; no Python deleted)
 

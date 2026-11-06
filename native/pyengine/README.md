@@ -75,6 +75,43 @@ state/work/pyengine-dyn/trace_py.py records the Python run the same way (sys.mon
 `--judge-traces` compares them function by function (calls between module functions that the C++
 makes directly are judged through their callers).
 
+### Typed islands: `--dyn-typed DIR [--dyn-islands FILE]`
+
+Where the typed path proves a module function, the dynamic build can run its typed C++ instead. DIR is
+the typed path's own output (`pyengine codebreaker --out DIR --cpp DIR/cpp`). src/islands.cc picks the
+functions whose typed body no caller can tell apart from the dynamic one: parameters that are values
+(int within the range coverage.json says its proof assumed, bool, float, str, bytes, None-or / tuples of
+the last four), a result that is a value or a fresh list / dict / bytearray of values (copied out), one
+def at module level of positional parameters, and a body -- with every typed function it calls -- that
+writes no files, does not read the environment or the clock, and reads module names only when they are
+typed constants set from literals. Each becomes two C++ functions in its module: the dynamic body under
+`<name>_dyn`, and under its own name a wrapper with the same signature:
+
+    static py::var pair(py::var same, py::var ran, py::var built) {
+        bool isl_same; bool isl_ran; bool isl_built;
+        if (pyisl::on() && pyisl::boolean(same, isl_same) && pyisl::boolean(ran, isl_ran) && pyisl::boolean(built, isl_built)) {
+            pyisl::val isl_result;
+            if (pyisl::island::codebreaker::verify::verdicts::pair(isl_same, isl_ran, isl_built, isl_result)) return pyisl::box(isl_result);
+        }
+        return pair_dyn(same, ran, built);
+    }
+
+Every check is exact (an int is not a bool, an int subclass or a big int; a str is not a subclass); any
+other argument, and any exception of the typed body, runs the dynamic body, which raises Python's own
+exception. The typed side (l2cpp17's C++ of the modules the islands reach, and the generated
+`_typed/islands.cpp`) is a library of its own compiled with `py=pyt`: py.hpp and pyrt both name their
+namespace py, so they never share a translation unit, and the boundary is plain C++
+(islands/pyisl_val.hpp). `PYISL_OFF=1` sends every call to the dynamic body (the same program, for the
+judge and for timings); `PYISL_STATS=<file, %p = pid>` writes per island the calls its typed body
+answered. `<out>/islands.json` lists the islands written, the ones the verdicts held back and why every
+other translated function is not one.
+
+**The judge**: the program built with `PYENGINE_NO_DIRECT=1` (every call through the function object, so
+traced), the suites run twice -- islands on, and `PYISL_OFF=1` -- with `PYRT_TRACE=DIR/t_%p.txt`
+(one file per process) and `PYRT_TRACE_FUNCS=<out>/islands.funcs`; `pyengine --judge-islands
+<out>/islands.json ON_DIR OFF_DIR VERDICTS` compares each island's calls by argument list (an island is a
+function of its arguments) and writes the verdicts `--dyn-islands` reads (hints/islands.json).
+
 `--out DIR` writes `DIR/l2/<module>.json` (each module's L2 `Unit`), `DIR/coverage.json` (per
 function: translated or refused, the reason, its lines, its L2) and `DIR/coverage.md` (the table by
 package and the top refusal reasons). `--old` runs the old engine's rules exactly (no extensions);
@@ -263,10 +300,13 @@ their slots, text reads, written by l2cpp17).
     src/ir.*         L2 nodes and their JSON
     src/lower.*      lowering, closures, generators, variants, units, the ledger
     src/engine.*     the whole run; the back end pass; hints; coverage tables
+    src/islands.*    typed islands in the dynamic build (--dyn-typed), and their judge (--judge-islands)
+    islands/         the islands' boundary: pyisl_val.hpp (plain values), pyisl.hpp (pyrt side), pyisl_typed.hpp (py.hpp side)
     src/capi.cc      the C ABI
     tools/           pyengine.exe
     tests/           the CTest suites
-    hints/           types.json (parameter hints), refuse.json / refuse.<policy>.json (the judge's refusals)
+    hints/           types.json (parameter hints), refuse.json / refuse.<policy>.json (the judge's refusals),
+                     islands.json (the typed islands' verdicts, --dyn-islands)
 
 The gate scripts are in the working folder (`state/work/pyengine2/`: baseline.py, gate1.py,
 judge.py, why.py, roots.py, merge_refuse.py, gen_unicode.py); Python runs there only as the oracle.
