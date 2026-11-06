@@ -308,11 +308,14 @@ static var E_PicklingError, E_UnpicklingError;
 struct Pickler {
     std::string out;
     std::unordered_map<const Obj*, uint32_t> memo;
+    std::vector<var> held;
     bool fast = false;   // (Pickler.fast: no memo, an object passed twice written twice)
     void memoize(const var& v) {
         if (!v.is_ref() || fast) return;
         uint32_t i = (uint32_t)memo.size();
         memo[v.ref()] = i;
+        held.push_back(v);   // (kept alive, as CPython's memo keeps what it names: a temporary's address reused by
+                             //  the next one -- a class's module name, then its name -- was taken for it)
         out.push_back('\x94');
     }
     bool get(const var& v) {
