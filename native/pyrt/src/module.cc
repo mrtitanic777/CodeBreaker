@@ -30,6 +30,7 @@ static var new_module_obj(const std::string& name) {
     m->name = name;
     return var(static_cast<Obj*>(m));
 }
+static var load_source_module_(const std::string& name, const std::string& file, bool package);
 
 void ensure_runtime_();
 module_def::module_def(const char* name, void (*init)(), bool package, const char* file)
@@ -100,8 +101,24 @@ static var load_one(const std::string& name) {
         entries.push_back(".");
         std::string rel = name;
         std::replace(rel.begin(), rel.end(), '.', '\\');
-        for (auto& en : entries) {
-            std::string base = (en.empty() ? std::string(".") : en) + "\\" + rel;
+        // a submodule of a package loaded from its source: its own folder first, as Python looks in the
+        // parent's __path__
+        // A file the program does not have runs from its source (load_source_module_) -- but never a
+        // module of a package the program translated: what the program left out stays out.
+        std::vector<std::string> inner;
+        bool from_source = true;
+        if (size_t dot = name.rfind('.'); dot != std::string::npos) {
+            if (var* par = sysmods()->get(new_str(name.substr(0, dot)))) {
+                auto* pm = static_cast<ModuleObj*>(par->ref());
+                from_source = !pm->def;
+                auto it = pm->cells.find("__path__");
+                if (!pm->def && it != pm->cells.end() && !it->second->v.is_unbound() && !it->second->v.is_none())
+                    for (var p : each(it->second->v)) if (is_str(p)) inner.push_back(str_utf8(p) + "\\" + name.substr(dot + 1));
+            }
+        }
+        std::vector<std::string> bases = inner;
+        for (auto& en : entries) bases.push_back((en.empty() ? std::string(".") : en) + "\\" + rel);
+        for (auto& base : bases) {
             for (const std::string& f : {base + ".py", base + "\\__init__.py"}) {
                 if (GetFileAttributesA(f.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
                 const char* mn = module_for_file_(f);
@@ -110,6 +127,7 @@ static var load_one(const std::string& name) {
                     sysmods()->set(new_str(name), mod);
                     return mod;
                 }
+                if (!mn && from_source) return load_source_module_(name, f, f.size() > 12 && f.compare(f.size() - 12, 12, "\\__init__.py") == 0);
             }
             DWORD at = GetFileAttributesA(base.c_str());
             if (at != INVALID_FILE_ATTRIBUTES && (at & FILE_ATTRIBUTE_DIRECTORY) && name.find('.') == std::string::npos) {
@@ -166,6 +184,13 @@ var import_from(const var& module, const char* name) {
         return module.getattr(name);
     } catch (error& e) {
         if (!isinstance_(e.value, E_AttributeError)) throw;
+    }
+    if (!m->def && m->cells.count("__path__")) {              // a package from source: its submodule's file
+        try {
+            return import(sub.c_str());
+        } catch (error& e) {
+            if (!isinstance_(e.value, E_ModuleNotFoundError)) throw;
+        }
     }
     var e = make_exc(E_ImportError, "cannot import name '" + std::string(name) + "' from '" + m->name + "'");
     raise(e);
@@ -290,6 +315,55 @@ var globals_of(module_def& m) {
     return module_dict_(mod);
 }
 
+// A module the program does not have, imported from its source file on sys.path, as Python's source
+// loader does: the module is in sys.modules while its statements run (over pyfront's tree, lib_ast.cc)
+// in its own namespace, and is taken out again if they raise.
+void exec_module_source_(const var& globals, const std::string& file);    // lib_ast.cc
+static var load_source_module_(const std::string& name, const std::string& file, bool package) {
+    var mod = new_module_obj(name);
+    auto* mo = static_cast<ModuleObj*>(mod.ref());
+    mo->cell("__name__")->v = new_str(name);
+    mo->cell("__file__")->v = new_str(file);
+    mo->cell("__doc__")->v = None;
+    mo->cell("__loader__")->v = None;
+    mo->cell("__spec__")->v = None;
+    std::string pkg = package ? name : (name.rfind('.') == std::string::npos ? "" : name.substr(0, name.rfind('.')));
+    mo->cell("__package__")->v = new_str(pkg);
+    if (package) mo->cell("__path__")->v = new_list({new_str(file.substr(0, file.find_last_of("/\\")))});
+    sysmods()->set(new_str(name), mod);
+    try {
+        exec_module_source_(module_dict_(mod), file);
+    } catch (...) {
+        sysmods()->del(new_str(name));
+        throw;
+    }
+    mo->initialized = true;
+    var* now = sysmods()->get(new_str(name));                // (a module may put another object in its place)
+    return now ? *now : mod;
+}
+
+// `python script.py` of a script the program does not have: it runs from its source as __main__, its
+// folder first on sys.path
+int run_source_file_main_(const std::string& file) {
+    var mod = new_module_obj("__main__");
+    auto* mo = static_cast<ModuleObj*>(mod.ref());
+    mo->cell("__name__")->v = "__main__"_s;
+    mo->cell("__file__")->v = new_str(file);
+    mo->cell("__doc__")->v = None;
+    mo->cell("__package__")->v = None;
+    mo->cell("__loader__")->v = None;
+    mo->cell("__spec__")->v = None;
+    sysmods()->set("__main__"_s, mod);
+    var sp = import("sys").getattr("path");
+    size_t cut = file.find_last_of("/\\");
+    std::string dir = cut == std::string::npos ? std::string("") : file.substr(0, cut);
+    char full[MAX_PATH];
+    if (GetFullPathNameA(dir.empty() ? "." : dir.c_str(), MAX_PATH, full, nullptr)) dir = full;
+    sp.call("insert", var((int64_t)0), new_str(dir));
+    exec_module_source_(module_dict_(mod), file);
+    return 0;
+}
+
 bool module_registered_(const std::string& name) { return reg().defs.count(name) || reg().natives.count(name); }
 // runpy.run_module: the module's statements run again with __name__ = run_name (a package: its
 // __main__), its globals returned
@@ -402,8 +476,37 @@ int run_main(const char* module, int argc, char** argv) {
     } else if (i < g_argv.size() && g_argv[i].size() > 3 && g_argv[i].compare(g_argv[i].size() - 3, 3, ".py") == 0) {
         const char* m = module_for_file_(g_argv[i]);
         if (!m) {
-            fprintf(stderr, "%s: not a module of this program\n", g_argv[i].c_str());
-            return 2;
+            // a script the program does not have: from its source, as python runs it
+            std::string file = g_argv[i];
+            if (GetFileAttributesA(file.c_str()) == INVALID_FILE_ATTRIBUTES) {
+                fprintf(stderr, "can't open file '%s': [Errno 2] No such file or directory\n", file.c_str());
+                return 2;
+            }
+            rest.assign(g_argv.begin() + (long long)i + 1, g_argv.end());
+            g_argv.clear();
+            g_argv.push_back(file);
+            g_argv.insert(g_argv.end(), rest.begin(), rest.end());
+            extern void set_sys_argv_();
+            set_sys_argv_();
+            extern void flush_std_();
+            extern void print_exception_(const var& e);
+            try {
+                run_source_file_main_(file);
+            } catch (error& e) {
+                flush_std_();
+                if (isinstance_(e.value, E_SystemExit)) {
+                    var code = e.value.getattr("code");
+                    if (code.is_none()) return 0;
+                    if (is_int(code)) return (int)code.as_int64();
+                    fprintf(stderr, "%s\n", str_(code).c_str());
+                    fflush(stderr);
+                    return 1;
+                }
+                print_exception_(e.value);
+                return 1;
+            }
+            flush_std_();
+            return 0;
         }
         name = m;
         rest.assign(g_argv.begin() + (long long)i + 1, g_argv.end());

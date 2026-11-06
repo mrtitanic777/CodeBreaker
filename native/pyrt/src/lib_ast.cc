@@ -1071,8 +1071,19 @@ struct Evaluator {
             return Flow::Normal;
         case StmtKind::ImportFrom: {
             auto* f = static_cast<const ImportFrom*>(s);
-            if (f->level > 0) raise(E_NotImplementedError, "exec: a relative import needs the importing module");
-            var m = import(f->module.c_str());
+            std::string modname = f->module;
+            if (f->level > 0) {                  // relative to the globals' package, as importlib resolves it
+                var pkg = in("__package__"_s, globals) ? globals.getitem("__package__"_s) : var(None);
+                if (!is_str(pkg) || str_utf8(pkg).empty()) raise(E_ImportError, "attempted relative import with no known parent package");
+                std::string base = str_utf8(pkg);
+                for (int k = 1; k < f->level; k++) {
+                    size_t d = base.rfind('.');
+                    if (d == std::string::npos) raise(E_ImportError, "attempted relative import beyond top-level package");
+                    base = base.substr(0, d);
+                }
+                modname = f->module.empty() ? base : base + "." + f->module;
+            }
+            var m = import(modname.c_str());
             for (auto* al : f->names) {
                 if (al->name == "*") {
                     var all = getattr(m, "__all__"_s, None);
@@ -1222,6 +1233,31 @@ int run_source_main_(const std::string& text) {
     return 0;
 }
 
+// A source file's statements run in a module's namespace (module.cc's source loader, `python script.py`
+// and runpy.run_path of a file the program does not have). The text is UTF-8 (a BOM is dropped); a
+// docstring first is the module's __doc__.
+void exec_module_source_(const var& globals, const std::string& file) {
+    FILE* fp = _wfopen(std::filesystem::u8path(file).c_str(), L"rb");
+    if (!fp) raise(make_exc_args(E_FileNotFoundError, {var((int64_t)2), "No such file or directory"_s, new_str(file)}));
+    std::string text;
+    char buf[65536];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof buf, fp)) > 0) text.append(buf, n);
+    fclose(fp);
+    if (text.compare(0, 3, "\xEF\xBB\xBF") == 0) text.erase(0, 3);
+    TreeP t = parse_tree_(text, file);
+    Evaluator ev = evaluator_(globals, None, t);
+    auto& body = t->r.module->body;
+    if (!body.empty() && body[0]->kind == pyfront::StmtKind::Expr) {
+        auto* x = static_cast<pyfront::ExprStmt*>(body[0])->value;
+        if (x && x->kind == pyfront::ExprKind::Constant) {
+            var doc = ev.ev(x);
+            if (is_str(doc)) globals.setitem("__doc__"_s, doc);
+        }
+    }
+    ev.run(body);
+}
+
 // ------------------------------------------------------------------------------------------ getsource
 // The source of a function or class, from the file it was translated from: the def / class found by its
 // qualified name (scope by scope), its decorators above it, and its block by indentation as Python's
@@ -1358,15 +1394,47 @@ var getsource_(const var& obj, int64_t* first_line) {
     }
     if (qual.empty()) { if (first_line) *first_line = 0; return new_str(text); }
     SrcLines s = read_lines(text);
-    // a lambda: found by its first line, as inspect's getblock reads it -- that line and the lines it
-    // continues onto while a bracket is open
-    if (o.is_ref() && o.ref()->type == T_function && static_cast<FuncObj*>(o.ref())->firstlineno > 0 &&
-        qual.size() >= 8 && qual.compare(qual.size() - 8, 8, "<lambda>") == 0) {
-        size_t i = (size_t)static_cast<FuncObj*>(o.ref())->firstlineno - 1;
-        if (i >= s.lines.size()) raise(E_OSError, "could not get source code");
-        std::string out = s.lines[i];
-        for (size_t j = i + 1; j < s.lines.size() && s.continued[j]; j++) out += s.lines[j];
-        if (first_line) *first_line = (int64_t)i + 1;
+    // a lambda: from its line to the end of that logical line, as inspect's BlockFinder ends a lambda at
+    // the first NEWLINE token (a bracket closed that the line did not open ends it there too: the
+    // tokenizer's "unmatched" error, which getblock takes for a NEWLINE)
+    if (o.is_ref() && o.ref()->type == T_function && static_cast<FuncObj*>(o.ref())->name == "<lambda>") {
+        int lam = static_cast<FuncObj*>(o.ref())->firstlineno;
+        if (lam <= 0 || (size_t)lam > s.lines.size()) raise(E_OSError, "could not find class or function definition");
+        size_t end = s.lines.size();
+        int depth = 0;
+        char q = 0;
+        bool triple = false;
+        for (size_t j = (size_t)lam - 1; j < s.lines.size() && end == s.lines.size(); j++) {
+            const std::string& ln = s.lines[j];
+            bool closed_unopened = false;
+            for (size_t i = 0; i < ln.size(); i++) {
+                char c = ln[i];
+                if (q) {
+                    if (c == '\\') { i++; continue; }
+                    if (triple) {
+                        if (c == q && ln.compare(i, 3, std::string(3, q)) == 0) { q = 0; triple = false; i += 2; }
+                    } else if (c == q || c == '\n') q = 0;
+                    continue;
+                }
+                if (c == '#') break;
+                if (c == '"' || c == '\'') {
+                    if (ln.compare(i, 3, std::string(3, c)) == 0) { q = c; triple = true; i += 2; }
+                    else q = c;
+                    continue;
+                }
+                if (c == '(' || c == '[' || c == '{') depth++;
+                else if (c == ')' || c == ']' || c == '}') {
+                    if (depth == 0) { closed_unopened = true; break; }
+                    depth--;
+                }
+            }
+            size_t k = ln.find_last_not_of("\r\n");
+            bool backslash = k != std::string::npos && ln[k] == '\\' && !q;
+            if (closed_unopened || (depth == 0 && !(q && triple) && !backslash)) end = j + 1;
+        }
+        std::string out;
+        for (size_t i = (size_t)lam - 1; i < end; i++) out += s.lines[i];
+        if (first_line) *first_line = lam;
         return new_str(out);
     }
     size_t lo = 0, hi = s.lines.size(), indent = 0;

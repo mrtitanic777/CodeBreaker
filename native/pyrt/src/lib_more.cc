@@ -568,16 +568,25 @@ static void init_contextlib(const var& m) {
         }
         raise(E_RuntimeError, "generator didn't stop after throw()");
     });
-    add_method(T_gcm, "__call__", [](const CallArgs& a) {
+    // contextlib's functions are Python functions (*args, **kwds), each @wraps(func): they carry the
+    // function's names, module, __dict__ and __wrapped__ (inspect.getsource of one finds the function)
+    auto spread = [](const var& args, const var& kwds) {
+        CallArgs c;
+        c.pos = collect(args);
+        if (!kwds.is_none()) for (var k : each(kwds)) c.kw.push_back({k, kwds.getitem(k)});
+        return c;
+    };
+    add_method(T_gcm, "__call__", [spread](const CallArgs& a) {
         // used as a decorator: a fresh manager around each call
         var factory = a.pos[0].getattr("factory"), fargs = a.pos[0].getattr("fargs");
+        var fkwds = getattr(a.pos[0], "fkwds"_s, None);
         var f = a.pos.at(1);
-        return nat("inner", [factory, fargs, f](const CallArgs& c) {
-            var cm = call_obj(factory, [&] { CallArgs b; b.pos = collect(fargs); return b; }());
+        var inner = def("inner", "*args, **kwds", {}, [spread, factory, fargs, fkwds, f](var args, var kwds) {
+            var cm = call_obj(factory, spread(fargs, fkwds));
             var v = cm.call("__enter__");
             (void)v;
             try {
-                var r = call_obj(f, c);
+                var r = call_obj(f, spread(args, kwds));
                 cm.call("__exit__", None, None, None);
                 return r;
             } catch (error& e) {
@@ -585,28 +594,21 @@ static void init_contextlib(const var& m) {
                 return var(None);
             }
         });
+        return call2(import("functools").getattr("update_wrapper"), inner, f);
     });
-    mod_def(m, "contextmanager", [](const CallArgs& a) {
+    mod_def(m, "contextmanager", [spread](const CallArgs& a) {
         var f = a.pos.at(0);
-        var w = nat("helper", [f](const CallArgs& c) {
+        var w = def("helper", "*args, **kwds", {}, [spread, f](var args, var kwds) {
             auto* o = new DataObj();
             o->type = T_gcm;
             var cm(static_cast<Obj*>(o));
-            cm.setattr("gen", call_obj(f, c));
+            cm.setattr("gen", call_obj(f, spread(args, kwds)));
             cm.setattr("factory", f);
-            cm.setattr("fargs", new_tuple(c.pos));
+            cm.setattr("fargs", args);
+            cm.setattr("fkwds", kwds);
             return cm;
         });
-        // @wraps(func), as contextlib's: inspect.getsource(helper) reads func's source through __wrapped__
-        for (const char* at : {"__module__", "__name__", "__qualname__", "__doc__"}) {
-            try { w.setattr(at, f.getattr(at)); } catch (error&) {}
-        }
-        try {
-            var d = f.getattr("__dict__");
-            for (var k : each(d)) w.setattr(str_utf8(k).c_str(), d.getitem(k));
-        } catch (error&) {}
-        try { w.setattr("__wrapped__", f); } catch (error&) {}
-        return w;
+        return call2(import("functools").getattr("update_wrapper"), w, f);
     });
     mod_set(m, "closing", mkcls("closing", {}, {
         {"__init__", def("__init__", "self, thing", {}, [](var self, var thing) { self.setattr("thing", thing); return var(None); })},
@@ -803,6 +805,32 @@ static void init_threading(const var& m) {
         return var(true);
     }));
     mod_set(m, "Event", make_class("Event", "Event", {}, ens, {}, "threading"));
+    // Timer: CPython's -- a thread that waits `interval` on an Event and calls function unless cancelled
+    var tmns = new_dict();
+    tmns.setitem("__init__"_s, def("__init__", "self, interval, function, args=, kwargs=", {None, None}, [thread](var self, var interval, var function, var args, var kwargs) {
+        call1(thread.getattr("__init__"), self);
+        self.setattr("interval", interval);
+        self.setattr("function", function);
+        self.setattr("args", args.is_none() ? new_list() : args);
+        self.setattr("kwargs", kwargs.is_none() ? new_dict() : kwargs);
+        self.setattr("finished", call0(import("threading").getattr("Event")));
+        return var(None);
+    }));
+    tmns.setitem("cancel"_s, def("cancel", "self", {}, [](var self) { self.getattr("finished").call("set"); return var(None); }));
+    tmns.setitem("run"_s, def("run", "self", {}, [](var self) {
+        var fin = self.getattr("finished");
+        fin.call("wait", self.getattr("interval"));
+        if (!fin.call("is_set").truthy()) {
+            CallArgs b;
+            b.pos = collect(self.getattr("args"));
+            var kw = self.getattr("kwargs");
+            for (var k : each(kw)) b.kw.push_back({k, kw.getitem(k)});
+            call_obj(self.getattr("function"), b);
+        }
+        fin.call("set");
+        return var(None);
+    }));
+    mod_set(m, "Timer", make_class("Timer", "Timer", {thread}, tmns, {}, "threading"));
     // Condition: CPython's algorithm (a waiter token per wait, notify sets n of them), waiting as Event does
     var cns = new_dict();
     cns.setitem("__init__"_s, def("__init__", "self, lock=", {None}, [](var self, var lock) {

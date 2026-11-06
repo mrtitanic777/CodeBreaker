@@ -1221,6 +1221,10 @@ void init_modules() {
             for (const char* at : {"__module__", "__name__", "__qualname__", "__doc__"}) {
                 try { w.setattr(at, wrapped.getattr(at)); } catch (error&) {}
             }
+            try {                                            // (WRAPPER_UPDATES: the wrapped's __dict__)
+                var d = wrapped.getattr("__dict__");
+                for (var k : each(d)) w.setattr(str_utf8(k).c_str(), d.getitem(k));
+            } catch (error&) {}
             try { w.setattr("__wrapped__", wrapped); } catch (error&) {}
             return w;
         });

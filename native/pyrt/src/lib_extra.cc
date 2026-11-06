@@ -953,6 +953,7 @@ var exec_source_(const var& src, const var& globals, const var& locals); // lib_
 var compile_source_(const CallArgs& a);                                  // lib_ast.cc
 var run_module_(const std::string& name, const std::string& run_name);  // module.cc
 const char* module_for_file_(const std::string& path);                  // module.cc
+void exec_module_source_(const var& globals, const std::string& file);   // lib_ast.cc
 
 void init_extra_modules() {
     make_memoryview();
@@ -977,8 +978,20 @@ void init_extra_modules() {
         });
         mod_def(m, "run_path", [](const CallArgs& a) -> var {
             const char* mn = module_for_file_(fs_path(a.pos.at(0)));
-            if (!mn) raise(E_NotImplementedError, "runpy.run_path: " + fs_path(a.pos[0]) + " is not a module of this program");
             var run_name = kwarg(a, "run_name", var("<run_path>"_s));
+            if (!mn) {                            // a file the program does not have: from its source
+                var g = new_dict();
+                var init = kwarg(a, "init_globals", a.pos.size() > 1 ? a.pos[1] : var(None));
+                if (!init.is_none()) g.call("update", init);
+                g.setitem("__name__"_s, run_name);
+                g.setitem("__file__"_s, new_str(fs_path(a.pos[0])));
+                g.setitem("__doc__"_s, None);
+                g.setitem("__package__"_s, ""_s);
+                g.setitem("__loader__"_s, None);
+                g.setitem("__spec__"_s, None);
+                exec_module_source_(g, fs_path(a.pos[0]));
+                return g;
+            }
             return run_module_(mn, str_utf8(run_name));
         });
     });
