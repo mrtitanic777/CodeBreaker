@@ -317,7 +317,8 @@ def main(argv):
     finally:
         svc.done.set()
         service.JOBS.stop_all()                          # (its own processes only)
-        svc.server.server_close()
+        # the record goes before the socket closes: a client that finds the port gone then finds no record
+        # (closed first, a client's next look at the record could come before it was taken away)
         try:
             with open(record, encoding="utf-8") as f:
                 mine = json.load(f).get("pid") == os.getpid()
@@ -329,5 +330,6 @@ def main(argv):
                     os.remove(os.path.join(where, name))
                 except OSError:
                     pass
+        svc.server.server_close()
         log("exited: %s" % (svc.why or "stopped"))
     return 0
