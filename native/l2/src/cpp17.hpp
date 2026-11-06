@@ -46,6 +46,9 @@ struct Decline : std::runtime_error {
 
 // ---------------------------------------------------------------------------------------------- entry points
 V write_unit(const V& unit_doc, const std::string& api_root);
+// the C++ name write_unit gives a Python name (a function, a part of a module's name): a keyword or a C
+// runtime macro gets "_" (pyengine --dyn-typed calls the typed functions by it)
+std::string cpp_name(const std::string& python_name);
 std::string program(const V& unit_docs, const V& main);
 
 // The source language's rules for a unit's language: 'python' or 'java' (a unit without one is Java's,

@@ -29,6 +29,7 @@
 
 #include "astutil.hpp"
 #include "pyfront/pyfront.hpp"
+#include "islands.hpp"
 #include "scopes.hpp"
 
 namespace pyengine {
@@ -200,6 +201,11 @@ public:
         starts_ = line_starts(src);
     }
     std::string run();
+    // --dyn-typed: the typed islands to write (log: qualname -> "" written, or why this module's def could not be)
+    void use_islands(const IslandSet* s, std::map<std::string, std::string>* log) {
+        islands_ = s;
+        island_log_ = log;
+    }
 
 private:
     const ModSpec& m_;
@@ -216,6 +222,9 @@ private:
     std::map<std::string, const FunctionDef*> module_defs_;
     std::set<std::pair<const Scope*, std::string>> cells_;
     std::set<std::string> used_fn_names_;
+    const IslandSet* islands_ = nullptr;
+    std::map<std::string, std::string>* island_log_ = nullptr;
+    bool wrote_island_ = false;
 
     // the function being written
     struct Fn {
@@ -1274,6 +1283,12 @@ private:
             pre = "py::doc_(" + pre;
             post += ", " + cstr(fdoc) + ")";
         }
+        if (inner.file_scope && !method && !gen && !is_async && islands_) {
+            if (const Island* is = island_for(f, qualname)) {
+                write_island(*is, f, s, cpp_name, params, head, body);
+                return pre + maker + "(" + cstr(f->name) + ", " + cstr(sig) + ", {" + defaults + "}, " + cpp_name + tail + post;
+            }
+        }
         if (inner.file_scope) {
             protos_ += "static " + head + ";\n";
             std::string comment = "// " + src_line(f) + "\n";
@@ -1284,6 +1299,93 @@ private:
         std::string caps = captures(s);
         return pre + maker + "(" + cstr(f->name) + ", " + cstr(sig) + ", {" + defaults + "}, [" + caps + "](" + yparam + params + ") -> py::var {\n" +
                body + ind + "}" + tail + post;
+    }
+
+    // ---------------------------------------------------------------- typed islands (--dyn-typed)
+    // A module function the typed path proved (islands.hpp) is written twice: its dynamic body as usual under
+    // another name, and under its own name a wrapper with the same signature that checks and unboxes the
+    // arguments, calls the typed body (islands.cpp, through native/pyengine/islands/pyisl.hpp) and boxes the
+    // result -- or calls the dynamic body for any other argument and whenever the typed body raises.
+    const Island* island_for(const FunctionDef* f, const std::string& qualname) {
+        if (qualname != f->name) return nullptr;
+        std::string q = m_.name + "." + f->name;
+        auto it = islands_->emit.find(q);
+        if (it == islands_->emit.end()) return nullptr;
+        const Island& is = it->second;
+        auto no = [&](const std::string& why) -> const Island* {
+            (*island_log_)[q] = why;
+            return nullptr;
+        };
+        if (!def_only_.count(f->name)) return no("the module binds " + f->name + " more than once");
+        const arguments* a = f->args;
+        if (a->vararg || a->kwarg || !a->kwonlyargs.empty()) return no("*args, **kwargs or keyword-only parameters");
+        std::vector<std::string> names;
+        for (auto* p : a->posonlyargs) names.push_back(p->arg);
+        for (auto* p : a->args) names.push_back(p->arg);
+        if (names.size() != is.params.size()) return no("the typed signature has " + std::to_string(is.params.size()) + " parameters");
+        for (size_t i = 0; i < names.size(); i++)
+            if (names[i] != is.params[i].name) return no("parameter " + names[i] + " is " + is.params[i].name + " in the typed signature");
+        return &is;
+    }
+    static std::string int_bound(int64_t v) {
+        if (v == INT64_MIN) return "INT64_MIN";
+        if (v == INT64_MAX) return "INT64_MAX";
+        return std::to_string(v) + "LL";
+    }
+    void write_island(const Island& is, const FunctionDef* f, const Scope* s, const std::string& cpp_name, const std::string& params,
+                      const std::string& head, const std::string& body) {
+        std::string dyn_name = unique_fn(cpp_name + "_dyn");
+        std::string dyn_head = "py::var " + dyn_name + "(" + params + ")";
+        std::string comment = "// " + src_line(f) + "\n";
+        protos_ += "static " + dyn_head + ";\n";
+        protos_ += "static " + head + ";\n";
+        funcs_ += comment + "static " + dyn_head + " {\n" + body + "}\n\n";
+        // the wrapper
+        std::string decls, checks, args, fwd;
+        std::vector<std::string> pnames;
+        for (auto* p : f->args->posonlyargs) pnames.push_back(p->arg);
+        for (auto* p : f->args->args) pnames.push_back(p->arg);
+        for (size_t i = 0; i < is.params.size(); i++) {
+            const IslandParam& p = is.params[i];
+            std::string v = ident(pnames[i]) + (is_cell(s, pnames[i]) ? "_in" : "");
+            std::string u = "isl_" + ident(pnames[i]);
+            fwd += (fwd.empty() ? "" : ", ") + v;
+            std::string c;
+            if (p.kind == "int") {
+                decls += "    int64_t " + u + ";\n";
+                c = "pyisl::int_in(" + v + ", " + int_bound(p.lo) + ", " + int_bound(p.hi) + ", " + u + ")";
+                args += u;
+            } else if (p.kind == "bool") {
+                decls += "    bool " + u + ";\n";
+                c = "pyisl::boolean(" + v + ", " + u + ")";
+                args += u;
+            } else if (p.kind == "float") {
+                decls += "    double " + u + ";\n";
+                c = "pyisl::real(" + v + ", " + u + ")";
+                args += u;
+            } else if (p.kind == "str" || p.kind == "bytes") {
+                decls += "    const std::string* " + u + ";\n";
+                c = "(" + u + " = pyisl::" + p.kind + "_arg(" + v + "))";
+                args += "*" + u;
+            } else {
+                decls += "    pyisl::val " + u + ";\n";
+                c = "pyisl::value(" + v + ", " + cstr(p.spec) + ", " + u + ")";
+                args += u;
+            }
+            checks += " && " + c;
+            args += ", ";
+        }
+        std::string o = "// typed island: " + is.qual + " runs as the typed path's C++ (islands.cpp) when its arguments are the\n"
+                        "// values the proof took; anything else, or an exception, runs the dynamic body above\n";
+        o += "static " + head + " {\n" + decls;
+        o += "    if (pyisl::on()" + checks + ") {\n";
+        o += "        pyisl::val isl_result;\n";
+        o += "        if (pyisl::island::" + is.ns + "::" + is.cpp + "(" + args + "isl_result)) return pyisl::box(isl_result);\n";
+        o += "    }\n";
+        o += "    return " + dyn_name + "(" + fwd + ");\n}\n\n";
+        funcs_ += o;
+        (*island_log_)[is.qual] = "";
+        wrote_island_ = true;
     }
 
     std::string decorate(const std::vector<Expr*>& decos, const std::string& v) {
@@ -1989,7 +2091,9 @@ std::string Emitter::run() {
     std::string o;
     o += "// " + m_.name + " -- " + fs::path(m_.file).filename().string() + " translated by pyengine --dynamic (C++ over py::var, native/pyrt).\n";
     o += "// Each function keeps its Python name; the module's statements are py_init_ at the end.\n";
-    o += "#include \"py_object.hpp\"\n\n";
+    o += "#include \"py_object.hpp\"\n";
+    if (wrote_island_) o += "#include \"pyisl.hpp\"     // the typed islands' boundary (--dyn-typed)\n#include \"islands.hpp\"\n";
+    o += "\n";
     o += "namespace " + ns + " {\n\n";
     o += "static void py_init_();\n";
     o += "static py::module_def py_module_(" + cstr(m_.name) + ", py_init_, " + (m_.package ? "true" : "false") + ", " +
@@ -2149,6 +2253,17 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             }
     }
     fs::create_directories(o.out);
+    // --dyn-typed: the typed path's proven functions, as typed islands (islands.hpp)
+    IslandSet islands;
+    std::map<std::string, std::string> island_log;
+    bool islands_on = !o.typed_dir.empty();
+    if (islands_on) {
+        std::string err;
+        if (!load_islands(o.typed_dir, o.islands_file, islands, err)) {
+            fprintf(stderr, "--dyn-typed: %s\n", err.c_str());
+            return 1;
+        }
+    }
     std::string cmake_srcs;
     for (auto& m : todo) {
         DynModule res;
@@ -2164,6 +2279,7 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             continue;
         }
         Emitter em(m, src, *r.module, res);
+        if (islands_on) em.use_islands(&islands, &island_log);
         std::string cpp = em.run();
         std::string rel = m.name;
         std::replace(rel.begin(), rel.end(), '.', '/');
@@ -2194,6 +2310,44 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
                      "target_precompile_headers(" + o.exe + " PRIVATE <py_object.hpp>)\n"
                      "if(PYDYN_UNITY)\n  set_target_properties(" + o.exe + " PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${PYDYN_BATCH})\nendif()\n"
                      "if(MSVC)\n  target_link_options(" + o.exe + " PRIVATE /STACK:268435456)\nendif()\n";
+    if (islands_on) {
+        // only the islands a module's def was written as (a module not in this program, or a def of another shape, is not one)
+        for (auto it = islands.emit.begin(); it != islands.emit.end();) {
+            auto lg = island_log.find(it->first);
+            if (lg != island_log.end() && lg->second.empty()) { ++it; continue; }
+            islands.not_islands[it->first] = lg == island_log.end() ? "its module is not in this program" : "the dynamic def: " + lg->second;
+            it = islands.emit.erase(it);
+        }
+        fs::path td = fs::path(o.out) / "_typed";
+        write_if_changed(td / "islands.hpp", islands_header(islands));
+        write_if_changed(td / "islands.cpp", islands_glue(islands));
+        write_if_changed(fs::path(o.out) / "islands.json", islands_report(islands));
+        write_if_changed(fs::path(o.out) / "islands.funcs", islands_funcs(islands));
+        auto native = [&](const char* rel) { return fs::absolute(fs::path(o.root) / rel).lexically_normal().generic_string(); };
+        std::string typed_cpp = (fs::path(islands.typed_dir) / "cpp").generic_string();
+        std::set<std::string> typed_mods;
+        for (auto& [q, is] : islands.emit) typed_mods.insert(is.modules.begin(), is.modules.end());
+        std::string typed_srcs;
+        for (auto& m : typed_mods) {
+            std::string rel = m;
+            std::replace(rel.begin(), rel.end(), '.', '/');
+            typed_srcs += "  " + typed_cpp + "/" + rel + ".cpp\n";
+        }
+        cm += "# typed islands (pyengine --dyn-typed): the typed path's C++ (l2cpp17 over py.hpp) of the modules the islands\n"
+              "# reach, in a library of its own, its namespace py renamed pyt (the dynamic runtime's is py); _typed/islands.cpp\n"
+              "# is the boundary the wrappers in the modules call (native/pyengine/islands)\n"
+              "add_library(pyisl_typed STATIC\n" + typed_srcs + "  _typed/islands.cpp)\n"
+              "set_target_properties(pyisl_typed PROPERTIES CXX_STANDARD 17)\n"
+              "target_compile_definitions(pyisl_typed PRIVATE py=pyt)\n"
+              "target_include_directories(pyisl_typed PRIVATE " + typed_cpp + " " + native("native/ported/include") + " " + native("native/l2/src") +
+              " " + native("native/pyengine/islands") + " ${CMAKE_CURRENT_SOURCE_DIR}/_typed)\n"
+              "target_precompile_headers(pyisl_typed PRIVATE <py.hpp>)\n"
+              "if(PYDYN_UNITY)\n  set_target_properties(pyisl_typed PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${PYDYN_BATCH})\nendif()\n"
+              "target_include_directories(" + o.exe + " PRIVATE " + native("native/pyengine/islands") + " ${CMAKE_CURRENT_SOURCE_DIR}/_typed)\n"
+              "target_link_libraries(" + o.exe + " PRIVATE pyisl_typed)\n";
+        fprintf(stderr, "typed islands: %zu written, %zu held back by the judge's verdicts, %zu translated functions not islands\n",
+                islands.emit.size(), islands.held.size(), islands.not_islands.size());
+    }
     write_if_changed(fs::path(o.out) / "CMakeLists.txt", cm);
     std::string j = "{\n";
     for (size_t i = 0; i < out.size(); i++) {

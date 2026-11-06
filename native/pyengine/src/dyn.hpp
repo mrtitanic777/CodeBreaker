@@ -26,6 +26,9 @@ struct DynOptions {
     std::string exe = "program";         // the executable's name
     std::string stdlib_dir;              // CPython's Lib folder: the modules native/pyrt/stdlib.txt names are translated from it
     std::string site_dir;                // site-packages: the outside packages native/pyrt/site.txt names (unicorn, capstone)
+    std::string typed_dir;               // --dyn-typed DIR: the typed path's output (--out DIR --cpp DIR/cpp); its proven
+                                         // functions are typed islands (islands.hpp). Empty: none (the output is unchanged)
+    std::string islands_file;            // --dyn-islands FILE: the judge's verdicts; only the islands it agreed are written
 };
 
 struct DynRefusal {
