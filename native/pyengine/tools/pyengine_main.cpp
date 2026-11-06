@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
             else if (a == "--dyn-files" && i + 1 < argc) files.push_back(argv[++i]);
             else if (a == "--dyn-typed" && i + 1 < argc) d.typed_dir = argv[++i];
             else if (a == "--dyn-islands" && i + 1 < argc) d.islands_file = argv[++i];
+            else if (a == "--dyn-native" && i + 1 < argc) d.native_dir = argv[++i];
             else d.modules.push_back(a);
         }
         // --dyn-files DIR: every .py file under DIR, each named as pytest names a test file: its path from the

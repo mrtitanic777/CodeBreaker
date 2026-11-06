@@ -2563,6 +2563,13 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             if (!batches.count(e.path().stem().string())) fs::remove(e.path());
     write_if_changed(fs::path(o.out) / "unity.txt", record);
     std::string cmake_srcs = "  ${PYDYN_SRCS}\n";
+    if (!o.native_dir.empty()) {   // --dyn-native: the program's own C++, compiled as it is (with inlining)
+        std::vector<std::string> own;
+        for (auto& e : fs::directory_iterator(fs::absolute(o.native_dir)))
+            if (e.path().extension() == ".cc") own.push_back(e.path().lexically_normal().generic_string());
+        std::sort(own.begin(), own.end());
+        for (auto& f : own) cmake_srcs += "  " + f + "\n";
+    }
     if (!o.main_module.empty()) {
         std::string main = "// the program: python -m " + o.main_module + ", translated (pyengine --dynamic)\n#include \"py_object.hpp\"\n\n"
                            "int main(int argc, char** argv) { return py::run_main(" + cstr(o.main_module) + ", argc, argv); }\n";

@@ -60,6 +60,12 @@ python -m codebreaker               with no command, in a terminal: the terminal
                                     replace an asset, textures as PNG
     gfx <cmd> <file> ...            Scaleform GFx menus: movies, images, fonts, placements; a font as TTF
     xex-imports <module.xex>        its imports: library, ordinal, name, function or variable, slot, thunk
+    xbox-disc files|read|unpack <image> ...   an Xbox 360 disc image's files: listed, one read, all unpacked
+    xex-basic <file.xex> <out.xex>  the unencrypted, basic-compressed form XenonRecomp reads
+    xenon-config <basic.xex> <out.toml>   a module's XenonRecomp configuration (--out-dir, --switch-tables,
+                                    --file-path)
+    switch-tables <basic.xex> <out.toml>  its switch tables (switches.py's, with XenonAnalyse's)
+    corpus-executables              every corpus executable: its format, a tab, its path
     xex-edit <op> <file.xex> ...     change its privilege flags, or its code at an address (nop, bytes, asm, hook)
     ppc-calls <.xex or image> [-o F] what its calls show: argument counts, registers kept, variadic functions
     xna <package, folder or .exe> [--name N]   an XNA game: C# of its assemblies (ILSpy) and its content as PNG/JSON
@@ -164,6 +170,12 @@ COMMANDS = {
     "crypto": ("codebreaker.formats.xbox.crypto", []),
     "java": ("codebreaker.java.run", []),
     "xna": ("codebreaker.xna.run", []),
+    # C++ (native/cbexe/commands.cc, in codebreaker.exe)
+    "xbox-disc": ("codebreaker_native", ["xbox-disc"]),
+    "xex-basic": ("codebreaker_native", ["xex-basic"]),
+    "xenon-config": ("codebreaker_native", ["xenon-config"]),
+    "switch-tables": ("codebreaker_native", ["switch-tables"]),
+    "corpus-executables": ("codebreaker_native", ["corpus-executables"]),
 }
 
 

@@ -29,6 +29,8 @@ struct DynOptions {
     std::string typed_dir;               // --dyn-typed DIR: the typed path's output (--out DIR --cpp DIR/cpp); its proven
                                          // functions are typed islands (islands.hpp). Empty: none (the output is unchanged)
     std::string islands_file;            // --dyn-islands FILE: the judge's verdicts; only the islands it agreed are written
+    std::string native_dir;              // --dyn-native DIR: the program's own C++ (DIR/*.cc, compiled into the executable:
+                                         // its modules registered with py_native.hpp's register_native_module)
 };
 
 struct DynRefusal {
