@@ -7,6 +7,7 @@ __future__
 argparse
 _colorize
 difflib
+timeit
 random
 datetime
 _pydatetime

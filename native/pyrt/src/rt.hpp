@@ -113,6 +113,7 @@ struct FuncObj : Obj {
     int npos = 0;                         // PosOnly + Normal
     int varargs = -1, varkw = -1;
     var doc, annotations, wrapped, dict_extra;
+    int firstlineno = 0;                  // a lambda's line in its file (co_firstlineno; inspect.getsource finds it by it)
 };
 struct NativeObj : Obj { std::string name; native_fn fn; var self; };   // a builtin (bound to self when set)
 struct MethodObj : Obj { var func, self; };

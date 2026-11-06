@@ -202,6 +202,8 @@ static CsvDialect dialect_of(const CallArgs& a, size_t pos) {
     return d;
 }
 struct CsvWriter : DataObj { var file; CsvDialect d; };
+// a reader: an iterator with line_num (source lines read so far, as _csv.c counts them) and dialect
+struct CsvReader : DataObj { var rows; std::shared_ptr<int64_t> line_num = std::make_shared<int64_t>(0); var dialect; };
 static std::string csv_field(const CsvDialect& d, const var& f) {
     bool is_num = is_int(f) || f.is_float();
     if (f.is_none() && d.quoting != 5) return "";
@@ -276,10 +278,20 @@ static void init_csv_c(const var& m) {
         return var(static_cast<Obj*>(w));
     });
     // reader: rows of a line iterator, quoted fields across lines, as _csv.c's state machine
+    static TypeObj* T_r = new_type("reader", {}, Layout::NativeData, true, "_csv");
+    add_method(T_r, "__iter__", [](const CallArgs& a) { return a.pos[0]; });
+    add_method(T_r, "__next__", [](const CallArgs& a) { return next(static_cast<CsvReader*>(a.pos[0].ref())->rows); });
+    add_getter(T_r, "line_num", [](const var& self) { return var(*static_cast<CsvReader*>(self.ref())->line_num); });
+    add_getter(T_r, "dialect", [](const var& self) { return static_cast<CsvReader*>(self.ref())->dialect; });
     mod_def(m, "reader", [](const CallArgs& a) {
         var lines = iter(a.pos.at(0));
         CsvDialect d = dialect_of(a, 1);
-        return new_iter([lines, d](var& out) mutable -> bool {
+        auto* r = new CsvReader();
+        r->type = T_r;
+        r->dialect = a.pos.size() > 1 ? a.pos[1] : kwarg(a, "dialect", None);
+        auto count = r->line_num;
+        var self(static_cast<Obj*>(r));
+        r->rows = new_iter([lines, d, count](var& out) mutable -> bool {
             std::vector<var> row;
             std::string field;
             bool in_q = false, any = false, was_q = false;
@@ -292,6 +304,7 @@ static void init_csv_c(const var& m) {
                     break;
                 }
                 any = true;
+                ++*count;
                 std::string s = str_utf8(ln);
                 size_t i = 0;
                 bool done = false;
@@ -325,6 +338,7 @@ static void init_csv_c(const var& m) {
             out = new_list(row);
             return true;
         });
+        return self;
     });
 }
 

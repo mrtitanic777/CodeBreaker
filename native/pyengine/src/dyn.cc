@@ -54,6 +54,8 @@ static const std::set<std::string>& cpp_reserved() {
         "environ", "unix", "linux", "_WIN32", "BUFSIZ", "FILENAME_MAX", "CHAR_BIT", "INT_MAX", "INT_MIN", "SIZE_MAX", "EXIT_SUCCESS",
         "EXIT_FAILURE", "RAND_MAX", "MAX_PATH", "INFINITY", "NAN", "HUGE_VAL", "signbit", "isnan", "isinf", "isfinite",
         "fpclassify", "setjmp", "longjmp", "y", "py_module_", "py_init_",
+        // <ctype.h> macros in MSVC (isascii is __isascii ...)
+        "isascii", "toascii", "iscsym", "iscsymf",
         // MSVC's own keywords and their old spellings (cdecl, _asm ...: synonyms of __cdecl, __asm unless /Za)
         "cdecl", "_cdecl", "_asm", "_fastcall", "_stdcall", "_thiscall", "_vectorcall", "_inline", "_forceinline", "_based",
         "_declspec", "_except", "_finally", "_try", "_leave", "_int8", "_int16", "_int32", "_int64", "_alignof", "_uuidof",
@@ -1033,7 +1035,7 @@ private:
         std::string body = free_decls(s) + param_cells(s, l->args) + "return " + expr(l->body) + ";";
         fn_ = outer;
         std::string lq = (outer && !outer->qual.empty() ? outer->qual + ".<locals>." : std::string()) + "<lambda>";
-        return "py::def(\"<lambda>\", " + cstr(sig) + ", {" + defaults + "}, [" + captures(s) + "](" + params + ") -> py::var { " + body + " }, " + cstr(lq) + ", " + cstr(m_.name) + ")";
+        return "py::at_line_(py::def(\"<lambda>\", " + cstr(sig) + ", {" + defaults + "}, [" + captures(s) + "](" + params + ") -> py::var { " + body + " }, " + cstr(lq) + ", " + cstr(m_.name) + "), " + std::to_string(l->pos.lineno) + ")";
     }
 
     std::string expr(const Expr* e) {

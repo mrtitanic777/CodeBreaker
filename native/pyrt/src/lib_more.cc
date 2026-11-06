@@ -597,7 +597,15 @@ static void init_contextlib(const var& m) {
             cm.setattr("fargs", new_tuple(c.pos));
             return cm;
         });
-        try { w.setattr("__name__", f.getattr("__name__")); } catch (error&) {}
+        // @wraps(func), as contextlib's: inspect.getsource(helper) reads func's source through __wrapped__
+        for (const char* at : {"__module__", "__name__", "__qualname__", "__doc__"}) {
+            try { w.setattr(at, f.getattr(at)); } catch (error&) {}
+        }
+        try {
+            var d = f.getattr("__dict__");
+            for (var k : each(d)) w.setattr(str_utf8(k).c_str(), d.getitem(k));
+        } catch (error&) {}
+        try { w.setattr("__wrapped__", f); } catch (error&) {}
         return w;
     });
     mod_set(m, "closing", mkcls("closing", {}, {

@@ -21,6 +21,11 @@ var annotate_(const var& f, std::initializer_list<const char*> name_text) {
     return f;
 }
 
+var at_line_(const var& f, int line) {
+    if (f.is_ref() && f.ref()->type == T_function) static_cast<FuncObj*>(f.ref())->firstlineno = line;
+    return f;
+}
+
 var doc_(const var& f, const char* doc) {
     if (f.is_ref() && f.ref()->type == T_function) static_cast<FuncObj*>(f.ref())->doc = new_str(doc);
     return f;
@@ -50,7 +55,7 @@ var code_of_(const var& fv) {
         if (is_str(fl)) file = str_utf8(fl);
     }
     c.setattr("co_filename", new_str(file));
-    c.setattr("co_firstlineno", var(0));
+    c.setattr("co_firstlineno", var((int64_t)f->firstlineno));
     int64_t flags = 0x1 | 0x2;   // CO_OPTIMIZED | CO_NEWLOCALS
     if (f->varargs >= 0) flags |= 0x4;
     if (f->varkw >= 0) flags |= 0x8;
