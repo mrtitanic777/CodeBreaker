@@ -11,6 +11,7 @@ var set_asyncgen_hooks_(const CallArgs& a);   // gen.cc
 var get_asyncgen_hooks_();                    // gen.cc
 void init_net_modules();                      // lib_net.cc
 void init_mcp();                              // lib_mcp.cc
+void init_tui();                              // lib_tui.cc, lib_rich.cc
 
 var annotate_(const var& f, std::initializer_list<const char*> name_text) {
     if (!f.is_ref() || f.ref()->type != T_function) return f;
@@ -194,6 +195,7 @@ void init_async_modules() {
     });
     init_net_modules();
     init_mcp();
+    init_tui();
 }
 
 }  // namespace py

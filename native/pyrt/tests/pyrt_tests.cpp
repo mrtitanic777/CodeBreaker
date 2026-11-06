@@ -115,6 +115,17 @@ int main(int argc, char** argv) {
         } catch (py::error& e) {
             CHECK(py::str(e.value), "\"'missing'\"");
         }
+        // rich and textual's surface (lib_rich.cc, lib_tui.cc), as CPython's rich 14 / textual 8 answer
+        var Text = py::import("rich.text").attr("Text");
+        CHECK(Text("ab"_s).call("append", "c"_s, py::kw("style", "red"_s)).attr("plain"), "'abc'");
+        CHECK(Text.call("from_markup", "[b]x[/] \\[y]"_s).attr("plain"), "'x [y]'");
+        CHECK(py::len(Text.call("assemble", py::tuple({"ab"_s, "red"_s}), "cd"_s)), "4");
+        CHECK(var(Text().truthy()), "False");
+        var Matcher = py::import("textual.fuzzy").attr("Matcher");
+        CHECK(Matcher("lz"_s).call("match", "open lzexpand.dll"_s), "9.0");
+        CHECK(Matcher("vd"_s).call("match", "open version.dll"_s), "5.0");
+        CHECK(Matcher("jobs"_s).call("match", "jobs"_s), "20.0");
+        CHECK(Matcher("xyz"_s).call("match", "open version.dll"_s), "0.0");
     } catch (py::error& e) {
         std::printf("uncaught: %s\n", e.what());
         return 1;
