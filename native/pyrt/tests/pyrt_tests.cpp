@@ -75,6 +75,34 @@ int main(int argc, char** argv) {
         var a = A(var(21));
         CHECK(a.call("double"), "42");
         CHECK(py::isinstance(a, A), "True");
+        // a module the program does not have, from its source on sys.path: a package, a relative import
+        // in it, a submodule found by `from pkg import name`, runpy.run_path of a file
+        {
+            auto put = [](const char* path, const char* text) {
+                FILE* f = std::fopen(path, "wb");
+                std::fputs(text, f);
+                std::fclose(f);
+            };
+            os.call("makedirs", "srcmods\\srcpkg"_s, py::kw("exist_ok", true));
+            put("srcmods\\srcpkg\\__init__.py", "\"\"\"the package\"\"\"\nfrom .leaf import twice\nVALUE = twice(21)\n");
+            put("srcmods\\srcpkg\\leaf.py", "def twice(x):\n    return 2 * x\n");
+            put("srcmods\\srcpkg\\other.py", "NAME = __name__\n");
+            put("srcmods\\script.py", "import srcpkg\nfrom srcpkg import other\nRESULT = (srcpkg.VALUE, other.NAME, __name__)\n");
+            py::import("sys").attr("path").call("insert", var(0), "srcmods"_s);
+            var sp = py::import("srcpkg");
+            CHECK(sp.attr("VALUE"), "42");
+            CHECK(sp.attr("__doc__"), "'the package'");
+            CHECK(sp.attr("leaf").attr("twice")(var(5)), "10");
+            var g = py::import("runpy").call("run_path", "srcmods\\script.py"_s, py::kw("run_name", "__run__"_s));
+            CHECK(g["RESULT"_s], "(42, 'srcpkg.other', '__run__')");
+            py::import("shutil").call("rmtree", "srcmods"_s);
+        }
+        // contextlib.contextmanager is @wraps(func): the function's name and __wrapped__ on the helper
+        {
+            var fn = py::def("opened", "path", {}, [](var p) { return p; }, "opened", "mymod");
+            var cm = py::import("contextlib").call("contextmanager", fn);
+            CHECK(py::tuple({cm.attr("__name__"), cm.attr("__module__"), var(py::is(cm.attr("__wrapped__"), fn))}), "('opened', 'mymod', True)");
+        }
         // exceptions
         try {
             py::list({}).call("pop");
