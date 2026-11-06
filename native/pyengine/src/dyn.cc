@@ -990,7 +990,7 @@ private:
         std::string body = free_decls(s) + comp_locals(AnyNode(e));
         body += comp_loops(g->generators, "y(" + expr(g->elt) + ");", "py_src");
         fn_ = outer;
-        return "py::def_generator(\"<genexpr>\", \"py_src\", {}, [" + caps + "](py::yielder& y, py::var py_src) -> py::var { " + body +
+        return "py::def_generator(\"<genexpr>\", \"py_src\", {}, [" + caps + "](py::yielder& y, py::var& py_src) -> py::var { " + body +
                " return py::None; })(" + first + ")";
     }
 
@@ -1186,6 +1186,12 @@ private:
             add_param(a->kwarg->arg);
         }
     }
+    // a generator body's parameter list: each one a reference to its slot in the generator object
+    static std::string generator_params(const std::string& params) {
+        std::string o = params;
+        for (size_t at = 0; (at = o.find("py::var ", at)) != std::string::npos; at += 9) o.replace(at, 8, "py::var& ");
+        return o;
+    }
     const Scope* cur_param_scope_ = nullptr;
     std::string param_suffix(const std::string& n) { return cur_param_scope_ && is_cell(cur_param_scope_, n) ? "_in" : ""; }
     std::string param_cells(const Scope* s, const arguments* a) {
@@ -1306,6 +1312,9 @@ private:
             } else inner.self_name = outer->self_name;
         }
         std::string yparam = gen ? std::string("py::yielder& y") + (params.empty() ? "" : ", ") : "";
+        // (a generator's parameters are its object's own slots, not copies on its fiber's stack: the cycle
+        // collector sees what they hold -- a generator method kept by its own self is a cycle it can free)
+        if (gen) params = generator_params(params);
         std::string head = "py::var " + std::string(cpp_name) + "(" + yparam + params + ")";
         fn_ = &inner;
         std::string body = function_body(f, s, gen, inner.file_scope ? "    " : ind + "    ");

@@ -428,7 +428,7 @@ static var dataclass_apply(const var& c, const var& opts) {
                     else continue;
                 }
                 Obj* p = self.ref();
-                if (!p->attrs) { var d2 = new_dict_obj(); p->attrs = d2.ref(); incref(p->attrs); }
+                if (!p->attrs) { var d2 = new_dict_obj(); p->attrs = d2.ref(); incref(p->attrs); track_instance_(p); }
                 static_cast<DictObj*>(p->attrs)->set(new_str(names[i]), vals[i]);
             }
             if (const var* post = type_of(self)->lookup("__post_init__")) call0(bind(*post, self, type_of(self)));

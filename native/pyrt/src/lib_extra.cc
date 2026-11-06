@@ -2,7 +2,7 @@
 // pyengine --dynamic (native/pyrt/stdlib.txt): gettext (no catalogues: messages as given), _random
 // (CPython's Mersenne Twister, so seeded sequences are CPython's), _operator, _csv, zlib's deflate (the
 // zlib 1.3.1 copy in native/decompiler), and the small modules the tree touches (msvcrt, faulthandler,
-// signal, weakref, locale, _winapi).
+// signal, locale, _winapi; weakref is gc.cc's).
 #include <conio.h>
 #include <io.h>
 #include <sys/locking.h>
@@ -610,21 +610,7 @@ static void init_signal(const var& m) {
         return s;
     });
 }
-static void init_weakref(const var& m) {
-    // references are strong here (the runtime counts references and has no cycle collector, so a weak
-    // reference could only differ by dying sooner): ref(x)() is x, the containers are their builtins
-    mod_def(m, "ref", [](const CallArgs& a) {
-        var x = a.pos.at(0);
-        return nat("weakref", [x](const CallArgs&) { return x; });
-    });
-    mod_def(m, "proxy", [](const CallArgs& a) { return a.pos.at(0); });
-    mod_set(m, "WeakValueDictionary", t::dict);
-    mod_set(m, "WeakKeyDictionary", t::dict);
-    mod_set(m, "WeakSet", t::set);
-    mod_set(m, "ReferenceType", t::function);
-    var fin = mkcls("finalize", {}, {}, "weakref");
-    mod_set(m, "finalize", fin);
-}
+void init_gc_modules();   // gc.cc: gc, weakref and _weakref
 static void init_locale(const var& m) {
     mod_set(m, "LC_ALL", var(0));
     mod_set(m, "LC_CTYPE", var(2));
@@ -1003,8 +989,7 @@ void init_extra_modules() {
     register_native_module("faulthandler", init_faulthandler);
     register_native_module("signal", init_signal);
     register_native_module("_signal", init_signal);
-    register_native_module("weakref", init_weakref);
-    register_native_module("_weakref", init_weakref);
+    init_gc_modules();
     register_native_module("locale", init_locale);
 }
 

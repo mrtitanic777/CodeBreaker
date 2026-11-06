@@ -349,6 +349,10 @@ const char* module_for_file_(const std::string& path) {
 extern std::vector<std::string> g_argv;
 int run_main(const char* module, int argc, char** argv) {
     init_runtime(argc, argv);
+    // (once the program is done, what static destruction frees runs no more Python: gc.cc)
+    struct exiting {
+        ~exiting() { runtime_exiting_(); }
+    } at_end;
     auto& r = reg();
     // the command line as python's: interpreter flags skipped (-u -B -I -E -s -S -O, -X opt, -W opt),
     // then `-m module args`, `script.py args`, or (none) the program's own main module

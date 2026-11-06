@@ -709,9 +709,11 @@ static void init_select_module(const var& m) {
             if (t < 0) raise(E_ValueError, "timeout must be non-negative");
         }
         if (socks[0].empty() && socks[1].empty() && socks[2].empty()) {   // (Winsock refuses three empty sets: wait the time out)
-            gil_release g;
-            Sleep(t < 0 ? INFINITE : (DWORD)(t * 1000));
-            return new_tuple({new_list({}), new_list({}), new_list({})});
+            {
+                gil_release g;
+                Sleep(t < 0 ? INFINITE : (DWORD)(t * 1000));
+            }
+            return new_tuple({new_list({}), new_list({}), new_list({})});   // (with the lock again: objects are made under it)
         }
         big_fd_set f[3];
         fd_set* fs[3];

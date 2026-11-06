@@ -348,6 +348,7 @@ std::string call_stack_() {
 }
 
 static var call_function(FuncObj* f, const var* self, const CallArgs& a) {
+    gc_safe_point();   // (a collection that is due runs here: what the caller holds is counted)
     size_t n = f->params.size();
     call_frame frame(f);
     if (trace().on && !f->generator && f->module.compare(0, trace().prefix.size(), trace().prefix) == 0 && trace().wants(f->module, f->qualname)) {
