@@ -378,6 +378,7 @@ template <class F> var def_generator(const char* name, const char* sig, std::vec
 // a def's annotations, as their source text: {"param", "text", ..., "return", "text"} (__annotations__)
 var annotate_(const var& f, std::initializer_list<const char*> name_text);
 var doc_(const var& f, const char* doc);         // a def's __doc__
+var at_line_(const var& f, int line);            // a lambda's first line (inspect.getsource finds it by its line)
 // async def: a coroutine function (kind 1) or an async generator function (kind 2); fn as def_generator's
 var mark_async_(const var& f, int kind);
 template <class F> var def_coroutine(const char* name, const char* sig, std::vector<var> defaults, F fn,

@@ -25,6 +25,11 @@ var doc_(const var& f, const char* doc) {
     return f;
 }
 
+var at_line_(const var& f, int line) {
+    if (f.is_ref() && f.ref()->type == T_function) static_cast<FuncObj*>(f.ref())->firstlineno = line;
+    return f;
+}
+
 // f.__code__: what code reads of a code object without running it -- co_name, co_qualname, co_filename (the
 // module's file), co_firstlineno (0: not kept), co_flags (CO_GENERATOR / CO_COROUTINE / CO_ASYNC_GENERATOR,
 // CO_VARARGS / CO_VARKEYWORDS), co_argcount, co_kwonlyargcount, co_posonlyargcount, co_varnames
@@ -49,7 +54,7 @@ var code_of_(const var& fv) {
         if (is_str(fl)) file = str_utf8(fl);
     }
     c.setattr("co_filename", new_str(file));
-    c.setattr("co_firstlineno", var(0));
+    c.setattr("co_firstlineno", var((int64_t)f->firstlineno));
     int64_t flags = 0x1 | 0x2;   // CO_OPTIMIZED | CO_NEWLOCALS
     if (f->varargs >= 0) flags |= 0x4;
     if (f->varkw >= 0) flags |= 0x8;

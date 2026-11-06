@@ -1033,7 +1033,8 @@ private:
         std::string body = free_decls(s) + param_cells(s, l->args) + "return " + expr(l->body) + ";";
         fn_ = outer;
         std::string lq = (outer && !outer->qual.empty() ? outer->qual + ".<locals>." : std::string()) + "<lambda>";
-        return "py::def(\"<lambda>\", " + cstr(sig) + ", {" + defaults + "}, [" + captures(s) + "](" + params + ") -> py::var { " + body + " }, " + cstr(lq) + ", " + cstr(m_.name) + ")";
+        // (its line kept: inspect.getsource of a lambda is the source from that line, as CPython's)
+        return "py::at_line_(py::def(\"<lambda>\", " + cstr(sig) + ", {" + defaults + "}, [" + captures(s) + "](" + params + ") -> py::var { " + body + " }, " + cstr(lq) + ", " + cstr(m_.name) + "), " + std::to_string(l->pos.lineno) + ")";
     }
 
     std::string expr(const Expr* e) {
