@@ -111,6 +111,7 @@ static void count_binds(const std::vector<A::Stmt*>& body, std::map<std::string,
     }
 }
 void expand_class_factories(pyfront::Module& tree);   // factories.cc
+void hoist_local_imports(pyfront::Module& tree);     // local_imports.cc
 static void lambdas_to_defs(pyfront::Module& tree, std::vector<A::Stmt*>& body, const std::map<std::string, int>& binds) {
     for (auto*& st : body) {
         if (auto* a = as<Assign>(st)) {
@@ -152,6 +153,7 @@ Module* Program::add_module(const std::string& name, const std::string& path, co
         return nullptr;
     }
     if (extended) lambdas_to_defs(*r.module, r.module->body, {{"*", 1}});   // (module level: its globals are left alone)
+    if (extended) hoist_local_imports(*r.module);      // (local_imports.cc: a function's own imports as the module's)
     if (extended) expand_class_factories(*r.module);   // (factories.cc: X = factory(...) as the class it makes)
     auto m = std::make_unique<Module>();
     m->name = name;
