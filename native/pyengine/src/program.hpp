@@ -196,6 +196,7 @@ public:
     T ann_to_type(Module* m, const A::Expr* a);
     T param_type(Fn* f, const std::string& name);
     T demand_type(Fn* f, const std::string& name);      // (new) demand.cc
+    bool defines_operator(const std::string& op);      // (new) demand.cc: a class of the program has __op__ / __rop__
     T global_type(const std::string& mod, const std::string& name);
     Fn* find_method(const std::string& cq, const std::string& name);
     const std::set<std::string>& assigned_attrs(const std::string& cq);
@@ -280,6 +281,7 @@ public:
     // (new) a method reached by getattr(self, "x_" + type(e).__name__)(e): its parameter is an instance of the class
     // its name ends in (x_Unary: ir.Unary) -- the dispatch's key is that class's name
     std::map<std::string, std::pair<std::string, T>> dispatch_param;
+    std::map<std::pair<std::string, std::string>, std::pair<Fn*, std::string>> dispatch_alias;   // (method, param) -> its dispatcher's param
     void dispatch_hints();
     // (new) getattr(obj, 'name'[, default]) with a constant name: 1 the attribute is always there (a
     // method, a class attribute, or set at the top of __init__ in obj's class or a base), 2 it is never

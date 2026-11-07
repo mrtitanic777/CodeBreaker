@@ -185,7 +185,10 @@ struct ReInfo {
     int groups = 0;
     std::map<std::string, int> names;
     std::vector<bool> optional;    // [1..groups]
+    bool unknown = false;          // (new) a computed pattern: its groups are not known here (every group past 0 may be None)
 };
+// (new) the pattern a type carries for a pattern computed at run time
+extern const std::string RE_COMPUTED;
 ReInfo re_analyze(const std::string& pat, bool verbose);
 
 std::string fmt_big(const std::optional<Big>& b);

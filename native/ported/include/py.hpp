@@ -1291,6 +1291,27 @@ template <class K, class V> bool truthy(const dict<K, V>& x) { return !x.empty()
 template <class T> bool truthy(const set<T>& x) { return !x.empty(); }
 template <class T> bool truthy(const std::optional<T>& x) { return x.has_value() && truthy(*x); }
 template <class T> bool truthy(const ref<T>& x) { return x != nullptr; }
+
+// x.attr where x may be None: the object, or Python's AttributeError for None
+[[noreturn]] inline void none_has_no_attr_(const str& attr) {
+    throw AttributeError(std::string("'NoneType' object has no attribute '") + attr.utf8() + "'");
+}
+template <class T> const ref<T>& none_attr(const ref<T>& x, const str& attr) {
+    if (x == nullptr) none_has_no_attr_(attr);
+    return x;
+}
+template <class T> T& none_attr(std::optional<T>& x, const str& attr) {
+    if (!x.has_value()) none_has_no_attr_(attr);
+    return *x;
+}
+template <class T> const T& none_attr(const std::optional<T>& x, const str& attr) {
+    if (!x.has_value()) none_has_no_attr_(attr);
+    return *x;
+}
+template <class T> T none_attr(std::optional<T>&& x, const str& attr) {
+    if (!x.has_value()) none_has_no_attr_(attr);
+    return std::move(*x);
+}
 template <class... T> bool truthy(const std::tuple<T...>&) { return sizeof...(T) != 0; }
 inline bool truthy(const bytearray& b) { return !b.empty(); }
 template <class L> bool any_of(const L& xs) {
@@ -1619,6 +1640,16 @@ inline void percent_one_(std::u32string& out, const std::string& f, int w, int p
 }
 template <class... A> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const std::variant<A...>& v) {
     std::visit([&](const auto& x) { percent_one_(out, f, w, p, c, x); }, v);   // (the value it holds, as itself)
+}
+// (new) a container as %s is its str() (its repr, as Python's str of a list is), as %r its repr
+template <class T> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const list<T>& v) {
+    percent_one_(out, f, w, p, 's', c == 'r' ? repr(v) : to_str(v));
+}
+template <class K, class V> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const dict<K, V>& v) {
+    percent_one_(out, f, w, p, 's', c == 'r' ? repr(v) : to_str(v));
+}
+template <class T> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const set<T>& v) {
+    percent_one_(out, f, w, p, 's', c == 'r' ? repr(v) : to_str(v));
 }
 template <class T> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const std::optional<T>& v) {
     if (v) percent_one_(out, f, w, p, c, *v);
@@ -2106,6 +2137,16 @@ inline int64_t crc32(const bytes& b, int64_t start = 0) {
 namespace os {
 // an OS call's failure as Python raises it: the exception by the system's own error code (py_os.hpp)
 [[noreturn]] inline void raise_os_(const std::error_code& ec, const str& path);
+// a path with a NUL in it: Python's ValueError from the call that would take it (<call>: embedded null
+// character in path); the tests (exists, isfile, isdir, islink) answer False instead
+inline bool has_nul_(const str& s) {
+    for (char32_t c : s.u32())
+        if (c == 0) return true;
+    return false;
+}
+inline void nul_check_(const char* call, const str& s) {
+    if (has_nul_(s)) throw ValueError(std::string(call) + ": embedded null character in path");
+}
 namespace path {
 inline bool sep_(char32_t c) { return c == '\\' || c == '/'; }
 // ntpath.splitdrive for the forms the tools meet: "C:..." and "\\server\share..."
@@ -2176,10 +2217,11 @@ template <class... R> str join(const str& a, const R&... rest) {
         return str(result_drive + U"\\" + result_path);
     return str(result_drive + result_path);
 }
-inline bool exists(const str& s) { std::error_code ec; return std::filesystem::exists(std::filesystem::u8path(s.utf8()), ec); }
-inline bool isfile(const str& s) { std::error_code ec; return std::filesystem::is_regular_file(std::filesystem::u8path(s.utf8()), ec); }
-inline bool isdir(const str& s) { std::error_code ec; return std::filesystem::is_directory(std::filesystem::u8path(s.utf8()), ec); }
+inline bool exists(const str& s) { std::error_code ec; return !has_nul_(s) && std::filesystem::exists(std::filesystem::u8path(s.utf8()), ec); }
+inline bool isfile(const str& s) { std::error_code ec; return !has_nul_(s) && std::filesystem::is_regular_file(std::filesystem::u8path(s.utf8()), ec); }
+inline bool isdir(const str& s) { std::error_code ec; return !has_nul_(s) && std::filesystem::is_directory(std::filesystem::u8path(s.utf8()), ec); }
 inline int64_t getsize(const str& s) {
+    nul_check_("stat", s);
     std::error_code ec;
     auto n = std::filesystem::file_size(std::filesystem::u8path(s.utf8()), ec);
     if (ec) raise_os_(ec, s);
@@ -2188,6 +2230,7 @@ inline int64_t getsize(const str& s) {
 inline str normcase(const str& s) { return str(s.lower().u32()).replace(str("/"), str("\\")); }
 }  // namespace path
 inline list<str> listdir(const str& s) {
+    nul_check_("listdir", s);
     list<str> out;
     std::error_code ec;
     auto it = std::filesystem::directory_iterator(std::filesystem::u8path(s.utf8()), ec);

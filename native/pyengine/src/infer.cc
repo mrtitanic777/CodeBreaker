@@ -1326,6 +1326,7 @@ T Eval::ref_type(AnyNode n, const Ref& r) {
     if (k == "exc") return named(TK::Cls, "exc:" + r.a);
     if (k == "const") {
         if (r.a == "__doc__") return m && m->has_docstring ? STR() : NONE();
+        if (r.a == "__file__" && p.extended) return STR();   // (new) the module's source file (lower.cc)
         if (r.a == "__file__" || r.a == "__name__") return issue(n, "dynamic", r.a);
         return BOTTOM();
     }
@@ -1394,6 +1395,19 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
             T ot = ev(n->value, state);
             TK k = ot.kind;
             if (k == TK::Bottom || k == TK::Top) return ot;
+            // (new) a field or property read of an instance that may be None: the instance's (the lowering reads
+            // it through py::none_attr, Python's AttributeError when it is None)
+            bool maybe_none = false;
+            if (p.extended && k == TK::Opt && n->ctx == ExprCtx::Load && ot.args()[0].kind == TK::Inst) {
+                T inner = ot.args()[0];
+                Fn* m = p.find_method(inner.name(), n->attr);
+                if (!m || m->kind == "property") {
+                    ot = inner;
+                    k = TK::Inst;
+                    maybe_none = true;
+                }
+            }
+            (void)maybe_none;
             if (k == TK::Inst) {
                 const std::string& cq = ot.name();
                 Fn* f = p.find_method(cq, n->attr);
