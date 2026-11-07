@@ -431,8 +431,7 @@ int run_main(const char* module, int argc, char** argv) {
             // a loaded module ("import time: self | cumulative | name"; the times are not measured: 0)
             if (g_importtime && !g_sys_modules.is_unbound())
                 for (auto& e : static_cast<DictObj*>(g_sys_modules.ref())->entries)
-                    if (!e.key.is_unbound() && is_str(e.key)) fprintf(stderr, "import time:         0 |          0 | %s
-", str_utf8(e.key).c_str());
+                    if (!e.key.is_unbound() && is_str(e.key)) fprintf(stderr, "import time:         0 |          0 | %s\n", str_utf8(e.key).c_str());
             fflush(stderr);
             runtime_exiting_();
         }
