@@ -250,7 +250,7 @@ TyP Context::ty(const T& t, int line, const std::string& what) {
     }
     TK k = t.kind;
     if ((k == TK::List || k == TK::Set || k == TK::Dict) && p.poisoned_sites.count(p.find(t.site)))
-        throw Refused("untyped", std::string("a ") + kind_name(k) + " also given items of no single type", line);
+        throw Refused("untyped", std::string("a ") + kind_name(k) + " also given items of no single type: " + p.poisoned_sites[p.find(t.site)], line);
     if (k == TK::List || k == TK::Set) {
         int s = p.find(t.site);
         if (p.dynamic.count(s) && p.ckind[s] != k) throw Refused("conflict", p.dynamic[s], line);
