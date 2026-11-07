@@ -967,7 +967,8 @@ State Eval::assign(const A::Expr* tgt, const T& t0, State state, const A::Expr* 
         if (auto* sl = as<pyfront::Slice>(sub->slice)) {
             ev_slice_parts(sl, state);
             if (ot.kind == TK::List && t.kind == TK::List) p.grow(p.elem, ot.site, p.elem[p.find(t.site)]);
-            else if (ot.kind == TK::Bytearray && (t.kind == TK::Bytes || t.kind == TK::Bytearray)) {
+            else if (ot.kind == TK::Bytearray && (t.kind == TK::Bytes || t.kind == TK::Bytearray ||
+                                                  (t.kind == TK::List && p.elem[p.find(t.site)].kind == TK::Int))) {   // (ints: bytes of them)
             } else if (ot.kind != TK::Bottom)
                 issue(tgt, "syntax", std::string("slice assignment to a ") + kind_name(ot.kind));
             Res r("slice_store", std::string(kind_name(ot.kind)));

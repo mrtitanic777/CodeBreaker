@@ -1267,6 +1267,15 @@ public:
             return {exprstmt(assign_e(std::nullopt, mk_name(lsym(name, t), t), value, t), line)};
         }
         if (tgt->kind == ExprKind::Tuple || tgt->kind == ExprKind::List) return unpack(tgt, value, st);
+        if (auto* sub = as<Subscript>(tgt); sub && sub->slice->kind == ExprKind::Slice) {   // a[lo:hi] = v
+            auto* sl = cast<pyfront::Slice>(sub->slice);
+            if (sl->step) throw Refused("syntax", "slice assignment with a step", line);
+            IRP obj = expr(sub->value);
+            IRP lo = sl->lower ? expr(sl->lower) : mk_lit_none(VOID());
+            IRP hi = sl->upper ? expr(sl->upper) : mk_lit_none(VOID());
+            if (obj->type && obj->type->is_class("py.list")) value = coerce(value, obj->type);
+            return {exprstmt(mk_pyfn("set_slice", {lo, hi, value}, VOID(), obj, line), line)};
+        }
         IRP target = target_expr(tgt);
         value = coerce(value, target->type);
         return {exprstmt(assign_e(std::nullopt, target, value, target->type), line)};
@@ -2021,6 +2030,13 @@ public:
         if (e->type && e->type->is_class("py.variant") && !want->is_class("py.variant"))   // (new) narrowed by a test
             return mk_pyfn("variant.get", {e}, want, nullptr, 0, {py::V(tag_of(want))});
         if (e->k == "Lit" && !e->has_value) return mk_lit_none(want);
+        // a tuple literal as a tuple of other item types ((None, 0) where (str?, int) is meant): item by item
+        if (e->k == "Call" && !e->target && e->sym && e->sym->name == "tuple" && e->sym->kind == "function" && want->is_class("py.tuple") &&
+            want->args.size() == e->args.size()) {
+            std::vector<IRP> items;
+            for (size_t i = 0; i < e->args.size(); i++) items.push_back(coerce(e->args[i], want->args[i]));
+            return mk_pyfn("tuple", items, want, nullptr, e->line);
+        }
         if (is_opt_t(e->type) && !is_opt_t(want))
             if (ty_eq(e->type->args[0], want)) return mk_pyfn("unwrap", {e}, want);
         if (is_opt_t(want) && ty_eq(e->type, want->args[0])) return e;

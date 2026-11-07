@@ -954,6 +954,12 @@ struct PyWriter : Emitter {
             if (lo == "py::none") return obj + ".slice_to(" + hi + ")";
             return obj + ".slice(" + lo + ", " + hi + ")";
         }
+        if (n == "set_slice") {   // a[lo:hi] = v
+            std::string obj = operand(node(e, "target"));
+            std::string lo = lit_none(a[0]) ? "py::none" : X(a[0]);
+            std::string hi = lit_none(a[1]) ? "py::none" : X(a[1]);
+            return obj + ".set_slice(" + lo + ", " + hi + ", " + X(a[2]) + ")";
+        }
         static const std::set<std::string> arith = {"floordiv",    "mod",         "shl",         "shr",
                                                     "ipow",        "truediv",     "checked_add", "checked_sub",
                                                     "checked_mul", "checked_shl", "checked_pow", "checked_neg", "pow"};

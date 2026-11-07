@@ -858,6 +858,16 @@ class bytes {
 
 // bytearray: Python's is a mutable object shared by every name that holds it, so this is a handle to
 // the bytes; it reads as bytes (it converts to const bytes&) and changes in place
+// a[lo:hi]'s span as Python takes it: a negative bound counts from the end, both clamped to [0, n], hi >= lo
+inline int64_t slice_bound_(int64_t v, int64_t n) { return v < 0 ? std::max<int64_t>(0, v + n) : std::min(v, n); }
+inline int64_t slice_bound_(none_t, int64_t) { return -1; }
+template <class A, class B> std::pair<int64_t, int64_t> slice_span_(A lo, B hi, int64_t n) {
+    int64_t a = slice_bound_(lo, n), b = slice_bound_(hi, n);
+    if constexpr (std::is_same_v<A, none_t>) a = 0;
+    if constexpr (std::is_same_v<B, none_t>) b = n;
+    return {a, std::max(a, b)};
+}
+
 class bytearray {
     std::shared_ptr<bytes> p_;
 
@@ -884,6 +894,12 @@ class bytearray {
         }
     };
     item_ref operator[](int64_t i) const { return {&p_->b_, static_cast<size_t>(index_(i, size(), "bytearray"))}; }
+    // b[lo:hi] = v: the span replaced by v's bytes (the length may change)
+    template <class A, class B> void set_slice(A lo, B hi, const bytes& v) const {
+        auto [a, b] = slice_span_(lo, hi, size());
+        std::string with = v.raw();   // (a copy: v may be this one)
+        p_->b_.replace(static_cast<size_t>(a), static_cast<size_t>(b - a), with);
+    }
     bytearray slice(int64_t lo, int64_t hi) const { return bytearray(p_->slice(lo, hi)); }
     bytearray slice(none_t, int64_t hi) const { return bytearray(p_->slice(0, hi)); }
     bytearray slice(int64_t lo, none_t) const { return bytearray(p_->slice(lo, size())); }
@@ -986,6 +1002,13 @@ template <class T> class list {
         list out;
         for (const auto& x : items) out.v_->push_back(x);
         return out;
+    }
+    // a[lo:hi] = v: the span replaced by v's items (the length may change)
+    template <class A, class B> void set_slice(A lo, B hi, const list& v) const {
+        auto [a, b] = slice_span_(lo, hi, static_cast<int64_t>(v_->size()));
+        std::vector<T> with = *v.v_;   // (a copy: v may be this one)
+        v_->erase(v_->begin() + a, v_->begin() + b);
+        v_->insert(v_->begin() + a, with.begin(), with.end());
     }
     template <class... A> static list from(const std::tuple<A...>& items) {   // list(a_tuple)
         list out;

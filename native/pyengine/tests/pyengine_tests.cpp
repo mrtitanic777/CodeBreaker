@@ -537,10 +537,18 @@ def first_big(xs: list[int]) -> int:
 def first_name(names: list[str]):
     return next((n for n in names if n.startswith("a")), None)
 
+def patch(n: int) -> bytes:
+    b = bytearray(8)
+    b[2:4] = b""
+    b[:n] = bytes(n)
+    xs = [1, 2, 3]
+    xs[1:] = [9]
+    return bytes(b) + bytes(xs)
+
 def run():
-    return P().set(1, 2) + chain(3) + first_big([1, 5]) + len(first_name(["b", "ab"]) or "")
+    return P().set(1, 2) + chain(3) + first_big([1, 5]) + len(first_name(["b", "ab"]) or "") + len(patch(1))
 )PY"}}, true, "checked");
-    for (auto q : {"pkg.m.P.set", "pkg.m.chain", "pkg.m.first_big", "pkg.m.first_name"}) CHECK(r.ok(q), "%s: %s", q, r.why(q).c_str());
+    for (auto q : {"pkg.m.P.set", "pkg.m.chain", "pkg.m.first_big", "pkg.m.first_name", "pkg.m.patch"}) CHECK(r.ok(q), "%s: %s", q, r.why(q).c_str());
     std::string u = r.unit("pkg.m");
     CHECK(has(u, "parts") && has(u, "value"), "the temporaries: %s", u.substr(0, 400).c_str());
 }
