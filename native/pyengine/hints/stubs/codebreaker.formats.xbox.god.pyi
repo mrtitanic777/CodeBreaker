@@ -1,3 +1,28 @@
+from typing import (
+    Callable,
+    Tuple,
+)
+
+
+def is_nxe_install(data: bytes) -> bool: ...
+
+
+def write_god(
+    volume_read: Callable,
+    volume_size: int,
+    out_dir: str,
+    template: bytes,
+    *,
+    title_id,
+    media_id,
+    content_type = ...,
+    title = ...
+) -> Tuple[str, str, int]: ...
+
+
+class SvodReader:
+    def __init__(self, data_dir: str) -> None: ...
+
 from io import BufferedReader
 from typing import (
     Callable,

@@ -1,4 +1,24 @@
 from PIL.Image import Image
+from typing import Tuple
+
+
+def _blocks(w: int, h: int) -> Tuple[int, int]: ...
+
+
+def decode_dxt(
+    data: bytes,
+    w: int,
+    h: int,
+    fmt: str,
+    tiled: bool = ...,
+    swapped: bool = ...,
+    force_opaque: bool = ...
+) -> Image: ...
+
+
+def to_dds(linear: bytes, w: int, h: int, fmt: str) -> bytes: ...
+
+from PIL.Image import Image
 
 
 def decode_dxt(

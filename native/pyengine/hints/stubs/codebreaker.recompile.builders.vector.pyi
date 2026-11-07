@@ -41,3 +41,25 @@ def emit(
     va: int,
     WORD: int
 ) -> None: ...
+
+from typing import (
+    Callable,
+    List,
+)
+
+
+def emit(
+    mn: str,
+    ops: List[<class 'Union'>[Any, str]],
+    _reg: Callable,
+    _vreg: Callable,
+    _freg: Callable,
+    _imm: Callable,
+    _cr: Callable,
+    _mem: Callable,
+    _rv: Callable,
+    _base_expr: Callable,
+    _addr: Callable,
+    va: int,
+    WORD: int
+) -> None: ...

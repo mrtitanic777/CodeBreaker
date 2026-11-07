@@ -1,4 +1,23 @@
 from codebreaker.analyze.image import Image
+from typing import (
+    Dict,
+    Union,
+)
+
+
+def _build(img: Image) -> Graph: ...
+
+
+def analyse(img: Image) -> Dict[str, <class 'Union'>]: ...
+
+
+def build(img: Image) -> Graph: ...
+
+
+class Graph:
+    def __init__(self) -> None: ...
+
+from codebreaker.analyze.image import Image
 
 
 def _build(img: Image) -> Graph: ...

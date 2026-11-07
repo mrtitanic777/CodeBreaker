@@ -1,5 +1,40 @@
 from codebreaker.analyze.image import Image
 from ctypes import CDLL
+from typing import (
+    Any,
+    Dict,
+    List,
+    Tuple,
+    Union,
+)
+
+
+def _blob(img: Image) -> bytes: ...
+
+
+def _load() -> CDLL: ...
+
+
+def _names(img: Image) -> bytes: ...
+
+
+def assemble(stores: Dict[Tuple[str, int], Tuple[int, int]], least: int) -> List[List[<class 'Union'>]]: ...
+
+
+def dll_path() -> str: ...
+
+
+def library() -> CDLL: ...
+
+
+class Handle:
+    def __del__(self) -> None: ...
+    def __init__(self, img: Image) -> None: ...
+    def ask(self, question: str, arg: int = ...) -> Any: ...
+    def names(self, img: Image) -> None: ...
+
+from codebreaker.analyze.image import Image
+from ctypes import CDLL
 
 
 def _blob(img: Image) -> bytes: ...

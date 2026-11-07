@@ -1,3 +1,14 @@
+from typing import (
+    Dict,
+    Union,
+)
+
+
+def _program(answer: Dict[str, <class 'Union'>], _data: None, _path: str) -> Program: ...
+
+
+def is_zx(path: str) -> bool: ...
+
 def is_zx(path: str) -> bool: ...
 
 from typing import (

@@ -5,3 +5,11 @@ from typing import (
 
 
 def build_filters(era_rules: Tuple[()] = ...) -> List[Tuple[str, str]]: ...
+
+from typing import (
+    List,
+    Tuple,
+)
+
+
+def build_filters(era_rules: Tuple[()] = ...) -> List[Tuple[str, str]]: ...

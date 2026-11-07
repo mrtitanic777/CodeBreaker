@@ -1,3 +1,29 @@
+from typing import (
+    List,
+    Optional,
+    Tuple,
+)
+
+
+class Device:
+    def __del__(self) -> None: ...
+    def close(self) -> None: ...
+
+
+class GDF:
+    def __init__(
+        self,
+        dev: <class 'Union'>[codebreaker.formats.xbox.god.SvodReader, codebreaker.formats.xbox.gdf._FileDevice],
+        base: <class 'Union'>[int, None] = ...,
+        descriptor: None = ...
+    ) -> None: ...
+    def files(self) -> List[Tuple[str, int]]: ...
+    def read(self, path: str) -> bytes: ...
+
+
+class _FileDevice:
+    def __init__(self, path: str) -> None: ...
+
 from typing import Optional
 
 

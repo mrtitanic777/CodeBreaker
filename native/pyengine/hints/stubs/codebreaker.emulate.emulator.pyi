@@ -2,6 +2,77 @@ from codebreaker.emulate.run import Run
 from codebreaker.formats.pe import PEFile
 from typing import (
     Any,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+
+def _builtin_argc(name: str) -> None: ...
+
+
+def _load(module: str) -> Tuple[str, int, bytes, str, Dict[int, Dict[str, int]], str, Dict[int, Tuple[str, str]]]: ...
+
+
+def _outs(name: str) -> List[Any]: ...
+
+
+def _pe_code_image(
+    module: str,
+    path: str,
+    pe: PEFile
+) -> Tuple[int, bytearray, str, Dict[int, Dict[str, int]]]: ...
+
+
+def _resolve_func(module: str, func: int) -> Tuple[int, int, bytes, int, str]: ...
+
+
+def _resolve_func_(module: str, func: int) -> Tuple[int, int, bytes, int, str]: ...
+
+
+def _sha256(path: str) -> str: ...
+
+
+def record(rec: Dict[str, <class 'Union'>], sentinels: None = ...) -> Run: ...
+
+
+def recorded(module: str, **kw) -> Run: ...
+
+
+def trace_function(
+    module: str,
+    func: <class 'Union'>[int, None] = ...,
+    args: <class 'Union'>[List[int], None] = ...,
+    arity: None = ...,
+    insn_cap: int = ...,
+    mem_init: <class 'Union'>[List[Tuple[int, bytes]], None] = ...,
+    stub_externals: <class 'Union'>[bool, None] = ...,
+    stub_ret: int = ...,
+    stub_cleanup: int = ...,
+    sig_resolver: <class 'Union'>[Callable, None] = ...,
+    stub_ret_unique: bool = ...,
+    overlay: None = ...,
+    sentinels: None = ...,
+    reads: bool = ...,
+    stop_wild: bool = ...,
+    quiet_stack: bool = ...,
+    reuse: bool = ...,
+    fast: bool = ...,
+    lean: bool = ...,
+    ecx: None = ...,
+    edx: None = ...,
+    pads: <class 'Union'>[None, Tuple[int, int]] = ...,
+    branches: bool = ...,
+    stub_at: <class 'Union'>[None, Dict[int, Tuple[str, str]]] = ...,
+    shadow: <class 'Union'>[codebreaker.emulate.native_shadow.Shadow, None] = ...
+) -> Dict[str, <class 'Union'>]: ...
+
+from codebreaker.emulate.run import Run
+from codebreaker.formats.pe import PEFile
+from typing import (
+    Any,
     Callable,
     Dict,
     List,
