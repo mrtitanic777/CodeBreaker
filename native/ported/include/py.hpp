@@ -2137,6 +2137,16 @@ inline int64_t crc32(const bytes& b, int64_t start = 0) {
 namespace os {
 // an OS call's failure as Python raises it: the exception by the system's own error code (py_os.hpp)
 [[noreturn]] inline void raise_os_(const std::error_code& ec, const str& path);
+// a path with a NUL in it: Python's ValueError from the call that would take it (<call>: embedded null
+// character in path); the tests (exists, isfile, isdir, islink) answer False instead
+inline bool has_nul_(const str& s) {
+    for (char32_t c : s.u32())
+        if (c == 0) return true;
+    return false;
+}
+inline void nul_check_(const char* call, const str& s) {
+    if (has_nul_(s)) throw ValueError(std::string(call) + ": embedded null character in path");
+}
 namespace path {
 inline bool sep_(char32_t c) { return c == '\\' || c == '/'; }
 // ntpath.splitdrive for the forms the tools meet: "C:..." and "\\server\share..."
@@ -2207,10 +2217,11 @@ template <class... R> str join(const str& a, const R&... rest) {
         return str(result_drive + U"\\" + result_path);
     return str(result_drive + result_path);
 }
-inline bool exists(const str& s) { std::error_code ec; return std::filesystem::exists(std::filesystem::u8path(s.utf8()), ec); }
-inline bool isfile(const str& s) { std::error_code ec; return std::filesystem::is_regular_file(std::filesystem::u8path(s.utf8()), ec); }
-inline bool isdir(const str& s) { std::error_code ec; return std::filesystem::is_directory(std::filesystem::u8path(s.utf8()), ec); }
+inline bool exists(const str& s) { std::error_code ec; return !has_nul_(s) && std::filesystem::exists(std::filesystem::u8path(s.utf8()), ec); }
+inline bool isfile(const str& s) { std::error_code ec; return !has_nul_(s) && std::filesystem::is_regular_file(std::filesystem::u8path(s.utf8()), ec); }
+inline bool isdir(const str& s) { std::error_code ec; return !has_nul_(s) && std::filesystem::is_directory(std::filesystem::u8path(s.utf8()), ec); }
 inline int64_t getsize(const str& s) {
+    nul_check_("stat", s);
     std::error_code ec;
     auto n = std::filesystem::file_size(std::filesystem::u8path(s.utf8()), ec);
     if (ec) raise_os_(ec, s);
@@ -2219,6 +2230,7 @@ inline int64_t getsize(const str& s) {
 inline str normcase(const str& s) { return str(s.lower().u32()).replace(str("/"), str("\\")); }
 }  // namespace path
 inline list<str> listdir(const str& s) {
+    nul_check_("listdir", s);
     list<str> out;
     std::error_code ec;
     auto it = std::filesystem::directory_iterator(std::filesystem::u8path(s.utf8()), ec);

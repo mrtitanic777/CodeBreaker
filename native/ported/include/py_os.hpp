@@ -384,10 +384,12 @@ inline str relpath(const str& p, const std::optional<str>& start = std::nullopt)
     return r.empty() ? str(".") : str(r);
 }
 inline bool islink(const str& s) {
+    if (has_nul_(s)) return false;
     std::error_code ec;
     return fs_::is_symlink(fspath_(s), ec);
 }
 inline double getmtime(const str& s) {
+    nul_check_("stat", s);
     std::error_code ec;
     auto t = fs_::last_write_time(fspath_(s), ec);
     if (ec) throw FileNotFoundError("[WinError 2] The system cannot find the file specified: " + repr(s).utf8());
@@ -398,6 +400,7 @@ inline double getmtime(const str& s) {
 
 inline void makedirs(const str& p, int64_t mode = 0777, bool exist_ok = false) {
     (void)mode;
+    nul_check_("mkdir", p);
     std::error_code ec;
     fs_::path q = fspath_(p);
     if (fs_::exists(q, ec)) {
@@ -408,6 +411,7 @@ inline void makedirs(const str& p, int64_t mode = 0777, bool exist_ok = false) {
     if (ec) throw OSError(ec.message());
 }
 inline void remove(const str& p) {
+    nul_check_("remove", p);
     std::error_code ec;
     fs_::path q = fspath_(p);
     if (fs_::is_directory(q, ec)) throw PermissionError("[WinError 5] Access is denied: " + repr(p).utf8());
@@ -415,6 +419,7 @@ inline void remove(const str& p) {
 }
 inline void unlink(const str& p) { remove(p); }
 inline void rmdir(const str& p) {
+    nul_check_("rmdir", p);
     std::error_code ec;
     fs_::path q = fspath_(p);
     if (!fs_::exists(q, ec)) throw FileNotFoundError("[WinError 2] The system cannot find the file specified: " + repr(p).utf8());
@@ -481,6 +486,7 @@ class walk_t {
         bool operator==(const iterator& o) const { return done == o.done; }
     };
     iterator begin() const {
+        nul_check_("scandir", top_);      // (os.walk's scandir raises it: not an OSError, so not skipped)
         iterator it;
         std::error_code ec;
         if (fs_::is_directory(fspath_(top_), ec)) it.todo.push_back(top_);

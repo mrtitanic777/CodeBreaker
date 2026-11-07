@@ -1543,9 +1543,13 @@ V write_unit_python(const NodeP& unit, const std::string& api_root) {
                 span(sowner(sym(x)) + "." + str(raw(x, "name")), start, S.size());
                 S.push_back("");
             }
+    // (new) specializations whose C++ signatures came out the same (kinds that differ only where C++ does not,
+    // an int's range): the same Python body, written once
+    std::set<std::string> defined;
     for (auto& m : modules)
         for (auto& x : nodes(m, "members"))
             if (is(x, "MethodDecl")) {
+                if (!defined.insert(signature(w, x, nullptr, true)).second) continue;
                 size_t start = S.size() + 1;
                 auto d = definition(w, x, nullptr);
                 S.insert(S.end(), d.begin(), d.end());
