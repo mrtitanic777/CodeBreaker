@@ -316,13 +316,19 @@ int run_main_(const var& argv) {
     std::vector<std::string> targets;
     std::string kexpr, basetemp;
     bool exitfirst = false, verbose = false;
+    std::vector<std::string> plugin_names;               // -p NAME: a plugin module (-p no:NAME: ignored)
     auto args = collect(argv);
     for (size_t i = 1; i < args.size(); i++) {
         std::string a = str_utf8(args[i]);
         if (a == "-q" || a == "-s" || a == "-rA" || a == "--no-header" || a == "-qq") continue;
         if (a == "-v") { verbose = true; continue; }
         if (a == "-x" || a == "--exitfirst") { exitfirst = true; continue; }
-        if (a == "-p" || a == "-W" || a == "-o" || a == "--tb" || a == "-m") { i++; continue; }
+        if (a == "-p" && i + 1 < args.size()) {
+            std::string pn = str_utf8(args[++i]);
+            if (pn.compare(0, 3, "no:") != 0) plugin_names.push_back(pn);
+            continue;
+        }
+        if (a == "-W" || a == "-o" || a == "--tb" || a == "-m") { i++; continue; }
         if (a == "-k" && i + 1 < args.size()) { kexpr = str_utf8(args[++i]); continue; }
         if (a.compare(0, 11, "--basetemp=") == 0) { basetemp = a.substr(11); continue; }
         if (a.compare(0, 5, "--tb=") == 0 || a.compare(0, 2, "-p") == 0 || a.compare(0, 2, "-W") == 0) continue;
@@ -379,6 +385,29 @@ int run_main_(const var& argv) {
             st = e + 1;
         }
         return false;
+    };
+    // the plugins' hooks pytest would call: pytest_configure now, pytest_runtest_logreport(report) after each
+    // test (report.nodeid, report.duration, report.outcome), pytest_sessionfinish(session, exitstatus) at the end
+    std::vector<var> plugins;
+    for (auto& pn : plugin_names) plugins.push_back(import(pn.c_str()));
+    auto hook = [&](const char* name, std::vector<var> hargs) {
+        for (auto& pl : plugins) {
+            var f = getattr(pl, new_str(name), None);
+            if (f.is_none()) continue;
+            CallArgs ca;
+            ca.pos = hargs;
+            call_obj(f, ca);
+        }
+    };
+    hook("pytest_configure", {None});
+    auto logreport = [&](const std::string& nodeid, double dur, const std::string& outcome) {
+        if (plugins.empty()) return;
+        CallArgs ca;
+        ca.kw.push_back({new_str("nodeid"), new_str(nodeid)});
+        ca.kw.push_back({new_str("duration"), var(dur)});
+        ca.kw.push_back({new_str("outcome"), new_str(outcome)});
+        ca.kw.push_back({new_str("when"), new_str("call")});
+        hook("pytest_runtest_logreport", {call_obj(import("types").getattr("SimpleNamespace"), ca)});
     };
     std::map<std::string, Fixture> conf_fixtures;
     for (auto& c : conftests) {
@@ -503,6 +532,7 @@ int run_main_(const var& argv) {
                 t.module = module;
                 t.instance = None;
                 var fn = base_item.fn;
+                auto t_item = std::chrono::steady_clock::now();
                 std::string outcome = "passed", detail;
                 var err;
                 try {
@@ -569,6 +599,7 @@ int run_main_(const var& argv) {
                     if (exitfirst) stop = true;
                 }
                 if (verbose) printf("%s %s\n", nodeid.c_str(), outcome.c_str());
+                logreport(nodeid, std::chrono::duration<double>(std::chrono::steady_clock::now() - t_item).count(), outcome);
             }
         }
         finish(run.class_fin);
@@ -594,9 +625,9 @@ int run_main_(const var& argv) {
     printf("%s%s\n", sum.c_str(), tail);
     fflush(stdout);
     g_run = nullptr;
-    if (failed || errors) return 1;
-    if (!passed && !skipped && !xfailed && !xpassed) return 5;
-    return 0;
+    int code = (failed || errors) ? 1 : (!passed && !skipped && !xfailed && !xpassed) ? 5 : 0;
+    hook("pytest_sessionfinish", {None, var((int64_t)code)});
+    return code;
 }
 
 }  // namespace
