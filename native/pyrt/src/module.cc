@@ -421,11 +421,21 @@ const char* module_for_file_(const std::string& path) {
 }
 
 extern std::vector<std::string> g_argv;
+static bool g_importtime = false;   // -X importtime
 int run_main(const char* module, int argc, char** argv) {
     init_runtime(argc, argv);
     // (once the program is done, what static destruction frees runs no more Python: gc.cc)
     struct exiting {
-        ~exiting() { runtime_exiting_(); }
+        ~exiting() {
+            // -X importtime: what python prints as each module is imported, here once at the end, one line
+            // a loaded module ("import time: self | cumulative | name"; the times are not measured: 0)
+            if (g_importtime && !g_sys_modules.is_unbound())
+                for (auto& e : static_cast<DictObj*>(g_sys_modules.ref())->entries)
+                    if (!e.key.is_unbound() && is_str(e.key)) fprintf(stderr, "import time:         0 |          0 | %s
+", str_utf8(e.key).c_str());
+            fflush(stderr);
+            runtime_exiting_();
+        }
     } at_end;
     auto& r = reg();
     // the command line as python's: interpreter flags skipped (-u -B -I -E -s -S -O, -X opt, -W opt),
@@ -436,8 +446,14 @@ int run_main(const char* module, int argc, char** argv) {
     while (i < g_argv.size()) {
         const std::string& f = g_argv[i];
         if (flags.count(f)) i++;
-        else if (f == "-X" || f == "-W") i += 2;
-        else if (f.size() > 2 && (f.compare(0, 2, "-X") == 0 || f.compare(0, 2, "-W") == 0)) i++;
+        else if (f == "-X" || f == "-W") {
+            if (f == "-X" && i + 1 < g_argv.size() && g_argv[i + 1] == "importtime") g_importtime = true;
+            i += 2;
+        }
+        else if (f.size() > 2 && (f.compare(0, 2, "-X") == 0 || f.compare(0, 2, "-W") == 0)) {
+            if (f == "-Ximporttime") g_importtime = true;
+            i++;
+        }
         else break;
     }
     std::vector<std::string> rest;
