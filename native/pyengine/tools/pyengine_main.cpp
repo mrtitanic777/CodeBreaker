@@ -28,6 +28,7 @@
 
 #include "census.hpp"
 #include "dyn.hpp"
+#include "native_modules.hpp"
 #include "engine.hpp"
 #include "islands.hpp"
 
@@ -38,6 +39,26 @@ int main(int argc, char** argv) {
     // pyengine --dynamic --root R --dyn-out DIR [--dyn-main M] [--dyn-closure] [--dyn-exclude P] module|name=file ...
     //   --dyn-typed DIR (the typed path's --out DIR --cpp DIR/cpp): its proven functions as typed islands (src/islands.hpp);
     //   --dyn-islands FILE: only those the judge's verdicts agreed
+    // pyengine --emit-native-module MODULE --root ROOT --typed RUN --out DIR: MODULE's typed C++ and its manifest
+    // into DIR (the module replaced by its typed C++: native_modules.hpp), or why it cannot be
+    if (argc > 1 && std::string(argv[1]) == "--emit-native-module") {
+        std::string module, root = ".", typed, out, judge;
+        for (int i = 2; i < argc; i++) {
+            std::string a = argv[i];
+            if (a == "--root" && i + 1 < argc) root = argv[++i];
+            else if (a == "--typed" && i + 1 < argc) typed = argv[++i];
+            else if (a == "--out" && i + 1 < argc) out = argv[++i];
+            else if (a == "--judge" && i + 1 < argc) judge = argv[++i];
+            else module = a;
+        }
+        std::string err;
+        if (module.empty() || typed.empty() || out.empty() || judge.empty() || !pyengine::emit_native_module(root, typed, module, out, judge, err)) {
+            fprintf(stderr, "%s\n", err.empty() ? "usage: pyengine --emit-native-module MODULE --root ROOT --typed RUN --judge JUDGE.json --out DIR" : err.c_str());
+            return 1;
+        }
+        fprintf(stderr, "%s: native (typed C++ and manifest in %s)\n", module.c_str(), out.c_str());
+        return 0;
+    }
     if (argc > 1 && std::string(argv[1]) == "--dynamic") {
         pyengine::DynOptions d;
         std::vector<std::string> tree, files;
@@ -59,6 +80,7 @@ int main(int argc, char** argv) {
             else if (a == "--dyn-typed" && i + 1 < argc) d.typed_dir = argv[++i];
             else if (a == "--dyn-islands" && i + 1 < argc) d.islands_file = argv[++i];
             else if (a == "--dyn-native" && i + 1 < argc) d.native_dir = argv[++i];
+            else if (a == "--dyn-native-typed" && i + 1 < argc) d.native_typed_dir = argv[++i];
             else d.modules.push_back(a);
         }
         // --dyn-files DIR: every .py file under DIR, each named as pytest names a test file: its path from the

@@ -100,6 +100,31 @@ inline bool value_(const py::var& x, const char*& spec, val& out) {
 }
 inline bool value(const py::var& x, const char* spec, val& out) { return value_(x, spec, out); }
 
+// ------------------------------------------------------------------------------------------ native modules
+// (a native module has no Python body: a call it cannot take is Python's TypeError, a typed body's exception
+// is raised as Python's of the same name -- struct.error and re.error by their modules)
+[[noreturn]] inline void wrong_args(const char* fn, size_t n) {
+    py::raise(py::T(py::t::TypeError), std::string(fn) + " takes " + std::to_string(n) + " positional arguments");
+}
+[[noreturn]] inline void wrong_type(const char* fn, const char* param, const py::var& x) {
+    py::raise(py::T(py::t::TypeError), std::string(fn) + ": argument " + param + " of a type its typed C++ does not take: " +
+                                           py::str_utf8(py::repr(x)));
+}
+[[noreturn]] inline void raise_named(const std::string& type, const std::string& msg) {
+    py::var cls;
+    if (type == "StructError") cls = py::import_from(py::import("struct"), "error");
+    else if (type == "PatternError") cls = py::import_from(py::import("re"), "error");
+    else {
+        py::var b = py::import("builtins");
+        try {
+            cls = py::import_from(b, type.c_str());
+        } catch (...) {
+            cls = py::import_from(b, "RuntimeError");
+        }
+    }
+    py::raise(static_cast<py::TypeObj*>(cls.ref()), msg);
+}
+
 // ------------------------------------------------------------------------------------------ results
 inline py::var box(const val& v) {
     switch (v.k) {

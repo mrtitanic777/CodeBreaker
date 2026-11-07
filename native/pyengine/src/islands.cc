@@ -311,7 +311,7 @@ std::string jstr(const std::string& s) { return py::json_dump(V(s)); }
 
 }  // namespace
 
-bool load_islands(const std::string& typed_dir, const std::string& verdicts, IslandSet& out, std::string& err) {
+bool load_islands(const std::string& typed_dir, const std::string& verdicts, IslandSet& out, std::string& err, bool ints_unranged) {
     Analysis a;
     a.dir = fs::path(typed_dir);
     out.typed_dir = fs::absolute(a.dir).lexically_normal().generic_string();
@@ -370,6 +370,10 @@ bool load_islands(const std::string& typed_dir, const std::string& verdicts, Isl
                 if (n == "i64") {
                     ip.kind = "int";
                     const V& r = ranges.get(V(ip.name));
+                    if ((!r.is_seq() || r.size() != 2) && ints_unranged) {
+                        is.params.push_back(ip);   // (lo, hi: all of int64)
+                        continue;
+                    }
                     if (!r.is_seq() || r.size() != 2) { why = "no range recorded for int parameter " + ip.name; break; }
                     try {
                         ip.lo = std::stoll(r[0].str());
@@ -413,7 +417,7 @@ bool load_islands(const std::string& typed_dir, const std::string& verdicts, Isl
     return true;
 }
 
-static std::string export_params(const Island& is) {
+std::string export_params(const Island& is) {
     std::string o;
     for (auto& p : is.params) {
         std::string t = p.kind == "int" ? "int64_t" : p.kind == "bool" ? "bool" : p.kind == "float" ? "double"

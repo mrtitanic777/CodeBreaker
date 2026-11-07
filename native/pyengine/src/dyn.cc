@@ -30,6 +30,7 @@
 #include "astutil.hpp"
 #include "pyfront/pyfront.hpp"
 #include "islands.hpp"
+#include "native_modules.hpp"
 #include "scopes.hpp"
 
 namespace pyengine {
@@ -2406,8 +2407,18 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             }
         }
     }
+    // --dyn-native-typed: the modules replaced by their typed C++ are not translated (their .py may be gone)
+    std::vector<NativeModule> native_mods;
+    if (!o.native_typed_dir.empty()) {
+        std::string err;
+        if (!load_native_modules(o.native_typed_dir, native_mods, err)) {
+            fprintf(stderr, "--dyn-native-typed: %s\n", err.c_str());
+            return 1;
+        }
+    }
     auto excluded = [&](const std::string& n) {
         for (auto& x : o.exclude) if (n == x || n.rfind(x + ".", 0) == 0) return true;
+        for (auto& m : native_mods) if (n == m.module) return true;
         return false;
     };
     while (!queue.empty()) {
@@ -2596,6 +2607,27 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
               "target_link_libraries(" + o.exe + " PRIVATE pyisl_typed)\n";
         fprintf(stderr, "typed islands: %zu written, %zu held back by the judge's verdicts, %zu translated functions not islands\n",
                 islands.emit.size(), islands.held.size(), islands.not_islands.size());
+    }
+    if (!native_mods.empty()) {   // --dyn-native-typed: their typed C++ in a library of its own (py renamed pyt), the glue
+        auto native = [&](const char* rel) { return fs::absolute(fs::path(o.root) / rel).lexically_normal().generic_string(); };
+        fs::path td = fs::path(o.out) / "_native";
+        write_if_changed(td / "native_exports.hpp", native_exports(native_mods));
+        write_if_changed(td / "native_modules.cpp", native_typed_glue(native_mods));
+        write_if_changed(td / "native_modules_dyn.cpp", native_dyn_glue(native_mods));
+        std::string ncpp = (fs::absolute(o.native_typed_dir) / "cpp").lexically_normal().generic_string();
+        std::string srcs;
+        for (auto& m : native_mods) srcs += "  " + ncpp + "/" + m.rel + ".cpp\n";
+        cm += "# native modules (pyengine --dyn-native-typed): modules of the program replaced by their typed C++ (committed\n"
+              "# source), in a library of their own with py renamed pyt; _native/native_modules_dyn.cpp registers them\n"
+              "add_library(pynative_typed STATIC\n" + srcs + "  _native/native_modules.cpp)\n"
+              "set_target_properties(pynative_typed PROPERTIES CXX_STANDARD 17)\n"
+              "target_compile_definitions(pynative_typed PRIVATE py=pyt)\n"
+              "target_include_directories(pynative_typed PRIVATE " + ncpp + " " + native("native/ported/include") + " " + native("native/l2/src") +
+              " " + native("native/pyengine/islands") + " ${CMAKE_CURRENT_SOURCE_DIR}/_native)\n"
+              "target_sources(" + o.exe + " PRIVATE _native/native_modules_dyn.cpp)\n"
+              "target_include_directories(" + o.exe + " PRIVATE " + native("native/pyengine/islands") + " ${CMAKE_CURRENT_SOURCE_DIR}/_native)\n"
+              "target_link_libraries(" + o.exe + " PRIVATE pynative_typed)\n";
+        fprintf(stderr, "native modules: %zu (their typed C++ from %s)\n", native_mods.size(), o.native_typed_dir.c_str());
     }
     write_if_changed(fs::path(o.out) / "CMakeLists.txt", cm);
     std::string j = "{\n";
