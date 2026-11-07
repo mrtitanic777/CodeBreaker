@@ -999,7 +999,8 @@ struct PyWriter : Emitter {
                                : n == "or_lazy" ? "(py::truthy(" + v + ") ? " + v + " : " + T + "(" + r + "))"
                                                 : "(py::truthy(" + v + ") ? " + T + "(" + r + ") : " + v + ")";
             if (plain) return pick;
-            return "[&]() -> " + T + " { auto v_ = " + l + "; return " + pick + "; }()";
+            std::string vt = none ? ctype(type(a[0])) : T;   // (the left side's own type: a literal None too)
+            return "[&]() -> " + T + " { " + vt + " v_ = " + l + "; return " + pick + "; }()";
         }
         if (n == "contains") return operand(node(e, "target")) + ".contains(" + X(a[0]) + ")";
         if (n == "dict.at") return operand(node(e, "target")) + ".at(" + X(a[0]) + ")";
@@ -1560,6 +1561,32 @@ V write_unit_python(const NodeP& unit, const std::string& api_root) {
             }
     S.push_back("}  // namespace " + ns);
     S.push_back("");
+    // (new) another module's classes this header holds by reference (py::ref<::m::C>): declared ahead of the
+    // includes, so two modules whose classes point at each other's include each other and still compile
+    {
+        std::map<std::string, std::set<std::string>> foreign;   // namespace -> classes
+        const std::string key = "py::ref<::";
+        for (auto& line : H)
+            for (size_t at = line.find(key); at != std::string::npos; at = line.find(key, at + 1)) {
+                size_t b = at + key.size(), e = line.find_first_of(">,", b);
+                if (e == std::string::npos) continue;
+                std::string q = line.substr(b, e - b);
+                size_t cut = q.rfind("::");
+                if (cut == std::string::npos) continue;
+                std::string space = q.substr(0, cut), cname = q.substr(cut + 2);
+                if (space == ns || cname.empty() || cname.find('<') != std::string::npos) continue;
+                foreign[space].insert(cname);
+            }
+        if (!foreign.empty()) {
+            Strs fw;
+            for (auto& [space, names] : foreign) {
+                std::string l = "namespace " + space + " {";
+                for (auto& n : names) l += " class " + n + ";";
+                fw.push_back(l + " }");
+            }
+            H.insert(H.begin() + 2, fw.begin(), fw.end());   // (after the title line and #pragma once)
+        }
+    }
     for (size_t i = 0; i < S.size(); i++)   // a native format's answers asked (py::native::ask): its header, here only
         if (S[i].find("py::native::ask<") != std::string::npos) {
             S.insert(S.begin() + 3, "#include \"py_answers.hpp\"");
