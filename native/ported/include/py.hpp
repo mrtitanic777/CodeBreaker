@@ -49,6 +49,11 @@
 #endif
 
 namespace py {
+template <class T> struct is_std_tuple_ : std::false_type {};
+template <class... T> struct is_std_tuple_<std::tuple<T...>> : std::true_type {};
+}  // namespace py
+
+namespace py {
 
 template <class T> using ref = std::shared_ptr<T>;
 
@@ -952,6 +957,9 @@ inline bytes str::encode(const char* enc, const char* errors) const {
 template <class T, class = void> struct hasher { size_t operator()(const T& v) const { return std::hash<T>()(v); } };
 template <> struct hasher<str> : str_hash {};
 template <> struct hasher<bytes> : bytes_hash {};
+template <class T> struct hasher<std::optional<T>> {   // (a dict keyed by a value or None)
+    size_t operator()(const std::optional<T>& v) const { return v ? hasher<T>()(*v) * 31 + 1 : 0; }
+};
 template <class... A> struct hasher<std::variant<A...>> {   // (a dict keyed by values of several kinds)
     size_t operator()(const std::variant<A...>& v) const {
         return std::visit([](const auto& x) { return hasher<std::decay_t<decltype(x)>>()(x); }, v) * 31 + v.index();
@@ -1178,7 +1186,9 @@ template <class T> class set {
     set(std::initializer_list<T> xs) : s_(std::make_shared<impl>()) { for (const auto& x : xs) add(x); }
     template <class It> static set from(const It& items) {
         set out;
-        for (const auto& x : items) out.add(x);
+        if constexpr (is_std_tuple_<It>::value) std::apply([&](const auto&... x) { (out.add(x), ...); }, items);   // frozenset(("a", "b"))
+        else
+            for (const auto& x : items) out.add(x);
         return out;
     }
     int64_t size() const { return static_cast<int64_t>(s_->where.size()); }
@@ -1358,6 +1368,28 @@ inline str repr(double v) { return to_str(v); }
 inline str repr(none_t) { return str("None"); }
 inline str to_str(const bytes& b) { return repr(b); }
 template <class T> str repr(const std::optional<T>& v) { return v ? repr(*v) : str("None"); }
+// a record (a Python dict of known keys, a generated struct with for_each_field_mut): the dict's repr, its keys
+// in the order the fields are declared; a key the dict may lack, absent, is left out
+struct any_field {   // (what a record's for_each_field_mut is called with, to tell a record from other types)
+    template <class F> void operator()(const char*, F&, bool) const {}
+};
+template <class T, class = void> struct is_record : std::false_type {};
+template <class T>
+struct is_record<T, std::void_t<decltype(for_each_field_mut(std::declval<T&>(), any_field{}))>> : std::true_type {};
+template <class T> struct is_optional_t : std::false_type {};
+template <class T> struct is_optional_t<std::optional<T>> : std::true_type {};
+template <class T, std::enable_if_t<is_record<T>::value, int> = 0> str repr(const T& r) {
+    str o("{");
+    size_t i = 0;
+    for_each_field_mut(const_cast<T&>(r), [&](const char* name, auto& f, bool required) {
+        if constexpr (is_optional_t<std::decay_t<decltype(f)>>::value)
+            if (!required && !f) return;
+        o += (i++ ? str(", ") : str("")) + repr(str(name)) + str(": ") + repr(f);
+    });
+    o += str("}");
+    return o;
+}
+template <class T, std::enable_if_t<is_record<T>::value, int> = 0> str to_str(const T& r) { return repr(r); }
 template <class T> str to_str(const std::optional<T>& v) { return v ? to_str(*v) : str("None"); }
 template <class T> str repr(const list<T>& xs) {
     str o("[");
@@ -2175,6 +2207,45 @@ inline int64_t int_from_str(const str& s, int64_t base = 10) {
     }
     if (!neg && v > static_cast<uint64_t>(INT64_MAX)) throw OverflowError("int too large for int64");
     return neg ? static_cast<int64_t>(0 - v) : static_cast<int64_t>(v);
+}
+
+// float(text) as Python reads it: blanks around it, a sign, digits with _ between them, a point, an exponent;
+// inf / infinity / nan in any case. No hexadecimal (strtod's) and no locale's decimal point.
+inline double float_from_str(const str& s) {
+    std::string t = s.strip().utf8();
+    auto bad = [&]() { return ValueError("could not convert string to float: " + repr(s).utf8()); };
+    size_t i = 0;
+    bool neg = false;
+    if (i < t.size() && (t[i] == '+' || t[i] == '-')) neg = t[i++] == '-';
+    std::string rest = t.substr(i), low;
+    for (char c : rest) low += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (low == "inf" || low == "infinity") return neg ? -HUGE_VAL : HUGE_VAL;
+    if (low == "nan") return neg ? -std::nan("") : std::nan("");
+    std::string clean;
+    bool digits = false, point = false, exp = false;
+    auto dig = [](char c) { return c >= '0' && c <= '9'; };
+    for (size_t k = 0; k < rest.size(); ++k) {
+        char c = rest[k];
+        if (dig(c)) { digits = true; clean += c; continue; }
+        if (c == '_' && k > 0 && k + 1 < rest.size() && dig(rest[k - 1]) && dig(rest[k + 1])) continue;
+        if (c == '.' && !point && !exp) { point = true; clean += c; continue; }
+        if ((c == 'e' || c == 'E') && digits && !exp) {
+            exp = true;
+            clean += 'e';
+            if (k + 1 < rest.size() && (rest[k + 1] == '+' || rest[k + 1] == '-')) clean += rest[++k];
+            if (k + 1 >= rest.size() || !dig(rest[k + 1])) throw bad();
+            continue;
+        }
+        throw bad();
+    }
+    if (!digits) throw bad();
+    double v = 0;
+    auto r = std::from_chars(clean.data(), clean.data() + clean.size(), v);
+    if (r.ptr != clean.data() + clean.size()) {
+        if (r.ec != std::errc::result_out_of_range) throw bad();
+        v = std::strtod(clean.c_str(), nullptr);   // (past the range: inf or 0, as Python's)
+    }
+    return neg ? -v : v;
 }
 
 }  // namespace py

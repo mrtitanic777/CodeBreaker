@@ -61,6 +61,8 @@ std::string ident(const std::string& name) {
     for (char& c : out)
         if (!(std::isalnum((unsigned char)c) || c == '_' || (unsigned char)c >= 0x80)) c = '_';
     if (!out.empty() && std::isdigit((unsigned char)out[0])) out = "_" + out;
+    // _Upper is the implementation's (MSVC's _STD is a macro): the module-private _STD becomes STD_
+    if (out.size() > 1 && out[0] == '_' && std::isupper((unsigned char)out[1])) out = out.substr(1) + "_";
     return out;
 }
 
@@ -244,6 +246,7 @@ struct PyWriter : Emitter {
     std::string module;                       // the module's qualified name
     std::string api_root;
     std::set<std::string> locals;
+    std::set<std::string> class_members;      // the class whose method is being written: its members' names
     TypeP ret;
     PyWriter(const std::string& mod, const std::string& api) : Emitter("    "), module(mod), api_root(api) {}
 
@@ -710,7 +713,15 @@ struct PyWriter : Emitter {
         if (skind(s) == "ctor" && typearg_has(e, "base")) return qual(sowner(s)) + "(" + args + ")";
         NodeP t = node(e, "target");
         if (!t) {
-            if (skind(s) == "function") return qual(sowner(s) + "." + sname(s)) + "(" + args + ")";
+            if (skind(s) == "function") {
+                // a module function a member of the method's class hides (Run.ended() calling ended(e)): qualified
+                if (sowner(s) == module && class_members.count(sname(s))) {
+                    Strs q;
+                    for (auto& x : py::split(module, ".")) q.push_back(ident(x));
+                    return "::" + join(q, "::") + "::" + ident(sname(s)) + "(" + args + ")";
+                }
+                return qual(sowner(s) + "." + sname(s)) + "(" + args + ")";
+            }
             return ident(sname(s)) + "(" + args + ")";
         }
         if (is(t, "TypeName")) return qual(tname(type(t))) + "::" + ident(sname(s)) + "(" + args + ")";
@@ -1221,7 +1232,13 @@ bool has_ctor(const ByQ& by, const std::string& q) {
 std::set<std::string> assigned(const NodeP& m) {
     std::set<std::string> out;
     for (auto& x : walk(m))
-        if (is(x, "Assign") && is(node(x, "target"), "Name")) out.insert(sname(sym(node(x, "target"))));
+        if (is(x, "Assign")) {
+            NodeP tg = node(x, "target");
+            if (is(tg, "Name")) out.insert(sname(sym(tg)));
+            else if (is(tg, "Call") && sowner(sym(tg)) == "py" && sname(sym(tg)) == "tie")   // a, b = ... into names
+                for (auto& a : nodes(tg, "args"))
+                    if (is(a, "Name")) out.insert(sname(sym(a)));
+        }
     return out;
 }
 
@@ -1315,6 +1332,12 @@ std::string signature_(PyWriter& w, const NodeP& m, const NodeP& c, bool decl, c
 
 Strs definition_(PyWriter& w, const NodeP& m, const NodeP& c);
 Strs definition(PyWriter& w, const NodeP& m, const NodeP& c) {
+    w.class_members.clear();
+    if (c)
+        for (auto& x : nodes(c, "members")) {
+            if (is(x, "MethodDecl")) w.class_members.insert(str(raw(x, "name")));
+            else if (is(x, "FieldDecl")) w.class_members.insert(sname(sym(x)));
+        }
     try {
         return definition_(w, m, c);
     } catch (Decline& e) {

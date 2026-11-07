@@ -3,6 +3,7 @@
 // fixtures in tests/data/cpp17: each case's L2 and its C++). The full gate -- every file of both
 // former Python back ends, byte for byte -- is docs/NATIVE.md's; tests/translate/test_python_frontend.py
 // and test_cpp17_backend.py judge the text by compiling and running it.
+#include <cstdlib>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -66,6 +67,11 @@ static void test_python_module() {
     py::V out = cpp17::write_unit(unit, API_MAPS);
     std::string h = out[0].str(), s = out[1].str();
     std::string wh = data("semantics.hpp"), ws = data("semantics.cpp");
+    if (std::getenv("CPP17_WRITE_FIXTURES")) {   // (after a deliberate change to what the back end writes)
+        std::ofstream(std::string(L2_TESTDATA) + "/cpp17/semantics.hpp", std::ios::binary) << h;
+        std::ofstream(std::string(L2_TESTDATA) + "/cpp17/semantics.cpp", std::ios::binary) << s;
+        wh = h, ws = s;
+    }
     CHECK(h == wh);
     if (h != wh) first_difference(h, wh);
     CHECK(s == ws);

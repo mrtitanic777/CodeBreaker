@@ -12,9 +12,9 @@
 // program has loaded already (the Python side's), else CB_FORMATS_DLL's, else formats.dll on the path.
 // What formats.dll raises is raised here as the Python reader raised it.
 #pragma once
-#include <windows.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <string>
@@ -24,6 +24,16 @@
 #include <vector>
 
 #include "py.hpp"
+
+// the three kernel32 calls this needs, declared here: <windows.h> would bring its macros (min, max, pascal,
+// near, far ...) into every translated unit
+#ifndef _WINDOWS_   // (else <windows.h> came first and declares them)
+extern "C" {
+__declspec(dllimport) void* __stdcall GetModuleHandleW(const wchar_t*);
+__declspec(dllimport) void* __stdcall LoadLibraryW(const wchar_t*);
+__declspec(dllimport) void* __stdcall GetProcAddress(void*, const char*);
+}
+#endif
 
 namespace py::native {
 
@@ -168,6 +178,7 @@ inline Val read_pickle(const uint8_t* p, size_t n) {
 }
 
 // ------------------------------------------------------------------------------------------ arguments
+
 struct Args {   // a tuple pickle of the call's arguments
     std::string b = std::string("\x80\x04(", 3);
     void op(char c) { b += c; }
@@ -188,16 +199,25 @@ struct Args {   // a tuple pickle of the call's arguments
         if (v) put(*v);
         else op('N');
     }
+    // a record: the dict the Python side passes (a field it may lack, absent, is left out)
+    template <class T, std::enable_if_t<is_record<T>::value, int> = 0> void put(const T& r) {
+        op('}');
+        op('(');
+        for_each_field_mut(const_cast<T&>(r), [&](const char* name, auto& field, bool required) {
+            using F = std::decay_t<decltype(field)>;
+            if constexpr (is_optional_<F>::value)
+                if (!required && !field) return;
+            put(std::string(name));
+            put(field);
+        });
+        op('u');
+    }
+    template <class T> struct is_optional_ : std::false_type {};
+    template <class T> struct is_optional_<std::optional<T>> : std::true_type {};
     std::string done() { return b + "t."; }
 };
 
 // ------------------------------------------------------------------------------------------ the answer read as R
-struct any_field {   // (what a record's for_each_field_mut is called with, to tell a record from other types)
-    template <class F> void operator()(const char*, F&, bool) const {}
-};
-template <class T, class = void> struct is_record : std::false_type {};
-template <class T>
-struct is_record<T, std::void_t<decltype(for_each_field_mut(std::declval<T&>(), any_field{}))>> : std::true_type {};
 
 template <class R> R read(const Val& v);
 
@@ -305,7 +325,7 @@ template <class R> R read(const Val& v) { return reader<R>::get(v); }
 using cbf_call_fn = int (*)(const char*, const uint8_t*, size_t, const uint8_t*, size_t, const uint8_t**, size_t*);
 inline cbf_call_fn entry() {
     static cbf_call_fn fn = [] {
-        HMODULE m = GetModuleHandleW(L"formats.dll");
+        void* m = GetModuleHandleW(L"formats.dll");
         if (!m) {
             const wchar_t* env = _wgetenv(L"CB_FORMATS_DLL");
             m = LoadLibraryW(env && *env ? env : L"formats.dll");

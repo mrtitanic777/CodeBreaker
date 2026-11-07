@@ -19,6 +19,11 @@ template <class F> void for_each_field(const Segment& r, F&& f) {
     f("kind", r.kind);
     f("flags", r.flags);
 }
+template <class F> void for_each_field_mut(Segment& r, F&& f) {
+    f("idx", r.idx, true);
+    f("kind", r.kind, true);
+    f("flags", r.flags, true);
+}
 
 class Shape : public py::object {
 public:

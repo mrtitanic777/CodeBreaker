@@ -1749,7 +1749,8 @@ public:
             pre.clear();
             IRP st = innermost();
             body_stmts.insert(body_stmts.end(), pre.begin(), pre.end());
-            body_stmts.push_back(st);
+            if (st->k == "Block") body_stmts.insert(body_stmts.end(), st->stmts.begin(), st->stmts.end());   // (its statements, no braces of their own)
+            else body_stmts.push_back(st);
             pre.clear();
         }
         for (auto it = g->ifs.rbegin(); it != g->ifs.rend(); ++it) {
