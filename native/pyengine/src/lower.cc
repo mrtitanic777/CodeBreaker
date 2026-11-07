@@ -2916,7 +2916,14 @@ public:
         TyP rt = t.kind != TK::None ? ty(t, n) : VOID();
         const std::string& name = r.A();
         std::vector<IRP> args;
-        for (auto* a : n->args) args.push_back(expr(a));
+        for (auto* a : n->args) {
+            auto* lam = as<pyfront::Lambda>(a);
+            if (lam && (name == "re.sub" || name == "re.subn") && lam->args->args.size() == 1) {   // the replacement a lambda of the match
+                args.push_back(lambda_expr(lam, {ty(Tof(AnyNode(lam->args->args[0], AnyNode::Arg)), a, "the match")}));
+                continue;
+            }
+            args.push_back(expr(a));
+        }
         if (name.rfind("struct.", 0) == 0) return mk_pyfn(name, args, rt, nullptr, line, {py::V(r.B())});
         if (name == "int.from_bytes") {
             std::string order = "big";

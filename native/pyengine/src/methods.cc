@@ -919,7 +919,7 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
 // ------------------------------------------------------------------------------------ stdlib
 TR Eval::std_call(const A::Call* n, const std::string& name, const Args& args, const Kw& kw, const State& state) {
     T bad;
-    if (lazy_bad(*this, n, args, kw, false, bad)) return bad;
+    if (lazy_bad(*this, n, args, kw, name == "re.sub" || name == "re.subn", bad)) return bad;   // (re.sub's replacement may be a lambda: ext.cc)
     if (name.rfind("struct.", 0) == 0) {
         std::string fn_ = name.substr(7);
         if (!kw.empty()) return issue(n, "syntax", name + " keywords");
