@@ -33,6 +33,7 @@ struct TypeObj : Obj {
     DictObj* dict = nullptr;              // the class namespace
     Layout layout = Layout::Object;
     bool builtin = false;
+    bool binds = false;           // a runtime type whose instances are descriptors (__get__ honoured though builtin)
     bool is_exception = false;
     bool abstract_instances = false;      // (instances may not be made: NoneType ...)
     uint64_t version = 0;                 // bumped when the dict (or a base's) changes

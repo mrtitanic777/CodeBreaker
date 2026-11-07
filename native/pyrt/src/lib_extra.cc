@@ -629,6 +629,9 @@ static void init_locale(const var& m) {
     mod_set(m, "LC_ALL", var(0));
     mod_set(m, "LC_CTYPE", var(2));
     mod_set(m, "LC_NUMERIC", var(4));
+    mod_set(m, "LC_COLLATE", var(1));   // (Windows' values, as CPython's)
+    mod_set(m, "LC_MONETARY", var(3));
+    mod_set(m, "LC_TIME", var(5));
     mod_set(m, "Error", mkcls("Error", {t::Exception}, {}, "locale"));
     mod_def(m, "setlocale", [](const CallArgs&) { return "C"_s; });
     mod_def(m, "getpreferredencoding", [](const CallArgs&) { return "utf-8"_s; });

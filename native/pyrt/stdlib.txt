@@ -65,3 +65,4 @@ numbers
 fractions
 re._constants = re/_constants.py
 re._parser = re/_parser.py
+_strptime                      # (time.strptime: CPython's, in lib_os.cc)

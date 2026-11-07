@@ -1071,13 +1071,43 @@ void init_inspect_module(const var& m);
 // ------------------------------------------------------------------------------------------ abc
 static TypeObj* g_abcmeta = nullptr;
 // is sub a subclass of the ABC t: really, through t's registry (and its subclasses'), or by t's hook
+static std::vector<TypeObj*>& abc_with_registry() {   // the ABCs register() was called on (their registries)
+    static std::vector<TypeObj*> v;
+    return v;
+}
 static bool abc_subclass(TypeObj* t, TypeObj* sub) {
     if (is_subtype(sub, t)) return true;
-    if (var* reg = t->dict->get("_abc_registry"))
-        for (var r : each(*reg)) {
-            TypeObj* rt = T(r);
-            if (rt->metatype == g_abcmeta ? abc_subclass(rt, sub) : is_subtype(sub, rt)) return true;
+    static thread_local std::vector<TypeObj*> asking;   // (registries that name each other: each asked once)
+    if (std::find(asking.begin(), asking.end(), t) != asking.end()) return false;
+    if (var* reg = t->dict->get("_abc_registry")) {
+        asking.push_back(t);
+        bool found = false;
+        try {
+            for (var r : each(*reg)) {
+                TypeObj* rt = T(r);
+                if (rt->metatype == g_abcmeta ? abc_subclass(rt, sub) : is_subtype(sub, rt)) { found = true; break; }
+            }
+        } catch (...) {
+            asking.pop_back();
+            throw;
         }
+        asking.pop_back();
+        if (found) return true;
+    }
+    // the ABC's subclasses' registries (BufferedIOBase's for IOBase), as CPython walks __subclasses__()
+    if (std::find(asking.begin(), asking.end(), t) == asking.end()) {
+        asking.push_back(t);
+        bool found = false;
+        try {
+            for (TypeObj* r : abc_with_registry())
+                if (r != t && is_subtype(r, t) && abc_subclass(r, sub)) { found = true; break; }
+        } catch (...) {
+            asking.pop_back();
+            throw;
+        }
+        asking.pop_back();
+        if (found) return true;
+    }
     if (var* hook = t->dict->get("_abc_hook")) {
         bool all = true;
         for (var n : each(*hook)) {
@@ -1603,8 +1633,13 @@ void init_more_modules() {
         // __iter__ ...), as collections.abc's __subclasshook__s do
         add_method(T_abcmeta, "register", [](const CallArgs& a) {
             TypeObj* t = T(a.pos.at(0));
+            if (is_subtype(T(a.pos.at(1)), t)) return a.pos[1];   // already a subclass (itself too): as ABCMeta.register
             var* reg = t->dict->get("_abc_registry");
-            if (!reg) { t->dict->set(interned("_abc_registry"), new_list()); reg = t->dict->get("_abc_registry"); }
+            if (!reg) {
+                t->dict->set(interned("_abc_registry"), new_list());
+                reg = t->dict->get("_abc_registry");
+                abc_with_registry().push_back(t);
+            }
             reg->call("append", a.pos.at(1));
             return a.pos[1];
         });

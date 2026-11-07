@@ -1150,6 +1150,7 @@ void init_modules() {
         });
         // lru_cache / cache: the function memoised on its arguments
         T_lru = new_type("_lru_cache_wrapper", {}, Layout::NativeData, true, "functools");
+        T_lru->binds = true;   // (on a method it binds self: its __get__)
         add_method(T_lru, "__call__", [](const CallArgs& a) {
             auto* l = static_cast<LruObj*>(a.pos[0].ref());
             std::vector<var> key(a.pos.begin() + 1, a.pos.end());

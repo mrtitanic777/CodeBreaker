@@ -1802,6 +1802,25 @@ void init_os_modules() {
             _gmtime64_s(&tm, &t);
             return tm_of(tm);
         });
+        {   // the zone: tzname, timezone, altzone, daylight -- the system's, as the C runtime's _tzset gives CPython them
+            TIME_ZONE_INFORMATION tz{};
+            GetTimeZoneInformation(&tz);
+            auto utf8 = [](const wchar_t* w) {
+                int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+                std::string s(n > 0 ? n - 1 : 0, '\0');
+                if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
+                return s;
+            };
+            mod_set(m, "tzname", new_tuple({new_str(utf8(tz.StandardName)), new_str(utf8(tz.DaylightName))}));
+            mod_set(m, "timezone", var((int64_t)(tz.Bias + tz.StandardBias) * 60));
+            mod_set(m, "altzone", var((int64_t)(tz.Bias + tz.DaylightBias) * 60));
+            mod_set(m, "daylight", var((int64_t)(tz.DaylightDate.wMonth != 0)));
+            mod_set(m, "_STRUCT_TM_ITEMS", var((int64_t)11));   // (struct_time's 9 items and tm_zone, tm_gmtoff)
+        }
+        // strptime: CPython's own -- _strptime._strptime_time (translated from its Lib)
+        mod_def(m, "strptime", [](const CallArgs& a) -> var {
+            return call_obj(import("_strptime").getattr("_strptime_time"), a);
+        });
         mod_def(m, "strftime", [](const CallArgs& a) {
             std::tm tm{};
             if (a.pos.size() > 1) {

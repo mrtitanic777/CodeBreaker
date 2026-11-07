@@ -294,6 +294,15 @@ void init_io() {
     T_stringio = new_type("StringIO", {}, Layout::NativeData, true, "_io");
     T_bytesio = new_type("BytesIO", {}, Layout::NativeData, true, "_io");
     TypeObj* t = T_file;
+    // io.TextIOWrapper(buffer, encoding=, errors=, newline=, ...): text over a byte stream the program has
+    // (a BytesIO, a socket's file, a pipe) is CPython's own, from _pyio; the files open() and sys give stay
+    // this type (its instances are made by the runtime, not by calling it)
+    add_static(t, "__new__", [](const CallArgs& a) -> var {
+        CallArgs rest;
+        rest.pos.assign(a.pos.begin() + 1, a.pos.end());
+        rest.kw = a.kw;
+        return call_obj(import("_pyio").getattr("TextIOWrapper"), rest);
+    });
     add_method(t, "write", [](const CallArgs& a) { return file_write(F(a.pos[0]), a.pos.at(1)); });
     add_method(t, "writelines", [](const CallArgs& a) {
         for (var x : each(a.pos.at(1))) file_write(F(a.pos[0]), x);
@@ -611,7 +620,15 @@ void init_io() {
             for (const char* k : from_pyio)
                 if (n == k) {
                     if (!module_registered_("_pyio")) raise(E_AttributeError, "module 'io' has no attribute '" + n + "' (_pyio is not in this program)");
-                    var v = import("_pyio").getattr(k);
+                    var pyio = import("_pyio");
+                    var v = pyio.getattr(k);
+                    // the runtime's own streams under _pyio's ABCs, as CPython's _io ones are (each when its ABC is first
+                    // asked for: _pyio asks for io.IOBase while it is still being made)
+                    if (n == "BufferedIOBase") v.call("register", tv(T_bytesio));
+                    if (n == "TextIOBase") {
+                        v.call("register", tv(T_stringio));
+                        v.call("register", tv(T_file));
+                    }
                     mod_set(import("io"), k, v);
                     return v;
                 }

@@ -5,6 +5,7 @@
 # ctypes, its calls straight to libz3.dll (z3/lib).
 unicorn.*
 capstone.*
+pycdlib.*                      # (the boot gate's CD images: codebreaker/emulate's Setup media)
 z3.*
 # fontTools: only the modules codebreaker/formats/gfx.py's font_to_ttf loads (fontBuilder, ttGlyphPen and the tables
 # it writes; measured from sys.modules under CPython) -- the package is 127k lines, nearly all of it unused here

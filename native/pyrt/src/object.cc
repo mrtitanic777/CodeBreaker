@@ -321,7 +321,9 @@ var bind(const var& attr, const var& self, TypeObj* t) {
         if (p->fget.is_none() || p->fget.is_unbound()) raise(E_AttributeError, "property '" + p->name + "' of '" + t->name + "' object has no getter");
         return call1(p->fget, self);
     }
-    if (!at->builtin) {
+    // a descriptor: a class's, or a runtime type marked binds (functools' lru_cache wrapper on a method binds
+    // self, as CPython's does)
+    if (!at->builtin || at->binds) {
         if (const var* g = at->lookup("__get__"))
             return call_obj(bind(*g, attr, at), pack_args_(self.is_unbound() ? var(None) : self, tv(t)));
     }

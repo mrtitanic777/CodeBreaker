@@ -568,6 +568,14 @@ void init_bytes() {
             if (p == std::string::npos) return new_tuple({same_kind(a.pos[0], s), same_kind(a.pos[0], ""), same_kind(a.pos[0], "")});
             return new_tuple({same_kind(a.pos[0], s.substr(0, p)), same_kind(a.pos[0], sep), same_kind(a.pos[0], s.substr(p + sep.size()))});
         });
+        add_method(t, "rpartition", [](const CallArgs& a) {   // (the last sep; none: (b"", b"", s))
+            const std::string& s = B(a.pos[0])->s;
+            std::string sep = barg(a.pos.at(1));
+            if (sep.empty()) raise(E_ValueError, "empty separator");
+            size_t p = s.rfind(sep);
+            if (p == std::string::npos) return new_tuple({same_kind(a.pos[0], ""), same_kind(a.pos[0], ""), same_kind(a.pos[0], s)});
+            return new_tuple({same_kind(a.pos[0], s.substr(0, p)), same_kind(a.pos[0], sep), same_kind(a.pos[0], s.substr(p + sep.size()))});
+        });
         add_method(t, "ljust", [](const CallArgs& a) {
             std::string s = B(a.pos[0])->s;
             int64_t w = a.pos.at(1).as_int64();
