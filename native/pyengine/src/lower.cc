@@ -2556,6 +2556,13 @@ public:
             nw->type = cls("py." + name);
             return nw;
         }
+        if (kind == "getattr_attr") {   // getattr(x, "a", d) where every instance has a: x.a
+            T ot = Tof(n->args[0]);
+            std::string owner = p.attr_owner(ot.name(), r->A());
+            TyP ft = ty(t, n);
+            return select_n(expr(n->args[0]), sym("field", r->A(), owner.empty() ? ot.name() : owner, false, ft), ft, line);
+        }
+        if (kind == "getattr_default") return coerce(expr(n->args[2]), ty(t, n));   // (no class of x's has a: the default)
         if (kind == "builtin") return builtin_call(n, r->A(), t);
         if (kind == "bmethod") {
             IRP c = method_call(n, r->A(), t);

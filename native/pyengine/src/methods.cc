@@ -541,7 +541,38 @@ int Eval::getattr_form(const A::Call* n, const State& state) {
     return c;
 }
 
+// (new) the attribute every instance of the class has: a class attribute, or one __init__ sets on every path (a
+// `self.a = ...` statement at the top of its body) -- getattr(x, "a", d) can only be x.a when no instance lacks it
+static bool always_has(Program& p, const std::string& cq, const std::string& attr) {
+    for (auto& c : p.mro(cq)) {
+        Class** k = p.classes.get(c);
+        if (!k) continue;
+        if ((*k)->class_attrs.has(attr)) return true;
+        Fn** init = (*k)->methods.get("__init__");
+        if (!init) continue;
+        const std::string& self = (*init)->params.empty() ? std::string() : (*init)->params[0];
+        for (auto* st : (*init)->node->body)
+            if (auto* a = as<Assign>(st))
+                for (auto* t : a->targets)
+                    if (auto* at = as<Attribute>(t))
+                        if (auto* nm = as<pyfront::Name>(at->value); nm && nm->id == self && at->attr == attr) return true;
+        return false;   // (the first class with an __init__ is the one that runs)
+    }
+    return false;
+}
+
 TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, const Kw& kw, const State& state) {
+    // getattr(x, "a"[, default]) of an instance of the program's classes: x.a when every instance has it, the
+    // default when no class of x's (nor a subclass) has it; else still dynamic
+    if (name == "getattr" && p.extended && (n->args.size() == 2 || n->args.size() == 3) && n->keywords.empty() && !args.empty() && args[0]) {
+        std::string an;
+        const T& ot = *args[0];
+        if (is_str_const(n->args[1], &an) && ot.kind == TK::Inst && p.classes.has(ot.name()) && !p.find_method(ot.name(), an)) {
+            std::optional<T> at = p.attr_type(ot.name(), an);
+            if (at && at->kind != TK::Top && always_has(p, ot.name(), an)) return TR(*at, Res("getattr_attr", an));
+            if (!at && n->args.size() == 3) return TR(ev(n->args[2], state), Res("getattr_default", an));
+        }
+    }
     if (DYNAMIC_BUILTINS.count(name)) return issue(n, "dynamic", name);
     T bad;
     Kw none;
