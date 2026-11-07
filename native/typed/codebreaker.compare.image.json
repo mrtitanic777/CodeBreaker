@@ -1,0 +1,1 @@
+{"module": "codebreaker.compare.image", "from": "codebreaker.compare.image.py, by pyengine's typed path (proven: translated, compiled, agreeing with the Python under the judge)", "functions": [{"name": "first_difference", "cpp": "first_difference", "void": false, "params": [{"name": "a", "kind": "bytes"}, {"name": "b", "kind": "bytes"}]}]}

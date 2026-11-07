@@ -52,7 +52,10 @@ struct IslandSet {
 };
 
 // reads DIR's coverage.json and units; verdicts (optional) as above. False with `err` when DIR is unusable.
-bool load_islands(const std::string& typed_dir, const std::string& verdicts, IslandSet& out, std::string& err);
+// ints_unranged: an int parameter with no recorded range takes any int64 (the checked policy: the typed body
+// raises OverflowError past it) -- for a native module, which has no dynamic body to send other values to
+bool load_islands(const std::string& typed_dir, const std::string& verdicts, IslandSet& out, std::string& err, bool ints_unranged = false);
+std::string export_params(const Island& is);
 std::string islands_header(const IslandSet& s);   // islands.hpp: the exports, plain C++ (both sides include it)
 std::string islands_glue(const IslandSet& s);     // islands.cpp: the typed side, each export calling its typed function
 std::string islands_report(const IslandSet& s);   // islands.json: what was written, held, and why the rest are not islands
