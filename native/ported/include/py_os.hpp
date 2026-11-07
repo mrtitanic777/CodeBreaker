@@ -253,6 +253,7 @@ inline file open_rb(const str& path) { return file::open(path, str("rb")); }
 
 // ------------------------------------------------------------------------------------------ os
 namespace os {
+inline str fspath(const str& p) { return p; }   // (a path that is a str: itself)
 inline const str sep = str("\\");
 inline const str altsep = str("/");
 inline const str linesep = str("\r\n");

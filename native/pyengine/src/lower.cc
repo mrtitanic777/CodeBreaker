@@ -707,7 +707,8 @@ public:
         std::vector<IRP> args;
         int data_arg = -1;
         if (auto ai = p.native_args_of.find(f->qname); ai != p.native_args_of.end()) {   // args_of: f's bytes and place, inlined
-            args.push_back(expr(ai->second.data));
+            const A::Expr* d = ai->second.data;   // (None: a question of no bytes, its place the file's path)
+            args.push_back(d->kind == ExprKind::Constant && is_none_const(d) ? mk_pyfn("native.no_data", {}, BYTEST(), nullptr, line) : expr(d));
             for (auto* e : ai->second.place) args.push_back(expr(e));
             for (size_t i = 1; i < f->params.size(); i++) args.push_back(name_expr(f->params[i]));
             auto r = node("Return", line);

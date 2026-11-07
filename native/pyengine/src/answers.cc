@@ -379,6 +379,18 @@ size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log
             specs()[q] = s;
             p.native_bound[q] = question;
             p.native_data[q] = dc.data;
+            if (dc.args_of.empty() && dc.data.rfind("arg:", 0) == 0) {   // the question's bytes are bytes: a caller passing other is refused there
+                size_t self = (f->cls && (f->kind == "method" || f->kind == "property")) ? 1 : 0;
+                size_t k = self + (size_t)std::stoi(dc.data.substr(4));
+                if (k < f->params.size() && !f->annotations.has(f->params[k])) {
+                    auto pr = pyfront::parse("_hint: bytes\n", "<native data " + q + ">");
+                    if (pr && !pr.module->body.empty())
+                        if (auto* aa = dynamic_cast<const pyfront::AnnAssign*>(pr.module->body[0])) {
+                            f->annotations.set(f->params[k], aa->annotation);
+                            p.hint_trees.push_back(std::move(pr.module));
+                        }
+                }
+            }
             if (!dc.args_of.empty()) {
                 // args_of=f, f of the shape  def f(x, *rest): return <bytes of x>, (<place of x>, ...) + rest  -- its
                 // expressions inlined in the stub, whose first parameter has f's first parameter's name

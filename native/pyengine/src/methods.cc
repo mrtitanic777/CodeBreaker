@@ -980,7 +980,8 @@ TR Eval::std_call(const A::Call* n, const std::string& name, const Args& args, c
         {"os.path.dirname", {1, [] { return STR(); }}},         {"os.path.splitext", {1, [] { return tuple_of({STR(), STR()}); }}},
         {"os.path.exists", {1, [] { return BOOL(); }}},         {"os.path.isfile", {1, [] { return BOOL(); }}},
         {"os.path.isdir", {1, [] { return BOOL(); }}},          {"os.path.getsize", {1, [] { return SIZE(); }}},
-        {"os.path.split", {1, [] { return tuple_of({STR(), STR()}); }}}, {"os.path.normcase", {1, [] { return STR(); }}}};
+        {"os.path.split", {1, [] { return tuple_of({STR(), STR()}); }}}, {"os.path.normcase", {1, [] { return STR(); }}},
+        {"os.fspath", {1, [] { return STR(); }}}};
     auto pit = PATH.find(name);
     if (pit != PATH.end()) {
         if (!kw.empty()) return issue(n, "syntax", name + " keywords");
