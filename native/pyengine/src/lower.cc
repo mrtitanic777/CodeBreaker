@@ -4,6 +4,7 @@
 #include "lower.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <functional>
 #include <regex>
 
@@ -2194,7 +2195,18 @@ public:
             TyP ft = ty(t, n, "captured " + n->id);
             return mk_name(sym("local", n->id, r->A(), false, ft), ft);
         }
+        if (r->k == "const" && n->id == "__file__" && p.extended)   // (new) the module's source file, as python names it
+            return mk_lit(py::V(module_file(f->module)), STRT());
         throw Refused("dynamic", r->k + " " + n->id + " as a value", line);
+    }
+
+    // __file__: the module's .py as an absolute path, the separators the system's (what the program's own
+    // module_def records for it, so the typed and the translated program agree)
+    static std::string module_file(const Module* m) {
+        std::error_code ec;
+        auto a = std::filesystem::absolute(std::filesystem::u8path(m->path), ec);
+        auto u8 = (ec ? std::filesystem::u8path(m->path) : a).lexically_normal().make_preferred().u8string();
+        return std::string(u8.begin(), u8.end());
     }
 
     IRP narrowed(const IRP& e, const TyP& flow) {
@@ -2444,10 +2456,15 @@ public:
         auto saved = pre;
         pre.clear();
         IRP b = expr(n->values[1]);
-        if (!pre.empty() || effects(b)) throw Refused("syntax", "value of and/or with a right side that has effects", line);
+        if (!pre.empty()) throw Refused("syntax", "value of and/or with a right side that needs statements", line);
+        // (new) a right side with effects runs only when Python would run it: the back end writes the lazy form
+        std::string lazy = effects(b) ? "_lazy" : "";
         pre = saved;
-        if (is_opt_t(a->type) && !is_opt_t(rt)) return mk_pyfn(op == "||" ? "or_none" : "and_none", {a, coerce(b, rt)}, rt, nullptr, line);
-        return mk_pyfn(op == "||" ? "or" : "and", {coerce(a, rt), coerce(b, rt)}, rt, nullptr, line);
+        if (is_opt_t(a->type) && !is_opt_t(rt)) {
+            if (op != "||") throw Refused("syntax", "value of `and` over a value that may be None", line);
+            return mk_pyfn("or_none" + lazy, {a, coerce(b, rt)}, rt, nullptr, line);
+        }
+        return mk_pyfn((op == "||" ? "or" : "and") + lazy, {coerce(a, rt), coerce(b, rt)}, rt, nullptr, line);
     }
 
     IRP paren_bool(const IRP& e, const std::string& op) {

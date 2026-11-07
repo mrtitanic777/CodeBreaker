@@ -1641,6 +1641,16 @@ inline void percent_one_(std::u32string& out, const std::string& f, int w, int p
 template <class... A> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const std::variant<A...>& v) {
     std::visit([&](const auto& x) { percent_one_(out, f, w, p, c, x); }, v);   // (the value it holds, as itself)
 }
+// (new) a container as %s is its str() (its repr, as Python's str of a list is), as %r its repr
+template <class T> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const list<T>& v) {
+    percent_one_(out, f, w, p, 's', c == 'r' ? repr(v) : to_str(v));
+}
+template <class K, class V> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const dict<K, V>& v) {
+    percent_one_(out, f, w, p, 's', c == 'r' ? repr(v) : to_str(v));
+}
+template <class T> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const set<T>& v) {
+    percent_one_(out, f, w, p, 's', c == 'r' ? repr(v) : to_str(v));
+}
 template <class T> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const std::optional<T>& v) {
     if (v) percent_one_(out, f, w, p, c, *v);
     else percent_one_(out, f, w, p, 's', str("None"));

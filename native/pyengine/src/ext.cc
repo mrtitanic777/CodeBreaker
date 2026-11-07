@@ -559,6 +559,9 @@ TR Eval::ext_method(const A::Call* n, const T& recv, const std::string& attr, co
                 if (!FNS.count(attr)) return issue(n, "stdlib", "re.Pattern." + attr);
                 for (auto& [k, _] : kw)
                     if (k != "count" && k != "maxsplit" && k != "pos") return issue(n, "syntax", "re.Pattern." + attr + "(" + k + "=)");
+                // (py::re's findall and finditer take the string alone: pos and endpos are match/search/fullmatch's)
+                if ((attr == "findall" || attr == "finditer") && (args.size() > 1 || kw.has("pos")))
+                    return issue(n, "stdlib", "re.Pattern." + attr + " with pos/endpos");
                 return re_result(*this, n, attr, pat, verbose, args, kw, "re.Pattern." + attr, state);
             }
             if (!kw.empty()) return issue(n, "syntax", "re.Match." + attr + " keywords");

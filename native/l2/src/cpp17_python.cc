@@ -989,6 +989,18 @@ struct PyWriter : Emitter {
             std::string l = X(a[0]);
             return "py::or_none(" + l + ", " + X(a[1], et) + ")";
         }
+        // (new) `a or b` / `a and b` whose b has effects: b evaluated only when Python evaluates it
+        if (n == "or_lazy" || n == "and_lazy" || n == "or_none_lazy") {
+            bool none = n == "or_none_lazy";
+            std::string l = none ? X(a[0]) : X(a[0], et), r = X(a[1], et), T = ctype(et);
+            bool plain = a[0] && a[0]->kind() == "Name";
+            std::string v = plain ? l : "v_";
+            std::string pick = none ? "(py::truthy(" + v + ") ? *" + v + " : " + T + "(" + r + "))"
+                               : n == "or_lazy" ? "(py::truthy(" + v + ") ? " + v + " : " + T + "(" + r + "))"
+                                                : "(py::truthy(" + v + ") ? " + T + "(" + r + ") : " + v + ")";
+            if (plain) return pick;
+            return "[&]() -> " + T + " { auto v_ = " + l + "; return " + pick + "; }()";
+        }
         if (n == "contains") return operand(node(e, "target")) + ".contains(" + X(a[0]) + ")";
         if (n == "dict.at") return operand(node(e, "target")) + ".at(" + X(a[0]) + ")";
         if (starts(n, "struct.")) return struct_call(e);
