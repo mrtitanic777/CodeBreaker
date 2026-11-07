@@ -257,6 +257,7 @@ struct Binder {
 struct Deco {
     std::string question, data;
     std::string where;   // @native.ask(q, _where): the module function giving the call's place (its args after the bytes)
+    std::string args_of; // @native.answered(q, args_of=f): f(*args) -> (bytes, its arguments)
 };
 Deco deco_of(const A::Expr* d) {
     Deco out;
@@ -274,7 +275,13 @@ Deco deco_of(const A::Expr* d) {
     }
     out.data = ask ? "self:data" : "arg:0";
     for (auto* k : c->keywords) {
-        if (!k->has_arg || k->arg == "result" || k->arg == "args_of") return Deco{};
+        if (!k->has_arg || k->arg == "result") return Deco{};
+        if (k->arg == "args_of") {
+            auto* w = as<pyfront::Name>(k->value);
+            if (ask || !w) return Deco{};
+            out.args_of = w->id;
+            continue;
+        }
         if (k->arg == "where") {
             auto* w = as<pyfront::Name>(k->value);
             if (!ask || !w) return Deco{};
@@ -372,6 +379,42 @@ size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log
             specs()[q] = s;
             p.native_bound[q] = question;
             p.native_data[q] = dc.data;
+            if (!dc.args_of.empty()) {
+                // args_of=f, f of the shape  def f(x, *rest): return <bytes of x>, (<place of x>, ...) + rest  -- its
+                // expressions inlined in the stub, whose first parameter has f's first parameter's name
+                Fn** af = p.fns.get(f->module->name + "." + dc.args_of);
+                Program::NativeArgsOf ao;
+                bool ok = af && !(*af)->params.empty() && !f->params.empty() && (*af)->params[0] == f->params[0] &&
+                          (*af)->params.size() == 1 && !(*af)->varargs.empty();
+                const A::Return* ret = nullptr;
+                if (ok) {
+                    std::vector<const A::Stmt*> body;
+                    for (auto* st : (*af)->node->body)
+                        if (!(st->kind == StmtKind::Expr && as<Constant>(cast<ExprStmt>(st)->value))) body.push_back(st);
+                    ret = body.size() == 1 ? as<A::Return>(body[0]) : nullptr;
+                }
+                auto* tup = ret ? as<pyfront::Tuple>(ret->value) : nullptr;
+                if (tup && tup->elts.size() == 2) {
+                    ao.data = tup->elts[0];
+                    const A::Expr* place = tup->elts[1];
+                    if (auto* bo = as<BinOp>(place); bo && bo->op == OpKind::Add) {
+                        auto* rn = as<pyfront::Name>(bo->right);
+                        if (!rn || rn->id != (*af)->varargs) place = nullptr;
+                        else place = bo->left;
+                    }
+                    if (auto* pt = place ? as<pyfront::Tuple>(place) : nullptr) ao.place.assign(pt->elts.begin(), pt->elts.end());
+                    else ao.data = nullptr;
+                }
+                if (!ao.data) {   // (another shape: not bound)
+                    p.native_bound.erase(q);
+                    p.native_data.erase(q);
+                    p.returns.erase(q);
+                    specs().erase(q);
+                    bound--;
+                    continue;
+                }
+                p.native_args_of[q] = ao;
+            }
             if (!where.empty()) p.native_where[q] = where;
             bound++;
         }

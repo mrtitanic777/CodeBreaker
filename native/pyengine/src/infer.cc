@@ -214,6 +214,10 @@ Eval& Eval::run() {
         else t = p.param_type(f, all[i]);
         state.set(all[i], t);
     }
+    if (auto ai = p.native_args_of.find(f->qname); ai != p.native_args_of.end()) {   // args_of inlined: its expressions here
+        ev(ai->second.data, state);
+        for (auto* e : ai->second.place) ev(e, state);
+    }
     bool gen = p.extended && f->generator;
     for (const AnyNode& n : walk(AnyNode(node))) {
         const A::Expr* e = n.expr();

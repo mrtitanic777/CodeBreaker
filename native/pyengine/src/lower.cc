@@ -706,6 +706,14 @@ public:
         size_t self = (f->cls && (f->kind == "method" || f->kind == "property")) ? 1 : 0;
         std::vector<IRP> args;
         int data_arg = -1;
+        if (auto ai = p.native_args_of.find(f->qname); ai != p.native_args_of.end()) {   // args_of: f's bytes and place, inlined
+            args.push_back(expr(ai->second.data));
+            for (auto* e : ai->second.place) args.push_back(expr(e));
+            for (size_t i = 1; i < f->params.size(); i++) args.push_back(name_expr(f->params[i]));
+            auto r = node("Return", line);
+            r->expr = mk_pyfn("native.ask", args, ret, nullptr, line, {py::V(question)});
+            return block_n({r});
+        }
         if (data.rfind("self:", 0) == 0) {
             if (!self) throw Refused("dynamic", "a native question of self's bytes outside a method", line);
             auto th = node("This", line);

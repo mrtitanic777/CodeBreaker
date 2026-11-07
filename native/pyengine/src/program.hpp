@@ -258,6 +258,11 @@ public:
     // type is the answer's, fixed before solving and never replaced by their (empty) bodies
     std::map<std::string, std::string> native_bound;
     std::map<std::string, std::string> native_where;   // its place function (ask(q, _where)): called with self, spread after the bytes
+    struct NativeArgsOf {   // args_of=f inlined: the bytes and the place, f's expressions of the stub's first parameter
+        const pyfront::Expr* data = nullptr;
+        std::vector<const pyfront::Expr*> place;
+    };
+    std::map<std::string, NativeArgsOf> native_args_of;
     std::map<std::string, std::string> native_data;   // where its call's bytes come from: "self:<attr>", "arg:<i>", "none"
     std::vector<std::unique_ptr<pyfront::Module>> hint_trees;
     int apply_type_hints();
