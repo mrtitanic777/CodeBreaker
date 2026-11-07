@@ -122,7 +122,7 @@ inline bool value(const py::var& x, const char* spec, val& out) { return value_(
             cls = py::import_from(b, "RuntimeError");
         }
     }
-    py::raise(static_cast<py::TypeObj*>(cls.ref()), msg);
+    py::raise(py::T(cls), msg);
 }
 
 // ------------------------------------------------------------------------------------------ results
