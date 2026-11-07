@@ -1,3 +1,11 @@
+def root() -> str: ...
+
+
+class Project:
+    def __init__(self, folder: str) -> None: ...
+    @property
+    def name(self) -> str: ...
+
 from typing import (
     Dict,
     List,

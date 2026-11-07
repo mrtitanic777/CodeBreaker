@@ -1815,8 +1815,8 @@ TR Eval::binop(AnyNode n, OpKind op, T a, T b, const A::Expr* ln, const A::Expr*
         }
     }
     if ((ka == TK::Int || ka == TK::Float) && (kb == TK::Int || kb == TK::Float)) {
-        if (ka == TK::Int) exact_float(n, a);
-        if (kb == TK::Int) exact_float(n, b);
+        // Python rounds the int to a double first here (float.__add__ etc.), as C++ converts an int64: exact
+        // whatever the int's range, an int beyond int64 already being refused (or checked) where it is made
         if (op == OpKind::Add || op == OpKind::Sub || op == OpKind::Mult || op == OpKind::Div || op == OpKind::FloorDiv ||
             op == OpKind::Mod || op == OpKind::Pow)
             return FLOAT();

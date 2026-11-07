@@ -1,0 +1,13 @@
+from typing import Dict
+
+
+def _put(image: bytearray, at: int, data: <class 'Union'>[bytes, bytearray]) -> None: ...
+
+
+def _size_guess(line: str, pc: int, labels: Dict[str, int]) -> bytes: ...
+
+
+def _strip(line: str) -> str: ...
+
+
+def build(source: str) -> bytes: ...

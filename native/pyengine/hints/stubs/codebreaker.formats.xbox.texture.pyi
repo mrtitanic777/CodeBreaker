@@ -1,4 +1,17 @@
 from PIL.Image import Image
+
+
+def decode_dxt(
+    data: bytes,
+    w: int,
+    h: int,
+    fmt: str,
+    tiled: bool = ...,
+    swapped: bool = ...,
+    force_opaque: bool = ...
+) -> Image: ...
+
+from PIL.Image import Image
 from typing import (
     List,
     Tuple,

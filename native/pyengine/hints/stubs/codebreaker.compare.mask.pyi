@@ -1,3 +1,8 @@
+from typing import Set
+
+
+def blank(code: bytearray, offsets: Set[int]) -> bytes: ...
+
 from typing import (
     List,
     Optional,

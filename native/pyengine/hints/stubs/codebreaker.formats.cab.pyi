@@ -1,4 +1,32 @@
 from typing import (
+    Dict,
+    List,
+    Tuple,
+    Union,
+)
+
+
+def _by_path(path: str, *rest) -> Tuple[None, Tuple[str]]: ...
+
+
+def _cabinet(
+    answer: Tuple[Dict[str, <class 'Union'>], List[Tuple[str, int, int, int, int, int, int, str]], List[Tuple[int, int, int]], int],
+    _data: None,
+    path: str
+) -> Cabinet: ...
+
+
+class Cabinet:
+    def __init__(
+        self,
+        path: str,
+        info: Dict[str, <class 'Union'>],
+        files: List[Entry],
+        folders: List[Tuple[int, int, int]],
+        block_reserve: int
+    ) -> None: ...
+
+from typing import (
     Callable,
     Dict,
     Iterator,

@@ -1,3 +1,90 @@
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+
+def _arithmetic(m: Machine, w: int, xo: int, rt: int, ra: int, rb: int, rc: int) -> None: ...
+
+
+def _b(x: float) -> int: ...
+
+
+def _extended(m: Machine, w: int, rt: int, ra: int, rb: int) -> None: ...
+
+
+def _f(bits: int) -> float: ...
+
+
+def _float(m: Machine, op: int, w: int, rt: int, ra: int, rb: int) -> None: ...
+
+
+def _float_other(m: Machine, w: int, xo: int, rt: int, ra: int, rb: int) -> None: ...
+
+
+def _mask(mb: int, me: int) -> int: ...
+
+
+def _memory(m: Machine, op: int, w: int, rt: int, ra: int, simm: int) -> None: ...
+
+
+def _rotl32(v: int, n: int) -> int: ...
+
+
+def _rotl64(v: int, n: int) -> int: ...
+
+
+def _s32(v: int) -> int: ...
+
+
+def _s64(v: int) -> int: ...
+
+
+def _sext(v: int, bits: int) -> int: ...
+
+
+def _single(x: float) -> float: ...
+
+
+def _step(m: Machine, w: int) -> None: ...
+
+
+def _taken(m: Machine, bo: int, bi: int) -> bool: ...
+
+
+def _to_int(x: float, bits: int, toward_zero: bool) -> int: ...
+
+
+def run(
+    regions: List[Tuple[int, bytes]],
+    entry: int,
+    args: List[int] = ...,
+    externs: <class 'Union'>[Dict[int, str], None] = ...,
+    span: None = ...,
+    stub_ret: int = ...,
+    steps: int = ...,
+    fargs: Tuple[()] = ...,
+    shared: None = ...,
+    fill: None = ...,
+    branches: bool = ...,
+    absent: None = ...,
+    shadow: None = ...
+) -> Dict[str, <class 'Union'>]: ...
+
+
+class Machine:
+    def __init__(self, regions: List[Tuple[int, bytes]], shared: None = ...) -> None: ...
+    def _page(self, a: int, write: bool = ...) -> bytearray: ...
+    def bit(self, i: int) -> int: ...
+    def compare(self, field: int, a: int, b: int) -> None: ...
+    def load(self, va: int, data: bytes) -> None: ...
+    def read(self, a: int, n: int) -> int: ...
+    def set_cr(self, field: int, bits: int) -> None: ...
+    def write(self, a: int, n: int, v: int) -> None: ...
+
 from codebreaker.emulate.run import Run
 from typing import (
     Dict,

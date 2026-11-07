@@ -1,3 +1,5 @@
+def close_pools() -> None: ...
+
 from subprocess import Popen
 from typing import (
     Callable,

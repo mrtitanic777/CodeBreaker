@@ -1,3 +1,5 @@
+def is_sms(path: str) -> bool: ...
+
 from typing import List
 
 

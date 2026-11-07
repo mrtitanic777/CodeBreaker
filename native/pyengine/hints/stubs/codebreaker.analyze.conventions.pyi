@@ -1,3 +1,21 @@
+from codebreaker.analyze.image import (
+    Image,
+    Ins,
+)
+from typing import (
+    Dict,
+    Union,
+)
+
+
+def _functions(img: Image) -> Dict[int, <class 'Union'>]: ...
+
+
+def functions(img: Image) -> Dict[int, <class 'Union'>]: ...
+
+
+def stack_delta(ins: Ins) -> int: ...
+
 from codebreaker.analyze.call_graph import Graph
 from codebreaker.analyze.image import (
     Function,

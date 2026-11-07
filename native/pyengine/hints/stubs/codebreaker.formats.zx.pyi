@@ -1,3 +1,5 @@
+def is_zx(path: str) -> bool: ...
+
 from typing import (
     Dict,
     List,

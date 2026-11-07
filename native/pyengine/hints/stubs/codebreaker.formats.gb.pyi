@@ -1,3 +1,5 @@
+def is_gb(path: str) -> bool: ...
+
 from typing import List
 
 

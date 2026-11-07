@@ -744,7 +744,7 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
         return (a0->kind == TK::Bottom || a0->kind == TK::Top) ? TR(*a0) : TR(issue(n, "conflict", std::string("int() of ") + kind_name(a0->kind)));
     }
     if (name == "float") {
-        if (a0 && a0->kind == TK::Int) exact_float(n, *a0);
+        // float(int) rounds correctly, as the int64 -> double conversion does
         return TR(FLOAT(), Res("builtin", std::string("float")));
     }
     if (name == "str") {

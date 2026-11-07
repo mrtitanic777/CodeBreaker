@@ -1,6 +1,20 @@
 from typing import Optional
 
 
+def cpu_count() -> int: ...
+
+
+def low_load() -> bool: ...
+
+
+def throttle(cores: None = ..., below_normal: bool = ...) -> bool: ...
+
+
+def workers() -> int: ...
+
+from typing import Optional
+
+
 def available_gb() -> float: ...
 
 

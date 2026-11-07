@@ -1,0 +1,16 @@
+from codebreaker.java.ir import Field
+
+
+def enum_member(name: str) -> str: ...
+
+
+def field_name(field: Field) -> str: ...
+
+
+def guard_macro(class_name: str) -> str: ...
+
+
+def instance_field_name(name: str) -> str: ...
+
+
+def static_field_name(name: str) -> str: ...

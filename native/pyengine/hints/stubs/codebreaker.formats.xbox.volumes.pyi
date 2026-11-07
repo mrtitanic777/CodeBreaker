@@ -1,3 +1,22 @@
+from codebreaker.formats.xbox.gdf import _FileDevice
+from typing import Optional
+
+
+def _fatx(path: str) -> None: ...
+
+
+def _xdvdfs(
+    device: _FileDevice,
+    label: str,
+    where: str,
+    kind: str = ...,
+    base: None = ...,
+    descriptor: None = ...
+): ...
+
+
+def volumes(path: str, long_names: bool = ...) -> None: ...
+
 from codebreaker.formats.media import Entry
 from codebreaker.formats.xbox.fatx import (
     FatxEntry,

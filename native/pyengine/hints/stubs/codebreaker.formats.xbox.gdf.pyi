@@ -1,3 +1,18 @@
+from typing import Optional
+
+
+class Device:
+    def __del__(self) -> None: ...
+    def close(self) -> None: ...
+
+
+class GDF:
+    def __init__(self, dev: _FileDevice, base: None = ..., descriptor: None = ...): ...
+
+
+class _FileDevice:
+    def __init__(self, path: str) -> None: ...
+
 from typing import (
     Dict,
     List,

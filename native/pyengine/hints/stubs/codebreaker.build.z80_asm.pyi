@@ -1,3 +1,8 @@
+from typing import List
+
+
+def _items(text: str) -> List[str]: ...
+
 from typing import (
     List,
     Tuple,

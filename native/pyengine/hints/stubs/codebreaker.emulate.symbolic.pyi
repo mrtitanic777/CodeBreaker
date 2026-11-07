@@ -1,3 +1,8 @@
+from typing import Callable
+
+
+def _shift(kind: str) -> Callable: ...
+
 from typing import (
     Any,
     Callable,

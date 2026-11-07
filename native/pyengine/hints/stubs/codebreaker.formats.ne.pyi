@@ -1,3 +1,29 @@
+from typing import (
+    Dict,
+    Optional,
+    Tuple,
+)
+
+
+def _place(nef: BootImageModule) -> Tuple[bytes, Tuple[int, int, int]]: ...
+
+
+def open_boot_image(
+    path: str,
+    overlay: <class 'Union'>[str, None] = ...
+) -> Dict[str, BootImageModule]: ...
+
+
+def where(
+    m: <class 'Union'>[codebreaker.formats.ne.NEFile, codebreaker.formats.ne.BootImageModule]
+) -> <class 'Union'>[Tuple[int, int, int], Tuple[int, int, None]]: ...
+
+
+class NEFile:
+    def __init__(self, path: str) -> None: ...
+    @classmethod
+    def from_buffer(cls, data: bytes, ne_off: int, path: str = ...) -> BootImageModule: ...
+
 from codebreaker.formats.native_ne import (
     BootImageModule,
     NEFile,

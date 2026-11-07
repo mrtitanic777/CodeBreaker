@@ -1,3 +1,5 @@
+def _store_key(name: str) -> None: ...
+
 from typing import Optional
 
 

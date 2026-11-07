@@ -13,6 +13,84 @@ from typing import (
 )
 
 
+def Run(
+    db: Database,
+    log: <class 'Union'>[Callable, None] = ...
+) -> Run: ...
+
+
+def _binary_hash(db: Database) -> str: ...
+
+
+def _file(ctx: Context, key: str) -> str: ...
+
+
+def _step_of(kind: str) -> Step: ...
+
+
+def get(
+    db: Database,
+    kind: str,
+    key: str = ...,
+    log: <class 'Union'>[Callable, None] = ...
+) -> Dict[str, <class 'Union'>]: ...
+
+
+def jobs() -> int: ...
+
+
+def last_run(db: Database) -> Dict[str, List[int]]: ...
+
+
+def open(path: str, folder: None = ...) -> Database: ...
+
+
+def step(
+    kind: str,
+    reads: Tuple[str, Ellipsis] = ...,
+    platform: str = ...,
+    uses: Tuple[()] = ...,
+    stamp: <class 'Union'>[Callable, None] = ...,
+    batch: bool = ...,
+    always: bool = ...,
+    version: None = ...
+) -> Callable: ...
+
+
+class Step:
+    def __init__(
+        self,
+        kind: str,
+        fn: Callable,
+        reads: Tuple[str, Ellipsis],
+        platform: str,
+        uses: Tuple[()],
+        stamp: <class 'Union'>[Callable, None],
+        batch: bool,
+        always: bool,
+        version: None
+    ) -> None: ...
+    def version(self) -> str: ...
+
+
+class Unkept:
+    def __init__(self, value: List[str]) -> None: ...
+
+from codebreaker.engine.native_engine import (
+    Context,
+    Database,
+    Run,
+)
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+
 def Run(db: Database, log: None = ...) -> Run: ...
 
 

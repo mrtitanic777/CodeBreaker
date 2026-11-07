@@ -1,0 +1,10 @@
+from typing import List
+
+
+def data_lines(data: bytes, per_line: int = ...) -> List[str]: ...
+
+
+def mnemonic(name: str) -> str: ...
+
+
+def operands(text: str) -> str: ...

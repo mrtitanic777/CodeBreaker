@@ -1,3 +1,8 @@
+def _cb(op: int) -> str: ...
+
+
+def _main(op: int) -> <class 'Union'>[str, None]: ...
+
 from typing import (
     Any,
     Iterator,

@@ -1,3 +1,18 @@
+from typing import Tuple
+
+
+def _exe() -> str: ...
+
+
+def lifter(mode: str = ...) -> Lifter: ...
+
+
+def stamp(mode: str = ...) -> Tuple[str, str]: ...
+
+
+class Lifter:
+    def __init__(self, exe: str, sla: str, mode: str) -> None: ...
+
 from typing import (
     Any,
     Tuple,

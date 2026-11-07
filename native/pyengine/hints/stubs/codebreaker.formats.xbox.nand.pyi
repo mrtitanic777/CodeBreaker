@@ -1,3 +1,5 @@
+def is_nand(path: str) -> bool: ...
+
 from typing import List
 
 

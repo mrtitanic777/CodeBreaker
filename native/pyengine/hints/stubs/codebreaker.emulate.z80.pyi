@@ -1,3 +1,5 @@
+def _parity(v: int) -> int: ...
+
 from codebreaker.emulate.run import Run
 from typing import (
     Callable,

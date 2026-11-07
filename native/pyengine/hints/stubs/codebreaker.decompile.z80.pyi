@@ -1,4 +1,28 @@
 from typing import (
+    Dict,
+    Tuple,
+    Union,
+)
+
+
+def _build() -> Dict[Tuple[bytes, int], <class 'Union'>]: ...
+
+
+def _cb(op: int, target: str = ...) -> str: ...
+
+
+def _ed(op: int) -> <class 'Union'>[str, None]: ...
+
+
+def _index(pattern: str, ix: str) -> <class 'Union'>[str, None]: ...
+
+
+def _main(op: int) -> str: ...
+
+
+def value(expr: str, labels: Dict[str, int], pc: int = ...) -> int: ...
+
+from typing import (
     Any,
     Dict,
     Iterator,
