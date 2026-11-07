@@ -195,7 +195,7 @@ void hex_lines(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(inspect) {
-    add("inspect.categorize", categorize);
+    add("inspect.categorize", categorize, "str");
     add("inspect.strings", strings);
     add("inspect.hex_lines", hex_lines);
 }

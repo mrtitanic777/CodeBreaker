@@ -83,7 +83,7 @@ void set_privileges(Call &c) {
 
 CBF_QUESTIONS(xexedit) {
     add("xex_edit.privileges", privileges_q);
-    add("xex_edit.set_privileges", set_privileges);
+    add("xex_edit.set_privileges", set_privileges, "bytes");
 }
 
 }  // namespace cbf::xexedit

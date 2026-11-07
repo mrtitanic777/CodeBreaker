@@ -823,7 +823,7 @@ CBF_QUESTIONS(graphics) {
     add("texture.decode_rgba", texture_decode_rgba);
     add("xpr.parse", xpr_parse);
     add("gfx.find_movies", gfx_find_movies);
-    add("gfx.wrapper_name", gfx_wrapper_name);
+    add("gfx.wrapper_name", gfx_wrapper_name, "str");
     add("gfx.parse_tags", gfx_parse_tags);
     add("gfx.ext_images", gfx_ext_images);
     add("gfx.fonts", gfx_fonts);

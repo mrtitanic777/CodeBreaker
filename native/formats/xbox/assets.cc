@@ -697,12 +697,12 @@ CBF_QUESTIONS(assets) {
     add("xsb.read", xsb_read);
     add("xbe.parse", xbe_parse_q);
     add("xbe.sections", xbe_sections_q);
-    add("xbe.pe_image", xbe_pe_image);
+    add("xbe.pe_image", xbe_pe_image, "bytes");
     add("xzp.parse", xzp_parse);
     add("xzp.payloads", xzp_payloads);
     add("xdbf.parse", xdbf_parse);
     add("xdbf.achievements", xdbf_achievements);
-    add("xdbf.build", xdbf_build);
+    add("xdbf.build", xdbf_build, "bytes");
 }
 
 }  // namespace cbf::xbox

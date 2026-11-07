@@ -199,6 +199,26 @@ struct Args {   // a tuple pickle of the call's arguments
         if (v) put(*v);
         else op('N');
     }
+    template <class T> void put(const list<T>& xs) {
+        op(']');
+        op('(');
+        for (const auto& x : xs) put(x);
+        op('e');
+    }
+    template <class... T> void put(const std::tuple<T...>& t) {
+        op('(');
+        std::apply([&](const auto&... x) { (put(x), ...); }, t);
+        op('t');
+    }
+    template <class K, class V> void put(const dict<K, V>& d) {
+        op('}');
+        op('(');
+        for (const auto& k : d.keys()) {
+            put(k);
+            put(d.at(k));
+        }
+        op('u');
+    }
     // a record: the dict the Python side passes (a field it may lack, absent, is left out)
     template <class T, std::enable_if_t<is_record<T>::value, int> = 0> void put(const T& r) {
         op('}');

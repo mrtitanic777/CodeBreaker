@@ -390,8 +390,8 @@ void xex_q(Call &c) {    // (window_size, (block_size, block_hash), out_len)
 }  // namespace
 
 CBF_QUESTIONS(lzx) {
-    add("lzx.lzxd_decompress", lzxd_q);
-    add("lzx.lzx_decompress_xex", xex_q);
+    add("lzx.lzxd_decompress", lzxd_q, "bytes");
+    add("lzx.lzx_decompress_xex", xex_q, "bytes");
 }
 
 }  // namespace cbf::lzx
