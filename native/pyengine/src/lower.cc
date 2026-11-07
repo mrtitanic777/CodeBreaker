@@ -2207,19 +2207,28 @@ public:
         return e;
     }
 
+    // the object of x.attr; one that may be None read through py::none_attr (AttributeError for None)
+    IRP maybe_none_obj(const Attribute* n) {
+        IRP obj = expr(n->value);
+        T vt = Tof(n->value);
+        if (vt.kind != TK::Opt || vt.args()[0].kind != TK::Inst) return obj;
+        TyP inner = ty(vt.args()[0], n);
+        return mk_pyfn("builtins.none_attr", {obj, mk_lit(py::V(n->attr), STRT())}, inner, nullptr, n->pos.lineno);
+    }
+
     IRP e_Attribute(const Attribute* n) {
         const Res* r = R(n);
         int line = n->pos.lineno;
         if (!r) throw Refused("dynamic", "attribute ." + n->attr, line);
         if (r->k == "field") {
-            IRP obj = expr(n->value);
+            IRP obj = maybe_none_obj(n);
             auto at = p.attr_type(r->A(), r->B());
             if (!at) throw Refused("frontend-error", "AttributeError: 'NoneType' object has no attribute 'kind'", line);
             TyP ft = ctx.ty(*at, line, "attribute " + r->B());
             return select_n(obj, sym("field", r->B(), r->A(), false, ft), ft, line);
         }
         if (r->k == "property") {
-            IRP obj = expr(n->value);
+            IRP obj = maybe_none_obj(n);
             calls.insert(r->A());
             TyP t = ty(Tof(n), n);
             Fn* pf = *p.fns.get(r->A());

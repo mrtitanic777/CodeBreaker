@@ -1291,6 +1291,27 @@ template <class K, class V> bool truthy(const dict<K, V>& x) { return !x.empty()
 template <class T> bool truthy(const set<T>& x) { return !x.empty(); }
 template <class T> bool truthy(const std::optional<T>& x) { return x.has_value() && truthy(*x); }
 template <class T> bool truthy(const ref<T>& x) { return x != nullptr; }
+
+// x.attr where x may be None: the object, or Python's AttributeError for None
+[[noreturn]] inline void none_has_no_attr_(const str& attr) {
+    throw AttributeError(std::string("'NoneType' object has no attribute '") + attr.utf8() + "'");
+}
+template <class T> const ref<T>& none_attr(const ref<T>& x, const str& attr) {
+    if (x == nullptr) none_has_no_attr_(attr);
+    return x;
+}
+template <class T> T& none_attr(std::optional<T>& x, const str& attr) {
+    if (!x.has_value()) none_has_no_attr_(attr);
+    return *x;
+}
+template <class T> const T& none_attr(const std::optional<T>& x, const str& attr) {
+    if (!x.has_value()) none_has_no_attr_(attr);
+    return *x;
+}
+template <class T> T none_attr(std::optional<T>&& x, const str& attr) {
+    if (!x.has_value()) none_has_no_attr_(attr);
+    return std::move(*x);
+}
 template <class... T> bool truthy(const std::tuple<T...>&) { return sizeof...(T) != 0; }
 inline bool truthy(const bytearray& b) { return !b.empty(); }
 template <class L> bool any_of(const L& xs) {

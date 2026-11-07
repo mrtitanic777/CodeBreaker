@@ -675,7 +675,7 @@
     }
    }
   },
-  "os.fspath": {"signature": "", "maps": {"cpp": {"target": "{0}", "kind": "macro", "note": "a path that is a str: itself"}}}, "os.path.getsize": {
+  "builtins.none_attr": {"signature": "", "maps": {"cpp": {"target": "py::none_attr({0}, {1})", "kind": "shim", "note": "x.attr where x may be None: x, or AttributeError"}}}, "os.fspath": {"signature": "", "maps": {"cpp": {"target": "{0}", "kind": "macro", "note": "a path that is a str: itself"}}}, "os.path.getsize": {
    "signature": "",
    "maps": {
     "cpp": {
