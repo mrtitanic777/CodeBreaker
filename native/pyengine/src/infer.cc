@@ -1326,7 +1326,6 @@ T Eval::ref_type(AnyNode n, const Ref& r) {
     if (k == "exc") return named(TK::Cls, "exc:" + r.a);
     if (k == "const") {
         if (r.a == "__doc__") return m && m->has_docstring ? STR() : NONE();
-        if (r.a == "__file__" && p.extended) return STR();   // (new) the module's source file (lower.cc)
         if (r.a == "__file__" || r.a == "__name__") return issue(n, "dynamic", r.a);
         return BOTTOM();
     }

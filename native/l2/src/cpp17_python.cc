@@ -1118,6 +1118,8 @@ struct PyWriter : Emitter {
                 if (inner->kind == "i64") return s + ".value_or(0) != 0";
                 if (inner->kind == "bool") return s + ".value_or(false)";
                 if (always_true(inner)) return s + ".has_value()";
+                // (a call or any other computed value once: py::truthy; a name or a field may be read twice)
+                if (x->kind() != "Name" && x->kind() != "Select" && x->kind() != "This") return "py::truthy(" + expr(x) + ")";
                 return "(" + s + ".has_value() && !" + s + "->empty())";
             }
             if (tinfo(t, "ref")) return s + " != nullptr";
