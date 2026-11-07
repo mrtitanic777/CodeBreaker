@@ -3362,6 +3362,10 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             used_all.insert(s.begin(), s.end());
         }
     for (auto& [_, d] : global_decls) types_of(d->type, used_all);
+    // (new) and the classes whose methods translate: their fields' types are in the header too
+    for (auto& [q, L] : out.lowered)
+        if (L.has_fl && L.md)
+            if (Fn** fp = p.fns.get(q); fp && (*fp)->cls) used_all.insert((*fp)->cls->qname);
     std::map<std::string, int> recs;
     for (auto& [s, n] : ctx.records.names) recs[ctx.records.module[s] + "." + n] = s;
     std::vector<std::string> todo(used_all.begin(), used_all.end());
