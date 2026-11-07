@@ -2282,37 +2282,12 @@ static std::string with_emit_decls(const std::string& cpp, const std::vector<Emi
 // A batch is about kBatchLines of C++, so no batch is the one the build waits on, and a module keeps its
 // batch from run to run (<out>/unity.txt), so a change rebuilds only its own batch: a module that is new
 // goes to the smallest batch it fits in, and only a batch grown past half again its size is redealt.
-// The modules of native/pyrt/hot.txt are batched apart: they are the ones compiled with inlining.
 static const size_t kBatchLines = 8000;
 struct UnitSrc {
     std::string name, rel;
     size_t lines = 0;
-    bool hot = false;
 };
-static std::vector<std::string> load_hot(const std::string& path) {
-    std::vector<std::string> out;
-    std::ifstream f(path, std::ios::binary);
-    std::string line;
-    while (std::getline(f, line)) {
-        line = line.substr(0, line.find('#'));
-        while (!line.empty() && isspace((unsigned char)line.back())) line.pop_back();
-        size_t b = 0;
-        while (b < line.size() && isspace((unsigned char)line[b])) b++;
-        if (b < line.size()) out.push_back(line.substr(b));
-    }
-    return out;
-}
-static bool is_hot(const std::string& mod, const std::vector<std::string>& hot) {
-    for (auto& h : hot) {
-        if (h == mod) return true;
-        if (h.size() > 2 && h.compare(h.size() - 2, 2, ".*") == 0) {
-            std::string p = h.substr(0, h.size() - 2);
-            if (mod == p || mod.rfind(p + ".", 0) == 0) return true;
-        }
-    }
-    return false;
-}
-// module -> batch name ("c3": compiled without inlining; "h1": a hot batch)
+// module -> batch name ("b12")
 static std::map<std::string, std::string> unity_batches(const std::vector<UnitSrc>& srcs, const fs::path& record) {
     std::map<std::string, std::string> prev, out;
     {
@@ -2323,7 +2298,7 @@ static std::map<std::string, std::string> unity_batches(const std::vector<UnitSr
     std::map<std::string, size_t> cost;
     std::map<std::string, const UnitSrc*> by_name;
     for (auto& s : srcs) by_name[s.name] = &s;
-    auto tier = [](const UnitSrc& s) { return std::string(s.hot ? "h" : "c"); };
+    auto tier = [](const UnitSrc&) { return std::string("b"); };
     for (auto& s : srcs) {
         auto it = prev.find(s.name);
         if (it != prev.end() && it->second.compare(0, 1, tier(s)) == 0) {
@@ -2506,7 +2481,6 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
     }
     std::string pyrt = fs::absolute(o.pyrt.empty() ? fs::path(o.root) / "native" / "pyrt" : fs::path(o.pyrt)).lexically_normal().generic_string();
     std::vector<EmitDecl> emit_decls = load_emit_decls(pyrt + "/include/py_emit.hpp");
-    std::vector<std::string> hot = load_hot(pyrt + "/hot.txt");
     std::vector<UnitSrc> units;
     for (auto& m : todo) {
         DynModule res;
@@ -2535,28 +2509,23 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         u.name = m.name;
         u.rel = rel;
         u.lines = (size_t)std::count(cpp.begin(), cpp.end(), '\n');
-        u.hot = is_hot(m.name, hot);
         units.push_back(u);
         out.push_back(res);
     }
-    // the sources: unity batches (or, -DPYDYN_UNITY=OFF, one per module); the modules not in hot.txt
-    // compile without inlining (/Ob0): inlining var's operations into the large functions translated code
-    // is made of is most of the compile's time, and only the hot modules' speed shows
+    // the sources: unity batches (or, -DPYDYN_UNITY=OFF, one per module)
     std::map<std::string, std::string> batch_of = unity_batches(units, fs::path(o.out) / "unity.txt");
     std::map<std::string, std::vector<const UnitSrc*>> batches;
     for (auto& u : units) batches[batch_of[u.name]].push_back(&u);
-    std::string record, unity_srcs, module_srcs, cold_unity, cold_modules;
+    std::string record, unity_srcs, module_srcs;
     for (auto& [g, mods] : batches) {
         std::string text = "// unity batch " + g + " (pyengine --dynamic): these modules compile as one unit\n";
         for (auto* u : mods) {
             text += "#include \"../" + u->rel + "\"\n";
             record += g + " " + u->name + "\n";
             module_srcs += "  " + u->rel + "\n";
-            if (!u->hot) cold_modules += "  " + u->rel + "\n";
         }
         write_if_changed(fs::path(o.out) / "_unity" / (g + ".cpp"), text);
         unity_srcs += "  _unity/" + g + ".cpp\n";
-        if (g[0] == 'c') cold_unity += "  _unity/" + g + ".cpp\n";
     }
     if (fs::exists(fs::path(o.out) / "_unity"))   // batches no module is in any more
         for (auto& e : fs::directory_iterator(fs::path(o.out) / "_unity"))
@@ -2585,12 +2554,10 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
                      "# assignment kept in unity.txt) over one precompiled py_object.hpp (each module is its own namespace,\n"
                      "# so batching them is safe); -DPYDYN_UNITY=OFF builds one object per module\n"
                      "option(PYDYN_UNITY \"unity batches\" ON)\n"
-                     "if(PYDYN_UNITY)\n  set(PYDYN_SRCS\n" + unity_srcs + "  )\n  set(PYDYN_COLD\n" + cold_unity + "  )\n"
-                     "else()\n  set(PYDYN_SRCS\n" + module_srcs + "  )\n  set(PYDYN_COLD\n" + cold_modules + "  )\nendif()\n"
+                     "if(PYDYN_UNITY)\n  set(PYDYN_SRCS\n" + unity_srcs + "  )\n"
+                     "else()\n  set(PYDYN_SRCS\n" + module_srcs + "  )\nendif()\n"
                      "add_executable(" + o.exe + "\n" + cmake_srcs + ")\ntarget_link_libraries(" + o.exe + " PRIVATE pyrt)\n"
                      "target_precompile_headers(" + o.exe + " PRIVATE <py_object.hpp>)\n"
-                     "# the modules not in native/pyrt/hot.txt: no inlining (most of the compile's time; their speed does not show)\n"
-                     "if(MSVC AND PYDYN_COLD)\n  set_source_files_properties(${PYDYN_COLD} PROPERTIES COMPILE_OPTIONS /Ob0)\nendif()\n"
                      "if(MSVC)\n  target_link_options(" + o.exe + " PRIVATE /STACK:268435456)\nendif()\n";
     if (islands_on) {
         // only the islands a module's def was written as (a module not in this program, or a def of another shape, is not one)
