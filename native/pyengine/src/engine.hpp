@@ -28,6 +28,8 @@ struct FnStatus {
     int lines = 0;
     std::string l2;                   // the MethodDecl's JSON when translated
     std::string ranges;               // {int parameter: [lo, hi]} the callers give (JSON; "None" unbounded)
+    std::vector<std::string> all;     // a refused function's every blocker ("cls:detail"), its own
+    std::vector<std::string> calls;   // the program's functions it calls
 };
 
 struct EngineResult {

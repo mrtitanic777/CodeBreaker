@@ -224,7 +224,7 @@ static T simple(Eval& ev, const A::Call* n, const std::string& name, const Args&
 static T elem_of(Eval& ev, const T& t) { return ev.p.elem[ev.p.find(t.site)]; }
 
 static const std::set<std::string> LAZY_OK = {"join", "extend", "update", "sort"};
-static const std::set<std::string> LAZY_BUILTINS = {"sorted", "min", "max", "sum", "any", "all", "list", "set", "enumerate"};
+static const std::set<std::string> LAZY_BUILTINS = {"sorted", "min", "max", "sum", "any", "all", "list", "set", "enumerate", "bytes", "bytearray", "frozenset"};
 
 static bool lazy_bad(Eval& ev, const A::Call* n, const Args& args, const Kw& kw, bool ok, T& out) {
     if (ok) return false;
@@ -729,6 +729,12 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
     if (name == "bytes" || name == "bytearray") {
         TK bk = name == "bytes" ? TK::Bytes : TK::Bytearray;
         if (args.empty()) return TR(T(bk, {}, {}, Big(0)), Res("builtin", name));
+        if (!a0 && genarg0()) {   // bytes(x for x in ...): a list of ints made first (lowered as the list), as bytes(list)
+            T e = gen_elem(cast<GeneratorExp>(n->args[0]), state).first;
+            if (e.kind != TK::Int && e.kind != TK::Bottom && e.kind != TK::Top) return issue(n, "conflict", name + " of a generator of " + kind_name(e.kind));
+            return TR(T(bk), Res("builtin", name + "_list"));
+        }
+        if (!a0) return issue(n, "dynamic", "a lambda or generator as an argument");
         if (a0->kind == TK::Int) return TR(T(bk, {}, {}, a0->hi()), Res("builtin", name + "_zeros"));
         if (a0->kind == TK::Bytes || a0->kind == TK::Bytearray) return TR(T(bk, {}, {}, a0->hi()), Res("builtin", name + "_copy"));
         if (a0->kind == TK::List) {
@@ -755,7 +761,17 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
         }
         return TR(container(ck, s), Res("builtin", name));
     }
-    if (name == "frozenset") return issue(n, "syntax", "frozenset");
+    if (name == "frozenset") {   // (new) a set that is not changed: the set type (its items as set's)
+        int s = p.new_site(n, TK::Set, where(n));
+        if (!args.empty()) {
+            T e;
+            if (!a0 && genarg0()) e = gen_elem(cast<GeneratorExp>(n->args[0]), state).first;
+            else if (a0) e = iteration(n->args[0], *a0, state).first;
+            else return issue(n, "dynamic", "a lambda or generator as an argument");
+            p.grow(p.elem, s, e);
+        }
+        return TR(container(TK::Set, s), Res("builtin", std::string("set")));
+    }
     if (name == "tuple") {
         if (a0 && a0->kind == TK::Tuple) return TR(*a0, Res("builtin", std::string("tuple")));
         return issue(n, "conflict", "tuple() of a sequence (its length is not in the type)");

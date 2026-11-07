@@ -309,6 +309,13 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
             }
         }
         auto it = tr.lowered.find(q);
+        if (it != tr.lowered.end()) {   // (the report's blockers: every issue, and the calls)
+            std::set<std::string> seen;
+            for (auto& i : it->second.all)
+                if (seen.insert(i.cls + ":" + i.detail).second) st.all.push_back(i.cls + ":" + i.detail);
+            if (it->second.refused && seen.insert(it->second.refused->issue.reason()).second) st.all.push_back(it->second.refused->issue.reason());
+            st.calls.assign(it->second.calls.begin(), it->second.calls.end());
+        }
         auto so = p.specs_of.find(q);
         if ((it == tr.lowered.end() || !it->second.md) && so != p.specs_of.end()) {   // (new) translated as its overloads
             bool all = true;
@@ -361,6 +368,13 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
             d.set("package", package_of(q));
             if (!st.l2.empty()) d.set("l2", st.l2);
             if (!st.ranges.empty() && st.status == "translated") d.set("ranges", py::json_parse(st.ranges));
+            if (st.status != "translated") {   // (the blockers: every one, and the calls whose refusal cascades)
+                py::V all = py::V::list(), calls = py::V::list();
+                for (auto& x : st.all) all.append(py::V(x));
+                for (auto& x : st.calls) calls.append(py::V(x));
+                d.set("all", all);
+                d.set("calls", calls);
+            }
             fns.set(q, d);
         }
         py::V doc = py::V::dict();

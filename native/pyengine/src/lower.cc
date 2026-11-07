@@ -2891,6 +2891,7 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             out.lowered[q] = L;
             continue;
         }
+        L.all = ev->issues;
         FnLower fl(ctx, f, *ev);
         L.has_fl = true;
         try {
