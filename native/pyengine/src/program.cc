@@ -93,12 +93,64 @@ Program::Program() {
 Program::~Program() = default;
 
 // ------------------------------------------------------------------------------------ loading
+// (new) a function's `name = lambda args: expr` -- the name bound once, to that lambda -- is the nested
+// function `def name(args): return expr`, which the typed path lowers as a C++ lambda: the same function,
+// the same name, its body the lambda's one expression
+static void count_binds(const std::vector<A::Stmt*>& body, std::map<std::string, int>& n) {
+    for (auto* st : body) {
+        if (auto* a = as<Assign>(st))
+            for (auto* t : a->targets) {
+                if (auto* nm = as<pyfront::Name>(t)) n[nm->id]++;
+                else n["*"]++;   // (a tuple target: names this pass does not count are left alone)
+            }
+        if (st->kind == StmtKind::AugAssign || st->kind == StmtKind::AnnAssign || st->kind == StmtKind::For ||
+            st->kind == StmtKind::With || st->kind == StmtKind::Global || st->kind == StmtKind::Nonlocal || st->kind == StmtKind::Delete)
+            n["*"]++;
+        if (st->kind == StmtKind::FunctionDef || st->kind == StmtKind::AsyncFunctionDef || st->kind == StmtKind::ClassDef) continue;
+        for (auto* l : stmt_lists(st)) count_binds(*l, n);
+    }
+}
+static void lambdas_to_defs(pyfront::Module& tree, std::vector<A::Stmt*>& body, const std::map<std::string, int>& binds) {
+    for (auto*& st : body) {
+        if (auto* a = as<Assign>(st)) {
+            auto* nm = a->targets.size() == 1 ? as<pyfront::Name>(a->targets[0]) : nullptr;
+            auto* lam = as<pyfront::Lambda>(a->value);
+            auto it = nm ? binds.find(nm->id) : binds.end();
+            if (nm && lam && it != binds.end() && it->second == 1 && !binds.count("*")) {
+                auto* fd = tree.make<A::FunctionDef>();
+                fd->pos = st->pos;
+                fd->name = nm->id;
+                fd->args = lam->args;
+                auto* r = tree.make<A::Return>();
+                r->pos = lam->body->pos;
+                r->value = lam->body;
+                fd->body.push_back(r);
+                st = fd;
+                continue;
+            }
+        }
+        if (st->kind == StmtKind::FunctionDef || st->kind == StmtKind::AsyncFunctionDef) {
+            auto* f = static_cast<A::FunctionDef*>(st);
+            std::map<std::string, int> own;
+            count_binds(f->body, own);
+            lambdas_to_defs(tree, f->body, own);
+            continue;
+        }
+        if (auto* c = as<pyfront::ClassDef>(st)) {
+            lambdas_to_defs(tree, c->body, {{"*", 1}});   // (a class body's names are its attributes: left alone)
+            continue;
+        }
+        for (auto* l : stmt_lists(st)) lambdas_to_defs(tree, *const_cast<std::vector<A::Stmt*>*>(l), binds);
+    }
+}
+
 Module* Program::add_module(const std::string& name, const std::string& path, const std::string& source, std::string* err) {
     auto r = pyfront::parse(source, path);
     if (!r) {
         if (err) *err = r.error->msg;
         return nullptr;
     }
+    if (extended) lambdas_to_defs(*r.module, r.module->body, {{"*", 1}});   // (module level: its globals are left alone)
     auto m = std::make_unique<Module>();
     m->name = name;
     m->path = path;
