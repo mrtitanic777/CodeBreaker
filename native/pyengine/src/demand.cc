@@ -161,6 +161,18 @@ static const DemandInfo& demand_info(Program& p, Fn* f, const std::string& param
         if (auto* b = as<BinOp>(ue)) {
             const A::Expr* other = b->left == nm ? b->right : b->left;
             if (b->op == OpKind::Add && is_str_const(other)) info.uses.push_back({DemandUse::Str});
+            // (new) a shift or a mask with an int literal: p >> 21, p & 0x1F, 1 << p -- only an int (or a bool,
+            // an int) takes those, unless a class of the program defines the operator
+            static const std::map<OpKind, const char*> BITS = {{OpKind::LShift, "lshift"}, {OpKind::RShift, "rshift"},
+                                                                {OpKind::BitAnd, "and"}, {OpKind::BitOr, "or"}, {OpKind::BitXor, "xor"}};
+            auto bi = BITS.find(b->op);
+            auto* oc = as<Constant>(other);
+            if (bi != BITS.end() && oc && oc->value.kind == ConstValue::Kind::Int && !p.defines_operator(bi->second))
+                info.uses.push_back({DemandUse::Int});
+            continue;
+        }
+        if (auto* u = as<UnaryOp>(ue)) {
+            if (u->op == UnaryOpKind::Invert && !p.defines_operator("invert")) info.uses.push_back({DemandUse::Int});   // ~p
             continue;
         }
     }
@@ -246,6 +258,17 @@ T Program::demand_type(Fn* f, const std::string& name) {
         return named(TK::Inst, roots[0]);
     }
     return t;
+}
+
+}  // namespace pyengine
+
+namespace pyengine {
+
+bool Program::defines_operator(const std::string& op) {
+    for (auto& [cq, c] : classes)
+        for (const char* pre : {"__", "__r", "__i"})
+            if (c->methods.has(pre + op + "__")) return true;
+    return false;
 }
 
 }  // namespace pyengine

@@ -343,6 +343,29 @@ def bad(flag: bool):
 }
 
 // ------------------------------------------------------------------------------------ regex
+// (new) a pattern computed at run time: group 0 a str, the others optional; findall's shape refused
+static void t_regex_computed() {
+    Run r(Srcs{{"pkg.m", R"PY(
+import re
+
+def first_word(pat: str, s: str) -> str:
+    m = re.search(pat + r"(\w+)", s)
+    if m is None:
+        return ""
+    g = m.group(1)
+    return m.group(0) + (g or "")
+
+def split_on(sep: str, s: str):
+    return re.split(re.escape(sep), s)
+
+def every(pat: str, s: str):
+    return re.findall(pat, s)
+)PY"}}, true, "checked");
+    CHECK(r.ok("pkg.m.first_word"), "first_word: %s", r.why("pkg.m.first_word").c_str());
+    CHECK(r.ok("pkg.m.split_on"), "split_on: %s", r.why("pkg.m.split_on").c_str());
+    CHECK(!r.ok("pkg.m.every"), "findall of a computed pattern is refused (str or tuple items)");
+}
+
 static void t_regex() {
     ReInfo a = re_analyze(R"((\d+)-(\w+)?)", false);
     CHECK(a.ok && a.groups == 2 && !a.optional[1] && a.optional[2], "(\\d+)-(\\w+)? : group 2 may not take part");
@@ -838,7 +861,7 @@ int main(int argc, char** argv) {
         {"async", t_async},       {"match", t_match},
         {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"factories", t_factories}, {"lambda_scope", t_lambda_scope}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
-        {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};
+        {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"regex_computed", t_regex_computed}, {"files", t_files}};
     std::vector<std::string> run;
     for (int i = 1; i < argc; i++) run.push_back(argv[i]);
     if (run.empty())

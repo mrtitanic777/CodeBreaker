@@ -27,9 +27,18 @@ using Args = std::vector<std::optional<T>>;
 using Kw = OMap<std::optional<T>>;
 
 // ------------------------------------------------------------------------------------ regex groups
+const std::string RE_COMPUTED = std::string("\x02computed");
+
 ReInfo re_analyze(const std::string& pat, bool verbose) {
     ReInfo info;
     info.optional.push_back(false);
+    if (pat == RE_COMPUTED) {      // (new) groups 1.. may be anything, and may not have taken part: None
+        info.unknown = true;
+        info.groups = 99;
+        info.optional.resize(100, true);
+        info.optional[0] = false;
+        return info;
+    }
     struct Frame {
         int group = 0;               // 0: not capturing
         std::vector<int> inside;
@@ -257,6 +266,7 @@ static TR re_result(Eval& ev, const A::Call* n, const std::string& fn, const std
     }
     if (fn == "findall") {
         if (!need_str(0)) return ev.issue(n, "conflict", "re.findall arguments");
+        if (ri.unknown) return ev.issue(n, "dynamic", "re.findall of a computed pattern (str or tuple items)");
         int s = ev.p.new_site(n, TK::List, ev.where(n));
         if (ri.groups <= 1) ev.p.grow(ev.p.elem, s, STR());
         else ev.p.grow(ev.p.elem, s, tuple_of(std::vector<T>(ri.groups, STR())));
@@ -295,6 +305,7 @@ static TR re_match_method(Eval& ev, const A::Call* n, const std::string& attr, c
     }
     if (attr == "groups") {
         if (!n->args.empty()) return ev.issue(n, "syntax", "Match.groups(default)");
+        if (ri.unknown) return ev.issue(n, "dynamic", "Match.groups of a computed pattern");
         std::vector<T> ts;
         for (int g = 1; g <= ri.groups; g++) ts.push_back(group_type(ri, g));
         return TR(tuple_of(ts), res);
@@ -391,9 +402,15 @@ TR Eval::ext_std(const A::Call* n, const std::string& name, const Args& args, co
         }
         if (fn == "compile") {
             std::string pat;
-            if (n->args.empty() || !str_const(n->args[0], pat)) return issue(n, "dynamic", "re.compile of a computed pattern");
+            if (n->args.empty()) return issue(n, "conflict", "re.compile arity");
+            if (!str_const(n->args[0], pat)) {
+                // (new) a pattern computed at run time: compiled there (py::re reads it then, re.error if it cannot)
+                if (args.empty() || !args[0] || args[0]->kind != TK::Str) return issue(n, "dynamic", "re.compile of a computed pattern");
+                pat = RE_COMPUTED;
+            }
             bool verbose = flags_verbose(n->args.size() > 1 ? n->args[1] : kw_value(n, "flags"));
             if (!re_analyze(pat, verbose).ok) return issue(n, "stdlib", "re.compile of a pattern the engine cannot read");
+            if (pat == RE_COMPUTED) return TR(re_type("re.Pattern", pat, verbose), Res("std", name));
             return TR(re_type("re.Pattern", pat, verbose), Res("std", name, pat));
         }
         static const std::set<std::string> FNS = {"match", "search", "fullmatch", "sub", "subn", "split", "findall", "finditer"};
@@ -408,6 +425,10 @@ TR Eval::ext_std(const A::Call* n, const std::string& name, const Args& args, co
         if (n->args.empty()) return issue(n, "conflict", "re." + fn + " arity");
         if (!str_const(n->args[0], pat)) {
             if (!args.empty() && args[0] && args[0]->kind == TK::Extern && re_split(args[0]->name(), what, pat, verbose) && what == "re.Pattern") {
+            } else if (!args.empty() && args[0] && args[0]->kind == TK::Str) {   // (new) a str computed at run time
+                pat = RE_COMPUTED;
+                size_t flag_at = (fn == "sub" || fn == "subn") ? 4 : (fn == "split" ? 3 : 2);
+                verbose = flags_verbose(n->args.size() > flag_at ? n->args[flag_at] : kw_value(n, "flags"));
             } else
                 return issue(n, "dynamic", "re." + fn + " of a computed pattern");
         } else {

@@ -245,8 +245,31 @@ void Program::dispatch_hints() {
     for (auto& [q, c] : classes) by_name[c->name].push_back(q);
     for (auto& [cq, c] : classes) {
         std::set<std::string> prefixes;
+        // (new) per prefix: the dispatcher and, for each argument after the node that it passes to the method it
+        // found (`f = getattr(...); f(s, out, ind)`), the dispatcher's parameter it is ("" if not one); several
+        // dispatchers of one prefix: none
+        std::map<std::string, std::pair<Fn*, std::vector<std::string>>> passes;
+        std::set<std::string> ambiguous;
+        auto is_type_name = [](const A::Expr* e) {      // type(e).__name__
+            auto* nm = as<Attribute>(e);
+            auto* tc = nm ? as<pyfront::Call>(nm->value) : nullptr;
+            auto* tf = tc ? as<pyfront::Name>(tc->func) : nullptr;
+            return nm && nm->attr == "__name__" && tf && tf->id == "type" && tc->args.size() == 1;
+        };
         for (auto& [_, m] : c->methods) {
             if (m->params.empty()) continue;
+            // the method's names bound once, and to what (an assignment's value)
+            std::map<std::string, std::pair<int, const A::Expr*>> once;
+            for (const AnyNode& x : walk(AnyNode(m->node)))
+                if (auto* nm = as<pyfront::Name>(x.expr()); nm && nm->ctx == ExprCtx::Store) once[nm->id].first++;
+            for (const AnyNode& x : walk(AnyNode(m->node)))
+                if (auto* st = x.stmt())
+                    if (auto* a = as<A::Assign>(st); a && a->targets.size() == 1)
+                        if (auto* t = as<pyfront::Name>(a->targets[0])) once[t->id].second = a->value;
+            auto bound_to = [&](const std::string& n) -> const A::Expr* {
+                auto it = once.find(n);
+                return it != once.end() && it->second.first == 1 ? it->second.second : nullptr;
+            };
             for (const AnyNode& x : walk(AnyNode(m->node))) {
                 auto* call = as<pyfront::Call>(x.expr());
                 auto* fname = call ? as<pyfront::Name>(call->func) : nullptr;
@@ -255,12 +278,34 @@ void Program::dispatch_hints() {
                 auto* add = as<BinOp>(call->args[1]);
                 if (!obj || obj->id != m->params[0] || !add || add->op != OpKind::Add) continue;
                 std::string prefix;
-                auto* nm = as<Attribute>(add->right);   // type(e).__name__
-                auto* tc = nm ? as<pyfront::Call>(nm->value) : nullptr;
-                auto* tf = tc ? as<pyfront::Name>(tc->func) : nullptr;
-                if (is_str_const(add->left, &prefix) && !prefix.empty() && nm && nm->attr == "__name__" && tf && tf->id == "type" &&
-                    tc->args.size() == 1)
-                    prefixes.insert(prefix);
+                const A::Expr* right = add->right;
+                if (auto* k = as<pyfront::Name>(right))          // k = type(s).__name__; getattr(self, 's_' + k)
+                    if (const A::Expr* b = bound_to(k->id)) right = b;
+                if (!is_str_const(add->left, &prefix) || prefix.empty() || !is_type_name(right)) continue;
+                prefixes.insert(prefix);
+                // f = getattr(...) and the calls f(node, a, b): which of the dispatcher's parameters a, b are
+                std::vector<std::string> args;
+                bool have = false;
+                for (auto& [lname, info] : once) {
+                    if (info.first != 1 || info.second != call) continue;
+                    for (const AnyNode& y : walk(AnyNode(m->node))) {
+                        auto* fc = as<pyfront::Call>(y.expr());
+                        auto* fn = fc ? as<pyfront::Name>(fc->func) : nullptr;
+                        if (!fn || fn->id != lname || !fc->keywords.empty() || fc->args.empty()) continue;
+                        std::vector<std::string> mine;
+                        for (size_t i = 1; i < fc->args.size(); i++) {
+                            auto* an = as<pyfront::Name>(fc->args[i]);
+                            bool is_param = an && std::find(m->params.begin() + 1, m->params.end(), an->id) != m->params.end() &&
+                                            !once.count(an->id);
+                            mine.push_back(is_param ? an->id : "");
+                        }
+                        if (have && mine != args) mine.clear();
+                        args = mine;
+                        have = true;
+                    }
+                }
+                if (passes.count(prefix) && passes[prefix].first != m) ambiguous.insert(prefix);
+                passes[prefix] = {m, args};
             }
         }
         if (prefixes.empty()) continue;
@@ -277,7 +322,17 @@ void Program::dispatch_hints() {
                     if (mname.size() <= pre.size() || mname.compare(0, pre.size(), pre) != 0) continue;
                     auto bn = by_name.find(mname.substr(pre.size()));
                     if (bn == by_name.end()) continue;
-                    if (m->params.size() != 2 || !m->varargs.empty() || m->annotations.has(m->params[1])) continue;
+                    if (m->params.size() < 2 || !m->varargs.empty() || m->annotations.has(m->params[1])) continue;
+                    // (new) the method's parameters after the node: the dispatcher's own, when it passes them on
+                    auto ps = passes.find(pre);
+                    bool aliased = false;
+                    if (ps != passes.end() && !ambiguous.count(pre) && ps->second.second.size() + 2 == m->params.size()) {
+                        for (size_t i = 2; i < m->params.size(); i++)
+                            if (!ps->second.second[i - 2].empty() && !m->annotations.has(m->params[i]))
+                                dispatch_alias[{m->qname, m->params[i]}] = {ps->second.first, ps->second.second[i - 2]};
+                        aliased = true;
+                    }
+                    if (m->params.size() != 2 && !aliased) continue;
                     // the class of that name: the only one, or the only one of a module the visitor's module imports
                     // (ir.Unary of the L2 IR, not the Java front end's Unary)
                     std::vector<std::string> cands = bn->second;
@@ -737,6 +792,15 @@ T Program::param_type(Fn* f, const std::string& name) {
     }
     if (auto dp = dispatch_param.find(f->qname); dp != dispatch_param.end() && dp->second.first == name)
         t = join(t, dp->second.second);   // (reached by a getattr dispatch on its class's name)
+    if (auto da = dispatch_alias.find({f->qname, name}); da != dispatch_alias.end()) {
+        static thread_local int alias_depth = 0;
+        if (alias_depth < 4) {          // (the dispatcher's parameter, which this one is passed)
+            alias_depth++;
+            T dt = param_type(da->second.first, da->second.second);
+            alias_depth--;
+            if (dt.kind != TK::Bottom) t = join(t, dt);
+        }
+    }
     if (f->defaults.has(name)) {
         auto it = default_types.find(f->qname + "\x1f" + name);
         if (it != default_types.end()) t = join(t, it->second);
