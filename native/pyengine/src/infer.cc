@@ -2158,8 +2158,20 @@ static std::string sig_of(const T& t) {
 
 TR Eval::call_fn(const A::Call* n, Fn* f, const std::vector<std::optional<T>>& args, const OMap<std::optional<T>>& kw, bool bound) {
     if (f->kind == "property") return issue(n, "conflict", "calling a property");
+    if (p.extended && f->qname == "codebreaker.formats.native.call" && !n->args.empty()) {   // native.call("q", data, ...)
+        std::string q;
+        if (is_str_const(n->args[0], &q)) {
+            T t = native_question_type(p, q);
+            if (t.kind != TK::Bottom) return TR(t, Res("native_call", q));
+        }
+    }
     if (p.native_bound.count(f->qname)) {   // a native answer: one type for every caller (answers.cc), no copies
         bind_args(n, f, args, kw, bound);
+        auto wi = p.native_where.find(f->qname);
+        if (wi != p.native_where.end() && f->cls) {   // its place function, called with self
+            Fn** wf = p.fns.get(wi->second);
+            if (wf) bind_args(n, *wf, {std::optional<T>(named(TK::Inst, f->cls->qname))}, {}, false);
+        }
         return TR(p.ret(f->qname), Res(bound ? "method" : "fn", f->qname));
     }
     if (p.demand_enabled && !bound && p.spec_candidates.count(f->qname)) {   // (new) this caller's own copy

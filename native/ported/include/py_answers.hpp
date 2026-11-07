@@ -327,10 +327,23 @@ inline cbf_call_fn entry() {
     throw RuntimeError(name + ": " + msg);
 }
 
+template <class R> R answer(const char* question, const bytes& data, const std::string& blob);
+
 template <class R, class... A> R ask(const char* question, const bytes& data, const A&... args) {
     Args a;
     (a.put(args), ...);
-    std::string blob = a.done();
+    return answer<R>(question, data, a.done());
+}
+
+// ask(q, where): the place the reader's where(self) gives -- a tuple -- goes before the call's own arguments
+template <class R, class... W, class... A> R ask_where(const char* question, const bytes& data, const std::tuple<W...>& place, const A&... args) {
+    Args a;
+    std::apply([&](const W&... w) { (a.put(w), ...); }, place);
+    (a.put(args), ...);
+    return answer<R>(question, data, a.done());
+}
+
+template <class R> R answer(const char* question, const bytes& data, const std::string& blob) {
     const uint8_t* out = nullptr;
     size_t n = 0;
     const std::string& raw = data.raw();

@@ -308,18 +308,18 @@ void pklite_head_q(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(dos) {
-    add("dos._mz", mz_q);
+    add("dos._mz", mz_q, "MzHeader{nreloc: u16, header: u32, min_alloc: u16, max_alloc: u16, ss: u16, sp: u16, ip: u16, cs: u16, reloc_off: u16, size: u32}?");
     add("dos.devices", devices_q);
-    add("dos._kernel_body", kernel_body_q);
-    add("dos._kind", kind_q);
-    add("dos.kind", kind_path_q);
-    add("dos.chain", chain_q);
-    add("dos.driver_and_vxd", driver_and_vxd_q);
-    add("dos.dos_and_windows", dos_and_windows_q);
-    add("dos._packer", packer_q);
+    add("dos._kernel_body", kernel_body_q, "(u32, u32)?");
+    add("dos._kind", kind_q, "str?");
+    add("dos.kind", kind_path_q, "str?");
+    add("dos.chain", chain_q, "list[(u32, u32)]");
+    add("dos.driver_and_vxd", driver_and_vxd_q, "(u32, u32)?");
+    add("dos.dos_and_windows", dos_and_windows_q, "(MzHeader{nreloc: u16, header: u32, min_alloc: u16, max_alloc: u16, ss: u16, sp: u16, ip: u16, cs: u16, reloc_off: u16, size: u32}, u32)?");
+    add("dos._packer", packer_q, "str?");
     add("dos.packer", packer_path_q);
-    add("dos.unpack_exepack", unpack_exepack_q);
-    add("dos.unpack_emulated", unpack_emulated_q);
+    add("dos.unpack_exepack", unpack_exepack_q, "(bytes, list[u32], u16, u16, u16, u16)");
+    add("dos.unpack_emulated", unpack_emulated_q, "(bytes, list[u32], u16, u16, u16, u16)");
     add("dos._data_segment", data_segment_q);
     add("dos.unpacked_file", unpacked_file_q);
     add("dos.read", read_q);

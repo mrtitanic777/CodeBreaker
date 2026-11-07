@@ -718,10 +718,25 @@ public:
         } else {
             args.push_back(mk_pyfn("native.no_data", {}, BYTEST(), nullptr, line));
         }
+        std::vector<py::V> typeargs = {py::V(question)};
+        auto wi = p.native_where.find(f->qname);
+        if (wi != p.native_where.end()) {   // ask(q, _where): _where(self)'s items follow the bytes
+            Fn* wf = p.any_fn(wi->second);
+            calls.insert(wf->qname);
+            TyP wt = ctx.ty(p.ret(wf->qname), line, "the place " + wf->name + " gives");
+            auto th = node("This", line);
+            th->type = cls_flag(f->cls->qname, "ref");
+            auto c = node("Call", line);
+            c->sym = sym("function", wf->name, wf->module->name, true, nullptr, {}, wt);
+            c->args = {th};
+            c->type = wt;
+            args.push_back(c);
+            typeargs.push_back(py::V("where"));
+        }
         for (size_t i = self; i < f->params.size(); i++)
             if ((int)(i - self) != data_arg) args.push_back(name_expr(f->params[i]));
         auto r = node("Return", line);
-        r->expr = mk_pyfn("native.ask", args, ret, nullptr, line, {py::V(question)});
+        r->expr = mk_pyfn("native.ask", args, ret, nullptr, line, typeargs);
         return block_n({r});
     }
 
@@ -2548,6 +2563,14 @@ public:
             return c;
         }
         if (kind == "std") return std_call(n, *r, t);
+        if (kind == "native_call") {   // native.call("q", data, args...): the question asked (answers.cc), typed
+            if (!n->keywords.empty() || n->args.size() < 2) throw Refused("dynamic", "native.call with keywords", line);
+            std::vector<IRP> args;
+            if (is_none_const(n->args[1])) args.push_back(mk_pyfn("native.no_data", {}, BYTEST(), nullptr, line));
+            else args.push_back(expr(n->args[1]));
+            for (size_t i = 2; i < n->args.size(); i++) args.push_back(expr(n->args[i]));
+            return mk_pyfn("native.ask", args, ty(t, n), nullptr, line, {py::V(r->A())});
+        }
         if (kind == "isinstance_variant") {   // (new) a test of the variant's tag
             IRP x = expr(n->args[0]);
             std::vector<py::V> tags;

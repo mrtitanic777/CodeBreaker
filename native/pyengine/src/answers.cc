@@ -256,19 +256,31 @@ struct Binder {
 // something else, or the call has arguments of its own making): question "" then.
 struct Deco {
     std::string question, data;
+    std::string where;   // @native.ask(q, _where): the module function giving the call's place (its args after the bytes)
 };
 Deco deco_of(const A::Expr* d) {
     Deco out;
     auto* c = as<pyfront::Call>(d);
-    if (!c || c->args.empty()) return out;
+    if (!c || c->args.empty() || c->args.size() > 2) return out;
     auto* fa = as<Attribute>(c->func);
     if (!fa || (fa->attr != "ask" && fa->attr != "answered")) return out;
     auto* q = as<Constant>(c->args[0]);
     if (!q || q->value.kind != ConstValue::Kind::Str) return out;
     bool ask = fa->attr == "ask";
+    if (c->args.size() == 2) {   // ask(q, where): a module function of self (a lambda is not bound)
+        auto* w = as<pyfront::Name>(c->args[1]);
+        if (!ask || !w) return out;
+        out.where = w->id;
+    }
     out.data = ask ? "self:data" : "arg:0";
     for (auto* k : c->keywords) {
-        if (!k->has_arg || k->arg == "result" || k->arg == "where" || k->arg == "args_of") return Deco{};
+        if (!k->has_arg || k->arg == "result" || k->arg == "args_of") return Deco{};
+        if (k->arg == "where") {
+            auto* w = as<pyfront::Name>(k->value);
+            if (!ask || !w) return Deco{};
+            out.where = w->id;
+            continue;
+        }
         auto* v = as<Constant>(k->value);
         if (k->arg == "data" && ask && v && v->value.kind == ConstValue::Kind::Str) out.data = "self:" + v->value.text;
         else if (k->arg == "data_arg" && !ask && v && v->value.kind == ConstValue::Kind::None) out.data = "none";
@@ -298,8 +310,39 @@ T native_answer_at(Program& p, const std::string& fq, const void* call) {
     return b.type(it->second, p.native_bound[fq]);
 }
 
+namespace {
+std::map<std::string, Spec>& question_specs() {   // every registered question with a type that reads
+    static std::map<std::string, Spec> m;
+    return m;
+}
+}  // namespace
+
+// native.call("q", data, ...): the answer's type, its records shared by every direct call of the question
+// (scope "q:<question>"); BOTTOM when the question has no type
+T native_question_type(Program& p, const std::string& question) {
+    auto it = question_specs().find(question);
+    if (it == question_specs().end()) return BOTTOM();
+    Binder b(p);
+    // its format's module ("ne.open": codebreaker.formats.ne) -- the scope its decorated questions' records are in,
+    // so an NEHeader from ne.open and one from ne.from_buffer are the one struct
+    std::string fmt = question.substr(0, question.find('.'));
+    std::string mod = "codebreaker.formats." + fmt;
+    if (!p.modules.get(mod)) mod = "codebreaker.formats.native";
+    b.scope = mod;
+    b.module = mod;
+    T t = b.type(it->second, question);
+    for (int st : b.made_now) p.pinned.insert(p.find(st));
+    return t;
+}
+
 size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log) {
     std::map<std::string, std::string> regs = registrations(fs::path(formats_dir));
+    for (auto& [q, text] : regs) {
+        Parser ps(text);
+        Spec s = ps.full();
+        ps.ws();
+        if (ps.err.empty() && ps.i == text.size()) question_specs()[q] = s;
+    }
     Binder b(p);
     size_t bound = 0;
     for (auto& [q, f] : p.fns) {
@@ -307,6 +350,11 @@ size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log
             Deco dc = deco_of(d);
             const std::string& question = dc.question;
             if (question.empty()) continue;
+            std::string where;
+            if (!dc.where.empty()) {
+                where = f->module->name + "." + dc.where;
+                if (!p.fns.get(where)) continue;   // (not a module function of the program: not bound)
+            }
             auto r = regs.find(question);
             if (r == regs.end()) continue;
             Parser ps(r->second);
@@ -324,6 +372,7 @@ size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log
             specs()[q] = s;
             p.native_bound[q] = question;
             p.native_data[q] = dc.data;
+            if (!where.empty()) p.native_where[q] = where;
             bound++;
         }
     }

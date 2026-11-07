@@ -257,6 +257,7 @@ public:
     // (new) functions a native format answers (answers.cc): qualified name -> the question; their return
     // type is the answer's, fixed before solving and never replaced by their (empty) bodies
     std::map<std::string, std::string> native_bound;
+    std::map<std::string, std::string> native_where;   // its place function (ask(q, _where)): called with self, spread after the bytes
     std::map<std::string, std::string> native_data;   // where its call's bytes come from: "self:<attr>", "arg:<i>", "none"
     std::vector<std::unique_ptr<pyfront::Module>> hint_trees;
     int apply_type_hints();
@@ -318,5 +319,7 @@ std::string deco_name(const A::Expr* d);
 size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log);
 // the type of one call's answer (sites of its own; the same on every round)
 T native_answer_at(Program& p, const std::string& fq, const void* call);
+// native.call("q", ...)'s type: the question's registered answer (BOTTOM if it has none)
+T native_question_type(Program& p, const std::string& question);
 
 }  // namespace pyengine

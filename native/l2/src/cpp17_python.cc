@@ -976,9 +976,11 @@ struct PyWriter : Emitter {
         if (starts(n, "struct.")) return struct_call(e);
         if (n == "native.no_data") return "py::bytes{}";
         if (n == "native.ask") {   // a native format's answer (py_answers.hpp), decoded as the function's type
-            Strs v{cpp_string(str(raw(e, "typeargs")[0]))};
+            const V& ta = raw(e, "typeargs");
+            Strs v{cpp_string(str(ta[0]))};
             for (auto& x : a) v.push_back(X(x));
-            return "py::native::ask<" + ctype(type(e)) + ">(" + join(v, ", ") + ")";
+            bool where = ta.is_seq() && ta.seq().size() > 1 && str(ta[1]) == "where";   // (the place tuple after the bytes)
+            return std::string(where ? "py::native::ask_where<" : "py::native::ask<") + ctype(type(e)) + ">(" + join(v, ", ") + ")";
         }
         if (n == "sorted") {
             std::string key = is(a[1], "Lit") ? "nullptr" : X(a[1]);
