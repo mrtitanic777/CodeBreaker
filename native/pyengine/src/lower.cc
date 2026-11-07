@@ -2543,6 +2543,22 @@ public:
     }
 
     IRP lambda_expr(const pyfront::Lambda* lam, const std::vector<TyP>& ptypes) {
+        // the lambda's parameters are its own: a local of the function with the same name keeps its type after it
+        std::map<std::string, std::optional<TyP>> outer;
+        for (size_t i = 0; i < lam->args->args.size() && i < ptypes.size(); i++) {
+            const std::string& a = lam->args->args[i]->arg;
+            auto it = local_types.find(a);
+            if (!outer.count(a)) outer[a] = it == local_types.end() ? std::nullopt : std::optional<TyP>(it->second);
+        }
+        struct Restore {
+            std::map<std::string, TyP>& lt;
+            std::map<std::string, std::optional<TyP>>& o;
+            ~Restore() {
+                for (auto& [k, v] : o)
+                    if (v) lt[k] = *v;
+                    else lt.erase(k);
+            }
+        } restore{local_types, outer};
         std::vector<IRP> params;
         for (size_t i = 0; i < lam->args->args.size() && i < ptypes.size(); i++) {
             const std::string& a = lam->args->args[i]->arg;

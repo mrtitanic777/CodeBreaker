@@ -514,6 +514,37 @@ def run():
     CHECK(has(src, "py::open(p, py::str(\"r\"), ") && has(src, "utf-8") && has(src, ".readline_text()"), "open with a keyword in its slot, text reads: %s", src.c_str());
 }
 
+// a lambda's parameter is its own: a local of the function with its name keeps the local's type
+// (a lambda m of a definite match once made the loop's optional m a definite one: *m.match(...) unchecked)
+static void t_lambda_scope() {
+    Run r(Srcs{{"pkg.m", R"PY(
+import re
+
+_T = re.compile(r"\s*(\w+)")
+
+def toks(s: str):
+    out, i = [], 0
+    s = re.sub(r"x", lambda m: "_" + m.group(0), s)
+    while i < len(s):
+        m = _T.match(s, i)
+        if not m:
+            break
+        out.append(m.group(1))
+        i = m.end()
+    return out
+)PY"}});
+    CHECK(r.ok("pkg.m.toks"), "toks: %s", r.why("pkg.m.toks").c_str());
+    std::string src;
+    try {
+        py::V doc = py::json_parse(r.unit("pkg.m"));
+        doc.set("lang", std::string("python"));
+        src = cpp17::write_unit(doc, PYENGINE_API_MAPS)[1].str();
+    } catch (const std::exception& e) {
+        CHECK(false, "the back end declines: %s", e.what());
+    }
+    CHECK(has(src, "std::optional<py::re::Match> m") && has(src, "!m.has_value()") && !has(src, "!true"), "the loop's m stays optional: %s", src.c_str());
+}
+
 // a, self.b = v and a = b = v: the value once into a temporary, then each target left to right
 static void t_assign_forms() {
     Run r(Srcs{{"pkg.m", R"PY(
@@ -747,7 +778,7 @@ match mode:
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> suites = {
         {"async", t_async},       {"match", t_match},
-        {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"stubs", t_stubs},
+        {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"lambda_scope", t_lambda_scope}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
         {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};
     std::vector<std::string> run;
