@@ -1,5 +1,19 @@
 from typing import (
     Dict,
+    Tuple,
+)
+
+
+def to_pe(path: str) -> str: ...
+
+
+class XBE:
+    def __init__(self, data: bytes) -> None: ...
+    def _decrypt(self, raw: int, keys: Dict[str, int]) -> Tuple[int, str]: ...
+    def entry_point(self) -> Tuple[int, str]: ...
+
+from typing import (
+    Dict,
     List,
     Tuple,
     Union,

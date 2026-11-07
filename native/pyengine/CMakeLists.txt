@@ -43,6 +43,7 @@ add_library(pyengine STATIC
   src/methods.cc    # builtins, builtin types' methods, the standard library rows
   src/demand.cc     # parameters typed by what their uses demand
   src/ext.cc        # the extensions: re, files, os, closures, variants, specialization
+  src/answers.cc    # the native formats' answers typed from native/formats/**/questions.cc
   src/ir.cc         # the L2 nodes and their JSON
   src/lower.cc      # typed functions into L2; the module units; the ledger
   src/census.cc     # what a tree uses: libraries, builtins, methods, features (--census)
@@ -67,9 +68,10 @@ endif()
 enable_testing()
 add_executable(pyengine_tests tests/pyengine_tests.cpp)
 target_link_libraries(pyengine_tests PRIVATE pyengine)
+target_compile_definitions(pyengine_tests PRIVATE PYENGINE_API_MAPS="${CMAKE_CURRENT_SOURCE_DIR}/../../codebreaker/java/api_maps")
 if(MSVC)
   target_link_options(pyengine_tests PRIVATE /STACK:268435456)
 endif()
-foreach(t scopes inference specialization closures generators variants regex files dynamic backend stubs async match)
+foreach(t scopes inference specialization closures generators variants regex files dynamic backend assign_forms lambda_scope stubs async match)
   add_test(NAME pyengine_${t} COMMAND pyengine_tests ${t})
 endforeach()

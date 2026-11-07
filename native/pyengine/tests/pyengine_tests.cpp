@@ -514,6 +514,76 @@ def run():
     CHECK(has(src, "py::open(p, py::str(\"r\"), ") && has(src, "utf-8") && has(src, ".readline_text()"), "open with a keyword in its slot, text reads: %s", src.c_str());
 }
 
+// a lambda's parameter is its own: a local of the function with its name keeps the local's type
+// (a lambda m of a definite match once made the loop's optional m a definite one: *m.match(...) unchecked)
+static void t_lambda_scope() {
+    Run r(Srcs{{"pkg.m", R"PY(
+import re
+
+_T = re.compile(r"\s*(\w+)")
+
+def toks(s: str):
+    out, i = [], 0
+    s = re.sub(r"x", lambda m: "_" + m.group(0), s)
+    while i < len(s):
+        m = _T.match(s, i)
+        if not m:
+            break
+        out.append(m.group(1))
+        i = m.end()
+    return out
+)PY"}});
+    CHECK(r.ok("pkg.m.toks"), "toks: %s", r.why("pkg.m.toks").c_str());
+    std::string src;
+    try {
+        py::V doc = py::json_parse(r.unit("pkg.m"));
+        doc.set("lang", std::string("python"));
+        src = cpp17::write_unit(doc, PYENGINE_API_MAPS)[1].str();
+    } catch (const std::exception& e) {
+        CHECK(false, "the back end declines: %s", e.what());
+    }
+    CHECK(has(src, "std::optional<py::re::Match> m") && has(src, "!m.has_value()") && !has(src, "!true"), "the loop's m stays optional: %s", src.c_str());
+}
+
+// a, self.b = v and a = b = v: the value once into a temporary, then each target left to right
+static void t_assign_forms() {
+    Run r(Srcs{{"pkg.m", R"PY(
+class P:
+    def __init__(self):
+        self.x = 0
+        self.y = 0
+
+    def set(self, a: int, b: int) -> int:
+        self.x, self.y = a, b
+        n, (self.x, m) = b, (a, 1)
+        return n + m
+
+def chain(a: int) -> int:
+    p = q = a + 1
+    return p + q
+
+def first_big(xs: list[int]) -> int:
+    return next((x * 2 for x in xs if x > 3), -1)
+
+def first_name(names: list[str]):
+    return next((n for n in names if n.startswith("a")), None)
+
+def patch(n: int) -> bytes:
+    b = bytearray(8)
+    b[2:4] = b""
+    b[:n] = bytes(n)
+    xs = [1, 2, 3]
+    xs[1:] = [9]
+    return bytes(b) + bytes(xs)
+
+def run():
+    return P().set(1, 2) + chain(3) + first_big([1, 5]) + len(first_name(["b", "ab"]) or "") + len(patch(1))
+)PY"}}, true, "checked");
+    for (auto q : {"pkg.m.P.set", "pkg.m.chain", "pkg.m.first_big", "pkg.m.first_name", "pkg.m.patch"}) CHECK(r.ok(q), "%s: %s", q, r.why(q).c_str());
+    std::string u = r.unit("pkg.m");
+    CHECK(has(u, "parts") && has(u, "value"), "the temporaries: %s", u.substr(0, 400).c_str());
+}
+
 // MonkeyType-style .pyi stubs read as parameter hints (--stubs): applied where nothing else types the
 // parameter, inference wins where it does, a type the engine cannot model is ignored with a reason
 static void t_stubs() {
@@ -708,7 +778,7 @@ match mode:
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> suites = {
         {"async", t_async},       {"match", t_match},
-        {"dynamic", t_dynamic},   {"backend", t_backend}, {"stubs", t_stubs},
+        {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"lambda_scope", t_lambda_scope}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
         {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};
     std::vector<std::string> run;

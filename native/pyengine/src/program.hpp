@@ -132,6 +132,7 @@ struct Module {
     OMap<std::vector<const A::Expr*>> assigns;   // nullptr: an unpacking
     OMap<Ref> imports;
     std::vector<const A::Stmt*> statements;
+    std::set<std::string> shadowed;      // a def's name an import after it rebinds: the name is the import's
     bool is_package = false;
     bool has_docstring = false;
 };
@@ -254,6 +255,16 @@ public:
     // Python annotation's text; applied when the classic rules have settled, to parameters they left
     // untyped, as if the source had the annotation
     std::map<std::string, std::map<std::string, std::string>> type_hints;
+    // (new) functions a native format answers (answers.cc): qualified name -> the question; their return
+    // type is the answer's, fixed before solving and never replaced by their (empty) bodies
+    std::map<std::string, std::string> native_bound;
+    std::map<std::string, std::string> native_where;   // its place function (ask(q, _where)): called with self, spread after the bytes
+    struct NativeArgsOf {   // args_of=f inlined: the bytes and the place, f's expressions of the stub's first parameter
+        const pyfront::Expr* data = nullptr;
+        std::vector<const pyfront::Expr*> place;
+    };
+    std::map<std::string, NativeArgsOf> native_args_of;
+    std::map<std::string, std::string> native_data;   // where its call's bytes come from: "self:<attr>", "arg:<i>", "none"
     std::vector<std::unique_ptr<pyfront::Module>> hint_trees;
     int apply_type_hints();
     // (new) MonkeyType-style .pyi stubs (--stubs DIR): the recorded parameter types of a run of the
@@ -287,7 +298,10 @@ public:
     void index_fn(Fn* f);
     void index_nested(Fn* parent);
     std::unordered_set<int> unfrozen;     // frozen-era sites whose items had no single type: recomputed
-    bool site_frozen(int root) const { return frozen && root < frozen_sites && !unfrozen.count(root); }
+    // (new) sites fixed from the start: a native format's answers (answers.cc) -- code that would change one
+    // (add or pop a key, use it as a dict) is refused, the answer's type stays what the format gives
+    std::unordered_set<int> pinned;
+    bool site_frozen(int root) const { return pinned.count(root) || (frozen && root < frozen_sites && !unfrozen.count(root)); }
     void veto(const std::string& why) { vetoes.push_back(why); }
 
 private:
@@ -305,5 +319,13 @@ bool variant_ok(const T& t);
 std::set<std::string> assigned_names(const A::FunctionDef* fn);
 std::vector<std::string> target_names(const A::Expr* t);
 std::string deco_name(const A::Expr* d);
+
+// answers.cc: the @native.ask / @native.answered functions typed by native/formats/**/questions.cc;
+// how many were bound
+size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log);
+// the type of one call's answer (sites of its own; the same on every round)
+T native_answer_at(Program& p, const std::string& fq, const void* call);
+// native.call("q", ...)'s type: the question's registered answer (BOTTOM if it has none)
+T native_question_type(Program& p, const std::string& question);
 
 }  // namespace pyengine

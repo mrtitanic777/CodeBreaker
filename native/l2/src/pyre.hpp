@@ -6,10 +6,18 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace re {
+
+// what a template or pattern raises, by Python's exception name (re.error is PatternError, an unknown group
+// name IndexError)
+struct Error : std::runtime_error {
+    std::string kind;
+    Error(std::string k, const std::string& m) : std::runtime_error(m), kind(std::move(k)) {}
+};
 
 enum Flags { I = 2, M = 8, S = 16 };
 

@@ -3,6 +3,156 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
+)
+
+
+def _entry(
+    t: <class 'Union'>[Tuple[str, int, bool, int, str, str, int], Tuple[str, int, bool, int, str, str, int, List[Tuple[int, int]]]]
+) -> Entry: ...
+
+
+def _safe(path: str) -> str: ...
+
+
+def extract(path: str, folder: str, names: <class 'Union'>[Tuple[()], List[str]] = ..., long_names: bool = ...) -> int: ...
+
+
+def put(path: str, files: Dict[str, bytes], volume: int = ...) -> List[Tuple[str, str]]: ...
+
+
+def volumes(
+    path: str,
+    long_names: bool = ...
+) -> List[<class 'Union'>[codebreaker.formats.xbox.volumes.FatxVolume, codebreaker.formats.xbox.volumes._Listed, codebreaker.formats.media.IsoVolume, codebreaker.formats.media.FatVolume]]: ...
+
+
+class BundleVolume:
+    def __init__(self, path: str): ...
+
+
+class Entry:
+    def __init__(
+        self,
+        path: str,
+        size: int,
+        is_dir: bool,
+        start: int,
+        when: str = ...,
+        short: <class 'Union'>[str, None] = ...,
+        attributes: int = ...
+    ) -> None: ...
+
+
+class FatVolume:
+    def __init__(
+        self,
+        source: _Source,
+        where: str = ...,
+        size: None = ...,
+        _attrs: <class 'Union'>[Dict[str, <class 'Union'>], None] = ...
+    ) -> None: ...
+    def _chain(self, cluster: int, size: <class 'Union'>[int, None] = ...) -> bytes: ...
+    def _next(self, c: int) -> int: ...
+    def files(self) -> List[Entry]: ...
+    def read(self, entry: Entry) -> bytes: ...
+
+
+class IsoVolume:
+    def __init__(
+        self,
+        source: _Source,
+        sector: int = ...,
+        skip: int = ...,
+        long_names: bool = ...,
+        _attrs: <class 'Union'>[Dict[str, <class 'Union'>], None] = ...
+    ) -> None: ...
+    def boot_image(self) -> <class 'Union'>[Tuple[int, int, int], None]: ...
+    def files(self) -> List[Entry]: ...
+    def read(self, entry: Entry) -> bytes: ...
+
+
+class _Source:
+    def __init__(self, path: str, offset: int = ...) -> None: ...
+
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+
+def _entry(
+    t: <class 'Union'>[Tuple[str, int, bool, int, str, str, int], Tuple[str, int, bool, int, str, str, int, List[Tuple[int, int]]]]
+) -> Entry: ...
+
+
+def _safe(path: str) -> str: ...
+
+
+def extract(path: str, folder: str, names: Tuple[()] = ..., long_names: bool = ...) -> int: ...
+
+
+def put(path: str, files: Dict[str, bytes], volume: int = ...) -> List[Tuple[str, str]]: ...
+
+
+def volumes(
+    path: str,
+    long_names: bool = ...
+) -> List[<class 'Union'>[codebreaker.formats.media.IsoVolume, codebreaker.formats.media.FatVolume]]: ...
+
+
+class Entry:
+    def __init__(
+        self,
+        path: str,
+        size: int,
+        is_dir: bool,
+        start: int,
+        when: str = ...,
+        short: <class 'Union'>[str, None] = ...,
+        attributes: int = ...
+    ) -> None: ...
+
+
+class FatVolume:
+    def __init__(
+        self,
+        source: _Source,
+        where: str = ...,
+        size: None = ...,
+        _attrs: <class 'Union'>[Dict[str, <class 'Union'>], None] = ...
+    ) -> None: ...
+    def _chain(self, cluster: int, size: <class 'Union'>[int, None] = ...) -> bytes: ...
+    def _next(self, c: int) -> int: ...
+    def files(self) -> List[Entry]: ...
+    def read(self, entry: Entry) -> bytes: ...
+
+
+class IsoVolume:
+    def __init__(
+        self,
+        source: _Source,
+        sector: int = ...,
+        skip: int = ...,
+        long_names: bool = ...,
+        _attrs: <class 'Union'>[Dict[str, <class 'Union'>], None] = ...
+    ) -> None: ...
+    def boot_image(self) -> <class 'Union'>[Tuple[int, int, int], None]: ...
+    def files(self) -> List[Entry]: ...
+    def read(self, entry: Entry) -> bytes: ...
+
+
+class _Source:
+    def __init__(self, path: str, offset: int = ...) -> None: ...
+
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Tuple,
 )
 
 

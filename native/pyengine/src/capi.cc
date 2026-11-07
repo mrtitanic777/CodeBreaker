@@ -19,7 +19,7 @@ pyengine_run* pyengine_run_package(const char* root, const char* package, const 
     pyengine::EngineOptions o;
     o.root = root ? root : "";
     o.package = package ? package : "";
-    o.policy = policy ? policy : "strict";
+    o.policy = policy ? policy : "checked";
     o.extended = extended != 0;
     o.out = out_dir ? out_dir : "";
     try {

@@ -1,5 +1,7 @@
 #include "pyre.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <map>
 #include <mutex>
@@ -740,28 +742,60 @@ std::string Regex::sub(const std::string& repl, const std::string& s, int count)
             lit += c;
             continue;
         }
+        // (Python's template: parsed whole before any match, so a bad one raises even where nothing matches)
+        size_t at = i;
         char e = repl[++i];
-        if (e >= '0' && e <= '9') {
-            int g = e - '0';
-            if (i + 1 < repl.size() && repl[i + 1] >= '0' && repl[i + 1] <= '9') g = g * 10 + (repl[++i] - '0');
+        auto bad = [&](const std::string& m) { throw Error("PatternError", m + " at position " + std::to_string(at)); };
+        auto oct = [](char ch) { return ch >= '0' && ch <= '7'; };
+        auto group_ref = [&](int g) {
+            if (g > ngroups_) bad("invalid group reference " + std::to_string(g));
             pieces.push_back({lit});
             lit.clear();
             pieces.push_back({"", g});
-        } else if (e == 'g' && i + 1 < repl.size() && repl[i + 1] == '<') {
-            size_t close = repl.find('>', i);
+        };
+        if (e == '0') {   // \0, \0o, \0oo: an octal character
+            int v = 0;
+            for (int k = 0; k < 2 && i + 1 < repl.size() && oct(repl[i + 1]); k++) v = v * 8 + (repl[++i] - '0');
+            lit += (char)v;
+        } else if (e >= '1' && e <= '9') {
+            if (oct(e) && i + 2 < repl.size() && oct(repl[i + 1]) && oct(repl[i + 2])) {   // \ooo: an octal character
+                int v = (e - '0') * 64 + (repl[i + 1] - '0') * 8 + (repl[i + 2] - '0');
+                if (v > 0377) bad(std::string("octal escape value \\") + repl.substr(i, 3) + " outside of range 0-0o377");
+                i += 2;
+                lit += (char)v;
+            } else {
+                int g = e - '0';
+                if (i + 1 < repl.size() && repl[i + 1] >= '0' && repl[i + 1] <= '9') g = g * 10 + (repl[++i] - '0');
+                group_ref(g);
+            }
+        } else if (e == 'g') {
+            if (i + 1 >= repl.size() || repl[i + 1] != '<') bad("missing <");
+            size_t close = repl.find('>', i + 2);
+            if (close == std::string::npos) bad("missing >, unterminated name");
             std::string name = repl.substr(i + 2, close - i - 2);
+            if (name.empty()) bad("missing group name");
             int g = -1;
-            if (!name.empty() && name[0] >= '0' && name[0] <= '9') g = std::stoi(name);
-            for (auto& nm : names_)
-                if (nm.first == name) g = nm.second;
-            pieces.push_back({lit});
-            lit.clear();
-            pieces.push_back({"", g});
+            if (std::all_of(name.begin(), name.end(), [](char ch) { return ch >= '0' && ch <= '9'; })) {
+                g = std::stoi(name);
+            } else {
+                bool ident = !(name[0] >= '0' && name[0] <= '9');
+                for (char ch : name) ident = ident && (std::isalnum((unsigned char)ch) || ch == '_' || (unsigned char)ch >= 0x80);
+                if (!ident) bad("bad character in group name '" + name + "'");
+                for (auto& nm : names_)
+                    if (nm.first == name) g = nm.second;
+                if (g < 0) throw Error("IndexError", "unknown group name '" + name + "'");
+            }
+            group_ref(g);
             i = close;
         } else if (e == 'n') lit += '\n';
         else if (e == 't') lit += '\t';
         else if (e == 'r') lit += '\r';
+        else if (e == 'f') lit += '\f';
+        else if (e == 'v') lit += '\v';
+        else if (e == 'a') lit += '\a';
+        else if (e == 'b') lit += '\b';
         else if (e == '\\') lit += '\\';
+        else if ((e >= 'a' && e <= 'z') || (e >= 'A' && e <= 'Z')) bad(std::string("bad escape \\") + e);
         else {
             lit += '\\';
             lit += e;

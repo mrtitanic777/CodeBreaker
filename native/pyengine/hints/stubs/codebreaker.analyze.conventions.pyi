@@ -1,3 +1,58 @@
+from codebreaker.analyze.image import (
+    Function,
+    Image,
+    Ins,
+)
+from typing import (
+    Any,
+    Dict,
+    List,
+    Union,
+)
+
+
+def _functions(
+    img: Image
+) -> Dict[int, <class 'Union'>[Dict[str, <class 'Union'>], <class 'Union'>]]: ...
+
+
+def _signature(img: Image, fn: Function) -> str: ...
+
+
+def analyse(img: Image) -> Dict[str, <class 'Union'>]: ...
+
+
+def duplicates(img: Image, least: int = ...) -> List[Any]: ...
+
+
+def functions(
+    img: Image
+) -> Dict[int, <class 'Union'>[Dict[str, <class 'Union'>], <class 'Union'>]]: ...
+
+
+def stack_delta(ins: Ins) -> int: ...
+
+
+def thunk_layer(img: Image) -> List[Any]: ...
+
+from codebreaker.analyze.image import (
+    Image,
+    Ins,
+)
+from typing import (
+    Dict,
+    Union,
+)
+
+
+def _functions(img: Image) -> Dict[int, <class 'Union'>]: ...
+
+
+def functions(img: Image) -> Dict[int, <class 'Union'>]: ...
+
+
+def stack_delta(ins: Ins) -> int: ...
+
 from codebreaker.analyze.call_graph import Graph
 from codebreaker.analyze.image import (
     Function,

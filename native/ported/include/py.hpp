@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cerrno>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -47,6 +48,11 @@
 #ifdef isascii
 #undef isascii
 #endif
+
+namespace py {
+template <class T> struct is_std_tuple_ : std::false_type {};
+template <class... T> struct is_std_tuple_<std::tuple<T...>> : std::true_type {};
+}  // namespace py
 
 namespace py {
 
@@ -100,6 +106,8 @@ PY_EXCEPTION(FileNotFoundError, OSError)
 PY_EXCEPTION(PermissionError, OSError)
 PY_EXCEPTION(TimeoutError, OSError)
 PY_EXCEPTION(StructError, Exception)  // struct.error
+PY_EXCEPTION(PatternError, Exception)  // re.error (re.PatternError)
+PY_EXCEPTION(MemoryError, Exception)
 #undef PY_EXCEPTION
 #undef PY_TEXT_CTOR
 
@@ -853,6 +861,16 @@ class bytes {
 
 // bytearray: Python's is a mutable object shared by every name that holds it, so this is a handle to
 // the bytes; it reads as bytes (it converts to const bytes&) and changes in place
+// a[lo:hi]'s span as Python takes it: a negative bound counts from the end, both clamped to [0, n], hi >= lo
+inline int64_t slice_bound_(int64_t v, int64_t n) { return v < 0 ? std::max<int64_t>(0, v + n) : std::min(v, n); }
+inline int64_t slice_bound_(none_t, int64_t) { return -1; }
+template <class A, class B> std::pair<int64_t, int64_t> slice_span_(A lo, B hi, int64_t n) {
+    int64_t a = slice_bound_(lo, n), b = slice_bound_(hi, n);
+    if constexpr (std::is_same_v<A, none_t>) a = 0;
+    if constexpr (std::is_same_v<B, none_t>) b = n;
+    return {a, std::max(a, b)};
+}
+
 class bytearray {
     std::shared_ptr<bytes> p_;
 
@@ -879,6 +897,12 @@ class bytearray {
         }
     };
     item_ref operator[](int64_t i) const { return {&p_->b_, static_cast<size_t>(index_(i, size(), "bytearray"))}; }
+    // b[lo:hi] = v: the span replaced by v's bytes (the length may change)
+    template <class A, class B> void set_slice(A lo, B hi, const bytes& v) const {
+        auto [a, b] = slice_span_(lo, hi, size());
+        std::string with = v.raw();   // (a copy: v may be this one)
+        p_->b_.replace(static_cast<size_t>(a), static_cast<size_t>(b - a), with);
+    }
     bytearray slice(int64_t lo, int64_t hi) const { return bytearray(p_->slice(lo, hi)); }
     bytearray slice(none_t, int64_t hi) const { return bytearray(p_->slice(0, hi)); }
     bytearray slice(int64_t lo, none_t) const { return bytearray(p_->slice(lo, size())); }
@@ -952,6 +976,9 @@ inline bytes str::encode(const char* enc, const char* errors) const {
 template <class T, class = void> struct hasher { size_t operator()(const T& v) const { return std::hash<T>()(v); } };
 template <> struct hasher<str> : str_hash {};
 template <> struct hasher<bytes> : bytes_hash {};
+template <class T> struct hasher<std::optional<T>> {   // (a dict keyed by a value or None)
+    size_t operator()(const std::optional<T>& v) const { return v ? hasher<T>()(*v) * 31 + 1 : 0; }
+};
 template <class... A> struct hasher<std::variant<A...>> {   // (a dict keyed by values of several kinds)
     size_t operator()(const std::variant<A...>& v) const {
         return std::visit([](const auto& x) { return hasher<std::decay_t<decltype(x)>>()(x); }, v) * 31 + v.index();
@@ -979,6 +1006,13 @@ template <class T> class list {
         for (const auto& x : items) out.v_->push_back(x);
         return out;
     }
+    // a[lo:hi] = v: the span replaced by v's items (the length may change)
+    template <class A, class B> void set_slice(A lo, B hi, const list& v) const {
+        auto [a, b] = slice_span_(lo, hi, static_cast<int64_t>(v_->size()));
+        std::vector<T> with = *v.v_;   // (a copy: v may be this one)
+        v_->erase(v_->begin() + a, v_->begin() + b);
+        v_->insert(v_->begin() + a, with.begin(), with.end());
+    }
     template <class... A> static list from(const std::tuple<A...>& items) {   // list(a_tuple)
         list out;
         std::apply([&](const auto&... x) { (out.v_->push_back(x), ...); }, items);
@@ -987,7 +1021,8 @@ template <class T> class list {
     std::vector<T>& vec() const { return *v_; }
     int64_t size() const { return static_cast<int64_t>(v_->size()); }
     bool empty() const { return v_->empty(); }
-    T& operator[](int64_t i) const { return (*v_)[static_cast<size_t>(index_(i, size(), "list"))]; }
+    // (T&; for a list of bools std::vector<bool>'s reference, which reads and assigns the same)
+    decltype(auto) operator[](int64_t i) const { return (*v_)[static_cast<size_t>(index_(i, size(), "list"))]; }
     void append(const T& x) const { v_->push_back(x); }
     template <class L> void extend(const L& xs) const {
         std::vector<T> add;
@@ -1178,7 +1213,9 @@ template <class T> class set {
     set(std::initializer_list<T> xs) : s_(std::make_shared<impl>()) { for (const auto& x : xs) add(x); }
     template <class It> static set from(const It& items) {
         set out;
-        for (const auto& x : items) out.add(x);
+        if constexpr (is_std_tuple_<It>::value) std::apply([&](const auto&... x) { (out.add(x), ...); }, items);   // frozenset(("a", "b"))
+        else
+            for (const auto& x : items) out.add(x);
         return out;
     }
     int64_t size() const { return static_cast<int64_t>(s_->where.size()); }
@@ -1358,6 +1395,28 @@ inline str repr(double v) { return to_str(v); }
 inline str repr(none_t) { return str("None"); }
 inline str to_str(const bytes& b) { return repr(b); }
 template <class T> str repr(const std::optional<T>& v) { return v ? repr(*v) : str("None"); }
+// a record (a Python dict of known keys, a generated struct with for_each_field_mut): the dict's repr, its keys
+// in the order the fields are declared; a key the dict may lack, absent, is left out
+struct any_field {   // (what a record's for_each_field_mut is called with, to tell a record from other types)
+    template <class F> void operator()(const char*, F&, bool) const {}
+};
+template <class T, class = void> struct is_record : std::false_type {};
+template <class T>
+struct is_record<T, std::void_t<decltype(for_each_field_mut(std::declval<T&>(), any_field{}))>> : std::true_type {};
+template <class T> struct is_optional_t : std::false_type {};
+template <class T> struct is_optional_t<std::optional<T>> : std::true_type {};
+template <class T, std::enable_if_t<is_record<T>::value, int> = 0> str repr(const T& r) {
+    str o("{");
+    size_t i = 0;
+    for_each_field_mut(const_cast<T&>(r), [&](const char* name, auto& f, bool required) {
+        if constexpr (is_optional_t<std::decay_t<decltype(f)>>::value)
+            if (!required && !f) return;
+        o += (i++ ? str(", ") : str("")) + repr(str(name)) + str(": ") + repr(f);
+    });
+    o += str("}");
+    return o;
+}
+template <class T, std::enable_if_t<is_record<T>::value, int> = 0> str to_str(const T& r) { return repr(r); }
 template <class T> str to_str(const std::optional<T>& v) { return v ? to_str(*v) : str("None"); }
 template <class T> str repr(const list<T>& xs) {
     str o("[");
@@ -1557,6 +1616,9 @@ inline void percent_one_(std::u32string& out, const std::string& f, int w, int p
 }
 inline void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, none_t) {
     percent_one_(out, f, w, p, 's', str("None"));
+}
+template <class... A> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const std::variant<A...>& v) {
+    std::visit([&](const auto& x) { percent_one_(out, f, w, p, c, x); }, v);   // (the value it holds, as itself)
 }
 template <class T> void percent_one_(std::u32string& out, const std::string& f, int w, int p, char c, const std::optional<T>& v) {
     if (v) percent_one_(out, f, w, p, c, *v);
@@ -2042,6 +2104,8 @@ inline int64_t crc32(const bytes& b, int64_t start = 0) {
 // (files: py_os.hpp, included at the end)
 
 namespace os {
+// an OS call's failure as Python raises it: the exception by the system's own error code (py_os.hpp)
+[[noreturn]] inline void raise_os_(const std::error_code& ec, const str& path);
 namespace path {
 inline bool sep_(char32_t c) { return c == '\\' || c == '/'; }
 // ntpath.splitdrive for the forms the tools meet: "C:..." and "\\server\share..."
@@ -2118,7 +2182,7 @@ inline bool isdir(const str& s) { std::error_code ec; return std::filesystem::is
 inline int64_t getsize(const str& s) {
     std::error_code ec;
     auto n = std::filesystem::file_size(std::filesystem::u8path(s.utf8()), ec);
-    if (ec) throw FileNotFoundError("cannot stat " + s.utf8());
+    if (ec) raise_os_(ec, s);
     return static_cast<int64_t>(n);
 }
 inline str normcase(const str& s) { return str(s.lower().u32()).replace(str("/"), str("\\")); }
@@ -2127,7 +2191,7 @@ inline list<str> listdir(const str& s) {
     list<str> out;
     std::error_code ec;
     auto it = std::filesystem::directory_iterator(std::filesystem::u8path(s.utf8()), ec);
-    if (ec) throw FileNotFoundError("cannot list " + s.utf8());
+    if (ec) raise_os_(ec, s);
     for (const auto& e : it) out.append(str(e.path().filename().u8string()));
     return out;
 }
@@ -2175,6 +2239,45 @@ inline int64_t int_from_str(const str& s, int64_t base = 10) {
     }
     if (!neg && v > static_cast<uint64_t>(INT64_MAX)) throw OverflowError("int too large for int64");
     return neg ? static_cast<int64_t>(0 - v) : static_cast<int64_t>(v);
+}
+
+// float(text) as Python reads it: blanks around it, a sign, digits with _ between them, a point, an exponent;
+// inf / infinity / nan in any case. No hexadecimal (strtod's) and no locale's decimal point.
+inline double float_from_str(const str& s) {
+    std::string t = s.strip().utf8();
+    auto bad = [&]() { return ValueError("could not convert string to float: " + repr(s).utf8()); };
+    size_t i = 0;
+    bool neg = false;
+    if (i < t.size() && (t[i] == '+' || t[i] == '-')) neg = t[i++] == '-';
+    std::string rest = t.substr(i), low;
+    for (char c : rest) low += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (low == "inf" || low == "infinity") return neg ? -HUGE_VAL : HUGE_VAL;
+    if (low == "nan") return neg ? -std::nan("") : std::nan("");
+    std::string clean;
+    bool digits = false, point = false, exp = false;
+    auto dig = [](char c) { return c >= '0' && c <= '9'; };
+    for (size_t k = 0; k < rest.size(); ++k) {
+        char c = rest[k];
+        if (dig(c)) { digits = true; clean += c; continue; }
+        if (c == '_' && k > 0 && k + 1 < rest.size() && dig(rest[k - 1]) && dig(rest[k + 1])) continue;
+        if (c == '.' && !point && !exp) { point = true; clean += c; continue; }
+        if ((c == 'e' || c == 'E') && digits && !exp) {
+            exp = true;
+            clean += 'e';
+            if (k + 1 < rest.size() && (rest[k + 1] == '+' || rest[k + 1] == '-')) clean += rest[++k];
+            if (k + 1 >= rest.size() || !dig(rest[k + 1])) throw bad();
+            continue;
+        }
+        throw bad();
+    }
+    if (!digits) throw bad();
+    double v = 0;
+    auto r = std::from_chars(clean.data(), clean.data() + clean.size(), v);
+    if (r.ptr != clean.data() + clean.size()) {
+        if (r.ec != std::errc::result_out_of_range) throw bad();
+        v = std::strtod(clean.c_str(), nullptr);   // (past the range: inf or 0, as Python's)
+    }
+    return neg ? -v : v;
 }
 
 }  // namespace py

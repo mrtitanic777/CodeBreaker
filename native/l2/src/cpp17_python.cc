@@ -61,6 +61,8 @@ std::string ident(const std::string& name) {
     for (char& c : out)
         if (!(std::isalnum((unsigned char)c) || c == '_' || (unsigned char)c >= 0x80)) c = '_';
     if (!out.empty() && std::isdigit((unsigned char)out[0])) out = "_" + out;
+    // _Upper is the implementation's (MSVC's _STD is a macro): the module-private _STD becomes STD_
+    if (out.size() > 1 && out[0] == '_' && std::isupper((unsigned char)out[1])) out = out.substr(1) + "_";
     return out;
 }
 
@@ -244,6 +246,7 @@ struct PyWriter : Emitter {
     std::string module;                       // the module's qualified name
     std::string api_root;
     std::set<std::string> locals;
+    std::set<std::string> class_members;      // the class whose method is being written: its members' names
     TypeP ret;
     PyWriter(const std::string& mod, const std::string& api) : Emitter("    "), module(mod), api_root(api) {}
 
@@ -489,7 +492,8 @@ struct PyWriter : Emitter {
         if (lit_str(e) && tname_is(type(e), "py.str")) return "py::str(" + cpp_string(lit_s(e)) + ")";
         std::string s = expr(e);
         if (is(e, "Binary") || is(e, "Cond") || is(e, "Assign") || is(e, "Concat") ||
-            (is(e, "Unary") && !py::truthy(raw(e, "postfix"))))
+            (is(e, "Unary") && !py::truthy(raw(e, "postfix"))) ||
+            (!s.empty() && s[0] == '*'))   // (an optional's value: *x.f() would be *(x.f()))
             return "(" + s + ")";
         return s;
     }
@@ -710,7 +714,15 @@ struct PyWriter : Emitter {
         if (skind(s) == "ctor" && typearg_has(e, "base")) return qual(sowner(s)) + "(" + args + ")";
         NodeP t = node(e, "target");
         if (!t) {
-            if (skind(s) == "function") return qual(sowner(s) + "." + sname(s)) + "(" + args + ")";
+            if (skind(s) == "function") {
+                // a module function a member of the method's class hides (Run.ended() calling ended(e)): qualified
+                if (sowner(s) == module && class_members.count(sname(s))) {
+                    Strs q;
+                    for (auto& x : py::split(module, ".")) q.push_back(ident(x));
+                    return "::" + join(q, "::") + "::" + ident(sname(s)) + "(" + args + ")";
+                }
+                return qual(sowner(s) + "." + sname(s)) + "(" + args + ")";
+            }
             return ident(sname(s)) + "(" + args + ")";
         }
         if (is(t, "TypeName")) return qual(tname(type(t))) + "::" + ident(sname(s)) + "(" + args + ")";
@@ -943,6 +955,12 @@ struct PyWriter : Emitter {
             if (lo == "py::none") return obj + ".slice_to(" + hi + ")";
             return obj + ".slice(" + lo + ", " + hi + ")";
         }
+        if (n == "set_slice") {   // a[lo:hi] = v
+            std::string obj = operand(node(e, "target"));
+            std::string lo = lit_none(a[0]) ? "py::none" : X(a[0]);
+            std::string hi = lit_none(a[1]) ? "py::none" : X(a[1]);
+            return obj + ".set_slice(" + lo + ", " + hi + ", " + X(a[2]) + ")";
+        }
         static const std::set<std::string> arith = {"floordiv",    "mod",         "shl",         "shr",
                                                     "ipow",        "truediv",     "checked_add", "checked_sub",
                                                     "checked_mul", "checked_shl", "checked_pow", "checked_neg", "pow"};
@@ -974,6 +992,14 @@ struct PyWriter : Emitter {
         if (n == "contains") return operand(node(e, "target")) + ".contains(" + X(a[0]) + ")";
         if (n == "dict.at") return operand(node(e, "target")) + ".at(" + X(a[0]) + ")";
         if (starts(n, "struct.")) return struct_call(e);
+        if (n == "native.no_data") return "py::bytes{}";
+        if (n == "native.ask") {   // a native format's answer (py_answers.hpp), decoded as the function's type
+            const V& ta = raw(e, "typeargs");
+            Strs v{cpp_string(str(ta[0]))};
+            for (auto& x : a) v.push_back(X(x));
+            bool where = ta.is_seq() && ta.seq().size() > 1 && str(ta[1]) == "where";   // (the place tuple after the bytes)
+            return std::string(where ? "py::native::ask_where<" : "py::native::ask<") + ctype(type(e)) + ">(" + join(v, ", ") + ")";
+        }
         if (n == "sorted") {
             std::string key = is(a[1], "Lit") ? "nullptr" : X(a[1]);
             std::string rev = a.size() > 2 ? X(a[2]) : "false";
@@ -1085,6 +1111,7 @@ struct PyWriter : Emitter {
             if (tinfo(t, "ref")) return s + " != nullptr";
             if (always_true(t)) return "true";
             if (tname(t) == "py.tuple") return !t->args.empty() ? "true" : "false";
+            if (tname(t) == "py.variant") return "py::truthy(" + expr(x) + ")";   // (the truth of the value it holds)
             return "!" + s + ".empty()";
         }
         if (k == "void") return "false";
@@ -1189,6 +1216,14 @@ Strs record_decl(PyWriter& w, const NodeP& r) {
             out.push_back("    f(\"" + sname(sym(fd)) + "\", r." + n + ");");
     }
     out.push_back("}");
+    // the same, writable (py::native::ask fills a record from a native format's answer): f(key, member, required)
+    out.push_back("template <class F> void for_each_field_mut(" + ident(cname_of(r)) + "& r, F&& f) {");
+    for (auto& fd : nodes(r, "members")) {
+        if (!is(fd, "FieldDecl")) continue;
+        std::string n = ident(sname(sym(fd)));
+        out.push_back("    f(\"" + sname(sym(fd)) + "\", r." + n + ", " + (has_mod(fd, "optional") ? "false" : "true") + ");");
+    }
+    out.push_back("}");
     return out;
 }
 
@@ -1205,7 +1240,13 @@ bool has_ctor(const ByQ& by, const std::string& q) {
 std::set<std::string> assigned(const NodeP& m) {
     std::set<std::string> out;
     for (auto& x : walk(m))
-        if (is(x, "Assign") && is(node(x, "target"), "Name")) out.insert(sname(sym(node(x, "target"))));
+        if (is(x, "Assign")) {
+            NodeP tg = node(x, "target");
+            if (is(tg, "Name")) out.insert(sname(sym(tg)));
+            else if (is(tg, "Call") && sowner(sym(tg)) == "py" && sname(sym(tg)) == "tie")   // a, b = ... into names
+                for (auto& a : nodes(tg, "args"))
+                    if (is(a, "Name")) out.insert(sname(sym(a)));
+        }
     return out;
 }
 
@@ -1299,6 +1340,12 @@ std::string signature_(PyWriter& w, const NodeP& m, const NodeP& c, bool decl, c
 
 Strs definition_(PyWriter& w, const NodeP& m, const NodeP& c);
 Strs definition(PyWriter& w, const NodeP& m, const NodeP& c) {
+    w.class_members.clear();
+    if (c)
+        for (auto& x : nodes(c, "members")) {
+            if (is(x, "MethodDecl")) w.class_members.insert(str(raw(x, "name")));
+            else if (is(x, "FieldDecl")) w.class_members.insert(sname(sym(x)));
+        }
     try {
         return definition_(w, m, c);
     } catch (Decline& e) {
@@ -1495,6 +1542,11 @@ V write_unit_python(const NodeP& unit, const std::string& api_root) {
             }
     S.push_back("}  // namespace " + ns);
     S.push_back("");
+    for (size_t i = 0; i < S.size(); i++)   // a native format's answers asked (py::native::ask): its header, here only
+        if (S[i].find("py::native::ask<") != std::string::npos) {
+            S.insert(S.begin() + 3, "#include \"py_answers.hpp\"");
+            break;
+        }
     return V::tuple({V(join(H, "\n")), V(join(S, "\n")), spans});
 }
 

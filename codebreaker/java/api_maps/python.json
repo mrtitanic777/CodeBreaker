@@ -280,7 +280,7 @@
     }
    }
   },
-  "builtins.int_float": {
+  "builtins.float_str": {"signature": "", "maps": {"cpp": {"target": "py::float_from_str({0})", "kind": "shim", "note": "ValueError on bad text; inf / nan in any case"}}}, "builtins.int_float": {
    "signature": "",
    "maps": {
     "cpp": {
@@ -675,7 +675,7 @@
     }
    }
   },
-  "os.path.getsize": {
+  "os.fspath": {"signature": "", "maps": {"cpp": {"target": "{0}", "kind": "macro", "note": "a path that is a str: itself"}}}, "os.path.getsize": {
    "signature": "",
    "maps": {
     "cpp": {

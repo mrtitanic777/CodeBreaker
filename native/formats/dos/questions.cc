@@ -308,24 +308,24 @@ void pklite_head_q(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(dos) {
-    add("dos._mz", mz_q);
-    add("dos.devices", devices_q);
-    add("dos._kernel_body", kernel_body_q);
-    add("dos._kind", kind_q);
-    add("dos.kind", kind_path_q);
-    add("dos.chain", chain_q);
-    add("dos.driver_and_vxd", driver_and_vxd_q);
-    add("dos.dos_and_windows", dos_and_windows_q);
-    add("dos._packer", packer_q);
-    add("dos.packer", packer_path_q);
-    add("dos.unpack_exepack", unpack_exepack_q);
-    add("dos.unpack_emulated", unpack_emulated_q);
-    add("dos._data_segment", data_segment_q);
-    add("dos.unpacked_file", unpacked_file_q);
-    add("dos.read", read_q);
-    add("dos.read_mz", read_mz_q);
-    add("dos.driver_part", driver_part_q);
-    add("dos.pklite_head", pklite_head_q);
+    add("dos._mz", mz_q, "MzHeader{nreloc: u16, header: u32, min_alloc: u16, max_alloc: u16, ss: u16, sp: u16, ip: u16, cs: u16, reloc_off: u16, size: u32}?");
+    add("dos.devices", devices_q, "list[(int, int?, int, int, int, str)]");
+    add("dos._kernel_body", kernel_body_q, "(u32, u32)?");
+    add("dos._kind", kind_q, "str?");
+    add("dos.kind", kind_path_q, "str?");
+    add("dos.chain", chain_q, "list[(u32, u32)]");
+    add("dos.driver_and_vxd", driver_and_vxd_q, "(u32, u32)?");
+    add("dos.dos_and_windows", dos_and_windows_q, "(MzHeader{nreloc: u16, header: u32, min_alloc: u16, max_alloc: u16, ss: u16, sp: u16, ip: u16, cs: u16, reloc_off: u16, size: u32}, u32)?");
+    add("dos._packer", packer_q, "str?");
+    add("dos.packer", packer_path_q, "str?");
+    add("dos.unpack_exepack", unpack_exepack_q, "(bytes, list[u32], u16, u16, u16, u16)");
+    add("dos.unpack_emulated", unpack_emulated_q, "(bytes, list[u32], u16, u16, u16, u16)");
+    add("dos._data_segment", data_segment_q, "int?");
+    add("dos.unpacked_file", unpacked_file_q, "bytes");
+    add("dos.read", read_q, "(str, DosProgram{name?: str, packer: str?, unpacked: str?, base: int, image: bytes, spans: list[(int, int, str)], entries: list[(int, str, str)], segments: dict[int, int], relocations: list[int], devices: list[(int, int?, int, int, int, str)], device_segment: int, cs: int, ip: int, ss: int, sp: int, ds: int?, overlay: bytes, notes: list[str], windows_at?: int})");
+    add("dos.read_mz", read_mz_q, "(str, DosProgram{name?: str, packer: str?, unpacked: str?, base: int, image: bytes, spans: list[(int, int, str)], entries: list[(int, str, str)], segments: dict[int, int], relocations: list[int], devices: list[(int, int?, int, int, int, str)], device_segment: int, cs: int, ip: int, ss: int, sp: int, ds: int?, overlay: bytes, notes: list[str], windows_at?: int})");
+    add("dos.driver_part", driver_part_q, "(str, DosProgram{name?: str, packer: str?, unpacked: str?, base: int, image: bytes, spans: list[(int, int, str)], entries: list[(int, str, str)], segments: dict[int, int], relocations: list[int], devices: list[(int, int?, int, int, int, str)], device_segment: int, cs: int, ip: int, ss: int, sp: int, ds: int?, overlay: bytes, notes: list[str], windows_at?: int})");
+    add("dos.pklite_head", pklite_head_q, "(str, DosProgram{name?: str, packer: str?, unpacked: str?, base: int, image: bytes, spans: list[(int, int, str)], entries: list[(int, str, str)], segments: dict[int, int], relocations: list[int], devices: list[(int, int?, int, int, int, str)], device_segment: int, cs: int, ip: int, ss: int, sp: int, ds: int?, overlay: bytes, notes: list[str], windows_at?: int})");
 }
 
 }  // namespace cbf::dos

@@ -1,0 +1,33 @@
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Tuple,
+)
+
+
+def _kit(profile: str, *files) -> bool: ...
+
+
+def _scratch() -> str: ...
+
+
+def _set_up() -> Dict[str, bool]: ...
+
+
+def get(name: str, target: None = ..., flags: None = ...) -> XenixC: ...
+
+
+def names() -> List[str]: ...
+
+
+class Unit:
+    def __init__(self, name: str, source: str, original: Tuple[bytes, bytes], address: int = ...) -> None: ...
+
+
+class XenixC:
+    def __init__(self, tools: str, target: str = ...) -> None: ...
+    @staticmethod
+    def _mask(size: int, fixed: List[int]) -> bytes: ...
+    def compile(self, source: str, work: str, header: str = ..., function: str = ...) -> Tuple[bytes, bytes]: ...
+    def units(self) -> List[Unit]: ...

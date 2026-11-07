@@ -1,13 +1,14 @@
 // pyengine -- the porting engine on a Python package: L2 per module and the coverage ledger.
 //
-//   pyengine <package dir> [--coverage] [--out DIR] [--checked] [--old] [--package NAME]
+//   pyengine <package dir> [--coverage] [--out DIR] [--strict] [--old] [--package NAME]
 //            [--module M ...] [--log]
 //
 //   --out DIR    writes DIR/l2/<module>.json (each module's L2 Unit), DIR/coverage.json (per
 //                function: translated or refused, with the reason, its lines, its L2) and
 //                DIR/coverage.md (the per-package table and the top refusal reasons)
 //   --coverage   prints the coverage table
-//   --checked    the checked int policy (ints past int64 raise OverflowError in C++)
+//   --strict     the strict int policy: an int must be proven within int64 (the default, checked: ints are
+//                int64 and an overflow raises OverflowError in C++)
 //   --old        the old engine's rules exactly (no extensions): gate 1's reference run
 //   --cpp DIR    writes each module that translated anything through the C++17 back end
 //                (native/l2's l2cpp17): DIR/<module path>.hpp / .cpp, and DIR/spans.json (per
@@ -178,6 +179,7 @@ int main(int argc, char** argv) {
         if (a == "--coverage") coverage = true;
         else if (a == "--out" && i + 1 < argc) o.out = argv[++i];
         else if (a == "--checked") o.policy = "checked";
+        else if (a == "--strict") o.policy = "strict";
         else if (a == "--old") o.extended = false;
         else if (a == "--package" && i + 1 < argc) o.package = argv[++i];
         else if (a == "--module" && i + 1 < argc) o.modules.push_back(argv[++i]);
@@ -194,7 +196,7 @@ int main(int argc, char** argv) {
         }
     }
     if (o.root.empty()) {
-        fprintf(stderr, "usage: pyengine <package dir> [--coverage] [--out DIR] [--checked] [--old] [--package NAME] [--module M]\n");
+        fprintf(stderr, "usage: pyengine <package dir> [--coverage] [--out DIR] [--strict] [--old] [--package NAME] [--module M]\n");
         return 2;
     }
     pyengine::EngineResult r;

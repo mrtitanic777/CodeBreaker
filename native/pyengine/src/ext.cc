@@ -233,8 +233,16 @@ static TR re_result(Eval& ev, const A::Call* n, const std::string& fn, const std
     }
     if (fn == "sub" || fn == "subn") {
         if (rest.size() < 2) return ev.issue(n, "conflict", "re." + fn + " arity");
-        if (!rest[0]) return ev.issue(n, "dynamic", "re." + fn + " with a function");
-        if (!is_kind(rest[0], {TK::Str})) return ev.issue(n, "dynamic", "re." + fn + " with a function");
+        if (!rest[0] || !is_kind(rest[0], {TK::Str})) {
+            // (new) the replacement a lambda of the match: its result must be a str (re.sub(p, lambda m: ..., s))
+            bool module_fn = res.k == "std";
+            size_t at = module_fn ? 1 : 0;
+            const A::Expr* repl = at < n->args.size() ? n->args[at] : nullptr;
+            auto* lam = repl ? as<pyfront::Lambda>(repl) : nullptr;
+            if (!lam || lam->args->args.size() != 1) return ev.issue(n, "dynamic", "re." + fn + " with a function");
+            T r = ev.lambda_type(repl, {re_type("re.Match", pat, verbose)}, state);
+            if (r.kind != TK::Str && r.kind != TK::Bottom) return ev.issue(n, "conflict", "re." + fn + " with a function of a " + kind_name(r.kind));
+        }
         if (!need_str(1)) return ev.issue(n, "conflict", "re." + fn + " arguments");
         if (fn == "subn") return TR(tuple_of({STR(), SIZE()}), res);
         return TR(STR(), res);

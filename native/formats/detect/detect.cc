@@ -391,12 +391,12 @@ void identify_q(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(detect) {
-    add("detect.signature", signature_q);
-    add("detect.format_of", format_of_q);
-    add("detect.lane", lane_q);
-    add("detect.holds_drivers", holds_drivers_q);
-    add("detect.dos_header", dos_header_q);
-    add("detect.identify", identify_q);
+    add("detect.signature", signature_q, "bytes?");
+    add("detect.format_of", format_of_q, "str?");
+    add("detect.lane", lane_q, "str?");
+    add("detect.holds_drivers", holds_drivers_q, "bool");
+    add("detect.dos_header", dos_header_q, "DosHeader{bytes_in_last_page: u16, pages: u16, relocations: u16, header_paragraphs: u16, header_size: u32, min_alloc: u16, max_alloc: u16, ss: u16, sp: u16, checksum: u16, ip: u16, cs: u16, relocation_table: u16, overlay: u16, new_header: u32, load_size: int, relocation_entries: list[(u16, u16)]}?");
+    add("detect.identify", identify_q, "list[Detected{format: str, detail: str, family: str, command: str}]");
 }
 
 }  // namespace cbf::detect

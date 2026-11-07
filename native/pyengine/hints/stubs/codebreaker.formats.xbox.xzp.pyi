@@ -1,4 +1,15 @@
 from typing import (
+    List,
+    Tuple,
+)
+
+
+def build(folder: str, out_path: str, template: bytes) -> str: ...
+
+
+def payloads(path: str) -> List[Tuple[str, bytes]]: ...
+
+from typing import (
     Dict,
     List,
     Tuple,

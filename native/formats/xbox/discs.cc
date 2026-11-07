@@ -809,24 +809,24 @@ void lz4_compress_q(Call &c) { c.out.bytes(Bytes(lz4_compress(c.data))); }
 }  // namespace
 
 CBF_QUESTIONS(discs) {
-    add("xdev.open_file", open_file);
+    add("xdev.open_file", open_file, "int");
     add("xdev.open_svod", open_svod);
     add("xdev.open_image", open_image);
-    add("xdev.read", read_q);
+    add("xdev.read", read_q, "bytes");
     add("xdev.close", close_q);
     add("gdf.open", gdf_open);
     add("gdf.walk", gdf_walk);
     add("gdf.files", gdf_files);
-    add("gdf.read", gdf_read);
-    add("gdf.build_xdvdfs", build_xdvdfs);
+    add("gdf.read", gdf_read, "bytes?");
+    add("gdf.build_xdvdfs", build_xdvdfs, "bytes");
     add("god.part", god_part);
-    add("god.con_header", god_con_header);
-    add("god.install_to_god", god_install);
-    add("ciso.write_cso", write_cso);
-    add("ciso.write_cci", write_cci);
-    add("ciso.to_iso", to_iso);
-    add("lz4.decode_block", lz4_decode_q);
-    add("lz4.compress_block", lz4_compress_q);
+    add("god.con_header", god_con_header, "bytes");
+    add("god.install_to_god", god_install, "bytes");
+    add("ciso.write_cso", write_cso, "int");
+    add("ciso.write_cci", write_cci, "int");
+    add("ciso.to_iso", to_iso, "int");
+    add("lz4.decode_block", lz4_decode_q, "bytes");
+    add("lz4.compress_block", lz4_compress_q, "bytes");
 }
 
 }  // namespace cbf::xbox

@@ -564,11 +564,11 @@ CBF_QUESTIONS(resources) {
     add("resources.menu", dec_q<menu>);
     add("resources.accelerators", dec_q<accelerators>);
     add("resources.version", dec_q<version>);
-    add("resources.group", group);
-    add("resources.icon_file", icon_file);
-    add("resources.bitmap_file", bitmap_file);
+    add("resources.group", group, "(int, list[(int, int, int, int, int, int, int)])");
+    add("resources.icon_file", icon_file, "bytes");
+    add("resources.bitmap_file", bitmap_file, "bytes");
     add("resources.type_library", type_library);
-    add("resources.read_ne", read_ne);
+    add("resources.read_ne", read_ne, "list[(int|str, int|str, int, bytes)]");
 }
 
 }  // namespace cbf::resources

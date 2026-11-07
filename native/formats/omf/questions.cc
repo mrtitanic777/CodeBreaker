@@ -626,27 +626,27 @@ void rename_symbols_q(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(omf) {
-    add("omf.patched", patched_q);
-    add("omf.symbol_names", symbol_names_q);
-    add("omf.rename_symbols", rename_symbols_q);
-    add("omf.records", records_q);
-    add("omf.record", record_q);
-    add("omf.name", name_q);
-    add("omf.read", read_q);
-    add("omf.library", library_q);
-    add("omf.holes", holes_q);
-    add("omf.code_segments", code_segments_q);
-    add("omf.functions", functions_q);
-    add("omf.names_of", names_of_q);
-    add("omf.publics", publics_q);
-    add("omf.externs", externs_q);
-    add("omf.walk", walk_q);
-    add("omf._code", code_q);
-    add("omf.code_segment", code_segment_q);
-    add("omf.function_bytes", function_bytes_q);
-    add("omf.rename_externs", rename_externs_q);
-    add("omf.raw_object", raw_object_q);
-    add("omf.bss_object", bss_object_q);
+    add("omf.patched", patched_q, "bytes");
+    add("omf.symbol_names", symbol_names_q, "(list[str], (str, str)?)");
+    add("omf.rename_symbols", rename_symbols_q, "bytes");
+    add("omf.records", records_q, "list[(u8, bytes)]");
+    add("omf.record", record_q, "bytes");
+    add("omf.name", name_q, "bytes");
+    add("omf.read", read_q, "OmfObject{pubs: list[(str, str?, u32)], ext: list[str], fix: list[(str, u32, str, (str, str|int|none), int)], groups: dict[str, list[str]], comm: dict[str, (int, bool)], fixloc: list[u8], combine: dict[str, int], start: (str, u32)?, seg: dict[str, bytes], segs: list[(str, str, u32, u8)], filled: dict[str, u32]}");
+    add("omf.library", library_q, "list[(str, bytes)]");
+    add("omf.holes", holes_q, "set[int]");
+    add("omf.code_segments", code_segments_q, "list[str]");
+    add("omf.functions", functions_q, "list[(str, u32, int)]");
+    add("omf.names_of", names_of_q, "(set[str], set[str])");
+    add("omf.publics", publics_q, "set[str]");
+    add("omf.externs", externs_q, "list[str]");
+    add("omf.walk", walk_q, "(list[(int, u8, bytes)], (str, str)?)");
+    add("omf._code", code_q, "(str?, bytes, set[int], dict[str, (str, u32)])");
+    add("omf.code_segment", code_segment_q, "(str?, bytes, set[int])");
+    add("omf.function_bytes", function_bytes_q, "dict[str, (bytes, set[int])]");
+    add("omf.rename_externs", rename_externs_q, "bytes");
+    add("omf.raw_object", raw_object_q, "bytes");
+    add("omf.bss_object", bss_object_q, "bytes");
 }
 
 }  // namespace cbf::omf

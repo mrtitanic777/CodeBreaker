@@ -198,11 +198,15 @@ Eval& Eval::run() {
     State state;
     if (!f->varargs.empty() || !f->kwargs.empty()) issue(node, "dynamic", !f->varargs.empty() ? "*args" : "**kwargs");
     if (f->kind == "async") issue(node, "dynamic", "async");
+    if (!f->cls && f->module && f->module->shadowed.count(f->name))   // (no one can call it: its name is an import's)
+        issue(node, "dynamic", "module name " + f->name + " rebound by a later import");
     // (new) decorators that leave the function's own behaviour as written: native_first answers by
     // the C++ the gate already holds equal to this body; the caches only remember results
     static const std::set<std::string> TRANSPARENT = {"native_first", "lru_cache", "cache"};
+    bool native = p.native_bound.count(f->qname) != 0;   // (answered by a native format: answers.cc; lowered as its call)
     for (auto& d : f->decorators)
-        if (d != "staticmethod" && d != "property" && !(p.extended && TRANSPARENT.count(d))) issue(node, "dynamic", "decorator " + d);
+        if (d != "staticmethod" && d != "property" && !(p.extended && TRANSPARENT.count(d)) && !(native && (d == "ask" || d == "answered")))
+            issue(node, "dynamic", "decorator " + d);
     std::vector<std::string> all = f->params;
     all.insert(all.end(), f->kwonly.begin(), f->kwonly.end());
     for (size_t i = 0; i < all.size(); i++) {
@@ -211,6 +215,10 @@ Eval& Eval::run() {
         else if (i == 0 && f->kind == "classmethod") t = named(TK::Cls, f->cls->qname);
         else t = p.param_type(f, all[i]);
         state.set(all[i], t);
+    }
+    if (auto ai = p.native_args_of.find(f->qname); ai != p.native_args_of.end()) {   // args_of inlined: its expressions here
+        ev(ai->second.data, state);
+        for (auto* e : ai->second.place) ev(e, state);
     }
     bool gen = p.extended && f->generator;
     for (const AnyNode& n : walk(AnyNode(node))) {
@@ -246,7 +254,7 @@ Eval& Eval::run() {
             }
         }
     }
-    if (live()) {
+    if (live() && !p.native_bound.count(f->qname)) {   // (a native answer's type stays the answer's: answers.cc)
         const std::string& fq = f->qname;
         T old = p.returns.count(fq) ? p.returns[fq] : BOTTOM();
         T nw = p.join(old, ret_t);
@@ -329,7 +337,7 @@ SP Eval::stmt(const A::Stmt* st, const State& state) {
         }
         case StmtKind::Assert: {
             auto* a = cast<pyfront::Assert>(st);
-            ev(a->test, state);
+            ev_test(a->test, state);
             if (a->msg) ev(a->msg, state);
             return refine(a->test, state, true);
         }
@@ -343,7 +351,7 @@ SP Eval::stmt(const A::Stmt* st, const State& state) {
         case StmtKind::ImportFrom: return s_ImportFrom(cast<ImportFrom>(st), state);
         case StmtKind::If: {
             auto* i = cast<pyfront::If>(st);
-            ev(i->test, state);
+            ev_test(i->test, state);
             SP s2 = after_access(i->test, state);
             SP a = block(i->body, refine(i->test, s2, true));
             SP b = block(i->orelse, refine(i->test, s2, false));
@@ -495,7 +503,7 @@ SP Eval::s_Try(const A::Try* st, const State& state) {
 SP Eval::s_While(const A::While* st, const State& state) {
     if (!st->orelse.empty()) issue(st, "syntax", "while-else");
     auto body = [this, st](const State& head) -> SP {
-        ev(st->test, head);
+        ev_test(st->test, head);
         SP h2 = after_access(st->test, head);
         return block(st->body, refine(st->test, h2, true));
     };
@@ -961,7 +969,8 @@ State Eval::assign(const A::Expr* tgt, const T& t0, State state, const A::Expr* 
         if (auto* sl = as<pyfront::Slice>(sub->slice)) {
             ev_slice_parts(sl, state);
             if (ot.kind == TK::List && t.kind == TK::List) p.grow(p.elem, ot.site, p.elem[p.find(t.site)]);
-            else if (ot.kind == TK::Bytearray && (t.kind == TK::Bytes || t.kind == TK::Bytearray)) {
+            else if (ot.kind == TK::Bytearray && (t.kind == TK::Bytes || t.kind == TK::Bytearray ||
+                                                  (t.kind == TK::List && p.elem[p.find(t.site)].kind == TK::Int))) {   // (ints: bytes of them)
             } else if (ot.kind != TK::Bottom)
                 issue(tgt, "syntax", std::string("slice assignment to a ") + kind_name(ot.kind));
             Res r("slice_store", std::string(kind_name(ot.kind)));
@@ -1552,7 +1561,7 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
         }
         case ExprKind::UnaryOp: {
             auto* n = cast<UnaryOp>(node);
-            T t = ev(n->operand, state);
+            T t = n->op == UnaryOpKind::Not ? ev_test(n->operand, state) : ev(n->operand, state);
             if (n->op == UnaryOpKind::Not) return BOOL();
             if (t.kind == TK::Bottom || t.kind == TK::Top) return t;
             if (t.kind == TK::Bool) t = INT(Big(0), Big(1));
@@ -1568,8 +1577,9 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
             auto* n = cast<BoolOp>(node);
             std::vector<T> ts;
             SP s = state;
+            bool in_test = tested.count(node) != 0;
             for (auto* v : n->values) {
-                T t = ev(v, s ? *s : State());
+                T t = in_test ? ev_test(v, s ? *s : State()) : ev(v, s ? *s : State());
                 ts.push_back(t);
                 s = refine(v, s, n->op == BoolOpKind::And);
             }
@@ -1585,7 +1595,10 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
                 T j2 = p.join(strip_opt(ts[0]), ts[1]);
                 if (j2.kind != TK::Top) return j2;
             }
-            if (j.kind == TK::Top) return TR(BOOL(), Res("mixedbool", j.why()));
+            if (j.kind == TK::Top) {
+                if (in_test) return TR(BOOL(), Res("mixedbool", j.why()));
+                return issue(node, "conflict", "value of and/or over " + j.why());   // (its value is used: no type for it)
+            }
             return j;
         }
         case ExprKind::Compare: {
@@ -1600,7 +1613,7 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
         }
         case ExprKind::IfExp: {
             auto* n = cast<IfExp>(node);
-            ev(n->test, state);
+            ev_test(n->test, state);
             SP st1 = refine(n->test, state, true), st2 = refine(n->test, state, false);
             T a = ev(n->body, st1 ? *st1 : State());
             T b = ev(n->orelse, st2 ? *st2 : State());
@@ -1809,8 +1822,8 @@ TR Eval::binop(AnyNode n, OpKind op, T a, T b, const A::Expr* ln, const A::Expr*
         }
     }
     if ((ka == TK::Int || ka == TK::Float) && (kb == TK::Int || kb == TK::Float)) {
-        if (ka == TK::Int) exact_float(n, a);
-        if (kb == TK::Int) exact_float(n, b);
+        // Python rounds the int to a double first here (float.__add__ etc.), as C++ converts an int64: exact
+        // whatever the int's range, an int beyond int64 already being refused (or checked) where it is made
         if (op == OpKind::Add || op == OpKind::Sub || op == OpKind::Mult || op == OpKind::Div || op == OpKind::FloorDiv ||
             op == OpKind::Mod || op == OpKind::Pow)
             return FLOAT();
@@ -2078,7 +2091,7 @@ State Eval::comp_scope(const std::vector<A::comprehension*>& gens, const State& 
         auto [elem, n] = iteration(g->iter, it, st);
         st = assign(g->target, elem, st, nullptr);
         for (auto* cond : g->ifs) {
-            ev(cond, st);
+            ev_test(cond, st);
             SP r = refine(cond, st, true);
             if (r) st = *r;
         }
@@ -2156,6 +2169,22 @@ static std::string sig_of(const T& t) {
 
 TR Eval::call_fn(const A::Call* n, Fn* f, const std::vector<std::optional<T>>& args, const OMap<std::optional<T>>& kw, bool bound) {
     if (f->kind == "property") return issue(n, "conflict", "calling a property");
+    if (p.extended && f->qname == "codebreaker.formats.native.call" && !n->args.empty()) {   // native.call("q", data, ...)
+        std::string q;
+        if (is_str_const(n->args[0], &q)) {
+            T t = native_question_type(p, q);
+            if (t.kind != TK::Bottom) return TR(t, Res("native_call", q));
+        }
+    }
+    if (p.native_bound.count(f->qname)) {   // a native answer: one type for every caller (answers.cc), no copies
+        bind_args(n, f, args, kw, bound);
+        auto wi = p.native_where.find(f->qname);
+        if (wi != p.native_where.end() && f->cls) {   // its place function, called with self
+            Fn** wf = p.fns.get(wi->second);
+            if (wf) bind_args(n, *wf, {std::optional<T>(named(TK::Inst, f->cls->qname))}, {}, false);
+        }
+        return TR(p.ret(f->qname), Res(bound ? "method" : "fn", f->qname));
+    }
     if (p.demand_enabled && !bound && p.spec_candidates.count(f->qname)) {   // (new) this caller's own copy
         std::string sig;
         for (auto& a : args) sig += (sig.empty() ? "" : ",") + (a ? sig_of(*a) : std::string("lambda"));
@@ -2339,6 +2368,26 @@ Eval& ModuleEval::run() {
             p.globals[m->name][name] = nw;
             p.touch("g:" + m->name);
         }
+    }
+    // (new) the module's other statements (a loop filling a table, a call): what they put in the module's
+    // containers is part of their types. A name only they bind (a loop's variable) is theirs, local here.
+    if (p.extended && !m->statements.empty()) {
+        locals.clear();
+        for (auto* st : m->statements)
+            for (const AnyNode& n : walk(AnyNode(st)))
+                if (auto* nm = as<pyfront::Name>(n.expr()))
+                    if (!m->assigns.has(nm->id) && !m->functions.has(nm->id) && !m->classes.has(nm->id) && !m->imports.has(nm->id))
+                        locals.insert(nm->id);
+        std::vector<A::Stmt*> body;
+        for (auto* st : m->statements)
+            if (st->kind == StmtKind::For || st->kind == StmtKind::While || st->kind == StmtKind::Expr || st->kind == StmtKind::AugAssign ||
+                (st->kind == StmtKind::Assign && !as<pyfront::Name>(cast<pyfront::Assign>(st)->targets[0])))
+                body.push_back(const_cast<A::Stmt*>(st));
+        try {
+            block(body, State());
+        } catch (const std::exception&) {
+        }
+        locals.clear();
     }
     for (auto& [_, c] : m->classes) {
         for (auto& [name, v] : c->class_attrs) {

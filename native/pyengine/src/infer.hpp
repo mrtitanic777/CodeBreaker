@@ -99,6 +99,13 @@ public:
 
     // expressions
     T ev(const A::Expr* node, const State& state);
+    // (an expression only tested for its truth -- an if / while / assert test, a not's operand, a comprehension's
+    // condition, an and/or's operand inside one: there an and/or over values of no single type is a bool)
+    std::set<const A::Expr*> tested;
+    T ev_test(const A::Expr* node, const State& state) {
+        tested.insert(node);
+        return ev(node, state);
+    }
     TR ev_inner(const A::Expr* node, const State& state);
     Ref lookup(const std::string& name);
     std::string lookup_class(const A::Expr* n);

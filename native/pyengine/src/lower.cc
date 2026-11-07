@@ -250,7 +250,7 @@ TyP Context::ty(const T& t, int line, const std::string& what) {
     }
     TK k = t.kind;
     if ((k == TK::List || k == TK::Set || k == TK::Dict) && p.poisoned_sites.count(p.find(t.site)))
-        throw Refused("untyped", std::string("a ") + kind_name(k) + " also given items of no single type", line);
+        throw Refused("untyped", std::string("a ") + kind_name(k) + " also given items of no single type: " + p.poisoned_sites[p.find(t.site)], line);
     if (k == TK::List || k == TK::Set) {
         int s = p.find(t.site);
         if (p.dynamic.count(s) && p.ckind[s] != k) throw Refused("conflict", p.dynamic[s], line);
@@ -464,7 +464,8 @@ public:
         if (f->name == "__init__") ret = VOID();
         else ret = ctx.ty(ret_t, f->node->pos.lineno, "return value");
         plan_locals();
-        IRP body = block(body_stmts(f->node->body));
+        auto nb = p.native_bound.find(f->qname);
+        IRP body = nb != p.native_bound.end() ? native_body(nb->second, p.native_data[f->qname]) : block(body_stmts(f->node->body));
         std::string kind = !f->cls ? "function" : (f->name == "__init__" ? "ctor" : "method");
         std::vector<std::string> mods;
         if (f->kind == "static") mods.push_back("static");
@@ -697,6 +698,57 @@ public:
     }
 
     // -- statements
+    // a function a native format answers (answers.cc): its body is the question asked --
+    //   return py::native::ask<R>("pe.export_table", this->data, args...);
+    // the bytes first (self.<attribute>, the data_arg-th argument, or none), then its other arguments
+    IRP native_body(const std::string& question, const std::string& data) {
+        int line = f->node->pos.lineno;
+        size_t self = (f->cls && (f->kind == "method" || f->kind == "property")) ? 1 : 0;
+        std::vector<IRP> args;
+        int data_arg = -1;
+        if (auto ai = p.native_args_of.find(f->qname); ai != p.native_args_of.end()) {   // args_of: f's bytes and place, inlined
+            const A::Expr* d = ai->second.data;   // (None: a question of no bytes, its place the file's path)
+            args.push_back(d->kind == ExprKind::Constant && is_none_const(d) ? mk_pyfn("native.no_data", {}, BYTEST(), nullptr, line) : expr(d));
+            for (auto* e : ai->second.place) args.push_back(expr(e));
+            for (size_t i = 1; i < f->params.size(); i++) args.push_back(name_expr(f->params[i]));
+            auto r = node("Return", line);
+            r->expr = mk_pyfn("native.ask", args, ret, nullptr, line, {py::V(question)});
+            return block_n({r});
+        }
+        if (data.rfind("self:", 0) == 0) {
+            if (!self) throw Refused("dynamic", "a native question of self's bytes outside a method", line);
+            auto th = node("This", line);
+            th->type = cls_flag(f->cls->qname, "ref");
+            args.push_back(select_n(th, sym("field", data.substr(5), f->cls->qname, false, BYTEST()), BYTEST(), line));
+        } else if (data.rfind("arg:", 0) == 0) {
+            data_arg = std::stoi(data.substr(4));
+            if (data_arg < 0 || self + data_arg >= f->params.size()) throw Refused("dynamic", "a native question's data_arg", line);
+            args.push_back(name_expr(f->params[self + data_arg]));
+        } else {
+            args.push_back(mk_pyfn("native.no_data", {}, BYTEST(), nullptr, line));
+        }
+        std::vector<py::V> typeargs = {py::V(question)};
+        auto wi = p.native_where.find(f->qname);
+        if (wi != p.native_where.end()) {   // ask(q, _where): _where(self)'s items follow the bytes
+            Fn* wf = p.any_fn(wi->second);
+            calls.insert(wf->qname);
+            TyP wt = ctx.ty(p.ret(wf->qname), line, "the place " + wf->name + " gives");
+            auto th = node("This", line);
+            th->type = cls_flag(f->cls->qname, "ref");
+            auto c = node("Call", line);
+            c->sym = sym("function", wf->name, wf->module->name, true, nullptr, {}, wt);
+            c->args = {th};
+            c->type = wt;
+            args.push_back(c);
+            typeargs.push_back(py::V("where"));
+        }
+        for (size_t i = self; i < f->params.size(); i++)
+            if ((int)(i - self) != data_arg) args.push_back(name_expr(f->params[i]));
+        auto r = node("Return", line);
+        r->expr = mk_pyfn("native.ask", args, ret, nullptr, line, typeargs);
+        return block_n({r});
+    }
+
     IRP block(const std::vector<A::Stmt*>& stmts) {
         std::vector<IRP> out;
         for (auto* st : stmts) {
@@ -793,7 +845,16 @@ public:
 
     std::vector<IRP> s_Assign(const A::Assign* st) {
         int line = st->pos.lineno;
-        if (st->targets.size() != 1) throw Refused("syntax", "chained assignment", line);
+        if (st->targets.size() != 1) {   // a = b = v: v once, then each target left to right, as Python
+            IRP value = expr(st->value);
+            std::string tn = new_tmp("value");
+            local_types[tn] = value->type;
+            declared.insert(tn);
+            std::vector<IRP> out = {local(tn, value->type, value, {}, line)};
+            for (auto* t : st->targets)
+                for (auto& x : store(t, name_expr(tn), st)) out.push_back(x);
+            return out;
+        }
         const A::Expr* tgt = st->targets[0];
         auto* tn = as<pyfront::Name>(tgt);
         auto vk = st->value->kind;
@@ -805,8 +866,65 @@ public:
             if (!mentions) return comp_into(st, tn, st->value);
         }
         if (is_record_literal(st->value) && tn && decl_init.count(st)) return {record_builder(st, tn)};
+        if (auto d = direct_unpack(tgt, st)) return *d;
         IRP value = expr(st->value);
         return store(tgt, value, st);
+    }
+
+    // a, self.b = x, y as a = x; self.b = y when that is the same program: the targets are names or
+    // attributes of names, and the items after the first are names, constants and attributes, none
+    // of them a target assigned before it
+    std::optional<std::vector<IRP>> direct_unpack(const A::Expr* tgt, const A::Assign* st) {
+        if ((tgt->kind != ExprKind::Tuple && tgt->kind != ExprKind::List) || st->value->kind != ExprKind::Tuple) return std::nullopt;
+        const auto& elts = tgt->kind == ExprKind::Tuple ? cast<pyfront::Tuple>(tgt)->elts : cast<pyfront::List>(tgt)->elts;
+        const auto& vals = cast<pyfront::Tuple>(st->value)->elts;
+        if (elts.size() != vals.size() || elts.size() < 2) return std::nullopt;
+        std::set<std::string> names, attrs;   // assigned so far: x, and base.attr
+        for (size_t i = 0; i < elts.size(); i++) {
+            if (vals[i]->kind == ExprKind::Starred) return std::nullopt;
+            if (i > 0)
+                for (auto& x : walk(vals[i])) {
+                    const A::Expr* e = x.expr();
+                    if (!e) continue;
+                    // nothing that can call, raise or change anything: an exception there would find the
+                    // earlier targets assigned, where Python assigns none
+                    switch (e->kind) {
+                        case ExprKind::Name: case ExprKind::Constant: case ExprKind::Attribute: case ExprKind::Tuple:
+                            break;
+                        case ExprKind::UnaryOp:
+                            if (cast<pyfront::UnaryOp>(e)->operand->kind != ExprKind::Constant) return std::nullopt;
+                            break;
+                        default: return std::nullopt;
+                    }
+                    if (auto* nm = as<pyfront::Name>(e))
+                        if (names.count(nm->id)) return std::nullopt;
+                    if (auto* at = as<Attribute>(e))
+                        if (auto* b = as<pyfront::Name>(at->value))
+                            if (attrs.count(b->id + "." + at->attr)) return std::nullopt;
+                }
+            if (auto* nm = as<pyfront::Name>(elts[i])) names.insert(nm->id);
+            else if (auto* at = as<Attribute>(elts[i])) {
+                auto* b = as<pyfront::Name>(at->value);
+                if (!b) return std::nullopt;
+                attrs.insert(b->id + "." + at->attr);
+            } else return std::nullopt;
+        }
+        int line = st->pos.lineno;
+        std::vector<IRP> out;
+        for (size_t i = 0; i < elts.size(); i++) {
+            IRP v = expr(vals[i]);
+            if (auto* nm = as<pyfront::Name>(elts[i])) {
+                auto lt = local_types.find(nm->id);
+                if (lt == local_types.end()) throw Refused("untyped", "local " + nm->id, line);
+                v = coerce(v, lt->second);
+                if (!declared.count(nm->id)) {
+                    declared.insert(nm->id);
+                    out.push_back(local(nm->id, lt->second, v, {}, line));
+                } else out.push_back(exprstmt(assign_e(std::nullopt, mk_name(lsym(nm->id, lt->second), lt->second), v, lt->second), line));
+            } else
+                for (auto& x : store(elts[i], v, st)) out.push_back(x);
+        }
+        return out;
     }
 
     // ---- (new) generators: a class deriving py.generator<T>; next() resumes after each yield
@@ -1149,6 +1267,15 @@ public:
             return {exprstmt(assign_e(std::nullopt, mk_name(lsym(name, t), t), value, t), line)};
         }
         if (tgt->kind == ExprKind::Tuple || tgt->kind == ExprKind::List) return unpack(tgt, value, st);
+        if (auto* sub = as<Subscript>(tgt); sub && sub->slice->kind == ExprKind::Slice) {   // a[lo:hi] = v
+            auto* sl = cast<pyfront::Slice>(sub->slice);
+            if (sl->step) throw Refused("syntax", "slice assignment with a step", line);
+            IRP obj = expr(sub->value);
+            IRP lo = sl->lower ? expr(sl->lower) : mk_lit_none(VOID());
+            IRP hi = sl->upper ? expr(sl->upper) : mk_lit_none(VOID());
+            if (obj->type && obj->type->is_class("py.list")) value = coerce(value, obj->type);
+            return {exprstmt(mk_pyfn("set_slice", {lo, hi, value}, VOID(), obj, line), line)};
+        }
         IRP target = target_expr(tgt);
         value = coerce(value, target->type);
         return {exprstmt(assign_e(std::nullopt, target, value, target->type), line)};
@@ -1158,13 +1285,30 @@ public:
         int line = st->pos.lineno;
         const std::vector<pyfront::Expr*>& elts = tgt->kind == ExprKind::Tuple ? cast<pyfront::Tuple>(tgt)->elts : cast<pyfront::List>(tgt)->elts;
         std::vector<std::string> names;
+        bool all_names = true;
         for (auto* e : elts) {
             auto* nm = as<pyfront::Name>(e);
-            if (!nm) throw Refused("syntax", "unpacking into " + type_name(e), line);
-            names.push_back(nm->id);
+            if (!nm) all_names = false;
+            else names.push_back(nm->id);
         }
         const std::vector<TyP>* tts = (value->type && value->type->is_class("py.tuple")) ? &value->type->args : nullptr;
-        if (!tts || tts->size() != names.size()) throw Refused("conflict", "unpacking a non-tuple", line);
+        if (!tts || tts->size() != elts.size()) throw Refused("conflict", "unpacking a non-tuple", line);
+        if (!all_names) {   // a, self.b, (c, d) = v: v once into a temporary, then each target left to right
+            std::string tn = new_tmp("parts");
+            local_types[tn] = value->type;
+            declared.insert(tn);
+            std::vector<IRP> out = {local(tn, value->type, value, {}, line)};
+            for (auto& n : names)
+                if (!declared.count(n)) {
+                    auto lt = local_types.find(n);
+                    if (lt == local_types.end()) throw Refused("untyped", "local " + n, line);
+                    out.push_back(local(n, lt->second));
+                    declared.insert(n);
+                }
+            for (size_t i = 0; i < elts.size(); i++)
+                for (auto& x : store(elts[i], mk_pyfn("get", {name_expr(tn)}, (*tts)[i], nullptr, 0, {py::V((long long)i)}), st)) out.push_back(x);
+            return out;
+        }
         if (names.size() == 1) {
             const std::string& n = names[0];
             auto lt = local_types.find(n);
@@ -1615,7 +1759,8 @@ public:
             pre.clear();
             IRP st = innermost();
             body_stmts.insert(body_stmts.end(), pre.begin(), pre.end());
-            body_stmts.push_back(st);
+            if (st->k == "Block") body_stmts.insert(body_stmts.end(), st->stmts.begin(), st->stmts.end());   // (its statements, no braces of their own)
+            else body_stmts.push_back(st);
             pre.clear();
         }
         for (auto it = g->ifs.rbegin(); it != g->ifs.rend(); ++it) {
@@ -1715,6 +1860,21 @@ public:
         };
         auto loops = gen_loops(g->generators, 0, decide);
         if (g->generators.size() > 1) throw Refused("syntax", which + " over nested loops (break leaves only the inner one)", n->pos.lineno);
+        stmts.insert(stmts.end(), loops.begin(), loops.end());
+        pre.insert(pre.end(), stmts.begin(), stmts.end());
+        return acc;
+    }
+
+    // next(<generator>, default): first = default; for (...) if (<filter>) { first = <item>; break; }
+    IRP next_first(const A::Call* n, const TyP& rt) {
+        auto* g = cast<GeneratorExp>(n->args[0]);
+        std::string name = new_tmp("first");
+        local_types[name] = rt;
+        declared.insert(name);
+        IRP acc = name_expr(name);
+        std::vector<IRP> stmts = {local(name, rt, coerce(expr(n->args[1]), rt))};
+        auto take = [&]() -> IRP { return block_n({exprstmt(assign_e(std::nullopt, acc, coerce(expr(g->elt), rt), rt)), node("Break")}); };
+        auto loops = gen_loops(g->generators, 0, take);
         stmts.insert(stmts.end(), loops.begin(), loops.end());
         pre.insert(pre.end(), stmts.begin(), stmts.end());
         return acc;
@@ -1870,6 +2030,13 @@ public:
         if (e->type && e->type->is_class("py.variant") && !want->is_class("py.variant"))   // (new) narrowed by a test
             return mk_pyfn("variant.get", {e}, want, nullptr, 0, {py::V(tag_of(want))});
         if (e->k == "Lit" && !e->has_value) return mk_lit_none(want);
+        // a tuple literal as a tuple of other item types ((None, 0) where (str?, int) is meant): item by item
+        if (e->k == "Call" && !e->target && e->sym && e->sym->name == "tuple" && e->sym->kind == "function" && want->is_class("py.tuple") &&
+            want->args.size() == e->args.size()) {
+            std::vector<IRP> items;
+            for (size_t i = 0; i < e->args.size(); i++) items.push_back(coerce(e->args[i], want->args[i]));
+            return mk_pyfn("tuple", items, want, nullptr, e->line);
+        }
         if (is_opt_t(e->type) && !is_opt_t(want))
             if (ty_eq(e->type->args[0], want)) return mk_pyfn("unwrap", {e}, want);
         if (is_opt_t(want) && ty_eq(e->type, want->args[0])) return e;
@@ -2376,6 +2543,22 @@ public:
     }
 
     IRP lambda_expr(const pyfront::Lambda* lam, const std::vector<TyP>& ptypes) {
+        // the lambda's parameters are its own: a local of the function with the same name keeps its type after it
+        std::map<std::string, std::optional<TyP>> outer;
+        for (size_t i = 0; i < lam->args->args.size() && i < ptypes.size(); i++) {
+            const std::string& a = lam->args->args[i]->arg;
+            auto it = local_types.find(a);
+            if (!outer.count(a)) outer[a] = it == local_types.end() ? std::nullopt : std::optional<TyP>(it->second);
+        }
+        struct Restore {
+            std::map<std::string, TyP>& lt;
+            std::map<std::string, std::optional<TyP>>& o;
+            ~Restore() {
+                for (auto& [k, v] : o)
+                    if (v) lt[k] = *v;
+                    else lt.erase(k);
+            }
+        } restore{local_types, outer};
         std::vector<IRP> params;
         for (size_t i = 0; i < lam->args->args.size() && i < ptypes.size(); i++) {
             const std::string& a = lam->args->args[i]->arg;
@@ -2513,6 +2696,13 @@ public:
             nw->type = cls("py." + name);
             return nw;
         }
+        if (kind == "getattr_attr") {   // getattr(x, "a", d) where every instance has a: x.a
+            T ot = Tof(n->args[0]);
+            std::string owner = p.attr_owner(ot.name(), r->A());
+            TyP ft = ty(t, n);
+            return select_n(expr(n->args[0]), sym("field", r->A(), owner.empty() ? ot.name() : owner, false, ft), ft, line);
+        }
+        if (kind == "getattr_default") return coerce(expr(n->args[2]), ty(t, n));   // (no class of x's has a: the default)
         if (kind == "builtin") return builtin_call(n, r->A(), t);
         if (kind == "bmethod") {
             IRP c = method_call(n, r->A(), t);
@@ -2520,6 +2710,14 @@ public:
             return c;
         }
         if (kind == "std") return std_call(n, *r, t);
+        if (kind == "native_call") {   // native.call("q", data, args...): the question asked (answers.cc), typed
+            if (!n->keywords.empty() || n->args.size() < 2) throw Refused("dynamic", "native.call with keywords", line);
+            std::vector<IRP> args;
+            if (is_none_const(n->args[1])) args.push_back(mk_pyfn("native.no_data", {}, BYTEST(), nullptr, line));
+            else args.push_back(expr(n->args[1]));
+            for (size_t i = 2; i < n->args.size(); i++) args.push_back(expr(n->args[i]));
+            return mk_pyfn("native.ask", args, ty(t, n), nullptr, line, {py::V(r->A())});
+        }
         if (kind == "isinstance_variant") {   // (new) a test of the variant's tag
             IRP x = expr(n->args[0]);
             std::vector<py::V> tags;
@@ -2592,6 +2790,7 @@ public:
         int line = n->pos.lineno;
         TyP rt = t.kind != TK::None ? ty(t, n) : VOID();
         if (name == "any" || name == "all") return any_all(n, name);
+        if (name == "next") return next_first(n, rt);
         if (name == "open" && p.extended) {   // (new) open(path, mode, encoding=..., errors=..., newline=...)
             std::vector<IRP> args = {expr(n->args[0])};
             std::string mode = "r";
@@ -2733,7 +2932,14 @@ public:
         TyP rt = t.kind != TK::None ? ty(t, n) : VOID();
         const std::string& name = r.A();
         std::vector<IRP> args;
-        for (auto* a : n->args) args.push_back(expr(a));
+        for (auto* a : n->args) {
+            auto* lam = as<pyfront::Lambda>(a);
+            if (lam && (name == "re.sub" || name == "re.subn") && lam->args->args.size() == 1) {   // the replacement a lambda of the match
+                args.push_back(lambda_expr(lam, {ty(Tof(AnyNode(lam->args->args[0], AnyNode::Arg)), a, "the match")}));
+                continue;
+            }
+            args.push_back(expr(a));
+        }
         if (name.rfind("struct.", 0) == 0) return mk_pyfn(name, args, rt, nullptr, line, {py::V(r.B())});
         if (name == "int.from_bytes") {
             std::string order = "big";
@@ -2840,6 +3046,7 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             out.lowered[q] = L;
             continue;
         }
+        L.all = ev->issues;
         FnLower fl(ctx, f, *ev);
         L.has_fl = true;
         try {
@@ -2890,9 +3097,119 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
         if (L.has_fl && L.md) needed.insert(L.globals_used.begin(), L.globals_used.end());
     std::map<std::string, std::unique_ptr<ModuleEval>> mevals;
     std::vector<std::unique_ptr<Fn>> modfns;
+    // a module name the module's own statements change (TABLE[k] = v in a loop, TABLE.update(...), f(TABLE)):
+    // its value is more than its first assignment, which is all a declaration here would hold
+    auto changed_by_module = [](Module* mm, const std::string& name) {
+        auto root = [](const A::Expr* e) -> std::string {
+            while (e) {
+                if (auto* nm = as<pyfront::Name>(e)) return nm->id;
+                if (auto* sb = as<Subscript>(e)) e = sb->value;
+                else if (auto* at = as<Attribute>(e)) e = at->value;
+                else return "";
+            }
+            return "";
+        };
+        for (auto* st : mm->statements)
+            for (const AnyNode& n : walk(AnyNode(st))) {
+                if (auto* s2 = n.stmt()) {
+                    if (auto* a = as<pyfront::Assign>(s2)) {
+                        for (auto* t : a->targets)
+                            if (!as<pyfront::Name>(t) && root(t) == name) return true;
+                    } else if (auto* g = as<AugAssign>(s2)) {
+                        if (root(g->target) == name) return true;
+                    } else if (s2->kind == StmtKind::Delete) {
+                        for (const AnyNode& d : walk(AnyNode(s2)))
+                            if (auto* nm = as<pyfront::Name>(d.expr()); nm && nm->id == name) return true;
+                    }
+                }
+                if (auto* c = as<pyfront::Call>(n.expr())) {
+                    if (root(c->func) == name && c->func->kind == ExprKind::Attribute) return true;   // TABLE.update(...)
+                    for (auto* a : c->args)
+                        if (root(a) == name) return true;   // f(TABLE): f may change it
+                }
+            }
+        return false;
+    };
+    // the module names a function run at import changes (GENERIC = register(Profile('generic')), register filling
+    // _REGISTRY): the functions any module's assignments and statements call, and what they call, transitively;
+    // in each, a store into, an augmented assignment to, a method called on or a call passing one of its module's
+    // names that is not its local
+    std::set<std::pair<std::string, std::string>> import_changed;
+    {
+        auto root = [](const A::Expr* e) -> const pyfront::Name* {
+            while (e) {
+                if (auto* nm = as<pyfront::Name>(e)) return nm;
+                if (auto* sb = as<Subscript>(e)) e = sb->value;
+                else if (auto* at = as<Attribute>(e)) e = at->value;
+                else return nullptr;
+            }
+            return nullptr;
+        };
+        std::set<std::string> seen;
+        std::vector<Fn*> todo;
+        auto calls_in = [&](Module* mm, AnyNode n) {
+            for (const AnyNode& x : walk(n))
+                if (auto* c = as<pyfront::Call>(x.expr())) {
+                    Ref r = p.resolve_expr_name(mm, c->func);
+                    if (r.k == "fn")
+                        if (Fn** f = p.fns.get(r.a); f && seen.insert(r.a).second) todo.push_back(*f);
+                }
+        };
+        for (auto& [_, mm] : p.modules) {
+            for (auto& [__, vals] : mm->assigns)
+                for (auto* v : vals)
+                    if (v) calls_in(mm, AnyNode(v));
+            for (auto* st : mm->statements) calls_in(mm, AnyNode(st));
+        }
+        while (!todo.empty()) {
+            Fn* f = todo.back();
+            todo.pop_back();
+            Module* fm = f->module;
+            const auto& locs = p.fn_locals(f);
+            auto global_of = [&](const pyfront::Name* nm) {   // (only a container or an object can be changed)
+                if (!nm || locs.count(nm->id) || !fm->assigns.has(nm->id)) return;
+                TK k = p.global_type(fm->name, nm->id).kind;
+                if (k == TK::List || k == TK::Dict || k == TK::Set || k == TK::Bytearray || k == TK::Inst || k == TK::Top)
+                    import_changed.insert({fm->name, nm->id});
+            };
+            for (const AnyNode& x : walk(AnyNode(f->node))) {
+                if (auto* s2 = x.stmt()) {
+                    if (auto* a = as<pyfront::Assign>(s2)) {
+                        for (auto* t : a->targets)
+                            if (!as<pyfront::Name>(t)) global_of(root(t));
+                    } else if (auto* g = as<AugAssign>(s2)) {
+                        global_of(root(g->target));
+                    }
+                }
+                if (auto* c = as<pyfront::Call>(x.expr())) {
+                    static const std::set<std::string> MUTATORS = {"append", "extend", "insert", "pop", "remove", "clear", "update",
+                                                                   "setdefault", "add", "discard", "sort", "reverse", "popitem",
+                                                                   "__setitem__", "__delitem__", "difference_update",
+                                                                   "intersection_update", "symmetric_difference_update"};
+                    auto* fa = as<Attribute>(c->func);
+                    if (fa && MUTATORS.count(fa->attr)) global_of(root(fa->value));   // TABLE.update(...)
+                    else if (fa) {
+                        auto* rn = root(fa->value);   // (a method of an object of the program's: it may change it)
+                        if (rn && p.global_type(fm->name, rn->id).kind == TK::Inst) global_of(rn);
+                    }
+                    if (p.resolve_expr_name(fm, c->func).k == "fn")   // f(TABLE): a function of the program may change it
+                        for (auto* a : c->args) global_of(as<pyfront::Name>(a));
+                }
+            }
+            calls_in(fm, AnyNode(f->node));
+        }
+    }
     for (auto& key : needed) {
         auto& [mod, name] = key;
         Module* mm = *p.modules.get(mod);
+        if (import_changed.count(key)) {
+            bad_globals.emplace(key, Refused("dynamic", "module name " + name + " is changed at import (by a function its module runs)"));
+            continue;
+        }
+        if (changed_by_module(mm, name)) {
+            bad_globals.emplace(key, Refused("dynamic", "module name " + name + " is changed by the module's statements"));
+            continue;
+        }
         const std::vector<const A::Expr*>* values = mm->assigns.get(name);
         size_t nv = values ? values->size() : 0;
         if (nv != 1 || !(*values)[0]) {
@@ -3246,11 +3563,19 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             std::string own = owner_module(p, q);
             if (own != mod && p.modules.has(own)) deps.insert(own);
         }
-        for (auto& [q, md] : r.translated)
-            ir_walk(md, [&](const IRP& x) {
+        for (auto& decl : types)   // (every declaration the unit writes: specializations' bodies too)
+            ir_walk(decl, [&](const IRP& x) {
                 if (x->sym && x->sym->owner && *x->sym->owner != "py") {
                     std::string own = owner_module(p, *x->sym->owner);
                     if (p.modules.has(own) && own != mod) deps.insert(own);
+                }
+                if (x->type) {   // (a class of another module only made or thrown here: throw z80_asm::AsmError(...))
+                    std::set<std::string> tn;
+                    types_of(x->type, tn);
+                    for (auto& q : tn) {
+                        std::string own = owner_module(p, q);
+                        if (own != mod && p.modules.has(own)) deps.insert(own);
+                    }
                 }
             });
         for (auto& decl : types) {

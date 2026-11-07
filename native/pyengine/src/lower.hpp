@@ -53,6 +53,7 @@ struct Lowered {
     IRP md;                        // the MethodDecl, or null when refused
     IRP extra;                     // (new) a declaration it needs beside it (a generator's class)
     std::optional<Refused> refused;
+    std::vector<Issue> all;        // every issue the inference raised (the report's blockers; refused gives the first)
     std::set<std::string> calls;
     std::set<std::pair<std::string, std::string>> globals_used;
     bool has_fl = false;

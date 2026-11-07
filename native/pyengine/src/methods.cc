@@ -224,7 +224,7 @@ static T simple(Eval& ev, const A::Call* n, const std::string& name, const Args&
 static T elem_of(Eval& ev, const T& t) { return ev.p.elem[ev.p.find(t.site)]; }
 
 static const std::set<std::string> LAZY_OK = {"join", "extend", "update", "sort"};
-static const std::set<std::string> LAZY_BUILTINS = {"sorted", "min", "max", "sum", "any", "all", "list", "set", "enumerate"};
+static const std::set<std::string> LAZY_BUILTINS = {"sorted", "min", "max", "sum", "any", "all", "list", "set", "enumerate", "bytes", "bytearray", "frozenset"};
 
 static bool lazy_bad(Eval& ev, const A::Call* n, const Args& args, const Kw& kw, bool ok, T& out) {
     if (ok) return false;
@@ -465,6 +465,20 @@ static const std::set<std::string> DYNAMIC_BUILTINS = {"getattr", "setattr", "ha
                                                        "locals", "callable", "issubclass", "exec", "eval", "compile", "iter", "next",
                                                        "memoryview", "input"};
 
+// a value whose evaluation can call, raise or change nothing
+static bool plain_value(const A::Expr* e) {
+    switch (e->kind) {
+        case ExprKind::Name: case ExprKind::Constant: return true;
+        case ExprKind::Attribute: return plain_value(cast<Attribute>(e)->value);
+        case ExprKind::UnaryOp: return cast<UnaryOp>(e)->operand->kind == ExprKind::Constant;
+        case ExprKind::Tuple:
+            for (auto* x : cast<Tuple>(e)->elts)
+                if (!plain_value(x)) return false;
+            return true;
+        default: return false;
+    }
+}
+
 static void drop_set_order(Eval& ev, const A::Call* n) {
     auto& is = ev.issues;
     is.erase(std::remove_if(is.begin(), is.end(), [&](const Issue& i) { return i.detail == "set iteration order" && i.line == n->pos.lineno; }), is.end());
@@ -541,7 +555,46 @@ int Eval::getattr_form(const A::Call* n, const State& state) {
     return c;
 }
 
+// (new) the attribute every instance of the class has: a class attribute, or one __init__ sets on every path (a
+// `self.a = ...` statement at the top of its body) -- getattr(x, "a", d) can only be x.a when no instance lacks it
+static bool always_has(Program& p, const std::string& cq, const std::string& attr) {
+    for (auto& c : p.mro(cq)) {
+        Class** k = p.classes.get(c);
+        if (!k) continue;
+        if ((*k)->class_attrs.has(attr)) return true;
+        Fn** init = (*k)->methods.get("__init__");
+        if (!init) continue;
+        const std::string& self = (*init)->params.empty() ? std::string() : (*init)->params[0];
+        for (auto* st : (*init)->node->body)
+            if (auto* a = as<Assign>(st))
+                for (auto* t : a->targets)
+                    if (auto* at = as<Attribute>(t))
+                        if (auto* nm = as<pyfront::Name>(at->value); nm && nm->id == self && at->attr == attr) return true;
+        return false;   // (the first class with an __init__ is the one that runs)
+    }
+    return false;
+}
+
 TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, const Kw& kw, const State& state) {
+    // getattr(x, "a"[, default]) of an instance of the program's classes: x.a when every instance has it, the
+    // default when no class of x's (nor a subclass) has it; else still dynamic
+    if (name == "getattr" && p.extended && (n->args.size() == 2 || n->args.size() == 3) && n->keywords.empty() && !args.empty() && args[0]) {
+        std::string an;
+        const T& ot = *args[0];
+        if (is_str_const(n->args[1], &an) && ot.kind == TK::Inst && p.classes.has(ot.name()) && !p.find_method(ot.name(), an)) {
+            std::optional<T> at = p.attr_type(ot.name(), an);
+            if (at && at->kind != TK::Top && always_has(p, ot.name(), an)) return TR(*at, Res("getattr_attr", an));
+            if (!at && n->args.size() == 3) return TR(ev(n->args[2], state), Res("getattr_default", an));
+        }
+    }
+    // next(<generator with one for>, default): the first item, or the default; a loop that stops at the
+    // first. The default is evaluated before the loop, so it must be free of effects (a name, constant, attribute)
+    if (name == "next" && p.extended && n->args.size() == 2 && n->keywords.empty() && n->args[0]->kind == ExprKind::GeneratorExp &&
+        cast<GeneratorExp>(n->args[0])->generators.size() == 1 && plain_value(n->args[1])) {
+        T e = gen_elem(cast<GeneratorExp>(n->args[0]), state).first;
+        T d = (args.size() > 1 && args[1]) ? *args[1] : ev(n->args[1], state);
+        return TR(p.join(e, d), Res("builtin", std::string("next")));
+    }
     if (DYNAMIC_BUILTINS.count(name)) return issue(n, "dynamic", name);
     T bad;
     Kw none;
@@ -713,7 +766,8 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
         return (a0->kind == TK::Bottom || a0->kind == TK::Top) ? TR(*a0) : TR(issue(n, "conflict", std::string("int() of ") + kind_name(a0->kind)));
     }
     if (name == "float") {
-        if (a0 && a0->kind == TK::Int) exact_float(n, *a0);
+        // float(int) rounds correctly, as the int64 -> double conversion does; float(text) parses
+        if (a0 && a0->kind == TK::Str) return TR(FLOAT(), Res("builtin", std::string("float_str")));
         return TR(FLOAT(), Res("builtin", std::string("float")));
     }
     if (name == "str") {
@@ -729,6 +783,12 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
     if (name == "bytes" || name == "bytearray") {
         TK bk = name == "bytes" ? TK::Bytes : TK::Bytearray;
         if (args.empty()) return TR(T(bk, {}, {}, Big(0)), Res("builtin", name));
+        if (!a0 && genarg0()) {   // bytes(x for x in ...): a list of ints made first (lowered as the list), as bytes(list)
+            T e = gen_elem(cast<GeneratorExp>(n->args[0]), state).first;
+            if (e.kind != TK::Int && e.kind != TK::Bottom && e.kind != TK::Top) return issue(n, "conflict", name + " of a generator of " + kind_name(e.kind));
+            return TR(T(bk), Res("builtin", name + "_list"));
+        }
+        if (!a0) return issue(n, "dynamic", "a lambda or generator as an argument");
         if (a0->kind == TK::Int) return TR(T(bk, {}, {}, a0->hi()), Res("builtin", name + "_zeros"));
         if (a0->kind == TK::Bytes || a0->kind == TK::Bytearray) return TR(T(bk, {}, {}, a0->hi()), Res("builtin", name + "_copy"));
         if (a0->kind == TK::List) {
@@ -755,7 +815,17 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
         }
         return TR(container(ck, s), Res("builtin", name));
     }
-    if (name == "frozenset") return issue(n, "syntax", "frozenset");
+    if (name == "frozenset") {   // (new) a set that is not changed: the set type (its items as set's)
+        int s = p.new_site(n, TK::Set, where(n));
+        if (!args.empty()) {
+            T e;
+            if (!a0 && genarg0()) e = gen_elem(cast<GeneratorExp>(n->args[0]), state).first;
+            else if (a0) e = iteration(n->args[0], *a0, state).first;
+            else return issue(n, "dynamic", "a lambda or generator as an argument");
+            p.grow(p.elem, s, e);
+        }
+        return TR(container(TK::Set, s), Res("builtin", std::string("set")));
+    }
     if (name == "tuple") {
         if (a0 && a0->kind == TK::Tuple) return TR(*a0, Res("builtin", std::string("tuple")));
         return issue(n, "conflict", "tuple() of a sequence (its length is not in the type)");
@@ -849,7 +919,7 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
 // ------------------------------------------------------------------------------------ stdlib
 TR Eval::std_call(const A::Call* n, const std::string& name, const Args& args, const Kw& kw, const State& state) {
     T bad;
-    if (lazy_bad(*this, n, args, kw, false, bad)) return bad;
+    if (lazy_bad(*this, n, args, kw, name == "re.sub" || name == "re.subn", bad)) return bad;   // (re.sub's replacement may be a lambda: ext.cc)
     if (name.rfind("struct.", 0) == 0) {
         std::string fn_ = name.substr(7);
         if (!kw.empty()) return issue(n, "syntax", name + " keywords");
@@ -910,7 +980,8 @@ TR Eval::std_call(const A::Call* n, const std::string& name, const Args& args, c
         {"os.path.dirname", {1, [] { return STR(); }}},         {"os.path.splitext", {1, [] { return tuple_of({STR(), STR()}); }}},
         {"os.path.exists", {1, [] { return BOOL(); }}},         {"os.path.isfile", {1, [] { return BOOL(); }}},
         {"os.path.isdir", {1, [] { return BOOL(); }}},          {"os.path.getsize", {1, [] { return SIZE(); }}},
-        {"os.path.split", {1, [] { return tuple_of({STR(), STR()}); }}}, {"os.path.normcase", {1, [] { return STR(); }}}};
+        {"os.path.split", {1, [] { return tuple_of({STR(), STR()}); }}}, {"os.path.normcase", {1, [] { return STR(); }}},
+        {"os.fspath", {1, [] { return STR(); }}}};
     auto pit = PATH.find(name);
     if (pit != PATH.end()) {
         if (!kw.empty()) return issue(n, "syntax", name + " keywords");
@@ -929,6 +1000,8 @@ TR Eval::std_call(const A::Call* n, const std::string& name, const Args& args, c
         return TR(pit->second.second(), Res("std", name));
     }
     if (name == "os.listdir") {
+        if (!args.empty() && args[0] && !(args[0]->kind == TK::Str || args[0]->kind == TK::Bottom || args[0]->kind == TK::Top))
+            return issue(n, "conflict", std::string("os.listdir of a ") + kind_name(args[0]->kind));
         int s = p.new_site(n, TK::List, where(n));
         p.grow(p.elem, s, STR());
         return TR(container(TK::List, s), Res("std", name));

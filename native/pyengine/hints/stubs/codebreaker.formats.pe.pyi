@@ -1,3 +1,15 @@
+def open_pe(path: str) -> PEFile: ...
+
+
+class PEFile:
+    def __init__(self, path: str) -> None: ...
+
+def open_pe(path: str) -> PEFile: ...
+
+
+class PEFile:
+    def __init__(self, path: str) -> None: ...
+
 from codebreaker.formats.native_pe import PEFile
 from typing import (
     Dict,

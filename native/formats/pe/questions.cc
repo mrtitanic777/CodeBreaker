@@ -417,34 +417,48 @@ void dotnet(Call &c) { c.out.boolean(is_dotnet(c.str_arg(0))); }
 }  // namespace
 
 CBF_QUESTIONS(pe) {
-    add("pe.parse", parse);
-    add("pe.machine_name", machine_name);
-    add("pe.is_dll", is_dll);
-    add("pe._rva_to_off", rva_to_off);
-    add("pe.code_bytes", code_bytes);
-    add("pe.module_name", module_name);
-    add("pe.export_addrs", export_addrs);
-    add("pe.exports", exports);
-    add("pe.imports", imports);
-    add("pe.code_sections", code_sections);
-    add("pe.base_relocs", base_relocs);
-    add("pe.build_meta", build_meta);
-    add("pe.debug_codeview", debug_codeview);
-    add("pe._u", u);
-    add("pe._text", text);
-    add("pe.file_offset", file_offset);
-    add("pe.optional_header", optional_header);
-    add("pe.directory", directory);
-    add("pe.export_table", export_table);
-    add("pe.import_table", import_table);
-    add("pe.resource_tree", resource_tree);
-    add("pe.reloc_blocks", reloc_blocks);
-    add("pe.tls", tls);
-    add("pe.debug_entries", debug_entries);
-    add("pe.certificates", certificates);
-    add("pe.clr", clr);
-    add("pe.rich", rich);
-    add("pe.is_dotnet", dotnet);
+    add("pe.parse", parse,
+        "PEHeader{e_lfanew: u32, machine: u16, n_sections: u16, timestamp: u32, opt_size: u16, characteristics: u16, "
+        "magic: u16, is_plus: bool, entry: u32, image_base: int, n_datadir: u32, datadirs: list[(u32, u32)], "
+        "sections: list[Section{name: str, vsize: u32, vaddr: u32, rawsize: u32, rawptr: u32, chars: u32}]}");
+    add("pe.machine_name", machine_name, "str");
+    add("pe.is_dll", is_dll, "bool");
+    add("pe._rva_to_off", rva_to_off, "int?");
+    add("pe.code_bytes", code_bytes, "int");
+    add("pe.module_name", module_name, "str");
+    add("pe.export_addrs", export_addrs, "dict[str, u32]");
+    add("pe.exports", exports, "list[(u32, str?, u32)]");
+    add("pe.imports", imports, "dict[int, (str, str)]");
+    add("pe.code_sections", code_sections, "list[(int, bytes, str)]");
+    add("pe.base_relocs", base_relocs, "set[int]");
+    add("pe.build_meta", build_meta,
+        "BuildMeta{machine: str, magic: str, kind: str, image_base: int, entry_rva: int, entry_va: bigint, "
+        "timestamp: int, linker_version: str, subsystem: str}");
+    add("pe.debug_codeview", debug_codeview, "CodeView{format: str, guid?: str, signature?: int, age: int, pdb: str}?");
+    add("pe._u", u, "int");
+    add("pe._text", text, "str");
+    add("pe.file_offset", file_offset, "int?");
+    add("pe.optional_header", optional_header,
+        "OptionalHeader{magic: int, linker_version: str, code_size: int, initialized_data_size: int, "
+        "uninitialized_data_size: int, entry_point: int, code_base: int, image_base: int, section_alignment: int, "
+        "file_alignment: int, os_version: str, image_version: str, subsystem_version: str, image_size: int, "
+        "headers_size: int, checksum: int, subsystem: int, subsystem_name: str, dll_characteristics: int}");
+    add("pe.directory", directory, "(u32, u32)");
+    add("pe.export_table", export_table,
+        "ExportTable{module: str, ordinal_base: u32, timestamp: u32, "
+        "symbols: list[ExportSymbol{name: str, ordinal: u32, hint: i32, rva: u32, forward: str}]}");
+    add("pe.import_table", import_table,
+        "list[ImportModule{module: str, symbols: list[ImportSymbol{name: str, ordinal: i32, hint: i32, slot: u32}]}]");
+    add("pe.resource_tree", resource_tree,
+        "list[ResourceType{type: str|int, id: int?, "
+        "items: list[ResourceItem{name: str, id: int?, language: int, rva: int, offset: int?, size: int}]}]");
+    add("pe.reloc_blocks", reloc_blocks, "list[(u32, u32)]");
+    add("pe.tls", tls, "Tls{start_va: int, end_va: int, index_va: int, callbacks_va: int}?");
+    add("pe.debug_entries", debug_entries, "list[DebugEntry{type: u32, timestamp: u32, size: u32, offset: u32}]");
+    add("pe.certificates", certificates, "list[Certificate{length: u32, revision: u16, type: u16}]");
+    add("pe.clr", clr, "Clr{runtime_version: str, flags: u32, entry_token: u32}?");
+    add("pe.rich", rich, "Rich{key: u32, entries: list[(u16, u16, u32)]}?");
+    add("pe.is_dotnet", dotnet, "bool");
 }
 
 }  // namespace cbf::pe
