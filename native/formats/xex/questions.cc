@@ -139,10 +139,10 @@ void header(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(xex) {
-    add("xex.is_xex", is_xex);
-    add("xex.optional_headers", optional_headers);
-    add("xex.ids", ids);
-    add("xex.header", header);
+    add("xex.is_xex", is_xex, "bool");
+    add("xex.optional_headers", optional_headers, "(list[(int, int, int)], (str, str)?)");
+    add("xex.ids", ids, "(int, int)");
+    add("xex.header", header, "XexHeader{name: str?, base: int?, entry: int?, imports: list[str], libraries: list[(str, str)]}");
 }
 
 }  // namespace cbf::xexq

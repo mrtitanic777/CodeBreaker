@@ -1010,15 +1010,15 @@ void put_q(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(media) {
-    add("media.volumes", volumes_q);
+    add("media.volumes", volumes_q, "list[(str, int)]");
     add("media.fat", fat_q);
     add("media.iso", iso_q);
     add("media.fat_files", fat_files_q);
-    add("media.fat_read", fat_read_q);
-    add("media.fat_next", fat_next_q);
+    add("media.fat_read", fat_read_q, "bytes");
+    add("media.fat_next", fat_next_q, "int");
     add("media.iso_files", iso_files_q);
-    add("media.iso_read", iso_read_q);
-    add("media.iso_boot_image", iso_boot_image_q);
+    add("media.iso_read", iso_read_q, "bytes");
+    add("media.iso_boot_image", iso_boot_image_q, "(int, int, int)?");
     add("media.put", put_q);
 }
 

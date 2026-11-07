@@ -815,11 +815,11 @@ void xnb_effect_code(Call &c) {
 }  // namespace
 
 CBF_QUESTIONS(graphics) {
-    add("texture.tiled_offset_2d", texture_tiled_offset);
-    add("texture.untile", texture_untile);
-    add("texture.tile", texture_tile);
-    add("texture.swap16", texture_swap16);
-    add("texture.dds_header", texture_dds_header);
+    add("texture.tiled_offset_2d", texture_tiled_offset, "int");
+    add("texture.untile", texture_untile, "bytes");
+    add("texture.tile", texture_tile, "bytes");
+    add("texture.swap16", texture_swap16, "bytes");
+    add("texture.dds_header", texture_dds_header, "bytes");
     add("texture.decode_rgba", texture_decode_rgba);
     add("xpr.parse", xpr_parse);
     add("gfx.find_movies", gfx_find_movies);
