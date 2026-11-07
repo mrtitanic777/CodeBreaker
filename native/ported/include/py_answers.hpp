@@ -364,6 +364,18 @@ inline cbf_call_fn entry() {
     if (name == "KeyError") throw KeyError(msg);
     if (name == "IndexError") throw IndexError(msg);
     if (name == "TypeError") throw TypeError(msg);
+    if (name == "struct.error") throw StructError(msg);
+    if (name == "OverflowError") throw OverflowError(msg);
+    if (name == "ZeroDivisionError") throw ZeroDivisionError(msg);
+    if (name == "UnicodeDecodeError") throw UnicodeDecodeError(msg);
+    if (name == "FileNotFoundError") throw FileNotFoundError(msg);
+    if (name == "OSError") throw OSError(msg);
+    if (name == "EOFError") throw EOFError(msg);
+    if (name == "AttributeError") throw AttributeError(msg);
+    if (name == "NotImplementedError") throw NotImplementedError(msg);
+    if (name == "UnicodeEncodeError") throw UnicodeEncodeError(msg);
+    if (name == "PermissionError") throw PermissionError(msg);
+    if (name == "AssertionError") throw AssertionError(msg);
     throw RuntimeError(name + ": " + msg);
 }
 

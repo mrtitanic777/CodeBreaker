@@ -1,16 +1,10 @@
 {
- "codebreaker.build.period16._response_file": "does not compile: period16.cpp(13): error C2664: 'py::list<py::str> py::os::listdir(const py::str &)': cannot convert argument 1 from 'bool' to 'const py::str &'",
- "codebreaker.build.sm83_asm._put": "does not compile: sm83_asm.cpp(20): error C3083: 'z80_asm': the symbol to the left of a '::' must be a type",
- "codebreaker.decompile.z80._index": "does not compile: z80.cpp(41): error C2039: 'contains': is not a member of 'std::optional<py::str>'",
- "codebreaker.emulate.powerpc._rotl32": "differs from the Python on (-1, 1): 18446744073709551615, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.emulate.powerpc._s64": "differs from the Python on (-1,): -18446744073709551617, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.exact.draft.candidates.register_slots": "does not compile: py.hpp(1021): error C2440: 'return': cannot convert from 'std::_Vb_reference<std::_Wrap_alloc<std::allocator<std::_Vbase>>>' to 'T &'",
- "codebreaker.exact.draft.candidates.registers_last": "does not compile: py.hpp(1021): error C2440: 'return': cannot convert from 'std::_Vb_reference<std::_Wrap_alloc<std::allocator<std::_Vbase>>>' to 'T &'",
- "codebreaker.formats.omf._code": "differs from the Python on (b'',): null, C++ {\"error\": \"RuntimeError\"}",
- "codebreaker.formats.resources.bitmap_file": "differs from the Python on (b'',): null, C++ {\"error\": \"RuntimeError\"}",
- "codebreaker.formats.xbox.stfs._bn": "differs from the Python on (b'MZ\\x90\\x00\\x03\\x00\\x00\\x00\\x04\\x00',): 18895039857297129996288, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.java.profiles.names": "differs from the Python on (): [\"generic\"], C++ []",
- "codebreaker.java.projects.minecraft.platform_coverage._render_stub_markers": "does not compile: platform_coverage.cpp(42): error C2039: 'values': is not a member of 'std::optional<py::dict<py::str,py::list<std::tuple<py::str,int64_t,py::str>>>>'",
- "codebreaker.java.runtime._patch_timer_for_platform": "does not compile: runtime.cpp(23): error C2039: 'currentTimeMillis': is not a member of 'std::optional<codebreaker::java::runtime::AnonRecord>'",
- "codebreaker.translate.frontends.clang.ctypes.tokens": "does not compile: ctypes.cpp(53): error C2039: 'group': is not a member of 'std::optional<py::re::Match>'"
+ "codebreaker.formats.le.expand_page": "differs from the Python on (b'\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\: {\"error\": \"MemoryError\"}, C++ {\"error\": \"RuntimeError\"}",
+ "codebreaker.java.debug.scan_debug_markers": "differs from the Python on ('\\n',): {\"error\": \"OSError\"}, C++ {\"error\": \"FileNotFoundError\"}",
+ "codebreaker.java.projects.minecraft.platform_coverage.scan_stub_markers": "differs from the Python on ('\\n',): {\"error\": \"OSError\"}, C++ {\"error\": \"FileNotFoundError\"}",
+ "codebreaker.java.transpile._read_text": "differs from the Python on ('',): \"\", C++ {\"error\": \"FileNotFoundError\"}",
+ "codebreaker.source.image_writer.nasm_map": "differs from the Python on ('^\\\\s*([0-9A-F]+)\\\\s+([0-9A-F]+)\\\\s+(\\\\S+)\\\\s*$',): {\"error\": \"FileNotFoundError\"}, C++ {\"error\": \"OSError\"}",
+ "codebreaker.symbols.driver_services.read_messages": "differs from the Python on ('^(\\\\w+)\\\\s+EQU\\\\s+(00[0-9A-F]{2})H\\\\s*$',): {\"error\": \"FileNotFoundError\"}, C++ {\"error\": \"OSError\"}",
+ "codebreaker.ui.mcp_server._listing": "differs from the Python on ('\\\\', '.', 1): [[{\"file\": \".GamingRoot\", \"size\": 28}], true], C++ {\"error\": \"hang\"}",
+ "codebreaker.xna.port.port_reader_name": "differs from the Python on ('abc', 'C:\\\\dir\\\\file.txt'): {\"error\": \"PatternError\"}, C++ {\"error\": \"C++ struct py::PyError\"}"
 }
