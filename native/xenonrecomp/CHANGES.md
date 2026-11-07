@@ -2,7 +2,7 @@
 
 This is hedge-dev's XenonRecomp (MIT, upstream at `ddd128b`, "Update outdated info in README") with the changes
 CodeBreaker's Xbox 360 projects and the Xbox 360 Dashboard need. It is the one XenonRecomp: the dashboard builds from
-it (its own copy in `Dashboard/Shared-unified/tools/XenonRecomp`, branch `dashboard`, was merged here on 2026-10-23 at
+it (its own copy in `Dashboard/Shared/tools/XenonRecomp`, branch `dashboard`, was merged here on 2026-10-23 at
 its `b904d22`).
 
 The instruction tests are `ppc_tests` (Xenia's, and ours in `ppc_tests/own`), run by `codebreaker/recompile/xenon.py`:

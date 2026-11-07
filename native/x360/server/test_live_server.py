@@ -752,7 +752,7 @@ def test_web_service_calls(ctx):
 
 
 # The Xbox LIVE service schema is Microsoft's data: this test runs only where the user's analysis has it.
-XAM_IMAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "Xbox 360 Dashboard", "analysis",
+XAM_IMAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "Dashboard", "Recompiled", "analysis",
                          "xam", "xam.image.bin")
 
 

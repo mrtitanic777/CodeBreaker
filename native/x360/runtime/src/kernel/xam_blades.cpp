@@ -24,7 +24,7 @@ const std::string& kernel::OlderDashVersion()
     return g_olderDash;
 }
 
-// The system update whose modules surround an older dashboard (its boot animation, its Guide: Dashboard Versions/
+// The system update whose modules surround an older dashboard (its boot animation, its Guide: Dashboard/Versions/
 // tools/make_era_modules.py rebuilds them as SystemUpdate/converted/<module>_<update>.xex): its own version's when
 // the user's archive has that update, else (the devkit-only builds) the update nearest before it, the one whose XAM
 // it was built against (make_xam_sections.py's NEAREST: 3519, the Burnout branch, takes 4532's).
@@ -46,7 +46,7 @@ std::string kernel::OlderDashSystemUpdate()
 // folder of the user's archive) and, before 6683 (which carries its gamer card in its own "gamercar" resource),
 // gamercrd, XAM's gamer card scene of that time. The 2241 ... 5787 dashes draw their card (mottoText, countryText ...)
 // from gamercrd, which 17559's XAM and 6683's card lack, so without it they fault at 0x8 after sign-in. The real
-// section comes from each version's own XAM, rebuilt from the launch base (Dashboard Versions/tools/make_xam_sections.py).
+// section comes from each version's own XAM, rebuilt from the launch base (Dashboard/Versions/tools/make_xam_sections.py).
 std::filesystem::path kernel::OlderDashSection(const std::string& section)
 {
     if (g_olderDash.empty() || (section != "shrdres" && section != "gamercrd"))
@@ -57,7 +57,7 @@ std::filesystem::path kernel::OlderDashSection(const std::string& section)
 }
 
 // XLiveBase (app 0xFC) API messages are 0x58000 + an index into XAM's table, and the table grew between the
-// versions. Each entry here is a dash function found in both dashboards (Dashboard Versions: dashvcs blame), with
+// versions. Each entry here is a dash function found in both dashboards (Dashboard/Versions: dashvcs blame), with
 // the message each version's copy sends:
 //   XPresenceInitializeEx   6690 0x921A28E0, 6717 / 6719 0x921A2A20, 6770 0x921A2938 (the same 96 bytes),
 //                           NXE 7258 0x921B2518, 7356 / 7357 0x921D29E0, 7363 / 7371 0x921D2630 (the same start)
@@ -159,7 +159,7 @@ GUEST_IMPORT(XamBuildLegacySystemResourceLocator)
 }
 
 // xam ordinal 2055 (0x807): XuiClassDerivesFrom in 17559's XAM (the Guide modules import it so), but in 9199's
-// (rebuilt from the user's system update, Dashboard Versions/tools/make_xam_sections.py) a getter without
+// (rebuilt from the user's system update, Dashboard/Versions/tools/make_xam_sections.py) a getter without
 // arguments: `lwz r3, [0x81BFEC04]; blr`, a XAM boolean whose setter (0x81940120) stores value > 0 and broadcasts the
 // XAM-internal notification 0x80050019 (area 64: not one of the XDK's). 7357's XAM has no such export; of the
 // dashboards only 9199 imports it (at start-up, 0x9214145C, keeping the answer in its object at +332). The state

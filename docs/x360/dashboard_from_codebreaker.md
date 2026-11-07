@@ -2,7 +2,7 @@
 
 CodeBreaker holds the one XenonRecomp and the one copy of the runtime libraries the Xbox 360 Dashboard shares with the
 ports (owner's decision, 2026-10-23). Until now the dashboard took them from `Dashboard/Shared` (a junction to
-`Dashboard/Shared-unified`). This page is what changes on the dashboard's side, and what was checked here first.
+`Dashboard/Shared`). This page is what changes on the dashboard's side, and what was checked here first.
 Nothing in `Shared-unified`, `Sharedv2`, `Shared-recovered` or the nested XenonRecomp is to be deleted until the
 dashboard builds and runs from CodeBreaker and the owner agrees.
 

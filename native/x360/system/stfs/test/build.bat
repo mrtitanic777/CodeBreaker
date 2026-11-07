@@ -2,7 +2,7 @@
 rem Builds and runs the STFS library's tests (runtime/stfs/test) with clang-cl from Visual Studio 2026, set up the way
 rem the dashboard's build.bat does. Build output and test packages go to %TEMP% (nothing is written into the checkout).
 rem   build.bat            build, self test, then read / verify / compare (with tools\scripts\stfs_extract.py) the
-rem                        system update packages in ..\..\..\..\Xbox 360 Dashboard\SystemUpdate\$SystemUpdate\ when present
+rem                        system update packages in ..\..\..\..\..\..\Dashboard\Recompiled\SystemUpdate\$SystemUpdate\ when present
 rem   build.bat <pkg>...   the same with these packages instead (read only; never copied)
 setlocal
 cd /d "%~dp0"
@@ -26,7 +26,7 @@ cmake --build "%BUILD%" || exit /b 1
 set "PACKAGES=%*"
 set "HAVE=%~1"
 if defined HAVE goto :run
-set "SU=..\..\..\..\Xbox 360 Dashboard\SystemUpdate\$SystemUpdate"
+set "SU=..\..\..\..\..\..\Dashboard\Recompiled\SystemUpdate\$SystemUpdate"
 if not exist "%SU%\su20076000_00000000" goto :run
 set "HAVE=1"
 set PACKAGES="%SU%\su20076000_00000000" "%SU%\FFFE07DF00000001" "%SU%\FFFE07DF00000002" "%SU%\FFFE07DF00000006" "%SU%\FFFE07DF00000008"

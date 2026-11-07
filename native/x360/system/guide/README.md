@@ -11,6 +11,6 @@ from the dashboard's `kernel/xam_ui.cpp` by #2 (2026-10-16) so every port links 
   `target_include_directories(<runtime> PRIVATE ${X360_GUIDE_INCLUDE_DIR})`.
 
 Interface, threading and how to adopt it: `../../docs/shared_guide.md`. The dashboard's host is
-`Xbox 360 Dashboard/DashRecomp/src/kernel/guide_host.cpp` (+ `OpenSystemUi` in its `xam_ui.cpp`).
+`Dashboard/Recompiled/DashRecomp/src/kernel/guide_host.cpp` (+ `OpenSystemUi` in its `xam_ui.cpp`).
 
 Changes: both Claudes may edit; keep it runtime-neutral, note changes in `MESSAGES.md`.

@@ -167,7 +167,7 @@ Logan's rule: what something better has replaced is worthless.
   Dashboard:** `Dashboard\Shared` was a junction to it, and its git repo had no remote. Recovered the same
   day from a Recycle Bin `Shared.rar` (HEAD 5e484ee, Oct 22 5:07 PM; extracted to `../Shared-recovered`),
   three-way merged with `Dashboard\Sharedv2` and the Dashboard session's redone edits into
-  `Dashboard\Shared-unified` (main 8cf0cc5; `Dashboard\Shared` is a junction to it; DashRecomp builds against it), `rexglue-sdk` (public on GitHub; the parts used are in `native/rexglue`, and
+  `Dashboard\Shared` (main 8cf0cc5; DashRecomp builds against it), `rexglue-sdk` (public on GitHub; the parts used are in `native/rexglue`, and
   its own recompiler is replaced by XenonRecomp), `UP` (above).
 - **Deleted, third-party and unused:** `Xbox 360 IDA`, `XuiWorkshop`.
 - **Converted project:** `Xbox-vs-360-Kernel-Diff` is `Converted/xboxkrnl` (the kernels in `original/`, the

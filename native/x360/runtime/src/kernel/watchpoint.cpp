@@ -9,7 +9,7 @@
 //                                    UTF-16 occurrences that are not followed by a terminator.
 //   CB_MEMORY_DUMP=<frame>:<start hex>:<length hex>:<file>   when frame <frame> is presented, writes that guest range
 //                                    as it is then (unreadable pages as zeros): tables a title builds as it starts,
-//                                    such as its XUI's class registrations (Dashboard Versions' XUI tables).
+//                                    such as its XUI's class registrations (Dashboard/Versions' XUI tables).
 //
 // The address must be aligned to the length. A data breakpoint fires after the accessing instruction, so the guest
 // LR in the log is the return address of the last call the accessing function made (the backtrace shows its callers).
