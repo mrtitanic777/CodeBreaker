@@ -257,6 +257,7 @@ public:
     // (new) functions a native format answers (answers.cc): qualified name -> the question; their return
     // type is the answer's, fixed before solving and never replaced by their (empty) bodies
     std::map<std::string, std::string> native_bound;
+    std::map<std::string, std::string> native_data;   // where its call's bytes come from: "self:<attr>", "arg:<i>", "none"
     std::vector<std::unique_ptr<pyfront::Module>> hint_trees;
     int apply_type_hints();
     // (new) MonkeyType-style .pyi stubs (--stubs DIR): the recorded parameter types of a run of the
@@ -290,7 +291,10 @@ public:
     void index_fn(Fn* f);
     void index_nested(Fn* parent);
     std::unordered_set<int> unfrozen;     // frozen-era sites whose items had no single type: recomputed
-    bool site_frozen(int root) const { return frozen && root < frozen_sites && !unfrozen.count(root); }
+    // (new) sites fixed from the start: a native format's answers (answers.cc) -- code that would change one
+    // (add or pop a key, use it as a dict) is refused, the answer's type stays what the format gives
+    std::unordered_set<int> pinned;
+    bool site_frozen(int root) const { return pinned.count(root) || (frozen && root < frozen_sites && !unfrozen.count(root)); }
     void veto(const std::string& why) { vetoes.push_back(why); }
 
 private:

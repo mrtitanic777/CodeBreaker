@@ -201,8 +201,10 @@ Eval& Eval::run() {
     // (new) decorators that leave the function's own behaviour as written: native_first answers by
     // the C++ the gate already holds equal to this body; the caches only remember results
     static const std::set<std::string> TRANSPARENT = {"native_first", "lru_cache", "cache"};
+    bool native = p.native_bound.count(f->qname) != 0;   // (answered by a native format: answers.cc; lowered as its call)
     for (auto& d : f->decorators)
-        if (d != "staticmethod" && d != "property" && !(p.extended && TRANSPARENT.count(d))) issue(node, "dynamic", "decorator " + d);
+        if (d != "staticmethod" && d != "property" && !(p.extended && TRANSPARENT.count(d)) && !(native && (d == "ask" || d == "answered")))
+            issue(node, "dynamic", "decorator " + d);
     std::vector<std::string> all = f->params;
     all.insert(all.end(), f->kwonly.begin(), f->kwonly.end());
     for (size_t i = 0; i < all.size(); i++) {
@@ -2158,7 +2160,7 @@ TR Eval::call_fn(const A::Call* n, Fn* f, const std::vector<std::optional<T>>& a
     if (f->kind == "property") return issue(n, "conflict", "calling a property");
     if (p.native_bound.count(f->qname)) {   // a native answer: one type for every caller (answers.cc), no copies
         bind_args(n, f, args, kw, bound);
-        return TR(native_answer_at(p, f->qname, n), Res(bound ? "method" : "fn", f->qname));
+        return TR(p.ret(f->qname), Res(bound ? "method" : "fn", f->qname));
     }
     if (p.demand_enabled && !bound && p.spec_candidates.count(f->qname)) {   // (new) this caller's own copy
         std::string sig;

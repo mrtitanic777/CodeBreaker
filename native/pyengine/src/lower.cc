@@ -464,7 +464,8 @@ public:
         if (f->name == "__init__") ret = VOID();
         else ret = ctx.ty(ret_t, f->node->pos.lineno, "return value");
         plan_locals();
-        IRP body = block(body_stmts(f->node->body));
+        auto nb = p.native_bound.find(f->qname);
+        IRP body = nb != p.native_bound.end() ? native_body(nb->second, p.native_data[f->qname]) : block(body_stmts(f->node->body));
         std::string kind = !f->cls ? "function" : (f->name == "__init__" ? "ctor" : "method");
         std::vector<std::string> mods;
         if (f->kind == "static") mods.push_back("static");
@@ -697,6 +698,33 @@ public:
     }
 
     // -- statements
+    // a function a native format answers (answers.cc): its body is the question asked --
+    //   return py::native::ask<R>("pe.export_table", this->data, args...);
+    // the bytes first (self.<attribute>, the data_arg-th argument, or none), then its other arguments
+    IRP native_body(const std::string& question, const std::string& data) {
+        int line = f->node->pos.lineno;
+        size_t self = (f->cls && (f->kind == "method" || f->kind == "property")) ? 1 : 0;
+        std::vector<IRP> args;
+        int data_arg = -1;
+        if (data.rfind("self:", 0) == 0) {
+            if (!self) throw Refused("dynamic", "a native question of self's bytes outside a method", line);
+            auto th = node("This", line);
+            th->type = cls_flag(f->cls->qname, "ref");
+            args.push_back(select_n(th, sym("field", data.substr(5), f->cls->qname, false, BYTEST()), BYTEST(), line));
+        } else if (data.rfind("arg:", 0) == 0) {
+            data_arg = std::stoi(data.substr(4));
+            if (data_arg < 0 || self + data_arg >= f->params.size()) throw Refused("dynamic", "a native question's data_arg", line);
+            args.push_back(name_expr(f->params[self + data_arg]));
+        } else {
+            args.push_back(mk_pyfn("native.no_data", {}, BYTEST(), nullptr, line));
+        }
+        for (size_t i = self; i < f->params.size(); i++)
+            if ((int)(i - self) != data_arg) args.push_back(name_expr(f->params[i]));
+        auto r = node("Return", line);
+        r->expr = mk_pyfn("native.ask", args, ret, nullptr, line, {py::V(question)});
+        return block_n({r});
+    }
+
     IRP block(const std::vector<A::Stmt*>& stmts) {
         std::vector<IRP> out;
         for (auto* st : stmts) {

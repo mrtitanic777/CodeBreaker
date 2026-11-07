@@ -167,6 +167,8 @@ std::map<std::string, std::string> registrations(const fs::path& formats) {
 struct Binder {
     Program& p;
     std::string scope;                                     // whose sites: "" the shared ones, else a call's
+    std::string module;                                    // where its records are declared: the stub's module
+    std::vector<int> made_now;                             // the sites this binding made (pinned when filled)
     std::map<std::string, int> record_sites;              // a record's name -> its site (in this scope)
     static std::map<std::string, int>& made() {           // scope + path -> the site made for it (once)
         static std::map<std::string, int> m;
@@ -184,8 +186,9 @@ struct Binder {
         auto it = made().find(scope + "|" + key);
         if (it != made().end()) return it->second;
         keys().push_back("answer:" + scope + "|" + key);
-        int st = p.new_site(&keys().back(), kind, {"native/formats", 0});
+        int st = p.new_site(&keys().back(), kind, {module, 0});
         made()[scope + "|" + key] = st;
+        made_now.push_back(st);
         return st;
     }
     T type(const Spec& s, const std::string& where) {
@@ -220,23 +223,25 @@ struct Binder {
                 return container(TK::Dict, st);
             }
             case Spec::Record: {
-                auto it = record_sites.find(s.name);
+                auto it = record_sites.find(scope + "|" + s.name);
                 if (it != record_sites.end()) return container(TK::Dict, it->second);
                 bool fresh = !made().count(scope + "|" + s.name);
                 int st = site(s.name, TK::Dict);
                 if (!fresh) {   // (made in an earlier round: its fields are there)
-                    record_sites[s.name] = st;
+                    record_sites[scope + "|" + s.name] = st;
                     return container(TK::Dict, st);
                 }
-                record_sites[s.name] = st;
+                record_sites[scope + "|" + s.name] = st;
                 p.hint(st, s.name);
                 std::vector<std::string> required;
                 for (size_t i = 0; i < s.fields.size(); i++) {
                     T ft = type(s.args[i], s.name + "." + s.fields[i].first);
                     if (!s.fields[i].second) ft = opt(ft);
                     else required.push_back(s.fields[i].first);
-                    p.grow_field(st, s.fields[i].first, ft);
+                    p.fields[p.find(st)].set(s.fields[i].first, ft);   // (not grow_field: its dict-of-all-values join would
+                                                                        // poison a record of mixed fields)
                 }
+                p.grow(p.keys, st, STR());
                 p.created(st, required);
                 return container(TK::Dict, st);
             }
@@ -245,17 +250,33 @@ struct Binder {
     }
 };
 
-// the question a @native.ask / @native.answered decorator names, unless it has result= ("" then)
-std::string question_of(const A::Expr* d) {
+// what a @native.ask / @native.answered decorator says: its question, and where the call's bytes come from --
+// "self:<attribute>" (ask: data="data" by default), "arg:<i>" (answered: data_arg=0 by default), "none"
+// (data_arg=None). A decorator with result=, where= or args_of= is not bound (its answer is turned into
+// something else, or the call has arguments of its own making): question "" then.
+struct Deco {
+    std::string question, data;
+};
+Deco deco_of(const A::Expr* d) {
+    Deco out;
     auto* c = as<pyfront::Call>(d);
-    if (!c || c->args.empty()) return "";
+    if (!c || c->args.empty()) return out;
     auto* fa = as<Attribute>(c->func);
-    if (!fa || (fa->attr != "ask" && fa->attr != "answered")) return "";
-    for (auto* k : c->keywords)
-        if (k->has_arg && k->arg == "result") return "";
+    if (!fa || (fa->attr != "ask" && fa->attr != "answered")) return out;
     auto* q = as<Constant>(c->args[0]);
-    if (!q || q->value.kind != ConstValue::Kind::Str) return "";
-    return q->value.text;
+    if (!q || q->value.kind != ConstValue::Kind::Str) return out;
+    bool ask = fa->attr == "ask";
+    out.data = ask ? "self:data" : "arg:0";
+    for (auto* k : c->keywords) {
+        if (!k->has_arg || k->arg == "result" || k->arg == "where" || k->arg == "args_of") return Deco{};
+        auto* v = as<Constant>(k->value);
+        if (k->arg == "data" && ask && v && v->value.kind == ConstValue::Kind::Str) out.data = "self:" + v->value.text;
+        else if (k->arg == "data_arg" && !ask && v && v->value.kind == ConstValue::Kind::None) out.data = "none";
+        else if (k->arg == "data_arg" && !ask && v && v->value.kind == ConstValue::Kind::Int) out.data = "arg:" + v->value.text;
+        else return Deco{};
+    }
+    out.question = q->value.text;
+    return out;
 }
 
 std::map<std::string, Spec>& specs() {   // a bound function -> its answer's type
@@ -283,7 +304,8 @@ size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log
     size_t bound = 0;
     for (auto& [q, f] : p.fns) {
         for (auto* d : f->node->decorator_list) {
-            std::string question = question_of(d);
+            Deco dc = deco_of(d);
+            const std::string& question = dc.question;
             if (question.empty()) continue;
             auto r = regs.find(question);
             if (r == regs.end()) continue;
@@ -294,9 +316,14 @@ size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log
                 if (log) fprintf(log, "answer type of %s not read: %s\n", question.c_str(), ps.err.empty() ? "text after the type" : ps.err.c_str());
                 continue;
             }
+            b.module = f->module->name;
+            b.scope = f->module->name;   // (a record is one struct per module that answers it)
             p.returns[q] = b.type(s, question);
+            for (int st : b.made_now) p.pinned.insert(p.find(st));
+            b.made_now.clear();
             specs()[q] = s;
             p.native_bound[q] = question;
+            p.native_data[q] = dc.data;
             bound++;
         }
     }

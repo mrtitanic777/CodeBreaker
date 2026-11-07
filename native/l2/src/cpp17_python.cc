@@ -974,6 +974,12 @@ struct PyWriter : Emitter {
         if (n == "contains") return operand(node(e, "target")) + ".contains(" + X(a[0]) + ")";
         if (n == "dict.at") return operand(node(e, "target")) + ".at(" + X(a[0]) + ")";
         if (starts(n, "struct.")) return struct_call(e);
+        if (n == "native.no_data") return "py::bytes{}";
+        if (n == "native.ask") {   // a native format's answer (py_answers.hpp), decoded as the function's type
+            Strs v{cpp_string(str(raw(e, "typeargs")[0]))};
+            for (auto& x : a) v.push_back(X(x));
+            return "py::native::ask<" + ctype(type(e)) + ">(" + join(v, ", ") + ")";
+        }
         if (n == "sorted") {
             std::string key = is(a[1], "Lit") ? "nullptr" : X(a[1]);
             std::string rev = a.size() > 2 ? X(a[2]) : "false";
@@ -1187,6 +1193,14 @@ Strs record_decl(PyWriter& w, const NodeP& r) {
             out.push_back("    if (r." + n + ") f(\"" + sname(sym(fd)) + "\", *r." + n + ");");
         else
             out.push_back("    f(\"" + sname(sym(fd)) + "\", r." + n + ");");
+    }
+    out.push_back("}");
+    // the same, writable (py::native::ask fills a record from a native format's answer): f(key, member, required)
+    out.push_back("template <class F> void for_each_field_mut(" + ident(cname_of(r)) + "& r, F&& f) {");
+    for (auto& fd : nodes(r, "members")) {
+        if (!is(fd, "FieldDecl")) continue;
+        std::string n = ident(sname(sym(fd)));
+        out.push_back("    f(\"" + sname(sym(fd)) + "\", r." + n + ", " + (has_mod(fd, "optional") ? "false" : "true") + ");");
     }
     out.push_back("}");
     return out;
@@ -1495,6 +1509,11 @@ V write_unit_python(const NodeP& unit, const std::string& api_root) {
             }
     S.push_back("}  // namespace " + ns);
     S.push_back("");
+    for (size_t i = 0; i < S.size(); i++)   // a native format's answers asked (py::native::ask): its header, here only
+        if (S[i].find("py::native::ask<") != std::string::npos) {
+            S.insert(S.begin() + 3, "#include \"py_answers.hpp\"");
+            break;
+        }
     return V::tuple({V(join(H, "\n")), V(join(S, "\n")), spans});
 }
 
