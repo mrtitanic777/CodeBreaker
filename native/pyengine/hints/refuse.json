@@ -2,5 +2,5 @@
  "codebreaker.emulate.powerpc._rotl32": "differs from the Python on (-1, 1): 18446744073709551615, C++ {\"error\": \"OverflowError\"}",
  "codebreaker.emulate.powerpc._s64": "differs from the Python on (-1,): -18446744073709551617, C++ {\"error\": \"OverflowError\"}",
  "codebreaker.formats.xbox.stfs._bn": "differs from the Python on (b'MZ\\x90\\x00\\x03\\x00\\x00\\x00\\x04\\x00',): 18895039857297129996288, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.java.profiles.names": "differs from the Python on (): [\"generic\"], C++ []"
+ "codebreaker.translate.frontends.python.lower.FnLower.line": "does not compile: lower.hpp(15): error C2065: 'Context': undeclared identifier"
 }
