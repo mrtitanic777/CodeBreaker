@@ -168,3 +168,36 @@ class _Mod:
     def __init__(self, path: str) -> None: ...
     def bytes_at(self, rva: int, n: int) -> bytes: ...
     def forwarder(self, rva: int) -> None: ...
+
+from codebreaker.formats.ne import NEFile
+from typing import (
+    Dict,
+    Tuple,
+    Union,
+)
+
+
+def _load16() -> Dict[str, <class 'Union'>[<class 'Union'>, None]]: ...
+
+
+def _module(
+    name: str
+) -> Tuple[NEFile, Dict[int, Dict[str, <class 'Union'>]], Dict[int, Dict[str, <class 'Union'>]]]: ...
+
+
+def _reading() -> str: ...
+
+
+def _scope() -> str: ...
+
+
+def _stem(dll: str) -> str: ...
+
+
+def arg_bytes(module: str, ordinal: int) -> <class 'Union'>[int, None]: ...
+
+
+def of(api: str) -> <class 'Union'>[int, None]: ...
+
+
+def sizes16() -> bytes: ...

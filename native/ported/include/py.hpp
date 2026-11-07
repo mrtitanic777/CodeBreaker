@@ -1292,6 +1292,16 @@ template <class T> bool truthy(const set<T>& x) { return !x.empty(); }
 template <class T> bool truthy(const std::optional<T>& x) { return x.has_value() && truthy(*x); }
 template <class T> bool truthy(const ref<T>& x) { return x != nullptr; }
 
+// for v in x where x may be None: the value, or Python's TypeError for None
+template <class T> const T& none_iter(const std::optional<T>& x) {
+    if (!x.has_value()) throw TypeError("'NoneType' object is not iterable");
+    return *x;
+}
+template <class T> T none_iter(std::optional<T>&& x) {
+    if (!x.has_value()) throw TypeError("'NoneType' object is not iterable");
+    return std::move(*x);
+}
+
 // x.attr where x may be None: the object, or Python's AttributeError for None
 [[noreturn]] inline void none_has_no_attr_(const str& attr) {
     throw AttributeError(std::string("'NoneType' object has no attribute '") + attr.utf8() + "'");

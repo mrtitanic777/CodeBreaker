@@ -88,3 +88,36 @@ class Run:
     @property
     def ended(self) -> str: ...
     def kept(self, names: <class 'Union'>[Tuple[str], None, Tuple[str, str, str]] = ...) -> bool: ...
+
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+
+def ended(e: str) -> str: ...
+
+
+class Run:
+    def __init__(
+        self,
+        exit: str,
+        results: <class 'Union'>[Dict[str, int], None] = ...,
+        writes: List[<class 'Union'>[Any, codebreaker.emulate.run.Write]] = ...,
+        capped: bool = ...,
+        calls: List[<class 'Union'>[Any, codebreaker.emulate.run.Call]] = ...,
+        io: List[Any] = ...,
+        stack: <class 'Union'>[int, None] = ...,
+        preserved: <class 'Union'>[Dict[str, Tuple[int, int]], None] = ...,
+        path: List[int] = ...,
+        steps: <class 'Union'>[int, None] = ...,
+        truncated: bool = ...,
+        endian: str = ...,
+        raw: <class 'Union'>[Dict[str, <class 'Union'>], None] = ...
+    ) -> None: ...
+    @property
+    def ended(self) -> str: ...

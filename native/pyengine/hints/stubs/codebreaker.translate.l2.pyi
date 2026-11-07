@@ -354,3 +354,66 @@ class Made:
 
 class _Texts:
     def __init__(self, made: Made) -> None: ...
+
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+
+def function(
+    name: str,
+    text: <class 'Union'>[str, None] = ...,
+    origin: <class 'Union'>[Dict[str, <class 'Union'>], None] = ...,
+    comments: None = ...,
+    **fields
+) -> Dict[str, <class 'Union'>]: ...
+
+
+def module(
+    units: Tuple[()] = ...,
+    header: <class 'Union'>[str, None] = ...,
+    origin: None = ...
+) -> Dict[str, <class 'Union'>]: ...
+
+
+def texts(doc: Dict[str, <class 'Union'>]) -> Dict[str, str]: ...
+
+
+def units(
+    doc: Dict[str, <class 'Union'>],
+    node: <class 'Union'>[str, None] = ...
+) -> List[<class 'Union'>[Dict[str, <class 'Union'>], Any]]: ...
+
+
+class Made:
+    def __getstate__(self) -> Dict[str, <class 'Union'>]: ...
+    def __init__(
+        self,
+        name: str = ...,
+        header: str = ...,
+        texts: None = ...,
+        order: None = ...,
+        by_va: None = ...,
+        **facts
+    ) -> None: ...
+    def _functions(self) -> List[Dict[str, <class 'Union'>]]: ...
+    def _view(
+        self,
+        key: str,
+        make: Callable
+    ) -> <class 'Union'>[Dict[int, str], List[str], codebreaker.translate.l2._Texts]: ...
+    def add(self, name: str, text: str, va: <class 'Union'>[int, None] = ...) -> None: ...
+    @property
+    def by_va(self) -> Dict[int, str]: ...
+    @property
+    def order(self) -> List[str]: ...
+
+
+class _Texts:
+    def __init__(self, made: Made) -> None: ...
+    def __setitem__(self, name: str, text: str) -> None: ...

@@ -1487,7 +1487,7 @@ public:
         const Res* r = R(it);
         auto* tn = as<pyfront::Name>(st->target);
         if (r && r->is("builtin", "range") && tn) return range_loop(st);
-        IRP iterable = expr(it);
+        IRP iterable = maybe_none_iterable(expr(it), it);
         const A::Expr* tgt = st->target;
         std::vector<std::string> names;
         size_t nelts = 0;
@@ -1739,7 +1739,7 @@ public:
         pre.clear();
         const Res* r = R(g->iter);
         bool is_range = r && r->is("builtin", "range");
-        IRP iterable = !is_range ? expr(g->iter) : nullptr;
+        IRP iterable = !is_range ? maybe_none_iterable(expr(g->iter), g->iter) : nullptr;
         const A::Expr* tgt = g->target;
         auto* tn = as<pyfront::Name>(tgt);
         std::vector<std::string> names;
@@ -2206,6 +2206,13 @@ public:
             return mk_pyfn("unwrap", {e}, flow);
         }
         return e;
+    }
+
+    // (new) the iterable of a loop that may be None: py::none_iter (TypeError for None, as Python's)
+    IRP maybe_none_iterable(IRP e, const A::Expr* n) {
+        T t = Tof(n);
+        if (!p.extended || t.kind != TK::Opt) return e;
+        return mk_pyfn("builtins.none_iter", {e}, ty(t.args()[0], n), nullptr, n->pos.lineno);
     }
 
     // the object of x.attr; one that may be None read through py::none_attr (AttributeError for None)

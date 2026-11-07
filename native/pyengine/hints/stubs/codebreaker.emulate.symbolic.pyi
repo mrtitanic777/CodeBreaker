@@ -168,3 +168,21 @@ def z3_of(
 
 
 def zext(a: Any, to: int) -> Any: ...
+
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Optional,
+)
+from z3.z3 import Context
+
+
+def _shift(kind: str) -> Callable: ...
+
+
+def z3_of(
+    e: Any,
+    memo: Dict[int, <class 'Union'>[<class 'Union'>, Tuple[Tuple[str, int, str], BitVecRef]]],
+    ctx: <class 'Union'>[Context, None] = ...
+) -> <class 'Union'>[BitVecRef, BitVecNumRef, BoolRef]: ...

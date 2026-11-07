@@ -902,6 +902,8 @@ std::optional<Big> Eval::cmp_bound(const A::Expr* t, const A::While* st, const S
 }
 
 std::pair<T, std::optional<Big>> Eval::iteration(const A::Expr* node, const T& t, const State& state) {
+    // (new) an iterable that may be None: its value's items (the lowering raises TypeError for None)
+    if (p.extended && t.kind == TK::Opt && t.args()[0].kind != TK::Opt) return iteration(node, t.args()[0], state);
     switch (t.kind) {
         case TK::Bottom: return {BOTTOM(), std::nullopt};
         case TK::Top: return {t, std::nullopt};
