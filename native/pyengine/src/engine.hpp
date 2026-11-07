@@ -10,7 +10,7 @@ namespace pyengine {
 struct EngineOptions {
     std::string root;                 // the package's folder
     std::string package;              // its import name (default: the folder's name)
-    std::string policy = "strict";    // strict | checked
+    std::string policy = "checked";   // checked (ints are int64, overflow raises) | strict (a range proven)
     std::string out;                  // where to write (empty: nothing written)
     bool extended = true;             // the engine's extensions (false: exactly the old engine's rules)
     bool log = false;
