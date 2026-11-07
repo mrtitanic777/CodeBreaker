@@ -1000,6 +1000,8 @@ TR Eval::std_call(const A::Call* n, const std::string& name, const Args& args, c
         return TR(pit->second.second(), Res("std", name));
     }
     if (name == "os.listdir") {
+        if (!args.empty() && args[0] && !(args[0]->kind == TK::Str || args[0]->kind == TK::Bottom || args[0]->kind == TK::Top))
+            return issue(n, "conflict", std::string("os.listdir of a ") + kind_name(args[0]->kind));
         int s = p.new_site(n, TK::List, where(n));
         p.grow(p.elem, s, STR());
         return TR(container(TK::List, s), Res("std", name));

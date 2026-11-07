@@ -492,7 +492,8 @@ struct PyWriter : Emitter {
         if (lit_str(e) && tname_is(type(e), "py.str")) return "py::str(" + cpp_string(lit_s(e)) + ")";
         std::string s = expr(e);
         if (is(e, "Binary") || is(e, "Cond") || is(e, "Assign") || is(e, "Concat") ||
-            (is(e, "Unary") && !py::truthy(raw(e, "postfix"))))
+            (is(e, "Unary") && !py::truthy(raw(e, "postfix"))) ||
+            (!s.empty() && s[0] == '*'))   // (an optional's value: *x.f() would be *(x.f()))
             return "(" + s + ")";
         return s;
     }
@@ -1110,6 +1111,7 @@ struct PyWriter : Emitter {
             if (tinfo(t, "ref")) return s + " != nullptr";
             if (always_true(t)) return "true";
             if (tname(t) == "py.tuple") return !t->args.empty() ? "true" : "false";
+            if (tname(t) == "py.variant") return "py::truthy(" + expr(x) + ")";   // (the truth of the value it holds)
             return "!" + s + ".empty()";
         }
         if (k == "void") return "false";

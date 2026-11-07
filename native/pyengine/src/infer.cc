@@ -337,7 +337,7 @@ SP Eval::stmt(const A::Stmt* st, const State& state) {
         }
         case StmtKind::Assert: {
             auto* a = cast<pyfront::Assert>(st);
-            ev(a->test, state);
+            ev_test(a->test, state);
             if (a->msg) ev(a->msg, state);
             return refine(a->test, state, true);
         }
@@ -351,7 +351,7 @@ SP Eval::stmt(const A::Stmt* st, const State& state) {
         case StmtKind::ImportFrom: return s_ImportFrom(cast<ImportFrom>(st), state);
         case StmtKind::If: {
             auto* i = cast<pyfront::If>(st);
-            ev(i->test, state);
+            ev_test(i->test, state);
             SP s2 = after_access(i->test, state);
             SP a = block(i->body, refine(i->test, s2, true));
             SP b = block(i->orelse, refine(i->test, s2, false));
@@ -503,7 +503,7 @@ SP Eval::s_Try(const A::Try* st, const State& state) {
 SP Eval::s_While(const A::While* st, const State& state) {
     if (!st->orelse.empty()) issue(st, "syntax", "while-else");
     auto body = [this, st](const State& head) -> SP {
-        ev(st->test, head);
+        ev_test(st->test, head);
         SP h2 = after_access(st->test, head);
         return block(st->body, refine(st->test, h2, true));
     };
@@ -1561,7 +1561,7 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
         }
         case ExprKind::UnaryOp: {
             auto* n = cast<UnaryOp>(node);
-            T t = ev(n->operand, state);
+            T t = n->op == UnaryOpKind::Not ? ev_test(n->operand, state) : ev(n->operand, state);
             if (n->op == UnaryOpKind::Not) return BOOL();
             if (t.kind == TK::Bottom || t.kind == TK::Top) return t;
             if (t.kind == TK::Bool) t = INT(Big(0), Big(1));
@@ -1577,8 +1577,9 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
             auto* n = cast<BoolOp>(node);
             std::vector<T> ts;
             SP s = state;
+            bool in_test = tested.count(node) != 0;
             for (auto* v : n->values) {
-                T t = ev(v, s ? *s : State());
+                T t = in_test ? ev_test(v, s ? *s : State()) : ev(v, s ? *s : State());
                 ts.push_back(t);
                 s = refine(v, s, n->op == BoolOpKind::And);
             }
@@ -1594,7 +1595,10 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
                 T j2 = p.join(strip_opt(ts[0]), ts[1]);
                 if (j2.kind != TK::Top) return j2;
             }
-            if (j.kind == TK::Top) return TR(BOOL(), Res("mixedbool", j.why()));
+            if (j.kind == TK::Top) {
+                if (in_test) return TR(BOOL(), Res("mixedbool", j.why()));
+                return issue(node, "conflict", "value of and/or over " + j.why());   // (its value is used: no type for it)
+            }
             return j;
         }
         case ExprKind::Compare: {
@@ -1609,7 +1613,7 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
         }
         case ExprKind::IfExp: {
             auto* n = cast<IfExp>(node);
-            ev(n->test, state);
+            ev_test(n->test, state);
             SP st1 = refine(n->test, state, true), st2 = refine(n->test, state, false);
             T a = ev(n->body, st1 ? *st1 : State());
             T b = ev(n->orelse, st2 ? *st2 : State());
@@ -2087,7 +2091,7 @@ State Eval::comp_scope(const std::vector<A::comprehension*>& gens, const State& 
         auto [elem, n] = iteration(g->iter, it, st);
         st = assign(g->target, elem, st, nullptr);
         for (auto* cond : g->ifs) {
-            ev(cond, st);
+            ev_test(cond, st);
             SP r = refine(cond, st, true);
             if (r) st = *r;
         }

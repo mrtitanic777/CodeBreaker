@@ -3490,11 +3490,19 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             std::string own = owner_module(p, q);
             if (own != mod && p.modules.has(own)) deps.insert(own);
         }
-        for (auto& [q, md] : r.translated)
-            ir_walk(md, [&](const IRP& x) {
+        for (auto& decl : types)   // (every declaration the unit writes: specializations' bodies too)
+            ir_walk(decl, [&](const IRP& x) {
                 if (x->sym && x->sym->owner && *x->sym->owner != "py") {
                     std::string own = owner_module(p, *x->sym->owner);
                     if (p.modules.has(own) && own != mod) deps.insert(own);
+                }
+                if (x->type) {   // (a class of another module only made or thrown here: throw z80_asm::AsmError(...))
+                    std::set<std::string> tn;
+                    types_of(x->type, tn);
+                    for (auto& q : tn) {
+                        std::string own = owner_module(p, q);
+                        if (own != mod && p.modules.has(own)) deps.insert(own);
+                    }
                 }
             });
         for (auto& decl : types) {

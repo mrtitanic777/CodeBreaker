@@ -1,13 +1,6 @@
 {
- "codebreaker.build.period16._response_file": "does not compile: period16.cpp(13): error C2664: 'py::list<py::str> py::os::listdir(const py::str &)': cannot convert argument 1 from 'bool' to 'const py::str &'",
- "codebreaker.build.sm83_asm._put": "does not compile: sm83_asm.cpp(20): error C3083: 'z80_asm': the symbol to the left of a '::' must be a type",
- "codebreaker.decompile.z80._index": "does not compile: z80.cpp(41): error C2039: 'contains': is not a member of 'std::optional<py::str>'",
  "codebreaker.emulate.powerpc._rotl32": "differs from the Python on (-1, 1): 18446744073709551615, C++ {\"error\": \"OverflowError\"}",
  "codebreaker.emulate.powerpc._s64": "differs from the Python on (-1,): -18446744073709551617, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.exact.draft.candidates.register_slots": "does not compile: py.hpp(1024): error C2440: 'return': cannot convert from 'std::_Vb_reference<std::_Wrap_alloc<std::allocator<std::_Vbase>>>' to 'T &'",
- "codebreaker.exact.draft.candidates.registers_last": "does not compile: py.hpp(1024): error C2440: 'return': cannot convert from 'std::_Vb_reference<std::_Wrap_alloc<std::allocator<std::_Vbase>>>' to 'T &'",
  "codebreaker.formats.xbox.stfs._bn": "differs from the Python on (b'MZ\\x90\\x00\\x03\\x00\\x00\\x00\\x04\\x00',): 18895039857297129996288, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.java.profiles.names": "differs from the Python on (): [\"generic\"], C++ []",
- "codebreaker.java.projects.minecraft.platform_coverage._render_stub_markers": "does not compile: platform_coverage.cpp(42): error C2039: 'values': is not a member of 'std::optional<py::dict<py::str,py::list<std::tuple<py::str,int64_t,py::str>>>>'",
- "codebreaker.java.runtime._patch_timer_for_platform": "does not compile: runtime.cpp(23): error C2039: 'currentTimeMillis': is not a member of 'std::optional<codebreaker::java::runtime::AnonRecord>'"
+ "codebreaker.java.profiles.names": "differs from the Python on (): [\"generic\"], C++ []"
 }

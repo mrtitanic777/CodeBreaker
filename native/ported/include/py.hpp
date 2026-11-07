@@ -1021,7 +1021,8 @@ template <class T> class list {
     std::vector<T>& vec() const { return *v_; }
     int64_t size() const { return static_cast<int64_t>(v_->size()); }
     bool empty() const { return v_->empty(); }
-    T& operator[](int64_t i) const { return (*v_)[static_cast<size_t>(index_(i, size(), "list"))]; }
+    // (T&; for a list of bools std::vector<bool>'s reference, which reads and assigns the same)
+    decltype(auto) operator[](int64_t i) const { return (*v_)[static_cast<size_t>(index_(i, size(), "list"))]; }
     void append(const T& x) const { v_->push_back(x); }
     template <class L> void extend(const L& xs) const {
         std::vector<T> add;
