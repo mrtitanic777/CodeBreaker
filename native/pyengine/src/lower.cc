@@ -844,7 +844,16 @@ public:
 
     std::vector<IRP> s_Assign(const A::Assign* st) {
         int line = st->pos.lineno;
-        if (st->targets.size() != 1) throw Refused("syntax", "chained assignment", line);
+        if (st->targets.size() != 1) {   // a = b = v: v once, then each target left to right, as Python
+            IRP value = expr(st->value);
+            std::string tn = new_tmp("value");
+            local_types[tn] = value->type;
+            declared.insert(tn);
+            std::vector<IRP> out = {local(tn, value->type, value, {}, line)};
+            for (auto* t : st->targets)
+                for (auto& x : store(t, name_expr(tn), st)) out.push_back(x);
+            return out;
+        }
         const A::Expr* tgt = st->targets[0];
         auto* tn = as<pyfront::Name>(tgt);
         auto vk = st->value->kind;
@@ -856,8 +865,65 @@ public:
             if (!mentions) return comp_into(st, tn, st->value);
         }
         if (is_record_literal(st->value) && tn && decl_init.count(st)) return {record_builder(st, tn)};
+        if (auto d = direct_unpack(tgt, st)) return *d;
         IRP value = expr(st->value);
         return store(tgt, value, st);
+    }
+
+    // a, self.b = x, y as a = x; self.b = y when that is the same program: the targets are names or
+    // attributes of names, and the items after the first are names, constants and attributes, none
+    // of them a target assigned before it
+    std::optional<std::vector<IRP>> direct_unpack(const A::Expr* tgt, const A::Assign* st) {
+        if ((tgt->kind != ExprKind::Tuple && tgt->kind != ExprKind::List) || st->value->kind != ExprKind::Tuple) return std::nullopt;
+        const auto& elts = tgt->kind == ExprKind::Tuple ? cast<pyfront::Tuple>(tgt)->elts : cast<pyfront::List>(tgt)->elts;
+        const auto& vals = cast<pyfront::Tuple>(st->value)->elts;
+        if (elts.size() != vals.size() || elts.size() < 2) return std::nullopt;
+        std::set<std::string> names, attrs;   // assigned so far: x, and base.attr
+        for (size_t i = 0; i < elts.size(); i++) {
+            if (vals[i]->kind == ExprKind::Starred) return std::nullopt;
+            if (i > 0)
+                for (auto& x : walk(vals[i])) {
+                    const A::Expr* e = x.expr();
+                    if (!e) continue;
+                    // nothing that can call, raise or change anything: an exception there would find the
+                    // earlier targets assigned, where Python assigns none
+                    switch (e->kind) {
+                        case ExprKind::Name: case ExprKind::Constant: case ExprKind::Attribute: case ExprKind::Tuple:
+                            break;
+                        case ExprKind::UnaryOp:
+                            if (cast<pyfront::UnaryOp>(e)->operand->kind != ExprKind::Constant) return std::nullopt;
+                            break;
+                        default: return std::nullopt;
+                    }
+                    if (auto* nm = as<pyfront::Name>(e))
+                        if (names.count(nm->id)) return std::nullopt;
+                    if (auto* at = as<Attribute>(e))
+                        if (auto* b = as<pyfront::Name>(at->value))
+                            if (attrs.count(b->id + "." + at->attr)) return std::nullopt;
+                }
+            if (auto* nm = as<pyfront::Name>(elts[i])) names.insert(nm->id);
+            else if (auto* at = as<Attribute>(elts[i])) {
+                auto* b = as<pyfront::Name>(at->value);
+                if (!b) return std::nullopt;
+                attrs.insert(b->id + "." + at->attr);
+            } else return std::nullopt;
+        }
+        int line = st->pos.lineno;
+        std::vector<IRP> out;
+        for (size_t i = 0; i < elts.size(); i++) {
+            IRP v = expr(vals[i]);
+            if (auto* nm = as<pyfront::Name>(elts[i])) {
+                auto lt = local_types.find(nm->id);
+                if (lt == local_types.end()) throw Refused("untyped", "local " + nm->id, line);
+                v = coerce(v, lt->second);
+                if (!declared.count(nm->id)) {
+                    declared.insert(nm->id);
+                    out.push_back(local(nm->id, lt->second, v, {}, line));
+                } else out.push_back(exprstmt(assign_e(std::nullopt, mk_name(lsym(nm->id, lt->second), lt->second), v, lt->second), line));
+            } else
+                for (auto& x : store(elts[i], v, st)) out.push_back(x);
+        }
+        return out;
     }
 
     // ---- (new) generators: a class deriving py.generator<T>; next() resumes after each yield
@@ -1209,13 +1275,30 @@ public:
         int line = st->pos.lineno;
         const std::vector<pyfront::Expr*>& elts = tgt->kind == ExprKind::Tuple ? cast<pyfront::Tuple>(tgt)->elts : cast<pyfront::List>(tgt)->elts;
         std::vector<std::string> names;
+        bool all_names = true;
         for (auto* e : elts) {
             auto* nm = as<pyfront::Name>(e);
-            if (!nm) throw Refused("syntax", "unpacking into " + type_name(e), line);
-            names.push_back(nm->id);
+            if (!nm) all_names = false;
+            else names.push_back(nm->id);
         }
         const std::vector<TyP>* tts = (value->type && value->type->is_class("py.tuple")) ? &value->type->args : nullptr;
-        if (!tts || tts->size() != names.size()) throw Refused("conflict", "unpacking a non-tuple", line);
+        if (!tts || tts->size() != elts.size()) throw Refused("conflict", "unpacking a non-tuple", line);
+        if (!all_names) {   // a, self.b, (c, d) = v: v once into a temporary, then each target left to right
+            std::string tn = new_tmp("parts");
+            local_types[tn] = value->type;
+            declared.insert(tn);
+            std::vector<IRP> out = {local(tn, value->type, value, {}, line)};
+            for (auto& n : names)
+                if (!declared.count(n)) {
+                    auto lt = local_types.find(n);
+                    if (lt == local_types.end()) throw Refused("untyped", "local " + n, line);
+                    out.push_back(local(n, lt->second));
+                    declared.insert(n);
+                }
+            for (size_t i = 0; i < elts.size(); i++)
+                for (auto& x : store(elts[i], mk_pyfn("get", {name_expr(tn)}, (*tts)[i], nullptr, 0, {py::V((long long)i)}), st)) out.push_back(x);
+            return out;
+        }
         if (names.size() == 1) {
             const std::string& n = names[0];
             auto lt = local_types.find(n);

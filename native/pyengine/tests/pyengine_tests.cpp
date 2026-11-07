@@ -514,6 +514,31 @@ def run():
     CHECK(has(src, "py::open(p, py::str(\"r\"), ") && has(src, "utf-8") && has(src, ".readline_text()"), "open with a keyword in its slot, text reads: %s", src.c_str());
 }
 
+// a, self.b = v and a = b = v: the value once into a temporary, then each target left to right
+static void t_assign_forms() {
+    Run r(Srcs{{"pkg.m", R"PY(
+class P:
+    def __init__(self):
+        self.x = 0
+        self.y = 0
+
+    def set(self, a: int, b: int) -> int:
+        self.x, self.y = a, b
+        n, (self.x, m) = b, (a, 1)
+        return n + m
+
+def chain(a: int) -> int:
+    p = q = a + 1
+    return p + q
+
+def run():
+    return P().set(1, 2) + chain(3)
+)PY"}});
+    for (auto q : {"pkg.m.P.set", "pkg.m.chain"}) CHECK(r.ok(q), "%s: %s", q, r.why(q).c_str());
+    std::string u = r.unit("pkg.m");
+    CHECK(has(u, "parts") && has(u, "value"), "the temporaries: %s", u.substr(0, 400).c_str());
+}
+
 // MonkeyType-style .pyi stubs read as parameter hints (--stubs): applied where nothing else types the
 // parameter, inference wins where it does, a type the engine cannot model is ignored with a reason
 static void t_stubs() {
@@ -708,7 +733,7 @@ match mode:
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> suites = {
         {"async", t_async},       {"match", t_match},
-        {"dynamic", t_dynamic},   {"backend", t_backend}, {"stubs", t_stubs},
+        {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
         {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};
     std::vector<std::string> run;
