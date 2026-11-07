@@ -71,6 +71,17 @@ static std::string norm_enc(std::string e) {
     if (e == "utf-8-sig") return "utf-8-sig";
     return e;
 }
+#include "charmaps.inc"
+// CPython's single-byte codecs (charmaps.inc) by name or alias: lowercased, '-' and ' ' read as '_'
+static const Charmap* charmap_of(const std::string& enc_in) {
+    std::string n;
+    for (char c : enc_in) n.push_back(c == '-' || c == ' ' ? '_' : (char)tolower((unsigned char)c));
+    for (auto& a : g_charmap_aliases)
+        if (n == a[0]) { n = a[1]; break; }
+    for (auto& m : g_charmaps)
+        if (n == m.name) return &m;
+    return nullptr;
+}
 static const std::string BOM32LE = std::string{(char)0xFF, (char)0xFE, 0, 0}, BOM32BE = std::string{0, 0, (char)0xFE, (char)0xFF};
 static const char32_t cp437_hi[128] = {
     0xC7, 0xFC, 0xE9, 0xE2, 0xE4, 0xE0, 0xE5, 0xE7, 0xEA, 0xEB, 0xE8, 0xEF, 0xEE, 0xEC, 0xC4, 0xC5,
@@ -202,6 +213,18 @@ var bytes_decode_(const std::string& raw, const std::string& enc_in, const std::
         if (i < raw.size()) bad(i, raw.size() - i, "truncated data");
         return new_str(out);
     }
+    if (const Charmap* cm = charmap_of(enc_in)) {
+        for (size_t i = 0; i < raw.size(); i++) {
+            char32_t m = cm->table[(unsigned char)raw[i]];
+            if (m == 0xFFFE) { bad(i, 1, "character maps to <undefined>"); continue; }
+            append_utf8(out, m);
+        }
+        return new_str(out);
+    }
+    {   // a codec a program registered (codecs.register): its decode(input, errors)[0]
+        var ci = registered_codec_(enc_in);
+        if (!ci.is_none()) return call2(ci.getattr("decode"), new_bytes(raw), new_str(errors)).getitem(var(0));
+    }
     raise(make_exc(E_LookupError, "unknown encoding: " + enc_in));
 }
 
@@ -286,6 +309,20 @@ var str_encode_(const std::string& s, const std::string& enc_in, const std::stri
             for (int k = 0; k < 4; k++) out.push_back((char)(be ? c >> (24 - 8 * k) : c >> (8 * k)));
         return new_bytes(out);
     }
+    if (const Charmap* cm = charmap_of(enc_in)) {
+        for (size_t i = 0; i < u.size(); i++) {
+            int found = -1;
+            for (int k = 255; k >= 0; k--)   // (a character two bytes give is the last one's, as charmap_build makes it)
+                if (cm->table[k] == u[i]) { found = k; break; }
+            if (found < 0) bad(i, "character maps to <undefined>");
+            else out.push_back((char)found);
+        }
+        return new_bytes(out);
+    }
+    {   // a codec a program registered (codecs.register): its encode(input, errors)[0]
+        var ci = registered_codec_(enc_in);
+        if (!ci.is_none()) return call2(ci.getattr("encode"), new_str(s), new_str(errors)).getitem(var(0));
+    }
     raise(make_exc(E_LookupError, "unknown encoding: " + enc_in));
 }
 
@@ -347,7 +384,7 @@ void init_bytes() {
         add_method(t, "__len__", [](const CallArgs& a) { return var((int64_t)B(a.pos[0])->s.size()); });
         add_method(t, "__getitem__", [](const CallArgs& a) { return bytes_getitem_(a.pos[0], a.pos.at(1)); });
         add_method(t, "__contains__", [](const CallArgs& a) { return var(B(a.pos[0])->s.find(barg(a.pos.at(1))) != std::string::npos); });
-        add_method(t, "__iter__", [](const CallArgs& a) { return iter(a.pos[0]); });
+        add_method(t, "__iter__", [](const CallArgs& a) { return layout_iter_(a.pos[0]); });
         add_method(t, "decode", [](const CallArgs& a) {
             return bytes_decode_(B(a.pos[0])->s, str_utf8(arg(a, 1, "encoding", "utf-8"_s)), str_utf8(arg(a, 2, "errors", "strict"_s)));
         });

@@ -557,16 +557,49 @@ static var popen_new(const CallArgs& a) {
     else if (stderr_v.is_none()) { herr = GetStdHandle(STD_ERROR_HANDLE); m_err = false; }
     else herr = handle_for(stderr_v, true, p->err_r, m_err);
     (void)m_err2;
-    si.hStdInput = hin;
-    si.hStdOutput = hout;
-    si.hStdError = herr;
+    // close_fds (CPython's default): the child inherits its three standard handles and nothing else
+    // (PROC_THREAD_ATTRIBUTE_HANDLE_LIST). Inheriting every inheritable handle let a long-lived child -- the
+    // background service -- hold its parent's pipes open, so whoever read them never saw their end.
+    std::vector<HANDLE> owned, inherit;
+    for (HANDLE* h : {&hin, &hout, &herr}) {
+        if (!*h || *h == INVALID_HANDLE_VALUE) continue;
+        DWORD flags = 0;
+        if (GetHandleInformation(*h, &flags) && !(flags & HANDLE_FLAG_INHERIT)) {   // (the parent's own std handle)
+            HANDLE d;
+            if (DuplicateHandle(GetCurrentProcess(), *h, GetCurrentProcess(), &d, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
+                owned.push_back(d);
+                *h = d;
+            }
+        }
+        if (std::find(inherit.begin(), inherit.end(), *h) == inherit.end()) inherit.push_back(*h);
+    }
+    STARTUPINFOEXW six{};
+    six.StartupInfo = si;
+    six.StartupInfo.cb = sizeof six;
+    six.StartupInfo.hStdInput = hin;
+    six.StartupInfo.hStdOutput = hout;
+    six.StartupInfo.hStdError = herr;
+    std::vector<char> attrs;
+    if (!inherit.empty()) {
+        SIZE_T n = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &n);
+        attrs.resize(n);
+        six.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrs.data());
+        if (!InitializeProcThreadAttributeList(six.lpAttributeList, 1, 0, &n) ||
+            !UpdateProcThreadAttribute(six.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit.data(),
+                                       inherit.size() * sizeof(HANDLE), nullptr, nullptr))
+            six.lpAttributeList = nullptr;
+    }
     std::wstring wcmd = wide_(cmd);
     std::wstring wcwd = cwd.is_none() ? L"" : wide_(fs_path(cwd));
     std::wstring blk = env_block(env);
     PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessW(nullptr, wcmd.data(), nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT | (DWORD)cflags.as_int64(),
-                             (LPVOID)blk.data(), cwd.is_none() ? nullptr : wcwd.c_str(), &si, &pi);
+    DWORD how = CREATE_UNICODE_ENVIRONMENT | (DWORD)cflags.as_int64() | (six.lpAttributeList ? EXTENDED_STARTUPINFO_PRESENT : 0);
+    BOOL ok = CreateProcessW(nullptr, wcmd.data(), nullptr, nullptr, !inherit.empty(), how, (LPVOID)blk.data(),
+                             cwd.is_none() ? nullptr : wcwd.c_str(), &six.StartupInfo, &pi);
     DWORD err = GetLastError();
+    if (six.lpAttributeList) DeleteProcThreadAttributeList(six.lpAttributeList);
+    for (HANDLE d : owned) CloseHandle(d);
     if (m_in) CloseHandle(hin);
     if (m_out) CloseHandle(hout);
     if (m_err) CloseHandle(herr);

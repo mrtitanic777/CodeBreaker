@@ -52,6 +52,7 @@ add_library(pyrt STATIC
   src/lib_async.cc    # sys's async generator hooks; the networking modules' registration
   src/lib_net.cc      # _socket and select over Winsock, _overlapped (IOCP) and _winapi: under CPython's socket, selectors, asyncio
   src/lib_mcp.cc      # the mcp package's surface CodeBreaker's MCP server uses (MCPServer over stdio, Client, ToolAnnotations): mcp 2.3's wire behaviour
+  src/lib_array.cc    # the array module (array.array: typed numbers as machine values; fontTools' tables)
   src/gc.cc           # the cycle collector (generations, finalizers, weak references): gc, weakref
   src/lib_rich.cc     # rich's Text, Table and Syntax (and markup) as the terminal interface uses them, rendered to cells
   src/lib_tui.cc      # textual's surface the terminal interface uses (ui/terminal.py): App, screens, widgets, CSS, bindings, the palette, over the Windows console

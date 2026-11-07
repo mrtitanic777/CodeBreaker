@@ -18,6 +18,7 @@ fontTools.fontBuilder
 fontTools.misc
 fontTools.misc.arrayTools
 fontTools.misc.bezierTools
+fontTools.misc.cython          # (bezierTools' stand-in for the cython package, which the program does not have)
 fontTools.misc.configTools
 fontTools.misc.encodingTools
 fontTools.misc.enumTools

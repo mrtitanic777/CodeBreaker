@@ -103,12 +103,14 @@ var new_iter(std::function<bool(var&)> next) {
 var dict_iter_(const var& d, int which);   // dict.cc: 0 keys, 1 values, 2 items
 var set_iter_(const var& s);
 
-var iter(const var& x) {
+// the iterator of a built-in container's own items, by its layout (an instance of a subclass too):
+// unbound when the layout has none. str's and bytes' __iter__ are this, so a subclass that inherits
+// them does not come back to iter() (which would find the same __iter__ again, without end)
+var layout_iter_(const var& x) {
     if (x.is_ref()) {
         Obj* o = x.ref();
         TypeObj* t = o->type;
-        if (t == T_iter || t == T_generator) return x;
-        if (t->builtin || !t->lookup("__iter__")) {
+        {
             switch (t->layout) {
             case Layout::List: {
                 var keep = x;
@@ -179,6 +181,19 @@ var iter(const var& x) {
             case Layout::Set: case Layout::FrozenSet: return set_iter_(x);
             default: break;
             }
+        }
+    }
+    return var();
+}
+
+var iter(const var& x) {
+    if (x.is_ref()) {
+        Obj* o = x.ref();
+        TypeObj* t = o->type;
+        if (t == T_iter || t == T_generator) return x;
+        if (t->builtin || !t->lookup("__iter__")) {
+            var it = layout_iter_(x);
+            if (!it.is_unbound()) return it;
         }
         var m;
         if (lookup_special(x, "__iter__", m)) return call0(m);

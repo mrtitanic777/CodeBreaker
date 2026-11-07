@@ -820,7 +820,7 @@ void init_str() {
     add_method(t, "__mul__", [](const CallArgs& a) { return a.pos[0] * a.pos.at(1); });
     add_method(t, "__mod__", [](const CallArgs& a) { return new_str(percent_format(a.pos[0], a.pos.at(1), false)); });
     add_method(t, "__format__", [](const CallArgs& a) { return new_str(format_spec(new_str(self_s(a)->s), str_utf8(a.pos.at(1)))); });
-    add_method(t, "__iter__", [](const CallArgs& a) { return iter(a.pos[0]); });
+    add_method(t, "__iter__", [](const CallArgs& a) { return layout_iter_(a.pos[0]); });
     add_method(t, "join", [](const CallArgs& a) { return str_join_(self_s(a)->s, a.pos.at(1)); });
     add_method(t, "split", [](const CallArgs& a) {
         const StrObj* s = self_s(a);

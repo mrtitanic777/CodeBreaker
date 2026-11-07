@@ -654,9 +654,58 @@ static std::string norm_encoding(std::string e) {
     if (e == "us_ascii" || e == "646") return "ascii";
     return e;
 }
+// codecs.register(search_function): the encodings a program adds (fontTools' Mac encodings), asked -- in the
+// order registered, with the name lowercased and its spaces made underscores, as _codecs.lookup does -- for
+// a name the runtime's own codecs do not know: str.encode and bytes.decode too (bytes.cc)
+static std::vector<var>* g_codec_searchers = new std::vector<var>();
+thread_local bool g_codec_builtin_only = false;   // (lookup asking whether the runtime has a codec itself)
+var registered_codec_(const std::string& name) {
+    if (g_codec_searchers->empty() || g_codec_builtin_only) return None;
+    std::string n;
+    for (char c : name) n.push_back(c == ' ' ? '_' : (char)tolower((unsigned char)c));
+    for (auto& f : *g_codec_searchers) {
+        var r = call1(f, new_str(n));
+        if (!r.is_none()) return r;
+    }
+    return None;
+}
 static void init_codecs(const var& m) {
-    var info = mkcls("CodecInfo", {t::tuple}, {}, "codecs");
+    // CodecInfo(encode, decode, streamreader=None, streamwriter=None, incrementalencoder=None,
+    // incrementaldecoder=None, name=None): a 4-tuple with those as attributes (codecs.py's)
+    var cins = new_dict();
+    cins.setitem("__new__"_s, def("__new__", "cls, encode, decode, streamreader=, streamwriter=, incrementalencoder=, incrementaldecoder=, name=, *, _is_text_encoding=",
+                                  {None, None, None, None, None, None}, [](var cls, var enc, var dec, var sr, var sw, var ie, var id, var name, var ite) -> var {
+        var self = t::tuple.getattr("__new__")({cls, new_tuple({enc, dec, sr, sw})});
+        self.setattr("name", name);
+        self.setattr("encode", enc);
+        self.setattr("decode", dec);
+        self.setattr("incrementalencoder", ie);
+        self.setattr("incrementaldecoder", id);
+        self.setattr("streamreader", sr);
+        self.setattr("streamwriter", sw);
+        if (!ite.is_none()) self.setattr("_is_text_encoding", ite);
+        return self;
+    }));
+    var info = make_class("CodecInfo", "CodecInfo", {t::tuple}, cins, {}, "codecs");
     mod_set(m, "CodecInfo", info);
+    // Codec: the base a codec class derives from (codecs.py's: encode / decode for the subclass to give)
+    var cdns = new_dict();
+    for (const char* meth : {"encode", "decode"})
+        cdns.setitem(new_str(meth), def(meth, "self, input, errors=", {"strict"_s}, [](var, var, var) -> var {
+            raise(E_NotImplementedError, "");
+        }));
+    mod_set(m, "Codec", make_class("Codec", "Codec", {}, cdns, {}, "codecs"));
+    mod_def(m, "register", [](const CallArgs& a) -> var {
+        var f = a.pos.at(0);
+        if (!callable(f).truthy()) raise(E_TypeError, "argument must be callable");
+        g_codec_searchers->push_back(f);
+        return None;
+    });
+    mod_def(m, "unregister", [](const CallArgs& a) -> var {
+        for (auto it = g_codec_searchers->begin(); it != g_codec_searchers->end(); ++it)
+            if (is(*it, a.pos.at(0))) { g_codec_searchers->erase(it); break; }
+        return None;
+    });
     mod_set(m, "BOM_UTF8", new_bytes("\xEF\xBB\xBF"));
     mod_set(m, "BOM_UTF16_LE", new_bytes(std::string("\xFF\xFE", 2)));
     mod_set(m, "BOM_UTF16_BE", new_bytes(std::string("\xFE\xFF", 2)));
@@ -674,12 +723,17 @@ static void init_codecs(const var& m) {
     mod_def(m, "lookup", [](const CallArgs& a) -> var {
         std::string e = norm_encoding(str_utf8(a.pos.at(0)));
         try {
+            g_codec_builtin_only = true;
             ""_s.call("encode", new_str(e));
+            g_codec_builtin_only = false;
         } catch (error& x) {
-            if (isinstance_(x.value, E_LookupError)) raise(E_LookupError, "unknown encoding: " + str_utf8(a.pos[0]));
-            throw;
+            g_codec_builtin_only = false;
+            if (!isinstance_(x.value, E_LookupError)) throw;
+            var found = registered_codec_(str_utf8(a.pos[0]));
+            if (!found.is_none()) return found;
+            raise(E_LookupError, "unknown encoding: " + str_utf8(a.pos[0]));
         }
-        var ci = call1(import("codecs").getattr("CodecInfo"), new_tuple({None, None, None, None}));
+        var ci = call2(import("codecs").getattr("CodecInfo"), None, None);
         ci.setattr("name", new_str(e == "utf_8" ? "utf-8" : e == "latin_1" ? "iso8859-1" : e));
         return ci;
     });
@@ -1006,6 +1060,35 @@ void init_extra_modules() {
     init_async_modules();                                   // (lib_async.cc: sys's asyncgen hooks; _socket, select, _overlapped, _winapi)
     register_native_module("jsonschema", init_jsonschema);
     register_native_module("codecs", init_codecs);
+    init_array_module();                                    // (lib_array.cc)
+    // encodings: the package's normalize_encoding (the codecs themselves are the runtime's: bytes.cc)
+    register_native_module("encodings", [](const var& m) {
+        mod_def(m, "normalize_encoding", [](const CallArgs& a) -> var {
+            var e = a.pos.at(0);
+            std::string s = is_bytes(e) ? bytes_raw(e) : str_utf8(e);
+            // runs of anything but letters, digits and '.' become one '_' (none at the start); non-ASCII
+            // letters are dropped
+            std::string out;
+            bool punct = false;
+            for (size_t i = 0; i < s.size(); i++) {
+                unsigned char c = (unsigned char)s[i];
+                if (c >= 0x80) {   // a non-ASCII character: a letter or digit dropped, else punctuation
+                    size_t n = (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+                    var ch = new_str(s.substr(i, n));
+                    i += n - 1;
+                    if (ch.call("isalnum").truthy()) punct = false;
+                    else punct = true;
+                    continue;
+                }
+                if (isalnum(c) || c == '.') {
+                    if (punct && !out.empty()) out.push_back('_');
+                    out.push_back((char)c);
+                    punct = false;
+                } else punct = true;
+            }
+            return new_str(out);
+        });
+    });
     register_native_module("_collections", init_collections_c);
     register_native_module("gettext", init_gettext);
     register_native_module("_random", init_random_c);

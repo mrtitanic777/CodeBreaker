@@ -330,6 +330,9 @@ void init_gen();
 void init_modules();          // the library modules: registered, made on first import
 using native_module_init = void (*)(const var& module);
 void register_native_module(const char* name, native_module_init init);
+var registered_codec_(const std::string& name);   // codecs.register's search functions' answer, or None (lib_extra.cc)
+void init_array_module();                         // lib_array.cc
+var layout_iter_(const var& x);                   // containers.cc: a built-in container's iterator by its layout
 void mod_set(const var& module, const char* name, const var& v);
 void mod_def(const var& module, const char* name, native_fn fn);
 
