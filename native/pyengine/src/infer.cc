@@ -2182,8 +2182,24 @@ static std::string sig_of(const T& t) {
     }
 }
 
+// (new) settings.get("<key>") of a key whose setting is a str: a path (settings.py's _PATHS) or a key whose
+// default is a str -- py::settings::get_str in the C++ (py_settings.hpp); other keys stay the Python's
+static bool str_setting(const std::string& k) {
+    static const std::set<std::string> KEYS = {
+        "corpus", "openwatcom", "build_cache", "decompiler_bin", "xex_bin", "tracer_bin", "formats_bin", "engine_bin", "dosexec_bin",
+        "symbols_bin", "invert_bin", "analyze_bin", "state", "powerpc_tools", "powerpc_lib", "period_compiler", "dosbox_x", "msc6",
+        "xenix_c", "masm", "nasm", "msvc152", "java", "retromcp", "xbox360_sdk", "host_cxx", "msbuild", "java_overlays", "java_libs",
+        "visual_studio", "ppc_binutils", "converted", "xbox360_keys", "xbox360_crypto_bin", "ilspycmd", "xna_overlays",
+        "win95_installed_hd", "target", "threads", "struct_recovery"};
+    return KEYS.count(k) != 0;
+}
+
 TR Eval::call_fn(const A::Call* n, Fn* f, const std::vector<std::optional<T>>& args, const OMap<std::optional<T>>& kw, bool bound) {
     if (f->kind == "property") return issue(n, "conflict", "calling a property");
+    if (p.extended && f->qname == "codebreaker.base.settings.get" && n->args.size() == 1 && n->keywords.empty()) {
+        std::string key;
+        if (is_str_const(n->args[0], &key) && str_setting(key)) return TR(STR(), Res("settings_str", key));
+    }
     if (p.extended && f->qname == "codebreaker.formats.native.call" && !n->args.empty()) {   // native.call("q", data, ...)
         std::string q;
         if (is_str_const(n->args[0], &q)) {

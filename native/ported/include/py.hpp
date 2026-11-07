@@ -2336,3 +2336,4 @@ inline double float_from_str(const str& s) {
 }  // namespace py
 
 #include "py_os.hpp"   // files in every mode, os / os.path / shutil / time, hashlib, re, generators, variants
+#include "py_settings.hpp"   // settings.get of a str setting

@@ -2752,6 +2752,8 @@ public:
             return c;
         }
         if (kind == "std") return std_call(n, *r, t);
+        if (kind == "settings_str")   // (new) settings.get("<key>") of a str setting (py_settings.hpp)
+            return mk_pyfn("settings.get_str", {mk_lit(py::V(r->A()), STRT())}, STRT(), nullptr, n->pos.lineno);
         if (kind == "native_call") {   // native.call("q", data, args...): the question asked (answers.cc), typed
             if (!n->keywords.empty() || n->args.size() < 2) throw Refused("dynamic", "native.call with keywords", line);
             std::vector<IRP> args;

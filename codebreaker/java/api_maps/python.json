@@ -675,7 +675,7 @@
     }
    }
   },
-  "builtins.none_iter": {"signature": "", "maps": {"cpp": {"target": "py::none_iter({0})", "kind": "shim", "note": "for v in x where x may be None: x, or TypeError"}}}, "builtins.none_attr": {"signature": "", "maps": {"cpp": {"target": "py::none_attr({0}, {1})", "kind": "shim", "note": "x.attr where x may be None: x, or AttributeError"}}}, "os.fspath": {"signature": "", "maps": {"cpp": {"target": "{0}", "kind": "macro", "note": "a path that is a str: itself"}}}, "os.path.getsize": {
+  "settings.get_str": {"signature": "", "maps": {"cpp": {"target": "py::settings::get_str({0})", "kind": "shim", "note": "settings.get of a str setting (py_settings.hpp)"}}}, "builtins.none_iter": {"signature": "", "maps": {"cpp": {"target": "py::none_iter({0})", "kind": "shim", "note": "for v in x where x may be None: x, or TypeError"}}}, "builtins.none_attr": {"signature": "", "maps": {"cpp": {"target": "py::none_attr({0}, {1})", "kind": "shim", "note": "x.attr where x may be None: x, or AttributeError"}}}, "os.fspath": {"signature": "", "maps": {"cpp": {"target": "{0}", "kind": "macro", "note": "a path that is a str: itself"}}}, "os.path.getsize": {
    "signature": "",
    "maps": {
     "cpp": {

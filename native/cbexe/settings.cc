@@ -315,4 +315,28 @@ void init(const var& m) {
 
 const bool registered = (py::register_native_module("codebreaker.base.settings", init), true);
 
+// the typed code's settings.get (py_settings.hpp): this module's get, looked up at each call so a patch of
+// settings.get is what typed code sees too; a value that is not a str is the TypeError a str caller meets
+bool typed_get(const std::string& key, std::string& value, std::string& exc_type, std::string& exc_msg) {
+    try {
+        var v = py::import("codebreaker.base.settings").getattr("get")({S(key)});
+        if (!py::is_str(v)) {
+            exc_type = "TypeError";
+            exc_msg = "settings.get(" + py::str_utf8(py::repr(S(key))) + "): the setting is not a str";
+            return false;
+        }
+        value = py::str_utf8(v);
+        return true;
+    } catch (py::error& e) {
+        exc_type = py::str_utf8(py::type(e.value).getattr("__name__"));
+        exc_msg = py::str_utf8(py::str(e.value));
+        return false;
+    }
+}
+
 }  // namespace
+
+namespace pyisl {
+void set_settings_hook(bool (*get)(const std::string&, std::string&, std::string&, std::string&));   // (islands.cpp)
+}
+static const bool typed_hooked = (pyisl::set_settings_hook(&typed_get), true);
