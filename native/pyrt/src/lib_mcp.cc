@@ -17,6 +17,8 @@
 #include <io.h>
 
 #include <algorithm>
+#include <memory>
+#include <mutex>
 #include <cmath>
 #include <cstring>
 
@@ -644,12 +646,33 @@ static void run_stdio(Server* s) {
     var json = import("json");
     std::string buf;
     char chunk[65536];
-    auto write_line = [&](const std::string& line) {
+    // the protocol's stdout: a line written whole (calls answer from their own threads)
+    struct Wire {
+        HANDLE out;
+        std::mutex mu;
+    };
+    auto wire = std::make_shared<Wire>();
+    wire->out = out;
+    auto write_line = [wire](const std::string& line) {
         std::string l = line + "\n";
         DWORD n;
         gil_release g;
-        WriteFile(out, l.data(), (DWORD)l.size(), &n, nullptr);
-        FlushFileBuffers(out);
+        std::lock_guard<std::mutex> lock(wire->mu);
+        WriteFile(wire->out, l.data(), (DWORD)l.size(), &n, nullptr);
+        FlushFileBuffers(wire->out);
+    };
+    // tools/call runs on a thread of its own, as mcp runs a tool in a worker thread: a long tool does not
+    // hold back the requests after it (the others are answered in order, on this thread)
+    var thread_cls = import("threading").getattr("Thread");
+    std::vector<var> calls;
+    auto answer = [s, write_line](const var& m) {
+        var r;
+        try {
+            r = dispatch(s, m);
+        } catch (error& e) {
+            r = dict_of({{"jsonrpc", "2.0"_s}, {"id", m.call("get", "id"_s)}, {"error", rpc_error(-32603, str_(e.value))}});
+        }
+        if (!r.is_none()) write_line(to_json(r));
     };
     for (;;) {
         size_t nlp = buf.find('\n');
@@ -678,15 +701,23 @@ static void run_stdio(Server* s) {
         std::vector<var> batch = is_list(msg) ? collect(msg) : std::vector<var>{msg};
         for (auto& m : batch) {
             if (!isinstance_(m, T_dict)) continue;
-            var r;
-            try {
-                r = dispatch(s, m);
-            } catch (error& e) {
-                r = dict_of({{"jsonrpc", "2.0"_s}, {"id", m.call("get", "id"_s)}, {"error", rpc_error(-32603, str_(e.value))}});
-            }
-            if (!r.is_none()) write_line(to_json(r));
+            var method = m.call("get", "method"_s);
+            if (is_str(method) && str_utf8(method) == "tools/call") {
+                calls.erase(std::remove_if(calls.begin(), calls.end(), [](const var& t) { return !t.call("is_alive").truthy(); }),
+                            calls.end());
+                CallArgs a;
+                a.kw.push_back({"target"_s, new_native("tools/call", [answer, m](const CallArgs&) -> var {
+                                    answer(m);
+                                    return None;
+                                })});
+                a.kw.push_back({"daemon"_s, var(true)});
+                var t = call_obj(thread_cls, a);
+                t.call("start");
+                calls.push_back(t);
+            } else answer(m);
         }
     }
+    for (auto& t : calls) t.call("join");   // (the calls still running answer before the server ends)
     CloseHandle(out);
 }
 

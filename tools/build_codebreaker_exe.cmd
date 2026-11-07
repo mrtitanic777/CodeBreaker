@@ -27,5 +27,12 @@ if "%1"=="fast" (
   set EXTRA=-DCMAKE_CXX_FLAGS_RELEASE=/Od
 )
 if not exist "%B%\build.ninja" cmake -S "%OUT%" -B "%B%" -G Ninja -DCMAKE_BUILD_TYPE=Release %EXTRA% >nul || exit /b 1
+rem A codebreaker.exe that is running (the background service, an MCP server) cannot be overwritten, but it
+rem can be renamed: moved aside, the link writes a new one and the running one goes on. Old ones are deleted
+rem once nothing runs them.
+del /q "%B%\codebreaker.old-*.exe" >nul 2>&1
+if exist "%B%\codebreaker.exe" (
+  2>nul (>>"%B%\codebreaker.exe" call ) || move /y "%B%\codebreaker.exe" "%B%\codebreaker.old-%RANDOM%%RANDOM%.exe" >nul
+)
 cmake --build "%B%" -j 2
 exit /b %ERRORLEVEL%
