@@ -2195,18 +2195,7 @@ public:
             TyP ft = ty(t, n, "captured " + n->id);
             return mk_name(sym("local", n->id, r->A(), false, ft), ft);
         }
-        if (r->k == "const" && n->id == "__file__" && p.extended)   // (new) the module's source file, as python names it
-            return mk_lit(py::V(module_file(f->module)), STRT());
         throw Refused("dynamic", r->k + " " + n->id + " as a value", line);
-    }
-
-    // __file__: the module's .py as an absolute path, the separators the system's (what the program's own
-    // module_def records for it, so the typed and the translated program agree)
-    static std::string module_file(const Module* m) {
-        std::error_code ec;
-        auto a = std::filesystem::absolute(std::filesystem::u8path(m->path), ec);
-        auto u8 = (ec ? std::filesystem::u8path(m->path) : a).lexically_normal().make_preferred().u8string();
-        return std::string(u8.begin(), u8.end());
     }
 
     IRP narrowed(const IRP& e, const TyP& flow) {
