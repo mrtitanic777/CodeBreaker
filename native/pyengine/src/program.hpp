@@ -277,6 +277,10 @@ public:
     int stub_files = 0;
     int apply_stub_hints();
     void load_stub(const std::string& module, const std::string& source);
+    // (new) a method reached by getattr(self, "x_" + type(e).__name__)(e): its parameter is an instance of the class
+    // its name ends in (x_Unary: ir.Unary) -- the dispatch's key is that class's name
+    std::map<std::string, std::pair<std::string, T>> dispatch_param;
+    void dispatch_hints();
     // (new) getattr(obj, 'name'[, default]) with a constant name: 1 the attribute is always there (a
     // method, a class attribute, or set at the top of __init__ in obj's class or a base), 2 it is never
     // there (no class of the hierarchy, up or down, has or stores it), 0 it may or may not be

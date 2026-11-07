@@ -235,6 +235,66 @@ void Program::index() {
     }
     for (auto& [q, f] : fns) index_fn(f);
     for (auto& [q, f] : nested) index_fn(f);
+    if (extended) dispatch_hints();
+}
+
+void Program::dispatch_hints() {
+    std::map<std::string, std::vector<std::string>> by_name;   // a class's simple name -> the classes so named
+    for (auto& [q, c] : classes) by_name[c->name].push_back(q);
+    for (auto& [cq, c] : classes) {
+        std::set<std::string> prefixes;
+        for (auto& [_, m] : c->methods) {
+            if (m->params.empty()) continue;
+            for (const AnyNode& x : walk(AnyNode(m->node))) {
+                auto* call = as<pyfront::Call>(x.expr());
+                auto* fname = call ? as<pyfront::Name>(call->func) : nullptr;
+                if (!fname || fname->id != "getattr" || call->args.size() < 2) continue;
+                auto* obj = as<pyfront::Name>(call->args[0]);
+                auto* add = as<BinOp>(call->args[1]);
+                if (!obj || obj->id != m->params[0] || !add || add->op != OpKind::Add) continue;
+                std::string prefix;
+                auto* nm = as<Attribute>(add->right);   // type(e).__name__
+                auto* tc = nm ? as<pyfront::Call>(nm->value) : nullptr;
+                auto* tf = tc ? as<pyfront::Name>(tc->func) : nullptr;
+                if (is_str_const(add->left, &prefix) && !prefix.empty() && nm && nm->attr == "__name__" && tf && tf->id == "type" &&
+                    tc->args.size() == 1)
+                    prefixes.insert(prefix);
+            }
+        }
+        if (prefixes.empty()) continue;
+        std::vector<Class*> todo = {c};   // the class and its subclasses: the methods the dispatch can reach
+        std::set<std::string> seen;
+        while (!todo.empty()) {
+            Class* k = todo.back();
+            todo.pop_back();
+            if (!seen.insert(k->qname).second) continue;
+            for (auto& sq : k->subclasses)
+                if (Class** sc = classes.get(sq)) todo.push_back(*sc);
+            for (auto& [mname, m] : k->methods)
+                for (auto& pre : prefixes) {
+                    if (mname.size() <= pre.size() || mname.compare(0, pre.size(), pre) != 0) continue;
+                    auto bn = by_name.find(mname.substr(pre.size()));
+                    if (bn == by_name.end()) continue;
+                    if (m->params.size() != 2 || !m->varargs.empty() || m->annotations.has(m->params[1])) continue;
+                    // the class of that name: the only one, or the only one of a module the visitor's module imports
+                    // (ir.Unary of the L2 IR, not the Java front end's Unary)
+                    std::vector<std::string> cands = bn->second;
+                    if (cands.size() > 1) {
+                        std::vector<std::string> near;
+                        for (auto& q : cands) {
+                            Class* cc = *classes.get(q);
+                            bool imported = cc->module == m->module;
+                            for (auto& [__, r] : m->module->imports)
+                                if ((r.k == "module" && r.a == cc->module->name) || (r.k == "obj" && r.a == cc->module->name)) imported = true;
+                            if (imported) near.push_back(q);
+                        }
+                        cands = near;
+                    }
+                    if (cands.size() != 1) continue;
+                    dispatch_param[m->qname] = {m->params[1], named(TK::Inst, cands[0])};
+                }
+        }
+    }
 }
 
 void Program::index_nested(Fn* parent) {
@@ -673,6 +733,8 @@ T Program::param_type(Fn* f, const std::string& name) {
         if (at.kind == TK::Int) t = t.kind == TK::Int ? t : at;
         else if (at.kind != TK::Bottom) t = at;
     }
+    if (auto dp = dispatch_param.find(f->qname); dp != dispatch_param.end() && dp->second.first == name)
+        t = join(t, dp->second.second);   // (reached by a getattr dispatch on its class's name)
     if (f->defaults.has(name)) {
         auto it = default_types.find(f->qname + "\x1f" + name);
         if (it != default_types.end()) t = join(t, it->second);
