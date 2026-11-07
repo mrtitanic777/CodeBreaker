@@ -2,9 +2,8 @@
   "mcpServers": {
     "codebreaker": {
       "type": "stdio",
-      "command": "C:/Python314/python.exe",
-      "args": ["-P", "-m", "codebreaker", "mcp"],
-      "env": {"PYTHONPATH": "C:/Users/mrtit/Documents/GitHub/CodeBreaker"}
+      "command": "C:/Users/mrtit/Documents/GitHub/CodeBreaker/state/cxx/codebreaker/build/codebreaker.exe",
+      "args": ["mcp"]
     }
   }
 }
