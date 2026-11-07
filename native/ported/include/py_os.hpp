@@ -112,20 +112,16 @@ class file {
             x->has_newline = true;
             x->newline = newline->utf8();
         }
-        const std::u32string& u = path.u32();
-        for (size_t i = 0; i < u.size(); i++) {   // (what Windows will not take in a name)
-            char32_t c = u[i];
+        for (char32_t c : path.u32())
             if (c == 0) throw ValueError("embedded null character");
-            if (c < 32 || c == '<' || c == '>' || c == '"' || c == '|' || c == '?' || c == '*' ||
-                (c == ':' && i != 1))   // (a colon past the drive names a stream: Windows refuses most)
-                throw OSError("[Errno 22] Invalid argument: " + repr(path).utf8());
-        }
+        if (path.empty()) throw FileNotFoundError("[Errno 2] No such file or directory: ''");   // (the C runtime says EINVAL)
         fs_::path p = fspath_(path);
         std::error_code ec;
         bool exists = fs_::exists(p, ec);
         if (fs_::is_directory(p, ec)) throw PermissionError("[Errno 13] Permission denied: " + repr(path).utf8());
         if (kind == 'x' && exists) throw FileExistsError("[Errno 17] File exists: " + repr(path).utf8());
-        if (kind == 'r' && !exists) throw FileNotFoundError("[Errno 2] No such file or directory: " + repr(path).utf8());
+        // (otherwise the system decides, as for Python: a name it will not take is EINVAL, OSError; a missing
+        // file or folder ENOENT, FileNotFoundError -- "^\s*x" is the latter, its "folder" ^ being absent)
         std::wstring m = kind == 'r' ? (plus ? L"r+b" : L"rb") : kind == 'w' || kind == 'x' ? (plus ? L"w+b" : L"wb") : (plus ? L"a+b" : L"ab");
 #ifdef _WIN32
         x->f = _wfopen(p.wstring().c_str(), m.c_str());
@@ -133,9 +129,11 @@ class file {
         x->f = std::fopen(p.string().c_str(), std::string(m.begin(), m.end()).c_str());
 #endif
         if (!x->f) {
-            if (!fs_::exists(p.parent_path().empty() ? fs_::path(".") : p.parent_path(), ec))
-                throw FileNotFoundError("[Errno 2] No such file or directory: " + repr(path).utf8());
-            throw PermissionError("[Errno 13] Permission denied: " + repr(path).utf8());
+            int e = errno;
+            if (e == ENOENT) throw FileNotFoundError("[Errno 2] No such file or directory: " + repr(path).utf8());
+            if (e == EACCES) throw PermissionError("[Errno 13] Permission denied: " + repr(path).utf8());
+            if (e == EEXIST) throw FileExistsError("[Errno 17] File exists: " + repr(path).utf8());
+            throw OSError("[Errno " + std::to_string(e) + "] " + std::strerror(e) + ": " + repr(path).utf8());
         }
         file out;
         out.h_ = x;
@@ -253,6 +251,17 @@ inline file open_rb(const str& path) { return file::open(path, str("rb")); }
 
 // ------------------------------------------------------------------------------------------ os
 namespace os {
+// (CPython's mapping of the system's error codes to its OSError subclasses)
+[[noreturn]] inline void raise_os_(const std::error_code& ec, const str& path) {
+    std::string msg = "[WinError " + std::to_string(ec.value()) + "] " + ec.message() + ": " + repr(path).utf8();
+    switch (ec.value()) {
+        case 2: case 3: case 15: case 53: case 67: case 161: throw FileNotFoundError(msg);   // (file, path, drive, network names)
+        case 5: case 32: case 33: throw PermissionError(msg);
+        case 80: case 183: throw FileExistsError(msg);
+        case 267: throw NotADirectoryError(msg);
+        default: throw OSError(msg);   // (123, an invalid name, among them)
+    }
+}
 inline str fspath(const str& p) { return p; }   // (a path that is a str: itself)
 inline const str sep = str("\\");
 inline const str altsep = str("/");
@@ -425,25 +434,62 @@ inline void rename(const str& a, const str& b) {
     if (fs_::exists(fspath_(b), ec)) throw FileExistsError("[WinError 183] Cannot create a file when that file already exists: " + repr(a).utf8());
     replace(a, b);
 }
-// os.walk(top): (dirpath, dirnames, filenames) top-down, each folder's names in the order listdir gives
-inline std::vector<std::tuple<str, list<str>, list<str>>> walk(const str& top) {
-    std::vector<std::tuple<str, list<str>, list<str>>> out;
-    std::error_code ec;
-    if (!fs_::is_directory(fspath_(top), ec)) return out;
-    std::vector<str> todo{top};
-    while (!todo.empty()) {
-        str d = todo.back();
-        todo.pop_back();
-        list<str> dirs, files;
-        for (const auto& e : fs_::directory_iterator(fspath_(d), ec)) {
-            std::error_code e2;
-            (e.is_directory(e2) ? dirs : files).append(str(e.path().filename().u8string()));
+// os.walk(top): (dirpath, dirnames, filenames) top-down, lazily, as CPython's: a folder is read when the loop
+// reaches it, and the folders gone into are the ones in dirnames when the loop moves on (dirs[:] = ... prunes
+// or reorders them, as it does Python's); a folder that cannot be read is passed over, a link to one not gone into
+class walk_t {
+    str top_;
+
+  public:
+    explicit walk_t(const str& top) : top_(top) {}
+    struct iterator {
+        std::vector<str> todo;
+        std::tuple<str, list<str>, list<str>> cur;
+        bool done = true;
+        void fill() {
+            while (!todo.empty()) {
+                str d = todo.back();
+                todo.pop_back();
+                std::error_code ec;
+                fs_::directory_iterator it(fspath_(d), ec);
+                if (ec) continue;
+                list<str> dirs, files;
+                for (; it != fs_::directory_iterator(); it.increment(ec)) {
+                    std::error_code e2;
+                    (it->is_directory(e2) ? dirs : files).append(str(it->path().filename().u8string()));
+                    if (ec) break;
+                }
+                cur = std::make_tuple(d, dirs, files);
+                done = false;
+                return;
+            }
+            done = true;
         }
-        out.emplace_back(d, dirs, files);
-        for (int64_t i = dirs.size() - 1; i >= 0; i--) todo.push_back(path::join(d, dirs[i]));
+        iterator& operator++() {
+            const str& d = std::get<0>(cur);
+            const list<str>& dirs = std::get<1>(cur);
+            for (int64_t i = dirs.size() - 1; i >= 0; i--) {
+                str sub = path::join(d, dirs[i]);
+                std::error_code ec;
+                if (!fs_::is_symlink(fspath_(sub), ec)) todo.push_back(sub);
+            }
+            fill();
+            return *this;
+        }
+        const std::tuple<str, list<str>, list<str>>& operator*() const { return cur; }
+        bool operator!=(const iterator& o) const { return done != o.done; }
+        bool operator==(const iterator& o) const { return done == o.done; }
+    };
+    iterator begin() const {
+        iterator it;
+        std::error_code ec;
+        if (fs_::is_directory(fspath_(top_), ec)) it.todo.push_back(top_);
+        it.fill();
+        return it;
     }
-    return out;
-}
+    iterator end() const { return iterator{}; }
+};
+inline walk_t walk(const str& top) { return walk_t(top); }
 }  // namespace os
 
 namespace shutil {
@@ -827,7 +873,18 @@ class Pattern {
 
   public:
     Pattern() = default;
-    Pattern(const str& p, int64_t flags) : r_(&::re::rx(p.utf8(), flags_(flags))) {}
+    Pattern(const str& p, int64_t flags) : r_(rx_(p, flags)) {}
+    // pyre's errors as Python's: re.error is PatternError
+    template <class F> static auto pyre_(F f) -> decltype(f()) {
+        try {
+            return f();
+        } catch (const ::re::Error& e) {
+            if (e.kind == "PatternError") throw PatternError(e.what());
+            if (e.kind == "IndexError") throw IndexError(e.what());
+            throw ValueError(e.what());
+        }
+    }
+    static const ::re::Regex* rx_(const str& p, int64_t flags) { return pyre_([&] { return &::re::rx(p.utf8(), flags_(flags)); }); }
     const ::re::Regex& rx() const { return *r_; }
     str pattern() const { return str(r_->pattern()); }
     int64_t groups() const { return r_->groups(); }
@@ -873,7 +930,7 @@ class Pattern {
         return out;
     }
     str sub(const str& repl, const str& s, int64_t count = 0) const {
-        return str(r_->sub(repl.utf8(), s.utf8(), static_cast<int>(count)));
+        return str(pyre_([&] { return r_->sub(repl.utf8(), s.utf8(), static_cast<int>(count)); }));
     }
     template <class F> str sub_fn(const F& fn, const str& s, int64_t count = 0) const {
         return str(r_->sub_fn([&](const ::re::Match& m) { return fn(Match(m)).utf8(); }, s.utf8(), static_cast<int>(count)));

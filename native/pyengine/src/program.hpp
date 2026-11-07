@@ -132,6 +132,7 @@ struct Module {
     OMap<std::vector<const A::Expr*>> assigns;   // nullptr: an unpacking
     OMap<Ref> imports;
     std::vector<const A::Stmt*> statements;
+    std::set<std::string> shadowed;      // a def's name an import after it rebinds: the name is the import's
     bool is_package = false;
     bool has_docstring = false;
 };

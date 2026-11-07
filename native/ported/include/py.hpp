@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cerrno>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -105,6 +106,8 @@ PY_EXCEPTION(FileNotFoundError, OSError)
 PY_EXCEPTION(PermissionError, OSError)
 PY_EXCEPTION(TimeoutError, OSError)
 PY_EXCEPTION(StructError, Exception)  // struct.error
+PY_EXCEPTION(PatternError, Exception)  // re.error (re.PatternError)
+PY_EXCEPTION(MemoryError, Exception)
 #undef PY_EXCEPTION
 #undef PY_TEXT_CTOR
 
@@ -2100,6 +2103,8 @@ inline int64_t crc32(const bytes& b, int64_t start = 0) {
 // (files: py_os.hpp, included at the end)
 
 namespace os {
+// an OS call's failure as Python raises it: the exception by the system's own error code (py_os.hpp)
+[[noreturn]] inline void raise_os_(const std::error_code& ec, const str& path);
 namespace path {
 inline bool sep_(char32_t c) { return c == '\\' || c == '/'; }
 // ntpath.splitdrive for the forms the tools meet: "C:..." and "\\server\share..."
@@ -2176,7 +2181,7 @@ inline bool isdir(const str& s) { std::error_code ec; return std::filesystem::is
 inline int64_t getsize(const str& s) {
     std::error_code ec;
     auto n = std::filesystem::file_size(std::filesystem::u8path(s.utf8()), ec);
-    if (ec) throw FileNotFoundError("cannot stat " + s.utf8());
+    if (ec) raise_os_(ec, s);
     return static_cast<int64_t>(n);
 }
 inline str normcase(const str& s) { return str(s.lower().u32()).replace(str("/"), str("\\")); }
@@ -2185,7 +2190,7 @@ inline list<str> listdir(const str& s) {
     list<str> out;
     std::error_code ec;
     auto it = std::filesystem::directory_iterator(std::filesystem::u8path(s.utf8()), ec);
-    if (ec) throw FileNotFoundError("cannot list " + s.utf8());
+    if (ec) raise_os_(ec, s);
     for (const auto& e : it) out.append(str(e.path().filename().u8string()));
     return out;
 }

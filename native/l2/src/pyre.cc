@@ -745,7 +745,7 @@ std::string Regex::sub(const std::string& repl, const std::string& s, int count)
         // (Python's template: parsed whole before any match, so a bad one raises even where nothing matches)
         size_t at = i;
         char e = repl[++i];
-        auto bad = [&](const std::string& m) { py::raise("PatternError", m + " at position " + std::to_string(at)); };
+        auto bad = [&](const std::string& m) { throw Error("PatternError", m + " at position " + std::to_string(at)); };
         auto oct = [](char ch) { return ch >= '0' && ch <= '7'; };
         auto group_ref = [&](int g) {
             if (g > ngroups_) bad("invalid group reference " + std::to_string(g));
@@ -783,7 +783,7 @@ std::string Regex::sub(const std::string& repl, const std::string& s, int count)
                 if (!ident) bad("bad character in group name '" + name + "'");
                 for (auto& nm : names_)
                     if (nm.first == name) g = nm.second;
-                if (g < 0) py::raise("IndexError", "unknown group name '" + name + "'");
+                if (g < 0) throw Error("IndexError", "unknown group name '" + name + "'");
             }
             group_ref(g);
             i = close;

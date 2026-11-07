@@ -198,6 +198,8 @@ Eval& Eval::run() {
     State state;
     if (!f->varargs.empty() || !f->kwargs.empty()) issue(node, "dynamic", !f->varargs.empty() ? "*args" : "**kwargs");
     if (f->kind == "async") issue(node, "dynamic", "async");
+    if (!f->cls && f->module && f->module->shadowed.count(f->name))   // (no one can call it: its name is an import's)
+        issue(node, "dynamic", "module name " + f->name + " rebound by a later import");
     // (new) decorators that leave the function's own behaviour as written: native_first answers by
     // the C++ the gate already holds equal to this body; the caches only remember results
     static const std::set<std::string> TRANSPARENT = {"native_first", "lru_cache", "cache"};

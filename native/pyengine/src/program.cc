@@ -417,6 +417,8 @@ void Program::index_stmt(Module* m, const A::Stmt* st) {
         }
         case StmtKind::Import:
             for (auto* a : cast<Import>(st)->names) {
+                std::string local = a->has_asname ? a->asname : a->name.substr(0, a->name.find('.'));
+                if (m->functions.has(local) || m->classes.has(local)) m->shadowed.insert(local);   // (rebound after its def)
                 if (a->has_asname) {
                     m->imports.set(a->asname, module_ref(a->name));
                 } else {
@@ -432,6 +434,7 @@ void Program::index_stmt(Module* m, const A::Stmt* st) {
                 if (a->name == "*") continue;
                 std::string local = a->has_asname ? a->asname : a->name;
                 std::string full = base.empty() ? a->name : base + "." + a->name;
+                if (m->functions.has(local) || m->classes.has(local)) m->shadowed.insert(local);   // (rebound after its def)
                 if (modules.has(full)) m->imports.set(local, Ref{"module", full, ""});
                 else if (modules.has(base)) m->imports.set(local, Ref{"obj", base, a->name});
                 else m->imports.set(local, Ref{"extern", full, ""});
@@ -520,8 +523,9 @@ std::string Program::from_base(Module* m, const A::ImportFrom* st) {
 
 Ref Program::resolve_global(Module* m, const std::string& name) {
     static int depth = 0;
-    if (Fn** f = m->functions.get(name)) return Ref{"fn", (*f)->qname, ""};
-    if (Class** c = m->classes.get(name)) return Ref{"class", (*c)->qname, ""};
+    bool def_live = !m->shadowed.count(name);   // (a def an import after it rebinds: the name is the import's)
+    if (Fn** f = def_live ? m->functions.get(name) : nullptr) return Ref{"fn", (*f)->qname, ""};
+    if (Class** c = def_live ? m->classes.get(name) : nullptr) return Ref{"class", (*c)->qname, ""};
     if (m->assigns.has(name)) return Ref{"global", m->name, name};
     const Ref* imp = m->imports.get(name);
     if (!imp) return Ref{};

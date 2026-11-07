@@ -376,6 +376,7 @@ inline cbf_call_fn entry() {
     if (name == "UnicodeEncodeError") throw UnicodeEncodeError(msg);
     if (name == "PermissionError") throw PermissionError(msg);
     if (name == "AssertionError") throw AssertionError(msg);
+    if (name == "MemoryError") throw MemoryError(msg);
     throw RuntimeError(name + ": " + msg);
 }
 
