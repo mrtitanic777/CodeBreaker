@@ -531,10 +531,16 @@ def chain(a: int) -> int:
     p = q = a + 1
     return p + q
 
+def first_big(xs: list[int]) -> int:
+    return next((x * 2 for x in xs if x > 3), -1)
+
+def first_name(names: list[str]):
+    return next((n for n in names if n.startswith("a")), None)
+
 def run():
-    return P().set(1, 2) + chain(3)
-)PY"}});
-    for (auto q : {"pkg.m.P.set", "pkg.m.chain"}) CHECK(r.ok(q), "%s: %s", q, r.why(q).c_str());
+    return P().set(1, 2) + chain(3) + first_big([1, 5]) + len(first_name(["b", "ab"]) or "")
+)PY"}}, true, "checked");
+    for (auto q : {"pkg.m.P.set", "pkg.m.chain", "pkg.m.first_big", "pkg.m.first_name"}) CHECK(r.ok(q), "%s: %s", q, r.why(q).c_str());
     std::string u = r.unit("pkg.m");
     CHECK(has(u, "parts") && has(u, "value"), "the temporaries: %s", u.substr(0, 400).c_str());
 }

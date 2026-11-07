@@ -465,6 +465,20 @@ static const std::set<std::string> DYNAMIC_BUILTINS = {"getattr", "setattr", "ha
                                                        "locals", "callable", "issubclass", "exec", "eval", "compile", "iter", "next",
                                                        "memoryview", "input"};
 
+// a value whose evaluation can call, raise or change nothing
+static bool plain_value(const A::Expr* e) {
+    switch (e->kind) {
+        case ExprKind::Name: case ExprKind::Constant: return true;
+        case ExprKind::Attribute: return plain_value(cast<Attribute>(e)->value);
+        case ExprKind::UnaryOp: return cast<UnaryOp>(e)->operand->kind == ExprKind::Constant;
+        case ExprKind::Tuple:
+            for (auto* x : cast<Tuple>(e)->elts)
+                if (!plain_value(x)) return false;
+            return true;
+        default: return false;
+    }
+}
+
 static void drop_set_order(Eval& ev, const A::Call* n) {
     auto& is = ev.issues;
     is.erase(std::remove_if(is.begin(), is.end(), [&](const Issue& i) { return i.detail == "set iteration order" && i.line == n->pos.lineno; }), is.end());
@@ -572,6 +586,14 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
             if (at && at->kind != TK::Top && always_has(p, ot.name(), an)) return TR(*at, Res("getattr_attr", an));
             if (!at && n->args.size() == 3) return TR(ev(n->args[2], state), Res("getattr_default", an));
         }
+    }
+    // next(<generator with one for>, default): the first item, or the default; a loop that stops at the
+    // first. The default is evaluated before the loop, so it must be free of effects (a name, constant, attribute)
+    if (name == "next" && p.extended && n->args.size() == 2 && n->keywords.empty() && n->args[0]->kind == ExprKind::GeneratorExp &&
+        cast<GeneratorExp>(n->args[0])->generators.size() == 1 && plain_value(n->args[1])) {
+        T e = gen_elem(cast<GeneratorExp>(n->args[0]), state).first;
+        T d = (args.size() > 1 && args[1]) ? *args[1] : ev(n->args[1], state);
+        return TR(p.join(e, d), Res("builtin", std::string("next")));
     }
     if (DYNAMIC_BUILTINS.count(name)) return issue(n, "dynamic", name);
     T bad;

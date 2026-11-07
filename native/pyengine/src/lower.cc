@@ -1854,6 +1854,21 @@ public:
         return acc;
     }
 
+    // next(<generator>, default): first = default; for (...) if (<filter>) { first = <item>; break; }
+    IRP next_first(const A::Call* n, const TyP& rt) {
+        auto* g = cast<GeneratorExp>(n->args[0]);
+        std::string name = new_tmp("first");
+        local_types[name] = rt;
+        declared.insert(name);
+        IRP acc = name_expr(name);
+        std::vector<IRP> stmts = {local(name, rt, coerce(expr(n->args[1]), rt))};
+        auto take = [&]() -> IRP { return block_n({exprstmt(assign_e(std::nullopt, acc, coerce(expr(g->elt), rt), rt)), node("Break")}); };
+        auto loops = gen_loops(g->generators, 0, take);
+        stmts.insert(stmts.end(), loops.begin(), loops.end());
+        pre.insert(pre.end(), stmts.begin(), stmts.end());
+        return acc;
+    }
+
     // -- records
     bool is_record_literal(const A::Expr* n) {
         auto it = ev.types.find(n);
@@ -2741,6 +2756,7 @@ public:
         int line = n->pos.lineno;
         TyP rt = t.kind != TK::None ? ty(t, n) : VOID();
         if (name == "any" || name == "all") return any_all(n, name);
+        if (name == "next") return next_first(n, rt);
         if (name == "open" && p.extended) {   // (new) open(path, mode, encoding=..., errors=..., newline=...)
             std::vector<IRP> args = {expr(n->args[0])};
             std::string mode = "r";
