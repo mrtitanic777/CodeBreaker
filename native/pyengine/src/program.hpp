@@ -254,6 +254,9 @@ public:
     // Python annotation's text; applied when the classic rules have settled, to parameters they left
     // untyped, as if the source had the annotation
     std::map<std::string, std::map<std::string, std::string>> type_hints;
+    // (new) functions a native format answers (answers.cc): qualified name -> the question; their return
+    // type is the answer's, fixed before solving and never replaced by their (empty) bodies
+    std::map<std::string, std::string> native_bound;
     std::vector<std::unique_ptr<pyfront::Module>> hint_trees;
     int apply_type_hints();
     // (new) MonkeyType-style .pyi stubs (--stubs DIR): the recorded parameter types of a run of the
@@ -305,5 +308,11 @@ bool variant_ok(const T& t);
 std::set<std::string> assigned_names(const A::FunctionDef* fn);
 std::vector<std::string> target_names(const A::Expr* t);
 std::string deco_name(const A::Expr* d);
+
+// answers.cc: the @native.ask / @native.answered functions typed by native/formats/**/questions.cc;
+// how many were bound
+size_t bind_native_answers(Program& p, const std::string& formats_dir, FILE* log);
+// the type of one call's answer (sites of its own; the same on every round)
+T native_answer_at(Program& p, const std::string& fq, const void* call);
 
 }  // namespace pyengine

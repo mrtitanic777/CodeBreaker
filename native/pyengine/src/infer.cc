@@ -246,7 +246,7 @@ Eval& Eval::run() {
             }
         }
     }
-    if (live()) {
+    if (live() && !p.native_bound.count(f->qname)) {   // (a native answer's type stays the answer's: answers.cc)
         const std::string& fq = f->qname;
         T old = p.returns.count(fq) ? p.returns[fq] : BOTTOM();
         T nw = p.join(old, ret_t);
@@ -2156,6 +2156,10 @@ static std::string sig_of(const T& t) {
 
 TR Eval::call_fn(const A::Call* n, Fn* f, const std::vector<std::optional<T>>& args, const OMap<std::optional<T>>& kw, bool bound) {
     if (f->kind == "property") return issue(n, "conflict", "calling a property");
+    if (p.native_bound.count(f->qname)) {   // a native answer: one type for every caller (answers.cc), no copies
+        bind_args(n, f, args, kw, bound);
+        return TR(native_answer_at(p, f->qname, n), Res(bound ? "method" : "fn", f->qname));
+    }
     if (p.demand_enabled && !bound && p.spec_candidates.count(f->qname)) {   // (new) this caller's own copy
         std::string sig;
         for (auto& a : args) sig += (sig.empty() ? "" : ",") + (a ? sig_of(*a) : std::string("lambda"));

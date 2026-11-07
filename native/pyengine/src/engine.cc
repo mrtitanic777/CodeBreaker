@@ -279,6 +279,8 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
             p.load_stub(fpath.stem().string(), ss.str());
         }
     }
+    // (extended) the functions a native format answers, typed by its questions.cc (answers.cc)
+    if (o.extended) bind_native_answers(p, (root.parent_path() / "native" / "formats").string(), o.log ? stderr : nullptr);
     if (o.log) fprintf(stderr, "solving %zu functions, %zu nested\n", p.fns.size(), p.nested.size());
     r.rounds = p.solve(40, o.log);
     auto t1 = std::chrono::steady_clock::now();

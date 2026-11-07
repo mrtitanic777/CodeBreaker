@@ -37,7 +37,16 @@ std::map<std::string, Answer> &registry();
 struct Registrar {
     explicit Registrar(void (*fill)()) { fill(); }
 };
-inline void add(const char *question, Answer a) { registry()[question] = a; }
+// `answer`: the type of what the question gives the caller (the shape written to Out), for the reader
+// and for the porting engine's typed path (native/pyengine reads these registrations), as
+//   str int bool float bytes none   int? (or None)   (int, str) tuple   list[T] set[T] dict[K, V]
+//   Name{field: T, field?: T}  a record (field?: present on some answers only)   A|B either
+//   u8 u16 u32 i8 i16 i32: an int of that C++ width (its range is what the typed path relies on);
+//   int: 64 bits; bigint: an int that can pass 64 bits
+inline void add(const char *question, Answer a, const char *answer = nullptr) {
+    (void)answer;
+    registry()[question] = a;
+}
 
 #define CBF_QUESTIONS(reader)                                       \
     static void cbf_register_##reader();                            \

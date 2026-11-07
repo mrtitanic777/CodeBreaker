@@ -43,6 +43,7 @@ add_library(pyengine STATIC
   src/methods.cc    # builtins, builtin types' methods, the standard library rows
   src/demand.cc     # parameters typed by what their uses demand
   src/ext.cc        # the extensions: re, files, os, closures, variants, specialization
+  src/answers.cc    # the native formats' answers typed from native/formats/**/questions.cc
   src/ir.cc         # the L2 nodes and their JSON
   src/lower.cc      # typed functions into L2; the module units; the ledger
   src/census.cc     # what a tree uses: libraries, builtins, methods, features (--census)

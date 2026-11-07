@@ -224,26 +224,26 @@ void standalone_q(Call &c) { c.out.bytes(Bytes(standalone(module(c)))); }
 }  // namespace
 
 CBF_QUESTIONS(ne) {
-    add("ne.open", open);
-    add("ne.from_buffer", from_buffer);
-    add("ne._parse_header", header);
-    add("ne.u16", u16);
-    add("ne.u32", u32);
-    add("ne._read_name_table", read_name_table);
-    add("ne.resident_names", resident_names);
-    add("ne.nonresident_names", nonresident_names);
-    add("ne.module_name", module_name);
-    add("ne.module_refs", module_refs);
-    add("ne.imported_name", imported_name);
-    add("ne.segments", segments);
-    add("ne.relocations", relocations);
-    add("ne.entries", entries);
-    add("ne.export_ordinals", export_ordinals);
-    add("ne.resources", resources);
-    add("ne._rsrc_string", rsrc_string);
-    add("ne.embedded", embedded_q);
-    add("ne._tables_end", tables_end_q);
-    add("ne.standalone", standalone_q);
+    add("ne.open", open, "NEOpen{ne_off: u32, h: NEHeader{linker_ver: u8, linker_rev: u8, entry_off: u16, entry_len: u16, crc: u32, flags: u16, autodata_seg: u16, heap: u16, stack: u16, csip: u32, sssp: u32, n_segs: u16, n_modrefs: u16, nonres_size: u16, seg_tab: u16, rsrc_tab: u16, resname_tab: u16, mod_tab: u16, imp_tab: u16, nonres_off: u32, n_movable: u16, align_shift: u16, n_resources: u16, exetype: u8, expect_winver: u16?}}");
+    add("ne.from_buffer", from_buffer, "NEHeader{linker_ver: u8, linker_rev: u8, entry_off: u16, entry_len: u16, crc: u32, flags: u16, autodata_seg: u16, heap: u16, stack: u16, csip: u32, sssp: u32, n_segs: u16, n_modrefs: u16, nonres_size: u16, seg_tab: u16, rsrc_tab: u16, resname_tab: u16, mod_tab: u16, imp_tab: u16, nonres_off: u32, n_movable: u16, align_shift: u16, n_resources: u16, exetype: u8, expect_winver: u16?}");
+    add("ne._parse_header", header, "NEHeader{linker_ver: u8, linker_rev: u8, entry_off: u16, entry_len: u16, crc: u32, flags: u16, autodata_seg: u16, heap: u16, stack: u16, csip: u32, sssp: u32, n_segs: u16, n_modrefs: u16, nonres_size: u16, seg_tab: u16, rsrc_tab: u16, resname_tab: u16, mod_tab: u16, imp_tab: u16, nonres_off: u32, n_movable: u16, align_shift: u16, n_resources: u16, exetype: u8, expect_winver: u16?}");
+    add("ne.u16", u16, "u16");
+    add("ne.u32", u32, "u32");
+    add("ne._read_name_table", read_name_table, "list[(str, u16)]");
+    add("ne.resident_names", resident_names, "list[(str, u16)]");
+    add("ne.nonresident_names", nonresident_names, "list[(str, u16)]");
+    add("ne.module_name", module_name, "str");
+    add("ne.module_refs", module_refs, "list[str]");
+    add("ne.imported_name", imported_name, "str");
+    add("ne.segments", segments, "list[Segment{idx: u16, file_off: u32, length: u32, flags: u16, minalloc: u32, kind: str}]");
+    add("ne.relocations", relocations, "list[Relocation{src: u8, rel_type: u8, additive: bool, offset: u16, kind: str, seg?: u8, entry?: u16, module?: u16, ordinal?: u16, name_off?: u16, ftype?: u16}]");
+    add("ne.entries", entries, "list[Entry{ordinal: u16, kind: str, seg?: u8, offset?: u16, flags?: u8}]");
+    add("ne.export_ordinals", export_ordinals, "list[u16]");
+    add("ne.resources", resources, "list[NEResource{type: str, id: str, off: u32, length: u32, flags: u16}]");
+    add("ne._rsrc_string", rsrc_string, "str");
+    add("ne.embedded", embedded_q, "list[(u32, str)]");
+    add("ne._tables_end", tables_end_q, "u32");
+    add("ne.standalone", standalone_q, "bytes");
 }
 
 }  // namespace cbf::ne
