@@ -750,11 +750,11 @@ void write_q(Call &c) {   // (files, out_path, compress, set_id, index, prev, ne
 }  // namespace
 
 CBF_QUESTIONS(cab) {
-    add("cab.read", read_q);
-    add("cab.checksum", checksum_q);
-    add("cab.folder_bytes", folder_bytes_q);
-    add("cab.extract", extract_q);
-    add("cab.write", write_q);
+    add("cab.read", read_q, "(CabInfo{prev: str?, prev_disk: str?, next: str?, next_disk: str?, set_id: int, index: int, flags: int, folders: list[str], size: int, version: str}, list[(str, int, int, int, int, int, int, str)], list[(int, int, int)], int)");
+    add("cab.checksum", checksum_q, "int");
+    add("cab.folder_bytes", folder_bytes_q, "bytes");
+    add("cab.extract", extract_q, "dict[str, str]");
+    add("cab.write", write_q, "int");
 }
 
 }  // namespace cbf::cab
