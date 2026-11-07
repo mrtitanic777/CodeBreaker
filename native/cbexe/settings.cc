@@ -208,7 +208,7 @@ int main_(const var&) {
     var file = G("FILE");
     bool have = path_call("isfile", {file}).truthy();
     py::print(S("settings: " + py::str_utf8(file) + (have ? "" : "  (missing: copy settings.example.json)")));
-    var keys = py::builtin("sorted")({py::builtin("set")({load()}).call("__or__", {py::builtin("set")({G("_PATHS")})})});
+    var keys = py::builtin("sorted")({(py::builtin("set")({load()}) | py::builtin("set")({G("_PATHS")}))});
     for (var key : py::each(keys)) {
         var value = call_get(key);
         std::string shown, mark;
