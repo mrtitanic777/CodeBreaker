@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <set>
 #include <sstream>
@@ -2416,10 +2417,24 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
             return 1;
         }
     }
+    // --dyn-native: a module the program's own C++ registers under a module's name
+    // (py::register_native_module("codebreaker.base.settings", init)) is written by hand: not translated
+    std::set<std::string> hand_written;
+    if (!o.native_dir.empty())
+        for (auto& e : fs::directory_iterator(fs::absolute(o.native_dir))) {
+            if (e.path().extension() != ".cc") continue;
+            std::ifstream f(e.path(), std::ios::binary);
+            std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            const std::string key = "register_native_module(\"";
+            for (size_t at = text.find(key); at != std::string::npos; at = text.find(key, at + 1)) {
+                size_t b = at + key.size(), q = text.find('"', b);
+                if (q != std::string::npos) hand_written.insert(text.substr(b, q - b));
+            }
+        }
     auto excluded = [&](const std::string& n) {
         for (auto& x : o.exclude) if (n == x || n.rfind(x + ".", 0) == 0) return true;
         for (auto& m : native_mods) if (n == m.module) return true;
-        return false;
+        return hand_written.count(n) != 0;
     };
     while (!queue.empty()) {
         std::string name = queue.front();

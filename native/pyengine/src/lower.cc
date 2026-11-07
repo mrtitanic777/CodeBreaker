@@ -219,6 +219,26 @@ std::vector<RecordField> Records::fields(int s) {
 
 bool Records::is_ref(int s) { return p.mutated.count(p.find(s)) != 0; }
 
+// (new) a method's parameter its callers only ever give None, stored as it is into an attribute
+// (`self.a = name`, in the body's top statements) that holds an optional: typed as that attribute -- only
+// None comes in, and None is one of its values (a constructor's keyword nobody passes yet)
+static T lowered_param_type(Program& p, Fn* f, const std::string& name) {
+    T t = p.param_type(f, name);
+    if (t.kind != TK::None || !f->cls || f->params.empty()) return t;
+    const std::string& self = f->params[0];
+    for (auto* st : f->node->body) {
+        auto* a = as<A::Assign>(st);
+        if (!a || a->targets.size() != 1) continue;
+        auto* at = as<A::Attribute>(a->targets[0]);
+        auto* base = at ? as<A::Name>(at->value) : nullptr;
+        auto* v = as<A::Name>(a->value);
+        if (!base || base->id != self || !v || v->id != name) continue;
+        auto ty_ = p.attr_type(f->cls->qname, at->attr);
+        return ty_ && ty_->kind == TK::Opt ? *ty_ : t;
+    }
+    return t;
+}
+
 // ------------------------------------------------------------------------------------ Context
 Context::Context(Program& p_, const std::string& ip) : p(p_), records(p_), int_policy(ip) {}
 
@@ -432,7 +452,7 @@ public:
         std::vector<std::string> names(f->params.begin() + std::min(skip, f->params.size()), f->params.end());
         names.insert(names.end(), f->kwonly.begin(), f->kwonly.end());
         for (auto& name : names) {
-            T t = p.param_type(f, name);
+            T t = lowered_param_type(p, f, name);
             if (t.kind == TK::Bottom) {
                 auto got = p.param_poison.find({f->qname, name});
                 if (got != p.param_poison.end()) {
@@ -1083,7 +1103,7 @@ public:
         gen_mode = true;
         std::vector<IRP> params;
         for (auto& name : f->params) {
-            T t = p.param_type(f, name);
+            T t = lowered_param_type(p, f, name);
             if (t.kind == TK::Bottom) throw Refused("untyped", "parameter " + name + " (no annotation, no call site)", line);
             TyP pt = ctx.ty(t, line, "parameter " + name);
             local_types[name] = pt;
@@ -2759,7 +2779,7 @@ public:
         std::vector<std::string> all = names;
         all.insert(all.end(), cf->kwonly.begin(), cf->kwonly.end());
         for (auto& name : all) {
-            TyP pt = ty(p.param_type(cf, name), n, "parameter " + name);
+            TyP pt = ty(lowered_param_type(p, cf, name), n, "parameter " + name);
             auto g = given.find(name);
             if (g != given.end()) out.push_back(coerce(expr(g->second), pt));
             else if (const A::Expr* const* d = cf->defaults.get(name)) {
