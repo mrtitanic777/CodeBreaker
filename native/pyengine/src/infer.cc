@@ -2362,6 +2362,26 @@ Eval& ModuleEval::run() {
             p.touch("g:" + m->name);
         }
     }
+    // (new) the module's other statements (a loop filling a table, a call): what they put in the module's
+    // containers is part of their types. A name only they bind (a loop's variable) is theirs, local here.
+    if (p.extended && !m->statements.empty()) {
+        locals.clear();
+        for (auto* st : m->statements)
+            for (const AnyNode& n : walk(AnyNode(st)))
+                if (auto* nm = as<pyfront::Name>(n.expr()))
+                    if (!m->assigns.has(nm->id) && !m->functions.has(nm->id) && !m->classes.has(nm->id) && !m->imports.has(nm->id))
+                        locals.insert(nm->id);
+        std::vector<A::Stmt*> body;
+        for (auto* st : m->statements)
+            if (st->kind == StmtKind::For || st->kind == StmtKind::While || st->kind == StmtKind::Expr || st->kind == StmtKind::AugAssign ||
+                (st->kind == StmtKind::Assign && !as<pyfront::Name>(cast<pyfront::Assign>(st)->targets[0])))
+                body.push_back(const_cast<A::Stmt*>(st));
+        try {
+            block(body, State());
+        } catch (const std::exception&) {
+        }
+        locals.clear();
+    }
     for (auto& [_, c] : m->classes) {
         for (auto& [name, v] : c->class_attrs) {
             T t = safe_ev(v);

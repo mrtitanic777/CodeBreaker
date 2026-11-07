@@ -455,6 +455,11 @@ void Program::index_stmt(Module* m, const A::Stmt* st) {
                 }
                 for (auto& n : target_names(t)) m->assigns[n].push_back(as<pyfront::Name>(t) ? a->value : nullptr);
             }
+            for (auto* t : a->targets)   // (TABLE[k] = v, obj.a = v: a statement the module runs)
+                if (t->kind == ExprKind::Subscript || t->kind == ExprKind::Attribute) {
+                    m->statements.push_back(st);
+                    break;
+                }
             break;
         }
         case StmtKind::AnnAssign: {

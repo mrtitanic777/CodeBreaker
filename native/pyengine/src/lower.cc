@@ -3057,9 +3057,46 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
         if (L.has_fl && L.md) needed.insert(L.globals_used.begin(), L.globals_used.end());
     std::map<std::string, std::unique_ptr<ModuleEval>> mevals;
     std::vector<std::unique_ptr<Fn>> modfns;
+    // a module name the module's own statements change (TABLE[k] = v in a loop, TABLE.update(...), f(TABLE)):
+    // its value is more than its first assignment, which is all a declaration here would hold
+    auto changed_by_module = [](Module* mm, const std::string& name) {
+        auto root = [](const A::Expr* e) -> std::string {
+            while (e) {
+                if (auto* nm = as<pyfront::Name>(e)) return nm->id;
+                if (auto* sb = as<Subscript>(e)) e = sb->value;
+                else if (auto* at = as<Attribute>(e)) e = at->value;
+                else return "";
+            }
+            return "";
+        };
+        for (auto* st : mm->statements)
+            for (const AnyNode& n : walk(AnyNode(st))) {
+                if (auto* s2 = n.stmt()) {
+                    if (auto* a = as<pyfront::Assign>(s2)) {
+                        for (auto* t : a->targets)
+                            if (!as<pyfront::Name>(t) && root(t) == name) return true;
+                    } else if (auto* g = as<AugAssign>(s2)) {
+                        if (root(g->target) == name) return true;
+                    } else if (s2->kind == StmtKind::Delete) {
+                        for (const AnyNode& d : walk(AnyNode(s2)))
+                            if (auto* nm = as<pyfront::Name>(d.expr()); nm && nm->id == name) return true;
+                    }
+                }
+                if (auto* c = as<pyfront::Call>(n.expr())) {
+                    if (root(c->func) == name && c->func->kind == ExprKind::Attribute) return true;   // TABLE.update(...)
+                    for (auto* a : c->args)
+                        if (root(a) == name) return true;   // f(TABLE): f may change it
+                }
+            }
+        return false;
+    };
     for (auto& key : needed) {
         auto& [mod, name] = key;
         Module* mm = *p.modules.get(mod);
+        if (changed_by_module(mm, name)) {
+            bad_globals.emplace(key, Refused("dynamic", "module name " + name + " is changed by the module's statements"));
+            continue;
+        }
         const std::vector<const A::Expr*>* values = mm->assigns.get(name);
         size_t nv = values ? values->size() : 0;
         if (nv != 1 || !(*values)[0]) {
