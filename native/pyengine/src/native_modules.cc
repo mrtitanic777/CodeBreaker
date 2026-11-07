@@ -215,7 +215,7 @@ std::string native_typed_glue(const std::vector<NativeModule>& mods) {
     std::string o = "// native_modules.cpp -- the typed side of the program's native modules (pyengine --dyn-native-typed): each\n"
                     "// export converts its arguments to py.hpp's values, calls the module's typed function and copies the result\n"
                     "// out, or names the exception it raised. Compiled with py renamed (pyt).\n"
-                    "#include \"pyisl_typed.hpp\"\n#include \"native_modules.hpp\"\n\n";
+                    "#include \"pyisl_typed.hpp\"\n#include \"native_exports.hpp\"\n\n";
     for (auto& m : mods) o += "#include \"" + m.rel + ".hpp\"\n";
     for (auto& m : mods) {
         o += "\nnamespace pyisl::native::" + ident_of(m.module) + " {\n\n";
@@ -248,7 +248,7 @@ std::string native_dyn_glue(const std::vector<NativeModule>& mods) {
                     "// Python became its typed C++ is registered under its name; a function takes exactly the values its proof\n"
                     "// took (another kind is a TypeError: there is no Python body to give it to), calls the typed export and\n"
                     "// boxes the result, or raises the typed body's exception as Python's of that name.\n"
-                    "#include \"py_native.hpp\"\n#include \"pyisl.hpp\"\n#include \"native_modules.hpp\"\n\nnamespace {\n\n";
+                    "#include \"py_native.hpp\"\n#include \"pyisl.hpp\"\n#include \"native_exports.hpp\"\n\nnamespace {\n\n";
     for (auto& m : mods) {
         std::string id = ident_of(m.module);
         o += "void init_" + id + "(const py::var& m) {\n";
