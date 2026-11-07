@@ -3130,9 +3130,82 @@ TranslateResult translate(Program& p, const std::string& int_policy, const std::
             }
         return false;
     };
+    // the module names a function run at import changes (GENERIC = register(Profile('generic')), register filling
+    // _REGISTRY): the functions any module's assignments and statements call, and what they call, transitively;
+    // in each, a store into, an augmented assignment to, a method called on or a call passing one of its module's
+    // names that is not its local
+    std::set<std::pair<std::string, std::string>> import_changed;
+    {
+        auto root = [](const A::Expr* e) -> const pyfront::Name* {
+            while (e) {
+                if (auto* nm = as<pyfront::Name>(e)) return nm;
+                if (auto* sb = as<Subscript>(e)) e = sb->value;
+                else if (auto* at = as<Attribute>(e)) e = at->value;
+                else return nullptr;
+            }
+            return nullptr;
+        };
+        std::set<std::string> seen;
+        std::vector<Fn*> todo;
+        auto calls_in = [&](Module* mm, AnyNode n) {
+            for (const AnyNode& x : walk(n))
+                if (auto* c = as<pyfront::Call>(x.expr())) {
+                    Ref r = p.resolve_expr_name(mm, c->func);
+                    if (r.k == "fn")
+                        if (Fn** f = p.fns.get(r.a); f && seen.insert(r.a).second) todo.push_back(*f);
+                }
+        };
+        for (auto& [_, mm] : p.modules) {
+            for (auto& [__, vals] : mm->assigns)
+                for (auto* v : vals)
+                    if (v) calls_in(mm, AnyNode(v));
+            for (auto* st : mm->statements) calls_in(mm, AnyNode(st));
+        }
+        while (!todo.empty()) {
+            Fn* f = todo.back();
+            todo.pop_back();
+            Module* fm = f->module;
+            const auto& locs = p.fn_locals(f);
+            auto global_of = [&](const pyfront::Name* nm) {   // (only a container or an object can be changed)
+                if (!nm || locs.count(nm->id) || !fm->assigns.has(nm->id)) return;
+                TK k = p.global_type(fm->name, nm->id).kind;
+                if (k == TK::List || k == TK::Dict || k == TK::Set || k == TK::Bytearray || k == TK::Inst || k == TK::Top)
+                    import_changed.insert({fm->name, nm->id});
+            };
+            for (const AnyNode& x : walk(AnyNode(f->node))) {
+                if (auto* s2 = x.stmt()) {
+                    if (auto* a = as<pyfront::Assign>(s2)) {
+                        for (auto* t : a->targets)
+                            if (!as<pyfront::Name>(t)) global_of(root(t));
+                    } else if (auto* g = as<AugAssign>(s2)) {
+                        global_of(root(g->target));
+                    }
+                }
+                if (auto* c = as<pyfront::Call>(x.expr())) {
+                    static const std::set<std::string> MUTATORS = {"append", "extend", "insert", "pop", "remove", "clear", "update",
+                                                                   "setdefault", "add", "discard", "sort", "reverse", "popitem",
+                                                                   "__setitem__", "__delitem__", "difference_update",
+                                                                   "intersection_update", "symmetric_difference_update"};
+                    auto* fa = as<Attribute>(c->func);
+                    if (fa && MUTATORS.count(fa->attr)) global_of(root(fa->value));   // TABLE.update(...)
+                    else if (fa) {
+                        auto* rn = root(fa->value);   // (a method of an object of the program's: it may change it)
+                        if (rn && p.global_type(fm->name, rn->id).kind == TK::Inst) global_of(rn);
+                    }
+                    if (p.resolve_expr_name(fm, c->func).k == "fn")   // f(TABLE): a function of the program may change it
+                        for (auto* a : c->args) global_of(as<pyfront::Name>(a));
+                }
+            }
+            calls_in(fm, AnyNode(f->node));
+        }
+    }
     for (auto& key : needed) {
         auto& [mod, name] = key;
         Module* mm = *p.modules.get(mod);
+        if (import_changed.count(key)) {
+            bad_globals.emplace(key, Refused("dynamic", "module name " + name + " is changed at import (by a function its module runs)"));
+            continue;
+        }
         if (changed_by_module(mm, name)) {
             bad_globals.emplace(key, Refused("dynamic", "module name " + name + " is changed by the module's statements"));
             continue;
