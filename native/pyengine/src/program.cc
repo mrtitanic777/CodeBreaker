@@ -440,8 +440,21 @@ void Program::index_stmt(Module* m, const A::Stmt* st) {
         }
         case StmtKind::Assign: {
             auto* a = cast<pyfront::Assign>(st);
-            for (auto* t : a->targets)
+            for (auto* t : a->targets) {
+                // (new) A, B = (1, 2): each name its own item (a tuple of names and a tuple of as many values, no *)
+                auto* tt = as<pyfront::Tuple>(t);
+                auto* vt = as<pyfront::Tuple>(a->value);
+                if (extended && tt && vt && tt->elts.size() == vt->elts.size()) {
+                    bool plain = true;
+                    for (size_t i = 0; i < tt->elts.size(); i++)
+                        if (!as<pyfront::Name>(tt->elts[i]) || vt->elts[i]->kind == ExprKind::Starred) plain = false;
+                    if (plain) {
+                        for (size_t i = 0; i < tt->elts.size(); i++) m->assigns[cast<pyfront::Name>(tt->elts[i])->id].push_back(vt->elts[i]);
+                        continue;
+                    }
+                }
                 for (auto& n : target_names(t)) m->assigns[n].push_back(as<pyfront::Name>(t) ? a->value : nullptr);
+            }
             break;
         }
         case StmtKind::AnnAssign: {
