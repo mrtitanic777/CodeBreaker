@@ -545,6 +545,64 @@ def toks(s: str):
     CHECK(has(src, "std::optional<py::re::Match> m") && has(src, "!m.has_value()") && !has(src, "!true"), "the loop's m stays optional: %s", src.c_str());
 }
 
+// X = factory('X', [...]) -- type(name, (base,), {...}) -- is the class it makes, with the keyword
+// constructor its base's `__init__(self, **kw)` means for it
+static void t_factories() {
+    Run r(Srcs{{"pkg.m", R"PY(
+class Node(object):
+    __slots__ = ('line',)
+    fields = ()
+
+    def __init__(self, **kw):
+        self.line = kw.pop('line', 0)
+        for k in self.slots():
+            setattr(self, k, kw.pop(k, None))
+        if kw:
+            raise TypeError('unknown fields')
+
+    @classmethod
+    def slots(cls):
+        return []
+
+
+def _node(name, slots, fields=None, base=Node):
+    cls = type(name, (base,), {'__slots__': tuple(slots), 'fields': tuple(fields if fields is not None else slots)})
+    return cls
+
+
+class Expr(Node):
+    __slots__ = ('type',)
+
+
+def _expr(name, slots, fields=None):
+    return _node(name, slots, fields, Expr)
+
+
+Lit = _expr('Lit', ['value'], [])
+Neg = _expr('Neg', ['x'])
+Twice = _expr('Other', ['x'])
+
+
+def lit(v: int) -> Lit:
+    return Lit(value=v, type='int', line=3)
+
+
+def neg(v: int) -> int:
+    e = Neg(x=lit(v), type='int')
+    x = e.x
+    if x is None:
+        return 0
+    n = x.value
+    if n is None:
+        return 0
+    return -n + x.line
+)PY"}}, true, "checked");
+    CHECK(r.ok("pkg.m.lit"), "lit: %s", r.why("pkg.m.lit").c_str());
+    CHECK(r.ok("pkg.m.neg"), "neg: %s", r.why("pkg.m.neg").c_str());
+    CHECK(r.ok("pkg.m.Lit.__init__"), "Lit.__init__: %s", r.why("pkg.m.Lit.__init__").c_str());
+    CHECK(!r.p.fns.has("pkg.m.Other.__init__") && !r.p.fns.has("pkg.m.Twice.__init__"), "a factory call whose name is not its target's is left alone");
+}
+
 // a, self.b = v and a = b = v: the value once into a temporary, then each target left to right
 static void t_assign_forms() {
     Run r(Srcs{{"pkg.m", R"PY(
@@ -778,7 +836,7 @@ match mode:
 int main(int argc, char** argv) {
     std::map<std::string, std::function<void()>> suites = {
         {"async", t_async},       {"match", t_match},
-        {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"lambda_scope", t_lambda_scope}, {"stubs", t_stubs},
+        {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"factories", t_factories}, {"lambda_scope", t_lambda_scope}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
         {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"files", t_files}};
     std::vector<std::string> run;
