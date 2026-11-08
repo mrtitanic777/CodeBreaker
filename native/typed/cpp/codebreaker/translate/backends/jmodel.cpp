@@ -312,11 +312,15 @@ void Model::_nested_in(const NodeP& m, const ref<ClassInfo>& ci, const std::opti
     auto md = dynamic_pointer_cast<ir::MethodDecl>(m);
     auto fd = dynamic_pointer_cast<ir::FieldDecl>(m);
     ref<ir::MethodDecl> method = md;
-    NodeP root = md ? md->body : fd->init;
-    if (root == nullptr) return;
-    py::list<NodeP> stack{root};
+    // (a method's body slot may hold a list of nodes: the Python walks it as a node, and a list has no
+    // children() -- AttributeError when it is popped)
+    ir::NodeOrList root = md ? md->body : ir::NodeOrList(fd->init);
+    if (std::holds_alternative<NodeP>(root) && std::get<NodeP>(root) == nullptr) return;
+    py::list<ir::NodeOrList> stack{root};
     while (py::len(stack) > 0) {
-        NodeP n = stack.pop();
+        ir::NodeOrList top = stack.pop();
+        if (std::holds_alternative<py::list<NodeP>>(top)) throw py::AttributeError("'list' object has no attribute 'children'");
+        NodeP n = std::get<NodeP>(top);
         if (auto lc = dynamic_pointer_cast<ir::LocalClass>(n)) {
             _add(as_class(lc->decl), ci, package, true, false, method);
             continue;
@@ -334,7 +338,7 @@ void Model::_nested_in(const NodeP& m, const ref<ClassInfo>& ci, const std::opti
             }
             continue;
         }
-        stack.extend(n->children());
+        for (const NodeP& c : n->children()) stack.append(c);
     }
 }
 
@@ -399,9 +403,13 @@ void Model::_capture(const ref<ClassInfo>& ci) {
 void Model::name_anonymous() {
     for (const auto& ci : classes.values()) {
         if (!(ci->anon || ci->local)) continue;
-        py::list<NodeP> stack = listed(ci->decl->members).copy();
+        py::list<ir::NodeOrList> stack;
+        for (const NodeP& m : listed(ci->decl->members)) stack.append(m);
         while (py::len(stack) > 0) {
-            NodeP n = stack.pop();
+            ir::NodeOrList top = stack.pop();
+            // (a list body: getattr(list, 'sym') is None, then children() is an AttributeError)
+            if (std::holds_alternative<py::list<NodeP>>(top)) throw py::AttributeError("'list' object has no attribute 'children'");
+            NodeP n = std::get<NodeP>(top);
             if (n.get() != ci->decl.get() && dynamic_pointer_cast<ir::ClassDecl>(n)) {
                 continue;                                   // its own class does its members
             }
@@ -419,15 +427,17 @@ void Model::name_anonymous() {
             auto md = dynamic_pointer_cast<ir::MethodDecl>(n);
             auto fd = dynamic_pointer_cast<ir::FieldDecl>(n);
             auto nw = dynamic_pointer_cast<ir::New>(n);
-            if (md && md->body != nullptr) {
+            if (md && !(std::holds_alternative<NodeP>(md->body) && std::get<NodeP>(md->body) == nullptr)) {
                 stack.append(md->body);
             } else if (fd && fd->init != nullptr) {
                 stack.append(fd->init);
             } else if (nw && nw->body != nullptr) {
-                if (nw->args) stack.extend(*nw->args);
+                if (nw->args) {
+                    for (const NodeP& a : *nw->args) stack.append(a);
+                }
                 if (nw->outer != nullptr) stack.append(nw->outer);
             } else {
-                stack.extend(n->children());
+                for (const NodeP& c : n->children()) stack.append(c);
             }
         }
     }
@@ -577,7 +587,7 @@ std::optional<Sig> Model::sam(const py::str& qname) const {
         }
         if (!is(sci->kind, "interface")) continue;
         for (const auto& m : sci->methods()) {
-            if (m->body == nullptr && !(m->sym != nullptr && m->sym->static_) &&
+            if (std::holds_alternative<NodeP>(m->body) && std::get<NodeP>(m->body) == nullptr && !(m->sym != nullptr && m->sym->static_) &&
                 !(m->name && py::in(*m->name, std::make_tuple(py::str("toString"), py::str("equals"), py::str("hashCode"))))) {
                 bool dup = false;
                 for (const Sig& a : abstract) {
