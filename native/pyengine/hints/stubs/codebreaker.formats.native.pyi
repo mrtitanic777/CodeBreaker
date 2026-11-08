@@ -160,3 +160,56 @@ def native_first(
     args_of: <class 'Union'>[None, Callable] = ...,
     result: <class 'Union'>[None, Callable] = ...
 ) -> Callable: ...
+
+from ctypes import CDLL
+from inspect import Signature
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Optional,
+)
+
+
+def _dumps(
+    args: <class 'Union'>[Tuple[int, int, None, Dict[str, <class 'Union'>]], Tuple[int, int, None], Tuple[int, int, int], Tuple[str], Tuple[int]]
+) -> bytes: ...
+
+
+def _load() -> CDLL: ...
+
+
+def _positional(
+    sig: Signature,
+    args: <class 'Union'>[Tuple[bytes, int], Tuple[str], Tuple[bytes]],
+    kw: Dict[Any, Any],
+    skip: int = ...
+) -> <class 'Union'>[Tuple[bytes, int], Tuple[str], Tuple[bytes]]: ...
+
+
+def _unicorn_dll() -> str: ...
+
+
+def answered(
+    question: str,
+    data_arg: <class 'Union'>[int, None] = ...,
+    args_of: <class 'Union'>[Callable, None] = ...,
+    result: <class 'Union'>[Callable, None] = ...
+) -> Callable: ...
+
+
+def ask(
+    question: str,
+    where: Callable = ...,
+    data: str = ...,
+    result: <class 'Union'>[Callable, None] = ...
+) -> Callable: ...
+
+
+def call(question: str, data: <class 'Union'>[bytes, None], *args) -> Any: ...
+
+
+def dll_path() -> str: ...
+
+
+def required() -> CDLL: ...

@@ -66,3 +66,24 @@ def spelling(name: str) -> str: ...
 
 
 def table() -> Dict[str, <class 'Union'>]: ...
+
+from typing import (
+    Dict,
+    List,
+    Union,
+)
+
+
+def _build(folders: Dict[str, List[str]]) -> Dict[str, Dict[str, <class 'Union'>]]: ...
+
+
+def _folders() -> Dict[str, List[str]]: ...
+
+
+def _stamp(folders: Dict[str, List[str]]) -> str: ...
+
+
+def spelling(name: str) -> str: ...
+
+
+def table() -> Dict[str, <class 'Union'>]: ...

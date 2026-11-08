@@ -201,3 +201,40 @@ def take_option(argv: List[str]) -> List[str]: ...
 
 
 def use(name: <class 'Union'>[str, None]) -> str: ...
+
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Tuple,
+)
+
+
+def _rank(path: str) -> Tuple[int, int, str]: ...
+
+
+def _readable(path: str) -> str: ...
+
+
+def _unpack_boot_images(idx: Dict[str, List[str]]) -> None: ...
+
+
+def candidates(name: str) -> List[<class 'Union'>[Any, str]]: ...
+
+
+def current() -> str: ...
+
+
+def design_dir() -> str: ...
+
+
+def index(refresh: bool = ...) -> Dict[str, List[str]]: ...
+
+
+def lane(path: str) -> str: ...
+
+
+def retail(name: str) -> <class 'Union'>[str, None]: ...
+
+
+def root(name: None = ...) -> str: ...

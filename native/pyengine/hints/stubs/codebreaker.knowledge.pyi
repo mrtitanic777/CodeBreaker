@@ -112,3 +112,26 @@ def table(
     platform_: str,
     kind: str
 ) -> Dict[str, <class 'Union'>[str, List[str], <class 'Union'>, List[<class 'Union'>]]]: ...
+
+from typing import (
+    Dict,
+    Optional,
+)
+
+
+def _table(platform_: str, kind: str) -> Dict[str, <class 'Union'>[<class 'Union'>, str, Dict[str, <class 'Union'>]]]: ...
+
+
+def api_model(platform_: str, api: str) -> <class 'Union'>[Dict[str, <class 'Union'>], Dict[str, int], None]: ...
+
+
+def argument_bytes(platform_: str, api: str, module: None = ...) -> <class 'Union'>[int, None]: ...
+
+
+def import_name(module: str, ordinal: int) -> <class 'Union'>[str, None]: ...
+
+
+def platform(name: str) -> str: ...
+
+
+def table(platform_: str, kind: str) -> Dict[str, str]: ...

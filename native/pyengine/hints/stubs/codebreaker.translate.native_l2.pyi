@@ -167,3 +167,83 @@ def enabled() -> bool: ...
 
 
 def known_text(doc: Dict[str, <class 'Union'>], text: str) -> None: ...
+
+from ctypes import CDLL
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
+
+
+def _dec(d: Dict[str, Any]) -> Any: ...
+
+
+def _described(name: str) -> Callable: ...
+
+
+def _doc1(name: str) -> Callable: ...
+
+
+def _enc(v: Any) -> Any: ...
+
+
+def _flags(doc: Dict[str, <class 'Union'>], facts: Dict[str, <class 'Union'>]) -> Set[str]: ...
+
+
+def _function(
+    doc: Dict[str, <class 'Union'>],
+    moved: Tuple[str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str] = ...,
+    far: None = ...,
+    facts: <class 'Union'>[Dict[str, <class 'Union'>], None] = ...
+) -> str: ...
+
+
+def _held(doc: Dict[str, <class 'Union'>]) -> <class 'Union'>[Tuple[str, Callable], Tuple[str, None]]: ...
+
+
+def _load() -> CDLL: ...
+
+
+def _plain(name: str) -> Callable: ...
+
+
+def _put(doc: Dict[str, <class 'Union'>]) -> str: ...
+
+
+def _segment_plan(
+    functions: List[Tuple[int, str]],
+    near: Set[str],
+    where: Dict[int, Tuple[int, int]],
+    sites: Dict[int, List[Tuple[int, int]]],
+    code: Dict[int, int],
+    data_segment: int,
+    other_data: Set[int],
+    first_selector: int
+) -> Dict[str, <class 'Union'>]: ...
+
+
+def _text(v: Any) -> str: ...
+
+
+def _type_text(t: Dict[str, <class 'Union'>[str, <class 'Union'>]], name: str = ..., far: bool = ...) -> str: ...
+
+
+def call(fn: str, *args, plain = ..., facts = ...) -> Any: ...
+
+
+def call_raw(fn: str, text: str) -> Tuple[int, str]: ...
+
+
+def dll_path() -> str: ...
+
+
+def enabled() -> bool: ...
+
+
+def known_text(doc: Dict[str, <class 'Union'>], text: str) -> None: ...
