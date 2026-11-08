@@ -25,7 +25,6 @@
 //   * A node's "value" is a string (IntegerLiteral) or a number (CharacterLiteral): std::variant<int64_t, str>.
 //   * MAIN and TEXT are one-element lists in the Python (module state edits_of() sets); here the element.
 //
-// Not ported (see the end of this file): code_key, pass_key, run.
 #pragma once
 
 #include <cstdint>
@@ -124,12 +123,26 @@ py::str reach_key(const py::str& folder, const py::str& f);
 // the files a tree names, in the order they are met
 py::list<py::str> _files(const Node& node, const std::optional<py::list<py::str>>& seen = std::nullopt);
 
-// Left in Python (not ported -- they cannot be done faithfully in C++):
-//   code_key -- it hashes the SOURCE TEXT OF PYTHON FUNCTIONS (ast.parse of arith16.py and oldlayout.py, and the
-//     functions they name, found by walking the Python syntax tree); a C++ program has no Python syntax tree to
-//     read, and the key (KINDS, _CODE with it) is a name for "the Python code this result came from".
-//   pass_key -- it is built on code_key.
-//   run -- it keeps its results in codebreaker.base.cache (value/keep), which has no typed port, and keys them
-//     by pass_key. Its steps are all ported: dump, mark_files, _files, edits_of, apply, and _headers_key.
+// The version of the code that makes each kind of result -- for THIS C++ port. The Python hashes the source text
+// of its own functions (ast.parse of arith16.py and oldlayout.py), which a C++ program cannot do, so the key is a
+// fixed, documented version string: BUMP CODE_VERSION WHENEVER THE LOGIC OF A PASS CHANGES (dump, old_type,
+// edits_of, apply and what they use), as editing the Python would change the Python's key. The entries this port
+// keeps in the cache therefore live under different keys than the Python's (the values have the same form:
+// {"new": the text with the casts, or None}), and neither reads the other's.
+extern const py::str CODE_VERSION;
 
+// the code a kind of result comes from, by CODE_VERSION (a kind not known: the same, as the Python hashes both passes)
+py::str code_key(const py::str& kind);
+
+// a pass's result for one file, by all it depends on: the file and the headers it reaches, the compiler, the
+// code of the pass that result comes from. `extra` are the Python's *extra (strs here); `headers` is no longer
+// used there either (every header of the port).
+py::str pass_key(const py::str& cc, const py::str& folder, const py::str& f, const py::str& kind,
+                 const py::list<py::str>& extra = py::list<py::str>(), const std::optional<py::str>& headers = std::nullopt);
+
+// {file: its text with the casts} for the port's C files (those clang could read) - a file's result kept,
+// by its text and its headers': the same file again, not read again (cache kind "port-passes")
+py::dict<py::str, py::str> run(const py::str& cc, const py::str& folder, const py::list<py::str>& files);
+
+// (KINDS, _CODE and the Python's per-function key are not kept: see CODE_VERSION.)
 }  // namespace codebreaker::port::arith16

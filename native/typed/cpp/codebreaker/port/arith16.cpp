@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <functional>
 
+#include "codebreaker/base/cache.hpp"
 #include "json.hpp"
 #include "py_subprocess.hpp"
 
@@ -540,4 +541,69 @@ py::list<py::str> _files(const Node& node, const std::optional<py::list<py::str>
     return seen;
 }
 
+const py::str CODE_VERSION("arith16-cpp-1");
+
+py::str code_key(const py::str& kind) {
+    py::hashlib::Hash h = py::hashlib::sha256(kind.encode("utf-8", "strict"));
+    h.update(py::bytes("\000", 1) + CODE_VERSION.encode("utf-8", "strict"));
+    return h.hexdigest();
+}
+
+py::str pass_key(const py::str& cc, const py::str& folder, const py::str& f, const py::str& kind, const py::list<py::str>& extra,
+                 const std::optional<py::str>& /*headers*/) {
+    py::hashlib::Hash h = py::hashlib::sha256();
+    h.update(code_key(kind).encode("utf-8", "strict"));
+    // repr((os.path.abspath(cc), kind, extra)) -- extra a tuple of strs
+    py::list<py::str> parts;
+    for (const py::str& x : extra) {
+        parts.append(py::repr(x));
+    }
+    py::str extra_repr = py::len(parts) == 0 ? py::str("()")
+                         : py::len(parts) == 1 ? py::str("(") + parts[0] + py::str(",)")
+                                               : py::str("(") + py::join(py::str(", "), parts) + py::str(")");
+    h.update(py::percent("(%s, %s, %s)", py::repr(py::os::path::abspath(cc)), py::repr(kind), extra_repr).encode("utf-8", "strict"));
+    h.update(reach_key(folder, f).encode("utf-8", "strict"));
+    return h.hexdigest();
+}
+
+py::dict<py::str, py::str> run(const py::str& cc, const py::str& folder, const py::list<py::str>& files) {
+    py::dict<py::str, py::str> out;
+    py::str hk = _headers_key(folder);
+    for (const py::str& f : files) {
+        py::str key = pass_key(cc, folder, f, py::str("arith16"), py::list<py::str>(), hk);
+        auto got = base::cache::value<py::dict<py::str, std::optional<py::str>>>(py::str("port-passes"), key);
+        if (got.has_value()) {
+            auto nw = got->get(py::str("new"));
+            if (nw.has_value() && nw->has_value()) {
+                out.set(f, **nw);
+            }
+            continue;
+        }
+        std::optional<Node> tree = dump(cc, f, folder);
+        if (!tree.has_value()) {
+            continue;
+        }
+        std::optional<py::str> cur;
+        mark_files(*tree, cur);
+        py::str path = f;
+        for (const py::str& v : _files(*tree)) {
+            if (v.replace(py::str("\\"), py::str("/")).endswith(f)) {
+                path = v;
+                break;
+            }
+        }
+        py::file fh = py::open(folder + py::str("/") + f, py::str("r"), py::str("latin1"));
+        py::str text = fh.read_text();
+        fh.close();
+        auto e = edits_of(*tree, text, path);
+        std::optional<py::str> nw = py::truthy(e) ? std::optional<py::str>(arith16::apply(text, e)) : std::nullopt;
+        if (nw.has_value()) {
+            out.set(f, *nw);
+        }
+        py::dict<py::str, std::optional<py::str>> kept;
+        kept.set(py::str("new"), nw);
+        base::cache::keep(py::str("port-passes"), key, kept);
+    }
+    return out;
+}
 }  // namespace codebreaker::port::arith16
