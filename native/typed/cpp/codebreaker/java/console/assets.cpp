@@ -1,5 +1,5 @@
-// codebreaker/java/console/assets.cpp -- C++ port of codebreaker.java.console.assets (see the header for what is
-// not ported: the Pillow PNG re-encode).
+// codebreaker/java/console/assets.cpp -- C++ port of codebreaker.java.console.assets (see the header for how
+// Pillow's PNG conversion is done here).
 //
 // assets.py -- extract the game's shipped assets (textures, language files, fonts, misc resources)
 // out of the original Minecraft jar and lay them down in the converted project's Content folder with
@@ -22,10 +22,14 @@
 
 #include "codebreaker/java/console/assets.hpp"
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
+#include <vector>
 
 #include "codebreaker/formats/xbox/crypto/xell_unpack.hpp"
 #include "codebreaker/java/_paths.hpp"
+#include "zlib.h"    // native/decompiler/core/zlib (inflate + deflate of the PNG's IDAT)
 
 namespace codebreaker::java::console::assets {
 
@@ -189,9 +193,279 @@ bool has_code_ext(const py::str& name) {
     return false;
 }
 
+// ------------------------------------------------------------------------------------------ PNG -> RGBA8
+// What Pillow's Image.open(png).convert('RGBA') gives, written back as an 8-bit RGBA PNG.
+//
+// Pillow's conversions, as measured (Pillow 12): 1/2/4/8-bit grey scale to 0..255 (x255, x85, x17, x1);
+// 16-bit grey is clipped to 255 (I;16 -> L), 16-bit colour channels keep their high byte; a grey / RGB tRNS
+// colour makes a pixel transparent when the pixel's 8-bit value equals the tRNS value's LOW byte (for 1-bit
+// grey: when the sample matches); palette tRNS is one alpha per index, an index past the palette is black.
+// A header Pillow cannot identify raises UnidentifiedImageError, anything after it OSError.
+
+uint32_t be32(const std::string& d, size_t at) {
+    return (static_cast<uint32_t>(static_cast<unsigned char>(d[at])) << 24) |
+           (static_cast<uint32_t>(static_cast<unsigned char>(d[at + 1])) << 16) |
+           (static_cast<uint32_t>(static_cast<unsigned char>(d[at + 2])) << 8) |
+           static_cast<uint32_t>(static_cast<unsigned char>(d[at + 3]));
+}
+
+uint32_t crc_of(const std::string& s) { return static_cast<uint32_t>(py::crc32(py::bytes(s))); }
+
+void put_be32(std::string& o, uint32_t v) {
+    for (int k = 3; k >= 0; --k) o.push_back(static_cast<char>((v >> (8 * k)) & 0xFF));
+}
+
+void put_chunk(std::string& o, const char* tag, const std::string& data) {
+    put_be32(o, static_cast<uint32_t>(data.size()));
+    std::string td = std::string(tag, 4) + data;
+    o += td;
+    put_be32(o, crc_of(td));
+}
+
+[[noreturn]] void unidentified() { throw UnidentifiedImageError("cannot identify image file"); }
+
+// the value of sample number `idx` of an unfiltered row (a 1/2/4-bit sample, a byte, or a 16-bit word)
+unsigned sample_at(const std::string& row, int depth, size_t idx) {
+    if (depth == 8) return static_cast<unsigned char>(row[idx]);
+    if (depth == 16) {
+        return (static_cast<unsigned>(static_cast<unsigned char>(row[2 * idx])) << 8) |
+               static_cast<unsigned char>(row[2 * idx + 1]);
+    }
+    size_t bit = idx * depth;
+    unsigned b = static_cast<unsigned char>(row[bit / 8]);
+    return (b >> (8 - depth - bit % 8)) & ((1u << depth) - 1);
+}
+
+int paeth_(int a, int b, int c) {
+    int p = a + b - c, pa = std::abs(p - a), pb = std::abs(p - b), pc = std::abs(p - c);
+    if (pa <= pb && pa <= pc) return a;
+    return pb <= pc ? b : c;
+}
+
+std::string convert_png_to_rgba(const std::string& d) {
+    static const unsigned char SIG[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+    if (d.size() < 8 || std::memcmp(d.data(), SIG, 8) != 0) unidentified();
+    size_t pos = 8;
+    struct Chunk {
+        std::string type;
+        size_t data = 0;
+        uint32_t len = 0;
+        bool crc_ok = false;
+    };
+    // a chunk at pos; false: not even a chunk header is left. A body cut short is the OSError of a truncated read.
+    auto next = [&](Chunk& c, bool& cut) {
+        cut = false;
+        if (pos + 8 > d.size()) return false;
+        c.len = be32(d, pos);
+        c.type = d.substr(pos + 4, 4);
+        c.data = pos + 8;
+        if (c.len > 0x7fffffffu || c.data + c.len + 4 > d.size()) {
+            cut = true;
+            return true;
+        }
+        c.crc_ok = crc_of(d.substr(pos + 4, 4 + c.len)) == be32(d, c.data + c.len);
+        pos = c.data + c.len + 4;
+        return true;
+    };
+    Chunk c;
+    bool cut = false;
+    if (!next(c, cut) || cut || c.type != "IHDR" || c.len != 13 || !c.crc_ok) unidentified();
+    const uint32_t w = be32(d, c.data), h = be32(d, c.data + 4);
+    const int depth = static_cast<unsigned char>(d[c.data + 8]), ct = static_cast<unsigned char>(d[c.data + 9]);
+    const int filt = static_cast<unsigned char>(d[c.data + 11]);
+    const int interlace = static_cast<unsigned char>(d[c.data + 12]);
+    {
+        bool ok = false;
+        static const int MODES[][2] = {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {2, 8}, {2, 16}, {3, 1},
+                                       {3, 2}, {3, 4}, {3, 8}, {4, 8}, {4, 16}, {6, 8}, {6, 16}};
+        for (const auto& m : MODES) ok = ok || (m[0] == ct && m[1] == depth);
+        if (!ok || w == 0 || h == 0 || w > 0x7fffffffu || h > 0x7fffffffu || filt != 0) unidentified();   // (Pillow does not look at the compression method byte)
+    }
+    std::string plte, trns;
+    bool has_trns = false;
+    bool saw_idat = false, saw_end = false;
+    for (;;) {                                  // the chunks up to the first IDAT
+        size_t before = pos;
+        if (!next(c, cut)) unidentified();
+        if (cut) throw py::OSError("Truncated File Read");
+        if (c.type == "IDAT") {
+            pos = before;
+            saw_idat = true;
+            break;
+        }
+        if (c.type == "IEND") {
+            saw_end = true;
+            break;
+        }
+        if (c.type == "PLTE" || c.type == "tRNS") {
+            if (!c.crc_ok) unidentified();
+            std::string body = d.substr(c.data, c.len);
+            if (c.type == "PLTE") {
+                plte = body;
+            } else {
+                trns = body;
+                has_trns = true;
+            }
+        }
+    }
+    (void)saw_end;
+    if (!saw_idat) throw py::OSError("cannot load this image");
+    if (has_trns && ((ct == 0 && trns.size() < 2) || (ct == 2 && trns.size() < 6))) unidentified();
+    std::string idat;
+    for (;;) {                                  // the IDAT chunks, one after the other
+        size_t before = pos;
+        if (!next(c, cut) || c.type != "IDAT") {
+            pos = before;
+            break;
+        }
+        if (cut || !c.crc_ok) throw py::OSError("broken data stream when reading image file");
+        idat += d.substr(c.data, c.len);
+    }
+
+    // the passes: (x0, y0, dx, dy), or the whole image
+    struct Pass { uint32_t x0, y0, dx, dy; };
+    std::vector<Pass> passes;
+    if (interlace) {
+        passes = {{0, 0, 8, 8}, {4, 0, 8, 8}, {0, 4, 4, 8}, {2, 0, 4, 4}, {0, 2, 2, 4}, {1, 0, 2, 2}, {0, 1, 1, 2}};
+    } else {
+        passes = {{0, 0, 1, 1}};
+    }
+    const int nch = ct == 0 ? 1 : ct == 2 ? 3 : ct == 3 ? 1 : ct == 4 ? 2 : 4;
+    const size_t bpp = std::max<size_t>(1, static_cast<size_t>(nch * depth / 8));
+    auto row_bytes = [&](uint32_t pw) { return (static_cast<size_t>(pw) * nch * depth + 7) / 8; };
+    size_t total = 0;
+    for (const Pass& p : passes) {
+        uint32_t pw = (w + p.dx - 1 - p.x0) / p.dx, ph = (h + p.dy - 1 - p.y0) / p.dy;
+        if (w <= p.x0 || h <= p.y0) continue;
+        total += static_cast<size_t>(ph) * (1 + row_bytes(pw));
+    }
+    std::string raw(total, '\0');
+    {
+        z_stream zs;
+        std::memset(&zs, 0, sizeof zs);
+        if (inflateInit(&zs) != Z_OK) throw py::OSError("zlib error");
+        zs.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(idat.data()));
+        zs.avail_in = static_cast<uInt>(idat.size());
+        zs.next_out = reinterpret_cast<Bytef*>(&raw[0]);
+        zs.avail_out = static_cast<uInt>(raw.size());
+        int rc = raw.empty() ? Z_STREAM_END : inflate(&zs, Z_FINISH);
+        size_t got = raw.size() - zs.avail_out;
+        inflateEnd(&zs);
+        // Z_BUF_ERROR with a full buffer: more data than the image needs, which Pillow ignores
+        if (got != raw.size() || (rc != Z_STREAM_END && rc != Z_BUF_ERROR && rc != Z_OK)) {
+            throw py::OSError(got != raw.size() && (rc == Z_BUF_ERROR || rc == Z_OK || rc == Z_STREAM_END)
+                                  ? "image file is truncated"
+                                  : "broken data stream when reading image file");
+        }
+    }
+
+    std::string out(static_cast<size_t>(w) * h * 4, '\0');
+    size_t at = 0;
+    for (const Pass& p : passes) {
+        if (w <= p.x0 || h <= p.y0) continue;
+        uint32_t pw = (w + p.dx - 1 - p.x0) / p.dx, ph = (h + p.dy - 1 - p.y0) / p.dy;
+        size_t rb = row_bytes(pw);
+        std::string prev(rb, '\0'), row(rb, '\0');
+        for (uint32_t y = 0; y < ph; ++y) {
+            int ft = static_cast<unsigned char>(raw[at++]);
+            if (ft > 4) throw py::OSError("unrecognized data stream contents when reading image file");
+            for (size_t x = 0; x < rb; ++x) {
+                int rv = static_cast<unsigned char>(raw[at + x]);
+                int a = x >= bpp ? static_cast<unsigned char>(row[x - bpp]) : 0;
+                int b = static_cast<unsigned char>(prev[x]);
+                int cc = x >= bpp ? static_cast<unsigned char>(prev[x - bpp]) : 0;
+                int v = ft == 0 ? rv : ft == 1 ? rv + a : ft == 2 ? rv + b : ft == 3 ? rv + ((a + b) >> 1) : rv + paeth_(a, b, cc);
+                row[x] = static_cast<char>(v & 0xFF);
+            }
+            at += rb;
+            for (uint32_t i = 0; i < pw; ++i) {
+                unsigned r, g, bl, a = 255;
+                size_t s = static_cast<size_t>(i) * nch;
+                if (ct == 0) {
+                    unsigned v = sample_at(row, depth, s);
+                    unsigned l = depth == 1 ? (v ? 255 : 0) : depth == 2 ? v * 85 : depth == 4 ? v * 17 : depth == 8 ? v : std::min(v, 255u);
+                    if (has_trns) {
+                        unsigned t16 = (static_cast<unsigned char>(trns[0]) << 8) | static_cast<unsigned char>(trns[1]);
+                        unsigned tl = depth == 1 ? (t16 ? 255u : 0u) : (t16 & 0xFF);
+                        if (l == tl) a = 0;
+                    }
+                    r = g = bl = l;
+                } else if (ct == 2) {
+                    unsigned rr = sample_at(row, depth, s), gg = sample_at(row, depth, s + 1), bb = sample_at(row, depth, s + 2);
+                    if (depth == 16) { rr >>= 8; gg >>= 8; bb >>= 8; }
+                    if (has_trns) {
+                        unsigned t0 = static_cast<unsigned char>(trns[1]), t1 = static_cast<unsigned char>(trns[3]),
+                                 t2 = static_cast<unsigned char>(trns[5]);
+                        if (rr == t0 && gg == t1 && bb == t2) a = 0;
+                    }
+                    r = rr; g = gg; bl = bb;
+                } else if (ct == 3) {
+                    unsigned idx = sample_at(row, depth, s);
+                    if ((idx + 1) * 3 <= plte.size()) {
+                        r = static_cast<unsigned char>(plte[idx * 3]);
+                        g = static_cast<unsigned char>(plte[idx * 3 + 1]);
+                        bl = static_cast<unsigned char>(plte[idx * 3 + 2]);
+                    } else {
+                        r = g = bl = 0;
+                    }
+                    if (has_trns && idx < trns.size()) a = static_cast<unsigned char>(trns[idx]);
+                } else if (ct == 4) {
+                    unsigned l = sample_at(row, depth, s), al = sample_at(row, depth, s + 1);
+                    if (depth == 16) { l >>= 8; al >>= 8; }
+                    r = g = bl = l;
+                    a = al;
+                } else {                         // 6: RGBA (reached only through the 16-bit form, which is never converted)
+                    r = sample_at(row, depth, s) >> (depth == 16 ? 8 : 0);
+                    g = sample_at(row, depth, s + 1) >> (depth == 16 ? 8 : 0);
+                    bl = sample_at(row, depth, s + 2) >> (depth == 16 ? 8 : 0);
+                    a = sample_at(row, depth, s + 3) >> (depth == 16 ? 8 : 0);
+                }
+                size_t o = (static_cast<size_t>(p.y0 + y * p.dy) * w + (p.x0 + i * p.dx)) * 4;
+                out[o] = static_cast<char>(r);
+                out[o + 1] = static_cast<char>(g);
+                out[o + 2] = static_cast<char>(bl);
+                out[o + 3] = static_cast<char>(a);
+            }
+            prev = row;
+        }
+    }
+
+    // the 8-bit RGBA PNG: IHDR, one IDAT (filter 0 rows, deflated), IEND
+    std::string scan;
+    scan.reserve(out.size() + h);
+    for (uint32_t y = 0; y < h; ++y) {
+        scan.push_back('\0');
+        scan.append(out, static_cast<size_t>(y) * w * 4, static_cast<size_t>(w) * 4);
+    }
+    std::string zdata;
+    {
+        z_stream zs;
+        std::memset(&zs, 0, sizeof zs);
+        if (deflateInit(&zs, Z_DEFAULT_COMPRESSION) != Z_OK) throw py::OSError("zlib error");
+        zdata.resize(deflateBound(&zs, static_cast<uLong>(scan.size())));
+        zs.next_in = reinterpret_cast<Bytef*>(&scan[0]);
+        zs.avail_in = static_cast<uInt>(scan.size());
+        zs.next_out = reinterpret_cast<Bytef*>(&zdata[0]);
+        zs.avail_out = static_cast<uInt>(zdata.size());
+        int rc = deflate(&zs, Z_FINISH);
+        zdata.resize(zdata.size() - zs.avail_out);
+        deflateEnd(&zs);
+        if (rc != Z_STREAM_END) throw py::OSError("zlib error");
+    }
+    std::string png(reinterpret_cast<const char*>(SIG), 8);
+    std::string ihdr;
+    put_be32(ihdr, w);
+    put_be32(ihdr, h);
+    ihdr += std::string("\x08\x06\x00\x00\x00", 5);
+    put_chunk(png, "IHDR", ihdr);
+    put_chunk(png, "IDAT", zdata);
+    put_chunk(png, "IEND", "");
+    return png;
+}
+
 }  // namespace
 
-const py::list<py::str> _ASSET_EXTS = {py::str(".png"), py::str(".jpg"), py::str(".jpeg"), py::str(".txt"),
+const py::list<py::str> _ASSET_EXTS ={py::str(".png"), py::str(".jpg"), py::str(".jpeg"), py::str(".txt"),
                                        py::str(".lang"), py::str(".properties"), py::str(".fsh"), py::str(".vsh")};
 
 const py::re::Pattern _RES_PATH = py::re::compile(py::str(R"rx("(/[\w./-]+\.(?:png|jpg|jpeg|txt|lang|properties|fsh|vsh))")rx"));
@@ -236,7 +510,7 @@ std::tuple<py::bytes, bool> normalize_png_to_rgba(const py::bytes& raw) {
     if (!_HAS_PIL) {
         return {raw, false};                              // can't convert here; run() warns + lists it
     }
-    return {raw, false};     // (unreachable: _HAS_PIL is false; the Pillow re-encode is not ported)
+    return {py::bytes(convert_png_to_rgba(raw.raw())), true};
 }
 
 py::list<py::str> list_jar_assets(const py::str& jar_path) {

@@ -3,10 +3,12 @@
 // them down in the converted project's Content folder with the EXACT same relative paths and names, and audit
 // which resource paths the code loads vs which the jar provides.
 //
-// NOT PORTED: the PNG re-encode of normalize_png_to_rgba. Python does it with Pillow (an optional import);
-// the runtime has no PNG codec, so this port behaves as Python does when Pillow is NOT installed:
-// _HAS_PIL is false, a non-RGBA PNG is passed through unchanged, and run() lists it under `unconverted`.
-// (Python with Pillow installed would decode it and re-encode it as 8-bit RGBA instead.)
+// normalize_png_to_rgba: Python converts with Pillow (an optional import). This port has its own PNG reader
+// (every colour type / bit depth Pillow reads, palette + tRNS, interlaced) and writer, built on zlib
+// (native/decompiler/core/zlib; compile it with -DNO_GZIP -DLOCAL_ZLIB and add the folder to the include path).
+// The pixels it writes are the RGBA pixels Pillow's convert('RGBA') gives, including Pillow's quirks (16-bit
+// samples keep their high byte, 16-bit grey is clipped to 255, a tRNS colour is compared by its low byte);
+// the compressed bytes of the PNG differ from Pillow's.
 #pragma once
 
 #include <optional>
@@ -23,8 +25,14 @@ struct BadZipFile : py::Exception {
     const char* type() const override { return "BadZipFile"; }
 };
 
-// `try: from PIL import Image` -- Pillow is not available to the C++ runtime (see above).
-inline constexpr bool _HAS_PIL = false;
+// PIL.UnidentifiedImageError (an OSError): the file is not a readable PNG header.
+struct UnidentifiedImageError : py::OSError {
+    using py::OSError::OSError;
+    const char* type() const override { return "UnidentifiedImageError"; }
+};
+
+// `try: from PIL import Image` -- the PNG reader/writer of this file stands in for Pillow (see above).
+inline constexpr bool _HAS_PIL = true;
 
 // Asset file extensions the game ships in its jar and loads at runtime.
 extern const py::list<py::str> _ASSET_EXTS;
@@ -50,7 +58,9 @@ std::optional<int64_t> _png_colortype(const py::bytes& raw);
 // True if this PNG is not already 8-bit straight RGBA (i.e. would misrender on the 360).
 bool png_needs_rgba(const py::bytes& raw);
 
-// Return (bytes, changed). Without Pillow (see the top of this file) a PNG is returned unchanged.
+// Return (bytes, changed). If the PNG isn't already RGBA, decode it (honoring palette tRNS) and re-encode as
+// 8-bit RGBA (changed = true); otherwise return it unchanged. Raises UnidentifiedImageError / OSError for a
+// PNG that Pillow could not read.
 std::tuple<py::bytes, bool> normalize_png_to_rgba(const py::bytes& raw);
 
 // Return the sorted list of asset entry paths (png/txt/lang/...) inside the jar, using forward
