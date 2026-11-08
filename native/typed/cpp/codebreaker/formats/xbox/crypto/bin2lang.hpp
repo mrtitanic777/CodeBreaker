@@ -24,11 +24,7 @@
 namespace codebreaker::formats::xbox::crypto::bin2lang {
 
 // sys.exit's SystemExit.
-struct SystemExit : py::Exception {
-    int64_t code;
-    explicit SystemExit(int64_t c) : py::Exception(""), code(c) {}
-    const char* type() const override { return "SystemExit"; }
-};
+using py::SystemExit;
 
 // lowercase = lambda s: s.lower()
 py::str lowercase(const py::str& s);

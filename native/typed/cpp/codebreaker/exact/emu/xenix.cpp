@@ -201,7 +201,7 @@ Result run(const py::str& root, const py::str& work, const py::str& prog, const 
     auto word = [&](int64_t k) { return b.byte_(2 * k) | (b.byte_(2 * k + 1) << 8); };
     int64_t magic = word(0), tsz = word(1), dsz = word(2), bsz = word(3), entry = word(5);
     if (magic != 0x0107 && magic != 0x0108 && magic != 0x0109) {
-        throw SystemExit(py::percent("%s is not an a.out file (%04x)", prog, magic).utf8());
+        throw SystemExit(py::percent("%s is not an a.out file (%04x)", prog, magic));
     }
     py::bytes text = b.slice(16, 16 + tsz);
     py::bytes data = b.slice(16 + tsz, 16 + tsz + dsz);

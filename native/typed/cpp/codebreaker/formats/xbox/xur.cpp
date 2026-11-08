@@ -8,59 +8,6 @@ namespace codebreaker::formats::xbox::xur {
 
 const py::str DESCRIPTION("read/edit Xbox 360 XUR (compiled XUI) scenes: info/strings + set (repack)");
 
-// (the runtime has no utf-16 codec: bytes.decode("utf-16-be", "replace") and str.encode("utf-16-be"), as Python's)
-static py::str utf16be_decode_replace(const py::bytes& b) {
-    std::u32string out;
-    int64_t n = b.size(), i = 0;
-    auto unit = [&](int64_t at) { return (b.byte_(at) << 8) | b.byte_(at + 1); };
-    while (i < n) {
-        if (n - i < 2) {   // a byte left over: "truncated data"
-            out.push_back(0xFFFD);
-            break;
-        }
-        int64_t ch = unit(i);
-        i += 2;
-        if (ch < 0xD800 || ch > 0xDFFF) {
-            out.push_back(static_cast<char32_t>(ch));
-        } else if (ch <= 0xDBFF) {   // a high surrogate: needs its low one
-            if (n - i < 2) {         // "unexpected end of data"
-                out.push_back(0xFFFD);
-                break;
-            }
-            int64_t ch2 = unit(i);
-            if (ch2 >= 0xDC00 && ch2 <= 0xDFFF) {
-                out.push_back(static_cast<char32_t>(0x10000 + ((ch - 0xD800) << 10) + (ch2 - 0xDC00)));
-                i += 2;
-            } else {
-                out.push_back(0xFFFD);   // "illegal UTF-16 surrogate"
-            }
-        } else {
-            out.push_back(0xFFFD);   // a lone low surrogate: "illegal encoding"
-        }
-    }
-    return py::str(out);
-}
-
-static py::bytes utf16be_encode(const py::str& s) {
-    std::string out;
-    for (char32_t c : s.u32()) {
-        if (c >= 0xD800 && c <= 0xDFFF)
-            throw py::UnicodeEncodeError("'utf-16-be' codec can't encode character: surrogates not allowed");
-        if (c >= 0x10000) {
-            char32_t v = c - 0x10000;
-            char32_t hi = 0xD800 + (v >> 10), lo = 0xDC00 + (v & 0x3FF);
-            out.push_back(static_cast<char>(hi >> 8));
-            out.push_back(static_cast<char>(hi & 0xFF));
-            out.push_back(static_cast<char>(lo >> 8));
-            out.push_back(static_cast<char>(lo & 0xFF));
-        } else {
-            out.push_back(static_cast<char>(c >> 8));
-            out.push_back(static_cast<char>(c & 0xFF));
-        }
-    }
-    return py::bytes(out);
-}
-
 py::str _tag(int64_t v) {
     return py::pack(">I", v).decode("latin-1");
 }
@@ -97,7 +44,7 @@ py::list<py::str> XUR::strings() const {
     while (o + 2 <= py::len(*blob)) {
         int64_t n = py::unpack_from1<int64_t>(">H", *blob, o);
         o += 2;
-        py::str s = utf16be_decode_replace(blob->slice(o, o + n * 2));
+        py::str s = py::codecs::utf_16_be_decode(blob->slice(o, o + n * 2), "replace");
         out.append(s);
         o += n * 2;
     }
@@ -107,7 +54,7 @@ py::list<py::str> XUR::strings() const {
 py::bytes build_strn(const py::list<py::str>& strings) {
     py::bytes body;
     for (const py::str& s : strings) {
-        py::bytes e = utf16be_encode(s);
+        py::bytes e = py::codecs::utf_16_be_encode(s);
         body = body + py::pack(">H", py::len(s)) + e;
     }
     return body;

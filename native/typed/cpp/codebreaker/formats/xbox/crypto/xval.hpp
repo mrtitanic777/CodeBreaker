@@ -34,11 +34,7 @@ extern const int64_t FLAG_SSB_ODD_ENFORCE_THROUGHPUT_HIGH;
 
 // Python's SystemExit (what argparse raises for --help and for a bad command line): `code` is the
 // exit status.
-struct SystemExit : py::Exception {
-    int64_t code = 0;
-    explicit SystemExit(int64_t c) : py::Exception(), code(c) {}
-    const char* type() const override { return "SystemExit"; }
-};
+using py::SystemExit;
 
 // The 8 bytes the console's X: value decrypts to, under the DES key HMAC-SHA1("XBOX360SSB",
 // serial + NUL)[:8]. The serial is 12 ASCII characters; the value is 16 hex digits, "-" allowed
