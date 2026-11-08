@@ -23,10 +23,12 @@ enum Flags { I = 2, M = 8, S = 16, A = 256 };   // (A: re.ASCII -- \w \d \s ASCI
 
 struct Node;
 struct Prog;          // the compiled program a Regex runs
+struct CpIndex;       // byte offset -> code-point offset table, shared by the matches of one subject
 
 struct Match {
     std::shared_ptr<const std::string> s;     // (its own copy of the text: a match outlives a temporary)
-    std::vector<long> caps;          // start, end of each group (group 0 first); -1 unmatched
+    std::vector<long> caps;          // start, end of each group (group 0 first), as UTF-8 byte offsets; -1 unmatched
+    mutable std::shared_ptr<CpIndex> cpx;   // (built on the first cp_start / cp_end)
     bool ok = false;
     explicit operator bool() const { return ok; }
     bool has(int g) const { return ok && caps[2 * g] >= 0; }
@@ -34,6 +36,9 @@ struct Match {
     long start(int g = 0) const { return caps[2 * g]; }
     long end(int g = 0) const { return caps[2 * g + 1]; }
     int ngroups() const { return (int)caps.size() / 2 - 1; }
+    long cp_offset(long byte) const;         // a byte offset as a code-point index (Python's), in constant time; -1 stays -1
+    long cp_start(int g = 0) const { return cp_offset(caps[2 * g]); }
+    long cp_end(int g = 0) const { return cp_offset(caps[2 * g + 1]); }
 };
 
 class Regex {
@@ -62,7 +67,7 @@ private:
     int flags_ = 0;
     std::string pattern_;
     std::vector<std::pair<std::string, int>> names_;
-    Match run(const std::shared_ptr<const std::string>& s, size_t pos, size_t endpos, int mode, bool must_advance = false) const;
+    Match run(const std::shared_ptr<const std::string>& s, const std::shared_ptr<CpIndex>& cpx, size_t pos, size_t endpos, int mode, bool must_advance = false) const;
     friend struct Parser;
 };
 

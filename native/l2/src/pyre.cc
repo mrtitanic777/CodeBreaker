@@ -897,17 +897,47 @@ struct Ctx {
 };
 
 
+// the code-point index of a byte offset: a table of counts at every 128th byte, built on the first call and shared by
+// the matches of one subject, then at most 127 bytes counted -- constant time, not a rescan from the start
+struct CpIndex {
+    std::vector<uint32_t> blocks;     // blocks[k]: the code points that begin before byte 128*k
+    bool built = false;
+};
+static const size_t CP_BLOCK = 128;
+
+long Match::cp_offset(long byte) const {
+    if (byte < 0) return -1;
+    const std::string& t = *s;
+    size_t b = (size_t)byte < t.size() ? (size_t)byte : t.size();
+    if (!cpx) cpx = std::make_shared<CpIndex>();
+    if (!cpx->built) {
+        cpx->blocks.assign(t.size() / CP_BLOCK + 1, 0);
+        uint32_t n = 0;
+        for (size_t i = 0; i < t.size(); i++) {
+            if (i % CP_BLOCK == 0) cpx->blocks[i / CP_BLOCK] = n;
+            if (((unsigned char)t[i] & 0xC0) != 0x80) n++;
+        }
+        if (t.size() % CP_BLOCK == 0) cpx->blocks[t.size() / CP_BLOCK] = n;
+        cpx->built = true;
+    }
+    uint32_t n = cpx->blocks[b / CP_BLOCK];
+    for (size_t i = b / CP_BLOCK * CP_BLOCK; i < b; i++)
+        if (((unsigned char)t[i] & 0xC0) != 0x80) n++;
+    return (long)n;
+}
+
 std::string Match::group(int g) const {
     if (!ok || caps[2 * g] < 0) return "";
     return s->substr((size_t)caps[2 * g], (size_t)(caps[2 * g + 1] - caps[2 * g]));
 }
 
 // mode: 0 match, 1 fullmatch, 2 search
-Match Regex::run(const std::shared_ptr<const std::string>& sp, size_t pos, size_t endpos, int mode, bool must_advance) const {
+Match Regex::run(const std::shared_ptr<const std::string>& sp, const std::shared_ptr<CpIndex>& cpx, size_t pos, size_t endpos, int mode, bool must_advance) const {
     const std::string& s = *sp;
     if (endpos > s.size()) endpos = s.size();
     Match out;
     out.s = sp;
+    out.cpx = cpx;
     Ctx c(s, endpos, flags_, *prog_);
     c.mode = mode;
     const size_t ncap = (size_t)(2 * (ngroups_ + 1));
@@ -951,18 +981,20 @@ Match Regex::run(const std::shared_ptr<const std::string>& sp, size_t pos, size_
 }
 
 static std::shared_ptr<const std::string> own(const std::string& s) { return std::make_shared<const std::string>(s); }
-Match Regex::match(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), pos, endpos, 0); }
-Match Regex::fullmatch(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), pos, endpos, 1); }
-Match Regex::search(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), pos, endpos, 2); }
+static std::shared_ptr<CpIndex> new_index() { return std::make_shared<CpIndex>(); }
+Match Regex::match(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), new_index(), pos, endpos, 0); }
+Match Regex::fullmatch(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), new_index(), pos, endpos, 1); }
+Match Regex::search(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), new_index(), pos, endpos, 2); }
 
 std::vector<Match> Regex::finditer(const std::string& s0) const {
     std::vector<Match> out;
     auto sp = own(s0);
+    auto cpx = new_index();
     const std::string& s = *sp;
     size_t pos = 0;
     bool adv = false;
     while (pos <= s.size()) {
-        Match m = run(sp, pos, s.size(), 2, adv);
+        Match m = run(sp, cpx, pos, s.size(), 2, adv);
         if (!m) break;
         out.push_back(m);
         adv = m.end() == m.start();
@@ -989,13 +1021,14 @@ std::vector<std::vector<std::string>> Regex::findall_groups(const std::string& s
 
 std::string Regex::sub_fn(const std::function<std::string(const Match&)>& fn, const std::string& s0, int count) const {
     auto sp = own(s0);
+    auto cpx = new_index();
     const std::string& s = *sp;
     std::string out;
     size_t pos = 0, last = 0;
     bool adv = false;
     int n = 0;
     while (pos <= s.size() && (count <= 0 || n < count)) {
-        Match m = run(sp, pos, s.size(), 2, adv);
+        Match m = run(sp, cpx, pos, s.size(), 2, adv);
         if (!m) break;
         out.append(s, last, (size_t)m.start() - last);
         out += fn(m);
