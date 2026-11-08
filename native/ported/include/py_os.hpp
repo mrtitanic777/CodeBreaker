@@ -828,14 +828,8 @@ namespace re {
 class Match {
     ::re::Match m_;
     std::vector<std::string> names_;
-    int64_t cp_(long byte) const {
-        if (byte < 0) return -1;
-        int64_t n = 0;
-        const std::string& s = *m_.s;
-        for (long i = 0; i < byte && i < static_cast<long>(s.size()); i++)
-            if ((static_cast<unsigned char>(s[i]) & 0xC0) != 0x80) n++;
-        return n;
-    }
+    // (constant time: pyre keeps a table of code-point counts for the subject, built once and shared by its matches)
+    int64_t cp_(long byte) const { return m_.cp_offset(byte); }
 
   public:
     Match() = default;
