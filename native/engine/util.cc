@@ -270,8 +270,15 @@ struct Parser {
     i++;
     std::string o;
     while (i < t.size() && t[i] != '"') {
-      char c = t[i++];
-      if (c != '\\') { o.push_back(c); continue; }
+      char c = t[i];
+      if (c != '\\') {   // a run of plain characters is copied at once
+        size_t q = i + 1;
+        while (q < t.size() && t[q] != '"' && t[q] != '\\') q++;
+        o.append(t, i, q - i);
+        i = q;
+        continue;
+      }
+      i++;
       if (i >= t.size()) bad();
       char e = t[i++];
       switch (e) {

@@ -7,6 +7,18 @@
 #include <cstdlib>
 #include <thread>
 #include <variant>
+#if defined(_M_X64) || defined(__x86_64__)
+#include <immintrin.h>
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#else
+#include <cpuid.h>
+#endif
+#endif
+#ifdef _WIN32
+#include <direct.h>
+#include <io.h>
+#endif
 
 namespace py {
 
@@ -253,7 +265,10 @@ inline file open_rb(const str& path) { return file::open(path, str("rb")); }
 namespace os {
 // (CPython's mapping of the system's error codes to its OSError subclasses)
 [[noreturn]] inline void raise_os_(const std::error_code& ec, const str& path) {
-    std::string msg = "[WinError " + std::to_string(ec.value()) + "] " + ec.message() + ": " + repr(path).utf8();
+    // (OSError's text drops the system message's trailing spaces, line ends and period)
+    std::string sys = ec.message();
+    while (!sys.empty() && (static_cast<unsigned char>(sys.back()) <= ' ' || sys.back() == '.')) sys.pop_back();
+    std::string msg = "[WinError " + std::to_string(ec.value()) + "] " + sys + ": " + repr(path).utf8();
     switch (ec.value()) {
         case 2: case 3: case 15: case 53: case 67: case 161: throw FileNotFoundError(msg);   // (file, path, drive, network names)
         case 5: case 32: case 33: throw PermissionError(msg);
@@ -398,9 +413,39 @@ inline double getmtime(const str& s) {
 }
 }  // namespace path
 
+#ifdef _WIN32
+// os.makedirs as Python's (os.py) writes it: the parents first, then mkdir, one system call a folder; the
+// error is the system's own, by _wmkdir (the CRT's mapping of CreateDirectoryW), as raise_os_ words it
+inline void makedirs_win_(const str& name, bool exist_ok) {
+    auto [head, tail] = path::split(name);
+    if (tail.utf8().empty()) std::tie(head, tail) = path::split(head);
+    const std::string h = head.utf8(), t = tail.utf8();
+    if (!h.empty() && !t.empty() && _waccess(fspath_(head).wstring().c_str(), 0) != 0) {
+        try {
+            makedirs_win_(head, exist_ok);
+        } catch (const FileExistsError&) {
+        }
+        if (t == ".") return;
+    }
+    if (_wmkdir(fspath_(name).wstring().c_str()) == 0) return;
+    int e = errno;
+    int code = e == EEXIST ? 183 : e == ENOENT ? 3 : e == EACCES ? 5 : 0;
+    if (code == 0) {
+        unsigned long dos = 0;
+        _get_doserrno(&dos);
+        code = static_cast<int>(dos);
+    }
+    std::error_code ec;
+    if (!exist_ok || !fs_::is_directory(fspath_(name), ec)) raise_os_(std::error_code(code, std::system_category()), name);
+}
+#endif
 inline void makedirs(const str& p, int64_t mode = 0777, bool exist_ok = false) {
     (void)mode;
     nul_check_("mkdir", p);
+#ifdef _WIN32
+    makedirs_win_(p, exist_ok);
+    return;
+#endif
     std::error_code ec;
     fs_::path q = fspath_(p);
     if (fs_::exists(q, ec)) {
@@ -574,28 +619,138 @@ inline void sleep(double s) {
 }  // namespace time
 
 // ------------------------------------------------------------------------------------------ hashlib
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma optimize("t", on)
+#endif
 namespace hashlib {
+// SHA-1 and SHA-256 on the x86 SHA extensions, when the processor has them (one block a call; the portable
+// code in Hash is the answer elsewhere). The same digests, a few times faster.
+#if (defined(_M_X64) || defined(__x86_64__)) && (defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__))
+#define PY_HAVE_SHANI 1
+#if defined(_MSC_VER) && !defined(__clang__)
+#define PY_SHANI_TARGET
+#else
+#define PY_SHANI_TARGET __attribute__((target("sha,ssse3,sse4.1")))
+#endif
+namespace shani_ {
+inline bool available() {
+    static const bool ok = [] {
+        int r[4];
+#if defined(_MSC_VER) && !defined(__clang__)
+        __cpuid(r, 0);
+        if (r[0] < 7) return false;
+        __cpuid(r, 1);
+        const bool sse = (r[2] & (1 << 9)) && (r[2] & (1 << 19));   // SSSE3, SSE4.1
+        __cpuidex(r, 7, 0);
+        return sse && (r[1] & (1 << 29)) != 0;   // SHA
+#else
+        unsigned a, b, c, d;
+        if (!__get_cpuid_count(7, 0, &a, &b, &c, &d)) return false;
+        const bool sha = (b & (1u << 29)) != 0;
+        if (!__get_cpuid(1, &a, &b, &c, &d)) return false;
+        return sha && (c & (1u << 9)) && (c & (1u << 19));
+#endif
+    }();
+    return ok;
+}
+PY_SHANI_TARGET inline void sha1_blocks(uint32_t state[5], const unsigned char* data, size_t nblocks) {
+    const __m128i MASK = _mm_set_epi64x(0x0001020304050607ULL, 0x08090a0b0c0d0e0fULL);
+    __m128i ABCD = _mm_shuffle_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(state)), 0x1B);
+    __m128i E0 = _mm_set_epi32(static_cast<int>(state[4]), 0, 0, 0);
+    for (; nblocks; nblocks--, data += 64) {
+    const __m128i ABCD_SAVE = ABCD, E_SAVE = E0;
+    __m128i M[4], Ec, Ep;
+    for (int i = 0; i < 4; i++) M[i] = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(data + 16 * i)), MASK);
+    Ec = _mm_add_epi32(E0, M[0]);
+    Ep = ABCD;
+    ABCD = _mm_sha1rnds4_epu32(ABCD, Ec, 0);
+#define PY_SHA1_NI_GROUP(F)                                                                     \
+    {                                                                                           \
+        Ec = _mm_sha1nexte_epu32(Ep, M[g & 3]);                                                 \
+        Ep = ABCD;                                                                              \
+        ABCD = _mm_sha1rnds4_epu32(ABCD, Ec, F);                                                \
+        if (g >= 3 && g <= 18)                                                                  \
+            M[(g + 1) & 3] = _mm_sha1msg2_epu32(                                                \
+                _mm_xor_si128(_mm_sha1msg1_epu32(M[(g + 1) & 3], M[(g + 2) & 3]), M[(g + 3) & 3]), M[g & 3]); \
+    }
+    int g = 1;
+    for (; g < 5; g++) PY_SHA1_NI_GROUP(0)
+    for (; g < 10; g++) PY_SHA1_NI_GROUP(1)
+    for (; g < 15; g++) PY_SHA1_NI_GROUP(2)
+    for (; g < 20; g++) PY_SHA1_NI_GROUP(3)
+#undef PY_SHA1_NI_GROUP
+    Ec = _mm_sha1nexte_epu32(Ep, E_SAVE);
+    ABCD = _mm_add_epi32(ABCD, ABCD_SAVE);
+    E0 = Ec;
+    }
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(state), _mm_shuffle_epi32(ABCD, 0x1B));
+    state[4] = static_cast<uint32_t>(_mm_extract_epi32(E0, 3));
+}
+PY_SHANI_TARGET inline void sha256_blocks(uint32_t state[8], const unsigned char* data, size_t nblocks, const uint32_t* K) {
+    const __m128i MASK = _mm_set_epi64x(0x0c0d0e0f08090a0bULL, 0x0405060700010203ULL);
+    __m128i TMP = _mm_shuffle_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(&state[0])), 0xB1);   // CDAB
+    __m128i STATE1 = _mm_shuffle_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(&state[4])), 0x1B);   // EFGH
+    __m128i STATE0 = _mm_alignr_epi8(TMP, STATE1, 8);                                                         // ABEF
+    STATE1 = _mm_blend_epi16(STATE1, TMP, 0xF0);                                                              // CDGH
+    for (; nblocks; nblocks--, data += 64) {
+    const __m128i ABEF_SAVE = STATE0, CDGH_SAVE = STATE1;
+    __m128i M[4];
+    for (int i = 0; i < 4; i++) M[i] = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(data + 16 * i)), MASK);
+#define PY_SHA256_NI_GROUP(g, SCHEDULE)                                                                       \
+    {                                                                                                       \
+        __m128i MSG = _mm_add_epi32(M[(g) & 3], _mm_loadu_si128(reinterpret_cast<const __m128i*>(K + 4 * (g)))); \
+        STATE1 = _mm_sha256rnds2_epu32(STATE1, STATE0, MSG);                                                \
+        MSG = _mm_shuffle_epi32(MSG, 0x0E);                                                                 \
+        STATE0 = _mm_sha256rnds2_epu32(STATE0, STATE1, MSG);                                                \
+        if (SCHEDULE) {   /* the words of group g + 4, into the slot group g held */                         \
+            __m128i t = _mm_add_epi32(_mm_sha256msg1_epu32(M[(g) & 3], M[((g) + 1) & 3]),                   \
+                                      _mm_alignr_epi8(M[((g) + 3) & 3], M[((g) + 2) & 3], 4));              \
+            M[(g) & 3] = _mm_sha256msg2_epu32(t, M[((g) + 3) & 3]);                                         \
+        }                                                                                                   \
+    }
+    PY_SHA256_NI_GROUP(0, 1) PY_SHA256_NI_GROUP(1, 1) PY_SHA256_NI_GROUP(2, 1) PY_SHA256_NI_GROUP(3, 1)
+    PY_SHA256_NI_GROUP(4, 1) PY_SHA256_NI_GROUP(5, 1) PY_SHA256_NI_GROUP(6, 1) PY_SHA256_NI_GROUP(7, 1)
+    PY_SHA256_NI_GROUP(8, 1) PY_SHA256_NI_GROUP(9, 1) PY_SHA256_NI_GROUP(10, 1) PY_SHA256_NI_GROUP(11, 1)
+    PY_SHA256_NI_GROUP(12, 0) PY_SHA256_NI_GROUP(13, 0) PY_SHA256_NI_GROUP(14, 0) PY_SHA256_NI_GROUP(15, 0)
+#undef PY_SHA256_NI_GROUP
+    STATE0 = _mm_add_epi32(STATE0, ABEF_SAVE);
+    STATE1 = _mm_add_epi32(STATE1, CDGH_SAVE);
+    }
+    TMP =_mm_shuffle_epi32(STATE0, 0x1B);                // FEBA
+    STATE1 = _mm_shuffle_epi32(STATE1, 0xB1);             // DCHG
+    STATE0 = _mm_blend_epi16(TMP, STATE1, 0xF0);          // DCBA
+    STATE1 = _mm_alignr_epi8(STATE1, TMP, 8);             // HGFE
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(&state[0]), STATE0);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(&state[4]), STATE1);
+}
+}  // namespace shani_
+#endif
 class Hash {
+    // streaming state: the words, the bytes of an unfinished block, the length so far
     struct S {
         int kind;   // 0 md5, 1 sha1, 2 sha256, 3 sha512
-        std::string data;
+        uint32_t h32[8];
+        uint64_t h64[8];
+        std::string pending;
+        uint64_t total = 0;
     };
     std::shared_ptr<S> s_;
     static uint32_t rol(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
     static uint32_t ror(uint32_t x, int n) { return (x >> n) | (x << (32 - n)); }
     static uint64_t ror64(uint64_t x, int n) { return (x >> n) | (x << (64 - n)); }
-    static std::string pad_(const std::string& m, size_t block, bool big, size_t lenbytes) {
-        std::string p = m;
-        p.push_back(static_cast<char>(0x80));
-        while (p.size() % block != block - lenbytes) p.push_back(0);
-        uint64_t bits = static_cast<uint64_t>(m.size()) * 8;
-        for (size_t i = 0; i < lenbytes; i++) {
-            size_t sh = big ? (lenbytes - 1 - i) * 8 : i * 8;
-            p.push_back(sh < 64 ? static_cast<char>((bits >> sh) & 0xFF) : 0);
-        }
-        return p;
+    static uint32_t be32_(const unsigned char* q) {
+#if defined(_MSC_VER)
+        uint32_t v;
+        std::memcpy(&v, q, 4);
+        return _byteswap_ulong(v);
+#else
+        return static_cast<uint32_t>(q[0]) << 24 | static_cast<uint32_t>(q[1]) << 16 | static_cast<uint32_t>(q[2]) << 8 | q[3];
+#endif
     }
-    static std::string md5_(const std::string& m) {
+    static uint32_t le32_(const unsigned char* q) {
+        return static_cast<uint32_t>(q[0]) | static_cast<uint32_t>(q[1]) << 8 | static_cast<uint32_t>(q[2]) << 16 | static_cast<uint32_t>(q[3]) << 24;
+    }
+    static void md5_block_(uint32_t* h, const unsigned char* q) {
         static const uint32_t K[64] = {
             0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501, 0x698098d8, 0x8b44f7af,
             0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821, 0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa,
@@ -607,65 +762,61 @@ class Hash {
         static const int R[64] = {7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9,  14, 20, 5, 9,
                                   14, 20, 5, 9,  14, 20, 5, 9,  14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
                                   4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21};
-        uint32_t h[4] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476};
-        std::string p = pad_(m, 64, false, 8);
-        for (size_t o = 0; o < p.size(); o += 64) {
             uint32_t w[16];
-            for (int i = 0; i < 16; i++)
-                w[i] = static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i])) |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 1])) << 8 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 2])) << 16 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 3])) << 24;
+            for (int i = 0; i < 16; i++) w[i] = le32_(q + 4 * i);
             uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
-            for (int i = 0; i < 64; i++) {
-                uint32_t f;
-                int g;
-                if (i < 16) f = (b & c) | (~b & d), g = i;
-                else if (i < 32) f = (d & b) | (~d & c), g = (5 * i + 1) % 16;
-                else if (i < 48) f = b ^ c ^ d, g = (3 * i + 5) % 16;
-                else f = c ^ (b | ~d), g = (7 * i) % 16;
-                uint32_t t = d;
-                d = c;
-                c = b;
-                b = b + rol(a + f + K[i] + w[g], R[i]);
-                a = t;
+#define PY_MD5_STEP(a, b, c, d, F, g, i) a = b + rol(a + (F) + K[i] + w[g], R[i])
+            for (int i = 0; i < 16; i += 4) {
+                PY_MD5_STEP(a, b, c, d, (b & c) | (~b & d), i, i);
+                PY_MD5_STEP(d, a, b, c, (a & b) | (~a & c), i + 1, i + 1);
+                PY_MD5_STEP(c, d, a, b, (d & a) | (~d & b), i + 2, i + 2);
+                PY_MD5_STEP(b, c, d, a, (c & d) | (~c & a), i + 3, i + 3);
             }
+            for (int i = 16; i < 32; i += 4) {
+                PY_MD5_STEP(a, b, c, d, (d & b) | (~d & c), (5 * i + 1) & 15, i);
+                PY_MD5_STEP(d, a, b, c, (c & a) | (~c & b), (5 * (i + 1) + 1) & 15, i + 1);
+                PY_MD5_STEP(c, d, a, b, (b & d) | (~b & a), (5 * (i + 2) + 1) & 15, i + 2);
+                PY_MD5_STEP(b, c, d, a, (a & c) | (~a & d), (5 * (i + 3) + 1) & 15, i + 3);
+            }
+            for (int i = 32; i < 48; i += 4) {
+                PY_MD5_STEP(a, b, c, d, b ^ c ^ d, (3 * i + 5) & 15, i);
+                PY_MD5_STEP(d, a, b, c, a ^ b ^ c, (3 * (i + 1) + 5) & 15, i + 1);
+                PY_MD5_STEP(c, d, a, b, d ^ a ^ b, (3 * (i + 2) + 5) & 15, i + 2);
+                PY_MD5_STEP(b, c, d, a, c ^ d ^ a, (3 * (i + 3) + 5) & 15, i + 3);
+            }
+            for (int i = 48; i < 64; i += 4) {
+                PY_MD5_STEP(a, b, c, d, c ^ (b | ~d), (7 * i) & 15, i);
+                PY_MD5_STEP(d, a, b, c, b ^ (a | ~c), (7 * (i + 1)) & 15, i + 1);
+                PY_MD5_STEP(c, d, a, b, a ^ (d | ~b), (7 * (i + 2)) & 15, i + 2);
+                PY_MD5_STEP(b, c, d, a, d ^ (c | ~a), (7 * (i + 3)) & 15, i + 3);
+            }
+#undef PY_MD5_STEP
             h[0] += a, h[1] += b, h[2] += c, h[3] += d;
-        }
-        std::string out;
-        for (uint32_t x : h)
-            for (int i = 0; i < 4; i++) out.push_back(static_cast<char>((x >> (8 * i)) & 0xFF));
-        return out;
     }
-    static std::string sha1_(const std::string& m) {
-        uint32_t h[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
-        std::string p = pad_(m, 64, true, 8);
-        for (size_t o = 0; o < p.size(); o += 64) {
+    static void sha1_block_(uint32_t* h, const unsigned char* q, size_t nb = 1) {
+#ifdef PY_HAVE_SHANI
+            if (shani_::available()) {
+                shani_::sha1_blocks(h, q, nb);
+                return;
+            }
+#endif
             uint32_t w[80];
-            for (int i = 0; i < 16; i++)
-                w[i] = static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i])) << 24 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 1])) << 16 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 2])) << 8 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 3]));
+            for (int i = 0; i < 16; i++) w[i] = be32_(q + 4 * i);
             for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
             uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
-            for (int i = 0; i < 80; i++) {
-                uint32_t f, k;
-                if (i < 20) f = (b & c) | (~b & d), k = 0x5A827999;
-                else if (i < 40) f = b ^ c ^ d, k = 0x6ED9EBA1;
-                else if (i < 60) f = (b & c) | (b & d) | (c & d), k = 0x8F1BBCDC;
-                else f = b ^ c ^ d, k = 0xCA62C1D6;
-                uint32_t t = rol(a, 5) + f + e + k + w[i];
-                e = d, d = c, c = rol(b, 30), b = a, a = t;
-            }
-            h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e;
-        }
-        std::string out;
-        for (uint32_t x : h)
-            for (int i = 3; i >= 0; i--) out.push_back(static_cast<char>((x >> (8 * i)) & 0xFF));
-        return out;
+#define PY_SHA1_ROUND(F, K, i)                      \
+    {                                               \
+        uint32_t t = rol(a, 5) + (F) + e + (K) + w[i]; \
+        e = d, d = c, c = rol(b, 30), b = a, a = t; \
     }
-    static std::string sha256_(const std::string& m) {
+            for (int i = 0; i < 20; i++) PY_SHA1_ROUND(((b & c) | (~b & d)), 0x5A827999u, i)
+            for (int i = 20; i < 40; i++) PY_SHA1_ROUND((b ^ c ^ d), 0x6ED9EBA1u, i)
+            for (int i = 40; i < 60; i++) PY_SHA1_ROUND(((b & c) | (b & d) | (c & d)), 0x8F1BBCDCu, i)
+            for (int i = 60; i < 80; i++) PY_SHA1_ROUND((b ^ c ^ d), 0xCA62C1D6u, i)
+#undef PY_SHA1_ROUND
+            h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e;
+    }
+    static void sha256_block_(uint32_t* h, const unsigned char* q, size_t nb = 1) {
         static const uint32_t K[64] = {
             0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
             0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
@@ -674,34 +825,40 @@ class Hash {
             0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
             0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
             0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
-        uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
-        std::string p = pad_(m, 64, true, 8);
-        for (size_t o = 0; o < p.size(); o += 64) {
+#ifdef PY_HAVE_SHANI
+            if (shani_::available()) {
+                shani_::sha256_blocks(h, q, nb, K);
+                return;
+            }
+#endif
             uint32_t w[64];
-            for (int i = 0; i < 16; i++)
-                w[i] = static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i])) << 24 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 1])) << 16 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 2])) << 8 |
-                       static_cast<uint32_t>(static_cast<unsigned char>(p[o + 4 * i + 3]));
+            for (int i = 0; i < 16; i++) w[i] = be32_(q + 4 * i);
             for (int i = 16; i < 64; i++) {
                 uint32_t s0 = ror(w[i - 15], 7) ^ ror(w[i - 15], 18) ^ (w[i - 15] >> 3);
                 uint32_t s1 = ror(w[i - 2], 17) ^ ror(w[i - 2], 19) ^ (w[i - 2] >> 10);
                 w[i] = w[i - 16] + s0 + w[i - 7] + s1;
             }
             uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
-            for (int i = 0; i < 64; i++) {
-                uint32_t t1 = hh + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i];
-                uint32_t t2 = (ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
-                hh = g, g = f, f = e, e = d + t1, d = c, c = b, b = a, a = t1 + t2;
-            }
-            h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e, h[5] += f, h[6] += g, h[7] += hh;
-        }
-        std::string out;
-        for (uint32_t x : h)
-            for (int i = 3; i >= 0; i--) out.push_back(static_cast<char>((x >> (8 * i)) & 0xFF));
-        return out;
+#define PY_SHA256_ROUND(a, b, c, d, e, f, g, h, i)                                                          \
+    {                                                                                                         \
+        uint32_t t1 = h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i];         \
+        d += t1;                                                                                              \
+        h = t1 + (ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));                       \
     }
-    static std::string sha512_(const std::string& m) {
+            for (int i = 0; i < 64; i += 8) {
+                PY_SHA256_ROUND(a, b, c, d, e, f, g, hh, i)
+                PY_SHA256_ROUND(hh, a, b, c, d, e, f, g, i + 1)
+                PY_SHA256_ROUND(g, hh, a, b, c, d, e, f, i + 2)
+                PY_SHA256_ROUND(f, g, hh, a, b, c, d, e, i + 3)
+                PY_SHA256_ROUND(e, f, g, hh, a, b, c, d, i + 4)
+                PY_SHA256_ROUND(d, e, f, g, hh, a, b, c, i + 5)
+                PY_SHA256_ROUND(c, d, e, f, g, hh, a, b, i + 6)
+                PY_SHA256_ROUND(b, c, d, e, f, g, hh, a, i + 7)
+            }
+#undef PY_SHA256_ROUND
+            h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e, h[5] += f, h[6] += g, h[7] += hh;
+    }
+    static void sha512_block_(uint64_t* h, const unsigned char* p) {
         static const uint64_t K[80] = {
             0x428a2f98d728ae22ULL, 0x7137449123ef65cdULL, 0xb5c0fbcfec4d3b2fULL, 0xe9b5dba58189dbbcULL, 0x3956c25bf348b538ULL,
             0x59f111f1b605d019ULL, 0x923f82a4af194f9bULL, 0xab1c5ed5da6d8118ULL, 0xd807aa98a3030242ULL, 0x12835b0145706fbeULL,
@@ -719,14 +876,10 @@ class Hash {
             0xd186b8c721c0c207ULL, 0xeada7dd6cde0eb1eULL, 0xf57d4f7fee6ed178ULL, 0x06f067aa72176fbaULL, 0x0a637dc5a2c898a6ULL,
             0x113f9804bef90daeULL, 0x1b710b35131c471bULL, 0x28db77f523047d84ULL, 0x32caab7b40c72493ULL, 0x3c9ebe0a15c9bebcULL,
             0x431d67c49c100d4cULL, 0x4cc5d4becb3e42b6ULL, 0x597f299cfc657e2aULL, 0x5fcb6fab3ad6faecULL, 0x6c44198c4a475817ULL};
-        uint64_t h[8] = {0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, 0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL,
-                         0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL, 0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL};
-        std::string p = pad_(m, 128, true, 16);
-        for (size_t o = 0; o < p.size(); o += 128) {
             uint64_t w[80];
             for (int i = 0; i < 16; i++) {
                 w[i] = 0;
-                for (int k = 0; k < 8; k++) w[i] = (w[i] << 8) | static_cast<unsigned char>(p[o + 8 * i + k]);
+                for (int k = 0; k < 8; k++) w[i] = (w[i] << 8) | p[8 * i + k];
             }
             for (int i = 16; i < 80; i++) {
                 uint64_t s0 = ror64(w[i - 15], 1) ^ ror64(w[i - 15], 8) ^ (w[i - 15] >> 7);
@@ -734,31 +887,106 @@ class Hash {
                 w[i] = w[i - 16] + s0 + w[i - 7] + s1;
             }
             uint64_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
-            for (int i = 0; i < 80; i++) {
-                uint64_t t1 = hh + (ror64(e, 14) ^ ror64(e, 18) ^ ror64(e, 41)) + ((e & f) ^ (~e & g)) + K[i] + w[i];
-                uint64_t t2 = (ror64(a, 28) ^ ror64(a, 34) ^ ror64(a, 39)) + ((a & b) ^ (a & c) ^ (b & c));
-                hh = g, g = f, f = e, e = d + t1, d = c, c = b, b = a, a = t1 + t2;
+#define PY_SHA512_ROUND(a, b, c, d, e, f, g, h, i)                                                          \
+    {                                                                                                         \
+        uint64_t t1 = h + (ror64(e, 14) ^ ror64(e, 18) ^ ror64(e, 41)) + ((e & f) ^ (~e & g)) + K[i] + w[i];  \
+        d += t1;                                                                                              \
+        h = t1 + (ror64(a, 28) ^ ror64(a, 34) ^ ror64(a, 39)) + ((a & b) ^ (a & c) ^ (b & c));                \
+    }
+            for (int i = 0; i < 80; i += 8) {
+                PY_SHA512_ROUND(a, b, c, d, e, f, g, hh, i)
+                PY_SHA512_ROUND(hh, a, b, c, d, e, f, g, i + 1)
+                PY_SHA512_ROUND(g, hh, a, b, c, d, e, f, i + 2)
+                PY_SHA512_ROUND(f, g, hh, a, b, c, d, e, i + 3)
+                PY_SHA512_ROUND(e, f, g, hh, a, b, c, d, i + 4)
+                PY_SHA512_ROUND(d, e, f, g, hh, a, b, c, i + 5)
+                PY_SHA512_ROUND(c, d, e, f, g, hh, a, b, i + 6)
+                PY_SHA512_ROUND(b, c, d, e, f, g, hh, a, i + 7)
             }
+#undef PY_SHA512_ROUND
             h[0] += a, h[1] += b, h[2] += c, h[3] += d, h[4] += e, h[5] += f, h[6] += g, h[7] += hh;
+    }
+    static size_t block_size_(int kind) { return kind == 3 ? 128 : 64; }
+    static void init_(S& s) {
+        static const uint32_t i0[4] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476};
+        static const uint32_t i1[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
+        static const uint32_t i2[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+        static const uint64_t i3[8] = {0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, 0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL, 0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL, 0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL};
+        switch (s.kind) {
+            case 0: std::memcpy(s.h32, i0, sizeof i0); break;
+            case 1: std::memcpy(s.h32, i1, sizeof i1); break;
+            case 2: std::memcpy(s.h32, i2, sizeof i2); break;
+            default: std::memcpy(s.h64, i3, sizeof i3); break;
         }
+    }
+    static void block_(S& s, const unsigned char* q) {
+        switch (s.kind) {
+            case 0: md5_block_(s.h32, q); break;
+            case 1: sha1_block_(s.h32, q); break;
+            case 2: sha256_block_(s.h32, q); break;
+            default: sha512_block_(s.h64, q); break;
+        }
+    }
+    static void feed_(S& s, const char* d, size_t n) {
+        const size_t B = block_size_(s.kind);
+        s.total += n;
+        const unsigned char* p = reinterpret_cast<const unsigned char*>(d);
+        if (!s.pending.empty()) {
+            size_t take = std::min(n, B - s.pending.size());
+            s.pending.append(d, take);
+            p += take;
+            n -= take;
+            if (s.pending.size() < B) return;
+            block_(s, reinterpret_cast<const unsigned char*>(s.pending.data()));
+            s.pending.clear();
+        }
+#ifdef PY_HAVE_SHANI
+        if ((s.kind == 1 || s.kind == 2) && n >= B && shani_::available()) {   // all the whole blocks in one call
+            const size_t nb = n / B;
+            if (s.kind == 1) sha1_block_(s.h32, p, nb);
+            else sha256_block_(s.h32, p, nb);
+            p += nb * B;
+            n -= nb * B;
+        }
+#endif
+        for (; n >= B; p += B, n -= B) block_(s, p);
+        s.pending.assign(reinterpret_cast<const char*>(p), n);
+    }
+    static std::string finish_(S s) {   // (a copy: the digest does not end the hash)
+        const size_t B = block_size_(s.kind), lenbytes = s.kind == 3 ? 16 : 8;
+        const bool big = s.kind != 0;
+        std::string tail = s.pending;
+        tail.push_back(static_cast<char>(0x80));
+        while (tail.size() % B != B - lenbytes) tail.push_back(0);
+        const uint64_t bits = s.total * 8;
+        for (size_t i = 0; i < lenbytes; i++) {
+            size_t sh = big ? (lenbytes - 1 - i) * 8 : i * 8;
+            tail.push_back(sh < 64 ? static_cast<char>((bits >> sh) & 0xFF) : 0);
+        }
+        for (size_t o = 0; o < tail.size(); o += B) block_(s, reinterpret_cast<const unsigned char*>(tail.data()) + o);
         std::string out;
-        for (uint64_t x : h)
-            for (int i = 7; i >= 0; i--) out.push_back(static_cast<char>((x >> (8 * i)) & 0xFF));
+        if (s.kind == 3) {
+            for (int k = 0; k < 8; k++)
+                for (int i = 7; i >= 0; i--) out.push_back(static_cast<char>((s.h64[k] >> (8 * i)) & 0xFF));
+        } else {
+            const int words = s.kind == 0 ? 4 : s.kind == 1 ? 5 : 8;
+            for (int k = 0; k < words; k++) {
+                if (s.kind == 0) for (int i = 0; i < 4; i++) out.push_back(static_cast<char>((s.h32[k] >> (8 * i)) & 0xFF));
+                else for (int i = 3; i >= 0; i--) out.push_back(static_cast<char>((s.h32[k] >> (8 * i)) & 0xFF));
+            }
+        }
         return out;
     }
 
   public:
     Hash() = default;
-    Hash(int kind, const std::string& data) : s_(std::make_shared<S>(S{kind, data})) {}
-    void update(const bytes& b) const { s_->data += b.raw(); }
-    bytes digest() const {
-        switch (s_->kind) {
-            case 0: return bytes(md5_(s_->data));
-            case 1: return bytes(sha1_(s_->data));
-            case 2: return bytes(sha256_(s_->data));
-            default: return bytes(sha512_(s_->data));
-        }
+    Hash(int kind, const std::string& data) : s_(std::make_shared<S>()) {
+        s_->kind = kind;
+        init_(*s_);
+        feed_(*s_, data.data(), data.size());
     }
+    void update(const bytes& b) const { feed_(*s_, b.raw().data(), b.raw().size()); }
+    bytes digest() const { return bytes(finish_(*s_)); }
     str hexdigest() const { return digest().hex(); }
 };
 inline Hash md5(const bytes& b = bytes()) { return Hash(0, b.raw()); }
@@ -766,6 +994,9 @@ inline Hash sha1(const bytes& b = bytes()) { return Hash(1, b.raw()); }
 inline Hash sha256(const bytes& b = bytes()) { return Hash(2, b.raw()); }
 inline Hash sha512(const bytes& b = bytes()) { return Hash(3, b.raw()); }
 }  // namespace hashlib
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma optimize("", on)
+#endif
 
 // ------------------------------------------------------------------------------------------ generators
 // a generator function makes a class deriving generator<T>: next() resumes after each yield and gives

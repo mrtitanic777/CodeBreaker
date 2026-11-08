@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <string_view>
 
 #include "pystr.hpp"
 
@@ -81,18 +82,42 @@ size_t V::size() const {
 
 static const size_t INDEXED = 24;
 
+// ---- the hash index of a large dict or set ------------------------------------------------------------
+static inline size_t slot_of(size_t h, size_t mask) {
+    uint64_t x = (uint64_t)h * 0x9E3779B97F4A7C15ull;
+    return (size_t)(x ^ (x >> 29)) & mask;
+}
+static void idx_fill(Index& ix) {   // the slot table from the hashes held
+    size_t cap = 64;
+    while (cap < ix.hs.size() * 2 + 2) cap <<= 1;
+    ix.slots.assign(cap, -1);
+    for (size_t n = 0; n < ix.hs.size(); n++) {
+        size_t i = slot_of(ix.hs[n], cap - 1);
+        while (ix.slots[i] >= 0) i = (i + 1) & (cap - 1);
+        ix.slots[i] = (int32_t)n;
+    }
+}
+template <class HashAt>
+static void idx_make(Index& ix, size_t count, HashAt at) {
+    ix.hs.resize(count);
+    for (size_t n = 0; n < count; n++) ix.hs[n] = at(n);
+    idx_fill(ix);
+    ix.made_for = count;
+}
+template <class Eq>
+static int idx_find(const Index& ix, size_t h, Eq same) {
+    const size_t mask = ix.slots.size() - 1;
+    for (size_t i = slot_of(h, mask); ix.slots[i] >= 0; i = (i + 1) & mask) {
+        size_t n = (size_t)ix.slots[i];
+        if (ix.hs[n] == h && same(n)) return (int)n;
+    }
+    return -1;
+}
+
 int DictH::find(const V& key) const {
     if (items.size() > INDEXED) {
-        if (idx.made_for != items.size()) {
-            idx.by.clear();
-            for (size_t n = 0; n < items.size(); n++) idx.by[hash(items[n].first)].push_back((int)n);
-            idx.made_for = items.size();
-        }
-        auto it = idx.by.find(hash(key));
-        if (it == idx.by.end()) return -1;
-        for (int n : it->second)
-            if (eq(items[(size_t)n].first, key)) return n;
-        return -1;
+        if (idx.made_for != items.size()) idx_make(idx, items.size(), [&](size_t n) { return hash(items[n].first); });
+        return idx_find(idx, hash(key), [&](size_t n) { return eq(items[n].first, key); });
     }
     if (key.k == K::Str) return find(key.str().c_str());
     for (size_t n = 0; n < items.size(); n++)
@@ -102,16 +127,8 @@ int DictH::find(const V& key) const {
 
 int SeqH::find(const V& item) const {
     if (v.size() > INDEXED) {
-        if (idx.made_for != v.size()) {
-            idx.by.clear();
-            for (size_t n = 0; n < v.size(); n++) idx.by[hash(v[n])].push_back((int)n);
-            idx.made_for = v.size();
-        }
-        auto it = idx.by.find(hash(item));
-        if (it == idx.by.end()) return -1;
-        for (int n : it->second)
-            if (eq(v[(size_t)n], item)) return n;
-        return -1;
+        if (idx.made_for != v.size()) idx_make(idx, v.size(), [&](size_t n) { return hash(v[n]); });
+        return idx_find(idx, hash(item), [&](size_t n) { return eq(v[n], item); });
     }
     for (size_t n = 0; n < v.size(); n++)
         if (eq(v[n], item)) return (int)n;
@@ -121,7 +138,14 @@ int SeqH::find(const V& item) const {
 int DictH::find(const char* key) const { return findn(key, std::strlen(key)); }
 
 int DictH::findn(const char* key, size_t len) const {
-    if (items.size() > INDEXED) return find(V(std::string(key, len)));
+    if (items.size() > INDEXED) {
+        if (idx.made_for != items.size()) idx_make(idx, items.size(), [&](size_t n) { return hash(items[n].first); });
+        const size_t h = std::hash<std::string_view>()(std::string_view(key, len));
+        return idx_find(idx, h, [&](size_t n) {
+            const V& k = items[n].first;
+            return k.k == K::Str && k.str().size() == len && std::memcmp(k.str().data(), key, len) == 0;
+        });
+    }
     for (size_t n = 0; n < items.size(); n++) {
         const V& k = items[n].first;
         if (k.k == K::Str) {
@@ -173,7 +197,14 @@ bool V::has(const char* key) const { return k == K::Dict && dict_().find(key) >=
 bool V::has(const V& key) const { return k == K::Dict && dict_().find(key) >= 0; }
 static void indexed_append(Index& idx, size_t old, const V& key) {
     if (idx.made_for == old) {                           // (kept up as it grows)
-        idx.by[hash(key)].push_back((int)old);
+        idx.hs.push_back(hash(key));
+        if (idx.hs.size() * 2 + 2 > idx.slots.size()) idx_fill(idx);
+        else {
+            const size_t mask = idx.slots.size() - 1;
+            size_t i = slot_of(idx.hs.back(), mask);
+            while (idx.slots[i] >= 0) i = (i + 1) & mask;
+            idx.slots[i] = (int32_t)old;
+        }
         idx.made_for = old + 1;
     }
 }
@@ -189,6 +220,16 @@ void V::set(const V& key, V value) const {
         d.items[n].second = std::move(value);
 }
 void V::set(const char* key, V value) const { set(V(key), std::move(value)); }
+void V::put(V key, V value) const {
+    auto& d = dict_();
+    int n = d.find(key);
+    if (n < 0) {
+        size_t old = d.items.size();
+        d.items.emplace_back(std::move(key), std::move(value));
+        indexed_append(d.idx, old, d.items.back().first);
+    } else
+        d.items[n].second = std::move(value);
+}
 V& V::setdefault(const V& key, V dflt) const {
     auto& d = dict_();
     int n = d.find(key);
@@ -307,7 +348,7 @@ size_t hash(const V& v) {
             if (f == std::floor(f) && std::fabs(f) < 9e18) return std::hash<int64_t>()((int64_t)f);
             return std::hash<double>()(f);
         }
-        case K::Str: return std::hash<std::string>()(v.str());
+        case K::Str: return std::hash<std::string_view>()(std::string_view(v.str()));
         case K::Tuple: case K::List: {
             size_t h = 0x345678;
             for (auto& x : v.seq()) h = h * 1000003 ^ hash(x);

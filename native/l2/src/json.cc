@@ -1,5 +1,6 @@
 #include "json.hpp"
 
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -81,10 +82,44 @@ struct Parser {
         }
         return v;
     }
+    std::vector<V> stack;
+    V keys_seen[256];   // object keys are mostly the same few strings: one string value is shared by all that repeat
+    // an object key as a string value (a plain one is looked for among the keys seen before, with no copy)
+    V key() {
+        size_t q = p + 1;
+        const size_t n = s.size();
+        uint32_t h = 2166136261u;
+        while (q < n) {
+            unsigned char u = (unsigned char)s[q];
+            if (u == '"' || u == '\\' || u < 0x20) break;
+            h = (h ^ u) * 16777619u;
+            q++;
+        }
+        if (q >= n || s[q] != '"' || q - p - 1 > 40) return V(string());
+        const char* b = s.data() + p + 1;
+        const size_t len = q - p - 1;
+        V& slot = keys_seen[h & 255];
+        p = q + 1;
+        if (slot.k == K::Str && slot.str().size() == len && std::memcmp(slot.str().data(), b, len) == 0) return slot;
+        slot = V(std::string(b, len));
+        return slot;
+    }
     std::string string() {
         p++;  // "
         std::string out;
         while (true) {
+            // the run of plain characters up to the next quote, backslash or control character: copied at once
+            size_t q = p;
+            const size_t n = s.size();
+            while (q < n) {
+                unsigned char u = (unsigned char)s[q];
+                if (u == '"' || u == '\\' || u < 0x20) break;
+                q++;
+            }
+            if (q > p) {
+                out.append(s, p, q - p);
+                p = q;
+            }
             if (p >= s.size()) fail("Unterminated string");
             char c = s[p];
             if (c == '"') {
@@ -123,9 +158,7 @@ struct Parser {
                 }
                 continue;
             }
-            if ((unsigned char)c < 0x20) fail("Invalid control character");
-            out += c;
-            p++;
+            fail("Invalid control character");
         }
     }
     V number() {
@@ -148,8 +181,16 @@ struct Parser {
             if (p < s.size() && (s[p] == '+' || s[p] == '-')) p++;
             while (p < s.size() && s[p] >= '0' && s[p] <= '9') p++;
         }
+        if (p == start || (p == start + 1 && s[start] == '-')) fail("Expecting value");
+        if (!frac && p - start <= 18) {   // fits an int64: no text copy
+            const char* d = s.data() + start;
+            const bool ng = *d == '-';
+            if (ng) d++;
+            int64_t acc = 0;
+            for (const char* e = s.data() + p; d < e; d++) acc = acc * 10 + (*d - '0');
+            return V((long long)(ng ? -acc : acc));
+        }
         std::string t = s.substr(start, p - start);
-        if (t.empty() || t == "-") fail("Expecting value");
         if (frac) return V(std::strtod(t.c_str(), nullptr));
         bool neg = t[0] == '-';
         std::string digits = neg ? t.substr(1) : t;
@@ -168,21 +209,22 @@ struct Parser {
         char c = s[p];
         if (c == '{') {
             p++;
-            V d = V::dict();
             ws();
             if (p < s.size() && s[p] == '}') {
                 p++;
-                return untag(d);
+                return untag(V::dict());
             }
+            const size_t base = stack.size();   // the keys and values so far, alternating (children use the stack above)
             while (true) {
                 ws();
                 if (p >= s.size() || s[p] != '"') fail("Expecting property name enclosed in double quotes");
-                std::string k = string();
+                V k = key();
                 ws();
                 if (p >= s.size() || s[p] != ':') fail("Expecting ':' delimiter");
                 p++;
                 V v = value();
-                d.set(V(std::move(k)), std::move(v));   // (a key twice: its first place, its last value)
+                stack.push_back(std::move(k));
+                stack.push_back(std::move(v));
                 ws();
                 if (p < s.size() && s[p] == ',') {
                     p++;
@@ -190,21 +232,27 @@ struct Parser {
                 }
                 if (p < s.size() && s[p] == '}') {
                     p++;
-                    return untag(d);
+                    V d = V::dict();
+                    d.dict_().items.reserve((stack.size() - base) / 2);
+                    for (size_t n = base; n < stack.size(); n += 2)
+                        d.put(std::move(stack[n]), std::move(stack[n + 1]));   // (a key twice: its first place, its last value)
+                    stack.resize(base);
+                    return untag(std::move(d));
                 }
                 fail("Expecting ',' delimiter");
             }
         }
         if (c == '[') {
             p++;
-            V l = V::list();
             ws();
             if (p < s.size() && s[p] == ']') {
                 p++;
-                return l;
+                return V::list();
             }
+            const size_t base = stack.size();
             while (true) {
-                l.append(value());
+                V v = value();
+                stack.push_back(std::move(v));
                 ws();
                 if (p < s.size() && s[p] == ',') {
                     p++;
@@ -212,7 +260,9 @@ struct Parser {
                 }
                 if (p < s.size() && s[p] == ']') {
                     p++;
-                    return l;
+                    std::vector<V> items(std::make_move_iterator(stack.begin() + base), std::make_move_iterator(stack.end()));
+                    stack.resize(base);
+                    return V::list(std::move(items));
                 }
                 fail("Expecting ',' delimiter");
             }
@@ -237,7 +287,8 @@ struct Parser {
         if (c == '-' || (c >= '0' && c <= '9') || c == 'I') return number();
         fail("Expecting value");
     }
-    V untag(const V& d) {
+    V untag(V d) {
+        if (!tagged) return d;
         if (tagged && (d.items().size() == 2 || d.items().size() == 1) && d.items()[0].first.str() == "$keep") return keep(d);
         if (tagged && d.items().size() == 1 && d.items()[0].first.str() == "$big") return kept(d.items()[0].second.as_int());
         if (!tagged || d.items().size() != 1) return d;
@@ -268,6 +319,20 @@ void dump_str(std::string& out, const std::string& s, bool ascii) {
     out += '"';
     size_t pos = 0;
     while (pos < s.size()) {
+        {   // a run of characters written as they are is appended at once
+            size_t q = pos;
+            const size_t n = s.size();
+            while (q < n) {
+                unsigned char u = (unsigned char)s[q];
+                if (u < 0x20 || u == '"' || u == '\\' || (u >= 0x7f && (ascii || u == 0x7f))) break;
+                q++;
+            }
+            if (q > pos) {
+                out.append(s, pos, q - pos);
+                pos = q;
+                if (pos >= n) break;
+            }
+        }
         unsigned char c = (unsigned char)s[pos];
         if (c < 0x80) {
             pos++;
@@ -280,7 +345,7 @@ void dump_str(std::string& out, const std::string& s, bool ascii) {
                 case '\b': out += "\\b"; break;
                 case '\f': out += "\\f"; break;
                 default:
-                    if (c < 0x20) {
+                    if (c < 0x20 || (ascii && c == 0x7f)) {   // (ensure_ascii escapes DEL too, as json.dumps)
                         char b[8];
                         std::snprintf(b, sizeof b, "\\u%04x", c);
                         out += b;
@@ -306,15 +371,70 @@ void dump_str(std::string& out, const std::string& s, bool ascii) {
     out += '"';
 }
 
+// repr(float) of a finite float, written without the temporaries float_repr makes (same text)
+void append_float(std::string& out, double f) {
+    if (f == 0) {
+        out += std::signbit(f) ? "-0.0" : "0.0";
+        return;
+    }
+    char buf[40];
+    auto r = std::to_chars(buf, buf + sizeof buf, f, std::chars_format::scientific);   // [-]d[.ddd]e[+-]xx
+    const char* p = buf;
+    const char* end = r.ptr;
+    if (*p == '-') {
+        out += '-';
+        p++;
+    }
+    char digits[24];
+    int nd = 0;
+    while (p < end && *p != 'e') {
+        if (*p != '.') digits[nd++] = *p;
+        p++;
+    }
+    int exp = 0;
+    if (p < end) std::from_chars(p + 1 + (p[1] == '+' ? 1 : 0), end, exp);
+    while (nd > 1 && digits[nd - 1] == '0') nd--;
+    if (exp >= -4 && exp < 16) {
+        int point = exp + 1;   // digits before the point
+        if (point <= 0) {
+            out += "0.";
+            out.append((size_t)(-point), '0');
+            out.append(digits, (size_t)nd);
+        } else if (nd <= point) {
+            out.append(digits, (size_t)nd);
+            out.append((size_t)(point - nd), '0');
+            out += ".0";
+        } else {
+            out.append(digits, (size_t)point);
+            out += '.';
+            out.append(digits + point, (size_t)(nd - point));
+        }
+        return;
+    }
+    out += digits[0];
+    if (nd > 1) {
+        out += '.';
+        out.append(digits + 1, (size_t)(nd - 1));
+    }
+    char eb[16];
+    std::snprintf(eb, sizeof eb, "e%c%02d", exp < 0 ? '-' : '+', exp < 0 ? -exp : exp);
+    out += eb;
+}
+
 void dump(std::string& out, const V& v, const DumpOpts& o) {
     switch (v.k) {
         case K::None: out += "null"; return;
         case K::Bool: out += v.b ? "true" : "false"; return;
-        case K::Int: out += v.u64 ? std::to_string((uint64_t)v.i) : std::to_string(v.i); return;
+        case K::Int: {
+            char b[24];
+            auto r = v.u64 ? std::to_chars(b, b + sizeof b, (uint64_t)v.i) : std::to_chars(b, b + sizeof b, v.i);
+            out.append(b, (size_t)(r.ptr - b));
+            return;
+        }
         case K::Float:
             if (std::isnan(v.f)) out += o.tagged ? "{\"$f\":\"nan\"}" : "NaN";
             else if (std::isinf(v.f)) out += o.tagged ? (v.f < 0 ? "{\"$f\":\"-inf\"}" : "{\"$f\":\"inf\"}") : (v.f < 0 ? "-Infinity" : "Infinity");
-            else out += float_repr(v.f);
+            else append_float(out, v.f);
             return;
         case K::Str: dump_str(out, v.str(), o.ensure_ascii); return;
         case K::List: case K::Tuple: case K::Set: {

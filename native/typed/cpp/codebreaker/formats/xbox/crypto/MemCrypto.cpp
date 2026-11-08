@@ -3,6 +3,11 @@
 #include "codebreaker/formats/xbox/crypto/MemCrypto.hpp"
 
 #include <algorithm>
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
+
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <iostream>
@@ -237,41 +242,79 @@ BigInt operator*(const BigInt& a, const BigInt& b) {
     return r;
 }
 
-// binary long division (in place on limb vectors: the RSA exponentiation runs it thousands of times)
+// long division on 32-bit limbs (Knuth, TAOCP vol. 2, 4.3.1 algorithm D); the RSA exponentiation and the
+// prime search run it thousands of times
 void BigInt::divmod_(const BigInt& a, const BigInt& b, BigInt& q, BigInt& r) {
     if (b.limbs_.empty()) throw py::ZeroDivisionError("integer division or modulo by zero");
-    q.limbs_.assign(a.limbs_.size(), 0);
-    r.limbs_.assign(b.limbs_.size() + 1, 0);
-    const size_t rn = r.limbs_.size();
-    for (int64_t i = a.bit_length() - 1; i >= 0; --i) {
-        // r = (r << 1) | bit i of a
-        uint32_t carry = a.bit(i) ? 1 : 0;
-        for (size_t k = 0; k < rn; ++k) {
-            uint32_t next = r.limbs_[k] >> 31;
-            r.limbs_[k] = (r.limbs_[k] << 1) | carry;
-            carry = next;
-        }
-        // if r >= b: r -= b, set bit i of q
-        bool ge = true;
-        if (r.limbs_[rn - 1] == 0) {
-            for (size_t k = b.limbs_.size(); k-- > 0;) {
-                if (r.limbs_[k] != b.limbs_[k]) {
-                    ge = r.limbs_[k] > b.limbs_[k];
-                    break;
-                }
-            }
-        }
-        if (ge) {
-            int64_t borrow = 0;
-            for (size_t k = 0; k < rn; ++k) {
-                int64_t v = static_cast<int64_t>(r.limbs_[k]) - borrow - (k < b.limbs_.size() ? static_cast<int64_t>(b.limbs_[k]) : 0);
-                borrow = v < 0 ? 1 : 0;
-                if (v < 0) v += (int64_t(1) << 32);
-                r.limbs_[k] = static_cast<uint32_t>(v);
-            }
-            q.limbs_[static_cast<size_t>(i / 32)] |= 1u << (i % 32);
-        }
+    const size_t n = b.limbs_.size();
+    const size_t m = a.limbs_.size();
+    q.limbs_.clear();
+    r.limbs_.clear();
+    if (m < n || (m == n && a.compare(b) < 0)) {
+        r.limbs_ = a.limbs_;
+        return;
     }
+    if (n == 1) {
+        const uint64_t d = b.limbs_[0];
+        q.limbs_.assign(m, 0);
+        uint64_t rem = 0;
+        for (size_t i = m; i-- > 0;) {
+            uint64_t cur = (rem << 32) | a.limbs_[i];
+            q.limbs_[i] = static_cast<uint32_t>(cur / d);
+            rem = cur % d;
+        }
+        if (rem) r.limbs_.push_back(static_cast<uint32_t>(rem));
+        q.trim_();
+        return;
+    }
+    // normalise so that the divisor's top limb has its high bit set
+    int s = 0;
+    while (!((b.limbs_[n - 1] << s) & 0x80000000u)) ++s;
+    std::vector<uint32_t> v(n), u(m + 1);
+    for (size_t i = n - 1; i > 0; --i)
+        v[i] = (b.limbs_[i] << s) | (s ? static_cast<uint32_t>(static_cast<uint64_t>(b.limbs_[i - 1]) >> (32 - s)) : 0);
+    v[0] = b.limbs_[0] << s;
+    u[m] = s ? static_cast<uint32_t>(static_cast<uint64_t>(a.limbs_[m - 1]) >> (32 - s)) : 0;
+    for (size_t i = m - 1; i > 0; --i)
+        u[i] = (a.limbs_[i] << s) | (s ? static_cast<uint32_t>(static_cast<uint64_t>(a.limbs_[i - 1]) >> (32 - s)) : 0);
+    u[0] = a.limbs_[0] << s;
+    q.limbs_.assign(m - n + 1, 0);
+    const uint64_t base = uint64_t(1) << 32;
+    for (size_t j = m - n + 1; j-- > 0;) {
+        uint64_t num = (static_cast<uint64_t>(u[j + n]) << 32) | u[j + n - 1];
+        uint64_t qhat = num / v[n - 1];
+        uint64_t rhat = num % v[n - 1];
+        while (qhat >= base || qhat * v[n - 2] > ((rhat << 32) | u[j + n - 2])) {
+            --qhat;
+            rhat += v[n - 1];
+            if (rhat >= base) break;
+        }
+        int64_t borrow = 0;
+        uint64_t carry = 0;
+        for (size_t i = 0; i < n; ++i) {
+            uint64_t p = qhat * v[i] + carry;
+            carry = p >> 32;
+            int64_t t = static_cast<int64_t>(u[i + j]) - borrow - static_cast<int64_t>(p & 0xFFFFFFFFu);
+            u[i + j] = static_cast<uint32_t>(t);
+            borrow = t < 0 ? 1 : 0;
+        }
+        int64_t t = static_cast<int64_t>(u[j + n]) - borrow - static_cast<int64_t>(carry);
+        u[j + n] = static_cast<uint32_t>(t);
+        if (t < 0) {   // qhat was one too big: add the divisor back
+            --qhat;
+            uint64_t c = 0;
+            for (size_t i = 0; i < n; ++i) {
+                uint64_t sum = static_cast<uint64_t>(u[i + j]) + v[i] + c;
+                u[i + j] = static_cast<uint32_t>(sum);
+                c = sum >> 32;
+            }
+            u[j + n] += static_cast<uint32_t>(c);
+        }
+        q.limbs_[j] = static_cast<uint32_t>(qhat);
+    }
+    r.limbs_.assign(n, 0);
+    for (size_t i = 0; i < n; ++i)
+        r.limbs_[i] = (u[i] >> s) | (s ? static_cast<uint32_t>(static_cast<uint64_t>(u[i + 1]) << (32 - s)) : 0);
     q.trim_();
     r.trim_();
 }
@@ -288,15 +331,157 @@ BigInt operator%(const BigInt& a, const BigInt& b) {
     return r;
 }
 
+namespace {
+
+#if defined(_MSC_VER) && !defined(__clang__)
+inline uint64_t mul64(uint64_t a, uint64_t b, uint64_t& hi) { return _umul128(a, b, &hi); }
+#else
+inline uint64_t mul64(uint64_t a, uint64_t b, uint64_t& hi) {
+    unsigned __int128 p = static_cast<unsigned __int128>(a) * b;
+    hi = static_cast<uint64_t>(p >> 64);
+    return static_cast<uint64_t>(p);
+}
+#endif
+inline uint64_t add_c(uint64_t a, uint64_t b, uint64_t& carry) {   // a + b, carry set to the carry out (0 or 1)
+    uint64_t s = a + b;
+    carry = s < a;
+    return s;
+}
+
+// Montgomery arithmetic on 64-bit limbs for an odd modulus (CIOS multiplication)
+struct Mont {
+    size_t k;
+    std::vector<uint64_t> m;
+    uint64_t n0inv;   // -m^-1 mod 2^64
+
+    explicit Mont(std::vector<uint64_t> mod) : k(mod.size()), m(std::move(mod)) {
+        uint64_t inv = 1;   // Newton's iteration for m[0]^-1 mod 2^64
+        for (int i = 0; i < 6; ++i) inv *= 2 - m[0] * inv;
+        n0inv = 0 - inv;
+    }
+
+    // out = a * b * R^-1 mod m, for a, b < m (t is scratch of k + 2 limbs; out may alias a or b)
+    void mul(const uint64_t* a, const uint64_t* b, uint64_t* out, uint64_t* t) const {
+        std::fill(t, t + k + 2, 0);
+        for (size_t i = 0; i < k; ++i) {
+            // t += a * b[i]
+            uint64_t carry = 0;
+            const uint64_t bi = b[i];
+            for (size_t j = 0; j < k; ++j) {
+                uint64_t hi, lo = mul64(a[j], bi, hi), c;
+                lo = add_c(lo, t[j], c);
+                hi += c;
+                lo = add_c(lo, carry, c);
+                hi += c;
+                t[j] = lo;
+                carry = hi;
+            }
+            uint64_t c;
+            t[k] = add_c(t[k], carry, c);
+            t[k + 1] = c;
+            // t = (t + mq * m) / 2^64
+            const uint64_t mq = t[0] * n0inv;
+            uint64_t hi, lo = mul64(mq, m[0], hi);
+            lo = add_c(lo, t[0], c);
+            carry = hi + c;
+            for (size_t j = 1; j < k; ++j) {
+                lo = mul64(mq, m[j], hi);
+                lo = add_c(lo, t[j], c);
+                hi += c;
+                lo = add_c(lo, carry, c);
+                hi += c;
+                t[j - 1] = lo;
+                carry = hi;
+            }
+            t[k - 1] = add_c(t[k], carry, c);
+            t[k] = t[k + 1] + c;
+        }
+        bool ge = t[k] != 0;   // conditional subtraction of m
+        if (!ge) {
+            ge = true;
+            for (size_t j = k; j-- > 0;) {
+                if (t[j] != m[j]) {
+                    ge = t[j] > m[j];
+                    break;
+                }
+            }
+        }
+        if (ge) {
+            uint64_t borrow = 0;
+            for (size_t j = 0; j < k; ++j) {
+                uint64_t d = t[j] - m[j];
+                uint64_t b1 = t[j] < m[j];
+                uint64_t d2 = d - borrow;
+                borrow = b1 | (d < borrow);
+                out[j] = d2;
+            }
+        } else {
+            std::copy(t, t + k, out);
+        }
+    }
+};
+
+}  // namespace
+
 BigInt BigInt::powmod(const BigInt& base, const BigInt& exp, const BigInt& mod) {
     if (mod.is_zero()) throw py::ValueError("pow() 3rd argument cannot be 0");
-    BigInt result = BigInt(1) % mod;
     BigInt b = base % mod;
-    for (int64_t i = exp.bit_length() - 1; i >= 0; --i) {
-        result = (result * result) % mod;
-        if (exp.bit(i)) result = (result * b) % mod;
+    const int64_t ebits = exp.bit_length();
+    if (!(mod.limbs_[0] & 1) || mod.limbs_.size() < 2) {   // even (or one-limb) modulus: square and multiply
+        BigInt result = BigInt(1) % mod;
+        for (int64_t i = ebits - 1; i >= 0; --i) {
+            result = (result * result) % mod;
+            if (exp.bit(i)) result = (result * b) % mod;
+        }
+        return result;
     }
-    return result;
+    if (ebits == 0) return BigInt(1) % mod;
+    auto to64 = [](const BigInt& v, size_t k) {
+        std::vector<uint64_t> out(k, 0);
+        for (size_t i = 0; i < v.limbs_.size(); ++i) out[i / 2] |= static_cast<uint64_t>(v.limbs_[i]) << (32 * (i % 2));
+        return out;
+    };
+    const size_t k = (mod.limbs_.size() + 1) / 2;
+    Mont mt(to64(mod, k));
+    // R^2 mod m, with R = 2^(64 k): the base goes into Montgomery form by one multiplication
+    BigInt r2 = BigInt(1).shl(static_cast<int64_t>(128 * k)) % mod;
+    std::vector<uint64_t> r2l = to64(r2, k), bl = to64(b, k), t(k + 2), bm(k), x(k), y(k);
+    mt.mul(bl.data(), r2l.data(), bm.data(), t.data());
+    // sliding window: the odd powers bm^1, bm^3, ..., bm^(2^W - 1)
+    const int W = ebits > 512 ? 5 : (ebits > 128 ? 4 : (ebits > 24 ? 3 : 1));
+    std::vector<std::vector<uint64_t>> tab(size_t(1) << (W - 1), std::vector<uint64_t>(k));
+    tab[0] = bm;
+    if (W > 1) {
+        mt.mul(bm.data(), bm.data(), y.data(), t.data());   // bm^2
+        for (size_t i = 1; i < tab.size(); ++i) mt.mul(tab[i - 1].data(), y.data(), tab[i].data(), t.data());
+    }
+    x = to64(BigInt(1).shl(static_cast<int64_t>(64 * k)) % mod, k);   // 1 in Montgomery form is R mod m
+    int64_t i = ebits - 1;
+    while (i >= 0) {
+        if (!exp.bit(i)) {
+            mt.mul(x.data(), x.data(), x.data(), t.data());
+            --i;
+            continue;
+        }
+        int64_t l = std::max<int64_t>(i - W + 1, 0);
+        while (!exp.bit(l)) ++l;
+        uint32_t val = 0;
+        for (int64_t j = i; j >= l; --j) val = (val << 1) | (exp.bit(j) ? 1u : 0u);
+        for (int64_t j = 0; j < i - l + 1; ++j) mt.mul(x.data(), x.data(), x.data(), t.data());
+        mt.mul(x.data(), tab[val >> 1].data(), x.data(), t.data());
+        i = l - 1;
+    }
+    std::vector<uint64_t> onel(k, 0);   // leave Montgomery form: multiply by 1
+    onel[0] = 1;
+    mt.mul(x.data(), onel.data(), y.data(), t.data());
+    BigInt res;
+    res.limbs_.assign(k * 2, 0);
+    for (size_t j = 0; j < k; ++j) {
+        res.limbs_[2 * j] = static_cast<uint32_t>(y[j]);
+        res.limbs_[2 * j + 1] = static_cast<uint32_t>(y[j] >> 32);
+    }
+    res.trim_();
+    return res;
 }
 
 BigInt BigInt::modinv(const BigInt& base, const BigInt& mod) {
