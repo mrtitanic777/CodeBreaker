@@ -23,21 +23,9 @@ namespace codebreaker::base::commands {
 
 // ImportError: a module runner throws it ("No module named X") for a name it does not have,
 // as runpy does
-struct ImportError : py::Exception {
-    ImportError() : py::Exception() {}
-    explicit ImportError(const std::string& m) : py::Exception(m) {}
-    const char* type() const override { return "ImportError"; }
-};
-
-// SystemExit(code): code is None, an int, or a str (the one place the Python mixes types: it is
-// whatever sys.exit() was given, so a std::variant)
-struct SystemExit : py::Exception {
-    std::variant<std::monostate, int64_t, py::str> code;
-    SystemExit() : py::Exception() {}
-    explicit SystemExit(int64_t c) : py::Exception(), code(c) {}
-    explicit SystemExit(const py::str& c) : py::Exception(c.utf8()), code(c) {}
-    const char* type() const override { return "SystemExit"; }
-};
+// (the runtime's: SystemExit(code) with code None, an int or a str -- whatever sys.exit() was given)
+using py::ImportError;
+using py::SystemExit;
 
 // sys.argv, for the running module to read
 extern py::list<py::str> sys_argv;

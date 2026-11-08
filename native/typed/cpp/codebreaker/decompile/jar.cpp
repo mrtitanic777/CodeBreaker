@@ -3,6 +3,7 @@
 #include "codebreaker/decompile/jar.hpp"
 
 #include "py_settings.hpp"
+#include "py_subprocess.hpp"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -20,47 +21,6 @@ using py::str;
 
 // ---- a small subprocess.Popen for this module (the runtime has none) ----
 
-// subprocess.list2cmdline: the command line CreateProcess is given for an argument list
-std::wstring list2cmdline(const py::list<str>& args) {
-    std::u32string out;
-    bool first = true;
-    for (const str& arg : args) {
-        const std::u32string& a = arg.u32();
-        if (!first) out += U' ';
-        first = false;
-        bool needquote = a.empty() || a.find(U' ') != std::u32string::npos || a.find(U'\t') != std::u32string::npos;
-        std::u32string result;
-        if (needquote) result += U'"';
-        int bs = 0;
-        for (char32_t c : a) {
-            if (c == U'\\') {
-                bs++;
-            } else if (c == U'"') {
-                result.append(static_cast<size_t>(bs) * 2, U'\\');
-                bs = 0;
-                result += U"\\\"";
-            } else {
-                if (bs) {
-                    result.append(static_cast<size_t>(bs), U'\\');
-                    bs = 0;
-                }
-                result += c;
-            }
-        }
-        if (bs) result.append(static_cast<size_t>(bs), U'\\');
-        if (needquote) {
-            result.append(static_cast<size_t>(bs), U'\\');
-            result += U'"';
-        }
-        out += result;
-    }
-    std::string u8 = str(out).utf8();
-    int n = MultiByteToWideChar(CP_UTF8, 0, u8.data(), static_cast<int>(u8.size()), nullptr, 0);
-    std::wstring w(static_cast<size_t>(n), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, u8.data(), static_cast<int>(u8.size()), w.data(), n);
-    return w;
-}
-
 std::wstring wide(const str& s) {
     std::string u8 = s.utf8();
     int n = MultiByteToWideChar(CP_UTF8, 0, u8.data(), static_cast<int>(u8.size()), nullptr, 0);
@@ -69,13 +29,7 @@ std::wstring wide(const str& s) {
     return w;
 }
 
-[[noreturn]] void raise_win(DWORD code) {
-    std::string msg = "[WinError " + std::to_string(code) + "] the process could not be started";
-    if (code == 2 || code == 3) throw py::FileNotFoundError(msg);
-    if (code == 5) throw py::PermissionError(msg);
-    if (code == 267) throw py::NotADirectoryError(msg);
-    throw py::OSError(msg);
-}
+[[noreturn]] void raise_win(DWORD code) { py::raise_winerror(code); }
 
 struct Process {
     HANDLE proc = nullptr;
@@ -108,7 +62,7 @@ void spawn(Process& p, const py::list<str>& cmd, const str& cwd, bool pipe_stdin
     si.hStdOutput = out_w;
     si.hStdError = out_w;
     PROCESS_INFORMATION pi{};
-    std::wstring line = list2cmdline(cmd);
+    std::wstring line = py::subprocess::to_wide(py::subprocess::list2cmdline(cmd));
     std::wstring wcwd = wide(cwd);
     BOOL ok = CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, flags, nullptr, wcwd.c_str(), &si, &pi);
     DWORD err = GetLastError();

@@ -15,19 +15,17 @@ const py::re::Pattern _SUPER_ARGS = py::re::compile(py::str("^\\s*super\\s*\\((.
 
 py::str _ctor_text(const ClassInfo& cls) {
     py::list<py::str> parts;
-    for (const Constructor& c : cls.constructors) {
-        if (c.body && py::truthy(*c.body)) {
-            for (const Statement& s : *c.body) {
-                parts.append(std::get<1>(s));
-            }
+    for (const py::ref<ir::Method>& c : cls->constructors()) {
+        for (const Statement& s : c->body) {
+            parts.append(std::get<1>(s));
         }
     }
-    for (const Field& f : cls.instance_fields) {
-        if (py::truthy(f.initializer)) {
-            parts.append(*f.initializer);
+    for (const py::ref<ir::Field>& f : cls->instance_fields()) {
+        if (py::truthy(f->initializer)) {
+            parts.append(*f->initializer);
         }
     }
-    for (const Body& block : cls.inst_inits) {
+    for (const Body& block : cls->inst_inits) {
         for (const Statement& s : block) {
             parts.append(std::get<1>(s));
         }
@@ -38,15 +36,15 @@ py::str _ctor_text(const ClassInfo& cls) {
 py::set<py::str> compute(const py::list<ClassInfo>& classes, const py::set<py::str>& values) {
     py::dict<py::str, ClassInfo> by_name;
     for (const ClassInfo& c : classes) {
-        by_name.set(c.name, c);
+        by_name.set(c->name, c);
     }
     py::dict<py::str, py::list<py::str>> children;
     for (const ClassInfo& c : classes) {
-        if (c.parent && by_name.contains(*c.parent)) {
-            if (!children.contains(*c.parent)) {
-                children.set(*c.parent, py::list<py::str>());
+        if (c->parent && by_name.contains(*c->parent)) {
+            if (!children.contains(*c->parent)) {
+                children.set(*c->parent, py::list<py::str>());
             }
-            children.at(*c.parent).append(c.name);
+            children.at(*c->parent).append(c->name);
         }
     }
 
@@ -68,9 +66,9 @@ py::set<py::str> compute(const py::list<ClassInfo>& classes, const py::set<py::s
 
     auto instance_methods = [&](const ClassInfo& c) {
         py::set<py::str> out;
-        for (const Method& m : c.methods) {
-            if (!m.is_ctor && !m.is_static) {
-                out.add(m.name);
+        for (const py::ref<ir::Method>& m : c->methods) {
+            if (!m->is_ctor && !m->is_static) {
+                out.add(m->name);
             }
         }
         return out;
@@ -78,7 +76,7 @@ py::set<py::str> compute(const py::list<ClassInfo>& classes, const py::set<py::s
 
     py::set<py::str> roots;
     for (const ClassInfo& c : classes) {
-        if (c.is_interface || c.is_enum || (!py::truthy(c.constructors) && !py::truthy(c.instance_fields))) {
+        if (c->is_interface || c->is_enum || (!py::truthy(c->constructors()) && !py::truthy(c->instance_fields()))) {
             continue;
         }
         py::set<py::str> called;
@@ -94,16 +92,16 @@ py::set<py::str> compute(const py::list<ClassInfo>& classes, const py::set<py::s
         const ClassInfo* k = &c;
         while (k != nullptr) {   // its own and inherited instance methods
             own.update(instance_methods(*k));
-            k = (k->parent && by_name.contains(*k->parent)) ? &by_name.at(*k->parent) : nullptr;
+            k = ((*k)->parent && by_name.contains(*(*k)->parent)) ? &by_name.at(*(*k)->parent) : nullptr;
         }
         py::set<py::str> abstract_;
-        for (const Method& m : c.methods) {
-            if (m.is_abstract) {
-                abstract_.add(m.name);
+        for (const py::ref<ir::Method>& m : c->methods) {
+            if (m->is_abstract) {
+                abstract_.add(m->name);
             }
         }
         py::set<py::str> overridden;
-        for (const py::str& d : descendants(c.name)) {
+        for (const py::str& d : descendants(c->name)) {
             overridden.update(instance_methods(by_name.at(d)));
         }
         bool hit = false;
@@ -114,7 +112,7 @@ py::set<py::str> compute(const py::list<ClassInfo>& classes, const py::set<py::s
             }
         }
         if (hit) {
-            roots.add(c.name);
+            roots.add(c->name);
         }
     }
 
@@ -143,13 +141,10 @@ py::set<py::str> compute(const py::list<ClassInfo>& classes, const py::set<py::s
                 changed = true;
                 break;
             }
-            if (c.parent && by_name.contains(*c.parent) && !picked.contains(*c.parent)) {
+            if (c->parent && by_name.contains(*c->parent) && !picked.contains(*c->parent)) {
                 bool with_args = false;
-                for (const Constructor& k : c.constructors) {
-                    if (!k.body) {
-                        continue;
-                    }
-                    for (const Statement& s : *k.body) {
+                for (const py::ref<ir::Method>& k : c->constructors()) {
+                    for (const Statement& s : k->body) {
                         const py::str& t = std::get<1>(s);
                         std::optional<py::re::Match> m = _SUPER_ARGS.match(t);
                         if (m && py::truthy(m->group(1).strip())) {

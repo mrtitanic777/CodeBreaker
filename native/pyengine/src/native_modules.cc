@@ -226,6 +226,7 @@ void set_settings_hook(settings_get_fn get) {
     py::settings::hook() = [get](const py::str& k) -> py::str {
         std::string v, t, m;
         if (get(k.utf8(), v, t, m)) return py::str(v);
+        if (t == "TypeError" && !v.empty()) throw py::settings::NotStr(m, v);   // (a setting that is not a str: its value rides along)
         if (t == "TypeError") throw py::TypeError(m);
         if (t == "ValueError") throw py::ValueError(m);
         if (t == "KeyError") throw py::KeyError(m);

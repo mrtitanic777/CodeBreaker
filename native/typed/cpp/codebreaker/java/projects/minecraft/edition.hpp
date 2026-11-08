@@ -23,15 +23,13 @@
 
 #include "py.hpp"
 #include "py_os.hpp"
+#include "codebreaker/java/ir.hpp"
 
 namespace codebreaker::java::projects::minecraft::edition {
 
-// The Python reads ``.name`` and ``.package`` off each parsed class (getattr with a None default),
-// so a class is these two optional strings here.
-struct ClassInfo {
-    std::optional<py::str> name;
-    std::optional<py::str> package;
-};
+// A parsed class: the Python reads ``.name`` and ``.package`` off each one (getattr with a None default); a
+// class here is the typed port of codebreaker.java.ir.JClass, whose name is always a str.
+using ClassInfo = py::ref<java::ir::JClass>;
 
 // Short edition name (CLI choice / return value) -> registered target-profile name.
 extern const py::dict<py::str, py::str> EDITIONS;

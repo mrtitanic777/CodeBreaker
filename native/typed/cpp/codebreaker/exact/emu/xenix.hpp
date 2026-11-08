@@ -35,20 +35,14 @@
 namespace codebreaker::exact::emu::xenix {
 
 // SystemExit(message): a program that is not an a.out file.
-struct SystemExit : py::Exception {
-    explicit SystemExit(const std::string& m) : py::Exception(m) {}
-    const char* type() const override { return "SystemExit"; }
-};
+using py::SystemExit;
 // unicorn.UcError: the engine refused (a memory access outside what is mapped ...).
 struct UcError : py::Exception {
     explicit UcError(const std::string& m) : py::Exception(m) {}
     const char* type() const override { return "UcError"; }
 };
 // next(...) of an exhausted generator: no free file descriptor.
-struct StopIteration : py::Exception {
-    StopIteration() : py::Exception() {}
-    const char* type() const override { return "StopIteration"; }
-};
+using py::StopIteration;
 
 extern const int64_t CS;
 extern const int64_t DS;

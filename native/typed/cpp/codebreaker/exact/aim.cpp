@@ -33,17 +33,7 @@ const py::re::Pattern RE_BYTEREG = py::re::compile(py::str(R"(\b(?:al|ah|bl|cl|d
 // int(text, 0) for a digit string or a 0x.. string: a decimal with leading zeros is a ValueError, as Python's
 // (a number beyond int64 is an OverflowError: no real operand comes near it)
 int64_t _int0(const py::str& s) {
-    if (s.startswith(py::str("0x"))) {
-        return py::int_from_str(s, 16);
-    }
-    if (py::len(s) > 1 && s[0] == py::str("0")) {
-        for (int64_t i = 0; i < py::len(s); ++i) {
-            if (s[i] != py::str("0")) {
-                throw py::ValueError("leading zeros in decimal integer literals are not permitted");
-            }
-        }
-    }
-    return py::int_from_str(s, 10);
+    return py::int_parse(s, 0);
 }
 
 // SIGNED.get(a) == b

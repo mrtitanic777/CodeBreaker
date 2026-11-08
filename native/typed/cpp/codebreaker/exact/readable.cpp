@@ -25,22 +25,6 @@ void write_latin1(const py::str& p, const py::str& t) {
     f.close();
 }
 
-// tempfile.mkdtemp(prefix=...)
-py::str mkdtemp(const char* prefix) {
-    namespace fs = std::filesystem;
-    static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz0123456789_";
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    for (;;) {
-        std::string name = prefix;
-        for (int i = 0; i < 8; ++i) name += alphabet[gen() % (sizeof alphabet - 1)];
-        fs::path d = fs::temp_directory_path() / name;
-        std::error_code ec;
-        if (fs::create_directory(d, ec)) return py::str(d.u8string());
-        if (ec) throw py::OSError(ec.message());
-    }
-}
-
 int64_t count_identical(const Counts& d) {
     int64_t n = 0;
     for (const auto& kv : d.items()) {
@@ -148,7 +132,7 @@ int64_t main(const Project& prj, const py::list<py::str>& argv) {
         return 0;
     }
     Counts before = counts(prj);
-    py::str w = mkdtemp("readable_");
+    py::str w = py::tempfile::mkdtemp(std::nullopt, py::str("readable_"));
     Counts after;
     try {   // (the project again, its sources renamed)
         namespace fs = std::filesystem;

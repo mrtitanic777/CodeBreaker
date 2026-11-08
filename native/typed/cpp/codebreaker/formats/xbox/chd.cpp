@@ -3,6 +3,7 @@
 #include "codebreaker/formats/xbox/chd.hpp"
 
 #include "py_settings.hpp"
+#include "py_subprocess.hpp"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -90,118 +91,14 @@ py::str _need_chdman() {
 }
 
 #ifdef _WIN32
-// subprocess.list2cmdline (including its habit of doubling a quoted argument's trailing backslashes)
-static std::u32string list2cmdline_(const py::list<py::str>& argv) {
-    std::u32string result;
-    for (const py::str& arg : argv) {
-        std::u32string bs_buf;
-        if (!result.empty()) {
-            result.push_back(U' ');
-        }
-        bool needquote = arg.contains(py::str(" ")) || arg.contains(py::str("\t")) || arg.empty();
-        if (needquote) {
-            result.push_back(U'"');
-        }
-        for (char32_t c : arg.u32()) {
-            if (c == U'\\') {
-                bs_buf.push_back(c);
-            } else if (c == U'"') {
-                result.append(bs_buf.size() * 2, U'\\');
-                bs_buf.clear();
-                result += U"\\\"";
-            } else {
-                result += bs_buf;
-                bs_buf.clear();
-                result.push_back(c);
-            }
-        }
-        if (!bs_buf.empty()) {
-            result += bs_buf;
-        }
-        if (needquote) {
-            result += bs_buf;
-            result.push_back(U'"');
-        }
-    }
-    return result;
-}
-
-static std::wstring wide_(const std::u32string& s) {
-    std::wstring w;
-    for (char32_t c : s) {
-        if (c >= 0x10000) {
-            char32_t v = c - 0x10000;
-            w.push_back(static_cast<wchar_t>(0xD800 + (v >> 10)));
-            w.push_back(static_cast<wchar_t>(0xDC00 + (v & 0x3FF)));
-        } else {
-            w.push_back(static_cast<wchar_t>(c));
-        }
-    }
-    return w;
-}
-
 // the program run with stdout and stderr into one pipe: its exit code and its output, as text
-// (cp1252, universal newlines)
+// (subprocess.run(argv, stdout=PIPE, stderr=STDOUT, text=True): cp1252, universal newlines; stdin is ours)
 static std::pair<int64_t, py::str> run_process_(const py::list<py::str>& argv) {
-    std::wstring cmd = wide_(list2cmdline_(argv));
-    SECURITY_ATTRIBUTES sa{};
-    sa.nLength = sizeof sa;
-    sa.bInheritHandle = TRUE;
-    HANDLE rd = nullptr, wr = nullptr;
-    if (!CreatePipe(&rd, &wr, &sa, 0)) {
-        throw py::OSError("CreatePipe failed");
-    }
-    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
-    if (in && in != INVALID_HANDLE_VALUE) {
-        SetHandleInformation(in, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-    }
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = in;
-    si.hStdOutput = wr;
-    si.hStdError = wr;
-    PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessW(nullptr, &cmd[0], nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi);
-    DWORD err = GetLastError();
-    CloseHandle(wr);
-    if (!ok) {
-        CloseHandle(rd);
-        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
-            throw py::FileNotFoundError("[WinError " + std::to_string(err) + "] The system cannot find the file specified");
-        }
-        if (err == ERROR_ACCESS_DENIED) {
-            throw py::PermissionError("[WinError 5] Access is denied");
-        }
-        throw py::OSError("[WinError " + std::to_string(err) + "] CreateProcess failed");
-    }
-    std::string raw;
-    char buf[4096];
-    DWORD got = 0;
-    while (ReadFile(rd, buf, sizeof buf, &got, nullptr) && got > 0) {
-        raw.append(buf, got);
-    }
-    CloseHandle(rd);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 0;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    py::str text = py::bytes(raw).decode("cp1252");
-    std::u32string out;
-    const std::u32string& u = text.u32();
-    for (size_t i = 0; i < u.size(); ++i) {
-        if (u[i] == U'\r') {
-            out.push_back(U'\n');
-            if (i + 1 < u.size() && u[i + 1] == U'\n') {
-                ++i;
-            }
-        } else {
-            out.push_back(u[i]);
-        }
-    }
-    return {static_cast<int64_t>(code), py::str(out)};
+    py::subprocess::RunOptions o;
+    o.stdin_ = py::subprocess::Stream::Inherit;
+    o.stderr_ = py::subprocess::Stream::Stdout;
+    py::subprocess::CompletedProcess r = py::subprocess::run(argv, o);
+    return {r.returncode, *r.stdout_};
 }
 #endif
 

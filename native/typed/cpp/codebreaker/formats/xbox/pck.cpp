@@ -27,49 +27,13 @@ static std::tuple<int64_t, int64_t> u32x2_(const py::bytes& d, int64_t off) {
     return py::unpack_from<int64_t, int64_t>(">II", d, off);
 }
 
-// bytes.decode('utf-16-be', 'replace') -- CPython's decoder: a lone surrogate, or a high one not followed by a
-// low one, is one U+FFFD; an odd trailing byte (alone or after a lone surrogate) is one U+FFFD
-static py::str decode_utf16be_(const py::bytes& raw) {
-    std::u32string out;
-    int64_t n = py::len(raw);
-    int64_t q = 0;
-    while (q < n) {
-        if (n - q < 2) {
-            out.push_back(0xFFFD);                             // truncated data
-            break;
-        }
-        int64_t ch = raw.byte_(q) * 256 + raw.byte_(q + 1);
-        q += 2;
-        if (ch < 0xD800 || ch > 0xDFFF) {
-            out.push_back(static_cast<char32_t>(ch));
-            continue;
-        }
-        if (n - q < 2) {
-            out.push_back(0xFFFD);                             // unexpected end of data
-            break;
-        }
-        if (ch <= 0xDBFF) {
-            int64_t ch2 = raw.byte_(q) * 256 + raw.byte_(q + 1);
-            if (ch2 >= 0xDC00 && ch2 <= 0xDFFF) {
-                q += 2;
-                out.push_back(static_cast<char32_t>(0x10000 + ((ch - 0xD800) << 10) + (ch2 - 0xDC00)));
-            } else {
-                out.push_back(0xFFFD);                         // illegal UTF-16 surrogate (ch2 is read again)
-            }
-        } else {
-            out.push_back(0xFFFD);                             // illegal encoding
-        }
-    }
-    return py::str(out);
-}
-
 std::tuple<int64_t, py::str, int64_t> _rec(const py::bytes& d, int64_t p) {
     auto [a, nl] = u32x2_(d, p);
     p += 8;
     if (nl > 8192 || p + nl * 2 > py::len(d)) {
         throw py::ValueError(py::percent(py::str("bad name length %d at 0x%X"), nl, p));
     }
-    py::str name = decode_utf16be_(d.slice(p, p + nl * 2));
+    py::str name = py::codecs::utf_16_be_decode(d.slice(p, p + nl * 2), "replace");
     p += nl * 2 + 4;
     return {a, name, p};
 }
@@ -91,7 +55,7 @@ Parsed parse(const py::str& path) {
         auto [size, typ] = u32x2_(d, p);
         int64_t nl = u32_(d, p + 8);
         int64_t q = p + 12;
-        py::str name = decode_utf16be_(d.slice(q, q + nl * 2));
+        py::str name = py::codecs::utf_16_be_decode(d.slice(q, q + nl * 2), "replace");
         p = q + nl * 2 + 4;
         entries.append(Entry{size, typ, name});
     }

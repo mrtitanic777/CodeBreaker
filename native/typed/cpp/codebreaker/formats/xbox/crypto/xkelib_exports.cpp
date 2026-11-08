@@ -4,6 +4,8 @@
 
 #include "codebreaker/formats/xbox/crypto/xkelib_exports.hpp"
 
+#include "py_subprocess.hpp"
+
 #include <cstdio>
 #include <cstdlib>
 #include <tuple>
@@ -33,65 +35,11 @@ const py::re::Pattern EXPORT_RE = py::re::compile(py::str(R"(\s+(\d+)\s+([\w\W]{
 
 namespace {
 
-// subprocess.list2cmdline: a list of arguments as one Windows command line.
-py::str list2cmdline(const py::list<py::str>& seq) {
-    std::u32string result;
-    for (const py::str& arg : seq) {
-        std::u32string bs_buf;
-        if (!result.empty()) {
-            result += U' ';
-        }
-        const std::u32string& a = arg.u32();
-        bool needquote = a.find(U' ') != std::u32string::npos || a.find(U'\t') != std::u32string::npos || a.empty();
-        if (needquote) {
-            result += U'"';
-        }
-        for (char32_t c : a) {
-            if (c == U'\\') {
-                bs_buf += c;
-            } else if (c == U'"') {
-                result += std::u32string(bs_buf.size() * 2, U'\\');
-                bs_buf.clear();
-                result += U"\\\"";
-            } else {
-                if (!bs_buf.empty()) {
-                    result += bs_buf;
-                    bs_buf.clear();
-                }
-                result += c;
-            }
-        }
-        if (!bs_buf.empty()) {
-            result += bs_buf;
-        }
-        if (needquote) {
-            result += bs_buf;
-            result += U'"';
-        }
-    }
-    return py::str(result);
-}
-
-// UTF-16 of a str, for the Windows API
-std::wstring wide(const py::str& s) {
-    std::wstring w;
-    for (char32_t c : s.u32()) {
-        if (c >= 0x10000) {
-            char32_t v = c - 0x10000;
-            w += static_cast<wchar_t>(0xD800 + (v >> 10));
-            w += static_cast<wchar_t>(0xDC00 + (v & 0x3FF));
-        } else {
-            w += static_cast<wchar_t>(c);
-        }
-    }
-    return w;
-}
-
 // subprocess.Popen(args, stdout=PIPE, shell=True) then communicate() and wait(): -> (stdout bytes, exit code).
 // The shell is %COMSPEC% (cmd.exe) /c "<the command line>", as Python's; stderr and stdin are inherited.
 std::tuple<py::bytes, int64_t> run_shell(const py::list<py::str>& args) {
-    py::str cmd = py::str("\"") + list2cmdline(args) + py::str("\"");
-    std::FILE* pipe = _wpopen(wide(cmd).c_str(), L"rb");
+    py::str cmd = py::str("\"") + py::subprocess::list2cmdline(args) + py::str("\"");
+    std::FILE* pipe = _wpopen(py::subprocess::to_wide(cmd).c_str(), L"rb");
     if (!pipe) {
         throw py::OSError("cannot start the shell");
     }

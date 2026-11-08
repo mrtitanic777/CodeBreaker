@@ -10,56 +10,6 @@ const py::re::Pattern _AREA = py::re::compile(py::str("(\\w+)\\s*:\\s*([^;]*);")
 
 namespace {
 
-// int(text, base) as Python reads it (base 0: a 0x / 0o / 0b prefix or decimal; a nonzero decimal
-// with a leading zero is an error; one "_" allowed between digits, or after the prefix).
-// (A local copy of the helper decompile/m6502.cpp keeps to itself.)
-int64_t py_int(const py::str& text_in, int64_t base) {
-    std::string t = text_in.strip().utf8();
-    const int64_t shown_base = base;   // (the base as the caller gave it, in every message)
-    auto bad = [&]() { return py::ValueError(py::percent("invalid literal for int() with base %d: %r", shown_base, text_in)); };
-    size_t i = 0;
-    bool neg = false;
-    if (i < t.size() && (t[i] == '+' || t[i] == '-')) neg = t[i++] == '-';
-    if (i + 1 < t.size() && t[i] == '0' && (base == 0 || base == 16 || base == 8 || base == 2)) {
-        char c = static_cast<char>(std::tolower(static_cast<unsigned char>(t[i + 1])));
-        int64_t b = c == 'x' ? 16 : c == 'o' ? 8 : c == 'b' ? 2 : 0;
-        if (b != 0 && (base == 0 || base == b)) {
-            base = b;
-            i += 2;
-            if (i < t.size() && t[i] == '_') i++;
-        }
-    }
-    bool decimal_zero_rule = false;
-    if (base == 0) {
-        base = 10;
-        decimal_zero_rule = true;  // (a decimal with a leading zero must be all zeros)
-    }
-    if (i >= t.size()) throw bad();
-    size_t first = i;
-    uint64_t v = 0;
-    bool any_digit = false, last_us = false, nonzero = false;
-    for (; i < t.size(); ++i) {
-        char c = t[i];
-        if (c == '_') {
-            if (!any_digit || last_us) throw bad();
-            last_us = true;
-            continue;
-        }
-        int d = (c >= '0' && c <= '9') ? c - '0' : (std::isalpha(static_cast<unsigned char>(c)) ? std::tolower(static_cast<unsigned char>(c)) - 'a' + 10 : 99);
-        if (d >= base) throw bad();
-        last_us = false;
-        any_digit = true;
-        if (d != 0) nonzero = true;
-        if (v > (static_cast<uint64_t>(INT64_MAX) + 1 - static_cast<uint64_t>(d)) / static_cast<uint64_t>(base))
-            throw py::OverflowError("int too large for int64");
-        v = v * static_cast<uint64_t>(base) + static_cast<uint64_t>(d);
-    }
-    if (!any_digit || last_us) throw bad();
-    if (decimal_zero_rule && nonzero && t[first] == '0') throw bad();
-    if (!neg && v > static_cast<uint64_t>(INT64_MAX)) throw py::OverflowError("int too large for int64");
-    return neg ? static_cast<int64_t>(0 - v) : static_cast<int64_t>(v);
-}
-
 // d[key] for a str-keyed dict: a KeyError (whose text is the key's repr, as Python's) when absent
 template <class V> const V& lookup(const py::dict<py::str, V>& d, const py::str& key) {
     if (!d.contains(key)) {
@@ -164,12 +114,12 @@ py::dict<py::str, py::str> attributes(const py::str& body) {
 int64_t _number(const py::str& s_in) {
     py::str s = s_in.strip();
     if (s.startswith(py::str("$"))) {
-        return py_int(s.slice(1, py::len(s)), 16);
+        return py::int_parse(s.slice(1, py::len(s)), 16);
     }
     if (s.startswith(py::str("%"))) {
-        return py_int(s.slice(1, py::len(s)), 2);
+        return py::int_parse(s.slice(1, py::len(s)), 2);
     }
-    return py_int(s, 0);
+    return py::int_parse(s, 0);
 }
 
 std::tuple<py::list<Area>, py::dict<py::str, py::str>> config(const py::str& text_in) {

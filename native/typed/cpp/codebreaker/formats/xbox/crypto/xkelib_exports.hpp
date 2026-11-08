@@ -12,11 +12,7 @@
 namespace codebreaker::formats::xbox::crypto::xkelib_exports {
 
 // The Python's SystemExit (argparse's exit after an error or --help): the exit code.
-struct SystemExit : py::Exception {
-    int64_t code = 0;
-    explicit SystemExit(int64_t c) : py::Exception(), code(c) {}
-    const char* type() const override { return "SystemExit"; }
-};
+using py::SystemExit;
 
 extern const py::str SDK_VER;
 

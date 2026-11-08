@@ -19,11 +19,7 @@
 namespace codebreaker::formats::xbox::crypto::flashplan {
 
 // sys.exit's SystemExit.
-struct SystemExit : py::Exception {
-    int64_t code;
-    explicit SystemExit(int64_t c) : py::Exception(""), code(c) {}
-    const char* type() const override { return "SystemExit"; }
-};
+using py::SystemExit;
 
 extern const py::str DESCRIPTION;
 

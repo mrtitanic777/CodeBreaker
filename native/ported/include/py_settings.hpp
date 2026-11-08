@@ -8,7 +8,8 @@
 //   standalone           (a judge's driver) settings.py's get itself: CB_<KEY>, else settings.json's value
 //                        over the defaults, a path key's relative value joined to the checkout
 //
-// The checkout is CB_CHECKOUT_ROOT (what the driver is given); a setting that is not a str is Python's
+// get / get_int / get_float / get_bool / get_opt_* give a setting of any scalar kind (settings.json holds
+// workers and min_free_gb as numbers). The root is CB_CHECKOUT_ROOT (what the driver is given); a setting that is not a str is Python's
 // TypeError, as os.path.isabs raises for a path key (and a str-typed caller could not take it).
 #pragma once
 
@@ -56,9 +57,22 @@ inline bool is_path_key(const std::string& k) {
     return false;
 }
 
-// settings.json's top-level entries: a str value as its text, any other value as nothing (std::nullopt)
+// A setting as settings.get hands it back: a str (a path, a name), or what settings.json holds as a number,
+// true / false or null. (std::variant: the one place a setting's type is Python's to decide; a list or an
+// object in settings.json is not representable and is a TypeError.)
+using Value = std::variant<str, int64_t, double, bool, std::monostate>;
+
+// what the hook throws for a setting that is not a str: a TypeError (what get_str's callers meet) that
+// carries the value, "<kind>:<str(value)>" with kind i, f, b or n (int, float, bool, None)
+struct NotStr : TypeError {
+    std::string tagged;
+    NotStr(const std::string& m, const std::string& t) : TypeError(m), tagged(t) {}
+};
+
+// settings.json's top-level entries; nullopt for a value that is a list or an object
 struct JsonTop {
-    std::map<std::string, std::optional<std::string>> values;
+    std::map<std::string, std::optional<Value>> values;
+    std::map<std::string, std::string> others;   // the key of a list or an object -> "list" / "dict", "" in front when empty
 };
 inline void json_ws_(const std::string& s, size_t& i) {
     while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) i++;
@@ -118,6 +132,18 @@ inline void json_skip_(const std::string& s, size_t& i) {   // any value
     }
     while (i < s.size() && s[i] != ',' && s[i] != '}' && s[i] != ']') i++;
 }
+// a JSON number, true, false or null as Python's json.load reads it (nullopt: a list or an object)
+inline std::optional<Value> scalar_(const std::string& raw) {
+    if (raw == "true") return Value(true);
+    if (raw == "false") return Value(false);
+    if (raw == "null") return Value(std::monostate{});
+    if (raw == "NaN") return Value(std::nan(""));
+    if (raw == "Infinity") return Value(HUGE_VAL);
+    if (raw == "-Infinity") return Value(-HUGE_VAL);
+    if (raw.empty() || !(raw[0] == '-' || (raw[0] >= '0' && raw[0] <= '9'))) return std::nullopt;
+    if (raw.find_first_of(".eE") != std::string::npos) return Value(float_from_str(str(raw)));
+    return Value(int_parse(str(raw)));
+}
 inline JsonTop json_top_(const std::string& s) {
     JsonTop t;
     size_t i = 0;
@@ -133,10 +159,23 @@ inline JsonTop json_top_(const std::string& s) {
         if (i >= s.size() || s[i] != ':') throw ValueError("settings.json: ':' expected");
         i++;
         json_ws_(s, i);
-        if (i < s.size() && s[i] == '"') t.values[k] = json_str_(s, i);
-        else {
+        if (i < s.size() && s[i] == '"') {
+            t.values[k] = Value(str(json_str_(s, i)));
+        } else {
+            size_t start = i;
             json_skip_(s, i);
-            t.values[k] = std::nullopt;
+            std::string raw = s.substr(start, i - start);
+            while (!raw.empty() && std::isspace(static_cast<unsigned char>(raw.back()))) raw.pop_back();
+            std::optional<Value> v = scalar_(raw);
+            t.values[k] = v;
+            if (!v) {
+                std::string squeezed;
+                for (char c : raw)
+                    if (!std::isspace(static_cast<unsigned char>(c))) squeezed += c;
+                t.others[k] = std::string(squeezed == "[]" || squeezed == "{}" ? "empty-" : "") + (raw[0] == '[' ? "list" : "dict");
+            } else {
+                t.others.erase(k);
+            }
         }
         json_ws_(s, i);
         if (i < s.size() && s[i] == ',') i++;
@@ -149,39 +188,147 @@ inline str checkout_root() {
     if (!r) throw RuntimeError("settings: CB_CHECKOUT_ROOT names no checkout (the typed code runs outside codebreaker.exe)");
     return *r;
 }
-// settings.json, read once (settings.py's _load)
-inline const JsonTop& loaded_() {
-    static const JsonTop t = [] {
-        std::ifstream f(std::filesystem::u8path(os::path::join(checkout_root(), str("settings.json")).utf8()), std::ios::binary);
-        if (!f) return JsonTop{};
-        std::stringstream ss;
-        ss << f.rdbuf();
-        return json_top_(ss.str());
-    }();
+// settings.json, read once (settings.py's _load); reload() forgets it
+inline std::optional<JsonTop>& loaded_cache_() {
+    static std::optional<JsonTop> t;
     return t;
 }
+inline void reload() { loaded_cache_().reset(); }
+inline const JsonTop& loaded_() {
+    auto& c = loaded_cache_();
+    if (!c) {
+        std::ifstream f(std::filesystem::u8path(os::path::join(checkout_root(), str("settings.json")).utf8()), std::ios::binary);
+        if (!f) {
+            c = JsonTop{};
+        } else {
+            std::stringstream ss;
+            ss << f.rdbuf();
+            c = json_top_(ss.str());
+        }
+    }
+    return *c;
+}
 
-inline str get_str(const str& key) {
-    if (hook()) return hook()(key);
+inline Value decode_tagged_(const std::string& t) {
+    std::string text = t.size() > 2 ? t.substr(2) : std::string();
+    switch (t.empty() ? 'n' : t[0]) {
+        case 'i': return Value(int_parse(str(text)));
+        case 'f': return Value(float_from_str(str(text)));
+        case 'b': return Value(text == "True");
+        default: return Value(std::monostate{});
+    }
+}
+inline const char* type_name_(const Value& v) {
+    switch (v.index()) {
+        case 0: return "str";
+        case 1: return "int";
+        case 2: return "float";
+        case 3: return "bool";
+        default: return "NoneType";
+    }
+}
+inline bool truthy_(const Value& v) {
+    switch (v.index()) {
+        case 0: return !std::get<str>(v).empty();
+        case 1: return std::get<int64_t>(v) != 0;
+        case 2: return std::get<double>(v) != 0.0;
+        case 3: return std::get<bool>(v);
+        default: return false;
+    }
+}
+
+// settings.get(key): CB_<KEY> if set and not empty, else settings.json's value over the defaults ("" when
+// there is none); a path key's relative text is joined to the root (a path key holding a non-empty
+// non-str is the TypeError os.path.isabs raises)
+inline Value get(const str& key) {
+    if (hook()) {
+        try {
+            return Value(hook()(key));
+        } catch (const NotStr& e) {
+            return decode_tagged_(e.tagged);
+        }
+    }
     std::string k = key.utf8();
     std::string upper = k;
     for (auto& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     auto env = os::environ_::get(str("CB_" + upper));
-    std::optional<str> value;
-    if (env && !env->empty()) value = *env;
-    else {
+    Value value{str("")};
+    if (env && !env->empty()) {
+        value = *env;
+    } else {
         const auto& j = loaded_().values;
         auto it = j.find(k);
         if (it != j.end()) {
-            if (!it->second) throw TypeError("settings.get(" + repr(key).utf8() + "): the setting is not a str");
-            value = str(*it->second);
+            if (!it->second) {
+                const std::string& what = loaded_().others.at(k);
+                if (what.rfind("empty-", 0) != 0 && is_path_key(k))
+                    throw TypeError("expected str, bytes or os.PathLike object, not " + what);
+                throw TypeError("settings.get(" + repr(key).utf8() + "): the setting is a list or an object");
+            }
+            value = *it->second;
         } else {
             auto d = defaults().find(k);
             value = str(d != defaults().end() ? d->second : std::string());
         }
     }
-    if (!value->empty() && is_path_key(k) && !os::path::isabs(*value)) value = os::path::normpath(os::path::join(checkout_root(), *value));
-    return *value;
+    if (truthy_(value) && is_path_key(k)) {
+        if (value.index() != 0) throw TypeError(std::string("expected str, bytes or os.PathLike object, not ") + type_name_(value));
+        const str v = std::get<str>(value);
+        if (!os::path::isabs(v)) value = os::path::normpath(os::path::join(checkout_root(), v));
+    }
+    return value;
+}
+
+inline str get_str(const str& key) {
+    Value v = get(key);
+    if (v.index() != 0) throw TypeError("settings.get(" + repr(key).utf8() + "): the setting is not a str");
+    return std::get<str>(v);
+}
+// the setting as an int (a bool is not one here), a float (an int widens), a bool; TypeError for any other kind
+[[noreturn]] inline void not_a_(const str& key, const char* what) {
+    throw TypeError("settings.get(" + repr(key).utf8() + "): the setting is not " + what);
+}
+inline int64_t get_int(const str& key) {
+    Value v = get(key);
+    if (v.index() != 1) not_a_(key, "an int");
+    return std::get<int64_t>(v);
+}
+inline double get_float(const str& key) {
+    Value v = get(key);
+    if (v.index() == 2) return std::get<double>(v);
+    if (v.index() == 1) return static_cast<double>(std::get<int64_t>(v));
+    not_a_(key, "a float");
+}
+inline bool get_bool(const str& key) {
+    Value v = get(key);
+    if (v.index() != 3) not_a_(key, "a bool");
+    return std::get<bool>(v);
+}
+// ... or None (null in settings.json) as nothing
+inline std::optional<int64_t> get_opt_int(const str& key) {
+    Value v = get(key);
+    if (v.index() == 4) return std::nullopt;
+    if (v.index() != 1) not_a_(key, "an int or None");
+    return std::get<int64_t>(v);
+}
+inline std::optional<double> get_opt_float(const str& key) {
+    Value v = get(key);
+    if (v.index() == 4) return std::nullopt;
+    if (v.index() == 2) return std::get<double>(v);
+    if (v.index() == 1) return static_cast<double>(std::get<int64_t>(v));
+    not_a_(key, "a float or None");
+}
+inline std::optional<bool> get_opt_bool(const str& key) {
+    Value v = get(key);
+    if (v.index() == 4) return std::nullopt;
+    if (v.index() != 3) not_a_(key, "a bool or None");
+    return std::get<bool>(v);
+}
+inline std::optional<str> get_opt_str(const str& key) {
+    Value v = get(key);
+    if (v.index() == 4) return std::nullopt;
+    if (v.index() != 0) not_a_(key, "a str or None");
+    return std::get<str>(v);
 }
 
 }  // namespace settings
