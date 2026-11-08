@@ -871,6 +871,7 @@ inline int flags_(int64_t f) {
     if (f & 2) out |= ::re::I;
     if (f & 8) out |= ::re::M;
     if (f & 16) out |= ::re::S;
+    if (f & 256) out |= ::re::A;
     return out;
 }
 // a compiled pattern: the regex, compiled once (pyre's own cache), and its text
