@@ -149,7 +149,7 @@ py::list<std::tuple<py::ref<ir::ClassDecl>, py::ref<ir::MethodDecl>>> methods(co
                 if (!k->members) not_iterable();
                 for (const NodeP& m : *k->members) {
                     auto md = std::dynamic_pointer_cast<ir::MethodDecl>(m);
-                    if (md && md->body) out.append(std::make_tuple(k, md));
+                    if (md && ir::truthy(md->body)) out.append(std::make_tuple(k, md));
                 }
             }
         }
