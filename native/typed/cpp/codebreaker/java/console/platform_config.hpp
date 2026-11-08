@@ -23,11 +23,12 @@
 // current pick marked, so every option is visible and switchable in one place.
 //
 // Typing notes: the Python config is a nested dict with a fixed set of keys, so it is the Config record
-// (with ControllerSection inside); `platform.config.json` is read into it by load_config. Keys the Python
-// would carry through unknown (anything outside the fixed ones, except in `binds` and `subsystems`, which
-// are open dicts of str to str) are not kept, and a value of the wrong JSON type raises TypeError where
-// the Python would fail later on its use. The `updates` values of run() are str / bool / number, so Update
-// is a std::variant of them; each key takes the kind its config field has.
+// (with ControllerSection inside); `platform.config.json` is read into it by load_config. Keys outside
+// the fixed ones are kept in each record's `extra` (as JSON values) and written back by dump_config in
+// json.dump(sort_keys=True) order; `binds` and `subsystems` are open dicts of str to str. The three
+// controller thresholds are Numbers (int or float as the file had them). A value of the wrong JSON type
+// raises TypeError where the Python would fail later on its use. The `updates` values of run() are
+// str / bool / number, so Update is a std::variant of them; each key takes the kind its config field has.
 #pragma once
 
 #include <optional>
@@ -36,6 +37,7 @@
 
 #include "py.hpp"
 #include "py_os.hpp"
+#include "value.hpp"
 #include "codebreaker/java/console/sdk.hpp"
 
 namespace codebreaker::java::console::platform_config {
@@ -76,14 +78,23 @@ struct SubsystemSpec {
 };
 extern const py::dict<py::str, SubsystemSpec> SUBSYSTEM_OPTIONS;
 
+// A JSON number as the file held it: an int stays an int (2), a float stays a float (2.0).
+using Number = std::variant<int64_t, double>;
+
+// Keys of a JSON object that this module does not know, in file order, with their parsed JSON values
+// (py::V is the runtime's JSON value). They are carried through load -> save unchanged, as the Python's
+// dict carries them.
+using Extra = std::vector<std::pair<py::str, py::V>>;
+
 // The controller section of the config.
 struct ControllerSection {
     py::str layout;
     bool invert_y;
-    double look_sensitivity;
-    double stick_deadzone;
-    double trigger_threshold;
+    Number look_sensitivity;
+    Number stick_deadzone;
+    Number trigger_threshold;
     py::dict<py::str, py::str> binds;
+    Extra extra;   // unknown keys of the "controller" object
 };
 
 // The whole config (the dict default_config() returns / platform.config.json holds).
@@ -98,6 +109,7 @@ struct Config {
     // is built with 00000000, which is fine for bring-up but cannot deliver achievements.
     py::str title_id;
     py::dict<py::str, py::str> subsystems;
+    Extra extra;   // unknown top-level keys
 };
 
 Config default_config();
@@ -129,10 +141,20 @@ py::list<Decision> _decisions();
 // The full, ordered list of decisions the UI renders as button groups.
 extern const py::list<Decision> DECISIONS;
 
-// The value at a dotted path of the config ('controller.layout', 'keyboard', 'storage', 'title_id',
-// 'subsystems.<name>'); None when the path does not lead to a str (the Python's dict walk answers None
-// for a missing key).
-std::optional<py::str> _get_path(const Config& cfg, const py::str& path);
+// The config as the JSON-shaped dict the Python holds (known keys and the extras alike).
+py::V config_value(const Config& cfg);
+
+// What a dotted path of the config leads to: a str, bool, int or float, or (for an object or list) the
+// JSON value itself.
+using PathValue = std::variant<py::str, bool, int64_t, double, py::V>;
+
+// The value at a dotted path of the config ('controller.layout', 'keyboard', 'subsystems.<name>',
+// 'controller.binds', an extra key ...): the Python's dict walk, which answers None (here nullopt) for
+// a missing key, for a JSON null, and for a path that goes through something that is not an object.
+std::optional<PathValue> _get_path(const Config& cfg, const py::str& path);
+
+// json.dumps(v, indent=indent, sort_keys=True): `indent` nullopt is the one-line form (", " and ": ").
+py::str dump_json(const py::V& v, std::optional<int64_t> indent = std::nullopt);
 
 // Return a copy of the binds with the chosen layout preset applied over the base binds.
 py::dict<py::str, py::str> _apply_layout(const Config& cfg);

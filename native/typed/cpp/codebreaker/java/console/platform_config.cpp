@@ -3,6 +3,8 @@
 
 #include "codebreaker/java/console/platform_config.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <initializer_list>
 
 #include "json.hpp"
@@ -24,6 +26,14 @@ py::list<py::str> SL(std::initializer_list<const char*> xs) {
 void add(py::list<py::str>& L, std::initializer_list<const char*> xs) {
     for (const char* x : xs) L.append(py::str(x));
 }
+
+// float(n)
+double to_double(const Number& n) {
+    if (const int64_t* i = std::get_if<int64_t>(&n)) return static_cast<double>(*i);
+    return std::get<double>(n);
+}
+
+py::V sv(const py::str& s) { return py::V(s.utf8()); }
 
 OptionSpec O(const char* label, const char* desc) { return OptionSpec{py::str(label), py::str(desc)}; }
 
@@ -173,11 +183,12 @@ Config default_config() {
     for (const auto& a : CONTROLLER_ACTIONS) binds.set(std::get<0>(a), std::get<2>(a));
     py::dict<py::str, py::str> subsystems;
     for (const auto& kv : SUBSYSTEM_OPTIONS.items()) subsystems.set(std::get<0>(kv), std::get<1>(kv).default_);
-    return Config{ControllerSection{S("default"), false, 1.0, 0.24, 0.30, binds},
+    return Config{ControllerSection{S("default"), false, Number(1.0), Number(0.24), Number(0.30), binds, Extra()},
                   S("xshowkeyboard"),
                   S("stfs"),
                   S(""),
-                  subsystems};
+                  subsystems,
+                  Extra()};
 }
 
 // The QUESTION each decision poses to the user + WHY it must be answered a certain way.
@@ -288,25 +299,46 @@ py::list<Decision> _decisions() {
 
 const py::list<Decision> DECISIONS = _decisions();
 
-std::optional<py::str> _get_path(const Config& cfg, const py::str& path) {
-    py::list<py::str> parts = py::split(path, S("."));
-    if (parts.size() == 1) {
-        if (parts[0] == S("keyboard")) return cfg.keyboard;
-        if (parts[0] == S("storage")) return cfg.storage;
-        if (parts[0] == S("title_id")) return cfg.title_id;
-        return std::nullopt;
+py::V config_value(const Config& cfg) {
+    const ControllerSection& c = cfg.controller;
+    auto number = [](const Number& n) {
+        if (const int64_t* i = std::get_if<int64_t>(&n)) return py::V(static_cast<long long>(*i));
+        return py::V(std::get<double>(n));
+    };
+    py::V binds = py::V::dict();
+    for (const auto& kv : c.binds.items()) binds.set(sv(std::get<0>(kv)), sv(std::get<1>(kv)));
+    py::V ctrl = py::V::dict();
+    ctrl.set("layout", sv(c.layout));
+    ctrl.set("invert_y", py::V(c.invert_y));
+    ctrl.set("look_sensitivity", number(c.look_sensitivity));
+    ctrl.set("stick_deadzone", number(c.stick_deadzone));
+    ctrl.set("trigger_threshold", number(c.trigger_threshold));
+    ctrl.set("binds", binds);
+    for (const auto& kv : c.extra) ctrl.set(sv(kv.first), kv.second);
+    py::V subs = py::V::dict();
+    for (const auto& kv : cfg.subsystems.items()) subs.set(sv(std::get<0>(kv)), sv(std::get<1>(kv)));
+    py::V top = py::V::dict();
+    top.set("controller", ctrl);
+    top.set("keyboard", sv(cfg.keyboard));
+    top.set("storage", sv(cfg.storage));
+    top.set("title_id", sv(cfg.title_id));
+    top.set("subsystems", subs);
+    for (const auto& kv : cfg.extra) top.set(sv(kv.first), kv.second);
+    return top;
+}
+
+std::optional<PathValue> _get_path(const Config& cfg, const py::str& path) {
+    py::V node = config_value(cfg);
+    for (const py::str& part : py::split(path, S("."))) {
+        py::V next = node.is_dict() ? node.get(sv(part)) : py::V();
+        node = next;
     }
-    if (parts.size() == 2) {
-        if (parts[0] == S("controller")) {
-            if (parts[1] == S("layout")) return cfg.controller.layout;
-            return std::nullopt;
-        }
-        if (parts[0] == S("subsystems")) {
-            if (cfg.subsystems.contains(parts[1])) return cfg.subsystems.at(parts[1]);
-            return std::nullopt;
-        }
-    }
-    return std::nullopt;
+    if (node.is_none()) return std::nullopt;
+    if (node.is_bool()) return PathValue(node.as_int() != 0);
+    if (node.is_int() && !node.u64) return PathValue(static_cast<int64_t>(node.as_int()));   // (past int64 it stays the JSON value)
+    if (node.is_float()) return PathValue(node.as_float());
+    if (node.is_str()) return PathValue(py::str(node.str()));
+    return PathValue(node);
 }
 
 // Return a copy of the binds with the chosen layout preset applied over the base binds.
@@ -333,9 +365,22 @@ bool bool_value(const py::V& v, const char* what) {
     wrong_type(what);
 }
 
-double float_value(const py::V& v, const char* what) {
-    if (v.is_int() || v.is_bool() || v.is_float()) return v.as_float();
+Number number_value(const py::V& v, const char* what) {
+    if (v.is_int()) return Number(static_cast<int64_t>(v.as_int()));
+    if (v.is_float()) return Number(v.as_float());
     wrong_type(what);
+}
+
+// the keys of the object `v` that are not in `known`, in file order
+Extra extras_of(const py::V& v, std::initializer_list<const char*> known) {
+    Extra out;
+    for (const auto& kv : v.items()) {
+        if (!kv.first.is_str()) wrong_type("an object key");
+        bool is_known = false;
+        for (const char* k : known) is_known = is_known || kv.first.str() == k;
+        if (!is_known) out.emplace_back(py::str(kv.first.str()), kv.second);
+    }
+    return out;
 }
 
 py::dict<py::str, py::str> str_dict(const py::V& v, const char* what) {
@@ -359,12 +404,14 @@ Config config_from_json(const py::V& loaded) {
         if (c.has("layout")) cfg.controller.layout = str_value(c.get("layout"), "controller.layout");
         if (c.has("invert_y")) cfg.controller.invert_y = bool_value(c.get("invert_y"), "controller.invert_y");
         if (c.has("look_sensitivity"))
-            cfg.controller.look_sensitivity = float_value(c.get("look_sensitivity"), "controller.look_sensitivity");
+            cfg.controller.look_sensitivity = number_value(c.get("look_sensitivity"), "controller.look_sensitivity");
         if (c.has("stick_deadzone"))
-            cfg.controller.stick_deadzone = float_value(c.get("stick_deadzone"), "controller.stick_deadzone");
+            cfg.controller.stick_deadzone = number_value(c.get("stick_deadzone"), "controller.stick_deadzone");
         if (c.has("trigger_threshold"))
-            cfg.controller.trigger_threshold = float_value(c.get("trigger_threshold"), "controller.trigger_threshold");
+            cfg.controller.trigger_threshold = number_value(c.get("trigger_threshold"), "controller.trigger_threshold");
         if (c.has("binds")) cfg.controller.binds = str_dict(c.get("binds"), "controller.binds");
+        cfg.controller.extra = extras_of(c, {"layout", "invert_y", "look_sensitivity", "stick_deadzone",
+                                             "trigger_threshold", "binds"});
     }
     if (loaded.has("keyboard")) cfg.keyboard = str_value(loaded.get("keyboard"), "keyboard");
     if (loaded.has("storage")) cfg.storage = str_value(loaded.get("storage"), "storage");
@@ -373,6 +420,7 @@ Config config_from_json(const py::V& loaded) {
         cfg.subsystems = str_dict(loaded.get("subsystems"), "subsystems");
         for (const auto& kv : d.subsystems.items()) cfg.subsystems.setdefault(std::get<0>(kv), std::get<1>(kv));
     }
+    cfg.extra = extras_of(loaded, {"controller", "keyboard", "storage", "title_id", "subsystems"});
     return cfg;
 }
 
@@ -399,56 +447,64 @@ Config load_config(const py::str& path) {
 
 namespace {
 
-py::str json_text(const py::str& s) {
-    std::string o;
-    py::json::put(o, s);
-    return py::str(o);
-}
-
-// a {"k": "v", ...} dict of str to str, keys sorted, written at `indent` spaces (json.dump indent=2)
-void put_str_dict(py::list<py::str>& out, const py::dict<py::str, py::str>& d, int64_t indent) {
-    if (d.empty()) {
-        out.append(S("{}"));
-        return;
+// the one-line or indented JSON text of v, objects with their keys sorted (json.dumps sort_keys=True)
+void dump_v(std::string& o, const py::V& v, std::optional<int64_t> indent, int64_t level) {
+    auto pad = [&](int64_t n) { return std::string(static_cast<size_t>(n * *indent), ' '); };
+    if (v.is_none()) {
+        o += "null";
+    } else if (v.is_bool()) {
+        o += v.as_int() ? "true" : "false";
+    } else if (v.is_int()) {
+        o += v.u64 ? std::to_string(static_cast<uint64_t>(v.i)) : std::to_string(v.as_int());
+    } else if (v.is_float()) {
+        double d = v.as_float();
+        if (d != d) o += "NaN";
+        else if (d == HUGE_VAL) o += "Infinity";
+        else if (d == -HUGE_VAL) o += "-Infinity";
+        else py::json::put(o, d);
+    } else if (v.is_str()) {
+        py::json::put(o, py::str(v.str()));
+    } else if (v.is_seq() || v.is_dict()) {
+        const bool obj = v.is_dict();
+        std::vector<std::pair<std::string, const py::V*>> items;
+        if (obj) {
+            for (const auto& kv : v.items()) items.emplace_back(kv.first.str(), &kv.second);
+            std::sort(items.begin(), items.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        } else {
+            for (const py::V& x : v.seq()) items.emplace_back(std::string(), &x);
+        }
+        o += obj ? '{' : '[';
+        if (items.empty()) {
+            o += obj ? '}' : ']';
+            return;
+        }
+        bool first = true;
+        for (const auto& it : items) {
+            if (!first) o += indent ? "," : ", ";
+            if (indent) o += "\n" + pad(level + 1);
+            if (obj) {
+                py::json::put(o, py::str(it.first));
+                o += ": ";
+            }
+            dump_v(o, *it.second, indent, level + 1);
+            first = false;
+        }
+        if (indent) o += "\n" + pad(level);
+        o += obj ? '}' : ']';
+    } else {
+        throw py::TypeError("Object of this type is not JSON serializable");
     }
-    py::str pad(std::u32string(static_cast<size_t>(indent + 2), U' '));
-    py::list<py::str> keys = py::sorted(d.keys());
-    out.append(S("{\n"));
-    bool first = true;
-    for (const py::str& k : keys) {
-        if (!first) out.append(S(",\n"));
-        out.append(pad + json_text(k) + S(": ") + json_text(d.at(k)));
-        first = false;
-    }
-    out.append(S("\n") + py::str(std::u32string(static_cast<size_t>(indent), U' ')) + S("}"));
-}
-
-py::str float_text(double v) {
-    std::string o;
-    py::json::put(o, v);
-    return py::str(o);
 }
 
 }  // namespace
 
-py::str dump_config(const Config& cfg) {
-    const ControllerSection& c = cfg.controller;
-    py::list<py::str> o;
-    o.append(S("{\n  \"controller\": {\n    \"binds\": "));
-    put_str_dict(o, c.binds, 4);
-    o.append(S(",\n    \"invert_y\": ") + S(c.invert_y ? "true" : "false"));
-    o.append(S(",\n    \"layout\": ") + json_text(c.layout));
-    o.append(S(",\n    \"look_sensitivity\": ") + float_text(c.look_sensitivity));
-    o.append(S(",\n    \"stick_deadzone\": ") + float_text(c.stick_deadzone));
-    o.append(S(",\n    \"trigger_threshold\": ") + float_text(c.trigger_threshold));
-    o.append(S("\n  },\n  \"keyboard\": ") + json_text(cfg.keyboard));
-    o.append(S(",\n  \"storage\": ") + json_text(cfg.storage));
-    o.append(S(",\n  \"subsystems\": "));
-    put_str_dict(o, cfg.subsystems, 2);
-    o.append(S(",\n  \"title_id\": ") + json_text(cfg.title_id));
-    o.append(S("\n}"));
-    return py::join(S(""), o);
+py::str dump_json(const py::V& v, std::optional<int64_t> indent) {
+    std::string o;
+    dump_v(o, v, indent, 0);
+    return py::str(o);
 }
+
+py::str dump_config(const Config& cfg) { return dump_json(config_value(cfg), 2); }
 
 void save_config(const py::str& path, const Config& cfg) {
     py::file f = py::open(path, S("w"), S("utf-8"));
@@ -472,9 +528,9 @@ py::str _controller_header(const Config& cfg) {
     L.append(py::percent(S("#define CTRL_LAYOUT_%s 1"), c.layout.upper()));
     L.append(S(""));
     L.append(py::percent(S("#define CTRL_INVERT_Y %d"), static_cast<int64_t>(c.invert_y ? 1 : 0)));
-    L.append(py::percent(S("#define CTRL_LOOK_SENSITIVITY %.3ff"), c.look_sensitivity));
-    L.append(py::percent(S("#define CTRL_STICK_DEADZONE %.3ff"), c.stick_deadzone));
-    L.append(py::percent(S("#define CTRL_TRIGGER_THRESHOLD %.3ff"), c.trigger_threshold));
+    L.append(py::percent(S("#define CTRL_LOOK_SENSITIVITY %.3ff"), to_double(c.look_sensitivity)));
+    L.append(py::percent(S("#define CTRL_STICK_DEADZONE %.3ff"), to_double(c.stick_deadzone)));
+    L.append(py::percent(S("#define CTRL_TRIGGER_THRESHOLD %.3ff"), to_double(c.trigger_threshold)));
     L.append(S(""));
     L.append(S("// action -> 360 control binding:"));
     for (const auto& a : CONTROLLER_ACTIONS) {
@@ -598,7 +654,8 @@ py::str _choices_md(const Config& cfg, const std::optional<sdk::SdkInfo>& sdk_in
     add(L, {"## Controller mapping", ""});
     L.append(py::percent(S("- Layout: **%s** (options: %s)"), c.layout, py::join(S(", "), CONTROLLER_LAYOUTS)));
     L.append(py::percent(S("- Invert Y: **%s**   Sensitivity: **%.2f**   Stick deadzone: **%.2f**   Trigger: **%.2f**"),
-                         c.invert_y, c.look_sensitivity, c.stick_deadzone, c.trigger_threshold));
+                         c.invert_y, to_double(c.look_sensitivity), to_double(c.stick_deadzone),
+                         to_double(c.trigger_threshold)));
     add(L, {"", "| Action | Bound to |", "|---|---|"});
     for (const auto& a : CONTROLLER_ACTIONS) {
         L.append(py::percent(S("| %s | `%s` |"), std::get<1>(a), binds.get(std::get<0>(a), S("NONE"))));
@@ -614,7 +671,8 @@ py::str _choices_md(const Config& cfg, const std::optional<sdk::SdkInfo>& sdk_in
             ""});
     for (const Decision& d : DECISIONS) {
         if (d.id == S("controller_layout")) continue;   // already shown above under Controller mapping
-        std::optional<py::str> chosen = _get_path(cfg, d.path);
+        std::optional<PathValue> chosen_value = _get_path(cfg, d.path);
+        const py::str* chosen = chosen_value ? std::get_if<py::str>(&*chosen_value) : nullptr;
         L.append(py::percent(S("### %s \xE2\x80\x94 %s"), d.label, d.question));
         L.append(S(""));
         L.append(py::percent(S("*Why it matters:* %s"), d.why));
@@ -623,7 +681,7 @@ py::str _choices_md(const Config& cfg, const std::optional<sdk::SdkInfo>& sdk_in
         L.append(S(""));
         for (const auto& o : d.options) {
             const py::str& key = std::get<0>(o);
-            py::str mark = (chosen && key == *chosen) ? S("x") : S(" ");
+            py::str mark = (chosen != nullptr && key == *chosen) ? S("x") : S(" ");
             py::str rec = key == std::get<0>(d.recommend) ? S("  \xE2\xAD\x90") : S("");
             L.append(py::percent(S("- [%s] **%s** (`%s`)%s \xE2\x80\x94 %s"), mark, std::get<1>(o), key, rec, std::get<2>(o)));
         }
@@ -705,10 +763,9 @@ bool update_bool(const Update& u, const char* what) {
     wrong_type(what);
 }
 
-double update_float(const Update& u, const char* what) {
-    if (const double* d = std::get_if<double>(&u)) return *d;
-    if (const int64_t* i = std::get_if<int64_t>(&u)) return static_cast<double>(*i);
-    if (const bool* b = std::get_if<bool>(&u)) return *b ? 1.0 : 0.0;
+Number update_number(const Update& u, const char* what) {
+    if (const double* d = std::get_if<double>(&u)) return Number(*d);
+    if (const int64_t* i = std::get_if<int64_t>(&u)) return Number(*i);
     wrong_type(what);
 }
 
@@ -733,11 +790,11 @@ std::tuple<Config, py::list<py::str>, std::optional<sdk::SdkInfo>, py::list<py::
             } else if (k == S("invert_y")) {
                 cfg.controller.invert_y = update_bool(v, "invert_y");
             } else if (k == S("look_sensitivity")) {
-                cfg.controller.look_sensitivity = update_float(v, "look_sensitivity");
+                cfg.controller.look_sensitivity = update_number(v, "look_sensitivity");
             } else if (k == S("stick_deadzone")) {
-                cfg.controller.stick_deadzone = update_float(v, "stick_deadzone");
+                cfg.controller.stick_deadzone = update_number(v, "stick_deadzone");
             } else if (k == S("trigger_threshold")) {
-                cfg.controller.trigger_threshold = update_float(v, "trigger_threshold");
+                cfg.controller.trigger_threshold = update_number(v, "trigger_threshold");
             } else if (k.startswith(S("bind."))) {
                 cfg.controller.binds.set(k.slice_from(5), update_str(v, "bind"));
             } else if (k.startswith(S("subsystem."))) {
