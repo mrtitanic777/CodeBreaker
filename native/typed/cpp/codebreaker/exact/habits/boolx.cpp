@@ -14,14 +14,7 @@ const py::re::Pattern INSN(py::str("(\\w+)\\s*(.*)"), 0);
 
 // int(text, 0): a literal with its own base prefix; a leading zero is not allowed before more digits.
 int64_t int0(const py::str& s) {
-    const std::string t = s.strip().utf8();
-    size_t i = (!t.empty() && (t[0] == '+' || t[0] == '-')) ? 1 : 0;
-    if (t.size() > i + 1 && t[i] == '0' && ((t[i + 1] >= '0' && t[i + 1] <= '9') || t[i + 1] == '_')) {
-        for (size_t j = i; j < t.size(); ++j) {
-            if (t[j] != '0' && t[j] != '_') throw py::ValueError("invalid literal for int() with base 0: " + py::repr(s).utf8());
-        }
-    }
-    return py::int_from_str(s, 0);
+    return py::int_parse(s, 0);
 }
 
 py::str vstr(const Key& k, int64_t v) {

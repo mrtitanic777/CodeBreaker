@@ -9,7 +9,7 @@
 
 #include "codebreaker/formats/xbox/bink.hpp"
 
-#include <windows.h>
+#include "py_subprocess.hpp"
 
 #include <charconv>
 #include <cstdio>
@@ -55,100 +55,12 @@ std::optional<py::str> tool_(const py::str& key) {
     return py::shutil::which(key);
 }
 
-// subprocess.list2cmdline
-std::wstring list2cmdline_(const py::list<py::str>& args) {
-    std::u32string result;
-    bool first = true;
-    for (const py::str& arg : args) {
-        const std::u32string& a = arg.u32();
-        std::u32string bs;
-        if (!first) {
-            result.push_back(U' ');
-        }
-        first = false;
-        bool needquote = a.find(U' ') != std::u32string::npos || a.find(U'\t') != std::u32string::npos || a.empty();
-        if (needquote) {
-            result.push_back(U'"');
-        }
-        for (char32_t c : a) {
-            if (c == U'\\') {
-                bs.push_back(c);
-            } else if (c == U'"') {
-                result.append(bs.size() * 2, U'\\');
-                bs.clear();
-                result += U"\\\"";
-            } else {
-                result += bs;
-                bs.clear();
-                result.push_back(c);
-            }
-        }
-        result += bs;
-        if (needquote) {
-            result += bs;
-            result.push_back(U'"');
-        }
-    }
-    std::string utf8 = py::str(result).utf8();
-    int n = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-    std::wstring w(static_cast<size_t>(n), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), w.data(), n);
-    return w;
-}
-
 // subprocess.run(args, stdout=PIPE, stderr=STDOUT, text=True) -> (returncode, stdout)
 std::tuple<int64_t, py::str> run_(const py::list<py::str>& args) {
-    SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
-    HANDLE rd = nullptr, wr = nullptr;
-    if (!CreatePipe(&rd, &wr, &sa, 0)) {
-        throw py::OSError("CreatePipe failed");
-    }
-    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    si.hStdOutput = wr;
-    si.hStdError = wr;
-    PROCESS_INFORMATION pi{};
-    std::wstring cmd = list2cmdline_(args);
-    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &si, &pi)) {
-        DWORD e = GetLastError();
-        CloseHandle(rd);
-        CloseHandle(wr);
-        std::string path = args[0].utf8();
-        if (e == 2 || e == 3) {
-            throw py::FileNotFoundError("[WinError " + std::to_string(e) + "] The system cannot find the file specified");
-        }
-        throw py::OSError("[WinError " + std::to_string(e) + "] cannot start " + path);
-    }
-    CloseHandle(wr);
-    std::string raw;
-    char buf[4096];
-    DWORD got = 0;
-    while (ReadFile(rd, buf, sizeof buf, &got, nullptr) && got > 0) {
-        raw.append(buf, got);
-    }
-    CloseHandle(rd);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 0;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    // text=True: the locale's codec (cp1252) and universal newlines
-    std::u32string text = py::bytes(raw).decode("cp1252").u32();
-    std::u32string out;
-    for (size_t i = 0; i < text.size(); ++i) {
-        if (text[i] == U'\r') {
-            out.push_back(U'\n');
-            if (i + 1 < text.size() && text[i + 1] == U'\n') {
-                ++i;
-            }
-        } else {
-            out.push_back(text[i]);
-        }
-    }
-    return {static_cast<int64_t>(static_cast<int32_t>(code)), py::str(out)};
+    py::subprocess::RunOptions o;
+    o.stderr_ = py::subprocess::Stream::Stdout;
+    py::subprocess::CompletedProcess r = py::subprocess::run(args, o);
+    return {r.returncode, *r.stdout_};
 }
 
 }  // namespace

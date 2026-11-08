@@ -17,11 +17,7 @@ extern const py::str description;
 extern const py::list<py::str> platforms;
 
 // Python's SystemExit (what argparse raises for --help and for a bad command line): `code` is the exit status.
-struct SystemExit : py::Exception {
-    int64_t code = 0;
-    explicit SystemExit(int64_t c) : py::Exception(), code(c) {}
-    const char* type() const override { return "SystemExit"; }
-};
+using py::SystemExit;
 
 inline constexpr int64_t DOSMagic = 0x5A4D;
 extern const py::bytes PEMagic;

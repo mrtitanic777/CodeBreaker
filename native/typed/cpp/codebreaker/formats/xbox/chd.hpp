@@ -33,9 +33,7 @@ struct ChdError : py::Exception {
 };
 
 // sys.exit(code): not a py::Exception (it is not an Exception in Python either)
-struct SystemExit {
-    int64_t code;
-};
+using py::SystemExit;
 
 // read_header's dict: ints and a list of str
 struct Header {

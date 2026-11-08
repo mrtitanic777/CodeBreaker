@@ -795,7 +795,8 @@ class bytes {
         auto bad = [&](size_t i, const char* why) {
             if (err == "strict") {
                 char m[160];
-                std::snprintf(m, sizeof m, "'%s' codec can't decode byte 0x%02x in position %zu: %s", enc,
+                std::snprintf(m, sizeof m, "'%s' codec can't decode byte 0x%02x in position %zu: %s",
+                              (e == "cp1252" || e == "cp437") ? "charmap" : enc,
                               static_cast<unsigned>(static_cast<unsigned char>(b_[i])), i, why);
                 throw UnicodeDecodeError(m);
             }
@@ -944,30 +945,56 @@ struct bytes_hash {
     size_t operator()(const bytes& b) const { return std::hash<std::string>()(b.raw()); }
 };
 
+// the UnicodeEncodeError text CPython gives for the unencodable characters [start, end) of `u`
+inline std::string encode_error_text_(const std::string& codec, const std::u32string& u, size_t start, size_t end, const char* reason) {
+    std::string m = "'" + codec + "' codec can't encode ";
+    if (end == start + 1) {
+        char32_t c = u[start];
+        char b[16];
+        if (c < 0x100) std::snprintf(b, sizeof b, "\\x%02x", static_cast<unsigned>(c));
+        else if (c < 0x10000) std::snprintf(b, sizeof b, "\\u%04x", static_cast<unsigned>(c));
+        else std::snprintf(b, sizeof b, "\\U%08x", static_cast<unsigned>(c));
+        m += std::string("character '") + b + "' in position " + std::to_string(start);
+    } else {
+        m += "characters in position " + std::to_string(start) + "-" + std::to_string(end - 1);
+    }
+    return m + ": " + reason;
+}
+
 inline bytes str::encode(const char* enc, const char* errors) const {
     std::string e(enc), err(errors);
     if (e == "utf-8" || e == "utf8") return bytes(utf8());
+    bool known = e == "latin1" || e == "latin-1" || e == "iso-8859-1" || e == "ascii" || e == "cp437" || e == "cp1252";
+    if (!known) throw LookupError("unknown encoding: " + e);
     std::string out;
     size_t limit = (e == "ascii") ? 0x80 : 0x100;
-    for (size_t i = 0; i < s_.size(); ++i) {
-        char32_t c = s_[i];
+    auto mapped = [&](char32_t c, int& byte) -> bool {   // can the codec write c, and as which byte
         if (e == "cp1252" && c >= 0x80) {
-            int hit = -1;
-            for (int k = 0; k < 32; ++k) if (cp1252_high_()[k] == c) hit = 0x80 + k;
-            if (hit >= 0) { out.push_back(static_cast<char>(hit)); continue; }
-            if (c >= 0xA0 && c < 0x100) { out.push_back(static_cast<char>(c)); continue; }
-        } else if (e == "cp437" && c >= 0x80) {
-            int hit = -1;
-            for (int k = 0; k < 128; ++k) if (cp437_high_()[k] == c) hit = 0x80 + k;
-            if (hit >= 0) { out.push_back(static_cast<char>(hit)); continue; }
-        } else if (c < limit) {
-            out.push_back(static_cast<char>(c));
-            continue;
+            for (int k = 0; k < 32; ++k) if (cp1252_high_()[k] == c) { byte = 0x80 + k; return true; }
+            if (c >= 0xA0 && c < 0x100) { byte = static_cast<int>(c); return true; }
+            return false;
         }
-        if (e != "latin1" && e != "latin-1" && e != "iso-8859-1" && e != "ascii" && e != "cp437" && e != "cp1252")
-            throw LookupError("unknown encoding: " + e);
-        if (err == "strict") throw UnicodeEncodeError("'" + e + "' codec can't encode character");
-        if (err == "replace") out.push_back('?');
+        if (e == "cp437" && c >= 0x80) {
+            for (int k = 0; k < 128; ++k) if (cp437_high_()[k] == c) { byte = 0x80 + k; return true; }
+            return false;
+        }
+        if (c < limit) { byte = static_cast<int>(c); return true; }
+        return false;
+    };
+    for (size_t i = 0; i < s_.size();) {
+        int byte = 0;
+        if (mapped(s_[i], byte)) { out.push_back(static_cast<char>(byte)); ++i; continue; }
+        size_t j = i + 1;   // (the run of characters that cannot be written)
+        int ignored = 0;
+        while (j < s_.size() && !mapped(s_[j], ignored)) ++j;
+        if (err == "strict") {
+            std::string codec = (e == "ascii") ? "ascii" : (e == "cp437" || e == "cp1252") ? "charmap" : "latin-1";
+            const char* why = (e == "ascii") ? "ordinal not in range(128)" : (e == "cp437" || e == "cp1252") ? "character maps to <undefined>"
+                                                                                                           : "ordinal not in range(256)";
+            throw UnicodeEncodeError(encode_error_text_(codec, s_, i, j, why));
+        }
+        if (err == "replace") out.append(j - i, '?');
+        i = j;
     }
     return bytes(out);
 }
@@ -2336,4 +2363,5 @@ inline double float_from_str(const str& s) {
 }  // namespace py
 
 #include "py_os.hpp"   // files in every mode, os / os.path / shutil / time, hashlib, re, generators, variants
+#include "py_stdlib.hpp"   // int(s, base), SystemExit, subprocess.list2cmdline, tempfile, utf-16-be
 #include "py_settings.hpp"   // settings.get of a str setting

@@ -323,6 +323,11 @@ bool typed_get(const std::string& key, std::string& value, std::string& exc_type
         if (!py::is_str(v)) {
             exc_type = "TypeError";
             exc_msg = "settings.get(" + py::str_utf8(py::repr(S(key))) + "): the setting is not a str";
+            // the value rides along as "<kind>:<str(v)>" for the typed accessors (py_settings.hpp: get_int ...);
+            // a list or a dict has none
+            std::string kind = py::str_utf8(py::type(v).getattr("__name__"));
+            const char* tag = kind == "int" ? "i" : kind == "float" ? "f" : kind == "bool" ? "b" : kind == "NoneType" ? "n" : nullptr;
+            if (tag) value = std::string(tag) + ":" + py::str_utf8(py::str(v));
             return false;
         }
         value = py::str_utf8(v);

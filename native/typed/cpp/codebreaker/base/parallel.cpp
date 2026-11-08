@@ -43,56 +43,13 @@ namespace {
 // A setting as Python's settings.get hands it back: settings.json holds low_load, workers and min_free_gb as
 // numbers, booleans or text, and the callers below take each as Python does. (std::variant: the one place
 // this module's values are of several types; monostate is None.)
-using Setting = std::variant<py::str, int64_t, double, bool, std::monostate>;
-
-// the raw text of a top-level non-string value of settings.json (a number, true, false, null), if the key is there
-std::optional<std::string> settings_json_scalar(const py::str& key) {
-    std::ifstream f(std::filesystem::u8path(py::os::path::join(py::settings::checkout_root(), py::str("settings.json")).utf8()), std::ios::binary);
-    if (!f) return std::nullopt;
-    std::stringstream ss;
-    ss << f.rdbuf();
-    const std::string s = ss.str();
-    size_t i = 0;
-    py::settings::json_ws_(s, i);
-    if (i >= s.size() || s[i] != '{') return std::nullopt;
-    i++;
-    for (;;) {
-        py::settings::json_ws_(s, i);
-        if (i >= s.size() || s[i] != '"') return std::nullopt;
-        std::string k = py::settings::json_str_(s, i);
-        py::settings::json_ws_(s, i);
-        if (i >= s.size() || s[i] != ':') return std::nullopt;
-        i++;
-        py::settings::json_ws_(s, i);
-        size_t start = i;
-        py::settings::json_skip_(s, i);
-        if (k == key.utf8()) {
-            std::string raw = s.substr(start, i - start);
-            while (!raw.empty() && std::isspace(static_cast<unsigned char>(raw.back()))) raw.pop_back();
-            return raw;
-        }
-        py::settings::json_ws_(s, i);
-        if (i < s.size() && s[i] == ',') i++;
-        else return std::nullopt;
-    }
-}
+using Setting = py::settings::Value;
 
 // `os.environ.get(name) or settings.get(key)`: the variable if it is set and not empty, else the setting
 Setting env_or_setting(const char* name, const char* key) {
     std::optional<py::str> v = py::os::environ_::get(py::str(name));
     if (v && !v->u32().empty()) return *v;
-    try {
-        return py::settings::get_str(py::str(key));
-    } catch (const py::TypeError&) {
-        // the setting is not a string: settings.json's own value
-        std::optional<std::string> raw = settings_json_scalar(py::str(key));
-        if (!raw) throw;
-        if (*raw == "true") return true;
-        if (*raw == "false") return false;
-        if (*raw == "null") return std::monostate{};
-        if (raw->find_first_of(".eE") != std::string::npos) return py::float_from_str(py::str(*raw));
-        return py::int_from_str(py::str(*raw));
-    }
+    return py::settings::get(py::str(key));
 }
 
 // str(v)

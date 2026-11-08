@@ -10,11 +10,7 @@
 namespace codebreaker::formats::xbox::crypto::xebuild_config {
 
 // sys.exit's SystemExit (what argparse raises on -h and on a bad command line).
-struct SystemExit : py::Exception {
-    int64_t code;
-    explicit SystemExit(int64_t c) : py::Exception(""), code(c) {}
-    const char* type() const override { return "SystemExit"; }
-};
+using py::SystemExit;
 
 constexpr int64_t BUFF_SIZE = 2048;
 

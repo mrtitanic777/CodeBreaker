@@ -8,119 +8,17 @@ const int64_t MASK32 = 0xFFFFFFFF;
 
 namespace {
 
-// ---------------------------------------------------------------------------------------------------------
-// Python's int(text, base) for base 0 and 10, returning int64_t; a magnitude past int64 is reported by
-// `saturated` (the value is then +-INT64_MAX) instead of growing. Rules as CPython's: blanks around, a sign,
-// 0x / 0o / 0b prefixes in base 0, no leading zeros in base 0 unless the number is zero, single underscores
-// between digits (or right after a prefix), Unicode decimal digits as their ASCII digit; anything else raises
-// ValueError.
-// ---------------------------------------------------------------------------------------------------------
-int decimal_digit_value(char32_t c) {
-    if (c >= U'0' && c <= U'9') {
-        return static_cast<int>(c - U'0');
-    }
-    if (c < 0x80) {
-        return -1;
-    }
-    constexpr size_t N = sizeof(py::unicode_::decimal_ranges) / sizeof(py::unicode_::decimal_ranges[0]);
-    for (size_t i = 0; i < N; ++i) {
-        if (c >= py::unicode_::decimal_ranges[i][0] && c <= py::unicode_::decimal_ranges[i][1]) {
-            return static_cast<int>((c - py::unicode_::decimal_ranges[i][0]) % 10);
-        }
-    }
-    return -1;
-}
-
-int digit_value(char32_t c) {
-    int d = decimal_digit_value(c);
-    if (d >= 0) {
-        return d;
-    }
-    if (c >= U'a' && c <= U'z') {
-        return static_cast<int>(c - U'a') + 10;
-    }
-    if (c >= U'A' && c <= U'Z') {
-        return static_cast<int>(c - U'A') + 10;
-    }
-    return 99;
-}
-
+// int(text, base) for base 0 and 10 (py::int_parse); a magnitude past int64 is reported by `saturated` (the
+// value is then +-INT64_MAX) instead of growing, as the Python's unbounded ints are compared with a range.
 int64_t py_int(const py::str& text, int64_t base, bool& saturated) {
     saturated = false;
-    const std::u32string s = text.strip().u32();
-    auto bad = [&]() {
-        return py::ValueError(py::percent(py::str("invalid literal for int() with base %d: %s"), base, py::repr(text)));
-    };
-    size_t i = 0;
-    bool neg = false;
-    if (i < s.size() && (s[i] == U'+' || s[i] == U'-')) {
-        neg = s[i] == U'-';
-        ++i;
+    try {
+        return py::int_parse(text, base);
+    } catch (const py::OverflowError&) {
+        saturated = true;
+        const std::u32string s = text.strip().u32();
+        return (!s.empty() && s[0] == U'-') ? -INT64_MAX : INT64_MAX;
     }
-    bool leading_zero_decimal = false;
-    if (base == 0) {
-        if (i < s.size() && s[i] == U'0') {
-            char32_t p = i + 1 < s.size() ? s[i + 1] : 0;
-            if (p == U'x' || p == U'X') {
-                base = 16;
-                i += 2;
-            } else if (p == U'o' || p == U'O') {
-                base = 8;
-                i += 2;
-            } else if (p == U'b' || p == U'B') {
-                base = 2;
-                i += 2;
-            } else {
-                base = 10;
-                leading_zero_decimal = true;  // "old" octal literal: only zero is valid
-            }
-            if (base != 10 && i < s.size() && s[i] == U'_') {
-                ++i;  // one underscore is allowed after a prefix
-            }
-        } else {
-            base = 10;
-        }
-    } else if (base == 16 || base == 8 || base == 2) {
-        throw py::ValueError("unsupported base");
-    }
-    if (i >= s.size()) {
-        throw bad();
-    }
-    uint64_t v = 0;
-    bool any_nonzero = false;
-    bool prev_underscore = true;  // a number may not start with an underscore (a prefix's one was taken)
-    for (; i < s.size(); ++i) {
-        if (s[i] == U'_') {
-            if (prev_underscore) {
-                throw bad();
-            }
-            prev_underscore = true;
-            continue;
-        }
-        int d = digit_value(s[i]);
-        if (d >= base) {
-            throw bad();
-        }
-        prev_underscore = false;
-        if (d != 0) {
-            any_nonzero = true;
-        }
-        if (!saturated) {
-            if (v > (static_cast<uint64_t>(INT64_MAX) - static_cast<uint64_t>(d)) / static_cast<uint64_t>(base)) {
-                saturated = true;
-            } else {
-                v = v * static_cast<uint64_t>(base) + static_cast<uint64_t>(d);
-            }
-        }
-    }
-    if (prev_underscore) {
-        throw bad();  // empty, or a trailing underscore
-    }
-    if (leading_zero_decimal && any_nonzero) {
-        throw bad();
-    }
-    int64_t mag = saturated ? INT64_MAX : static_cast<int64_t>(v);
-    return neg ? -mag : mag;
 }
 
 // int(text, 0) / int(text) where the value is used whole: past int64 is an OverflowError.

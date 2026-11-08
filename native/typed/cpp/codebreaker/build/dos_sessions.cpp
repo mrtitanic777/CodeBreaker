@@ -14,6 +14,8 @@
 #endif
 #include <windows.h>
 
+#include "py_subprocess.hpp"
+
 namespace codebreaker::build::dos_sessions {
 
 using py::str;
@@ -50,50 +52,7 @@ std::wstring wide(const str& s) {
     return w;
 }
 
-// subprocess.list2cmdline
-std::wstring list2cmdline(const py::list<str>& args) {
-    std::u32string out;
-    bool first = true;
-    for (const str& arg : args) {
-        const std::u32string& a = arg.u32();
-        if (!first) out += U' ';
-        first = false;
-        bool needquote = a.empty() || a.find(U' ') != std::u32string::npos || a.find(U'\t') != std::u32string::npos;
-        std::u32string result;
-        if (needquote) result += U'"';
-        int bs = 0;
-        for (char32_t c : a) {
-            if (c == U'\\') {
-                bs++;
-            } else if (c == U'"') {
-                result.append(static_cast<size_t>(bs) * 2, U'\\');
-                bs = 0;
-                result += U"\\\"";
-            } else {
-                if (bs) {
-                    result.append(static_cast<size_t>(bs), U'\\');
-                    bs = 0;
-                }
-                result += c;
-            }
-        }
-        if (bs) result.append(static_cast<size_t>(bs), U'\\');
-        if (needquote) {
-            result.append(static_cast<size_t>(bs), U'\\');
-            result += U'"';
-        }
-        out += result;
-    }
-    return wide(str(out));
-}
-
-[[noreturn]] void raise_win(DWORD code) {
-    std::string msg = "[WinError " + std::to_string(code) + "] the process could not be started";
-    if (code == 2 || code == 3) throw py::FileNotFoundError(msg);
-    if (code == 5) throw py::PermissionError(msg);
-    if (code == 267) throw py::NotADirectoryError(msg);
-    throw py::OSError(msg);
-}
+[[noreturn]] void raise_win(DWORD code) { py::raise_winerror(code); }
 
 HANDLE as_handle(void* p) { return static_cast<HANDLE>(p); }
 
@@ -138,7 +97,7 @@ Popen::Popen(const py::list<str>& args, const py::dict<str, str>& extra_env) {
     si.hStdOutput = nul;
     si.hStdError = nul;
     PROCESS_INFORMATION pi{};
-    std::wstring line = list2cmdline(args);
+    std::wstring line = py::subprocess::to_wide(py::subprocess::list2cmdline(args));
     BOOL ok = CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT, block.data(), nullptr, &si, &pi);
     DWORD err = GetLastError();
     if (nul != INVALID_HANDLE_VALUE) CloseHandle(nul);
@@ -178,43 +137,12 @@ int64_t Popen::wait(std::optional<double> timeout) {
 
 namespace {
 
-// tempfile.mkdtemp(prefix=...): a new folder with a random name in the temporary folder
-str mkdtemp(const str& prefix) {
-    str tmp;
-    for (const char* k : {"TMPDIR", "TEMP", "TMP"}) {
-        auto v = py::os::environ_::get(str(k));
-        if (v && !v->empty()) {
-            tmp = *v;
-            break;
-        }
-    }
-    if (tmp.empty()) {
-        wchar_t buf[MAX_PATH + 1];
-        DWORD n = GetTempPathW(MAX_PATH, buf);
-        std::string u8(static_cast<size_t>(WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), nullptr, 0, nullptr, nullptr)), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), u8.data(), static_cast<int>(u8.size()), nullptr, nullptr);
-        tmp = str(u8);
-    }
-    tmp = py::os::path::abspath(tmp);
-    static std::mt19937_64 rng{std::random_device{}()};
-    const std::string chars = "abcdefghijklmnopqrstuvwxyz0123456789_";
-    for (int tries = 0; tries < 100; tries++) {
-        std::string name;
-        for (int i = 0; i < 8; i++) name.push_back(chars[rng() % chars.size()]);
-        str path = py::os::path::abspath(py::os::path::join(tmp, prefix + str(name)));
-        if (py::os::path::exists(path)) continue;
-        py::os::makedirs(path, 0700, false);
-        return path;
-    }
-    throw py::FileExistsError("No usable temporary directory name found");
-}
-
 }  // namespace
 
 // ------------------------------------------------------------------------------------------ DosboxWorker
 
 DosboxWorker::DosboxWorker(const str& masmroot, const str& dbx_, double boot_timeout) : dbx(dbx_) {
-    work = mkdtemp(str("dosw_"));
+    work = py::tempfile::mkdtemp(std::nullopt, str("dosw_"));
     // colocate ONLY MASM.EXE -- the reconstructor's asm uses no INCLUDE, so the
     // mount stays tiny, which is what makes DOSBox's RESCAN reliably see
     // host-created trigger files (a large mount breaks that).

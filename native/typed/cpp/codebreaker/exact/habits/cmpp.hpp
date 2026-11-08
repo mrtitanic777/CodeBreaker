@@ -24,10 +24,7 @@
 namespace codebreaker::exact::habits::cmpp {
 
 // A raised ImportError (Python's `import pcc` failing)
-struct ImportError : py::Exception {
-    explicit ImportError(const std::string& m) : py::Exception(m) {}
-    const char* type() const override { return "ImportError"; }
-};
+using py::ImportError;
 
 // What cmpp.py takes from outside, none of it with a typed port yet:
 //   MD = platforms.decoder(16)  -- the 16-bit x86 decoder; the interface x86.hpp declares (first instruction

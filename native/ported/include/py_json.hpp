@@ -18,6 +18,17 @@ inline void put(std::string& o, int v) { o += std::to_string(v); }
 inline void put(std::string& o, bool v) { o += v ? "true" : "false"; }
 inline void put(std::string& o, double v) { o += to_str(v).utf8(); }
 inline void put(std::string& o, none_t) { o += "null"; }
+// json.dumps(..., ensure_ascii=True) is the default; with `false` (EnsureAscii guard below) everything from
+// space up is written as it is, UTF-8 for what is past ASCII, DEL among it (only the controls are escaped)
+inline bool& ensure_ascii() {
+    static bool v = true;
+    return v;
+}
+struct EnsureAscii {
+    bool saved;
+    explicit EnsureAscii(bool on) : saved(ensure_ascii()) { ensure_ascii() = on; }
+    ~EnsureAscii() { ensure_ascii() = saved; }
+};
 inline void put(std::string& o, const str& s) {
     o += '"';
     for (char32_t c : s.u32()) {
@@ -29,6 +40,7 @@ inline void put(std::string& o, const str& s) {
         else if (c == '\b') o += "\\b";
         else if (c == '\f') o += "\\f";
         else if (c >= 0x20 && c < 0x7F) o += static_cast<char>(c);
+        else if (!ensure_ascii() && c >= 0x20 && !(c >= 0xD800 && c <= 0xDFFF)) o += str(std::u32string(1, c)).utf8();
         else if (c < 0x10000) {
             char b[8];
             std::snprintf(b, sizeof b, "\\u%04x", static_cast<unsigned>(c));
