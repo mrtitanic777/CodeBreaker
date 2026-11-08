@@ -128,6 +128,13 @@ namespace {
 [[noreturn]] void none_iter() { throw py::TypeError("'NoneType' object is not iterable"); }
 
 template <class T> py::ref<T> as(const ir::NodeP& n) { return std::dynamic_pointer_cast<T>(n); }
+template <class T> py::ref<T> as(const ir::NodeOrList& v) { return std::dynamic_pointer_cast<T>(ir::node_of(v)); }   // a list is no node
+
+// A body slot (NodeOrList) as the node ir.walk() takes; a bare list of statements has no .children().
+ir::NodeP walkable(const ir::NodeOrList& v) {
+    if (std::holds_alternative<py::list<ir::NodeP>>(v)) throw py::AttributeError("'list' object has no attribute 'children'");
+    return std::get<ir::NodeP>(v);
+}
 
 }  // namespace
 
@@ -137,7 +144,7 @@ Result patch(const py::list<ir::NodeP>& units) {
     for (const auto& cm : rw::methods(units)) {
         const py::ref<ir::ClassDecl>& cls = std::get<0>(cm);
         const py::ref<ir::MethodDecl>& m = std::get<1>(cm);
-        for (ir::Nodes ss : rw::stmt_lists(m->body)) {
+        for (ir::Nodes ss : rw::stmt_lists(walkable(m->body))) {
             if (!ss) {
                 throw py::TypeError("object of type 'NoneType' has no len()");
             }
@@ -188,7 +195,7 @@ Result patch(const py::list<ir::NodeP>& units) {
                     rw::replace(nxt, route);
                     per[cls->name][0] += 1;
                 } else if (rw::is_call(loc->init, py::str("getRandomSound"), py::str("soundPoolMusic")) &&
-                           rw::is_null_test(nxt->cond, v) && !nxt->orelse && as<ir::Block>(nxt->then)) {
+                           rw::is_null_test(nxt->cond, v) && !ir::truthy(nxt->orelse) && as<ir::Block>(nxt->then)) {
                     nxt->cond = rw::true_();                   // play("BgMusic") starts the XACT playlist: always
                     auto then = as<ir::Block>(nxt->then);
                     if (!then->stmts) {
