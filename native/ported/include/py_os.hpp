@@ -941,6 +941,15 @@ class Pattern {
     template <class F> str sub_fn(const F& fn, const str& s, int64_t count = 0) const {
         return str(r_->sub_fn([&](const ::re::Match& m) { return fn(Match(m)).utf8(); }, s.utf8(), static_cast<int>(count)));
     }
+    // (new) Pattern.sub(fn, s): the replacement a function of the match
+    template <class F, class = decltype(std::declval<const F&>()(std::declval<const Match&>()))>
+    str sub(const F& fn, const str& s, int64_t count = 0) const { return sub_fn(fn, s, count); }
+    template <class F, class = decltype(std::declval<const F&>()(std::declval<const Match&>()))>
+    std::tuple<str, int64_t> subn(const F& fn, const str& s, int64_t count = 0) const {
+        int64_t n = static_cast<int64_t>(r_->finditer(s.utf8()).size());
+        if (count > 0 && n > count) n = count;
+        return {sub_fn(fn, s, count), n};
+    }
     std::tuple<str, int64_t> subn(const str& repl, const str& s, int64_t count = 0) const {
         int64_t n = static_cast<int64_t>(r_->finditer(s.utf8()).size());
         if (count > 0 && n > count) n = count;
@@ -977,6 +986,10 @@ str sub(const str& p, const F& fn, const str& s, int64_t count = 0, int64_t flag
 }
 inline std::tuple<str, int64_t> subn(const str& p, const str& repl, const str& s, int64_t count = 0, int64_t flags = 0) {
     return Pattern(p, flags).subn(repl, s, count);
+}
+template <class F, class = decltype(std::declval<const F&>()(std::declval<const Match&>()))>
+std::tuple<str, int64_t> subn(const str& p, const F& fn, const str& s, int64_t count = 0, int64_t flags = 0) {
+    return Pattern(p, flags).subn(fn, s, count);
 }
 inline list<str> split(const str& p, const str& s, int64_t maxsplit = 0, int64_t flags = 0) {
     return Pattern(p, flags).split(s, maxsplit);
