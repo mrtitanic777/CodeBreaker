@@ -28,45 +28,48 @@ int64_t Result::count(const py::str& key) const {
     throw py::TypeError("%d format: a real number is required, not str");
 }
 
-Assembly::Assembly(const py::list<py::str>& lines, const std::optional<py::str>& syntax_, const std::optional<py::str>& module_,
-                   const py::str& name, const py::str& reason)
-    : py::list<py::str>(lines.copy()) {
-    this->syntax = syntax_;
-    this->module = module_;
-    _parts.push_back(Part{0, name, reason, std::nullopt, std::nullopt});
-}
+namespace {
 
-void Assembly::part(const py::str& name, const py::str& reason, const std::optional<Origin>& origin, const std::optional<int64_t>& length) {
-    _parts.push_back(Part{size(), name, reason, origin, length});
-}
-
-asm_::Document Assembly::document() const {
-    py::list<asm_::Unit> out;
-    std::vector<int64_t> ends;
-    for (size_t i = 1; i < _parts.size(); ++i) {
-        ends.push_back(_parts[i].start);
+// A key of an L2 unit (a Dict) as a str, or nothing when it is absent or None.
+std::optional<py::str> unit_str(const translate::l2::Dict& u, const char* key) {
+    std::optional<translate::l2::Val> v = u.get(py::str(key));
+    if (!v.has_value()) {
+        return std::nullopt;
     }
-    ends.push_back(size());
-    for (size_t k = 0; k < _parts.size(); ++k) {
-        int64_t start = _parts[k].start;
-        int64_t end = ends[k];
-        if (end > start) {
-            // l2.fragment(...): a MachineFragment (its origin, reason and length are kept by the L2 module; the
-            // assembly back end reads its node, text, name and syntax)
-            asm_::Unit u;
-            u.node = py::str("MachineFragment");
-            u.name = _parts[k].name;
-            u.syntax = syntax;
-            u.asm_ = py::join(py::str("\n"), slice(start, end));
-            out.append(u);
+    if (const py::str* s = std::get_if<py::str>(&v->v)) {
+        return *s;
+    }
+    return std::nullopt;
+}
+
+// The L2 Module document the back end reads, as its typed Document (the keys it reads: node, units; of a
+// unit: node, asm, within, name, text, syntax).
+asm_::Document to_document(const translate::l2::Dict& d) {
+    asm_::Document doc;
+    doc.node = unit_str(d, "node");
+    py::list<asm_::Unit> units;
+    std::optional<translate::l2::Val> us = d.get(py::str("units"));
+    if (us.has_value()) {
+        if (const translate::l2::Val::List* l = std::get_if<translate::l2::Val::List>(&us->v)) {
+            for (const translate::l2::Val& x : *l) {
+                const translate::l2::Dict& u = std::get<translate::l2::Dict>(x.v);
+                asm_::Unit t;
+                t.node = unit_str(u, "node");
+                t.asm_ = unit_str(u, "asm");
+                std::optional<translate::l2::Val> w = u.get(py::str("within"));
+                t.within = w.has_value() && !w->is_none() && !(std::holds_alternative<bool>(w->v) && !std::get<bool>(w->v));
+                t.name = unit_str(u, "name");
+                t.text = unit_str(u, "text");
+                t.syntax = unit_str(u, "syntax");
+                units.append(t);
+            }
         }
     }
-    // l2.module(out)
-    asm_::Document d;
-    d.node = py::str("Module");
-    d.units = out;
-    return d;
+    doc.units = units;
+    return doc;
 }
+
+}  // namespace
 
 py::dict<int64_t, Function> functions(const py::list<int64_t>& starts, const py::dict<int64_t, py::str>& names, const py::str& fmt) {
     py::dict<int64_t, Function> out;
@@ -161,7 +164,7 @@ Assembly lines(const py::list<py::str>& first, const std::optional<py::str>& syn
 }
 
 py::str text(const Assembly& out) {
-    return asm_::module(out.document());
+    return asm_::module(to_document(out.document()));
 }
 
 py::list<py::str> commented(const py::list<py::str>& lines, const py::str& what) {

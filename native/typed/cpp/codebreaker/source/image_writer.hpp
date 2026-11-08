@@ -42,10 +42,8 @@
 //     `Insn`, which has `int64_t size` and `std::optional<int64_t> target` (the Python's
 //     `insn.target is not None`). The `size` argument of the Python (default `_size`, `insn.size`)
 //     is an optional function; absent, `insn.size` is used.
-//   * translate.l2.Assembly has no typed port yet: `Assembly` here is its stand-in (the same
-//     interface: a list of lines, part(), document()), producing the typed Document of
-//     translate::backends::asm_ (which carries a MachineFragment's text, name and syntax -- the
-//     fields the assembly back end reads).
+//   * The source is a translate::l2::Assembly (its parts keep origin, reason and length); text() hands
+//     its document (an L2 Dict) to the assembly back end, which takes it as a typed Document.
 //   * The result dict of result() is a record (Result); the fields a writer adds (`**more`:
 //     "rom bytes", "config" ...) are `more`.
 //   * The "raw" sets of flat() hold whatever a writer calls an instruction there (a template
@@ -61,6 +59,7 @@
 
 #include "codebreaker/compare/image.hpp"
 #include "codebreaker/translate/backends/asm.hpp"
+#include "codebreaker/translate/l2.hpp"
 #include "py.hpp"
 
 namespace codebreaker::source::image_writer {
@@ -93,38 +92,9 @@ struct Result {
     int64_t count(const py::str& key) const;
 };
 
-// The origin a part() is given: {"module": module, "va": address}.
-struct Origin {
-    std::optional<py::str> module;
-    std::optional<int64_t> va;
-};
-
-// The source being written, as one L2 Module as it goes (l2.Assembly): lines are appended to it
-// as to a list, emit() begins a fragment at each function, part() begins one by hand.
-// (Stand-in for translate.l2.Assembly, a list subclass; it is the list of lines.)
-class Assembly : public py::list<py::str> {
-public:
-    std::optional<py::str> syntax, module;
-
-    Assembly(const py::list<py::str>& lines = py::list<py::str>(), const std::optional<py::str>& syntax = std::nullopt,
-             const std::optional<py::str>& module = std::nullopt, const py::str& name = py::str("head"),
-             const py::str& reason = py::str("head"));
-
-    void part(const py::str& name, const py::str& reason = py::str("section"), const std::optional<Origin>& origin = std::nullopt,
-              const std::optional<int64_t>& length = std::nullopt);
-
-    // A Module of MachineFragments: backends/asm.py writes it.
-    translate::backends::asm_::Document document() const;
-
-private:
-    struct Part {
-        int64_t start;
-        py::str name, reason;
-        std::optional<Origin> origin;
-        std::optional<int64_t> length;
-    };
-    std::vector<Part> _parts;
-};
+// The source being written, as one L2 Module as it goes (translate/l2.Assembly: a list of lines with part()
+// and document()).
+using Assembly = translate::l2::Assembly;
 
 template <class Insn> int64_t _size(const Insn& insn) { return insn.size; }
 
@@ -251,9 +221,9 @@ void emit(Assembly& out, int64_t start, int64_t end, const Fn<std::function<int6
             flush();
             if (functions.contains(addr)) {
                 // (each function a fragment of the module's tree)
-                Origin origin;
-                origin.module = out.module;
-                origin.va = addr;
+                translate::l2::Dict origin;
+                origin.set(py::str("module"), out.module.has_value() ? translate::l2::Val(*out.module) : translate::l2::Val());
+                origin.set(py::str("va"), translate::l2::Val(addr));
                 out.part(functions.at(addr).name, py::str("function"), origin);
                 out.append(py::str(""));
             }
