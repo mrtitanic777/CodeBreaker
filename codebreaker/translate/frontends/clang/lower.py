@@ -440,7 +440,7 @@ class Lowering(object):
 
     def unsupported(self, kind, n, raw=None):
         return ir.Unsupported(kind=kind, raw=raw, type=self.ty(n) if n is not None else ir.ANY,
-                              **(self.pos(n) if n is not None else {}))
+                              **(self.pos(n) if n is not None else dict(line=0, col=0)))
 
     def const(self, n):
         """A C integer constant expression's value, or None."""

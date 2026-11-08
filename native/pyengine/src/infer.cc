@@ -190,6 +190,23 @@ void Eval::contribute_attr(const std::string& cq, const std::string& attr, const
     }
 }
 
+// (new) spread.cc: the value spread is a record whose keys are exactly these, every one always there ("": it
+// is; else why not)
+std::string Eval::spread_record_why(const T& t, const std::vector<std::string>& keys) {
+    if (t.kind != TK::Dict) return std::string("a ") + kind_name(t.kind);
+    int s = p.find(t.site);
+    if (!p.is_record(s)) return "a dict of no fixed keys" + (p.dynamic.count(s) ? " (" + p.dynamic[s] + ")" : std::string());
+    if (p.spread_keys.count(s)) return "a record spread from another";
+    if (!p.required[s]) return "a record never made";
+    const std::set<std::string>& req = *p.required[s];
+    std::set<std::string> want(keys.begin(), keys.end()), have;
+    for (auto& [k, _] : p.fields[s]) have.insert(k);
+    for (auto& k : have) if (!want.count(k)) return "a record with key " + py_repr(k) + " too";
+    for (auto& k : want) if (!have.count(k)) return "a record without key " + py_repr(k);
+    for (auto& k : keys) if (!req.count(k)) return "a record whose key " + py_repr(k) + " is not always there";
+    return "";
+}
+
 // ------------------------------------------------------------------------------------ the function
 Eval& Eval::run() {
     Fn* f = fn;
@@ -1069,6 +1086,9 @@ void Eval::builder_keys(const A::Assign* st, const T& t) {
     std::vector<std::string> keys;
     auto lk = p.literal_keys.find(st->value);
     if (lk != p.literal_keys.end()) keys = lk->second;
+    // (fixed) `x = f()` with f returning a record made elsewhere: not a creation here (it emptied the
+    // record's always-there keys)
+    else if (st->value->kind != ExprKind::Dict) return;
     size_t i = std::find(blk->begin(), blk->end(), st) - blk->begin() + 1;
     while (i < blk->size()) {
         const A::Stmt* s2 = (*blk)[i];
@@ -1746,6 +1766,19 @@ TR Eval::ev_inner(const A::Expr* node, const State& state) {
             auto* fa = as<Attribute>(n->func);
             if (fa) recv = ev(fa->value, state);
             T ft = !recv ? ev(n->func, state) : BOTTOM();
+            // (new) spread.cc's f(k=rec['k'] ...) for f(**rec): only when rec is a record of exactly those keys,
+            // each always there -- else the two calls differ
+            if (auto sc = p.spread_checks.find(n); sc != p.spread_checks.end()) {
+                T rt = ev(sc->second.var, state);
+                std::string why = spread_record_why(rt, sc->second.keys);
+                if (!why.empty()) return issue(node, "dynamic", "**kwargs call of " + why);
+            }
+            if (auto sc = p.star_checks.find(n); sc != p.star_checks.end()) {   // (new) star.cc's f(t[0] ...) for f(*t)
+                T tt = ev(sc->second.var, state);
+                if (tt.kind != TK::Tuple || (int)tt.args().size() != sc->second.n)
+                    return issue(node, "dynamic", "*args call of " + (tt.kind == TK::Tuple ? "a tuple of " + std::to_string(tt.args().size()) + " items" : std::string("a ") + kind_name(tt.kind)) +
+                                                      ", not of " + std::to_string(sc->second.n));
+            }
             for (auto* a : n->args)
                 if (auto* sa = as<Starred>(a)) {
                     ev(sa->value, state);

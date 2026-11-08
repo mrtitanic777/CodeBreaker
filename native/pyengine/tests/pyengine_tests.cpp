@@ -366,6 +366,107 @@ def workers():
     CHECK(!has(r.l2("pkg.m.workers"), "settings.get_str"), "a key that is not a str setting is not get_str");
 }
 
+// (new) f(**record): the record's keys as keywords (spread.cc), when the record is exactly those keys
+static void t_spread_record() {
+    Run r(Srcs{{"pkg.m", R"PY(
+class Node:
+    def __init__(self, *, name: str, line: int = 0, col: int = 0):
+        self.name = name
+        self.line = line
+        self.col = col
+
+class Lower:
+    def pos(self, n: dict[str, int]):
+        return dict(line=n.get('l', 0), col=n.get('c', 0))
+
+    def leaf(self, name: str, n: dict[str, int]):
+        return Node(name=name.upper(), **self.pos(n))
+
+    def kept(self, name: str, p):
+        return Node(name=name, **p)
+
+    def use(self, n: dict[str, int]):
+        return self.kept('x', self.pos(n))
+
+def odd(name: str, flag: bool):
+    p = dict(line=1, col=2)
+    if flag:
+        p['extra'] = 3
+    return Node(name=name, **p)
+)PY"}}, true, "checked");
+    CHECK(r.ok("pkg.m.Lower.leaf"), "leaf: %s", r.why("pkg.m.Lower.leaf").c_str());
+    CHECK(r.ok("pkg.m.Lower.kept"), "kept (its p from every caller): %s", r.why("pkg.m.Lower.kept").c_str());
+    CHECK(!r.ok("pkg.m.odd"), "a record with another key is refused: %s", r.why("pkg.m.odd").c_str());
+}
+
+// (new) f(*tuple): the tuple's items as arguments (star.cc), when it is a tuple of exactly that many
+static void t_star_tuple() {
+    Run r(Srcs{{"pkg.m", R"PY(
+class Entry:
+    def __init__(self, name: str, size: int, flag: bool):
+        self.name = name
+        self.size = size
+        self.flag = flag
+
+def add(a: int, b: int, c: int) -> int:
+    return a + b + c
+
+def make(name: str, n: int):
+    e = (name, n, n > 3)
+    return Entry(*e)
+
+def total(n: int) -> int:
+    t = (n, n * 2)
+    return add(1, *t)
+
+def short(n: int) -> int:
+    t = (n,)
+    return add(1, *t)
+)PY"}}, true, "checked");
+    CHECK(r.ok("pkg.m.make"), "make: %s", r.why("pkg.m.make").c_str());
+    CHECK(r.ok("pkg.m.total"), "total: %s", r.why("pkg.m.total").c_str());
+    CHECK(!r.ok("pkg.m.short"), "a tuple of another length is refused: %s", r.why("pkg.m.short").c_str());
+}
+
+// (new) a def passed as a one-argument callback (callbacks.cc): re.sub's replacement, a key=
+static void t_callbacks() {
+    Run r(Srcs{{"pkg.m", R"PY(
+import re
+
+WORD = re.compile(r"[a-z]+")
+
+def _bang(m):
+    return m.group(0) + "!"
+
+def _rank(s: str) -> int:
+    return len(s)
+
+def shout(text: str) -> str:
+    return re.sub(r"[a-z]+", _bang, text)
+
+def shout2(text: str) -> str:
+    return WORD.sub(_bang, text)
+
+def named(text: str, frame: dict[int, str]) -> str:
+    def one(m):
+        return frame.get(len(m.group(1)), m.group(0))
+    return re.sub(r"\[(\d+)\]", one, text)
+
+def order(xs: list[str]) -> list[str]:
+    return sorted(xs, key=_rank)
+
+def rebound(text: str) -> str:
+    def one(m):
+        return m.group(0)
+    if text:
+        one = _bang
+    return re.sub(r"x", one, text)
+)PY"}}, true, "checked");
+    for (const char* f : {"pkg.m.shout", "pkg.m.shout2", "pkg.m.named", "pkg.m.order"})
+        CHECK(r.ok(f), "%s: %s", f, r.why(f).c_str());
+    CHECK(!r.ok("pkg.m.rebound"), "a name bound twice is left alone: %s", r.why("pkg.m.rebound").c_str());
+}
+
 // (new) a field of an instance that may be None: read through py::none_attr (Python's AttributeError for None)
 static void t_maybe_none_attr() {
     Run r(Srcs{{"pkg.m", R"PY(
@@ -910,7 +1011,7 @@ int main(int argc, char** argv) {
         {"async", t_async},       {"match", t_match},
         {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"factories", t_factories}, {"lambda_scope", t_lambda_scope}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
-        {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"regex_computed", t_regex_computed}, {"maybe_none_attr", t_maybe_none_attr}, {"settings_get", t_settings_get}, {"files", t_files}};
+        {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"regex_computed", t_regex_computed}, {"maybe_none_attr", t_maybe_none_attr}, {"settings_get", t_settings_get}, {"spread_record", t_spread_record}, {"star_tuple", t_star_tuple}, {"callbacks", t_callbacks}, {"files", t_files}};
     std::vector<std::string> run;
     for (int i = 1; i < argc; i++) run.push_back(argv[i]);
     if (run.empty())

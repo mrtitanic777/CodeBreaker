@@ -2915,7 +2915,10 @@ public:
         if (name == "list.sort") return builtin_call_sort(n, recv);
         std::vector<IRP> args;
         for (auto* a : n->args) {
-            if (auto* g = as<GeneratorExp>(a)) args.push_back(gen_as_list(g));
+            auto* lam = as<pyfront::Lambda>(a);
+            if (lam && (name == "re.Pattern.sub" || name == "re.Pattern.subn") && lam->args->args.size() == 1 && a == n->args[0])
+                args.push_back(lambda_expr(lam, {ty(Tof(AnyNode(lam->args->args[0], AnyNode::Arg)), a, "the match")}));   // (new) the replacement a lambda of the match
+            else if (auto* g = as<GeneratorExp>(a)) args.push_back(gen_as_list(g));
             else args.push_back(expr(a));
         }
         for (auto* k : n->keywords) args.push_back(mk_pyfn("kw", {expr(k->value)}, VOID(), nullptr, 0, {py::V(k->arg)}));

@@ -183,7 +183,7 @@ class Lowering(object):
 
     def unsupported(self, n, kind, why, t=None):
         self.refused.append((n.get('l', 0) if n else 0, kind, why))
-        p = self.pos(n) if n else {}
+        p = self.pos(n) if n else dict(line=0, col=0)
         return ir.Unsupported(kind=kind, raw=why, type=t or (ty(n.get('$type')) if n else ir.ANY), **p)
 
     # ---- declarations
