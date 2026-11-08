@@ -82,6 +82,12 @@ const ir::Nodes& stmts_of(const ir::NodeP& n) {
     return b->stmts;
 }
 
+// A body slot (NodeOrList) as the node ir.walk() takes; a bare list of statements has no .children().
+ir::NodeP walkable(const ir::NodeOrList& v) {
+    if (std::holds_alternative<py::list<ir::NodeP>>(v)) no_attr("list", "children");
+    return std::get<ir::NodeP>(v);
+}
+
 }  // namespace
 
 Result patch(const py::list<ir::NodeP>& units) {
@@ -89,7 +95,7 @@ Result patch(const py::list<ir::NodeP>& units) {
     for (const auto& cm : rw::methods(units)) {
         const py::ref<ir::ClassDecl>& cls = std::get<0>(cm);
         const py::ref<ir::MethodDecl>& m = std::get<1>(cm);
-        for (ir::Nodes ss : rw::stmt_lists(m->body)) {
+        for (ir::Nodes ss : rw::stmt_lists(walkable(m->body))) {
             if (!ss) {
                 none_iter();                               // enumerate(None)
             }
@@ -139,16 +145,20 @@ Result patch(const py::list<ir::NodeP>& units) {
                     continue;
                 }
                 auto g = as<ir::If>(guarded[0]);
-                if (g->orelse) {
+                if (ir::truthy(g->orelse)) {
                     continue;
                 }
+                if (std::holds_alternative<py::list<ir::NodeP>>(g->then)) {
+                    continue;                              // [list]: one element, not an ExprStmt
+                }
+                const ir::NodeP& then = std::get<ir::NodeP>(g->then);
                 py::list<ir::NodeP> body;
-                if (as<ir::Block>(g->then)) {
-                    const ir::Nodes& gs = as<ir::Block>(g->then)->stmts;
+                if (as<ir::Block>(then)) {
+                    const ir::Nodes& gs = as<ir::Block>(then)->stmts;
                     if (!gs) none_iter();
                     body = *gs;
                 } else {
-                    body.append(g->then);
+                    body.append(then);
                 }
                 if (py::len(body) != 1 || !as<ir::ExprStmt>(body[0])) {
                     continue;
