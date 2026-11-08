@@ -22,6 +22,7 @@ struct Error : std::runtime_error {
 enum Flags { I = 2, M = 8, S = 16, A = 256 };   // (A: re.ASCII -- \w \d \s ASCII only)
 
 struct Node;
+struct Prog;          // the compiled program a Regex runs
 
 struct Match {
     std::shared_ptr<const std::string> s;     // (its own copy of the text: a match outlives a temporary)
@@ -56,6 +57,7 @@ public:
 
 private:
     std::shared_ptr<Node> root_;
+    std::shared_ptr<Prog> prog_;
     int ngroups_ = 0;
     int flags_ = 0;
     std::string pattern_;
