@@ -112,7 +112,7 @@ inline bool value(const py::var& x, const char* spec, val& out) { return value_(
 }
 [[noreturn]] inline void raise_named(const std::string& type, const std::string& msg) {
     py::var cls;
-    if (type == "StructError") cls = py::import_from(py::import("struct"), "error");
+    if (type == "StructError" || type == "error") cls = py::import_from(py::import("struct"), "error");
     else if (type == "PatternError") cls = py::import_from(py::import("re"), "error");
     else {
         py::var b = py::import("builtins");
