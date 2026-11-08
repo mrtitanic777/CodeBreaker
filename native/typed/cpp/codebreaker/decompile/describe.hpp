@@ -86,11 +86,30 @@ int64_t le_address(int64_t obj, int64_t off);
 // --- decoded instructions (stand-in for platforms.decoder(16, detail)) ---------------------------------------------
 // One decoded 16-bit x86 instruction: capstone's CsInsn as describe.py reads it.  `operands` are filled only for a
 // decoder made with detail=true.
+// capstone's error: raised where the Python's `regs_access()` raises CsError (the registers of an instruction are not
+// available).
+struct CsError : py::Exception {
+    explicit CsError(const std::string& m) : py::Exception(m) {}
+    const char* type() const override { return "CsError"; }
+};
+// The decoder is the very capstone.dll Python's `capstone` package carries, loaded by path (as analyze/dos_functions
+// and source/vxd/disassembly do): hand it over once, before the first decoder16(); a use without it is an ImportError.
+// (It also hands the DLL to analyze::dos_functions, which describe_dos goes through.)
+void set_capstone_dll(const py::str& path);
+
+// `operands` (and `op_size`, the size of each: capstone's op.size) are filled only for a decoder made with detail=true.
 struct Insn : inline_asm::Instruction {
+    py::list<int64_t> op_size;        // operands[k].size
     py::list<int64_t> regs_read;      // regs_access()[0]
     py::list<int64_t> regs_write;     // regs_access()[1]
     py::list<int64_t> groups;         // capstone's instruction groups (CS_GRP_*), for group()
-    std::tuple<py::list<int64_t>, py::list<int64_t>> regs_access() const { return {regs_read, regs_write}; }
+    bool regs_ok = false;             // regs_access() is available (a detail decoder, and capstone could say)
+    std::string mn, os;               // mnemonic / op_str as plain text (the same as mnemonic / op_str)
+    // i.regs_access(): (registers read, registers written); raises CsError when capstone cannot say
+    std::tuple<py::list<int64_t>, py::list<int64_t>> regs_access() const {
+        if (!regs_ok) throw CsError("Information irrelevant for this instruction (CS_ERR_DETAIL)");
+        return {regs_read, regs_write};
+    }
     // i.group(g): is the instruction in group `g` (CS_GRP_JUMP ...)?
     bool group(int64_t g) const {
         for (int64_t x : groups) if (x == g) return true;
