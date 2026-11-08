@@ -338,7 +338,8 @@ class str {
         }
         return out;
     }
-    const std::u32string& u32() const { return s_; }
+    const std::u32string& u32() const& { return s_; }
+    std::u32string u32() && { return std::move(s_); }   // (on a temporary: a value, so `for (c : f().u32())` stays valid)
     int64_t size() const { return static_cast<int64_t>(s_.size()); }
     bool empty() const { return s_.empty(); }
     char32_t at_(int64_t i) const { return s_[static_cast<size_t>(i)]; }
@@ -626,7 +627,8 @@ class bytes {
         }
         return bytes(s);
     }
-    const std::string& raw() const { return b_; }
+    const std::string& raw() const& { return b_; }
+    std::string raw() && { return std::move(b_); }   // (on a temporary: a value, not a dangling reference)
     int64_t size() const { return static_cast<int64_t>(b_.size()); }
     bool empty() const { return b_.empty(); }
     int64_t byte_(int64_t i) const { return static_cast<unsigned char>(b_[static_cast<size_t>(i)]); }
@@ -890,9 +892,11 @@ class bytearray {
     explicit bytearray(const bytes& b) : p_(std::make_shared<bytes>(b)) {}
     static bytearray zeros(int64_t n) { return bytearray(bytes::zeros(n)); }
     template <class L> static bytearray from_list(const L& items) { return bytearray(bytes::from_list(items)); }
-    const bytes& view() const { return *p_; }
+    const bytes& view() const& { return *p_; }
+    bytes view() && { return *p_; }   // (on a temporary: a copy -- the shared buffer may die with it)
     operator const bytes&() const { return *p_; }
-    const std::string& raw() const { return p_->raw(); }
+    const std::string& raw() const& { return p_->raw(); }
+    std::string raw() && { return p_->raw(); }   // (on a temporary: a copy)
     std::string& raw_mut() const { return p_->b_; }
     int64_t size() const { return p_->size(); }
     bool empty() const { return p_->empty(); }
