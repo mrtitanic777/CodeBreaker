@@ -21,12 +21,16 @@
 //     class named by d['node'] and gives each slot the kind of value the class types it with. Where the
 //     Python stores a document value of another kind than its slot's (a dict without 'node' in a node slot,
 //     a list of raw dicts where a node list has a None in it), the slot's type cannot hold it: that is a
-//     TypeError here, and a list of nodes keeps None as None.
+//     TypeError here, and a list of nodes keeps None as None. (The real documents hold no such value: the
+//     slots they fill more widely than the first reading are widened in ir.hpp.)
 //   * Python's `**fields` / `**facts` keyword dicts are a Dict argument. A dict subclass with a write-through
 //     (Made.texts' _Texts) is a copy here, with set_text() / update_texts() for the writes. Made's cached
 //     views (_view) are not kept: each view is made from the document when asked for (the values are the same).
 //     Made's pickling and copy hooks go with them (copying a Made shares its doc, which is never changed in
 //     place, as the Python's __copy__ does).
+//   * The slots the real documents fill with more than the node classes' first reading (a statement body that is a bare
+//     list of statements, Call.typeargs that is a struct format) are ir.hpp's NodeOrList and TypeArgs; from_json
+//     reads a list of type dicts as Types and any other typeargs list as the plain values it is.
 //   * Identifier spellings that are C++ keywords: the `asm` argument of fragment() is asm_.
 //   * Python ints are int64_t here.
 #pragma once

@@ -453,6 +453,7 @@ void put(const Dict& d, const py::str& key, bool keep, const py::list<TypeP>& v)
     for (const TypeP& x : v) out.append(type_json(x));
     d.set(key, Val(out));
 }
+void put(const Dict& d, const py::str& key, bool keep, const std::variant<py::list<TypeP>, py::list<Val>>& v);
 void put(const Dict& d, const py::str& key, bool keep, const py::list<py::str>& v) {
     if (!keep && v.empty()) return;
     Val::List out;
@@ -462,7 +463,16 @@ void put(const Dict& d, const py::str& key, bool keep, const py::list<py::str>& 
 template <class T> void put(const Dict& d, const py::str& key, bool keep, const std::optional<T>& v) {
     if (v) put(d, key, keep, *v);
 }
-void put(const Dict& d, const py::str& key, bool keep, const std::variant<NodeP, py::list<NodeP>>& v) {
+void put(const Dict& d, const py::str& key, bool keep, const std::variant<py::list<TypeP>, py::list<Val>>& v) {
+    if (std::holds_alternative<py::list<TypeP>>(v)) {
+        put(d, key, keep, std::get<py::list<TypeP>>(v));
+        return;
+    }
+    const py::list<Val>& l = std::get<py::list<Val>>(v);
+    if (!keep && l.empty()) return;
+    d.set(key, value_of(Val(l)));
+}
+void put(const Dict& d, const py::str& key, bool keep, const ir::NodeOrList& v) {
     if (std::holds_alternative<NodeP>(v)) put(d, key, keep, std::get<NodeP>(v));
     else put(d, key, keep, std::get<py::list<NodeP>>(v));
 }
@@ -544,7 +554,7 @@ void assign(std::optional<Dict>& m, const Val& v) {
     if (val_none(v)) m.reset();
     else m = dict_of(v, "slot is not a dict: ");
 }
-void assign(std::variant<NodeP, py::list<NodeP>>& m, const Val& v) {
+void assign(ir::NodeOrList& m, const Val& v) {
     if (holds<Val::List>(v)) {
         py::list<NodeP> out;
         for (const Val& x : as<Val::List>(v)) out.append(val_none(x) ? nullptr : node_in(x));
@@ -553,6 +563,24 @@ void assign(std::variant<NodeP, py::list<NodeP>>& m, const Val& v) {
         NodeP n;
         assign(n, v);
         m = n;
+    }
+}
+
+// Call.typeargs: a list of type dicts is Types; any other list (a struct format, a count) is kept as the values it is
+void assign(ir::TypeArgs& m, const Val& v) {
+    if (val_none(v)) {
+        m.reset();
+        return;
+    }
+    const Val::List& items = list_in(v);
+    bool all_types = true;
+    for (const Val& x : items) all_types = all_types && holds<Dict>(x) && as<Dict>(x).contains(K("kind"));
+    if (all_types) {
+        py::list<TypeP> out;
+        for (const Val& x : items) out.append(type_from(x));
+        m = out;
+    } else {
+        m = items.copy();
     }
 }
 

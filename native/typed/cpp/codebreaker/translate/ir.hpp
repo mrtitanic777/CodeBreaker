@@ -29,6 +29,11 @@
 //     dict of a binary origin or a unit's compiler target -- the value is a Val, a variant of exactly those
 //     kinds (and lists and dicts of them, and a Type). Python tuples that are only ever read (Type.args,
 //     Sym.params, refs, flags) are lists.
+//   * A body slot (MethodDecl.body, If.then / orelse, While.body, DoWhile.body, For.body, Labeled.body) holds a node
+//     or a list of nodes (NodeOrList), and Call.typeargs a list of Types or -- where the Python front end keeps a
+//     struct format or a count there -- a list of Vals (TypeArgs). These are the slots whose values in the real
+//     L2 documents (the decompiler's, the front ends') are not what the node classes' first reading says; the
+//     rest are as typed above. truthy() / node_of() read a NodeOrList the way the Python reads a body.
 //   * walk() and unsupported() are generators / list comprehensions in the Python; here they return lists
 //     (the nodes are not changed while the Python iterates them).
 //   * Type.__eq__ / __hash__ are Type::operator== and Type::hash(); hash() is not Python's hash() value
@@ -54,6 +59,9 @@ struct Node;
 using TypeP = py::ref<Type>;
 using SymP = py::ref<Sym>;
 using NodeP = py::ref<Node>;
+// A slot that real documents fill with a node or with a list of nodes (a statement body written as a bare list of
+// statements: the decompiler's, the Python front end's If.then and the like). Index.index holds the same.
+using NodeOrList = std::variant<NodeP, py::list<NodeP>>;
 
 // ---------------------------------------------------------------------------------------------- Val
 // A value of no fixed type: None, bool, int, float, str, a Type, a list or a dict (str keys) of Vals.
@@ -184,6 +192,7 @@ template <class T> py::str repr_of(const std::optional<T>& v);
 template <class T> py::str repr_of(const py::list<T>& xs);
 template <class K, class V> py::str repr_of(const py::dict<K, V>& d);
 template <class T> py::str repr_of(const std::variant<T, py::list<T>>& v);
+template <class A, class B> py::str repr_of(const std::variant<py::list<A>, py::list<B>>& v);
 inline py::str repr_of(const py::str& v) { return py::repr(v); }
 inline py::str repr_of(bool v) { return py::repr(v); }
 inline py::str repr_of(int64_t v) { return py::repr(v); }
@@ -204,6 +213,9 @@ template <class K, class V> py::str repr_of(const py::dict<K, V>& d) {
     return out + py::str("}");
 }
 template <class T> py::str repr_of(const std::variant<T, py::list<T>>& v) {
+    return std::visit([](const auto& x) { return repr_of(x); }, v);
+}
+template <class A, class B> py::str repr_of(const std::variant<py::list<A>, py::list<B>>& v) {
     return std::visit([](const auto& x) { return repr_of(x); }, v);
 }
 
@@ -287,6 +299,15 @@ template <class D, class Base> struct Kind : Base {
 using Strs = std::optional<py::list<py::str>>;
 using Nodes = std::optional<py::list<NodeP>>;
 using Types = std::optional<py::list<TypeP>>;
+// Call.typeargs: the Types, or a list of plain values (a struct format string, a count)
+using TypeArgs = std::optional<std::variant<py::list<TypeP>, py::list<Val>>>;
+// a body slot: absent, a node, or a list of nodes
+inline bool truthy(const NodeOrList& v) {   // Python's truthiness of the slot's value (a node is true, a list when not empty)
+    return std::holds_alternative<NodeP>(v) ? bool(std::get<NodeP>(v)) : !std::get<py::list<NodeP>>(v).empty();
+}
+inline NodeP node_of(const NodeOrList& v) {   // the node, null for None or a list
+    return std::holds_alternative<NodeP>(v) ? std::get<NodeP>(v) : NodeP();
+}
 using OptStr = std::optional<py::str>;
 using OptInt = std::optional<int64_t>;
 using OptBool = std::optional<bool>;
@@ -384,7 +405,7 @@ struct MethodDecl final : Kind<MethodDecl, Node> {
     OptStr kind;
     Nodes params;
     TypeP ret;
-    NodeP body;
+    NodeOrList body;
     Strs mods;
     Types throws;
     Strs typeparams;
@@ -468,19 +489,19 @@ struct ExprStmt final : Kind<ExprStmt, Stmt> {
 struct If final : Kind<If, Stmt> {
     static constexpr const char* NAME = "If";
     NodeP cond;
-    NodeP then;
-    NodeP orelse;
+    NodeOrList then;
+    NodeOrList orelse;
     template <class F> void each_slot(F&& f) { f("cond", cond, true); f("then", then, true); f("orelse", orelse, true); }
 };
 struct While final : Kind<While, Stmt> {
     static constexpr const char* NAME = "While";
     NodeP cond;
-    NodeP body;
+    NodeOrList body;
     template <class F> void each_slot(F&& f) { f("cond", cond, true); f("body", body, true); }
 };
 struct DoWhile final : Kind<DoWhile, Stmt> {
     static constexpr const char* NAME = "DoWhile";
-    NodeP body;
+    NodeOrList body;
     NodeP cond;
     template <class F> void each_slot(F&& f) { f("body", body, true); f("cond", cond, true); }
 };
@@ -489,7 +510,7 @@ struct For final : Kind<For, Stmt> {
     Nodes init;
     NodeP cond;
     Nodes update;
-    NodeP body;
+    NodeOrList body;
     template <class F> void each_slot(F&& f) {
         f("init", init, true); f("cond", cond, true); f("update", update, true); f("body", body, true);
     }
@@ -557,7 +578,7 @@ struct Catch final : Kind<Catch, Stmt> {
 struct Labeled final : Kind<Labeled, Stmt> {
     static constexpr const char* NAME = "Labeled";
     OptStr label;
-    NodeP body;
+    NodeOrList body;
     template <class F> void each_slot(F&& f) { f("label", label, false); f("body", body, true); }
 };
 // C, and whatever structuring leaves in a binary
@@ -671,7 +692,7 @@ struct Call final : Kind<Call, Expr> {
     NodeP target;
     SymP sym;
     Nodes args;
-    Types typeargs;
+    TypeArgs typeargs;
     template <class F> void each_slot(F&& f) {
         f("target", target, true); f("sym", sym, false); f("args", args, true); f("typeargs", typeargs, false);
     }
@@ -701,7 +722,7 @@ struct NewArray final : Kind<NewArray, Expr> {
 struct Index final : Kind<Index, Expr> {
     static constexpr const char* NAME = "Index";
     NodeP arr;
-    std::variant<NodeP, py::list<NodeP>> index;
+    NodeOrList index;
     SymP sym;
     template <class F> void each_slot(F&& f) { f("arr", arr, true); f("index", index, true); f("sym", sym, false); }
 };
