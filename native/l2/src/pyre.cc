@@ -9,6 +9,7 @@
 #include <type_traits>
 
 #include "pystr.hpp"
+#include "../../ported/include/py_unicode.hpp"
 #include "value.hpp"
 
 namespace re {
@@ -35,38 +36,39 @@ struct Node {
 };
 using NP = std::shared_ptr<Node>;
 
-static bool is_word_cp(uint32_t c) {
-    if (c < 0x80) return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-    // (Unicode's letters and digits, roughly: Latin-1's letters, and past it all but punctuation and spaces)
-    if (c < 0x100) return (c >= 0xc0 && c != 0xd7 && c != 0xf7) || c == 0xaa || c == 0xb5 || c == 0xba ||
-                          c == 0xb2 || c == 0xb3 || c == 0xb9 || (c >= 0xbc && c <= 0xbe);
-    if (py::is_space_cp(c)) return false;
-    if (c >= 0x2000 && c <= 0x2bff) return false;      // punctuation, symbols, arrows, boxes
-    if (c >= 0x3000 && c <= 0x303f) return false;
-    if (c >= 0xfe30 && c <= 0xfe4f) return false;
-    if (c >= 0xff00 && c <= 0xff0f) return false;
-    return true;
+// (fixed) \w and \d as Python's for a str pattern: \d a Unicode decimal digit (str.isdecimal), \w str.isalnum
+// (a letter, or a decimal, digit or numeric character) or '_' -- by CPython's own tables (py_unicode.hpp);
+// under re.ASCII (flag 256) the ASCII ones alone
+static bool is_word_cp(uint32_t c, bool ascii = false) {
+    if (c < 0x80 || ascii) return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+    char32_t u = static_cast<char32_t>(c);
+    return py::unicode_::isalpha(u) || py::unicode_::isdecimal(u) || py::unicode_::isdigit(u) || py::unicode_::isnumeric(u);
 }
-static bool is_digit_cp(uint32_t c) { return c >= '0' && c <= '9'; }
+static bool is_digit_cp(uint32_t c, bool ascii = false) {
+    if (c < 0x80 || ascii) return c >= '0' && c <= '9';
+    return py::unicode_::isdecimal(static_cast<char32_t>(c));
+}
 
 static uint32_t fold(uint32_t c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
 
-static bool cat_has(char cat, uint32_t c) {
+static bool is_space_ascii(uint32_t c) { return c == ' ' || (c >= '	' && c <= ''); }
+
+static bool cat_has(char cat, uint32_t c, bool ascii) {
     switch (cat) {
-        case 'w': return is_word_cp(c);
-        case 'W': return !is_word_cp(c);
-        case 'd': return is_digit_cp(c);
-        case 'D': return !is_digit_cp(c);
-        case 's': return py::is_space_cp(c);
-        case 'S': return !py::is_space_cp(c);
+        case 'w': return is_word_cp(c, ascii);
+        case 'W': return !is_word_cp(c, ascii);
+        case 'd': return is_digit_cp(c, ascii);
+        case 'D': return !is_digit_cp(c, ascii);
+        case 's': return ascii ? is_space_ascii(c) : py::is_space_cp(c);
+        case 'S': return ascii ? !is_space_ascii(c) : !py::is_space_cp(c);
     }
     return false;
 }
 
-static bool class_has(const Node& n, uint32_t c, bool icase) {
+static bool class_has(const Node& n, uint32_t c, bool icase, bool ascii) {
     bool in = false;
     for (auto& it : n.items) {
-        if (it.cat ? cat_has(it.cat, c) : (c >= it.lo && c <= it.hi) ||
+        if (it.cat ? cat_has(it.cat, c, ascii) : (c >= it.lo && c <= it.hi) ||
                                               (icase && ((fold(c) >= it.lo && fold(c) <= it.hi) ||
                                                          (c >= 'a' && c <= 'z' && c - 32 >= it.lo && c - 32 <= it.hi)))) {
             in = true;
@@ -450,12 +452,12 @@ struct Ctx {
     bool word_before(size_t i) const {
         if (i == 0) return false;
         size_t p = py::prev_cp(s, i), q;
-        return is_word_cp(cp_at(p, q));
+        return is_word_cp(cp_at(p, q), (flags & A) != 0);
     }
     bool word_at(size_t i) const {
         if (i >= end) return false;
         size_t q;
-        return is_word_cp(cp_at(i, q));
+        return is_word_cp(cp_at(i, q), (flags & A) != 0);
     }
     // one character node at i: where it ends, or npos
     size_t one(const Node* n, size_t i) const {
@@ -467,7 +469,7 @@ struct Ctx {
                 if (c == n->ch || ((flags & I) && fold(c) == fold(n->ch))) return nx;
                 return std::string::npos;
             case NK::Any: return (c != '\n' || (flags & S)) ? nx : std::string::npos;
-            case NK::Class: return class_has(*n, c, (flags & I) != 0) ? nx : std::string::npos;
+            case NK::Class: return class_has(*n, c, (flags & I) != 0, (flags & A) != 0) ? nx : std::string::npos;
             default: return std::string::npos;
         }
     }

@@ -19,7 +19,7 @@ struct Error : std::runtime_error {
     Error(std::string k, const std::string& m) : std::runtime_error(m), kind(std::move(k)) {}
 };
 
-enum Flags { I = 2, M = 8, S = 16 };
+enum Flags { I = 2, M = 8, S = 16, A = 256 };   // (A: re.ASCII -- \w \d \s ASCII only)
 
 struct Node;
 
