@@ -85,6 +85,14 @@ struct Exception : std::runtime_error {
         PY_TEXT_CTOR(Name, Base)                                    \
         const char* type() const override { return #Name; }         \
     };
+#define PY_EXCEPTION_NAMED(Name, Base, PyName)                      \
+    struct Name : Base {                                            \
+        Name() : Base() {}                                          \
+        explicit Name(const std::string& m) : Base(m) {}            \
+        explicit Name(const char* m) : Base(m) {}                   \
+        PY_TEXT_CTOR(Name, Base)                                    \
+        const char* type() const override { return PyName; }        \
+    };
 PY_EXCEPTION(ArithmeticError, Exception)
 PY_EXCEPTION(ZeroDivisionError, ArithmeticError)
 PY_EXCEPTION(OverflowError, ArithmeticError)
@@ -105,9 +113,10 @@ PY_EXCEPTION(IOError, OSError)
 PY_EXCEPTION(FileNotFoundError, OSError)
 PY_EXCEPTION(PermissionError, OSError)
 PY_EXCEPTION(TimeoutError, OSError)
-PY_EXCEPTION(StructError, Exception)  // struct.error
+PY_EXCEPTION_NAMED(StructError, Exception, "error")  // struct.error: Python's class is named "error"
 PY_EXCEPTION(PatternError, Exception)  // re.error (re.PatternError)
 PY_EXCEPTION(MemoryError, Exception)
+#undef PY_EXCEPTION_NAMED
 #undef PY_EXCEPTION
 #undef PY_TEXT_CTOR
 
