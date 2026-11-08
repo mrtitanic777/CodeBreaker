@@ -169,7 +169,8 @@ py::bytes build(const py::str& source, int64_t size, const py::str& folder) {
                 _put(image, bank, pos, code);
                 pos = py::checked_add(pos, code.size());
             } catch (const py::KeyError& e) {
-                throw AsmError(py::percent("line %d: %s (%s)", n, line, py::str(e.what())));
+                // str(KeyError("name")) is the repr of the key
+                throw AsmError(py::percent("line %d: %s (%s)", n, line, py::repr(py::str(e.what()))));
             } catch (const py::ValueError& e) {
                 throw AsmError(py::percent("line %d: %s (%s)", n, line, py::str(e.what())));
             }
