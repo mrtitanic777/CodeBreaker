@@ -45,11 +45,11 @@ std::tuple<py::set<py::str>, py::set<py::str>> _corpus_sets(const std::optional<
     py::set<py::str> pkgs;
     if (classes) {                                    // classes or ()
         for (const ClassInfo& c : *classes) {
-            if (c.name && py::truthy(*c.name)) {
-                names.add(*c.name);
+            if (py::truthy(c->name)) {
+                names.add(c->name);
             }
-            if (c.package && py::truthy(*c.package)) {
-                pkgs.add(*c.package);
+            if (c->package && py::truthy(*c->package)) {
+                pkgs.add(*c->package);
             }
         }
     }
