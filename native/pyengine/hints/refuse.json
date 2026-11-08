@@ -1,16 +1,5 @@
 {
  "codebreaker.emulate.powerpc._rotl32": "differs from the Python on (-1, 1): 18446744073709551615, C++ {\"error\": \"OverflowError\"}",
  "codebreaker.emulate.powerpc._s64": "differs from the Python on (-1,): -18446744073709551617, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.formats.detect.kind": "differs from the Python on ('',): null, C++ {\"error\": \"crash\"}",
- "codebreaker.formats.dos.kind": "differs from the Python on ('',): null, C++ {\"error\": \"crash\"}",
- "codebreaker.formats.xbox.stfs._bn": "differs from the Python on (b'MZ\\x90\\x00\\x03\\x00\\x00\\x00\\x04\\x00',): 18895039857297129996288, C++ {\"error\": \"OverflowError\"}",
- "codebreaker.java.bugfix_ledger.collect": "differs from the Python on ('\\\\',): {\"error\": \"hang\"}, C++ {\"error\": \"crash\"}",
- "codebreaker.platforms.dos._recognise": "differs from the Python on ('',): false, C++ {\"error\": \"crash\"}",
- "codebreaker.source.image_writer._items": "differs from the Python on ([],): {\"error\": \"ImportError\"}, C++ []",
- "codebreaker.source.image_writer._printable": "differs from the Python on (0,): {\"error\": \"ImportError\"}, C++ false",
- "codebreaker.source.image_writer.commented": "differs from the Python on ([], 'a'): {\"error\": \"ImportError\"}, C++ []",
- "codebreaker.source.image_writer.nasm_map": "differs from the Python on ('',): {\"error\": \"ImportError\"}, C++ {\"error\": \"FileNotFoundError\"}",
- "codebreaker.source.nes_writer._lines": "differs from the Python on ([],): {\"error\": \"ImportError\"}, C++ []",
- "codebreaker.source.sms_writer._slot": "differs from the Python on (0,): {\"error\": \"ImportError\"}, C++ 0",
- "codebreaker.xna.port.port_reader_name": "differs from the Python on ('abc', 'C:\\\\dir\\\\file.txt'): {\"error\": \"PatternError\"}, C++ {\"error\": \"crash\"}"
+ "codebreaker.formats.xbox.stfs._bn": "differs from the Python on (b'MZ\\x90\\x00\\x03\\x00\\x00\\x00\\x04\\x00',): 18895039857297129996288, C++ {\"error\": \"OverflowError\"}"
 }
