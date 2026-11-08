@@ -1054,7 +1054,22 @@ template <class T> class list {
         std::apply([&](const auto&... x) { (out.v_->push_back(x), ...); }, items);
         return out;
     }
-    std::vector<T>& vec() const { return *v_; }
+    std::vector<T>& vec() const& { return *v_; }
+    // f().vec() on a temporary list: a handle that keeps the items alive, so `for (x : f().vec())` does not
+    // read a destroyed vector (a plain reference would dangle once the temporary list is gone)
+    struct held_vec {
+        std::shared_ptr<std::vector<T>> p;
+        auto begin() const { return p->begin(); }
+        auto end() const { return p->end(); }
+        size_t size() const { return p->size(); }
+        bool empty() const { return p->empty(); }
+        decltype(auto) operator[](size_t i) const { return (*p)[i]; }
+        decltype(auto) front() const { return p->front(); }
+        decltype(auto) back() const { return p->back(); }
+        std::vector<T>* operator->() const { return p.get(); }
+        operator std::vector<T>&() const { return *p; }
+    };
+    held_vec vec() && { return held_vec{v_}; }
     int64_t size() const { return static_cast<int64_t>(v_->size()); }
     bool empty() const { return v_->empty(); }
     // (T&; for a list of bools std::vector<bool>'s reference, which reads and assigns the same)
