@@ -1902,7 +1902,7 @@ void Eval::check_str(const A::Node* node, const T& t, bool as_repr) {
 void Eval::check_format(const A::Node* node, const T& t, const Str& spec) {
     static const py::re::Pattern pat(Str("(?:.?[<>^])?[+\\- ]?#?0?\\d*,?(?:\\.\\d+)?[bdoxXcsfeEg%]?"), 0);
     if (!pat.fullmatch(spec)) {
-        issue(node, Str("syntax"), Str("format spec ") + py::repr(spec));
+        issue(node, Str("syntax"), Str("format spec ") + program::repr_str(spec));
         return;
     }
     // spec[-1:] in 'fFeEg%'  (an empty spec is in any string)
@@ -2012,11 +2012,11 @@ T Eval::ref_type(const A::Node* n, const Ref& r) {
         return issue(n, Str("unresolved"), r.s(1));
     }
     // str(r): the tuple's repr
-    Str text = Str("(") + py::repr(r.kind);
+    Str text = Str("(") + program::repr_str(r.kind);
     for (const TupItem& it : r.items) {
         text += Str(", ");
         if (auto* s = std::get_if<Str>(&it)) {
-            text += py::repr(*s);
+            text += program::repr_str(*s);
         } else if (auto* b = std::get_if<Big>(&it)) {
             text += Str(b->str());
         } else if (auto* bo = std::get_if<bool>(&it)) {

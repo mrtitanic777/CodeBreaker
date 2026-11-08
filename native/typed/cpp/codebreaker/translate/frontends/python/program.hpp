@@ -212,6 +212,11 @@ Str deco_name(const A::Expr* d);
 std::vector<Str> target_names(const A::Expr* t);
 // ast.unparse (the expression kinds a message names; others as <Kind>)
 Str unparse(const A::Expr* e);
+// repr() of a str, with every non-printable character escaped as CPython does (the runtime's py::repr only
+// knows the Latin-1 ones; characters unassigned in Unicode are not known here and print as they are)
+Str repr_str(const Str& s);
+inline Str repr_str(double v) { return py::repr(v); }
+inline Str repr_str(const py::bytes& b) { return py::repr(b); }
 // _int_const-style helpers over a node
 std::optional<Str> str_const(const A::Expr* n);
 std::optional<Big> int_const(const A::Expr* n);

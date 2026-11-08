@@ -146,6 +146,50 @@ const std::set<Str>& EXCEPTIONS() {
     return v;
 }
 
+// ------------------------------------------------------------------------------------ repr
+namespace {
+
+// str.isprintable() for one character: not in categories Cc Cf Cs Co Zl Zp Zs (but the space)
+bool printable(char32_t c) {
+    if (c < 0x20 || c == 0x7F) return false;
+    if (c < 0x7F) return true;
+    if (c <= 0xA0 || c == 0xAD) return false;
+    if (c == 0x600 || (c >= 0x601 && c <= 0x605) || c == 0x61C || c == 0x6DD || c == 0x70F || c == 0x1680 || c == 0x180E) return false;
+    if (c >= 0x2000 && c <= 0x200F) return false;
+    if (c >= 0x2028 && c <= 0x202F) return false;
+    if (c >= 0x205F && c <= 0x206F) return false;
+    if (c == 0x3000 || c == 0xFEFF || (c >= 0xFFF9 && c <= 0xFFFB)) return false;
+    if (c >= 0xD800 && c <= 0xF8FF) return false;
+    if (c == 0xFFFE || c == 0xFFFF || c >= 0xE0000) return false;
+    return true;
+}
+
+}  // namespace
+
+Str repr_str(const Str& s) {
+    const auto& u = s.u32();
+    bool sq = u.find(U'\'') != std::u32string::npos, dq = u.find(U'"') != std::u32string::npos;
+    char32_t q = (sq && !dq) ? U'"' : U'\'';
+    std::u32string o(1, q);
+    for (char32_t c : u) {
+        if (c == q || c == U'\\') {
+            o.push_back(U'\\');
+            o.push_back(c);
+        } else if (c == U'\t') o += U"\\t";
+        else if (c == U'\n') o += U"\\n";
+        else if (c == U'\r') o += U"\\r";
+        else if (!printable(c)) {
+            char b[16];
+            if (c < 0x100) std::snprintf(b, sizeof b, "\\x%02x", static_cast<unsigned>(c));
+            else if (c < 0x10000) std::snprintf(b, sizeof b, "\\u%04x", static_cast<unsigned>(c));
+            else std::snprintf(b, sizeof b, "\\U%08x", static_cast<unsigned>(c));
+            o += Str(b).u32();
+        } else o.push_back(c);
+    }
+    o.push_back(q);
+    return Str(o);
+}
+
 // ------------------------------------------------------------------------------------ ast helpers
 Str deco_name(const A::Expr* d) {
     if (auto* n = A::as<A::Name>(d)) {
@@ -204,10 +248,12 @@ bool is_none_const(const A::Expr* e) {
 
 namespace {
 
-// _Precedence of ast._Unparser
+// ast.unparse (CPython 3.14's ast._Unparser) for expressions.  `ctx` is the precedence the parent set on the
+// node (_Unparser.get_precedence; TEST when none was set); a node is parenthesised when ctx > its own.
 enum Prec {
     NAMED_EXPR = 1, TUPLE, YIELD, TEST, OR, AND, NOT, CMP, BOR, BXOR, BAND, SHIFT, ARITH, TERM, FACTOR, POWER, AWAIT, ATOM
 };
+int nextp(int p) { return p >= ATOM ? ATOM : p + 1; }
 
 int binop_prec(A::OpKind op) {
     switch (op) {
@@ -245,6 +291,31 @@ const char* cmp_text(A::CmpOpKind op) {
 }
 
 Str unp(const A::Expr* e, int ctx);
+Str unp_arguments(const A::arguments* a);
+
+Str replace_all(const Str& s, const Str& from, const Str& to) {
+    const std::u32string& u = s.u32();
+    const std::u32string& f = from.u32();
+    std::u32string out;
+    size_t i = 0;
+    while (i < u.size()) {
+        if (u.compare(i, f.size(), f) == 0) {
+            out += to.u32();
+            i += f.size();
+        } else {
+            out.push_back(u[i++]);
+        }
+    }
+    return Str(out);
+}
+
+Str join_strs(const std::vector<Str>& v) {
+    Str o;
+    for (const Str& s : v) {
+        o += s;
+    }
+    return o;
+}
 
 Str unp_seq(const std::vector<A::Expr*>& xs, int ctx) {
     Str out;
@@ -253,6 +324,253 @@ Str unp_seq(const std::vector<A::Expr*>& xs, int ctx) {
             out += Str(", ");
         }
         out += unp(xs[i], ctx);
+    }
+    return out;
+}
+
+// items_view(traverse, elts)
+Str items_view(const std::vector<A::Expr*>& xs) {
+    if (xs.size() == 1) {
+        return unp(xs[0], TEST) + Str(",");
+    }
+    return unp_seq(xs, TEST);
+}
+
+// -- string literals inside f-strings
+const std::vector<Str>& all_quotes() {
+    static const std::vector<Str> v = {Str("'"), Str("\""), Str("\"\"\""), Str("'''")};
+    return v;
+}
+bool is_multi(const Str& q) { return q.size() == 3; }
+
+// escape_char of _str_literal_helper: repr's spelling of one character (without the quotes)
+Str escape_char(char32_t c, bool special) {
+    if (!special && (c == U'\n' || c == U'\t')) {
+        return Str(c);
+    }
+    Str r = program::repr_str(Str(c));
+    return r.slice(1, r.size() - 1);
+}
+
+std::pair<Str, std::vector<Str>> str_literal_helper(const Str& string, const std::vector<Str>& quote_types, bool special) {
+    Str escaped;
+    for (char32_t c : string.u32()) {
+        escaped += escape_char(c, special);
+    }
+    std::vector<Str> possible = quote_types;
+    if (escaped.contains(Str("\n"))) {
+        std::vector<Str> k;
+        for (const Str& q : possible) {
+            if (is_multi(q)) k.push_back(q);
+        }
+        possible = k;
+    }
+    {
+        std::vector<Str> k;
+        for (const Str& q : possible) {
+            if (!escaped.contains(q)) k.push_back(q);
+        }
+        possible = k;
+    }
+    if (possible.empty()) {
+        Str r = program::repr_str(string);
+        char32_t first = r.at_(0);
+        Str quote(first);
+        for (const Str& q : quote_types) {
+            if (q.u32().find(first) != std::u32string::npos) {
+                quote = q;
+                break;
+            }
+        }
+        return {r.slice(1, r.size() - 1), {quote}};
+    }
+    if (!escaped.empty()) {
+        char32_t last = escaped.at_(escaped.size() - 1);
+        std::stable_sort(possible.begin(), possible.end(), [&](const Str& a, const Str& b) {
+            return (a.at_(0) == last) < (b.at_(0) == last);
+        });
+        if (possible[0].at_(0) == last) {
+            std::u32string u = escaped.u32();
+            u.pop_back();
+            u += U'\\';
+            u.push_back(last);
+            escaped = Str(u);
+        }
+    }
+    return {escaped, possible};
+}
+
+Str fstring_inner(const A::Expr* node, bool is_format_spec);
+
+// FormattedValue / Interpolation
+Str formatted_value(const A::Expr* value, int conversion, const A::Expr* format_spec) {
+    Str expr = unp(value, nextp(TEST));
+    Str out = Str("{");
+    if (expr.size() > 0 && expr.at_(0) == U'{') {
+        out += Str(" ");
+    }
+    out += expr;
+    if (conversion != -1) {
+        out += Str("!") + Str(std::string(1, static_cast<char>(conversion)));
+    }
+    if (format_spec) {
+        out += Str(":") + fstring_inner(format_spec, true);
+    }
+    return out + Str("}");
+}
+
+Str fstring_inner(const A::Expr* node, bool is_format_spec) {
+    using K = A::ExprKind;
+    if (node->kind == K::JoinedStr || node->kind == K::TemplateStr) {
+        const std::vector<A::Expr*>& vs = node->kind == K::JoinedStr ? A::cast<A::JoinedStr>(node)->values : A::cast<A::TemplateStr>(node)->values;
+        Str out;
+        for (const A::Expr* v : vs) {
+            out += fstring_inner(v, is_format_spec);
+        }
+        return out;
+    }
+    if (auto* c = A::as<A::Constant>(node); c && c->value.kind == A::ConstValue::Kind::Str) {
+        Str v = replace_all(replace_all(Str(c->value.text), Str("{"), Str("{{")), Str("}"), Str("}}"));
+        if (is_format_spec) {
+            v = replace_all(v, Str("\\"), Str("\\\\"));
+            v = replace_all(v, Str("'"), Str("\\'"));
+            v = replace_all(v, Str("\""), Str("\\\""));
+            v = replace_all(v, Str("\n"), Str("\\n"));
+        }
+        return v;
+    }
+    if (auto* f = A::as<A::FormattedValue>(node)) {
+        return formatted_value(f->value, f->conversion, f->format_spec);
+    }
+    if (auto* i = A::as<A::Interpolation>(node)) {
+        return formatted_value(i->value, i->conversion, i->format_spec);
+    }
+    throw py::ValueError("Unexpected node inside JoinedStr");
+}
+
+Str write_ftstring(const std::vector<A::Expr*>& values, const char* prefix) {
+    struct Part {
+        Str text;
+        bool is_const;
+    };
+    std::vector<Part> parts;
+    for (const A::Expr* v : values) {
+        parts.push_back({fstring_inner(v, false), A::as<A::Constant>(v) != nullptr});
+    }
+    std::vector<Str> new_parts;
+    std::vector<Str> quote_types = all_quotes();
+    bool fallback = false;
+    for (Part& pt : parts) {
+        Str value = pt.text;
+        if (pt.is_const) {
+            auto r = str_literal_helper(value, quote_types, true);
+            value = r.first;
+            bool disjoint = true;
+            for (const Str& q : r.second) {
+                if (std::find(quote_types.begin(), quote_types.end(), q) != quote_types.end()) disjoint = false;
+            }
+            if (disjoint) {
+                fallback = true;
+                break;
+            }
+            quote_types = r.second;
+        } else if (value.contains(Str("\n"))) {
+            std::vector<Str> k;
+            for (const Str& q : quote_types) {
+                if (is_multi(q)) k.push_back(q);
+            }
+            quote_types = k;
+        }
+        std::vector<Str> nq;
+        for (const Str& q : quote_types) {
+            if (!value.contains(q)) nq.push_back(q);
+        }
+        if (!nq.empty()) {
+            quote_types = nq;
+        }
+        new_parts.push_back(value);
+    }
+    if (fallback) {
+        quote_types = {Str("'''")};
+        new_parts.clear();
+        for (Part& pt : parts) {
+            Str value = pt.text;
+            if (pt.is_const) {
+                Str r = program::repr_str(Str("\"") + value);  // force repr to use single quotes
+                value = r.slice(2, r.size() - 1);
+            }
+            new_parts.push_back(value);
+        }
+    }
+    Str value = join_strs(new_parts);
+    const Str& q = quote_types[0];
+    return Str(prefix) + q + value + q;
+}
+
+// _write_constant of a float or complex
+Str float_text(double f) {
+    Str r = program::repr_str(f);
+    return replace_all(r, Str("inf"), Str("1e309"));
+}
+
+Str unp_comprehension(const A::comprehension* g) {
+    Str out = g->is_async ? Str(" async for ") : Str(" for ");
+    out += unp(g->target, TUPLE) + Str(" in ") + unp(g->iter, nextp(TEST));
+    for (const A::Expr* c : g->ifs) {
+        out += Str(" if ") + unp(c, nextp(TEST));
+    }
+    return out;
+}
+
+Str unp_gens(const std::vector<A::comprehension*>& gens) {
+    Str out;
+    for (const A::comprehension* g : gens) {
+        out += unp_comprehension(g);
+    }
+    return out;
+}
+
+Str unp_arg(const A::arg* a) {
+    Str out(a->arg);
+    if (a->annotation) {
+        out += Str(": ") + unp(a->annotation, TEST);
+    }
+    return out;
+}
+
+Str unp_arguments(const A::arguments* a) {
+    Str out;
+    bool first = true;
+    std::vector<const A::arg*> all;
+    for (const A::arg* x : a->posonlyargs) all.push_back(x);
+    for (const A::arg* x : a->args) all.push_back(x);
+    size_t nd = a->defaults.size();
+    for (size_t i = 0; i < all.size(); ++i) {
+        if (first) first = false; else out += Str(", ");
+        out += unp_arg(all[i]);
+        if (i >= all.size() - nd) {
+            out += Str("=") + unp(a->defaults[i - (all.size() - nd)], TEST);
+        }
+        if (i + 1 == a->posonlyargs.size()) {
+            out += Str(", /");
+        }
+    }
+    if (a->vararg || !a->kwonlyargs.empty()) {
+        if (first) first = false; else out += Str(", ");
+        out += Str("*");
+        if (a->vararg) {
+            out += unp_arg(a->vararg);
+        }
+    }
+    for (size_t i = 0; i < a->kwonlyargs.size(); ++i) {
+        out += Str(", ") + unp_arg(a->kwonlyargs[i]);
+        if (a->kw_defaults[i]) {
+            out += Str("=") + unp(a->kw_defaults[i], TEST);
+        }
+    }
+    if (a->kwarg) {
+        if (first) first = false; else out += Str(", ");
+        out += Str("**") + unp_arg(a->kwarg);
     }
     return out;
 }
@@ -268,7 +586,6 @@ Str unp(const A::Expr* e, int ctx) {
         case K::Attribute: {
             auto* a = A::cast<A::Attribute>(e);
             Str v = unp(a->value, ATOM);
-            // an int literal needs a space before the dot
             auto* c = A::as<A::Constant>(a->value);
             if (c && c->value.kind == A::ConstValue::Kind::Int) {
                 v += Str(" ");
@@ -278,15 +595,8 @@ Str unp(const A::Expr* e, int ctx) {
         case K::Subscript: {
             auto* s = A::cast<A::Subscript>(e);
             Str inner;
-            if (auto* tu = A::as<A::Tuple>(s->slice)) {
-                if (tu->elts.empty()) {
-                    inner = Str("()");
-                } else {
-                    inner = unp_seq(tu->elts, TEST);
-                    if (tu->elts.size() == 1) {
-                        inner += Str(",");
-                    }
-                }
+            if (auto* tu = A::as<A::Tuple>(s->slice); tu && !tu->elts.empty()) {
+                inner = items_view(tu->elts);
             } else {
                 inner = unp(s->slice, TEST);
             }
@@ -312,16 +622,12 @@ Str unp(const A::Expr* e, int ctx) {
             Str out = unp(c->func, ATOM) + Str("(");
             bool first = true;
             for (const A::Expr* a : c->args) {
-                if (!first) {
-                    out += Str(", ");
-                }
+                if (!first) out += Str(", ");
                 first = false;
                 out += unp(a, TEST);
             }
             for (const A::keyword* k : c->keywords) {
-                if (!first) {
-                    out += Str(", ");
-                }
+                if (!first) out += Str(", ");
                 first = false;
                 out += (k->has_arg ? Str(k->arg) + Str("=") : Str("**")) + unp(k->value, TEST);
             }
@@ -329,20 +635,53 @@ Str unp(const A::Expr* e, int ctx) {
         }
         case K::Tuple: {
             auto* t = A::cast<A::Tuple>(e);
-            Str s = unp_seq(t->elts, TEST);
-            if (t->elts.size() == 1) {
-                s += Str(",");
-            }
+            Str s = t->elts.empty() ? Str() : items_view(t->elts);
             if (t->elts.empty() || ctx > TUPLE) {
                 return Str("(") + s + Str(")");
             }
             return s;
         }
         case K::List: return Str("[") + unp_seq(A::cast<A::List>(e)->elts, TEST) + Str("]");
-        case K::Set: return Str("{") + unp_seq(A::cast<A::Set>(e)->elts, TEST) + Str("}");
+        case K::Set: {
+            auto* s = A::cast<A::Set>(e);
+            if (s->elts.empty()) {
+                return Str("{*()}");
+            }
+            return Str("{") + unp_seq(s->elts, TEST) + Str("}");
+        }
+        case K::Dict: {
+            auto* d = A::cast<A::Dict>(e);
+            Str out = Str("{");
+            for (size_t i = 0; i < d->keys.size(); ++i) {
+                if (i) out += Str(", ");
+                if (d->keys[i] == nullptr) {
+                    out += Str("**") + unp(d->values[i], BOR);
+                } else {
+                    out += unp(d->keys[i], TEST) + Str(": ") + unp(d->values[i], TEST);
+                }
+            }
+            return out + Str("}");
+        }
+        case K::ListComp: {
+            auto* c = A::cast<A::ListComp>(e);
+            return Str("[") + unp(c->elt, TEST) + unp_gens(c->generators) + Str("]");
+        }
+        case K::SetComp: {
+            auto* c = A::cast<A::SetComp>(e);
+            return Str("{") + unp(c->elt, TEST) + unp_gens(c->generators) + Str("}");
+        }
+        case K::DictComp: {
+            auto* c = A::cast<A::DictComp>(e);
+            return Str("{") + unp(c->key, TEST) + Str(": ") + unp(c->value, TEST) + unp_gens(c->generators) + Str("}");
+        }
+        case K::GeneratorExp: {
+            auto* c = A::cast<A::GeneratorExp>(e);
+            return Str("(") + unp(c->elt, TEST) + unp_gens(c->generators) + Str(")");
+        }
         case K::Starred: return Str("*") + unp(A::cast<A::Starred>(e)->value, BOR);
         case K::Constant: {
-            auto& v = A::cast<A::Constant>(e)->value;
+            auto* cn = A::cast<A::Constant>(e);
+            auto& v = cn->value;
             using CK = A::ConstValue::Kind;
             switch (v.kind) {
                 case CK::None: return Str("None");
@@ -350,25 +689,35 @@ Str unp(const A::Expr* e, int ctx) {
                 case CK::False: return Str("False");
                 case CK::Ellipsis: return Str("...");
                 case CK::Int: return Str(v.text);
-                case CK::Float: return py::repr(v.f);
-                case CK::Complex: return py::repr(v.f).slice(0, py::repr(v.f).size()) + Str("j");
-                case CK::Str: return py::repr(Str(v.text));
-                case CK::Bytes: return py::repr(py::bytes(v.text));
+                case CK::Float: return float_text(v.f);
+                case CK::Complex: {
+                    Str r = float_text(v.f);
+                    if (r.endswith(Str(".0"))) {
+                        r = r.slice(0, r.size() - 2);
+                    }
+                    return r + Str("j");
+                }
+                case CK::Str: return (cn->kind == "u" ? Str("u") : Str()) + program::repr_str(Str(v.text));
+                case CK::Bytes: return program::repr_str(py::bytes(v.text));
             }
             return Str("...");
         }
         case K::UnaryOp: {
             auto* u = A::cast<A::UnaryOp>(e);
-            const char* op = u->op == A::UnaryOpKind::Not ? "not " : u->op == A::UnaryOpKind::Invert ? "~" : u->op == A::UnaryOpKind::UAdd ? "+" : "-";
+            const char* op = u->op == A::UnaryOpKind::Not ? "not" : u->op == A::UnaryOpKind::Invert ? "~" : u->op == A::UnaryOpKind::UAdd ? "+" : "-";
             int own = u->op == A::UnaryOpKind::Not ? NOT : FACTOR;
-            return paren(own, Str(op) + unp(u->operand, own));
+            Str s = Str(op);
+            if (own != FACTOR) {
+                s += Str(" ");
+            }
+            return paren(own, s + unp(u->operand, own));
         }
         case K::BinOp: {
             auto* b = A::cast<A::BinOp>(e);
             int own = binop_prec(b->op);
             bool rassoc = b->op == A::OpKind::Pow;
-            int lp = rassoc ? own + 1 : own;
-            int rp = rassoc ? own : own + 1;
+            int lp = rassoc ? nextp(own) : own;
+            int rp = rassoc ? own : nextp(own);
             return paren(own, unp(b->left, lp) + Str(" ") + Str(binop_text(b->op)) + Str(" ") + unp(b->right, rp));
         }
         case K::BoolOp: {
@@ -376,26 +725,65 @@ Str unp(const A::Expr* e, int ctx) {
             int own = b->op == A::BoolOpKind::Or ? OR : AND;
             Str sep = b->op == A::BoolOpKind::Or ? Str(" or ") : Str(" and ");
             Str out;
-            int p = own + 1;
+            int p = own;
             for (size_t i = 0; i < b->values.size(); ++i) {
-                if (i) {
-                    out += sep;
-                }
+                if (i) out += sep;
+                p = nextp(p);
                 out += unp(b->values[i], p);
-                p = std::min<int>(p + 1, ATOM);
             }
             return paren(own, out);
         }
         case K::Compare: {
             auto* c = A::cast<A::Compare>(e);
-            Str out = unp(c->left, CMP + 1);
+            Str out = unp(c->left, nextp(CMP));
             for (size_t i = 0; i < c->ops.size(); ++i) {
-                out += Str(" ") + Str(cmp_text(c->ops[i])) + Str(" ") + unp(c->comparators[i], CMP + 1);
+                out += Str(" ") + Str(cmp_text(c->ops[i])) + Str(" ") + unp(c->comparators[i], nextp(CMP));
             }
             return paren(CMP, out);
         }
-        default: return Str("<") + Str(A::name_of(e->kind)) + Str(">");
+        case K::IfExp: {
+            auto* i = A::cast<A::IfExp>(e);
+            return paren(TEST, unp(i->body, nextp(TEST)) + Str(" if ") + unp(i->test, nextp(TEST)) + Str(" else ") + unp(i->orelse, TEST));
+        }
+        case K::Lambda: {
+            auto* l = A::cast<A::Lambda>(e);
+            Str args = unp_arguments(l->args);
+            Str s = Str("lambda") + (args.empty() ? Str() : Str(" ") + args) + Str(": ") + unp(l->body, TEST);
+            return paren(TEST, s);
+        }
+        case K::NamedExpr: {
+            auto* n = A::cast<A::NamedExpr>(e);
+            return paren(NAMED_EXPR, unp(n->target, ATOM) + Str(" := ") + unp(n->value, ATOM));
+        }
+        case K::Await: {
+            auto* a = A::cast<A::Await>(e);
+            Str s = Str("await");
+            if (a->value) {
+                s += Str(" ") + unp(a->value, ATOM);
+            }
+            return paren(AWAIT, s);
+        }
+        case K::Yield: {
+            auto* y = A::cast<A::Yield>(e);
+            Str s = Str("yield");
+            if (y->value) {
+                s += Str(" ") + unp(y->value, TEST);
+            }
+            return paren(YIELD, s);
+        }
+        case K::YieldFrom: return paren(YIELD, Str("yield from ") + unp(A::cast<A::YieldFrom>(e)->value, TEST));
+        case K::JoinedStr: return write_ftstring(A::cast<A::JoinedStr>(e)->values, "f");
+        case K::TemplateStr: return write_ftstring(A::cast<A::TemplateStr>(e)->values, "t");
+        case K::FormattedValue: {
+            auto* f = A::cast<A::FormattedValue>(e);
+            return formatted_value(f->value, f->conversion, f->format_spec);
+        }
+        case K::Interpolation: {
+            auto* f = A::cast<A::Interpolation>(e);
+            return formatted_value(f->value, f->conversion, f->format_spec);
+        }
     }
+    return Str();
 }
 
 }  // namespace

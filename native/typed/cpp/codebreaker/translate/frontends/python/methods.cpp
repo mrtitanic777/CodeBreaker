@@ -56,7 +56,7 @@ const std::optional<T>& kw_at(const Kw& kw, const Str& k) { return kw.at(std::op
 std::optional<Str> str_of(const A::Expr* n) { return program::str_const(n); }
 std::optional<Big> intc(const A::Expr* n) { return program::int_const(n); }
 
-Str opt_repr(const std::optional<Str>& s) { return s ? py::repr(*s) : Str("None"); }
+Str opt_repr(const std::optional<Str>& s) { return s ? program::repr_str(*s) : Str("None"); }
 
 TR issue(Eval& ev, const A::Node* n, const char* cls, const Str& detail) { return TR(ev.issue(n, Str(cls), detail)); }
 
@@ -1193,7 +1193,7 @@ TR struct_call(Eval& ev, const A::Call* n, const Str& name, const Args& args, co
     }
     auto items = structfmt::parse(*fmt);
     if (!items) {
-        return issue(ev, n, "stdlib", name + Str("(") + py::repr(*fmt) + Str(")"));
+        return issue(ev, n, "stdlib", name + Str("(") + program::repr_str(*fmt) + Str(")"));
     }
     py::list<structfmt::Item> vals = structfmt::values(*items);
     if (lit_eq(fn, "calcsize")) {
@@ -1234,7 +1234,7 @@ TR struct_call(Eval& ev, const A::Call* n, const Str& name, const Args& args, co
         }
         if (given.size() != static_cast<size_t>(vals.size())) {
             return issue(ev, n, "conflict",
-                         name + Str(": ") + i2s(static_cast<int64_t>(given.size())) + Str(" values for ") + py::repr(*fmt));
+                         name + Str(": ") + i2s(static_cast<int64_t>(given.size())) + Str(" values for ") + program::repr_str(*fmt));
         }
         if (lit_eq(fn, "pack_into") && (args.size() < 2 || !args[1] || !k_in(*args[1], {"bytearray", "bottom", "top"}))) {
             return issue(ev, n, "conflict", Str("pack_into a ") + (args.size() >= 2 && args[1] ? args[1]->kind : Str("?")));
