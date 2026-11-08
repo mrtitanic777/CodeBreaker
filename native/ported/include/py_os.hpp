@@ -1067,14 +1067,18 @@ class Match {
     explicit Match(::re::Match m) : m_(std::move(m)) {}
     explicit operator bool() const { return m_.ok; }
     bool empty() const { return !m_.ok; }
+    str piece_(int g) const {   // (the text of a group, decoded from the subject in place; '' where it did not take part)
+        if (!m_.has(g)) return str();
+        return str::from_utf8(m_.s->data() + m_.start(g), static_cast<size_t>(m_.end(g) - m_.start(g)));
+    }
     str group(int64_t g = 0) const {   // (a group the pattern always sets)
         if (g < 0 || g > m_.ngroups()) throw IndexError("no such group");
-        return str(m_.group(static_cast<int>(g)));
+        return piece_(static_cast<int>(g));
     }
     std::optional<str> group_opt(int64_t g = 0) const {
         if (g < 0 || g > m_.ngroups()) throw IndexError("no such group");
         if (!m_.has(static_cast<int>(g))) return std::nullopt;
-        return str(m_.group(static_cast<int>(g)));
+        return piece_(static_cast<int>(g));
     }
     int64_t start(int64_t g = 0) const { return cp_(m_.start(static_cast<int>(g))); }
     int64_t end(int64_t g = 0) const { return cp_(m_.end(static_cast<int>(g))); }
@@ -1099,13 +1103,14 @@ inline int flags_(int64_t f) {
     if (f & 256) out |= ::re::A;
     return out;
 }
-// a compiled pattern: the regex, compiled once (pyre's own cache), and its text
+// a compiled pattern: the regex, compiled once (pyre's own cache, per thread in front), and its text
 class Pattern {
     const ::re::Regex* r_ = nullptr;
 
   public:
     Pattern() = default;
     Pattern(const str& p, int64_t flags) : r_(rx_(p, flags)) {}
+    Pattern(const char* p, int64_t flags) : r_(pyre_([&] { return &::re::rx(p, std::strlen(p), flags_(flags)); })) {}
     // pyre's errors as Python's: re.error is PatternError
     template <class F> static auto pyre_(F f) -> decltype(f()) {
         try {
@@ -1116,44 +1121,69 @@ class Pattern {
             throw ValueError(e.what());
         }
     }
-    static const ::re::Regex* rx_(const str& p, int64_t flags) { return pyre_([&] { return &::re::rx(p.utf8(), flags_(flags)); }); }
+    static const ::re::Regex* rx_(const str& p, int64_t flags) {
+        auto v = p.utf8_view();
+        return pyre_([&] { return &::re::rx(v->s.data(), v->s.size(), flags_(flags)); });
+    }
     const ::re::Regex& rx() const { return *r_; }
     str pattern() const { return str(r_->pattern()); }
     int64_t groups() const { return r_->groups(); }
-    // (pos / endpos are code points, as Python's; pyre takes UTF-8 offsets)
-    static size_t at_(const std::string& u, int64_t cp) {
-        if (cp <= 0) return 0;
-        int64_t n = 0;
-        for (size_t i = 0; i < u.size(); i++)
-            if ((static_cast<unsigned char>(u[i]) & 0xC0) != 0x80 && n++ == cp) return i;
-        return u.size();
+    // the subject: the str's UTF-8 form (made once per str) and the code-point index shared by the matches made on it
+    static ::re::Subject subj_(const str& s) {
+        auto v = s.utf8_view();
+        std::shared_ptr<const std::string> text(v, &v->s);       // (shares the view's lifetime: no copy of the text)
+        if (v->ascii) return ::re::Subject{text, nullptr, true};   // (offsets need no table)
+        std::shared_ptr<void> x = std::atomic_load(&v->aux);
+        if (!x) {
+            std::shared_ptr<void> fresh = ::re::new_index(false);
+            std::shared_ptr<void> none;
+            if (std::atomic_compare_exchange_strong(&v->aux, &none, fresh)) x = fresh;
+            else x = none;
+        }
+        return ::re::Subject{text, std::static_pointer_cast<::re::CpIndex>(x), false};
     }
-    static size_t end_(const std::string& u, int64_t cp) { return cp == INT64_MAX ? std::string::npos : at_(u, cp); }
+    // (pos / endpos are code points, as Python's; pyre takes UTF-8 offsets)
+    static size_t at_(const ::re::Subject& u, int64_t cp, bool ascii) {
+        if (cp <= 0) return 0;
+        if (ascii) return static_cast<size_t>(cp) < u.s->size() ? static_cast<size_t>(cp) : u.s->size();
+        int64_t n = 0;
+        for (size_t i = 0; i < u.s->size(); i++)
+            if ((static_cast<unsigned char>((*u.s)[i]) & 0xC0) != 0x80 && n++ == cp) return i;
+        return u.s->size();
+    }
+    static size_t end_(const ::re::Subject& u, int64_t cp, bool ascii) { return cp == INT64_MAX ? std::string::npos : at_(u, cp, ascii); }
+    template <class F> static std::optional<Match> at1_(const str& s, int64_t pos, int64_t endpos, F f) {
+        auto u = subj_(s);
+        return opt_(f(u, at_(u, pos, u.ascii), end_(u, endpos, u.ascii)));
+    }
     std::optional<Match> match(const str& s, int64_t pos = 0, int64_t endpos = INT64_MAX) const {
-        std::string u = s.utf8();
-        return opt_(r_->match(u, at_(u, pos), end_(u, endpos)));
+        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->match_in(u, a, b); });
     }
     std::optional<Match> fullmatch(const str& s, int64_t pos = 0, int64_t endpos = INT64_MAX) const {
-        std::string u = s.utf8();
-        return opt_(r_->fullmatch(u, at_(u, pos), end_(u, endpos)));
+        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->fullmatch_in(u, a, b); });
     }
     std::optional<Match> search(const str& s, int64_t pos = 0, int64_t endpos = INT64_MAX) const {
-        std::string u = s.utf8();
-        return opt_(r_->search(u, at_(u, pos), end_(u, endpos)));
+        return at1_(s, pos, endpos, [&](const ::re::Subject& u, size_t a, size_t b) { return r_->search_in(u, a, b); });
     }
     list<Match> finditer(const str& s) const {
         list<Match> out;
-        for (auto& m : r_->finditer(s.utf8())) out.append(Match(m));
+        for (auto& m : r_->finditer_in(subj_(s))) out.append(Match(m));
         return out;
     }
     list<str> findall(const str& s) const {
         list<str> out;
-        for (auto& x : r_->findall(s.utf8())) out.append(str(x));
+        auto u = subj_(s);
+        ::re::Match m;
+        size_t pos = 0;
+        bool adv = false;
+        int g = r_->groups() >= 1 ? 1 : 0;
+        while (r_->next_in(m, u, pos, adv))
+            out.append(m.has(g) ? str::from_utf8(u.s->data() + m.start(g), static_cast<size_t>(m.end(g) - m.start(g))) : str());
         return out;
     }
     template <class... T> list<std::tuple<T...>> findall_groups(const str& s) const {
         list<std::tuple<T...>> out;
-        for (auto& g : r_->findall_groups(s.utf8())) {
+        for (auto& g : r_->findall_groups_in(subj_(s))) {
             std::tuple<T...> t;
             size_t i = 0;
             std::apply([&](auto&... x) { ((x = str(g[i++])), ...); }, t);
@@ -1161,49 +1191,71 @@ class Pattern {
         }
         return out;
     }
-    str sub(const str& repl, const str& s, int64_t count = 0) const {
-        return str(pyre_([&] { return r_->sub(repl.utf8(), s.utf8(), static_cast<int>(count)); }));
+    // (nothing replaced: the text itself, not a re-decoded copy)
+    str sub_(const str& repl, const str& s, int64_t count, int64_t* n) const {
+        int k = 0;
+        std::string o = pyre_([&] { return r_->sub_in(repl.utf8(), subj_(s), static_cast<int>(count), &k); });
+        if (n) *n = k;
+        return k == 0 ? s : str(o);
     }
-    template <class F> str sub_fn(const F& fn, const str& s, int64_t count = 0) const {
-        return str(r_->sub_fn([&](const ::re::Match& m) { return fn(Match(m)).utf8(); }, s.utf8(), static_cast<int>(count)));
+    str sub(const str& repl, const str& s, int64_t count = 0) const { return sub_(repl, s, count, nullptr); }
+    template <class F> str sub_fn_(const F& fn, const str& s, int64_t count, int64_t* n) const {
+        int k = 0;
+        std::string o = r_->sub_fn_in([&](const ::re::Match& m) { return fn(Match(m)).utf8(); }, subj_(s), static_cast<int>(count), &k);
+        if (n) *n = k;
+        return k == 0 ? s : str(o);
     }
+    template <class F> str sub_fn(const F& fn, const str& s, int64_t count = 0) const { return sub_fn_(fn, s, count, nullptr); }
     // (new) Pattern.sub(fn, s): the replacement a function of the match
     template <class F, class = decltype(std::declval<const F&>()(std::declval<const Match&>()))>
     str sub(const F& fn, const str& s, int64_t count = 0) const { return sub_fn(fn, s, count); }
     template <class F, class = decltype(std::declval<const F&>()(std::declval<const Match&>()))>
     std::tuple<str, int64_t> subn(const F& fn, const str& s, int64_t count = 0) const {
-        int64_t n = static_cast<int64_t>(r_->finditer(s.utf8()).size());
-        if (count > 0 && n > count) n = count;
-        return {sub_fn(fn, s, count), n};
+        int64_t n = 0;
+        str r = sub_fn_(fn, s, count, &n);
+        return {r, n};
     }
     std::tuple<str, int64_t> subn(const str& repl, const str& s, int64_t count = 0) const {
-        int64_t n = static_cast<int64_t>(r_->finditer(s.utf8()).size());
-        if (count > 0 && n > count) n = count;
-        return {sub(repl, s, count), n};
+        int64_t n = 0;
+        str r = sub_(repl, s, count, &n);
+        return {r, n};
     }
     list<str> split(const str& s, int64_t maxsplit = 0) const {
         list<str> out;
-        std::string t = s.utf8();
+        auto u = subj_(s);
+        const std::string& t = *u.s;
         size_t at = 0;
         int64_t n = 0;
-        for (auto& m : r_->finditer(t)) {
-            if (maxsplit > 0 && n >= maxsplit) break;
-            out.append(str(t.substr(at, static_cast<size_t>(m.start()) - at)));
-            for (int g = 1; g <= m.ngroups(); g++) out.append(str(m.group(g)));
+        ::re::Match m;
+        size_t pos = 0;
+        bool adv = false;
+        while ((maxsplit <= 0 || n < maxsplit) && r_->next_in(m, u, pos, adv)) {
+            out.append(str::from_utf8(t.data() + at, static_cast<size_t>(m.start()) - at));
+            for (int g = 1; g <= m.ngroups(); g++)
+                out.append(m.has(g) ? str::from_utf8(t.data() + m.start(g), static_cast<size_t>(m.end(g) - m.start(g))) : str());
             at = static_cast<size_t>(m.end());
             n++;
         }
-        out.append(str(t.substr(at)));
+        out.append(str::from_utf8(t.data() + at, t.size() - at));
         return out;
     }
 };
 inline Pattern compile(const str& p, int64_t flags = 0) { return Pattern(p, flags); }
+inline Pattern compile(const char* p, int64_t flags = 0) { return Pattern(p, flags); }
 inline std::optional<Match> match(const str& p, const str& s, int64_t flags = 0) { return Pattern(p, flags).match(s); }
+inline std::optional<Match> match(const char* p, const str& s, int64_t flags = 0) { return Pattern(p, flags).match(s); }
 inline std::optional<Match> fullmatch(const str& p, const str& s, int64_t flags = 0) { return Pattern(p, flags).fullmatch(s); }
+inline std::optional<Match> fullmatch(const char* p, const str& s, int64_t flags = 0) { return Pattern(p, flags).fullmatch(s); }
 inline std::optional<Match> search(const str& p, const str& s, int64_t flags = 0) { return Pattern(p, flags).search(s); }
+inline std::optional<Match> search(const char* p, const str& s, int64_t flags = 0) { return Pattern(p, flags).search(s); }
 inline list<Match> finditer(const str& p, const str& s, int64_t flags = 0) { return Pattern(p, flags).finditer(s); }
+inline list<Match> finditer(const char* p, const str& s, int64_t flags = 0) { return Pattern(p, flags).finditer(s); }
 inline list<str> findall(const str& p, const str& s, int64_t flags = 0) { return Pattern(p, flags).findall(s); }
+inline list<str> findall(const char* p, const str& s, int64_t flags = 0) { return Pattern(p, flags).findall(s); }
 inline str sub(const str& p, const str& repl, const str& s, int64_t count = 0, int64_t flags = 0) {
+    return Pattern(p, flags).sub(repl, s, count);
+}
+inline str sub(const char* p, const str& repl, const str& s, int64_t count = 0, int64_t flags = 0) {
     return Pattern(p, flags).sub(repl, s, count);
 }
 template <class F, class = decltype(std::declval<const F&>()(std::declval<const Match&>()))>
@@ -1218,6 +1270,9 @@ std::tuple<str, int64_t> subn(const str& p, const F& fn, const str& s, int64_t c
     return Pattern(p, flags).subn(fn, s, count);
 }
 inline list<str> split(const str& p, const str& s, int64_t maxsplit = 0, int64_t flags = 0) {
+    return Pattern(p, flags).split(s, maxsplit);
+}
+inline list<str> split(const char* p, const str& s, int64_t maxsplit = 0, int64_t flags = 0) {
     return Pattern(p, flags).split(s, maxsplit);
 }
 inline str escape(const str& s) { return str(::re::escape(s.utf8())); }

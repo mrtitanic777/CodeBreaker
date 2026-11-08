@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <stdexcept>
+#include <string_view>
 #include <type_traits>
 
 #include "pystr.hpp"
@@ -448,6 +449,12 @@ struct Prog {
     std::vector<Ins> code;
     int ncap = 0;        // slots 0 .. ncap-1 are the captures, then each group's start, then the repeats' registers
     int nvals = 0;
+    // what a search may skip (CPython's sre does the same): where a match can begin
+    int anchor = 0;               // 1: only at offset 0 (\A, or ^ without MULTILINE); 2: only at a line start (^ under MULTILINE)
+    bool has_first = false;       // the pattern cannot match the empty string: it begins with a character from first[]
+    bool first[256] = {};         // (by UTF-8 byte: a lead byte for a non-ASCII character)
+    int single = -1;              // the one byte in first[], when there is only one
+    std::string prefix;           // the literal every match begins with (2 or more bytes; none under IGNORECASE)
 };
 
 struct Compiler {
@@ -536,12 +543,96 @@ struct Compiler {
     }
 };
 
-static std::shared_ptr<Prog> compile_prog(const Node* root, int ngroups) {
+// The bytes a match of n can begin with, added to set; true when n can match without consuming a character (so what
+// follows it can begin the match too). A superset is always safe: the matcher still decides at each candidate.
+static bool first_of(const Node* n, int flags, bool* set) {
+    switch (n->k) {
+        case NK::Char:
+            if (n->ch < 0x80) {
+                set[n->ch] = true;
+                if ((flags & I) && ((n->ch | 32) >= 'a' && (n->ch | 32) <= 'z')) set[n->ch ^ 32] = true;
+            } else
+                for (int b = 0xC0; b < 256; b++) set[b] = true;
+            return false;
+        case NK::Any:
+            for (int b = 0; b < 256; b++)
+                if ((b < 0x80 || b >= 0xC0) && (b != '\n' || (flags & S))) set[b] = true;
+            return false;
+        case NK::Class:
+            for (uint32_t c = 0; c < 0x80; c++)
+                if (class_has(*n, c, (flags & I) != 0, (flags & A) != 0)) set[c] = true;
+            for (int b = 0xC0; b < 256; b++) set[b] = true;
+            return false;
+        case NK::Back:
+            for (int b = 0; b < 256; b++) set[b] = true;
+            return true;
+        case NK::Group: return first_of(n->kids[0].get(), flags, set);
+        case NK::Seq:
+            for (auto& k : n->kids)
+                if (!first_of(k.get(), flags, set)) return false;
+            return true;
+        case NK::Alt: {
+            bool nullable = false;
+            for (auto& k : n->kids) nullable |= first_of(k.get(), flags, set);
+            return nullable;
+        }
+        case NK::Rep: {
+            bool nb = first_of(n->kids[0].get(), flags, set);
+            return nb || n->min == 0;
+        }
+        default: return true;     // Bol Eol Start End WordB NWordB Look: assertions, they consume nothing
+    }
+}
+
+// the literal text a match of n must begin with; true when all of n is that literal
+static bool prefix_of(const Node* n, std::string& out) {
+    switch (n->k) {
+        case NK::Char: {
+            uint32_t c = n->ch;
+            if (c < 0x80) out += (char)c;
+            else if (c < 0x800) { out += (char)(0xC0 | (c >> 6)); out += (char)(0x80 | (c & 0x3F)); }
+            else if (c < 0x10000) { out += (char)(0xE0 | (c >> 12)); out += (char)(0x80 | ((c >> 6) & 0x3F)); out += (char)(0x80 | (c & 0x3F)); }
+            else { out += (char)(0xF0 | (c >> 18)); out += (char)(0x80 | ((c >> 12) & 0x3F)); out += (char)(0x80 | ((c >> 6) & 0x3F)); out += (char)(0x80 | (c & 0x3F)); }
+            return true;
+        }
+        case NK::Group: return prefix_of(n->kids[0].get(), out);
+        case NK::Seq:
+            for (auto& k : n->kids)
+                if (!prefix_of(k.get(), out)) return false;
+            return true;
+        default: return false;
+    }
+}
+
+static void analyze_start(Prog& p, const Node* root, int flags) {
+    const Node* f = root;
+    for (;;) {
+        if (f->k == NK::Seq && !f->kids.empty()) f = f->kids[0].get();
+        else if (f->k == NK::Group) f = f->kids[0].get();
+        else break;
+    }
+    if (f->k == NK::Start) p.anchor = 1;
+    else if (f->k == NK::Bol) p.anchor = (flags & M) ? 2 : 1;
+    if (!first_of(root, flags, p.first)) {
+        p.has_first = true;
+        int n = 0;
+        for (int b = 0; b < 256; b++)
+            if (p.first[b]) n++, p.single = b;
+        if (n != 1) p.single = -1;
+        if (!(flags & I)) {
+            prefix_of(root, p.prefix);
+            if (p.prefix.size() < 2) p.prefix.clear();
+        }
+    }
+}
+
+static std::shared_ptr<Prog> compile_prog(const Node* root, int ngroups, int flags) {
     auto p = std::make_shared<Prog>();
     Compiler c(*p, ngroups);
     c.comp(root);
     c.emit(Op::Match);
     p->nvals = c.nextreg;
+    analyze_start(*p, root, flags);
     return p;
 }
 
@@ -552,7 +643,7 @@ Regex::Regex(const std::string& pattern, int flags) : pattern_(pattern) {
     ngroups_ = ps.ngroups;
     flags_ = ps.flags;
     names_ = ps.names;
-    prog_ = compile_prog(root_.get(), ngroups_);
+    prog_ = compile_prog(root_.get(), ngroups_, flags_);
 }
 
 // ---------------------------------------------------------------------------------------- the matcher
@@ -572,8 +663,8 @@ struct Ctx {
     size_t end;
     int flags;
     const Prog& P;
-    std::vector<long> vals;     // the captures, then the registers
-    std::vector<Ent> st;
+    std::vector<long>& vals;    // the captures, then the registers
+    std::vector<Ent>& st;       // (both are the thread's scratch buffers: a match makes no allocation of its own)
     size_t nch = 0;             // choice points on the stack
     int depth = 0;              // look-around nesting
     // the final test, at the program's end
@@ -582,7 +673,11 @@ struct Ctx {
     size_t start = 0;
     size_t found_end = 0;
 
-    Ctx(const std::string& s_, size_t e, int f, const Prog& p) : s(s_), end(e), flags(f), P(p), vals((size_t)p.nvals, -1) {}
+    Ctx(const std::string& s_, size_t e, int f, const Prog& p, std::vector<long>& v, std::vector<Ent>& stack)
+        : s(s_), end(e), flags(f), P(p), vals(v), st(stack) {
+        vals.assign((size_t)p.nvals, -1);
+        st.clear();
+    }
 
     uint32_t cp_at(size_t i, size_t& next) const {
         next = i;
@@ -901,7 +996,8 @@ struct Ctx {
 // the matches of one subject, then at most 127 bytes counted -- constant time, not a rescan from the start
 struct CpIndex {
     std::vector<uint32_t> blocks;     // blocks[k]: the code points that begin before byte 128*k
-    bool built = false;
+    std::once_flag once;              // (matches of one text may be asked from several threads)
+    bool ascii = false;               // the text is ASCII: offsets are the same
 };
 static const size_t CP_BLOCK = 128;
 
@@ -909,8 +1005,9 @@ long Match::cp_offset(long byte) const {
     if (byte < 0) return -1;
     const std::string& t = *s;
     size_t b = (size_t)byte < t.size() ? (size_t)byte : t.size();
+    if (ascii || (cpx && cpx->ascii)) return (long)b;
     if (!cpx) cpx = std::make_shared<CpIndex>();
-    if (!cpx->built) {
+    std::call_once(cpx->once, [&] {
         cpx->blocks.assign(t.size() / CP_BLOCK + 1, 0);
         uint32_t n = 0;
         for (size_t i = 0; i < t.size(); i++) {
@@ -918,8 +1015,7 @@ long Match::cp_offset(long byte) const {
             if (((unsigned char)t[i] & 0xC0) != 0x80) n++;
         }
         if (t.size() % CP_BLOCK == 0) cpx->blocks[t.size() / CP_BLOCK] = n;
-        cpx->built = true;
-    }
+    });
     uint32_t n = cpx->blocks[b / CP_BLOCK];
     for (size_t i = b / CP_BLOCK * CP_BLOCK; i < b; i++)
         if (((unsigned char)t[i] & 0xC0) != 0x80) n++;
@@ -932,30 +1028,70 @@ std::string Match::group(int g) const {
 }
 
 // mode: 0 match, 1 fullmatch, 2 search
-Match Regex::run(const std::shared_ptr<const std::string>& sp, const std::shared_ptr<CpIndex>& cpx, size_t pos, size_t endpos, int mode, bool must_advance) const {
-    const std::string& s = *sp;
-    if (endpos > s.size()) endpos = s.size();
+Match Regex::run(const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance) const {
     Match out;
-    out.s = sp;
-    out.cpx = cpx;
-    Ctx c(s, endpos, flags_, *prog_);
+    run_into(out, sub, pos, endpos, mode, must_advance);
+    return out;
+}
+
+bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance) const {
+    const std::string& s = *sub.s;
+    if (endpos > s.size()) endpos = s.size();
+    if (out.s != sub.s) out.s = sub.s;
+    if (out.cpx != sub.cpx) out.cpx = sub.cpx;
+    out.ascii = sub.ascii;
+    out.ok = false;
+    static thread_local std::vector<long> vals_buf;
+    static thread_local std::vector<Ent> st_buf;
+    const size_t kKeepStack = 1u << 18;     // (entries: a deep backtrack's stack is given back, a usual one is kept for the next match)
+    Ctx c(s, endpos, flags_, *prog_, vals_buf, st_buf);
     c.mode = mode;
     const size_t ncap = (size_t)(2 * (ngroups_ + 1));
     size_t start = pos;
-    // (a pattern that begins with a literal: candidate starts found by that character)
-    const Node* r = root_.get();
-    uint32_t lead = 0;
-    if (mode == 2 && !(flags_ & I)) {
-        const Node* f = r;
-        while (f->k == NK::Seq && !f->kids.empty()) f = f->kids[0].get();
-        while (f->k == NK::Group) f = f->kids[0].get();
-        if (f->k == NK::Seq && !f->kids.empty()) f = f->kids[0].get();
-        if (f->k == NK::Char && f->ch < 0x80) lead = f->ch;
-    }
+    const Prog& P = *prog_;
+    const char* sd = s.data();
+    // the next position at or after st where a match can begin (search only), or npos: skips what the pattern's first
+    // character set and its ^ / \A anchor rule out, as sre's literal-prefix / charset scan does
+    auto next_start = [&](size_t st) -> size_t {
+        for (;;) {
+            if (st > endpos) return std::string::npos;
+            if (P.anchor == 1 && st > 0) return std::string::npos;
+            if (P.anchor == 2 && st > 0 && sd[st - 1] != '\n') {
+                const void* k = st < endpos ? std::memchr(sd + st, '\n', endpos - st) : nullptr;
+                if (!k) return std::string::npos;
+                st = (size_t)((const char*)k - sd) + 1;
+                continue;
+            }
+            if (P.has_first) {
+                if (st >= endpos) return std::string::npos;
+                if (P.prefix.size() >= 2 && P.anchor == 0) {
+                    size_t k = std::string_view(sd + st, endpos - st).find(P.prefix);
+                    if (k == std::string_view::npos) return std::string::npos;
+                    st += k;
+                } else if (!P.first[(unsigned char)sd[st]]) {
+                    if (P.anchor == 2) {
+                        const void* k = std::memchr(sd + st, '\n', endpos - st);
+                        if (!k) return std::string::npos;
+                        st = (size_t)((const char*)k - sd) + 1;
+                        continue;
+                    }
+                    if (P.single >= 0) {
+                        const void* k = std::memchr(sd + st, P.single, endpos - st);
+                        if (!k) return std::string::npos;
+                        st = (size_t)((const char*)k - sd);
+                    } else {
+                        while (st < endpos && !P.first[(unsigned char)sd[st]]) st++;
+                        if (st >= endpos) return std::string::npos;
+                    }
+                }
+            }
+            return st;
+        }
+    };
     while (start <= endpos) {
-        if (lead) {
-            size_t k = s.find((char)lead, start);
-            if (k == std::string::npos || k >= endpos) break;
+        if (mode == 2) {
+            size_t k = next_start(start);
+            if (k == std::string::npos) break;
             if (k != start) must_advance = false;
             start = k;
         }
@@ -969,7 +1105,8 @@ Match Regex::run(const std::shared_ptr<const std::string>& sp, const std::shared
             c.vals[1] = (long)c.found_end;
             out.caps.assign(c.vals.begin(), c.vals.begin() + (long)ncap);
             out.ok = true;
-            return out;
+            if (st_buf.capacity() > kKeepStack) std::vector<Ent>().swap(st_buf);
+            return true;
         }
         if (mode != 2 || start >= endpos) break;
         py::decode_cp(s, start);
@@ -977,71 +1114,100 @@ Match Regex::run(const std::shared_ptr<const std::string>& sp, const std::shared
         std::fill(c.vals.begin(), c.vals.begin() + (long)ncap, -1);
     }
     out.caps.assign(ncap, -1);
-    return out;
+    if (st_buf.capacity() > kKeepStack) std::vector<Ent>().swap(st_buf);
+    return false;
+}
+
+bool Regex::next_in(Match& m, const Subject& sub, size_t& pos, bool& adv) const {
+    if (pos > sub.s->size()) return false;
+    if (!run_into(m, sub, pos, sub.s->size(), 2, adv)) return false;
+    adv = m.end() == m.start();
+    pos = (size_t)m.end();
+    return true;
 }
 
 static std::shared_ptr<const std::string> own(const std::string& s) { return std::make_shared<const std::string>(s); }
-static std::shared_ptr<CpIndex> new_index() { return std::make_shared<CpIndex>(); }
-Match Regex::match(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), new_index(), pos, endpos, 0); }
-Match Regex::fullmatch(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), new_index(), pos, endpos, 1); }
-Match Regex::search(const std::string& s, size_t pos, size_t endpos) const { return run(own(s), new_index(), pos, endpos, 2); }
+std::shared_ptr<CpIndex> new_index(bool ascii) {
+    auto x = std::make_shared<CpIndex>();
+    x->ascii = ascii;
+    return x;
+}
+static Subject subject_of(const std::string& s) {
+    bool ascii = true;
+    for (unsigned char ch : s)
+        if (ch >= 0x80) {
+            ascii = false;
+            break;
+        }
+    return Subject{own(s), ascii ? nullptr : new_index(false), ascii};
+}
+Match Regex::match_in(const Subject& sub, size_t pos, size_t endpos) const { return run(sub, pos, endpos, 0); }
+Match Regex::fullmatch_in(const Subject& sub, size_t pos, size_t endpos) const { return run(sub, pos, endpos, 1); }
+Match Regex::search_in(const Subject& sub, size_t pos, size_t endpos) const { return run(sub, pos, endpos, 2); }
+Match Regex::match(const std::string& s, size_t pos, size_t endpos) const { return match_in(subject_of(s), pos, endpos); }
+Match Regex::fullmatch(const std::string& s, size_t pos, size_t endpos) const { return fullmatch_in(subject_of(s), pos, endpos); }
+Match Regex::search(const std::string& s, size_t pos, size_t endpos) const { return search_in(subject_of(s), pos, endpos); }
 
-std::vector<Match> Regex::finditer(const std::string& s0) const {
+std::vector<Match> Regex::finditer_in(const Subject& sub) const {
     std::vector<Match> out;
-    auto sp = own(s0);
-    auto cpx = new_index();
-    const std::string& s = *sp;
+    Match m;
     size_t pos = 0;
     bool adv = false;
-    while (pos <= s.size()) {
-        Match m = run(sp, cpx, pos, s.size(), 2, adv);
-        if (!m) break;
-        out.push_back(m);
-        adv = m.end() == m.start();
-        pos = (size_t)m.end();
-    }
+    while (next_in(m, sub, pos, adv)) out.push_back(m);
     return out;
 }
+std::vector<Match> Regex::finditer(const std::string& s0) const { return finditer_in(subject_of(s0)); }
 
-std::vector<std::string> Regex::findall(const std::string& s) const {
+std::vector<std::string> Regex::findall_in(const Subject& sub) const {
     std::vector<std::string> out;
-    for (auto& m : finditer(s)) out.push_back(m.group(ngroups_ >= 1 ? 1 : 0));
+    Match m;
+    size_t pos = 0;
+    bool adv = false;
+    while (next_in(m, sub, pos, adv)) out.push_back(m.group(ngroups_ >= 1 ? 1 : 0));
     return out;
 }
+std::vector<std::string> Regex::findall(const std::string& s) const { return findall_in(subject_of(s)); }
 
-std::vector<std::vector<std::string>> Regex::findall_groups(const std::string& s) const {
+std::vector<std::vector<std::string>> Regex::findall_groups_in(const Subject& sub) const {
     std::vector<std::vector<std::string>> out;
-    for (auto& m : finditer(s)) {
+    Match m;
+    size_t pos = 0;
+    bool adv = false;
+    while (next_in(m, sub, pos, adv)) {
         std::vector<std::string> g;
         for (int k = 1; k <= ngroups_; k++) g.push_back(m.group(k));
         out.push_back(g);
     }
     return out;
 }
+std::vector<std::vector<std::string>> Regex::findall_groups(const std::string& s) const { return findall_groups_in(subject_of(s)); }
 
-std::string Regex::sub_fn(const std::function<std::string(const Match&)>& fn, const std::string& s0, int count) const {
-    auto sp = own(s0);
-    auto cpx = new_index();
-    const std::string& s = *sp;
+std::string Regex::sub_fn_in(const std::function<std::string(const Match&)>& fn, const Subject& sub, int count, int* nsubs) const {
+    const std::string& s = *sub.s;
     std::string out;
+    out.reserve(s.size());
+    Match m;
     size_t pos = 0, last = 0;
     bool adv = false;
     int n = 0;
-    while (pos <= s.size() && (count <= 0 || n < count)) {
-        Match m = run(sp, cpx, pos, s.size(), 2, adv);
-        if (!m) break;
+    while ((count <= 0 || n < count) && next_in(m, sub, pos, adv)) {
         out.append(s, last, (size_t)m.start() - last);
         out += fn(m);
         last = (size_t)m.end();
-        adv = m.end() == m.start();
-        pos = (size_t)m.end();
         n++;
     }
+    if (nsubs) *nsubs = n;
+    if (n == 0) return nsubs ? std::string() : s;     // (asked for the count: 0 means "unchanged", nothing is copied)
     out.append(s, last, std::string::npos);
     return out;
 }
+std::string Regex::sub_fn(const std::function<std::string(const Match&)>& fn, const std::string& s0, int count) const {
+    return sub_fn_in(fn, subject_of(s0), count);
+}
 
-std::string Regex::sub(const std::string& repl, const std::string& s, int count) const {
+std::string Regex::sub(const std::string& repl, const std::string& s, int count) const { return sub_in(repl, subject_of(s), count); }
+
+std::string Regex::sub_in(const std::string& repl, const Subject& subj, int count, int* nsubs) const {
     // the template: \1 .. \99, \g<n>, \g<name>, and the character escapes
     struct Piece {
         std::string text;
@@ -1115,11 +1281,26 @@ std::string Regex::sub(const std::string& repl, const std::string& s, int count)
         }
     }
     pieces.push_back({lit});
-    return sub_fn([&](const Match& m) {
-        std::string o;
-        for (auto& p : pieces) o += p.group >= 0 ? m.group(p.group) : p.text;
-        return o;
-    }, s, count);
+    const std::string& s = *subj.s;
+    std::string out;
+    out.reserve(s.size());
+    Match m;
+    size_t pos = 0, last = 0;
+    bool adv = false;
+    int n = 0;
+    while ((count <= 0 || n < count) && next_in(m, subj, pos, adv)) {
+        out.append(s, last, (size_t)m.start() - last);
+        for (auto& p : pieces) {
+            if (p.group < 0) out += p.text;
+            else if (m.has(p.group)) out.append(s, (size_t)m.start(p.group), (size_t)(m.end(p.group) - m.start(p.group)));
+        }
+        last = (size_t)m.end();
+        n++;
+    }
+    if (nsubs) *nsubs = n;
+    if (n == 0) return nsubs ? std::string() : s;     // (asked for the count: 0 means "unchanged", nothing is copied)
+    out.append(s, last, std::string::npos);
+    return out;
 }
 
 std::string escape(const std::string& s) {
@@ -1132,13 +1313,35 @@ std::string escape(const std::string& s) {
     return out;
 }
 
-const Regex& rx(const std::string& pattern, int flags) {
+// compiled once per (pattern, flags), kept for good; each thread keeps a small table in front of the shared map, so a
+// pattern met again (a re.compile in a loop) costs a hash and a compare, no lock and no string made
+const Regex& rx(const char* pattern, size_t n, int flags) {
+    struct Slot {
+        size_t h = 0;
+        int flags = 0;
+        const Regex* r = nullptr;
+    };
+    static thread_local Slot table[512];
+    size_t h = std::hash<std::string_view>()(std::string_view(pattern, n)) ^ ((size_t)flags * 0x9E3779B97F4A7C15ull);
+    Slot& slot = table[h & 511];
+    if (slot.r && slot.h == h && slot.flags == flags && slot.r->pattern().size() == n &&
+        std::memcmp(slot.r->pattern().data(), pattern, n) == 0)
+        return *slot.r;
     static std::mutex mu;
     static std::map<std::pair<std::string, int>, std::unique_ptr<Regex>> cache;
-    std::lock_guard<std::mutex> lock(mu);
-    auto& slot = cache[{pattern, flags}];
-    if (!slot) slot.reset(new Regex(pattern, flags));
-    return *slot;
+    const Regex* r;
+    {
+        std::lock_guard<std::mutex> lock(mu);
+        auto& e = cache[{std::string(pattern, n), flags}];
+        if (!e) e.reset(new Regex(std::string(pattern, n), flags));
+        r = e.get();
+    }
+    slot.h = h;
+    slot.flags = flags;
+    slot.r = r;
+    return *r;
 }
+
+const Regex& rx(const std::string& pattern, int flags) { return rx(pattern.data(), pattern.size(), flags); }
 
 }  // namespace re
