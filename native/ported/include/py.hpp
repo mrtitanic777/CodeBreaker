@@ -399,10 +399,7 @@ class str {
         }
         return out;
     }
-    std::string utf8() const {
-        if (auto v = std::atomic_load(&v_)) return v->s;
-        return encode_utf8_(s_);
-    }
+    std::string utf8() const { return encode_utf8_(s_); }
     // the UTF-8 form, made once (thread-safe; the view is shared by whoever asks)
     std::shared_ptr<u8view_> utf8_view() const {
         if (auto v = std::atomic_load(&v_)) return v;
@@ -637,7 +634,24 @@ class str {
 };
 
 struct str_hash {
-    size_t operator()(const str& s) const { return std::hash<std::u32string>()(s.u32()); }
+    size_t operator()(const str& s) const {
+        const std::u32string& u = s.u32();
+        const char32_t* p = u.data();
+        size_t n = u.size();
+        uint64_t h = 0x9E3779B97F4A7C15ull ^ n;
+        size_t i = 0;
+        for (; i + 2 <= n; i += 2) {
+            uint64_t w;
+            std::memcpy(&w, p + i, 8);
+            h = (h ^ w) * 0xFF51AFD7ED558CCDull;
+            h ^= h >> 32;
+        }
+        if (i < n) {
+            h = (h ^ p[i]) * 0xFF51AFD7ED558CCDull;
+            h ^= h >> 32;
+        }
+        return static_cast<size_t>(h);
+    }
 };
 
 // ------------------------------------------------------------------------------------------ bytes
@@ -1205,12 +1219,68 @@ template <class T> class list {
 template <class T> struct is_shared_ptr_ : std::false_type {};
 template <class T> struct is_shared_ptr_<std::shared_ptr<T>> : std::true_type {};
 template <class K, class V> class dict {
+    // Insertion-ordered items, found through an open-addressing table of item indices (one copy of each key, no node per
+    // entry): slot 0 is empty, 1 is a removed entry, otherwise item index + 2. hashes[i] is the hash of items[i]'s key.
     struct impl {
         std::vector<std::optional<std::pair<K, V>>> items;  // insertion order; removed ones are empty
-        std::unordered_map<K, size_t, hasher<K>> where;
+        std::vector<size_t> hashes;
+        std::vector<uint32_t> slots;
         size_t live = 0;
+        size_t used = 0;   // slots not empty (live entries and removed ones)
     };
     std::shared_ptr<impl> d_;
+    static constexpr size_t none_ = static_cast<size_t>(-1);
+    static size_t hash_(const K& k) {
+        size_t h = hasher<K>()(k);
+        h ^= h >> 32;
+        h *= 0x9E3779B97F4A7C15ull;
+        return h ^ (h >> 29);
+    }
+    // the item index of key k (hash h), or none_; slot is where its table entry is
+    size_t find_(const K& k, size_t h, size_t* slot = nullptr) const {
+        const impl& d = *d_;
+        if (d.slots.empty()) return none_;
+        size_t mask = d.slots.size() - 1, i = h & mask;
+        for (;;) {
+            uint32_t e = d.slots[i];
+            if (e == 0) return none_;
+            if (e != 1) {
+                size_t idx = e - 2;
+                if (d.hashes[idx] == h && d.items[idx]->first == k) {
+                    if (slot) *slot = i;
+                    return idx;
+                }
+            }
+            i = (i + 1) & mask;
+        }
+    }
+    size_t find_(const K& k) const { return find_(k, hash_(k)); }
+    void rebuild_() const {
+        impl& d = *d_;
+        size_t cap = 8;
+        while (cap < (d.live + 1) * 2) cap *= 2;
+        d.slots.assign(cap, 0);
+        d.used = 0;
+        for (size_t idx = 0; idx < d.items.size(); idx++) {
+            if (!d.items[idx]) continue;
+            size_t i = d.hashes[idx] & (cap - 1);
+            while (d.slots[i] != 0) i = (i + 1) & (cap - 1);
+            d.slots[i] = static_cast<uint32_t>(idx + 2);
+            d.used++;
+        }
+    }
+    // the key at items[idx] (just appended, hash h) enters the table
+    void enter_(size_t idx, size_t h) const {
+        impl& d = *d_;
+        if ((d.used + 1) * 4 > d.slots.size() * 3) {   // (a rebuild takes in every live item, the new one too)
+            rebuild_();
+            return;
+        }
+        size_t mask = d.slots.size() - 1, i = h & mask;
+        while (d.slots[i] > 1) i = (i + 1) & mask;
+        if (d.slots[i] == 0) d.used++;
+        d.slots[i] = static_cast<uint32_t>(idx + 2);
+    }
 
   public:
     dict() : d_(std::make_shared<impl>()) {}
@@ -1219,52 +1289,55 @@ template <class K, class V> class dict {
     }
     int64_t size() const { return static_cast<int64_t>(d_->live); }
     bool empty() const { return d_->live == 0; }
-    bool contains(const K& k) const { return d_->where.count(k) != 0; }
+    bool contains(const K& k) const { return find_(k) != none_; }
     const V& at(const K& k) const {
-        auto it = d_->where.find(k);
-        if (it == d_->where.end()) throw KeyError("key not found");
-        return d_->items[it->second]->second;
+        size_t i = find_(k);
+        if (i == none_) throw KeyError("key not found");
+        return d_->items[i]->second;
     }
     V& set(const K& k, const V& v) const {
-        auto it = d_->where.find(k);
-        if (it != d_->where.end()) {
-            d_->items[it->second]->second = v;
-            return d_->items[it->second]->second;
+        size_t h = hash_(k);
+        size_t i = find_(k, h);
+        if (i != none_) {
+            d_->items[i]->second = v;
+            return d_->items[i]->second;
         }
-        d_->where.emplace(k, d_->items.size());
         d_->items.emplace_back(std::make_pair(k, v));
+        d_->hashes.push_back(h);
+        enter_(d_->items.size() - 1, h);
         ++d_->live;
         return d_->items.back()->second;
     }
     V& operator[](const K& k) const {  // a store: d[k] = v
-        auto it = d_->where.find(k);
-        if (it != d_->where.end()) return d_->items[it->second]->second;
+        size_t i = find_(k);
+        if (i != none_) return d_->items[i]->second;
         return set(k, V());
     }
     V get(const K& k, const V& dflt) const {
-        auto it = d_->where.find(k);
-        return it == d_->where.end() ? dflt : d_->items[it->second]->second;
+        size_t i = find_(k);
+        return i == none_ ? dflt : d_->items[i]->second;
     }
     auto get(const K& k) const {   // d.get(k): None when absent (a shared object's None is nullptr)
-        auto it = d_->where.find(k);
+        size_t i = find_(k);
         if constexpr (is_shared_ptr_<V>::value) {
-            return it == d_->where.end() ? V() : d_->items[it->second]->second;
+            return i == none_ ? V() : d_->items[i]->second;
         } else {
-            if (it == d_->where.end()) return std::optional<V>();
-            return std::optional<V>(d_->items[it->second]->second);
+            if (i == none_) return std::optional<V>();
+            return std::optional<V>(d_->items[i]->second);
         }
     }
     V& setdefault(const K& k, const V& v) const {
-        auto it = d_->where.find(k);
-        if (it != d_->where.end()) return d_->items[it->second]->second;
+        size_t i = find_(k);
+        if (i != none_) return d_->items[i]->second;
         return set(k, v);
     }
     V pop(const K& k) const {
-        auto it = d_->where.find(k);
-        if (it == d_->where.end()) throw KeyError("key not found");
-        V v = d_->items[it->second]->second;
-        d_->items[it->second].reset();
-        d_->where.erase(it);
+        size_t slot = 0;
+        size_t i = find_(k, hash_(k), &slot);
+        if (i == none_) throw KeyError("key not found");
+        V v = d_->items[i]->second;
+        d_->items[i].reset();
+        d_->slots[slot] = 1;
         --d_->live;
         return v;
     }

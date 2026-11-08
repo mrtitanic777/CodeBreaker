@@ -1043,6 +1043,7 @@ bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, 
     out.ok = false;
     static thread_local std::vector<long> vals_buf;
     static thread_local std::vector<Ent> st_buf;
+    const size_t kKeepStack = 1u << 18;     // (entries: a deep backtrack's stack is given back, a usual one is kept for the next match)
     Ctx c(s, endpos, flags_, *prog_, vals_buf, st_buf);
     c.mode = mode;
     const size_t ncap = (size_t)(2 * (ngroups_ + 1));
@@ -1104,6 +1105,7 @@ bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, 
             c.vals[1] = (long)c.found_end;
             out.caps.assign(c.vals.begin(), c.vals.begin() + (long)ncap);
             out.ok = true;
+            if (st_buf.capacity() > kKeepStack) std::vector<Ent>().swap(st_buf);
             return true;
         }
         if (mode != 2 || start >= endpos) break;
@@ -1112,6 +1114,7 @@ bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, 
         std::fill(c.vals.begin(), c.vals.begin() + (long)ncap, -1);
     }
     out.caps.assign(ncap, -1);
+    if (st_buf.capacity() > kKeepStack) std::vector<Ent>().swap(st_buf);
     return false;
 }
 
