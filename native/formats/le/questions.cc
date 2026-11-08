@@ -172,7 +172,7 @@ void ddb(Call &c) {
     o.item("minor", r->minor);
     o.item("flags", r->flags);
     o.key("name");
-    o.latin1(r->name);
+    o.latin1(Bytes(r->name));
     o.item("init_order", r->init_order);
     o.item("control_proc", r->control_proc);
     o.end_dict();

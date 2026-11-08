@@ -62,7 +62,7 @@ struct Ddb {                          // LEFile.ddb()
     uint16_t version, device_id;
     uint8_t major, minor;
     uint16_t flags;
-    Bytes name;                       // trailing blanks and zeros cut; latin1
+    std::string name;                 // trailing blanks and zeros cut; latin1 (owned: the object bytes it is read from are freed)
     uint32_t init_order, control_proc;
 };
 
