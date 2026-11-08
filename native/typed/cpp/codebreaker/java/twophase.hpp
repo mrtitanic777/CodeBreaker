@@ -16,14 +16,14 @@
 // is then `(new C())->j2xInit(args)` -- `rewrite_news` turns every `new C(args)` in the emitted tree (and in
 // the probe's harness) into that.
 //
-// Interface note: `compute` reads the classes codebreaker.java.parse produces (no typed port of that
-// module exists yet). Only what compute reads of them is modelled here: ClassInfo, Method, Constructor,
-// Field. The Python reads `cls.constructors()` and `cls.instance_fields()` as method calls; here they are
-// the lists themselves.
+// Notes on the port: `compute` reads the classes codebreaker.java.parse produces (ir::JClass, held as py::ref as
+// in the typed port of codebreaker.java.ir). The Python reads `cls.constructors()` and `cls.instance_fields()`;
+// they are the JClass methods of the same names.
 #pragma once
 
 #include "py.hpp"
 #include "py_os.hpp"
+#include "codebreaker/java/ir.hpp"
 
 namespace codebreaker::java::twophase {
 
@@ -31,35 +31,8 @@ namespace codebreaker::java::twophase {
 using Statement = std::tuple<int64_t, py::str>;
 using Body = py::list<Statement>;
 
-// A method of a parsed class (what compute reads: name and three flags).
-struct Method {
-    py::str name;
-    bool is_ctor = false;
-    bool is_static = false;
-    bool is_abstract = false;
-};
-
-// A constructor of a parsed class: its body, None when it has none.
-struct Constructor {
-    std::optional<Body> body;
-};
-
-// An instance field of a parsed class: the text of its initialiser, None when it has none.
-struct Field {
-    std::optional<py::str> initializer;
-};
-
-// A parsed class.
-struct ClassInfo {
-    py::str name;
-    std::optional<py::str> parent;                   // the superclass's name, None for a root
-    bool is_interface = false;
-    bool is_enum = false;
-    py::list<Constructor> constructors;              // cls.constructors()
-    py::list<Field> instance_fields;                 // cls.instance_fields()
-    py::list<Method> methods;                        // cls.methods
-    py::list<Body> inst_inits;                       // cls.inst_inits (instance initialiser blocks)
-};
+// A parsed class (codebreaker.java.parse's result).
+using ClassInfo = py::ref<ir::JClass>;
 
 // The record run() returns ({'sites': int, 'files': [str]}).
 struct RunResult {
