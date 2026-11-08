@@ -42,6 +42,12 @@
 #include <variant>
 #include <vector>
 
+#if defined(_M_X64) || defined(__SSE2__)
+#include <emmintrin.h>
+#define PY_STR_SSE2_ 1
+#else
+#define PY_STR_SSE2_ 0
+#endif
 #include "py_unicode.hpp"   // str.isalpha / isdigit / isnumeric over all of Unicode
 
 // the C library's macros that share a name with a Python method
@@ -293,11 +299,27 @@ inline std::optional<int64_t> opt_(int64_t v) { return v; }
 // ------------------------------------------------------------------------------------------ str
 class bytes;
 
+// The UTF-8 form of a str, made once on first use and kept with it (a regex over the same text again and again must not
+// re-encode it each time). `aux` is for the regex layer: the code-point index of the text.
+struct u8view_ {
+    std::string s;
+    bool ascii = false;                 // s.size() == the str's length
+    std::shared_ptr<void> aux;
+};
+
 class str {
     std::u32string s_;
+    mutable std::shared_ptr<u8view_> v_;    // (a copy starts without it: a copy is cheap to make, and a shared str stays race-free)
 
   public:
     str() = default;
+    str(const str& o) : s_(o.s_) {}
+    str(str&&) = default;
+    str& operator=(const str& o) {
+        if (this != &o) { s_ = o.s_; v_.reset(); }
+        return *this;
+    }
+    str& operator=(str&&) = default;
     str(const char* utf8) : s_(decode_utf8_(utf8, std::strlen(utf8))) {}
     str(const std::string& utf8) : s_(decode_utf8_(utf8.data(), utf8.size())) {}
     explicit str(std::u32string s) : s_(std::move(s)) {}
@@ -305,24 +327,63 @@ class str {
 
     static std::u32string decode_utf8_(const char* p, size_t n) {
         std::u32string out;
-        out.reserve(n);
+        out.resize(n);
+        size_t o = 0;
         for (size_t i = 0; i < n;) {
+#if PY_STR_SSE2_
+            // (a run of ASCII, 16 bytes at a time: the common case, and the one a compiler at /O1 does not vectorise)
+            while (i + 16 <= n) {
+                __m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(p + i));
+                if (_mm_movemask_epi8(v)) break;
+                __m128i z = _mm_setzero_si128();
+                __m128i lo = _mm_unpacklo_epi8(v, z), hi = _mm_unpackhi_epi8(v, z);
+                __m128i* d = reinterpret_cast<__m128i*>(&out[o]);
+                _mm_storeu_si128(d, _mm_unpacklo_epi16(lo, z));
+                _mm_storeu_si128(d + 1, _mm_unpackhi_epi16(lo, z));
+                _mm_storeu_si128(d + 2, _mm_unpacklo_epi16(hi, z));
+                _mm_storeu_si128(d + 3, _mm_unpackhi_epi16(hi, z));
+                i += 16;
+                o += 16;
+            }
+            if (i >= n) break;
+#endif
             unsigned char c = static_cast<unsigned char>(p[i]);
+            if (c < 0x80) { out[o++] = c; ++i; continue; }
             char32_t cp;
             int len;
-            if (c < 0x80) { cp = c; len = 1; }
-            else if ((c >> 5) == 6) { cp = c & 0x1F; len = 2; }
+            if ((c >> 5) == 6) { cp = c & 0x1F; len = 2; }
             else if ((c >> 4) == 14) { cp = c & 0x0F; len = 3; }
             else { cp = c & 0x07; len = 4; }
             for (int k = 1; k < len && i + k < n; ++k) cp = (cp << 6) | (static_cast<unsigned char>(p[i + k]) & 0x3F);
-            out.push_back(cp);
+            out[o++] = cp;
             i += len;
         }
+        out.resize(o);
         return out;
     }
-    std::string utf8() const {
+    // a str from a piece of UTF-8 text in place (no std::string made of it first)
+    static str from_utf8(const char* p, size_t n) { return str(decode_utf8_(p, n)); }
+    static std::string encode_utf8_(const std::u32string& s_) {
+        const size_t n = s_.size();
         std::string out;
-        for (char32_t c : s_) {
+        out.resize(n);
+        size_t i = 0;
+#if PY_STR_SSE2_
+        for (; i + 16 <= n; i += 16) {
+            const __m128i* d = reinterpret_cast<const __m128i*>(&s_[i]);
+            __m128i a = _mm_loadu_si128(d), b = _mm_loadu_si128(d + 1), c = _mm_loadu_si128(d + 2), e = _mm_loadu_si128(d + 3);
+            __m128i any = _mm_or_si128(_mm_or_si128(a, b), _mm_or_si128(c, e));
+            if (_mm_movemask_epi8(_mm_cmpeq_epi32(_mm_and_si128(any, _mm_set1_epi32(~0x7F)), _mm_setzero_si128())) != 0xFFFF) break;
+            __m128i lo = _mm_packs_epi32(a, b), hi = _mm_packs_epi32(c, e);
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(&out[i]), _mm_packus_epi16(lo, hi));
+        }
+#endif
+        for (; i < n && s_[i] < 0x80; ++i) out[i] = static_cast<char>(s_[i]);
+        if (i == n) return out;
+        out.resize(i);
+        out.reserve(n + n / 2);
+        for (; i < n; ++i) {
+            char32_t c = s_[i];
             if (c < 0x80) out.push_back(static_cast<char>(c));
             else if (c < 0x800) { out.push_back(static_cast<char>(0xC0 | (c >> 6))); out.push_back(static_cast<char>(0x80 | (c & 0x3F))); }
             else if (c < 0x10000) {
@@ -337,6 +398,20 @@ class str {
             }
         }
         return out;
+    }
+    std::string utf8() const {
+        if (auto v = std::atomic_load(&v_)) return v->s;
+        return encode_utf8_(s_);
+    }
+    // the UTF-8 form, made once (thread-safe; the view is shared by whoever asks)
+    std::shared_ptr<u8view_> utf8_view() const {
+        if (auto v = std::atomic_load(&v_)) return v;
+        auto nv = std::make_shared<u8view_>();
+        nv->s = encode_utf8_(s_);
+        nv->ascii = nv->s.size() == s_.size();
+        std::shared_ptr<u8view_> expected;
+        if (std::atomic_compare_exchange_strong(&v_, &expected, nv)) return nv;
+        return expected;
     }
     const std::u32string& u32() const { return s_; }
     int64_t size() const { return static_cast<int64_t>(s_.size()); }
@@ -368,7 +443,7 @@ class str {
     friend bool operator!=(const str& a, const char* b) { return !(a == str(b)); }
     friend str operator+(const str& a, const str& b) { return str(a.s_ + b.s_); }
     friend str operator+(const str& a, const char* b) { return a + str(b); }
-    str& operator+=(const str& b) { s_ += b.s_; return *this; }
+    str& operator+=(const str& b) { s_ += b.s_; v_.reset(); return *this; }
 
     // iteration: each character as a one-character str
     struct iterator {
@@ -386,14 +461,14 @@ class str {
         int64_t h = hi ? *hi : size();
         clamp_(size(), lo, h);
         if (h - lo < sub.size()) return -1;
-        size_t p = s_.substr(0, static_cast<size_t>(h)).find(sub.s_, static_cast<size_t>(lo));
-        return p == std::u32string::npos ? -1 : static_cast<int64_t>(p);
+        size_t p = s_.find(sub.s_, static_cast<size_t>(lo));
+        return (p == std::u32string::npos || static_cast<int64_t>(p) + sub.size() > h) ? -1 : static_cast<int64_t>(p);
     }
     int64_t rfind(const str& sub, int64_t lo = 0, std::optional<int64_t> hi = std::nullopt) const {
         int64_t h = hi ? *hi : size();
         clamp_(size(), lo, h);
         if (h - lo < sub.size()) return -1;
-        size_t p = s_.substr(0, static_cast<size_t>(h)).rfind(sub.s_);
+        size_t p = s_.rfind(sub.s_, static_cast<size_t>(h - sub.size()));
         return (p == std::u32string::npos || static_cast<int64_t>(p) < lo) ? -1 : static_cast<int64_t>(p);
     }
     int64_t index(const str& sub) const {
@@ -1060,6 +1135,7 @@ template <class T> class list {
     // (T&; for a list of bools std::vector<bool>'s reference, which reads and assigns the same)
     decltype(auto) operator[](int64_t i) const { return (*v_)[static_cast<size_t>(index_(i, size(), "list"))]; }
     void append(const T& x) const { v_->push_back(x); }
+    void append(T&& x) const { v_->push_back(std::move(x)); }     // (a temporary is moved in, not copied)
     template <class L> void extend(const L& xs) const {
         std::vector<T> add;
         for (const auto& x : xs) add.push_back(x);
