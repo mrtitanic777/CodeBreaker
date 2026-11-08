@@ -3,10 +3,12 @@
 #include "codebreaker/verify/gate16/runtime16.hpp"
 
 #include "codebreaker/compare/mask.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::verify::gate16::runtime16 {
 
 namespace omf = symbols::libraries::omf;
+namespace coff = symbols::libraries::coff;
 
 static py::list<py::str> strs(std::initializer_list<const char*> items) {
     py::list<py::str> out;
@@ -19,18 +21,29 @@ const py::list<py::str> LIBRARIES = strs({"MDLLCEW.LIB", "MDLLCAW.LIB", "MNOCRTW
                                           "LIBW.LIB"});
 std::optional<py::list<Function>> _routines;
 
-std::function<py::str(const py::str&)> settings_get = [](const py::str& key) -> py::str {
-    std::optional<py::str> v = py::os::getenv(py::str("CB_") + key.upper());
-    return v ? *v : py::str("");
-};
-
-std::function<py::list<Function>(const py::str&)> libraries_functions = [](const py::str& path) -> py::list<Function> {
+// libraries.functions(path)[1]: every function of a library or object file
+std::function<py::list<coff::Function>(const py::str&)> libraries_functions = [](const py::str& path) -> py::list<coff::Function> {
     py::bytes data = py::open_rb(path).read();
-    // libraries.functions: COFF archives and objects are the 32-bit readers' (no port); the rest is OMF
-    if (data.slice(0, 8) == py::bytes("!<arch>\n") || data.slice(0, 2) == py::bytes("\x4c\x01", 2) ||
-        data.slice(0, 2) == py::bytes("\xf2\x01", 2))
-        throw py::NotImplementedError("a COFF library: only the 16-bit OMF reader is ported");
-    return omf::functions(data);
+    if (data.slice(0, 8) == py::bytes("!<arch>\n")) {
+        py::list<coff::Function> out;
+        for (const auto& [_label, body] : coff::members(data)) {
+            py::list<coff::Function> found;
+            try {
+                found = coff::functions(body);
+            } catch (const py::StructError&) {
+                continue;
+            } catch (const py::IndexError&) {
+                continue;
+            }
+            for (const coff::Function& f : found) out.append(f);
+        }
+        return out;
+    }
+    if (data.slice(0, 2) == py::bytes("\x4c\x01", 2)) return coff::functions(data);   // I386
+    if (data.slice(0, 2) == py::bytes("\xf2\x01", 2)) return coff::functions(data);   // POWERPC
+    py::list<coff::Function> out;
+    for (const omf::Function& f : omf::functions(data)) out.append(coff::Function{f.name, f.code, f.mask, f.at});
+    return out;
 };
 
 bool fits(const Function& function, const py::bytes& code, const py::bytes& code_mask) {
@@ -46,14 +59,24 @@ bool fits(const Function& function, const py::bytes& code, const py::bytes& code
 
 const py::list<Function>& routines(const py::list<py::str>& names) {
     if (!_routines.has_value()) {
-        py::str home = settings_get(py::str("msvc152"));
+        py::str home = py::settings::get_str(py::str("msvc152"));
         py::list<Function> out;
         for (const py::str& lib : names) {
             py::str path = py::os::path::join(py::os::path::join(home, py::str("LIB")), lib);
             if (!py::os::path::isfile(path)) continue;
-            for (Function f : libraries_functions(path)) {
-                f.name = lib + py::str(":") + f.name;
-                f.mask = py::bytearray(omf::fields_only(py::bytes(f.mask)));   // (a far call stays one)
+            for (const coff::Function& lf : libraries_functions(path)) {
+                // f._replace(name="%s:%s" % (lib, f.name), mask=omf.fields_only(f.mask))   (a far call stays one)
+                Function f;
+                f.name = lib + py::str(":") + lf.name;
+                f.code = lf.code;
+                f.at = lf.at;
+                std::string fo;
+                if (const py::bytearray* m = std::get_if<py::bytearray>(&lf.mask)) {
+                    fo = omf::fields_only(py::bytes(*m)).raw();
+                } else {
+                    for (int64_t m : std::get<py::list<int64_t>>(lf.mask)) fo.push_back(m == 1 ? 1 : 0);
+                }
+                f.mask = py::bytearray(py::bytes(fo));
                 int64_t holes = 0;
                 for (int64_t b : f.mask) {
                     if (!b) holes += 1;

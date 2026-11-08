@@ -16,12 +16,12 @@
 // settings: msvc152 (the compiler's folder; its LIB folder is read).
 //
 // Stand-ins for packages that have no typed port yet (named in the port's report):
-//  - codebreaker.base.settings.get      -> the settings_get hook (default: the CB_<KEY> environment
-//                                          variable, else "" -- settings.json is not read here)
-//  - codebreaker.symbols.libraries.functions(path)[1] -> the libraries_functions hook (default: the
-//                                          16-bit OMF reader omf::functions; a COFF library throws
-//                                          NotImplementedError)
+//  - codebreaker.symbols.libraries.functions(path)[1] -> the libraries_functions hook, whose default is
+//    that function itself over the typed omf and coff ports (an `!<arch>` archive or a COFF object is
+//    coff's, anything else omf's). Its Function carries coff's mask variant (bytearray, or the list of
+//    bits left out of each PowerPC word), as libraries.Function does.
 //  - codebreaker.symbols.libraries.fits -> fits() below
+// The setting msvc152 is read with py::settings::get_str (CB_MSVC152, else settings.json, else the defaults).
 #pragma once
 
 #include <functional>
@@ -29,6 +29,7 @@
 #include <tuple>
 
 #include "py.hpp"
+#include "codebreaker/symbols/libraries/coff.hpp"
 #include "codebreaker/symbols/libraries/omf.hpp"
 
 namespace codebreaker::verify::gate16::runtime16 {
@@ -40,10 +41,8 @@ extern const py::list<py::str> LIBRARIES;
 // the library routines, once read (None before; tests set it, as the Python tests monkeypatch _routines)
 extern std::optional<py::list<Function>> _routines;
 
-// settings.get(key): one setting, "" when not set
-extern std::function<py::str(const py::str&)> settings_get;
 // libraries.functions(path)[1]: the functions of a library or object file
-extern std::function<py::list<Function>(const py::str&)> libraries_functions;
+extern std::function<py::list<symbols::libraries::coff::Function>(const py::str&)> libraries_functions;
 
 // libraries.fits: whether `code` (with `code_mask`, the places it has that a loader filled in) starts
 // with the library function: as long at least, and the same at every byte neither leaves out.
