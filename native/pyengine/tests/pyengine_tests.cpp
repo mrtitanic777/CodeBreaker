@@ -467,6 +467,15 @@ def rebound(text: str) -> str:
     CHECK(!r.ok("pkg.m.rebound"), "a name bound twice is left alone: %s", r.why("pkg.m.rebound").c_str());
 }
 
+// (new) dict((k, v) for ...): the {k: v for ...} it is
+static void t_dict_gen() {
+    Run r(Srcs{{"pkg.m", R"PY(
+def table(words: list[str]) -> dict[str, int]:
+    return dict((w, len(w)) for w in words if w)
+)PY"}}, true, "checked");
+    CHECK(r.ok("pkg.m.table"), "table: %s", r.why("pkg.m.table").c_str());
+}
+
 // (new) a field of an instance that may be None: read through py::none_attr (Python's AttributeError for None)
 static void t_maybe_none_attr() {
     Run r(Srcs{{"pkg.m", R"PY(
@@ -1011,7 +1020,7 @@ int main(int argc, char** argv) {
         {"async", t_async},       {"match", t_match},
         {"dynamic", t_dynamic},   {"backend", t_backend}, {"assign_forms", t_assign_forms}, {"factories", t_factories}, {"lambda_scope", t_lambda_scope}, {"stubs", t_stubs},
         {"scopes", t_scopes},     {"inference", t_inference}, {"specialization", t_specialization}, {"closures", t_closures},
-        {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"regex_computed", t_regex_computed}, {"maybe_none_attr", t_maybe_none_attr}, {"settings_get", t_settings_get}, {"spread_record", t_spread_record}, {"star_tuple", t_star_tuple}, {"callbacks", t_callbacks}, {"files", t_files}};
+        {"generators", t_generators}, {"variants", t_variants}, {"regex", t_regex}, {"regex_computed", t_regex_computed}, {"maybe_none_attr", t_maybe_none_attr}, {"settings_get", t_settings_get}, {"spread_record", t_spread_record}, {"star_tuple", t_star_tuple}, {"callbacks", t_callbacks}, {"dict_gen", t_dict_gen}, {"files", t_files}};
     std::vector<std::string> run;
     for (int i = 1; i < argc; i++) run.push_back(argv[i]);
     if (run.empty())

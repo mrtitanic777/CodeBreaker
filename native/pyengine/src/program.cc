@@ -157,6 +157,22 @@ Module* Program::add_module(const std::string& name, const std::string& path, co
     if (extended) hoist_local_imports(*r.module);      // (local_imports.cc: a function's own imports as the module's)
     if (extended) expand_class_factories(*r.module);   // (factories.cc: X = factory(...) as the class it makes)
     if (extended) callbacks_as_lambdas(*r.module);     // (callbacks.cc: re.sub(p, f, s) as re.sub(p, lambda m: f(m), s))
+    if (extended)                                      // (new) dict((k, v) for ...) as {k: v for ...}: the same pairs, in the same order
+        for (auto* st : r.module->body)
+            for (const AnyNode& x : walk(AnyNode(st))) {
+                auto* c = as<pyfront::Call>(x.expr());
+                auto* fn = c ? as<pyfront::Name>(c->func) : nullptr;
+                if (!fn || fn->id != "dict" || c->args.size() != 1 || !c->keywords.empty()) continue;
+                auto* g = as<pyfront::GeneratorExp>(c->args[0]);
+                auto* pair = g ? as<pyfront::Tuple>(g->elt) : nullptr;
+                if (!pair || pair->elts.size() != 2 || pair->elts[0]->kind == ExprKind::Starred || pair->elts[1]->kind == ExprKind::Starred) continue;
+                auto* dc = r.module->make<A::DictComp>();
+                dc->pos = c->pos;
+                dc->key = pair->elts[0];
+                dc->value = pair->elts[1];
+                dc->generators = g->generators;
+                dict_gens[c] = dc;
+            }
     if (extended) {                                    // (spread.cc: f(**record) as its keywords, checked by the inference)
         std::vector<SpreadCheck> checks;
         spread_record_keywords(*r.module, checks);

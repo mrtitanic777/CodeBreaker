@@ -2835,6 +2835,7 @@ public:
         TyP rt = t.kind != TK::None ? ty(t, n) : VOID();
         if (name == "any" || name == "all") return any_all(n, name);
         if (name == "next") return next_first(n, rt);
+        if (name == "dict_gen") return hoist_comp(p.dict_gens.at(n), "dict");   // (new) dict((k, v) for ...) as {k: v for ...}
         if (name == "open" && p.extended) {   // (new) open(path, mode, encoding=..., errors=..., newline=...)
             std::vector<IRP> args = {expr(n->args[0])};
             std::string mode = "r";
