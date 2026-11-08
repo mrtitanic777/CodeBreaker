@@ -23,6 +23,11 @@ inline void put(std::string& o, const str& s) {
     for (char32_t c : s.u32()) {
         if (c == '"') o += "\\\"";
         else if (c == '\\') o += "\\\\";
+        else if (c == '\n') o += "\\n";   // (as json.dumps: the short escapes for these five)
+        else if (c == '\r') o += "\\r";
+        else if (c == '\t') o += "\\t";
+        else if (c == '\b') o += "\\b";
+        else if (c == '\f') o += "\\f";
         else if (c >= 0x20 && c < 0x7F) o += static_cast<char>(c);
         else if (c < 0x10000) {
             char b[8];
