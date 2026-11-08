@@ -598,7 +598,7 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
     if (DYNAMIC_BUILTINS.count(name)) return issue(n, "dynamic", name);
     T bad;
     Kw none;
-    if (lazy_bad(*this, n, args, (name == "sorted" || name == "min" || name == "max") ? none : kw, LAZY_BUILTINS.count(name) != 0, bad))
+    if (lazy_bad(*this, n, args, (name == "sorted" || name == "min" || name == "max") ? none : kw, LAZY_BUILTINS.count(name) != 0 || p.dict_gens.count(n) != 0, bad))
         return bad;
     std::optional<T> a0 = args.empty() ? std::nullopt : args[0];
     auto genarg0 = [&]() { return !n->args.empty() && n->args[0]->kind == ExprKind::GeneratorExp; };
@@ -831,6 +831,8 @@ TR Eval::builtin(const A::Call* n, const std::string& name, const Args& args, co
         return issue(n, "conflict", "tuple() of a sequence (its length is not in the type)");
     }
     if (name == "dict") {
+        if (auto dg = p.dict_gens.find(n); dg != p.dict_gens.end())   // (new) dict((k, v) for ...): the {k: v for ...} it is
+            return TR(ev(dg->second, state), Res("builtin", std::string("dict_gen")));
         int s = p.new_site(n, TK::Dict, where(n));
         std::vector<std::string> keys;
         for (auto* k : n->keywords) {

@@ -65,6 +65,7 @@ public:
     // bookkeeping
     T note(const void* node, const T& t, const Res* r = nullptr);
     T issue(AnyNode node, const std::string& cls, const std::string& detail = "");
+    std::string spread_record_why(const T& t, const std::vector<std::string>& keys);
     bool live() const { return quiet == 0; }
     void contribute_param(const std::string& fq, const std::string& name, const T& t);
     T arg_fit(AnyNode node, Fn* f, const std::string& name, const T& t);

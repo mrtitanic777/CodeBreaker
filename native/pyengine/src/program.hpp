@@ -19,6 +19,7 @@
 
 #include "astutil.hpp"
 #include "pytypes.hpp"
+#include "spread.hpp"
 
 namespace pyengine {
 
@@ -281,6 +282,12 @@ public:
     // (new) a method reached by getattr(self, "x_" + type(e).__name__)(e): its parameter is an instance of the class
     // its name ends in (x_Unary: ir.Unary) -- the dispatch's key is that class's name
     std::map<std::string, std::pair<std::string, T>> dispatch_param;
+    std::unordered_map<const void*, SpreadCheck> spread_checks;   // (new) spread.cc: a rewritten f(**record), checked by the inference
+    std::unordered_map<const void*, const A::DictComp*> dict_gens;   // (new) dict((k, v) for ...): the {k: v for ...} it is
+    struct StarCheck { const A::Name* var = nullptr; int n = 0; };
+    std::unordered_map<const void*, StarCheck> star_checks;       // (new) star.cc: a rewritten f(*tuple), checked by the inference
+    void star_calls();
+    int positional_arity(Fn* f, const A::Call* c);
     std::map<std::pair<std::string, std::string>, std::pair<Fn*, std::string>> dispatch_alias;   // (method, param) -> its dispatcher's param
     void dispatch_hints();
     // (new) getattr(obj, 'name'[, default]) with a constant name: 1 the attribute is always there (a

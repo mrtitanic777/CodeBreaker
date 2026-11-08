@@ -112,6 +112,7 @@ static void count_binds(const std::vector<A::Stmt*>& body, std::map<std::string,
 }
 void expand_class_factories(pyfront::Module& tree);   // factories.cc
 void hoist_local_imports(pyfront::Module& tree);     // local_imports.cc
+void callbacks_as_lambdas(pyfront::Module& tree);    // callbacks.cc
 static void lambdas_to_defs(pyfront::Module& tree, std::vector<A::Stmt*>& body, const std::map<std::string, int>& binds) {
     for (auto*& st : body) {
         if (auto* a = as<Assign>(st)) {
@@ -155,6 +156,28 @@ Module* Program::add_module(const std::string& name, const std::string& path, co
     if (extended) lambdas_to_defs(*r.module, r.module->body, {{"*", 1}});   // (module level: its globals are left alone)
     if (extended) hoist_local_imports(*r.module);      // (local_imports.cc: a function's own imports as the module's)
     if (extended) expand_class_factories(*r.module);   // (factories.cc: X = factory(...) as the class it makes)
+    if (extended) callbacks_as_lambdas(*r.module);     // (callbacks.cc: re.sub(p, f, s) as re.sub(p, lambda m: f(m), s))
+    if (extended)                                      // (new) dict((k, v) for ...) as {k: v for ...}: the same pairs, in the same order
+        for (auto* st : r.module->body)
+            for (const AnyNode& x : walk(AnyNode(st))) {
+                auto* c = as<pyfront::Call>(x.expr());
+                auto* fn = c ? as<pyfront::Name>(c->func) : nullptr;
+                if (!fn || fn->id != "dict" || c->args.size() != 1 || !c->keywords.empty()) continue;
+                auto* g = as<pyfront::GeneratorExp>(c->args[0]);
+                auto* pair = g ? as<pyfront::Tuple>(g->elt) : nullptr;
+                if (!pair || pair->elts.size() != 2 || pair->elts[0]->kind == ExprKind::Starred || pair->elts[1]->kind == ExprKind::Starred) continue;
+                auto* dc = r.module->make<A::DictComp>();
+                dc->pos = c->pos;
+                dc->key = pair->elts[0];
+                dc->value = pair->elts[1];
+                dc->generators = g->generators;
+                dict_gens[c] = dc;
+            }
+    if (extended) {                                    // (spread.cc: f(**record) as its keywords, checked by the inference)
+        std::vector<SpreadCheck> checks;
+        spread_record_keywords(*r.module, checks);
+        for (auto& c : checks) spread_checks[c.call] = c;
+    }
     auto m = std::make_unique<Module>();
     m->name = name;
     m->path = path;
@@ -237,6 +260,7 @@ void Program::index() {
         for (auto& [q, f] : fns) all.push_back(f);
         for (Fn* f : all) index_nested(f);
     }
+    if (extended) star_calls();   // (star.cc: f(*tuple) as its arguments, checked by the inference)
     for (auto& [q, f] : fns) index_fn(f);
     for (auto& [q, f] : nested) index_fn(f);
     if (extended) dispatch_hints();

@@ -2835,6 +2835,7 @@ public:
         TyP rt = t.kind != TK::None ? ty(t, n) : VOID();
         if (name == "any" || name == "all") return any_all(n, name);
         if (name == "next") return next_first(n, rt);
+        if (name == "dict_gen") return hoist_comp(p.dict_gens.at(n), "dict");   // (new) dict((k, v) for ...) as {k: v for ...}
         if (name == "open" && p.extended) {   // (new) open(path, mode, encoding=..., errors=..., newline=...)
             std::vector<IRP> args = {expr(n->args[0])};
             std::string mode = "r";
@@ -2915,7 +2916,10 @@ public:
         if (name == "list.sort") return builtin_call_sort(n, recv);
         std::vector<IRP> args;
         for (auto* a : n->args) {
-            if (auto* g = as<GeneratorExp>(a)) args.push_back(gen_as_list(g));
+            auto* lam = as<pyfront::Lambda>(a);
+            if (lam && (name == "re.Pattern.sub" || name == "re.Pattern.subn") && lam->args->args.size() == 1 && a == n->args[0])
+                args.push_back(lambda_expr(lam, {ty(Tof(AnyNode(lam->args->args[0], AnyNode::Arg)), a, "the match")}));   // (new) the replacement a lambda of the match
+            else if (auto* g = as<GeneratorExp>(a)) args.push_back(gen_as_list(g));
             else args.push_back(expr(a));
         }
         for (auto* k : n->keywords) args.push_back(mk_pyfn("kw", {expr(k->value)}, VOID(), nullptr, 0, {py::V(k->arg)}));

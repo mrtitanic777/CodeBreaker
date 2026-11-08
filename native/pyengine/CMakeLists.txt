@@ -40,6 +40,9 @@ add_library(pyengine STATIC
   src/scopes.cc     # names to bindings: module, class, function, comprehension scopes
   src/local_imports.cc  # a function's own imports seen as the module's
   src/factories.cc  # class factories expanded to the classes they make
+  src/spread.cc  # f(**record) seen as its keywords
+  src/star.cc  # f(*tuple) seen as its arguments
+  src/callbacks.cc  # a def passed as a one-argument callback seen as a lambda
   src/program.cc    # modules, symbols, imports, containers, the join
   src/infer.cc      # the abstract interpreter, solving to a fixpoint
   src/methods.cc    # builtins, builtin types' methods, the standard library rows
