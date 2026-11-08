@@ -458,24 +458,7 @@ std::string islands_glue(const IslandSet& s) {
         o += "#include \"" + rel + ".hpp\"\n";
     }
     o += "\n";
-    // (new) settings.get for typed code: the program's own (the dynamic side sets it at start, native/cbexe
-    // settings.cc), so a typed island reads the setting the Python does -- a patched settings.get included
-    o += R"CPP(namespace pyisl {
-using settings_get_fn = bool (*)(const std::string& key, std::string& value, std::string& exc_type, std::string& exc_msg);
-void set_settings_hook(settings_get_fn get) {
-    py::settings::hook() = [get](const py::str& k) -> py::str {
-        std::string v, t, m;
-        if (get(k.utf8(), v, t, m)) return py::str(v);
-        if (t == "TypeError") throw py::TypeError(m);
-        if (t == "ValueError") throw py::ValueError(m);
-        if (t == "KeyError") throw py::KeyError(m);
-        if (t == "OSError" || t == "FileNotFoundError") throw py::OSError(m);
-        throw py::RuntimeError(t + ": " + m);
-    };
-}
-}  // namespace pyisl
 
-)CPP";
     std::string cur;
     for (auto& [q, is] : s.emit) {
         if (is.ns != cur) {

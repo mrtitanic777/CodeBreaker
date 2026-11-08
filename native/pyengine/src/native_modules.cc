@@ -217,6 +217,24 @@ std::string native_typed_glue(const std::vector<NativeModule>& mods) {
                     "// out, or names the exception it raised. Compiled with py renamed (pyt).\n"
                     "#include \"pyisl_typed.hpp\"\n#include \"native_exports.hpp\"\n\n";
     for (auto& m : mods) o += "#include \"" + m.rel + ".hpp\"\n";
+    // (new) settings.get for typed code: the program's own (the dynamic side sets it at start, native/cbexe
+    // settings.cc), so typed code reads the setting the Python does -- a patched settings.get included
+    o += R"CPP(
+namespace pyisl {
+using settings_get_fn = bool (*)(const std::string& key, std::string& value, std::string& exc_type, std::string& exc_msg);
+void set_settings_hook(settings_get_fn get) {
+    py::settings::hook() = [get](const py::str& k) -> py::str {
+        std::string v, t, m;
+        if (get(k.utf8(), v, t, m)) return py::str(v);
+        if (t == "TypeError") throw py::TypeError(m);
+        if (t == "ValueError") throw py::ValueError(m);
+        if (t == "KeyError") throw py::KeyError(m);
+        if (t == "OSError" || t == "FileNotFoundError") throw py::OSError(m);
+        throw py::RuntimeError(t + ": " + m);
+    };
+}
+}  // namespace pyisl
+)CPP";
     for (auto& m : mods) {
         o += "\nnamespace pyisl::native::" + ident_of(m.module) + " {\n\n";
         for (auto& is : m.functions) {
