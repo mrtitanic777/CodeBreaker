@@ -259,10 +259,12 @@ py::ref<ir::Unit> Lift::unit(const py::ref<ir::Unit>& u) {
         for (const NodeP& m : *c->members) {
             auto md = as<ir::MethodDecl>(m);
             if (md && md->kind && *md->kind == py::str("dtor")) {
-                bool empty = !md->body;
+                bool empty = !ir::truthy(md->body);
                 if (!empty) {
-                    auto b = as<ir::Block>(md->body);
-                    if (!b) throw py::AttributeError("'" + md->body->class_name().utf8() + "' object has no attribute 'stmts'");
+                    auto b = as<ir::Block>(ir::node_of(md->body));
+                    if (!b) throw py::AttributeError(std::holds_alternative<ir::NodeP>(md->body)
+                                                         ? "'" + std::get<ir::NodeP>(md->body)->class_name().utf8() + "' object has no attribute 'stmts'"
+                                                         : std::string("'list' object has no attribute 'stmts'"));
                     empty = !b->stmts || py::len(*b->stmts) == 0;
                 }
                 if (empty) continue;   // (Java has no destructor; an empty one says nothing)
