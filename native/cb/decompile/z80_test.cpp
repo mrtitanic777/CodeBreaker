@@ -237,7 +237,8 @@ CB_TEST("decompile.z80.table_round_trip", [] {
             if (text.starts_with(".db ")) {   // bytes written as data (a mirror encoding): the bytes themselves
                 string listed = text.substr(0, text.find(';'));
                 Bytes bytes;
-                for (std::string_view piece : cb::text::split(cb::text::trim(listed.substr(4)), ',')) {
+                const string data = listed.substr(4);   // (named: the pieces are views into it)
+                for (std::string_view piece : cb::text::split(cb::text::trim(data), ',')) {
                     bytes.push_back(static_cast<std::uint8_t>(std::stoi(string(piece.substr(1)), nullptr, 16)));
                 }
                 CB_CHECK_EQ(to_hex(bytes), to_hex(cb::ByteView(code).first(insn->size)));
