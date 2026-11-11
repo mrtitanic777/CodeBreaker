@@ -556,3 +556,20 @@ text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, tok
 The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
 directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
 picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.
+
+## cb refactor W1-B1: emulate/powerpc, z80, m6502, native_driver, 2026-11-11
+
+Inputs: a 3000-iteration PowerPC loop (store, load, add, `bdnz`: 15,000 instructions a run, 200 runs), a Z80 `DEC BC` loop (32,770
+steps a run), a 6502 `INX`/`BNE` loop (200,000 steps a run); one thread, Release (`state/work/cpp-refactor/w1b1/bench.cpp`, `bench.py`).
+The old typed ports ran on `py::` containers and per-step dictionaries and cannot be built apart from the Python runtime here, so the
+comparison is with the Python they were ported from (the live implementation until the exe retires it).
+
+| What | Python | new (`cb::emulate`) | Ratio |
+|---|---|---|---|
+| PowerPC interpreter | 0.20 Msteps/s | 29.5 Msteps/s | ~145x |
+| Z80 interpreter | 0.43 Msteps/s | 44.4 Msteps/s | ~100x |
+| 6502 interpreter | 0.70 Msteps/s | 87.9 Msteps/s | ~125x |
+
+Correctness against the Python: 1,825 6502 single steps (every opcode, decimal mode, memory CRC) are identical; 53,419 of 53,424 PowerPC
+single steps (every primary and extended opcode, random words, random machine states, memory CRC of every written page) are identical, and
+the other five are signalling-NaN cases the old harness recorded unstably (the current Python gives what the C++ gives).

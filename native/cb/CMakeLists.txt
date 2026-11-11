@@ -184,6 +184,12 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"   # (uses the arith16 shim's records)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/sm83.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/shadow.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
