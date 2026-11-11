@@ -16,12 +16,8 @@
 //   * `_stream` is the io.BytesIO of parse(): a StreamIO over the bytes (only its byte access is used). parse()
 //     closes it on the way out, as its `with` does, so read / write / seek / tell / getvalue on a parsed
 //     image are the ValueError of a closed file; on a reset image they are the AttributeError of None.
-//   * ShadowbootImage.create always fails as the Python does: its body goes on to call set_label /
-//     goto_label / get_label on a StreamIO, which the Python's StreamIO (upstream's fuller one was not
-//     carried over) does not have, so every call that gets past its argument checks ends in AttributeError
-//     ("'StreamIO' object has no attribute 'set_label'"). The code after the first such call is ported as
-//     the Python has it (the three methods are local functions that throw that AttributeError). Its
-//     arguments are `optional` where main() can hand it None (try_read_sources); `build_version` is
+//   * ShadowbootImage.create builds the image on a StreamIO with its labels (set_label / goto_label /
+//     get_label). Its arguments are `optional` where main() can hand it None (try_read_sources); `build_version` is
 //     std::optional<int64_t> where nullopt stands for any object that is not an int (None, str, float ...:
 //     struct.error where it is packed, TypeError where ctypes takes it); `kv_data` is the (cpu key,
 //     keyvault) pair, its keyvault None when main() found none.
@@ -168,7 +164,7 @@ public:
     // signature") ... when one is wrong).
     static ShadowbootImage parse(const py::bytes& data, bool perform_checks = true, bool parse_patches = true);
 
-    // Build an image from the parts. Always ends in AttributeError (see the notes). kv_data is (cpu key, keyvault).
+    // Build an image from the parts. kv_data is (cpu key, keyvault).
     static py::bytes create(const std::optional<py::bytes>& sb_data, const std::optional<py::bytes>& sc_data,
                             const std::optional<py::bytes>& sd_data, const std::optional<py::bytes>& se_data,
                             const std::optional<py::bytes>& smc_data = std::nullopt,

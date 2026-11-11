@@ -32,9 +32,8 @@
 //   * The module's globals CODE, FUNCS and HOME are the dicts CODE(), FUNCS(), HOME(): draft() and parse_structs()
 //     refill them, _definition() reads them, as the Python functions do.
 //   * A set of (type, declarator) pairs (what externs() keeps for a name) is a py::set; where the Python walks one
-//     with `for t, i in ty` to take the first that qualifies (_declared_size) the pairs are taken in sorted
-//     order: the Python's order is its hash order, which differs from run to run for a name declared in more than
-//     one way.  Where a name is declared one way the answers are the same.
+//     with `for t, i in sorted(ty)` to take the first that qualifies (_declared_size) the pairs are taken in sorted
+//     order.
 //   * A module whose MODULES row has no data start (dstart None): the Python's walk raises TypeError when another
 //     row has one and goes on with None otherwise (and every caller then fails at a %04x or a comparison with
 //     None); here walk raises TypeError for both.

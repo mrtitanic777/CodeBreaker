@@ -602,11 +602,7 @@ std::optional<py::str> Writer::_nasm(const Insn& i, const std::optional<int64_t>
         return py::percent("%s %s", m, ops);
     }
     ops = ops.replace(py::str(" ptr "), py::str(" ")).replace(py::str("xmmword "), py::str("oword ")).replace(py::str("xword "), py::str("tword "));
-    // (The Python's replacement string, r"[\1nosplit \2", holds the control characters 0x01 and 0x02 where the group
-    // references stand -- the backslashes were lost from the file -- so each match is replaced by those, not by the
-    // groups. Kept as it is: NASM refuses such an instruction, and the round writes it as bytes.)
-    static const py::str nosplit_repl = py::str("[") + py::str(char32_t(1)) + py::str("nosplit ") + py::str(char32_t(2));
-    ops = nosplit.sub(nosplit_repl, ops);
+    ops = nosplit.sub(py::str("[\\1nosplit \\2"), ops);
     ops = st_reg.sub(py::str("st\\1"), ops);
     ops = seg_br.sub(py::str("[\\1:"), ops);
     for (int64_t k : site_ks) {

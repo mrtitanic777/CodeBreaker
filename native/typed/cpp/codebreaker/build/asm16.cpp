@@ -917,12 +917,6 @@ str Function::write(const std::optional<py::set<int64_t>>& good_in, const std::o
     }
     auto inside = [&](int64_t x) { return lo <= x && x < hi; };
     auto is_good = [&](int64_t a) { return !good || good->contains(a); };
-    // `at in good` as the original writes it: with `good` None (the documented "every instruction") that is a TypeError, as
-    // Python raises it -- the original's own slip, kept as it behaves (an instruction is reached first as `at in self.ins`)
-    auto good_in_ = [&](int64_t a) -> bool {
-        if (!good) throw py::TypeError("argument of type 'NoneType' is not a container or iterable");
-        return good->contains(a);
-    };
     py::set<int64_t> written;   // the starts
     if (!good) for (int64_t a : ins.keys()) written.add(a);
     else for (int64_t a : *good) if (ins.contains(a)) written.add(a);
@@ -1031,7 +1025,7 @@ str Function::write(const std::optional<py::set<int64_t>>& good_in, const std::o
             const auto& c = calls.at(at);
             out.push_back(str("        ") + std::get<1>(c));
             at += std::get<0>(c);
-        } else if (ins.contains(at) && (good_in_(at)) && !split.contains(at) && _stays_inside(at, lo, hi)) {
+        } else if (ins.contains(at) && is_good(at) && !split.contains(at) && _stays_inside(at, lo, hi)) {
             flush();
             out.push_back(str("        ") + mnemonic(at));
             at += std::get<0>(ins.at(at)).size();

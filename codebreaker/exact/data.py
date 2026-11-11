@@ -302,7 +302,7 @@ def _code_names(prj):
 
 def _declared_size(ty, structs):
     """the bytes a declaration takes, when it says (a scalar, a pointer, an array of a known count, a struct)"""
-    for t, i in ty:
+    for t, i in sorted(ty):                                 # (sorted: a name declared more than one way answers the same every time)
         if "(" in i and "(*" not in i:
             continue
         stars = 1 if "*" in i.split("[")[0] else 0

@@ -536,8 +536,8 @@ class Function(object):
         return out
 
     def write(self, good, lo=None, hi=None):
-        """The source, with the instructions in `good` (offsets) as mnemonics and the rest as bytes.
-        With `lo`, `hi`: only that piece of it -- one between two functions rebuilt from C, in a
+        """The source, with the instructions in `good` (offsets; None: every instruction) as mnemonics and the
+        rest as bytes. With `lo`, `hi`: only that piece of it -- one between two functions rebuilt from C, in a
         frame whose places stay where they were: what points out of the piece (a jump, a place
         read through CS, a table's entry) is written as the original's bytes, which stay right."""
         lo = self.start if lo is None else lo
@@ -617,7 +617,7 @@ class Function(object):
                 size, text = self.calls[at]
                 out.append("        " + text)
                 at += size
-            elif at in self.ins and at in good and at not in split and self._stays_inside(at, lo, hi):
+            elif at in self.ins and (good is None or at in good) and at not in split and self._stays_inside(at, lo, hi):
                 flush()
                 out.append("        " + self.mnemonic(at))
                 at += len(self.ins[at][0])

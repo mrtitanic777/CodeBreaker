@@ -40,9 +40,8 @@
 //   * The module `doc` is a translate::l2::Dict; `doc.get("header") or ""` is read from its Val.
 //   * `getattr(self, "_unused", None)` caching of results_unused() is a std::optional member.
 //   * The Python's hash-ordered sets that fix an iteration order nowhere (the set of names built from a
-//     match) are sorted wherever the order could show. One place the Python's own choice is hash-ordered:
-//     _compared() takes `next(iter(uses))` from the set of (function, parameter) pairs a variable is passed
-//     as; the pairs all name one family (that was checked), and here the first one passed is taken.
+//     match) are sorted wherever the order could show. _compared() takes min(uses) from the set of
+//     (function, parameter) pairs a variable is passed as (the pairs all name one family: that was checked).
 //   * int(text, 0) is unbounded in Python and a define of 0xFFFFFFFFFFFFFFFF is past int64: int0() keeps the
 //     low 64 bits (every use masks to 32 bits, or reads a small number), and still refuses what int() refuses.
 #pragma once

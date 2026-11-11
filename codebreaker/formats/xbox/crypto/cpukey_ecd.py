@@ -56,23 +56,16 @@ def verify_ecd(data: bytes) -> bool:
 def compute_hamming_weight(data: bytes) -> int:
     """Compute the Hamming weight of a CPU key, excluding ECD bits.
 
-    The last 22 bits (bits 106-127) are ECD and excluded from the count.
+    The last 22 bits (bits 106-127, in the bit order compute_ecd uses) are ECD and excluded from the count.
     Valid CPU keys have a Hamming weight of exactly 0x35 (53).
     """
     if len(data) != 16:
         return -1
 
-    # Convert to two 64-bit integers (big-endian)
-    hi = int.from_bytes(data[0:8], 'big')
-    lo = int.from_bytes(data[8:16], 'big')
-
-    # ECD mask: exclude bits 106-127 (the top 22 bits of the 128-bit key)
-    # In big-endian layout, bits 106-127 are the top 22 bits of the high qword
-    # Mask for low 64 bits: all bits count
-    # Mask for high 64 bits: bottom 42 bits count (64 - 22 = 42)
-    ecd_mask_hi = (1 << 42) - 1  # 0x3FFFFFFFFFF
-
-    return bin(hi & ecd_mask_hi).count('1') + bin(lo).count('1')
+    # The ECD occupies bits 106-127 in the order compute_ecd walks them (bit i is bit i & 7 of byte i >> 3):
+    # the top six bits of byte 13 and all of bytes 14 and 15. Those are the bits left out of the count, so the
+    # weight does not change when compute_ecd sets them (XeCryptCpuKeyValid masks the same bits).
+    return sum(bin(x).count('1') for x in data[:13]) + bin(data[13] & 0x03).count('1')
 
 
 def verify_hamming_weight(data: bytes) -> bool:

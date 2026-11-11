@@ -101,6 +101,21 @@ int64_t StreamIO::tell() {
     return pos_;
 }
 
+int64_t StreamIO::offset() {
+    need_open_();
+    return pos_;
+}
+
+void StreamIO::set_offset(int64_t value) { seek(value); }
+
+void StreamIO::set_label(const py::str& name) { labels_.set(name, tell()); }
+
+void StreamIO::set_label(const py::str& name, int64_t offset) { labels_.set(name, offset); }
+
+int64_t StreamIO::get_label(const py::str& name) { return labels_.at(name); }
+
+int64_t StreamIO::goto_label(const py::str& name, int64_t offset) { return seek(labels_.at(name) + offset); }
+
 py::bytes StreamIO::getvalue() {
     if (_file) {
         need_open_();

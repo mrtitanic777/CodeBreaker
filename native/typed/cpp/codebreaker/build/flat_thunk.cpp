@@ -533,7 +533,7 @@ BuildResult build_flat_thunk_ow(const py::str& srcdir_in, const std::optional<py
     }
     py::set<py::str> publics = omf::publics(obj_bytes);          // set of exact public symbol strings
     py::dict<py::str, py::str> by_clean;                         // clean name -> decorated symbol
-    for (const py::str& sym : publics) {
+    for (const py::str& sym : py::sorted(publics)) {   // (sorted: a clean name with two decorated symbols gets the same one every time)
         py::str base = sym.startswith("_") ? sym.slice(1, sym.size()) : sym;   // drop leading underscore
         base = py::split(base, py::str("@"), 1)[0];                          // drop @N
         by_clean.setdefault(base, sym);

@@ -345,8 +345,8 @@ std::optional<py::bytearray> XSM3State::xsm3_do_challenge_verify(const BinLike& 
     xsm3_challenge_response[4] = 0x10;   // packet length
 
     // calculate the ACR value and encrypt it into the outgoing packet using the encrypted random
-    xsm3_decryption_buffer = UsbdSecXSMAuthenticationAcr(need(xsm3_identification_data).view(), need(xsm3_console_id),
-                                                         xsm3_random_console_data->slice_from(8).view());
+    xsm3_decryption_buffer = UsbdSecXSMAuthenticationAcr(xsm3_random_console_data->view(), need(xsm3_console_id),
+                                                         need(xsm3_identification_data).view());
     xsm3_challenge_response.set_slice(5, 5 + 8, UsbdSecXSM3AuthenticationCrypt(need(xsm3_random_console_data_enc), xsm3_decryption_buffer.slice(0, 8), CryptMode::ENCRYPT));
     // calculate the MAC of the encrypted packet and append it to the end
     auto [salt2, mac2] = UsbdSecXSM3AuthenticationMac(need(xsm3_random_console_data_swap_enc), py::bytes(xsm3_random_console_data->view()),

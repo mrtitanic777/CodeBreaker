@@ -130,16 +130,6 @@ py::str input_(const py::str& prompt) {
     return py::str(line);
 }
 
-// Python's AttributeError for a call of what the Python's StreamIO does not have
-[[noreturn]] void no_stream_attribute(const char* name) {
-    throw py::AttributeError(std::string("'StreamIO' object has no attribute '") + name + "'");
-}
-
-// xcp.perform_function_at(offset, size, function)
-py::bytes perform_function_at(StreamIO_&, int64_t, int64_t, XeCrypt::XeCryptRc4&) { no_stream_attribute("perform_function_at"); }
-void set_label(StreamIO_&, const py::str&) { no_stream_attribute("set_label"); }
-int64_t get_label(StreamIO_&, const py::str&) { no_stream_attribute("get_label"); }
-
 // bytes.fromhex(s) as Python 3.14 reads it: blanks between pairs, ValueError (with the position) otherwise
 py::bytes fromhex(const py::str& s) {
     const std::u32string& u = s.u32();
@@ -211,15 +201,14 @@ bool extract_cab(const py::str& filename, const py::str& path) {
 }
 
 py::bytes stream_decrypt_with_struct(StreamIO_& xcp, const py::bytes& key, int64_t struct_offset, int64_t data_offset, int64_t size) {
-    // xcp.offset = struct_offset  (only an attribute in the Python: the read below is at the stream's position)
-    (void)struct_offset;
+    xcp.set_offset(struct_offset);
     RC4_SHA_HEADER rc4_sha_struct = xcp.read_struct<RC4_SHA_HEADER>();
     py::bytes cksm(std::string(reinterpret_cast<const char*>(rc4_sha_struct.cksm), sizeof rc4_sha_struct.cksm));
     py::bytes confounder(std::string(reinterpret_cast<const char*>(rc4_sha_struct.confounder), sizeof rc4_sha_struct.confounder));
     XeCrypt::XeCryptRc4 cipher = XeCrypt::XeCryptRc4::new_(XeCrypt::XeCryptHmacSha(key, py::list<py::bytes>{cksm}));
     cipher.decrypt(confounder);
 
-    py::bytes dec_data = perform_function_at(xcp, data_offset, size, cipher);
+    py::bytes dec_data = xcp.perform_function_at(data_offset, size, [&cipher](const py::bytes& d) { return cipher.decrypt(d); });
 
     return dec_data;
 }
@@ -844,46 +833,51 @@ int64_t main(const py::list<py::str>& argv, const py::str& prog) {
         }
 
         py::print(py::str("Processing filenames..."));
-        int64_t offset = 0x44;   // xcp.offset = 0x44
-        RC4_SHA_HEADER rc4_sha_struct = xcp.read_struct<RC4_SHA_HEADER>();
-        py::bytes cksm(std::string(reinterpret_cast<const char*>(rc4_sha_struct.cksm), sizeof rc4_sha_struct.cksm));
-        py::bytes confounder(std::string(reinterpret_cast<const char*>(rc4_sha_struct.confounder), sizeof rc4_sha_struct.confounder));
-        XeCrypt::XeCryptRc4 cipher = XeCrypt::XeCryptRc4::new_(hmac_sha(key, cksm));
-        cipher.decrypt(confounder);
+        // (the cipher is only needed when the file is encrypted)
+        std::optional<XeCrypt::XeCryptRc4> cipher;
+        if (encrypted) {
+            xcp.set_offset(0x44);
+            RC4_SHA_HEADER rc4_sha_struct = xcp.read_struct<RC4_SHA_HEADER>();
+            py::bytes cksm(std::string(reinterpret_cast<const char*>(rc4_sha_struct.cksm), sizeof rc4_sha_struct.cksm));
+            py::bytes confounder(std::string(reinterpret_cast<const char*>(rc4_sha_struct.confounder), sizeof rc4_sha_struct.confounder));
+            cipher.emplace(XeCrypt::XeCryptRc4::new_(hmac_sha(key, cksm)));
+            cipher->decrypt(confounder);
+        }
+        const auto decrypt = [&cipher](const py::bytes& d) { return cipher->decrypt(d); };
         // decrypt filenames
-        offset = cab_hdr_struct.off_files;
+        xcp.set_offset(cab_hdr_struct.off_files);
         for (int64_t i = 0; i < cab_hdr_struct.cnt_files; i++) {
             // decrypt header if necessary
             if (encrypted) {
-                perform_function_at(xcp, offset, sizeof(CAB_ENTRY), cipher);
+                xcp.perform_function_at(xcp.offset(), sizeof(CAB_ENTRY), decrypt);
             }
 
-            offset += sizeof(CAB_ENTRY);
+            xcp.set_offset(xcp.offset() + sizeof(CAB_ENTRY));
 
-            set_label(xcp, py::str("filename") + py::to_str(i));
+            xcp.set_label(py::str("filename") + py::to_str(i));
 
             // decrypt filename if necessary
             int64_t idx = 0;
             int64_t byt = 0;
             while (byt != 0 || idx == 0) {
                 if (encrypted) {
-                    byt = perform_function_at(xcp, offset, 1, cipher)[0];
-                    offset += 1;
+                    byt = xcp.perform_function_at(xcp.offset(), 1, decrypt)[0];
+                    xcp.set_offset(xcp.offset() + 1);
                 } else {
                     byt = xcp.read_byte();
                 }
                 idx += 1;
             }
             // rename the files to extract them properly
-            xcp.write_bytes_at(offset - 4, py::str(py::to_str(i)).zfill(3).encode("utf-8"));
+            xcp.write_bytes_at(xcp.offset() - 4, py::str(py::to_str(i)).zfill(3).encode("utf-8"));
         }
 
         std::vector<CAB_FOLDER> folders;
         if (encrypted) {
             py::print(py::str("Preprocessing folders..."));
-            offset = 0x180;
+            xcp.set_offset(0x180);
             for (int64_t i = 0; i < cab_hdr_struct.cnt_folders; i++) {
-                set_label(xcp, py::str("folder") + py::to_str(i));
+                xcp.set_label(py::str("folder") + py::to_str(i));
                 folders.push_back(xcp.read_struct<CAB_FOLDER>());
                 xcp.seek(XENON_DATA_SIZE, StreamIO::SEEK_CUR_);
             }
@@ -902,7 +896,7 @@ int64_t main(const py::list<py::str>& argv, const py::str& prog) {
                     size = static_cast<int64_t>(next_folder.off_cab_start) - static_cast<int64_t>(curr_folder.off_cab_start);
                 }
 
-                stream_decrypt_with_struct(xcp, std::get<py::bytes>(key), get_label(xcp, py::str("folder") + py::to_str(i)) + sizeof(CAB_FOLDER),
+                stream_decrypt_with_struct(xcp, std::get<py::bytes>(key), xcp.get_label(py::str("folder") + py::to_str(i)) + sizeof(CAB_FOLDER),
                                            curr_folder.off_cab_start, size);
             }
         }

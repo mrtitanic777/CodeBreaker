@@ -2,7 +2,9 @@
 
 Upstream's own StreamIO module was not among the files carried over; this one gives the same calls
 those files make: a stream over bytes (or a file, by path), little or big endian, with integer,
-byte and ctypes-structure reads and writes, at the position or at an offset.
+byte and ctypes-structure reads and writes, at the position or at an offset. The tools also use the
+position as an attribute (`offset`), named positions (labels) and a function applied to the bytes at an
+offset in place (`perform_function_at`).
 """
 import io
 import os
@@ -22,6 +24,7 @@ class Endian(IntEnum):
 class StreamIO:
     def __init__(self, data=None, endian=Endian.LITTLE):
         self.endian = endian
+        self._labels = {}
         self._file = isinstance(data, (str, os.PathLike))
         if self._file:
             self._stream = open(data, "r+b" if os.path.exists(data) else "w+b")
@@ -47,6 +50,27 @@ class StreamIO:
 
     def tell(self):
         return self._stream.tell()
+
+    @property
+    def offset(self):
+        """The position, as an attribute: `s.offset = n` seeks, `s.offset -= 4` steps back."""
+        return self._stream.tell()
+
+    @offset.setter
+    def offset(self, value):
+        self._stream.seek(value)
+
+    # named positions
+    def set_label(self, name, offset=None):
+        """Name the position (or `offset`)."""
+        self._labels[name] = self._stream.tell() if offset is None else offset
+
+    def get_label(self, name):
+        return self._labels[name]
+
+    def goto_label(self, name, offset=0):
+        """Seek to the named position plus `offset`."""
+        return self._stream.seek(self._labels[name] + offset)
 
     def getvalue(self):
         if self._file:
@@ -102,6 +126,17 @@ class StreamIO:
         return written
 
     write_ubytes_at = write_bytes_at
+
+    def perform_function_at(self, offset, size, function):
+        """Apply `function` to the `size` bytes at `offset`, write what it returns back there (in place) and
+        return it; the position is left where it was."""
+        here = self._stream.tell()
+        self._stream.seek(offset)
+        data = bytes(function(self._stream.read(size)))
+        self._stream.seek(offset)
+        self._stream.write(data)
+        self._stream.seek(here)
+        return data
 
     # integers
     def _read(self, fmt):

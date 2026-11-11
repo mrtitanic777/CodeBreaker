@@ -838,9 +838,15 @@ py::str Readable::_compared(const py::str& text_in) {
             if (!have) distinct.push_back(pre);
         }
         if (distinct.size() != 1) continue;
-        // (the Python's next(iter(uses)) picks one of a set: the first, here)
-        const py::str fn = std::get<0>(uses[0]);
-        const py::str param = std::get<1>(uses[0]);
+        // (one of them: the first by name -- min(uses))
+        std::size_t least = 0;
+        for (std::size_t u = 1; u < uses.size(); ++u) {
+            const auto& a = uses[u];
+            const auto& b = uses[least];
+            if (std::make_tuple(std::get<0>(a).u32(), std::get<1>(a).u32()) < std::make_tuple(std::get<0>(b).u32(), std::get<1>(b).u32())) least = u;
+        }
+        const py::str fn = std::get<0>(uses[least]);
+        const py::str param = std::get<1>(uses[least]);
 
         auto named = [&](const py::str& number) -> std::optional<py::str> {
             int64_t v = int0(number);

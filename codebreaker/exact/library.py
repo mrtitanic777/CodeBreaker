@@ -351,7 +351,7 @@ def _locate(prj):
         if later:                                           # (the program's own modules after the library: a code
             end = min(end, min(later))                      #  segment of their own, placed later by the linker)
         segs = [p.m.code[0][0] for p in coded]
-        main_seg = max(set(segs), key=segs.count)
+        main_seg = max(sorted(set(segs)), key=segs.count)      # (a tie: the first by name)
         if segs[-1] != main_seg:                            # (the last is a code segment of its own, after the main
             end = min(end, coded[-1].end)                   #  one: what follows is of the classes after CODE)
         pubs_all = {n for q in coded for m in [q.m] + q.also for n in m.pubs}

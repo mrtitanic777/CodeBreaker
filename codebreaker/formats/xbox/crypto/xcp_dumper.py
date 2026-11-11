@@ -327,10 +327,11 @@ def main() -> int:
 				stream_decrypt_with_struct(xcp, args.key, 0x28, 0x180, folder_size)
 
 			print("Processing filenames...")
-			xcp.offset = 0x44
-			rc4_sha_struct = xcp.read_struct(RC4_SHA_HEADER)
-			cipher = XeCryptRc4.new(XeCryptHmacSha(args.key, bytes(rc4_sha_struct.cksm)))
-			cipher.decrypt(bytes(rc4_sha_struct.confounder))
+			if encrypted:
+				xcp.offset = 0x44
+				rc4_sha_struct = xcp.read_struct(RC4_SHA_HEADER)
+				cipher = XeCryptRc4.new(XeCryptHmacSha(args.key, bytes(rc4_sha_struct.cksm)))
+				cipher.decrypt(bytes(rc4_sha_struct.confounder))
 			# decrypt filenames
 			xcp.offset = cab_hdr_struct.off_files
 			for i in range(cab_hdr_struct.cnt_files):

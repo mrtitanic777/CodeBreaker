@@ -21,8 +21,6 @@
 //     key that names a method or a dunder (setattr would put an instance attribute over it) changes nothing.
 //   * `*sources: str | Path | BinLike` is a py::list of std::variant; `*defines: str` a py::list<py::str>.
 //   * The module-level BIN_DIR (settings.get("xbox360_crypto_bin") at import time) is read on first use.
-//   * Not ported: the unreachable code after `sio.offset` in apply_jump_sd_4bl (the Python's StreamIO has
-//     no `offset`, so that function ends in AttributeError there).
 //   * Programs are run through `cmd /c` as subprocess.run(shell=True) does on Windows (Windows only).
 #pragma once
 
@@ -215,7 +213,7 @@ py::bytearray sign_sd_4bl(const py::bytes& key, const py::bytes& salt, const py:
 bool verify_sd_4bl(XeCrypt::XeCryptRsaKey& key, const py::bytes& salt, const py::bytes& data);
 bool verify_sd_4bl(const py::bytes& key, const py::bytes& salt, const py::bytes& data);
 py::bytearray encrypt_bl(const py::bytes& key, const BinLike& data, bool skip_header = true);
-// (always AttributeError once the jump word is found, struct.error when it is not: see the notes)
+// (struct.error when the jump word is not found)
 py::bytearray apply_jump_sd_4bl(const py::bytes& data, int64_t size);
 // patch_data: a path (str), or the patches as bytes
 py::bytearray apply_patches(const py::bytes& bl_data, const std::variant<py::str, py::bytes, py::bytearray>& patch_data);

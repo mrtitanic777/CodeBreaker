@@ -1167,6 +1167,8 @@ def bool_trees(text):
         if len(ss) != 1:
             return None
         kind, d = ss[0]
+        if kind == "label":                                 # (a label and then only a label: no statement, no expression)
+            return None
         if kind == "line":
             m = re.fullmatch(r"%s = ([01]);" % reg, d)
             if m:

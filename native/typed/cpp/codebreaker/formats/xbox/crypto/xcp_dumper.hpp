@@ -10,10 +10,8 @@
 //   * ctypes structures are plain C structs of the same layout (little endian, natural alignment, so the
 //     same sizes as ctypes.sizeof; the harness checks them). StreamIO::read_struct<T>() copies them in.
 //   * zlib.decompressobj() is the runtime's py::zlib::decompressobj (`Decompress` below).
-//   * The Python's StreamIO has no `offset` property, perform_function_at, set_label or get_label (they
-//     belong to upstream's fuller StreamIO). `xcp.offset = n` there only sets a plain attribute, so here it
-//     is a local variable; calling one of the other three is the AttributeError Python raises, and the code
-//     after such a call (which the Python cannot reach either) is ported as written.
+//   * `xcp.offset = n` / `xcp.offset += n` are StreamIO::set_offset / offset (the position as an attribute);
+//     perform_function_at takes the cipher's decrypt as a callable.
 //   * `args.key` is None, a str (as typed on the command line) or, once converted, bytes: std::variant.
 //   * `main()` takes sys.argv[1:] and the program name, and returns the exit code; argparse's exits are a
 //     thrown py::SystemExit, as in the other typed ports.
@@ -110,8 +108,7 @@ Path path_type(const py::str& s);
 bool extract_cab(const py::str& filename, const py::str& path);
 
 // Decrypt `size` bytes at data_offset with the RC4 key made from the RC4_SHA_HEADER at struct_offset.
-// (The StreamIO of this codebase has no perform_function_at: this raises AttributeError once the header
-// has been read and the cipher made, as the Python does.)
+// The data is decrypted in place in the stream, and returned.
 py::bytes stream_decrypt_with_struct(StreamIO::StreamIO& xcp, const py::bytes& key, int64_t struct_offset, int64_t data_offset, int64_t size);
 
 // zlib.decompressobj() with the default window (the zlib wrapper)
