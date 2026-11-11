@@ -333,3 +333,18 @@ state/work/typed-port/_bugs/LIST.md: strict reads of a field cut by the end of t
 index 0 as "no target" instead of "the last entry" (OMF 178 fix-up lines, all in the hand-made synthetic objects), a trailing odd byte
 of a UTF-16 resource name dropped instead of replaced (2 of 26,208 damaged PEs). Everything else matched (0 mismatches in 8,736 PE,
 NE, LE and DOS inputs each, 38,688 LE, 26,208 NE and DOS).
+
+## port/pre_ansi part 4 (cb/port: c_source, old_sizes, struct_layout, union_views, frames, original_program, bss, rewrite, headers, complaints), 2026-11-11
+
+Old = the typed port (pre_ansi_p4.cpp, 1,870 lines over the py:: layer); new = native/cb/port. Both run the old part-4 harness
+(state/work/typed-port/port.pre_ansi.p4: every call of the part on the three source trees lib 2.20, link 2.44 and MS C 3.00 p0,
+2,940 answers). The old exe also runs the Port constructor (parts 1-3, not yet refactored) and could not be rebuilt without it
+(its objects are older than master's header shims), so the two times are not of equal scope:
+
+| Whole harness (3 trees, 2,940 calls) | old | new |
+|---|---|---|
+| old test.exe (constructor of parts 1-3 + part 4) | 2.86 s | |
+| new driver (part 4 only; the constructor's state is read from a dump) | | 0.20 s |
+
+The Python original runs the same constructor in 0.5 s for the three trees, so the old constructor is a fraction of the 2.86 s; the
+new part 4 is not slower. The new answers equal the Python's on all 2,940 calls (compare.py, by meaning; 0 differences).
