@@ -83,7 +83,7 @@ def build(srcs):
 
 
 def error_lines(con):
-    return {int(m.group(1)) for m in re.finditer(r"\.C\((\d+)\)\s*:\s*(?!warning)", con, re.I)}   # (3.00 names
+    return {int(m.group(1)) for m in re.finditer(r"\.C\((\d+)\)\s*:(?!\s*warning)", con, re.I)}   # (3.00 names
                                                                                                     #  only warnings)
 
 

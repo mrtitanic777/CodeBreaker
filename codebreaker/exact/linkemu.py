@@ -184,7 +184,7 @@ def link24(objects, symbols, log=None):
                       (stack.at >> 4) if stack else 0, stack.length if stack else 0, 0, far(entry or 0)[0], far(entry or 0)[1], 30, 0, 1)
     exe = bytearray(hdr) + b"".join(struct.pack("<HH", *far(r)) for r in relocs)
     exe += bytes(hdrlen - len(exe)) + image
-    struct.pack_into("<H", exe, 18, ~sum(struct.unpack("<%dH" % (len(exe) // 2), exe + bytes(len(exe) & 1))) & 0xFFFF)
+    struct.pack_into("<H", exe, 18, ~sum(struct.unpack("<%dH" % ((len(exe) + 1) // 2), exe + bytes(len(exe) & 1))) & 0xFFFF)
     link24.mods, link24.dgroup = mods, dgroup                # (where each module's pieces went: a map)
     say("  the text ends at %05x, DGROUP is at %05x; the image is %04x bytes, the program ends at %05x" % (end, dgroup, len(image), top))
     return bytes(exe)
