@@ -2,6 +2,7 @@
 // lock and wait for their reply on a condition variable.
 
 #include "live/client.h"
+#include "live/game.h"
 #include "live/voice.h"
 
 #include "log.h"
@@ -747,6 +748,16 @@ namespace live
             const uint32_t user = U32(j, "user");
             if (user >= kMaxUsers)
                 return;
+            if (op == "peer") // direct connections (game.cpp): the other console's endpoints and the pair's secret
+            {
+                std::vector<std::string> lan;
+                if (const json& l = Get(j, "lan"); l.is_array())
+                    for (const json& endpoint : l)
+                        if (endpoint.is_string())
+                            lan.push_back(endpoint.get<std::string>());
+                game::OnPeerEvent(user, ParseHex64(Get(j, "xuid")), Str(j, "public"), lan, Str(j, "token"));
+                return;
+            }
             Event e{ EventKind::FriendChanged, user };
             {
                 std::lock_guard lock(S().mutex);
@@ -1287,6 +1298,9 @@ namespace live
         s.thread.join();
         if (L().thread.joinable())
             L().thread.join();
+        // The voice thread (started by Start) too: a std::thread still joinable when the process returns from main
+        // ends it with std::terminate (exit code 0xC0000409).
+        voice::Stop();
     }
 
     void SetKey(const std::string& key)
@@ -2482,9 +2496,10 @@ namespace live::detail
         uint16_t port = 0;
         std::array<bool, 4> signedIn{};
         std::array<std::array<uint8_t, 8>, 4> token{};
+        std::array<uint64_t, 4> xuid{};
     };
 
-    // The server's address and each signed-in user's token (game.cpp).
+    // The server's address and each signed-in user's token and XUID (game.cpp).
     GameTarget CurrentGameTarget()
     {
         std::lock_guard lock(S().mutex);
@@ -2498,6 +2513,7 @@ namespace live::detail
         {
             t.signedIn[user] = S().users[user].signedIn;
             t.token[user] = S().users[user].voiceToken;
+            t.xuid[user] = S().users[user].xuid;
         }
         return t;
     }
