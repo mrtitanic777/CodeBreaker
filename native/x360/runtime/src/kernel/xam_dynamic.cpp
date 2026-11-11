@@ -13,8 +13,6 @@ GUEST_EXPORT("xam.xex", 873, XuiAlloc)
         Fatal("XuiAlloc({:X}): kernel pool exhausted", ctx.r3.u32);
 }
 
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 792, XamVoiceGetMicArrayStatus)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 794, XamVoiceGetDirectionalData)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1399, XamGetServiceEndpoint)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2827, XamPartySetCustomData)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2832, XamPartyGetBandwidth)

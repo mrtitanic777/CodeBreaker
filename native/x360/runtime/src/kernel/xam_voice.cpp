@@ -85,6 +85,35 @@ GUEST_IMPORT(XamVoiceIsActiveProcess)
     ctx.r3.u64 = 1;
 }
 
+// DWORD XamVoiceGetMicArrayStatus() (ordinal 792; XAM 0x816FBBE8): the Kinect microphone array's state. XAM answers 2
+// while the array was never initialised (its status word 0x81AACBF0 is 0), else 1 or 0 from a second status word
+// (0x81AACBF8, set while the array runs). Without a Kinect nothing initialises it: 2, "no array".
+GUEST_IMPORT(XamVoiceGetMicArrayStatus)
+{
+    ctx.r3.u64 = 2;
+}
+
+// HRESULT XamVoiceGetDirectionalData(PVOID Voice, float* Direction) (ordinal 794; XAM 0x816FB450 hands the voice
+// device to the XVoiced driver): the direction a talker's voice comes from, which only the Kinect's array can tell.
+// XHV2 (0x81A47380) tests the result for a negative value and, then, reports no direction (a NULL pointer to its
+// callback), so the failing answer is an HRESULT: the one XamVoiceSubmitPacket gives without a device, HRESULT_FROM_WIN32(
+// ERROR_DEVICE_NOT_CONNECTED), whose exact value is unverified (XVoiced is not among the references). *Direction is
+// left alone.
+GUEST_IMPORT(XamVoiceGetDirectionalData)
+{
+    if (!IsVoice(ctx.r3.u32))
+        Fatal("XamVoiceGetDirectionalData({:08X}, {:08X}): not a voice object", ctx.r3.u32, ctx.r4.u32);
+    ctx.r3.u64 = 0x8007048F;
+}
+
+PPC_FUNC(__imp__XamVoiceGetMicArrayStatus);
+PPC_FUNC(__imp__XamVoiceGetDirectionalData);
+namespace
+{
+    kernel::DynamicExportRegistrar g_voiceGetMicArrayStatus("xam.xex", 792, __imp__XamVoiceGetMicArrayStatus);
+    kernel::DynamicExportRegistrar g_voiceGetDirectionalData("xam.xex", 794, __imp__XamVoiceGetDirectionalData);
+}
+
 // DWORD XamNuiGetDeviceStatus(PNUI_DEVICE_STATUS Status): 24-byte status, zeroed first. No Kinect sensor: every
 // field stays 0. The title (XNuiGetHardwareStatus) reads only the status word at +0xC and ignores the result;
 // 0xC0050006 is what Xenia's netplay fork returns without a sensor.
