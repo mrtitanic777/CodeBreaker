@@ -172,12 +172,6 @@ target_link_libraries(cb_translate PUBLIC cb_core)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
-
-# the pytypes shim converts the old layer's Big (pyengine's unbounded integer): its test needs that class
-target_sources(cb_tests PRIVATE "${CB_NATIVE_ROOT}/pyengine/src/big.cc")
-set_source_files_properties("${CB_NATIVE_ROOT}/pyengine/src/big.cc" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
-
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -205,7 +199,8 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/sdk_structs.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
@@ -243,6 +238,9 @@ target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_
 # Every area library (cb_area records it in CB_AREAS), so a new area needs no edit here.
 get_property(CB_ALL_AREAS GLOBAL PROPERTY CB_AREAS)
 target_link_libraries(cb_tests PRIVATE ${CB_ALL_AREAS})
+# the pytypes shim converts the old layer's Big (pyengine's unbounded integer): its test needs that class
+target_sources(cb_tests PRIVATE "${CB_NATIVE_ROOT}/pyengine/src/big.cc")
+set_source_files_properties("${CB_NATIVE_ROOT}/pyengine/src/big.cc" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
 # the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
