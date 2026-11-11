@@ -199,8 +199,7 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dpmi.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/pascal_join.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp"   # (the Value tree and the old records over cb::formats::inspect)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp")
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/authored/match16.cpp"
