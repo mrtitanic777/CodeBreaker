@@ -153,6 +153,43 @@ def test_signatures():
     assert all(len(e) == 5 for e in entries)
 
 
+def test_coff_long_symbol_names():
+    """A symbol whose name is in the string table: read to its end, and to the end of the data when nothing ends it
+    (the last byte of such a name was lost); an offset past the data is an empty name."""
+    from codebreaker.symbols.libraries import coff
+    header = struct.pack("<HHIIIHH", coff.I386, 0, 0, 20, 3, 0, 0)
+    sym = lambda off: struct.pack("<II", 0, off) + struct.pack("<IhHBB", 0, 1, 0x20, 2, 0)
+    strings = struct.pack("<I", 0) + b"long_name_1\0" + b"unterminated"
+    obj = coff.Coff(header + sym(4) + sym(1000) + sym(16) + strings)
+    assert [s["name"] for s in obj.symbols] == ["long_name_1", "", "unterminated"]
+
+
+def test_wine16_reads_the_folder_once():
+    """exports() reads Wine's folder one time, however many modules are asked for -- those Wine lacks too -- and a later
+    spec file (in name order) replaces an earlier one's ordinal."""
+    from codebreaker.symbols import wine16
+    with tempfile.TemporaryDirectory() as root:
+        os.makedirs(os.path.join(root, "user.exe16"))
+        with open(os.path.join(root, "user.exe16", "user.exe16.spec"), "w") as f:
+            f.write("1 pascal Old(word)\n2 pascal Two()\n")
+        with open(os.path.join(root, "user.exe16", "user.spec"), "w") as f:
+            f.write("1 pascal New(long)\n")
+        reads, saved = [], (wine16._folder, wine16._read_all, dict(wine16._cache), wine16._loaded)
+        real = wine16._read_all
+        wine16._folder = lambda: root
+        wine16._read_all = lambda: (reads.append(1), real())[1]
+        wine16._cache.clear()
+        wine16._loaded = False
+        try:
+            assert wine16.exports("user")[1].name == "New" and wine16.exports("USER")[2].name == "Two"
+            assert wine16.exports("NOPE") == {} and wine16.exports("ALSO_NOT") == {}
+            assert len(reads) == 1
+        finally:
+            wine16._folder, wine16._read_all, cache, wine16._loaded = saved
+            wine16._cache.clear()
+            wine16._cache.update(cache)
+
+
 def test_identify():
     crt, lz, hlp = _corpus("crtdll.dll", "lzexpand.dll", "winhlp32.exe")
     found = runtime_library.identify(crt)
@@ -225,7 +262,7 @@ def test_source_files_from_symbol_files():
 
 def main():
     for fn in (test_demangle, test_definition_file_and_library, test_ordinals, test_prototypes, test_signatures,
-               test_identify, test_store_identified_and_bodies, test_names_of_a_module,
+               test_coff_long_symbol_names, test_wine16_reads_the_folder_once, test_identify, test_store_identified_and_bodies, test_names_of_a_module,
                test_source_files_from_symbol_files):
         try:
             fn()

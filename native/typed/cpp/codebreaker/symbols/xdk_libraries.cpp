@@ -13,7 +13,6 @@
 #include "codebreaker/formats/xex.hpp"
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/store.hpp"
-#include "codebreaker/symbols/libraries/package.hpp"
 #include "py_json.hpp"
 #include "py_os.hpp"
 #include "py_settings.hpp"
@@ -73,27 +72,9 @@ Json json_strs(const py::set<py::str>& xs) {
     return j;
 }
 
-// The libraries of a folder as the new module takes them: only the PowerPC ones, by the old readers.
-std::vector<nx::Library> read_libraries(const py::str& folder) {
-    std::vector<nx::Library> out;
-    for (const nx::LibraryFileInfo& file : nx::library_files(cb::fs::from_text(folder.utf8()))) {
-        auto [kind, found] = libraries::functions(py::os::path::join(folder, to_py(file.name)));
-        const py::str* machine = std::get_if<py::str>(&kind);
-        if (!machine || *machine != py::str("powerpc")) continue;
-        nx::Library library;
-        library.name = file.name;
-        for (const libraries::Function& f : found) {
-            nx::LibraryFunction fn;
-            fn.name = from_py(f.name);
-            fn.code = cb::compat::from_py(f.code);
-            for (const int64_t m : std::get<py::list<int64_t>>(f.mask)) fn.ignore.push_back(static_cast<std::uint32_t>(m));
-            fn.at = static_cast<std::uint32_t>(f.at);
-            library.functions.push_back(std::move(fn));
-        }
-        out.push_back(std::move(library));
-    }
-    return out;
-}
+// The libraries of a folder as the new module takes them: only the PowerPC ones (the new module reads them, through
+// symbols/libraries).
+std::vector<nx::Library> read_libraries(const py::str& folder) { return nx::read_libraries(cb::fs::from_text(folder.utf8())); }
 
 // The text section of a program: its words and where functions start.
 nx::ProgramText read_program(const py::str& image_path) {

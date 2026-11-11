@@ -159,8 +159,11 @@ set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "
 cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify)
 
+cb_area(translate)
+target_link_libraries(cb_translate PUBLIC cb_core)
+
 cb_area(symbols)
-target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge)
+target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge cb_compare cb_platforms)
 
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core)

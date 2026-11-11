@@ -1,28 +1,23 @@
-// codebreaker/symbols/libraries/omf.hpp -- typed C++ from codebreaker.symbols.libraries.omf.
-//
-// omf.py -- the functions of a 16-bit OMF object module or library: each one's name, bytes and mask.
+// codebreaker/symbols/libraries/omf.hpp -- compat shim for cb/symbols/libraries/omf.hpp (docs/CPP_DESIGN.md 6.3). The old
+// records in, the new reader called, the old records out; header-only. Deleted with its last old-layer consumer
+// (symbols/runtime_library, verify/gate16/runtime16).
 //
 //     omf::functions(data)         [Function] of every object module in a .LIB (or one .OBJ)
+//     omf::fields_only(mask)       the mask without the opcodes of far calls
 //
-// The 16-bit tools' libraries (Microsoft C's and Visual C++ 1.5's run-time libraries) are object
-// modules laid end to end on pages. A function is a public name inside a code segment (one whose
-// class says CODE), or a piece the linker places on its own (a COMDAT: the C++ compiler writes one
-// per function). What the linker fills in is listed by the fix-up records after each data record:
-// the bytes of each fix-up's field (1 in the mask) -- and the opcode of a far call (2), which a
-// linker that translates far calls rewrites, with the address, as `push cs` / `call near` when the
-// callee ends up in the same segment. Any true value leaves a byte out; a matcher that knows its
-// program was linked without that translation compares a far call's opcode (`fields_only`).
+//   * The Function here is codebreaker.symbols.libraries.Function as omf.py makes it: its mask is a bytearray.
+//   * The reader's helpers (_WIDTH, _number, _mask) have no callers and are not carried over.
 #pragma once
 
-#include <tuple>
+#include <cstdint>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/symbols/libraries/omf.hpp"
 #include "py.hpp"
 
 namespace codebreaker::symbols::libraries::omf {
 
 // One function of a library: its symbol, its bytes, its mask and its offset in its section.
-// (codebreaker.symbols.libraries.Function, a namedtuple "name code mask at" of the package's __init__, which has no
-// C++ port yet: this is its stand-in. The mask is a bytearray here, as omf.py makes it.)
 struct Function {
     py::str name;
     py::bytes code;
@@ -30,22 +25,32 @@ struct Function {
     int64_t at = 0;
 };
 
-extern const py::dict<int64_t, int64_t> _WIDTH;   // bytes a 16-bit fix-up covers, by kind
-
-// the number at b[i] (one byte, or two when the high bit is set) and the index after it
-std::tuple<int64_t, int64_t> _number(const py::bytes& b, int64_t i);
+namespace detail {
+inline py::list<Function> to_old(const std::vector<cb::symbols::libraries::Function>& found) {
+    py::list<Function> out;
+    for (const auto& f : found) {
+        out.append(Function{cb::compat::to_py(f.name), cb::compat::to_py(cb::ByteView(f.code)),
+                            py::bytearray(cb::compat::to_py(cb::ByteView(f.mask))), static_cast<int64_t>(f.at)});
+    }
+    return out;
+}
+}  // namespace detail
 
 // The mask without the opcodes of far calls: only what a fix-up's field covers.
-py::bytes fields_only(const py::bytes& mask);
+inline py::bytes fields_only(const py::bytes& mask) {
+    const cb::Bytes raw = cb::compat::from_py(mask);
+    return cb::compat::to_py(cb::ByteView(cb::symbols::libraries::omf::fields_only(raw)));
+}
 
-// The byte mask of `size` bytes from `start`, out of {offset: 1 | 2} for a whole buffer.
-py::bytearray _mask(const py::dict<int64_t, int64_t>& masked, int64_t start, int64_t size);
-
-// [Function] for every function in a library (a dictionary-paged .LIB) or one object module.
-// A module the reader cannot follow is left out.
-py::list<Function> functions(const py::bytes& data);
+// [Function] for every function in a library (a dictionary-paged .LIB) or one object module. A module the reader cannot
+// follow is left out.
+inline py::list<Function> functions(const py::bytes& data) {
+    return cb::compat::guard([&] { return detail::to_old(cb::symbols::libraries::omf::functions(cb::compat::from_py(data))); });
+}
 
 // [Function] for the public functions of one object module (its bytes, MODEND included).
-py::list<Function> module_functions(const py::bytes& module);
+inline py::list<Function> module_functions(const py::bytes& module) {
+    return cb::compat::guard([&] { return detail::to_old(cb::symbols::libraries::omf::module_functions(cb::compat::from_py(module))); });
+}
 
 }  // namespace codebreaker::symbols::libraries::omf
