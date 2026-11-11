@@ -10,10 +10,10 @@
 #include <unordered_set>
 
 #include "codebreaker/base/corpus.hpp"
-#include "codebreaker/emulate/api_models.hpp"
 #include "codebreaker/emulate/capstone_x86.hpp"
 #include "codebreaker/emulate/unicorn_uc.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/symbols/prototypes.hpp"
 #include "py_os.hpp"
 
@@ -919,12 +919,12 @@ run::Run recorded(const py::str& module, const FuncSelector& func, const TraceOp
 // common APIs, A/W variants sharing one), or None.
 std::optional<int64_t> _builtin_argc(const std::optional<py::str>& name) {
     py::str n = name ? *name : py::str("");
-    auto model = api_models::api_model(py::str("win32"), n);
+    auto model = knowledge::api_model(py::str("win32"), n);
     if (!model && !n.empty() && (n.slice_from(-1) == py::str("A") || n.slice_from(-1) == py::str("W")))   // ANSI/Wide variant
-        model = api_models::api_model(py::str("win32"), n.slice(0, n.size() - 1));
+        model = knowledge::api_model(py::str("win32"), n.slice(0, n.size() - 1));
     if (!model) return std::nullopt;
     auto argc = model->get(py::str("argc"));
-    if (!argc || argc->kind != api_models::Json::Int) return std::nullopt;
+    if (!argc || argc->kind != knowledge::sources::Json::Int) return std::nullopt;
     return argc->i;
 }
 

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "codebreaker/decompile/describe.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/emulate/native_shadow.hpp"
 #include "codebreaker/emulate/unicorn_uc.hpp"
@@ -29,30 +30,11 @@ constexpr int64_t UC_X86_INS_IN = 218, UC_X86_INS_OUT = 500;
 const py::list<str> RESULT_REGISTERS = {str("ebx"), str("ecx"), str("edx"), str("esi"), str("edi"), str("ebp")};
 const py::list<str> REGISTERS = {str("eax"), str("ebx"), str("ecx"), str("edx"), str("esi"), str("edi"), str("ebp")};
 
-namespace {
-
-// knowledge/models/vxd.json's "services": {service name: {"answers_in": register}} (what knowledge.api_model("vxd", name) reads; the typed
-// emulate/api_models.hpp reads only the "functions" part of a model file, which vxd.json has not, so the part is read here)
-const knowledge::sources::Rows& vxd_services() {
-    static const knowledge::sources::Rows rows = [] {
-        knowledge::sources::Rows r;
-        try {
-            r = knowledge::sources::_part(str("services"))(py::os::path::join(knowledge::sources::_MODELS(), str("vxd.json")));
-        } catch (const py::OSError&) {
-        } catch (const py::ValueError&) {
-        }
-        return r;
-    }();
-    return rows;
-}
-
-}  // namespace
-
 std::optional<str> answers_in(const std::optional<str>& service) {
     // (knowledge.api_model("vxd", service or "") or {}).get("answers_in")
-    const auto row = vxd_services().get((service && !service->empty()) ? *service : str(""));
-    if (!row || row->kind != knowledge::sources::Json::Dict || !row->dict.contains(str("answers_in"))) return std::nullopt;
-    const auto& v = row->dict.at(str("answers_in"));
+    const auto row = knowledge::api_model(str("vxd"), (service && !service->empty()) ? *service : str(""));
+    if (!row || !row->contains(str("answers_in"))) return std::nullopt;
+    const auto& v = row->at(str("answers_in"));
     if (v.kind == knowledge::sources::Json::Str) return v.s;
     return std::nullopt;
 }

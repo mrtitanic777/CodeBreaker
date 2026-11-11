@@ -16,6 +16,7 @@
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/formats/powerpc_image.hpp"
 #include "codebreaker/formats/xex.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/source/classes_writer.hpp"
 #include "codebreaker/source/java_writer.hpp"
@@ -161,7 +162,9 @@ py::dict<py::str, py::str> console_import_names(const py::str& path, const py::s
     static const py::re::Pattern import_sym("import(\\d+)_ord_(\\d+)", 0);
     static const py::re::Pattern c_name("[A-Za-z_]\\w*", 0);
     namespace sources = knowledge::sources;
-    py::dict<py::str, sources::Json> table = symbols::api_arguments::_knowledge_table(py::str("xbox360"), py::str("ordinal_names"));    // (console_ordinals.json, as the knowledge base has it)
+    py::dict<py::str, sources::Json> table;    // (console_ordinals.json, as the knowledge base has it)
+    for (const auto& kv : knowledge::_table(py::str("xbox360"), py::str("ordinal_names")).items())
+        if (std::holds_alternative<sources::Json>(std::get<1>(kv))) table.set(std::get<0>(kv), std::get<sources::Json>(std::get<1>(kv)));
     py::list<py::str> libs;
     auto from_xex = formats::xex::import_libraries(path);
     if (from_xex && std::holds_alternative<std::vector<std::pair<py::str, symbols::native::Json>>>(from_xex->value)) {

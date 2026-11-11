@@ -11,6 +11,8 @@
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/knowledge/package.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
@@ -108,8 +110,9 @@ Index& _signatures() {
         for (const char* bits : {"32", "16"}) {                    // (runtime_signatures.json, as the knowledge base has it)
             knowledge::reads::record_kind(py::str(std::string(bits) == "16" ? "win16" : "win32"), py::str("signature"));
             py::dict<py::bytes, py::list<Entry>> by_lead;
-            for (const auto& kv : api_arguments::_knowledge_table(py::str(std::string(bits) == "16" ? "win16" : "win32"), py::str("signature")).items()) {
-                const knowledge::sources::Json& row = std::get<1>(kv);            // lead, size, mask, digest, name, library
+            for (const auto& kv : knowledge::_table(py::str(std::string(bits) == "16" ? "win16" : "win32"), py::str("signature")).items()) {
+                if (!std::holds_alternative<knowledge::sources::Json>(std::get<1>(kv))) continue;
+                const knowledge::sources::Json& row = std::get<knowledge::sources::Json>(std::get<1>(kv));            // lead, size, mask, digest, name, library
                 Entry e;
                 e.size = row.list.at(1).i;
                 e.masked = _offsets(row.list.at(2).s);
