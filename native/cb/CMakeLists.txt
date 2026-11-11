@@ -19,6 +19,41 @@ function(cb_apply_flags target)
     target_compile_options(${target} PRIVATE /fsanitize=address /Zi)
     target_link_options(${target} PUBLIC /INCREMENTAL:NO)
   endif()
+  cb_speed_up(${target})
+endfunction()
+
+# Build speed (2026-11-11: a cold build was the fleet's bottleneck). CB_UNITY compiles each target's sources in
+# batches of CB_UNITY_BATCH as one translation unit; a source with its own compile options or include folders is left
+# out by CMake, and one that cannot share a unit (file-local names that collide) is marked SKIP_UNITY_BUILD_INCLUSION.
+# CB_PCH parses the standard headers every file uses once (core/pch.hpp) and reuses that one header in every target.
+option(CB_UNITY "compile native/cb in unity batches" ON)
+set(CB_UNITY_BATCH 8 CACHE STRING "sources per unity batch")
+option(CB_PCH "precompile the standard headers of native/cb" ON)
+# Sources that cannot share a unity unit: they define file-local helpers with the same names as a neighbour's.
+set(CB_UNITY_ALONE
+  port/old_c_passes.cpp port/union_views.cpp source/vxd/symbols.cpp knowledge/value.cpp)
+function(cb_unity target sources)
+  if(NOT CB_UNITY)
+    return()
+  endif()
+  set_target_properties(${target} PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE ${CB_UNITY_BATCH})
+  foreach(src IN LISTS sources)
+    file(RELATIVE_PATH rel "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" "${src}")
+    file(READ "${src}" text)
+    # windows.h defines macros (far, near, pascal, min, LoadLibrary...) that would leak into the next file of the unit
+    if(rel IN_LIST CB_UNITY_ALONE OR text MATCHES "<[Ww]indows\\.h>")
+      set_source_files_properties("${src}" PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+    endif()
+  endforeach()
+endfunction()
+function(cb_speed_up target)
+  if(CB_PCH)
+    if(target STREQUAL "cb_core")
+      target_precompile_headers(cb_core PRIVATE "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/core/pch.hpp")
+    elseif(TARGET cb_core)
+      target_precompile_headers(${target} REUSE_FROM cb_core)
+    endif()
+  endif()
 endfunction()
 
 # cb_area(<dir>): static library cb_<dir> from <dir>/*.cpp (not *_test.cpp, not *_main.cpp); the area's tests
@@ -33,6 +68,7 @@ function(cb_area dir)
   list(FILTER tests EXCLUDE REGEX "/testdata/")
   add_library(cb_${dir} STATIC ${sources})
   cb_apply_flags(cb_${dir})
+  cb_unity(cb_${dir} "${sources}")
   set_property(GLOBAL APPEND PROPERTY CB_AREAS cb_${dir})
   get_property(all_tests GLOBAL PROPERTY CB_TEST_SOURCES)
   set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${all_tests} ${tests})
