@@ -420,7 +420,8 @@ CB_TEST("exact.emu.isis.programs_of_the_python_it_replaces", [] {
         const Json expected = json::parse(line);
         const std::string program = expected["program"];
         fs::ScopedTempDir work("isis_case");
-        fs::copy_tree(data / expected["fixture"].get<std::string>(), work.path());
+        const std::string fixture = expected["fixture"].get<std::string>();
+        if (fixture != "empty") fs::copy_tree(data / fixture, work.path());   // "empty": no files (git keeps no empty folder)
         fs::make_dirs(work.path() / "sub");   // (an empty folder is not in the checkout)
         std::string echoed;
         isis::Options options;
