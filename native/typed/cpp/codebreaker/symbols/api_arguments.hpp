@@ -21,6 +21,7 @@
 
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/knowledge/sources.hpp"
 #include "py.hpp"
 
 namespace codebreaker::symbols::api_arguments {
@@ -60,6 +61,10 @@ std::optional<int64_t> _scan(_Mod& m, int64_t rva, int64_t hops);
 std::optional<int64_t> _resolve(const py::str& dll, const py::str& name, int64_t hops);
 // The table an older CodeBreaker kept for `stem` beside the corpus (apiarity/<stem>.json), or {}.
 py::dict<py::str, std::optional<int64_t>> _apiarity(const py::str& stem);
+
+// knowledge._table(platform, kind): the kind's rows, an authored kind loaded from its file first when the file changed
+// (used by symbols.ordinals)
+py::dict<py::str, knowledge::sources::Json> _knowledge_table(const py::str& platform, const py::str& kind);
 
 // The headers' table, read once (tests reset it to None: tests.test_knowledge_reads)
 extern std::optional<py::dict<py::str, std::optional<int64_t>>> _TABLE;
