@@ -470,3 +470,17 @@ with the model identical, so the gain is the lost output formatting. The quad re
 and the Lattice objects), early_c_frame, grammars, known_differences (seven patterns, compiled once per table) and format_key
 run in microseconds on their real inputs; they have no hot path and were checked for the same behaviour, not timed. The Java
 tool table parses a command line in microseconds; the tools it runs are other modules' work.
+## port/pre_ansi part 4 (cb/port: c_source, old_sizes, struct_layout, union_views, frames, original_program, bss, rewrite, headers, complaints), 2026-11-11
+
+Old = the typed port (pre_ansi_p4.cpp, 1,870 lines over the py:: layer); new = native/cb/port. Both run the old part-4 harness
+(state/work/typed-port/port.pre_ansi.p4: every call of the part on the three source trees lib 2.20, link 2.44 and MS C 3.00 p0,
+2,940 answers). The old exe also runs the Port constructor (parts 1-3, not yet refactored) and could not be rebuilt without it
+(its objects are older than master's header shims), so the two times are not of equal scope:
+
+| Whole harness (3 trees, 2,940 calls) | old | new |
+|---|---|---|
+| old test.exe (constructor of parts 1-3 + part 4) | 2.86 s | |
+| new driver (part 4 only; the constructor's state is read from a dump) | | 0.20 s |
+
+The Python original runs the same constructor in 0.5 s for the three trees, so the old constructor is a fraction of the 2.86 s; the
+new part 4 is not slower. The new answers equal the Python's on all 2,940 calls (compare.py, by meaning; 0 differences).
