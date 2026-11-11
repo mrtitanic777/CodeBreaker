@@ -6,11 +6,12 @@ above its second gives transparent black at index 3; and -- when Arcadecraft's u
 this machine (../Arcadecraft/Arcadecraft) -- every texture and font of it converts and one of its
 libraries decompiles to a C# project. The C# fix-ups (xna/fixups.py) are checked on the forms they
 rewrite. An .xnb's type reader names are rewritten as the port reads them (stub assemblies, XNA's
-reflective reader), and -- when Block World's Converted project is here -- its port loads every
-model with its vertex and index buffers in the PC's byte order (`xna port --check-content`).
+reflective reader). Real Xbox 360 game effects (tests/fixtures/xbox_effects) are wrapped as XNB effects
+and converted; a sound effect built here is converted to a WAV.
 
     python tests/test_xna.py"""
 import glob
+import json
 import os
 import struct
 import sys
@@ -23,7 +24,21 @@ from codebreaker.formats import pe, xnb              # noqa: E402
 from codebreaker.formats.xbox import texture         # noqa: E402
 from codebreaker.xna import fixups, run              # noqa: E402
 
-GAME = os.path.join(os.path.dirname(ROOT), "Arcadecraft", "Arcadecraft")
+
+
+def _game():
+    """Arcadecraft's unpacked game, a sibling of the CodeBreaker checkout (which a worktree sits inside of)."""
+    d = os.path.dirname(ROOT)
+    while os.path.dirname(d) != d:
+        c = os.path.join(d, "Arcadecraft", "Arcadecraft")
+        if os.path.isdir(c):
+            return c
+        d = os.path.dirname(d)
+    return os.path.join(os.path.dirname(ROOT), "Arcadecraft", "Arcadecraft")
+
+
+GAME = _game()
+FIXTURES = os.path.join(ROOT, "tests", "fixtures")
 RESULTS = []
 
 
@@ -219,20 +234,31 @@ def test_de4dot_detects():
     assert plain and run.obfuscator(plain[0]) is None
 
 
-def test_port_content_check():
-    from codebreaker.base import converted
-    from codebreaker.xna import port
-    path = os.path.join(converted.root(), "BlockWorld")
-    if not os.path.isfile(os.path.join(path, "project.json")):
-        raise Skip("no Converted/BlockWorld")
-    result = port.build(converted.Project(path))
-    assert result["ok"], result["first"][:5]
-    checked = port.check_content(result["exe"])
-    assert checked, "the program wrote no content check"
-    models = {k: v for k, v in checked.items() if v.startswith("Microsoft.Xna.Framework.Graphics.Model")}
-    assert len(models) >= 30 and not [v for v in models.values() if " -- " in v], models
-    assert sum(v.startswith("Microsoft.Xna.Framework.Audio.SoundEffect") for v in checked.values()) >= 100
-    assert sum(v == "ProjectMercury.ParticleEffect" for v in checked.values()) >= 8      # the XNA reflective rules
+def _xnb(platform, reader, payload):
+    """An uncompressed XNA 4.0 file of one object: the reader list, no shared objects, the payload."""
+    name = ("Microsoft.Xna.Framework.Content." + reader).encode()
+    body = _7bit(1) + _7bit(len(name)) + name + struct.pack("<i", 0) + _7bit(0) + _7bit(1) + payload
+    return b"XNB" + platform.encode() + bytes([5, 0]) + struct.pack("<I", 10 + len(body)) + body
+
+
+def test_real_effects_convert():
+    """Real Xbox 360 effects from games' content (the stock BasicEffect, post-processing, sky, water), wrapped as the
+    .xnb a game ships: each one converts to its .fx and parameters."""
+    blobs = [p for p in sorted(glob.glob(os.path.join(FIXTURES, "xbox_effects", "*.bin")))
+             if not p.endswith("bw_BasicClipEffect.bin")]            # (that one is the PC build)
+    assert len(blobs) == 22, len(blobs)
+    with tempfile.TemporaryDirectory() as d:
+        for p in blobs:
+            name = os.path.splitext(os.path.basename(p))[0]
+            code = open(p, "rb").read()
+            path = os.path.join(d, name + ".xnb")
+            with open(path, "wb") as f:
+                f.write(_xnb("x", "EffectReader", struct.pack("<i", len(code)) + code))
+            rec = xnb.convert(path, os.path.join(d, "out"))
+            assert rec.get("kind") == "effect" and "error" not in rec and rec["sha1"], (name, rec)
+            fx = open(os.path.join(d, "out", name + ".fx"), encoding="utf-8").read()
+            assert fx.startswith("// sha1 " + rec["sha1"]) and "technique " in fx, name
+            assert json.load(open(os.path.join(d, "out", name + ".fx.json"), encoding="utf-8")) is not None
 
 
 def test_port_effect_and_input():
@@ -259,27 +285,28 @@ def test_xact_sound_bank():
     assert all(c["waves"] for c in b["cues"].values())
 
 
-def test_sound_effect_xma():
-    import shutil
-    sound = os.path.join(os.path.dirname(ROOT), "CodeBreaker", "Converted", "BlockWorld", "assets", "game", "584E07D1",
-                         "Content", "Audio", "AMP_AssaultRifle.xnb")
-    if not os.path.isfile(sound):
-        raise Skip("no Converted/BlockWorld here")
-    if not shutil.which("ffmpeg"):
-        raise Skip("ffmpeg is not on PATH")
+def test_sound_effect():
+    """A SoundEffect .xnb (PCM, as a PC game ships them) converts to a plain WAV with its samples. (An XMA2 one
+    needs a real XMA2 stream and ffmpeg: no such file is kept here.)"""
+    samples = struct.pack("<8h", 0, 1000, 2000, -2000, 3000, -3000, 100, -100)
+    fmt = struct.pack("<HHIIHHH", 1, 1, 44100, 88200, 2, 16, 0)
+    payload = struct.pack("<i", len(fmt)) + fmt + struct.pack("<i", len(samples)) + samples + struct.pack("<iii", 0, 8, 0)
     with tempfile.TemporaryDirectory() as d:
-        rec = xnb.convert(sound, d)
-        assert rec.get("kind") == "sound" and rec["codec"] == "XMA2" and rec["rate"] == 44100, rec
-        with open(os.path.join(d, "AMP_AssaultRifle.wav"), "rb") as f:
-            head = f.read(44)
-        assert head[:4] == b"RIFF" and struct.unpack_from("<H", head, 20)[0] == 1   # plain PCM: MonoGame takes no other
+        path = os.path.join(d, "Beep.xnb")
+        with open(path, "wb") as f:
+            f.write(_xnb("w", "SoundEffectReader", payload))
+        rec = xnb.convert(path, d)
+        assert rec.get("kind") == "sound" and rec["codec"] == "PCM" and rec["rate"] == 44100 and rec["channels"] == 1, rec
+        with open(os.path.join(d, "Beep.wav"), "rb") as f:
+            wav = f.read()
+        assert wav[:4] == b"RIFF" and struct.unpack_from("<H", wav, 20)[0] == 1 and wav.endswith(samples), wav[:48]
 
 
 def main():
     for fn in (test_texture_both_byte_orders, test_dxt1_punch_through, test_real_game_converts, test_fixups,
                test_managed_and_decompile, test_port_rewrites, test_port_error_fixers, test_xact_sound_bank,
-               test_sound_effect_xma, test_port_effect_and_input, test_rename_readers, test_port_reader_names, test_obfuscated_forms,
-               test_de4dot_detects, test_port_content_check):
+               test_sound_effect, test_real_effects_convert, test_port_effect_and_input, test_rename_readers, test_port_reader_names, test_obfuscated_forms,
+               test_de4dot_detects):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

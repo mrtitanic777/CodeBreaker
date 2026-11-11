@@ -3,7 +3,7 @@
     python -m pytest tests/test_x360.py
     CB_SLOW_TESTS=1 python -m pytest tests/test_x360.py      # also Xenia's instruction tests (~15 min)
 
-Uses Tetris's image from the absorbed projects' folder when it is there (skipped otherwise).
+Uses Minecraft's image from the absorbed projects' folder when it is there (skipped otherwise).
 """
 import os
 import re
@@ -19,12 +19,24 @@ sys.path.insert(0, ROOT)
 
 from codebreaker.recompile import config, discover, switches, xenon    # noqa: E402
 
-XEX = os.path.join(ROOT, "Converted", "TetrisSplash", "original", "default.xex")   # (Converted/: never committed)
+def _converted():
+    """Converted/ (never committed): next to tests/, or in the main checkout when this is a worktree."""
+    d = ROOT
+    while True:
+        c = os.path.join(d, "Converted")
+        if os.path.isdir(c):
+            return c
+        if os.path.dirname(d) == d:
+            return os.path.join(ROOT, "Converted")
+        d = os.path.dirname(d)
+
+
+XEX = os.path.join(_converted(), "Minecraft", "original", "default.xex")   # (Converted/: never committed)
 
 
 def _need_game():
     if not os.path.isfile(XEX):
-        pytest.skip("no Tetris XEX here")
+        pytest.skip("no Minecraft XEX here")
 
 
 def test_helpers_and_jump_buffers():
@@ -32,11 +44,11 @@ def test_helpers_and_jump_buffers():
     _need_game()
     found = config.helpers(discover._image(XEX))
     assert found == {
-        "savegprlr_14_address": 0x82162820, "restgprlr_14_address": 0x82162870,
-        "savefpr_14_address": 0x82162F40, "restfpr_14_address": 0x82162F8C,
-        "savevmx_14_address": 0x821667E0, "restvmx_14_address": 0x82166A78,
-        "savevmx_64_address": 0x82166874, "restvmx_64_address": 0x82166B0C,
-        "setjmp_address": 0x821690E0, "longjmp_address": 0x82168FC0}, found
+        "savegprlr_14_address": 0x82685810, "restgprlr_14_address": 0x82685860,
+        "savefpr_14_address": 0x82686770, "restfpr_14_address": 0x826867BC,
+        "savevmx_14_address": 0x82688D60, "restvmx_14_address": 0x82688FF8,
+        "savevmx_64_address": 0x82688DF4, "restvmx_64_address": 0x8268908C,
+        "setjmp_address": 0x8268DF40, "longjmp_address": 0x8268DC20}, found
 
 
 class _Img:
@@ -73,8 +85,9 @@ def test_switch_tables():
     _need_game()
     found, report = switches.find(XEX)
     tables = {t["bctr"]: t for t in found}
-    assert tables[0x8215C910]["kind"] == "short" and len(tables[0x8215C910]["labels"]) == 30
-    assert not report["outside"]
+    assert tables[0x822EC698]["kind"] == "short" and len(tables[0x822EC698]["labels"]) == 19
+    assert tables[0x82310674]["kind"] == "short" and len(tables[0x82310674]["labels"]) == 127
+    assert len(found) == 213 and not report["outside"]
 
 
 def test_extra_functions_respect_switches():
@@ -86,17 +99,18 @@ def test_extra_functions_respect_switches():
     extra = dict(config.extra_functions(XEX, img, tables))
     labels = {l for ls in tables.values() for l in ls}
     assert not labels & set(extra)
-    assert 0x82166A54 not in extra and 0x82166CEC not in extra     # entries of the vector runs
+    assert 0x82688FD4 not in extra and 0x8268926C not in extra     # entries of the vector runs
 
 
 def test_tail_jump_targets_are_functions():
-    """A branch out of a function is a tail call, so its target is declared a function: XACT's handler at
-    0x823699C8 ends `b 0x823710C8`, which XenonRecomp otherwise had nothing to call for (and dropped)."""
+    """A branch out of a function is a tail call, so its target is declared a function: the functions at
+    0x821F36B8 and 0x821F3948 tail-call `b 0x821F0B90` / `b 0x822007F8`, which XenonRecomp otherwise had nothing to call
+    for (and dropped)."""
     _need_game()
     img = discover._image(XEX)
     found, _ = switches.find(XEX)
     extra = dict(config.extra_functions(XEX, img, {t["bctr"]: t["labels"] for t in found}))
-    assert 0x823710C8 in extra and 0x823735D0 in extra or 0x823735D0 in img.extents
+    assert 0x821F0B90 in extra and 0x822007F8 in extra
 
 
 def test_basic_xex():
