@@ -1,41 +1,35 @@
-// codebreaker/port/arith16.hpp -- typed C++ of codebreaker.port.arith16.
+// codebreaker/port/arith16.hpp -- COMPAT SHIM over cb/port/arith16.hpp (docs/CPP_DESIGN.md 6.3). Deleted with its last
+// py:: consumer.
 //
-// arith16.py -- the arithmetic of a 16-bit int kept, where the C of today would do it otherwise.
+// arith16 is refactored: the pass lives in native/cb/port/arith16.hpp (clang's tree read into typed nodes by a streaming
+// parser, the casts as insertions, the results kept in a cb::base::cache::Cache). This header keeps what the ports that
+// have not been refactored yet use:
 //
-// On the 8086 an int was 16 bits, so an unsigned (16 bits) met by an int made the int unsigned: `u > -1` was false,
-// `u - 1` with u 0 was 65535. The port keeps every int 16 bits wide (int16_t, uint16_t), which keeps what is stored -
-// but the C of today makes both of them a 32-bit int before it compares, divides or widens them: `u > -1` is true,
-// `(long)(u - 1)` is -1. Wherever that changes the answer this pass says, by a cast, what the 8086 did:
+//   * port/__main__ calls run(cc, folder, files);
+//   * port/oldlayout reads clang's tree as the records below (Loc, Range, TypeRef, Number, Node) with bare(), mark_files(),
+//     _files(), MAIN, TEXT, _headers_key() and pass_key(). Those records and the five small helpers on them stay here
+//     as they were -- COMPAT(port/oldlayout): they go when oldlayout is refactored onto cb::port::arith16::Tree.
 //
-//   a comparison, / % or >> whose operands the 8086 made unsigned   each operand that is not so already: (uint16_t)
-//   ... of 16-bit operands of which one is arithmetic (it may have      that operand: (int16_t)(...) or (uint16_t)(...)
-//       passed 16 bits)
-//   arithmetic of 16 bits made 32 (a long assigned, given, cast)    the arithmetic, cut to its 16 bits first
-//
-// Each expression's type is worked out by the 8086's rules from the tree clang makes of the port (clang -Xclang
-// -ast-dump=json: every expression with its exact place, and the types as the source names them); the casts go in
-// at those places, the rest of the text as it was.
-//
-// Typing notes (what the Python leaves open):
-//   * clang's tree is a JSON document of dicts; this pass reads a fixed set of its keys, so a node is a record
-//     (Node) with those keys, a source location a record (Loc), and dump() makes the records from the JSON. The
-//     "_file" key mark_files() adds to each location is the Loc's `_file`.
-//     The order mark_files() and _files() walk a node's values in is the order of clang's keys: loc, range
-//     (begin, end), inner; and in a location: spellingLoc, expansionLoc, (its own keys), includedFrom.
-//   * A node's "value" is a string (IntegerLiteral) or a number (CharacterLiteral): std::variant<int64_t, str>.
-//   * MAIN and TEXT are one-element lists in the Python (module state edits_of() sets); here the element.
-//
+// What is different, on purpose: mark_files() no longer lets a location's `includedFrom` (the file that included this one)
+// move the file the following locations are taken to be in (the Python had the same fault; every location of a header after
+// its first was taken for the includer's, so the header's casts were put into the C file at the header's offsets).
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
-#include <tuple>
+#include <string>
 #include <variant>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/port/arith16.hpp"
+#include "codebreaker/base/cache.hpp"
 
 namespace codebreaker::port::arith16 {
+
+// ---- COMPAT(port/oldlayout): clang's tree as records ------------------------------------------------------------------
 
 // A source location of clang's tree: {"offset", "tokLen", "file", "spellingLoc", "expansionLoc", "includedFrom"},
 // and "_file" (the file it is in, which mark_files() puts to it).
@@ -70,79 +64,93 @@ struct Node {
     py::list<Node> inner;
 };
 
-// (the type name -> the 8086's i16 u16 i32 u32)
-extern py::dict<py::str, py::str> W16;
-extern py::set<py::str> ARITH;
-extern py::set<py::str> TESTS;
-extern py::dict<py::str, py::str> CAST;
+// The text of the file being read and the file of the main source (the Python's module state, set by oldlayout).
+inline std::optional<py::str> MAIN;
+inline std::optional<py::str> TEXT;
 
-// clang's tree of a file of the port (the JSON of -ast-dump), or None
-// (None too for a JSON document that is not an object.)
-std::optional<Node> dump(const py::str& cc, const py::str& src, const py::str& folder, const py::list<py::str>& extra = py::list<py::str>());
+// Without an inner node: what `(n.get("inner") or [{}])[0]` is.
+inline const Node& empty_node() {
+    static const Node e;
+    return e;
+}
 
-// the type the 8086's compiler gave an expression: i16 u16 i32 u32 - or None (a pointer, a double, unknown)
-std::optional<py::str> old_type(const Node& n, const py::str& text);
+// An expression with its parentheses and conversions passed.
+inline const Node& bare(const Node& n0) {
+    const Node* n = &n0;
+    const auto is = [](const std::optional<py::str>& a, const char* b) { return a.has_value() && *a == py::str(b); };
+    while (is(n->kind, "ParenExpr") ||
+           (is(n->kind, "ImplicitCastExpr") && (is(n->castKind, "LValueToRValue") || is(n->castKind, "NoOp") || is(n->castKind, "IntegralCast"))))
+        n = n->inner.size() != 0 ? &n->inner[0] : &empty_node();
+    return *n;
+}
 
-// the 8086's usual arithmetic conversions (int 16 bits, long 32)
-std::optional<py::str> common(const std::optional<py::str>& a, const std::optional<py::str>& b);
+// clang names a location's file only where it changes: each location given its own (_file). A location's `includedFrom`
+// is the includer's name and does not move the cursor.
+inline void mark_loc(Loc& v, std::optional<py::str>& cur, bool included_from = false) {
+    if (v.offset.has_value() || v.file.has_value() || v.spellingLoc) {
+        if (v.file.has_value() && !included_from) cur = v.file;
+        v._file = cur;
+    }
+    if (v.spellingLoc) mark_loc(*v.spellingLoc, cur);
+    if (v.expansionLoc) mark_loc(*v.expansionLoc, cur);
+    if (v.includedFrom) mark_loc(*v.includedFrom, cur, true);
+}
 
-// (start, end) offsets of an expression in the file - None when in a macro or another file
-// -> (start, end, the file it is in)
-std::optional<std::tuple<int64_t, int64_t, std::optional<py::str>>> place(const Node& n);
+inline void mark_files(Node& node, std::optional<py::str>& cur) {
+    mark_loc(node.loc, cur);
+    mark_loc(node.range.begin, cur);
+    mark_loc(node.range.end, cur);
+    for (Node& x : node.inner.vec()) mark_files(x, cur);
+}
 
-std::optional<py::str> spelled(const Node& n, const py::str& text);
-
-extern std::optional<py::str> MAIN;
-extern std::optional<py::str> TEXT;   // (the text of the file being read)
-
-// clang names a location's file only where it changes: each location given its own (_file)
-void mark_files(Node& node, std::optional<py::str>& cur);
-
-const Node& bare(const Node& n);
-
-// a constant of no sign: the same number whichever way it is converted
-bool nonneg(const Node& n);
-
-// an operand that is arithmetic of its own that may have gone past 16 bits (or, with & | ^, mixed signs),
-// its parentheses passed. -> the node, or nullptr (None)
-const Node* compound(const Node& n, const std::optional<py::str>& text = std::nullopt);
-
-// [(offset, text to put there)] - the casts that keep the 8086's arithmetic
-py::list<std::tuple<int64_t, py::str>> edits_of(const Node& tree, const py::str& text, const py::str& path);
-
-bool simple(const Node& n, const py::str& text);
-
-py::str apply(const py::str& text, const py::list<std::tuple<int64_t, py::str>>& edits);
-
-// what every file of the port includes: its headers' texts (one changed: every file's result again)
-py::str _headers_key(const py::str& folder);
-
-// the file and every header of the port's it reaches (an unchanged header's file not read again)
-py::str reach_key(const py::str& folder, const py::str& f);
+inline void files_loc(const Loc& l, py::list<py::str>& seen) {
+    if (l.file.has_value() && !seen.contains(*l.file)) seen.append(*l.file);
+    if (l.spellingLoc) files_loc(*l.spellingLoc, seen);
+    if (l.expansionLoc) files_loc(*l.expansionLoc, seen);
+    if (l.includedFrom) files_loc(*l.includedFrom, seen);
+}
 
 // the files a tree names, in the order they are met
-py::list<py::str> _files(const Node& node, const std::optional<py::list<py::str>>& seen = std::nullopt);
+inline py::list<py::str> _files(const Node& node, const std::optional<py::list<py::str>>& seen0 = std::nullopt) {
+    py::list<py::str> seen = seen0.has_value() ? *seen0 : py::list<py::str>();
+    files_loc(node.loc, seen);
+    files_loc(node.range.begin, seen);
+    files_loc(node.range.end, seen);
+    for (const Node& x : node.inner.vec()) _files(x, seen);
+    return seen;
+}
 
-// The version of the code that makes each kind of result -- for THIS C++ port. The Python hashes the source text
-// of its own functions (ast.parse of arith16.py and oldlayout.py), which a C++ program cannot do, so the key is a
-// fixed, documented version string: BUMP CODE_VERSION WHENEVER THE LOGIC OF A PASS CHANGES (dump, old_type,
-// edits_of, apply and what they use), as editing the Python would change the Python's key. The entries this port
-// keeps in the cache therefore live under different keys than the Python's (the values have the same form:
-// {"new": the text with the casts, or None}), and neither reads the other's.
-extern const py::str CODE_VERSION;
+// What every header of the port holds, as a key the Python kept in `headers=`: no pass reads it any more (the key of a
+// file's result is the headers it reaches), so it is nothing.
+inline py::str _headers_key(const py::str&) { return py::str(""); }
 
-// the code a kind of result comes from, by CODE_VERSION (a kind not known: the same, as the Python hashes both passes)
-py::str code_key(const py::str& kind);
+// ---- forwards ---------------------------------------------------------------------------------------------------------
 
-// a pass's result for one file, by all it depends on: the file and the headers it reaches, the compiler, the
-// code of the pass that result comes from. `extra` are the Python's *extra (strs here); `headers` is no longer
-// used there either (every header of the port).
-py::str pass_key(const py::str& cc, const py::str& folder, const py::str& f, const py::str& kind,
-                 const py::list<py::str>& extra = py::list<py::str>(), const std::optional<py::str>& headers = std::nullopt);
+// What a pass's result for one file depends on (see cb::port::arith16::pass_key). `headers` is no longer used.
+inline py::str pass_key(const py::str& cc, const py::str& folder, const py::str& f, const py::str& kind,
+                        const py::list<py::str>& extra = py::list<py::str>(), const std::optional<py::str>& /*headers*/ = std::nullopt) {
+    namespace compat = ::cb::compat;
+    return compat::to_py(::cb::port::arith16::pass_key(::cb::fs::from_text(compat::from_py(cc)), ::cb::fs::from_text(compat::from_py(folder)),
+                                                       compat::from_py(f), compat::from_py(kind), ::cb::port::arith16::kCodeVersion,
+                                                       compat::from_py(extra)));
+}
 
-// {file: its text with the casts} for the port's C files (those clang could read) - a file's result kept,
-// by its text and its headers': the same file again, not read again (cache kind "port-passes")
-py::dict<py::str, py::str> run(const py::str& cc, const py::str& folder, const py::list<py::str>& files);
+// {file: its text with the casts} for the port's C files (those clang could read) - a file's result kept in the cache.
+inline py::dict<py::str, py::str> run(const py::str& cc, const py::str& folder, const py::list<py::str>& files) {
+    namespace compat = ::cb::compat;
+    namespace newp = ::cb::port::arith16;
+    ::cb::base::cache::Cache& cache = base::cache::shim::any_cache();
+    static std::once_flag declared;
+    std::call_once(declared, [&] { newp::declare_cache(cache); });
+    const std::vector<std::string> names = compat::from_py(files);
+    const std::map<std::string, std::string> made =
+        compat::guard([&] { return newp::run(cache, ::cb::fs::from_text(compat::from_py(cc)), ::cb::fs::from_text(compat::from_py(folder)), names); });
+    py::dict<py::str, py::str> out;
+    for (const std::string& f : names) {   // (in the order of the files)
+        const auto it = made.find(f);
+        if (it != made.end()) out.set(compat::to_py(f), compat::to_py(::cb::text::from_latin1(::cb::as_bytes(it->second))));
+    }
+    return out;
+}
 
-// (KINDS, _CODE and the Python's per-function key are not kept: see CODE_VERSION.)
 }  // namespace codebreaker::port::arith16
