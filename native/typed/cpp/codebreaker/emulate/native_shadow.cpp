@@ -1,6 +1,6 @@
 // codebreaker/emulate/native_shadow.cpp -- C++ port of codebreaker.emulate.native_shadow (see the header).
 //
-// The class is a thin binding to cbtrace.dll's shadow (native/tracer/shadow.cc): it hands the DLL the lifter's
+// The class is a thin binding to cbtrace.dll's shadow (native/cb/emulate/tracer/shadow.cpp): it hands the DLL the lifter's
 // register file and the run's inputs, forwards enter/step/after_call/written/forget/segbase, and reads the node
 // table of the run's path, trail, vars and lost back as the same values (the conditions as symbolic's expressions).
 
@@ -22,7 +22,7 @@
 namespace codebreaker::emulate::native_shadow {
 namespace {
 
-// ---- native/tracer/cbtrace.h: cbt_sh_config and cbt_sh_result, field for field --------------------
+// ---- native/cb/emulate/tracer/cbtrace.h: cbt_sh_config and cbt_sh_result, field for field --------------------
 using LiftFn = int (*)(const uint8_t* code, int32_t n, uint64_t offset, char* out, int32_t cap);
 struct ShConfig {
     int32_t kind;
@@ -431,7 +431,7 @@ bool Shadow::off() { return _export().off; }
 void require() {
     if (!enabled()) {
         std::optional<py::str> why = why_not();
-        throw py::RuntimeError(py::str("the run recorder is native (native/tracer, cbtrace.dll): ") +
+        throw py::RuntimeError(py::str("the run recorder is native (native/cb/emulate/tracer, cbtrace.dll): ") +
                                (why ? *why : py::str("None")));
     }
 }

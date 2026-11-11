@@ -146,7 +146,7 @@ def run(image, entry, registers=None, stack=(), memory=(), service_eax=0, servic
         if shadow is not None:
             shadow.after_call(uc, True, service_eax, carry=service_carry)
 
-    # The hooks are C++ (native/tracer: cbtrace.dll; emulate/native_driver.py), attached in this
+    # The hooks are C++ (native/cb/emulate/tracer: cbtrace.dll; emulate/native_driver.py), attached in this
     # order: the code (the driver's own, told from a call out), memory, the INT 20h service calls,
     # the ports; and a shadow (the path explorer's) stepped there too. Python is asked once per
     # distinct service which register it answers in.

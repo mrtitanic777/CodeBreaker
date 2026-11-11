@@ -7,7 +7,7 @@ The module's segments are laid out in protected mode, each behind a selector of 
 its relocations applied; every import is a far address in a segment of landing places, so a
 call to Windows is seen, named, and returned from with the arguments it was given. The function
 is entered the way it is really called (far or near). Memory is kept by the same hooks as the
-32-bit emulator's (native/tracer, in C++: native_win16.py). What a run did is judged in verify/lanes/win16.py.
+32-bit emulator's (native/cb/emulate/tracer, in C++: native_win16.py). What a run did is judged in verify/lanes/win16.py.
 """
 import hashlib
 import os
@@ -722,7 +722,7 @@ def trace_function16(path, ordinal=None, seg=None, offset=None, args=None, arity
         uc.reg_write(UC_X86_REG_EIP, tgt[1])
         return True
 
-    # The per-instruction and memory hooks are C++ (native/tracer: cbtrace.dll; emulate/
+    # The per-instruction and memory hooks are C++ (native/cb/emulate/tracer: cbtrace.dll; emulate/
     # native_win16.py), attached in trace_function16's order; the events above are its callbacks,
     # and a shadow (the path explorer's) is stepped there too. The branch log and the ports' device
     # model stay Python hooks.

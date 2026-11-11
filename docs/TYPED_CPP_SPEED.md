@@ -47,7 +47,7 @@ Runtime changes behind these (all output-neutral):
   chunks of one reserved address range, so delete finds the class from the address (no header, unsized delete works). The
   typed ports make a `std::u32string` per `py::str`; the system heap was ~25% of their CPU. p5: 52 -> 39 s CPU.
 - py::re (native/l2/src/pyre.cc): every one-character instruction tests an ASCII byte by its own table (no UTF-8 decode, no
-  call), `` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
+  call), `\b` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
   where that character is not (sre's literal-tail check), the backtrack stack is an inline array. Micro-benchmark
   (tools/bench_re.cc vs tools/bench_re.py on 295 C files, 18 patterns): 704 -> 290 ms against Python's 525 ms.
 - ctext.blank's cache looks up by hash without copying the (large) text.
@@ -311,6 +311,26 @@ C++20 /O1. Best of three runs of the harness's whole case file, process start in
 
 The other modules of the batch (aout, exepack, hooks_lattice, x86, linkemu, batch, readable, draft/package) have
 harnesses of a few hundred cases that run in the process start; they were checked for the same behaviour, not timed.
+
+## cb refactor, batch W0-B1 (compare, emulate): before and after, 2026-11-11
+
+The py-layer port (before) against the idiomatic native/cb code (after), same machine, release build, best of N.
+
+| What | Before | After |
+|---|---|---|
+| compare::image::first_difference, 4 MB equal until the last bytes | 2.35 ms | 0.21 ms (memcmp, eight bytes at a time) |
+| compare::mask::same, 4 MB, every 64th byte masked | 3.77 ms | 0.93 ms |
+| compare::mask::distance, 4 MB, one mask | 4.89 ms | 0.96 ms |
+| the 32-bit recorder (cbtrace.dll, C interface; 900,002 instructions of a counting loop, one hook per instruction) | 26.4 / 27.4 / 27.5 ns per instruction | 27.0 / 27.4 / 28.7 ns per instruction |
+
+Notes:
+* The recorder's code is the same code moved (native/tracer -> native/cb/emulate/tracer); only the Unicorn and Capstone
+  tables changed (`ucl()` is one acquire load). A first version took a mutex per call and was 6% slower; the atomic fix
+  brought it to noise. Runs on this machine vary by a factor of two with other load, so the pairs above were run back to back.
+* pcode's cost is the pcodecheck pipe (unchanged); ports16 and symbolic construct a few objects per run (not measured: far
+  from any hot loop of the judge).
+* Harness: state/work/cpp-refactor/hot-b1/ (the recorder), state/work/cpp-refactor/compare/ (mask, image).
+
 ## Executable-format readers (cb/formats: pe, ne, le, dos, omf, detect), 2026-11-11
 
 Old = the native C++ readers (native/formats) behind the typed shells; new = native/cb/formats. Both run over the same inputs by a
