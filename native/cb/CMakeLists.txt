@@ -26,9 +26,11 @@ endfunction()
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES "")
 set_property(GLOBAL PROPERTY CB_AREAS "")
 function(cb_area dir)
-  file(GLOB sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
-  file(GLOB tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
+  file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
+  file(GLOB_RECURSE tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
   list(FILTER sources EXCLUDE REGEX "(_test|_main)\\.cpp$")
+  list(FILTER sources EXCLUDE REGEX "/testdata/")   # test inputs, not the area's code
+  list(FILTER tests EXCLUDE REGEX "/testdata/")
   add_library(cb_${dir} STATIC ${sources})
   cb_apply_flags(cb_${dir})
   set_property(GLOBAL APPEND PROPERTY CB_AREAS cb_${dir})
@@ -82,6 +84,9 @@ target_link_libraries(cb_decompile PUBLIC cb_core)
 
 cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core)
+
+cb_area(exact)
+target_link_libraries(cb_exact PUBLIC cb_core)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.

@@ -298,3 +298,16 @@ b-tree insert per put. It is immaterial next to the work the cache fronts (a com
 were needed to get here: prepared statements kept per connection, text and blobs bound without a copy, the payload taken
 out of the row without a second copy, a hardware CRC-32C for the entry checksum (with the extra copy, the checksum of the core's
 bytewise CRC-32 made a 100 KB get 3x slower than the old port's: 0.25 s -> 0.07 s per 900 gets).
+## cb refactor: exact batch W0-B7 (2026-11-11)
+
+Old = the typed port on the py:: layer (pre-refactor commit, C++17 /O1, built as its harness build.cmd did); new = the
+refactored module reached through its compat shim from the same harness (so the figure includes the shim's conversions),
+C++20 /O1. Best of three runs of the harness's whole case file, process start included.
+
+| module (harness work) | old ms | new ms |
+|---|---|---|
+| exact/draft/text (54,961 cases: tests, blocks, live registers, declarations) | 2047 | 1469 |
+| exact/compare (4,000 functions against an image, Capstone decode of each) | 512 | 510 |
+
+The other modules of the batch (aout, exepack, hooks_lattice, x86, linkemu, batch, readable, draft/package) have
+harnesses of a few hundred cases that run in the process start; they were checked for the same behaviour, not timed.
