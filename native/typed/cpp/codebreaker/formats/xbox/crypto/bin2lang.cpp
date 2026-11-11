@@ -56,7 +56,7 @@ py::str format_(const Reader& read, const std::function<void()>& close_input, co
     if (lang == static_cast<int64_t>(Language::PYTHON)) {
         sio = block(var_name + py::str(" = bytearray([\n"), read, byte_count, py::str("])\n"));
     } else if (lang == static_cast<int64_t>(Language::C) || lang == static_cast<int64_t>(Language::CPLUSPLUS)) {
-        sio = block(py::str("#ifndef BYTE\ntypedef unsigned char BYTE\n#endif\n\n#ifndef __") + var_name +
+        sio = block(py::str("#ifndef BYTE\ntypedef unsigned char BYTE;\n#endif\n\n#ifndef __") + var_name +
                         py::str("__\n#define __") + var_name + py::str("__\nBYTE ") + var_name + py::str("[] = {\n"),
                     read, byte_count, py::str("};\n#endif\n"));
     } else if (lang == static_cast<int64_t>(Language::CSHARP)) {
