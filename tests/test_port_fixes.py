@@ -115,9 +115,53 @@ def test_sd_signer_keeps_its_key_in_the_module():
         sd_signer.SB_PRV_KEY = None
 
 
+def test_streamio_offset_labels_and_perform_function_at():
+    """formats.xbox.crypto.StreamIO: `offset` is the position (xcp_dumper and build_lib assign and step it),
+    labels name positions (shadowboot.create), perform_function_at changes bytes in place; the stand-in StreamIO
+    lacked all of them, so xcp_dumper.main, apply_jump_sd_4bl and ShadowbootImage.create always failed."""
+    from codebreaker.formats.xbox.crypto.StreamIO import Endian, StreamIO
+    with StreamIO(bytes(range(16)), Endian.BIG) as s:
+        s.offset = 4
+        assert s.offset == s.tell() == 4 and s.read_uint8() == 4 and s.offset == 5
+        s.offset -= 2
+        assert s.tell() == 3
+        s.set_label("a")
+        s.seek(10)
+        s.set_label("b")
+        s.goto_label("a")
+        assert s.tell() == 3 and s.get_label("b") == 10
+        s.goto_label("b", 2)
+        assert s.tell() == 12
+        s.set_label("c", 99)
+        assert s.get_label("c") == 99
+        try:
+            s.get_label("nope")
+        except KeyError:
+            pass
+        else:
+            raise AssertionError("a label never set")
+        s.seek(1)
+        out = s.perform_function_at(4, 3, lambda d: bytes(b ^ 0xFF for b in d))
+        assert out == bytes([0xFB, 0xFA, 0xF9]) and s.tell() == 1
+        assert s.getvalue()[4:7] == out and s.getvalue()[7:] == bytes(range(7, 16))
+
+
+def test_apply_jump_sd_4bl_writes_the_branch():
+    """formats.xbox.crypto.build_lib.apply_jump_sd_4bl: the 0x4C000024 word becomes a relative branch to `size`
+    (it raised AttributeError on StreamIO.offset)."""
+    import struct
+    from codebreaker.formats.xbox.crypto import build_lib
+    data = b"\x01\x02\x03\x04" * 3 + struct.pack(">I", 0x4C000024) + b"\xAA" * 4
+    out = build_lib.apply_jump_sd_4bl(data, 0x100)
+    assert bytes(out) == data[:12] + struct.pack(">I", 0x48000000 | (0x100 - 12)) + b"\xAA" * 4, bytes(out).hex()
+    out = build_lib.apply_jump_sd_4bl(data, 0x8000000C)       # (bit 31 is left out of the distance)
+    assert struct.unpack_from(">I", out, 12)[0] == 0x48000000
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
-               test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module):
+               test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
+               test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

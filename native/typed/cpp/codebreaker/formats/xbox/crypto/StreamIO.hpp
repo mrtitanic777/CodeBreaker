@@ -4,7 +4,9 @@
 //
 // Upstream's own StreamIO module was not among the files carried over; this one gives the same calls
 // those files make: a stream over bytes (or a file, by path), little or big endian, with integer,
-// byte and ctypes-structure reads and writes, at the position or at an offset.
+// byte and ctypes-structure reads and writes, at the position or at an offset. The tools also use the
+// position as an attribute (offset), named positions (labels) and a function applied to the bytes at an
+// offset in place (perform_function_at).
 //
 // Typing notes:
 //   * The Python builds the stream on io.BytesIO (bytes) or on open(path, "r+b" / "w+b") (a path); the
@@ -14,6 +16,8 @@
 //     (Little/BigEndianStructure) being whatever the struct's layout is.
 //   * write_uint64 takes a uint64_t and read_uint64 returns one: a value >= 2**63 is real data; the
 //     negative or oversized values Python's struct.error refuses cannot be passed to it.
+//   * The `offset` attribute is the pair offset() / set_offset(n); set_label(name) names the position (or
+//     set_label(name, n) an offset); perform_function_at takes any callable from py::bytes to py::bytes.
 //   * The C macros SEEK_SET / SEEK_CUR / SEEK_END are spelled with a trailing underscore.
 #pragma once
 
@@ -66,6 +70,16 @@ public:
     py::bytes getvalue();
     int64_t length();
 
+    // the position as an attribute: `s.offset` reads it, `s.offset = n` seeks
+    int64_t offset();
+    void set_offset(int64_t value);
+
+    // named positions
+    void set_label(const py::str& name);                       // names the position
+    void set_label(const py::str& name, int64_t offset);       // names an offset
+    int64_t get_label(const py::str& name);                    // KeyError for a name never set
+    int64_t goto_label(const py::str& name, int64_t offset = 0);   // seeks to the named position plus offset
+
     // bytes
     py::bytes read(int64_t size = -1);
     int64_t write(const py::bytes& data);
@@ -103,6 +117,18 @@ public:
     int64_t write_int32(int64_t v);
     int64_t write_int64(int64_t v);
 
+    // Apply `function` to the `size` bytes at `offset`, write what it returns back there (in place) and return it;
+    // the position is left where it was.
+    template <class F> py::bytes perform_function_at(int64_t offset, int64_t size, F&& function) {
+        const int64_t here = tell();
+        seek(offset);
+        py::bytes data = function(read(size));
+        seek(offset);
+        write(data);
+        seek(here);
+        return data;
+    }
+
     // ctypes structures (their own endianness: Little/BigEndianStructure): ValueError if the stream ends
     // before sizeof(T) bytes
     template <class T> T read_struct() {
@@ -127,6 +153,7 @@ private:
     bool _file = false;
     std::string mem_;       // the BytesIO's bytes
     int64_t pos_ = 0;       // the position
+    py::dict<py::str, int64_t> labels_;   // the named positions
     py::file stream_;       // the open file, when the stream is on a path
 
     int64_t size_();
