@@ -1,48 +1,21 @@
-// codebreaker/emulate/run.hpp -- C++ port of codebreaker.emulate.run.
-//
-// run.py -- one record of a run, whichever emulator made it.
-//
-// Every platform's emulator slot (codebreaker/platforms: p.emulator.run) returns a Run: the same
-// fields under the same names, whether the run was the 32-bit tracer's, the 16-bit one's, a
-// driver's, the PowerPC interpreter's or one of the console machines'. A judge (verify/lanes/*.py)
-// turns it into what verify/compare.py compares -- through lane_common.fingerprint, lane_common.left
-// and lane_common.calls -- and gives only what is its own: how it names a call, which places it
-// leaves out, what of the result is a result.
-//
-//     run.exit        how it ended, in the emulator's own words ("ret", "exception: ...", "return")
-//     run.ended       the same as the comparer says it: "ret", "fault", "truncated", or the word
-//                     before a colon (ended())
-//     run.results     {register: value} the result registers as the run left them ("EAX", "AX" and
-//                     "DX:AX", "r3" and "f1", a machine's A X Y ...)
-//     run.writes      [Write] the memory it wrote, in order (address, size, value, what the bytes
-//                     held just before -- None when not known --, harness: written by the emulator
-//                     for the run, not by the code: a stand-in's return through zeros)
-//     run.capped      more writes were made than were recorded: the writes are not all there
-//     run.calls       [Call] the calls out of the code, in order: name, args (None when their
-//                     number is not known), detail (the emulator's own note of it)
-//     run.io          [IO] accesses to devices, in order: step, kind ("in", "out", ...), port,
-//                     value, size (a machine's bus log: its own tuples)
-//     run.stack       how far the stack pointer moved from entry to the end (None: not known)
-//     run.preserved   {register: (on entry, at the end)} the registers a function must hand back,
-//                     None when they were not read
-//     run.path        the addresses of the instructions that ran (in order where the emulator keeps
-//                     the order)
-//     run.steps       instructions it took
-//     run.truncated   cut off at the step limit (or another of the emulator's caps)
-//     run.endian      how a written value's bytes lie in memory ("little", "big")
-//     run.raw         the emulator's own record, for what only one lane asks of it
-//
-// A Run is built by its emulator's `record(...)` from the record the emulator always made (those
-// stay what they were: other tools read them).
+// codebreaker/emulate/run.hpp -- SHIM over cb/emulate/run.hpp (docs/CPP_DESIGN.md 6.3): the old record, as the
+// old callers fill and read it (py:: types, public members), with the three things it computes forwarded to the
+// new code. Deleted with its last py:: consumer (the emulators and lanes that still build a Run).
 //
 // Typing notes (where the Python mixes kinds in one slot):
 //   Register   a result register holds an int, a float (PowerPC f1) or None (a driver's missing EAX).
-//   Detail     a Call's detail is None, a text, a (device, service) pair, or the 16-bit tracer's
-//              {"api": ..., "n": ...} note.
+//   Detail     a Call's detail is None, a text, a (device, service) pair, or the 16-bit tracer's {"api": ..., "n": ...}
+//              note.
 //   raw        the emulator's own record: an opaque handle, never looked into here.
 #pragma once
 
-#include "py.hpp"
+#include <memory>
+#include <optional>
+#include <tuple>
+#include <variant>
+
+#include "cb/compat/py_bridge.hpp"
+#include "cb/emulate/run.hpp"
 
 namespace codebreaker::emulate::run {
 
@@ -77,9 +50,9 @@ struct IO {
 
 using Preserved = py::dict<py::str, std::tuple<std::optional<int64_t>, std::optional<int64_t>>>;
 
-// How a run ended, as the comparer says it: "none" (no word), "ret", "fault" (an exception),
-// else the word before any colon ("truncated", "wild", "int:21" -> "int").
-py::str ended(const std::optional<py::str>& e);
+inline py::str ended(const std::optional<py::str>& e) {
+    return cb::compat::to_py(cb::emulate::ended(e ? std::optional<std::string>(e->utf8()) : std::nullopt));
+}
 
 class Run {
   public:
@@ -95,23 +68,59 @@ class Run {
     std::optional<int64_t> steps;
     bool truncated = false;
     py::str endian;
-    std::shared_ptr<void> raw;   // the emulator's own record (opaque); Python's default is {}
+    std::shared_ptr<void> raw;   // the emulator's own record (opaque)
 
     Run(const std::optional<py::str>& exit_, const std::optional<py::dict<py::str, Register>>& results_ = std::nullopt,
         const py::list<Write>& writes_ = py::list<Write>(), bool capped_ = false,
         const py::list<Call>& calls_ = py::list<Call>(), const py::list<IO>& io_ = py::list<IO>(),
         std::optional<int64_t> stack_ = std::nullopt, const std::optional<Preserved>& preserved_ = std::nullopt,
         const py::list<int64_t>& path_ = py::list<int64_t>(), std::optional<int64_t> steps_ = std::nullopt,
-        bool truncated_ = false, const py::str& endian_ = py::str("little"), std::shared_ptr<void> raw_ = nullptr);
+        bool truncated_ = false, const py::str& endian_ = py::str("little"), std::shared_ptr<void> raw_ = nullptr)
+        : exit(exit_),
+          results(results_ ? results_->copy() : py::dict<py::str, Register>()),
+          writes(writes_),
+          capped(capped_),
+          calls(calls_),
+          io(io_),
+          stack(stack_),
+          preserved(preserved_),
+          path(path_),
+          steps(steps_),
+          truncated(truncated_),
+          endian(endian_),
+          raw(std::move(raw_)) {}
 
-    py::str ended() const;
+    py::str ended() const { return run::ended(exit); }
 
-    // Whether the registers a function must hand back came back as they went in (those of
-    // `names`, else every one recorded); False when they were not read.
-    bool kept(const std::optional<py::list<py::str>>& names = std::nullopt) const;
+    // Whether the registers a function must hand back came back as they went in (those of `names`, else every one
+    // recorded); False when they were not read.
+    bool kept(const std::optional<py::list<py::str>>& names = std::nullopt) const {
+        cb::emulate::Run r;
+        if (preserved) {
+            cb::emulate::Preserved p;
+            for (const auto& kv : preserved->items()) {
+                const auto& [entry, end] = std::get<1>(kv);
+                auto u = [](const std::optional<int64_t>& v) { return v ? std::optional<uint64_t>(static_cast<uint64_t>(*v)) : std::nullopt; };
+                p[std::get<0>(kv).utf8()] = cb::emulate::SavedRegister{u(entry), u(end)};
+            }
+            r.preserved = std::move(p);
+        }
+        if (!names) return r.kept();
+        std::vector<std::string> wanted;
+        for (const py::str& n : *names) wanted.push_back(n.utf8());
+        return r.kept(wanted);
+    }
 
     // Python's __repr__
-    py::str repr() const;
+    py::str repr() const {
+        cb::emulate::Run r;
+        if (exit) r.exit = exit->utf8();
+        r.steps = steps ? std::optional<uint64_t>(static_cast<uint64_t>(*steps)) : std::nullopt;
+        r.calls.resize(static_cast<size_t>(py::len(calls)));
+        r.writes.resize(static_cast<size_t>(py::len(writes)));
+        r.truncated = truncated;
+        return cb::compat::to_py(r.summary());
+    }
 };
 
 }  // namespace codebreaker::emulate::run

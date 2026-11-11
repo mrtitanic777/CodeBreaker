@@ -1,6 +1,6 @@
 // codebreaker/emulate/native_driver.hpp -- C++ port of codebreaker.emulate.native_driver.
 //
-// native_driver.py -- driver.py run()'s hooks in C++ (native/tracer: cbtrace.dll), through ctypes.
+// native_driver.py -- driver.py run()'s hooks in C++ (native/cb/emulate/tracer: cbtrace.dll), through ctypes.
 //
 // A run of a VxD entry point used to call back into Python on every instruction and every memory
 // access. Here those hooks are C++: emulate/driver.run still lays the regions out, sets the
@@ -15,10 +15,10 @@
 //     run.detach()
 //
 // The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-// (require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
+// (require()). Build: tools\build_cb.cmd (native/cb/CMakeLists.txt, target cbtrace).
 //
 // Typing notes (where the C++ has to say what the Python leaves to ctypes and dicts):
-//   ctypes structures  _Config and _Result are the C structures of native/tracer/cbtrace.h (cbt_drv_config,
+//   ctypes structures  _Config and _Result are the C structures of native/cb/emulate/tracer/cbtrace.h (cbt_drv_config,
 //                      cbt_drv_result), field for field; Lib holds the DLL's cbt_drv_* entry points (what
 //                      lib.cbt_drv_* are on the ctypes CDLL). native_trace::_load() loads the DLL (and keeps
 //                      its entry points in native_trace::Lib); `_lib()` binds the driver ones from the same
@@ -49,7 +49,7 @@ inline constexpr int64_t _CALL_WORDS = 15, _PORT_WORDS = 4, _MEM_WORDS = 8, _LAZ
 // The DLL calls this when a service is called: (device, service, out) -> 0, or nonzero when the answer raised.
 using ANSWERS = int (*)(int32_t, int32_t, int32_t*);
 
-// ---- native/tracer/cbtrace.h: cbt_drv_config and cbt_drv_result, field for field ------------------
+// ---- native/cb/emulate/tracer/cbtrace.h: cbt_drv_config and cbt_drv_result, field for field ------------------
 struct _Config {
     void* uch = nullptr;
     int32_t reg_ids[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};

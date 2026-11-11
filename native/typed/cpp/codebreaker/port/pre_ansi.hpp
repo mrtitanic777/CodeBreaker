@@ -197,6 +197,8 @@ struct DeclRule {
 };
 py::str apply_decl_rule(const DeclRule& rule, const py::str& text);
 
+struct P4Native;   // (the new code's state for PART 4: pre_ansi_p4.cpp)
+
 class Port {
   public:
     // ---- PART 1 members (set by __init__) ----
@@ -252,14 +254,13 @@ class Port {
     py::list<NpRule> np_rules;                                // (set from outside: sanitize.py) [F4]
     py::dict<py::str, int64_t> array_sizes;                   // (each array the program defines: its elements) [F4]
     py::dict<py::str, int64_t> asm_sizes;                     // (what the assembler's data placed; set from outside) [F4]
-    py::dict<py::str, std::tuple<py::str, py::list<py::str>>> bss_struct;   // {var: (struct, [names])} [F4]
-    py::dict<py::str, py::list<py::str>> bss_joined;          // [F4]
-    bool _bss_views_done = false;
+    // (the BSS plan, the original program's facts and decl_rules converted: the new code's state, native/cb/port; the shim
+    //  in pre_ansi_p4.cpp makes it when first needed)
+    std::shared_ptr<P4Native> p4_native_;
+    // (caches of what old callers hold references to: the shim fills them from the new code's answers)
     std::optional<py::dict<py::str, py::set<int64_t>>> _allocs;
     std::optional<py::dict<py::str, int64_t>> _old_elems;
-    std::optional<py::dict<py::str, int64_t>> _old_vars;
-    std::optional<asm16::Layouts> _old;
-    std::optional<py::set<py::str>> _twice_tags;
+    std::optional<asm16::Layouts> _old;                       // (laid out by asm16: its layouts carry what old callers read)
     py::dict<py::str, asm16::Layouts> _lay_cache;             // (keyed by the include order, joined with "\n")
     // ---- PART 5 members ----
     py::dict<py::str, py::set<py::str>> fptr;                 // (a function pointer: the types of what it is given) [F5]
@@ -371,8 +372,6 @@ struct LocalDecl {
 };
 py::dict<py::str, LocalDecl> _locals(const py::list<py::str>& lines, const py::list<py::str>& code, int64_t j, int64_t k,
                                      int64_t ptr = 2);
-void _overlay(Port& port, const py::str& fname, const py::list<py::str>& lines, const py::list<py::str>& code,
-              int64_t j, int64_t k, const py::dict<py::str, LocalDecl>& locs, const py::str& a, int64_t e, const py::str& g);
 // {member: [the structures that have it]}
 py::dict<py::str, py::list<py::str>> members(const py::list<py::str>& texts);
 int64_t object_before(const py::str& line, int64_t at);
@@ -422,3 +421,6 @@ struct Diag {
 bool mend(Port& port, py::dict<py::str, py::str>& out, const py::list<Diag>& diags);
 
 }  // namespace codebreaker::port::pre_ansi
+
+// the functions of PART 5, over the new code (native/cb/port): defined inline there
+#include "codebreaker/port/pre_ansi_p5.hpp"

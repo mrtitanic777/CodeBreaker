@@ -2571,9 +2571,20 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         write_if_changed(fs::path(o.out) / "main.cpp", main);
         cmake_srcs += "  main.cpp\n";
     }
+    // --dyn-native-typed: the native modules' shims (native/typed/cpp) forward to native/cb, so the program builds that
+    // tree too, from its source with its own flags (cb_apply_flags: C++20, static CRT). It is added before this project's
+    // compile options so they do not reach it, EXCLUDE_FROM_ALL so only the libraries linked are built; the whole
+    // program takes the same static CRT (one runtime in one executable).
+    std::string cb_tree;
+    if (!native_mods.empty()) {
+        std::string cb_dir = fs::absolute(fs::path(o.root) / "native" / "cb").lexically_normal().generic_string();
+        cb_tree = "# native/cb (docs/CPP_DESIGN.md section 8): the idiomatic C++ tree the native modules' shims forward to\n"
+                  "add_subdirectory(" + cb_dir + " cb EXCLUDE_FROM_ALL)\n";
+    }
     std::string cm ="# the translated program: every module's C++ and main.cpp, over native/pyrt (written by pyengine --dynamic)\n"
                      "cmake_minimum_required(VERSION 3.20)\nproject(pydyn LANGUAGES C CXX)\nset(CMAKE_CXX_STANDARD 17)\n"
                      "if(NOT CMAKE_BUILD_TYPE)\n  set(CMAKE_BUILD_TYPE Release)\nendif()\n"
+                     "set(CMAKE_MSVC_RUNTIME_LIBRARY \"MultiThreaded$<$<CONFIG:Debug>:Debug>\")\n" + cb_tree +
                      "if(MSVC)\n  add_compile_options(/W1 /permissive- /utf-8 /EHsc /bigobj)\nendif()\n"
                      "add_subdirectory(" + pyrt + " pyrt)\n"
                      "# a whole tree is hundreds of modules: unity batches of about " + std::to_string(kBatchLines) + " lines (_unity/, the\n"
@@ -2630,13 +2641,18 @@ int run_dynamic(const DynOptions& o, std::vector<DynModule>& out) {
         write_if_changed(td / "native_modules.cpp", native_typed_glue(native_mods));
         write_if_changed(td / "native_modules_dyn.cpp", native_dyn_glue(native_mods));
         std::string ncpp = (fs::absolute(o.native_typed_dir) / "cpp").lexically_normal().generic_string();
-        std::string srcs;
-        for (auto& m : native_mods) srcs += "  " + ncpp + "/" + m.rel + ".cpp\n";
+        std::string srcs;   // a port that became a shim over native/cb is header-only: the glue includes its header
+        for (auto& m : native_mods)
+            if (fs::exists(fs::path(ncpp) / (m.rel + ".cpp"))) srcs += "  " + ncpp + "/" + m.rel + ".cpp\n";
         cm += "# native modules (pyengine --dyn-native-typed): modules of the program replaced by their typed C++ (committed\n"
-              "# source), in a library of their own with py renamed pyt; _native/native_modules_dyn.cpp registers them\n"
+              "# source), in a library of their own with py renamed pyt; _native/native_modules_dyn.cpp registers them. Their\n"
+              "# shims include native/cb's headers (C++20) and link its libraries (every area: the linker keeps what is used)\n"
               "add_library(pynative_typed STATIC\n" + srcs + "  _native/native_modules.cpp)\n"
-              "set_target_properties(pynative_typed PROPERTIES CXX_STANDARD 17)\n"
+              "set_target_properties(pynative_typed PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)\n"
               "target_compile_definitions(pynative_typed PRIVATE py=pyt)\n"
+              "if(MSVC)\n  target_compile_options(pynative_typed PRIVATE /Zc:__cplusplus /Zc:char8_t-)\nendif()\n"
+              "get_property(CB_ALL_AREAS GLOBAL PROPERTY CB_AREAS)\n"
+              "target_link_libraries(pynative_typed PRIVATE ${CB_ALL_AREAS})\n"
               "target_include_directories(pynative_typed PRIVATE " + ncpp + " " + native("native/ported/include") + " " + native("native/l2/src") +
               " " + native("native/pyengine/islands") + " ${CMAKE_CURRENT_SOURCE_DIR}/_native)\n"
               "target_sources(" + o.exe + " PRIVATE _native/native_modules_dyn.cpp)\n"

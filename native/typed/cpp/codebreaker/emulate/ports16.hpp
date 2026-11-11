@@ -1,122 +1,61 @@
-// codebreaker/emulate/ports16.hpp -- C++17 port of codebreaker.emulate.ports16.
+// codebreaker/emulate/ports16.hpp -- SHIM over cb/emulate/ports16.hpp (docs/CPP_DESIGN.md 6.3): the old Devices
+// handle, forwarding to the new one. No logic; deleted with its last py:: consumer (emulate/windows16).
 //
-// ports16.py -- the devices a 16-bit run talks to through `in` and `out`.
-//
-//     devices = ports16.Devices()
-//     value = devices.read(port)          # an `in`
-//     devices.write(port, value)          # an `out`
-//     devices.log                         # [(step, "in" | "out", port, value)], in order
-//
-// Without them every `in` read 0 and every `out` went nowhere: COMM.DRV's functions wait for the
-// UART's transmitter to be empty (`in al, dx / test al, 20h / jz`) and spun to the step limit, the
-// original and the rebuild alike, and what they wrote to the chip was not looked at -- so a rebuild
-// writing the wrong divisor or the wrong line control passed. Here are an 8250/16550A at each of the
-// four COM ports and the two 8259 interrupt controllers, as much of them as a driver's code paths
-// see: registers that read back what was written, the line status saying the transmitter is empty,
-// a few bytes waiting in the receiver, the interrupt identification a handler loops on, the
-// controllers' masks and in-service registers. No interrupt is ever raised. Each run starts from the
-// same state, so the original and the rebuild meet the same devices; what they did to them (the
-// log) is part of what is compared (verify/lanes/win16.py).
-//
-// A UART answers at base 0 as well: a function run alone finds its port's record as the module's
-// data has it before OpenComm filled it in, port base 0 -- COMM.DRV's TRMCOM polls port 5 for the
-// transmitter, its interrupt handler reads ports 2 and 6. (Ports 0-7 are the DMA controller's on a
-// PC; nothing else run here reaches them.)
-//
-// Other ports are not modelled: an `in` reads 0 and is not logged, as before.
-//
-// Typing notes:
-//   Python ints are int64_t here (a register value is not masked until the Python masks it, so an
-//   unmasked or negative value written straight to a Uart or a Pic is kept as the Python keeps it).
-//   Devices' dicts of devices (uarts, pics) are std::maps keyed by base port.
-//   `clock` is a callable returning the run's step (None -> a clock that is always 0).
-//   hook(uc, U, devices) hands Unicorn's `in`/`out` instruction hooks to the devices; Unicorn is a
-//   Python object, so here `uc` is the InsnHooks interface (the one thing the Python asks of it:
-//   hook_add for the IN and for the OUT instruction), and U/UC_X86_INS_* are not needed.
+// The old Python-shaped extras (public Uart/Pic registers as int64_t, `devices.log` as a live list) are not kept: no
+// caller reads them. `log` is a proxy that converts to the old list of (step, "in" | "out" | "...", port, value) and
+// can be cleared.
 #pragma once
 
-#include <deque>
+#include <cstdint>
 #include <functional>
-#include <map>
-#include <optional>
 #include <tuple>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/emulate/ports16.hpp"
 
 namespace codebreaker::emulate::ports16 {
 
-extern const py::list<int64_t> UART_BASES;
-extern const py::list<int64_t> PIC_PORTS;
-extern const py::bytes RECEIVED;   // what each UART has waiting at the start ("AT\r\n")
-constexpr int64_t MAX_LOG = 256;   // accesses logged per run (then "...")
-
-// line status: data ready, transmitter holding register empty, transmitter empty
-constexpr int64_t LSR_DR = 0x01, LSR_THRE = 0x20, LSR_TEMT = 0x40;
-// modem status: clear to send, data set ready, carrier detect (the deltas clear)
-constexpr int64_t MSR_IDLE = 0x10 | 0x20 | 0x80;
-
-// An 8250 / 16550A. Registers (base +): 0 receive / transmit (divisor low with DLAB),
-// 1 interrupt enable (divisor high), 2 interrupt identification / FIFO control, 3 line control,
-// 4 modem control, 5 line status, 6 modem status, 7 scratch.
-class Uart {
-  public:
-    int64_t dll, dlm;                    // 9600 baud
-    int64_t ier, lcr, mcr, scr;
-    int64_t fcr;
-    std::deque<int64_t> rx;              // the receiver's bytes (a bytearray)
-    int64_t msr;
-    bool thre_pending;                   // (an empty transmitter, signalled)
-
-    Uart();
-    int64_t read(int64_t reg);
-    void write(int64_t reg, int64_t value);
-
-  private:
-    int64_t _iir();
-};
-
-// An 8259: the mask (base + 1), and the request / in-service registers (base, as the last
-// OCW3 chose); an initialisation sequence is taken in and ends with the mask cleared.
-class Pic {
-  public:
-    int64_t imr, irr, isr;
-    bool read_isr;
-    int64_t icw;                         // initialisation words still to come
-
-    explicit Pic(int64_t mask);
-    int64_t read(int64_t reg);
-    void write(int64_t reg, int64_t value);
-};
+constexpr int64_t MAX_LOG = static_cast<int64_t>(cb::emulate::ports16::kMaxLog);
 
 // One entry of Devices.log: (step, "in" | "out" | "...", port, value)
 using LogEntry = std::tuple<int64_t, py::str, int64_t, int64_t>;
 
-// The ports a run can reach: the UARTs, the two interrupt controllers. Fresh for each run.
-// `clock()`: the run's step, logged with each access (to order them among its other effects).
 class Devices {
   public:
-    std::map<int64_t, Uart> uarts;
-    std::map<int64_t, Pic> pics;
-    py::list<LogEntry> log;
-    std::function<int64_t()> clock;
+    explicit Devices(std::function<int64_t()> clock = nullptr)
+        : impl_(clock ? std::function<std::uint64_t()>([clock] { return static_cast<std::uint64_t>(clock()); })
+                      : std::function<std::uint64_t()>()),
+          log(&impl_) {}
 
-    explicit Devices(std::function<int64_t()> clock = nullptr);
-    int64_t read(int64_t port);
-    void write(int64_t port, int64_t value);
+    int64_t read(int64_t port) { return impl_.read(static_cast<std::uint32_t>(port)); }
+    void write(int64_t port, int64_t value) { impl_.write(static_cast<std::uint32_t>(port), static_cast<std::uint32_t>(value)); }
+
+    // `devices.log`: converts to the old list, and clears.
+    struct LogProxy {
+        cb::emulate::ports16::Devices* impl;
+        explicit LogProxy(cb::emulate::ports16::Devices* d) : impl(d) {}
+        operator py::list<LogEntry>() const {
+            py::list<LogEntry> out;
+            for (const auto& e : impl->log()) {
+                const char* what = e.kind == cb::emulate::ports16::Access::In ? "in" : e.kind == cb::emulate::ports16::Access::Out ? "out" : "...";
+                out.append(LogEntry(static_cast<int64_t>(e.step), py::str(what), e.port, e.value));
+            }
+            return out;
+        }
+        void clear() { impl->clear_log(); }
+    };
+
+    cb::emulate::ports16::Devices& impl() { return impl_; }
 
   private:
-    // (the Uart or the Pic that answers at `port`, and the register): neither when none does
-    struct Found {
-        Uart* uart = nullptr;
-        Pic* pic = nullptr;
-        int64_t reg = 0;
-    };
-    Found _device(int64_t port);
-    void _note(const py::str& what, int64_t port, int64_t value);
+    cb::emulate::ports16::Devices impl_;
+
+  public:
+    LogProxy log;
 };
 
-// What hook() asks of Unicorn: the callback of an `in` instruction (port, size -> the value read)
-// and of an `out` (port, size, value).
+// What hook() asks of Unicorn: the callback of an `in` instruction (port, size -> the value read) and of an `out`
+// (port, size, value).
 class InsnHooks {
   public:
     virtual ~InsnHooks() = default;
@@ -125,6 +64,12 @@ class InsnHooks {
 };
 
 // Hand `uc`'s `in` and `out` instructions to `devices` (which must outlive the hooks).
-void hook(InsnHooks& uc, Devices& devices);
+inline void hook(InsnHooks& uc, Devices& devices) {
+    cb::emulate::ports16::Devices* d = &devices.impl();
+    uc.hook_in([d](int64_t port, int64_t size) -> int64_t { return d->in(static_cast<std::uint32_t>(port), static_cast<int>(size)); });
+    uc.hook_out([d](int64_t port, int64_t size, int64_t value) {
+        d->out(static_cast<std::uint32_t>(port), static_cast<int>(size), static_cast<std::uint32_t>(value));
+    });
+}
 
 }  // namespace codebreaker::emulate::ports16

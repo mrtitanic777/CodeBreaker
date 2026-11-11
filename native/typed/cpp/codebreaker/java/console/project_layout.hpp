@@ -1,72 +1,40 @@
-// codebreaker/java/console/project_layout.hpp -- typed C++ port of codebreaker.java.console.project_layout.
+// codebreaker/java/console/project_layout.hpp -- SHIM over cb/java/console/project_layout.hpp (docs/CPP_DESIGN.md 6.3);
+// deleted with its last py:: consumer (run).
 //
-// project_layout.py -- give a converted tree the standard IDE solution layout.
-//
-// The converter writes source files flat into a directory. A Visual Studio solution wants a
-// *solution root* that holds a `<Name>.sln`, with the actual project (sources + `.vcxproj`) one level
-// down in a same-named subfolder:
-//
-//     <root>/<Name>.sln
-//     <root>/<Name>/<Name>.vcxproj   + all .cpp/.h + Content\ + ...
-//
-// That is exactly how the reference Alpha port is arranged. Without it, pointing the converter at the
-// repo root dumps hundreds of files flat there -- and pointing it a second time one level down creates a
-// duplicate copy (the "duplicate directories" bug). This module makes the layout deterministic:
-//
-//     layout(root)                    // root basename is the project name
-//       -> ensures <root>/<Name>/ holds the sources (moves a flat dump down if needed)
-//       -> writes <Name>.vcxproj from a template if absent, then refreshes its file list
-//       -> (re)writes <root>/<Name>.sln bound to the project's GUID
-//
-// Idempotent: running it again on an already-structured root is a no-op beyond refreshing the file list.
-// The .sln/.vcxproj are Visual-Studio project *configuration* (build settings, not SDK headers/symbols);
-// the platform SDK gate is unchanged.
-//
-// Notes on the port:
-//   * HERE (the folder of project_layout.py, from __file__): C++ has no __file__, so HERE is a variable
-//     that starts as the checkout's codebreaker/java/console (the Python package folder the template sits
-//     in, found from where this .cpp lives); the host sets it with set_here(), which also moves
-//     _TEMPLATE (= HERE/templates/xbox360.vcxproj.in);
-//   * layout() returns the dict of fixed keys as the struct Layout;
-//   * `from codebreaker.java.console import vcxproj; vcxproj.run(proj_dir, name=name)` is the typed
-//     port's vcxproj::run (java/console/vcxproj.hpp).
+// HERE (the folder the Python module lives in) is where the template is looked for when the host sets it with
+// set_here(); otherwise the Java lane's data folder is searched for (JavaData::locate).
 #pragma once
 
 #include <cstdint>
 #include <optional>
 
+#include "codebreaker/java/console/_shim.hpp"
+#include "codebreaker/java/console/vcxproj.hpp"
+#include "cb/java/console/project_layout.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::java::console::project_layout {
 
-extern py::str HERE;
-extern py::str _TEMPLATE;
-// Point HERE (and so _TEMPLATE) at the folder project_layout.py lives in.
-void set_here(const py::str& here);
+// The folder of the (Python) package's console module, where templates/xbox360.vcxproj.in sits.
+inline py::str& HERE_() {
+    static py::str here;
+    return here;
+}
 
-// things that stay at the solution root (never moved down into the project subfolder)
-extern const std::tuple<py::str, py::str, py::str> _ROOT_KEEP_EXT;
-
-extern const py::str _SLN;
-extern const py::list<py::str> _CONFIGS;
+// Point HERE at the folder project_layout.py lives in.
+inline void set_here(const py::str& here) { HERE_() = here; }
 
 // A stable per-name GUID (so re-running yields the same .sln/.vcxproj binding).
-py::str project_guid(const py::str& name);
+inline py::str project_guid(const py::str& name) {
+    return cb::compat::to_py(cb::java::console::project_layout::project_guid(name.utf8()));
+}
 
-std::optional<py::str> _existing_guid(const py::str& vcx_path);
-
-py::str _sln_text(const py::str& name, const py::str& guid);
-
-py::str write_solution(const py::str& root, const py::str& name, const py::str& guid);
-
-void _write_vcxproj_from_template(const py::str& vcx_path, const py::str& guid);
-
-bool _has_flat_sources(const py::str& d);
-
-// Move a flat dump at `root` down into `proj_dir` (everything except the solution files, the
-// project subfolder itself, and the .sln). Returns count moved.
-int64_t _move_flat_into(const py::str& root, const py::str& proj_dir, const py::str& name);
+inline py::str write_solution(const py::str& root, const py::str& name, const py::str& guid) {
+    return cb::compat::guard([&] {
+        return shim::native(cb::java::console::project_layout::write_solution(shim::path_of(root), name.utf8(), guid.utf8()));
+    });
+}
 
 // What layout() returns (the Python's dict with these keys).
 struct Layout {
@@ -79,8 +47,29 @@ struct Layout {
     int64_t moved = 0;
 };
 
-// Make `root` a solution root. `name` defaults to the root folder's basename. If sources are
-// dumped flat in `root`, they are moved down into `root/<name>/`. Returns a summary.
-Layout layout(const py::str& root, const std::optional<py::str>& name = std::nullopt, bool regen = true);
+// Make `root` a solution root. `name` defaults to the root folder's basename. If sources are dumped flat in `root`,
+// they are moved down into `root/<name>/`. Returns a summary.
+inline Layout layout(const py::str& root, const std::optional<py::str>& name = std::nullopt, bool regen = true) {
+    return cb::compat::guard([&] {
+        namespace nw = cb::java::console::project_layout;
+        nw::Options options;
+        if (name && name->size() > 0) options.name = name->utf8();
+        options.regenerate = regen;
+        // the template: next to the console module when the host said where that is, else in the Java lane's data folder
+        const auto template_file = HERE_().size() > 0 ? shim::path_of(HERE_()) / "templates" / "xbox360.vcxproj.in"
+                                                      : nw::template_path(cb::java::JavaData::locate());
+        const nw::Layout made = nw::layout(shim::path_of(root), template_file, vcxproj::active_rules_(), options);
+        if (made.refreshed) py::print(cb::compat::to_py(made.refreshed->summary()));
+        Layout out;
+        out.name = cb::compat::to_py(made.name);
+        out.root = shim::native(made.root);
+        out.proj_dir = shim::native(made.proj_dir);
+        out.sln = shim::native(made.sln);
+        out.vcxproj = shim::native(made.project_file);
+        out.guid = cb::compat::to_py(made.guid);
+        out.moved = static_cast<int64_t>(made.moved);
+        return out;
+    });
+}
 
 }  // namespace codebreaker::java::console::project_layout

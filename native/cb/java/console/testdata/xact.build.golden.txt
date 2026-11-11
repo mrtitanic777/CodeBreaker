@@ -1,0 +1,1241 @@
+music found=['calm1', 'calm3'] none=[]
+build cues=['dig_grass', 'dig_stone', 'mob_pig', 'random_click', 'random_door_close', 'step_grass', 'step_stone']
+build xap=sounds.xap
+-- music_out
+== music.xap
+Signature = XACT3;
+Version = 18;
+Content Version = 46;
+Release = March 2008;
+
+Options
+{
+    Verbose Report = 0;
+    Generate C/C++ Headers = 1;
+}
+
+Global Settings
+{
+    Xbox File = Global.xgs;
+    Header File = Global.h;
+    Exclude Category Names = 0;
+    Exclude Variable Names = 0;
+
+    Category
+    {
+        Name = Global;
+        Public = 1;
+        Background Music = 0;
+        Volume = 0;
+
+        Category Entry
+        {
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+    Category
+    {
+        Name = Default;
+        Public = 1;
+        Background Music = 0;
+        Volume = 0;
+
+        Category Entry
+        {
+            Name = Global;
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+    Category
+    {
+        Name = Music;
+        Public = 1;
+        Background Music = 1;
+        Volume = 0;
+
+        Category Entry
+        {
+            Name = Global;
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+}
+
+Wave Bank
+{
+    Name = WaveBank;
+    Xbox File = music.xwb;
+    Xbox Bank Path Edited = 1;
+    Streaming = 1;
+    Entry Names = 1;
+    Seek Tables = 1;
+
+    Wave
+    {
+        Name = calm1;
+        File = wav\calm1.wav;
+    }
+
+    Wave
+    {
+        Name = calm3;
+        File = wav\calm3.wav;
+    }
+
+}
+
+Sound Bank
+{
+    Name = SoundBank;
+    Xbox File = music.xsb;
+    Xbox Header File = music.h;
+
+    Sound
+    {
+        Name = calm1;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Music;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = calm1;
+                    Entry Index = 0;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = calm3;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Music;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = calm3;
+                    Entry Index = 1;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Cue
+    {
+        Name = calm1;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = calm1;
+            Index = 0;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = calm3;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = calm3;
+            Index = 1;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+}
+
+== music_banks.bat
+@echo off
+rem Build the XACT audio banks for Xbox 360 (needs the Xbox 360 SDK on PATH).
+set XACTBLD="%XEDK%\bin\win32\xactbld3.exe"
+%XACTBLD% /L /F /XBOX360 music.xap .
+echo Built music.xwb / music.xsb into Content\Audio\
+
+== music_convert.bat
+@echo off
+rem Decode the matched Minecraft .ogg sources to 16-bit PCM .wav for the XACT banks.
+rem Needs ffmpeg on PATH. Source: <RES>
+setlocal
+set SRC=<RES>
+set OUT=wav
+
+ffmpeg -y -i "%SRC%\music\calm1.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\calm1.wav"
+ffmpeg -y -i "%SRC%\music\calm3.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\calm3.wav"
+
+echo Decoded 2 cues to %OUT%\
+endlocal
+
+-- build_out
+== AUDIO_COVERAGE.md
+# AUDIO cues the game needs (8)
+
+Author a .wav per cue under `wav/`, then run `build_banks.bat` (XACTBLD).
+
+- `dig_grass.wav`  <- dig.grass
+- `dig_stone.wav`  <- dig.stone
+- `mob_pig.wav`  <- mob.pig
+- `random_bow.wav`  <- random bow
+- `random_click.wav`  <- random.click
+- `random_door_close.wav`  <- random.door.close
+- `step_grass.wav`  <- step.grass, step.grass
+- `step_stone.wav`  <- step.stone
+
+== build_banks.bat
+@echo off
+rem Build the XACT audio banks for Xbox 360 (needs the Xbox 360 SDK on PATH).
+set XACTBLD="%XEDK%\bin\win32\xactbld3.exe"
+%XACTBLD% /L /F /XBOX360 sounds.xap .
+echo Built sounds.xwb / sounds.xsb into Content\Audio\
+
+== convert_audio.bat
+@echo off
+rem Decode the matched Minecraft .ogg sources to 16-bit PCM .wav for the XACT banks.
+rem Needs ffmpeg on PATH. Source: <RES>
+setlocal
+set SRC=<RES>
+set OUT=wav
+
+ffmpeg -y -i "%SRC%\newsound\step\grass1.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\dig_grass.wav"
+ffmpeg -y -i "%SRC%\newsound\step\stone1.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\dig_stone.wav"
+ffmpeg -y -i "%SRC%\newsound\mob\pig1.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\mob_pig.wav"
+ffmpeg -y -i "%SRC%\newsound\random\click.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\random_click.wav"
+ffmpeg -y -i "%SRC%\newsound\random\door_close.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\random_door_close.wav"
+ffmpeg -y -i "%SRC%\newsound\step\grass1.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\step_grass.wav"
+ffmpeg -y -i "%SRC%\newsound\step\stone1.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\step_stone.wav"
+
+echo Decoded 7 cues to %OUT%\
+endlocal
+
+== music.xap
+Signature = XACT3;
+Version = 18;
+Content Version = 46;
+Release = March 2008;
+
+Options
+{
+    Verbose Report = 0;
+    Generate C/C++ Headers = 1;
+}
+
+Global Settings
+{
+    Xbox File = Global.xgs;
+    Header File = Global.h;
+    Exclude Category Names = 0;
+    Exclude Variable Names = 0;
+
+    Category
+    {
+        Name = Global;
+        Public = 1;
+        Background Music = 0;
+        Volume = 0;
+
+        Category Entry
+        {
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+    Category
+    {
+        Name = Default;
+        Public = 1;
+        Background Music = 0;
+        Volume = 0;
+
+        Category Entry
+        {
+            Name = Global;
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+    Category
+    {
+        Name = Music;
+        Public = 1;
+        Background Music = 1;
+        Volume = 0;
+
+        Category Entry
+        {
+            Name = Global;
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+}
+
+Wave Bank
+{
+    Name = WaveBank;
+    Xbox File = music.xwb;
+    Xbox Bank Path Edited = 1;
+    Streaming = 1;
+    Entry Names = 1;
+    Seek Tables = 1;
+
+    Wave
+    {
+        Name = calm1;
+        File = wav\calm1.wav;
+    }
+
+    Wave
+    {
+        Name = calm3;
+        File = wav\calm3.wav;
+    }
+
+}
+
+Sound Bank
+{
+    Name = SoundBank;
+    Xbox File = music.xsb;
+    Xbox Header File = music.h;
+
+    Sound
+    {
+        Name = calm1;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Music;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = calm1;
+                    Entry Index = 0;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = calm3;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Music;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = calm3;
+                    Entry Index = 1;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Cue
+    {
+        Name = calm1;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = calm1;
+            Index = 0;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = calm3;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = calm3;
+            Index = 1;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+}
+
+== music_banks.bat
+@echo off
+rem Build the XACT audio banks for Xbox 360 (needs the Xbox 360 SDK on PATH).
+set XACTBLD="%XEDK%\bin\win32\xactbld3.exe"
+%XACTBLD% /L /F /XBOX360 music.xap .
+echo Built music.xwb / music.xsb into Content\Audio\
+
+== music_convert.bat
+@echo off
+rem Decode the matched Minecraft .ogg sources to 16-bit PCM .wav for the XACT banks.
+rem Needs ffmpeg on PATH. Source: <RES>
+setlocal
+set SRC=<RES>
+set OUT=wav
+
+ffmpeg -y -i "%SRC%\music\calm1.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\calm1.wav"
+ffmpeg -y -i "%SRC%\music\calm3.ogg" -ar 44100 -ac 1 -sample_fmt s16 "%OUT%\calm3.wav"
+
+echo Decoded 2 cues to %OUT%\
+endlocal
+
+== sounds.xap
+Signature = XACT3;
+Version = 18;
+Content Version = 46;
+Release = March 2008;
+
+Options
+{
+    Verbose Report = 0;
+    Generate C/C++ Headers = 1;
+}
+
+Global Settings
+{
+    Xbox File = Global.xgs;
+    Header File = Global.h;
+    Exclude Category Names = 0;
+    Exclude Variable Names = 0;
+
+    Category
+    {
+        Name = Global;
+        Public = 1;
+        Background Music = 0;
+        Volume = 0;
+
+        Category Entry
+        {
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+    Category
+    {
+        Name = Default;
+        Public = 1;
+        Background Music = 0;
+        Volume = 0;
+
+        Category Entry
+        {
+            Name = Global;
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+    Category
+    {
+        Name = Music;
+        Public = 1;
+        Background Music = 1;
+        Volume = 0;
+
+        Category Entry
+        {
+            Name = Global;
+        }
+
+        Instance Limit
+        {
+            Max Instances = 255;
+            Behavior = 0;
+
+            Crossfade
+            {
+                Fade In = 0;
+                Fade Out = 0;
+                Crossfade Type = 0;
+            }
+        }
+    }
+
+}
+
+Wave Bank
+{
+    Name = WaveBank;
+    Xbox File = sounds.xwb;
+    Xbox Bank Path Edited = 1;
+    Streaming = 1;
+    Entry Names = 1;
+    Seek Tables = 1;
+
+    Wave
+    {
+        Name = dig_grass;
+        File = wav\dig_grass.wav;
+    }
+
+    Wave
+    {
+        Name = dig_stone;
+        File = wav\dig_stone.wav;
+    }
+
+    Wave
+    {
+        Name = mob_pig;
+        File = wav\mob_pig.wav;
+    }
+
+    Wave
+    {
+        Name = random_click;
+        File = wav\random_click.wav;
+    }
+
+    Wave
+    {
+        Name = random_door_close;
+        File = wav\random_door_close.wav;
+    }
+
+    Wave
+    {
+        Name = step_grass;
+        File = wav\step_grass.wav;
+    }
+
+    Wave
+    {
+        Name = step_stone;
+        File = wav\step_stone.wav;
+    }
+
+}
+
+Sound Bank
+{
+    Name = SoundBank;
+    Xbox File = sounds.xsb;
+    Xbox Header File = sounds.h;
+
+    Sound
+    {
+        Name = dig_grass;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Default;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = dig_grass;
+                    Entry Index = 0;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = dig_stone;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Default;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = dig_stone;
+                    Entry Index = 1;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = mob_pig;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Default;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = mob_pig;
+                    Entry Index = 2;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = random_click;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Default;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = random_click;
+                    Entry Index = 3;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = random_door_close;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Default;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = random_door_close;
+                    Entry Index = 4;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = step_grass;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Default;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = step_grass;
+                    Entry Index = 5;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Sound
+    {
+        Name = step_stone;
+        Volume = 0;
+        Pitch = 0;
+        Priority = 0;
+
+        Category Entry
+        {
+            Name = Default;
+        }
+
+        Track
+        {
+            Volume = 0;
+            Use Filter = 0;
+
+            Play Wave Event
+            {
+                Break Loop = 0;
+                Use Speaker Position = 0;
+                Use Center Speaker = 1;
+                New Speaker Position On Loop = 1;
+                Speaker Position Angle = 0.000000;
+                Speaker Position Arc = 0.000000;
+
+                Event Header
+                {
+                    Timestamp = 0;
+                    Relative = 0;
+                    Random Recurrence = 0;
+                    Random Offset = 0;
+                }
+
+                Wave Entry
+                {
+                    Bank Name = WaveBank;
+                    Bank Index = 0;
+                    Entry Name = step_stone;
+                    Entry Index = 6;
+                    Weight = 0;
+                    Weight Min = 0;
+                }
+            }
+        }
+    }
+
+    Cue
+    {
+        Name = dig_grass;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = dig_grass;
+            Index = 0;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = dig_stone;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = dig_stone;
+            Index = 1;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = mob_pig;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = mob_pig;
+            Index = 2;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = random_click;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = random_click;
+            Index = 3;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = random_door_close;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = random_door_close;
+            Index = 4;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = step_grass;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = step_grass;
+            Index = 5;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+    Cue
+    {
+        Name = step_stone;
+
+        Variation
+        {
+            Variation Type = 3;
+            Variation Table Type = 1;
+            New Variation on Loop = 0;
+        }
+
+        Sound Entry
+        {
+            Name = step_stone;
+            Index = 6;
+            Weight Min = 0;
+            Weight Max = 0;
+        }
+    }
+
+}
+

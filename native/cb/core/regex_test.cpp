@@ -293,3 +293,11 @@ CB_TEST("core.regex.copies_share_one_program_and_threads_may_use_it", [] {
     auto m = Regex(R"((?<x>a))").search("a");
     CB_CHECK_EQ(*m->named("x"), "a");    // the match outlives the temporary Regex
 });
+
+CB_TEST("core.regex.replace_braced_group_number", [] {
+    // `${1}` is group 1 even when a digit follows it (`$15` would be group 1 then a 5)
+    const Regex re(R"((\w+)=(\w+))");
+    CB_CHECK_EQ(re.replace_all("a=b", "${2}5${1}"), "b5a");
+    CB_CHECK_EQ(re.replace_all("a=b", "$2$1"), "ba");
+    CB_CHECK_THROWS_AS(UsageError, (void)re.replace_all("a=b", "${3}"));
+});

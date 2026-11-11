@@ -13,7 +13,7 @@
 //     sh.vars    {name: Var}  the inputs the conditions are over
 //     sh.lost    why the conditions may not be all there is (empty: they are)
 //
-// The x86 shadows are C++ already (native/tracer shadow.cc, through emulate/native_shadow.hpp): Shadow16, Shadow32 and
+// The x86 shadows are C++ already (native/cb/emulate/tracer shadow.cpp, through emulate/native_shadow.hpp): Shadow16, Shadow32 and
 // ShadowLE are factory functions returning a native_shadow::Shadow.  `Shadow` here is the PowerPC run's (its View is
 // PowerPCView: the interpreter's registers and memory, read without disturbing them).
 //
@@ -184,7 +184,7 @@ int64_t real_mode(Uc& uc, int64_t sel);
 // A selector's base for Shadow16: windows16::selector_base (the GDT's) or real_mode -- the only two.
 using SegBase = int64_t (*)(Uc&, int64_t);
 
-// --- the x86 shadows: in C++ (native/tracer shadow.cc, through emulate/native_shadow), stepped by the recorder of the
+// --- the x86 shadows: in C++ (native/cb/emulate/tracer shadow.cpp, through emulate/native_shadow), stepped by the recorder of the
 // run they are handed to. `inputs`: [(low, high)] -- the memory bytes that are inputs of the run until written.
 using Inputs = py::list<std::tuple<int64_t, int64_t>>;
 using Span = std::optional<std::tuple<int64_t, int64_t>>;

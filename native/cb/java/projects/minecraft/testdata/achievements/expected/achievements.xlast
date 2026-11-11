@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Achievement config skeleton emitted by CodeBreaker. Import into the platform submission/config
+     tool (Xbox 360: XLAST), then build the SPA. The titleId below MUST match the Title ID set
+     on the XEX in the Visual Studio project (Xbox 360 property pages). -->
+<XLASTProject titleId="0xFFFE00A1">
+  <Configuration>
+    <Achievements>
+      <Achievement id="1" name="Taking Inventory" gamerscore="145" hidden="false">
+        <LockedDescription>Press 'E' to open your inventory.</LockedDescription>
+        <UnlockedDescription>Press 'E' to open your inventory.</UnlockedDescription>
+        <!-- TODO: add locked/unlocked 64x64 tile (icon not auto-resolved) -->
+      </Achievement>
+      <Achievement id="2" name="Getting Wood" gamerscore="145" hidden="false">
+        <LockedDescription>Earn the Mine Wood achievement.</LockedDescription>
+        <UnlockedDescription>Earn the Mine Wood achievement.</UnlockedDescription>
+        <Image type="unlocked">..\content\achievement_images\mineWood_unlocked.png</Image>
+        <Image type="locked">..\content\achievement_images\mineWood_locked.png</Image>
+      </Achievement>
+      <Achievement id="3" name="Build Work Bench" gamerscore="145" hidden="false">
+        <LockedDescription>Earn the Build Work Bench achievement.</LockedDescription>
+        <UnlockedDescription>Earn the Build Work Bench achievement.</UnlockedDescription>
+        <Image type="unlocked">..\content\achievement_images\buildWorkBench_unlocked.png</Image>
+        <Image type="locked">..\content\achievement_images\buildWorkBench_locked.png</Image>
+      </Achievement>
+      <Achievement id="4" name="Diamonds" gamerscore="145" hidden="true">
+        <LockedDescription>Acquire diamonds with your iron tools</LockedDescription>
+        <UnlockedDescription>Acquire diamonds with your iron tools</UnlockedDescription>
+        <Image type="unlocked">..\content\achievement_images\diamonds_unlocked.png</Image>
+        <Image type="locked">..\content\achievement_images\diamonds_locked.png</Image>
+      </Achievement>
+      <Achievement id="5" name="On A Rail" gamerscore="140" hidden="false">
+        <LockedDescription>Earn the On A Rail achievement.</LockedDescription>
+        <UnlockedDescription>Earn the On A Rail achievement.</UnlockedDescription>
+        <!-- TODO: add locked/unlocked 64x64 tile (icon not auto-resolved) -->
+      </Achievement>
+      <Achievement id="6" name="Cook Fish" gamerscore="140" hidden="false">
+        <LockedDescription>Earn the Cook Fish achievement.</LockedDescription>
+        <UnlockedDescription>Earn the Cook Fish achievement.</UnlockedDescription>
+        <Image type="unlocked">..\content\achievement_images\cookFish_unlocked.png</Image>
+        <Image type="locked">..\content\achievement_images\cookFish_locked.png</Image>
+      </Achievement>
+      <Achievement id="7" name="When Pigs Fly = yes" gamerscore="140" hidden="true">
+        <LockedDescription>Fly a pig off a cliff</LockedDescription>
+        <UnlockedDescription>Fly a pig off a cliff</UnlockedDescription>
+        <!-- TODO: add locked/unlocked 64x64 tile (icon not auto-resolved) -->
+      </Achievement>
+    </Achievements>
+  </Configuration>
+</XLASTProject>

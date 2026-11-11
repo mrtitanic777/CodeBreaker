@@ -26,6 +26,9 @@ namespace kernel::invites
     // The sessions the title hosts on our Xbox LIVE (kernel/xam_matchmaking.cpp tells at XSessionCreate / XSessionDelete).
     void SessionHosted(uint32_t user, uint32_t flags, uint64_t sessionId);
     void SessionEnded(uint64_t sessionId);
+    // XSessionModify: the session's flags are now `flags` (Minecraft creates its session with invites disabled and makes it
+    // joinable by modifying the flags once the world is loaded).
+    void SessionModified(uint64_t sessionId, uint32_t flags);
     // The session `user` hosts that others can be invited to (XSESSION_CREATE_USES_PRESENCE set, invites not disabled).
     std::optional<uint64_t> HostedPresenceSession(uint32_t user);
 }

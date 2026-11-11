@@ -274,6 +274,7 @@ namespace kernel::matchmaking
             const Session s = *found;
             Log("Matchmaking: user {} modifies session {:016X}: flags {:X}, {} public / {} private slots", s.user, s.id,
                 flags, publicSlots, privateSlots);
+            kernel::invites::SessionModified(s.id, flags);
             Post([=] { LogFailure("modify", s.id, live::ModifyGameSession(s.user, s.id, flags, publicSlots, privateSlots)); });
             return true;
         }
