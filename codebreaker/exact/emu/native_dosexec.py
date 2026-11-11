@@ -13,11 +13,13 @@ Build: native/dosexec/CMakeLists.txt (cmake + ninja in a vcvars64 shell).
 import collections
 import ctypes
 import os
+import threading
 
 from codebreaker.base import settings
 
 DEFAULT = "1"             # CB_NATIVE_DOSEXEC when it is not set (identical on the gate: docs/NATIVE.md)
 _LIB = []                 # [the DLL, or None when it cannot be used here]
+_LOCK = threading.Lock()  # (the first use from two threads loads the DLL once)
 _WHY = []
 _RAISE = {1: RuntimeError, 4: AssertionError, 5: ValueError, 8: RuntimeError}
 
@@ -50,37 +52,40 @@ def dll_path():
 def _load():
     if _LIB:
         return _LIB[0]
-    lib = None
-    try:
-        path = dll_path()
-        if not os.path.isfile(path):
-            raise OSError("not built: %s (native/dosexec/CMakeLists.txt)" % path)
-        from unicorn.unicorn_py3.unicorn import uclib                      # the DLL Python loaded
-        lib = settings.load_native(path)
-        if lib.cbd_version() != 1:
-            raise OSError("cbdos.dll is another version: rebuild native/dosexec")
-        lib.cbd_init.argtypes = (ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_int32)
-        err = ctypes.create_string_buffer(256)
-        if lib.cbd_init(os.path.abspath(uclib._name), err, 256):
-            raise OSError(err.value.decode("ascii", "replace"))
-        lib.cbd_fs_new.restype = ctypes.c_void_p
-        lib.cbd_fs_free.argtypes = (ctypes.c_void_p,)
-        lib.cbd_fs_hide.argtypes = lib.cbd_fs_gone.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p)
-        lib.cbd_fs_put.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_int64)
-        lib.cbd_fs_changed.argtypes = lib.cbd_fs_ngone.argtypes = (ctypes.c_void_p,)
-        lib.cbd_fs_changed.restype = lib.cbd_fs_ngone.restype = ctypes.c_int64
-        lib.cbd_fs_entry.argtypes = (ctypes.c_void_p, ctypes.c_int64, ctypes.POINTER(ctypes.c_wchar_p),
-                                     ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_int64))
-        lib.cbd_fs_gone_at.argtypes = (ctypes.c_void_p, ctypes.c_int64)
-        lib.cbd_fs_gone_at.restype = ctypes.c_wchar_p
-        lib.cbd_run.argtypes = (ctypes.POINTER(_Args),)
-        lib.cbd_run.restype = ctypes.POINTER(_Result)
-        lib.cbd_free.argtypes = (ctypes.POINTER(_Result),)
-    except Exception as e:                       # (no DLL, another version, no unicorn: the Python executive)
-        _WHY.append(str(e))
+    with _LOCK:
+        if _LIB:
+            return _LIB[0]
         lib = None
-    _LIB.append(lib)
-    return lib
+        try:
+            path = dll_path()
+            if not os.path.isfile(path):
+                raise OSError("not built: %s (native/dosexec/CMakeLists.txt)" % path)
+            from unicorn.unicorn_py3.unicorn import uclib                      # the DLL Python loaded
+            lib = settings.load_native(path)
+            if lib.cbd_version() != 1:
+                raise OSError("cbdos.dll is another version: rebuild native/dosexec")
+            lib.cbd_init.argtypes = (ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_int32)
+            err = ctypes.create_string_buffer(256)
+            if lib.cbd_init(os.path.abspath(uclib._name), err, 256):
+                raise OSError(err.value.decode("ascii", "replace"))
+            lib.cbd_fs_new.restype = ctypes.c_void_p
+            lib.cbd_fs_free.argtypes = (ctypes.c_void_p,)
+            lib.cbd_fs_hide.argtypes = lib.cbd_fs_gone.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p)
+            lib.cbd_fs_put.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_int64)
+            lib.cbd_fs_changed.argtypes = lib.cbd_fs_ngone.argtypes = (ctypes.c_void_p,)
+            lib.cbd_fs_changed.restype = lib.cbd_fs_ngone.restype = ctypes.c_int64
+            lib.cbd_fs_entry.argtypes = (ctypes.c_void_p, ctypes.c_int64, ctypes.POINTER(ctypes.c_wchar_p),
+                                         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_int64))
+            lib.cbd_fs_gone_at.argtypes = (ctypes.c_void_p, ctypes.c_int64)
+            lib.cbd_fs_gone_at.restype = ctypes.c_wchar_p
+            lib.cbd_run.argtypes = (ctypes.POINTER(_Args),)
+            lib.cbd_run.restype = ctypes.POINTER(_Result)
+            lib.cbd_free.argtypes = (ctypes.POINTER(_Result),)
+        except Exception as e:                       # (no DLL, another version, no unicorn: the Python executive)
+            _WHY.append(str(e))
+            lib = None
+        _LIB.append(lib)
+        return lib
 
 
 def enabled():

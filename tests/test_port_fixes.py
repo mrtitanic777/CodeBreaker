@@ -242,12 +242,54 @@ def test_origin_notes_calls_to_compiler_helpers():
     assert o.compiler == ["calls __aNlmul", "calls __aFuldiv"], o.compiler
 
 
+def test_native_dosexec_loads_the_dll_once_from_two_threads():
+    """exact.emu.native_dosexec: the first use of the native executive from two threads loads (and initialises)
+    the DLL once; _load() once ran its whole body in both, leaving two entries in _LIB."""
+    import threading
+    import time
+    from unittest import mock
+    from codebreaker.exact.emu import native_dosexec as nd
+    saved = list(nd._LIB), list(nd._WHY)
+    calls = []
+    lib = mock.MagicMock()
+    lib.cbd_version.return_value = 1
+    lib.cbd_init.return_value = 0
+
+    def slow_load(path):
+        calls.append(path)
+        time.sleep(0.3)                                   # (the other thread comes in while this one is loading)
+        return lib
+
+    nd._LIB.clear()
+    nd._WHY.clear()
+    got = []
+    gate = threading.Barrier(2)
+
+    def first_use():
+        gate.wait()
+        got.append(nd._load())
+
+    try:
+        with mock.patch.object(nd, "dll_path", return_value=__file__), mock.patch.object(nd.settings, "load_native", slow_load):
+            threads = [threading.Thread(target=first_use) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        assert len(calls) == 1 and lib.cbd_init.call_count == 1, (len(calls), lib.cbd_init.call_count)
+        assert got == [lib, lib] and len(nd._LIB) == 1, (got, nd._LIB, nd._WHY)
+    finally:
+        nd._LIB[:] = saved[0]
+        nd._WHY[:] = saved[1]
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
                test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
                test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch,
                test_xsm3_challenge_verify_answers_a_valid_packet, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same,
-               test_origin_notes_calls_to_compiler_helpers):
+               test_origin_notes_calls_to_compiler_helpers,
+               test_native_dosexec_loads_the_dll_once_from_two_threads):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
