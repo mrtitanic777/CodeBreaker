@@ -159,6 +159,10 @@ namespace live
         uint32_t titleId = 0;    // this title's ID
         bool voiceDevices = true; // party chat through the PC's microphone and speakers (live/voice.h)
         bool sendLog = false;     // live debugging: the runtime's log lines go to the server too (SendLog)
+        // This console's LIVE key (32 hex digits; the runtime keeps it, e.g. in its Key Vault): sent in hello. Our
+        // server binds an account to the key that first signs it in and refuses other PCs without one
+        // (XboxLIVEServer src/ports/access_keys.h). Empty: none sent.
+        std::string key;
     };
 
     // SignedOut: the server signed `user` out because the same account signed in on another console (as Xbox LIVE

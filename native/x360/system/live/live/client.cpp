@@ -382,8 +382,12 @@ namespace live
                 title = u.title;
                 rich = u.rich;
             }
-            const auto reply = Request({ { "op", "signin" }, { "user", user }, { "xuid", Hex64(xuid) },
-                                         { "gamertag", gamertag }, { "profile", profile } });
+            json signin = { { "op", "signin" }, { "user", user }, { "xuid", Hex64(xuid) }, { "gamertag", gamertag },
+                            { "profile", profile } };
+            // The key here too: a sign-in can reach the server before the hello that carries it (another thread).
+            if (!S().config.key.empty())
+                signin["key"] = S().config.key;
+            const auto reply = Request(signin);
             std::optional<std::string> error;
             if (!reply)
                 error = Connected() ? std::string("timeout") : std::string("not connected");
@@ -655,8 +659,11 @@ namespace live
                 std::thread helper([] {
                     try
                     {
-                    const auto hello = Request({ { "op", "hello" }, { "version", 1 }, { "client", S().config.client },
-                                                 { "title_id", std::format("{:08X}", S().config.titleId) } });
+                    json helloRequest = { { "op", "hello" }, { "version", 1 }, { "client", S().config.client },
+                                          { "title_id", std::format("{:08X}", S().config.titleId) } };
+                    if (!S().config.key.empty())
+                        helloRequest["key"] = S().config.key;
+                    const auto hello = Request(helloRequest);
                     if (hello)
                     {
                         std::lock_guard lock(S().mutex);
