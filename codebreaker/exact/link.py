@@ -135,6 +135,7 @@ def bss_objects(prj):
 def crt(prj, objs):
     """the library's modules the rest needs, as objects in the program's order (src/CRTLIB); names left unresolved"""
     p = prj.path("CRTLIB")
+    crt.conflicts = []                                      # (not the last call's)
     if not os.path.exists(p):
         return [], []
     mods = {m.label: m.raw for m in library.modules(prj)}
@@ -235,7 +236,7 @@ def crt(prj, objs):
         if len(both) > 1:
             crt.conflicts.append("the program has one routine at %s for %s; ours names %s - the sources call it by "
                                  "another name than the program's (a name the library's modules use is the program's)" % (
-                                     at, " and ".join(both), " and ".join(sorted(omf.names_of(mods[m])[0].pop() for m in both))))
+                                     at, " and ".join(both), " and ".join(sorted(min(omf.names_of(mods[m])[0]) for m in both))))
     return [(m, mods[m]) for m in order if m in take], sorted(need - have)
 
 
@@ -344,7 +345,7 @@ def diagnose(prj, ref, exe, mp=None):
         out.append("%d bytes of the image differ, in %d places; the first at %05x: %s" % (len(bad), len(runs), first, where))
         shift = None
         for d in range(-64, 65):                            # (ours the same bytes, moved: something before is too long)
-            if d and all(0 <= first + d + k < len(ib) and ib[first + d + k] == ia[first + k] for k in range(32)):
+            if d and all(0 <= first + d + k < len(ib) and first + k < len(ia) and ib[first + d + k] == ia[first + k] for k in range(32)):
                 shift = d
                 break
         if shift:
@@ -363,7 +364,7 @@ def diagnose(prj, ref, exe, mp=None):
             out.append("the data segment parts at DS:%04x (after the module %s%s)" % (
                 dbad, mod, (", the library's %s" % lname) if lname and (not who or max(lib, key=lambda x: x[2].data)[2].data > max(who, key=lambda r: r[3])[3]) else ""))
             for d in range(-64, 65):
-                if d and all(0 <= dbad + d + k < len(db) and db[dbad + d + k] == da[dbad + k] for k in range(24)):
+                if d and all(0 <= dbad + d + k < len(db) and dbad + k < len(da) and db[dbad + d + k] == da[dbad + k] for k in range(24)):
                     out.append("   from there ours is the program's moved by %+d: what comes before is %d bytes %s" % (
                         d, abs(d), "too long" if d > 0 else "too short"))
                     break
@@ -383,7 +384,7 @@ def drift(a, b, step=2, span=12, reach=160):
             continue
         d = None
         for dd in [0] + [x for r in range(1, reach // 2) for x in (2 * r, -2 * r)]:
-            if b[k + dd:k + dd + span] == seg:
+            if k + dd >= 0 and b[k + dd:k + dd + span] == seg:      # (a place before the start is none: a negative index would wrap)
                 d = dd
                 break
         if d is None:
