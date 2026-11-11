@@ -8,6 +8,7 @@ __pycache__/
 /settings.json
 # native build output
 native/*/build/
+!native/cb/build/
 native/ported/*/build/
 *.obj
 *.o
