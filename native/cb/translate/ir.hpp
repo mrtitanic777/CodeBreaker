@@ -34,6 +34,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -803,22 +804,49 @@ struct Unsupported {   // a construct the front end cannot lower yet
     template <class F> void each_child(F&&) {}
 };
 
+// The declarations that carry many slots (a class, a method, a unit, a property, a type parameter, an assembly fragment) are
+// large and rare; the statements and expressions that make up almost every tree are small. A node holds the large ones
+// through a `Boxed`, so that a node of the common kinds is no bigger than the biggest of them (and a tree of a million
+// expressions is not made of the size of a ClassDecl). `get<K>` and `visit` hide the box.
+template <class T>
+class Boxed {
+public:
+    Boxed() : p_(std::make_unique<T>()) {}
+    explicit Boxed(T value) : p_(std::make_unique<T>(std::move(value))) {}
+    Boxed(const Boxed& other) : p_(std::make_unique<T>(*other.p_)) {}   // a copy of a node is a copy of what it holds
+    Boxed& operator=(const Boxed& other) {
+        if (this != &other) p_ = std::make_unique<T>(*other.p_);
+        return *this;
+    }
+    Boxed(Boxed&&) noexcept = default;
+    Boxed& operator=(Boxed&&) noexcept = default;
+    T* get() { return p_.get(); }
+    const T* get() const { return p_.get(); }
+
+private:
+    std::unique_ptr<T> p_;
+};
+
+template <class K, class... Ts> inline constexpr bool kOneOfKinds = (std::is_same_v<K, Ts> || ...);
+template <class K> inline constexpr bool kBoxedKind = kOneOfKinds<K, Unit, ClassDecl, MethodDecl, Property, TypeParam, MachineFragment>;
+template <class K> using Stored = std::conditional_t<kBoxedKind<K>, Boxed<K>, K>;
+
 using Kind = std::variant<
     // declarations
-    Module, Unit, ClassDecl, FieldDecl, MethodDecl, Param, EnumConst, Property, TypeParam,
+    Module, Boxed<Unit>, Boxed<ClassDecl>, FieldDecl, Boxed<MethodDecl>, Param, EnumConst, Boxed<Property>, Boxed<TypeParam>,
     // statements
     Block, Local, ExprStmt, If, While, DoWhile, For, ForEach, Switch, Case, Break, Continue, Return, Throw, Try, Catch,
-    Labeled, Goto, MachineFragment, Sync, Empty, Comment, LocalClass, Assert, CtorCall, Yield,
+    Labeled, Goto, Boxed<MachineFragment>, Sync, Empty, Comment, LocalClass, Assert, CtorCall, Yield,
     // expressions
     Lit, Name, Select, TypeName, This, Super, Call, New, NewArray, Index, Length, Unary, Binary, Concat, Assign, Cond, Cast,
     InstanceOf, ClassLit, Lambda, MethodRef, SwitchExpr, AddressOf, FarAddress, Piece, Join, Paren, Unsupported>;
 
-// A node: its place in the source, where in a binary it came from, the type of an expression (empty for a node that is not
-// one), and what kind of node it is.
+// A node: its place in the source, where in a binary it came from (shared, immutable, and absent for source), the type of
+// an expression (empty for a node that is not one), and what kind of node it is.
 struct Node {
     std::uint32_t line = 0;
     std::uint32_t col = 0;
-    std::optional<Origin> origin;
+    std::shared_ptr<const Origin> origin;
     TypeP type;
     Kind kind;
 };
@@ -828,9 +856,44 @@ enum class Category : std::uint8_t { Declaration, Statement, Expression };
 // ---- reading a tree ---------------------------------------------------------------------------------------------------
 
 // The node as a K (a pointer to its struct), or null when it is another kind (or the node is null).
-template <class K> K* get(Node* node) { return node == nullptr ? nullptr : std::get_if<K>(&node->kind); }
-template <class K> const K* get(const Node* node) { return node == nullptr ? nullptr : std::get_if<K>(&node->kind); }
+template <class K> K* get(Node* node) {
+    if (node == nullptr) return nullptr;
+    if constexpr (kBoxedKind<K>) {
+        auto* boxed = std::get_if<Boxed<K>>(&node->kind);
+        return boxed != nullptr ? boxed->get() : nullptr;
+    } else {
+        return std::get_if<K>(&node->kind);
+    }
+}
+template <class K> const K* get(const Node* node) {
+    if (node == nullptr) return nullptr;
+    if constexpr (kBoxedKind<K>) {
+        const auto* boxed = std::get_if<Boxed<K>>(&node->kind);
+        return boxed != nullptr ? boxed->get() : nullptr;
+    } else {
+        return std::get_if<K>(&node->kind);
+    }
+}
 template <class K> bool is(const Node* node) { return get<K>(node) != nullptr; }
+
+// Calls f with the node's struct (a `Block&`, a `ClassDecl&` ...): the closed set of kinds visited as std::visit would,
+// with the boxes opened. f must accept every kind.
+template <class F> decltype(auto) visit(Node& node, F&& f) {
+    return std::visit(
+        [&f](auto& stored) -> decltype(auto) {
+            if constexpr (requires { stored.get(); }) return f(*stored.get());
+            else return f(stored);
+        },
+        node.kind);
+}
+template <class F> decltype(auto) visit(const Node& node, F&& f) {
+    return std::visit(
+        [&f](const auto& stored) -> decltype(auto) {
+            if constexpr (requires { stored.get(); }) return f(*stored.get());
+            else return f(stored);
+        },
+        node.kind);
+}
 
 // The kind as L2 spells it: "Block", "Binary" ...
 std::string_view kind_name(const Node& node);
@@ -857,7 +920,7 @@ Node* make(Arena& arena, K kind, TypeP type = {}, std::uint32_t line = 0, std::u
     node->line = line;
     node->col = col;
     node->type = std::move(type);
-    node->kind = std::move(kind);
+    node->kind = Stored<K>(std::move(kind));
     return node;
 }
 

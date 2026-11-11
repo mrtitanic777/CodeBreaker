@@ -289,7 +289,8 @@ CB_TEST("symbols.libraries.coff.import_by_ordinal_real_library", [] {
     CB_CHECK(found == (std::vector<std::pair<std::uint32_t, std::string>>{
                           {2, "__penter"}, {3, "_StartCAP@0"}, {4, "_StopCAP@0"}, {5, "_DumpCAP@0"}}));
     // an import library that imports by name has none by number
-    for (const coff::Member& m : coff::members(data("lz32.lib"))) CB_CHECK(!coff::import_by_ordinal(m.body).has_value());
+    const Bytes by_name = data("lz32.lib");   // (the members are views into it: it must outlive the loop)
+    for (const coff::Member& m : coff::members(by_name)) CB_CHECK(!coff::import_by_ordinal(m.body).has_value());
 });
 
 CB_TEST("symbols.libraries.coff.import_by_ordinal_short_form", [] {

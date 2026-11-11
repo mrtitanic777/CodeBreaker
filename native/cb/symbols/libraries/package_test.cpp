@@ -4,7 +4,8 @@
 //
 // DIVERGES from the Python module, by design: `read` of a single damaged COFF object is a FormatError (the Python let
 // struct.error through), and of a library whose header page is cut off gives no function (the Python raised); the kind
-// is an enum, not 16 / 32 / "powerpc".
+// is an enum, not 16 / 32 / "powerpc"; `Index::find` with `ignore` not as long as the words is a UsageError (the Python let
+// a shorter one compare only the words it covered and raised IndexError for a longer one).
 #include "cb/symbols/libraries/package.hpp"
 
 #include <algorithm>

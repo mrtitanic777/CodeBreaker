@@ -521,3 +521,23 @@ Old = the engine or Python module the new code replaces, same inputs, best of 3-
 | xdk_libraries: search dash.xex (2.0M words) and a game's default.xex (1.8M words) for 1,308 library signatures | Python 2.9 s / 1.9 s (whole `match`, image read included) | 220 / 200 ms (the search alone; a sorted pair index replaced a table of lists: 1.1 s before) |
 | xdk_libraries: make the 1,308 signatures from 2,277 functions | Python 300 ms | 8 ms |
 | ordinals: read all 597 .lib and .def files of the reference folder | Python 570 ms (process start included) | 91 ms |
+
+## cb refactor: symbols/libraries, x86, wine16 and translate/ir, batch W0-B27 (2026-11-11)
+
+Old = the live Python module (the exe's translated Python runs it), best of 3, shared machine (+-30%). Results compared first: the same functions
+(kind, count, and a digest of every name, byte, mask and offset) for all 391 real libraries of the Win95 DDK/SDK and the Xbox 360 XDK (under 30 MB).
+
+| What | Old | New |
+|---|---|---|
+| symbols/libraries: read all 391 libraries (277 Win95 reference, 114 XDK; 16-bit OMF, 32-bit COFF and PowerPC COFF), file read included | Python 27.0 s | 1.9 s (14x) |
+| ... the largest: xavatar2d.lib (5,513 functions) | Python 2.32 s | 0.050 s (46x) |
+| ... libcMT.lib (10 MB, 2,139 PowerPC functions) | Python 0.107 s | 0.016 s (6.7x) |
+| ... KERNEL32.LIB (the SDK's import library, 631 thunks) | Python 0.013 s | 0.0027 s (4.8x) |
+| libraries::Index.find (the pair index of xdk_libraries, now shared) | the same code, moved | no change (xdk match 200-220 ms, see batch W0-B26) |
+| wine16, x86 | not timed: a few hundred lines of text; a decoder wrapper that does no work of its own | |
+| translate/ir: build 1M nodes (500k `a + n`), then walk them and read each one's kind | old py:: port 0.051 s build, 0.249 s walk | build 0.087 s, walk 0.041 s |
+
+translate/ir: building a node is 1.7x slower than the old port (87 ns against 46: the arena registers every node's destructor, and a node is
+136 bytes; the first version, with every node as big as a ClassDecl, was 424 bytes and took 0.19 s, so the big declarations are now boxed), walking
+is 6x faster (no shared_ptr counts, no `py::list` of `py::ref`, the kind by a visit rather than a virtual `class_name()` that builds a `py::str`),
+and a build with a walk is 2.3x faster. A tree is built once and walked by every pass.

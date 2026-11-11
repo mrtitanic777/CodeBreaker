@@ -224,12 +224,12 @@ SymP make_sym(SymKind kind, std::string name, std::optional<std::string> owner, 
 // ---- nodes ---------------------------------------------------------------------------------------------------------------
 
 std::string_view kind_name(const Node& node) {
-    return std::visit([](const auto& k) { return std::decay_t<decltype(k)>::kName; }, node.kind);
+    return visit(node, [](const auto& k) { return std::decay_t<decltype(k)>::kName; });
 }
 
 Category category(const Node& node) {
-    return std::visit(
-        [](const auto& k) {
+    return visit(
+        node, [](const auto& k) {
             using K = std::decay_t<decltype(k)>;
             if constexpr (kOneOf<K, Module, Unit, ClassDecl, FieldDecl, MethodDecl, Param, EnumConst, Property, TypeParam>) {
                 return Category::Declaration;
@@ -240,14 +240,13 @@ Category category(const Node& node) {
             } else {
                 return Category::Expression;
             }
-        },
-        node.kind);
+        });
 }
 
 std::vector<Node*> children(const Node& node) {
     std::vector<Node*> out;
     // (the slots are read, not changed: the walk only needs the same accessor a rewriting pass uses)
-    std::visit([&out](auto& k) { k.each_child([&out](Node*& child) { out.push_back(child); }); }, const_cast<Node&>(node).kind);
+    visit(const_cast<Node&>(node), [&out](auto& k) { k.each_child([&out](Node*& child) { out.push_back(child); }); });
     return out;
 }
 
@@ -302,7 +301,7 @@ Node* make_node(Arena& arena, std::string_view name) {
 Node* clone(Arena& arena, const Node* root) {
     if (root == nullptr) return nullptr;
     Node* copy = arena.make<Node>(*root);
-    std::visit([&arena](auto& k) { k.each_child([&arena](Node*& child) { child = clone(arena, child); }); }, copy->kind);
+    visit(*copy, [&arena](auto& k) { k.each_child([&arena](Node*& child) { child = clone(arena, child); }); });
     if (auto* test = get<InstanceOf>(copy)) test->binding = clone(arena, test->binding);   // (owned, though a walk does not enter it)
     return copy;
 }

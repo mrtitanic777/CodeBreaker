@@ -46,7 +46,11 @@ inline const py::dict<py::str, int64_t> WIDTH = [] {
 
 inline const py::set<py::str> POINTER = [] {
     py::set<py::str> s;
-    for (const char* k : {"ptr", "str", "segptr", "segstr"}) s.add(py::str(k));
+    namespace nw = cb::symbols::wine16;
+    for (const nw::ArgKind k : {nw::ArgKind::Word, nw::ArgKind::SWord, nw::ArgKind::Long, nw::ArgKind::SegPtr, nw::ArgKind::SegStr,
+                                nw::ArgKind::Ptr, nw::ArgKind::Str}) {
+        if (nw::is_pointer(k)) s.add(cb::compat::to_py(nw::spelling(k)));
+    }
     return s;
 }();
 
@@ -100,12 +104,14 @@ inline py::dict<int64_t, Export> exports(const py::str& module) {
     return it->second;
 }
 
-// the reconstruction's type for an argument kind
+// the reconstruction's type for an argument kind (a kind this reader does not know is a 4-byte number)
 inline py::str c_type(const py::str& kind) {
-    if (POINTER.contains(kind)) return py::str("void __far *");
-    if (kind == py::str("word")) return py::str("uint2");
-    if (kind == py::str("s_word")) return py::str("int2");
-    return py::str("uint4");
+    namespace nw = cb::symbols::wine16;
+    for (const nw::ArgKind k : {nw::ArgKind::Word, nw::ArgKind::SWord, nw::ArgKind::Long, nw::ArgKind::SegPtr, nw::ArgKind::SegStr,
+                                nw::ArgKind::Ptr, nw::ArgKind::Str}) {
+        if (kind == cb::compat::to_py(nw::spelling(k))) return cb::compat::to_py(nw::c_type(k));
+    }
+    return cb::compat::to_py(nw::c_type(nw::ArgKind::Long));
 }
 
 }  // namespace codebreaker::symbols::wine16

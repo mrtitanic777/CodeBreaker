@@ -471,3 +471,42 @@ CB_TEST("translate.ir.operator_names_of_the_java_front_end", [] {
     CB_CHECK_EQ(ir::unary_operator("BITWISE_COMPLEMENT")->op, "~");
     CB_CHECK(!ir::unary_operator("PLUS").has_value());
 });
+
+CB_TEST("translate.ir.tree.a_node_of_the_common_kinds_is_small", [] {
+    // the statements and expressions of a tree are what there are millions of: the big declarations are boxed
+    static_assert(sizeof(ir::Node) <= 160, "a node must not be as big as a ClassDecl");
+    CB_CHECK(sizeof(ir::Node) <= 160);
+    // a boxed kind reads and writes like any other
+    cb::Arena arena;
+    ir::ClassDecl c;
+    c.name = "Board";
+    c.members = {ir::make(arena, ir::Empty{})};
+    ir::Node* decl = ir::make(arena, std::move(c));
+    CB_CHECK_EQ(ir::kind_name(*decl), "ClassDecl");
+    CB_CHECK(ir::category(*decl) == ir::Category::Declaration);
+    ir::get<ir::ClassDecl>(decl)->mods.push_back("public");
+    CB_CHECK_EQ(ir::get<ir::ClassDecl>(decl)->mods.size(), std::size_t{1});
+    CB_CHECK(!ir::is<ir::MethodDecl>(decl));
+    // a copy of a boxed node owns its own copy of what it holds
+    ir::Node copy = *decl;
+    ir::get<ir::ClassDecl>(&copy)->name = "Other";
+    CB_CHECK_EQ(*ir::get<ir::ClassDecl>(decl)->name, "Board");
+    CB_CHECK_EQ(*ir::get<ir::ClassDecl>(&copy)->name, "Other");
+    // visiting opens the box
+    std::string seen;
+    ir::visit(*decl, [&](const auto& k) { seen = std::string(std::decay_t<decltype(k)>::kName); });
+    CB_CHECK_EQ(seen, "ClassDecl");
+});
+
+CB_TEST("translate.ir.tree.where_a_node_came_from_is_shared_and_optional", [] {
+    cb::Arena arena;
+    ir::Node* a = ir::make(arena, ir::Empty{});
+    CB_CHECK(a->origin == nullptr);   // source has none
+    a->origin = std::make_shared<const ir::Origin>(ir::OriginVa{"lz32.dll", 0x1000});
+    ir::Node* b = ir::make(arena, ir::Empty{});
+    b->origin = a->origin;            // the statements made from one function's instruction share it
+    CB_CHECK(std::get<ir::OriginVa>(*b->origin).va == 0x1000u);
+    CB_CHECK(a->origin == b->origin);
+    ir::Node* copy = ir::clone(arena, a);
+    CB_CHECK(copy->origin != nullptr && *copy->origin == *a->origin);
+});

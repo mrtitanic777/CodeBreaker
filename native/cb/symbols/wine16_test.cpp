@@ -6,7 +6,8 @@
 // DIVERGES from the Python module, by design: the Python's `\s`, `\w` and `\d` were Unicode's, so a no-break space, an
 // em space or an Arabic-Indic digit counted as white space or as a number; here white space and digits are ASCII (Wine's
 // files are ASCII), and the bytes of a non-ASCII letter are letters of a name. An ordinal that does not fit 32 bits is
-// not an export. When two spec files of a module declare one ordinal, the later file in name order replaces the earlier
+// not an export. The exports of a module are in ordinal order (the Python's dict was in the order of the lines, which nothing
+// reads as an order). When two spec files of a module declare one ordinal, the later file in name order replaces the earlier
 // (the Python's was the file system's listing order).
 #include "cb/symbols/wine16.hpp"
 
