@@ -1,51 +1,27 @@
-// codebreaker/formats/xex.hpp -- typed C++ of codebreaker.formats.xex
+// codebreaker/formats/xex.hpp -- compat shim over cb/formats/xex.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// xex.py -- an Xbox 360 executable (.xex): the PowerPC image inside it, and what its header says.
-//
-//     xex::is_xex(path)               the file starts with XEX2
-//     xex::optional_headers(data)     (entry's offset, key, value) of each entry of the header's table:
-//                                     the one reader of it (xex_edit, xex_imports, god, fatx's carver)
-//     xex::basefile(path)             the decrypted, decompressed PowerPC image (a PE, machine 0x1F2),
-//                                     written once under state/unpacked/xex/ and reused, with the
-//                                     header beside it (<image>.json)
-//     xex::import_libraries(image)    the libraries that header named, for an image written so
-//     h = xex::header(path)
-//     h.name                          the image's own name (bootanim.dll, default.exe)
-//     h.base, h.entry                 its load address and entry point
-//     h.imports                       [library name] in the order the image's import stubs number them
-//     h.libraries                     [(static library, version)]: what it was built with
-//     run(args)                       `codebreaker xex <command> ...`: the native program's commands
-//
-// A .xex wraps a PE image in its own header: the image is compressed (LZX or by blocks), usually
-// encrypted with a per-title key, and the libraries its imports come from are named in the header,
-// not in the image. The native program (native/xex, built with CMake) does the decrypting and
-// decompressing; the PowerPC lane reads the basefile it writes, so a .xex is reconstructed like any
-// PowerPC image (corpus.resolve hands every stage the basefile in its place).
-//
-// Typing notes (how the Python's dynamic parts are typed here):
-//   * The header reader is the C++ of native/formats (xex/questions.cc over native/xex's xex_file.cpp), linked
-//     in: no ctypes, no pickle.  An exception it raised comes back as the py:: exception of the same Python
-//     type (struct.error is py::StructError).
-//   * optional_headers is a generator in the Python: here a py::iter over entries; the failure the reader met
-//     is thrown by the step that reaches it, after the entries before it were given.
-//   * The Header class is the struct `Header` (name / base / entry are None when the header has none).
-//   * import_libraries returns json.load(f)["imports"], which can be any JSON value: the
-//     codebreaker::symbols::native::Json variant (the typed json.loads result); None is nullopt.
-//   * main(argv): Python's main takes argv; the exit status is the returned value.
+// The module itself is native/cb/formats/xex.{hpp,cpp}; this header keeps the old py:: surface for the ports that
+// have not been refactored yet (xex_edit, xex_imports, god, powerpc lanes) and is deleted with the last of them.
+// Conversion and forwarding only. The settings the old code read (`xex_bin`, the state folder) are read here and
+// handed to the new module as `Tools`.
 #pragma once
 
 #include <cstdint>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/crypto.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/formats/xex.hpp"
 #include "codebreaker/symbols/native.hpp"
-#include "py.hpp"
 #include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::formats::xex {
 
-extern const py::bytes MAGIC;
-extern const int64_t FILE_FORMAT_INFO;
+inline const py::bytes MAGIC = py::bytes("XEX2");
+inline constexpr int64_t FILE_FORMAT_INFO = 0x000003FF;
 
 // Whether the file starts with XEX2.
 bool is_xex(const py::str& path);
@@ -93,5 +69,97 @@ Header header(const py::str& path);
 int64_t run(const py::list<py::str>& argv);
 
 int64_t main(const py::list<py::str>& argv);
+
+// ---- the bodies: all conversion --------------------------------------------------------------------------
+
+namespace shim_ {
+
+inline std::filesystem::path path_of(const py::str& p) { return cb::fs::from_text(cb::compat::from_py(p)); }
+
+// the settings the old code read, as the new module's Tools: xex.exe in `xex_bin`, images under state/unpacked/xex
+inline cb::formats::xex::Tools tools() {
+    return {path_of(py::os::path::join(py::settings::get_str(py::str("xex_bin")), py::str("xex.exe"))),
+            path_of(py::os::path::join(py::os::path::join(py::settings::get_str(py::str("state")), py::str("unpacked")),
+                                       py::str("xex")))};
+}
+
+// the entries optional_headers gives, then the failure the reader met (thrown by the step that reaches it)
+class OptionalHeadersGenerator : public py::generator<HeaderEntry> {
+public:
+    explicit OptionalHeadersGenerator(py::bytes data) : data_(std::move(data)), bytes_(cb::compat::from_py(data_)) {
+        cb::compat::guard([&] { table_.emplace(cb::ByteView(bytes_)); });
+    }
+    std::optional<HeaderEntry> next() override {
+        return cb::compat::guard([&]() -> std::optional<HeaderEntry> {
+            const auto h = table_->next();
+            if (!h) return std::nullopt;
+            return HeaderEntry(static_cast<int64_t>(h->offset), h->key, h->value);
+        });
+    }
+
+private:
+    py::bytes data_;
+    cb::Bytes bytes_;
+    std::optional<cb::formats::xex::OptionalHeaders> table_;
+};
+
+}  // namespace shim_
+
+inline bool is_xex(const py::str& path) { return cb::formats::xex::probe(shim_::path_of(path)); }
+
+inline py::iter<HeaderEntry> optional_headers(const py::bytes& data) {
+    return py::iter<HeaderEntry>(std::make_shared<shim_::OptionalHeadersGenerator>(data));
+}
+
+inline std::tuple<int64_t, int64_t> ids(const py::bytes& data) {
+    const cb::formats::xex::TitleIds t = cb::compat::guard([&] { return cb::formats::xex::ids(cb::compat::from_py(data)); });
+    return std::make_tuple(int64_t(t.media_id), int64_t(t.title_id));
+}
+
+inline py::str program() { return cb::compat::to_py(cb::fs::to_text(shim_::tools().xex_program)); }
+
+inline py::str _sha(const py::str& path) {
+    return cb::compat::guard([&] {
+        const cb::fs::MappedFile file(shim_::path_of(path));
+        return cb::compat::to_py(cb::crypto::to_hex(cb::crypto::sha1(file.view())));
+    });
+}
+
+inline py::str basefile(const py::str& path) {
+    return cb::compat::guard(
+        [&] { return cb::compat::to_py(cb::fs::to_text(cb::formats::xex::basefile(shim_::tools(), shim_::path_of(path)))); });
+}
+
+inline py::str basic(const py::str& path, const py::str& out) {
+    cb::compat::guard([&] { cb::formats::xex::write_basic(shim_::tools(), shim_::path_of(path), shim_::path_of(out)); });
+    return out;
+}
+
+inline std::optional<symbols::native::Json> import_libraries(const py::str& image_path) {
+    const auto names = cb::formats::xex::import_libraries(shim_::path_of(image_path));
+    if (!names) return std::nullopt;
+    symbols::native::Json::Array list;
+    for (const std::string& n : *names) list.push_back(symbols::native::Json{cb::compat::to_py(n)});
+    return symbols::native::Json{list};
+}
+
+inline Header header(const py::str& path) {
+    const cb::formats::xex::Header h = cb::compat::guard([&] { return cb::formats::xex::read_header(shim_::path_of(path)); });
+    Header out;
+    if (h.name) out.name = cb::compat::to_py(*h.name);
+    if (h.base) out.base = int64_t(*h.base);
+    if (h.entry) out.entry = int64_t(*h.entry);
+    for (const std::string& n : h.imports) out.imports.append(cb::compat::to_py(n));
+    for (const cb::formats::xex::Library& l : h.libraries) {
+        out.libraries.append(std::make_tuple(cb::compat::to_py(l.name), cb::compat::to_py(l.version)));
+    }
+    return out;
+}
+
+inline int64_t run(const py::list<py::str>& argv) {
+    return cb::compat::guard([&]() -> int64_t { return cb::formats::xex::run(shim_::tools(), cb::compat::from_py(argv)); });
+}
+
+inline int64_t main(const py::list<py::str>& argv) { return run(argv); }
 
 }  // namespace codebreaker::formats::xex

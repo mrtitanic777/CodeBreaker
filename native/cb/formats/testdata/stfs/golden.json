@@ -1,0 +1,405 @@
+{
+"build": [
+{
+"fold": "one",
+"tpl": "con",
+"out": "one_con.stfs",
+"result": "pk/one_con.stfs file:b61440:1a6656025866ebd2df9d9db620412b52b224e011"
+},
+{
+"fold": "one",
+"tpl": "live",
+"out": "one_live.stfs",
+"result": "pk/one_live.stfs file:b61440:1fd079ec6bb1c792617e7e856a8ac4feec0e6680"
+},
+{
+"fold": "one",
+"tpl": "pirs",
+"out": "one_pirs.stfs",
+"result": "pk/one_pirs.stfs file:b24576:e01d5bfb14646c4a2e23e8951246cf10bf12433d"
+},
+{
+"fold": "empty_file",
+"tpl": "con",
+"out": "empty_file_con.stfs",
+"result": "pk/empty_file_con.stfs file:b61440:07b7d05bc6d1a9d52f80952a9e3af38cf5c0223d"
+},
+{
+"fold": "empty_file",
+"tpl": "live",
+"out": "empty_file_live.stfs",
+"result": "pk/empty_file_live.stfs file:b61440:8148f1cfd6a89005071bf4e3e00e5a39d6e31f9b"
+},
+{
+"fold": "empty_file",
+"tpl": "pirs",
+"out": "empty_file_pirs.stfs",
+"result": "pk/empty_file_pirs.stfs file:b24576:b8fc90af1526ff249b90134071cde06d47fdc7be"
+},
+{
+"fold": "mixed",
+"tpl": "con",
+"out": "mixed_con.stfs",
+"result": "pk/mixed_con.stfs file:b122880:6f0f5a48855a197f97f5055881e0b5090c17e615"
+},
+{
+"fold": "mixed",
+"tpl": "live",
+"out": "mixed_live.stfs",
+"result": "pk/mixed_live.stfs file:b122880:f2a39bf13e11deaedf218cc0a0626d7e9999675c"
+},
+{
+"fold": "mixed",
+"tpl": "pirs",
+"out": "mixed_pirs.stfs",
+"result": "pk/mixed_pirs.stfs file:b86016:4069bc2a27257e113902199f6cb921fdbc7f0703"
+},
+{
+"fold": "many70",
+"tpl": "con",
+"out": "many70_con.stfs",
+"result": "pk/many70_con.stfs file:b348160:3c148ead4b13d20ffe53b29352d525d5614c3302"
+},
+{
+"fold": "many70",
+"tpl": "live",
+"out": "many70_live.stfs",
+"result": "pk/many70_live.stfs file:b348160:9ba5c6d37fa0d083761ba279263a343fd83d10b0"
+},
+{
+"fold": "many70",
+"tpl": "pirs",
+"out": "many70_pirs.stfs",
+"result": "pk/many70_pirs.stfs file:b311296:6cd4053e061ca03aff74885a0224049594a6b735"
+},
+{
+"fold": "many200",
+"tpl": "con",
+"out": "many200_con.stfs",
+"result": "pk/many200_con.stfs file:b905216:8f160decc9bc89b7f110d22bdbfc113ba66fddbf"
+},
+{
+"fold": "withdir",
+"tpl": "con",
+"out": "withdir_con.stfs",
+"result": "pk/withdir_con.stfs file:b61440:f791092d3e26e1edb4fe92fce874f3da389abe30"
+},
+{
+"fold": "withdir",
+"tpl": "live",
+"out": "withdir_live.stfs",
+"result": "pk/withdir_live.stfs file:b61440:e337042e2c1f3a68fdea47595e61608fd2fd2b9d"
+},
+{
+"fold": "withdir",
+"tpl": "pirs",
+"out": "withdir_pirs.stfs",
+"result": "pk/withdir_pirs.stfs file:b24576:a486ae4e19ae65106659a5f6904aecfcd5caaf0f"
+},
+{
+"fold": "one",
+"tpl": "con",
+"out": "ir/e.stfs",
+"result": "E:FileNotFoundError"
+}
+],
+"resign": [
+{
+"pk": "mixed_con",
+"kv": "good",
+"args": [
+"N",
+"F"
+],
+"result": "b122880:7af0c071be37629559755b842cc00f36fa0f4974 dest=none"
+},
+{
+"pk": "mixed_con",
+"kv": "good",
+"args": [
+"N",
+"T"
+],
+"result": "b122880:831f31dd309bb508541ac56e9830a0d5a66671db dest=none"
+},
+{
+"pk": "mixed_con",
+"kv": "good2",
+"args": [
+"N",
+"F"
+],
+"result": "b122880:3cb6c7a346aabe6efa140a5e2996832d50e43ffa dest=none"
+},
+{
+"pk": "mixed_con",
+"kv": "good2",
+"args": [
+"N",
+"T"
+],
+"result": "b122880:9fcb2a9bf07c5b830929430b84620115ef6bde0f dest=none"
+},
+{
+"pk": "mixed_con",
+"kv": "short",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "mixed_con",
+"kv": "zero",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "mixed_con",
+"kv": "mismatch",
+"args": [
+"N",
+"F"
+],
+"result": "E:RuntimeError"
+},
+{
+"pk": "mixed_con",
+"kv": "small",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "mixed_live",
+"kv": "good",
+"args": [
+"N",
+"F"
+],
+"result": "b122880:0b716adf9891450e9a29f6a3ba4ba91e1d7ac598 dest=none"
+},
+{
+"pk": "mixed_live",
+"kv": "good",
+"args": [
+"N",
+"T"
+],
+"result": "b122880:6f3d7f4a81bb51f3d4a67758478e6f347efef8c7 dest=none"
+},
+{
+"pk": "mixed_live",
+"kv": "good2",
+"args": [
+"N",
+"F"
+],
+"result": "b122880:d939c204fbb8b856bdfd03e59d488bf299075907 dest=none"
+},
+{
+"pk": "mixed_live",
+"kv": "good2",
+"args": [
+"N",
+"T"
+],
+"result": "b122880:84316b6e67643ce34009f2b5677baf7f79f31ad6 dest=none"
+},
+{
+"pk": "mixed_live",
+"kv": "short",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "mixed_live",
+"kv": "zero",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "mixed_live",
+"kv": "mismatch",
+"args": [
+"N",
+"F"
+],
+"result": "E:RuntimeError"
+},
+{
+"pk": "mixed_live",
+"kv": "small",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "one_pirs",
+"kv": "good",
+"args": [
+"N",
+"F"
+],
+"result": "b24576:3dabb7beb8eb8888f7a6e27a7db4088de69c953c dest=none"
+},
+{
+"pk": "one_pirs",
+"kv": "good",
+"args": [
+"N",
+"T"
+],
+"result": "b24576:7ca847012b43dee645d5f719e5ee2da7cb9c869b dest=none"
+},
+{
+"pk": "one_pirs",
+"kv": "good2",
+"args": [
+"N",
+"F"
+],
+"result": "b24576:e2560e6146d4421a2d0cbf02705c62e1d51469c0 dest=none"
+},
+{
+"pk": "one_pirs",
+"kv": "good2",
+"args": [
+"N",
+"T"
+],
+"result": "b24576:af002e472d9a89668ae635bd78b10ab93bd85448 dest=none"
+},
+{
+"pk": "one_pirs",
+"kv": "short",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "one_pirs",
+"kv": "zero",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "one_pirs",
+"kv": "mismatch",
+"args": [
+"N",
+"F"
+],
+"result": "E:RuntimeError"
+},
+{
+"pk": "one_pirs",
+"kv": "small",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "many70_con",
+"kv": "good",
+"args": [
+"N",
+"F"
+],
+"result": "b348160:c4292a5aa65cdf54c9010e951914c62bf0bf9dbd dest=none"
+},
+{
+"pk": "many70_con",
+"kv": "good",
+"args": [
+"N",
+"T"
+],
+"result": "b348160:8e752eb59deae56ebce3a2e4d30b508302217097 dest=none"
+},
+{
+"pk": "many70_con",
+"kv": "good2",
+"args": [
+"N",
+"F"
+],
+"result": "b348160:fc65620f56368392fdcfd2312447fbe478638843 dest=none"
+},
+{
+"pk": "many70_con",
+"kv": "good2",
+"args": [
+"N",
+"T"
+],
+"result": "b348160:f16bda7a1c2506a418473bfe26369539625fab89 dest=none"
+},
+{
+"pk": "many70_con",
+"kv": "short",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "many70_con",
+"kv": "zero",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "many70_con",
+"kv": "mismatch",
+"args": [
+"N",
+"F"
+],
+"result": "E:RuntimeError"
+},
+{
+"pk": "many70_con",
+"kv": "small",
+"args": [
+"N",
+"F"
+],
+"result": "E:ValueError"
+},
+{
+"pk": "mixed_live",
+"kv": "good",
+"args": [
+"r:pk_out/nodir/x.stfs",
+"F"
+],
+"result": "E:FileNotFoundError"
+}
+]
+}
