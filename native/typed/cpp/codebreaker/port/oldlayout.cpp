@@ -38,74 +38,6 @@ str qt(const Node& n) { return n.type.has_value() && n.type->qualType.has_value(
 // re.sub(r"\s+", "", x)
 str squeeze(const str& x) { return py::re::sub(S("\\s+"), S(""), x); }
 
-// ---- the JSON of clang's tree as records (copies of arith16's parsers, which are not exported)
-Loc loc_of(const py::V& v) {
-    Loc l;
-    if (!v.is_dict()) {
-        return l;
-    }
-    const py::V& off = v.get("offset");
-    if (off.is_int()) {
-        l.offset = off.as_int();
-    }
-    const py::V& tok = v.get("tokLen");
-    if (tok.is_int()) {
-        l.tokLen = tok.as_int();
-    }
-    const py::V& file = v.get("file");
-    if (file.is_str()) {
-        l.file = str(file.str());
-    }
-    if (v.get("spellingLoc").is_dict()) {
-        l.spellingLoc = std::make_shared<Loc>(loc_of(v.get("spellingLoc")));
-    }
-    if (v.get("expansionLoc").is_dict()) {
-        l.expansionLoc = std::make_shared<Loc>(loc_of(v.get("expansionLoc")));
-    }
-    if (v.get("includedFrom").is_dict()) {
-        l.includedFrom = std::make_shared<Loc>(loc_of(v.get("includedFrom")));
-    }
-    return l;
-}
-
-std::optional<str> json_str(const py::V& v) {
-    if (v.is_str()) {
-        return str(v.str());
-    }
-    return std::nullopt;
-}
-
-Node node_of(const py::V& v) {
-    Node n;
-    n.kind = json_str(v.get("kind"));
-    n.opcode = json_str(v.get("opcode"));
-    n.castKind = json_str(v.get("castKind"));
-    if (v.get("type").is_dict()) {
-        arith16::TypeRef t;
-        t.qualType = json_str(v.get("type").get("qualType"));
-        n.type = t;
-    }
-    const py::V& val = v.get("value");
-    if (val.is_intlike()) {
-        n.value = arith16::Number(val.as_int());
-    } else if (val.is_str()) {
-        n.value = arith16::Number(str(val.str()));
-    }
-    n.loc = loc_of(v.get("loc"));
-    if (v.get("range").is_dict()) {
-        n.range.begin = loc_of(v.get("range").get("begin"));
-        n.range.end = loc_of(v.get("range").get("end"));
-    }
-    if (v.get("inner").is_list()) {
-        for (const py::V& x : v.get("inner").seq()) {
-            if (x.is_dict()) {
-                n.inner.append(node_of(x));
-            }
-        }
-    }
-    return n;
-}
-
 // the Extra of each node of the tree (walked together with the JSON it was made from: the same children in the same order)
 void index_extra(const Node& n, const py::V& v, Tree& t) {
     Extra e;
@@ -156,37 +88,14 @@ const Extra& Tree::ex(const Node& n) const {
 }
 
 std::shared_ptr<Tree> _dump(const py::str& cc, const py::str& src, const py::str& folder) {
-    py::list<str> args{cc,
-                       S("-fsyntax-only"),
-                       S("-Xclang"),
-                       S("-ast-dump=json"),
-                       S("-fsigned-char"),
-                       S("-std=c11"),
-                       S("-D_CRT_SECURE_NO_WARNINGS"),
-                       S("-D_CRT_NONSTDC_NO_WARNINGS"),
-                       S("-I."),
-                       src};
-    py::subprocess::RunOptions opts;
-    opts.cwd = folder;
-    opts.text = false;
-    py::subprocess::CompletedProcess p = py::subprocess::run(args, opts);
-    try {
-        py::V doc = py::json_parse(p.stdout_bytes->decode("utf-8", "replace").utf8());
-        if (!doc.is_dict()) {
-            return nullptr;
-        }
-        auto t = std::make_shared<Tree>();
-        t->root = node_of(doc);
-        index_extra(t->root, doc, *t);
-        return t;
-    } catch (const py::PyError& e) {
-        if (e.type == "ValueError") {
-            return nullptr;
-        }
-        throw;
-    } catch (const py::ValueError&) {
+    std::optional<py::V> doc = arith16::dump_json(cc, src, folder);
+    if (!doc) {
         return nullptr;
     }
+    auto t = std::make_shared<Tree>();
+    t->root = arith16::node_of(*doc);
+    index_extra(t->root, *doc, *t);
+    return t;
 }
 
 void _walk(const Node& node, const WalkFn& fn, Parents& parents) {

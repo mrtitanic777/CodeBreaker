@@ -22,11 +22,10 @@
 // Typing notes (what the Python leaves open):
 //   * clang's tree is a JSON document of dicts. arith16's typed port reads the keys arith16 needs into
 //     arith16::Node; this pass reads a few more ("id", "name", "completeDefinition", "tagUsed", "referencedDecl"
-//     {"name"}, "referencedMemberDecl"), which arith16::Node does not hold and whose parser (node_of) is not
-//     exported. So a tree here is a Tree: the arith16::Node tree itself (so arith16::bare, mark_files, _files and
+//     {"name"}, "referencedMemberDecl"), which arith16::Node does not hold. So a tree here is a Tree: the arith16::Node tree itself (so arith16::bare, mark_files, _files and
 //     the Loc records are used as they are) plus an Extra record per node, found by the node's address
-//     (Tree::ex). _dump() runs clang as arith16::dump does and builds both from the one JSON document; the node
-//     and location parsers are small copies of arith16's (the only part not shared).
+//     (Tree::ex). _dump() takes the one JSON document of arith16::dump_json, builds the Node tree with
+//     arith16::node_of and the Extra records from the same document.
 //   * a dict with fixed keys is a record: Extra; the Python's `{"new": ..., "found": ..., "refused": ...}` /
 //     `{"olds": ...}` cache values are a tuple / a list (cache::value / keep are typed), and their cache keys
 //     carry this port's own version (the entries are not the Python's: see CODE_VERSION).

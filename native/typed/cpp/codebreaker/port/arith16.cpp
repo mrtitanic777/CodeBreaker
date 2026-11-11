@@ -108,7 +108,7 @@ std::optional<py::str> json_str(const py::V& v) {
     return std::nullopt;
 }
 
-Node node_of(const py::V& v) {
+Node parse_node(const py::V& v) {
     Node n;
     n.kind = json_str(v.get("kind"));
     n.opcode = json_str(v.get("opcode"));
@@ -132,7 +132,7 @@ Node node_of(const py::V& v) {
     if (v.get("inner").is_list()) {
         for (const py::V& x : v.get("inner").seq()) {
             if (x.is_dict()) {
-                n.inner.append(node_of(x));
+                n.inner.append(parse_node(x));
             }
         }
     }
@@ -175,7 +175,7 @@ void files_loc(const Loc& l, py::list<py::str>& seen) {
 
 }  // namespace
 
-std::optional<Node> dump(const py::str& cc, const py::str& src, const py::str& folder, const py::list<py::str>& extra) {
+std::optional<py::V> dump_json(const py::str& cc, const py::str& src, const py::str& folder, const py::list<py::str>& extra) {
     py::list<py::str> args{cc,
                            py::str("-fsyntax-only"),
                            py::str("-Xclang"),
@@ -205,7 +205,7 @@ std::optional<Node> dump(const py::str& cc, const py::str& src, const py::str& f
         if (!doc.is_dict()) {
             return std::nullopt;
         }
-        return node_of(doc);
+        return doc;
     } catch (const py::PyError& e) {
         if (e.type == "ValueError") {
             return std::nullopt;
@@ -214,6 +214,16 @@ std::optional<Node> dump(const py::str& cc, const py::str& src, const py::str& f
     } catch (const py::ValueError&) {
         return std::nullopt;
     }
+}
+
+Node node_of(const py::V& doc) { return parse_node(doc); }
+
+std::optional<Node> dump(const py::str& cc, const py::str& src, const py::str& folder, const py::list<py::str>& extra) {
+    std::optional<py::V> doc = dump_json(cc, src, folder, extra);
+    if (!doc) {
+        return std::nullopt;
+    }
+    return node_of(*doc);
 }
 
 std::optional<py::str> old_type(const Node& n, const py::str& text) {

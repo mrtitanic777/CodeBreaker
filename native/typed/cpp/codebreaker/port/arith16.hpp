@@ -34,6 +34,7 @@
 #include <variant>
 
 #include "py.hpp"
+#include "value.hpp"   // (py::V: clang's JSON document)
 
 namespace codebreaker::port::arith16 {
 
@@ -75,6 +76,12 @@ extern py::dict<py::str, py::str> W16;
 extern py::set<py::str> ARITH;
 extern py::set<py::str> TESTS;
 extern py::dict<py::str, py::str> CAST;
+
+// clang's JSON tree of a file of the port (-ast-dump=json), or None (too for a document that is not an object);
+// node_of() reads it into records. (dump() is the two together; a pass that reads more keys of the document than
+// Node holds -- oldlayout -- takes the JSON and makes its own records beside.)
+std::optional<py::V> dump_json(const py::str& cc, const py::str& src, const py::str& folder, const py::list<py::str>& extra = py::list<py::str>());
+Node node_of(const py::V& doc);
 
 // clang's tree of a file of the port (the JSON of -ast-dump), or None
 // (None too for a JSON document that is not an object.)
