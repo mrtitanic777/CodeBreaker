@@ -160,7 +160,7 @@ cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify)
 
 cb_area(symbols)
-target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge)
+target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge cb_compare cb_platforms)
 
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core)

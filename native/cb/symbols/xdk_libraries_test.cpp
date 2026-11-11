@@ -31,10 +31,10 @@ cb::Bytes be(const std::vector<std::uint32_t>& words) {
     return out;
 }
 
-xl::LibraryFunction fn(const char* name, const std::vector<std::uint32_t>& words, std::vector<std::uint32_t> ignore = {},
+cb::symbols::libraries::Function fn(const char* name, const std::vector<std::uint32_t>& words, std::vector<std::uint32_t> ignore = {},
                        std::uint32_t at = 0) {
     if (ignore.empty()) ignore.assign(words.size(), 0);
-    return {name, be(words), std::move(ignore), at};
+    return {name, be(words), {}, std::move(ignore), at};
 }
 
 // Five words, the third of which a linker fills in.
