@@ -304,13 +304,28 @@ def test_native_dosexec_loads_the_dll_once_from_two_threads():
     the DLL once; _load() once ran its whole body in both, leaving two entries in _LIB."""
     import threading
     import time
-    from unittest import mock
     from codebreaker.exact.emu import native_dosexec as nd
     saved = list(nd._LIB), list(nd._WHY)
     calls = []
-    lib = mock.MagicMock()
-    lib.cbd_version.return_value = 1
-    lib.cbd_init.return_value = 0
+
+    class Fn:                                             # a DLL entry point: callable, counts its calls
+        def __init__(self, value):
+            self.value, self.call_count = value, 0
+
+        def __call__(self, *args):
+            self.call_count += 1
+            return self.value
+
+    class Lib:                                            # the loaded DLL: any other entry point answers 0
+        def __init__(self):
+            self.cbd_version, self.cbd_init = Fn(1), Fn(0)
+
+        def __getattr__(self, name):
+            fn = Fn(0)
+            setattr(self, name, fn)
+            return fn
+
+    lib = Lib()
 
     def slow_load(path):
         calls.append(path)
@@ -326,13 +341,18 @@ def test_native_dosexec_loads_the_dll_once_from_two_threads():
         gate.wait()
         got.append(nd._load())
 
+    real_path, real_load = nd.dll_path, nd.settings.load_native
     try:
-        with mock.patch.object(nd, "dll_path", return_value=__file__), mock.patch.object(nd.settings, "load_native", slow_load):
+        nd.dll_path = lambda *a, **k: __file__
+        nd.settings.load_native = slow_load
+        try:
             threads = [threading.Thread(target=first_use) for _ in range(2)]
             for t in threads:
                 t.start()
             for t in threads:
                 t.join()
+        finally:
+            nd.dll_path, nd.settings.load_native = real_path, real_load
         assert len(calls) == 1 and lib.cbd_init.call_count == 1, (len(calls), lib.cbd_init.call_count)
         assert got == [lib, lib] and len(nd._LIB) == 1, (got, nd._LIB, nd._WHY)
     finally:

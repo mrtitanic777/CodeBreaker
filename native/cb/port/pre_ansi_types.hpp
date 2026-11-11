@@ -89,6 +89,8 @@ struct Member {
     std::string name;
     std::uint32_t offset = 0;
     std::uint32_t size = 0;
+    std::string declarator;   // as the structure wrote it (`*next`, `buf[8]`); a nested structure's: its name
+    bool pointer = false;     // the member is a pointer (a nested structure: all its own members are)
     friend bool operator==(const Member&, const Member&) = default;
 };
 

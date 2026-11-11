@@ -143,8 +143,46 @@ def test_builds_and_runs():
         shutil.rmtree(dst, ignore_errors=True)
 
 
+def test_octal_constant_in_a_pass():
+    """a number written with a leading 0 is octal in C: malloc(010) is 8 bytes - the pass that reads it no longer
+    raises ValueError (int("010", 0) did) but reads the 8"""
+    files = {"a.h": "struct node { int a; int b; int c; int d; };\n",
+             "a.c": '#include "a.h"\nchar *pool_alloc()\n{\n\treturn malloc(010);\n}\n'
+                    "void g()\n{\n\tstruct node *p;\n\tp = (struct node *)pool_alloc();\n}\n"}
+    p = pre_ansi.Port(dict(files), PROFILE)
+    p.fixed_allocators()
+    assert "malloc(sizeof(struct node))" in p.files["a.c"], p.files["a.c"]
+    assert pre_ansi.c_int("010") == 8 and pre_ansi.c_int("0x10") == 16 and pre_ansi.c_int("-5") == -5
+
+
+SIZES_TABLE = (
+    "struct recfmt { char *name; int n; };\n"
+    "struct psym { int a; int b; int c; int d; int e; int f; int g; int h; int i; int j; int k; int l; int m; int o; int p;"
+    " int q; };\n"
+    'struct recfmt g_2096[] = { { "tkn", 22 }, { "tuk", 32 } }\n;\n'
+    "int other[2][2] = { { 1, 22 }, { 3, 32 } };\n"
+    "char *f03f02(n, z, pool)\nint n, z, pool;\n{\n\treturn 0;\n}\n"
+    "f()\n{\n\tstruct psym *p;\n\tint n, kind;\n\tn = g_2096[kind].n;\n\tp = (struct psym *)f03f02(32, 0, 1);\n"
+    "\tp = (struct psym *)f03f02(n, 0, 1);\n}\n")
+
+
+def test_size_table_ends_at_its_own_brace():
+    """a table of old byte counts written `}` and `;` apart: its rows were those up to the next `};` of the file - the
+    rows of the array that came after it were changed too (22 an offsetof, 32 a sizeof in `other`)"""
+    p = pre_ansi.Port({"t.c": SIZES_TABLE}, PROFILE)
+    p.size_tables()
+    out = p.files["t.c"]
+    assert '{ "tkn", offsetof(struct psym, l) }, { "tuk", sizeof(struct psym) }' in out, out
+    assert "int other[2][2] = { { 1, 22 }, { 3, 32 } };" in out, out
+    # a table that never closes has no rows at all
+    q = pre_ansi.Port({"t.c": SIZES_TABLE.replace(" }\n;\n", "\n")}, PROFILE)
+    q.size_tables()
+    assert "offsetof" not in q.files["t.c"] and "sizeof" not in q.files["t.c"], q.files["t.c"]
+
+
 if __name__ == "__main__":
     for t in (test_runtime_left_out, test_prototypes_and_widths, test_formats, test_frame_kept_side_by_side,
+              test_octal_constant_in_a_pass, test_size_table_ends_at_its_own_brace,
               test_widening_passes_on_a_definition_that_never_closes, test_stored_wide_keeps_the_declarations_it_changed,
               test_builds_and_runs):
         check(t)
