@@ -670,6 +670,7 @@ std::string pass_key(const std::filesystem::path& clang, const std::filesystem::
 std::map<std::string, std::string> run(base::cache::Cache& cache, const std::filesystem::path& clang,
                                        const std::filesystem::path& folder, std::span<const std::string> files) {
     using Result = std::optional<std::string>;   // the file's text with the casts; nothing when it needs none
+    declare_cache(cache);   // (a kind already in use keeps the declaration it had)
     std::map<std::string, std::string> out;
     for (const std::string& f : files) {
         const std::string key = pass_key(clang, folder, f, "arith16", kCodeVersion);

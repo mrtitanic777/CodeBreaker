@@ -194,7 +194,8 @@ std::string apply_edits(std::string_view text, std::span<const Edit> edits);
 inline constexpr std::string_view kCacheKind = "port-passes";
 inline constexpr std::string_view kCodeVersion = "arith16-1";
 
-// Declare kCacheKind to the cache (a State kind of this code's generation). Call once before the first run().
+// Declare kCacheKind to the cache (a State kind of this code's generation). run() does it; call it first only to have the
+// kind declared before anything else uses the cache.
 void declare_cache(base::cache::Cache& cache);
 
 // The names a file `#include`s (in "" or <>), in the order they stand.

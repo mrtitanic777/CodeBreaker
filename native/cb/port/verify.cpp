@@ -304,6 +304,7 @@ Run run_original(const OriginalRunner& runner, base::cache::Cache* cache, const 
                  const stdfs::path& exe, const stdfs::path& folder, std::string_view cmd, ByteView stdin_data) {
     std::string key;
     if (cache != nullptr) {
+        declare_cache(*cache);   // (a kind already in use keeps the declaration it had)
         // the program, the emulator, the command, the input and every file it is given
         std::vector<base::cache::KeyPart> parts{cache->tool_bytes_id(exe), runner.identity(), std::string(cmd), stdin_data};
         for (const auto& [name, data] : read_folder(folder)) {
