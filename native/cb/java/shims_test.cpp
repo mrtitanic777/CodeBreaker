@@ -7,6 +7,14 @@
 #include "codebreaker/java/_paths.hpp"
 #include "codebreaker/java/apimap.hpp"
 #include "codebreaker/java/cmake.hpp"
+#include "codebreaker/java/console/assets.hpp"
+#include "codebreaker/java/console/project_layout.hpp"
+#include "codebreaker/java/console/project_scan.hpp"
+#include "codebreaker/java/console/sdk.hpp"
+#include "codebreaker/java/console/vcxproj.hpp"
+#include "codebreaker/java/console/worklist.hpp"
+#include "codebreaker/java/console/xact.hpp"
+#include "codebreaker/java/console/xdk_scan.hpp"
 #include "codebreaker/java/debug.hpp"
 #include "codebreaker/java/ir.hpp"
 #include "codebreaker/java/ledger.hpp"
@@ -183,6 +191,104 @@ CB_TEST("java.shims.reflection_factory", [] {
     auto [text, sites, fac] = rf::process(py::str("x"), py::str("X"));
     CB_CHECK_EQ(sites, 0);
     CB_CHECK(!fac.has_value());
+});
+
+// ---- java/console: the shims over cb/java/console ------------------------------------------------------------------
+
+std::string console_data(const std::string& relative) {
+    return cb::fs::to_text(cb::testing::data_path("java/console/testdata/" + relative));
+}
+
+CB_TEST("java.shims.console_scan_and_sdk", [] {
+    namespace con = jv::console;
+    // (the old settings layer wants to know the checkout; no settings.json there is no settings)
+    cb::fs::ScopedEnv checkout("CB_CHECKOUT_ROOT", cb::fs::to_text(cb::testing::data_path("../..")));
+    // xdk_scan: the old record shapes, with kind/severity/effort as the text the old callers read
+    auto scan = con::xdk_scan::detect(std::optional<py::str>(to_py(console_data("xdk/sdk1"))));
+    CB_CHECK_EQ(scan.found.size(), 13);
+    CB_CHECK_EQ(scan.missing.size(), 0);
+    CB_CHECK_EQ(from_py(scan.found[0].needs), "XContentCreate");
+    CB_CHECK_EQ(from_py(scan.found[0].kind), "requirement");
+    CB_CHECK_EQ(from_py(*scan.found[0].sev), "correctness");
+    CB_CHECK(!scan.found[0].effort.has_value());
+    CB_CHECK_EQ(from_py(*scan.found[6].effort), "S");
+    CB_CHECK_EQ(scan.found[0].func_count, 3);
+    CB_CHECK_EQ(from_py(scan.found[0].header), "xam.h");
+    CB_CHECK_EQ(from_py(scan.funcs.at(py::str("XamLoaderLaunchTitle"))), "xam.h");
+    CB_CHECK(!con::xdk_scan::detect(std::nullopt).include.has_value());
+    CB_CHECK_EQ(con::xdk_scan::PATTERNS().size(), 13);
+
+    // sdk: the gate, with the old exception
+    CB_CHECK(con::sdk::requires_sdk(std::optional<py::str>(py::str("xbox360"))));
+    CB_CHECK(!con::sdk::requires_sdk(std::nullopt) && con::sdk::is_ungated(std::optional<py::str>(py::str("pc"))));
+    cb::fs::ScopedTempDir tmp("cbshim");
+    cb::fs::write_text(tmp.path() / "xdk" / "include" / "xbox" / "xtl.h", "void XamShimSymbol();\n");
+    auto info = con::sdk::detect(std::optional<py::str>(py::str("xbox360")), std::optional<py::str>(to_py(cb::fs::to_text(tmp.path() / "xdk"))));
+    CB_CHECK(info.has_value());
+    CB_CHECK_EQ(from_py(info->source), "override");
+    CB_CHECK_EQ(from_py(info->name), "Xbox 360 SDK (XDK)");
+    CB_CHECK(info->has_symbol(py::str("XamShimSymbol")) && !info->has_symbol(py::str("XamOther")));
+    CB_CHECK_EQ(info->include_dirs.size(), 2);
+    const std::optional<py::str> nowhere(to_py(cb::fs::to_text(tmp.path() / "empty")));
+    CB_CHECK_THROWS_AS(con::sdk::SdkNotFound, (void)con::sdk::require(std::optional<py::str>(py::str("xbox360")), nowhere));
+    CB_CHECK(from_py(con::sdk::describe(std::optional<py::str>(py::str("wii")), nowhere)).find("NOT found") != std::string::npos);
+
+    // project_scan
+    auto r = con::project_scan::resolve(to_py(console_data("scan/proj1")));
+    CB_CHECK(r.jar.has_value() && from_py(*r.jar).ends_with("deobfuscated.jar"));
+    CB_CHECK(r.lang.has_value() && !r.base.empty());
+    CB_CHECK(!con::project_scan::find_jar(to_py(cb::fs::to_text(tmp.path() / "empty"))).has_value());
+});
+
+CB_TEST("java.shims.console_assets_and_banks", [] {
+    namespace con = jv::console;
+    // assets: the png codec behind the old names, and the old exception for a bad one
+    const auto raw = cb::fs::read_file(cb::testing::data_path("java/console/testdata/assets/png/pal4.png"));
+    CB_CHECK(con::assets::png_needs_rgba(to_py(cb::ByteView(raw))));
+    CB_CHECK_EQ(con::assets::_png_colortype(to_py(cb::ByteView(raw))).value(), 3);
+    auto [converted, changed] = con::assets::normalize_png_to_rgba(to_py(cb::ByteView(raw)));
+    CB_CHECK(changed && !con::assets::png_needs_rgba(converted));
+    const auto cut = cb::fs::read_file(cb::testing::data_path("java/console/testdata/assets/png/bad_cut.png"));
+    CB_CHECK_THROWS_AS(con::assets::UnidentifiedImageError, (void)con::assets::normalize_png_to_rgba(to_py(cb::ByteView(cut))));
+    cb::fs::ScopedTempDir tmp("cbshim");
+    auto res = con::assets::run(to_py(console_data("assets/drift.jar")), to_py(cb::fs::to_text(tmp.path() / "Content")),
+                                std::optional<py::str>(to_py(console_data("assets/code_drift"))), true);
+    CB_CHECK_EQ(res.written.size(), 2);
+    CB_CHECK_EQ(res.converted.size(), 1);
+    CB_CHECK_EQ(res.unconverted.size(), 0);
+    CB_CHECK(res.coverage.has_value() && res.coverage->missing.size() == 1);
+    CB_CHECK(res.report.has_value());
+
+    // xact: dump and the ffmpeg script through the old signatures
+    auto text = con::xact::dump(to_py(console_data("xact/sounds.xsb")));
+    CB_CHECK(from_py(text).starts_with("SoundBank \"sounds\""));
+    con::xact::Match m;
+    m.matched[py::str("step_grass")] = con::xact::Matched{py::str("step.grass"), py::list<py::str>{py::str("newsound/step/grass1.ogg")}};
+    auto bat = con::xact::write_ffmpeg_script(m, to_py(cb::fs::to_text(tmp.path() / "audio")), to_py(console_data("xact/res")));
+    CB_CHECK(cb::fs::read_text(cb::fs::from_text(from_py(bat))).find("step_grass.wav") != std::string::npos);
+});
+
+CB_TEST("java.shims.console_project_files", [] {
+    namespace con = jv::console;
+    cb::fs::ScopedTempDir tmp("cbshim");
+    cb::fs::copy_tree(cb::testing::data_path("java/console/testdata/layout/in_flat"), tmp.path() / "in");
+    con::project_layout::set_here(to_py(cb::fs::to_text(cb::testing::data_path("../../codebreaker/java/console"))));
+    py::list<std::tuple<py::str, py::str>> rules;
+    rules.append(std::make_tuple(py::str("^Block$"), py::str("Blocks")));
+    con::vcxproj::_reseed(rules);
+    auto made = con::project_layout::layout(to_py(cb::fs::to_text(tmp.path() / "in" / "Game")));
+    CB_CHECK_EQ(from_py(made.name), "Game");
+    CB_CHECK_EQ(made.moved, 8);
+    CB_CHECK(cb::fs::read_text(cb::fs::from_text(from_py(made.sln))).find("EndProject") != std::string::npos);
+    CB_CHECK(cb::fs::read_text(cb::fs::from_text(from_py(made.vcxproj))).find("ProjectGuid") != std::string::npos);
+    CB_CHECK(cb::fs::read_text(tmp.path() / "in" / "Game" / "Game" / "Game.vcxproj.filters").find("Blocks") != std::string::npos);
+    con::vcxproj::_reseed(py::list<std::tuple<py::str, py::str>>{});
+    // worklist: a compiler that is the stand-in of the tests
+    cb::fs::write_text(tmp.path() / "wl" / "x.cpp", "x.cpp:1: error: boom\n");
+    auto code = con::worklist::run(to_py(cb::fs::to_text(tmp.path() / "wl")), std::optional<py::str>(to_py(console_data("worklist/fakecc.cmd"))),
+                                   py::str("c++03"), std::optional<py::str>(to_py(cb::fs::to_text(tmp.path() / "WL.md"))));
+    CB_CHECK_EQ(code, 0);
+    CB_CHECK(cb::fs::read_text(tmp.path() / "WL.md").find("| 1 | x.cpp | boom |") != std::string::npos);
 });
 
 }  // namespace

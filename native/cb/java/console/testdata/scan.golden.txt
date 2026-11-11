@@ -1,0 +1,54 @@
+resolve proj1
+  base proj1
+  jar proj1/jars/deobfuscated.jar
+  resources proj1/game/resources
+  java_src proj1/src
+  lang proj1/game/resources/lang/en_US.lang
+resolve proj1/src/net/minecraft/client
+  base proj1
+  jar proj1/jars/deobfuscated.jar
+  resources proj1/game/resources
+  java_src proj1/src
+  lang proj1/game/resources/lang/en_US.lang
+resolve proj1/game/resources/lang
+  base proj1/game
+  jar -
+  resources proj1/game/resources
+  java_src -
+  lang proj1/game/resources/lang/en_US.lang
+resolve proj2
+  base proj2
+  jar proj2/stuff/library.jar
+  resources proj2/resources
+  java_src proj2/sources
+  lang proj2/resources/lang/fr_FR.lang
+resolve proj2/sources/a
+  base proj2
+  jar proj2/stuff/library.jar
+  resources proj2/resources
+  java_src proj2/sources
+  lang proj2/resources/lang/fr_FR.lang
+resolve proj3
+  base proj3
+  jar -
+  resources -
+  java_src proj3
+  lang -
+resolve proj3/net
+  base proj3
+  jar -
+  resources -
+  java_src proj3/net
+  lang -
+resolve proj3/deep
+  base proj3
+  jar -
+  resources -
+  java_src -
+  lang -
+resolve proj4
+  base proj4
+  jar proj4/DEOBFUSCATED.JAR
+  resources proj4/resources
+  java_src -
+  lang -

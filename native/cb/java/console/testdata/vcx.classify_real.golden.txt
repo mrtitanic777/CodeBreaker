@@ -1,0 +1,512 @@
+Debug|none: Debug
+Kernel|none: Platform\Config
+KernelConfig|none: Platform\Config
+ControllerConfig|none: Platform\Config
+Block|none: Blocks\Base
+BlockStone|none: Blocks\Types
+GuiMainMenu|none: GUI\Screens
+Fluid|none: Game (misc)
+LiquidBlock|none: Game (misc)
+A|none: Game (misc)
+Foo|none: Game (misc)
+FooBar|none: Game (misc)
+Base|none: Game (misc)
+|none: Game (misc)
+Mid|none: Game (misc)
+Entity|none: Entities\Base
+EntityPlayer|none: Entities\Player
+j2x_thing|none: Runtime
+stdafx|none: Runtime
+Packet5Foo|none: Network\Packets
+ItemStack|none: Items & Inventory\Items
+TileEntityChest|none: TileEntities
+Random|none: Math & Utilities
+D1|none: Game (misc)
+X|none: Game (misc)
+Q|none: Game (misc)
+E|none: Game (misc)
+L0|none: Game (misc)
+RenderGlobal|none: Rendering\Renderers
+NBTTagCompound|none: IO & NBT\NBT
+Minecraft|none: Core
+NoSuchThing|none: Game (misc)
+WorldGenTrees|none: World & Generation\Generation
+FileInputStream|none: Platform\Java IO
+OutOfMemoryError|none: Platform\Java exceptions
+AB|none: Game (misc)
+Ab|none: Game (misc)
+ADebug|none: Game (misc)
+GL11|none: Platform\Video (GL->D3D9)
+GLContext|none: Platform\Video (GL->D3D9)
+Keyboard|none: Platform\Input
+Socket|none: Platform\Networking (XNet)
+SocketAddress|none: Platform\Networking (XNet)
+Inflater|none: Platform\Compression (zlib)
+Pattern|none: Platform\Java util
+Packet|none: Network\Packets
+NetClientHandler|none: Network\Handlers
+NetworkManager|none: Network\Connection
+SoundManager|none: Audio\Engine
+BufferedImage|none: Platform\Java AWT/DOM (stubs)
+ThreadPool|none: Debug
+Save360|none: Platform\Storage (STFS)
+STFS_Foo|none: Platform\Storage (STFS)
+Controllers|none: Platform\Input
+JavaString|none: Runtime
+ReflectionFactory|none: Runtime
+Zip|none: Platform\Compression (zlib)
+ZipEntry|none: Platform\Compression (zlib)
+Tesselator|none: Rendering\Renderers
+ChunkCache|none: World & Generation\Chunk
+MobSpawner|none: Entities\Types
+Achievement|none: Core\Stats & Achievements
+XactAudio|none: Audio\Platform
+Throwable|none: Platform\Java exceptions
+Debug|empty: Debug
+Kernel|empty: Platform\Config
+KernelConfig|empty: Platform\Config
+ControllerConfig|empty: Platform\Config
+Block|empty: Blocks\Base
+BlockStone|empty: Blocks\Types
+GuiMainMenu|empty: GUI\Screens
+Fluid|empty: Game (misc)
+LiquidBlock|empty: Game (misc)
+A|empty: Game (misc)
+Foo|empty: Game (misc)
+FooBar|empty: Game (misc)
+Base|empty: Game (misc)
+|empty: Game (misc)
+Mid|empty: Game (misc)
+Entity|empty: Entities\Base
+EntityPlayer|empty: Entities\Player
+j2x_thing|empty: Runtime
+stdafx|empty: Runtime
+Packet5Foo|empty: Network\Packets
+ItemStack|empty: Items & Inventory\Items
+TileEntityChest|empty: TileEntities
+Random|empty: Math & Utilities
+D1|empty: Game (misc)
+X|empty: Game (misc)
+Q|empty: Game (misc)
+E|empty: Game (misc)
+L0|empty: Game (misc)
+RenderGlobal|empty: Rendering\Renderers
+NBTTagCompound|empty: IO & NBT\NBT
+Minecraft|empty: Core
+NoSuchThing|empty: Game (misc)
+WorldGenTrees|empty: World & Generation\Generation
+FileInputStream|empty: Platform\Java IO
+OutOfMemoryError|empty: Platform\Java exceptions
+AB|empty: Game (misc)
+Ab|empty: Game (misc)
+ADebug|empty: Game (misc)
+GL11|empty: Platform\Video (GL->D3D9)
+GLContext|empty: Platform\Video (GL->D3D9)
+Keyboard|empty: Platform\Input
+Socket|empty: Platform\Networking (XNet)
+SocketAddress|empty: Platform\Networking (XNet)
+Inflater|empty: Platform\Compression (zlib)
+Pattern|empty: Platform\Java util
+Packet|empty: Network\Packets
+NetClientHandler|empty: Network\Handlers
+NetworkManager|empty: Network\Connection
+SoundManager|empty: Audio\Engine
+BufferedImage|empty: Platform\Java AWT/DOM (stubs)
+ThreadPool|empty: Debug
+Save360|empty: Platform\Storage (STFS)
+STFS_Foo|empty: Platform\Storage (STFS)
+Controllers|empty: Platform\Input
+JavaString|empty: Runtime
+ReflectionFactory|empty: Runtime
+Zip|empty: Platform\Compression (zlib)
+ZipEntry|empty: Platform\Compression (zlib)
+Tesselator|empty: Rendering\Renderers
+ChunkCache|empty: World & Generation\Chunk
+MobSpawner|empty: Entities\Types
+Achievement|empty: Core\Stats & Achievements
+XactAudio|empty: Audio\Platform
+Throwable|empty: Platform\Java exceptions
+Debug|chain: Debug
+Kernel|chain: Platform\Config
+KernelConfig|chain: Platform\Config
+ControllerConfig|chain: Platform\Config
+Block|chain: Blocks\Base
+BlockStone|chain: Blocks\Types
+GuiMainMenu|chain: GUI\Screens
+Fluid|chain: Blocks\Base
+LiquidBlock|chain: Blocks\Base
+A|chain: Game (misc)
+Foo|chain: Game (misc)
+FooBar|chain: Game (misc)
+Base|chain: Game (misc)
+|chain: Game (misc)
+Mid|chain: Game (misc)
+Entity|chain: Entities\Base
+EntityPlayer|chain: Entities\Player
+j2x_thing|chain: Runtime
+stdafx|chain: Runtime
+Packet5Foo|chain: Network\Packets
+ItemStack|chain: Items & Inventory\Items
+TileEntityChest|chain: TileEntities
+Random|chain: Math & Utilities
+D1|chain: Game (misc)
+X|chain: Game (misc)
+Q|chain: Game (misc)
+E|chain: Game (misc)
+L0|chain: Game (misc)
+RenderGlobal|chain: Rendering\Renderers
+NBTTagCompound|chain: IO & NBT\NBT
+Minecraft|chain: Core
+NoSuchThing|chain: Game (misc)
+WorldGenTrees|chain: World & Generation\Generation
+FileInputStream|chain: Platform\Java IO
+OutOfMemoryError|chain: Platform\Java exceptions
+AB|chain: Game (misc)
+Ab|chain: Game (misc)
+ADebug|chain: Game (misc)
+GL11|chain: Platform\Video (GL->D3D9)
+GLContext|chain: Platform\Video (GL->D3D9)
+Keyboard|chain: Platform\Input
+Socket|chain: Platform\Networking (XNet)
+SocketAddress|chain: Platform\Networking (XNet)
+Inflater|chain: Platform\Compression (zlib)
+Pattern|chain: Platform\Java util
+Packet|chain: Network\Packets
+NetClientHandler|chain: Network\Handlers
+NetworkManager|chain: Network\Connection
+SoundManager|chain: Audio\Engine
+BufferedImage|chain: Platform\Java AWT/DOM (stubs)
+ThreadPool|chain: Debug
+Save360|chain: Platform\Storage (STFS)
+STFS_Foo|chain: Platform\Storage (STFS)
+Controllers|chain: Platform\Input
+JavaString|chain: Runtime
+ReflectionFactory|chain: Runtime
+Zip|chain: Platform\Compression (zlib)
+ZipEntry|chain: Platform\Compression (zlib)
+Tesselator|chain: Rendering\Renderers
+ChunkCache|chain: World & Generation\Chunk
+MobSpawner|chain: Entities\Types
+Achievement|chain: Core\Stats & Achievements
+XactAudio|chain: Audio\Platform
+Throwable|chain: Platform\Java exceptions
+Debug|cycle: Debug
+Kernel|cycle: Platform\Config
+KernelConfig|cycle: Platform\Config
+ControllerConfig|cycle: Platform\Config
+Block|cycle: Blocks\Base
+BlockStone|cycle: Blocks\Types
+GuiMainMenu|cycle: GUI\Screens
+Fluid|cycle: Game (misc)
+LiquidBlock|cycle: Game (misc)
+A|cycle: Game (misc)
+Foo|cycle: Game (misc)
+FooBar|cycle: Game (misc)
+Base|cycle: Game (misc)
+|cycle: Game (misc)
+Mid|cycle: Game (misc)
+Entity|cycle: Entities\Base
+EntityPlayer|cycle: Entities\Player
+j2x_thing|cycle: Runtime
+stdafx|cycle: Runtime
+Packet5Foo|cycle: Network\Packets
+ItemStack|cycle: Items & Inventory\Items
+TileEntityChest|cycle: TileEntities
+Random|cycle: Math & Utilities
+D1|cycle: Game (misc)
+X|cycle: Game (misc)
+Q|cycle: Game (misc)
+E|cycle: Game (misc)
+L0|cycle: Game (misc)
+RenderGlobal|cycle: Rendering\Renderers
+NBTTagCompound|cycle: IO & NBT\NBT
+Minecraft|cycle: Core
+NoSuchThing|cycle: Game (misc)
+WorldGenTrees|cycle: World & Generation\Generation
+FileInputStream|cycle: Platform\Java IO
+OutOfMemoryError|cycle: Platform\Java exceptions
+AB|cycle: Game (misc)
+Ab|cycle: Game (misc)
+ADebug|cycle: Game (misc)
+GL11|cycle: Platform\Video (GL->D3D9)
+GLContext|cycle: Platform\Video (GL->D3D9)
+Keyboard|cycle: Platform\Input
+Socket|cycle: Platform\Networking (XNet)
+SocketAddress|cycle: Platform\Networking (XNet)
+Inflater|cycle: Platform\Compression (zlib)
+Pattern|cycle: Platform\Java util
+Packet|cycle: Network\Packets
+NetClientHandler|cycle: Network\Handlers
+NetworkManager|cycle: Network\Connection
+SoundManager|cycle: Audio\Engine
+BufferedImage|cycle: Platform\Java AWT/DOM (stubs)
+ThreadPool|cycle: Debug
+Save360|cycle: Platform\Storage (STFS)
+STFS_Foo|cycle: Platform\Storage (STFS)
+Controllers|cycle: Platform\Input
+JavaString|cycle: Runtime
+ReflectionFactory|cycle: Runtime
+Zip|cycle: Platform\Compression (zlib)
+ZipEntry|cycle: Platform\Compression (zlib)
+Tesselator|cycle: Rendering\Renderers
+ChunkCache|cycle: World & Generation\Chunk
+MobSpawner|cycle: Entities\Types
+Achievement|cycle: Core\Stats & Achievements
+XactAudio|cycle: Audio\Platform
+Throwable|cycle: Platform\Java exceptions
+Debug|self: Debug
+Kernel|self: Platform\Config
+KernelConfig|self: Platform\Config
+ControllerConfig|self: Platform\Config
+Block|self: Blocks\Base
+BlockStone|self: Blocks\Types
+GuiMainMenu|self: GUI\Screens
+Fluid|self: Game (misc)
+LiquidBlock|self: Game (misc)
+A|self: Game (misc)
+Foo|self: Game (misc)
+FooBar|self: Game (misc)
+Base|self: Game (misc)
+|self: Game (misc)
+Mid|self: Game (misc)
+Entity|self: Entities\Base
+EntityPlayer|self: Entities\Player
+j2x_thing|self: Runtime
+stdafx|self: Runtime
+Packet5Foo|self: Network\Packets
+ItemStack|self: Items & Inventory\Items
+TileEntityChest|self: TileEntities
+Random|self: Math & Utilities
+D1|self: Game (misc)
+X|self: Game (misc)
+Q|self: Game (misc)
+E|self: Game (misc)
+L0|self: Game (misc)
+RenderGlobal|self: Rendering\Renderers
+NBTTagCompound|self: IO & NBT\NBT
+Minecraft|self: Core
+NoSuchThing|self: Game (misc)
+WorldGenTrees|self: World & Generation\Generation
+FileInputStream|self: Platform\Java IO
+OutOfMemoryError|self: Platform\Java exceptions
+AB|self: Game (misc)
+Ab|self: Game (misc)
+ADebug|self: Game (misc)
+GL11|self: Platform\Video (GL->D3D9)
+GLContext|self: Platform\Video (GL->D3D9)
+Keyboard|self: Platform\Input
+Socket|self: Platform\Networking (XNet)
+SocketAddress|self: Platform\Networking (XNet)
+Inflater|self: Platform\Compression (zlib)
+Pattern|self: Platform\Java util
+Packet|self: Network\Packets
+NetClientHandler|self: Network\Handlers
+NetworkManager|self: Network\Connection
+SoundManager|self: Audio\Engine
+BufferedImage|self: Platform\Java AWT/DOM (stubs)
+ThreadPool|self: Debug
+Save360|self: Platform\Storage (STFS)
+STFS_Foo|self: Platform\Storage (STFS)
+Controllers|self: Platform\Input
+JavaString|self: Runtime
+ReflectionFactory|self: Runtime
+Zip|self: Platform\Compression (zlib)
+ZipEntry|self: Platform\Compression (zlib)
+Tesselator|self: Rendering\Renderers
+ChunkCache|self: World & Generation\Chunk
+MobSpawner|self: Entities\Types
+Achievement|self: Core\Stats & Achievements
+XactAudio|self: Audio\Platform
+Throwable|self: Platform\Java exceptions
+Debug|emptyparent: Debug
+Kernel|emptyparent: Platform\Config
+KernelConfig|emptyparent: Platform\Config
+ControllerConfig|emptyparent: Platform\Config
+Block|emptyparent: Blocks\Base
+BlockStone|emptyparent: Blocks\Types
+GuiMainMenu|emptyparent: GUI\Screens
+Fluid|emptyparent: Game (misc)
+LiquidBlock|emptyparent: Game (misc)
+A|emptyparent: Game (misc)
+Foo|emptyparent: Game (misc)
+FooBar|emptyparent: Game (misc)
+Base|emptyparent: Game (misc)
+|emptyparent: Game (misc)
+Mid|emptyparent: Game (misc)
+Entity|emptyparent: Entities\Base
+EntityPlayer|emptyparent: Entities\Player
+j2x_thing|emptyparent: Runtime
+stdafx|emptyparent: Runtime
+Packet5Foo|emptyparent: Network\Packets
+ItemStack|emptyparent: Items & Inventory\Items
+TileEntityChest|emptyparent: TileEntities
+Random|emptyparent: Math & Utilities
+D1|emptyparent: Game (misc)
+X|emptyparent: Game (misc)
+Q|emptyparent: Game (misc)
+E|emptyparent: Game (misc)
+L0|emptyparent: Game (misc)
+RenderGlobal|emptyparent: Rendering\Renderers
+NBTTagCompound|emptyparent: IO & NBT\NBT
+Minecraft|emptyparent: Core
+NoSuchThing|emptyparent: Game (misc)
+WorldGenTrees|emptyparent: World & Generation\Generation
+FileInputStream|emptyparent: Platform\Java IO
+OutOfMemoryError|emptyparent: Platform\Java exceptions
+AB|emptyparent: Game (misc)
+Ab|emptyparent: Game (misc)
+ADebug|emptyparent: Game (misc)
+GL11|emptyparent: Platform\Video (GL->D3D9)
+GLContext|emptyparent: Platform\Video (GL->D3D9)
+Keyboard|emptyparent: Platform\Input
+Socket|emptyparent: Platform\Networking (XNet)
+SocketAddress|emptyparent: Platform\Networking (XNet)
+Inflater|emptyparent: Platform\Compression (zlib)
+Pattern|emptyparent: Platform\Java util
+Packet|emptyparent: Network\Packets
+NetClientHandler|emptyparent: Network\Handlers
+NetworkManager|emptyparent: Network\Connection
+SoundManager|emptyparent: Audio\Engine
+BufferedImage|emptyparent: Platform\Java AWT/DOM (stubs)
+ThreadPool|emptyparent: Debug
+Save360|emptyparent: Platform\Storage (STFS)
+STFS_Foo|emptyparent: Platform\Storage (STFS)
+Controllers|emptyparent: Platform\Input
+JavaString|emptyparent: Runtime
+ReflectionFactory|emptyparent: Runtime
+Zip|emptyparent: Platform\Compression (zlib)
+ZipEntry|emptyparent: Platform\Compression (zlib)
+Tesselator|emptyparent: Rendering\Renderers
+ChunkCache|emptyparent: World & Generation\Chunk
+MobSpawner|emptyparent: Entities\Types
+Achievement|emptyparent: Core\Stats & Achievements
+XactAudio|emptyparent: Audio\Platform
+Throwable|emptyparent: Platform\Java exceptions
+Debug|deep: Debug
+Kernel|deep: Platform\Config
+KernelConfig|deep: Platform\Config
+ControllerConfig|deep: Platform\Config
+Block|deep: Blocks\Base
+BlockStone|deep: Blocks\Types
+GuiMainMenu|deep: GUI\Screens
+Fluid|deep: Game (misc)
+LiquidBlock|deep: Game (misc)
+A|deep: Game (misc)
+Foo|deep: Game (misc)
+FooBar|deep: Game (misc)
+Base|deep: Game (misc)
+|deep: Game (misc)
+Mid|deep: Game (misc)
+Entity|deep: Entities\Base
+EntityPlayer|deep: Entities\Player
+j2x_thing|deep: Runtime
+stdafx|deep: Runtime
+Packet5Foo|deep: Network\Packets
+ItemStack|deep: Items & Inventory\Items
+TileEntityChest|deep: TileEntities
+Random|deep: Math & Utilities
+D1|deep: GUI\Widgets
+X|deep: Game (misc)
+Q|deep: Game (misc)
+E|deep: Game (misc)
+L0|deep: Game (misc)
+RenderGlobal|deep: Rendering\Renderers
+NBTTagCompound|deep: IO & NBT\NBT
+Minecraft|deep: Core
+NoSuchThing|deep: Game (misc)
+WorldGenTrees|deep: World & Generation\Generation
+FileInputStream|deep: Platform\Java IO
+OutOfMemoryError|deep: Platform\Java exceptions
+AB|deep: Game (misc)
+Ab|deep: Game (misc)
+ADebug|deep: Game (misc)
+GL11|deep: Platform\Video (GL->D3D9)
+GLContext|deep: Platform\Video (GL->D3D9)
+Keyboard|deep: Platform\Input
+Socket|deep: Platform\Networking (XNet)
+SocketAddress|deep: Platform\Networking (XNet)
+Inflater|deep: Platform\Compression (zlib)
+Pattern|deep: Platform\Java util
+Packet|deep: Network\Packets
+NetClientHandler|deep: Network\Handlers
+NetworkManager|deep: Network\Connection
+SoundManager|deep: Audio\Engine
+BufferedImage|deep: Platform\Java AWT/DOM (stubs)
+ThreadPool|deep: Debug
+Save360|deep: Platform\Storage (STFS)
+STFS_Foo|deep: Platform\Storage (STFS)
+Controllers|deep: Platform\Input
+JavaString|deep: Runtime
+ReflectionFactory|deep: Runtime
+Zip|deep: Platform\Compression (zlib)
+ZipEntry|deep: Platform\Compression (zlib)
+Tesselator|deep: Rendering\Renderers
+ChunkCache|deep: World & Generation\Chunk
+MobSpawner|deep: Entities\Types
+Achievement|deep: Core\Stats & Achievements
+XactAudio|deep: Audio\Platform
+Throwable|deep: Platform\Java exceptions
+Debug|long: Debug
+Kernel|long: Platform\Config
+KernelConfig|long: Platform\Config
+ControllerConfig|long: Platform\Config
+Block|long: Blocks\Base
+BlockStone|long: Blocks\Types
+GuiMainMenu|long: GUI\Screens
+Fluid|long: Game (misc)
+LiquidBlock|long: Game (misc)
+A|long: Game (misc)
+Foo|long: Game (misc)
+FooBar|long: Game (misc)
+Base|long: Game (misc)
+|long: Game (misc)
+Mid|long: Game (misc)
+Entity|long: Entities\Base
+EntityPlayer|long: Entities\Player
+j2x_thing|long: Runtime
+stdafx|long: Runtime
+Packet5Foo|long: Network\Packets
+ItemStack|long: Items & Inventory\Items
+TileEntityChest|long: TileEntities
+Random|long: Math & Utilities
+D1|long: Game (misc)
+X|long: Game (misc)
+Q|long: Game (misc)
+E|long: Game (misc)
+L0|long: Entities\Base
+RenderGlobal|long: Rendering\Renderers
+NBTTagCompound|long: IO & NBT\NBT
+Minecraft|long: Core
+NoSuchThing|long: Game (misc)
+WorldGenTrees|long: World & Generation\Generation
+FileInputStream|long: Platform\Java IO
+OutOfMemoryError|long: Platform\Java exceptions
+AB|long: Game (misc)
+Ab|long: Game (misc)
+ADebug|long: Game (misc)
+GL11|long: Platform\Video (GL->D3D9)
+GLContext|long: Platform\Video (GL->D3D9)
+Keyboard|long: Platform\Input
+Socket|long: Platform\Networking (XNet)
+SocketAddress|long: Platform\Networking (XNet)
+Inflater|long: Platform\Compression (zlib)
+Pattern|long: Platform\Java util
+Packet|long: Network\Packets
+NetClientHandler|long: Network\Handlers
+NetworkManager|long: Network\Connection
+SoundManager|long: Audio\Engine
+BufferedImage|long: Platform\Java AWT/DOM (stubs)
+ThreadPool|long: Debug
+Save360|long: Platform\Storage (STFS)
+STFS_Foo|long: Platform\Storage (STFS)
+Controllers|long: Platform\Input
+JavaString|long: Runtime
+ReflectionFactory|long: Runtime
+Zip|long: Platform\Compression (zlib)
+ZipEntry|long: Platform\Compression (zlib)
+Tesselator|long: Rendering\Renderers
+ChunkCache|long: World & Generation\Chunk
+MobSpawner|long: Entities\Types
+Achievement|long: Core\Stats & Achievements
+XactAudio|long: Audio\Platform
+Throwable|long: Platform\Java exceptions

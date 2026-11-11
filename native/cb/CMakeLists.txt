@@ -93,8 +93,9 @@ target_link_libraries(cb_verify PUBLIC cb_core)
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core)
 
+# (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
-target_link_libraries(cb_java PUBLIC cb_core)
+target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.

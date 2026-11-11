@@ -1,0 +1,213 @@
+jar assets: ['font/default.png', 'gui/gui.png', 'gui/gui.png', 'gui/items.png', 'lang/de_DE.lang', 'lang/en_US.lang', 'misc/Mixed.PNG', 'misc/notes.txt', 'misc/spiral.png', 'misc/stored.properties', 'misc/tiny.png', 'misc/water.png', 'misc/wide.png', 'shaders/post.fsh', 'terrain.png']
+console assets: ['cursor.png', 'extra/readme.txt']
+refs:
+  a-b_c/d.e.txt <- ['Foo.java']
+  a.png <- ['Foo.java']
+  cursor.png <- ['Foo.java']
+  font/default.png <- ['Bar.cpp', 'Foo.java']
+  gui/gui.png <- ['Bar.cpp', 'Foo.java']
+  gui/items.png <- ['Baz.h']
+  lang/en_US.lang <- ['Foo.java']
+  misc/stored.properties <- ['Baz.h']
+  misc/tiny.png <- ['Foo.java']
+  misc/water.png <- ['Bar.cpp', 'Foo.java']
+  missing/nothing.png <- ['Foo.java']
+  shaders/post.fsh <- ['Foo.java']
+  terrain.png <- ['Foo.java']
+  upper/java.png <- ['Upper.JAVA']
+  x.jpg <- ['Foo.java']
+coverage present=['cursor.png', 'font/default.png', 'gui/gui.png', 'gui/items.png', 'lang/en_US.lang', 'misc/stored.properties', 'misc/tiny.png', 'misc/water.png', 'shaders/post.fsh', 'terrain.png']
+  missing=['a-b_c/d.e.txt', 'a.png', 'missing/nothing.png', 'upper/java.png', 'x.jpg']
+  extra=['extra/readme.txt', 'lang/de_DE.lang', 'misc/Mixed.PNG', 'misc/notes.txt', 'misc/spiral.png', 'misc/wide.png']
+  jar_count=16
+run all: written=['font/default.png', 'gui/gui.png', 'gui/gui.png', 'gui/items.png', 'lang/de_DE.lang', 'lang/en_US.lang', 'misc/Mixed.PNG', 'misc/notes.txt', 'misc/spiral.png', 'misc/stored.properties', 'misc/tiny.png', 'misc/water.png', 'misc/wide.png', 'shaders/post.fsh', 'terrain.png']
+  converted=['font/default.png', 'gui/items.png', 'misc/Mixed.PNG', 'misc/spiral.png', 'misc/tiny.png', 'misc/water.png', 'misc/wide.png', 'terrain.png'] unconverted=[] has_pil=True console=['cursor.png', 'extra/readme.txt']
+  report: TEXTURE_COVERAGE.md
+  report text:
+# TEXTURE_COVERAGE.md -- shipped-asset audit
+
+Resource paths the game code loads vs assets present in the jar. A **MISSING** path is one the code opens but the jar does not contain -> at runtime the loader gets a NULL image and crashes. Everything here is copied into `Content\` with its exact jar path so the loader needs no changes.
+
+- code needs: 15   jar provides: 16   **present: 10   MISSING: 5**   (jar extras: 6)
+
+## MISSING -- code loads these but the jar lacks them (runtime crash)
+
+| Resource path | Loaded by |
+|---|---|
+| `a-b_c/d.e.txt` | Foo.java |
+| `a.png` | Foo.java |
+| `missing/nothing.png` | Foo.java |
+| `upper/java.png` | Upper.JAVA |
+| `x.jpg` | Foo.java |
+
+## PNGs normalized to RGBA (the 360 render fix)
+
+These were palettized/grayscale in the jar and would misrender as garbage colors if copied raw (the 360 texture loader expects 32-bit RGBA). They were decoded to RGBA8888 (honoring palette transparency) on extraction:
+
+- `gui/items.png`
+- `terrain.png`
+- `misc/water.png`
+- `font/default.png`
+- `misc/tiny.png`
+- `misc/wide.png`
+- `misc/Mixed.PNG`
+- `misc/spiral.png`
+
+## Jar extras (shipped anyway, not referenced by code)
+
+- `extra/readme.txt`
+- `lang/de_DE.lang`
+- `misc/Mixed.PNG`
+- `misc/notes.txt`
+- `misc/spiral.png`
+- `misc/wide.png`
+
+
+  cursor.png png 4x3 000007002803071f5006073e7809075d01320711293510305138194f793b226e026407222a671941526a2b607a6d3d7f
+  terrain.png png 5x5 000007ff280307ff500607ff780907ffa00c07ff013207ff293510ff513819ff793b22ffa13e2bff026407ff2a6719ff526a2bff7a6d3dffa2704fff039607ff2b9922ff539c3dff7b9f58ffa3a273ff04c807ff2ccb2bff54ce4fff7cd173ffa4d497ff
+  extra/readme.txt 8 d39bdbb13d61969ed80184dc56971c49e8fdb315
+  font/default.png png 4x3 000000001d1d1d0d3a3a3a1a575757270707073d2424244a414141575e5e5e640e0e0e7a2b2b2b8748484894656565a1
+  gui/gui.png png 4x3 000007002803071f5006073e7809075d01320711293510305138194f793b226e026407222a671941526a2b607a6d3d7f
+  gui/items.png png 6x4 ff0000ff00ff00ff0000ffffffff00ff0a141effc86432ff0000ffffffff00ff0a141effc86432ff010203fffafbfcff0a141effc86432ff010203fffafbfcffff0000ff00ff00ff010203fffafbfcffff0000ff00ff00ff0000ffffffff00ff
+  lang/de_DE.lang 18 772671b2fb6355734da54a9a3f5e5d8f6f26dce5
+  lang/en_US.lang 30 8b629d0b0f55e2b46696adb8ff157794bf297273
+  misc/Mixed.PNG png 5x3 ff00000000ff00800000ffffffff00ffff0000000000ffffffff00ffff00000000ff00800000ffffff00000000ff00800000ffffffff00ffff000000
+  misc/notes.txt 13 c5130034e336d9132e8ddcc5dd7da4efaf78340f
+  misc/spiral.png png 9x9 000007ff280307ff500607ff780907ffa00c07ffc80f07fff01207ff181507ff401807ff013207ff293510ff513819ff793b22ffa13e2bffc94134fff1443dff194746ff414a4fff026407ff2a6719ff526a2bff7a6d3dffa2704fffca7361fff27673ff1a7985ff427c97ff039607ff2b9922ff539c3dff7b9f58ffa3a273ffcba58efff3a8a9ff1babc4ff43aedfff04c807ff2ccb2bff54ce4fff7cd173ffa4d497ffccd7bbfff4dadfff1cdd03ff44e027ff05fa07ff2dfd34ff550061ff7d038effa506bbffcd09e8fff50c15ff1d0f42ff45126fff062c07ff2e2f3dff563273ff7e35a9ffa638dfffce3b15fff63e4bff1e4181ff4644b7ff075e07ff2f6146ff576485ff7f67c4ffa76a03ffcf6d42fff77081ff1f73c0ff4776ffff089007ff30934fff589697ff8099dfffa89c27ffd09f6ffff8a2b7ff20a5ffff48a847ff
+  misc/stored.properties 4 9dc9cfd3b38b77561ec22b49a723432e26181003
+  misc/tiny.png png 9x3 ffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff
+  misc/water.png png 4x6 c8c8c800111111ff222222ffc8c8c800000000ff111111ffc8c8c800333333ff000000ffc8c8c800222222ff333333ffc8c8c800111111ff222222ffc8c8c800000000ff111111ffc8c8c800333333ff000000ffc8c8c800222222ff333333ff
+  misc/wide.png png 3x3 00001bff9b0b1bff37171bff03c21bff9fce3eff3bda61ff07851bffa39161ff3f9ca7ff
+  shaders/post.fsh 15 383493a665830d104f53e8806e249cc2451ab1ff
+run needed: written=['font/default.png', 'gui/gui.png', 'gui/gui.png', 'gui/items.png', 'lang/en_US.lang', 'misc/stored.properties', 'misc/tiny.png', 'misc/water.png', 'shaders/post.fsh', 'terrain.png']
+  converted=['font/default.png', 'gui/items.png', 'misc/tiny.png', 'misc/water.png', 'terrain.png'] unconverted=[] has_pil=True console=['cursor.png', 'extra/readme.txt']
+  report: TEXTURE_COVERAGE.md
+  report text:
+# TEXTURE_COVERAGE.md -- shipped-asset audit
+
+Resource paths the game code loads vs assets present in the jar. A **MISSING** path is one the code opens but the jar does not contain -> at runtime the loader gets a NULL image and crashes. Everything here is copied into `Content\` with its exact jar path so the loader needs no changes.
+
+- code needs: 15   jar provides: 16   **present: 10   MISSING: 5**   (jar extras: 6)
+
+## MISSING -- code loads these but the jar lacks them (runtime crash)
+
+| Resource path | Loaded by |
+|---|---|
+| `a-b_c/d.e.txt` | Foo.java |
+| `a.png` | Foo.java |
+| `missing/nothing.png` | Foo.java |
+| `upper/java.png` | Upper.JAVA |
+| `x.jpg` | Foo.java |
+
+## PNGs normalized to RGBA (the 360 render fix)
+
+These were palettized/grayscale in the jar and would misrender as garbage colors if copied raw (the 360 texture loader expects 32-bit RGBA). They were decoded to RGBA8888 (honoring palette transparency) on extraction:
+
+- `gui/items.png`
+- `terrain.png`
+- `misc/water.png`
+- `font/default.png`
+- `misc/tiny.png`
+
+## Jar extras (shipped anyway, not referenced by code)
+
+- `extra/readme.txt`
+- `lang/de_DE.lang`
+- `misc/Mixed.PNG`
+- `misc/notes.txt`
+- `misc/spiral.png`
+- `misc/wide.png`
+
+
+  cursor.png png 4x3 000007002803071f5006073e7809075d01320711293510305138194f793b226e026407222a671941526a2b607a6d3d7f
+  terrain.png png 5x5 000007ff280307ff500607ff780907ffa00c07ff013207ff293510ff513819ff793b22ffa13e2bff026407ff2a6719ff526a2bff7a6d3dffa2704fff039607ff2b9922ff539c3dff7b9f58ffa3a273ff04c807ff2ccb2bff54ce4fff7cd173ffa4d497ff
+  extra/readme.txt 8 d39bdbb13d61969ed80184dc56971c49e8fdb315
+  font/default.png png 4x3 000000001d1d1d0d3a3a3a1a575757270707073d2424244a414141575e5e5e640e0e0e7a2b2b2b8748484894656565a1
+  gui/gui.png png 4x3 000007002803071f5006073e7809075d01320711293510305138194f793b226e026407222a671941526a2b607a6d3d7f
+  gui/items.png png 6x4 ff0000ff00ff00ff0000ffffffff00ff0a141effc86432ff0000ffffffff00ff0a141effc86432ff010203fffafbfcff0a141effc86432ff010203fffafbfcffff0000ff00ff00ff010203fffafbfcffff0000ff00ff00ff0000ffffffff00ff
+  lang/en_US.lang 30 8b629d0b0f55e2b46696adb8ff157794bf297273
+  misc/stored.properties 4 9dc9cfd3b38b77561ec22b49a723432e26181003
+  misc/tiny.png png 9x3 ffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff
+  misc/water.png png 4x6 c8c8c800111111ff222222ffc8c8c800000000ff111111ffc8c8c800333333ff000000ffc8c8c800222222ff333333ffc8c8c800111111ff222222ffc8c8c800000000ff111111ffc8c8c800333333ff000000ffc8c8c800222222ff333333ff
+  shaders/post.fsh 15 383493a665830d104f53e8806e249cc2451ab1ff
+run raw: written=['font/default.png', 'gui/gui.png', 'gui/gui.png', 'gui/items.png', 'lang/de_DE.lang', 'lang/en_US.lang', 'misc/Mixed.PNG', 'misc/notes.txt', 'misc/spiral.png', 'misc/stored.properties', 'misc/tiny.png', 'misc/water.png', 'misc/wide.png', 'shaders/post.fsh', 'terrain.png']
+  converted=[] unconverted=[] has_pil=True console=['cursor.png', 'extra/readme.txt']
+  report: TEXTURE_COVERAGE.md
+  report text:
+# TEXTURE_COVERAGE.md -- shipped-asset audit
+
+Resource paths the game code loads vs assets present in the jar. A **MISSING** path is one the code opens but the jar does not contain -> at runtime the loader gets a NULL image and crashes. Everything here is copied into `Content\` with its exact jar path so the loader needs no changes.
+
+- code needs: 15   jar provides: 16   **present: 10   MISSING: 5**   (jar extras: 6)
+
+## MISSING -- code loads these but the jar lacks them (runtime crash)
+
+| Resource path | Loaded by |
+|---|---|
+| `a-b_c/d.e.txt` | Foo.java |
+| `a.png` | Foo.java |
+| `missing/nothing.png` | Foo.java |
+| `upper/java.png` | Upper.JAVA |
+| `x.jpg` | Foo.java |
+
+## Jar extras (shipped anyway, not referenced by code)
+
+- `extra/readme.txt`
+- `lang/de_DE.lang`
+- `misc/Mixed.PNG`
+- `misc/notes.txt`
+- `misc/spiral.png`
+- `misc/wide.png`
+
+
+  cursor.png png 4x3 000007002803071f5006073e7809075d01320711293510305138194f793b226e026407222a671941526a2b607a6d3d7f
+  terrain.png png 5x5 000007ff280307ff500607ff780907ffa00c07ff013207ff293510ff513819ff793b22ffa13e2bff026407ff2a6719ff526a2bff7a6d3dffa2704fff039607ff2b9922ff539c3dff7b9f58ffa3a273ff04c807ff2ccb2bff54ce4fff7cd173ffa4d497ff
+  extra/readme.txt 8 d39bdbb13d61969ed80184dc56971c49e8fdb315
+  font/default.png png 4x3 000000001d1d1d0d3a3a3a1a575757270707073d2424244a414141575e5e5e640e0e0e7a2b2b2b8748484894656565a1
+  gui/gui.png png 4x3 000007002803071f5006073e7809075d01320711293510305138194f793b226e026407222a671941526a2b607a6d3d7f
+  gui/items.png png 6x4 ff0000ff00ff00ff0000ffffffff00ff0a141effc86432ff0000ffffffff00ff0a141effc86432ff010203fffafbfcff0a141effc86432ff010203fffafbfcffff0000ff00ff00ff010203fffafbfcffff0000ff00ff00ff0000ffffffff00ff
+  lang/de_DE.lang 18 772671b2fb6355734da54a9a3f5e5d8f6f26dce5
+  lang/en_US.lang 30 8b629d0b0f55e2b46696adb8ff157794bf297273
+  misc/Mixed.PNG png 5x3 ff00000000ff00800000ffffffff00ffff0000000000ffffffff00ffff00000000ff00800000ffffff00000000ff00800000ffffffff00ffff000000
+  misc/notes.txt 13 c5130034e336d9132e8ddcc5dd7da4efaf78340f
+  misc/spiral.png png 9x9 000007ff280307ff500607ff780907ffa00c07ffc80f07fff01207ff181507ff401807ff013207ff293510ff513819ff793b22ffa13e2bffc94134fff1443dff194746ff414a4fff026407ff2a6719ff526a2bff7a6d3dffa2704fffca7361fff27673ff1a7985ff427c97ff039607ff2b9922ff539c3dff7b9f58ffa3a273ffcba58efff3a8a9ff1babc4ff43aedfff04c807ff2ccb2bff54ce4fff7cd173ffa4d497ffccd7bbfff4dadfff1cdd03ff44e027ff05fa07ff2dfd34ff550061ff7d038effa506bbffcd09e8fff50c15ff1d0f42ff45126fff062c07ff2e2f3dff563273ff7e35a9ffa638dfffce3b15fff63e4bff1e4181ff4644b7ff075e07ff2f6146ff576485ff7f67c4ffa76a03ffcf6d42fff77081ff1f73c0ff4776ffff089007ff30934fff589697ff8099dfffa89c27ffd09f6ffff8a2b7ff20a5ffff48a847ff
+  misc/stored.properties 4 9dc9cfd3b38b77561ec22b49a723432e26181003
+  misc/tiny.png png 9x3 ffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff000000ffffffffff
+  misc/water.png png 4x6 c8c8c800111111ff222222ffc8c8c800000000ff111111ffc8c8c800333333ff000000ffc8c8c800222222ff333333ffc8c8c800111111ff222222ffc8c8c800000000ff111111ffc8c8c800333333ff000000ffc8c8c800222222ff333333ff
+  misc/wide.png png 3x3 00001bff9b0b1bff37171bff03c21bff9fce3eff3bda61ff07851bffa39161ff3f9ca7ff
+  shaders/post.fsh 15 383493a665830d104f53e8806e249cc2451ab1ff
+run nocode: written=15 report=None
+# TEXTURE_COVERAGE.md -- shipped-asset audit
+
+Resource paths the game code loads vs assets present in the jar. A **MISSING** path is one the code opens but the jar does not contain -> at runtime the loader gets a NULL image and crashes. Everything here is copied into `Content\` with its exact jar path so the loader needs no changes.
+
+- code needs: 1   jar provides: 2   **present: 1   MISSING: 0**   (jar extras: 1)
+
+> No missing textures: the jar covers every resource path the code loads.
+
+## Jar extras (shipped anyway, not referenced by code)
+
+- `b.txt`
+
+
+# TEXTURE_COVERAGE.md -- shipped-asset audit
+
+Resource paths the game code loads vs assets present in the jar. A **MISSING** path is one the code opens but the jar does not contain -> at runtime the loader gets a NULL image and crashes. Everything here is copied into `Content\` with its exact jar path so the loader needs no changes.
+
+- code needs: 1   jar provides: 2   **present: 1   MISSING: 0**   (jar extras: 1)
+
+> No missing textures: the jar covers every resource path the code loads.
+
+## PNGs normalized to RGBA (the 360 render fix)
+
+These were palettized/grayscale in the jar and would misrender as garbage colors if copied raw (the 360 texture loader expects 32-bit RGBA). They were decoded to RGBA8888 (honoring palette transparency) on extraction:
+
+- `x.png`
+- `y.png`
+
+## Jar extras (shipped anyway, not referenced by code)
+
+- `b.txt`
+
+
+strip: 'a  b \nd "/p'
