@@ -346,3 +346,20 @@ Same inputs (the harness `cases.txt` of each module, parsing and hex decoding in
 | build/vxdfile (329 cases) | 120 ms | 17 ms | 7x |
 
 The assemblers, definitions, watcom, msvc152, period16 and dos_sessions have no CPU-bound work of their own (they drive other programs); not timed.
+
+## cb/java/console (W0-B17), 2026-11-11
+
+The old side is the original Python (the live implementation of these features; the typed ports ran over the same
+algorithms). Real inputs, the new side a driver over `cb_java` (Release, C++20 /O2); best of three, process start excluded.
+Outputs were compared first: all of them identical to the Python's.
+
+| work | Python | native/cb | note |
+|---|---|---|---|
+| xdk_scan.detect, the installed XDK (2,514 entry points in its headers) | 0.125-0.162 s | 0.055 s | 2.3-3x; same 2,514 names and header for each |
+| assets.run, Minecraft's `minecraft.jar` (346 entries, 42 assets, 3 PNGs converted) | 0.054 s | 0.050-0.059 s | same: 42 files identical, every PNG pixel for pixel |
+| of which: reading the jar / converting the 3 PNGs / writing the 42 files | - | 0.7 ms / 0.5 ms / 65-115 ms | the writes are the file system; the Python does the same ones |
+| vcxproj.run, a generated 5,202-file project (the real xbox360 profile's 55 rules) | 4.2-4.7 s | 2.3-3.6 s | 1.3-1.8x; .vcxproj and .filters byte-identical to the Python's |
+
+The vcxproj figure is dominated by classifying every class against the profile's rules through the generated project's very
+deep inheritance chains (up to 208 ancestors, each tried against 55 patterns); a converted game's chains are 3-6 deep, where the
+whole run is a few milliseconds. Not memoised: the classification of a class and its ancestors is repeated per file.

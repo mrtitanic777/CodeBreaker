@@ -93,16 +93,7 @@ target_link_libraries(cb_verify PUBLIC cb_core)
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core)
 
-# zlib (the subset vendored with the decompiler) for the Java lane's jar and PNG readers.
-if(NOT TARGET cb_zlib)
-  file(GLOB CB_ZLIB_SOURCES CONFIGURE_DEPENDS "${CB_NATIVE_ROOT}/decompiler/core/zlib/*.c")
-  add_library(cb_zlib STATIC ${CB_ZLIB_SOURCES})
-  target_include_directories(cb_zlib PUBLIC "${CB_NATIVE_ROOT}/decompiler/core/zlib")
-  target_compile_definitions(cb_zlib PRIVATE NO_GZIP LOCAL_ZLIB _CRT_SECURE_NO_WARNINGS)
-  target_compile_options(cb_zlib PRIVATE /W0 /O2)
-  set_target_properties(cb_zlib PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
-
+# (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
 target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
 
