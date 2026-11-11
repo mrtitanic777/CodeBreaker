@@ -1,0 +1,188 @@
+pointer_flow	Sf(x, y)\nregister char *p;\nint x, y;\nint r;\n{\n    int s;\n    if ((q == p)) {\n        x = 1;\n    }\n    r = p;\n    s = r;\n    return (s != 0);\n}	=>	{"r":"f(x, y)\nregister char *p;\nint x, y;\nchar *r;\n{\n    char *s;\n    if ((q == p)) {\n        x = 1;\n    }\n    r = p;\n    s = r;\n    return (s != 0);\n}"}
+pointer_flow	Sf(x, y)\nregister char *p;\nregister int q;\nint r;\n{\n    int s;\n    if ((q == p)) {\n        x = 1;\n    }\n    r = p;\n    s = r;\n    return (s != 0);\n}	=>	{"r":"f(x, y)\nregister char *p;\nregister char *q;\nchar *r;\n{\n    char *s;\n    if ((q == p)) {\n        x = 1;\n    }\n    r = p;\n    s = r;\n    return (s != 0);\n}"}
+pointer_flow	S{	=>	{"r":"{"}
+pre_steps	S    dx++;\n    cx = dx;	=>	{"r":"    cx = ++dx;"}
+pre_steps	S    x = x + 1;\n    foo(x);	=>	{"r":"    foo(++x);"}
+pre_steps	S{	=>	{"r":null}
+pre_increments	S    q = q + 1;\n    x = *q;\n    y = 1	=>	{"r":"    x = *++q;\n    y = 1"}
+pre_increments	S    p = p + 1;\n    x = *p;\n    y = 1;	=>	{"r":"    x = *++p;\n    y = 1;"}
+pre_increments	S        p = p + 2;\n        x = *p;\n        y = 1;	=>	{"r":"        x = *++p;\n        y = 1;","t":{"p":[["p",2]]}}
+pre_increments	S{	=>	{"r":null}
+unused_locals	Sint f(x, y)\nint x;\n{\n    int *v2;\n    y++;\n    return ax;\n}	=>	{"r":"int f(x, y)\nint x;\n{\n    y++;\n    return ax;\n}"}
+unused_locals	Sint f(x)\n{\nint x;\n    dl = i;\n    ax = ax;\n    al = g_0010;\n}	=>	{"r":"int f(x)\n{\n    dl = i;\n    ax = ax;\n    al = g_0010;\n}"}
+unused_locals	S{	=>	{"r":"{"}
+and_returns	S    if ((((i == 0))))\n        return 0;\n    }\n    return 0;	=>	{"r":"    return !i && 0;"}
+and_returns	S    if (!(!((v2 == 0))))\n        return x;\n    }\n    return 0;	=>	{"r":"    return (!(!((v2 == 0)))) && x;"}
+and_returns	S{	=>	{"r":null}
+word_constants	S    x = (y < 60000);\n    foo(x, 65534);	=>	{"r":"    x = (y < -5536);\n    foo(x, -2);"}
+word_constants	S    x = (y < 32768);\n    foo(x, 65534);	=>	{"r":"    x = (y < -32768);\n    foo(x, -2);"}
+word_constants	S{	=>	{"r":"{"}
+assign_in_tests	S    p->f4 = dx;\n    al = x;\n    if (al) {\n    }	=>	{"r":"    p->f4 = dx;\n    if ((al = x)) {\n    }"}
+assign_in_tests	S    p = p - 1;\n    ax = x;\n    ax = 3;\n    if (ax) {	=>	{"r":"    p = p - 1;\n    ax = x;\n    if ((ax = 3)) {"}
+assign_in_tests	S{	=>	{"r":null}
+char_params	Sf(a, b, c)\nint a, b, c;\n{\n  al = a;\n    bl = b;\n    return ax;\n}	=>	{"r":"f(a, b, c)\nint c;\nchar a, b;\n{\n  al = a;\n    bl = b;\n    return ax;\n}"}
+char_params	Sint f(x)\nint x;\n{\n    al = x;\n    x = x - 1;\n    y = al + x;\n    i = ax;\n}	=>	{"r":"int f(x)\nchar x;\n{\n    al = x;\n    x = x - 1;\n    y = al + x;\n    i = ax;\n}"}
+char_params	S{	=>	{"r":"{"}
+loop_gotos	S    ax = 1;\n    goto L_1;\n    ax = 2;\nL_1:\n    bx = ax;\n    return bx;	=>	{"r":"    bx = 1;\n    goto L_1;\n    bx = 2;\nL_1:\n    return bx;"}
+loop_gotos	S    ax = 1;\n    goto L_1;\n    ax = 2;\nL_1:\n    bx = ax;\n    return bx;	=>	{"r":"    bx = 1;\n    goto L_1;\n    bx = 2;\nL_1:\n    return bx;"}
+loop_gotos	S{	=>	{"r":"{"}
+default_last	S    switch (*p) {\n    default:\n        q = x = 0;\n        return 5;\n    case 0:\n        goto L_1;\n    }\n    cx = si;	=>	{"r":"    switch (*p) {\n    case 0:\n        goto L_1;\n    default:\n        q = x = 0;\n        return 5;\n    }\n    cx = si;"}
+default_last	S    i = r_si = *(char *)p;\n    switch (ax) {\n    default:\n        break;\n    case 0:\n        return 0;\n    }\n    v4 = s = a;	=>	{"r":"    i = r_si = *(char *)p;\n    switch (ax) {\n    case 0:\n        return 0;\n    default:\n        break;\n    }\n    v4 = s = a;"}
+default_last	S{	=>	{"r":null}
+empty_cases_first	S    x = (di + a);\n    switch (*p) {\n    default:\n        L_2:\n        return -1;\n    case 0:\n        break;\n    }\n    dx = p->f4;	=>	{"r":"    x = (di + a);\n    switch (*p) {\n    case 0:\n        break;\n    default:\n        L_2:\n        return -1;\n    }\n    dx = p->f4;"}
+empty_cases_first	S    switch (x) {\n    default:\n        bx++;\n        continue;\n    case 7:\n        break;\n    }\n        }\n    si = cx;\n    bx = dx;	=>	{"r":"    switch (x) {\n    case 7:\n        break;\n    default:\n        bx++;\n        continue;\n    }\n        }\n    si = cx;\n    bx = dx;"}
+empty_cases_first	S{	=>	{"r":null}
+or_loops	S    for (;;) {\n        if (*p) {\n            L_2:\n            a = y + 3;\n            continue;\n        }\n        if ((r_si == *p)) {\n            goto L_2;\n        } else {\n            break;\n        }\n    }	=>	{"r":"    while ((*p) || (r_si == *p)) {\n        a = y + 3;\n    }"}
+or_loops	S    for (;;) {\n        if ((a[3] >= n)) {\n            L_3:\n            g_0010++;\n            continue;\n        }\n        if (((!((al >= x))))) {\n            goto L_3;\n        } else {\n            break;\n        }\n    }	=>	{"r":"    while ((a[3] >= n) || (!((al >= x)))) {\n        g_0010++;\n    }"}
+or_loops	S{	=>	{"r":null}
+compare_results	S    return ((x == 0) ? 1 : 0);	=>	{"r":"    return (x == 0);"}
+compare_results	S    return ((x == 0) ? 1 : 0);	=>	{"r":"    return (x == 0);"}
+compare_results	S{	=>	{"r":null}
+register_reads	S    r_si = q->f0;\n    x = q->f0->f0;\n    z = q->f0;\n    register struct s_t *r_si;	=>	{"r":"    r_si = q->f0;\n    x = r_si->f0;\n    z = r_si;\n    register struct s_t *r_si;"}
+register_reads	S    r_di = q->f0;\n    x = q->f0->f2;\n    z = q->f0;\n    register struct s_t *r_di;	=>	{"r":"    r_di = q->f0;\n    x = r_di->f2;\n    z = r_di;\n    register struct s_t *r_di;"}
+register_reads	S{	=>	{"r":null}
+switch_breaks	S        for (;;) {\n            switch (ax) {\n            default:\n                break;\n            case 0:\n                return 0;\n            }\n        }	=>	{"r":"        for (;;) {\n            switch (ax) {\n            case 0:\n                return 0;\n            }\n        }"}
+switch_breaks	S        while (1) {\n            switch (x) {\n            case 0:\n                g_0004 = (di & v2);\n                continue;\n            }\n        }\n        si = ax;	=>	{"r":"        while (1) {\n            switch (x) {\n            case 0:\n                g_0004 = (di & v2);\n                break;\n            }\n        }\n        si = ax;"}
+switch_breaks	S{	=>	{"r":null}
+default_after	S    switch (x) {\n    default:\n        foo(bx, bx);\n    case 3:\n        return 0;\n    }	=>	{"r":"    switch (x) {\n    case 3:\n        return 0;\n    }\n    foo(bx, bx);\n    return 0;"}
+default_after	S    switch (x) {\n    default:\n        r_si = g_0010 = g_0010;\n    case 3:\n        return ax;\n    }	=>	{"r":"    switch (x) {\n    case 3:\n        return ax;\n    }\n    r_si = g_0010 = g_0010;\n    return ax;"}
+default_after	S{	=>	{"r":null}
+push_tails	S    if ((x == 0)) {\n        ax = 1;\n    } else {\n        ax = 0;\n    }\n    return ax;	=>	{"r":"    if ((x == 0)) {\n        return 1;\n    } else {\n        return 0;\n    }"}
+push_tails	S    f->f2--;\n    if ((f->f2 >= 0)) {\n        ax = *f->f0++;\n    } else {\n        ax = _filbuf(f);\n    }\n    x = ax;	=>	{"r":"    f->f2--;\n    if ((f->f2 >= 0)) {\n        x = (*f->f0++);\n    } else {\n        x = (_filbuf(f));\n    }"}
+push_tails	S{	=>	{"r":null}
+split_ternaries	S    return (a ? b : c);	=>	{"r":"    if ((a)) {\n        return b;\n    }\n    return c;"}
+split_ternaries	S        return (x ? a : b);	=>	{"r":"        if ((x)) {\n            return a;\n        }\n        return b;"}
+split_ternaries	S{	=>	{"r":null}
+store_reloads	S    *q = 5;\n    bx = *q;	=>	{"r":"    *q = 5;\n    bx = 5;"}
+store_reloads	S    p->f2 = x;\n    ax = p->f2;	=>	{"r":"    p->f2 = x;\n    ax = x;"}
+store_reloads	S{	=>	{"r":"{"}
+fn_pointers	S    int h;\n    y = (*h)(1, 2);\n    (*h)();	=>	{"r":"    int (*h)();\n    y = (*h)(1, 2);\n    (*h)();"}
+fn_pointers	S    int fn;\n    y = (*fn)(1, 2);\n    (*fn)();	=>	{"r":"    int (*fn)();\n    y = (*fn)(1, 2);\n    (*fn)();"}
+fn_pointers	S{	=>	{"r":"{"}
+scaled_index	S    bx = tab + (i << 1);\n    *bx = y;	=>	{"r":"    tab[i] = y;"}
+scaled_index	S    int tab;\n    bx = tab + ((i + 1) << 1);\n    y = *bx;	=>	{"r":"    int *tab;\n    y = tab[i + 1];"}
+scaled_index	S{	=>	{"r":"{"}
+shared_arms	S    if (p->f2) {\n        if ((bx <= x)) {\n            q->f0 = di;\n        }\n    } else {\n        q->f0 = di;\n    }	=>	{"r":"    if (!p->f2 || (bx <= x)) {\n        q->f0 = di;\n    }"}
+shared_arms	S    ax = a[i];\n    if ((0 == 0)) {\n        if ((!((v2 < n)) && !((x == 0)))) {\n            si = dx;\n        }\n    } else {\n        si = dx;\n    }	=>	{"r":"    ax = a[i];\n    if (0 || (!((v2 < n)) && !((x == 0)))) {\n        si = dx;\n    }"}
+shared_arms	S{	=>	{"r":"{"}
+guard_returns	Sf(a, b)\nint a, b;\n{\n    if (((b & -32768) != 0)) {\n    }\n    return x;\n}	=>	{"r":"f(a, b)\nint a, b;\n{\n    if (!(b & -32768)) return x;\n    return x;\n}"}
+guard_returns	Sf(a, b)\nint a, b;\n{\n    if (((b & 1) != 0)) {\n        x = 1\n    }\n    return x;\n}	=>	{"r":"f(a, b)\nint a, b;\n{\n    if (!(b & 1)) return x;\n    x = 1\n    return x;\n}"}
+guard_returns	S{	=>	{"r":null}
+guard_flat	S    i = dx;\n    cx = n;\n    n = n - 1;\n    foo(cx);\n    int f(x)\n{\n    if (!(!(i))) {\n        si = dx;\n    } else {\n        return 0;\n    }\n}	=>	{"r":"    i = dx;\n    cx = n;\n    n = n - 1;\n    foo(cx);\n    int f(x)\n{\n    if (!(i)) return 0;\n    si = dx;\n}"}
+guard_flat	S    bx++;\n    for (;;) {\n        if (((((ax + 1) == 0)))) {\n            return y;\n        }\n        *p = di;\n        g_0004 = ax;\n    }\n    for (;;) {\n        if (((!v1) || (!r_1 || (v1 <= foo(ax))))) {\n            return v1;\n        }\n        si = si;\n    }\n    ax = dx;\n    int f(x)\n{\n    if ((12 < x)) {\n        dx = cx;\n        g_0010 = strlen(p);\n        bx = bx;\n    } else {\n        return 1;\n    }\n}	=>	{"r":"    bx++;\n    for (;;) {\n        if (((((ax + 1) == 0)))) {\n            return y;\n        }\n        *p = di;\n        g_0004 = ax;\n    }\n    for (;;) {\n        if (((!v1) || (!r_1 || (v1 <= foo(ax))))) {\n            return v1;\n        }\n        si = si;\n    }\n    ax = dx;\n    int f(x)\n{\n    if (12 >= x) return 1;\n    dx = cx;\n    g_0010 = strlen(p);\n    bx = bx;\n}"}
+guard_flat	S{	=>	{"r":null}
+guard_shared	Sint f(x)\nint x;\n{\n    bx = ax;\n    v1 = (g_0010 + 2);\n    if ((al == 0)) {\n        if (((i > a[3]) || g_0010 && !r_1)) {\n            return 1;\n        }\n        bx = bx;\n        return bx;\n        return i;\n    }\n}	=>	{"r":"int f(x)\nint x;\n{\n    bx = ax;\n    v1 = (g_0010 + 2);\n    if (al) return 1;\n    if (((i > a[3]) || g_0010 && !r_1)) {\n        return 1;\n    }\n    bx = bx;\n    return bx;\n    return i;\n}"}
+guard_shared	S        g_0010 = ax;\n        for (;;) {\n            v1 = a[i];\n            if (!v1) break;\n            cx = f1234(di);\n        }\n        ax = ax;\n    int f(x)\n{\n    if ((0 <= i)) {\n        *p = bx;\n        di = di;\n        *p = cx;\n        return 0;\n    }\n}	=>	{"r":"        g_0010 = ax;\n        for (;;) {\n            v1 = a[i];\n            if (!v1) break;\n            cx = f1234(di);\n        }\n        ax = ax;\n    int f(x)\n{\n    if (0 > i) return 0;\n    *p = bx;\n    di = di;\n    *p = cx;\n    return 0;\n}"}
+guard_shared	S{	=>	{"r":null}
+bool_trees	S    if ((i <= i)) {\n        if ((((p->f2 <= ax)))) {\n            bx = 1;\n        } else {\n            bx = 0;\n        }\n    } else {\n        bx = 0;\n    }\n    return bx;\n    *p = dx;	=>	{"r":"    if ((i <= i) && (p->f2 <= ax)) {\n        bx = 1;\n    } else {\n        bx = 0;\n    }\n    return bx;\n    *p = dx;"}
+bool_trees	S    if ((foo(ax) == 0)) {\n        if (((ax + 1) == 0)) {\n            bx = 1;\n        } else {\n            bx = 0;\n        }\n    } else {\n        bx = 0;\n    }\n    return bx;\n    di = f1234(a);	=>	{"r":"    if (!foo(ax) && !((ax + 1))) {\n        bx = 1;\n    } else {\n        bx = 0;\n    }\n    return bx;\n    di = f1234(a);"}
+bool_trees	S{	=>	{"r":"{"}
+shared_tails	Sint f(x)\nint x;\n{\n    if ((p->f2 == 0)) {\n        if ((r_si != 0)) {\n            bar(bx, bx);\n        }\n    } else {\n        bar(bx, bx);\n    }\n}	=>	{"r":"int f(x)\nint x;\n{\n    if ((p->f2 == 0)) {\n        if ((!r_si)) return;\n    }\n    bar(bx, bx);\n}"}
+shared_tails	Sint f(x)\nint x;\n{\n    if ((i < foo(ax))) {\n        if (((foo(ax) != 0) && v2)) {\n            di = *p;\n        }\n    } else {\n        di = *p;\n    }\n}	=>	{"r":"int f(x)\nint x;\n{\n    if ((i < foo(ax))) {\n        if ((!foo(ax) || !v2)) return;\n    }\n    di = *p;\n}"}
+shared_tails	S{	=>	{"r":null}
+scaled_places	S    x = ((i << 1) + -3);\n    y = &g_00ff[3];	=>	{"r":"    x = &g_fffd[i];\n    y = &g_00ff[3];","t":{"a":[["g_fffd","int"]]}}
+scaled_places	S    x = ((p->f2 << 1) + 65000);\n    y = &g_00ff[3];	=>	{"r":"    x = &g_fde8[p->f2];\n    y = &g_00ff[3];","t":{"a":[["g_fde8","int"]]}}
+scaled_places	S{	=>	{"r":null}
+frame_more	S{\n    int fn;\n    y = (*fn)(1, 2);\n    (*fn)();	=>	{"r":"{\n    int fn;\n    char _pm[2];\n    y = (*fn)(1, 2);\n    (*fn)();"}
+frame_more	Sint f(x)\n{\n    int fn;\n    y = (*fn)(1, 2);\n    (*fn)();\n}	=>	{"r":"int f(x)\n{\n    int fn;\n    char _pm[2];\n    y = (*fn)(1, 2);\n    (*fn)();\n}"}
+frame_more	S{	=>	{"r":null}
+lead_filler	Sint x;\n{\n    long v10;\n    register char *r_di;\n    i = p = q;\n    *p = bx;\n    *p = ax;\n    return ax;\n}	=>	{"r":"int x;\n{\n    int _q0;\n    int _q2;\n    int _q4;\n    long v10;\n    register char *r_di;\n    i = p = q;\n    *p = bx;\n    *p = ax;\n    return ax;\n}"}
+lead_filler	Sint f(x)\n{\n    int v4;\n    register int r_si;\n    char b[4];\n    int unused;\n    g_0004 = (si + 4);\n    x = v2;\n}	=>	{"r":"int f(x)\n{\n    int _q0;\n    int v4;\n    register int r_si;\n    char b[4];\n    int unused;\n    g_0004 = (si + 4);\n    x = v2;\n}"}
+lead_filler	S{	=>	{"r":null}
+register_copies:b	S    r_di = n = foo(q);\n    return (x ? a : b);\n    *p = ax;	=>	{"r":"    n = foo(q);\n    return (x ? a : b);\n    *p = ax;"}
+register_copies:b	S    register int r_di;\n    r_di = x = p->f2->f4;\n    z = *r_di;	=>	{"r":"    x = p->f2->f4;\n    z = *x;"}
+register_copies:b	S{	=>	{"r":null}
+unsigned_registers	S    register int r_di;\n    r_di = x = p->f2->f4;\n    z = *r_di;	=>	{"r":"    register unsigned r_di;\n    r_di = x = p->f2->f4;\n    z = *r_di;"}
+unsigned_registers	Sint f(x)\n{\n    register int r_si;\n    r_si = x;\n    return r_si;\n}	=>	{"r":"int f(x)\n{\n    register unsigned r_si;\n    r_si = x;\n    return r_si;\n}"}
+unsigned_registers	S{	=>	{"r":null}
+no_default	S    switch (x) {\n    default:\n        return 1;\n    }	=>	{"r":"    switch (x) {\n    }\n    return 1;"}
+no_default	S    switch (x) {\n    default:\n        return -1;\n    }	=>	{"r":"    switch (x) {\n    }\n    return -1;"}
+no_default	S{	=>	{"r":null}
+unmasked	S    if ((x == (y & 0xff))) {\n        y = 1;\n    }	=>	{"r":"    if ((x == y)) {\n        y = 1;\n    }"}
+unmasked	S    if ((*p == (*q & 0xff))) {\n        y = 1;\n    }	=>	{"r":"    if ((*p == *q)) {\n        y = 1;\n    }"}
+unmasked	S{	=>	{"r":null}
+high_words	Sf(a, b)\nint b;\nint a;\n{\n    if (((b & 1) != 0)) {\n    }\n}	=>	{"r":"f(a)\nlong a;\n{\n    if (((a & 0x10000L) != 0)) {\n    }\n}"}
+high_words	Sf(a, b)\nint a, b;\n{\n    if (((b & -1) != 0)) {\n        x = 1;\n    }\n}	=>	{"r":"f(a)\nlong a;\n{\n    if (((a & 0xffff0000L) != 0)) {\n        x = 1;\n    }\n}"}
+high_words	S{	=>	{"r":null}
+assign_in_args	S    x = x + 1;\n    foo(x);	=>	{"r":"    foo((x = x + 1));"}
+assign_in_args	S    v2 = v2 - 2;\n    foo(v2);	=>	{"r":"    foo((v2 = v2 - 2));"}
+assign_in_args	S{	=>	{"r":null}
+return_sources	S    x = ax;\n    return x;	=>	{"r":"    x = ax;\n    return ax;"}
+return_sources	S    *p = ax;\n    return *p;	=>	{"r":"    *p = ax;\n    return ax;"}
+return_sources	S{	=>	{"r":null}
+compound_assigns	S    x = x ^ 1;	=>	{"r":"    x ^= 1;"}
+compound_assigns	S    x = x - 1;	=>	{"r":"    x -= 1;"}
+compound_assigns	S{	=>	{"r":null}
+chain_assigns	S    *p = 5;\n    y = *p;	=>	{"r":"    y = *p = 5;"}
+chain_assigns	S    *q = 5;\n    bx = *q;	=>	{"r":"    bx = *q = 5;"}
+chain_assigns	S{	=>	{"r":null}
+guard_gotos	S    bx = di;\n    if ((12 != v2)) goto L_3;\n    q = r_di = 5;\n    L_3:\n    return 0;	=>	{"r":"    bx = di;\n    if ((12 == v2)) {\n        q = r_di = 5;\n    }\n    return 0;"}
+guard_gotos	S    if ((x == foo(ax))) goto L_2;\n    g_0004 = f1234(s);\n    L_2:\n    if (v2) goto L_2;	=>	{"r":"    if (!(x == foo(ax))) {\n        g_0004 = f1234(s);\n    }\n    L_2:\n    if (v2) goto L_2;"}
+guard_gotos	S{	=>	{"r":"{"}
+merge_conditions	S    if (ax == 0) {\n        bx = 1;\n    } else if (cx) {\n        bx = 2;\n    }\n    return bx;	=>	{"r":"    if (ax == 0) {\n        bx = 1;\n    } else {\n        if (cx) {\n            bx = 2;\n        }\n    }\n    return bx;"}
+merge_conditions	S    if ((1 != 0)) {\n        if ((foo(ax) >= i)) {\n            g_0004 = n + 3;\n        }\n    }	=>	{"r":"    if (1 && (foo(ax) >= i)) {\n        g_0004 = n + 3;\n    }"}
+merge_conditions	S{	=>	{"r":"{"}
+register_temps	Sint f(x)\nint x;\n{\n    register int t1;\n    t1 = strlen(p);\n    x = (strlen(b) + t1);\n}	=>	{"r":"int f(x)\nint x;\n{\n    x = (strlen(b) + strlen(p));\n}"}
+register_temps	Sint f(x)\nint x;\n{\n    q++;\n    register int r_si;\n    r_si = foo(a);\n    x = (strlen(b) + r_si);\n}	=>	{"r":"int f(x)\nint x;\n{\n    q++;\n    x = (strlen(b) + foo(a));\n}"}
+register_temps	S{	=>	{"r":null}
+case_falls	S    if (!bp[-2]) {\n        goto L_1;\n    }\n    bx = bx;\n    goto L_1;\n    L_1:\n    return ax;\n    t1 = si - n;\n    di++;	=>	{"r":"    if (!bp[-2]) {\n        return ax;\n    }\n    bx = bx;\n    goto L_1;\n    L_1:\n    return ax;\n    t1 = si - n;\n    di++;"}
+case_falls	S        foo(cx, dx);\n        if (((ax + 1) != x)) {\n            goto L_2;\n        }\n        goto L_2;\n        L_2:\n        return;	=>	{"r":"        foo(cx, dx);\n        if (((ax + 1) != x)) {\n            return;\n        }\n        goto L_2;\n        L_2:\n        return;"}
+case_falls	S{	=>	{"r":"{"}
+inner_registers	Sint f(x)\n{\n    register int r_si;\n    y++;\n    r_si = n;\n  cx = dx;\n    return r_si;\n}	=>	{"r":"int f(x)\n{\n    y++;\n    {\n        register int r_si;\n        r_si = n;\n      cx = dx;\n    }\n    return r_si;\n}"}
+inner_registers	Sf(x)\n{\n    register char *q;\n    p = p + 3;\n    q = q - 1; \n    x = *p;\n    return *q;\n}	=>	{"r":"f(x)\n{\n    p = p + 3;\n    {\n        register char *q;\n        q = q - 1; \n        x = *p;\n    }\n    return *q;\n}"}
+inner_registers	S{	=>	{"r":null}
+char_stores	S    r_si = q;\n    int v2;\n    v2 = al;\n        y = al;\n    }\n  z = v2;	=>	{"r":"    r_si = q;\n    char v2;\n    v2 = al;\n        y = al;\n    }\n  z = v2;"}
+char_stores	S    int v2;\n    v2 = bl;\n    x = bl;\n    y = bl;\n    z = v2;\n    r_si++;	=>	{"r":"    char v2;\n    v2 = bl;\n    x = bl;\n    y = v2;\n    z = v2;\n    r_si++;"}
+char_stores	S{	=>	{"r":"{"}
+store_increments	S    *p = 5;\n    p = p + 1;	=>	{"r":"    *p++ = 5;"}
+store_increments	S    *p = *q;\n    p = p + 1;	=>	{"r":"    *p++ = *q;"}
+store_increments	S{	=>	{"r":null}
+register_values	S    ax = p->f2;\n    y = ax;\n    x = ax;	=>	{"r":"    y = p->f2;\n    x = p->f2;"}
+register_values	S    bx = bx;\n    z = bx;\n    y = bx + 1;\n    v1 = si;	=>	{"r":"    z = bx;\n    y = bx + 1;\n    v1 = si;"}
+register_values	S{	=>	{"r":"{"}
+shapes	S    return;\n    bx++;	=>	{"r":"    return;"}
+shapes	S    return;\n    si = dx;	=>	{"r":"    return;"}
+shapes	S{	=>	{"r":"{"}
+word_arrays:b	S        x = (x << 2)->f64;	=>	{"r":"        x = g_0040[x];","t":{"a":[["g_0040","long"]]}}
+word_arrays:b	S    x = (n << 2)->f256;\n    di = ax;	=>	{"r":"    x = g_0100[n];\n    di = ax;","t":{"a":[["g_0100","long"]]}}
+word_arrays:b	S    bx = (4 * i)\n    x = bx->f7967;\n    p = ((6 * i) + 1524);	=>	{"r":"    bx = (4 * i)\n    x = g_1f1f[bx];\n    p = &g_05f4[i];","t":{"a":[["g_05f4","struct s_g_05f4"],["g_1f1f","int"]],"s":[["g_05f4",[6,"int"]]]}}
+word_arrays:b	S{	=>	{"r":"{"}
+char_param_variants	Sint f(x)\nint x;\n{\n    return (x);\n}	S2	=>	{"r":["int f(x)\nchar x;\n{\n    return (x);\n}"]}
+char_param_variants	S{	S2	=>	{"r":[]}
+char_param_variants	Sint f(x)\nint x;\n{\n    return (x);\n}	S1	=>	{"r":["int f(x)\nchar x;\n{\n    return (x);\n}"]}
+char_param_variants	S{	S1	=>	{"r":[]}
+pointer_widths	S    register char *p;\n    p = 12345;\n        y = 1;\n    }	S2	=>	{"r":["    register int *p;\n    p = 12345;\n        y = 1;\n    }"]}
+pointer_widths	S{	S2	=>	{"r":[]}
+pointer_widths	S    register char *p;\n    p = 12345;\n        y = 1;\n    }	S1	=>	{"r":["    register int *p;\n    p = 12345;\n        y = 1;\n    }"]}
+pointer_widths	S{	S1	=>	{"r":[]}
+unsigned_globals	Sextern int a, b;\nf(x)\n{\n}	S2	=>	{"r":["extern int b;\nextern unsigned a;\nf(x)\n{\n}","extern int a;\nextern unsigned b;\nf(x)\n{\n}"]}
+unsigned_globals	S{	S2	=>	{"r":[]}
+unsigned_globals	Sextern int a, b;\nf(x)\n{\n}	S1	=>	{"r":["extern int b;\nextern unsigned a;\nf(x)\n{\n}"]}
+unsigned_globals	S{	S1	=>	{"r":[]}
+address_variants	S    int *q;\n    q = 256;\n        y = 1;\n    }	S65536	S3	S256	=>	{"r":[["g_0100","    int *q;\n    q = g_0100;\n        y = 1;\n    }"]]}
+address_variants	S    char *q;\n    q = -100;\n        y = 1;\n    }	S65536	S3	S256	=>	{"r":[["g_ff9c","    char *q;\n    q = g_ff9c;\n        y = 1;\n    }"]]}
+address_variants	S{	S65536	S3	S256	=>	{"r":[]}
+frame_names	Sint f(x, y)\nint x;\n{\n    char v6[6];\n    long v10;\n    *p = ax;\n    return ax;\n}	S{"mod": 16}	S0	S0	=>	{"r":"int f(x, y)\nint x;\n{\n    char v6[6];\n    long v10f;\n    *p = ax;\n    return ax;\n}"}
+frame_names	S{	S{"mod": 16}	S0	S0	=>	{"r":null}
+frame_names	Sint f(x, y)\nint x;\n{\n    char v6[6];\n    long v10;\n    *p = ax;\n    return ax;\n}	S{"mod": 16}	S0	S1	=>	{"r":"int f(x, y)\nint x;\n{\n    char v6[6];\n    long v10f;\n    *p = ax;\n    return ax;\n}"}
+frame_names	S{	S{"mod": 16}	S0	S1	=>	{"r":null}
+frame_names	Sint f(x)\nint x;\n{\n    char _p3[3];\n    int v5;\n    x = (s - y);\n    return ax;\n}	S{"mod": 7}	S1	S1	=>	{"r":"int f(x)\nint x;\n{\n    char _p3[3];\n    int v5c;\n    char _p0[3];\n    x = (s - y);\n    return ax;\n}"}
+frame_names	S{	S{"mod": 7}	S1	S1	=>	{"r":null}
+drop_decl	Sint x;\n{\n    L_2:\n}	Sx	=>	{"r":"{\n    L_2:\n}"}
+drop_decl	S{	Sx	=>	{"r":"{"}
+drop_decl	Sf(a, b)\nint b;\nint a;\n{\n    if (((b & 1) != 0)) {\n    }\n}	Sa	=>	{"r":"f(a, b)\nint b;\n{\n    if (((b & 1) != 0)) {\n    }\n}"}
+drop_decl	S{	Sa	=>	{"r":"{"}
+redeclare	Sint x;\n{\n    L_2:\n}	Sx	Schar *%s	=>	{"r":"char *x;\n{\n    L_2:\n}"}
+redeclare	S{	Sx	Schar *%s	=>	{"r":null}
+redeclare	S    int *p;\n    if ((p < 4660)) {\n        y = 1;\n    }	Sp	Slong %s	=>	{"r":"    long p;\n    if ((p < 4660)) {\n        y = 1;\n    }"}
+redeclare	S{	Sp	Slong %s	=>	{"r":null}
+library_macros	Sint f(x)\nint x;\n{\n    register int *p;\n    stdin->f2--;\n    if ((stdin->f2 >= 0)) {\n        x = (*stdin->f0++ = *p);\n    } else {\n        x = _filbuf(stdin);\n    }\n    return x;\n}	Sa	=>	{"r":"int f(x)\nint x;\n{\n    register int *p;\n    ax = getc(stdin);\n    return x;\n}","t":{"f":[["#include","stdio.h"],["stdin","FILE"]]}}
+library_macros	Sint f(x)\nint x;\n{\n    register int *p;\n    stdout->f2--;\n    if ((stdout->f2 >= 0)) {\n        *stdout->f0++ = *p;\n    } else {\n        _flsbuf(*p, stdout);\n    }\n}	Sa	=>	{"r":"int f(x)\nint x;\n{\n    register int *p;\n    ax = putc(*(char *)p, stdout);\n}","t":{"f":[["#include","stdio.h"],["stdout","FILE"]]}}
+library_macros	Sint f(x)\nint x;\n{\n    return x;\n}	Sa	=>	{"r":"int f(x)\nint x;\n{\n    return x;\n}"}
+table_macros	Sint f(c)\nint c;\n{\n    if (((c->f8193 & 4) != 0)) {\n        return 1;\n    }\n    if (((c->f8193 & 4) == 0)) {\n        return 2;\n    }\n    return (c->f8193 & 8);\n}	=>	{"r":"int f(c)\nint c;\n{\n    if (isdigit(c)) {\n        return 1;\n    }\n    if (!isdigit(c)) {\n        return 2;\n    }\n    return isspace(c);\n}","t":{"f":[["#include","ctype.h"],["#include2","ctype.h"]]}}
+data_macros	Sint f(x)\nint x;\n{\n    foo(g_1007, 4096, 4104);\n    return g_1006;\n}	=>	{"r":"int f(x)\nint x;\n{\n    foo(fileno(stdin), stdin, stdout);\n    return feof(stdin);\n}","t":{"f":[["#include","stdio.h"]]}}
+header_text	N	Sctype.h	S1	=>	{"r":"#define _UPPER 0x1\n#define _LOWER 0x2\n#define _DIGIT 0x4\n#define _SPACE 0x8\n#define _PUNCT 0x10\nextern char _ctype[];\n#define isalpha(c)  ( (_ctype+1)[c] & (_UPPER|_LOWER) )\n#define isupper(c)  ( (_ctype+1)[c] & _UPPER )\n#define islower(c)  ( (_ctype+1)[c] & _LOWER )\n#define isdigit(c)  ( (_ctype+1)[c] & _DIGIT )\n#define isspace(c)  ( (_ctype+1)[c] & _SPACE )\n#define bogus(c)  ( (_ctype+1)[c] & _NOSUCH )\n"}
+header_text	N	Snothing.h	S1	=>	{"r":""}
+header_text	N	Sctype.h	S2	=>	{"r":""}
+header_names	N	Sstdio.h	S1	=>	{"r":["fclose","fgetc","fopen","getc","printf","putc"]}
+header_names	N	Sctype.h	S1	=>	{"r":["bogus","isalpha","isdigit","islower","isspace","isupper"]}

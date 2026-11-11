@@ -564,6 +564,16 @@ Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2)
 |---|---|---|
 | fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
 | mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+
+## cb refactor: exact/draft/forms, batch W1-B11 (2026-11-11)
+
+Old = the typed port on the py:: layer (exact/draft/forms.cpp, /O2 in the harness `state/work/typed-port/exact.draft.forms`), same inputs, one run each, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| the harness: 482,355 pass runs over 8,475 draft bodies (every pass of the module, library passes against a fake kit), texts and cases read from the files, one JSON line written per case | 11.1 s | 5.6 s |
+
+The harness answers: the Python original (fixed: three bugs, see _bugs/LIST.md) and the C++ module give the same result for all 482,355 cases, the tables the passes fill included. The dynamic-pattern work of the old port (a regex built per name per call) is code now (`\b`-bounded word scans); the 129 patterns that are left are compiled once.
 | contract16: `_calls` over 250 functions (474 calls) of four Win95 16-bit modules | Python 199 ms (the old typed port could not be isolated: its harness times describe16 with it) | 42 ms (the whole test: parse the dump, decode, compare; process start 55 ms not counted) |
 | setup16 make_cd: the CD is patched in place (copy + two records) instead of written again by pycdlib; screen shrink 640x480 to 160x120 is the same Pillow filter | not timed (the old port had no ISO writer) | fixture CD in a few ms; the cost is the copy of the image |
 ## cb refactor: symbols/libraries, x86, wine16 and translate/ir, batch W0-B27 (2026-11-11)
