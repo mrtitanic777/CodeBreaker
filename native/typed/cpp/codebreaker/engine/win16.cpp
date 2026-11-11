@@ -20,6 +20,7 @@
 #include "codebreaker/engine/facts.hpp"
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/platforms/win16.hpp"
+#include "codebreaker/translate/ir.hpp"
 #include "codebreaker/verify/gate16/contract16.hpp"
 #include "codebreaker/verify/gate16/isolated16.hpp"
 #include "codebreaker/verify/lanes/win16.hpp"
@@ -76,6 +77,10 @@ Json jat(const Json& d, const char* k) { return d.dict.get(py::str(k)).value_or(
 Json step_json(const Value& v) {
     if (!std::holds_alternative<Json>(v)) throw py::TypeError("a 16-bit fact is not JSON");
     return std::get<Json>(v);
+}
+Json step_json_str(const Value& v) {
+    if (std::holds_alternative<py::str>(v)) return j_str(std::get<py::str>(v));
+    return step_json(v);
 }
 bool sort_less(const py::str& a, const py::str& b) { return a.u32() < b.u32(); }
 
@@ -142,6 +147,58 @@ std::shared_ptr<lane::Prepared> module_of(Context& ctx) {
 }
 
 const std::vector<py::str> NO_NAMES;
+
+// (the options module._build16 compiles a function with, before its code segment's -nt=: the medium model, the 8087, for size, the code
+// class it lays out first)
+py::list<py::str> cflags16() {
+    py::list<py::str> out;
+    for (const py::str& f : build::functions::CFLAGS16)
+        if (f != py::str("-ms")) out.append(f);
+    for (const char* f : {"-mm", "-fpi87", "-os", "-nc=MCODE"}) out.append(py::str(f));
+    return out;
+}
+py::str wcc() { return build::watcom::ow_tool(py::str("wcc")); }
+py::list<py::str> flags_of(const Json& j) {
+    py::list<py::str> out;
+    for (const Json& f : j.list) out.append(f.s);
+    return out;
+}
+Json strs_json(const py::list<py::str>& v) {
+    Json j = j_list();
+    for (const py::str& s : v) j.list.push_back(j_str(s));
+    return j;
+}
+// module._build16's `named`: a call the decompiler left as an address (`func_0x...`) goes to the function reconstructed there, when it can be
+// reached from this segment.
+py::str named(const py::str& text, int64_t seg, const Json& funcs) {
+    std::map<int64_t, Json> by_va;
+    for (const auto& kv : funcs.dict.items()) by_va[jat(std::get<1>(kv), "va").i] = std::get<1>(kv);
+    return mod::_BY_ADDRESS.sub(
+        [&](const py::re::Match& mm) -> py::str {
+            const auto it = by_va.find(py::int_parse(mm.group(1), 16));
+            if (it != by_va.end()) {
+                const Json& t = it->second;
+                if (jat(t, "seg").kind == Json::Int && (!jat(t, "near").b || jat(t, "seg").i == seg)) return jstr(jat(t, "name"));
+            }
+            return mm.group(0);
+        },
+        text);
+}
+// the folder a segment's functions are compiled in, its header beside them
+std::mutex g_folders_lock;
+std::map<std::string, py::str> g_folders;
+py::str folder_of(Context& ctx, int64_t seg, const py::str& header) {
+    const py::str d = ctx.work(py::list<py::str>{py::str("objects"), py::percent("s%02d", seg)});
+    const py::str want = base::cache::key({base::cache::Part(header)});
+    std::lock_guard<std::mutex> g(g_folders_lock);
+    const auto it = g_folders.find(d.utf8());
+    if (it == g_folders.end() || it->second != want) {
+        py::os::makedirs(d, 0777, true);
+        std::ofstream(py::os::path::join(d, py::str("m.h")).utf8(), std::ios::binary) << header.utf8();
+        g_folders[d.utf8()] = want;
+    }
+    return d;
+}
 
 // ---- the steps --------------------------------------------------------------------------------------------------------
 void declare_steps() {
@@ -247,6 +304,105 @@ void declare_steps() {
         return Value(t ? j_str(*t) : j_null());
     }, reads({"ne.module", "ne.functions"}), P);
 
+    // What the decompiler said of the function besides its C (decompiler.split_notes: its pointers' sizes, the globals it touches, the
+    // structures it recovered), or null.
+    step(py::str("function.notes"), [](Context& ctx, const py::str& key) -> StepResult {
+        const py::str name = jstr(jat(jat(step_json(ctx.need(py::str("ne.functions"))), key.utf8().c_str()), "name"));
+        auto m = module_of(ctx);
+        const auto nt = m->notes.get(name);
+        if (!nt) return Value(j_null());
+        Json out = j_dict();
+        Json gl = j_list();
+        for (const auto& g : nt->globals) {
+            Json one = j_list();
+            one.list = {j_int(g.address), j_int(g.bytes), j_int(g.elem)};
+            gl.list.push_back(one);
+        }
+        out.dict.set(py::str("globals"), gl);
+        Json pt = j_dict();
+        for (const auto& kv : nt->pointers.items()) pt.dict.set(std::get<0>(kv), j_int(std::get<1>(kv)));
+        out.dict.set(py::str("pointers"), pt);
+        out.dict.set(py::str("structs"), j_int(py::len(nt->structs)));
+        out.dict.set(py::str("has_l2"), j_bool(nt->l2.has_value()));
+        out.dict.set(py::str("placed"), j_bool(nt->placed));
+        out.dict.set(py::str("from_l2"), j_bool(nt->from_l2));
+        return Value(out);
+    }, reads({"ne.module", "ne.functions"}), P);
+
+    // The function's L2 document, the C of it is written from (as its text), or null: the decompiler made none.
+    step(py::str("function.l2"), [](Context& ctx, const py::str& key) -> StepResult {
+        const Json notes = step_json(ctx.need(py::str("function.notes"), key));
+        if (notes.kind != Json::Dict || !jat(notes, "has_l2").b) return Value(j_null());
+        const py::str name = jstr(jat(jat(step_json(ctx.need(py::str("ne.functions"))), key.utf8().c_str()), "name"));
+        const auto nt = module_of(ctx)->notes.get(name);
+        if (!nt || !nt->l2) return Value(j_null());
+        return Value(j_str(translate::ir::Val(*nt->l2).repr()));
+    }, reads({"function.notes", "ne.module", "ne.functions"}), P);
+
+    // What the build compiles for the function: {text, seg, stem, flags}.
+    step(py::str("function.source"), [](Context& ctx, const py::str& key) -> StepResult {
+        const Json funcs = step_json(ctx.need(py::str("ne.functions")));
+        const Json f = jat(funcs, key.utf8().c_str());
+        const Json c = step_json(ctx.need(py::str("function.c"), key));
+        if (c.kind != Json::Str || jat(f, "seg").kind != Json::Int) return Value(j_null());
+        const int64_t seg = jat(f, "seg").i;
+        Json out = j_dict();
+        out.dict.set(py::str("text"), j_str(named(c.s, seg, funcs)));
+        out.dict.set(py::str("seg"), j_int(seg));
+        out.dict.set(py::str("stem"), jat(f, "stem"));
+        py::list<py::str> fl = cflags16();
+        fl.append(py::percent("-nt=CODE%d", seg));
+        out.dict.set(py::str("flags"), strs_json(fl));
+        return Value(out);
+    }, reads({"function.c", "ne.functions"}), P, {}, [] { return py::str(CODE) + py::str("|flags|") + py::join(py::str(" "), cflags16()); });
+
+    // The object file the compiler makes of the function: {flags, text, obj} -- or, when it is rejected, {error, stand_in_text, stand_in}.
+    step(py::str("function.object"), [](Context& ctx, const py::str& key) -> StepResult {
+        const Json src = step_json(ctx.need(py::str("function.source"), key));
+        if (src.kind != Json::Dict) return Value(j_null());
+        const py::str header = jstr(step_json_str(ctx.need(py::str("ne.header"))));
+        const py::str d = folder_of(ctx, jat(src, "seg").i, header);
+        const py::dict<py::str, py::str> env = build::watcom::ow_env(py::str("ne"));
+        const py::str hk = base::cache::key({base::cache::Part(header)});
+        const py::list<py::str> flags = flags_of(jat(src, "flags"));
+        const py::str text = jstr(jat(src, "text")), stem = jstr(jat(src, "stem"));
+        auto read_obj = [&] {
+            std::ifstream in(py::os::path::join(d, stem + py::str(".obj")).utf8(), std::ios::binary);
+            return py::bytes(std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>())).decode("latin1");
+        };
+        Json out = j_dict();
+        out.dict.set(py::str("flags"), jat(src, "flags"));
+        out.dict.set(py::str("text"), j_str(text));
+        const py::str why = std::get<0>(build::functions::compile_kept(wcc(), build::functions::_adjust_flags(flags, text), env, d, stem, text, std::optional<py::str>(hk)));
+        if (!why.empty()) {
+            out.dict.set(py::str("error"), j_str(why));
+            const py::str si = build::functions::stand_in(text);
+            out.dict.set(py::str("stand_in_text"), j_str(si));
+            out.dict.set(py::str("stand_in"), j_null());
+            if (std::get<0>(build::functions::compile_kept(wcc(), build::functions::_adjust_flags(flags, si), env, d, stem, si, std::optional<py::str>(hk))).empty())
+                out.dict.set(py::str("stand_in"), j_str(read_obj()));
+        } else {
+            out.dict.set(py::str("obj"), j_str(read_obj()));
+        }
+        return Value(out);
+    }, reads({"function.source", "ne.header"}), P, {}, [] { return py::str(CODE) + py::str("|object|") + base::cache::tool(wcc()); });
+
+    // The variables the function reads and never sets (functions.never_set: the compiler's flow check), with the options and text it was asked of.
+    step(py::str("function.never_set"), [](Context& ctx, const py::str& key) -> StepResult {
+        const Json src = step_json(ctx.need(py::str("function.source"), key));
+        if (src.kind != Json::Dict) return Value(j_null());
+        const py::str header = jstr(step_json_str(ctx.need(py::str("ne.header"))));
+        const py::str d = folder_of(ctx, jat(src, "seg").i, header);
+        py::str stem = py::str("n") + key.replace(py::str(":"), py::str("_"));         // (only its scratch file's name)
+        const py::str text = jstr(jat(src, "text"));
+        Json out = j_dict();
+        py::list<py::str> fl = cflags16();
+        out.dict.set(py::str("flags"), strs_json(fl));
+        out.dict.set(py::str("text"), j_str(text));
+        out.dict.set(py::str("names"), strs_json(build::functions::never_set_kept(wcc(), fl, build::watcom::ow_env(py::str("ne")), d, stem, text,
+                                                                                std::optional<py::str>(base::cache::key({base::cache::Part(header)})))));
+        return Value(out);
+    }, reads({"function.source", "ne.header"}), P, {}, [] { return py::str(CODE) + py::str("|never|") + base::cache::tool(wcc()) + py::str("|") + py::join(py::str(" "), cflags16()); });
     // The description's lines for the function and each it calls -- the gate answers a call as the description says the callee does.
     step(py::str("function.contract"), [](Context& ctx, const py::str& key) -> StepResult {
         const py::str name = jstr(jat(jat(step_json(ctx.need(py::str("ne.functions"))), key.utf8().c_str()), "name"));
@@ -324,6 +480,8 @@ void declare_steps() {
         py::list<py::str> klist;
         for (const py::str& k : keys) klist.append(k);
         const auto texts = ctx.need_many(py::str("function.c"), klist);
+        const auto objects = ctx.need_many(py::str("function.object"), klist);
+        const auto never = ctx.need_many(py::str("function.never_set"), klist);
         ctx.file(mod::KEPT_AS_ASM);
         const py::str folder = ctx.work(py::list<py::str>{py::str("build")});
         const py::str decompiled = py::os::path::join(folder, py::str("decompiled"));
@@ -378,13 +536,44 @@ void declare_steps() {
                 if (wh && *wh) tables.place.set(std::get<1>(kv), *(*wh));
             }
             const int64_t functions = py::len(m0->all_keys);
+            // module._build16 handed the engine's objects and flow checks while it runs (functions.serve)
+            py::dict<py::str, build::functions::Served> served_objects;
+            py::dict<py::str, py::list<py::str>> served_never;
+            {
+                const py::str hk = base::cache::key({base::cache::Part(m0->header())});
+                for (const py::str& k : klist) {
+                    const Json o = step_json(objects.at(k));
+                    if (o.kind == Json::Dict) {
+                        if (jat(o, "error").kind == Json::Str) {
+                            served_objects.set(build::functions::served_key(hk, flags_of(jat(o, "flags")), jstr(jat(o, "text"))), build::functions::Served{jstr(jat(o, "error")), py::bytes()});
+                            if (jat(o, "stand_in").kind == Json::Str)
+                                served_objects.set(build::functions::served_key(hk, flags_of(jat(o, "flags")), jstr(jat(o, "stand_in_text"))),
+                                                   build::functions::Served{py::str(""), jstr(jat(o, "stand_in")).encode("latin1")});
+                        } else {
+                            served_objects.set(build::functions::served_key(hk, flags_of(jat(o, "flags")), jstr(jat(o, "text"))),
+                                               build::functions::Served{py::str(""), jstr(jat(o, "obj")).encode("latin1")});
+                        }
+                    }
+                    const Json nv = step_json(never.at(k));
+                    if (nv.kind == Json::Dict) served_never.set(build::functions::served_key(hk, flags_of(jat(nv, "flags")), jstr(jat(nv, "text"))), flags_of(jat(nv, "names")));
+                }
+            }
+            struct Serving {
+                Serving(const py::dict<py::str, build::functions::Served>& o, const py::dict<py::str, py::list<py::str>>& nv) { build::functions::serve(o, nv); }
+                ~Serving() { build::functions::unserve(); }
+            };
             while (true) {
                 b = mod::Built(path);
                 b.gated = gated.copy();
                 b.folder = folder;
                 b.functions = functions;
-                auto mm = fresh();                                        // (_build16 adds to its segments)
-                image = mod::_build16(b, path, *mm, folder);
+                // (_copy(m): _build16 adds to its segments -- and to nothing else -- so a pass gets its own dict of them, not a second decompile)
+                auto mm = std::make_shared<lane::Prepared>(*m0);
+                mm->segments = m0->segments.copy();
+                {
+                    Serving serving(served_objects, served_never);
+                    image = mod::_build16(b, path, *mm, folder);
+                }
                 if (!b.resident_overflow.empty()) {                       // (as module.build: again -- and gated still, if this build was to be)
                     py::dict<py::str, py::str> merged = b.gated.copy();
                     for (const auto& kv : b.resident_overflow.items()) merged.set(std::get<0>(kv), std::get<1>(kv));
@@ -471,7 +660,7 @@ void declare_steps() {
             g_built[path.utf8()] = std::make_shared<mod::Built>(b);
         }
         return Value(out);
-    }, reads({"binary", "ne.module", "ne.description", "ne.functions", "function.c", "function.gate"}), P, {}, image_stamp);
+    }, reads({"binary", "ne.module", "ne.description", "ne.functions", "function.c", "function.object", "function.never_set", "function.gate"}), P, {}, image_stamp);
 }
 
 }  // namespace

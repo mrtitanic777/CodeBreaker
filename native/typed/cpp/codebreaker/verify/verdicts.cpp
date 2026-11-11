@@ -2,9 +2,8 @@
 
 #include "codebreaker/verify/verdicts.hpp"
 
-// The vocabulary below is read by other files' namespace-scope initialisers (a table built from SCORED(), TITLE() ...): this file's
-// constants are initialised before theirs, whatever the link order (MSVC: lib initialisers run before user ones).
-#pragma init_seg(lib)
+// The tables below are built from string literals on first use, never from the constants above: another file's namespace-scope
+// initialiser may ask for SCORED() or TITLE() before this file's constants exist (construct-on-first-use).
 
 namespace codebreaker::verify::verdicts {
 
@@ -17,41 +16,41 @@ const py::str NO_COMPILE("no-compile");
 const py::str NO_SOURCE("no-source");
 
 const py::list<py::str>& VERDICTS() {
-    static const py::list<py::str> v{EQUIVALENT, CONSISTENT, DIVERGENT, INCONCLUSIVE, NO_COMPILE, NO_SOURCE};
+    static const py::list<py::str> v{py::str("equivalent"), py::str("consistent"), py::str("divergent"), py::str("inconclusive"), py::str("no-compile"), py::str("no-source")};
     return v;
 }
 const py::list<py::str>& GOOD() {
-    static const py::list<py::str> v{EQUIVALENT, CONSISTENT};
+    static const py::list<py::str> v{py::str("equivalent"), py::str("consistent")};
     return v;
 }
 const NotRun& NOT_RUN() {
-    static const NotRun v{INCONCLUSIVE, py::str("judge: the emulator crashed on this function"),
+    static const NotRun v{py::str("inconclusive"), py::str("judge: the emulator crashed on this function"),
                           py::list<py::str>(), py::str("")};
     return v;
 }
 
 const py::dict<py::str, py::str>& OLD() {
     static const py::dict<py::str, py::str> d{
-        {py::str("no-synth"), NO_SOURCE},       // (reconstruct.run's row for a function the decompiler gave nothing)
-        {py::str("same"), EQUIVALENT},          // (the 16-bit gate, the port's cases)
-        {py::str("alike"), EQUIVALENT},
-        {py::str("differs"), DIVERGENT},
-        {py::str("different"), DIVERGENT},
-        {py::str("not run"), INCONCLUSIVE},
-        {py::str("not-run"), INCONCLUSIVE},
-        {py::str("not judged"), INCONCLUSIVE},
-        {py::str("untested"), INCONCLUSIVE},
-        {py::str("does not compile"), NO_COMPILE},
-        {py::str("not compiled"), NO_COMPILE},
+        {py::str("no-synth"), py::str("no-source")},       // (reconstruct.run's row for a function the decompiler gave nothing)
+        {py::str("same"), py::str("equivalent")},          // (the 16-bit gate, the port's cases)
+        {py::str("alike"), py::str("equivalent")},
+        {py::str("differs"), py::str("divergent")},
+        {py::str("different"), py::str("divergent")},
+        {py::str("not run"), py::str("inconclusive")},
+        {py::str("not-run"), py::str("inconclusive")},
+        {py::str("not judged"), py::str("inconclusive")},
+        {py::str("untested"), py::str("inconclusive")},
+        {py::str("does not compile"), py::str("no-compile")},
+        {py::str("not compiled"), py::str("no-compile")},
     };
     return d;
 }
 
 const py::dict<py::str, py::str>& SAID() {
     static const py::dict<py::str, py::str> d{
-        {EQUIVALENT, py::str("same")},          {CONSISTENT, py::str("same (both fail)")},
-        {DIVERGENT, py::str("differs")},        {INCONCLUSIVE, py::str("not run")},
-        {NO_COMPILE, py::str("does not compile")}, {NO_SOURCE, py::str("no source")},
+        {py::str("equivalent"), py::str("same")},          {py::str("consistent"), py::str("same (both fail)")},
+        {py::str("divergent"), py::str("differs")},        {py::str("inconclusive"), py::str("not run")},
+        {py::str("no-compile"), py::str("does not compile")}, {py::str("no-source"), py::str("no source")},
     };
     return d;
 }
@@ -62,14 +61,14 @@ std::optional<py::str> verdict(const std::optional<py::str>& word) {
 }
 
 py::str pair(bool same, bool ran, bool built) {
-    if (!built) return NO_COMPILE;
-    if (!ran) return INCONCLUSIVE;
-    return same ? EQUIVALENT : DIVERGENT;
+    if (!built) return py::str("no-compile");
+    if (!ran) return py::str("inconclusive");
+    return same ? py::str("equivalent") : py::str("divergent");
 }
 
 bool good(const std::optional<py::str>& word) {
     std::optional<py::str> v = verdict(word);
-    return v && (*v == EQUIVALENT || *v == CONSISTENT);
+    return v && (*v == py::str("equivalent") || *v == py::str("consistent"));
 }
 
 // ---- 2. what it amounts to ----
@@ -80,39 +79,39 @@ const py::str NOT_JUDGED("not-judged");
 const py::str IDENTIFIED("identified");
 
 const py::list<py::str>& ORDER() {
-    static const py::list<py::str> v{VERIFIED, WEAK, UNVERIFIED, NOT_JUDGED, NO_COMPILE, NO_SOURCE};
+    static const py::list<py::str> v{py::str("verified"), py::str("weak"), py::str("unverified"), py::str("not-judged"), py::str("no-compile"), py::str("no-source")};
     return v;
 }
 const py::list<py::str>& SCORED() {
-    static const py::list<py::str> v{VERIFIED, WEAK, IDENTIFIED, UNVERIFIED, NOT_JUDGED, NO_COMPILE, NO_SOURCE};
+    static const py::list<py::str> v{py::str("verified"), py::str("weak"), py::str("identified"), py::str("unverified"), py::str("not-judged"), py::str("no-compile"), py::str("no-source")};
     return v;
 }
 const py::list<py::str>& BUILT() {
-    static const py::list<py::str> v{VERIFIED, WEAK, UNVERIFIED, NOT_JUDGED};
+    static const py::list<py::str> v{py::str("verified"), py::str("weak"), py::str("unverified"), py::str("not-judged")};
     return v;
 }
 const py::dict<py::str, py::str>& TITLE() {
     static const py::dict<py::str, py::str> d{
-        {VERIFIED, py::str("VERIFIED")},       {WEAK, py::str("VERIFIED (weak)")},
-        {UNVERIFIED, py::str("UNVERIFIED")},   {NOT_JUDGED, py::str("NOT JUDGED")},
-        {NO_COMPILE, py::str("DOES NOT COMPILE")}, {NO_SOURCE, py::str("NO SOURCE")},
-        {IDENTIFIED, py::str("IDENTIFIED (runtime library)")},
+        {py::str("verified"), py::str("VERIFIED")},       {py::str("weak"), py::str("VERIFIED (weak)")},
+        {py::str("unverified"), py::str("UNVERIFIED")},   {py::str("not-judged"), py::str("NOT JUDGED")},
+        {py::str("no-compile"), py::str("DOES NOT COMPILE")}, {py::str("no-source"), py::str("NO SOURCE")},
+        {py::str("identified"), py::str("IDENTIFIED (runtime library)")},
     };
     return d;
 }
 const py::dict<py::str, py::str>& LABEL() {
     static const py::dict<py::str, py::str> d{
-        {VERIFIED, py::str("verified")},       {WEAK, py::str("weak")},
-        {UNVERIFIED, py::str("unverified")},   {NOT_JUDGED, py::str("not judged")},
-        {NO_COMPILE, py::str("does not compile")}, {NO_SOURCE, py::str("no source")},
-        {IDENTIFIED, py::str("runtime library")},
+        {py::str("verified"), py::str("verified")},       {py::str("weak"), py::str("weak")},
+        {py::str("unverified"), py::str("unverified")},   {py::str("not-judged"), py::str("not judged")},
+        {py::str("no-compile"), py::str("does not compile")}, {py::str("no-source"), py::str("no source")},
+        {py::str("identified"), py::str("runtime library")},
     };
     return d;
 }
 const py::dict<py::str, py::str>& CLASS() {
     static const py::dict<py::str, py::str> d{
-        {EQUIVALENT, VERIFIED}, {CONSISTENT, WEAK},       {DIVERGENT, UNVERIFIED},
-        {INCONCLUSIVE, NOT_JUDGED}, {NO_COMPILE, NO_COMPILE}, {NO_SOURCE, NO_SOURCE},
+        {py::str("equivalent"), py::str("verified")}, {py::str("consistent"), py::str("weak")},       {py::str("divergent"), py::str("unverified")},
+        {py::str("inconclusive"), py::str("not-judged")}, {py::str("no-compile"), py::str("no-compile")}, {py::str("no-source"), py::str("no-source")},
     };
     return d;
 }
@@ -137,13 +136,13 @@ const py::dict<py::str, py::str>& WEAK_LIMITS() {
 // every older spelling of a class -> the class now
 const py::dict<py::str, py::str>& CLASS_OLD() {
     static const py::dict<py::str, py::str> d{
-        {py::str("not judged"), NOT_JUDGED},
-        {py::str("does not compile"), NO_COMPILE},
-        {py::str("no source"), NO_SOURCE},
-        {py::str("runtime library"), IDENTIFIED},
-        {py::str("run-time library"), IDENTIFIED},
-        {py::str("verified (weak)"), WEAK},
-        {py::str("identified (runtime library)"), IDENTIFIED},
+        {py::str("not judged"), py::str("not-judged")},
+        {py::str("does not compile"), py::str("no-compile")},
+        {py::str("no source"), py::str("no-source")},
+        {py::str("runtime library"), py::str("identified")},
+        {py::str("run-time library"), py::str("identified")},
+        {py::str("verified (weak)"), py::str("weak")},
+        {py::str("identified (runtime library)"), py::str("identified")},
     };
     return d;
 }
@@ -166,14 +165,14 @@ std::pair<py::str, py::list<py::str>> classify(const std::optional<py::str>& wor
             if (!c.empty() && WEAK_LIMITS().contains(c)) weak.append(c);
         }
     }
-    if (v && *v == EQUIVALENT) return {weak.empty() ? VERIFIED : WEAK, weak};
-    if (v && *v == CONSISTENT) {
+    if (v && *v == py::str("equivalent")) return {weak.empty() ? py::str("verified") : py::str("weak"), weak};
+    if (v && *v == py::str("consistent")) {
         if (weak.empty()) weak.append(py::str("fault-only"));
-        return {WEAK, weak};
+        return {py::str("weak"), weak};
     }
-    // CLASS.get(v, NO_SOURCE); a None word is no-source
-    if (!v) return {NO_SOURCE, py::list<py::str>()};
-    return {CLASS().get(*v, NO_SOURCE), py::list<py::str>()};
+    // CLASS.get(v, py::str("no-source")); a None word is no-source
+    if (!v) return {py::str("no-source"), py::list<py::str>()};
+    return {CLASS().get(*v, py::str("no-source")), py::list<py::str>()};
 }
 
 // ---- 3. a byte comparison ----
@@ -183,24 +182,24 @@ const py::str DIFFERENT("different");
 const py::str NO_EXTENT("no original extent");
 
 const py::list<py::str>& MATCHES() {
-    static const py::list<py::str> v{IDENTICAL, SAME_SIZE, DIFFERENT, NO_EXTENT, NO_COMPILE};
+    static const py::list<py::str> v{py::str("identical"), py::str("same size"), py::str("different"), py::str("no original extent"), py::str("no-compile")};
     return v;
 }
 const py::dict<py::str, py::str>& MATCH_OLD() {
     static const py::dict<py::str, py::str> d{
-        {py::str("does not compile"), NO_COMPILE},
-        {py::str("same length, different"), SAME_SIZE},
-        {py::str("different length"), DIFFERENT},
-        {py::str("run-time library"), IDENTIFIED},
-        {py::str("runtime library"), IDENTIFIED},
+        {py::str("does not compile"), py::str("no-compile")},
+        {py::str("same length, different"), py::str("same size")},
+        {py::str("different length"), py::str("different")},
+        {py::str("run-time library"), py::str("identified")},
+        {py::str("runtime library"), py::str("identified")},
     };
     return d;
 }
 const py::dict<py::str, py::str>& MATCH_LABEL() {
     static const py::dict<py::str, py::str> d{
-        {IDENTICAL, py::str("identical")},     {SAME_SIZE, py::str("same size")},
-        {DIFFERENT, py::str("different")},     {NO_EXTENT, py::str("no original extent")},
-        {NO_COMPILE, py::str("does not compile")}, {IDENTIFIED, py::str("runtime library")},
+        {py::str("identical"), py::str("identical")},     {py::str("same size"), py::str("same size")},
+        {py::str("different"), py::str("different")},     {py::str("no original extent"), py::str("no original extent")},
+        {py::str("no-compile"), py::str("does not compile")}, {py::str("identified"), py::str("runtime library")},
     };
     return d;
 }

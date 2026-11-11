@@ -427,9 +427,69 @@ std::tuple<py::str, bool> compile_kept(const py::str& cc, const py::list<py::str
     return {why, keep};
 }
 
+namespace {
+std::mutex& served_lock() {
+    static std::mutex m;
+    return m;
+}
+struct ServedTables {
+    py::dict<py::str, Served> objects;
+    py::dict<py::str, py::list<py::str>> never;
+    int64_t depth = 0, served = 0, compiled = 0;
+};
+ServedTables& served_tables() {
+    static ServedTables t;
+    return t;
+}
+}  // namespace
+
+py::str served_key(const py::str& header_key, const py::list<py::str>& cflags, const py::str& text) {
+    return header_key + S("\x1f") + py::join(S("\x1e"), cflags) + S("\x1f") + text;
+}
+
+void serve(const py::dict<py::str, Served>& objects, const py::dict<py::str, py::list<py::str>>& never_sets) {
+    std::lock_guard<std::mutex> g(served_lock());
+    ServedTables& t = served_tables();
+    for (const auto& kv : objects.items()) t.objects.set(std::get<0>(kv), std::get<1>(kv));
+    for (const auto& kv : never_sets.items()) t.never.set(std::get<0>(kv), std::get<1>(kv));
+    ++t.depth;
+}
+
+void unserve() {
+    std::lock_guard<std::mutex> g(served_lock());
+    ServedTables& t = served_tables();
+    if (--t.depth <= 0) {
+        t.depth = 0;
+        t.objects = py::dict<py::str, Served>();
+        t.never = py::dict<py::str, py::list<py::str>>();
+    }
+}
+
+std::tuple<int64_t, int64_t> served_counts() {
+    std::lock_guard<std::mutex> g(served_lock());
+    return {served_tables().served, served_tables().compiled};
+}
+
 py::str _compile(const py::str& cc, const py::list<py::str>& cflags, const py::dict<py::str, py::str>& env, const py::str& outdir,
                  const py::str& stem, const py::str& text) {
     std::optional<py::str> header = header_key(outdir);
+    {
+        std::lock_guard<std::mutex> g(served_lock());
+        ServedTables& t = served_tables();
+        if (t.depth > 0) {
+            const auto got = header ? t.objects.get(served_key(*header, cflags, text)) : std::nullopt;
+            if (got) {
+                ++t.served;
+                if (!got->error.empty()) return got->error;
+                write_text(py::os::path::join(outdir, stem + S(".c")), S("#include \"m.h\"\n\n") + text + S("\n"));
+                py::file f = py::open(py::os::path::join(outdir, stem + S(".obj")), S("wb"));
+                f.write(got->obj);
+                f.close();
+                return S("");
+            }
+            ++t.compiled;
+        }
+    }
     return std::get<0>(compile_kept(cc, _adjust_flags(cflags, text), env, outdir, stem, text, header));
 }
 
@@ -479,6 +539,12 @@ py::list<py::str> never_set_kept(const py::str& cc, const py::list<py::str>& cfl
 py::list<py::str> never_set(const py::str& cc, const py::list<py::str>& cflags, const py::dict<py::str, py::str>& env,
                             const py::str& outdir, const py::str& stem, const py::str& text) {
     std::optional<py::str> header = header_key(outdir);
+    if (header) {
+        std::lock_guard<std::mutex> g(served_lock());
+        ServedTables& t = served_tables();
+        if (t.depth > 0)
+            if (const auto got = t.never.get(served_key(*header, cflags, text))) return *got;
+    }
     return never_set_kept(cc, cflags, env, outdir, stem, text, header);
 }
 

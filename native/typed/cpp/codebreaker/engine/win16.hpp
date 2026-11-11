@@ -13,17 +13,13 @@
 //     function.c <key>      the function's C                           <- ne.module, ne.functions
 //     function.contract     the description's lines for it and each function it calls
 //     function.gate <key>   run beside the original's (isolated16): ["equivalent", ""] or ["divergent", how]
-//     ne.image              the linked module and its report           <- all of the above
+//     function.notes / .l2 / .source / .object / .never_set <key>   what the decompiler said, the L2 document, the C as compiled, its object, its flow check`n//     ne.image              the linked module and its report           <- all of the above
 //
 // Notes on the port (where it is not the Python's, and why):
 //   * A fact holds JSON (engine::Value); what the Python pickles into one -- the decompiled module, the Built -- stays in this
 //     process, in a table under a digest (as engine/lanes.cpp does), and a process that finds the fact kept but not the object
 //     makes it again by the lane's prepare.
-//   * function.notes, function.l2, function.source, function.object and function.never_set are not steps here. They keep what the
-//     compiler made of each function so the link can be served the objects; the C++ link goes through functions::compile_kept, the
-//     shared build cache the Python's steps fed too, so a function compiled before is not compiled again. (The facts that remain
-//     are the ones the link and the gate are made of.)
-//   * _copy(m) (a pickle round trip) is the lane's prepare again into the build's folder: the decompiler's cache answers it.
+//   * _copy(m) (a pickle round trip) is a copy of the module that has its own `segments` (the one thing the link adds to).
 #pragma once
 
 #include <functional>
