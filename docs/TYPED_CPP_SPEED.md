@@ -421,3 +421,22 @@ Outputs were compared first: all of them identical to the Python's.
 The vcxproj figure is dominated by classifying every class against the profile's rules through the generated project's very
 deep inheritance chains (up to 208 ancestors, each tried against 55 patterns); a converted game's chains are 3-6 deep, where the
 whole run is a few milliseconds. Not memoised: the classification of a class and its ancestors is repeated per file.
+## Java lane text passes (cb/java: emit/std_transforms, projects/minecraft/{raycast, content, keybind_mark, ui_mark}), 2026-11-11
+
+Old = the typed ports over the py:: layer, run by the old harnesses (state/work/typed-port/<module>/test.exe over its cases.txt,
+whole process); new = the same inputs through native/cb/java in one process, best of 20 (state/work/cpp-refactor/w0-b18/bench.cpp).
+The old process start alone is 10 ms, so the old work is the total minus that:
+
+| Work | old (total - start) | new |
+|---|---|---|
+| raycast.convert_gl_pick_to_raycast, 261 recorded cases | 54 - 11 = 43 ms | 3.6 ms |
+| std_transforms (apply, sanitize, annotate, literal-masked sub), 544 cases | 53 - 10 = 43 ms (all four functions) | 0.36 ms for the 256 `apply` cases alone |
+| content.scan_assets over the harness corpus (33 files) | not run (the old harness writes into its folders) | 3.4 ms |
+| content.render_content_md (c1) | | 1.6 ms |
+| keybind_mark.mark / ui_mark.mark of the harness tree (dry run) | | 1.0 ms / 1.7 ms |
+
+No old figure for the tree passes: their harnesses are written to rebuild and copy their fixture folders for every case. They
+were compared for behaviour instead: 81 keybind_mark, 85 ui_mark, 143 controller_nav and 261 raycast recorded cases, the 544
+std_transforms cases, 57 content calls, the whole platform_equivalents and minecraft_xbox360 tables: no difference that is not
+listed in a DIVERGES block (raycast overlap and comment rules, std_transforms empty pattern, run() on a missing folder, the
+controller_nav half-patch return).
