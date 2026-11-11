@@ -88,6 +88,11 @@ target_link_libraries(cb_analyze PUBLIC cb_core)
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core)
 
+cb_area(compare)
+target_link_libraries(cb_compare PUBLIC cb_core)
+cb_area(emulate)
+target_link_libraries(cb_emulate PUBLIC cb_core)
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -116,6 +121,17 @@ function(cb_copy_prebuilt_dlls target)
   add_custom_command(TARGET ${target} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CB_PREBUILT_DLLS} "$<TARGET_FILE_DIR:${target}>")
 endfunction()
+
+# ---- cbtrace.dll: the recorder's C interface (emulate/tracer/cbtrace.h), for the callers that still reach it through
+# ctypes or LoadLibrary (the old ports and the dynamic exe). The same sources as cb_emulate's tracer, exported. It is
+# handed engines made by the caller's own Unicorn and so calls that DLL (tracer/libs.hpp use_libraries). Not built
+# under ASan: the sanitizer runtime does not belong in a DLL the Python process loads.
+if(NOT CB_ASAN)
+  file(GLOB CB_TRACER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/emulate/tracer/*.cpp")
+  add_library(cbtrace SHARED ${CB_TRACER_SOURCES})
+  cb_apply_flags(cbtrace)
+  target_link_libraries(cbtrace PRIVATE cb_core)
+endif()
 
 # ---- the test executable: every area's tests, compiled straight into it (a static library would let the
 # linker drop test objects nothing references) -------------------------------------------------------------

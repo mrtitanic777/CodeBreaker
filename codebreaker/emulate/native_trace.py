@@ -1,4 +1,4 @@
-r"""native_trace.py -- trace_function's hooks in C++ (native/tracer: cbtrace.dll), through ctypes.
+r"""native_trace.py -- trace_function's hooks in C++ (native/cb/emulate/tracer: cbtrace.dll), through ctypes.
 
 A run of one 32-bit function used to call back into Python on every instruction, every block
 and every memory write: ping.exe's judge made 2,459 runs and 8.5 million callbacks, most of its
@@ -15,7 +15,7 @@ argument count and what it gives back through a pointer, once per import entered
     run.detach(); run.restore()       # (a kept machine: hooks off, pages back)
 
 The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-(require()). Build: native/tracer/CMakeLists.txt (cmake + ninja in a vcvars64 shell; cbtrace.dll).
+(require()). Build: toolsuild_cb.cmd (native/cb/CMakeLists.txt, target cbtrace; sources in native/cb/emulate/tracer).
 """
 import ctypes
 import os
@@ -77,7 +77,7 @@ _SHAS = {}
 
 
 def dll_path():
-    """Where cbtrace.dll is: the `tracer_bin` setting (default native/tracer/build/bin)."""
+    """Where cbtrace.dll is: the `tracer_bin` setting (default state/cxx/cb/bin)."""
     return os.path.join(settings.get("tracer_bin"), "cbtrace.dll")
 
 
@@ -88,14 +88,14 @@ def _load():
     try:
         path = dll_path()
         if not os.path.isfile(path):
-            raise OSError("not built: %s (native/tracer/CMakeLists.txt)" % path)
+            raise OSError("not built: %s (native/cb/CMakeLists.txt, target cbtrace)" % path)
         from unicorn.unicorn_py3.unicorn import uclib                      # the DLLs Python loaded
         import capstone
         uc_dll, cs_dll = uclib._name, capstone._cs._name
         lib = settings.load_native(path)
         lib.cbt_version.restype = ctypes.c_int
         if lib.cbt_version() != 1:
-            raise OSError("cbtrace.dll is another version: rebuild native/tracer")
+            raise OSError("cbtrace.dll is another version: rebuild cbtrace (toolsuild_cb.cmd)")
         lib.cbt_init.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_char_p, ctypes.c_int32)
         err = ctypes.create_string_buffer(256)
         if lib.cbt_init(os.path.abspath(uc_dll), os.path.abspath(cs_dll), err, 256):
@@ -387,4 +387,4 @@ def require():
     """The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
     be used here, saying why."""
     if not enabled():
-        raise RuntimeError("the run recorder is native (native/tracer, cbtrace.dll): %s" % why_not())
+        raise RuntimeError("the run recorder is native (native/cb/emulate/tracer, cbtrace.dll): %s" % why_not())
