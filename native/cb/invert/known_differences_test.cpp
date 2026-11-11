@@ -109,3 +109,12 @@ CB_TEST("invert.known_differences.listing", [] {
     kb.record({.id = "manual-one", .match = "x", .automatic = false});
     CB_CHECK(kb.listing().find("  [manual] manual-one\n") != std::string::npos);
 });
+
+CB_TEST("invert.known_differences.own_table", [] {
+    const KnownDifferences own(std::vector<DifferencePattern>{{.id = "a", .match = "x+y"}, {.id = "b", .match = "^z"}});
+    CB_CHECK_EQ(own.patterns().size(), std::size_t{2});
+    CB_CHECK_EQ(ids(own, "XXY"), "a");
+    CB_CHECK_EQ(ids(own, "zed xy"), "a,b");
+    CB_CHECK_EQ(ids(own, "es:[bx]"), "");   // the seeded patterns are not there
+    CB_CHECK_THROWS_AS(ParseError, (void)KnownDifferences(std::vector<DifferencePattern>{{.id = "bad", .match = "("}}));
+});

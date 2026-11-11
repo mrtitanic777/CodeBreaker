@@ -333,3 +333,14 @@ state/work/typed-port/_bugs/LIST.md: strict reads of a field cut by the end of t
 index 0 as "no target" instead of "the last entry" (OMF 178 fix-up lines, all in the hand-made synthetic objects), a trailing odd byte
 of a UTF-16 resource name dropped instead of replaced (2 of 26,208 damaged PEs). Everything else matched (0 mismatches in 8,736 PE,
 NE, LE and DOS inputs each, 38,688 LE, 26,208 NE and DOS).
+
+## Quad files, the MC2 inverse and the Java tool table (cb/invert, cb/java/run, format_key), 2026-11-11
+
+`cb::invert::early_c` is a typed API over the same compiler model (native/invert, linked as cb_invert_model), so its speed is the
+model's: the old harness's 808 recover/recover_cfg calls (each followed by two to_c, detect_copies, a ladder fold and two
+local_decls, and the text written out) take 0.19-0.22 s in the old process; the new golden test runs 397 recoveries in about
+0.06 s of its 0.10-0.14 s (the rest is the process start and loading the DLLs): about 0.15 ms a recovery against 0.25 ms,
+with the model identical, so the gain is the lost output formatting. The quad readers (quad_dump, quad_align on the 10 KB FXU.Q
+and the Lattice objects), early_c_frame, grammars, known_differences (seven patterns, compiled once per table) and format_key
+run in microseconds on their real inputs; they have no hot path and were checked for the same behaviour, not timed. The Java
+tool table parses a command line in microseconds; the tools it runs are other modules' work.

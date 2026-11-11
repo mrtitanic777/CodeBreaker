@@ -150,7 +150,8 @@ set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_ALL_TESTS_SO_FAR} ${CB_COMPAT_
 add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
