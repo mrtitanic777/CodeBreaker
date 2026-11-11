@@ -78,9 +78,10 @@ def refs():
     if not ref:
         return None
     base = os.path.join(h, 'packs', 'Microsoft.NETCore.App.Ref', ref, 'ref')
-    tfm = _newest(base, 'net') if os.path.isdir(base) else None
-    if tfm is None and os.path.isdir(base):
-        tfm = next((d for d in os.listdir(base) if d.startswith('net')), None)
+    # (_newest cannot pick these: it wants a name that starts with a digit, and these start with "net")
+    names = sorted(d for d in os.listdir(base) if d.startswith('net')) if os.path.isdir(base) else []
+    numbered = [d for d in names if d[3:4].isdigit()]
+    tfm = max(numbered, key=lambda d: _ver(d[3:])) if numbered else next(iter(names), None)   # the newest net<N>.<M>
     return os.path.join(base, tfm) if tfm else None
 
 

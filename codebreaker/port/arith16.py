@@ -142,11 +142,9 @@ def mark_files(node, cur):
     if isinstance(node, dict):
         for k, v in node.items():
             if isinstance(v, dict) and ("offset" in v or "file" in v or "spellingLoc" in v):
-                if "file" in v:
-                    cur[0] = v["file"]
-                if "includedFrom" in v and "file" not in v:
-                    pass
-                v["_file"] = cur[0]
+                if "file" in v and k != "includedFrom":     # (includedFrom names the file that included this one, not
+                    cur[0] = v["file"]                      #  the file the location is in: it must not move the cursor -
+                v["_file"] = cur[0]                         #  every later location of a header was taken for the includer's)
             mark_files(v, cur)
     elif isinstance(node, list):
         for v in node:
@@ -188,6 +186,8 @@ def edits_of(tree, text, path):
     TEXT[0] = text
     out = []
 
+    done = set()
+
     def cast(n, t, wrap):
         p = place(n)
         if not p or p[2] != path:
@@ -195,6 +195,9 @@ def edits_of(tree, text, path):
         s = text[p[0]:p[1]]
         if s.startswith("(%s)" % CAST[t]):
             return
+        if (p[0], p[1], t, wrap) in done:                   # (this very cast, made twice: once)
+            return
+        done.add((p[0], p[1], t, wrap))
         if wrap:
             out.append((p[0], "(%s)(" % CAST[t]))
             out.append((p[1], ")"))
@@ -239,9 +242,17 @@ def simple(n, text):
 
 
 def apply(text, edits):
-    for at, s in sorted(set(edits), key=lambda e: (e[0], e[1] != ")"), reverse=True):
-        text = text[:at] + s + text[at:]
-    return text
+    """the text with the insertions made: at one offset a ")" goes before what opens there, and what opens there keeps
+    the order it was given in (an outer cast before the one inside it). Every insertion is made: two casts that end at one
+    place each have their ")" (a set of the insertions kept one of them: unbalanced), and the order of two that open at one
+    place was the set's, not the walk's"""
+    out, done = [], 0
+    for _, at, s in sorted(((i, e[0], e[1]) for i, e in enumerate(edits)), key=lambda x: (x[1], x[2] != ")", x[0])):
+        out.append(text[done:at])
+        out.append(s)
+        done = at
+    out.append(text[done:])
+    return "".join(out)
 
 
 def _headers_key(folder):
@@ -340,6 +351,17 @@ def pass_key(cc, folder, f, kind, *extra, headers=None):
     return h.hexdigest()
 
 
+def main_file(files, f):
+    """the name clang gave file f among the files it named (separators and a leading ./ aside): not any name that
+    merely ends with it - xa.h is not a.h"""
+    def norm(n):
+        n = n.replace("\\", "/")
+        while n.startswith("./"):
+            n = n[2:]
+        return n
+    return next((v for v in files if norm(v) == norm(f)), f)
+
+
 def run(cc, folder, files):
     """{file: its text with the casts} for the port's C files (those clang could read) - a file's result kept,
     by its text and its headers': the same file again, not read again"""
@@ -356,7 +378,7 @@ def run(cc, folder, files):
         if not tree:
             continue
         mark_files(tree, [None])
-        path = next((v for v in _files(tree) if v.replace("\\", "/").endswith(f)), f)
+        path = main_file(_files(tree), f)
         text = open(folder + "/" + f, encoding="latin1").read()
         e = edits_of(tree, text, path)
         new = apply(text, e) if e else None

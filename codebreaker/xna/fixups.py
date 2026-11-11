@@ -25,7 +25,7 @@ _LVALUE = r"(?:[A-Za-z_]\w*(?:\s*\[[^\[\]]*\])?)(?:\s*\.\s*[A-Za-z_]\w*(?:\s*\[[
 _REF_CAST = re.compile(r"\(\s*[A-Za-z_][\w.]*\s*\)\s*\(\s*ref\s+(" + _LVALUE + r")\s*\)")
 _CTOR = re.compile(r"(?P<base>base|this)\._002Ector\s*\("
                    r"|\(\([A-Za-z_][A-Za-z0-9_.]*\)this\)\._002Ector\s*\("
-                   r"|\(?(?P<var>[A-Za-z_][A-Za-z0-9_]*)\)?\._002Ector\s*\(")
+                   r"|\(?(?P<var>[^\W\d]\w*)\)?\._002Ector\s*\(")        # (an obfuscator's names are any letters)
 
 
 def ref_casts(text):
@@ -61,6 +61,23 @@ def _enclosing_brace(text, pos):
     return -1
 
 
+_STATEMENTS = ("if", "while", "for", "foreach", "using", "lock", "switch", "catch", "fixed")
+
+
+def _statement_keyword(text, close):
+    """The word before the parenthesis that the `)` at `close` closes (`if` for `if (a)`), or ''."""
+    depth = 0
+    for i in range(close, -1, -1):
+        if text[i] == ")":
+            depth += 1
+        elif text[i] == "(":
+            depth -= 1
+            if depth == 0:
+                m = re.search(r"([A-Za-z_]\w*)\s*$", text[:i])
+                return m.group(1) if m else ""
+    return ""
+
+
 def _declared_type(text, var, before):
     """The type of the nearest declaration of `var` before `before` (the decompiler writes one per line)."""
     rx = re.compile(r"(?m)^[ \t]*([A-Za-z_][A-Za-z0-9_<>,.\[\] ]*?)[ \t]+" + re.escape(var) + r"[ \t]*(?:=(?!=)|;)")
@@ -85,10 +102,25 @@ def constructors(text):
             if close <= 0:
                 left.append((line, "no constructor parameter list before it"))
                 continue
+            if text[close + 1:brace].strip() or _statement_keyword(text, close) in ("base", "this"):   # `: base()` there
+                left.append((line, "the constructor already has an initializer"))
+                continue
+            if _statement_keyword(text, close) in _STATEMENTS:   # `if (a) {` is no constructor
+                left.append((line, "it is inside a statement block, not at the top of a constructor"))
+                continue
             edits.append((close + 1, close + 1, " : %s(%s)" % (kind, args)))
+            semi = after
+            while semi < len(text) and text[semi] in " \t":
+                semi += 1
+            if semi < len(text) and text[semi] == ";":
+                after = semi + 1
             start = text.rfind("\n", 0, m.start()) + 1
-            end = text.find("\n", m.start())
-            edits.append((start, len(text) if end < 0 else end + 1, ""))
+            end = text.find("\n", after)                  # the call may span lines: through the line its `)` is on
+            end = len(text) if end < 0 else end
+            if not text[start:m.start()].strip() and not text[after:end].strip():
+                edits.append((start, min(end + 1, len(text)), ""))      # the call is alone on its lines: they go
+            else:
+                edits.append((m.start(), after, ""))                    # it shares a line: only the call goes
         else:
             var = m.group("var")
             typ = _declared_type(text, var, m.start())
@@ -123,7 +155,7 @@ def apply(folder):
             if not f.endswith(".cs"):
                 continue
             p = os.path.join(base, f)
-            with open(p, encoding="utf-8-sig") as fh:
+            with open(p, encoding="utf-8-sig", newline="") as fh:        # line endings come back as they went in
                 text = fh.read()
             fixed, n_ref = ref_casts(text)
             fixed, n_ctor, left = constructors(fixed)
@@ -133,6 +165,6 @@ def apply(folder):
             report["constructors"] += n_ctor
             report["left"] += [(os.path.relpath(p, folder), ln, why) for ln, why in left]
             if fixed != text:
-                with open(p, "w", encoding="utf-8") as fh:
+                with open(p, "w", encoding="utf-8", newline="") as fh:
                     fh.write(fixed)
     return report
