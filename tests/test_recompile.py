@@ -23,7 +23,19 @@ sys.path.insert(0, ROOT)
 from codebreaker.recompile import disassemble, powerpc    # noqa: E402
 
 VA = 0x82000000
-GAME = os.path.join(ROOT, "Converted", "TetrisSplash", "original", "default.xex")   # (Converted/: never committed)
+def _converted():
+    """Converted/ (never committed): next to tests/, or in the main checkout when this is a worktree."""
+    d = ROOT
+    while True:
+        c = os.path.join(d, "Converted")
+        if os.path.isdir(c):
+            return c
+        if os.path.dirname(d) == d:
+            return os.path.join(ROOT, "Converted")
+        d = os.path.dirname(d)
+
+
+GAME = os.path.join(_converted(), "Minecraft", "original", "default.xex")   # (Converted/: never committed)
 RESULTS = []
 
 
@@ -172,7 +184,7 @@ def test_whole_image():
     body, _mapping, agg = powerpc.recompile_image(GAME, jobs=4)
     left = set(__import__("re").findall(r'PPC_UNIMPLEMENTED\("([^"]*)"', body))
     assert all(x.startswith(".long 0x00000000") for x in left), sorted(left)[:5]   # (only padding)
-    assert agg["funcs"] >= agg["discovered"] > 9000      # (plus the tail-jump entries)
+    assert agg["funcs"] >= agg["discovered"] > 30000      # (plus the tail-jump entries)
     head, _, rest = body.partition("\n\n")
     decls, _, funcs = rest.partition("\n\nPPC_FUNC_IMPL")
     funcs = ["PPC_FUNC_IMPL" + f for f in ("PPC_FUNC_IMPL" + funcs)[len("PPC_FUNC_IMPL"):].split("\nPPC_FUNC_IMPL")]
@@ -185,7 +197,7 @@ def test_whole_image():
 
 def main():
     for fn in (test_integer_leaves, test_floating_point, test_loop_over_memory, test_indirect_call_table,
-               test_vmx128_first, test_whole_image):
+               test_vmx128_first, test_whole_image, test_discover_built_addresses):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
@@ -203,8 +215,10 @@ def test_discover_built_addresses():
     from codebreaker.recompile import discover
     funcs, sources, _img = discover.discover(GAME)
     assert sources["constants"] > 0, sources
-    # the CRT's FlsAlloc stand-in, two callbacks it registers, and a device setter after a blr
-    for a in (0x82164700, 0x82131380, 0x82107278, 0x82178348):
+    assert sources["constants"] == 536 and sources["pdata"] == 27700, sources
+    # leaf functions no .pdata record and no call reaches: two that load a built address (lis + addi) and
+    # tail-call, a vtable thunk, and one that returns early (beqlr)
+    for a in (0x8294FC98, 0x8294FC48, 0x8240EFE0, 0x8222CF00):
         assert a in funcs, hex(a)
 
 
