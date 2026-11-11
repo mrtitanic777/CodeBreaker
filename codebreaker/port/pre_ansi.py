@@ -55,6 +55,28 @@ def rule(name):
     return on
 
 
+def c_int(text):
+    """a C integer constant (0x1f, 31, 010, -5): the number - octal when it starts with 0, as C reads it (a digit past
+    7, which is no C, reads as decimal). (int(text, 0) raised on 010.)"""
+    sign = -1 if text.startswith("-") else 1
+    body = text.lstrip("-")
+    if re.fullmatch(r"0[0-7]+", body):
+        return sign * int(body, 8)
+    return sign * (int(body, 10) if re.fullmatch(r"\d+", body) else int(body, 16))
+
+
+def table_end(code, start):
+    """where the `{` of a table's initializer (just before `start`) closes: the rows are what is between - or -1, a table
+    that never closes. (It was the next `};` there was, or the end of the file's last byte: the rows of what came after a
+    table written `}` and `;` apart were its rows.)"""
+    depth = 1
+    for i in range(start, len(code)):
+        depth += (code[i] == "{") - (code[i] == "}")
+        if depth == 0:
+            return i
+    return -1
+
+
 # ---------------------------------------------------------------- reading the text
 # (blank and sub_code, what is code apart from its strings and comments: base/ctext)
 
@@ -964,17 +986,17 @@ class Port:
                 nxt = "g_%04x" % (int(nm[2:], 16) + 2) if re.fullmatch(r"g_[0-9a-f]{4}", nm) else None
                 if not re.fullmatch(r"-?(?:0[xX][0-9a-fA-F]+|\d+)", lo):
                     continue
-                val = int(lo, 0) & 0xffff
+                val = c_int(lo) & 0xffff
                 end = m.end()
                 if hi_m and hi_m.group(1) == nxt and not any(re.search(r"\b%s\b" % nxt, blank(o)) for k_, o in
                                                               self.files.items() if k_ != n):
                     hv = (hi_m.group(2) or "0").strip()
                     if re.fullmatch(r"-?(?:0[xX][0-9a-fA-F]+|\d+)", hv):
-                        val |= (int(hv, 0) & 0xffff) << 16
+                        val |= (c_int(hv) & 0xffff) << 16
                         end = m.end() + hi_m.end()          # (the high word, no other file's: in the long now)
                 typ = longs[nm] if "unsigned" not in m.group(1) else "unsigned long"
                 edits.append((m.start(), end, "%s %s = %s;%s" % (typ, nm, "0x%xL" % val if val > 0xffff else
-                                                                str(int(lo, 0)), m.group(5))))
+                                                                str(c_int(lo)), m.group(5))))
             for a, b, new in reversed(edits):
                 t = t[:a] + new + t[b:]
             if edits:
@@ -1013,7 +1035,7 @@ class Port:
                     m = re.search(r"\b\w*alloc\w*\s*\(\s*(0[xX][0-9a-fA-F]+|\d+)\s*\)", clines[x])
                     if not m:
                         continue
-                    size = int(m.group(1), 0)
+                    size = c_int(m.group(1))
                     if size < max(old[st_]["@size"] for st_ in structs):
                         continue                            # (not the structures' blocks)
                     expr = "sizeof(%s)" % structs[0]
@@ -1510,16 +1532,18 @@ class Port:
                     k = [x for x in ul if x != "@size"].index(field)
                     if k >= len([x for x in tl if x != "@size"]):
                         continue
-                end = code.find("};", dm.end())
+                end = table_end(code, dm.end())
+                if end < 0:                                 # (a table that never closes: no rows to read)
+                    continue
                 edits = []
                 for e in re.finditer(r"\{([^{}]*)\}", code[dm.end():end]):
                     parts = split_top(e.group(1))
                     if k >= len(parts):
                         continue
                     v = parts[k].strip()
-                    if not re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", v) or int(v, 0) == 0:
+                    if not re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", v) or c_int(v) == 0:
                         continue
-                    nv = int(v, 0)
+                    nv = c_int(v)
                     new = "sizeof(%s)" % st_ if nv == lay["@size"] else \
                         "offsetof(%s, %s)" % (st_, offs[nv]) if nv in offs else None
                     if not new:
@@ -1571,7 +1595,9 @@ class Port:
                                code)
                 if not dm:
                     continue
-                end = code.find("};", dm.end())
+                end = table_end(code, dm.end())
+                if end < 0:                                 # (a table that never closes: no rows to read)
+                    continue
                 edits = []
                 for e in re.finditer(r"\{([^{}]*)\}", code[dm.end():end]):
                     parts = split_top(e.group(1))
@@ -1580,8 +1606,8 @@ class Port:
                         for g_ in set(re.findall(r"\b(g_[0-9a-f]{4})\b", e.group(1))):   # size: as big as the
                             bss_ = getattr(self, "bss", None)                            # blocks now, a head's
                             if isinstance(bss_, dict) and g_ in bss_:                    # room more)
-                                bss_[g_] = max(bss_[g_], int(nv, 0) * ratio + 16)
-                    for i_, new in ((ia, lambda v: str(int(v, 0) * ratio)), (ib, lambda v: str(int(v, 0) * ratio))):
+                                bss_[g_] = max(bss_[g_], c_int(nv) * ratio + 16)
+                    for i_, new in ((ia, lambda v: str(c_int(v) * ratio)), (ib, lambda v: str(c_int(v) * ratio))):
                         if i_ >= len(parts):
                             continue
                         v = parts[i_].strip()
@@ -1730,10 +1756,10 @@ class Port:
             body = "\n".join(lines[s:e + 1])
             num = r"(0[xX][0-9a-fA-F]+|\d+)"
             new = re.sub(r"\b%s\s*\[\s*%s\s*\]" % (re.escape(pn), num),
-                         lambda m: "((%s *)%s)->%s" % (st_, pn, at[(int(m.group(1), 0), 1)])
-                         if (int(m.group(1), 0), 1) in at else m.group(0), body)
+                         lambda m: "((%s *)%s)->%s" % (st_, pn, at[(c_int(m.group(1)), 1)])
+                         if (c_int(m.group(1)), 1) in at else m.group(0), body)
             def word_at(m, st_=st_, pn=pn, lay=lay, at=at):
-                o = int(m.group(1), 0)
+                o = c_int(m.group(1))
                 if (o, 2) in at:
                     return "((%s *)%s)->%s" % (st_, pn, at[(o, 2)])
                 wide = [(mem, v) for mem, v in lay.items() if mem != "@size" and "." not in mem and v[1] == 4 and
@@ -1794,7 +1820,7 @@ class Port:
                 v = code[a_:b_].strip()
                 if not re.fullmatch(r"0[xX][0-9a-fA-F]+|\d+", v):
                     continue
-                nv = int(v, 0)
+                nv = c_int(v)
                 if nv <= old[x]["@size"]:
                     continue
                 ss = sorted((s for s in casts.get(x, ()) if s in old and old[x]["@size"] < old[s]["@size"] <= nv),

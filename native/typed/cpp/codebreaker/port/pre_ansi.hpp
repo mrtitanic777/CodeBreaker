@@ -198,6 +198,7 @@ struct DeclRule {
 py::str apply_decl_rule(const DeclRule& rule, const py::str& text);
 
 struct P4Native;   // (the new code's state for PART 4: pre_ansi_p4.cpp)
+struct P2Native;   // (the new code's facts about the original program, for PART 2: pre_ansi_p2.cpp)
 
 class Port {
   public:
@@ -223,6 +224,7 @@ class Port {
     py::dict<py::str, py::str> out;                           // (modernize's result)
 
     // ---- PART 2 members ----
+    std::shared_ptr<P2Native> p2_native_;                     // (made when first needed by the shim in pre_ansi_p2.cpp)
     bool _agreed = false, _bounds_done = false, _stacks_done = false, _numbered_done = false;
     bool _size_tables_done = false, _pools_done = false, _local_copies_done = false, _byte_places_done = false;
     bool _shared_blocks_done = false, _word_copies_done = false, _fixed = false;

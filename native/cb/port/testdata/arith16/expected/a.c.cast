@@ -1,0 +1,69 @@
+#include "hdr.h"
+#define LIM 70000
+#define BIG 0x8000
+#define OCT 0177777
+#define ADD(a,b) ((a)+(b))
+#define NEG (-1)
+#define CHK(x) (x)
+#define ZERO 0
+void f1(void) {
+  if (u > (uint16_t)-1) {}
+  if (u > (uint16_t)s) {}
+  if (u < ((uint16_t)(s + t))) {}
+  if (((uint16_t)(u - 1)) > 0) {}
+  if (s < t) {}
+  l = (int32_t)(u - 1);
+  l = u + v;
+  l = (long)((int16_t)(s * t));
+  u = u / (uint16_t)s;
+  u = ((uint16_t)(u + 1)) >> 2;
+  s = s % t;
+  if (u == 65535) {}
+  if (u == 0177777) {}
+  if (u == 0xFFFF) {}
+  if (u < BIG) {}
+  if (u > OCT) {}
+  l = LIM + 1;
+  if (u < ADD(s, t)) {}
+  if (u > (uint16_t)NEG) {}
+  if (u > CHK(s)) {}
+  if (u > ZERO) {}
+  if (s & u) {}
+  l = (long)((uint16_t)(s & u));
+  l = (long)(s | t);
+  if ((u ^ v) > (uint16_t)s) {}
+  if ((uint16_t)(-s) < u) {}
+  if ((uint16_t)(~u) > 0) {}
+  if (u < 'a') {}
+  if ((uint16_t)c < u) {}
+  if (b > s) {}
+  if (u > (uint16_t)arr[2]) {}
+  if (u > (uint16_t)st.f) {}
+  if (u > ps->g) {}
+  if (u > (uint16_t)(fn(3))) {}
+  if (u > (uint16_t)((s ? s : t))) {}
+  if (u > (uint16_t)((s, t))) {}
+  l = (long)((uint16_t)(u * v));
+  l = (long)ul;
+  ul = (unsigned long)((uint16_t)(u - v));
+  if (ul > u) {}
+  if (u > 1L) {}
+  if (s < 5u) {}
+  if (u > (uint16_t)(*(&s))) {}
+  s += 1; if (u > (uint16_t)((s += 2))) {}
+  if (u > (uint16_t)((s = t))) {}
+  if (!u > s) {}
+  if (u > (uint16_t)((int16_t)(s + t))) {}
+  if (u > (uint16_t)(s++)) {}
+  if (u < ((uint16_t)(s << 1))) {}
+  u = u >> s;
+  if (u > ((uint16_t)(t + 1000))) {}
+  if (u > ((uint16_t)(0 + t))) {}
+  if (u >= (uint16_t)s) {}
+  if (v != (uint16_t)(-s)) {}
+  l = (long)((int16_t)(~s));
+  l = (long)(int16_t)(-s);
+  l = (long)(-3);
+  if (u < (uint16_t)(((s)) + 1)) {}
+  if ((u) > (uint16_t)((s))) {}
+}

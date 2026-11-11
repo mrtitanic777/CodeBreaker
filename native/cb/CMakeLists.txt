@@ -157,10 +157,13 @@ file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/inve
 set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(port)
-target_link_libraries(cb_port PUBLIC cb_core cb_base)
+target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify)
 
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge)
+
+cb_area(xna)
+target_link_libraries(cb_xna PUBLIC cb_core)
 
 # The translator's back ends, front ends and the whole-program judge; the terminal interface's helpers (the terminal
 # interface itself stays Python: docs/CPP_DESIGN.md section 9).
@@ -168,6 +171,12 @@ cb_area(translate)
 target_link_libraries(cb_translate PUBLIC cb_core)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
+
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
+
+# the pytypes shim converts the old layer's Big (pyengine's unbounded integer): its test needs that class
+target_sources(cb_tests PRIVATE "${CB_NATIVE_ROOT}/pyengine/src/big.cc")
+set_source_files_properties("${CB_NATIVE_ROOT}/pyengine/src/big.cc" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -185,10 +194,13 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/pascal_join.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xna.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"   # (uses the arith16 shim's records)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
@@ -197,7 +209,7 @@ add_library(cb_shim_check OBJECT
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
-target_link_libraries(cb_shim_check PUBLIC cb_base cb_build cb_port cb_symbols)
+target_link_libraries(cb_shim_check PUBLIC cb_base cb_build cb_port cb_symbols cb_xna)
 
 # where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
 # before the copy below (see native/third_party/README.md)
@@ -233,9 +245,6 @@ get_property(CB_ALL_AREAS GLOBAL PROPERTY CB_AREAS)
 target_link_libraries(cb_tests PRIVATE ${CB_ALL_AREAS})
 
 target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
-# the pytypes shim converts the old layer's Big (pyengine's unbounded integer): its test needs that class
-target_sources(cb_tests PRIVATE "${CB_NATIVE_ROOT}/pyengine/src/big.cc")
-set_source_files_properties("${CB_NATIVE_ROOT}/pyengine/src/big.cc" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 # the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
 target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
