@@ -45,7 +45,7 @@ def _constant(body, shadow):
     m = re.search(r"(?<![\w.\[])(\d+|0x[0-9a-fA-F]+)(?![\w.\]xX])", shadow)
     if not m:
         return None
-    value = int(m.group(1), 0)
+    value = int(m.group(1), 16 if m.group(1).startswith("0x") else 10)   # (base 0 refuses a decimal like 010)
     return body[:m.start()] + ("0x%x" % (value + 1) if m.group(1).startswith("0x") else str(value + 1)) + body[m.end():]
 
 
@@ -233,7 +233,8 @@ def main(argv):
     path = p.readable(path) if p else path               # (a .xex: its basefile, as the lanes read it)
     report = run(path, rounds)
     out = out or settings.state("teeth", report["module"] + ".json")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
+    if os.path.dirname(out):                             # (a bare file name has no folder to make)
+        os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)
     titles = {"verified": "it had called VERIFIED", "weak": "it had called VERIFIED (weak)"}
