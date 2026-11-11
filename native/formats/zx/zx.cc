@@ -212,14 +212,8 @@ void z80(Out &o, Bytes data, const std::string &path) {
         if (!found) banks.emplace_back(page, v);
     }
     std::vector<std::pair<int64_t, int64_t>> where;
-    auto put = [&](int64_t page, int64_t addr) {
-        for (auto &kv : where)
-            if (kv.first == page) {
-                kv.second = addr;
-                return;
-            }
-        where.emplace_back(page, addr);
-    };
+    // (a list, not a dict: a 128K snapshot with bank 5 or 2 paged in at $C000 shows that bank in two places)
+    auto put = [&](int64_t page, int64_t addr) { where.emplace_back(page, addr); };
     if (is128) {
         put(8, 0x4000);
         put(5, 0x8000);
@@ -296,7 +290,7 @@ void tap(Out &o, Bytes data, const std::string &path) {
         if (origin <= a && a < origin + payload.size()) {
             char buf[16];
             std::snprintf(buf, sizeof buf, "usr_%04llX", static_cast<long long>(a));
-            e.set(a, i == 0 ? std::string("start") : std::string(buf));
+            e.setdefault(a, i == 0 ? std::string("start") : std::string(buf));   // (the first call of an address names it)
         }
     }
     if (e.items.empty()) e.set(origin, "start");

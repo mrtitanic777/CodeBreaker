@@ -1,0 +1,1084 @@
+{
+ "comctl32_dialog_1006.bin": {
+  "decoded": {
+   "class": "",
+   "controls": [
+    {
+     "class": 128,
+     "cx": 50,
+     "cy": 14,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 1,
+     "style": 1342373889,
+     "text": "\u78ba\u5b9a",
+     "x": 4,
+     "y": 122
+    },
+    {
+     "class": 128,
+     "cx": 50,
+     "cy": 14,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 2,
+     "style": 1342242816,
+     "text": "\u53d6\u6d88",
+     "x": 58,
+     "y": 122
+    },
+    {
+     "class": 128,
+     "cx": 50,
+     "cy": 14,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 12321,
+     "style": 1476460544,
+     "text": "\u5957\u7528(&A)",
+     "x": 112,
+     "y": 122
+    },
+    {
+     "class": 128,
+     "cx": 50,
+     "cy": 14,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 9,
+     "style": 1342373888,
+     "text": "\u8aaa\u660e",
+     "x": 166,
+     "y": 122
+    },
+    {
+     "class": "SysTabControl32",
+     "cx": 212,
+     "cy": 114,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 12320,
+     "style": 1342374400,
+     "text": "",
+     "x": 4,
+     "y": 4
+    }
+   ],
+   "cx": 219,
+   "cy": 138,
+   "exstyle": 0,
+   "extended": false,
+   "font": [
+    9,
+    "\u65b0\u7d30\u660e\u9ad4"
+   ],
+   "help": 0,
+   "menu": "",
+   "style": 2429034692,
+   "title": "",
+   "x": 20,
+   "y": 20
+  },
+  "type": "DIALOG",
+  "wide": true
+ },
+ "comctl32_string_2050.bin": {
+  "decoded": [
+   "\u79fb\u52a8\u6b64\u7a97\u53e3\u3002",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   ""
+  ],
+  "type": "STRING",
+  "wide": true
+ },
+ "comctl32_string_65.bin": {
+  "decoded": [
+   "\u5206\u9694",
+   " + ",
+   "\u7121",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   ""
+  ],
+  "type": "STRING",
+  "wide": true
+ },
+ "comctl32_version_1.bin": {
+  "decoded": [
+   [
+    4277077181,
+    65536,
+    262214,
+    1146,
+    262214,
+    1146,
+    63,
+    0,
+    262148,
+    2,
+    0
+   ],
+   {
+    "080404B0": [
+     [
+      "CompanyName",
+      "Microsoft \u516c\u53f8"
+     ],
+     [
+      "FileDescription",
+      "\u81ea\u5b9a\u4e49\u63a7\u5236\u5e93"
+     ],
+     [
+      "FileVersion",
+      "4.70"
+     ],
+     [
+      "InternalName",
+      "COMMCTRL"
+     ],
+     [
+      "LegalCopyright",
+      "\u7248\u6743\u6240\u6709 (C) Microsoft \u516c\u53f8 1981-1995"
+     ],
+     [
+      "OriginalFilename",
+      "COMMCTRL.DLL"
+     ],
+     [
+      "ProductName",
+      "Microsoft(R) Windows(TM) \u64cd\u4f5c\u7cfb\u7edf"
+     ],
+     [
+      "ProductVersion",
+      "4.70"
+     ]
+    ]
+   },
+   [
+    2052,
+    1200
+   ]
+  ],
+  "type": "VERSION",
+  "wide": true
+ },
+ "shell32_accelerator_2.bin": {
+  "decoded": [
+   [
+    3,
+    116,
+    142
+   ],
+   [
+    3,
+    46,
+    132
+   ],
+   [
+    7,
+    46,
+    132
+   ]
+  ],
+  "type": "ACCELERATOR",
+  "wide": true
+ },
+ "shell32_dialog_1069.bin": {
+  "decoded": {
+   "class": "",
+   "controls": [
+    {
+     "class": 130,
+     "cx": 25,
+     "cy": 8,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 12810,
+     "style": 1342308364,
+     "text": "&Named:",
+     "x": 6,
+     "y": 8
+    },
+    {
+     "class": 133,
+     "cx": 150,
+     "cy": 90,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 14096,
+     "style": 1344340034,
+     "text": "",
+     "x": 38,
+     "y": 7
+    }
+   ],
+   "cx": 188,
+   "cy": 52,
+   "exstyle": 0,
+   "extended": false,
+   "font": [
+    8,
+    "MS Sans Serif"
+   ],
+   "help": 0,
+   "menu": "",
+   "style": 2160591044,
+   "title": "Computer Name",
+   "x": 0,
+   "y": 0
+  },
+  "type": "DIALOG",
+  "wide": true
+ },
+ "shell32_dialog_1078.bin": {
+  "decoded": {
+   "class": "",
+   "controls": [],
+   "cx": 400,
+   "cy": 250,
+   "exstyle": 0,
+   "extended": false,
+   "font": [
+    8,
+    "MS Sans Serif"
+   ],
+   "help": 0,
+   "menu": 357,
+   "style": 2463039556,
+   "title": "",
+   "x": 0,
+   "y": 0
+  },
+  "type": "DIALOG",
+  "wide": true
+ },
+ "shell32_menu_226_ext.bin": {
+  "decoded": {
+   "extended": true,
+   "help": 0,
+   "items": [
+    {
+     "help": 0,
+     "id": 0,
+     "items": [
+      {
+       "help": 0,
+       "id": 112,
+       "items": null,
+       "state": 0,
+       "text": "R&estore",
+       "type": 0
+      }
+     ],
+     "state": 0,
+     "text": "",
+     "type": 0
+    }
+   ]
+  },
+  "type": "MENU",
+  "wide": true
+ },
+ "shell32_menu_351.bin": {
+  "decoded": {
+   "extended": false,
+   "help": 0,
+   "items": [
+    {
+     "flags": 16,
+     "id": 0,
+     "items": [
+      {
+       "flags": 0,
+       "id": 40,
+       "items": null,
+       "text": "&Open"
+      }
+     ],
+     "text": ""
+    }
+   ]
+  },
+  "type": "MENU",
+  "wide": true
+ },
+ "shell32_string_267.bin": {
+  "decoded": [
+   "%1\\%2",
+   "%2 on %1",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   ""
+  ],
+  "type": "STRING",
+  "wide": true
+ },
+ "shell32_string_277.bin": {
+  "decoded": [
+   "",
+   "Opens Help.",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   ""
+  ],
+  "type": "STRING",
+  "wide": true
+ },
+ "shell32_version_1.bin": {
+  "decoded": [
+   [
+    4277077181,
+    65536,
+    262144,
+    1111,
+    262144,
+    1111,
+    63,
+    0,
+    65537,
+    2,
+    0
+   ],
+   {
+    "040904E4": [
+     [
+      "CompanyName",
+      "Microsoft Corporation"
+     ],
+     [
+      "FileDescription",
+      "Windows Shell Common Dll"
+     ],
+     [
+      "FileVersion",
+      "4.00.1111"
+     ],
+     [
+      "InternalName",
+      "SHELL32"
+     ],
+     [
+      "LegalCopyright",
+      "Copyright \u00a9 Microsoft Corp. 1981-1996"
+     ],
+     [
+      "OriginalFilename",
+      "SHELL32.DLL"
+     ],
+     [
+      "ProductName",
+      "Microsoft\u00ae Windows\u00ae Operating System"
+     ],
+     [
+      "ProductVersion",
+      "4.00.1111"
+     ]
+    ]
+   },
+   [
+    1033,
+    1252
+   ]
+  ],
+  "type": "VERSION",
+  "wide": true
+ },
+ "wmsui32_accelerator_3972.bin": {
+  "decoded": [
+   [
+    1,
+    27,
+    20293
+   ]
+  ],
+  "type": "ACCELERATOR",
+  "wide": true
+ },
+ "wmsui32_dialog_2202.bin": {
+  "decoded": {
+   "class": "",
+   "controls": [
+    {
+     "class": "RichEdit",
+     "cx": 233,
+     "cy": 40,
+     "exstyle": 16777216,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 2235,
+     "style": 1377955908,
+     "text": "",
+     "x": 0,
+     "y": 62
+    }
+   ],
+   "cx": 280,
+   "cy": 251,
+   "exstyle": 0,
+   "extended": false,
+   "font": [
+    8,
+    "MS Shell Dlg"
+   ],
+   "help": 0,
+   "menu": "",
+   "style": 1442840644,
+   "title": "",
+   "x": 6,
+   "y": 19
+  },
+  "type": "DIALOG",
+  "wide": true
+ },
+ "wmsui32_dialog_2206.bin": {
+  "decoded": {
+   "class": "",
+   "controls": [
+    {
+     "class": 128,
+     "cx": 48,
+     "cy": 14,
+     "exstyle": 0,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 2224,
+     "style": 1342242816,
+     "text": "Se&nd Again",
+     "x": 5,
+     "y": 5
+    },
+    {
+     "class": "RichEdit",
+     "cx": 233,
+     "cy": 40,
+     "exstyle": 16777216,
+     "extra": "b:0:00000000",
+     "help": 0,
+     "id": 2236,
+     "style": 1377957956,
+     "text": "",
+     "x": 0,
+     "y": 67
+    }
+   ],
+   "cx": 280,
+   "cy": 251,
+   "exstyle": 0,
+   "extended": false,
+   "font": [
+    8,
+    "MS Shell Dlg"
+   ],
+   "help": 0,
+   "menu": "",
+   "style": 1442840644,
+   "title": "",
+   "x": 6,
+   "y": 19
+  },
+  "type": "DIALOG",
+  "wide": true
+ },
+ "wmsui32_menu_1110.bin": {
+  "decoded": {
+   "extended": false,
+   "help": 0,
+   "items": [
+    {
+     "flags": 16,
+     "id": 0,
+     "items": [
+      {
+       "flags": 0,
+       "id": 20209,
+       "items": null,
+       "text": "P&roperties"
+      }
+     ],
+     "text": ""
+    }
+   ]
+  },
+  "type": "MENU",
+  "wide": true
+ },
+ "wmsui32_menu_3000_ext.bin": {
+  "decoded": {
+   "extended": true,
+   "help": 0,
+   "items": [
+    {
+     "help": 0,
+     "id": 20010,
+     "items": [
+      {
+       "help": 0,
+       "id": 20011,
+       "items": null,
+       "state": 0,
+       "text": "&Open\tEnter",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20014,
+       "items": null,
+       "state": 0,
+       "text": "Save &As...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20016,
+       "items": null,
+       "state": 0,
+       "text": "Mo&ve...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20017,
+       "items": null,
+       "state": 0,
+       "text": "Cop&y...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20025,
+       "items": null,
+       "state": 0,
+       "text": "&Print...\tCtrl+P",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20020,
+       "items": null,
+       "state": 0,
+       "text": "New &Folder...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20021,
+       "items": null,
+       "state": 0,
+       "text": "&Delete\tCtrl+D",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20022,
+       "items": null,
+       "state": 0,
+       "text": "Rena&me...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20023,
+       "items": null,
+       "state": 0,
+       "text": "P&roperties",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20026,
+       "items": null,
+       "state": 0,
+       "text": "&Import...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20032,
+       "items": null,
+       "state": 0,
+       "text": "E&xit",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20033,
+       "items": null,
+       "state": 0,
+       "text": "Exit and &Log Off",
+       "type": 0
+      }
+     ],
+     "state": 0,
+     "text": "&File",
+     "type": 0
+    },
+    {
+     "help": 0,
+     "id": 20040,
+     "items": [
+      {
+       "help": 0,
+       "id": 20046,
+       "items": null,
+       "state": 0,
+       "text": "Select &All\tCtrl+A",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20049,
+       "items": null,
+       "state": 0,
+       "text": "Mark as &Read",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20050,
+       "items": null,
+       "state": 0,
+       "text": "Mark as U&nread",
+       "type": 0
+      }
+     ],
+     "state": 0,
+     "text": "&Edit",
+     "type": 0
+    },
+    {
+     "help": 0,
+     "id": 20070,
+     "items": [
+      {
+       "help": 0,
+       "id": 20071,
+       "items": null,
+       "state": 0,
+       "text": "Fo&lders",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20072,
+       "items": null,
+       "state": 0,
+       "text": "&Toolbar",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20074,
+       "items": null,
+       "state": 0,
+       "text": "Status Ba&r",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20075,
+       "items": null,
+       "state": 0,
+       "text": "&New Window",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20079,
+       "items": null,
+       "state": 0,
+       "text": "&Columns...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20078,
+       "items": null,
+       "state": 0,
+       "text": "&Sort...",
+       "type": 0
+      }
+     ],
+     "state": 0,
+     "text": "&View",
+     "type": 0
+    },
+    {
+     "help": 0,
+     "id": 20120,
+     "items": [
+      {
+       "help": 0,
+       "id": 20121,
+       "items": null,
+       "state": 3,
+       "text": "&Deliver Now Using",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20130,
+       "items": null,
+       "state": 3,
+       "text": "&Remote Mail",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20123,
+       "items": null,
+       "state": 0,
+       "text": "&Address Book\tCtrl+Shift+B",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20124,
+       "items": null,
+       "state": 0,
+       "text": "&Find...\tCtrl+Shift+F",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20134,
+       "items": null,
+       "state": 0,
+       "text": "&Customize Toolbar...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20135,
+       "items": null,
+       "state": 0,
+       "text": "Ser&vices...",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20136,
+       "items": null,
+       "state": 0,
+       "text": "&Options...",
+       "type": 0
+      }
+     ],
+     "state": 0,
+     "text": "&Tools",
+     "type": 0
+    },
+    {
+     "help": 0,
+     "id": 20150,
+     "items": [
+      {
+       "help": 0,
+       "id": 20151,
+       "items": null,
+       "state": 0,
+       "text": "&New Message\tCtrl+N",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20154,
+       "items": null,
+       "state": 0,
+       "text": "&Reply to Sender\tCtrl+R",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20155,
+       "items": null,
+       "state": 0,
+       "text": "Reply to &All\tCtrl+Shift+R",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 20156,
+       "items": null,
+       "state": 0,
+       "text": "&Forward\tCtrl+F",
+       "type": 0
+      }
+     ],
+     "state": 0,
+     "text": "Co&mpose",
+     "type": 0
+    },
+    {
+     "help": 0,
+     "id": 20160,
+     "items": [
+      {
+       "help": 0,
+       "id": 20161,
+       "items": null,
+       "state": 0,
+       "text": "Windows M&essaging Help Topics",
+       "type": 0
+      },
+      {
+       "help": 0,
+       "id": 0,
+       "items": null,
+       "state": 0,
+       "text": "",
+       "type": 2048
+      },
+      {
+       "help": 0,
+       "id": 20162,
+       "items": null,
+       "state": 0,
+       "text": "&About Windows Messaging",
+       "type": 0
+      }
+     ],
+     "state": 0,
+     "text": "&Help",
+     "type": 0
+    }
+   ]
+  },
+  "type": "MENU",
+  "wide": true
+ },
+ "wmsui32_string_1331.bin": {
+  "decoded": [
+   "",
+   "",
+   "",
+   "",
+   "Help",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   ""
+  ],
+  "type": "STRING",
+  "wide": true
+ },
+ "wmsui32_string_1393.bin": {
+  "decoded": [
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "",
+   "Help",
+   "",
+   "",
+   ""
+  ],
+  "type": "STRING",
+  "wide": true
+ },
+ "wmsui32_version_1.bin": {
+  "decoded": [
+   [
+    4277077181,
+    65536,
+    262144,
+    54657863,
+    262144,
+    0,
+    63,
+    10,
+    262148,
+    2,
+    0
+   ],
+   {
+    "040904E4": [
+     [
+      "CompanyName",
+      "Microsoft Corporation"
+     ],
+     [
+      "FileDescription",
+      "WMS User Interface"
+     ],
+     [
+      "FileVersion",
+      "4.00.834.839"
+     ],
+     [
+      "InternalName",
+      "wmsui"
+     ],
+     [
+      "LegalCopyright",
+      "Copyright \u00a9 Microsoft Corp. 1986-1996"
+     ],
+     [
+      "OriginalFilename",
+      "WMSUI32.DLL"
+     ],
+     [
+      "ProductName",
+      "Microsoft\u00ae Windows(TM) Operating System"
+     ],
+     [
+      "ProductVersion",
+      "4.0"
+     ]
+    ]
+   },
+   [
+    1033,
+    1252
+   ]
+  ],
+  "type": "VERSION",
+  "wide": true
+ }
+}
