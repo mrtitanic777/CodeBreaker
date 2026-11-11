@@ -19,6 +19,9 @@
 //     text of two Python functions (_from_headers, readable._constants); a C++ program has no source text of
 //     functions, so those are a revision number here (kReading). A base made by one implementation is thus
 //     made again by the other.
+//   * The base keeps a structure as Python's pickle of (size, [(offset, size, name, ctype), ...], biggest), tuples
+//     and all (tag P, protocol 4): the hash of a stored structure -- what a fact made from it records, and what
+//     knowledge.reads.digest answers -- is then the same in both implementations. facts.cpp writes and reads it.
 #pragma once
 
 #include <cstdint>
@@ -37,6 +40,9 @@ struct Layout {
     int64_t size = 0;
     py::list<Field> fields;
     int64_t biggest = 1;
+    // Per field: its c type is the Python's constant "uint4" of a pointer field (one str object in every such field,
+    // which a pickle of the layout keeps once); empty for a layout read back from the base. See facts.hpp.
+    py::list<bool> pointer;
 };
 
 class Struct {

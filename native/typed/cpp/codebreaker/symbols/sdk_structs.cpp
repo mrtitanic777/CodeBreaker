@@ -123,35 +123,40 @@ std::optional<py::str> Struct::at(int64_t offset, int64_t size_) const {
 // ---- the layouts, from the headers ----
 namespace {
 
-// Json forms of what the knowledge base keeps: a structure is [size, [[offset, size, name, ctype], ...], biggest],
-// or null.
+// Json forms of what the knowledge base keeps: a structure is (size, [(offset, size, name, ctype), ...], biggest)
+// -- tuples, as the Python keeps them -- or null.
 Json json_int(int64_t v) {
     Json j;
     j.kind = Json::Int;
     j.i = v;
     return j;
 }
-Json json_text(const py::str& s) {
+Json json_text(const py::str& s, bool shared = false) {
     Json j;
     j.kind = Json::Str;
     j.s = s;
+    j.shared = shared;
     return j;
 }
 Json layout_json(const std::optional<Layout>& l) {
     Json j;
     if (!l) return j;     // null
     j.kind = Json::List;
+    j.tuple = true;
     j.list.push_back(json_int(l->size));
     Json fields;
     fields.kind = Json::List;
+    int64_t at = 0;
     for (const Field& f : l->fields) {
         Json x;
         x.kind = Json::List;
+        x.tuple = true;
         x.list.push_back(json_int(std::get<0>(f)));
         x.list.push_back(json_int(std::get<1>(f)));
         x.list.push_back(json_text(std::get<2>(f)));
-        x.list.push_back(json_text(std::get<3>(f)));
+        x.list.push_back(json_text(std::get<3>(f), at < l->pointer.size() && l->pointer[at]));
         fields.list.push_back(x);
+        ++at;
     }
     j.list.push_back(fields);
     j.list.push_back(json_int(l->biggest));
@@ -180,6 +185,7 @@ struct Builder {
         const py::str& body = std::get<0>(raw.at(name));
         int64_t pack = std::get<1>(raw.at(name));
         py::list<Field> fields;
+        py::list<bool> pointer;
         int64_t off = 0, biggest = 1;
         static const py::re::Pattern drop(py::str(R"(\b(?:CONST|const|volatile|FAR|NEAR|far|near|struct)\b)"), 0);
         static const py::re::Pattern decl_re(py::str(R"(^(\w+)\s*(\**)\s*([\w\s,\[\]*]+)$)"), 0);
@@ -237,6 +243,7 @@ struct Builder {
                 int64_t total = n * ((count && *count != 0) ? *count : 1);
                 fields.append({off, !count ? n : total, fname,
                                !count ? ctype : py::percent(py::str("%s[%d]"), ctype, *count)});
+                pointer.append(!stars.empty() && !count);
                 off += total;
             }
         }
@@ -245,6 +252,7 @@ struct Builder {
         l.size = size;
         l.fields = fields;
         l.biggest = biggest;
+        l.pointer = pointer;
         structs.set(name, l);
         return l;
     }
