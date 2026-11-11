@@ -17,12 +17,14 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstring>
 #include <ctime>
 #include <format>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <set>
 #include <string>
 #include <thread>
@@ -389,6 +391,7 @@ namespace
         return muted;
     }
     void GuideOwnProfile(const std::shared_ptr<GuideSession>& g, uint32_t focus = 0);
+    void GuideLiveKey(const std::shared_ptr<GuideSession>& g, uint32_t focus, uint32_t profileRow);
     void GuidePreferences(const std::shared_ptr<GuideSession>& g, uint32_t scene, uint32_t focus);
     void GuideFriendsOf(const std::shared_ptr<GuideSession>& g, uint64_t xuid, const std::string& tag);
     void GuidePreferencePress(const std::shared_ptr<GuideSession>& g, uint32_t index, int step);
@@ -2058,10 +2061,189 @@ namespace
         const uint32_t joinRow = uint32_t(rows.size());
         add(online ? u"Account Security" : u"Join Xbox Live",
             online ? std::function<void()>() : [g, joinRow] { GuideJoinLive(g, [g, joinRow] { GuideOwnProfile(g, joinRow); }); });
+        if (host::liveKey && host::setLiveKey) // OURS: this console's LIVE key (our server binds accounts to it)
+        {
+            const uint32_t keyRow = uint32_t(rows.size());
+            add(u"Xbox LIVE Key", [g, keyRow] { GuideLiveKey(g, 0, keyRow); });
+        }
         add(u"Manage Exercise Info", nullptr);
         Log("System UI: own Profile of user {} ({})", user, online ? "on Xbox LIVE" : "offline");
         xui::ShowGamerProfile({}, 0, rows, std::min<uint32_t>(focus, uint32_t(rows.size()) - 1),
                               WithPlaceholders(OwnGamerCard(user)), xui::ProfilePanel::kPersonal);
+    }
+
+    // ---- Xbox LIVE Key (OURS: the own Profile's "Xbox LIVE Key" row) ----
+    //
+    // This console's LIVE key, which our server binds the player's accounts to (the key that first signs an account in
+    // owns it): a page on the feedback pages' frame (the Profile's rows at the bottom, a message at the top left, the
+    // focused row's description on the right) showing the key in groups of four, with Change Key (the virtual keyboard,
+    // 32 hex digits; spaces and dashes are ignored), Make a New Key (after a question: accounts stay with the old key)
+    // and Copy Key (the PC's clipboard). A change is kept by the runtime (host::setLiveKey) for the next connection; a
+    // player on Xbox LIVE is signed in again with it at once.
+
+    // The key as groups of 4, `separator` between them.
+    std::string GroupedKey(const std::string& key, const char* separator)
+    {
+        std::string out;
+        for (size_t i = 0; i < key.size(); i += 4)
+            out += (i ? separator : "") + key.substr(i, 4);
+        return out;
+    }
+
+    // What the keyboard returned -> the 32 hex digits in upper case (spaces, tabs and dashes dropped); false when it
+    // is anything else.
+    bool NormalizeLiveKey(const std::u16string& text, std::string& key)
+    {
+        key.clear();
+        for (char16_t c : text)
+        {
+            if (c == u' ' || c == u'-' || c == u'\t')
+                continue;
+            if (!((c >= u'0' && c <= u'9') || (c >= u'a' && c <= u'f') || (c >= u'A' && c <= u'F')))
+                return false;
+            key += char(c >= u'a' && c <= u'f' ? c - 32 : c);
+        }
+        return key.size() == 32;
+    }
+
+    bool CopyToClipboard(const std::string& text)
+    {
+        if (!OpenClipboard(nullptr))
+            return false;
+        bool ok = false;
+        EmptyClipboard();
+        if (HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, text.size() + 1))
+        {
+            if (void* p = GlobalLock(memory))
+            {
+                std::memcpy(p, text.c_str(), text.size() + 1);
+                GlobalUnlock(memory);
+                ok = SetClipboardData(CF_TEXT, memory) != nullptr;
+            }
+            if (!ok)
+                GlobalFree(memory);
+        }
+        CloseClipboard();
+        return ok;
+    }
+
+    void GuideLiveKeyResult(const std::shared_ptr<GuideSession>& g, uint32_t row, uint32_t profileRow,
+                            const std::u16string& text)
+    {
+        g->back = [g, row, profileRow] { GuideLiveKey(g, row, profileRow); };
+        GuideCommunityBox(g, u"Xbox Live Key", text, { { u"OK", nullptr } });
+    }
+
+    // Keeps `key` as the console's LIVE key; a user on Xbox LIVE is signed in again (live::SetKey dropped the
+    // connection), with "Signing in" meanwhile as Connect to Xbox Live shows it, and told how that went.
+    void GuideApplyLiveKey(const std::shared_ptr<GuideSession>& g, const std::string& key, uint32_t row,
+                           uint32_t profileRow, const std::string& oldKey, bool made)
+    {
+        if (!host::setLiveKey(key))
+            return GuideLiveKeyResult(g, row, profileRow,
+                                      u"The key could not be saved in the Key Vault; it stays as it was. Try again.");
+        Log("System UI: Guide: LIVE key {}", made ? "made" : "changed");
+        const std::u16string result =
+            made ? Wide("Your new key is " + GroupedKey(key, " ") + ".\n\nYour old key was " + GroupedKey(oldKey, " ") +
+                        ". Keep it: your accounts stay with it.")
+                 : std::u16string(u"The key was changed.");
+        const uint32_t user = g->user;
+        const auto profile = host::SignedIn(user);
+        if (!profile || !profile->liveEnabled)
+            return GuideLiveKeyResult(g, row, profileRow, result + u" It is used from the next connection.");
+        g->connecting = true;
+        xui::GuideKeepPosition();
+        g->mode = GuideSession::Mode::kWait;
+        xui::ShowSignInStatus(SignInRow(*profile));
+        const auto shown = std::chrono::steady_clock::now() + kLiveSignInShown;
+        std::thread([g, user, shown, row, profileRow, result] {
+            const auto error = live::Reconnect(user);
+            const bool online = !error && WaitForLive(user);
+            SleepUntil(shown);
+            std::lock_guard lock(g->mutex);
+            g->connecting = false;
+            if (g->ui->Closed())
+                return;
+            std::u16string text = result;
+            if (online)
+                text += u" You are signed in to Xbox Live with it.";
+            else
+            {
+                const std::string why = error ? *error : std::string("not signed in");
+                Log("System UI: Guide: signing in with the new LIVE key failed: {}", why);
+                if (why == "not connected")
+                    text += u" Xbox Live could not be reached: the key is used at the next connection.";
+                else
+                    text += Wide(" Xbox Live did not sign you in with it (" + why +
+                                 "): accounts that belong to another key stay with that key.");
+            }
+            GuideLiveKeyResult(g, row, profileRow, text);
+        }).detach();
+    }
+
+    void GuideLiveKey(const std::shared_ptr<GuideSession>& g, uint32_t focus, uint32_t profileRow)
+    {
+        if (!host::liveKey)
+            return GuideOwnProfile(g, profileRow);
+        const std::string key = host::liveKey();
+        g->mode = GuideSession::Mode::kFeedback;
+        g->profileXuid = 0;
+        g->feedbackConduct = false;
+        g->feedbackBack = [g, profileRow] { GuideOwnProfile(g, profileRow); };
+        g->rowActions.clear();
+        std::vector<xui::ProfileRow> rows;
+        xui::ProfilePage page;
+        page.rowsAtBottom = true;
+        auto add = [&](const char16_t* text, const char16_t* description, std::function<void()> action) {
+            rows.push_back({ text, true });
+            g->rowActions.push_back(std::move(action));
+            page.rowDescriptions.push_back(description);
+        };
+        add(u"Change Key", u"Type in the key of another PC (32 hex digits) to use its Xbox Live accounts here.",
+            [g, key, profileRow] {
+                g->back = [g, profileRow] { GuideLiveKey(g, 0, profileRow); };
+                GuideKeyboard(g, u"Xbox Live Key", u"Enter the 32 hex digits. Spaces and dashes are ignored.", 47,
+                              [g, key, profileRow](const std::u16string& text) {
+                                  std::string now;
+                                  if (!NormalizeLiveKey(text, now))
+                                      return GuideLiveKeyResult(g, 0, profileRow,
+                                                                u"That is not a key. A key is 32 hex digits (0-9 and "
+                                                                u"A-F); spaces and dashes are ignored.");
+                                  if (now == key)
+                                      return GuideLiveKey(g, 0, profileRow);
+                                  GuideApplyLiveKey(g, now, 0, profileRow, key, false);
+                              },
+                              Wide(GroupedKey(key, " ")));
+            });
+        add(u"Make a New Key", u"A new random key. Your accounts stay with the old key.", [g, key, profileRow] {
+            g->back = [g, profileRow] { GuideLiveKey(g, 1, profileRow); };
+            GuideCommunityBox(g, u"Make a New Key",
+                              u"Your Xbox Live accounts belong to the key they were first signed in with. With a new "
+                              u"key they stay with the old one, and you cannot sign in to them until you enter the old "
+                              u"key again. Make a new key?",
+                              { { u"Make a New Key",
+                                  [g, key, profileRow] {
+                                      std::random_device random;
+                                      std::string now;
+                                      for (int i = 0; i < 4; i++)
+                                          now += std::format("{:08X}", uint32_t(random()));
+                                      GuideApplyLiveKey(g, now, 1, profileRow, key, true);
+                                  } },
+                                { u"Cancel", nullptr } },
+                              1, xui::MessageIcon::kWarning);
+        });
+        add(u"Copy Key", u"Copies the key to this PC's clipboard.", [g, key, profileRow] {
+            GuideLiveKeyResult(g, 2, profileRow,
+                               CopyToClipboard(key) ? u"The key was copied to the clipboard."
+                                                    : u"The key could not be copied to the clipboard.");
+        });
+        page.info = Wide("Your Xbox Live accounts belong to this key:\n\n" + GroupedKey(key.substr(0, 16), " ") + "\n" +
+                         GroupedKey(key.substr(16), " "));
+        Log("System UI: Xbox LIVE Key of user {}", g->user);
+        xui::GuideKeepPosition();
+        xui::ShowGamerProfile({}, 0, rows, std::min<uint32_t>(focus, uint32_t(rows.size()) - 1),
+                              WithPlaceholders(OwnGamerCard(g->user)), xui::ProfilePanel::kPersonal, u"Xbox Live Key",
+                              page);
     }
 
     // Edit Profile (7_42_23; 808_editProfile.xur): on our Xbox LIVE its onlineButtonGroup (Gamertag, Gamer Picture,
