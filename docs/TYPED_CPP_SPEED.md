@@ -556,3 +556,11 @@ text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, tok
 The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
 directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
 picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.
+## cb refactor: xna batch W0-B30 (2026-11-11)
+
+Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2), same inputs, best of 3, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
+| mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |

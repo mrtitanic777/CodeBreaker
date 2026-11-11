@@ -1,0 +1,13 @@
+[
+  {"name": "ShaderIndex", "semantic": "", "type": "int", "cls": "scalar", "rows": 1, "columns": 1, "elements": 0, "value": [2], "members": []},
+  {"name": "Tint", "semantic": "COLOR0", "type": "float", "cls": "vector", "rows": 1, "columns": 4, "elements": 0, "value": [1, 0.5, 0.25, 1], "members": []},
+  {"name": "WorldViewProj", "semantic": "WORLDVIEWPROJECTION", "type": "float", "cls": "matrix_columns", "rows": 4, "columns": 4, "elements": 0, "value": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], "members": []},
+  {"name": "Diffuse", "semantic": null, "type": "texture2D", "cls": "object", "rows": 0, "columns": 0, "elements": 0, "value": null, "members": null},
+  {"name": "Skin", "semantic": "", "type": "sampler2D", "cls": "object", "rows": 0, "columns": 0, "elements": 0, "value": null, "members": []},
+  {"name": "Indices", "semantic": "", "type": "int", "cls": "scalar", "rows": 1, "columns": 1, "elements": 2, "value": null,
+   "members": [{"name": "Indices", "semantic": "", "type": "int", "cls": "scalar", "rows": 1, "columns": 1, "elements": 0, "value": [5], "members": []},
+               {"name": "Indices", "semantic": "", "type": "int", "cls": "scalar", "rows": 1, "columns": 1, "elements": 0, "value": [6], "members": []}]},
+  {"name": "Light", "semantic": "", "type": "void", "cls": "struct", "rows": 0, "columns": 0, "elements": 0, "value": null,
+   "members": [{"name": "Dir", "semantic": "", "type": "float", "cls": "vector", "rows": 1, "columns": 3, "elements": 0, "value": [0, 1, 0], "members": []},
+               {"name": "Power", "semantic": "", "type": "float", "cls": "scalar", "rows": 1, "columns": 1, "elements": 0, "value": [2], "members": []}]}
+]

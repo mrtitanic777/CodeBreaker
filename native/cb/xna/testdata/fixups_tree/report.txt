@@ -1,0 +1,8 @@
+ref_casts 3
+constructors 10
+data_holders 6
+left h.cs 5 the constructor already has an initializer
+left sub/b.cs 9 no declaration of h before it
+left sub/e.cs 1 no constructor parameter list before it
+left sub/e.cs 3 no constructor parameter list before it
+left zz/a/x.cs 9 it is inside a statement block, not at the top of a constructor

@@ -1,0 +1,1 @@
+﻿﻿x = ((IDisposable)(Enumerator)(ref e)).Dispose();
