@@ -509,3 +509,15 @@ The new code is faster than the Python on every row; the old typed port was time
 faster was not the regular-expression engine (the engine is slower than CPython's `re` on a single search): the Python recomputed the
 blanked text of every file per complaint (`any(re.search(...) for t in out.values())`) and parsed each file's functions once per
 complaint (an lru_cache on the text, but the key is hashed on every lookup); the C++ keeps one reading of each file for the round.
+## cb refactor: symbols and vxd batch W0-B26 (2026-11-11)
+
+Old = the engine or Python module the new code replaces, same inputs, best of 3-5, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| prototypes: read the 10,166 declarations of OpenWatcom's h/nt+h/win and Microsoft's SDK/DDK headers (engine native/symbols/prototypes.cc, process start and JSON out included) | 600 ms | 560 ms (the reader alone) |
+| demangle: 5,727 real names through the old engine (parse + type name) vs the new reader (parse + type name + plain + readable + stack_bytes, i.e. three parses a name) | 73 ms | 105 ms |
+| sdk_structs: read the 8,514 structures and 6,526 pointer types of the three 32-bit header folders | Python 400 ms | 200 ms |
+| xdk_libraries: search dash.xex (2.0M words) and a game's default.xex (1.8M words) for 1,308 library signatures | Python 2.9 s / 1.9 s (whole `match`, image read included) | 220 / 200 ms (the search alone; a sorted pair index replaced a table of lists: 1.1 s before) |
+| xdk_libraries: make the 1,308 signatures from 2,277 functions | Python 300 ms | 8 ms |
+| ordinals: read all 597 .lib and .def files of the reference folder | Python 570 ms (process start included) | 91 ms |

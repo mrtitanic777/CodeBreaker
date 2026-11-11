@@ -1,6 +1,7 @@
-// codebreaker/symbols/ordinals.hpp -- interface of codebreaker.symbols.ordinals (typed C++; implementation pending).
-//
-// ordinals.py -- the name of a function that is imported by number.
+// codebreaker/symbols/ordinals.hpp -- compat shim for cb/symbols/ordinals.hpp (docs/CPP_DESIGN.md 6.3). The old types in,
+// the new naming rules called, the old types out; the old format readers, corpus and knowledge base are reached from
+// ordinals.cpp (the shim's translation unit), which stands in for the corpus the new module is given. Deleted with its
+// last old-layer consumer.
 //
 //     ordinals::name("USER", 91)            "GetDlgItem"
 //     ordinals::name("MFC30", 800)          "??1CString@@QAE@XZ"
@@ -8,8 +9,7 @@
 //     ordinals::source("USER", 91)          "user.exe"
 //     ordinals::table("COMMDLG")            {ordinal: name}
 //
-// Typing notes:
-//   * An ordinal is an int64_t (Python passes `int(ordinal)`; callers pass ints).
+//   * An ordinal is an int64_t (Python passes `int(ordinal)`; callers pass ints); one beyond 32 bits names nothing.
 //   * (MODULE, ordinal) keys are tuples; a name that may be unknown is std::optional<py::str>.
 //   * collect()'s `log` (default print) is a std::function; its result is the written table, a record per module
 //     (`Shipped`: {from, checked:[yes,no], names:{str(ordinal): name}}).

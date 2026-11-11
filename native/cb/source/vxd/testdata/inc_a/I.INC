@@ -1,0 +1,3 @@
+Begin_Service_Table café
+cafÉ_Service Un_é
+End_Service_Table

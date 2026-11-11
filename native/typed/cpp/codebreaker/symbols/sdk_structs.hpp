@@ -1,27 +1,16 @@
-// codebreaker/symbols/sdk_structs.hpp -- typed C++ port of codebreaker.symbols.sdk_structs.
+// codebreaker/symbols/sdk_structs.hpp -- compat shim for cb/symbols/sdk_structs.hpp (docs/CPP_DESIGN.md 6.3). The old types
+// in, the new reader called, the old types out; the old knowledge base (platform win32, kinds "struct" and
+// "struct.pointer") still keeps what is read. Deleted with its last old-layer consumer.
 //
-// sdk_structs.py -- the layouts of the SDK's structures, read from its headers.
+//     auto s = sdk_structs::layout("RECT");          Struct(name, size, fields) or None
+//     s->at(8, 4)                                     "right": the field that starts at 8 and is 4 bytes
+//     sdk_structs::pointed_to("LPCRECT")              "RECT": the structure a pointer type points at
+//     sdk_structs::definition(*s)                     C text defining it, field for field, at the SDK's offsets
 //
-//     auto s = sdk_structs::layout("RECT");       // Struct(name, size, fields) or None
-//     s->at(8, 4);                                // "right": the field that starts at 8 and is 4 bytes
-//     sdk_structs::pointed_to("LPCRECT");         // "RECT": the structure a pointer type points at
-//     sdk_structs::definition(*s);                // C text defining it, field for field, at the SDK's offsets
-//
-// A structure is read from its `typedef struct tagX { ... } X, *PX, FAR *LPX;` in the 32-bit headers
-// (symbols/prototypes finds them), once: the layouts are kept in the knowledge base. Offsets follow the
-// headers' packing (#include <pshpackN.h> ... <poppack.h>, natural alignment otherwise). A field of a type
-// this does not know the size of makes the whole structure unknown -- a wrong offset would name the wrong
-// field. The definition written out lays the fields at those offsets explicitly (packed to 1, with the gaps
-// as padding), so it means the same to any compiler.
-//
-// Notes on the port:
-//   * The stamp of the kinds in the knowledge base is the Python's hash of prototypes._stamp plus the source
-//     text of two Python functions (_from_headers, readable._constants); a C++ program has no source text of
-//     functions, so those are a revision number here (kReading). A base made by one implementation is thus
-//     made again by the other.
-//   * The base keeps a structure as Python's pickle of (size, [(offset, size, name, ctype), ...], biggest), tuples
-//     and all (tag P, protocol 4): the hash of a stored structure -- what a fact made from it records, and what
-//     knowledge.reads.digest answers -- is then the same in both implementations. facts.cpp writes and reads it.
+// The stamp of the kinds in the knowledge base is a hash of prototypes::_stamp and the reader's revision
+// (cb::symbols::sdk_structs::kReaderRevision), so a base made by an earlier reader is made again. The base keeps a
+// structure as the old layer's pickle of (size, [(offset, size, name, ctype), ...], biggest) (facts.cpp writes and
+// reads it).
 #pragma once
 
 #include <cstdint>
@@ -40,7 +29,7 @@ struct Layout {
     int64_t size = 0;
     py::list<Field> fields;
     int64_t biggest = 1;
-    // Per field: its c type is the Python's constant "uint4" of a pointer field (one str object in every such field,
+    // Per field: its c type is the old layer's constant "uint4" of a pointer field (one str object in every such field,
     // which a pickle of the layout keeps once); empty for a layout read back from the base. See facts.hpp.
     py::list<bool> pointer;
 };
@@ -59,13 +48,13 @@ class Struct {
     std::optional<py::str> at(int64_t offset, int64_t size) const;
 };
 
-// The structures as the knowledge base keeps them (a structure the reading could not lay out is None) and
-// the pointer types ({pointer type: structure}).
+// The structures as the knowledge base keeps them (a structure the reading could not lay out is None) and the pointer
+// types ({pointer type: structure}).
 using Structs = py::dict<py::str, std::optional<Layout>>;
 using Pointers = py::dict<py::str, py::str>;
 
-// (structures, pointers) as the knowledge base keeps them (platform win32, kinds "struct" and
-// "struct.pointer"): read from the headers again when a header folder or this reading changes.
+// (structures, pointers) as the knowledge base keeps them (platform win32, kinds "struct" and "struct.pointer"): read
+// from the headers again when a header folder or the reader changes.
 std::tuple<Structs, Pointers> _read();
 
 // Read from the headers (always, without the knowledge base).
@@ -76,8 +65,8 @@ std::optional<Struct> layout(const py::str& name);
 // The structure a parameter of this type points at, or None ("LPRECT", "CONST RECT *").
 std::optional<py::str> pointed_to(const py::str& type_text);
 
-// C text defining structure `s` (and the structures in it, before it), laid out field for field at the SDK's
-// offsets. `known`: structures already defined.
+// C text defining structure `s` (and the structures in it, before it), laid out field for field at the SDK's offsets.
+// `known`: structures already defined.
 py::str definition(const Struct& s, const py::set<py::str>& known = py::set<py::str>());
 
 }  // namespace codebreaker::symbols::sdk_structs
