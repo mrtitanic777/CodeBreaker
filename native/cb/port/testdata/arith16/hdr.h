@@ -1,0 +1,18 @@
+typedef signed char int8_t;
+typedef unsigned char uint8_t;
+typedef short int16_t;
+typedef unsigned short uint16_t;
+typedef int int32_t;
+typedef unsigned int uint32_t;
+uint16_t u, v;
+int16_t s, t;
+int32_t l;
+uint32_t ul;
+uint8_t b;
+char c;
+int i;
+int16_t arr[10];
+struct S { int16_t f; uint16_t g; } st, *ps;
+int16_t fn(int16_t x);
+static int16_t hv;
+static void hf(void) { if (u > hv + 1) {} l = (long)(hv * hv); }

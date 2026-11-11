@@ -18,14 +18,17 @@ struct Pending {
     bool is_union;
 };
 
-void set_member(StructLayout& lay, const std::string& name, std::uint32_t offset, std::uint32_t size) {
+void set_member(StructLayout& lay, const std::string& name, std::uint32_t offset, std::uint32_t size,
+                const std::string& declarator, bool pointer) {
     for (Member& m : lay.members)
         if (m.name == name) {
             m.offset = offset;
             m.size = size;
+            m.declarator = declarator;
+            m.pointer = pointer;
             return;
         }
-    lay.members.push_back({name, offset, size});
+    lay.members.push_back({name, offset, size, declarator, pointer});
 }
 
 // The layout of a structure's (or union's) members.
@@ -52,9 +55,9 @@ StructLayout lay_out_body(std::string_view body, bool is_union, unsigned ptr, un
     }
     StructLayout lay;
     std::uint32_t off = 0;
-    auto place = [&](const std::string& name, std::uint32_t size) {
+    auto place = [&](const std::string& name, std::uint32_t size, const std::string& declarator, bool pointer) {
         if (size > 1 && off % 2) ++off;
-        set_member(lay, name, is_union ? 0 : off, size);
+        set_member(lay, name, is_union ? 0 : off, size, declarator, pointer);
         off = is_union ? std::max(off, size) : off + size;
     };
     for (const std::string& s : members) {
@@ -70,7 +73,8 @@ StructLayout lay_out_body(std::string_view body, bool is_union, unsigned ptr, un
                                                     path + "." + (names.empty() ? "?" : names[0]));
             for (std::string& nm : names) nm = array_tail.replace_all(nm, "");
             for (const std::string& nm : names) out.try_emplace(path + "." + nm, inner);   // (its members, for what is inside it)
-            for (const std::string& nm : names) place(nm, inner.size);
+            const bool all_pointers = std::all_of(inner.members.begin(), inner.members.end(), [](const Member& m) { return m.pointer; });
+            for (const std::string& nm : names) place(nm, inner.size, nm, all_pointers);
             continue;
         }
         const bool is_far = far_word.test(s);
@@ -78,7 +82,9 @@ StructLayout lay_out_body(std::string_view body, bool is_union, unsigned ptr, un
         if (!r) continue;
         for (const Declarator& dn : r->names) {
             const auto sz = size_of(r->base, dn.text, dn.name, is_far ? far_ptr : ptr, out);
-            place(dn.name, static_cast<std::uint32_t>(sz.value_or(2)));
+            std::string without_name = dn.text;   // (a pointer: a '*' left once the member's own name is taken out)
+            if (const std::size_t at = without_name.find(dn.name); at != std::string::npos) without_name.erase(at, dn.name.size());
+            place(dn.name, static_cast<std::uint32_t>(sz.value_or(2)), dn.text, without_name.find('*') != std::string::npos);
         }
     }
     lay.size = off + (off > 1 ? off % 2 : 0);

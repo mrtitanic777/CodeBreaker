@@ -384,7 +384,7 @@ def run(cc, folder, files):
             if not tree:
                 continue
             arith16.mark_files(tree, [None])
-            path = next((v for v in arith16._files(tree) if v.replace("\\", "/").endswith(f)), f)
+            path = arith16.main_file(arith16._files(tree), f)
             text = open(folder + "/" + f, encoding="latin1").read()
             e, found, ref = edits_of(tree, text, path, olds)
             got = {"new": apply(text, e) if e else None, "found": [[k[0], k[1], v] for k, v in found.items()],

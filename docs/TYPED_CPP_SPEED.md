@@ -409,6 +409,24 @@ exe could not be run here (no Python-engine build in this worktree), so no side-
 `floating::emit` is a table lookup over 32 rules and one string fill per instruction (the old one was an `if` chain of 32 string
 compares and `py::str` formatting). Nothing else in the batch has a loop worth timing.
 
+## W0-B23: port/arith16 and port/verify (native/cb/port)
+
+Both are bound by the programs they start (clang for arith16; the emulator and the port for verify), so the interesting numbers are
+what they do with what those programs give. Release, one thread, this machine.
+
+| piece | old (Python original) | new (cb::port) | note |
+|---|---|---|---|
+| arith16: read clang's tree of a.c + hdr.h (662 KB of JSON, 671 nodes of the file, ~12,000 of the headers') | json.loads + mark_files 4.7 ms | streaming parser into typed nodes 2.5 ms | the Python builds a document of dicts then walks it again; the C++ never makes the document |
+| arith16: work out the casts from the tree (58 casts) | edits_of 2.4 ms | edits_of 0.03 ms | the Python walks the whole dict tree, the C++ the typed nodes (each expression's type is a field) |
+| arith16 per file, end to end | clang 0.1-0.4 s + 7 ms | clang 0.1-0.4 s + 2.6 ms | clang is the cost, as before; a result kept in the cache costs a hash of the file and its headers |
+| verify: console diff, 2,000 / 20,000 / 20,000 lines with 20 / 200 / 2,000 changed | difflib 2.3 / 115 / 166 ms (autojunk gave up aligning the repeated lines: 138 / 34,173 / 35,642 lines out) | Myers 0.8 / 9.5 / 138 ms (138 / 1,366 / 10,924 lines out) | the old diff of 200 changes was 34,173 lines wide (it replaced nearly everything); the new one is the changes and their context |
+| verify: the cases of cfg_all (17 cases, the real DOS emulator, no cache) | not run (needs the Python emulator host) | 1.1 s | 15 of the 17 cases start a native port and a DOS program; the compare itself is microseconds |
+
+Equivalence on the old harnesses: verify's cfg_all / cfg_vol / cfg_empty / cfg_latin through the real emulator (cbdos.dll) give the
+same table rows and the same console differences as the Python's expected report, byte for byte (the path is written with `/`, the
+trailing blank line is gone, and `unknown-program` is an error). arith16: the C++ and the fixed Python give the same text on 80 random
+files of 40 statements (clang's own trees), and on the harness's a.c/b.c/bad.c/empty.c/nohdr.c/hdr.h.
+
 ## exact/emu and exact/habits (wave 0, batch B8)
 
 Whole old harness run (process start, parsing the cases, the module) against the new module's golden test over the same
@@ -522,6 +540,22 @@ Old = the engine or Python module the new code replaces, same inputs, best of 3-
 | xdk_libraries: make the 1,308 signatures from 2,277 functions | Python 300 ms | 8 ms |
 | ordinals: read all 597 .lib and .def files of the reference folder | Python 570 ms (process start included) | 91 ms |
 
+
+## cb refactor W0-B22: port/pre_ansi part 2 (the data passes of the port of old C), 2026-11-11
+
+Inputs: real source trees of `Microsoft-Assemblers-Compilers/ports` (lib-2.20, link-2.44, masm-4.00, msc-1.04-mc2, msc-3.00-p0,
+msc-3.00-p3 for the whole-port runs; msc-3.00-p3, -p0, -p2 and masm-4.00 for the passes alone): the twelve passes of `Port`, each on
+a fresh Port and as the chain `Port.modernize` runs, and `Port.modernize` itself. The passes moved from the typed port (`py::str`
+text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, token scans); the old file is a shim over them.
+
+| What | Python | old typed C++ | new (`cb::port`) | Ratio vs Python |
+|---|---|---|---|---|
+| the passes alone (no `Port.__init__`, no conversion), 4 trees: p3 / p0 / p2 / masm | 4.83 / 2.60 / 11.49 / 8.88 s = 27.8 s | not separated | 1.46 / 0.28 / 2.64 / 0.92 s = 5.3 s | ~5x faster |
+| 6 trees, 24 pass runs + `modernize` each, whole harness (includes the old `Port.__init__` of parts 1, 3, 5) | ~90 s passes + 44.5 s `modernize` | 200 s (busy machine; 102 s for the passes before `modernize` was timed) | 27.7 s (the shim over the new code) | ~5x faster than the old typed port, ~5x than Python |
+
+The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
+directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
+picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.
 ## cb refactor: xna batch W0-B30 (2026-11-11)
 
 Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2), same inputs, best of 3, shared machine (+-30%).

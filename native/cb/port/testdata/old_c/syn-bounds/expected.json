@@ -1,0 +1,656 @@
+[
+ {
+  "tag": "syn-bounds.agree_globals",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.fixed_allocators",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.array_bounds",
+  "changed": {
+   "t.c": "a5116beed5df25d2"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "a pointer into a table compared with the variable the old linker put after it: the table's end",
+    [
+     "t.c (g_13cc: g_123c + 200)"
+    ]
+   ]
+  ],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.word_stacks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.merge_tables",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.numbered_tables",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.size_tables",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.pool_blocks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.local_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.byte_places",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.shared_blocks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.word_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.word_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.shared_blocks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.byte_places",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.local_copies",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.pool_blocks",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.size_tables",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.numbered_tables",
+  "changed": {},
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.array_bounds",
+  "changed": {
+   "t.c": "a5116beed5df25d2"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "a pointer into a table compared with the variable the old linker put after it: the table's end",
+    [
+     "t.c (g_13cc: g_123c + 200)"
+    ]
+   ]
+  ],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.word_stacks",
+  "changed": {
+   "t.c": "a5116beed5df25d2"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "a pointer into a table compared with the variable the old linker put after it: the table's end",
+    [
+     "t.c (g_13cc: g_123c + 200)"
+    ]
+   ]
+  ],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.merge_tables",
+  "changed": {
+   "t.c": "a5116beed5df25d2"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "a pointer into a table compared with the variable the old linker put after it: the table's end",
+    [
+     "t.c (g_13cc: g_123c + 200)"
+    ]
+   ]
+  ],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.fixed_allocators",
+  "changed": {
+   "t.c": "a5116beed5df25d2"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "a pointer into a table compared with the variable the old linker put after it: the table's end",
+    [
+     "t.c (g_13cc: g_123c + 200)"
+    ]
+   ]
+  ],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ },
+ {
+  "tag": "syn-bounds.chain.agree_globals",
+  "changed": {
+   "t.c": "a5116beed5df25d2"
+  },
+  "lists": {
+   "agree_notes": [],
+   "long_notes": [],
+   "alloc_notes": [],
+   "table_notes": [],
+   "notes_word_copies": [],
+   "notes_shared": [],
+   "notes_byte_places": [],
+   "notes_local_copies": [],
+   "notes_pools": [],
+   "notes_size_tables": []
+  },
+  "notes": [
+   [
+    "a pointer into a table compared with the variable the old linker put after it: the table's end",
+    [
+     "t.c (g_13cc: g_123c + 200)"
+    ]
+   ]
+  ],
+  "aliases": [],
+  "extra": {},
+  "rules": [],
+  "bss": {
+   "g_123c": 10,
+   "g_13cc": 10,
+   "g_13d6": 10
+  }
+ }
+]

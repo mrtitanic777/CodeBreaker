@@ -157,7 +157,7 @@ file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/inve
 set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(port)
-target_link_libraries(cb_port PUBLIC cb_core cb_base)
+target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify)
 
 cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_knowledge)
@@ -183,8 +183,11 @@ add_library(cb_shim_check OBJECT
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_xna.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p2.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"   # (uses the arith16 shim's records)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
