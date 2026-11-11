@@ -13,7 +13,7 @@ no crossplay with real consoles.
   ("Playing Alone\nRiding a pig"); the runtime sends it with `SetPresence`. Needs `runtime/xui` (inflate) in the
   same target. `RunTest(spaFile)` prints a SPA's modes formatted.
 - `live.cmake` — `include()` it, add `${X360_LIVE_SOURCES}`, `${X360_LIVE_INCLUDE_DIRS}`, link `ws2_32`.
-- `third_party/nlohmann/json.hpp` — nlohmann/json 3.10.5 (MIT; copied from XenonRecomp's tomlplusplus vendor folder).
+- `native/third_party/nlohmann/json.hpp` (shared, moved there 2026-11-11) — nlohmann/json 3.10.5 (MIT).
 
 The XAM side (XFriends*, XPresence*, XMessage*, XParty*, the LIVE sign-in) stays in each runtime. Written by #2 for
 the dashboard; #1 can build it the same way for Minecraft (one connection per running port; the server keeps the
