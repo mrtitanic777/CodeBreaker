@@ -1657,7 +1657,6 @@ using ExprP = std::shared_ptr<Expr>;
 // an if-tree whose every way ends giving r 1 or 0 (a goto to a labelled part of it the same part again):
 // if (E) { r = 1; } else { r = 0; } - E the && / || of its tests, a part both ways share factored out
 // (if (c) { X && T } else { T }: (!c || X) && T) - the compiler's one copy of the tests read back
-// (a block of a label and then only a label is where Python reads a string as an if's parts: here, no tree)
 str bool_trees(const str& text) {
     Lines lines = _else_ifs(split_nl(text));
     std::vector<std::pair<str, ExprP>> labels;
