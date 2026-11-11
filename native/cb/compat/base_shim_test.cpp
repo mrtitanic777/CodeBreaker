@@ -19,13 +19,30 @@ namespace {
 
 // The old layer reads settings through the C runtime's environment (getenv), which only _putenv_s changes: CB_<KEY> beats
 // settings.json. (The new code reads the process's own, which _putenv_s changes too.)
+// It restores the value it found, so a later test sees the process as it was.
 struct CrtEnv {
     std::string name;
-    explicit CrtEnv(std::string n, const std::string& value) : name(std::move(n)) { _putenv_s(name.c_str(), value.c_str()); }
-    ~CrtEnv() { _putenv_s(name.c_str(), ""); }
+    std::string before;
+    explicit CrtEnv(std::string n, const std::string& value) : name(std::move(n)) {
+        char* old = nullptr;
+        size_t len = 0;
+        if (_dupenv_s(&old, &len, name.c_str()) == 0 && old) {
+            before = old;
+            std::free(old);
+        }
+        _putenv_s(name.c_str(), value.c_str());
+    }
+    ~CrtEnv() { _putenv_s(name.c_str(), before.c_str()); }
+};
+
+// Members are destroyed in reverse order, so `reload` (declared first) runs after the environment is restored and the
+// old layer's settings forget this test's temporary checkout.
+struct ReloadOnExit {
+    ~ReloadOnExit() { py::settings::reload(); }
 };
 
 struct Settings {
+    ReloadOnExit reload;
     cb::fs::ScopedTempDir dir{"cbshim"};
     CrtEnv root{"CB_CHECKOUT_ROOT", cb::fs::to_text(dir.path())};
     CrtEnv state{"CB_STATE", cb::fs::to_text(dir.path() / "state")};
