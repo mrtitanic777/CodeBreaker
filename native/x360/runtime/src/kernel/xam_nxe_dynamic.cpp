@@ -20,22 +20,5 @@ namespace
 }
 
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1492, xam_Ordinal_1492)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1502, XamAvatarGetManifestLocalUser)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1503, XamAvatarGetManifestsByXuid)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1504, XamAvatarGetAssetsResultSize)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1505, XamAvatarGetAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1506, XamAvatarGenerateMipMaps)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1508, XamAvatarSetManifest) // 7258 binds it
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1509, xam_Ordinal_1509)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1510, xam_Ordinal_1510)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1511, XamAvatarLoadAnimation)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1512, XamAvatarBeginEnumAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1513, XamAvatarEndEnumAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1514, XamAvatarEnumAssets)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1515, XamAvatarGetMetadataRandom)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1516, xam_Ordinal_1516)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1517, xam_Ordinal_1517)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1518, XamAvatarGetMetadataSignedOutProfileCount)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1519, XamAvatarGetMetadataSignedOutProfile)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1536, xam_Ordinal_1536)
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1566, XamUserLockLogonPreviewMode)
