@@ -1,25 +1,12 @@
-// codebreaker/invert/known_differences.hpp -- C++ port of codebreaker.invert.known_differences.
-//
-// known_differences.py -- the divergence micro-pattern knowledge base (roadmap 2c).
-//
-// Every time a candidate MISS is diagnosed and fixed, the (divergence signature -> cause
-// -> fix) mapping is recorded here so it is never re-derived by hand on another DLL. The
-// refine loop consults `diagnose()` on a miss: it matches the localized divergence against
-// known patterns and reports the likely cause + the fix that resolved it before, turning
-// "stare at the bytes" into "apply the known rule."
-//
-// Entries are seeded from the fixes proven this project. `msc6dec_construct` names the
-// recognizer that now handles it (so the KB doubles as a map from divergence to engine
-// code); `example` is a real function it was proven on.
-//
-// Typing notes:
-//   The Python's patterns are dicts with seven fixed keys: here the record `Entry`.  The key "auto"
-//   is the C++ keyword, so the field is `auto_`.  diagnose() returns copies of the entries, where the
-//   Python returns the dicts themselves (a caller that edits a returned dict edits the KB's: not done
-//   anywhere).
+// codebreaker/invert/known_differences.hpp -- SHIM over cb/invert/known_differences.hpp (docs/CPP_DESIGN.md 6.3); deleted
+// with its last py:: consumer. The old module's table KB is a mutable list: diagnose() reads it as it is.
 #pragma once
 
-#include "py.hpp"
+#include <optional>
+#include <vector>
+
+#include "cb/compat/py_bridge.hpp"
+#include "cb/invert/known_differences.hpp"
 
 namespace codebreaker::invert::known_differences {
 
@@ -33,19 +20,51 @@ struct Entry {
     py::str example;
 };
 
-// Each pattern: a regex over a normalized divergence string (from refine.localize /
-// the miss histogram), the human cause, the fix (engine construct or C transform), and
-// whether msc6dec now handles it automatically or it's still a manual refine transform.
-extern py::list<Entry> KB;
+namespace detail {
+inline Entry entry_of(const cb::invert::DifferencePattern& p) {
+    return {cb::compat::to_py(p.id), cb::compat::to_py(p.match), cb::compat::to_py(p.cause), cb::compat::to_py(p.fix),
+            cb::compat::to_py(p.construct), p.automatic, cb::compat::to_py(p.example)};
+}
+inline cb::invert::DifferencePattern pattern_of(const Entry& e) {
+    return {cb::compat::from_py(e.id),        cb::compat::from_py(e.match), cb::compat::from_py(e.cause),
+            cb::compat::from_py(e.fix),       cb::compat::from_py(e.msc6dec_construct), e.auto_, cb::compat::from_py(e.example)};
+}
+}  // namespace detail
+
+inline py::list<Entry> KB = [] {
+    const cb::invert::KnownDifferences seeded;
+    py::list<Entry> kb;
+    for (const auto& p : seeded.patterns()) kb.append(detail::entry_of(p));
+    return kb;
+}();
 
 // Match a localized divergence against the KB; return the matching pattern(s).
-py::list<Entry> diagnose(const std::optional<py::str>& divergence_text);
+inline py::list<Entry> diagnose(const std::optional<py::str>& divergence_text) {
+    return cb::compat::guard([&] {
+        std::vector<cb::invert::DifferencePattern> table;
+        for (const Entry& e : KB) table.push_back(detail::pattern_of(e));
+        const cb::invert::KnownDifferences kb(std::move(table));
+        py::list<Entry> out;
+        for (const auto* p : kb.diagnose(divergence_text ? cb::compat::from_py(*divergence_text) : std::string())) {
+            out.append(detail::entry_of(*p));
+        }
+        return out;
+    });
+}
 
 // Append a newly-solved divergence pattern (id, match, cause, fix, ...).
-Entry record(const Entry& pattern);
+inline Entry record(const Entry& pattern) {
+    KB.append(pattern);
+    return pattern;
+}
 
-// The module's `if __name__ == "__main__":` block (it has no function of that name in the Python): print the
-// KB, each entry's id, cause and fix.
-void main();
+// The module's `if __name__ == "__main__":` block: print the KB, each entry's id, cause and fix.
+inline void main() {
+    std::vector<cb::invert::DifferencePattern> table;
+    for (const Entry& e : KB) table.push_back(detail::pattern_of(e));
+    std::string text = cb::invert::KnownDifferences(std::move(table)).listing();
+    text.pop_back();   // (print adds the last newline)
+    py::print(cb::compat::to_py(text));
+}
 
 }  // namespace codebreaker::invert::known_differences

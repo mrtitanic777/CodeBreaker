@@ -113,6 +113,31 @@ target_link_libraries(cb_exact PUBLIC cb_core)
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 
+# The compiler models of native/invert that cb::invert::early_c wraps (the MC 2.03 / 3.00 register tracker and its text
+# passes, flow16's control-flow graph, Capstone by the DLL's path), compiled as they are: C++17, their own flags. They
+# use the string/regex helpers of native/l2/src (pyre, pystr, value). They move into cb with the rest of native/invert.
+set(CB_INVERT_MODEL_DIR "${CB_NATIVE_ROOT}/invert")
+add_library(cb_invert_model STATIC
+  "${CB_INVERT_MODEL_DIR}/early_c.cc" "${CB_INVERT_MODEL_DIR}/early_c_text.cc" "${CB_INVERT_MODEL_DIR}/flow16.cc"
+  "${CB_INVERT_MODEL_DIR}/cs.cc"
+  "${CB_NATIVE_ROOT}/l2/src/pyre.cc" "${CB_NATIVE_ROOT}/l2/src/pystr.cc" "${CB_NATIVE_ROOT}/l2/src/value.cc")
+set_target_properties(cb_invert_model PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+target_include_directories(cb_invert_model PUBLIC "${CB_INVERT_MODEL_DIR}" "${CB_NATIVE_ROOT}/l2/src")
+target_include_directories(cb_invert_model PRIVATE "${CB_THIRD_PARTY}/include")
+target_compile_definitions(cb_invert_model PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+target_compile_options(cb_invert_model PRIVATE /utf-8 /EHsc /O2 /W3 /bigobj)
+if(CB_ASAN)
+  target_compile_options(cb_invert_model PRIVATE /fsanitize=address /Zi)
+endif()
+
+cb_area(invert)
+target_link_libraries(cb_invert PUBLIC cb_core cb_formats PRIVATE cb_invert_model)
+# The shims at the old header paths (invert/*.hpp under native/typed/cpp) are tested too; their test includes the old layer, so
+# it builds at /W3 without /WX like the java and compat shim tests.
+file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/invert/shims_test.cpp")
+set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
