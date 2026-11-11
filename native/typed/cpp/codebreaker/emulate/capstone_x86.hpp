@@ -1,16 +1,17 @@
-// codebreaker/emulate/capstone_x86.hpp -- Capstone's x86 decoders, as platforms.decoder(bits, detail) keeps them.
+// codebreaker/emulate/capstone_x86.hpp -- SHIM over cb/emulate/capstone_x86.hpp (docs/CPP_DESIGN.md 6.3): the old
+// loader's names, forwarding to the new per-thread engines and to cb/core/capstone_api. No logic; deleted with its
+// last py:: consumer (the decoders of platforms, the recorder's host).
 //
-// The one loader of the capstone DLL: platforms::decoder (platforms/decoder.cpp) makes its decoders over it, and the
-// emulators of this group ask it for the capstone engine of a width, with or without detail, one of each kind per
-// thread, from the capstone.dll the process has loaded (the recorder hands it to cbtrace.dll), else the one the host
-// names with load_capstone(), else the one `import capstone` finds.
+// Differences kept on purpose (docs/CPP_DESIGN.md section 9, decision 1): the capstone.dll is the one beside the
+// executable. load_capstone(path) -- the old override, for a host that found the DLL in Python's site-packages -- is
+// accepted and ignored, and dll() answers the path in use.
 #pragma once
-
-#include <capstone/capstone.h>
 
 #include <cstdint>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/capstone_api.hpp"
+#include "cb/emulate/capstone_x86.hpp"
 
 namespace codebreaker::emulate::capstone_x86 {
 
@@ -24,17 +25,29 @@ struct Api {
     decltype(&cs_regs_access) regs_access = nullptr;
 };
 
-// Use the capstone.dll at `path` (an override: otherwise the one the process has loaded, else the one `import capstone`
-// would find, base/capstone_dll). Every module's set_capstone_dll() is this.
-void load_capstone(const py::str& path);
+inline void load_capstone(const py::str&) {}
 
-// The path of the capstone.dll in use.
-py::str dll();
+inline py::str dll() { return cb::compat::to_py(cb::emulate::capstone_x86::dll_path().generic_string()); }
 
-const Api& api();
+inline const Api& api() {
+    static const Api a = [] {
+        const auto& cs = cb::disasm::capstone::api();
+        Api out;
+        out.open = cs.cs_open;
+        out.option = cs.cs_option;
+        out.disasm = cs.cs_disasm;
+        out.free_ = cs.cs_free;
+        out.reg_name = cs.cs_reg_name;
+        out.regs_access = cs.cs_regs_access;
+        return out;
+    }();
+    return a;
+}
 
-// The engine for 16, 32 or 64-bit x86 code, with (detail) each instruction's operands and registers: one of each kind
-// per thread.
-csh handle(int64_t bits, bool detail);
+// The engine for 16, 32 or 64-bit x86 code (any other width: 32), with (detail) each instruction's operands and
+// registers: one of each kind per thread.
+inline csh handle(int64_t bits, bool detail) {
+    return cb::emulate::capstone_x86::engine(bits == 16 ? 16 : bits == 64 ? 64 : 32, detail);
+}
 
 }  // namespace codebreaker::emulate::capstone_x86
