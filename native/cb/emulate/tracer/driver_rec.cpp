@@ -39,6 +39,8 @@ struct DrvRun {
     int64_t cap = 0, service_eax = 0, service_carry = 0, gov_n = 0, gov_ceil = 0;
     std::vector<std::pair<uint64_t, uint64_t>> spans;
     cbt_drv_answers answers = nullptr;
+    cbt_drv_answers_ctx answers_ctx = nullptr;   // the same question with a context pointer (the typed face, native_driver)
+    void *answers_user = nullptr;
     Shadow *shadow = nullptr;
     std::unordered_map<uint64_t, int32_t> answer_cache;   // device<<32 | service -> place (-2 unknown)
 
@@ -155,9 +157,10 @@ static int32_t where_for(DrvRun *r, int32_t device, int32_t service) {
     if (it != r->answer_cache.end())
         return it->second;
     int32_t out = -1;
-    if (r->answers) {
-        if (r->answers(device, service, &out)) {
-            r->hook_error = 1;            // Python raised: stop, it raises after the run
+    if (r->answers_ctx || r->answers) {
+        const int raised = r->answers_ctx ? r->answers_ctx(r->answers_user, device, service, &out) : r->answers(device, service, &out);
+        if (raised) {
+            r->hook_error = 1;            // the caller raised: stop, it raises after the run
             r->stop();
             return -2;
         }
@@ -356,6 +359,12 @@ static int d_add_insn(DrvRun *r, void *cb, int ins) {
         return int(e);
     r->hooks.push_back(h);
     return 0;
+}
+
+CBT_API void cbt_drv_set_answers(void *run, cbt_drv_answers_ctx fn, void *user) {
+    DrvRun *r = static_cast<DrvRun *>(run);
+    r->answers_ctx = fn;
+    r->answers_user = user;
 }
 
 CBT_API int cbt_drv_attach(void *run) {

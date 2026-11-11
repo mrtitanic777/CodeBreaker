@@ -1,34 +1,12 @@
-// codebreaker/emulate/native_driver.hpp -- C++ port of codebreaker.emulate.native_driver.
+// codebreaker/emulate/native_driver.hpp -- SHIM over cb/emulate/native_driver.hpp (docs/CPP_DESIGN.md 6.3): the old Run, RunArgs
+// and DriverRecord (py:: containers, optionals for "key present") over the new DriverRun, for the port that still uses it
+// (emulate/driver). Conversion and forwarding only; deleted with its last py:: consumer.
 //
-// native_driver.py -- driver.py run()'s hooks in C++ (native/cb/emulate/tracer: cbtrace.dll), through ctypes.
-//
-// A run of a VxD entry point used to call back into Python on every instruction and every memory
-// access. Here those hooks are C++: emulate/driver.run still lays the regions out, sets the
-// registers, starts the run (uc.emu_start to _RET) and reads the result; this module attaches the
-// DLL's driver hooks to the same Unicorn engine (uc._uch), in driver.run's order, and turns what
-// they recorded back into the same rec dict. During a run Python is asked one thing: which register
-// a service answers in (driver_services + the knowledge base), once per distinct service.
-//
-//     run = native_driver.Run(uc, ...)   # the hooks attached (None when the DLL cannot be used here)
-//     uc.emu_start(entry, RET, count=cap + 1)
-//     run.collect(rec)                   # the rec fields the Python hooks would have left
-//     run.detach()
-//
-// The Python hooks this replaced are gone (docs/NATIVE.md, step 3): without the DLL a run raises
-// (require()). Build: tools\build_cb.cmd (native/cb/CMakeLists.txt, target cbtrace).
-//
-// Typing notes (where the C++ has to say what the Python leaves to ctypes and dicts):
-//   ctypes structures  _Config and _Result are the C structures of native/cb/emulate/tracer/cbtrace.h (cbt_drv_config,
-//                      cbt_drv_result), field for field; Lib holds the DLL's cbt_drv_* entry points (what
-//                      lib.cbt_drv_* are on the ctypes CDLL). native_trace::_load() loads the DLL (and keeps
-//                      its entry points in native_trace::Lib); `_lib()` binds the driver ones from the same
-//                      DLL, once, as the Python's _READY guards.
-//   the Unicorn engine `uc` is native_trace::Engine (its handle uc._uch); driver.run starts the run itself.
-//   the record         the dict driver.run's rec is, restricted to the keys collect() sets: DriverRecord,
-//                      each key an std::optional that is empty when the key is left as it was.
-//   the callback       the DLL's `answers` has no context argument (a ctypes closure carries its Run); a
-//                      fixed pool of C++ entry points, one per live Run, stands in for the closure.
-//   BaseException      the exception `answers` raises is kept as a std::exception_ptr (any exception).
+// What the old header had and this one does not (no consumer used them): the loader of cbtrace.dll's C interface (_lib, Lib,
+// _Config, _Result, _READY, _u64s, _words) -- the hooks are the in-process recorder now, called through the new DriverRun --
+// and the register ids and instruction ids of RunArgs, which the new code takes from Unicorn's own headers (RunArgs keeps the
+// fields so the caller need not change; they are ignored).
+// The recorder calls the host's Unicorn and Capstone DLLs (native_trace::shim::use_host_libraries), as the 32-bit one does.
 #pragma once
 
 #include <cstdint>
@@ -39,74 +17,14 @@
 #include <tuple>
 #include <vector>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/emulate/native_driver.hpp"
 #include "codebreaker/emulate/native_trace.hpp"
 
 namespace codebreaker::emulate::native_driver {
 
-inline constexpr int64_t _CALL_WORDS = 15, _PORT_WORDS = 4, _MEM_WORDS = 8, _LAZY_WORDS = 5;
-
-// The DLL calls this when a service is called: (device, service, out) -> 0, or nonzero when the answer raised.
-using ANSWERS = int (*)(int32_t, int32_t, int32_t*);
-
-// ---- native/cb/emulate/tracer/cbtrace.h: cbt_drv_config and cbt_drv_result, field for field ------------------
-struct _Config {
-    void* uch = nullptr;
-    int32_t reg_ids[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    int32_t ins_in = 0, ins_out = 0;
-    uint64_t vm_addr = 0, ret = 0;
-    uint64_t scratch_lo = 0, scratch_hi = 0;
-    const uint64_t* spans = nullptr;
-    int64_t nspans = 0;
-    int64_t cap = 0, service_eax = 0, service_carry = 0;
-    int64_t gov_n = 0, gov_ceil = 0;
-    ANSWERS answers = nullptr;
-    void* shadow = nullptr;
-};
-
-struct _Result {
-    int64_t exit_code, exit_int, insns, truncated, governed, outside, memops, writes_seen, stuck, gov_n, hook_error, uc_err;
-    const void* cover;
-    int64_t ncover;
-    const void* calls;
-    int64_t ncalls;
-    const void* ports;
-    int64_t nports;
-    const void* reads;
-    int64_t nreads;
-    const void* writes;
-    int64_t nwrites;
-    const void* lazy;
-    int64_t nlazy;
-};
-
-// The DLL's driver entry points (the ctypes CDLL's cbt_drv_* functions).
-struct Lib {
-    void* (*cbt_drv_begin)(const _Config*) = nullptr;
-    int (*cbt_drv_attach)(void*) = nullptr;
-    int (*cbt_drv_detach)(void*) = nullptr;
-    void (*cbt_drv_free)(void*) = nullptr;
-    void (*cbt_drv_state)(void*, int64_t*) = nullptr;
-    const _Result* (*cbt_drv_result_get)(void*) = nullptr;
-};
-
-// [bound]: the driver entry points, once they are prepared on the DLL
-extern py::list<std::shared_ptr<Lib>> _READY;
-
-// The cbtrace.dll native_trace loaded, with the driver entry points bound, or None (empty).
-std::shared_ptr<Lib> _lib();
-// The driver recorder for this process: the DLL loads here (the Python hooks it replaced are gone;
-// require() raises with why_not() when it does not).
-bool enabled();
-std::optional<py::str> why_not();
-
-// (the array ctypes makes, at least one long, and the count)
-std::tuple<std::shared_ptr<std::vector<uint64_t>>, int64_t> _u64s(const std::vector<uint64_t>& values);
-// ctypes.string_at(ptr, ...) read as `n` records of `count` words each (struct.iter_unpack("<%dQ")).
-py::list<std::vector<uint64_t>> _words(const void* ptr, int64_t n, int64_t count);
-
-// driver.REGISTERS and emulator._RET (exit computed in driver.run after the run).
-extern const py::dict<int64_t, py::str> _EXITS;
+namespace nt = codebreaker::emulate::native_trace;
+namespace nd = cb::emulate::native_driver;
 
 // ---- the record (the keys collect() sets) ---------------------------------------------------------
 // A "calls" entry: (first, second, regs, words); first is None when the call went to a pointer.
@@ -123,17 +41,17 @@ struct DriverRecord {
     std::optional<py::set<uint64_t>> cover;
     std::optional<py::list<Call>> calls;
     std::optional<py::list<Port>> ports;
-    std::optional<py::list<native_trace::MemRead>> mem_reads;
-    std::optional<py::list<native_trace::MemWrite>> mem_writes;
-    std::optional<py::list<native_trace::LazyMap>> lazy_maps;
+    std::optional<py::list<nt::MemRead>> mem_reads;
+    std::optional<py::list<nt::MemWrite>> mem_writes;
+    std::optional<py::list<nt::LazyMap>> lazy_maps;
     std::optional<int64_t> memops;
     std::optional<int64_t> writes_seen;
     std::optional<int64_t> _stuck;
 };
 
-// The arguments of Run (its keyword arguments). `reg_ids` the Unicorn ids of eax,ebx,ecx,edx,esi,edi,ebp,esp,
-// eip,eflags (at most ten); `spans` the image's [(lo, hi)]; `scratch` the scratch region (lo, hi); `gov`
-// emulator._GOV; `answers(device, service)` -> the place in REGISTERS the service answers in (or -1).
+// The arguments of Run (its keyword arguments). `reg_ids`, `ins_in`, `ins_out` are ignored (Unicorn's own headers give them);
+// `spans` the image's [(lo, hi)]; `scratch` the scratch region (lo, hi); `gov` emulator._GOV; `answers(device, service)` -> the
+// place in REGISTERS the service answers in (or -1).
 struct RunArgs {
     py::list<int64_t> reg_ids;
     int64_t ins_in = 0, ins_out = 0;
@@ -142,44 +60,120 @@ struct RunArgs {
     py::list<std::tuple<int64_t, int64_t>> spans;
     int64_t cap = 0;
     int64_t service_eax = 0, service_carry = 0;
-    native_trace::Gov* gov = nullptr;
+    nt::Gov* gov = nullptr;
     std::function<int64_t(int32_t, int32_t)> answers;
     void* shadow = nullptr;
 };
 
+// The recorder is C++ only (the Python hooks it replaced are gone): raise when the host's Unicorn cannot be used here, saying
+// why.
+inline bool enabled() {
+    try {
+        nt::shim::use_host_libraries();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+inline std::optional<py::str> why_not() {
+    try {
+        nt::shim::use_host_libraries();
+        return std::nullopt;
+    } catch (const std::exception& e) {
+        return py::str(std::string(e.what()));
+    }
+}
+inline void require() {
+    if (!enabled()) {
+        std::optional<py::str> why = why_not();
+        throw py::RuntimeError(py::str("the run recorder is native (native/cb/emulate/tracer): ") + (why ? *why : py::str("None")));
+    }
+}
+
 // One driver run's native hooks on `uc`. Raises nothing itself; `enabled()` gates its use.
 class Run {
   public:
-    std::shared_ptr<Lib> lib;
-    native_trace::Engine uc;
-    native_trace::Gov* gov = nullptr;
-    std::function<int64_t(int32_t, int32_t)> answers_fn;
-    std::exception_ptr exc;
-    _Config config;
-    void* handle = nullptr;
+    nt::Engine uc;
+    nt::Gov* gov = nullptr;
 
-    Run(const native_trace::Engine& uc, const RunArgs& a);
+    Run(const nt::Engine& uc_, const RunArgs& a) : uc(uc_), gov(a.gov) {
+        require();
+        nd::Options o;
+        o.vm_address = static_cast<uint64_t>(a.vm_addr);
+        o.return_address = static_cast<uint64_t>(a.ret);
+        o.scratch = {static_cast<uint64_t>(std::get<0>(a.scratch)), static_cast<uint64_t>(std::get<1>(a.scratch))};
+        for (const auto& s : a.spans.vec()) o.spans.push_back({static_cast<uint64_t>(std::get<0>(s)), static_cast<uint64_t>(std::get<1>(s))});
+        o.cap = a.cap;
+        o.service_eax = static_cast<uint32_t>(static_cast<uint64_t>(a.service_eax) & 0xFFFFFFFFull);
+        o.service_carry = a.service_carry != 0;
+        governor_.n = gov->n;
+        governor_.ceil = gov->ceil;
+        o.governor = &governor_;
+        if (a.answers) {
+            std::function<int64_t(int32_t, int32_t)> answers = a.answers;
+            o.resolver = [answers](uint32_t device, uint32_t service) -> std::optional<unsigned> {
+                const int64_t place = answers(static_cast<int32_t>(device), static_cast<int32_t>(service));
+                return place < 0 ? std::nullopt : std::optional<unsigned>(static_cast<unsigned>(place));
+            };
+        }
+        o.shadow = static_cast<cb::emulate::tracer::Shadow*>(a.shadow);
+        impl_ = std::make_unique<nd::DriverRun>(reinterpret_cast<uc_struct*>(uc.uch), std::move(o));
+    }
     Run(const Run&) = delete;
     Run& operator=(const Run&) = delete;
-    ~Run();
 
-    // Which register the service answers in (driver.answers_in), or -1.
-    int _resolve(int32_t device, int32_t service, int32_t* out);
-    // The exception the resolver raised, if any (driver.run has no try around the hook, so a
-    // resolver that raised comes out of emu_start as a UcError; this is the original).
-    std::exception_ptr raised();
+    // The exception the resolver raised, if any (driver.run has no try around the hook, so a resolver that raised comes out of
+    // emu_start as a UcError; this is the original).
+    std::exception_ptr raised() {
+        std::exception_ptr e = impl_->take_raised();
+        gov->n = governor_.n;
+        return e;
+    }
+
     // The rec fields the Python hooks would have left, as data.
-    void collect(DriverRecord& rec);
-    void detach();
+    void collect(DriverRecord& rec) {
+        const nd::DriverRecord r = impl_->collect();
+        gov->n = governor_.n;
+        rec.insns = r.insns;
+        rec.truncated = r.truncated;
+        if (r.governed) rec.governed = true;
+        rec.outside = r.outside;
+        if (r.exit) rec.exit = cb::compat::to_py(r.exit->text());
+        py::set<uint64_t> cover;
+        for (uint64_t a : r.cover) cover.add(a);
+        rec.cover = cover;
+        py::list<Call> calls;
+        for (const nd::DriverCall& c : r.calls) {
+            py::list<uint64_t> regs, words;
+            for (uint64_t v : c.registers) regs.append(v);
+            for (uint64_t v : c.stack_words) words.append(v);
+            calls.append(Call{c.target.device ? std::optional<uint64_t>(*c.target.device) : std::nullopt, c.target.number, regs, words});
+        }
+        rec.calls = calls;
+        py::list<Port> ports;
+        for (const nd::PortAccess& p : r.ports) ports.append(Port{py::str(p.kind == nd::PortAccess::Kind::Out ? "out" : "in"), p.port, p.size, p.value});
+        rec.ports = ports;
+        py::list<nt::MemRead> reads;
+        for (const auto& x : r.mem_reads) reads.append(nt::MemRead{x.pc, x.addr, x.size, x.value, x.n});
+        rec.mem_reads = reads;
+        py::list<nt::MemWrite> writes;
+        for (const auto& x : r.mem_writes) writes.append(nt::MemWrite{x.pc, x.addr, x.size, x.value, x.n, x.old});
+        rec.mem_writes = writes;
+        py::list<nt::LazyMap> lazy;
+        for (const auto& x : r.lazy_maps) {
+            lazy.append(nt::LazyMap{x.pc, x.addr, x.page, nt::_ACCESS[static_cast<int64_t>(x.access)], x.size});
+        }
+        rec.lazy_maps = lazy;
+        if (r.memops) rec.memops = *r.memops;
+        if (r.writes_seen) rec.writes_seen = *r.writes_seen;
+        if (r.stuck) rec._stuck = *r.stuck;
+    }
+
+    void detach() { cb::compat::guard([&] { impl_->detach(); }); }
 
   private:
-    int slot_ = -1;
-    std::shared_ptr<std::vector<uint64_t>> keep_spans_;
-    int64_t state_[3] = {0, 0, 0};
+    cb::emulate::native_trace::Governor governor_;
+    std::unique_ptr<nd::DriverRun> impl_;
 };
-
-// The recorder is C++ only (the Python hooks it replaced are gone): raise when the DLL cannot
-// be used here, saying why.
-void require();
 
 }  // namespace codebreaker::emulate::native_driver

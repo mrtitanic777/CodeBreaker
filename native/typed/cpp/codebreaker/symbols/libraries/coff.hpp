@@ -1,28 +1,15 @@
-// codebreaker/symbols/libraries/coff.hpp -- typed C++ port of codebreaker.symbols.libraries.coff.
-//
-// coff.py -- the functions of a COFF object or `!<arch>` archive: each one's name, bytes and mask.
+// codebreaker/symbols/libraries/coff.hpp -- compat shim for cb/symbols/libraries/coff.hpp (docs/CPP_DESIGN.md 6.3). The old
+// records in, the new reader called, the old records out; header-only. Deleted with its last old-layer consumer
+// (symbols/runtime_library, verify/authored/match).
 //
 //     coff::members(data)          (label, bytes) of each object in an archive
 //     Coff(data)                   one object: .machine .sections .symbols .relocations(section)
 //     coff::functions(data)        [Function] of one object (x86 or PowerPC), for the library matcher
 //
-// The 32-bit tools' libraries -- Visual C++'s C runtime and MFC, the Xbox 360 XDK -- are archives
-// of COFF objects. What the linker fills in is listed by each code section's relocation records,
-// so nothing is guessed: on x86 the bytes of the field (two or four), on PowerPC the bits of the
-// instruction word the relocation's type fills (the 24-bit distance of a `bl`, a 16-bit half of
-// an address), the opcode and registers still compared.
-//
-// Typing notes:
-//   * members() is a generator in the Python; here it returns the whole list (the generator's early
-//     `return` on a malformed header just ends the list). An archive member size beyond int64 is read
-//     as a saturated number (a huge positive size ends the walk as Python's does); a size field below
-//     int64's range raises OverflowError (Python would walk off backwards).
-//   * Coff.sections / Coff.symbols hold dicts of fixed keys in the Python: the records Section and
-//     Symbol here; the symbol list has None in the slots of auxiliary records: std::optional<Symbol>.
-//   * Function is codebreaker.symbols.libraries.Function (a namedtuple "name code mask at" of the
-//     package's __init__, which has no C++ port yet): this is its stand-in. Its mask is a bytearray
-//     for x86 and a list of ints (the bits left out of each word) for PowerPC: a std::variant.
-//   * functions()'s helpers _x86 / _powerpc are generators in the Python; here they return lists.
+//   * The Python's dict-shaped section and symbol records are `Section` and `Symbol`; `symbols` has None (nullopt) in the
+//     slots of auxiliary records, as before. The Coff constructor raises StructError where the headers run past the data.
+//   * A function's mask is a bytearray for x86 and a list of ints (the bits left out of each word) for PowerPC.
+//   * The generators' helpers (_x86, _powerpc, _field) have no callers and are not carried over.
 #pragma once
 
 #include <cstdint>
@@ -30,17 +17,19 @@
 #include <tuple>
 #include <variant>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/symbols/libraries/coff.hpp"
 #include "py.hpp"
 
 namespace codebreaker::symbols::libraries::coff {
 
-extern const int64_t I386;
-extern const int64_t POWERPC;
+inline constexpr int64_t I386 = cb::symbols::libraries::coff::kI386;
+inline constexpr int64_t POWERPC = cb::symbols::libraries::coff::kPowerPc;
 // IMAGE_REL_PPC_* (the low byte of a relocation's type)
-extern const int64_t REL_ADDR32, REL_ADDR24, REL_ADDR16, REL_ADDR14;
-extern const int64_t REL_REL24, REL_REL14, REL_ADDR32NB;
-extern const int64_t REL_SECREL, REL_REFHI, REL_REFLO, REL_PAIR;
-extern const int64_t REL_SECRELLO, REL_SECRELHI, REL_GPREL;
+inline constexpr int64_t REL_ADDR32 = 0x2, REL_ADDR24 = 0x3, REL_ADDR16 = 0x4, REL_ADDR14 = 0x5;
+inline constexpr int64_t REL_REL24 = 0x6, REL_REL14 = 0x7, REL_ADDR32NB = 0xA;
+inline constexpr int64_t REL_SECREL = 0xB, REL_REFHI = 0x10, REL_REFLO = 0x11, REL_PAIR = 0x12;
+inline constexpr int64_t REL_SECRELLO = 0x13, REL_SECRELHI = 0x14, REL_GPREL = 0x15;
 
 // One function of a library: its symbol, its bytes, its mask and its offset in its section.
 struct Function {
@@ -51,9 +40,16 @@ struct Function {
 };
 
 // (label, bytes) of each object in a COFF archive (`!<arch>`); the linker's own members left out.
-py::list<std::tuple<py::str, py::bytes>> members(const py::bytes& data);
+inline py::list<std::tuple<py::str, py::bytes>> members(const py::bytes& data) {
+    const cb::Bytes raw = cb::compat::from_py(data);
+    py::list<std::tuple<py::str, py::bytes>> out;
+    for (const auto& m : cb::symbols::libraries::coff::members(raw)) {
+        out.append(std::make_tuple(cb::compat::to_py(m.label), cb::compat::to_py(m.body)));
+    }
+    return out;
+}
 
-// A section table entry (the Python's dict size/ptr/relptr/nrel/chars).
+// A section table entry.
 struct Section {
     int64_t size = 0;
     int64_t ptr = 0;
@@ -62,7 +58,7 @@ struct Section {
     int64_t chars = 0;
 };
 
-// A symbol table entry (the Python's dict name/value/sec/type/cls).
+// A symbol table entry.
 struct Symbol {
     py::str name;
     int64_t value = 0;
@@ -74,10 +70,6 @@ struct Symbol {
 // (offset in the section, symbol index, type)
 using Relocation = std::tuple<int64_t, int64_t, int64_t>;
 
-// A COFF object: its headers, section table, symbols (None in the slots of auxiliary records)
-// and relocations. The structures are little-endian whatever the machine (the Xbox 360's code is
-// big-endian, its objects' headers are not).
-// The constructor raises StructError where the headers run past the data, as struct.unpack_from does.
 class Coff {
 public:
     py::bytes data;
@@ -86,24 +78,56 @@ public:
     py::list<Section> sections;
     py::list<std::optional<Symbol>> symbols;
 
-    explicit Coff(const py::bytes& data);
+    explicit Coff(const py::bytes& d) : data(d), raw_(cb::compat::from_py(d)) {
+        cb::compat::guard([&] {
+            const auto obj = cb::symbols::libraries::coff::Object::parse(raw_);
+            machine = obj.machine();
+            symptr = obj.symbol_table_offset();
+            for (const auto& s : obj.sections()) sections.append(Section{s.size, s.ptr, s.relptr, s.nrel, s.chars});
+            for (const auto& s : obj.symbols()) {
+                if (s) symbols.append(Symbol{cb::compat::to_py(s->name), s->value, s->sec, s->type, s->cls});
+                else symbols.append(std::nullopt);
+            }
+        });
+    }
 
     // [(offset in the section, symbol index, type)]
-    py::list<Relocation> relocations(const Section& sec) const;
+    py::list<Relocation> relocations(const Section& sec) const {
+        return cb::compat::guard([&] {
+            cb::symbols::libraries::coff::Section s;
+            s.size = static_cast<std::uint32_t>(sec.size);
+            s.ptr = static_cast<std::uint32_t>(sec.ptr);
+            s.relptr = static_cast<std::uint32_t>(sec.relptr);
+            s.nrel = static_cast<std::uint16_t>(sec.nrel);
+            s.chars = static_cast<std::uint32_t>(sec.chars);
+            const auto obj = cb::symbols::libraries::coff::Object::parse(raw_);
+            py::list<Relocation> out;
+            for (const auto& r : obj.relocations(s)) out.append(Relocation{r.offset, r.symbol, r.type});
+            return out;
+        });
+    }
+
+private:
+    cb::Bytes raw_;
 };
 
-// [Function] of one object: each external function of its code sections (x86), or each
-// function a symbol starts (PowerPC); [] for an object of another machine.
-py::list<Function> functions(const py::bytes& data);
-
-// (name, code, byte mask, offset) for the external functions of a 32-bit x86 object.
-py::list<Function> _x86(const Coff& obj);
-
-// The bits of an instruction word a relocation of this type fills (None: the whole word).
-std::optional<int64_t> _field(int64_t typ);
-
-// (name, code, [bits left out of each word], offset in its section) for every function in a
-// PowerPC object's code sections.
-py::list<Function> _powerpc(const Coff& obj);
+// [Function] of one object: each external function of its code sections (x86), or each function a symbol starts
+// (PowerPC); [] for an object of another machine.
+inline py::list<Function> functions(const py::bytes& data) {
+    return cb::compat::guard([&] {
+        const cb::Bytes raw = cb::compat::from_py(data);
+        py::list<Function> out;
+        for (const auto& f : cb::symbols::libraries::coff::functions(raw)) {
+            Function o;
+            o.name = cb::compat::to_py(f.name);
+            o.code = cb::compat::to_py(cb::ByteView(f.code));
+            if (f.ignore.empty()) o.mask = py::bytearray(cb::compat::to_py(cb::ByteView(f.mask)));
+            else o.mask = cb::compat::to_py(f.ignore);
+            o.at = f.at;
+            out.append(o);
+        }
+        return out;
+    });
+}
 
 }  // namespace codebreaker::symbols::libraries::coff

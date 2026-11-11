@@ -556,6 +556,52 @@ text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, tok
 The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
 directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
 picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.
+## cb refactor: xna batch W0-B30 (2026-11-11)
+
+Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2), same inputs, best of 3, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
+| mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+| contract16: `_calls` over 250 functions (474 calls) of four Win95 16-bit modules | Python 199 ms (the old typed port could not be isolated: its harness times describe16 with it) | 42 ms (the whole test: parse the dump, decode, compare; process start 55 ms not counted) |
+| setup16 make_cd: the CD is patched in place (copy + two records) instead of written again by pycdlib; screen shrink 640x480 to 160x120 is the same Pillow filter | not timed (the old port had no ISO writer) | fixture CD in a few ms; the cost is the copy of the image |
+## cb refactor: symbols/libraries, x86, wine16 and translate/ir, batch W0-B27 (2026-11-11)
+
+Old = the live Python module (the exe's translated Python runs it), best of 3, shared machine (+-30%). Results compared first: the same functions
+(kind, count, and a digest of every name, byte, mask and offset) for all 391 real libraries of the Win95 DDK/SDK and the Xbox 360 XDK (under 30 MB).
+
+| What | Old | New |
+|---|---|---|
+| symbols/libraries: read all 391 libraries (277 Win95 reference, 114 XDK; 16-bit OMF, 32-bit COFF and PowerPC COFF), file read included | Python 27.0 s | 1.9 s (14x) |
+| ... the largest: xavatar2d.lib (5,513 functions) | Python 2.32 s | 0.050 s (46x) |
+| ... libcMT.lib (10 MB, 2,139 PowerPC functions) | Python 0.107 s | 0.016 s (6.7x) |
+| ... KERNEL32.LIB (the SDK's import library, 631 thunks) | Python 0.013 s | 0.0027 s (4.8x) |
+| libraries::Index.find (the pair index of xdk_libraries, now shared) | the same code, moved | no change (xdk match 200-220 ms, see batch W0-B26) |
+| wine16, x86 | not timed: a few hundred lines of text; a decoder wrapper that does no work of its own | |
+| translate/ir: build 1M nodes (500k `a + n`), then walk them and read each one's kind | old py:: port 0.051 s build, 0.249 s walk | build 0.087 s, walk 0.041 s |
+
+translate/ir: building a node is 1.7x slower than the old port (87 ns against 46: the arena registers every node's destructor, and a node is
+136 bytes; the first version, with every node as big as a ClassDecl, was 424 bytes and took 0.19 s, so the big declarations are now boxed), walking
+is 6x faster (no shared_ptr counts, no `py::list` of `py::ref`, the kind by a visit rather than a virtual `class_name()` that builds a `py::str`),
+and a build with a walk is 2.3x faster. A tree is built once and walked by every pass.
+
+## cb refactor W1-B1: emulate/powerpc, z80, m6502, native_driver, 2026-11-11
+
+Inputs: a 3000-iteration PowerPC loop (store, load, add, `bdnz`: 15,000 instructions a run, 200 runs), a Z80 `DEC BC` loop (32,770
+steps a run), a 6502 `INX`/`BNE` loop (200,000 steps a run); one thread, Release (`state/work/cpp-refactor/w1b1/bench.cpp`, `bench.py`).
+The old typed ports ran on `py::` containers and per-step dictionaries and cannot be built apart from the Python runtime here, so the
+comparison is with the Python they were ported from (the live implementation until the exe retires it).
+
+| What | Python | new (`cb::emulate`) | Ratio |
+|---|---|---|---|
+| PowerPC interpreter | 0.20 Msteps/s | 29.5 Msteps/s | ~145x |
+| Z80 interpreter | 0.43 Msteps/s | 44.4 Msteps/s | ~100x |
+| 6502 interpreter | 0.70 Msteps/s | 87.9 Msteps/s | ~125x |
+
+Correctness against the Python: 1,825 6502 single steps (every opcode, decimal mode, memory CRC) are identical; 53,419 of 53,424 PowerPC
+single steps (every primary and extended opcode, random words, random machine states, memory CRC of every written page) are identical, and
+the other five are signalling-NaN cases the old harness recorded unstably (the current Python gives what the C++ gives).
 
 ## cb::decompile m68k, xenos_hlsl, vmx128 (W1-B6)
 
