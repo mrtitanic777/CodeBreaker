@@ -257,6 +257,17 @@ void read_declarations(const string& text, const string& header, PrototypeMap& o
         const string name = text.substr(start, e - start);
         // the words before the name: identifiers and the punctuation that ends a declaration, in the 200 bytes before
         const size_t window = start >= 200 ? start - 200 : 0;
+        // (quick refusal: when the last thing before the name is punctuation, the last word is not a calling convention)
+        bool last_is_punctuation = true;
+        for (size_t a = start; a > window; --a) {
+            const char c = text[a - 1];
+            if (c == '*' || c == ';' || c == '{' || c == '}' || c == '(' || c == ')' || c == '=' || c == ',') break;
+            if (is_word(c)) {
+                last_is_punctuation = false;
+                break;
+            }
+        }
+        if (last_is_punctuation) continue;
         std::vector<string> words;
         for (size_t a = window; a < start;) {
             const char c = text[a];
