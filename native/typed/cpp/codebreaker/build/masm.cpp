@@ -10,6 +10,8 @@
 #include <mutex>
 #include <thread>
 
+#include "py_zlib.hpp"
+
 #include "codebreaker/base/cache.hpp"
 #include "codebreaker/formats/omf.hpp"
 #include "codebreaker/jobs/pool.hpp"
@@ -236,215 +238,6 @@ void close_pools() {
 bool _cancelled() { return false; }
 
 // ---------------------------------------------------------------------------------------------
-// zlib (a stream any zlib reads): inflate, and stored blocks
-namespace {
-
-uint32_t adler32(const std::string& d) {
-    uint32_t a = 1, b = 0;
-    for (unsigned char c : d) {
-        a = (a + c) % 65521;
-        b = (b + a) % 65521;
-    }
-    return (b << 16) | a;
-}
-
-struct Huff {
-    int16_t count[16];
-    int16_t symbol[288];
-};
-
-struct Inflate {
-    const unsigned char* in;
-    size_t n, pos = 0;
-    uint32_t bitbuf = 0;
-    int bitcnt = 0;
-    std::string out;
-    bool bad = false;
-
-    int bits(int need) {
-        long val = bitbuf;
-        while (bitcnt < need) {
-            if (pos >= n) {
-                bad = true;
-                return 0;
-            }
-            val |= static_cast<long>(in[pos++]) << bitcnt;
-            bitcnt += 8;
-        }
-        bitbuf = static_cast<uint32_t>(val >> need);
-        bitcnt -= need;
-        return static_cast<int>(val & ((1L << need) - 1));
-    }
-
-    static int construct(Huff& h, const int16_t* length, int num) {
-        for (int len = 0; len <= 15; len++) h.count[len] = 0;
-        for (int s = 0; s < num; s++) h.count[length[s]]++;
-        if (h.count[0] == num) return 0;
-        int left = 1;
-        for (int len = 1; len <= 15; len++) {
-            left <<= 1;
-            left -= h.count[len];
-            if (left < 0) return left;
-        }
-        int16_t offs[16];
-        offs[1] = 0;
-        for (int len = 1; len < 15; len++) offs[len + 1] = offs[len] + h.count[len];
-        for (int s = 0; s < num; s++)
-            if (length[s] != 0) h.symbol[offs[length[s]]++] = static_cast<int16_t>(s);
-        return left;
-    }
-
-    int decode(const Huff& h) {
-        int code = 0, first = 0, index = 0;
-        for (int len = 1; len <= 15; len++) {
-            code |= bits(1);
-            if (bad) return -1;
-            int count = h.count[len];
-            if (code - count < first) return h.symbol[index + (code - first)];
-            index += count;
-            first += count;
-            first <<= 1;
-            code <<= 1;
-        }
-        return -1;
-    }
-
-    bool codes(const Huff& lencode, const Huff& distcode) {
-        static const int16_t lens[29] = {3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
-        static const int16_t lext[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-        static const int16_t dists[30] = {1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
-        static const int16_t dext[30] = {0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
-        for (;;) {
-            int sym = decode(lencode);
-            if (sym < 0) return false;
-            if (sym < 256) {
-                out.push_back(static_cast<char>(sym));
-            } else if (sym == 256) {
-                return true;
-            } else {
-                sym -= 257;
-                if (sym >= 29) return false;
-                int len = lens[sym] + bits(lext[sym]);
-                int ds = decode(distcode);
-                if (ds < 0 || ds >= 30) return false;
-                size_t dist = static_cast<size_t>(dists[ds] + bits(dext[ds]));
-                if (bad || dist > out.size()) return false;
-                for (int i = 0; i < len; i++) out.push_back(out[out.size() - dist]);
-            }
-        }
-    }
-
-    bool stored() {
-        bitbuf = 0;
-        bitcnt = 0;
-        if (pos + 4 > n) return false;
-        unsigned len = in[pos] | (in[pos + 1] << 8);
-        unsigned nlen = in[pos + 2] | (in[pos + 3] << 8);
-        pos += 4;
-        if (len != (~nlen & 0xFFFF) || pos + len > n) return false;
-        out.append(reinterpret_cast<const char*>(in + pos), len);
-        pos += len;
-        return true;
-    }
-
-    bool fixed() {
-        Huff lencode, distcode;
-        int16_t lengths[288];
-        int s = 0;
-        for (; s < 144; s++) lengths[s] = 8;
-        for (; s < 256; s++) lengths[s] = 9;
-        for (; s < 280; s++) lengths[s] = 7;
-        for (; s < 288; s++) lengths[s] = 8;
-        construct(lencode, lengths, 288);
-        for (s = 0; s < 30; s++) lengths[s] = 5;
-        construct(distcode, lengths, 30);
-        return codes(lencode, distcode);
-    }
-
-    bool dynamic() {
-        static const int16_t order[19] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
-        int nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4;
-        if (bad || nlen > 286 || ndist > 30) return false;
-        int16_t lengths[320];
-        int index = 0;
-        for (; index < ncode; index++) lengths[order[index]] = static_cast<int16_t>(bits(3));
-        for (; index < 19; index++) lengths[order[index]] = 0;
-        Huff lencode, distcode;
-        if (construct(lencode, lengths, 19) != 0) return false;
-        index = 0;
-        while (index < nlen + ndist) {
-            int sym = decode(lencode);
-            if (sym < 0) return false;
-            if (sym < 16) {
-                lengths[index++] = static_cast<int16_t>(sym);
-            } else {
-                int len = 0, rep;
-                if (sym == 16) {
-                    if (index == 0) return false;
-                    len = lengths[index - 1];
-                    rep = 3 + bits(2);
-                } else if (sym == 17) {
-                    rep = 3 + bits(3);
-                } else {
-                    rep = 11 + bits(7);
-                }
-                if (index + rep > nlen + ndist) return false;
-                while (rep--) lengths[index++] = static_cast<int16_t>(len);
-            }
-        }
-        if (lengths[256] == 0) return false;
-        int err = construct(lencode, lengths, nlen);
-        if (err != 0 && (err < 0 || nlen != lencode.count[0] + lencode.count[1])) return false;
-        err = construct(distcode, lengths + nlen, ndist);
-        if (err != 0 && (err < 0 || ndist != distcode.count[0] + distcode.count[1])) return false;
-        return codes(lencode, distcode);
-    }
-};
-
-}  // namespace
-
-std::optional<py::bytes> zlib_decompress(const py::bytes& data) {
-    const std::string& z = data.raw();
-    if (z.size() < 6) return std::nullopt;
-    unsigned cmf = static_cast<unsigned char>(z[0]), flg = static_cast<unsigned char>(z[1]);
-    if ((cmf & 15) != 8 || (cmf >> 4) > 7 || ((cmf << 8) | flg) % 31 != 0 || (flg & 0x20)) return std::nullopt;
-    Inflate s{reinterpret_cast<const unsigned char*>(z.data()) + 2, z.size() - 2};
-    int last;
-    do {
-        last = s.bits(1);
-        int type = s.bits(2);
-        if (s.bad) return std::nullopt;
-        bool ok = type == 0 ? s.stored() : type == 1 ? s.fixed() : type == 2 ? s.dynamic() : false;
-        if (!ok || s.bad) return std::nullopt;
-    } while (!last);
-    if (s.pos + 4 > s.n) return std::nullopt;
-    uint32_t want = (static_cast<uint32_t>(s.in[s.pos]) << 24) | (static_cast<uint32_t>(s.in[s.pos + 1]) << 16) |
-                    (static_cast<uint32_t>(s.in[s.pos + 2]) << 8) | s.in[s.pos + 3];
-    if (want != adler32(s.out)) return std::nullopt;
-    return py::bytes(s.out);
-}
-
-py::bytes zlib_compress(const py::bytes& data) {
-    const std::string& d = data.raw();
-    std::string z = "\x78\x01";
-    size_t pos = 0;
-    do {
-        size_t n = std::min<size_t>(65535, d.size() - pos);
-        bool last = pos + n >= d.size();
-        z.push_back(last ? 1 : 0);
-        z.push_back(static_cast<char>(n & 0xFF));
-        z.push_back(static_cast<char>(n >> 8));
-        z.push_back(static_cast<char>(~n & 0xFF));
-        z.push_back(static_cast<char>((~n >> 8) & 0xFF));
-        z.append(d, pos, n);
-        pos += n;
-    } while (pos < d.size());
-    uint32_t a = adler32(d);
-    for (int sh = 24; sh >= 0; sh -= 8) z.push_back(static_cast<char>((a >> sh) & 0xFF));
-    return py::bytes(z);
-}
-
-// ---------------------------------------------------------------------------------------------
 // the assembled-bytes cache
 namespace {
 std::map<str, str>& roots_seen() {   // _ROOTS
@@ -476,9 +269,13 @@ str _cache_key(const str& src, const str& masmroot, const str& stem) {
 std::optional<Product> _cache_get(const str& key) {
     std::optional<py::bytes> blob_z = base::cache::get(str("masm"), key);
     if (!blob_z) return std::nullopt;
-    std::optional<py::bytes> blob_o = zlib_decompress(*blob_z);
-    if (!blob_o) return std::nullopt;
-    const std::string& blob = blob_o->raw();
+    py::bytes blob_o;
+    try {
+        blob_o = py::zlib::decompress(*blob_z);
+    } catch (const py::zlib::error&) {
+        return std::nullopt;
+    }
+    const std::string& blob = blob_o.raw();
     uint32_t n = 0;
     for (size_t i = 0; i < 4 && i < blob.size(); ++i) n |= static_cast<uint32_t>(static_cast<unsigned char>(blob[i])) << (8 * i);
     Product p;
@@ -496,7 +293,7 @@ void _cache_put(const str& key, const Product& res) {
     for (int i = 0; i < 4; ++i) blob.push_back(static_cast<char>((obj.size() >> (8 * i)) & 0xFF));
     blob += obj;
     blob += (res.lst ? *res.lst : str("")).encode("latin1", "replace").raw();
-    base::cache::put(str("masm"), key, zlib_compress(py::bytes(blob)));
+    base::cache::put(str("masm"), key, py::zlib::compress(py::bytes(blob), 6));
 }
 
 // ---------------------------------------------------------------------------------------------
