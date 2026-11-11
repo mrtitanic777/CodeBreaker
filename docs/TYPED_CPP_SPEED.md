@@ -21,6 +21,46 @@ Slower ports are bugs to fix (speed is a product requirement); each has a stated
 were timed before the runtime speed-ups now on staging (regex prefilters, str UTF-8 cache, dict, JSON, RSA,
 sha1, makedirs) and are marked "re-time".
 
+## Re-timing after the runtime work (2026-11-11)
+
+Measured on a shared, busy machine (other agents' builds running): wall seconds, two runs each, Python = `python expected.py`,
+C++ = `run.cmd` of a clean build (every harness IDENTICAL). Where the machine load made the two runs differ widely, the
+CPU time of the test exe is given as well.
+
+| Module | Python (2 runs) | C++ (2 runs) | Now | Cause and fix |
+|---|---|---|---|---|
+| port.pre_ansi part 5 | 34 / 41 s (CPU 25.5) | CPU 39-42 s (wall 93 / 109 under load) | ~1.6x slower (was 9x: 215 s) | stale runtime objects in the harness (old regex), then: small-block allocator (-25% CPU), py::re ASCII fast paths and inline backtrack stack (-18%) |
+| port.pre_ansi part 3 | 38 / 37 s | 9 / 11 s | 3.5x faster | |
+| port.asm16 | 8.9 / 8.7 s | 5.3 / 5.3 s | 1.7x faster | |
+| source.ne_asm.datacode | 4 / 7 s | 6.7 / 7 s | ~1x (was 0.57x) | allocator |
+| source.ne_asm.segment | 204 / 95 s | 375 / 212 s under load; 92 s on a quiet run | ~1x | 70% of the run is waiting for `objdump` (same process on both sides); the typed part is ~25 s |
+| symbols.debug_build_estimate | 31 / 67 s | 18.5 / 25.5 s | faster (was 0.7x) | allocator |
+| knowledge.show | 11.5 / 11.8 s | 11.9 / 13 s | ~1x (was 0.64x) | allocator |
+| exact.toolchain | 9.7 / 51.6 s | 20.5 / 8.8 s | ~1x (noise: real compiles) | |
+| base.converted | 0.7 / 1.1 s | 1.2 / 1.0 s | ~1x | process start dominates |
+| translate.backends.csharp | 25.3 / 19.7 s | 19.9 / 27.3 s | ~1x (was 0.82x) | allocator; the str-hash cache attempt overflowed the stack here (found by this harness) |
+| port.arith16 (real run) | link msc-3.00-p3 modern, 270 files: 186 s | 242 s (clang is 54% of it, same on both) | 1.3x slower (was 10x on the reviewer's run) | JSON bytes parsed directly (no UTF-32 round trip); the rest was the old runtime |
+| build.asm16, symbols.prototypes, source.readable | | | not timed | their expected.py needs formats.dll built in the checkout (not built in this worktree) |
+
+Runtime changes behind these (all output-neutral):
+- `operator new/delete` (native/l2/src/pystr.cc): per-thread free lists of 16-byte size classes up to 1 KiB, carved from 64 KiB
+  chunks of one reserved address range, so delete finds the class from the address (no header, unsized delete works). The
+  typed ports make a `std::u32string` per `py::str`; the system heap was ~25% of their CPU. p5: 52 -> 39 s CPU.
+- py::re (native/l2/src/pyre.cc): every one-character instruction tests an ASCII byte by its own table (no UTF-8 decode, no
+  call), `` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
+  where that character is not (sre's literal-tail check), the backtrack stack is an inline array. Micro-benchmark
+  (tools/bench_re.cc vs tools/bench_re.py on 295 C files, 18 patterns): 704 -> 290 ms against Python's 525 ms.
+- ctext.blank's cache looks up by hash without copying the (large) text.
+- tools/prof_sampler.cpp: an in-process sampling profiler (link into a harness, /Zi); `PROF_FOCUS=<fn>` lists callers.
+  `-DCB_RE_PROF` on pyre.cc prints per-pattern regex time.
+- A cached hash in `py::str` was tried and dropped: it grew every str by 16 bytes and deep recursive ports (csharp back end)
+  overflowed the stack.
+
+Harness notes: `recheck.sh` is broken for harnesses whose expected.py re-executes itself for PYTHONHASHSEED (on Windows
+`os.execv` returns at once and memcap kills the child): set PYTHONHASHSEED=1 in the environment first. Bare `test.exe` in a
+run.cmd resolves to the MSYS `test` where NoDefaultCurrentDirectoryInExePath is set: use `.	est.exe`. p5's run.cmd passed
+`"%~dp0"` (a trailing backslash escapes the quote): use `"%~dp0."`.
+
 ## Per port
 
 | Module | Python | C++ | Ratio | Note |
