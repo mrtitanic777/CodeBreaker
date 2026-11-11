@@ -335,7 +335,7 @@ std::optional<str> before_start(pre_ansi::Port& port, const dict<str, str>& out,
             owner_n = std::get<0>(kv);
         }
     }
-    if (!have_owner) throw py::ValueError("max() iterable argument is empty");
+    if (!have_owner) return std::nullopt;                   // (before every variable the program has: no variable to read)
     int64_t o = addr - owner_a;
     str w = owner_n;
     std::optional<str> wexpr;
@@ -570,8 +570,7 @@ list<std::tuple<str, str>> mend(pre_ansi::Port& port, const dict<str, str>& out,
                 }
             }
             if (!decl || port.grown.get(var, 0) > decl) continue;   // (grown already, this round)
-            int64_t elem = py::floordiv(size, decl);
-            if (elem == 0) throw py::ZeroDivisionError("division by zero");   // ((after + sz) / elem: a true division)
+            int64_t elem = std::max<int64_t>(1, py::floordiv(size, decl));   // (a declaration larger than the size reported: one byte an element)
             int64_t extra = -py::floordiv(-(after + sz), elem);     // (math.ceil((after + sz) / elem))
             port.grown[var] = decl + extra;
             if (sized) {

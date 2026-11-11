@@ -128,7 +128,10 @@ def before_start(port, out, case, text):
         if idx * esz + lay[field][0] != pos:
             return None                                     # (not that member of a row: another read)
     addr = ds[var] + idx * olay["@size"] + olay[field][0]   # (that row's member in the old data segment)
-    owner = max((a, n) for n, a in ds.items() if a <= addr)
+    below = [(a, n) for n, a in ds.items() if a <= addr]
+    if not below:                                           # (before every variable the program has: no variable to read)
+        return None
+    owner = max(below)
     o = addr - owner[0]
     w = owner[1]
     wexpr = None
@@ -320,7 +323,7 @@ def mend(port, out, reports):
                         break
             if not decl or port.grown.get(var, 0) > decl:
                 continue                                    # (grown already, this round)
-            elem = int(m.group("size")) // decl
+            elem = max(1, int(m.group("size")) // decl)             # (a declaration larger than the size reported: one byte an element)
             extra = math.ceil((int(m.group("after")) + int(m.group("sz"))) / elem)
             port.grown[var] = decl + extra
             if sized:
