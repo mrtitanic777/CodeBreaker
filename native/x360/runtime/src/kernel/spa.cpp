@@ -176,16 +176,23 @@ namespace kernel::spa
         return it == entries.end() ? std::span<const uint8_t>() : it->second;
     }
 
-    std::u16string String(uint16_t id)
+    std::optional<std::u16string> FindString(uint16_t id)
     {
         const Database& db = Get();
         auto table = db.strings.find(Settings().language);
         if (table == db.strings.end())
             table = db.strings.find(db.defaultLanguage);
         if (table == db.strings.end())
-            return {};
+            return std::nullopt;
         const auto it = table->second.find(id);
-        return it == table->second.end() ? std::u16string() : it->second;
+        if (it == table->second.end())
+            return std::nullopt;
+        return it->second;
+    }
+
+    std::u16string String(uint16_t id)
+    {
+        return FindString(id).value_or(std::u16string());
     }
 
     std::u16string TitleName()

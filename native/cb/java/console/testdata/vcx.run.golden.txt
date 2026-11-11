@@ -1,0 +1,675 @@
+run ra filters=True
+  stdout: vcxproj: 1428 bytes -> 2807 bytes; 11 .cpp, 11 .h listed\ntitle id: 0xFFFE0001 (all configurations; 1 per-config block(s) filled)\nfilters: Game.vcxproj.filters (11 subsystem folders)\n
+  file Game.vcxproj:
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Xbox 360">
+      <Configuration>Debug</Configuration>
+      <Platform>Xbox 360</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>Game</ProjectName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Label="J2XTitleId">
+    <ImageXex>
+      <TitleID>0xFFFE0001</TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LTCG|Xbox 360'">
+    <ClCompile>
+      <Optimization>Full</Optimization>
+    </ClCompile>
+    <ImageXex>
+      <TitleID>0xFFFE0001</TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  
+  
+  <ItemGroup>
+    <None Include="readme.txt" />
+  </ItemGroup>
+  <Import Project="x.targets" />
+  <ItemGroup>
+    <ClCompile Include="A&B.cpp" />
+    <ClCompile Include="Block.cpp" />
+    <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="Fluid.cpp" />
+    <ClCompile Include="GuiMainMenu.cpp" />
+    <ClCompile Include="LiquidBlock.cpp" />
+    <ClCompile Include="Many.dots.here.cpp" />
+    <ClCompile Include="Zed.cpp" />
+    <ClCompile Include="stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&B.h" />
+    <ClInclude Include="Block.h" />
+    <ClInclude Include="Debug.h" />
+    <ClInclude Include="Fluid.h" />
+    <ClInclude Include="GuiMainMenu.h" />
+    <ClInclude Include="KernelConfig.h" />
+    <ClInclude Include="LiquidBlock.h" />
+    <ClInclude Include="Many.dots.here.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="xuimenu\Ui.h" />
+    <ClInclude Include="xuimenu\stdafx.h" />
+  </ItemGroup>
+  <Target Name="DeployContent" AfterTargets="Build" Condition="'$(Configuration)' != 'Debug'">
+    <Exec Condition="Exists('$(ProjectDir)Debug\Content')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Content&quot; &quot;$(OutDir)Content\&quot;" />
+    <Exec Condition="Exists('$(ProjectDir)Debug\Media')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Media&quot; &quot;$(OutDir)Media\&quot;" />
+  </Target>
+</Project>
+  file Game.vcxproj.filters:
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Amp &amp; &lt;Co&gt;">
+      <UniqueIdentifier>{90416c67-6d0b-41b5-ae76-57664146d31b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Liquid">
+      <UniqueIdentifier>{706fbbcc-7b96-6d3a-09da-5f443d2b802f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debug">
+      <UniqueIdentifier>{2a2fc436-3c50-28df-bba6-9ebf00e41485}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game (misc)">
+      <UniqueIdentifier>{9fb84d3a-3f81-5e95-5c16-a64d684af799}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Gui">
+      <UniqueIdentifier>{a0164319-f4ed-482f-0023-8b14c93bb2bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime">
+      <UniqueIdentifier>{ec79de61-14b4-f84f-c121-1efa7ad6c311}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Zed">
+      <UniqueIdentifier>{68dba7ac-fb4b-5e23-5354-753193e86d3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu">
+      <UniqueIdentifier>{244313f9-0b93-ad56-3d05-bda32ef479b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu\Gfx">
+      <UniqueIdentifier>{20704e45-8225-996f-148d-ea903515ff5b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="A&amp;B.cpp"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClCompile>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+    <ClCompile Include="Debug.cpp"><Filter>Debug</Filter></ClCompile>
+    <ClCompile Include="Fluid.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="GuiMainMenu.cpp"><Filter>Gui</Filter></ClCompile>
+    <ClCompile Include="LiquidBlock.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="Many.dots.here.cpp"><Filter>Game (misc)</Filter></ClCompile>
+    <ClCompile Include="Zed.cpp"><Filter>Zed</Filter></ClCompile>
+    <ClCompile Include="stdafx.cpp"><Filter>Runtime</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp"><Filter>xuimenu\Gfx</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp"><Filter>xuimenu</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&amp;B.h"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClInclude>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+    <ClInclude Include="Debug.h"><Filter>Debug</Filter></ClInclude>
+    <ClInclude Include="Fluid.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="GuiMainMenu.h"><Filter>Gui</Filter></ClInclude>
+    <ClInclude Include="KernelConfig.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="LiquidBlock.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="Many.dots.here.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="stdafx.h"><Filter>Runtime</Filter></ClInclude>
+    <ClInclude Include="xuimenu\Ui.h"><Filter>xuimenu</Filter></ClInclude>
+    <ClInclude Include="xuimenu\stdafx.h"><Filter>xuimenu</Filter></ClInclude>
+  </ItemGroup>
+</Project>
+
+  --
+run rb filters=True
+  stdout: vcxproj: 135 bytes -> 1809 bytes; 11 .cpp, 11 .h listed  (WARNING: stdafx.cpp PCH block not found)\nfilters: Game.vcxproj.filters (11 subsystem folders)\n
+  file Game.vcxproj:
+<Project>
+  <PropertyGroup>
+    <A>1</A>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <ClCompile Include="A&B.cpp" />
+    <ClCompile Include="Block.cpp" />
+    <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="Fluid.cpp" />
+    <ClCompile Include="GuiMainMenu.cpp" />
+    <ClCompile Include="LiquidBlock.cpp" />
+    <ClCompile Include="Many.dots.here.cpp" />
+    <ClCompile Include="Zed.cpp" />
+    <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&B.h" />
+    <ClInclude Include="Block.h" />
+    <ClInclude Include="Debug.h" />
+    <ClInclude Include="Fluid.h" />
+    <ClInclude Include="GuiMainMenu.h" />
+    <ClInclude Include="KernelConfig.h" />
+    <ClInclude Include="LiquidBlock.h" />
+    <ClInclude Include="Many.dots.here.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="xuimenu\Ui.h" />
+    <ClInclude Include="xuimenu\stdafx.h" />
+  </ItemGroup>
+  <Target Name="DeployContent" AfterTargets="Build" Condition="'$(Configuration)' != 'Debug'">
+    <Exec Condition="Exists('$(ProjectDir)Debug\Content')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Content&quot; &quot;$(OutDir)Content\&quot;" />
+    <Exec Condition="Exists('$(ProjectDir)Debug\Media')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Media&quot; &quot;$(OutDir)Media\&quot;" />
+  </Target>
+</Project>
+  file Game.vcxproj.filters:
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Amp &amp; &lt;Co&gt;">
+      <UniqueIdentifier>{90416c67-6d0b-41b5-ae76-57664146d31b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Liquid">
+      <UniqueIdentifier>{706fbbcc-7b96-6d3a-09da-5f443d2b802f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debug">
+      <UniqueIdentifier>{2a2fc436-3c50-28df-bba6-9ebf00e41485}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game (misc)">
+      <UniqueIdentifier>{9fb84d3a-3f81-5e95-5c16-a64d684af799}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Gui">
+      <UniqueIdentifier>{a0164319-f4ed-482f-0023-8b14c93bb2bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime">
+      <UniqueIdentifier>{ec79de61-14b4-f84f-c121-1efa7ad6c311}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Zed">
+      <UniqueIdentifier>{68dba7ac-fb4b-5e23-5354-753193e86d3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu">
+      <UniqueIdentifier>{244313f9-0b93-ad56-3d05-bda32ef479b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu\Gfx">
+      <UniqueIdentifier>{20704e45-8225-996f-148d-ea903515ff5b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="A&amp;B.cpp"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClCompile>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+    <ClCompile Include="Debug.cpp"><Filter>Debug</Filter></ClCompile>
+    <ClCompile Include="Fluid.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="GuiMainMenu.cpp"><Filter>Gui</Filter></ClCompile>
+    <ClCompile Include="LiquidBlock.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="Many.dots.here.cpp"><Filter>Game (misc)</Filter></ClCompile>
+    <ClCompile Include="Zed.cpp"><Filter>Zed</Filter></ClCompile>
+    <ClCompile Include="stdafx.cpp"><Filter>Runtime</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp"><Filter>xuimenu\Gfx</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp"><Filter>xuimenu</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&amp;B.h"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClInclude>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+    <ClInclude Include="Debug.h"><Filter>Debug</Filter></ClInclude>
+    <ClInclude Include="Fluid.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="GuiMainMenu.h"><Filter>Gui</Filter></ClInclude>
+    <ClInclude Include="KernelConfig.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="LiquidBlock.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="Many.dots.here.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="stdafx.h"><Filter>Runtime</Filter></ClInclude>
+    <ClInclude Include="xuimenu\Ui.h"><Filter>xuimenu</Filter></ClInclude>
+    <ClInclude Include="xuimenu\stdafx.h"><Filter>xuimenu</Filter></ClInclude>
+  </ItemGroup>
+</Project>
+
+  --
+run rc filters=True
+  stdout: vcxproj: 240 bytes -> 1975 bytes; 11 .cpp, 11 .h listed  (WARNING: stdafx.cpp PCH block not found)\ntitle id: UNSET in platform.config.json -- the XEX keeps 0x00000000, so achievements cannot bind to a profile (set it, then re-run vcxproj)\nfilters: Game.vcxproj.filters (11 subsystem folders)\n
+  file Game.vcxproj:
+<Project>
+  <ItemDefinitionGroup Condition="a">
+    <ImageXex><TitleID></TitleID></ImageXex>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="b">
+    <ImageXex><TitleID>   </TitleID></ImageXex>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="A&B.cpp" />
+    <ClCompile Include="Block.cpp" />
+    <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="Fluid.cpp" />
+    <ClCompile Include="GuiMainMenu.cpp" />
+    <ClCompile Include="LiquidBlock.cpp" />
+    <ClCompile Include="Many.dots.here.cpp" />
+    <ClCompile Include="Zed.cpp" />
+    <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&B.h" />
+    <ClInclude Include="Block.h" />
+    <ClInclude Include="Debug.h" />
+    <ClInclude Include="Fluid.h" />
+    <ClInclude Include="GuiMainMenu.h" />
+    <ClInclude Include="KernelConfig.h" />
+    <ClInclude Include="LiquidBlock.h" />
+    <ClInclude Include="Many.dots.here.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="xuimenu\Ui.h" />
+    <ClInclude Include="xuimenu\stdafx.h" />
+  </ItemGroup>
+  <Target Name="DeployContent" AfterTargets="Build" Condition="'$(Configuration)' != 'Debug'">
+    <Exec Condition="Exists('$(ProjectDir)Debug\Content')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Content&quot; &quot;$(OutDir)Content\&quot;" />
+    <Exec Condition="Exists('$(ProjectDir)Debug\Media')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Media&quot; &quot;$(OutDir)Media\&quot;" />
+  </Target>
+</Project>
+  file Game.vcxproj.filters:
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Amp &amp; &lt;Co&gt;">
+      <UniqueIdentifier>{90416c67-6d0b-41b5-ae76-57664146d31b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Liquid">
+      <UniqueIdentifier>{706fbbcc-7b96-6d3a-09da-5f443d2b802f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debug">
+      <UniqueIdentifier>{2a2fc436-3c50-28df-bba6-9ebf00e41485}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game (misc)">
+      <UniqueIdentifier>{9fb84d3a-3f81-5e95-5c16-a64d684af799}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Gui">
+      <UniqueIdentifier>{a0164319-f4ed-482f-0023-8b14c93bb2bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime">
+      <UniqueIdentifier>{ec79de61-14b4-f84f-c121-1efa7ad6c311}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Zed">
+      <UniqueIdentifier>{68dba7ac-fb4b-5e23-5354-753193e86d3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu">
+      <UniqueIdentifier>{244313f9-0b93-ad56-3d05-bda32ef479b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu\Gfx">
+      <UniqueIdentifier>{20704e45-8225-996f-148d-ea903515ff5b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="A&amp;B.cpp"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClCompile>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+    <ClCompile Include="Debug.cpp"><Filter>Debug</Filter></ClCompile>
+    <ClCompile Include="Fluid.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="GuiMainMenu.cpp"><Filter>Gui</Filter></ClCompile>
+    <ClCompile Include="LiquidBlock.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="Many.dots.here.cpp"><Filter>Game (misc)</Filter></ClCompile>
+    <ClCompile Include="Zed.cpp"><Filter>Zed</Filter></ClCompile>
+    <ClCompile Include="stdafx.cpp"><Filter>Runtime</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp"><Filter>xuimenu\Gfx</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp"><Filter>xuimenu</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&amp;B.h"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClInclude>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+    <ClInclude Include="Debug.h"><Filter>Debug</Filter></ClInclude>
+    <ClInclude Include="Fluid.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="GuiMainMenu.h"><Filter>Gui</Filter></ClInclude>
+    <ClInclude Include="KernelConfig.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="LiquidBlock.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="Many.dots.here.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="stdafx.h"><Filter>Runtime</Filter></ClInclude>
+    <ClInclude Include="xuimenu\Ui.h"><Filter>xuimenu</Filter></ClInclude>
+    <ClInclude Include="xuimenu\stdafx.h"><Filter>xuimenu</Filter></ClInclude>
+  </ItemGroup>
+</Project>
+
+  --
+run rd filters=False
+  stdout: vcxproj: 1428 bytes -> 1423 bytes; 0 .cpp, 0 .h listed\ntitle id: could not read platform.config.json (Expecting value: line 1 column 14 (char 13))\n
+  file Game.vcxproj:
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Xbox 360">
+      <Configuration>Debug</Configuration>
+      <Platform>Xbox 360</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>Game</ProjectName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LTCG|Xbox 360'">
+    <ClCompile>
+      <Optimization>Full</Optimization>
+    </ClCompile>
+    <ImageXex>
+      <TitleID>
+      </TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Label="J2XTitleId">
+    <ImageXex>
+      <TitleID>0x11111111</TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  
+  
+  <ItemGroup>
+    <None Include="readme.txt" />
+  </ItemGroup>
+  <Import Project="x.targets" />
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <Target Name="DeployContent" AfterTargets="Build" Condition="'$(Configuration)' != 'Debug'">
+    <Exec Condition="Exists('$(ProjectDir)Debug\Content')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Content&quot; &quot;$(OutDir)Content\&quot;" />
+    <Exec Condition="Exists('$(ProjectDir)Debug\Media')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Media&quot; &quot;$(OutDir)Media\&quot;" />
+  </Target>
+</Project>
+  --
+run re filters=False
+  stdout: vcxproj: 29 bytes -> 28 bytes; 0 .cpp, 0 .h listed  (WARNING: stdafx.cpp PCH block not found)\ntitle id: 0x0000001F (all configurations; 0 per-config block(s) filled)\n
+  file Game.vcxproj:
+<Project>
+  <PropertyGroup/>
+  --
+run rf filters=True
+  stdout: vcxproj: 0 bytes -> 0 bytes; 11 .cpp, 11 .h listed  (WARNING: stdafx.cpp PCH block not found)\ntitle id: 0xFFFE0001 (all configurations; 0 per-config block(s) filled)\nfilters: Game.vcxproj.filters (11 subsystem folders)\n
+  file Game.vcxproj:
+
+  file Game.vcxproj.filters:
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Amp &amp; &lt;Co&gt;">
+      <UniqueIdentifier>{90416c67-6d0b-41b5-ae76-57664146d31b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Liquid">
+      <UniqueIdentifier>{706fbbcc-7b96-6d3a-09da-5f443d2b802f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debug">
+      <UniqueIdentifier>{2a2fc436-3c50-28df-bba6-9ebf00e41485}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game (misc)">
+      <UniqueIdentifier>{9fb84d3a-3f81-5e95-5c16-a64d684af799}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Gui">
+      <UniqueIdentifier>{a0164319-f4ed-482f-0023-8b14c93bb2bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime">
+      <UniqueIdentifier>{ec79de61-14b4-f84f-c121-1efa7ad6c311}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Zed">
+      <UniqueIdentifier>{68dba7ac-fb4b-5e23-5354-753193e86d3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu">
+      <UniqueIdentifier>{244313f9-0b93-ad56-3d05-bda32ef479b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu\Gfx">
+      <UniqueIdentifier>{20704e45-8225-996f-148d-ea903515ff5b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="A&amp;B.cpp"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClCompile>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+    <ClCompile Include="Debug.cpp"><Filter>Debug</Filter></ClCompile>
+    <ClCompile Include="Fluid.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="GuiMainMenu.cpp"><Filter>Gui</Filter></ClCompile>
+    <ClCompile Include="LiquidBlock.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="Many.dots.here.cpp"><Filter>Game (misc)</Filter></ClCompile>
+    <ClCompile Include="Zed.cpp"><Filter>Zed</Filter></ClCompile>
+    <ClCompile Include="stdafx.cpp"><Filter>Runtime</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp"><Filter>xuimenu\Gfx</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp"><Filter>xuimenu</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&amp;B.h"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClInclude>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+    <ClInclude Include="Debug.h"><Filter>Debug</Filter></ClInclude>
+    <ClInclude Include="Fluid.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="GuiMainMenu.h"><Filter>Gui</Filter></ClInclude>
+    <ClInclude Include="KernelConfig.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="LiquidBlock.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="Many.dots.here.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="stdafx.h"><Filter>Runtime</Filter></ClInclude>
+    <ClInclude Include="xuimenu\Ui.h"><Filter>xuimenu</Filter></ClInclude>
+    <ClInclude Include="xuimenu\stdafx.h"><Filter>xuimenu</Filter></ClInclude>
+  </ItemGroup>
+</Project>
+
+  --
+run rg filters=False
+  stdout: vcxproj: 62 bytes -> 1925 bytes; 11 .cpp, 11 .h listed  (WARNING: stdafx.cpp PCH block not found)\ntitle id: 0x00000255 (all configurations; 0 per-config block(s) filled)\n
+  file Game.vcxproj:
+<Project>
+  <!-- äöü -->
+  <PropertyGroup/>
+  <ItemGroup>
+    <ClCompile Include="A&B.cpp" />
+    <ClCompile Include="Block.cpp" />
+    <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="Fluid.cpp" />
+    <ClCompile Include="GuiMainMenu.cpp" />
+    <ClCompile Include="LiquidBlock.cpp" />
+    <ClCompile Include="Many.dots.here.cpp" />
+    <ClCompile Include="Zed.cpp" />
+    <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&B.h" />
+    <ClInclude Include="Block.h" />
+    <ClInclude Include="Debug.h" />
+    <ClInclude Include="Fluid.h" />
+    <ClInclude Include="GuiMainMenu.h" />
+    <ClInclude Include="KernelConfig.h" />
+    <ClInclude Include="LiquidBlock.h" />
+    <ClInclude Include="Many.dots.here.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="xuimenu\Ui.h" />
+    <ClInclude Include="xuimenu\stdafx.h" />
+  </ItemGroup>
+  <Target Name="DeployContent" AfterTargets="Build" Condition="'$(Configuration)' != 'Debug'">
+    <Exec Condition="Exists('$(ProjectDir)Debug\Content')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Content&quot; &quot;$(OutDir)Content\&quot;" />
+    <Exec Condition="Exists('$(ProjectDir)Debug\Media')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Media&quot; &quot;$(OutDir)Media\&quot;" />
+  </Target>
+  <ItemDefinitionGroup Label="J2XTitleId">
+    <ImageXex>
+      <TitleID>0x00000255</TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+</Project>
+  --
+run rh filters=True
+  stdout: vcxproj: 1428 bytes -> 2804 bytes; 11 .cpp, 11 .h listed\ntitle id: 'zzz' in platform.config.json is not 1-8 hex digits -- ignored\nfilters: Game.vcxproj.filters (11 subsystem folders)\n
+  file Game.vcxproj:
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Xbox 360">
+      <Configuration>Debug</Configuration>
+      <Platform>Xbox 360</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>Game</ProjectName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LTCG|Xbox 360'">
+    <ClCompile>
+      <Optimization>Full</Optimization>
+    </ClCompile>
+    <ImageXex>
+      <TitleID>
+      </TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Label="J2XTitleId">
+    <ImageXex>
+      <TitleID>0x11111111</TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  
+  
+  <ItemGroup>
+    <None Include="readme.txt" />
+  </ItemGroup>
+  <Import Project="x.targets" />
+  <ItemGroup>
+    <ClCompile Include="A&B.cpp" />
+    <ClCompile Include="Block.cpp" />
+    <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="Fluid.cpp" />
+    <ClCompile Include="GuiMainMenu.cpp" />
+    <ClCompile Include="LiquidBlock.cpp" />
+    <ClCompile Include="Many.dots.here.cpp" />
+    <ClCompile Include="Zed.cpp" />
+    <ClCompile Include="stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&B.h" />
+    <ClInclude Include="Block.h" />
+    <ClInclude Include="Debug.h" />
+    <ClInclude Include="Fluid.h" />
+    <ClInclude Include="GuiMainMenu.h" />
+    <ClInclude Include="KernelConfig.h" />
+    <ClInclude Include="LiquidBlock.h" />
+    <ClInclude Include="Many.dots.here.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="xuimenu\Ui.h" />
+    <ClInclude Include="xuimenu\stdafx.h" />
+  </ItemGroup>
+  <Target Name="DeployContent" AfterTargets="Build" Condition="'$(Configuration)' != 'Debug'">
+    <Exec Condition="Exists('$(ProjectDir)Debug\Content')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Content&quot; &quot;$(OutDir)Content\&quot;" />
+    <Exec Condition="Exists('$(ProjectDir)Debug\Media')" Command="xcopy /E /I /Y /Q /D &quot;$(ProjectDir)Debug\Media&quot; &quot;$(OutDir)Media\&quot;" />
+  </Target>
+</Project>
+  file Game.vcxproj.filters:
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Amp &amp; &lt;Co&gt;">
+      <UniqueIdentifier>{90416c67-6d0b-41b5-ae76-57664146d31b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks">
+      <UniqueIdentifier>{0e81570f-6e41-2975-91f8-78cf5a105e9a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Base">
+      <UniqueIdentifier>{8c84fd8a-a638-4c1c-0a82-71532ba77c99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Blocks\Liquid">
+      <UniqueIdentifier>{706fbbcc-7b96-6d3a-09da-5f443d2b802f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Debug">
+      <UniqueIdentifier>{2a2fc436-3c50-28df-bba6-9ebf00e41485}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game (misc)">
+      <UniqueIdentifier>{9fb84d3a-3f81-5e95-5c16-a64d684af799}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Gui">
+      <UniqueIdentifier>{a0164319-f4ed-482f-0023-8b14c93bb2bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Runtime">
+      <UniqueIdentifier>{ec79de61-14b4-f84f-c121-1efa7ad6c311}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Zed">
+      <UniqueIdentifier>{68dba7ac-fb4b-5e23-5354-753193e86d3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu">
+      <UniqueIdentifier>{244313f9-0b93-ad56-3d05-bda32ef479b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xuimenu\Gfx">
+      <UniqueIdentifier>{20704e45-8225-996f-148d-ea903515ff5b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="A&amp;B.cpp"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClCompile>
+    <ClCompile Include="Block.cpp"><Filter>Blocks\Base</Filter></ClCompile>
+    <ClCompile Include="Debug.cpp"><Filter>Debug</Filter></ClCompile>
+    <ClCompile Include="Fluid.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="GuiMainMenu.cpp"><Filter>Gui</Filter></ClCompile>
+    <ClCompile Include="LiquidBlock.cpp"><Filter>Blocks\Liquid</Filter></ClCompile>
+    <ClCompile Include="Many.dots.here.cpp"><Filter>Game (misc)</Filter></ClCompile>
+    <ClCompile Include="Zed.cpp"><Filter>Zed</Filter></ClCompile>
+    <ClCompile Include="stdafx.cpp"><Filter>Runtime</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Gfx\Draw.cpp"><Filter>xuimenu\Gfx</Filter></ClCompile>
+    <ClCompile Include="xuimenu\Ui.cpp"><Filter>xuimenu</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="A&amp;B.h"><Filter>Amp &amp; &lt;Co&gt;</Filter></ClInclude>
+    <ClInclude Include="Block.h"><Filter>Blocks\Base</Filter></ClInclude>
+    <ClInclude Include="Debug.h"><Filter>Debug</Filter></ClInclude>
+    <ClInclude Include="Fluid.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="GuiMainMenu.h"><Filter>Gui</Filter></ClInclude>
+    <ClInclude Include="KernelConfig.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="LiquidBlock.h"><Filter>Blocks\Liquid</Filter></ClInclude>
+    <ClInclude Include="Many.dots.here.h"><Filter>Game (misc)</Filter></ClInclude>
+    <ClInclude Include="stdafx.h"><Filter>Runtime</Filter></ClInclude>
+    <ClInclude Include="xuimenu\Ui.h"><Filter>xuimenu</Filter></ClInclude>
+    <ClInclude Include="xuimenu\stdafx.h"><Filter>xuimenu</Filter></ClInclude>
+  </ItemGroup>
+</Project>
+
+  --

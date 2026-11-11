@@ -1,6 +1,4 @@
-# The remaining file-format readers of formats.dll (the executable-format readers -- pe, ne, le, dos, omf, detect -- moved to
-# native/cb/formats, the one implementation, and their questions went with the Python that asked them).
-# formats.dll: a C interface (cbformats.h) loaded by
+# CodeBreaker's file-format readers in C++: formats.dll, a C interface (cbformats.h) loaded by
 # codebreaker/formats/native.py through ctypes.  The readers give the very facts the Python
 # readers of codebreaker/formats/ give; `ctest` checks the library on its own, and
 # native/formats/gate.py checks it against the Python readers over a corpus.
@@ -22,8 +20,21 @@ set(FORMATS_SOURCES
   core/files.cc       # files read by path
   core/uc.cc          # Unicorn, by the DLL Python's unicorn package carries
   core/cs32.cc        # Capstone (x86-32), by the DLL Python's capstone package carries
+  pe/pe.cc            # PE (formats/pe.py)
+  pe/questions.cc
+  ne/ne.cc            # NE, the Windows 1.x boot image (formats/ne.py)
+  ne/questions.cc
+  le/le.cc            # LE and the W3/W4 containers (formats/le.py)
+  le/image.cc         #   an image taken apart and written back
+  le/questions.cc
+  dos/dos.cc          # real-mode programs: MZ, .COM, drivers, IO.SYS, EXEPACK (formats/dos.py)
+  dos/unpack.cc       #   a packed program's unpacker run in the emulator (emulate/unpack.py)
+  dos/questions.cc
+  omf/omf.cc          # OMF-86 objects and libraries (formats/omf.py)
+  omf/questions.cc
   xex/questions.cc    # the Xbox 360 executable's header (formats/xex.py), by native/xex's reader
   core/codecs.cc      # cp437, utf-16-be, utf-8 with replace
+  detect/detect.cc    # what kind of file a file is (formats/detect.py)
   zx/zx.cc            # ZX Spectrum snapshots and tapes (formats/zx.py)
   lzx/lzx.cc          # LZX (LZXD) decoding (formats/lzx.py)
   cab/cab.cc          # Microsoft cabinets: read, decompress, extract, write (formats/cab.py)

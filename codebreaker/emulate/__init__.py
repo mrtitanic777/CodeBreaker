@@ -21,7 +21,7 @@ what other tools read; `record(raw)` beside it makes the Run.
 The three x86 runners are one engine (unicorn) with one set of memory hooks (what was read and
 written, pages given on demand, runaway runs cut off); they differ in how the code is laid out and
 entered, which is what a kind is. Their hooks, and the path explorer's shadow, run in C++
-(native/tracer's cbtrace.dll: native_trace.py, native_win16.py, native_driver.py, native_shadow.py;
+(native/cb/emulate/tracer's cbtrace.dll: native_trace.py, native_win16.py, native_driver.py, native_shadow.py;
 docs/NATIVE.md). PowerPC is
 a processor unicorn does not run usefully in this mode, so powerpc.py is an interpreter of its
 own, written to give the same record.

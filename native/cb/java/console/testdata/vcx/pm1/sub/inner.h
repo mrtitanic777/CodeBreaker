@@ -1,0 +1,1 @@
+class Inner : public Z {};

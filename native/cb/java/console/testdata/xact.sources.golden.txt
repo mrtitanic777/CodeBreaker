@@ -1,0 +1,62 @@
+needed:
+  dig_grass <- dig.grass
+  dig_stone <- dig.stone
+  mob_pig <- mob.pig
+  random_bow <- random bow
+  random_click <- random.click
+  random_door_close <- random.door.close
+  step_grass <- step.grass, step.grass
+  step_stone <- step.stone
+coverage authored=['dig_stone', 'random_click', 'step_grass', 'step_stone', 'tail', 'unused_one'] missing=['dig_grass', 'mob_pig', 'random_bow', 'random_door_close'] unused=['tail', 'unused_one']
+# AUDIO_COVERAGE.md -- XACT cue coverage
+
+Cues the game plays vs cues authored in the bank. A **MISSING** cue means the game calls it but the bank has no such entry -> XACT GetCueIndex fails -> the sound silently no-ops.
+
+- needed: 8   authored: 6   **MISSING: 4**   unused-in-bank: 2
+
+## MISSING cues -- author these into the bank (or the sound is silent)
+
+| Cue | Triggered by |
+|---|---|
+| `dig_grass` | dig.grass |
+| `mob_pig` | mob.pig |
+| `random_bow` | random bow |
+| `random_door_close` | random.door.close |
+
+
+ogg_keys:
+  newsound/step/grass1.ogg -> ['step/grass']
+  random/door_close.ogg -> ['random/door/close', 'random/door_close']
+  Sound/x.ogg -> ['Sound/x']
+  sound/a_b/c_d2.ogg -> ['a/b/c/d', 'a_b/c_d']
+  streaming/x9.OGG -> ['x']
+  music.ogg -> []
+  sound.ogg -> []
+  plain -> ['plain']
+  a/b/c12 -> ['a/b/c']
+  x_.ogg -> ['x/', 'x_']
+  _a.ogg -> ['/a', '_a']
+  resources/z.ogg -> ['z']
+  newsound/newsound/q1.ogg -> ['newsound/q']
+  12.ogg -> []
+index:
+  calm -> ['music/calm1.ogg', 'music/calm3.ogg']
+  mob/pig -> ['newsound/mob/pig1.ogg', 'newsound/mob/pig2.ogg']
+  random/click -> ['newsound/random/click.ogg']
+  random/door/close -> ['newsound/random/door_close.ogg']
+  random/door_close -> ['newsound/random/door_close.ogg']
+  random/explode -> ['sound/random/explode.ogg']
+  readme -> ['readme.OGG']
+  step/grass -> ['newsound/step/grass1.ogg', 'newsound/step/grass2.ogg', 'newsound/step/grass3.ogg']
+  step/stone -> ['newsound/step/stone1.ogg']
+matched:
+  dig_grass event=dig.grass files=['newsound/step/grass1.ogg', 'newsound/step/grass2.ogg', 'newsound/step/grass3.ogg']
+  dig_stone event=dig.stone files=['newsound/step/stone1.ogg']
+  mob_pig event=mob.pig files=['newsound/mob/pig1.ogg', 'newsound/mob/pig2.ogg']
+  random_click event=random.click files=['newsound/random/click.ogg']
+  random_door_close event=random.door.close files=['newsound/random/door_close.ogg']
+  step_grass event=step.grass files=['newsound/step/grass1.ogg', 'newsound/step/grass2.ogg', 'newsound/step/grass3.ogg']
+  step_stone event=step.stone files=['newsound/step/stone1.ogg']
+missing:
+  random_bow <- ['random bow']
+index_keys=9

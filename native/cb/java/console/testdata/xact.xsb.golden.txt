@@ -1,0 +1,14 @@
+xsb sounds.xsb magic=KBDS name='sounds' cues=['random_click', 'step_grass', 'step_grass 2', 'dig_stone', 'step_stone', 'unused_one', 'tail']
+SoundBank "sounds"  (KBDS)  7 cues
+  cue: random_click
+  cue: step_grass
+  cue: step_grass 2
+  cue: dig_stone
+  cue: step_stone
+  cue: unused_one
+  cue: tail
+xsb pc.xsb magic=SDBK name='only_name' cues=['cue_a']
+SoundBank "only_name"  (SDBK)  1 cues
+  cue: cue_a
+xsb empty.xsb magic=KBDS name='' cues=[]
+SoundBank ""  (KBDS)  0 cues

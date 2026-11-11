@@ -93,19 +93,17 @@ target_link_libraries(cb_verify PUBLIC cb_core)
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core)
 
+# (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
-target_link_libraries(cb_java PUBLIC cb_core)
+target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
-file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims_test.cpp")
+file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp")
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
 target_link_libraries(cb_decompile PUBLIC cb_core)
-
-cb_area(port)
-target_link_libraries(cb_port PUBLIC cb_core cb_base)
 
 cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core)
@@ -113,8 +111,60 @@ target_link_libraries(cb_analyze PUBLIC cb_core)
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core)
 
+cb_area(compare)
+target_link_libraries(cb_compare PUBLIC cb_core)
+cb_area(emulate)
+target_link_libraries(cb_emulate PUBLIC cb_core)
+
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
+
+cb_area(recompile)
+target_link_libraries(cb_recompile PUBLIC cb_core cb_platforms cb_formats)
+# the shims at the old header paths are tested too: their test file includes the old layer, so it builds at /W3
+set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+
+# The recompiler's own pieces (builders, disassembler, the title project) and the source writers (placement, assembly,
+# the NE assembly tools).
+cb_area(source)
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats)
+
+
+# The compiler models of native/invert that cb::invert::early_c wraps (the MC 2.03 / 3.00 register tracker and its text
+# passes, flow16's control-flow graph, Capstone by the DLL's path), compiled as they are: C++17, their own flags. They
+# use the string/regex helpers of native/l2/src (pyre, pystr, value). They move into cb with the rest of native/invert.
+set(CB_INVERT_MODEL_DIR "${CB_NATIVE_ROOT}/invert")
+add_library(cb_invert_model STATIC
+  "${CB_INVERT_MODEL_DIR}/early_c.cc" "${CB_INVERT_MODEL_DIR}/early_c_text.cc" "${CB_INVERT_MODEL_DIR}/flow16.cc"
+  "${CB_INVERT_MODEL_DIR}/cs.cc"
+  "${CB_NATIVE_ROOT}/l2/src/pyre.cc" "${CB_NATIVE_ROOT}/l2/src/pystr.cc" "${CB_NATIVE_ROOT}/l2/src/value.cc")
+set_target_properties(cb_invert_model PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+  MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+target_include_directories(cb_invert_model PUBLIC "${CB_INVERT_MODEL_DIR}" "${CB_NATIVE_ROOT}/l2/src")
+target_include_directories(cb_invert_model PRIVATE "${CB_THIRD_PARTY}/include")
+# CB_NO_FASTALLOC: l2/src/pystr.cc would otherwise replace the program's operator new/delete with its own allocator
+# (it breaks AddressSanitizer's, and a library must not change the allocator of the exe it is linked into).
+target_compile_definitions(cb_invert_model PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS CB_NO_FASTALLOC)
+target_compile_options(cb_invert_model PRIVATE /utf-8 /EHsc /O2 /W3 /bigobj)
+if(CB_ASAN)
+  target_compile_options(cb_invert_model PRIVATE /fsanitize=address /Zi)
+endif()
+
+cb_area(invert)
+target_link_libraries(cb_invert PUBLIC cb_core cb_formats PRIVATE cb_invert_model)
+# The shims at the old header paths (invert/*.hpp under native/typed/cpp) are tested too; their test includes the old layer, so
+# it builds at /W3 without /WX like the java and compat shim tests.
+file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/invert/shims_test.cpp")
+set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+
+
+cb_area(port)
+target_link_libraries(cb_port PUBLIC cb_core cb_base)
+
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp")
+
+target_link_libraries(cb_shim_check PUBLIC cb_base cb_build cb_port)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -129,11 +179,14 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/pascal_join.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
-target_link_libraries(cb_shim_check PUBLIC cb_base cb_build cb_port)
+target_link_libraries(cb_shim_check PUBLIC cb_base cb_build)
 
 # where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
 # before the copy below (see native/third_party/README.md)
@@ -145,6 +198,17 @@ function(cb_copy_prebuilt_dlls target)
   add_custom_command(TARGET ${target} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CB_PREBUILT_DLLS} "$<TARGET_FILE_DIR:${target}>")
 endfunction()
+
+# ---- cbtrace.dll: the recorder's C interface (emulate/tracer/cbtrace.h), for the callers that still reach it through
+# ctypes or LoadLibrary (the old ports and the dynamic exe). The same sources as cb_emulate's tracer, exported. It is
+# handed engines made by the caller's own Unicorn and so calls that DLL (tracer/libs.hpp use_libraries). Not built
+# under ASan: the sanitizer runtime does not belong in a DLL the Python process loads.
+if(NOT CB_ASAN)
+  file(GLOB CB_TRACER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/emulate/tracer/*.cpp")
+  add_library(cbtrace SHARED ${CB_TRACER_SOURCES})
+  cb_apply_flags(cbtrace)
+  target_link_libraries(cbtrace PRIVATE cb_core)
+endif()
 
 # ---- the test executable: every area's tests, compiled straight into it (a static library would let the
 # linker drop test objects nothing references) -------------------------------------------------------------

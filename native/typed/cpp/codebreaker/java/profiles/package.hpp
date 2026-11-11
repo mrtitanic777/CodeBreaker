@@ -1,28 +1,11 @@
-// codebreaker/java/profiles/package.hpp -- typed C++ port of codebreaker/java/profiles/__init__.py.
+// codebreaker/java/profiles/package.hpp -- SHIM over cb/java/profiles/package.hpp (docs/CPP_DESIGN.md 6.3); deleted
+// with its last py:: consumer.
 //
-// Target profiles -- the seam that keeps the transpiler core game-agnostic.
-//
-// Game- and platform-specific data (class names, package roles, nullable fields/getters, the static-init
-// seed, project-filter rules) lives in a *profile* rather than being hardcoded in the core logic modules.
-// The core reads it through active(); swapping the active profile retargets the tool. The default is
-// `generic` (empty defaults); a project's profiles register when it loads (java/projects).
-//
-// NOTE: this is distinct from the repo-root ``profiles/`` directory, which holds per-conversion TYPE
-// override configs (e.g. ``alpha.json``). This package is the built-in TARGET-profile registry.
-//
-// Typing notes:
-//   * Profile is the Python class: a bag of fields, every one empty by default. The constructor takes the
-//     Python's keyword arguments as std::optional (nullopt = not given) in the Python's order, and copies
-//     each (list(x or []), dict(...), set(...)) as the Python does.
-//   * The registry holds shared Profile objects (the Python registers the object itself: a field changed
-//     on it later -- minecraft's heavy_types_high -- shows in every reader). register_/get/active/use hand
-//     back std::shared_ptr<Profile>.
-//   * A profile's `heavy_types` is a tuple (a list<str> here), `unsigned_byte_scalar_fields` a set of the
-//     strings the Python puts in it.
-//   * on_change(fn): fn is `std::function<void(const Profile&)>`; it is returned for decorator-style use
-//     (the Python returns fn). use() calls every one in registration order.
-//   * get(name) of an unknown name asks the project layer (projects::for_profile) to load the project that
-//     registers it, then KeyError if it is still unknown. `register` and `names` are register_ / names.
+// The old ports reach target profiles through a process-wide registry: they register one Profile *object* and read
+// (and, for heavy_types_high, change) that same object later. The new tree has no such registry -- a ProfileSet is an
+// ordinary object holding values -- so the registry itself, with its active profile and its change observers, stays
+// here as the legacy shape the old consumers still depend on. The Profile data type is the new module's
+// (`from_cb` converts one into the old record); everything that decides what a profile contains is new code.
 #pragma once
 
 #include <functional>
@@ -30,74 +13,118 @@
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/java/profiles/package.hpp"
+#include "codebreaker/java/projects/package.hpp"
 #include "py.hpp"
 
 namespace codebreaker::java::profiles {
 
-// A bag of target-specific data. Every field defaults to empty, so the generic core behaves
-// game-agnostically until a profile supplies real data.
+// A bag of target-specific data. Every field defaults to empty.
 struct Profile {
     py::str name;
     py::list<py::str> static_init_order;
     py::dict<py::str, py::str> package_roles;
-    py::list<py::str> heavy_types;                                // a tuple of names
+    py::list<py::str> heavy_types;
     py::list<std::tuple<py::str, py::str>> vcxproj_filters;       // (basename regex, filter path)
-    // Anchored regex (string) matching class BASENAMES that are DEAD on this target -- external desktop/GUI
-    // types (java.awt / javax.swing / java.applet, org.w3c.dom) that cannot function on the console. The
-    // pipeline drops any dead type that is ALSO unreferenced (reachability is the safety net). Precise by
-    // design: explicit class names, never `\w*Listener`-style wildcards that would sweep in real game types.
-    // None -> the profile prunes nothing.
-    std::optional<py::str> dead_types;
-    // Anchored regex (string) matching class BASENAMES of OPTIONAL platform SUBSYSTEMS -- self-contained 360
-    // backend bundles (audio, networking, ...) that only matter if the game actually uses them. Pruned by the
-    // SAME reachability pass as dead_types. None -> nothing optional to prune.
-    std::optional<py::str> optional_types;
+    std::optional<py::str> dead_types;                            // anchored regex, or None
+    std::optional<py::str> optional_types;                        // anchored regex, or None
     py::set<py::str> nullable;
     py::set<py::str> nullable_fields;
     py::set<py::str> nullable_getters;
     py::dict<py::str, py::str> nullable_getter_return_type;
     py::set<py::str> unsigned_byte_scalar_fields;
     py::set<py::str> default_value_types;
-    // heavy types whose by-value copy is a HIGH finding (an MB-scale buffer), not MED
     py::list<py::str> heavy_types_high;                           // () by default
-
-    Profile() = default;
-    explicit Profile(const py::str& name_,
-                     const std::optional<py::list<py::str>>& static_init_order_ = std::nullopt,
-                     const std::optional<py::dict<py::str, py::str>>& package_roles_ = std::nullopt,
-                     const std::optional<py::list<py::str>>& heavy_types_ = std::nullopt,
-                     const std::optional<py::list<std::tuple<py::str, py::str>>>& vcxproj_filters_ = std::nullopt,
-                     const std::optional<py::set<py::str>>& nullable_ = std::nullopt,
-                     const std::optional<py::set<py::str>>& nullable_fields_ = std::nullopt,
-                     const std::optional<py::set<py::str>>& nullable_getters_ = std::nullopt,
-                     const std::optional<py::dict<py::str, py::str>>& nullable_getter_return_type_ = std::nullopt,
-                     const std::optional<py::set<py::str>>& unsigned_byte_scalar_fields_ = std::nullopt,
-                     const std::optional<py::set<py::str>>& default_value_types_ = std::nullopt,
-                     const std::optional<py::str>& dead_types_ = std::nullopt,
-                     const std::optional<py::str>& optional_types_ = std::nullopt);
 };
 
-// Register a callback invoked as fn(profile) every time the active profile changes (and it is the caller's
-// job to call it once for the current profile if they need an immediate seed). Returns `fn`.
-using Observer = std::function<void(const Profile&)>;
-Observer on_change(const Observer& fn);
+// The old record of a new-tree profile. (unsigned_byte_scalar_fields were (ClassName, fieldName) pairs; the old
+// record holds one string per pair, "Class.field".)
+inline Profile from_cb(const cb::java::profiles::Profile& p) {
+    namespace cc = cb::compat;
+    Profile o;
+    o.name = cc::to_py(p.name);
+    o.static_init_order = cc::to_py(p.static_init_order);
+    o.package_roles = cc::to_py(p.package_roles);
+    o.heavy_types = cc::to_py(p.heavy_types);
+    for (const auto& f : p.vcxproj_filters) o.vcxproj_filters.append(std::make_tuple(cc::to_py(f.pattern), cc::to_py(f.folder)));
+    o.dead_types = cc::to_py(p.dead_types);
+    o.optional_types = cc::to_py(p.optional_types);
+    o.nullable = cc::to_py(p.type.nullable);
+    o.nullable_fields = cc::to_py(p.type.nullable_fields);
+    o.nullable_getters = cc::to_py(p.type.nullable_getters);
+    o.nullable_getter_return_type = cc::to_py(p.type.nullable_getter_return_type);
+    for (const auto& cf : p.type.unsigned_byte_scalar_fields) o.unsigned_byte_scalar_fields.add(cc::to_py(cf.first + "." + cf.second));
+    o.default_value_types = cc::to_py(p.type.default_value_types);
+    o.heavy_types_high = cc::to_py(p.heavy_types_high);
+    return o;
+}
 
-std::shared_ptr<Profile> register_(const std::shared_ptr<Profile>& profile);
-std::shared_ptr<Profile> register_(const Profile& profile);   // (a copy of it is what is registered)
+namespace shim_ {
+// _REGISTRY, _ON_CHANGE, GENERIC and _active of the Python module, made when first asked for.
+struct State {
+    py::dict<py::str, std::shared_ptr<Profile>> registry;
+    std::vector<std::function<void(const Profile&)>> on_change;
+    std::shared_ptr<Profile> generic;
+    std::shared_ptr<Profile> active;
+};
+inline State& state() {
+    static State* s = [] {
+        auto* st = new State();
+        st->generic = std::make_shared<Profile>();
+        st->generic->name = py::str("generic");
+        st->registry.set(st->generic->name, st->generic);
+        st->active = st->generic;
+        return st;
+    }();
+    return *s;
+}
+}  // namespace shim_
+
+// Register a callback invoked as fn(profile) every time the active profile changes. Returns `fn`.
+using Observer = std::function<void(const Profile&)>;
+inline Observer on_change(const Observer& fn) {
+    shim_::state().on_change.push_back(fn);
+    return fn;
+}
+
+inline std::shared_ptr<Profile> register_(const std::shared_ptr<Profile>& profile) {
+    shim_::state().registry.set(profile->name, profile);
+    return profile;
+}
+inline std::shared_ptr<Profile> register_(const Profile& profile) { return register_(std::make_shared<Profile>(profile)); }
 
 // KeyError for an unknown name (after asking the project layer to load the project that registers it).
-std::shared_ptr<Profile> get(const py::str& name);
+inline std::shared_ptr<Profile> get(const py::str& name) {
+    auto& s = shim_::state();
+    if (!s.registry.contains(name)) projects::for_profile(name);
+    if (!s.registry.contains(name)) throw py::KeyError(py::repr(name).utf8());
+    return s.registry.at(name);
+}
+
 // the names of every registered profile, sorted
-py::list<py::str> names();
+inline py::list<py::str> names() {
+    py::list<py::str> out;
+    for (const py::str& n : py::sorted(shim_::state().registry.keys())) out.append(n);
+    return out;
+}
 
 // The empty, game-agnostic baseline.
-const std::shared_ptr<Profile>& GENERIC();
+inline const std::shared_ptr<Profile>& GENERIC() { return shim_::state().generic; }
 
 // The currently-active target profile.
-std::shared_ptr<Profile> active();
+inline std::shared_ptr<Profile> active() { return shim_::state().active; }
 
-// Switch the active target profile by name; returns it. Fires every on_change observer so the core modules
-// re-derive their frozen profile globals from the new profile.
-std::shared_ptr<Profile> use(const py::str& name);
+// Switch the active target profile by name; returns it. Fires every on_change observer.
+inline std::shared_ptr<Profile> use(const py::str& name) {
+    auto& s = shim_::state();
+    s.active = get(name);
+    // (an observer may register another: the loop sees it, so the bound is re-read)
+    for (size_t i = 0; i < s.on_change.size(); i++) {
+        Observer fn = s.on_change[i];
+        fn(*s.active);
+    }
+    return s.active;
+}
 
 }  // namespace codebreaker::java::profiles

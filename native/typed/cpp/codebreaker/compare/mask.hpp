@@ -1,51 +1,129 @@
-// codebreaker/compare/mask.hpp -- typed C++ port of codebreaker.compare.mask.
+// codebreaker/compare/mask.hpp -- SHIM over cb/compare/mask.hpp (docs/CPP_DESIGN.md 6.3): the old types in, the new
+// functions called, the old types out. No logic; deleted with its last py:: consumer.
+//
+// Old callers hold a mask as py::bytes (byte flags) or py::list<int64_t> (flags, or the bits left out of each word).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <tuple>
 #include <variant>
+#include <vector>
 
-#include "py.hpp"
+#include "cb/compare/mask.hpp"
+#include "cb/compat/py_bridge.hpp"
 
 namespace codebreaker::compare::mask {
 
-// A mask comes in one of two forms. For code read a byte at a time it says, byte by byte, whether
-// the byte is left out: a sequence of flags, any non-zero value meaning left out (py::bytes holds
-// `of`'s bytearray; a py::list<int64_t> holds any other flag sequence). For code made of
-// fixed-size words it says, word by word, which bits of the word are left out
-// (py::list<int64_t>). Python's "sequence of whatever" is this variant; None is std::nullopt.
 using Mask = std::variant<py::bytes, py::list<int64_t>>;
 using MaybeMask = std::optional<Mask>;
 
-// A byte mask `size` long that leaves out every offset in `offsets` (those outside it ignored).
-py::bytearray of(const py::list<int64_t>& offsets, int64_t size);
-py::bytearray of(const py::set<int64_t>& offsets, int64_t size);
+namespace shim {
+// A mask as byte flags (a list's items: non-zero is left out).
+inline cb::Bytes flags(const MaybeMask& m) {
+    cb::Bytes out;
+    if (!m) return out;
+    if (const py::bytes* b = std::get_if<py::bytes>(&*m)) return cb::compat::from_py(*b);
+    for (int64_t v : std::get<py::list<int64_t>>(*m)) out.push_back(v != 0 ? 1 : 0);
+    return out;
+}
+// A mask as the bits left out of each word.
+inline std::vector<std::uint64_t> bits(const MaybeMask& m) {
+    std::vector<std::uint64_t> out;
+    if (!m) return out;
+    if (const py::bytes* b = std::get_if<py::bytes>(&*m)) {
+        for (unsigned char c : b->raw()) out.push_back(c);
+    } else {
+        for (int64_t v : std::get<py::list<int64_t>>(*m)) out.push_back(static_cast<std::uint64_t>(v));
+    }
+    return out;
+}
+inline std::vector<std::uint64_t> words(const py::list<int64_t>& l) {
+    std::vector<std::uint64_t> w;
+    for (int64_t v : l) w.push_back(static_cast<std::uint64_t>(v));
+    return w;
+}
+template <class Container>
+std::vector<std::int64_t> offsets(const Container& c) {
+    std::vector<std::int64_t> out;
+    for (int64_t v : c) out.push_back(v);
+    return out;
+}
+inline py::bytearray array(const cb::Bytes& b) { return py::bytearray(cb::compat::to_py(cb::ByteView(b))); }
+inline std::vector<cb::Bytes> held(const py::list<MaybeMask>& masks) {
+    std::vector<cb::Bytes> out;
+    for (const MaybeMask& m : masks) out.push_back(flags(m));
+    return out;
+}
+inline std::vector<cb::compare::mask::ByteMask> views(const std::vector<cb::Bytes>& held) {
+    std::vector<cb::compare::mask::ByteMask> out;
+    for (const cb::Bytes& b : held) out.emplace_back(b);
+    return out;
+}
+}  // namespace shim
 
-// `code` with the bytes at `offsets` set to zero: what is left to compare, or to digest.
-py::bytes blank(const py::bytes& code, py::list<int64_t> offsets);
-py::bytes blank(const py::bytes& code, const py::set<int64_t>& offsets);
+inline py::bytearray of(const py::list<int64_t>& offsets, int64_t size) {
+    if (size < 0) throw py::ValueError("negative count");   // bytearray(size)
+    return shim::array(cb::compare::mask::of(shim::offsets(offsets), static_cast<std::size_t>(size)));
+}
+inline py::bytearray of(const py::set<int64_t>& offsets, int64_t size) {
+    if (size < 0) throw py::ValueError("negative count");   // bytearray(size)
+    return shim::array(cb::compare::mask::of(shim::offsets(offsets), static_cast<std::size_t>(size)));
+}
+inline py::bytes blank(const py::bytes& code, py::list<int64_t> offsets) {
+    return cb::compat::to_py(cb::ByteView(cb::compare::mask::blank(cb::compat::from_py(code), shim::offsets(offsets))));
+}
+inline py::bytes blank(const py::bytes& code, const py::set<int64_t>& offsets) {
+    return cb::compat::to_py(cb::ByteView(cb::compare::mask::blank(cb::compat::from_py(code), shim::offsets(offsets))));
+}
 
-// Whether `a` and `b` are as long as each other and the same at every byte no mask leaves out.
-bool same(const py::bytes& a, const py::bytes& b, const py::list<MaybeMask>& masks);
+inline bool same(const py::bytes& a, const py::bytes& b, const py::list<MaybeMask>& masks) {
+    auto held = shim::held(masks);
+    return cb::compare::mask::same(cb::compat::from_py(a), cb::compat::from_py(b), shim::views(held));
+}
 
-// The offsets (up to the shorter one's length) where `a` and `b` differ and no mask leaves the
-// byte out.
-py::list<int64_t> differing(const py::bytes& a, const py::bytes& b, const py::list<MaybeMask>& masks);
+inline py::list<int64_t> differing(const py::bytes& a, const py::bytes& b, const py::list<MaybeMask>& masks) {
+    auto held = shim::held(masks);
+    py::list<int64_t> out;
+    for (std::size_t i : cb::compare::mask::differing(cb::compat::from_py(a), cb::compat::from_py(b), shim::views(held))) {
+        out.append(static_cast<int64_t>(i));
+    }
+    return out;
+}
 
-// Whether two runs of words are the same outside the bits `ignore` leaves out of each word.
-bool same_words(const py::list<int64_t>& a, const py::list<int64_t>& b, const py::list<int64_t>& ignore);
+inline bool same_words(const py::list<int64_t>& a, const py::list<int64_t>& b, const py::list<int64_t>& ignore) {
+    return cb::compare::mask::same_words(shim::words(a), shim::words(b), shim::words(ignore));
+}
 
-// How far `a` is from `b`, unit by unit (a byte, or a word of `unit` bytes), outside what the
-// masks leave out: for bytes, ma[i] / mb[i] say whether byte i is left out (a relocated address,
-// a call's distance); for words, they are the bits of word i that are left out. When the lengths
-// differ the whole tail counts as differing, so a longer or shorter piece is always farther than
-// one of the right length.
-// -> (verdict, units that differ, units compared, the first that differs or -1)
-std::tuple<py::str, int64_t, int64_t, int64_t> distance(const py::bytes& a, const py::bytes& b,
-                                                        const MaybeMask& ma = std::nullopt,
-                                                        const MaybeMask& mb = std::nullopt,
-                                                        int64_t unit = 1,
-                                                        const py::str& byteorder = py::str("little"));
+inline std::tuple<py::str, int64_t, int64_t, int64_t> distance(const py::bytes& a, const py::bytes& b,
+                                                               const MaybeMask& ma = std::nullopt,
+                                                               const MaybeMask& mb = std::nullopt, int64_t unit = 1,
+                                                               const py::str& byteorder = py::str("little")) {
+    namespace m = cb::compare::mask;
+    cb::Bytes ba = cb::compat::from_py(a), bb = cb::compat::from_py(b);
+    m::DistanceResult r;
+    if (unit == 1) {
+        cb::Bytes fa = shim::flags(ma), fb = shim::flags(mb);
+        r = m::distance(ba, bb, fa, fb);
+    } else {
+        // (the Python's stringly arguments: its errors come where int.from_bytes and the shifts raised them)
+        if (unit == 0) throw py::ZeroDivisionError("integer division or modulo by zero");
+        if (unit < 0) throw py::ValueError("negative shift count");
+        const bool known_order = byteorder == py::str("little") || byteorder == py::str("big");
+        if (!known_order && static_cast<int64_t>(std::min(ba.size(), bb.size())) / unit > 0) {
+            throw py::ValueError("byteorder must be either 'little' or 'big'");
+        }
+        auto wa = shim::bits(ma), wb = shim::bits(mb);
+        try {
+            r = m::distance_words(ba, bb, static_cast<std::size_t>(unit),
+                                  byteorder == py::str("big") ? m::ByteOrder::Big : m::ByteOrder::Little, wa, wb);
+        } catch (const cb::UsageError& e) {
+            throw py::ValueError(e.what());
+        }
+    }
+    return {py::str(std::string(m::to_text(r.verdict))), static_cast<int64_t>(r.differing),
+            static_cast<int64_t>(r.compared), r.first ? static_cast<int64_t>(*r.first) : -1};
+}
 
 }  // namespace codebreaker::compare::mask

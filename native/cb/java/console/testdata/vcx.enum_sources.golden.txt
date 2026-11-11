@@ -1,0 +1,9 @@
+enum es1
+  cpps=a.cpp|sub\d.cpp|sub\deeper\f.cpp
+  hs=c.h|sub\deeper\more\g.h|sub\e.h
+enum es_empty
+  cpps=
+  hs=
+enum nonexistent
+  cpps=
+  hs=
