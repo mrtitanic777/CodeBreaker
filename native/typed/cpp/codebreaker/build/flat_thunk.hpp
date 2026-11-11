@@ -26,8 +26,7 @@
 //     build::watcom::ow_tool("wcc386") / ow_tool("wlink") (platforms/win32.py names exactly those).
 //   * Python's `subprocess.run(..., env=, timeout=)`: the runtime's has no env or timeout; the environment is set for
 //     the run and put back (see EnvScope in the .cpp), timeouts are not applied.
-//   * The set of public symbols omf.publics returns is iterated in insertion order here (CPython's is hash order,
-//     which differs from run to run).
+//   * The set of public symbols omf.publics returns is walked in sorted order (as the Python does).
 #pragma once
 
 #include <cstdint>
