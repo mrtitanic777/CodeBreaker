@@ -92,6 +92,9 @@ private:
     std::vector<std::pair<std::string, int>> names_;
     Match run(const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance = false) const;
     bool run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance) const;
+#ifdef CB_RE_PROF
+    bool run_into_(Match& out, const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance) const;
+#endif
     friend struct Parser;
 };
 

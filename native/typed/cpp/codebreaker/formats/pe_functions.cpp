@@ -2,8 +2,6 @@
 
 #include "codebreaker/formats/pe_functions.hpp"
 
-#include <windows.h>
-
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -16,71 +14,24 @@
 #include <capstone/capstone.h>
 
 #include "codebreaker/base/corpus.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
+#include "codebreaker/platforms/package.hpp"
 #include "py_settings.hpp"
 
 namespace codebreaker::formats::pe_functions {
 
 namespace {
 
-// ---- the Capstone DLL ------------------------------------------------------------------------------------------------
-struct CsLib {
-    HMODULE module = nullptr;
-    decltype(&cs_open) open = nullptr;
-    decltype(&cs_option) option = nullptr;
-    decltype(&cs_disasm) disasm = nullptr;
-    decltype(&cs_free) free_ = nullptr;
-};
-
-std::wstring& dll_path() {
-    static std::wstring p;
-    return p;
-}
-
-template <class F> F sym_(HMODULE m, const char* name) {
-    FARPROC p = GetProcAddress(m, name);
-    if (!p) throw py::ImportError(std::string("capstone.dll has no ") + name);
-    return reinterpret_cast<F>(p);
-}
-
-CsLib& lib_ready() {
-    static CsLib lib;
-    static std::mutex m;
-    if (lib.module) return lib;
-    std::lock_guard<std::mutex> hold(m);
-    if (lib.module) return lib;
-    if (dll_path().empty()) throw py::ImportError("capstone: no DLL given (set_capstone_dll)");
-    HMODULE h = LoadLibraryW(dll_path().c_str());
-    if (!h) throw py::ImportError("capstone: cannot load the DLL");
-    lib.open = sym_<decltype(&cs_open)>(h, "cs_open");
-    lib.option = sym_<decltype(&cs_option)>(h, "cs_option");
-    lib.disasm = sym_<decltype(&cs_disasm)>(h, "cs_disasm");
-    lib.free_ = sym_<decltype(&cs_free)>(h, "cs_free");
-    lib.module = h;
-    return lib;
-}
-
-// a 32-bit x86 handle per thread, with or without detail (platforms.decoder(32, detail=...))
-csh handle_(bool detail) {
-    CsLib& lib = lib_ready();
-    thread_local csh held[2] = {0, 0};
-    csh& h = held[detail ? 1 : 0];
-    if (h) return h;
-    if (lib.open(CS_ARCH_X86, CS_MODE_32, &h) != CS_ERR_OK) throw py::RuntimeError("capstone: cs_open failed");
-    lib.option(h, CS_OPT_DETAIL, detail ? CS_OPT_ON : CS_OPT_OFF);
-    return h;
-}
-
-// md.disasm(data, address, count) as the raw array Capstone fills (the caller frees it)
+// ---- the decoder: platforms::decoder(32, "x86", detail) ------------------------------------------------------------------
+// md.disasm(data, address, count) as the raw array Capstone fills (freed with the run)
 struct Run {
+    std::shared_ptr<platforms::Decoder> md;
     cs_insn* insn = nullptr;
     size_t n = 0;
-    Run(const uint8_t* p, size_t size, int64_t address, size_t count, bool detail) {
-        CsLib& lib = lib_ready();
-        n = lib.disasm(handle_(detail), p, size, static_cast<uint64_t>(address), count, &insn);
+    Run(const uint8_t* p, size_t size, int64_t address, size_t count, bool detail) : md(platforms::decoder(32, py::str("x86"), detail)) {
+        insn = md->raw(p, size, address, count, n);
     }
-    ~Run() {
-        if (n) lib_ready().free_(insn, n);
-    }
+    ~Run() { md->release(insn, n); }
     Run(const Run&) = delete;
     Run& operator=(const Run&) = delete;
 };
@@ -93,6 +44,11 @@ Instruction make_instruction(const cs_insn& c) {
     out.op_str = py::str(std::string(c.op_str));
     if (c.detail) {
         const cs_x86& x = c.detail->x86;
+        out.disp = x.disp;
+        out.disp_size = x.encoding.disp_size;
+        out.disp_offset = x.encoding.disp_offset;
+        out.imm_size = x.encoding.imm_size;
+        out.imm_offset = x.encoding.imm_offset;
         for (int k = 0; k < x.op_count; ++k) {
             const cs_x86_op& o = x.operands[k];
             Operand op;
@@ -256,13 +212,7 @@ py::dict<int64_t, py::str> exports_of(const pe::PEFile& pe) {
 
 }  // namespace
 
-void set_capstone_dll(const py::str& path) {
-    std::string u = path.utf8();
-    int n = MultiByteToWideChar(CP_UTF8, 0, u.data(), static_cast<int>(u.size()), nullptr, 0);
-    std::wstring w(static_cast<size_t>(n), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, u.data(), static_cast<int>(u.size()), &w[0], n);
-    dll_path() = w;
-}
+void set_capstone_dll(const py::str& path) { emulate::capstone_x86::load_capstone(path); }
 
 // ---- _Insns --------------------------------------------------------------------------------------------------------------
 Insns::Insns(const PeCarve* carve, const std::vector<int64_t>& addresses) : carve_(carve) {

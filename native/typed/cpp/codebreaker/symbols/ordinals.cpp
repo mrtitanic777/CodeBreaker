@@ -9,6 +9,7 @@
 #include "codebreaker/engine/facts.hpp"
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
@@ -161,7 +162,12 @@ const Names& _from_corpus(const py::str& stem) {
 
 Names _from_file(const py::str& stem) {
     knowledge::reads::record(py::str("windows"), py::str("ordinal_names"), stem);
-    if (!_shipped) _shipped = api_arguments::_knowledge_table(py::str("windows"), py::str("ordinal_names"));   // ordinal_names.json, as the knowledge base has it
+    if (!_shipped) {                                                                                  // ordinal_names.json, as the knowledge base has it
+        py::dict<py::str, Json> rows;
+        for (const auto& kv : knowledge::_table(py::str("windows"), py::str("ordinal_names")).items())
+            if (std::holds_alternative<Json>(std::get<1>(kv))) rows.set(std::get<0>(kv), std::get<Json>(std::get<1>(kv)));
+        _shipped = rows;
+    }
     py::dict<int64_t, py::str> names;
     py::str from;
     if (_shipped->contains(stem) && _shipped->at(stem).kind == Json::Dict) {

@@ -15,8 +15,8 @@ struct Instruction {
 };
 
 // md.disasm(code, address): the instructions in `code` taken to start at `address`.
-// There is no C++ port of codebreaker.platforms yet (the Python main() gets its decoder from
-// platforms.decoder(32, arch="ppc")), so main() takes that PowerPC decoder as a parameter.
+// The Python main() gets its decoder from platforms.decoder(32, arch="ppc"): so does main(paths); main(md, paths) takes
+// another PowerPC decoder (an override).
 using Decoder = std::function<py::list<Instruction>(const py::bytes&, int64_t)>;
 
 // The files main() reads and writes (hard-coded in the script).
@@ -24,6 +24,7 @@ extern const char* const PATCHES_PATH;
 extern const char* const OUTPUT_PATH;
 
 // Dump the xeBuild patch file as MAKEPATCH assembly. The paths default to the script's own.
+void main(const py::str& patches_path = py::str(PATCHES_PATH), const py::str& output_path = py::str(OUTPUT_PATH));
 void main(const Decoder& md, const py::str& patches_path = py::str(PATCHES_PATH),
           const py::str& output_path = py::str(OUTPUT_PATH));
 

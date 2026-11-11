@@ -9,6 +9,7 @@
 #include "codebreaker/base/corpus.hpp"
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/engine/facts.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/knowledge/store.hpp"
@@ -352,26 +353,14 @@ void save_(const py::str& stem, const py::str& name) {
 
 }  // namespace
 
-py::dict<py::str, knowledge::sources::Json> _knowledge_table(const py::str& platform, const py::str& kind) {
-    // knowledge._table(platform, kind): an authored kind is loaded from its file first when the file changed
-    const auto& authored = knowledge::sources::AUTHORED();
-    if (authored.contains(std::make_tuple(platform, kind))) return knowledge::sources::authored(platform, kind);
-    py::dict<py::str, knowledge::sources::Json> out;
-    for (const auto& kv : knowledge::store::open()->table(platform, kind).items()) {
-        const Value& v = std::get<1>(kv);
-        if (std::holds_alternative<Json>(v)) out.set(std::get<0>(kv), std::get<Json>(v));
-    }
-    return out;
-}
-
 std::optional<int64_t> header_bytes(const py::str& name) {
     // Argument bytes for `name` as the Win32 headers declare it, or None when the headers do not settle it (no
     // prototype; variadic; caller-cleans; a wide by-value parameter). Read from win32_arguments.json beside
     // this file (tools/make_api_table.py regenerates it), as the knowledge base has it.
     if (!_TABLE) {
         py::dict<py::str, std::optional<int64_t>> t;
-        for (const auto& kv : _knowledge_table(py::str("win32"), py::str("argument_bytes.header")).items())
-            t.set(std::get<0>(kv), int_of(std::get<1>(kv)));
+        for (const auto& kv : knowledge::_table(py::str("win32"), py::str("argument_bytes.header")).items())
+            t.set(std::get<0>(kv), int_of(std::get<Json>(std::get<1>(kv))));
         _TABLE = t;
     }
     knowledge::reads::record(py::str("win32"), py::str("argument_bytes.header"), name);       // (knowledge/reads.py)

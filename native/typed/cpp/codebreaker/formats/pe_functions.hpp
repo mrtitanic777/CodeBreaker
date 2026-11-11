@@ -67,6 +67,9 @@ struct Instruction {
     int64_t address = 0, size = 0;
     py::str mnemonic, op_str;
     std::vector<Operand> operands;
+    int64_t disp = 0;                                   // CsInsn.disp (the memory operand's displacement)
+    int64_t disp_size = 0, disp_offset = 0;             // CsInsn.disp_size / disp_offset: where the displacement is in the bytes
+    int64_t imm_size = 0, imm_offset = 0;               // CsInsn.imm_size / imm_offset: where the immediate is
 };
 
 // (mnemonic, op_str, size, Capstone's instruction, call target)

@@ -5,7 +5,6 @@
 #include <mutex>
 
 #include "codebreaker/base/corpus.hpp"
-#include "codebreaker/emulate/capstone_x86.hpp"
 #include "codebreaker/formats/pe.hpp"
 #include "codebreaker/formats/xex.hpp"
 #include "codebreaker/platforms/dos.hpp"
@@ -291,68 +290,6 @@ Platform machine(const str& name, const str& title, const str& family, const str
     p.packager.writer = Ref(std::get<0>(writer), std::get<1>(writer));
     p.finish();
     return p;
-}
-
-// ---- the decoder -------------------------------------------------------------------------------------
-py::list<Insn> Decoder::disasm(const py::bytes& code, int64_t address) const {
-    const emulate::capstone_x86::Api& a = emulate::capstone_x86::api();
-    cs_insn* insn = nullptr;
-    std::string raw = code.raw();
-    size_t n = a.disasm(static_cast<csh>(handle), reinterpret_cast<const uint8_t*>(raw.data()), raw.size(),
-                        static_cast<uint64_t>(address), 0, &insn);
-    py::list<Insn> out;
-    for (size_t i = 0; i < n; i++) {
-        Insn x;
-        x.address = static_cast<int64_t>(insn[i].address);
-        x.size = insn[i].size;
-        x.mnemonic = str(std::string(insn[i].mnemonic));
-        x.op_str = str(std::string(insn[i].op_str));
-        x.bytes = py::bytes(std::string(reinterpret_cast<const char*>(insn[i].bytes), insn[i].size));
-        out.append(x);
-    }
-    if (insn) a.free_(insn, n);
-    return out;
-}
-
-std::shared_ptr<Decoder> decoder(int64_t bits, const str& arch, bool detail) {
-    // one per thread and option set; making one is a thousand times dearer than decoding with it
-    thread_local std::map<std::tuple<std::string, int64_t, bool>, std::shared_ptr<Decoder>> held;
-    auto key = std::make_tuple(arch.utf8(), bits, detail);
-    auto it = held.find(key);
-    if (it != held.end()) return it->second;
-    const emulate::capstone_x86::Api& a = emulate::capstone_x86::api();
-    cs_arch ca;
-    int mode;
-    if (arch == str("x86")) {
-        ca = CS_ARCH_X86;
-        if (bits == 16) mode = CS_MODE_16;
-        else if (bits == 32) mode = CS_MODE_32;
-        else if (bits == 64) mode = CS_MODE_64;
-        else throw py::KeyError(std::to_string(bits));
-    } else if (arch == str("ppc")) {
-        ca = CS_ARCH_PPC;
-        if (bits == 32) mode = CS_MODE_32;
-        else if (bits == 64) mode = CS_MODE_64;
-        else throw py::KeyError(std::to_string(bits));
-        mode |= CS_MODE_BIG_ENDIAN;
-    } else {
-        throw py::ValueError("no capstone decoder for " + py::repr(arch).utf8());
-    }
-    csh h = 0;
-    if (a.open(ca, static_cast<cs_mode>(mode), &h) != CS_ERR_OK) throw py::RuntimeError("cs_open failed");
-    a.option(h, CS_OPT_DETAIL, detail ? CS_OPT_ON : CS_OPT_OFF);
-    auto d = std::make_shared<Decoder>();
-    d->arch = arch;
-    d->bits = bits;
-    d->detail = detail;
-    d->handle = static_cast<uintptr_t>(h);
-    held[key] = d;
-    return d;
-}
-
-std::shared_ptr<Decoder> decoder(const Cpu& cpu, bool detail) {
-    if (const auto* c = std::get_if<Cpu::Capstone>(&cpu.decoder)) return decoder(c->bits, c->arch, detail);
-    throw py::ValueError(py::repr(cpu.language).utf8() + " declares no decoder");
 }
 
 // ---- the descriptors ----------------------------------------------------------------------------------

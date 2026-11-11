@@ -1,7 +1,8 @@
 // codebreaker/decompile/describe.cpp -- typed C++ of codebreaker.decompile.describe (see describe.hpp).
 
 #include "codebreaker/decompile/describe.hpp"
-#include "codebreaker/base/capstone_dll.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
+#include "codebreaker/platforms/package.hpp"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -178,65 +179,16 @@ string splitext_root(const string& p) {
     return p;
 }
 
-// ---- the capstone decoder (platforms.decoder(16, ...)) ----------------------------------------------------------
-struct CsLib {
-    HMODULE module = nullptr;
-    decltype(&cs_open) open = nullptr;
-    decltype(&cs_option) option = nullptr;
-    decltype(&cs_disasm) disasm = nullptr;
-    decltype(&cs_free) free_ = nullptr;
-    decltype(&cs_reg_name) reg_name = nullptr;
-    decltype(&cs_regs_access) regs_access = nullptr;
-    csh with_detail = 0, without_detail = 0;
-};
-CsLib& cs_lib() {
-    static CsLib lib;
-    return lib;
-}
-std::wstring& dll_path() {
-    static std::wstring p;
-    return p;
-}
-template <class F> F sym_(HMODULE m, const char* name) {
-    FARPROC p = GetProcAddress(m, name);
-    if (!p) throw py::ImportError(string("capstone.dll has no ") + name);
-    return reinterpret_cast<F>(p);
-}
-std::mutex& cs_mutex() {
-    static std::mutex m;
-    return m;
-}
-CsLib& cs_ready() {
-    CsLib& lib = cs_lib();
-    if (lib.with_detail) return lib;
-    std::lock_guard<std::mutex> hold(cs_mutex());
-    if (lib.with_detail) return lib;
-    if (dll_path().empty()) set_capstone_dll(base::capstone_dll::find());   // (nobody named one: found as `import capstone` would)
-    lib.module = LoadLibraryW(dll_path().c_str());
-    if (!lib.module) throw py::ImportError("capstone: cannot load the DLL");
-    lib.open = sym_<decltype(&cs_open)>(lib.module, "cs_open");
-    lib.option = sym_<decltype(&cs_option)>(lib.module, "cs_option");
-    lib.disasm = sym_<decltype(&cs_disasm)>(lib.module, "cs_disasm");
-    lib.free_ = sym_<decltype(&cs_free)>(lib.module, "cs_free");
-    lib.reg_name = sym_<decltype(&cs_reg_name)>(lib.module, "cs_reg_name");
-    lib.regs_access = sym_<decltype(&cs_regs_access)>(lib.module, "cs_regs_access");
-    csh plain = 0, rich = 0;
-    if (lib.open(CS_ARCH_X86, CS_MODE_16, &plain) != CS_ERR_OK) throw py::RuntimeError("capstone: cs_open failed");
-    if (lib.open(CS_ARCH_X86, CS_MODE_16, &rich) != CS_ERR_OK) throw py::RuntimeError("capstone: cs_open failed");
-    lib.option(rich, CS_OPT_DETAIL, CS_OPT_ON);
-    lib.without_detail = plain;
-    lib.with_detail = rich;
-    return lib;
-}
+// ---- the capstone decoder: platforms.decoder(16, detail=...) ----------------------------------------------------------
+std::shared_ptr<platforms::Decoder> md_(bool detail) { return platforms::decoder(16, py::str("x86"), detail); }
 
 // i.reg_name(id)
 string reg_name_s(int64_t id) {
-    CsLib& lib = cs_ready();
-    const char* s = lib.reg_name(lib.with_detail, static_cast<unsigned>(id));
+    const char* s = md_(true)->reg_name(static_cast<uint32_t>(id));
     return s ? string(s) : string();
 }
 
-Insn make_insn(CsLib& lib, const cs_insn& c, bool detail) {
+Insn make_insn(const platforms::Decoder& md, const cs_insn& c, bool detail) {
     Insn out;
     out.address = c.address;
     out.size = c.size;
@@ -264,26 +216,22 @@ Insn make_insn(CsLib& lib, const cs_insn& c, bool detail) {
         out.op_access.append(o.access);
     }
     for (int k = 0; k < c.detail->groups_count; ++k) out.groups.append(c.detail->groups[k]);
-    uint16_t rd[64], wr[64];
-    uint8_t nrd = 0, nwr = 0;
-    if (lib.regs_access(lib.with_detail, &c, rd, &nrd, wr, &nwr) == CS_ERR_OK) {
+    if (auto access = md.regs_access(c)) {
         out.regs_ok = true;
-        for (int k = 0; k < nrd; ++k) out.regs_read.append(rd[k]);
-        for (int k = 0; k < nwr; ++k) out.regs_write.append(wr[k]);
+        for (uint16_t r : std::get<0>(*access)) out.regs_read.append(r);
+        for (uint16_t r : std::get<1>(*access)) out.regs_write.append(r);
     }
     return out;
 }
 
 // md.disasm(code, address) (count 0: to the end), as a vector; `count` > 0: only that many
 std::vector<Insn> disasm_v(bool detail, const string& code, int64_t address, size_t count = 0) {
-    CsLib& lib = cs_ready();
-    csh h = detail ? lib.with_detail : lib.without_detail;
-    cs_insn* insn = nullptr;
-    size_t n = lib.disasm(h, reinterpret_cast<const uint8_t*>(code.data()), code.size(), static_cast<uint64_t>(address), count, &insn);
+    std::shared_ptr<platforms::Decoder> md = md_(detail);
     std::vector<Insn> out;
-    out.reserve(n);
-    for (size_t k = 0; k < n; ++k) out.push_back(make_insn(lib, insn[k], detail));
-    if (n) lib.free_(insn, n);
+    md->each(code, address, count, [&](const cs_insn& c) {
+        out.push_back(make_insn(*md, c, detail));
+        return true;
+    });
     return out;
 }
 std::vector<Insn> disasm_bytes(bool detail, const py::bytes& code, int64_t address, size_t count = 0) {
@@ -381,19 +329,12 @@ inline int64_t first_size(const Insn& i) { return i.op_size.size() > 0 ? i.op_si
 
 }  // namespace
 
-void set_capstone_dll(const py::str& path) {
-    string u = path.utf8();
-    int n = MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, nullptr, 0);
-    std::wstring w(static_cast<size_t>(n > 0 ? n - 1 : 0), L'\0');
-    if (n > 0) MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, &w[0], n);
-    dll_path() = w;
-    analyze::dos_functions::set_capstone_dll(path);   // (describe_dos goes through it: one DLL for both)
-}
+void set_capstone_dll(const py::str& path) { emulate::capstone_x86::load_capstone(path); }
 
 std::shared_ptr<const Decoder> decoder16(bool detail) {
     static std::shared_ptr<const Decoder> plain = std::make_shared<PlainDecoder>(false);
     static std::shared_ptr<const Decoder> rich = std::make_shared<PlainDecoder>(true);
-    cs_ready();
+    md_(detail);   // (ImportError here, not at the first instruction, when there is no capstone)
     return detail ? rich : plain;
 }
 

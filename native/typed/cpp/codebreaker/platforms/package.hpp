@@ -26,8 +26,10 @@
 //     pairs in field order; repr(slot) is the Python repr text.
 //   * Platform.readable() runs `readable_fn` (set for the XBE and XEX platforms) when the loader names
 //     one; lane_module()/steps_module() give the module's NAME (no import).
-//   * The decoder is capstone's, loaded from the capstone.dll the Python package carries
-//     (emulate/capstone_x86.hpp load_capstone); `Decoder::disasm` returns the plain `Insn` below.
+//   * The decoder is capstone's, loaded from the capstone.dll the Python package carries (found as `import capstone`
+//     finds it: base/capstone_dll; emulate/capstone_x86.hpp load_capstone overrides); `Decoder::disasm` returns the
+//     plain `Insn` below, `Decoder::each` capstone's own records (operands, registers) for the modules that read them.
+//     It is the one decoder: every module that decodes asks decoder(bits, arch, detail) (platforms/decoder.cpp).
 //   * all() builds the thirteen descriptors from the typed ports of each descriptor file
 //     (platforms/win16, dos, vxd, nes, sms, gb, genesis, msx) and, for the five that have no port
 //     of their own (java, win32, xbox360, xbox, zx), from the same values inline in package.cpp.
@@ -41,8 +43,11 @@
 #include <optional>
 #include <tuple>
 #include <variant>
+#include <vector>
 
 #include "py.hpp"
+
+struct cs_insn;   // capstone's own instruction record (capstone/capstone.h)
 
 namespace codebreaker::platforms {
 
@@ -202,6 +207,17 @@ class Decoder {
     // md.disasm(code, address): the instructions from the start of `code`, up to the first byte
     // capstone cannot decode (the Python's generator, run to the end)
     py::list<Insn> disasm(const py::bytes& code, int64_t address) const;
+    // md.disasm(code, address[, count]) giving each instruction as capstone's own record (with its operands when this
+    // decoder has detail): `visit` returns false to stop. count 0: to the end. The records live until each() returns.
+    void each(const std::string& code, int64_t address, size_t count, const std::function<bool(const cs_insn&)>& visit) const;
+    // The same records as capstone fills them, for a caller that walks them more than once: `n` is how many, release() frees them.
+    cs_insn* raw(const uint8_t* code, size_t size, int64_t address, size_t count, size_t& n) const;
+    void release(cs_insn* insn, size_t n) const;
+    // i.reg_name(register id): capstone's name of a register (null for an id it does not know)
+    const char* reg_name(uint32_t reg) const;
+    // i.regs_access(): (registers read, registers written) as capstone numbers them; nullopt where capstone cannot say
+    // (the Python's CsError)
+    std::optional<std::tuple<std::vector<uint16_t>, std::vector<uint16_t>>> regs_access(const cs_insn& insn) const;
     py::str arch;
     int64_t bits = 0;
     bool detail = false;

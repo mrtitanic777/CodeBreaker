@@ -16,7 +16,7 @@
 #include <mutex>
 #include <set>
 
-#include "codebreaker/emulate/api_models.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/emulate/capstone_x86.hpp"
 #include "codebreaker/emulate/native_win16.hpp"
 #include "codebreaker/emulate/unicorn_uc.hpp"
@@ -742,12 +742,12 @@ py::str _api(const Hit& hit) {
     if (fn.startswith(py::str("@")) && api.startswith(py::str("KERNEL"))) {
         try {
             py::str num = py::str(std::to_string(py::int_parse(fn.slice_from(1))));   // str(int(fn[1:]))
-            // knowledge.table("win16", "kernel_ordinal"): win16.json's "kernel_ordinals" part
-            py::str file = py::os::path::join(knowledge::sources::_MODELS(), py::str("win16.json"));
-            static std::optional<knowledge::sources::Rows> ords;
-            if (!ords) ords = knowledge::sources::_part(py::str("kernel_ordinals"))(file);
-            auto got = ords->get(num);
-            if (got && got->kind == knowledge::sources::Json::Str) fn = got->s;
+            // knowledge.table("win16", "kernel_ordinal").get(num)
+            auto got = knowledge::table(py::str("win16"), py::str("kernel_ordinal")).get(num);
+            if (got) {
+                const auto* j = std::get_if<knowledge::sources::Json>(&*got);
+                if (j && j->kind == knowledge::sources::Json::Str) fn = j->s;
+            }
         } catch (const py::ValueError&) {
         }
     }
@@ -756,7 +756,7 @@ py::str _api(const Hit& hit) {
 }  // namespace
 
 StubResult default_stub(const Hit& hit, Uc*, HeapContext& ctx) {
-    auto model = api_models::api_model(py::str("win16"), _api(hit));
+    auto model = knowledge::api_model(py::str("win16"), _api(hit));
     if (!model) return StubResult{0, std::nullopt, std::nullopt};   // unknown: benign 0 (stack may drift)
     py::list<int64_t> a = hit.args_stack ? *hit.args_stack : py::list<int64_t>();
     StubResult out;
@@ -764,7 +764,7 @@ StubResult default_stub(const Hit& hit, Uc*, HeapContext& ctx) {
         auto v = model->get(py::str(reg));
         if (!v) continue;
         int64_t value;
-        if (v->kind == api_models::Json::Str) {
+        if (v->kind == knowledge::sources::Json::Str) {
             if (v->s == py::str("heap")) {   // a new selector of the stand-in heap
                 value = ctx.alloc_heap();
             } else if (v->s.startswith(py::str("arg"))) {   // the Nth word of the arguments, as pushed
