@@ -17,9 +17,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-std::optional<py::str> in_package_folder(const fs::path& site) {
+std::optional<py::str> in_package_folder(const fs::path& site, const char* package, const char* dll) {
     std::error_code ec;
-    fs::path p = site / "capstone" / "lib" / "capstone.dll";
+    fs::path p = site / package / "lib" / dll;
     if (fs::is_regular_file(p, ec)) return py::str(p.u8string());
     return std::nullopt;
 }
@@ -34,11 +34,11 @@ void site_candidates(const fs::path& root, std::vector<fs::path>& out) {
             if (e.is_directory(ec)) out.push_back(e.path() / "site-packages");
 }
 
-py::str look() {
-    std::optional<py::str> env = py::os::getenv(py::str("CB_CAPSTONE_DLL"));
+py::str look(const char* env_name, const char* setting, const char* package, const char* dll) {
+    std::optional<py::str> env = py::os::getenv(py::str(env_name));
     if (env && !env->empty() && py::os::path::isfile(*env)) return *env;
     try {
-        std::optional<py::str> set = py::settings::get_opt_str(py::str("capstone_dll"));
+        std::optional<py::str> set = py::settings::get_opt_str(py::str(setting));
         if (set && !set->empty() && py::os::path::isfile(*set)) return *set;
     } catch (const py::Exception&) {
     }
@@ -52,10 +52,10 @@ py::str look() {
     std::optional<py::str> appdata = py::os::getenv(py::str("APPDATA"));
     if (appdata) site_candidates(fs::u8path(appdata->utf8()) / "Python", sites);           // (the user site)
     for (const fs::path& s : sites) {
-        std::optional<py::str> got = in_package_folder(s);
+        std::optional<py::str> got = in_package_folder(s, package, dll);
         if (got) return *got;
     }
-    throw py::ImportError("No module named 'capstone'");
+    throw py::ImportError(std::string("No module named '") + package + "'");
 }
 
 }  // namespace
@@ -64,7 +64,15 @@ py::str find() {
     static std::mutex m;
     static std::optional<py::str> found;
     std::lock_guard<std::mutex> hold(m);
-    if (!found) found = look();
+    if (!found) found = look("CB_CAPSTONE_DLL", "capstone_dll", "capstone", "capstone.dll");
+    return *found;
+}
+
+py::str find_unicorn() {
+    static std::mutex m;
+    static std::optional<py::str> found;
+    std::lock_guard<std::mutex> hold(m);
+    if (!found) found = look("CB_UNICORN_DLL", "unicorn_dll", "unicorn", "unicorn.dll");
     return *found;
 }
 

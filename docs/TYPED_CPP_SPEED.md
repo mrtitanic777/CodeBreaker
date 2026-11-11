@@ -118,3 +118,39 @@ sha1, makedirs) and are marked "re-time".
 - Runtime: `py::str` stores UTF-32 (4x memory, slow huge splits); sha512/md5 portable code vs OpenSSL asm; JSON dump ~10% slower.
 
 The whole-codebase comparison (the full `tests/run_all.py` under Python vs `codebreaker.exe`) comes once ports are wired into the exe.
+## core16 integration (2026-11-11): the 33-module cycle linked for real, end to end
+
+All 33 modules (decompiler, emulators, verify lanes, module builder) in one program, no stubs, no /FORCE:UNRESOLVED
+(`state/work/typed-port/core16.integration/`). Each case is run on the Python and on the C++ with the same inputs and the
+outputs diffed IDENTICAL. Real OpenWatcom tools, real Unicorn; builds are cold (`CB_NO_CACHE=1`: no shared build cache; the
+decompiler's own cache is warm on both sides). Wall seconds, one run each, machine shared with other work (single numbers
+are +-30%).
+
+| Case | Python | C++ | Ratio |
+|---|---|---|---|
+| decompile (kind.prepare), 6 modules (lzexpand, ver, keyboard, comm, lz32, version) | 0.5-1.4 | 0.6-5.6 | ~0.5x (warm decompiler cache; process start and DLL loads dominate) |
+| judge lzexpand.dll (win16 lane, 47 items) | 28.7 | 16.0 | 1.8x |
+| judge ver.dll | 16.4 | 6.9 | 2.4x |
+| judge lz32.dll / version.dll (win32 lane) | 7.3 / 16.2 | 7.3 / 16.2 | 1.0x |
+| build lzexpand.dll (direct path, gate included) | 13.2 | 6.9 | 1.9x |
+| build ver.dll | 15.9 | 12.2 | 1.3x |
+| build comm.drv | 11.2 | 9.8 | 1.1x |
+| build keyboard.drv | 18.1 | 12.7 | 1.4x |
+| build lz32.dll / version.dll (_build32) | 2.9 / 3.4 | 3.2 / 2.4 | 0.9x / 1.4x |
+| isolated16.check, ver.dll (21 functions) | 22.6 | 20.8 | 1.1x |
+| reconstruct.run lzexpand.dll (fresh store) | 30.3 | 19.7 | 1.5x |
+| reconstruct.run lz32.dll / version.dll | 9.4 / 19.8 | 7.4 / 17.5 | 1.3x / 1.1x |
+| build_many (lzexpand, ver, lz32) | 31.8 | 34.1 | 0.9x (one at a time here, see below) |
+| main (build ver.dll --out) | 38.0 | 22.8 | 1.7x |
+| build on the engine (default path), fresh facts: lzexpand / ver / comm / keyboard / lz32 / version | 17.4 / 11.8 / 13.1 / 17.3 / 3.3 / 4.4 | 37.5 / 40.2 / 8.5 / 19.5 / 2.4 / 2.3 | slow on lzexpand and ver (see below) |
+| build on the engine, facts kept (second run), ver.dll | 1.0 | 0.3 | 3.3x |
+
+Where the C++ is not faster, and why:
+* The gate (`isolated16::check`) and the judge run one share at a time. The Python ran shares in worker processes; Unicorn and the
+  tracer DLL keep state per process (the TCG code buffer, callback slots), so shares on threads crashed or answered wrongly
+  (found by this pass; locks on the shared tables fix the compile threads, but the emulators need processes). Real fix: spawn
+  the gate's workers as processes of the exe, as the Python did. `CB_GATE_WORKERS` / `CB_JUDGE_THREADS` / `CB_BUILD_THREADS`
+  turn threads back on for experiments.
+* build_many is the same one-at-a-time, for the same reason.
+* The engine's ne.image step prepares the module again for each link pass (the Python pickle-copies it); on lzexpand and ver
+  the passes take longer than the direct path. A deep copy of Module16 instead of the second prepare is the fix.

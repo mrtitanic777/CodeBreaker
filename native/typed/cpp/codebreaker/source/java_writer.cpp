@@ -4,20 +4,11 @@
 
 #include <algorithm>
 
+#include "codebreaker/java/transpile.hpp"
 #include "codebreaker/source/module_writer.hpp"
 #include "codebreaker/store/functions.hpp"
+#include "codebreaker/verify/lanes/java.hpp"
 #include "py_settings.hpp"
-
-// The two outside calls this module makes, whose Python modules (codebreaker.java.transpile, codebreaker.verify.lanes.java)
-// have no typed port yet: declared here as the Python calls them, defined by those ports.
-namespace codebreaker::java::transpile {
-// transpile.convert(java_dir, out_dir, platform=..., write_report=False): the Java source tree as C++ in out_dir
-void convert(const py::str& java_dir, const py::str& out_dir, const std::optional<py::str>& platform, bool write_report);
-}  // namespace codebreaker::java::transpile
-namespace codebreaker::verify::lanes::java {
-py::str source_dir(const py::str& path);
-extern const std::optional<py::str> PLATFORM;     // no platform: the generic stdafx.h, nothing a host compiler lacks
-}  // namespace codebreaker::verify::lanes::java
 
 namespace codebreaker::source::java_writer {
 
@@ -50,7 +41,9 @@ py::str write_java(const py::str& path, const std::shared_ptr<engine::native_eng
         out_dir = py::os::path::join(py::settings::get_str(py::str("state")), py::str("source"), name);
         py::os::makedirs(py::os::path::dirname(out_dir), 0777, true);
     }
-    java::transpile::convert(verify::lanes::java::source_dir(path), out_dir, verify::lanes::java::PLATFORM, false);
+    // transpile.convert(java.source_dir(path), out_dir, platform=java.PLATFORM, write_report=False)
+    java::transpile::convert(verify::lanes::java::source_dir(path), out_dir, std::nullopt, nullptr, false, py::str("C++03"),
+                             verify::lanes::java::PLATFORM);
     auto best = fs->best(sha, digest);
     py::dict<py::str, int64_t> counts;
     for (const py::str& k : F::ORDER()) counts.set(k, 0);

@@ -11,6 +11,7 @@
 #include <array>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -96,6 +97,8 @@ std::wstring wide(const py::str& s) {
 const ShLib* _lib() {
     static std::vector<std::shared_ptr<ShLib>> ready;
     static bool tried = false;
+    static std::recursive_mutex init;   // (first use may be on several gate threads at once)
+    std::lock_guard<std::recursive_mutex> hold(init);
     if (tried) return ready.empty() ? nullptr : ready[0].get();
     std::shared_ptr<native_trace::Lib> lib = native_trace::_load();
     if (!lib) return nullptr;

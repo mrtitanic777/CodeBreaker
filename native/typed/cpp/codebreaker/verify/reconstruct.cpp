@@ -494,6 +494,8 @@ std::tuple<py::str, py::str> run(const py::str& module_path, const std::shared_p
         }
         jobs::pool::Options<std::tuple<py::str, Item>, Verdict> opts;
         opts.crashed = [](const std::tuple<py::str, Item>&) { return NOT_RUN(); };
+        // (the Python judged in worker processes; the emulators keep per-process state, so here one at a time)
+        if (!py::os::environ_::get(py::str("CB_JUDGE_THREADS"))) opts.jobs = 1;
         const Kind& kref = *kind;
         py::dict<py::str, Verdict> judged = jobs::pool::run_first(
             [&kref](const Context& context, const std::tuple<py::str, Item>& item) { return kref.judge(context, std::get<1>(item)); },

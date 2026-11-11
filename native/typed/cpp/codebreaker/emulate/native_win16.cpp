@@ -3,6 +3,7 @@
 #include "codebreaker/emulate/native_win16.hpp"
 
 #include <array>
+#include <atomic>
 #include <string>
 #include <utility>
 
@@ -46,7 +47,7 @@ template <class F> void entry(void* dll, const char* name, F& slot) {
 
 // ---- the closures EVENT(self._wrap(f)) and EVENT(self._wrap_own(on_own)): C entry points per live Run ----
 constexpr int kSlots = 16;
-std::array<Run*, kSlots> g_runs{};
+std::array<std::atomic<Run*>, kSlots> g_runs{};   // (claimed by compare-exchange: gate runs start on several threads)
 
 template <int I, int K> int event_slot(int64_t a, int64_t n) {
     Run* r = g_runs[I];
@@ -112,10 +113,10 @@ Run::Run(const nt::Engine& uc_, const RunArgs& a) : uc(uc_), gov(a.gov), on_own_
     fns_[2] = a.on_intr;
     std::tie(keep_inter_, config.nintercept) = _u64s(a.intercept.vec());
     for (int i = 0; i < kSlots && slot_ < 0; i++) {   // (the closures over self)
-        if (!g_runs[i]) slot_ = i;
+        Run* none = nullptr;
+        if (g_runs[i].compare_exchange_strong(none, this)) slot_ = i;
     }
     if (slot_ < 0) throw py::RuntimeError("cbtrace: too many 16-bit runs are alive at once");
-    g_runs[slot_] = this;
     _Config& c = config;
     c.uch = uc.uch;
     c.eip_id = static_cast<int32_t>(a.eip_id);
@@ -265,7 +266,10 @@ void Run::detach() {
 Run::~Run() {
     void* h = handle;
     handle = nullptr;
-    if (slot_ >= 0 && g_runs[slot_] == this) g_runs[slot_] = nullptr;
+    {
+        Run* me = this;
+        if (slot_ >= 0) g_runs[slot_].compare_exchange_strong(me, nullptr);
+    }
     if (h) {
         lib->cbt_w16_free(h);
     }

@@ -41,6 +41,9 @@ extern const py::list<py::str> CFLAGS_POWERPC;
 
 // build folder -> the hash of the header in it (used by build/module, engine/win16)
 extern py::dict<py::str, py::str> _HEADER;
+// _HEADER read and written under one lock (compiles run on threads): the header key of a build folder / set it
+std::optional<py::str> header_key(const py::str& outdir);
+void set_header_key(const py::str& outdir, const py::str& key);
 // build folder -> {function: digest of its object code}, of the last build there
 extern py::dict<py::str, py::dict<py::str, py::str>> OBJECTS;
 
@@ -73,6 +76,19 @@ py::str message_here(const py::bytes& kept, const py::str& folder);
 // What a compiler reads besides its command line and the source, by content: the program's bytes, the headers it may
 // include and the environment variable of options it reads too (OpenWatcom's WCC, WASM). A cache key.
 py::str tool_inputs(const py::str& cc, const std::optional<py::dict<py::str, py::str>>& env, const py::str& variable);
+
+// What the engine already made (engine/win16: function.object, function.never_set): while the link runs, `_compile` and `never_set` of a
+// function with the header, options and text such a fact was made from answer it, and the compiler is not started (the Python patches
+// functions._compile for the length of the link). Keys: served_key(header key, options, text).
+py::str served_key(const py::str& header_key, const py::list<py::str>& cflags, const py::str& text);
+struct Served {
+    py::str error;                  // the compiler's first error ("" when it made the object)
+    py::bytes obj;                  // the object (when there is no error)
+};
+// Offer objects / flow checks to the next compiles; `unserve` takes them back. Counted: {"served", "compiled"} as the Python's _PATCHED.
+void serve(const py::dict<py::str, Served>& objects, const py::dict<py::str, py::list<py::str>>& never_sets);
+void unserve();
+std::tuple<int64_t, int64_t> served_counts();
 
 // _run_compile, kept in the shared build cache (kind "objects"). `cflags` are already adjusted. -> (why, keepable)
 std::tuple<py::str, bool> compile_kept(const py::str& cc, const py::list<py::str>& cflags, const py::dict<py::str, py::str>& env,
