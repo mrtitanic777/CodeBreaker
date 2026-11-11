@@ -478,7 +478,7 @@ def operand_text(o, labels):
     if k == "pcindex":
         return "%s(PC,%s.%s)" % (labels.get(o.value) or _hex(o.value), _reg(*o.xreg), o.xsize)
     if k == "imm":
-        return "#%s" % (labels.get(o.value) if o.size == "L" and o.value in labels else _hex(o.value))
+        return "#%s" % ((labels.get(o.value) if o.size == "L" else None) or _hex(o.value))
     if k == "quick":
         return "#%d" % o.value
     if k == "label":
@@ -556,19 +556,21 @@ def _parse_operand(s, labels, pc, size):
     if m and _parse_reg(m.group(1)) and _parse_reg(m.group(1))[0] == "A":
         return Op("post" if m.group(2) else "ind", _parse_reg(m.group(1))[1])
     m = re.match(r"^-\((\w+)\)$", t)
-    if m and _parse_reg(m.group(1)):
+    if m and _parse_reg(m.group(1)) and _parse_reg(m.group(1))[0] == "A":
         return Op("pre", _parse_reg(m.group(1))[1])
     m = re.match(r"^(.*)\((\w+)\s*,\s*(\w+)(?:\.([WL]))?\)$", t, re.I)
     if m:
         base = m.group(2).upper()
         x = _parse_reg(m.group(3))
+        if x is None or (base != "PC" and (_parse_reg(base) is None or _parse_reg(base)[0] != "A")):
+            raise ValueError("not an index operand: %r" % t)
         disp = _value(m.group(1), labels, pc) if m.group(1).strip() else 0
         xs = (m.group(4) or "W").upper()
         if base == "PC":
             return Op("pcindex", 0, disp, x, xs)
         return Op("index", _parse_reg(base)[1], disp, x, xs)
     m = re.match(r"^(.*)\((\w+)\)$", t)
-    if m and m.group(1).strip() and (m.group(2).upper() == "PC" or _parse_reg(m.group(2))):
+    if m and m.group(1).strip() and (m.group(2).upper() == "PC" or (_parse_reg(m.group(2)) and _parse_reg(m.group(2))[0] == "A")):
         v = _value(m.group(1), labels, pc)
         if m.group(2).upper() == "PC":
             return Op("pcdisp", 0, v)
@@ -577,7 +579,7 @@ def _parse_operand(s, labels, pc, size):
     if m:
         v = _value(m.group(1), labels, pc)
         return Op("absw" if m.group(2).upper() == "W" else "absl", 0, v)
-    if "/" in t or re.match(r"^[DA][0-7]-[DA][0-7]$", u):
+    if "/" in t or re.match(r"^([DA][0-7]|SP)-([DA][0-7]|SP)$", u):
         return Op("regs", 0, _parse_regs(t))
     return Op("expr", 0, _value(t, labels, pc))
 
@@ -601,8 +603,11 @@ def assemble(line, pc=0, labels=None):
     """The bytes of one instruction (Motorola syntax); KeyError for an unknown label."""
     labels = {} if labels is None else labels
     line = line.strip()
-    head, _, rest = line.partition(" ")
+    parts = line.split(None, 1)
+    head, rest = (parts[0] if parts else ""), (parts[1] if len(parts) > 1 else "")
     mn, _, size = head.upper().partition(".")
+    if size not in ("", "B", "W", "L", "S"):
+        raise ValueError("not an instruction: %r" % line)
     ops = [_parse_operand(o, labels, pc, size or "W") for o in _split(rest)] if rest.strip() else []
     shapes = _shapes()
     for cand in _candidates(mn, size, ops, pc):
@@ -617,6 +622,10 @@ def _candidates(mn, size, ops, pc):
     quick values, and so on."""
     branch = mn in ["B" + c for c in BCC]
     if branch:
+        if not ops or ops[0].kind != "expr":
+            raise ValueError("a branch needs a target address")
+        if size == "L":
+            raise ValueError("a branch is .S or .W")
         target = ops[0].value
         d = _wrap(target - (pc + 2))
         if size in ("S", "B"):                       # a short branch as written: never made long
@@ -630,6 +639,8 @@ def _candidates(mn, size, ops, pc):
         yield (mn, "W", [Op("label", 0, target)])
         return
     if mn.startswith("DB"):
+        if len(ops) < 2 or ops[1].kind != "expr":
+            raise ValueError("%s needs a register and a target address" % mn)
         yield (mn, "", [ops[0], Op("label", 0, ops[1].value)])
         return
     if mn in ("JMP", "JSR"):
@@ -702,8 +713,12 @@ def _encode(word, mn, size, ops, pc):
             else:
                 put16(v & (0xFF if sz == "B" else 0xFFFF))
         elif k == "disp":
+            if not -0x8000 <= o.value <= 0xFFFF:
+                raise ValueError("displacement does not fit 16 bits")
             put16(o.value & 0xFFFF)
         elif k == "index":
+            if not -0x80 <= o.value <= 0xFF:
+                raise ValueError("displacement does not fit 8 bits")
             put16(_brief(o) | (o.value & 0xFF))
         elif k == "absw":
             put16(o.value & 0xFFFF)

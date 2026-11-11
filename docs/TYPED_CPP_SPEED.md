@@ -556,3 +556,15 @@ text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, tok
 The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
 directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
 picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.
+
+## cb::decompile m68k, xenos_hlsl, vmx128 (W1-B6)
+
+Old harnesses replayed (state/work/typed-port/decompile.m68k and decompile.xenos_hlsl, the old port's `test.exe`) against the same recorded cases replayed through `cb_tests` (Release; CB_M68K_CORPUS / CB_XENOS_CORPUS, which also parse the case text and the Python's JSON answers).
+
+| What | old typed C++ | new (`cb::decompile`) |
+|---|---|---|
+| m68k: the whole old harness (133,147 decodes with text, 65,536 text-and-assemble round trips, 6,600 assembler lines, the private helpers' cases, the opcode-shape table) | 5.0 s | 1.6 s for the decodes, round trips and assembler lines (the helpers' cases are gone with the helpers) |
+| xenos_hlsl: 7,872 shaders translated (plus 442 containers and the small functions in the old run) | 1.5 s | 1.2 s (with the JSON of every answer parsed) |
+| vmx128: decode and the SLEIGH generation | not timed separately (the old harness was dominated by reading four game images) | the 77 rows plus 200 free-bit words decode and the 22 KB SLEIGH is written inside the test's 10 ms |
+
+Nothing is slower than the port it replaces.
