@@ -24,13 +24,10 @@
 #include <memory>
 #include <optional>
 
+#include "codebreaker/build/module.hpp"
 #include "codebreaker/engine/engine.hpp"
 #include "codebreaker/verify/reconstruct.hpp"
 #include "py.hpp"
-
-namespace codebreaker::build::module {
-class Built;
-}
 
 namespace codebreaker::engine::lanes {
 
@@ -43,7 +40,16 @@ struct LanePlatform {
     std::function<py::dict<py::str, py::str>()> tools;
     // lane_module(): the platform's Kind
     std::function<std::shared_ptr<verify::reconstruct::Kind>()> lane_module;
+    // platforms.identify(path) is this platform (the registry below stands in for platforms.all()/identify())
+    std::function<bool(const py::str& path)> identifies;
+    // packager.link(built, path, module, folder): the linked image's path, or None (32-bit Windows only: pe.image, build())
+    std::function<std::optional<py::str>(build::module::Built&, const py::str& path, const verify::reconstruct::Prepared&,
+                                         const py::str& folder)> link;
 };
+
+// platforms.all(): add a platform that has a lane (before kinds()/on()/judged(): steps are declared for each)
+void register_platform(const LanePlatform& p);
+const py::list<LanePlatform>& platforms();
 
 // One row reconstruct.run records in the function store.
 struct JudgedRow {
