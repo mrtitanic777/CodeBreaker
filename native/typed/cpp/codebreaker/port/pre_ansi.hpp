@@ -421,3 +421,6 @@ struct Diag {
 bool mend(Port& port, py::dict<py::str, py::str>& out, const py::list<Diag>& diags);
 
 }  // namespace codebreaker::port::pre_ansi
+
+// the functions of PART 5, over the new code (native/cb/port): defined inline there
+#include "codebreaker/port/pre_ansi_p5.hpp"

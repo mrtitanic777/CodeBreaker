@@ -484,3 +484,28 @@ Old = the typed port (pre_ansi_p4.cpp, 1,870 lines over the py:: layer); new = n
 
 The Python original runs the same constructor in 0.5 s for the three trees, so the old constructor is a fraction of the 2.86 s; the
 new part 4 is not slower. The new answers equal the Python's on all 2,940 calls (compare.py, by meaning; 0 differences).
+
+### native/cb/port (W0-B21: pre_ansi PART 5, the widening passes and the mending)
+
+The old typed port's harness (state/work/typed-port/port.pre_ansi.p5) runs all five parts of pre_ansi over four whole programs, so the
+mending alone cannot be timed there (the port's own record: 34 s Python, 39-42 s CPU the typed port, 1.6x slower than the Python). The
+same work is timed here on the cases of the golden files (native/cb/port/testdata/pre_ansi_p5): the Python replays them with
+state/work/cpp-refactor/pre_ansi_p5/replay.py, the C++ is the golden test (`CB_P5_TIMING=1 cb_tests --filter port.pre_ansi_p5`).
+Same inputs, results compared (the Python's own, recorded). Seconds on a busy machine, the better of two runs.
+
+| Work | Python | native/cb/port | Speedup |
+|---|---|---|---|
+| lib-2.20: text passes over every file | 0.014 | 0.003 | 4.7x |
+| lib-2.20: mend, 6 complaints of each kind one by one, then all together for two rounds | 0.406 | 0.219 | 1.9x |
+| lib-2.20: old_c_ways, numbered_places, agree_wide, stored_wide, passed_on | 0.021 (with a deepcopy of the Port) | 0.008 | 2.6x |
+| msc-3.00-p0: mend, the same | 0.639 | 0.159 | 4.0x |
+| msc-3.00-p0: whole-program passes | 0.051 (with a deepcopy) | 0.016 | 3.2x |
+| msc-3.00-p3 (304 files): mend, the same | 2.800 | 0.887 | 3.2x |
+| msc-3.00-p3: whole-program passes | 0.198 (with a deepcopy) | 0.096 | 2.1x |
+| link-2.44: mend, the same | 0.660 | 0.248 | 2.7x |
+| call_at over 3 columns of every line with a call (lib-2.20) | 0.027 | <0.001 | >25x |
+
+The new code is faster than the Python on every row; the old typed port was timed slower than the Python (1.6x), so it is faster than that too (inferred, not run side by side). What made the mending
+faster was not the regular-expression engine (the engine is slower than CPython's `re` on a single search): the Python recomputed the
+blanked text of every file per complaint (`any(re.search(...) for t in out.values())`) and parsed each file's functions once per
+complaint (an lru_cache on the text, but the key is hashed on every lookup); the C++ keeps one reading of each file for the round.
