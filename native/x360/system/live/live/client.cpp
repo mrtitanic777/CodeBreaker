@@ -2,12 +2,20 @@
 // lock and wait for their reply on a condition variable.
 
 #include "live/client.h"
+#include "live/game.h"
 #include "live/voice.h"
 
 #include "log.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <subauth.h>
+#define SECURITY_WIN32
+#define SCHANNEL_USE_BLACKLISTS // schannel.h: SCH_CREDENTIALS (Windows 10 1809 and later)
+#include <sspi.h>
+#include <schannel.h>
+#include <wincrypt.h>
+#include <bcrypt.h>
 
 #include <nlohmann/json.hpp>
 
@@ -18,13 +26,21 @@
 #include <cstdlib>
 #include <condition_variable>
 #include <deque>
+#include <cctype>
+#include <cstring>
 #include <format>
+#include <fstream>
+#include <sstream>
 #include <map>
 #include <mutex>
 #include <thread>
 #include <utility>
 
 using json = nlohmann::json;
+
+#pragma comment(lib, "secur32.lib")
+#pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "bcrypt.lib")
 
 namespace live
 {
@@ -55,9 +71,286 @@ namespace live
             std::optional<Party> party;
         };
 
+        // ---- TLS (Windows Schannel; docs/network_protocol.md "Encryption") ----
+        // One session at a time (one connection). Encrypt / Decrypt calls are serialised by `mutex` (never held while
+        // blocking on the socket); the send side is also under State::sendMutex, the receive side is the read thread's.
+        struct TlsSession
+        {
+            std::atomic<bool> active = false;
+            bool haveCred = false, haveCtx = false;
+            CredHandle cred{};
+            CtxtHandle ctx{};
+            SecPkgContext_StreamSizes sizes{};
+            std::string raw;   // received, not yet decrypted
+            std::string plain; // decrypted, not yet returned
+            std::mutex mutex;
+        };
+
+        enum class TlsResult { Ok, NotTls, Failed };
+
+        void TlsReset(TlsSession& t)
+        {
+            t.active = false;
+            if (t.haveCtx)
+                DeleteSecurityContext(&t.ctx);
+            if (t.haveCred)
+                FreeCredentialsHandle(&t.cred);
+            t.haveCtx = t.haveCred = false;
+            t.raw.clear();
+            t.plain.clear();
+        }
+
+        bool SendAll(SOCKET sock, const char* data, size_t size)
+        {
+            size_t sent = 0;
+            while (sent < size)
+            {
+                const int n = send(sock, data + sent, int(size - sent), 0);
+                if (n <= 0)
+                    return false;
+                sent += size_t(n);
+            }
+            return true;
+        }
+
+        std::string Sha256Hex(const uint8_t* data, size_t size)
+        {
+            uint8_t hash[32]{};
+            if (BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, const_cast<PUCHAR>(data), ULONG(size), hash, sizeof(hash)) != 0)
+                return {};
+            std::string hex;
+            for (uint8_t b : hash)
+                hex += std::format("{:02x}", b);
+            return hex;
+        }
+
+        // "AB:CD ..." -> "abcd..."
+        std::string NormalizeFingerprint(const std::string& text)
+        {
+            std::string out;
+            for (char c : text)
+                if (std::isxdigit(static_cast<unsigned char>(c)))
+                    out += char(std::tolower(static_cast<unsigned char>(c)));
+            return out;
+        }
+
+        // The TLS handshake on a connected socket. Ok: `fingerprint` is the SHA-256 of the server's certificate.
+        // NotTls: the peer is not a TLS server (nothing, a close or non-TLS bytes came back).
+        TlsResult TlsHandshake(TlsSession& t, SOCKET sock, const std::string& host, std::string& fingerprint)
+        {
+            SCH_CREDENTIALS credentials{};
+            credentials.dwVersion = SCH_CREDENTIALS_VERSION;
+            credentials.dwFlags = SCH_CRED_NO_DEFAULT_CREDS | SCH_CRED_MANUAL_CRED_VALIDATION | SCH_USE_STRONG_CRYPTO;
+            TimeStamp expiry;
+            SECURITY_STATUS st = AcquireCredentialsHandleW(nullptr, const_cast<LPWSTR>(UNISP_NAME_W), SECPKG_CRED_OUTBOUND,
+                                                           nullptr, &credentials, nullptr, nullptr, &t.cred, &expiry);
+            if (st != SEC_E_OK)
+            {
+                Log("Live: TLS: AcquireCredentialsHandle failed ({:#x})", uint32_t(st));
+                return TlsResult::Failed;
+            }
+            t.haveCred = true;
+            // Nothing within a few seconds: not a TLS server (an older one waits for its JSON line).
+            DWORD timeoutMs = 3000;
+            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+            const std::wstring target(host.begin(), host.end());
+            const DWORD flags = ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT | ISC_REQ_CONFIDENTIALITY |
+                                ISC_RET_EXTENDED_ERROR | ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM |
+                                ISC_REQ_MANUAL_CRED_VALIDATION;
+            std::string in;
+            bool first = true, needRead = false, gotRecord = false;
+            TlsResult result = TlsResult::Failed;
+            for (;;)
+            {
+                if (needRead)
+                {
+                    char chunk[16384];
+                    const int n = recv(sock, chunk, sizeof(chunk), 0);
+                    if (n <= 0)
+                    {
+                        result = gotRecord ? TlsResult::Failed : TlsResult::NotTls;
+                        break;
+                    }
+                    if (!gotRecord)
+                    {
+                        const uint8_t type = uint8_t(chunk[0]);
+                        if (n < 3 || type < 0x14 || type > 0x18 || uint8_t(chunk[1]) != 3)
+                        {
+                            result = TlsResult::NotTls;
+                            break;
+                        }
+                        gotRecord = true;
+                    }
+                    in.append(chunk, size_t(n));
+                    needRead = false;
+                }
+                SecBuffer inBuffers[2] = { { ULONG(in.size()), SECBUFFER_TOKEN, in.data() }, { 0, SECBUFFER_EMPTY, nullptr } };
+                SecBuffer outBuffer = { 0, SECBUFFER_TOKEN, nullptr };
+                SecBufferDesc inDesc = { SECBUFFER_VERSION, 2, inBuffers }, outDesc = { SECBUFFER_VERSION, 1, &outBuffer };
+                DWORD attributes = 0;
+                st = InitializeSecurityContextW(&t.cred, first ? nullptr : &t.ctx, const_cast<SEC_WCHAR*>(target.c_str()), flags, 0, 0,
+                                                first ? nullptr : &inDesc, 0, &t.ctx, &outDesc, &attributes, &expiry);
+                if (first && (st == SEC_E_OK || st == SEC_I_CONTINUE_NEEDED))
+                    t.haveCtx = true;
+                first = false;
+                bool sent = true;
+                if (outBuffer.cbBuffer && outBuffer.pvBuffer)
+                {
+                    sent = SendAll(sock, static_cast<const char*>(outBuffer.pvBuffer), outBuffer.cbBuffer);
+                    FreeContextBuffer(outBuffer.pvBuffer);
+                }
+                if (!sent)
+                    break;
+                if (st == SEC_E_INCOMPLETE_MESSAGE)
+                {
+                    needRead = true;
+                    continue;
+                }
+                if (st == SEC_E_OK || st == SEC_I_CONTINUE_NEEDED)
+                {
+                    if (inBuffers[1].BufferType == SECBUFFER_EXTRA && inBuffers[1].cbBuffer <= in.size())
+                        in = in.substr(in.size() - inBuffers[1].cbBuffer);
+                    else
+                        in.clear();
+                    if (st == SEC_E_OK)
+                    {
+                        t.raw = in; // application data that came with the last handshake record
+                        result = TlsResult::Ok;
+                        break;
+                    }
+                    needRead = in.empty();
+                    continue;
+                }
+                Log("Live: TLS handshake failed ({:#x})", uint32_t(st));
+                break;
+            }
+            DWORD none = 0;
+            setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&none), sizeof(none));
+            if (result != TlsResult::Ok)
+                return result;
+            if (QueryContextAttributes(&t.ctx, SECPKG_ATTR_STREAM_SIZES, &t.sizes) != SEC_E_OK)
+                return TlsResult::Failed;
+            PCCERT_CONTEXT cert = nullptr;
+            if (QueryContextAttributes(&t.ctx, SECPKG_ATTR_REMOTE_CERT_CONTEXT, &cert) != SEC_E_OK || !cert)
+                return TlsResult::Failed;
+            fingerprint = Sha256Hex(cert->pbCertEncoded, cert->cbCertEncoded);
+            CertFreeCertificateContext(cert);
+            return fingerprint.empty() ? TlsResult::Failed : TlsResult::Ok;
+        }
+
+        // Encrypts and sends (caller holds sendMutex).
+        bool TlsSend(TlsSession& t, SOCKET sock, const char* data, size_t size)
+        {
+            std::string record;
+            while (size > 0)
+            {
+                const size_t chunk = (std::min<size_t>)(size, t.sizes.cbMaximumMessage);
+                record.assign(t.sizes.cbHeader + chunk + t.sizes.cbTrailer, '\0');
+                std::memcpy(record.data() + t.sizes.cbHeader, data, chunk);
+                SecBuffer buffers[4] = { { t.sizes.cbHeader, SECBUFFER_STREAM_HEADER, record.data() },
+                                         { ULONG(chunk), SECBUFFER_DATA, record.data() + t.sizes.cbHeader },
+                                         { t.sizes.cbTrailer, SECBUFFER_STREAM_TRAILER, record.data() + t.sizes.cbHeader + chunk },
+                                         { 0, SECBUFFER_EMPTY, nullptr } };
+                SecBufferDesc desc = { SECBUFFER_VERSION, 4, buffers };
+                SECURITY_STATUS st;
+                {
+                    std::lock_guard lock(t.mutex);
+                    st = EncryptMessage(&t.ctx, 0, &desc, 0);
+                }
+                if (st != SEC_E_OK)
+                    return false;
+                if (!SendAll(sock, record.data(), buffers[0].cbBuffer + buffers[1].cbBuffer + buffers[2].cbBuffer))
+                    return false;
+                data += chunk;
+                size -= chunk;
+            }
+            return true;
+        }
+
+        // recv() for the read thread: decrypted bytes (0: closed, < 0: error).
+        int TlsRecv(TlsSession& t, SOCKET sock, char* out, int size)
+        {
+            for (;;)
+            {
+                if (!t.plain.empty())
+                {
+                    const size_t n = (std::min<size_t>)(size_t(size), t.plain.size());
+                    std::memcpy(out, t.plain.data(), n);
+                    t.plain.erase(0, n);
+                    return int(n);
+                }
+                if (!t.raw.empty())
+                {
+                    SecBuffer buffers[4] = { { ULONG(t.raw.size()), SECBUFFER_DATA, t.raw.data() },
+                                             { 0, SECBUFFER_EMPTY, nullptr }, { 0, SECBUFFER_EMPTY, nullptr },
+                                             { 0, SECBUFFER_EMPTY, nullptr } };
+                    SecBufferDesc desc = { SECBUFFER_VERSION, 4, buffers };
+                    SECURITY_STATUS st;
+                    {
+                        std::lock_guard lock(t.mutex);
+                        st = DecryptMessage(&t.ctx, &desc, 0, nullptr);
+                    }
+                    if (st == SEC_E_OK)
+                    {
+                        std::string rest;
+                        for (const SecBuffer& b : buffers)
+                        {
+                            if (b.BufferType == SECBUFFER_DATA && b.cbBuffer)
+                                t.plain.append(static_cast<const char*>(b.pvBuffer), b.cbBuffer);
+                            else if (b.BufferType == SECBUFFER_EXTRA && b.cbBuffer)
+                                rest = t.raw.substr(t.raw.size() - b.cbBuffer);
+                        }
+                        t.raw = std::move(rest);
+                        continue;
+                    }
+                    if (st == SEC_I_CONTEXT_EXPIRED)
+                        return 0;
+                    if (st != SEC_E_INCOMPLETE_MESSAGE)
+                    {
+                        Log("Live: TLS: DecryptMessage failed ({:#x})", uint32_t(st));
+                        return -1;
+                    }
+                }
+                char chunk[16384];
+                const int n = recv(sock, chunk, sizeof(chunk), 0);
+                if (n <= 0)
+                    return n;
+                t.raw.append(chunk, size_t(n));
+            }
+        }
+
+        // The known servers (trust on first use): "host:port fingerprint" lines.
+        std::wstring WidePath(const std::string& utf8)
+        {
+            const int n = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+            std::wstring w(size_t(n > 0 ? n - 1 : 0), L'\0');
+            if (n > 1)
+                MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, w.data(), n);
+            return w;
+        }
+
+        std::map<std::string, std::string> ReadKnownServers(const std::string& file)
+        {
+            std::map<std::string, std::string> known;
+            if (file.empty())
+                return known;
+            std::ifstream in(WidePath(file));
+            std::string line;
+            while (std::getline(in, line))
+            {
+                std::istringstream fields(line);
+                std::string address, fingerprint;
+                if ((fields >> address >> fingerprint) && address[0] != '#' && address[0] != ';')
+                    known[address] = NormalizeFingerprint(fingerprint);
+            }
+            return known;
+        }
+
         struct State
         {
             Config config;
+            TlsSession tls;
+            std::map<std::string, std::string> knownMemory; // first-use fingerprints of this run (no known-servers file)
             std::mutex mutex; // everything below
             std::condition_variable replied;
             SOCKET socket = INVALID_SOCKET;
@@ -283,15 +576,9 @@ namespace live
             std::lock_guard lock(s.sendMutex);
             if (s.socket == INVALID_SOCKET)
                 return false;
-            size_t sent = 0;
-            while (sent < line.size())
-            {
-                const int n = send(s.socket, line.data() + sent, int(line.size() - sent), 0);
-                if (n <= 0)
-                    return false;
-                sent += size_t(n);
-            }
-            return true;
+            if (s.tls.active)
+                return TlsSend(s.tls, s.socket, line.data(), line.size());
+            return SendAll(s.socket, line.data(), line.size());
         }
 
         // Sends a request and waits for its reply; nullopt when not connected or no reply in time.
@@ -453,12 +740,24 @@ namespace live
                 SendLine(j);
         }
 
+        GameSessionInfo ParseGameSession(const json& j); // (defined with the session requests)
+
         void HandleEvent(const json& j)
         {
             const std::string op = Str(j, "op");
             const uint32_t user = U32(j, "user");
             if (user >= kMaxUsers)
                 return;
+            if (op == "peer") // direct connections (game.cpp): the other console's endpoints and the pair's secret
+            {
+                std::vector<std::string> lan;
+                if (const json& l = Get(j, "lan"); l.is_array())
+                    for (const json& endpoint : l)
+                        if (endpoint.is_string())
+                            lan.push_back(endpoint.get<std::string>());
+                game::OnPeerEvent(user, ParseHex64(Get(j, "xuid")), Str(j, "public"), lan, Str(j, "token"));
+                return;
+            }
             Event e{ EventKind::FriendChanged, user };
             {
                 std::lock_guard lock(S().mutex);
@@ -503,6 +802,28 @@ namespace live
                     u.messages.clear();
                     u.party.reset();
                     e = { EventKind::SignedOut, user, xuid };
+                }
+                else if (op == "match_found" || op == "match_timeout")
+                {
+                    e = { op == "match_found" ? EventKind::MatchFound : EventKind::MatchTimeout, user };
+                    e.ticket = uint64_t(std::max<int64_t>(0, I64(j, "ticket")));
+                    if (op == "match_found")
+                    {
+                        e.host = Str(j, "role") == "host";
+                        if (e.host)
+                        {
+                            if (const json& players = Get(j, "players"); players.is_array())
+                                for (const json& p : players)
+                                    e.players.push_back(ParseHex64(Get(p, "xuid")));
+                        }
+                        else if (const json& session = Get(j, "session"); session.is_object())
+                            e.session = std::make_shared<GameSessionInfo>(ParseGameSession(session));
+                        else
+                        {
+                            Log("Live: match_found without a session");
+                            return;
+                        }
+                    }
                 }
                 else
                 {
@@ -559,6 +880,91 @@ namespace live
             return sock;
         }
 
+        std::string& SecurityError()
+        {
+            static std::string error;
+            return error;
+        }
+
+        // Connect plus the encryption: the socket of a connection that is ready for hello, or INVALID_SOCKET. A server
+        // that does not speak TLS is used in plain text when allowed (the older servers); a certificate that is not
+        // the pinned / remembered one is refused.
+        SOCKET Open(const std::string& host, uint16_t port)
+        {
+            State& s = S();
+            SOCKET sock = Connect(host, port);
+            if (sock == INVALID_SOCKET || !s.config.tls)
+                return sock;
+            const std::string address = std::format("{}:{}", host, port);
+            std::string fingerprint;
+            TlsResult r = TlsHandshake(s.tls, sock, host, fingerprint);
+            if (r == TlsResult::Ok)
+            {
+                std::string wanted = NormalizeFingerprint(s.config.pinnedFingerprint);
+                std::string why;
+                if (!wanted.empty())
+                {
+                    if (wanted != fingerprint)
+                        why = std::format("the server's identity changed: {} presented certificate {} but the pinned one is {}",
+                                          address, fingerprint, wanted);
+                }
+                else
+                {
+                    auto known = ReadKnownServers(s.config.knownServersFile);
+                    if (s.config.knownServersFile.empty())
+                    {
+                        auto it = s.knownMemory.find(address);
+                        if (it != s.knownMemory.end())
+                            known[address] = it->second;
+                    }
+                    auto it = known.find(address);
+                    if (it == known.end())
+                    {
+                        Log("Live: first connection to {}: trusting its certificate {} from now on", address, fingerprint);
+                        s.knownMemory[address] = fingerprint;
+                        if (!s.config.knownServersFile.empty())
+                        {
+                            std::ofstream out(WidePath(s.config.knownServersFile), std::ios::app);
+                            out << address << " " << fingerprint << "\n";
+                        }
+                    }
+                    else if (it->second != fingerprint)
+                        why = std::format("the server's identity changed: {} presented certificate {} but {} was remembered{}",
+                                          address, fingerprint, it->second,
+                                          s.config.knownServersFile.empty() ? "" : std::format(" (delete its line in {} if the server was reinstalled)", s.config.knownServersFile));
+                }
+                if (why.empty())
+                {
+                    s.tls.active = true;
+                    Log("Live: encrypted connection (TLS) to {}, certificate {}", address, fingerprint);
+                    return sock;
+                }
+                Log("Live: REFUSED: {}", why);
+                {
+                    std::lock_guard lock(s.mutex);
+                    SecurityError() = why;
+                }
+                TlsReset(s.tls);
+                closesocket(sock);
+                return INVALID_SOCKET;
+            }
+            TlsReset(s.tls);
+            closesocket(sock);
+            if (r == TlsResult::NotTls && s.config.allowPlain)
+            {
+                Log("Live: {} does not speak TLS: connecting in plain text (an older server; update it to encrypt)", address);
+                return Connect(host, port);
+            }
+            if (r == TlsResult::NotTls)
+            {
+                const std::string why = std::format("{} does not speak TLS and plain connections are not allowed", address);
+                Log("Live: REFUSED: {}", why);
+                std::lock_guard lock(s.mutex);
+                SecurityError() = why;
+            }
+            return INVALID_SOCKET;
+        }
+
         // Reads lines until the connection drops; replies go to the waiting requests, events to HandleEvent. Sign-in
         // (which itself waits for replies) runs on a helper thread so this one keeps reading.
         void ReadLoop(SOCKET sock)
@@ -567,7 +973,7 @@ namespace live
             char chunk[4096];
             while (!S().stop)
             {
-                const int n = recv(sock, chunk, sizeof(chunk), 0);
+                const int n = S().tls.active ? TlsRecv(S().tls, sock, chunk, sizeof(chunk)) : recv(sock, chunk, sizeof(chunk), 0);
                 if (n <= 0)
                     return;
                 buffer.append(chunk, size_t(n));
@@ -620,7 +1026,7 @@ namespace live
                 std::pair<std::string, uint16_t> server;
                 for (const auto& address : addresses)
                 {
-                    if (s.stop || (sock = Connect(address.first, address.second)) != INVALID_SOCKET)
+                    if (s.stop || (sock = Open(address.first, address.second)) != INVALID_SOCKET)
                     {
                         server = address;
                         break;
@@ -655,7 +1061,11 @@ namespace live
                     s.attempts++;
                     s.attempted.notify_all();
                 }
-                Log("Live: connected to {}:{}", server.first, server.second);
+                {
+                    std::lock_guard securityLock(s.mutex);
+                    SecurityError().clear();
+                }
+                Log("Live: connected to {}:{}{}", server.first, server.second, s.tls.active ? " (encrypted)" : " (plain text)");
                 std::thread helper([] {
                     try
                     {
@@ -698,6 +1108,7 @@ namespace live
                     std::lock_guard sendLock(s.sendMutex);
                     closesocket(s.socket);
                     s.socket = INVALID_SOCKET;
+                    TlsReset(s.tls);
                     s.connected = false;
                     for (UserState& u : s.users)
                     {
@@ -887,6 +1298,9 @@ namespace live
         s.thread.join();
         if (L().thread.joinable())
             L().thread.join();
+        // The voice thread (started by Start) too: a std::thread still joinable when the process returns from main
+        // ends it with std::terminate (exit code 0xC0000409).
+        voice::Stop();
     }
 
     void SetKey(const std::string& key)
@@ -911,6 +1325,18 @@ namespace live
     {
         std::lock_guard lock(S().mutex);
         return S().connected;
+    }
+
+    std::string LastSecurityError()
+    {
+        std::lock_guard lock(S().mutex);
+        return SecurityError();
+    }
+
+    bool Encrypted()
+    {
+        std::lock_guard lock(S().mutex);
+        return S().connected && S().tls.active;
     }
 
     void SetEventHandler(std::function<void(const Event&)> handler)
@@ -1681,19 +2107,91 @@ namespace live
                         { "attributes", AttributeObject(attributes) } });
     }
 
-    std::optional<std::vector<GameSessionInfo>> SearchGameSessions(
-        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults)
+    namespace
     {
-        const auto reply = Request({ { "op", "session_search" }, { "user", user }, { "filters", AttributeObject(filters) },
-                                     { "players", players }, { "max_results", maxResults } });
+        // The filters of a search or ticket: a plain value is the attribute's bytes (base64); an operator makes it
+        // {"op", "value"} with the number (when given) or the bytes.
+        json FilterObject(const std::map<uint32_t, std::vector<uint8_t>>& filters, const SessionQuery& query)
+        {
+            json out = json::object();
+            for (const auto& [id, bytes] : filters)
+            {
+                const std::string key = std::format("{:08X}", id);
+                const auto op = query.ops.find(id);
+                if (op == query.ops.end() || op->second.op.empty())
+                    out[key] = Base64(bytes);
+                else if (op->second.number)
+                    out[key] = { { "op", op->second.op }, { "value", *op->second.number } };
+                else
+                    out[key] = { { "op", op->second.op }, { "value", Base64(bytes) } };
+            }
+            for (const auto& [id, op] : query.ops)
+                if (!filters.contains(id) && !op.op.empty() && op.number)
+                    out[std::format("{:08X}", id)] = { { "op", op.op }, { "value", *op.number } };
+            return out;
+        }
+
+        // rank, rank_by and rank_target of a search or ticket (left out when not set).
+        void AddRank(json& request, const SessionQuery& query)
+        {
+            if (!query.rank.empty())
+                request["rank"] = query.rank;
+            if (query.rankBy)
+                request["rank_by"] = std::format("{:08X}", *query.rankBy);
+            if (query.rankTarget)
+                request["rank_target"] = *query.rankTarget;
+        }
+
+        std::string ReplyError(const std::optional<json>& reply)
+        {
+            if (!reply)
+                return Connected() ? std::string("timeout") : std::string("not connected");
+            return Str(*reply, "error");
+        }
+    }
+
+    std::optional<std::vector<GameSessionInfo>> SearchGameSessions(
+        uint32_t user, const std::map<uint32_t, std::vector<uint8_t>>& filters, uint32_t players, uint32_t maxResults,
+        const SessionQuery& query, std::string* error)
+    {
+        json request = { { "op", "session_search" }, { "user", user }, { "filters", FilterObject(filters, query) },
+                         { "players", players }, { "max_results", maxResults } };
+        AddRank(request, query);
+        const auto reply = Request(std::move(request));
         if (!reply || !Bool(*reply, "ok"))
+        {
+            if (error)
+                *error = ReplyError(reply);
             return std::nullopt;
+        }
         std::vector<GameSessionInfo> out;
         if (const json& list = Get(*reply, "sessions"); list.is_array())
             for (const json& j : list)
                 if (j.is_object())
                     out.push_back(ParseGameSession(j));
         return out;
+    }
+
+    std::optional<uint64_t> QueueMatch(uint32_t user, const MatchRequest& match, std::string* error)
+    {
+        json request = { { "op", "match_queue" }, { "user", user }, { "filters", FilterObject(match.filters, match.query) },
+                         { "players", match.players }, { "min_players", match.minPlayers },
+                         { "max_players", match.maxPlayers }, { "timeout_s", match.timeoutSeconds } };
+        AddRank(request, match.query);
+        const auto reply = Request(std::move(request));
+        const json& ticket = reply ? Get(*reply, "ticket") : Get(json(), "ticket");
+        if (!reply || !Bool(*reply, "ok") || !ticket.is_number_integer())
+        {
+            if (error)
+                *error = ReplyError(reply);
+            return std::nullopt;
+        }
+        return ticket.get<uint64_t>();
+    }
+
+    std::optional<std::string> CancelMatch(uint32_t user, uint64_t ticket)
+    {
+        return Simple({ { "op", "match_cancel" }, { "user", user }, { "ticket", ticket } });
     }
 
     std::optional<std::string> SetGameSessionQos(uint32_t user, uint64_t sessionId, const std::vector<uint8_t>& data)
@@ -1801,6 +2299,127 @@ namespace live
     {
         return Simple({ { "op", "stats_reset" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
                         { "view", view } });
+    }
+
+    namespace
+    {
+        StorageEntry ToStorageEntry(const json& j)
+        {
+            StorageEntry e;
+            e.path = Str(j, "path");
+            e.name = Str(j, "name");
+            e.size = uint64_t(I64(j, "size"));
+            e.owner = ParseHex64(Get(j, "owner"));
+            e.titleId = uint32_t(ParseHex64(Get(j, "title_id")));
+            e.created = I64(j, "created");
+            e.modified = I64(j, "modified");
+            e.sha256 = Str(j, "sha256");
+            return e;
+        }
+    }
+
+    std::optional<std::string> StorageUpload(uint32_t user, uint32_t titleId, const std::string& path,
+                                             const std::vector<uint8_t>& data)
+    {
+        const std::string title = std::format("{:08X}", titleId);
+        std::string upload;
+        size_t offset = 0;
+        for (;;)
+        {
+            const size_t n = std::min<size_t>(kStorageChunk, data.size() - offset);
+            const std::vector<uint8_t> part(data.begin() + offset, data.begin() + offset + n);
+            json request = { { "op", "storage_put" }, { "user", user }, { "title_id", title }, { "offset", offset },
+                             { "data", Base64(part) } };
+            if (upload.empty())
+            {
+                request["path"] = path;
+                request["size"] = data.size();
+            }
+            else
+                request["upload"] = upload;
+            const auto reply = Request(std::move(request));
+            if (!reply || !Bool(*reply, "ok"))
+            {
+                if (!upload.empty()) // an upload the server did not end: let it go
+                    Simple({ { "op", "storage_put" }, { "user", user }, { "title_id", title }, { "upload", upload },
+                             { "abort", true } });
+                return ReplyError(reply);
+            }
+            offset += n;
+            if (Bool(*reply, "complete"))
+                return std::nullopt;
+            upload = Str(*reply, "upload");
+            if (upload.empty() || (n == 0 && offset < data.size()))
+                return std::string("bad upload");
+        }
+    }
+
+    std::optional<StorageFile> StorageDownload(uint32_t user, uint32_t titleId, const std::string& path,
+                                               uint32_t limit, std::string* error)
+    {
+        const std::string title = std::format("{:08X}", titleId);
+        StorageFile file;
+        for (;;)
+        {
+            const auto reply = Request({ { "op", "storage_get" }, { "user", user }, { "title_id", title },
+                                         { "path", path }, { "offset", file.data.size() },
+                                         { "length", kStorageChunk } });
+            if (!reply || !Bool(*reply, "ok"))
+            {
+                if (error)
+                    *error = ReplyError(reply);
+                return std::nullopt;
+            }
+            if (file.data.empty())
+            {
+                file.info = ToStorageEntry(*reply);
+                file.info.size = uint64_t(I64(*reply, "size"));
+                file.info.path = path;
+                if (file.info.size > limit)
+                {
+                    if (error)
+                        *error = "too large";
+                    return std::nullopt;
+                }
+            }
+            const std::vector<uint8_t> part = FromBase64(Str(*reply, "data"));
+            file.data.insert(file.data.end(), part.begin(), part.end());
+            if (Bool(*reply, "eof"))
+                return file;
+            if (part.empty() || file.data.size() > limit)
+            {
+                if (error)
+                    *error = "bad reply";
+                return std::nullopt;
+            }
+        }
+    }
+
+    std::optional<StorageList> StorageEnumerate(uint32_t user, uint32_t titleId, const std::string& path,
+                                                uint32_t start, uint32_t max, std::string* error)
+    {
+        const auto reply = Request({ { "op", "storage_list" }, { "user", user },
+                                     { "title_id", std::format("{:08X}", titleId) }, { "path", path },
+                                     { "start", start }, { "max", max } });
+        if (!reply || !Bool(*reply, "ok"))
+        {
+            if (error)
+                *error = ReplyError(reply);
+            return std::nullopt;
+        }
+        StorageList list;
+        list.total = U32(*reply, "total");
+        list.used = uint64_t(I64(*reply, "used"));
+        list.quota = uint64_t(I64(*reply, "quota"));
+        for (const json& i : Get(*reply, "items"))
+            list.items.push_back(ToStorageEntry(i));
+        return list;
+    }
+
+    std::optional<std::string> StorageDelete(uint32_t user, uint32_t titleId, const std::string& path)
+    {
+        return Simple({ { "op", "storage_delete" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
+                        { "path", path } });
     }
 
     std::optional<std::string> MarkMessageRead(uint32_t user, uint32_t id)
@@ -1998,9 +2617,10 @@ namespace live::detail
         uint16_t port = 0;
         std::array<bool, 4> signedIn{};
         std::array<std::array<uint8_t, 8>, 4> token{};
+        std::array<uint64_t, 4> xuid{};
     };
 
-    // The server's address and each signed-in user's token (game.cpp).
+    // The server's address and each signed-in user's token and XUID (game.cpp).
     GameTarget CurrentGameTarget()
     {
         std::lock_guard lock(S().mutex);
@@ -2014,6 +2634,7 @@ namespace live::detail
         {
             t.signedIn[user] = S().users[user].signedIn;
             t.token[user] = S().users[user].voiceToken;
+            t.xuid[user] = S().users[user].xuid;
         }
         return t;
     }

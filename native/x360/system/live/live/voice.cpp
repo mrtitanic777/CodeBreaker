@@ -555,6 +555,7 @@ namespace live::voice
         if (v.thread.joinable())
             return;
         v.settings = settings;
+        v.stop = false;
         v.thread = std::thread(Run);
     }
 
