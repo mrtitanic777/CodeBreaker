@@ -28,6 +28,7 @@ struct FnStatus {
     int lines = 0;
     std::string l2;                   // the MethodDecl's JSON when translated
     std::string ranges;               // {int parameter: [lo, hi]} the callers give (JSON; "None" unbounded)
+    int line = 0;                     // the refusal's source line (in coverage.json with PYENGINE_WHY_LINE set)
 };
 
 struct EngineResult {

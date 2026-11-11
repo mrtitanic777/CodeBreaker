@@ -339,6 +339,7 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
         } else {
             st.status = "refused";
             st.reason = (it != tr.lowered.end() && it->second.refused) ? it->second.refused->issue.reason() : "frontend-error:not lowered";
+            if (it != tr.lowered.end() && it->second.refused) st.line = it->second.refused->issue.line;
         }
         r.functions++;
         r.lines += f->lines;
@@ -351,6 +352,7 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
         fs::path out(o.out);
         for (auto& [m, text] : r.units) write_text(out / "l2" / (m + ".json"), text);
         py::V fns = py::V::dict();
+        static const bool why_line = getenv("PYENGINE_WHY_LINE") != nullptr;   // (a debugging aid: where each refusal is)
         for (auto& [q, st] : r.fns) {
             py::V d = py::V::dict();
             d.set("status", st.status);
@@ -359,6 +361,7 @@ int run_engine(const EngineOptions& o, EngineResult& r) {
             d.set("package", package_of(q));
             if (!st.l2.empty()) d.set("l2", st.l2);
             if (!st.ranges.empty() && st.status == "translated") d.set("ranges", py::json_parse(st.ranges));
+            if (why_line && st.status != "translated" && st.line) d.set("line", st.line);
             fns.set(q, d);
         }
         py::V doc = py::V::dict();
