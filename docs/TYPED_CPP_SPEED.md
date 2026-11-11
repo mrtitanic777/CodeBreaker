@@ -521,3 +521,5 @@ Old = the engine or Python module the new code replaces, same inputs, best of 3-
 | xdk_libraries: search dash.xex (2.0M words) and a game's default.xex (1.8M words) for 1,308 library signatures | Python 2.9 s / 1.9 s (whole `match`, image read included) | 220 / 200 ms (the search alone; a sorted pair index replaced a table of lists: 1.1 s before) |
 | xdk_libraries: make the 1,308 signatures from 2,277 functions | Python 300 ms | 8 ms |
 | ordinals: read all 597 .lib and .def files of the reference folder | Python 570 ms (process start included) | 91 ms |
+| contract16: `_calls` over 250 functions (474 calls) of four Win95 16-bit modules | Python 199 ms (the old typed port could not be isolated: its harness times describe16 with it) | 42 ms (the whole test: parse the dump, decode, compare; process start 55 ms not counted) |
+| setup16 make_cd: the CD is patched in place (copy + two records) instead of written again by pycdlib; screen shrink 640x480 to 160x120 is the same Pillow filter | not timed (the old port had no ISO writer) | fixture CD in a few ms; the cost is the copy of the image |

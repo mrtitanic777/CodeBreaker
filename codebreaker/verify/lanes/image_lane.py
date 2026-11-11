@@ -79,7 +79,9 @@ class Lane(object):
         for state in self._states:
             a, b = self._effects(original, entry, state), self._effects(rebuilt, entry, state)
             if a != b:
-                first = next(w for w, x, y in zip(self._what, a, b) if x != y)
+                # (runs that differ only in how many places they show have no place to name: a lane's fault, and
+                # StopIteration out of next() ended the judge)
+                first = next((w for w, x, y in zip(self._what, a, b) if x != y), "effects")
                 return V.DIVERGENT, first + "-differs", [], self._start(state)
         return V.EQUIVALENT, "", [], "the same effects from %d register states" % len(self._states)
 
