@@ -2376,6 +2376,10 @@ inline std::pair<std::u32string, std::u32string> splitdrive_(const std::u32strin
     }
     return {U"", p};
 }
+inline std::tuple<str, str> splitdrive(const str& s) {   // os.path.splitdrive
+    auto dr = splitdrive_(s.u32());
+    return {str(dr.first), str(dr.second)};
+}
 inline std::tuple<str, str> split(const str& s) {
     auto dr = splitdrive_(s.u32());
     const auto& p = dr.second;
