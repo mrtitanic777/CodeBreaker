@@ -22,6 +22,7 @@ sys.path.insert(0, ROOT)
 
 from codebreaker.decompile import xbox_effect, xenos_hlsl   # noqa: E402
 from codebreaker.formats.xbox import effect, shader         # noqa: E402
+from codebreaker.formats import xnb                         # noqa: E402
 from codebreaker.xna import mgfx                            # noqa: E402
 
 DATA = os.path.join(ROOT, "tests", "data", "xbox_effects")
@@ -94,16 +95,39 @@ def test_recovered_hlsl():
     assert "&& !Invert) { skip_to = " in text      # the bool parameter's branch, a jump over its block
 
 
+REAL = os.path.join(ROOT, "tests", "fixtures", "xbox_effects")
+
+
 def test_stock_effect_arrays():
     # XNA's stock effects choose a pass's shaders from arrays: one technique per ShaderIndex
-    src = os.path.join(ROOT, "Converted", "BlockWorld", "assets", "game", "584E07D1", "Content", "Shaders",
-                       "BasicClipEffect360.bin")
-    if not os.path.isfile(src):
-        raise Skip("Block World is not converted here")
-    with open(src, "rb") as f:
+    # (a stock BasicEffect as a game's content writes it, tests/fixtures/xbox_effects)
+    with open(os.path.join(REAL, "bw_BasicClipEffect360.bin"), "rb") as f:
         text = xbox_effect.to_fx(f.read(), "BasicClipEffect360")
     assert "technique BasicEffect\n" in text and "technique BasicEffect__31\n" in text
     assert "VertexShader = compile vs_3_0 VSArray_2();\n        PixelShader = compile ps_3_0 PSArray_0();" in text
+
+
+def test_real_effects_recover():
+    # every real effect saved from games' content (the .xnb effects) and the stock ones: read, recovered as HLSL,
+    # and written as the port writes them (.fx and its parameters)
+    blobs = sorted(glob.glob(os.path.join(REAL, "*.bin")))
+    assert len(blobs) == 23, len(blobs)
+    with tempfile.TemporaryDirectory() as d:
+        for path in blobs:
+            name = os.path.splitext(os.path.basename(path))[0]
+            with open(path, "rb") as f:
+                code = f.read()
+            fx = effect.read(code)
+            pc = name == "bw_BasicClipEffect"                  # the stock effect's PC build: little-endian
+            assert fx.big_endian == (not pc) and fx.techniques and fx.techniques[0].passes, name
+            text = xbox_effect.to_fx(code, name)
+            assert "technique " in text, name
+            rec = xnb.convert_effect_file(path, d)
+            if pc:
+                assert rec is None                            # only an Xbox 360 effect is converted on its own
+                continue
+            assert rec and rec["kind"] == "effect" and "error" not in rec, (name, rec)
+            assert os.path.isfile(os.path.join(d, name + ".fx")) and os.path.isfile(os.path.join(d, name + ".fx.json"))
 
 
 def _mgfxc():
@@ -206,6 +230,7 @@ def test_unsupported_names_itself():
 
 def main():
     for fn in (test_effect_layout, test_shader_tables, test_recovered_hlsl, test_stock_effect_arrays,
+               test_real_effects_recover,
                test_mgfx_parameters, test_fixtures_current, test_behaves_as_source, test_unsupported_names_itself):
         check(fn)
     for name, status, detail in RESULTS:

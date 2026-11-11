@@ -11,6 +11,9 @@
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/formats/pe_functions.hpp"
+#include "codebreaker/knowledge/package.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
@@ -108,8 +111,9 @@ Index& _signatures() {
         for (const char* bits : {"32", "16"}) {                    // (runtime_signatures.json, as the knowledge base has it)
             knowledge::reads::record_kind(py::str(std::string(bits) == "16" ? "win16" : "win32"), py::str("signature"));
             py::dict<py::bytes, py::list<Entry>> by_lead;
-            for (const auto& kv : api_arguments::_knowledge_table(py::str(std::string(bits) == "16" ? "win16" : "win32"), py::str("signature")).items()) {
-                const knowledge::sources::Json& row = std::get<1>(kv);            // lead, size, mask, digest, name, library
+            for (const auto& kv : knowledge::_table(py::str(std::string(bits) == "16" ? "win16" : "win32"), py::str("signature")).items()) {
+                if (!std::holds_alternative<knowledge::sources::Json>(std::get<1>(kv))) continue;
+                const knowledge::sources::Json& row = std::get<knowledge::sources::Json>(std::get<1>(kv));            // lead, size, mask, digest, name, library
                 Entry e;
                 e.size = row.list.at(1).i;
                 e.masked = _offsets(row.list.at(2).s);
@@ -197,7 +201,7 @@ py::list<int64_t> _flat_thunk_stubs(const py::str& module_path, const formats::p
     };
     py::list<int64_t> out;
     std::vector<int64_t> starts;
-    for (int64_t k : x86::carve(module_path)->funcs.keys()) starts.push_back(k);
+    for (int64_t k : formats::pe_functions::carve(module_path)->funcs.keys()) starts.push_back(k);
     std::sort(starts.begin(), starts.end());
     for (int64_t va : starts)
         if (reaches(va, 1)) out.append(va);
@@ -214,7 +218,7 @@ py::dict<int64_t, std::tuple<py::str, py::str>> identify(const py::str& module_p
         if (pe.machine != 0x014C) return out;
         auto sections = pe.code_sections();
         std::vector<int64_t> starts;
-        for (int64_t k : x86::carve(module_path)->funcs.keys()) starts.push_back(k);
+        for (int64_t k : formats::pe_functions::carve(module_path)->funcs.keys()) starts.push_back(k);
         std::sort(starts.begin(), starts.end());
         for (int64_t va : starts) {
             for (const auto& s : sections) {

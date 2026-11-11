@@ -11,8 +11,7 @@
 #include "codebreaker/formats/xex.hpp"
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/store.hpp"
-#include "codebreaker/symbols/libraries/coff.hpp"
-#include "codebreaker/symbols/libraries/omf.hpp"
+#include "codebreaker/symbols/libraries/package.hpp"
 #include "py_json.hpp"
 #include "py_os.hpp"
 #include "py_settings.hpp"
@@ -55,96 +54,6 @@ bool _falls_through(int64_t w) {
     return true;
 }
 
-// ---- codebreaker.symbols.libraries ----
-std::tuple<Library, py::list<LibraryFunction>> libraries_functions(const py::str& path) {
-    py::bytes data = py::open_rb(path).read();
-    Library lib;
-    py::list<LibraryFunction> out;
-    auto take = [&](const py::list<libraries::coff::Function>& found) {
-        for (const auto& f : found) {
-            LibraryFunction lf;
-            lf.name = f.name;
-            lf.code = f.code;
-            if (const auto* words = std::get_if<py::list<int64_t>>(&f.mask)) lf.mask = *words;
-            lf.at = f.at;
-            out.append(lf);
-        }
-    };
-    if (data.slice(0, 8) == py::bytes("!<arch>\n")) {
-        std::optional<int64_t> kind;                     // 0x14C -> 32, 0x1F2 -> "powerpc"
-        for (const auto& member : libraries::coff::members(data)) {
-            const py::bytes& body = std::get<1>(member);
-            py::list<libraries::coff::Function> found;
-            try {
-                found = libraries::coff::functions(body);
-            } catch (const py::StructError&) {
-                continue;
-            } catch (const py::IndexError&) {
-                continue;
-            }
-            if (!found.empty() && !kind) {
-                if (body.size() < 2) throw py::StructError("unpack_from requires a buffer of at least 2 bytes");
-                int64_t machine = body[0] | (body[1] << 8);
-                if (machine == 0x014C) kind = 32;
-                else if (machine == 0x01F2) kind = 1;
-                else kind = 0;
-            }
-            take(found);
-        }
-        lib.powerpc = kind && *kind == 1;
-        lib.bits = 32;
-        return {lib, out};
-    }
-    if (data.slice(0, 2) == py::bytes("\x4c\x01", 2)) {
-        take(libraries::coff::functions(data));
-        lib.bits = 32;
-        return {lib, out};
-    }
-    if (data.slice(0, 2) == py::bytes("\xf2\x01", 2)) {
-        take(libraries::coff::functions(data));
-        lib.powerpc = true;
-        return {lib, out};
-    }
-    libraries::omf::functions(data);                     // (a 16-bit library: read, and not used here)
-    lib.bits = 16;
-    return {lib, out};
-}
-
-Index::Index(std::vector<int64_t> units) : units_(std::move(units)) {
-    for (size_t i = 0; i + 1 < units_.size(); ++i) pairs_[{units_[i], units_[i + 1]}].push_back(static_cast<int64_t>(i));
-}
-
-std::vector<int64_t> Index::find(const std::vector<int64_t>& sig, const std::vector<int64_t>& ignore) const {
-    std::optional<size_t> anchor;
-    std::optional<size_t> fewest;
-    for (size_t i = 0; i + 1 < ignore.size(); ++i) {
-        if (!ignore[i] && !ignore[i + 1]) {
-            auto it = pairs_.find({sig[i], sig[i + 1]});
-            size_t n = it == pairs_.end() ? 0 : it->second.size();
-            if (!fewest || n < *fewest) {
-                anchor = i;
-                fewest = n;
-                if (n == 0) break;
-            }
-        }
-    }
-    std::vector<int64_t> hits;
-    if (!anchor || !*fewest) return hits;
-    const auto& places = pairs_.at({sig[*anchor], sig[*anchor + 1]});
-    for (int64_t p : places) {
-        int64_t s = p - static_cast<int64_t>(*anchor);
-        if (s < 0 || s + static_cast<int64_t>(sig.size()) > static_cast<int64_t>(units_.size())) continue;
-        py::list<int64_t> a, b, c;
-        for (size_t i = 0; i < sig.size(); ++i) {
-            a.append(units_[static_cast<size_t>(s) + i]);
-            b.append(sig[i]);
-            c.append(i < ignore.size() ? ignore[i] : 0);
-        }
-        if (compare::mask::same_words(a, b, c)) hits.push_back(s);
-    }
-    return hits;
-}
-
 // ---- the signatures ----
 py::list<Signature> _read_signatures(const py::str& folder) {
     // dict (sig, ignore) -> entry, in the order first seen
@@ -153,10 +62,11 @@ py::list<Signature> _read_signatures(const py::str& folder) {
     py::list<py::str> files = py::os::listdir(folder);
     for (const py::str& fname : py::sorted(files)) {
         if (!fname.lower().endswith(py::str(".lib"))) continue;
-        auto [lib, found] = libraries_functions(py::os::path::join(folder, fname));
-        if (!lib.powerpc) continue;
-        for (const LibraryFunction& f : found) {
-            auto [code, ignore] = _trim(f.code, f.mask);
+        auto [kind, found] = libraries::functions(py::os::path::join(folder, fname));
+        const py::str* machine = std::get_if<py::str>(&kind);
+        if (!machine || *machine != py::str("powerpc")) continue;
+        for (const libraries::Function& f : found) {
+            auto [code, ignore] = _trim(f.code, std::get<py::list<int64_t>>(f.mask));
             if (ignore.size() < 4) continue;
             std::vector<int64_t> words, ign;
             const std::string& raw = code.raw();
@@ -294,7 +204,7 @@ py::dict<int64_t, Found> match(const py::str& image_path, const std::optional<py
                      static_cast<uint32_t>(static_cast<unsigned char>(raw[4 * i + 3]));
         words.push_back(w);
     }
-    Index index(words);
+    libraries::Index index{py::list<int64_t>(words)};
     py::set<int64_t> starts;
     for (int64_t a : img->extents.keys()) starts.add(floordiv(a - t0, 4));
     std::map<int64_t, Found> found;
@@ -305,7 +215,7 @@ py::dict<int64_t, Found> match(const py::str& image_path, const std::optional<py
         for (int64_t m : s.ignore) whole += m ? 0 : 1;
         if (whole < 3) continue;                                    // too generic to place
         std::vector<int64_t> hits;
-        for (int64_t h : index.find(s.words, s.ignore)) {            // (not the tail of another function)
+        for (int64_t h : index.find(py::list<int64_t>(s.words), py::list<int64_t>(s.ignore))) {            // (not the tail of another function)
             if (s.secondary || starts.contains(h) || h == 0 || !_falls_through(words[static_cast<size_t>(h - 1)])) hits.push_back(h);
         }
         if (hits.size() == 1) {

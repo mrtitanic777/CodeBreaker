@@ -33,10 +33,9 @@ struct Insn {
     }
 };
 
-// The one thing x86.py takes from outside: `_CS = platforms.decoder(16)`, the 16-bit x86 decoder (capstone).
-// codebreaker.platforms has no typed port yet, so the decoder is a small interface: given the bytes at
-// `address`, the first instruction they decode to, or nullopt when they decode to none
-// (`next(_CS.disasm(code, address), None)`). Install it with set_decoder before the first call.
+// `_CS = platforms.decoder(16)`, the 16-bit x86 decoder (capstone): platforms::decoder. set_decoder installs another one
+// (an override): given the bytes at `address`, the first instruction they decode to, or nullopt when they decode to none
+// (`next(_CS.disasm(code, address), None)`).
 using Decoder = std::function<std::optional<Insn>(const py::bytes& code, int64_t address)>;
 void set_decoder(Decoder d);
 

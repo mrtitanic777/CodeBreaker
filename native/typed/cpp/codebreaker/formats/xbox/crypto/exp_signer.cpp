@@ -5,7 +5,7 @@
 #include <iostream>
 
 #include "codebreaker/formats/xbox/crypto/XeCrypt.hpp"
-#include "codebreaker/formats/xbox/crypto/argparse_min.hpp"
+#include "py_argparse.hpp"
 #include "codebreaker/formats/xbox/crypto/build_lib.hpp"
 #include "codebreaker/formats/xbox/crypto/os_urandom.hpp"
 
@@ -113,14 +113,14 @@ void sign_exp(const py::str& in_file, const std::optional<py::str>& out_file, co
 }
 
 int64_t main(const py::list<py::str>& argv) {
-    argparse_min::ArgumentParser parser(py::os::path::basename(argv[0]), py::str("A script to sign HvxExpansionInstall payloads"), *out_stream_,
+    py::argparse::ArgumentParser parser(py::os::path::basename(argv[0]), py::str("A script to sign HvxExpansionInstall payloads"), *out_stream_,
                                         *err_stream_);
     parser.add_positional("input", py::str("The payload executable to sign"));
     parser.add_option({py::str("-o"), py::str("--ofile")}, py::str("The signed payload file"));
     parser.add_option({py::str("-i"), py::str("--expansion-id")}, py::str("The expansion ID to use"), py::str("0x48565050"));
     parser.add_option({py::str("-k"), py::str("--keyfile")}, py::str("The private key to sign with"), py::str("Keys/HVX_prv.bin"));
     parser.add_flag({py::str("--encrypt")}, py::str("Encrypt the expansion"));
-    argparse_min::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
+    py::argparse::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
 
     const py::str input = *args.get("input");
     if (!py::os::path::isfile(input)) throw py::AssertionError("The specified input file doesn't exist");

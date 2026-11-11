@@ -147,48 +147,8 @@ const std::set<Str>& EXCEPTIONS() {
 }
 
 // ------------------------------------------------------------------------------------ repr
-namespace {
 
-// str.isprintable() for one character: not in categories Cc Cf Cs Co Zl Zp Zs (but the space)
-bool printable(char32_t c) {
-    if (c < 0x20 || c == 0x7F) return false;
-    if (c < 0x7F) return true;
-    if (c <= 0xA0 || c == 0xAD) return false;
-    if (c == 0x600 || (c >= 0x601 && c <= 0x605) || c == 0x61C || c == 0x6DD || c == 0x70F || c == 0x1680 || c == 0x180E) return false;
-    if (c >= 0x2000 && c <= 0x200F) return false;
-    if (c >= 0x2028 && c <= 0x202F) return false;
-    if (c >= 0x205F && c <= 0x206F) return false;
-    if (c == 0x3000 || c == 0xFEFF || (c >= 0xFFF9 && c <= 0xFFFB)) return false;
-    if (c >= 0xD800 && c <= 0xF8FF) return false;
-    if (c == 0xFFFE || c == 0xFFFF || c >= 0xE0000) return false;
-    return true;
-}
-
-}  // namespace
-
-Str repr_str(const Str& s) {
-    const auto& u = s.u32();
-    bool sq = u.find(U'\'') != std::u32string::npos, dq = u.find(U'"') != std::u32string::npos;
-    char32_t q = (sq && !dq) ? U'"' : U'\'';
-    std::u32string o(1, q);
-    for (char32_t c : u) {
-        if (c == q || c == U'\\') {
-            o.push_back(U'\\');
-            o.push_back(c);
-        } else if (c == U'\t') o += U"\\t";
-        else if (c == U'\n') o += U"\\n";
-        else if (c == U'\r') o += U"\\r";
-        else if (!printable(c)) {
-            char b[16];
-            if (c < 0x100) std::snprintf(b, sizeof b, "\\x%02x", static_cast<unsigned>(c));
-            else if (c < 0x10000) std::snprintf(b, sizeof b, "\\u%04x", static_cast<unsigned>(c));
-            else std::snprintf(b, sizeof b, "\\U%08x", static_cast<unsigned>(c));
-            o += Str(b).u32();
-        } else o.push_back(c);
-    }
-    o.push_back(q);
-    return Str(o);
-}
+Str repr_str(const Str& s) { return py::repr(s); }   // repr(str): the runtime's, over the Unicode table
 
 // ------------------------------------------------------------------------------------ ast helpers
 Str deco_name(const A::Expr* d) {

@@ -17,9 +17,7 @@
 //     POOL_MAX, WARM_POOL, WORKER_MAX_USES, ASM_BATCH) are functions here, read when first asked (an import cannot
 //     fail in C++; the Python's int() of a bad WT_POOL_MAX fails at import, here at first use) and cached.
 //   - results are the structs of native_dos (Assembly) and dos_sessions (Assembled, Product) instead of dicts.
-//   - the assembled-bytes cache stores zlib streams as the Python does (kind "masm"); zlib is not in the runtime,
-//     so inflate (reads what Python wrote) and a stored-block deflate (valid zlib any reader inflates, larger than
-//     level 6's) are written here (zlib_decompress / zlib_compress).
+//   - the assembled-bytes cache stores zlib streams as the Python does (kind "masm"), through py::zlib.
 //   - Python's atexit(close_pools) is std::atexit, registered when the first pool is made.
 //   - warm workers: `worker._uses` is kept in a side table here (DosboxWorker has no such field).
 //   - main(): argparse is a small hand parse (`asm` or `--selftest`, `-h`); its usage text is not argparse's.
@@ -88,10 +86,6 @@ inline constexpr int64_t CACHE_VER = 1;
 py::str _cache_key(const py::str& src, const py::str& masmroot, const py::str& stem = py::str(""));
 std::optional<Product> _cache_get(const py::str& key);
 void _cache_put(const py::str& key, const Product& res);
-
-// zlib.decompress (nullopt: zlib.error) / zlib.compress (a valid stream, stored blocks)
-std::optional<py::bytes> zlib_decompress(const py::bytes& data);
-py::bytes zlib_compress(const py::bytes& data);
 
 // Assemble MANY (stem, asm_src) pairs, using the persistent assembled-bytes cache. Each item whose .asm source is
 // already cached is served instantly; only the misses are assembled, then cached.

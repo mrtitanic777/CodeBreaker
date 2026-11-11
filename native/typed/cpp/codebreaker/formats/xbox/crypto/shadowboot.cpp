@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "json.hpp"   // py::json_parse (native/l2/src)
-#include "codebreaker/formats/xbox/crypto/argparse_min.hpp"
+#include "py_argparse.hpp"
 #include "codebreaker/formats/xbox/crypto/keystore.hpp"
 
 namespace codebreaker::formats::xbox::crypto::shadowboot {
@@ -798,9 +798,9 @@ void ShadowbootImage::print_info() {
 // ------------------------------------------------------------------------------------------- main
 namespace {
 
-using argparse_min::ArgumentError;
-using argparse_min::ArgumentParser;
-using argparse_min::Namespace;
+using py::argparse::ArgumentError;
+using py::argparse::ArgumentParser;
+using py::argparse::Namespace;
 
 // the parsed command line (argparse's Namespace of the whole tool)
 struct Args {
@@ -833,7 +833,7 @@ std::string top_help(const py::str& prog) {
     throw py::SystemExit(2);
 }
 
-// split's usage and help as the Python prints them (argparse_min shows a `choices` option as REVISION / TYPE)
+// split's usage and help as the Python prints them (py::argparse shows a `choices` option as REVISION / TYPE)
 std::string split_usage(const py::str& prog) {
     const std::string indent(static_cast<size_t>(7 + prog.utf8().size() + 7), ' ');
     return "usage: " + prog.utf8() + " split [-h] [-k KERNEL]\n" + indent + "[-r {xenon,zephyr,falcon,jasper,trinity,corona,winchester}]\n" + indent +
@@ -955,7 +955,7 @@ Args parse_command(const py::str& prog, const py::str& cmd, const py::list<py::s
         }
         throw;
     }
-    // (a clean parse of a sub-parser can still leave extras for the top-level parser: none, argparse_min reports them)
+    // (a clean parse of a sub-parser can still leave extras for the top-level parser: none, py::argparse reports them)
     Args a;
     a.command = cmd;
     a.input = ns.get("input");

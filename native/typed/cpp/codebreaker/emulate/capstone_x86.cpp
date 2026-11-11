@@ -7,7 +7,7 @@
 #include <mutex>
 #include <string>
 
-#include "codebreaker/emulate/native_trace.hpp"
+#include "codebreaker/base/capstone_dll.hpp"
 
 namespace codebreaker::emulate::capstone_x86 {
 
@@ -17,21 +17,38 @@ Api g_api;
 bool g_loaded = false;
 std::optional<py::str> g_path;
 
+std::wstring wide(const py::str& path) {
+    std::wstring w;
+    for (char32_t c : path.u32()) w.push_back(static_cast<wchar_t>(c));   // (a BMP path)
+    return w;
+}
+
+// The capstone.dll: the one named with load_capstone, else the one already in the process (the recorder's, the host's),
+// else the one `import capstone` would find (base/capstone_dll).
 HMODULE find_module() {
-    if (g_path) {
-        std::wstring w;
-        for (char32_t c : g_path->u32()) w.push_back(static_cast<wchar_t>(c));   // (a BMP path)
-        return LoadLibraryW(w.c_str());
-    }
-    native_trace::_load();   // (it hands capstone.dll to the recorder: the module is in the process then)
-    HMODULE m = GetModuleHandleW(L"capstone.dll");
-    return m ? m : LoadLibraryW(L"capstone.dll");
+    if (g_path) return LoadLibraryW(wide(*g_path).c_str());
+    if (HMODULE m = GetModuleHandleW(L"capstone.dll")) return m;
+    return LoadLibraryW(wide(base::capstone_dll::find()).c_str());
 }
 }  // namespace
 
 void load_capstone(const py::str& path) {
     std::lock_guard<std::mutex> g(g_mu);
     g_path = path;
+}
+
+py::str dll() {
+    {
+        std::lock_guard<std::mutex> g(g_mu);
+        if (g_path) return *g_path;
+    }
+    api();
+    wchar_t buf[1024];
+    DWORD n = GetModuleFileNameW(GetModuleHandleW(L"capstone.dll"), buf, 1024);
+    if (n == 0 || n >= 1024) return base::capstone_dll::find();
+    std::string u(static_cast<size_t>(WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), nullptr, 0, nullptr, nullptr)), ' ');
+    WideCharToMultiByte(CP_UTF8, 0, buf, static_cast<int>(n), &u[0], static_cast<int>(u.size()), nullptr, nullptr);
+    return py::str(u);
 }
 
 const Api& api() {

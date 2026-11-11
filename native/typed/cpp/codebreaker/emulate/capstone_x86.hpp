@@ -1,9 +1,9 @@
 // codebreaker/emulate/capstone_x86.hpp -- Capstone's x86 decoders, as platforms.decoder(bits, detail) keeps them.
 //
-// The emulators of this group decode instructions themselves in a few places (the function carve of a PE, the branch log
-// and the fault note of a 16-bit run): they ask for the capstone engine of a width, with or without detail, one of each
-// kind per thread, from the capstone.dll the process has loaded (the recorder hands it to cbtrace.dll, or the host
-// names it with load_capstone()).
+// The one loader of the capstone DLL: platforms::decoder (platforms/decoder.cpp) makes its decoders over it, and the
+// emulators of this group ask it for the capstone engine of a width, with or without detail, one of each kind per
+// thread, from the capstone.dll the process has loaded (the recorder hands it to cbtrace.dll), else the one the host
+// names with load_capstone(), else the one `import capstone` finds.
 #pragma once
 
 #include <capstone/capstone.h>
@@ -24,8 +24,12 @@ struct Api {
     decltype(&cs_regs_access) regs_access = nullptr;
 };
 
-// Use the capstone.dll at `path` (otherwise the one the process has loaded, else "capstone.dll" on the search path).
+// Use the capstone.dll at `path` (an override: otherwise the one the process has loaded, else the one `import capstone`
+// would find, base/capstone_dll). Every module's set_capstone_dll() is this.
 void load_capstone(const py::str& path);
+
+// The path of the capstone.dll in use.
+py::str dll();
 
 const Api& api();
 

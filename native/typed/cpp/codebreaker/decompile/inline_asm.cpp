@@ -7,6 +7,9 @@
 #include <set>
 #include <vector>
 
+#include <capstone/capstone.h>
+
+#include "codebreaker/platforms/package.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::decompile::inline_asm {
@@ -338,6 +341,51 @@ Result whole_body_(const Decoder& md, const py::str& name, const Data& code_all,
 }
 
 }  // namespace
+
+// md.disasm(code, address) of platforms.decoder(16, detail=True): capstone's records as Instructions
+py::list<Instruction> decode16(const py::bytes& code, uint64_t address) {
+    py::list<Instruction> out;
+    platforms::decoder(16, py::str("x86"), true)->each(code.raw(), static_cast<int64_t>(address), 0, [&](const cs_insn& c) {
+        Instruction i;
+        i.address = c.address;
+        i.size = c.size;
+        i.mnemonic = py::str(std::string(c.mnemonic));
+        i.op_str = py::str(std::string(c.op_str));
+        i.bytes = py::bytes(std::string(reinterpret_cast<const char*>(c.bytes), c.size));
+        if (c.detail) {
+            const cs_x86& x = c.detail->x86;
+            for (int k = 0; k < 4; ++k) i.prefix.append(x.prefix[k]);
+            for (int k = 0; k < x.op_count; ++k) {
+                const cs_x86_op& o = x.operands[k];
+                Operand op;
+                op.type = o.type;
+                op.reg = static_cast<int64_t>(static_cast<uint32_t>(o.reg));
+                op.imm = o.imm;
+                op.mem.segment = static_cast<int64_t>(static_cast<uint32_t>(o.mem.segment));
+                op.mem.base = static_cast<int64_t>(static_cast<uint32_t>(o.mem.base));
+                op.mem.index = static_cast<int64_t>(static_cast<uint32_t>(o.mem.index));
+                op.mem.scale = o.mem.scale;
+                op.mem.disp = o.mem.disp;
+                i.operands.append(op);
+            }
+        }
+        out.append(i);
+        return true;
+    });
+    return out;
+}
+
+std::tuple<std::optional<py::str>, std::optional<py::str>> whole_body(
+    const py::str& name, const py::bytes& code, int64_t start, int64_t end, const Fixups& fixups, const NameAt& name_at,
+    int64_t seg, const py::str& result) {
+    return whole_body_(Decoder(decode16), name, code, start, end, fixups, name_at, seg, result);
+}
+
+std::tuple<std::optional<py::str>, std::optional<py::str>> whole_body(
+    const py::str& name, const py::bytearray& code, int64_t start, int64_t end, const Fixups& fixups, const NameAt& name_at,
+    int64_t seg, const py::str& result) {
+    return whole_body_(Decoder(decode16), name, py::bytes(code.view()), start, end, fixups, name_at, seg, result);
+}
 
 std::tuple<std::optional<py::str>, std::optional<py::str>> whole_body(
     const Decoder& md, const py::str& name, const py::bytes& code, int64_t start, int64_t end, const Fixups& fixups,

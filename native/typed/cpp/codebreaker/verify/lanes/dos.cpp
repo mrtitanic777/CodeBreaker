@@ -32,17 +32,12 @@ const Packager& P() {
 
 // "%s:%d:%d" % (name, os.stat(exe).st_size, int(os.stat(exe).st_mtime)), or "" for a file that cannot be stat'ed (OSError)
 py::str tool_stamp(const py::str& name, const py::str& exe) {
-    std::error_code ec;
-    const std::filesystem::path p = std::filesystem::u8path(exe.utf8());
-    const auto size = std::filesystem::file_size(p, ec);
-    if (ec) return py::str("");
-    double mtime;
     try {
-        mtime = py::os::path::getmtime(exe);
+        py::os::stat_result st = py::os::stat(exe);
+        return py::percent(py::str("%s:%d:%d"), name, st.st_size, static_cast<int64_t>(std::trunc(st.st_mtime)));
     } catch (const py::OSError&) {
         return py::str("");
     }
-    return py::percent(py::str("%s:%d:%d"), name, static_cast<int64_t>(size), static_cast<int64_t>(std::trunc(mtime)));
 }
 
 // sorted("%05x" % a ...) as Python orders strings

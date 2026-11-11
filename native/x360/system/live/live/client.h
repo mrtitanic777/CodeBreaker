@@ -192,6 +192,10 @@ namespace live
     // Sends what is queued now, from the calling thread (before the process exits or after a fatal error).
     void FlushLog();
     void Stop();
+    // A new LIVE key (Config::key) for the connections from now on: a connection that is up is dropped (its users are
+    // kept offline, as for any lost connection: Reconnect signs them in again, saying hello with the new key). Returns
+    // once the connection is gone (up to a few seconds).
+    void SetKey(const std::string& key);
     bool Connected();
     // Called on the client's thread for every change (keep it short; no requests from inside it).
     void SetEventHandler(std::function<void(const Event&)> handler);

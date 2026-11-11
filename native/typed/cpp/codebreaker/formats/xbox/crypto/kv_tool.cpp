@@ -9,19 +9,6 @@ namespace codebreaker::formats::xbox::crypto::kv_tool {
 
 namespace {
 
-// bytes.fromhex(text): only ASCII whitespace (space, \t \n \v \f \r) is skipped between the byte pairs. (The
-// runtime's py::bytes::fromhex also skips the other whitespace of str.isspace -- U+001C..U+001F, U+0085,
-// U+00A0, U+2003 ... -- which bytes.fromhex rejects, so anything else than a hex digit or ASCII whitespace is
-// refused here, with the ValueError bytes.fromhex raises.)
-py::bytes bytes_fromhex(const py::str& text) {
-    for (char32_t c : text.u32()) {
-        bool hex_digit = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-        bool ascii_space = c == ' ' || (c >= 9 && c <= 13);
-        if (!hex_digit && !ascii_space) throw py::ValueError("non-hexadecimal number found in fromhex() arg");
-    }
-    return py::bytes::fromhex(text);
-}
-
 // The 8 bytes a fuse line is set to: an int packed as ">Q", a hex string of 16 characters, or bytes.
 py::bytes fuse_line_bytes(const FuseValue& value) {
     py::bytes bytes_value;
@@ -29,7 +16,7 @@ py::bytes fuse_line_bytes(const FuseValue& value) {
         bytes_value = py::pack(">Q", *number);
     } else if (const py::str* text = std::get_if<py::str>(&value)) {
         if (!(py::len(*text) == 16)) throw py::AssertionError("Invalid fuse line");
-        bytes_value = bytes_fromhex(*text);
+        bytes_value = py::bytes::fromhex(*text);
     } else if (const py::bytes* raw = std::get_if<py::bytes>(&value)) {
         bytes_value = *raw;
     } else {

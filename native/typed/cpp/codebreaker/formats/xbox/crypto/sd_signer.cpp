@@ -11,7 +11,7 @@
 namespace codebreaker::formats::xbox::crypto::sd_signer {
 
 using namespace XeCrypt;
-using argparse_min::ArgumentParser;
+using py::argparse::ArgumentParser;
 
 const py::str __description__("A script to sign retail CD's and devkit SD bootloaders for Xbox 360");
 
@@ -56,7 +56,7 @@ void main(const py::list<py::str>& argv) {
     const auto check = [&parser](const py::str& x) { return valid_file(parser, x); };
     parser.add_positional("input", py::str("The CD/SD to sign"), check);
     parser.add_option({py::str("-o")}, py::str("The file to output to"), std::nullopt, check);
-    argparse_min::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
+    py::argparse::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
     const py::str input = *args.get("input");
     const std::optional<py::str> o = args.get("o");
 

@@ -3,17 +3,14 @@
 #include "codebreaker/recompile/disassemble.hpp"
 
 #include <algorithm>
-#include <mutex>
 #include <string>
 #include <vector>
 
 #include <capstone/capstone.h>
 
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
 #include "codebreaker/decompile/vmx128.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
+#include "codebreaker/platforms/package.hpp"
 #include "codebreaker/formats/powerpc_image.hpp"
 #include "codebreaker/formats/xex.hpp"
 
@@ -23,62 +20,14 @@ const py::set<py::str> _ENDERS{py::str("b"), py::str("ba"), py::str("blr"), py::
 
 namespace {
 
-// ---- the PowerPC capstone decoder (platforms.decoder(32, arch="ppc", detail=True)), one handle a thread ---------
-struct CsLib {
-    HMODULE module = nullptr;
-    decltype(&cs_open) open = nullptr;
-    decltype(&cs_option) option = nullptr;
-    decltype(&cs_disasm) disasm = nullptr;
-    decltype(&cs_free) free_ = nullptr;
-    bool tried = false;
-    bool ok = false;
-};
-
-CsLib& cs_lib() {
-    static CsLib lib;
-    return lib;
-}
-std::mutex& mu() {
-    static std::mutex m;
-    return m;
-}
-std::wstring& dll_path() {
-    static std::wstring p;
-    return p;
-}
-
-template <class F> bool sym_(HMODULE m, const char* name, F& out) {
-    FARPROC p = GetProcAddress(m, name);
-    out = reinterpret_cast<F>(p);
-    return p != nullptr;
-}
-
-// load the DLL once: Capstone is "installed" when it does
-const CsLib& cs_ready() {
-    std::lock_guard<std::mutex> lock(mu());
-    CsLib& lib = cs_lib();
-    if (lib.tried) return lib;
-    lib.tried = true;
-    if (dll_path().empty()) return lib;
-    lib.module = LoadLibraryW(dll_path().c_str());
-    if (!lib.module) return lib;
-    lib.ok = sym_(lib.module, "cs_open", lib.open) && sym_(lib.module, "cs_option", lib.option) && sym_(lib.module, "cs_disasm", lib.disasm) &&
-             sym_(lib.module, "cs_free", lib.free_);
-    return lib;
-}
-
-// this thread's handle, or 0 when there is no decoder
-csh handle_() {
-    static thread_local csh h = 0;
-    if (h) return h;
-    const CsLib& lib = cs_ready();
-    if (!lib.ok) return 0;
-    if (lib.open(CS_ARCH_PPC, static_cast<cs_mode>(CS_MODE_32 | CS_MODE_BIG_ENDIAN), &h) != CS_ERR_OK) {
-        h = 0;
-        return 0;
+// ---- the PowerPC capstone decoder: platforms.decoder(32, arch="ppc", detail=True) -------------------------------
+// this thread's decoder, or null when there is none (Capstone is not installed: `import capstone` failing)
+std::shared_ptr<platforms::Decoder> md_() {
+    try {
+        return platforms::decoder(32, py::str("ppc"), true);
+    } catch (const py::ImportError&) {
+        return nullptr;
     }
-    lib.option(h, CS_OPT_DETAIL, CS_OPT_ON);
-    return h;
 }
 
 bool in_group(const cs_detail* d, uint8_t group) {
@@ -90,17 +39,9 @@ bool in_group(const cs_detail* d, uint8_t group) {
 
 }  // namespace
 
-void set_capstone_dll(const py::str& path) {
-    const std::string u = path.utf8();
-    const int n = MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, nullptr, 0);
-    std::wstring w(static_cast<size_t>(n > 0 ? n - 1 : 0), L'\0');
-    if (n > 0) MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, &w[0], n);
-    std::lock_guard<std::mutex> lock(mu());
-    dll_path() = w;
-    cs_lib().tried = false;
-}
+void set_capstone_dll(const py::str& path) { emulate::capstone_x86::load_capstone(path); }
 
-bool _md() { return handle_() != 0; }
+bool _md() { return md_() != nullptr; }
 
 bool is_vmx128(const py::bytes& raw4) {
     const int64_t op = raw4[0] >> 2;
@@ -108,12 +49,11 @@ bool is_vmx128(const py::bytes& raw4) {
 }
 
 std::optional<Insn> _decode_one(const py::bytes& code, int64_t off, int64_t vaddr) {
-    const csh h = handle_();
-    if (!h || off + WORD > code.size()) return std::nullopt;
+    const std::shared_ptr<platforms::Decoder> md = md_();
+    if (!md || off + WORD > code.size()) return std::nullopt;
     const py::bytes four = code.slice(off, off + WORD);
-    cs_insn* insn = nullptr;
-    const size_t n = cs_lib().disasm(h, reinterpret_cast<const uint8_t*>(four.raw().data()), static_cast<size_t>(four.size()),
-                                     static_cast<uint64_t>(vaddr + off), 1, &insn);
+    size_t n = 0;
+    cs_insn* insn = md->raw(reinterpret_cast<const uint8_t*>(four.raw().data()), static_cast<size_t>(four.size()), vaddr + off, 1, n);
     if (n == 0) return std::nullopt;
     Insn out;
     out.address = static_cast<int64_t>(insn->address);
@@ -127,7 +67,7 @@ std::optional<Insn> _decode_one(const py::bytes& code, int64_t off, int64_t vadd
             if (ppc.operands[i].type == PPC_OP_IMM) out.imm.append(static_cast<int64_t>(ppc.operands[i].imm));
         }
     }
-    cs_lib().free_(insn, n);
+    md->release(insn, n);
     return out;
 }
 

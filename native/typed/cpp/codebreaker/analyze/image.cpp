@@ -6,9 +6,6 @@
 //
 // What differs from the Python, and why:
 //   * `import capstone` has no C++ counterpart: set_capstone_dll() names the DLL (see the header).
-//   * formats.pe_functions.PeCarve has no typed port; the carve it asks formats.dll for (native/formats/win/pe_functions.cc)
-//     is run again here over core/cs32.h (the same 32-bit Capstone decoder): the linear sweep, the function starts
-//     (exports, the entry point, direct-call targets, standard prologues) and their extents.
 //   * The DLL's answers are JSON text; they are read with the l2 JSON reader (py::V).
 #include "codebreaker/analyze/image.hpp"
 
@@ -19,13 +16,14 @@
 #include <sstream>
 #include <unordered_set>
 
-#include "../../../../formats/core/cs32.h"
 #include "codebreaker/base/corpus.hpp"
 #include "codebreaker/decompile/describe.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
 #include "codebreaker/formats/detect.hpp"
 #include "codebreaker/formats/le.hpp"
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/formats/pe_functions.hpp"
 #include "json.hpp"
 #include "py_os.hpp"
 #include "py_settings.hpp"
@@ -36,24 +34,6 @@ namespace describe = decompile::describe;
 
 namespace {
 
-std::wstring& capstone_wide() {
-    static std::wstring p = L"capstone.dll";   // (a bare name finds the DLL once it has been loaded by path)
-    return p;
-}
-
-std::wstring widen(const py::str& s) {
-    std::wstring w;
-    for (char32_t c : s.u32()) {
-        if (c >= 0x10000) {
-            c -= 0x10000;
-            w.push_back(static_cast<wchar_t>(0xD800 + (c >> 10)));
-            w.push_back(static_cast<wchar_t>(0xDC00 + (c & 0x3FF)));
-        } else {
-            w.push_back(static_cast<wchar_t>(c));
-        }
-    }
-    return w;
-}
 
 // _FAMILY
 const std::map<std::string, std::string>& family_table() {
@@ -503,107 +483,6 @@ const py::dict<int64_t, py::str>& ne_export_names(const py::str& module) {
     return cache.emplace(key.utf8(), names).first->second;
 }
 
-// ---- the 32-bit function carve (pe_functions.PeCarve) ----
-struct Sec {
-    int64_t base;
-    std::string data;
-    int64_t end() const { return base + static_cast<int64_t>(data.size()); }
-};
-
-struct Carve {
-    std::map<int64_t, std::tuple<int64_t, std::optional<py::str>>> funcs;   // start -> (end, name), ascending
-    py::dict<int64_t, py::str> exports;                                       // export_va -> name
-};
-
-constexpr size_t kWindow = 1 << 16;
-
-bool call_target(const cbf::CsIns& ins, int64_t* t) {
-    *t = ins.imm;
-    return ins.mnemonic == "call" && ins.imm0;
-}
-
-Carve pe_carve(const formats::pe::PEFile& pe) {
-    Carve out;
-    for (const auto& e : pe.exports()) {
-        int64_t va = static_cast<int64_t>(pe.image_base) + std::get<2>(e);
-        const auto& n = std::get<1>(e);
-        out.exports.set(va, (n && n->size() != 0) ? *n : py::percent(py::str("Ord%d"), std::get<0>(e)));
-    }
-    std::vector<Sec> secs;
-    for (const auto& s : pe.code_sections()) secs.push_back({static_cast<int64_t>(std::get<0>(s)), std::get<1>(s).raw()});
-    const std::wstring& dll = capstone_wide();
-    std::unordered_set<int64_t> decoded, called;
-    auto sec_of = [&](int64_t va) -> const Sec* {
-        for (const Sec& s : secs) if (s.base <= va && va < s.end()) return &s;
-        return nullptr;
-    };
-    // sweep
-    for (const Sec& s : secs) {
-        int64_t n = static_cast<int64_t>(s.data.size()), off = 0;
-        const uint8_t* p = reinterpret_cast<const uint8_t*>(s.data.data());
-        while (off < n) {
-            size_t w = static_cast<size_t>(std::min<int64_t>(n - off, kWindow));
-            std::vector<cbf::CsIns> run = cbf::cs32_disasm(dll, p + off, w, s.base + off, 0, true);
-            if (run.empty()) {
-                off += 1;
-                continue;
-            }
-            for (auto& ins : run) {
-                decoded.insert(ins.address);
-                int64_t t;
-                if (call_target(ins, &t)) called.insert(t);
-            }
-            off = run.back().address - s.base + run.back().size;
-        }
-    }
-    int64_t image_base = static_cast<int64_t>(pe.image_base), entry = pe.entry;
-    std::set<int64_t> starts;
-    for (int64_t va : out.exports.keys()) starts.insert(va);
-    if (entry) starts.insert(image_base + entry);
-    for (int64_t t : called) if (sec_of(t)) starts.insert(t);
-    for (const Sec& s : secs) {
-        int64_t n = static_cast<int64_t>(s.data.size());
-        const uint8_t* d = reinterpret_cast<const uint8_t*>(s.data.data());
-        for (int64_t i = 0; i < n - 4; ++i) {
-            if (d[i] == 0x55 && d[i + 1] == 0x8b && d[i + 2] == 0xec) starts.insert(s.base + i);
-            else if (d[i] == 0x8b && d[i + 1] == 0xff && d[i + 2] == 0x55 && d[i + 3] == 0x8b && d[i + 4] == 0xec) starts.insert(s.base + i);
-        }
-    }
-    std::vector<int64_t> pending;
-    for (int64_t s : starts) if (!decoded.count(s)) pending.push_back(s);
-    auto decode_from = [&](int64_t va) {
-        const Sec* s = sec_of(va);
-        if (!s) return;
-        int64_t off = va - s->base, n = static_cast<int64_t>(s->data.size());
-        const uint8_t* p = reinterpret_cast<const uint8_t*>(s->data.data());
-        while (off < n) {
-            size_t w = static_cast<size_t>(std::min<int64_t>(n - off, kWindow));
-            std::vector<cbf::CsIns> run = cbf::cs32_disasm(dll, p + off, w, s->base + off, 0, true);
-            if (run.empty()) return;
-            for (auto& ins : run) {
-                if (decoded.count(ins.address) && ins.address != va) return;
-                int64_t t;
-                if (call_target(ins, &t)) called.insert(t);
-                decoded.insert(ins.address);
-            }
-            off = run.back().address - s->base + run.back().size;
-        }
-    };
-    for (int64_t s : pending) {
-        if (out.exports.contains(s) || called.count(s) || s == image_base + entry) decode_from(s);
-    }
-    std::vector<int64_t> order;
-    for (int64_t s : starts) if (decoded.count(s)) order.push_back(s);
-    for (size_t i = 0; i < order.size(); ++i) {
-        const Sec* s = sec_of(order[i]);
-        int64_t end = s->end();
-        if (i + 1 < order.size() && order[i + 1] < end) end = order[i + 1];
-        std::optional<py::str> name = out.exports.get(order[i]);
-        out.funcs[order[i]] = {end, name};
-    }
-    return out;
-}
-
 ImageP load_pe(const py::str& path) {
     formats::pe::PEFile pe(path);
     if (pe.machine != 0x014C) {
@@ -621,16 +500,16 @@ ImageP load_pe(const py::str& path) {
             img->spans.append(native::Span(base + s.vaddr, full, (s.chars & 0x20000020) != 0, (s.chars & 0x80000000) != 0, s.name, raw.size()));
         }
     }
-    Carve carve = pe_carve(pe);
-    for (const auto& kv : carve.funcs) {
-        int64_t va = kv.first;
-        const auto& name = std::get<1>(kv.second);
+    formats::pe_functions::PeCarve carve(path);
+    for (const auto& kv : carve.funcs.items()) {
+        int64_t va = std::get<0>(kv);
+        const std::optional<py::str>& name = std::get<1>(kv).name;
         if (name && name->size() != 0 && py::re::fullmatch(py::str("[A-Za-z_?@$][\\w?@$]*"), *name)) {
             img->names.set(va, *name);
         } else {
             img->names.set(va, py::percent(py::str("sub_%06X"), va - base));
         }
-        img->limits.set(va, std::get<0>(kv.second));
+        img->limits.set(va, std::get<1>(kv).end);
     }
     img->exports = carve.exports;
     for (const auto& kv : pe.imports().items()) {
@@ -889,7 +768,7 @@ ImageP load_le(const py::str& path, const py::str& member, const py::str& work) 
 }  // namespace
 
 void set_capstone_dll(const py::str& path) {
-    capstone_wide() = widen(path);
+    emulate::capstone_x86::load_capstone(path);
     native::set_capstone_dll(path);
     describe::set_capstone_dll(path);
 }

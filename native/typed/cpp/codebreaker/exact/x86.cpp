@@ -4,6 +4,10 @@
 
 #include <algorithm>
 
+#include <capstone/capstone.h>
+
+#include "codebreaker/platforms/package.hpp"
+
 namespace codebreaker::exact::x86 {
 
 namespace {
@@ -14,9 +18,16 @@ Decoder& decoder_() {
 }
 
 // _CS.disasm(code, address) taken for its first instruction: next(..., None)
+// (an installed decoder, set_decoder, overrides platforms.decoder(16))
 std::optional<Insn> first_insn_(const py::bytes& code, int64_t address) {
-    if (!decoder_()) throw py::RuntimeError("x86: no decoder set (x86::set_decoder)");
-    return decoder_()(code, address);
+    if (decoder_()) return decoder_()(code, address);
+    std::optional<Insn> out;
+    platforms::decoder(16, py::str("x86"), false)->each(code.raw(), address, 1, [&](const cs_insn& c) {
+        out = Insn(static_cast<int64_t>(c.address), py::bytes(std::string(reinterpret_cast<const char*>(c.bytes), c.size)),
+                   py::str(std::string(c.mnemonic)), py::str(std::string(c.op_str)));
+        return false;
+    });
+    return out;
 }
 
 py::bytes one_byte_(int64_t v) { return py::bytes(std::string(1, static_cast<char>(v))); }

@@ -1040,57 +1040,24 @@ struct Ran {
 
 // subprocess.run(args, cwd=, env=, capture_output=True, timeout=): the environment is exactly `env`
 Ran run_with_env_(const py::list<str>& args, const str& cwd, const std::vector<std::pair<str, str>>& env, double timeout) {
-    SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
-    HANDLE out_r = nullptr, out_w = nullptr, err_r = nullptr, err_w = nullptr;
-    if (!CreatePipe(&out_r, &out_w, &sa, 0) || !CreatePipe(&err_r, &err_w, &sa, 0)) py::raise_winerror(GetLastError());
-    SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation(err_r, HANDLE_FLAG_INHERIT, 0);
-    HANDLE in_r = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = in_r;
-    si.hStdOutput = out_w;
-    si.hStdError = err_w;
-    std::wstring block;
-    for (const auto& kv : env) {
-        block += py::subprocess::to_wide(kv.first) + L"=" + py::subprocess::to_wide(kv.second);
-        block.push_back(L'\0');
-    }
-    block.push_back(L'\0');
-    std::wstring cmd = py::subprocess::to_wide(py::subprocess::list2cmdline(args));
-    std::wstring wcwd = py::subprocess::to_wide(cwd);
-    PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT, block.data(), wcwd.c_str(), &si, &pi);
-    DWORD err = GetLastError();
-    CloseHandle(out_w);
-    CloseHandle(err_w);
-    if (in_r != INVALID_HANDLE_VALUE) CloseHandle(in_r);
-    if (!ok) {
-        CloseHandle(out_r);
-        CloseHandle(err_r);
-        py::raise_winerror(err);
-    }
-    CloseHandle(pi.hThread);
+    py::subprocess::RunOptions o;
+    o.text = false;
+    o.stdin_ = py::subprocess::Stream::Devnull;
+    o.cwd = cwd;
+    py::dict<str, str> e;
+    for (const auto& kv : env) e.set(kv.first, kv.second);
+    o.env = e;
+    o.timeout = timeout;
     Ran r;
-    auto drain = [](HANDLE h, std::string& dst) {
-        char buf[8192];
-        DWORD got = 0;
-        while (ReadFile(h, buf, sizeof buf, &got, nullptr) && got > 0) dst.append(buf, got);
-    };
-    std::thread t_out([&] { drain(out_r, r.out); });
-    std::thread t_err([&] { drain(err_r, r.err); });
-    DWORD waited = WaitForSingleObject(pi.hProcess, static_cast<DWORD>(timeout * 1000.0));
-    if (waited == WAIT_TIMEOUT) {
+    try {
+        py::subprocess::CompletedProcess p = py::subprocess::run(args, o);
+        r.out = p.stdout_bytes ? p.stdout_bytes->raw() : std::string();
+        r.err = p.stderr_bytes ? p.stderr_bytes->raw() : std::string();
+    } catch (const py::subprocess::TimeoutExpired& te) {
         r.timed_out = true;
-        TerminateProcess(pi.hProcess, 1);   // (our own child)
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        if (te.stdout_bytes) r.out = te.stdout_bytes->raw();
+        if (te.stderr_bytes) r.err = te.stderr_bytes->raw();
     }
-    t_out.join();
-    t_err.join();
-    CloseHandle(pi.hProcess);
-    CloseHandle(out_r);
-    CloseHandle(err_r);
     return r;
 }
 

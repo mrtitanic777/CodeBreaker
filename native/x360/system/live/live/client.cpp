@@ -889,6 +889,24 @@ namespace live
             L().thread.join();
     }
 
+    void SetKey(const std::string& key)
+    {
+        State& s = S();
+        {
+            std::lock_guard lock(s.mutex);
+            if (s.config.key == key)
+                return;
+            s.config.key = key;
+        }
+        {
+            std::lock_guard lock(s.sendMutex);
+            if (s.socket != INVALID_SOCKET)
+                shutdown(s.socket, SD_BOTH); // the read loop ends and the users are held
+        }
+        for (int i = 0; i < 60 && Connected(); i++)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
     bool Connected()
     {
         std::lock_guard lock(S().mutex);

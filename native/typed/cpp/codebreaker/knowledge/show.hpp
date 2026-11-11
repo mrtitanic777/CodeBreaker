@@ -12,9 +12,7 @@
 //   * main(argv) takes the command line after "knowledge" (a list of str) and returns the exit status;
 //     what it prints goes through py::print (stdout). It opens the process's knowledge base
 //     (knowledge::store::open(): CB_KNOWLEDGE_DB, else state/db/knowledge.sqlite).
-//   * `knowledge.platform` and `knowledge.table` are functions of the package's __init__ (no port yet):
-//     platform_name() and table_keys() here are that code (the lane aliases ne/pe/le/mz/powerpc/16/32; the
-//     authored kinds from sources.authored, the others from the base), kept local to this module.
+//   * `knowledge.platform` and `knowledge.table` are the package's (knowledge/package).
 //   * A value is facts::Value (bytes | str | JSON). json.dumps(value, indent=1, default=repr) is dumps():
 //     JSON as json.dumps writes it with indent 1 (ensure_ascii, NaN/Infinity), bytes as the JSON string
 //     of their repr (what default=repr does).
@@ -28,9 +26,6 @@
 #include "py.hpp"
 
 namespace codebreaker::knowledge::show {
-
-// knowledge.platform(name): the base's name for a platform, from the lane's (ne -> win16, pe -> win32, ...)
-py::str platform_name(const py::str& name);
 
 // json.dumps(value, indent=1, default=repr)
 py::str dumps(const engine::facts::Value& value);

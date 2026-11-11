@@ -1,5 +1,5 @@
 // py_unicode.hpp -- which code points str.isalpha / isdecimal / isdigit / isnumeric take, as ranges
-// (Unicode 16.0.0, CPython 3.14.0's unicodedata).
+// (Unicode 16.0.0, CPython 3.14.0's unicodedata); the not-printable table is py_unicode_print.hpp (generated).
 #pragma once
 #include <cstddef>
 
@@ -25,3 +25,4 @@ inline bool isdigit(char32_t c) { return in_(digit_ranges, c); }
 inline bool isnumeric(char32_t c) { return in_(numeric_ranges, c); }
 }  // namespace unicode_
 }  // namespace py
+#include "py_unicode_print.hpp"   // str.isprintable / repr: the code points that are not printable
