@@ -1,0 +1,235 @@
+#
+# There is insufficient memory for the Java Runtime Environment to continue.
+# Native memory allocation (mmap) failed to map 536870912 bytes for G1 virtual space
+# Possible reasons:
+#   The system is out of physical RAM or swap space
+#   The process is running with CompressedOops enabled, and the Java Heap may be blocking the growth of the native heap
+# Possible solutions:
+#   Reduce memory load on the system
+#   Increase physical memory or swap space
+#   Check if swap backing store is full
+#   Decrease Java heap size (-Xmx/-Xms)
+#   Decrease number of Java threads
+#   Decrease Java thread stack sizes (-Xss)
+#   Set larger code cache with -XX:ReservedCodeCacheSize=
+#   JVM is running with Zero Based Compressed Oops mode in which the Java heap is
+#     placed in the first 32GB address space. The Java Heap base address is the
+#     maximum limit for the native heap growth. Please use -XX:HeapBaseMinAddress
+#     to set the Java Heap base and to place the Java Heap above 32GB virtual address.
+# This output file may be truncated or incomplete.
+#
+#  Out of Memory Error (os_windows.cpp:3603), pid=25368, tid=19036
+#
+# JRE version:  (21.0.9+7) (build )
+# Java VM: Java HotSpot(TM) 64-Bit Server VM (21.0.9+7-LTS-338, mixed mode, sharing, tiered, compressed oops, compressed class ptrs, g1 gc, windows-amd64)
+# No core dump will be written. Minidumps are not enabled by default on client versions of Windows
+#
+
+---------------  S U M M A R Y ------------
+
+Command Line: -Xss16m TreeDump --out C:\Users\mrtit\AppData\Local\Temp\cb-treedump-v39a0n00 --sourcepath C:\Users\mrtit\Documents\GitHub\CodeBreaker\.claude\worktrees\agent-a24826faed5f21be5\state\test-tmp\test_java.py\bin1\src10 @C:\Users\mrtit\AppData\Local\Temp\cb-treedump-v39a0n00\_files.txt
+
+Host: AMD Ryzen 5 4500 6-Core Processor              , 12 cores, 31G,  Windows 11 , 64 bit Build 26100 (10.0.26100.9711)
+Time: Fri Nov  6 04:55:22 2026 Pacific Standard Time elapsed time: 0.075755 seconds (0d 0h 0m 0s)
+
+---------------  T H R E A D  ---------------
+
+Current thread (0x00000277964b5fe0):  JavaThread "Unknown thread" [_thread_in_vm, id=19036, stack(0x000000cae0a00000,0x000000cae1a00000) (16384K)]
+
+Stack: [0x000000cae0a00000,0x000000cae1a00000]
+Native frames: (J=compiled Java code, j=interpreted, Vv=VM code, C=native code)
+V  [jvm.dll+0x6cbf89]
+V  [jvm.dll+0x858421]
+V  [jvm.dll+0x85a94e]
+V  [jvm.dll+0x85b023]
+V  [jvm.dll+0x27ebc6]
+V  [jvm.dll+0x6c8705]
+V  [jvm.dll+0x6bd26a]
+V  [jvm.dll+0x354a0a]
+V  [jvm.dll+0x35c686]
+V  [jvm.dll+0x3af79e]
+V  [jvm.dll+0x3afa48]
+V  [jvm.dll+0x328d1c]
+V  [jvm.dll+0x32987b]
+V  [jvm.dll+0x821739]
+V  [jvm.dll+0x3bc481]
+V  [jvm.dll+0x80a9b8]
+V  [jvm.dll+0x45166e]
+V  [jvm.dll+0x453261]
+C  [jli.dll+0x52a3]
+C  [ucrtbase.dll+0x2cd30]
+C  [KERNEL32.DLL+0x2dda7]
+C  [ntdll.dll+0x7ee4c]
+
+
+---------------  P R O C E S S  ---------------
+
+Threads class SMR info:
+_java_thread_list=0x00007ffa6133fc08, length=0, elements={
+}
+
+Java Threads: ( => current thread )
+Total: 0
+
+Other Threads:
+  0x000002779891ab60 WorkerThread "GC Thread#0"                     [id=12196, stack(0x000000cae1a00000,0x000000cae1b00000) (1024K)]
+  0x000002779891ca40 ConcurrentGCThread "G1 Main Marker"            [id=26236, stack(0x000000cae1b00000,0x000000cae1c00000) (1024K)]
+  0x000002779891d360 WorkerThread "G1 Conc#0"                       [id=20172, stack(0x000000cae1c00000,0x000000cae1d00000) (1024K)]
+
+[error occurred during error reporting (printing all threads), id 0xc0000005, EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007ffa60aab4a7]
+VM state: not at safepoint (not fully initialized)
+
+VM Mutex/Monitor currently owned by a thread:  ([mutex/lock_event])
+[0x00007ffa613b0ef0] Heap_lock - owner thread: 0x00000277964b5fe0
+
+Heap address: 0x0000000602000000, size: 8160 MB, Compressed Oops mode: Zero based, Oop shift amount: 3
+
+CDS archive(s) mapped at: [0x0000000000000000-0x0000000000000000-0x0000000000000000), size 0, SharedBaseAddress: 0x0000000800000000, ArchiveRelocationMode: 1.
+Narrow klass base: 0x0000000000000000, Narrow klass shift: 0, Narrow klass range: 0x0
+
+GC Precious Log:
+ CardTable entry size: 512
+ Card Set container configuration: InlinePtr #cards 4 size 8 Array Of Cards #cards 32 size 80 Howl #buckets 8 coarsen threshold 7372 Howl Bitmap #cards 1024 size 144 coarsen threshold 921 Card regions per heap region 1 cards per card region 8192
+
+Heap:
+ garbage-first heap   total 0K, used 0K [0x0000000602000000, 0x0000000800000000)
+  region size 4096K, 0 young (0K), 0 survivors (0K)
+
+[error occurred during error reporting (printing heap information), id 0xc0000005, EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007ffa60e94ff9]
+GC Heap History (0 events):
+No events
+
+Dll operation events (1 events):
+Event: 0.013 Loaded shared library C:\Program Files\Java\jdk-21\bin\java.dll
+
+Deoptimization events (0 events):
+No events
+
+Classes loaded (0 events):
+No events
+
+Classes unloaded (0 events):
+No events
+
+Classes redefined (0 events):
+No events
+
+Internal exceptions (0 events):
+No events
+
+ZGC Phase Switch (0 events):
+No events
+
+VM Operations (0 events):
+No events
+
+Events (0 events):
+No events
+
+
+Dynamic libraries:
+0x00007ff6bed10000 - 0x00007ff6bed20000 	C:\Program Files\Java\jdk-21\bin\java.exe
+0x00007ffafb920000 - 0x00007ffafbb88000 	C:\WINDOWS\SYSTEM32\ntdll.dll
+0x00007ffafa660000 - 0x00007ffafa72b000 	C:\WINDOWS\System32\KERNEL32.DLL
+0x00007ffaf8b10000 - 0x00007ffaf8f11000 	C:\WINDOWS\System32\KERNELBASE.dll
+0x00007ffaf4740000 - 0x00007ffaf47df000 	C:\WINDOWS\SYSTEM32\apphelp.dll
+0x00007ffaf9280000 - 0x00007ffaf93cc000 	C:\WINDOWS\System32\ucrtbase.dll
+0x00007ffaf1d60000 - 0x00007ffaf1d79000 	C:\Program Files\Java\jdk-21\bin\jli.dll
+0x00007ffadc2c0000 - 0x00007ffadc2db000 	C:\Program Files\Java\jdk-21\bin\VCRUNTIME140.dll
+0x00007ffaf97a0000 - 0x00007ffaf985c000 	C:\WINDOWS\System32\ADVAPI32.dll
+0x00007ffafabc0000 - 0x00007ffafac69000 	C:\WINDOWS\System32\msvcrt.dll
+0x00007ffafa9c0000 - 0x00007ffafaa68000 	C:\WINDOWS\System32\sechost.dll
+0x00007ffafb000000 - 0x00007ffafb118000 	C:\WINDOWS\System32\RPCRT4.dll
+0x00007ffaf9900000 - 0x00007ffaf9ad7000 	C:\WINDOWS\System32\USER32.dll
+0x00007ffaf8f20000 - 0x00007ffaf8f47000 	C:\WINDOWS\System32\win32u.dll
+0x00007ffafb120000 - 0x00007ffafb14b000 	C:\WINDOWS\System32\GDI32.dll
+0x00007ffadcc90000 - 0x00007ffadcf21000 	C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.9711_none_3e07b8b0e334e825\COMCTL32.dll
+0x00007ffaf90a0000 - 0x00007ffaf91ca000 	C:\WINDOWS\System32\gdi32full.dll
+0x00007ffaf91d0000 - 0x00007ffaf9273000 	C:\WINDOWS\System32\msvcp_win.dll
+0x00007ffaf26f0000 - 0x00007ffaf26fb000 	C:\WINDOWS\SYSTEM32\VERSION.dll
+0x00007ffaf9740000 - 0x00007ffaf9771000 	C:\WINDOWS\System32\IMM32.DLL
+0x00007ffaf1b50000 - 0x00007ffaf1b5c000 	C:\Program Files\Java\jdk-21\bin\vcruntime140_1.dll
+0x00007ffadb670000 - 0x00007ffadb6fe000 	C:\Program Files\Java\jdk-21\bin\msvcp140.dll
+0x00007ffa60770000 - 0x00007ffa6148d000 	C:\Program Files\Java\jdk-21\bin\server\jvm.dll
+0x00007ffaf9870000 - 0x00007ffaf98f1000 	C:\WINDOWS\System32\WS2_32.dll
+0x00007ffaf87a0000 - 0x00007ffaf87fe000 	C:\WINDOWS\SYSTEM32\POWRPROF.dll
+0x00007ffae63d0000 - 0x00007ffae6407000 	C:\WINDOWS\SYSTEM32\WINMM.dll
+0x00007ffaf8780000 - 0x00007ffaf8795000 	C:\WINDOWS\SYSTEM32\UMPDC.dll
+0x00007ffaf77b0000 - 0x00007ffaf77cb000 	C:\WINDOWS\SYSTEM32\kernel.appcore.dll
+0x00007ffaf0220000 - 0x00007ffaf022a000 	C:\Program Files\Java\jdk-21\bin\jimage.dll
+0x00007ffaf5d50000 - 0x00007ffaf5f9c000 	C:\WINDOWS\SYSTEM32\DBGHELP.DLL
+0x00007ffafac70000 - 0x00007ffafaffb000 	C:\WINDOWS\System32\combase.dll
+0x00007ffafa740000 - 0x00007ffafa819000 	C:\WINDOWS\System32\OLEAUT32.dll
+0x00007ffadc6a0000 - 0x00007ffadc6db000 	C:\WINDOWS\SYSTEM32\dbgcore.DLL
+0x00007ffaf93e0000 - 0x00007ffaf948c000 	C:\WINDOWS\System32\bcryptPrimitives.dll
+0x00007ffadb8b0000 - 0x00007ffadb8cf000 	C:\Program Files\Java\jdk-21\bin\java.dll
+
+dbghelp: loaded successfully - version: 4.0.5 - missing functions: none
+symbol engine: initialized successfully - sym options: 0x614 - pdb path: .;C:\Program Files\Java\jdk-21\bin;C:\WINDOWS\SYSTEM32;C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.26100.9711_none_3e07b8b0e334e825;C:\Program Files\Java\jdk-21\bin\server
+
+VM Arguments:
+jvm_args: -Xss16m 
+java_command: TreeDump --out C:\Users\mrtit\AppData\Local\Temp\cb-treedump-v39a0n00 --sourcepath C:\Users\mrtit\Documents\GitHub\CodeBreaker\.claude\worktrees\agent-a24826faed5f21be5\state\test-tmp\test_java.py\bin1\src10 @C:\Users\mrtit\AppData\Local\Temp\cb-treedump-v39a0n00\_files.txt
+java_class_path (initial): C:\Users\mrtit\Documents\GitHub\CodeBreaker\.claude\worktrees\agent-a24826faed5f21be5\state\translate\treedump-7882c320a2c8
+Launcher Type: SUN_STANDARD
+
+[Global flags]
+     intx CICompilerCount                          = 4                                         {product} {ergonomic}
+     uint ConcGCThreads                            = 3                                         {product} {ergonomic}
+     uint G1ConcRefinementThreads                  = 10                                        {product} {ergonomic}
+   size_t G1HeapRegionSize                         = 4194304                                   {product} {ergonomic}
+    uintx GCDrainStackTargetSize                   = 64                                        {product} {ergonomic}
+   size_t InitialHeapSize                          = 536870912                                 {product} {ergonomic}
+   size_t MarkStackSize                            = 4194304                                   {product} {ergonomic}
+   size_t MaxHeapSize                              = 8556380160                                {product} {ergonomic}
+   size_t MinHeapDeltaBytes                        = 4194304                                   {product} {ergonomic}
+   size_t MinHeapSize                              = 8388608                                   {product} {ergonomic}
+    uintx NonNMethodCodeHeapSize                   = 5839372                                {pd product} {ergonomic}
+    uintx NonProfiledCodeHeapSize                  = 122909434                              {pd product} {ergonomic}
+    uintx ProfiledCodeHeapSize                     = 122909434                              {pd product} {ergonomic}
+    uintx ReservedCodeCacheSize                    = 251658240                              {pd product} {ergonomic}
+     bool SegmentedCodeCache                       = true                                      {product} {ergonomic}
+   size_t SoftMaxHeapSize                          = 8556380160                             {manageable} {ergonomic}
+     intx ThreadStackSize                          = 16384                                  {pd product} {command line}
+     bool UseCompressedOops                        = true                           {product lp64_product} {ergonomic}
+     bool UseG1GC                                  = true                                      {product} {ergonomic}
+     bool UseLargePagesIndividualAllocation        = false                                  {pd product} {ergonomic}
+
+Logging:
+Log output configuration:
+ #0: stdout all=warning uptime,level,tags foldmultilines=false
+ #1: stderr all=off uptime,level,tags foldmultilines=false
+
+Environment Variables:
+JAVA_HOME=C:\Program Files\Java\jdk-21
+PATH=C:\Users\mrtit\AppData\Local\Microsoft\WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe;C:\Program Files (x86)\VMware\VMware Workstation\bin\;C:\Program Files\Meta Horizon\Support\oculus-runtime;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\libnvvp;C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Program Files\dotnet;C:\Program Files\NASM;C:\ProgramData\chocolatey\bin;C:\Python314;C:\Python314\Scripts;C:\Python313;C:\Python313\Scripts;C:\Program Files\WireGuard\;C:\Program Files\NVIDIA Corporation\Nsight Compute 2025.4.0\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files\GitHub CLI\;C:\Program Files\BinDiff\bin;C:\Program Files\Microsoft SQL Server\110\Tools\Binn\;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Program Files\Go\bin;C:\Users\mrtit\.cargo\bin;C:\Users\mrtit\AppData\Local\Programs\Python\Python39\Scripts\;C:\Users\mrtit\AppData\Local\Programs\Python\Python39\;C:\Users\mrtit\AppData\Local\Programs\Python\Launcher\;C:\Users\mrtit\AppData\Local\Programs\Python\Python312\Scripts\;C:\Users\mrtit\AppData\Local\Programs\Python\Python312\;C:\Users\mrtit\AppData\Local\Microsoft\WindowsApps;C:\Users\mrtit\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\mrtit\AppData\Local\Microsoft\WinGet\Links;C:\Users\mrtit\AppData\Roaming\npm;C:\Users\mrtit\.dotnet\tools;C:\msys64\mingw64\bin;C:\gradle-9.2.0\bin;C:\Program Files\Java\jdk-21\bin;C:\Users\XboxDeveloper1\.lmstudio\bin;C:\Users\mrtit\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1-full_build\bin;C:\Users\mrtit\AppData\Local\Android\Sdk\platform-tools;C:\Users\mrtit\.logans-agent;C:\Users\mrtit\AppData\Local\Microsoft\WinGet\Packages\vgmstream.vgmstream_Microsoft.Winget.Source_8wekyb3d8bbwe;C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin;C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin;C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;C:\Users\mrtit\AppData\Local\Programs\NSIS\Bin;C:\Users\mrtit\go\bin;C:\Users\mrtit\AppData\Local\Programs\Microsoft VS Code\bin\copilot-shim;C:\Users\mrtit\AppData\Local\Programs\Python\Python39;C:\Users\mrtit\AppData\Local\Programs\Python\Python312;C:\Program Files\Git\mingw64\bin;C:\Program Files\GitHub CLI;C:\Program Files\dotnet\
+USERNAME=mrtit
+OS=Windows_NT
+PROCESSOR_IDENTIFIER=AMD64 Family 23 Model 96 Stepping 1, AuthenticAMD
+TMP=C:\Users\mrtit\AppData\Local\Temp
+TEMP=C:\Users\mrtit\AppData\Local\Temp
+
+
+
+
+Periodic native trim disabled
+
+---------------  S Y S T E M  ---------------
+
+OS:
+ Windows 11 , 64 bit Build 26100 (10.0.26100.9711)
+OS uptime: 16 days 16:25 hours
+Hyper-V role detected
+
+CPU: total 12 (initial active 12) (12 cores per cpu, 2 threads per core) family 23 model 96 stepping 1 microcode 0x860010f, cx8, cmov, fxsr, ht, mmx, 3dnowpref, sse, sse2, sse3, ssse3, sse4a, sse4.1, sse4.2, popcnt, lzcnt, tsc, tscinvbit, avx, avx2, aes, clmul, bmi1, bmi2, adx, sha, fma, vzeroupper, clflush, clflushopt, hv, rdtscp, rdpid, f16c
+Processor Information for all 12 processors :
+  Max Mhz: 3600, Current Mhz: 3600, Mhz Limit: 3600
+
+Memory: 4k page, system-wide physical 32635M (1471M free)
+TotalPageFile size 65403M (AvailPageFile size 300M)
+current process WorkingSet (physical memory assigned to process): 14M, peak: 14M
+current process commit charge ("private bytes"): 65M, peak: 577M
+
+vm_info: Java HotSpot(TM) 64-Bit Server VM (21.0.9+7-LTS-338) for windows-amd64 JRE (21.0.9+7-LTS-338), built on 2025-09-26T06:33:49Z by "mach5run" with MS VC++ 17.6 (VS2022)
+
+END.
