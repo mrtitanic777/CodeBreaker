@@ -1,0 +1,25 @@
+/* switches: -Ox -NT SEGONE_TEXT */
+#include "types.h"
+#include <stdio.h>
+extern int f01020();
+extern int g;
+extern int h; /* the other one */
+extern char *f01010();
+
+int g = 5;
+
+int
+f01000(a)
+int a;
+{
+	return f01010(a) + f01020(a, a);
+}
+
+char *
+f01010(p)
+char *p;
+{
+	return p;
+}
+
+int tail_data[2] = {1, 2};

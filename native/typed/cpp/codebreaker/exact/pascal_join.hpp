@@ -1,57 +1,38 @@
-// codebreaker/exact/pascal_join.hpp -- C++17 port of codebreaker.exact.pascal_join.
-//
-// pascal_join.py -- a Pascal program written in pieces, joined into its compilands, compiled, compared.
-//
-// A compiland of an MS-Pascal program is one source (a PROGRAM or a MODULE) holding all its procedures;
-// the reconstruction keeps it in pieces so that each procedure can be written and checked alone:
-//
-//     <dir>/GLOBALS.pas    types and variables          <dir>/EXTERNS.pas   procedures of other compilands
-//     <dir>/FORWARDS.pas   forward declarations         <dir>/MAIN.pas      the compiland's own block
-//     <dir>/pADDR.pas      the procedure P<ADDR> (ADDR: its place in the program); one nested in it is
-//                          <dir>/pADDR.d/pNEST.pas, pulled in by a line {+pNEST}
-//     a heading marked {STUB} (something to call) or {TODO} (not written yet) is not compared
-//
-// joined in address order, compiled by the project's toolchain (exact/mspascal.py), each procedure held
-// to the program at its place. The compiler of 1981 runs out of memory on a large compiland: it is
-// compiled in "parts" runs, each with the procedures of one run in full and the others as empty bodies
-// (their headings: something to call).
-//
-// project.json:
-//     "compilands": {NAME: {"dir", "kind": PROGRAM|MODULE, "main": its own block's place, "parts": runs}}
-//     "procedures": a JSON file {"0xADDR": {"size", "unit"}} - every procedure of the program, its compiland
-//                   ("unit": the compiland's number, "units": {NAME: number})
-//     "dgroup": the image offset of DS:0 (it may be below the image: negative)
+// codebreaker/exact/pascal_join.hpp -- compat shim for cb/exact/pascal_join.hpp (docs/CPP_DESIGN.md 6.3). No logic:
+// conversion and forwarding. Deleted with its last old-layer consumer (exact/ledger, exact/repair, exact/project).
 //
 //     pascal_join::run(project) -> rows as ledger.run's
 //
-// Typing notes (the Python duck-types its `prj`, which has no C++ port; these are the stand-ins):
-//   * Project is the members of exact.project.Project that pascal_join reads (dir, cfg, image, symbols(),
-//     toolchain()) and of what compare.function reads of it (dgroup, loadseg, code_base(), relocs(): the
-//     compare::Project `compare`), plus `decode`, the 16-bit decoder compare::function takes.
-//   * cfg is the dict project.json holds, reduced to the keys pascal_join reads: the records Config and
-//     CompilandCfg (a key the dict lacks is an empty optional / the Python's default).
-//   * toolchain() gives the object whose compile(source bytes, name="T.PAS") answers (the object's bytes, or
-//     None, and the console text) and whose helper_data (default 3) cmpp.HDRLEN is set from.
-//   * "equivalent" names a function "module:name" that is imported by name in the Python; here
-//     it is looked up in `equivalents` (a registry of the project) and then in the habits comparers that have
-//     C++ ports (codebreaker.exact.habits.newcomp:equivalent / equivalent3, ...oldcomp:equivalent). A name found
-//     in neither gives the ModuleNotFoundError text of the failed import as its "why".
-//   * "main" of a compiland is an int or a str (int(text, 0)): std::variant.
-//   * A row of run() is (label, procedure name or None, address or None, bytes, verdict, notes).
+// `Project` is the members of exact.project.Project that pascal_join reads, `Config`/`CompilandCfg` the keys of
+// project.json it reads. "equivalent" names a function "module:name"; it is looked up in `equivalents` (a registry of
+// the project) and then in the habits comparers that have C++ ports (codebreaker.exact.habits.newcomp:equivalent /
+// equivalent3, ...oldcomp:equivalent).
 #pragma once
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <tuple>
+#include <map>
+#include <set>
+#include <unordered_set>
 #include <variant>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/core/text.hpp"
+#include "cb/exact/pascal_join.hpp"
 #include "codebreaker/exact/compare.hpp"
+#include "codebreaker/exact/habits/cmpp.hpp"
+#include "codebreaker/exact/habits/newcomp.hpp"
+#include "codebreaker/exact/habits/oldcomp.hpp"
+#include "codebreaker/exact/standin.hpp"
 #include "py.hpp"
 
 namespace codebreaker::exact::pascal_join {
 
-extern const py::str NL;
+inline const py::str NL("\n");
 
 // what a compiland's entry of project.json's "compilands" holds
 struct CompilandCfg {
@@ -97,44 +78,171 @@ struct Project {
     py::dict<py::str, Equivalent> equivalents;      // "module:name" -> comparer, tried before the ported habits
 };
 
-// {"over": [...], ...} the cfg a Compiland reads of the project, plus its own entry
+namespace detail {
+
+namespace nw = cb::exact::pascal_join;
+
+inline std::string utf8(const py::str& s) { return cb::compat::from_py(s); }
+
+inline nw::CompilandConfig compiland_to_new(const CompilandCfg& u) {
+    nw::CompilandConfig n;
+    n.dir = utf8(u.dir);
+    n.kind = utf8(u.kind) == "PROGRAM" ? nw::CompilandKind::Program : nw::CompilandKind::Module;
+    if (const int64_t* i = std::get_if<int64_t>(&u.main)) n.main_at = cb::compat::int_from_py<std::uint32_t>(*i);
+    else n.main_at = cb::compat::int_from_py<std::uint32_t>(cb::text::parse_int<int64_t>(utf8(std::get<py::str>(u.main)), 0).value());
+    n.parts = static_cast<int>(u.parts);
+    const auto list = [](const std::optional<py::list<py::str>>& l) -> std::optional<std::vector<std::string>> {
+        if (!l) return std::nullopt;
+        std::vector<std::string> out;
+        for (const py::str& s : *l) out.push_back(utf8(s));
+        return out;
+    };
+    n.over = list(u.over);
+    n.dirs = list(u.dirs);
+    n.unit = u.unit;
+    n.stackck = u.stackck;
+    if (u.equivalent) n.equivalent = utf8(*u.equivalent);
+    return n;
+}
+
+inline nw::Config config_to_new(const Config& c) {
+    nw::Config n;
+    n.root = utf8(c.root);
+    for (const py::str& o : c.over) n.over.push_back(utf8(o));
+    if (c.map) n.map = utf8(*c.map);
+    if (c.kinds) n.kinds = utf8(*c.kinds);
+    n.procedures = c.procedures ? utf8(*c.procedures) : std::string();
+    for (const auto& kv : c.units.items()) n.units[utf8(std::get<0>(kv))] = std::get<1>(kv);
+    if (c.equivalent) n.equivalent = utf8(*c.equivalent);
+    for (const auto& kv : c.compilands.items()) n.compilands.insert_or_assign(utf8(std::get<0>(kv)), compiland_to_new(std::get<1>(kv)));
+    return n;
+}
+
+// The new toolchain over the old one's compile function.
+class ToolchainAdapter final : public nw::Toolchain {
+  public:
+    explicit ToolchainAdapter(codebreaker::exact::pascal_join::Toolchain t) : old_(std::move(t)) {}
+    nw::CompileResult compile(cb::ByteView source, std::string_view file_name) const override {
+        auto [object, console] = old_.compile(cb::compat::to_py(source), cb::compat::to_py(file_name));
+        nw::CompileResult r;
+        if (object) r.object = cb::compat::from_py(*object);
+        r.console = cb::compat::from_py(console);
+        return r;
+    }
+    std::uint32_t helper_data() const override { return cb::compat::int_from_py<std::uint32_t>(old_.helper_data); }
+
+  private:
+    codebreaker::exact::pascal_join::Toolchain old_;
+};
+
+// The comparers the old layer has: the project's registry, then the ported habits.
+inline std::map<std::string, nw::Equivalent> equivalents_of(const Project& prj) {
+    namespace habits = codebreaker::exact::habits;
+    std::map<std::string, nw::Equivalent> out;
+    const auto wrap = [](Equivalent f) {
+        return nw::Equivalent([f](cb::ByteView want, cb::ByteView got, const std::set<std::uint32_t>& holes, std::uint32_t helper) {
+            habits::cmpp::HDRLEN = helper;   // (the bytes after the entry helper's call)
+            py::set<int64_t> fixed;
+            for (const auto h : holes) fixed.add(h);
+            auto [same, why] = f(cb::compat::to_py(want), cb::compat::to_py(got), fixed);
+            nw::Equivalence r;
+            r.same = same;
+            for (const py::str& w : why) r.why.push_back(cb::compat::from_py(w));
+            return r;
+        });
+    };
+    out["codebreaker.exact.habits.newcomp:equivalent"] = wrap(habits::newcomp::equivalent);
+    out["codebreaker.exact.habits.newcomp:equivalent3"] = wrap(habits::newcomp::equivalent3);
+    out["codebreaker.exact.habits.oldcomp:equivalent"] = wrap(habits::oldcomp::equivalent);
+    for (const auto& kv : prj.equivalents.items()) out[utf8(std::get<0>(kv))] = wrap(std::get<1>(kv));
+    return out;
+}
+
+}  // namespace detail
+
+// A compiland: its pieces joined (the old layer's view of cb::exact::pascal_join::Compiland).
 class Compiland {
   public:
-    const Project& prj;
+    Compiland(const Project& prj, const py::str& name_, const CompilandCfg& u_)
+        : project_(std::make_unique<cb::exact::pascal_join::Project>()), name(name_) {
+        project_->dir = cb::fs::from_text(detail::utf8(prj.dir));
+        project_->config = detail::config_to_new(prj.cfg);
+        impl_ = std::make_unique<cb::exact::pascal_join::Compiland>(*project_, detail::utf8(name_), detail::compiland_to_new(u_));
+        for (const auto& d : impl_->directories()) dirs.append(cb::compat::to_py(cb::fs::to_text(d)));
+    }
     py::str name;
-    CompilandCfg u;
     py::list<py::str> dirs;
-    py::str src;
-    py::str headline;
-    py::str empty;
-    py::dict<py::str, py::str> map;                 // (pieces of another program's: where each is in this one)
-    bool over;
-    // EDITS (FILE|old|new, FILE|+|a line; * every piece, *~ a regular expression) and REMOVED, lowest overlay first
-    py::list<std::tuple<py::str, py::str, py::str>> edits;
-    py::set<py::str> removed;
-    py::dict<int64_t, std::optional<py::str>> kinds;   // (each procedure with the stack check or without)
 
-    Compiland(const Project& prj_, const py::str& name_, const CompilandCfg& u_);
+    py::list<py::str> pieces() const { return cb::compat::to_py(impl_->pieces()); }
+    py::list<py::list<py::str>> parts() const { return cb::compat::guard([&] { return cb::compat::to_py(impl_->parts()); }); }
+    py::str source(const py::list<py::str>& part) const {
+        return cb::compat::guard([&] { return py::bytes(impl_->source(strings(part))).decode("latin1"); });
+    }
+    py::list<py::str> names_of(const py::list<py::str>& part) const {
+        return cb::compat::guard([&] { return cb::compat::to_py(impl_->names_of(strings(part))); });
+    }
+    int64_t addr_of(const py::str& h) const { return cb::compat::guard([&] { return int64_t(impl_->address_of(detail::utf8(h))); }); }
 
-    int64_t addr_of(const py::str& h) const;
-    py::str where(const py::str& f) const;
-    py::list<py::str> pieces() const;
-    // the metacommand that gives the procedure of piece f the stack check it has in the program
-    py::str check(const py::str& f) const;
-    py::str expand(const py::str& text, const py::str& d, const std::optional<py::str>& own = std::nullopt) const;
-    py::str piece(const py::str& f) const;
-    py::str rd(const py::str& f) const;
-    py::dict<py::str, py::str> result_types() const;
-    py::str stub(const py::str& f, const py::dict<py::str, py::str>& rt) const;
-    py::list<py::list<py::str>> parts() const;
-    py::str source(const py::list<py::str>& part) const;
-    py::list<py::str> names_of(const py::list<py::str>& part) const;
+  private:
+    static std::vector<std::string> strings(const py::list<py::str>& l) {
+        std::vector<std::string> out;
+        for (const py::str& s : l) out.push_back(cb::compat::from_py(s));
+        return out;
+    }
+    std::unique_ptr<cb::exact::pascal_join::Project> project_;
+    std::unique_ptr<cb::exact::pascal_join::Compiland> impl_;
 };
 
 using Row = std::tuple<py::str, std::optional<py::str>, std::optional<int64_t>, int64_t, py::str, py::list<py::str>>;
 
-py::dict<int64_t, std::tuple<std::optional<int64_t>, std::optional<int64_t>>> _procedures(const Project& prj);   // {address: (size, unit)}
+// {address: (size, unit)}
+inline py::dict<int64_t, std::tuple<std::optional<int64_t>, std::optional<int64_t>>> _procedures(const Project& prj) {
+    return cb::compat::guard([&] {
+        cb::exact::pascal_join::Project p;
+        p.dir = cb::fs::from_text(detail::utf8(prj.dir));
+        p.config = detail::config_to_new(prj.cfg);
+        py::dict<int64_t, std::tuple<std::optional<int64_t>, std::optional<int64_t>>> out;
+        for (const auto& [a, v] : cb::exact::pascal_join::procedures(p)) {
+            std::optional<int64_t> size;
+            if (v.size) size = *v.size;
+            out.set(int64_t(a), std::make_tuple(size, v.unit));
+        }
+        return out;
+    });
+}
 
-py::list<Row> run(const Project& prj, bool verbose = false);
+inline py::list<Row> run(const Project& prj, bool verbose = false) {
+    return cb::compat::guard([&] {
+        namespace nw = cb::exact::pascal_join;
+        const detail::ToolchainAdapter tc(prj.toolchain());
+        const cb::Bytes image = cb::compat::from_py(prj.image);
+        const compare::Symbols syms = prj.symbols();
+        std::unordered_set<std::uint32_t> relocs;
+        for (int64_t r : prj.compare.relocs()) relocs.insert(cb::compat::int_from_py<std::uint32_t>(r));
+        const compare::detail::OldDecoder decoder(prj.decode);
+        nw::Project p;
+        p.dir = cb::fs::from_text(detail::utf8(prj.dir));
+        p.config = detail::config_to_new(prj.cfg);
+        p.image = image;
+        p.toolchain = &tc;
+        p.symbols = standin::detail::symbols_to_new(syms);
+        p.program.dgroup = prj.compare.dgroup;
+        p.program.loadseg = cb::compat::int_from_py<std::uint32_t>(prj.compare.loadseg);
+        p.program.code_base = [&](std::uint32_t a) { return cb::compat::int_from_py<std::uint32_t>(prj.compare.code_base(a)); };
+        p.program.relocs = &relocs;
+        p.equivalents = detail::equivalents_of(prj);
+        p.decoder = &decoder;
+        py::list<Row> out;
+        for (const nw::Row& r : nw::run(p, verbose)) {
+            std::optional<py::str> procedure;
+            if (r.procedure) procedure = cb::compat::to_py(*r.procedure);
+            std::optional<int64_t> address;
+            if (r.address) address = *r.address;
+            out.append(Row(cb::compat::to_py(r.label), procedure, address, int64_t(r.length), cb::compat::to_py(nw::verdict_text(r.verdict)),
+                           cb::compat::to_py(r.notes)));
+        }
+        return out;
+    });
+}
 
 }  // namespace codebreaker::exact::pascal_join
