@@ -1,0 +1,58 @@
+{
+ "run1": {
+  "registries": [
+   {
+    "args": [
+     "World"
+    ],
+    "classes": [
+     "EntityPig",
+     "EntityCow",
+     "EntitySheep"
+    ],
+    "file": "EntityList.cpp",
+    "registry": "EntityList",
+    "ret": "Entity",
+    "sites": 1
+   },
+   {
+    "args": [],
+    "classes": [
+     "TileEntityFurnace",
+     "TileEntityChest"
+    ],
+    "file": "TileEntity.cpp",
+    "registry": "TileEntity",
+    "ret": "TileEntity",
+    "sites": 1
+   }
+  ],
+  "reused": [
+   {
+    "file": "NoIncludes.cpp",
+    "sites": 1
+   },
+   {
+    "file": "Other.cpp",
+    "sites": 1
+   },
+   {
+    "file": "World.cpp",
+    "sites": 3
+   }
+  ],
+  "total_classes": 5,
+  "total_sites": 7
+ },
+ "run2": {
+  "registries": [],
+  "reused": [
+   {
+    "file": "Late.cpp",
+    "sites": 1
+   }
+  ],
+  "total_classes": 0,
+  "total_sites": 1
+ }
+}

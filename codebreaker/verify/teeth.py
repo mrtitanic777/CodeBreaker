@@ -218,10 +218,16 @@ def main(argv):
 
     Break functions the judge has passed, one small way each, and see whether it notices."""
     from codebreaker.base import corpus, settings
-    args = [a for a in argv if not a.startswith("--")]
     rounds = int(argv[argv.index("--rounds") + 1]) if "--rounds" in argv else 3
     out = argv[argv.index("--json") + 1] if "--json" in argv else None
-    args = [a for a in args if a not in (str(rounds), out)]
+    args, skip = [], False                               # (the words that are neither an option nor an option's value)
+    for a in argv:
+        if skip:
+            skip = False
+        elif a in ("--rounds", "--json"):
+            skip = True
+        elif not a.startswith("--"):
+            args.append(a)
     if not args:
         print(main.__doc__)
         return 2

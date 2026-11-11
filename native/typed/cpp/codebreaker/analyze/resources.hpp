@@ -1,38 +1,19 @@
-// codebreaker/analyze/resources.hpp -- typed C++ port of codebreaker.analyze.resources.
+// codebreaker/analyze/resources.hpp -- COMPAT SHIM over cb/analyze/resources.hpp (docs/CPP_DESIGN.md 6.3), for the old
+// codebreaker/analyze/resources.py port. Deleted with its last py:: consumer (analyze/image, facts).
 //
-// resources.py -- the resources code asks for.
+// The resources code asks for: the engine -- reading the loads and dialog-control calls, deciding which of them the
+// module itself carries, and the report -- is native/cb/analyze/resources.hpp. Here the old shapes stay:
+//   * ask_uses() gives the DLL's rows; `_uses` makes cb Loads of them, calls cb::analyze::resources::resolve and
+//     converts back; `analyse` converts to cb types, calls cb's analyse and converts the answer back;
+//   * `carried(img)` (what the module holds, from the old format readers) stays here: it reads the old PE/NE reader
+//     shapes, and moves into analyze/image's refactor with them.
 //
-//     from codebreaker.analyze import image, resources
-//     loads, controls = resources.uses(image.load("comctl32.dll"))
+//     loads, controls = resources.uses(image)
 //         loads      [{function, site, call, type, id, present}]
 //         controls   [{function, site, call, control}]
 //
-// A module's resources are data; which function loads which one is in the code. Every call to a
-// function that takes a resource identifier (LoadString, LoadIcon, DialogBoxParam, FindResource,
-// CreateDialog, LoadMenu, LoadAccelerators, ...) is read for that argument: a small integer is an
-// identifier, an address is a resource name. Each is then looked up in the module's own resource
-// table -- `present` says whether the module really carries that dialog, that string, that icon --
-// so a reference to another module's resources shows as absent rather than being silently wrong.
-//
-// Calls that name a dialog control (GetDlgItem, SetDlgItemText, CheckDlgButton, ...) are listed
-// by control identifier; matching those against the dialog templates needs the templates parsed,
-// which is the resource extractor's work, not this module's.
-//
-// Where the identifier sits among the pushes differs by convention. 32-bit calls push the last
-// argument first, so argument k is the k-th push back from the call. 16-bit Pascal calls push the
-// first argument first and a far pointer as two words, segment then offset: the tables below give,
-// for each function, how many words back from the call the identifier's word is (and its segment
-// word, which is 0 for an integer identifier).
-//
-// What a module carries is read by the format readers (formats/pe.py resource_tree, formats/ne.py
-// resources); strings are held in blocks of sixteen, so string N is present when block N/16+1 is.
-//
-// The calls are read in C++ (native/analyze, resources.cc) over the image cbanalyze.dll holds;
-// what is carried, and whether each load is present, stays here.
-//
-// The Python takes an Image and reaches the format readers, strings.table and the native handle
-// through it. Here the Image is the class below: it holds the two fields this module reads (kind,
-// path) and the things it asks of the image, as virtual methods the real image implements.
+// The Image is the class below: the two fields this module reads (kind, path) and what it asks of the image, as
+// virtual methods the real image implements.
 #pragma once
 
 #include <cstdint>
@@ -40,6 +21,8 @@
 #include <tuple>
 #include <variant>
 
+#include "cb/analyze/resources.hpp"
+#include "cb/compat/py_bridge.hpp"
 #include "py.hpp"
 
 namespace codebreaker::analyze::resources {
@@ -182,12 +165,115 @@ template <class F> void for_each_field(const Analysis& r, F&& f) {
     f("counts", r.counts); f("facts", r.facts); f("text", r.text);
 }
 
-extern const py::dict<int64_t, py::str> TYPES_;   // Python: _TYPES
+inline const py::dict<int64_t, py::str> TYPES_ = {
+    {1, "CURSOR"}, {2, "BITMAP"}, {3, "ICON"}, {4, "MENU"}, {5, "DIALOG"}, {6, "STRING"},
+    {9, "ACCELERATOR"}, {10, "RCDATA"}, {12, "GROUP_CURSOR"}, {14, "GROUP_ICON"}, {16, "VERSION"}};
 
 // {type name: set of identifiers and (upper-case) names} the module itself holds.
-py::dict<py::str, py::set<Ident>> carried(Image& img);
-Uses _uses(Image& img);
-Uses uses(Image& img);
-Analysis analyse(Image& img);
+inline py::dict<py::str, py::set<Ident>> carried(Image& img) {
+    py::dict<py::str, py::set<Ident>> out;
+    if (img.kind == "pe") {
+        for (const PeType& t : img.pe_resource_tree()) {
+            py::str name;
+            if (t.id && TYPES_.contains(*t.id)) name = TYPES_.at(*t.id);
+            else if (!t.id) name = t.type;
+            else name = py::percent(py::str("#%s"), *t.id);
+            for (const PeItem& item : t.items) out.setdefault(name, py::set<Ident>()).add(item.id ? Ident(*item.id) : Ident(item.name.upper()));
+        }
+    } else if (img.kind == "ne") {
+        for (const NeResource& r : img.ne_resources()) {
+            const py::str& ident = r.id;
+            Ident key = (ident.startswith("#") && ident.slice_from(1).isdigit()) ? Ident(py::int_from_str(ident.slice_from(1)))
+                                                                                 : Ident(ident.upper());
+            out.setdefault(r.type, py::set<Ident>()).add(key);
+        }
+    }
+    return out;
+}
+
+namespace detail {
+namespace nr = ::cb::analyze::resources;
+
+inline nr::ResourceId to_new(const Ident& id) {
+    if (const int64_t* n = std::get_if<int64_t>(&id)) return nr::ResourceId(*n);
+    return nr::ResourceId(std::get<py::str>(id).utf8());
+}
+inline nr::Carried to_new(const py::dict<py::str, py::set<Ident>>& have) {
+    nr::Carried out;
+    for (const auto& kv : have.items()) {
+        std::set<nr::ResourceId>& ids = out[std::get<0>(kv).utf8()];
+        for (const Ident& id : std::get<1>(kv)) ids.insert(to_new(id));
+    }
+    return out;
+}
+inline std::optional<bool> to_old(nr::Presence p) {
+    if (p == nr::Presence::SystemStock) return std::nullopt;
+    return p == nr::Presence::Present;
+}
+}  // namespace detail
+
+inline Uses _uses(Image& img) {
+    namespace nr = ::cb::analyze::resources;
+    py::dict<py::str, py::set<Ident>> have = carried(img);
+    RawUses got = img.ask_uses();
+    std::vector<nr::Load> raw;
+    for (const RawLoad& r : got.loads) {
+        nr::Load l;
+        l.function = std::get<0>(r);
+        l.site = std::get<1>(r);
+        l.call = std::get<2>(r).utf8();
+        if (std::get<3>(r)) l.type = std::get<3>(r)->utf8();
+        l.id = detail::to_new(std::get<4>(r));
+        raw.push_back(std::move(l));
+    }
+    const std::vector<nr::ResolvedLoad> resolved = nr::resolve(raw, detail::to_new(have));
+    py::list<Load> loads;
+    for (std::size_t i = 0; i < resolved.size(); ++i) {
+        const RawLoad& r = got.loads[static_cast<int64_t>(i)];
+        loads.append(Load{std::get<0>(r), std::get<1>(r), std::get<2>(r), std::get<3>(r), std::get<4>(r), detail::to_old(resolved[i].presence)});
+    }
+    py::list<Control> controls;
+    for (const RawControl& c : got.controls) controls.append(Control{std::get<0>(c), std::get<1>(c), std::get<2>(c), std::get<3>(c)});
+    return Uses(loads, controls);
+}
+
+inline Uses uses(Image& img) {
+    if (!img.memo_resources) img.memo_resources = _uses(img);
+    return *img.memo_resources;
+}
+
+// The report: the old uses as cb's, the new code's analyse, and its answer as the old Analysis.
+inline Analysis analyse(Image& img) {
+    namespace nr = ::cb::analyze::resources;
+    Uses got = uses(img);
+    const py::list<Load>& found = std::get<0>(got);
+    const py::list<Control>& controls = std::get<1>(got);
+    nr::Uses in;
+    for (const Load& l : found) {
+        nr::Load n;
+        n.function = l.function;
+        n.site = l.site;
+        n.call = l.call.utf8();
+        if (l.type) n.type = l.type->utf8();
+        n.id = detail::to_new(l.id);
+        in.loads.push_back(std::move(n));
+    }
+    for (const Control& c : controls) in.controls.push_back({c.function, c.site, c.call.utf8(), c.control});
+    const nr::Report r = nr::analyse(in, detail::to_new(carried(img)));
+
+    Analysis out;
+    const nr::Counts& c = r.counts;
+    out.counts = Counts{c.resource_types, c.resources_carried, c.loads_read, c.present_in_module, c.absent_from_module, c.system_stock,
+                        c.distinct_resources_referenced, c.functions_loading_resources, c.dialog_control_uses, c.distinct_controls};
+    for (const Load& u : found)
+        out.facts.append(ResourceUseFact{u.function, u.site, u.call, u.type, u.id, u.present, u.function, "resource_use"});
+    for (const Control& ctl : controls)
+        out.facts.append(DialogControlFact{ctl.function, ctl.site, ctl.call, ctl.control, ctl.function, "dialog_control_use"});
+    py::dict<py::str, int64_t> types;
+    for (const auto& [type, n] : r.carried) types.set(py::str(type), n);
+    out.facts.append(CarriedFact{std::nullopt, "resources_carried", types});
+    out.text = ::cb::compat::to_py(r.text);
+    return out;
+}
 
 }  // namespace codebreaker::analyze::resources

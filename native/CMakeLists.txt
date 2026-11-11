@@ -13,7 +13,7 @@
 #   target_link_libraries(codebreaker PRIVATE cb_core)
 # which is what -DCB_WITH_PYTHON=ON describes: the same executable, with the translated Python linked in too.
 cmake_minimum_required(VERSION 3.20)
-project(codebreaker_native LANGUAGES CXX)
+project(codebreaker_native LANGUAGES CXX C)
 
 option(CB_WITH_PYTHON "link the translated Python (pydyn, pyrt) into codebreaker" ON)
 option(CB_ASAN "build with /fsanitize=address (the test target is run under it once per module before merge)" OFF)
