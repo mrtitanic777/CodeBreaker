@@ -471,6 +471,42 @@ namespace live
                                                          const std::vector<StatsSpec>& specs);
     // XUserResetStatsView (view 0: all of the title's).
     std::optional<std::string> ResetStats(uint32_t user, uint32_t titleId, uint32_t view);
+
+    // XStorage (protocol "Storage"): files at XStorage server paths (//title.<tid>/t:<tid>/<item>: the title's,
+    // read-only; //tuser.<tid>/u:<xuid>/<tid>/<item>: a user's), moved in chunks over the connection. Errors are the
+    // server's words ("denied", "not found", "quota exceeded", "too large", "bad path" ...), "timeout" or "not connected".
+    struct StorageEntry
+    {
+        std::string path, name; // the server path and the item as stored
+        uint64_t size = 0;
+        uint64_t owner = 0;     // the user's XUID; 0 for a title's file
+        uint32_t titleId = 0;
+        int64_t created = 0, modified = 0; // Unix seconds
+        std::string sha256;     // hex; "" for a title's file in a list
+    };
+    struct StorageList
+    {
+        uint32_t total = 0;      // entries matching the path
+        uint64_t used = 0, quota = 0; // the owner's bytes held and allowed (the caller's own files only; else 0)
+        std::vector<StorageEntry> items;
+    };
+    struct StorageFile
+    {
+        std::vector<uint8_t> data;
+        StorageEntry info;
+    };
+    constexpr uint32_t kStorageChunk = 192 * 1024;
+    // XStorageUploadFromMemory: the whole file, in chunks; nullopt on success.
+    std::optional<std::string> StorageUpload(uint32_t user, uint32_t titleId, const std::string& path,
+                                             const std::vector<uint8_t>& data);
+    // XStorageDownloadToMemory: the whole file (at most `limit` bytes: a bigger one is an error).
+    std::optional<StorageFile> StorageDownload(uint32_t user, uint32_t titleId, const std::string& path,
+                                               uint32_t limit = 100000000, std::string* error = nullptr);
+    // XStorageEnumerate: entries whose item starts with the path's (".../", ".../na*"), `max` at most 256, from `start`.
+    std::optional<StorageList> StorageEnumerate(uint32_t user, uint32_t titleId, const std::string& path,
+                                                uint32_t start, uint32_t max, std::string* error = nullptr);
+    // XStorageDelete (a user's own file).
+    std::optional<std::string> StorageDelete(uint32_t user, uint32_t titleId, const std::string& path);
     // The content subsystem (the server serves content packages the dashboard downloads, like the console did from
     // Xbox LIVE: tenure numbers, ...): one file's bytes, cached in memory after the first fetch. Empty on failure.
     std::vector<uint8_t> GetContent(const std::string& package, const std::string& file);

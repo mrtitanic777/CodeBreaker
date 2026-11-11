@@ -2301,6 +2301,127 @@ namespace live
                         { "view", view } });
     }
 
+    namespace
+    {
+        StorageEntry ToStorageEntry(const json& j)
+        {
+            StorageEntry e;
+            e.path = Str(j, "path");
+            e.name = Str(j, "name");
+            e.size = uint64_t(I64(j, "size"));
+            e.owner = ParseHex64(Get(j, "owner"));
+            e.titleId = uint32_t(ParseHex64(Get(j, "title_id")));
+            e.created = I64(j, "created");
+            e.modified = I64(j, "modified");
+            e.sha256 = Str(j, "sha256");
+            return e;
+        }
+    }
+
+    std::optional<std::string> StorageUpload(uint32_t user, uint32_t titleId, const std::string& path,
+                                             const std::vector<uint8_t>& data)
+    {
+        const std::string title = std::format("{:08X}", titleId);
+        std::string upload;
+        size_t offset = 0;
+        for (;;)
+        {
+            const size_t n = std::min<size_t>(kStorageChunk, data.size() - offset);
+            const std::vector<uint8_t> part(data.begin() + offset, data.begin() + offset + n);
+            json request = { { "op", "storage_put" }, { "user", user }, { "title_id", title }, { "offset", offset },
+                             { "data", Base64(part) } };
+            if (upload.empty())
+            {
+                request["path"] = path;
+                request["size"] = data.size();
+            }
+            else
+                request["upload"] = upload;
+            const auto reply = Request(std::move(request));
+            if (!reply || !Bool(*reply, "ok"))
+            {
+                if (!upload.empty()) // an upload the server did not end: let it go
+                    Simple({ { "op", "storage_put" }, { "user", user }, { "title_id", title }, { "upload", upload },
+                             { "abort", true } });
+                return ReplyError(reply);
+            }
+            offset += n;
+            if (Bool(*reply, "complete"))
+                return std::nullopt;
+            upload = Str(*reply, "upload");
+            if (upload.empty() || (n == 0 && offset < data.size()))
+                return std::string("bad upload");
+        }
+    }
+
+    std::optional<StorageFile> StorageDownload(uint32_t user, uint32_t titleId, const std::string& path,
+                                               uint32_t limit, std::string* error)
+    {
+        const std::string title = std::format("{:08X}", titleId);
+        StorageFile file;
+        for (;;)
+        {
+            const auto reply = Request({ { "op", "storage_get" }, { "user", user }, { "title_id", title },
+                                         { "path", path }, { "offset", file.data.size() },
+                                         { "length", kStorageChunk } });
+            if (!reply || !Bool(*reply, "ok"))
+            {
+                if (error)
+                    *error = ReplyError(reply);
+                return std::nullopt;
+            }
+            if (file.data.empty())
+            {
+                file.info = ToStorageEntry(*reply);
+                file.info.size = uint64_t(I64(*reply, "size"));
+                file.info.path = path;
+                if (file.info.size > limit)
+                {
+                    if (error)
+                        *error = "too large";
+                    return std::nullopt;
+                }
+            }
+            const std::vector<uint8_t> part = FromBase64(Str(*reply, "data"));
+            file.data.insert(file.data.end(), part.begin(), part.end());
+            if (Bool(*reply, "eof"))
+                return file;
+            if (part.empty() || file.data.size() > limit)
+            {
+                if (error)
+                    *error = "bad reply";
+                return std::nullopt;
+            }
+        }
+    }
+
+    std::optional<StorageList> StorageEnumerate(uint32_t user, uint32_t titleId, const std::string& path,
+                                                uint32_t start, uint32_t max, std::string* error)
+    {
+        const auto reply = Request({ { "op", "storage_list" }, { "user", user },
+                                     { "title_id", std::format("{:08X}", titleId) }, { "path", path },
+                                     { "start", start }, { "max", max } });
+        if (!reply || !Bool(*reply, "ok"))
+        {
+            if (error)
+                *error = ReplyError(reply);
+            return std::nullopt;
+        }
+        StorageList list;
+        list.total = U32(*reply, "total");
+        list.used = uint64_t(I64(*reply, "used"));
+        list.quota = uint64_t(I64(*reply, "quota"));
+        for (const json& i : Get(*reply, "items"))
+            list.items.push_back(ToStorageEntry(i));
+        return list;
+    }
+
+    std::optional<std::string> StorageDelete(uint32_t user, uint32_t titleId, const std::string& path)
+    {
+        return Simple({ { "op", "storage_delete" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
+                        { "path", path } });
+    }
+
     std::optional<std::string> MarkMessageRead(uint32_t user, uint32_t id)
     {
         const auto error = Simple({ { "op", "message_read" }, { "user", user }, { "message", id } });
