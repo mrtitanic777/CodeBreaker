@@ -1,49 +1,59 @@
-// codebreaker/decompile/z80.hpp -- C++ port of codebreaker.decompile.z80.
-//
-// z80.py -- the Z80's instructions: the table, a disassembler, an assembler.
-//
-//     z80::decode(code, at, pc)        Insn(text, size, target, flow, operands) or None
-//     z80::text(insn, labels)          "LD A,(IX+5)" / "JR NZ,loop" / "CALL sub_0150"
-//     z80::assemble(line, pc, labels)  the bytes of one instruction line
-//
-// Every opcode of the Z80, documented and not: the unprefixed page, CB (rotates and bits), ED
-// (the rest), and the DD/FD pages that put IX/IY (and their halves IXH IXL IYH IYL) in place of HL
-// (H L), with DDCB/FDCB for the indexed bit operations. The table is generated from the way the
-// CPU decodes an opcode (its fields x y z p q, as in "Decoding Z80 opcodes", z80.info), so the
-// disassembler, the assembler and the interpreter (emulate/z80.py) read one description.
-//
-// Syntax is Zilog's, as assemblers for the Master System, Game Gear, MSX and Spectrum take it
-// (WLA-DX, sjasmplus, pasmo): `LD A,(IX+5)`, `JP (HL)`, `EX AF,AF'`, `RST $38`, `IM 1`. Numbers
-// are written `$1F`. Operands an assembler may take as a value:
-//
-//     n   a byte          nn  a word         d   an index displacement, -128..127
-//     e   a relative jump: a signed byte from the next instruction (written as its target)
+// codebreaker/decompile/z80.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in
+// native/cb/decompile/z80.{hpp,cpp}; this header keeps the old py:: surface for what still calls it: the Z80 interpreter
+// (emulate/z80), the SM83 and 68000 assemblers (which use value / _split_operands / _balanced), build/z80_asm,
+// source/sms_writer, formats/sms. Conversion and forwarding only; deleted with its last py:: consumer.
 #pragma once
 
+#include <optional>
+
+#include "cb/compat/py_bridge.hpp"
+#include "cb/decompile/z80.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::decompile::z80 {
 
-extern const py::list<py::str> R;
-extern const py::list<py::str> RP;
-extern const py::list<py::str> RP2;
-extern const py::list<py::str> CC;
-extern const py::list<py::str> ALU;
-extern const py::list<py::str> ROT;
-extern const py::list<py::str> IM;
-// {(row, column): mnemonic}
-extern const py::dict<std::tuple<int64_t, int64_t>, py::str> BLOCK;
+namespace nz = ::cb::decompile::z80;
 
-// The table: (prefix bytes, opcode) -> pattern (None for an ED opcode that does nothing).
-using TableKey = std::tuple<py::bytes, int64_t>;
-using Table = py::dict<TableKey, std::optional<py::str>>;
-extern const Table TABLE;
-// placeholder sizes
-extern const py::dict<py::str, int64_t> _PLACE;
+namespace detail {
+template <std::size_t N>
+py::list<py::str> names(const std::array<std::string_view, N>& a) {
+    py::list<py::str> out;
+    for (std::string_view s : a) out.append(::cb::compat::to_py(s));
+    return out;
+}
+inline ::cb::decompile::NameLabels name_labels(const py::dict<py::str, int64_t>& labels) {
+    ::cb::decompile::NameLabels out;
+    for (const auto& kv : labels.items()) out.insert_or_assign(std::get<0>(kv).utf8(), std::get<1>(kv));
+    return out;
+}
+inline ::cb::decompile::AddressLabels address_labels(const py::dict<int64_t, py::str>& labels) {
+    ::cb::decompile::AddressLabels out;
+    for (const auto& kv : labels.items()) {
+        if (std::get<0>(kv) >= 0 && std::get<0>(kv) <= 0xFFFFFFFFll) out[static_cast<std::uint32_t>(std::get<0>(kv))] = std::get<1>(kv).utf8();
+    }
+    return out;
+}
+// KeyError for an unknown label (carrying the name), ValueError for a bad expression or instruction.
+template <class F>
+decltype(auto) guarded(F&& f) {
+    try {
+        return std::forward<F>(f)();
+    } catch (const nz::UnknownLabel& e) {
+        throw py::KeyError(py::str(e.name()));
+    } catch (const ::cb::Error& e) {
+        ::cb::compat::rethrow_as_py(e);
+    }
+}
+}  // namespace detail
 
-// SyntaxError (eval of a malformed expression in value()); the runtime has none of its own.
-using SyntaxError = py::SyntaxError;
+inline const py::list<py::str> R = detail::names(nz::kRegisters);
+inline const py::list<py::str> RP = detail::names(nz::kRegisterPairs);
+inline const py::list<py::str> RP2 = detail::names(nz::kRegisterPairsAf);
+inline const py::list<py::str> CC = detail::names(nz::kConditions);
+inline const py::list<py::str> ALU = detail::names(nz::kAlu);
+inline const py::list<py::str> ROT = detail::names(nz::kRotates);
+inline const py::list<py::str> IM = detail::names(nz::kInterruptModes);
 
 struct Insn {
     py::str pattern;
@@ -62,35 +72,74 @@ struct Insn {
     py::str repr() const;   // Insn(LD A,B)
 };
 
-// {normalised pattern: (prefix + opcode bytes, displacement-first?)} for the assembler; for a
-// displacement-first (DDCB/FDCB) entry `code` is the two prefix bytes and `cbop` the opcode.
-struct AsmEntry {
-    py::bytes code;
-    std::optional<int64_t> cbop;
-    bool displacement_first = false;
-};
-using AsmTable = py::dict<py::str, AsmEntry>;
+namespace detail {
+inline nz::Insn to_new(const Insn& i) {
+    nz::Insn n;
+    n.pattern = i.pattern.utf8();
+    n.size = static_cast<std::uint8_t>(i.size);
+    for (int64_t v : i.values) {
+        if (n.value_count < n.values.size()) n.values[n.value_count++] = static_cast<std::int32_t>(v);
+    }
+    if (i.target) n.target = static_cast<std::uint16_t>(*i.target);
+    const std::string f = i.flow.utf8();
+    for (int k = 0; k <= static_cast<int>(nz::Flow::Halt); ++k) {
+        if (nz::flow_name(static_cast<nz::Flow>(k)) == f) n.flow = static_cast<nz::Flow>(k);
+    }
+    n.pc = static_cast<std::uint32_t>(i.pc);
+    const std::string raw = i.bytes.raw();
+    for (std::size_t k = 0; k < raw.size() && k < n.raw.size(); ++k) n.raw[k] = static_cast<std::uint8_t>(raw[k]);
+    return n;
+}
+inline Insn from_new(const nz::Insn& n) {
+    Insn i;
+    i.pattern = ::cb::compat::to_py(n.pattern);
+    i.size = n.size;
+    for (std::int32_t v : n.operands()) i.values.append(v);
+    if (n.target) i.target = *n.target;
+    i.flow = ::cb::compat::to_py(nz::flow_name(n.flow));
+    i.pc = n.pc;
+    i.bytes = ::cb::compat::to_py(n.bytes());
+    return i;
+}
+}  // namespace detail
 
-extern const py::set<py::str> _WORDS;
-extern const py::re::Pattern _NUMBER;
+// The instruction at code[at:] (it runs at address `pc`), or None if code ends inside it.
+inline std::optional<Insn> decode(const py::bytes& code, int64_t at, int64_t pc) {
+    if (at < 0) throw py::IndexError("bytes index out of range");
+    const ::cb::Bytes bytes = ::cb::compat::from_py(code);
+    auto n = nz::decode(bytes, static_cast<std::size_t>(at), static_cast<std::uint32_t>(pc));
+    if (!n) return std::nullopt;
+    return detail::from_new(*n);
+}
 
-std::optional<py::str> _main(int64_t op);
-py::str _cb(int64_t op, const py::str& target = py::str("(HL)"));
-std::optional<py::str> _ed(int64_t op);
-std::optional<py::str> _index(const std::optional<py::str>& pattern, const py::str& ix);
-Table _build();
-py::str _flow(const py::str& pattern);
-py::list<py::str> _fields(const py::str& pattern);
-std::optional<Insn> _lone_prefix(const py::bytes& code, int64_t at, int64_t pc);
-std::optional<Insn> decode(const py::bytes& code, int64_t at, int64_t pc);
-py::str text(const Insn& insn, const py::dict<int64_t, py::str>& labels = py::dict<int64_t, py::str>());
-bool _canonical(const Insn& insn);
-py::str _plain_text(const Insn& insn, const py::dict<int64_t, py::str>& labels);
-AsmTable _patterns();
-int64_t value(const py::str& expr, const py::dict<py::str, int64_t>& labels, int64_t pc = 0);
-py::list<py::str> _split_operands(const py::str& s);
-py::bytes assemble(const py::str& line, int64_t pc = 0, const py::dict<py::str, int64_t>& labels = py::dict<py::str, int64_t>());
-bool _balanced(const py::str& s);
-py::list<py::list<py::str>> _choices(int64_t count);
+inline py::str text(const Insn& insn, const py::dict<int64_t, py::str>& labels = py::dict<int64_t, py::str>()) {
+    return ::cb::compat::to_py(nz::text(detail::to_new(insn), detail::address_labels(labels)));
+}
+inline py::str _plain_text(const Insn& insn, const py::dict<int64_t, py::str>& labels) {
+    return ::cb::compat::to_py(nz::plain_text(detail::to_new(insn), detail::address_labels(labels)));
+}
+inline bool _canonical(const Insn& insn) { return nz::is_canonical(detail::to_new(insn)); }
+
+inline py::str Insn::text() const { return z80::text(*this); }
+inline py::str Insn::repr() const { return py::str("Insn(") + z80::text(*this) + py::str(")"); }
+
+// A numeric expression ($1F 1Fh %0101 31 'c', labels, $, + - * / & | ^ ~ << >> and parentheses). KeyError for an unknown
+// label, ValueError for a malformed expression.
+inline int64_t value(const py::str& expr, const py::dict<py::str, int64_t>& labels, int64_t pc = 0) {
+    return detail::guarded([&] { return nz::value(expr.utf8(), detail::name_labels(labels), static_cast<std::uint32_t>(pc)); });
+}
+
+inline py::list<py::str> _split_operands(const py::str& s) { return ::cb::compat::to_py(nz::split_operands(s.utf8())); }
+inline bool _balanced(const py::str& s) { return nz::balanced(s.utf8()); }
+
+// The bytes of one instruction (`labels` {name: address}); KeyError for an unknown label, ValueError for something that is
+// not an instruction.
+inline py::bytes assemble(const py::str& line, int64_t pc = 0,
+                          const py::dict<py::str, int64_t>& labels = py::dict<py::str, int64_t>()) {
+    return detail::guarded([&] {
+        ::cb::Bytes b = nz::assemble(line.utf8(), static_cast<std::uint32_t>(pc), detail::name_labels(labels));
+        return ::cb::compat::to_py(::cb::ByteView(b));
+    });
+}
 
 }  // namespace codebreaker::decompile::z80
