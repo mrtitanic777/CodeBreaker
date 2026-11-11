@@ -149,3 +149,20 @@ CB_TEST("core.fs.scoped_env", [] {
     }
     CB_CHECK(!fs::get_env("CB_TEST_ENV_VAR").has_value());
 });
+
+CB_TEST("core.fs.make_dirs", [] {
+    fs::ScopedTempDir dir("cbfs");
+    const stdfs::path deep = dir.path() / "a" / "b" / "c";
+    fs::make_dirs(deep);                                // every missing level
+    CB_CHECK(stdfs::is_directory(deep));
+    fs::make_dirs(deep);                                // already there: nothing to do
+    fs::make_dirs(deep / "");                           // a trailing separator
+    fs::make_dirs(stdfs::path());                       // nothing asked
+    fs::make_dirs(dir.path());
+    fs::write_text(dir.path() / "file", "x");
+    CB_CHECK_THROWS_AS(IoError, fs::make_dirs(dir.path() / "file"));              // a file is in the way
+    CB_CHECK_THROWS_AS(IoError, fs::make_dirs(dir.path() / "file" / "below"));    // below a file
+    const stdfs::path far = dir.path() / std::string(100, 'q') / std::string(100, 'r') / std::string(100, 's');   // a long path
+    fs::make_dirs(far);
+    CB_CHECK(stdfs::is_directory(fs::long_path(far)));
+});

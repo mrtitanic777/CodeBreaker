@@ -1,0 +1,11 @@
+module=version
+n_exports=14
+k32_ordinals=[17]
+unknown_ordinals=[]
+target16=VER.DLL
+dll_candidates=['VER.DLL', 'VERSION.DLL', 'KERNEL32.DLL']
+n_signatures_recovered=8
+n_pointer_args=10
+n_sdk_prototypes=2
+recovered=['version.def', 'versionk32.def', '8/14 signatures (stub arity)']
+scaffolded=['version.thk', 'version.c']

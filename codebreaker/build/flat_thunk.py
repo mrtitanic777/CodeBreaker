@@ -81,6 +81,14 @@ def load(path):
 _THUNK_MARKERS = ("SMapLS", "SUnMapLS", "ThunkConnect32", "ThunkInitLSF", "FT_Prolog", "QT_Thunk")
 
 
+def _kernel32_symbols(imps):
+    """The KERNEL32 symbols of an import table, whatever the case of the library's name."""
+    for dll, symbols in imps.items():
+        if dll.upper() == "KERNEL32.DLL" and symbols:
+            return symbols
+    return []
+
+
 def classify(path):
     """Return {format, subtype, recipe, why} describing how the module was built."""
     b = load(path)
@@ -91,7 +99,7 @@ def classify(path):
                 "recipe": "msc6-dosbox", "why": "16-bit NE; %d segments" % b.nseg}
     # PE: flat-thunk veneer vs 32-bit C logic
     imps = b.imports()
-    k32 = imps.get("KERNEL32.dll") or imps.get("KERNEL32.DLL") or []
+    k32 = _kernel32_symbols(imps)
     has_thunk = any(any(m in n for m in _THUNK_MARKERS) for n in k32)
     exp = b.exports()
     textsz = next((vs for nm, va, vs, rs, pr in b.secs if nm == ".text"), 0)
@@ -620,6 +628,8 @@ def _stub_signature(pe, frva, maxlen=8192):
     while i < len(d):
         b = d[i]
         if b == 0xC2:                                        # ret imm16 -> stdcall epilogue
+            if i + 3 > len(d):                               # cut off inside its operand: unresolved
+                return None, nptr
             n = struct.unpack("<H", d[i + 1:i + 3])[0]
             return (n, nptr) if (n % 4 == 0 and n <= 256) else (None, nptr)
         if b == 0xC3:                                        # ret -> no stack cleanup (0 args, or cdecl)
@@ -864,7 +874,7 @@ def recover_flat_thunk(pe_path, outdir):
     os.makedirs(outdir, exist_ok=True)
     exps = pe.exports()
     imps = pe.imports()
-    k32 = imps.get("KERNEL32.dll") or imps.get("KERNEL32.DLL") or []
+    k32 = _kernel32_symbols(imps)
 
     # locate SMapLS in the IAT so a `call SMapLS` in a stub is recognisable (marks a pointer arg).
     addrs = pe.export_addrs()
