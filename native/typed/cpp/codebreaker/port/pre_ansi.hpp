@@ -272,6 +272,7 @@ class Port {
     // ---- SHARED ADDITIONS (members more than one part uses; add below, check first) ----
     py::dict<std::tuple<py::str, int64_t>, py::str> param_types;   // ((function, parameter index): its type, the loop's) [F3]
     py::dict<py::str, int64_t> bss;                                // (set from outside: variable -> its size; empty by default) [F3]
+    py::dict<py::str, int64_t> grown;                              // (an array the sanitizer saw reached past its end: size; sanitize.py)
 
     // ---- PART 1 methods ----
     Port(const py::dict<py::str, py::str>& files, const Profile& profile,
