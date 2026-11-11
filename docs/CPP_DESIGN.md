@@ -755,28 +755,21 @@ line, which is also how the exe gate stays meaningful.
 5. *Footprint:* the shipped program is `codebreaker.exe` plus data (`knowledge/`, `platforms` descriptors), no
    Python installation required; the build needs MSVC, CMake, Ninja only.
 
-## 9. Decisions that need Logan
+## 9. Decisions (Logan, 2026-11-11)
 
-1. **Unicorn and Capstone, vendored.** Today the exe uses the DLLs that Python's `unicorn` and `capstone` packages
-   carry, found in the user's site-packages. A Python-free exe must ship its own. Proposal: vendor Unicorn 2.x and
-   Capstone 4.0.2 sources (or their release DLLs) under `native/third_party/` and link statically. Licenses:
-   Capstone BSD; **Unicorn GPL-2.0 (with the QEMU-derived parts)**, which matters if CodeBreaker is ever
-   distributed -- your call. *Download: yes.*
-2. **Z3** (`libz3.dll` for the concolic judge): same question, vendored DLL or build from source (MIT). *Download: yes.*
-3. **Terminal UI** (`ui/terminal.py` is Textual): options are FTXUI (MIT, header-friendly, a download), a direct
-   Win32-console implementation (no dependency, more work), or dropping the TUI for the web UI the service serves.
-   Recommendation: FTXUI. *Download: yes if chosen.* The MCP server and CLI do not depend on this.
-4. **PCRE2** for `cb::Regex`: *not requested now.* Only if a profile shows an in-tree-engine regex on a hot path;
-   it would be added then, with numbers.
-5. **`nlohmann/json` `json_fwd.hpp`** (to forward-declare `Json` in headers): the vendored 3.10.5 ships only
-   `json.hpp`; either fetch the same release's `json_fwd.hpp` (a small file) or forward-declare by hand. Default: by hand.
-6. **Dropping byte-compat with the Python's on-disk formats at retirement** (pickled caches, `repr`-style describe
-   files): proposed, so that C++-native formats (versioned binary) can replace them. Existing `state/` caches are
-   then rebuilt once.
-7. **C++20** (vs staying on 17): proposed 20 for `span`/`format`; the ports and pyrt are on 17 today, so the
-   new tree and old tree compile at different standards in one exe (fine; they are separate libraries).
-8. **Names**: `native/cb/` and namespace `cb::`; the old `native/typed/cpp/codebreaker` and `namespace codebreaker`
-   stay until empty. A different top name costs only a rename now.
+1. **Unicorn and Capstone: prebuilt DLLs.** The exe ships the release `unicorn.dll` / `capstone.dll` next to itself
+   (in `native/third_party/bin/`), loaded through one loader (`cb::emu::unicorn`, `cb::disasm::capstone`); nothing is
+   read from Python's site-packages. Not built from source.
+2. **Z3: prebuilt `libz3.dll`**, shipped next to the exe the same way.
+3. **Terminal UI stays Python.** `ui/terminal.py` (Textual) is kept as the one Python part; it drives CodeBreaker by
+   running `codebreaker.exe` commands (and the MCP/service interfaces), never by importing CodeBreaker's Python
+   modules. Everything else is C++.
+4. **PCRE2: not now** (only with profile numbers).
+5. **`nlohmann` forward declaration: by hand** (no download).
+6. **On-disk formats: dropped.** C++-native formats (versioned) replace the Python's pickled caches and repr files;
+   existing `state/` caches are rebuilt once. No pickle code in C++.
+7. **C++20** for the new tree.
+8. **Names:** `native/cb/` and namespace `cb::`.
 
 ## Appendix A. Reviewer checklist (a refactor is rejected for any of these)
 
