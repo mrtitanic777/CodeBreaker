@@ -1,4 +1,9 @@
 #include "pyre.hpp"
+#ifdef CB_RE_PROF
+#define NOMINMAX
+#include <windows.h>
+#include <cstdio>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -443,10 +448,16 @@ struct Ins {
     const Node* n = nullptr;
     int a = 0, b = 0;
     int mn = 0, mx = -1;
+    // a one-character node (Char, Any, Class; also a RepChar's): how to test an ASCII subject byte without a decode
+    int8_t k1 = -1;                // 0 Char, 1 Any, 2 Class; -1 none
+    uint32_t ch = 0, ch2 = 0;      // Char: the character and its other case under IGNORECASE (ch again when it has none)
+    const uint8_t* tab = nullptr;  // Class: tab[c] for c < 128 (owned by the Prog)
+    int lit = -1;                  // RepChar: the ASCII byte of a plain Char right after it, when a backtrack may skip to it
 };
 
 struct Prog {
     std::vector<Ins> code;
+    std::vector<std::unique_ptr<uint8_t[]>> tabs;   // the ASCII tables of the program's classes
     int ncap = 0;        // slots 0 .. ncap-1 are the captures, then each group's start, then the repeats' registers
     int nvals = 0;
     // what a search may skip (CPython's sre does the same): where a match can begin
@@ -461,7 +472,8 @@ struct Compiler {
     Prog& P;
     int ngroups;
     int nextreg;
-    Compiler(Prog& p, int ng) : P(p), ngroups(ng) {
+    int flags;
+    Compiler(Prog& p, int ng, int fl) : P(p), ngroups(ng), flags(fl) {
         P.ncap = 2 * (ng + 1);
         nextreg = P.ncap + ng + 1;
     }
@@ -471,8 +483,26 @@ struct Compiler {
         i.n = n;
         i.a = a;
         i.b = b;
+        if (n && (op == Op::Char || op == Op::Any || op == Op::Class || op == Op::RepChar)) one_char(i, n);
         P.code.push_back(i);
         return (int)P.code.size() - 1;
+    }
+    // (how the matcher tests an ASCII byte against the node: by the instruction's own fields)
+    void one_char(Ins& i, const Node* n) {
+        bool icase = (flags & I) != 0, ascii = (flags & A) != 0;
+        if (n->k == NK::Char) {
+            i.k1 = 0;
+            i.ch = i.ch2 = n->ch;
+            if (icase && n->ch < 0x80 && ((n->ch | 32) >= 'a' && (n->ch | 32) <= 'z')) i.ch2 = n->ch ^ 32;
+        } else if (n->k == NK::Any) {
+            i.k1 = 1;
+        } else {
+            i.k1 = 2;
+            auto t = std::make_unique<uint8_t[]>(128);
+            for (uint32_t c = 0; c < 128; c++) t[c] = class_has(*n, c, icase, ascii) ? 1 : 0;
+            i.tab = t.get();
+            P.tabs.push_back(std::move(t));
+        }
     }
     int here() const { return (int)P.code.size(); }
     void comp(const Node* n) {
@@ -628,9 +658,16 @@ static void analyze_start(Prog& p, const Node* root, int flags) {
 
 static std::shared_ptr<Prog> compile_prog(const Node* root, int ngroups, int flags) {
     auto p = std::make_shared<Prog>();
-    Compiler c(*p, ngroups);
+    Compiler c(*p, ngroups, flags);
     c.comp(root);
     c.emit(Op::Match);
+    // a greedy single-character loop followed at once by a plain ASCII character: a backtrack skips the positions
+    // where that character is not (sre's literal-tail check of REPEAT_ONE); they would fail on the spot, changing nothing
+    for (size_t k = 0; k + 1 < p->code.size(); k++) {
+        Ins& r = p->code[k];
+        const Ins& nx = p->code[k + 1];
+        if (r.op == Op::RepChar && !r.lazy && nx.op == Op::Char && nx.k1 == 0 && nx.ch < 0x80 && nx.ch == nx.ch2) r.lit = (int)nx.ch;
+    }
     p->nvals = c.nextreg;
     analyze_start(*p, root, flags);
     return p;
@@ -658,13 +695,42 @@ struct Ent {
 };
 static inline Ent mk(uint32_t kind, uint32_t arg, uint32_t b, uint64_t c) { return Ent{(arg << 3) | kind, b, c}; }
 
+// the backtrack stack: a plain array whose push_back is inline (the std::vector one was a call per entry)
+struct EntStack {
+    Ent* d = nullptr;
+    size_t n = 0, cap = 0;
+    EntStack() = default;
+    EntStack(const EntStack&) = delete;
+    EntStack& operator=(const EntStack&) = delete;
+    ~EntStack() { std::free(d); }
+    void grow() {
+        size_t nc = cap ? cap * 2 : 1024;
+        Ent* nd = (Ent*)std::realloc(d, nc * sizeof(Ent));
+        if (!nd) throw std::bad_alloc();
+        d = nd;
+        cap = nc;
+    }
+    void push_back(const Ent& e) {
+        if (n == cap) grow();
+        d[n++] = e;
+    }
+    void pop_back() { --n; }
+    Ent& back() { return d[n - 1]; }
+    Ent& operator[](size_t i) { return d[i]; }
+    size_t size() const { return n; }
+    void clear() { n = 0; }
+    void resize(size_t m) { n = m; }                // (only ever to a size at most the current one)
+    size_t capacity() const { return cap; }
+    void release() { std::free(d); d = nullptr; n = cap = 0; }
+};
+
 struct Ctx {
     const std::string& s;
     size_t end;
     int flags;
     const Prog& P;
     std::vector<long>& vals;    // the captures, then the registers
-    std::vector<Ent>& st;       // (both are the thread's scratch buffers: a match makes no allocation of its own)
+    EntStack& st;               // (both are the thread's scratch buffers: a match makes no allocation of its own)
     size_t nch = 0;             // choice points on the stack
     int depth = 0;              // look-around nesting
     // the final test, at the program's end
@@ -673,7 +739,7 @@ struct Ctx {
     size_t start = 0;
     size_t found_end = 0;
 
-    Ctx(const std::string& s_, size_t e, int f, const Prog& p, std::vector<long>& v, std::vector<Ent>& stack)
+    Ctx(const std::string& s_, size_t e, int f, const Prog& p, std::vector<long>& v, EntStack& stack)
         : s(s_), end(e), flags(f), P(p), vals(v), st(stack) {
         vals.assign((size_t)p.nvals, -1);
         st.clear();
@@ -685,18 +751,35 @@ struct Ctx {
         if (next > end) next = end;
         return c;
     }
+    static bool ascii_word(unsigned char b) { return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_'; }
     bool word_before(size_t i) const {
         if (i == 0) return false;
+        { unsigned char b = (unsigned char)s[i - 1]; if (b < 0x80) return ascii_word(b); }
         size_t p = py::prev_cp(s, i), q;
         return is_word_cp(cp_at(p, q), (flags & A) != 0);
     }
     bool word_at(size_t i) const {
         if (i >= end) return false;
+        { unsigned char b = (unsigned char)s[i]; if (b < 0x80) return ascii_word(b); }
         size_t q;
         return is_word_cp(cp_at(i, q), (flags & A) != 0);
     }
-    // one character node at i: where it ends, or npos
-    size_t one(const Node* n, size_t i) const {
+    // one character node at i: where it ends, or npos (an ASCII byte is tested by the instruction's table, no decode)
+    inline size_t one(const Ins& in, size_t i) const {
+        if (i >= end) return std::string::npos;
+        unsigned char b = (unsigned char)s[i];
+        if (b < 0x80) {
+            bool m;
+            switch (in.k1) {
+                case 0: m = b == in.ch || b == in.ch2; break;
+                case 1: m = b != '\n' || (flags & S); break;
+                default: m = in.tab[b] != 0; break;
+            }
+            return m ? i + 1 : std::string::npos;
+        }
+        return one_slow(in.n, i);
+    }
+    size_t one_slow(const Node* n, size_t i) const {
         if (i >= end) return std::string::npos;
         size_t nx;
         uint32_t c = cp_at(i, nx);
@@ -770,7 +853,7 @@ struct Ctx {
             bool ok = true;
             switch (in.op) {
                 case Op::Char: case Op::Any: case Op::Class: {
-                    size_t j = one(in.n, i);
+                    size_t j = one(in, i);
                     if (j == std::string::npos) ok = false;
                     else i = j, pc++;
                     break;
@@ -861,7 +944,7 @@ struct Ctx {
                     else return true;
                     break;
                 case Op::RepChar: {
-                    const Node* c = in.n;
+                    const Ins& c = in;
                     int mn = in.mn, mx = in.mx;
                     size_t p = i;
                     if (!in.lazy) {
@@ -958,10 +1041,15 @@ struct Ctx {
                     const Ins& ri = code[e.arg()];
                     size_t from = (size_t)st[st.size() - 2].c;
                     size_t np = step_back(from, (size_t)e.c);
+                    e.b--;
+                    if (ri.lit >= 0)
+                        while ((int)e.b > ri.mn && !(np < end && (unsigned char)s[np] == (unsigned char)ri.lit)) {
+                            np = step_back(from, np);
+                            e.b--;
+                        }
                     pc = (int)e.arg() + 1;
                     i = np;
                     e.c = np;
-                    e.b--;
                     if ((int)e.b <= ri.mn) {
                         st.pop_back();
                         st.pop_back();
@@ -970,7 +1058,7 @@ struct Ctx {
                     break;
                 } else {   // E_LAZY
                     const Ins& ri = code[e.arg()];
-                    size_t j = (ri.mx >= 0 && (int)e.b >= ri.mx) ? std::string::npos : one(ri.n, (size_t)e.c);
+                    size_t j = (ri.mx >= 0 && (int)e.b >= ri.mx) ? std::string::npos : one(ri, (size_t)e.c);
                     if (j == std::string::npos) {
                         st.pop_back();
                         nch--;
@@ -1034,7 +1122,33 @@ Match Regex::run(const Subject& sub, size_t pos, size_t endpos, int mode, bool m
     return out;
 }
 
+#ifdef CB_RE_PROF
+// diagnostic build only (-DCB_RE_PROF): time, calls and bytes scanned per pattern, printed at exit
+struct ReProf {
+    struct E { double ms = 0; long long calls = 0, bytes = 0; };
+    std::map<std::string, E> m;
+    ~ReProf() {
+        std::vector<std::pair<double, std::string>> v;
+        for (auto& kv : m) v.push_back({kv.second.ms, kv.first});
+        std::sort(v.rbegin(), v.rend());
+        double tot = 0; for (auto& x : v) tot += x.first;
+        fprintf(stderr, "== REGEX by pattern: total %.0f ms in run_into\n", tot);
+        for (size_t i = 0; i < v.size() && i < 25; i++) { auto& e = m[v[i].second]; fprintf(stderr, "%8.0f ms %9lld calls %12lld bytes  %s\n", e.ms, e.calls, e.bytes, v[i].second.substr(0, 150).c_str()); }
+    }
+};
+static ReProf g_reprof;
 bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance) const {
+    LARGE_INTEGER a, b, f; QueryPerformanceCounter(&a);
+    bool r = run_into_(out, sub, pos, endpos, mode, must_advance);
+    QueryPerformanceCounter(&b); QueryPerformanceFrequency(&f);
+    auto& e = g_reprof.m[pattern_ + " /f" + std::to_string(flags_) + (mode == 2 ? " S" : mode == 0 ? " M" : " F")];
+    e.ms += 1000.0 * (b.QuadPart - a.QuadPart) / f.QuadPart; e.calls++; e.bytes += (long long)(r ? out.end() - pos : (endpos > pos ? endpos - pos : 0));
+    return r;
+}
+bool Regex::run_into_(Match& out, const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance) const {
+#else
+bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, int mode, bool must_advance) const {
+#endif
     const std::string& s = *sub.s;
     if (endpos > s.size()) endpos = s.size();
     if (out.s != sub.s) out.s = sub.s;
@@ -1042,7 +1156,7 @@ bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, 
     out.ascii = sub.ascii;
     out.ok = false;
     static thread_local std::vector<long> vals_buf;
-    static thread_local std::vector<Ent> st_buf;
+    static thread_local EntStack st_buf;
     const size_t kKeepStack = 1u << 18;     // (entries: a deep backtrack's stack is given back, a usual one is kept for the next match)
     Ctx c(s, endpos, flags_, *prog_, vals_buf, st_buf);
     c.mode = mode;
@@ -1105,7 +1219,7 @@ bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, 
             c.vals[1] = (long)c.found_end;
             out.caps.assign(c.vals.begin(), c.vals.begin() + (long)ncap);
             out.ok = true;
-            if (st_buf.capacity() > kKeepStack) std::vector<Ent>().swap(st_buf);
+            if (st_buf.capacity() > kKeepStack) st_buf.release();
             return true;
         }
         if (mode != 2 || start >= endpos) break;
@@ -1114,7 +1228,7 @@ bool Regex::run_into(Match& out, const Subject& sub, size_t pos, size_t endpos, 
         std::fill(c.vals.begin(), c.vals.begin() + (long)ncap, -1);
     }
     out.caps.assign(ncap, -1);
-    if (st_buf.capacity() > kKeepStack) std::vector<Ent>().swap(st_buf);
+    if (st_buf.capacity() > kKeepStack) st_buf.release();
     return false;
 }
 
