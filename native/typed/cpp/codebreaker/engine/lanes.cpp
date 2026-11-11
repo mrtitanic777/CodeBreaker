@@ -591,7 +591,7 @@ Judged judged(const py::str& path, const std::function<void(const py::str&)>& lo
         row.reason = jstr(jat(r, "reason"));
         row.limits = jstr(jat(r, "limits"));
         row.detail = jstr(jat(r, "detail"));
-        row.problem = r.dict.contains(py::str("problem")) ? jopt(jat(r, "problem")) : std::optional<py::str>("none");
+        row.problem = r.dict.contains(py::str("problem")) ? jopt(jat(r, "problem")) : std::optional<py::str>();   // (a judged row has no problem: None, as the Python records it)
         out.rows.append(row);
     }
     for (const auto& kv : jat(got, "built").dict.items()) out.built.set(std::get<0>(kv), jstr(std::get<1>(kv)));

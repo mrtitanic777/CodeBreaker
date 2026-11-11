@@ -51,6 +51,7 @@ int64_t run(const std::vector<std::string>& args) {
     argv.append(py::str("--cb-worker"));
     for (const std::string& a : args) argv.append(py::str(a));
     py::subprocess::RunOptions o;
+    o.stdin_ = py::subprocess::Stream::Devnull;
     o.stdout_ = py::subprocess::Stream::Devnull;
     o.stderr_ = py::subprocess::Stream::Inherit;
     return py::subprocess::run(argv, o).returncode;

@@ -145,12 +145,27 @@ are +-30%).
 | build on the engine (default path), fresh facts: lzexpand / ver / comm / keyboard / lz32 / version | 17.4 / 11.8 / 13.1 / 17.3 / 3.3 / 4.4 | 37.5 / 40.2 / 8.5 / 19.5 / 2.4 / 2.3 | slow on lzexpand and ver (see below) |
 | build on the engine, facts kept (second run), ver.dll | 1.0 | 0.3 | 3.3x |
 
-Where the C++ is not faster, and why:
-* The gate (`isolated16::check`) and the judge run one share at a time. The Python ran shares in worker processes; Unicorn and the
-  tracer DLL keep state per process (the TCG code buffer, callback slots), so shares on threads crashed or answered wrongly
-  (found by this pass; locks on the shared tables fix the compile threads, but the emulators need processes). Real fix: spawn
-  the gate's workers as processes of the exe, as the Python did. `CB_GATE_WORKERS` / `CB_JUDGE_THREADS` / `CB_BUILD_THREADS`
-  turn threads back on for experiments.
-* build_many is the same one-at-a-time, for the same reason.
-* The engine's ne.image step prepares the module again for each link pass (the Python pickle-copies it); on lzexpand and ver
-  the passes take longer than the direct path. A deep copy of Module16 instead of the second prepare is the fix.
+### After worker processes, the module copy and the full engine steps (same day, later)
+
+The gate (`isolated16::check`), the judge (`reconstruct::run`) and `build_many` run in worker PROCESSES of the program itself again
+(`jobs/workers`: `core16 --cb-worker gate|judge|build`; a host opts in with `workers::dispatch` + `workers::enable`), so Unicorn and the tracer keep
+per-process state as in the Python. `ne.image` copies the module with its own `segments` instead of preparing it again, and the
+engine now has function.notes, .l2, .source, .object and .never_set (the link is served the engine's objects). Same cases, outputs
+IDENTICAL, machine busier than in the table above (the Python took 1.5-3x its earlier times in some rows).
+
+| Case | Python | C++ | Ratio |
+|---|---|---|---|
+| isolated16.check, ver.dll | 23.4 | 14.6 | 1.6x |
+| reconstruct.run lzexpand.dll (judge in processes) | 87.1 | 9.9 | 8.8x |
+| reconstruct.run ver.dll | 34.3 | 3.7 | 9.3x |
+| build_many (lzexpand, ver, lz32), one process each | 22.9 | 14.1 | 1.6x |
+| build ver.dll / comm.drv / keyboard.drv / lzexpand.dll (direct path, gate in processes) | 30.6 / 21.1 / 27.0 / 21.7 | 21.4 / 13.1 / 23.0 / 12.6 | 1.4x / 1.6x / 1.2x / 1.7x |
+| build on the engine, cold facts: lzexpand / ver / lz32 | 17.4 / 18.9 / 3.4 | 9.5 / 11.3 / 3.3 | 1.8x / 1.7x / 1.0x |
+| (before the module copy and the served objects: lzexpand / ver) | 17.4 / 11.8 | 37.5 / 40.2 | 0.5x / 0.3x |
+| main ver.dll --out | 23.7 | 18.1 | 1.3x |
+
+Notes:
+* One thing in the Python is order-dependent: its engine-path `run` judged lz32.dll's GetExpandedNameW/LZOpenFileW `exit-differs`
+  when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
+  was first. Compared with lz32.dll first in a fresh state: identical.
+* Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
