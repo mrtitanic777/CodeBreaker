@@ -45,6 +45,7 @@
 
 #include "codebreaker/formats/xex.hpp"
 #include "py.hpp"
+#include "py_datetime.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::formats::xbox::fatx {
@@ -84,12 +85,8 @@ extern const py::list<PartitionDef> PARTITIONS;
 extern const py::list<PartitionDef> USB_PARTITIONS;
 
 // ── Timestamp ───────────────────────────────────────────
-// datetime.datetime, as far as this module uses it.
-struct DateTime {
-    int64_t year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
-    // strftime("%Y-%m-%d %H:%M")
-    py::str strftime_minute() const;
-};
+// datetime.datetime: the runtime's (year ... second are its fields; strftime("%Y-%m-%d %H:%M") is strftime)
+using DateTime = py::datetime::datetime;
 
 // Decode a packed FATX timestamp; None if it is not a valid date.
 std::optional<DateTime> decode_timestamp(int64_t t, int64_t epoch);

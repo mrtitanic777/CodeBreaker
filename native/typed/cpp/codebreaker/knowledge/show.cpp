@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "codebreaker/engine/native_engine.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/reads.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 #include "codebreaker/knowledge/store.hpp"
@@ -27,16 +28,6 @@ using engine::facts::Value;
 using engine::native_engine::Cell;
 using engine::native_engine::Cells;
 using sources::Json;
-
-// _ALIASES of the package's __init__ (the ints 16 and 32 of the Python are the strings "16" and "32" a command
-// line gives)
-const py::dict<py::str, py::str>& aliases() {
-    static const py::dict<py::str, py::str> a{{py::str("ne"), py::str("win16")},      {py::str("pe"), py::str("win32")},
-                                              {py::str("le"), py::str("vxd")},        {py::str("mz"), py::str("dos")},
-                                              {py::str("powerpc"), py::str("xbox360")}, {py::str("16"), py::str("win16")},
-                                              {py::str("32"), py::str("win32")}};
-    return a;
-}
 
 // "%s" of a cell (None, a number, text)
 py::str cell_str(const Cell& c) {
@@ -108,23 +99,6 @@ void put_json(std::string& o, const Json& v, int64_t level) {
     }
 }
 
-// a Rows value of an authored kind as the Value a base's row would be
-Value to_value(const Json& j) { return Value(j); }
-
-// knowledge.table(platform, kind): {key: value}. An authored kind is loaded from its file first when the file
-// changed; a step reading it reads the whole kind (knowledge/reads.py).
-py::dict<py::str, Value> table(const py::str& platform_, const py::str& kind) {
-    const py::str p = show::platform_name(platform_);
-    reads::record_kind(p, kind);
-    if (sources::AUTHORED().contains(std::make_tuple(p, kind))) {
-        py::dict<py::str, Value> out;
-        const sources::Rows rows = sources::authored(p, kind);
-        for (const auto& kv : rows.items()) out.set(std::get<0>(kv), to_value(std::get<1>(kv)));
-        return out;
-    }
-    return store::open()->table(p, kind);
-}
-
 // (the first of two items sorted as Python sorts (str, int) pairs)
 bool pair_less(const std::pair<py::str, int64_t>& a, const std::pair<py::str, int64_t>& b) {
     const std::u32string x = a.first.u32(), y = b.first.u32();
@@ -153,10 +127,6 @@ py::str when(const Cell& made) {
 
 }  // namespace
 
-py::str platform_name(const py::str& name) {
-    return aliases().contains(name) ? aliases().at(name) : name;
-}
-
 py::str dumps(const Value& value) {
     std::string o;
     if (std::holds_alternative<Json>(value)) put_json(o, std::get<Json>(value), 0);
@@ -182,7 +152,7 @@ int64_t main(const py::list<py::str>& argv_in) {
     }
     if (py::len(argv) <= 1) {
         std::optional<py::str> want;
-        if (py::len(argv) > 0) want = platform_name(argv[0]);
+        if (py::len(argv) > 0) want = knowledge::platform(argv[0]);
         py::print(py::percent(py::str("%s"), kb->path));
         for (const Cells& row : kb->kinds(want)) {
             const py::str p = std::get<py::str>(row[0]);
@@ -202,10 +172,10 @@ int64_t main(const py::list<py::str>& argv_in) {
                               cell_int(shared[1]), cell_int(shared[2])));
         return 0;
     }
-    const py::str p = platform_name(argv[0]);
+    const py::str p = knowledge::platform(argv[0]);
     const py::str kind = argv[1];
     if (py::len(argv) == 2) {
-        const py::dict<py::str, Value> t = table(p, kind);
+        const py::dict<py::str, Value> t = knowledge::table(p, kind);
         int64_t shown = 0;
         for (const py::str& key : t.keys()) {
             if (shown++ >= 200) break;
@@ -215,7 +185,7 @@ int64_t main(const py::list<py::str>& argv_in) {
         return 0;
     }
     const py::str key = argv[2];
-    const py::dict<py::str, Value> t = table(p, kind);
+    const py::dict<py::str, Value> t = knowledge::table(p, kind);
     const std::optional<Value> fallback = kb->get(p, kind, key);     // (the default is evaluated first, as the call's argument)
     std::optional<Value> value = fallback;
     if (t.contains(key)) value = t.at(key);

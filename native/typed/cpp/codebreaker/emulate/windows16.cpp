@@ -13,9 +13,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include <set>
 
-#include "codebreaker/emulate/api_models.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/emulate/capstone_x86.hpp"
 #include "codebreaker/emulate/native_win16.hpp"
 #include "codebreaker/emulate/unicorn_uc.hpp"
@@ -235,6 +236,11 @@ void _apply_relocs(Uc& uc, const formats::ne::NEFile& nef, const Loaded16& ld, I
 }
 
 // ---- what is kept per process --------------------------------------------------------------------------------------
+// (the gate runs on threads where the Python had its GIL: every cache below is read and written under this lock)
+std::recursive_mutex& cache_mutex() {
+    static std::recursive_mutex m;
+    return m;
+}
 std::map<std::string, py::bytes> _RELOCATED;
 struct Known {
     std::shared_ptr<formats::ne::NEFile> nef;
@@ -517,6 +523,7 @@ int64_t _retf_bytes(const Context& context, int64_t sel, int64_t offset) {
     auto base = context._code_bases.get(sel);
     if (!base || !context.snapshot || context.snapshot->empty()) return 0;
     int64_t at = *base - SNAP_BASE + offset;
+    std::lock_guard<std::recursive_mutex> hold(cache_mutex());
     auto key = std::make_tuple(context.key ? context.key->utf8() : std::string("\x01None"), at);
     auto it = _RETF.find(key);
     if (it != _RETF.end()) return it->second;
@@ -683,6 +690,7 @@ int64_t selector_base(Uc& uc, int64_t sel) {
 // The module's data segment as the loader leaves it -- its fix-ups applied (the selectors of far pointers kept in it) --
 // the bytes a rebuilt module is given in place of its own, so both sides start from the same globals.
 py::bytes relocated_data(const py::str& path) {
+    std::lock_guard<std::recursive_mutex> hold(cache_mutex());
     auto it = _RELOCATED.find(path.utf8());
     if (it != _RELOCATED.end()) return it->second;
     formats::ne::NEFile nef(path);
@@ -734,12 +742,12 @@ py::str _api(const Hit& hit) {
     if (fn.startswith(py::str("@")) && api.startswith(py::str("KERNEL"))) {
         try {
             py::str num = py::str(std::to_string(py::int_parse(fn.slice_from(1))));   // str(int(fn[1:]))
-            // knowledge.table("win16", "kernel_ordinal"): win16.json's "kernel_ordinals" part
-            py::str file = py::os::path::join(knowledge::sources::_MODELS(), py::str("win16.json"));
-            static std::optional<knowledge::sources::Rows> ords;
-            if (!ords) ords = knowledge::sources::_part(py::str("kernel_ordinals"))(file);
-            auto got = ords->get(num);
-            if (got && got->kind == knowledge::sources::Json::Str) fn = got->s;
+            // knowledge.table("win16", "kernel_ordinal").get(num)
+            auto got = knowledge::table(py::str("win16"), py::str("kernel_ordinal")).get(num);
+            if (got) {
+                const auto* j = std::get_if<knowledge::sources::Json>(&*got);
+                if (j && j->kind == knowledge::sources::Json::Str) fn = j->s;
+            }
         } catch (const py::ValueError&) {
         }
     }
@@ -748,7 +756,7 @@ py::str _api(const Hit& hit) {
 }  // namespace
 
 StubResult default_stub(const Hit& hit, Uc*, HeapContext& ctx) {
-    auto model = api_models::api_model(py::str("win16"), _api(hit));
+    auto model = knowledge::api_model(py::str("win16"), _api(hit));
     if (!model) return StubResult{0, std::nullopt, std::nullopt};   // unknown: benign 0 (stack may drift)
     py::list<int64_t> a = hit.args_stack ? *hit.args_stack : py::list<int64_t>();
     StubResult out;
@@ -756,7 +764,7 @@ StubResult default_stub(const Hit& hit, Uc*, HeapContext& ctx) {
         auto v = model->get(py::str(reg));
         if (!v) continue;
         int64_t value;
-        if (v->kind == api_models::Json::Str) {
+        if (v->kind == knowledge::sources::Json::Str) {
             if (v->s == py::str("heap")) {   // a new selector of the stand-in heap
                 value = ctx.alloc_heap();
             } else if (v->s.startswith(py::str("arg"))) {   // the Nth word of the arguments, as pushed
@@ -795,7 +803,10 @@ Trace16 trace_function16(const py::str& path, const Trace16Options& options) {
     int64_t st_mtime = static_cast<int64_t>(std::filesystem::last_write_time(fs_path, ec).time_since_epoch().count());
     auto lkey = std::make_tuple(path.utf8(), st_size, st_mtime);
     std::shared_ptr<Known> known;
-    if (auto it = _LOADED.find(lkey); it != _LOADED.end()) known = it->second;
+    {
+        std::lock_guard<std::recursive_mutex> hold(cache_mutex());
+        if (auto it = _LOADED.find(lkey); it != _LOADED.end()) known = it->second;
+    }
     std::shared_ptr<formats::ne::NEFile> nef = known ? known->nef : std::make_shared<formats::ne::NEFile>(path);
     std::shared_ptr<Uc> ucp = unicorn_uc::open_x86(32);
     Uc& uc = *ucp;
@@ -816,6 +827,7 @@ Trace16 trace_function16(const py::str& path, const Trace16Options& options) {
             }
         }
         k->imports = imports;
+        std::lock_guard<std::recursive_mutex> hold(cache_mutex());
         _LOADED[lkey] = k;
     }
 
@@ -938,6 +950,7 @@ Trace16 trace_function16(const py::str& path, const Trace16Options& options) {
         }
         uc.mem_write(base + start, py::bytes::zeros(std::max<int64_t>(0, std::get<1>(*options.data_end) - start)));
         auto tkey = std::make_tuple(base, std::get<1>(*options.data_end));
+        std::lock_guard<std::recursive_mutex> hold(cache_mutex());
         auto tit = _TAILS.find(tkey);
         if (tit == _TAILS.end()) {
             std::string tail;
@@ -1507,6 +1520,7 @@ std::optional<int64_t> int_of(const Json& j) {   // isinstance(j, int) (a bool i
 
 const Symbols& _load_symbols() {
     static std::optional<Symbols> cache;
+    std::lock_guard<std::recursive_mutex> hold(cache_mutex());
     if (cache) return *cache;
     Json sdk = read_reference("sdk_symbols.json");
     Json cv = read_reference("build311_codeview_syms.json");

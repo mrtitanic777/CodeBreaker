@@ -108,22 +108,6 @@ py::dict<py::str, py::str> corpora_() {
     return out;
 }
 
-// os.environ[k] = v / os.environ.pop(k, None)
-void set_env_(const py::str& k, const py::str& v) {
-#ifdef _WIN32
-    _wputenv_s(std::filesystem::u8path(k.utf8()).wstring().c_str(), std::filesystem::u8path(v.utf8()).wstring().c_str());
-#else
-    setenv(k.utf8().c_str(), v.utf8().c_str(), 1);
-#endif
-}
-void pop_env_(const py::str& k) {
-#ifdef _WIN32
-    _wputenv_s(std::filesystem::u8path(k.utf8()).wstring().c_str(), L"");
-#else
-    unsetenv(k.utf8().c_str());
-#endif
-}
-
 bool truthy_(const std::optional<py::str>& s) { return s && !s->empty(); }
 
 // the sorted keys of a dict of str
@@ -153,8 +137,8 @@ py::str use(const std::optional<py::str>& name) {
     if (name && !corpora_().contains(*name))
         throw py::ValueError(py::percent(py::str("no corpus %r (settings.json lists: %s)"), *name, py::join(py::str(", "), names())));
     selected_ = name;
-    if (!name) pop_env_(ENV);
-    else set_env_(ENV, *name);
+    if (!name) py::os::environ_::pop(ENV);
+    else py::os::environ_::set(ENV, *name);
     return before;
 }
 
@@ -171,7 +155,7 @@ selected::~selected() {
         use(was_var_);
     } catch (...) {
     }
-    if (was_env_) set_env_(ENV, *was_env_);
+    if (was_env_) py::os::environ_::set(ENV, *was_env_);
 }
 
 py::list<py::str> take_option(const py::list<py::str>& argv_) {

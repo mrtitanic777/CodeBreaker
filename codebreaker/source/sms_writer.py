@@ -71,7 +71,7 @@ def reconstruct(path, folder):
         if insn.pattern in pointer or (insn.flow == "" and "(nn)" in insn.pattern):
             labels.setdefault(v, names.get(v, "L_%04X" % v) if v in code else "D_%04X" % v)
     # the hardware the code names
-    ports = dict(PORTS, **(GG_PORTS if rom.system == "Game Gear" else {}))
+    ports = {**PORTS, **(GG_PORTS if rom.system == "Game Gear" else {})}
     used_ports, used_regs = set(), set()
     for insn in code.values():
         if insn.pattern in ("OUT (n),A", "IN A,(n)") and insn.values[0] in ports:

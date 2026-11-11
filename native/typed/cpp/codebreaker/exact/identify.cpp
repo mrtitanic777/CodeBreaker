@@ -8,6 +8,7 @@
 
 #include "codebreaker/exact/toolchain.hpp"
 #include "py_os.hpp"
+#include "py_random.hpp"
 #include "value.hpp"
 #include "json.hpp"
 
@@ -23,84 +24,6 @@ Loader default_loader() {
 
 namespace {
 
-// ---- random.Random(seed): the Mersenne Twister as CPython has it, and its shuffle
-class PyRandom {
-  public:
-    explicit PyRandom(uint32_t key0) {
-        init_genrand(19650218UL);
-        // init_by_array(key = [key0])
-        const uint32_t key[1] = {key0};
-        const int len = 1;
-        int i = 1, j = 0;
-        for (int k = (N > len ? N : len); k; k--) {
-            mt_[i] = (mt_[i] ^ ((mt_[i - 1] ^ (mt_[i - 1] >> 30)) * 1664525UL)) + key[j] + j;
-            i++;
-            j++;
-            if (i >= N) {
-                mt_[0] = mt_[N - 1];
-                i = 1;
-            }
-            if (j >= len) j = 0;
-        }
-        for (int k = N - 1; k; k--) {
-            mt_[i] = (mt_[i] ^ ((mt_[i - 1] ^ (mt_[i - 1] >> 30)) * 1566083941UL)) - i;
-            i++;
-            if (i >= N) {
-                mt_[0] = mt_[N - 1];
-                i = 1;
-            }
-        }
-        mt_[0] = 0x80000000UL;
-    }
-
-    // getrandbits(k) for 1 <= k <= 32
-    uint32_t getrandbits(int k) { return genrand() >> (32 - k); }
-
-    // _randbelow_with_getrandbits(n)
-    int64_t randbelow(int64_t n) {
-        int k = 0;
-        for (int64_t v = n; v; v >>= 1) k++;   // n.bit_length()
-        uint32_t r = getrandbits(k);
-        while (static_cast<int64_t>(r) >= n) r = getrandbits(k);
-        return r;
-    }
-
-  private:
-    static constexpr int N = 624, M = 397;
-    uint32_t mt_[N];
-    int mti_ = N + 1;
-
-    void init_genrand(uint32_t s) {
-        mt_[0] = s;
-        for (mti_ = 1; mti_ < N; mti_++) mt_[mti_] = 1812433253UL * (mt_[mti_ - 1] ^ (mt_[mti_ - 1] >> 30)) + mti_;
-    }
-
-    uint32_t genrand() {
-        static const uint32_t mag01[2] = {0x0UL, 0x9908b0dfUL};
-        uint32_t y;
-        if (mti_ >= N) {
-            int kk;
-            for (kk = 0; kk < N - M; kk++) {
-                y = (mt_[kk] & 0x80000000UL) | (mt_[kk + 1] & 0x7fffffffUL);
-                mt_[kk] = mt_[kk + M] ^ (y >> 1) ^ mag01[y & 0x1UL];
-            }
-            for (; kk < N - 1; kk++) {
-                y = (mt_[kk] & 0x80000000UL) | (mt_[kk + 1] & 0x7fffffffUL);
-                mt_[kk] = mt_[kk + (M - N)] ^ (y >> 1) ^ mag01[y & 0x1UL];
-            }
-            y = (mt_[N - 1] & 0x80000000UL) | (mt_[0] & 0x7fffffffUL);
-            mt_[N - 1] = mt_[M - 1] ^ (y >> 1) ^ mag01[y & 0x1UL];
-            mti_ = 0;
-        }
-        y = mt_[mti_++];
-        y ^= (y >> 11);
-        y ^= (y << 7) & 0x9d2c5680UL;
-        y ^= (y << 15) & 0xefc60000UL;
-        y ^= (y >> 18);
-        return y;
-    }
-};
-
 // sorted() of the (address or None, path) pairs as Python compares tuples: None against a number is a TypeError
 bool file_less(const File& a, const File& b) {
     const auto& x = std::get<0>(a);
@@ -113,52 +36,11 @@ bool file_less(const File& a, const File& b) {
     return std::get<1>(a).u32() < std::get<1>(b).u32();
 }
 
-// json.dump(value, indent=1) of a JSON value
-void dump_indent1(const py::V& v, int level, std::string& out) {
-    const std::string pad(static_cast<size_t>(level + 1), ' ');
-    if (v.is_dict()) {
-        if (v.size() == 0) {
-            out += "{}";
-            return;
-        }
-        out += "{\n";
-        bool first = true;
-        for (const auto& kv : v.items()) {
-            if (!first) out += ",\n";
-            first = false;
-            out += pad + py::json_dump(kv.first) + ": ";
-            dump_indent1(kv.second, level + 1, out);
-        }
-        out += "\n" + std::string(static_cast<size_t>(level), ' ') + "}";
-    } else if (v.is_list() || v.is_tuple()) {
-        if (v.size() == 0) {
-            out += "[]";
-            return;
-        }
-        out += "[\n";
-        bool first = true;
-        for (const py::V& x : v.seq()) {
-            if (!first) out += ",\n";
-            first = false;
-            out += pad;
-            dump_indent1(x, level + 1, out);
-        }
-        out += "\n" + std::string(static_cast<size_t>(level), ' ') + "]";
-    } else {
-        out += py::json_dump(v);
-    }
-}
-
 }  // namespace
 
 void shuffle(int64_t seed, py::list<File>& x) {
-    PyRandom rnd(static_cast<uint32_t>(seed < 0 ? -seed : seed));   // (seed(a) uses abs(a); a small one is one 32-bit word)
-    for (int64_t i = x.size() - 1; i >= 1; i--) {
-        const int64_t j = rnd.randbelow(i + 1);
-        File t = x[i];
-        x[i] = x[j];
-        x[j] = t;
-    }
+    py::random::Random rnd(seed);   // random.Random(seed).shuffle(x)
+    rnd.shuffle(x);
 }
 
 py::list<Candidate> candidates(const Project& prj, const std::optional<py::list<py::str>>& tries) {
@@ -293,8 +175,9 @@ int64_t main(Project& prj, const py::list<py::str>& argv, std::ostream& out, con
         if (var && !var->empty()) c.set("variant", py::V(var->utf8()));
         else c.erase(py::V("variant"));
         if (sw && !sw->empty()) c.set("switches", py::V(sw->utf8()));
-        std::string text;
-        dump_indent1(c, 0, text);
+        py::DumpOpts dump_opts;
+        dump_opts.indent = 1;   // json.dump(c, f, indent=1)
+        std::string text = py::json_dump(c, dump_opts);
         py::file f = py::file::open(p, py::str("w"));
         f.write(py::str(text));
         f.close();

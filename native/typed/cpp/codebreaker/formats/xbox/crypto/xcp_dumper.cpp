@@ -130,16 +130,6 @@ py::str input_(const py::str& prompt) {
     return py::str(line);
 }
 
-// Python's AttributeError for a call of what the Python's StreamIO does not have
-[[noreturn]] void no_stream_attribute(const char* name) {
-    throw py::AttributeError(std::string("'StreamIO' object has no attribute '") + name + "'");
-}
-
-// xcp.perform_function_at(offset, size, function)
-py::bytes perform_function_at(StreamIO_&, int64_t, int64_t, XeCrypt::XeCryptRc4&) { no_stream_attribute("perform_function_at"); }
-void set_label(StreamIO_&, const py::str&) { no_stream_attribute("set_label"); }
-int64_t get_label(StreamIO_&, const py::str&) { no_stream_attribute("get_label"); }
-
 // bytes.fromhex(s) as Python 3.14 reads it: blanks between pairs, ValueError (with the position) otherwise
 py::bytes fromhex(const py::str& s) {
     const std::u32string& u = s.u32();
@@ -211,312 +201,17 @@ bool extract_cab(const py::str& filename, const py::str& path) {
 }
 
 py::bytes stream_decrypt_with_struct(StreamIO_& xcp, const py::bytes& key, int64_t struct_offset, int64_t data_offset, int64_t size) {
-    // xcp.offset = struct_offset  (only an attribute in the Python: the read below is at the stream's position)
-    (void)struct_offset;
+    xcp.set_offset(struct_offset);
     RC4_SHA_HEADER rc4_sha_struct = xcp.read_struct<RC4_SHA_HEADER>();
     py::bytes cksm(std::string(reinterpret_cast<const char*>(rc4_sha_struct.cksm), sizeof rc4_sha_struct.cksm));
     py::bytes confounder(std::string(reinterpret_cast<const char*>(rc4_sha_struct.confounder), sizeof rc4_sha_struct.confounder));
     XeCrypt::XeCryptRc4 cipher = XeCrypt::XeCryptRc4::new_(XeCrypt::XeCryptHmacSha(key, py::list<py::bytes>{cksm}));
     cipher.decrypt(confounder);
 
-    py::bytes dec_data = perform_function_at(xcp, data_offset, size, cipher);
+    py::bytes dec_data = xcp.perform_function_at(data_offset, size, [&cipher](const py::bytes& d) { return cipher.decrypt(d); });
 
     return dec_data;
 }
-
-// ------------------------------------------------------------------------------------- zlib inflate
-namespace {
-
-// the bits of the stream ran out: wait for more input
-struct NeedInput {};
-
-constexpr int MAXBITS = 15;
-
-// a canonical Huffman code (the shape of zlib's contrib/puff)
-struct Huffman {
-    std::array<int16_t, MAXBITS + 1> count{};
-    std::array<int16_t, 320> symbol{};
-    int maxlen = 0;
-};
-
-// Fill h from code lengths. 0: complete, >0: incomplete, <0: over-subscribed.
-int construct(Huffman& h, const uint8_t* length, int n) {
-    h.count.fill(0);
-    for (int sym = 0; sym < n; sym++) h.count[length[sym]]++;
-    h.maxlen = 0;
-    for (int len = 1; len <= MAXBITS; len++)
-        if (h.count[len]) h.maxlen = len;
-    if (h.maxlen == 0) return 0;
-    int left = 1;
-    for (int len = 1; len <= MAXBITS; len++) {
-        left <<= 1;
-        left -= h.count[len];
-        if (left < 0) return left;
-    }
-    std::array<int16_t, MAXBITS + 2> offs{};
-    for (int len = 1; len < MAXBITS; len++) offs[len + 1] = static_cast<int16_t>(offs[len] + h.count[len]);
-    for (int sym = 0; sym < n; sym++)
-        if (length[sym] != 0) h.symbol[offs[length[sym]]++] = static_cast<int16_t>(sym);
-    return left;
-}
-
-const int16_t LBASE[29] = {3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
-const int16_t LEXT[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-const int16_t DBASE[30] = {1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
-const int16_t DEXT[30] = {0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
-const uint8_t ORDER[19] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
-
-enum class State { HEAD, DICTID, TYPE, STORED, CODES, CHECK, DONE };
-
-}  // namespace
-
-struct Decompress::Impl {
-    std::string in;        // input not yet dropped
-    int64_t commit = 0;    // bit position (in `in`) where the unit being read started
-    int64_t pos = 0;       // bit position being read
-    State state = State::HEAD;
-    bool last_block = false;
-    int64_t stored_left = 0;
-    Huffman lit, dist;
-    std::string hist;      // the output, of which the last 32768 bytes are the match window
-    int64_t total_out = 0;
-    int64_t adler_upto = 0;   // hist[0:adler_upto] is in the checksum
-    uint32_t adler_a = 1, adler_b = 0;
-    std::optional<std::string> error;   // the message of the failure that ended the stream
-
-    [[noreturn]] void fail(const char* why) {
-        error = std::string("Error -3 while decompressing data: ") + why;
-        throw ZlibError(*error);
-    }
-
-    int64_t bits(int n) {
-        if (pos + n > static_cast<int64_t>(in.size()) * 8) throw NeedInput();
-        int64_t v = 0;
-        for (int i = 0; i < n; i++, pos++) v |= static_cast<int64_t>((static_cast<uint8_t>(in[static_cast<size_t>(pos >> 3)]) >> (pos & 7)) & 1) << i;
-        return v;
-    }
-
-    // Huffman decode of one symbol; -1 for a bit string that is no code. `codes` marks the code-length
-    // code, for which zlib reads an empty code as a 0.
-    int decode(const Huffman& h, bool codes) {
-        if (h.maxlen == 0) {
-            bits(1);
-            return codes ? 0 : -1;
-        }
-        int code = 0, first = 0, index = 0;
-        for (int len = 1; len <= h.maxlen; len++) {
-            code |= static_cast<int>(bits(1));
-            int count = h.count[len];
-            if (code - count < first) return h.symbol[static_cast<size_t>(index + (code - first))];
-            index += count;
-            first += count;
-            first <<= 1;
-            code <<= 1;
-        }
-        return -1;
-    }
-
-    void put(char c) {
-        hist.push_back(c);
-        total_out++;
-    }
-
-    void update_adler() {
-        for (size_t i = static_cast<size_t>(adler_upto); i < hist.size(); i++) {
-            adler_a = (adler_a + static_cast<uint8_t>(hist[i])) % 65521;
-            adler_b = (adler_b + adler_a) % 65521;
-        }
-        adler_upto = static_cast<int64_t>(hist.size());
-    }
-
-    void fixed_tables() {
-        uint8_t lengths[320];
-        int sym = 0;
-        for (; sym < 144; sym++) lengths[sym] = 8;
-        for (; sym < 256; sym++) lengths[sym] = 9;
-        for (; sym < 280; sym++) lengths[sym] = 7;
-        for (; sym < 288; sym++) lengths[sym] = 8;
-        construct(lit, lengths, 288);
-        for (sym = 0; sym < 32; sym++) lengths[sym] = 5;
-        construct(dist, lengths, 32);
-    }
-
-    // the three code descriptions of a dynamic block
-    void dynamic_tables() {
-        int nlen = static_cast<int>(bits(5)) + 257;
-        int ndist = static_cast<int>(bits(5)) + 1;
-        int ncode = static_cast<int>(bits(4)) + 4;
-        if (nlen > 286 || ndist > 30) fail("too many length or distance symbols");
-        uint8_t lengths[320] = {};
-        for (int index = 0; index < ncode; index++) lengths[ORDER[index]] = static_cast<uint8_t>(bits(3));
-        Huffman codes;
-        int left = construct(codes, lengths, 19);
-        if (left < 0 || (left > 0 && codes.maxlen != 0)) fail("invalid code lengths set");
-        uint8_t lens[320] = {};
-        int index = 0;
-        while (index < nlen + ndist) {
-            int sym = decode(codes, true);
-            if (sym < 16) {
-                lens[index++] = static_cast<uint8_t>(sym);
-            } else {
-                int len = 0, rep;
-                if (sym == 16) {
-                    rep = 3 + static_cast<int>(bits(2));
-                    if (index == 0) fail("invalid bit length repeat");
-                    len = lens[index - 1];
-                } else if (sym == 17) {
-                    rep = 3 + static_cast<int>(bits(3));
-                } else {
-                    rep = 11 + static_cast<int>(bits(7));
-                }
-                if (index + rep > nlen + ndist) fail("invalid bit length repeat");
-                while (rep--) lens[index++] = static_cast<uint8_t>(len);
-            }
-        }
-        if (lens[256] == 0) fail("invalid code -- missing end-of-block");
-        left = construct(lit, lens, nlen);
-        if (left < 0 || (left > 0 && lit.maxlen != 1 && lit.maxlen != 0)) fail("invalid literal/lengths set");
-        left = construct(dist, lens + nlen, ndist);
-        if (left < 0 || (left > 0 && dist.maxlen != 1 && dist.maxlen != 0)) fail("invalid distances set");
-    }
-
-    void run() {
-        try {
-            for (;;) {
-                commit = pos;
-                switch (state) {
-                    case State::HEAD: {
-                        int64_t cmf = bits(8), flg = bits(8);
-                        if (((cmf << 8) + flg) % 31 != 0) fail("incorrect header check");
-                        if ((cmf & 15) != 8) fail("unknown compression method");
-                        if ((cmf >> 4) + 8 > 15) fail("invalid window size");
-                        state = (flg & 0x20) ? State::DICTID : State::TYPE;
-                        break;
-                    }
-                    case State::DICTID:
-                        bits(32);
-                        error = "Error 2 while decompressing data";   // Z_NEED_DICT: no message of zlib's
-                        throw ZlibError(*error);
-                    case State::TYPE: {
-                        if (last_block) {
-                            pos = (pos + 7) & ~static_cast<int64_t>(7);
-                            state = State::CHECK;
-                            break;
-                        }
-                        int64_t hdr = bits(3);
-                        bool is_last = (hdr & 1) != 0;
-                        int type = static_cast<int>(hdr >> 1);
-                        if (type == 0) {
-                            pos = (pos + 7) & ~static_cast<int64_t>(7);
-                            int64_t len = bits(16), nlen = bits(16);
-                            if (len != (nlen ^ 0xFFFF)) fail("invalid stored block lengths");
-                            stored_left = len;
-                            state = State::STORED;
-                        } else if (type == 1) {
-                            fixed_tables();
-                            state = State::CODES;
-                        } else if (type == 2) {
-                            dynamic_tables();
-                            state = State::CODES;
-                        } else {
-                            fail("invalid block type");
-                        }
-                        last_block = is_last;
-                        break;
-                    }
-                    case State::STORED: {
-                        int64_t have = static_cast<int64_t>(in.size()) - (pos >> 3);
-                        int64_t take = std::min(have, stored_left);
-                        if (take > 0) {
-                            hist.append(in, static_cast<size_t>(pos >> 3), static_cast<size_t>(take));
-                            total_out += take;
-                            pos += take * 8;
-                            stored_left -= take;
-                        }
-                        if (stored_left == 0) {
-                            state = State::TYPE;
-                            break;
-                        }
-                        commit = pos;
-                        throw NeedInput();
-                    }
-                    case State::CODES: {
-                        for (;;) {
-                            commit = pos;
-                            int sym = decode(lit, false);
-                            if (sym < 0) fail("invalid literal/length code");
-                            if (sym < 256) {
-                                put(static_cast<char>(sym));
-                                continue;
-                            }
-                            if (sym == 256) {
-                                state = State::TYPE;
-                                break;
-                            }
-                            sym -= 257;
-                            if (sym >= 29) fail("invalid literal/length code");
-                            int64_t len = LBASE[sym] + bits(LEXT[sym]);
-                            int dsym = decode(dist, false);
-                            if (dsym < 0 || dsym >= 30) fail("invalid distance code");
-                            int64_t d = DBASE[dsym] + bits(DEXT[dsym]);
-                            if (d > total_out) fail("invalid distance too far back");
-                            for (int64_t k = 0; k < len; k++) put(hist[hist.size() - static_cast<size_t>(d)]);
-                        }
-                        break;
-                    }
-                    case State::CHECK: {
-                        int64_t b0 = bits(8), b1 = bits(8), b2 = bits(8), b3 = bits(8);
-                        update_adler();
-                        uint32_t want = static_cast<uint32_t>((b0 << 24) | (b1 << 16) | (b2 << 8) | b3);
-                        if (want != ((adler_b << 16) | adler_a)) fail("incorrect data check");
-                        state = State::DONE;
-                        break;
-                    }
-                    case State::DONE:
-                        return;
-                }
-                commit = pos;
-            }
-        } catch (const NeedInput&) {
-            pos = commit;
-        }
-    }
-};
-
-Decompress::Decompress() : impl_(std::make_shared<Impl>()) {}
-
-py::bytes Decompress::decompress(const py::bytes& data) {
-    Impl& s = *impl_;
-    if (eof) {
-        unused_data = unused_data + data;
-        return py::bytes();
-    }
-    if (s.error) throw ZlibError(*s.error);
-    s.in += data.raw();
-    size_t start = s.hist.size();
-    s.run();
-    s.update_adler();
-    py::bytes out(s.hist.substr(start));
-    if (s.state == State::DONE) {
-        eof = true;
-        unused_data = unused_data + py::bytes(s.in.substr(static_cast<size_t>(s.pos >> 3)));
-        s.in.clear();
-        s.pos = s.commit = 0;
-    } else {
-        int64_t drop = s.commit >> 3;
-        s.in.erase(0, static_cast<size_t>(drop));
-        s.commit -= drop * 8;
-        s.pos = s.commit;
-    }
-    if (s.hist.size() > 32768) {
-        size_t cut = s.hist.size() - 32768;
-        s.hist.erase(0, cut);
-        s.adler_upto -= static_cast<int64_t>(cut);
-    }
-    return out;
-}
-
-py::bytes Decompress::flush() { return py::bytes(); }
 
 // ----------------------------------------------------------------------------------------- XCPFile
 XCPFile::XCPFile(const py::str& path) {
@@ -1138,46 +833,51 @@ int64_t main(const py::list<py::str>& argv, const py::str& prog) {
         }
 
         py::print(py::str("Processing filenames..."));
-        int64_t offset = 0x44;   // xcp.offset = 0x44
-        RC4_SHA_HEADER rc4_sha_struct = xcp.read_struct<RC4_SHA_HEADER>();
-        py::bytes cksm(std::string(reinterpret_cast<const char*>(rc4_sha_struct.cksm), sizeof rc4_sha_struct.cksm));
-        py::bytes confounder(std::string(reinterpret_cast<const char*>(rc4_sha_struct.confounder), sizeof rc4_sha_struct.confounder));
-        XeCrypt::XeCryptRc4 cipher = XeCrypt::XeCryptRc4::new_(hmac_sha(key, cksm));
-        cipher.decrypt(confounder);
+        // (the cipher is only needed when the file is encrypted)
+        std::optional<XeCrypt::XeCryptRc4> cipher;
+        if (encrypted) {
+            xcp.set_offset(0x44);
+            RC4_SHA_HEADER rc4_sha_struct = xcp.read_struct<RC4_SHA_HEADER>();
+            py::bytes cksm(std::string(reinterpret_cast<const char*>(rc4_sha_struct.cksm), sizeof rc4_sha_struct.cksm));
+            py::bytes confounder(std::string(reinterpret_cast<const char*>(rc4_sha_struct.confounder), sizeof rc4_sha_struct.confounder));
+            cipher.emplace(XeCrypt::XeCryptRc4::new_(hmac_sha(key, cksm)));
+            cipher->decrypt(confounder);
+        }
+        const auto decrypt = [&cipher](const py::bytes& d) { return cipher->decrypt(d); };
         // decrypt filenames
-        offset = cab_hdr_struct.off_files;
+        xcp.set_offset(cab_hdr_struct.off_files);
         for (int64_t i = 0; i < cab_hdr_struct.cnt_files; i++) {
             // decrypt header if necessary
             if (encrypted) {
-                perform_function_at(xcp, offset, sizeof(CAB_ENTRY), cipher);
+                xcp.perform_function_at(xcp.offset(), sizeof(CAB_ENTRY), decrypt);
             }
 
-            offset += sizeof(CAB_ENTRY);
+            xcp.set_offset(xcp.offset() + sizeof(CAB_ENTRY));
 
-            set_label(xcp, py::str("filename") + py::to_str(i));
+            xcp.set_label(py::str("filename") + py::to_str(i));
 
             // decrypt filename if necessary
             int64_t idx = 0;
             int64_t byt = 0;
             while (byt != 0 || idx == 0) {
                 if (encrypted) {
-                    byt = perform_function_at(xcp, offset, 1, cipher)[0];
-                    offset += 1;
+                    byt = xcp.perform_function_at(xcp.offset(), 1, decrypt)[0];
+                    xcp.set_offset(xcp.offset() + 1);
                 } else {
                     byt = xcp.read_byte();
                 }
                 idx += 1;
             }
             // rename the files to extract them properly
-            xcp.write_bytes_at(offset - 4, py::str(py::to_str(i)).zfill(3).encode("utf-8"));
+            xcp.write_bytes_at(xcp.offset() - 4, py::str(py::to_str(i)).zfill(3).encode("utf-8"));
         }
 
         std::vector<CAB_FOLDER> folders;
         if (encrypted) {
             py::print(py::str("Preprocessing folders..."));
-            offset = 0x180;
+            xcp.set_offset(0x180);
             for (int64_t i = 0; i < cab_hdr_struct.cnt_folders; i++) {
-                set_label(xcp, py::str("folder") + py::to_str(i));
+                xcp.set_label(py::str("folder") + py::to_str(i));
                 folders.push_back(xcp.read_struct<CAB_FOLDER>());
                 xcp.seek(XENON_DATA_SIZE, StreamIO::SEEK_CUR_);
             }
@@ -1196,7 +896,7 @@ int64_t main(const py::list<py::str>& argv, const py::str& prog) {
                     size = static_cast<int64_t>(next_folder.off_cab_start) - static_cast<int64_t>(curr_folder.off_cab_start);
                 }
 
-                stream_decrypt_with_struct(xcp, std::get<py::bytes>(key), get_label(xcp, py::str("folder") + py::to_str(i)) + sizeof(CAB_FOLDER),
+                stream_decrypt_with_struct(xcp, std::get<py::bytes>(key), xcp.get_label(py::str("folder") + py::to_str(i)) + sizeof(CAB_FOLDER),
                                            curr_folder.off_cab_start, size);
             }
         }

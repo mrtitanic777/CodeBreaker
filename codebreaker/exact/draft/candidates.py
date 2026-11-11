@@ -1134,7 +1134,13 @@ def localize(prj, text, at, names):
                 off = int(d[2:], 16) - base
                 text = re.sub(r"\b%s\[([^\[\]]+)\]\.f0\b" % d, lambda m, o=off: "%s[%s].f%d" % (bn, m.group(1), o), text)
                 arrs = [x for x in arrs if x != d]
-            STRUCTARR[bn] = (STRUCTARR[bn][0], [(int(d[2:], 16) - base, STRUCTARR[d][1] if not str(STRUCTARR[d][1]).startswith("struct") else "int") for d in ds])
+            elems = []
+            for d in ds:
+                t_ = STRUCTARR[d][1]
+                if isinstance(t_, list):                    # (laid out before - by an earlier variant of this text: its first field's type)
+                    t_ = t_[0][1]
+                elems.append((int(d[2:], 16) - base, "int" if str(t_).startswith("struct") else t_))
+            STRUCTARR[bn] = (STRUCTARR[bn][0], elems)
         for d in arrs:                                      # (an array of structs: its element laid out - the field
             if d in STRUCTARR:                              #  the code reads first, the rest of its size after)
                 k, ty = STRUCTARR[d]

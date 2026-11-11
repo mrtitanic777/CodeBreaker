@@ -43,10 +43,7 @@ extern const Table TABLE;
 extern const py::dict<py::str, int64_t> _PLACE;
 
 // SyntaxError (eval of a malformed expression in value()); the runtime has none of its own.
-struct SyntaxError : py::Exception {
-    explicit SyntaxError(const std::string& m) : py::Exception(m) {}
-    const char* type() const override { return "SyntaxError"; }
-};
+using SyntaxError = py::SyntaxError;
 
 struct Insn {
     py::str pattern;

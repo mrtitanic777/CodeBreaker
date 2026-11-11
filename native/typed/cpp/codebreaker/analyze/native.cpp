@@ -1,6 +1,7 @@
 // codebreaker/analyze/native.cpp -- typed C++ port of codebreaker.analyze.native (see the header).
 
 #include "codebreaker/analyze/native.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
 
 #include <cstring>
 #include <string>
@@ -42,7 +43,6 @@ namespace {
 bool g_loaded = false;
 Library* g_lib = nullptr;
 std::vector<py::str> g_why;
-std::optional<py::str> g_capstone_dll;
 
 // An error buffer's text: err.value.decode("ascii", "replace")
 py::str error_text(const char* buf) {
@@ -83,9 +83,7 @@ py::str dll_path() {
     return py::os::path::join(py::settings::get_str(py::str("analyze_bin")), py::str("cbanalyze.dll"));
 }
 
-void set_capstone_dll(const py::str& path) {
-    g_capstone_dll = path;
-}
+void set_capstone_dll(const py::str& path) { emulate::capstone_x86::load_capstone(path); }
 
 Library* _load() {
     if (g_loaded) {
@@ -98,9 +96,6 @@ Library* _load() {
             throw py::OSError(py::percent(py::str("not built: %s (native/analyze/CMakeLists.txt)"), path));
         }
         // import capstone   (no capstone to import: the caller names its dll; not an OSError, so it escapes)
-        if (!g_capstone_dll) {
-            throw py::Exception("No module named 'capstone'");
-        }
 #ifdef _WIN32
         std::unique_ptr<Library> fresh(new Library());
         // settings.load_native: the build folder goes on the DLL search path, then the DLL is loaded
@@ -125,7 +120,7 @@ Library* _load() {
         bind(fresh->module, "cba_free", fresh->cba_free);
         bind(fresh->module, "cba_close", fresh->cba_close);
         char err[256] = {0};
-        std::wstring cap = wide(py::os::path::abspath(*g_capstone_dll));
+        std::wstring cap = wide(py::os::path::abspath(emulate::capstone_x86::dll()));   // (the one capstone loader: set, else found as `import capstone` would)
         if (fresh->cba_init(cap.c_str(), err, 256)) {
             throw py::OSError(error_text(err));
         }

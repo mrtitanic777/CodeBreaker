@@ -109,9 +109,10 @@ int64_t _u24_le(const py::bytes& d, int64_t o) { return d[o] | (d[o + 1] << 8) |
 // =====================================================================================================
 // STFS
 // =====================================================================================================
-STFS::STFS(const py::bytes& data) {
-    if (!is_magic(data.slice(0, 4))) throw py::ValueError("not an STFS package (magic " + py::repr(data.slice(0, 4)).utf8() + ")");
-    d = data;
+STFS::STFS(py::bytes data_in) {
+    if (!is_magic(data_in.slice(0, 4))) throw py::ValueError("not an STFS package (magic " + py::repr(data_in.slice(0, 4)).utf8() + ")");
+    d = std::move(data_in);   // (a temporary is taken without a copy)
+    const py::bytes& data = d;
     magic = data.slice(0, 4);
 
     header_size = py::unpack_from1<int64_t>(">I", data, 0x340);

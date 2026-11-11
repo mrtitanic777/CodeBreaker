@@ -19,6 +19,7 @@ builds, so masking them is what makes a true opcode-stream match possible.
                                                         # verdict vs real bytes
 """
 import argparse
+import shutil
 import sys
 
 from codebreaker.build import msvc152 as cc16
@@ -66,9 +67,13 @@ NE_SRC_WIDTH = {0: 1, 2: 2, 3: 4, 5: 2, 11: 6}
 # ---------------------------------------------------------------------------
 def compile_group(csrc, flags="/AM /Ox /c"):
     r = cc16.compile_c(csrc, flags=flags)
-    if "obj" not in r:
-        raise RuntimeError("compile produced no OBJ:\n" + r.get("log", "")[:600])
-    return omf.function_bytes(r["obj"])
+    try:
+        if "obj" not in r:
+            raise RuntimeError("compile produced no OBJ:\n" + r.get("log", "")[:600])
+        return omf.function_bytes(r["obj"])
+    finally:
+        if r.get("work"):                                   # (the emulator's work folder: compile_c leaves it to its caller)
+            shutil.rmtree(r["work"], ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

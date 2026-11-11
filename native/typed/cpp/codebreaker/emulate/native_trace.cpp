@@ -1,6 +1,11 @@
 // codebreaker/emulate/native_trace.cpp -- C++ port of codebreaker.emulate.native_trace (see the header).
 
 #include "codebreaker/emulate/native_trace.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
+
+#include <mutex>
+#include "codebreaker/base/capstone_dll.hpp"
+#include "codebreaker/emulate/unicorn_uc.hpp"
 
 // the kernel32 calls _load needs, declared here: <windows.h> would bring its macros into every unit
 #ifndef _WINDOWS_
@@ -75,6 +80,8 @@ py::str dll_path() {
 }
 
 std::shared_ptr<Lib> _load() {
+    static std::recursive_mutex init;   // (first use may be on several gate threads at once)
+    std::lock_guard<std::recursive_mutex> hold(init);
     if (!_LIB.empty()) {
         return _LIB[0];
     }
@@ -85,10 +92,14 @@ std::shared_ptr<Lib> _load() {
             throw py::OSError(py::str("not built: ") + path + py::str(" (native/tracer/CMakeLists.txt)"));
         }
         EngineConfig& cfg = engine_config();   // (the DLLs Python loaded: the unicorn and capstone packages')
-        if (!cfg.uc_dll || !cfg.cs_dll) {
-            throw py::OSError("no Unicorn and Capstone DLLs given (set_engine)");
+        if (!cfg.uc_dll) {
+            // nobody called set_engine(): find the unicorn package's DLL as `import unicorn` would; the register
+            // table is unicorn.x86_const's (unicorn_uc carries it)
+            cfg.uc_dll = base::capstone_dll::find_unicorn();
+            if (cfg.registers.empty()) cfg.registers = unicorn_uc::x86_register_table();
         }
-        py::str uc_dll = *cfg.uc_dll, cs_dll = *cfg.cs_dll;
+        py::str uc_dll = *cfg.uc_dll;
+        py::str cs_dll = cfg.cs_dll ? *cfg.cs_dll : capstone_x86::dll();   // (the one capstone loader: capstone_x86)
         auto l = std::make_shared<Lib>();
         std::wstring wpath = wide(py::os::path::abspath(path));
         void* dll = LoadLibraryW(wpath.c_str());

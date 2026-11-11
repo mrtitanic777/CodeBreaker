@@ -1,0 +1,3 @@
+py_zlib.cc includes the zlib 1.3.1 C sources itself (native/decompiler/core/zlib, compiled as C++; inflate.h and
+inftrees.h carry an added include guard for that) and defines crc32 over py::crc32.
+A port adds only py_zlib.cc to its cl line, with the usual /I native\ported\include.

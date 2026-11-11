@@ -124,11 +124,11 @@ def discover(path, pointer_scan=True, extra=None):
         funcs[img.entry] = 0
         sources["entry"] = 1
     if pointer_scan:
-        for a in from_pointers(img, {a: s for a, s in funcs.items() if s}):
+        for a in sorted(from_pointers(img, {a: s for a, s in funcs.items() if s})):      # (in address order)
             if a not in funcs:
                 funcs[a] = 0
                 sources["pointers"] += 1
-        for a in from_constants(img, {a: s for a, s in funcs.items() if s}):
+        for a in sorted(from_constants(img, {a: s for a, s in funcs.items() if s})):     # (in address order)
             if a not in funcs:
                 funcs[a] = 0
                 sources["constants"] += 1

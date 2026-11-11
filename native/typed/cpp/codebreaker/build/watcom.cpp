@@ -2,18 +2,14 @@
 
 #include "codebreaker/build/watcom.hpp"
 
+#include <mutex>
+
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 
 #include "codebreaker/formats/omf.hpp"
 #include "codebreaker/formats/pe.hpp"
-
-#ifdef _WIN32
-#include <stdlib.h>
-#else
-extern char** environ;
-#endif
 
 namespace codebreaker::build::watcom {
 
@@ -23,31 +19,6 @@ namespace pe = codebreaker::formats::pe;
 const py::str _BASE = py::str("option offset=0x6E000000\n");
 
 namespace {
-
-// dict(os.environ): the process environment in the order the system gives it; on Windows os.environ
-// has its names upper-cased (a later entry of the same name replaces the earlier in place)
-py::dict<py::str, py::str> environment() {
-    py::dict<py::str, py::str> out;
-#ifdef _WIN32
-    (void)_wgetenv(L"PATH");                              // (_wenviron exists once the wide environment has been asked)
-    for (wchar_t** e = _wenviron; e && *e; ++e) {
-        std::wstring entry(*e);
-        size_t eq = entry.find(L'=', 1);                  // (a name may begin with '=': "=C:")
-        if (entry.empty() || eq == std::wstring::npos) continue;
-        std::string key = std::filesystem::path(entry.substr(0, eq)).u8string();
-        std::string value = std::filesystem::path(entry.substr(eq + 1)).u8string();
-        out.set(py::str(key).upper(), py::str(value));
-    }
-#else
-    for (char** e = environ; e && *e; ++e) {
-        std::string entry(*e);
-        size_t eq = entry.find('=', 1);
-        if (entry.empty() || eq == std::string::npos) continue;
-        out.set(py::str(entry.substr(0, eq)), py::str(entry.substr(eq + 1)));
-    }
-#endif
-    return out;
-}
 
 bool lower_ends_with_exe(const py::str& name) {
     std::string s = name.lower().utf8();
@@ -84,7 +55,13 @@ py::dict<py::str, py::str>& _EXPORT_NAMES() {
     return names;
 }
 
+std::recursive_mutex& import_maps_lock() {
+    static std::recursive_mutex m;
+    return m;
+}
+
 py::dict<py::str, py::str> import_map(const py::str& module) {
+    std::lock_guard<std::recursive_mutex> hold(import_maps_lock());   // (compiles run on threads: the two tables below are shared)
     if (!_IMPORT_MAPS().contains(module)) {
         py::dict<py::str, py::str> out;
         try {
@@ -168,7 +145,7 @@ py::str ow_lib(const py::str& cls) {
 
 py::dict<py::str, py::str> ow_env(const py::str& cls) {
     py::str root = openwatcom_root();
-    py::dict<py::str, py::str> env = environment();
+    py::dict<py::str, py::str> env = py::os::environ_::copy();   // dict(os.environ)
     env.set(py::str("NoDefaultCurrentDirectoryInExePath"), py::str(""));       // OW runs its own tools from cwd
     env.set(py::str("WATCOM"), root);
     env.set(py::str("INCLUDE"), py::join(py::os::pathsep, ow_include(cls)));

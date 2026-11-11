@@ -31,8 +31,10 @@
 #include <tuple>
 
 #include "codebreaker/core16_types.hpp"
+#include "codebreaker/decompile/struct_text.hpp"
 #include "codebreaker/formats/powerpc_image.hpp"
 #include "codebreaker/translate/l2.hpp"
+#include "codebreaker/translate/native_l2.hpp"
 #include "py.hpp"
 
 namespace codebreaker::decompile::describe {
@@ -50,7 +52,7 @@ using core16::StructNote;
 // The options OpenWatcom's 32-bit compiler is given (decompiled C is stdcall by default: -ecd)
 extern const py::list<py::str> CFLAGS;
 // bytes of each of the decompiler's scalar types (backends/c.SIZEOF)
-extern const py::dict<py::str, int64_t> _SIZEOF;
+const py::dict<py::str, int64_t>& _SIZEOF();   // (built on first use: it copies another unit's global)
 // The C the 16-bit modules' headers start with (base types, helpers); the 32-bit one is _TYPES + _HELPERS
 extern const py::str HEADER;
 // A software interrupt's register record: the registers' names in the record's order
@@ -77,9 +79,9 @@ using SelectorImports = py::dict<int64_t, std::tuple<py::str, py::str>>;
 // A function's heading as the C back end reports one (found["heading"]): its parameters (the heading text, [(name, type)]),
 // the types it names, its calls, its declaration with the argument list left open, and whether it is __fastcall16.
 struct Heading {
-    std::tuple<py::str, py::list<std::tuple<py::str, py::str>>> params;
+    std::optional<std::tuple<py::str, py::list<std::tuple<py::str, py::str>>>> params;   // None when the heading text did not parse
     py::dict<py::str, py::str> types;
-    py::list<py::str> calls;
+    py::list<std::tuple<py::str, py::list<py::str>>> calls;   // (callee, its arguments as written)
     py::str declaration;                   // `head();`
     bool fastcall = false;
 };
@@ -90,12 +92,15 @@ struct NamesUsed {
     py::set<py::str> called_through;       // globals it calls through (they hold function pointers)
     py::set<std::tuple<py::str, py::str>> globals;   // (prefix, 8 hex digits of the address) of `<prefix>Ram<addr>`
     py::set<int64_t> segments;             // the module's own segments used as values
+    bool mk_fp = false;                    // it builds far pointers with MK_FP
 };
 
 // The module's facts handed to the C back end for ONE function (backends/c.function's `facts`), and what the back end
 // leaves in it. The 16-bit ones are module_facts16() plus the module's later decisions; the 32-bit / PowerPC ones are
 // compilable32()'s `written` dict.
 struct ModuleFacts {
+    bool win16 = false;                                 // the 16-bit keys (module_facts16) are given; else the 32-bit / PowerPC ones
+    bool have_code = false;                             // 16-bit: the segment's bytes were known (widths, loads ... are then said)
     // --- given (16-bit: module_facts16 and _write16)
     std::optional<py::str> distance;                    // "far" | "near" | None
     std::optional<py::str> model;                       // "__stdcall16far" ... | None
@@ -119,7 +124,7 @@ struct ModuleFacts {
     py::dict<py::str, py::str> aliases;                 // {global: alias used at this function's own width}
     py::set<py::str> pointer_globals;                   // globals holding pointers
     py::dict<py::str, int64_t> takes;                   // {function: arguments its definition takes}, not __cdecl ones
-    py::dict<py::str, py::dict<int64_t, py::str>> struct_fields;   // (struct_text.plan) {param: {offset: ...}}: see more
+    std::optional<py::dict<py::str, struct_text::Planned>> struct_fields;   // (struct_text.plan) {param: (structure, {offset: (type, size)})}
     // --- left by the back end
     std::optional<py::str> declared;                    // 32-bit / PowerPC: its heading as written (`written["declared"]`)
     std::optional<py::str> registers;                   // "ecx" | "edx" | None: where its first argument(s) travel
@@ -135,8 +140,16 @@ struct ModuleFacts {
     // "frame" and "frame_slots" (backends/c.caller_frame_plan), "segment_values", "code_places" (c_text), "selector_renames",
     // "code_reads", "struct_fields" ...) and the module's own `selector_values`. Group-4 gives them as they are the
     // back end's documents; the Python's dict held them by name.
-    translate::ir::Dict more;
+    // (a Wire dict: the plans' keys are not all str -- "code_places" is keyed by node number -- so an ir::Dict cannot hold them)
+    translate::native_l2::Wire more = translate::native_l2::Wire::dict();
+    // the facts dict as the back end left it (set by decompiler::c_from_l2): backends/c.flags reads it
+    std::optional<translate::native_l2::Wire> wire;
 };
+
+// The facts a function is written with, as the Python's dict (backends/c.function's `facts`), and what the back end leaves
+// in that dict, read back into the module facts. (decompiler::c_from_l2 builds the one and reads the other.)
+translate::native_l2::Wire facts_wire(const ModuleFacts& m);
+void read_back(ModuleFacts& m, const translate::native_l2::Wire& w);
 
 // ---- 32-bit ---------------------------------------------------------------------------------------
 // compilable32()'s answer: (preamble, {name: text}, [names], {va: name}, [import names used], in_ecx, in_edx,

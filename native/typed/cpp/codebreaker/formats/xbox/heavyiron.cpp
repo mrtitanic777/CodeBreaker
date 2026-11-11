@@ -2,6 +2,8 @@
 
 #include "codebreaker/formats/xbox/heavyiron.hpp"
 
+#include "py_zlib.hpp"
+
 #include <algorithm>
 #include <cstdio>
 #include <string>
@@ -506,7 +508,7 @@ void put_chunk(std::string& out, const char* type, const std::string& body) {
     put32(out, static_cast<uint32_t>(py::crc32(py::bytes(tb))));
 }
 
-// A PNG of an RGBA image: 8 bits a channel, no filter, the pixels in zlib "stored" blocks.
+// A PNG of an RGBA image: 8 bits a channel, no filter, the pixels zlib-compressed (level 6, PIL's default).
 void save_png(const xtexture::Image& image, const py::str& path) {
     const std::string& px = image.pixels.raw();
     std::string raw;
@@ -515,25 +517,7 @@ void save_png(const xtexture::Image& image, const py::str& path) {
         raw.push_back('\0');
         raw.append(px, static_cast<size_t>(y * row), static_cast<size_t>(row));
     }
-    std::string z = "\x78\x01";
-    size_t at = 0;
-    do {
-        size_t n = std::min<size_t>(65535, raw.size() - at);
-        bool last = at + n >= raw.size();
-        z.push_back(last ? 1 : 0);
-        z.push_back(static_cast<char>(n & 0xFF));
-        z.push_back(static_cast<char>(n >> 8));
-        z.push_back(static_cast<char>(~n & 0xFF));
-        z.push_back(static_cast<char>((~n >> 8) & 0xFF));
-        z.append(raw, at, n);
-        at += n;
-    } while (at < raw.size());
-    uint32_t a = 1, b = 0;
-    for (unsigned char c : raw) {
-        a = (a + c) % 65521;
-        b = (b + a) % 65521;
-    }
-    put32(z, (b << 16) | a);
+    std::string z = py::zlib::compress(py::bytes(raw), 6).raw();
     std::string out("\x89PNG\r\n\x1a\n", 8);
     std::string hdr;
     put32(hdr, static_cast<uint32_t>(image.width));

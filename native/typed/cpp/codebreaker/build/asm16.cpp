@@ -19,7 +19,7 @@
 // first function, often a variable such as the data segment's selector), which the build writes the same way and links first
 // into the segment, so it stays where it was.
 //
-// Capstone (the Python binding's C library) is loaded from its DLL: see set_capstone_dll.
+// Capstone is platforms::decoder (the one decoder); set_capstone_dll names another DLL than the one `import capstone` finds.
 
 #include "codebreaker/build/asm16.hpp"
 
@@ -33,6 +33,8 @@
 #include <capstone/capstone.h>
 
 #include "codebreaker/build/data.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
+#include "codebreaker/platforms/package.hpp"
 #include "codebreaker/build/msc6.hpp"
 #include "codebreaker/source/assembly.hpp"
 
@@ -61,48 +63,6 @@ str module_file() {
 // capstone: platforms.decoder(bits, detail=...) and its one-instruction reads
 
 namespace {
-
-struct CsLib {
-#ifdef _WIN32
-    HMODULE module = nullptr;
-#endif
-    decltype(&cs_open) open = nullptr;
-    decltype(&cs_option) option = nullptr;
-    decltype(&cs_disasm) disasm = nullptr;
-    decltype(&cs_free) free_ = nullptr;
-    bool loaded = false;
-};
-
-std::wstring& dll_path_() {
-    static std::wstring p;
-    return p;
-}
-
-template <class F> F sym_(HMODULE m, const char* name) {
-    FARPROC p = GetProcAddress(m, name);
-    if (!p) throw py::ImportError(std::string("capstone.dll has no ") + name);
-    return reinterpret_cast<F>(p);
-}
-
-CsLib& cs_lib() {
-    static CsLib lib;
-    static std::mutex lock;
-    std::lock_guard<std::mutex> g(lock);
-    if (lib.loaded) return lib;
-    std::wstring path = dll_path_();
-    if (path.empty()) {
-        if (const wchar_t* env = _wgetenv(L"CB_CAPSTONE_DLL")) path = env;
-    }
-    if (path.empty()) path = L"capstone.dll";
-    lib.module = LoadLibraryW(path.c_str());
-    if (!lib.module) throw py::ImportError("capstone: cannot load the DLL (set_capstone_dll, CB_CAPSTONE_DLL)");
-    lib.open = sym_<decltype(&cs_open)>(lib.module, "cs_open");
-    lib.option = sym_<decltype(&cs_option)>(lib.module, "cs_option");
-    lib.disasm = sym_<decltype(&cs_disasm)>(lib.module, "cs_disasm");
-    lib.free_ = sym_<decltype(&cs_free)>(lib.module, "cs_free");
-    lib.loaded = true;
-    return lib;
-}
 
 struct COperand {
     int64_t type = 0;
@@ -148,37 +108,31 @@ Ins convert_(const cs_insn& c, bool detail) {
     return i;
 }
 
-// platforms.decoder(bits, detail): one handle per thread, bits and detail
+// platforms.decoder(bits, detail), its instructions as asm16 reads them
 class Md {
   public:
-    Md(int64_t bits, bool detail) : detail_(detail) {
-        CsLib& lib = cs_lib();
-        if (lib.open(CS_ARCH_X86, bits == 32 ? CS_MODE_32 : CS_MODE_16, &h_) != CS_ERR_OK) throw py::RuntimeError("capstone: cs_open failed");
-        lib.option(h_, CS_OPT_DETAIL, detail ? CS_OPT_ON : CS_OPT_OFF);
-    }
+    Md(int64_t bits, bool detail) : md_(platforms::decoder(bits == 32 ? 32 : 16, str("x86"), detail)), detail_(detail) {}
     // next(md.disasm(data, address), None)
     InsPtr one(const std::string& data, int64_t address) const {
-        CsLib& lib = cs_lib();
-        cs_insn* insn = nullptr;
-        size_t n = lib.disasm(h_, reinterpret_cast<const uint8_t*>(data.data()), data.size(), static_cast<uint64_t>(address), 1, &insn);
-        if (n == 0) return nullptr;
-        InsPtr out = std::make_shared<const Ins>(convert_(insn[0], detail_));
-        lib.free_(insn, n);
+        InsPtr out;
+        md_->each(data, address, 1, [&](const cs_insn& c) {
+            out = std::make_shared<const Ins>(convert_(c, detail_));
+            return false;
+        });
         return out;
     }
     // list(md.disasm(data, address)): decoding stops at the first byte it cannot read
     std::vector<Ins> all(const std::string& data, int64_t address) const {
-        CsLib& lib = cs_lib();
-        cs_insn* insn = nullptr;
-        size_t n = lib.disasm(h_, reinterpret_cast<const uint8_t*>(data.data()), data.size(), static_cast<uint64_t>(address), 0, &insn);
         std::vector<Ins> out;
-        for (size_t k = 0; k < n; ++k) out.push_back(convert_(insn[k], detail_));
-        if (n) lib.free_(insn, n);
+        md_->each(data, address, 0, [&](const cs_insn& c) {
+            out.push_back(convert_(c, detail_));
+            return true;
+        });
         return out;
     }
 
   private:
-    csh h_ = 0;
+    std::shared_ptr<platforms::Decoder> md_;
     bool detail_;
 };
 
@@ -232,11 +186,7 @@ const re::Pattern& string_ops_() {
 
 }  // namespace
 
-void set_capstone_dll(const str& path) {
-    std::wstring w;
-    for (char32_t c : path.u32()) w.push_back(static_cast<wchar_t>(c));
-    dll_path_() = w;
-}
+void set_capstone_dll(const str& path) { emulate::capstone_x86::load_capstone(path); }
 
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -967,12 +917,6 @@ str Function::write(const std::optional<py::set<int64_t>>& good_in, const std::o
     }
     auto inside = [&](int64_t x) { return lo <= x && x < hi; };
     auto is_good = [&](int64_t a) { return !good || good->contains(a); };
-    // `at in good` as the original writes it: with `good` None (the documented "every instruction") that is a TypeError, as
-    // Python raises it -- the original's own slip, kept as it behaves (an instruction is reached first as `at in self.ins`)
-    auto good_in_ = [&](int64_t a) -> bool {
-        if (!good) throw py::TypeError("argument of type 'NoneType' is not a container or iterable");
-        return good->contains(a);
-    };
     py::set<int64_t> written;   // the starts
     if (!good) for (int64_t a : ins.keys()) written.add(a);
     else for (int64_t a : *good) if (ins.contains(a)) written.add(a);
@@ -1081,7 +1025,7 @@ str Function::write(const std::optional<py::set<int64_t>>& good_in, const std::o
             const auto& c = calls.at(at);
             out.push_back(str("        ") + std::get<1>(c));
             at += std::get<0>(c);
-        } else if (ins.contains(at) && (good_in_(at)) && !split.contains(at) && _stays_inside(at, lo, hi)) {
+        } else if (ins.contains(at) && is_good(at) && !split.contains(at) && _stays_inside(at, lo, hi)) {
             flush();
             out.push_back(str("        ") + mnemonic(at));
             at += std::get<0>(ins.at(at)).size();

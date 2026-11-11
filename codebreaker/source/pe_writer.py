@@ -271,7 +271,7 @@ class Writer(object):
             op = bytes(i.bytes)[1 if i.bytes[0] == 0x66 else 0]
             return ("%s_ %s" % (m, ops)) if op & 2 else "%s %s" % (m, ops)
         ops = ops.replace(" ptr ", " ").replace("xmmword ", "oword ").replace("xword ", "tword ")
-        ops = re.sub(r"\[(\w\w:)?(e\w\w\*[248])", r"[nosplit ", ops)
+        ops = re.sub(r"\[(\w\w:)?(e\w\w\*[248])", r"[\1nosplit \2", ops)
         ops = re.sub(r"\bst\((\d)\)", r"st\1", ops)
         ops = re.sub(r"\b([cdefgs]s):\[", r"[\1:", ops)
         for k in sites:

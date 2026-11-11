@@ -57,13 +57,6 @@ int64_t popcount64(uint64_t v) {
     return n;
 }
 
-// int.from_bytes(b, 'big') for exactly 8 bytes, as an unsigned 64-bit value
-uint64_t be64(const py::bytes& b) {
-    uint64_t v = 0;
-    for (int64_t k = 0; k < 8; ++k) v = (v << 8) | static_cast<uint64_t>(b[k]);
-    return v;
-}
-
 }  // namespace
 
 int64_t compute_hamming_weight(const py::bytes& data) {
@@ -71,17 +64,12 @@ int64_t compute_hamming_weight(const py::bytes& data) {
         return -1;
     }
 
-    // Convert to two 64-bit integers (big-endian)
-    uint64_t hi = be64(data.slice(0, 8));
-    uint64_t lo = be64(data.slice(8, 16));
-
-    // ECD mask: exclude bits 106-127 (the top 22 bits of the 128-bit key)
-    // In big-endian layout, bits 106-127 are the top 22 bits of the high qword
-    // Mask for low 64 bits: all bits count
-    // Mask for high 64 bits: bottom 42 bits count (64 - 22 = 42)
-    uint64_t ecd_mask_hi = (uint64_t(1) << 42) - 1;  // 0x3FFFFFFFFFF
-
-    return popcount64(hi & ecd_mask_hi) + popcount64(lo);
+    // The ECD occupies bits 106-127 in the order compute_ecd walks them (bit i is bit i & 7 of byte i >> 3):
+    // the top six bits of byte 13 and all of bytes 14 and 15. Those are the bits left out of the count, so the
+    // weight does not change when compute_ecd sets them (XeCryptCpuKeyValid masks the same bits).
+    int64_t n = 0;
+    for (int64_t k = 0; k < 13; ++k) n += popcount64(static_cast<uint64_t>(data[k]));
+    return n + popcount64(static_cast<uint64_t>(data[13]) & 0x03);
 }
 
 bool verify_hamming_weight(const py::bytes& data) {

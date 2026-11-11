@@ -2,6 +2,7 @@
 // OSError. Separate from py_stdlib.hpp because it needs <windows.h>; include it where a program is run.
 //
 //   py::subprocess::run(args, opts)  -> CompletedProcess {returncode, stdout_, stderr_ (text) or the bytes}
+//                                       opts: cwd, env, timeout (TimeoutExpired), shell, input, stdin/stdout/stderr, text
 //   py::subprocess::to_wide(str)     -> std::wstring (UTF-16, a code point past the BMP as a pair)
 //   py::raise_winerror(code)         throws the OSError subclass CPython does, "[WinError N] text"
 //
@@ -11,6 +12,7 @@
 
 #include <string>
 #include <thread>
+#include <variant>
 
 #include "py.hpp"
 
@@ -77,6 +79,9 @@ struct RunOptions {
     std::string encoding = "cp1252";
     std::string errors = "strict";
     DWORD creationflags = 0;
+    std::optional<std::variant<int64_t, double>> timeout;   // seconds (an int prints as 5, a float as 5.0 in TimeoutExpired)
+    std::optional<dict<str, str>> env;                      // the child's whole environment (else it inherits ours)
+    bool shell = false;
 };
 
 struct CompletedProcess {
@@ -108,8 +113,41 @@ inline HANDLE dup_inheritable(HANDLE h) {
 }
 }  // namespace detail_
 
-// subprocess.run(args, cwd=, input=, stdin=, stdout=, stderr=, text=, creationflags=)
-inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOptions()) {
+// subprocess.TimeoutExpired: the child was ended (TerminateProcess) and what it had written is attached
+struct TimeoutExpired : Exception {
+    std::string cmd_text;             // str(cmd): the list's repr, or the command line
+    std::variant<int64_t, double> timeout = 0.0;   // as given: an int stays an int in the text
+    std::optional<str> stdout_, stderr_;                 // text mode
+    std::optional<bytes> stdout_bytes, stderr_bytes;     // bytes mode
+    explicit TimeoutExpired(const std::string& message) : Exception(message) {}
+    const char* type() const override { return "TimeoutExpired"; }
+};
+
+namespace detail_ {
+// the environment block of CreateProcessW for `env`: "k=v\0k=v\0\0" (CPython: no name may hold an '=' past its first
+// character, and no text an embedded NUL)
+inline std::wstring env_block(const dict<str, str>& env) {
+    std::wstring block;
+    for (const auto& kv : env.items()) {
+        const str& k = std::get<0>(kv);
+        const str& v = std::get<1>(kv);
+        if (k.find(str("="), 1) != -1) throw ValueError("illegal environment variable name");
+        if (k.find(str(std::string(1, '\0'))) != -1 || v.find(str(std::string(1, '\0'))) != -1) throw ValueError("embedded null character");
+        block += to_wide(k) + L"=" + to_wide(v);
+        block.push_back(L'\0');
+    }
+    if (block.empty()) block.push_back(L'\0');   // (an empty environment is two NULs)
+    block.push_back(L'\0');
+    return block;
+}
+inline std::string timeout_text(const std::variant<int64_t, double>& t) {
+    return std::holds_alternative<int64_t>(t) ? std::to_string(std::get<int64_t>(t)) : to_str(std::get<double>(t)).utf8();
+}
+}  // namespace detail_
+
+namespace detail_ {
+// CreateProcessW over `cmd` (a Windows command line) with the options; `shown` is what str(cmd) is in a TimeoutExpired.
+inline CompletedProcess run_cmdline(const std::wstring& cmd_in, const std::string& shown, const RunOptions& o, bool hide_window) {
     SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
     HANDLE out_r = nullptr, out_w = nullptr, err_r = nullptr, err_w = nullptr, in_r = nullptr, in_w = nullptr;
     std::vector<HANDLE> to_close;   // child-side handles closed once the child has them
@@ -124,6 +162,8 @@ inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOpti
         if (h != INVALID_HANDLE_VALUE) to_close.push_back(h);
         return h == INVALID_HANDLE_VALUE ? nullptr : h;
     };
+    std::wstring block;
+    if (o.env) block = env_block(*o.env);   // (a bad environment is a ValueError before anything is made)
     bool in_pipe = o.input.has_value() || o.stdin_ == Stream::Capture;
     if (in_pipe) {
         if (!CreatePipe(&in_r, &in_w, &sa, 0)) fail(GetLastError());
@@ -132,7 +172,7 @@ inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOpti
     } else if (o.stdin_ == Stream::Devnull) {
         in_r = nul(GENERIC_READ);
     } else {
-        in_r = detail_::dup_inheritable(GetStdHandle(STD_INPUT_HANDLE));
+        in_r = dup_inheritable(GetStdHandle(STD_INPUT_HANDLE));
         if (in_r) to_close.push_back(in_r);
     }
     if (o.stdout_ == Stream::Capture) {
@@ -142,7 +182,7 @@ inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOpti
     } else if (o.stdout_ == Stream::Devnull) {
         out_w = nul(GENERIC_WRITE);
     } else {
-        out_w = detail_::dup_inheritable(GetStdHandle(STD_OUTPUT_HANDLE));
+        out_w = dup_inheritable(GetStdHandle(STD_OUTPUT_HANDLE));
         if (out_w) to_close.push_back(out_w);
     }
     HANDLE child_err = nullptr;
@@ -156,20 +196,24 @@ inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOpti
     } else if (o.stderr_ == Stream::Devnull) {
         child_err = nul(GENERIC_WRITE);
     } else {
-        child_err = detail_::dup_inheritable(GetStdHandle(STD_ERROR_HANDLE));
+        child_err = dup_inheritable(GetStdHandle(STD_ERROR_HANDLE));
         if (child_err) to_close.push_back(child_err);
     }
     STARTUPINFOW si{};
     si.cb = sizeof si;
     si.dwFlags = STARTF_USESTDHANDLES;
+    if (hide_window) {   // (shell=True: CPython hides the console window)
+        si.dwFlags |= STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+    }
     si.hStdInput = in_r;
     si.hStdOutput = out_w;
     si.hStdError = child_err;
     PROCESS_INFORMATION pi{};
-    std::wstring cmd = to_wide(list2cmdline(args));
+    std::wstring cmd = cmd_in;
     std::wstring wcwd = o.cwd ? to_wide(*o.cwd) : std::wstring();
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, o.creationflags | CREATE_UNICODE_ENVIRONMENT, nullptr,
-                             o.cwd ? wcwd.c_str() : nullptr, &si, &pi);
+    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, o.creationflags | CREATE_UNICODE_ENVIRONMENT,
+                             o.env ? block.data() : nullptr, o.cwd ? wcwd.c_str() : nullptr, &si, &pi);
     DWORD err = GetLastError();
     if (!ok) fail(err);
     CloseHandle(pi.hThread);
@@ -188,17 +232,28 @@ inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOpti
     }
     std::thread t_out([&] { drain(out_r, raw_out); });
     std::thread t_err([&] { drain(err_r, raw_err); });
-    if (in_w) {
+    std::thread t_in([&] {   // (the child may not read its input: a thread, so a timeout still comes)
+        if (!in_w) return;
         size_t off = 0;
         DWORD wrote = 0;
         while (off < raw_in.size() && WriteFile(in_w, raw_in.data() + off, static_cast<DWORD>(raw_in.size() - off), &wrote, nullptr) && wrote > 0)
             off += wrote;
         CloseHandle(in_w);
         in_w = nullptr;
+    });
+    DWORD wait_ms = INFINITE;
+    if (o.timeout) {
+        double secs = std::holds_alternative<int64_t>(*o.timeout) ? static_cast<double>(std::get<int64_t>(*o.timeout)) : std::get<double>(*o.timeout);
+        wait_ms = secs <= 0 ? 0 : static_cast<DWORD>(std::min(secs * 1000.0, 4000000000.0));
     }
+    bool timed_out = WaitForSingleObject(pi.hProcess, wait_ms) == WAIT_TIMEOUT;
+    if (timed_out) {   // CPython: process.kill() (TerminateProcess, exit code 1), then communicate() collects what is left
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+    }
+    t_in.join();
     t_out.join();
     t_err.join();
-    WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD code = 0;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess);
@@ -226,7 +281,40 @@ inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOpti
         if (o.text) r.stderr_ = text_of(raw_err);
         else r.stderr_bytes = bytes(raw_err);
     }
+    if (timed_out) {
+        std::variant<int64_t, double> t = *o.timeout;
+        TimeoutExpired e("Command '" + shown + "' timed out after " + timeout_text(t) + " seconds");
+        e.cmd_text = shown;
+        e.timeout = t;
+        e.stdout_ = r.stdout_;
+        e.stderr_ = r.stderr_;
+        e.stdout_bytes = r.stdout_bytes;
+        e.stderr_bytes = r.stderr_bytes;
+        throw e;
+    }
     return r;
+}
+
+// shell=True: COMSPEC /c "command"
+inline std::wstring shell_cmdline(const str& command) {
+    str comspec = os::environ_::get(str("COMSPEC")).value_or(str("cmd.exe"));
+    return to_wide(comspec + str(" /c \"") + command + str("\""));
+}
+}  // namespace detail_
+
+// subprocess.run(args, cwd=, env=, timeout=, shell=, input=, stdin=, stdout=, stderr=, text=, creationflags=)
+// A list is joined as list2cmdline does. With shell=True the command line is COMSPEC /c "..." and the window is hidden.
+// env is the whole environment of the child (not additions to ours: os.environ.copy() and then set, as Python's callers do).
+// timeout: the child is ended and TimeoutExpired is raised, holding what it wrote.
+inline CompletedProcess run(const list<str>& args, const RunOptions& o = RunOptions()) {
+    str line = list2cmdline(args);
+    if (o.shell) return detail_::run_cmdline(detail_::shell_cmdline(line), repr(args).utf8(), o, true);
+    return detail_::run_cmdline(to_wide(line), repr(args).utf8(), o, false);
+}
+// subprocess.run("command line", ...): a string is the command line itself (with shell=True it goes through COMSPEC /c)
+inline CompletedProcess run(const str& command, const RunOptions& o = RunOptions()) {
+    if (o.shell) return detail_::run_cmdline(detail_::shell_cmdline(command), command.utf8(), o, true);
+    return detail_::run_cmdline(to_wide(command), command.utf8(), o, false);
 }
 
 }  // namespace subprocess

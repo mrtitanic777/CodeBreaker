@@ -14,7 +14,8 @@
 #include <utility>
 #include <variant>
 
-#include "codebreaker/translate/ir.hpp"   // (group 4: FunctionNotes holds an L2 document, translate::ir::Dict)
+#include "codebreaker/translate/ir.hpp"
+#include "codebreaker/translate/native_l2.hpp"   // (group 4: FunctionNotes holds an L2 document, translate::ir::Dict)
 #include "py.hpp"
 
 namespace codebreaker::core16 {
@@ -80,6 +81,10 @@ struct FunctionNotes {
     py::dict<py::str, int64_t> pointers;              // "pointers": {name: bytes} (16-bit; `return` its result)
     py::list<StructNote> structs;                     // "structs"
     std::optional<L2Doc> l2;                          // "l2": its L2 document (None: no document)
+    // the document exactly as the native program wrote it, kept when it holds an integer past int64 (a PowerPC constant of
+    // 2**63 or more): an L2Doc cannot, so `l2` is then a copy with those integers wrapped (it says only that there is one) and
+    // everything that hands the document to the C back end uses this.
+    std::optional<translate::native_l2::Wire> l2_exact;
     bool placed = false;                              // "placed": frame16/shape16/asm_blocks passes were applied to l2
     bool from_l2 = false;                             // "from_l2": the text handed on is the C back end's
 };

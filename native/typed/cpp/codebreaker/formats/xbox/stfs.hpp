@@ -92,7 +92,7 @@ public:
     py::list<int64_t> top_entries;   // the top hash table's per-entry status bytes
     py::dict<py::str, std::tuple<int64_t, int64_t, int64_t>> files;   // {path: (start block, blocks, size)}
 
-    explicit STFS(const py::bytes& data);
+    explicit STFS(py::bytes data);   // by value: a caller that hands over a temporary gives the package without a copy
 
     // util
     py::str _wstr(int64_t off, int64_t maxlen = 0x80);

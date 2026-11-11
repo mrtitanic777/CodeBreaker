@@ -455,7 +455,7 @@ class Readable(object):
         for var, uses in families.items():
             if len({FAMILIES[(re.sub(r"(?<=[a-z])[AW]$", "", f).lower(), q)][0] for f, q in uses}) != 1:
                 continue
-            fn, param = next(iter(uses))
+            fn, param = min(uses)                          # (one of them: the first by name)
 
             def named(number):
                 v = int(number, 0)

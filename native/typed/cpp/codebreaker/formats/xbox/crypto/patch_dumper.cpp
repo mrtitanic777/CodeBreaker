@@ -2,6 +2,10 @@
 
 #include "codebreaker/formats/xbox/crypto/patch_dumper.hpp"
 
+#include <capstone/capstone.h>
+
+#include "codebreaker/platforms/package.hpp"
+
 #include <cstdio>
 #include <iostream>
 #include <optional>
@@ -27,7 +31,19 @@ int64_t read_u32(const py::file& fr) {
 
 }  // namespace
 
-// py -m pip install capstone / sudo pip3 install capstone (the decoder comes from the caller; see the header)
+// md.disasm(code, address) of platforms.decoder(32, arch="ppc"), as Instructions
+static py::list<Instruction> decode_ppc(const py::bytes& code, int64_t address) {
+    py::list<Instruction> out;
+    platforms::decoder(32, py::str("ppc"), false)->each(code.raw(), address, 0, [&](const cs_insn& c) {
+        out.append(Instruction{py::str(std::string(c.mnemonic)), py::str(std::string(c.op_str))});
+        return true;
+    });
+    return out;
+}
+
+void main(const py::str& patches_path, const py::str& output_path) { main(Decoder(decode_ppc), patches_path, output_path); }
+
+// py -m pip install capstone / sudo pip3 install capstone (the decoder: platforms::decoder, or the caller's; see the header)
 void main(const Decoder& md, const py::str& patches_path, const py::str& output_path) {
     py::file fw = py::open(output_path, py::str("w"), std::nullopt, std::nullopt, py::str("\n"));
     {

@@ -65,13 +65,11 @@ namespace {
 template <class F>
 auto native(F&& f) -> decltype(f()) {
     try {
-        return f();
+        return py::memory_guard(f);
     } catch (const ::cbf::PyError& e) {
         raise_py(e);
     } catch (const ::cbf::Fallback& f2) {
         throw py::RuntimeError("formats.dll leaves this question to its caller: " + f2.reason);
-    } catch (const std::bad_alloc&) {
-        throw py::MemoryError(std::string());
     }
 }
 

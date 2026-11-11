@@ -105,40 +105,12 @@ bool is_empty_str(const Ident& v) {
 
 py::str D(int64_t v) { return py::str(std::to_string(v)); }
 
-// the child process sees the environment the Python gave it: `env` is os.environ with the compiler's additions, so the
-// variables that differ are set for the run and put back after it
-struct EnvScope {
-    struct Saved {
-        std::wstring name, old;
-        bool had;
-    };
-    std::vector<Saved> saved;
-    explicit EnvScope(const py::dict<py::str, py::str>& env) {
-        for (const auto& kv : env.items()) {
-            std::wstring name = py::subprocess::to_wide(std::get<0>(kv));
-            std::wstring val = py::subprocess::to_wide(std::get<1>(kv));
-            if (name.empty() || name[0] == L'=') continue;
-            std::wstring buf(32768, L'\0');
-            DWORD n = GetEnvironmentVariableW(name.c_str(), buf.data(), static_cast<DWORD>(buf.size()));
-            bool had = !(n == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND);
-            std::wstring old = had ? buf.substr(0, n) : std::wstring();
-            if (had && old == val) continue;
-            saved.push_back({name, old, had});
-            SetEnvironmentVariableW(name.c_str(), val.c_str());
-        }
-    }
-    ~EnvScope() {
-        for (auto it = saved.rbegin(); it != saved.rend(); ++it)
-            SetEnvironmentVariableW(it->name.c_str(), it->had ? it->old.c_str() : nullptr);
-    }
-};
-
-// subprocess.run(args, cwd=, env=, capture_output=True, text=True, errors="replace") (no timeout)
+// subprocess.run(args, cwd=, env=, capture_output=True, text=True, errors="replace")
 py::subprocess::CompletedProcess run_tool(const py::list<py::str>& args, const py::str& cwd,
                                           const py::dict<py::str, py::str>& env) {
-    EnvScope scope(env);
     py::subprocess::RunOptions o;
     o.cwd = cwd;
+    o.env = env;
     o.errors = "replace";
     return py::subprocess::run(args, o);
 }

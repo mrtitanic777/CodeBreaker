@@ -11,7 +11,7 @@
 namespace codebreaker::formats::xbox::crypto::sd_signer {
 
 using namespace XeCrypt;
-using argparse_min::ArgumentParser;
+using py::argparse::ArgumentParser;
 
 const py::str __description__("A script to sign retail CD's and devkit SD bootloaders for Xbox 360");
 
@@ -50,13 +50,13 @@ py::str valid_file(const ArgumentParser& parser, const py::str& filename) {
 }
 
 void main(const py::list<py::str>& argv) {
-    XeCryptRsaKey sb_prv_key = keystore::load_and_verify_sb_prv();
+    SB_PRV_KEY.emplace(keystore::load_and_verify_sb_prv());
 
     ArgumentParser parser(py::os::path::basename(argv[0]), __description__, *out_stream_, *err_stream_);
     const auto check = [&parser](const py::str& x) { return valid_file(parser, x); };
     parser.add_positional("input", py::str("The CD/SD to sign"), check);
     parser.add_option({py::str("-o")}, py::str("The file to output to"), std::nullopt, check);
-    argparse_min::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
+    py::argparse::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
     const py::str input = *args.get("input");
     const std::optional<py::str> o = args.get("o");
 
@@ -73,7 +73,7 @@ void main(const py::list<py::str>& argv) {
     // set SD size
     py::pack_into(">I", bl_data, 0xC, py::len(bl_data));
     // resign SD
-    bl_data = build_lib::sign_sd_4bl(sb_prv_key, XECRYPT_SD_SALT, bl_data);
+    bl_data = build_lib::sign_sd_4bl(*SB_PRV_KEY, XECRYPT_SD_SALT, bl_data);
     // zero nonces
     py::pack_into("16s", bl_data, 0x10, py::bytes::zeros(0x10));
     // write the CD/SD

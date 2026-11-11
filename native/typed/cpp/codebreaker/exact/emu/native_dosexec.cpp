@@ -4,6 +4,7 @@
 #include "codebreaker/exact/emu/native_dosexec.hpp"
 
 #include <cstdlib>
+#include <mutex>
 #include <string>
 
 #include "dosexec.h"   // native/dosexec: cbd::Run, cbd::MemFS, cbd::PyErr ...
@@ -18,6 +19,7 @@ namespace {
 bool g_loaded = false;
 bool g_tried = false;
 py::list<py::str> g_why;
+std::recursive_mutex g_mu;   // (the first use from two threads loads the DLL once)
 
 // raise struct.error(msg) / io.UnsupportedOperation(msg)
 struct UnsupportedOperation : py::OSError {
@@ -117,6 +119,7 @@ py::str dll_path() {
 }
 
 void load_unicorn(const py::str& dll) {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
     char err[256] = {0};
     std::wstring w = to_wide(py::os::path::abspath(dll));
     g_tried = true;
@@ -129,10 +132,14 @@ void load_unicorn(const py::str& dll) {
     g_loaded = true;
 }
 
-py::list<py::str> why() { return g_why; }
+py::list<py::str> why() {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
+    return g_why;
+}
 
 // _load(): True when the executive can be used here
 static bool load_() {
+    std::lock_guard<std::recursive_mutex> lock(g_mu);
     if (g_loaded) return true;
     if (g_tried) return false;
     g_tried = true;

@@ -2626,7 +2626,7 @@ std::tuple<std::optional<str>, str> build(const py::list<NodeP>& units, const st
     o.text = false;
     o.stdout_ = py::subprocess::Stream::Capture;
     o.stderr_ = py::subprocess::Stream::Stdout;
-    // (subprocess.run's timeout=600 is not in the runtime's RunOptions)
+    o.timeout = static_cast<int64_t>(600);   // subprocess.run(..., timeout=600): TimeoutExpired after 600 s
     auto r = py::subprocess::run(argv, o);
     if (r.returncode != 0) {
         str err = r.stdout_bytes ? r.stdout_bytes->decode("utf-8", "replace") : str();

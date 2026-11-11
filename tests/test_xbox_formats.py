@@ -6,7 +6,7 @@ how media and info read them.
 
 Self-contained: every container and asset is built here, and the STFS signing path runs on a
 SYNTHETIC keyvault carrying a fixed test RSA key (no real console key, no user data). Real
-sample files, when present on this machine (../xbox-samples, Converted/), add read checks; without them those
+sample files, when present on this machine (../xbox-samples), add read checks; without them those
 are SKIPPED."""
 import hashlib
 import os
@@ -382,13 +382,11 @@ def test_texture_offsets_and_gfx_bits():
 
 
 def test_real_heavyiron_and_gfx():
-    """Up's own archives (the recompiled title's files, when present): the archive, a DXT5 texture,
-    a GFx font rebuilt as TrueType."""
+    """A real Heavy Iron archive (tests/fixtures/xbox_heavyiron/FONT.ho, a title's font scene): the archive, a
+    DXT5 texture, a GFx font rebuilt as TrueType."""
     from codebreaker.formats import gfx
     from codebreaker.formats.xbox import heavyiron
-    scenes = os.path.join(ROOT, "Converted", "Up", "assets", "Up", "Global_Scenes")
-    if not os.path.isfile(os.path.join(scenes, "FONT.ho")):
-        raise Skip("Up's files are not in Converted/Up")
+    scenes = os.path.join(ROOT, "tests", "fixtures", "xbox_heavyiron")
     data = open(os.path.join(scenes, "FONT.ho"), "rb").read()
     P = heavyiron.parse(data)
     assert len(P["layers"]) > 0 and len(heavyiron.all_assets(P)) > 0

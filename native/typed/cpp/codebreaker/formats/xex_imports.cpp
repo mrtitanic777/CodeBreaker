@@ -7,6 +7,7 @@
 
 #include "codebreaker/formats/powerpc_image.hpp"
 #include "codebreaker/formats/xex.hpp"
+#include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/sources.hpp"
 
 namespace codebreaker::formats::xex_imports {
@@ -16,18 +17,8 @@ namespace sources = codebreaker::knowledge::sources;
 py::dict<py::str, py::dict<int64_t, py::str>> _names() {
     // knowledge.table("xbox360", "ordinal_names"): the authored kind (its rows, from the base when it is open)
     sources::Rows table;
-    if (sources::store_open()) {
-        table = sources::authored(py::str("xbox360"), py::str("ordinal_names"));
-    } else {
-        const sources::Source& src = sources::AUTHORED().at(std::make_tuple(py::str("xbox360"), py::str("ordinal_names")));
-        try {
-            table = src.read(src.file);
-        } catch (const py::OSError&) {
-            table = sources::Rows();
-        } catch (const py::ValueError&) {
-            table = sources::Rows();
-        }
-    }
+    for (const auto& kv : knowledge::table(py::str("xbox360"), py::str("ordinal_names")).items())
+        if (std::holds_alternative<sources::Json>(std::get<1>(kv))) table.set(std::get<0>(kv), std::get<sources::Json>(std::get<1>(kv)));
     py::dict<py::str, py::dict<int64_t, py::str>> out;
     for (const auto& kv : table.items()) {
         const py::str& lib = std::get<0>(kv);

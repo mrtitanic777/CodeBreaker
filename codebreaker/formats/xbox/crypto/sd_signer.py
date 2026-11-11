@@ -20,6 +20,7 @@ def valid_file(parser: ArgumentParser, filename: str) -> Path:
 		return Path(filename)
 
 def main() -> None:
+	global SB_PRV_KEY
 	SB_PRV_KEY = load_and_verify_sb_prv()
 
 	parser = ArgumentParser(description=__description__)

@@ -354,7 +354,7 @@ def build_flat_thunk_ow(srcdir, outdir=None):
     obj_bytes = open(os.path.join(outdir, module + ".obj"), "rb").read()
     publics = omf.publics(obj_bytes)                   # set of exact public symbol strings
     by_clean = {}                                       # clean name -> decorated symbol
-    for sym in publics:
+    for sym in sorted(publics):                         # (sorted: a clean name with two decorated symbols gets the same one every time)
         base = sym[1:] if sym.startswith("_") else sym  # drop leading underscore
         base = base.split("@", 1)[0]                    # drop @N
         by_clean.setdefault(base, sym)

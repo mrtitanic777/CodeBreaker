@@ -28,8 +28,7 @@
 //     by the stamp) but as JSON (a list of [words, ignore, names, libs, secondary]), because the Python's
 //     value -- a dict with tuple keys -- can only be pickled. The stamp is prefixed "cpp-" so a base made by
 //     one implementation is made again by the other, never misread. Signatures are a list of records here.
-//   * codebreaker.symbols.libraries (the package's __init__: functions(path), Index) has no C++ port yet; the
-//     two pieces this module uses are written here (`libraries_functions`, `Index`).
+//   * functions(path) and Index are codebreaker.symbols.libraries's (symbols/libraries/package).
 //   * main(argv) is the `python -m codebreaker xdk-match` entry; sys.exit(main(...)) is the caller's.
 #pragma once
 
@@ -65,34 +64,6 @@ struct Signature {
 py::list<Signature> signatures(const py::str& folder);
 
 py::list<Signature> _read_signatures(const py::str& folder);
-
-// codebreaker.symbols.libraries.functions(path): (is the kind "powerpc", the 32/16-bit kind otherwise).
-struct Library {
-    bool powerpc = false;
-    int64_t bits = 32;
-    int64_t functions = 0;
-};
-// The functions of a library are the Python's [Function]; only the PowerPC ones are used here.
-struct LibraryFunction {
-    py::str name;
-    py::bytes code;
-    py::list<int64_t> mask;
-    int64_t at = 0;
-};
-std::tuple<Library, py::list<LibraryFunction>> libraries_functions(const py::str& path);
-
-// A program's code as a run of units (the words of PowerPC code), indexed by each pair of neighbours.
-class Index {
-  public:
-    explicit Index(std::vector<int64_t> units);
-    // Every place, in order, where the units `sig` are, outside the bits `ignore` leaves out of each; [] when
-    // no two neighbours of it are whole (nothing to look it up by).
-    std::vector<int64_t> find(const std::vector<int64_t>& sig, const std::vector<int64_t>& ignore) const;
-
-  private:
-    std::vector<int64_t> units_;
-    std::map<std::pair<int64_t, int64_t>, std::vector<int64_t>> pairs_;
-};
 
 struct Found {
     py::list<py::str> names, libs;

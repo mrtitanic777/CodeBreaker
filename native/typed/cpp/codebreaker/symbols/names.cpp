@@ -16,6 +16,7 @@
 #include "codebreaker/symbols/demangle.hpp"
 #include "codebreaker/symbols/ordinals.hpp"
 #include "codebreaker/symbols/runtime_library.hpp"
+#include "codebreaker/formats/pe_functions.hpp"
 #include "codebreaker/symbols/x86.hpp"
 #include "codebreaker/verify/lanes/win16.hpp"
 #include "codebreaker/verify/lanes/win32.hpp"
@@ -71,7 +72,7 @@ std::optional<py::str> _digest(const py::bytes& code, const std::set<int64_t>& m
 }
 
 py::dict<int64_t, py::str> _bodies32(const py::str& path) {
-    std::shared_ptr<x86::PeCarve> carve = x86::carve(path);
+    std::shared_ptr<formats::pe_functions::PeCarve> carve = formats::pe_functions::carve(path);
     const formats::pe::PEFile& pe = *carve->pe;
     int64_t lo = static_cast<int64_t>(pe.image_base);
     int64_t extent = 0;
@@ -80,15 +81,17 @@ py::dict<int64_t, py::str> _bodies32(const py::str& path) {
     py::dict<int64_t, py::str> out;
     for (const auto& fkv : carve->funcs.items()) {
         int64_t start = std::get<0>(fkv);
-        const x86::PeCarve::Func& f = std::get<1>(fkv);
-        auto [base, rawp] = carve->sec_of(start);
-        if (!rawp) continue;
-        const py::bytes& raw = *rawp;
+        const formats::pe_functions::Func& f = std::get<1>(fkv);
+        formats::pe_functions::SecOf sec = carve->_sec_of(start);
+        if (!sec.data) continue;
+        const int64_t base = *sec.base;
+        const py::bytes& raw = *sec.data;
         int64_t end = f.end, last = 0, va = start, own = 0;
         std::set<int64_t> masked;
-        while (va < end && carve->has_insn(va)) {
-            x86::Insn ins = carve->insn(va);
-            const std::string& mnemonic = ins.mnemonic;
+        while (va < end && carve->insn->contains(va)) {
+            formats::pe_functions::Record rec = carve->insn->at(va);
+            const formats::pe_functions::Instruction& ins = rec.ins;
+            const std::string mnemonic = rec.mnemonic.utf8();
             int64_t at = va - start;
             struct Field {
                 int64_t off, n;
@@ -102,7 +105,7 @@ py::dict<int64_t, py::str> _bodies32(const py::str& path) {
                 if (!value) {
                     value = py::unpack_from1<int64_t>("<I", raw, va - base + off);
                     if (mnemonic == "call" || mnemonic[0] == 'j') {             // relative: where it goes
-                        value = (va + ins.size + *value) & 0xFFFFFFFFLL;
+                        value = (va + rec.size + *value) & 0xFFFFFFFFLL;
                         if (start <= *value && *value < end) continue;           // inside the function: the same anywhere
                         for (int64_t k = at + off; k < at + off + 4; k++) masked.insert(k);
                         continue;
@@ -112,8 +115,8 @@ py::dict<int64_t, py::str> _bodies32(const py::str& path) {
                     for (int64_t k = at + off; k < at + off + 4; k++) masked.insert(k);
                 }
             }
-            own += !runtime_library::_FRAME.match((py::str(mnemonic) + py::str(" ") + py::str(ins.op_str)).strip()).has_value();
-            va += ins.size;
+            own += !runtime_library::_FRAME.match((rec.mnemonic + py::str(" ") + rec.op_str).strip()).has_value();
+            va += rec.size;
             if (is_end(mnemonic)) last = va - start;
         }
         std::optional<py::str> digest = own >= 6 ? _digest(raw.slice(start - base, end - base), masked, last) : std::nullopt;

@@ -10,6 +10,8 @@
 
 #include <capstone/capstone.h>
 
+#include "codebreaker/emulate/capstone_x86.hpp"
+#include "codebreaker/platforms/package.hpp"
 #include "codebreaker/source/vxd/services.hpp"
 #include "codebreaker/source/vxd/symbols.hpp"
 #include "py_stdlib.hpp"
@@ -56,71 +58,23 @@ const py::set<py::str> _BRANCHES = {
 
 namespace {
 
-// ---- the capstone decoders (platforms.decoder(32, detail=True) and platforms.decoder(16, detail=True)) -----------
-struct CsLib {
-#ifdef _WIN32
-    HMODULE module = nullptr;
-#endif
-    decltype(&cs_open) open = nullptr;
-    decltype(&cs_option) option = nullptr;
-    decltype(&cs_malloc) malloc_ = nullptr;
-    decltype(&cs_disasm_iter) disasm_iter = nullptr;
-    csh handle[2] = {0, 0};          // [0] 16-bit, [1] 32-bit
-    cs_insn* insn[2] = {nullptr, nullptr};
-};
-
-CsLib& cs_lib() {
-    static CsLib lib;
-    return lib;
-}
-std::wstring& dll_path() {
-    static std::wstring p;
-    return p;
-}
-
-template <class F> F sym_(HMODULE m, const char* name) {
-    FARPROC p = GetProcAddress(m, name);
-    if (!p) throw py::ImportError(std::string("capstone.dll has no ") + name);
-    return reinterpret_cast<F>(p);
-}
-
-CsLib& cs_ready(bool is32) {
-    CsLib& lib = cs_lib();
-    const int k = is32 ? 1 : 0;
-    if (lib.handle[k]) return lib;
-    if (!lib.module) {
-        if (dll_path().empty()) throw py::ImportError("capstone: no DLL given (set_capstone_dll)");
-        lib.module = LoadLibraryW(dll_path().c_str());
-        if (!lib.module) throw py::ImportError("capstone: cannot load the DLL");
-        lib.open = sym_<decltype(&cs_open)>(lib.module, "cs_open");
-        lib.option = sym_<decltype(&cs_option)>(lib.module, "cs_option");
-        lib.malloc_ = sym_<decltype(&cs_malloc)>(lib.module, "cs_malloc");
-        lib.disasm_iter = sym_<decltype(&cs_disasm_iter)>(lib.module, "cs_disasm_iter");
-    }
-    csh h = 0;
-    if (lib.open(CS_ARCH_X86, is32 ? CS_MODE_32 : CS_MODE_16, &h) != CS_ERR_OK) throw py::RuntimeError("capstone: cs_open failed");
-    lib.option(h, CS_OPT_DETAIL, CS_OPT_ON);
-    lib.handle[k] = h;
-    lib.insn[k] = lib.malloc_(h);
-    return lib;
-}
-
 // The first instruction of next(md.disasm(code[a:a+16], a), None): false when nothing decodes.
+// (the decoders are platforms.decoder(32, detail=True) and platforms.decoder(16, detail=True))
 struct Decoded {
     int64_t size = 0;
     std::string mnemonic, op_str;
 };
 bool decode_one(bool is32, const std::string& code, int64_t a, Decoded& out) {
-    CsLib& lib = cs_ready(is32);
-    const int k = is32 ? 1 : 0;
+    std::shared_ptr<platforms::Decoder> md = platforms::decoder(is32 ? 32 : 16, py::str("x86"), true);
     const int64_t avail = static_cast<int64_t>(code.size()) - a;
     const uint8_t* p = reinterpret_cast<const uint8_t*>(code.data()) + a;
-    size_t sz = static_cast<size_t>(avail < 16 ? avail : 16);
-    uint64_t address = static_cast<uint64_t>(a);
-    if (!lib.disasm_iter(lib.handle[k], &p, &sz, &address, lib.insn[k])) return false;
-    out.size = lib.insn[k]->size;
-    out.mnemonic = lib.insn[k]->mnemonic;
-    out.op_str = lib.insn[k]->op_str;
+    size_t n = 0;
+    cs_insn* insn = md->raw(p, static_cast<size_t>(avail < 16 ? avail : 16), a, 1, n);
+    if (n == 0) return false;
+    out.size = insn->size;
+    out.mnemonic = insn->mnemonic;
+    out.op_str = insn->op_str;
+    md->release(insn, n);
     return true;
 }
 
@@ -148,13 +102,7 @@ py::str str_or_(const py::str& a, const char* b) { return a.empty() ? py::str(b)
 
 }  // namespace
 
-void set_capstone_dll(const py::str& path) {
-    std::string u = path.utf8();
-    int n = MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, nullptr, 0);
-    std::wstring w(static_cast<size_t>(n > 0 ? n - 1 : 0), L'\0');
-    if (n > 0) MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, &w[0], n);
-    dll_path() = w;
-}
+void set_capstone_dll(const py::str& path) { emulate::capstone_x86::load_capstone(path); }
 
 py::list<std::tuple<int64_t, int64_t>> _string_ranges(const py::bytes& code) {
     auto P = [](int64_t b) { return 0x20 <= b && b <= 0x7E; };

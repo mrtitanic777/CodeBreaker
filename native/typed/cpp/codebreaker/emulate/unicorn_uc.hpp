@@ -33,6 +33,8 @@ py::str strerror(int64_t err);
 std::optional<int64_t> x86_reg(const py::str& name);
 
 // A new x86 engine: bits 16, 32 or 64 (UC_MODE_16 / 32 / 64).
+// unicorn.x86_const as {"UC_X86_REG_<NAME>": id} (what native_trace hands the recorder)
+py::dict<py::str, int64_t> x86_register_table();
 std::shared_ptr<core16::Uc> open_x86(int64_t bits);
 
 }  // namespace codebreaker::emulate::unicorn_uc

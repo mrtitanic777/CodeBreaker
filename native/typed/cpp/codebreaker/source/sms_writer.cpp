@@ -99,13 +99,11 @@ w::Result reconstruct(const py::str& path, const py::str& folder) {
         }
     }
     // the hardware the code names
-    // (The Python writes `dict(PORTS, **GG_PORTS)` for a Game Gear, and GG_PORTS' keys are ports, integers:
-    // Python refuses keyword arguments that are not strings, so a Game Gear cartridge raises TypeError here,
-    // as it does in the original.)
-    if (rom->system == py::str("Game Gear") && py::truthy(GG_PORTS)) {
-        throw py::TypeError("keywords must be strings");
-    }
+    // (a Game Gear adds its own ports to the console's)
     py::dict<int64_t, py::str> ports = PORTS.copy();
+    if (rom->system == py::str("Game Gear")) {
+        ports.update(GG_PORTS);
+    }
     py::set<int64_t> used_ports, used_regs;
     for (const Insn& insn : code.values()) {
         if ((insn.pattern == py::str("OUT (n),A") || insn.pattern == py::str("IN A,(n)")) && ports.contains(insn.values[0])) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What a PowerPC program's calls show (analyze/ppc_calls.py): the register writes it counts, the
-agreement it asks of call sites, and -- when this machine has Tetris Splash's recompiled copy
-(Converted/TetrisSplash) -- the import argument counts it finds in the binary against the kernel's
+agreement it asks of call sites, and -- when this machine has the Minecraft Xbox 360 Edition project
+(Converted/Minecraft) -- the import argument counts it finds in the binary against the kernel's
 documented signatures.
 
     python tests/test_ppc_calls.py"""
@@ -13,7 +13,21 @@ sys.path.insert(0, ROOT)
 
 from codebreaker.analyze import ppc_calls     # noqa: E402
 
-GAME = os.path.join(ROOT, "Converted", "TetrisSplash", "original", "default.xex")
+
+
+def _converted():
+    """Converted/ (never committed): next to tests/, or in the main checkout when this is a worktree."""
+    d = ROOT
+    while True:
+        c = os.path.join(d, "Converted")
+        if os.path.isdir(c):
+            return c
+        if os.path.dirname(d) == d:
+            return os.path.join(ROOT, "Converted")
+        d = os.path.dirname(d)
+
+
+GAME = os.path.join(_converted(), "Minecraft", "original", "default.xex")
 # the Xbox 360 kernel's own prototypes (xboxkrnl, as the XDK headers declare them)
 DOCUMENTED = {"KeWaitForSingleObject": 5, "KeSetEvent": 3, "KeBugCheckEx": 5, "ExGetXConfigSetting": 5,
               "KfLowerIrql": 1, "ExFreePool": 1, "KeQueryPerformanceFrequency": 0}
@@ -58,7 +72,7 @@ def test_consensus():
 
 def test_real_imports_match_their_prototypes():
     if not os.path.isfile(GAME):
-        raise Skip("no Converted/TetrisSplash here")
+        raise Skip("no Converted/Minecraft here")
     r = ppc_calls.analyse(GAME)
     found = {n: r.imports[n] for n in DOCUMENTED if n in r.imports}
     assert len(found) >= 4, found

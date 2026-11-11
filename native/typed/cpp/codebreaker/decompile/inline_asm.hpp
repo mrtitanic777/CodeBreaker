@@ -21,11 +21,10 @@
 // a fix-up it cannot name) is left as the decompiler wrote it: -> (None, why).
 //
 // Typing notes:
-//   * `import capstone.x86 as X` and `platforms.decoder(16, detail=True)` have no C++ counterpart (there is
-//     no port of codebreaker.platforms). The decoded instruction is the struct Instruction below (the
-//     fields of capstone's CsInsn that this module reads), the X86_* constants are capstone 5's numbers
-//     (the decoder passed in must use the same ones), and whole_body takes the decoder as its first
-//     parameter: md.disasm(code, address) as a std::function, as patch_dumper does.
+//   * `import capstone.x86 as X` has no C++ counterpart: the decoded instruction is the struct Instruction below (the
+//     fields of capstone's CsInsn that this module reads), the X86_* constants are capstone 5's numbers. The decoder is
+//     platforms::decoder(16, detail=True) (decode16); whole_body also takes another as its first parameter (an override):
+//     md.disasm(code, address) as a std::function.
 //   * The fixups dict mixes two kinds of key: an offset (a number) -> a target name or None, and the
 //     tuple ("segment", offset) -> a segment (a number) or None. Fixups holds the two as two dicts.
 //   * `seg` is a segment number (it is what name_at is called with), so int64_t.
@@ -113,9 +112,19 @@ std::optional<std::tuple<int64_t, bool, int64_t>> _epilogue(const py::list<Instr
 // The instruction's operands in the inline assembler's words (fixups, name_at and seg are not used).
 py::str _operands(const Instruction& i, const Fixups& fixups, const NameAt& name_at, int64_t seg);
 
+// md.disasm(code, address) of platforms.decoder(16, detail=True), as Instructions
+py::list<Instruction> decode16(const py::bytes& code, uint64_t address);
+
 // The function at code[start:end] as a C function whose body is one _asm block.
 // fixups: {offset in the segment: target name or None}; name_at(seg, off) -> a function's name.
 // -> (C text, None) or (None, why)
+std::tuple<std::optional<py::str>, std::optional<py::str>> whole_body(
+    const py::str& name, const py::bytes& code, int64_t start, int64_t end, const Fixups& fixups,
+    const NameAt& name_at, int64_t seg, const py::str& result = py::str("int2"));
+std::tuple<std::optional<py::str>, std::optional<py::str>> whole_body(
+    const py::str& name, const py::bytearray& code, int64_t start, int64_t end, const Fixups& fixups,
+    const NameAt& name_at, int64_t seg, const py::str& result = py::str("int2"));
+// The same with another decoder (an override of platforms.decoder(16, detail=True): md.disasm(code, address)).
 std::tuple<std::optional<py::str>, std::optional<py::str>> whole_body(
     const Decoder& md, const py::str& name, const py::bytes& code, int64_t start, int64_t end, const Fixups& fixups,
     const NameAt& name_at, int64_t seg, const py::str& result = py::str("int2"));

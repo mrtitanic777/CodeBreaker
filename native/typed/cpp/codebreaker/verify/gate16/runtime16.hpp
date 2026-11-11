@@ -15,12 +15,7 @@
 //
 // settings: msvc152 (the compiler's folder; its LIB folder is read).
 //
-// Stand-ins for packages that have no typed port yet (named in the port's report):
-//  - codebreaker.symbols.libraries.functions(path)[1] -> the libraries_functions hook, whose default is
-//    that function itself over the typed omf and coff ports (an `!<arch>` archive or a COFF object is
-//    coff's, anything else omf's). Its Function carries coff's mask variant (bytearray, or the list of
-//    bits left out of each PowerPC word), as libraries.Function does.
-//  - codebreaker.symbols.libraries.fits -> fits() below
+// Over symbols/libraries/package: functions(path)[1] and fits.
 // The setting msvc152 is read with py::settings::get_str (CB_MSVC152, else settings.json, else the defaults).
 #pragma once
 
@@ -29,24 +24,19 @@
 #include <tuple>
 
 #include "py.hpp"
-#include "codebreaker/symbols/libraries/coff.hpp"
-#include "codebreaker/symbols/libraries/omf.hpp"
+#include "codebreaker/symbols/libraries/package.hpp"
 
 namespace codebreaker::verify::gate16::runtime16 {
 
-using Function = symbols::libraries::omf::Function;
+using Function = symbols::libraries::Function;
 
 extern const py::list<py::str> LIBRARIES;
 
 // the library routines, once read (None before; tests set it, as the Python tests monkeypatch _routines)
 extern std::optional<py::list<Function>> _routines;
 
-// libraries.functions(path)[1]: the functions of a library or object file
-extern std::function<py::list<symbols::libraries::coff::Function>(const py::str&)> libraries_functions;
-
-// libraries.fits: whether `code` (with `code_mask`, the places it has that a loader filled in) starts
-// with the library function: as long at least, and the same at every byte neither leaves out.
-bool fits(const Function& function, const py::bytes& code, const py::bytes& code_mask = py::bytes());
+// libraries.fits
+using symbols::libraries::fits;
 
 // [Function] of the libraries' public routines (symbols/libraries), each named library:name,
 // longest first

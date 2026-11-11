@@ -52,9 +52,13 @@ Order& order_() {
     static Order o;
     return o;
 }
-std::unordered_map<Key, Order::iterator, KeyHash>& index_() {
-    static std::unordered_map<Key, Order::iterator, KeyHash> m;
+// (hash of the key -> its entries: a lookup hashes the text it is given, no copy of it is made to look it up)
+std::unordered_multimap<size_t, Order::iterator>& index_() {
+    static std::unordered_multimap<size_t, Order::iterator> m;
     return m;
+}
+size_t key_hash(const py::str& text, bool whole, bool across_lines) {
+    return py::str_hash()(text) * 4 + (whole ? 2 : 0) + (across_lines ? 1 : 0);
 }
 
 py::str blank_uncached(const py::str& text, bool whole, bool across_lines) {
@@ -72,17 +76,26 @@ py::str blank_uncached(const py::str& text, bool whole, bool across_lines) {
 // `across_lines` a string or character constant may close on a later line). A text seen before is
 // given as it was -- the passes ask often.
 py::str blank(const py::str& text, bool whole, bool across_lines) {
-    Key key(text, whole, across_lines);
-    auto it = index_().find(key);
-    if (it != index_().end()) {
-        order_().splice(order_().begin(), order_(), it->second);
-        return it->second->second;
+    size_t h = key_hash(text, whole, across_lines);
+    auto range = index_().equal_range(h);
+    for (auto it = range.first; it != range.second; ++it) {
+        const Key& k = it->second->first;
+        if (std::get<1>(k) == whole && std::get<2>(k) == across_lines && std::get<0>(k) == text) {
+            order_().splice(order_().begin(), order_(), it->second);
+            return it->second->second;
+        }
     }
     py::str result = blank_uncached(text, whole, across_lines);
-    order_().emplace_front(key, result);
-    index_()[key] = order_().begin();
+    order_().emplace_front(Key(text, whole, across_lines), result);
+    index_().emplace(h, order_().begin());
     if (order_().size() > CACHE_MAX) {
-        index_().erase(order_().back().first);
+        const Key& old = order_().back().first;
+        auto r = index_().equal_range(key_hash(std::get<0>(old), std::get<1>(old), std::get<2>(old)));
+        for (auto it = r.first; it != r.second; ++it)
+            if (it->second == std::prev(order_().end())) {
+                index_().erase(it);
+                break;
+            }
         order_().pop_back();
     }
     return result;

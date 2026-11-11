@@ -821,18 +821,17 @@ py::bytearray encrypt_bl(const py::bytes& key, const BinLike& data, bool skip_he
 }
 
 py::bytearray apply_jump_sd_4bl(const py::bytes& data, int64_t size) {
-    (void)size;
     StreamIO_ sio(data, Endian::BIG);
     while (true) {
         if (sio.read_uint32() == 0x4C000024) {
-            // sio.offset -= 4: the Python's StreamIO has no `offset`. What follows in the Python --
-            //   dist = (size & ~0x80000000) - (sio.offset & ~0x80000000)
-            //   ret = 0x48000000 | (dist & 0x3FFFFFC)
-            //   sio.write_uint32(ret); break
-            // -- is not reachable.
-            throw py::AttributeError("'StreamIO' object has no attribute 'offset'");
+            sio.set_offset(sio.offset() - 4);
+            int64_t dist = (size & ~int64_t(0x80000000)) - (sio.offset() & ~int64_t(0x80000000));
+            int64_t ret = 0x48000000 | (dist & 0x3FFFFFC);
+            sio.write_uint32(ret);
+            break;
         }
     }
+    return py::bytearray(sio.getvalue());
 }
 
 py::bytearray apply_patches(const py::bytes& bl_data, const std::variant<py::str, py::bytes, py::bytearray>& patch_data) {

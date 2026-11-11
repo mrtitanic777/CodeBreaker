@@ -103,7 +103,6 @@ def _module16(path, more=None):
         starts[seg].append(off)
     for seg in starts:
         starts[seg].sort()
-    imported = dict(getattr(d, "import_names", {}) or {})
     md = platforms.decoder(16, detail=True)
     res = Result()
     g3 = _linker16(path) >= (5, 30)                          # (C 7 and 8: /G3 makes 32-bit registers)
@@ -113,7 +112,7 @@ def _module16(path, more=None):
         later = [o for o in starts[seg] if o > off]
         end = later[0] if later else len(image)
         o = res.functions[va] = Origin(va, name)
-        _judge(o, md, image, off, end, imported, set(starts[seg]), g3)
+        _judge(o, md, image, off, end, names, set(starts[seg]), g3, describe.address(seg, 0))
         if g3 and o.language == "assembly":
             _c8_forms(o, md, image, off, end)
     # A function whose inner addresses a table names (KRNL386's fault chain: a start and an end
@@ -223,7 +222,9 @@ def _linker16(path):
     return (d[o + 2], d[o + 3]) if d[o:o + 2] == b"NE" else (0, 0)
 
 
-def _judge(o, md, image, start, end, imported, starts=(), g3=False):
+def _judge(o, md, image, start, end, functions, starts=(), g3=False, base=0):
+    """Judge the function at `start`..`end` of a segment (`base`: the address of its offset 0) by what its
+    code does; `functions`: {address: name} of the module's functions, to name what it calls."""
     written, prologue_ax, frame, last_push_seg, flags_set = set(), False, False, False, False
     ax_from_ss = False
     prev_call, pending, code_in = False, None, {}
@@ -418,8 +419,8 @@ def _judge(o, md, image, start, end, imported, starts=(), g3=False):
             written.update(("ax", "bx", "cx", "dx", "es"))   # and the registers it may use
         elif mn == "int":
             written.update(("ax", "bx", "cx", "dx", "si", "di", "es"))
-        if mn == "call" and ops and ops[0].type == X.X86_OP_IMM:
-            target = imported.get(ops[0].imm)
+        if mn in ("call", "lcall") and ops and ops[0].type == X.X86_OP_IMM:     # (a call to one of the compiler's helpers, linked in and named)
+            target = functions.get(base + (ops[0].imm & 0xFFFF) if mn == "call" else (ops[0].imm << 16) + ops[1].imm if len(ops) == 2 else None)
             if target and any(h.lower() in target.lower() for h in _COMPILER_HELPERS):
                 o.compiler.append("calls %s" % target)
         # a jump out of the function: into the middle of other code (entry points sharing a

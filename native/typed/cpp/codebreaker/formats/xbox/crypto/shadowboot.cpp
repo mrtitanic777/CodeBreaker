@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "json.hpp"   // py::json_parse (native/l2/src)
-#include "codebreaker/formats/xbox/crypto/argparse_min.hpp"
+#include "py_argparse.hpp"
 #include "codebreaker/formats/xbox/crypto/keystore.hpp"
 
 namespace codebreaker::formats::xbox::crypto::shadowboot {
@@ -197,14 +197,6 @@ py::bytes derive_key(const std::optional<py::bytes>& key, const py::bytes& nonce
     return XeCryptHmacSha(*key, py::list<py::bytes>{nonce}).slice(0, 0x10);
 }
 
-// what the Python's StreamIO does not have (see the header)
-[[noreturn]] void no_stream_attribute(const char* name) {
-    throw py::AttributeError(std::string("'StreamIO' object has no attribute '") + name + "'");
-}
-void set_label(StreamIO::StreamIO&, const py::str&) { no_stream_attribute("set_label"); }
-void goto_label(StreamIO::StreamIO&, const py::str&, int64_t = 0) { no_stream_attribute("goto_label"); }
-int64_t get_label(StreamIO::StreamIO&, const py::str&) { no_stream_attribute("get_label"); }
-
 }  // namespace
 
 // ------------------------------------------------------------------------------------------- functions
@@ -368,17 +360,17 @@ py::bytes ShadowbootImage::create(const std::optional<py::bytes>& sb_data_in, co
 
     StreamIO::StreamIO img(Endian::BIG);   // with StreamIO(endian=Endian.BIG) as img:
     // write blank NAND header
-    set_label(img, py::str("flash_hdr_offs"));
+    img.set_label(py::str("flash_hdr_offs"));
     img.write(py::bytes::zeros(FLASH_HEADER::SIZE));
-    set_label(img, py::str("flash_hdr_end"));
+    img.set_label(py::str("flash_hdr_end"));
 
     std::optional<py::bytes> smc_data = smc_data_in;
     if (smc_data) {
         smc_data = XeCryptSmcEncrypt(*smc_data);
         img.write(py::bytes::zeros(0x1000 - FLASH_HEADER::SIZE));
-        set_label(img, py::str("smc_offs"));
+        img.set_label(py::str("smc_offs"));
         img.write(*smc_data);
-        set_label(img, py::str("smc_end"));
+        img.set_label(py::str("smc_end"));
         flash_header.smc_offset = 0x1000;
         flash_header.smc_length = static_cast<DWORD>(smc_data->size());
         flash_header.entry = static_cast<DWORD>(0x1000 + flash_header.smc_length);
@@ -390,43 +382,48 @@ py::bytes ShadowbootImage::create(const std::optional<py::bytes>& sb_data_in, co
 
     if (kv_data_in) {
         const py::bytes& cpu_key = std::get<0>(*kv_data_in);
+        if (!std::get<1>(*kv_data_in)) {
+            // (no keyvault: XeCryptKeyVaultEncrypt checks the key, draws its nonce, then pack_into fails on None)
+            if (!XeCryptCpuKeyValid(cpu_key)) throw py::AssertionError("Invalid CPU key");
+            XeCryptRandom(0x10);
+        }
         py::bytes kv_data = XeCryptKeyVaultEncrypt(cpu_key, py::bytes(need_bytes(std::get<1>(*kv_data_in))));
         flash_header.kv_offset = 0x4000;
         flash_header.kv_length = 0x4000;
-        set_label(img, py::str("kv_offs"));
+        img.set_label(py::str("kv_offs"));
         img.write(kv_data);
-        set_label(img, py::str("kv_end"));
+        img.set_label(py::str("kv_end"));
         flash_header.entry += 0x4000;
     } else {
         flash_header.kv_offset = 0x4000;
         flash_header.kv_length = 0;
     }
 
-    set_label(img, py::str("sb_hdr_offs"));
+    img.set_label(py::str("sb_hdr_offs"));
     img.write(sb_hdr.__bytes__());
-    set_label(img, py::str("sb_data_offs"));
+    img.set_label(py::str("sb_data_offs"));
     img.write(sb_data);
-    set_label(img, py::str("sb_data_end"));
+    img.set_label(py::str("sb_data_end"));
 
     if (test_kit) {
-        goto_label(img, py::str("sb_hdr_offs"), 0x1348);
+        img.goto_label(py::str("sb_hdr_offs"), 0x1348);
         if (!(img.read(4) == py::bytes::fromhex(py::str("419A0014")))) throw py::AssertionError("Original bytes mismatch!");
         img.seek(-4, SEEK_CUR_);
         img.write(py::bytes::fromhex(py::str("48000194")));
-        goto_label(img, py::str("sb_data_end"));
+        img.goto_label(py::str("sb_data_end"));
     }
 
-    set_label(img, py::str("sc_hdr_offs"));
+    img.set_label(py::str("sc_hdr_offs"));
     img.write(sc_hdr.__bytes__());
-    set_label(img, py::str("sc_data_offs"));
+    img.set_label(py::str("sc_data_offs"));
     img.write(sc_data);
-    set_label(img, py::str("sc_data_end"));
+    img.set_label(py::str("sc_data_end"));
 
-    set_label(img, py::str("sd_hdr_offs"));
+    img.set_label(py::str("sd_hdr_offs"));
     img.write(sd_hdr.__bytes__());
-    set_label(img, py::str("sd_data_offs"));
+    img.set_label(py::str("sd_data_offs"));
     img.write(sd_data);
-    set_label(img, py::str("sd_data_end"));
+    img.set_label(py::str("sd_data_end"));
 
     // apply patches to SE (HV/kernel)
     if (patches_in) {
@@ -437,36 +434,36 @@ py::bytes ShadowbootImage::create(const std::optional<py::bytes>& sb_data_in, co
 
     se_data = compress_se(se_data, false);
     se_hdr.size = py::len(se_data) + 0x30;
-    set_label(img, py::str("se_hdr_offs"));
+    img.set_label(py::str("se_hdr_offs"));
     img.write(se_hdr.__bytes__());
-    set_label(img, py::str("se_data_offs"));
+    img.set_label(py::str("se_data_offs"));
     img.write(py::pack(">8x I 4x", static_cast<int64_t>(0x280000)));
     img.write(se_data);
     img.write(py::bytes::zeros(se_hdr.padded_size() - *se_hdr.size));
-    set_label(img, py::str("se_data_end"));
+    img.set_label(py::str("se_data_end"));
 
-    py::bytes se_hash = calc_se_hash_in_place(img, get_label(img, py::str("se_hdr_offs")));
+    py::bytes se_hash = calc_se_hash_in_place(img, img.get_label(py::str("se_hdr_offs")));
 
-    goto_label(img, py::str("sd_hdr_offs"), 0x24C);
+    img.goto_label(py::str("sd_hdr_offs"), 0x24C);
     img.write(se_hash);
     img.seek(0, SEEK_END_);
 
     if (!SB_PRV_KEY) none_attribute("sig_create");
-    sign_bldr_in_place(img, get_label(img, py::str("sd_hdr_offs")), *SB_PRV_KEY);
+    sign_bldr_in_place(img, img.get_label(py::str("sd_hdr_offs")), *SB_PRV_KEY);
 
-    encrypt_bldr_in_place(new_sb_key, img, get_label(img, py::str("sb_hdr_offs")));
-    encrypt_bldr_in_place(new_sc_key, img, get_label(img, py::str("sc_hdr_offs")));
-    encrypt_bldr_in_place(new_sd_key, img, get_label(img, py::str("sd_hdr_offs")));
-    encrypt_bldr_in_place(new_se_key, img, get_label(img, py::str("se_hdr_offs")));
+    encrypt_bldr_in_place(new_sb_key, img, img.get_label(py::str("sb_hdr_offs")));
+    encrypt_bldr_in_place(new_sc_key, img, img.get_label(py::str("sc_hdr_offs")));
+    encrypt_bldr_in_place(new_sd_key, img, img.get_label(py::str("sd_hdr_offs")));
+    encrypt_bldr_in_place(new_se_key, img, img.get_label(py::str("se_hdr_offs")));
 
-    set_label(img, py::str("size"));
+    img.set_label(py::str("size"));
 
-    img.write(py::bytes::zeros(calc_pad_size(get_label(img, py::str("size")), 0x1000)));
+    img.write(py::bytes::zeros(calc_pad_size(img.get_label(py::str("size")), 0x1000)));
 
-    set_label(img, py::str("size"));
+    img.set_label(py::str("size"));
 
     // point to right after the shadowboot image (idk if this matters)
-    flash_header.sys_upd_addr = static_cast<DWORD>(get_label(img, py::str("size")));
+    flash_header.sys_upd_addr = static_cast<DWORD>(img.get_label(py::str("size")));
 
     img.seek(0);
     img.write(flash_header.to_bytes());
@@ -798,9 +795,9 @@ void ShadowbootImage::print_info() {
 // ------------------------------------------------------------------------------------------- main
 namespace {
 
-using argparse_min::ArgumentError;
-using argparse_min::ArgumentParser;
-using argparse_min::Namespace;
+using py::argparse::ArgumentError;
+using py::argparse::ArgumentParser;
+using py::argparse::Namespace;
 
 // the parsed command line (argparse's Namespace of the whole tool)
 struct Args {
@@ -833,7 +830,7 @@ std::string top_help(const py::str& prog) {
     throw py::SystemExit(2);
 }
 
-// split's usage and help as the Python prints them (argparse_min shows a `choices` option as REVISION / TYPE)
+// split's usage and help as the Python prints them (py::argparse shows a `choices` option as REVISION / TYPE)
 std::string split_usage(const py::str& prog) {
     const std::string indent(static_cast<size_t>(7 + prog.utf8().size() + 7), ' ');
     return "usage: " + prog.utf8() + " split [-h] [-k KERNEL]\n" + indent + "[-r {xenon,zephyr,falcon,jasper,trinity,corona,winchester}]\n" + indent +
@@ -955,7 +952,7 @@ Args parse_command(const py::str& prog, const py::str& cmd, const py::list<py::s
         }
         throw;
     }
-    // (a clean parse of a sub-parser can still leave extras for the top-level parser: none, argparse_min reports them)
+    // (a clean parse of a sub-parser can still leave extras for the top-level parser: none, py::argparse reports them)
     Args a;
     a.command = cmd;
     a.input = ns.get("input");

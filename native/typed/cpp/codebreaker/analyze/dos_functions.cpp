@@ -1,6 +1,8 @@
 // codebreaker/analyze/dos_functions.cpp -- typed C++ of codebreaker.analyze.dos_functions (see dos_functions.hpp).
 
 #include "codebreaker/analyze/dos_functions.hpp"
+#include "codebreaker/emulate/capstone_x86.hpp"
+#include "codebreaker/platforms/package.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -61,53 +63,8 @@ bool is_half_(const std::string& r) {
 }
 bool is_whole_(const std::string& r) { return r == "si" || r == "di" || r == "bp" || r == "ds" || r == "es"; }
 
-// ---- the 16-bit capstone decoder (platforms.decoder(16, detail=True)) -------------------------------
-struct CsLib {
-#ifdef _WIN32
-    HMODULE module = nullptr;
-#endif
-    decltype(&cs_open) open = nullptr;
-    decltype(&cs_option) option = nullptr;
-    decltype(&cs_disasm) disasm = nullptr;
-    decltype(&cs_free) free_ = nullptr;
-    decltype(&cs_reg_name) reg_name = nullptr;
-    decltype(&cs_regs_access) regs_access = nullptr;
-    csh handle = 0;
-};
-
-CsLib& cs_lib() {
-    static CsLib lib;
-    return lib;
-}
-std::wstring& dll_path() {
-    static std::wstring p;
-    return p;
-}
-
-template <class F> F sym_(HMODULE m, const char* name) {
-    FARPROC p = GetProcAddress(m, name);
-    if (!p) throw py::ImportError(std::string("capstone.dll has no ") + name);
-    return reinterpret_cast<F>(p);
-}
-
-CsLib& cs_ready() {
-    CsLib& lib = cs_lib();
-    if (lib.handle) return lib;
-    if (dll_path().empty()) throw py::ImportError("capstone: no DLL given (set_capstone_dll)");
-    lib.module = LoadLibraryW(dll_path().c_str());
-    if (!lib.module) throw py::ImportError("capstone: cannot load the DLL");
-    lib.open = sym_<decltype(&cs_open)>(lib.module, "cs_open");
-    lib.option = sym_<decltype(&cs_option)>(lib.module, "cs_option");
-    lib.disasm = sym_<decltype(&cs_disasm)>(lib.module, "cs_disasm");
-    lib.free_ = sym_<decltype(&cs_free)>(lib.module, "cs_free");
-    lib.reg_name = sym_<decltype(&cs_reg_name)>(lib.module, "cs_reg_name");
-    lib.regs_access = sym_<decltype(&cs_regs_access)>(lib.module, "cs_regs_access");
-    csh h = 0;
-    if (lib.open(CS_ARCH_X86, CS_MODE_16, &h) != CS_ERR_OK) throw py::RuntimeError("capstone: cs_open failed");
-    lib.option(h, CS_OPT_DETAIL, CS_OPT_ON);
-    lib.handle = h;
-    return lib;
-}
+// ---- the 16-bit capstone decoder: platforms.decoder(16, detail=True) ------------------------------------
+std::shared_ptr<platforms::Decoder> md_() { return platforms::decoder(16, py::str("x86"), true); }
 
 // One operand: capstone keeps reg, imm and mem in one union; all three views are given as it holds them.
 struct COperand {
@@ -126,9 +83,9 @@ struct Decoded {
 
 // next(md.disasm(raw, address, 1), None)
 bool disasm_one(const py::bytes& raw, uint64_t address, Decoded& out) {
-    CsLib& lib = cs_ready();
-    cs_insn* insn = nullptr;
-    size_t n = lib.disasm(lib.handle, reinterpret_cast<const uint8_t*>(raw.raw().data()), static_cast<size_t>(raw.size()), address, 1, &insn);
+    std::shared_ptr<platforms::Decoder> md = md_();
+    size_t n = 0;
+    cs_insn* insn = md->raw(reinterpret_cast<const uint8_t*>(raw.raw().data()), static_cast<size_t>(raw.size()), static_cast<int64_t>(address), 1, n);
     if (n == 0) return false;
     out.size = insn->size;
     out.mnemonic = insn->mnemonic;
@@ -150,26 +107,22 @@ bool disasm_one(const py::bytes& raw, uint64_t address, Decoded& out) {
         c.disp = o.mem.disp;
         out.ops.push_back(c);
     }
-    lib.free_(insn, n);
+    md->release(insn, n);
     return true;
 }
 
 // got.reg_name(id): "" for None
 std::string reg_name_(int64_t id) {
-    CsLib& lib = cs_ready();
-    const char* s = lib.reg_name(lib.handle, static_cast<unsigned>(id));
+    const char* s = md_()->reg_name(static_cast<uint32_t>(id));
     return s ? std::string(s) : std::string();
 }
 
 // got.regs_access()[1]: the registers written
 std::vector<int64_t> regs_written_(Decoded& d) {
-    CsLib& lib = cs_ready();
-    uint16_t rd[64], wr[64];
-    uint8_t nrd = 0, nwr = 0;
-    cs_err st = lib.regs_access(lib.handle, &d.insn, rd, &nrd, wr, &nwr);
-    if (st != CS_ERR_OK) throw py::RuntimeError("capstone: cs_regs_access failed");
+    auto access = md_()->regs_access(d.insn);
+    if (!access) throw py::RuntimeError("capstone: cs_regs_access failed");
     std::vector<int64_t> out;
-    for (int i = 0; i < nwr; ++i) out.push_back(wr[i]);
+    for (uint16_t r : std::get<1>(*access)) out.push_back(r);
     return out;
 }
 
@@ -204,13 +157,7 @@ std::optional<int64_t> reg_get_(const Regs& regs, const std::string& r) {
 
 }  // namespace
 
-void set_capstone_dll(const py::str& path) {
-    std::string u = path.utf8();
-    int n = MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, nullptr, 0);
-    std::wstring w(static_cast<size_t>(n > 0 ? n - 1 : 0), L'\0');
-    if (n > 0) MultiByteToWideChar(CP_UTF8, 0, u.c_str(), -1, &w[0], n);
-    dll_path() = w;
-}
+void set_capstone_dll(const py::str& path) { emulate::capstone_x86::load_capstone(path); }
 
 // ---- Function, Interrupt -------------------------------------------------------------------------
 

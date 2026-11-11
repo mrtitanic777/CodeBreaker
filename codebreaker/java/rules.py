@@ -261,7 +261,7 @@ def rule_virtual_call_in_ctor(fname, text, header_text, plat):
         return
     for line0, body in _ctor_bodies(text, cls):
         bstr = _strip_block_comments(body)
-        for name in virt:
+        for name in sorted(virt):                        # (sorted: the findings of one constructor come in one order)
             # `this->name(` or a bare `name(` (NOT obj->name / obj.name / Class::name -- those are fine)
             m = (re.search(r'\bthis\s*->\s*%s\s*\(' % re.escape(name), bstr)
                  or re.search(r'(?<![\w.>:])%s\s*\(' % re.escape(name), bstr))
@@ -787,7 +787,7 @@ def rule_map_read_insert(fname, text, header_text, plat):
     if not maps:
         return
     for i, raw, code in _iter_code_lines(text):
-        for name in maps:
+        for name in sorted(maps):                         # (sorted: the findings of one line come in one order)
             m = re.search(r'\b' + re.escape(name) + r'\s*\[[^\]]+\]', code)
             if not m:
                 continue
@@ -843,7 +843,7 @@ def rule_leak_drop_no_delete(fname, text, header_text, plat):
     owners = {o for o in owners if not re.search(r'(?i)(listener|observer|callback|handler|watcher|subscriber)s?$', o)}
     rows = [(i, code) for i, raw, code in _iter_code_lines(text)]
     for idx, (i, code) in enumerate(rows):
-        for name in owners:
+        for name in sorted(owners):                       # (sorted: the findings of one line come in one order)
             m = re.search(r'\b' + re.escape(name) + r'(?:\.|->)(clear|erase|remove|pop_back|pop_front|pop)\s*\(', code)
             if not m:
                 continue

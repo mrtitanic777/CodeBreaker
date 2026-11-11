@@ -144,13 +144,13 @@ Result discover(const py::str& path, bool pointer_scan, const std::optional<py::
         return d;
     };
     if (pointer_scan) {
-        for (int64_t a : from_pointers(*img, sized())) {
+        for (int64_t a : py::sorted(from_pointers(*img, sized()))) {   // (in address order)
             if (!funcs.contains(a)) {
                 funcs.set(a, 0);
                 sources.set(py::str("pointers"), sources.at(py::str("pointers")) + 1);
             }
         }
-        for (int64_t a : from_constants(*img, sized())) {
+        for (int64_t a : py::sorted(from_constants(*img, sized()))) {   // (in address order)
             if (!funcs.contains(a)) {
                 funcs.set(a, 0);
                 sources.set(py::str("constants"), sources.at(py::str("constants")) + 1);

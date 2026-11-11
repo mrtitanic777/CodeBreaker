@@ -7,9 +7,6 @@
 //   * module16() does not keep its answer in base.cache (the Python pickles the Result under the module's bytes, `more`
 //     and the source text of origin.py and describe.py): there is no C++ form of that pickle, so it is worked out every
 //     time (module16 == _module16).
-//   * `imported.get(ops[0].imm)` of _judge looks an integer up in describe's import_names, whose keys are the symbols'
-//     names: it never finds one, so the "calls <compiler helper>" note of that branch is never made -- the C++ has no
-//     such branch.
 #include "codebreaker/analyze/origin.hpp"
 
 #include <algorithm>
@@ -123,7 +120,26 @@ void c8_forms(Origin& o, const Decoder& md, const py::bytes& image, int64_t star
     o.language = py::str("c");
 }
 
-void judge(Origin& o, const Decoder& md, const py::bytes& image, int64_t start, int64_t end, const std::set<int64_t>& starts, bool g3) {
+}  // namespace
+
+namespace {
+// The names of the C compiler's own helpers: a call to one is noted (o.compiler)
+bool is_compiler_helper(const py::str& target) {
+    static const char* const helpers[] = {"chkstk", "__aFlmul", "__aFldiv", "__aFuldiv", "__aFlrem", "__aFulrem", "__aFlshl",
+                                          "__aFlshr", "__aFulshr", "__aNlmul", "__aNldiv", "__aNuldiv", "__aNlrem", "__aNulrem",
+                                          "__aFNalmul", "__aFNauldiv", "__aFahdiff", "__aFahincr", "__fac"};
+    const py::str low = target.lower();
+    for (const char* h : helpers) {
+        if (low.contains(py::str(h).lower())) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
+// `functions`: {address: name} of the module's functions, to name what a call reaches; `base`: the address of the segment's offset 0
+void judge(Origin& o, const Decoder& md, const py::bytes& image, int64_t start, int64_t end, const std::set<int64_t>& starts, bool g3,
+           const py::dict<int64_t, py::str>& functions, int64_t base) {
     std::set<std::string> written;
     bool prologue_ax = false, frame = false, last_push_seg = false, flags_set = false, ax_from_ss = false, prev_call = false;
     struct Pending { std::string reg; uint64_t at; int64_t left; };
@@ -369,6 +385,12 @@ void judge(Origin& o, const Decoder& md, const py::bytes& image, int64_t start, 
         } else if (mn == "int") {
             for (const char* r : {"ax", "bx", "cx", "dx", "si", "di", "es"}) written.insert(r);
         }
+        if ((mn == "call" || mn == "lcall") && !ops.empty() && ops[0].type == X86_OP_IMM) {   // (a call to one of the compiler's helpers, linked in and named)
+            std::optional<int64_t> va;
+            if (mn == "call") va = base + (ops[0].imm & 0xFFFF);
+            else if (ops.size() == 2) va = (ops[0].imm << 16) + ops[1].imm;
+            if (va && functions.contains(*va) && is_compiler_helper(functions.at(*va))) o.compiler.append(py::str("calls ") + functions.at(*va));
+        }
         // a jump out of the function: into the middle of other code (entry points sharing a body) or to another function
         // (a tail jump): the C compilers of the time do neither
         if ((mn == "jmp" || (!mn.empty() && mn[0] == 'j')) && !ops.empty() && ops[0].type == X86_OP_IMM && !(start <= (ops[0].imm & 0xFFFF) && (ops[0].imm & 0xFFFF) < end) && !starts.empty()) {
@@ -407,8 +429,6 @@ void judge(Origin& o, const Decoder& md, const py::bytes& image, int64_t start, 
     for (const std::string& e : ev) o.evidence.append(py::str(e));
     o.language = py::str(ev.empty() ? "c" : "assembly");
 }
-
-}  // namespace
 
 py::list<std::tuple<py::str, int64_t>> most_common(const Counter& c, const std::optional<int64_t>& n) {
     std::vector<std::tuple<py::str, int64_t>> items = c.items();
@@ -490,7 +510,7 @@ Result _module16(const py::str& path, const std::optional<py::dict<int64_t, py::
         for (int64_t o : starts[seg]) if (o > off) { end = o; break; }
         Origin o(va, vn.second);
         std::set<int64_t> st(starts[seg].begin(), starts[seg].end());
-        judge(o, *md, image, off, end, st, g3);
+        judge(o, *md, image, off, end, st, g3, names, describe::address(seg, 0));
         if (g3 && o.language == "assembly") c8_forms(o, *md, image, off, end);
         res.functions.set(va, o);
     }

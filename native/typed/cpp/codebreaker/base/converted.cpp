@@ -8,6 +8,7 @@
 
 #include "codebreaker/formats/detect.hpp"
 #include "codebreaker/formats/xex.hpp"
+#include "py_datetime.hpp"
 #include "py_json.hpp"
 #include "py_os.hpp"
 
@@ -263,14 +264,7 @@ const py::set<py::str> _GENERIC = {py::str("default"), py::str("main"), py::str(
                                    py::str("game"), py::str("program"), py::str("app"), py::str("boot")};
 
 std::function<py::str()>& _clock() {
-    static std::function<py::str()> c = [] {
-        std::time_t t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::tm tm{};
-        localtime_s(&tm, &t);
-        char b[32];
-        std::strftime(b, sizeof b, "%Y-%m-%dT%H:%M:%S", &tm);
-        return py::str(b);
-    };
+    static std::function<py::str()> c = [] { return py::datetime::datetime::now().isoformat('T', "seconds"); };   // datetime.now().isoformat(timespec="seconds")
     return c;
 }
 

@@ -15,6 +15,8 @@ struct DumpOpts {
     const char* key_sep = ": ";
     bool ensure_ascii = true;
     bool tagged = false;          // tuples, sets, other keys in the tagged form (else as lists, str keys)
+    int indent = -1;              // json.dumps(indent=N): a line for each item, N spaces a level (the item separator is then ",")
+    bool sort_keys = false;       // json.dumps(sort_keys=True): the keys of a dict in order (str keys)
 };
 std::string json_dump(const V& v, const DumpOpts& o = DumpOpts());
 inline std::string json_tagged(const V& v) {

@@ -35,6 +35,8 @@ def _value(v, equ):
     m = re.fullmatch(r"([A-Za-z_$@?][\w$@?]*)\s*(?:([+-])\s*(\w+))?", v)
     if m:
         d = asm16.number(m.group(3)) if m.group(3) else 0
+        if d is None:                                       # (sym+text that is no number: a displacement None broke the tables later)
+            raise asm16.Asm16Error("a data item not understood: %r" % v)
         return (-d if m.group(2) == "-" else d), m.group(1)
     raise asm16.Asm16Error("a data item not understood: %r" % v)
 

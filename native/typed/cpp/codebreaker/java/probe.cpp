@@ -26,7 +26,7 @@ using py::str;
 
 str S(const char* s) { return str(s); }
 
-// ---- subprocess.run(..., timeout=) for this module (the runtime's run has none) ----
+// ---- subprocess.run(..., timeout=) of this module: stdin is the null device, the streams are captured (bytes) or discarded ----
 enum class Sink { Capture, Devnull, IntoStdout };
 
 struct Ran {
@@ -38,82 +38,29 @@ struct Ran {
 // Runs `cmd`, waiting at most `timeout_s` seconds (0: forever). On a timeout the child this started is ended
 // (subprocess.run's TimeoutExpired path).
 Ran run_(const py::list<str>& cmd, Sink out, Sink err, int64_t timeout_s, const std::optional<str>& cwd = std::nullopt) {
-    SECURITY_ATTRIBUTES sa{sizeof sa, nullptr, TRUE};
-    HANDLE out_r = nullptr, out_w = nullptr, err_r = nullptr, err_w = nullptr, nul_in = nullptr, nul_out = nullptr;
-    std::vector<HANDLE> child_ends;
-    auto fail = [&](DWORD code) {
-        for (HANDLE h : {out_r, err_r})
-            if (h) CloseHandle(h);
-        for (HANDLE h : child_ends) CloseHandle(h);
-        py::raise_winerror(code);
-    };
-    nul_in = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
-    if (nul_in != INVALID_HANDLE_VALUE) child_ends.push_back(nul_in);
-    auto devnull_out = [&]() {
-        if (!nul_out) {
-            nul_out = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
-            child_ends.push_back(nul_out);
-        }
-        return nul_out;
-    };
-    if (out == Sink::Capture) {
-        if (!CreatePipe(&out_r, &out_w, &sa, 0)) fail(GetLastError());
-        child_ends.push_back(out_w);
-        SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
-    } else {
-        out_w = devnull_out();
-    }
-    HANDLE child_err = nullptr;
-    if (err == Sink::Capture) {
-        if (!CreatePipe(&err_r, &err_w, &sa, 0)) fail(GetLastError());
-        child_ends.push_back(err_w);
-        SetHandleInformation(err_r, HANDLE_FLAG_INHERIT, 0);
-        child_err = err_w;
-    } else if (err == Sink::IntoStdout) {
-        child_err = out_w;
-    } else {
-        child_err = devnull_out();
-    }
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = nul_in;
-    si.hStdOutput = out_w;
-    si.hStdError = child_err;
-    PROCESS_INFORMATION pi{};
-    std::wstring line = py::subprocess::to_wide(py::subprocess::list2cmdline(cmd));
-    std::wstring wcwd = cwd ? py::subprocess::to_wide(*cwd) : std::wstring();
-    BOOL ok = CreateProcessW(nullptr, line.data(), nullptr, nullptr, TRUE, CREATE_UNICODE_ENVIRONMENT, nullptr, cwd ? wcwd.c_str() : nullptr, &si, &pi);
-    DWORD last = GetLastError();
-    if (!ok) fail(last);
-    CloseHandle(pi.hThread);
-    for (HANDLE h : child_ends) CloseHandle(h);   // the child's ends belong to the child now
-    child_ends.clear();
+    py::subprocess::RunOptions o;
+    o.text = false;
+    o.stdin_ = py::subprocess::Stream::Devnull;
+    o.stdout_ = out == Sink::Capture ? py::subprocess::Stream::Capture : py::subprocess::Stream::Devnull;
+    o.stderr_ = err == Sink::Capture ? py::subprocess::Stream::Capture
+                : err == Sink::IntoStdout ? py::subprocess::Stream::Stdout
+                                          : py::subprocess::Stream::Devnull;
+    o.cwd = cwd;
+    if (timeout_s > 0) o.timeout = timeout_s;
     Ran r;
-    auto drain = [](HANDLE h, std::string& dst) {
-        char buf[8192];
-        DWORD got = 0;
-        while (h && ReadFile(h, buf, sizeof buf, &got, nullptr) && got > 0) dst.append(buf, got);
-    };
-    std::thread t_out([&] { drain(out_r, r.out); });
-    std::thread t_err([&] { drain(err_r, r.err); });
-    DWORD waited = WaitForSingleObject(pi.hProcess, timeout_s > 0 ? static_cast<DWORD>(timeout_s * 1000) : INFINITE);
-    if (waited == WAIT_TIMEOUT) {
+    try {
+        py::subprocess::CompletedProcess p = py::subprocess::run(cmd, o);
+        r.returncode = p.returncode;
+        if (p.stdout_bytes) r.out = p.stdout_bytes->raw();
+        if (p.stderr_bytes) r.err = p.stderr_bytes->raw();
+    } catch (const py::subprocess::TimeoutExpired& e) {
         r.timed_out = true;
-        TerminateProcess(pi.hProcess, 1);   // (the child this call started)
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        r.returncode = 1;   // (the child was ended with exit code 1)
+        if (e.stdout_bytes) r.out = e.stdout_bytes->raw();
+        if (e.stderr_bytes) r.err = e.stderr_bytes->raw();
     }
-    t_out.join();
-    t_err.join();
-    DWORD code = 0;
-    GetExitCodeProcess(pi.hProcess, &code);
-    r.returncode = static_cast<int64_t>(code);
-    CloseHandle(pi.hProcess);
-    if (out_r) CloseHandle(out_r);
-    if (err_r) CloseHandle(err_r);
     return r;
 }
-
 
 // pool.threads(fn, items, jobs): fn on every item, `jobs` at a time on threads of this process; the results in the items' order.
 // (codebreaker.jobs.pool has a typed port, but its threads() reaches the knowledge / engine cycle for the asker's recording of
