@@ -5,6 +5,7 @@
 // stub needs, so a port knows which SDK APIs map to which stub methods.
 #pragma once
 
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -42,4 +43,8 @@ std::span<const SubsystemInfo> subsystems();
 // subsystems (ConnectException) belongs to the first in `subsystems()` order.
 const SubsystemInfo* classify_stub(std::string_view class_name);
 
+// The subsystem named by its short key ("rendering", "audio", ...), or nullopt for any other text.
+std::optional<Subsystem> subsystem_from_key(std::string_view key);
+
 }  // namespace cb::java::stubs
+

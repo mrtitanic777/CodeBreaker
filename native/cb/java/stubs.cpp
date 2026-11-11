@@ -94,4 +94,12 @@ const SubsystemInfo* classify_stub(std::string_view class_name) {
     return it == kOwner.end() ? nullptr : it->second;
 }
 
+std::optional<Subsystem> subsystem_from_key(std::string_view key) {
+    for (const SubsystemInfo& info : table()) {
+        if (info.key == key) return info.id;
+    }
+    return std::nullopt;
+}
+
 }  // namespace cb::java::stubs
+

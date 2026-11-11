@@ -8,6 +8,7 @@
 #include "codebreaker/java/cmake.hpp"
 #include "codebreaker/java/ir.hpp"
 #include "codebreaker/java/overlays.hpp"
+#include "codebreaker/java/platforms.hpp"
 #include "codebreaker/java/stubs.hpp"
 #include "codebreaker/java/textutil.hpp"
 #include "codebreaker/java/typemap.hpp"
@@ -95,6 +96,20 @@ CB_TEST("java.shims.ir_round_trip", [] {
     CB_CHECK(back->methods[0]->params[0]->by_ref);
     CB_CHECK_EQ(from_py(std::get<1>(back->methods[0]->body[0])), "x++;");
     CB_CHECK_EQ(from_py(back->repr()), from_py(c->repr()));
+});
+
+
+CB_TEST("java.shims.platforms", [] {
+    auto x360 = jv::platforms::get_platform(py::str("xbox360"));
+    CB_CHECK(x360.has_value());
+    CB_CHECK_EQ(from_py(x360->label), "Xbox 360");
+    CB_CHECK(x360->big_endian && x360->sdk_dir.has_value());
+    CB_CHECK_EQ(from_py(x360->subsystems.get(py::str("audio")).value().sdk), "XACT3");
+    CB_CHECK(!jv::platforms::get_platform(py::str("amiga")).has_value());
+    CB_CHECK_EQ(jv::platforms::PLATFORMS.size(), 7);
+    CB_CHECK_EQ(from_py(jv::platforms::get_stub_comment(py::str("wii"), py::str("input"))),
+                "// TODO [Nintendo Wii]: Implement with WPAD/PAD (libwiiuse.a, libogc) -- WPAD_Init, WPAD_ScanPads, WPAD_ButtonsDown, PAD_ScanPads");
+    CB_CHECK(from_py(jv::platforms::generate_stdafx(py::str("psp"))).find("#include <pspkernel.h>") != std::string::npos);
 });
 
 }  // namespace
