@@ -10,6 +10,8 @@
 #include "transition/transition.h"
 
 #include <windows.h>
+
+#include <cstdlib>
 #include <d3d12.h>
 #include <d3dcompiler.h>
 #include <dxgi1_6.h>
@@ -125,7 +127,7 @@ float4 PixelMain(Interpolants i) : SV_Target
                 // F11 (or Alt+Enter) switches between the window and borderless full screen (not a key of the
                 // game's keyboard controller).
                 const bool repeat = (lParam & (1 << 30)) != 0;
-                if (self && !repeat && ((message == WM_KEYDOWN && wParam == VK_F11) ||
+                if (self && !self->hosted_ && !repeat && ((message == WM_KEYDOWN && wParam == VK_F11) ||
                                         (message == WM_SYSKEYDOWN && wParam == VK_RETURN && (lParam & (1 << 29)))))
                 {
                     self->ToggleFullscreen();
@@ -159,6 +161,8 @@ float4 PixelMain(Interpolants i) : SV_Target
                 }
                 return DefWindowProcW(hwnd, message, wParam, lParam);
             }
+
+            bool hosted_ = false; // a child of the dashboard's window (NATIVE_DASH_HOST_WINDOW)
 
         private:
             // Borderless full screen on the window's monitor; the windowed size and place come back after.
@@ -208,11 +212,34 @@ float4 PixelMain(Interpolants i) : SV_Target
                 wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
                 wc.lpszClassName = L"CodeBreakerX360";
                 RegisterClassExW(&wc);
-                RECT rect{ 0, 0, LONG(width), LONG(height) };
-                AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
-                hwnd_ = CreateWindowExW(0, wc.lpszClassName, L"Xbox 360 Dashboard", WS_OVERLAPPEDWINDOW,
-                    CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr,
-                    wc.hInstance, nullptr);
+                // Started by a dashboard that shows the title in its own window (NATIVE_DASH_HOST_WINDOW = that
+                // window's handle, Native Dashboard's games.h): a child filling it, as the console has one screen.
+                HWND host = nullptr;
+                const char* hostText = std::getenv("NATIVE_DASH_HOST_WINDOW");
+                if (hostText && *hostText)
+                    host = reinterpret_cast<HWND>(uintptr_t(std::strtoull(hostText, nullptr, 10)));
+                if (host && !IsWindow(host))
+                {
+                    Log("Presenter: NATIVE_DASH_HOST_WINDOW {} is not a window: a window of its own", hostText);
+                    host = nullptr;
+                }
+                if (host)
+                {
+                    RECT client;
+                    GetClientRect(host, &client);
+                    hosted_ = true;
+                    hwnd_ = CreateWindowExW(0, wc.lpszClassName, L"Xbox 360 title", WS_CHILD | WS_CLIPSIBLINGS, 0, 0,
+                        client.right, client.bottom, host, nullptr, wc.hInstance, nullptr);
+                    Log("Presenter: inside the dashboard's window ({}x{})", client.right, client.bottom);
+                }
+                else
+                {
+                    RECT rect{ 0, 0, LONG(width), LONG(height) };
+                    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+                    hwnd_ = CreateWindowExW(0, wc.lpszClassName, L"Xbox 360 Dashboard", WS_OVERLAPPEDWINDOW,
+                        CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr,
+                        wc.hInstance, nullptr);
+                }
                 if (!hwnd_)
                     Fatal("Presenter: cannot create the window (error {})", GetLastError());
                 SetWindowLongPtrW(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
@@ -256,7 +283,9 @@ float4 PixelMain(Interpolants i) : SV_Target
                 list_->Close();
                 CreatePipeline();
 
-                ShowWindow(hwnd_, SW_SHOWDEFAULT);
+                ShowWindow(hwnd_, hosted_ ? SW_SHOW : SW_SHOWDEFAULT);
+                if (hosted_)
+                    SetFocus(hwnd_); // the keyboard (the dashboard's window forwards it while active)
                 redrawPending_ = true; // a black frame until the title's first one
                 Log("Presenter: window {}x{}", width, height);
                 if (Settings().fullscreen)
