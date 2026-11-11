@@ -8,6 +8,7 @@
 #include "codebreaker/build/module.hpp"
 #include "codebreaker/build/watcom.hpp"
 #include "codebreaker/engine/lanes.hpp"
+#include "codebreaker/engine/win16.hpp"
 #include "codebreaker/formats/pe.hpp"
 #include "codebreaker/platforms/win16.hpp"
 #include "codebreaker/verify/lanes/win16.hpp"
@@ -69,6 +70,16 @@ lanes::LanePlatform win32_platform() {
 
 }  // namespace
 
+std::optional<build::module::Built> delegate_build(const py::str& module, const py::str& path, const std::optional<py::str>& outdir, bool call,
+                                                   const std::function<void(const py::str&)>& log) {
+    const auto v = py::os::environ_::get(py::str("CB_ENGINE"));
+    if (v && *v == py::str("0")) return std::nullopt;
+    register_core_platforms();
+    if (platforms::win16::recognises(path)) return *win16::build(module, outdir, call, log);
+    if (recognises_pe(path)) return *lanes::build(module, outdir, call, log);
+    return std::nullopt;
+}
+
 void register_core_platforms() {
     static std::once_flag once;
     std::call_once(once, [] {
@@ -80,6 +91,7 @@ void register_core_platforms() {
         lanes::register_platform(pe);
         lanes::_declare(ne);
         lanes::_declare(pe);
+        win16::declare();
     });
 }
 

@@ -47,6 +47,7 @@
 #include "codebreaker/build/watcom.hpp"
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/emulate/emulator.hpp"
+#include "codebreaker/engine/lanes_wiring.hpp"
 #include "codebreaker/emulate/pcode.hpp"
 #include "codebreaker/emulate/windows16.hpp"
 #include "codebreaker/formats/detect.hpp"
@@ -3733,6 +3734,11 @@ Built build(const py::str& module, const std::optional<py::str>& outdir, bool ca
         throw py::SystemExit(py::percent("no module %s in the corpus", py::repr(module)));
     }
     const py::str path = *path0;
+    // (the engine is the default: the same build made of facts, only what changed made again -- engine/win16, engine/lanes; CB_ENGINE=0 takes the path below)
+    if (!gated_in) {
+        auto delegated = engine::lanes_wiring::delegate_build(module, path, outdir, call, log);
+        if (delegated) return *delegated;
+    }
     Built b(path);
     std::optional<py::dict<py::str, py::str>> gated = gated_in;
     b.gated = gated ? gated->copy() : py::dict<py::str, py::str>();

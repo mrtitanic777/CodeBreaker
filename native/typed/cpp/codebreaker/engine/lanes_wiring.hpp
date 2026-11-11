@@ -8,10 +8,20 @@
 // Called once (it is idempotent); the entry points that need the registry (module::build, reconstruct::run, engine::lanes) call it.
 #pragma once
 
+#include <functional>
+#include <memory>
+#include <optional>
+
+#include "codebreaker/build/module.hpp"
 #include "py.hpp"
 
 namespace codebreaker::engine::lanes_wiring {
 
 void register_core_platforms();
+
+// module.build's first step: `engine.enabled() and gated is None` -> the platform's steps module builds it (platforms.identify(path).steps_module().build:
+// engine/win16 for a 16-bit module, engine/lanes for a 32-bit one). nullopt when the engine is off or no platform of steps takes the file.
+std::optional<build::module::Built> delegate_build(const py::str& module, const py::str& path, const std::optional<py::str>& outdir, bool call,
+                                                   const std::function<void(const py::str&)>& log);
 
 }  // namespace codebreaker::engine::lanes_wiring
