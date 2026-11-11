@@ -1,0 +1,8 @@
+GetFileVersionInfoSizeA|DWORD|LPSTR lptstrFilename, LPDWORD lpdwHandle|WINAPI|WINVER.H
+VerQueryValueA|BOOL|const LPVOID pBlock, LPSTR lpSubBlock, LPVOID *lplpBuffer, PUINT puLen|WINAPI|WINVER.H
+DCICreatePrimary|int|HDC, LPDCISURFACEINFO FAR *|WINAPI|DCIMAN.H
+WNetGetUserA|DWORD|LPCSTR lpName, LPSTR lpUserName, LPDWORD lpnLength|WNETAPI|WINNETWK.H
+lineClose|LONG|HLINE hLine|WINAPI|TAPI.H
+tapiGetLocationInfo|LONG|LPSTR lpszCountryCode, LPSTR lpszCityCode|WINAPI|TAPI.H
+WNetCloseEnum|void|HANDLE|WINAPI|WINNETWK.H
+WNetGetConnectionA|DWORD|LPCSTR, LPSTR, LPDWORD|WINAPI|MMSYSTEM.H

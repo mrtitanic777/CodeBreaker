@@ -1,0 +1,117 @@
+/* dciman32.thk -- flat-thunk script. Function list from the export table; per-function
+ * ARITY recovered from the stub's `ret N` (stdcall) and pointer args from the SMapLS
+ * marshalling. Pointer input/output DIRECTION is defaulted to input -- curate where a
+ * function writes back through a pointer (mark output/inout). 16-bit target: DCIMAN.DLL. */
+enablemapdirect3216 = true;
+
+typedef unsigned short WORD;  typedef unsigned long DWORD;  typedef int INT;
+typedef long LONG;  typedef char *LPSTR;  typedef void *LPVOID;
+typedef void VOID;  typedef int HFILE;
+
+/* thunk-data exports (emitted by the thunk compiler, not APIs): dcithk_ThunkData32 */
+
+/* @1 DCIBeginAccess -- arity recovered from stub */
+DWORD DCIBeginAccess16(LPVOID p1, LPVOID p2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @2 DCICloseProvider -- arity recovered from stub */
+DWORD DCICloseProvider16(DWORD a1)
+{
+}
+
+/* @3 DCICreateOffscreen -- arity recovered from stub */
+DWORD DCICreateOffscreen16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7, DWORD a8, DWORD a9, DWORD a10)
+{
+}
+
+/* @4 DCICreateOverlay -- arity recovered from stub */
+DWORD DCICreateOverlay16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @5 DCICreatePrimary -- arity recovered from stub (SDK prototype) */
+int DCICreatePrimary16(HDC, LPDCISURFACEINFO FAR *)
+{
+}
+
+/* @6 DCIDestroy -- arity recovered from stub */
+DWORD DCIDestroy16(DWORD a1)
+{
+}
+
+/* @7 DCIDraw -- arity recovered from stub */
+DWORD DCIDraw16(LPVOID p1)
+{
+}
+
+/* @8 DCIEndAccess -- arity recovered from stub */
+DWORD DCIEndAccess16(LPVOID p1)
+{
+}
+
+/* @9 DCIEnum -- stub did not resolve; TODO: signature + pointer directions */
+DWORD DCIEnum16(void)
+{
+}
+
+/* @10 DCIOpenProvider -- arity recovered from stub */
+DWORD DCIOpenProvider16(void)
+{
+}
+
+/* @11 DCISetClipList -- arity recovered from stub */
+DWORD DCISetClipList16(LPVOID p1, LPVOID p2)
+{
+}
+
+/* @12 DCISetDestination -- stub did not resolve; TODO: signature + pointer directions */
+DWORD DCISetDestination16(void)
+{
+}
+
+/* @13 DCISetSrcDestClip -- stub did not resolve; TODO: signature + pointer directions */
+DWORD DCISetSrcDestClip16(void)
+{
+}
+
+/* @14 DllEntryPoint -- arity recovered from stub */
+DWORD DllEntryPoint16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @15 GetDCRegionData -- stub did not resolve; TODO: signature + pointer directions */
+DWORD GetDCRegionData16(void)
+{
+}
+
+/* @16 GetWindowRegionData -- arity recovered from stub */
+DWORD GetWindowRegionData16(LPVOID p1, DWORD a2, DWORD a3)
+{
+}
+
+/* @17 WinWatchClose -- stub did not resolve; TODO: signature + pointer directions */
+DWORD WinWatchClose16(void)
+{
+}
+
+/* @18 WinWatchDidStatusChange -- arity recovered from stub */
+DWORD WinWatchDidStatusChange16(DWORD a1)
+{
+}
+
+/* @19 WinWatchGetClipList -- stub did not resolve; TODO: signature + pointer directions */
+DWORD WinWatchGetClipList16(void)
+{
+}
+
+/* @20 WinWatchNotify -- arity recovered from stub */
+DWORD WinWatchNotify16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @21 WinWatchOpen -- arity recovered from stub */
+DWORD WinWatchOpen16(DWORD a1)
+{
+}
+

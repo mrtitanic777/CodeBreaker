@@ -473,14 +473,14 @@ def _load_le(path, member, work):
     # service table are entered from outside and are function starts
     try:
         ddb = lf.ddb()
-    except (IndexError, struct.error):
+    except (IndexError, struct.error, ValueError):   # a damaged table (the reader's FormatError)
         ddb = None
     img.device = ddb
     try:
         img.pointers = {describe.le_address(obj, off): ("abs32", img.u32(describe.le_address(obj, off)))
                         for (obj, off), fx in lf.fixups().items()
                         if fx and fx["kind"] == "internal" and fx.get("srctype") == 7}
-    except (IndexError, struct.error):
+    except (IndexError, struct.error, ValueError):
         img.pointers = None
     if ddb:
         at = describe.le_address(ddb["obj"], ddb["rva"])

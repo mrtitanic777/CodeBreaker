@@ -117,9 +117,12 @@ class Project:
         to build or run them). Rewrites project.json and README.txt."""
         d = self.data()
         rel = []
+        here = os.path.abspath(self.root)
         for out in outputs:
             out = os.path.abspath(out)
-            rel.append(os.path.relpath(out, self.root) if out.startswith(os.path.abspath(self.root)) else out)
+            # inside the project folder (by whole path components -- Converted/foo_2/x is not inside Converted/foo)
+            inside = out == here or out.startswith(here + os.sep)
+            rel.append(os.path.relpath(out, self.root) if inside else out)
         step = {"command": command, "when": datetime.datetime.now().isoformat(timespec="seconds"),
                 "outputs": rel}
         if notes:

@@ -99,7 +99,10 @@ def switches(body, shadow):
                     break
                 default, at = (brace, end), end + 1
             break
-        values = [int(c[0], 0) & 0xFFFFFFFF for c in cases]
+        try:
+            values = [int(c[0], 0) & 0xFFFFFFFF for c in cases]
+        except ValueError:                             # an octal constant (012): int() does not read it, so the chain stays
+            continue
         if len(cases) < 2 or len(set(values)) != len(values):
             continue
         if re.search(r"\bbreak\b", shadow[m.start():at]):

@@ -1,30 +1,10 @@
-// codebreaker/verify/lanes/dos.hpp -- typed C++ port of codebreaker.verify.lanes.dos.
+// codebreaker/verify/lanes/dos.hpp -- COMPAT SHIM over cb/verify/lanes/dos.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// dos.py -- what is particular to reconstructing a real-mode program.
-//
-// One of the kinds reconstruct.py works with (see there for what a kind provides). The program's source is
-// assembly written from its image (source/dos_writer.py); it is assembled and linked, and the result is
-// compared with the original as a whole: every byte of the load module, the relocation table, the entry
-// point and the stack.
-//
-// Nothing is run. A program that comes back identical IS the original, so each of its functions does what
-// the original's does -- a stronger statement than any number of runs would give, and the verdict says that
-// this is how it was reached. A program that does not come back identical leaves all of its functions
-// unverified, with where it first differs.
-//
-// What writes and rebuilds the program, and its tools, are the platform's packager
-// (codebreaker/platforms/dos.py); its emulator slot is empty.
-//
-// Typing notes:
-//   * `P = platforms.of(KIND)` is the platform's packager, which has no port (platforms/__init__ and dos.py are
-//     Python): set_packager() installs it as two functions, tools() ({name: exe path}) and writer(module_path,
-//     work) -> Written. Asking before one is set is a RuntimeError.
-//   * the writer's dict is Written: source / functions / linked / notes / same / built are its keys, an absent
-//     key an empty optional (the Python reads `source`, `functions`, `linked` and `notes` with .get and `same`
-//     with [], whose KeyError build() raises).
-//   * the kind's four functions: profile -> (digest, settings text), prepare -> Prepared, build -> Built
-//     ((context, {name: item}, {name: why})), judge -> Verdict ((verdict, detail, list, text)).
-//   * not ported: nothing (the module is functions and constants only).
+// The module is native/cb/verify/lanes/dos.{hpp,cpp} now (reconstructing a real-mode program: its source is assembly
+// written from its image, assembled, linked and compared with the original as a whole; nothing is run). This header
+// keeps the old py:: API: the kind's four functions (profile, prepare, build, judge) over the old records, and
+// `set_packager`, which installs the platform's packager (the writer and the tools) the new lane is given.
+// No logic of the lane's own.
 #pragma once
 
 #include <cstdint>
@@ -32,13 +12,16 @@
 #include <optional>
 #include <tuple>
 
+#include "cb/core/text.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/verify/lanes/dos.hpp"
 #include "py.hpp"
 
 namespace codebreaker::verify::lanes::dos {
 
-extern const py::str KIND;   // "dos"
-inline constexpr int64_t REV = 93;
-extern const py::str SAME;
+inline const py::str KIND = py::str("dos");
+inline constexpr int64_t REV = cb::verify::lanes::DosLane::kRev;
+inline const py::str SAME = py::str(std::string(cb::verify::lanes::kSameProgram));
 
 // a function the writer wrote: its name (the writer's dict holds more, the lane asks only this)
 struct Function {
@@ -60,10 +43,59 @@ struct Packager {
     std::function<Written(const py::str& module_path, const py::str& work)> writer;   // writes and rebuilds the program
 };
 
-void set_packager(const Packager& packager);
+namespace detail {
+namespace nv = cb::verify::lanes;
+
+inline Packager& packager() {
+    static Packager p;
+    return p;
+}
+inline Written old_written(const nv::Written& w) {
+    Written out;
+    if (!w.source.empty()) out.source = cb::compat::to_py(w.source.generic_string());
+    py::dict<int64_t, Function> fns;
+    for (const auto& [address, name] : w.functions) fns.set(static_cast<int64_t>(address), Function{cb::compat::to_py(name)});
+    out.functions = fns;
+    out.linked = w.linked;
+    out.notes = cb::compat::to_py(w.notes);
+    out.same = w.same;
+    if (!w.built.empty()) out.built = cb::compat::to_py(w.built.generic_string());
+    return out;
+}
+inline nv::Written new_written(const Written& w) {
+    nv::Written out;
+    if (w.source) out.source = w.source->utf8();
+    if (w.functions)
+        for (const auto& kv : w.functions->items()) out.functions[static_cast<std::uint32_t>(std::get<0>(kv))] = std::get<1>(kv).name.utf8();
+    out.linked = w.linked.value_or(false);
+    if (w.notes) out.notes = cb::compat::from_py(*w.notes);
+    out.same = w.same.value_or(false);
+    if (w.built) out.built = w.built->utf8();
+    return out;
+}
+// the new lane over the installed packager (asking before one is set is a RuntimeError, as before)
+inline nv::DosLane lane() {
+    const Packager p = packager();
+    if (!p.writer || !p.tools) throw py::RuntimeError("the DOS platform's packager has not been installed");
+    return nv::DosLane(
+        [p](const std::filesystem::path& module, const std::filesystem::path& out_dir) {
+            return new_written(p.writer(cb::compat::to_py(module.generic_string()), cb::compat::to_py(out_dir.generic_string())));
+        },
+        [p] {
+            std::map<std::string, std::filesystem::path> tools;
+            for (const auto& kv : p.tools().items()) tools[std::get<0>(kv).utf8()] = std::get<1>(kv).utf8();
+            return tools;
+        });
+}
+}  // namespace detail
+
+inline void set_packager(const Packager& packager) { detail::packager() = packager; }
 
 // (a digest of the settings a verdict depends on, the text it is made from)
-std::tuple<py::str, py::str> profile(const std::optional<py::str>& module_path = std::nullopt);
+inline std::tuple<py::str, py::str> profile(const std::optional<py::str>& module_path = std::nullopt) {
+    const auto p = detail::lane().profile(module_path ? std::filesystem::path(module_path->utf8()) : std::filesystem::path());
+    return {cb::compat::to_py(p.digest), cb::compat::to_py(p.settings)};
+}
 
 struct Prepared {
     Written written;
@@ -75,7 +107,22 @@ struct Prepared {
     py::str sig;
 };
 
-Prepared prepare(const py::str& module_path, const py::str& work);
+inline Prepared prepare(const py::str& module_path, const py::str& work) {
+    return cb::compat::guard([&] {
+        const auto native = detail::lane().prepare(module_path.utf8(), std::filesystem::path(work.utf8()));
+        const auto& m = static_cast<const cb::verify::lanes::DosLane::PreparedProgram&>(*native);
+        Prepared out;
+        out.written = detail::old_written(m.written);
+        out.header = cb::compat::to_py(cb::text::from_latin1(cb::as_bytes(m.header)));   // (the Python read it as latin-1)
+        out.order = cb::compat::to_py(m.order);
+        for (const std::string& n : m.order) out.key.set(cb::compat::to_py(n), cb::compat::to_py(m.key.at(n)));
+        for (const std::string& n : m.order)
+            if (m.texts.contains(n)) out.texts.set(cb::compat::to_py(n), cb::compat::to_py(m.texts.at(n)));
+        out.all_keys = cb::compat::to_py(m.all_keys);
+        out.sig = cb::compat::to_py(m.sig);
+        return out;
+    });
+}
 
 // (did the program come back identical, why not)
 using Context = std::tuple<bool, py::str>;
@@ -88,11 +135,28 @@ struct Built {
     py::dict<py::str, py::str> missing;   // {name: why it is not in the build}
 };
 
-Built build(const Prepared& m, const py::str& module_path, const py::str& work);
+inline Built build(const Prepared& m, const py::str&, const py::str&) {
+    namespace nv = cb::verify::lanes;
+    Built out;
+    const nv::Written w = detail::new_written(m.written);
+    if (!w.linked) {
+        const std::string why = nv::DosLane::why_not_built(w);
+        out.context = Context{false, cb::compat::to_py(why)};
+        for (const py::str& n : m.order) out.missing.set(n, cb::compat::to_py(why));
+        return out;
+    }
+    out.context = Context{w.same, cb::compat::to_py(nv::DosLane::why_differs(w))};
+    for (const py::str& n : m.order) out.items.set(n, Item(m.key.at(n)));
+    return out;
+}
 
 // (verdict, what differs, [], text)
 using Verdict = std::tuple<py::str, py::str, py::list<py::str>, py::str>;
 
-Verdict judge(const Context& context, const Item& item);
+inline Verdict judge(const Context& context, const Item&) {
+    const cb::verify::Judgement j = cb::verify::lanes::DosLane::judge_function(std::get<0>(context), std::get<1>(context).utf8());
+    return Verdict{cb::compat::to_py(cb::verify::word(j.verdict)), cb::compat::to_py(j.reason), cb::compat::to_py(j.limits),
+                   cb::compat::to_py(j.detail)};
+}
 
 }  // namespace codebreaker::verify::lanes::dos

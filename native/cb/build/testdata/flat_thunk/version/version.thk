@@ -1,0 +1,42 @@
+/* version.thk -- flat-thunk script. Function list from the export table; per-function
+ * ARITY recovered from the stub's `ret N` (stdcall) and pointer args from the SMapLS
+ * marshalling. Pointer input/output DIRECTION is defaulted to input -- curate where a
+ * function writes back through a pointer (mark output/inout). 16-bit target: VER.DLL. */
+enablemapdirect3216 = true;
+
+typedef unsigned short WORD;  typedef unsigned long DWORD;  typedef int INT;
+typedef long LONG;  typedef char *LPSTR;  typedef void *LPVOID;
+typedef void VOID;  typedef int HFILE;
+
+/* thunk-data exports (emitted by the thunk compiler, not APIs): VerFThk_ThunkData32, VerThkSL_ThunkData32 */
+
+/* @1 GetFileVersionInfoA -- arity recovered from stub */
+DWORD GetFileVersionInfo16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @2 GetFileVersionInfoSizeA -- arity recovered from stub (SDK prototype) */
+DWORD GetFileVersionInfoSize16(LPSTR lptstrFilename, LPDWORD lpdwHandle)
+{
+}
+
+/* @6 VerFindFileA -- arity recovered from stub */
+DWORD VerFindFile16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7, DWORD a8)
+{
+}
+
+/* @8 VerInstallFileA -- arity recovered from stub */
+DWORD VerInstallFile16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7, DWORD a8)
+{
+}
+
+/* @10 VerLanguageNameA -- arity recovered from stub */
+DWORD VerLanguageName16(LPVOID p1, LPVOID p2, DWORD a3)
+{
+}
+
+/* @12 VerQueryValueA -- arity recovered from stub (SDK prototype) */
+BOOL VerQueryValue16(const LPVOID pBlock, LPSTR lpSubBlock, LPVOID *lplpBuffer, PUINT puLen)
+{
+}
+

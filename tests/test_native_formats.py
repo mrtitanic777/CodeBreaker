@@ -28,9 +28,12 @@ DIGESTS = {
     ('pe', 'kernel32.dll'): '7fab66c75a025dea',
     ('ne', 'lzexpand.dll'): '0d93c4b410f74184',
     ('ne', 'keyboard.drv'): '1a92372ae10f30ed',
-    ('ne', 'gdi.exe'): '084a4d3c357c2a28',
-    ('le', 'vmouse.vxd'): 'b02cd86e15de1948',
-    ('le', 'vmm32.vxd'): '1e1e73eeba8675f5',
+    # 2026-11-11, the readers moved to cb::formats: gdi.exe's standalone() (too large for 16-bit sector numbers)
+    # raises ValueError, was struct.error; an LE file_offset(obj, -1) or (0, 0) is None (the Python reader wrapped a
+    # negative offset into the page before it and took object 0 for the last object)
+    ('ne', 'gdi.exe'): '15fa2844e8bb69a1',
+    ('le', 'vmouse.vxd'): 'cc38678042f2e916',
+    ('le', 'vmm32.vxd'): 'a03818ebfa19e69f',
     ('dos', 'mode.com'): '6a0d9372e2798ae0',
     ('dos', 'command.com'): '2af7b63fb298e894',
 }

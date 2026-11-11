@@ -1,82 +1,88 @@
-// questions.cc -- the PE reader's answers, in the shapes codebreaker/formats/pe.py gives them.
+// questions.cc -- the PE reader's answers, in the shapes codebreaker/formats/pe.py gives them, read by
+// cb::formats::pe (native/cb/formats/pe.hpp).
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "../core/questions.h"
+#include "../core/cb_bridge.h"
 #include "../core/text.h"
-#include "pe.h"
+#include "cb/formats/pe.hpp"
+#include "cb/formats/read.hpp"
 
 namespace cbf::pe {
 namespace {
 
-Image open(Call &c) { return Image(c.data, c.str_arg(0, "<buffer>")); }
+namespace P = cb::formats::pe;
+
+P::Image open(Call &c) { return P::Image::parse(owned(c.data), c.str_arg(0, "<buffer>")); }
 // the questions asked of an image already opened: its path is not needed again
-Image opened(Call &c) { return Image(c.data, "<buffer>"); }
+P::Image opened(Call &c) { return P::Image::parse(owned(c.data), "<buffer>"); }
 
-void put_offset(Out &o, std::optional<int64_t> off) {
-    if (off) o.integer(*off);
-    else o.none();
-}
+std::string version(int64_t major, int64_t minor) { return dec(major) + "." + dec(minor); }
 
-void section_dict(Out &o, const Section &s) {
+void section_dict(Out &o, const P::Section &s) {
     o.begin_dict();
-    o.key("name");
-    o.latin1(s.name);
-    o.item("vsize", s.vsize);
-    o.item("vaddr", s.vaddr);
-    o.item("rawsize", s.rawsize);
-    o.item("rawptr", s.rawptr);
-    o.item("chars", s.chars);
+    o.item_text("name", s.name);
+    o.item("vsize", s.virtual_size);
+    o.item("vaddr", s.virtual_address);
+    o.item("rawsize", s.raw_size);
+    o.item("rawptr", s.raw_ptr);
+    o.item("chars", s.characteristics);
     o.end_dict();
 }
 
 // PEFile.__init__: every attribute it sets
 void parse(Call &c) {
-    Image im = open(c);
+    P::Image im = open(c);
+    const P::Header &h = im.header();
     Out &o = c.out;
     o.begin_dict();
-    o.item("e_lfanew", im.e_lfanew);
-    o.item("machine", im.machine);
-    o.item("n_sections", im.n_sections);
-    o.item("timestamp", im.timestamp);
-    o.item("opt_size", im.opt_size);
-    o.item("characteristics", im.characteristics);
-    o.item("magic", im.magic);
+    o.item("e_lfanew", h.e_lfanew);
+    o.item("machine", h.machine);
+    o.item("n_sections", h.n_sections);
+    o.item("timestamp", h.timestamp);
+    o.item("opt_size", h.opt_size);
+    o.item("characteristics", h.characteristics);
+    o.item("magic", h.magic);
     o.key("is_plus");
-    o.boolean(im.is_plus);
-    o.item("entry", im.entry);
+    o.boolean(h.is_plus);
+    o.item("entry", h.entry_rva);
     o.key("image_base");
-    o.uinteger(im.image_base);
-    o.item("n_datadir", im.n_datadir);
+    o.uinteger(h.image_base);
+    o.item("n_datadir", h.n_datadirs);
     o.key("datadirs");
     o.begin_list();
-    for (const DataDirectory &d : im.datadirs) {
+    for (const P::DataDirectory &d : im.data_directories()) {
         o.begin_tuple();
-        o.integer(d.va);
+        o.integer(d.rva);
         o.integer(d.size);
         o.end_tuple();
     }
     o.end_list();
     o.key("sections");
     o.begin_list();
-    for (const Section &s : im.sections) section_dict(o, s);
+    for (const P::Section &s : im.sections()) section_dict(o, s);
     o.end_list();
     o.end_dict();
 }
 
 void machine_name(Call &c) { c.out.text(opened(c).machine_name()); }
-void is_dll(Call &c) { c.out.boolean(opened(c).is_dll()); }
-void rva_to_off(Call &c) { put_offset(c.out, opened(c).rva_to_off(c.int_arg(0))); }
+void is_dll(Call &c) { c.out.boolean(opened(c).header().is_dll()); }
+void rva_to_off(Call &c) {
+    const int64_t rva = c.int_arg(0);
+    put_opt(c.out, rva < 0 ? std::nullopt : opened(c).rva_to_offset(uint64_t(rva)));
+}
 void code_bytes(Call &c) { c.out.uinteger(opened(c).code_bytes()); }
 void module_name(Call &c) { c.out.text(opened(c).module_name()); }
 
 void exports(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const Export &e : opened(c).exports()) {
+    for (const P::Export &e : opened(c).exports()) {
         o.begin_tuple();
-        o.integer(e.ordinal);
-        if (e.name) o.latin1(*e.name);
-        else o.none();
+        o.uinteger(e.ordinal);
+        put_opt_text(o, e.name);
         o.integer(e.rva);
         o.end_tuple();
     }
@@ -87,15 +93,14 @@ void exports(Call &c) {
 void export_addrs(Call &c) {
     std::vector<std::pair<std::string, uint32_t>> out;
     std::unordered_map<std::string, size_t> where;
-    for (const Export &e : opened(c).exports()) {
+    for (const P::Export &e : opened(c).exports()) {
         if (!e.name || e.name->empty()) continue;
-        std::string n = latin1(*e.name);
-        auto it = where.find(n);
+        auto it = where.find(*e.name);
         if (it != where.end()) {
             out[it->second].second = e.rva;
         } else {
-            where[n] = out.size();
-            out.emplace_back(n, e.rva);
+            where[*e.name] = out.size();
+            out.emplace_back(*e.name, e.rva);
         }
     }
     Out &o = c.out;
@@ -110,8 +115,8 @@ void export_addrs(Call &c) {
 void imports(Call &c) {
     Out &o = c.out;
     o.begin_dict();
-    for (const Import &i : opened(c).imports()) {
-        o.uinteger(i.slot);
+    for (const P::Import &i : opened(c).imports()) {
+        o.uinteger(i.slot_va);
         o.begin_tuple();
         o.text(i.dll);
         o.text(i.name);
@@ -121,14 +126,14 @@ void imports(Call &c) {
 }
 
 void code_sections(Call &c) {
-    Image im = opened(c);
+    P::Image im = opened(c);
     Out &o = c.out;
     o.begin_list();
-    for (auto &vs : im.code_sections()) {
+    for (const auto &cs : im.code_sections()) {
         o.begin_tuple();
-        o.uinteger(vs.first);
-        o.bytes(im.data.slice(vs.second.rawptr, int64_t(vs.second.rawptr) + vs.second.rawsize));
-        o.latin1(vs.second.name);
+        o.uinteger(cs.va);
+        put(o, cb::formats::clamped(im.data(), cs.section->raw_ptr, cs.section->raw_size));   // data[rawptr:rawptr+rawsize]
+        o.text(cs.section->name);
         o.end_tuple();
     }
     o.end_list();
@@ -137,33 +142,35 @@ void code_sections(Call &c) {
 void base_relocs(Call &c) {
     Out &o = c.out;
     o.begin_set();
-    for (int64_t r : opened(c).base_relocs()) o.integer(r);
+    for (uint64_t r : opened(c).base_relocs()) o.uinteger(r);
     o.end_set();
 }
 
 void build_meta(Call &c) {
-    Image im = opened(c);
-    const int64_t opt = int64_t(im.e_lfanew) + 4 + 20;
-    const int64_t subsys_off = opt + (im.is_plus ? 72 : 68);
+    P::Image im = opened(c);
+    const P::Header &h = im.header();
+    const uint64_t opt = uint64_t(h.e_lfanew) + 4 + 20;
+    const uint64_t subsys_off = opt + (h.is_plus ? 72 : 68);
+    const cb::ByteView d = im.data();
     Out &o = c.out;
     o.begin_dict();
     o.item_text("machine", im.machine_name());
-    o.item_text("magic", im.is_plus ? "PE32+" : "PE32");
-    o.item_text("kind", im.is_dll() ? "DLL" : "EXE");
+    o.item_text("magic", h.is_plus ? "PE32+" : "PE32");
+    o.item_text("kind", h.is_dll() ? "DLL" : "EXE");
     o.key("image_base");
-    o.uinteger(im.image_base);
-    o.item("entry_rva", im.entry);
+    o.uinteger(h.image_base);
+    o.item("entry_rva", h.entry_rva);
     o.key("entry_va");
-    if (im.entry) {
-        if (im.entry > UINT64_MAX - im.image_base) o.uinteger65(im.image_base + im.entry);   // past 64 bits, as Python adds
-        else o.uinteger(im.image_base + im.entry);
+    if (h.entry_rva) {
+        if (h.entry_rva > UINT64_MAX - h.image_base) o.uinteger65(h.image_base + h.entry_rva);   // past 64 bits, as Python adds
+        else o.uinteger(h.image_base + h.entry_rva);
     } else {
         o.integer(0);
     }
-    o.item("timestamp", im.timestamp);
-    o.item_text("linker_version", dec(im.data.at(opt + 2)) + "." + dec(im.data.at(opt + 3)));
-    uint16_t sub = im.data.slice(subsys_off, subsys_off + 2).exact(2).u16(0);
-    const char *label = subsystem_label(sub);
+    o.item("timestamp", h.timestamp);
+    o.item_text("linker_version", version(cb::formats::get<uint8_t>(d, opt + 2, "pe"), cb::formats::get<uint8_t>(d, opt + 3, "pe")));
+    const uint16_t sub = cb::formats::get<uint16_t>(d, subsys_off, "pe");
+    const char *label = P::subsystem_label(sub);
     o.item_text("subsystem", label ? label : "0x" + hex(sub));
     o.end_dict();
 }
@@ -176,16 +183,15 @@ void debug_codeview(Call &c) {
         return;
     }
     o.begin_dict();
-    o.item_text("format", cv->format);
-    if (cv->format == "RSDS") {
+    if (cv->kind == P::CodeView::Kind::Rsds) {
+        o.item_text("format", "RSDS");
         o.item_text("guid", cv->guid);
-        o.item("age", cv->age);
     } else {
+        o.item_text("format", "NB10");
         o.item("signature", cv->signature);
-        o.item("age", cv->age);
     }
-    o.key("pdb");
-    o.latin1(cv->pdb);
+    o.item("age", cv->age);
+    o.item_text("pdb", cv->pdb);
     o.end_dict();
 }
 
@@ -194,56 +200,80 @@ std::optional<int64_t> opt_int(const Value &v) {
     return v.as_int();
 }
 
+// _u(fmt, off): a little-endian value of the image, 0 where it does not lie in the file
 void u(Call &c) {
-    std::string fmt = c.str_arg(0);
+    const std::string fmt = c.str_arg(0);
     if (fmt.size() != 1 || std::string("BHIQ").find(fmt[0]) == std::string::npos) raise("struct.error", "bad char in struct format");
-    c.out.uinteger(opened(c).u(fmt[0], opt_int(c.arg(1))));
+    const auto off = opt_int(c.arg(1));
+    const cb::ByteView d = view(c.data);
+    uint64_t v = 0;
+    if (off && *off >= 0) {
+        const uint64_t at = uint64_t(*off);
+        switch (fmt[0]) {
+        case 'B': v = cb::formats::get_or_zero<uint8_t>(d, at); break;
+        case 'H': v = cb::formats::get_or_zero<uint16_t>(d, at); break;
+        case 'I': v = cb::formats::get_or_zero<uint32_t>(d, at); break;
+        default: v = cb::formats::get_or_zero<uint64_t>(d, at); break;
+        }
+    }
+    c.out.uinteger(v);
 }
-void text(Call &c) { c.out.text(opened(c).text(opt_int(c.arg(0)), c.int_arg(1, 512))); }
-void file_offset(Call &c) { put_offset(c.out, opened(c).file_offset(c.int_arg(0))); }
+
+// _text(off, limit): the zero-terminated latin1 string there, at most `limit` bytes; "" outside the file
+void text(Call &c) {
+    const auto off = opt_int(c.arg(0));
+    const int64_t limit = c.int_arg(1, 512);
+    if (!off || *off < 0 || *off >= c.data.size() || limit <= 0) {
+        c.out.text("");
+        return;
+    }
+    c.out.text(cb::formats::cstring(view(c.data), uint64_t(*off), uint64_t(limit)));
+}
+
+void file_offset(Call &c) {
+    const int64_t rva = c.int_arg(0);
+    put_opt(c.out, rva < 0 ? std::nullopt : opened(c).file_offset(uint64_t(rva)));
+}
 
 void optional_header(Call &c) {
-    Image im = opened(c);
-    const int64_t opt = int64_t(im.e_lfanew) + 24;
-    auto u16 = [&](int64_t o) { return int64_t(im.u('H', opt + o)); };
-    auto u32 = [&](int64_t o) { return int64_t(im.u('I', opt + o)); };
-    auto ver = [&](int64_t a, int64_t b) { return dec(a) + "." + dec(b); };
+    const P::OptionalHeader h = opened(c).optional_header();
     Out &o = c.out;
     o.begin_dict();
-    o.item("magic", im.magic);
-    o.item_text("linker_version", ver(int64_t(im.u('B', opt + 2)), int64_t(im.u('B', opt + 3))));
-    o.item("code_size", u32(4));
-    o.item("initialized_data_size", u32(8));
-    o.item("uninitialized_data_size", u32(12));
-    o.item("entry_point", im.entry);
-    o.item("code_base", u32(20));
+    o.item("magic", h.magic);
+    o.item_text("linker_version", version(h.linker_major, h.linker_minor));
+    o.item("code_size", h.code_size);
+    o.item("initialized_data_size", h.initialized_data_size);
+    o.item("uninitialized_data_size", h.uninitialized_data_size);
+    o.item("entry_point", h.entry_point);
+    o.item("code_base", h.code_base);
     o.key("image_base");
-    o.uinteger(im.image_base);
-    o.item("section_alignment", u32(32));
-    o.item("file_alignment", u32(36));
-    o.item_text("os_version", ver(u16(40), u16(42)));
-    o.item_text("image_version", ver(u16(44), u16(46)));
-    o.item_text("subsystem_version", ver(u16(48), u16(50)));
-    o.item("image_size", u32(56));
-    o.item("headers_size", u32(60));
-    o.item("checksum", u32(64));
-    o.item("subsystem", u16(68));
-    const char *label = subsystem_label(uint32_t(u16(68)));
-    o.item_text("subsystem_name", label ? label : dec(u16(68)));
-    o.item("dll_characteristics", u16(70));
+    o.uinteger(h.image_base);
+    o.item("section_alignment", h.section_alignment);
+    o.item("file_alignment", h.file_alignment);
+    o.item_text("os_version", version(h.os_version.major, h.os_version.minor));
+    o.item_text("image_version", version(h.image_version.major, h.image_version.minor));
+    o.item_text("subsystem_version", version(h.subsystem_version.major, h.subsystem_version.minor));
+    o.item("image_size", h.image_size);
+    o.item("headers_size", h.headers_size);
+    o.item("checksum", h.checksum);
+    o.item("subsystem", h.subsystem);
+    const char *label = P::subsystem_label(h.subsystem);
+    o.item_text("subsystem_name", label ? label : dec(h.subsystem));
+    o.item("dll_characteristics", h.dll_characteristics);
     o.end_dict();
 }
 
 void directory(Call &c) {
-    DataDirectory d = opened(c).directory(c.int_arg(0));
+    const int64_t k = c.int_arg(0);
+    const P::DataDirectory d = k < 0 ? P::DataDirectory{} : opened(c).directory(size_t(k));
     c.out.begin_tuple();
-    c.out.integer(d.va);
+    c.out.integer(d.rva);
     c.out.integer(d.size);
     c.out.end_tuple();
 }
 
 void export_table(Call &c) {
-    ExportTable t = opened(c).export_table();
+    const P::ExportTable t = opened(c).export_table();
     Out &o = c.out;
     o.begin_dict();
     o.item_text("module", t.module);
@@ -251,13 +281,14 @@ void export_table(Call &c) {
     o.item("timestamp", t.timestamp);
     o.key("symbols");
     o.begin_list();
-    for (const ExportSymbol &s : t.symbols) {
+    for (const P::ExportSymbol &s : t.symbols) {
         o.begin_dict();
-        o.item_text("name", s.name);
-        o.item("ordinal", s.ordinal);
-        o.item("hint", s.hint);
+        o.item_text("name", s.name.value_or(""));
+        o.key("ordinal");
+        o.uinteger(s.ordinal);
+        o.item("hint", s.hint ? int64_t(*s.hint) : -1);
         o.item("rva", s.rva);
-        o.item_text("forward", s.forward);
+        o.item_text("forward", s.forward.value_or(""));
         o.end_dict();
     }
     o.end_list();
@@ -267,17 +298,18 @@ void export_table(Call &c) {
 void import_table(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const ImportModule &m : opened(c).import_table(c.bool_arg(0))) {
+    for (const P::ImportModule &m : opened(c).import_table(c.bool_arg(0))) {
         o.begin_dict();
         o.item_text("module", m.module);
         o.key("symbols");
         o.begin_list();
-        for (const ImportSymbol &s : m.symbols) {
+        for (const P::ImportSymbol &s : m.symbols) {
             o.begin_dict();
-            o.item_text("name", s.name);
-            o.item("ordinal", s.ordinal);
-            o.item("hint", s.hint);
-            o.item("slot", s.slot);
+            o.item_text("name", s.name.value_or(""));
+            o.item("ordinal", s.ordinal ? int64_t(*s.ordinal) : -1);
+            o.item("hint", s.hint ? int64_t(*s.hint) : -1);
+            o.key("slot");
+            o.uinteger(s.slot_rva);
             o.end_dict();
         }
         o.end_list();
@@ -289,26 +321,24 @@ void import_table(Call &c) {
 void resource_tree(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const ResourceType &t : opened(c).resource_tree()) {
+    for (const P::ResourceType &t : opened(c).resource_tree()) {
         o.begin_dict();
         o.key("type");
         if (t.name) o.text(*t.name);
-        else o.integer(*t.id);
+        else o.integer(t.id.value_or(0));
         o.key("id");
-        if (t.id) o.integer(*t.id);
-        else o.none();
+        put_opt(o, t.id);
         o.key("items");
         o.begin_list();
-        for (const ResourceItem &it : t.items) {
+        for (const P::ResourceItem &it : t.items) {
             o.begin_dict();
-            o.item_text("name", *it.name_text);
+            o.item_text("name", it.name ? *it.name : "#" + std::to_string(it.id.value_or(0)));
             o.key("id");
-            if (it.id) o.integer(*it.id);
-            else o.none();
+            put_opt(o, it.id);
             o.item("language", it.language);
             o.item("rva", it.rva);
             o.key("offset");
-            put_offset(o, it.offset);
+            put_opt(o, it.file_offset);
             o.item("size", it.size);
             o.end_dict();
         }
@@ -321,10 +351,10 @@ void resource_tree(Call &c) {
 void reloc_blocks(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (auto &b : opened(c).reloc_blocks()) {
+    for (const P::RelocBlock &b : opened(c).reloc_blocks()) {
         o.begin_tuple();
-        o.integer(b.first);
-        o.integer(b.second);
+        o.integer(b.page_rva);
+        o.integer(b.entries);
         o.end_tuple();
     }
     o.end_list();
@@ -352,7 +382,7 @@ void tls(Call &c) {
 void debug_entries(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const DebugEntry &e : opened(c).debug_entries()) {
+    for (const P::DebugEntry &e : opened(c).debug_entries()) {
         o.begin_dict();
         o.item("type", e.type);
         o.item("timestamp", e.timestamp);
@@ -366,7 +396,7 @@ void debug_entries(Call &c) {
 void certificates(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const Certificate &e : opened(c).certificates()) {
+    for (const P::Certificate &e : opened(c).certificates()) {
         o.begin_dict();
         o.item("length", e.length);
         o.item("revision", e.revision);
@@ -384,7 +414,7 @@ void clr(Call &c) {
         return;
     }
     o.begin_dict();
-    o.item_text("runtime_version", dec(r->major) + "." + dec(r->minor));
+    o.item_text("runtime_version", version(r->runtime.major, r->runtime.minor));
     o.item("flags", r->flags);
     o.item("entry_token", r->entry_token);
     o.end_dict();
@@ -401,7 +431,7 @@ void rich(Call &c) {
     o.item("key", r->key);
     o.key("entries");
     o.begin_list();
-    for (const RichEntry &e : r->entries) {
+    for (const P::RichEntry &e : r->entries) {
         o.begin_tuple();
         o.integer(e.product);
         o.integer(e.build);
@@ -412,7 +442,7 @@ void rich(Call &c) {
     o.end_dict();
 }
 
-void dotnet(Call &c) { c.out.boolean(is_dotnet(c.str_arg(0))); }
+void dotnet(Call &c) { c.out.boolean(P::is_dotnet_file(path_of(c.str_arg(0)))); }
 
 }  // namespace
 

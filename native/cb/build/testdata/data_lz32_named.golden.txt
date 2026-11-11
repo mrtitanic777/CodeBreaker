@@ -1,0 +1,5 @@
+pointers=2 size=512 movable=True
+section 2 .data bfea2000 512
+part codebreaker_data_2 bfea2000 16 2
+part g_exported bfea2010 48 2
+part g_second bfea2040 448 2

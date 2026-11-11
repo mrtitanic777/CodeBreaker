@@ -167,7 +167,7 @@ Config from_value(const py::V& d) {
         for (const py::V& x : d.get("also").seq()) c.also.append(str(py::json_dump(x)));
     }
     if (d.get("link").is_dict()) c.link = linkwhole::link_config(str(py::json_dump(d.get("link"))));
-    c.pascal = pascal_config(d);
+    c.pascal_config = pascal_config(d);
     c.text = str(py::json_dump(d));
     return c;
 }
@@ -333,7 +333,7 @@ struct LedgerView : ViewOf<identify::Project> {
         if (!v.is_str()) return std::nullopt;
         return vstr(v);
     }
-    bool has_compilands() const override { return !p.cfg.pascal.compilands.empty(); }
+    bool has_compilands() const override { return !p.cfg.pascal_config.compilands.empty(); }
     pascal_join::Project pascal_project() const override { return project::pascal_project(p); }
     py::dict<str, bytes> headers() const override { return p.headers(); }
     py::list<str> include() const override { return p.include; }
@@ -896,7 +896,7 @@ batch::Project batch_project(Project& p) {
 pascal_join::Project pascal_project(Project& p) {
     pascal_join::Project q;
     q.dir = p.dir;
-    q.cfg = p.cfg.pascal;
+    q.cfg = p.cfg.pascal_config;
     q.image = p.image;
     Project* pp = &p;
     q.toolchain = [pp]() {

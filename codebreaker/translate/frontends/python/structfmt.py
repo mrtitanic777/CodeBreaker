@@ -16,10 +16,10 @@ def parse(fmt):
     if not isinstance(fmt, str):
         return None
     order = '@'
-    if fmt[:1] in '<>!=@':
+    if fmt[:1] and fmt[:1] in '<>!=@':
         order, fmt = fmt[0], fmt[1:]
     items = []
-    for count, code in re.findall(r'\s*(\d*)\s*([a-zA-Z?])', fmt):
+    for count, code in re.findall(r'\s*(\d*)([a-zA-Z?])', fmt):
         n = int(count) if count else 1
         if code == 'x':
             items.append(('x', n, 'pad', 0, 0))
@@ -37,7 +37,7 @@ def parse(fmt):
             items += [(code, size, 'int', lo, hi)] * n
         else:
             return None
-    if re.sub(r'[\s\d]|[a-zA-Z?]', '', fmt):
+    if re.sub(r'\s*\d*[a-zA-Z?]', '', fmt).strip():          # a character that is no part of a format, or a count with no code
         return None
     if order == '@' and any(c in 'hHiIlLqQfd' for c, *_ in items):
         # native alignment pads between items; the support header implements standard sizes only

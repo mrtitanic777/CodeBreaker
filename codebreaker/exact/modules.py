@@ -25,7 +25,8 @@ import os
 import re
 import struct
 
-from codebreaker.exact import compare, omf
+from codebreaker.exact import compare
+from codebreaker.formats import omf
 
 
 def rows(prj):
@@ -297,6 +298,9 @@ def check(prj, row, raw=None):
     while k < len(d):
         if k in holes:
             tgt, disp = holes[k]
+            if k + 2 > len(d):                              # (a fix-up word the object's data cannot hold: damaged)
+                dbad.append("%04x: a fix-up word past the object's data" % (dstart + k))
+                break
             if dstart + k + 2 > len(ds):
                 dbad.append("%04x: past the program's data" % (dstart + k))
                 k += 2

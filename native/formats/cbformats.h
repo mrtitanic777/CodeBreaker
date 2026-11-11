@@ -52,9 +52,9 @@ CBF_API int cbf_call(const char *question, const uint8_t *data, size_t size,
 /* CBF_VERSION, to tell a stale build from the one the shim expects. */
 CBF_API int cbf_version(void);
 
-/* The unicorn.dll to run emulated reads on (a packed DOS program's unpacker): 0, or nonzero with
-   `err` filled. Without it such a read reports the unpacker not undone, as Python without
-   `unicorn` did. */
+/* Kept for the callers that still hand a unicorn.dll over: it is not used. An emulated read (a packed DOS
+   program's unpacker) runs on the unicorn.dll CodeBreaker ships (native/third_party/bin, beside the
+   executable: cb/core/unicorn_api.hpp). Always 0. */
 CBF_API int cbf_unicorn(const wchar_t *path, char *err, size_t errlen);
 
 /* The questions answered, one per line ("pe.exports\npe.imports\n..."). */

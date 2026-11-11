@@ -1,0 +1,33 @@
+{
+ "name": "My_Game_v2",
+ "file": "My Game! (v2).exe",
+ "source": "<IN>\\My Game! (v2).exe",
+ "sha1": "437ef8d946e1027d5341b14e6ca3f28f3b478daa",
+ "size": 22,
+ "kind": "",
+ "steps": [
+  {
+   "command": "decompile",
+   "when": "2026-01-01T00:00:01",
+   "outputs": [
+    "src\\game.c",
+    "reports",
+    "<OUT>\\elsewhere\\report.txt"
+   ],
+   "notes": "build: wcc -zq game.c\nrun: game.exe"
+  },
+  {
+   "command": "recompile",
+   "when": "2026-01-01T00:00:02",
+   "outputs": [
+    "build\\game.exe"
+   ]
+  },
+  {
+   "command": "analyze",
+   "when": "2026-01-01T00:00:03",
+   "outputs": [],
+   "notes": "no outputs, only a note"
+  }
+ ]
+}

@@ -48,3 +48,6 @@ native/retromcp/.gradle/
 # test inputs of native/cb are data (objects, binaries), never build output
 !native/cb/**/testdata/**
 native/cb/**/testdata/**/__pycache__/
+# build and run output, not source
+codebreaker/xna/bin/
+out_sw/

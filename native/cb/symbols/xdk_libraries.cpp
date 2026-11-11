@@ -37,71 +37,26 @@ struct SignatureKey {
     friend auto operator<=>(const SignatureKey&, const SignatureKey&) = default;
 };
 
-// A program's words indexed by each pair of neighbours: a function is looked for where its rarest pair of whole words
-// is (a prologue's pair is everywhere; a pair the program does not have at all rules it out at once). The index is the
-// (pair, position) entries sorted: millions of words build it far faster than a table of lists would.
-class PairIndex {
-public:
-    explicit PairIndex(const std::vector<std::uint32_t>& words) : words_(words) {
-        entries_.reserve(words.size());
-        for (std::size_t i = 0; i + 1 < words.size(); ++i) entries_.emplace_back(key(words[i], words[i + 1]), static_cast<std::uint32_t>(i));
-        std::sort(entries_.begin(), entries_.end());
-    }
-
-    // Every place, in order, where the words `sig` are, outside the bits `ignore` leaves out of each; nothing when no
-    // two neighbours of it are whole (there is nothing to look it up by).
-    std::vector<std::uint32_t> find(const std::vector<std::uint32_t>& sig, const std::vector<std::uint32_t>& ignore) const {
-        using Range = std::pair<Entries::const_iterator, Entries::const_iterator>;
-        std::optional<std::size_t> anchor;
-        Range best;
-        std::size_t fewest = 0;
-        for (std::size_t i = 0; i + 1 < ignore.size(); ++i) {
-            if (ignore[i] != 0 || ignore[i + 1] != 0) continue;
-            const Range r = occurrences(sig[i], sig[i + 1]);
-            const std::size_t n = static_cast<std::size_t>(r.second - r.first);
-            if (!anchor || n < fewest) {
-                anchor = i;
-                best = r;
-                fewest = n;
-                if (n == 0) break;
-            }
-        }
-        if (!anchor || fewest == 0) return {};
-        std::vector<std::uint32_t> hits;
-        for (auto it = best.first; it != best.second; ++it) {
-            const std::uint32_t p = it->second;
-            if (p < *anchor) continue;
-            const std::size_t start = p - *anchor;
-            if (start + sig.size() > words_.size()) continue;
-            bool same = true;
-            for (std::size_t k = 0; k < sig.size() && same; ++k) same = ((words_[start + k] ^ sig[k]) & ~ignore[k]) == 0;
-            if (same) hits.push_back(static_cast<std::uint32_t>(start));
-        }
-        return hits;
-    }
-
-private:
-    using Entries = std::vector<std::pair<std::uint64_t, std::uint32_t>>;
-
-    static std::uint64_t key(std::uint32_t a, std::uint32_t b) { return (static_cast<std::uint64_t>(a) << 32) | b; }
-
-    std::pair<Entries::const_iterator, Entries::const_iterator> occurrences(std::uint32_t a, std::uint32_t b) const {
-        const std::uint64_t k = key(a, b);
-        const auto first = std::lower_bound(entries_.begin(), entries_.end(), std::make_pair(k, std::uint32_t{0}));
-        auto last = first;
-        while (last != entries_.end() && last->first == k) ++last;
-        return {first, last};
-    }
-
-    const std::vector<std::uint32_t>& words_;
-    Entries entries_;   // sorted by pair, then by position
-};
-
 const char* kUsage =
     "codebreaker xdk-match <program.xex or image> [<XDK lib folder>] [-o names.json]\n\n"
     "Names the XDK library functions a program was statically linked with, by their code.";
 
 }  // namespace
+
+std::vector<Library> read_libraries(const std::filesystem::path& folder) {
+    std::vector<Library> out;
+    for (const LibraryFileInfo& file : library_files(folder)) {
+        libraries::Library lib;
+        try {
+            lib = libraries::read_file(folder / fs::from_text(file.name));
+        } catch (const Error&) {   // one file of the folder that cannot be read gives nothing
+            continue;
+        }
+        if (lib.machine != libraries::Machine::PowerPc) continue;
+        out.push_back({file.name, std::move(lib.functions)});
+    }
+    return out;
+}
 
 std::vector<Signature> make_signatures(std::span<const Library> libraries) {
     std::vector<const Library*> ordered;
@@ -111,7 +66,7 @@ std::vector<Signature> make_signatures(std::span<const Library> libraries) {
     std::map<SignatureKey, std::size_t> at;   // lookup into `out`
     std::vector<Signature> out;
     for (const Library* library : ordered) {
-        for (const LibraryFunction& f : library->functions) {
+        for (const libraries::Function& f : library->functions) {
             const std::size_t n = std::min(words_without_padding(f.code), f.ignore.size());
             if (n < 4) continue;
             SignatureKey key;
@@ -169,7 +124,7 @@ bool falls_through(std::uint32_t w) {
 }
 
 std::map<std::uint32_t, Found> match(const ProgramText& program, std::span<const Signature> signatures) {
-    const PairIndex index(program.words);
+    const libraries::Index index(program.words);
     std::map<std::uint32_t, std::pair<std::set<string>, std::set<string>>> sets;
     std::map<std::uint32_t, std::uint32_t> sizes;
     for (const Signature& s : signatures) {

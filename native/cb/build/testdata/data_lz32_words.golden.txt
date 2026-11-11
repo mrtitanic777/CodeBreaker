@@ -1,0 +1,43 @@
+word bfea100f bfea2016
+word bfea1020 bfea200d
+word bfea1025 bfea2000
+word bfea105e bfea103c
+word bfea1063 bfea2018
+word bfea106d bfea201c
+word bfea1071 bfea2052
+word bfea1090 bfea106d
+word bfea10b4 bfea106d
+word bfea10d3 bfea106d
+word bfea10fb bfea106d
+word bfea1118 bfea106d
+word bfea112e bfea106d
+word bfea114c bfea106d
+word bfea1166 bfea106d
+word bfea1183 bfea106d
+word bfea124e bfea30b0
+word bfea125c bfea30ac
+word bfea126b bfea30a8
+word bfea1291 bfea30a4
+word bfea12a8 bfea30a4
+word bfea12b7 bfea30a0
+word bfea12e3 bfea30b0
+word bfea12f9 bfea30a8
+word bfea131e bfea30a4
+word bfea13fc bfea3094
+word bfea1402 bfea3074
+word bfea1408 bfea3078
+word bfea140e bfea307c
+word bfea1414 bfea3080
+word bfea141a bfea3084
+word bfea1420 bfea3088
+word bfea1426 bfea308c
+word bfea142c bfea3090
+word bfea1432 bfea3070
+word bfea1438 bfea3098
+word bfea143e bfea309c
+word bfea204d bfea141e
+word bfea2085 bfea1406
+constants bfea1000 bfea103c bfea106d bfea2000 bfea200d bfea2016 bfea2018 bfea201c bfea2052
+constants bfea1100 bfea106d
+constants bfea1200 bfea30a0 bfea30a4 bfea30a8 bfea30ac bfea30b0
+constants bfea1300 bfea1406 bfea141e bfea3070 bfea3074 bfea3078 bfea307c bfea3080 bfea3084 bfea3088 bfea308c bfea3090 bfea3094 bfea3098 bfea309c bfea30a4

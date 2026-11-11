@@ -146,6 +146,8 @@ CBT_API void cbt_free(void *run);
  * service answers in, or -1 (it answers in EAX, as most do).  Returns 0, or nonzero when Python
  * raised (the run stops and Python raises the same exception after it). */
 typedef int (*cbt_drv_answers)(int32_t device, int32_t service, int32_t *out);
+/* The same question with a context pointer, for a caller that is not a process-wide function (cbt_drv_set_answers). */
+typedef int (*cbt_drv_answers_ctx)(void *user, int32_t device, int32_t service, int32_t *out);
 
 #define CBT_DRV_CALL_WORDS 15  /* none_first, first, second, nregs, regs[6], nwords, words[4] */
 #define CBT_DRV_PORT_WORDS 4   /* kind (0 in, 1 out), port, size, value */
@@ -180,6 +182,7 @@ typedef struct cbt_drv_result {
 } cbt_drv_result;
 
 CBT_API void *cbt_drv_begin(const cbt_drv_config *cfg);
+CBT_API void cbt_drv_set_answers(void *run, cbt_drv_answers_ctx fn, void *user);   /* before attach: answers through fn(user, ...) */
 CBT_API int cbt_drv_attach(void *run);                  /* the hooks, in driver.run's order */
 CBT_API void cbt_drv_state(void *run, int64_t *out);    /* [0] hook_error, [1] uc_err, [2] gov_n */
 CBT_API const cbt_drv_result *cbt_drv_result_get(void *run);

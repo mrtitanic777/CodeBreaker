@@ -7,6 +7,7 @@
 // with an Xbox LIVE account) log on, as on a console.
 
 #include "kernel/kernel.h"
+#include "guide/guide.h"
 #include "kernel/enumerator.h"
 #include "kernel/objects.h"
 #include "kernel/overlapped.h"
@@ -107,8 +108,10 @@ namespace
             const uint64_t me = self ? self->onlineXuid : 0;
             if (party && !wasIn && party->leader != me)
                 xui::QueueNotification(xui::kNotifyPartyJoined, e.user, u"");
-            else if (party && wasIn)
+            else if (party)
             {
+                // Also the party this user started (Invite to Party creates it by a request, no event: the first
+                // event is the first member joining).
                 for (const auto& [xuid, tag] : now)
                     if (!before.contains(xuid) && xuid != me)
                         xui::QueueNotification(xui::kNotifyPartyMemberJoined, e.user, Utf16(tag));
@@ -180,17 +183,21 @@ namespace
             kernel::BroadcastNotification(it != friends.end() && !it->request.empty() ? kXnFriendsFriendAdded
                                                                                        : kXnFriendsPresenceChanged,
                                           e.user);
+            guide::LiveChanged(e.user);
             break;
         }
         case live::EventKind::FriendRemoved:
             kernel::BroadcastNotification(kXnFriendsFriendRemoved, e.user);
+            guide::LiveChanged(e.user);
             break;
         case live::EventKind::PartyChanged:
             kernel::BroadcastNotification(kXnPartyMembersChanged, 0);
+            guide::LiveChanged(e.user);
             break;
         case live::EventKind::MessageArrived:
             // XAM's mailbox list changed (0x818E5718): 0x82000006 with the user index, for system listeners.
             kernel::BroadcastNotification(0x82000006, e.user);
+            guide::LiveChanged(e.user);
             break;
         case live::EventKind::Connected:
             // Signed-in profiles without an Xbox LIVE account get one now (EnsureLiveAccount; requests cannot be made

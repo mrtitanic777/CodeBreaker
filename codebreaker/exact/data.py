@@ -28,7 +28,8 @@ import os
 import re
 import struct
 
-from codebreaker.exact import modules, omf
+from codebreaker.exact import modules
+from codebreaker.formats import omf
 
 BS = chr(92)
 

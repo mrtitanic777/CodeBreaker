@@ -1,0 +1,6 @@
+format=PE
+subtype=flat-thunk
+recipe=thunk-ml-cl-link
+n_exports=114
+n_imports=36
+why=imports flat-thunk helpers (SMapLS,SUnMapLS)

@@ -1,0 +1,5 @@
+pointers=66 size=5120 movable=True
+section 2 .rdata 7f0b4000 2048
+section 3 .data 7f0b5000 3072
+part codebreaker_data_2 7f0b4000 2048 2
+part codebreaker_data_3 7f0b5000 3072 3

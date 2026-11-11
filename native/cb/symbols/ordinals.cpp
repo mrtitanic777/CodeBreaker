@@ -15,6 +15,7 @@
 #include "cb/core/text.hpp"
 #include "cb/knowledge/reads.hpp"
 #include "cb/symbols/demangle.hpp"
+#include "cb/symbols/libraries/coff.hpp"
 
 namespace cb::symbols::ordinals {
 namespace {
@@ -225,117 +226,14 @@ std::map<std::string, std::map<std::uint32_t, std::string>> read_definition_file
 
 // ---- import libraries -----------------------------------------------------------------------------------------------
 
-namespace {
-
-// The bodies of the objects in a COFF archive (`!<arch>`); the linker's own members left out. A last member that the
-// end of the file cuts short is taken as far as it goes, and a header that gives no size ends the archive.
-std::vector<ByteView> archive_members(ByteView data) {
-    std::vector<ByteView> out;
-    size_t at = 8;
-    while (at + 60 <= data.size()) {
-        const ByteView head = data.subspan(at, 60);
-        // the size is the last number of the header (the first 32-bit tools misplaced it)
-        string fields(as_text(head.subspan(16, 42)));
-        std::replace(fields.begin(), fields.end(), '\0', ' ');
-        const auto tokens = text::split_ws(fields);
-        const auto size = tokens.empty() ? std::nullopt : text::parse_int<size_t>(tokens.back());
-        if (!size) return out;
-        const size_t body_at = at + 60;
-        const ByteView body = body_at >= data.size() ? ByteView() : data.subspan(body_at, std::min(*size, data.size() - body_at));
-        at = body_at + *size + (*size & 1);
-        const string label(text::trim(as_text(head.subspan(0, 16))));
-        if (label != "/" && label != "//" && !label.empty()) out.push_back(body);
-    }
-    return out;
-}
-
-struct ImportMember {
-    string module;
-    std::uint32_t ordinal = 0;
-    string symbol;
-};
-
-// The function a member of a 32-bit import library imports by number, in either of the forms the tools wrote: the
-// short import header, or a little object file.
-std::optional<ImportMember> coff_import(ByteView obj) {
-    try {
-        if (obj.size() >= 20 && obj[0] == 0 && obj[1] == 0 && obj[2] == 0xFF && obj[3] == 0xFF) {   // the short form
-            io::ByteReader r(obj, "import library member");
-            r.seek(16);
-            const std::uint32_t hint = r.u16();
-            const std::uint32_t kind = r.u16();
-            const string_view rest = as_text(obj.subspan(20));
-            const size_t z = rest.find('\0');
-            const string_view symbol = rest.substr(0, z);
-            string_view dll;
-            if (z != string_view::npos) {
-                const string_view after = rest.substr(z + 1);
-                dll = after.substr(0, after.find('\0'));
-            }
-            if (((kind >> 2) & 7) == 0) return ImportMember{module_stem(text::from_latin1(as_bytes(dll))), hint, text::from_latin1(as_bytes(symbol))};
-            return std::nullopt;
-        }
-        if (obj.size() < 20) return std::nullopt;
-        io::ByteReader r(obj, "import library member");
-        r.skip(2);   // the machine
-        const std::uint32_t sections = r.u16();
-        r.skip(4);   // the time stamp
-        const std::uint32_t symbol_table = r.u32();
-        const std::uint32_t symbols = r.u32();
-        std::optional<std::uint32_t> ordinal;
-        for (std::uint32_t i = 0; i < sections; ++i) {   // the long form: a little object file
-            const size_t o = 20 + 40ull * i;
-            if (o + 8 > obj.size()) continue;
-            const string_view name = text::trim(as_text(obj.subspan(o, 8)), string_view("\0", 1));
-            if (name != ".idata$5" && name != ".idata$4") continue;
-            r.seek(o + 16);
-            const std::uint32_t raw_size = r.u32();
-            const std::uint32_t raw_ptr = r.u32();
-            if (raw_size >= 4) {
-                r.seek(raw_ptr);
-                const std::uint32_t value = r.u32();
-                if (value & 0x80000000u) ordinal = value & 0xFFFF;
-            }
-        }
-        if (!ordinal) return std::nullopt;
-        const std::uint64_t strings = static_cast<std::uint64_t>(symbol_table) + 18ull * symbols;
-        string symbol;
-        string dll;
-        for (std::uint32_t i = 0; i < symbols;) {
-            const std::uint64_t rec_at = symbol_table + 18ull * i;
-            if (rec_at + 18 > obj.size()) break;
-            const ByteView rec = obj.subspan(rec_at, 18);
-            string nm;
-            if (rec[0] == 0 && rec[1] == 0 && rec[2] == 0 && rec[3] == 0) {   // a long name, in the string table
-                const std::uint64_t at = strings + (rec[4] | (rec[5] << 8) | (rec[6] << 16) | (static_cast<std::uint32_t>(rec[7]) << 24));
-                if (at < obj.size()) {
-                    const string_view rest = as_text(obj.subspan(at));
-                    nm = text::from_latin1(as_bytes(rest.substr(0, rest.find('\0'))));
-                }
-            } else {
-                string_view s = as_text(rec.subspan(0, 8));
-                while (!s.empty() && s.back() == '\0') s.remove_suffix(1);
-                nm = text::from_latin1(as_bytes(s));
-            }
-            if (nm.starts_with("__imp_")) symbol = nm.substr(6);
-            else if (nm.starts_with("__IMPORT_DESCRIPTOR_")) dll = nm.substr(20);
-            i += 1 + rec[17];
-        }
-        if (symbol.empty() || dll.empty()) return std::nullopt;
-        return ImportMember{module_stem(dll), *ordinal, symbol};
-    } catch (const TruncatedError&) {   // a damaged member: nothing is read from it
-        return std::nullopt;
-    }
-}
-
-}  // namespace
-
 std::map<std::string, std::map<std::uint32_t, std::string>> read_import_library(ByteView data) {
     std::map<string, std::map<std::uint32_t, string>> out;
     constexpr string_view kArchive = "!<arch>\n";
     if (data.size() >= 8 && as_text(data.subspan(0, 8)) == kArchive) {
-        for (const ByteView member : archive_members(data)) {
-            if (const auto hit = coff_import(member)) out[hit->module].try_emplace(hit->ordinal, hit->symbol);
+        for (const libraries::coff::Member& member : libraries::coff::members(data)) {
+            if (const auto hit = libraries::coff::import_by_ordinal(member.body)) {
+                out[module_stem(hit->dll)].try_emplace(hit->ordinal, hit->symbol);
+            }
         }
         return out;
     }

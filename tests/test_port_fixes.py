@@ -335,7 +335,16 @@ def test_native_dosexec_loads_the_dll_once_from_two_threads():
     nd._LIB.clear()
     nd._WHY.clear()
     got = []
-    gate = threading.Barrier(2)
+    arrived, ready = [0], threading.Condition()
+
+    class Gate:                                           # both threads start their first use together
+        def wait(self):
+            with ready:
+                arrived[0] += 1
+                ready.notify_all()
+                ready.wait_for(lambda: arrived[0] >= 2, timeout=10)
+
+    gate = Gate()
 
     def first_use():
         gate.wait()

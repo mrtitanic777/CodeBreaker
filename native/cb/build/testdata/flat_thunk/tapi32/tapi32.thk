@@ -1,0 +1,580 @@
+/* tapi32.thk -- flat-thunk script. Function list from the export table; per-function
+ * ARITY recovered from the stub's `ret N` (stdcall) and pointer args from the SMapLS
+ * marshalling. Pointer input/output DIRECTION is defaulted to input -- curate where a
+ * function writes back through a pointer (mark output/inout). 16-bit target: TAPI.DLL. */
+enablemapdirect3216 = true;
+
+typedef unsigned short WORD;  typedef unsigned long DWORD;  typedef int INT;
+typedef long LONG;  typedef char *LPSTR;  typedef void *LPVOID;
+typedef void VOID;  typedef int HFILE;
+
+/* @1 lineAccept -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineAccept16(void)
+{
+}
+
+/* @2 lineAddProvider -- arity recovered from stub */
+DWORD lineAddProvider16(LPVOID p1, LPVOID p2, DWORD a3)
+{
+}
+
+/* @3 lineAddToConference -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineAddToConference16(void)
+{
+}
+
+/* @4 lineAnswer -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineAnswer16(void)
+{
+}
+
+/* @5 lineBlindTransfer -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineBlindTransfer16(void)
+{
+}
+
+/* @6 lineClose -- arity recovered from stub (SDK prototype) */
+LONG lineClose16(HLINE hLine)
+{
+}
+
+/* @7 lineCompleteCall -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineCompleteCall16(void)
+{
+}
+
+/* @8 lineCompleteTransfer -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineCompleteTransfer16(void)
+{
+}
+
+/* @9 lineConfigDialog -- arity recovered from stub */
+DWORD lineConfigDialog16(LPVOID p1, DWORD a2, DWORD a3)
+{
+}
+
+/* @10 lineConfigDialogEdit -- arity recovered from stub */
+DWORD lineConfigDialogEdit16(LPVOID p1, LPVOID p2, LPVOID p3, DWORD a4, DWORD a5)
+{
+}
+
+/* @11 lineConfigProvider -- arity recovered from stub */
+DWORD lineConfigProvider16(DWORD a1, DWORD a2)
+{
+}
+
+/* @12 lineDeallocateCall -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineDeallocateCall16(void)
+{
+}
+
+/* @13 lineDevSpecific -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineDevSpecific16(void)
+{
+}
+
+/* @14 lineDevSpecificFeature -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineDevSpecificFeature16(void)
+{
+}
+
+/* @15 lineDial -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineDial16(void)
+{
+}
+
+/* @16 lineDrop -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineDrop16(void)
+{
+}
+
+/* @17 lineForward -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineForward16(void)
+{
+}
+
+/* @18 lineGatherDigits -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGatherDigits16(void)
+{
+}
+
+/* @19 lineGenerateDigits -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGenerateDigits16(void)
+{
+}
+
+/* @20 lineGenerateTone -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGenerateTone16(void)
+{
+}
+
+/* @21 lineGetAddressCaps -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetAddressCaps16(void)
+{
+}
+
+/* @22 lineGetAddressID -- arity recovered from stub */
+DWORD lineGetAddressID16(LPVOID p1, LPVOID p2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @23 lineGetAddressStatus -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetAddressStatus16(void)
+{
+}
+
+/* @24 lineGetAppPriority -- arity recovered from stub */
+DWORD lineGetAppPriority16(LPVOID p1, LPVOID p2, LPVOID p3, LPVOID p4, DWORD a5, DWORD a6)
+{
+}
+
+/* @25 lineGetCallInfo -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetCallInfo16(void)
+{
+}
+
+/* @26 lineGetCallStatus -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetCallStatus16(void)
+{
+}
+
+/* @27 lineGetConfRelatedCalls -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetConfRelatedCalls16(void)
+{
+}
+
+/* @28 lineGetCountry -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetCountry16(void)
+{
+}
+
+/* @29 lineGetDevCaps -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetDevCaps16(void)
+{
+}
+
+/* @30 lineGetDevConfig -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetDevConfig16(void)
+{
+}
+
+/* @31 lineGetID -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetID16(void)
+{
+}
+
+/* @32 lineGetIcon -- arity recovered from stub */
+DWORD lineGetIcon16(LPVOID p1, LPVOID p2, DWORD a3)
+{
+}
+
+/* @33 lineGetLineDevStatus -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetLineDevStatus16(void)
+{
+}
+
+/* @34 lineGetNewCalls -- arity recovered from stub */
+DWORD lineGetNewCalls16(LPVOID p1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @35 lineGetNumRings -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetNumRings16(void)
+{
+}
+
+/* @36 lineGetProviderList -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetProviderList16(void)
+{
+}
+
+/* @37 lineGetRequest -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetRequest16(void)
+{
+}
+
+/* @38 lineGetStatusMessages -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetStatusMessages16(void)
+{
+}
+
+/* @39 lineGetTranslateCaps -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineGetTranslateCaps16(void)
+{
+}
+
+/* @40 lineHandoff -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineHandoff16(void)
+{
+}
+
+/* @41 lineHold -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineHold16(void)
+{
+}
+
+/* @42 lineInitialize -- arity recovered from stub */
+DWORD lineInitialize16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @43 lineMakeCall -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineMakeCall16(void)
+{
+}
+
+/* @44 lineMonitorDigits -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineMonitorDigits16(void)
+{
+}
+
+/* @45 lineMonitorMedia -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineMonitorMedia16(void)
+{
+}
+
+/* @46 lineMonitorTones -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineMonitorTones16(void)
+{
+}
+
+/* @47 lineNegotiateAPIVersion -- arity recovered from stub */
+DWORD lineNegotiateAPIVersion16(LPVOID p1, LPVOID p2, DWORD a3, DWORD a4, DWORD a5, DWORD a6)
+{
+}
+
+/* @48 lineNegotiateExtVersion -- arity recovered from stub */
+DWORD lineNegotiateExtVersion16(LPVOID p1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6)
+{
+}
+
+/* @49 lineOpen -- arity recovered from stub */
+DWORD lineOpen16(LPVOID p1, LPVOID p2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7, DWORD a8, DWORD a9)
+{
+}
+
+/* @50 linePark -- stub did not resolve; TODO: signature + pointer directions */
+DWORD linePark16(void)
+{
+}
+
+/* @51 linePickup -- stub did not resolve; TODO: signature + pointer directions */
+DWORD linePickup16(void)
+{
+}
+
+/* @52 linePrepareAddToConference -- stub did not resolve; TODO: signature + pointer directions */
+DWORD linePrepareAddToConference16(void)
+{
+}
+
+/* @53 lineRedirect -- arity recovered from stub */
+DWORD lineRedirect16(LPVOID p1, DWORD a2, DWORD a3)
+{
+}
+
+/* @54 lineRegisterRequestRecipient -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineRegisterRequestRecipient16(void)
+{
+}
+
+/* @55 lineReleaseUserUserInfo -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineReleaseUserUserInfo16(void)
+{
+}
+
+/* @56 lineRemoveFromConference -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineRemoveFromConference16(void)
+{
+}
+
+/* @57 lineRemoveProvider -- arity recovered from stub */
+DWORD lineRemoveProvider16(DWORD a1, DWORD a2)
+{
+}
+
+/* @58 lineSecureCall -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSecureCall16(void)
+{
+}
+
+/* @59 lineSendUserUserInfo -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSendUserUserInfo16(void)
+{
+}
+
+/* @60 lineSetAppPriority -- arity recovered from stub */
+DWORD lineSetAppPriority16(LPVOID p1, LPVOID p2, LPVOID p3, DWORD a4, DWORD a5, DWORD a6)
+{
+}
+
+/* @61 lineSetAppSpecific -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetAppSpecific16(void)
+{
+}
+
+/* @62 lineSetCallParams -- arity recovered from stub */
+DWORD lineSetCallParams16(LPVOID p1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @63 lineSetCallPrivilege -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetCallPrivilege16(void)
+{
+}
+
+/* @64 lineSetCurrentLocation -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetCurrentLocation16(void)
+{
+}
+
+/* @65 lineSetDevConfig -- arity recovered from stub */
+DWORD lineSetDevConfig16(LPVOID p1, LPVOID p2, DWORD a3, DWORD a4)
+{
+}
+
+/* @66 lineSetMediaControl -- arity recovered from stub */
+DWORD lineSetMediaControl16(LPVOID p1, LPVOID p2, LPVOID p3, LPVOID p4, DWORD a5, DWORD a6, DWORD a7, DWORD a8, DWORD a9, DWORD a10, DWORD a11, DWORD a12)
+{
+}
+
+/* @67 lineSetMediaMode -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetMediaMode16(void)
+{
+}
+
+/* @68 lineSetNumRings -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetNumRings16(void)
+{
+}
+
+/* @69 lineSetStatusMessages -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetStatusMessages16(void)
+{
+}
+
+/* @70 lineSetTerminal -- arity recovered from stub */
+DWORD lineSetTerminal16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7)
+{
+}
+
+/* @71 lineSetTollList -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetTollList16(void)
+{
+}
+
+/* @72 lineSetupConference -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetupConference16(void)
+{
+}
+
+/* @73 lineSetupTransfer -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineSetupTransfer16(void)
+{
+}
+
+/* @74 lineShutdown -- arity recovered from stub */
+DWORD lineShutdown16(DWORD a1)
+{
+}
+
+/* @75 lineSwapHold -- arity recovered from stub */
+DWORD lineSwapHold16(DWORD a1, DWORD a2)
+{
+}
+
+/* @76 lineTranslateAddress -- arity recovered from stub */
+DWORD lineTranslateAddress16(LPVOID p1, LPVOID p2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7)
+{
+}
+
+/* @77 lineTranslateDialog -- arity recovered from stub */
+DWORD lineTranslateDialog16(LPVOID p1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @78 lineUncompleteCall -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineUncompleteCall16(void)
+{
+}
+
+/* @79 lineUnhold -- arity recovered from stub */
+DWORD lineUnhold16(DWORD a1)
+{
+}
+
+/* @80 lineUnpark -- stub did not resolve; TODO: signature + pointer directions */
+DWORD lineUnpark16(void)
+{
+}
+
+/* @81 phoneClose -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneClose16(void)
+{
+}
+
+/* @82 phoneConfigDialog -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneConfigDialog16(void)
+{
+}
+
+/* @83 phoneDevSpecific -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneDevSpecific16(void)
+{
+}
+
+/* @84 phoneGetButtonInfo -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetButtonInfo16(void)
+{
+}
+
+/* @85 phoneGetData -- arity recovered from stub */
+DWORD phoneGetData16(LPVOID p1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @86 phoneGetDevCaps -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetDevCaps16(void)
+{
+}
+
+/* @87 phoneGetDisplay -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetDisplay16(void)
+{
+}
+
+/* @88 phoneGetGain -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetGain16(void)
+{
+}
+
+/* @89 phoneGetHookSwitch -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetHookSwitch16(void)
+{
+}
+
+/* @90 phoneGetID -- arity recovered from stub */
+DWORD phoneGetID16(LPVOID p1, LPVOID p2, DWORD a3)
+{
+}
+
+/* @91 phoneGetIcon -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetIcon16(void)
+{
+}
+
+/* @92 phoneGetLamp -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetLamp16(void)
+{
+}
+
+/* @93 phoneGetRing -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetRing16(void)
+{
+}
+
+/* @94 phoneGetStatus -- arity recovered from stub */
+DWORD phoneGetStatus16(LPVOID p1, DWORD a2)
+{
+}
+
+/* @95 phoneGetStatusMessages -- arity recovered from stub */
+DWORD phoneGetStatusMessages16(LPVOID p1, LPVOID p2, LPVOID p3, DWORD a4)
+{
+}
+
+/* @96 phoneGetVolume -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneGetVolume16(void)
+{
+}
+
+/* @97 phoneInitialize -- arity recovered from stub */
+DWORD phoneInitialize16(DWORD a1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @98 phoneNegotiateAPIVersion -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneNegotiateAPIVersion16(void)
+{
+}
+
+/* @99 phoneNegotiateExtVersion -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneNegotiateExtVersion16(void)
+{
+}
+
+/* @100 phoneOpen -- arity recovered from stub */
+DWORD phoneOpen16(LPVOID p1, DWORD a2, DWORD a3, DWORD a4, DWORD a5, DWORD a6, DWORD a7)
+{
+}
+
+/* @101 phoneSetButtonInfo -- arity recovered from stub */
+DWORD phoneSetButtonInfo16(LPVOID p1, DWORD a2, DWORD a3)
+{
+}
+
+/* @102 phoneSetData -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneSetData16(void)
+{
+}
+
+/* @103 phoneSetDisplay -- arity recovered from stub */
+DWORD phoneSetDisplay16(LPVOID p1, DWORD a2, DWORD a3, DWORD a4, DWORD a5)
+{
+}
+
+/* @104 phoneSetGain -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneSetGain16(void)
+{
+}
+
+/* @105 phoneSetHookSwitch -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneSetHookSwitch16(void)
+{
+}
+
+/* @106 phoneSetLamp -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneSetLamp16(void)
+{
+}
+
+/* @107 phoneSetRing -- arity recovered from stub */
+DWORD phoneSetRing16(DWORD a1, DWORD a2, DWORD a3)
+{
+}
+
+/* @108 phoneSetStatusMessages -- arity recovered from stub */
+DWORD phoneSetStatusMessages16(DWORD a1, DWORD a2, DWORD a3, DWORD a4)
+{
+}
+
+/* @109 phoneSetVolume -- stub did not resolve; TODO: signature + pointer directions */
+DWORD phoneSetVolume16(void)
+{
+}
+
+/* @110 phoneShutdown -- arity recovered from stub */
+DWORD phoneShutdown16(DWORD a1)
+{
+}
+
+/* @111 tapiGetLocationInfo -- arity recovered from stub (SDK prototype) */
+LONG tapiGetLocationInfo16(LPSTR lpszCountryCode, LPSTR lpszCityCode)
+{
+}
+
+/* @112 tapiRequestDrop -- stub did not resolve; TODO: signature + pointer directions */
+DWORD tapiRequestDrop16(void)
+{
+}
+
+/* @113 tapiRequestMakeCall -- stub did not resolve; TODO: signature + pointer directions */
+DWORD tapiRequestMakeCall16(void)
+{
+}
+
+/* @114 tapiRequestMediaCall -- stub did not resolve; TODO: signature + pointer directions */
+DWORD tapiRequestMediaCall16(void)
+{
+}
+

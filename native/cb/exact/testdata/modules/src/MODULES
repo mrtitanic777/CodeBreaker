@@ -1,0 +1,8 @@
+# the modules of a small program
+main.c   01000  0100  -Ox
+util.c   01200  02a0
+kit.obj  -
+tables.c -
+mix.c    01300
+mix.c    01380 @OVL
+last.c   01c00 0300 -Gs  # after the library
