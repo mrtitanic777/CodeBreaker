@@ -136,6 +136,7 @@ class file {
         // file or folder ENOENT, FileNotFoundError -- "^\s*x" is the latter, its "folder" ^ being absent)
         std::wstring m = kind == 'r' ? (plus ? L"r+b" : L"rb") : kind == 'w' || kind == 'x' ? (plus ? L"w+b" : L"wb") : (plus ? L"a+b" : L"ab");
 #ifdef _WIN32
+        m += L"N";   // (PEP 446: not inherited by child processes, so a child never holds the file open)
         x->f = _wfopen(p.wstring().c_str(), m.c_str());
 #else
         x->f = std::fopen(p.string().c_str(), std::string(m.begin(), m.end()).c_str());
