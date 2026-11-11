@@ -25,7 +25,12 @@ class Image:
         self.base = base
 
     def u32(self, addr):
-        return struct.unpack_from('>I', self.data, addr - self.base)[0]
+        # Code before the start of the image (or past its end) reads as padding, as the C++ does: a negative
+        # offset used to wrap around to the end of the data, and a short read raised, losing the whole scan.
+        off = addr - self.base
+        if off < 0 or off + 4 > len(self.data):
+            return 0
+        return struct.unpack_from('>I', self.data, off)[0]
 
     def u16(self, addr):
         return struct.unpack_from('>H', self.data, addr - self.base)[0]
@@ -368,7 +373,10 @@ class Scanner:
                 # Up's 0x8258D3C4 table sends most entries to 0x8258D370)
                 if inline and shape[2] + shape[1] * i >= min((x for x in labels if x > shape[2]), default=0xFFFFFFFF):
                     break
-                v = table_entry(self.img, shape, i)
+                try:
+                    v = table_entry(self.img, shape, i)
+                except Unresolved:
+                    break  # the table runs off the image: it ends there (this used to abort the whole scan)
                 if v & 3 or not lo <= v <= hi:
                     break
                 labels.append(v)

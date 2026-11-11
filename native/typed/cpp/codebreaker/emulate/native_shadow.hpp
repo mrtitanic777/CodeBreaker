@@ -1,6 +1,6 @@
 // codebreaker/emulate/native_shadow.hpp -- interface of codebreaker.emulate.native_shadow (typed C++; implementation pending).
 //
-// native_shadow.py -- the path explorer's symbolic shadow of an x86 run in C++ (native/tracer: cbtrace.dll,
+// native_shadow.py -- the path explorer's symbolic shadow of an x86 run in C++ (native/cb/emulate/tracer: cbtrace.dll,
 // shadow.cc), through ctypes.
 //
 //     sh = native_shadow.Shadow(16 | 32 | 33, lifter, inputs)   # Shadow16 / Shadow32 / ShadowLE

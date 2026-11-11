@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Xbox 360">
+      <Configuration>Debug</Configuration>
+      <Platform>Xbox 360</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectName>Game</ProjectName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LTCG|Xbox 360'">
+    <ClCompile>
+      <Optimization>Full</Optimization>
+    </ClCompile>
+    <ImageXex>
+      <TitleID>
+      </TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Label="J2XTitleId">
+    <ImageXex>
+      <TitleID>0x11111111</TitleID>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="old1.cpp" />
+    <ClCompile Include="stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="old.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="readme.txt" />
+  </ItemGroup>
+  <Target Name="StageContent" AfterTargets="Build">
+    <Exec Command="x" />
+  </Target>
+  <Target Name="DeployContent" AfterTargets="Build" Condition="old">
+    <Exec Command="y" />
+  </Target>
+  <Import Project="x.targets" />
+</Project>

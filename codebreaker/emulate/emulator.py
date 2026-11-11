@@ -480,7 +480,7 @@ def trace_function(module, func=None, args=None, arity=None, insn_cap=_MAX_INSNS
     fast = bool(fast) and not _GOV["ceil"] and shadow is None
     rec["pages0"] = {} if lean else None
 
-    # The hooks are C++ (native/tracer: cbtrace.dll; emulate/native_trace.py), attached to this
+    # The hooks are C++ (native/cb/emulate/tracer: cbtrace.dll; emulate/native_trace.py), attached to this
     # Unicorn in trace_function's order, keeping the record -- no Python per instruction, and a
     # shadow (the path explorer's) stepped there too.
     from codebreaker.emulate import native_shadow, native_trace

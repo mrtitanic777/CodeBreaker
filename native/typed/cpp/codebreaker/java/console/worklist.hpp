@@ -1,35 +1,33 @@
-// codebreaker/java/console/worklist.hpp -- C++17 port of codebreaker.java.console.worklist.
-//
-// worklist.py -- compile the converted output and write a per-file failure worklist.
-//
-//     python -m codebreaker java worklist <out_dir> [--cc g++] [--std c++03] [--out WORKLIST.md]
-//
-// For each <out_dir>/*.cpp it runs `<cc> -std=<std> -fsyntax-only -I<out_dir> <file>` and records
-// the files that fail to compile, sorted by error count (fewest first = closest to clean), with the
-// dominant error category.
-//
-// Standard-library stand-ins (the runtime has none): glob.glob("<out_dir>/*.cpp") and
-// subprocess.run([...], stderr=PIPE, stdout=DEVNULL) are small helpers in worklist.cpp.
-// subprocess is the Windows CreateProcess one (as Python's is on this platform).
+// codebreaker/java/console/worklist.hpp -- SHIM over cb/java/console/worklist.hpp (docs/CPP_DESIGN.md 6.3); deleted with
+// its last py:: consumer (run).
 #pragma once
 
+#include <optional>
+
+#include "codebreaker/java/console/_shim.hpp"
+#include "cb/java/console/worklist.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::java::console::worklist {
 
-// re.compile(r': error:') and re.compile(r'error: (.*)'), compiled once
-const py::re::Pattern& _ERR();
-const py::re::Pattern& _CAT();
-
-// The most common error message in a compiler's stderr, with quoted names, numbers and long tails
-// made alike ("(unknown)" when no line has an `error: `).
-py::str _category(const py::str& text);
-
-// Compile every <out_dir>/*.cpp with `cc` (default: settings host_cxx, else g++), write the worklist
-// to `worklist_path` (default WORKLIST.md) and print a one-line summary. `std_` is the Python's `std`
-// (renamed: `std` is C++'s namespace). -> 0
-int64_t run(const py::str& out_dir, const std::optional<py::str>& cc = std::nullopt,
-            const py::str& std_ = py::str("c++03"), const std::optional<py::str>& worklist_path = std::nullopt);
+// Compile every <out_dir>/*.cpp with `cc` (default: settings host_cxx, else g++), write the worklist to
+// `worklist_path` (default WORKLIST.md) and print a one-line summary. `std_` is the Python's `std` (renamed: `std` is
+// C++'s namespace). -> 0
+inline int64_t run(const py::str& out_dir, const std::optional<py::str>& cc = std::nullopt,
+                   const py::str& std_ = py::str("c++03"), const std::optional<py::str>& worklist_path = std::nullopt) {
+    return cb::compat::guard([&]() -> int64_t {
+        cb::java::console::worklist::Options options;
+        if (cc && cc->size() > 0) options.compiler = cc->utf8();
+        else if (const py::str host = py::settings::get_str(py::str("host_cxx")); host.size() > 0) options.compiler = host.utf8();
+        options.standard = std_.utf8();
+        const std::string line = cb::java::console::worklist::run(
+            shim::path_of(out_dir), worklist_path && worklist_path->size() > 0 ? shim::path_of(*worklist_path) : std::filesystem::path("WORKLIST.md"),
+            options);
+        py::print(cb::compat::to_py(line));
+        return 0;
+    });
+}
 
 }  // namespace codebreaker::java::console::worklist

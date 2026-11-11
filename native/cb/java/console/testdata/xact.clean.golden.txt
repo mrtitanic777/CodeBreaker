@@ -1,0 +1,2 @@
+banks built: ['keep.dat', 'sounds.xsb', 'sounds.xwb']
+no banks: ['t.txt', 'wav/a.wav', 'y.xap']

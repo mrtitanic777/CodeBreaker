@@ -14,14 +14,24 @@ if not defined VCINSTALLDIR (
   call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul || (echo vcvars64.bat failed & popd & exit /b 1)
 )
 set LIBS=%*
-if "%LIBS%"=="" set LIBS=l2 engine tracer formats dosexec symbols invert analyze testkit
+if "%LIBS%"=="" set LIBS=l2 engine cb formats dosexec symbols invert analyze testkit
 set FAILED=
+rem cb: native/cb's cbtrace.dll (the run recorder; sources in native/cb/emulate/tracer) into state\cxx\cb\bin, the
+rem tracer_bin default. It is the tree tools\build_cb.cmd builds and tests; only that target is built here.
 for %%L in (%LIBS%) do (
-  echo == native/%%L
-  if not exist native\%%L\build\build.ninja (
-    cmake -S native/%%L -B native/%%L/build -G Ninja -DCMAKE_BUILD_TYPE=Release >nul || set FAILED=!FAILED! %%L
+  if "%%L"=="cb" (
+    echo == native/cb ^(cbtrace^)
+    if not exist state\cxx\cb\build.ninja (
+      cmake -S native -B state/cxx/cb -G Ninja -DCMAKE_BUILD_TYPE=Release >nul || set FAILED=!FAILED! cb
+    )
+    if exist state\cxx\cb\build.ninja cmake --build state/cxx/cb --target cbtrace -j 2 || set FAILED=!FAILED! cb
+  ) else (
+    echo == native/%%L
+    if not exist native\%%L\build\build.ninja (
+      cmake -S native/%%L -B native/%%L/build -G Ninja -DCMAKE_BUILD_TYPE=Release >nul || set FAILED=!FAILED! %%L
+    )
+    if exist native\%%L\build\build.ninja cmake --build native/%%L/build -j 2 || set FAILED=!FAILED! %%L
   )
-  if exist native\%%L\build\build.ninja cmake --build native/%%L/build -j 2 || set FAILED=!FAILED! %%L
 )
 if exist native\decompiler\build\bin\decompiler.exe (
   echo == native/decompiler: built

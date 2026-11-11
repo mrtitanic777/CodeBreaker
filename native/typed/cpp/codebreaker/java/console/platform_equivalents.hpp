@@ -1,66 +1,83 @@
-// codebreaker/java/console/platform_equivalents.hpp -- C++ port of codebreaker.java.console.platform_equivalents.
-//
-// platform_equivalents.py -- the authoritative Java-platform-API -> Xbox 360 XDK map.
-//
-// The point of this module: NEVER hand-guess a platform port again. For every Java standard-library /
-// LWJGL / platform type the converter has to stub, this table names the REAL Xbox 360 XDK equivalent --
-// the exact function(s) and the .lib they live in -- plus whether the port already implements it (via the
-// hand-written reference layer) or still needs work.
-//
-// Two consumers wire off this table:
-//   * the STUB EMITTER (runtime.py / stub headers)  -> every emitted stub gets a comment
-//         `// [360] equivalent: <api>  (<lib>)`   or   `// [360] no equivalent -- <why>`
-//     so the answer is right there in the file, not in someone's head.
-//   * the COVERAGE REPORT (platform_coverage.py)    -> PLATFORM_COVERAGE.md lists the XDK equivalent and
-//     STATUS for every platform symbol the game uses, up front.
-//
-// STATUS values:
-//   'real'   the port implements it for real (reference layer / runtime) -- ships working.
-//   'stub'   still a no-op/default, but the XDK equivalent below is the drop-in to implement it.
-//   'dead'   genuinely no console equivalent / dead code path (applet, minecraft.net) -- stub is correct.
-//
-// Keyed by the emitted class/holder BASENAME (no .h). `methods` narrows the equivalent to specific calls
-// when the class spans more than one XDK API. Grounded in docs/platform/reference/*, the XDK import table
-// (xboxkrnl/xam/xnet/d3d9/xact3/xinput2), and the coverage audit.
+// codebreaker/java/console/platform_equivalents.hpp -- SHIM over cb/java/console/platform_equivalents.hpp
+// (docs/CPP_DESIGN.md 6.3); deleted with its last py:: consumer.
 #pragma once
 
+#include <optional>
+#include <tuple>
+
+#include "cb/compat/py_bridge.hpp"
+#include "cb/java/console/platform_equivalents.hpp"
 #include "py.hpp"
 
 namespace codebreaker::java::console::platform_equivalents {
 
 // One entry of the map (the Python's dict with these keys; every entry in the table has xdk, lib and status).
-//   xdk    : the XDK function(s) that implement this (the thing to resolve to)
-//   lib    : the .lib / import module the xdk symbol lives in
-//   status : 'real' | 'stub' | 'dead'
-//   note   : one line of why / how (formats/gotchas)
-//   methods: optional {method_name: 'xdk detail'} for per-method equivalents
 struct Equiv {
     py::str xdk;
     py::str lib;
-    py::str status;
+    py::str status;                                   // 'real' | 'stub' | 'dead'
     std::optional<py::str> note;
     std::optional<py::dict<py::str, py::str>> methods;
 };
 
+namespace shim_ {
+namespace cbpe = cb::java::console::platform_equivalents;
+
+inline Equiv to_old(const cbpe::Equiv& e) {
+    Equiv out{cb::compat::to_py(e.xdk), cb::compat::to_py(e.lib), cb::compat::to_py(cbpe::status_name(e.status)), std::nullopt,
+              std::nullopt};
+    if (!e.note.empty()) out.note = cb::compat::to_py(e.note);
+    if (!e.methods.empty()) {
+        py::dict<py::str, py::str> methods;
+        for (const cbpe::MethodEquiv& m : e.methods) methods.set(cb::compat::to_py(m.method), cb::compat::to_py(m.detail));
+        out.methods = methods;
+    }
+    return out;
+}
+
+inline py::dict<py::str, py::dict<py::str, Equiv>> build() {
+    py::dict<py::str, py::dict<py::str, Equiv>> out;
+    for (const cbpe::Subsystem& sub : cbpe::subsystems()) {
+        py::dict<py::str, Equiv> entries;
+        for (const cbpe::Equiv& e : sub.entries) entries.set(cb::compat::to_py(e.basename), to_old(e));
+        out.set(cb::compat::to_py(sub.name), entries);
+    }
+    return out;
+}
+}  // namespace shim_
+
 // subsystem -> ordered {basename: entry}
-extern const py::dict<py::str, py::dict<py::str, Equiv>> EQUIV;
+inline const py::dict<py::str, py::dict<py::str, Equiv>> EQUIV = shim_::build();
 
 // Return the equivalent for an emitted class basename, or None.
-std::optional<Equiv> lookup(const py::str& basename);
-// Classify an equivalent so the emitted comment (and the report) can distinguish the three cases:
-//    'xdk'         -> there IS an XDK function to call; resolve the stub to it.
-//    'handwritten' -> NO XDK equivalent exists -> we implement it ourselves (bundled puff.c, a pure C++
-//                     byte codec, a CRT call). These are the bespoke pieces that must never be lost.
-//    'dead'        -> no console equivalent and a dead code path; the stub is correct as-is.
-py::str kind(const Equiv& e);
-// The one-line C++ comment dropped next to a stub -- THREE distinct, greppable markers so nothing is
-// ever missed:
-//     // [360] equivalent: <XDK api>  (<lib>)               -> resolve the stub to the named XDK call
-//     // [360] NO XDK EQUIVALENT -- hand-implemented: ...    -> bespoke platform code (grep to find them ALL)
-//     // [360] no equivalent -- dead on console: ...         -> genuinely dead path; stub is correct
-// Returns '' if we have no mapping (emitter leaves the stub untouched).
-py::str annotation(const py::str& basename);
+inline std::optional<Equiv> lookup(const py::str& basename) {
+    const cb::java::console::platform_equivalents::Equiv* e = cb::java::console::platform_equivalents::lookup(cb::compat::from_py(basename));
+    if (e == nullptr) return std::nullopt;
+    return shim_::to_old(*e);
+}
+
+// 'xdk' | 'handwritten' | 'dead'
+inline py::str kind(const Equiv& e) {
+    namespace cbpe = cb::java::console::platform_equivalents;
+    // (a status other than the three the table uses was never "dead": it is read as a live one)
+    const cbpe::Status status = cbpe::parse_status(cb::compat::from_py(e.status)).value_or(cbpe::Status::Real);
+    return cb::compat::to_py(cbpe::kind_name(cbpe::kind(status, cb::compat::from_py(e.lib))));
+}
+
+// The one-line C++ comment dropped next to a stub; '' if we have no mapping.
+inline py::str annotation(const py::str& basename) {
+    return cb::compat::to_py(cb::java::console::platform_equivalents::annotation(cb::compat::from_py(basename)));
+}
+
 // Flatten to (subsystem, basename, entry) for the coverage report.
-py::list<std::tuple<py::str, py::str, Equiv>> all_entries();
+inline py::list<std::tuple<py::str, py::str, Equiv>> all_entries() {
+    py::list<std::tuple<py::str, py::str, Equiv>> out;
+    for (const auto& sub_items : EQUIV.items()) {
+        for (const auto& name_entry : std::get<1>(sub_items).items()) {
+            out.append(std::make_tuple(std::get<0>(sub_items), std::get<0>(name_entry), std::get<1>(name_entry)));
+        }
+    }
+    return out;
+}
 
 }  // namespace codebreaker::java::console::platform_equivalents

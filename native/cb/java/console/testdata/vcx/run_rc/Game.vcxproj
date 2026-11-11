@@ -1,0 +1,8 @@
+<Project>
+  <ItemDefinitionGroup Condition="a">
+    <ImageXex><TitleID></TitleID></ImageXex>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="b">
+    <ImageXex><TitleID>   </TitleID></ImageXex>
+  </ItemDefinitionGroup>
+</Project>

@@ -22,7 +22,7 @@ half is kept: which register bytes and memory bytes hold an expression over the 
 conditional jump whose condition is such an expression is a condition of the path; its
 direction is the one the emulator then takes (the next instruction says which).
 
-The x86 shadows (Shadow16, Shadow32, ShadowLE) are C++ now (native/tracer shadow.cc, the same
+The x86 shadows (Shadow16, Shadow32, ShadowLE) are C++ now (native/cb/emulate/tracer shadow.cpp, the same
 steps as Shadow below, through emulate/native_shadow.py): the recorder of the run steps them, so a
 shadowed run calls no Python per instruction. Shadow here is the PowerPC run's (its View is
 PowerPCView: the interpreter's registers and memory, read without disturbing them).
@@ -649,7 +649,7 @@ _COMPARE = {"INT_EQUAL": ("eq", False), "INT_NOTEQUAL": ("eq", True), "INT_LESS"
             "INT_LESSEQUAL": ("ule", False), "INT_SLESS": ("slt", False), "INT_SLESSEQUAL": ("sle", False)}
 
 
-# --- the x86 shadows: in C++ (native/tracer shadow.cc, through emulate/native_shadow.py), stepped by
+# --- the x86 shadows: in C++ (native/cb/emulate/tracer shadow.cpp, through emulate/native_shadow.py), stepped by
 # the recorder of the run they are handed to. `inputs`: [(low, high)] -- the memory bytes that are
 # inputs of the run until written.
 def real_mode(_uc, sel):

@@ -2,7 +2,7 @@
 # A DLL with a C interface (cbanalyze.h), loaded by codebreaker/analyze/native.py through ctypes.
 # Compiled against the headers of the Capstone that Python's `capstone` package carries, and
 # linked to none: at run time it calls the very capstone.dll Python loaded (found by path), so an
-# instruction decodes to the same text it does in Python (as native/tracer does).
+# instruction decodes to the same text it does in Python (as native/cb/emulate/tracer does).
 #
 #   (in a vcvars64 shell)
 #   cmake -S native/analyze -B native/analyze/build -G Ninja -DCMAKE_BUILD_TYPE=Release
