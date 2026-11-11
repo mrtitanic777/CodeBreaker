@@ -1,6 +1,7 @@
 // codebreaker/analyze/dos_functions.cpp -- typed C++ of codebreaker.analyze.dos_functions (see dos_functions.hpp).
 
 #include "codebreaker/analyze/dos_functions.hpp"
+#include "codebreaker/base/capstone_dll.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -93,7 +94,7 @@ template <class F> F sym_(HMODULE m, const char* name) {
 CsLib& cs_ready() {
     CsLib& lib = cs_lib();
     if (lib.handle) return lib;
-    if (dll_path().empty()) throw py::ImportError("capstone: no DLL given (set_capstone_dll)");
+    if (dll_path().empty()) set_capstone_dll(base::capstone_dll::find());   // (nobody named one: found as `import capstone` would)
     lib.module = LoadLibraryW(dll_path().c_str());
     if (!lib.module) throw py::ImportError("capstone: cannot load the DLL");
     lib.open = sym_<decltype(&cs_open)>(lib.module, "cs_open");

@@ -1,6 +1,7 @@
 // codebreaker/symbols/x86.cpp -- see x86.hpp.
 
 #include "codebreaker/symbols/x86.hpp"
+#include "codebreaker/base/capstone_dll.hpp"
 
 #include <windows.h>
 
@@ -43,7 +44,7 @@ CsLib& lib_ready() {
     if (lib.module) return lib;
     std::lock_guard<std::mutex> hold(m);
     if (lib.module) return lib;
-    if (dll_path().empty()) throw py::ImportError("capstone: no DLL given (set_capstone_dll)");
+    if (dll_path().empty()) set_capstone_dll(base::capstone_dll::find());   // (nobody named one: found as `import capstone` would)
     HMODULE h = LoadLibraryW(dll_path().c_str());
     if (!h) throw py::ImportError("capstone: cannot load the DLL");
     lib.open = sym_<decltype(&cs_open)>(h, "cs_open");
