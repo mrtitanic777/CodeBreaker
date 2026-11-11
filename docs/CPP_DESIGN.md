@@ -785,3 +785,43 @@ line, which is also how the exe gate stays meaningful.
 - Behaviour changes not listed in a `// DIVERGES:` block; golden data copied from the Python without review.
 - A shim with logic; a COMPAT line not tied to a named module; a count of COMPAT lines that went up.
 - Slower than the port it replaces without an explanation in `TYPED_CPP_SPEED.md`.
+
+## Appendix B. Wave 0 as built (2026-11-11) and the recipe for wave 1
+
+`native/cb/core` exists and `cb_tests` (131 tests, Release and ASan) passes. Build and run: `tools\build_cb.cmd`
+(`asan` for the sanitizer build, `-- --filter core.io` for a subset). Adding a module: drop `x.hpp`, `x.cpp`,
+`x_test.cpp` into `native/cb/<area>/` -- the CMake globs them; a new area is one `cb_area(<dir>)` line in
+`native/cb/CMakeLists.txt`.
+
+**Adjustments to the design, and why**
+
+- **`cb::Regex` is a new engine, not a move of `pyre.cc`.** pyre is welded to the old layer (`py::raise`, `pystr`,
+  `value.hpp`, CPython Unicode tables, code-point offsets), so moving it would have dragged `py::` into `cb_core`.
+  `native/l2/src/pyre.cc` stays untouched for `py::re` and goes with the layer. The new engine keeps the design
+  (compile to a program, explicit backtrack stack, first-byte prefilter) and adds what 3.7 specifies: bytes, ASCII
+  classes, step budget (`try_search` returns a `Result`; the throwing forms throw `UnsupportedError`), `${name}`/`$1`
+  replacement templates. `\Z` is a ParseError (write `\z`); `$` without Multiline matches only at the very end.
+- **`NLOHMANN_DEFINE_TYPE_*` does not work with `cb::Json`** (3.10.5 defines them for `nlohmann::json` only). Use
+  `CB_JSON_STRUCT(Type, members...)` from `cb/core/json_struct.hpp` (.cpp files only).
+- **Result:** `CB_TRY(expr)` and `CB_TRY_ASSIGN(decl, expr)`; errors keep their dynamic type (`clone()`/`raise()` on
+  every `cb::Error` subtype -- a new subtype repeats `CB_ERROR_BOILERPLATE(Type)`).
+- **`workers()`** takes a `WorkerPolicy` (settings values) instead of reading a global; env `CB_JOBS`/`CB_LOW_LOAD` win.
+- **Not in wave 0:** `cb::paths`, `cb::Progress`, `cb/app/worker`, `semdiff` (wave 1/5, they need the corpus layout,
+  the job system, the command table). `cb/app` (the `codebreaker` target and `CB_WITH_PYTHON` hand-off of unknown
+  commands to the translated `__main__`) is NOT wired yet: linking `cb_core` into the pyengine-generated project
+  would force C++20 and `UNICODE` onto the whole Python-runtime build, so the first shim's own library
+  (`pynative_typed`-style, C++20, private) is where `cb_core` joins. The old `tools\build_codebreaker_exe.cmd` is untouched.
+- Third-party headers/DLLs: `native/third_party/README.md` (Capstone is now 5.0.7, not the 4.0.2 the old decompiler
+  was written against).
+
+**Recipe for a wave-1 module**
+
+1. Read the old port, the `.py`, the callers; write the header first (no `py::`).
+2. `native/cb/<area>/<name>.hpp/.cpp/_test.cpp`; errors from 3.6; text/bytes/containers from section 3.
+3. Use `cb::Regex` only after trying code (3.7); `static const cb::Regex re(R"(...)")`.
+4. Tests: `CB_TEST("area.module.case", [] { CB_CHECK_EQ(a, b); CB_CHECK_THROWS_AS(Type, expr); })`; use
+   `testing::CapturedStd` to assert on stdout/stderr and `fs::ScopedTempDir` for files. A macro argument may contain
+   commas (the macros are variadic), but `Type(x);` as a statement is a declaration: write `(void)Type(x)`.
+5. Shim at the old header path using `cb/compat/py_bridge.hpp` (`to_py`/`from_py`, `guard`, `rethrow_as_py`);
+   its test file builds at /W3 because the old layer is not warning-clean.
+6. `tools\build_cb.cmd` and `tools\build_cb.cmd asan`; then the product check of the area.

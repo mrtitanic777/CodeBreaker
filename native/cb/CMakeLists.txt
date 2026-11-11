@@ -36,6 +36,13 @@ endfunction()
 
 cb_area(core)
 target_link_libraries(cb_core PUBLIC bcrypt)
+
+# compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
+# test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
+file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
+set_source_files_properties(${CB_COMPAT_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+get_property(CB_ALL_TESTS_SO_FAR GLOBAL PROPERTY CB_TEST_SOURCES)
+set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${CB_ALL_TESTS_SO_FAR} ${CB_COMPAT_TESTS})
 # where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
 # before the copy below (see native/third_party/README.md)
 set_source_files_properties(core/dynlib.cpp PROPERTIES COMPILE_DEFINITIONS CB_THIRD_PARTY_BIN="${CB_THIRD_PARTY}/bin")
