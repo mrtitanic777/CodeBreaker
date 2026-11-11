@@ -1,52 +1,28 @@
-// codebreaker/formats/media.hpp -- typed C++ from codebreaker.formats.media.
+// codebreaker/formats/media.hpp -- compat shim over cb/formats/media.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// media.py -- read media and containers: floppy, hard-disk and CD images, module bundles, and the Xbox / Xbox 360
-// containers (formats/xbox/volumes.py: STFS, discs, GoD, FATX, ZAR, XZP, PCK).
+// The module itself is native/cb/formats/media.{hpp,cpp}: FAT12/16/32 volumes, ISO 9660 discs (plain and raw sectors, Joliet
+// names, El Torito), partition tables, module bundles, put() and extract(). This header keeps the old py:: surface for the
+// ports that have not been refactored yet (formats/xbox/volumes, coverage/reach, recompile/title, formats/xbox/package ...)
+// and is deleted with the last of them. Conversion and forwarding only, except what must see the old Xbox volumes:
+//   COMPAT(py): volumes / put / extract / main  -- media.cpp: they put formats::xbox::volumes first (an Xbox 360 disc also
+//       carries an ISO 9660 video part) and xbox/volumes.hpp includes this header; remove when formats.xbox.volumes is
+//       refactored
+//   COMPAT(py): BundleVolume  -- built from the old formats::ne shim; remove when its last consumer is refactored
 //
-//     for (auto& v : media::volumes(path)) {   every volume inside an image file (or GoD folder)
-//         v->kind                              "fat12" | "fat16" | "fat32" | "iso9660" | "bundle" |
-//                                              "stfs" | "xdvdfs" | "god" | "fatx" | "zar" | "xzp" | "pck"
-//         v->label, v->where                   its name; where in the image it is
-//         v->boot                              {field: value} of its boot sector / volume descriptor
-//         for (auto& e : v->files())           every file and folder: e.path  e.size  e.is_dir  e.when
-//             data = v->read(e)
-//     media::extract(path, folder, names)      write the files out; -> number written
-//     media::put(path, {{"WINDOWS/SYSTEM/X.VXD", data}})   write files into an image's FAT volume in place
-//                                              (replaced or added; folders made as needed)
-//
-// One image file can hold several volumes: a floppy image is one FAT volume; a hard-disk image (also a "flat"
-// virtual disk) is a partition table and a FAT volume per partition, logical drives included; a CD image is an
-// ISO-9660 volume and, when it is bootable by floppy emulation (El Torito), the boot floppy inside it as a FAT
-// volume of its own; and a Windows 1.x boot image (WIN100.BIN with its .OVL) is a bundle of system modules, each
-// written out as an ordinary one-file executable (codebreaker.formats.ne does the taking apart).
-//
-// FAT: 12-, 16- and 32-bit tables told apart by the number of clusters, as DOS does; long file names are read
-// (`--plain` shows the 8.3 names) and put() writes by the 8.3 ones; floppies from before DOS 2.0 carry no parameter
-// block, so their layout is taken from the media byte and the image size. ISO-9660: the primary names, or the long
-// (Joliet) names when the disc has them (`--plain` for the primary ones); images with raw 2352-byte sectors are read
-// too. Files are read on demand, never the whole image. The FAT and ISO-9660 readers, the partition table and put()
-// are formats.dll's (native/formats/media, docs/NATIVE.md step 4).
-//
-// Typing and runtime notes:
-//   * The Python asked formats.dll through native.call; here the same questions go to the reader linked in
-//     (native/formats/media/media.cc, through cbf_call, answered in typed values by py::native). The attribute dicts it
-//     answers ("_attrs", whose keys the Python copied into the volume object's __dict__) are the records FatAttrs and
-//     IsoAttrs; the boot-sector dict, whose values are text or numbers, is `Boot`: {str: variant<str, int>}.
-//   * A volume's duck type (kind, label, where, boot, files(), read(entry)) is the abstract class Volume; volumes() hands
-//     out std::shared_ptr<Volume> (FatVolume, IsoVolume, BundleVolume here; formats.xbox.volumes' kinds there).
-//   * An Entry's `extents` attribute exists only for ISO entries: std::optional (reading it from another kind of entry is
-//     the AttributeError the Python raises).
-//   * `short` is a C++ keyword: Entry::short_.
-//   * fnmatch (not in the runtime) is written below after Python's fnmatch.translate.
-//   * main(argv) takes sys.argv[1:] and prints with py::print.
+// A volume's duck type (kind, label, where, boot, files(), read(entry)) is the abstract class Volume; volumes() hands out
+// std::shared_ptr<Volume>. An Entry's `extents` exist only for ISO entries (std::optional).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <tuple>
 #include <variant>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/formats/media.hpp"
 #include "codebreaker/formats/ne.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
@@ -54,7 +30,7 @@
 namespace codebreaker::formats::media {
 
 namespace ne = codebreaker::formats::ne;
-
+namespace cm = cb::formats::media;
 
 // {field: value} of a boot sector / volume descriptor: text or numbers
 using BootValue = std::variant<py::str, int64_t>;
@@ -71,10 +47,44 @@ struct Entry {
     std::optional<py::list<std::tuple<int64_t, int64_t>>> extents;      // ISO entries: [(block, size)]
 
     Entry() = default;
-    Entry(const py::str& path, int64_t size, bool is_dir, int64_t start, const py::str& when = py::str(""),
-          const py::str& short_ = py::str(""), int64_t attributes = 0);
-    py::str repr() const;       // "Entry(%r, %d)"
+    Entry(const py::str& path_, int64_t size_, bool is_dir_, int64_t start_, const py::str& when_ = py::str(""),
+          const py::str& short__ = py::str(""), int64_t attributes_ = 0)
+        : path(path_), size(size_), is_dir(is_dir_), start(start_), when(when_), short_(short__.empty() ? path_ : short__), attributes(attributes_) {}
+    py::str repr() const { return py::percent(py::str("Entry(%r, %d)"), path, size); }
 };
+
+namespace detail {
+
+inline Entry entry_of(const cm::Entry& e) {
+    Entry out(cb::compat::to_py(e.path), static_cast<int64_t>(e.size), e.is_dir, static_cast<int64_t>(e.start), cb::compat::to_py(e.when),
+              cb::compat::to_py(e.short_name), e.attributes);
+    if (!e.extents.empty()) {   // only ISO entries have extents (each has at least one)
+        py::list<std::tuple<int64_t, int64_t>> runs;
+        for (const cm::Extent& x : e.extents) runs.append(std::make_tuple(static_cast<int64_t>(x.block), static_cast<int64_t>(x.size)));
+        out.extents = runs;
+    }
+    return out;
+}
+
+inline cm::Entry entry_to(const Entry& e) {
+    cm::Entry out;
+    out.path = cb::compat::from_py(e.path);
+    out.size = static_cast<std::uint64_t>(e.size);
+    out.is_dir = e.is_dir;
+    out.start = static_cast<std::uint64_t>(e.start);
+    if (e.extents)
+        for (const auto& x : *e.extents) out.extents.push_back({static_cast<std::uint64_t>(std::get<0>(x)), static_cast<std::uint64_t>(std::get<1>(x))});
+    return out;
+}
+
+inline Boot boot_of(std::span<const cm::BootField> fields) {
+    Boot out;
+    for (const cm::BootField& f : fields)
+        out.set(cb::compat::to_py(f.name), f.number ? BootValue(*f.number) : BootValue(cb::compat::to_py(f.text)));
+    return out;
+}
+
+}  // namespace detail
 
 // what every kind of volume gives
 class Volume {
@@ -93,64 +103,15 @@ class _Source {
     py::str path;
     int64_t offset = 0;
     _Source() = default;
-    explicit _Source(const py::str& path, int64_t offset = 0) : path(path), offset(offset) {}
-    py::bytes read(int64_t at, int64_t n) const;
+    explicit _Source(const py::str& path_, int64_t offset_ = 0) : path(path_), offset(offset_) {}
+    py::bytes read(int64_t at, int64_t n) const {
+        return cb::compat::guard([&] {
+            if (offset + at < 0) throw py::OSError("[Errno 22] Invalid argument");
+            return cb::compat::to_py(cb::ByteView(cm::Source(std::filesystem::path(cb::compat::from_py(path)), static_cast<std::uint64_t>(offset))
+                                                      .read(static_cast<std::uint64_t>(at), static_cast<std::uint64_t>(n < 0 ? 0 : n))));
+        });
+    }
 };
-
-// the attribute dict formats.dll answers for a FAT volume (media.fat)
-struct FatAttrs {
-    py::str where;
-    bool old = false;
-    int64_t bps = 0, spc = 0, roots = 0, fats = 0, spf = 0, fat_at = 0, root_at = 0, data_at = 0, clusters = 0, bits = 0;
-    py::str kind;
-    int64_t root_cluster = 0;
-    Boot boot;
-    py::bytes fat;
-    py::str label;
-};
-// ... and for an ISO-9660 volume (media.iso)
-struct IsoAttrs {
-    int64_t sector = 0, skip = 0;
-    py::str where;
-    std::optional<int64_t> boot_catalog;
-    bool long_names = false;
-    int64_t block = 0;
-    py::str label;
-    std::tuple<int64_t, int64_t> root;
-    Boot boot;
-};
-
-// (the records' fields by name, for reading formats.dll's answers: py::native::read<FatAttrs>)
-template <class F> void for_each_field_mut(FatAttrs& r, F&& f) {
-    f("where", r.where, true);
-    f("old", r.old, true);
-    f("bps", r.bps, true);
-    f("spc", r.spc, true);
-    f("roots", r.roots, true);
-    f("fats", r.fats, true);
-    f("spf", r.spf, true);
-    f("fat_at", r.fat_at, true);
-    f("root_at", r.root_at, true);
-    f("data_at", r.data_at, true);
-    f("clusters", r.clusters, true);
-    f("bits", r.bits, true);
-    f("kind", r.kind, true);
-    f("root_cluster", r.root_cluster, true);
-    f("boot", r.boot, true);
-    f("fat", r.fat, true);
-    f("label", r.label, true);
-}
-template <class F> void for_each_field_mut(IsoAttrs& r, F&& f) {
-    f("sector", r.sector, true);
-    f("skip", r.skip, true);
-    f("where", r.where, true);
-    f("boot_catalog", r.boot_catalog, true);
-    f("long_names", r.long_names, true);
-    f("block", r.block, true);
-    f("label", r.label, true);
-    f("root", r.root, true);
-    f("boot", r.boot, true);
-}
 
 // FAT ------------------------------------------------------------------------------------------
 // A FAT12/16/32 volume (its attributes: the boot sector's fields, `boot`, the table `fat`).
@@ -161,18 +122,46 @@ class FatVolume : public Volume {
     int64_t bps = 0, spc = 0, roots = 0, fats = 0, spf = 0, fat_at = 0, root_at = 0, data_at = 0, clusters = 0, bits = 0, root_cluster = 0;
     py::bytes fat;
 
-    FatVolume(const _Source& source, const py::str& where = py::str(""), std::optional<int64_t> size = std::nullopt);
-    FatVolume(const _Source& source, const FatAttrs& attrs);      // _attrs given
+    FatVolume(const _Source& source, const py::str& where_ = py::str(""), std::optional<int64_t> size = std::nullopt) : src(source) {
+        take_(std::make_shared<cm::FatVolume>(cb::compat::guard([&] {
+            return cm::FatVolume::open(cm::Source(std::filesystem::path(cb::compat::from_py(src.path)), static_cast<std::uint64_t>(src.offset)),
+                                       cb::compat::from_py(where_), size ? std::optional<std::uint64_t>(static_cast<std::uint64_t>(*size)) : std::nullopt);
+        })));
+    }
+    // a volume the new reader opened
+    FatVolume(const _Source& source, std::shared_ptr<cm::FatVolume> opened) : src(source) { take_(std::move(opened)); }
 
-    py::list<Entry> files() override;
-    int64_t _next(int64_t c);
+    py::list<Entry> files() override {
+        py::list<Entry> out;
+        for (const cm::Entry& e : cb::compat::guard([&]() -> const std::vector<cm::Entry>& { return impl_->files(); })) out.append(detail::entry_of(e));
+        label = cb::compat::to_py(impl_->label());     // the volume label of the root folder, once it was read
+        return out;
+    }
+    int64_t _next(int64_t c) { return impl_->next_cluster(static_cast<std::uint32_t>(c)); }
     // The bytes of a cluster chain (all of it, or the first `size` bytes).
-    py::bytes _chain(int64_t cluster, std::optional<int64_t> size = std::nullopt);
-    py::bytes read(const Entry& entry) override;
+    py::bytes _chain(int64_t cluster, std::optional<int64_t> size = std::nullopt) {
+        return cb::compat::to_py(cb::ByteView(impl_->read_chain(static_cast<std::uint32_t>(cluster),
+                                                               size ? std::optional<std::uint64_t>(static_cast<std::uint64_t>(std::max<int64_t>(*size, 0))) : std::nullopt)));
+    }
+    py::bytes read(const Entry& entry) override {
+        return entry.is_dir ? py::bytes() : _chain(entry.start, entry.size);
+    }
 
   private:
-    std::optional<py::list<Entry>> _entries;
-    void take_(const FatAttrs& a);
+    std::shared_ptr<cm::FatVolume> impl_;
+    void take_(std::shared_ptr<cm::FatVolume> v) {
+        impl_ = std::move(v);
+        const cm::FatGeometry& g = impl_->geometry();
+        where = cb::compat::to_py(impl_->where());
+        old = g.old;
+        bps = g.bytes_per_sector, spc = g.sectors_per_cluster, roots = g.root_entries, fats = g.fats, spf = g.sectors_per_fat;
+        fat_at = static_cast<int64_t>(g.fat_at), root_at = static_cast<int64_t>(g.root_at), data_at = static_cast<int64_t>(g.data_at);
+        clusters = g.clusters, bits = g.bits, root_cluster = g.root_cluster;
+        kind = cb::compat::to_py(cm::kind_name(impl_->kind()));
+        label = cb::compat::to_py(impl_->label());
+        boot = detail::boot_of(impl_->boot());
+        fat = cb::compat::to_py(impl_->fat());
+    }
 };
 
 // ISO 9660 ---------------------------------------------------------------------------------------
@@ -185,18 +174,46 @@ class IsoVolume : public Volume {
     std::tuple<int64_t, int64_t> root;
 
     // `sector`/`skip`: 2048/0 for a plain image; 2352/16 or 2352/24 for raw sectors.
-    explicit IsoVolume(const _Source& source, int64_t sector = 2048, int64_t skip = 0, bool long_names = true);
-    IsoVolume(const _Source& source, const IsoAttrs& attrs);      // _attrs given
+    explicit IsoVolume(const _Source& source, int64_t sector_ = 2048, int64_t skip_ = 0, bool long_names_ = true) : src(source) {
+        take_(std::make_shared<cm::IsoVolume>(cb::compat::guard([&] {
+            return cm::IsoVolume::open(cm::Source(std::filesystem::path(cb::compat::from_py(src.path)), static_cast<std::uint64_t>(src.offset)),
+                                       static_cast<std::uint32_t>(sector_), static_cast<std::uint32_t>(skip_), long_names_);
+        })));
+    }
+    // a volume the new reader opened
+    IsoVolume(const _Source& source, std::shared_ptr<cm::IsoVolume> opened) : src(source) { take_(std::move(opened)); }
 
-    py::list<Entry> files() override;
-    py::bytes read(const Entry& entry) override;
+    py::list<Entry> files() override {
+        py::list<Entry> out;
+        for (const cm::Entry& e : cb::compat::guard([&]() -> const std::vector<cm::Entry>& { return impl_->files(); })) out.append(detail::entry_of(e));
+        return out;
+    }
+    py::bytes read(const Entry& entry) override {
+        if (entry.is_dir) return py::bytes();
+        if (!entry.extents) throw py::AttributeError("'Entry' object has no attribute 'extents'");
+        return cb::compat::guard([&] { return cb::compat::to_py(cb::ByteView(impl_->read(detail::entry_to(entry)))); });
+    }
     // (offset in the image file, size, emulated media) of the El Torito boot image: media 0 none (a loader), 1 / 2 / 3 a
     // 1.2 / 1.44 / 2.88 MB floppy, 4 a hard disk. None when the disc is not bootable.
-    std::optional<std::tuple<int64_t, int64_t, int64_t>> boot_image();
+    std::optional<std::tuple<int64_t, int64_t, int64_t>> boot_image() {
+        auto b = cb::compat::guard([&] { return impl_->boot_image(); });
+        if (!b) return std::nullopt;
+        return std::make_tuple(static_cast<int64_t>(b->offset), static_cast<int64_t>(b->size), static_cast<int64_t>(b->media));
+    }
 
   private:
-    std::optional<py::list<Entry>> _entries;
-    void take_(const IsoAttrs& a);
+    std::shared_ptr<cm::IsoVolume> impl_;
+    void take_(std::shared_ptr<cm::IsoVolume> v) {
+        impl_ = std::move(v);
+        const cm::IsoLayout& l = impl_->layout();
+        sector = l.sector, skip = l.skip, block = l.block, long_names = l.long_names;
+        if (l.boot_catalog) boot_catalog = *l.boot_catalog;
+        root = std::make_tuple<int64_t, int64_t>(l.root_block, l.root_size);
+        where = py::str("");
+        kind = py::str("iso9660");
+        label = cb::compat::to_py(impl_->label());
+        boot = detail::boot_of(impl_->boot());
+    }
 };
 
 // a bundle of system modules ---------------------------------------------------------------------
@@ -206,34 +223,48 @@ class BundleVolume : public Volume {
     py::dict<py::str, ne::BootImageModule> modules;
 
     // ValueError when the file is not a bundle of at least two modules
-    explicit BundleVolume(const py::str& path);
+    explicit BundleVolume(const py::str& path) {
+        kind = py::str("bundle");
+        where = py::str("");
+        modules = ne::open_boot_image(path);
+        if (modules.size() < 2) throw py::ValueError("not a bundle of modules");
+        label = py::os::path::basename(path);
+        boot.set(py::str("modules"), BootValue(static_cast<int64_t>(modules.size())));
+    }
 
-    py::list<Entry> files() override;
-    py::bytes read(const Entry& entry) override;
+    py::list<Entry> files() override {
+        py::list<Entry> out;
+        for (const auto& kv : modules.items()) {
+            const py::str& name = std::get<0>(kv);
+            out.append(Entry(name + py::str(".EXE"), _bytes(name).size(), false, std::get<1>(kv).ne_off, py::str(""), name + py::str(".EXE")));
+        }
+        return out;
+    }
+    py::bytes read(const Entry& entry) override { return _bytes(entry.path.slice(0, entry.path.size() - 4)); }
 
   private:
     py::dict<py::str, py::bytes> _built;
-    py::bytes _bytes(const py::str& name);
+    py::bytes _bytes(const py::str& name) {
+        if (!_built.contains(name)) _built.set(name, ne::standalone(modules.at(name)));
+        return _built.at(name);
+    }
 };
 
 // any image ------------------------------------------------------------------------------------
 // Every volume inside an image file. ValueError when nothing in it is recognised.
 py::list<std::shared_ptr<Volume>> volumes(const py::str& path, bool long_names = true);
 
-// Write `files` {"FOLDER/NAME.EXT": bytes} into FAT volume number `volume` of the image at `path`, in place. Paths are
-// 8.3 names in any case, folder by folder. A file that is there is replaced -- its clusters freed; its directory entry,
-// attributes and long name kept, with the new start, size and time -- and one that is not is added, a missing folder
-// made. Every copy of the FAT is written. -> [(path, "replaced" | "added")]
+// Write `files` {"FOLDER/NAME.EXT": bytes} into FAT volume number `volume` of the image at `path`, in place. -> [(path, "replaced" | "added")]
 py::list<std::tuple<py::str, py::str>> put(const py::str& path, const py::dict<py::str, py::bytes>& files, int64_t volume = 0);
 
-py::str _safe(const py::str& path);
+inline py::str _safe(const py::str& path) { return cb::compat::guard([&] { return cb::compat::to_py(cb::formats::media::safe_relative_path(cb::compat::from_py(path)).string()); }); }
 
 // Write the files of an image under `folder` (each volume after the first in a folder of its own). `names` limits it to
 // matching names or paths (wildcards allowed). -> files written
 int64_t extract(const py::str& path, const py::str& folder, const py::list<py::str>& names = py::list<py::str>(), bool long_names = true);
 
-// fnmatch.fnmatch(name, pat): the platform's case rules (Windows: lower case, "/" is "\"), then fnmatchcase
-bool fnmatch(const py::str& name, const py::str& pat);
+// fnmatch.fnmatch(name, pat): lower case, "/" is "\", then the wildcard match
+inline bool fnmatch(const py::str& name, const py::str& pat) { return cm::wildcard_match(cb::compat::from_py(pat), cb::compat::from_py(name)); }
 
 // main's docstring: the usage text
 extern const py::str MAIN_DOC;
