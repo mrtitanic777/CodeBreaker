@@ -71,6 +71,9 @@ _XFORM3 = {
     "nand": 476, "nor": 124, "slw": 24, "srw": 536, "sraw": 792,
     "mullw": 235, "mullw.": 235, "divw": 491, "divwu": 459, "andc": 60,
 }
+# Logical and shift forms name the destination first (rA,rS,...) but encode the source rS in the first field.
+_LOGICAL_X = {"and", "or", "xor", "nand", "nor", "slw", "srw", "sraw", "andc"}
+_LOGICAL_D = {"ori", "oris", "xori", "xoris", "andi.", "andis."}
 # D-form ALU/logical: mnemonic -> (opcode, signed-imm)
 _DFORM = {
     "addi": (14, True), "addis": (15, True), "subi": (14, True),
@@ -184,6 +187,9 @@ def assemble_one(line, addr=0, labels=None):
             return _dform(14, _reg(ops[0]), _reg(ops[1]), (-_imm(ops[2], 16, False)) & 0xFFFF)
         if mn in ("cmpwi", "cmplwi"):
             return _dform(op, 0, _reg(ops[0]), _imm(ops[1], 16, signed))
+        if mn in _LOGICAL_D:
+            # ori/oris/xori/xoris/andi./andis. rA,rS,UIMM: rS takes the first register field, rA the second
+            return _dform(op, _reg(ops[1]), _reg(ops[0]), _imm(ops[2], 16, signed))
         return _dform(op, _reg(ops[0]), _reg(ops[1]),
                       _imm(ops[2], 16, signed) if len(ops) > 2 else 0)
     if mn in _MEMOP:
@@ -194,9 +200,12 @@ def assemble_one(line, addr=0, labels=None):
     if mn in _XFORM3:
         xo = _XFORM3[mn]
         rc = 1 if mn.endswith(".") else 0
-        if mn in ("sub", "subf", "subf."):
-            # subf rD,rA,rB = rB - rA  (natural `sub rD,rB,rA` handled as subf)
-            return _xform(31, _reg(ops[0]), _reg(ops[1]), _reg(ops[2]), xo, rc)
+        if mn == "sub":
+            # sub rD,rA,rB (rD = rA - rB) is the extended form of subf rD,rB,rA
+            return _xform(31, _reg(ops[0]), _reg(ops[2]), _reg(ops[1]), xo, rc)
+        if mn.rstrip(".") in _LOGICAL_X:
+            # and/or/xor/shift rA,rS,rB: the source rS takes the first register field, the destination rA the second
+            return _xform(31, _reg(ops[1]), _reg(ops[0]), _reg(ops[2]), xo, rc)
         return _xform(31, _reg(ops[0]), _reg(ops[1]), _reg(ops[2]), xo, rc)
     if mn in ("cmpw", "cmplw"):
         xo = 0 if mn == "cmpw" else 32
