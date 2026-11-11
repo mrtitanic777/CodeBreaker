@@ -2,6 +2,10 @@
 
 #include "codebreaker/verify/verdicts.hpp"
 
+// The vocabulary below is read by other files' namespace-scope initialisers (a table built from SCORED(), TITLE() ...): this file's
+// constants are initialised before theirs, whatever the link order (MSVC: lib initialisers run before user ones).
+#pragma init_seg(lib)
+
 namespace codebreaker::verify::verdicts {
 
 // ---- 1. what a judge says ----
