@@ -13,6 +13,8 @@
 #include "gpu/renderer.h"
 #include "input.h"
 #include "kernel/kernel.h"
+#include "kernel/users.h"
+#include "guide/guide.h"
 #include "kernel/storage.h"
 #include "modules.h"
 #include "settings.h"
@@ -157,6 +159,15 @@ int main(int argc, char** argv)
     // Our Xbox LIVE (console_settings.ini live_server): profiles that sign in go online on its server
     // (kernel/xam_live.cpp), as the title's own client (its title ID, known now).
     kernel::InitializeLive();
+    // Started by Native Dashboard: its sign-ins go on (kernel/users.h HostedSignIns).
+    if (kernel::users::HostedSignIns())
+        kernel::users::Initialize();
+    // The Guide's Recent and Beacons & Activity: the title running (the profile's played titles from its GPD).
+    {
+        guide::RecentSources recent;
+        recent.runningTitleId = title.titleId;
+        guide::SetRecentSources(std::move(recent));
+    }
 
     // Stall watchdog: when no frame is presented for CB_WATCHDOG seconds (default 30, 0 = off), log what every
     // guest thread is doing (once per stall).

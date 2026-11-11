@@ -434,7 +434,7 @@ namespace live::voice
                             Log("Voice: no speakers for party chat");
                     }
                     devicesOpen = true;
-                    Log("Voice: {}: {}{}{}", target.active ? "in a party" : "voice mail",
+                    Log("Voice: {}: {}{}{}", target.active ? "in a party or chat" : "voice mail",
                         mic.client ? "microphone open" : "no microphone",
                         speakers.client ? ", speakers open" : ", no speakers", tone > 0 ? " (test tone)" : "");
                     v.micOpen = mic.client || tone > 0;

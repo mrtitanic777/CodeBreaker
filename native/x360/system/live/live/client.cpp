@@ -69,6 +69,8 @@ namespace live
             std::vector<Friend> friends;
             std::vector<Message> messages;
             std::optional<Party> party;
+            std::vector<Chat> chats;
+            std::string channel = "party";
         };
 
         // ---- TLS (Windows Schannel; docs/network_protocol.md "Encryption") ----
@@ -548,6 +550,34 @@ namespace live
             return m;
         }
 
+        Chat ToChat(const json& j)
+        {
+            Chat c;
+            c.id = Str(j, "id");
+            c.created = I64(j, "created");
+            for (const char* field : { "members", "invited" })
+                if (const json& list = Get(j, field); list.is_array())
+                    for (const json& m : list)
+                        (std::string(field) == "members" ? c.members : c.invited)
+                            .push_back({ ParseHex64(Get(m, "xuid")), Str(m, "gamertag") });
+            return c;
+        }
+
+        // A chat's push or reply into the user's list (an ended one leaves it; the voice channel falls back to the
+        // party when its chat goes, as the server does).
+        void PutChat(UserState& u, const json& view)
+        {
+            const std::string id = Str(view, "id");
+            std::erase_if(u.chats, [&](const Chat& c) { return c.id == id; });
+            if (Bool(view, "ended"))
+            {
+                if (u.channel == "chat:" + id)
+                    u.channel = "party";
+                return;
+            }
+            u.chats.push_back(ToChat(view));
+        }
+
         std::optional<Party> ToParty(const json& j)
         {
             if (!j.is_object())
@@ -632,6 +662,7 @@ namespace live
             const auto friends = Request({ { "op", "friends" }, { "user", user } });
             const auto messages = Request({ { "op", "messages" }, { "user", user } });
             const auto party = Request({ { "op", "party" }, { "user", user } });
+            const auto chats = Request({ { "op", "chats" }, { "user", user } });
             std::lock_guard lock(S().mutex);
             UserState& u = S().users[user];
             if (friends && Bool(*friends, "ok"))
@@ -648,6 +679,13 @@ namespace live
             }
             if (party && Bool(*party, "ok"))
                 u.party = ToParty(Get(*party, "party"));
+            if (chats && Bool(*chats, "ok"))
+            {
+                u.chats.clear();
+                if (const json& list = Get(*chats, "chats"); list.is_array())
+                    for (const json& v : list)
+                        u.chats.push_back(ToChat(v));
+            }
         }
 
         // A public profile's text parts (the pictures go only with `signin`).
@@ -813,6 +851,11 @@ namespace live
                     u.party = ToParty(Get(j, "party"));
                     e.kind = EventKind::PartyChanged;
                 }
+                else if (op == "chat")
+                {
+                    PutChat(u, Get(j, "chat"));
+                    e.kind = EventKind::ChatChanged;
+                }
                 else if (op == "signed_out")
                 {
                     // The same account signed in on another console: off Xbox LIVE, and not signed in again by a
@@ -824,6 +867,8 @@ namespace live
                     u.friends.clear();
                     u.messages.clear();
                     u.party.reset();
+                    u.chats.clear();
+                    u.channel = "party";
                     e = { EventKind::SignedOut, user, xuid };
                 }
                 else if (op == "match_found" || op == "match_timeout")
@@ -1140,6 +1185,8 @@ namespace live
                         u.friends.clear();
                         u.messages.clear();
                         u.party.reset();
+                        u.chats.clear(); // the server ends a player's chats when the connection drops
+                        u.channel = "party";
                     }
                     s.replied.notify_all();
                 }
@@ -1858,6 +1905,77 @@ namespace live
     {
         std::lock_guard lock(S().mutex);
         return user < kMaxUsers ? S().users[user].party : std::nullopt;
+    }
+
+    std::vector<Chat> Chats(uint32_t user)
+    {
+        std::lock_guard lock(S().mutex);
+        return user < kMaxUsers ? S().users[user].chats : std::vector<Chat>();
+    }
+
+    std::string VoiceChannel(uint32_t user)
+    {
+        std::lock_guard lock(S().mutex);
+        return user < kMaxUsers ? S().users[user].channel : std::string("party");
+    }
+
+    namespace
+    {
+        std::optional<std::string> ChatRequest(json request, uint32_t user)
+        {
+            const auto reply = Request(std::move(request));
+            if (!reply)
+                return Connected() ? std::string("timeout") : std::string("not connected");
+            if (!Bool(*reply, "ok"))
+                return Str(*reply, "error");
+            if (const auto it = reply->find("chat"); it != reply->end() && it->is_object() && user < kMaxUsers)
+            {
+                std::lock_guard lock(S().mutex);
+                PutChat(S().users[user], *it);
+            }
+            return std::nullopt;
+        }
+    }
+
+    std::optional<std::string> InviteToChat(uint32_t user, uint64_t xuid, const std::string& chat)
+    {
+        json request = { { "op", "chat_invite" }, { "user", user }, { "xuid", Hex64(xuid) } };
+        if (!chat.empty())
+            request["chat"] = chat;
+        return ChatRequest(std::move(request), user);
+    }
+
+    std::optional<std::string> JoinChat(uint32_t user, const std::string& chat)
+    {
+        return ChatRequest({ { "op", "chat_join" }, { "user", user }, { "chat", chat } }, user);
+    }
+
+    std::optional<std::string> LeaveChat(uint32_t user, const std::string& chat)
+    {
+        const auto error = Simple({ { "op", "chat_leave" }, { "user", user }, { "chat", chat } });
+        if (!error && user < kMaxUsers)
+        {
+            // The leaver gets no push: the chat leaves its list here.
+            std::lock_guard lock(S().mutex);
+            UserState& u = S().users[user];
+            std::erase_if(u.chats, [&](const Chat& c) { return c.id == chat; });
+            if (u.channel == "chat:" + chat)
+                u.channel = "party";
+        }
+        return error;
+    }
+
+    std::optional<std::string> SetVoiceChannel(uint32_t user, const std::string& channel)
+    {
+        const auto reply = Request({ { "op", "voice_channel" }, { "user", user }, { "channel", channel } });
+        if (!reply)
+            return Connected() ? std::string("timeout") : std::string("not connected");
+        if (!Bool(*reply, "ok"))
+            return Str(*reply, "error");
+        std::lock_guard lock(S().mutex);
+        if (user < kMaxUsers)
+            S().users[user].channel = Str(*reply, "channel").empty() ? channel : Str(*reply, "channel");
+        return std::nullopt;
     }
 
     namespace
@@ -2900,7 +3018,9 @@ namespace live::detail
         if (!S().connected)
             return t;
         for (const UserState& u : S().users)
-            if (u.signedIn && u.party)
+            if (u.signedIn && u.channel != "game" &&
+                (u.channel.starts_with("chat:") ? std::any_of(u.chats.begin(), u.chats.end(), [&](const Chat& c) {
+                     return "chat:" + c.id == u.channel; }) : bool(u.party)))
             {
                 t.active = true;
                 t.host = S().server.first;

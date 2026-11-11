@@ -213,6 +213,25 @@ namespace xui
     };
     void ShowSetBeacon(const SetBeaconInfo& info);
     std::u16string BeaconsString(size_t index, const char16_t* fallback);
+
+    // Guide.ChatAndMessenger's Chat (QuickChatRootScene, rootscene.xur: its ChatSessionList "listItems", visual
+    // List_twoline-2iconChat / btn_2Line-2iconChat): a row per channel or chat, `line1` (txt_line3, slot 3), `line2`
+    // (txt_line2, slot 4), the main icon (one of the module's images), the small icon (slot 1: the active channel's
+    // speaker) and the other player's gamer picture (slot 2). A list pane (PanePress: kChosen with the row,
+    // kCancelled). UpdateChatList redraws the rows while it shows.
+    struct ChatRow
+    {
+        std::u16string line1, line2;
+        std::string icon, smallIcon;
+        std::vector<uint8_t> picture;
+    };
+    void ShowChatList(const std::vector<ChatRow>& rows, uint32_t focus);
+    void UpdateChatList(const std::vector<ChatRow>& rows);
+    struct GamerCardInfo;
+    // QuickChatOptionsScene (VoicechatOptions.xur): Join Chat, End Chat, Page Gamer, View Profile (rows 0-3 as a
+    // drill-down: PanePress, greyed ones do nothing) beside the player's gamercard.
+    void ShowChatOptions(const GamerCardInfo& card, const bool (&enabled)[4], uint32_t focus);
+    std::u16string ChatString(size_t index, const char16_t* fallback);
     void SetPasscodeEntered(uint32_t count, const std::u16string& text);
     void ShowMessageBox(const std::u16string& title, const std::u16string& text,
                         const std::vector<std::u16string>& buttons, uint32_t focus, MessageIcon icon);
