@@ -564,3 +564,13 @@ Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2)
 |---|---|---|
 | fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
 | mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+
+## cb refactor W1-B10: exact/draft/shapes (2026-11-11)
+
+Old = the typed port on the py:: layer (exact/draft/shapes.cpp, py::re), new = cb::exact::draft::shapes (cb::Regex, hand scans), same inputs, one run each, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| the old harness: 853,952 pass runs (74 passes over 11,900 generated draft bodies of up to a few KB, results printed as JSON) | 30.2 s | 13.2 s (incl. JSON output and reading the 25 MB of cases) |
+
+The harness answers: 853,921 of the 853,952 results equal the Python module's (expected.txt: result, or its crc32 and length, and the tables the passes recorded); the other 31 are store_joins drafts on which the Python raised IndexError (fixed in the Python, which now answers as the C++ does).
