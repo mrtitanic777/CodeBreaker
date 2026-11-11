@@ -113,6 +113,11 @@ target_link_libraries(cb_exact PUBLIC cb_core)
 cb_area(formats)
 target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 
+cb_area(recompile)
+target_link_libraries(cb_recompile PUBLIC cb_core)
+# the shims at the old header paths are tested too: their test file includes the old layer, so it builds at /W3
+set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp" PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
