@@ -297,7 +297,7 @@ std::string msc6_walk(const Bytes &b, const Syms &syms, const std::string &calle
   for (auto &l : *r.lines) body += "    " + replace_all(l, "CALLEE", callee) + "\n";
   std::string m = "{\"stmts\": " + std::to_string(r.lines->size()) + ", \"globals\": {";
   for (size_t k = 0; k < d.globs.keys.size(); k++) m += (k ? ", " : "") + jstr(d.globs.keys[k]) + ": " + jstr(d.globs.v[d.globs.keys[k]]);
-  return "{\"t\": " + jstr(decls + "\nvoid far F(void)\n{\n" + body + "}") + ", \"m\": " + m + "}}";
+  return "{\"t\": " + jstr(decls + "\nvoid far F(void)\n{\n" + body + "}") + ", \"m\": " + m + "}}}";
 }
 
 std::string msc6_templates(const Bytes &b) {
