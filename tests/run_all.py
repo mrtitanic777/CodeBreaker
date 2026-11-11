@@ -64,7 +64,7 @@ SUITES = [("../tools/check_imports.py", False, ""), ("../tools/tidy.py", False, 
           ("test_invert.py", False, "dosbox"), ("test_readable.py", False, ""), ("test_java.py", False, ""),
           ("test_translate.py", False, ""), ("test_concolic.py", False, ""), ("test_run_record.py", False, ""),
           ("test_native_trace.py", False, ""), ("test_native_engine.py", False, ""),
-          ("test_frozen.py", False, ""), ("test_port.py", False, ""), ("test_converted.py", False, ""), ("test_flat_thunk.py", False, ""),
+          ("test_frozen.py", False, ""), ("test_port.py", False, ""), ("test_converted.py", False, ""), ("test_flat_thunk.py", False, ""), ("test_recut.py", False, ""), ("test_cmpp.py", False, ""), ("test_dpmi.py", False, ""),
           ("test_exepack.py", False, ""), ("test_pklite.py", False, ""), ("test_x360.py", True, ""),
           ("test_frozen_slow.py", True, ""), ("test_verification.py", True, "")]
 SHARDED = {"test_java.py": "java", "test_translate.py": "translate"}      # pytest folders run a file at a time

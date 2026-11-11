@@ -674,3 +674,17 @@ Old = the typed port on the py:: layer (`decompile/asm_blocks.cpp`, `decompile/s
 
 The first version of shape16 re-opened Capstone for every statement it looked at (460 ms, no faster than the Python); a
 `inline_asm::Decoder16` (one open handle, asked many times) opened by the pass made it 5x faster than the Python.
+
+## cb refactor: exact batches W1-B9 and W1-B12 (2026-11-11)
+
+Old = the Python module on the same inputs (the Python is the live implementation of both), one run, shared machine (+-30%). New = Release `cb_tests` build.
+
+| What | Python | New |
+|---|---|---|
+| `exact/recut`: 300 `recut` of a 400-byte segment with 150 fix-ups | 239 ms | 72 ms |
+| `exact/recut`: 300 `recut` of a 60-byte segment (3 data records) | 48 ms | 11 ms |
+| `exact/recut`: 300 `recut` of a 3000-byte segment (3 data records of 1 KB) | 63 ms | 3 ms |
+| `exact/habits/cmpp`: `walk` of 408 listings (random procedures, damaged and short ones; 65,000 rows) x 20 | 579 ms | 141 ms |
+
+`exact/emu/dpmi` has no Python run to time against on its own (it runs only inside the DOS executive's emulation loop); each INT 31h it serves is
+a handful of register reads and one or two memory writes.

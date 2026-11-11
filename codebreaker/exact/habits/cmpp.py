@@ -37,6 +37,7 @@ def loose_bytes(b, fx=()):
     """offsets not compared: fixups, near call displacements to outside, far pointers"""
     m = set(fx); n = len(b)
     for off, sz, t, mn in walk(b):
+        if mn == "hdr": continue                        # (the entry helper's data, not code: its first byte is no opcode)
         if b[off] == 0xE8 and sz == 3:
             tgt = (off + 3 + struct.unpack_from("<h", b, off + 1)[0])
             if not (0 <= tgt < n): m.update((off + 1, off + 2))

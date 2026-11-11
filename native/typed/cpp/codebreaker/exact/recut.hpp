@@ -1,29 +1,17 @@
-// codebreaker/exact/recut.hpp -- typed C++ port of codebreaker.exact.recut.
-//
-// recut.py -- a module's code records cut again, as the original program's order of relocations shows.
-//
-// The linker lists a program's relocations in the order it meets the fixups that need them: each data record's
-// fixups in the order the record lists them, the records in their order. A compiler cut a file's code into
-// records by the source's lines and listed a record's fixups as it pleased (Microsoft C: the last first); a
-// source put together from pieces does not cut where the original's did. The bytes do not depend on it -- the
-// relocation table does (and so EXEPACK's). So for the link, a code segment is written again in records cut
-// where the original's relocations show one ended (where the next lies after the one before: within a record
-// they run down), each record listing its relocations in the original's order. It proves nothing about the
-// source's lines.
+// codebreaker/exact/recut.hpp -- compat shim for cb/exact/recut.hpp (docs/CPP_DESIGN.md 6.3). Conversion and forwarding
+// only; deleted with its last old-layer consumer (exact/project, exact/link).
 //
 //     recut::recut(project, raw) -> the object module's bytes (unchanged when its relocations are not the program's)
-//     project "recut": true asks the link stage for it
 //
-// Typing notes:
-//   * `prj` is a duck-typed exact.project.Project: Project here is the members this module reads (symbols(),
-//     the packed original's relocations, the EXE header and the file the relocation table is read from).
-//   * the Python's fixup dicts are exact::standin::Fixup (with `at` set when placed); a header is a list of
-//     integers (the Python's tuple of the EXE header's fields).
+// `Project` is exact.project.Project as recut reads it: symbols(), the packed original's relocations, the EXE header and
+// the file the relocation table is read from.
 #pragma once
 
 #include <cstdint>
 #include <optional>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/exact/recut.hpp"
 #include "codebreaker/exact/compare.hpp"
 #include "py.hpp"
 
@@ -40,10 +28,57 @@ class Project {
     virtual py::bytes file() const = 0;                                 // prj.file: the original program's file
 };
 
+namespace detail {
+
+// What the new module reads, built from the old project; `table`, `file` and `symbols` own what `original` points at.
+struct Converted {
+    cb::exact::SymbolTable symbols;
+    cb::Bytes file;
+    cb::exact::recut::Original original;
+    explicit Converted(const Project& prj)
+        : symbols(make_symbols(prj)), file(cb::compat::from_py(prj.file())), original{symbols, std::nullopt, std::nullopt, file} {
+        using cb::compat::int_from_py;
+        if (const auto packed = prj.packed_relocs()) {
+            std::vector<std::uint32_t> relocs;
+            for (int64_t r : *packed) relocs.push_back(int_from_py<std::uint32_t>(r));
+            original.packed_relocs = std::move(relocs);
+        }
+        const py::list<int64_t> h = prj.header();
+        if (!h.empty()) original.table = cb::exact::recut::RelocTable{int_from_py<std::uint32_t>(h[3]), int_from_py<std::uint32_t>(h[12])};
+    }
+
+  private:
+    static cb::exact::SymbolTable make_symbols(const Project& prj) {
+        cb::exact::SymbolTable table;
+        for (const auto& kv : prj.symbols().items()) {
+            const std::string k = std::get<0>(std::get<1>(kv)).utf8();
+            const cb::exact::SymKind kind = k == "C"   ? cb::exact::SymKind::Code
+                                            : k == "D" ? cb::exact::SymKind::Data
+                                            : k == "S" ? cb::exact::SymKind::Segment
+                                                       : cb::exact::SymKind::Unknown;
+            table.insert_or_assign(std::get<0>(kv).utf8(), cb::exact::SymPlace{kind, std::get<1>(std::get<1>(kv))});
+        }
+        return table;
+    }
+};
+
+}  // namespace detail
+
 // the program's relocations, image addresses in the order of its table (EXEPACK's when it is packed)
-py::list<int64_t> order(const Project& prj);
+inline py::list<int64_t> order(const Project& prj) {
+    return cb::compat::guard([&] {
+        const detail::Converted c(prj);
+        return cb::compat::to_py(cb::exact::recut::relocation_order(c.original));
+    });
+}
 
 // the object module's bytes (raw itself when its relocations are not the program's)
-py::bytes recut(const Project& prj, const py::bytes& raw);
+inline py::bytes recut(const Project& prj, const py::bytes& raw) {
+    return cb::compat::guard([&] {
+        const detail::Converted c(prj);
+        const cb::Bytes made = cb::exact::recut::recut(c.original, cb::compat::from_py(raw));
+        return cb::compat::to_py(cb::ByteView(made));
+    });
+}
 
 }  // namespace codebreaker::exact::recut

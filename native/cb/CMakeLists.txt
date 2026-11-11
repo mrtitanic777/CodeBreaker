@@ -104,7 +104,7 @@ target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
-file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/shims_test.cpp")
+file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/shims_w1b9_test.cpp")
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
@@ -197,6 +197,7 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dpmi.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
