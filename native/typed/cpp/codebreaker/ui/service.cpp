@@ -23,6 +23,7 @@
 #include "codebreaker/source/module_writer.hpp"
 #include "codebreaker/store/functions.hpp"
 #include "codebreaker/ui/service.hpp"
+#include "json.hpp"
 #include "py_json.hpp"
 #include "py_os.hpp"
 #include "py_settings.hpp"
@@ -133,157 +134,59 @@ void dump_(std::string& o, const Json& v, const Dump& d, int depth) {
     }
 }
 
-struct Parser {
-    const std::string& t;
-    size_t p = 0;
-    explicit Parser(const std::string& text) : t(text) {}
-    [[noreturn]] void bad(const char* what) { throw py::ValueError(std::string(what) + ": line 1 column " + std::to_string(p + 1) + " (char " + std::to_string(p) + ")"); }
-    void ws() {
-        while (p < t.size() && (t[p] == ' ' || t[p] == '\t' || t[p] == '\n' || t[p] == '\r')) p++;
-    }
-    static void utf8(std::string& o, unsigned c) {
-        if (c < 0x80) o += static_cast<char>(c);
-        else if (c < 0x800) { o += static_cast<char>(0xC0 | (c >> 6)); o += static_cast<char>(0x80 | (c & 63)); }
-        else if (c < 0x10000) { o += static_cast<char>(0xE0 | (c >> 12)); o += static_cast<char>(0x80 | ((c >> 6) & 63)); o += static_cast<char>(0x80 | (c & 63)); }
-        else { o += static_cast<char>(0xF0 | (c >> 18)); o += static_cast<char>(0x80 | ((c >> 12) & 63)); o += static_cast<char>(0x80 | ((c >> 6) & 63)); o += static_cast<char>(0x80 | (c & 63)); }
-    }
-    unsigned hex4() {
-        if (p + 4 > t.size()) bad("Invalid \\uXXXX escape");
-        unsigned v = 0;
-        for (int n = 0; n < 4; n++) {
-            char c = t[p++];
-            v <<= 4;
-            if (c >= '0' && c <= '9') v |= static_cast<unsigned>(c - '0');
-            else if (c >= 'a' && c <= 'f') v |= static_cast<unsigned>(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F') v |= static_cast<unsigned>(c - 'A' + 10);
-            else bad("Invalid \\uXXXX escape");
+// the runtime's JSON (native/l2/src/json.hpp: json.loads / json.dumps as Python's) reads and writes py::V; Json is this port's tagged view
+py::V to_v_(const Json& j) {
+    switch (j.kind) {
+        case Json::Null: return py::V();
+        case Json::Bool: return py::V(j.b);
+        case Json::Int: return py::V(static_cast<long long>(j.i));
+        case Json::Float: return py::V(j.d);
+        case Json::Str: return py::V(j.s);
+        case Json::Arr: {
+            py::V l = py::V::list();
+            for (const auto& x : j.a) l.append(to_v_(x));
+            return l;
         }
-        return v;
-    }
-    std::string str() {
-        std::string o;
-        p++;
-        for (;;) {
-            if (p >= t.size()) bad("Unterminated string starting at");
-            char c = t[p++];
-            if (c == '"') return o;
-            if (c != '\\') { o += c; continue; }
-            if (p >= t.size()) bad("Unterminated string starting at");
-            char e = t[p++];
-            switch (e) {
-                case '"': o += '"'; break;
-                case '\\': o += '\\'; break;
-                case '/': o += '/'; break;
-                case 'b': o += '\b'; break;
-                case 'f': o += '\f'; break;
-                case 'n': o += '\n'; break;
-                case 'r': o += '\r'; break;
-                case 't': o += '\t'; break;
-                case 'u': {
-                    unsigned v = hex4();
-                    if (v >= 0xD800 && v < 0xDC00 && p + 1 < t.size() && t[p] == '\\' && t[p + 1] == 'u') {
-                        size_t save = p;
-                        p += 2;
-                        unsigned lo = hex4();
-                        if (lo >= 0xDC00 && lo < 0xE000) v = 0x10000 + ((v - 0xD800) << 10) + (lo - 0xDC00);
-                        else p = save;
-                    }
-                    utf8(o, v);
-                    break;
-                }
-                default: bad("Invalid \\escape");
-            }
+        default: {
+            py::V d = py::V::dict();
+            for (size_t n = 0; n < j.a.size(); n++) d.set(py::V(j.keys[n]), to_v_(j.a[n]));
+            return d;
         }
     }
-    Json value() {
-        ws();
-        if (p >= t.size()) bad("Expecting value");
-        char c = t[p];
-        if (c == '{') {
-            Json o = Json::object();
-            p++;
-            ws();
-            if (p < t.size() && t[p] == '}') { p++; return o; }
-            for (;;) {
-                ws();
-                if (p >= t.size() || t[p] != '"') bad("Expecting property name enclosed in double quotes");
-                std::string k = str();
-                ws();
-                if (p >= t.size() || t[p] != ':') bad("Expecting ':' delimiter");
-                p++;
-                o.set(k, value());
-                ws();
-                if (p < t.size() && t[p] == ',') { p++; continue; }
-                if (p < t.size() && t[p] == '}') { p++; return o; }
-                bad("Expecting ',' delimiter");
-            }
-        }
-        if (c == '[') {
-            Json o = Json::array();
-            p++;
-            ws();
-            if (p < t.size() && t[p] == ']') { p++; return o; }
-            for (;;) {
-                o.push(value());
-                ws();
-                if (p < t.size() && t[p] == ',') { p++; continue; }
-                if (p < t.size() && t[p] == ']') { p++; return o; }
-                bad("Expecting ',' delimiter");
-            }
-        }
-        if (c == '"') return Json(str());
-        if (t.compare(p, 4, "true") == 0) { p += 4; return Json(true); }
-        if (t.compare(p, 5, "false") == 0) { p += 5; return Json(false); }
-        if (t.compare(p, 4, "null") == 0) { p += 4; return Json(); }
-        if (t.compare(p, 3, "NaN") == 0) { p += 3; return Json(std::nan("")); }
-        if (t.compare(p, 8, "Infinity") == 0) { p += 8; return Json(HUGE_VAL); }
-        if (t.compare(p, 9, "-Infinity") == 0) { p += 9; return Json(-HUGE_VAL); }
-        size_t s = p;
-        if (t[p] == '-') p++;
-        if (p >= t.size() || !(t[p] >= '0' && t[p] <= '9')) { p = s; bad("Expecting value"); }
-        while (p < t.size() && t[p] >= '0' && t[p] <= '9') p++;
-        bool real = false;
-        if (p < t.size() && t[p] == '.' && p + 1 < t.size() && t[p + 1] >= '0' && t[p + 1] <= '9') {
-            real = true;
-            p++;
-            while (p < t.size() && t[p] >= '0' && t[p] <= '9') p++;
-        }
-        if (p < t.size() && (t[p] == 'e' || t[p] == 'E')) {
-            size_t q = p + 1;
-            if (q < t.size() && (t[q] == '+' || t[q] == '-')) q++;
-            if (q < t.size() && t[q] >= '0' && t[q] <= '9') {
-                real = true;
-                while (q < t.size() && t[q] >= '0' && t[q] <= '9') q++;
-                p = q;
-            }
-        }
-        std::string num = t.substr(s, p - s);
-        if (!real) {
-            try {
-                return Json(static_cast<int64_t>(std::stoll(num)));
-            } catch (const std::out_of_range&) {
-                return Json(std::strtod(num.c_str(), nullptr));
-            }
-        }
-        return Json(std::strtod(num.c_str(), nullptr));
+}
+
+Json from_v_(const py::V& v) {
+    if (v.is_none()) return Json();
+    if (v.is_bool()) return Json(v.b);
+    if (v.is_int()) return Json(static_cast<int64_t>(v.i));
+    if (v.is_float()) return Json(v.f);
+    if (v.is_str()) return Json(v.str());
+    if (v.is_dict()) {
+        Json o = Json::object();
+        for (const auto& kv : v.items()) o.set(kv.first.str(), from_v_(kv.second));
+        return o;
     }
-};
+    Json a = Json::array();
+    for (const auto& x : v.seq()) a.push(from_v_(x));
+    return a;
+}
 
 }  // namespace
 
 std::string dumps(const Json& v, const Dump& opts) {
-    std::string o;
+    if (opts.indent < 0) {   // json.dumps through the runtime
+        py::DumpOpts o;
+        o.item_sep = opts.item.c_str();
+        o.key_sep = opts.key.c_str();
+        o.ensure_ascii = opts.ensure_ascii;
+        return py::json_dump(to_v_(v), o);
+    }
+    std::string o;   // (indent: the runtime's writer has none; pydantic's `indent=2` layout)
     dump_(o, v, opts, 0);
     return o;
 }
 
-Json loads(const std::string& text) {
-    Parser ps(text);
-    Json v = ps.value();
-    ps.ws();
-    if (ps.p != text.size()) ps.bad("Extra data");
-    return v;
-}
+Json loads(const std::string& text) { return from_v_(py::json_parse(text)); }
 
 // ---- state ---------------------------------------------------------------------------------------
 bool START = false;

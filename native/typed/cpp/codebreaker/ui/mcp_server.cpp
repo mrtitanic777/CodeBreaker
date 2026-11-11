@@ -35,6 +35,15 @@
 #include "py_os.hpp"
 #include "py_settings.hpp"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
 namespace codebreaker::ui::mcp_server {
 
 namespace service_ = codebreaker::ui::service;
@@ -548,7 +557,6 @@ Json strings(const py::str& module, const py::str& find, int64_t min_len, int64_
 
 Json hex_dump(const py::str& module, int64_t offset, int64_t length, const py::str& addr) {
     py::str p = _path(module);
-    if (!hooks().inspect_hexdump) no_hook("inspect_hexdump");
     int64_t n = std::max<int64_t>(1, std::min<int64_t>(length, 16384));
     Json out = Json::object();
     if (!addr.empty()) {
@@ -564,6 +572,7 @@ Json hex_dump(const py::str& module, int64_t offset, int64_t length, const py::s
     out.set("offset", offset);
     out.set("length", n);
     out.set("size", py::os::path::getsize(p));
+    if (!hooks().inspect_hexdump) no_hook("inspect_hexdump");
     out.set("text", hooks().inspect_hexdump(p, std::max<int64_t>(0, offset), n));
     return out;
 }
@@ -2595,6 +2604,299 @@ py::str token() {
     return py::str(ss.str()).strip();
 }
 
+// ---- streamable HTTP (`--http`): the Python's uvicorn + mcp streamable_http_app behind the bearer token -------------------------
+namespace {
+
+struct Request {
+    std::string method, path, body;
+    std::map<std::string, std::string> headers;   // lower-case names
+    const std::string& header(const char* k) const {
+        static const std::string none;
+        auto it = headers.find(k);
+        return it == headers.end() ? none : it->second;
+    }
+};
+
+std::string http_date_() {
+    std::time_t t = std::time(nullptr);
+    std::tm tm{};
+    gmtime_s(&tm, &t);
+    char b[64];
+    std::strftime(b, sizeof b, "%a, %d %b %Y %H:%M:%S GMT", &tm);
+    return b;
+}
+
+std::string session_id_() {
+    std::random_device rd;
+    char b[40];
+    std::snprintf(b, sizeof b, "%08x%08x%08x%08x", rd(), rd(), rd(), rd());
+    return b;
+}
+
+// `*` at the end of a pattern stands for a port (the library's "127.0.0.1:*")
+bool match_pattern_(const std::string& value, const std::string& pattern) {
+    if (!pattern.empty() && pattern.back() == '*') return value.compare(0, pattern.size() - 1, pattern, 0, pattern.size() - 1) == 0;
+    return value == pattern;
+}
+
+struct HttpState {
+    std::vector<std::string> hosts, allowed_hosts, allowed_origins;
+    std::string secret;
+    bool is_public = false;
+    std::mutex lock;
+    std::set<std::string> sessions;
+};
+
+struct Reply {
+    int status = 200;
+    std::vector<std::pair<std::string, std::string>> headers;
+    std::string body;
+    bool chunked = false;
+};
+
+const char* reason_(int s) {
+    switch (s) {
+        case 200: return "OK";
+        case 202: return "Accepted";
+        case 400: return "Bad Request";
+        case 401: return "Unauthorized";
+        case 403: return "Forbidden";
+        case 404: return "Not Found";
+        case 406: return "Not Acceptable";
+        case 421: return "Misdirected Request";
+        default: return "OK";
+    }
+}
+
+std::string wire_(const Reply& r) {
+    std::string o = "HTTP/1.1 " + std::to_string(r.status) + " " + reason_(r.status) + "\r\ndate: " + http_date_() + "\r\nserver: uvicorn\r\n";
+    for (const auto& h : r.headers) o += h.first + ": " + h.second + "\r\n";
+    if (r.chunked) {
+        char n[32];
+        std::snprintf(n, sizeof n, "%zx", r.body.size());
+        o += "transfer-encoding: chunked\r\n\r\n" + std::string(n) + "\r\n" + r.body + "\r\n0\r\n\r\n";
+    } else {
+        o += "content-length: " + std::to_string(r.body.size()) + "\r\n\r\n" + r.body;
+    }
+    return o;
+}
+
+Json rpc_error_(int64_t code, const std::string& message) {
+    Json e = Json::object();
+    e.set("code", code);
+    e.set("message", message);
+    Json r = Json::object();
+    r.set("jsonrpc", "2.0");
+    r.set("id", Json());
+    r.set("error", e);
+    return r;
+}
+
+std::string compact_(const Json& j) {
+    Dump d;
+    d.item = ",";
+    d.key = ":";
+    d.ensure_ascii = false;
+    return dumps(j, d);
+}
+
+Reply json_reply_(int status, const Json& j, const std::string& sid) {
+    Reply r;
+    r.status = status;
+    r.headers = {{"content-type", "application/json"}};
+    if (!sid.empty()) r.headers.push_back({"mcp-session-id", sid});
+    r.body = compact_(j);
+    return r;
+}
+
+Reply plain_(int status, const std::string& text, bool with_type = true) {
+    Reply r;
+    r.status = status;
+    if (with_type) r.headers = {{"content-type", "text/plain; charset=utf-8"}};
+    r.body = text;
+    return r;
+}
+
+Reply answer_(HttpState& st, Request req) {
+    // the bearer token (ASGI Bearer middleware): the header, or in --public the URL's first segment
+    std::string got = req.header("authorization");
+    const std::string prefix = "/" + st.secret;
+    if (st.is_public && req.path.compare(0, prefix.size() + 1, prefix + "/") == 0) {
+        req.path = req.path.substr(prefix.size());
+        got = "Bearer " + st.secret;
+    }
+    if (got != "Bearer " + st.secret) {
+        Reply r;
+        r.status = 401;
+        r.headers = {{"content-type", "text/plain"}, {"www-authenticate", "Bearer"}};
+        r.body = "a bearer token is needed";
+        r.chunked = true;
+        return r;
+    }
+    if (req.path != "/mcp") return plain_(404, "Not Found");
+    // the transport's DNS-rebinding protection: Host, Origin, and a POST's Content-Type
+    bool host_ok = false;
+    for (const auto& p : st.allowed_hosts)
+        if (match_pattern_(req.header("host"), p)) host_ok = true;
+    if (!host_ok) return plain_(421, "Invalid Host header", false);
+    const std::string origin = req.header("origin");
+    if (!origin.empty()) {
+        bool ok = false;
+        for (const auto& p : st.allowed_origins)
+            if (match_pattern_(origin, p)) ok = true;
+        if (!ok) return plain_(403, "Invalid Origin header", false);
+    }
+    if (req.method == "POST") {
+        const std::string ct = lower8(req.header("content-type"));
+        if (ct.compare(0, 16, "application/json") != 0) return plain_(400, "Invalid Content-Type header", false);
+    }
+    std::string sid = req.header("mcp-session-id");
+    auto known = [&](const std::string& s) {
+        std::lock_guard<std::mutex> g(st.lock);
+        return st.sessions.count(s) > 0;
+    };
+    if (req.method == "POST" || req.method == "DELETE" || req.method == "GET") {
+        if (!sid.empty() && !known(sid)) return json_reply_(404, rpc_error_(-32600, "Session not found"), "");
+    }
+    if (req.method == "DELETE") {
+        if (sid.empty()) return json_reply_(400, rpc_error_(-32600, "Bad Request: Missing session ID"), session_id_());
+        {
+            std::lock_guard<std::mutex> g(st.lock);
+            st.sessions.erase(sid);
+        }
+        Reply r;
+        r.headers = {{"content-type", "application/json"}, {"mcp-session-id", sid}};
+        return r;
+    }
+    if (req.method != "POST") {
+        if (sid.empty()) return json_reply_(400, rpc_error_(-32600, "Bad Request: Missing session ID"), session_id_());
+        return json_reply_(405, rpc_error_(-32600, "Method Not Allowed"), sid);   // (the library holds a stream open here: not ported)
+    }
+    const std::string accept = lower8(req.header("accept"));
+    const bool accepts = accept.find("application/json") != std::string::npos && accept.find("text/event-stream") != std::string::npos;
+    Json msg;
+    bool parsed = true;
+    std::string perr;
+    try {
+        msg = loads(req.body);
+    } catch (const py::ValueError&) {
+        parsed = false;
+    }
+    const std::string reply_sid = sid.empty() ? session_id_() : sid;
+    if (!accepts) return json_reply_(406, rpc_error_(-32600, "Not Acceptable: Client must accept both application/json and text/event-stream"), reply_sid);
+    if (!parsed) return json_reply_(400, rpc_error_(-32700, "Parse error: expected value at line 1 column 1"), reply_sid);
+    if (!msg.is_obj()) return json_reply_(400, rpc_error_(-32602, "Validation error: the message is not a JSON-RPC object"), reply_sid);
+    const Json* method = msg.find("method");
+    const bool is_init = method && method->is_str() && method->s == "initialize" && msg.has("id");
+    if (sid.empty()) {
+        if (!is_init) return json_reply_(400, rpc_error_(-32600, "Bad Request: Missing session ID"), reply_sid);
+        std::lock_guard<std::mutex> g(st.lock);
+        st.sessions.insert(reply_sid);
+    }
+    Json reply = handle_message(msg, !st.is_public);
+    if (reply.is_null()) {
+        Reply r;
+        r.status = 202;
+        r.headers = {{"content-type", "application/json"}, {"mcp-session-id", reply_sid}};
+        return r;
+    }
+    Reply r;
+    r.headers = {{"cache-control", "no-cache, no-transform"}, {"connection", "keep-alive"}, {"content-type", "text/event-stream"},
+                 {"mcp-session-id", reply_sid}, {"x-accel-buffering", "no"}};
+    r.body = "event: message\r\ndata: " + compact_(reply) + "\r\n\r\n";
+    r.chunked = true;
+    return r;
+}
+
+void serve_connection_(HttpState& st, SOCKET s) {
+    std::string buf;
+    char tmp[8192];
+    for (;;) {
+        size_t head_end;
+        while ((head_end = buf.find("\r\n\r\n")) == std::string::npos) {
+            int n = recv(s, tmp, sizeof tmp, 0);
+            if (n <= 0) {
+                closesocket(s);
+                return;
+            }
+            buf.append(tmp, static_cast<size_t>(n));
+        }
+        Request req;
+        std::istringstream hs(buf.substr(0, head_end));
+        std::string line;
+        std::getline(hs, line);
+        {
+            std::istringstream rl(line);
+            std::string version;
+            rl >> req.method >> req.path >> version;
+        }
+        while (std::getline(hs, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+            auto c = line.find(':');
+            if (c == std::string::npos) continue;
+            std::string k = lower8(line.substr(0, c)), v = line.substr(c + 1);
+            req.headers[k] = py::str(v).strip().utf8();
+        }
+        size_t want = req.headers.count("content-length") ? static_cast<size_t>(std::stoull(req.headers["content-length"])) : 0;
+        while (buf.size() < head_end + 4 + want) {
+            int n = recv(s, tmp, sizeof tmp, 0);
+            if (n <= 0) {
+                closesocket(s);
+                return;
+            }
+            buf.append(tmp, static_cast<size_t>(n));
+        }
+        req.body = buf.substr(head_end + 4, want);
+        buf.erase(0, head_end + 4 + want);
+        Reply r;
+        try {
+            r = answer_(st, req);
+        } catch (const std::exception&) {
+            r = plain_(500, "Internal Server Error");
+        }
+        const std::string out = wire_(r);
+        for (size_t sent = 0; sent < out.size();) {
+            int n = send(s, out.data() + sent, static_cast<int>(out.size() - sent), 0);
+            if (n <= 0) {
+                closesocket(s);
+                return;
+            }
+            sent += static_cast<size_t>(n);
+        }
+    }
+}
+
+int64_t serve_http_(int64_t port, const std::string& host, const std::vector<std::string>& hosts, bool is_public) {
+    WSADATA d;
+    WSAStartup(MAKEWORD(2, 2), &d);
+    HttpState st;
+    st.secret = token().utf8();
+    st.is_public = is_public;
+    st.allowed_hosts = {"127.0.0.1:*", "localhost:*"};
+    st.allowed_origins = {"http://127.0.0.1:*", "http://localhost:*"};
+    for (const auto& h : hosts) {
+        st.allowed_hosts.push_back(h);
+        st.allowed_origins.push_back("https://" + h);
+    }
+    SOCKET ls = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_port = htons(static_cast<u_short>(port));
+    inet_pton(AF_INET, host.c_str(), &a.sin_addr);
+    if (bind(ls, reinterpret_cast<sockaddr*>(&a), sizeof a) != 0 || listen(ls, 64) != 0) {
+        std::fprintf(stderr, "cannot listen on %s:%lld\n", host.c_str(), static_cast<long long>(port));
+        return 1;
+    }
+    for (;;) {
+        SOCKET c = accept(ls, nullptr, nullptr);
+        if (c == INVALID_SOCKET) break;
+        std::thread([&st, c] { serve_connection_(st, c); }).detach();
+    }
+    return 0;
+}
+
+}  // namespace
+
 int64_t main(const py::list<py::str>& argv) {
     service_::START = true;   // the service, started on demand
     std::thread([] {
@@ -2603,36 +2905,57 @@ int64_t main(const py::list<py::str>& argv) {
         } catch (const std::exception&) {
         }
     }).detach();   // (found or started while the client connects)
+    auto after = [&](const char* flag) -> std::optional<std::string> {
+        for (size_t i = 0; i + 1 < argv.size(); i++)
+            if (argv[i] == py::str(flag)) return argv[i + 1].utf8();
+        return std::nullopt;
+    };
+    bool http = false;
     for (const auto& a : argv)
-        if (a == py::str("--http")) {
-            py::str msg("mcp --http: the streamable HTTP transport is not in the C++ port yet (stdio only)\n");
-            std::fwrite(msg.utf8().data(), 1, msg.utf8().size(), stderr);
-            return 2;
-        }
+        if (a == py::str("--http")) http = true;
+    if (http) {
+        int64_t port = py::int_parse(py::str(*after("--http")), 10);
+        std::string host = after("--host").value_or("127.0.0.1");
+        std::vector<std::string> hosts;
+        for (size_t i = 0; i + 1 < argv.size(); i++)
+            if (argv[i] == py::str("--allow-host")) hosts.push_back(argv[i + 1].utf8());
+        bool is_public = false;
+        for (const auto& a : argv)
+            if (a == py::str("--public")) is_public = true;
+        token();
+        std::fprintf(stderr, "CodeBreaker MCP on http://%s:%lld/mcp%s -- token in %s\n", host.c_str(), static_cast<long long>(port),
+                     is_public ? " (public: reading tools only, also at /<token>/mcp)" : "",
+                     py::os::environ_::get(py::str("CB_MCP_TOKEN")) ? "CB_MCP_TOKEN" : service_::state_path({py::str("mcp"), py::str("http_token.txt")}).utf8().c_str());
+        std::fflush(stderr);
+        int64_t rc = serve_http_(port, host, hosts, is_public);
+        service_::stop_mine();
+        return rc;
+    }
     // Stdout is the protocol: file 1 is pointed at stderr while serving, so anything the commands print cannot corrupt it.
     std::fflush(stdout);
     int proto = _dup(1);
     _dup2(2, 1);
     _setmode(proto, _O_BINARY);
+    // The library answers each request on a task of its own, so replies come as the requests finish (the order of a client that
+    // waits for each reply is the same); at end of input what is still running is cancelled, as here (the process ends).
+    auto write_lock = std::make_shared<std::mutex>();
     std::string line;
-    std::istream& in = std::cin;
-    while (std::getline(in, line)) {
+    while (std::getline(std::cin, line)) {
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
         if (strip8_(line).empty()) continue;
-        Json reply;
-        try {
-            reply = handle_message(loads(line), true);
-        } catch (const py::ValueError& e) {
-            Json data(std::string(e.what()));
-            reply = error_(Json(), -32700, "Parse error", &data);
-        }
-        if (reply.is_null()) continue;
-        Dump d;
-        d.item = ",";
-        d.key = ":";
-        d.ensure_ascii = false;
-        std::string out = dumps(reply, d) + "\n";
-        _write(proto, out.data(), static_cast<unsigned>(out.size()));
+        std::thread([line, proto, write_lock] {
+            Json reply;
+            try {
+                reply = handle_message(loads(line), true);
+            } catch (const py::ValueError& e) {
+                Json data(std::string(e.what()));
+                reply = error_(Json(), -32700, "Parse error", &data);
+            }
+            if (reply.is_null()) return;
+            std::string out = compact_(reply) + "\n";
+            std::lock_guard<std::mutex> g(*write_lock);
+            _write(proto, out.data(), static_cast<unsigned>(out.size()));
+        }).detach();
     }
     service_::stop_mine();   // (only the jobs this server started)
     return 0;
