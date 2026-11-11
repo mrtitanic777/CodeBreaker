@@ -1,0 +1,3 @@
+{
+  "am2": {"file": "C:/Users/mrtit/Documents/GitHub/CodeBreaker/.claude/worktrees/typed-1106/dyn_tests/am2/am2.py", "lines": 2, "functions": 1, "error": "", "refused": [[2, "await outside an async function"]]}
+}
