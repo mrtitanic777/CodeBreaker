@@ -273,7 +273,10 @@ def assemble(asm_text, root="."):
     def _rd(n):
         p = os.path.join(work, n) if work else None
         return open(p, errors="replace").read() if p and os.path.exists(p) else ""
-    return {"obj": out.get("m.obj"), "lst": _rd("m.lst"), "log": _rd("a.txt")}
+    res = {"obj": out.get("m.obj"), "lst": _rd("m.lst"), "log": _rd("a.txt")}
+    if work:                                  # (the work folder was left behind: one temp folder per call, as the nasm path used to)
+        shutil.rmtree(work, ignore_errors=True)
+    return res
 
 
 # --------------------------------------------------------------------------
@@ -299,8 +302,14 @@ def _nasm_inc():
     import tempfile
     d = os.path.join(tempfile.gettempdir(), "ne_idiom_nasm_inc")
     os.makedirs(d, exist_ok=True)
-    shim = os.path.join(os.path.dirname(_nasm_bin()), "test", "masm",
-                        "cmacros_shim.inc")
+    # (the shim is in <project>/test/masm: beside nasm.exe when it is in the project folder, two folders up from
+    # <project>/build/bin/nasm.exe -- the Python looked beside the exe only, so the in-repo build never found it and
+    # every `include cmacros.inc' failed: the whole nasm backend db-pinned everything)
+    bindir = os.path.dirname(_nasm_bin())
+    for base in (bindir, os.path.dirname(os.path.dirname(bindir))):
+        shim = os.path.join(base, "test", "masm", "cmacros_shim.inc")
+        if os.path.exists(shim):
+            break
     dst = os.path.join(d, "cmacros_shim.inc")
     if os.path.exists(shim) and (not os.path.exists(dst)
                                  or os.path.getmtime(shim) > os.path.getmtime(dst)):

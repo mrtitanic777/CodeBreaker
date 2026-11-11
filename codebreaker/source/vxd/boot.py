@@ -239,7 +239,7 @@ def boot(disk, files, tag, wait=300, log=print):
         except (OSError, ValueError, KeyError):
             pass
         runs.remove(work)                                       # (QEMU lets go of its files a moment later)
-    with open(os.path.join(shots, tag + ".bootlog.txt"), "w", encoding="latin1") as f:
+    with open(os.path.join(shots, tag + ".bootlog.txt"), "w", encoding="latin1", newline="") as f:      # (a text-mode write made each "\r\n" "\r\r\n")
         f.write(bootlog)
     return verdict, png, bootlog
 
