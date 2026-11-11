@@ -374,3 +374,134 @@ std::string str_repr(const std::string& s) {
 }
 
 }  // namespace py
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The program's operator new / delete: small blocks (up to 1 KiB) come from per-thread free lists of 16-byte size classes
+// carved out of 64 KiB chunks of one reserved address range, so a block's class is found from its address alone (no header,
+// and an unsized delete works). CPython does the same with pymalloc; the typed ports make and drop a std::u32string per
+// py::str, and the system heap's ~40 ns per allocate-and-free pair was a quarter of their run time. Larger blocks, and
+// everything when the range cannot be reserved, go to malloc as before. Memory of the small classes is kept by the process
+// (reused by later allocations of the same class, never given back). Define CB_NO_FASTALLOC to leave the default operator new.
+#if defined(_WIN32) && !defined(CB_NO_FASTALLOC)
+#define NOMINMAX
+#include <windows.h>
+#include <atomic>
+#include <cstdint>
+#include <cstdlib>
+#include <new>
+
+namespace {
+constexpr size_t kChunk = 64 * 1024;                  // bytes of one chunk (one size class)
+constexpr size_t kRange = (size_t)64 << 30;           // the reserved range (address space only: 64 GiB)
+constexpr size_t kPages = kRange / kChunk;
+constexpr size_t kMaxSmall = 1024;
+constexpr int kClasses = (int)(kMaxSmall / 16) + 1;   // class c holds blocks of 16*c bytes (c = 1..64)
+
+struct FreeNode { FreeNode* next; };
+struct Arena {
+    char* base = nullptr;
+    std::atomic<size_t> next{0};                      // the next chunk to hand out
+    uint8_t* cls = nullptr;                           // chunk index -> its class (0: not ours)
+};
+// (what delete reads: set once, before the first small block is handed out; 0 until then, so nothing is "ours")
+uintptr_t g_base = 0;
+size_t g_span = 0;
+uint8_t* g_cls = nullptr;
+Arena& arena() {
+    static Arena a;
+    static const bool once = [] {
+        void* b = VirtualAlloc(nullptr, kRange, MEM_RESERVE, PAGE_READWRITE);
+        if (b) {
+            a.base = (char*)(((uintptr_t)b + kChunk - 1) & ~(uintptr_t)(kChunk - 1));
+            void* t = VirtualAlloc(nullptr, kPages, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            if (t) {
+                a.cls = (uint8_t*)t;
+                g_base = (uintptr_t)a.base;
+                g_cls = a.cls;
+                g_span = kRange - kChunk;
+            } else a.base = nullptr;
+        }
+        return true;
+    }();
+    (void)once;
+    return a;
+}
+struct ThreadCache {
+    FreeNode* head[kClasses] = {};
+    char* cur[kClasses] = {};                         // the unused rest of the thread's chunk of this class
+    char* lim[kClasses] = {};
+};
+thread_local ThreadCache tc;
+
+
+void* refill(Arena& a, int c) {
+    size_t page = a.next.fetch_add(1, std::memory_order_relaxed);
+    if (page >= kPages - 1) return nullptr;
+    char* ch = a.base + page * kChunk;
+    if (!VirtualAlloc(ch, kChunk, MEM_COMMIT, PAGE_READWRITE)) return nullptr;
+    a.cls[page] = (uint8_t)c;
+    tc.cur[c] = ch;
+    tc.lim[c] = ch + kChunk;
+    return ch;
+}
+inline void* small_alloc(size_t n) {
+    int c = (int)((n + 15) >> 4);
+    if (c == 0) c = 1;
+    ThreadCache& t = tc;
+    if (FreeNode* f = t.head[c]) {
+        t.head[c] = f->next;
+        return f;
+    }
+    size_t sz = (size_t)c << 4;
+    if (t.cur[c] && t.cur[c] + sz <= t.lim[c]) {
+        void* p = t.cur[c];
+        t.cur[c] += sz;
+        return p;
+    }
+    Arena& a = arena();
+    if (!a.base || !refill(a, c)) return nullptr;
+    void* p = t.cur[c];
+    t.cur[c] += sz;
+    return p;
+}
+inline void big_free(void* p) { std::free(p); }
+}  // namespace
+
+void* operator new(size_t n) {
+    if (n <= kMaxSmall) {
+        if (void* p = small_alloc(n)) return p;
+    }
+    for (;;) {
+        if (void* p = std::malloc(n ? n : 1)) return p;
+        std::new_handler h = std::get_new_handler();
+        if (!h) throw std::bad_alloc();
+        h();
+    }
+}
+void* operator new[](size_t n) { return operator new(n); }
+void* operator new(size_t n, const std::nothrow_t&) noexcept {
+    try { return operator new(n); } catch (...) { return nullptr; }
+}
+void* operator new[](size_t n, const std::nothrow_t&) noexcept {
+    try { return operator new(n); } catch (...) { return nullptr; }
+}
+void operator delete(void* p) noexcept {
+    if (!p) return;
+    uintptr_t off = (uintptr_t)p - g_base;
+    if (off < g_span) {
+        int c = g_cls[off / kChunk];
+        if (c) {
+            FreeNode* f = (FreeNode*)p;
+            f->next = tc.head[c];
+            tc.head[c] = f;
+            return;
+        }
+    }
+    big_free(p);
+}
+void operator delete[](void* p) noexcept { operator delete(p); }
+void operator delete(void* p, size_t) noexcept { operator delete(p); }
+void operator delete[](void* p, size_t) noexcept { operator delete(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { operator delete(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { operator delete(p); }
+#endif
