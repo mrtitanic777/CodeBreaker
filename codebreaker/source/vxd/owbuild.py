@@ -80,8 +80,10 @@ def build_vxd(vxd_path, name, outroot, byte_exact=True):
         f.write("file " + ",".join(objs) + "\n")
         if ddb:
             f.write("export VXD_DDB.1\n")     # a VxD's single required export is its DDB
-    subprocess.run([_WLINK, "@link.lnk"], cwd=d, env=env, capture_output=True, text=True)
     out = os.path.join(d, name.lower() + ".vxd")
+    if os.path.exists(out):                    # (a .vxd an earlier run left would pass for this link's result)
+        os.unlink(out)
+    subprocess.run([_WLINK, "@link.lnk"], cwd=d, env=env, capture_output=True, text=True)
     if os.path.exists(out):
         return {"ok": True, "output": out, "bytes": os.path.getsize(out), "objects": len(objs)}
     return {"ok": False, "error": "link produced no .vxd (missing DDB export?)"}
