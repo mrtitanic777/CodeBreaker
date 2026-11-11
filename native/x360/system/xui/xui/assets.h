@@ -105,6 +105,15 @@ namespace xui
             std::string base;
         };
         std::map<std::string, ThemeVisual, std::less<>> themeVisuals_;
+        // A package's own Skin.xur (a Guide module's: Guide.Beacons' btn_Beacons_JumpInList ...), indexed on its
+        // first use: its visuals come before XAM's skin for that package's scenes.
+        struct PackageSkin
+        {
+            const Scene* scene = nullptr;
+            std::map<std::string, const Node*, std::less<>> visuals;
+        };
+        mutable std::map<std::string, PackageSkin, std::less<>> packageSkins_;
+        const PackageSkin* PackageSkinOf(std::string_view package) const;
         std::vector<std::pair<std::string, std::string>> themeSchemes_;
         // ReplacePackages: what came from replaced packages, kept for the elements that point at it.
         std::vector<Package> retiredPackages_;
