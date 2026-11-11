@@ -1,17 +1,9 @@
-// codebreaker/recompile/builders/floating.hpp -- C++17 port of codebreaker.recompile.builders.floating.
+// codebreaker/recompile/builders/floating.hpp -- SHIM over cb/recompile/builders/floating.hpp (docs/CPP_DESIGN.md 6.3): the old
+// signature in (operand readers as std::functions over py::str), the new builder called, the statements back as a py::list.
+// Deleted with its last py:: consumer (recompile/powerpc and the other builders).
 //
-// floating.py -- scalar floating point: arithmetic, multiply-add, sign, conversion, compare, select, as C++ for the recompiler (recompile/powerpc.py).
-//
-// Each `emit(mnemonic, operands, ...)` returns the C++ statements for one instruction, or None
-// when the mnemonic is not this file's. Registers are always written as the context's fields
-// (ctx.rN, ctx.fN, ctx.vN, ctx.crN, ctx.xer, ctx.ctr, ctx.lr); `ea` and `temp` are locals every
-// recompiled function declares.
-// Every builder first emits `ctx.fpscr.disableFlushMode();`. Values are ctx.fN.f64, raw bits
-// ctx.fN.u64; single-precision results are rounded through double(float(...)). The floating-point
-// loads and stores are memory.py's, mffs/mtfsf system.py's.
-//
-// Derived from the rexglue SDK's code generator (rexcodegen/builders/floating_point.cpp; BSD-3-Clause,
-// Copyright (c) 2026 Tom Clay, with parts from Xenia -- see NOTICE).
+// What the builder is: scalar floating point -- arithmetic, multiply-add, sign, conversion, compare, select -- as C++ for the
+// recompiler; see cb/recompile/builders/floating.hpp.
 #pragma once
 
 #include <cstdint>
@@ -19,40 +11,79 @@
 #include <optional>
 #include <tuple>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/recompile/builders/floating.hpp"
 
 namespace codebreaker::recompile::builders::floating {
 
 // The operand helpers recompile/powerpc.py passes in.
-// _reg, _vreg, _freg, _imm, _cr: an operand token -> a number, or None when the token is not that kind.
 using OperandNumber = std::function<std::optional<int64_t>(const py::str&)>;
-// _mem: '-0x70(r1)' -> (disp, basereg), or None
 using MemOperand = std::function<std::optional<std::tuple<int64_t, int64_t>>(const py::str&)>;
-// _rv(n, field): the register-value expression "ctx.r<n>.<field>"
 using RegisterValue = std::function<py::str(int64_t, const py::str&)>;
-// _base_expr(base): the address base register expression
 using BaseExpression = std::function<py::str(int64_t)>;
-// _addr(disp, base): the address expression
 using AddressExpression = std::function<py::str(int64_t, int64_t)>;
 
-// The C++ statements for one instruction, or None when `mn` is not a scalar floating-point mnemonic
-// handled here. Only _freg and _cr are used; the other helpers and `va`, `WORD` are part of the
-// builders' common signature.
-std::optional<py::list<py::str>> emit(const py::str& mn, const py::list<py::str>& ops,
-                                      const OperandNumber& _reg, const OperandNumber& _vreg, const OperandNumber& _freg,
-                                      const OperandNumber& _imm, const OperandNumber& _cr, const MemOperand& _mem,
-                                      const RegisterValue& _rv, const BaseExpression& _base_expr, const AddressExpression& _addr,
-                                      int64_t va, int64_t WORD);
+namespace shim_ {
 
-// Standard headers relied on by the emitted C++ (isnan/sqrt from <cmath>,
-// LLONG_MAX/INT_MAX from <climits>). simde_mm_* are standard simde intrinsics
-// already available in the recomp prelude. No custom (ppc_vperm-style) helper
-// is required for this category.
-extern const py::str RUNTIME_HELPERS;
+// The new builders' Operands over the old helpers: conversion only.
+class Helpers : public cb::recompile::builders::Operands {
+public:
+    Helpers(const OperandNumber& reg, const OperandNumber& vreg, const OperandNumber& freg, const OperandNumber& imm, const OperandNumber& cr,
+            const MemOperand& mem, const RegisterValue& rv, const BaseExpression& base, const AddressExpression& addr)
+        : reg_(reg), vreg_(vreg), freg_(freg), imm_(imm), cr_(cr), mem_(mem), rv_(rv), base_(base), addr_(addr) {}
 
-extern const py::list<py::str> MNEMONICS;
+    std::optional<int> reg(std::string_view t) const override { return number(reg_, t); }
+    std::optional<int> vreg(std::string_view t) const override { return number(vreg_, t); }
+    std::optional<int> freg(std::string_view t) const override { return number(freg_, t); }
+    std::optional<int> cr(std::string_view t) const override { return number(cr_, t); }
+    std::optional<std::int64_t> imm(std::string_view t) const override { return imm_ ? imm_(cb::compat::to_py(t)) : std::nullopt; }
+    std::optional<cb::recompile::builders::MemoryOperand> mem(std::string_view t) const override {
+        const auto m = mem_ ? mem_(cb::compat::to_py(t)) : std::nullopt;
+        if (!m) return std::nullopt;
+        return cb::recompile::builders::MemoryOperand{std::get<0>(*m), static_cast<int>(std::get<1>(*m))};
+    }
+    std::string register_value(int n, std::string_view field) const override { return cb::compat::from_py(rv_(n, cb::compat::to_py(field))); }
+    std::string base_expression(int base) const override { return cb::compat::from_py(base_(base)); }
+    std::string address(std::int64_t displacement, int base) const override { return cb::compat::from_py(addr_(displacement, base)); }
 
-// Elsewhere: the floating-point loads and stores (memory.py), mffs/mtfsf (system.py).
-// Not translated: fctiw (only fctiwz has a builder).
+private:
+    static std::optional<int> number(const OperandNumber& f, std::string_view token) {
+        const auto n = f ? f(cb::compat::to_py(token)) : std::nullopt;
+        return n ? std::optional<int>(static_cast<int>(*n)) : std::nullopt;
+    }
+    const OperandNumber &reg_, &vreg_, &freg_, &imm_, &cr_;
+    const MemOperand& mem_;
+    const RegisterValue& rv_;
+    const BaseExpression& base_;
+    const AddressExpression& addr_;
+};
+
+}  // namespace shim_
+
+// The C++ statements for one instruction, or None when `mn` is not a scalar floating-point mnemonic handled here. Only _freg and
+// _cr are used; the other helpers and `va`, `WORD` are part of the builders' common signature.
+inline std::optional<py::list<py::str>> emit(const py::str& mn, const py::list<py::str>& ops, const OperandNumber& _reg,
+                                             const OperandNumber& _vreg, const OperandNumber& _freg, const OperandNumber& _imm,
+                                             const OperandNumber& _cr, const MemOperand& _mem, const RegisterValue& _rv,
+                                             const BaseExpression& _base_expr, const AddressExpression& _addr, int64_t va, int64_t /*WORD*/) {
+    return cb::compat::guard([&]() -> std::optional<py::list<py::str>> {
+        std::vector<std::string> tokens;
+        for (const py::str& t : ops) tokens.push_back(cb::compat::from_py(t));
+        const std::string mnemonic = cb::compat::from_py(mn);
+        const shim_::Helpers helpers(_reg, _vreg, _freg, _imm, _cr, _mem, _rv, _base_expr, _addr);
+        const auto statements = cb::recompile::builders::floating::emit({mnemonic, tokens, static_cast<std::uint32_t>(va)}, helpers);
+        if (!statements) return std::nullopt;
+        return cb::compat::to_py(*statements);
+    });
+}
+
+// Standard headers relied on by the emitted C++ (isnan/sqrt from <cmath>, LLONG_MAX/INT_MAX from <climits>).
+inline const py::str RUNTIME_HELPERS = cb::compat::to_py(cb::recompile::builders::floating::runtime_helpers());
+
+inline const py::list<py::str> MNEMONICS = [] {
+    py::list<py::str> out;
+    for (const std::string_view m : cb::recompile::builders::floating::mnemonics()) out.append(cb::compat::to_py(m));
+    return out;
+}();
 
 }  // namespace codebreaker::recompile::builders::floating
