@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -36,6 +37,8 @@ namespace kernel::spa
     std::span<const uint8_t> Image(uint64_t id);
     // A string in the console's language (the SPA's default language if it has no table for it); empty if absent.
     std::u16string String(uint16_t id);
+    // Like String, but nullopt when the string is absent (an empty string is present).
+    std::optional<std::u16string> FindString(uint16_t id);
     // The title's name (string 0x8000).
     std::u16string TitleName();
 }
