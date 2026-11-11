@@ -343,8 +343,9 @@ def reconcile(sg, start, end, seg_mask, max_passes=200, verbose=True):
     force_db = set()
     errored = set()          # offsets MASM can't assemble = definitively DATA
     res = None
+    asm = ""                 # (max_passes <= 0 returned an unbound name: UnboundLocalError)
     for _ in range(max_passes):
-        if _cancelled():                       # Cancel pressed: bail immediately
+        if _cancelled():                    # Cancel pressed: bail immediately
             break
         body = emit_function(sg, start, end, force_db, dspans)
         asm = wrap(body)
