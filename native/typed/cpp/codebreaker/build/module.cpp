@@ -3525,7 +3525,36 @@ py::str doc_text() {
         "    imports     nothing imported that the original does not import\n"
         "    resources   the same resources (build/resources.compare)\n"
         "    runs        loaded in the emulator, each exported function is called with zero arguments\n"
-        "                and what it did is set beside what the original does\n");
+        "                and what it did is set beside what the original does\n"
+        "\n"
+        "What \"built\" means here, plainly: a function the compiler rejected is in the image as a\n"
+        "stand-in that returns 0, and so is anything called that has no reconstruction; a module can\n"
+        "link, export everything and still do little. The report counts both. The check is of the\n"
+        "container, not of behaviour -- behaviour is what verify/ judges, one function at a time.\n"
+        "\n"
+        "Toolchain facts this relies on (each cost a failed build once):\n"
+        "\n"
+        "  * OpenWatcom's tools are started by full path: Windows searches the caller's PATH, not the\n"
+        "    environment handed to the tool.\n"
+        "  * 16-bit: the C library to link is lib286/win/clib?.lib (the same file as the source tree's\n"
+        "    bld/clib/library/windows.086/m?/clib?.lib). lib286/clibl.lib one level up is an empty\n"
+        "    stub, and it is found first if lib286 is on the library path before lib286/win.\n"
+        "  * 16-bit: floating point needs -fpi87 (the emulator library lacks the fix-up symbols -fpi\n"
+        "    asks for, and -fpc does not work in this build).\n"
+        "  * 16-bit: a module is a library because the linker is told `format windows dll` -- that sets\n"
+        "    the header's library flag without the stock start-up object, which wants a LIBMAIN. The\n"
+        "    header flag, not the file name, says what the original was.\n"
+        "  * 16-bit: one segment holds 64 KB, and a near call cannot leave its segment, so each function\n"
+        "    is compiled into a code segment named for the original segment it came from (-nt=). The\n"
+        "    compiler's own helpers (32-bit multiply and divide, ...) then cannot be near either: the\n"
+        "    functions are compiled for the medium model (-mm: far code, near data -- the per-function\n"
+        "    builds use -ms, which is the same for data) and linked with the medium-model library.\n"
+        "  * 16-bit: the data object is linked first, so it starts at offset 0 of the automatic data\n"
+        "    segment and the code's offsets into it stay right.\n"
+        "  * Linker symbols holding `@`, `?` or `$` are quoted (unquoted, `@` means \"read a file\").\n"
+        "  * Exports are tied to the function at the export's address, and the entry point to the\n"
+        "    function at the original's entry address; a library with no entry point is not loadable\n"
+        "    as one, so one whose entry was not reconstructed gets a stand-in that reports success.\n");
 }
 
 }  // namespace
@@ -3828,7 +3857,9 @@ Built build(const py::str& module, const std::optional<py::str>& outdir, bool ca
 py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std::function<std::optional<py::str>(const py::str&)>& outdir_of, bool call,
                                     const Log& log, const std::optional<int64_t>& jobs_in) {
     const int64_t jobs = jobs_in && *jobs_in ? *jobs_in : base::parallel::workers();
-    const int64_t procs = std::max<int64_t>(1, std::min<int64_t>(jobs, py::len(modules)));
+    // (the Python gave each module a process of its own. The gate and the judge run Unicorn and the tracer, whose state is per process,
+    // so builds on threads corrupt each other: one at a time unless CB_BUILD_THREADS asks for more)
+    const int64_t procs = py::os::environ_::get(py::str("CB_BUILD_THREADS")) ? std::max<int64_t>(1, std::min<int64_t>(jobs, py::len(modules))) : 1;
     py::dict<py::str, Built> out;
     if (procs == 1) {
         for (const py::str& m : modules) {
