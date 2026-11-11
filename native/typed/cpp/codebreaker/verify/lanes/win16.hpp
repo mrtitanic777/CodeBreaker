@@ -44,6 +44,7 @@
 #include "codebreaker/verify/concolic.hpp"
 #include "codebreaker/verify/guided.hpp"
 #include "codebreaker/verify/lane_common.hpp"
+#include "codebreaker/verify/reconstruct.hpp"
 #include "codebreaker/verify/verdicts.hpp"
 #include "py.hpp"
 
@@ -134,12 +135,12 @@ Vector _from_explorer(const guided::Input& g, const std::optional<int64_t>& ds);
 // The original run on `v` with its branches logged, as the explorer reads it, or None when the run is not an observation.
 std::optional<guided::Observation> _branch_run(const py::str& module_path, int64_t seg, int64_t off, bool near_,
                                                const std::tuple<int64_t, int64_t>& span, const Vector& v,
-                                               const ProbeOptions& probe = ProbeOptions());
+                                               const std::optional<ProbeOptions>& probe = std::nullopt);
 
 // Inputs that take branches of the original no seed took (verify/guided.py).
 py::list<Vector> guided_vectors(const py::str& module_path, int64_t seg, int64_t off, bool near_,
                                 const std::tuple<int64_t, int64_t>& span, const py::list<Vector>& seeds,
-                                const ProbeOptions& probe = ProbeOptions());
+                                const std::optional<ProbeOptions>& probe = std::nullopt);
 
 // Input `v` with the named inputs (shadow.vars) set to `values`; None when nothing changes.
 std::optional<Vector> _derive(const Vector& v, const concolic::Values& values, const concolic::Vars& names,
@@ -157,7 +158,10 @@ struct Explored {
 Explored explore_vectors(const py::str& module_path, int64_t seg, int64_t off, bool near_,
                          const std::tuple<int64_t, int64_t>& span, const py::list<Vector>& seeds,
                          const std::optional<py::dict<int64_t, concolic::Trail>>& known = std::nullopt,
-                         const ProbeOptions& probe = ProbeOptions());
+                         const std::optional<ProbeOptions>& probe = std::nullopt);
+
+// `probe` (the Python's **probe): how the original is run when not as the judge runs it.  Absent: the judge's own
+// (ports=True); a given one is used as it is (its `ports` too), apart from the fields the call sets itself.
 
 // ---- the module ---------------------------------------------------------------------------------------------------
 // {address: ((start, end), instruction count)} -- each function runs to the next one in its segment (or the segment's end).
@@ -178,6 +182,10 @@ struct Prepared : decompile::c_text::Module16 {
     using decompile::c_text::Module16::Module16;
 };
 Prepared prepare(const py::str& module_path, const py::str& work);
+// prepare() from a module already made compilable: its key, all_keys and sig added
+Prepared prepared_from(const decompile::c_text::Module16& made);
+// what reconstruct::Kind::prepare hands back for a Prepared (the lane's own is in `lane`)
+reconstruct::Prepared as_prepared(const std::shared_ptr<Prepared>& m);
 
 // What judge() is handed once for every function: (module_path, dll, data_image, own, order)
 struct JudgeContext {
@@ -221,5 +229,11 @@ std::tuple<py::str, py::str, py::list<py::str>, py::str> _judge(const JudgeConte
 inline std::tuple<py::str, py::str, py::list<py::str>, py::str> judge(const JudgeContext& context, const JudgeItem& item) {
     return _judge(context, item);
 }
+
+// The lane as a reconstruct::Kind (what the Python module is to reconstruct.py), and its registration under "ne".
+// Prepared::lane holds a std::shared_ptr<win16::Prepared>; Built::context a std::shared_ptr<JudgeContext>; each item a
+// std::shared_ptr<JudgeItem>.
+const std::shared_ptr<reconstruct::Kind>& kind();
+void register_lane();
 
 }  // namespace codebreaker::verify::lanes::win16
