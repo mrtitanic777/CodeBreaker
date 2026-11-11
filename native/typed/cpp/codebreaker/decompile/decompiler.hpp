@@ -63,7 +63,7 @@ py::dict<int64_t, py::bytes> _segment_images(const py::str& description);
 
 // A block of the native program's output: `/*@@ <name> <hex address> */` and the text after it, up to the next
 // (tests/test_verification reaches in)
-extern const py::re::Pattern _BLOCK;
+const py::re::Pattern& _BLOCK();   // (compiled on first use)
 
 // ---- run() -----------------------------------------------------------------------------------------
 // (the C, its facts) of one function as the native program wrote it (the /*@G ... */ notes taken off its front)
