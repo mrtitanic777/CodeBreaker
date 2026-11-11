@@ -37,6 +37,9 @@ endfunction()
 cb_area(core)
 target_link_libraries(cb_core PUBLIC bcrypt)
 
+cb_area(java)
+target_link_libraries(cb_java PUBLIC cb_core)
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -60,7 +63,7 @@ get_property(CB_ALL_TESTS GLOBAL PROPERTY CB_TEST_SOURCES)
 add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} cb.manifest)
 cb_apply_flags(cb_tests)
 target_compile_definitions(cb_tests PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
-target_link_libraries(cb_tests PRIVATE cb_core)
+target_link_libraries(cb_tests PRIVATE cb_java cb_core)
 cb_copy_prebuilt_dlls(cb_tests)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
