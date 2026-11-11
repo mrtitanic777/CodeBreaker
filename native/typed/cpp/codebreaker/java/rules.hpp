@@ -29,9 +29,8 @@
 //     once at import and again whenever the active profile changes (_reseed, registered with on_change). Here
 //     _HEAVY_TYPES / _HEAVY_HIGH start empty (the `generic` profile's) and _reseed(heavy_types, heavy_types_high)
 //     takes the two tuples a profile holds; whoever switches profiles calls it.
-//   * Python's set iteration order (hash order, randomised for str) decides the order of findings only where
-//     one line / constructor matches several names of a set (virtual-call-in-ctor, map-read-insert,
-//     leak-drop-no-delete); here the order is the set's insertion order.
+//   * Where one line / constructor matches several names of a set (virtual-call-in-ctor, map-read-insert,
+//     leak-drop-no-delete) the findings come in the sorted order of the names.
 //   * _PlatCtx.override_pairs is None or a frozenset of (class, method): std::optional<py::set<...>>.
 #pragma once
 

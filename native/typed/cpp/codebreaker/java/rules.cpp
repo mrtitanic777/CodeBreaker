@@ -332,7 +332,7 @@ py::list<Finding> rule_virtual_call_in_ctor(const py::str& fname, const py::str&
     }
     for (const auto& [line0, body] : _ctor_bodies(text, cls)) {
         str bstr = _strip_block_comments(body);
-        for (const str& name : virt2) {
+        for (const str& name : py::sorted(virt2)) {   // (sorted: the findings of one constructor come in one order)
             // `this->name(` or a bare `name(` (NOT obj->name / obj.name / Class::name -- those are fine)
             bool m = bool(py::re::search(S("\\bthis\\s*->\\s*") + py::re::escape(name) + S("\\s*\\("), bstr)) ||
                      bool(py::re::search(S("(?<![\\w.>:])") + py::re::escape(name) + S("\\s*\\("), bstr));
@@ -1030,7 +1030,7 @@ py::list<Finding> rule_map_read_insert(const py::str& fname, const py::str& text
         return out;
     }
     for (const auto& [i, raw, code] : _iter_code_lines(text)) {
-        for (const str& name : maps) {
+        for (const str& name : py::sorted(maps)) {   // (sorted: the findings of one line come in one order)
             std::optional<py::re::Match> m = py::re::search(S("\\b") + py::re::escape(name) + S("\\s*\\[[^\\]]+\\]"), code);
             if (!m) {
                 continue;
@@ -1121,7 +1121,7 @@ py::list<Finding> rule_leak_drop_no_delete(const py::str& fname, const py::str& 
     }
     for (int64_t idx = 0; idx < py::len(rows); ++idx) {
         const auto& [i, code] = rows[idx];
-        for (const str& name : owners) {
+        for (const str& name : py::sorted(owners)) {   // (sorted: the findings of one line come in one order)
             std::optional<py::re::Match> m =
                 py::re::search(S("\\b") + py::re::escape(name) + S("(?:\\.|->)(clear|erase|remove|pop_back|pop_front|pop)\\s*\\("), code);
             if (!m) {
