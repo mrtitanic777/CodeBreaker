@@ -122,9 +122,20 @@ PY_EXCEPTION(TimeoutError, OSError)
 PY_EXCEPTION_NAMED(StructError, Exception, "error")  // struct.error: Python's class is named "error"
 PY_EXCEPTION(PatternError, Exception)  // re.error (re.PatternError)
 PY_EXCEPTION(MemoryError, Exception)
+PY_EXCEPTION(RecursionError, RuntimeError)   // "maximum recursion depth exceeded"
+PY_EXCEPTION(SyntaxError, Exception)
 #undef PY_EXCEPTION_NAMED
 #undef PY_EXCEPTION
 #undef PY_TEXT_CTOR
+
+// f() with a failed allocation (std::bad_alloc) raised as Python's MemoryError
+template <class F> auto memory_guard(F&& f) -> decltype(f()) {
+    try {
+        return f();
+    } catch (const std::bad_alloc&) {
+        throw MemoryError();
+    }
+}
 
 // ------------------------------------------------------------------------------------------ int
 inline int64_t floordiv(int64_t a, int64_t b) {
@@ -564,8 +575,27 @@ class str {
         if (s_.empty() || !(alpha_(s_[0]) || s_[0] == '_')) return false;
         return std::all_of(s_.begin(), s_.end(), [](char32_t c) { return alpha_(c) || digit_(c) || c == '_'; });
     }
-    static bool printable_(char32_t c) { return !(c < 0x20 || (c >= 0x7F && c <= 0xA0) || c == 0xAD); }
+    static bool printable_(char32_t c) { return unicode_::isprintable(c); }   // (the Unicode database: Cc Cf Cs Co Cn Zl Zp Zs but the space are not)
     bool isprintable() const { return std::all_of(s_.begin(), s_.end(), printable_); }
+    // expandtabs(tabsize=8): tabs to the next multiple of tabsize in the line (a newline or return restarts it; tabsize <= 0 drops tabs)
+    str expandtabs(int64_t tabsize = 8) const {
+        std::u32string o;
+        int64_t col = 0;
+        for (char32_t c : s_) {
+            if (c == U'\t') {
+                if (tabsize > 0) {
+                    int64_t n = tabsize - col % tabsize;
+                    o.append(static_cast<size_t>(n), U' ');
+                    col += n;
+                }
+            } else {
+                o.push_back(c);
+                col++;
+                if (c == U'\n' || c == U'\r') col = 0;
+            }
+        }
+        return str(o);
+    }
     str replace(const str& a, const str& b) const {
         if (a.empty()) {
             std::u32string o = b.s_;
@@ -708,10 +738,14 @@ class bytes {
             if (c >= 'A' && c <= 'F') return int(c - 'A' + 10);
             return -1;
         };
+        auto ascii_space = [](char32_t c) { return c == U' ' || (c >= 9 && c <= 13); };   // (CPython skips ASCII white space only)
         for (size_t i = 0; i < u.size();) {
-            if (str::space_(u[i])) { ++i; continue; }
-            if (i + 1 >= u.size() || val(u[i]) < 0 || val(u[i + 1]) < 0) throw ValueError("non-hexadecimal number found in fromhex() arg");
-            s.push_back(static_cast<char>(val(u[i]) * 16 + val(u[i + 1])));
+            if (ascii_space(u[i])) { ++i; continue; }
+            if (val(u[i]) < 0) throw ValueError("non-hexadecimal number found in fromhex() arg at position " + std::to_string(i));
+            size_t j = i + 1;
+            if (j >= u.size()) throw ValueError("fromhex() arg must contain an even number of hexadecimal digits");
+            if (val(u[j]) < 0) throw ValueError("non-hexadecimal number found in fromhex() arg at position " + std::to_string(j));
+            s.push_back(static_cast<char>(val(u[i]) * 16 + val(u[j])));
             i += 2;
         }
         return bytes(s);
@@ -876,6 +910,25 @@ class bytes {
         for (unsigned char c : b_) { o.push_back(d[c >> 4]); o.push_back(d[c & 15]); }
         return str(o);
     }
+    // hex(sep, bytes_per_sep=1): sep between groups of bytes_per_sep bytes, counted from the right (from the left when negative)
+    str hex(const str& sep, int64_t bytes_per_sep = 1) const {
+        if (sep.size() != 1) throw ValueError("sep must be length 1.");
+        char32_t sc = sep.u32()[0];
+        if (sc > 127) throw ValueError("sep must be ASCII.");
+        if (bytes_per_sep == 0 || b_.empty()) return hex();
+        static const char* d = "0123456789abcdef";
+        int64_t n = static_cast<int64_t>(b_.size()), per = bytes_per_sep < 0 ? -bytes_per_sep : bytes_per_sep;
+        std::string o;
+        for (int64_t i = 0; i < n; i++) {
+            // a separator goes before byte i when i is a group start (from the right: (n - i) % per == 0)
+            bool start = bytes_per_sep > 0 ? (n - i) % per == 0 : i % per == 0;
+            if (i > 0 && start) o.push_back(static_cast<char>(sc));
+            unsigned char c = static_cast<unsigned char>(b_[static_cast<size_t>(i)]);
+            o.push_back(d[c >> 4]);
+            o.push_back(d[c & 15]);
+        }
+        return str(o);
+    }
     template <class L> bytes join(const L& parts) const {
         std::string o;
         bool first = true;
@@ -1029,6 +1082,7 @@ class bytearray {
     template <class X> bool endswith(const X& x) const { return p_->endswith(x); }
     str decode(const char* enc = "utf-8", const char* errors = "strict") const { return p_->decode(enc, errors); }
     str hex() const { return p_->hex(); }
+    str hex(const str& sep, int64_t bytes_per_sep = 1) const { return p_->hex(sep, bytes_per_sep); }
     bytearray upper() const { return bytearray(p_->upper()); }
     bytearray lower() const { return bytearray(p_->lower()); }
     bytearray strip() const { return bytearray(p_->strip()); }
@@ -1407,8 +1461,20 @@ template <class K, class V> class dict {
 // ------------------------------------------------------------------------------------------ set
 template <class T> class set {
     struct impl {
-        std::vector<T> order;
+        std::vector<std::optional<T>> order;   // insertion order; a discarded item leaves an empty slot
         std::unordered_map<T, size_t, hasher<T>> where;
+        size_t holes = 0;
+        void compact() {   // close the holes up (amortised: done when they are half the slots)
+            std::vector<std::optional<T>> kept;
+            kept.reserve(where.size());
+            for (auto& x : order)
+                if (x) {
+                    where[*x] = kept.size();
+                    kept.push_back(std::move(x));
+                }
+            order = std::move(kept);
+            holes = 0;
+        }
     };
     std::shared_ptr<impl> s_;
 
@@ -1436,8 +1502,8 @@ template <class T> class set {
         if (it == s_->where.end()) return;
         size_t i = it->second;
         s_->where.erase(it);
-        s_->order.erase(s_->order.begin() + i);
-        for (auto& kv : s_->where) if (kv.second > i) --kv.second;
+        s_->order[i].reset();
+        if (++s_->holes > 16 && s_->holes * 2 > s_->order.size()) s_->compact();
     }
     void remove(const T& x) const {
         if (!contains(x)) throw KeyError("element not in set");
@@ -1445,18 +1511,35 @@ template <class T> class set {
     }
     template <class L> void update(const L& xs) const { for (const auto& x : xs) add(x); }
     bool issubset(const set& o) const {
-        for (const auto& x : s_->order) if (!o.contains(x)) return false;
+        for (const auto& x : *this) if (!o.contains(x)) return false;
         return true;
     }
     bool issuperset(const set& o) const { return o.issubset(*this); }
     bool isdisjoint(const set& o) const {
-        for (const auto& x : s_->order) if (o.contains(x)) return false;
+        for (const auto& x : *this) if (o.contains(x)) return false;
         return true;
     }
     // (iteration exists for sorted() and the set operations: the front end refuses code that depends
     // on a set's iteration order, which is CPython's hash layout)
-    typename std::vector<T>::const_iterator begin() const { return s_->order.begin(); }
-    typename std::vector<T>::const_iterator end() const { return s_->order.end(); }
+    struct iterator {
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const T*;
+        using reference = const T&;
+        const std::vector<std::optional<T>>* v;
+        size_t i;
+        void skip() { while (i < v->size() && !(*v)[i]) ++i; }
+        const T& operator*() const { return *(*v)[i]; }
+        const T* operator->() const { return &*(*v)[i]; }
+        iterator& operator++() { ++i; skip(); return *this; }
+        iterator operator++(int) { iterator t = *this; ++*this; return t; }
+        bool operator==(const iterator& o) const { return i == o.i; }
+        bool operator!=(const iterator& o) const { return i != o.i; }
+    };
+    using const_iterator = iterator;
+    iterator begin() const { iterator it{&s_->order, 0}; it.skip(); return it; }
+    iterator end() const { return iterator{&s_->order, s_->order.size()}; }
     friend set operator|(const set& a, const set& b) { set o = from(a); o.update(b); return o; }
     friend set operator&(const set& a, const set& b) {
         set o;
@@ -1593,10 +1676,12 @@ inline str repr(const str& s) {
         else if (c == U'\t') o += U"\\t";
         else if (c == U'\n') o += U"\\n";
         else if (c == U'\r') o += U"\\r";
-        else if (c < 0x20 || c == 0x7F || (c >= 0x80 && c <= 0xA0) || c == 0xAD) {
-            char b[8];
-            std::snprintf(b, sizeof b, "\\x%02x", static_cast<unsigned>(c));
-            o += str(b).u32();
+        else if (!unicode_::isprintable(c)) {   // (what str.isprintable refuses is escaped: \xNN, \uNNNN, \UNNNNNNNN)
+            char b[16];
+            if (c < 0x100) std::snprintf(b, sizeof b, "\\x%02x", static_cast<unsigned>(c));
+            else if (c < 0x10000) std::snprintf(b, sizeof b, "\\u%04x", static_cast<unsigned>(c));
+            else std::snprintf(b, sizeof b, "\\U%08x", static_cast<unsigned>(c));
+            for (const char* q = b; *q; ++q) o.push_back(static_cast<char32_t>(*q));
         } else o.push_back(c);
     }
     o.push_back(q);
@@ -1670,7 +1755,31 @@ template <class... T> str repr(const std::tuple<T...>& t) {
     if (sizeof...(T) == 1) o += str(",");
     return o + str(")");
 }
+template <class K, class V> str repr(const dict<K, V>& d) {
+    str o("{");
+    bool first = true;
+    for (const auto& kv : d.items()) {
+        if (!first) o += str(", ");
+        first = false;
+        o += repr(std::get<0>(kv)) + str(": ") + repr(std::get<1>(kv));
+    }
+    return o + str("}");
+}
+// (a set's items in the order they were added: CPython's is its hash layout, which the runtime does not copy)
+template <class T> str repr(const set<T>& s) {
+    if (s.empty()) return str("set()");
+    str o("{");
+    bool first = true;
+    for (const auto& x : s) {
+        if (!first) o += str(", ");
+        first = false;
+        o += repr(x);
+    }
+    return o + str("}");
+}
 template <class T> str to_str(const list<T>& xs) { return repr(xs); }
+template <class K, class V> str to_str(const dict<K, V>& d) { return repr(d); }
+template <class T> str to_str(const set<T>& s) { return repr(s); }
 template <class... T> str to_str(const std::tuple<T...>& t) { return repr(t); }
 
 inline str hex(int64_t v) {
@@ -2363,18 +2472,35 @@ inline void nul_check_(const char* call, const str& s) {
 }
 namespace path {
 inline bool sep_(char32_t c) { return c == '\\' || c == '/'; }
-// ntpath.splitdrive for the forms the tools meet: "C:..." and "\\server\share..."
+// ntpath.splitroot, as the drive of a path (CPython 3.12+): "C:", the UNC "\\\\host\\share" and device "\\\\?\\C:" forms; a
+// "\\\\host" without its share is all drive
 inline std::pair<std::u32string, std::u32string> splitdrive_(const std::u32string& p) {
-    if (p.size() >= 2 && p[1] == ':') return {p.substr(0, 2), p.substr(2)};
-    if (p.size() >= 2 && sep_(p[0]) && sep_(p[1]) && (p.size() < 3 || !sep_(p[2]))) {
-        size_t i = 2;
-        while (i < p.size() && !sep_(p[i])) ++i;
-        if (i >= p.size()) return {p, U""};
-        size_t j = i + 1;
-        while (j < p.size() && !sep_(p[j])) ++j;
-        return {p.substr(0, j), p.substr(j)};
+    auto n = [&](size_t i) { return i < p.size() && (p[i] == U'\\' || p[i] == U'/'); };
+    if (n(0)) {
+        if (n(1)) {
+            // UNC drives, e.g. \\server\share or \\?\UNC\server\share; device drives, e.g. \\.\device or \\?\device
+            size_t start = 2;
+            if (p.size() >= 8) {
+                std::u32string head;
+                for (size_t i = 0; i < 8; i++) head.push_back(static_cast<char32_t>((p[i] == U'/' ? U'\\' : (p[i] >= U'a' && p[i] <= U'z' ? p[i] - 32 : p[i]))));
+                if (head == U"\\\\?\\UNC\\") start = 8;
+            }
+            size_t index = start;
+            while (index < p.size() && !n(index)) ++index;
+            if (index >= p.size()) return {p, U""};
+            size_t index2 = index + 1;
+            while (index2 < p.size() && !n(index2)) ++index2;
+            if (index2 >= p.size()) return {p, U""};
+            return {p.substr(0, index2), p.substr(index2)};
+        }
+        return {U"", p};   // relative path with root, e.g. \Windows
     }
+    if (p.size() >= 2 && p[1] == U':') return {p.substr(0, 2), p.substr(2)};
     return {U"", p};
+}
+inline std::tuple<str, str> splitdrive(const str& s) {   // os.path.splitdrive
+    auto dr = splitdrive_(s.u32());
+    return {str(dr.first), str(dr.second)};
 }
 inline std::tuple<str, str> split(const str& s) {
     auto dr = splitdrive_(s.u32());

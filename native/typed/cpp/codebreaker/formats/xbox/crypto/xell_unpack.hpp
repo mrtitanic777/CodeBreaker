@@ -5,18 +5,13 @@
 
 #include "py.hpp"
 #include "py_os.hpp"
+#include "py_zlib.hpp"
 
 namespace codebreaker::formats::xbox::crypto::xell_unpack {
 
 // gzip.BadGzipFile (an OSError) and zlib.error, which gzip.decompress raises
-struct BadGzipFile : py::OSError {
-    using py::OSError::OSError;
-    const char* type() const override { return "BadGzipFile"; }
-};
-struct ZlibError : py::Exception {
-    using py::Exception::Exception;
-    const char* type() const override { return "error"; }
-};
+using BadGzipFile = py::gzip::BadGzipFile;
+using ZlibError = py::zlib::error;
 
 // constants
 extern const py::str XELL_DIR;

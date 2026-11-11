@@ -5,7 +5,7 @@
 #include <iostream>
 
 #include "codebreaker/formats/xbox/crypto/XeCrypt.hpp"
-#include "codebreaker/formats/xbox/crypto/argparse_min.hpp"
+#include "py_argparse.hpp"
 #include "codebreaker/formats/xbox/crypto/build_lib.hpp"
 #include "codebreaker/formats/xbox/crypto/keystore.hpp"
 #include "codebreaker/formats/xbox/crypto/os_urandom.hpp"
@@ -51,11 +51,11 @@ void sign_xekeys(const py::str& in_file, const std::optional<py::str>& out_file,
 }
 
 int64_t main(const py::list<py::str>& argv) {
-    argparse_min::ArgumentParser parser(py::os::path::basename(argv[0]), py::str("A script to sign XeKeysExecute payloads"), *out_stream_,
+    py::argparse::ArgumentParser parser(py::os::path::basename(argv[0]), py::str("A script to sign XeKeysExecute payloads"), *out_stream_,
                                         *err_stream_);
     parser.add_positional("input", py::str("The payload executable to sign"));
     parser.add_positional("output", py::str("The signed payload file"));
-    argparse_min::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
+    py::argparse::Namespace args = parser.parse_args(argv.slice(1, py::len(argv)));
 
     if (!py::os::path::isfile(*args.get("input"))) throw py::AssertionError("The specified input file doesn't exist");
 

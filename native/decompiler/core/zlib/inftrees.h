@@ -2,6 +2,8 @@
  * IP: zlib License
  * NOTE: from zlib 1.3.1
  */
+#ifndef INFTREES_H_   /* (added: the 1.3.1 header has no guard; py_zlib.cc includes the sources in one unit) */
+#define INFTREES_H_
 /* inftrees.h -- header to use inftrees.c
  * Copyright (C) 1995-2005, 2010 Mark Adler
  * For conditions of distribution and use, see copyright notice in zlib.h
@@ -64,3 +66,4 @@ typedef enum {
 int ZLIB_INTERNAL inflate_table(codetype type, unsigned short FAR *lens,
                                 unsigned codes, code FAR * FAR *table,
                                 unsigned FAR *bits, unsigned short FAR *work);
+#endif

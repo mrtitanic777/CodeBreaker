@@ -7,6 +7,7 @@
 
 #include "codebreaker/base/cache.hpp"
 #include "codebreaker/base/runs.hpp"
+#include "py_glob.hpp"
 #include "py_settings.hpp"
 
 namespace codebreaker::base::tidy_state {
@@ -45,138 +46,9 @@ const py::list<py::str> RUN_TOOLS = py::list<py::str>{py::str("phase3"), py::str
 const py::list<py::str> NAMED_ELSEWHERE = py::list<py::str>{py::str("msc6"), py::str("msvc152"), py::str("win95"), py::str("products"), py::str("golden")};   // a tuple
 const py::list<py::str> OLD_CACHES = py::list<py::str>{py::str("fingerprints.sqlite")};   // a tuple
 
+using py::glob::glob;   // glob.glob
+
 namespace {
-
-// ---- glob.glob (the runtime has none) ---------------------------------------------------------
-
-bool has_magic_(const py::str& s) {
-    for (char32_t c : s.u32())
-        if (c == U'*' || c == U'?' || c == U'[') return true;
-    return false;
-}
-
-bool lexists_(const py::str& p) {
-    if (p.u32().find(U'\0') != std::u32string::npos) return false;
-    std::error_code ec;
-    std::filesystem::file_status st = std::filesystem::symlink_status(std::filesystem::u8path(p.utf8()), ec);
-    return !ec && st.type() != std::filesystem::file_type::not_found;
-}
-
-// fnmatch's pattern against a name, both already normcase'd
-bool fn_match_(const std::u32string& p, size_t pi, const std::u32string& n, size_t ni) {
-    while (pi < p.size()) {
-        char32_t c = p[pi];
-        if (c == U'*') {
-            while (pi < p.size() && p[pi] == U'*') pi++;
-            if (pi == p.size()) return true;
-            for (size_t k = ni; k <= n.size(); k++)
-                if (fn_match_(p, pi, n, k)) return true;
-            return false;
-        }
-        if (c == U'?') {
-            if (ni >= n.size()) return false;
-            pi++;
-            ni++;
-            continue;
-        }
-        if (c == U'[') {
-            size_t j = pi + 1;
-            if (j < p.size() && p[j] == U'!') j++;
-            if (j < p.size() && p[j] == U']') j++;
-            while (j < p.size() && p[j] != U']') j++;
-            if (j >= p.size()) {   // no closing bracket: a literal [
-                if (ni >= n.size() || n[ni] != U'[') return false;
-                pi++;
-                ni++;
-                continue;
-            }
-            if (ni >= n.size()) return false;
-            size_t a = pi + 1;
-            bool neg = false;
-            if (p[a] == U'!') {
-                neg = true;
-                a++;
-            }
-            bool hit = false;
-            for (size_t i = a; i < j; i++) {
-                if (i + 2 < j && p[i + 1] == U'-') {
-                    if (p[i] <= n[ni] && n[ni] <= p[i + 2]) hit = true;
-                    i += 2;
-                } else if (p[i] == n[ni]) {
-                    hit = true;
-                }
-            }
-            if (hit == neg) return false;
-            pi = j + 1;
-            ni++;
-            continue;
-        }
-        if (ni >= n.size() || n[ni] != c) return false;
-        pi++;
-        ni++;
-    }
-    return ni == n.size();
-}
-
-bool fnmatch_(const py::str& name, const py::str& pat) {
-    return fn_match_(py::os::path::normcase(pat).u32(), 0, py::os::path::normcase(name).u32(), 0);
-}
-
-bool ishidden_(const py::str& s) {
-    return !s.empty() && s.u32()[0] == U'.';
-}
-
-// glob._glob1(dirname, pattern): the names in dirname matching a wildcard pattern
-py::list<py::str> glob1_(const py::str& dirname, const py::str& pattern) {
-    py::list<py::str> names;
-    try {
-        names = py::os::listdir(dirname.empty() ? py::os::curdir : dirname);
-    } catch (const py::OSError&) {
-        return py::list<py::str>{};
-    }
-    py::list<py::str> out;
-    bool hidden_ok = ishidden_(pattern);
-    for (const py::str& n : names)
-        if ((hidden_ok || !ishidden_(n)) && fnmatch_(n, pattern)) out.append(n);
-    return out;
-}
-
-// glob._glob0(dirname, basename): a name that is not a wildcard
-py::list<py::str> glob0_(const py::str& dirname, const py::str& basename) {
-    py::list<py::str> out;
-    if (basename.empty()) {
-        if (py::os::path::isdir(dirname)) out.append(basename);
-    } else if (lexists_(py::os::path::join(dirname, basename))) {
-        out.append(basename);
-    }
-    return out;
-}
-
-// glob.glob(pathname)
-py::list<py::str> glob(const py::str& pathname) {
-    py::list<py::str> out;
-    auto [dirname, basename] = py::os::path::split(pathname);
-    if (!has_magic_(pathname)) {
-        if (!basename.empty()) {
-            if (lexists_(pathname)) out.append(pathname);
-        } else if (py::os::path::isdir(dirname)) {
-            out.append(pathname);
-        }
-        return out;
-    }
-    if (dirname.empty()) {
-        for (const py::str& n : glob1_(py::str(""), basename)) out.append(n);
-        return out;
-    }
-    py::list<py::str> dirs;
-    if (dirname != pathname && has_magic_(dirname)) dirs = glob(dirname);
-    else dirs = py::list<py::str>{dirname};
-    for (const py::str& d : dirs) {
-        py::list<py::str> names = has_magic_(basename) ? glob1_(d, basename) : glob0_(d, basename);
-        for (const py::str& n : names) out.append(py::os::path::join(d, n));
-    }
-    return out;
-}
 
 // x in xs
 bool in_(const py::str& x, const py::list<py::str>& xs) {

@@ -13,9 +13,8 @@
 // that comes out identical is source: the compiler says so, byte for byte.
 //
 // Typing notes:
-//   * The Python draws its choices from random.Random(seed).  The runtime has no `random`, so the Mersenne
-//     Twister of CPython (seeding by init_by_array, getrandbits, random, choice, sample) is `Random` below,
-//     bit for bit; the same seed gives the same rewrites as the Python.
+//   * The Python draws its choices from random.Random(seed): `Random` below is the runtime's py::random::Random
+//     (CPython's Mersenne Twister, bit for bit); the same seed gives the same rewrites as the Python.
 //   * A verdict is the tuple (word, differing bytes, total bytes) that verify/authored/match16.py makes with
 //     match.distance(...)[:3] (or (V.NO_COMPILE, 0, 0)); a group is the tuple (compiler, switches, winner).
 //   * compile_group and score are the caller's functions (std::function); `log` is the Python's `log=print`:
@@ -33,54 +32,12 @@
 
 #include "py.hpp"
 #include "py_os.hpp"
+#include "py_random.hpp"
 
 namespace codebreaker::verify::authored::search16 {
 
-// random.Random(seed): CPython's Mersenne Twister, the calls search16 makes
-class Random {
-  public:
-    explicit Random(int64_t seed);
-    uint32_t genrand_uint32();
-    double random();                                    // [0.0, 1.0)
-    int64_t getrandbits(int64_t k);                     // 0 <= k <= 63
-    int64_t _randbelow(int64_t n);
-    template <class T> T choice(const py::list<T>& seq) {
-        if (seq.empty()) throw py::IndexError("Cannot choose from an empty sequence");
-        return seq[_randbelow(py::len(seq))];
-    }
-    // random.sample(population, k) (a list)
-    template <class T> py::list<T> sample(const py::list<T>& population, int64_t k) {
-        int64_t n = py::len(population);
-        if (k < 0 || k > n) throw py::ValueError("Sample larger than population or is negative");
-        std::vector<T> result;
-        int64_t setsize = 21;
-        if (k > 5) setsize += sample_extra_(k);
-        if (n <= setsize) {
-            std::vector<T> pool;
-            for (int64_t i = 0; i < n; i++) pool.push_back(population[i]);
-            for (int64_t i = 0; i < k; i++) {
-                int64_t j = _randbelow(n - i);
-                result.push_back(pool[static_cast<size_t>(j)]);
-                pool[static_cast<size_t>(j)] = pool[static_cast<size_t>(n - i - 1)];
-            }
-        } else {
-            std::vector<int64_t> selected;
-            for (int64_t i = 0; i < k; i++) {
-                int64_t j = _randbelow(n);
-                while (std::find(selected.begin(), selected.end(), j) != selected.end()) j = _randbelow(n);
-                selected.push_back(j);
-                result.push_back(population[j]);
-            }
-        }
-        return py::list<T>(result);
-    }
-
-  private:
-    static int64_t sample_extra_(int64_t k);            // 4 ** ceil(log(k * 3, 4))
-    uint32_t mt_[624];
-    int mti_ = 625;
-    void init_genrand_(uint32_t s);
-};
+// random.Random(seed): the runtime's CPython-exact Mersenne Twister
+using Random = py::random::Random;
 
 const py::re::Pattern& _DECL();
 const py::re::Pattern& _COMPARE();
