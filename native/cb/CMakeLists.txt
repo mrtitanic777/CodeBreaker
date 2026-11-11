@@ -129,7 +129,6 @@ set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp"
 cb_area(source)
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats)
 
-
 # The compiler models of native/invert that cb::invert::early_c wraps (the MC 2.03 / 3.00 register tracker and its text
 # passes, flow16's control-flow graph, Capstone by the DLL's path), compiled as they are: C++17, their own flags. They
 # use the string/regex helpers of native/l2/src (pyre, pystr, value). They move into cb with the rest of native/invert.
@@ -157,14 +156,8 @@ target_link_libraries(cb_invert PUBLIC cb_core cb_formats PRIVATE cb_invert_mode
 file(GLOB CB_INVERT_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/invert/shims_test.cpp")
 set_source_files_properties(${CB_INVERT_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
-
 cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base)
-
-
-
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp")
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -183,7 +176,8 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/pascal_join.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/java/run_tools.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
@@ -231,5 +225,4 @@ set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_S
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
-
 
