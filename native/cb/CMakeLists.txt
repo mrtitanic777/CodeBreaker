@@ -79,6 +79,9 @@ target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
+# The program database (the fact store native/engine keeps, over cb::base::sqlite; cbengine.dll is untouched).
+cb_area(engine)
+target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge)
 cb_area(jobs)
 target_link_libraries(cb_jobs PUBLIC cb_core)
 cb_area(platforms)
@@ -101,7 +104,7 @@ target_link_libraries(cb_java PUBLIC cb_core PRIVATE cb_zlib)
 
 # The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
 # old layer, so they build at /W3 without /WX like compat/.
-file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp")
+file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/habits/shims_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/exact/shims_test.cpp")
 set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 
 cb_area(decompile)
@@ -111,7 +114,7 @@ cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core)
 
 cb_area(exact)
-target_link_libraries(cb_exact PUBLIC cb_core)
+target_link_libraries(cb_exact PUBLIC cb_core cb_formats)   # (omf_object: an OMF module as the lanes' object record)
 
 cb_area(compare)
 target_link_libraries(cb_compare PUBLIC cb_core)
@@ -195,7 +198,6 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/pascal_join.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/authored/match16.cpp"
@@ -219,6 +221,15 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/sm83.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/shadow.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
+  # the old consumers of the exact shims (aim, standin, modules, pascal_join): they must keep compiling against them
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/recut.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/ledger.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/data.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/draft/prove.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
@@ -278,4 +289,3 @@ set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_S
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
-
