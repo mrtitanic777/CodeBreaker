@@ -11,13 +11,15 @@ Updated as ports land. Ratio = Python time / C++ time (above 1 = C++ faster).
 
 | | Count |
 |---|---|
-| Ports timed | 63 |
-| C++ faster (ratio > 1.1) | 49 |
-| About the same (0.9–1.1) | 9 |
-| C++ slower (< 0.9) | 5 |
-| Median ratio | ~2.0x faster |
+| Port harnesses timed (rows below) | 65 |
+| C++ faster (ratio > 1.1) | 43 |
+| About the same (0.9–1.1) | 8 |
+| C++ slower (< 0.9) | 14 |
+| Median ratio | ~1.5x faster |
 
-Slower ports are bugs to fix (speed is a product requirement); each has a stated cause below.
+Slower ports are bugs to fix (speed is a product requirement); each has a stated cause below. Several of the 14
+were timed before the runtime speed-ups now on staging (regex prefilters, str UTF-8 cache, dict, JSON, RSA,
+sha1, makedirs) and are marked "re-time".
 
 ## Per port
 
