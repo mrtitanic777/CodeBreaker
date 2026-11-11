@@ -1,5 +1,5 @@
 // cb/port/old_c_pipeline.cpp -- the steps of Port::modernize that are rewriting in their own right
-// (old_c_passes.hpp): the report's notes, pascal names, callers' return types, headers, allocator sizes, loose
+// (old_c_data.hpp): the report's notes, pascal names, callers' return types, headers, allocator sizes, loose
 // calls, array sizes, header guards, and the one-name definitions of a file.
 
 #include <algorithm>
@@ -8,7 +8,7 @@
 
 #include "cb/base/ctext.hpp"
 #include "cb/core/text.hpp"
-#include "cb/port/old_c_passes.hpp"
+#include "cb/port/old_c_data.hpp"
 #include "cb/port/old_c_scan.hpp"
 
 namespace cb::port::pre_ansi {

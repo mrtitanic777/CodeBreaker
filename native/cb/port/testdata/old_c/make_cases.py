@@ -1,4 +1,4 @@
-"""make_cases.py -- the golden data of native/cb/port/old_c_passes_test.cpp.
+"""make_cases.py -- the golden data of native/cb/port/old_c_data_test.cpp.
 
 Runs the ORIGINAL Python (codebreaker.port.pre_ansi.Port) over real source trees and hand-written ones, one pass
 at a time and as the chain Port.modernize runs, and writes for each case:

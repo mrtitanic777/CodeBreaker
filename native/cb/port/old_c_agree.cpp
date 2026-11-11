@@ -1,4 +1,4 @@
-// cb/port/old_c_agree.cpp -- agree_globals, joins_next (old_c_passes.hpp).
+// cb/port/old_c_agree.cpp -- agree_globals, joins_next (old_c_data.hpp).
 
 #include <algorithm>
 #include <format>
@@ -6,7 +6,7 @@
 
 #include "cb/base/ctext.hpp"
 #include "cb/core/text.hpp"
-#include "cb/port/old_c_passes.hpp"
+#include "cb/port/old_c_data.hpp"
 #include "cb/port/old_c_scan.hpp"
 
 namespace cb::port::pre_ansi {

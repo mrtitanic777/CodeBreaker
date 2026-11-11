@@ -1,28 +1,22 @@
-// codebreaker/symbols/dos_interrupts.hpp -- C++ from codebreaker.symbols.dos_interrupts.
-#pragma once
-
-#include "py.hpp"
-#include "py_os.hpp"
-
-namespace codebreaker::symbols::dos_interrupts {
-
-// dos_interrupts.py -- names for the services a real-mode program asks of DOS and the BIOS.
+// codebreaker/symbols/dos_interrupts.hpp -- compat shim for cb/symbols/dos_interrupts.hpp (docs/CPP_DESIGN.md 6.3). No
+// logic: conversion and forwarding. Deleted with its last old-layer consumer.
 //
 //     Service s = dos_interrupts::name(0x21, 0x3D);        s.name "DOS_OpenFile"  s.arguments "AL = access mode, ..."
 //     Service s = dos_interrupts::name(0x2F, 0x16, 0x00);  s.name "Multiplex_WindowsEnhancedModeCheck"
 //     s.exact        false when only the interrupt (or only its group) could be named
 //     text = dos_interrupts::annotate(text, interrupts)    C text with each call's service noted
-//
-// A program calls the system with `int n`; which service it wants is a number in AH (for some a
-// second one in AL, for the mouse the whole of AX). The table (dos_interrupts.json, written for
-// this project from the documented interfaces: interrupt -> AH -> name and register arguments,
-// with an "al" table for services that take a subfunction) covers DOS (21h, 20h-2Fh), the BIOS
-// (10h-1Ah), the multiplex interrupt (2Fh), the mouse (33h) and expanded memory (67h).
-//
-// The decompiler shows an interrupt as `swi(0x21)` without the registers, so the service number
-// comes from the machine code (codebreaker.analyze.dos_functions finds the constant loaded before
-// each `int`). annotate() writes what is known in front of each function, and inline where every
-// call of that interrupt in the function asks for the same service.
+#pragma once
+
+#include <optional>
+
+#include "cb/compat/legacy_settings.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/knowledge/sources.hpp"
+#include "cb/symbols/dos_interrupts.hpp"
+#include "py.hpp"
+#include "py_os.hpp"
+
+namespace codebreaker::symbols::dos_interrupts {
 
 // A service: its name, its register arguments, and whether the service itself was named.
 class Service {
@@ -31,25 +25,11 @@ public:
     py::str arguments;
     bool exact = false;
 
-    Service(const py::str& name, const py::str& arguments, bool exact);
-    py::str __repr__() const;
+    Service(const py::str& name, const py::str& arguments, bool exact) : name(name), arguments(arguments), exact(exact) {}
+    py::str __repr__() const { return py::str("Service(") + name + py::str(exact ? "" : ", not exact") + py::str(")"); }
 };
 
-// One service of an interrupt: (name, register arguments), a two-item list in the JSON.
-using Hit = std::tuple<py::str, py::str>;
-
-// One interrupt's row of dos_interrupts.json (a record: the keys the table uses).
-struct Entry {
-    py::str name;                                        // "name"
-    py::str arguments;                                   // "arguments" ("" when absent: entry.get("arguments", ""))
-    bool has_services = false;                           // "services" in entry
-    py::dict<py::str, Hit> services;                     // "services": {AH as two hex digits: hit}
-    std::optional<py::str> select;                       // "select": "AX" for the mouse
-    py::dict<py::str, py::dict<py::str, Hit>> al;        // "al": {AH: {AL: hit}}
-};
-
-// One `int` instruction of codebreaker.analyze.dos_functions (not ported yet): the fields these
-// functions read of it.
+// One `int` instruction of codebreaker.analyze.dos_functions: the fields these functions read of it.
 struct Interrupt {
     int64_t number = 0;
     std::optional<int64_t> ah;
@@ -57,31 +37,52 @@ struct Interrupt {
     int64_t address = 0;
 };
 
-// Where dos_interrupts.json is read from (the Python asks the knowledge base for the "dos"/"interrupt"
-// table, which is that file's rows).
-extern py::str TABLE_PATH;
+namespace detail {
 
-// The table of a given file, parsed (ValueError when it is not the table's shape).
-py::dict<int64_t, Entry> load_table(const py::str& path);
+// dos_interrupts.json of the checkout the old layer's settings name.
+inline const cb::symbols::dos_interrupts::ServiceTable& table() {
+    static const cb::symbols::dos_interrupts::ServiceTable t = cb::symbols::dos_interrupts::ServiceTable::load(
+        cb::knowledge::DataFolders::under(cb::compat::legacy::path_of(py::settings::checkout_root())).symbols / "dos_interrupts.json");
+    return t;
+}
 
-// {interrupt number: entry of dos_interrupts.json}, read once.
-py::dict<int64_t, Entry> table();
+inline cb::symbols::dos_interrupts::Interrupt to_new(const Interrupt& i) {
+    using cb::compat::int_from_py;
+    cb::symbols::dos_interrupts::Interrupt out;
+    out.number = int_from_py<std::uint32_t>(i.number);
+    if (i.ah) out.ah = int_from_py<std::uint32_t>(*i.ah);
+    if (i.al) out.al = int_from_py<std::uint32_t>(*i.al);
+    out.address = int_from_py<std::uint32_t>(i.address);
+    return out;
+}
 
-// The service an `int number` asks for, given what is known of AH and AL. Always answers: an
-// interrupt outside the table is `int_NNh`, a service outside it `<group>_AH_NNh`; `exact` says
-// whether the service itself was named.
-Service name(int64_t number, std::optional<int64_t> ah = std::nullopt, std::optional<int64_t> al = std::nullopt);
+}  // namespace detail
+
+// The service an `int number` asks for, given what is known of AH and AL.
+inline Service name(int64_t number, std::optional<int64_t> ah = std::nullopt, std::optional<int64_t> al = std::nullopt) {
+    using cb::compat::int_from_py;
+    const auto s = detail::table().name(int_from_py<std::uint32_t>(number),
+                                        ah ? std::optional(int_from_py<std::uint32_t>(*ah)) : std::nullopt,
+                                        al ? std::optional(int_from_py<std::uint32_t>(*al)) : std::nullopt);
+    return Service(cb::compat::to_py(s.name), cb::compat::to_py(s.arguments), s.exact);
+}
 
 // One line for an Interrupt of dos_functions: `int 21h AH=3Dh  DOS_OpenFile(AL = ...)`.
-py::str describe(const Interrupt& interrupt);
+inline py::str describe(const Interrupt& interrupt) {
+    return cb::compat::to_py(detail::table().describe(detail::to_new(interrupt)));
+}
 
-// A function's C text with its interrupt calls named. `interrupts` are those of that function, in
-// address order. A comment in front lists each; `swi(0xNN)` gets its service inline only where all
-// the function's calls of that interrupt ask for the same one.
-py::str annotate(const py::str& text, const py::list<Interrupt>& interrupts);
+// A function's C text with its interrupt calls named.
+inline py::str annotate(const py::str& text, const py::list<Interrupt>& interrupts) {
+    std::vector<cb::symbols::dos_interrupts::Interrupt> calls;
+    for (const Interrupt& i : interrupts) calls.push_back(detail::to_new(i));
+    return cb::compat::to_py(detail::table().annotate(cb::compat::from_py(text), calls));
+}
 
 // python -m codebreaker dos-interrupts [<interrupt> [<AH> [<AL>]]]
-// Name a service (numbers in hex), or with no arguments say how many are in the table.
-int64_t main(const py::list<py::str>& argv);
+inline int64_t main(const py::list<py::str>& argv) {
+    const std::vector<std::string> args = cb::compat::from_py(argv);
+    return cb::symbols::dos_interrupts::run(detail::table(), args);
+}
 
 }  // namespace codebreaker::symbols::dos_interrupts

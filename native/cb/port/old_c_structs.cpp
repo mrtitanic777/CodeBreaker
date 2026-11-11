@@ -1,5 +1,5 @@
 // cb/port/old_c_structs.cpp -- fixed_allocators, local_copies, byte_places, shared_blocks, first_word_copies
-// (old_c_passes.hpp): the passes about structures' old sizes and layouts.
+// (old_c_data.hpp): the passes about structures' old sizes and layouts.
 
 #include <algorithm>
 #include <format>
@@ -7,7 +7,7 @@
 
 #include "cb/base/ctext.hpp"
 #include "cb/core/text.hpp"
-#include "cb/port/old_c_passes.hpp"
+#include "cb/port/old_c_data.hpp"
 #include "cb/port/old_c_scan.hpp"
 #include "cb/port/struct_layout.hpp"
 

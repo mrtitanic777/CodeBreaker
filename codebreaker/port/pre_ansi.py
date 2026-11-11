@@ -4344,7 +4344,7 @@ def whole_word_stores(t, notes, fname):
         if not wide:
             continue
         rx = re.compile(r"\*\s*\(\s*(?:u?int16_t|int|short|unsigned)\s*\*\s*\)\s*(\w+)\s*=\s*(\w+)\s*;")
-        for x in range(j_, k_ + 1):
+        for x in range(j_, min(k_, len(code) - 1) + 1):          # (a definition whose braces never close: to the last line)
             m = rx.search(code[x])
             if m and m.group(2) in wide:
                 lines[x] = lines[x][:m.start()] + "*(intptr_t *)%s = %s;" % (m.group(1), m.group(2)) + \
@@ -4651,10 +4651,11 @@ def stored_wide(port, out):
                 changed = True
                 done.add(mem)
     mems = {m for _, m in wide}
-    for f, t in list(out.items()):                          # (and taken out again: v = s->v; return v;)
+    for f in list(out):                                     # (and taken out again: v = s->v; return v;)
         if not f.endswith(".c") or not mems:
             continue
-        lines, code = t.split("\n"), blank(t).split("\n")
+        t = out[f]                                          # (as it is now: an earlier file's mending changed the
+        lines, code = t.split("\n"), blank(t).split("\n")   #  declarations of the functions it mended in this one)
         for name, s_, j_, k_ in sorted(definitions_any(lines, code), key=lambda d: -d[1]):
             me = port.fns.get(name)
             if not me or (me.ret or "int").strip() not in ("int", "int16_t", "short", "unsigned", "uint16_t"):
@@ -4667,7 +4668,7 @@ def stored_wide(port, out):
             if not re.search(r"\b%s\s*=\s*\w+\s*->\s*(?:%s)\s*;" % (re.escape(v), "|".join(map(re.escape, mems))),
                              body):
                 continue
-            for x in range(j_, k_ + 1):
+            for x in range(j_, min(k_, len(lines) - 1) + 1):
                 new = re.sub(r"^(\s*)(?:u?int16_t|int|short|unsigned)(\s+%s\s*;)" % re.escape(v), r"\1intptr_t\2",
                              lines[x])
                 if new != lines[x]:
@@ -4713,7 +4714,7 @@ def passed_on(port, out):
                     if re.fullmatch(r"(?:register\s+)?(?:u?int16_t|int|unsigned|short)\s+%s" % re.escape(pn), pt.strip())}
             if not mine:
                 continue
-            for x in range(j_, k_ + 1):
+            for x in range(j_, min(k_, len(code) - 1) + 1):
                 for m in pat.finditer(code[x]):
                     spans = call_args(code[x][m.start():], m.group(1)) or []
                     for k, (a, b) in enumerate(spans):

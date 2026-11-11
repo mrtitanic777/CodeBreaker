@@ -1,10 +1,10 @@
-// Tests of the helpers and pipeline steps of cb/port/old_c_passes (old_c_scan, joins_next, global_definitions,
+// Tests of the helpers and pipeline steps of cb/port/old_c_data (old_c_scan, joins_next, global_definitions,
 // loose_calls, gather_notes, rename_pascal_calls, declared_return_types, add_missing_includes, allocator_block_sizes,
 // array_sizes_of, guard_headers). Where the Python has the same function the expected values are what it gave on the same
 // input (state/work/cpp-refactor/p2/unit_expect.py); the steps that were inline in Port.modernize are checked by hand.
 #include "cb/core/testing.hpp"
 #include "cb/core/text.hpp"
-#include "cb/port/old_c_passes.hpp"
+#include "cb/port/old_c_data.hpp"
 #include "cb/port/old_c_scan.hpp"
 
 using namespace cb;
@@ -77,7 +77,7 @@ CB_TEST("port.old_c_scan.named_regex_compiles_each_name_once_and_quotes_it", [] 
     CB_CHECK(&re.with("p", "next") == &re.with("p", "next"));
 });
 
-CB_TEST("port.old_c_passes.joins_next_finds_a_table_followed_by_another_definition", [] {
+CB_TEST("port.old_c_data.joins_next_finds_a_table_followed_by_another_definition", [] {
     Files files;
     files.insert_or_assign("a.c", "int t[3] = { 1, 2, 3 };\nint u = 4;\nchar c[2] = {1, 2};\nlong l;\n");
     CB_CHECK(joins_next(files, "t"));
@@ -90,7 +90,7 @@ CB_TEST("port.old_c_passes.joins_next_finds_a_table_followed_by_another_definiti
     CB_CHECK(!joins_next(files, "b"));
 });
 
-CB_TEST("port.old_c_passes.global_definitions_list_the_one_name_definitions_at_a_files_top", [] {
+CB_TEST("port.old_c_data.global_definitions_list_the_one_name_definitions_at_a_files_top", [] {
     const std::string text =
         "int a;\nstatic char *p = \"x\";\nstruct s *sp;\nint tab[3] = { 1, 2, 3 };\nextern int e;\nint f();\nint (*fp)();\n"
         "int x, y;\nunsigned long big = 70000L;\nvoid g() { int local; }\nstatic unsigned  int  w  =  5 ;\nchar name[] = \"a;b\";\n"
@@ -102,7 +102,7 @@ CB_TEST("port.old_c_passes.global_definitions_list_the_one_name_definitions_at_a
                 "10:w|unsigned int|@|5\n11:name|char|@[]|\"a;b\"\n12:m|struct s { int|@;}|<none>\n13:out|FILE|*@|0\n14:r|register int|@|<none>\n");
 });
 
-CB_TEST("port.old_c_passes.loose_calls_make_the_integers_given_an_old_style_definition_intptr_t", [] {
+CB_TEST("port.old_c_data.loose_calls_make_the_integers_given_an_old_style_definition_intptr_t", [] {
     OrderedMap<std::string, Fn> fns;
     Fn f;
     f.name = "f";
@@ -133,7 +133,7 @@ CB_TEST("port.old_c_passes.loose_calls_make_the_integers_given_an_old_style_defi
                 "x.c:4 x.c:5 x.c:7 y.c:1");
 });
 
-CB_TEST("port.old_c_passes.gather_notes_keeps_the_mended_ones_first_then_the_passes_in_the_reports_order", [] {
+CB_TEST("port.old_c_data.gather_notes_keeps_the_mended_ones_first_then_the_passes_in_the_reports_order", [] {
     Notes mended;
     note(mended, "from the loop", "a.c:1");
     PassNotes lists;
@@ -157,7 +157,7 @@ CB_TEST("port.old_c_passes.gather_notes_keeps_the_mended_ones_first_then_the_pas
     CB_CHECK_EQ(n.at("far / near / pascal and their kind dropped (one flat memory, one way of calling)")[0], "e.c (3)");
 });
 
-CB_TEST("port.old_c_passes.pascal_names_called_in_other_letters_get_the_definitions", [] {
+CB_TEST("port.old_c_data.pascal_names_called_in_other_letters_get_the_definitions", [] {
     Files files;
     files.insert_or_assign("a.c", "void f() { FOO(1); foo(2); Bar(); known(); BAZ(); }\n/* QUX(); */\n");
     std::map<std::string, std::string> renames = {{"BAZ", "kept"}};
@@ -173,7 +173,7 @@ CB_TEST("port.old_c_passes.pascal_names_called_in_other_letters_get_the_definiti
                 "a.c (Bar) a.c (FOO)");
 });
 
-CB_TEST("port.old_c_passes.a_callers_declaration_gives_the_return_type_of_an_old_int_function", [] {
+CB_TEST("port.old_c_data.a_callers_declaration_gives_the_return_type_of_an_old_int_function", [] {
     Files files;
     files.insert_or_assign("a.c", "struct node *mk();\nextern char *name();\nint plain();\nstatic int hidden();\nunsigned long big();\nvoid done();\n");
     OrderedMap<std::string, Fn> fns;
@@ -195,7 +195,7 @@ CB_TEST("port.old_c_passes.a_callers_declaration_gives_the_return_type_of_an_old
     CB_CHECK_EQ(notes.at("what a function of old C's int gives, as its callers declared it").size(), 3u);
 });
 
-CB_TEST("port.old_c_passes.a_file_gets_the_headers_of_the_structures_it_uses_and_the_declarations_it_needs", [] {
+CB_TEST("port.old_c_data.a_file_gets_the_headers_of_the_structures_it_uses_and_the_declarations_it_needs", [] {
     Files out;
     out.insert_or_assign("a.h", "struct s { int x; };\nstruct both { int y; };\n");
     out.insert_or_assign("c.h", "struct both { int z; };\n");   // (a tag two headers define: either's, none added)
@@ -216,7 +216,7 @@ CB_TEST("port.old_c_passes.a_file_gets_the_headers_of_the_structures_it_uses_and
                 "b.c (a.h) | e.c (extra.h)");
 });
 
-CB_TEST("port.old_c_passes.an_allocators_old_block_size_becomes_the_structures_size", [] {
+CB_TEST("port.old_c_data.an_allocators_old_block_size_becomes_the_structures_size", [] {
     Files out;
     out.insert_or_assign("a.c", "#include \"port.h\"\nchar *pool_alloc(n)\nint n;\n{\n    return malloc(34) + 34 + x34 + 340;\n}\nint other() { return 34; }\n");
     OrderedMap<std::string, Fn> fns;
@@ -234,7 +234,7 @@ CB_TEST("port.old_c_passes.an_allocators_old_block_size_becomes_the_structures_s
     CB_CHECK_EQ(notes.at("the program's own allocator keeps its blocks by a structure's old size: its size now")[0], "a.c (pool_alloc: 34)");
 });
 
-CB_TEST("port.old_c_passes.array_sizes_count_elements_and_rows", [] {
+CB_TEST("port.old_c_data.array_sizes_count_elements_and_rows", [] {
     Files texts;
     texts.insert_or_assign("a.c", "int a[10];\nstatic char b[] = { 1, 2, (3, 4), {5, 6} };\nextern int c[5];\nint f(int x[4]);\nint a[3];\nint d[2] = { 0 };\n");
     texts.insert_or_assign("bss.c", "int e[ 7 ];");
@@ -249,7 +249,7 @@ CB_TEST("port.old_c_passes.array_sizes_count_elements_and_rows", [] {
     CB_CHECK_EQ(array_sizes_of(texts, rules).at("a"), 10u);
 });
 
-CB_TEST("port.old_c_passes.a_header_is_guarded_once", [] {
+CB_TEST("port.old_c_data.a_header_is_guarded_once", [] {
     Files out;
     out.insert_or_assign("a.h", "int x;\n\n");
     out.insert_or_assign("b-c.h", "#ifndef DOSRT_ONCE_X\nint y;\n#endif\n");

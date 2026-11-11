@@ -1,4 +1,4 @@
-// cb/port/old_c_tables.cpp -- array_bounds, merge_tables, numbered_tables, size_tables, pool_blocks (old_c_passes.hpp):
+// cb/port/old_c_tables.cpp -- array_bounds, merge_tables, numbered_tables, size_tables, pool_blocks (old_c_data.hpp):
 // the passes about tables and where the old linker put them.
 
 #include <algorithm>
@@ -7,7 +7,7 @@
 
 #include "cb/base/ctext.hpp"
 #include "cb/core/text.hpp"
-#include "cb/port/old_c_passes.hpp"
+#include "cb/port/old_c_data.hpp"
 #include "cb/port/old_c_scan.hpp"
 #include "cb/port/old_sizes.hpp"
 

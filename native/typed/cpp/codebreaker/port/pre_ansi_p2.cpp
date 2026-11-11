@@ -3,7 +3,7 @@
 // class of pre_ansi.hpp: the pre_ansi, asm16 and sanitize modules, once refactored, call cb::port directly).
 //
 // The module this shim stands for is PART 2 of codebreaker.port.pre_ansi (Python lines 886-2145): the Port methods
-// agree_globals .. _globals. The passes are in native/cb/port/old_c_*.cpp (old_c_passes.hpp). What is here besides
+// agree_globals .. _globals. The passes are in native/cb/port/old_c_*.cpp (old_c_data.hpp). What is here besides
 // conversion: the once-only guards the Python kept in the Port (`_agreed` ...), and `modernize`'s order of work, which
 // calls the parts of the port that are not refactored yet (PART 1, 3 and 5 are still over py::) between the new steps.
 
@@ -11,7 +11,7 @@
 #include <functional>
 
 #include "cb/compat/py_bridge.hpp"
-#include "cb/port/old_c_passes.hpp"
+#include "cb/port/old_c_data.hpp"
 #include "codebreaker/base/ctext.hpp"
 #include "codebreaker/port/pre_ansi.hpp"
 

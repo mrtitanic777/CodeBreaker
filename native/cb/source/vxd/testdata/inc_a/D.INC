@@ -1,0 +1,4 @@
+Begin_Service_Table vpicd
+VPICD_Service VPICD_Get_Version
+VPICD_Service VPICD_Virtualize_IRQ
+End_Service_Table

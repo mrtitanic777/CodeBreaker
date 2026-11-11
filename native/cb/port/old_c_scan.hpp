@@ -1,4 +1,4 @@
-// cb/port/old_c_scan.hpp -- the small scanners the port's data passes share (old_c_passes.hpp).
+// cb/port/old_c_scan.hpp -- the small scanners the port's data passes share (old_c_data.hpp).
 //
 // The passes read C text whose strings and comments are blanked (cb::base::ctext::blank keeps every offset) and
 // rewrite the original text at the offsets they find. What they have in common is here: reading a C integer,

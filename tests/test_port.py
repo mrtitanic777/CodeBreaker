@@ -83,6 +83,46 @@ def test_frame_kept_side_by_side():
     assert body.index("char text[8];") < body.index("int32_t pos;")
 
 
+def _widening_port(files, fns):
+    """a Port holding only what the widening passes read: the texts and the functions (name, ret, params)"""
+    p = pre_ansi.Port({}, PROFILE)
+    p.files = dict(files)
+    p.fns = {}
+    for name, ret, params in fns:
+        f = pre_ansi.Fn(name, ret, params, False, 1)
+        f.body, f.implicit = "", set()
+        p.fns[name] = f
+    return p
+
+
+def test_widening_passes_on_a_definition_that_never_closes():
+    # a truncated file: the braces of the definition never close, and the passes indexed past its last line
+    import collections
+    text = "void f(int16_t *q, intptr_t p)\n{\n    *(int *)q = p;\n"
+    out = pre_ansi.whole_word_stores(text, collections.defaultdict(list), "a.c")
+    assert "*(intptr_t *)q = p;" in out, out
+    p = _widening_port({"a.c": text}, [("f", "", [("q", "int16_t *q"), ("p", "intptr_t p")])])
+    files = {"a.c": text}
+    assert pre_ansi.passed_on(p, files) is False
+    assert pre_ansi.stored_wide(p, files) is False
+
+
+def test_stored_wide_keeps_the_declarations_it_changed():
+    # pop() is mended in a.c; its declaration in b.c is changed with it, and b.c's own function (other) is mended
+    # after: its text was the one from before, written back over the declaration
+    a_c = ('#include "s.h"\nvoid push(intptr_t n)\n{\n    struct stk *s;\n    s->v = n;\n}\n'
+           "int16_t pop(void)\n{\n    int16_t v;\n    struct stk *s;\n    v = s->v;\n    return v;\n}\n")
+    b_c = ('#include "s.h"\nint16_t pop(void);\nint16_t other(void)\n{\n    int16_t w;\n    struct stk *s;\n'
+           "    w = s->v;\n    return w;\n}\n")
+    files = {"a.c": a_c, "b.c": b_c, "s.h": "struct stk { int16_t v; };\n"}
+    p = _widening_port(files, [("push", "", [("n", "intptr_t n")]), ("pop", "int16_t", []), ("other", "int16_t", [])])
+    out = dict(files)
+    assert pre_ansi.stored_wide(p, out) is True
+    assert "intptr_t pop(void)" in out["a.c"] and "intptr_t pop(void);" in out["b.c"], out["b.c"]
+    assert "intptr_t other(void)" in out["b.c"] and "intptr_t w;" in out["b.c"], out["b.c"]
+    assert "intptr_t v;" in out["s.h"], out["s.h"]
+
+
 def test_builds_and_runs():
     cc = port_main.find(port_main.load_compilers()["gcc"]["find"]) or \
         port_main.find(port_main.load_compilers()["clang"]["find"])
@@ -142,7 +182,9 @@ def test_size_table_ends_at_its_own_brace():
 
 if __name__ == "__main__":
     for t in (test_runtime_left_out, test_prototypes_and_widths, test_formats, test_frame_kept_side_by_side,
-              test_octal_constant_in_a_pass, test_size_table_ends_at_its_own_brace, test_builds_and_runs):
+              test_octal_constant_in_a_pass, test_size_table_ends_at_its_own_brace,
+              test_widening_passes_on_a_definition_that_never_closes, test_stored_wide_keeps_the_declarations_it_changed,
+              test_builds_and_runs):
         check(t)
     for n, v, why in RESULTS:
         print("%-32s %s %s" % (n, v, why))

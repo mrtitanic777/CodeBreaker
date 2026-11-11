@@ -1,0 +1,1 @@
+"/gui/not_java.png" -- this file is not a .java file, so it is never scanned

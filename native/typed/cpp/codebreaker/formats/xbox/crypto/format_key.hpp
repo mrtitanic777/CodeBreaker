@@ -1,17 +1,15 @@
-// codebreaker/formats/xbox/crypto/format_key.hpp -- C++ port of codebreaker.formats.xbox.crypto.format_key.
-//
-// format_key.py -- writes Keys/custom_pub.bin as the C++ source of the byte array ExpPubKey
-// (Output/Zero/ExpPubKey.h) and prints that source. It uses bin2lang.lang_format; the paths are relative to
-// the current directory, as in the Python.
-//
-// Typing notes: none needed -- main() takes and returns nothing. It raises what bin2lang.lang_format raises
-// (FileNotFoundError for a missing input or output folder, IndexError for an empty input).
+// codebreaker/formats/xbox/crypto/format_key.hpp -- SHIM over cb/formats/xbox/crypto/format_key.hpp (docs/CPP_DESIGN.md 6.3);
+// deleted with its last py:: consumer. main() writes Keys/custom_pub.bin as Output/Zero/ExpPubKey.h (relative to the current
+// folder) and prints the source.
 #pragma once
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/formats/xbox/crypto/format_key.hpp"
 
 namespace codebreaker::formats::xbox::crypto::format_key {
 
-void main();
+inline void main() {
+    cb::compat::guard([&] { py::print(cb::compat::to_py(cb::formats::xbox::crypto::format_key::write_exp_pub_key("."))); });
+}
 
 }  // namespace codebreaker::formats::xbox::crypto::format_key

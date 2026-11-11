@@ -1,4 +1,4 @@
-// cb/port/old_c_words.cpp -- word_stacks (old_c_passes.hpp): the words that held pointers.
+// cb/port/old_c_words.cpp -- word_stacks (old_c_data.hpp): the words that held pointers.
 
 #include <algorithm>
 #include <format>
@@ -6,7 +6,7 @@
 
 #include "cb/base/ctext.hpp"
 #include "cb/core/text.hpp"
-#include "cb/port/old_c_passes.hpp"
+#include "cb/port/old_c_data.hpp"
 #include "cb/port/old_c_scan.hpp"
 
 namespace cb::port::pre_ansi {
