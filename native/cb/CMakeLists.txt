@@ -72,9 +72,9 @@ target_compile_options(cb_sqlite3 PRIVATE /W0 /O2)
 set_target_properties(cb_sqlite3 PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 cb_area(base)
-target_link_libraries(cb_base PUBLIC cb_core PRIVATE cb_sqlite3)
+target_link_libraries(cb_base PUBLIC cb_core cb_formats PRIVATE cb_sqlite3)
 cb_area(build)
-target_link_libraries(cb_build PUBLIC cb_core cb_base)
+target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_symbols)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core)
 cb_area(jobs)
@@ -183,6 +183,7 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"   # (uses the arith16 shim's records)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"

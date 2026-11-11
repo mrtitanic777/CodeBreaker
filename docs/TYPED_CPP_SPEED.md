@@ -556,3 +556,19 @@ text, `py::re`) to `native/cb/port/old_c_*.cpp` (`std::string`, `cb::Regex`, tok
 The harness answers: `modernize` of all six trees and every per-pass record are identical to the old typed port's files (45
 directories, byte for byte) and, once the CRs the C++ harness reader keeps in CRLF files and the two names `agree_wide` (part 5)
 picks by the order of a set are put aside, equal to the Python's. The passes are not slower than the port they replace on any tree.
+
+## cb::build::flat_thunk and cb::base::converted (wave 1, W1-B3, 2026-11-11)
+
+Measured on this machine (an SSD with Defender on), the same real inputs through the live Python and through `native/cb`. The real work of both is
+small; what is measured is mostly file creation, and that is where the C++ was first slower (`std::filesystem::create_directories` costs 2.6 ms for a
+folder that is already there and 3 ms for a new one in the MSVC library, and every `cb::fs::write_file` asked it first: `cb::fs::make_dirs` now looks
+first and creates with `CreateDirectoryW`).
+
+| What | Python | new (`cb::build::flat_thunk` / `cb::base::converted`) |
+|---|---|---|
+| `recover` of the 35 flat-thunk modules of the Win95 corpus with the real 8,292-prototype SDK table (4 files each; stub reading, SMapLS scan, text) | 0.25-0.45 s | 0.10-0.12 s (0.025 s of it is not file creation) |
+| `Store.project` + two `record` + the second `project` (found again) for the same 35 modules, fresh Converted folder | 0.97 s | 0.57 s |
+
+The old typed port of flat_thunk was not timed (the typed ports are being replaced). The 35 modules x 5 files `recover` makes are byte-identical to the
+Python's (175 files); the OpenWatcom builds of recovered sources of lz32, dciman32 and version are byte-identical DLLs (PE timestamp aside), and the period
+build (thunk.exe, ML, CL, LINK) of the curated lz32 source differs only in the export and resource timestamps (8 bytes).

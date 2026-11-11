@@ -1,0 +1,12 @@
+; KERNEL32 by-ordinal flat-thunk / handle helpers imported by TAPI32.
+; Names from the Windows Me symbol file (Geoff Chappell). NONAME = by-ordinal import.
+; NOTE: ThunkInitLSF@41 is the Microsoft-INTERNAL connect (never in a public SDK); we
+;       connect via the public ThunkConnect32 instead -- see the engine docs.
+LIBRARY KERNEL32
+EXPORTS
+    Kernel32_Ord36               @36 NONAME
+    Kernel32_Ord43               @43 NONAME
+    Kernel32_Ord45               @45 NONAME
+    Kernel32_Ord46               @46 NONAME
+    FT_PrologPrime               @89 NONAME
+    QT_ThunkPrime                @90 NONAME

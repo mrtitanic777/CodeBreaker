@@ -1,99 +1,82 @@
-// codebreaker/build/flat_thunk.hpp -- typed C++ of codebreaker.build.flat_thunk
+// codebreaker/build/flat_thunk.hpp -- SHIM over cb/build/flat_thunk.hpp (docs/CPP_DESIGN.md 6.3): the old types in, the new functions
+// called, the old types out. No logic; deleted with its last py:: consumer.
 //
-// flat_thunk.py -- the authentic-rebuild + binary-verify engine, aimable at any Win95 module.
+// The authentic-rebuild and binary-verify engine for a flat-thunk DLL (see cb/build/flat_thunk.hpp): classify a binary by how it
+// was built, recover its source, build it, diff the result against the shipped binary.
 //
-// Automates the workflow proven by hand on LZ32.DLL: CLASSIFY a binary by how Microsoft actually built
-// it, RECOVER authentic source for that class, BUILD it with the period toolchain, DIFF the result
-// against the shipped binary, and DOCUMENT the verification level. This file is the FOUNDATION --
-// the binary model (PE/NE parse), the classifier, and the differ; the per-class recoverers and the
-// build drivers plug into it.
+//     classify(path).subtype                   // "flat-thunk" | "win32-c" | "win16-c" | "unknown"
+//     recover_flat_thunk(path, outdir)         // <module>.def, <module>k32.def, <module>.thk, <module>.c
+//     build_flat_thunk(srcdir) / build_flat_thunk_ow(srcdir)
+//     bindiff(built, shipped)
 //
-// The guiding standard (design/RECONSTRUCTION_STANDARD.md): authentic-method + binary-verified, not
-// source-text-exact. The differ reports what is actually verifiable -- entry point, section layout,
-// exports, imports, size -- never "we guessed the names."
-//
-//     python -m codebreaker flat-thunk <binary> [--classify] [--diff <built.dll>]
-//
-// Typing notes (how the Python's dynamic parts are typed here):
-//   * PE and NE are structs holding the format reader (formats::pe::PEFile / formats::ne::NEFile); `load` answers
-//     std::variant<std::monostate (None), PE, NE>.
-//   * The dicts the Python answers with are records: Classification (its keys, in the Python's order, through
-//     `items()`), BinDiff (the keys a PE or an NE diff has are optional fields), Toolchain, Discovery, CompileOw,
-//     BuildResult, Recovered. A key the Python leaves out (an error-only answer has no `log`) is an empty optional.
-//   * A stub's signature (argbytes, nptr) is std::tuple<std::optional<int64_t>, int64_t> (argbytes None when unresolved).
-//   * SDK prototypes (`_load_sdk_protos`) are `SdkProto` records keyed by export name.
-//   * The Python calls `platforms.of("pe")` for the OpenWatcom compiler and linker; those platform slots are
-//     build::watcom::ow_tool("wcc386") / ow_tool("wlink") (platforms/win32.py names exactly those).
-//   * Python's `subprocess.run(..., env=, timeout=)`: the runtime's has no env or timeout; the environment is set for
-//     the run and put back (see EnvScope in the .cpp), timeouts are not applied.
-//   * The set of public symbols omf.publics returns is walked in sorted order (as the Python does).
+//   * Where the tools are comes from the old layer's settings (reference through the old corpus, period_compiler, openwatcom) and the
+//     SDK prototypes from the old prototypes table; the new module takes them as plain values.
+//   * Not carried over (no old caller used them): the PE/NE/Binary wrappers and `load`, the stub reader and text helpers (underscore
+//     names), `_fmt_diff` (the new module's `format_diff` takes its own BinDiff), `_ow_paths`, `_discover_flat_thunk`.
+//   * `main` returns the command's exit code (the Python returned nothing, so exit 0, when a step failed); the command is the new
+//     module's cb::cli command and its usage is cb::cli's.
+//   * A cb::Error reaches the old code as the py:: exception for its meaning (cb::compat::guard).
 #pragma once
 
 #include <cstdint>
 #include <optional>
 #include <tuple>
-#include <variant>
 
-#include "codebreaker/formats/ne.hpp"
-#include "codebreaker/formats/pe.hpp"
+#include "cb/build/flat_thunk.hpp"
+#include "cb/compat/legacy_settings.hpp"
+#include "codebreaker/base/corpus.hpp"
+#include "codebreaker/symbols/prototypes.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::build::flat_thunk {
 
-namespace pe_format = codebreaker::formats::pe;
-namespace ne_format = codebreaker::formats::ne;
+namespace nf = ::cb::build::flat_thunk;
 
-// ------------------------------------------------------------------ binary model (PE + NE)
-// sections as (name, va, vsize, rawsize, rawptr)
-using Section = std::tuple<py::str, int64_t, int64_t, int64_t, int64_t>;
+namespace detail {
+inline std::filesystem::path path_of(const py::str& s) { return ::cb::compat::legacy::path_of(s); }
+inline py::str text_of(const std::filesystem::path& p) { return ::cb::compat::legacy::native(p); }
 
-// A PE image (formats/pe reads it), in the shapes this engine works with: sections as
-// (name, va, vsize, rawsize, rawptr), exports as sorted (ordinal, name), imports as
-// {dll: [name or '@ordinal']}.
-struct PE {
-    py::str path;
-    pe_format::PEFile f;
-    py::bytes d;
-    int64_t entry = 0;
-    int64_t nsec = 0;
-    py::list<Section> secs;
-    py::set<int64_t> smapls_rvas;      // `_smapls_rvas`: set by recover_flat_thunk (the Python hangs it on the object)
+// Where the tools are, from the settings: `reference` (the Win95 DDK, WIN32SDK and the thunk compiler), `period_compiler`, `openwatcom`.
+inline nf::Locations locations() {
+    nf::Locations where;
+    const py::str reference = base::corpus::reference();
+    if (!reference.empty()) where.reference_roots.push_back(path_of(reference));
+    where.period_compiler = path_of(py::settings::get_str(py::str("period_compiler")));
+    where.openwatcom = ::cb::build::watcom::OpenWatcom::from_settings(py::settings::get_str(py::str("openwatcom")).utf8());
+    return where;
+}
 
-    explicit PE(const py::str& path);
+// The SDK prototypes of the old table (win32), as the new module takes them.
+inline std::map<std::string, nf::SdkPrototype> sdk() {
+    ::cb::symbols::prototypes::Headers headers;
+    for (const auto& [name, p] : symbols::prototypes::table().w32.items()) {
+        ::cb::symbols::prototypes::Prototype q;
+        q.returns = p.returns.utf8();
+        q.convention = p.convention.utf8();
+        q.marker = p.marker.utf8();
+        q.header = p.header.utf8();
+        for (const auto& [type, parameter] : p.parameters.vec()) q.parameters.push_back({type.utf8(), parameter.utf8()});
+        headers.w32.insert_or_assign(name.utf8(), std::move(q));
+    }
+    return nf::sdk_prototypes(::cb::symbols::prototypes::PrototypeTable(std::move(headers)));
+}
 
-    std::optional<int64_t> _file2rva(int64_t o) const;
-    py::list<std::tuple<int64_t, py::str>> exports() const;
-    // -> dict dll -> list of 'name' or '@ordinal'.
-    py::dict<py::str, py::list<py::str>> imports() const;
-    // -> dict name -> function RVA (AddressOfFunctions[ordinal]); the stub location, so we can
-    // read each export's code (arity, marshalling) straight from the binary.
-    py::dict<py::str, int64_t> export_addrs() const;
-    // Raw bytes at an RVA (for reading a stub's code).
-    py::bytes read_at(int64_t rva, int64_t n) const;
-};
+inline nf::Services services() {
+    nf::Services s;
+    s.locations = locations();
+    s.retail = [](std::string_view name) -> std::optional<std::filesystem::path> {
+        const std::optional<py::str> found = base::corpus::retail(py::str(std::string(name)));
+        if (!found) return std::nullopt;
+        return path_of(*found);
+    };
+    s.sdk = [] { return sdk(); };
+    return s;
+}
+}  // namespace detail
 
-// A 16-bit NE module (formats/ne reads it): its segments' kinds and resident names.
-struct NE {
-    py::str path;
-    ne_format::NEFile f;
-    py::bytes d;
-    int64_t nseg = 0;
-    py::list<std::tuple<py::str, int64_t, int64_t, int64_t>> segs;       // (kind, file_off, length, flags)
-
-    explicit NE(const py::str& path);
-
-    py::list<std::tuple<int64_t, py::str>> resident_names() const;
-};
-
-using Binary = std::variant<std::monostate, PE, NE>;
-
-Binary load(const py::str& path);
-
-// ------------------------------------------------------------------ classifier
-extern const py::list<py::str> _THUNK_MARKERS;
-
-// {format, subtype, recipe, why} (and n_exports, n_imports) describing how the module was built.
+// How the module was built.
 struct Classification {
     py::str format, subtype;
     std::optional<py::str> recipe;
@@ -101,13 +84,148 @@ struct Classification {
     py::str why;
 
     // the dict's items in the Python's order, the value as str() gives it
-    py::list<std::tuple<py::str, py::str>> items() const;
+    py::list<std::tuple<py::str, py::str>> items() const {
+        py::list<std::tuple<py::str, py::str>> out;
+        out.append(std::make_tuple(py::str("format"), format));
+        out.append(std::make_tuple(py::str("subtype"), subtype));
+        out.append(std::make_tuple(py::str("recipe"), recipe ? *recipe : py::str("None")));
+        if (n_exports) out.append(std::make_tuple(py::str("n_exports"), py::str(std::to_string(*n_exports))));
+        if (n_imports) out.append(std::make_tuple(py::str("n_imports"), py::str(std::to_string(*n_imports))));
+        out.append(std::make_tuple(py::str("why"), why));
+        return out;
+    }
 };
 
-Classification classify(const py::str& path);
+inline Classification classify(const py::str& path) {
+    return ::cb::compat::guard([&] {
+        const nf::Classification c = nf::classify(detail::path_of(path));
+        Classification out;
+        out.format = py::str(std::string(nf::format_name(c.format)));
+        out.subtype = py::str(std::string(nf::subtype_name(c.subtype)));
+        if (c.recipe) out.recipe = py::str(*c.recipe);
+        if (c.exports) out.n_exports = static_cast<int64_t>(*c.exports);
+        if (c.imports) out.n_imports = static_cast<int64_t>(*c.imports);
+        out.why = py::str(c.why);
+        return out;
+    });
+}
 
-// ------------------------------------------------------------------ differ
-// Structural diff of two binaries -> report dict + a verification verdict.
+// The period tools.
+struct Toolchain {
+    std::optional<py::str> thunk, ml;
+    py::str cl, link, lib, rc, include;
+    py::list<py::str> lib_dirs;
+};
+
+inline Toolchain toolchain() {
+    const nf::Toolchain t = nf::toolchain(detail::locations());
+    Toolchain out;
+    if (!t.thunk.empty()) out.thunk = detail::text_of(t.thunk);
+    if (!t.ml.empty()) out.ml = detail::text_of(t.ml);
+    out.cl = detail::text_of(t.cl);
+    out.link = detail::text_of(t.link);
+    out.lib = detail::text_of(t.lib);
+    out.rc = detail::text_of(t.rc);
+    out.include = detail::text_of(t.include);
+    for (const auto& d : t.lib_dirs) out.lib_dirs.append(detail::text_of(d));
+    return out;
+}
+
+// What a build made.
+struct BuildResult {
+    bool ok = false;
+    std::optional<py::str> error, log;
+    std::optional<py::str> dll, module;
+    int64_t n_exports = 0, bytes = 0;
+};
+
+namespace detail {
+inline BuildResult build_result(const nf::BuildResult& r) {
+    BuildResult out;
+    out.ok = r.ok;
+    if (!r.error.empty()) out.error = py::str(r.error);
+    if (!r.log.empty()) out.log = py::str(r.log);
+    if (r.dll) out.dll = text_of(*r.dll);
+    if (!r.module.empty()) out.module = py::str(r.module);
+    out.n_exports = static_cast<int64_t>(r.exports);
+    out.bytes = static_cast<int64_t>(r.bytes);
+    return out;
+}
+}  // namespace detail
+
+// From-source OpenWatcom, no Microsoft tools.
+inline BuildResult build_flat_thunk_ow(const py::str& srcdir, const std::optional<py::str>& outdir = std::nullopt) {
+    return ::cb::compat::guard([&] {
+        std::optional<std::filesystem::path> out;
+        if (outdir) out = detail::path_of(*outdir);
+        return detail::build_result(nf::build_openwatcom(detail::locations().openwatcom, detail::path_of(srcdir), out));
+    });
+}
+
+// The thunk compiler, ML, CL and LINK on the recovered source.
+inline BuildResult build_flat_thunk(const py::str& srcdir, const std::optional<py::str>& outdir = std::nullopt) {
+    return ::cb::compat::guard([&] {
+        std::optional<std::filesystem::path> out;
+        if (outdir) out = detail::path_of(*outdir);
+        return detail::build_result(nf::build_period(detail::locations(), detail::path_of(srcdir), out));
+    });
+}
+
+struct CompileOw {
+    bool ok = false;
+    std::optional<py::str> error;
+    py::list<std::tuple<py::str, int64_t, py::str>> results;     // (file, rc, first_error)
+};
+
+inline CompileOw compile_ow(const py::str& srcdir) {
+    return ::cb::compat::guard([&] {
+        const nf::CompileResult r = nf::compile_openwatcom(detail::locations().openwatcom, detail::path_of(srcdir));
+        CompileOw out;
+        out.ok = r.ok;
+        if (!r.error.empty()) out.error = py::str(r.error);
+        for (const nf::CompiledFile& f : r.files) out.results.append(std::make_tuple(py::str(f.file), static_cast<int64_t>(f.exit_code), py::str(f.first_error)));
+        return out;
+    });
+}
+
+// What recover_flat_thunk wrote and found.
+struct Recovered {
+    std::optional<py::str> error;
+    py::str module;
+    int64_t n_exports = 0;
+    py::list<int64_t> k32_ordinals, unknown_ordinals;
+    py::str outdir;
+    std::optional<py::str> target16;
+    py::list<py::str> dll_candidates;
+    int64_t n_signatures_recovered = 0, n_pointer_args = 0, n_sdk_prototypes = 0;
+    py::list<py::str> recovered, scaffolded;
+};
+
+inline Recovered recover_flat_thunk(const py::str& pe_path, const py::str& outdir) {
+    Recovered out;
+    try {
+        const nf::Recovery r = nf::recover(detail::path_of(pe_path), detail::path_of(outdir), detail::sdk());
+        out.module = py::str(r.module);
+        out.n_exports = static_cast<int64_t>(r.exports);
+        for (const std::uint32_t o : r.kernel32_ordinals) out.k32_ordinals.append(o);
+        for (const std::uint32_t o : r.unknown_ordinals) out.unknown_ordinals.append(o);
+        out.outdir = detail::text_of(r.outdir);
+        if (r.target16) out.target16 = py::str(*r.target16);
+        out.dll_candidates = ::cb::compat::to_py(r.dll_candidates);
+        out.n_signatures_recovered = static_cast<int64_t>(r.signatures);
+        out.n_pointer_args = static_cast<int64_t>(r.pointer_args);
+        out.n_sdk_prototypes = static_cast<int64_t>(r.sdk_prototypes);
+        out.recovered = ::cb::compat::to_py(r.recovered);
+        out.scaffolded = ::cb::compat::to_py(r.scaffolded);
+    } catch (const ::cb::UsageError& e) {   // "not a PE": the Python answered with an error entry, not an exception
+        out.error = py::str(e.what());
+    } catch (const ::cb::Error& e) {
+        ::cb::compat::rethrow_as_py(e);
+    }
+    return out;
+}
+
+// What bindiff found (the PE and NE answers are one record, as the Python's dict was).
 struct BinDiff {
     std::optional<py::str> error;
     bool named = false;                                    // built / shipped / sizes are in the answer
@@ -128,218 +246,59 @@ struct BinDiff {
     std::optional<py::str> verdict;
 };
 
-BinDiff bindiff(const py::str& built, const py::str& shipped);
+inline BinDiff bindiff(const py::str& built, const py::str& shipped) {
+    BinDiff out;
+    const ::cb::Result<nf::BinDiff> r = ::cb::compat::guard([&] { return nf::bindiff(detail::path_of(built), detail::path_of(shipped)); });
+    if (!r.ok()) {
+        out.error = py::str(r.error().what());
+        return out;
+    }
+    const nf::BinDiff& d = r.value();
+    out.named = true;
+    out.built = py::str(d.built);
+    out.shipped = py::str(d.shipped);
+    out.size_built = static_cast<int64_t>(d.size_built);
+    out.size_shipped = static_cast<int64_t>(d.size_shipped);
+    out.verdict = py::str(std::string(nf::verdict_name(d.verdict)));
+    const auto hex = [](std::uint32_t v) { return py::str(std::format("0x{:x}", v)); };
+    const auto pair = [](const auto& p) { return std::make_tuple(static_cast<int64_t>(p.first), static_cast<int64_t>(p.second)); };
+    const auto kinds = [](const std::vector<nf::SegmentKind>& k) {
+        py::list<py::str> names;
+        for (const nf::SegmentKind x : k) names.append(py::str(x == nf::SegmentKind::Data ? "DATA" : "CODE"));
+        return names;
+    };
+    if (const nf::PeDiff* pe = std::get_if<nf::PeDiff>(&d.detail)) {
+        out.kind = py::str("PE");
+        out.entry_match = pe->entry_match;
+        out.entry = std::make_tuple(hex(pe->entry.first), hex(pe->entry.second));
+        out.sections_built = ::cb::compat::to_py(pe->sections_built);
+        out.sections_shipped = ::cb::compat::to_py(pe->sections_shipped);
+        out.sections_match = pe->sections_match;
+        out.exports_match = pe->exports_match;
+        out.n_exports = pair(pe->exports);
+        out.n_imports = pair(pe->import_count);
+        out.import_dlls_built = ::cb::compat::to_py(pe->import_dlls_built);
+        out.import_dlls_shipped = ::cb::compat::to_py(pe->import_dlls_shipped);
+        out.imports_only_in_shipped = ::cb::compat::to_py(pe->imports_only_in_shipped);
+        out.imports_only_in_built = ::cb::compat::to_py(pe->imports_only_in_built);
+    } else {
+        const nf::NeDiff& ne = std::get<nf::NeDiff>(d.detail);
+        out.kind = py::str("NE");
+        out.nseg = pair(ne.segments);
+        out.seg_kinds_built = kinds(ne.kinds_built);
+        out.seg_kinds_shipped = kinds(ne.kinds_shipped);
+        out.seg_kinds_match = ne.kinds_match;
+        out.exports_match = ne.exports_match;
+    }
+    return out;
+}
 
-py::str _fmt_diff(const BinDiff& r);
-
-// ------------------------------------------------------------------ toolchain resolver
-std::optional<py::str> _first(const py::list<std::optional<py::str>>& cands);
-
-// The 'reference' folder (Win95 DDK + WIN32SDK + the thunk compiler 1.01): corpus.reference().
-py::list<py::str> _reference_roots();
-
-// The period build tools. Flat-thunk path is all native (runs on modern Windows):
-// thunk.exe (prefer the v1.01 from the Chicago beta SDK -> closest imports), MASM 6.11c, MSVC 2.0.
-struct Toolchain {
-    std::optional<py::str> thunk, ml;
-    py::str cl, link, lib, rc, include;
-    py::list<py::str> lib_dirs;
-};
-Toolchain toolchain();
-
-py::str _winpath(const py::str& p);
-
-// The pieces of a flat-thunk module found in srcdir.
-//   thk = the *.thk thunk script; cfiles = every *.c (veneer); moddef = the module .def (LIBRARY <MODULE>, not the
-//   *k32 import-lib def); k32def = the *k32.def (KERNEL32 by-ordinal import lib); rc = optional *.rc;
-//   module = LIBRARY name from moddef (lowercased)
-struct Discovery {
-    std::optional<py::str> error;
-    py::str thk;
-    py::list<py::str> cfiles;
-    py::str moddef, k32def;
-    std::optional<py::str> rc;
-    py::str module;
-};
-Discovery _discover_flat_thunk(const py::str& srcdir);
-
-extern const py::dict<py::str, int64_t> _BYVAL;
-
-// Fallback size of one stdcall parameter (used only if the PUBDEF lookup misses): pointers 4,
-// known by-value structs/64-bit types 8/16, else the machine word 4.
-int64_t _param_bytes(const py::str& part);
-
-// (wcc386, wlink, include-dirs) for the from-source OpenWatcom toolchain -- the compiler the
-// project builds with (no Microsoft tools). None if the OW tree is not present.
-struct OwPaths {
-    py::str root, wcc386, wlink;
-    py::list<py::str> include;
-};
-std::optional<OwPaths> _ow_paths();
-
-// Compile every recovered veneer .c in `srcdir` with OpenWatcom wcc386 against OpenWatcom's own
-// Win32 headers -- the from-source toolchain, no Microsoft tools. This is the project's real build
-// compiler (owbuild/vmm32 lanes); it verifies the recovered source is compilable as authored.
-struct CompileOw {
-    bool ok = false;
-    std::optional<py::str> error;
-    py::list<std::tuple<py::str, int64_t, py::str>> results;     // (file, rc, first_error)
-};
-CompileOw compile_ow(const py::str& srcdir);
-
-// What a build answers: ok, the DLL, its module, and the log (a failed one has an error or a log instead).
-struct BuildResult {
-    bool ok = false;
-    std::optional<py::str> error, log;
-    std::optional<py::str> dll, module;
-    int64_t n_exports = 0, bytes = 0;
-};
-
-// Build a flat-thunk veneer to a real DLL with the FROM-SOURCE OpenWatcom toolchain -- no
-// Microsoft tools. Compiles the recovered veneer .c with wcc386 (auto-exporting each function via
-// __declspec(dllexport), so no fragile export-decoration guessing), stubs the thunk-compiler's
-// connection routine (<module>_ThunkConnect32 -- the real one is generated by the thunk compiler at
-// body curation), resolves KERNEL32/USER32/GDI32 against OpenWatcom's own import libs, and links
-// `system nt_dll`. Produces a loadable DLL whose export table matches the retail module's function
-// exports. Returns {ok, dll, module, n_exports, log}.
-BuildResult build_flat_thunk_ow(const py::str& srcdir, const std::optional<py::str>& outdir = std::nullopt);
-
-// Build a flat-thunk module from its recovered source (native chain, no DOSBox):
-//   thunk.exe -> .asm ; ml -DIS_32 -> thunk obj ; cl each veneer .c -> obj ; rc (opt) ;
-//   lib (KERNEL32 by-ordinal import lib) ; link /NODEFAULTLIB /ENTRY:DllMain@12 -> <module>.dll.
-// Discovers the pieces in srcdir. Returns {ok, dll, module, log}.
-BuildResult build_flat_thunk(const py::str& srcdir, const std::optional<py::str>& outdir = std::nullopt);
-
-// ------------------------------------------------------------------ RECOVER (flat-thunk)
-// KERNEL32 by-ordinal flat-thunk / handle helpers (names from the Windows Me symbol file; Geoff
-// Chappell, "Ordinal-Only Exports In KERNEL32 4.0"). Value = (name, stdcall-arg-bytes or None).
-extern const py::dict<int64_t, std::tuple<py::str, std::optional<int64_t>>> _KERNEL32_ORDINALS;
-
-// ------------------------------------------------------------------ stub analysis (x86-32)
-// A flat-thunk export is a tiny stdcall stub: set up args, marshal 32:16 pointers via SMapLS,
-// call the 16-bit side through QT_Thunk/FT_Prolog, unmap, and `ret N`. From the stub bytes alone
-// we can recover the REAL signature the compiler enforced -- the `ret N` epilogue pops exactly the
-// argument bytes (stdcall), so N/4 = the DWORD-sized argument count; and each SMapLS call marshals
-// one 32-bit pointer argument down to a 16:16 far pointer, so counting them bounds the pointer args.
-//
-// A conservative, table-driven length decoder walks the stub; on an opcode it does not model it
-// stops (returns 0) rather than mis-measure -- so arity is recovered where the walk is certain and
-// the module cleanly falls back to the (void) scaffold where it is not. Never a WRONG signature.
-extern const py::set<int64_t> _ARITH_RM, _ARITH_AX, _MODRM_ONLY, _MODRM_IMM8, _MODRM_IMMW;
-
-// Bytes in the ModRM (+SIB +disp) cluster starting at d[i].
-int64_t _modrm_len(const py::bytes& d, int64_t i);
-
-// Length of the x86-32 instruction at d[i]; 0 if the opcode is not modelled (caller stops).
-int64_t _ilen(const py::bytes& d, int64_t i);
-
-int64_t _imagebase(const PE& pe);
-
-// Absolute VAs that, when the target of a stub's call, mark a 32:16 pointer marshalling:
-// the IAT slots of KERNEL32!SMapLS/SUnMapLS, plus any `jmp [slot]` incremental-link thunks that
-// forward to them. Used to count pointer arguments in a stub.
-py::set<int64_t> _smapls_iat_rvas(const PE& pe);
-
-using StubSignature = std::tuple<std::optional<int64_t>, int64_t>;      // (argbytes or None, nptr)
-
-// Recover (argbytes, nptr) for an export at RVA `frva`, or (None, 0) if it does not cleanly
-// resolve. argbytes = stdcall bytes popped by `ret N` (every stdcall return in a function pops the
-// same N, so the first one reached on the linearly-decoded path is authoritative); nptr = SMapLS
-// marshalling calls seen (32-bit pointer args). `maxlen` bounds the walk to the function's extent.
-// A `ret N` is only accepted when N is a plausible stdcall count (N%4==0, N<=256) so a decode
-// desync at inline data cannot fabricate a signature -- unresolved beats wrong.
-StubSignature _stub_signature(const PE& pe, int64_t frva, int64_t maxlen = 8192);
-
-// Plausible `ret N` immediate from a function's bytes (N%4==0, N<=256) without decoding -- robust
-// to a decode desync at an inline jump table. Accept a value if it either repeats (>=2 return sites,
-// the usual multi-return case) or occurs once immediately after an epilogue terminator (pop reg /
-// leave -- a single-return function); an ambiguous single-occurrence set is left unresolved.
-std::optional<int64_t> _argbytes_by_epilogue(const py::bytes& d);
-
-// The 16-bit target DLL name for a flat-thunk module, read from the ThunkConnect32 string
-// args in the image ("<x>.DLL","<module>.DLL"). Returns (target16, candidates).
-std::tuple<std::optional<py::str>, py::list<py::str>> _thunk_dll_targets(const PE& pe, const py::str& module);
-
-// An SDK prototype: {"ret", "params", "conv", "header", "doc"}.
-struct SdkProto {
-    py::str ret, params, conv, header, doc;
-};
-
-// Per-export SDK prototypes keyed by export name: the 32-bit or the 16-bit SDK headers' prototypes
-// (symbols/prototypes), so a 16-bit export gets its real 16-bit signature (FAR pointers, UINT/WORD)
-// rather than the 32-bit one. Absent, callers fall back to recovered arity -- never a fabricated prototype.
-py::dict<py::str, SdkProto> _load_sdk_protos(bool win16 = false);
-
-// Parameter list text for an export. Real SDK prototype wins; else the stdcall arity recovered
-// from `ret N` (each arg a machine word, the first `nptr` flagged as marshalled pointers); None if
-// the stub did not resolve (keeps the honest (void)+TODO scaffold). -> (params or None, known)
-std::tuple<std::optional<py::str>, bool> _sig_params(const StubSignature& sig, const std::optional<SdkProto>& proto);
-
-py::str _sig_ret(const std::optional<SdkProto>& proto);
-
-// The function's calling-convention keyword. From the SDK prototype when known (WINAPI, or the
-// varargs VFWAPIV for ICCompress-style APIs) -- so the definition's convention matches the header
-// and does not clash (C2373); else WINAPI (flat thunks are stdcall).
-py::str _sig_conv(const std::optional<SdkProto>& proto);
-
-// SDK headers whose contents <windows.h> already pulls in -- an explicit #include would be redundant.
-extern const py::set<py::str> _IN_WINDOWS_H;
-
-// some SDK headers only compile if a prerequisite is included first (the original source did so):
-// msacm.h/vfw.h use the multimedia types from mmsystem.h; mciavi.h builds on both.
-extern const py::dict<py::str, py::list<py::str>> _HEADER_PREREQ;
-
-extern const py::set<py::str> _CKW;
-
-// Split a parameter list on top-level commas (respecting nested parens, e.g. a function-pointer
-// parameter's own arg list).
-py::list<py::str> _split_params(const py::str& s);
-
-// Ensure every parameter in a list has a NAME, so the text is valid in a function DEFINITION
-// (the period C compiler rejects unnamed params in a definition: `void f(HWND,BOOL){}` -> C2055).
-// SDK prototypes often omit names (`DragAcceptFiles(HWND, BOOL)`); synthesize aN for the bare ones.
-// A parameter is considered named when its last token is a lowercase/mixed-case identifier that is
-// not a type keyword and the param does not end in `*` (SDK types are ALL-CAPS or keywords, names
-// are camelCase).
-py::str _def_params(const py::str& params);
-
-// The #include lines a recovered module needs so its SDK-typed signatures resolve: the real
-// header each used prototype came from (msacm.h/vfw.h/commctrl.h/...), minus the ones <windows.h>
-// already provides, with each header's prerequisites emitted first (mmsystem.h before msacm.h) so
-// it parses. Emitting the authentic headers is how the original source compiled -- the struct/handle
-// types (LPACMFORMATDETAILS, OPENFILENAME, ...) are then real, not fabricated.
-py::list<py::str> _needed_includes(const py::list<SdkProto>& protos_used);
-
-// True for an export that is thunk DATA, not a callable API -- the ThunkData32 tables the thunk
-// compiler emits (e.g. VerFThk_ThunkData32, C16ThkSL01). These are real exports (kept in the .def)
-// but must not be scaffolded as functions.
-bool _is_thunk_data(const py::str& nm);
-
-// What recover_flat_thunk answers (an error alone when the file is not a PE).
-struct Recovered {
-    std::optional<py::str> error;
-    py::str module;
-    int64_t n_exports = 0;
-    py::list<int64_t> k32_ordinals, unknown_ordinals;
-    py::str outdir;
-    std::optional<py::str> target16;
-    py::list<py::str> dll_candidates;
-    int64_t n_signatures_recovered = 0, n_pointer_args = 0, n_sdk_prototypes = 0;
-    py::list<py::str> recovered, scaffolded;
-};
-
-// Emit recovered flat-thunk source from the binary. The .def (exports) and <mod>k32.def
-// (KERNEL32 by-ordinal imports) are recovered VERBATIM from the binary's tables; per-export
-// SIGNATURES (stdcall arity + pointer-arg count) and the 16-bit target DLL are recovered from the
-// stub code and the ThunkConnect32 strings; bodies remain scaffolds (marshalling flagged for
-// curation). Returns a summary dict.
-Recovered recover_flat_thunk(const py::str& pe_path, const py::str& outdir);
-
-// ------------------------------------------------------------------ RECOVER from a decompile (logic modules)
-std::optional<py::str> _opt(const py::list<py::str>& argv, const py::str& name);
-
-// python -m codebreaker flat-thunk <binary> [--classify] [--diff <built.dll>]
-// (the Python returns 0 after the help text and None otherwise: None is the empty optional)
-std::optional<int64_t> main(const py::list<py::str>& argv);
+// The command line: `flat-thunk <module> [--recover DIR] [--ow-compile] [--build DIR] [--ow-build DIR] [--diff BUILT]`.
+inline std::optional<int64_t> main(const py::list<py::str>& argv) {
+    std::vector<std::string> args{"flat-thunk"};
+    for (int64_t i = 0; i < argv.size(); ++i) args.push_back(argv[i].utf8());
+    const ::cb::cli::Cli app("flat-thunk", {nf::command(detail::services())});
+    return ::cb::compat::guard([&] { return static_cast<int64_t>(app.run(args)); });
+}
 
 }  // namespace codebreaker::build::flat_thunk

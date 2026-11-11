@@ -1,0 +1,6 @@
+format=PE
+subtype=flat-thunk
+recipe=thunk-ml-cl-link
+n_exports=80
+n_imports=63
+why=imports flat-thunk helpers (ThunkConnect32)

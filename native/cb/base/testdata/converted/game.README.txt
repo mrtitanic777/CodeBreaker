@@ -1,0 +1,31 @@
+My_Game_v2
+==========
+
+What CodeBreaker made of My Game! (v2).exe.
+
+  Input:   <IN>\My Game! (v2).exe
+  Kind:    unknown
+  Size:    22 bytes
+  SHA-1:   437ef8d946e1027d5341b14e6ca3f28f3b478daa
+
+Folders:
+  original/  the binary as it came in
+  src/       source CodeBreaker produced
+  assets/    resources and data
+  build/     what was built from src/
+  reports/   analysis, listings, logs
+
+decompile  (2026-01-01 00:00:01)
+    src\game.c
+    reports
+    <OUT>\elsewhere\report.txt
+    build: wcc -zq game.c
+    run: game.exe
+
+recompile  (2026-01-01 00:00:02)
+    build\game.exe
+
+analyze  (2026-01-01 00:00:03)
+    no outputs, only a note
+
+The binary and everything made from it are the original's owner's: this folder is never committed.

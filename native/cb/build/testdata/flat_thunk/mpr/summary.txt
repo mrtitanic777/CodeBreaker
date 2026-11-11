@@ -1,0 +1,11 @@
+module=mpr
+n_exports=80
+k32_ordinals=[]
+unknown_ordinals=[]
+target16=MPR.DLL
+dll_candidates=['SHELL32.DLL', 'COMCTL32.DLL', 'MPR.DLL', 'MPRSERV.DLL', 'KERNEL32.DLL', 'USER32.DLL', 'ADVAPI32.DLL']
+n_signatures_recovered=80
+n_pointer_args=0
+n_sdk_prototypes=3
+recovered=['mpr.def', 'mprk32.def', '80/80 signatures (stub arity)']
+scaffolded=['mpr.thk', 'mpr.c']

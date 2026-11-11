@@ -1,0 +1,11 @@
+module=dciman32
+n_exports=22
+k32_ordinals=[]
+unknown_ordinals=[]
+target16=DCIMAN.DLL
+dll_candidates=['DCIMAN32.DLL', 'DCIMAN.DLL', 'KERNEL32.DLL']
+n_signatures_recovered=15
+n_pointer_args=11
+n_sdk_prototypes=1
+recovered=['dciman32.def', 'dciman32k32.def', '15/22 signatures (stub arity)']
+scaffolded=['dciman32.thk', 'dciman32.c']
