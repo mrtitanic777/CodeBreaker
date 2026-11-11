@@ -209,3 +209,23 @@ Notes:
   when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
   was first. Compared with lz32.dll first in a fresh state: identical.
 * Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
+### cb refactor, wave 0 batch W0-B6 (decompile: m6502, xenos, struct_text, jar, ctree, inline_asm, z80), 2026-11-11
+
+The old per-module harness run end to end (process start included), the typed port (old) against the refactored module reached
+through its shim (new), same cases. Wall time in ms, mean of four runs; the cases are the harness's, so the work per run is the
+old port's own cases (m6502 9,342, xenos 6,699, struct_text 261, ctree 3,822 outputs, inline_asm 3,810, z80 25,854 cases of which the
+new driver runs the ones that still exist as API: decode, text, assemble, value).
+
+| Module | old | new | Ratio |
+|---|---|---|---|
+| decompile/m6502 | 152 | 118 | 1.3x |
+| decompile/xenos | 88 | 64 | 1.4x |
+| decompile/struct_text | 42 | 32 | 1.3x |
+| decompile/ctree | 44 | 31 | 1.4x |
+| decompile/inline_asm | 122 | 64 | 1.9x |
+| decompile/z80 | 366 | 129 | 2.8x |
+| decompile/jar | (process-bound: a fake `java` is started per case) | same | 1.0x |
+
+Notes:
+* The "new" side still pays the shim's conversions to `py::str`/`py::list` (the old callers' types); against the module's own
+  API the gap is wider. z80 `decode` no longer builds a `py::dict` row per instruction.
