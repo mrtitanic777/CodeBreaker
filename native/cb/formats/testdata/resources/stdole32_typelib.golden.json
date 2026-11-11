@@ -1,0 +1,9 @@
+[
+ {
+  "format": "SLTG",
+  "guid": "",
+  "name": "",
+  "types": []
+ },
+ "// Outline of a type library (SLTG layout). Not compilable: only what each type is called.\nlibrary unnamed\n{\n}\n"
+]

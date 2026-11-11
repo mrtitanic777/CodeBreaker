@@ -1,67 +1,40 @@
-// codebreaker/formats/xbox/stfs.hpp -- C++ port of codebreaker.formats.xbox.stfs.
+// codebreaker/formats/xbox/stfs.hpp -- compat shim over cb/formats/xbox/stfs.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// STFS -- Xbox 360 secure content package reader (CON / LIVE / PIRS).
-//
-// A clean-room implementation of the STFS container format, written to the public/documented format
-// algorithm (Free60 and community references). It gives CodeBreaker native read access to Xbox 360
-// content packages as original code, so the capability lives in the tool without any GPL source.
-//
-// STFS stores a small filesystem in fixed 0x1000-byte blocks with hash blocks interleaved among the data:
-// one level-0 hash block per 0xAA (170) data blocks, one level-1 per 0x70E4, optionally a level-2.
-// `_cbdbn` turns a logical data-block index into its real ("backing") position past those hash blocks;
-// the hash entry for each block records the *next* block, forming a chain. Packages come in two hash
-// layouts ("female"/"male", a header bit) which shift the table spacing, and each level uses one of two
-// shadow tables selected by a status bit in the table above it.
-//
-// Resigning: a CON package carries a console certificate (from a keyvault) and an RSA signature of its
-// header. The signature is standard PKCS#1 v1.5 RSA-SHA1 over header[0x22C:0x344] using the console's
-// 1024-bit private key, stored byte-reversed at 0x1AC; the certificate (0x1A8 bytes) is copied verbatim
-// from the keyvault. Both were reverse-engineered and confirmed byte-exact against genuine
-// console-signed packages, so `resign` binds a package to a console you own using its KV_dec.bin. A
-// LIVE/PIRS package (Microsoft-signed -- unforgeable) is converted to CON and console-signed the same way
-// tools like Velocity do. See docs/STFS.md.
-//
-// Commands:
-//     stfs info    <package>            header + content metadata
-//     stfs list    <package>            the contained file listing
-//     stfs extract <package> [outdir]   extract every contained file
-//     stfs resign  <package> <KV> [out] resign CON / convert LIVE|PIRS -> console CON
-//
-// Typing notes:
-//   * `bytes | bytearray` parameters are py::bytes (a py::bytearray converts to it). STFS keeps a py::bytes
-//     copy of the data (the Python keeps the caller's object). The buffers the writer changes in place
-//     (`_header_hash`) are py::bytearray handles.
-//   * `build`'s `template` and `resign`'s `package` / `kv` are "bytes or a path": the Python tests
-//     isinstance; here `build` has two overloads (bytes, path) and `resign` takes std::variant<py::bytes,
-//     py::str> (the one place the Python mixes types in a parameter).
-//   * The RSA arithmetic is MemCrypto's BigInt (the port of MemCrypto is the codebreaker module that has
-//     an arbitrary-precision integer; used here rather than writing a second one).
-//   * `files` is the Python dict {path: (start block, blocks, size)}; struct.error is py::StructError.
-//   * main() takes the argument list (sys.argv[1:]); sys.exit(code) is MemCrypto::SystemExit.
+// The module itself is native/cb/formats/xbox/stfs.{hpp,cpp}; this header keeps the old py:: surface for the ports that
+// have not been refactored yet (volumes, system_ui) and is deleted with the last of them. Conversion and forwarding only,
+// except `main`, the old command-line wrapper over the same functions. The helpers the old class used internally (the
+// block arithmetic `_cbdbn` ..., `_WriteGeom`, `_header_hash`, `_bn`, `_con_sign`, `_con_verify`) are not carried over: they
+// are private to cb::formats::xbox::stfs now.
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <variant>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/formats/xbox/stfs.hpp"
 #include "codebreaker/formats/xbox/crypto/MemCrypto.hpp"
 #include "py.hpp"
+#include "py_os.hpp"
 
 namespace codebreaker::formats::xbox::stfs {
 
 using BigInt = codebreaker::formats::xbox::crypto::MemCrypto::BigInt;
 using SystemExit = codebreaker::formats::xbox::crypto::MemCrypto::SystemExit;
 
-extern const py::str DESCRIPTION;   // "read/resign Xbox 360 STFS packages (CON/LIVE/PIRS)"
+inline const py::str DESCRIPTION = py::str("read/resign Xbox 360 STFS packages (CON/LIVE/PIRS)");
 
 inline constexpr int64_t BLOCK = 0x1000;
-// MAGICS = (b"CON ", b"LIVE", b"PIRS")
-bool is_magic(const py::bytes& four);   // `x in MAGICS`
+inline constexpr int64_t KV_CERT_OFF = 0x9C8;
+inline constexpr int64_t KV_CERT_LEN = 0x1A8;
+inline constexpr int64_t KV_PRV_OFF = 0x298;
 
-// a little-endian 24-bit integer at d[o]
-int64_t _u24_le(const py::bytes& d, int64_t o);
+// MAGICS = (b"CON ", b"LIVE", b"PIRS")
+inline bool is_magic(const py::bytes& four) { return cb::formats::xbox::stfs::magic_of(cb::compat::from_py(four)).has_value(); }
 
 class STFS {
 public:
@@ -79,7 +52,6 @@ public:
     int64_t unalloc_blocks = 0;
 
     int64_t sex = 0;               // 0 = female, 1 = male
-    py::list<int64_t> step;
     int64_t top_level = 0;
 
     // content metadata
@@ -89,102 +61,177 @@ public:
     py::str display_name;
     py::str title_name;
 
-    py::list<int64_t> top_entries;   // the top hash table's per-entry status bytes
     py::dict<py::str, std::tuple<int64_t, int64_t, int64_t>> files;   // {path: (start block, blocks, size)}
 
-    explicit STFS(py::bytes data);   // by value: a caller that hands over a temporary gives the package without a copy
+    explicit STFS(py::bytes data) : d(std::move(data)) {
+        pkg_ = std::make_shared<cb::formats::xbox::stfs::Package>(cb::compat::guard([&] { return cb::formats::xbox::stfs::Package::parse(cb::compat::from_py(d)); }));
+        const cb::formats::xbox::stfs::Package& p = *pkg_;
+        magic = cb::compat::to_py(cb::as_bytes(cb::formats::xbox::stfs::to_string(p.magic())));
+        header_size = p.header_size();
+        first_hash = p.first_hash_offset();
+        block_sep = p.block_separation();
+        ft_block_count = p.file_table_block_count();
+        ft_block_number = p.file_table_block_number();
+        alloc_blocks = p.allocated_blocks();
+        unalloc_blocks = p.unallocated_blocks();
+        sex = p.male_layout() ? 1 : 0;
+        top_level = p.top_hash_level();
+        content_type = p.content_type();
+        title_id = cb::compat::to_py(p.title_id());
+        profile_id = cb::compat::to_py(p.profile_id());
+        display_name = cb::compat::to_py(p.display_name());
+        title_name = cb::compat::to_py(p.title_name());
+        for (const cb::formats::xbox::stfs::FileEntry& f : p.files()) {
+            files.set(cb::compat::to_py(f.path), std::make_tuple(int64_t(f.start_block), int64_t(f.block_count), int64_t(f.size)));
+        }
+    }
 
-    // util
-    py::str _wstr(int64_t off, int64_t maxlen = 0x80);
+    py::bytes read_file(const py::str& name) {
+        return cb::compat::guard([&] { return cb::compat::to_py(cb::ByteView(pkg_->read_file(cb::compat::from_py(name)))); });
+    }
+    int64_t extract_all(const py::str& outdir) {
+        return cb::compat::guard([&] { return int64_t(pkg_->extract_all(cb::fs::from_text(cb::compat::from_py(outdir)))); });
+    }
 
-    // block address maths
-    int64_t _cbdbn(int64_t b);   // ComputeBackingDataBlockNumber -- data block -> backing block
-    int64_t _block_addr(int64_t b);
-    int64_t _cl0(int64_t b);   // ComputeLevel0BackingHashBlockNumber
-    int64_t _cl1(int64_t b);
-    void _load_top_table();
-    int64_t _hash_addr(int64_t b);
-    int64_t _next_block(int64_t b);
-
-    // file table
-    py::bytes _read_chain(int64_t start, int64_t nblocks, int64_t size);
-    py::dict<py::str, std::tuple<int64_t, int64_t, int64_t>> _read_file_listing();
-    py::bytes read_file(const py::str& name);
-    int64_t extract_all(const py::str& outdir);
+private:
+    std::shared_ptr<cb::formats::xbox::stfs::Package> pkg_;
 };
-
-// ---- writer (pack) ----------------------------------------------------------------------------------
-// Block geometry for writing. Packages are written in the 'male' layout (block separation 0), which fixes
-// the table spacing at [0xAC, 0x723A].
-class _WriteGeom {
-public:
-    int64_t sex;
-    py::list<int64_t> step;
-    int64_t alloc_blocks;
-    int64_t first_hash;
-    int64_t top_level;
-
-    _WriteGeom(int64_t alloc_blocks, int64_t first_hash);
-    int64_t cbdbn(int64_t b);
-    int64_t block_addr(int64_t b);
-    int64_t l0_backing(int64_t b);
-    int64_t l1_backing();
-};
-
-// Master hash @0x32C = SHA1(0x344 .. first hash table).
-void _header_hash(py::bytearray buf, int64_t first_hash);
 
 // Pack a FOLDER of files into a loadable STFS package, cloning the header skeleton (console cert +
 // metadata layout) from an existing `template` package and rebuilding the payload, hash tree, file table
-// and volume descriptor. Clean-room implementation of the documented STFS write flow.
-//
-// The package is rehashed here but keeps the template's console signature. It loads on emulators /
-// RGH-JTAG as-is; to bind it to a specific console (and satisfy a stock retail console), follow with
-// `resign` using that console's keyvault.
-py::str build(const py::str& folder, const py::str& out_path, const py::bytes& template_bytes);
-py::str build(const py::str& folder, const py::str& out_path, const py::str& template_path);
+// and volume descriptor. The package is rehashed here but keeps the template's console signature.
+inline py::str build(const py::str& folder, const py::str& out_path, const py::str& template_path) {
+    return cb::compat::guard([&] {
+        cb::formats::xbox::stfs::build(cb::fs::from_text(cb::compat::from_py(folder)), cb::fs::from_text(cb::compat::from_py(out_path)),
+                                       cb::fs::from_text(cb::compat::from_py(template_path)));
+        return out_path;
+    });
+}
+inline py::str build(const py::str& folder, const py::str& out_path, const py::bytes& template_bytes) {
+    return cb::compat::guard([&] {
+        // the folder's files, packed over the template bytes
+        const std::filesystem::path dir = cb::fs::from_text(cb::compat::from_py(folder));
+        std::vector<std::pair<std::string, cb::Bytes>> inner;
+        if (std::filesystem::is_directory(dir)) {
+            std::vector<std::filesystem::path> names;
+            for (const auto& e : std::filesystem::directory_iterator(dir)) {
+                if (e.is_regular_file()) names.push_back(e.path());
+            }
+            std::sort(names.begin(), names.end(), [](const auto& a, const auto& b) { return cb::fs::to_text(a.filename()) < cb::fs::to_text(b.filename()); });
+            for (const auto& p : names) inner.emplace_back(cb::fs::to_text(p.filename()), cb::fs::read_file(p));
+        } else {
+            inner.emplace_back(cb::fs::to_text(dir.filename()), cb::fs::read_file(dir));
+        }
+        std::vector<cb::formats::xbox::stfs::SourceFile> sources;
+        for (const auto& [n, data] : inner) sources.push_back({n, data});
+        cb::fs::write_file(cb::fs::from_text(cb::compat::from_py(out_path)), cb::formats::xbox::stfs::build(sources, cb::compat::from_py(template_bytes)));
+        return out_path;
+    });
+}
 
-// ---- resign (CON) -----------------------------------------------------------------------------------
-// A decrypted keyvault (KV_dec.bin, 0x4000 bytes) holds the console certificate and the console's 1024-bit
-// RSA private key. Offsets are from the documented XECRYPT_KEYVAULT layout; the certificate copied into the
-// STFS header is the 0x1A8-byte region at KV 0x9C8, and the private key is XECRYPT_RSAPRV_1024 at KV 0x298
-// (cqw, e, reserved, then n/p/q/dp/dq/cr as XeCrypt "BnQw" bignums).
-inline constexpr int64_t KV_CERT_OFF = 0x9C8;
-inline constexpr int64_t KV_CERT_LEN = 0x1A8;
-inline constexpr int64_t KV_PRV_OFF = 0x298;
-// PKCS#1 v1.5 DigestInfo prefix for SHA-1
-extern const py::bytes _SHA1_DER;
-
-// Decode a XeCrypt big-number (array of big-endian qwords) to an int.
-BigInt _bn(const py::bytes& b);
-
-// PKCS#1 v1.5 RSA-SHA1 sign `region` with the KV's console private key. Returns the 0x80-byte signature in
-// the byte-reversed form STFS stores, and the key's (e, n).
-std::tuple<py::bytes, std::tuple<int64_t, BigInt>> _con_sign(const py::bytes& region, const py::bytes& kv);
-
-// Verify a byte-reversed STFS signature against the certificate's public modulus (a self-check). The
-// modulus is a XeCrypt BnQw bignum, like the key.
-bool _con_verify(const py::bytes& region, const py::bytes& sig, const py::bytes& modulus_bnqw, int64_t e);
-
-// Re-sign a package with a console keyvault you own so it will load on that console. Copies the console
-// certificate from the KV and RSA-signs the header (PKCS#1 v1.5 over SHA1(header[0x22C:0x344])) with the
-// console private key.
-//
-// Works on CON packages (saves, profiles, DLC) and CONVERTS Microsoft-signed LIVE / PIRS packages to
-// console-signed CON -- a LIVE/PIRS signature cannot be forged (that needs Microsoft's key), so the only
-// way to load a modified one is to re-sign it as CON, exactly as Velocity / Le Fluffie do. The metadata
-// from 0x22C on is identical across CON/LIVE/PIRS, so conversion only rewrites the 0x04..0x22C signature
-// block, the magic, and the license descriptor.
-//
-// The certificate copy and the CON signature scheme were verified byte-exact against genuine
-// console-signed packages. `bind_console` additionally stamps the KV's console id into the content
-// metadata (0x36C) -- off by default so a same-console CON resign stays byte-identical to the console's own
-// output. Overwrites in place unless `out_path` is given.
-py::bytes resign(const std::variant<py::bytes, py::str>& package, const std::variant<py::bytes, py::str>& kv,
-                 const std::optional<py::str>& out_path = std::nullopt, bool bind_console = false);
+// Re-sign a package with a console keyvault you own so it will load on that console (CON as is; LIVE / PIRS converted to
+// CON). `package` and `kv` are bytes or a path; the result goes to `out_path`, else back over `package` when that is a path.
+inline py::bytes resign(const std::variant<py::bytes, py::str>& package, const std::variant<py::bytes, py::str>& kv,
+                        const std::optional<py::str>& out_path = std::nullopt, bool bind_console = false) {
+    return cb::compat::guard([&] {
+        auto bytes_of = [](const std::variant<py::bytes, py::str>& v) {
+            if (const py::bytes* b = std::get_if<py::bytes>(&v)) return cb::compat::from_py(*b);
+            return cb::fs::read_file(cb::fs::from_text(cb::compat::from_py(std::get<py::str>(v))));
+        };
+        cb::formats::xbox::stfs::ResignOptions o;
+        o.bind_console = bind_console;
+        const cb::Bytes made = cb::formats::xbox::stfs::resign(bytes_of(package), bytes_of(kv), o);
+        const py::bytes out = cb::compat::to_py(cb::ByteView(made));
+        if (out_path) {
+            cb::fs::write_file(cb::fs::from_text(cb::compat::from_py(*out_path)), made);
+        } else if (const py::str* path = std::get_if<py::str>(&package)) {
+            cb::fs::write_file(cb::fs::from_text(cb::compat::from_py(*path)), made);
+        }
+        return out;
+    });
+}
 
 // ---- CLI --------------------------------------------------------------------------------------------
 // `argv` is sys.argv[1:]; sys.exit(n) is a SystemExit.
-void main(const py::list<py::str>& argv);
+inline void main(const py::list<py::str>& argv) {
+    auto read_all = [](const py::str& p) {
+        return cb::compat::guard([&] { return cb::compat::to_py(cb::ByteView(cb::fs::read_file(cb::fs::from_text(cb::compat::from_py(p))))); });
+    };
+    std::vector<py::str> a;
+    for (int64_t i = 0; i < argv.size(); ++i) a.push_back(argv[i]);
+    auto say = [](const std::string& line) { py::print(py::str(line)); };
+    auto u8 = [](const py::str& s) { return s.utf8(); };
+    if (a.empty() || u8(a[0]) == "-h" || u8(a[0]) == "--help") {
+        say("usage: stfs {info|list|extract} <package> [outdir]");
+        say("       stfs pack   <folder> <out.stfs> <template>");
+        say("       stfs resign <package> <KV_dec.bin> [out] [--bind]");
+        say("              resigns CON, and converts LIVE/PIRS -> CON");
+        say("              --bind also stamps the console id into the metadata");
+        return;
+    }
+    const std::string op = u8(a[0]);
+    if (op == "pack") {
+        if (a.size() < 4) {
+            say("usage: stfs pack <folder> <out.stfs> <template-package>");
+            throw SystemExit(2);
+        }
+        const py::str out = build(a[1], a[2], a[3]);
+        const STFS r(read_all(out));
+        say("packed " + std::to_string(r.files.size()) + " files -> " + u8(out) + "  (reads back: " + std::to_string(r.files.size()) + " files)");
+        return;
+    }
+    if (op == "resign") {
+        bool bind = false;
+        std::vector<py::str> b;
+        for (const auto& x : a) {
+            if (u8(x) == "--bind") bind = true;
+            else b.push_back(x);
+        }
+        if (b.size() < 3) {
+            say("usage: stfs resign <package> <KV_dec.bin> [out] [--bind]");
+            throw SystemExit(2);
+        }
+        const py::str out = b.size() > 3 ? b[3] : b[1];
+        const py::bytes src_magic = read_all(b[1]).slice(0, 4);
+        resign(std::variant<py::bytes, py::str>(b[1]), std::variant<py::bytes, py::str>(b[2]), out, bind);
+        const std::string cid = cb::formats::xbox::stfs::console_id(cb::compat::from_py(read_all(b[2])));
+        say("resigned " + u8(py::os::path::basename(b[1])));
+        if (src_magic != py::bytes("CON ")) say("  converted  : " + src_magic.decode("latin-1").utf8() + " -> CON");
+        say("  console id : " + cid + "  (from " + u8(py::os::path::basename(b[2])) + ")" + (bind ? "  [bound @0x36C]" : ""));
+        say("  signature  : verified against console certificate");
+        say("  written    : " + u8(out));
+        return;
+    }
+    if (a.size() < 2) {
+        say("usage: stfs " + op + " <package> [args]");
+        throw SystemExit(2);
+    }
+    STFS s(read_all(a[1]));
+    if (op == "info") {
+        say("package     : " + u8(py::os::path::basename(a[1])));
+        say("magic       : " + s.magic.decode("latin-1").utf8());
+        say("title       : " + u8(py::repr(s.title_name)));
+        say("display name: " + u8(py::repr(s.display_name)));
+        say("title id    : " + u8(s.title_id) + "   content type: 0x" + py::percent(py::str("%X"), s.content_type).utf8());
+        say("profile id  : " + u8(s.profile_id));
+        say("layout      : " + std::string(s.sex == 0 ? "female" : "male") + "  top-level=" + std::to_string(s.top_level) + "  alloc_blocks=" + std::to_string(s.alloc_blocks));
+        say("files       : " + std::to_string(s.files.size()));
+    } else if (op == "list") {
+        py::list<py::str> names = py::sorted(py::list<py::str>::from(s.files.keys()));
+        int64_t total = 0;
+        for (int64_t i = 0; i < names.size(); ++i) {
+            const std::string num = std::to_string(std::get<2>(s.files.at(names[i])));
+            say("  " + std::string(num.size() < 10 ? 10 - num.size() : 0, ' ') + num + "  " + u8(names[i]));
+        }
+        for (const auto& v : s.files.values()) total += std::get<2>(v);
+        say("total: " + std::to_string(s.files.size()) + " files, " + std::to_string(total) + " bytes");
+    } else if (op == "extract") {
+        const py::str outdir = a.size() > 2 ? a[2] : py::str(u8(std::get<0>(py::os::path::splitext(a[1]))) + "_extracted");
+        say("extracted " + std::to_string(s.extract_all(outdir)) + " files -> " + u8(outdir));
+    } else {
+        say("unknown op " + u8(py::repr(a[0])) + " (info|list|extract)");
+        throw SystemExit(2);
+    }
+}
 
 }  // namespace codebreaker::formats::xbox::stfs

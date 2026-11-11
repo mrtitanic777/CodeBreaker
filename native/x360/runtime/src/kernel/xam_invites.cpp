@@ -109,6 +109,13 @@ namespace kernel::invites
         g_hosted[sessionId] = { user, flags };
     }
 
+    void SessionModified(uint64_t sessionId, uint32_t flags)
+    {
+        std::lock_guard lock(g_mutex);
+        if (const auto it = g_hosted.find(sessionId); it != g_hosted.end())
+            it->second.flags = flags;
+    }
+
     void SessionEnded(uint64_t sessionId)
     {
         std::lock_guard lock(g_mutex);
