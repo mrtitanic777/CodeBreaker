@@ -11,11 +11,7 @@
 
 using namespace cb;
 
-// The omf shim hands a.out objects to codebreaker/exact/aout (the old port, not part of cb_tests): stand-ins that say "not a.out".
-namespace codebreaker::exact::aout {
-bool is_aout(const py::bytes&) { return false; }
-Obj read(const py::bytes&) { throw py::ValueError("a.out is not part of cb_tests"); }
-}  // namespace codebreaker::exact::aout
+// The omf shim hands a.out objects to codebreaker/exact/aout, now a header-only shim over cb::exact (W0-B7).
 
 namespace {
 py::str testdata(const char* name) { return py::str(testing::data_path(std::string("formats/testdata/") + name).string()); }
