@@ -55,7 +55,7 @@ def _target():
     return _Corpus
 
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = settings.ROOT          # the checkout root (it was the `codebreaker` package folder: one dirname short since the move out of engine/)
 
 
 def _setup():
@@ -66,7 +66,9 @@ def ne_modules():
     _setup()
     base = paths.root()
     seen, out = set(), []
-    for sub in (base + "/SYSTEM", base + "/SYSTEM32", base, base + "/COMMAND"):
+    # (the corpus folder holds WINDOWS/SYSTEM, not SYSTEM: the sweep found no module at all; the old layouts stay)
+    for sub in (base + "/WINDOWS/SYSTEM", base + "/WINDOWS/SYSTEM32", base + "/WINDOWS", base + "/WINDOWS/COMMAND",
+                base + "/SYSTEM", base + "/SYSTEM32", base, base + "/COMMAND"):
         for ext in ("exe", "dll", "drv", "386", "cpl", "scr", "fon"):
             for p in sorted(glob.glob(os.path.join(sub, "*." + ext))):
                 nm = os.path.basename(p).lower()
