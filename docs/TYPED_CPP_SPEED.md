@@ -564,3 +564,17 @@ Old = the typed port on the py:: layer (xna/mgfx.cpp, xna/fixups.cpp, built /O2)
 |---|---|---|
 | fixups: `apply` over 20 decompiled C# files of 136 KB each (2.7 MB: ref casts, constructors, data holders; the new run also does the placements the old one got wrong, so it makes slightly different edits) | 12.9 s | 0.52 s |
 | mgfx: `add_parameters` of 4 parameters (scalar, vector, matrix, texture) to a compiled effect (619 bytes), 20,000 calls | 139 ms | 43 ms |
+
+## cb refactor: exact batches W1-B9 and W1-B12 (2026-11-11)
+
+Old = the Python module on the same inputs (the Python is the live implementation of both), one run, shared machine (+-30%). New = Release `cb_tests` build.
+
+| What | Python | New |
+|---|---|---|
+| `exact/recut`: 300 `recut` of a 400-byte segment with 150 fix-ups | 239 ms | 72 ms |
+| `exact/recut`: 300 `recut` of a 60-byte segment (3 data records) | 48 ms | 11 ms |
+| `exact/recut`: 300 `recut` of a 3000-byte segment (3 data records of 1 KB) | 63 ms | 3 ms |
+| `exact/habits/cmpp`: `walk` of 408 listings (random procedures, damaged and short ones; 65,000 rows) x 20 | 579 ms | 141 ms |
+
+`exact/emu/dpmi` has no Python run to time against on its own (it runs only inside the DOS executive's emulation loop); each INT 31h it serves is
+a handful of register reads and one or two memory writes.
