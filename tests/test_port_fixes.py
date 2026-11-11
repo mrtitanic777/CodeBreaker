@@ -369,6 +369,21 @@ def test_native_dosexec_loads_the_dll_once_from_two_threads():
         nd._WHY[:] = saved[1]
 
 
+def test_draft_shapes_store_joins_at_the_end_of_the_text_finds_nothing():
+    """exact.draft.shapes store_joins: a store the two arms meet at, with only closing braces after it to the end of
+    the text, looked at `lines[len(lines)]` for the line it closes to and raised IndexError (31 of the 11,900 drafts of
+    the refactor's harness; the candidate pass then lost every rewrite of that function). Such a store is not joined: the
+    text comes back as it is."""
+    from codebreaker.exact.draft import shapes as S
+
+    text = ("int f(x)\nint x;\n{\n    if (((f1234(r_1)) != 0)) {\n        v1 = ax;\n        return y;\n    }\n    f1234(n);\n"
+            "    return ax;\n    si = (y - 1);\n    break;\n    for (;;) {\n        r_1 = f1234(si);\n        if ((r_1 == 0)) break;\n"
+            "        v1 = (a - 2);\n    }\n    while (((ax != v1) || (n >= 0)) || ((x <= foo(ax)) && (x > i))) {\n        di = bx;\n"
+            "        if (!(!ax)) {\n            ax = dx;\n            L_2:\n            p->f2 = ax;\n        } else {\n"
+            "            bx++;\n            ax = v2;\n            goto L_2;\n        }\n    }\n}")
+    assert S.store_joins(text) == text
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
                test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
@@ -377,7 +392,8 @@ def main():
                test_java_rules_findings_of_one_line_come_in_name_order, test_data_declared_size_takes_the_first_declaration_by_name,
                test_segdiff_compile_group_leaves_no_work_folder,
                test_origin_notes_calls_to_compiler_helpers,
-               test_native_dosexec_loads_the_dll_once_from_two_threads):
+               test_native_dosexec_loads_the_dll_once_from_two_threads,
+               test_draft_shapes_store_joins_at_the_end_of_the_text_finds_nothing):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

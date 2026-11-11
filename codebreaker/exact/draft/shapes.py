@@ -1559,7 +1559,8 @@ def store_joins(text):
         if el is None:
             continue
         ends = (closes_to(i + 1), closes_to(g))
-        if not all(lines[e].strip() == "} else {" and e == el or (e < len(lines) and len(lines[e]) - len(lines[e].lstrip()) <=
+        # (a store at the very end of the text has no line after it to close to: not this way - it was an IndexError)
+        if not all(e < len(lines) and (lines[e].strip() == "} else {" and e == el or len(lines[e]) - len(lines[e].lstrip()) <=
                    len(lines[_opener(lines, el)]) - len(lines[_opener(lines, el)].lstrip())) for e in ends):
             continue
         ind_s, ind_g = st.group(1), re.match(r"\s*", lines[g]).group(0)
