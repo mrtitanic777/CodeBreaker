@@ -6,8 +6,8 @@
 //   * pathlib.Path arguments are py::str (a Path is only ever made from, and turned back into, a str here;
 //     `.name` is the last component).
 //   * valid_file takes the parser (argparse's parser.error exits with status 2).
-//   * SB_PRV_KEY is the module-level `None`: main() assigns its own local of that name (it has no `global`),
-//     so the module's stays None; here it is an empty std::optional.
+//   * SB_PRV_KEY is the module-level `None` until main() loads the signing key into it (an empty std::optional
+//     until then).
 //   * The command line: main(argv) takes sys.argv (argv[0] is the program name argparse puts in its usage);
 //     the output of print and of argparse goes to the streams of set_streams (stdout / stderr when not set).
 //     argparse's exits are a thrown py::SystemExit (0 after -h, 2 on a bad command line).

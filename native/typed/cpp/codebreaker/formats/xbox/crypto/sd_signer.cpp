@@ -50,7 +50,7 @@ py::str valid_file(const ArgumentParser& parser, const py::str& filename) {
 }
 
 void main(const py::list<py::str>& argv) {
-    XeCryptRsaKey sb_prv_key = keystore::load_and_verify_sb_prv();
+    SB_PRV_KEY.emplace(keystore::load_and_verify_sb_prv());
 
     ArgumentParser parser(py::os::path::basename(argv[0]), __description__, *out_stream_, *err_stream_);
     const auto check = [&parser](const py::str& x) { return valid_file(parser, x); };
@@ -73,7 +73,7 @@ void main(const py::list<py::str>& argv) {
     // set SD size
     py::pack_into(">I", bl_data, 0xC, py::len(bl_data));
     // resign SD
-    bl_data = build_lib::sign_sd_4bl(sb_prv_key, XECRYPT_SD_SALT, bl_data);
+    bl_data = build_lib::sign_sd_4bl(*SB_PRV_KEY, XECRYPT_SD_SALT, bl_data);
     // zero nonces
     py::pack_into("16s", bl_data, 0x10, py::bytes::zeros(0x10));
     // write the CD/SD

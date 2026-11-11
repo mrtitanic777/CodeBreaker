@@ -86,9 +86,38 @@ def test_sms_writer_game_gear_rom():
     assert "Game Gear" in text and "GG_STEREO" in text and "GG_START" in text, text[:600]
 
 
+def test_sd_signer_keeps_its_key_in_the_module():
+    """formats.xbox.crypto.sd_signer: main() loads the signing key into the module's SB_PRV_KEY (it assigned a
+    local of that name, and the module's stayed None). The key loader and the signer are stood in for here."""
+    import contextlib
+    import io
+    import tempfile
+    from codebreaker.formats.xbox.crypto import sd_signer
+    key = object()
+    seen = []
+    real = sd_signer.load_and_verify_sb_prv, sd_signer.sign_sd_4bl
+    sd_signer.load_and_verify_sb_prv = lambda: key
+    sd_signer.sign_sd_4bl = lambda k, salt, data: seen.append(k) or data
+    work = tempfile.mkdtemp(prefix="cb_sd_")
+    path = os.path.join(work, "sd.bin")
+    with open(path, "wb") as f:
+        f.write(b"SD" + bytes(0x1E))
+    argv = sys.argv
+    sys.argv = ["sd_signer.py", path]
+    try:
+        assert sd_signer.SB_PRV_KEY is None
+        with contextlib.redirect_stdout(io.StringIO()):
+            sd_signer.main()
+        assert sd_signer.SB_PRV_KEY is key and seen == [key]
+    finally:
+        sys.argv = argv
+        sd_signer.load_and_verify_sb_prv, sd_signer.sign_sd_4bl = real
+        sd_signer.SB_PRV_KEY = None
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
-               test_sms_writer_game_gear_rom):
+               test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
