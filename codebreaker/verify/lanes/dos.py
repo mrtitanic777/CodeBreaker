@@ -51,7 +51,7 @@ def prepare(module_path, work):
     functions = r.get("functions") or {}
     m.header = text
     m.order = [functions[a].name for a in sorted(functions)]
-    m.key = {functions[a].name: "%05x" % a for a in functions} if text else {}
+    m.key = {functions[a].name: "%05x" % a for a in functions}      # (build() reads it for every function, source text or not)
     m.all_keys = sorted("%05x" % a for a in functions)
     m.texts = {n: "; %s, in %s" % (n, os.path.basename(r["source"])) for n in m.order} if text else {}
     m.sig = hashlib.sha1(("%d\0%s" % (REV, text)).encode("latin1", "replace")).hexdigest()

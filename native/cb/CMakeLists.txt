@@ -172,6 +172,13 @@ target_link_libraries(cb_translate PUBLIC cb_core)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms PRIVATE cb_zlib ws2_32)
+
+# The machine setup16's tests start in place of QEMU (verify/gate16/fake_qemu_main.cpp), built beside cb_tests.
+add_executable(cb_fake_qemu verify/gate16/fake_qemu_main.cpp)
+cb_apply_flags(cb_fake_qemu)
+target_link_libraries(cb_fake_qemu PRIVATE ws2_32)
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -200,11 +207,12 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/sdk_structs.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
-target_link_libraries(cb_shim_check PUBLIC cb_base cb_build cb_port cb_symbols cb_xna)
+target_link_libraries(cb_shim_check PUBLIC cb_base cb_build cb_port cb_symbols cb_xna cb_verify)
 
 # where DynLib looks last: the source tree's prebuilt DLLs, so a test run from the build folder finds them even
 # before the copy below (see native/third_party/README.md)
@@ -246,7 +254,7 @@ target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
 # the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
 target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
-add_dependencies(cb_tests cb_worker_probe)
+add_dependencies(cb_tests cb_worker_probe cb_fake_qemu)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 enable_testing()
