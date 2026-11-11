@@ -56,6 +56,13 @@ target_link_libraries(cb_verify PUBLIC cb_core)
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core)
 
+cb_area(java)
+target_link_libraries(cb_java PUBLIC cb_core)
+
+# The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
+# old layer, so they build at /W3 without /WX like compat/.
+file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims_test.cpp")
+set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -79,6 +86,7 @@ get_property(CB_ALL_TESTS GLOBAL PROPERTY CB_TEST_SOURCES)
 add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} cb.manifest)
 cb_apply_flags(cb_tests)
 target_compile_definitions(cb_tests PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
+target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")   # for the shims' tests
 # Every area library (cb_area records it in CB_AREAS), so a new area needs no edit here.
 get_property(CB_ALL_AREAS GLOBAL PROPERTY CB_AREAS)
 target_link_libraries(cb_tests PRIVATE ${CB_ALL_AREAS})
@@ -88,3 +96,5 @@ set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_S
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
+
+
