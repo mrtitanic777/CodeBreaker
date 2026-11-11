@@ -1,5 +1,6 @@
 // codebreaker/symbols/dos_interrupts.cpp -- C++ from codebreaker.symbols.dos_interrupts.
 
+#include "py_settings.hpp"
 #include "codebreaker/symbols/dos_interrupts.hpp"
 
 namespace codebreaker::symbols::dos_interrupts {
@@ -210,7 +211,7 @@ py::dict<int64_t, Entry> load_table(const py::str& path) {
 
 py::dict<int64_t, Entry> table() {
     if (!_TABLE) {
-        _TABLE = load_table(TABLE_PATH);
+        _TABLE = load_table(py::os::path::isabs(TABLE_PATH) ? TABLE_PATH : py::os::path::join(py::settings::checkout_root(), TABLE_PATH));   // (the Python reads it beside the module: from the checkout)
     }
     return *_TABLE;
 }
