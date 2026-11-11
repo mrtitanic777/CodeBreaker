@@ -16,10 +16,9 @@ import sys
 import glob
 import json
 import time
-from codebreaker.base import corpus as paths
+from codebreaker.base import corpus as paths, settings
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+ROOT = settings.ROOT           # the checkout root (it was the `codebreaker` package folder: one dirname short since the move out of engine/)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
@@ -116,7 +115,14 @@ def _summary(results, secs):
 
 if __name__ == "__main__":
     from codebreaker.base import settings
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    args, i = [], 1                     # (the value of --redo / --workers is not a positional argument)
+    while i < len(sys.argv):
+        if sys.argv[i] in ("--redo", "--workers"):
+            i += 2
+            continue
+        if not sys.argv[i].startswith("--"):
+            args.append(sys.argv[i])
+        i += 1
     srcdir = args[0] if args else paths.root()
     out = args[1] if len(args) > 1 else settings.state("vxd", "byte_exact.json")
     redo = sys.argv[sys.argv.index("--redo") + 1].split(",") if "--redo" in sys.argv else []
