@@ -1,53 +1,41 @@
-// codebreaker/formats/pe_functions.hpp -- typed C++ from codebreaker.formats.pe_functions.
+// codebreaker/formats/pe_functions.hpp -- compat shim over cb/formats/pe_functions.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// pe_trace.py -- the 32-bit (PE) function carve: `trace.Seg` for the PE world.
-//
-// `trace.Seg` carves 16-bit NE segments via objdump; this does the same job for the target's PE modules
-// (e.g. KERNEL32/USER32/GDI32) using **capstone** (32-bit x86). It gives the PE side what the NE side
-// already has: function starts, per-function extents, and *resolved* calls -- so a reconstruction can cite
-// `0xADDR` and be checked, and the ledger can one day credit PE bytes.
-//
-// Function starts come from three sources, most-authoritative first:
-//   1. the export table (RVAs the binary itself declares) -- ground truth;
-//   2. direct `call <imm>` targets seen in a linear sweep -- real entry points;
-//   3. standard prologues: `push ebp; mov ebp,esp` (55 8B EC) and the MS hot-patch
-//      `mov edi,edi; push ebp; mov ebp,esp` (8B FF 55 8B EC).
-// Extents run start-to-next-start (as in trace.Seg).
-//
-// Calls resolve via `pe.imports()` (a `call [IAT_slot]` -> `DLL!func`) and the export/known-start set (a
-// `call <imm>` -> a named export or a local `sub_VA`). That is what makes the carve checkable rather than a
-// raw listing.
-//
-// Doctrine: this is *evidence extraction*, not understanding. It says where the functions are and what they
-// call; a human still reads them.
-//
-// Typing and runtime notes:
-//   * The Python asked formats.dll (native/formats/win/pe_functions.cc) through the ctypes bridge for the
-//     sweep and the listing; here the same algorithm is written in typed C++ on top of the Capstone DLL
-//     (`set_capstone_dll`, the DLL Python's `capstone` package carries; a use without it is an ImportError,
-//     as a missing `capstone` module is).
-//   * Capstone's Python instruction object is the struct `Instruction` (address, size, mnemonic, op_str and
-//     its operands: type, imm, mem base/index/disp); a decoded record of `_Insns` is the struct `Record`.
-//   * `_Insns` (a mapping address -> record) is the class `Insns`; keys/items/values return vectors.
-//   * the dicts with fixed keys of a carved function ({"start", "end", "name"}) are the struct `Func`.
-//   * `if progress_cb:` is an empty-std::function test.
+// The module itself is native/cb/formats/pe_functions.{hpp,cpp}: the 32-bit function carve (starts from exports, call
+// targets and prologues; extents; resolved calls; data references). This header keeps the old py:: surface for the ports
+// that have not been refactored yet (analyze/image, emulate/emulator, symbols/names, verify/lanes/win32 ...) and is
+// deleted with the last of them. Conversion and forwarding only, except the three places that need code that is not
+// refactored yet and stay here tied to it:
+//   COMPAT(py): module names     -- the PeCarve(path) / carve(module) / PeSeg(module) constructors resolve a corpus name
+//                                   with base::corpus::resolve; remove when base.corpus is refactored
+//   COMPAT(py): ensure_target    -- reads the old settings and changes directory; remove when base.settings is refactored
+//   COMPAT(py): the carve cache  -- `carve(module)` keeps one PeCarve per module in a function-local map
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/formats/pe_functions.hpp"
+#include "codebreaker/base/corpus.hpp"
 #include "codebreaker/formats/pe.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::formats::pe_functions {
 
-// The Capstone DLL (capstone.dll of Python's `capstone` package), loaded by path on first use.
-void set_capstone_dll(const py::str& path);
+namespace cf = cb::formats::pe_functions;
+
+// capstone.dll is found beside the executable now (cb::disasm::capstone); nothing to load from a path.
+inline void set_capstone_dll(const py::str&) {}
 
 // capstone.x86 operand types
 constexpr int64_t X86_OP_IMM = 2;
@@ -67,9 +55,9 @@ struct Instruction {
     int64_t address = 0, size = 0;
     py::str mnemonic, op_str;
     std::vector<Operand> operands;
-    int64_t disp = 0;                                   // CsInsn.disp (the memory operand's displacement)
-    int64_t disp_size = 0, disp_offset = 0;             // CsInsn.disp_size / disp_offset: where the displacement is in the bytes
-    int64_t imm_size = 0, imm_offset = 0;               // CsInsn.imm_size / imm_offset: where the immediate is
+    int64_t disp = 0;
+    int64_t disp_size = 0, disp_offset = 0;
+    int64_t imm_size = 0, imm_offset = 0;
 };
 
 // (mnemonic, op_str, size, Capstone's instruction, call target)
@@ -78,31 +66,6 @@ struct Record {
     int64_t size = 0;
     Instruction ins;
     std::optional<int64_t> tgt;       // the immediate of a `call imm`
-};
-
-class PeCarve;
-
-// {address: (mnemonic, op_str, size, Capstone's instruction, call target)} of every address the sweep decoded:
-// the addresses come from the sweep, an instruction is decoded (by Capstone, as the sweep did) when it is asked for.
-class Insns {
-  public:
-    Insns(const PeCarve* carve, const std::vector<int64_t>& addresses);
-    bool contains(int64_t va) const;
-    int64_t size() const;
-    // the addresses, ascending (__iter__ / keys)
-    std::vector<int64_t> keys() const;
-    // self[va]: KeyError when the address was not decoded or lies in no section; StopIteration when Capstone
-    // decodes nothing there
-    Record at(int64_t va) const;
-    // .get(va): None when the address was not decoded
-    std::optional<Record> get(int64_t va) const;
-    std::vector<std::pair<int64_t, Record>> items() const;
-    std::vector<Record> values() const;
-
-  private:
-    const PeCarve* carve_;
-    py::set<int64_t> addresses_;
-    std::vector<int64_t> sorted_;
 };
 
 // the function PeCarve carved at `start`
@@ -117,10 +80,113 @@ struct SecOf {
     const py::bytes* data = nullptr;
 };
 
+namespace detail {
+
+inline Instruction instruction_of(const cf::Instruction& c) {
+    Instruction out;
+    out.address = c.address;
+    out.size = c.size;
+    out.mnemonic = cb::compat::to_py(c.mnemonic);
+    out.op_str = cb::compat::to_py(c.op_str);
+    for (const cf::Operand& o : c.operands) {
+        Operand op;
+        op.type = static_cast<int64_t>(o.kind);
+        op.imm = o.imm;
+        op.base = o.base;
+        op.index = o.index;
+        op.disp = o.disp;
+        out.operands.push_back(op);
+    }
+    out.disp = c.disp;
+    out.disp_size = c.disp_size;
+    out.disp_offset = c.disp_offset;
+    out.imm_size = c.imm_size;
+    out.imm_offset = c.imm_offset;
+    return out;
+}
+
+inline cf::Instruction instruction_to(const Instruction& o) {
+    cf::Instruction out;
+    out.address = static_cast<cf::Va>(o.address);
+    out.size = static_cast<std::uint8_t>(o.size);
+    out.mnemonic = cb::compat::from_py(o.mnemonic);
+    out.op_str = cb::compat::from_py(o.op_str);
+    for (const Operand& p : o.operands) {
+        cf::Operand op;
+        op.kind = static_cast<cf::OperandKind>(p.type);
+        op.imm = p.imm;
+        op.base = static_cast<std::uint32_t>(p.base);
+        op.index = static_cast<std::uint32_t>(p.index);
+        op.disp = p.disp;
+        out.operands.push_back(op);
+    }
+    return out;
+}
+
+inline Record record_of(const cf::Instruction& c) {
+    Record r;
+    r.ins = instruction_of(c);
+    r.mnemonic = r.ins.mnemonic;
+    r.op_str = r.ins.op_str;
+    r.size = r.ins.size;
+    if (auto t = c.call_target()) r.tgt = static_cast<int64_t>(*t);
+    return r;
+}
+
+inline Func func_of(const cf::Function& f) {
+    Func out;
+    out.start = f.start;
+    out.end = f.end;
+    if (f.name) out.name = cb::compat::to_py(*f.name);
+    return out;
+}
+
+}  // namespace detail
+
+class PeCarve;
+
+// {address: (mnemonic, op_str, size, Capstone's instruction, call target)} of every address the sweep decoded: the
+// addresses come from the sweep, an instruction is decoded when it is asked for.
+class Insns {
+  public:
+    explicit Insns(std::shared_ptr<const cf::PeCarve> carve) : carve_(std::move(carve)) {}
+    bool contains(int64_t va) const { return 0 <= va && va <= 0xFFFFFFFFll && carve_->has_instruction(static_cast<cf::Va>(va)); }
+    int64_t size() const { return static_cast<int64_t>(carve_->instruction_addresses().size()); }
+    // the addresses, ascending (__iter__ / keys)
+    std::vector<int64_t> keys() const { return std::vector<int64_t>(carve_->instruction_addresses().begin(), carve_->instruction_addresses().end()); }
+    // self[va]: KeyError when the address was not decoded or lies in no section; StopIteration when Capstone
+    // decodes nothing there
+    Record at(int64_t va) const {
+        if (!contains(va) || carve_->section_of(static_cast<cf::Va>(va)) == nullptr) throw py::KeyError(std::to_string(va));
+        auto ins = carve_->instruction_at(static_cast<cf::Va>(va));
+        if (!ins) throw py::StopIteration();
+        return detail::record_of(*ins);
+    }
+    // .get(va): None when the address was not decoded
+    std::optional<Record> get(int64_t va) const {
+        if (!contains(va)) return std::nullopt;
+        return at(va);
+    }
+    std::vector<std::pair<int64_t, Record>> items() const {
+        std::vector<std::pair<int64_t, Record>> out;
+        for (int64_t va : keys()) out.emplace_back(va, at(va));
+        return out;
+    }
+    std::vector<Record> values() const {
+        std::vector<Record> out;
+        for (int64_t va : keys()) out.push_back(at(va));
+        return out;
+    }
+
+  private:
+    std::shared_ptr<const cf::PeCarve> carve_;
+};
+
 class PeCarve {
   public:
-    // progress_cb(bytes_swept) is called when the sweep is done (formats.dll sweeps whole)
-    explicit PeCarve(const py::str& path, std::function<void(int64_t)> progress_cb = nullptr);
+    // progress_cb(bytes_swept) is called when the sweep is done
+    explicit PeCarve(const py::str& path, std::function<void(int64_t)> progress_cb = nullptr)
+        : PeCarve(base::corpus::resolve(path), progress_cb, 0) {}
     PeCarve(const PeCarve&) = delete;
     PeCarve& operator=(const PeCarve&) = delete;
 
@@ -134,64 +200,181 @@ class PeCarve {
     py::dict<int64_t, Func> funcs;                                   // start -> function (ascending start)
     py::set<int64_t> starts;
 
+    // the carve this one forwards to
+    std::shared_ptr<const cf::PeCarve> impl;
+
     // -- section helpers
-    SecOf _sec_of(int64_t va) const;
+    SecOf _sec_of(int64_t va) const {
+        for (const auto& s : sections) {
+            int64_t base = static_cast<int64_t>(std::get<0>(s));
+            if (base <= va && va < base + std::get<1>(s).size()) return {base, &std::get<1>(s)};
+        }
+        return {};
+    }
 
     // -- queries
     // A capstone call/jmp insn -> a name, or None if not a call/branch.
-    std::optional<py::str> resolve_call(const Instruction& ins) const;
+    std::optional<py::str> resolve_call(const Instruction& ins) const {
+        auto name = impl->resolve_call(detail::instruction_to(ins));
+        if (!name) return std::nullopt;
+        return cb::compat::to_py(*name);
+    }
     // Resolved call/jmp targets inside the function carved at `start`.
-    py::list<py::str> calls_in(int64_t start) const;
-    py::list<std::tuple<int64_t, py::str, py::str>> disasm_func(int64_t start) const;
+    py::list<py::str> calls_in(int64_t start) const {
+        if (start < 0 || start > 0xFFFFFFFFll) return py::list<py::str>();
+        return cb::compat::to_py(impl->calls_in(static_cast<cf::Va>(start)));
+    }
+    py::list<std::tuple<int64_t, py::str, py::str>> disasm_func(int64_t start) const {
+        py::list<std::tuple<int64_t, py::str, py::str>> rows;
+        if (start < 0 || start > 0xFFFFFFFFll) return rows;
+        for (const cf::DisasmLine& l : impl->disassemble(static_cast<cf::Va>(start)))
+            rows.append(std::make_tuple(static_cast<int64_t>(l.address), cb::compat::to_py(l.mnemonic), cb::compat::to_py(l.op_str)));
+        return rows;
+    }
 
     // -- data cross-references
-    // `resolve_call` gives the control-flow edges; these give the *data* edges: which function reads/pushes the
-    // address of a string or global. A `push imm32`, `mov reg,imm32`, or absolute `[disp]` whose value lands
-    // inside the image is a data reference -- the join that answers "who references this string?" without
-    // which a literal cannot be traced back to its caller.
-    py::list<std::tuple<int64_t, int64_t>> _image_ranges() const;
-    bool _in_image(int64_t va) const;
+    py::list<std::tuple<int64_t, int64_t>> _image_ranges() const {
+        py::list<std::tuple<int64_t, int64_t>> r;
+        int64_t image_base = static_cast<int64_t>(impl->image().header().image_base);
+        for (const auto& s : impl->image().sections())
+            r.append(std::make_tuple(image_base + s.virtual_address, image_base + s.virtual_address + std::max(s.virtual_size, s.raw_size)));
+        return r;
+    }
+    bool _in_image(int64_t va) const { return va >= 0 && impl->in_image(static_cast<std::uint64_t>(va)); }
     // {func_start: sorted[referenced data VA]}.
-    //
-    // Records IMM and absolute-`[disp]` operands that land in the image, except a branch's direct target (a
-    // code edge, owned by resolve_call/calls_in) and recognized IAT slots (import edges, owned by resolve_call).
-    const py::dict<int64_t, py::list<int64_t>>& data_refs() const;
+    const py::dict<int64_t, py::list<int64_t>>& data_refs() const {
+        if (!drefs_) drefs_ = cb::compat::to_py(impl->data_refs());
+        return *drefs_;
+    }
     // Sorted function-starts that reference data address `va`.
-    py::list<int64_t> xrefs_to(int64_t va) const;
-    // {func_start: [(va, text), ...]} -- the strings each function references.
-    // `va2text` is a {VA: string} map (see format_loaders.pe_strings.by_va).
-    py::dict<int64_t, py::list<std::tuple<int64_t, py::str>>> string_refs(const py::dict<int64_t, py::str>& va2text) const;
+    py::list<int64_t> xrefs_to(int64_t va) const {
+        if (va < 0 || va > 0xFFFFFFFFll) return py::list<int64_t>();
+        return cb::compat::to_py(impl->xrefs_to(static_cast<cf::Va>(va)));
+    }
+    // {func_start: [(va, text), ...]} -- the strings each function references; `va2text` is a {VA: string} map.
+    py::dict<int64_t, py::list<std::tuple<int64_t, py::str>>> string_refs(const py::dict<int64_t, py::str>& va2text) const {
+        std::unordered_map<cf::Va, std::string> texts;
+        for (const auto& kv : va2text.items())
+            if (std::get<0>(kv) >= 0 && std::get<0>(kv) <= 0xFFFFFFFFll) texts.emplace(static_cast<cf::Va>(std::get<0>(kv)), cb::compat::from_py(std::get<1>(kv)));
+        py::dict<int64_t, py::list<std::tuple<int64_t, py::str>>> out;
+        for (const auto& [fs, hits] : impl->string_refs(texts)) {
+            py::list<std::tuple<int64_t, py::str>> list;
+            for (const auto& [va, text] : hits) list.append(std::make_tuple(static_cast<int64_t>(va), cb::compat::to_py(text)));
+            out.set(fs, list);
+        }
+        return out;
+    }
+
+    // A carve that already exists (PeSeg over a carve it was handed).
+    PeCarve(std::shared_ptr<const cf::PeCarve> carved, const py::str& path, std::function<void(int64_t)> progress_cb) : _progress_cb(progress_cb), impl(std::move(carved)) {
+        fill_(path);
+    }
 
   private:
-    mutable std::optional<py::list<std::tuple<int64_t, int64_t>>> imgr_;
+    PeCarve(const py::str& resolved, std::function<void(int64_t)> progress_cb, int) : _progress_cb(progress_cb) {
+        cb::compat::guard([&] { impl = std::make_shared<const cf::PeCarve>(cf::PeCarve::open(std::filesystem::path(cb::compat::from_py(resolved)))); });
+        fill_(resolved);
+        if (progress_cb) {
+            int64_t total = 0;
+            for (const auto& s : sections) total += std::get<1>(s).size();
+            progress_cb(total);
+        }
+    }
+
+    void fill_(const py::str& path) {
+        pe = std::make_shared<pe::PEFile>(pe::open_pe(path));
+        for (const cf::CodeSection& s : impl->sections())
+            sections.append(std::make_tuple(static_cast<uint64_t>(s.va), cb::compat::to_py(s.data), cb::compat::to_py(s.name)));
+        for (const auto& [slot, name] : impl->imports())
+            imports.set(slot, std::make_tuple(cb::compat::to_py(name.dll), cb::compat::to_py(name.name)));
+        for (const auto& [va, name] : impl->exports()) exports.set(va, cb::compat::to_py(name));
+        for (cf::Va t : impl->call_targets()) call_targets.add(t);
+        insn = std::make_shared<Insns>(impl);
+        for (const auto& [start, f] : impl->functions()) {
+            funcs.set(start, detail::func_of(f));
+            starts.add(start);
+        }
+    }
+
     mutable std::optional<py::dict<int64_t, py::list<int64_t>>> drefs_;
-    mutable std::optional<py::dict<int64_t, py::list<int64_t>>> drev_;
 };
 
-// Point cores at win95 + cd into a data root, idempotently (mirrors msvc2cov._setup so a tool works with no
-// `wt` wrapper).
-void ensure_target();
+// Point cores at win95 + cd into a data root, idempotently (mirrors msvc2cov._setup so a tool works with no `wt` wrapper).
+// COMPAT(py): remove when base.settings is refactored
+inline void ensure_target() {
+    static const char* const eras[] = {"win95", "win98", "win3.1", "win1.0"};
+    auto data_root = [&]() -> py::str {   // settings.data_root(): WT_DATA_ROOT when it holds era dirs (or is a directory), else the checkout's parent
+        auto env = py::os::environ_::get(py::str("WT_DATA_ROOT"));
+        if (env && !env->empty()) {
+            for (const char* e : eras)
+                if (py::os::path::isdir(py::os::path::join(*env, py::str(e)))) return *env;
+            if (py::os::path::isdir(*env)) return *env;
+        }
+        return py::os::path::dirname(py::settings::checkout_root());
+    };
+    std::vector<py::str> roots;
+    auto env = py::os::environ_::get(py::str("WT_DATA_ROOT"));
+    if (env && !env->empty()) roots.push_back(py::os::path::join(*env, py::str("win95")));
+    roots.push_back(data_root());
+    roots.push_back(py::os::getcwd());
+    for (const py::str& r : roots) {
+        if (py::os::path::isdir(py::os::path::join(r, py::str("files"))) || py::os::path::isdir(py::os::path::join(r, py::str("src")))) {
+            py::os::chdir(r);
+            return;
+        }
+    }
+}
 
 // one PeCarve per module, kept
-std::shared_ptr<PeCarve> carve(const py::str& module);
+inline std::shared_ptr<PeCarve> carve(const py::str& module) {
+    static py::dict<py::str, std::shared_ptr<PeCarve>> kept;       // _CARVE
+    ensure_target();
+    if (!kept.contains(module)) kept.set(module, std::make_shared<PeCarve>(base::corpus::resolve(module)));
+    return kept.at(module);
+}
 
-// Linearly decode the blob as 32-bit code with capstone; return [(offset, asm_text), ...] with CONTIGUOUS
-// coverage (undecodable bytes become a 1-byte '(bad)' row -> db). capstone is used instead of objdump because
-// objdump's linear sweep MIS-SPLITS prefixed instructions (a segment/opsize prefix like `64`/`66` gets peeled
-// onto its own row), which the byte-exact reconcile then cannot realign. capstone decodes each prefixed
-// instruction as one unit with the correct length, so the reconcile converges cleanly.
-//
-// progress_cb(bytes_done) is called when the listing is done (formats.dll lists whole).
-py::list<std::tuple<int64_t, py::str>> disasm_whole32(const py::bytes& code, int64_t base = 0,
-                                                      std::function<void(int64_t)> progress_cb = nullptr);
+// Linearly decode the blob as 32-bit code with capstone; return [(offset, asm_text), ...] with CONTIGUOUS coverage
+// (undecodable bytes become a 1-byte '(bad)' row -> db). progress_cb(bytes_done) is called when the listing is done.
+inline py::list<std::tuple<int64_t, py::str>> disasm_whole32(const py::bytes& code, int64_t base = 0, std::function<void(int64_t)> progress_cb = nullptr) {
+    py::list<std::tuple<int64_t, py::str>> rows = cb::compat::guard([&] {
+        py::list<std::tuple<int64_t, py::str>> out;
+        const cb::Bytes bytes = cb::compat::from_py(code);
+        for (const cf::ListingRow& r : cf::disassemble_listing(bytes, static_cast<cf::Va>(base)))
+            out.append(std::make_tuple(static_cast<int64_t>(r.at), cb::compat::to_py(r.text)));
+        return out;
+    });
+    if (progress_cb) progress_cb(static_cast<int64_t>(code.raw().size()));
+    return rows;
+}
 
 // One PE executable section, shaped like trace.Seg for asmrecon32.
 class PeSeg {
   public:
-    // carve: a pre-built PeCarve to REUSE (a multi-section PE otherwise re-runs the whole capstone sweep once
-    // per section). progress_cb drives the per-section disassembly bar.
-    explicit PeSeg(const py::str& module, std::optional<py::str> section = std::nullopt,
-                   std::shared_ptr<PeCarve> carve = nullptr, std::function<void(int64_t)> progress_cb = nullptr);
+    // carve: a pre-built PeCarve to REUSE (a multi-section PE otherwise re-runs the whole capstone sweep once per section).
+    explicit PeSeg(const py::str& module_, std::optional<py::str> section = std::nullopt, std::shared_ptr<PeCarve> carve_ = nullptr,
+                   std::function<void(int64_t)> progress_cb = nullptr) {
+        module = module_;
+        path = base::corpus::resolve(module);
+        cf::PeSeg seg = cb::compat::guard([&] {
+            return cf::PeSeg::open(std::filesystem::path(cb::compat::from_py(path)), cb::compat::from_py(module),
+                                   section ? std::optional<std::string>(cb::compat::from_py(*section)) : std::nullopt,
+                                   carve_ ? carve_->impl : nullptr);
+        });
+        pe = std::make_shared<pe::PEFile>(pe::open_pe(path));
+        base = pe->image_base;
+        va = seg.va;
+        code = cb::compat::to_py(cb::ByteView(seg.code));
+        name = cb::compat::to_py(seg.name);
+        secva = va;
+        for (const cf::ListingRow& r : seg.rows) rows.append(std::make_tuple(static_cast<int64_t>(r.at), cb::compat::to_py(r.text)));
+        if (progress_cb) progress_cb(static_cast<int64_t>(seg.code.size()));
+        for (std::size_t i = 0; i < seg.rows.size(); ++i) off2idx.set(seg.rows[i].at, static_cast<int64_t>(i));
+        for (const auto& [start, f] : seg.funcs) funcs.set(start, detail::func_of(f));
+        for (const auto& [off, n] : seg.export_names) export_names.set(off, cb::compat::to_py(n));
+        _carve = carve_ ? carve_ : std::make_shared<PeCarve>(seg.carve, path, nullptr);
+        for (std::size_t i = 0; i < seg.reloc_mask.size(); ++i)
+            if (seg.reloc_mask[i]) mask.add(static_cast<int64_t>(i));
+    }
 
     py::str module, path;
     std::shared_ptr<pe::PEFile> pe;
@@ -209,8 +392,16 @@ class PeSeg {
     py::dict<int64_t, py::str> fixups;                   // resolved call sites for annotate (site_off -> "DLL!name")
 };
 
-// {start: (end, exported name or None)} -- the functions PeCarve finds, by the same rule and with the same
-// answer, without keeping an object for every instruction of the module.
-py::dict<int64_t, std::tuple<int64_t, std::optional<py::str>>> function_spans(const py::str& path);
+// {start: (end, exported name or None)} -- the functions PeCarve finds, by the same rule and with the same answer,
+// without keeping an object for every instruction of the module.
+inline py::dict<int64_t, std::tuple<int64_t, std::optional<py::str>>> function_spans(const py::str& path) {
+    return cb::compat::guard([&] {
+        py::dict<int64_t, std::tuple<int64_t, std::optional<py::str>>> out;
+        const cb::formats::pe::Image image = cb::formats::pe::Image::open(std::filesystem::path(cb::compat::from_py(base::corpus::resolve(path))));
+        for (const cf::Function& f : cf::function_spans(image))
+            out.set(f.start, std::make_tuple(static_cast<int64_t>(f.end), f.name ? std::optional<py::str>(cb::compat::to_py(*f.name)) : std::nullopt));
+        return out;
+    });
+}
 
 }  // namespace codebreaker::formats::pe_functions
