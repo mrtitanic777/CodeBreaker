@@ -25,8 +25,7 @@
 //
 // Typing notes:
 //   * `extra` (any iterable of addresses, None by default) is an optional list.
-//   * from_pointers / from_constants return the Python's set; it is iterated in the order the runtime's set keeps
-//     (Python's is its hash order), which only changes the order of discover()'s dict, never its contents.
+//   * from_pointers / from_constants return the Python's set; discover() walks it in address order.
 //   * main(argv) is the Python's main with `argv` the arguments after the program's name and what it prints
 //     written to `out`; the __main__ block (sys.exit(main(sys.argv[1:]))) is the caller's.
 #pragma once
