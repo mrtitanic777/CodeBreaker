@@ -1630,8 +1630,10 @@ std::tuple<str, Lines> localize(const F::Prj& prj, str text, int64_t at, const p
             py::list<std::tuple<int64_t, str>> elems;
             for (const str& d : ds) {
                 const SA& ty = std::get<1>(T::STRUCTARR.at(d));
-                // (an element's type: its own, or an int where it is a struct already - a list is a struct's too)
-                str et = std::holds_alternative<str>(ty) && !std::get<str>(ty).startswith("struct"_s) ? std::get<str>(ty) : "int"_s;
+                // (an element's type: its own, or an int where it is a struct already; an array laid out before -- by an earlier
+                // variant of this text -- gives its first field's type)
+                str et = std::holds_alternative<str>(ty) ? std::get<str>(ty) : std::get<1>(std::get<py::list<std::tuple<int64_t, str>>>(ty)[0]);
+                if (et.startswith("struct"_s)) et = "int"_s;
                 elems.append(std::make_tuple(py::int_parse(d.slice_from(2), 16) - base, et));
             }
             T::STRUCTARR.set(bn, std::make_tuple(std::get<0>(T::STRUCTARR.at(bn)), SA(elems)));

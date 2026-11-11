@@ -185,11 +185,46 @@ def test_xsm3_challenge_verify_answers_a_valid_packet():
     assert resp is not None and len(resp) == 5 + 0x10 + 1 and bytes(resp[:2]) == b"IL" and resp[4] == 0x10
 
 
+def test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same():
+    """exact.draft.candidates: merging arrays of structs of one size into one array replaces its STRUCTARR entry by
+    the list of its fields; the next variant of the same text read that list as a field's type and declared
+    `[(0, 'int'), (4, 'int')] f0;`. The second run of localize on the same state comes out as the first."""
+    from codebreaker.exact.draft import candidates as C, text as T
+
+    class Prj:
+        dgroup = 0x40
+        image = bytes(0x100)
+
+        def toolchain(self):
+            class TC:
+                name = "msc300"
+                p = {}
+            return TC()
+
+        def symbols(self):
+            return {}
+
+    src = "int f(i)\nint i;\n{\n    int x;\n    x = g_1000[i].f0;\n    g_1004[i].f0 = x;\n    return x;\n}"
+    T.ARRAYS.clear()
+    T.STRUCTARR.clear()
+    for g in ("g_1000", "g_1004"):
+        T.ARRAYS[g] = "struct s_%s" % g
+        T.STRUCTARR[g] = (8, "int")
+    try:
+        first = C.localize(Prj(), src, 0, {})
+        again = C.localize(Prj(), src, 0, {})
+    finally:
+        T.ARRAYS.clear()
+        T.STRUCTARR.clear()
+    assert "struct s_g_1000 { int f0; char _2[2]; int f4; char _6[2]; };" in first[0], first[0]
+    assert again == first, again[0]
+
+
 def main():
     for fn in (test_pe_writer_nosplit_keeps_the_scaled_index, test_cpukey_generated_keys_validate,
                test_sms_writer_game_gear_rom, test_sd_signer_keeps_its_key_in_the_module,
                test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch,
-               test_xsm3_challenge_verify_answers_a_valid_packet):
+               test_xsm3_challenge_verify_answers_a_valid_packet, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))
