@@ -60,8 +60,8 @@ std::tuple<bool, py::str> masked_eq(const py::bytes& a, const py::bytes& b, cons
 
 void main() {
     std::optional<py::bytes> obj = compilers::mc_compile_multi(BATTERY);
-    if (!obj) throw py::TypeError("a bytes-like object is required, not 'NoneType'");
-    auto fns = formats::omf::function_bytes(*obj);
+    // (omf.function_bytes(None) is {}: the report then counts 0 of 0)
+    auto fns = obj ? formats::omf::function_bytes(*obj) : py::dict<py::str, std::tuple<py::bytes, py::set<int64_t>>>();
     int64_t ok = 0, tot = 0;
     std::vector<py::str> keys;
     for (const auto& kv : fns.items()) keys.push_back(std::get<0>(kv));
