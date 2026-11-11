@@ -69,6 +69,9 @@ namespace
             << "; 1 = the log (<program>.log) also goes to the Xbox LIVE server as it is written, so the developer\n"
             << "; can follow a test run live (testers' copies); 0 = it stays on this PC\n"
             << "live_log = " << (d.liveLog ? 1 : 0) << "\n\n"
+            << "; 1 = a title's quick match (a session search that finds nothing) also queues a ticket on the Xbox LIVE\n"
+            << "; server, so that two players who search at the same moment are matched. 0 = off (default)\n"
+            << "live_matchmaking_queue = " << (d.liveMatchmakingQueue ? 1 : 0) << "\n\n"
             << "; PC window (not a console setting): start in full screen; F11 or Alt+Enter switch at any time\n"
             << "fullscreen = " << (d.fullscreen ? "true" : "false") << "\n\n"
             << "; PC only: your own console's decrypted keyvault (KV.bin, 0x4000 bytes). Packages written to a\n"
@@ -165,6 +168,7 @@ void LoadSettings(const std::string& directory)
     number("license_mask", s.licenseMask);
     boolean("fullscreen", s.fullscreen);
     boolean("live_log", s.liveLog);
+    boolean("live_matchmaking_queue", s.liveMatchmakingQueue);
     if (auto it = values.find("live_server"); it != values.end())
         s.liveServer = it->second;
     if (auto it = values.find("console_keyvault"); it != values.end())

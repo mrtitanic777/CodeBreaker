@@ -214,6 +214,7 @@ Notes:
 
 | Module | py:: port | native/cb | Speedup |
 |---|---|---|---|
+| knowledge/sources (all 14 kinds, 16,896 rows) | 139-145 ms | 45-48 ms | ~3x |
 | verify/verdicts classify() (12.8M calls: 8 words x 4 limits texts) | 296-306 ns | 19 ns from text, 1.2 ns from enums (the judge's own use) | 15x / 250x (the live engine/verdicts.cc: 80 ns) |
 | verify/teeth breaks() (60,000 C texts of a few lines) | 1.17 s | 0.46 s (including the harness's JSON in and out) | 2.5x |
 | verify/guided (74 synthetic programs x100, behind the old-record shim: every call converts the records both ways) | 0.66 s | 0.32 s | 2.1x |

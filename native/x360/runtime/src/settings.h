@@ -55,6 +55,12 @@ struct ConsoleSettings
     // SendLog), which keeps it in live_logs/ on the server's PC.
     bool liveLog = false;
 
+    // Our Xbox LIVE's match queue for a title's quick match (kernel/xam_matchmaking.h; console_settings.ini
+    // live_matchmaking_queue): a XSessionSearch that finds no session queues a ticket, so that two players who search
+    // at the same moment are matched (the server's answer is what that user's next search returns first; the title's
+    // own flow is untouched). Off by default.
+    bool liveMatchmakingQueue = false;
+
     // PC only (not a console setting): the window starts windowed (true: borderless full screen); F11 / Alt+Enter
     // switch.
     bool fullscreen = false;
