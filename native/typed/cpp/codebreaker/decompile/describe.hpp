@@ -100,6 +100,7 @@ void set_capstone_dll(const py::str& path);
 // `operands` (and `op_size`, the size of each: capstone's op.size) are filled only for a decoder made with detail=true.
 struct Insn : inline_asm::Instruction {
     py::list<int64_t> op_size;        // operands[k].size
+    py::list<int64_t> op_access;      // operands[k].access (CS_AC_READ 1, CS_AC_WRITE 2): what asm_blocks reads of an operand
     py::list<int64_t> regs_read;      // regs_access()[0]
     py::list<int64_t> regs_write;     // regs_access()[1]
     py::list<int64_t> groups;         // capstone's instruction groups (CS_GRP_*), for group()

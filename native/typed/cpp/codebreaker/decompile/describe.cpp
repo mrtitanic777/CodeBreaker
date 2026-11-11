@@ -260,6 +260,7 @@ Insn make_insn(CsLib& lib, const cs_insn& c, bool detail) {
         op.mem.disp = o.mem.disp;
         out.operands.append(op);
         out.op_size.append(o.size);
+        out.op_access.append(o.access);
     }
     for (int k = 0; k < c.detail->groups_count; ++k) out.groups.append(c.detail->groups[k]);
     uint16_t rd[64], wr[64];

@@ -22,7 +22,9 @@
 #include "codebreaker/base/parallel.hpp"
 #include "codebreaker/build/functions.hpp"
 #include "codebreaker/build/watcom.hpp"
+#include "codebreaker/decompile/asm_blocks.hpp"
 #include "codebreaker/decompile/c_text.hpp"
+#include "codebreaker/translate/l2.hpp"
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/decompile/frame16.hpp"
 #include "codebreaker/decompile/shape16.hpp"
@@ -195,6 +197,66 @@ bool mentions(const py::str& text, const std::optional<L2Doc>& doc, const py::st
     return text.contains(name);
 }
 
+
+// ---- L2 documents as asm_blocks' Json and back (the _asm blocks pass, CB_ASM_BLOCKS) -------------------
+
+asm_blocks::Json to_json_(const Val& v) {
+    using J = asm_blocks::Json;
+    if (std::holds_alternative<std::monostate>(v.v)) return J::make_none();
+    if (const bool* b = std::get_if<bool>(&v.v)) return J::make_bool(*b);
+    if (const int64_t* i = std::get_if<int64_t>(&v.v)) return J::make_int(*i);
+    if (const double* d = std::get_if<double>(&v.v)) return J::make_float(*d);
+    if (const py::str* s = std::get_if<py::str>(&v.v)) return J::make_str(*s);
+    if (const ir::TypeP* t = std::get_if<ir::TypeP>(&v.v)) return to_json_(translate::l2::type_json(*t));
+    if (const Val::List* l = std::get_if<Val::List>(&v.v)) {
+        py::list<J> out;
+        for (const Val& x : l->vec()) out.append(to_json_(x));
+        return J::make_list(out);
+    }
+    const Dict& d = std::get<Dict>(v.v);
+    py::dict<py::str, J> out;
+    for (const auto& kv : d.items()) out.set(std::get<0>(kv), to_json_(std::get<1>(kv)));
+    return J::make_dict(out);
+}
+
+Val from_json_(const asm_blocks::Json& j) {
+    using J = asm_blocks::Json;
+    switch (j.kind) {
+        case J::None: return Val();
+        case J::Bool: return Val(j.b);
+        case J::Int: return Val(j.i);
+        case J::Float: return Val(j.d);
+        case J::Str: return Val(j.s);
+        case J::List: {
+            Val::List out;
+            for (const J& x : j.list.vec()) out.append(from_json_(x));
+            return Val(out);
+        }
+        case J::Dict: {
+            Dict out;
+            for (const auto& kv : j.dict.items()) out.set(std::get<0>(kv), from_json_(std::get<1>(kv)));
+            return Val(out);
+        }
+    }
+    return Val();
+}
+
+Dict place_asm_blocks(const Dict& doc, const py::bytes& code, int64_t offset, int64_t seg) {
+    std::shared_ptr<const describe::Decoder> md = describe::decoder16(true);
+    asm_blocks::Decoder dec = [md](const py::bytes& c, uint64_t at) {
+        py::list<asm_blocks::Instruction> out;
+        for (const describe::Insn& i : md->disasm(c, static_cast<int64_t>(at)).vec()) {
+            asm_blocks::Instruction a;
+            static_cast<inline_asm::Instruction&>(a) = i;
+            a.access = i.op_access;
+            out.append(a);
+        }
+        return out;
+    };
+    auto [j, said] = asm_blocks::place(dec, to_json_(Val(doc)), code, offset, code.size(), asm_blocks::Fixups(), asm_blocks::NameAt(), seg);
+    return std::get<Dict>(from_json_(j).v);
+}
+
 }  // namespace
 
 // ---- the native program ---------------------------------------------------------------------------
@@ -321,8 +383,7 @@ std::optional<py::str> c_from_l2(const std::optional<py::str>& text, FunctionNot
     if (images && !images->empty() && seg_n && images->contains(*seg_n) && !facts.placed) {
         py::bytes code = images->at(*seg_n);
         int64_t offset = std::get<int64_t>(vget(*origin, "offset")->v);
-        if (!py::os::getenv(S("CB_ASM_BLOCKS"), S("")).empty())
-            throw py::NotImplementedError("CB_ASM_BLOCKS: asm_blocks.place needs the decoder's operand access");
+        if (!py::os::getenv(S("CB_ASM_BLOCKS"), S("")).empty()) doc = place_asm_blocks(doc, code, offset, *seg_n);
         if (frame16_on()) {   // (and its locals as the frame had them)
             auto [d1, said1] = frame16::lay_out(doc, code, offset, code.size());
             auto [d2, said2] = shape16::reshape(d1, code);
