@@ -40,13 +40,18 @@ class compressobj {
                          int64_t memLevel = DEF_MEM_LEVEL, int64_t strategy = Z_DEFAULT_STRATEGY);
     compressobj(const compressobj&) = delete;
     compressobj& operator=(const compressobj&) = delete;
+    compressobj(compressobj&& o) noexcept : z_(o.z_) { o.z_ = nullptr; }
+    compressobj& operator=(compressobj&& o) noexcept {
+        if (this != &o) { reset_(); z_ = o.z_; o.z_ = nullptr; }
+        return *this;
+    }
     ~compressobj();
     bytes compress(const bytes& data);
     bytes flush(int64_t mode = Z_FINISH);
 
   private:
+    void reset_();
     stream_* z_;
-    bool finished_ = false;
 };
 
 // zlib.decompressobj(wbits)
@@ -55,6 +60,22 @@ class decompressobj {
     explicit decompressobj(int64_t wbits = MAX_WBITS);
     decompressobj(const decompressobj&) = delete;
     decompressobj& operator=(const decompressobj&) = delete;
+    decompressobj(decompressobj&& o) noexcept
+        : unused_data(std::move(o.unused_data)), unconsumed_tail(std::move(o.unconsumed_tail)), eof(o.eof), needs_input(o.needs_input), z_(o.z_) {
+        o.z_ = nullptr;
+    }
+    decompressobj& operator=(decompressobj&& o) noexcept {
+        if (this != &o) {
+            reset_();
+            unused_data = std::move(o.unused_data);
+            unconsumed_tail = std::move(o.unconsumed_tail);
+            eof = o.eof;
+            needs_input = o.needs_input;
+            z_ = o.z_;
+            o.z_ = nullptr;
+        }
+        return *this;
+    }
     ~decompressobj();
     bytes decompress(const bytes& data, int64_t max_length = 0);
     bytes flush(int64_t length = DEF_BUF_SIZE);
@@ -64,8 +85,20 @@ class decompressobj {
     bool needs_input = true;
 
   private:
+    void reset_();
     stream_* z_;
 };
 
 }  // namespace zlib
+
+// gzip.decompress(data): all the members of a gzip stream. BadGzipFile (an OSError), EOFError, zlib.error as CPython's.
+namespace gzip {
+struct BadGzipFile : OSError {
+    BadGzipFile() : OSError() {}
+    explicit BadGzipFile(const std::string& m) : OSError(m) {}
+    explicit BadGzipFile(const char* m) : OSError(m) {}
+    const char* type() const override { return "BadGzipFile"; }
+};
+bytes decompress(const bytes& data);
+}  // namespace gzip
 }  // namespace py

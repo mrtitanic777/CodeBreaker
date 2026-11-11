@@ -9,9 +9,7 @@
 //     path (backslashes, no "." parts, no trailing separator).
 //   * ctypes structures are plain C structs of the same layout (little endian, natural alignment, so the
 //     same sizes as ctypes.sizeof; the harness checks them). StreamIO::read_struct<T>() copies them in.
-//   * zlib.decompressobj() is `Decompress` below (the runtime has no zlib): it gives what CPython's object
-//     does for the module's calls (decompress, unused_data, eof, flush) and raises xell_unpack::ZlibError
-//     (the runtime's zlib.error) with zlib's own message text.
+//   * zlib.decompressobj() is the runtime's py::zlib::decompressobj (`Decompress` below).
 //   * The Python's StreamIO has no `offset` property, perform_function_at, set_label or get_label (they
 //     belong to upstream's fuller StreamIO). `xcp.offset = n` there only sets a plain attribute, so here it
 //     is a local variable; calling one of the other three is the AttributeError Python raises, and the code
@@ -31,6 +29,7 @@
 #include "py.hpp"
 #include "codebreaker/formats/xbox/crypto/StreamIO.hpp"
 #include "codebreaker/formats/xbox/crypto/XeCrypt.hpp"
+#include "py_zlib.hpp"
 #include "codebreaker/formats/xbox/crypto/xell_unpack.hpp"   // ZlibError (zlib.error)
 
 namespace codebreaker::formats::xbox::crypto::xcp_dumper {
@@ -116,22 +115,7 @@ bool extract_cab(const py::str& filename, const py::str& path);
 py::bytes stream_decrypt_with_struct(StreamIO::StreamIO& xcp, const py::bytes& key, int64_t struct_offset, int64_t data_offset, int64_t size);
 
 // zlib.decompressobj() with the default window (the zlib wrapper)
-class Decompress {
-public:
-    py::bytes unused_data;   // what followed the end of the stream
-    bool eof = false;        // the end of the stream was reached
-
-    Decompress();
-    // The output the input yields; input that ends mid-symbol is held until the next call. zlib.error
-    // (xell_unpack::ZlibError) for a corrupt stream.
-    py::bytes decompress(const py::bytes& data);
-    // What is still pending: b"" (decompress hands back all it can)
-    py::bytes flush();
-
-private:
-    struct Impl;
-    std::shared_ptr<Impl> impl_;
-};
+using Decompress = py::zlib::decompressobj;
 
 class XCPFile {
 public:

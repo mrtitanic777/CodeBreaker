@@ -137,10 +137,12 @@ compressobj::compressobj(int64_t level, int64_t method, int64_t wbits, int64_t m
     if (err != Z_OK) { z_stream zs = z_->zs; delete z_; raise_(zs, err, "while creating compression object"); }
     z_->init = true;
 }
-compressobj::~compressobj() {
+void compressobj::reset_() {
     if (z_ && z_->init) deflateEnd(&z_->zs);
     delete z_;
+    z_ = nullptr;
 }
+compressobj::~compressobj() { reset_(); }
 bytes compressobj::compress(const bytes& data) {
     const std::string& in = data.raw();
     Out out(16384);
@@ -167,10 +169,7 @@ bytes compressobj::flush(int64_t mode) {
         if (err == Z_STREAM_ERROR) raise_(z_->zs, err, "while flushing");
     } while (z_->zs.avail_out == 0);
     if (mode == Z_FINISH && err == Z_STREAM_END) {
-        deflateEnd(&z_->zs);
-        z_->init = false;
-        // (a finished object: a second flush(Z_FINISH) or compress() fails, as CPython's does after deflateEnd)
-        z_->init = false;
+        // (finished: the stream is closed with the object)
     } else if (err != Z_OK && err != Z_BUF_ERROR) {
         raise_(z_->zs, err, "while flushing");
     }
@@ -186,10 +185,12 @@ decompressobj::decompressobj(int64_t wbits) : z_(new stream_) {
     if (err != Z_OK) { z_stream zs = z_->zs; delete z_; raise_(zs, err, "while creating decompression object"); }
     z_->init = true;
 }
-decompressobj::~decompressobj() {
+void decompressobj::reset_() {
     if (z_ && z_->init) inflateEnd(&z_->zs);
     delete z_;
+    z_ = nullptr;
 }
+decompressobj::~decompressobj() { reset_(); }
 
 bytes decompressobj::decompress(const bytes& data, int64_t max_length) {
     if (max_length < 0) throw ValueError("max_length must be non-negative");
@@ -263,6 +264,72 @@ bytes decompressobj::flush(int64_t length) {
 }
 
 }  // namespace zlib
+
+// ------------------------------------------------------------------------------------------ gzip
+namespace gzip {
+
+namespace {
+constexpr int FHCRC = 2, FEXTRA = 4, FNAME = 8, FCOMMENT = 16;
+
+// gzip._read_gzip_header over data: false at its end (no header), else `pos` is past the header
+bool read_gzip_header(const std::string& data, size_t& pos) {
+    auto read_exact = [&](size_t n) {
+        if (data.size() - pos < n) throw EOFError("Compressed file ended before the end-of-stream marker was reached");
+        size_t at = pos;
+        pos += n;
+        return at;
+    };
+    if (pos >= data.size()) return false;
+    std::string magic = data.substr(pos, 2);
+    pos += magic.size();
+    if (magic != "\x1f\x8b") throw BadGzipFile("Not a gzipped file (" + repr(bytes(magic)).utf8() + ")");
+    size_t h = read_exact(8);
+    int method = static_cast<unsigned char>(data[h]);
+    int flag = static_cast<unsigned char>(data[h + 1]);
+    if (method != 8) throw BadGzipFile("Unknown compression method");
+    if (flag & FEXTRA) {
+        size_t e = read_exact(2);
+        size_t extra_len = static_cast<unsigned char>(data[e]) | (static_cast<size_t>(static_cast<unsigned char>(data[e + 1])) << 8);
+        read_exact(extra_len);
+    }
+    if (flag & FNAME) {   // (read until the zero byte or the end of the data)
+        while (pos < data.size() && data[pos++] != '\0') {
+        }
+    }
+    if (flag & FCOMMENT) {
+        while (pos < data.size() && data[pos++] != '\0') {
+        }
+    }
+    if (flag & FHCRC) read_exact(2);
+    return true;
+}
+
+uint32_t le32_(const std::string& s, size_t at) {
+    return static_cast<unsigned char>(s[at]) | (static_cast<uint32_t>(static_cast<unsigned char>(s[at + 1])) << 8) |
+           (static_cast<uint32_t>(static_cast<unsigned char>(s[at + 2])) << 16) | (static_cast<uint32_t>(static_cast<unsigned char>(s[at + 3])) << 24);
+}
+}  // namespace
+
+bytes decompress(const bytes& data_in) {
+    std::string members;
+    std::string data = data_in.raw();
+    for (;;) {
+        size_t pos = 0;
+        if (!read_gzip_header(data, pos)) return bytes(members);
+        zlib::decompressobj d(-15);   // (-MAX_WBITS: a raw deflate stream)
+        bytes decompressed = d.decompress(bytes(data.substr(pos)));
+        if (!d.eof || d.unused_data.size() < 8) throw EOFError("Compressed file ended before the end-of-stream marker was reached");
+        const std::string& tail = d.unused_data.raw();
+        if (le32_(tail, 0) != static_cast<uint32_t>(zlib::crc32(decompressed))) throw BadGzipFile("CRC check failed");
+        if (le32_(tail, 4) != static_cast<uint32_t>(decompressed.size() & 0xffffffffu)) throw BadGzipFile("Incorrect length of data produced");
+        members += decompressed.raw();
+        size_t start = 8;   // do.unused_data[8:].lstrip(b"\x00")
+        while (start < tail.size() && tail[start] == '\0') ++start;
+        data = tail.substr(start);
+    }
+}
+
+}  // namespace gzip
 }  // namespace py
 
 // ---------------------------------------------------------------------------------------------
