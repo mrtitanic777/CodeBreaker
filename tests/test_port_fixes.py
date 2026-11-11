@@ -248,6 +248,26 @@ def test_data_declared_size_takes_the_first_declaration_by_name():
     assert data._declared_size(ty, {}) == 6, data._declared_size(ty, {})      # ("int", "a[3]") before ("long", "a")
 
 
+def test_segdiff_compile_group_leaves_no_work_folder():
+    """source.ne_asm.segdiff.compile_group: the DOSBox work folder msvc152.compile_c leaves to its caller is
+    removed (one folder per compile was left in the temporary folder). Skipped where MSVC 1.52c / DOSBox-X are
+    not set up."""
+    import tempfile
+    from codebreaker.build import msvc152
+    from codebreaker.source.ne_asm import segdiff
+    if not os.path.exists(msvc152.DBX) or not os.path.exists(os.path.join(msvc152.MSVC, "BIN", "CL.EXE")):
+        return
+    tmp = tempfile.mkdtemp(prefix="cb_segleak_")
+    old = tempfile.tempdir
+    tempfile.tempdir = tmp
+    try:
+        found = segdiff.compile_group("int add2(int a, int b) { return a + b; }\n")
+        assert "_add2" in found, sorted(found)
+        assert os.listdir(tmp) == [], os.listdir(tmp)
+    finally:
+        tempfile.tempdir = old
+
+
 def test_origin_notes_calls_to_compiler_helpers():
     """analyze.origin: a call to one of the C compiler's helpers (named: __aFlmul, __aNchkstk ...) is noted in the
     function's compiler notes, near or far (the lookup was `imported.get(<address>)` in a dict keyed by import
@@ -317,6 +337,7 @@ def main():
                test_streamio_offset_labels_and_perform_function_at, test_apply_jump_sd_4bl_writes_the_branch,
                test_xsm3_challenge_verify_answers_a_valid_packet, test_candidates_localize_twice_lays_out_the_merged_struct_array_the_same,
                test_java_rules_findings_of_one_line_come_in_name_order, test_data_declared_size_takes_the_first_declaration_by_name,
+               test_segdiff_compile_group_leaves_no_work_folder,
                test_origin_notes_calls_to_compiler_helpers,
                test_native_dosexec_loads_the_dll_once_from_two_threads):
         check(fn)

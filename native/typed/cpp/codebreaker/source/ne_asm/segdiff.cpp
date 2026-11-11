@@ -46,6 +46,13 @@ Corpus _target() { return Corpus(); }
 // ---------------------------------------------------------------------------
 py::dict<str, std::tuple<py::bytes, py::set<int64_t>>> compile_group(const str& csrc, const str& flags) {
     const cc16::Compiled r = cc16::compile_c(csrc, flags);
+    // (the emulator's work folder: compile_c leaves it to its caller)
+    struct Cleanup {
+        const std::optional<str>& work;
+        ~Cleanup() {
+            if (work && !work->empty()) py::shutil::rmtree(*work, true);
+        }
+    } cleanup{r.work};
     if (!r.obj) throw py::RuntimeError(("compile produced no OBJ:\n" + (r.log ? r.log->slice(0, 600) : str(""))).utf8());
     return omf::function_bytes(*r.obj);
 }
