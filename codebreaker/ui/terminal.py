@@ -664,7 +664,7 @@ class Home(Screen):
         try:
             mods = STORE.overview()
         except Exception as e:                                  # noqa: BLE001
-            self.app.call_from_thread(self.query_one("#totals", Static).update, Text(str(e), style="#e06c75"))
+            self.app.call_from_thread(lambda: self.query_one("#totals", Static).update(Text(str(e), style="#e06c75")))
             return
         rows = []
         for m in mods:
@@ -673,7 +673,7 @@ class Home(Screen):
             r["no-source"] = max(0, r["no-source"] - r["identified"])   # (a library function: not ours to judge)
             rows.append(r)
         self.app.call_from_thread(self.loaded, {"rows": rows})
-        self.sweep_now()
+        self.app.call_from_thread(self.sweep_now)            # (the widgets are the interface thread's to touch)
 
     def loaded(self, got):
         self.rows = got.get("rows", [])
