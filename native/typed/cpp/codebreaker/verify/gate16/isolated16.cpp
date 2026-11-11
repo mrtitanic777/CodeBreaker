@@ -16,6 +16,7 @@
 #include "codebreaker/verify/gate16/isolated16.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <map>
 #include <set>
 
@@ -26,6 +27,7 @@
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/emulate/pcode.hpp"
 #include "codebreaker/jobs/pool.hpp"
+#include "codebreaker/jobs/workers.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
 #include "codebreaker/verify/lane_common.hpp"
 #include "py_os.hpp"
@@ -734,6 +736,44 @@ py::str context_key(const std::shared_ptr<w16::Context>& c) {
     return py::hashlib::sha1(py::bytes(o.s)).hexdigest();
 }
 
+// ---- worker processes (jobs/workers): a share's inputs and answers travel in files ----------------------------------------------------
+std::string tables_text(const Tables& t) {
+    namespace W = jobs::workers;
+    std::string out;
+    for (const auto& kv : t.funcs.items())
+        out += "F " + W::hex(std::get<0>(kv).utf8()) + " " + std::to_string(std::get<0>(std::get<1>(kv))) + " " + (std::get<1>(std::get<1>(kv)) ? "1" : "0") + "\n";
+    for (const py::str& w : t.wide) out += "W " + W::hex(w.utf8()) + "\n";
+    for (const auto& kv : t.place.items())
+        out += "P " + W::hex(std::get<0>(kv).utf8()) + " " + std::to_string(std::get<0>(std::get<1>(kv))) + " " + std::to_string(std::get<1>(std::get<1>(kv))) + "\n";
+    return out;
+}
+Tables tables_from(const std::string& text) {
+    namespace W = jobs::workers;
+    Tables t;
+    size_t at = 0;
+    while (at < text.size()) {
+        size_t nl = text.find('\n', at);
+        if (nl == std::string::npos) nl = text.size();
+        const std::string line = text.substr(at, nl - at);
+        at = nl + 1;
+        if (line.size() < 3) continue;
+        W::Dec d(line.substr(2));
+        if (line[0] == 'F') {
+            const py::str n(d.s());
+            const int64_t a = d.i();
+            const bool far_ = d.i() != 0;
+            t.funcs.set(n, std::make_tuple(a, far_));
+        } else if (line[0] == 'W') {
+            t.wide.append(py::str(d.s()));
+        } else if (line[0] == 'P') {
+            const py::str n(d.s());
+            const int64_t seg = d.i();
+            const int64_t off = d.i();
+            t.place.set(n, core16::SegOff(seg, off));
+        }
+    }
+    return t;
+}
 }  // namespace
 
 py::list<Checked> check(const py::str& original, const py::str& folder, const py::list<py::str>& names_in,
@@ -748,7 +788,10 @@ py::list<Checked> check(const py::str& original, const py::str& folder, const py
     if (!workers) {
         std::optional<py::str> env = py::os::environ_::get(py::str("CB_GATE_WORKERS"));
         int64_t asked = env && !env->empty() ? py::int_parse(*env) : 0;
-        workers = asked ? asked : base::parallel::workers();
+        // The Python ran each share in a process of its own. Unicorn and the tracer keep state per process (the code buffer,
+        // the callback slots), so shares on threads corrupt each other: one share at a time unless CB_GATE_WORKERS asks.
+        // (each share is a process of this program when it can start them, else the caller's own, one at a time)
+        workers = asked ? asked : (jobs::workers::enabled() ? jobs::workers::count() : 1);
     }
     workers = std::max<int64_t>(1, workers);
     Tables tables = tables_in ? *tables_in : _tables(original);
@@ -763,6 +806,41 @@ py::list<Checked> check(const py::str& original, const py::str& folder, const py
             shares.append(share);
         }
         auto one = [&](const py::list<py::str>& share) -> py::list<Checked> {
+            if (jobs::workers::enabled()) {
+                // a worker process: the share and the tables in files, the answer in one
+                namespace W = jobs::workers;
+                const std::string dir = W::scratch_folder();
+                std::string nm;
+                for (const py::str& n : share) nm += W::hex(n.utf8()) + "\n";
+                W::write_file(dir + "\\names.txt", nm);
+                W::write_file(dir + "\\tables.txt", tables_text(tables));
+                const int64_t rc = W::run({"gate", W::hex(original.utf8()), W::hex(folder.utf8()), image_in ? W::hex(image_in->utf8()) : std::string("-"),
+                                           dir + "\\tables.txt", dir + "\\names.txt", dir + "\\answer.txt"});
+                py::list<Checked> res;
+                std::set<py::str, bool (*)(const py::str&, const py::str&)> got(code_less);
+                const std::string answer = W::read_file(dir + "\\answer.txt");
+                size_t at = 0;
+                while (at < answer.size()) {
+                    size_t nl = answer.find('\n', at);
+                    if (nl == std::string::npos) nl = answer.size();
+                    if (nl > at) {
+                        W::Dec d(answer.substr(at, nl - at));
+                        Checked c;
+                        c.name = py::str(d.s());
+                        c.verdict = py::str(d.s());
+                        c.why = py::str(d.s());
+                        got.insert(c.name);
+                        res.append(c);
+                    }
+                    at = nl + 1;
+                }
+                std::error_code ec;
+                std::filesystem::remove_all(dir, ec);
+                for (const py::str& n : share)
+                    if (!got.count(n))
+                        res.append(Checked{n, py::str(V::INCONCLUSIVE), py::str("the checker failed: the worker process gave no answer (exit ") + py::to_str(rc) + py::str(")")});
+                return res;
+            }
             py::list<Checked> items;
             std::set<py::str, bool (*)(const py::str&, const py::str&)> got(code_less);
             py::str why;
@@ -1042,4 +1120,28 @@ py::list<Checked> check(const py::str& original, const py::str& folder, const py
     return out;
 }
 
+// A worker process's share: args = original, folder, image or "-", tables file, names file, answer file (all text hex where it is not a path).
+int worker_main(const std::vector<std::string>& args) {
+    namespace W = jobs::workers;
+    if (args.size() < 6) return 2;
+    const py::str original(W::unhex(args[0])), folder(W::unhex(args[1]));
+    const std::string image = W::unhex(args[2]);
+    const Tables tables = tables_from(W::read_file(args[3]));
+    py::list<py::str> names;
+    {
+        const std::string text = W::read_file(args[4]);
+        size_t at = 0;
+        while (at < text.size()) {
+            size_t nl = text.find('\n', at);
+            if (nl == std::string::npos) nl = text.size();
+            if (nl > at) names.append(py::str(W::unhex(text.substr(at, nl - at))));
+            at = nl + 1;
+        }
+    }
+    const py::list<Checked> rows = check(original, folder, names, args[2] == "-" ? std::optional<py::str>() : std::optional<py::str>(py::str(image)), std::nullopt, 1, tables, false);
+    std::string out;
+    for (const Checked& c : rows) out += W::Enc().s(c.name.utf8()).s(c.verdict.utf8()).s(c.why.utf8()).text() + "\n";
+    W::write_file(args[5], out);
+    return 0;
+}
 }  // namespace codebreaker::verify::gate16::isolated16

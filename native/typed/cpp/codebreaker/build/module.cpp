@@ -47,6 +47,7 @@
 #include "codebreaker/build/watcom.hpp"
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/emulate/emulator.hpp"
+#include "codebreaker/engine/lanes_wiring.hpp"
 #include "codebreaker/emulate/pcode.hpp"
 #include "codebreaker/emulate/windows16.hpp"
 #include "codebreaker/formats/detect.hpp"
@@ -55,6 +56,7 @@
 #include "codebreaker/formats/pe.hpp"
 #include "codebreaker/formats/resources.hpp"
 #include "codebreaker/jobs/pool.hpp"
+#include "codebreaker/jobs/workers.hpp"
 #include "codebreaker/platforms/win16.hpp"
 #include "codebreaker/source/assembly.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
@@ -276,6 +278,7 @@ bool Built::linked() const { return image && !image->empty(); }
 
 // A build and what was found out about it.
 py::str Built::report() const {
+    if (carried_report) return *carried_report;
     if (!linked()) {
         return py::percent("%s: NOT BUILT: %s", name, error);
     }
@@ -2900,7 +2903,7 @@ std::optional<py::str> _build16(Built& b, const py::str& path, const decompile::
         if (!fresh.count(sub.utf8())) {                        // (the header beside the function, as in its own folder -- this build's, not one left from before)
             fresh.insert(sub.utf8());
             write_text(py::os::path::join(sub, py::str("m.h")), mheader);
-            build::functions::_HEADER.set(sub, base::cache::key(Cs{mheader}));
+            build::functions::set_header_key(sub, base::cache::key(Cs{mheader}));
         }
         const py::str stem = py::os::path::basename(stems.at(name));
         const py::str why = build::functions::_compile(wcc, cat(cflags, py::list<py::str>{py::percent("-nt=CODE%dX", *seg), py::str("-nc=XCODE")}), env, sub, stem, text);
@@ -3525,7 +3528,36 @@ py::str doc_text() {
         "    imports     nothing imported that the original does not import\n"
         "    resources   the same resources (build/resources.compare)\n"
         "    runs        loaded in the emulator, each exported function is called with zero arguments\n"
-        "                and what it did is set beside what the original does\n");
+        "                and what it did is set beside what the original does\n"
+        "\n"
+        "What \"built\" means here, plainly: a function the compiler rejected is in the image as a\n"
+        "stand-in that returns 0, and so is anything called that has no reconstruction; a module can\n"
+        "link, export everything and still do little. The report counts both. The check is of the\n"
+        "container, not of behaviour -- behaviour is what verify/ judges, one function at a time.\n"
+        "\n"
+        "Toolchain facts this relies on (each cost a failed build once):\n"
+        "\n"
+        "  * OpenWatcom's tools are started by full path: Windows searches the caller's PATH, not the\n"
+        "    environment handed to the tool.\n"
+        "  * 16-bit: the C library to link is lib286/win/clib?.lib (the same file as the source tree's\n"
+        "    bld/clib/library/windows.086/m?/clib?.lib). lib286/clibl.lib one level up is an empty\n"
+        "    stub, and it is found first if lib286 is on the library path before lib286/win.\n"
+        "  * 16-bit: floating point needs -fpi87 (the emulator library lacks the fix-up symbols -fpi\n"
+        "    asks for, and -fpc does not work in this build).\n"
+        "  * 16-bit: a module is a library because the linker is told `format windows dll` -- that sets\n"
+        "    the header's library flag without the stock start-up object, which wants a LIBMAIN. The\n"
+        "    header flag, not the file name, says what the original was.\n"
+        "  * 16-bit: one segment holds 64 KB, and a near call cannot leave its segment, so each function\n"
+        "    is compiled into a code segment named for the original segment it came from (-nt=). The\n"
+        "    compiler's own helpers (32-bit multiply and divide, ...) then cannot be near either: the\n"
+        "    functions are compiled for the medium model (-mm: far code, near data -- the per-function\n"
+        "    builds use -ms, which is the same for data) and linked with the medium-model library.\n"
+        "  * 16-bit: the data object is linked first, so it starts at offset 0 of the automatic data\n"
+        "    segment and the code's offsets into it stay right.\n"
+        "  * Linker symbols holding `@`, `?` or `$` are quoted (unquoted, `@` means \"read a file\").\n"
+        "  * Exports are tied to the function at the export's address, and the entry point to the\n"
+        "    function at the original's entry address; a library with no entry point is not loadable\n"
+        "    as one, so one whose entry was not reconstructed gets a stand-in that reports success.\n");
 }
 
 }  // namespace
@@ -3704,6 +3736,11 @@ Built build(const py::str& module, const std::optional<py::str>& outdir, bool ca
         throw py::SystemExit(py::percent("no module %s in the corpus", py::repr(module)));
     }
     const py::str path = *path0;
+    // (the engine is the default: the same build made of facts, only what changed made again -- engine/win16, engine/lanes; CB_ENGINE=0 takes the path below)
+    if (!gated_in) {
+        auto delegated = engine::lanes_wiring::delegate_build(module, path, outdir, call, log);
+        if (delegated) return *delegated;
+    }
     Built b(path);
     std::optional<py::dict<py::str, py::str>> gated = gated_in;
     b.gated = gated ? gated->copy() : py::dict<py::str, py::str>();
@@ -3828,7 +3865,11 @@ Built build(const py::str& module, const std::optional<py::str>& outdir, bool ca
 py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std::function<std::optional<py::str>(const py::str&)>& outdir_of, bool call,
                                     const Log& log, const std::optional<int64_t>& jobs_in) {
     const int64_t jobs = jobs_in && *jobs_in ? *jobs_in : base::parallel::workers();
-    const int64_t procs = std::max<int64_t>(1, std::min<int64_t>(jobs, py::len(modules)));
+    // (the Python gave each module a process of its own. The gate and the judge run Unicorn and the tracer, whose state is per process,
+    // so builds on threads corrupt each other: one at a time unless CB_BUILD_THREADS asks for more)
+    // (processes of this program when it can start them -- jobs/workers -- else one at a time)
+    const bool as_processes = jobs::workers::enabled();
+    const int64_t procs = py::os::environ_::get(py::str("CB_BUILD_THREADS")) || as_processes ? std::max<int64_t>(1, std::min<int64_t>(jobs, py::len(modules))) : 1;
     py::dict<py::str, Built> out;
     if (procs == 1) {
         for (const py::str& m : modules) {
@@ -3850,6 +3891,40 @@ py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std:
     std::stable_sort(by_size.begin(), by_size.end(), [&](const py::str& a, const py::str& b) { return size(a) < size(b); });
     auto one = [&](const py::str& m) -> std::pair<py::str, Built> {
         emit(log, py::percent("%s: building (one of %d at once)", py::os::path::basename(m), procs));
+        if (as_processes) {
+            namespace W = jobs::workers;
+            const std::string dir = W::scratch_folder();
+            const auto od = outdir_of ? outdir_of(m) : std::nullopt;
+            const int64_t rc = W::run({"build", W::hex(m.utf8()), od ? W::hex(od->utf8()) : std::string("-"), call ? "1" : "0", dir + "\\answer.txt"});
+            const std::string answer = W::read_file(dir + "\\answer.txt");
+            std::error_code ec;
+            std::filesystem::remove_all(dir, ec);
+            if (answer.empty())
+                throw py::RuntimeError(py::percent("%s: the build stopped (exit %d)", m, rc).utf8());
+            const auto found = base::corpus::retail(m);
+            Built b(found ? *found : m);
+            size_t at = 0;
+            while (at < answer.size()) {
+                size_t nl = answer.find('\n', at);
+                if (nl == std::string::npos) nl = answer.size();
+                if (nl > at) {
+                    const std::string line = answer.substr(at, nl - at);
+                    W::Dec d(line.substr(2));
+                    switch (line[0]) {
+                        case 'R': b.carried_report = py::str(d.s()); break;
+                        case 'I': { const std::string v = d.s(); if (!v.empty()) b.image = py::str(v); break; }
+                        case 'F': { const std::string v = d.s(); if (!v.empty()) b.folder = py::str(v); break; }
+                        case 'G': { const py::str k(d.s()); b.gated.set(k, py::str(d.s())); break; }
+                        case 'P': b.placed_c.add(py::str(d.s())); break;
+                        case 'M': b.moved_c.add(py::str(d.s())); break;
+                        case 'J': { const py::str k(d.s()); b.rejected.set(k, py::str(d.s())); break; }
+                        default: break;
+                    }
+                }
+                at = nl + 1;
+            }
+            return {m, b};
+        }
         return {m, build(m, outdir_of ? outdir_of(m) : std::nullopt, call, [](const py::str&) {})};
     };
     py::list<py::str> todo;
@@ -3865,6 +3940,23 @@ py::dict<py::str, Built> build_many(const py::list<py::str>& modules, const std:
         out.set(m, by_name.at(m));
     }
     return out;
+}
+
+int64_t build_worker(const std::vector<std::string>& args) {
+    namespace W = jobs::workers;
+    if (args.size() < 4) return 2;
+    const py::str module(W::unhex(args[0]));
+    const std::string od = W::unhex(args[1]);
+    const Built b = build(module, od.empty() ? std::optional<py::str>() : std::optional<py::str>(py::str(od)), args[2] == "1", [](const py::str&) {});
+    std::string out = "R " + W::Enc().s(b.report().utf8()).text() + "\n";
+    out += "I " + W::Enc().s(b.image ? b.image->utf8() : "").text() + "\n";
+    out += "F " + W::Enc().s(b.folder ? b.folder->utf8() : "").text() + "\n";
+    for (const auto& kv : b.gated.items()) out += "G " + W::Enc().s(std::get<0>(kv).utf8()).s(std::get<1>(kv).utf8()).text() + "\n";
+    for (const py::str& n : b.placed_c) out += "P " + W::Enc().s(n.utf8()).text() + "\n";
+    for (const py::str& n : b.moved_c) out += "M " + W::Enc().s(n.utf8()).text() + "\n";
+    for (const auto& kv : b.rejected.items()) out += "J " + W::Enc().s(std::get<0>(kv).utf8()).s(std::get<1>(kv).utf8()).text() + "\n";
+    W::write_file(args[3], out);
+    return 0;
 }
 
 // python -m codebreaker build <module> [--out DIR] [--no-run] [--engine] [--no-engine]

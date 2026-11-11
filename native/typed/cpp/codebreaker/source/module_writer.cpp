@@ -17,6 +17,7 @@
 #include "codebreaker/formats/powerpc_image.hpp"
 #include "codebreaker/formats/xex.hpp"
 #include "codebreaker/knowledge/sources.hpp"
+#include "codebreaker/analyze/image_bridge.hpp"
 #include "codebreaker/source/classes_writer.hpp"
 #include "codebreaker/source/java_writer.hpp"
 #include "codebreaker/source/placement.hpp"
@@ -30,13 +31,6 @@
 #include "codebreaker/verify/reconstruct.hpp"
 #include "codebreaker/verify/verdicts.hpp"
 #include "py_settings.hpp"
-
-// What analyze.globals and analyze.strings read of an image (their own interfaces, which analyze.image's Image is to
-// stand behind -- see analyze/image.hpp): analyze.image gives these two views of an image it has loaded.
-namespace codebreaker::analyze::image {
-globals::Image& as_globals(Image& img);
-strings::Image& as_strings(Image& img);
-}  // namespace codebreaker::analyze::image
 
 namespace codebreaker::source::module_writer {
 
@@ -217,7 +211,7 @@ py::str _globals_note(const py::str& path, const py::str& header) {
     py::dict<int64_t, analyze::globals::Variable> var;
     try {
         auto img = analyze::image::load(path);
-        var = analyze::globals::variables(analyze::image::as_globals(*img));
+        var = analyze::globals::variables(analyze::bridge::globals_of(*img));
     } catch (const std::exception&) {
         return py::str("");
     }
@@ -249,7 +243,7 @@ source::readable::Readable::StringAt _string_reader(const py::str& path, const s
     }
     return [img](int64_t address) -> std::optional<py::str> {
         try {
-            auto found = analyze::strings::at(analyze::image::as_strings(*img), address);
+            auto found = analyze::bridge::string_at(*img, address);
             if (found) return std::get<0>(*found);
             return std::nullopt;
         } catch (const std::exception&) {

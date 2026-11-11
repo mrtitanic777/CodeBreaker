@@ -9,9 +9,11 @@
 #include <exception>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
+#include "codebreaker/base/capstone_dll.hpp"
 #include "codebreaker/emulate/native_trace.hpp"
 
 namespace codebreaker::emulate::unicorn_uc {
@@ -47,7 +49,8 @@ template <class T> bool sym(HMODULE m, const char* name, T& slot) {
 }
 
 const Lib& lib() {
-    if (!g_loaded) throw py::ImportError("No module named 'unicorn'");
+    // (nobody called load_unicorn(): Python's `import unicorn` finds the package itself, so look for its DLL as it would)
+    if (!g_loaded) load_unicorn(base::capstone_dll::find_unicorn());
     return L;
 }
 
@@ -63,6 +66,13 @@ const x86_reg_row REGS[] = {
 #include "codebreaker/emulate/unicorn_x86_regs.inc"
 };
 
+// Unicorn keeps global state (the TCG code buffer) that opening, closing and mapping touch: the gate opens machines on several
+// threads (Python's unicorn binding is called under the GIL-held ctypes layer), so those four calls take one lock.
+std::mutex& uc_global() {
+    static std::mutex m;
+    return m;
+}
+
 class UnicornUc;
 
 struct HookData {
@@ -72,18 +82,27 @@ struct HookData {
 
 class UnicornUc : public core16::Uc {
   public:
-    explicit UnicornUc(int mode) { check(lib().open(UC_ARCH_X86, static_cast<uc_mode>(mode), &uc_)); }
+    explicit UnicornUc(int mode) {
+        const Lib& l = lib();
+        std::lock_guard<std::mutex> hold(uc_global());
+        check(l.open(UC_ARCH_X86, static_cast<uc_mode>(mode), &uc_));
+    }
     ~UnicornUc() override {
-        if (uc_) L.close(uc_);
+        if (uc_) {
+            std::lock_guard<std::mutex> hold(uc_global());
+            L.close(uc_);
+        }
     }
     UnicornUc(const UnicornUc&) = delete;
     UnicornUc& operator=(const UnicornUc&) = delete;
 
     void* handle() const override { return uc_; }
     void mem_map(int64_t address, int64_t size) override {
+        std::lock_guard<std::mutex> hold(uc_global());
         check(L.mem_map(uc_, static_cast<uint64_t>(address), static_cast<size_t>(size), UC_PROT_ALL));
     }
     void mem_unmap(int64_t address, int64_t size) override {
+        std::lock_guard<std::mutex> hold(uc_global());
         check(L.mem_unmap(uc_, static_cast<uint64_t>(address), static_cast<size_t>(size)));
     }
     py::bytes mem_read(int64_t address, int64_t size) override {
@@ -240,6 +259,12 @@ std::optional<int64_t> x86_reg(const py::str& name) {
     auto it = table.find(name.utf8());
     if (it == table.end()) return std::nullopt;
     return it->second;
+}
+
+py::dict<py::str, int64_t> x86_register_table() {
+    py::dict<py::str, int64_t> out;
+    for (const x86_reg_row& r : REGS) out.set(py::str("UC_X86_REG_") + py::str(r.name), r.id);
+    return out;
 }
 
 std::shared_ptr<core16::Uc> open_x86(int64_t bits) {

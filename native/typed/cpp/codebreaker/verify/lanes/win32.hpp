@@ -166,7 +166,15 @@ class Win32Kind final : public reconstruct::Kind {
     reconstruct::Built build(const reconstruct::Prepared& m, const py::str& module_path, const py::str& work) const override;
     reconstruct::Verdict judge(const reconstruct::Context& context, const reconstruct::Item& item) const override;
     bool PER_FUNCTION() const override { return true; }
+    std::optional<std::string> encode_context(const reconstruct::Context& context) const override;
+    reconstruct::Context decode_context(const std::string& text) const override;
+    std::string encode_item(const reconstruct::Item& item) const override;
+    reconstruct::Item decode_item(const std::string& text) const override;
 };
+
+// The one Win32Kind, and its registration under "pe" (as win16::register_lane registers "ne").
+const std::shared_ptr<reconstruct::Kind>& kind();
+void register_lane();
 
 // ---- the fingerprint -----------------------------------------------------------------------------------------------
 // compiler/CRT-runtime imports the toolchain emits are ignored (not the body's own logic).

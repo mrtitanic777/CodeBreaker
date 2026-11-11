@@ -26,7 +26,9 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
+#include <vector>
 
 #include "codebreaker/engine/native_engine.hpp"
 #include "codebreaker/verify/verdicts.hpp"
@@ -82,6 +84,11 @@ class Kind {
     virtual bool PER_FUNCTION() const { return false; }   // getattr(kind, "PER_FUNCTION", False)
     virtual bool LIBRARY() const { return true; }         // it has runtime-library functions to identify
     virtual std::optional<py::str> SOURCE_REV() const { return std::nullopt; }   // default: decompiler::REV
+    // How the judge's inputs go to a worker process (jobs/workers): text a worker can read back. A lane that does not say judges in the caller's process.
+    virtual std::optional<std::string> encode_context(const Context& context) const { (void)context; return std::nullopt; }
+    virtual Context decode_context(const std::string& text) const { (void)text; return nullptr; }
+    virtual std::string encode_item(const Item& item) const { (void)item; return ""; }
+    virtual Item decode_item(const std::string& text) const { (void)text; return nullptr; }
 };
 
 // the lanes of every platform (name -> its Kind)
@@ -119,5 +126,8 @@ py::dict<py::str, py::str> signatures(const Prepared& m, const std::optional<py:
 std::tuple<py::str, py::str> run(const py::str& module_path,
                                  const std::shared_ptr<engine::native_engine::FunctionStore>& fs = nullptr,
                                  const std::function<void(const py::str&)>& log = nullptr);
+
+// A judge worker process's share (jobs/workers): args = lane name, context file, items file, answer file.
+int judge_worker(const std::vector<std::string>& args);
 
 }  // namespace codebreaker::verify::reconstruct

@@ -5,6 +5,7 @@
 // beside the original in the 16-bit emulator (emulate/windows16).
 
 #include "codebreaker/verify/lanes/win16.hpp"
+#include "codebreaker/jobs/workers.hpp"
 
 #include <algorithm>
 #include <map>
@@ -1320,13 +1321,81 @@ class Win16Kind : public reconstruct::Kind {
         return win16::as_prepared(std::make_shared<win16::Prepared>(win16::prepare(module_path, work)));
     }
     reconstruct::Built build(const reconstruct::Prepared& m, const py::str& module_path, const py::str& work) const override {
-        std::shared_ptr<win16::Prepared> mine = std::static_pointer_cast<win16::Prepared>(m.lane);
+        // (the lane holds the Module16 base of the Prepared, as build/module.cpp reads it: shared_ptr<void> carries no cast)
+        std::shared_ptr<win16::Prepared> mine = std::static_pointer_cast<win16::Prepared>(std::static_pointer_cast<decompile::c_text::Module16>(m.lane));
         win16::Built b = win16::build(*mine, module_path, work);
         reconstruct::Built out;
         out.context = std::make_shared<JudgeContext>(b.context);
         for (const auto& kv : b.items.items()) out.items.set(std::get<0>(kv), std::make_shared<JudgeItem>(std::get<1>(kv)));
         out.dropped = b.dropped;
         return out;
+    }
+    std::optional<std::string> encode_context(const reconstruct::Context& context) const override {
+        namespace W = jobs::workers;
+        const JudgeContext& c = *std::static_pointer_cast<JudgeContext>(context);
+        W::Enc e;
+        e.s(c.module_path.utf8()).s(c.dll.utf8()).s(c.data_image.raw()).i(static_cast<int64_t>(c.own.size()));
+        for (const auto& p : c.own) e.i(std::get<0>(p)).i(std::get<1>(p));
+        e.i(static_cast<int64_t>(c.order.size()));
+        for (const auto& kv : c.order.items()) e.i(std::get<0>(kv)).i(std::get<1>(kv));
+        return e.text();
+    }
+    reconstruct::Context decode_context(const std::string& text) const override {
+        namespace W = jobs::workers;
+        W::Dec d(text);
+        auto c = std::make_shared<JudgeContext>();
+        c->module_path = py::str(d.s());
+        c->dll = py::str(d.s());
+        c->data_image = py::bytes(d.s());
+        for (int64_t n = d.i(); n > 0; --n) {
+            const int64_t a = d.i();
+            const int64_t b = d.i();
+            c->own.append(std::make_tuple(a, b));
+        }
+        for (int64_t n = d.i(); n > 0; --n) {
+            const int64_t a = d.i();
+            const int64_t b = d.i();
+            c->order.set(a, b);
+        }
+        return c;
+    }
+    std::string encode_item(const reconstruct::Item& item) const override {
+        namespace W = jobs::workers;
+        const JudgeItem& it = *std::static_pointer_cast<JudgeItem>(item);
+        W::Enc e;
+        e.s(it.key.utf8()).i(it.seg).i(it.off).i(it.near_ ? 1 : 0).i(it.wide ? (*it.wide ? 1 : 0) : -1).i(std::get<0>(it.span)).i(std::get<1>(it.span)).i(it.insns).i(it.bseg).i(it.boff);
+        e.i(it.frame ? static_cast<int64_t>(it.frame->size()) : -1);
+        if (it.frame)
+            for (const auto& p : *it.frame) e.i(std::get<0>(p)).i(std::get<1>(p));
+        return e.text();
+    }
+    reconstruct::Item decode_item(const std::string& text) const override {
+        namespace W = jobs::workers;
+        W::Dec d(text);
+        auto it = std::make_shared<JudgeItem>();
+        it->key = py::str(d.s());
+        it->seg = d.i();
+        it->off = d.i();
+        it->near_ = d.i() != 0;
+        const int64_t wide = d.i();
+        if (wide >= 0) it->wide = wide != 0;
+        const int64_t s0 = d.i();
+        const int64_t s1 = d.i();
+        it->span = std::make_tuple(s0, s1);
+        it->insns = d.i();
+        it->bseg = d.i();
+        it->boff = d.i();
+        const int64_t nf = d.i();
+        if (nf >= 0) {
+            Frame f;
+            for (int64_t k = 0; k < nf; ++k) {
+                const int64_t a = d.i();
+                const int64_t b = d.i();
+                f.append(std::make_tuple(a, b));
+            }
+            it->frame = f;
+        }
+        return it;
     }
     reconstruct::Verdict judge(const reconstruct::Context& context, const reconstruct::Item& item) const override {
         return win16::_judge(*std::static_pointer_cast<JudgeContext>(context), *std::static_pointer_cast<JudgeItem>(item));
@@ -1343,7 +1412,10 @@ reconstruct::Prepared as_prepared(const std::shared_ptr<Prepared>& m) {
     out.key = m->key;
     out.all_keys = m->all_keys;
     out.sig = m->sig;
-    out.lane = m;
+    {
+        const std::shared_ptr<decompile::c_text::Module16> base = m;   // Prepared::lane holds a Module16 (what build::module::build casts it to)
+        out.lane = base;
+    }
     return out;
 }
 

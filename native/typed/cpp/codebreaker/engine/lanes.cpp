@@ -7,6 +7,7 @@
 // object again by the lane's own prepare / build (the Python does the same for a build whose files are gone).
 
 #include "codebreaker/engine/lanes.hpp"
+#include "codebreaker/engine/lanes_wiring.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -248,8 +249,15 @@ struct RowsHint {
 }  // namespace
 
 void register_platform(const LanePlatform& p) { g_platforms.append(p); }
-const py::list<LanePlatform>& platforms() { return g_platforms; }
-py::list<py::str> kinds() { return g_kinds; }
+// (the platforms that have a lane are registered once, as the Python imports them: lanes_wiring)
+const py::list<LanePlatform>& platforms() {
+    lanes_wiring::register_core_platforms();
+    return g_platforms;
+}
+py::list<py::str> kinds() {
+    lanes_wiring::register_core_platforms();
+    return g_kinds;
+}
 
 py::dict<py::str, py::str> reconstruct_signatures(const verify::reconstruct::Prepared& m, const verify::reconstruct::Kind& kind) {
     // {name: signature} as reconstruct.run gives them: per function for a lane that builds per function, else the
@@ -525,6 +533,7 @@ py::str _declare(const LanePlatform& p) {
 }
 
 bool on(const py::str& path) {
+    lanes_wiring::register_core_platforms();
     for (const LanePlatform& p : g_platforms)
         if (p.identifies && p.identifies(path)) return !p.lane.empty() && g_kinds.contains(p.name);
     return false;
@@ -533,6 +542,7 @@ bool on(const py::str& path) {
 namespace {
 
 const LanePlatform* identify_(const py::str& path) {
+    lanes_wiring::register_core_platforms();
     for (const LanePlatform& p : g_platforms)
         if (p.identifies && p.identifies(path)) return &p;
     return nullptr;
@@ -581,7 +591,7 @@ Judged judged(const py::str& path, const std::function<void(const py::str&)>& lo
         row.reason = jstr(jat(r, "reason"));
         row.limits = jstr(jat(r, "limits"));
         row.detail = jstr(jat(r, "detail"));
-        row.problem = r.dict.contains(py::str("problem")) ? jopt(jat(r, "problem")) : std::optional<py::str>("none");
+        row.problem = r.dict.contains(py::str("problem")) ? jopt(jat(r, "problem")) : std::optional<py::str>();   // (a judged row has no problem: None, as the Python records it)
         out.rows.append(row);
     }
     for (const auto& kv : jat(got, "built").dict.items()) out.built.set(std::get<0>(kv), jstr(std::get<1>(kv)));

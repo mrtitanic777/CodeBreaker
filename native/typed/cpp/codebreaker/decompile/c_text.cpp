@@ -412,13 +412,16 @@ py::set<py::str> str_set_of_(const Wire& v) {
     return out;
 }
 
+// (a fact the back end left as None or empty reads as absent: the Python reads each as `found.get(key) or <empty>`)
+bool given(const Wire& w, const char* key) { return w.has(key) && ::py::truthy(w.get(key)); }
+
 // what the back end left in the facts, read back into the module facts
 void read_back(ModuleFacts& m, const Wire& w) {
     if (w.has("declared") && !w.get("declared").is_none()) m.declared = as_str(w.get("declared"));
     if (w.has("registers")) m.registers = opt_str(w.get("registers"));
     if (w.has("structs_used")) m.structs_used = str_set_of_(w.get("structs_used"));
     if (w.has("novalue")) m.novalue = ::py::truthy(w.get("novalue"));
-    if (w.has("interrupts")) {
+    if (given(w, "interrupts")) {
         for (const Wire& t : w.get("interrupts").seq()) {
             Interrupt i;
             i.vector = t[0].as_int();
@@ -426,11 +429,11 @@ void read_back(ModuleFacts& m, const Wire& w) {
             m.interrupts.insert(i);
         }
     }
-    if (w.has("selector_decls")) {
+    if (given(w, "selector_decls")) {
         m.selector_decls = py::list<py::str>();
         for (const Wire& x : w.get("selector_decls").seq()) m.selector_decls.append(as_str(x));
     }
-    if (w.has("selector_shared")) {
+    if (given(w, "selector_shared")) {
         m.selector_shared = py::dict<py::str, py::dict<py::str, py::dict<int64_t, py::str>>>();
         for (const auto& kv : w.get("selector_shared").items()) {
             py::dict<py::str, py::dict<int64_t, py::str>> per;
@@ -442,11 +445,11 @@ void read_back(ModuleFacts& m, const Wire& w) {
             m.selector_shared.set(as_str(kv.first), per);
         }
     }
-    if (w.has("selector_imports")) {
+    if (given(w, "selector_imports")) {
         m.selector_imports = py::dict<py::str, py::str>();
         for (const auto& kv : w.get("selector_imports").items()) m.selector_imports.set(as_str(kv.first), as_str(kv.second));
     }
-    if (w.has("names")) {
+    if (given(w, "names")) {
         NamesUsed n;
         const Wire& u = w.get("names");
         n.called = str_set_of_(u.get("called"));
@@ -458,13 +461,15 @@ void read_back(ModuleFacts& m, const Wire& w) {
         n.mk_fp = ::py::truthy(u.get("mk_fp"));
         m.names = n;
     }
-    if (w.has("heading")) {
+    if (given(w, "heading")) {
         Heading h;
         const Wire& x = w.get("heading");
         const Wire& params = x.get("params");
-        py::list<std::tuple<py::str, py::str>> plist;
-        for (const Wire& p : params[1].seq()) plist.append(std::make_tuple(as_str(p[0]), as_str(p[1])));
-        h.params = std::make_tuple(as_str(params[0]), plist);
+        if (::py::truthy(params)) {
+            py::list<std::tuple<py::str, py::str>> plist;
+            for (const Wire& p : params[1].seq()) plist.append(std::make_tuple(as_str(p[0]), as_str(p[1])));
+            h.params = std::make_tuple(as_str(params[0]), plist);
+        }
         for (const auto& kv : x.get("types").items()) h.types.set(as_str(kv.first), as_str(kv.second));
         for (const Wire& c : x.get("calls").seq()) {
             py::list<py::str> args;
@@ -483,9 +488,13 @@ namespace {
 
 Wire heading_wire(const Heading& h) {
     Wire w = Wire::dict();
-    std::vector<Wire> plist;
-    for (const auto& p : std::get<1>(h.params).vec()) plist.push_back(Wire::tuple({Ws(std::get<0>(p)), Ws(std::get<1>(p))}));
-    w.set("params", Wire::tuple({Ws(std::get<0>(h.params)), Wire::list(plist)}));
+    if (h.params) {
+        std::vector<Wire> plist;
+        for (const auto& p : std::get<1>(*h.params).vec()) plist.push_back(Wire::tuple({Ws(std::get<0>(p)), Ws(std::get<1>(p))}));
+        w.set("params", Wire::tuple({Ws(std::get<0>(*h.params)), Wire::list(plist)}));
+    } else {
+        w.set("params", Wire());
+    }
     Wire types = Wire::dict();
     for (const auto& kv : h.types.items()) types.set(Ws(std::get<0>(kv)), Ws(std::get<1>(kv)));
     w.set("types", types);
@@ -1889,7 +1898,7 @@ Module16 _compilable16(const py::str& module_path, const std::optional<py::str>&
             // (segment 0: an address the core folded to a constant -- a table index after it
             // copied a shared tail, LZEXPAND's sub_11_00AB `cRam00000095` -- an offset through
             // DS like the rest; it was declared nowhere and the C did not compile)
-            macros.push_back(S("#define ") + key + S(" (*(") + ty + S(" *)0x") + X((va >> 16) == 0 ? (va & 0xFFFF) : off) + S("))"));
+            macros.push_back(S("#define ") + key + S(" (*(") + ty + S(" *)0x") + X((va >> 16) == 0 ? (va & 0xFFFF) : off) + S(")"));
         } else if ((va >> 16) == 0x40) {
             // through the selector 0040h itself: the BIOS's data, which Windows keeps at that selector
             macros.push_back(S("#define ") + key + S(" (*(") + ty + S(" __far *)MK_FP(0x40, 0x") + X(va & 0xFFFF) + S("))"));
