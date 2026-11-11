@@ -44,7 +44,8 @@ def run(prj, want=None, show=False):
 
 
 def main(prj, argv):
-    want = [int(x, 16) for x in argv if not x.startswith("-") and all(c in "0123456789abcdefABCDEF" for c in x)]
+    want = [int(x, 16) for k, x in enumerate(argv)        # (the file --out names is not an address, whatever its name is made of)
+            if x and not x.startswith("-") and all(c in "0123456789abcdefABCDEF" for c in x) and not (k and argv[k - 1] == "--out")]
     rows = run(prj, want or None, "--show" in argv)
     tally = collections.Counter(v.split(":")[0] for a, v, s in rows)
     if "--out" in argv:
