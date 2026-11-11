@@ -25,6 +25,8 @@
 //   * `shape` (in_ecx / in_ecx_edx / identity) is a std::function<Vector(const Vector&)>; empty means the identity.
 //   * An item of build() (the Python's tuple (key, address, dll, entry, regs)) is `Item`; the judge's context is the
 //     module path.  regs: 2 for a function whose first two arguments are in ECX and EDX, 1 for ECX, else 0.
+//   * concolic::Vars carries `where` as an integer: for a register input (kind "reg") the Python's where is the register's name;
+//     here ECX is 1 and EDX is 2 (what _derive reads back; the explorer never looks at `where`).
 //   * `found` of directed_and_guided() (a dict the exploration is left in, ["got"]) is `Found`.
 //   * The ctypes-free emulator is called through emulate::emulator (TraceOptions, trace_function / recorded).
 //   * Module-level caches (_PROFILES, _IMAGE_SPAN, _INSN_COUNT, _THUNKS, _HARVEST, _FILL, _DATA) are private.
