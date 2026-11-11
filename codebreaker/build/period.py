@@ -63,6 +63,9 @@ class XenixC(object):
             os.environ["TARGET"] = self.target
             if self.tools not in sys.path:
                 sys.path.insert(0, self.tools)
+            cached = sys.modules.get("xcc")
+            if cached is not None and getattr(cached, "TARGET", self.target) != self.target:
+                del sys.modules["xcc"]      # (xcc.py reads TARGET when it is imported: the one loaded for another target is not this one's)
             self._xcc = importlib.import_module("xcc")
         return self._xcc
 
