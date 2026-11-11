@@ -49,7 +49,10 @@ class _Corpus(object):
     @staticmethod
     def resolve(module):
         from codebreaker.base import corpus
-        return corpus.resolve(module) or corpus.retail(module) or module
+        try:
+            return corpus.resolve(module)
+        except ValueError:                     # (resolve() raises for an unknown name; it never returned a falsy path)
+            return corpus.retail(module) or module
 
 
 def _target():
