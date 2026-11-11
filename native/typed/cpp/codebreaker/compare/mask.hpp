@@ -4,6 +4,7 @@
 // Old callers hold a mask as py::bytes (byte flags) or py::list<int64_t> (flags, or the bits left out of each word).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <tuple>
@@ -63,9 +64,11 @@ inline std::vector<cb::compare::mask::ByteMask> views(const std::vector<cb::Byte
 }  // namespace shim
 
 inline py::bytearray of(const py::list<int64_t>& offsets, int64_t size) {
+    if (size < 0) throw py::ValueError("negative count");   // bytearray(size)
     return shim::array(cb::compare::mask::of(shim::offsets(offsets), static_cast<std::size_t>(size)));
 }
 inline py::bytearray of(const py::set<int64_t>& offsets, int64_t size) {
+    if (size < 0) throw py::ValueError("negative count");   // bytearray(size)
     return shim::array(cb::compare::mask::of(shim::offsets(offsets), static_cast<std::size_t>(size)));
 }
 inline py::bytes blank(const py::bytes& code, py::list<int64_t> offsets) {
@@ -104,7 +107,11 @@ inline std::tuple<py::str, int64_t, int64_t, int64_t> distance(const py::bytes& 
         cb::Bytes fa = shim::flags(ma), fb = shim::flags(mb);
         r = m::distance(ba, bb, fa, fb);
     } else {
-        if (byteorder != py::str("little") && byteorder != py::str("big")) {
+        // (the Python's stringly arguments: its errors come where int.from_bytes and the shifts raised them)
+        if (unit == 0) throw py::ZeroDivisionError("integer division or modulo by zero");
+        if (unit < 0) throw py::ValueError("negative shift count");
+        const bool known_order = byteorder == py::str("little") || byteorder == py::str("big");
+        if (!known_order && static_cast<int64_t>(std::min(ba.size(), bb.size())) / unit > 0) {
             throw py::ValueError("byteorder must be either 'little' or 'big'");
         }
         auto wa = shim::bits(ma), wb = shim::bits(mb);

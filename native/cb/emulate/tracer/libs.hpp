@@ -5,6 +5,7 @@
 // *their* Unicorn, so it calls that very DLL: `use_libraries()` points the table at the DLLs named by path, once,
 // before the first run.
 #pragma once
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -36,9 +37,24 @@ struct CsLib {
     decltype(&cs_regs_access) regs_access = nullptr;
 };
 
-// The tables in force: the cb/core DLLs' unless use_libraries() named others.
-const UcLib& ucl();
-const CsLib& csl();
+namespace detail {
+struct Tables {
+    UcLib uc;
+    CsLib cs;
+};
+extern std::atomic<const Tables*> in_force;   // set once; read on every hook of every run
+const Tables& init_tables();                  // the cb/core DLLs' tables, made on first use
+}  // namespace detail
+
+// The tables in force: the cb/core DLLs' unless use_libraries() named others. One acquire load on the fast path.
+inline const UcLib& ucl() {
+    const detail::Tables* t = detail::in_force.load(std::memory_order_acquire);
+    return (t != nullptr ? *t : detail::init_tables()).uc;
+}
+inline const CsLib& csl() {
+    const detail::Tables* t = detail::in_force.load(std::memory_order_acquire);
+    return (t != nullptr ? *t : detail::init_tables()).cs;
+}
 
 // Call the Unicorn and Capstone DLLs at these full paths instead (loading an already loaded path gives the same
 // module: the Unicorn whose engines the caller made). False, with `err` set, when one will not load or lacks an
