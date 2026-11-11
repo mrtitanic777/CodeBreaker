@@ -5,9 +5,7 @@
 // tree is rewritten to them.
 //
 // Capstone: _frame reads each memory operand's *access* (capstone's `op.access & CS_AC_WRITE`), which the Insn of
-// describe.hpp does not carry. The capstone.dll describe.cpp loaded is already in the process, so this file asks the
-// loader for it by name and opens its own 16-bit decoder with detail (describe::decoder16(true) is called first so
-// that the DLL has been handed over and loaded).
+// describe.hpp does not carry: it reads capstone's own records from platforms::decoder(16, detail=True).
 #include "codebreaker/decompile/frame16.hpp"
 
 #include <algorithm>
@@ -21,6 +19,7 @@
 
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/decompile/l2tree.hpp"
+#include "codebreaker/platforms/package.hpp"
 #include "py_os.hpp"
 
 #ifdef _WIN32
@@ -40,36 +39,6 @@ using translate::ir::Dict;
 using translate::ir::Val;
 using List = Val::List;
 using Pair = std::pair<int64_t, int64_t>;
-
-// ---- capstone, with operand access --------------------------------------------------------------------------------
-struct Cs {
-    decltype(&cs_disasm) disasm = nullptr;
-    decltype(&cs_free) free_ = nullptr;
-    csh handle = 0;
-};
-Cs& cs_ready() {
-    static Cs cs;
-    static std::mutex m;
-    std::lock_guard<std::mutex> hold(m);
-    if (cs.handle) return cs;
-    describe::decoder16(true);   // (loads the capstone.dll that was handed to describe::set_capstone_dll)
-#ifdef _WIN32
-    HMODULE mod = GetModuleHandleW(L"capstone.dll");
-    if (!mod) throw py::ImportError("capstone: the DLL is not loaded");
-    auto open = reinterpret_cast<decltype(&cs_open)>(GetProcAddress(mod, "cs_open"));
-    auto option = reinterpret_cast<decltype(&cs_option)>(GetProcAddress(mod, "cs_option"));
-    cs.disasm = reinterpret_cast<decltype(&cs_disasm)>(GetProcAddress(mod, "cs_disasm"));
-    cs.free_ = reinterpret_cast<decltype(&cs_free)>(GetProcAddress(mod, "cs_free"));
-    if (!open || !option || !cs.disasm || !cs.free_) throw py::ImportError("capstone: the DLL lacks an entry point");
-    csh h = 0;
-    if (open(CS_ARCH_X86, CS_MODE_16, &h) != CS_ERR_OK) throw py::RuntimeError("capstone: cs_open failed");
-    option(h, CS_OPT_DETAIL, CS_OPT_ON);
-    cs.handle = h;
-#else
-    throw py::ImportError("capstone: Windows only");
-#endif
-    return cs;
-}
 
 // ---- types ----------------------------------------------------------------------------------------------------------
 Dict kind_dict(const char* kind) {
@@ -144,11 +113,11 @@ struct Frame {
 };
 
 Frame frame_of(const py::bytes& code, int64_t start, int64_t end) {
-    Cs& cs = cs_ready();
+    std::shared_ptr<platforms::Decoder> md = platforms::decoder(16, py::str("x86"), true);
     Frame f;
     py::bytes chunk = code.slice(start, end);
-    cs_insn* insn = nullptr;
-    size_t n = cs.disasm(cs.handle, reinterpret_cast<const uint8_t*>(chunk.raw().data()), chunk.raw().size(), static_cast<uint64_t>(start), 0, &insn);
+    size_t n = 0;
+    cs_insn* insn = md->raw(reinterpret_cast<const uint8_t*>(chunk.raw().data()), chunk.raw().size(), start, 0, n);
     for (size_t k = 0; k < n; k++) {
         const cs_insn& i = insn[k];
         const cs_x86& x = i.detail->x86;
@@ -174,7 +143,7 @@ Frame frame_of(const py::bytes& code, int64_t start, int64_t end) {
         }
         if (mn == "ret" || mn == "retf") break;
     }
-    if (n) cs.free_(insn, n);
+    md->release(insn, n);
     return f;
 }
 

@@ -11,6 +11,7 @@
 #include "codebreaker/decompile/describe.hpp"
 #include "codebreaker/formats/ne.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/formats/pe_functions.hpp"
 #include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/knowledge/reads.hpp"
@@ -200,7 +201,7 @@ py::list<int64_t> _flat_thunk_stubs(const py::str& module_path, const formats::p
     };
     py::list<int64_t> out;
     std::vector<int64_t> starts;
-    for (int64_t k : x86::carve(module_path)->funcs.keys()) starts.push_back(k);
+    for (int64_t k : formats::pe_functions::carve(module_path)->funcs.keys()) starts.push_back(k);
     std::sort(starts.begin(), starts.end());
     for (int64_t va : starts)
         if (reaches(va, 1)) out.append(va);
@@ -217,7 +218,7 @@ py::dict<int64_t, std::tuple<py::str, py::str>> identify(const py::str& module_p
         if (pe.machine != 0x014C) return out;
         auto sections = pe.code_sections();
         std::vector<int64_t> starts;
-        for (int64_t k : x86::carve(module_path)->funcs.keys()) starts.push_back(k);
+        for (int64_t k : formats::pe_functions::carve(module_path)->funcs.keys()) starts.push_back(k);
         std::sort(starts.begin(), starts.end());
         for (int64_t va : starts) {
             for (const auto& s : sections) {

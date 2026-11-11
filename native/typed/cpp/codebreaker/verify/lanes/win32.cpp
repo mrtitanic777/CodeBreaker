@@ -38,6 +38,7 @@
 #include "codebreaker/formats/pe.hpp"
 #include "codebreaker/symbols/api_arguments.hpp"
 #include "codebreaker/symbols/runtime_library.hpp"
+#include "codebreaker/formats/pe_functions.hpp"
 #include "codebreaker/symbols/x86.hpp"
 #include "codebreaker/verify/verdicts.hpp"
 #include "py_json.hpp"
@@ -562,7 +563,7 @@ std::tuple<py::str, py::str> profile(const py::str& module_path) {
 
 // ---- PELane ---------------------------------------------------------------------------------------------------------
 py::list<int64_t> PELane::functions(const py::str& path) const {
-    const std::shared_ptr<symbols::x86::PeCarve> carved = symbols::x86::carve(path);
+    const std::shared_ptr<formats::pe_functions::PeCarve> carved = formats::pe_functions::carve(path);
     std::vector<int64_t> keys = carved->funcs.keys();
     std::sort(keys.begin(), keys.end());
     py::list<int64_t> out;

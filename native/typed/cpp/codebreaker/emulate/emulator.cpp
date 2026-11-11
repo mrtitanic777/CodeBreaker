@@ -10,9 +10,9 @@
 #include <unordered_set>
 
 #include "codebreaker/base/corpus.hpp"
-#include "codebreaker/emulate/capstone_x86.hpp"
 #include "codebreaker/emulate/unicorn_uc.hpp"
 #include "codebreaker/formats/pe.hpp"
+#include "codebreaker/formats/pe_functions.hpp"
 #include "codebreaker/knowledge/package.hpp"
 #include "codebreaker/symbols/prototypes.hpp"
 #include "py_os.hpp"
@@ -51,165 +51,6 @@ py::dict<MachineKey, std::shared_ptr<Machine>> _MACHINES;
 
 namespace {
 
-// ---- Capstone (32-bit x86, detail on), by the DLL the process has loaded -----------------------------------
-// (formats/pe_functions.py: PeCarve's linear sweep; native/formats/win/pe_functions.cc)
-struct CsIns {
-    int64_t address = 0;
-    int64_t size = 0;
-    std::string mnemonic;
-    bool imm0 = false;   // the first operand is an immediate
-    int64_t imm = 0;
-};
-
-std::vector<CsIns> cs32_disasm(const uint8_t* code, size_t n, int64_t address) {
-    const capstone_x86::Api& api = capstone_x86::api();
-    csh h = capstone_x86::handle(32, true);
-    std::vector<CsIns> out;
-    if (n == 0) return out;
-    cs_insn* all = nullptr;
-    size_t k = api.disasm(h, code, n, static_cast<uint64_t>(address), 0, &all);
-    out.resize(k);
-    for (size_t i = 0; i < k; i++) {
-        CsIns& o = out[i];
-        o.address = static_cast<int64_t>(all[i].address);
-        o.size = all[i].size;
-        o.mnemonic = all[i].mnemonic;
-        if (all[i].detail) {
-            const cs_x86& x = all[i].detail->x86;
-            if (x.op_count > 0 && x.operands[0].type == X86_OP_IMM) {
-                o.imm0 = true;
-                o.imm = x.operands[0].imm;
-            }
-        }
-    }
-    if (all) api.free_(all, k);
-    return out;
-}
-
-// ---- the function carve of a PE: PeCarve's functions (formats/pe_functions.py) ---------------------------------------
-constexpr size_t kWindow = 1 << 16;
-
-struct Sec {
-    int64_t base = 0;
-    std::string data;
-    int64_t end() const { return base + static_cast<int64_t>(data.size()); }
-};
-
-struct Carved {
-    int64_t start = 0, end = 0;
-};
-
-class Walk {
-  public:
-    std::vector<Sec> secs;
-    std::vector<std::pair<int64_t, std::string>> exports;
-    std::unordered_set<int64_t> export_set, decoded, called;
-
-    const Sec* sec_of(int64_t va) const {
-        for (const Sec& s : secs)
-            if (s.base <= va && va < s.end()) return &s;
-        return nullptr;
-    }
-    static bool call_target(const CsIns& ins, int64_t& t) {
-        t = ins.imm;
-        return ins.mnemonic == "call" && ins.imm0;
-    }
-    template <class F> void instructions(const Sec& s, int64_t off, F f) {
-        const uint8_t* p = reinterpret_cast<const uint8_t*>(s.data.data());
-        int64_t n = static_cast<int64_t>(s.data.size());
-        while (off < n) {
-            size_t w = static_cast<size_t>(std::min<int64_t>(n - off, static_cast<int64_t>(kWindow)));
-            std::vector<CsIns> run = cs32_disasm(p + off, w, s.base + off);
-            if (run.empty()) return;
-            for (const CsIns& ins : run)
-                if (!f(ins)) return;
-            off = run.back().address - s.base + run.back().size;
-        }
-    }
-    void sweep() {
-        for (const Sec& s : secs) {
-            int64_t n = static_cast<int64_t>(s.data.size()), off = 0;
-            const uint8_t* p = reinterpret_cast<const uint8_t*>(s.data.data());
-            while (off < n) {
-                size_t w = static_cast<size_t>(std::min<int64_t>(n - off, static_cast<int64_t>(kWindow)));
-                std::vector<CsIns> run = cs32_disasm(p + off, w, s.base + off);
-                if (run.empty()) {
-                    off += 1;
-                    continue;
-                }
-                for (const CsIns& ins : run) {
-                    decoded.insert(ins.address);
-                    int64_t t;
-                    if (call_target(ins, t)) called.insert(t);
-                }
-                off = run.back().address - s.base + run.back().size;
-            }
-        }
-    }
-    void decode_from(int64_t va) {
-        const Sec* s = sec_of(va);
-        if (!s) return;
-        instructions(*s, va - s->base, [&](const CsIns& ins) {
-            if (decoded.count(ins.address) && ins.address != va) return false;
-            int64_t t;
-            if (call_target(ins, t)) called.insert(t);
-            decoded.insert(ins.address);
-            return true;
-        });
-    }
-};
-
-// PeCarve(path).funcs: [(start, end)] in ascending order of start
-std::vector<Carved> pe_carve(const formats::pe::PEFile& pe, const py::list<std::tuple<uint64_t, py::bytes, py::str>>& sections) {
-    Walk w;
-    for (const auto& s : sections) w.secs.push_back({static_cast<int64_t>(std::get<0>(s)), std::get<1>(s).raw()});
-    // self.exports: export_va -> name (a dict: the last name given for an address)
-    for (const auto& e : pe.exports()) {
-        int64_t va = static_cast<int64_t>(pe.image_base) + std::get<2>(e);
-        std::string name = std::get<1>(e) ? std::get<1>(e)->utf8() : "Ord" + std::to_string(std::get<0>(e));
-        bool found = false;
-        for (auto& x : w.exports)
-            if (x.first == va) {
-                x.second = name;
-                found = true;
-            }
-        if (!found) w.exports.emplace_back(va, name);
-        w.export_set.insert(va);
-    }
-    int64_t image_base = static_cast<int64_t>(pe.image_base), entry = pe.entry;
-    w.sweep();
-    std::set<int64_t> starts;
-    for (auto& e : w.exports) starts.insert(e.first);
-    if (entry) starts.insert(image_base + entry);
-    for (int64_t t : w.called)
-        if (w.sec_of(t)) starts.insert(t);
-    for (const Sec& s : w.secs) {
-        int64_t n = static_cast<int64_t>(s.data.size());
-        const uint8_t* d = reinterpret_cast<const uint8_t*>(s.data.data());
-        for (int64_t i = 0; i < n - 4; ++i) {
-            if (d[i] == 0x55 && d[i + 1] == 0x8b && d[i + 2] == 0xec) starts.insert(s.base + i);
-            else if (d[i] == 0x8b && d[i + 1] == 0xff && d[i + 2] == 0x55 && d[i + 3] == 0x8b && d[i + 4] == 0xec)
-                starts.insert(s.base + i);
-        }
-    }
-    std::vector<int64_t> pending;
-    for (int64_t s : starts)
-        if (!w.decoded.count(s)) pending.push_back(s);
-    for (int64_t s : pending)
-        if (w.export_set.count(s) || w.called.count(s) || s == image_base + entry) w.decode_from(s);
-    std::vector<int64_t> order;
-    for (int64_t s : starts)
-        if (w.decoded.count(s)) order.push_back(s);
-    std::vector<Carved> out;
-    for (size_t i = 0; i < order.size(); ++i) {
-        const Sec* s = w.sec_of(order[i]);
-        int64_t end = s->end();
-        if (i + 1 < order.size() && order[i + 1] < end) end = order[i + 1];
-        out.push_back({order[i], end});
-    }
-    return out;
-}
-
 // ---- loading a module ----------------------------------------------------------------------------------------------
 py::dict<py::str, std::shared_ptr<const Loaded>> _PE_CACHE;      // (by the path of the file)
 py::dict<py::str, py::list<std::tuple<int64_t, int64_t>>> _CODE_RANGES;   // module file -> [(lo, hi)] of its code sections, as loaded
@@ -240,7 +81,7 @@ struct CodeImage {
 
 CodeImage _pe_code_image(const py::str& module, const py::str& path, const formats::pe::PEFile& pe) {
     auto all = pe.code_sections();   // [(va, bytes, name)]
-    std::vector<Carved> carve = pe_carve(pe, all);
+    formats::pe_functions::PeCarve carve(path);
     if (all.empty()) throw py::ValueError("min() iterable argument is empty");
     std::vector<std::tuple<uint64_t, py::bytes, py::str>> secs = all.vec();
     int64_t lo = INT64_MAX, hi = INT64_MIN;
@@ -279,7 +120,8 @@ CodeImage _pe_code_image(const py::str& module, const py::str& path, const forma
                 break;
             }
         int64_t pva = static_cast<int64_t>(std::get<0>(*pick)), phi = pva + std::get<1>(*pick).size();
-        for (const Carved& f : carve) {
+        for (const auto& kv : carve.funcs.items()) {
+            const formats::pe_functions::Func& f = std::get<1>(kv);
             if (pva <= f.start && f.start < phi) {
                 int64_t s = f.start - pva;
                 int64_t e = std::min(f.end, phi) - pva;
