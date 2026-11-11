@@ -14,8 +14,6 @@ GUEST_EXPORT("xam.xex", 873, XuiAlloc)
 }
 
 GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 1399, XamGetServiceEndpoint)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2827, XamPartySetCustomData)
-GUEST_EXPORT_UNIMPLEMENTED("xam.xex", 2832, XamPartyGetBandwidth)
 
 // HRESULT XamVoiceSetMicArrayIdleUsers(DWORD IdleUserMask, BOOL Unknown): tells the Kinect microphone array which
 // local talkers are idle. No Kinect is attached, so there is nothing to steer; XHV2's callers ignore the result.
