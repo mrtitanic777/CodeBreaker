@@ -40,38 +40,6 @@ py::str state_(const py::list<py::str>& parts) {
     return path;
 }
 
-// Sets the environment of the process to `env` for the life of the object, then puts back what it changed.
-class ScopedEnv {
-  public:
-    explicit ScopedEnv(const py::dict<py::str, py::str>& env) {
-        for (const auto& kv : env.items()) {
-            const std::wstring name = py::subprocess::to_wide(std::get<0>(kv));
-            const std::wstring value = py::subprocess::to_wide(std::get<1>(kv));
-            wchar_t probe[2];
-            const DWORD n = GetEnvironmentVariableW(name.c_str(), probe, 2);
-            if (n == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
-                saved_.push_back({name, std::nullopt});
-            } else {
-                std::wstring old(n + 1, L'\0');
-                const DWORD got = GetEnvironmentVariableW(name.c_str(), old.data(), static_cast<DWORD>(old.size()));
-                old.resize(got);
-                saved_.push_back({name, old});
-            }
-            SetEnvironmentVariableW(name.c_str(), value.c_str());
-        }
-    }
-    ~ScopedEnv() {
-        for (auto it = saved_.rbegin(); it != saved_.rend(); ++it) {
-            SetEnvironmentVariableW(it->first.c_str(), it->second ? it->second->c_str() : nullptr);
-        }
-    }
-    ScopedEnv(const ScopedEnv&) = delete;
-    ScopedEnv& operator=(const ScopedEnv&) = delete;
-
-  private:
-    std::vector<std::pair<std::wstring, std::optional<std::wstring>>> saved_;
-};
-
 void print_(const py::str& s) {
     const std::string u = s.utf8() + "\n";
     std::fwrite(u.data(), 1, u.size(), stdout);
@@ -129,8 +97,8 @@ std::optional<py::str> original_of(const py::str& source) {
 
 std::tuple<int64_t, py::str> _run(const py::list<py::str>& cmd, const py::str& cwd) {
     try {
-        ScopedEnv env(watcom::ow_env(py::str("pe")));
         py::subprocess::RunOptions o;
+        o.env = watcom::ow_env(py::str("pe"));
         o.cwd = cwd;
         o.text = false;
         py::subprocess::CompletedProcess p = py::subprocess::run(cmd, o);

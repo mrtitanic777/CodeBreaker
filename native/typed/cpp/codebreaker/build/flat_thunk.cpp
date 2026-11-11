@@ -11,6 +11,7 @@
 #include "codebreaker/formats/detect.hpp"
 #include "codebreaker/formats/omf.hpp"
 #include "codebreaker/symbols/prototypes.hpp"
+#include "py_glob.hpp"
 #include "py_subprocess.hpp"
 
 namespace codebreaker::build::flat_thunk {
@@ -46,41 +47,13 @@ std::vector<typename L::value_type> V(const L& l) {
 
 py::str D(int64_t v) { return py::str(std::to_string(v)); }
 
-// the child process sees the environment the Python gave it: `env` is os.environ with the compiler's additions, so the
-// variables that differ are set for the run and put back after it
-struct EnvScope {
-    struct Saved {
-        std::wstring name, old;
-        bool had;
-    };
-    std::vector<Saved> saved;
-    explicit EnvScope(const py::dict<py::str, py::str>& env) {
-        for (const auto& kv : env.items()) {
-            std::wstring name = py::subprocess::to_wide(std::get<0>(kv));
-            std::wstring val = py::subprocess::to_wide(std::get<1>(kv));
-            if (name.empty() || name[0] == L'=') continue;
-            std::wstring buf(32768, L'\0');
-            DWORD n = GetEnvironmentVariableW(name.c_str(), buf.data(), static_cast<DWORD>(buf.size()));
-            bool had = !(n == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND);
-            std::wstring old = had ? buf.substr(0, n) : std::wstring();
-            if (had && old == val) continue;
-            saved.push_back({name, old, had});
-            SetEnvironmentVariableW(name.c_str(), val.c_str());
-        }
-    }
-    ~EnvScope() {
-        for (auto it = saved.rbegin(); it != saved.rend(); ++it)
-            SetEnvironmentVariableW(it->name.c_str(), it->had ? it->old.c_str() : nullptr);
-    }
-};
-
 // subprocess.run(args, cwd=, env=, capture_output=True, text=True) (no timeout); `strict` is text=True's own decoding
 // errors, else errors="replace"
 py::subprocess::CompletedProcess run_tool(const py::list<py::str>& args, const std::optional<py::str>& cwd,
                                           const py::dict<py::str, py::str>& env) {
-    EnvScope scope(env);
     py::subprocess::RunOptions o;
     o.cwd = cwd;
+    o.env = env;   // (the whole environment of the tool)
     return py::subprocess::run(args, o);
 }
 
@@ -88,19 +61,9 @@ py::str out_of(const py::subprocess::CompletedProcess& r) {
     return (r.stdout_ ? *r.stdout_ : py::str("")) + (r.stderr_ ? *r.stderr_ : py::str(""));
 }
 
-// glob.glob(os.path.join(dir, "*" + ext)): the names ending in ext (no case), not starting with a dot, in the order the
-// folder lists them
+// glob.glob(os.path.join(dir, "*" + ext))
 py::list<py::str> glob_ext(const py::str& dir, const std::string& ext) {
-    py::list<py::str> out;
-    std::vector<py::str> names;
-    try {
-        for (const py::str& n : V(py::os::listdir(dir))) names.push_back(n);
-    } catch (const py::OSError&) {
-        return out;
-    }
-    for (const py::str& n : names)
-        if (!n.empty() && n[0] != py::str(".") && n.lower().endswith(py::str(ext))) out.append(py::os::path::join(dir, n));
-    return out;
+    return py::glob::glob(py::os::path::join(dir, py::str("*") + py::str(ext)));
 }
 
 py::str lower_ext(const py::str& f) {
@@ -483,7 +446,7 @@ CompileOw compile_ow(const py::str& srcdir) {
         out.error = py::str("OpenWatcom not built (experiments/premise-proof/open-watcom-v2)");
         return out;
     }
-    py::dict<py::str, py::str> env;
+    py::dict<py::str, py::str> env = py::os::environ_::copy();   // os.environ, with the compiler's additions
     env.set(py::str("WATCOM"), ow->root);
     env.set(py::str("INCLUDE"), py::join(py::str(";"), ow->include));
     env.set(py::str("PATH"), py::os::path::dirname(ow->wcc386) + py::os::pathsep + py::os::getenv(py::str("PATH"), py::str("")));
@@ -523,7 +486,7 @@ BuildResult build_flat_thunk_ow(const py::str& srcdir_in, const std::optional<py
     }
     py::str cpath = cfiles[0];
     py::str module = std::get<0>(py::os::path::splitext(py::os::path::basename(cpath)));
-    py::dict<py::str, py::str> env;
+    py::dict<py::str, py::str> env = py::os::environ_::copy();   // os.environ, with the compiler's additions
     env.set(py::str("WATCOM"), ow->root);
     env.set(py::str("INCLUDE"), py::join(py::str(";"), ow->include));
     env.set(py::str("PATH"), py::os::path::dirname(ow->wcc386) + py::os::pathsep + py::os::getenv(py::str("PATH"), py::str("")));

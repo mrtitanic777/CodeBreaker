@@ -313,6 +313,55 @@ inline str at(const str& k) {
     if (!v) throw KeyError(repr(k).utf8());
     return *v;
 }
+// dict(os.environ): the process environment in the order the system gives it. On Windows os.environ has its names
+// upper-cased (a later entry of the same name replaces the earlier in place), and a name may begin with '=' ("=C:").
+inline dict<str, str> copy() {
+    dict<str, str> out;
+#ifdef _WIN32
+    (void)_wgetenv(L"PATH");   // (_wenviron exists once the wide environment has been asked)
+    for (wchar_t** e = _wenviron; e && *e; ++e) {
+        std::wstring entry(*e);
+        size_t eq = entry.find(L'=', 1);
+        if (entry.empty() || eq == std::wstring::npos) continue;
+        out.set(pystr_(fs_::path(entry.substr(0, eq))).upper(), pystr_(fs_::path(entry.substr(eq + 1))));
+    }
+#else
+    for (char** e = ::environ; e && *e; ++e) {
+        std::string entry(*e);
+        size_t eq = entry.find('=', 1);
+        if (entry.empty() || eq == std::string::npos) continue;
+        out.set(str(entry.substr(0, eq)), str(entry.substr(eq + 1)));
+    }
+#endif
+    return out;
+}
+// list(os.environ.items())
+inline list<std::tuple<str, str>> items() {
+    list<std::tuple<str, str>> out;
+    for (const auto& kv : copy().items()) out.append(std::make_tuple(std::get<0>(kv), std::get<1>(kv)));
+    return out;
+}
+// os.environ[k] = v (os.putenv): ValueError for a name that is empty or holds an '=' past its first character
+inline void set(const str& k, const str& v) {
+    if (k.empty() || k.find(str("="), 1) != -1) throw ValueError("illegal environment variable name");
+    if (k.find(str(std::string(1, '\0'))) != -1 || v.find(str(std::string(1, '\0'))) != -1) throw ValueError("embedded null character");
+#ifdef _WIN32
+    _wputenv_s(fs_::u8path(k.utf8()).wstring().c_str(), fs_::u8path(v.utf8()).wstring().c_str());
+#else
+    setenv(k.utf8().c_str(), v.utf8().c_str(), 1);
+#endif
+}
+// os.environ.pop(k, None): the old value, if there was one
+inline std::optional<str> pop(const str& k) {
+    std::optional<str> old = get(k);
+    if (!old) return std::nullopt;
+#ifdef _WIN32
+    _wputenv_s(fs_::u8path(k.utf8()).wstring().c_str(), L"");   // (an empty value removes the variable)
+#else
+    unsetenv(k.utf8().c_str());
+#endif
+    return old;
+}
 }  // namespace environ_
 inline std::optional<str> getenv(const str& k) { return environ_::get(k); }
 inline str getenv(const str& k, const str& dflt) { return environ_::get(k, dflt); }
