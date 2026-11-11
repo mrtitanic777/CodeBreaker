@@ -48,6 +48,8 @@ set_target_properties(cb_sqlite3 PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$
 
 cb_area(base)
 target_link_libraries(cb_base PUBLIC cb_core PRIVATE cb_sqlite3)
+cb_area(analyze)
+target_link_libraries(cb_analyze PUBLIC cb_core)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -73,7 +75,7 @@ get_property(CB_ALL_TESTS GLOBAL PROPERTY CB_TEST_SOURCES)
 add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} cb.manifest)
 cb_apply_flags(cb_tests)
 target_compile_definitions(cb_tests PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
-target_link_libraries(cb_tests PRIVATE cb_base cb_core)
+target_link_libraries(cb_tests PRIVATE cb_analyze cb_base cb_core)
 cb_copy_prebuilt_dlls(cb_tests)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 

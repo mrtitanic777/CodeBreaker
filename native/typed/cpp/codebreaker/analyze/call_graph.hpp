@@ -1,48 +1,37 @@
-// codebreaker/analyze/call_graph.hpp -- C++ port of codebreaker.analyze.call_graph.
+// codebreaker/analyze/call_graph.hpp -- COMPAT SHIM over cb/analyze/call_graph.hpp (docs/CPP_DESIGN.md 6.3), for the
+// old codebreaker/analyze/call_graph.py port. Deleted with its last py:: consumer (analyze/image, structures, mcp_server).
 //
-// call_graph.py -- who calls whom, what refers to what, and what the exports reach.
+// Who calls whom, what refers to what, and what the exports reach: the engine (the graph worked out from a decoded
+// module, and the report of it) is native/cb/analyze/call_graph.hpp. The old callers hold the module as an
+// `analyze::call_graph::Image` that the DLL bridge (analyze/native.hpp) answers questions about, so the graph still
+// arrives as the DLL's answer (RawGraph) and is made into the old `Graph` here; the report is made by the new code
+// from that graph (analyse converts to cb types, calls cb::analyze::call_graph::make_report, converts back).
 //
-//     g = call_graph::build(image)
-//     g.calls[f]          [(site, kind, destination)]  kind: "call" | "import" | "tail" | "indirect"
-//     g.callers[f]        the functions that call f
-//     g.refs              [(function, instruction, address, how)]   how: "r" | "w" | "rw" | "a"
-//                         every reference from code to an address in the module ("a": its address
-//                         is taken -- pushed, loaded or stored as a value)
-//     g.taken[f]          where function f's address is taken (code sites and data addresses)
-//     g.users[name]       the functions that call import `name`
-//     g.order             every function, callees before callers (cycles in one piece)
-//     g.reachable         the functions execution can reach from the exports and the entry point
-//     g.reachable_with_tables   the same, also entering at every function whose address the
-//                         module's data holds (tables of handlers, virtual tables)
+//     g = call_graph::build(image)      g.calls[f]  g.callers[f]  g.refs  g.taken[f]  g.users[name]  g.order
+//                                       g.reachable  g.reachable_with_tables   (see cb/analyze/call_graph.hpp)
 //
-// An operand counts as an address only when the file says so, where it does: a 32-bit module with
-// relocations marks every address it holds, so a constant that merely looks like one is not taken
-// for one. A module without them (the system's fixed-base DLLs) falls back to "lands inside the
-// module". In 16-bit code the data segment's variables are the operands with a fixed offset, and
-// the addresses are the places relocation writes.
-//
-// The graph is worked out in C++ (native/analyze, call_graph.cc) over the image cbanalyze.dll
-// holds; this module makes its Graph from the answer and reports it.
-//
-// The counts also say how many bytes of the code sections no function reaches: tables, strings and
-// padding kept among the code, and code whose start nothing gives away.
-//
-// Reached means: called, jumped to, or having its address taken by something reached. A function
-// nothing refers to at all is reported as unreferenced -- dead, or entered in a way the code does
-// not show (a table index, an ordinal computed at run time).
-//
-// The image the graph is built over (codebreaker.analyze.image) has no typed port yet, so this
-// header names the part of it call_graph uses (Image, Function, Ins, Span below) and the shape of
-// the answer the C++ engine gives to ask("call_graph.build") (RawGraph).
+// The image the graph is built over (codebreaker.analyze.image) has no typed port yet, so this header names the part
+// of it call_graph uses (Image, Function, Ins, Span below) and the shape of the answer the C++ engine gives to
+// ask("call_graph.build") (RawGraph).
 #pragma once
 
+#include <algorithm>
+#include <memory>
+
+#include "cb/analyze/call_graph.hpp"
+#include "cb/compat/py_bridge.hpp"
 #include "py.hpp"
 
 namespace codebreaker::analyze::call_graph {
 
 // (tuples of operation names in the Python)
-extern const py::list<py::str> READS;
-extern const py::list<py::str> PURE_WRITES;
+inline const py::list<py::str> READS = {py::str("cmp"), py::str("test"), py::str("push"), py::str("bt"), py::str("call"), py::str("jmp"),
+                                        py::str("lcall"), py::str("ljmp"), py::str("fld"), py::str("fild"), py::str("fcomp"), py::str("fcom"),
+                                        py::str("fadd"), py::str("fsub"), py::str("fmul"), py::str("fdiv"), py::str("ficom"), py::str("ficomp"),
+                                        py::str("bound"), py::str("div"), py::str("idiv"), py::str("mul")};
+inline const py::list<py::str> PURE_WRITES = {py::str("mov"), py::str("pop"), py::str("fstp"), py::str("fst"), py::str("fistp"), py::str("fist"),
+                                              py::str("lea"), py::str("movzx"), py::str("movsx"), py::str("sidt"), py::str("sgdt"),
+                                              py::str("fstcw"), py::str("fnstcw"), py::str("fnstsw"), py::str("fstsw")};
 
 // ---- the parts of codebreaker.analyze.image that call_graph reads ---------------------------------
 
@@ -116,7 +105,12 @@ class Image {
     virtual py::str label(int64_t va) = 0;                       // a name for an address
 
     // every function, decoded (a generator in the Python)
-    py::list<std::shared_ptr<Function>> each();
+    py::list<std::shared_ptr<Function>> each() {
+        py::list<std::shared_ptr<Function>> out;
+        py::list<int64_t> starts = functions.copy();   // list(self.functions): the loop may not see later changes
+        for (int64_t start : starts) out.append(function(start));
+        return out;
+    }
     // img.memo("call_graph", build): worked out once per image
     std::shared_ptr<Graph> memo_call_graph;
 };
@@ -192,8 +186,112 @@ struct Analysis {           // {"counts", "facts", "text"}
 };
 
 // The graph, made from the answer of the engine's call_graph.build.
-std::shared_ptr<Graph> _build(Image& img);
-std::shared_ptr<Graph> build(Image& img);
-Analysis analyse(Image& img);
+inline std::shared_ptr<Graph> _build(Image& img) {
+    RawGraph got = img.ask_call_graph();
+    std::shared_ptr<Graph> g = std::make_shared<Graph>();
+    for (const auto& entry : got.calls) {
+        py::list<Call> calls;
+        for (const RawCall& c : std::get<1>(entry)) calls.append(Call{c.site, c.kind, c.destination});
+        g->calls.set(std::get<0>(entry), calls);
+    }
+    for (const auto& entry : got.callers) g->callers.set(std::get<0>(entry), std::get<1>(entry));
+    // by name: two addresses may stand for one import
+    py::dict<py::str, py::set<int64_t>> users;
+    for (const auto& entry : got.users) {
+        const py::str& name = img.imports.at(std::get<0>(entry));
+        py::set<int64_t> fs = users.setdefault(name, py::set<int64_t>());
+        fs.update(std::get<1>(entry));
+    }
+    for (const auto& kv : users.items()) {
+        std::vector<int64_t> sorted_fs(std::get<1>(kv).begin(), std::get<1>(kv).end());
+        std::sort(sorted_fs.begin(), sorted_fs.end());
+        g->users.set(std::get<0>(kv), py::list<int64_t>(sorted_fs));
+    }
+    for (const RawRef& r : got.refs) {
+        std::shared_ptr<Function> fn = img.function(r.function);
+        g->refs.append(Reference{r.function, fn->insns[fn->index.at(r.at)], r.va, r.how});
+    }
+    for (const auto& entry : got.taken) {
+        py::list<Taken> sites;
+        for (const RawTaken& t : std::get<1>(entry)) sites.append(Taken{t.kind, t.function, t.at});
+        g->taken.set(std::get<0>(entry), sites);
+    }
+    g->order = got.order;
+    g->cycles = got.cycles;
+    g->reachable = py::set<int64_t>::from(got.reachable);
+    g->reachable_with_tables = py::set<int64_t>::from(got.reachable_with_tables);
+    g->unreferenced = got.unreferenced;
+    return g;
+}
+
+inline std::shared_ptr<Graph> build(Image& img) {
+    if (!img.memo_call_graph) img.memo_call_graph = _build(img);
+    return img.memo_call_graph;
+}
+
+// The report: the old graph as cb's, the new code's make_report, and its answer as the old Analysis.
+inline Analysis analyse(Image& img) {
+    namespace ncg = ::cb::analyze::call_graph;
+    std::shared_ptr<Graph> g = build(img);
+    for (int64_t f : img.functions)   // (what the Python raised for a function the graph does not know)
+        if (!g->calls.contains(f)) throw py::KeyError(std::to_string(f));
+    ncg::Graph graph;
+    for (const auto& kv : g->calls.items()) {
+        std::vector<ncg::Call>& calls = graph.calls[std::get<0>(kv)];
+        for (const Call& c : std::get<1>(kv)) {
+            if (!(c.kind == py::str("call") || c.kind == py::str("import") || c.kind == py::str("tail") || c.kind == py::str("indirect")))
+                throw py::KeyError(c.kind.utf8());   // (the Python's dict of counts has no such kind)
+            ncg::CallKind kind = c.kind == py::str("call") ? ncg::CallKind::Call
+                                 : c.kind == py::str("import") ? ncg::CallKind::Import
+                                 : c.kind == py::str("tail") ? ncg::CallKind::Tail
+                                                             : ncg::CallKind::Indirect;
+            calls.push_back({c.site, kind, c.destination});
+        }
+    }
+    for (const auto& kv : g->callers.items()) graph.callers[std::get<0>(kv)] = ::cb::compat::from_py(std::get<1>(kv));
+    for (const auto& kv : g->taken.items()) graph.taken[std::get<0>(kv)].resize(static_cast<std::size_t>(py::len(std::get<1>(kv))));
+    for (const auto& kv : g->users.items()) graph.users[std::get<0>(kv).utf8()] = ::cb::compat::from_py(std::get<1>(kv));
+    graph.cycles = ::cb::compat::from_py(g->cycles);
+    for (int64_t f : g->reachable) graph.reachable.insert(f);
+    for (int64_t f : g->reachable_with_tables) graph.reachable_with_tables.insert(f);
+    graph.refs.resize(static_cast<std::size_t>(py::len(g->refs)));
+    graph.unreferenced = ::cb::compat::from_py(g->unreferenced);
+
+    ncg::ReportInput in;
+    in.functions = ::cb::compat::from_py(img.functions);
+    in.roots = static_cast<std::size_t>(py::len(img.roots));
+    for (int64_t f : img.discovered) in.discovered.push_back(f);
+    for (const std::shared_ptr<Function>& fn : img.each())
+        for (const InsRef& i : fn->insns) in.decoded_bytes += i->size;
+    for (const Span& s : img.spans)
+        if (s.executable) in.code_bytes_held += s.initialised;
+    in.label = [&img](::cb::analyze::Va va) { return img.label(va).utf8(); };
+    in.import_name = [&img](::cb::analyze::Va va) -> std::optional<std::string> {
+        if (!img.imports.contains(va)) return std::nullopt;
+        return img.imports.at(va).utf8();
+    };
+    const ncg::Report report = ncg::make_report(in, graph);
+
+    Analysis out;
+    const ncg::Counts& c = report.counts;
+    out.counts = Counts{c.functions, c.functions_found_from_calls, c.edges, c.call_sites, c.import_call_sites, c.tail_jumps,
+                        c.indirect_call_sites, c.imports_used, c.leaf_functions, c.recursive_groups, c.address_taken_functions,
+                        c.data_references, c.roots, c.reached_from_roots, c.reached_with_data_tables, c.unreferenced_functions,
+                        c.code_bytes_decoded, c.code_section_bytes_not_reached};
+    for (const ncg::CallsFact& f : report.facts) {
+        Fact fact;
+        fact.addr = f.addr;
+        fact.kind = py::str("calls");
+        fact.callees = ::cb::compat::to_py(f.callees);
+        fact.imports = ::cb::compat::to_py(f.imports);
+        fact.indirect = f.indirect;
+        fact.callers = ::cb::compat::to_py(f.callers);
+        fact.address_taken = f.address_taken;
+        fact.reached = f.reached;
+        out.facts.append(fact);
+    }
+    out.text = ::cb::compat::to_py(report.text);
+    return out;
+}
 
 }  // namespace codebreaker::analyze::call_graph
