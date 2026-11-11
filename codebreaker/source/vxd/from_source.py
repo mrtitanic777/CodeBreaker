@@ -274,6 +274,8 @@ def embed_version_resource(vxd_bytes, D, root):
                             timeout=180, files={"m.rc": rc_text, "in.vxd": vxd_bytes})
     log = "".join("[%s] %s\n" % (t, out[t].decode("latin1", "replace").strip())
                   for t in ("rc.txt", "adrc.txt") if t in out)
+    if work:                                  # (the DOS tools' work folder was left behind: one temp folder per call)
+        shutil.rmtree(work, ignore_errors=True)
     return out.get("out.vxd"), (rc_text + "\n" + log)
 
 
@@ -334,6 +336,8 @@ def build_from_source(v, name=None, root="."):
     if obj:
         link_vxd, llog = vxd_link.link_vxd_260(obj, deftext, root, work)
         link_ok = bool(link_vxd)
+    if work:                                  # (the compile/link work folder was left behind: one temp folder per call)
+        shutil.rmtree(work, ignore_errors=True)
     from codebreaker.source.vxd import le_writer as vxd_le_writer
     final = vxd_le_writer.build_le(D, v, name)                 # bootable container (original-exact layout)
     res = _result(final, v, D, asm=asm, deftext=deftext, llog=llog[-300:], rlog="", oflags=None)
