@@ -191,7 +191,17 @@ std::optional<Node> dump(const py::str& cc, const py::str& src, const py::str& f
     opts.text = false;
     py::subprocess::CompletedProcess p = py::subprocess::run(args, opts);
     try {
-        py::V doc = py::json_parse(p.stdout_bytes->decode("utf-8", "replace").utf8());
+        // (clang's JSON is ASCII: its non-ASCII text is \u-escaped. Then the bytes are the text already: no decode to a
+        // UTF-32 str and encode back, which doubled the memory and a tenth of the time. Anything else takes the decode.)
+        const std::string& raw = p.stdout_bytes->raw();
+        bool ascii = true;
+        for (unsigned char ch : raw) {
+            if (ch >= 0x80) {
+                ascii = false;
+                break;
+            }
+        }
+        py::V doc = ascii ? py::json_parse(raw) : py::json_parse(p.stdout_bytes->decode("utf-8", "replace").utf8());
         if (!doc.is_dict()) {
             return std::nullopt;
         }
