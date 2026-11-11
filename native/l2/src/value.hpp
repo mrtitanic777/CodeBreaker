@@ -95,6 +95,7 @@ struct V {
     bool has(const V& key) const;
     void set(const V& key, V value) const;                  // d[key] = value
     void set(const char* key, V value) const;
+    void put(V key, V value) const;                         // d[key] = value, the key and value moved in
     V& setdefault(const V& key, V dflt) const;
     bool erase(const V& key) const;                         // d.pop(key, None) is not None-ness aside
     std::vector<std::pair<V, V>>& items() const;
@@ -110,8 +111,10 @@ struct StrH : Heap {
 };
 // (a large dict or set is looked up through a hash index, made when first needed and made again
 // when its size has changed: keys are never changed in place)
+// (an open-addressing table of item numbers; hs holds each item's hash, so growing never hashes keys again)
 struct Index {
-    std::unordered_map<size_t, std::vector<int>> by;
+    std::vector<int32_t> slots;   // -1 empty, else the item's number
+    std::vector<size_t> hs;       // the hash of each item
     size_t made_for = (size_t)-1;
 };
 struct SeqH : Heap {

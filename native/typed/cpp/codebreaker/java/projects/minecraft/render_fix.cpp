@@ -115,6 +115,13 @@ namespace {
 }
 
 template <class T> py::ref<T> as(const ir::NodeP& n) { return std::dynamic_pointer_cast<T>(n); }
+template <class T> py::ref<T> as(const ir::NodeOrList& v) { return std::dynamic_pointer_cast<T>(ir::node_of(v)); }   // a list is no node
+
+// A body slot (NodeOrList) as the node ir.walk() takes; a bare list of statements has no .children().
+ir::NodeP walkable(const ir::NodeOrList& v) {
+    if (std::holds_alternative<py::list<ir::NodeP>>(v)) throw py::AttributeError("'list' object has no attribute 'children'");
+    return std::get<ir::NodeP>(v);
+}
 
 // `x == 0` for the value of a Lit: an int, a float or a bool equal to zero (None and a str are not)
 bool equals_zero(const ir::Val& v) {
@@ -132,7 +139,7 @@ Result patch(const py::list<ir::NodeP>& units) {
     for (const auto& cm : rw::methods(units)) {
         const py::ref<ir::ClassDecl>& cls = std::get<0>(cm);
         const py::ref<ir::MethodDecl>& m = std::get<1>(cm);
-        for (ir::Nodes ss : rw::stmt_lists(m->body).copy()) {
+        for (ir::Nodes ss : rw::stmt_lists(walkable(m->body)).copy()) {
             if (!ss) {
                 throw py::TypeError("object of type 'NoneType' has no len()");
             }
@@ -199,7 +206,7 @@ bool _budget(const py::list<ir::NodeP>& ss, int64_t i) {
         }
         then = *tb->stmts;
     } else {
-        then.append(test->then);
+        then.append(ir::node_of(test->then));   // a bare list is no Return either
     }
     bool has_return = false;
     for (const ir::NodeP& x : then) {

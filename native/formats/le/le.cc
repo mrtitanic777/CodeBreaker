@@ -203,7 +203,7 @@ std::optional<Ddb> Image::ddb() const {
         r.major = b.at(off + 4);
         r.minor = b.at(off + 5);
         r.flags = uint16_t(b.at(off + 6) | (b.at(off + 7) << 8));
-        r.name = name.rstrip(" \x00", 2);
+        r.name = name.rstrip(" \x00", 2).str();
         r.init_order = b.u32(off + 16);
         r.control_proc = b.u32(off + 20);
         return r;

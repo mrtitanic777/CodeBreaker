@@ -42,6 +42,12 @@
 #include <variant>
 #include <vector>
 
+#if defined(_M_X64) || defined(__SSE2__)
+#include <emmintrin.h>
+#define PY_STR_SSE2_ 1
+#else
+#define PY_STR_SSE2_ 0
+#endif
 #include "py_unicode.hpp"   // str.isalpha / isdigit / isnumeric over all of Unicode
 
 // the C library's macros that share a name with a Python method
@@ -85,6 +91,14 @@ struct Exception : std::runtime_error {
         PY_TEXT_CTOR(Name, Base)                                    \
         const char* type() const override { return #Name; }         \
     };
+#define PY_EXCEPTION_NAMED(Name, Base, PyName)                      \
+    struct Name : Base {                                            \
+        Name() : Base() {}                                          \
+        explicit Name(const std::string& m) : Base(m) {}            \
+        explicit Name(const char* m) : Base(m) {}                   \
+        PY_TEXT_CTOR(Name, Base)                                    \
+        const char* type() const override { return PyName; }        \
+    };
 PY_EXCEPTION(ArithmeticError, Exception)
 PY_EXCEPTION(ZeroDivisionError, ArithmeticError)
 PY_EXCEPTION(OverflowError, ArithmeticError)
@@ -105,9 +119,10 @@ PY_EXCEPTION(IOError, OSError)
 PY_EXCEPTION(FileNotFoundError, OSError)
 PY_EXCEPTION(PermissionError, OSError)
 PY_EXCEPTION(TimeoutError, OSError)
-PY_EXCEPTION(StructError, Exception)  // struct.error
+PY_EXCEPTION_NAMED(StructError, Exception, "error")  // struct.error: Python's class is named "error"
 PY_EXCEPTION(PatternError, Exception)  // re.error (re.PatternError)
 PY_EXCEPTION(MemoryError, Exception)
+#undef PY_EXCEPTION_NAMED
 #undef PY_EXCEPTION
 #undef PY_TEXT_CTOR
 
@@ -284,11 +299,27 @@ inline std::optional<int64_t> opt_(int64_t v) { return v; }
 // ------------------------------------------------------------------------------------------ str
 class bytes;
 
+// The UTF-8 form of a str, made once on first use and kept with it (a regex over the same text again and again must not
+// re-encode it each time). `aux` is for the regex layer: the code-point index of the text.
+struct u8view_ {
+    std::string s;
+    bool ascii = false;                 // s.size() == the str's length
+    std::shared_ptr<void> aux;
+};
+
 class str {
     std::u32string s_;
+    mutable std::shared_ptr<u8view_> v_;    // (a copy starts without it: a copy is cheap to make, and a shared str stays race-free)
 
   public:
     str() = default;
+    str(const str& o) : s_(o.s_) {}
+    str(str&&) = default;
+    str& operator=(const str& o) {
+        if (this != &o) { s_ = o.s_; v_.reset(); }
+        return *this;
+    }
+    str& operator=(str&&) = default;
     str(const char* utf8) : s_(decode_utf8_(utf8, std::strlen(utf8))) {}
     str(const std::string& utf8) : s_(decode_utf8_(utf8.data(), utf8.size())) {}
     explicit str(std::u32string s) : s_(std::move(s)) {}
@@ -296,24 +327,63 @@ class str {
 
     static std::u32string decode_utf8_(const char* p, size_t n) {
         std::u32string out;
-        out.reserve(n);
+        out.resize(n);
+        size_t o = 0;
         for (size_t i = 0; i < n;) {
+#if PY_STR_SSE2_
+            // (a run of ASCII, 16 bytes at a time: the common case, and the one a compiler at /O1 does not vectorise)
+            while (i + 16 <= n) {
+                __m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(p + i));
+                if (_mm_movemask_epi8(v)) break;
+                __m128i z = _mm_setzero_si128();
+                __m128i lo = _mm_unpacklo_epi8(v, z), hi = _mm_unpackhi_epi8(v, z);
+                __m128i* d = reinterpret_cast<__m128i*>(&out[o]);
+                _mm_storeu_si128(d, _mm_unpacklo_epi16(lo, z));
+                _mm_storeu_si128(d + 1, _mm_unpackhi_epi16(lo, z));
+                _mm_storeu_si128(d + 2, _mm_unpacklo_epi16(hi, z));
+                _mm_storeu_si128(d + 3, _mm_unpackhi_epi16(hi, z));
+                i += 16;
+                o += 16;
+            }
+            if (i >= n) break;
+#endif
             unsigned char c = static_cast<unsigned char>(p[i]);
+            if (c < 0x80) { out[o++] = c; ++i; continue; }
             char32_t cp;
             int len;
-            if (c < 0x80) { cp = c; len = 1; }
-            else if ((c >> 5) == 6) { cp = c & 0x1F; len = 2; }
+            if ((c >> 5) == 6) { cp = c & 0x1F; len = 2; }
             else if ((c >> 4) == 14) { cp = c & 0x0F; len = 3; }
             else { cp = c & 0x07; len = 4; }
             for (int k = 1; k < len && i + k < n; ++k) cp = (cp << 6) | (static_cast<unsigned char>(p[i + k]) & 0x3F);
-            out.push_back(cp);
+            out[o++] = cp;
             i += len;
         }
+        out.resize(o);
         return out;
     }
-    std::string utf8() const {
+    // a str from a piece of UTF-8 text in place (no std::string made of it first)
+    static str from_utf8(const char* p, size_t n) { return str(decode_utf8_(p, n)); }
+    static std::string encode_utf8_(const std::u32string& s_) {
+        const size_t n = s_.size();
         std::string out;
-        for (char32_t c : s_) {
+        out.resize(n);
+        size_t i = 0;
+#if PY_STR_SSE2_
+        for (; i + 16 <= n; i += 16) {
+            const __m128i* d = reinterpret_cast<const __m128i*>(&s_[i]);
+            __m128i a = _mm_loadu_si128(d), b = _mm_loadu_si128(d + 1), c = _mm_loadu_si128(d + 2), e = _mm_loadu_si128(d + 3);
+            __m128i any = _mm_or_si128(_mm_or_si128(a, b), _mm_or_si128(c, e));
+            if (_mm_movemask_epi8(_mm_cmpeq_epi32(_mm_and_si128(any, _mm_set1_epi32(~0x7F)), _mm_setzero_si128())) != 0xFFFF) break;
+            __m128i lo = _mm_packs_epi32(a, b), hi = _mm_packs_epi32(c, e);
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(&out[i]), _mm_packus_epi16(lo, hi));
+        }
+#endif
+        for (; i < n && s_[i] < 0x80; ++i) out[i] = static_cast<char>(s_[i]);
+        if (i == n) return out;
+        out.resize(i);
+        out.reserve(n + n / 2);
+        for (; i < n; ++i) {
+            char32_t c = s_[i];
             if (c < 0x80) out.push_back(static_cast<char>(c));
             else if (c < 0x800) { out.push_back(static_cast<char>(0xC0 | (c >> 6))); out.push_back(static_cast<char>(0x80 | (c & 0x3F))); }
             else if (c < 0x10000) {
@@ -329,7 +399,19 @@ class str {
         }
         return out;
     }
-    const std::u32string& u32() const { return s_; }
+    std::string utf8() const { return encode_utf8_(s_); }
+    // the UTF-8 form, made once (thread-safe; the view is shared by whoever asks)
+    std::shared_ptr<u8view_> utf8_view() const {
+        if (auto v = std::atomic_load(&v_)) return v;
+        auto nv = std::make_shared<u8view_>();
+        nv->s = encode_utf8_(s_);
+        nv->ascii = nv->s.size() == s_.size();
+        std::shared_ptr<u8view_> expected;
+        if (std::atomic_compare_exchange_strong(&v_, &expected, nv)) return nv;
+        return expected;
+    }
+    const std::u32string& u32() const& { return s_; }
+    std::u32string u32() && { return std::move(s_); }   // (on a temporary: a value, so `for (c : f().u32())` stays valid)
     int64_t size() const { return static_cast<int64_t>(s_.size()); }
     bool empty() const { return s_.empty(); }
     char32_t at_(int64_t i) const { return s_[static_cast<size_t>(i)]; }
@@ -359,7 +441,7 @@ class str {
     friend bool operator!=(const str& a, const char* b) { return !(a == str(b)); }
     friend str operator+(const str& a, const str& b) { return str(a.s_ + b.s_); }
     friend str operator+(const str& a, const char* b) { return a + str(b); }
-    str& operator+=(const str& b) { s_ += b.s_; return *this; }
+    str& operator+=(const str& b) { s_ += b.s_; v_.reset(); return *this; }
 
     // iteration: each character as a one-character str
     struct iterator {
@@ -377,14 +459,14 @@ class str {
         int64_t h = hi ? *hi : size();
         clamp_(size(), lo, h);
         if (h - lo < sub.size()) return -1;
-        size_t p = s_.substr(0, static_cast<size_t>(h)).find(sub.s_, static_cast<size_t>(lo));
-        return p == std::u32string::npos ? -1 : static_cast<int64_t>(p);
+        size_t p = s_.find(sub.s_, static_cast<size_t>(lo));
+        return (p == std::u32string::npos || static_cast<int64_t>(p) + sub.size() > h) ? -1 : static_cast<int64_t>(p);
     }
     int64_t rfind(const str& sub, int64_t lo = 0, std::optional<int64_t> hi = std::nullopt) const {
         int64_t h = hi ? *hi : size();
         clamp_(size(), lo, h);
         if (h - lo < sub.size()) return -1;
-        size_t p = s_.substr(0, static_cast<size_t>(h)).rfind(sub.s_);
+        size_t p = s_.rfind(sub.s_, static_cast<size_t>(h - sub.size()));
         return (p == std::u32string::npos || static_cast<int64_t>(p) < lo) ? -1 : static_cast<int64_t>(p);
     }
     int64_t index(const str& sub) const {
@@ -553,7 +635,24 @@ class str {
 };
 
 struct str_hash {
-    size_t operator()(const str& s) const { return std::hash<std::u32string>()(s.u32()); }
+    size_t operator()(const str& s) const {
+        const std::u32string& u = s.u32();
+        const char32_t* p = u.data();
+        size_t n = u.size();
+        uint64_t h = 0x9E3779B97F4A7C15ull ^ n;
+        size_t i = 0;
+        for (; i + 2 <= n; i += 2) {
+            uint64_t w;
+            std::memcpy(&w, p + i, 8);
+            h = (h ^ w) * 0xFF51AFD7ED558CCDull;
+            h ^= h >> 32;
+        }
+        if (i < n) {
+            h = (h ^ p[i]) * 0xFF51AFD7ED558CCDull;
+            h ^= h >> 32;
+        }
+        return static_cast<size_t>(h);
+    }
 };
 
 // ------------------------------------------------------------------------------------------ bytes
@@ -617,7 +716,8 @@ class bytes {
         }
         return bytes(s);
     }
-    const std::string& raw() const { return b_; }
+    const std::string& raw() const& { return b_; }
+    std::string raw() && { return std::move(b_); }   // (on a temporary: a value, not a dangling reference)
     int64_t size() const { return static_cast<int64_t>(b_.size()); }
     bool empty() const { return b_.empty(); }
     int64_t byte_(int64_t i) const { return static_cast<unsigned char>(b_[static_cast<size_t>(i)]); }
@@ -881,9 +981,11 @@ class bytearray {
     explicit bytearray(const bytes& b) : p_(std::make_shared<bytes>(b)) {}
     static bytearray zeros(int64_t n) { return bytearray(bytes::zeros(n)); }
     template <class L> static bytearray from_list(const L& items) { return bytearray(bytes::from_list(items)); }
-    const bytes& view() const { return *p_; }
+    const bytes& view() const& { return *p_; }
+    bytes view() && { return *p_; }   // (on a temporary: a copy -- the shared buffer may die with it)
     operator const bytes&() const { return *p_; }
-    const std::string& raw() const { return p_->raw(); }
+    const std::string& raw() const& { return p_->raw(); }
+    std::string raw() && { return p_->raw(); }   // (on a temporary: a copy)
     std::string& raw_mut() const { return p_->b_; }
     int64_t size() const { return p_->size(); }
     bool empty() const { return p_->empty(); }
@@ -1045,12 +1147,28 @@ template <class T> class list {
         std::apply([&](const auto&... x) { (out.v_->push_back(x), ...); }, items);
         return out;
     }
-    std::vector<T>& vec() const { return *v_; }
+    std::vector<T>& vec() const& { return *v_; }
+    // f().vec() on a temporary list: a handle that keeps the items alive, so `for (x : f().vec())` does not
+    // read a destroyed vector (a plain reference would dangle once the temporary list is gone)
+    struct held_vec {
+        std::shared_ptr<std::vector<T>> p;
+        auto begin() const { return p->begin(); }
+        auto end() const { return p->end(); }
+        size_t size() const { return p->size(); }
+        bool empty() const { return p->empty(); }
+        decltype(auto) operator[](size_t i) const { return (*p)[i]; }
+        decltype(auto) front() const { return p->front(); }
+        decltype(auto) back() const { return p->back(); }
+        std::vector<T>* operator->() const { return p.get(); }
+        operator std::vector<T>&() const { return *p; }
+    };
+    held_vec vec() && { return held_vec{v_}; }
     int64_t size() const { return static_cast<int64_t>(v_->size()); }
     bool empty() const { return v_->empty(); }
     // (T&; for a list of bools std::vector<bool>'s reference, which reads and assigns the same)
     decltype(auto) operator[](int64_t i) const { return (*v_)[static_cast<size_t>(index_(i, size(), "list"))]; }
     void append(const T& x) const { v_->push_back(x); }
+    void append(T&& x) const { v_->push_back(std::move(x)); }     // (a temporary is moved in, not copied)
     template <class L> void extend(const L& xs) const {
         std::vector<T> add;
         for (const auto& x : xs) add.push_back(x);
@@ -1120,12 +1238,68 @@ template <class T> class list {
 template <class T> struct is_shared_ptr_ : std::false_type {};
 template <class T> struct is_shared_ptr_<std::shared_ptr<T>> : std::true_type {};
 template <class K, class V> class dict {
+    // Insertion-ordered items, found through an open-addressing table of item indices (one copy of each key, no node per
+    // entry): slot 0 is empty, 1 is a removed entry, otherwise item index + 2. hashes[i] is the hash of items[i]'s key.
     struct impl {
         std::vector<std::optional<std::pair<K, V>>> items;  // insertion order; removed ones are empty
-        std::unordered_map<K, size_t, hasher<K>> where;
+        std::vector<size_t> hashes;
+        std::vector<uint32_t> slots;
         size_t live = 0;
+        size_t used = 0;   // slots not empty (live entries and removed ones)
     };
     std::shared_ptr<impl> d_;
+    static constexpr size_t none_ = static_cast<size_t>(-1);
+    static size_t hash_(const K& k) {
+        size_t h = hasher<K>()(k);
+        h ^= h >> 32;
+        h *= 0x9E3779B97F4A7C15ull;
+        return h ^ (h >> 29);
+    }
+    // the item index of key k (hash h), or none_; slot is where its table entry is
+    size_t find_(const K& k, size_t h, size_t* slot = nullptr) const {
+        const impl& d = *d_;
+        if (d.slots.empty()) return none_;
+        size_t mask = d.slots.size() - 1, i = h & mask;
+        for (;;) {
+            uint32_t e = d.slots[i];
+            if (e == 0) return none_;
+            if (e != 1) {
+                size_t idx = e - 2;
+                if (d.hashes[idx] == h && d.items[idx]->first == k) {
+                    if (slot) *slot = i;
+                    return idx;
+                }
+            }
+            i = (i + 1) & mask;
+        }
+    }
+    size_t find_(const K& k) const { return find_(k, hash_(k)); }
+    void rebuild_() const {
+        impl& d = *d_;
+        size_t cap = 8;
+        while (cap < (d.live + 1) * 2) cap *= 2;
+        d.slots.assign(cap, 0);
+        d.used = 0;
+        for (size_t idx = 0; idx < d.items.size(); idx++) {
+            if (!d.items[idx]) continue;
+            size_t i = d.hashes[idx] & (cap - 1);
+            while (d.slots[i] != 0) i = (i + 1) & (cap - 1);
+            d.slots[i] = static_cast<uint32_t>(idx + 2);
+            d.used++;
+        }
+    }
+    // the key at items[idx] (just appended, hash h) enters the table
+    void enter_(size_t idx, size_t h) const {
+        impl& d = *d_;
+        if ((d.used + 1) * 4 > d.slots.size() * 3) {   // (a rebuild takes in every live item, the new one too)
+            rebuild_();
+            return;
+        }
+        size_t mask = d.slots.size() - 1, i = h & mask;
+        while (d.slots[i] > 1) i = (i + 1) & mask;
+        if (d.slots[i] == 0) d.used++;
+        d.slots[i] = static_cast<uint32_t>(idx + 2);
+    }
 
   public:
     dict() : d_(std::make_shared<impl>()) {}
@@ -1134,52 +1308,55 @@ template <class K, class V> class dict {
     }
     int64_t size() const { return static_cast<int64_t>(d_->live); }
     bool empty() const { return d_->live == 0; }
-    bool contains(const K& k) const { return d_->where.count(k) != 0; }
+    bool contains(const K& k) const { return find_(k) != none_; }
     const V& at(const K& k) const {
-        auto it = d_->where.find(k);
-        if (it == d_->where.end()) throw KeyError("key not found");
-        return d_->items[it->second]->second;
+        size_t i = find_(k);
+        if (i == none_) throw KeyError("key not found");
+        return d_->items[i]->second;
     }
     V& set(const K& k, const V& v) const {
-        auto it = d_->where.find(k);
-        if (it != d_->where.end()) {
-            d_->items[it->second]->second = v;
-            return d_->items[it->second]->second;
+        size_t h = hash_(k);
+        size_t i = find_(k, h);
+        if (i != none_) {
+            d_->items[i]->second = v;
+            return d_->items[i]->second;
         }
-        d_->where.emplace(k, d_->items.size());
         d_->items.emplace_back(std::make_pair(k, v));
+        d_->hashes.push_back(h);
+        enter_(d_->items.size() - 1, h);
         ++d_->live;
         return d_->items.back()->second;
     }
     V& operator[](const K& k) const {  // a store: d[k] = v
-        auto it = d_->where.find(k);
-        if (it != d_->where.end()) return d_->items[it->second]->second;
+        size_t i = find_(k);
+        if (i != none_) return d_->items[i]->second;
         return set(k, V());
     }
     V get(const K& k, const V& dflt) const {
-        auto it = d_->where.find(k);
-        return it == d_->where.end() ? dflt : d_->items[it->second]->second;
+        size_t i = find_(k);
+        return i == none_ ? dflt : d_->items[i]->second;
     }
     auto get(const K& k) const {   // d.get(k): None when absent (a shared object's None is nullptr)
-        auto it = d_->where.find(k);
+        size_t i = find_(k);
         if constexpr (is_shared_ptr_<V>::value) {
-            return it == d_->where.end() ? V() : d_->items[it->second]->second;
+            return i == none_ ? V() : d_->items[i]->second;
         } else {
-            if (it == d_->where.end()) return std::optional<V>();
-            return std::optional<V>(d_->items[it->second]->second);
+            if (i == none_) return std::optional<V>();
+            return std::optional<V>(d_->items[i]->second);
         }
     }
     V& setdefault(const K& k, const V& v) const {
-        auto it = d_->where.find(k);
-        if (it != d_->where.end()) return d_->items[it->second]->second;
+        size_t i = find_(k);
+        if (i != none_) return d_->items[i]->second;
         return set(k, v);
     }
     V pop(const K& k) const {
-        auto it = d_->where.find(k);
-        if (it == d_->where.end()) throw KeyError("key not found");
-        V v = d_->items[it->second]->second;
-        d_->items[it->second].reset();
-        d_->where.erase(it);
+        size_t slot = 0;
+        size_t i = find_(k, hash_(k), &slot);
+        if (i == none_) throw KeyError("key not found");
+        V v = d_->items[i]->second;
+        d_->items[i].reset();
+        d_->slots[slot] = 1;
         --d_->live;
         return v;
     }
