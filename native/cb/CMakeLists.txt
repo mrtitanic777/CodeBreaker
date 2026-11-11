@@ -88,6 +88,9 @@ target_link_libraries(cb_analyze PUBLIC cb_core)
 cb_area(exact)
 target_link_libraries(cb_exact PUBLIC cb_core)
 
+cb_area(formats)
+target_link_libraries(cb_formats PUBLIC cb_core)
+
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -127,6 +130,10 @@ target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_
 # Every area library (cb_area records it in CB_AREAS), so a new area needs no edit here.
 get_property(CB_ALL_AREAS GLOBAL PROPERTY CB_AREAS)
 target_link_libraries(cb_tests PRIVATE ${CB_ALL_AREAS})
+
+target_link_libraries(cb_tests PRIVATE cb_formats cb_core)
+# the compat tests include the shims at their old header paths, which include the old py:: layer by its own include root
+target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/typed/cpp")
 cb_copy_prebuilt_dlls(cb_tests)
 add_dependencies(cb_tests cb_worker_probe)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
