@@ -647,3 +647,15 @@ single, named, batched, together, partial, a refused file among good ones, the c
 | msc6: sdk_prototypes of the 2,000-line WINDOWS.H | Python 10 ms | 3 ms |
 | msc6: the whole harness (400 fuzzed objects, every pass, Wine typing of four headers, 150 mutated texts), no file output | | 0.5-0.7 s |
 | msc6 / asm16 compile_many | the compiler dominates (DOSBox-X starts in about 2 s; a native Visual C++ 1.52c compile 0.1 s a file): equal within noise | |
+
+## cb refactor: build batch W1-B5 (2026-11-11)
+
+Old = the Python that is still the live implementation (build/data.py, build/driver.py, over formats.dll), same inputs, shared machine
+(+-30%); the typed ports on the py:: layer were not built in this worktree. Not timed: build/m68k_asm and build/native_dos (their cost is the
+instruction encoder and the DOS executive behind them, which are other modules' work; the new directive layer is a single linear pass over a
+source's lines).
+
+| What | Old | New |
+|---|---|---|
+| `data32` over 60 Win95 PE modules (relocated words, pointers, the C text of every data section; file read and image parsed in the timing) + `data16` and `far_segments` over 60 NE modules | 1.41 s (Python) | 0.50 s (outputs identical for all 120, byte for byte) |
+| driver `compare` of two small VxDs (splitter, srammtd, bios; 9 pairs x 20) | 3.57 ms per pair | 0.29 ms per pair |

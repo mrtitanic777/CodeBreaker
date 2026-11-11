@@ -155,6 +155,19 @@ def test_run_records_service_calls():
 
 
 # --- the builder -------------------------------------------------------------------------------
+def test_compare_share_ignores_patched_places_outside_the_object():
+    """The share of equal bytes is over the bytes outside the places the loader patches. A patched place (four bytes for
+    each fix-up, even a 16-bit one) can run past the end of its object: those bytes are no part of it, so they must not
+    shorten the object (it once counted 4 - 5 = -1 bytes of a 4-byte object)."""
+    from codebreaker.build import driver as builder
+    equal, total = builder._equal_share(b"abcd", b"abXd", {1, 3, 4, 5, -1})
+    assert (equal, total) == (1, 2), (equal, total)                 # bytes 0 and 2 are compared; 1 and 3 are patched
+    assert builder._equal_share(b"abcd", b"abcd", set()) == (4, 4)
+    assert builder._equal_share(b"abcd", b"abcd", {0, 1, 2, 3}) == (0, 0)
+    assert builder._equal_share(b"abcd", b"abcd", {6, 7, 8, 9}) == (4, 4)    # nothing of the object is patched
+    assert builder._equal_share(b"", b"", {0, 1}) == (0, 0)
+
+
 def test_build_from_source():
     from codebreaker.build import driver as builder
     from codebreaker.verify.lanes import driver
@@ -314,7 +327,8 @@ def main():
     for fn in (test_table_names_services, test_table_names_are_identifiers, test_table_names_a_real_driver,
                test_reader_descriptor_and_entries, test_reader_fixups_encode_back, test_writer_round_trip,
                test_container, test_judge_agrees_with_itself_and_catches_a_break,
-               test_run_records_service_calls, test_build_from_source, test_source_written_from_the_image_builds_back,
+               test_run_records_service_calls, test_compare_share_ignores_patched_places_outside_the_object,
+               test_build_from_source, test_source_written_from_the_image_builds_back,
                test_kit_macro_source, test_kit_macro_source_builds_back, test_boot_disk_injection,
                test_boot_screens, test_boot_bisect):
         check(fn)
