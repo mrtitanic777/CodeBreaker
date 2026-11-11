@@ -24,12 +24,14 @@ endfunction()
 # cb_area(<dir>): static library cb_<dir> from <dir>/*.cpp (not *_test.cpp, not *_main.cpp); the area's tests
 # are collected for cb_tests.
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES "")
+set_property(GLOBAL PROPERTY CB_AREAS "")
 function(cb_area dir)
   file(GLOB sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
   file(GLOB tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
   list(FILTER sources EXCLUDE REGEX "(_test|_main)\\.cpp$")
   add_library(cb_${dir} STATIC ${sources})
   cb_apply_flags(cb_${dir})
+  set_property(GLOBAL APPEND PROPERTY CB_AREAS cb_${dir})
   get_property(all_tests GLOBAL PROPERTY CB_TEST_SOURCES)
   set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${all_tests} ${tests})
 endfunction()
@@ -40,7 +42,31 @@ cb_area(base)
 target_link_libraries(cb_base PUBLIC cb_core)
 cb_area(build)
 target_link_libraries(cb_build PUBLIC cb_core cb_base)
+cb_area(knowledge)
+target_link_libraries(cb_knowledge PUBLIC cb_core)
+cb_area(jobs)
+target_link_libraries(cb_jobs PUBLIC cb_core)
+cb_area(platforms)
+target_link_libraries(cb_platforms PUBLIC cb_core)
 
+# The host the worker tests start: a program with a few kinds of share (jobs/worker_probe_main.cpp).
+add_executable(cb_worker_probe jobs/worker_probe_main.cpp)
+cb_apply_flags(cb_worker_probe)
+target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
+
+cb_area(verify)
+target_link_libraries(cb_verify PUBLIC cb_core)
+
+cb_area(app)
+target_link_libraries(cb_app PUBLIC cb_core)
+
+cb_area(java)
+target_link_libraries(cb_java PUBLIC cb_core)
+
+# The shims at the old header paths (native/typed/cpp/codebreaker/...) are tested too: their test files include the
+# old layer, so they build at /W3 without /WX like compat/.
+file(GLOB CB_SHIM_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/java/shims_test.cpp")
+set_source_files_properties(${CB_SHIM_TESTS} PROPERTIES COMPILE_OPTIONS "/W3;/WX-")
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
 file(GLOB CB_COMPAT_TESTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/compat/*_test.cpp")
@@ -75,11 +101,15 @@ get_property(CB_ALL_TESTS GLOBAL PROPERTY CB_TEST_SOURCES)
 add_executable(cb_tests core/testing_main.cpp ${CB_ALL_TESTS} cb.manifest)
 cb_apply_flags(cb_tests)
 target_compile_definitions(cb_tests PRIVATE CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
-target_link_libraries(cb_tests PRIVATE cb_build cb_base cb_core)
-# the shims at the old header paths (compat/*_test.cpp include them, and through them the old layer's py.hpp)
-target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
+target_include_directories(cb_tests PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")   # for the shims' tests
+# Every area library (cb_area records it in CB_AREAS), so a new area needs no edit here.
+get_property(CB_ALL_AREAS GLOBAL PROPERTY CB_AREAS)
+target_link_libraries(cb_tests PRIVATE ${CB_ALL_AREAS})
 cb_copy_prebuilt_dlls(cb_tests)
+add_dependencies(cb_tests cb_worker_probe)
 set_source_files_properties(core/testing.cpp PROPERTIES COMPILE_DEFINITIONS CB_SOURCE_DIR="${CB_NATIVE_ROOT}")
 
 enable_testing()
 add_test(NAME cb_tests COMMAND cb_tests)
+
+

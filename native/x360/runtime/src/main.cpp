@@ -154,6 +154,9 @@ int main(int argc, char** argv)
     Log("Title {:08X}: entry {:08X}, stack {:X}, TLS {} slots, {:X} bytes of data ({:X} initialised at {:08X})",
         title.titleId, title.entryPoint, title.defaultStackSize, title.tls.slotCount, title.tls.dataSize,
         title.tls.rawDataSize, title.tls.rawDataAddress);
+    // Our Xbox LIVE (console_settings.ini live_server): profiles that sign in go online on its server
+    // (kernel/xam_live.cpp), as the title's own client (its title ID, known now).
+    kernel::InitializeLive();
 
     // Stall watchdog: when no frame is presented for CB_WATCHDOG seconds (default 30, 0 = off), log what every
     // guest thread is doing (once per stall).
