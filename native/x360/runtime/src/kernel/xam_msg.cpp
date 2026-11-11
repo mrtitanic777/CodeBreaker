@@ -9,6 +9,9 @@
 #include "kernel/spa.h"
 #include "kernel/users.h"
 #include "kernel/web_call.h"
+#include "kernel/xam_matchmaking.h"
+#include "kernel/xam_stats.h"
+#include "kernel/xam_storage.h"
 #include "kernel/xmp.h"
 #include "live/client.h"
 #include "live/presence.h"
@@ -30,6 +33,7 @@
 namespace kernel
 {
     uint32_t OnlineGetLogonExtendedStatus(uint32_t buffer); // kernel/xam_live.cpp
+    uint32_t WriteTitleXnAddr(uint32_t address);           // kernel/xam_net.cpp
 }
 
 namespace
@@ -245,6 +249,45 @@ namespace
         return kernel::kErrorSuccess;
     }
 
+    // A real console sends what a title earned to Xbox LIVE after XUserWriteAchievements (the profile sync,
+    // UserTracker::ScheduleSync 0x819077D8: xstats syncachievements). Ours: when the user is signed in to our Xbox LIVE
+    // server, the title's whole list (earned or not, the protocol's `achievements_update`) goes up on a thread of its
+    // own (the request waits for the server's answer); the server keeps it for friends (Compare Games, the gamercard).
+    void PushAchievementsToLive(uint32_t user)
+    {
+        if (!live::SignedIn(user))
+            return;
+        const uint64_t xuid = kernel::users::Xuid(user);
+        const uint32_t titleId = kernel::TitleId();
+        std::vector<live::AchievementInfo> list;
+        for (const kernel::spa::Achievement& a : kernel::spa::Achievements())
+        {
+            if (list.size() >= 500) // the protocol's bound
+                break;
+            live::AchievementInfo info;
+            info.id = a.id;
+            info.imageId = a.imageId;
+            info.gamerscore = a.gamerscore;
+            info.flags = a.flags;
+            info.label = Utf8(kernel::spa::String(a.labelId));
+            info.description = Utf8(kernel::spa::String(a.descriptionId));
+            info.unachieved = Utf8(kernel::spa::String(a.unachievedId));
+            if (const auto earned = kernel::profile::ReadAchievement(xuid, titleId, a.id);
+                earned && (earned->flags & kAchievementAchieved))
+            {
+                info.flags = earned->flags;
+                // FILETIME -> Unix seconds
+                const uint64_t seconds = earned->unlockTime / 10000000;
+                info.earned = seconds > 11644473600ull ? int64_t(seconds - 11644473600ull) : 0;
+            }
+            list.push_back(std::move(info));
+        }
+        std::thread([user, titleId, list = std::move(list)] {
+            if (const auto error = live::UpdateAchievements(user, titleId, list))
+                Log("Live: the achievements of title {:08X} were not sent: {}", titleId, *error);
+        }).detach();
+    }
+
     // XUserWriteAchievements: buffer = XGI_WRITEACHIEVEMENT {DWORD count, PXUSER_ACHIEVEMENT achievements}, each
     // XUSER_ACHIEVEMENT {DWORD user index, DWORD achievement id}. An achievement the user has not earned yet is
     // stored in the title GPD of the profile, earned offline (no ACHIEVED_ONLINE flag), with the current time.
@@ -286,6 +329,9 @@ namespace
             Log("XGI: user {} earned achievement {} ({} gamerscore)", user, id, it->gamerscore);
             earnedBy[user].push_back(&*it);
         }
+        for (uint32_t user = 0; user < 4; user++)
+            if (!earnedBy[user].empty())
+                PushAchievementsToLive(user);
         for (uint32_t user = 0; user < 4; user++)
         {
             const auto& earned = earnedBy[user];
@@ -400,27 +446,56 @@ namespace
             // flags, public slots, private slots, user index, XSESSION_INFO*, ULONGLONG* nonce } (28 bytes). Offline
             // a session is local: its XSESSION_INFO (XNKID session id 8, XNADDR host address 36, XNKEY 16) gets a
             // random id and key and a zero address (no network), the nonce a random value.
+            // A session of a user who is on our Xbox LIVE and that uses presence, stats, matchmaking or arbitration
+            // (kernel/xam_matchmaking.h) gets an online id (top nibble 8) and is registered on the server (the host's);
+            // the client side of such a session (no host flag) keeps the XSESSION_INFO the title found in a search.
+            // Any other is a system link session: a random id (top nibble 0) and this console's address on the PC's
+            // network (kernel/xam_net.cpp). (As the Dashboard's runtime.)
             if (length < 28)
                 return 0x80070057;
             const uint32_t info = mem.Read32(buffer + 0x14), nonce = mem.Read32(buffer + 0x18);
+            const uint32_t flags = mem.Read32(buffer + 4), userIndex = mem.Read32(buffer + 0x10);
+            const bool online = kernel::matchmaking::UsesLive(userIndex, flags);
             auto random = [] {
                 static uint64_t state = 0x9E3779B97F4A7C15ull ^ uint64_t(std::chrono::steady_clock::now().time_since_epoch().count());
                 state ^= state << 13; state ^= state >> 7; state ^= state << 17;
                 return state;
             };
+            uint64_t id = 0;
             if (info)
             {
-                std::memset(mem.Translate(info), 0, 0x3C);
-                mem.Write64(info, random());               // XNKID
-                mem.Write64(info + 0x2C, random());        // XNKEY
-                mem.Write64(info + 0x34, random());
+                const bool keepInfo = online && !(flags & kernel::matchmaking::kCreateHost) &&
+                                      (mem.Read8(info) & 0xF0) == 0x80;
+                if (!keepInfo)
+                {
+                    std::memset(mem.Translate(info), 0, 0x3C);
+                    mem.Write64(info, (random() & ~(0xF0ull << 56)) | (online ? 0x80ull << 56 : 0)); // XNKID
+                    kernel::WriteTitleXnAddr(info + 8);             // XNADDR
+                    mem.Write64(info + 0x2C, random());             // XNKEY
+                    mem.Write64(info + 0x34, random());
+                }
+                id = mem.Read64(info);
             }
             if (nonce)
                 mem.Write64(nonce, random());
-            Log("XSessionCreate: flags {:X}, {} public / {} private slots, user {}", mem.Read32(buffer + 4),
-                mem.Read32(buffer + 8), mem.Read32(buffer + 0xC), mem.Read32(buffer + 0x10));
+            Log("XSessionCreate: flags {:X}, {} public / {} private slots, user {}", flags,
+                mem.Read32(buffer + 8), mem.Read32(buffer + 0xC), userIndex);
+            if (online && id)
+                kernel::matchmaking::SessionCreated(mem.Read32(buffer), userIndex, flags, mem.Read32(buffer + 8),
+                                                    mem.Read32(buffer + 0xC), id);
             return kernel::kErrorSuccess;
         }
+        if (app == kAppXgi)
+            if (const auto stats = kernel::stats::Message(message, buffer, length))
+                return *stats; // XUserReadStats, XUserResetStatsView, XSessionWriteStats, XSessionFlushStats
+        if (app == kAppXLiveBase && message == kernel::storage::kMsgBuildServerPath)
+            return kernel::storage::BuildServerPath(buffer); // XStorageBuildServerPath(ByXuid)
+        if (app == kAppXgi && message == kernel::matchmaking::kMsgSessionSearchByIds)
+            return kernel::matchmaking::SessionSearchByIds(buffer, length); // XSessionSearchByIds
+        if (app == kAppXgi && message == kernel::matchmaking::kMsgSessionSearch)
+            return kernel::matchmaking::SessionSearch(buffer, length); // XSessionSearch / XSessionSearchEx
+        if (app == kAppXgi && kernel::matchmaking::SessionMessage(message, buffer, length))
+            return kernel::kErrorSuccess; // delete, join, leave, start, end: mirrored on our Xbox LIVE
         if (app == kAppXgi && message >= 0x000B0011 && message <= 0x000B0021)
         {
             // The rest of a local session's life (delete, join / leave local users, start, end, modify, write and
@@ -451,10 +526,37 @@ namespace
             // kernel/xam_web_service.cpp.
             return kernel::WebServiceTaskBufferSize(buffer);
         }
+        if (app == kAppXLiveBase && message == 0x0005800E)
+        {
+            // XUserAreUsersFriends(UserIndex, Xuids, Count, pfResult, NULL) (title xonline library; Minecraft asks it of
+            // the host and each player when it joins a game, ClientConnection): XMsgInProcessCall(0xFC, 0x5800E, args,
+            // pfResult), args = { user index, count, the XUIDs (8 bytes each) }. INFER: the layout from Minecraft's
+            // request (00000000 00000001 <XUID>) and its source; XAM's handler (0x818CCE08 case 0xE) was not followed.
+            // TRUE when every XUID is an accepted friend of the user on our Xbox LIVE.
+            const uint32_t user = mem.Read32(buffer), count = mem.Read32(buffer + 4), result = length;
+            if (user >= 4 || count == 0 || count > 100 || result == 0)
+                return 0x80070057;
+            bool all = true;
+            const auto friends = live::Friends(user);
+            for (uint32_t i = 0; i < count && all; i++)
+            {
+                const uint64_t xuid = mem.Read64(buffer + 8 + i * 8);
+                all = std::any_of(friends.begin(), friends.end(),
+                                  [&](const live::Friend& f) { return f.xuid == xuid && f.request.empty(); });
+            }
+            mem.Write32(result, all ? 1 : 0);
+            Log("XUserAreUsersFriends: user {}, {} XUIDs (first {:016X}): {}", user, count, mem.Read64(buffer + 8),
+                all ? "friends" : "not all friends");
+            return kernel::kErrorSuccess;
+        }
         // Exploration only (as for imports): CB_CONTINUE_UNIMPLEMENTED=1 logs the message and fails it with E_FAIL.
         static const bool keepGoing = [] { const char* v = std::getenv("CB_CONTINUE_UNIMPLEMENTED"); return v && v[0] == '1'; }();
+        std::string bytes; // the request's first words, to tell what it is
+        for (uint32_t i = 0; buffer && buffer < 0xC0000000 && i < 32; i++)
+            bytes += std::format("{:02X}{}", mem.Read8(buffer + i), i % 4 == 3 ? " " : "");
         if (!keepGoing)
-            Fatal("XAM message {:08X} to app {:02X} (buffer {:08X}, {} bytes) is not implemented", message, app, buffer, length);
+            Fatal("XAM message {:08X} to app {:02X} (buffer {:08X}, {} bytes: {}) is not implemented", message, app, buffer,
+                  length, bytes);
         Log("UNIMPLEMENTED XAM MESSAGE {:08X} to app {:02X} (buffer {:08X}, {} bytes): E_FAIL", message, app, buffer, length);
         return 0x80004005;
     }
@@ -462,6 +564,25 @@ namespace
 
 namespace kernel
 {
+    std::map<uint32_t, std::vector<uint8_t>> UserMatchmakingValues(uint32_t user)
+    {
+        std::map<uint32_t, std::vector<uint8_t>> out;
+        std::lock_guard lock(g_userValuesMutex);
+        for (const auto& [key, value] : g_userValues)
+        {
+            if (key.first != user)
+                continue;
+            if (key.second >> 28 == 0)
+            {
+                const uint32_t v = value.context;
+                out[key.second] = { uint8_t(v >> 24), uint8_t(v >> 16), uint8_t(v >> 8), uint8_t(v) };
+            }
+            else
+                out[key.second] = value.property;
+        }
+        return out;
+    }
+
     void RefreshPresence(uint32_t user)
     {
         UpdatePresence(user, true);
@@ -589,8 +710,20 @@ namespace
                 const uint32_t base = mem.Read32(task + 0x2C), size = mem.Read32(task + 0x30);
                 if (index != (ctx.r4.u32 & 0x7FFF))
                     Fatal("Xbox LIVE service task {:05X}: its task names schema index {}", ctx.r4.u32, index);
+                if (const uint32_t ordinal = mem.Read32(task) & 0xFFFF; kernel::storage::IsTask(ordinal))
+                {
+                    // XStorage (kernel/xam_storage.h): the data moves between the title's buffer and our server. Its
+                    // download is a raw response (task flag 4, XStorageDownloadToMemory): handled here, so before that check.
+                    hr = kernel::storage::RunTask(ordinal, task, used);
+                    if (int32_t(hr) >= 0)
+                        mem.Write32(task + 0x30, used);
+                    Log("Xbox LIVE service task {:05X} (XStorage ordinal {:04X}): {:08X}, {} bytes", ctx.r4.u32, ordinal, hr, used);
+                }
+                else
+                {
                 if (flags & 4)
-                    Fatal("Xbox LIVE service task {:05X}: raw responses (task flag 4) are not handled", ctx.r4.u32);
+                    Fatal("Xbox LIVE service task {:05X} (schema ordinal {:04X}): raw responses (task flag 4) are not handled",
+                          ctx.r4.u32, mem.Read32(task) & 0xFFFF);
                 std::vector<uint8_t> request;
                 if (wire && wireSize)
                 {
@@ -619,6 +752,7 @@ namespace
                 }
                 Log("Xbox LIVE service task {:05X} (ordinal {:04X}) {}: {:08X}, {} bytes", ctx.r4.u32,
                     mem.Read32(task) & 0xFFFF, reply ? reply->path : std::string("(no server)"), hr, used);
+                }
             }
             const uint32_t win32 = int32_t(hr) < 0 ? 0x65B : 0;
             if (overlapped)
