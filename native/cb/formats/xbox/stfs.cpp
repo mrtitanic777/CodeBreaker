@@ -125,6 +125,8 @@ std::uint64_t Package::hash_address(std::uint32_t b) const {
     } else if (top_level_ == 1) {
         a += std::uint64_t{top_entry(b / kPerL0) & 0x40u} << 6;
     } else {
+        // Unverified against a real top_level 2 package: the level-1 entry index below is b % 0xAA, as the original
+        // Python had it; (b / 0xAA) % 0xAA may be the correct one. Kept identical to the original on purpose.
         const std::uint64_t l1 = std::uint64_t{top_entry(b / kPerL1) & 0x40u} << 6;
         const std::uint64_t pos = (level1_backing(b) << 12) + first_hash_ + l1 + std::uint64_t{b % kPerL0} * kHashEntry;
         if (pos + 0x15 > data_.size()) throw TruncatedError(kReader, pos, 0x15, data_.size() > pos ? data_.size() - pos : 0);

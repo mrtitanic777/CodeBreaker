@@ -249,24 +249,28 @@ CB_TEST("formats.resources.bitmap_palettes", [] {
     Bytes core(12 + 4, 0);
     core[0] = 12;
     core[10] = 8;
-    io::ByteReader r(bitmap_file(core), "test");
+    const Bytes out_r = bitmap_file(core);
+    io::ByteReader r(out_r, "test");
     r.seek(10);
     CB_CHECK_EQ(r.u32(), 14u + 12u + 3u * 256u);
     // a 40-byte header, 24 bits, no colours used: no palette
     Bytes dib(40 + 4, 0);
     dib[0] = 40;
     dib[14] = 24;
-    io::ByteReader r2(bitmap_file(dib), "test");
+    const Bytes out_r2 = bitmap_file(dib);
+    io::ByteReader r2(out_r2, "test");
     r2.seek(10);
     CB_CHECK_EQ(r2.u32(), 14u + 40u);
     // bit-fields compression (3) with a 40-byte header: three masks follow
     dib[16] = 3;
     dib[14] = 16;
-    io::ByteReader r3(bitmap_file(dib), "test");
+    const Bytes out_r3 = bitmap_file(dib);
+    io::ByteReader r3(out_r3, "test");
     r3.seek(10);
     CB_CHECK_EQ(r3.u32(), 14u + 40u + 12u);
     // data too short for a header: no palette, no error
-    io::ByteReader r4(bitmap_file(Bytes{1, 2, 3}), "test");
+    const Bytes out_r4 = bitmap_file(Bytes{1, 2, 3});
+    io::ByteReader r4(out_r4, "test");
     r4.seek(10);
     CB_CHECK_EQ(r4.u32(), 14u);
 });
