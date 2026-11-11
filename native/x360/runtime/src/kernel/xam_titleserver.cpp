@@ -1,11 +1,9 @@
 // Title servers (XLSP), the XAM side: the enumerators a title makes with XamCreateEnumeratorHandle for
-// XTitleServerCreateEnumerator (Minecraft makes one when it signs in to Xbox LIVE).
-// For now an enumeration lists no title servers (ERROR_NO_MORE_FILES), as for a title that has none: the Dashboard's
-// runtime (Recompiled kernel/xam_titleserver*.cpp, with live/titleserver.h) answers it from our server and replaces this
-// when it is ported here.
+// XTitleServerCreateEnumerator. The logic is kernel/xam_titleserver_core.h; the XNet address calls are in xam_net.cpp.
 
 #include "kernel/kernel.h"
 #include "kernel/objects.h"
+#include "kernel/xam_titleserver_core.h"
 #include "log.h"
 #include "memory.h"
 
@@ -15,10 +13,6 @@
 
 namespace
 {
-    // XTitleServerCreateEnumerator's enumerator: app 0xFC (XLIVEBASE), messages 0x58039 / 0x5803A, 0xD4 bytes of
-    // private data (Minecraft's call: r4 FC, r5 58039, r6 5803A, r7 D4).
-    constexpr uint32_t kAppXLive = 0xFC, kEnumerateMessage = 0x58039, kCloseMessage = 0x5803A, kPrivateSize = 0xD4;
-    constexpr uint32_t kErrorNoMoreFiles = 0x12;
     constexpr uint32_t kBodySize = 0x18;
     constexpr uint32_t kErrorInvalidHandle = 6, kErrorInvalidParameter = 0x57;
 
@@ -36,11 +30,11 @@ GUEST_IMPORT(XamCreateEnumeratorHandle)
     auto& mem = guest::g_memory;
     const uint32_t user = ctx.r3.u32, app = ctx.r4.u32, message = ctx.r5.u32, close = ctx.r6.u32, extra = ctx.r7.u32,
                    items = ctx.r8.u32, flags = ctx.r9.u32, handlePtr = ctx.r10.u32;
-    if (app != kAppXLive || message != kEnumerateMessage ||
-        close != kCloseMessage)
+    if (app != kernel::titleserver::kAppXLive || message != kernel::titleserver::kEnumerateMessage ||
+        close != kernel::titleserver::kCloseMessage)
         Fatal("XamCreateEnumeratorHandle(user {:X}, app {:02X}, message {:08X}, close {:08X}): enumerators served by XAM "
               "apps are not implemented", user, app, message, close);
-    if (handlePtr == 0 || extra != kPrivateSize || items == 0)
+    if (handlePtr == 0 || extra != kernel::titleserver::kPrivateSize || items == 0)
     {
         ctx.r3.u64 = kErrorInvalidParameter;
         return;
@@ -95,10 +89,16 @@ namespace kernel
             if (!g_enumerators.count(object))
                 return false;
         }
-        (void)buffer;
-        (void)bufferSize;
-        written = 0;
-        error = kErrorNoMoreFiles;
+        auto& mem = guest::g_memory;
+        uint32_t user = 0;
+        for (uint32_t u = 0; u < 4; u++)
+            if (UserOnLive(u))
+            {
+                user = u;
+                break;
+            }
+        error = titleserver::EnumeratePage(object + kBodySize, mem.Read32(object + 0x10), buffer, bufferSize, user,
+                                           TitleId(), written);
         return true;
     }
 }

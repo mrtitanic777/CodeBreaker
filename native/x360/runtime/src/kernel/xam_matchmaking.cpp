@@ -3,6 +3,7 @@
 #include "kernel/xam_matchmaking.h"
 
 #include "kernel/users.h"
+#include "kernel/xam_invites.h"
 #include "kernel/xam_stats.h"
 #include "live/client.h"
 #include "log.h"
@@ -230,6 +231,7 @@ namespace kernel::matchmaking
             Log("Matchmaking: user {} created the client side of session {:016X}", user, id);
             return;
         }
+        kernel::invites::SessionHosted(user, flags, id); // the Guide's Invite to Game (kernel/xam_invites.h)
         {
             // A queued ticket of this user ends with its session (the server does the same).
             std::lock_guard lock(Queue().mutex);
@@ -297,6 +299,7 @@ namespace kernel::matchmaking
         {
         case kMsgSessionDelete:
             kernel::stats::SessionDeleted(object);
+            kernel::invites::SessionEnded(s.id);
             Post([=] { LogFailure("delete", s.id, live::DeleteGameSession(s.user, s.id)); });
             break;
         case kMsgSessionStart:

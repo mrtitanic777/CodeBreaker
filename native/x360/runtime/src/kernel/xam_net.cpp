@@ -17,6 +17,9 @@
 
 #include "kernel/kernel.h"
 #include "kernel/objects.h"
+#include "kernel/users.h"
+#include "kernel/xam_titleserver_core.h"
+#include "live/client.h"
 #include "live/game.h"
 #include "settings.h"
 
@@ -406,15 +409,17 @@ namespace
 
     // live::game's receiver (its thread): the datagram goes to the title's socket on `toPort` from a loopback socket
     // that stands for the sender; recvfrom turns that source back into the sender's handle address.
-    void LiveGameReceived(uint64_t, uint64_t fromXuid, uint16_t fromPort, uint16_t toPort,
-                          const std::vector<uint8_t>& data)
+    // `handle` is the sender's address as the title sees it: a console's handle (liveConsole: the title may send back to
+    // it through live::game) or a title server's address (kernel/xam_titleserver_core.h).
+    void InjectDatagram(uint32_t handle, uint16_t fromPort, uint16_t toPort, const std::vector<uint8_t>& data,
+                        bool liveConsole)
     {
-        const uint32_t handle = live::game::AddressHandle(fromXuid);
         SOCKET injector = INVALID_SOCKET;
         uint16_t hostPort = toPort;
         {
             std::lock_guard lock(g_netMutex);
-            g_liveHandles.insert(handle);
+            if (liveConsole)
+                g_liveHandles.insert(handle);
             bool listening = false;
             for (const auto& [guest, socket] : g_sockets)
             {
@@ -463,6 +468,38 @@ namespace
         to.sin_port = htons(hostPort);
         ::sendto(injector, reinterpret_cast<const char*>(data.data()), int(data.size()), 0,
                  reinterpret_cast<const sockaddr*>(&to), sizeof(to));
+    }
+
+    void LiveGameReceived(uint64_t, uint64_t fromXuid, uint16_t fromPort, uint16_t toPort,
+                          const std::vector<uint8_t>& data)
+    {
+        InjectDatagram(live::game::AddressHandle(fromXuid), fromPort, toPort, data, true);
+    }
+
+    // The first signed-in LIVE user (title servers are asked for as that user), or 0.
+    uint32_t LiveUser()
+    {
+        for (uint32_t user = 0; user < 4; user++)
+            if (kernel::UserOnLive(user))
+                return user;
+        return 0;
+    }
+
+    // The port a socket is bound to; an unbound socket is bound to a port the PC picks.
+    uint16_t BoundPort(SOCKET host)
+    {
+        sockaddr_in bound = {};
+        int length = sizeof(bound);
+        if (::getsockname(host, reinterpret_cast<sockaddr*>(&bound), &length) != 0 || bound.sin_port == 0)
+        {
+            sockaddr_in any = {};
+            any.sin_family = AF_INET;
+            ::bind(host, reinterpret_cast<const sockaddr*>(&any), sizeof(any));
+            length = sizeof(bound);
+            if (::getsockname(host, reinterpret_cast<sockaddr*>(&bound), &length) != 0)
+                return 0;
+        }
+        return ntohs(bound.sin_port);
     }
 
     // recvfrom's source: a datagram that LiveGameReceived injected comes from its sender's handle address and port.
@@ -845,6 +882,18 @@ GUEST_IMPORT(NetDll_connect)
         return Fail(ctx, kWsaENotSock);
     if (!ReadAddress(ctx.r5.u32, ctx.r6.u32, address))
         return Fail(ctx, kWsaEFault);
+    if (kernel::titleserver::ServiceOf(ntohl(address.sin_addr.s_addr)))
+    {
+        // A title server (XNetServerToInAddr's address): a stream of our Xbox LIVE server, bridged through the loopback.
+        uint16_t bridge = 0;
+        const uint16_t source = BoundPort(host);
+        const int error = kernel::titleserver::PrepareConnect(ntohl(address.sin_addr.s_addr), ntohs(address.sin_port),
+                                                              source, LiveUser(), kernel::TitleId(), bridge);
+        if (error)
+            return Fail(ctx, uint32_t(error));
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = htons(bridge);
+    }
     Finish(ctx, ::connect(host, reinterpret_cast<const sockaddr*>(&address), sizeof(address)));
 }
 
@@ -896,6 +945,12 @@ GUEST_IMPORT(NetDll_getpeername)
     int size = sizeof(address);
     if (::getpeername(host, reinterpret_cast<sockaddr*>(&address), &size) != 0)
         return Fail(ctx, ::WSAGetLastError());
+    if (address.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
+        if (const auto peer = kernel::titleserver::PeerOfBridge(ntohs(address.sin_port))) // a title server's stream
+        {
+            address.sin_addr.s_addr = htonl(peer->first);
+            address.sin_port = htons(peer->second);
+        }
     WriteAddress(address, ctx.r5.u32, ctx.r6.u32);
     ctx.r3.u64 = 0;
 }
@@ -942,6 +997,26 @@ GUEST_IMPORT(NetDll_sendto)
         {
             ctx.r3.u64 = length; // a console of our Xbox LIVE server: relayed or direct (live/game.cpp)
             return;
+        }
+        {
+            // A title server (XNetServerToInAddr's address): a datagram through our Xbox LIVE server.
+            static std::once_flag injector;
+            std::call_once(injector, [] {
+                kernel::titleserver::SetInjector([](uint32_t from, uint16_t fromPort, uint16_t toPort,
+                                                    const std::vector<uint8_t>& data) {
+                    InjectDatagram(from, fromPort, toPort, data, false);
+                });
+            });
+            int error = 0;
+            if (kernel::titleserver::SendDatagram(ntohl(address.sin_addr.s_addr), ntohs(address.sin_port), GuestPort(host, BoundPort(host)),
+                                                  LiveUser(), kernel::TitleId(),
+                                                  reinterpret_cast<const uint8_t*>(mem.Translate(buffer)), length, error))
+            {
+                if (error)
+                    return Fail(ctx, uint32_t(error));
+                ctx.r3.u64 = length;
+                return;
+            }
         }
         sent = ::sendto(host, reinterpret_cast<const char*>(mem.Translate(buffer)), int(length), int(flags),
                         reinterpret_cast<const sockaddr*>(&address), sizeof(address));
@@ -1161,7 +1236,22 @@ uint32_t kernel::WriteTitleXnAddr(uint32_t address)
         return 0x00008002;
     }
     std::memcpy(mem.Translate(address), &network.address, 4);
-    return 0x02 | (network.dhcp ? 0x08 : 0x04) | 0x20 | (network.dns ? 0x40 : 0);
+    uint32_t status = 0x02 | (network.dhcp ? 0x08 : 0x04) | 0x20 | (network.dns ? 0x40 : 0);
+    // Signed in to our Xbox LIVE: the online address is the console's handle 10.x.y.z (what XNetXnAddrToInAddr registers
+    // for other consoles), abOnline starts with its XUID. ina stays the LAN address: on a console ina is the address
+    // system link (XNKID kinds 0x00 / 0x40) uses and inaOnline the one the security gateway knows, which online
+    // sessions (kind 0x80) use (XAM 0x817543C8), so a title that sends its own XNADDR to its peers works across
+    // networks, and on one LAN as before.
+    for (uint32_t user = 0; user < 4; user++)
+        if (live::SignedIn(user))
+            if (const auto profile = kernel::users::SignedIn(user); profile && profile->onlineXuid != 0)
+            {
+                mem.Write32(address + 4, live::game::AddressHandle(profile->onlineXuid));
+                mem.Write64(address + 16, profile->onlineXuid);
+                status |= 0x80; // XNET_GET_XNADDR_ONLINE
+                break;
+            }
+    return status;
 }
 
 // XNet's secure addressing on the PC's network. On a console XNetXnAddrToInAddr gives an address that XNet's secure
@@ -1180,13 +1270,26 @@ GUEST_IMPORT(NetDll_XNetXnAddrToInAddr)
 {
     auto& mem = guest::g_memory;
     const uint32_t xnaddr = ctx.r4.u32, out = ctx.r6.u32;
-    if (xnaddr == 0 || out == 0 || mem.Read32(xnaddr) == 0)
+    if (xnaddr == 0 || out == 0)
+    {
+        ctx.r3.u64 = kWsaEInval;
+        return;
+    }
+    // XAM 0x817543C8: an online peer session's XNKID (top bits 0x80) is reached at inaOnline, anything else (system
+    // link) at ina. Here inaOnline counts when it is the handle of the XUID in abOnline (a console of our Xbox LIVE,
+    // which is reached through live::game wherever it is); a TSADDR-less XNADDR with only a handle works too.
+    const uint32_t kind = ctx.r5.u32 ? mem.Read8(ctx.r5.u32) & 0xE0u : 0u;
+    const uint32_t inaValue = mem.Read32(xnaddr), onlineValue = mem.Read32(xnaddr + 4);
+    const uint64_t onlineXuid = mem.Read64(xnaddr + 16);
+    const bool liveHandle = (onlineValue >> 24) == 10 && onlineXuid != 0 && live::game::AddressHandle(onlineXuid) == onlineValue;
+    const uint32_t offset = (liveHandle && (kind == 0x80 || inaValue == 0)) ? 4 : 0;
+    if (mem.Read32(xnaddr + offset) == 0)
     {
         ctx.r3.u64 = kWsaEInval;
         return;
     }
     uint32_t address;
-    std::memcpy(&address, mem.Translate(xnaddr), 4);
+    std::memcpy(&address, mem.Translate(xnaddr + offset), 4);
     {
         std::lock_guard lock(g_peerMutex);
         std::memcpy(g_peers[address].data(), mem.Translate(xnaddr), 36);
@@ -1229,6 +1332,61 @@ GUEST_IMPORT(NetDll_XNetInAddrToXnAddr)
     if (keyId)
         mem.Write64(keyId, g_lastKey);
     ctx.r3.u64 = 0;
+}
+
+// INT NetDll_XNetServerToInAddr(XNCALLER_TYPE Caller, IN_ADDR ina, DWORD ServiceId, IN_ADDR* pina) (XAM 0x81740FC0 ->
+// 0x81754770), INT NetDll_XNetTsAddrToInAddr(Caller, const TSADDR* ptsa, DWORD ServiceId, const XNKID* pxnkid, IN_ADDR*
+// pina) (0x81740FF0 -> 0x817548A8) and INT NetDll_XNetInAddrToServer(Caller, IN_ADDR ina, IN_ADDR* pina) (0x81741058 ->
+// 0x8174DB50): title servers (XLSP), kernel/xam_titleserver_core.h. XNet not started is WSANOTINITIALISED (0x276D).
+GUEST_IMPORT(NetDll_XNetServerToInAddr)
+{
+    auto& mem = guest::g_memory;
+    if (!g_xnetStarted)
+    {
+        ctx.r3.u64 = 0x276D;
+        return;
+    }
+    uint32_t address = 0;
+    const int error = ValidCaller(ctx.r3.u32) && ctx.r6.u32
+                          ? kernel::titleserver::ServerToInAddr(ctx.r4.u32, ctx.r5.u32, LiveUser(), kernel::TitleId(), address)
+                          : int(kWsaEInval);
+    if (error == 0)
+        mem.Write32(ctx.r6.u32, address);
+    ctx.r3.u64 = uint32_t(error);
+}
+
+GUEST_IMPORT(NetDll_XNetTsAddrToInAddr)
+{
+    auto& mem = guest::g_memory;
+    if (!g_xnetStarted)
+    {
+        ctx.r3.u64 = 0x276D;
+        return;
+    }
+    const uint32_t tsaddr = ctx.r4.u32, key = ctx.r6.u32, out = ctx.r7.u32;
+    uint32_t address = 0;
+    const int error = ValidCaller(ctx.r3.u32) && tsaddr && key && out
+                          ? kernel::titleserver::TsAddrToInAddr(mem.Read32(tsaddr), mem.Read32(tsaddr + 4), mem.Read8(key),
+                                                                ctx.r5.u32, LiveUser(), kernel::TitleId(), address)
+                          : int(kWsaEInval);
+    if (error == 0)
+        mem.Write32(out, address);
+    ctx.r3.u64 = uint32_t(error);
+}
+
+GUEST_IMPORT(NetDll_XNetInAddrToServer)
+{
+    if (!g_xnetStarted)
+    {
+        ctx.r3.u64 = 0x276D;
+        return;
+    }
+    uint32_t gateway = 0;
+    const int error = ValidCaller(ctx.r3.u32) && ctx.r5.u32 ? kernel::titleserver::InAddrToServer(ctx.r4.u32, gateway)
+                                                            : int(kWsaEInval);
+    if (error == 0)
+        guest::g_memory.Write32(ctx.r5.u32, gateway);
+    ctx.r3.u64 = uint32_t(error);
 }
 
 // INT NetDll_XNetUnregisterInAddr(XNCALLER_TYPE Caller, IN_ADDR ina)

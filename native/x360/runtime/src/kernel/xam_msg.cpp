@@ -9,6 +9,7 @@
 #include "kernel/spa.h"
 #include "kernel/users.h"
 #include "kernel/web_call.h"
+#include "kernel/xam_invites.h"
 #include "kernel/xam_matchmaking.h"
 #include "kernel/xam_stats.h"
 #include "kernel/xam_storage.h"
@@ -434,6 +435,8 @@ namespace
             return XgiUserSet(message, buffer, length);
         if (app == kAppXgi && message == kMsgUserWriteAchievements)
             return XgiWriteAchievements(buffer, length);
+        if (app == kAppXLiveBase && message == kernel::invites::kMsgInviteGetAcceptedInfo)
+            return kernel::invites::GetAcceptedInfo(length); // XInviteGetAcceptedInfo (kernel/xam_invites.h)
         if (app == kAppXLiveBase && message == 0x00058020)
         {
             // XFriendsCreateEnumerator (dash 0x9288D1E8; XMsgInProcessCall(0xFC, 0x58020, context, arguments)):
