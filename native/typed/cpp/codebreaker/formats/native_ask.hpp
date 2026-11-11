@@ -14,6 +14,7 @@
 
 #include "py.hpp"
 #include "py_answers.hpp"
+#include "py_zlib.hpp"
 
 // the reader's one entry point (native/formats/api.cc, linked in)
 extern "C" int cbf_call(const char* question, const uint8_t* data, size_t size, const uint8_t* args, size_t args_size,
@@ -29,6 +30,7 @@ inline const Own no_own = [](const std::string&, const std::string&) { return fa
 // native._exception(kind, message), raised
 [[noreturn]] inline void raise_as(const std::string& name, std::string msg, const Own& own) {
     if (name == "struct.error") throw py::StructError(msg);
+    if (name == "zlib.error") throw py::zlib::error(msg);
     if (own(name, msg)) throw py::RuntimeError(msg);   // (own throws; not reached)
     if (name == "UnicodeDecodeError") throw py::UnicodeDecodeError("'ascii' codec can't decode bytes in position 0-0: " + msg);
     if (name == "UnicodeEncodeError") throw py::UnicodeEncodeError("'latin-1' codec can't encode characters in position 0-0: " + msg);
@@ -53,13 +55,9 @@ inline const Own no_own = [](const std::string&, const std::string&) { return fa
     throw py::RuntimeError(msg);
 }
 
-// native.call(question, data, *args): the answer as it came (a pickle's value), for a caller that reads it by its shape
-template <class... A>
-py::native::Val ask_val(const char* question, const py::bytes& data, const Own& own, const A&... args) {
+// the question with its arguments already pickled (py::native::Args::done()): the answer as it came
+inline py::native::Val ask_blob(const char* question, const py::bytes& data, const Own& own, const std::string& blob) {
     namespace nat = py::native;
-    nat::Args a;
-    (a.put(args), ...);
-    const std::string blob = a.done();
     const uint8_t* out = nullptr;
     size_t n = 0;
     const std::string& raw = data.raw();
@@ -72,6 +70,14 @@ py::native::Val ask_val(const char* question, const py::bytes& data, const Own& 
         raise_as(name, msg, own);
     }
     return v;
+}
+
+// native.call(question, data, *args): the answer as it came (a pickle's value), for a caller that reads it by its shape
+template <class... A>
+py::native::Val ask_val(const char* question, const py::bytes& data, const Own& own, const A&... args) {
+    py::native::Args a;
+    (a.put(args), ...);
+    return ask_blob(question, data, own, a.done());
 }
 
 // native.call(question, data, *args): the answer read as R
