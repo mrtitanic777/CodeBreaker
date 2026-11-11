@@ -282,10 +282,10 @@ def wine_typing(header, texts, exports=None):
     def said(text):
         out, i = [], 0
         for mm, end, args in calls(text):
-            if mm.group(1) not in use:
+            if mm.group(1) not in use or mm.start() < i:     # (a call inside the arguments of one said: said with them)
                 continue
             e = use[mm.group(1)]
-            args = [a.strip() for a in args]
+            args = [said(a.strip()) for a in args]
             if len(args) != len(e.args):
                 joined, k = [], 0
                 for kind in e.args:
@@ -543,6 +543,11 @@ _PTR = re.compile(r"\(codebreaker_frame\.(\w+) \+ (-?(?:0x[0-9a-f]+|\d+))\)")
 _BARE = re.compile(r"codebreaker_frame\.(\w+)\b")
 
 
+def _number(text):
+    """a C number as the decompiler writes it: 0x... hexadecimal, else decimal (a leading zero is not octal here, and not an error)"""
+    return int(text, 16) if text.lstrip("-").lower().startswith("0x") else int(text)
+
+
 def split_frame(text):
     """`text` with the decompiler's frame structure -- every local of a function in one packed
     structure of byte arrays, reached as `(*(int2 *)((uint1 *)codebreaker_frame.axStack_12 + 8))` --
@@ -565,7 +570,7 @@ def split_frame(text):
     for amp, typ, mem, k in _AT.findall(body):
         if mem not in members or typ not in _SIZES:
             return text
-        at = members[mem][0] + int(k, 0)
+        at = members[mem][0] + _number(k)
         scalars[at] = max(scalars.get(at, 0), _SIZES[typ])
         if amp:
             starts.add(at)
@@ -573,12 +578,12 @@ def split_frame(text):
         if mem not in members:
             return text
         base, typ, _n = members[mem]
-        at = base + int(k, 0) * _SIZES.get(typ, 1)
+        at = base + _number(k) * _SIZES.get(typ, 1)
         scalars[at] = max(scalars.get(at, 0), _SIZES.get(typ, 1))
     for mem, k in _PTR.findall(body):                 # (a member's address moved on: a place of its own)
         if mem not in members:
             return text
-        starts.add(members[mem][0] + int(k, 0))
+        starts.add(members[mem][0] + _number(k))
     rest = _PTR.sub("", _INDEX.sub("", _AT.sub("", body)))
     for mem in _BARE.findall(rest):
         if mem not in members:
@@ -609,7 +614,7 @@ def split_frame(text):
 
     def at_text(m):
         amp, typ, mem, k = m.groups()
-        (name, vtyp, n), d = place(members[mem][0] + int(k, 0))
+        (name, vtyp, n), d = place(members[mem][0] + _number(k))
         if not d and n == 1 and vtyp == typ:
             ref = name
         elif not d and n == 1 and _SIZES.get(vtyp) == _SIZES[typ]:
@@ -621,7 +626,7 @@ def split_frame(text):
     def index_text(m):
         mem, k = m.groups()
         base, typ, _n = members[mem]
-        (name, vtyp, n), d = place(base + int(k, 0) * _SIZES.get(typ, 1))
+        (name, vtyp, n), d = place(base + _number(k) * _SIZES.get(typ, 1))
         return name if not d and n == 1 and vtyp == typ else "(*(%s *)((uint1 *)&%s + %d))" % (typ, name, d)
 
     def bare_text(m):
@@ -630,7 +635,7 @@ def split_frame(text):
         return "((%s *)((uint1 *)&%s + %d))" % (typ, name, d) if d else "((%s *)&%s)" % (typ, name)
     def ptr_text(m):
         base, typ, _n = members[m.group(1)]
-        (name, _vt, _n2), d = place(base + int(m.group(2), 0))
+        (name, _vt, _n2), d = place(base + _number(m.group(2)))
         return "((%s *)((uint1 *)&%s + %d))" % (typ, name, d) if d else "((%s *)&%s)" % (typ, name)
     body = _BARE.sub(bare_text, _PTR.sub(ptr_text, _INDEX.sub(index_text, _AT.sub(at_text, body))))
     decls = "".join("\n  %s %s%s;" % (t, n, "[%d]" % c if c > 1 or t == "xunknown1" and c > 1 else "")
@@ -670,7 +675,7 @@ def ds_globals(text):
     seen = set()
 
     def var(m):
-        typ, at = m.group(1), int(m.group(2), 0)
+        typ, at = m.group(1), _number(m.group(2))
         if at < 0x10 or typ in ("void", "code"):
             return m.group(0)
         nm = "codebreaker_d%04x" % at

@@ -630,3 +630,20 @@ first and creates with `CreateDirectoryW`).
 The old typed port of flat_thunk was not timed (the typed ports are being replaced). The 35 modules x 5 files `recover` makes are byte-identical to the
 Python's (175 files); the OpenWatcom builds of recovered sources of lz32, dciman32 and version are byte-identical DLLs (PE timestamp aside), and the period
 build (thunk.exe, ML, CL, LINK) of the curated lz32 source differs only in the export and resource timestamps (8 bytes).
+## cb refactor: build/msc6 and build/asm16, batch W1-B4 (2026-11-11)
+
+Old = the live Python module (the exe's translated Python runs it) and, where it could be run, the old typed port on the py:: layer (its harness
+binaries of state/work/typed-port, built /O2). Same inputs, shared machine (+-30%). Results compared first, on meaning: asm16 over the 699
+functions of the Win95 16-bit modules (every attribute, the source in six forms, check / check_piece / differences): 699 of 699 equal; msc6 over 199 decompiled
+texts of four modules and 150 mutated ones through every text pass, 400 fuzzed object files, Wine typing and the SDK passes: all equal but the 13
+fuzzed (damaged) objects (see DIVERGES in msc6_test.cpp); compile_many against the REAL compilers (Microsoft C 6.0a under DOSBox-X, Visual C++ 1.52c on Windows):
+single, named, batched, together, partial, a refused file among good ones, the cache read back: all equal.
+
+| What | Old | New |
+|---|---|---|
+| asm16: 699 functions made, then each one's mnemonics, candidates, raw calls, the source in six forms, three checks (no file output) | Python 5.5 s | 1.6-2.0 s (3x), the module files read included |
+| ... the same with the harness's 4,400 output files and JSON lines | old typed port 37.3 s | 30.1 s (the files dominate both: cb::fs::write_file costs about 6 ms a small file on this machine) |
+| msc6 text passes over 345 texts (pascal_order, fold_temporaries, join_far_parameters, split_frame, ds_globals, sdk_calls) | Python 0.43 s | 0.085 s (5x): fold_temporaries 0.286 -> 0.040, pascal_order 0.049 -> 0.017, sdk_calls 0.046 -> 0.010 |
+| msc6: sdk_prototypes of the 2,000-line WINDOWS.H | Python 10 ms | 3 ms |
+| msc6: the whole harness (400 fuzzed objects, every pass, Wine typing of four headers, 150 mutated texts), no file output | | 0.5-0.7 s |
+| msc6 / asm16 compile_many | the compiler dominates (DOSBox-X starts in about 2 s; a native Visual C++ 1.52c compile 0.1 s a file): equal within noise | |
