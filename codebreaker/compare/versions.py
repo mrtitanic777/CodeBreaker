@@ -415,8 +415,17 @@ def likeness(fa, fb, memo=None):
 
 
 def _grams(f, n=5):
+    """The runs of `n` instruction shapes of a function, each as a number that is the same in every process
+    (hash() of strings is not: it made the order candidates met in, and so which of equally good ones came
+    first, differ from one run to the next)."""
     s = f.shape
-    return {hash(tuple(s[i:i + n])) for i in range(len(s) - n + 1)}
+    return {int.from_bytes(hashlib.blake2b("\n".join(s[i:i + n]).encode(), digest_size=8).digest(), "big")
+            for i in range(len(s) - n + 1)}
+
+
+def _marks_and_grams(f):
+    """What a function is looked up by, in a fixed order: its marks, then its runs of shapes."""
+    return sorted(f.marks) + sorted(_grams(f))
 
 
 def match(a, b, least=0.6):
@@ -492,14 +501,14 @@ def match(a, b, least=0.6):
         posting = collections.defaultdict(list)
         for f in B.values():
             if f.key not in back and f.count >= 5:
-                for mark in f.marks | _grams(f):
+                for mark in _marks_and_grams(f):
                     posting[mark].append(f.key)
         of_a, of_b = collections.defaultdict(list), collections.defaultdict(list)
         for f in A.values():
             if f.key in pair or f.count < 5:
                 continue
             cand = collections.Counter()
-            for mark in f.marks | _grams(f):
+            for mark in _marks_and_grams(f):
                 hits = posting.get(mark, ())
                 if len(hits) <= 40:
                     cand.update(hits)
