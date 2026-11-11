@@ -699,3 +699,27 @@ The old harness's 2,180 cases (88 files of the Win95 corpus and damaged copies: 
 | the 101 `info` command runs, output captured | not timed (a process each) | 0.85 s in one process |
 
 About 2.8x faster on the same calls; nothing is slower. Measured on a busy machine (other builds running).
+## formats.dll answers from cb::formats (pe, ne, le, dos, omf, detect), 2026-11-11
+
+Old = master's formats.dll (its own readers in native/formats); new = formats.dll whose questions call native/cb/formats.
+Every question codebreaker/formats/{pe,ne,le,dos,omf,detect}.py asks (130 of the 137 offered; never asked by the
+workload: dos.pklite_head, dos.unpack_emulated, dos.unpack_exepack, le.compress, le.expand, ne._read_name_table,
+ne._rsrc_string -- the last two are covered by native/formats/gate.py's samples), driven through the Python API over the
+1,248 Win95 corpus files and the 1,738 OMF files (toolchains + seeded damage); both DLLs in one process, time summed
+inside cbf_call (harness: state/work/fmtdiff_a39/diff.py), on a machine running a test gate beside it:
+
+| Lane (calls) | old | new |
+|---|---|---|
+| PE (40,110) | 1.35 s | 1.08 s |
+| NE (10,931) | 0.21 s | 0.48 s (the module is parsed again, file copied, per question) |
+| LE (43,513) | 2.13 s | 1.24 s |
+| DOS (17,698) | 1.35 s | 1.02 s |
+| detect (9,984) | 2.65 s | 2.38 s |
+| OMF (76,409) | 3.97 s | 3.96 s |
+| all (198,645) | 11.66 s | 10.16 s |
+
+Answers: 0 differences for PE, NE, LE, DOS and detect. OMF: only on damaged or non-OMF input -- the exception's kind
+(old IndexError/KeyError from Python-style indexing, new ValueError/struct.error from FormatError/TruncatedError; 2,267
+calls) or message, strict reads of a field cut by the end of the file (42 calls), index 0 as "no target" (102 calls), as
+listed in the formats DIVERGES notes. Fixed on the way: omf rename_externs on an EXTDEF without a type index (26 MSVC
+1.52 MFC objects), omf patched with a non-ASCII segment name, ne.u16/u32 with a negative offset.

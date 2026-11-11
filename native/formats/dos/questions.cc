@@ -1,34 +1,47 @@
-// questions.cc -- the real-mode program reader's answers, in the shapes codebreaker/formats/dos.py
-// gives them.  A Program comes back as the dict of its attributes (devices as tuples): the shim
-// makes the dos.Program and dos.Device objects from it.
-#include "../core/files.h"
-#include "../core/questions.h"
-#include "../core/text.h"
-#include "dos.h"
+// questions.cc -- the real-mode program reader's answers, in the shapes codebreaker/formats/dos.py gives them, read
+// by cb::formats::dos (native/cb/formats/dos.hpp).  A Program comes back as the dict of its attributes (devices as
+// tuples): the shim makes the dos.Program and dos.Device objects from it.
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "../core/cb_bridge.h"
+#include "cb/core/error.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/formats/dos.hpp"
 
 namespace cbf::dos {
 namespace {
 
-void mz_dict(Out &o, const Mz &h) {
+namespace D = cb::formats::dos;
+
+// A kind as the Python names it, back to the reader's: "mz", "com", any other a driver.
+D::Kind kind_from(const std::string &k) {
+    for (D::Kind kind : {D::Kind::Com, D::Kind::Mz, D::Kind::Driver, D::Kind::Kernel, D::Kind::KernelPart,
+                         D::Kind::DriverWithVxd, D::Kind::DosWithWindows})
+        if (k == D::kind_name(kind)) return kind;
+    return D::Kind::Driver;
+}
+
+void mz_dict(Out &o, const D::MzHeader &h) {
     o.begin_dict();
-    o.item("nreloc", h.nreloc);
-    o.item("header", h.header);
+    o.item("nreloc", h.relocation_count);
+    o.item("header", h.header_size);
     o.item("min_alloc", h.min_alloc);
     o.item("max_alloc", h.max_alloc);
     o.item("ss", h.ss);
     o.item("sp", h.sp);
     o.item("ip", h.ip);
     o.item("cs", h.cs);
-    o.item("reloc_off", h.reloc_off);
-    o.item("size", h.size);
+    o.item("reloc_off", h.relocation_offset);
+    o.item("size", int64_t(h.size));
     o.end_dict();
 }
 
-void device_tuple(Out &o, const Device &d) {
+void device_tuple(Out &o, const D::Device &d) {
     o.begin_tuple();
     o.integer(d.offset);
-    if (d.next) o.integer(*d.next);
-    else o.none();
+    put_opt(o, d.next);
     o.integer(d.attributes);
     o.integer(d.strategy);
     o.integer(d.interrupt);
@@ -36,30 +49,30 @@ void device_tuple(Out &o, const Device &d) {
     o.end_tuple();
 }
 
-void devices_list(Out &o, const std::vector<Device> &ds) {
+void devices_list(Out &o, const std::vector<D::Device> &ds) {
     o.begin_list();
-    for (const Device &d : ds) device_tuple(o, d);
+    for (const D::Device &d : ds) device_tuple(o, d);
     o.end_list();
 }
 
-void opt_text(Out &o, const std::optional<std::string> &s) {
-    if (s) o.text(*s);
+void opt_text(Out &o, const char *s) {
+    if (s) o.text(s);
     else o.none();
 }
 
-void program(Out &o, const Program &p) {
+void program(Out &o, const D::Program &p, const std::optional<std::string> &name) {
     o.begin_dict();
-    if (p.name) o.item_text("name", *p.name);
+    if (name) o.item_text("name", *name);
     o.key("packer");
-    opt_text(o, p.packer);
+    opt_text(o, p.packer ? D::packer_name(*p.packer) : nullptr);
     o.key("unpacked");
-    opt_text(o, p.unpacked);
+    opt_text(o, !p.unpacked ? nullptr : *p.unpacked == D::Unpacked::Static ? "static" : "emulated");
     o.item("base", p.base);
     o.key("image");
-    o.bytes(Bytes(p.image));
+    put(o, p.image);
     o.key("spans");
     o.begin_list();
-    for (const Span &s : p.spans) {
+    for (const D::Span &s : p.spans) {
         o.begin_tuple();
         o.integer(s.address);
         o.integer(s.length);
@@ -69,24 +82,24 @@ void program(Out &o, const Program &p) {
     o.end_list();
     o.key("entries");
     o.begin_list();
-    for (const Entry &e : p.entries) {
+    for (const D::Entry &e : p.entries) {
         o.begin_tuple();
         o.integer(e.address);
         o.text(e.name);
-        o.text(e.kind);
+        o.text(e.call == D::Entry::Call::Far ? "far" : "near");
         o.end_tuple();
     }
     o.end_list();
     o.key("segments");
     o.begin_dict();
-    for (auto &kv : p.segments) {
-        o.integer(kv.first);
-        o.integer(kv.second);
+    for (const auto &[address, segment] : p.segments) {
+        o.integer(address);
+        o.integer(segment);
     }
     o.end_dict();
     o.key("relocations");
     o.begin_list();
-    for (int64_t r : p.relocations) o.integer(r);
+    for (uint32_t r : p.relocations) o.integer(r);
     o.end_list();
     o.key("devices");
     devices_list(o, p.devices);
@@ -96,213 +109,179 @@ void program(Out &o, const Program &p) {
     o.item("ss", p.ss);
     o.item("sp", p.sp);
     o.key("ds");
-    if (p.ds) o.integer(*p.ds);
-    else o.none();
+    put_opt(o, p.ds);
     o.key("overlay");
-    o.bytes(Bytes(p.overlay));
+    put(o, p.overlay);
     o.key("notes");
     o.begin_list();
-    for (auto &n : p.notes) o.text(n);
+    for (const std::string &n : p.notes) o.text(n);
     o.end_list();
-    if (p.windows_at) o.item("windows_at", *p.windows_at);
+    if (p.windows_at) o.item("windows_at", int64_t(*p.windows_at));
     o.end_dict();
 }
 
 // the result as (kind, attributes): the shim makes Program(path, kind) and sets the rest
-void program_answer(Out &o, const Program &p) {
+void program_answer(Out &o, const D::Program &p, const std::optional<std::string> &name = std::nullopt) {
     o.begin_tuple();
-    o.text(p.kind);
-    program(o, p);
+    o.text(D::kind_name(p.kind));
+    program(o, p, name);
     o.end_tuple();
 }
 
-int64_t key(const Value &h, const char *k) {
-    if (h.kind != Value::Dict) raise("TypeError", "a header that is not a dict");
-    const Value *v = h.get(k);
-    if (!v) raise("KeyError", std::string("'") + k + "'");
-    return v->as_int();
+std::vector<uint32_t> ints(const Value &v) {
+    std::vector<uint32_t> out;
+    for (const Value &x : v.items) out.push_back(uint32_t(x.as_int()));
+    return out;
+}
+
+void unpack_answer(Out &o, const D::Unpack &e) {
+    o.begin_tuple();
+    put(o, e.module);
+    o.begin_list();
+    for (uint32_t r : e.relocations) o.integer(r);
+    o.end_list();
+    o.integer(e.cs);
+    o.integer(e.ip);
+    o.integer(e.ss);
+    o.integer(e.sp);
+    o.end_tuple();
+}
+
+void pair(Out &o, uint64_t a, uint64_t b) {
+    o.begin_tuple();
+    o.integer(int64_t(a));
+    o.integer(int64_t(b));
+    o.end_tuple();
 }
 
 void mz_q(Call &c) {
-    auto h = mz(c.data, c.bool_arg(0));
+    auto h = D::mz_header(view(c.data), c.bool_arg(0));
     if (h) mz_dict(c.out, *h);
     else c.out.none();
 }
 
 void devices_q(Call &c) {
-    std::vector<int64_t> segs = {0, 0xFFFF};
-    if (c.argc() > 1) {
-        segs.clear();
-        for (const Value &v : c.arg(1).items) segs.push_back(v.as_int());
-    }
-    devices_list(c.out, devices(c.data, c.int_arg(0, 0), segs, c.int_arg(2, 64)));
+    std::vector<uint32_t> segs = {0, 0xFFFF};
+    if (c.argc() > 1) segs = ints(c.arg(1));
+    devices_list(c.out, D::devices(view(c.data), uint64_t(c.int_arg(0, 0)), segs, size_t(c.int_arg(2, 64))));
 }
 
 void kernel_body_q(Call &c) {
     const Value &hv = c.arg(0);
-    Mz h{};
-    h.header = key(hv, "header");
-    h.size = key(hv, "size");
-    auto r = kernel_body(c.data, h);
-    if (!r) {
-        c.out.none();
-        return;
-    }
-    c.out.begin_tuple();
-    c.out.integer(r->first);
-    c.out.integer(r->second);
-    c.out.end_tuple();
+    D::MzHeader h;
+    h.header_size = uint32_t(key_int(hv, "header"));
+    h.size = uint64_t(key_int(hv, "size"));
+    auto r = D::kernel_body(view(c.data), h);
+    if (r) pair(c.out, r->first, r->second);
+    else c.out.none();
 }
 
-void kind_q(Call &c) { opt_text(c.out, kind_of(c.data, c.str_arg(0))); }
+void kind_q(Call &c) {
+    auto k = D::kind_of(view(c.data), c.str_arg(0));
+    opt_text(c.out, k ? D::kind_name(*k) : nullptr);
+}
 
 // kind(path): None for a file that cannot be read
 void kind_path_q(Call &c) {
-    std::string data;
-    const std::string path = c.str_arg(0);
-    if (!read_file(path, data)) {
+    const std::filesystem::path path = path_of(c.str_arg(0));
+    cb::Bytes data;
+    try {
+        data = cb::fs::read_file(path);
+    } catch (const cb::IoError &) {
         c.out.none();
         return;
     }
-    std::string base = path.substr(path.find_last_of("/\\") == std::string::npos ? 0 : path.find_last_of("/\\") + 1);
-    opt_text(c.out, kind_of(Bytes(data), base));
+    auto k = D::kind_of(data, cb::fs::to_text(path.filename()));
+    opt_text(c.out, k ? D::kind_name(*k) : nullptr);
 }
 
-void pairs(Out &o, const std::vector<std::pair<int64_t, int64_t>> &ps) {
-    o.begin_list();
-    for (auto &p : ps) {
-        o.begin_tuple();
-        o.integer(p.first);
-        o.integer(p.second);
-        o.end_tuple();
-    }
-    o.end_list();
+void chain_q(Call &c) {
+    c.out.begin_list();
+    for (auto &p : D::chain(view(c.data))) pair(c.out, p.first, p.second);
+    c.out.end_list();
 }
-
-void chain_q(Call &c) { pairs(c.out, chain(c.data)); }
 
 void driver_and_vxd_q(Call &c) {
-    auto r = driver_and_vxd(c.data);
-    if (!r) {
-        c.out.none();
-        return;
-    }
-    c.out.begin_tuple();
-    c.out.integer(r->first);
-    c.out.integer(r->second);
-    c.out.end_tuple();
+    auto r = D::driver_and_vxd(view(c.data));
+    if (r) pair(c.out, r->first, r->second);
+    else c.out.none();
 }
 
 void dos_and_windows_q(Call &c) {
-    auto r = dos_and_windows(c.data);
+    auto r = D::dos_and_windows(view(c.data));
     if (!r) {
         c.out.none();
         return;
     }
     c.out.begin_tuple();
     mz_dict(c.out, r->first);
-    c.out.integer(r->second);
+    c.out.integer(int64_t(r->second));
     c.out.end_tuple();
 }
 
 void packer_q(Call &c) {
     const Value &hv = c.arg(0);
-    Mz h{};
-    h.header = key(hv, "header");
-    h.cs = key(hv, "cs");
-    h.ip = key(hv, "ip");
-    opt_text(c.out, packer_of(c.data, h));
+    D::MzHeader h;
+    h.header_size = uint32_t(key_int(hv, "header"));
+    h.cs = uint16_t(key_int(hv, "cs"));
+    h.ip = uint16_t(key_int(hv, "ip"));
+    auto p = D::packer_of(view(c.data), h);
+    opt_text(c.out, p ? D::packer_name(*p) : nullptr);
 }
 
 void packer_path_q(Call &c) {
-    auto h = mz(c.data);
-    if (h) opt_text(c.out, packer_of(c.data, *h));
-    else c.out.none();
+    auto h = D::mz_header(view(c.data));
+    auto p = h ? D::packer_of(view(c.data), *h) : std::nullopt;
+    opt_text(c.out, p ? D::packer_name(*p) : nullptr);
 }
 
 void unpack_exepack_q(Call &c) {
-    Exepack e = unpack_exepack(c.data, c.int_arg(0), c.int_arg(1));
-    Out &o = c.out;
-    o.begin_tuple();
-    o.bytes(Bytes(e.module));
-    o.begin_list();
-    for (int64_t r : e.relocs) o.integer(r);
-    o.end_list();
-    o.integer(e.cs);
-    o.integer(e.ip);
-    o.integer(e.ss);
-    o.integer(e.sp);
-    o.end_tuple();
+    unpack_answer(c.out, D::unpack_exepack(view(c.data), uint32_t(c.int_arg(0)), uint32_t(c.int_arg(1))));
 }
-
-std::vector<int64_t> ints(const Value &v);
 
 // unpack_emulated(module, relocations, cs, ip, ss, sp, moved=False): the unpacker run (emulate/unpack.py's unpacked)
 void unpack_emulated_q(Call &c) {
-    Exepack e = unpack_emulated(c.data.str(), ints(c.arg(0)), c.int_arg(1), c.int_arg(2), c.int_arg(3), c.int_arg(4),
-                                c.bool_arg(5, false));
-    Out &o = c.out;
-    o.begin_tuple();
-    o.bytes(Bytes(e.module));
-    o.begin_list();
-    for (int64_t r : e.relocs) o.integer(r);
-    o.end_list();
-    o.integer(e.cs);
-    o.integer(e.ip);
-    o.integer(e.ss);
-    o.integer(e.sp);
-    o.end_tuple();
-}
-
-std::vector<int64_t> ints(const Value &v) {
-    std::vector<int64_t> out;
-    for (const Value &x : v.items) out.push_back(x.as_int());
-    return out;
+    unpack_answer(c.out, D::unpack_emulated(view(c.data), ints(c.arg(0)), uint32_t(c.int_arg(1)), uint32_t(c.int_arg(2)),
+                                            uint32_t(c.int_arg(3)), uint32_t(c.int_arg(4)), c.bool_arg(5, false)));
 }
 
 void data_segment_q(Call &c) {
-    auto r = data_segment(c.data, c.int_arg(0), c.int_arg(1), c.str_arg(2), ints(c.arg(3)), c.int_arg(4));
-    if (r) c.out.integer(*r);
-    else c.out.none();
+    put_opt(c.out, D::data_segment(view(c.data), uint32_t(c.int_arg(0)), uint32_t(c.int_arg(1)), kind_from(c.str_arg(2)),
+                                   ints(c.arg(3)), uint32_t(c.int_arg(4))));
 }
 
 // unpacked_file(p): (kind, name, relocations, cs, ss, sp, ip, overlay) beside the image
 void unpacked_file_q(Call &c) {
-    Program p;
-    p.kind = c.str_arg(0);
-    p.image = c.data.str();
+    D::Program p;
+    p.kind = kind_from(c.str_arg(0));
+    p.image = owned(c.data);
     p.relocations = ints(c.arg(2));
-    p.cs = c.int_arg(3);
-    p.ss = c.int_arg(4);
-    p.sp = c.int_arg(5);
-    p.ip = c.int_arg(6);
-    p.overlay = c.arg(7).as_bytes().str();
-    c.out.bytes(Bytes(unpacked_file(p, c.str_arg(1))));
+    p.cs = uint32_t(c.int_arg(3));
+    p.ss = uint32_t(c.int_arg(4));
+    p.sp = uint32_t(c.int_arg(5));
+    p.ip = uint32_t(c.int_arg(6));
+    p.overlay = blob(c.arg(7));
+    put(c.out, D::unpacked_file(p, c.str_arg(1)));
 }
 
 // _read_mz(data, _mz(data), Program(path, "mz"), "mz"): the MZ program an image's header describes
 // (kernel_parts: IO.SYS's SYSINIT)
 void read_mz_q(Call &c) {
-    std::optional<Mz> h = mz(c.data);
-    if (!h) raise("TypeError", "'NoneType' object is not subscriptable");
-    Program p;
-    p.kind = "mz";
-    read_mz(c.data, *h, p, "mz", true);
+    if (!D::mz_header(view(c.data))) raise("TypeError", "'NoneType' object is not subscriptable");
+    D::Program p = D::read_load_module(view(c.data), true);
+    p.kind = D::Kind::Mz;
     program_answer(c.out, p);
 }
 
-void read_q(Call &c) { program_answer(c.out, read(c.data, c.str_arg(0), c.bool_arg(1, true))); }
+void read_q(Call &c) { program_answer(c.out, D::read_program(view(c.data), c.str_arg(0), c.bool_arg(1, true))); }
 
 void driver_part_q(Call &c) {
-    Program p = driver_part(c.data);
-    p.name = "the real-mode driver of " + c.str_arg(0);
-    program_answer(c.out, p);
+    program_answer(c.out, D::read_driver_part(view(c.data)), "the real-mode driver of " + c.str_arg(0));
 }
 
 void pklite_head_q(Call &c) {
-    Program p = pklite_head(c.data, c.int_arg(0));
-    p.name = "pklite (the entry code and decompressor PKLITE put in front of " + c.str_arg(1) + ")";
-    program_answer(c.out, p);
+    program_answer(c.out, D::read_pklite_head(view(c.data), uint64_t(c.int_arg(0))),
+                   "pklite (the entry code and decompressor PKLITE put in front of " + c.str_arg(1) + ")");
 }
 
 }  // namespace
