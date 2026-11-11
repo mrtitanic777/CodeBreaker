@@ -157,6 +157,8 @@ Bytes rename_externs(ByteView data, const std::map<std::string, std::string>& ma
 Bytes rename_symbols(ByteView data, const std::function<std::string(std::string_view)>& rename);
 // `data` with bytes patched in a segment: spec is "<segment>+<hex offset>=<hex bytes>". UsageError for a bad spec.
 Bytes patched(ByteView data, std::string_view spec);
+// The same with the spec's parts: `value` written at `offset` of segment `segment` (its name as the reader gives it).
+Bytes patched(ByteView data, std::string_view segment, std::int64_t offset, ByteView value);
 // A minimal object: a code segment (and optionally a data segment) with publics.
 Bytes raw_object(std::string_view title, ByteView code, const OrderedMap<std::string, std::int64_t>& publics,
                  ByteView data = {}, const OrderedMap<std::string, std::int64_t>& data_publics = {},

@@ -200,6 +200,10 @@ CB_TEST("formats.omf.renaming", [] {
     const Bytes renamed = omf::rename_externs(obj, {{"_foo", "_bar_baz"}, {"_unused", "_x"}});
     CB_CHECK_EQ(omf::externs(renamed)[0], "_bar_baz");
     CB_CHECK_EQ(omf::externs(omf::rename_externs(obj, {}))[0], "_foo");  // not in the mapping: kept
+    // an EXTDEF cut after its last name (no type index): renamed, and written back without one
+    const Bytes cut = cat({omf::record(0x80, omf::name("m")), omf::record(0x8C, omf::name("_foo")), omf::record(0x8A, Bytes{0})});
+    CB_CHECK(omf::rename_externs(cut, {{"_foo", "_bar"}}) ==
+             cat({omf::record(0x80, omf::name("m")), omf::record(0x8C, omf::name("_bar")), omf::record(0x8A, Bytes{0})}));
     // every public name through a function
     const Bytes txt = testdata("txtonly.obj");
     const Bytes upper = omf::rename_symbols(txt, [](std::string_view s) { return text::upper(s); });

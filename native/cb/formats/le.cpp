@@ -535,14 +535,14 @@ std::optional<Ddb> Module::ddb() const {
     return std::nullopt;
 }
 
+bool plausible_descriptor(ByteView b, std::uint64_t at) {
+    if (at > b.size() || b.size() - at < 0x38) return false;
+    const ByteView name = b.subspan(at + 0x0C, 8);
+    const unsigned version = b[at + 4] | (b[at + 5] << 8);
+    return 0x0300 <= version && version <= 0x04FF && is_alnum(name[0]) && printable(name);
+}
+
 std::optional<Descriptor> Module::descriptor() const {
-    // A DDB is plausible where a DDK version (0x03xx or 0x04xx) is followed by an alphanumeric name.
-    auto plausible = [](const Bytes& b, std::uint64_t at) {
-        if (at + 0x38 > b.size()) return false;
-        const ByteView name = ByteView(b).subspan(at + 0x0C, 8);
-        const unsigned version = b[at + 4] | (b[at + 5] << 8);
-        return 0x0300 <= version && version <= 0x04FF && is_alnum(name[0]) && printable(name);
-    };
     std::vector<std::optional<Bytes>> loaded(objects_.size());
     auto bytes_of = [&](std::size_t k) -> const Bytes& {
         if (!loaded[k]) loaded[k] = object_data(objects_[k]);
@@ -550,7 +550,7 @@ std::optional<Descriptor> Module::descriptor() const {
     };
     std::optional<Place> where;
     for (const EntryPoint& e : entries()) {
-        if (0 < e.object && e.object <= objects_.size() && plausible(bytes_of(e.object - 1), e.offset)) {
+        if (0 < e.object && e.object <= objects_.size() && plausible_descriptor(bytes_of(e.object - 1), e.offset)) {
             where = Place{e.object, e.offset};
             break;
         }
