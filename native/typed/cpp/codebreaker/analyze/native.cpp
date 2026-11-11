@@ -1,6 +1,7 @@
 // codebreaker/analyze/native.cpp -- typed C++ port of codebreaker.analyze.native (see the header).
 
 #include "codebreaker/analyze/native.hpp"
+#include "codebreaker/base/capstone_dll.hpp"
 
 #include <cstring>
 #include <string>
@@ -98,9 +99,7 @@ Library* _load() {
             throw py::OSError(py::percent(py::str("not built: %s (native/analyze/CMakeLists.txt)"), path));
         }
         // import capstone   (no capstone to import: the caller names its dll; not an OSError, so it escapes)
-        if (!g_capstone_dll) {
-            throw py::Exception("No module named 'capstone'");
-        }
+        if (!g_capstone_dll) g_capstone_dll = base::capstone_dll::find();   // (nobody named one: found as `import capstone` would)
 #ifdef _WIN32
         std::unique_ptr<Library> fresh(new Library());
         // settings.load_native: the build folder goes on the DLL search path, then the DLL is loaded

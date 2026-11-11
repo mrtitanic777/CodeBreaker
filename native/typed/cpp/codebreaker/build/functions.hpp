@@ -165,4 +165,11 @@ BuiltPowerPC build_powerpc(const py::str& header, const py::dict<py::str, py::st
                            const py::dict<py::str, int64_t>& externs, const py::str& outdir, int64_t base,
                            const std::optional<int64_t>& jobs = std::nullopt);
 
+// ---- running a program ----------------------------------------------------------------------------
+// subprocess.run(args, cwd=, env=os.environ + `env`, capture_output=True, text=True, errors="replace") -> (returncode, stdout,
+// stderr). The variables of `env` are in the program's environment while it runs (threads that run at once with the same
+// variables share them); the Python's `timeout=` is not kept (the runtime's subprocess has none).
+std::tuple<int64_t, py::str, py::str> run_process(const py::list<py::str>& args, const std::optional<py::str>& cwd,
+                                                  const py::dict<py::str, py::str>& env);
+
 }  // namespace codebreaker::build::functions
