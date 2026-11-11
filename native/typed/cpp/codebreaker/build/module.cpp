@@ -86,7 +86,11 @@ using ImportMap = py::dict<py::str, std::tuple<py::str, Which>>;
 const py::re::Pattern _BY_ADDRESS = py::re::compile("\\bfunc_0x([0-9a-f]{8})\\b");
 
 // where kept_as_asm.txt is (beside module.py)
-const py::str KEPT_AS_ASM = py::os::path::join(py::settings::checkout_root(), py::str("codebreaker"), py::str("build"), py::str("kept_as_asm.txt"));
+// (built on first use: the checkout root is read from the settings, which may be unset at load time)
+const py::str& KEPT_AS_ASM() {
+    static const py::str path = py::os::path::join(py::settings::checkout_root(), py::str("codebreaker"), py::str("build"), py::str("kept_as_asm.txt"));
+    return path;
+}
 
 namespace {
 
@@ -1945,7 +1949,7 @@ py::str name_of_stem(const py::str& stem, const py::dict<py::str, py::str>& cste
 py::dict<py::str, py::str> kept_as_asm(const py::str& module) {
     py::dict<py::str, py::str> kept;
     try {
-        const py::str text = read_text(KEPT_AS_ASM);
+        const py::str text = read_text(KEPT_AS_ASM());
         for (const py::str& line : py::split(text, py::str("\n"))) {
             // line.split("#", 1)[0].split(None, 2)
             const py::str code = py::split(line, py::str("#"), 1)[0];

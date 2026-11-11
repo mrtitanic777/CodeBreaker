@@ -482,7 +482,7 @@ void declare_steps() {
         const auto texts = ctx.need_many(py::str("function.c"), klist);
         const auto objects = ctx.need_many(py::str("function.object"), klist);
         const auto never = ctx.need_many(py::str("function.never_set"), klist);
-        ctx.file(mod::KEPT_AS_ASM);
+        ctx.file(mod::KEPT_AS_ASM());
         const py::str folder = ctx.work(py::list<py::str>{py::str("build")});
         const py::str decompiled = py::os::path::join(folder, py::str("decompiled"));
         py::os::makedirs(decompiled, 0777, true);

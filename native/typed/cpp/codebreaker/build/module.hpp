@@ -64,7 +64,7 @@ inline constexpr int64_t RUN_LIMIT = 40;   // exported functions called when a b
 extern const py::re::Pattern _BY_ADDRESS;  // \bfunc_0x([0-9a-f]{8})\b   (used by engine.win16)
 
 // where kept_as_asm.txt is (beside module.py)
-extern const py::str KEPT_AS_ASM;
+const py::str& KEPT_AS_ASM();   // (a function: built on first use, see module.cpp)
 
 // A build and what was found out about it.
 class Built {
