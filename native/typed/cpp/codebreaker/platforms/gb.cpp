@@ -26,33 +26,20 @@ static py::list<py::str> strs(std::initializer_list<const char*> items) {
     return out;
 }
 
+// platforms.machine('gb', ...)
 static Platform make_platform() {
-    Platform p;
-    p.name = "gb";
-    p.title = "Game Boy / Game Boy Color";
-    p.family = "sm83";
-    p.source = "asm";
-    p.lane = py::str("codebreaker.verify.lanes.") + p.name;
-    p.cpu.language = "sm83:LE:16:default";
-    p.cpu.bits = 8;
-    p.cpu.endian = "little";
-    p.cpu.decoder = "codebreaker.decompile.sm83";
-    p.cpu.registers = strs({"A", "F", "BC", "DE", "HL", "SP"});
-    p.cpu.stack = "SP";
-    p.container = "cartridge image (.gb, .gbc)";
-    p.reader = Ref{"codebreaker.formats.gb", "read"};
-    p.engine = "CodeBreaker's own interpreter";
-    p.runner = Ref{"codebreaker.emulate.sm83", "recorded"};
-    p.language = "asm";
-    p.toolchain = "CodeBreaker's own assembler, or RGBDS";
-    p.assembler = Ref{"codebreaker.build.sm83_asm", "build"};
-    p.writer = Ref{"codebreaker.source.gb_writer", "reconstruct"};
-    p.convention_names = strs({"registers"});
-    p.convention_arguments = "registers";
-    p.convention_order = "registers";
-    p.results = strs({"A", "F", "BC", "DE", "HL"});
-    p.pops = "caller";
-    return p;
+    Cpu cpu;
+    cpu.language = py::str("sm83:LE:16:default");
+    cpu.bits = 8;
+    cpu.endian = py::str("little");
+    cpu.decoder = Cpu::Module{py::str("codebreaker.decompile.sm83")};
+    cpu.registers = strs({"A", "F", "BC", "DE", "HL", "SP"});
+    cpu.stack = py::str("SP");
+    return machine(py::str("gb"), py::str("Game Boy / Game Boy Color"), py::str("sm83"), py::str("cartridge image (.gb, .gbc)"), cpu,
+                   [](const py::str& path) { return _recognise(path); },
+                   {py::str("codebreaker.formats.gb"), py::str("read")}, {py::str("codebreaker.emulate.sm83"), py::str("recorded")},
+                   {py::str("codebreaker.build.sm83_asm"), py::str("build")}, {py::str("codebreaker.source.gb_writer"), py::str("reconstruct")}, strs({"A", "F", "BC", "DE", "HL"}),
+                   py::str("CodeBreaker's own assembler, or RGBDS"));
 }
 
 const Platform& PLATFORM() {

@@ -146,12 +146,12 @@ using compare::Fingerprint;
 
 const py::str KIND = py::str("ne");
 
-const platforms::win16::Platform& P() { return platforms::win16::PLATFORM(); }
+const platforms::Platform& P() { return platforms::win16::PLATFORM(); }
 const verdicts::NotRun& NOT_RUN() { return V::NOT_RUN(); }
 
 namespace {
 
-int64_t arg_words() { return P().convention.arguments; }
+int64_t arg_words() { return std::get<int64_t>(P().convention.arguments); }
 
 std::string hexs(int64_t v) { return py::percent("%x", v).utf8(); }
 
@@ -664,7 +664,7 @@ Fingerprint16 fingerprint(const py::str& path, int64_t seg, int64_t off, bool ne
         if ((value & 0xFFFF) == cmp && !*wide) ret = LEFTOVER;
     }
     py::list<py::str> deps = _effects(r, [&](const Hit& h) { return _call(h, v.args, entry, segs); });
-    Fingerprint base_fp = lane_common::fingerprint(r, deps, ret, writes, r.kept(P().convention.preserved), cov);
+    Fingerprint base_fp = lane_common::fingerprint(r, deps, ret, writes, r.kept(*P().convention.preserved), cov);
     Fingerprint16 fp;
     static_cast<Fingerprint&>(fp) = base_fp;
     if (span) fp.trail = trail(path, seg, *span, r.path);

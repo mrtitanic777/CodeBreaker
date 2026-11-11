@@ -9,65 +9,17 @@
 // wasm; the program written back as assembly and linked by wlink (source/dos_writer.py).
 //
 // Typing notes:
-//   * The platforms package has no typed port of its own (the win16/msx ports hold their PLATFORM as
-//     plain records too). PLATFORM() is a record of the values the Python's six slots hold: a Ref is
-//     (module, name, leading arguments), a Cpu its language id plus fields. Built on first use.
-//   * The Python's empty Emulator() slot has no fields: the record has none either.
+//   * PLATFORM() is the platforms::Platform of this descriptor (platforms/package.hpp), built on first use.
+//   * The Python's empty Emulator() slot has no fields: the record gives none.
 #pragma once
 
 #include <cstdint>
 #include <tuple>
 
+#include "codebreaker/platforms/package.hpp"
 #include "py.hpp"
 
 namespace codebreaker::platforms::dos {
-
-// platforms.Ref: a function of another module, named here and imported when first used
-struct Ref {
-    py::str module;
-    py::str name;
-    py::list<py::str> args;
-};
-
-struct Cpu {
-    py::str language;
-    int64_t bits = 0;
-    py::str endian;
-    std::tuple<py::str, py::str, int64_t> decoder;   // ("capstone", arch, bits)
-    py::list<py::str> registers;
-    py::str stack;
-};
-
-struct Convention {
-    py::list<py::str> names;
-    int64_t word = 0;
-    py::str order;
-    py::list<py::str> results;
-    py::str pops;
-};
-
-struct Loader {
-    py::str container;
-    Ref open, parts;
-};
-
-struct Compiler {
-    py::str language, toolchain;
-    Ref tool, tools;
-};
-
-struct Packager {
-    Ref writer, tools;
-};
-
-struct Platform {
-    py::str name, title, family, source, lane;
-    Cpu cpu;
-    Loader loader;
-    Convention convention;
-    Compiler compiler;
-    Packager packager;
-};
 
 // detect.kind(path) == "dos"   (.COM files and plain driver images too, which have no header)
 bool _recognise(const py::str& path);

@@ -9,9 +9,7 @@
 // linked as an LE by wlink (source/driver_writer.py, build/driver.py).
 //
 // Typing notes:
-//   * The platforms package has no typed port of its own (the win16/dos ports hold their PLATFORM as
-//     plain records too): PLATFORM() is a record of the values the Python's six slots hold, built on
-//     first use. A slot field the Python leaves out (None) is not in the record.
+//   * PLATFORM() is the platforms::Platform of this descriptor (platforms/package.hpp), built on first use.
 //   * entries() returns the typed LE reader's Place records ((object, offset)).
 #pragma once
 
@@ -19,63 +17,10 @@
 #include <tuple>
 
 #include "codebreaker/formats/le.hpp"
+#include "codebreaker/platforms/package.hpp"
 #include "py.hpp"
 
 namespace codebreaker::platforms::vxd {
-
-struct Ref {
-    py::str module;
-    py::str name;
-    py::list<py::str> args;
-};
-
-struct Cpu {
-    py::str language;
-    int64_t bits = 0;
-    py::str endian;
-    std::tuple<py::str, py::str, int64_t> decoder;   // ("capstone", arch, bits)
-    py::list<py::str> registers;
-    py::str stack;
-};
-
-struct Convention {
-    py::list<py::str> names;
-    py::str arguments;
-    int64_t word = 0;
-    py::str order;
-    py::list<py::str> results;
-    py::str pops;
-    py::list<py::str> preserved;
-};
-
-struct Loader {
-    py::str container;
-    Ref open, entries, parts;
-};
-
-struct Emulator {
-    py::str engine;
-    Ref run;
-};
-
-struct Compiler {
-    py::str language, toolchain;
-    Ref tool, tools;
-};
-
-struct Packager {
-    Ref writer, functions, tools;
-};
-
-struct Platform {
-    py::str name, title, family, source, lane;
-    Cpu cpu;
-    Loader loader;
-    Convention convention;
-    Emulator emulator;
-    Compiler compiler;
-    Packager packager;
-};
 
 // An LE image, or a W3 container of them (vmm32.vxd: VMM and the drivers loaded with it).
 bool _recognise(const py::str& path);

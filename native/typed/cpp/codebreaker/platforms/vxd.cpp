@@ -38,7 +38,7 @@ static py::list<py::str> strs(std::initializer_list<const char*> items) {
 }
 
 static Ref ref(const char* module, const char* name, std::initializer_list<const char*> args = {}) {
-    return Ref{py::str(module), py::str(name), strs(args)};
+    return Ref(py::str(module), py::str(name), strs(args));
 }
 
 static Platform make_platform() {
@@ -56,11 +56,11 @@ static Platform make_platform() {
     p.cpu.language = "x86:LE:32:default:windows";
     p.cpu.bits = 32;
     p.cpu.endian = "little";
-    p.cpu.decoder = std::make_tuple(py::str("capstone"), py::str("x86"), int64_t(32));
+    p.cpu.decoder = Cpu::Capstone{py::str("x86"), 32};
     p.cpu.registers = strs({"EAX", "EBX", "ECX", "EDX", "ESI", "EDI", "EBP", "ESP"});
     p.cpu.stack = "ESP";
     p.convention.names = strs({"registers"});
-    p.convention.arguments = "registers";
+    p.convention.arguments = py::str("registers");
     p.convention.word = 4;
     p.convention.order = "registers";
     p.convention.results = strs({"EAX", "CF", "ZF"});
@@ -75,6 +75,8 @@ static Platform make_platform() {
     p.packager.writer = ref("codebreaker.source.driver_writer", "reconstruct");
     p.packager.functions = ref("codebreaker.build.driver", "build");
     p.packager.tools = ref(here, "tools");
+    p.recognise_fn = [](const py::str& path) { return _recognise(path); };
+    p.finish();
     return p;
 }
 

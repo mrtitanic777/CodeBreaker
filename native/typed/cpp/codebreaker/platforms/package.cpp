@@ -313,140 +313,6 @@ bool is_folder_or_java(const str& path) {
     return py::os::path::isdir(path) || path.lower().endswith(std::make_tuple(str(".java"), str(".jar")));
 }
 
-template <class R>
-static auto args_of(const R& r, int) -> decltype(r.args, py::list<str>()) { return r.args; }
-template <class R>
-static py::list<str> args_of(const R&, long) { return {}; }
-
-// a ported descriptor's Ref (module/name[/args]); an unset Ref (empty module and name) is None
-template <class R>
-static std::optional<Ref> cref(const R& r) {
-    if (r.module.empty() && r.name.empty()) return std::nullopt;
-    return Ref(r.module, r.name, args_of(r, 0));
-}
-
-template <class Cp>
-static Cpu ccpu_capstone(const Cp& c) {
-    Cpu o;
-    o.language = c.language;
-    o.bits = c.bits;
-    o.endian = c.endian;
-    o.decoder = Cpu::Capstone{std::get<1>(c.decoder), std::get<2>(c.decoder)};
-    o.registers = c.registers;
-    o.stack = c.stack;
-    return o;
-}
-
-static Platform from_win16() {
-    const win16::Platform& w = win16::PLATFORM();
-    Platform p;
-    p.name = w.name; p.title = w.title; p.family = w.family; p.source = w.source; p.lane = w.lane;
-    p.steps = w.steps;
-    p.recognise_fn = [](const str& path) { return win16::_recognise(path); };
-    p.cpu = ccpu_capstone(w.cpu);
-    p.loader.container = w.loader.container;
-    p.loader.open = cref(w.loader.open);
-    p.loader.parts = cref(w.loader.parts);
-    p.loader.entries = cref(w.loader.entries);
-    p.loader.exports = cref(w.loader.exports);
-    p.loader.imports = cref(w.loader.imports);
-    p.convention.names = w.convention.names;
-    p.convention.arguments = w.convention.arguments;
-    p.convention.word = w.convention.word;
-    p.convention.order = w.convention.order;
-    p.convention.results = w.convention.results;
-    p.convention.pops = w.convention.pops;
-    p.convention.preserved = w.convention.preserved;
-    p.emulator.engine = w.emulator.engine;
-    p.emulator.run = cref(w.emulator.run);
-    p.emulator.call = cref(w.emulator.call);
-    p.compiler.language = w.compiler.language;
-    p.compiler.toolchain = w.compiler.toolchain;
-    p.compiler.tool = cref(w.compiler.tool);
-    p.compiler.tools = cref(w.compiler.tools);
-    if (auto f = cref(w.compiler.flags)) p.compiler.flags = *f;
-    p.compiler.env = cref(w.compiler.env);
-    p.compiler.compile = cref(w.compiler.compile);
-    p.compiler.library = cref(w.compiler.library);
-    p.packager.link = cref(w.packager.link);
-    p.packager.functions = cref(w.packager.functions);
-    p.packager.tools = cref(w.packager.tools);
-    p.packager.linker = cref(w.packager.linker);
-    p.packager.assembler = cref(w.packager.assembler);
-    p.packager.resources = cref(w.packager.resources);
-    p.finish();
-    return p;
-}
-
-static Platform from_dos() {
-    const dos::Platform& w = dos::PLATFORM();
-    Platform p;
-    p.name = w.name; p.title = w.title; p.family = w.family; p.source = w.source; p.lane = w.lane;
-    p.recognise_fn = [](const str& path) { return dos::_recognise(path); };
-    p.cpu = ccpu_capstone(w.cpu);
-    p.loader.container = w.loader.container;
-    p.loader.open = cref(w.loader.open);
-    p.loader.parts = cref(w.loader.parts);
-    p.convention.names = w.convention.names;
-    p.convention.word = w.convention.word;
-    p.convention.order = w.convention.order;
-    p.convention.results = w.convention.results;
-    p.convention.pops = w.convention.pops;
-    // (emulator=Emulator(): nothing is run)
-    p.compiler.language = w.compiler.language;
-    p.compiler.toolchain = w.compiler.toolchain;
-    p.compiler.tool = cref(w.compiler.tool);
-    p.compiler.tools = cref(w.compiler.tools);
-    p.packager.writer = cref(w.packager.writer);
-    p.packager.tools = cref(w.packager.tools);
-    p.finish();
-    return p;
-}
-
-static Platform from_vxd() {
-    const vxd::Platform& w = vxd::PLATFORM();
-    Platform p;
-    p.name = w.name; p.title = w.title; p.family = w.family; p.source = w.source; p.lane = w.lane;
-    p.recognise_fn = [](const str& path) { return vxd::_recognise(path); };
-    p.cpu = ccpu_capstone(w.cpu);
-    p.loader.container = w.loader.container;
-    p.loader.open = cref(w.loader.open);
-    p.loader.entries = cref(w.loader.entries);
-    p.loader.parts = cref(w.loader.parts);
-    p.convention.names = w.convention.names;
-    p.convention.arguments = w.convention.arguments;
-    p.convention.word = w.convention.word;
-    p.convention.order = w.convention.order;
-    p.convention.results = w.convention.results;
-    p.convention.pops = w.convention.pops;
-    p.convention.preserved = w.convention.preserved;
-    p.emulator.engine = w.emulator.engine;
-    p.emulator.run = cref(w.emulator.run);
-    p.compiler.language = w.compiler.language;
-    p.compiler.toolchain = w.compiler.toolchain;
-    p.compiler.tool = cref(w.compiler.tool);
-    p.compiler.tools = cref(w.compiler.tools);
-    p.packager.writer = cref(w.packager.writer);
-    p.packager.functions = cref(w.packager.functions);
-    p.packager.tools = cref(w.packager.tools);
-    p.finish();
-    return p;
-}
-
-// nes, sms, gb, genesis, msx: platforms.machine(...) values held as msx::Platform records
-static Platform from_machine(const msx::Platform& w, const Recogniser& rec) {
-    Cpu c;
-    c.language = w.cpu.language;
-    c.bits = w.cpu.bits;
-    c.endian = w.cpu.endian;
-    c.decoder = Cpu::Module{w.cpu.decoder};
-    c.registers = w.cpu.registers;
-    c.stack = w.cpu.stack;
-    return machine(w.name, w.title, w.family, w.container, c, rec, {w.reader.module, w.reader.name},
-                   {w.runner.module, w.runner.name}, {w.assembler.module, w.assembler.name},
-                   {w.writer.module, w.writer.name}, w.results, w.toolchain);
-}
-
 // java: a folder of source (or a .jar), translated to C++ and judged by running both under the JVM
 static Platform make_java() {
     Platform p;
@@ -633,16 +499,16 @@ const py::list<Platform>& all() {
             if (m == str("java")) p = make_java();
             else if (m == str("xbox360")) p = make_xbox360();
             else if (m == str("xbox")) p = make_xbe();
-            else if (m == str("nes")) p = from_machine(nes::PLATFORM, [](const str& x) { return nes::_recognise(x); });
-            else if (m == str("sms")) p = from_machine(sms::PLATFORM, [](const str& x) { return sms::_recognise(x); });
-            else if (m == str("gb")) p = from_machine(gb::PLATFORM(), [](const str& x) { return gb::_recognise(x); });
-            else if (m == str("genesis")) p = from_machine(genesis::PLATFORM(), [](const str& x) { return genesis::_recognise(x); });
+            else if (m == str("nes")) p = nes::PLATFORM();
+            else if (m == str("sms")) p = sms::PLATFORM();
+            else if (m == str("gb")) p = gb::PLATFORM();
+            else if (m == str("genesis")) p = genesis::PLATFORM();
             else if (m == str("zx")) p = make_zx();
-            else if (m == str("msx")) p = from_machine(msx::PLATFORM, [](const str& x) { return msx::_recognise(x); });
+            else if (m == str("msx")) p = msx::PLATFORM();
             else if (m == str("win32")) p = make_win32();
-            else if (m == str("win16")) p = from_win16();
-            else if (m == str("vxd")) p = from_vxd();
-            else p = from_dos();
+            else if (m == str("win16")) p = win16::PLATFORM();
+            else if (m == str("vxd")) p = vxd::PLATFORM();
+            else p = dos::PLATFORM();
             p.id = m;
             found->append(p);
         }

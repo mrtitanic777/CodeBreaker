@@ -26,36 +26,25 @@ static py::list<py::str> strs(std::initializer_list<const char*> items) {
     return out;
 }
 
-// platforms.machine("nes", "NES", "6502", "iNES (.nes)", Cpu(...), ...)
+// platforms.machine('nes', ...)
 static Platform make_platform() {
-    Platform p;
-    p.name = "nes";
-    p.title = "NES";
-    p.family = "6502";
-    p.source = "asm";
-    p.lane = py::str("codebreaker.verify.lanes.") + p.name;
-    p.cpu.language = "6502:LE:16:NES:default";
-    p.cpu.bits = 8;
-    p.cpu.endian = "little";
-    p.cpu.decoder = "codebreaker.decompile.m6502";
-    p.cpu.registers = strs({"A", "X", "Y", "P", "S"});
-    p.cpu.stack = "S";
-    p.container = "iNES (.nes)";
-    p.reader = Ref{"codebreaker.formats.nes", "read"};
-    p.engine = "CodeBreaker's own interpreter";
-    p.runner = Ref{"codebreaker.emulate.m6502", "recorded"};
-    p.language = "asm";
-    p.toolchain = "CodeBreaker's own assembler, or cc65";
-    p.assembler = Ref{"codebreaker.build.m6502_asm", "build"};
-    p.writer = Ref{"codebreaker.source.nes_writer", "reconstruct"};
-    p.convention_names = strs({"registers"});
-    p.convention_arguments = "registers";
-    p.convention_order = "registers";
-    p.results = strs({"A", "X", "Y", "P"});
-    p.pops = "caller";
-    return p;
+    Cpu cpu;
+    cpu.language = py::str("6502:LE:16:NES:default");
+    cpu.bits = 8;
+    cpu.endian = py::str("little");
+    cpu.decoder = Cpu::Module{py::str("codebreaker.decompile.m6502")};
+    cpu.registers = strs({"A", "X", "Y", "P", "S"});
+    cpu.stack = py::str("S");
+    return machine(py::str("nes"), py::str("NES"), py::str("6502"), py::str("iNES (.nes)"), cpu,
+                   [](const py::str& path) { return _recognise(path); },
+                   {py::str("codebreaker.formats.nes"), py::str("read")}, {py::str("codebreaker.emulate.m6502"), py::str("recorded")},
+                   {py::str("codebreaker.build.m6502_asm"), py::str("build")}, {py::str("codebreaker.source.nes_writer"), py::str("reconstruct")}, strs({"A", "X", "Y", "P"}),
+                   py::str("CodeBreaker's own assembler, or cc65"));
 }
 
-const Platform PLATFORM = make_platform();
+const Platform& PLATFORM() {
+    static const Platform p = make_platform();
+    return p;
+}
 
 }  // namespace codebreaker::platforms::nes

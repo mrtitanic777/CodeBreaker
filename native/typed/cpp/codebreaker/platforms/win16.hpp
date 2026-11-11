@@ -10,10 +10,7 @@
 // build of the functions by build/functions.build16. Its steps on the engine: engine/win16.py.
 //
 // Typing notes:
-//   * The platforms package has no typed port of its own (the msx/gb ports hold their PLATFORM as plain
-//     records too). PLATFORM() here is a record of the values the Python's six slots hold: a Ref is
-//     (module, name, leading arguments), a Cpu its language id plus fields, and so on.  Each field the
-//     Python leaves out (None) is std::nullopt.  Built on first use, so no other file's start-up order matters.
+//   * PLATFORM() is the platforms::Platform of this descriptor (platforms/package.hpp), built on first use.
 //   * segments() / entries() return the typed NE reader's Segment / Entry records (the Python's dicts).
 //   * call(): the Python asks PLATFORM.emulator.run (emulate/windows16.recorded) to run the export; that
 //     module has no typed port, so the runner is a parameter: run(path, ordinal, args) -> RunRecord (what the
@@ -29,65 +26,10 @@
 #include <tuple>
 
 #include "codebreaker/formats/ne.hpp"
+#include "codebreaker/platforms/package.hpp"
 #include "py.hpp"
 
 namespace codebreaker::platforms::win16 {
-
-// platforms.Ref: a function of another module, named here and imported when first used (with leading arguments)
-struct Ref {
-    py::str module;
-    py::str name;
-    py::list<py::str> args;
-};
-
-// platforms.Cpu: the SLEIGH language id plus bits, endian, decoder, registers, stack
-struct Cpu {
-    py::str language;
-    int64_t bits = 0;
-    py::str endian;
-    std::tuple<py::str, py::str, int64_t> decoder;   // ("capstone", arch, bits)
-    py::list<py::str> registers;
-    py::str stack;
-};
-
-struct Convention {
-    py::list<py::str> names;
-    int64_t arguments = 0;
-    int64_t word = 0;
-    py::str order;
-    py::list<py::str> results;
-    py::str pops;
-    py::list<py::str> preserved;
-};
-
-struct Loader {
-    py::str container;
-    Ref open, parts, entries, exports, imports;
-};
-
-struct Emulator {
-    py::str engine;
-    Ref run, call;
-};
-
-struct Compiler {
-    py::str language, toolchain;
-    Ref tool, tools, flags, env, compile, library;
-};
-
-struct Packager {
-    Ref link, functions, tools, linker, assembler, resources;
-};
-
-struct Platform {
-    py::str name, title, family, source, lane, steps;
-    Cpu cpu;
-    Loader loader;
-    Convention convention;
-    Emulator emulator;
-    Compiler compiler;
-    Packager packager;
-};
 
 // What call() reads of the emulator's record.
 struct RunRecord {

@@ -26,35 +26,25 @@ static py::list<py::str> strs(std::initializer_list<const char*> items) {
     return out;
 }
 
+// platforms.machine('msx', ...)
 static Platform make_platform() {
-    Platform p;
-    p.name = "msx";
-    p.title = "MSX";
-    p.family = "z80";
-    p.source = "asm";
-    p.lane = py::str("codebreaker.verify.lanes.") + p.name;
-    p.cpu.language = "z80:LE:16:default";
-    p.cpu.bits = 8;
-    p.cpu.endian = "little";
-    p.cpu.decoder = "codebreaker.decompile.z80";
-    p.cpu.registers = strs({"A", "F", "BC", "DE", "HL", "IX", "IY", "SP"});
-    p.cpu.stack = "SP";
-    p.container = "cartridge image (.rom)";
-    p.reader = Ref{"codebreaker.formats.msx", "read"};
-    p.engine = "CodeBreaker's own interpreter";
-    p.runner = Ref{"codebreaker.emulate.z80", "recorded"};
-    p.language = "asm";
-    p.toolchain = "CodeBreaker's own assembler, or sjasmplus / pasmo";
-    p.assembler = Ref{"codebreaker.build.z80_asm", "build_flat"};
-    p.writer = Ref{"codebreaker.source.msx_writer", "reconstruct"};
-    p.convention_names = strs({"registers"});
-    p.convention_arguments = "registers";
-    p.convention_order = "registers";
-    p.results = strs({"A", "F", "BC", "DE", "HL", "IX", "IY"});
-    p.pops = "caller";
-    return p;
+    Cpu cpu;
+    cpu.language = py::str("z80:LE:16:default");
+    cpu.bits = 8;
+    cpu.endian = py::str("little");
+    cpu.decoder = Cpu::Module{py::str("codebreaker.decompile.z80")};
+    cpu.registers = strs({"A", "F", "BC", "DE", "HL", "IX", "IY", "SP"});
+    cpu.stack = py::str("SP");
+    return machine(py::str("msx"), py::str("MSX"), py::str("z80"), py::str("cartridge image (.rom)"), cpu,
+                   [](const py::str& path) { return _recognise(path); },
+                   {py::str("codebreaker.formats.msx"), py::str("read")}, {py::str("codebreaker.emulate.z80"), py::str("recorded")},
+                   {py::str("codebreaker.build.z80_asm"), py::str("build_flat")}, {py::str("codebreaker.source.msx_writer"), py::str("reconstruct")}, strs({"A", "F", "BC", "DE", "HL", "IX", "IY"}),
+                   py::str("CodeBreaker's own assembler, or sjasmplus / pasmo"));
 }
 
-const Platform PLATFORM = make_platform();
+const Platform& PLATFORM() {
+    static const Platform p = make_platform();
+    return p;
+}
 
 }  // namespace codebreaker::platforms::msx

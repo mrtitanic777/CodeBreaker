@@ -36,7 +36,7 @@ static py::list<py::str> strs(std::initializer_list<const char*> items) {
 }
 
 static Ref ref(const char* module, const char* name, std::initializer_list<const char*> args = {}) {
-    return Ref{py::str(module), py::str(name), strs(args)};
+    return Ref(py::str(module), py::str(name), strs(args));
 }
 
 static Platform make_platform() {
@@ -53,7 +53,7 @@ static Platform make_platform() {
     p.cpu.language = "x86:LE:16:Real Mode:default";
     p.cpu.bits = 16;
     p.cpu.endian = "little";
-    p.cpu.decoder = std::make_tuple(py::str("capstone"), py::str("x86"), int64_t(16));
+    p.cpu.decoder = Cpu::Capstone{py::str("x86"), 16};
     p.cpu.registers = strs({"AX", "BX", "CX", "DX", "SI", "DI", "BP", "SP", "CS", "DS", "ES", "SS"});
     p.cpu.stack = "SP";
     p.convention.names = strs({"__cdecl16near", "__cdecl16far"});
@@ -67,6 +67,8 @@ static Platform make_platform() {
     p.compiler.tools = ref(here, "tools");
     p.packager.writer = ref("codebreaker.source.dos_writer", "reconstruct");
     p.packager.tools = ref(here, "tools");
+    p.recognise_fn = [](const py::str& path) { return _recognise(path); };
+    p.finish();
     return p;
 }
 

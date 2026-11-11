@@ -5,19 +5,13 @@
 // (source/genesis_writer.py, Motorola syntax); the cartridge built from that source is compared
 // with the original, and its functions are run in CodeBreaker's own 68000 (emulate/m68k.py).
 //
-// The Python builds PLATFORM with platforms.machine(...). The platforms package has no typed port
-// of its own, so the description uses the plain records of the msx port (Ref, Cpu, Platform), which
-// carry the same values the Python's slot objects do (as the gb and sms ports do).
+// PLATFORM() is the platforms::Platform that platforms::machine(...) makes (platforms/package.hpp), built on first use.
 #pragma once
 
 #include "py.hpp"
-#include "codebreaker/platforms/msx.hpp"
+#include "codebreaker/platforms/package.hpp"
 
 namespace codebreaker::platforms::genesis {
-
-using msx::Cpu;
-using msx::Platform;
-using msx::Ref;
 
 bool _recognise(const py::str& path);
 

@@ -26,35 +26,25 @@ static py::list<py::str> strs(std::initializer_list<const char*> items) {
     return out;
 }
 
+// platforms.machine('sms', ...)
 static Platform make_platform() {
-    Platform p;
-    p.name = "sms";
-    p.title = "Master System / Game Gear";
-    p.family = "z80";
-    p.source = "asm";
-    p.lane = py::str("codebreaker.verify.lanes.") + p.name;
-    p.cpu.language = "z80:LE:16:default";
-    p.cpu.bits = 8;
-    p.cpu.endian = "little";
-    p.cpu.decoder = "codebreaker.decompile.z80";
-    p.cpu.registers = strs({"A", "F", "BC", "DE", "HL", "IX", "IY", "SP"});
-    p.cpu.stack = "SP";
-    p.container = "cartridge image (.sms, .gg, .sg)";
-    p.reader = Ref{"codebreaker.formats.sms", "read"};
-    p.engine = "CodeBreaker's own interpreter";
-    p.runner = Ref{"codebreaker.emulate.z80", "recorded"};
-    p.language = "asm";
-    p.toolchain = "CodeBreaker's own assembler, or WLA-DX";
-    p.assembler = Ref{"codebreaker.build.z80_asm", "build"};
-    p.writer = Ref{"codebreaker.source.sms_writer", "reconstruct"};
-    p.convention_names = strs({"registers"});
-    p.convention_arguments = "registers";
-    p.convention_order = "registers";
-    p.results = strs({"A", "F", "BC", "DE", "HL", "IX", "IY"});
-    p.pops = "caller";
-    return p;
+    Cpu cpu;
+    cpu.language = py::str("z80:LE:16:default");
+    cpu.bits = 8;
+    cpu.endian = py::str("little");
+    cpu.decoder = Cpu::Module{py::str("codebreaker.decompile.z80")};
+    cpu.registers = strs({"A", "F", "BC", "DE", "HL", "IX", "IY", "SP"});
+    cpu.stack = py::str("SP");
+    return machine(py::str("sms"), py::str("Master System / Game Gear"), py::str("z80"), py::str("cartridge image (.sms, .gg, .sg)"), cpu,
+                   [](const py::str& path) { return _recognise(path); },
+                   {py::str("codebreaker.formats.sms"), py::str("read")}, {py::str("codebreaker.emulate.z80"), py::str("recorded")},
+                   {py::str("codebreaker.build.z80_asm"), py::str("build")}, {py::str("codebreaker.source.sms_writer"), py::str("reconstruct")}, strs({"A", "F", "BC", "DE", "HL", "IX", "IY"}),
+                   py::str("CodeBreaker's own assembler, or WLA-DX"));
 }
 
-const Platform PLATFORM = make_platform();
+const Platform& PLATFORM() {
+    static const Platform p = make_platform();
+    return p;
+}
 
 }  // namespace codebreaker::platforms::sms

@@ -13,7 +13,7 @@ py::list<formats::ne::Entry> entries(const py::str& path) { return formats::ne::
 
 std::tuple<py::str, std::optional<int64_t>> call(const py::str& path, int64_t ordinal, const Runner& run) {
     py::list<int64_t> args;
-    for (int64_t i = 0; i < PLATFORM().convention.arguments; i++) args.append(0);   // [0] * arguments
+    for (int64_t i = 0; i < std::get<int64_t>(PLATFORM().convention.arguments); i++) args.append(0);   // [0] * arguments
     try {
         RunRecord r = run(path, ordinal, args);
         return {r.ended, r.results.get(py::str("AX"))};
@@ -57,7 +57,7 @@ static py::list<py::str> strs(std::initializer_list<const char*> items) {
 }
 
 static Ref ref(const char* module, const char* name, std::initializer_list<const char*> args = {}) {
-    return Ref{py::str(module), py::str(name), strs(args)};
+    return Ref(py::str(module), py::str(name), strs(args));
 }
 
 static Platform make_platform() {
@@ -78,12 +78,12 @@ static Platform make_platform() {
     p.cpu.language = "x86:LE:16:Protected Mode:default";
     p.cpu.bits = 16;
     p.cpu.endian = "little";
-    p.cpu.decoder = std::make_tuple(py::str("capstone"), py::str("x86"), int64_t(16));
+    p.cpu.decoder = Cpu::Capstone{py::str("x86"), 16};
     p.cpu.registers = strs({"AX", "BX", "CX", "DX", "SI", "DI", "BP", "SP", "CS", "DS", "ES", "SS"});
     p.cpu.stack = "SP";
     p.convention.names = strs({"__stdcall16far", "__stdcall16near", "__cdecl16far", "__cdecl16near", "__fastcall16near",
                                "__fastcall16far"});
-    p.convention.arguments = 8;
+    p.convention.arguments = int64_t(8);
     p.convention.word = 2;
     p.convention.order = "pascal";
     p.convention.results = strs({"AX", "DX:AX"});
@@ -106,6 +106,8 @@ static Platform make_platform() {
     p.packager.linker = ref("codebreaker.build.watcom", "ow_tool", {"wlink"});
     p.packager.assembler = ref("codebreaker.build.watcom", "ow_tool", {"wasm"});
     p.packager.resources = ref("codebreaker.build.watcom", "ow_tool", {"wrc"});
+    p.recognise_fn = [](const py::str& path) { return _recognise(path); };
+    p.finish();
     return p;
 }
 

@@ -20,38 +20,29 @@ bool recognises(const Platform& platform, const py::str& path) {
     }
 }
 
+// platforms.machine("genesis", ...)
 static Platform make_platform() {
-    Platform p;
-    p.name = "genesis";
-    p.title = "Genesis / Mega Drive";
-    p.family = "68000";
-    p.source = "asm";
-    p.lane = py::str("codebreaker.verify.lanes.") + p.name;
-    p.cpu.language = "68000:BE:32:default";
-    p.cpu.bits = 32;
-    p.cpu.endian = "big";
-    p.cpu.decoder = "codebreaker.decompile.m68k";
+    Cpu cpu;
+    cpu.language = py::str("68000:BE:32:default");
+    cpu.bits = 32;
+    cpu.endian = py::str("big");
+    cpu.decoder = Cpu::Module{py::str("codebreaker.decompile.m68k")};
     // tuple("D%d" % i for i in range(8)) + tuple("A%d" % i for i in range(8)) + ("SR",)
-    for (int64_t i = 0; i < 8; ++i) p.cpu.registers.append(py::percent("D%d", i));
-    for (int64_t i = 0; i < 8; ++i) p.cpu.registers.append(py::percent("A%d", i));
-    p.cpu.registers.append(py::str("SR"));
-    p.cpu.stack = "A7";
-    p.container = "cartridge image (.md, .bin, .gen, .smd)";
-    p.reader = Ref{"codebreaker.formats.genesis", "read"};
-    p.engine = "CodeBreaker's own interpreter";
-    p.runner = Ref{"codebreaker.emulate.m68k", "recorded"};
-    p.language = "asm";
-    p.toolchain = "CodeBreaker's own assembler";
-    p.assembler = Ref{"codebreaker.build.m68k_asm", "build"};
-    p.writer = Ref{"codebreaker.source.genesis_writer", "reconstruct"};
-    p.convention_names.append(py::str("registers"));
-    p.convention_arguments = "registers";
-    p.convention_order = "registers";
+    py::list<py::str> regs;
+    for (int64_t i = 0; i < 8; ++i) regs.append(py::percent("D%d", i));
+    for (int64_t i = 0; i < 8; ++i) regs.append(py::percent("A%d", i));
+    regs.append(py::str("SR"));
+    cpu.registers = regs;
+    cpu.stack = py::str("A7");
     // results: D0-D7 and A0-A6
-    for (int64_t i = 0; i < 8; ++i) p.results.append(py::percent("D%d", i));
-    for (int64_t i = 0; i < 7; ++i) p.results.append(py::percent("A%d", i));
-    p.pops = "caller";
-    return p;
+    py::list<py::str> results;
+    for (int64_t i = 0; i < 8; ++i) results.append(py::percent("D%d", i));
+    for (int64_t i = 0; i < 7; ++i) results.append(py::percent("A%d", i));
+    return machine(py::str("genesis"), py::str("Genesis / Mega Drive"), py::str("68000"), py::str("cartridge image (.md, .bin, .gen, .smd)"), cpu,
+                   [](const py::str& path) { return _recognise(path); },
+                   {py::str("codebreaker.formats.genesis"), py::str("read")}, {py::str("codebreaker.emulate.m68k"), py::str("recorded")},
+                   {py::str("codebreaker.build.m68k_asm"), py::str("build")}, {py::str("codebreaker.source.genesis_writer"), py::str("reconstruct")},
+                   results, py::str("CodeBreaker's own assembler"));
 }
 
 const Platform& PLATFORM() {

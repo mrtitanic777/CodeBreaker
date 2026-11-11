@@ -56,7 +56,7 @@ using ProbeOptions = emulate::windows16::ProbeOptions;  // the optional keywords
 using Context = emulate::windows16::Context;            // a call recorded in the running system, replayed
 
 // 16-bit Windows: the six slots this lane asks (platforms.of("ne"))
-const platforms::win16::Platform& P();
+const platforms::Platform& P();
 
 // the judge's words (verify/verdicts.py)
 const verdicts::NotRun& NOT_RUN();

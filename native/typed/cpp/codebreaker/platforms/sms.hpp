@@ -5,25 +5,19 @@
 // WLA-DX syntax); the cartridge built from that source is compared with the original, and its
 // functions are run in CodeBreaker's own Z80 (emulate/z80.py).
 //
-// The Python builds PLATFORM with platforms.machine(...). The platforms package has no typed port
-// yet, so the description uses the plain records of the msx port (Ref, Cpu, Platform), which carry
-// the same values the Python's slot objects do.
+// PLATFORM() is the platforms::Platform that platforms::machine(...) makes (platforms/package.hpp), built on first use.
 #pragma once
 
 #include "py.hpp"
-#include "codebreaker/platforms/msx.hpp"
+#include "codebreaker/platforms/package.hpp"
 
 namespace codebreaker::platforms::sms {
-
-using msx::Cpu;
-using msx::Platform;
-using msx::Ref;
 
 bool _recognise(const py::str& path);
 
 // Platform.recognises: _recognise, with OSError and ValueError meaning "no"
 bool recognises(const Platform& platform, const py::str& path);
 
-extern const Platform PLATFORM;
+const Platform& PLATFORM();
 
 }  // namespace codebreaker::platforms::sms
