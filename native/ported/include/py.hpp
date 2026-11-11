@@ -310,13 +310,15 @@ struct u8view_ {
 class str {
     std::u32string s_;
     mutable std::shared_ptr<u8view_> v_;    // (a copy starts without it: a copy is cheap to make, and a shared str stays race-free)
+    mutable size_t h_ = 0;                  // the hash (str_hash), kept once made -- CPython's str does too
+    mutable bool hv_ = false;               // (h_ is made)
 
   public:
     str() = default;
-    str(const str& o) : s_(o.s_) {}
+    str(const str& o) : s_(o.s_), h_(o.h_), hv_(o.hv_) {}
     str(str&&) = default;
     str& operator=(const str& o) {
-        if (this != &o) { s_ = o.s_; v_.reset(); }
+        if (this != &o) { s_ = o.s_; v_.reset(); h_ = o.h_; hv_ = o.hv_; }
         return *this;
     }
     str& operator=(str&&) = default;
@@ -441,7 +443,8 @@ class str {
     friend bool operator!=(const str& a, const char* b) { return !(a == str(b)); }
     friend str operator+(const str& a, const str& b) { return str(a.s_ + b.s_); }
     friend str operator+(const str& a, const char* b) { return a + str(b); }
-    str& operator+=(const str& b) { s_ += b.s_; v_.reset(); return *this; }
+    str& operator+=(const str& b) { s_ += b.s_; v_.reset(); hv_ = false; return *this; }
+    size_t& hash_slot_(bool*& made) const { made = &hv_; return h_; }       // (for str_hash)
 
     // iteration: each character as a one-character str
     struct iterator {
@@ -636,6 +639,9 @@ class str {
 
 struct str_hash {
     size_t operator()(const str& s) const {
+        bool* made;
+        size_t& slot = s.hash_slot_(made);
+        if (*made) return slot;
         const std::u32string& u = s.u32();
         const char32_t* p = u.data();
         size_t n = u.size();
@@ -651,7 +657,9 @@ struct str_hash {
             h = (h ^ p[i]) * 0xFF51AFD7ED558CCDull;
             h ^= h >> 32;
         }
-        return static_cast<size_t>(h);
+        slot = static_cast<size_t>(h);
+        *made = true;
+        return slot;
     }
 };
 
