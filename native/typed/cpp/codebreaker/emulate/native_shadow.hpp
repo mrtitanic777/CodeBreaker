@@ -118,12 +118,12 @@ class Shadow {
     bool off();
 
   private:
-    struct Export;                                  // (path, trail, vars, lost, pins, steps, off), read once
+    friend void* handle_of(Shadow* shadow);
+    struct Export;                                 // (path, trail, vars, lost, pins, steps, off), read once
+    struct Config;                                  // the DLL's configuration (ctypes _Config) and what it points at
     const Export& _export();
     std::shared_ptr<Export> got_;                   // Python: self._got
-    std::shared_ptr<void> config_;                  // the DLL's configuration (ctypes _Config) and what it points at
-    std::function<int(const void*, int32_t, uint64_t, void*, int32_t)> lift_cb_;   // the LIFT callback (_lift)
-    py::list<py::str> names_;                       // the lifter's register names
+    std::shared_ptr<Config> config_;
 };
 
 // The recorder is C++ only (the Python hooks it replaced are gone): raise (RuntimeError) when the DLL cannot

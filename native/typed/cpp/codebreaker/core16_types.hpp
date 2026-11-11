@@ -114,6 +114,10 @@ class Uc {
     // uc.hook_add(UC_HOOK_CODE, callback, None, begin, end): the callback gets (uc, address, size)
     virtual void hook_add_code(const std::function<void(Uc&, int64_t address, int64_t size)>& callback, int64_t begin,
                                int64_t end) = 0;
+    // uc.hook_add(UC_HOOK_INSN, callback, None, 1, 0, UC_X86_INS_IN / UC_X86_INS_OUT): the callbacks of an `in`
+    // instruction (port, size -> the value read) and of an `out` (port, size, value)
+    virtual void hook_add_insn_in(const std::function<int64_t(Uc&, int64_t port, int64_t size)>& callback) = 0;
+    virtual void hook_add_insn_out(const std::function<void(Uc&, int64_t port, int64_t size, int64_t value)>& callback) = 0;
     // emulate/fast_uc.py speed_up(uc): the same reads, for less (a no-op where the binding is not the expected one)
     virtual void speed_up() {}
 };
