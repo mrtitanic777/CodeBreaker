@@ -1309,6 +1309,24 @@ GUEST_IMPORT(NetDll_XNetXnAddrToInAddr)
     ctx.r3.u64 = 0;
 }
 
+// INT NetDll_XNetXnAddrToMachineId(XNCALLER_TYPE Caller, const XNADDR* pxnaddr, ULONGLONG* pqwMachineId): the machine
+// ID of the console behind an online XNADDR. INFER: the first 8 bytes of abOnline (+16), where a console's XNADDR
+// carries its online identity; ours hold the player's online XUID (XNetGetTitleXnAddr above, search results), so
+// every console of our Xbox LIVE has its own. An XNADDR without one (not online) is WSAEINVAL. Minecraft asks it of
+// its own address once the profile is on Xbox LIVE.
+GUEST_IMPORT(NetDll_XNetXnAddrToMachineId)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t xnaddr = ctx.r4.u32, out = ctx.r5.u32;
+    if (xnaddr == 0 || out == 0 || mem.Read64(xnaddr + 16) == 0)
+    {
+        ctx.r3.u64 = kWsaEInval;
+        return;
+    }
+    mem.Write64(out, mem.Read64(xnaddr + 16));
+    ctx.r3.u64 = 0;
+}
+
 // INT NetDll_XNetInAddrToXnAddr(XNCALLER_TYPE Caller, IN_ADDR ina, XNADDR* pxna, XNKID* pxnkid): the XNADDR an address
 // came with (else only the address) and the session key registered last. IN_ADDR arrives in a register as guest
 // memory holds it.

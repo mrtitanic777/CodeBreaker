@@ -3,6 +3,7 @@
 #include "kernel/kernel.h"
 #include "kernel/stfs_mount.h"
 #include "input.h"
+#include "input_mirror.h"
 
 #include "live/client.h"
 #include "log.h"
@@ -369,8 +370,8 @@ namespace input
             return pad;
         }
 
-        // Caller holds the mutex.
-        bool ReadPad(uint32_t user, PadState& pad)
+        // This copy's own controller for `user` (script, host pad or keyboard). Caller holds the mutex.
+        bool ReadOwnPad(uint32_t user, PadState& pad)
         {
             State& g = G();
             pad = {};
@@ -439,6 +440,18 @@ namespace input
                 return true;
             }
             return false;
+        }
+
+        // User `user`'s controller: its own, and for user 0 the one another copy mirrors here (input_mirror.h).
+        // Caller holds the mutex.
+        bool ReadPad(uint32_t user, PadState& pad)
+        {
+            const bool own = ReadOwnPad(user, pad);
+            PadState mirrored;
+            if (user != 0 || !mirror::Received(mirrored))
+                return own;
+            pad = own ? mirror::Merge(pad, mirrored) : mirrored;
+            return true;
         }
 
         // The title's view of a controller: idle while a system UI is open, without buttons a dialog consumed.
@@ -571,6 +584,7 @@ namespace input
             Log("Input: scripted controllers on users {} ({} entries); host controllers and keyboard ignored", users,
                 g.script.size());
         }
+        mirror::Start(g.scripted); // CB_INPUT_MIRROR_TO / CB_INPUT_MIRROR_FROM (input_mirror.h)
         if (!g.scripted)
             pads::Start(); // PlayStation controllers (native/x360/system/pads)
         if (const char* s = std::getenv("CB_MOUSE_SENSITIVITY"); s && *s)
@@ -675,6 +689,14 @@ namespace input
         {
             std::lock_guard lock(g.mutex);
             g.frame = frame;
+            if (mirror::Sending())
+            {
+                // This copy's own user 0 to the other copy (input_mirror.h), once per presented frame.
+                PadState own;
+                if (!ReadOwnPad(0, own))
+                    own = {};
+                mirror::Send(own);
+            }
             if (g.scripted)
             {
                 std::array<PadState, kUsers> pads{};
@@ -875,6 +897,8 @@ namespace input
                 vk = (lParam & (1 << 24)) ? VK_RCONTROL : VK_LCONTROL;
             if (vk == VK_F1 && down)
                 SetCapture(k, false);
+            if (vk == VK_F9 && down && !(lParam & (1 << 30)) && mirror::Sending())
+                mirror::Toggle(); // controller mirroring on / off (input_mirror.h)
             if (vk >= 0 && vk < 256)
                 k.keys[vk] = down;
             if (vk == VK_F4 && (lParam & (1 << 29)))
