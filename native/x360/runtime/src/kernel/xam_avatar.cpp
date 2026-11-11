@@ -5,7 +5,9 @@
 // is read, never copied):
 //
 //   - The manifests are the profile's (the avatar data service, app 0xF3). XamAvatarGetManifestLocalUser (message
-//     0x600003, 0x81982518), ...ByXuid (0x600004, 0x81982588), ...SignedOutProfile (0x600014, 0x81982660) all end in
+//     0x600003, 0x81982518), ...ByXuid (the handler for message 0x600004, 0x81982588; its wrapper 0x816749C0 sends
+//     0x600003 like LocalUser's, with the 0x90-byte request only that handler reads: unsettled, the behaviour here is
+//     the handler's), ...SignedOutProfile (0x600014, 0x81982660) all end in
 //     0x819823C0, which reads the dashboard GPD (FFFE07D1) setting 0x63E80044 of each XUID: a 1000-byte value is
 //     copied to the caller's XAVATAR_METADATA and that XUID's result is 0; any other size (a profile that has no avatar
 //     yet, or a player whose profile the console cannot read) zeroes the 1000 bytes and gives 0x80990001 (no name in
