@@ -1067,7 +1067,13 @@ std::vector<Piece> parse_template(const Regex& re, std::string_view t) {
             const std::size_t close = t.find('}', i + 2);
             if (close == std::string_view::npos) throw UsageError("replacement has an unterminated ${name}");
             const std::string_view name = t.substr(i + 2, close - i - 2);
-            auto g = re.group_index(name);
+            std::optional<std::size_t> g = re.group_index(name);
+            if (!g && !name.empty() && name.find_first_not_of("0123456789") == std::string_view::npos && name.size() < 4) {
+                // `${12}`: a numbered group, the form that may be followed by a digit
+                const std::size_t n_group = static_cast<std::size_t>(std::atoi(std::string(name).c_str()));
+                if (n_group > re.group_count()) throw UsageError(std::format("replacement refers to group {} but /{}/ has {}", n_group, re.pattern(), re.group_count()));
+                g = n_group;
+            }
             if (!g) throw UsageError(std::format("replacement refers to unknown group '{}'", name));
             flush();
             pieces.push_back({{}, *g});
