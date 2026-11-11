@@ -209,3 +209,16 @@ Notes:
   when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
   was first. Compared with lz32.dll first in a fresh state: identical.
 * Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
+## cb refactor: exact batch W0-B7 (2026-11-11)
+
+Old = the typed port on the py:: layer (pre-refactor commit, C++17 /O1, built as its harness build.cmd did); new = the
+refactored module reached through its compat shim from the same harness (so the figure includes the shim's conversions),
+C++20 /O1. Best of three runs of the harness's whole case file, process start included.
+
+| module (harness work) | old ms | new ms |
+|---|---|---|
+| exact/draft/text (54,961 cases: tests, blocks, live registers, declarations) | 2047 | 1469 |
+| exact/compare (4,000 functions against an image, Capstone decode of each) | 512 | 510 |
+
+The other modules of the batch (aout, exepack, hooks_lattice, x86, linkemu, batch, readable, draft/package) have
+harnesses of a few hundred cases that run in the process start; they were checked for the same behaviour, not timed.
