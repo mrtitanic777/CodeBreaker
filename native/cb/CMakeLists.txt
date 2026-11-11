@@ -29,6 +29,8 @@ function(cb_area dir)
   file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
   file(GLOB_RECURSE tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
   list(FILTER sources EXCLUDE REGEX "(_test|_main)\\.cpp$")
+  list(FILTER sources EXCLUDE REGEX "/testdata/")   # test inputs, not the area's code
+  list(FILTER tests EXCLUDE REGEX "/testdata/")
   add_library(cb_${dir} STATIC ${sources})
   cb_apply_flags(cb_${dir})
   set_property(GLOBAL APPEND PROPERTY CB_AREAS cb_${dir})
