@@ -148,6 +148,11 @@ namespace live::voice
             std::mutex mutex; // speakers, lastLocalLoud
             std::map<uint64_t, Speaker> speakers;
             std::chrono::steady_clock::time_point lastLocalLoud; // this PC's own speech
+            // Voice mail (mutex): what is recorded / played, and how far.
+            bool mailRecording = false, mailPlaying = false, mailHeard = false;
+            std::vector<uint8_t> mailRecorded, mailPlay;
+            size_t mailPlayed = 0; // frames of mailPlay played
+            AdpcmState mailEncoder;
         };
 
         State& V()
@@ -318,6 +323,20 @@ namespace live::voice
                 sp.frames.pop_front();
                 any = true;
             }
+            if (v.mailPlaying)
+            {
+                if ((v.mailPlayed + 1) * kPayloadBytes <= v.mailPlay.size())
+                {
+                    int16_t frame[kFrameSamples];
+                    Decode(v.mailPlay.data() + v.mailPlayed * kPayloadBytes, frame);
+                    for (uint32_t i = 0; i < kFrameSamples; i++)
+                        mix[i] += frame[i];
+                    v.mailPlayed++;
+                    any = true;
+                }
+                if ((v.mailPlayed + 1) * kPayloadBytes > v.mailPlay.size())
+                    v.mailPlaying = false;
+            }
             for (uint32_t i = 0; i < kFrameSamples; i++)
                 out[i] = int16_t(std::clamp(mix[i], -32768, 32767));
             return any;
@@ -354,7 +373,12 @@ namespace live::voice
                     lastDeviceCheck = t;
                 }
                 const detail::VoiceTarget target = detail::CurrentVoiceTarget();
-                if (!target.active)
+                bool mail;
+                {
+                    std::lock_guard lock(v.mutex);
+                    mail = v.mailRecording || v.mailPlaying;
+                }
+                if (!target.active && !mail)
                 {
                     if (devicesOpen)
                     {
@@ -362,7 +386,7 @@ namespace live::voice
                         speakers.Close();
                         devicesOpen = false;
                         v.micOpen = false;
-                        Log("Voice: left the party (microphone and speakers closed)");
+                        Log("Voice: microphone and speakers closed (no party, no voice mail)");
                     }
                     {
                         std::lock_guard lock(v.mutex);
@@ -372,9 +396,15 @@ namespace live::voice
                     clock = std::chrono::steady_clock::now();
                     continue;
                 }
-                // The server's UDP address (the TCP connection's host and port).
-                const std::string key = target.host + ":" + std::to_string(target.port);
-                if (sock == INVALID_SOCKET || key != serverKey)
+                // The server's UDP address (the TCP connection's host and port); none for voice mail alone.
+                const std::string key = target.active ? target.host + ":" + std::to_string(target.port) : std::string();
+                if (!target.active && sock != INVALID_SOCKET)
+                {
+                    closesocket(sock);
+                    sock = INVALID_SOCKET;
+                    serverKey.clear();
+                }
+                if (target.active && (sock == INVALID_SOCKET || key != serverKey))
                 {
                     if (sock != INVALID_SOCKET)
                         closesocket(sock);
@@ -404,7 +434,8 @@ namespace live::voice
                             Log("Voice: no speakers for party chat");
                     }
                     devicesOpen = true;
-                    Log("Voice: in a party: {}{}{}", mic.client ? "microphone open" : "no microphone",
+                    Log("Voice: {}: {}{}{}", target.active ? "in a party" : "voice mail",
+                        mic.client ? "microphone open" : "no microphone",
                         speakers.client ? ", speakers open" : ", no speakers", tone > 0 ? " (test tone)" : "");
                     v.micOpen = mic.client || tone > 0;
                     captured.clear();
@@ -428,7 +459,7 @@ namespace live::voice
                            reinterpret_cast<const sockaddr*>(&server), serverLen);
                 };
                 const auto now = std::chrono::steady_clock::now();
-                if (now - lastKeepAlive > std::chrono::seconds(1))
+                if (target.active && now - lastKeepAlive > std::chrono::seconds(1))
                 {
                     send(nullptr, 0);
                     lastKeepAlive = now;
@@ -464,7 +495,24 @@ namespace live::voice
                 }
                 while (captured.size() >= kFrameSamples)
                 {
-                    if (!v.muted && !v.gameChat)
+                    {
+                        // Voice mail records the microphone whatever the party does with it.
+                        std::lock_guard lock(v.mutex);
+                        if (v.mailRecording)
+                        {
+                            uint8_t payload[kPayloadBytes];
+                            Encode(v.mailEncoder, captured.data(), payload); // each frame carries the decoder's state
+                            v.mailRecorded.insert(v.mailRecorded.end(), payload, payload + kPayloadBytes);
+                            if (Loud(captured.data()))
+                                v.mailHeard = true;
+                            if (v.mailRecorded.size() >= size_t(kMailFrames) * kPayloadBytes)
+                            {
+                                v.mailRecording = false;
+                                Log("Voice: voice mail recorded (15 s, the most)");
+                            }
+                        }
+                    }
+                    if (target.active && !v.muted && !v.gameChat)
                     {
                         if (Loud(captured.data()))
                         {
@@ -547,6 +595,68 @@ namespace live::voice
             dump.Close();
             CoUninitialize();
         }
+    }
+
+    void StartMailRecording()
+    {
+        State& v = V();
+        std::lock_guard lock(v.mutex);
+        v.mailPlaying = false;
+        v.mailRecording = true;
+        v.mailHeard = false;
+        v.mailRecorded.clear();
+        v.mailEncoder = {};
+        Log("Voice: recording voice mail");
+    }
+
+    void StartMailPlayback(std::vector<uint8_t> frames)
+    {
+        State& v = V();
+        std::lock_guard lock(v.mutex);
+        v.mailRecording = false;
+        frames.resize(frames.size() / kPayloadBytes * kPayloadBytes);
+        v.mailPlay = std::move(frames);
+        v.mailPlayed = 0;
+        v.mailPlaying = !v.mailPlay.empty();
+        Log("Voice: playing voice mail ({} ms)", v.mailPlay.size() / kPayloadBytes * 20);
+    }
+
+    void StopMail()
+    {
+        State& v = V();
+        std::lock_guard lock(v.mutex);
+        if (v.mailRecording)
+            Log("Voice: voice mail recorded ({} ms)", v.mailRecorded.size() / kPayloadBytes * 20);
+        v.mailRecording = false;
+        v.mailPlaying = false;
+    }
+
+    MailStatus Mail()
+    {
+        State& v = V();
+        std::lock_guard lock(v.mutex);
+        MailStatus m;
+        m.recording = v.mailRecording;
+        m.playing = v.mailPlaying;
+        m.heard = v.mailHeard;
+        if (v.mailPlaying)
+        {
+            m.frames = uint32_t(v.mailPlayed);
+            m.total = uint32_t(v.mailPlay.size() / kPayloadBytes);
+        }
+        else
+        {
+            m.frames = uint32_t(v.mailRecorded.size() / kPayloadBytes);
+            m.total = kMailFrames;
+        }
+        return m;
+    }
+
+    std::vector<uint8_t> MailRecording()
+    {
+        State& v = V();
+        std::lock_guard lock(v.mutex);
+        return v.mailRecorded;
     }
 
     void Start(const Settings& settings)

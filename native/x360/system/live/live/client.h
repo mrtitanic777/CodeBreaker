@@ -42,6 +42,9 @@ namespace live
         bool read = false;
         uint32_t titleId = 0;
         uint64_t sessionId = 0; // a game invite's game session (XNKID), 0 for other kinds
+        // Its attachment ("voice" or "photo", empty for none) and a voice's length (protocol "message attachments").
+        std::string attachment;
+        uint32_t attachmentMs = 0;
     };
 
     struct PartyMember
@@ -328,8 +331,14 @@ namespace live
     // A game invite ("game_invite") names the inviter's game session (sessionId; the invitee joins it on accepting).
     std::optional<std::string> SendLiveMessage(uint32_t user, const std::vector<uint64_t>& to, const std::string& text,
                                                const std::string& kind = "text", uint32_t titleId = 0,
-                                               uint64_t sessionId = 0);
+                                               uint64_t sessionId = 0, const std::vector<uint8_t>* voice = nullptr);
+    // A message's voice (voice::kPayloadBytes frames, "adpcm16k"), fetched from the server; nullopt and `error` when
+    // it has none or the request fails.
+    std::optional<std::vector<uint8_t>> MessageVoice(uint32_t user, uint32_t id, std::string* error = nullptr);
     std::optional<std::string> MarkMessageRead(uint32_t user, uint32_t id);
+    // The server's block list (protocol "mute"): a blocked player's messages and invites are not delivered
+    // (the Guide's Block Communications, Guide.Friends 0x9012F118: LIVE message 0x5802E with the block flag).
+    std::optional<std::string> BlockCommunications(uint32_t user, uint64_t xuid, bool block = true);
     std::optional<std::string> DeleteMessage(uint32_t user, uint32_t id);
     std::optional<std::string> CreateParty(uint32_t user);
     std::optional<std::string> InviteToParty(uint32_t user, uint64_t xuid);

@@ -87,6 +87,7 @@ namespace xui
             std::unique_ptr<Element> hud;       // the canvas; its scene is hudScene
             Element* hudScene = nullptr;        // HUDRootScene: plays the state animations
             Element* hosted = nullptr;          // the popup (a child of its host element)
+            Element* voiceMail = nullptr;       // VoiceMail.xur's scene while it is the pane (left / right focus)
             Element* host = nullptr;
             std::string hudState;               // "Error" (message boxes) or "Half"
             Phase phase = Phase::kClosed;
@@ -113,7 +114,7 @@ namespace xui
 
             // The Guide pane open in AppHostElementId (none for message boxes).
             enum class Pane { kNone, kSignIn, kKeyboard, kAchievements, kGuide, kCommunity, kProfile, kGamerZone,
-                              kDrill, kDeviceSelector, kWait, kQuickLaunch } // kDrill: a drill-down scene (its controls in buttons)
+                              kDrill, kDeviceSelector, kWait, kQuickLaunch, kBeacons } // kDrill: a drill-down scene (its controls in buttons)
                 pane = Pane::kNone;
             std::u16string clockText;            // what DateTimeTextId shows
             std::unique_ptr<Image> gamerPicture; // hudbkgnd's GamerPic (SetGamerPicture)
@@ -199,6 +200,22 @@ namespace xui
                 std::vector<int> shown;          // the shown tab's rows: indices into its row vector
                 std::array<std::vector<std::unique_ptr<Image>>, 3> pictures;
             } quick;
+            // Guide.Beacons' scenes while one is the pane: which (0 RootScene's tabs, 1 a list scene, 2 SetBeacon),
+            // the tabs and their TabBaseScenes, the data, and the pictures decoded for them.
+            struct Beacons
+            {
+                int kind = 0;
+                Element* tabs = nullptr;
+                Element* tab[3] = {};
+                Element* tabScene[3] = {};
+                int cur = 0;
+                std::vector<BeaconTab> data;
+                std::vector<std::unique_ptr<Image>> pictures;
+                // SetBeacon: its focus order (btnComment, chkSocialNetwork, then the actions list's items).
+                std::vector<Element*> order;
+                int focus = 0;
+                size_t actions = 0;
+            } beacons;
             // Guide.Friends' ProfileRoot.xur while it is the pane (its tab, for the LB / RB transitions).
             struct ProfileRootScene
             {
@@ -320,6 +337,7 @@ namespace xui
             if (s.hosted && s.host)
                 s.host->Release(s.hosted);
             s.hosted = nullptr;
+            s.voiceMail = nullptr;
             s.host = nullptr;
             s.buttons.clear();
             // The pane state points into the popup's elements.
@@ -1402,6 +1420,7 @@ namespace xui
             { kNotifyPartyJoined, "xam://party.png", 130 },
             { kNotifyMuted, "xam://chat.png", 103 }, { kNotifyUnmuted, "xam://chat.png", 104 },
             { kNotifyPreferredPlayer, "PreferredPlayer.png", 0 },
+            { kNotifyBeacons, "sharedres://ico_32x_Beacons.png", 0 },
         };
 
         // _snwprintf with %s arguments only.
@@ -1440,6 +1459,8 @@ namespace xui
             }
             else if (toast.type == kNotifyPreferredPlayer)
                 text = toast.param + u"\nis now a preferred player.";
+            else if (toast.type == kNotifyBeacons)
+                text = toast.param;
             else
                 text = Format(XamString(s, format, u"%s"), { toast.param });
             std::u16string out;
@@ -1691,6 +1712,409 @@ namespace xui
             e->PlayVisualState(e->focused ? "Focus" : "Normal");
         }
         s.dirty = true;
+    }
+
+    namespace
+    {
+        constexpr const char* kVoiceMailPackage = "guide.voicemail.media";
+
+        void FillVoiceMail(State& s, const VoiceMailView& view, bool initial)
+        {
+            Element* pane = s.voiceMail;
+            if (!pane || s.buttons.size() != 4)
+                return;
+            const bool enabled[4] = { view.record, view.stop, view.play, true };
+            for (int i = 0; i < 4; i++)
+                s.buttons[i]->enabled = enabled[i];
+            SetText(pane->Find("txtInfo"), view.info);
+            if (Element* warning = pane->Find("txtWarning"))
+            {
+                SetText(warning, view.warning);
+                SetShow(warning, !view.warning.empty());
+            }
+            if (Element* bar = pane->Find("progressBar"))
+                bar->SetProgressValue(view.progress);
+            DrillFocus(s, view.focus, initial);
+            if (!initial)
+                for (int i = 0; i < 4; i++)
+                    if (uint32_t(i) != s.focus)
+                        s.buttons[i]->PlayVisualState(enabled[i] ? "Normal" : "NormalDisable");
+            s.dirty = true;
+        }
+    }
+
+    void ShowVoiceMail(const VoiceMailView& view)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, kVoiceMailPackage, "VoiceMail.xur");
+            if (!pane)
+                return;
+            s.pane = State::Pane::kDrill;
+            s.buttons.clear();
+            s.buttonFocus = nullptr;
+            for (const char* id : { "btnRecord", "btnStop", "btnPlay", "btnAccept" })
+                if (Element* e = pane->Find(id))
+                    s.buttons.push_back(e);
+                else
+                    Log("System UI: VoiceMail.xur: no {}", id);
+            s.voiceMail = pane;
+            FillVoiceMail(s, view, true);
+        });
+    }
+
+    void UpdateVoiceMail(const VoiceMailView& view)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (s.phase != Phase::kOpen || !s.voiceMail || s.hosted != s.voiceMail)
+            return;
+        FillVoiceMail(s, view, false);
+    }
+
+    std::u16string VoiceMailString(size_t index, const char16_t* fallback)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        const auto* table = Ready(s) ? s.assets->Strings(Base17559(s, kVoiceMailPackage), "Strings.xus") : nullptr;
+        return table && index < table->size() ? Utf16((*table)[index]) : std::u16string(fallback);
+    }
+
+    namespace
+    {
+        constexpr const char* kBeaconsPackage = "guide.beacons.media";
+
+        const Image* BeaconPicture(State& s, const std::vector<uint8_t>& png)
+        {
+            if (png.empty())
+                return nullptr;
+            auto image = std::make_unique<Image>();
+            std::string error;
+            if (!DecodePng(png.data(), png.size(), *image, error))
+            {
+                Log("System UI: Beacons: a picture: {}", error);
+                return nullptr;
+            }
+            s.beacons.pictures.push_back(std::move(image));
+            return s.beacons.pictures.back().get();
+        }
+
+        // A row into a list item of the Beacons skin (its presenters by DataAssociation).
+        void FillBeaconItem(State& s, Element* item, const BeaconRow& row)
+        {
+            item->text = row.text;
+            for (auto& t : item->dataText)
+                t.clear();
+            for (auto& i : item->dataImage)
+                i = nullptr;
+            for (int k = 1; k < 4; k++)
+                item->dataText[k] = row.slot[k];
+            for (int k = 1; k < 3; k++)
+                if (!row.slotImage[k].empty())
+                    item->dataImage[k] = s.assets->LoadImage(row.slotImage[k], kBeaconsPackage);
+            item->image = !row.image.empty() ? s.assets->LoadImage(row.image, kBeaconsPackage)
+                                             : BeaconPicture(s, row.picture);
+            item->enabled = row.enabled;
+        }
+
+        void BeaconListFill(State& s, Element* scene, const std::vector<BeaconRow>& rows, uint32_t focus)
+        {
+            Element* list = scene->Find("list");
+            if (!list)
+                return;
+            while (!list->Children().empty())
+                list->Release(list->Children().back().get());
+            ListBuild(s, list, int(rows.size()), int(std::min<size_t>(focus, rows.empty() ? 0 : rows.size() - 1)),
+                      [rows](Element* item, int index) {
+                          State& st = S();
+                          if (size_t(index) < rows.size())
+                              FillBeaconItem(st, item, rows[size_t(index)]);
+                      });
+        }
+
+        // A TabBaseScene's (or a list scene's) labels and list.
+        void BeaconTabFill(State& s, Element* scene, const BeaconTab& t, uint32_t focus)
+        {
+            if (!scene)
+                return;
+            SetText(scene->Find("labelDescription"), t.description);
+            SetText(scene->Find("txtListCount"), t.count);
+            SetShow(scene->Find("txtListCount"), !t.count.empty() && !t.waiting && t.status.empty());
+            SetShow(scene->Find("waitCursorControl"), t.waiting);
+            SetText(scene->Find("labelStatus"), t.status);
+            SetShow(scene->Find("labelStatus"), !t.waiting && !t.status.empty());
+            SetShow(scene->Find("list"), !t.waiting && t.status.empty());
+            BeaconListFill(s, scene, t.waiting || !t.status.empty() ? std::vector<BeaconRow>() : t.rows, focus);
+            s.dirty = true;
+        }
+
+        void BeaconsLegend(State& s, bool choose)
+        {
+            std::u16string legend[4] = { choose ? XamString(s, kStringSelect, u"Select") : u"",
+                                         XamString(s, kStringBack, u"Back"), u"", u"" };
+            SetLegend(s, legend);
+        }
+
+        void SetBeaconFocus(State& s, int index, bool initial)
+        {
+            auto& b = s.beacons;
+            if (b.order.empty())
+                return;
+            index = std::clamp(index, 0, int(b.order.size()) - 1);
+            for (int i = 0; i < int(b.order.size()); i++)
+            {
+                Element* e = b.order[size_t(i)];
+                const bool now = i == index, was = e->focused;
+                const std::string off = e->enabled ? "" : "Disable";
+                e->focused = now;
+                if (now && (initial || !was))
+                    e->PlayVisualState((initial ? "InitFocus" : "Focus") + off);
+                else if (!now && (was || initial))
+                    e->PlayVisualState(e->enabled ? (was ? "KillFocus" : "Normal") : "NormalDisable");
+            }
+            b.focus = index;
+            s.dirty = true;
+        }
+    }
+
+    void ShowBeacons(const std::vector<BeaconTab>& tabs, int tab, uint32_t focus)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, kBeaconsPackage, "RootScene.xur");
+            if (!pane)
+                return;
+            s.pane = State::Pane::kBeacons;
+            s.buttons.clear();
+            auto& b = s.beacons;
+            b = {};
+            b.kind = 0;
+            b.data = tabs;
+            b.data.resize(3);
+            b.tabs = pane->Find("TabScene");
+            for (int i = 0; i < 3; i++)
+                b.tab[i] = b.tabs ? b.tabs->Find(std::format("Tab{}", i + 1)) : nullptr;
+            const Scene* base = s.assets->LoadScene(kBeaconsPackage, "TabBaseScene.xur");
+            for (int i = 0; i < 3; i++)
+                if (b.tab[i] && base && !base->Root().children.empty())
+                    b.tabScene[i] = b.tab[i]->Adopt(Element::Create(*s.assets, *base, base->Root().children.front(),
+                                                                    kBeaconsPackage, b.tab[i]));
+            if (!b.tabScene[0] || !b.tabScene[1] || !b.tabScene[2])
+            {
+                Log("System UI: Beacons: RootScene's tabs or TabBaseScene.xur not found");
+                return;
+            }
+            b.cur = std::clamp(tab, 0, 2);
+            if (b.cur > 0)
+            {
+                const std::string name = std::format("1To{}", b.cur + 1);
+                b.tabs->PlayNamed(name, name + "End", false);
+            }
+            for (int i = 0; i < 3; i++)
+                SetShow(b.tab[i], i == b.cur);
+            BeaconTabFill(s, b.tabScene[b.cur], b.data[size_t(b.cur)], focus);
+            BeaconsLegend(s, !b.data[size_t(b.cur)].rows.empty());
+        });
+    }
+
+    void UpdateBeaconTab(int tab, const BeaconTab& data)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        auto& b = s.beacons;
+        if (s.phase != Phase::kOpen || s.pane != State::Pane::kBeacons || tab < 0 || tab > 2)
+            return;
+        if (b.kind == 0)
+        {
+            if (size_t(tab) < b.data.size())
+                b.data[size_t(tab)] = data;
+            if (tab == b.cur)
+            {
+                BeaconTabFill(s, b.tabScene[tab], data, uint32_t(std::max(0, s.list.cur)));
+                BeaconsLegend(s, !data.rows.empty());
+            }
+        }
+        else if (b.kind == 1 && s.hosted)
+        {
+            BeaconTabFill(s, s.hosted, data, 0);
+            BeaconsLegend(s, !data.rows.empty());
+        }
+    }
+
+    BeaconsAction BeaconsPress(uint16_t pressed)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        constexpr uint16_t kUp = 0x0001, kDown = 0x0002, kLeft = 0x0004, kRight = 0x0008, kBack = 0x0020,
+                           kLeftShoulder = 0x0100, kRightShoulder = 0x0200, kA = 0x1000, kB = 0x2000;
+        auto& b = s.beacons;
+        if (s.phase != Phase::kOpen || s.pane != State::Pane::kBeacons || s.afterPress)
+            return {};
+        if (pressed & (kB | kBack))
+            return { BeaconsAction::kCancelled, b.cur };
+        if (b.kind == 0)
+        {
+            // XuiTabScene: RB / right next, LB / left previous, "<from>To<to>" to its End, no wrap.
+            const int delta = (pressed & (kRightShoulder | kRight)) ? 1 : (pressed & (kLeftShoulder | kLeft)) ? -1 : 0;
+            if (delta)
+            {
+                const int next = b.cur + delta;
+                if (next < 0 || next > 2)
+                    return {};
+                const std::string name = std::format("{}To{}", b.cur + 1, next + 1);
+                b.tabs->PlayNamed(name, name + "End", false);
+                SetShow(b.tab[b.cur], false);
+                SetShow(b.tab[next], true);
+                b.cur = next;
+                BeaconTabFill(s, b.tabScene[b.cur], b.data[size_t(b.cur)], 0);
+                BeaconsLegend(s, !b.data[size_t(b.cur)].rows.empty());
+                return { BeaconsAction::kTab, b.cur };
+            }
+        }
+        if (b.kind == 2)
+        {
+            // SetBeacon: btnComment, chkSocialNetwork, the actions (XUI's focus skips disabled controls).
+            const int step = (pressed & kUp) ? -1 : (pressed & kDown) ? 1 : 0;
+            for (int i = b.focus + step; step && i >= 0 && i < int(b.order.size()); i += step)
+                if (b.order[size_t(i)]->enabled)
+                {
+                    SetBeaconFocus(s, i, false);
+                    break;
+                }
+            if ((pressed & kA) && b.focus < int(b.order.size()) && b.order[size_t(b.focus)]->enabled)
+            {
+                PlayPress(s, b.order[size_t(b.focus)]);
+                return { BeaconsAction::kChosen, b.cur, uint32_t(b.focus) };
+            }
+            return {};
+        }
+        if (pressed & kUp)
+            ListMove(s, 0, -1);
+        if (pressed & kDown)
+            ListMove(s, 0, 1);
+        if ((pressed & kA) && s.list.count > 0)
+        {
+            Element* item = s.list.focused;
+            if (item && !item->enabled)
+            {
+                item->PlayVisualState("PressDisable");
+                return {};
+            }
+            if (item)
+                PlayPress(s, item);
+            return { BeaconsAction::kChosen, b.cur, uint32_t(s.list.cur) };
+        }
+        return {};
+    }
+
+    void ShowBeaconList(const BeaconListInfo& info)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, kBeaconsPackage, info.details ? "GameDetails.xur" : "TitlePickerScene.xur");
+            if (!pane)
+                return;
+            s.pane = State::Pane::kBeacons;
+            s.buttons.clear();
+            auto& b = s.beacons;
+            b.kind = 1;
+            b.pictures.clear();
+            if (info.details)
+            {
+                SetText(pane->Find("txtGameTitle"), info.title);
+                SetText(pane->Find("txtPlatformType"), info.platform);
+                if (Element* tile = pane->Find("imgGameTile"))
+                    tile->image = BeaconPicture(s, info.tile);
+            }
+            else if (!info.sort.empty())
+                SetText(pane->Find("txtSort"), info.sort);
+            BeaconTab t{ info.description, info.count, info.status, info.waiting, info.rows };
+            if (!info.details)
+                t.description.clear(); // txtTitle keeps the scene's "Choose an activity."
+            BeaconTabFill(s, pane, t, info.focus);
+            if (!info.description.empty() && !info.details)
+                SetText(pane->Find("txtTitle"), info.description);
+            BeaconsLegend(s, !info.rows.empty());
+        });
+    }
+
+    void ShowSetBeacon(const SetBeaconInfo& info)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        if (!Ready(s) || !EnsureHud(s))
+            return;
+        ShowWhenClosed(s, [=](State& s) {
+            Element* pane = OpenPane(s, kBeaconsPackage, "SetBeacon.xur");
+            if (!pane)
+                return;
+            s.pane = State::Pane::kBeacons;
+            s.buttons.clear();
+            auto& b = s.beacons;
+            b.kind = 2;
+            b.pictures.clear();
+            b.order.clear();
+            Element* comment = pane->Find("btnComment");
+            Element* share = pane->Find("chkSocialNetwork");
+            SetText(comment, info.comment);
+            SetText(share, info.share);
+            if (share)
+                share->enabled = false; // INFER: no Facebook / social networks on our Xbox LIVE
+            SetText(pane->Find("lblBeaconsDesc"), info.description);
+            if (Element* preview = pane->Find("preview"))
+            {
+                preview->text = info.title;
+                preview->image = BeaconPicture(s, info.tile);
+                for (auto& t : preview->dataText)
+                    t.clear();
+                preview->dataText[1] = info.platform;
+                preview->dataText[2] = info.recent;
+                preview->dataText[3] = info.online;
+                preview->dataText[4] = info.commentHeader;
+                preview->dataText[5] = info.commentText;
+            }
+            Element* setList = pane->Find("lstSetActions");
+            Element* editList = pane->Find("lstEditActions");
+            SetShow(setList, !info.edit);
+            SetShow(editList, info.edit);
+            Element* list = info.edit ? editList : setList;
+            if (list)
+            {
+                const std::vector<std::u16string> actions = info.actions;
+                ListBuild(s, list, int(actions.size()), 0, [actions](Element* item, int index) {
+                    item->text = size_t(index) < actions.size() ? actions[size_t(index)] : u"";
+                });
+            }
+            if (comment)
+                b.order.push_back(comment);
+            if (share)
+                b.order.push_back(share);
+            b.actions = s.list.slots.size();
+            for (Element* slot : s.list.slots)
+                b.order.push_back(slot);
+            // The list's own focus does not draw here: SetBeaconFocus plays the states.
+            if (s.list.focused)
+                s.list.focused->PlayVisualState("Normal");
+            SetBeaconFocus(s, int(info.focus), true);
+            BeaconsLegend(s, true);
+        });
+    }
+
+    std::u16string BeaconsString(size_t index, const char16_t* fallback)
+    {
+        State& s = S();
+        std::lock_guard lock(s.mutex);
+        const auto* table = Ready(s) ? s.assets->Strings(Base17559(s, kBeaconsPackage), "Strings.xus") : nullptr;
+        return table && index < table->size() ? Utf16((*table)[index]) : std::u16string(fallback);
     }
 
     void SetPasscodeEntered(uint32_t count, const std::u16string& text)
@@ -4562,10 +4986,24 @@ namespace xui
             // The Profile's rows (buttons): up / down, A on an enabled row, B / BACK.
             if (pressed & (kB | kBack))
                 return { PaneAction::kCancelled, 0 };
-            if ((pressed & kUp) && s.focus > 0)
-                DrillFocus(s, s.focus - 1, false);
-            if ((pressed & kDown) && s.focus + 1 < s.buttons.size())
-                DrillFocus(s, s.focus + 1, false);
+            if (s.voiceMail && s.hosted == s.voiceMail)
+            {
+                // Voice Mail's buttons sit in a row (NavLeft / NavRight); XUI's focus skips disabled controls.
+                const int step = (pressed & kLeft) ? -1 : (pressed & kRight) ? 1 : 0;
+                for (int i = int(s.focus) + step; step && i >= 0 && i < int(s.buttons.size()); i += step)
+                    if (s.buttons[i]->enabled)
+                    {
+                        DrillFocus(s, uint32_t(i), false);
+                        break;
+                    }
+            }
+            else
+            {
+                if ((pressed & kUp) && s.focus > 0)
+                    DrillFocus(s, s.focus - 1, false);
+                if ((pressed & kDown) && s.focus + 1 < s.buttons.size())
+                    DrillFocus(s, s.focus + 1, false);
+            }
             if ((pressed & kA) && s.focus < s.buttons.size())
             {
                 Element* b = s.buttons[s.focus];
