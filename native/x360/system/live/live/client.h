@@ -50,6 +50,7 @@ namespace live
         std::string gamertag;
         uint32_t titleId = 0;
         std::string title;
+        uint64_t sessionId = 0; // the game session it shows in presence (XNKID), 0 = none (XPARTY_USER_INFO.SessionInfo)
     };
 
     struct Party
@@ -59,6 +60,25 @@ namespace live
         std::vector<PartyMember> members;
         bool open = false;
         bool inviteOnly = false; // Party Status: Invite Only (else Open to Friends)
+        uint32_t max = 8;        // the most members (XPARTY_MAX_USERS)
+    };
+
+    // What a title needs to join a game it was invited to, or that a friend's presence shows (the console's
+    // XINVITE_INFO; protocol "Invites and joining"): the session's XNKID, its host and the inviter, the game.
+    struct InviteInfo
+    {
+        uint64_t sessionId = 0;
+        uint64_t host = 0, inviter = 0; // online XUIDs
+        std::string hostGamertag, inviterGamertag;
+        uint32_t titleId = 0;
+        bool fromInvite = false; // accepted from an invite (else joined through presence): XINVITE_INFO.fFromGameInvite
+    };
+    // What became of one recipient of a game invite.
+    struct InviteResult
+    {
+        uint64_t xuid = 0;
+        bool ok = false;
+        std::string error;
     };
 
     // A player met (the Guide's Players tab, `recent_players`): in the same party or the same game at the same time.
@@ -314,6 +334,20 @@ namespace live
     std::optional<std::string> CreateParty(uint32_t user);
     std::optional<std::string> InviteToParty(uint32_t user, uint64_t xuid);
     std::optional<std::string> JoinParty(uint32_t user, const std::string& party);
+    // Game invites (protocol "Invites and joining"). SendGameInvites: an invite to the game session `sessionId` (0: the
+    // one `user` shows in presence) for each of `to` (XInviteSend, the Guide's Invite to Game); `results` says what became of
+    // each. Refused as a whole (the returned text) when the session cannot take invites (ended, private, invites disabled,
+    // full) or `user` is not in it. InvitePartyToGame: the same for the party's other members (XamPartySendGameInvites).
+    std::optional<std::string> SendGameInvites(uint32_t user, const std::vector<uint64_t>& to, uint64_t sessionId = 0,
+                                               const std::string& text = std::string(),
+                                               std::vector<InviteResult>* results = nullptr);
+    std::optional<std::string> InvitePartyToGame(uint32_t user, std::vector<InviteResult>* results = nullptr);
+    // Accepting a received game invite (message id): `info` says what to join; the invite is used up. The error says why not
+    // ("the session has ended", "session full", ...). DeclineGameInvite drops it.
+    std::optional<std::string> AcceptGameInvite(uint32_t user, uint32_t messageId, InviteInfo& info);
+    std::optional<std::string> DeclineGameInvite(uint32_t user, uint32_t messageId);
+    // Join Game on a friend whose presence shows a joinable session (Friend::sessionId / joinable).
+    std::optional<std::string> JoinFriendsGame(uint32_t user, uint64_t friendXuid, InviteInfo& info);
     // A player review ("prefer" / "avoid") or a complaint ("complaint") about `xuid` (server `feedback`): nullopt once
     // sent, else the error.
     // Preferences > Online Status: "online", "away", "busy" or "offline" (Appear Offline). Set (empty `status`:

@@ -552,9 +552,11 @@ namespace live
             p.leader = ParseHex64(Get(j, "leader"));
             p.open = Bool(j, "open");
             p.inviteOnly = Bool(j, "invite_only");
+            if (const uint32_t max = U32(j, "max"))
+                p.max = max;
             for (const json& m : Get(j, "members"))
                 p.members.push_back({ ParseHex64(Get(m, "xuid")), Str(m, "gamertag"),
-                                      ParseHex32(Get(m, "title_id")), Str(m, "title") });
+                                      ParseHex32(Get(m, "title_id")), Str(m, "title"), ParseHex64(Get(m, "session_id")) });
             return p;
         }
 
@@ -2477,6 +2479,105 @@ namespace live
     std::optional<std::string> JoinParty(uint32_t user, const std::string& party)
     {
         return PartyRequest({ { "op", "party_join" }, { "user", user }, { "party", party } }, user);
+    }
+
+    namespace
+    {
+        InviteInfo ToInviteInfo(const json& j)
+        {
+            InviteInfo info;
+            info.sessionId = ParseHex64(Get(j, "session_id"));
+            info.titleId = ParseHex32(Get(j, "title_id"));
+            info.fromInvite = Bool(j, "from_invite");
+            if (const auto host = j.find("host"); host != j.end() && host->is_object())
+            {
+                info.host = ParseHex64(Get(*host, "xuid"));
+                info.hostGamertag = Str(*host, "gamertag");
+            }
+            if (const auto inviter = j.find("inviter"); inviter != j.end() && inviter->is_object())
+            {
+                info.inviter = ParseHex64(Get(*inviter, "xuid"));
+                info.inviterGamertag = Str(*inviter, "gamertag");
+            }
+            return info;
+        }
+
+        // A request whose reply is an InviteInfo: nullopt on success, else the error text.
+        std::optional<std::string> InviteRequest(json request, InviteInfo& info)
+        {
+            const auto reply = Request(std::move(request));
+            if (!reply)
+                return Connected() ? std::string("timeout") : std::string("not connected");
+            if (!Bool(*reply, "ok"))
+                return Str(*reply, "error");
+            info = ToInviteInfo(*reply);
+            return std::nullopt;
+        }
+
+        // A request whose reply lists what became of each invitee.
+        std::optional<std::string> InviteResults(json request, std::vector<InviteResult>* results)
+        {
+            const auto reply = Request(std::move(request));
+            if (!reply)
+                return Connected() ? std::string("timeout") : std::string("not connected");
+            if (!Bool(*reply, "ok"))
+                return Str(*reply, "error");
+            if (results)
+            {
+                results->clear();
+                for (const json& r : Get(*reply, "results"))
+                    results->push_back({ ParseHex64(Get(r, "xuid")), Bool(r, "ok"), Str(r, "error") });
+            }
+            return std::nullopt;
+        }
+    }
+
+    std::optional<std::string> SendGameInvites(uint32_t user, const std::vector<uint64_t>& to, uint64_t sessionId,
+                                               const std::string& text, std::vector<InviteResult>* results)
+    {
+        json list = json::array();
+        for (const uint64_t x : to)
+            list.push_back(Hex64(x));
+        json request = { { "op", "invite_send" }, { "user", user }, { "to", list }, { "text", text } };
+        if (sessionId)
+            request["session_id"] = Hex64(sessionId);
+        return InviteResults(std::move(request), results);
+    }
+
+    std::optional<std::string> InvitePartyToGame(uint32_t user, std::vector<InviteResult>* results)
+    {
+        return InviteResults({ { "op", "party_invite_game" }, { "user", user } }, results);
+    }
+
+    // The invite is used up on the server: it leaves the cached messages too.
+    namespace
+    {
+        void ForgetMessage(uint32_t user, uint32_t id)
+        {
+            std::lock_guard lock(S().mutex);
+            std::erase_if(S().users[user].messages, [&](const Message& m) { return m.id == id; });
+        }
+    }
+
+    std::optional<std::string> AcceptGameInvite(uint32_t user, uint32_t messageId, InviteInfo& info)
+    {
+        const auto error = InviteRequest({ { "op", "invite_accept" }, { "user", user }, { "message", messageId } }, info);
+        if (!error)
+            ForgetMessage(user, messageId);
+        return error;
+    }
+
+    std::optional<std::string> DeclineGameInvite(uint32_t user, uint32_t messageId)
+    {
+        const auto error = Simple({ { "op", "invite_decline" }, { "user", user }, { "message", messageId } });
+        if (!error)
+            ForgetMessage(user, messageId);
+        return error;
+    }
+
+    std::optional<std::string> JoinFriendsGame(uint32_t user, uint64_t friendXuid, InviteInfo& info)
+    {
+        return InviteRequest({ { "op", "join_game" }, { "user", user }, { "xuid", Hex64(friendXuid) } }, info);
     }
 
     void SetPlayedTitles(uint32_t user, std::vector<TitleSummary> titles)
