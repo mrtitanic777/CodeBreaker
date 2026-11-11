@@ -154,7 +154,8 @@ Json name_function(const py::str& module, const py::str& addr, const py::str& na
 // ---- the server --------------------------------------------------------------------------------------
 // The server's answer to one JSON-RPC message (null Json: none, a notification), as the Python `mcp` library gives it.
 // `writes`: with the tools that start a process or change the store.
-Json handle_message(const Json& message, bool writes = true);
+// `initialized`: whether the initialize request has been answered on this connection (set when it is); null: no handshake is required.
+Json handle_message(const Json& message, bool writes = true, bool* initialized = nullptr);
 
 // The secret an HTTP client must send (Authorization: Bearer <it>): CB_MCP_TOKEN, else one made once and kept in
 // state/mcp/http_token.txt.

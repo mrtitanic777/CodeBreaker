@@ -186,7 +186,13 @@ std::string dumps(const Json& v, const Dump& opts) {
     return o;
 }
 
-Json loads(const std::string& text) { return from_v_(py::json_parse(text)); }
+Json loads(const std::string& text) {
+    try {
+        return from_v_(py::json_parse(text));
+    } catch (const py::PyError& e) {   // (the runtime's error for bad JSON: json.JSONDecodeError is a ValueError)
+        throw py::ValueError(e.what());
+    }
+}
 
 // ---- state ---------------------------------------------------------------------------------------
 bool START = false;

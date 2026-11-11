@@ -198,6 +198,15 @@ template <class T> class Slow {
                         std::string m = e.what();
                         value = error_(type_name_(e) + ": " + m.substr(0, 300));
                     }
+                    catch (const char* m) {
+                        value = error_(std::string("Exception: ") + m);
+                    } catch (const std::string& m) {
+                        value = error_("Exception: " + m);
+                    } catch (int m) {
+                        value = error_("Exception: " + std::to_string(m));
+                    } catch (...) {
+                        value = error_("Exception: unknown exception");
+                    }
                     std::lock_guard<std::mutex> g2(lock_);
                     got_[key] = Entry{now_(), value};
                     working_.erase(key);
@@ -2404,17 +2413,37 @@ Json error_(const Json& id, int64_t code, const std::string& message, const Json
 
 }  // namespace
 
-Json handle_message(const Json& msg, bool writes) {
-    if (!msg.is_obj()) return error_(Json(), -32600, "Invalid Request");
+Json handle_message(const Json& msg, bool writes, bool* initialized) {
+    // A line that is not a JSON-RPC request or notification (the library drops it with a log line and answers nothing): not an
+    // object, "jsonrpc" not "2.0", no string "method", an "id" that is not an int or a str, "params" that is not an object.
+    if (!msg.is_obj()) return Json();
+    const Json* ver = msg.find("jsonrpc");
+    if (!ver || !ver->is_str() || ver->s != "2.0") return Json();
     const Json* idp = msg.find("id");
     const Json* method = msg.find("method");
     if (!method || !method->is_str()) return Json();
+    if (idp && !(idp->kind == Json::Int || idp->kind == Json::Str)) return Json();
+    const Json* params_p = msg.find("params");
+    if (params_p && !params_p->is_null() && !params_p->is_obj()) return Json();
     const std::string m = method->s;
     if (!idp) return Json();   // a notification: no answer
     const Json id = *idp;
-    const Json* params_p = msg.find("params");
     Json params = params_p && params_p->is_obj() ? *params_p : Json::object();
+    const bool has_params = params_p && params_p->is_obj();
+    auto invalid = [&] {
+        Json data("");
+        return error_(id, -32602, "Invalid request parameters", &data);
+    };
+    // before the initialize request only that and ping are answered
+    if (initialized && !*initialized && m != "initialize" && m != "ping") return invalid();
     if (m == "initialize") {
+        const Json* pv = params.find("protocolVersion");
+        const Json* client_caps = params.find("capabilities");
+        const Json* ci = params.find("clientInfo");
+        if (!has_params || !pv || !pv->is_str() || !client_caps || !client_caps->is_obj() || !ci || !ci->is_obj() || !ci->find("name") || !ci->find("version") ||
+            !ci->at("name").is_str() || !ci->at("version").is_str())
+            return invalid();
+        if (initialized) *initialized = true;
         static const std::vector<std::string> known = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"};
         std::string want = params.find("protocolVersion") && params.at("protocolVersion").is_str() ? params.at("protocolVersion").s : "";
         std::string use = std::find(known.begin(), known.end(), want) != known.end() ? want : known.back();
@@ -2450,14 +2479,17 @@ Json handle_message(const Json& msg, bool writes) {
         return response_(id, "result", r);
     }
     if (m == "tools/call") {
-        const std::string name = params.find("name") && params.at("name").is_str() ? params.at("name").s : "";
+        const Json* nm = params.find("name");
+        const Json* argp = params.find("arguments");
+        if (!nm || !nm->is_str() || (argp && !argp->is_null() && !argp->is_obj())) return invalid();
+        const std::string name = nm->s;
         const auto& specs = TOOL_SPECS();
         const ToolSpec* spec = nullptr;
         for (size_t k = 0; k < specs.size(); k++)
             if (name == specs[k].name && (writes || k < N_READING)) spec = &specs[k];
         if (!spec) return response_(id, "result", tool_result_(text_content_("Unknown tool: " + name), true));
         try {
-            Json bound = bind_(*spec, params.find("arguments") ? *params.find("arguments") : Json::object());
+            Json bound = bind_(*spec, argp && argp->is_obj() ? *argp : Json::object());
             ToolValue v = run_tool_(*spec, bound);
             if (v.image) {
                 static const char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -2489,7 +2521,11 @@ Json handle_message(const Json& msg, bool writes) {
             return response_(id, "result", tool_result_(text_content_("Error executing tool " + name + ": " + e.what()), true));
         } catch (const py::OSError& e) {
             return response_(id, "result", tool_result_(text_content_("Error executing tool " + name + ": " + e.what()), true));
-        } catch (const std::exception&) {
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "mcp: tool %s raised %s: %s\n", name.c_str(), type_name_(e).c_str(), e.what());   // (stderr: not the protocol)
+            return response_(id, "result", tool_result_(text_content_("Error executing tool " + name), true));
+        } catch (...) {
+            std::fprintf(stderr, "mcp: tool %s raised something that is not a std::exception\n", name.c_str());
             return response_(id, "result", tool_result_(text_content_("Error executing tool " + name), true));
         }
     }
@@ -2510,11 +2546,17 @@ Json handle_message(const Json& msg, bool writes) {
         return response_(id, "result", r);
     }
     if (m == "prompts/get") {
-        const std::string name = params.find("name") && params.at("name").is_str() ? params.at("name").s : "";
-        if (name != "triage") return error_(id, 0, "Unknown prompt: " + name);
+        const Json* nm = params.find("name");
         const Json* args = params.find("arguments");
+        if (!nm || !nm->is_str() || (args && !args->is_null() && !args->is_obj())) return invalid();
+        if (args && args->is_obj())
+            for (const auto& v : args->a)
+                if (!v.is_str()) return invalid();   // (every prompt argument is a string)
+        const std::string name = nm->s;
+        if (name != "triage") return error_(id, 0, "Unknown prompt: " + name);
         const Json* path = args && args->is_obj() ? args->find("path") : nullptr;
         if (!path) return error_(id, 0, "Missing required arguments: {'path'}");
+        if (args->size() > 1) return error_(id, 0, "Error rendering prompt triage");   // (the function takes `path` only)
         std::string text = "Triage " + path->s +
                            " with the CodeBreaker tools: start with the `triage` tool (what it is, its imports and exports, the store's counts and "
                            "each unverified function with its verdict); if nothing is stored, offer to `run_command` measure on it and follow the job; "
@@ -2550,13 +2592,15 @@ Json handle_message(const Json& msg, bool writes) {
         return response_(id, "result", r);
     }
     if (m == "resources/read") {
-        const std::string uri = params.find("uri") && params.at("uri").is_str() ? params.at("uri").s : "";
+        const Json* up = params.find("uri");
+        if (!up || !up->is_str()) return invalid();
+        const std::string uri = up->s;
         Json data = Json::object();
         data.set("uri", uri);
         const std::string prefix = "codebreaker://function/";
         std::string rest = uri.rfind(prefix, 0) == 0 ? uri.substr(prefix.size()) : "";
         auto slash = rest.find('/');
-        if (rest.empty() || slash == std::string::npos || slash == 0 || slash + 1 >= rest.size() || rest.find('/', slash + 1) != std::string::npos)
+        if (uri.rfind(prefix, 0) != 0 || slash == std::string::npos || rest.find('/', slash + 1) != std::string::npos)
             return error_(id, -32602, "Unknown resource: " + uri, &data);
         try {
             Json f = function(py::str(rest.substr(0, slash)), py::str(rest.substr(slash + 1)));
@@ -2793,7 +2837,8 @@ Reply answer_(HttpState& st, Request req) {
         std::lock_guard<std::mutex> g(st.lock);
         st.sessions.insert(reply_sid);
     }
-    Json reply = handle_message(msg, !st.is_public);
+    bool flag = true;   // (the session was made by an initialize request)
+    Json reply = handle_message(msg, !st.is_public, &flag);
     if (reply.is_null()) {
         Reply r;
         r.status = 202;
@@ -2939,17 +2984,19 @@ int64_t main(const py::list<py::str>& argv) {
     // The library answers each request on a task of its own, so replies come as the requests finish (the order of a client that
     // waits for each reply is the same); at end of input what is still running is cancelled, as here (the process ends).
     auto write_lock = std::make_shared<std::mutex>();
+    auto initialized = std::make_shared<std::atomic<bool>>(false);
     std::string line;
     while (std::getline(std::cin, line)) {
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
         if (strip8_(line).empty()) continue;
-        std::thread([line, proto, write_lock] {
+        std::thread([line, proto, write_lock, initialized] {
             Json reply;
             try {
-                reply = handle_message(loads(line), true);
-            } catch (const py::ValueError& e) {
-                Json data(std::string(e.what()));
-                reply = error_(Json(), -32700, "Parse error", &data);
+                bool flag = initialized->load();
+                reply = handle_message(loads(line), true, &flag);
+                if (flag) initialized->store(true);
+            } catch (const py::ValueError&) {
+                // (a line that is not JSON is dropped: the library logs it and answers nothing)
             }
             if (reply.is_null()) return;
             std::string out = compact_(reply) + "\n";
