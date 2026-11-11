@@ -39,9 +39,18 @@ def _locals(lines):
 _COMPARE = re.compile(r"(?<![<>=!])(<=|>=|<|>)\s*(-?)(0x[0-9a-fA-F]+|\d+)\b")
 
 
+def _value(neg, num):
+    """the constant a comparison writes, or None for one int() does not read (an octal one: 012)"""
+    try:
+        v = int(num, 0)
+    except ValueError:
+        return None
+    return -v if neg else v
+
+
 def _compare(m):
     op, neg, num = m.group(1), m.group(2), m.group(3)
-    v = -int(num, 0) if neg else int(num, 0)
+    v = _value(neg, num)
     op, v = {"<=": ("<", v + 1), "<": ("<=", v - 1), ">=": (">", v - 1), ">": (">=", v + 1)}[op]
     return "%s %s" % (op, ("-0x%x" % -v) if v < 0 else ("0x%x" % v))
 
@@ -53,7 +62,7 @@ _LEFT = re.compile(r"\(\s*(-?)(0x[0-9a-fA-F]+|\d+)\s*(<=|>=|<|>)\s*([\w.\[\]]+)\
 
 def _left(m):
     neg, num, op, var = m.groups()
-    v = -int(num, 0) if neg else int(num, 0)
+    v = _value(neg, num)
     op, v = {"<": (">=", v + 1), "<=": (">", v - 1), ">": ("<=", v - 1), ">=": ("<", v + 1)}[op]
     return "(%s %s %s)" % (var, op, ("-0x%x" % -v) if v < 0 else ("0x%x" % v))
 
@@ -115,8 +124,10 @@ def rewrite(text, rng):
     if any(_DECL.match(lines[k]).group(2) in _SIGN for k in decls):
         kinds.append("sign")
     body = next((k for k, ln in enumerate(lines) if ln.strip() == "{"), 0)
-    compares = [(k, m, _compare) for k in range(body, len(lines)) for m in _COMPARE.finditer(lines[k])]
-    compares += [(k, m, _left) for k in range(body, len(lines)) for m in _LEFT.finditer(lines[k])]
+    compares = [(k, m, _compare) for k in range(body, len(lines)) for m in _COMPARE.finditer(lines[k])
+                if _value(m.group(2), m.group(3)) is not None]
+    compares += [(k, m, _left) for k in range(body, len(lines)) for m in _LEFT.finditer(lines[k])
+                 if _value(m.group(1), m.group(2)) is not None]
     if compares:
         kinds += ["compare"] * 2
     branches = _if_else(lines)

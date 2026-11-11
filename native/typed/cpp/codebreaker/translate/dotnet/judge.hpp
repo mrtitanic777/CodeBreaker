@@ -1,47 +1,28 @@
-// codebreaker/translate/dotnet/judge.hpp -- typed C++ port of codebreaker.translate.dotnet.judge.
+// codebreaker/translate/dotnet/judge.hpp -- COMPAT SHIM over cb/translate/dotnet/judge.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// judge.py -- the judge for whole programs, with the .NET adapter: run a program in its own runtime and its
-// translation in the target's, and compare what they do (docs/TRANSLATOR_DESIGN.md, "The judge, for every
-// pair").
+// The module is native/cb/translate/dotnet/judge.{hpp,cpp}: Run, the verdicts, `compare`, and the C#, Java and C++
+// adapters. It is told where the JDK and the host compiler are and how a transpiled program is built; this header supplies
+// them from the old lane modules (verify/lanes/java: jdk(), compiler(); java/probe: library(), build_native()) and keeps the
+// old py:: API over the new one.
 //
-// What is compared is what a program says to the outside: its standard output, byte for byte after
-// line endings are made the same, and its exit code. A verdict is one of
+// COMPAT(py): `old_jdk`, `old_host` call verify::lanes::java and java::probe (old); remove them when those are refactored
+// and their cb:: counterparts are passed to cb::translate::dotnet::judge::java / cpp.
 //
-//     equivalent   both ran; the same output and exit code
-//     divergent    both ran; the output or the exit code differs (the first differing line is kept)
-//     refused      the translator declined something in the program (its ledger says what and why), so
-//                  the translation is not complete and is not run
-//     no-compile   the translation did not compile (the compiler's first errors are kept)
-//     no-original  the original did not build or run (nothing to judge against)
-//
-// Adapters (each -> Run): `csharp` (the installed .NET SDK's csc and runtime, no restore), `java` (javac
-// and the JVM of the Java lane), `cpp` (the host C++ compiler: a transpiled program and its runtime).
-//
-//     Run r = judge::csharp(files, work, dotnet);          // Run(ok, exit, out, err, log)
-//     auto [verdict, detail] = judge::compare(original_run, translated_run);
-//
-// Typing notes (how the Python's values are typed here):
-//   * Run is a struct (the Python's __slots__ class): exit is std::optional<int64_t> (None: the program did not
-//     finish), out / err / log are py::str ('' where the Python's default is '').
-//   * compare()'s `refused` (a list of str or None) is a py::list<str>: None and [] are alike in the Python's
-//     `if refused:`.
-//   * csharp() calls codebreaker.translate.dotnet (the installed .NET SDK as a toolchain: dotnet.compile and
-//     dotnet.run), which is the package's __init__ and has no typed port yet: it is an argument, the struct
-//     Dotnet holding those two functions with the Python's meaning (compile: (ok, the compiler's output);
-//     run: (exit code or None for a timeout, stdout, stderr)).
-//   * java() and cpp() start javac, the JVM and the program with a timeout. subprocess.run(timeout=) is not in the
-//     runtime, so a local helper waits for the timeout and ends the child it started (as java/probe.cpp does); a
-//     javac that outlasts its 600 seconds raises subprocess.TimeoutExpired in the Python and py::TimeoutError here.
-//   * java() and cpp() read the JDK and the host compiler from verify::lanes::java (jdk() and compiler()) and
-//     build through java::probe (library(), build_native()), the typed ports of what the Python imports.
-//   * Python ints are int64_t.
+// `csharp` is still handed the two functions of the dotnet package (compile, run) as the old port was; they are adapted to
+// the new toolchain argument. `Run::repr` is not kept (nothing printed a Run).
 #pragma once
 
 #include <functional>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/translate/dotnet/judge.hpp"
+#include "codebreaker/java/probe.hpp"
+#include "codebreaker/verify/lanes/java.hpp"
 #include "py.hpp"
+#include "py_os.hpp"
 
 namespace codebreaker::translate::dotnet::judge {
 
@@ -59,20 +40,42 @@ struct Run {
     explicit Run(bool ok, const std::optional<int64_t>& exit = std::nullopt, const py::str& out = py::str(""),
                  const py::str& err = py::str(""), const py::str& log = py::str(""))
         : ok(ok), exit(exit), out(out), err(err), log(log) {}
-
-    // Run.__repr__
-    py::str repr() const;
 };
 
-py::str _norm(const py::str& s);
+namespace detail_shim {
+namespace nw = cb::translate::dotnet::judge;
+namespace dn = cb::translate::dotnet;
+
+inline Run to_old(const nw::Run& r) {
+    std::optional<int64_t> exit;
+    if (r.exit) exit = static_cast<int64_t>(*r.exit);
+    return Run(r.ok, exit, cb::compat::to_py(r.out), cb::compat::to_py(r.err), cb::compat::to_py(r.log));
+}
+inline nw::Run to_new(const Run& r) {
+    nw::Run out{.ok = r.ok, .out = r.out.utf8(), .err = r.err.utf8(), .log = r.log.utf8()};
+    if (r.exit) out.exit = static_cast<std::uint32_t>(*r.exit);
+    return out;
+}
+inline std::filesystem::path path_of(const py::str& s) { return cb::fs::from_text(s.utf8()); }
+inline std::vector<std::string> strings(const py::list<py::str>& l) { return cb::compat::from_py(l); }
+inline std::chrono::seconds seconds(int64_t n) { return std::chrono::seconds(n); }
+}  // namespace detail_shim
+
+inline py::str _norm(const py::str& s) { return cb::compat::to_py(cb::translate::dotnet::judge::normalise(s.utf8())); }
 
 // -> (verdict, detail).
-std::tuple<py::str, py::str> compare(const Run& orig, const Run& trans, const py::list<py::str>& refused = py::list<py::str>());
+inline std::tuple<py::str, py::str> compare(const Run& orig, const Run& trans, const py::list<py::str>& refused = py::list<py::str>()) {
+    const auto j = cb::translate::dotnet::judge::compare(detail_shim::to_new(orig), detail_shim::to_new(trans),
+                                                          detail_shim::strings(refused));
+    return {cb::compat::to_py(cb::translate::dotnet::judge::word(j.verdict)), cb::compat::to_py(j.detail)};
+}
 
 // A folder made new: removed with what it holds, made again.
-py::str _fresh(const py::str& work);
+inline py::str _fresh(const py::str& work) {
+    cb::translate::dotnet::judge::fresh_folder(detail_shim::path_of(work));
+    return work;
+}
 
-// ---------------------------------------------------------------------------------------------- .NET
 // codebreaker.translate.dotnet, as far as the judge uses it.
 struct Dotnet {
     // compile(sources, out_dll, tmp=, main=) -> (ok, compiler output)
@@ -87,20 +90,90 @@ struct Dotnet {
 
 // Compile C# files with the SDK's csc and run the program on the installed runtime (main: the class
 // whose Main is the entry point, where several have one).
-Run csharp(const py::list<py::str>& files, const py::str& work, const Dotnet& dotnet, const py::list<py::str>& args = py::list<py::str>(),
-           int64_t timeout = TIMEOUT, const py::str& name = py::str("Program"), const std::optional<py::str>& main = std::nullopt);
+inline Run csharp(const py::list<py::str>& files, const py::str& work, const Dotnet& dotnet, const py::list<py::str>& args = py::list<py::str>(),
+                  int64_t timeout = TIMEOUT, const py::str& name = py::str("Program"), const std::optional<py::str>& main = std::nullopt) {
+    namespace nw = cb::translate::dotnet;
+    nw::judge::CSharpToolchain tools;
+    tools.compile = [&](const nw::CompileOptions& o) {
+        py::list<py::str> sources;
+        for (const auto& s : o.sources) sources.append(cb::compat::to_py(cb::fs::to_text(s)));
+        std::optional<py::str> entry;
+        if (o.main) entry = cb::compat::to_py(*o.main);
+        const auto [ok, log] = dotnet.compile(sources, cb::compat::to_py(cb::fs::to_text(o.out_dll)),
+                                              cb::compat::to_py(cb::fs::to_text(o.tmp.value_or(std::filesystem::path()))), entry);
+        return nw::Compiled{ok, log.utf8()};
+    };
+    tools.run = [&](const std::filesystem::path& dll, const nw::RunOptions& o) {
+        py::list<py::str> a;
+        for (const auto& s : o.args) a.append(cb::compat::to_py(s));
+        const auto [code, out, err] = dotnet.run(cb::compat::to_py(cb::fs::to_text(dll)), a, o.timeout.count(),
+                                                 cb::compat::to_py(cb::fs::to_text(o.tmp.value_or(std::filesystem::path()))));
+        nw::RunResult r;
+        if (code) r.exit_code = static_cast<std::uint32_t>(*code);
+        r.out = out.utf8();
+        r.err = err.utf8();
+        return r;
+    };
+    nw::judge::CSharpOptions options{.args = detail_shim::strings(args), .timeout = detail_shim::seconds(timeout),
+                                     .name = name.utf8()};
+    if (main) options.main = main->utf8();
+    std::vector<std::filesystem::path> paths;
+    for (const py::str& f : files) paths.push_back(detail_shim::path_of(f));
+    return detail_shim::to_old(nw::judge::csharp(tools, paths, detail_shim::path_of(work), options));
+}
 
-py::str _errors(const py::str& log);
+inline py::str _errors(const py::str& log) { return cb::compat::to_py(cb::translate::dotnet::judge::first_errors(log.utf8())); }
 
-// ---------------------------------------------------------------------------------------------- the JVM
+// COMPAT(py): the JDK of the Java lane, as it is found today
+inline std::optional<cb::translate::dotnet::judge::Jdk> old_jdk() {
+    auto [javac, jvm] = codebreaker::verify::lanes::java::jdk();
+    if (javac.empty()) return std::nullopt;
+    return cb::translate::dotnet::judge::Jdk{detail_shim::path_of(javac), detail_shim::path_of(jvm)};
+}
+
+// COMPAT(py): the host compiler and the way the old java::probe builds a transpiled program
+inline std::optional<cb::translate::dotnet::judge::HostBuild> old_host() {
+    const py::str cxx = codebreaker::verify::lanes::java::compiler();
+    if (cxx.empty()) return std::nullopt;
+    cb::translate::dotnet::judge::HostBuild host;
+    host.library = [cxx](const std::filesystem::path& cpp_dir, const std::filesystem::path& work, unsigned jobs) {
+        const py::str lib = codebreaker::java::probe::library(cxx, cb::compat::to_py(cb::fs::to_text(cpp_dir)),
+                                                              cb::compat::to_py(cb::fs::to_text(work)), std::nullopt,
+                                                              std::optional<int64_t>(jobs));
+        return lib.empty() ? std::optional<std::filesystem::path>() : std::optional<std::filesystem::path>(detail_shim::path_of(lib));
+    };
+    host.program = [cxx](const std::filesystem::path& cpp_dir, const std::filesystem::path& harness,
+                         const std::filesystem::path& exe, const std::filesystem::path& lib) {
+        const auto [ok, why, linked] = codebreaker::java::probe::build_native(
+            cxx, cb::compat::to_py(cb::fs::to_text(cpp_dir)), cb::compat::to_py(cb::fs::to_text(harness)),
+            cb::compat::to_py(cb::fs::to_text(exe)), cb::compat::to_py(cb::fs::to_text(lib)));
+        (void)linked;
+        return cb::translate::dotnet::judge::HostBuild::Native{ok, why.utf8()};
+    };
+    return host;
+}
+
 // Compile a Java source tree with javac and run class `main` (qualified) on the JVM.
-Run java(const py::str& src_dir, const py::str& main, const py::str& work, const py::list<py::str>& args = py::list<py::str>(),
-         int64_t timeout = TIMEOUT, const py::list<py::str>& classpath = py::list<py::str>());
+inline Run java(const py::str& src_dir, const py::str& main, const py::str& work, const py::list<py::str>& args = py::list<py::str>(),
+                int64_t timeout = TIMEOUT, const py::list<py::str>& classpath = py::list<py::str>()) {
+    cb::translate::dotnet::judge::JavaOptions options{.args = detail_shim::strings(args), .timeout = detail_shim::seconds(timeout)};
+    for (const py::str& c : classpath) options.classpath.push_back(detail_shim::path_of(c));
+    try {
+        return detail_shim::to_old(cb::translate::dotnet::judge::java(old_jdk(), detail_shim::path_of(src_dir), main.utf8(),
+                                                                       detail_shim::path_of(work), options));
+    } catch (const cb::TimeoutError& e) {
+        throw py::TimeoutError(e.what());   // (subprocess.TimeoutExpired of javac)
+    }
+}
 
-// ---------------------------------------------------------------------------------------------- C++
 // Build a program the Java transpiler's C++03 back end wrote (every .cpp of cpp_dir, with its runtime
 // headers) with the host C++ compiler, and run `main_class::main` after the static initialisers.
-Run cpp(const py::str& cpp_dir, const py::str& main_class, const py::str& work, const py::list<py::str>& args = py::list<py::str>(),
-        int64_t timeout = TIMEOUT, int64_t jobs = 2);
+inline Run cpp(const py::str& cpp_dir, const py::str& main_class, const py::str& work, const py::list<py::str>& args = py::list<py::str>(),
+               int64_t timeout = TIMEOUT, int64_t jobs = 2) {
+    cb::translate::dotnet::judge::CppOptions options{.args = detail_shim::strings(args), .timeout = detail_shim::seconds(timeout),
+                                                     .jobs = static_cast<unsigned>(jobs)};
+    return detail_shim::to_old(cb::translate::dotnet::judge::cpp(old_host(), detail_shim::path_of(cpp_dir), main_class.utf8(),
+                                                                 detail_shim::path_of(work), options));
+}
 
 }  // namespace codebreaker::translate::dotnet::judge
