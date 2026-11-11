@@ -17,13 +17,12 @@
 
 #include <array>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 #include "cb/core/bytes.hpp"
+#include "cb/decompile/labels.hpp"
 
 namespace cb::decompile::m6502 {
 
@@ -74,16 +73,9 @@ struct Insn {
 // off by the end of `code`.
 std::optional<Insn> decode(ByteView code, std::size_t offset, std::uint32_t pc);
 
-// Label name by address; an empty name counts as no label. Lookup only (never iterated).
-using AddressLabels = std::unordered_map<std::uint16_t, std::string>;
-
-struct NameHash {
-    using is_transparent = void;
-    std::size_t operator()(std::string_view s) const { return std::hash<std::string_view>()(s); }
-};
-// Address by label name, for the assembler. A value is whatever the caller's pass gives (the first pass of a
-// two-pass assembler uses 0xFFFF for labels not yet seen), so it is signed and wide.
-using NameLabels = std::unordered_map<std::string, std::int64_t, NameHash, std::equal_to<>>;
+// Label tables (decompile/labels.hpp): address -> name for text(), name -> address for assemble().
+using decompile::AddressLabels;
+using decompile::NameLabels;
 
 // The instruction in ca65 syntax; an address that has a label is written as the label. (A zero-page address is
 // written with two hex digits, an absolute one with four: ca65 picks the instruction's size from how the
