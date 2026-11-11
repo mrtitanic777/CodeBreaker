@@ -1,172 +1,144 @@
-// codebreaker/source/assembly.hpp -- C++17 port of codebreaker.source.assembly.
-//
-// assembly.py -- what the assembly-source writers share (drivers, real-mode programs).
+// codebreaker/source/assembly.hpp -- SHIM over cb/source/assembly.hpp (docs/CPP_DESIGN.md 6.3): what the assembly-source writers share
+// (drivers, real-mode programs). The old types in (a candidate is a (text, bytes, mask) tuple; a piece a 5-tuple; sets of them), the
+// new functions called. The OpenWatcom tools and their environment come from the old build/driver and build/watcom; the file of
+// what is known is state/assembly_probes.json, as before. Deleted with its last py:: consumer (the writers).
 //
 //     assembly::operands(text)                  a decoder's operand text in the assembler's spelling
 //     assembly::data_lines(bytes)               bytes as `db` lines, text as text
-//     assembly::probe(candidates, ...)          which instruction texts the assembler turns back into
-//                                               the original's bytes
-//
-// An instruction is written as its mnemonic only when the assembler turns that text back into the
-// bytes the original has -- assemblers choose between equivalent encodings, and a different choice
-// moves everything behind it. That is checked rather than assumed: every distinct instruction text
-// is assembled once, at a place of its own in a probe file, and its bytes are read back from the
-// object file. What the probe has established is remembered (state/assembly_probes.json), so a
-// text is assembled once however many programs use it.
-//
-// Typing notes:
-//   * A probe candidate is (text, the original bytes outside patched fields, a mask with 1 for each byte of a
-//     patched field): `Candidate`.  `labels` and `near` (any iterable of str in the Python; callers pass sets)
-//     are py::set<py::str>.
-//   * culprits() is a template over the key an instruction piece carries (the callers use an address, an int,
-//     or an (object, address) pair): `Key` is any type with ==, hash and a py::set.  A piece is
-//     (offset, length, mask or None, key or None, is a jump inside the segment).
-//   * The file of what is known (assembly_probes.json) holds booleans; a value of another kind is read as its
-//     truth and written back as true/false.  JSON is written as json.dump(known, f, indent=0, sort_keys=True).
-//   * `_PROBE_LOCK` is a std::mutex.  _TEXT (rb"[\x20-\x26\x28-\x7e]{5,}") is applied by hand in data_lines:
-//     the runs of printable bytes other than the quote itself that are five or more long.
+//     assembly::probe(candidates, ...)          which instruction texts the assembler turns back into the original's bytes
 #pragma once
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <tuple>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/source/assembly.hpp"
+#include "codebreaker/build/driver.hpp"
+#include "codebreaker/build/watcom.hpp"
+#include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::source::assembly {
 
-extern const py::list<py::str> CONDITIONS;
-extern const py::dict<py::str, py::str> SPELLING;
-extern const py::str STRING_OPS;   // the pattern, as the Python has it (with its re.compile flags: none)
-extern const py::str HEX_PATTERN;   // (the Python's _HEX: that name is a macro of the C library's ctype.h)
+inline const py::list<py::str> CONDITIONS = [] {
+    py::list<py::str> out;
+    for (const std::string_view c : cb::source::assembly::kConditions) out.append(cb::compat::to_py(c));
+    return out;
+}();
+inline const py::dict<py::str, py::str> SPELLING = {
+    {py::str("pushal"), py::str("pushad")}, {py::str("popal"), py::str("popad")}, {py::str("int3"), py::str("int 3")},
+    {py::str("retn"), py::str("ret")},      {py::str("fwait"), py::str("wait")},  {py::str("pushaw"), py::str("pusha")},
+    {py::str("popaw"), py::str("popa")},    {py::str("retfw"), py::str("retf")},  {py::str("iretw"), py::str("iret")}};
+// The patterns, as the Python has them (the callers apply them with py::re).
+inline const py::str STRING_OPS = py::str(R"(^(rep |repe |repne )?(movs|cmps|stos|lods|scas|ins|outs)([bwd])\b)");
+inline const py::str HEX_PATTERN = py::str(R"(\b0x([0-9a-f]+)\b)");
+
+namespace shim_ {
+
+// OpenWatcom's tools and environment, the old settings'.
+inline cb::source::assembly::Tools tools() {
+    cb::source::assembly::Tools t;
+    const py::str wasm = build::driver::tool(py::str("wasm")), wlink = build::driver::tool(py::str("wlink"));
+    t.wasm = cb::fs::from_text(cb::compat::from_py(wasm));
+    t.wlink = cb::fs::from_text(cb::compat::from_py(wlink));
+    for (const auto& [k, v] : build::watcom::ow_env(py::str("pe")).items()) t.env[cb::compat::from_py(k)] = cb::compat::from_py(v);
+    return t;
+}
+
+inline std::filesystem::path known_file() {
+    return cb::fs::from_text(cb::compat::from_py(py::os::path::join(py::settings::get_str(py::str("state")), py::str("assembly_probes.json"))));
+}
+
+}  // namespace shim_
 
 // Assemble one file with OpenWatcom's assembler. -> (object file or None, its messages)
-std::tuple<std::optional<py::str>, py::str> assemble(const py::str& source, const py::str& work);
+inline std::tuple<std::optional<py::str>, py::str> assemble(const py::str& source, const py::str& work) {
+    const auto made = cb::source::assembly::assemble(shim_::tools(), cb::fs::from_text(cb::compat::from_py(source)), cb::fs::from_text(cb::compat::from_py(work)));
+    return {made.file ? std::optional<py::str>(cb::compat::to_py(cb::fs::to_text(*made.file))) : std::nullopt, cb::compat::to_py(made.log)};
+}
 
 // Link with OpenWatcom's linker from the directives in `lines`. -> (file or None, messages)
-std::tuple<std::optional<py::str>, py::str> link(const py::list<py::str>& lines, const py::str& out, const py::str& work);
+inline std::tuple<std::optional<py::str>, py::str> link(const py::list<py::str>& lines, const py::str& out, const py::str& work) {
+    std::vector<std::string> directives;
+    for (const py::str& l : lines) directives.push_back(cb::compat::from_py(l));
+    const auto made = cb::source::assembly::link(shim_::tools(), directives, cb::fs::from_text(cb::compat::from_py(out)), cb::fs::from_text(cb::compat::from_py(work)));
+    return {made.file ? std::optional<py::str>(cb::compat::to_py(cb::fs::to_text(*made.file))) : std::nullopt, cb::compat::to_py(made.log)};
+}
 
 // Hexadecimal numbers the way the assembler reads them (0x1f -> 01Fh).
-py::str operands(const py::str& text);
+inline py::str operands(const py::str& text) { return cb::compat::to_py(cb::source::assembly::operands(cb::compat::from_py(text))); }
 
-py::str mnemonic(const py::str& name);
+inline py::str mnemonic(const py::str& name) { return cb::compat::to_py(cb::source::assembly::mnemonic(cb::compat::from_py(name))); }
 
 // Bytes as `db` lines; runs of printable characters as quoted text.
-py::list<py::str> data_lines(const py::bytes& data, int64_t per_line = 16);
+inline py::list<py::str> data_lines(const py::bytes& data, int64_t per_line = 16) {
+    const cb::Bytes bytes = cb::compat::from_py(data);
+    return cb::compat::to_py(cb::source::assembly::data_lines(bytes, static_cast<std::size_t>(per_line)));
+}
 
 using Candidate = std::tuple<py::str, py::bytes, py::bytes>;
 
-py::str _key(const Candidate& candidate, const py::str& mode);
+// Which candidates assemble to their original bytes (see the new module). `mode` is "flat32" or "real16".
+inline py::set<Candidate> probe(const py::list<Candidate>& candidates, const py::set<py::str>& labels, const py::str& outdir,
+                                const py::str& mode = py::str("flat32"), const py::set<py::str>& near = py::set<py::str>()) {
+    return cb::compat::guard([&] {
+        std::vector<cb::source::assembly::Candidate> wanted;
+        for (const Candidate& c : candidates) wanted.push_back({cb::compat::from_py(std::get<0>(c)), cb::compat::from_py(std::get<1>(c)), cb::compat::from_py(std::get<2>(c))});
+        std::set<std::string> names, close;
+        for (const py::str& l : labels) names.insert(cb::compat::from_py(l));
+        for (const py::str& l : near) close.insert(cb::compat::from_py(l));
+        // one Prober for the file of what is known, as the one lock of the old module
+        static std::mutex lock;
+        const std::lock_guard<std::mutex> guard(lock);
+        cb::source::assembly::Prober prober(shim_::tools(), shim_::known_file());
+        const auto good = prober.probe(wanted, names, close, cb::fs::from_text(cb::compat::from_py(outdir)),
+                                       mode == py::str("real16") ? cb::source::assembly::Mode::Real16 : cb::source::assembly::Mode::Flat32);
+        py::set<Candidate> out;
+        for (const auto& c : good) out.add(Candidate(cb::compat::to_py(c.text), cb::compat::to_py(cb::ByteView(c.original)), cb::compat::to_py(cb::ByteView(c.mask))));
+        return out;
+    });
+}
 
-// {key: did the text assemble back} as state/assembly_probes.json has it ({} when there is none or it is damaged)
-py::dict<py::str, bool> _known();
-
-// One probe at a time: they share the file of what is known.
-py::set<Candidate> probe(const py::list<Candidate>& candidates, const py::set<py::str>& labels, const py::str& outdir,
-                         const py::str& mode = py::str("flat32"), const py::set<py::str>& near = py::set<py::str>());
-
-// Which candidates assemble to their original bytes. A candidate is (text, the original
-// bytes outside patched fields, a mask with 1 for each byte of a patched field); `labels` are
-// the names the texts may mention (`near` those used as call or jump targets). `mode` is
-// "flat32" (32-bit code, flat model) or "real16". -> the set of candidates that do.
-py::set<Candidate> _probe(const py::list<Candidate>& candidates, const py::set<py::str>& labels, const py::str& outdir,
-                          const py::str& mode, const py::set<py::str>& near);
-
-// {offset: bytes} of the data records of the last segment an object file defines, joined
-// where one record continues the one before.
-py::dict<int64_t, py::bytes> _last_segment_data(const py::bytes& obj);
+// {offset: bytes} of the data records of the last segment an object file defines, joined where one record continues the one before.
+inline py::dict<int64_t, py::bytes> _last_segment_data(const py::bytes& obj) {
+    return cb::compat::guard([&] {
+        py::dict<int64_t, py::bytes> out;
+        for (const auto& [off, data] : cb::source::assembly::last_segment_data(cb::compat::from_py(obj))) out.set(static_cast<int64_t>(off), cb::compat::to_py(cb::ByteView(data)));
+        return out;
+    });
+}
 
 // One piece of the original: (offset, length, mask or None, key or None, is a jump inside the segment)
 template <class Key>
 using Piece = std::tuple<int64_t, int64_t, std::optional<py::bytes>, std::optional<Key>, bool>;
 
-// Which instructions did not come back as they were. `pieces` covers the original in
-// order: (offset, length, mask or None, key or None, is a jump inside the segment); a piece
-// with a key is an instruction written as its mnemonic. The built bytes are walked piece by
-// piece, so that an instruction that came back longer or shorter is found itself, and not
-// the first place behind it where the bytes no longer line up. A jump that only changed
-// because what it jumps over changed size is blamed only when nothing else is.
-// -> the set of keys to write as bytes instead.
+// Which instructions did not come back as they were (see the new module). -> the set of keys to write as bytes instead.
 template <class Key>
 py::set<Key> culprits(const py::bytes& original, const py::bytes& built, const py::list<Piece<Key>>& pieces) {
-    auto same = [&](int64_t pos, const Piece<Key>& piece) -> bool {
-        const int64_t off = std::get<0>(piece), n = std::get<1>(piece);
-        const std::optional<py::bytes>& mask = std::get<2>(piece);
-        if (pos < 0 || pos + n > built.size()) {
-            return false;
+    // The new function orders its keys; the old callers' keys (a Place) need not be ordered, so each piece is keyed by its position
+    // and the positions found are turned back into the callers' keys.
+    std::vector<cb::source::assembly::Piece<std::size_t>> mine;
+    std::vector<const Key*> keys;
+    for (const Piece<Key>& p : pieces) {
+        cb::source::assembly::Piece<std::size_t> q;
+        q.offset = static_cast<std::size_t>(std::get<0>(p));
+        q.length = static_cast<std::size_t>(std::get<1>(p));
+        if (std::get<2>(p)) q.mask = cb::compat::from_py(*std::get<2>(p));
+        if (std::get<3>(p)) {
+            q.key = keys.size();
+            keys.push_back(&*std::get<3>(p));
         }
-        py::bytes a = built.slice(pos, pos + n);
-        py::bytes b = original.slice(off, off + n);
-        if (!mask) {
-            return a == b;
-        }
-        const int64_t m = std::min({a.size(), b.size(), mask->size()});
-        for (int64_t i = 0; i < m; ++i) {
-            if (!(*mask)[i] && a[i] != b[i]) {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    int64_t pos = 0;
-    py::set<Key> bad, jumps;
-    const int64_t count = pieces.size();
-    int64_t k = 0;
-    std::vector<int64_t> order;   // range(-8, 17) sorted by abs (stable)
-    for (int64_t d = -8; d < 17; ++d) {
-        order.push_back(d);
+        q.inner_jump = std::get<4>(p);
+        mine.push_back(std::move(q));
     }
-    std::stable_sort(order.begin(), order.end(), [](int64_t x, int64_t y) { return py::abs(x) < py::abs(y); });
-    while (k < count) {
-        const Piece<Key>& piece = pieces[k];
-        if (same(pos, piece)) {
-            pos += std::get<1>(piece);
-            ++k;
-            continue;
-        }
-        if (std::get<3>(piece)) {
-            (std::get<4>(piece) ? jumps : bad).add(*std::get<3>(piece));
-        }
-        // where does the built file continue? try the sizes this piece may have come back with
-        int64_t ahead = 0;
-        for (int64_t j = k + 1; j < std::min<int64_t>(k + 5, count); ++j) {
-            if (std::get<1>(pieces[j]) >= 2) {
-                ++ahead;
-            }
-        }
-        if (ahead == 0) {
-            ahead = std::min<int64_t>(k + 2, count) - std::min<int64_t>(k + 1, count);
-        }
-        bool found = false;
-        for (int64_t d : order) {
-            const int64_t p = pos + std::get<1>(piece) + d;
-            if (p < pos) {
-                continue;
-            }
-            int64_t q = p;
-            bool all = true;
-            const int64_t upto = std::min<int64_t>(k + 1 + std::max<int64_t>(1, ahead), count);
-            for (int64_t j = k + 1; j < upto; ++j) {
-                if (!same(q, pieces[j])) {
-                    all = false;
-                    break;
-                }
-                q += std::get<1>(pieces[j]);
-            }
-            if (all) {
-                pos = p;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            break;   // lost: what was found so far is the lesson
-        }
-        ++k;
-    }
-    return !bad.empty() ? bad : jumps;
+    const cb::Bytes was = cb::compat::from_py(original), now = cb::compat::from_py(built);
+    py::set<Key> out;
+    for (const std::size_t at : cb::source::assembly::culprits<std::size_t>(was, now, mine)) out.add(*keys[at]);
+    return out;
 }
 
 }  // namespace codebreaker::source::assembly

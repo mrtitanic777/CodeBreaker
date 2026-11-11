@@ -333,3 +333,15 @@ state/work/typed-port/_bugs/LIST.md: strict reads of a field cut by the end of t
 index 0 as "no target" instead of "the last entry" (OMF 178 fix-up lines, all in the hand-made synthetic objects), a trailing odd byte
 of a UTF-16 resource name dropped instead of replaced (2 of 26,208 damaged PEs). Everything else matched (0 mismatches in 8,736 PE,
 NE, LE and DOS inputs each, 38,688 LE, 26,208 NE and DOS).
+
+## W0-B25: recompile (x360project, disassemble, builders/floating) and source (assembly, placement, ne_asm/segdiff, ne_asm/run)
+
+These are I/O- and tool-bound (they start XenonRecomp, OpenWatcom, the corpus walk) except `disassemble`, the only one on a hot path
+(the recompiler lists every word of a function). New code, Release, one thread, 4,096 words of Minecraft Xbox 360 code (0x822B6E00):
+the listing with the VMX128 callback, Capstone for the rest, plus the flow classification from two entries and the data runs, the three
+decodes of the two `Disassembler`s the test builds included: the whole `recompile.disassemble` suite (7 tests, 78 checks) runs in 47 ms
+wall including process start. The old port decoded each word with one `cs_disasm` call per word; the new one does the same through
+`platforms::Decoder::each` (also one `cs_disasm` per word), so the per-word cost is Capstone's in both and the new code adds no work. The old
+exe could not be run here (no Python-engine build in this worktree), so no side-by-side number is claimed.
+`floating::emit` is a table lookup over 32 rules and one string fill per instruction (the old one was an `if` chain of 32 string
+compares and `py::str` formatting). Nothing else in the batch has a loop worth timing.
