@@ -67,7 +67,9 @@ Layout layout(ByteView module, std::uint16_t cs, std::uint16_t ip) {
     if (src != dst) throw FormatError(kReader, static_cast<std::uint64_t>(src), "the stored program's first bytes are not stored as they are");
 
     // the unpacker's message ends its code; find it inside the segment
-    const ByteView segment = io::checked_range(module, at, own_size);
+    // (a stored module cut inside its relocation table still says how it was packed: the segment is read as far as the
+    // module goes, and the message must lie in what is there)
+    const ByteView segment = *io::try_range(module, at, std::min<std::uint64_t>(own_size, module.size() - at));
     const std::string_view text = as_text(segment);
     const std::size_t message = text.find(kMessage);
     if (message == std::string_view::npos) throw FormatError(kReader, at, "EXEPACK message not found");

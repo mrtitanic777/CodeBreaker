@@ -149,6 +149,16 @@ CB_TEST("build.z80_asm.constants_dsb_orga_and_default_size", [] {
     CB_CHECK_EQ(rom[0x106], 0x04);   // here = $0104, low byte
 });
 
+CB_TEST("build.z80_asm.dsb_with_a_comma", [] {
+    const Bytes rom = kAsm.build(".ORG 4\n.DSB 3,$11\n.DSB 2 $22\n");
+    CB_CHECK_EQ(rom[3], 0xFF);
+    CB_CHECK_EQ(rom[4], 0x11);
+    CB_CHECK_EQ(rom[6], 0x11);
+    CB_CHECK_EQ(rom[7], 0x22);
+    CB_CHECK_EQ(rom[8], 0x22);
+    CB_CHECK_EQ(rom[9], 0xFF);
+});
+
 CB_TEST("build.z80_asm.incbin_beside_the_source", [] {
     fs::ScopedTempDir dir("z80asm");
     const Bytes payload{9, 8, 7};

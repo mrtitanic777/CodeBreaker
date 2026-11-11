@@ -72,7 +72,7 @@ Bytes join_pe(ByteView b, std::uint64_t lfa, std::uint32_t at) {
                 const std::uint32_t v = u32(body, e);
                 if (v != 0) put_u32_at(body, e, static_cast<Offset>(v) + delta, kReader);
             }
-            break;   // one section holds the directory
+            break;   // one section holds the directory (a PE whose sections overlap in RVA would be adjusted twice by the port)
         }
     }
     Bytes out = std::move(headers);

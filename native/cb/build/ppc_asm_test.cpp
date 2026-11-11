@@ -112,6 +112,7 @@ CB_TEST("build.ppc_asm.errors", [] {
         return 0u;
     };
     CB_CHECK_EQ(line_of("nop\nfly r3\n"), 2u);               // unsupported mnemonic
+    CB_CHECK_EQ(line_of("nop\n,,\n"), 2u);                   // nothing but separators (found by the old harness: it crashed)
     CB_CHECK_EQ(line_of("nop\nnop\nli r3\n"), 3u);           // missing operand
     CB_CHECK_EQ(line_of("li r32, 1\n"), 1u);                 // no such register
     CB_CHECK_EQ(line_of("li rx, 1\n"), 1u);

@@ -214,3 +214,16 @@ Notes:
 | Module | py:: port | native/cb | Speedup |
 |---|---|---|---|
 | knowledge/sources (all 14 kinds, 16,896 rows) | 139-145 ms | 45-48 ms | ~3x |
+
+### native/cb/build (W0-B5): the old harness cases replayed
+
+Same inputs (the harness `cases.txt` of each module, parsing and hex decoding included), old typed port `test.exe` against the new module.
+
+| Module | py:: port | native/cb | Speedup |
+|---|---|---|---|
+| build/mzfile (158 cases) | 260 ms | 53 ms | 4.9x |
+| build/exepack (5,385 cases) | 297 ms | 127 ms | 2.3x |
+| build/stubjoin (979 cases, several with multi-GB stub places) | 7,859 ms | 4,462 ms | 1.8x |
+| build/vxdfile (329 cases) | 120 ms | 17 ms | 7x |
+
+The assemblers, definitions, watcom, msvc152, period16 and dos_sessions have no CPU-bound work of their own (they drive other programs); not timed.

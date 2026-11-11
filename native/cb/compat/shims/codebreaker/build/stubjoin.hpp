@@ -14,7 +14,7 @@ namespace codebreaker::build::stubjoin {
 inline py::bytes join(const py::bytes& stub, const py::bytes& built, std::optional<int64_t> at = std::nullopt) {
     return cb::compat::guard([&] {
         std::optional<std::uint32_t> place;
-        if (at) place = cb::compat::int_from_py<std::uint32_t>(*at);
+        if (at && *at > 0) place = cb::compat::int_from_py<std::uint32_t>(*at);   // (an at of zero or less was ignored)
         try {
             const cb::Bytes out = cb::build::stubjoin::join(cb::compat::from_py(stub), cb::compat::from_py(built), place);
             return cb::compat::to_py(cb::ByteView(out));

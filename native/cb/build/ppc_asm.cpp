@@ -203,6 +203,7 @@ std::optional<std::uint32_t> encode(std::string_view source, std::uint32_t addre
     std::string commas_as_space(line);
     std::replace(commas_as_space.begin(), commas_as_space.end(), ',', ' ');
     std::vector<std::string_view> parts = text::split_ws(commas_as_space);
+    if (parts.empty()) fail("no mnemonic");   // a line of nothing but commas
     const std::string mn = text::lower(parts[0]);
     parts.erase(parts.begin());
     const Operands ops(std::move(parts));
