@@ -92,6 +92,11 @@ namespace guide::host
     // with the reason the console would show (an invalid gamertag) in `reason`. The Guide's Create Profile does not
     // call it (createprofile.xex's flow over CreateProfile below); kept for the runtimes that set it.
     inline std::function<std::optional<size_t>(const std::u16string& gamertag, std::u16string& reason)> createProfile;
+    // The console's LIVE key (optional; the dashboard sets them): `liveKey` gives it (32 hex digits), `setLiveKey` takes a
+    // new one (32 hex digits) for the next connection and drops the live client's connection so that it says hello
+    // with it; false when it could not be kept. The own Profile shows the "Xbox LIVE Key" row only when both are set.
+    inline std::function<std::string()> liveKey;
+    inline std::function<bool(const std::string&)> setLiveKey;
     // "Download Profile": adds the profiles the runtime can bring onto the console (the dashboard: the `profiles`
     // folder) to Profiles(); returns their XUIDs.
     std::vector<uint64_t> DownloadProfiles();

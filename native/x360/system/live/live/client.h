@@ -163,6 +163,17 @@ namespace live
         // server binds an account to the key that first signs it in and refuses other PCs without one
         // (XboxLIVEServer src/ports/access_keys.h). Empty: none sent.
         std::string key;
+        // Encryption (docs/network_protocol.md "Encryption"): the connection is TLS (Windows Schannel) when the
+        // server speaks it. The server's certificate is checked by pinning, not by a certificate authority:
+        // - pinnedFingerprint (the SHA-256 of the server's certificate, hex, ':' / spaces ignored) set: the server must
+        //   present that certificate (any address of this config);
+        // - else trust on first use: the first fingerprint seen for a host:port is kept (knownServersFile, lines
+        //   "host:port fingerprint"; empty path: for this run only) and a later different one is refused ("the
+        //   server's identity changed").
+        bool tls = true;              // false: never TLS (plain text, as before)
+        bool allowPlain = true;       // a server that does not speak TLS (an older one) is used in plain text (logged)
+        std::string pinnedFingerprint;
+        std::string knownServersFile; // UTF-8 path
     };
 
     // SignedOut: the server signed `user` out because the same account signed in on another console (as Xbox LIVE
@@ -192,7 +203,16 @@ namespace live
     // Sends what is queued now, from the calling thread (before the process exits or after a fatal error).
     void FlushLog();
     void Stop();
+    // A new LIVE key (Config::key) for the connections from now on: a connection that is up is dropped (its users are
+    // kept offline, as for any lost connection: Reconnect signs them in again, saying hello with the new key). Returns
+    // once the connection is gone (up to a few seconds).
+    void SetKey(const std::string& key);
     bool Connected();
+    // Why the last connection attempt was refused for security reasons ("the server's identity changed ..."), or
+    // empty. Cleared by the next attempt that connects.
+    std::string LastSecurityError();
+    // Whether the connection that is up is encrypted.
+    bool Encrypted();
     // Called on the client's thread for every change (keep it short; no requests from inside it).
     void SetEventHandler(std::function<void(const Event&)> handler);
 
