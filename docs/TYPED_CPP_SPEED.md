@@ -408,3 +408,55 @@ wall including process start. The old port decoded each word with one `cs_disasm
 exe could not be run here (no Python-engine build in this worktree), so no side-by-side number is claimed.
 `floating::emit` is a table lookup over 32 rules and one string fill per instruction (the old one was an `if` chain of 32 string
 compares and `py::str` formatting). Nothing else in the batch has a loop worth timing.
+
+## exact/emu and exact/habits (wave 0, batch B8)
+
+Whole old harness run (process start, parsing the cases, the module) against the new module's golden test over the same
+cases (process start, parsing, the module), milliseconds, release build:
+
+| work | old port | cb |
+|---|---|---|
+| exact/habits/oldcomp (1,000 pairs) | 44 | 36 |
+| exact/habits/boolx (2,337 cases) | 255 | 29 |
+| exact/habits/symx (10,625 cases) | 551 | 45 |
+| exact/emu/isis, 20,000,000 8080 instructions of a loop | 517 | 281 |
+
+exact/emu/isis and exact/emu/xenix golden tests copy a folder per case, which dominates their time (isis 91 runs 2.4 s,
+xenix 67 runs 6.0 s; the old harness's 317 and 91 runs took 1.6 s and 4.7 s with fewer copies); xenix's work is Unicorn's
+either way and was not timed apart.
+
+## cb/java/console (W0-B17), 2026-11-11
+
+The old side is the original Python (the live implementation of these features; the typed ports ran over the same
+algorithms). Real inputs, the new side a driver over `cb_java` (Release, C++20 /O2); best of three, process start excluded.
+Outputs were compared first: all of them identical to the Python's.
+
+| work | Python | native/cb | note |
+|---|---|---|---|
+| xdk_scan.detect, the installed XDK (2,514 entry points in its headers) | 0.125-0.162 s | 0.055 s | 2.3-3x; same 2,514 names and header for each |
+| assets.run, Minecraft's `minecraft.jar` (346 entries, 42 assets, 3 PNGs converted) | 0.054 s | 0.050-0.059 s | same: 42 files identical, every PNG pixel for pixel |
+| of which: reading the jar / converting the 3 PNGs / writing the 42 files | - | 0.7 ms / 0.5 ms / 65-115 ms | the writes are the file system; the Python does the same ones |
+| vcxproj.run, a generated 5,202-file project (the real xbox360 profile's 55 rules) | 4.2-4.7 s | 2.3-3.6 s | 1.3-1.8x; .vcxproj and .filters byte-identical to the Python's |
+
+The vcxproj figure is dominated by classifying every class against the profile's rules through the generated project's very
+deep inheritance chains (up to 208 ancestors, each tried against 55 patterns); a converted game's chains are 3-6 deep, where the
+whole run is a few milliseconds. Not memoised: the classification of a class and its ancestors is repeated per file.
+## Java lane text passes (cb/java: emit/std_transforms, projects/minecraft/{raycast, content, keybind_mark, ui_mark}), 2026-11-11
+
+Old = the typed ports over the py:: layer, run by the old harnesses (state/work/typed-port/<module>/test.exe over its cases.txt,
+whole process); new = the same inputs through native/cb/java in one process, best of 20 (state/work/cpp-refactor/w0-b18/bench.cpp).
+The old process start alone is 10 ms, so the old work is the total minus that:
+
+| Work | old (total - start) | new |
+|---|---|---|
+| raycast.convert_gl_pick_to_raycast, 261 recorded cases | 54 - 11 = 43 ms | 3.6 ms |
+| std_transforms (apply, sanitize, annotate, literal-masked sub), 544 cases | 53 - 10 = 43 ms (all four functions) | 0.36 ms for the 256 `apply` cases alone |
+| content.scan_assets over the harness corpus (33 files) | not run (the old harness writes into its folders) | 3.4 ms |
+| content.render_content_md (c1) | | 1.6 ms |
+| keybind_mark.mark / ui_mark.mark of the harness tree (dry run) | | 1.0 ms / 1.7 ms |
+
+No old figure for the tree passes: their harnesses are written to rebuild and copy their fixture folders for every case. They
+were compared for behaviour instead: 81 keybind_mark, 85 ui_mark, 143 controller_nav and 261 raycast recorded cases, the 544
+std_transforms cases, 57 content calls, the whole platform_equivalents and minecraft_xbox360 tables: no difference that is not
+listed in a DIVERGES block (raycast overlap and comment rules, std_transforms empty pattern, run() on a missing folder, the
+controller_nav half-patch return).
