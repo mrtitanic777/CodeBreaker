@@ -1,9 +1,33 @@
 // py_zlib.cc -- Python's zlib module over zlib 1.3.1; see py_zlib.hpp.
 #include "py_zlib.hpp"
 
-#include <cstring>
+#include <errno.h>
+#include <limits.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
 
+// zlib 1.3.1 itself (native/decompiler/core/zlib), compiled into this unit as C++ with internal linkage (an anonymous
+// namespace): a program that links its own zlib as well does not clash with it.
+namespace {
 #include "../../decompiler/core/zlib/zlib.h"
+#include "../../decompiler/core/zlib/adler32.c"
+#include "../../decompiler/core/zlib/deflate.c"
+#include "../../decompiler/core/zlib/inffast.c"
+#include "../../decompiler/core/zlib/inflate.c"
+#include "../../decompiler/core/zlib/inftrees.c"
+#include "../../decompiler/core/zlib/trees.c"
+#include "../../decompiler/core/zlib/zutil.c"
+
+// crc32() for deflate's gzip wrapper and inflate's check (the decompiler copy of zlib carries no crc32.c)
+uLong ZEXPORT crc32(uLong crc, const Bytef* buf, uInt len) {
+    if (buf == Z_NULL) return 0;
+    return static_cast<uLong>(static_cast<uint32_t>(py::crc32(py::bytes(reinterpret_cast<const char*>(buf), len), static_cast<int64_t>(crc))));
+}
+}  // namespace
 
 namespace py {
 namespace zlib {
@@ -331,20 +355,3 @@ bytes decompress(const bytes& data_in) {
 
 }  // namespace gzip
 }  // namespace py
-
-// ---------------------------------------------------------------------------------------------
-// The zlib 1.3.1 sources themselves (native/decompiler/core/zlib), compiled here as C++
-// so a port links this one file. (After the code above: their macros stay out of it.)
-#include "../../decompiler/core/zlib/adler32.c"
-#include "../../decompiler/core/zlib/deflate.c"
-#include "../../decompiler/core/zlib/inffast.c"
-#include "../../decompiler/core/zlib/inflate.c"
-#include "../../decompiler/core/zlib/inftrees.c"
-#include "../../decompiler/core/zlib/trees.c"
-#include "../../decompiler/core/zlib/zutil.c"
-
-// crc32() for deflate's gzip wrapper and inflate's check (the decompiler copy of zlib carries no crc32.c)
-uLong ZEXPORT crc32(uLong crc, const Bytef* buf, uInt len) {
-    if (buf == Z_NULL) return 0;
-    return static_cast<uLong>(static_cast<uint32_t>(py::crc32(py::bytes(reinterpret_cast<const char*>(buf), len), static_cast<int64_t>(crc))));
-}
