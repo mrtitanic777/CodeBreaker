@@ -35,9 +35,11 @@ def parse_obj_funcs(objpath):
             j=0
             while j<len(body): n=body[j]; lnames.append(body[j+1:j+1+n].decode('latin1')); j+=1+n
         elif rt in (0x98,0x99):
-            si,j=index(body,3); segs.append(lnames[si] if si<len(lnames) else str(si))
+            si,j=index(body,3 if rt==0x98 else 5); segs.append(lnames[si] if si<len(lnames) else str(si))   # 32-bit SEGDEF: 4-byte length
         elif rt in (0xa0,0xa1):
-            seg,j=index(body,0); do=struct.unpack_from("<H",body,j)[0]; j+=2; pl=body[j:]
+            seg,j=index(body,0)
+            w=2 if rt==0xa0 else 4                                    # 32-bit LEDATA: 4-byte data offset
+            do=int.from_bytes(body[j:j+w],"little"); j+=w; pl=body[j:]
             sn=segs[seg-1] if 0<seg<=len(segs) else ""
             if sn=="PROG":
                 if do+len(pl)>len(code): code=code+b"\x00"*(do+len(pl)-len(code))
@@ -47,7 +49,8 @@ def parse_obj_funcs(objpath):
             if s==0: j+=2
             while j<len(body):
                 n=body[j]; nm=body[j+1:j+1+n].decode('latin1'); j+=1+n
-                po=struct.unpack_from("<H",body,j)[0]; j+=2; _,j=index(body,j)
+                w=2 if rt==0x90 else 4                                # 32-bit PUBDEF: 4-byte offset
+                po=int.from_bytes(body[j:j+w],"little"); j+=w; _,j=index(body,j)
                 pubs.append((nm,po))
     pubs=[p for p in pubs if not p[0].isupper() or True]
     pubs.sort(key=lambda x:x[1])

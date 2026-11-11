@@ -1,16 +1,7 @@
-// codebreaker/invert/early_c.hpp -- C++17 port of codebreaker/invert/early_c.py.
-//
-// early_c.py - INVERSE of mc2model: MC2/LC2 (Microsoft C 2.03 / 3.00) output bytes -> C, by
-// recognizing the exact codegen templates (not heuristics), with if/while control flow from a recursive
-// block walker (recover) or the structured control-flow graph (recover_cfg, flow16).  Validated by round
-// trip (recovered C recompiles identical).
-//
-// The model is C++ (native/invert: early_c.cc, early_c_text.cc); this module keeps the Python module's
-// API: the settings and hooks below (read at each call), LAST, recover, recover_cfg, to_c, local_decls,
-// detect_copies and _fold_ladders.  Where the Python reached the model through native_invert's ctypes
-// shim, this calls the model's C++ entry points (cbinv::ec_*) directly.
-//
-// Usage: early_c <image.bin> <hexoff> <len>   (main)
+// codebreaker/invert/early_c.hpp -- SHIM over cb/invert/early_c.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last
+// py:: consumer. The old module's settings and hooks are variables read at each call: the shim passes them to the new
+// functions as an Options. REGISTER_HASHES is kept for source compatibility and ignored (the new module lists registers in a
+// fixed order); flow16_CMPSWITCH is flow16's CMPSWITCH.
 #pragma once
 
 #include <array>
@@ -19,46 +10,34 @@
 #include <tuple>
 #include <variant>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/invert/early_c.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::invert::early_c {
 
-// Optional driver hook: CALLINFO(call_addr_0based, "near"|"far", target) -> number of bytes the
-// CALLEE pops on return (`ret N`: N>0 = Pascal convention, args pushed left-to-right and N/2
-// words consumed), 0 for a plain `ret` (C convention), or None when unknown.
-// The target is None, or an int (near) or a tuple of ints (far: the Python tuple, here a list).
-// (std::variant: the Python target is an int for a near call and a tuple for a far one.)
+namespace ne = cb::invert::early_c;
+namespace nf = cb::invert::early_c_frame;
+
+// The target is None, or an int (near) or a tuple of ints (far: here a list).
 using CallTarget = std::optional<std::variant<int64_t, py::list<int64_t>>>;
 using CallinfoHook = std::function<std::optional<int64_t>(int64_t, const py::str&, const CallTarget&)>;
-// Optional driver hook: CALLREGS(call_addr_0based, "near"|"far", target) -> the scratch registers
-// (ax/bx/cx/dx) the callee reads before writing: arguments passed in registers. Those registers
-// are settled into their variables before the call and the call is preceded by `USE(regs);`.
 using CallregsHook = std::function<std::optional<py::list<py::str>>(int64_t, const py::str&, const CallTarget&)>;
-// Optional driver hook: SWITCH(addr_0based) -> case-target addresses (0-based, table order) of the
-// jump-table dispatch `jmp cs:[bx+table]` at that address, or None.
 using SwitchHook = std::function<std::optional<py::list<int64_t>>(int64_t)>;
 
 // An empty std::function is the Python's None.
-extern CallinfoHook CALLINFO;
-extern CallregsHook CALLREGS;
-extern SwitchHook SWITCH;
+inline CallinfoHook CALLINFO;
+inline CallregsHook CALLREGS;
+inline SwitchHook SWITCH;
 
-// Verification aid: when True, byte-wide memory operands are emitted as BYTE(x) so a checker can
-// tell 8-bit from 16-bit accesses. Off for normal (readable) output.
-extern bool MARK;
-extern bool FARPTR;           // checker mode: es is a real register, far derefs are FARM(es, x)
-extern bool DEADREGS;         // drop register assignments nothing reads
-extern bool UNSIGNED_CAST;    // readable listings: mark unsigned compares
-extern bool FPCASTS;          // (8087 field operands through casts: the variant model text)
-// Optional driver fact: does the function being lifted return a value? (True/False from a
-// whole-program "is the result ever read by a caller" analysis; None -> local heuristic.)
-extern std::optional<bool> RETVAL;
+inline bool MARK = false;
+inline bool FARPTR = ne::Options::from_environment().far_pointers;
+inline bool DEADREGS = ne::Options::from_environment().dead_registers;
+inline bool UNSIGNED_CAST = ne::Options::from_environment().unsigned_compares;
+inline bool FPCASTS = false;
+inline std::optional<bool> RETVAL;
 
-// What recover() last found of MS-C 3.00's register variables ("saved": [si, di] the function keeps its
-// register variables in, "regparam": {register: parameter index} the parameters declared register); and
-// of the 8087's values: "fptypes", "fpret", "unsigned_longs".  The Python's LAST is a dict holding only
-// the keys it has; here each key is an optional.
+// What recover() last found (the Python's LAST dict: only the keys it has).
 struct Last {
     std::optional<py::list<py::str>> saved;
     std::optional<py::dict<py::str, int64_t>> regparam;
@@ -66,39 +45,186 @@ struct Last {
     std::optional<py::str> fpret;
     std::optional<py::set<py::str>> unsigned_longs;
 };
-extern Last LAST;
+inline Last LAST;
 
-extern bool REGVARS_EAGER;    // (a driver of 3.00 code: a register variable updated from itself - di = di >> 3 - is a statement at once)
-extern bool FRAME_AFTER_BP;   // (a driver of 3.00 or later code: `sub sp,N` after `mov bp,sp` - no stack probe, -Gs - is its frame too)
-extern bool REGPARAM_REREAD;  // (MS C 3.00: a register a parameter is loaded into is the parameter only if its slot is not read again)
-
-// Stand-in for flow16.CMPSWITCH (read by _flags): codebreaker.invert.flow16 is not ported to this tree
-// yet; a driver that sets flow16's CMPSWITCH sets this one.
-extern bool flow16_CMPSWITCH;
-// The Python passes the model hash() of "ax","bx","cx","dx","si","di","es" in ITS process (the one set
-// whose order early_c's output follows); C++ has no such hash, so a driver sets them (default 0).
-extern std::array<int64_t, 7> REGISTER_HASHES;
-
-std::tuple<bool, bool, bool, bool, bool, bool, bool, bool, std::optional<py::str>, bool, std::optional<py::str>> _flags();
+inline bool REGVARS_EAGER = false;
+inline bool FRAME_AFTER_BP = false;
+inline bool REGPARAM_REREAD = true;
+inline bool flow16_CMPSWITCH = false;
+inline std::array<int64_t, 7> REGISTER_HASHES = {0, 0, 0, 0, 0, 0, 0};   // (ignored)
 
 // (framesize, params, statements, return type, local offsets)
 using Recovered = std::tuple<int64_t, py::list<py::str>, py::list<py::str>, py::str, py::list<int64_t>>;
 
+namespace detail {
+
+inline CallTarget target_of(const ne::CallSite& call, std::string& kind) {
+    if (const auto* near = std::get_if<ne::NearCall>(&call)) {
+        kind = "near";
+        if (!near->target) return std::nullopt;
+        return CallTarget(std::variant<int64_t, py::list<int64_t>>(static_cast<int64_t>(*near->target)));
+    }
+    const auto& far = std::get<ne::FarCall>(call);
+    kind = "far";
+    if (!far.target) return std::nullopt;
+    py::list<int64_t> parts;
+    parts.append(far.target->seg);
+    parts.append(far.target->off);
+    return CallTarget(std::variant<int64_t, py::list<int64_t>>(parts));
+}
+
+inline int64_t address_of(const ne::CallSite& call) {
+    return std::visit([](const auto& c) { return static_cast<int64_t>(c.address); }, call);
+}
+
+inline ne::Options options_now() {
+    ne::Options o = ne::Options::from_environment();   // MASM_CRET and CFG_NOCAP are read at each call
+    o.mark = MARK;
+    o.far_pointers = FARPTR;
+    o.dead_registers = DEADREGS;
+    o.unsigned_compares = UNSIGNED_CAST;
+    o.fp_casts = FPCASTS;
+    o.eager_register_variables = REGVARS_EAGER;
+    o.frame_after_bp = FRAME_AFTER_BP;
+    o.reread_register_params = REGPARAM_REREAD;
+    o.compare_switches = flow16_CMPSWITCH;
+    o.returns_value = RETVAL;
+    if (SWITCH) {
+        o.hooks.switch_targets = [](std::uint32_t address) -> std::optional<std::vector<std::uint32_t>> {
+            const auto answer = SWITCH(static_cast<int64_t>(address));
+            if (!answer) return std::nullopt;
+            std::vector<std::uint32_t> out;
+            for (const int64_t t : *answer) out.push_back(cb::compat::int_from_py<std::uint32_t>(t));
+            return out;
+        };
+    }
+    if (CALLINFO) {
+        o.hooks.callee_pop_bytes = [](const ne::CallSite& call) -> std::uint32_t {
+            std::string kind;
+            const CallTarget target = target_of(call, kind);
+            const auto answer = CALLINFO(address_of(call), cb::compat::to_py(kind), target);
+            return answer && *answer > 0 ? cb::compat::int_from_py<std::uint32_t>(*answer) : 0;   // None and 0 are "no answer"
+        };
+    }
+    if (CALLREGS) {
+        o.hooks.callee_register_args = [](const ne::CallSite& call) -> std::vector<ne::Reg> {
+            std::string kind;
+            const CallTarget target = target_of(call, kind);
+            const auto answer = CALLREGS(address_of(call), cb::compat::to_py(kind), target);
+            std::vector<ne::Reg> regs;
+            if (!answer) return regs;
+            for (const py::str& name : *answer) {
+                const std::string n = cb::compat::from_py(name);
+                if (n == "ax") regs.push_back(ne::Reg::Ax);
+                else if (n == "bx") regs.push_back(ne::Reg::Bx);
+                else if (n == "cx") regs.push_back(ne::Reg::Cx);
+                else if (n == "dx") regs.push_back(ne::Reg::Dx);
+                else throw cb::UsageError("early_c: '" + n + "' is not a scratch register a callee reads");
+            }
+            return regs;
+        };
+    }
+    return o;
+}
+
+inline Recovered finish(const ne::Recovered& r) {
+    LAST = Last();
+    LAST.saved = cb::compat::to_py(r.findings.saved_registers);
+    LAST.regparam = cb::compat::to_py(r.findings.register_params);
+    if (!r.findings.fp_types.empty()) LAST.fptypes = cb::compat::to_py(r.findings.fp_types);
+    if (!r.findings.fp_return.empty()) LAST.fpret = cb::compat::to_py(r.findings.fp_return);
+    if (!r.findings.unsigned_longs.empty()) LAST.unsigned_longs = cb::compat::to_py(r.findings.unsigned_longs);
+    return Recovered(r.frame_size, cb::compat::to_py(r.params), cb::compat::to_py(r.statements), cb::compat::to_py(r.return_type),
+                     cb::compat::to_py(r.locals));
+}
+
+inline std::unordered_map<std::uint32_t, std::string> names_of(const std::optional<py::dict<int64_t, py::str>>& cxmap) {
+    std::unordered_map<std::uint32_t, std::string> out;
+    if (cxmap) {
+        for (const auto& kv : cxmap->items()) out[cb::compat::int_from_py<std::uint32_t>(std::get<0>(kv))] = cb::compat::from_py(std::get<1>(kv));
+    }
+    return out;
+}
+
+inline std::vector<nf::Offset> offsets_of(const std::optional<py::list<int64_t>>& locals) {
+    std::vector<nf::Offset> out;
+    if (locals) {
+        for (const int64_t o : *locals) out.push_back(cb::compat::int_from_py<nf::Offset>(o));
+    }
+    return out;
+}
+
+inline std::set<nf::Offset> longs_of(const std::optional<py::set<int64_t>>& longset) {
+    std::set<nf::Offset> out;
+    if (longset) {
+        for (const int64_t o : *longset) out.insert(cb::compat::int_from_py<nf::Offset>(o));
+    }
+    return out;
+}
+
+}  // namespace detail
+
 // (framesize, params, statements, return type, local offsets) by the linear block walker.
-Recovered recover(const py::bytes& code, int64_t base = 0, const std::optional<py::dict<int64_t, py::str>>& cxmap = std::nullopt);
+inline Recovered recover(const py::bytes& code, int64_t base = 0, const std::optional<py::dict<int64_t, py::str>>& cxmap = std::nullopt) {
+    return cb::compat::guard([&] {
+        return detail::finish(ne::recover(cb::compat::from_py(code), cb::compat::int_from_py<std::uint32_t>(base), detail::names_of(cxmap),
+                                          detail::options_now()));
+    });
+}
+
 // The same by the structured control-flow graph (flow16), with the text passes after it.
-Recovered recover_cfg(const py::bytes& code, int64_t base = 0, const std::optional<py::dict<int64_t, py::str>>& cxmap = std::nullopt);
-// Live local-to-local copies `vX = vY;` in straight-line stmts, as (dest_off, src_off) pairs, where
-// src is initialized before and NOT overwritten after (the condition under which MC2 swaps offsets).
-py::list<std::tuple<int64_t, int64_t>> detect_copies(const py::list<py::str>& stmts);
-// A 32-bit compare's ladder (high words, then the low words without sign) folded into one comparison.
-py::list<py::str> _fold_ladders(const py::list<py::str>& lines);
-// framemodel-driven local declarations (gap-filled, layout-exact) as a string block.
-py::str local_decls(int64_t fs, const std::optional<py::list<int64_t>>& locals, const std::optional<py::set<int64_t>>& longset = std::nullopt,
-                    const std::optional<py::list<std::tuple<int64_t, int64_t>>>& copies = std::nullopt);
-py::str to_c(const py::str& name, int64_t fs, const py::list<py::str>& params, const py::list<py::str>& stmts, const py::str& ptype = py::str("int"),
-             const std::optional<py::list<int64_t>>& locals = std::nullopt, const std::optional<py::set<int64_t>>& longset = std::nullopt);
+inline Recovered recover_cfg(const py::bytes& code, int64_t base = 0, const std::optional<py::dict<int64_t, py::str>>& cxmap = std::nullopt) {
+    return cb::compat::guard([&] {
+        return detail::finish(ne::recover_cfg(cb::compat::from_py(code), cb::compat::int_from_py<std::uint32_t>(base), detail::names_of(cxmap),
+                                              detail::options_now()));
+    });
+}
+
+// Live local-to-local copies `vX = vY;` in straight-line stmts, as (dest_off, src_off) pairs.
+inline py::list<std::tuple<int64_t, int64_t>> detect_copies(const py::list<py::str>& stmts) {
+    return cb::compat::guard([&] {
+        py::list<std::tuple<int64_t, int64_t>> out;
+        for (const auto& c : ne::detect_copies(cb::compat::from_py(stmts))) out.append(std::make_tuple<int64_t, int64_t>(c.dest, c.src));
+        return out;
+    });
+}
+
+// A 32-bit compare's ladder folded into one comparison.
+inline py::list<py::str> _fold_ladders(const py::list<py::str>& lines) {
+    return cb::compat::guard([&] { return cb::compat::to_py(ne::fold_ladders(cb::compat::from_py(lines), MARK)); });
+}
+
+// The declarations of the locals as a string block.
+inline py::str local_decls(int64_t fs, const std::optional<py::list<int64_t>>& locals, const std::optional<py::set<int64_t>>& longset = std::nullopt,
+                           const std::optional<py::list<std::tuple<int64_t, int64_t>>>& copies = std::nullopt) {
+    return cb::compat::guard([&] {
+        std::vector<nf::Copy> cps;
+        if (copies) {
+            for (const auto& [dest, src] : *copies) {
+                cps.push_back({cb::compat::int_from_py<nf::Offset>(dest), cb::compat::int_from_py<nf::Offset>(src)});
+            }
+        }
+        return cb::compat::to_py(ne::local_decls(cb::compat::int_from_py<std::uint32_t>(fs), detail::offsets_of(locals), detail::longs_of(longset), cps));
+    });
+}
+
+inline py::str to_c(const py::str& name, int64_t fs, const py::list<py::str>& params, const py::list<py::str>& stmts, const py::str& ptype = py::str("int"),
+                    const std::optional<py::list<int64_t>>& locals = std::nullopt, const std::optional<py::set<int64_t>>& longset = std::nullopt) {
+    return cb::compat::guard([&] {
+        return cb::compat::to_py(ne::to_c(cb::compat::from_py(name), cb::compat::int_from_py<std::uint32_t>(fs), cb::compat::from_py(params),
+                                          cb::compat::from_py(stmts), cb::compat::from_py(ptype), detail::offsets_of(locals), detail::longs_of(longset)));
+    });
+}
+
 // argv as sys.argv: [script, image.bin, hexoff, len]; prints the recovered function.
-void main(const py::list<py::str>& argv);
+inline void main(const py::list<py::str>& argv) {
+    py::bytes img = py::open_rb(argv[1]).read();
+    const int64_t off = py::int_from_str(argv[2], 16);
+    const int64_t ln = py::int_from_str(argv[3]);
+    auto [fs, params, stmts, pt, loc] = recover(img.slice(off, off + ln));
+    char name[32];
+    std::snprintf(name, sizeof name, "f%05llx", static_cast<unsigned long long>(off));
+    py::print(to_c(py::str(name), fs, params, stmts, pt, loc));
+}
 
 }  // namespace codebreaker::invert::early_c

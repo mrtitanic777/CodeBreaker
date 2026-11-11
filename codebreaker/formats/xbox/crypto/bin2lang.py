@@ -39,7 +39,7 @@ def lang_format(din: Union[str, bytes, bytearray], dout: Union[str, TextIO] = No
 			print("])", file=sio)
 		elif language in [Language.C, Language.CPLUSPLUS]:
 			print("#ifndef BYTE", file=sio)
-			print("typedef unsigned char BYTE", file=sio)
+			print("typedef unsigned char BYTE;", file=sio)
 			print("#endif", file=sio)
 			print(file=sio)
 			print(f"#ifndef __{var_name}__", file=sio)

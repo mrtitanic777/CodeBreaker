@@ -1,0 +1,5 @@
+Begin_Service_Table VKD
+VKD_Service VKD_Get_Version
+VKD_Service VKD_Define_Hot_Key
+VKD_Service VKD_Remove_Hot_Key
+

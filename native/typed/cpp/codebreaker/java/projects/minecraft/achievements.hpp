@@ -1,72 +1,43 @@
-// codebreaker/java/projects/minecraft/achievements.hpp -- typed C++ port of
-// codebreaker.java.projects.minecraft.achievements.
+// codebreaker/java/projects/minecraft/achievements.hpp -- SHIM over cb/java/projects/minecraft/achievements.hpp
+// (docs/CPP_DESIGN.md 6.3); deleted with its last py:: consumer.
 //
-// achievements.py -- analyze the program's achievements and map them onto the console's achievement system.
-//
-// On a PC/Java program, achievements are just objects created and unlocked in code. On a console they are
-// NOT free-form: every achievement must be declared up front in the title's configuration (on Xbox 360,
-// an XLAST project compiled to an SPA blob and embedded in the build) and unlocked through a platform call
-// that writes to the signed-in profile over the platform's online service (XUserWriteAchievements on 360).
-// This module SCANS the converted code for the program's achievement definitions, MAPS them to a platform
-// achievement table, and EMITS a report (ACHIEVEMENTS.md), an XLAST-style config skeleton and a code seam
-// (Achievements.h/.cpp).
-//
-// Notes on the port:
-//   * the dicts with fixed keys are records: Achievement (scan_achievements' rows), LangName, Entry (a row of
-//     the mapping), Mapping, IconWiring, RunResult.  Entry is held as a py::ref because wire_icons mutates the
-//     rows in place (it sets image_unlocked / image_locked);
-//   * PIL: `try: from PIL import Image` -- the PNG reader/writer inside the .cpp stands in for Pillow
-//     (RGBA 8/16-bit, interlaced or not, read directly; every other PNG colour type goes through
-//     assets::normalize_png_to_rgba first, as assets.py does).  The PNG files wire_icons writes hold Pillow's
-//     pixels; their compressed bytes differ.  A file that is not a PNG is an UnidentifiedImageError (Pillow
-//     would also read JPEG, BMP ... atlases; none is used here);
-//   * suggest_title_id / normalize_title_id take an optional str (Python takes any object: only str / None
-//     are used);
-//   * json.load of platform.config.json uses py::json_parse; a title_id that is neither a str nor an int
-//     reads as "no title id" (str(x) of a float / list / dict / bool never is 1-8 hex digits).
+// What the old consumers use: the title-id helpers (console/vcxproj), scan_achievements and run (the Minecraft
+// project's reports step, `codebreaker java achievements`). The records of run()'s result keep their old shape. The
+// port's intermediate steps (resolve_icon_atlas, wire_icons, map_to_platform, render_report, emit_xlast, emit_code
+// and the private helpers) had no caller outside the module and are not carried: they are the new module's API.
 #pragma once
 
 #include <cstdint>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/java/projects/minecraft/achievements.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::java::projects::minecraft::achievements {
 
-inline constexpr bool _HAS_PIL = true;   // the PNG code in the .cpp is the stand-in for Pillow
-
-// --- title id --------------------------------------------------------------
-// A 360 title id is 32-bit: high 16 = publisher id, low 16 = title number. A self-published/homebrew title
-// picks its own and just has to avoid colliding with an existing one.
-inline constexpr int64_t _HOMEBREW_PUBLISHER = 0xFFFE;
+namespace shim_ {
+namespace cba = cb::java::projects::minecraft::achievements;
+inline std::filesystem::path path(const py::str& s) { return cb::fs::from_text(cb::compat::from_py(s)); }
+inline std::optional<std::filesystem::path> opt_path(const std::optional<py::str>& s) {
+    if (!s || s->empty()) return std::nullopt;   // (an empty folder name meant "none")
+    return path(*s);
+}
+}  // namespace shim_
 
 // Accept 'FFFE1234', '0xFFFE1234', 'fffe1234' -> canonical 8-hex-digit UPPER string, or None.
-std::optional<py::str> normalize_title_id(const std::optional<py::str>& tid);
+inline std::optional<py::str> normalize_title_id(const std::optional<py::str>& tid) {
+    if (!tid) return std::nullopt;
+    return cb::compat::to_py(shim_::cba::normalize_title_id(cb::compat::from_py(*tid)));
+}
 
-// A stable, self-issued title id derived from `seed` (e.g. the game name). NOT guaranteed unique --
-// the user must check it against a title-id list. Returns an 8-hex-digit UPPER string.
-py::str suggest_title_id(const std::optional<py::str>& seed);
-
-// `new Achievement(<id>, "<key>", <col>, <row>, <icon>, <parent>)`, optional `->setSpecial()`.
-const py::re::Pattern& NEW_ACH_();
-const py::re::Pattern& SPECIAL_();
-const py::re::Pattern& PARENT_();   // 6th arg (parent var/NULL)
-const py::re::Pattern& ICON_();     // the 5th arg is the icon source: Item::s_book / Block::s_wood / ...
-
-// camelCase / snake key -> a readable title. openInventory -> Open Inventory, onARail -> On A Rail.
-py::str _humanize(const py::str& key);
-
-// {'name': ..., 'desc': ...} of one key of a .lang file (either may be absent)
-struct LangName {
-    std::optional<py::str> name;
-    std::optional<py::str> desc;
-};
-
-// Parse a .lang file for `achievement.<key>=Name` and `achievement.<key>.desc=Desc`. Returns
-// {key: {'name':..., 'desc':...}}. Empty if the file is missing.
-py::dict<py::str, LangName> load_lang_names(const std::optional<py::str>& lang_file);
+// A stable, self-issued title id derived from `seed` (e.g. the game name). Returns an 8-hex-digit UPPER string.
+inline py::str suggest_title_id(const std::optional<py::str>& seed) {
+    return cb::compat::to_py(shim_::cba::suggest_title_id(seed ? cb::compat::from_py(*seed) : std::string()));
+}
 
 // One row of scan_achievements' result.
 struct Achievement {
@@ -80,18 +51,16 @@ struct Achievement {
 };
 
 // Find every achievement the program defines. Returns a list sorted by id.
-py::list<Achievement> scan_achievements(const py::str& code_dir, const std::optional<py::str>& lang_file = std::nullopt);
-
-// --- icon resolution: symbol -> atlas sprite -------------------------------
-py::str _read(const py::str& path);
-
-// {BlockSubclass: terrainIndex} from each subclass ctor's literal `blockIndexInTexture = N;`.
-// The base `Block` sets it from a ctor arg (no literal) and is intentionally absent here.
-py::dict<py::str, int64_t> _block_class_textures(const py::str& code_dir);
-
-// Map an icon symbol (s_book / s_wood) to (atlas, col, row), atlas in {'items','terrain'}, by
-// reading the game's Item/Block definitions. Unresolvable symbols are simply absent.
-py::dict<py::str, std::tuple<py::str, int64_t, int64_t>> resolve_icon_atlas(const py::str& code_dir);
+inline py::list<Achievement> scan_achievements(const py::str& code_dir, const std::optional<py::str>& lang_file = std::nullopt) {
+    return cb::compat::guard([&] {
+        py::list<Achievement> out;
+        for (const auto& a : shim_::cba::scan_achievements(shim_::path(code_dir), shim_::opt_path(lang_file))) {
+            out.append(Achievement{a.id, cb::compat::to_py(a.key), cb::compat::to_py(a.name), cb::compat::to_py(a.desc), a.hidden,
+                                   cb::compat::to_py(a.parent), cb::compat::to_py(a.icon)});
+        }
+        return out;
+    });
+}
 
 // A row of the platform mapping.
 struct Entry {
@@ -103,7 +72,7 @@ struct Entry {
     int64_t gamerscore = 0;
     bool hidden = false;
     std::optional<py::str> icon;
-    std::optional<py::str> image_unlocked;   // set by wire_icons
+    std::optional<py::str> image_unlocked;   // set when the tile art was wired
     std::optional<py::str> image_locked;
 };
 
@@ -112,24 +81,6 @@ struct IconWiring {
     py::list<py::str> wired;
     py::list<std::tuple<py::str, py::str>> unresolved;
 };
-
-// For each achievement whose icon resolves, crop its 16x16 sprite from the atlas, scale to
-// `tile`x`tile` (nearest, crisp), and write unlocked + locked PNGs under content_dir/achievement_images/.
-// Mutates each entry with image_unlocked / image_locked (relative to out_dir) when wired.
-IconWiring wire_icons(const py::list<py::ref<Entry>>& entries, const py::str& code_dir, const py::str& content_dir,
-                      const py::str& out_dir, int64_t tile = 64);
-
-// Console achievement constraints (Xbox 360). Retail titles: up to 99 achievements totalling 1000
-// gamerscore; Arcade titles: up to 12 totalling 200. Used to validate the mapping.
-struct Profile {
-    int64_t max_count = 0;
-    int64_t score = 0;
-};
-const py::dict<py::str, Profile>& PROFILES();
-
-// Split `total` gamerscore across n achievements as evenly as possible in steps of 5, summing
-// EXACTLY to total (the last few absorb the remainder).
-py::list<int64_t> _distribute_score(int64_t n, int64_t total);
 
 // What map_to_platform returns.
 struct Mapping {
@@ -140,25 +91,6 @@ struct Mapping {
     int64_t count = 0;
     int64_t limit = 0;
 };
-
-// Assign a platform achievement id (1-based, as consoles expect) + gamerscore to each.
-Mapping map_to_platform(const py::list<Achievement>& achievements, const py::str& profile = py::str("retail"),
-                        const std::optional<py::str>& title_profile = std::nullopt);
-
-// --- emission ---------------------------------------------------------------
-py::str _const_name(const py::str& key);
-
-py::str render_report(const Mapping& mapping, const py::str& delivery = py::str("online"),
-                      const std::optional<IconWiring>& icons = std::nullopt,
-                      const std::optional<py::str>& title_id = std::nullopt, bool title_suggested = false);
-
-// Write an XLAST-style achievement config skeleton (XML) to import into the submission tool.
-py::str emit_xlast(const Mapping& mapping, const py::str& out_path, const std::optional<py::str>& title_id = std::nullopt);
-
-py::str _xml(const py::str& s);
-
-// Write Achievements.h + Achievements.cpp: the ACH_* id constants and the unlock seam.
-py::list<py::str> emit_code(const Mapping& mapping, const py::str& out_dir, const py::str& delivery = py::str("online"));
 
 // What run() returns (a dict with these fixed keys in Python).
 struct RunResult {
@@ -173,19 +105,60 @@ struct RunResult {
     bool title_suggested = false;
 };
 
-// Scan, map, wire icons, and emit ACHIEVEMENTS.md + achievements.xlast + Achievements.h/.cpp.
-// `content_dir` (with the game's atlases) enables auto-wiring the achievement tile art. `title_id`
-// (self-issued, no MS submission needed) is written into the XLAST.
-RunResult run(const py::str& code_dir, const py::str& out_dir, const std::optional<py::str>& lang_file = std::nullopt,
-              const py::str& profile = py::str("retail"), const py::str& delivery = py::str("online"),
-              const std::optional<py::str>& content_dir = std::nullopt,
-              const std::optional<py::str>& title_id = std::nullopt,
-              const std::optional<py::str>& title_name = std::nullopt);
+// Scan, map, wire icons, and emit ACHIEVEMENTS.md + achievements.xlast + Achievements.h/.cpp. `content_dir` (with the
+// game's atlases) enables auto-wiring the achievement tile art; `title_id` (self-issued) is written into the XLAST.
+// (`title_name` was never read.) A `profile` that is not 'retail' or 'arcade' is a KeyError, as it was when the report
+// looked its limits up.
+inline RunResult run(const py::str& code_dir, const py::str& out_dir, const std::optional<py::str>& lang_file = std::nullopt,
+                     const py::str& profile = py::str("retail"), const py::str& delivery = py::str("online"),
+                     const std::optional<py::str>& content_dir = std::nullopt, const std::optional<py::str>& title_id = std::nullopt,
+                     const std::optional<py::str>& /*title_name*/ = std::nullopt) {
+    const std::optional<shim_::cba::Tier> tier = shim_::cba::parse_tier(cb::compat::from_py(profile));
+    if (!tier) throw py::KeyError(py::repr(profile).utf8());
+    return cb::compat::guard([&] {
+        shim_::cba::RunOptions opt;
+        opt.tier = *tier;
+        opt.delivery = cb::compat::from_py(delivery);
+        opt.lang_file = shim_::opt_path(lang_file);
+        opt.content_dir = shim_::opt_path(content_dir);
+        if (title_id && !title_id->empty()) opt.title_id = cb::compat::from_py(*title_id);
+        const shim_::cba::RunResult r = shim_::cba::run(shim_::path(code_dir), shim_::path(out_dir), opt);
 
-// The project's title_id from <out_dir>/platform.config.json, or None.
-std::optional<py::str> _title_id_from_config(const py::str& out_dir);
-
-// Find the game's Content folder (the one with the texture atlases) near out_dir.
-std::optional<py::str> _guess_content_dir(const py::str& out_dir);
+        RunResult out;
+        for (const shim_::cba::Entry& e : r.mapping.entries) {
+            auto row = std::make_shared<Entry>();
+            row->platform_id = e.platform_id;
+            row->source_id = e.source_id;
+            row->key = cb::compat::to_py(e.key);
+            row->name = cb::compat::to_py(e.name);
+            row->desc = cb::compat::to_py(e.desc);
+            row->gamerscore = e.gamerscore;
+            row->hidden = e.hidden;
+            row->icon = cb::compat::to_py(e.icon);
+            if (e.art) {
+                row->image_unlocked = cb::compat::to_py(e.art->unlocked);
+                row->image_locked = cb::compat::to_py(e.art->locked);
+            }
+            out.mapping.entries.append(row);
+        }
+        out.mapping.profile = cb::compat::to_py(shim_::cba::tier_name(r.mapping.tier));
+        out.mapping.total_score = r.mapping.total_score;
+        out.mapping.warnings = cb::compat::to_py(r.mapping.warnings);
+        out.mapping.count = r.mapping.count;
+        out.mapping.limit = r.mapping.limit;
+        out.report = cb::compat::to_py(cb::fs::to_text(r.report));
+        out.xlast = cb::compat::to_py(cb::fs::to_text(r.xlast));
+        for (const auto& p : r.code) out.code.append(cb::compat::to_py(cb::fs::to_text(p)));
+        if (r.content_dir) out.content_dir = cb::compat::to_py(cb::fs::to_text(*r.content_dir));
+        out.count = r.count;
+        out.icons.wired = cb::compat::to_py(r.icons.wired);
+        for (const shim_::cba::Unresolved& u : r.icons.unresolved) {
+            out.icons.unresolved.append(std::make_tuple(cb::compat::to_py(u.key), cb::compat::to_py(u.reason)));
+        }
+        out.title_id = cb::compat::to_py(r.title_id);
+        out.title_suggested = r.title_suggested;
+        return out;
+    });
+}
 
 }  // namespace codebreaker::java::projects::minecraft::achievements

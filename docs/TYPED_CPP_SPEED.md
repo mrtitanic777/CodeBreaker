@@ -47,7 +47,7 @@ Runtime changes behind these (all output-neutral):
   chunks of one reserved address range, so delete finds the class from the address (no header, unsized delete works). The
   typed ports make a `std::u32string` per `py::str`; the system heap was ~25% of their CPU. p5: 52 -> 39 s CPU.
 - py::re (native/l2/src/pyre.cc): every one-character instruction tests an ASCII byte by its own table (no UTF-8 decode, no
-  call), `` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
+  call), `\b` ASCII path, a greedy single-character loop followed by a plain ASCII character skips the backtrack positions
   where that character is not (sre's literal-tail check), the backtrack stack is an inline array. Micro-benchmark
   (tools/bench_re.cc vs tools/bench_re.py on 295 C files, 18 patterns): 704 -> 290 ms against Python's 525 ms.
 - ctext.blank's cache looks up by hash without copying the (large) text.
@@ -311,6 +311,26 @@ C++20 /O1. Best of three runs of the harness's whole case file, process start in
 
 The other modules of the batch (aout, exepack, hooks_lattice, x86, linkemu, batch, readable, draft/package) have
 harnesses of a few hundred cases that run in the process start; they were checked for the same behaviour, not timed.
+
+## cb refactor, batch W0-B1 (compare, emulate): before and after, 2026-11-11
+
+The py-layer port (before) against the idiomatic native/cb code (after), same machine, release build, best of N.
+
+| What | Before | After |
+|---|---|---|
+| compare::image::first_difference, 4 MB equal until the last bytes | 2.35 ms | 0.21 ms (memcmp, eight bytes at a time) |
+| compare::mask::same, 4 MB, every 64th byte masked | 3.77 ms | 0.93 ms |
+| compare::mask::distance, 4 MB, one mask | 4.89 ms | 0.96 ms |
+| the 32-bit recorder (cbtrace.dll, C interface; 900,002 instructions of a counting loop, one hook per instruction) | 26.4 / 27.4 / 27.5 ns per instruction | 27.0 / 27.4 / 28.7 ns per instruction |
+
+Notes:
+* The recorder's code is the same code moved (native/tracer -> native/cb/emulate/tracer); only the Unicorn and Capstone
+  tables changed (`ucl()` is one acquire load). A first version took a mutex per call and was 6% slower; the atomic fix
+  brought it to noise. Runs on this machine vary by a factor of two with other load, so the pairs above were run back to back.
+* pcode's cost is the pcodecheck pipe (unchanged); ports16 and symbolic construct a few objects per run (not measured: far
+  from any hot loop of the judge).
+* Harness: state/work/cpp-refactor/hot-b1/ (the recorder), state/work/cpp-refactor/compare/ (mask, image).
+
 ## Executable-format readers (cb/formats: pe, ne, le, dos, omf, detect), 2026-11-11
 
 Old = the native C++ readers (native/formats) behind the typed shells; new = native/cb/formats. Both run over the same inputs by a
@@ -406,3 +426,116 @@ Equivalence on the old harnesses: verify's cfg_all / cfg_vol / cfg_empty / cfg_l
 same table rows and the same console differences as the Python's expected report, byte for byte (the path is written with `/`, the
 trailing blank line is gone, and `unknown-program` is an error). arith16: the C++ and the fixed Python give the same text on 80 random
 files of 40 statements (clang's own trees), and on the harness's a.c/b.c/bad.c/empty.c/nohdr.c/hdr.h.
+
+## exact/emu and exact/habits (wave 0, batch B8)
+
+Whole old harness run (process start, parsing the cases, the module) against the new module's golden test over the same
+cases (process start, parsing, the module), milliseconds, release build:
+
+| work | old port | cb |
+|---|---|---|
+| exact/habits/oldcomp (1,000 pairs) | 44 | 36 |
+| exact/habits/boolx (2,337 cases) | 255 | 29 |
+| exact/habits/symx (10,625 cases) | 551 | 45 |
+| exact/emu/isis, 20,000,000 8080 instructions of a loop | 517 | 281 |
+
+exact/emu/isis and exact/emu/xenix golden tests copy a folder per case, which dominates their time (isis 91 runs 2.4 s,
+xenix 67 runs 6.0 s; the old harness's 317 and 91 runs took 1.6 s and 4.7 s with fewer copies); xenix's work is Unicorn's
+either way and was not timed apart.
+
+## cb/java/console (W0-B17), 2026-11-11
+
+The old side is the original Python (the live implementation of these features; the typed ports ran over the same
+algorithms). Real inputs, the new side a driver over `cb_java` (Release, C++20 /O2); best of three, process start excluded.
+Outputs were compared first: all of them identical to the Python's.
+
+| work | Python | native/cb | note |
+|---|---|---|---|
+| xdk_scan.detect, the installed XDK (2,514 entry points in its headers) | 0.125-0.162 s | 0.055 s | 2.3-3x; same 2,514 names and header for each |
+| assets.run, Minecraft's `minecraft.jar` (346 entries, 42 assets, 3 PNGs converted) | 0.054 s | 0.050-0.059 s | same: 42 files identical, every PNG pixel for pixel |
+| of which: reading the jar / converting the 3 PNGs / writing the 42 files | - | 0.7 ms / 0.5 ms / 65-115 ms | the writes are the file system; the Python does the same ones |
+| vcxproj.run, a generated 5,202-file project (the real xbox360 profile's 55 rules) | 4.2-4.7 s | 2.3-3.6 s | 1.3-1.8x; .vcxproj and .filters byte-identical to the Python's |
+
+The vcxproj figure is dominated by classifying every class against the profile's rules through the generated project's very
+deep inheritance chains (up to 208 ancestors, each tried against 55 patterns); a converted game's chains are 3-6 deep, where the
+whole run is a few milliseconds. Not memoised: the classification of a class and its ancestors is repeated per file.
+## Java lane text passes (cb/java: emit/std_transforms, projects/minecraft/{raycast, content, keybind_mark, ui_mark}), 2026-11-11
+
+Old = the typed ports over the py:: layer, run by the old harnesses (state/work/typed-port/<module>/test.exe over its cases.txt,
+whole process); new = the same inputs through native/cb/java in one process, best of 20 (state/work/cpp-refactor/w0-b18/bench.cpp).
+The old process start alone is 10 ms, so the old work is the total minus that:
+
+| Work | old (total - start) | new |
+|---|---|---|
+| raycast.convert_gl_pick_to_raycast, 261 recorded cases | 54 - 11 = 43 ms | 3.6 ms |
+| std_transforms (apply, sanitize, annotate, literal-masked sub), 544 cases | 53 - 10 = 43 ms (all four functions) | 0.36 ms for the 256 `apply` cases alone |
+| content.scan_assets over the harness corpus (33 files) | not run (the old harness writes into its folders) | 3.4 ms |
+| content.render_content_md (c1) | | 1.6 ms |
+| keybind_mark.mark / ui_mark.mark of the harness tree (dry run) | | 1.0 ms / 1.7 ms |
+
+No old figure for the tree passes: their harnesses are written to rebuild and copy their fixture folders for every case. They
+were compared for behaviour instead: 81 keybind_mark, 85 ui_mark, 143 controller_nav and 261 raycast recorded cases, the 544
+std_transforms cases, 57 content calls, the whole platform_equivalents and minecraft_xbox360 tables: no difference that is not
+listed in a DIVERGES block (raycast overlap and comment rules, std_transforms empty pattern, run() on a missing folder, the
+controller_nav half-patch return).
+## Quad files, the MC2 inverse and the Java tool table (cb/invert, cb/java/run, format_key), 2026-11-11
+
+`cb::invert::early_c` is a typed API over the same compiler model (native/invert, linked as cb_invert_model), so its speed is the
+model's: the old harness's 808 recover/recover_cfg calls (each followed by two to_c, detect_copies, a ladder fold and two
+local_decls, and the text written out) take 0.19-0.22 s in the old process; the new golden test runs 397 recoveries in about
+0.06 s of its 0.10-0.14 s (the rest is the process start and loading the DLLs): about 0.15 ms a recovery against 0.25 ms,
+with the model identical, so the gain is the lost output formatting. The quad readers (quad_dump, quad_align on the 10 KB FXU.Q
+and the Lattice objects), early_c_frame, grammars, known_differences (seven patterns, compiled once per table) and format_key
+run in microseconds on their real inputs; they have no hot path and were checked for the same behaviour, not timed. The Java
+tool table parses a command line in microseconds; the tools it runs are other modules' work.
+## port/pre_ansi part 4 (cb/port: c_source, old_sizes, struct_layout, union_views, frames, original_program, bss, rewrite, headers, complaints), 2026-11-11
+
+Old = the typed port (pre_ansi_p4.cpp, 1,870 lines over the py:: layer); new = native/cb/port. Both run the old part-4 harness
+(state/work/typed-port/port.pre_ansi.p4: every call of the part on the three source trees lib 2.20, link 2.44 and MS C 3.00 p0,
+2,940 answers). The old exe also runs the Port constructor (parts 1-3, not yet refactored) and could not be rebuilt without it
+(its objects are older than master's header shims), so the two times are not of equal scope:
+
+| Whole harness (3 trees, 2,940 calls) | old | new |
+|---|---|---|
+| old test.exe (constructor of parts 1-3 + part 4) | 2.86 s | |
+| new driver (part 4 only; the constructor's state is read from a dump) | | 0.20 s |
+
+The Python original runs the same constructor in 0.5 s for the three trees, so the old constructor is a fraction of the 2.86 s; the
+new part 4 is not slower. The new answers equal the Python's on all 2,940 calls (compare.py, by meaning; 0 differences).
+
+### native/cb/port (W0-B21: pre_ansi PART 5, the widening passes and the mending)
+
+The old typed port's harness (state/work/typed-port/port.pre_ansi.p5) runs all five parts of pre_ansi over four whole programs, so the
+mending alone cannot be timed there (the port's own record: 34 s Python, 39-42 s CPU the typed port, 1.6x slower than the Python). The
+same work is timed here on the cases of the golden files (native/cb/port/testdata/pre_ansi_p5): the Python replays them with
+state/work/cpp-refactor/pre_ansi_p5/replay.py, the C++ is the golden test (`CB_P5_TIMING=1 cb_tests --filter port.pre_ansi_p5`).
+Same inputs, results compared (the Python's own, recorded). Seconds on a busy machine, the better of two runs.
+
+| Work | Python | native/cb/port | Speedup |
+|---|---|---|---|
+| lib-2.20: text passes over every file | 0.014 | 0.003 | 4.7x |
+| lib-2.20: mend, 6 complaints of each kind one by one, then all together for two rounds | 0.406 | 0.219 | 1.9x |
+| lib-2.20: old_c_ways, numbered_places, agree_wide, stored_wide, passed_on | 0.021 (with a deepcopy of the Port) | 0.008 | 2.6x |
+| msc-3.00-p0: mend, the same | 0.639 | 0.159 | 4.0x |
+| msc-3.00-p0: whole-program passes | 0.051 (with a deepcopy) | 0.016 | 3.2x |
+| msc-3.00-p3 (304 files): mend, the same | 2.800 | 0.887 | 3.2x |
+| msc-3.00-p3: whole-program passes | 0.198 (with a deepcopy) | 0.096 | 2.1x |
+| link-2.44: mend, the same | 0.660 | 0.248 | 2.7x |
+| call_at over 3 columns of every line with a call (lib-2.20) | 0.027 | <0.001 | >25x |
+
+The new code is faster than the Python on every row; the old typed port was timed slower than the Python (1.6x), so it is faster than that too (inferred, not run side by side). What made the mending
+faster was not the regular-expression engine (the engine is slower than CPython's `re` on a single search): the Python recomputed the
+blanked text of every file per complaint (`any(re.search(...) for t in out.values())`) and parsed each file's functions once per
+complaint (an lru_cache on the text, but the key is hashed on every lookup); the C++ keeps one reading of each file for the round.
+## cb refactor: symbols and vxd batch W0-B26 (2026-11-11)
+
+Old = the engine or Python module the new code replaces, same inputs, best of 3-5, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| prototypes: read the 10,166 declarations of OpenWatcom's h/nt+h/win and Microsoft's SDK/DDK headers (engine native/symbols/prototypes.cc, process start and JSON out included) | 600 ms | 560 ms (the reader alone) |
+| demangle: 5,727 real names through the old engine (parse + type name) vs the new reader (parse + type name + plain + readable + stack_bytes, i.e. three parses a name) | 73 ms | 105 ms |
+| sdk_structs: read the 8,514 structures and 6,526 pointer types of the three 32-bit header folders | Python 400 ms | 200 ms |
+| xdk_libraries: search dash.xex (2.0M words) and a game's default.xex (1.8M words) for 1,308 library signatures | Python 2.9 s / 1.9 s (whole `match`, image read included) | 220 / 200 ms (the search alone; a sorted pair index replaced a table of lists: 1.1 s before) |
+| xdk_libraries: make the 1,308 signatures from 2,277 functions | Python 300 ms | 8 ms |
+| ordinals: read all 597 .lib and .def files of the reference folder | Python 570 ms (process start included) | 91 ms |

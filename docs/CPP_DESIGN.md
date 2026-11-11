@@ -811,6 +811,12 @@ line, which is also how the exe gate stays meaningful.
   commands to the translated `__main__`) is NOT wired yet: linking `cb_core` into the pyengine-generated project
   would force C++20 and `UNICODE` onto the whole Python-runtime build, so the first shim's own library
   (`pynative_typed`-style, C++20, private) is where `cb_core` joins. The old `tools\build_codebreaker_exe.cmd` is untouched.
+  *Wired since:* the generated project (`native/pyengine/src/dyn.cc`, `--dyn-native-typed`) does
+  `add_subdirectory(native/cb cb EXCLUDE_FROM_ALL)` before its own compile options, builds `pynative_typed` at C++20
+  (py renamed pyt) and links every `CB_AREAS` library into it privately (so C++20 and `UNICODE` stay inside it); the
+  whole executable takes the static CRT the cb libraries use. A native module whose port became a header-only shim
+  has no `.cpp`: its glue includes the header. `cbtrace.dll` is the `cbtrace` target of `native/cb`
+  (`tools\build_cb.cmd`, or `tools\build_native.cmd cb` for that target alone; `state/cxx/cb/bin`, the `tracer_bin` default).
 - Third-party headers/DLLs: `native/third_party/README.md` (Capstone is now 5.0.7, not the 4.0.2 the old decompiler
   was written against).
 
