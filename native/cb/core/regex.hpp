@@ -103,7 +103,7 @@ public:
     // Every match's whole text.
     std::vector<std::string> find_all(std::string_view subject) const;
 
-    // Replace matches. The template understands `$1`..`$9`, `${name}`, `$&` (the whole match) and `$$`;
+    // Replace matches. The template understands `$1`..`$9`, `${name}`, `${12}` (a numbered group, the form a digit may follow), `$&` (the whole match) and `$$`;
     // a group that did not take part is empty. UsageError if it names a group the pattern does not have.
     std::string replace_all(std::string_view subject, std::string_view replacement) const;
     std::string replace_first(std::string_view subject, std::string_view replacement) const;
