@@ -34,21 +34,33 @@ function(cb_area dir)
   set_property(GLOBAL PROPERTY CB_TEST_SOURCES ${all_tests} ${tests})
 endfunction()
 
-# CodeBreaker's one XEX parser (native/xex/src/xex_file.cpp): shared with the xex program and the recompiled-game
-# runtime, so it is compiled as it is, under its own flags (not /W4 /WX), and cb::formats::xex wraps it.
-add_library(cb_xex_reader STATIC "${CB_NATIVE_ROOT}/xex/src/xex_file.cpp")
+# CodeBreaker's one XEX reader (native/xex/reader.cmake: the parser, the basefile's decryption and decompression):
+# shared with the xex program and the recompiled-game runtime, so it is compiled as it is, under its own flags (not
+# /W4 /WX). cb::formats::xex wraps its parser; the tests of cb::formats::lzx use its decoder as the independent oracle.
+include("${CB_NATIVE_ROOT}/xex/reader.cmake")
+add_library(cb_xex_reader STATIC ${XEX_READER_SOURCES})
 set_target_properties(cb_xex_reader PROPERTIES CXX_STANDARD 20 MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-target_include_directories(cb_xex_reader PUBLIC "${CB_NATIVE_ROOT}/xex/src")
+target_include_directories(cb_xex_reader PUBLIC "${XEX_READER_INCLUDE_DIR}")
 target_compile_options(cb_xex_reader PRIVATE /utf-8 /EHsc /W3)
 if(CB_ASAN)
   target_compile_options(cb_xex_reader PRIVATE /fsanitize=address /Zi)
 endif()
 
+# zlib 1.3.1 (MSZIP): the copy native/decompiler carries (as native/formats compiles it), with crc32() from
+# native/formats/core/zcrc32.c; a C library compiled as it is.
+enable_language(C)
+file(GLOB CB_ZLIB_SOURCES CONFIGURE_DEPENDS "${CB_NATIVE_ROOT}/decompiler/core/zlib/*.c")
+add_library(cb_zlib STATIC ${CB_ZLIB_SOURCES} "${CB_NATIVE_ROOT}/formats/core/zcrc32.c")
+set_target_properties(cb_zlib PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+target_include_directories(cb_zlib PUBLIC "${CB_NATIVE_ROOT}/decompiler/core/zlib")
+target_compile_options(cb_zlib PRIVATE /O2 /W0)
+target_compile_definitions(cb_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
+
 cb_area(core)
 target_link_libraries(cb_core PUBLIC bcrypt)
 
 cb_area(formats)
-target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader)
+target_link_libraries(cb_formats PUBLIC cb_core cb_xex_reader cb_zlib)
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
