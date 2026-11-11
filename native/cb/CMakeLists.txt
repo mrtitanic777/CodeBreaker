@@ -199,7 +199,7 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/emu/dpmi.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/habits/newcomp.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp")
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/formats/inspect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_build.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/authored/match16.cpp"
@@ -216,17 +216,15 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/decompile/xbox_effect.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_w1b3.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"   # (uses the arith16 shim's records)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/z80_flat.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/sm83.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/shadow.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/driver.cpp"
-  # the old consumers of the exact shims (aim, standin, modules, pascal_join): they must keep compiling against them
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_exact.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/link.cpp"
-  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/recut.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/repair.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/ledger.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/exact/project.cpp"
@@ -239,10 +237,8 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/xdk_libraries.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_translate.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile16.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_verify_gate.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_jobs_platforms.cpp")
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")
