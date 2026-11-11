@@ -541,6 +541,72 @@ namespace live
                                                 uint32_t start, uint32_t max, std::string* error = nullptr);
     // XStorageDelete (a user's own file).
     std::optional<std::string> StorageDelete(uint32_t user, uint32_t titleId, const std::string& path);
+    // Title updates and Marketplace content (protocol "Content"): the server's operator packages, offered to signed-in
+    // players and downloaded over HTTP (the content port, default LIVE port + 3). All need a signed-in `user`. Errors
+    // are the server's words ("no such offer", "payment required ...", "not licensed ...", "downloads are off"),
+    // "timeout" or "not connected".
+    struct ContentOffer
+    {
+        uint64_t offer = 0;      // the offer ID
+        std::string kind;        // "tu" (title update, content type 0xB0000) or "dlc" (content type 2)
+        uint32_t titleId = 0, mediaId = 0, version = 0, baseVersion = 0;
+        std::string name, description, publisher, titleName;
+        uint64_t size = 0;       // the package's bytes
+        uint32_t points = 0;     // price (0: free; this server sells only free content)
+        std::string contentId;   // 40 hex digits (the package header's content ID)
+        std::string sha1, sha256; // hex
+        std::string file;        // the name the package is stored under on a console
+        bool required = false;   // a title update the title cannot go online without
+        bool owned = false;      // the account holds its license (a title update needs none)
+        // The download link, when the reply carried one (content_tu, content_purchase): the HTTP port and the path
+        // ("/content/..."), valid for hours.
+        uint16_t port = 0;
+        std::string path;
+    };
+    // What a download needs: the offer's link and what to check the bytes against.
+    struct ContentLink
+    {
+        uint64_t offer = 0;
+        std::string url;         // http://<the connected server's host>:<port><path>
+        uint16_t port = 0;
+        std::string path;
+        uint64_t size = 0;
+        std::string sha256;      // hex
+        uint32_t titleId = 0;
+        std::string name;
+        std::string kind;        // "tu" / "dlc"
+    };
+    // content_tu: the newest title update of `titleId` newer than `version` (for this media ID / base version when
+    // they are not 0 / 0xFFFFFFFF), with its link. nullopt with `*error` empty: the title is up to date; nullopt with
+    // `*error` set: the server did not answer.
+    std::optional<ContentOffer> ContentTitleUpdate(uint32_t user, uint32_t titleId, uint32_t mediaId, uint32_t version,
+                                                   uint32_t baseVersion = 0xFFFFFFFF, std::string* error = nullptr);
+    // content_offers: the title's offers; `kind` "dlc" (default), "tu" or "all". nullopt when the server did not answer.
+    std::optional<std::vector<ContentOffer>> ContentOffers(uint32_t user, uint32_t titleId,
+                                                           const std::string& kind = "dlc",
+                                                           std::string* error = nullptr);
+    // content_offer: one offer, and its thumbnail (PNG) when `thumbnail` is given.
+    std::optional<ContentOffer> ContentOfferInfo(uint32_t user, uint64_t offer, std::vector<uint8_t>* thumbnail = nullptr,
+                                                 std::string* error = nullptr);
+    // content_purchase: a free offer is taken (the account holds its license from then on). `purchased` says whether
+    // it was new. A priced offer is refused ("payment required").
+    std::optional<ContentOffer> ContentPurchase(uint32_t user, uint64_t offer, bool* purchased = nullptr,
+                                                std::string* error = nullptr);
+    // content_link: the download link of an offer the account holds (a title update's: anyone).
+    std::optional<ContentLink> ContentGetLink(uint32_t user, uint64_t offer, std::string* error = nullptr);
+    // The link of an offer a reply carried (ContentTitleUpdate / ContentPurchase): no request.
+    std::optional<ContentLink> ContentLinkOf(const ContentOffer& offer);
+    // content_licenses: the offers the account holds.
+    struct ContentLicense
+    {
+        uint64_t offer = 0;
+        uint32_t titleId = 0;
+        int64_t at = 0; // Unix seconds
+        std::string name;
+        bool available = false; // the package is still in the server's library
+    };
+    std::optional<std::vector<ContentLicense>> ContentLicenses(uint32_t user, std::string* error = nullptr);
+
     // The content subsystem (the server serves content packages the dashboard downloads, like the console did from
     // Xbox LIVE: tenure numbers, ...): one file's bytes, cached in memory after the first fetch. Empty on failure.
     std::vector<uint8_t> GetContent(const std::string& package, const std::string& file);

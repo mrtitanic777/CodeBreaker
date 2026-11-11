@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 // XAM enumerators (XamEnumerate). The object body is X_KENUMERATOR (0x18 bytes: app id, enumerate message, close
@@ -27,6 +28,10 @@ namespace kernel
         // `tailSize` is the most a tail takes: an item counts itemSize + tailSize against the caller's buffer.
         std::vector<uint32_t> tailPointers;
         uint32_t tailSize = 0;
+        // Enumerators whose results the runtime builds at each XamEnumerate (the stats enumerators: the server is asked
+        // then): writes the results to the guest buffer, sets the item count and returns a Win32 error (0: ok). Called
+        // without the enumerators' lock held, so it may wait for the network. `items` then stay empty.
+        std::function<uint32_t(uint32_t buffer, uint32_t bufferSize, uint32_t& count)> produce;
     };
 
     // XamProfileCreateEnumerator's records: be64 offline XUID, XAMACCOUNTINFO (0x17C), be32 device ID.

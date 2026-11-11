@@ -1,4 +1,4 @@
-// codebreaker/java/ir.hpp -- typed C++ port of codebreaker.java.ir.
+// codebreaker/java/ir.hpp -- SHIM over cb/java/ir.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last py:: consumer.
 //
 // ir.py -- the Intermediate Representation: what a Java source file becomes.
 //
@@ -30,15 +30,17 @@
 #include <optional>
 #include <tuple>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/core/fs.hpp"
+#include "cb/java/ir.hpp"
 
 namespace codebreaker::java::ir {
 
 // Access levels, lowest-visibility last. 'package' = Java default (no modifier).
-extern const py::str PUBLIC;
-extern const py::str PROTECTED;
-extern const py::str PACKAGE;
-extern const py::str PRIVATE;
+inline const py::str PUBLIC("public");
+inline const py::str PROTECTED("protected");
+inline const py::str PACKAGE("package");
+inline const py::str PRIVATE("private");
 
 struct JType;
 struct Field;
@@ -180,4 +182,325 @@ struct JClass {
     py::str repr() const;
 };
 
+
+
+// ---------------------------------------------------------------------------------------------- JType
+inline JType::JType(const py::str& name, int64_t array_dims, const py::list<py::ref<JType>>& args)
+    : name(name), array_dims(array_dims), args(args.copy()) {}
+
+inline bool JType::is_array() const { return array_dims > 0; }
+
+inline bool JType::is_generic() const { return !args.empty(); }
+
+inline py::ref<JType> JType::element(const py::ref<JType>& self) const {
+    if (!array_dims) {
+        return self;
+    }
+    return std::make_shared<JType>(name, array_dims - 1, args);
+}
+
+inline bool JType::operator==(const JType& other) const {
+    if (!(name == other.name && array_dims == other.array_dims && args.size() == other.args.size())) {
+        return false;
+    }
+    for (int64_t i = 0; i < args.size(); ++i) {
+        if (!(*args[i] == *other.args[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline bool JType::operator!=(const JType& other) const { return !(*this == other); }
+
+inline int64_t JType::hash() const {
+    uint64_t h = static_cast<uint64_t>(py::str_hash()(name));
+    h = h * 1000003u ^ static_cast<uint64_t>(array_dims);
+    for (const py::ref<JType>& a : args) {
+        h = h * 1000003u ^ static_cast<uint64_t>(a->hash());
+    }
+    return static_cast<int64_t>(h);
+}
+
+inline py::str JType::repr() const {
+    py::str s = name;
+    if (!args.empty()) {
+        py::list<py::str> parts;
+        for (const py::ref<JType>& a : args) {
+            parts.append(a->repr());
+        }
+        s = s + py::str("<") + py::join(py::str(", "), parts) + py::str(">");
+    }
+    return s + py::repeat(py::str("[]"), array_dims);
+}
+
+// ---------------------------------------------------------------------------------------------- Field
+inline Field::Field(const py::str& name, const py::ref<JType>& jtype, const py::str& access, bool is_static, bool is_final,
+             const std::optional<py::str>& initializer, int64_t line)
+    : name(name), jtype(jtype), access(access), is_static(is_static), is_final(is_final), initializer(initializer),
+      line(line) {}
+
+inline py::str Field::repr() const {
+    py::str mods = (is_static ? py::str("static ") : py::str("")) + (is_final ? py::str("final ") : py::str(""));
+    return py::percent(py::str("<Field %s%s %s>"), mods, jtype->repr(), name);
+}
+
+// ---------------------------------------------------------------------------------------------- Param
+inline Param::Param(const py::str& name, const py::ref<JType>& jtype, bool is_final)
+    : name(name), jtype(jtype), is_final(is_final), by_ref(false) {}
+
+inline py::str Param::repr() const { return py::percent(py::str("<Param %s %s>"), jtype->repr(), name); }
+
+// ---------------------------------------------------------------------------------------------- Method
+inline Method::Method(const py::str& name, const py::ref<JType>& return_type, const py::list<py::ref<Param>>& params,
+               const py::str& access, bool is_static, bool is_abstract, bool is_final, bool is_ctor,
+               const py::list<std::tuple<int64_t, py::str>>& body, int64_t line)
+    : name(name), return_type(return_type), params(params.copy()), access(access), is_static(is_static),
+      is_abstract(is_abstract), is_final(is_final), is_ctor(is_ctor), body(body.copy()), line(line) {}
+
+inline int64_t Method::arity() const { return params.size(); }
+
+inline py::list<py::ref<JType>> Method::param_types() const {
+    py::list<py::ref<JType>> out;
+    for (const py::ref<Param>& p : params) {
+        out.append(p->jtype);
+    }
+    return out;
+}
+
+inline std::tuple<py::str, py::list<py::str>> Method::signature() const {
+    py::list<py::str> reprs;
+    for (const py::ref<Param>& p : params) {
+        reprs.append(p->jtype->repr());
+    }
+    return std::make_tuple(name, reprs);
+}
+
+inline py::str Method::repr() const {
+    py::str kind = is_ctor ? py::str("ctor") : (return_type ? return_type->repr() : py::str("void"));
+    return py::percent(py::str("<Method %s %s(%d)>"), kind, name, arity());
+}
+
+// ---------------------------------------------------------------------------------------------- EnumConst
+inline EnumConst::EnumConst(const py::str& name, const py::list<py::str>& args) : name(name), args(args.copy()) {}
+
+inline py::str EnumConst::repr() const { return py::percent(py::str("<EnumConst %s(%d)>"), name, args.size()); }
+
+// ---------------------------------------------------------------------------------------------- JClass
+inline JClass::JClass(const py::str& name, const std::optional<py::str>& package, const std::optional<py::str>& parent,
+               const py::list<py::str>& interfaces, bool is_interface, bool is_abstract, bool is_enum,
+               const std::optional<py::str>& source_path)
+    : name(name), package(package), parent(parent), interfaces(interfaces.copy()), is_interface(is_interface),
+      is_abstract(is_abstract), is_enum(is_enum), source_path(source_path), has_init_statics(false) {}
+
+inline py::ref<Field> JClass::field(const py::str& name) const {
+    for (const py::ref<Field>& f : fields) {
+        if (f->name == name) {
+            return f;
+        }
+    }
+    return nullptr;
+}
+
+inline py::list<py::ref<Field>> JClass::instance_fields() const {
+    py::list<py::ref<Field>> out;
+    for (const py::ref<Field>& f : fields) {
+        if (!f->is_static) {
+            out.append(f);
+        }
+    }
+    return out;
+}
+
+inline py::list<py::ref<Field>> JClass::static_fields() const {
+    py::list<py::ref<Field>> out;
+    for (const py::ref<Field>& f : fields) {
+        if (f->is_static) {
+            out.append(f);
+        }
+    }
+    return out;
+}
+
+inline py::list<py::ref<Method>> JClass::constructors() const {
+    py::list<py::ref<Method>> out;
+    for (const py::ref<Method>& m : methods) {
+        if (m->is_ctor) {
+            out.append(m);
+        }
+    }
+    return out;
+}
+
+inline py::ref<Method> JClass::method(const py::str& name) const {
+    for (const py::ref<Method>& m : methods) {
+        if (m->name == name) {
+            return m;
+        }
+    }
+    return nullptr;
+}
+
+inline bool JClass::owns_heap_field() const {
+    for (const py::ref<Field>& f : fields) {
+        // `f.initializer and 'new ' in f.initializer`: None and '' are both falsy
+        if (f->initializer && f->initializer->size() > 0 && f->initializer->contains(py::str("new "))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline bool JClass::is_typed_enum() const {
+    if (!is_enum) {
+        return false;
+    }
+    for (const py::ref<EnumConst>& ec : enum_consts) {
+        if (!ec->args.empty()) {
+            return true;
+        }
+    }
+    if (!instance_fields().empty()) {
+        return true;
+    }
+    for (const py::ref<Method>& m : methods) {
+        if (!m->is_ctor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline py::str JClass::repr() const {
+    py::str kind = is_interface ? py::str("interface") : (is_enum ? py::str("enum") : py::str("class"));
+    py::str ext = parent ? py::percent(py::str(" extends %s"), *parent) : py::str("");
+    return py::percent(py::str("<JClass %s %s%s f=%d m=%d>"), kind, name, ext, fields.size(), methods.size());
+}
+
+
+// ---- conversion to and from the new IR (cb/java/ir.hpp) ------------------------------------------------------
+//
+// The old IR is a graph of shared, mutable objects that its consumers (parse, types, emit) mutate in place, so
+// this shim keeps it whole; refactored code works on cb::java::ir and meets it through these converters. A class
+// converts alone: `inherited_fields` and `mi_forwards` are derived by the pipeline from the full class set and are
+// not carried either way.
+
+inline cb::java::ir::JType to_new(const JType& t) {
+    cb::java::ir::JType out;
+    out.name = cb::compat::from_py(t.name);
+    out.array_dims = cb::compat::int_from_py<std::uint32_t>(t.array_dims);
+    for (const py::ref<JType>& a : t.args) out.args.push_back(to_new(*a));
+    return out;
+}
+
+inline py::ref<JType> from_new(const cb::java::ir::JType& t) {
+    py::list<py::ref<JType>> args;
+    for (const auto& a : t.args) args.append(from_new(a));
+    return std::make_shared<JType>(cb::compat::to_py(t.name), static_cast<int64_t>(t.array_dims), args);
+}
+
+namespace conv_ {
+inline py::str access(cb::java::ir::Access a) { return cb::compat::to_py(cb::java::ir::to_string(a)); }
+inline cb::java::ir::Access access(const py::str& s) {
+    auto a = cb::java::ir::parse_access(cb::compat::from_py(s));
+    if (!a) throw py::ValueError("not an access level: " + cb::compat::from_py(s));
+    return *a;
+}
+inline cb::java::ir::Body body(const py::list<std::tuple<int64_t, py::str>>& b) {
+    cb::java::ir::Body out;
+    for (const auto& [n, text] : b) out.push_back({cb::compat::int_from_py<std::uint32_t>(n), cb::compat::from_py(text)});
+    return out;
+}
+inline py::list<std::tuple<int64_t, py::str>> body(const cb::java::ir::Body& b) {
+    py::list<std::tuple<int64_t, py::str>> out;
+    for (const auto& l : b) out.append(std::make_tuple(static_cast<int64_t>(l.number), cb::compat::to_py(l.text)));
+    return out;
+}
+}  // namespace conv_
+
+inline cb::java::ir::Field to_new(const Field& f) {
+    cb::java::ir::Field out;
+    out.name = cb::compat::from_py(f.name);
+    out.type = to_new(*f.jtype);
+    out.access = conv_::access(f.access);
+    out.is_static = f.is_static;
+    out.is_final = f.is_final;
+    if (f.initializer) out.initializer = cb::compat::from_py(*f.initializer);
+    out.line = cb::compat::int_from_py<std::uint32_t>(f.line);
+    return out;
+}
+
+inline py::ref<Field> from_new(const cb::java::ir::Field& f) {
+    return std::make_shared<Field>(cb::compat::to_py(f.name), from_new(f.type), conv_::access(f.access), f.is_static,
+                                   f.is_final,
+                                   f.initializer ? std::optional<py::str>(cb::compat::to_py(*f.initializer)) : std::nullopt,
+                                   static_cast<int64_t>(f.line));
+}
+
+inline cb::java::ir::Method to_new(const Method& m) {
+    cb::java::ir::Method out;
+    out.name = cb::compat::from_py(m.name);
+    if (m.return_type) out.return_type = to_new(*m.return_type);
+    for (const py::ref<Param>& p : m.params) {
+        out.params.push_back({cb::compat::from_py(p->name), to_new(*p->jtype), p->is_final, p->by_ref});
+    }
+    out.access = conv_::access(m.access);
+    out.is_static = m.is_static;
+    out.is_abstract = m.is_abstract;
+    out.is_final = m.is_final;
+    out.is_ctor = m.is_ctor;
+    out.body = conv_::body(m.body);
+    out.line = cb::compat::int_from_py<std::uint32_t>(m.line);
+    return out;
+}
+
+inline py::ref<Method> from_new(const cb::java::ir::Method& m) {
+    py::list<py::ref<Param>> params;
+    for (const auto& p : m.params) {
+        auto q = std::make_shared<Param>(cb::compat::to_py(p.name), from_new(p.type), p.is_final);
+        q->by_ref = p.by_ref;
+        params.append(q);
+    }
+    return std::make_shared<Method>(cb::compat::to_py(m.name), m.return_type ? from_new(*m.return_type) : nullptr,
+                                    params, conv_::access(m.access), m.is_static, m.is_abstract, m.is_final, m.is_ctor,
+                                    conv_::body(m.body), static_cast<int64_t>(m.line));
+}
+
+inline cb::java::ir::JClass to_new(const JClass& c) {
+    cb::java::ir::JClass out;
+    out.name = cb::compat::from_py(c.name);
+    if (c.package) out.package = cb::compat::from_py(*c.package);
+    if (c.parent) out.parent = cb::compat::from_py(*c.parent);
+    out.interfaces = cb::compat::from_py(c.interfaces);
+    out.is_interface = c.is_interface;
+    out.is_abstract = c.is_abstract;
+    out.is_enum = c.is_enum;
+    for (const py::ref<Field>& f : c.fields) out.fields.push_back(to_new(*f));
+    for (const py::ref<Method>& m : c.methods) out.methods.push_back(to_new(*m));
+    for (const py::ref<EnumConst>& e : c.enum_consts) out.enum_consts.push_back({cb::compat::from_py(e->name), cb::compat::from_py(e->args)});
+    for (const auto& b : c.static_inits) out.static_inits.push_back(conv_::body(b));
+    for (const auto& b : c.inst_inits) out.inst_inits.push_back(conv_::body(b));
+    if (c.source_path) out.source_path = cb::fs::from_text(cb::compat::from_py(*c.source_path));
+    out.has_init_statics = c.has_init_statics;
+    return out;
+}
+
+inline py::ref<JClass> from_new(const cb::java::ir::JClass& c) {
+    auto out = std::make_shared<JClass>(
+        cb::compat::to_py(c.name),
+        c.package ? std::optional<py::str>(cb::compat::to_py(*c.package)) : std::nullopt,
+        c.parent ? std::optional<py::str>(cb::compat::to_py(*c.parent)) : std::nullopt, cb::compat::to_py(c.interfaces),
+        c.is_interface, c.is_abstract, c.is_enum,
+        c.source_path ? std::optional<py::str>(cb::compat::to_py(cb::fs::to_text(*c.source_path))) : std::nullopt);
+    for (const auto& f : c.fields) out->fields.append(from_new(f));
+    for (const auto& m : c.methods) out->methods.append(from_new(m));
+    for (const auto& e : c.enum_consts) out->enum_consts.append(std::make_shared<EnumConst>(cb::compat::to_py(e.name), cb::compat::to_py(e.args)));
+    for (const auto& b : c.static_inits) out->static_inits.append(conv_::body(b));
+    for (const auto& b : c.inst_inits) out->inst_inits.append(conv_::body(b));
+    out->has_init_statics = c.has_init_statics;
+    return out;
+}
 }  // namespace codebreaker::java::ir
+
+
+

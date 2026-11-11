@@ -1,0 +1,81 @@
+{
+  "events": [
+    {
+      "file": "b/Zed.cpp",
+      "line": 12,
+      "category": "ERROR",
+      "severity": "HIGH",
+      "source": "build",
+      "rule": "C2065",
+      "message": "C2065 undeclared",
+      "snippet": "x = y;"
+    },
+    {
+      "file": "a/Alpha.cpp",
+      "line": 7,
+      "category": "GUESSED",
+      "severity": "HIGH",
+      "source": "emit",
+      "rule": "",
+      "message": "guessed pointer",
+      "snippet": ""
+    },
+    {
+      "file": "a/Alpha.cpp",
+      "line": 7,
+      "category": "RULE",
+      "severity": "LOW",
+      "source": "",
+      "rule": "trig-double",
+      "message": "rule fired",
+      "snippet": ""
+    },
+    {
+      "file": "a/Alpha.cpp",
+      "line": 3,
+      "category": "STUBBED",
+      "severity": "MED",
+      "source": "",
+      "rule": "",
+      "message": "stub here",
+      "snippet": ""
+    },
+    {
+      "file": "c/Beta.cpp",
+      "line": 0,
+      "category": "PORTED",
+      "severity": "LOW",
+      "source": "",
+      "rule": "",
+      "message": "clean",
+      "snippet": ""
+    },
+    {
+      "file": "b/Zed.cpp",
+      "line": 2,
+      "category": "WARNING",
+      "severity": "MED",
+      "source": "",
+      "rule": "",
+      "message": "tab\there \"quoted\" back\\slash",
+      "snippet": ""
+    }
+  ],
+  "totals_by_category": {
+    "ERROR": 1,
+    "GUESSED": 1,
+    "STUBBED": 1,
+    "BLOCKED": 0,
+    "RISK": 0,
+    "WARNING": 1,
+    "OVERRIDDEN": 0,
+    "ANNOTATED": 0,
+    "PORTED": 1,
+    "RULE": 1
+  },
+  "totals_by_severity": {
+    "HIGH": 2,
+    "MED": 2,
+    "LOW": 2
+  }
+}

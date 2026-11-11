@@ -1,75 +1,69 @@
-// codebreaker/verify/teeth.hpp -- typed C++ of codebreaker.verify.teeth.
+// codebreaker/verify/teeth.hpp -- COMPAT SHIM over cb/verify/teeth.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// teeth.py -- does the judge notice when a reconstruction is wrong?
+// The module is native/cb/verify/teeth.{hpp,cpp} now: the five breaks, the round loop, the report and the declared
+// `teeth` command, with the module and its judge behind a `Lane`. This header keeps the old py:: API for the ports that
+// still use it (verify/lanes/driver's self-check uses plant/Round/Planted), and supplies the old lanes (the
+// reconstruct kinds, the function store, the worker pool) to the new run as an adapter. No logic of teeth's own.
 //
-//     python -m codebreaker teeth <module> [--rounds N] [--json FILE]
+// `plant`'s `each` is called with the old Planted records, whose `outcome` is the word `outcome(said)` gave (the new
+// loop has only caught/missed/other; the word is kept alongside).
 //
-// A verdict of "behaves as the original" is worth what the judge would have said of a wrong
-// reconstruction. This asks it: functions the judge has passed are each broken in one small way
-// that changes what they do -- a constant one higher, a comparison turned round, a plus made a
-// minus, a store left out, two arguments swapped -- the module is built with them, and they are
-// judged again. A broken function the judge still passes is a hole in the judge (or the break was
-// in code no input reaches, which is the same thing said of the inputs).
-//
-// Works for every kind of module whose functions are rebuilt from C and run beside the original
-// (32-bit and 16-bit Windows, PowerPC). The broken functions of one round never reach one another,
-// so each is caught, or not, on its own account. Nothing is recorded in the function store.
-//
-//     caught      the judge now says the function differs from the original
-//     survived    the judge still passes it
-//
-// The share caught is given for the functions it had called VERIFIED and for those it had called
-// VERIFIED (weak) apart: the first is what the strong verdict is worth.
-//
-// Typing notes:
-//   * plant() is a generator in Python (rounds in, a list per round out); here `rounds` is a callable that gives the next
-//     round (nullopt at the end) and `each` is called with each round's list as the generator would have yielded it -- the
-//     next round is asked for only after `each` returns, as the Python's lazy generator is. `Said` is what the judge says
-//     of one name (a template parameter: run() has the whole verdict tuple, the driver lane's self-check just the word).
-//   * A round of breaks is a list of (name, what, made): `made` is the broken text (run) or the broken file (the driver lane).
-//   * run() returns a Report (the Python's dict {"module", "kind", "rounds", "results", "caught"}); a result row is a
-//     Result: the Python's dict has the keys name, was, now, reason, made, plus change and limits when the break compiled
-//     (`compiled`); to_json() writes the report as json.dump(indent=1) does, the keys in the Python's order.
-//   * `log` is the Python's `log=print`: an empty std::function is None (nothing logged).
-//   * The judge of a round is run serially in this process (the emulators keep per-process state).
-//   * main(argv) takes what follows the command name; the platform's `readable` (a .xex's basefile, an .xbe's PE image) is
-//     base::corpus::_readable.
+// Not kept: the single-break helpers of the old file (_body, _constant, _comparison, _operator, _store, _arguments) --
+// they were internal and nothing calls them; `breaks` runs them all.
 #pragma once
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
+#include <span>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
-#include "py.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/verify/teeth.hpp"
+#include "codebreaker/base/corpus.hpp"
+#include "codebreaker/build/watcom.hpp"
+#include "codebreaker/jobs/pool.hpp"
+#include "codebreaker/store/functions.hpp"
+#include "codebreaker/translate/l2.hpp"
+#include "codebreaker/verify/reconstruct.hpp"
+#include "codebreaker/verify/verdicts.hpp"
+#include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::verify::teeth {
 
 using Log = std::function<void(const py::str&)>;
-void log_print(const py::str& line);   // print
-
-// the five kinds of break, in the order they are tried: constant, comparison, operator, store, arguments
-extern const py::list<py::str> BREAK_KINDS;
-
-// (head with the opening brace, declarations, statements) -- breaks are made in statements.
-std::tuple<py::str, py::str> _body(const py::str& text);
-
-// each returns the body with the break made, or nullopt when it does not apply; `shadow` is the body with strings and comments blanked
-std::optional<py::str> _constant(const py::str& body, const py::str& shadow);
-std::optional<py::str> _comparison(const py::str& body, const py::str& shadow);
-std::optional<py::str> _operator(const py::str& body, const py::str& shadow);
-std::optional<py::str> _store(const py::str& body, const py::str& shadow);
-std::optional<py::str> _arguments(const py::str& body, const py::str& shadow);
+inline void log_print(const py::str& line) { py::print(line); }
 
 // [(kind of break, the function's text with it made)] -- every kind that applies.
-py::list<std::tuple<py::str, py::str>> breaks(const py::str& text);
+inline py::list<std::tuple<py::str, py::str>> breaks(const py::str& text) {
+    py::list<std::tuple<py::str, py::str>> out;
+    for (const cb::verify::teeth::TextBreak& b : cb::verify::teeth::breaks(text.utf8()))
+        out.append(std::make_tuple(cb::compat::to_py(cb::verify::teeth::word(b.kind)), cb::compat::to_py(b.text)));
+    return out;
+}
 
 // 'old line  ->  new line' for the one line a break changed (or removed).
-py::str _changed(const py::str& before, const py::str& after);
+inline py::str _changed(const py::str& before, const py::str& after) {
+    return cb::compat::to_py(cb::verify::teeth::changed(before.utf8(), after.utf8()));
+}
 
 // {name: every function it can reach, itself included}
-py::dict<py::str, py::set<py::str>> _reach(const py::dict<py::str, py::str>& texts);
+inline py::dict<py::str, py::set<py::str>> _reach(const py::dict<py::str, py::str>& texts) {
+    std::vector<cb::verify::teeth::NamedText> fs;
+    for (const auto& kv : texts.items()) fs.push_back({std::get<0>(kv).utf8(), std::get<1>(kv).utf8()});
+    const auto reaches = cb::verify::teeth::reach(fs);
+    py::dict<py::str, py::set<py::str>> out;
+    for (std::size_t i = 0; i < fs.size(); ++i) {
+        py::set<py::str> mine;
+        for (std::uint32_t j : reaches[i]) mine.add(cb::compat::to_py(fs[j].name));
+        out.set(cb::compat::to_py(fs[i].name), mine);
+    }
+    return out;
+}
 
 // A function (or an entry point) and one break made in it: (name, what, made)
 using Break = std::tuple<py::str, py::str, py::str>;
@@ -82,26 +76,44 @@ struct Planted {
     py::str outcome;
 };
 
-// The judge judged, whatever the lane. `rounds` gives the next round of breaks (the breaks of a round never reaching one
-// another); judge(round) judges a round's together -> {name: what the judge said}; outcome(said) is "caught" (it noticed),
-// "missed" (it passed the break) or anything else (not counted). `each` is told, round by round, what came of it.
-// The lanes: C text broken and rebuilt (run, below), a 16-bit build's code (tools/gate_teeth16.py), a driver's (verify/lanes/driver.py's self_check).
+// The judge judged, whatever the lane. `rounds` gives the next round of breaks; judge(round) judges a round's together
+// -> {name: what the judge said}; outcome(said) is "caught", "missed" or anything else (not counted). `each` is told,
+// round by round, what came of it.
 template <class Said>
 void plant(const std::function<std::optional<Round>()>& rounds,
            const std::function<py::dict<py::str, Said>(const Round&)>& judge,
            const std::function<py::str(const Said&)>& outcome,
            const std::function<void(const std::vector<Planted<Said>>&)>& each) {
-    while (true) {
-        std::optional<Round> batch = rounds();
-        if (!batch) return;
-        py::dict<py::str, Said> said = judge(*batch);
-        std::vector<Planted<Said>> out;
-        for (const Break& b : *batch) {
-            const Said& s = said.at(std::get<0>(b));
-            out.push_back(Planted<Said>{std::get<0>(b), std::get<1>(b), std::get<2>(b), s, outcome(s)});
-        }
-        each(out);
-    }
+    namespace nv = cb::verify::teeth;
+    Round current;                         // the round being judged, in the old shape
+    std::vector<py::str> words;            // what the old `outcome` said of each of its attempts
+    nv::plant<Said>(
+        [&]() -> std::optional<nv::Round> {
+            std::optional<Round> r = rounds();
+            if (!r) return std::nullopt;
+            current = *r;
+            nv::Round out;
+            for (const Break& b : *r) out.push_back({std::get<0>(b).utf8(), std::get<1>(b).utf8(), std::get<2>(b).utf8()});
+            return out;
+        },
+        [&](const nv::Round& r) {
+            py::dict<py::str, Said> said = judge(current);
+            std::vector<Said> out;
+            for (const nv::Attempt& a : r) out.push_back(said.at(cb::compat::to_py(a.name)));
+            return out;
+        },
+        [&](const Said& s) {
+            words.push_back(outcome(s));
+            const py::str& w = words.back();
+            return w == py::str("caught") ? nv::Outcome::Caught : w == py::str("missed") ? nv::Outcome::Missed : nv::Outcome::Other;
+        },
+        [&](std::span<const nv::Planted<Said>> planted) {
+            std::vector<Planted<Said>> out;
+            for (std::size_t i = 0; i < planted.size(); ++i)
+                out.push_back({std::get<0>(current[i]), std::get<1>(current[i]), std::get<2>(current[i]), planted[i].said, words[i]});
+            words.clear();
+            each(out);
+        });
 }
 
 // One function's result.
@@ -130,15 +142,160 @@ struct Report {
     py::list<Caught> caught;              // sorted by group
 };
 
-// -> the report of a module: breaks the functions the judge passed, rebuilds, judges again. SystemExit for a module whose kind is not
-// judged function by function.
-Report run(const py::str& module_path, int64_t rounds = 3, const Log& log = log_print);
+namespace compat_detail {
 
-// json.dump(report, f, indent=1)
-py::str report_json(const Report& report);
+namespace R = codebreaker::verify::reconstruct;
+namespace V = codebreaker::verify::verdicts;
 
-extern const py::str DOC;   // main's docstring
-// python -m codebreaker teeth <module> [--rounds N] [--json FILE]
-int64_t main(const py::list<py::str>& argv);
+// The old lanes (a reconstruct Kind over the function store) as a teeth Lane: what the Python's `run` did before it broke
+// anything -- make sure the module has been judged, prepare it, find the functions that passed -- and, for a round, build it
+// with the broken texts and judge them.
+class OldLane : public cb::verify::teeth::Lane {
+  public:
+    OldLane(const py::str& module_path, const Log& log) : module_path_(module_path) {
+        kind_ = R::kind_of(module_path);
+        if (!kind_->PER_FUNCTION())
+            throw cb::UsageError(py::os::path::basename(module_path).utf8() +
+                                 ": this kind of module is rebuilt whole and compared byte for byte; there is no judge of behaviour to test");
+        auto fs = store::functions::open();
+        auto [sha, digest] = R::run(module_path, fs, log);      // make sure it has been judged
+        name_ = py::os::path::basename(module_path).lower();
+        work_ = build::watcom::_scratch(py::list<py::str>{py::str("teeth"), kind_->KIND(), name_});
+        m_ = kind_->prepare(module_path, work_);
+        key_of_ = m_.key.copy();
+        py::dict<py::str, cb::verify::Class> passed;
+        for (const auto& kv : fs->best(sha, digest).items()) {
+            const auto& klass = std::get<1>(kv).klass;
+            if (std::holds_alternative<py::str>(klass)) {
+                const auto c = cb::verify::parse_class(std::get<py::str>(klass).utf8());
+                if (c == cb::verify::Class::Verified || c == cb::verify::Class::Weak) passed.set(std::get<0>(kv), *c);
+            }
+        }
+        original_ = m_.texts.copy();
+        auto add = [&](const py::str& n) {
+            if (!original_.contains(n) || index_.count(n.utf8())) return;
+            cb::verify::teeth::Function f;
+            f.name = n.utf8();
+            f.text = original_.at(n).utf8();
+            if (key_of_.contains(n) && passed.contains(key_of_.at(n))) f.passed = passed.at(key_of_.at(n));
+            index_[f.name] = functions_.size();
+            functions_.push_back(std::move(f));
+        };
+        for (const py::str& n : m_.order) add(n);
+        for (const py::str& n : original_.keys()) add(n);
+    }
+    ~OldLane() override { put_texts(original_); }
+
+    std::string kind() const override { return kind_->KIND().utf8(); }
+    std::string module_name() const override { return name_.utf8(); }
+    const std::vector<cb::verify::teeth::Function>& functions() const override { return functions_; }
+
+    std::vector<cb::verify::teeth::Said> judge(std::span<const cb::verify::teeth::Replacement> broken) override {
+        py::dict<py::str, py::str> texts = original_.copy();
+        for (const auto& r : broken) texts.set(cb::compat::to_py(functions_[r.function].name), cb::compat::to_py(r.text));
+        put_texts(texts);
+        R::Built built = kind_->build(m_, module_path_, py::os::path::join(work_, py::percent(py::str("round%d"), number_++)));
+        py::list<std::tuple<py::str, R::Item>> todo;
+        for (const auto& r : broken) {
+            const py::str n = cb::compat::to_py(functions_[r.function].name);
+            if (built.items.contains(n)) todo.append(std::make_tuple(key_of_.at(n), built.items.at(n)));
+        }
+        jobs::pool::Options<std::tuple<py::str, R::Item>, R::Verdict> opts;
+        opts.crashed = [](const std::tuple<py::str, R::Item>&) { return R::NOT_RUN(); };
+        opts.jobs = 1;                                            // (the emulators keep per-process state)
+        const R::Kind& kref = *kind_;
+        auto judged = jobs::pool::run_first(
+            [&kref](const R::Context& context, const std::tuple<py::str, R::Item>& item) { return kref.judge(context, std::get<1>(item)); }, todo,
+            built.context, opts);
+        std::vector<cb::verify::teeth::Said> out;
+        for (const auto& r : broken) {
+            const py::str n = cb::compat::to_py(functions_[r.function].name);
+            cb::verify::teeth::Said said;
+            if (built.items.contains(n)) {
+                const R::Verdict& v = judged.at(key_of_.at(n));
+                said.verdict = cb::verify::parse_verdict(std::get<0>(v).utf8());
+                said.reason = std::get<1>(v).utf8();
+                said.limits = cb::compat::from_py(std::get<2>(v));
+            } else {
+                said.reason = built.dropped.get(n, py::str("")).utf8();
+            }
+            out.push_back(std::move(said));
+        }
+        return out;
+    }
+
+  private:
+    // `m.texts = texts`. In the Python one object is the module the lane builds from and the one teeth reads; here the
+    // lane's own module (a translate::l2::Made, the first base of the Module16 / Module32 / ModulePPC the lane keeps in
+    // Prepared::lane) holds the texts it builds from, so they are set there as well as in the Prepared.
+    void put_texts(const py::dict<py::str, py::str>& texts) {
+        m_.texts = texts;
+        const py::str k = kind_->KIND();
+        if (m_.lane && (k == py::str("ne") || k == py::str("pe") || k == py::str("powerpc")))
+            std::static_pointer_cast<translate::l2::Made>(m_.lane)->set_texts(texts);
+    }
+
+    py::str module_path_, name_, work_;
+    std::shared_ptr<R::Kind> kind_;
+    R::Prepared m_;
+    py::dict<py::str, py::str> key_of_, original_;
+    std::vector<cb::verify::teeth::Function> functions_;
+    std::unordered_map<std::string, std::size_t> index_;
+    int64_t number_ = 0;
+};
+
+inline py::str word_of(cb::verify::Class c) { return cb::compat::to_py(cb::verify::word(c)); }
+
+inline Report to_old(const cb::verify::teeth::Report& r) {
+    Report out;
+    out.module = cb::compat::to_py(r.module);
+    out.kind = cb::compat::to_py(r.kind);
+    out.rounds = r.rounds;
+    for (const auto& x : r.results) {
+        Result o;
+        o.name = cb::compat::to_py(x.name);
+        o.was = word_of(x.was);
+        o.made = cb::compat::to_py(x.made);
+        o.reason = cb::compat::to_py(x.reason);
+        o.now = cb::compat::to_py(cb::verify::teeth::word(x.now));
+        o.compiled = x.now != cb::verify::teeth::Fate::DoesNotCompile;
+        o.change = cb::compat::to_py(x.change);
+        o.limits = cb::compat::to_py(x.limits);
+        out.results.append(o);
+    }
+    for (const auto& g : r.caught) out.caught.append(Caught{cb::compat::to_py(g.name), static_cast<int64_t>(g.caught), static_cast<int64_t>(g.of)});
+    return out;
+}
+
+}  // namespace compat_detail
+
+// -> the report of a module: breaks the functions the judge passed, rebuilds, judges again.
+inline Report run(const py::str& module_path, int64_t rounds = 3, const Log& log = log_print) {
+    return cb::compat::guard([&] {
+        compat_detail::OldLane lane(module_path, log);
+        cb::verify::teeth::Log new_log;
+        if (log) new_log = [&](std::string_view line) { log(cb::compat::to_py(line)); };
+        return compat_detail::to_old(cb::verify::teeth::run(lane, static_cast<int>(rounds), new_log));
+    });
+}
+
+// The `teeth` command over the old corpus and lanes: `main(argv)` takes what follows the command name.
+inline int64_t main(const py::list<py::str>& argv) {
+    namespace nv = cb::verify::teeth;
+    nv::Services services;
+    services.find_module = [](std::string_view name) -> std::optional<std::filesystem::path> {
+        const py::str given = cb::compat::to_py(name);
+        std::optional<py::str> path = py::os::path::isfile(given) ? std::optional<py::str>(given) : base::corpus::retail(given);
+        if (!path || path->empty()) return std::nullopt;
+        return std::filesystem::path(base::corpus::_readable(*path).utf8());   // (a .xex: its basefile, as the lanes read it)
+    };
+    services.open = [](const std::filesystem::path& p) -> std::unique_ptr<nv::Lane> {
+        return std::make_unique<compat_detail::OldLane>(cb::compat::to_py(p.generic_string()), Log(log_print));
+    };
+    services.report_dir = std::filesystem::path(py::settings::get_str(py::str("state")).utf8()) / "teeth";
+    std::vector<std::string> args = {"teeth"};
+    for (const py::str& a : argv) args.push_back(a.utf8());
+    return cb::compat::guard([&] { return cb::cli::Cli("codebreaker", {nv::command(services)}).run(args); });
+}
 
 }  // namespace codebreaker::verify::teeth

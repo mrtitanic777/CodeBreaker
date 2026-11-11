@@ -1,37 +1,60 @@
-// codebreaker/decompile/m6502.hpp -- C++ port of codebreaker.decompile.m6502.
-//
-// m6502.py -- the 6502's instructions: the table, a disassembler, an assembler.
-//
-//     m6502::decode(code, at, pc)         Insn(mnemonic, mode, operand, size, target) or None
-//     m6502::text(insn, labels)           "LDA $0200,X" / "BNE loop" (ca65 syntax)
-//     m6502::assemble(line, pc, labels)   the bytes of one ca65 instruction line
-//
-// The 151 documented opcodes of the NMOS 6502 -- the NES's 2A03 runs the same set (its decimal
-// mode is wired off). One table serves the disassembler, the assembler that rebuilds the source
-// the NES lane writes (source/nes_writer.py), and the interpreter (emulate/m6502.py).
-//
-// Addressing modes, and their operand size:
-//
-//     imp  (none)        acc  A            imm  #$nn        zp   $nn         zpx  $nn,X
-//     zpy  $nn,Y         abs  $nnnn        abx  $nnnn,X     aby  $nnnn,Y     ind  ($nnnn)
-//     izx  ($nn,X)       izy  ($nn),Y      rel  a branch: one signed byte, from the next instruction
+// codebreaker/decompile/m6502.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in
+// native/cb/decompile/m6502.{hpp,cpp}; this header keeps the old py:: surface for the ports that still call it
+// (build/m6502_asm, emulate/m6502, formats/nes, source/nes_writer). Conversion and forwarding only; deleted with
+// its last py:: consumer.
 #pragma once
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/decompile/m6502.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 
 namespace codebreaker::decompile::m6502 {
 
+namespace detail {
+namespace nm = ::cb::decompile::m6502;
+
+inline py::str mode_py(nm::Mode m) { return ::cb::compat::to_py(nm::mode_name(m)); }
+inline nm::Mode mode_of(const py::str& name) {
+    for (int i = 0; i <= static_cast<int>(nm::Mode::Rel); ++i) {
+        if (mode_py(static_cast<nm::Mode>(i)) == name) return static_cast<nm::Mode>(i);
+    }
+    throw py::KeyError(name);
+}
+}  // namespace detail
+
 // addressing mode -> instruction size in bytes
-extern const py::dict<py::str, int64_t> SIZE;
+inline const py::dict<py::str, int64_t> SIZE = [] {
+    py::dict<py::str, int64_t> d;
+    for (int i = 0; i <= static_cast<int>(detail::nm::Mode::Rel); ++i) {
+        auto m = static_cast<detail::nm::Mode>(i);
+        d.set(detail::mode_py(m), detail::nm::instruction_size(m));
+    }
+    return d;
+}();
 // mnemonic -> {mode: opcode}
 using ModeTable = py::dict<py::str, int64_t>;
-extern const py::dict<py::str, ModeTable> _GROUPS;
+inline const py::dict<py::str, ModeTable> _GROUPS = [] {
+    py::dict<py::str, ModeTable> d;
+    const auto& table = detail::nm::opcode_table();
+    for (const auto& entry : table) {
+        if (!entry) continue;
+        ModeTable& modes = d.setdefault(::cb::compat::to_py(entry->mnemonic), ModeTable());
+        modes.set(detail::mode_py(entry->mode), *detail::nm::opcode_of(entry->mnemonic, entry->mode));
+    }
+    return d;
+}();
 // opcode -> (mnemonic, mode)
-extern const py::dict<int64_t, std::tuple<py::str, py::str>> OPCODES;
-extern const py::set<py::str> BRANCHES;
-extern const py::set<py::str> ENDS;  // flow does not fall through
-extern const py::re::Pattern _LINE;
+inline const py::dict<int64_t, std::tuple<py::str, py::str>> OPCODES = [] {
+    py::dict<int64_t, std::tuple<py::str, py::str>> d;
+    const auto& table = detail::nm::opcode_table();
+    for (std::size_t op = 0; op < table.size(); ++op) {
+        if (table[op]) d.set(static_cast<int64_t>(op), {::cb::compat::to_py(table[op]->mnemonic), detail::mode_py(table[op]->mode)});
+    }
+    return d;
+}();
+inline const py::set<py::str> BRANCHES = {"BCC", "BCS", "BEQ", "BMI", "BNE", "BPL", "BVC", "BVS"};
+inline const py::set<py::str> ENDS = {"JMP", "RTS", "RTI", "BRK"};   // flow does not fall through
 
 // One decoded instruction (the Python's __slots__ class).
 struct Insn {
@@ -50,17 +73,57 @@ struct Insn {
     py::str repr() const;  // <8000 LDA #$01>
 };
 
+namespace detail {
+inline detail::nm::Insn to_new(const Insn& i) {
+    detail::nm::Insn n;
+    n.at = static_cast<std::uint32_t>(i.at);
+    n.op = static_cast<std::uint8_t>(i.op);
+    n.mode = mode_of(i.mode);
+    const auto& entry = nm::opcode_table()[n.op];
+    if (entry) n.mnemonic = entry->mnemonic;
+    if (i.operand) n.operand = static_cast<std::uint16_t>(*i.operand);
+    n.size = static_cast<std::uint8_t>(i.size);
+    if (i.target) n.target = static_cast<std::uint16_t>(*i.target);
+    return n;
+}
+}  // namespace detail
+
 // The instruction at code[offset], which sits at address `pc`; None for an undocumented
 // opcode or one cut off by the end of `code`.
-std::optional<Insn> decode(const py::bytes& code, int64_t offset, int64_t pc);
+inline std::optional<Insn> decode(const py::bytes& code, int64_t offset, int64_t pc) {
+    if (offset < 0) throw py::IndexError("bytes index out of range");
+    ::cb::Bytes bytes = ::cb::compat::from_py(code);
+    auto n = detail::nm::decode(bytes, static_cast<std::size_t>(offset), static_cast<std::uint32_t>(pc));
+    if (!n) return std::nullopt;
+    Insn out(n->at, n->op, ::cb::compat::to_py(n->mnemonic), detail::mode_py(n->mode), std::nullopt, n->size, std::nullopt);
+    if (n->operand) out.operand = *n->operand;
+    if (n->target) out.target = *n->target;
+    return out;
+}
+
+inline py::str Insn::repr() const {
+    return py::percent("<%04X %s>", at, py::str(::cb::compat::to_py(detail::nm::text(detail::to_new(*this)))));
+}
 
 // The instruction in ca65 syntax; an address that has a label is written as the label.
-// (A zero-page address is written with two hex digits, an absolute one with four: ca65 picks
-// the instruction's size from how the address is written, so the bytes come back the same.)
-py::str text(const Insn& insn, const py::dict<int64_t, py::str>& labels = py::dict<int64_t, py::str>());
+inline py::str text(const Insn& insn, const py::dict<int64_t, py::str>& labels = py::dict<int64_t, py::str>()) {
+    detail::nm::AddressLabels l;
+    for (const auto& kv : labels.items()) {
+        int64_t address = std::get<0>(kv);
+        if (address >= 0 && address <= 0xFFFF) l[static_cast<std::uint16_t>(address)] = ::cb::compat::from_py(std::get<1>(kv));
+    }
+    return ::cb::compat::to_py(detail::nm::text(detail::to_new(insn), l));
+}
 
-// The bytes of one instruction written as text() writes it. Labels are resolved from
-// `labels` ({name: address}); `a:` forces an absolute address.
-py::bytes assemble(const py::str& line, int64_t pc, const py::dict<py::str, int64_t>& labels = py::dict<py::str, int64_t>());
+// The bytes of one instruction written as text() writes it; ValueError when it is not one.
+inline py::bytes assemble(const py::str& line, int64_t pc,
+                          const py::dict<py::str, int64_t>& labels = py::dict<py::str, int64_t>()) {
+    detail::nm::NameLabels l;
+    for (const auto& kv : labels.items()) l.insert_or_assign(::cb::compat::from_py(std::get<0>(kv)), std::get<1>(kv));
+    return ::cb::compat::guard([&] {
+        ::cb::Bytes b = detail::nm::assemble(::cb::compat::from_py(line), static_cast<std::uint32_t>(pc), l);
+        return ::cb::compat::to_py(::cb::ByteView(b));
+    });
+}
 
 }  // namespace codebreaker::decompile::m6502

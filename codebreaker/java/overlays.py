@@ -25,7 +25,11 @@ import shutil
 
 def project_key(out_dir, java_dir=None):
     """Stable per-project overlay key. Uses the output project's basename (e.g. 'MinecraftBeta')."""
-    base = os.path.basename(os.path.normpath(out_dir or '')) or ''
+    if not out_dir:
+        return ''                         # no project: normpath('') is '.', which would name the whole overlays root
+    base = os.path.basename(os.path.normpath(out_dir))
+    if base in ('', '.'):                 # . names the current folder by its own name
+        base = os.path.basename(os.path.abspath(out_dir))
     return base
 
 

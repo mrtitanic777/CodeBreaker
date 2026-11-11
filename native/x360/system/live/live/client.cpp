@@ -2440,6 +2440,164 @@ namespace live
                         { "path", path } });
     }
 
+    namespace
+    {
+        ContentOffer ToContentOffer(const json& j)
+        {
+            ContentOffer o;
+            o.offer = ParseHex64(Get(j, "offer"));
+            o.kind = Str(j, "kind");
+            o.titleId = ParseHex32(Get(j, "title_id"));
+            o.mediaId = ParseHex32(Get(j, "media_id"));
+            o.version = U32(j, "version");
+            o.baseVersion = U32(j, "base_version");
+            o.name = Str(j, "name");
+            o.description = Str(j, "description");
+            o.publisher = Str(j, "publisher");
+            o.titleName = Str(j, "title_name");
+            o.size = uint64_t(I64(j, "size"));
+            o.points = U32(j, "points");
+            o.contentId = Str(j, "content_id");
+            o.sha1 = Str(j, "sha1");
+            o.sha256 = Str(j, "sha256");
+            o.file = Str(j, "file");
+            o.required = Bool(j, "required");
+            o.owned = Bool(j, "owned");
+            o.port = uint16_t(U32(j, "port"));
+            o.path = Str(j, "path");
+            return o;
+        }
+
+        std::optional<json> ContentRequest(json request, std::string* error)
+        {
+            auto reply = Request(std::move(request));
+            if (!reply || !Bool(*reply, "ok"))
+            {
+                if (error)
+                    *error = ReplyError(reply);
+                return std::nullopt;
+            }
+            if (error)
+                error->clear();
+            return reply;
+        }
+    }
+
+    std::optional<ContentLink> ContentLinkOf(const ContentOffer& o)
+    {
+        if (o.path.empty() || o.port == 0)
+            return std::nullopt;
+        ContentLink l;
+        l.offer = o.offer;
+        l.port = o.port;
+        l.path = o.path;
+        l.size = o.size;
+        l.sha256 = o.sha256;
+        l.titleId = o.titleId;
+        l.name = o.name;
+        l.kind = o.kind;
+        std::string host;
+        {
+            std::lock_guard lock(S().mutex);
+            host = S().server.first;
+        }
+        if (host.empty())
+            return std::nullopt;
+        if (host.find(':') != std::string::npos && host.front() != '[')
+            host = "[" + host + "]";
+        l.url = std::format("http://{}:{}{}", host, o.port, o.path);
+        return l;
+    }
+
+    std::optional<ContentOffer> ContentTitleUpdate(uint32_t user, uint32_t titleId, uint32_t mediaId, uint32_t version,
+                                                   uint32_t baseVersion, std::string* error)
+    {
+        json request = { { "op", "content_tu" }, { "user", user }, { "title_id", std::format("{:08X}", titleId) },
+                         { "version", version } };
+        if (mediaId)
+            request["media_id"] = std::format("{:08X}", mediaId);
+        if (baseVersion != 0xFFFFFFFF)
+            request["base_version"] = baseVersion;
+        const auto reply = ContentRequest(std::move(request), error);
+        if (!reply)
+            return std::nullopt;
+        const json& update = Get(*reply, "update");
+        if (!update.is_object())
+            return std::nullopt; // up to date (*error is empty)
+        return ToContentOffer(update);
+    }
+
+    std::optional<std::vector<ContentOffer>> ContentOffers(uint32_t user, uint32_t titleId, const std::string& kind,
+                                                           std::string* error)
+    {
+        const auto reply = ContentRequest({ { "op", "content_offers" }, { "user", user },
+                                            { "title_id", std::format("{:08X}", titleId) }, { "kind", kind } },
+                                          error);
+        if (!reply)
+            return std::nullopt;
+        std::vector<ContentOffer> offers;
+        for (const json& j : Get(*reply, "offers"))
+            offers.push_back(ToContentOffer(j));
+        return offers;
+    }
+
+    std::optional<ContentOffer> ContentOfferInfo(uint32_t user, uint64_t offer, std::vector<uint8_t>* thumbnail,
+                                                 std::string* error)
+    {
+        const auto reply =
+            ContentRequest({ { "op", "content_offer" }, { "user", user }, { "offer", Hex64(offer) } }, error);
+        if (!reply)
+            return std::nullopt;
+        if (thumbnail)
+            *thumbnail = FromBase64(Str(*reply, "thumbnail"));
+        return ToContentOffer(*reply);
+    }
+
+    std::optional<ContentOffer> ContentPurchase(uint32_t user, uint64_t offer, bool* purchased, std::string* error)
+    {
+        const auto reply =
+            ContentRequest({ { "op", "content_purchase" }, { "user", user }, { "offer", Hex64(offer) } }, error);
+        if (!reply)
+            return std::nullopt;
+        if (purchased)
+            *purchased = Bool(*reply, "purchased");
+        return ToContentOffer(Get(*reply, "offer"));
+    }
+
+    std::optional<ContentLink> ContentGetLink(uint32_t user, uint64_t offer, std::string* error)
+    {
+        const auto reply =
+            ContentRequest({ { "op", "content_link" }, { "user", user }, { "offer", Hex64(offer) } }, error);
+        if (!reply)
+            return std::nullopt;
+        ContentOffer o = ToContentOffer(Get(*reply, "offer"));
+        o.path = Str(*reply, "path");
+        o.port = uint16_t(U32(*reply, "port"));
+        const auto link = ContentLinkOf(o);
+        if (!link && error)
+            *error = "no link";
+        return link;
+    }
+
+    std::optional<std::vector<ContentLicense>> ContentLicenses(uint32_t user, std::string* error)
+    {
+        const auto reply = ContentRequest({ { "op", "content_licenses" }, { "user", user } }, error);
+        if (!reply)
+            return std::nullopt;
+        std::vector<ContentLicense> licenses;
+        for (const json& j : Get(*reply, "licenses"))
+        {
+            ContentLicense l;
+            l.offer = ParseHex64(Get(j, "offer"));
+            l.titleId = ParseHex32(Get(j, "title_id"));
+            l.at = I64(j, "at");
+            l.name = Str(j, "name");
+            l.available = Bool(j, "available");
+            licenses.push_back(std::move(l));
+        }
+        return licenses;
+    }
+
     std::optional<std::string> MarkMessageRead(uint32_t user, uint32_t id)
     {
         const auto error = Simple({ { "op", "message_read" }, { "user", user }, { "message", id } });

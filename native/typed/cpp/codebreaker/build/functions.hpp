@@ -1,28 +1,16 @@
-// codebreaker/build/functions.hpp -- interface of codebreaker.build.functions (typed C++; implementation pending).
+// codebreaker/build/functions.hpp -- SHIM over cb/build/functions.hpp (docs/CPP_DESIGN.md 6.3): the old types in, the new
+// functions called, the old types out. Deleted with its last py:: consumer. The shim's translation unit (functions.cpp) holds
+// the one process-wide FunctionBuilder the old callers share, and wires it to the old layer: the old cache port, the old
+// OpenWatcom settings (build/watcom), and the old formats ports the 32-bit link asks (formats/omf, formats/pe, describe).
 //
-// functions.py -- compile a module's reconstructed functions and link a DLL from them.
-//
-// One builder for every kind of module:
+// functions.py -- compile a module's reconstructed functions and link a DLL from them (see cb/build/functions.hpp for
+// what the new code does):
 //
 //     auto [dll, where, dropped] = functions::build16(header, texts, order, imports, outdir, segments);
 //     auto [dll, where, dropped] = functions::build32(module_path, header, texts, order, imports, outdir, cflags);
 //     auto [dll, where, dropped] = functions::build_powerpc(header, texts, order, externs, outdir, base);
 //         where    {function name: where it is in the DLL} -- (segment, offset) for 16-bit, an address for 32-bit
 //         dropped  {function name: why the compiler rejected it}
-//
-// Each function is compiled on its own, against a header that declares every function's convention and result. A function
-// the compiler rejects cannot take others with it; it is replaced by a stand-in with the same signature, so its callers
-// still link.
-//
-// Typing notes:
-//   * `env` is the compiler's environment: {name: value} (build/watcom.hpp's _ow_env answers py::dict<py::str, py::str>).
-//   * The three build functions answer a record each (Built16, Built32, BuiltPowerPC): the DLL path or None, where, dropped.
-//   * `more` ({function: [extra switches]}) and `groups` ([(cflags, order, outdir)]) are as the Python has them.
-//   * compile_groups answers [(stems, dropped)], one Compiled per group.
-//   * The module-level dicts _HEADER and OBJECTS (build folder -> ...) are `extern` (tests read OBJECTS).
-//   * Compile outcomes a caller keeps: _compile/_run_compile answer "" or the first error; compile_kept/_run_compile answer
-//     (why, keepable).
-//   * never_set answers the variables the compiler says are read but never assigned.
 #pragma once
 
 #include <cstdint>
@@ -39,9 +27,7 @@ extern const py::list<py::str> CFLAGS16;
 // The PowerPC compiler's options
 extern const py::list<py::str> CFLAGS_POWERPC;
 
-// build folder -> the hash of the header in it (used by build/module, engine/win16)
-extern py::dict<py::str, py::str> _HEADER;
-// _HEADER read and written under one lock (compiles run on threads): the header key of a build folder / set it
+// the key of the header a build folder is compiled against (used by build/module, engine/win16)
 std::optional<py::str> header_key(const py::str& outdir);
 void set_header_key(const py::str& outdir, const py::str& key);
 // build folder -> {function: digest of its object code}, of the last build there

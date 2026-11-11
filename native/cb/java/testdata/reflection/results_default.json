@@ -1,0 +1,19 @@
+{
+ "registries": [
+  {
+   "args": [],
+   "classes": [
+    "Zombie",
+    "Skeleton",
+    "Hidden"
+   ],
+   "file": "Reg.cpp",
+   "registry": "Reg",
+   "ret": "Packet",
+   "sites": 1
+  }
+ ],
+ "reused": [],
+ "total_classes": 3,
+ "total_sites": 1
+}
