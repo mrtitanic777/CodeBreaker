@@ -17,7 +17,7 @@
 // Adapters (each -> Run): `csharp` (the installed .NET SDK's csc and runtime, no restore), `java` (javac
 // and the JVM of the Java lane), `cpp` (the host C++ compiler: a transpiled program and its runtime).
 //
-//     Run r = judge::csharp(files, work, dotnet);          // Run(ok, exit, out, err, log)
+//     Run r = judge::csharp(files, work);                  // Run(ok, exit, out, err, log)
 //     auto [verdict, detail] = judge::compare(original_run, translated_run);
 //
 // Typing notes (how the Python's values are typed here):
@@ -25,10 +25,8 @@
 //     finish), out / err / log are py::str ('' where the Python's default is '').
 //   * compare()'s `refused` (a list of str or None) is a py::list<str>: None and [] are alike in the Python's
 //     `if refused:`.
-//   * csharp() calls codebreaker.translate.dotnet (the installed .NET SDK as a toolchain: dotnet.compile and
-//     dotnet.run), which is the package's __init__ and has no typed port yet: it is an argument, the struct
-//     Dotnet holding those two functions with the Python's meaning (compile: (ok, the compiler's output);
-//     run: (exit code or None for a timeout, stdout, stderr)).
+//   * csharp() calls the typed package codebreaker::translate::dotnet (the installed .NET SDK as a toolchain:
+//     dotnet::compile and dotnet::run).
 //   * java() and cpp() start javac, the JVM and the program with a timeout. subprocess.run(timeout=) is not in the
 //     runtime, so a local helper waits for the timeout and ends the child it started (as java/probe.cpp does); a
 //     javac that outlasts its 600 seconds raises subprocess.TimeoutExpired in the Python and py::TimeoutError here.
@@ -41,6 +39,7 @@
 #include <optional>
 #include <tuple>
 
+#include "codebreaker/translate/dotnet/package.hpp"
 #include "py.hpp"
 
 namespace codebreaker::translate::dotnet::judge {
@@ -73,21 +72,9 @@ std::tuple<py::str, py::str> compare(const Run& orig, const Run& trans, const py
 py::str _fresh(const py::str& work);
 
 // ---------------------------------------------------------------------------------------------- .NET
-// codebreaker.translate.dotnet, as far as the judge uses it.
-struct Dotnet {
-    // compile(sources, out_dll, tmp=, main=) -> (ok, compiler output)
-    std::function<std::tuple<bool, py::str>(const py::list<py::str>& sources, const py::str& out_dll, const py::str& tmp,
-                                            const std::optional<py::str>& main)>
-        compile;
-    // run(dll, args, timeout=, tmp=) -> (exit code or None, stdout, stderr)
-    std::function<std::tuple<std::optional<int64_t>, py::str, py::str>(const py::str& dll, const py::list<py::str>& args, int64_t timeout,
-                                                                        const py::str& tmp)>
-        run;
-};
-
 // Compile C# files with the SDK's csc and run the program on the installed runtime (main: the class
 // whose Main is the entry point, where several have one).
-Run csharp(const py::list<py::str>& files, const py::str& work, const Dotnet& dotnet, const py::list<py::str>& args = py::list<py::str>(),
+Run csharp(const py::list<py::str>& files, const py::str& work, const py::list<py::str>& args = py::list<py::str>(),
            int64_t timeout = TIMEOUT, const py::str& name = py::str("Program"), const std::optional<py::str>& main = std::nullopt);
 
 py::str _errors(const py::str& log);

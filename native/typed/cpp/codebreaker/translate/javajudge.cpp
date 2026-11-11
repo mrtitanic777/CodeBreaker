@@ -12,6 +12,7 @@
 #include "codebreaker/translate/backends/c_java.hpp"
 #include "codebreaker/translate/backends/cpp17.hpp"
 #include "codebreaker/translate/frontends/java/lower.hpp"
+#include "codebreaker/translate/frontends/java/package.hpp"
 #include "codebreaker/verify/lanes/java.hpp"
 #include "codebreaker/verify/verdicts.hpp"
 #include "py_os.hpp"
@@ -25,21 +26,12 @@ namespace V = codebreaker::verify::verdicts;
 namespace cpp17 = codebreaker::translate::backends::cpp17;
 namespace c_java = codebreaker::translate::backends::c_java;
 namespace jlower = codebreaker::translate::frontends::java::lower;
+namespace fj = codebreaker::translate::frontends::java;
 using py::str;
 
 namespace {
 
 str S(const char* s) { return str(s); }
-
-JavaFrontend& fe_() {
-    static JavaFrontend f;
-    return f;
-}
-const JavaFrontend& fe() {
-    const JavaFrontend& f = fe_();
-    if (!f.dump || !f.diagnostics) throw py::ImportError("codebreaker.translate.frontends.java: no front end given (set_java_frontend)");
-    return f;
-}
 
 // the environment this process has, with `extra` over it, as a CreateProcess block (UCS-2, sorted, double-NUL ended)
 std::wstring env_block(const std::map<std::string, std::string>& extra) {
@@ -182,7 +174,6 @@ void print_line(const str& s) {
 
 const str EQUIVALENT = str("equivalent"), DIVERGENT = str("divergent"), REFUSED = str("refused"), NOT_RUN = str("not-run");
 
-void set_java_frontend(const JavaFrontend& f) { fe_() = f; }
 
 namespace {
 // _STD = {'cpp03': ('C++03', 'c++03'), 'cpp17': ('C++17', 'c++17')}
@@ -283,8 +274,10 @@ std::tuple<str, str> java_tools() {
 
 py::list<ir::NodeP> lower_program(const str& src, const str& work, const std::optional<str>& release) {
     str tree = py::os::path::join(work, S("tree"));
-    py::dict<str, ir::Dict> units = fe().dump(src, tree, release);
-    for (const ir::Dict& d : fe().diagnostics(tree)) {
+    py::dict<str, ir::Dict> units = fj::dump(src, tree, py::list<str>(), std::nullopt,
+                                                        release && !release->empty() ? std::optional<int64_t>(py::int_parse(*release, 10)) : std::nullopt);
+    for (const ir::Val& v : fj::diagnostics(tree)) {
+        const ir::Dict& d = std::get<ir::Dict>(v.v);
         const ir::Val& kind = d.at(S("kind"));
         const str* k = std::get_if<str>(&kind.v);
         if (k && *k == S("ERROR")) {

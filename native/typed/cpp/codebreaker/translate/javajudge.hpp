@@ -19,10 +19,7 @@
 // compare).
 //
 // Notes on the port:
-//   * `codebreaker.translate.frontends.java` (its __init__: javac's TreeDump -> JSON trees, dump / diagnostics)
-//     has no typed port. What this module reads of it is the JavaFrontend interface below; a host gives it with
-//     set_java_frontend() before lower_program / judge_program are called (one that is not given is an ImportError).
-//     (java/transpile.cpp has a private dump of its own, without the diagnostics lower_program reads.)
+//   * the Java front end is codebreaker::translate::frontends::java (javac's TreeDump -> JSON trees, dump / diagnostics).
 //   * judge_tree sets the lane's module variables CPP_STD, STD, FLAGS and probe's CXX_STD for the run and puts
 //     them back, as the Python does. verify/lanes/java.cpp declares STD and CPP_STD const; this file writes them
 //     through a const_cast (FLAGS, a list handle, is changed in place). They need to be plain variables there.
@@ -50,15 +47,6 @@ namespace codebreaker::translate::javajudge {
 namespace ir = codebreaker::translate::ir;
 
 extern const py::str EQUIVALENT, DIVERGENT, REFUSED, NOT_RUN;
-
-// what the host gives of codebreaker.translate.frontends.java
-struct JavaFrontend {
-    // every .java compilation unit under src_dir as javac's typed tree: {path relative to out_dir without .json: tree}
-    std::function<py::dict<py::str, ir::Dict>(const py::str& src_dir, const py::str& out_dir, const std::optional<py::str>& release)> dump;
-    // javac's errors and warnings of the last dump into out_dir: [{'kind': 'ERROR' | ..., 'message': ...}, ...]
-    std::function<py::list<ir::Dict>(const py::str& out_dir)> diagnostics;
-};
-void set_java_frontend(const JavaFrontend& fe);
 
 // {class: (verdict, gaps, detail)}
 using TreeVerdicts = py::dict<py::str, std::tuple<py::str, int64_t, py::str>>;

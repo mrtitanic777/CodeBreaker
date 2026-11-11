@@ -19,10 +19,7 @@
 //     v.verdict, v.reason, v.tier
 //
 // Notes on the port:
-//   * `codebreaker.translate.frontends.clang` (its __init__: clang(), language_of(), flags(), l2_file()) has no
-//     typed port yet. What this module reads of it is the ClangFrontend interface below; a host gives it with
-//     set_clang_frontend() before judge() / roundtrip() is called (one that is not given is a RuntimeError, as a
-//     Python that cannot import the front end would be). `fe.clang()` is None where no clang is found.
+//   * the clang front end is codebreaker::translate::frontends::clang (clang(), language_of(), flags(), l2_file()).
 //   * a run's result `(stdout, stderr, returncode)` is a Run: the exit code is an int, or the word 'timeout'
 //     (the Python's mixed tuple item: a std::variant);
 //   * subprocess.run(timeout=) raising TimeoutExpired (the text-mode runs of clang, javac) is TimeoutExpired here;
@@ -49,24 +46,6 @@ namespace ir = codebreaker::translate::ir;
 namespace jback = codebreaker::translate::backends::java;
 
 inline constexpr int64_t RUN_TIMEOUT = 120;
-
-// what the host gives of codebreaker.translate.frontends.clang
-struct ClangFrontend {
-    // the clang executable, or None
-    std::function<std::optional<py::str>()> clang;
-    // 'c' for a .c file, else 'c++'
-    std::function<py::str(const py::str& path)> language_of;
-    // clang's command-line options for parsing (and the judge's compiling) a source file
-    std::function<py::list<py::str>(const py::str& language, const std::optional<py::str>& std_, const py::list<py::str>& includes,
-                                    const py::list<py::str>& quote_includes, const py::list<py::str>& defines)>
-        flags;
-    // one source file as an L2 document (a dict): the file's declarations lowered, cached by the source and the lowering
-    std::function<ir::Dict(const py::str& path, const py::str& language, const std::optional<py::str>& std_,
-                           const py::list<py::str>& includes, const py::list<py::str>& quote_includes, const py::list<py::str>& defines,
-                           const std::optional<py::list<py::str>>& own)>
-        l2_file;
-};
-void set_clang_frontend(const ClangFrontend& fe);
 
 // subprocess.TimeoutExpired
 struct TimeoutExpired : py::Exception {

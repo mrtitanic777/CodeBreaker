@@ -10,6 +10,7 @@
 
 #include "codebreaker/java/transpile.hpp"
 #include "codebreaker/translate/frontends/clang/j2x.hpp"
+#include "codebreaker/translate/frontends/clang/package.hpp"
 #include "codebreaker/translate/l2.hpp"
 #include "codebreaker/verify/lanes/java.hpp"
 #include "py_os.hpp"
@@ -19,6 +20,7 @@
 namespace codebreaker::translate::judge_native_jvm {
 
 namespace lane = codebreaker::verify::lanes::java;
+namespace clang = codebreaker::translate::frontends::clang;
 namespace j2x = codebreaker::translate::frontends::clang::j2x;
 namespace transpile = codebreaker::java::transpile;
 namespace l2 = codebreaker::translate::l2;
@@ -27,18 +29,6 @@ using py::str;
 namespace {
 
 str S(const char* s) { return str(s); }
-
-ClangFrontend& fe_() {
-    static ClangFrontend f;
-    return f;
-}
-const ClangFrontend& fe() {
-    const ClangFrontend& f = fe_();
-    if (!f.clang || !f.language_of || !f.flags || !f.l2_file) {
-        throw py::ImportError("codebreaker.translate.frontends.clang: no front end given (set_clang_frontend)");
-    }
-    return f;
-}
 
 // ---- subprocess.run(...) for this module: the runtime's run has no timeout, no stdin bytes, no environment ----
 struct Ran {
@@ -204,7 +194,6 @@ str fmt_code(const std::variant<int64_t, str>& c) {
 
 }  // namespace
 
-void set_clang_frontend(const ClangFrontend& f) { fe_() = f; }
 
 str Verdict::repr() const {
     return S("Verdict(") + name + S(": ") + verdict + (!reason.empty() ? S(" -- ") + reason : S("")) + S(")");
@@ -259,12 +248,11 @@ py::bytes _norm(const py::bytes& b) { return b.replace(py::bytes("\r\n"), py::by
 
 std::tuple<bool, str> native(const py::list<str>& files, const str& out_exe, const str& language, const std::optional<str>& std_,
                              const py::list<str>& defines, const py::list<str>& includes) {
-    const ClangFrontend& f = fe();
-    std::optional<str> exe = f.clang();
+    std::optional<str> exe = clang::clang();
     // (a missing clang is the Python's TypeError: [None] + ... joined into a command)
     if (!exe) throw py::TypeError("expected str, bytes or os.PathLike object, not NoneType");
     py::list<str> cmd{*exe};
-    cmd.extend(f.flags(language, std_, includes, py::list<str>(), defines));
+    cmd.extend(clang::flags(language, std_, includes, py::list<str>(), defines));
     cmd.extend(py::list<str>{S("-O0"), S("-o"), out_exe});
     cmd.extend(files);
     TextRun r = run_text(cmd, 300);
@@ -275,7 +263,7 @@ std::tuple<bool, str> native(const py::list<str>& files, const str& out_exe, con
 
 ir::NodeP _unit(const str& path, const str& language, const std::optional<str>& std_, const py::list<str>& includes,
                 const py::list<str>& quote_includes, const py::list<str>& defines, const std::optional<py::list<str>>& own) {
-    return l2::from_json(fe().l2_file(path, language, std_, includes, quote_includes, defines, own));
+    return l2::from_json(clang::l2_file(path, language, std_, includes, quote_includes, defines, own));
 }
 
 jback::Program translate(const py::list<str>& files, const str& name, const std::optional<str>& language, const std::optional<str>& std_,
@@ -283,7 +271,7 @@ jback::Program translate(const py::list<str>& files, const str& name, const std:
     py::list<ir::NodeP> units;
     for (const str& f : files) {
         if (!lower_endswith(f, {".c", ".cpp", ".cc", ".cxx"})) continue;
-        str lang = (language && !language->empty()) ? *language : fe().language_of(f);
+        str lang = (language && !language->empty()) ? *language : clang::language_of(f);
         units.append(_unit(f, lang, std_, includes, py::list<str>(), defines));
     }
     for (const ir::NodeP& u : units) {
@@ -366,7 +354,7 @@ Verdict judge(const py::list<str>& files_in, const str& work, const std::optiona
               const py::list<str>& args) {
     py::list<str> files;
     for (const str& f : files_in) files.append(py::os::path::abspath(f));
-    str language = (language_in && !language_in->empty()) ? *language_in : fe().language_of(files[0]);
+    str language = (language_in && !language_in->empty()) ? *language_in : clang::language_of(files[0]);
     str name = (name_in && !name_in->empty()) ? *name_in : _class_name(std::get<0>(py::os::path::splitext(py::os::path::basename(files[0]))));
     py::os::makedirs(work, 0777, true);
     str exe = py::os::path::join(work, name + S(".exe"));

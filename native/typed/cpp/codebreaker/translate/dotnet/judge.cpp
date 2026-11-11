@@ -136,14 +136,14 @@ str _fresh(const str& work) {
 }
 
 // ---------------------------------------------------------------------------------------------- .NET
-Run csharp(const py::list<str>& files, const str& work, const Dotnet& dotnet, const py::list<str>& args, int64_t timeout, const str& name,
+Run csharp(const py::list<str>& files, const str& work, const py::list<str>& args, int64_t timeout, const str& name,
            const std::optional<str>& main) {
     _fresh(work);
     str dll = py::os::path::join(work, name + S(".dll"));
     str tmp = py::os::path::join(work, S("tmp"));
-    auto [ok, log] = dotnet.compile(files, dll, tmp, main);
+    auto [ok, log] = dotnet::compile(files, dll, py::list<str>(), S("exe"), true, false, false, tmp, main);
     if (!ok) return Run(false, std::nullopt, S(""), S(""), _errors(log));
-    auto [code, out, err] = dotnet.run(dll, args, timeout, py::os::path::join(work, S("tmp")));
+    auto [code, out, err] = dotnet::run(dll, args, static_cast<double>(timeout), std::nullopt, py::os::path::join(work, S("tmp")));
     return Run(true, code, out, err, log);
 }
 
