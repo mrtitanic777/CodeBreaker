@@ -1,0 +1,27 @@
+{
+ "bitmap": {
+  "file": "comctl32_bitmap_133.bin",
+  "result": "b:336:374a4245"
+ },
+ "cursor_group": {
+  "file": "comctl32_groupcursor_102.bin",
+  "group": [
+   2,
+   [
+    [
+     32,
+     64,
+     0,
+     1,
+     1,
+     308,
+     1
+    ]
+   ]
+  ],
+  "members": [
+   "comctl32_cursor_1.bin"
+  ],
+  "result": "b:326:aee391f3"
+ }
+}
