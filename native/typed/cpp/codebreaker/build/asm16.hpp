@@ -37,6 +37,10 @@ namespace codebreaker::build::asm16 {
 // the path of build/asm16.py (the Python's __file__)  -- used by: build.module
 py::str module_file();
 
+// Where capstone's DLL is (platforms.decoder is capstone through its Python binding; here the C library is loaded from this
+// file).  Not called: CB_CAPSTONE_DLL, then capstone.dll on the PATH.  Capstone 5 is expected (its operand and group numbers).
+void set_capstone_dll(const py::str& path);
+
 // an import is named by its ordinal (int) or its name (str)
 using Which = std::variant<int64_t, py::str>;
 
@@ -109,6 +113,17 @@ class Function {
     // With lo, hi: only that piece of it.
     py::str write(const std::optional<py::set<int64_t>>& good, const std::optional<int64_t>& lo = std::nullopt,
                   const std::optional<int64_t>& hi = std::nullopt);
+
+  private:
+    // (the Python's _raw_far_pointers, _pointer_selector, _far_pointer_offsets, _stays_inside and _used; `md` is capstone's
+    // decoder for self.bits, which the .cpp keeps)
+    void _raw_far_pointers(const SymbolFor& symbol_for, const py::dict<int64_t, int64_t>& internal_selector);
+    std::optional<int64_t> _pointer_selector(int64_t at, const py::bytes& data, const py::dict<int64_t, int64_t>& selectors) const;
+    void _far_pointer_offsets(const SymbolFor& symbol_for, const py::dict<int64_t, int64_t>& selectors, int64_t seg);
+    bool _stays_inside(int64_t at, int64_t lo, int64_t hi) const;
+    bool _used(int64_t label, int64_t lo, int64_t hi);
+    bool _raw_scanned = false;                                  // (the Python's hasattr(self, "_raw_scanned"))
+    std::optional<py::dict<int64_t, py::list<int64_t>>> _refs;   // who refers to each label (made once)
 };
 
 // A piece of a frame (see Function::write) against the original. -> "" or what differs.
