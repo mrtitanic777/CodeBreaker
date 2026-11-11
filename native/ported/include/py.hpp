@@ -1510,6 +1510,18 @@ template <class T> class set {
         discard(x);
     }
     template <class L> void update(const L& xs) const { for (const auto& x : xs) add(x); }
+    void clear() const {   // set.clear()
+        s_->order.clear();
+        s_->where.clear();
+        s_->holes = 0;
+    }
+    set copy() const { return from(*this); }   // set.copy(): a new set with the same items (a shallow copy)
+    T pop() const {   // set.pop(): an item removed (the oldest here; CPython's order is its hash layout); KeyError when empty
+        if (empty()) throw KeyError("pop from an empty set");
+        T x = *begin();
+        discard(x);
+        return x;
+    }
     bool issubset(const set& o) const {
         for (const auto& x : *this) if (!o.contains(x)) return false;
         return true;
@@ -2077,18 +2089,19 @@ inline list<bytes> split(const bytes& s, const bytes& sep) {
     out.append(bytes(u.substr(i)));
     return out;
 }
-inline list<str> splitlines(const str& s) {
+inline list<str> splitlines(const str& s, bool keepends = false) {
     list<str> out;
     const auto& u = s.u32();
     size_t i = 0, n = u.size();
     while (i < n) {
-        size_t j = i;
-        while (j < n && u[j] != '\n' && u[j] != '\r' && u[j] != 0x0B && u[j] != 0x0C && u[j] != 0x1C && u[j] != 0x1D &&
-               u[j] != 0x1E && u[j] != 0x85 && u[j] != 0x2028 && u[j] != 0x2029)
-            ++j;
-        out.append(str(u.substr(i, j - i)));
-        if (j < n && u[j] == '\r' && j + 1 < n && u[j + 1] == '\n') ++j;
-        i = j + 1;
+        size_t k = i;
+        while (k < n && u[k] != '\n' && u[k] != '\r' && u[k] != 0x0B && u[k] != 0x0C && u[k] != 0x1C && u[k] != 0x1D &&
+               u[k] != 0x1E && u[k] != 0x85 && u[k] != 0x2028 && u[k] != 0x2029)
+            ++k;
+        size_t e = k;   // (e: past the line terminator, CR LF being one)
+        if (k < n) e = (u[k] == '\r' && k + 1 < n && u[k + 1] == '\n') ? k + 2 : k + 1;
+        out.append(str(u.substr(i, (keepends ? e : k) - i)));
+        i = e;
     }
     return out;
 }
@@ -2435,24 +2448,38 @@ inline bytes to_bytes(int64_t v, int64_t length, const char* order, bool is_sign
     }
     return bytes(out);
 }
-inline uint32_t crc32_table_(int i) {
-    static uint32_t t[256];
-    static bool made = false;
-    if (!made) {
+// zlib.crc32, slicing-by-8: eight bytes a step from eight tables (the same values as the bytewise form, several times faster)
+inline const uint32_t (*crc32_tables_())[256] {
+    static const auto* t = [] {
+        static uint32_t tab[8][256];
         for (uint32_t n = 0; n < 256; ++n) {
             uint32_t c = n;
             for (int k = 0; k < 8; ++k) c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-            t[n] = c;
+            tab[0][n] = c;
         }
-        made = true;
-    }
-    return t[i];
+        for (uint32_t n = 0; n < 256; ++n)
+            for (int k = 1; k < 8; ++k) tab[k][n] = (tab[k - 1][n] >> 8) ^ tab[0][tab[k - 1][n] & 0xFF];
+        return tab;
+    }();
+    return t;
 }
-inline int64_t crc32(const bytes& b, int64_t start = 0) {
+inline uint32_t crc32_table_(int i) { return crc32_tables_()[0][i]; }
+inline int64_t crc32(const void* data, size_t n, int64_t start = 0) {
+    const uint32_t(*t)[256] = crc32_tables_();
+    const unsigned char* p = static_cast<const unsigned char*>(data);
     uint32_t c = ~static_cast<uint32_t>(start);
-    for (unsigned char x : b.raw()) c = crc32_table_((c ^ x) & 0xFF) ^ (c >> 8);
+    for (; n >= 8; p += 8, n -= 8) {
+        uint32_t lo, hi;
+        std::memcpy(&lo, p, 4);
+        std::memcpy(&hi, p + 4, 4);
+        lo ^= c;
+        c = t[7][lo & 0xFF] ^ t[6][(lo >> 8) & 0xFF] ^ t[5][(lo >> 16) & 0xFF] ^ t[4][lo >> 24] ^ t[3][hi & 0xFF] ^ t[2][(hi >> 8) & 0xFF] ^
+            t[1][(hi >> 16) & 0xFF] ^ t[0][hi >> 24];
+    }
+    for (; n; ++p, --n) c = t[0][(c ^ *p) & 0xFF] ^ (c >> 8);
     return static_cast<int64_t>(static_cast<uint32_t>(~c));
 }
+inline int64_t crc32(const bytes& b, int64_t start = 0) { return crc32(b.raw().data(), b.raw().size(), start); }
 
 // ------------------------------------------------------------------------------------------ files, paths
 // (files: py_os.hpp, included at the end)

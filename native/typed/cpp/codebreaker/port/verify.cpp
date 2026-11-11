@@ -18,6 +18,7 @@
 #include "codebreaker/verify/verdicts.hpp"
 #include "json.hpp"
 #include "py_os.hpp"
+#include "py_difflib.hpp"
 #include "py_subprocess.hpp"
 
 namespace codebreaker::port::verify {
@@ -28,181 +29,27 @@ namespace V = codebreaker::verify::verdicts;
 using py::str;
 
 // =====================================================================================================================
-// difflib: SequenceMatcher(None, a, b) (autojunk on) and unified_diff, as the Python's
+// difflib: the runtime's py::difflib (SequenceMatcher(None, a, b) with autojunk on, unified_diff)
 namespace difflib {
-namespace {
-
-struct Match {
-    int64_t a, b, size;
-};
-
-class Matcher {
-  public:
-    Matcher(const py::list<str>& a, const py::list<str>& b) : a_(a), b_(b) {
-        const int64_t n = b.size();
-        for (int64_t i = 0; i < n; i++) b2j_[b[i].u32()].push_back(i);
-        if (n >= 200) {                                    // (autojunk: an element in more than 1% of a long b is popular, and left out)
-            const int64_t ntest = n / 100 + 1;
-            for (auto it = b2j_.begin(); it != b2j_.end();) {
-                if (static_cast<int64_t>(it->second.size()) > ntest) it = b2j_.erase(it);
-                else ++it;
-            }
-        }
-    }
-
-    Match find_longest_match(int64_t alo, int64_t ahi, int64_t blo, int64_t bhi) const {
-        int64_t besti = alo, bestj = blo, bestsize = 0;
-        std::map<int64_t, int64_t> j2len;
-        for (int64_t i = alo; i < ahi; i++) {
-            std::map<int64_t, int64_t> newj2len;
-            auto it = b2j_.find(a_[i].u32());
-            if (it != b2j_.end()) {
-                for (int64_t j : it->second) {
-                    if (j < blo) continue;
-                    if (j >= bhi) break;
-                    auto p = j2len.find(j - 1);
-                    const int64_t k = (p == j2len.end() ? 0 : p->second) + 1;
-                    newj2len[j] = k;
-                    if (k > bestsize) {
-                        besti = i - k + 1;
-                        bestj = j - k + 1;
-                        bestsize = k;
-                    }
-                }
-            }
-            j2len = std::move(newj2len);
-        }
-        // (no junk elements: only the popular ones were dropped from b2j, and they extend a match like any other)
-        while (besti > alo && bestj > blo && a_[besti - 1] == b_[bestj - 1]) {
-            besti--;
-            bestj--;
-            bestsize++;
-        }
-        while (besti + bestsize < ahi && bestj + bestsize < bhi && a_[besti + bestsize] == b_[bestj + bestsize]) bestsize++;
-        return {besti, bestj, bestsize};
-    }
-
-    std::vector<Match> matching_blocks() const {
-        const int64_t la = a_.size(), lb = b_.size();
-        std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t>> queue{{0, la, 0, lb}};
-        std::vector<std::tuple<int64_t, int64_t, int64_t>> blocks;
-        while (!queue.empty()) {
-            const auto [alo, ahi, blo, bhi] = queue.back();
-            queue.pop_back();
-            const Match m = find_longest_match(alo, ahi, blo, bhi);
-            if (m.size) {
-                blocks.emplace_back(m.a, m.b, m.size);
-                if (alo < m.a && blo < m.b) queue.emplace_back(alo, m.a, blo, m.b);
-                if (m.a + m.size < ahi && m.b + m.size < bhi) queue.emplace_back(m.a + m.size, ahi, m.b + m.size, bhi);
-            }
-        }
-        std::sort(blocks.begin(), blocks.end());
-        int64_t i1 = 0, j1 = 0, k1 = 0;
-        std::vector<Match> out;
-        for (const auto& [i2, j2, k2] : blocks) {
-            if (i1 + k1 == i2 && j1 + k1 == j2) {
-                k1 += k2;
-            } else {
-                if (k1) out.push_back({i1, j1, k1});
-                i1 = i2;
-                j1 = j2;
-                k1 = k2;
-            }
-        }
-        if (k1) out.push_back({i1, j1, k1});
-        out.push_back({la, lb, 0});
-        return out;
-    }
-
-  private:
-    const py::list<str>& a_;
-    const py::list<str>& b_;
-    std::map<std::u32string, std::vector<int64_t>> b2j_;
-};
-
-str format_range(int64_t start, int64_t stop) {                  // difflib._format_range_unified
-    int64_t beginning = start + 1;
-    const int64_t length = stop - start;
-    if (length == 1) return str(std::to_string(beginning));
-    if (!length) beginning -= 1;
-    return str(std::to_string(beginning) + "," + std::to_string(length));
-}
-
-}  // namespace
 
 py::list<Opcode> get_opcodes(const py::list<str>& a, const py::list<str>& b) {
-    const Matcher m(a, b);
     py::list<Opcode> out;
-    int64_t i = 0, j = 0;
-    for (const Match& blk : m.matching_blocks()) {
-        const char* tag = "";
-        if (i < blk.a && j < blk.b) tag = "replace";
-        else if (i < blk.a) tag = "delete";
-        else if (j < blk.b) tag = "insert";
-        if (*tag) out.append({str(tag), i, blk.a, j, blk.b});
-        i = blk.a + blk.size;
-        j = blk.b + blk.size;
-        if (blk.size) out.append({str("equal"), blk.a, i, blk.b, j});
-    }
+    for (const Opcode& op : py::difflib::SequenceMatcher<str>(a, b).get_opcodes()) out.append(op);
     return out;
 }
 
 py::list<py::list<Opcode>> get_grouped_opcodes(const py::list<str>& a, const py::list<str>& b, int64_t n) {
-    std::vector<Opcode> codes;
-    for (const Opcode& c : get_opcodes(a, b)) codes.push_back(c);
-    if (codes.empty()) codes.push_back({str("equal"), 0, 1, 0, 1});
-    if (std::get<0>(codes.front()) == str("equal")) {
-        const auto [tag, i1, i2, j1, j2] = codes.front();
-        codes.front() = {tag, std::max(i1, i2 - n), i2, std::max(j1, j2 - n), j2};
-    }
-    if (std::get<0>(codes.back()) == str("equal")) {
-        const auto [tag, i1, i2, j1, j2] = codes.back();
-        codes.back() = {tag, i1, std::min(i2, i1 + n), j1, std::min(j2, j1 + n)};
-    }
-    const int64_t nn = n + n;
     py::list<py::list<Opcode>> groups;
-    py::list<Opcode> group;
-    for (const auto& c : codes) {
-        auto [tag, i1, i2, j1, j2] = c;
-        if (tag == str("equal") && i2 - i1 > nn) {
-            group.append({tag, i1, std::min(i2, i1 + n), j1, std::min(j2, j1 + n)});
-            groups.append(group);
-            group = py::list<Opcode>();
-            i1 = std::max(i1, i2 - n);
-            j1 = std::max(j1, j2 - n);
-        }
-        group.append({tag, i1, i2, j1, j2});
+    for (const auto& g : py::difflib::SequenceMatcher<str>(a, b).get_grouped_opcodes(n)) {
+        py::list<Opcode> group;
+        for (const Opcode& op : g) group.append(op);
+        groups.append(group);
     }
-    if (!group.empty() && !(group.size() == 1 && std::get<0>(group[0]) == str("equal"))) groups.append(group);
     return groups;
 }
 
 py::list<str> unified_diff(const py::list<str>& a, const py::list<str>& b, const str& fromfile, const str& tofile, int64_t n, const str& lineterm) {
-    py::list<str> out;
-    bool started = false;
-    for (const py::list<Opcode>& group : get_grouped_opcodes(a, b, n)) {
-        if (!started) {
-            started = true;
-            out.append(str("--- ") + fromfile + lineterm);
-            out.append(str("+++ ") + tofile + lineterm);
-        }
-        const Opcode& first = group[0];
-        const Opcode& last = group[group.size() - 1];
-        out.append(str("@@ -") + format_range(std::get<1>(first), std::get<2>(last)) + str(" +") + format_range(std::get<3>(first), std::get<4>(last)) +
-                   str(" @@") + lineterm);
-        for (const Opcode& op : group) {
-            const auto& [tag, i1, i2, j1, j2] = op;
-            if (tag == str("equal")) {
-                for (int64_t k = i1; k < i2; k++) out.append(str(" ") + a[k]);
-                continue;
-            }
-            if (tag == str("replace") || tag == str("delete"))
-                for (int64_t k = i1; k < i2; k++) out.append(str("-") + a[k]);
-            if (tag == str("replace") || tag == str("insert"))
-                for (int64_t k = j1; k < j2; k++) out.append(str("+") + b[k]);
-        }
-    }
-    return out;
+    return py::difflib::unified_diff(a, b, fromfile, tofile, str(""), str(""), n, lineterm);
 }
 
 }  // namespace difflib

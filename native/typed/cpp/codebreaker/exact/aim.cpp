@@ -1,5 +1,6 @@
 // codebreaker/exact/aim.cpp -- C++17 port of codebreaker.exact.aim (see aim.hpp).
 
+#include "py_difflib.hpp"
 #include "codebreaker/exact/aim.hpp"
 
 #include <algorithm>
@@ -276,131 +277,9 @@ py::bytes code_of(const py::list<ListingEntry>& listing) {
 
 // ---------------------------------------------------------------- difflib.SequenceMatcher (no junk, autojunk off)
 
-namespace {
-
-struct Block {
-    int64_t i, j, k;
-    bool operator<(const Block& o) const { return std::tie(i, j, k) < std::tie(o.i, o.j, o.k); }
-};
-
-class SequenceMatcher {
-public:
-    SequenceMatcher(const py::list<py::str>& a, const py::list<py::str>& b) : a_(a), b_(b) {
-        for (int64_t j = 0; j < py::len(b_); ++j) {
-            b2j_[b_[j]].push_back(j);
-        }
-    }
-
-    // the longest matching block in a[alo:ahi] and b[blo:bhi]: earliest in a, then in b, among the longest
-    Block find_longest_match(int64_t alo, int64_t ahi, int64_t blo, int64_t bhi) const {
-        int64_t besti = alo, bestj = blo, bestsize = 0;
-        std::map<int64_t, int64_t> j2len;
-        for (int64_t i = alo; i < ahi; ++i) {
-            std::map<int64_t, int64_t> newj2len;
-            auto it = b2j_.find(a_[i]);
-            if (it != b2j_.end()) {
-                for (int64_t j : it->second) {
-                    if (j < blo) {
-                        continue;
-                    }
-                    if (j >= bhi) {
-                        break;
-                    }
-                    auto prev = j2len.find(j - 1);
-                    int64_t k = (prev == j2len.end() ? 0 : prev->second) + 1;
-                    newj2len[j] = k;
-                    if (k > bestsize) {
-                        besti = i - k + 1;
-                        bestj = j - k + 1;
-                        bestsize = k;
-                    }
-                }
-            }
-            j2len = newj2len;
-        }
-        // (no junk elements: the extensions below find nothing, kept as difflib has them)
-        while (besti > alo && bestj > blo && a_[besti - 1] == b_[bestj - 1]) {
-            --besti;
-            --bestj;
-            ++bestsize;
-        }
-        while (besti + bestsize < ahi && bestj + bestsize < bhi && a_[besti + bestsize] == b_[bestj + bestsize]) {
-            ++bestsize;
-        }
-        return {besti, bestj, bestsize};
-    }
-
-    std::vector<Block> get_matching_blocks() const {
-        int64_t la = py::len(a_), lb = py::len(b_);
-        std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t>> queue = {{0, la, 0, lb}};
-        std::vector<Block> matching;
-        while (!queue.empty()) {
-            auto [alo, ahi, blo, bhi] = queue.back();
-            queue.pop_back();
-            Block x = find_longest_match(alo, ahi, blo, bhi);
-            if (x.k) {
-                matching.push_back(x);
-                if (alo < x.i && blo < x.j) {
-                    queue.push_back({alo, x.i, blo, x.j});
-                }
-                if (x.i + x.k < ahi && x.j + x.k < bhi) {
-                    queue.push_back({x.i + x.k, ahi, x.j + x.k, bhi});
-                }
-            }
-        }
-        std::sort(matching.begin(), matching.end());
-        // collapse adjacent blocks
-        int64_t i1 = 0, j1 = 0, k1 = 0;
-        std::vector<Block> non_adjacent;
-        for (const Block& m : matching) {
-            if (i1 + k1 == m.i && j1 + k1 == m.j) {
-                k1 += m.k;
-            } else {
-                if (k1) {
-                    non_adjacent.push_back({i1, j1, k1});
-                }
-                i1 = m.i;
-                j1 = m.j;
-                k1 = m.k;
-            }
-        }
-        if (k1) {
-            non_adjacent.push_back({i1, j1, k1});
-        }
-        non_adjacent.push_back({la, lb, 0});
-        return non_adjacent;
-    }
-
-private:
-    py::list<py::str> a_;
-    py::list<py::str> b_;
-    std::map<py::str, std::vector<int64_t>> b2j_;
-};
-
-}  // namespace
-
 py::list<Opcode> _get_opcodes(const py::list<py::str>& a, const py::list<py::str>& b) {
-    SequenceMatcher sm(a, b);
-    int64_t i = 0, j = 0;
     py::list<Opcode> answer;
-    for (const Block& m : sm.get_matching_blocks()) {
-        const char* tag = "";
-        if (i < m.i && j < m.j) {
-            tag = "replace";
-        } else if (i < m.i) {
-            tag = "delete";
-        } else if (j < m.j) {
-            tag = "insert";
-        }
-        if (*tag) {
-            answer.append(Opcode{py::str(tag), i, m.i, j, m.j});
-        }
-        i = m.i + m.k;
-        j = m.j + m.k;
-        if (m.k) {
-            answer.append(Opcode{py::str("equal"), i - m.k, i, j - m.k, j});
-        }
-    }
+    for (const py::difflib::Opcode& op : py::difflib::SequenceMatcher<py::str>(a, b, nullptr, false).get_opcodes()) answer.append(op);
     return answer;
 }
 

@@ -1,5 +1,6 @@
 // codebreaker/symbols/debug_build_estimate.cpp -- typed C++ port of codebreaker.symbols.debug_build_estimate (see .hpp).
 
+#include "py_difflib.hpp"
 #include "codebreaker/symbols/debug_build_estimate.hpp"
 
 #include <algorithm>
@@ -25,95 +26,7 @@ using py::str;
 
 const py::list<str> CONFIDENT_TIERS = {str("EXACT"), str("HIGH"), str("ALIGNED")};
 
-// ---- difflib.SequenceMatcher -----------------------------------------------------------------------------------------
 namespace {
-
-class Matcher {
-  public:
-    Matcher(const std::vector<int64_t>& a, const std::vector<int64_t>& b, bool autojunk) : a_(a), b_(b) {
-        // __chain_b: {element -> the indices of b it is at}, the popular elements dropped when autojunk and len(b) >= 200
-        for (size_t j = 0; j < b_.size(); j++) b2j_[b_[j]].push_back(static_cast<int64_t>(j));
-        const size_t n = b_.size();
-        if (autojunk && n >= 200) {
-            const size_t ntest = n / 100 + 1;
-            for (auto it = b2j_.begin(); it != b2j_.end();) {
-                if (it->second.size() > ntest) it = b2j_.erase(it);
-                else ++it;
-            }
-        }
-    }
-
-    Block find_longest_match(int64_t alo, int64_t ahi, int64_t blo, int64_t bhi) const {
-        int64_t besti = alo, bestj = blo, bestsize = 0;
-        std::unordered_map<int64_t, int64_t> j2len;
-        for (int64_t i = alo; i < ahi; i++) {
-            std::unordered_map<int64_t, int64_t> newj2len;
-            const auto found = b2j_.find(a_[i]);
-            if (found != b2j_.end()) {
-                for (const int64_t j : found->second) {
-                    if (j < blo) continue;
-                    if (j >= bhi) break;
-                    const auto prev = j2len.find(j - 1);
-                    const int64_t k = (prev == j2len.end() ? 0 : prev->second) + 1;
-                    newj2len[j] = k;
-                    if (k > bestsize) {
-                        besti = i - k + 1;
-                        bestj = j - k + 1;
-                        bestsize = k;
-                    }
-                }
-            }
-            j2len = std::move(newj2len);
-        }
-        // extend the match with the elements that are equal on either side (nothing is junk here; popular elements
-        // were left out of b2j, so this is what brings them back in)
-        while (besti > alo && bestj > blo && a_[besti - 1] == b_[bestj - 1]) {
-            besti--;
-            bestj--;
-            bestsize++;
-        }
-        while (besti + bestsize < ahi && bestj + bestsize < bhi && a_[besti + bestsize] == b_[bestj + bestsize]) bestsize++;
-        return Block(besti, bestj, bestsize);
-    }
-
-    std::vector<Block> get_matching_blocks() const {
-        const int64_t la = static_cast<int64_t>(a_.size()), lb = static_cast<int64_t>(b_.size());
-        std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t>> queue{{0, la, 0, lb}};
-        std::vector<Block> matching;
-        while (!queue.empty()) {
-            const auto [alo, ahi, blo, bhi] = queue.back();
-            queue.pop_back();
-            const Block x = find_longest_match(alo, ahi, blo, bhi);
-            const auto [i, j, k] = x;
-            if (k) {
-                matching.push_back(x);
-                if (alo < i && blo < j) queue.emplace_back(alo, i, blo, j);
-                if (i + k < ahi && j + k < bhi) queue.emplace_back(i + k, ahi, j + k, bhi);
-            }
-        }
-        std::sort(matching.begin(), matching.end());
-        int64_t i1 = 0, j1 = 0, k1 = 0;
-        std::vector<Block> non_adjacent;
-        for (const auto& [i2, j2, k2] : matching) {
-            if (i1 + k1 == i2 && j1 + k1 == j2) {
-                k1 += k2;
-            } else {
-                if (k1) non_adjacent.emplace_back(i1, j1, k1);
-                i1 = i2;
-                j1 = j2;
-                k1 = k2;
-            }
-        }
-        if (k1) non_adjacent.emplace_back(i1, j1, k1);
-        non_adjacent.emplace_back(la, lb, 0);
-        return non_adjacent;
-    }
-
-  private:
-    const std::vector<int64_t>& a_;
-    const std::vector<int64_t>& b_;
-    std::unordered_map<int64_t, std::vector<int64_t>> b2j_;
-};
 
 // ids for the elements of sequences, equal elements the same id
 class Ids {
@@ -167,7 +80,9 @@ std::vector<int64_t> sorted_keys(const py::dict<int64_t, segment::Func>& d) {
 }  // namespace
 
 std::vector<Block> get_matching_blocks(const std::vector<int64_t>& a, const std::vector<int64_t>& b, bool autojunk) {
-    return Matcher(a, b, autojunk).get_matching_blocks();
+    std::vector<Block> out;   // (difflib.SequenceMatcher(None, a, b, autojunk).get_matching_blocks(), from the runtime)
+    for (const py::difflib::Match& m : py::difflib::SequenceMatcher<int64_t>(a, b, nullptr, autojunk).get_matching_blocks()) out.emplace_back(m.a, m.b, m.size);
+    return out;
 }
 
 double ratio(const std::vector<int64_t>& a, const std::vector<int64_t>& b, bool autojunk) {

@@ -17,6 +17,7 @@
 #undef CONST
 
 #include "codebreaker/compare/versions.hpp"
+#include "py_difflib.hpp"
 
 #include <capstone/capstone.h>
 
@@ -67,74 +68,9 @@ constexpr int64_t X86_OP_REG = 1, X86_OP_IMM = 2, X86_OP_MEM = 3;
 bool less_str(const str& a, const str& b) { return a.u32() < b.u32(); }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// hashlib.blake2b(data, digest_size=8)  (RFC 7693)
+// hashlib.blake2b(data, digest_size=8), from the runtime
 // ---------------------------------------------------------------------------------------------------------------------
-const uint64_t B2_IV[8] = {0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, 0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL,
-                           0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL, 0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL};
-const uint8_t B2_SIGMA[12][16] = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3},
-                                  {11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4}, {7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8},
-                                  {9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13}, {2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9},
-                                  {12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11}, {13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10},
-                                  {6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5}, {10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0},
-                                  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, {14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3}};
-
-inline uint64_t rotr(uint64_t x, int n) { return (x >> n) | (x << (64 - n)); }
-
-void b2_compress(uint64_t h[8], const uint8_t block[128], uint64_t t, bool last) {
-    uint64_t m[16], v[16];
-    for (int i = 0; i < 16; i++) {
-        m[i] = 0;
-        for (int k = 7; k >= 0; k--) m[i] = (m[i] << 8) | block[i * 8 + k];
-    }
-    for (int i = 0; i < 8; i++) {
-        v[i] = h[i];
-        v[i + 8] = B2_IV[i];
-    }
-    v[12] ^= t;
-    if (last) v[14] = ~v[14];
-    auto G = [&](int a, int b, int c, int d, uint64_t x, uint64_t y) {
-        v[a] = v[a] + v[b] + x;
-        v[d] = rotr(v[d] ^ v[a], 32);
-        v[c] = v[c] + v[d];
-        v[b] = rotr(v[b] ^ v[c], 24);
-        v[a] = v[a] + v[b] + y;
-        v[d] = rotr(v[d] ^ v[a], 16);
-        v[c] = v[c] + v[d];
-        v[b] = rotr(v[b] ^ v[c], 63);
-    };
-    for (int r = 0; r < 12; r++) {
-        const uint8_t* s = B2_SIGMA[r];
-        G(0, 4, 8, 12, m[s[0]], m[s[1]]);
-        G(1, 5, 9, 13, m[s[2]], m[s[3]]);
-        G(2, 6, 10, 14, m[s[4]], m[s[5]]);
-        G(3, 7, 11, 15, m[s[6]], m[s[7]]);
-        G(0, 5, 10, 15, m[s[8]], m[s[9]]);
-        G(1, 6, 11, 12, m[s[10]], m[s[11]]);
-        G(2, 7, 8, 13, m[s[12]], m[s[13]]);
-        G(3, 4, 9, 14, m[s[14]], m[s[15]]);
-    }
-    for (int i = 0; i < 8; i++) h[i] ^= v[i] ^ v[i + 8];
-}
-
-// the 8-byte digest
-std::string blake2b8(const std::string& data) {
-    uint64_t h[8];
-    for (int i = 0; i < 8; i++) h[i] = B2_IV[i];
-    h[0] ^= 0x01010000ULL ^ 8ULL;
-    size_t n = data.size(), off = 0;
-    uint8_t block[128];
-    while (n - off > 128) {
-        std::memcpy(block, data.data() + off, 128);
-        off += 128;
-        b2_compress(h, block, off, false);
-    }
-    std::memset(block, 0, sizeof block);
-    if (n - off) std::memcpy(block, data.data() + off, n - off);
-    b2_compress(h, block, n, true);
-    std::string out(8, '\0');
-    for (int i = 0; i < 8; i++) out[static_cast<size_t>(i)] = static_cast<char>((h[0] >> (8 * i)) & 0xFF);
-    return out;
-}
+std::string blake2b8(const std::string& data) { return py::hashlib::blake2b(py::bytes(data), 8).digest().raw(); }
 
 str hex8(const std::string& d) {
     static const char* H = "0123456789abcdef";
@@ -157,126 +93,38 @@ str digest(const std::vector<std::string>& parts) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// difflib.SequenceMatcher(None, a, b, autojunk=False) over sequences of numbers
+// difflib.SequenceMatcher(None, a, b, autojunk=False) over sequences of numbers (the runtime's, with the int shapes this
+// module reads)
 // ---------------------------------------------------------------------------------------------------------------------
 class SeqMatcher {
   public:
-    SeqMatcher(const std::vector<int>& a, const std::vector<int>& b) : a_(a), b_(b) {
-        for (size_t j = 0; j < b_.size(); j++) b2j_[b_[j]].push_back(static_cast<int>(j));
-    }
-
     struct Block {
         int i, j, k;
-        bool operator<(const Block& o) const { return std::tie(i, j, k) < std::tie(o.i, o.j, o.k); }
     };
-
-    Block find_longest_match(int alo, int ahi, int blo, int bhi) const {
-        int besti = alo, bestj = blo, bestsize = 0;
-        std::unordered_map<int, int> j2len;
-        for (int i = alo; i < ahi; i++) {
-            std::unordered_map<int, int> newj2len;
-            auto it = b2j_.find(a_[static_cast<size_t>(i)]);
-            if (it != b2j_.end()) {
-                for (int j : it->second) {
-                    if (j < blo) continue;
-                    if (j >= bhi) break;
-                    auto prev = j2len.find(j - 1);
-                    int k = (prev == j2len.end() ? 0 : prev->second) + 1;
-                    newj2len[j] = k;
-                    if (k > bestsize) {
-                        besti = i - k + 1;
-                        bestj = j - k + 1;
-                        bestsize = k;
-                    }
-                }
-            }
-            j2len = std::move(newj2len);
-        }
-        return {besti, bestj, bestsize};
-    }
+    SeqMatcher(const std::vector<int>& a, const std::vector<int>& b) : sm_(a, b, nullptr, false) {}
 
     std::vector<Block> get_matching_blocks() const {
-        int la = static_cast<int>(a_.size()), lb = static_cast<int>(b_.size());
-        std::vector<std::array<int, 4>> queue = {{0, la, 0, lb}};
-        std::vector<Block> matching;
-        while (!queue.empty()) {
-            auto q = queue.back();
-            queue.pop_back();
-            Block x = find_longest_match(q[0], q[1], q[2], q[3]);
-            if (x.k) {
-                matching.push_back(x);
-                if (q[0] < x.i && q[2] < x.j) queue.push_back({q[0], x.i, q[2], x.j});
-                if (x.i + x.k < q[1] && x.j + x.k < q[3]) queue.push_back({x.i + x.k, q[1], x.j + x.k, q[3]});
-            }
-        }
-        std::sort(matching.begin(), matching.end());
-        int i1 = 0, j1 = 0, k1 = 0;
-        std::vector<Block> non_adjacent;
-        for (const Block& b : matching) {
-            if (i1 + k1 == b.i && j1 + k1 == b.j) {
-                k1 += b.k;
-            } else {
-                if (k1) non_adjacent.push_back({i1, j1, k1});
-                i1 = b.i;
-                j1 = b.j;
-                k1 = b.k;
-            }
-        }
-        if (k1) non_adjacent.push_back({i1, j1, k1});
-        non_adjacent.push_back({la, lb, 0});
-        return non_adjacent;
+        std::vector<Block> out;
+        for (const py::difflib::Match& m : sm_.get_matching_blocks()) out.push_back({static_cast<int>(m.a), static_cast<int>(m.b), static_cast<int>(m.size)});
+        return out;
     }
-
     // (tag, i1, i2, j1, j2)
     std::vector<std::tuple<const char*, int, int, int, int>> get_opcodes() const {
-        int i = 0, j = 0;
-        std::vector<std::tuple<const char*, int, int, int, int>> answer;
-        for (const Block& b : get_matching_blocks()) {
-            const char* tag = nullptr;
-            if (i < b.i && j < b.j) tag = "replace";
-            else if (i < b.i) tag = "delete";
-            else if (j < b.j) tag = "insert";
-            if (tag) answer.emplace_back(tag, i, b.i, j, b.j);
-            i = b.i + b.k;
-            j = b.j + b.k;
-            if (b.k) answer.emplace_back("equal", b.i, i, b.j, j);
+        std::vector<std::tuple<const char*, int, int, int, int>> out;
+        for (const py::difflib::Opcode& op : sm_.get_opcodes()) {
+            const str& t = std::get<0>(op);
+            const char* tag = t == str("equal") ? "equal" : t == str("replace") ? "replace" : t == str("delete") ? "delete" : "insert";
+            out.emplace_back(tag, static_cast<int>(std::get<1>(op)), static_cast<int>(std::get<2>(op)), static_cast<int>(std::get<3>(op)),
+                             static_cast<int>(std::get<4>(op)));
         }
-        return answer;
+        return out;
     }
-
-    double ratio() const {
-        int matches = 0;
-        for (const Block& b : get_matching_blocks()) matches += b.k;
-        return calculate(matches, static_cast<int>(a_.size() + b_.size()));
-    }
-    double real_quick_ratio() const {
-        int la = static_cast<int>(a_.size()), lb = static_cast<int>(b_.size());
-        return calculate(std::min(la, lb), la + lb);
-    }
-    double quick_ratio() const {
-        std::unordered_map<int, int> full;
-        for (int x : b_) full[x]++;
-        std::unordered_map<int, int> avail;
-        int matches = 0;
-        for (int elt : a_) {
-            int numb;
-            auto it = avail.find(elt);
-            if (it != avail.end()) numb = it->second;
-            else {
-                auto f = full.find(elt);
-                numb = f == full.end() ? 0 : f->second;
-            }
-            avail[elt] = numb - 1;
-            if (numb > 0) matches++;
-        }
-        return calculate(matches, static_cast<int>(a_.size() + b_.size()));
-    }
+    double ratio() const { return sm_.ratio(); }
+    double real_quick_ratio() const { return sm_.real_quick_ratio(); }
+    double quick_ratio() const { return sm_.quick_ratio(); }
 
   private:
-    static double calculate(int matches, int length) { return length ? 2.0 * matches / length : 1.0; }
-    const std::vector<int>& a_;
-    const std::vector<int>& b_;
-    std::unordered_map<int, std::vector<int>> b2j_;
+    py::difflib::SequenceMatcher<int> sm_;
 };
 
 // one id per distinct element
