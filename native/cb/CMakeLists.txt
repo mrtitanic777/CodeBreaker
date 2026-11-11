@@ -201,6 +201,11 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi_p4.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_decompile.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/m68k_asm.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/emulate/m68k.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/source/genesis_writer.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/decompile/xbox_effect.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"   # (uses the arith16 shim's records)
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/nes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/verify/lanes/sms.cpp"

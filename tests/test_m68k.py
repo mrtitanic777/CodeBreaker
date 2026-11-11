@@ -77,6 +77,24 @@ def _run(lines, **kw):
     return cpu.run(bus, 0x200, **kw), bus
 
 
+def test_assembler_refuses_what_it_used_to_get_wrong():
+    # a data register where an address register belongs, a branch to a non-address, a displacement that does not fit,
+    # a branch of an unknown size: each was assembled to something else (wrong register, address 0, a cut displacement)
+    for line in ("MOVE.L -(D3),D0", "MOVE.L 4(D0),D1", "BRA D0", "MOVE.B 300(A0,D0.W),D0", "MOVE.W 70000(A0),D0",
+                 "BRA.L loop", "MOVE.B (D0,D1.W),D2", "DBF D0,D1"):
+        try:
+            m68k.assemble(line, 0x1000, {"loop": 0x1002})
+        except (ValueError, KeyError):
+            continue
+        raise AssertionError("assembled: " + line)
+    assert m68k.assemble("MOVE.W $FFFF(A0),D0").hex() == "3028ffff"
+    assert m68k.assemble("MOVE.B 255(A0,D0.W),D0").hex() == "103000ff"
+    assert m68k.assemble("MOVE.L	D0,D1").hex() == "2200"
+    insn = m68k.decode(bytes.fromhex("20bc00000010"), 0, 0)
+    insn.operands[0].size = "L"
+    assert m68k.text(insn, {0x10: ""}) == "MOVE.L #$10,(A0)"
+
+
 def test_flags():
     X, N, Z, V, C = 0x10, 0x08, 0x04, 0x02, 0x01
     r, _ = _run(["ADDI.W #$1,D0"], d=[0x7FFF] + [0] * 7)
@@ -121,7 +139,7 @@ def test_lane_judges():
 
 
 def main():
-    for fn in (test_table_round_trip, test_flags, test_platform_recognises, test_source_rebuilds, test_lane_judges):
+    for fn in (test_table_round_trip, test_assembler_refuses_what_it_used_to_get_wrong, test_flags, test_platform_recognises, test_source_rebuilds, test_lane_judges):
         check(fn)
     for name, status, detail in RESULTS:
         print("  %-4s %s%s" % (status, name, ("  -- " + detail) if detail else ""))

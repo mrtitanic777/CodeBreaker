@@ -602,3 +602,15 @@ comparison is with the Python they were ported from (the live implementation unt
 Correctness against the Python: 1,825 6502 single steps (every opcode, decimal mode, memory CRC) are identical; 53,419 of 53,424 PowerPC
 single steps (every primary and extended opcode, random words, random machine states, memory CRC of every written page) are identical, and
 the other five are signalling-NaN cases the old harness recorded unstably (the current Python gives what the C++ gives).
+
+## cb::decompile m68k, xenos_hlsl, vmx128 (W1-B6)
+
+Old harnesses replayed (state/work/typed-port/decompile.m68k and decompile.xenos_hlsl, the old port's `test.exe`) against the same recorded cases replayed through `cb_tests` (Release; CB_M68K_CORPUS / CB_XENOS_CORPUS, which also parse the case text and the Python's JSON answers).
+
+| What | old typed C++ | new (`cb::decompile`) |
+|---|---|---|
+| m68k: the whole old harness (133,147 decodes with text, 65,536 text-and-assemble round trips, 6,600 assembler lines, the private helpers' cases, the opcode-shape table) | 5.0 s | 1.6 s for the decodes, round trips and assembler lines (the helpers' cases are gone with the helpers) |
+| xenos_hlsl: 7,872 shaders translated (plus 442 containers and the small functions in the old run) | 1.5 s | 1.2 s (with the JSON of every answer parsed) |
+| vmx128: decode and the SLEIGH generation | not timed separately (the old harness was dominated by reading four game images) | the 77 rows plus 200 free-bit words decode and the 22 KB SLEIGH is written inside the test's 10 ms |
+
+Nothing is slower than the port it replaces.
