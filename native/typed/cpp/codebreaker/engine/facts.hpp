@@ -26,9 +26,12 @@
 // Notes on the port:
 //   * A value is `Value`, the three kinds a typed program can hold: bytes, str, or a JSON value (the
 //     knowledge::sources::Json tagged union -- the one place the values genuinely mix types). A Python
-//     value that only a pickle can keep has no typed form: decode() of tag P raises NotImplementedError,
-//     encode() never makes one (a JSON value holding a NaN, which Python's check refuses and pickles,
-//     raises the same).
+//     value that only a pickle can keep is a Json too: a List marked `tuple` (json gives a list back, which
+//     is not equal to a tuple) is kept as pickle.dumps(value, protocol=4) -- the same bytes, so the same
+//     hash, as Python's -- and decode() of tag P reads a pickle of the subset (None, bool, int, float, str,
+//     list, tuple, dict with str keys) back; another opcode raises NotImplementedError, and so does a value
+//     only a pickle can keep for another reason (a JSON value holding a NaN, which Python's check refuses
+//     and pickles).
 //   * The cycle facts <-> native_engine <-> engine is broken with forward declarations: Row and the
 //     functions here name native_engine::Database; its class is in native_engine.hpp.
 #pragma once

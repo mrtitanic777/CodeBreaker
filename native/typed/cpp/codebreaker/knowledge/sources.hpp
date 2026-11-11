@@ -32,6 +32,9 @@ struct Json {
     py::str s;
     std::vector<Json> list;
     py::dict<py::str, Json> dict;
+    // What JSON cannot say but a Python pickle keeps (engine/facts encodes such a value as a pickle, tag P):
+    bool tuple = false;     // a List that is a Python tuple (json.loads gives a list, which is not equal to it)
+    bool shared = false;    // a Str that is one object wherever an equal shared Str is in the same value (a constant)
 };
 
 using Rows = py::dict<py::str, Json>;                     // {key: value} of a kind
