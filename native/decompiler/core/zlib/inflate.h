@@ -2,6 +2,8 @@
  * IP: zlib License
  * NOTE: from zlib 1.3.1
  */
+#ifndef INFLATE_H_   /* (added: the 1.3.1 header has no guard; py_zlib.cc includes the sources in one unit) */
+#define INFLATE_H_
 /* inflate.h -- internal inflate state definition
  * Copyright (C) 1995-2019 Mark Adler
  * For conditions of distribution and use, see copyright notice in zlib.h
@@ -128,3 +130,4 @@ struct inflate_state {
     int back;                   /* bits back of last unprocessed length/lit */
     unsigned was;               /* initial length of match */
 };
+#endif

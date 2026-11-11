@@ -1,5 +1,3 @@
-zlib C sources a build of py_zlib.cc needs (compile as C, /TC), all under native/decompiler/core/zlib except crc32.c:
-  adler32.c deflate.c inffast.c inflate.c inftrees.c trees.c zutil.c   (native/decompiler/core/zlib)
-  crc32.c                                                              (native/nasm/zlib, same 1.3.1)
-cl line fragment (paths relative to the worktree root %W%):
-  /I %W%\native\decompiler\core\zlib /TC %W%\native\decompiler\core\zlib\adler32.c ... /TP %W%\native\ported\src\py_zlib.cc
+py_zlib.cc includes the zlib 1.3.1 C sources itself (native/decompiler/core/zlib, compiled as C++; inflate.h and
+inftrees.h carry an added include guard for that) and defines crc32 over py::crc32.
+A port adds only py_zlib.cc to its cl line, with the usual /I native\ported\include.
