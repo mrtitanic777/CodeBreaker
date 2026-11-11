@@ -733,3 +733,13 @@ Answers: 0 differences for PE, NE, LE, DOS and detect. OMF: only on damaged or n
 calls) or message, strict reads of a field cut by the end of the file (42 calls), index 0 as "no target" (102 calls), as
 listed in the formats DIVERGES notes. Fixed on the way: omf rename_externs on an EXTDEF without a type index (26 MSVC
 1.52 MFC objects), omf patched with a non-ASCII segment name, ne.u16/u32 with a negative offset.
+
+## cb refactor W1-B10: exact/draft/shapes (2026-11-11)
+
+Old = the typed port on the py:: layer (exact/draft/shapes.cpp, py::re), new = cb::exact::draft::shapes (cb::Regex, hand scans), same inputs, one run each, shared machine (+-30%).
+
+| What | Old | New |
+|---|---|---|
+| the old harness: 853,952 pass runs (74 passes over 11,900 generated draft bodies of up to a few KB, results printed as JSON) | 30.2 s | 13.2 s (incl. JSON output and reading the 25 MB of cases) |
+
+The harness answers: 853,921 of the 853,952 results equal the Python module's (expected.txt: result, or its crc32 and length, and the tables the passes recorded); the other 31 are store_joins drafts on which the Python raised IndexError (fixed in the Python, which now answers as the C++ does).
