@@ -209,3 +209,25 @@ Notes:
   when another module had been run in the same state folder first, `stack-differs` (as its direct path and the C++) when lz32.dll
   was first. Compared with lz32.dll first in a fresh state: identical.
 * Engine facts kept (second run): ver.dll 0.3 s (C++) vs 1.0 s (Python).
+## Executable-format readers (cb/formats: pe, ne, le, dos, omf, detect), 2026-11-11
+
+Old = the native C++ readers (native/formats) behind the typed shells; new = native/cb/formats. Both run over the same inputs by a
+differential harness (state/work/cpp-refactor/formats/diff.cpp: each side dumps every fact its readers give for a file to text; the
+dumps are compared), on the 1,248 files of the Win95 corpus (586 PE, 373 NE, 218 LE among them) and the OMF objects/libraries of the
+period toolchains and the old harness (1,738), with seeded damage (truncations, bit flips, damaged headers) as extra inputs
+(8,736 .. 38,688 per lane). Times are the whole dump per lane (parse + every reader + text), best of three on a busy machine:
+
+| Lane (inputs) | old | new |
+|---|---|---|
+| PE (1,248) | 0.29 s | 0.30 s |
+| NE (1,248) | 0.22 s | 0.19 s |
+| LE (1,248) | 0.63 s | 0.68 s (equal within noise; 0.39 / 0.39 on a quiet run) |
+| DOS (1,248, packed programs unpacked statically) | 0.08 s | 0.08 s |
+| DOS with damage (26,208; most run the emulated unpacker to its limit) | 30.8 s | 35.5 s before caching the Unicorn table in the hook, equal after |
+| OMF (1,738) | 3.08 s | 3.17 s |
+
+Differences found by the harness and kept on purpose are listed in the `DIVERGES` comment at the top of each `*_test.cpp` and in
+state/work/typed-port/_bugs/LIST.md: strict reads of a field cut by the end of the file (OMF 51 of 12,094 inputs, all truncations),
+index 0 as "no target" instead of "the last entry" (OMF 178 fix-up lines, all in the hand-made synthetic objects), a trailing odd byte
+of a UTF-16 resource name dropped instead of replaced (2 of 26,208 damaged PEs). Everything else matched (0 mismatches in 8,736 PE,
+NE, LE and DOS inputs each, 38,688 LE, 26,208 NE and DOS).
