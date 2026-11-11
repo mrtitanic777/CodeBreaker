@@ -19,7 +19,7 @@
 
 #include "py.hpp"
 #include "codebreaker/formats/xbox/crypto/XeCrypt.hpp"
-#include "codebreaker/formats/xbox/crypto/argparse_min.hpp"
+#include "py_argparse.hpp"
 
 namespace codebreaker::formats::xbox::crypto::sd_signer {
 
@@ -29,7 +29,7 @@ extern const py::str __description__;
 extern std::optional<XeCrypt::XeCryptRsaKey> SB_PRV_KEY;
 
 // The file as a Path, or parser.error(...) when it is not a file.
-py::str valid_file(const argparse_min::ArgumentParser& parser, const py::str& filename);
+py::str valid_file(const py::argparse::ArgumentParser& parser, const py::str& filename);
 
 // The output streams of print / argparse: stdout and stderr unless set.
 void set_streams(std::ostream& out, std::ostream& err);

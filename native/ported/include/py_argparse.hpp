@@ -1,5 +1,5 @@
-// codebreaker/formats/xbox/crypto/argparse_min.hpp -- a small argparse.ArgumentParser (Python 3.14) for the
-// command-line scripts of the Xbox 360 crypto tools (sd_signer, xekeys_signer, exp_signer).
+// py_argparse.hpp -- a small argparse.ArgumentParser (Python 3.14) for command-line scripts (the Xbox 360 crypto tools
+// sd_signer, xekeys_signer, exp_signer, shadowboot use it).
 //
 // It reads a command line the way argparse does for parsers made of: one-argument options (-o X, --opt X,
 // --opt=X, -oX, abbreviated long options), flags (store_true), positionals with nargs=None, and -h/--help.
@@ -7,8 +7,7 @@
 // (80 columns less 2; COLUMNS is not read). A parser error prints the usage and "prog: error: message" to
 // the error stream and raises SystemExit(2); -h prints the help to the output stream and raises SystemExit(0).
 //
-// (A helper the runtime does not have: the reviewer may move it there. bin2lang.cpp carries its own, fixed
-// to its parser.)
+// What it does not do: nargs other than one, subparsers, choices in the usage ({a,b}), count / append / store_const.
 #pragma once
 
 #include <functional>
@@ -20,7 +19,8 @@
 
 #include "py.hpp"
 
-namespace codebreaker::formats::xbox::crypto::argparse_min {
+namespace py {
+namespace argparse {
 
 // argparse.ArgumentError: the message of "argument -b/--bytes: expected one argument"
 struct ArgumentError : py::Exception {
@@ -604,4 +604,5 @@ inline Namespace ArgumentParser::parse_args(const py::list<py::str>& arg_strings
     return ns;
 }
 
-}  // namespace codebreaker::formats::xbox::crypto::argparse_min
+}  // namespace argparse
+}  // namespace py

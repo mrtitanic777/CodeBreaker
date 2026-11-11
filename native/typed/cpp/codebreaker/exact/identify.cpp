@@ -36,42 +36,6 @@ bool file_less(const File& a, const File& b) {
     return std::get<1>(a).u32() < std::get<1>(b).u32();
 }
 
-// json.dump(value, indent=1) of a JSON value
-void dump_indent1(const py::V& v, int level, std::string& out) {
-    const std::string pad(static_cast<size_t>(level + 1), ' ');
-    if (v.is_dict()) {
-        if (v.size() == 0) {
-            out += "{}";
-            return;
-        }
-        out += "{\n";
-        bool first = true;
-        for (const auto& kv : v.items()) {
-            if (!first) out += ",\n";
-            first = false;
-            out += pad + py::json_dump(kv.first) + ": ";
-            dump_indent1(kv.second, level + 1, out);
-        }
-        out += "\n" + std::string(static_cast<size_t>(level), ' ') + "}";
-    } else if (v.is_list() || v.is_tuple()) {
-        if (v.size() == 0) {
-            out += "[]";
-            return;
-        }
-        out += "[\n";
-        bool first = true;
-        for (const py::V& x : v.seq()) {
-            if (!first) out += ",\n";
-            first = false;
-            out += pad;
-            dump_indent1(x, level + 1, out);
-        }
-        out += "\n" + std::string(static_cast<size_t>(level), ' ') + "]";
-    } else {
-        out += py::json_dump(v);
-    }
-}
-
 }  // namespace
 
 void shuffle(int64_t seed, py::list<File>& x) {
@@ -211,8 +175,9 @@ int64_t main(Project& prj, const py::list<py::str>& argv, std::ostream& out, con
         if (var && !var->empty()) c.set("variant", py::V(var->utf8()));
         else c.erase(py::V("variant"));
         if (sw && !sw->empty()) c.set("switches", py::V(sw->utf8()));
-        std::string text;
-        dump_indent1(c, 0, text);
+        py::DumpOpts dump_opts;
+        dump_opts.indent = 1;   // json.dump(c, f, indent=1)
+        std::string text = py::json_dump(c, dump_opts);
         py::file f = py::file::open(p, py::str("w"));
         f.write(py::str(text));
         f.close();

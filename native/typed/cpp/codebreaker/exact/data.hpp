@@ -54,11 +54,8 @@
 
 namespace codebreaker::exact::data {
 
-// Python's RecursionError (a RuntimeError)
-struct RecursionError : py::RuntimeError {
-    using py::RuntimeError::RuntimeError;
-    const char* type() const override { return "RecursionError"; }
-};
+// Python's RecursionError (a RuntimeError): the runtime's
+using RecursionError = py::RecursionError;
 
 // exact.project.Project, as data.py reads it
 class Project : public modules::Project {

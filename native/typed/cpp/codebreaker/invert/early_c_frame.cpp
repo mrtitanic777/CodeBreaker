@@ -201,18 +201,6 @@ py::list<Case> build_cases() {
     };
 }
 
-// repr of a dict with str keys and int values: {'a': 0, 'b': 2}
-py::str dict_repr(const py::dict<py::str, int64_t>& d) {
-    py::str o("{");
-    bool first = true;
-    for (const auto& kv : d.items()) {
-        if (!first) o += py::str(", ");
-        o += py::repr(std::get<0>(kv)) + ": " + py::to_str(std::get<1>(kv));
-        first = false;
-    }
-    return o + "}";
-}
-
 }  // namespace
 
 const py::list<Case> CASES = build_cases();
@@ -249,7 +237,7 @@ bool _self_test() {
             for (int64_t p : pred) sorted_pred.push_back(p);
             std::sort(sorted_pred.begin(), sorted_pred.end());
             py::print(py::str("  ") + py::format(name, "<5") + " FAIL  fs=" + py::to_str(fs) + "/" + py::to_str(efs) +
-                      "  pred=" + py::repr(py::list<int64_t>(sorted_pred)) + "  obs=" + py::repr(edisps) + "  offs=" + dict_repr(offs));
+                      "  pred=" + py::repr(py::list<int64_t>(sorted_pred)) + "  obs=" + py::repr(edisps) + "  offs=" + py::repr(offs));
         }
     }
     py::print(py::str("framemodel self-test: ") + py::to_str(ok) + "/" + py::to_str(py::len(CASES)) + " byte-exact frame layouts");

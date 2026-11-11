@@ -490,10 +490,7 @@ bool _selftest() {
     auto fns = formats::omf::function_bytes(*r.obj);
     py::dict<str, int64_t> sizes;
     for (const auto& kv : fns.items()) sizes.set(std::get<0>(kv), std::get<0>(std::get<1>(kv)).size());
-    std::string shown_sizes;   // repr(dict)
-    for (const auto& kv : sizes.items())
-        shown_sizes += (shown_sizes.empty() ? "" : ", ") + py::repr(std::get<0>(kv)).utf8() + ": " + std::to_string(std::get<1>(kv));
-    say("functions: {" + shown_sizes + "}");
+    say("functions: " + py::repr(sizes).utf8());
     // MASM upper-cases public symbols by default (_ADDASM); match case-insensitively
     std::optional<str> key;
     for (const str& k : fns.keys())

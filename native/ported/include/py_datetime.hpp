@@ -33,8 +33,8 @@ inline int64_t days_before_month(int64_t y, int64_t m) {
 }
 inline int64_t ymd_to_ord(int64_t y, int64_t m, int64_t d) { return days_before_year(y) + days_before_month(y, m) + d; }
 inline void check_date(int64_t y, int64_t m, int64_t d) {
-    if (y < 1 || y > 9999) throw ValueError("year " + std::to_string(y) + " is out of range");
-    if (m < 1 || m > 12) throw ValueError("month must be in 1..12");
+    if (y < 1 || y > 9999) throw ValueError("year must be in 1..9999, not " + std::to_string(y));
+    if (m < 1 || m > 12) throw ValueError("month must be in 1..12, not " + std::to_string(m));
     int64_t dim = days_in_month(y, m);
     if (d < 1 || d > dim)
         throw ValueError("day " + std::to_string(d) + " must be in range 1.." + std::to_string(dim) + " for month " + std::to_string(m) + " in year " + std::to_string(y));
@@ -68,10 +68,10 @@ class datetime {
     datetime(int64_t y, int64_t m, int64_t d, int64_t h = 0, int64_t mi = 0, int64_t s = 0, int64_t us = 0)
         : year(y), month(m), day(d), hour(h), minute(mi), second(s), microsecond(us) {
         detail_::check_date(y, m, d);
-        if (h < 0 || h > 23) throw ValueError("hour must be in 0..23");
-        if (mi < 0 || mi > 59) throw ValueError("minute must be in 0..59");
-        if (s < 0 || s > 59) throw ValueError("second must be in 0..59");
-        if (us < 0 || us > 999999) throw ValueError("microsecond must be in 0..999999");
+        if (h < 0 || h > 23) throw ValueError("hour must be in 0..23, not " + std::to_string(h));
+        if (mi < 0 || mi > 59) throw ValueError("minute must be in 0..59, not " + std::to_string(mi));
+        if (s < 0 || s > 59) throw ValueError("second must be in 0..59, not " + std::to_string(s));
+        if (us < 0 || us > 999999) throw ValueError("microsecond must be in 0..999999, not " + std::to_string(us));
     }
     static datetime fromtimestamp(double ts) {
         // CPython: the fraction rounded half-even to microseconds, then the local time of the whole seconds
@@ -84,6 +84,7 @@ class datetime {
         std::time_t t = static_cast<std::time_t>(secs);
         std::tm tm{};
         if (localtime_s(&tm, &t) != 0) throw OSError("[Errno 22] Invalid argument");
+        if (tm.tm_year < 70) throw OSError("[Errno 22] Invalid argument");   // (the system's localtime refuses a local time before 1970)
         return datetime(tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, std::min(tm.tm_sec, 59), us);
     }
     static datetime now() {
@@ -155,42 +156,85 @@ class datetime {
 };
 
 namespace detail_ {
+// ISO year and week of a date (%G %V %g)
+inline std::pair<int64_t, int64_t> iso_week(int64_t y, int64_t mo, int64_t d) {
+    int64_t ord = ymd_to_ord(y, mo, d), wd = (ord + 6) % 7;   // Monday = 0
+    int64_t thursday = ord - wd + 3;                           // the Thursday of this week decides the ISO year
+    int64_t yy = y;
+    if (thursday < ymd_to_ord(y, 1, 1)) yy = y - 1;
+    else if (thursday > ymd_to_ord(y, 12, 31)) yy = y + 1;
+    return {yy, (thursday - ymd_to_ord(yy, 1, 1)) / 7 + 1};
+}
 inline str format_(const str& fmt, int64_t y, int64_t mo, int64_t d, int64_t h, int64_t mi, int64_t s, int64_t us) {
     int64_t wd = (ymd_to_ord(y, mo, d) + 6) % 7;                         // Monday = 0
     int64_t yday = days_before_month(y, mo) + d;                          // 1..366
     std::u32string out;
     auto add = [&](const std::string& t) { for (char c : t) out.push_back(static_cast<char32_t>(static_cast<unsigned char>(c))); };
     const std::u32string& f = fmt.u32();
-    for (size_t i = 0; i < f.size(); i++) {
-        if (f[i] != U'%') { out.push_back(f[i]); continue; }
-        if (i + 1 >= f.size()) { out.push_back(U'%'); break; }
-        char32_t c = f[++i];
+    auto spec = [&](char32_t c, bool strip_zeros, auto&& self) -> void {
+        auto num = [&](int64_t v, int w) { add(strip_zeros ? std::to_string(v) : pad(v, w)); };
         switch (c) {
             case U'a': add(std::string(DAY[wd]).substr(0, 3)); break;
             case U'A': add(DAY[wd]); break;
-            case U'b': add(std::string(MONTH[mo - 1]).substr(0, 3)); break;
+            case U'b': case U'h': add(std::string(MONTH[mo - 1]).substr(0, 3)); break;
             case U'B': add(MONTH[mo - 1]); break;
-            case U'c': add(pad(mo, 2) + "/" + pad(d, 2) + "/" + pad(y % 100, 2) + " " + pad(h, 2) + ":" + pad(mi, 2) + ":" + pad(s, 2)); break;
-            case U'd': add(pad(d, 2)); break;
+            case U'c':   // "%a %b %e %H:%M:%S %Y"
+                for (char32_t part : std::u32string(U"a b e H:M:S Y")) {
+                    if (part == U' ' || part == U':') out.push_back(part);
+                    else self(part, false, self);
+                }
+                break;
+            case U'C': num(y / 100, 2); break;
+            case U'd': num(d, 2); break;
+            case U'D': self(U'm', false, self); out.push_back(U'/'); self(U'd', false, self); out.push_back(U'/'); self(U'y', false, self); break;
+            case U'e': add(d < 10 ? " " + std::to_string(d) : std::to_string(d)); break;
             case U'f': add(pad(us, 6)); break;
-            case U'H': add(pad(h, 2)); break;
-            case U'I': add(pad(h % 12 == 0 ? 12 : h % 12, 2)); break;
-            case U'j': add(pad(yday, 3)); break;
-            case U'm': add(pad(mo, 2)); break;
-            case U'M': add(pad(mi, 2)); break;
+            case U'F': add(pad(y, 4) + "-" + pad(mo, 2) + "-" + pad(d, 2)); break;
+            case U'g': num(iso_week(y, mo, d).first % 100, 2); break;
+            case U'G': add(pad(iso_week(y, mo, d).first, 4)); break;
+            case U'H': num(h, 2); break;
+            case U'I': num(h % 12 == 0 ? 12 : h % 12, 2); break;
+            case U'j': num(yday, 3); break;
+            case U'm': num(mo, 2); break;
+            case U'M': num(mi, 2); break;
+            case U'n': out.push_back(U'\n'); break;
             case U'p': add(h < 12 ? "AM" : "PM"); break;
-            case U'S': add(pad(s, 2)); break;
-            case U'U': add(pad((yday - 1 + 7 - (wd + 1) % 7) / 7, 2)); break;   // week of the year, Sunday first
+            case U'r': self(U'I', false, self); out.push_back(U':'); self(U'M', false, self); out.push_back(U':'); self(U'S', false, self); out.push_back(U' '); self(U'p', false, self); break;
+            case U'R': self(U'H', false, self); out.push_back(U':'); self(U'M', false, self); break;
+            case U'S': num(s, 2); break;
+            case U't': out.push_back(U'\t'); break;
+            case U'T': self(U'H', false, self); out.push_back(U':'); self(U'M', false, self); out.push_back(U':'); self(U'S', false, self); break;
+            case U'u': add(std::to_string(wd + 1)); break;
+            case U'U': num((yday - 1 + 7 - (wd + 1) % 7) / 7, 2); break;   // week of the year, Sunday first
+            case U'V': num(iso_week(y, mo, d).second, 2); break;
             case U'w': add(std::to_string((wd + 1) % 7)); break;
-            case U'W': add(pad((yday - 1 + 7 - wd) / 7, 2)); break;            // week of the year, Monday first
-            case U'x': add(pad(mo, 2) + "/" + pad(d, 2) + "/" + pad(y % 100, 2)); break;
-            case U'X': add(pad(h, 2) + ":" + pad(mi, 2) + ":" + pad(s, 2)); break;
-            case U'y': add(pad(y % 100, 2)); break;
-            case U'Y': add(pad(y, 4)); break;
-            case U'Z': case U'z': break;
+            case U'W': num((yday - 1 + 7 - wd) / 7, 2); break;            // week of the year, Monday first
+            case U'x': self(U'm', false, self); out.push_back(U'/'); self(U'd', false, self); out.push_back(U'/'); self(U'y', false, self); break;
+            case U'X': self(U'H', false, self); out.push_back(U':'); self(U'M', false, self); out.push_back(U':'); self(U'S', false, self); break;
+            case U'y': num(y % 100, 2); break;
+            case U'Y': add(strip_zeros ? std::to_string(y) : pad(y, 4)); break;
+            case U'Z': case U'z': break;   // (a naive value: nothing)
             case U'%': out.push_back(U'%'); break;
-            default: out.push_back(U'%'); out.push_back(c); break;
+            default: throw ValueError("Invalid format string");
         }
+    };
+    for (size_t i = 0; i < f.size(); i++) {
+        if (f[i] != U'%') { out.push_back(f[i]); continue; }
+        if (++i >= f.size()) throw ValueError("Invalid format string");
+        char32_t c = f[i];
+        bool strip = false;
+        if (c == U'#') {   // the Windows flag: no leading zeros
+            if (++i >= f.size()) throw ValueError("Invalid format string");
+            c = f[i];
+            strip = true;
+        } else if (c == U'E' || c == U'O') {   // %Ec %EC %Ex %EX %Ey %EY, %Od %Oe %OH %OI %Om %OM %OS %Ou %OU %OV %Ow %OW %Oy
+            if (++i >= f.size()) throw ValueError("Invalid format string");
+            char32_t n = f[i];
+            bool ok = c == U'E' ? std::u32string(U"cCxXyY").find(n) != std::u32string::npos : std::u32string(U"deHImMSuUVwWy").find(n) != std::u32string::npos;
+            if (!ok) throw ValueError("Invalid format string");
+            c = n;
+        }
+        spec(c, strip, spec);
     }
     return str(out);
 }

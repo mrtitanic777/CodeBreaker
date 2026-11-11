@@ -27,9 +27,9 @@
 //     keyvault) pair, its keyvault None when main() found none.
 //   * main(): `argv` is sys.argv[1:], `prog` the script name argparse prints; it returns the exit code, argparse's
 //     exits are a thrown py::SystemExit, and the printing goes to stdout (error text of argparse to stderr).
-//     The command line is read by the top-level parser written here (the runtime's argparse_min has no
-//     sub-parsers) and one argparse_min parser per command; the text of `split`'s usage and -h (its options
-//     have `choices`, which argparse_min shows as a plain metavar) is the Python's own, kept as a string.
+//     The command line is read by the top-level parser written here (the runtime's py::argparse has no
+//     sub-parsers) and one py::argparse parser per command; the text of `split`'s usage and -h (its options
+//     have `choices`, which py::argparse shows as a plain metavar) is the Python's own, kept as a string.
 //     A manifest is JSON of any shape: it is read as a py::V (the runtime's JSON value), the one place
 //     the module's data is not typed.
 //   * not ported: `__author__` / `__description__` / `__platforms__` / `__thanks__` as variables other than the

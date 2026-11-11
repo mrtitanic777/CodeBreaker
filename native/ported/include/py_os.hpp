@@ -5,6 +5,8 @@
 #include <array>
 #include <chrono>
 #include <cstdlib>
+#include <sys/stat.h>
+#include <set>
 #include <thread>
 #include <variant>
 #if defined(_M_X64) || defined(__x86_64__)
@@ -263,6 +265,11 @@ inline file open(const str& path, const str& mode = str("r"), const std::optiona
 inline file open_rb(const str& path) { return file::open(path, str("rb")); }
 
 // ------------------------------------------------------------------------------------------ os
+#ifdef _WIN32
+#ifndef _WINDOWS_
+extern "C" __declspec(dllimport) int __stdcall SetEnvironmentVariableW(const wchar_t* lpName, const wchar_t* lpValue);   // (what <windows.h> declares)
+#endif
+#endif
 namespace os {
 // (CPython's mapping of the system's error codes to its OSError subclasses)
 [[noreturn]] inline void raise_os_(const std::error_code& ec, const str& path) {
@@ -292,11 +299,18 @@ inline void chdir(const str& p) {
     if (ec) throw FileNotFoundError("[WinError 2] The system cannot find the file specified: " + repr(p).utf8());
 }
 namespace environ_ {   // os.environ ("environ" is a macro of the C runtime)
+#ifdef _WIN32
+// variables set to an empty value (the C runtime cannot hold one: it reads them as not set)
+inline std::set<std::u32string>& empty_vars_() {
+    static std::set<std::u32string> s;
+    return s;
+}
+#endif
 inline std::optional<str> get(const str& k) {
 #ifdef _WIN32
     std::wstring w = fs_::u8path(k.utf8()).wstring();
     const wchar_t* v = _wgetenv(w.c_str());
-    if (!v) return std::nullopt;
+    if (!v) return empty_vars_().count(str(k).upper().u32()) ? std::optional<str>(str("")) : std::nullopt;
     return pystr_(fs_::path(v));
 #else
     const char* v = std::getenv(k.utf8().c_str());
@@ -322,9 +336,11 @@ inline dict<str, str> copy() {
     for (wchar_t** e = _wenviron; e && *e; ++e) {
         std::wstring entry(*e);
         size_t eq = entry.find(L'=', 1);
-        if (entry.empty() || eq == std::wstring::npos) continue;
+        if (entry.empty() || entry[0] == L'=' || eq == std::wstring::npos) continue;   // (CPython leaves the hidden "=C:" entries out)
         out.set(pystr_(fs_::path(entry.substr(0, eq))).upper(), pystr_(fs_::path(entry.substr(eq + 1))));
     }
+    for (const std::u32string& n : empty_vars_())
+        if (!out.contains(str(n))) out.set(str(n), str(""));
 #else
     for (char** e = ::environ; e && *e; ++e) {
         std::string entry(*e);
@@ -346,7 +362,15 @@ inline void set(const str& k, const str& v) {
     if (k.empty() || k.find(str("="), 1) != -1) throw ValueError("illegal environment variable name");
     if (k.find(str(std::string(1, '\0'))) != -1 || v.find(str(std::string(1, '\0'))) != -1) throw ValueError("embedded null character");
 #ifdef _WIN32
-    _wputenv_s(fs_::u8path(k.utf8()).wstring().c_str(), fs_::u8path(v.utf8()).wstring().c_str());
+    if (k.u32()[0] == U'=') throw OSError("[Errno 22] Invalid argument");   // (the C runtime refuses a name that begins with '=')
+    std::wstring wk = fs_::u8path(k.utf8()).wstring(), wv = fs_::u8path(v.utf8()).wstring();
+    if (wv.empty()) {   // (_wputenv_s of "" removes the variable; an empty value is set through the system)
+        empty_vars_().insert(str(k).upper().u32());
+        SetEnvironmentVariableW(wk.c_str(), L"");
+    } else {
+        empty_vars_().erase(str(k).upper().u32());
+        _wputenv_s(wk.c_str(), wv.c_str());
+    }
 #else
     setenv(k.utf8().c_str(), v.utf8().c_str(), 1);
 #endif
@@ -356,7 +380,9 @@ inline std::optional<str> pop(const str& k) {
     std::optional<str> old = get(k);
     if (!old) return std::nullopt;
 #ifdef _WIN32
+    empty_vars_().erase(str(k).upper().u32());
     _wputenv_s(fs_::u8path(k.utf8()).wstring().c_str(), L"");   // (an empty value removes the variable)
+    SetEnvironmentVariableW(fs_::u8path(k.utf8()).wstring().c_str(), nullptr);
 #else
     unsetenv(k.utf8().c_str());
 #endif
@@ -365,6 +391,51 @@ inline std::optional<str> pop(const str& k) {
 }  // namespace environ_
 inline std::optional<str> getenv(const str& k) { return environ_::get(k); }
 inline str getenv(const str& k, const str& dflt) { return environ_::get(k, dflt); }
+
+// os.stat(path): the fields of os.stat_result the ports read. mtime is exact (the file time's 100 ns); atime and ctime
+// (creation time on Windows) are the C runtime's whole seconds.
+struct stat_result {
+    int64_t st_mode = 0, st_size = 0, st_nlink = 1;
+    double st_atime = 0, st_mtime = 0, st_ctime = 0;
+    int64_t st_mtime_ns = 0;
+};
+inline stat_result stat(const str& p) {
+    nul_check_("stat", p);
+    std::error_code ec;
+    fs_::path q = fspath_(p);
+    if (p.empty()) throw FileNotFoundError("[WinError 3] The system cannot find the path specified: ''");
+    fs_::file_status st = fs_::status(q, ec);
+    if (ec || st.type() == fs_::file_type::not_found) raise_os_(ec ? ec : std::error_code(2, std::system_category()), p);
+    stat_result r;
+    bool dir = st.type() == fs_::file_type::directory;
+    bool writable = (st.permissions() & fs_::perms::owner_write) != fs_::perms::none;
+    if (dir) {
+        r.st_mode = 040000 | (writable ? 0777 : 0555);
+    } else {
+        r.st_mode = 0100000 | (writable ? 0666 : 0444);
+        std::string ext = std::get<1>(path::splitext(p)).lower().utf8();
+        if (ext == ".exe" || ext == ".bat" || ext == ".cmd" || ext == ".com") r.st_mode |= 0111;
+        auto n = fs_::file_size(q, ec);
+        if (!ec) r.st_size = static_cast<int64_t>(n);
+    }
+    auto nl = fs_::hard_link_count(q, ec);
+    r.st_nlink = ec ? 1 : static_cast<int64_t>(nl);
+    auto t = fs_::last_write_time(q, ec);
+    if (!ec) {
+        int64_t ticks = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(t.time_since_epoch()).count();   // 100 ns since 1601
+        int64_t sec = ticks / 10000000 - 11644473600LL, nsec = (ticks % 10000000) * 100;
+        r.st_mtime = static_cast<double>(sec) + static_cast<double>(nsec) * 1e-9;
+        r.st_mtime_ns = sec * 1000000000LL + nsec;
+    }
+#ifdef _WIN32
+    struct _stat64 cs;
+    if (_wstat64(q.c_str(), &cs) == 0) {
+        r.st_atime = static_cast<double>(cs.st_atime);
+        r.st_ctime = static_cast<double>(cs.st_ctime);
+    }
+#endif
+    return r;
+}
 
 namespace path {
 inline bool isabs(const str& s) {

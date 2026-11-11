@@ -1,5 +1,6 @@
 #include "json.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <cstring>
@@ -421,7 +422,12 @@ void append_float(std::string& out, double f) {
     out += eb;
 }
 
-void dump(std::string& out, const V& v, const DumpOpts& o) {
+void newline_indent(std::string& out, const DumpOpts& o, int depth) {
+    out += '\n';
+    out.append((size_t)(o.indent * depth), ' ');
+}
+
+void dump(std::string& out, const V& v, const DumpOpts& o, int depth = 0) {
     switch (v.k) {
         case K::None: out += "null"; return;
         case K::Bool: out += v.b ? "true" : "false"; return;
@@ -442,11 +448,14 @@ void dump(std::string& out, const V& v, const DumpOpts& o) {
             if (tag) out += tag;
             out += '[';
             bool first = true;
+            const char* sep = o.indent >= 0 ? "," : o.item_sep;
             for (auto& x : v.seq()) {
-                if (!first) out += o.item_sep;
+                if (!first) out += sep;
                 first = false;
-                dump(out, x, o);
+                if (o.indent >= 0) newline_indent(out, o, depth + 1);
+                dump(out, x, o, depth + 1);
             }
+            if (o.indent >= 0 && !first) newline_indent(out, o, depth);
             out += ']';
             if (tag) out += '}';
             return;
@@ -458,9 +467,22 @@ void dump(std::string& out, const V& v, const DumpOpts& o) {
             if (plain || !o.tagged) {
                 out += '{';
                 bool first = true;
-                for (auto& kv : v.items()) {
-                    if (!first) out += o.item_sep;
+                const char* sep = o.indent >= 0 ? "," : o.item_sep;
+                auto entries = v.items();
+                std::vector<std::pair<V, V>> ordered(entries.begin(), entries.end());
+                if (o.sort_keys) {
+                    bool all_str = true;
+                    for (auto& kv : ordered)
+                        if (!kv.first.is_str()) all_str = false;
+                    if (!all_str) throw std::runtime_error("'<' not supported between instances of different key types");
+                    std::stable_sort(ordered.begin(), ordered.end(), [](const std::pair<V, V>& a, const std::pair<V, V>& b) {
+                        return a.first.str() < b.first.str();   // (code point order: UTF-8 compares the same)
+                    });
+                }
+                for (auto& kv : ordered) {
+                    if (!first) out += sep;
                     first = false;
+                    if (o.indent >= 0) newline_indent(out, o, depth + 1);
                     if (kv.first.is_str()) dump_str(out, kv.first.str(), o.ensure_ascii);
                     else {
                         // (json.dumps writes a number or bool key as its text, None as "null")
@@ -470,8 +492,9 @@ void dump(std::string& out, const V& v, const DumpOpts& o) {
                         dump_str(out, k, o.ensure_ascii);
                     }
                     out += o.key_sep;
-                    dump(out, kv.second, o);
+                    dump(out, kv.second, o, depth + 1);
                 }
+                if (o.indent >= 0 && !first) newline_indent(out, o, depth);
                 out += '}';
                 return;
             }

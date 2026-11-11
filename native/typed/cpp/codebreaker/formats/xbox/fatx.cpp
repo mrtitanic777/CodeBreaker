@@ -65,10 +65,6 @@ py::bytes pad_to_(const py::bytes& b, int64_t width) {
 }  // namespace
 
 // ── Timestamp ───────────────────────────────────────────
-py::str DateTime::strftime_minute() const {
-    return py::percent("%04d-%02d-%02d %02d:%02d", year, month, day, hour, minute);
-}
-
 std::optional<DateTime> decode_timestamp(int64_t t, int64_t epoch) {
     if (t == 0) {
         return std::nullopt;
@@ -81,11 +77,11 @@ std::optional<DateTime> decode_timestamp(int64_t t, int64_t epoch) {
     int64_t second = (t & 0x0000001F) * 2;
     second = py::min(second, int64_t(59));
     // datetime(year, month, day, hour, minute, second): a ValueError is None
-    static const int64_t days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    if (year < 1 || year > 9999 || month < 1 || month > 12) return std::nullopt;
-    int64_t dim = days[month - 1] + (month == 2 && leap_(year) ? 1 : 0);
-    if (day < 1 || day > dim || hour > 23 || minute > 59) return std::nullopt;
-    return DateTime{year, month, day, hour, minute, second};
+    try {
+        return DateTime(year, month, day, hour, minute, second);
+    } catch (const py::ValueError&) {
+        return std::nullopt;
+    }
 }
 
 // ── Volume reader ───────────────────────────────────────
@@ -866,7 +862,7 @@ const py::str DESCRIPTION("read an Xbox 360 FATX filesystem (info/list/extract) 
 void _print_tree(const py::list<EntryRef>& entries, int64_t depth) {
     for (const EntryRef& e : entries) {
         py::str tag = e->is_directory ? py::str("/") : py::str("");
-        py::str ts = e->modified.has_value() ? e->modified->strftime_minute() : py::str("");
+        py::str ts = e->modified.has_value() ? e->modified->strftime(py::str("%Y-%m-%d %H:%M")) : py::str("");
         // "  %s%-*s %10s  %s": the star width is 40 - 2 * depth, a negative one meaning its size, left-justified
         int64_t width = 40 - 2 * depth;
         if (width < 0) width = -width;
