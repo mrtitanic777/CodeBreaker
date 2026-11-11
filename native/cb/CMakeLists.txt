@@ -123,6 +123,11 @@ set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/recompile/shims_test.cpp"
 cb_area(source)
 target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats)
 
+# The port pipeline (port/*: the passes that make a decompiled program's C compile as C of today, and the check that
+# the port does what the original did).
+cb_area(port)
+target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify)
+
 
 # compat/py_bridge.hpp (header only, used by the shims at the old header paths): only its test is built here. The
 # test includes the old py:: layer, which is not warning-clean, so this one file builds at /W3 without /WX.
@@ -137,7 +142,9 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/corpus.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/base/tidy_state.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/build/functions.cpp"
-  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp")
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_recompile_source.cpp"
+  "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp")   # (uses the arith16 shim's records)
 cb_apply_flags(cb_shim_check)
 target_compile_options(cb_shim_check PRIVATE /W3 /WX-)
 target_include_directories(cb_shim_check PRIVATE "${CB_NATIVE_ROOT}/typed/cpp" "${CB_NATIVE_ROOT}/ported/include" "${CB_NATIVE_ROOT}/l2/src")

@@ -1,0 +1,2 @@
+typedef unsigned short uint16_t; typedef short int16_t; uint16_t u; int16_t s;
+int f(void) { return u > (uint16_t)s; }
