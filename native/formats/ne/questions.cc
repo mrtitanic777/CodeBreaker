@@ -1,92 +1,100 @@
-// questions.cc -- the NE reader's answers, in the shapes codebreaker/formats/ne.py gives them.
+// questions.cc -- the NE reader's answers, in the shapes codebreaker/formats/ne.py gives them, read by
+// cb::formats::ne (native/cb/formats/ne.hpp).
 //
 // A module's questions take its place first -- (ne_off, base, overlay_at or None) -- then the
 // method's own arguments: the module is read again from those on every call (NEFile keeps
 // nothing else), and overlay_at not None makes it a boot image's module (BootImageModule).
-#include "../core/questions.h"
+#include <string>
+#include <variant>
+#include <vector>
+
+#include "../core/cb_bridge.h"
 #include "../core/text.h"
-#include "ne.h"
+#include "cb/formats/ne.hpp"
+#include "cb/formats/read.hpp"
 
 namespace cbf::ne {
 namespace {
 
+namespace N = cb::formats::ne;
+
 constexpr size_t kArgs = 3;   // the module's place, before a method's own arguments
 
-Module module(Call &c) {
-    Module m(c.data, c.int_arg(0));
-    m.base = c.int_arg(1);
-    if (!c.arg(2).is_none()) {
-        m.boot = true;
-        m.overlay_at = c.int_arg(2);
-    }
+N::Module module(Call &c) {
+    const uint64_t ne_off = uint64_t(c.int_arg(0));
+    N::Module m = c.arg(2).is_none() ? N::Module::parse(owned(c.data), ne_off)
+                                     : N::Module::parse_boot_module(owned(c.data), ne_off, uint64_t(c.int_arg(2)));
+    m.set_base(uint64_t(c.int_arg(1)));
     return m;
 }
 
-void header_dict(Out &o, const Header &h) {
+void header_dict(Out &o, const N::Header &h) {
     o.begin_dict();
-    o.item("linker_ver", h.linker_ver);
-    o.item("linker_rev", h.linker_rev);
-    o.item("entry_off", h.entry_off);
-    o.item("entry_len", h.entry_len);
+    o.item("linker_ver", h.linker_version);
+    o.item("linker_rev", h.linker_revision);
+    o.item("entry_off", h.entry_table_offset);
+    o.item("entry_len", h.entry_table_length);
     o.item("crc", h.crc);
     o.item("flags", h.flags);
-    o.item("autodata_seg", h.autodata_seg);
-    o.item("heap", h.heap);
-    o.item("stack", h.stack);
-    o.item("csip", h.csip);
-    o.item("sssp", h.sssp);
-    o.item("n_segs", h.n_segs);
-    o.item("n_modrefs", h.n_modrefs);
-    o.item("nonres_size", h.nonres_size);
-    o.item("seg_tab", h.seg_tab);
-    o.item("rsrc_tab", h.rsrc_tab);
-    o.item("resname_tab", h.resname_tab);
-    o.item("mod_tab", h.mod_tab);
-    o.item("imp_tab", h.imp_tab);
-    o.item("nonres_off", h.nonres_off);
-    o.item("n_movable", h.n_movable);
-    o.item("align_shift", h.align_shift);
-    o.item("n_resources", h.n_resources);
-    o.item("exetype", h.exetype);
+    o.item("autodata_seg", h.autodata_segment);
+    o.item("heap", h.heap_size);
+    o.item("stack", h.stack_size);
+    o.item("csip", h.cs_ip);
+    o.item("sssp", h.ss_sp);
+    o.item("n_segs", h.segment_count);
+    o.item("n_modrefs", h.module_ref_count);
+    o.item("nonres_size", h.nonresident_size);
+    o.item("seg_tab", h.segment_table);
+    o.item("rsrc_tab", h.resource_table);
+    o.item("resname_tab", h.resident_names_table);
+    o.item("mod_tab", h.module_ref_table);
+    o.item("imp_tab", h.imported_names_table);
+    o.item("nonres_off", h.nonresident_offset);
+    o.item("n_movable", h.movable_entries);
+    o.item("align_shift", h.alignment_shift);
+    o.item("n_resources", h.resource_segments);
+    o.item("exetype", h.target_os);
     o.key("expect_winver");
-    if (h.expect_winver) o.integer(*h.expect_winver);
-    else o.none();
+    put_opt(o, h.expected_windows_version);
     o.end_dict();
 }
 
 // NEFile(path): {ne_off, h}
 void open(Call &c) {
-    Module m = Module::open(c.data);
+    N::Module m = N::Module::open(owned(c.data));
     c.out.begin_dict();
-    c.out.item("ne_off", m.ne_off);
+    c.out.item("ne_off", int64_t(m.ne_offset()));
     c.out.key("h");
-    header_dict(c.out, m.h);
+    header_dict(c.out, m.header());
     c.out.end_dict();
 }
 
 // from_buffer(data, ne_off): the header, after its signature check
-void from_buffer(Call &c) {
-    int64_t off = c.int_arg(0);
-    if (!c.data.slice_is(off, off + 2, "NE", 2)) raise("ValueError", "no NE at 0x" + hex(uint64_t(off)));
-    header_dict(c.out, Module(c.data, off).h);
+void from_buffer(Call &c) { header_dict(c.out, N::Module::parse(owned(c.data), uint64_t(c.int_arg(0))).header()); }
+void header(Call &c) { header_dict(c.out, N::Module::parse(owned(c.data), uint64_t(c.int_arg(0))).header()); }
+// u16(off) / u32(off): struct.unpack_from's offset, a negative one counting from the end of the file
+template <class T>
+void value_at(Call &c) {
+    int64_t off = c.int_arg(kArgs);
+    if (off < 0) off += c.data.size();
+    if (off < 0) raise("struct.error", "offset " + dec(c.int_arg(kArgs)) + " out of range for " + dec(c.data.size()) + "-byte buffer");
+    c.out.integer(cb::formats::get<T>(view(c.data), uint64_t(off), "ne"));
 }
+void u16(Call &c) { value_at<uint16_t>(c); }
+void u32(Call &c) { value_at<uint32_t>(c); }
 
-void header(Call &c) { header_dict(c.out, Module(c.data, c.int_arg(0)).h); }
-void u16(Call &c) { c.out.integer(c.data.u16(c.int_arg(kArgs))); }
-void u32(Call &c) { c.out.integer(c.data.u32(c.int_arg(kArgs))); }
-
-void names(Out &o, const std::vector<Name> &ns) {
+void names(Out &o, const std::vector<N::Name> &ns) {
     o.begin_list();
-    for (const Name &n : ns) {
+    for (const N::Name &n : ns) {
         o.begin_tuple();
-        o.latin1(n.name);
+        o.text(n.name);
         o.integer(n.ordinal);
         o.end_tuple();
     }
     o.end_list();
 }
 
-void read_name_table(Call &c) { names(c.out, module(c).read_name_table(c.int_arg(kArgs))); }
+void read_name_table(Call &c) { names(c.out, module(c).read_name_table(uint64_t(c.int_arg(kArgs)))); }
 void resident_names(Call &c) { names(c.out, module(c).resident_names()); }
 void nonresident_names(Call &c) { names(c.out, module(c).nonresident_names()); }
 void module_name(Call &c) { c.out.text(module(c).module_name()); }
@@ -97,18 +105,18 @@ void module_refs(Call &c) {
     c.out.end_list();
 }
 
-void imported_name(Call &c) { c.out.text(module(c).imported_name(c.int_arg(kArgs))); }
+void imported_name(Call &c) { c.out.text(module(c).imported_name(uint64_t(c.int_arg(kArgs)))); }
 
 void segments(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const Segment &s : module(c).segments()) {
+    for (const N::Segment &s : module(c).segments()) {
         o.begin_dict();
-        o.item("idx", s.idx);
-        o.item("file_off", s.file_off);
+        o.item("idx", s.index);
+        o.item("file_off", int64_t(s.file_offset));
         o.item("length", s.length);
         o.item("flags", s.flags);
-        o.item("minalloc", s.minalloc);
+        o.item("minalloc", s.min_alloc);
         o.item_text("kind", s.is_data() ? "DATA" : "CODE");
         o.end_dict();
     }
@@ -116,48 +124,42 @@ void segments(Call &c) {
 }
 
 // relocations(seg): seg is the segment's dict as segments() gave it (or as the caller made it)
-int64_t key_int(const Value &d, const char *k) {
-    const Value *v = d.get(k);
-    if (!v) raise("KeyError", std::string("'") + k + "'");
-    return v->as_int();
-}
-
 void relocations(Call &c) {
     const Value &seg = c.arg(kArgs);
     if (seg.kind != Value::Dict) raise("TypeError", "a segment that is not a dict");
-    Module m = module(c);
-    const int64_t flags = key_int(seg, "flags");
-    std::vector<Relocation> recs;
-    if (flags & kRelocInfo) recs = m.relocations(uint16_t(flags), key_int(seg, "file_off"), key_int(seg, "length"));
+    N::Module m = module(c);
+    N::Segment s;
+    s.flags = uint16_t(key_int(seg, "flags"));
+    std::vector<N::Relocation> recs;
+    if (s.flags & N::kRelocInfo) {
+        s.file_offset = uint64_t(key_int(seg, "file_off"));
+        s.length = uint32_t(key_int(seg, "length"));
+        recs = m.relocations(s);
+    }
     Out &o = c.out;
     o.begin_list();
-    for (const Relocation &r : recs) {
+    for (const N::Relocation &r : recs) {
         o.begin_dict();
-        o.item("src", r.src);
-        o.item("rel_type", r.rel_type);
+        o.item("src", r.source);
+        o.item("rel_type", r.flags);
         o.key("additive");
         o.boolean(r.additive());
         o.item("offset", r.offset);
-        switch (r.kind) {
-        case Relocation::Internal:
+        if (auto *a = std::get_if<N::InternalRef>(&r.target)) {
             o.item_text("kind", "INTERNAL");
-            o.item("seg", r.seg);
-            o.item("entry", r.entry);
-            break;
-        case Relocation::ImportOrdinal:
+            o.item("seg", a->segment);
+            o.item("entry", a->entry);
+        } else if (auto *b = std::get_if<N::ImportOrdinalRef>(&r.target)) {
             o.item_text("kind", "IMPORTORD");
-            o.item("module", r.module);
-            o.item("ordinal", r.ordinal);
-            break;
-        case Relocation::ImportName:
+            o.item("module", b->module);
+            o.item("ordinal", b->ordinal);
+        } else if (auto *n = std::get_if<N::ImportNameRef>(&r.target)) {
             o.item_text("kind", "IMPORTNAME");
-            o.item("module", r.module);
-            o.item("name_off", r.name_off);
-            break;
-        case Relocation::OsFixup:
+            o.item("module", n->module);
+            o.item("name_off", n->name_offset);
+        } else {
             o.item_text("kind", "OSFIXUP");
-            o.item("ftype", r.ftype);
-            break;
+            o.item("ftype", std::get<N::OsFixupRef>(r.target).fixup_type);
         }
         o.end_dict();
     }
@@ -167,14 +169,14 @@ void relocations(Call &c) {
 void entries(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const Entry &e : module(c).entries()) {
+    for (const N::Entry &e : module(c).entries()) {
         o.begin_dict();
         o.item("ordinal", e.ordinal);
-        if (e.kind == Entry::Unused) {
+        if (e.kind == N::Entry::Kind::Unused) {
             o.item_text("kind", "UNUSED");
         } else {
-            o.item_text("kind", e.kind == Entry::Moveable ? "MOVEABLE" : "FIXED");
-            o.item("seg", e.seg);
+            o.item_text("kind", e.kind == N::Entry::Kind::Moveable ? "MOVEABLE" : "FIXED");
+            o.item("seg", e.segment);
             o.item("offset", e.offset);
             o.item("flags", e.flags);
         }
@@ -185,41 +187,43 @@ void entries(Call &c) {
 
 void export_ordinals(Call &c) {
     c.out.begin_list();
-    for (int64_t v : module(c).export_ordinals()) c.out.integer(v);
+    for (uint32_t v : module(c).export_ordinals()) c.out.integer(v);
     c.out.end_list();
 }
 
 void resources(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (const Resource &r : module(c).resources()) {
+    for (const N::Resource &r : module(c).resources()) {
         o.begin_dict();
         o.item_text("type", r.type);
         o.item_text("id", r.id);
-        o.item("off", r.off);
-        o.item("length", r.length);
+        o.item("off", int64_t(r.file_offset));
+        o.item("length", int64_t(r.length));
         o.item("flags", r.flags);
         o.end_dict();
     }
     o.end_list();
 }
 
-void rsrc_string(Call &c) { c.out.text(module(c).rsrc_string(c.int_arg(kArgs), c.int_arg(kArgs + 1))); }
+void rsrc_string(Call &c) {
+    c.out.text(module(c).resource_string(uint64_t(c.int_arg(kArgs)), uint64_t(c.int_arg(kArgs + 1))));
+}
 
 void embedded_q(Call &c) {
     Out &o = c.out;
     o.begin_list();
-    for (auto &e : embedded(c.data, c.int_arg(0, 0x40))) {
+    for (auto &e : N::embedded(view(c.data), uint64_t(c.int_arg(0, 0x40)))) {
         o.begin_tuple();
-        o.integer(e.first);
+        o.integer(int64_t(e.first));
         o.text(e.second);
         o.end_tuple();
     }
     o.end_list();
 }
 
-void tables_end_q(Call &c) { c.out.integer(tables_end(module(c))); }
-void standalone_q(Call &c) { c.out.bytes(Bytes(standalone(module(c)))); }
+void tables_end_q(Call &c) { c.out.integer(int64_t(module(c).tables_end())); }
+void standalone_q(Call &c) { put(c.out, module(c).standalone()); }
 
 }  // namespace
 
