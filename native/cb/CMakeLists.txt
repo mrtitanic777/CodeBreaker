@@ -125,7 +125,9 @@ set_target_properties(cb_invert_model PROPERTIES CXX_STANDARD 17 CXX_STANDARD_RE
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 target_include_directories(cb_invert_model PUBLIC "${CB_INVERT_MODEL_DIR}" "${CB_NATIVE_ROOT}/l2/src")
 target_include_directories(cb_invert_model PRIVATE "${CB_THIRD_PARTY}/include")
-target_compile_definitions(cb_invert_model PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+# CB_NO_FASTALLOC: l2/src/pystr.cc would otherwise replace the program's operator new/delete with its own allocator
+# (it breaks AddressSanitizer's, and a library must not change the allocator of the exe it is linked into).
+target_compile_definitions(cb_invert_model PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS CB_NO_FASTALLOC)
 target_compile_options(cb_invert_model PRIVATE /utf-8 /EHsc /O2 /W3 /bigobj)
 if(CB_ASAN)
   target_compile_options(cb_invert_model PRIVATE /fsanitize=address /Zi)
