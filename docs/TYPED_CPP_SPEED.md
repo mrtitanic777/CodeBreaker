@@ -1,0 +1,120 @@
+# Python vs typed C++: speed tally
+
+A running record of how fast each typed C++ port runs against the original Python on the same proof harness
+(`state/work/typed-port/<module>/`: the same real inputs on both sides, outputs compared IDENTICAL). Times are
+whole-harness wall times as the porting agent or reviewer measured them on Logan's machine, usually while other
+work was running, so treat single numbers as approximate (±20–40%). "Python" includes the interpreter start.
+
+Updated as ports land. Ratio = Python time / C++ time (above 1 = C++ faster).
+
+## Summary (2026-11-10)
+
+| | Count |
+|---|---|
+| Port harnesses timed (rows below) | 65 |
+| C++ faster (ratio > 1.1) | 43 |
+| About the same (0.9–1.1) | 8 |
+| C++ slower (< 0.9) | 14 |
+| Median ratio | ~1.5x faster |
+
+Slower ports are bugs to fix (speed is a product requirement); each has a stated cause below. Several of the 14
+were timed before the runtime speed-ups now on staging (regex prefilters, str UTF-8 cache, dict, JSON, RSA,
+sha1, makedirs) and are marked "re-time".
+
+## Per port
+
+| Module | Python | C++ | Ratio | Note |
+|---|---|---|---|---|
+| decompile.describe | 340 s | 70 s | 4.9x | |
+| emulate.native_shadow | 4.55 s | 1.3 s | 3.5x | |
+| emulate.shadow | 9.9 s | 1.6 s | 6.2x | Python side spawns the p-code lifter |
+| emulate.windows16 | 5.1 s | 2.5 s | 2.0x | |
+| emulate.emulator | 3.95 s | 3.75 s | 1.05x | both use the native recorder |
+| emulate.pcode | 3.2 s | 2.6 s | 1.2x | |
+| verify.gate16.contract16 | 60 s | 25 s | 2.4x | |
+| analyze.image (+4 analyses) | 4.3 s | 2.0 s | 2.2x | |
+| symbols api_arguments/ordinals/runtime_library/names/classes_writer | 21 s | 6 s | 3.5x | |
+| build.msc6 | 83 s | 39 s | 2.1x | |
+| build.asm16 | 8 s | 23.7 s | **0.34x** | not profiled yet |
+| verify.lanes.win16 | 23.3 s | 12 s | 1.9x | |
+| verify.gate16.isolated16 | 8.9 s | 4.5 s | 2.0x | |
+| verify.reconstruct | 59.8 s | ~20 s | 3.0x | |
+| decompile.c_text / decompiler / build.functions | ~3.6 s | ~1.6 s | ~2.2x | per-step table in the G4 report |
+| java.transpile / probe / lanes.java | 1020 s | 202 s | 5.0x | Alpha convert 66–78 s vs 20 s |
+| translate.backends.java (trio) | 3.2–3.8 s | 1.1 s | ~3.2x | program() only |
+| translate.backends.c_java | 45.2 s | 35.1 s | 1.3x | |
+| translate.backends.csharp | 37.4 s | 45.7 s | **0.82x** | 18 s of it is JSON tree loading (since sped up); back end alone faster |
+| translate.backends.cpp03 / desugar | ~25 s | 22–25 s | ~1.05x | |
+| translate.native_l2 / c / cpp17 | 61.7 s | 54.2 s | 1.14x | program() runs inside the native library on both |
+| translate.frontends.python (program/infer/methods) | 97 s | 69 s | 1.4x | |
+| translate.frontends.python.lower | — | — | — | lowering 0.09 s; rest is infer |
+| translate.dotnet.cs2cpp | 2.27 s | 0.55 s | 4.1x | |
+| translate.dotnet.judge | 83.4 s | 69 s | 1.2x | javac/JVM/g++ dominate |
+| exact.library | 14.1 s | 8.5 s | 1.7x | |
+| exact.data | 34 s | 22 s | 1.5x | 15 s in modules.combine |
+| exact.toolchain | 9.0 s | 10.8–15.5 s | ~0.75x | real compiles under the same C++ executive on both sides; noisy |
+| verify.authored.search16 | 0.71 s | 0.44 s | 1.6x | |
+| recompile.powerpc | 90 s | 33 s | 2.7x | |
+| recompile.config | 30–49 s | 2.1 s | ~19x | |
+| recompile.switches | 11.9 s | 1.7 s | 7.0x | |
+| analyze.ppc_calls | 130 s | 43 s | 3.0x | |
+| analyze.dos_functions | 128 s | 16 s | 8.0x | |
+| decompile.vmx128 | 29–34 s | 5–6 s | ~5.7x | |
+| exact.modules | 0.6 s | 0.5 s | 1.2x | |
+| exact.standin | 2.7 s | 1.9 s | 1.4x | |
+| port.asm16 | 10.7 s | 7.2 s | 1.5x | |
+| port.pre_ansi (part 3) | 60 s | 41 s | 1.5x | |
+| port.pre_ansi (part 5) | 23 s | 215 s | **0.11x** | branch predates the py::str/regex speed-ups; re-time on staging |
+| source.vxd.disassembly | 504 s | 84 s | 6.0x | |
+| source.vxd.le_writer | 491 s | 61 s | 8.0x | |
+| source.vxd.coalesce | 14 s | 16 s | 0.88x | |
+| formats.le | 47.8 s | 33.9 s | 1.4x | |
+| symbols.driver_services | 6.0 s | 5.85 s | 1.0x | |
+| base.converted | 2.1 s | 3.2 s | **0.66x** | makedirs/sha1 (since fixed in the runtime); re-time |
+| jobs.pool | 262 s | 110 s | 2.4x | Python dominated by process start |
+| build.native_dos | 9.5 s | 6.3 s | 1.5x | |
+| build.masm / build.dos_tools | 35 s | 35 s | 1.0x | DOSBox boot dominates |
+| build.driver | 50 s | 45 s | 1.1x | wasm/wlink dominate |
+| verify.compare | 1–3.6 s | 1 s | ~2x | |
+| exact.emu.dos | 10.8 s | 10.9 s | 1.0x | same C++ executive underneath; vs Python executive 34.8 s = 3.2x |
+| formats.xbox.crypto.xsm3 | 2.0 s | 0.26 s | 7.7x | |
+| formats.xbox.crypto signers (5) | 4–33 s | 20–32 s | **~0.2x** | RSA powmod (since fixed: 1024-bit powmod 0.97 ms vs CPython 4.07 ms); re-time |
+| formats.xbox.crypto.shadowboot | 28 s | 457 s | **0.06x** | same RSA cause; re-time |
+| verify.lanes.genesis | 43 s | 15.3 s | 2.8x | |
+| verify.lanes.nes / sms / gb / z80_flat | 13–24 s | 6.6–17 s | ~1.6x | |
+| exact.plm86 | 43.8 s | 18 s | 2.4x | |
+| platforms.dos | 3.7 s | 1.6 s | 2.3x | |
+| symbols.debug_build_estimate | 38.9 s | 50–58 s | **0.7x** | objdump per segment in ne_asm.segment / debug_build |
+| build.period16 | 49.6 s | 47.1 s | 1.05x | DOSBox-X dominates |
+| emulate.driver | 5.1 s | 4.6 s | 1.1x | |
+| knowledge.show | 23 s | 36 s | **0.64x** | not found yet |
+| source.ne_asm.datacode | 13 s | 23 s | **0.57x** | ne_asm.segment Seg slow on big segments |
+| source.ne_asm.segment | 195 s | ~3300 s → ~375 s | slower | 55 min before the regex fix; re-time on staging |
+| symbols.cpp_classes | 31 s | 6.6 s | 4.7x | |
+| build.definitions | 5.3 s | 3.8 s | 1.4x | |
+| symbols.prototypes | 2.8 s | 8.1 s | **0.35x** | JSON + regex (both since sped up); re-time |
+| source.readable | 7.2 s | 9.0 s | **0.8x** | multiline regex (since fixed: 450 ms -> 15-20 ms); re-time |
+
+## Runtime micro-benchmarks (C++ runtime vs CPython)
+
+| Operation | Before | After | CPython |
+|---|---|---|---|
+| finditer `^#define` (re.M) over 14.6 MB | 454 ms | 21 ms | 283 ms |
+| 500 searches `^#define` (re.M) | 33 s | 0.3 ms | 3.1 ms |
+| dict: 50k str keys set+get ×20 | 3.09 s | 1.28 s | 1.56 s |
+| JSON parse 8 MB | — | 129–151 ms | 143–178 ms |
+| JSON dump 8 MB | — | 124–142 ms | 114–128 ms |
+| sha1 2 MB | 19 ms | 1.0 ms | 1.0 ms |
+| sha512 2 MB | — | 7.7 ms | 3.5 ms |
+| RSA 1024-bit powmod | ~295 ms | 0.97 ms | 4.07 ms |
+| makedirs (new leaf) | 4.2 ms | 0.80 ms | 0.92 ms |
+| split("\n") into 310k str | — | 190–450 ms | 58 ms (UTF-32 str storage) |
+
+## Still slower and why (to fix)
+
+- `port.pre_ansi`, `source.ne_asm.segment`, `datacode`, `debug_build_estimate`: big-text regex/str work and per-segment `objdump` processes; re-time on staging first.
+- Crypto signers/shadowboot: RSA; fixed in MemCrypto on staging, re-time.
+- `build.asm16`, `knowledge.show`: not profiled yet.
+- Runtime: `py::str` stores UTF-32 (4x memory, slow huge splits); sha512/md5 portable code vs OpenSSL asm; JSON dump ~10% slower.
+
+The whole-codebase comparison (the full `tests/run_all.py` under Python vs `codebreaker.exe`) comes once ports are wired into the exe.
