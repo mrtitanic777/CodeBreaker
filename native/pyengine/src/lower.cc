@@ -421,8 +421,22 @@ public:
         return n;
     }
 
+    // every issue of a refused function, not only the first (PYENGINE_ISSUES=<file>: one line per
+    // issue, "qname\treason"): what would still refuse it once its first reason is answered
+    void dump_issues() {
+        static const char* path = getenv("PYENGINE_ISSUES");
+        if (!path || ev.issues.empty()) return;
+        static FILE* fo = fopen(path, "w");
+        if (!fo) return;
+        std::set<std::string> seen_;
+        for (auto& i : ev.issues)
+            if (seen_.insert(i.reason()).second) fprintf(fo, "%s\t%s\n", f->qname.c_str(), i.reason().c_str());
+        fflush(fo);
+    }
+
     // -- the function
     IRP lower() {
+        dump_issues();
         for (auto& i : ev.issues) throw Refused(i.cls, i.detail, i.line);
         auto cr = p.crashes.find(f->qname);
         if (cr != p.crashes.end()) throw Refused("frontend-error", cr->second, f->node->pos.lineno);
@@ -955,6 +969,7 @@ public:
     // the generator: its class, and the function that makes one
     std::vector<IRP> lower_generator() {
         int line = f->node->pos.lineno;
+        dump_issues();
         for (auto& i : ev.issues) throw Refused(i.cls, i.detail, i.line);
         if (f->kind != "function") throw Refused("syntax", "a generator method", line);
         auto rt = p.returns.find(f->qname);
