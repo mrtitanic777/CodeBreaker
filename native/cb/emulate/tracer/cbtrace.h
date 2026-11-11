@@ -231,6 +231,14 @@ typedef struct cbt_w16_result {
     const uint64_t *lazy; int64_t nlazy;        /* CBT_LAZY_WORDS each */
 } cbt_w16_result;
 
+/* For a caller in this process: one handler with its own state in place of the four plain functions of the config
+ * (which carry none). `kind` says which event: the code hook's sentinel landing, a callee intercept, an interrupt, a
+ * recorded-system context's own code; the return values are those of the plain functions. `has_own`: the handler also
+ * answers kind OWN. Set after begin, before attach. */
+enum { CBT_W16_SENTINEL = 0, CBT_W16_INTERCEPT = 1, CBT_W16_INTERRUPT = 2, CBT_W16_OWN = 3 };
+typedef int (*cbt_w16_event_ctx)(void *user, int kind, int64_t a, int64_t n);
+CBT_API void cbt_w16_set_context(void *run, void *user, cbt_w16_event_ctx event, int has_own);
+
 CBT_API void *cbt_w16_begin(const cbt_w16_config *cfg);
 CBT_API int cbt_w16_attach(void *run);                  /* code, interrupt, memory, unmapped */
 CBT_API void cbt_w16_state(void *run, int64_t *out);    /* [0] hook_error, [1] uc_err, [2] gov_n */

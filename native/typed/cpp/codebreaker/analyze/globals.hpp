@@ -1,4 +1,6 @@
-// codebreaker/analyze/globals.hpp -- typed C++ port of codebreaker.analyze.globals.
+// codebreaker/analyze/globals.hpp -- COMPAT SHIM over cb/analyze/globals.hpp (docs/CPP_DESIGN.md 6.3): the engine of the
+// variables and tables is native/cb/analyze/globals.hpp; here the old shapes, with the DLL still answering the two
+// questions (COMPAT(py): remove when analyze/image is refactored and this is called on a cb::analyze::Image).
 //
 // globals.py -- a module's global variables and its initialised tables of addresses.
 //

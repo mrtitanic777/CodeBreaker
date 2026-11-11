@@ -88,7 +88,7 @@ cb_apply_flags(cb_worker_probe)
 target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 
 cb_area(verify)
-target_link_libraries(cb_verify PUBLIC cb_core)
+target_link_libraries(cb_verify PUBLIC cb_core cb_base)
 
 cb_area(app)
 target_link_libraries(cb_app PUBLIC cb_core)
@@ -184,6 +184,8 @@ add_library(cb_shim_check OBJECT
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/pre_ansi.cpp"
   "${CMAKE_CURRENT_LIST_DIR}/compat/shim_check_port.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/port/oldlayout.cpp"   # (uses the arith16 shim's records)
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/globals.cpp"
+  "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/analyze/ppc_calls.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/native.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/prototypes.cpp"
   "${CB_NATIVE_ROOT}/typed/cpp/codebreaker/symbols/ordinals.cpp"
