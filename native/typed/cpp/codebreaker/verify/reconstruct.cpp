@@ -7,6 +7,7 @@
 #include "codebreaker/verify/reconstruct.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <map>
 
 #include "codebreaker/base/corpus.hpp"
@@ -16,6 +17,7 @@
 #include "codebreaker/engine/facts.hpp"
 #include "codebreaker/engine/lanes.hpp"
 #include "codebreaker/jobs/pool.hpp"
+#include "codebreaker/jobs/workers.hpp"
 #include "codebreaker/store/functions.hpp"
 #include "codebreaker/symbols/names.hpp"
 #include "codebreaker/symbols/runtime_library.hpp"
@@ -91,7 +93,96 @@ bool engine_enabled() {
     return !v || *v != py::str("0");
 }
 
+// The items judged by worker processes: shares of them, `count` running at once, each a process of this program that reads its share from
+// a file and answers in another. An item whose worker gave no answer is judged "not run", as a dead worker's was.
+py::dict<py::str, Verdict> judge_in_processes(const Kind& kind, const py::str& lane, const std::string& context_text,
+                                              const py::list<std::tuple<py::str, Item>>& todo) {
+    namespace W = jobs::workers;
+    const int64_t workers = W::count();
+    const int64_t count = std::min<int64_t>(static_cast<int64_t>(todo.size()), workers * 4);
+    py::list<py::list<std::tuple<py::str, Item>>> shares;
+    for (int64_t k = 0; k < count; ++k) {
+        py::list<std::tuple<py::str, Item>> share;
+        for (int64_t i = k; i < static_cast<int64_t>(todo.size()); i += count) share.append(todo[i]);
+        shares.append(share);
+    }
+    auto one = [&](const py::list<std::tuple<py::str, Item>>& share) -> py::dict<py::str, Verdict> {
+        const std::string dir = W::scratch_folder();
+        W::write_file(dir + "\\context.txt", context_text);
+        std::string items;
+        for (const auto& it : share) items += W::Enc().s(std::get<0>(it).utf8()).s(kind.encode_item(std::get<1>(it))).text() + "\n";
+        W::write_file(dir + "\\items.txt", items);
+        W::run({"judge", W::hex(lane.utf8()), dir + "\\context.txt", dir + "\\items.txt", dir + "\\answer.txt"});
+        py::dict<py::str, Verdict> out;
+        const std::string answer = W::read_file(dir + "\\answer.txt");
+        size_t at = 0;
+        while (at < answer.size()) {
+            size_t nl = answer.find('\n', at);
+            if (nl == std::string::npos) nl = answer.size();
+            if (nl > at) {
+                W::Dec d(answer.substr(at, nl - at));
+                const py::str key(d.s());
+                const py::str verdict(d.s()), reason(d.s());
+                const std::string limits = d.s();
+                const py::str detail(d.s());
+                py::list<py::str> lim;
+                size_t p = 0;
+                while (p < limits.size()) {
+                    size_t c2 = limits.find(',', p);
+                    if (c2 == std::string::npos) c2 = limits.size();
+                    if (c2 > p) lim.append(py::str(limits.substr(p, c2 - p)));
+                    p = c2 + 1;
+                }
+                out.set(key, Verdict(verdict, reason, lim, detail));
+            }
+            at = nl + 1;
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+        for (const auto& it : share)
+            if (!out.contains(std::get<0>(it))) out.set(std::get<0>(it), NOT_RUN());
+        return out;
+    };
+    py::dict<py::str, Verdict> all;
+    for (const auto& part : jobs::pool::threads(one, shares, workers))
+        for (const auto& kv : part.items()) all.set(std::get<0>(kv), std::get<1>(kv));
+    return all;
+}
+
 }  // namespace
+
+int judge_worker(const std::vector<std::string>& args) {
+    namespace W = jobs::workers;
+    if (args.size() < 4) return 2;
+    const std::shared_ptr<Kind> kind = kind_named(py::str(W::unhex(args[0])));
+    const Context context = kind->decode_context(W::read_file(args[1]));
+    const std::string text = W::read_file(args[2]);
+    std::string out;
+    size_t at = 0;
+    while (at < text.size()) {
+        size_t nl = text.find('\n', at);
+        if (nl == std::string::npos) nl = text.size();
+        if (nl > at) {
+            W::Dec d(text.substr(at, nl - at));
+            const std::string key = d.s();
+            const Item item = kind->decode_item(d.s());
+            Verdict v = NOT_RUN();
+            try {
+                v = kind->judge(context, item);
+            } catch (const std::exception&) {
+                v = NOT_RUN();
+            }
+            std::string limits;
+            for (const py::str& l : std::get<2>(v)) limits += (limits.empty() ? "" : ",") + l.utf8();
+            out += W::Enc().s(key).s(std::get<0>(v).utf8()).s(std::get<1>(v).utf8()).s(limits).s(std::get<3>(v).utf8()).text() + "\n";
+        }
+        at = nl + 1;
+    }
+    W::write_file(args[3], out);
+    return 0;
+}
+
+namespace {}  // namespace
 
 void register_kind(const py::str& name, const std::shared_ptr<Kind>& kind) {
     for (auto& e : registry()) {
@@ -494,12 +585,19 @@ std::tuple<py::str, py::str> run(const py::str& module_path, const std::shared_p
         }
         jobs::pool::Options<std::tuple<py::str, Item>, Verdict> opts;
         opts.crashed = [](const std::tuple<py::str, Item>&) { return NOT_RUN(); };
-        // (the Python judged in worker processes; the emulators keep per-process state, so here one at a time)
+        // (the Python judged in worker processes; the emulators keep per-process state, so here too: processes of this program when it can
+        // start them and the lane says how its inputs travel, else one at a time in this one)
         if (!py::os::environ_::get(py::str("CB_JUDGE_THREADS"))) opts.jobs = 1;
         const Kind& kref = *kind;
-        py::dict<py::str, Verdict> judged = jobs::pool::run_first(
-            [&kref](const Context& context, const std::tuple<py::str, Item>& item) { return kref.judge(context, std::get<1>(item)); },
-            todo, built.context, opts);
+        py::dict<py::str, Verdict> judged;
+        const std::optional<std::string> context_text = jobs::workers::enabled() ? kref.encode_context(built.context) : std::nullopt;
+        if (context_text && todo.size() >= 4 && jobs::workers::count() > 1) {
+            judged = judge_in_processes(kref, *kind_name(module_path), *context_text, todo);
+        } else {
+            judged = jobs::pool::run_first(
+                [&kref](const Context& context, const std::tuple<py::str, Item>& item) { return kref.judge(context, std::get<1>(item)); },
+                todo, built.context, opts);
+        }
         for (const auto& kv : judged.items()) {
             const py::str& k = std::get<0>(kv);
             auto [verdict, reason, limits, detail] = std::get<1>(kv);

@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <optional>
 #include <tuple>
+#include <vector>
 
 #include "codebreaker/core16_types.hpp"
 #include "codebreaker/decompile/c_text.hpp"
@@ -87,5 +88,8 @@ py::list<Checked> check(const py::str& original, const py::str& folder, const py
                         const std::optional<py::list<lanes::win16::Vector>>& inputs = std::nullopt,
                         const std::optional<int64_t>& workers = std::nullopt, const std::optional<Tables>& tables = std::nullopt,
                         bool chain = false);
+
+// A worker process's share (jobs/workers): args = original, folder, image or "-", tables file, names file, answer file.
+int worker_main(const std::vector<std::string>& args);
 
 }  // namespace codebreaker::verify::gate16::isolated16
