@@ -22,6 +22,8 @@
 #pragma once
 
 #include <array>
+#include <map>
+#include <string>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -82,9 +84,9 @@ struct Loaded {
     py::str sha;                                                 // sha256 of the file
     py::dict<int64_t, std::tuple<py::str, py::str>> imports;     // iat_slot_va -> (dll, name) from the import directory
 };
-// used by: emulate.windows16, tests (test_native_trace)
-const Loaded& _load(const py::str& module);
-extern py::dict<py::str, Loaded> _LOADED;   // the name a module was asked for by -> the same, without asking the disk again
+// (a shared handle: the cache holds it, and a caller keeps it across later loads.)  used by: emulate.windows16, tests
+std::shared_ptr<const Loaded> _load(const py::str& module);
+extern py::dict<py::str, std::shared_ptr<const Loaded>> _LOADED;   // the name a module was asked for by -> the same, without asking the disk again
 
 // A func selector: None (first function), a section offset or VA, or a string ("0x...", decimal).
 using FuncSelector = std::variant<py::none_t, int64_t, py::str>;
@@ -98,7 +100,8 @@ struct ResolvedFunc {
 // Map a user-supplied func selector to the function's offset, base, code, end and section (memoized in _RESOLVED).
 // Raises ValueError for a module with no functions or no function at the address.  used by: verify.lanes.win32
 ResolvedFunc _resolve_func(const py::str& module, const FuncSelector& func);
-extern py::dict<std::tuple<py::str, FuncSelector>, ResolvedFunc> _RESOLVED;
+// (the memo is keyed by the Python's (module, func) pair: here a text made of the module and the selector's kind and value)
+extern std::map<std::string, ResolvedFunc> _RESOLVED;
 
 // --- stubbed APIs ------------------------------------------------------------------------------------------
 // [(place, value)] of an API's parameters through which it gives something back, by its declaration: a handle

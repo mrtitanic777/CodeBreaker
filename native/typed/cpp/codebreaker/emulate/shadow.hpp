@@ -123,10 +123,11 @@ class Shadow {
     int64_t pins = 0;
     int64_t steps = 0;
     bool off = false;
-    // a conditional jump awaiting its outcome: (site, target, fallthrough, entry of path or None, guess)
+    // a conditional jump awaiting its outcome: (site, target, fallthrough, the condition it makes in the path or None
+    // (null), the direction the specification says it goes)
     struct Pending {
         int64_t site = 0, target = 0, fall = 0;
-        std::optional<PathEntry> entry;
+        symbolic::ExprP entry;
         bool guess = false;
     };
     std::optional<Pending> pending;
@@ -161,7 +162,12 @@ class Shadow {
     void _step(powerpc::Machine& m, int64_t address, int64_t cs_base);
     void _unknown(const py::str& why);
     void _run(powerpc::Machine& m, int64_t address, int64_t cs_base, const pcode::Lifted& ins);
+    // One p-code operation of values (concrete, symbolic or None) -> (concrete, symbolic or None).  (module-level _arith)
+    std::pair<uint64_t, symbolic::ExprP> _arith(const std::string& opc, int64_t osize,
+                                                const std::vector<std::pair<uint64_t, symbolic::ExprP>>& vals,
+                                                const py::list<pcode::Input>& args);
     py::dict<py::str, symbolic::ExprP> sym_;                // Python: self._sym
+    SegBaseFn segbase_fn_;                                  // Python: self._segbase
 };
 
 // The shadow of one PowerPC run (emulate/powerpc.py run, `shadow`): a call out of the code given returns `ret`
