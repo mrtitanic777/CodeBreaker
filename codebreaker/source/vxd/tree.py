@@ -174,10 +174,13 @@ def emit_tree(v, name, outdir, max_ins=6000, probe_nasm=None, probe_wasm=None,
                 body = _converge_buildable(D, oi, lo, hi, extra, head, tail, probe)
             else:
                 body, _ = vxd_masm.object_body(D, oi, extra_labels=extra, crange=(lo, hi))
-            open(os.path.join(d, fn), "w").write("\r\n".join(head + body + tail))
+            # (a text-mode write turned each "\r\n" into "\r\r\n"; newline="" writes what is joined)
+            with open(os.path.join(d, fn), "w", newline="") as f:
+                f.write("\r\n".join(head + body + tail))
             written.append(fn)
             index.append(";   %-28s object %d %s [0x%x-0x%x)" % (fn, oi, seg, lo, hi))
-    open(os.path.join(d, "%s.txt" % name.lower()), "w").write("\r\n".join(index) + "\r\n")
+    with open(os.path.join(d, "%s.txt" % name.lower()), "w", newline="") as f:
+        f.write("\r\n".join(index) + "\r\n")
     return written
 
 
