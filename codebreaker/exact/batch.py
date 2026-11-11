@@ -90,7 +90,7 @@ def error_lines(con):
 def compile_many(prj, tc, srcs, rounds=3):
     """-> {index in srcs: (object, the function's index among the object's)} for the candidates compiled together;
     those missing are the caller's to prove alone"""
-    from codebreaker.exact import omf
+    from codebreaker.formats import omf
     want = list(range(len(srcs)))
     for _ in range(rounds):
         b = build([srcs[i] for i in want])

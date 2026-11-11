@@ -61,7 +61,8 @@ def candidates(text, mine, d):
 
 
 def _pascal(prj, verbose):
-    from codebreaker.exact import omf, pascal_join
+    from codebreaker.formats import omf
+    from codebreaker.exact import pascal_join
     rows = pascal_join.run(prj, False)
     out = []
     for label, pn, a, ln, verdict, notes in rows:
@@ -114,7 +115,7 @@ def _piece_of(c, h):
 
 def _sourced(prj, verbose):
     """the ledger's files (one function a file, or whole files): each differing function the note can mend"""
-    from codebreaker.exact import omf
+    from codebreaker.formats import omf
     out = []
     for part in prj.sets():
         tcs = part.toolchains()

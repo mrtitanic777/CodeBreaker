@@ -1,0 +1,87 @@
+{
+ "dos": {
+  "bytes_in_last_page": 294,
+  "checksum": 0,
+  "cs": 189,
+  "header_paragraphs": 32,
+  "header_size": 512,
+  "ip": 16,
+  "load_size": 3366,
+  "max_alloc": 68,
+  "min_alloc": 68,
+  "new_header": 0,
+  "overlay": 0,
+  "pages": 8,
+  "relocation_table": 30,
+  "relocations": 0,
+  "sp": 128,
+  "ss": 268
+ },
+ "exports": {
+  "count": 0,
+  "module": "",
+  "symbols": []
+ },
+ "format": "MZ",
+ "headers": {
+  "bytes_in_last_page": 294,
+  "checksum": 0,
+  "cs": 189,
+  "header_paragraphs": 32,
+  "header_size": 512,
+  "ip": 16,
+  "load_size": 3366,
+  "max_alloc": 68,
+  "min_alloc": 68,
+  "new_header": 0,
+  "overlay": 0,
+  "pages": 8,
+  "relocation_table": 30,
+  "relocations": 0,
+  "sp": 128,
+  "ss": 268
+ },
+ "imports": [],
+ "kind": "dos",
+ "name": "xcopy.exe",
+ "notes": [],
+ "ok": true,
+ "relocations": {
+  "entries": [],
+  "records": 0
+ },
+ "resources": {
+  "count": 0,
+  "types": []
+ },
+ "sections": [
+  {
+   "address": "0000:0000",
+   "code": true,
+   "file_offset": 512,
+   "file_size": 3366,
+   "flags": [],
+   "name": "program",
+   "size": 4454
+  }
+ ],
+ "size": 3878,
+ "summary": {
+  "code_bytes": 3366,
+  "description": "",
+  "entry": "00bd:0010",
+  "exports": 0,
+  "format": "MZ",
+  "image_base": 0,
+  "import_modules": 0,
+  "imports": 0,
+  "linked": "",
+  "linker": "",
+  "machine": "8086 (16-bit)",
+  "module": "xcopy.exe",
+  "resources": 0,
+  "sections": 1,
+  "subsystem": "DOS",
+  "type": "DOS program"
+ }
+}

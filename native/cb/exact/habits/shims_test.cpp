@@ -8,6 +8,7 @@
 #include "codebreaker/exact/emu/isis.hpp"
 #include "codebreaker/exact/emu/xenix.hpp"
 #include "codebreaker/exact/habits/boolx.hpp"
+#include "codebreaker/exact/habits/cmpp.hpp"
 #include "codebreaker/exact/habits/oldcomp.hpp"
 #include "codebreaker/exact/habits/symx.hpp"
 
@@ -115,3 +116,43 @@ CB_TEST("exact.emu.shims.xenix", [] {
 });
 
 }  // namespace
+
+CB_TEST("exact.habits.shims.cmpp", [] {
+    namespace cmpp = codebreaker::exact::habits::cmpp;
+    // walk and loose_bytes over the old layer's types
+    const py::bytes proc = py_bytes({0xE8, 0x10, 0x00, 0x07, 0x34, 0x12, 0xE8, 0x40, 0x00, 0xC3});
+    cmpp::HDRLEN = 3;
+    const py::list<cmpp::WalkItem> rows = cmpp::walk(proc, 0);
+    CB_CHECK_EQ(rows.size(), int64_t{4});
+    CB_CHECK_EQ(from_py(std::get<3>(rows[1])), "hdr");
+    CB_CHECK_EQ(from_py(std::get<2>(rows[1])), "db 0x07 ; dw 0x1234");
+    const py::set<int64_t> loose = cmpp::loose_bytes(proc);
+    CB_CHECK(loose.contains(7) && loose.contains(8));   // the call outside the procedure
+    cmpp::HDRLEN = 2;   // (pascal_join sets it from the toolchain)
+    CB_CHECK_EQ(from_py(std::get<2>(cmpp::walk(proc, 0)[1])), "dw 0x3407");
+    cmpp::HDRLEN = 3;
+    // main over a fake pcc and a ledger on disk
+    cb::fs::ScopedTempDir dir;
+    cb::fs::make_dirs(dir.path() / "habits");
+    cb::fs::make_dirs(dir.path() / "ledger");
+    cb::fs::write_file(dir.path() / "ledger" / "M.EXE.json", cb::to_bytes(R"({"0x00000": {"size": 10}})"));
+    cmpp::HERE = cb::compat::to_py(cb::path_text(dir.path() / "habits"));
+    cmpp::Pcc pcc;
+    pcc.image = [&](const py::str&) { return proc; };
+    pcc.compile_pas = [&](const py::str&) {
+        cmpp::CompileResult r;
+        r.code = proc;
+        r.procs.set(py::str("P00000"), std::make_tuple(int64_t{0}, int64_t{10}));
+        return r;
+    };
+    cmpp::set_pcc(pcc);
+    CB_CHECK_EQ(cmpp::main(py::list<py::str>{py::str("cmpp.py"), py::str("M.EXE"), py::str("0x0"), py::str("x.pas")}), int64_t{0});
+    // a procedure the compiler did not make: exit 2
+    cmpp::Pcc none;
+    none.image = pcc.image;
+    none.compile_pas = [](const py::str&) { return cmpp::CompileResult(); };
+    cmpp::set_pcc(none);
+    CB_CHECK_EQ(cmpp::main(py::list<py::str>{py::str("cmpp.py"), py::str("M.EXE"), py::str("0x0"), py::str("x.pas")}), int64_t{2});
+    cmpp::set_pcc(cmpp::Pcc{});   // (no pcc module: the import fails)
+    CB_CHECK_THROWS_AS(py::ImportError, cmpp::main(py::list<py::str>{py::str("cmpp.py"), py::str("M.EXE"), py::str("0x0"), py::str("x.pas")}));
+});

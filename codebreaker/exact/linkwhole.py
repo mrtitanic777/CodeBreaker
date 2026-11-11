@@ -101,7 +101,7 @@ def modules(prj):
 
 def _found(prj, raw):
     """the image address of the object's code: the one place its bytes (but those the linker fills in) are found"""
-    from codebreaker.exact import omf
+    from codebreaker.formats import omf
     o = omf.read(raw)
     cs = omf.code_segments(o) or [s for s, cls, ln, al in o.segs if o.filled.get(s)]
     code = bytes(o.seg[cs[0]][:o.filled.get(cs[0], 0)])

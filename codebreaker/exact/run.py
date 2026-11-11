@@ -42,7 +42,8 @@ def main(argv):
             print("%-12s %s  variants: %s" % (n, p.get("title", ""), ", ".join(sorted(p.get("variants", {}))) or "-"))
         return 0
     if argv[0] == "--compile":
-        from codebreaker.exact import toolchain, omf
+        from codebreaker.exact import toolchain
+        from codebreaker.formats import omf
         name, _, variant = argv[1].partition(":")
         tc = toolchain.load(name, variant or None)
         import os

@@ -140,10 +140,13 @@ public:
     // resources and the non-resident names are laid out after them and the tables pointed at the new places.
     Bytes standalone() const;
 
+    // The name table at file offset `offset` (resident and non-resident tables have the same layout).
+    std::vector<Name> read_name_table(std::uint64_t offset) const;
+    // A length-prefixed name of the resource table at `table` (a file offset), `offset` bytes into it.
+    std::string resource_string(std::uint64_t table, std::uint64_t offset) const;
+
 private:
     Module() = default;
-    std::vector<Name> read_name_table(std::uint64_t offset) const;
-    std::string resource_string(std::uint64_t table, std::uint64_t offset) const;
     std::uint64_t shifted(std::uint64_t value) const;
 
     Bytes data_;

@@ -1,4 +1,6 @@
-// codebreaker/formats/inspect.hpp -- typed C++ of codebreaker.formats.inspect (see inspect.cpp).
+// codebreaker/formats/inspect.hpp -- COMPAT shim for the old typed port of codebreaker.formats.inspect (deleted when its last
+// py:: consumer is refactored). The inspector is native/cb/formats/inspect.hpp; this header keeps the old records and the old
+// ordered tree (`Value`) that versions, ledger and reach use, and inspect.cpp converts. No logic.
 //
 // inspect.py -- everything an inspector shows about an executable, as one description.
 //

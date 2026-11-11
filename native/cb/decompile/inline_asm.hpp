@@ -63,7 +63,11 @@ struct Operand {
     std::uint16_t reg = 0;
     std::int64_t imm = 0;
     MemOperand mem;
+    std::uint8_t size = 0;     // the operand's width in bytes (Capstone's op.size)
+    std::uint8_t access = 0;   // what the instruction does with it: kAccessRead and/or kAccessWrite (Capstone's op.access)
 };
+inline constexpr std::uint8_t kAccessRead = 1;    // CS_AC_READ
+inline constexpr std::uint8_t kAccessWrite = 2;   // CS_AC_WRITE
 
 // One decoded instruction (the fields of Capstone's cs_insn this module reads).
 struct Instruction {
@@ -82,7 +86,20 @@ struct Instruction {
 // The instructions of `code`, as the code sits at `address`; decoding stops at the first byte that is not one.
 using Decoder = std::function<std::vector<Instruction>(ByteView code, std::uint32_t address)>;
 
-// The 16-bit x86 decoder (Capstone, Intel syntax, details on).
+// The 16-bit x86 decoder (Capstone, Intel syntax, details on). A Decoder16 holds Capstone's handle open: a pass that
+// decodes one instruction per statement makes one and asks it many times; decode16() is for a single use.
+class Decoder16 {
+public:
+    Decoder16();
+    ~Decoder16();
+    Decoder16(const Decoder16&) = delete;
+    Decoder16& operator=(const Decoder16&) = delete;
+
+    std::vector<Instruction> decode(ByteView code, std::uint32_t address) const;
+
+private:
+    std::size_t handle_ = 0;   // Capstone's csh
+};
 std::vector<Instruction> decode16(ByteView code, std::uint32_t address);
 
 // What the module's fix-ups say, by offset in the segment: the target's name (nullopt: the fix-up names nothing),

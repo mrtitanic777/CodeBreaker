@@ -1,0 +1,4 @@
+# library
+strlen  # 01800 the first
+memcpy !x  # 01900
+foo code=01a00 note

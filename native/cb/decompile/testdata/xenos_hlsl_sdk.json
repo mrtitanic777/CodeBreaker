@@ -1,0 +1,2950 @@
+[
+{
+"name": "branch_4",
+"stage": "pixel",
+"constants": [
+{
+"name": "Invert",
+"set": "bool",
+"register": 0,
+"count": 1,
+"cls": "scalar",
+"type": "bool",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": [
+1.401298464324817e-45,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "S",
+"set": "sampler",
+"register": 0,
+"count": 1,
+"cls": "object",
+"type": "sampler2D",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": null
+},
+{
+"name": "Threshold",
+"set": "float4",
+"register": 0,
+"count": 1,
+"cls": "scalar",
+"type": "float",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": [
+0.44999998807907104,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+],
+[
+1,
+"COLOR",
+0,
+15
+]
+],
+"outputs": [],
+"literals": {
+"252": [
+0.5,
+0.20000000298023224,
+-3.1415927410125732,
+0.0
+],
+"253": [
+0.699999988079071,
+0.10000000149011612,
+1.0,
+6.2831854820251465
+],
+"254": [
+0.6000000238418579,
+0.800000011920929,
+1.4323943853378296,
+3.0
+],
+"255": [
+0.8999999761581421,
+0.0,
+0.0,
+0.0
+]
+},
+"loop_literals": {},
+"words": [
+8198,
+1074139136,
+2952790016,
+2383880,
+1343099392,
+1409286144,
+16390,
+269725696,
+1442840576,
+4116,
+538251264,
+1442840576,
+10,
+269988352,
+301989888,
+0,
+538493952,
+570425344,
+3355508737,
+7105536,
+2768240640,
+3355508737,
+1797120,
+1979449600,
+3356295168,
+410060544,
+2701196800,
+3423084545,
+2401236616,
+2147500032,
+2953838592,
+402653250,
+3254780156,
+739246080,
+402653292,
+3791650816,
+3355508736,
+409738182,
+2332098044,
+3222274048,
+402653292,
+3791650816,
+2822766592,
+402653312,
+3254780157,
+336068608,
+414280902,
+2768305408,
+75628800,
+415656987,
+3758096898,
+3355770880,
+415591878,
+2869100032,
+1879048192,
+402653211,
+3791650816,
+3355901952,
+482395648,
+2684419328,
+2081423616,
+108,
+3791650817,
+3355705344,
+414280704,
+1711013888,
+3355705344,
+415657137,
+2382430205,
+3355967489,
+68906182,
+2332163325,
+343932928,
+27,
+3791650817,
+3356459008,
+855296,
+3791650816,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct branch_4_Input\n{\n    float4 TexCoord0 : TEXCOORD0;\n    float4 Color0 : COLOR0;\n};\n\nstruct branch_4_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nbranch_4_Output branch_4(branch_4_Input input)\n{\n    branch_4_Output output = (branch_4_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0;\n    float ps = 0.0;\n    bool p0 = false;\n    float4 t;\n    int skip_to = 0;\n    r0.xyzw = input.TexCoord0.xyzw;\n    r1.xyzw = input.Color0.xyzw;\n    if (skip_to <= 0)\n    {\n        r1.x = (float)(r0.x > Threshold);\n        p0 = 0.0 == 0.0 && r1.x != 0.0;\n        r1.x = (0.0 == 0.0 && r1.x != 0.0) ? 0.0 : 0.0 + 1.0;\n    }\n    if (skip_to <= 1 && !p0) { skip_to = 6; }\n    if (skip_to <= 2)\n    {\n        if (p0)\n        {\n            r0.xzw = r0.yyx * float3(3.0, 1.4323944, 3.0);\n        }\n        if (p0)\n        {\n            t = tex2Dlod(S, float4(r0.wx, 0.0, 0.0));\n            r2.xyzw = t.xyzw;\n        }\n        if (p0)\n        {\n            ps = 0.5 + r0.z;\n            r0.x = ps;\n        }\n        if (p0)\n        {\n            ps = frac(r0.x);\n            r0.x = ps;\n        }\n        if (p0)\n        {\n            r0.x = r0.x * 6.2831855 - 3.1415927;\n        }\n        if (p0)\n        {\n            ps = sin(r0.x);\n            r0.x = ps;\n        }\n    }\n    if (skip_to <= 3)\n    {\n        if (p0)\n        {\n            if (p0)\n            {\n                ps = 0.1 * r0.x;\n                r0.z = ps;\n            }\n            if (p0)\n            {\n                ps = r0.z;\n                r0.w = (float)(r0.y > 0.7);\n            }\n            if (p0)\n            {\n                ps = r2.w + ps;\n                r0.y = r0.z + r2.x;\n                r1.w = ps;\n            }\n            if (p0)\n            {\n                r0.xz = r2.yz * float2(0.8, 0.6) + r0.zz;\n            }\n            if (p0)\n            {\n                ps = (r0.w != 0.0) ? 0.0 : 1.0;\n                p0 = r0.w != 0.0;\n            }\n        }\n    }\n    if (skip_to <= 4 && !p0) { skip_to = 6; }\n    if (skip_to <= 5)\n    {\n        if (p0)\n        {\n            if (p0)\n            {\n                r0.xyz = -r0.xyz + (1.0).xxx;\n            }\n        }\n    }\n    if (skip_to <= 6)\n    {\n        ps = (r1.x == 1.0) ? 0.0 : (r1.x == 0.0 ? 1.0 : r1.x);\n        p0 = r1.x == 1.0;\n        r1.x = ps;\n    }\n    if (skip_to <= 7)\n    {\n        if (p0)\n        {\n            if (p0)\n            {\n                r0.z = (float)(0.2 > r0.x);\n            }\n            if (p0)\n            {\n                r0.z = (r0.z > 0.0) ? 0.9 : 0.1;\n            }\n        }\n    }\n    if (skip_to <= 8 && !Invert) { skip_to = 10; }\n    if (skip_to <= 9)\n    {\n        r1.w = -r1.w * 0.5 + 1.0;\n    }\n    if (skip_to <= 11)\n    {\n        ps = r1.w;\n        r0.w = ps;\n        output.Color0.xyzw = r0.yxzw;\n    }\n    return output;\n}\n",
+"samplers": [
+"S"
+],
+"inputs": [
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "branch_3",
+"stage": "vertex",
+"constants": [],
+"vertex_inputs": [
+[
+3,
+"POSITION",
+0
+],
+[
+4,
+"TEXCOORD",
+0
+],
+[
+5,
+"COLOR",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+],
+[
+1,
+"COLOR",
+0,
+15
+]
+],
+"literals": {},
+"loop_literals": {},
+"words": [
+1880436739,
+4608,
+3254779904,
+4102,
+4608,
+3288334336,
+8199,
+8704,
+0,
+100147200,
+1672,
+0,
+100143104,
+1672,
+0,
+100139008,
+1672,
+0,
+3356459070,
+0,
+3791782400,
+3356459008,
+0,
+3791716608,
+3356459009,
+0,
+3791650816,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct branch_3_Input\n{\n    float4 Position0 : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 Color0 : COLOR0;\n};\n\nstruct branch_3_Output\n{\n    float4 Position : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 Color0 : COLOR0;\n};\n\nbranch_3_Output branch_3(branch_3_Input input)\n{\n    branch_3_Output output = (branch_3_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0;\n    r2.xyzw = input.Position0.xyzw;\n    r1.xyzw = input.TexCoord0.xyzw;\n    r0.xyzw = input.Color0.xyzw;\n    output.Position.xyzw = r2.xyzw;\n    output.TexCoord0.xyzw = r1.xyzw;\n    output.Color0.xyzw = r0.xyzw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "literal_loop_2",
+"stage": "pixel",
+"constants": [
+{
+"name": "W",
+"set": "float4",
+"register": 0,
+"count": 4,
+"cls": "vector",
+"type": "float",
+"rows": 1,
+"columns": 4,
+"elements": 4,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+]
+],
+"outputs": [],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.5,
+0.10000000149011612,
+1.0,
+0.05000000074505806
+],
+"254": [
+0.0,
+4.0,
+0.25,
+3.0
+],
+"255": [
+2.0,
+0.0,
+0.0,
+0.0
+]
+},
+"loop_literals": {
+"30": 3,
+"31": 10
+},
+"words": [
+4102,
+332288,
+1879048223,
+24583,
+269292032,
+301989888,
+2031618,
+269386752,
+301989888,
+1966089,
+806318080,
+301989888,
+1966087,
+33792,
+3288334336,
+8210,
+8704,
+0,
+546242561,
+90991724,
+2776694400,
+2822766592,
+195,
+3254780158,
+742391808,
+198,
+3791650816,
+2819621376,
+130,
+3254780158,
+806355456,
+108,
+3791650818,
+1544028160,
+1820268,
+2684419330,
+3356426242,
+2684399872,
+553712896,
+3356426241,
+27648,
+3942776833,
+339738624,
+108,
+3254780159,
+336592896,
+198,
+3791650816,
+2819883520,
+7084800,
+2147548925,
+3355574273,
+7123377,
+3942776833,
+3356426240,
+27648,
+2701262080,
+3356459008,
+0,
+3892314112,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct literal_loop_2_Input\n{\n    float4 TexCoord0 : TEXCOORD0;\n};\n\nstruct literal_loop_2_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nliteral_loop_2_Output literal_loop_2(literal_loop_2_Input input)\n{\n    literal_loop_2_Output output = (literal_loop_2_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0;\n    int a0 = 0;\n    int aL = 0;\n    float s;\n    r0.xyzw = input.TexCoord0.xyzw;\n    r1.xyzw = (float4)(-abs(r0.xxxx) > (0.0).xxxx);\n    r0.w = (-abs(r0.x) > 0.0) ? 1.0 : 0.0;\n    [loop] for (int i0 = 0; i0 < 10; i0++)\n    {\n        aL = 0;\n        r0.z = 0.25 * r0.w;\n        r0.z = frac(r0.z);\n        r2.x = 4.0 * r0.z;\n        r2.x = trunc(r2.x);\n        a0 = (int)round(r2.x);\n        r0.w = r0.w + 1.0;\n        r2.xyzw = W[a0].xyzw * (0.1).xxxx;\n        r1.xyzw = r2.xyzw * r0.xxxx + r1.xyzw;\n    }\n    r0.z = 2.0;\n    [loop] for (int i0 = 0; i0 < 3; i0++)\n    {\n        aL = 0;\n        r0.x = r0.z;\n        s = 0.05 * r0.x;\n        r0.z = r0.x + 3.0;\n        r2.x = s;\n        r1.y = r2.x * r0.y + r1.y;\n    }\n    r0.xyzw = r1.xyzw * (0.5).xxxx;\n    output.Color0.xyzw = frac(r0.xyzw);\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"TexCoord0",
+"TEXCOORD0"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "literal_loop_1",
+"stage": "vertex",
+"constants": [],
+"vertex_inputs": [
+[
+3,
+"POSITION",
+0
+],
+[
+4,
+"TEXCOORD",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+]
+],
+"literals": {},
+"loop_literals": {},
+"words": [
+805642243,
+4608,
+3254779904,
+4101,
+4608,
+3288334336,
+4102,
+8704,
+0,
+100143104,
+1672,
+0,
+100139008,
+1672,
+0,
+3356459070,
+0,
+3791716608,
+3356459008,
+0,
+3791650816,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct literal_loop_1_Input\n{\n    float4 Position0 : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n};\n\nstruct literal_loop_1_Output\n{\n    float4 Position : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n};\n\nliteral_loop_1_Output literal_loop_1(literal_loop_1_Input input)\n{\n    literal_loop_1_Output output = (literal_loop_1_Output)0;\n    float4 r0 = 0.0, r1 = 0.0;\n    r1.xyzw = input.Position0.xyzw;\n    r0.xyzw = input.TexCoord0.xyzw;\n    output.Position.xyzw = r1.xyzw;\n    output.TexCoord0.xyzw = r0.xyzw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "loop_2",
+"stage": "pixel",
+"constants": [
+{
+"name": "Steps",
+"set": "int4",
+"register": 0,
+"count": 1,
+"cls": "scalar",
+"type": "int",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": [
+4.203895392974451e-45,
+0.0,
+1.401298464324817e-45,
+0.0
+]
+},
+{
+"name": "Weights",
+"set": "float4",
+"register": 0,
+"count": 4,
+"cls": "vector",
+"type": "float",
+"rows": 1,
+"columns": 4,
+"elements": 4,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+]
+],
+"outputs": [],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"254": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"255": [
+0.10000000149011612,
+0.20000000298023224,
+0.30000001192092896,
+0.05000000074505806
+]
+},
+"loop_literals": {},
+"words": [
+20483,
+266752,
+1879048208,
+4104,
+135680,
+2214592528,
+0,
+269075456,
+570425344,
+3355901954,
+7127040,
+2684419840,
+3356426241,
+12976128,
+2701263616,
+3356426241,
+11599872,
+2869035521,
+3356426241,
+7115924,
+2869035265,
+3356426241,
+7078136,
+2868903937,
+3355574273,
+11606961,
+2868969217,
+3356459008,
+0,
+3892379648,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct loop_2_Input\n{\n    float4 TexCoord0 : TEXCOORD0;\n};\n\nstruct loop_2_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nloop_2_Output loop_2(loop_2_Input input)\n{\n    loop_2_Output output = (loop_2_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0;\n    int aL = 0;\n    r0.xyzw = input.TexCoord0.xyzw;\n    r2.xyz = r0.xxx + float3(0.1, 0.2, 0.3);\n    r1.xyzw = r2.zzzz * Weights[3].xyzw;\n    r1.xyzw = r2.yyyy * Weights[2].xyzw + r1.xyzw;\n    r1.xyzw = r2.xxxx * Weights[1].xzwy + r1.xzwy;\n    r1.xyzw = r0.xxxx * Weights[0].xyzw + r1.xwyz;\n    [loop] for (int i0 = 0; i0 < Steps; i0++)\n    {\n        aL = 0;\n        r1.y = r0.y * 0.05 + r1.y;\n    }\n    output.Color0.xyzw = frac(r1.xyzw);\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"TexCoord0",
+"TEXCOORD0"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "loop_1",
+"stage": "vertex",
+"constants": [],
+"vertex_inputs": [
+[
+3,
+"POSITION",
+0
+],
+[
+4,
+"TEXCOORD",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+]
+],
+"literals": {},
+"loop_literals": {},
+"words": [
+805642243,
+4608,
+3254779904,
+4101,
+4608,
+3288334336,
+4102,
+8704,
+0,
+100143104,
+1672,
+0,
+100139008,
+1672,
+0,
+3356459070,
+0,
+3791716608,
+3356459008,
+0,
+3791650816,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct loop_1_Input\n{\n    float4 Position0 : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n};\n\nstruct loop_1_Output\n{\n    float4 Position : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n};\n\nloop_1_Output loop_1(loop_1_Input input)\n{\n    loop_1_Output output = (loop_1_Output)0;\n    float4 r0 = 0.0, r1 = 0.0;\n    r1.xyzw = input.Position0.xyzw;\n    r0.xyzw = input.TexCoord0.xyzw;\n    output.Position.xyzw = r1.xyzw;\n    output.TexCoord0.xyzw = r0.xyzw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "math_2",
+"stage": "pixel",
+"constants": [
+{
+"name": "Axis",
+"set": "float4",
+"register": 1,
+"count": 1,
+"cls": "vector",
+"type": "float",
+"rows": 1,
+"columns": 3,
+"elements": 1,
+"default": [
+0.20000000298023224,
+0.699999988079071,
+0.4000000059604645,
+0.0
+]
+},
+{
+"name": "Scale",
+"set": "float4",
+"register": 0,
+"count": 1,
+"cls": "scalar",
+"type": "float",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": [
+1.5,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+],
+[
+1,
+"TEXCOORD",
+1,
+15
+],
+[
+2,
+"COLOR",
+0,
+15
+]
+],
+"outputs": [],
+"literals": {
+"248": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"249": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"250": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"251": [
+2.0,
+3.0,
+0.366056352853775,
+0.4000000059604645
+],
+"252": [
+6.2831854820251465,
+0.30000001192092896,
+-0.5,
+0.10000000149011612
+],
+"253": [
+0.5,
+0.1666666716337204,
+1.0,
+-3.1415927410125732
+],
+"254": [
+0.49338027834892273,
+1.6666666269302368,
+4.0,
+-0.3333333432674408
+],
+"255": [
+0.5,
+2.200000047683716,
+0.699999988079071,
+1.0
+]
+},
+"loop_literals": {},
+"words": [
+0,
+1610925056,
+301989888,
+24586,
+1611665920,
+301989888,
+24598,
+1612452352,
+301989888,
+20514,
+8704,
+0,
+2820671744,
+193,
+3254780155,
+371065603,
+7142508,
+553713153,
+336527367,
+83388593,
+2684550912,
+76480772,
+7674395,
+2147613951,
+335806469,
+11606892,
+2785082112,
+202835457,
+13198700,
+2164523264,
+1075642377,
+355355,
+3775070337,
+3356360710,
+20358908,
+2869166337,
+354550536,
+12983148,
+2685009414,
+3355967489,
+78736561,
+2332621819,
+340132609,
+12348593,
+2685009664,
+411108097,
+12829622,
+4026926595,
+1477640453,
+12910700,
+3892379777,
+742851585,
+1403931,
+3775267081,
+337904387,
+12500588,
+2952855940,
+344064772,
+46054939,
+2952855811,
+337511430,
+16559291,
+2701523971,
+2689009669,
+12589745,
+2684812672,
+1478232068,
+11306604,
+3758359685,
+3355901953,
+96476096,
+3405841409,
+3355901953,
+12610580,
+2869034759,
+1076496387,
+12367468,
+3775399939,
+3222538248,
+1776561,
+3775070469,
+336396295,
+15790257,
+2701721344,
+205651968,
+1776561,
+3221620731,
+881328129,
+11645382,
+3775332352,
+942081793,
+12628422,
+3774939143,
+941817860,
+28339308,
+2684878598,
+3293511681,
+198,
+3758162437,
+3356360704,
+109820,
+2868968708,
+2820604673,
+27840,
+2164391935,
+3356000256,
+1797120,
+2684485376,
+3355901952,
+1425408,
+3758097152,
+3355901952,
+12582912,
+3892314112,
+3355934720,
+12610752,
+2868969217,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct math_2_Input\n{\n    float4 TexCoord0 : TEXCOORD0;\n    float4 TexCoord1 : TEXCOORD1;\n    float4 Color0 : COLOR0;\n};\n\nstruct math_2_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nmath_2_Output math_2(math_2_Input input)\n{\n    math_2_Output output = (math_2_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0, r3 = 0.0, r4 = 0.0, r5 = 0.0, r6 = 0.0, r7 = 0.0, r8 = 0.0, r9 = 0.0;\n    float ps = 0.0;\n    r0.xyzw = input.TexCoord0.xyzw;\n    r1.xyzw = input.TexCoord1.xyzw;\n    r2.xyzw = input.Color0.xyzw;\n    ps = 0.36605635 * r0.y;\n    r9.y = ps;\n    ps = r1.x;\n    r3.yzw = ((float3)Scale) * float3(0.49338028, 1.6666666, 4.0);\n    r3.x = saturate(ps);\n    ps = r0.y;\n    r7.xyzw = -r2.xwyz + float4(0.5, 1.0, 0.5, 0.5);\n    ps = 1.0 + ps;\n    r4.xyzw = r1.yzyx + float4(-0.5, 0.1, 0.1, 0.1);\n    r1.w = ps;\n    ps = r0.x;\n    r5.z = (float)(r0.y >= 0.4);\n    ps = Scale * ps;\n    r1.xyz = r4.ywz * Axis.yzx;\n    r6.x = ps;\n    ps = log2(abs(r1.w));\n    r9.xzw = r3.yzw * r0.xxx;\n    r0.x = ps;\n    r6.yzw = r4.zyw * Axis.zxy - r1.xyz;\n    ps = r6.x;\n    r8.y = saturate(r9.z - 0.33333334);\n    r3.y = ps;\n    r1.w = -r8.y * 2.0 + 3.0;\n    ps = r0.y;\n    r1.yz = r9.xy + (0.5).xx;\n    r3.z = ps;\n    ps = min(r3.y, r3.z);\n    r1.x = dot(r6.wyz, r6.wyz);\n    r3.w = ps;\n    ps = rsqrt(abs(r1.x));\n    r5.xy = frac(r1.yz);\n    r1.x = ps;\n    ps = frac(r9.w);\n    r1.xyz = r6.yzw * r1.xxx;\n    r4.z = ps;\n    ps = abs(r4.x);\n    r3.z = dot(r1.zxy, Axis.zxy);\n    r3.y = ps;\n    ps = r3.w;\n    r4.y = dot(r1.zxy, -Axis.zxy);\n    r3.w = ps;\n    ps = max(r3.y, r3.w);\n    r6.yzw = r5.xyz * float3(6.2831855, 6.2831855, 0.3);\n    r4.x = ps;\n    ps = sqrt(abs(r0.y));\n    r5.xyz = r6.xyz + float3(1.0, -3.1415927, -3.1415927);\n    r8.z = ps;\n    ps = rsqrt(abs(r5.x));\n    r4.zw = r4.xy + r4.zy;\n    r8.x = ps;\n    r1.xyz = -r1.xyz * r4.www - Axis.xyz;\n    r1.xyz = r1.xyz * (0.5).xxx + r7.xzw;\n    ps = log2(r3.x);\n    r3.yw = r8.xy * r8.zy;\n    r8.y = ps;\n    ps = sin(r5.y);\n    r8.z = r3.w * r1.w;\n    r8.x = ps;\n    ps = r0.y;\n    r7.xzw = r8.xyz * float3(0.5, 2.2, 0.7);\n    ps = 3.0 * ps;\n    r0.y = r6.w + r7.w;\n    r0.z = ps;\n    ps = floor(r0.z);\n    r1.w = r7.y * r0.y;\n    r0.w = ps;\n    ps = exp2(r7.z);\n    r1.xyz = r1.xyz * r0.yyy;\n    r7.y = ps;\n    ps = exp2(-r6.x);\n    r4.xy = r7.xy + (0.5).xx;\n    r0.y = ps;\n    ps = cos(r5.z);\n    r1.xyzw = r1.xyzw + r2.xyzw;\n    r0.z = ps;\n    r0.yzw = r0.yzw * float3(0.5, 0.5, 0.16666667) + r4.xyz;\n    ps = 0.7 * r0.x;\n    r1.xyzw = r1.xyzw * (0.5).xxxx;\n    r3.x = ps;\n    output.Color0.w = r1.w + 0.5;\n    r0.xyz = r0.yzw + r3.xyz;\n    r0.xyz = frac(r0.xyz);\n    output.Color0.xyz = r0.xyz * (0.5).xxx + r1.xyz;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"TexCoord1",
+"TEXCOORD1"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "math_1",
+"stage": "vertex",
+"constants": [],
+"vertex_inputs": [
+[
+3,
+"POSITION",
+0
+],
+[
+4,
+"TEXCOORD",
+0
+],
+[
+5,
+"TEXCOORD",
+1
+],
+[
+6,
+"COLOR",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"TEXCOORD",
+0,
+15
+],
+[
+1,
+"TEXCOORD",
+1,
+15
+],
+[
+2,
+"COLOR",
+0,
+15
+]
+],
+"literals": {},
+"loop_literals": {},
+"words": [
+4032118787,
+4608,
+3254779904,
+4103,
+4608,
+3288334336,
+12296,
+8704,
+0,
+100151296,
+1672,
+0,
+100147200,
+1672,
+0,
+100143104,
+1672,
+0,
+100139008,
+1672,
+0,
+3356459070,
+0,
+3791848192,
+3356459008,
+0,
+3791782400,
+3356459009,
+0,
+3791716608,
+3356459010,
+0,
+3791650816,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct math_1_Input\n{\n    float4 Position0 : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 TexCoord1 : TEXCOORD1;\n    float4 Color0 : COLOR0;\n};\n\nstruct math_1_Output\n{\n    float4 Position : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 TexCoord1 : TEXCOORD1;\n    float4 Color0 : COLOR0;\n};\n\nmath_1_Output math_1(math_1_Input input)\n{\n    math_1_Output output = (math_1_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0, r3 = 0.0;\n    r3.xyzw = input.Position0.xyzw;\n    r2.xyzw = input.TexCoord0.xyzw;\n    r1.xyzw = input.TexCoord1.xyzw;\n    r0.xyzw = input.Color0.xyzw;\n    output.Position.xyzw = r3.xyzw;\n    output.TexCoord0.xyzw = r2.xyzw;\n    output.TexCoord1.xyzw = r1.xyzw;\n    output.Color0.xyzw = r0.xyzw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"TexCoord1",
+"TEXCOORD1"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"TexCoord1",
+"TEXCOORD1"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "rowmajor_2",
+"stage": "pixel",
+"constants": [],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"COLOR",
+0,
+15
+]
+],
+"outputs": [],
+"literals": {},
+"loop_literals": {},
+"words": [
+0,
+268551168,
+570425344,
+3356459008,
+0,
+3791650816,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct rowmajor_2_Input\n{\n    float4 Color0 : COLOR0;\n};\n\nstruct rowmajor_2_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nrowmajor_2_Output rowmajor_2(rowmajor_2_Input input)\n{\n    rowmajor_2_Output output = (rowmajor_2_Output)0;\n    float4 r0 = 0.0;\n    r0.xyzw = input.Color0.xyzw;\n    output.Color0.xyzw = r0.xyzw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "rowmajor_1",
+"stage": "vertex",
+"constants": [
+{
+"name": "V",
+"set": "float4",
+"register": 4,
+"count": 4,
+"cls": "matrix_rows",
+"type": "float",
+"rows": 4,
+"columns": 4,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "W",
+"set": "float4",
+"register": 0,
+"count": 4,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 4,
+"columns": 4,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [
+[
+3,
+"POSITION",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"COLOR",
+0,
+15
+]
+],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"254": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"255": [
+0.30000001192092896,
+0.8999999761581421,
+0.6000000238418579,
+0.0
+]
+},
+"loop_literals": {},
+"words": [
+268505091,
+4608,
+3254779904,
+24580,
+537530880,
+301989888,
+0,
+806142976,
+570425344,
+100139008,
+1672,
+0,
+3355508737,
+10987264,
+2936012800,
+3355574273,
+10987264,
+2936013056,
+3355705345,
+10987264,
+2936013312,
+3355508736,
+10987264,
+2936013568,
+3356426240,
+7112704,
+2701133568,
+3356426240,
+13010944,
+2868971008,
+3356426240,
+11613332,
+2868970752,
+3356459070,
+7077940,
+2868970496,
+3356426240,
+45312,
+185007879,
+3356426240,
+3458612,
+721813248,
+3356459008,
+27700,
+721747712,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct rowmajor_1_Input\n{\n    float4 Position0 : POSITION0;\n};\n\nstruct rowmajor_1_Output\n{\n    float4 Position : POSITION0;\n    float4 Color0 : COLOR0;\n};\n\nrowmajor_1_Output rowmajor_1(rowmajor_1_Input input)\n{\n    rowmajor_1_Output output = (rowmajor_1_Output)0;\n    float4 r0 = 0.0, r1 = 0.0;\n    r0.xyzw = input.Position0.xyzw;\n    r1.x = dot(r0.wzxy, W._m30_m20_m00_m10);\n    r1.y = dot(r0.wzxy, W._m31_m21_m01_m11);\n    r1.z = dot(r0.wzxy, W._m32_m22_m02_m12);\n    r0.x = dot(r0.wzxy, W._m33_m23_m03_m13);\n    r0.xyzw = r0.xxxx * V._m30_m33_m32_m31;\n    r0.xyzw = r1.zzzz * V._m20_m23_m22_m21 + r0.xyzw;\n    r0.xyzw = r1.yyyy * V._m10_m12_m11_m13 + r0.xzwy;\n    output.Position.xyzw = r1.xxxx * V._m00_m01_m02_m03 + r0.xzyw;\n    r0.xyzw = V._m20_m21_m22_m23 * (0.9).xxxx + V._m30_m31_m32_m33;\n    r0.xyzw = V._m10_m12_m11_m13 * (0.6).xxxx + r0.xzyw;\n    output.Color0.xyzw = V._m00_m01_m02_m03 * (0.3).xxxx + r0.xzyw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "skinned_5",
+"stage": "pixel",
+"constants": [
+{
+"name": "LightDir",
+"set": "float4",
+"register": 0,
+"count": 1,
+"cls": "vector",
+"type": "float",
+"rows": 1,
+"columns": 3,
+"elements": 1,
+"default": [
+0.0,
+1.0,
+0.0,
+0.0
+]
+},
+{
+"name": "S1",
+"set": "sampler",
+"register": 0,
+"count": 1,
+"cls": "object",
+"type": "sampler2D",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": null
+},
+{
+"name": "S2",
+"set": "sampler",
+"register": 1,
+"count": 1,
+"cls": "object",
+"type": "sampler2D",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": null
+}
+],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"TEXCOORD",
+0,
+3
+],
+[
+1,
+"TEXCOORD",
+1,
+7
+],
+[
+2,
+"TEXCOORD",
+2,
+1
+],
+[
+3,
+"TEXCOORD",
+5,
+3
+],
+[
+4,
+"COLOR",
+0,
+15
+]
+],
+"outputs": [],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"254": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"255": [
+1.0,
+0.0,
+0.019999999552965164,
+0.0
+]
+},
+"loop_literals": {},
+"words": [
+335874,
+4608,
+3288334336,
+24580,
+1074401792,
+570425344,
+268959745,
+522188424,
+16384,
+270028897,
+522188424,
+16384,
+3355509763,
+12500480,
+4026597632,
+1477444356,
+108,
+3791914115,
+336462851,
+65900,
+3774874885,
+203293442,
+7142508,
+2701328388,
+336462851,
+65900,
+3775071235,
+219218692,
+12828268,
+4026663168,
+3356427268,
+27648,
+3775071232,
+3089039619,
+83913927,
+2147811327,
+3355444228,
+11627520,
+2046755072,
+3356459008,
+27648,
+3942842884,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct skinned_5_Input\n{\n    float4 TexCoord0 : TEXCOORD0;\n    float4 TexCoord1 : TEXCOORD1;\n    float4 TexCoord2 : TEXCOORD2;\n    float4 TexCoord5 : TEXCOORD5;\n    float4 Color0 : COLOR0;\n};\n\nstruct skinned_5_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nskinned_5_Output skinned_5(skinned_5_Input input)\n{\n    skinned_5_Output output = (skinned_5_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0, r3 = 0.0, r4 = 0.0, r5 = 0.0;\n    float ps = 0.0;\n    float4 t;\n    r0.xy = input.TexCoord0.xy;\n    r1.xyz = input.TexCoord1.xyz;\n    r2.x = input.TexCoord2.x;\n    r3.xy = input.TexCoord5.xy;\n    r4.xyzw = input.Color0.xyzw;\n    t = tex2D(S1, r0.xy);\n    r0.xyzw = t.xyzw;\n    t = tex2D(S2, r3.xy);\n    r5.xyzw = t.xyzw;\n    r3.x = dot(r1.zxy, r1.zxy);\n    ps = rsqrt(abs(r3.x));\n    r3.x = ps;\n    ps = r5.x;\n    r3.yzw = r0.yzw * r5.yzw;\n    ps = r4.x * ps;\n    r2.yzw = r3.xxx * LightDir.xyz;\n    r3.x = ps;\n    ps = r3.x;\n    r3.yzw = r3.yzw * r4.yzw;\n    ps = r0.x * ps;\n    r4.x = saturate(dot(r2.wyz, r1.zxy));\n    r3.x = ps;\n    r4.xyzw = r3.xyzw * r4.xxxx;\n    ps = -0.02 + r4.w;\n    r3.xyzw = -r4.xyzw + (1.0).xxxx;\n    r1.x = ps;\n    if (0.0 > r1.x) discard;\n    output.Color0.xyzw = r3.xyzw * r2.xxxx + r4.xyzw;\n    return output;\n}\n",
+"samplers": [
+"S1",
+"S2"
+],
+"inputs": [
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"TexCoord1",
+"TEXCOORD1"
+],
+[
+"TexCoord2",
+"TEXCOORD2"
+],
+[
+"TexCoord5",
+"TEXCOORD5"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "skinned_4",
+"stage": "vertex",
+"constants": [
+{
+"name": "Bones",
+"set": "float4",
+"register": 8,
+"count": 60,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 4,
+"columns": 3,
+"elements": 20,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "UseFog",
+"set": "float4",
+"register": 68,
+"count": 1,
+"cls": "scalar",
+"type": "bool",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "ViewProj",
+"set": "float4",
+"register": 4,
+"count": 4,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 4,
+"columns": 4,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "World",
+"set": "float4",
+"register": 0,
+"count": 4,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 4,
+"columns": 4,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [
+[
+5,
+"POSITION",
+0
+],
+[
+6,
+"NORMAL",
+0
+],
+[
+7,
+"TEXCOORD",
+0
+],
+[
+8,
+"TEXCOORD",
+3
+],
+[
+9,
+"COLOR",
+1
+],
+[
+10,
+"BLENDINDICES",
+0
+],
+[
+11,
+"BLENDWEIGHT",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"TEXCOORD",
+0,
+3
+],
+[
+1,
+"TEXCOORD",
+1,
+7
+],
+[
+2,
+"TEXCOORD",
+2,
+1
+],
+[
+3,
+"TEXCOORD",
+5,
+3
+],
+[
+4,
+"COLOR",
+0,
+15
+]
+],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"254": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"255": [
+3.0,
+0.0,
+0.009999999776482582,
+0.0
+]
+},
+"loop_literals": {},
+"words": [
+4116013061,
+269160963,
+301993985,
+0,
+1611448832,
+301989888,
+24594,
+1612190208,
+301989888,
+12318,
+4608,
+3288334336,
+24609,
+539431424,
+570425344,
+100159488,
+1672,
+0,
+100143104,
+3720,
+0,
+100139008,
+575,
+0,
+100151296,
+4040,
+0,
+100147200,
+1672,
+0,
+100155392,
+4040,
+0,
+100151296,
+575,
+0,
+3355639808,
+11534336,
+3909353472,
+3355639812,
+11561984,
+2701197056,
+1544028164,
+7123377,
+2793471748,
+3356426248,
+2686124032,
+2701330432,
+3356426247,
+2686124032,
+2701330688,
+1544486918,
+2686124140,
+2701330948,
+3356426246,
+2697330688,
+2869103110,
+3356426247,
+2697330688,
+2869102855,
+3356426248,
+2697330688,
+2869102600,
+3355508740,
+10987264,
+4010280192,
+3355574276,
+10987264,
+4010214656,
+3355705348,
+10987264,
+4010149120,
+3355508741,
+4079104,
+1862272000,
+3355574277,
+4079104,
+1862337536,
+3355705349,
+4079104,
+1862403072,
+3355967493,
+4079104,
+1862468608,
+3355967492,
+10987264,
+2936342272,
+3355705348,
+10987264,
+2936342016,
+3355574276,
+10987264,
+2936341760,
+3355508740,
+10987264,
+2936341504,
+3356459070,
+0,
+3791913984,
+3355574272,
+13026816,
+2701459200,
+2819653634,
+65,
+3254779972,
+3355672579,
+11579392,
+3791848192,
+3355672576,
+1710592,
+3791650816,
+3356459012,
+0,
+3791782400,
+3355541505,
+12500480,
+2952855552,
+3355607041,
+12500480,
+2952855808,
+3355738113,
+12500480,
+2952856064,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct skinned_4_Input\n{\n    float4 Position0 : POSITION0;\n    float4 Normal0 : NORMAL0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 TexCoord3 : TEXCOORD3;\n    float4 Color1 : COLOR1;\n    float4 BlendIndices0 : BLENDINDICES0;\n    float4 BlendWeight0 : BLENDWEIGHT0;\n};\n\nstruct skinned_4_Output\n{\n    float4 Position : POSITION0;\n    float4 TexCoord2 : TEXCOORD2;\n    float4 TexCoord5 : TEXCOORD5;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 Color0 : COLOR0;\n    float4 TexCoord1 : TEXCOORD1;\n};\n\nskinned_4_Output skinned_4(skinned_4_Input input)\n{\n    skinned_4_Output output = (skinned_4_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0, r3 = 0.0, r4 = 0.0, r5 = 0.0, r6 = 0.0, r7 = 0.0, r8 = 0.0;\n    int a0 = 0;\n    r5.xyzw = input.Position0.xyzw;\n    r1.xyz = input.Normal0.xyz;\n    r0.zw = input.TexCoord0.xy;\n    r3.xy = input.TexCoord3.xy;\n    r2.xyzw = input.Color1.xyzw;\n    r4.xy = input.BlendIndices0.xy;\n    r3.zw = input.BlendWeight0.xy;\n    r0.xy = trunc(r4.xy);\n    r4.xy = r0.xy * (3.0).xx;\n    a0 = (int)round(r4.y);\n    r4.w = (float)(abs(r0.x) >= 0.0);\n    r8.xyzw = r3.wwww * Bones[a0 / 3]._m00_m10_m20_m30;\n    r7.xyzw = r3.wwww * Bones[a0 / 3]._m01_m11_m21_m31;\n    r6.xyzw = r3.wwww * Bones[a0 / 3]._m02_m12_m22_m32;\n    a0 = (int)round(r4.x);\n    r6.xyzw = r3.zzzz * Bones[a0 / 3]._m02_m12_m22_m32 + r6.xyzw;\n    r7.xyzw = r3.zzzz * Bones[a0 / 3]._m01_m11_m21_m31 + r7.xyzw;\n    r8.xyzw = r3.zzzz * Bones[a0 / 3]._m00_m10_m20_m30 + r8.xyzw;\n    r4.x = dot(r8.wzxy, r5.wzxy);\n    r4.y = dot(r7.wzxy, r5.wzxy);\n    r4.z = dot(r6.wzxy, r5.wzxy);\n    r5.x = dot(World._m20_m00_m10_m30, r4.zxyw);\n    r5.y = dot(World._m21_m01_m11_m31, r4.zxyw);\n    r5.z = dot(World._m22_m02_m12_m32, r4.zxyw);\n    r5.w = dot(World._m23_m03_m13_m33, r4.zxyw);\n    r4.w = dot(r5.wzxy, ViewProj._m33_m23_m03_m13);\n    r4.z = dot(r5.wzxy, ViewProj._m32_m22_m02_m12);\n    r4.y = dot(r5.wzxy, ViewProj._m31_m21_m01_m11);\n    r4.x = dot(r5.wzxy, ViewProj._m30_m20_m00_m10);\n    output.Position.xyzw = r4.xyzw;\n    r0.y = r4.z * 0.01;\n    output.TexCoord2.x = (float)UseFog * r0.y;\n    output.TexCoord5.xy = r3.xy;\n    output.TexCoord0.xy = r0.zw;\n    output.Color0.xyzw = r2.xyzw;\n    output.TexCoord1.x = dot(r1.zxy, World._m20_m00_m10);\n    output.TexCoord1.y = dot(r1.zxy, World._m21_m01_m11);\n    output.TexCoord1.z = dot(r1.zxy, World._m22_m02_m12);\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+],
+[
+"Normal0",
+"NORMAL0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"TexCoord3",
+"TEXCOORD3"
+],
+[
+"Color1",
+"COLOR1"
+],
+[
+"BlendIndices0",
+"BLENDINDICES0"
+],
+[
+"BlendWeight0",
+"BLENDWEIGHT0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"TexCoord2",
+"TEXCOORD2"
+],
+[
+"TexCoord5",
+"TEXCOORD5"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"Color0",
+"COLOR0"
+],
+[
+"TexCoord1",
+"TEXCOORD1"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "sprite_4",
+"stage": "pixel",
+"constants": [
+{
+"name": "Brightness",
+"set": "float4",
+"register": 0,
+"count": 1,
+"cls": "scalar",
+"type": "float",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": [
+2.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "DiffuseSampler",
+"set": "sampler",
+"register": 0,
+"count": 1,
+"cls": "object",
+"type": "sampler2D",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": null
+}
+],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"TEXCOORD",
+0,
+3
+],
+[
+1,
+"COLOR",
+0,
+15
+]
+],
+"outputs": [],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"254": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"255": [
+0.10000000149011612,
+0.20000000298023224,
+0.30000001192092896,
+0.0
+]
+},
+"loop_literals": {},
+"words": [
+69634,
+4608,
+3288334336,
+12291,
+8704,
+0,
+268959745,
+522188424,
+16384,
+3356426240,
+27648,
+2701131776,
+3356000256,
+1776384,
+3774873856,
+3355934720,
+12632256,
+3405775359,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct sprite_4_Input\n{\n    float4 TexCoord0 : TEXCOORD0;\n    float4 Color0 : COLOR0;\n};\n\nstruct sprite_4_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nsprite_4_Output sprite_4(sprite_4_Input input)\n{\n    sprite_4_Output output = (sprite_4_Output)0;\n    float4 r0 = 0.0, r1 = 0.0;\n    float4 t;\n    r0.xy = input.TexCoord0.xy;\n    r1.xyzw = input.Color0.xyzw;\n    t = tex2D(DiffuseSampler, r0.xy);\n    r0.xyzw = t.xyzw;\n    r0.xyzw = r0.xyzw * ((float4)Brightness);\n    output.Color0.w = r0.w * r1.w;\n    output.Color0.xyz = r0.xyz * r1.xyz + float3(0.1, 0.2, 0.3);\n    return output;\n}\n",
+"samplers": [
+"DiffuseSampler"
+],
+"inputs": [
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "sprite_3",
+"stage": "vertex",
+"constants": [
+{
+"name": "Tint",
+"set": "float4",
+"register": 4,
+"count": 1,
+"cls": "vector",
+"type": "float",
+"rows": 1,
+"columns": 4,
+"elements": 1,
+"default": [
+1.0,
+0.5,
+0.25,
+1.0
+]
+},
+{
+"name": "WorldViewProj",
+"set": "float4",
+"register": 0,
+"count": 4,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 4,
+"columns": 4,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [
+[
+3,
+"POSITION",
+0
+],
+[
+4,
+"TEXCOORD",
+0
+],
+[
+5,
+"COLOR",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"TEXCOORD",
+0,
+3
+],
+[
+1,
+"COLOR",
+0,
+15
+]
+],
+"literals": {},
+"loop_literals": {},
+"words": [
+1880436739,
+4608,
+3254779904,
+16390,
+4608,
+3288334336,
+8202,
+8704,
+0,
+100147200,
+1672,
+0,
+100143104,
+4040,
+0,
+100139008,
+1672,
+0,
+3355541566,
+10987264,
+2936143872,
+3355607102,
+10987264,
+2936144128,
+3355738174,
+10987264,
+2936144384,
+3356000318,
+10987264,
+2936144640,
+3355672576,
+11579392,
+3758162176,
+3356459009,
+0,
+2701132800,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct sprite_3_Input\n{\n    float4 Position0 : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 Color0 : COLOR0;\n};\n\nstruct sprite_3_Output\n{\n    float4 Position : POSITION0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 Color0 : COLOR0;\n};\n\nsprite_3_Output sprite_3(sprite_3_Input input)\n{\n    sprite_3_Output output = (sprite_3_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0;\n    r2.xyzw = input.Position0.xyzw;\n    r1.xy = input.TexCoord0.xy;\n    r0.xyzw = input.Color0.xyzw;\n    output.Position.x = dot(r2.wzxy, WorldViewProj._m30_m20_m00_m10);\n    output.Position.y = dot(r2.wzxy, WorldViewProj._m31_m21_m01_m11);\n    output.Position.z = dot(r2.wzxy, WorldViewProj._m32_m22_m02_m12);\n    output.Position.w = dot(r2.wzxy, WorldViewProj._m33_m23_m03_m13);\n    output.TexCoord0.xy = r1.xy + r1.xy;\n    output.Color0.xyzw = r0.xyzw * Tint.xyzw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "vertex_4",
+"stage": "pixel",
+"constants": [
+{
+"name": "S",
+"set": "sampler",
+"register": 0,
+"count": 1,
+"cls": "object",
+"type": "sampler2D",
+"rows": 1,
+"columns": 1,
+"elements": 1,
+"default": null
+}
+],
+"vertex_inputs": [],
+"pixel_inputs": [
+[
+0,
+"TEXCOORD",
+0,
+7
+],
+[
+1,
+"TEXCOORD",
+1,
+15
+],
+[
+2,
+"TEXCOORD",
+2,
+3
+]
+],
+"outputs": [],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"254": [
+0.4000000059604645,
+0.30000001192092896,
+0.15000000596046448,
+1.0
+],
+"255": [
+0.20000000298023224,
+0.0,
+0.0,
+0.0
+]
+},
+"loop_literals": {},
+"words": [
+5521410,
+4608,
+3288334336,
+20486,
+8704,
+0,
+344719362,
+11316251,
+3221357310,
+4228382744,
+253755391,
+0,
+268976193,
+253752968,
+16384,
+3087544385,
+1059059336,
+16384,
+3355967490,
+1814892,
+2332163838,
+3355901954,
+11824236,
+2332098559,
+3356426240,
+0,
+3758359296,
+3355901954,
+12628404,
+2869034498,
+3356459008,
+50688,
+2868968962,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct vertex_4_Input\n{\n    float4 TexCoord0 : TEXCOORD0;\n    float4 TexCoord1 : TEXCOORD1;\n    float4 TexCoord2 : TEXCOORD2;\n};\n\nstruct vertex_4_Output\n{\n    float4 Color0 : COLOR0;\n};\n\nvertex_4_Output vertex_4(vertex_4_Input input)\n{\n    vertex_4_Output output = (vertex_4_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0, r3 = 0.0, r4 = 0.0;\n    float lod = 0.0;\n    float4 t;\n    r0.xyz = input.TexCoord0.xyz;\n    r1.xyzw = input.TexCoord1.xyzw;\n    r2.xy = input.TexCoord2.xy;\n    r2.zw = r2.xy + r2.xy;\n    r0.w = 1.0;\n    lod = r0.w;\n    t = tex2Dlod(S, float4(r2.xy, 0.0, 0.0));\n    r4.xyzw = t.xyzw;\n    t = tex2Dbias(S, float4(r2.zw, 0.0, lod));\n    r3.xyzw = t.xyzw;\n    r2.w = r1.w * 0.3 + 0.4;\n    r2.xyz = r0.xzy * (0.2).xxx + (0.2).xxx;\n    r0.xyzw = r4.xyzw + r3.xyzw;\n    r2.xyz = r1.xyz * (0.3).xxx + r2.xzy;\n    output.Color0.xyzw = r0.xyzw * (0.15).xxxx + r2.xyzw;\n    return output;\n}\n",
+"samplers": [
+"S"
+],
+"inputs": [
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"TexCoord1",
+"TEXCOORD1"
+],
+[
+"TexCoord2",
+"TEXCOORD2"
+]
+],
+"outputs": [
+[
+"Color0",
+"COLOR0"
+]
+],
+"needs_helpers": false
+}
+},
+{
+"name": "vertex_3",
+"stage": "vertex",
+"constants": [
+{
+"name": "NormalMatrix",
+"set": "float4",
+"register": 8,
+"count": 3,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 3,
+"columns": 3,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "Offset",
+"set": "float4",
+"register": 19,
+"count": 1,
+"cls": "vector",
+"type": "float",
+"rows": 1,
+"columns": 2,
+"elements": 1,
+"default": [
+0.05000000074505806,
+-0.029999999329447746,
+0.0,
+0.0
+]
+},
+{
+"name": "Palette",
+"set": "float4",
+"register": 11,
+"count": 8,
+"cls": "vector",
+"type": "float",
+"rows": 1,
+"columns": 4,
+"elements": 8,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "View",
+"set": "float4",
+"register": 4,
+"count": 4,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 4,
+"columns": 4,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+},
+{
+"name": "World",
+"set": "float4",
+"register": 0,
+"count": 4,
+"cls": "matrix_columns",
+"type": "float",
+"rows": 4,
+"columns": 4,
+"elements": 1,
+"default": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+]
+}
+],
+"vertex_inputs": [
+[
+4,
+"POSITION",
+0
+],
+[
+5,
+"NORMAL",
+0
+],
+[
+6,
+"TEXCOORD",
+0
+],
+[
+7,
+"BLENDINDICES",
+0
+]
+],
+"pixel_inputs": [],
+"outputs": [
+[
+0,
+"TEXCOORD",
+0,
+7
+],
+[
+1,
+"TEXCOORD",
+1,
+15
+],
+[
+2,
+"TEXCOORD",
+2,
+3
+]
+],
+"literals": {
+"252": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"253": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"254": [
+0.0,
+0.0,
+0.0,
+0.0
+],
+"255": [
+0.5,
+0.0,
+0.0,
+0.0
+]
+},
+"loop_literals": {},
+"words": [
+4032118788,
+4608,
+3254779904,
+24584,
+806228480,
+301989888,
+0,
+1611777024,
+301989888,
+16407,
+8704,
+0,
+100155392,
+1672,
+0,
+100139008,
+1095,
+0,
+100147200,
+4040,
+0,
+100143104,
+1016,
+0,
+3355508739,
+10987264,
+2936274944,
+3355574275,
+10987264,
+2936275200,
+3355705347,
+10987264,
+2936275456,
+3355967491,
+10987264,
+2936275712,
+3355738174,
+10987264,
+2936210944,
+3356000318,
+10987264,
+2936211200,
+3355574273,
+10987264,
+2936210432,
+3355705345,
+10987264,
+2936210688,
+3355672638,
+12955648,
+2684424960,
+3355574273,
+12828160,
+2952792064,
+3355705345,
+12828160,
+2952792320,
+3356229634,
+2883584,
+3909156864,
+1544028161,
+12828187,
+2952792578,
+3356426240,
+2684382208,
+554696448,
+1543569409,
+12829638,
+4026597634,
+1477443840,
+108,
+3791650945,
+3355672578,
+11579392,
+3791782400,
+3355934720,
+1403904,
+3774939392,
+3356459009,
+2684382208,
+722206464,
+0,
+0,
+0
+],
+"expected": {
+"text": "struct vertex_3_Input\n{\n    float4 Position0 : POSITION0;\n    float4 Normal0 : NORMAL0;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 BlendIndices0 : BLENDINDICES0;\n};\n\nstruct vertex_3_Output\n{\n    float4 Position : POSITION0;\n    float4 TexCoord2 : TEXCOORD2;\n    float4 TexCoord0 : TEXCOORD0;\n    float4 TexCoord1 : TEXCOORD1;\n};\n\nvertex_3_Output vertex_3(vertex_3_Input input)\n{\n    vertex_3_Output output = (vertex_3_Output)0;\n    float4 r0 = 0.0, r1 = 0.0, r2 = 0.0, r3 = 0.0, r4 = 0.0;\n    int a0 = 0;\n    r4.xyzw = input.Position0.xyzw;\n    r0.yzw = input.Normal0.xyz;\n    r2.xy = input.TexCoord0.xy;\n    r1.xw = input.BlendIndices0.xy;\n    r3.x = dot(r4.wzxy, World._m30_m20_m00_m10);\n    r3.y = dot(r4.wzxy, World._m31_m21_m01_m11);\n    r3.z = dot(r4.wzxy, World._m32_m22_m02_m12);\n    r3.w = dot(r4.wzxy, World._m33_m23_m03_m13);\n    output.Position.z = dot(r3.wzxy, View._m32_m22_m02_m12);\n    output.Position.w = dot(r3.wzxy, View._m33_m23_m03_m13);\n    r1.y = dot(r3.wzxy, View._m30_m20_m00_m10);\n    r1.z = dot(r3.wzxy, View._m31_m21_m01_m11);\n    output.Position.xy = r1.yz + Offset.xy;\n    r1.y = dot(r0.wyz, NormalMatrix._m20_m00_m10);\n    r1.z = dot(r0.wyz, NormalMatrix._m21_m01_m11);\n    r2.zw = trunc(r1.xw);\n    a0 = (int)round(r2.w);\n    r1.w = dot(r0.wyz, NormalMatrix._m22_m02_m12);\n    r0.xyzw = Palette[a0 + 4].xyzw * (0.5).xxxx;\n    a0 = (int)round(r2.z);\n    r1.x = dot(r1.wyz, r1.wyz);\n    r1.x = rsqrt(abs(r1.x));\n    output.TexCoord2.xy = r2.xy;\n    output.TexCoord0.xyz = r1.yzw * r1.xxx;\n    output.TexCoord1.xyzw = Palette[a0].xyzw * (0.5).xxxx + r0.xyzw;\n    return output;\n}\n",
+"samplers": [],
+"inputs": [
+[
+"Position0",
+"POSITION0"
+],
+[
+"Normal0",
+"NORMAL0"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"BlendIndices0",
+"BLENDINDICES0"
+]
+],
+"outputs": [
+[
+"Position",
+"POSITION0"
+],
+[
+"TexCoord2",
+"TEXCOORD2"
+],
+[
+"TexCoord0",
+"TEXCOORD0"
+],
+[
+"TexCoord1",
+"TEXCOORD1"
+]
+],
+"needs_helpers": false
+}
+}
+]

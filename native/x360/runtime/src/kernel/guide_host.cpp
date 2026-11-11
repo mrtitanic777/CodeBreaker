@@ -2,6 +2,8 @@
 // (kernel/users.h), the profile store, the SPA's achievements, the dashboard and the DVD tray. The system UI slot
 // (OpenSystemUi / EndSystemUiInput) is in kernel/xam_ui.cpp with the other dialogs.
 
+#include <cstring>
+#include <cstdlib>
 #include "kernel/stfs_mount.h"
 #include "guide/host.h"
 
@@ -307,7 +309,18 @@ void guide::host::RebootToDash(const std::vector<uint8_t>& request)
 // here it is Turn Off Console; leaving for the dashboard is for the ports' runtimes.
 void guide::host::EndTitle(const char* why, const std::vector<uint8_t>*)
 {
-    Log("System UI: {}: the game ends (no dashboard on the PC)", why);
+    // Started by Native Dashboard (NATIVE_DASH_HOST_WINDOW): Xbox Home ends the game and that dashboard takes the
+    // screen back; Turn Off Console closes it too. TODO: the request's command (Xbox Home goes home: command 0).
+    const char* host = std::getenv("NATIVE_DASH_HOST_WINDOW");
+    if (host && *host)
+    {
+        const bool off = std::strcmp(why, "Turn Off Console") == 0;
+        Log("System UI: {}: the game ends{}", why, off ? " and so does the dashboard that started it" : "; back to the dashboard");
+        if (off)
+            PostMessageW(reinterpret_cast<HWND>(uintptr_t(std::strtoull(host, nullptr, 10))), WM_CLOSE, 0, 0);
+    }
+    else
+        Log("System UI: {}: the game ends (no dashboard on the PC)", why);
     live::SignOutAllForExit(); // Turn Off Console: the player quits, party seats are given up at once
     kernel::stfs_mount::WaitForAllWrites(); // content packages still being written back
     logging::Flush();

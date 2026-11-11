@@ -1,0 +1,546 @@
+{
+ "certificates": [],
+ "clr": null,
+ "debug": [],
+ "directories": [
+  {
+   "name": "Export",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "Import",
+   "rva": 40960,
+   "size": 60
+  },
+  {
+   "name": "Resource",
+   "rva": 45056,
+   "size": 6508
+  },
+  {
+   "name": "Exception",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "Security",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "BaseReloc",
+   "rva": 53248,
+   "size": 496
+  },
+  {
+   "name": "Debug",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "Architecture",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "GlobalPtr",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "TLS",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "LoadConfig",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "BoundImport",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "IAT",
+   "rva": 41204,
+   "size": 164
+  },
+  {
+   "name": "DelayImport",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "CLR",
+   "rva": 0,
+   "size": 0
+  },
+  {
+   "name": "Reserved",
+   "rva": 0,
+   "size": 0
+  }
+ ],
+ "dos": {
+  "bytes_in_last_page": 256,
+  "checksum": 0,
+  "cs": 455,
+  "header_paragraphs": 131,
+  "header_size": 2096,
+  "ip": 2065,
+  "load_size": 21200,
+  "max_alloc": 65535,
+  "min_alloc": 0,
+  "new_header": 24320,
+  "overlay": 0,
+  "pages": 46,
+  "relocation_table": 30,
+  "relocations": 7,
+  "sp": 512,
+  "ss": 0
+ },
+ "exports": {
+  "count": 0,
+  "module": "",
+  "ordinal_base": 0,
+  "symbols": []
+ },
+ "format": "PE",
+ "headers": {
+  "file": {
+   "characteristics": [
+    "EXECUTABLE",
+    "32BIT"
+   ],
+   "linked": "1996-08-10 05:06:29",
+   "machine": "i386",
+   "machine_id": 332,
+   "optional_header_size": 224,
+   "sections": 5,
+   "timestamp": 839653589
+  },
+  "optional": {
+   "checksum": 69484,
+   "code_base": 28672,
+   "code_size": 5632,
+   "dll_characteristics": 0,
+   "entry_point": 32885,
+   "file_alignment": 512,
+   "headers_size": 25088,
+   "image_base": 4194304,
+   "image_size": 57344,
+   "image_version": "0.0",
+   "initialized_data_size": 10752,
+   "linker_version": "2.60",
+   "magic": 267,
+   "os_version": "4.0",
+   "section_alignment": 4096,
+   "subsystem": 3,
+   "subsystem_name": "console",
+   "subsystem_version": "4.0",
+   "uninitialized_data_size": 0
+  }
+ },
+ "imports": [
+  {
+   "count": 36,
+   "delay": false,
+   "module": "KERNEL32.dll",
+   "symbols": [
+    {
+     "hint": 266,
+     "name": "GetLogicalDrives",
+     "ordinal": -1,
+     "slot": 41204
+    },
+    {
+     "hint": 53,
+     "name": "CopyFileA",
+     "ordinal": -1,
+     "slot": 41208
+    },
+    {
+     "hint": 390,
+     "name": "InterlockedIncrement",
+     "ordinal": -1,
+     "slot": 41212
+    },
+    {
+     "hint": 152,
+     "name": "FindClose",
+     "ordinal": -1,
+     "slot": 41216
+    },
+    {
+     "hint": 581,
+     "name": "SetLastError",
+     "ordinal": -1,
+     "slot": 41220
+    },
+    {
+     "hint": 260,
+     "name": "GetLastError",
+     "ordinal": -1,
+     "slot": 41224
+    },
+    {
+     "hint": 44,
+     "name": "CompareFileTime",
+     "ordinal": -1,
+     "slot": 41228
+    },
+    {
+     "hint": 505,
+     "name": "RtlMoveMemory",
+     "ordinal": -1,
+     "slot": 41232
+    },
+    {
+     "hint": 706,
+     "name": "lstrlenA",
+     "ordinal": -1,
+     "slot": 41236
+    },
+    {
+     "hint": 688,
+     "name": "_lwrite",
+     "ordinal": -1,
+     "slot": 41240
+    },
+    {
+     "hint": 313,
+     "name": "GetStdHandle",
+     "ordinal": -1,
+     "slot": 41244
+    },
+    {
+     "hint": 171,
+     "name": "FormatMessageA",
+     "ordinal": -1,
+     "slot": 41248
+    },
+    {
+     "hint": 270,
+     "name": "GetModuleHandleA",
+     "ordinal": -1,
+     "slot": 41252
+    },
+    {
+     "hint": 687,
+     "name": "_lread",
+     "ordinal": -1,
+     "slot": 41256
+    },
+    {
+     "hint": 118,
+     "name": "ExitProcess",
+     "ordinal": -1,
+     "slot": 41260
+    },
+    {
+     "hint": 262,
+     "name": "GetLocaleInfoA",
+     "ordinal": -1,
+     "slot": 41264
+    },
+    {
+     "hint": 417,
+     "name": "LocalAlloc",
+     "ordinal": -1,
+     "slot": 41268
+    },
+    {
+     "hint": 341,
+     "name": "GetUserDefaultLCID",
+     "ordinal": -1,
+     "slot": 41272
+    },
+    {
+     "hint": 419,
+     "name": "LocalFileTimeToFileTime",
+     "ordinal": -1,
+     "slot": 41276
+    },
+    {
+     "hint": 608,
+     "name": "SystemTimeToFileTime",
+     "ordinal": -1,
+     "slot": 41280
+    },
+    {
+     "hint": 697,
+     "name": "lstrcmpiA",
+     "ordinal": -1,
+     "slot": 41284
+    },
+    {
+     "hint": 254,
+     "name": "GetFullPathNameA",
+     "ordinal": -1,
+     "slot": 41288
+    },
+    {
+     "hint": 700,
+     "name": "lstrcpyA",
+     "ordinal": -1,
+     "slot": 41292
+    },
+    {
+     "hint": 654,
+     "name": "WideCharToMultiByte",
+     "ordinal": -1,
+     "slot": 41296
+    },
+    {
+     "hint": 193,
+     "name": "GetCommandLineW",
+     "ordinal": -1,
+     "slot": 41300
+    },
+    {
+     "hint": 388,
+     "name": "InterlockedDecrement",
+     "ordinal": -1,
+     "slot": 41304
+    },
+    {
+     "hint": 389,
+     "name": "InterlockedExchange",
+     "ordinal": -1,
+     "slot": 41308
+    },
+    {
+     "hint": 573,
+     "name": "SetFileApisToOEM",
+     "ordinal": -1,
+     "slot": 41312
+    },
+    {
+     "hint": 542,
+     "name": "SetConsoleCtrlHandler",
+     "ordinal": -1,
+     "slot": 41316
+    },
+    {
+     "hint": 552,
+     "name": "SetConsoleMode",
+     "ordinal": -1,
+     "slot": 41320
+    },
+    {
+     "hint": 56,
+     "name": "CreateDirectoryA",
+     "ordinal": -1,
+     "slot": 41324
+    },
+    {
+     "hint": 346,
+     "name": "GetVolumeInformationA",
+     "ordinal": -1,
+     "slot": 41328
+    },
+    {
+     "hint": 574,
+     "name": "SetFileAttributesA",
+     "ordinal": -1,
+     "slot": 41332
+    },
+    {
+     "hint": 248,
+     "name": "GetFileAttributesA",
+     "ordinal": -1,
+     "slot": 41336
+    },
+    {
+     "hint": 156,
+     "name": "FindFirstFileA",
+     "ordinal": -1,
+     "slot": 41340
+    },
+    {
+     "hint": 159,
+     "name": "FindNextFileA",
+     "ordinal": -1,
+     "slot": 41344
+    }
+   ]
+  },
+  {
+   "count": 3,
+   "delay": false,
+   "module": "USER32.dll",
+   "symbols": [
+    {
+     "hint": 383,
+     "name": "LoadStringA",
+     "ordinal": -1,
+     "slot": 41352
+    },
+    {
+     "hint": 42,
+     "name": "CharUpperA",
+     "ordinal": -1,
+     "slot": 41356
+    },
+    {
+     "hint": 38,
+     "name": "CharToOemA",
+     "ordinal": -1,
+     "slot": 41360
+    }
+   ]
+  }
+ ],
+ "kind": "pe",
+ "load_config": false,
+ "name": "xcopy32.exe",
+ "notes": [],
+ "ok": true,
+ "relocations": {
+  "addresses": 238,
+  "blocks": 2,
+  "entries": 240
+ },
+ "resources": {
+  "count": 3,
+  "types": [
+   {
+    "count": 2,
+    "id": 6,
+    "items": [
+     {
+      "id": 1,
+      "language": 1033,
+      "name": "#1",
+      "offset": 34828,
+      "preview": "text",
+      "rva": 46092,
+      "size": 2796,
+      "type_id": 6,
+      "wide": true
+     },
+     {
+      "id": 2,
+      "language": 1033,
+      "name": "#2",
+      "offset": 37624,
+      "preview": "text",
+      "rva": 48888,
+      "size": 2676,
+      "type_id": 6,
+      "wide": true
+     }
+    ],
+    "type": "STRING"
+   },
+   {
+    "count": 1,
+    "id": 16,
+    "items": [
+     {
+      "id": 1,
+      "language": 1033,
+      "name": "#1",
+      "offset": 34000,
+      "preview": "text",
+      "rva": 45264,
+      "size": 828,
+      "type_id": 16,
+      "wide": true
+     }
+    ],
+    "type": "VERSION"
+   }
+  ]
+ },
+ "rich": null,
+ "sections": [
+  {
+   "address": 4222976,
+   "code": true,
+   "file_offset": 25088,
+   "file_size": 5632,
+   "flags": [
+    "CODE",
+    "EXECUTE",
+    "READ"
+   ],
+   "name": ".text",
+   "size": 5130
+  },
+  {
+   "address": 4231168,
+   "code": false,
+   "file_offset": 30720,
+   "file_size": 1536,
+   "flags": [
+    "INITDATA",
+    "READ",
+    "WRITE"
+   ],
+   "name": ".data",
+   "size": 1512
+  },
+  {
+   "address": 4235264,
+   "code": false,
+   "file_offset": 32256,
+   "file_size": 1536,
+   "flags": [
+    "INITDATA",
+    "READ"
+   ],
+   "name": ".idata",
+   "size": 1128
+  },
+  {
+   "address": 4239360,
+   "code": false,
+   "file_offset": 33792,
+   "file_size": 6656,
+   "flags": [
+    "INITDATA",
+    "READ"
+   ],
+   "name": ".rsrc",
+   "size": 6508
+  },
+  {
+   "address": 4247552,
+   "code": false,
+   "file_offset": 40448,
+   "file_size": 1024,
+   "flags": [
+    "INITDATA",
+    "DISCARDABLE",
+    "READ"
+   ],
+   "name": ".reloc",
+   "size": 614
+  }
+ ],
+ "size": 41472,
+ "summary": {
+  "code_bytes": 5632,
+  "description": "",
+  "entry": 4227189,
+  "exports": 0,
+  "format": "PE32",
+  "image_base": 4194304,
+  "import_modules": 2,
+  "imports": 39,
+  "linked": "1996-08-10 05:06:29",
+  "linker": "2.60",
+  "machine": "i386",
+  "module": "",
+  "resources": 3,
+  "sections": 5,
+  "subsystem": "console",
+  "type": "EXE"
+ },
+ "symbols_file": null,
+ "tls": null
+}

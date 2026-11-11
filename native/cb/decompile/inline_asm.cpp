@@ -142,20 +142,31 @@ std::string operands_text(const Instruction& i) {
     return s;
 }
 
-std::vector<Instruction> decode16(ByteView code, std::uint32_t address) {
+Decoder16::Decoder16() {
     namespace cs = disasm::capstone;
     const cs::Api& api = cs::api();
     csh handle = 0;
     cs::check(api.cs_open(CS_ARCH_X86, CS_MODE_16, &handle), "cs_open");
-    struct Closer {
-        const cs::Api& api;
-        csh& handle;
-        ~Closer() { api.cs_close(&handle); }
-    } closer{api, handle};
+    handle_ = handle;
     cs::check(api.cs_option(handle, CS_OPT_DETAIL, CS_OPT_ON), "cs_option");
+}
 
+Decoder16::~Decoder16() {
+    csh handle = handle_;
+    disasm::capstone::api().cs_close(&handle);
+}
+
+std::vector<Instruction> Decoder16::decode(ByteView code, std::uint32_t address) const {
+    namespace cs = disasm::capstone;
+    const cs::Api& api = cs::api();
+    const csh handle = handle_;
+    struct Buffer {   // the buffer Capstone fills for each instruction, freed on every way out
+        const cs::Api& api;
+        cs_insn* insn;
+        ~Buffer() { api.cs_free(insn, 1); }
+    } buffer{api, api.cs_malloc(handle)};
+    cs_insn* const insn = buffer.insn;
     std::vector<Instruction> out;
-    cs_insn* insn = api.cs_malloc(handle);
     const std::uint8_t* at = code.data();
     std::size_t left = code.size();
     std::uint64_t pc = address;
@@ -183,14 +194,17 @@ std::vector<Instruction> decode16(ByteView code, std::uint32_t address) {
                 op.mem.index = static_cast<std::uint16_t>(o.mem.index);
                 op.mem.scale = static_cast<std::uint8_t>(o.mem.scale);
                 op.mem.disp = o.mem.disp;
+                op.size = o.size;
+                op.access = o.access;
                 i.operands.push_back(op);
             }
         }
         out.push_back(std::move(i));
     }
-    api.cs_free(insn, 1);
     return out;
 }
+
+std::vector<Instruction> decode16(ByteView code, std::uint32_t address) { return Decoder16().decode(code, address); }
 
 Result<std::string> whole_body(std::string_view name, ByteView code, std::uint32_t start, std::uint32_t end,
                                const Fixups& fixups, const NameAt& name_at, std::uint32_t seg, std::string_view result,

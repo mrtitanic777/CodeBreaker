@@ -24,7 +24,7 @@ import zipfile
 
 from codebreaker.base import cache as _cache
 from codebreaker.base import settings
-from codebreaker.exact import omf
+from codebreaker.formats import omf
 from codebreaker.exact import toolchain as tcm
 
 CACHE_VERSION = "pas1"

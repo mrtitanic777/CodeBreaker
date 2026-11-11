@@ -50,4 +50,21 @@ namespace live::voice
     // Party Chat (the default) is the party's voice.
     void SetGameChat(bool gameChat);
     bool GameChat();
+
+    // Voice mail (the Guide's Voice Mail, Guide.Voicemail.xex: a message's voice, "up to 15 seconds long"): frames of
+    // kPayloadBytes recorded from the microphone (or the test tone) and played to the speakers (or the dump), in a
+    // party or not. The server keeps them as the message's "adpcm16k" attachment.
+    constexpr uint32_t kMailFrames = 750; // 15 s of 20 ms frames
+    void StartMailRecording();
+    void StartMailPlayback(std::vector<uint8_t> frames);
+    void StopMail();
+    struct MailStatus
+    {
+        bool recording = false, playing = false;
+        uint32_t frames = 0; // recorded so far, or played so far
+        uint32_t total = 0;  // the most a recording takes (kMailFrames), or the frames being played
+        bool heard = false;  // the recording has sound in it (a frame louder than background noise)
+    };
+    MailStatus Mail();
+    std::vector<uint8_t> MailRecording(); // the last recording's frames
 }

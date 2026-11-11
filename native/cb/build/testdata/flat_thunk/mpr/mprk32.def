@@ -1,0 +1,6 @@
+; KERNEL32 by-ordinal flat-thunk / handle helpers imported by MPR.
+; Names from the Windows Me symbol file (Geoff Chappell). NONAME = by-ordinal import.
+; NOTE: ThunkInitLSF@41 is the Microsoft-INTERNAL connect (never in a public SDK); we
+;       connect via the public ThunkConnect32 instead -- see the engine docs.
+LIBRARY KERNEL32
+EXPORTS

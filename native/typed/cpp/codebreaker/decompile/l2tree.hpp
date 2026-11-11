@@ -1,159 +1,64 @@
-// codebreaker/decompile/l2tree.hpp -- helpers for reading and rewriting an L2 document held as a translate::ir::Val
-// tree (frame16, shape16).
-//
-// The Python passes work on the document as json.loads gives it: dicts and lists that are shared, so a node changed
-// through one reference is changed wherever it is held. py::dict / py::list are shared the same way (a copy of the
-// handle is the same container), so the passes keep the Python's own shape; deepcopy() below is copy.deepcopy.
-//
-// Reading follows the Python's `x.get(k)` / `(x.get(k) or {}).get(j)` idioms: a lookup in something that is not a
-// dict gives None.
+// codebreaker/decompile/l2tree.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The L2 document passes (asm_blocks, frame16,
+// shape16) now work on a cb::Json (native/cb/decompile/l2tree.{hpp,cpp}); what stays here is the conversion between the
+// old layer's document (translate::ir::Val, a Dict of Vals) and that Json, for the shims of those three modules and
+// decompile/decompiler. Conversion only; deleted with the last of them.
 #pragma once
 
+#include <cmath>
 #include <cstdint>
-#include <functional>
-#include <optional>
-#include <variant>
 
+#include <nlohmann/json.hpp>
+
+#include "cb/compat/py_bridge.hpp"
 #include "codebreaker/translate/ir.hpp"
+#include "codebreaker/translate/l2.hpp"
 #include "py.hpp"
 
 namespace codebreaker::decompile::l2tree {
 
 using translate::ir::Dict;
 using translate::ir::Val;
-using List = Val::List;
 
-inline bool is_dict(const Val& v) { return std::holds_alternative<Dict>(v.v); }
-inline bool is_list(const Val& v) { return std::holds_alternative<List>(v.v); }
-inline bool is_str(const Val& v) { return std::holds_alternative<py::str>(v.v); }
-inline bool is_int(const Val& v) { return std::holds_alternative<int64_t>(v.v); }
-inline const Dict& as_dict(const Val& v) { return std::get<Dict>(v.v); }
-inline const List& as_list(const Val& v) { return std::get<List>(v.v); }
-
-// The dict itself, or (for None or anything else) a fresh empty one: `x or {}`.
-inline Dict dict_or_empty(const Val& v) { return is_dict(v) ? as_dict(v) : Dict(); }
-// The list itself, or a fresh empty one: `x or []`.
-inline List list_or_empty(const Val& v) { return is_list(v) ? as_list(v) : List(); }
-
-// d.get(key): None where it is absent (or `v` is no dict).
-inline Val get(const Val& v, const char* key) {
-    if (!is_dict(v)) return Val();
-    auto got = as_dict(v).get(py::str(key));
-    return got ? *got : Val();
-}
-inline Val get(const Dict& d, const char* key) {
-    auto got = d.get(py::str(key));
-    return got ? *got : Val();
-}
-// d[key]: KeyError where it is absent.
-inline const Val& at(const Dict& d, const char* key) { return d.at(py::str(key)); }
-
-// Python truth.
-inline bool truthy(const Val& v) {
-    struct T {
-        bool operator()(std::monostate) const { return false; }
-        bool operator()(bool b) const { return b; }
-        bool operator()(int64_t i) const { return i != 0; }
-        bool operator()(double d) const { return d != 0.0; }
-        bool operator()(const py::str& s) const { return s.size() != 0; }
-        bool operator()(const translate::ir::TypeP& t) const { return static_cast<bool>(t); }
-        bool operator()(const List& l) const { return !l.empty(); }
-        bool operator()(const Dict& d) const { return !d.empty(); }
-    };
-    return std::visit(T(), v.v);
-}
-
-// x == "text" for a Val
-inline bool is_text(const Val& v, const char* text) { return is_str(v) && std::get<py::str>(v.v) == py::str(text); }
-// the text of a str Val, if it is one
-inline std::optional<py::str> text_of(const Val& v) {
-    if (is_str(v)) return std::get<py::str>(v.v);
-    return std::nullopt;
-}
-// x == n for an int, bool or float Val (Python's numeric equality)
-inline bool equals_number(const Val& v, int64_t n) {
-    if (auto i = std::get_if<int64_t>(&v.v)) return *i == n;
-    if (auto b = std::get_if<bool>(&v.v)) return (*b ? 1 : 0) == n;
-    if (auto d = std::get_if<double>(&v.v)) return *d == static_cast<double>(n);
-    return false;
-}
-
-// Python's == of two Vals (dict equality ignores order).
-inline bool equal(const Val& a, const Val& b);
-inline bool equal_number(const Val& a, const Val& b) {
-    auto num = [](const Val& v, double& out) {
-        if (auto i = std::get_if<int64_t>(&v.v)) { out = static_cast<double>(*i); return true; }
-        if (auto bo = std::get_if<bool>(&v.v)) { out = *bo ? 1.0 : 0.0; return true; }
-        if (auto d = std::get_if<double>(&v.v)) { out = *d; return true; }
-        return false;
-    };
-    double x = 0, y = 0;
-    if (!num(a, x) || !num(b, y)) return false;
-    // (two ints compare exactly)
-    if (auto i = std::get_if<int64_t>(&a.v)) if (auto j = std::get_if<int64_t>(&b.v)) return *i == *j;
-    return x == y;
-}
-inline bool equal(const Val& a, const Val& b) {
-    if (a.is_none() || b.is_none()) return a.is_none() && b.is_none();
-    if (is_str(a) || is_str(b)) return is_str(a) && is_str(b) && std::get<py::str>(a.v) == std::get<py::str>(b.v);
-    if (is_list(a) || is_list(b)) {
-        if (!(is_list(a) && is_list(b))) return false;
-        const List &x = as_list(a), &y = as_list(b);
-        if (x.size() != y.size()) return false;
-        for (int64_t i = 0; i < x.size(); i++) if (!equal(x[i], y[i])) return false;
-        return true;
+// An old-layer value as the Json the new passes read (a Type becomes its L2 dict).
+inline ::cb::Json to_json(const Val& v) {
+    if (std::holds_alternative<std::monostate>(v.v)) return ::cb::Json(nullptr);
+    if (const bool* b = std::get_if<bool>(&v.v)) return ::cb::Json(*b);
+    if (const int64_t* i = std::get_if<int64_t>(&v.v)) return ::cb::Json(*i);
+    if (const double* d = std::get_if<double>(&v.v)) return ::cb::Json(*d);
+    if (const py::str* s = std::get_if<py::str>(&v.v)) return ::cb::Json(s->utf8());
+    if (const translate::ir::TypeP* t = std::get_if<translate::ir::TypeP>(&v.v)) return to_json(translate::l2::type_json(*t));
+    if (const Val::List* l = std::get_if<Val::List>(&v.v)) {
+        ::cb::Json out = ::cb::Json::array();
+        for (const Val& x : l->vec()) out.push_back(to_json(x));
+        return out;
     }
-    if (is_dict(a) || is_dict(b)) {
-        if (!(is_dict(a) && is_dict(b))) return false;
-        const Dict &x = as_dict(a), &y = as_dict(b);
-        if (x.size() != y.size()) return false;
-        for (const auto& kv : x.items()) {
-            auto o = y.get(std::get<0>(kv));
-            if (!o || !equal(std::get<1>(kv), *o)) return false;
-        }
-        return true;
-    }
-    if (std::holds_alternative<translate::ir::TypeP>(a.v) || std::holds_alternative<translate::ir::TypeP>(b.v)) {
-        const auto* x = std::get_if<translate::ir::TypeP>(&a.v);
-        const auto* y = std::get_if<translate::ir::TypeP>(&b.v);
-        return x && y && *x == *y;
-    }
-    return equal_number(a, b);
-}
-
-// copy.deepcopy of a tree: new dicts and lists all the way down.
-inline Val deepcopy(const Val& v) {
-    if (auto d = std::get_if<Dict>(&v.v)) {
-        Dict out;
-        for (const auto& kv : d->items()) out.set(std::get<0>(kv), deepcopy(std::get<1>(kv)));
-        return Val(out);
-    }
-    if (auto l = std::get_if<List>(&v.v)) {
-        List out;
-        for (const Val& x : l->vec()) out.append(deepcopy(x));
-        return Val(out);
-    }
-    return v;
-}
-inline Dict deepcopy(const Dict& d) { return as_dict(deepcopy(Val(d))); }
-
-// Python's `for n in _walk(tree): ...` with the body run on each dict node before its members are read: f(node) is
-// called on every dict (a node before its members), and the members are read after f has run, so a node f rewrites
-// in place is walked as rewritten. (`_walk` in frame16 / shape16.)
-inline void walk(const Val& n, const std::function<void(const Dict&)>& f) {
-    if (auto d = std::get_if<Dict>(&n.v)) {
-        f(*d);
-        for (const Val& v : d->values()) walk(v, f);
-    } else if (auto l = std::get_if<List>(&n.v)) {
-        // (a list is read by index over its live size, as Python's iterator is)
-        for (int64_t i = 0; i < l->size(); i++) walk((*l)[i], f);
-    }
-}
-// The same nodes, collected first: `list(_walk(n))`.
-inline py::list<Dict> nodes(const Val& n) {
-    py::list<Dict> out;
-    walk(n, [&](const Dict& d) { out.append(d); });
+    ::cb::Json out = ::cb::Json::object();
+    for (const auto& kv : std::get<Dict>(v.v).items()) out[std::get<0>(kv).utf8()] = to_json(std::get<1>(kv));
     return out;
 }
+
+// What the new passes made, as an old-layer value. A whole number beyond int64 is refused (the old layer has no bigger).
+inline Val from_json(const ::cb::Json& j) {
+    if (j.is_null()) return Val();
+    if (j.is_boolean()) return Val(j.get<bool>());
+    if (j.is_number_unsigned()) {
+        const auto u = j.get<std::uint64_t>();
+        if (u > static_cast<std::uint64_t>(INT64_MAX)) throw py::OverflowError("Python int too large to convert to C long");
+        return Val(static_cast<int64_t>(u));
+    }
+    if (j.is_number_integer()) return Val(j.get<std::int64_t>());
+    if (j.is_number_float()) return Val(j.get<double>());
+    if (j.is_string()) return Val(py::str(j.get<std::string>()));
+    if (j.is_array()) {
+        Val::List out;
+        for (const ::cb::Json& x : j) out.append(from_json(x));
+        return Val(out);
+    }
+    Dict out;
+    for (const auto& entry : j.items()) out.set(py::str(entry.key()), from_json(entry.value()));
+    return Val(out);
+}
+
+inline ::cb::Json to_json(const Dict& d) { return to_json(Val(d)); }
 
 }  // namespace codebreaker::decompile::l2tree

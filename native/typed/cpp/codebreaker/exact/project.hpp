@@ -156,7 +156,7 @@ struct Config {
     py::dict<py::str, int64_t> data_pads;
     py::list<py::str> also;                          // each entry of "also" (an override) as JSON text
     linkwhole::LinkConfig link;                      // "link" ({} when the file has none)
-    pascal_join::Config pascal;                       // "root", "over", "map", "kinds", "procedures", "units", "equivalent", "compilands"
+    pascal_join::Config pascal_config;                       // "root", "over", "map", "kinds", "procedures", "units", "equivalent", "compilands"
     py::str text;                                    // the whole dict (the override merged) as JSON text, in the file's key order
 
     // the dict read from JSON text (KeyError when "image" is missing)

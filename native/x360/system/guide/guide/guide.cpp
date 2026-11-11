@@ -17,10 +17,12 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <ctime>
 #include <format>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -60,7 +62,7 @@ namespace
         enum class Mode { kMain, kBox, kAchievements, kSignIn, kCommunity, kCommunityBox, kKeyboard, kProfile,
                           kPartyOptions, kMessage, kCompose, kGames, kMessageType, kBio, kFriendsOf, kRecipients,
                           kDevice, kWait, kSaveProfile, kJoinLive, kRecent, kCompareGames, kCompareAchievements,
-                          kAchievementDetails, kFeedback, kPreferences, kFeedbackText }
+                          kAchievementDetails, kFeedback, kPreferences, kFeedbackText, kVoiceMail, kBeacons }
             mode = Mode::kMain;
         // Create Profile: where B on its device selector goes (the sign-in pane, or the Guide's blades).
         std::function<void()> createBack;
@@ -84,6 +86,50 @@ namespace
         // The composer's recipients (xuid, gamertag), in the order chosen.
         std::vector<std::pair<uint64_t, std::string>> composeTo;
         std::u16string composeText;
+        std::vector<uint8_t> composeVoice; // the composer's voice (live::voice frames), empty for none
+        // Voice Mail (Guide.Voicemail.xex's VoiceMailScene, sub_90104A88 ...): may it record (the composer: its
+        // flag 2), the voice it has (f_7c), what it is doing (f_38: 1 playing, 2 recording), when recording started,
+        // the "no audio" warning (f_1768: 0 not yet, 1 shown, 2 sound heard) and where Done / B go with the voice.
+        struct VoiceMail
+        {
+            bool canRecord = false, has = false, ticker = false;
+            enum class Doing { kIdle, kPlaying, kRecording } doing = Doing::kIdle;
+            std::vector<uint8_t> frames;
+            std::chrono::steady_clock::time_point recordStarted;
+            int warning = 0;
+            uint32_t focus = 0; // 0 Record, 1 Stop, 2 Play, 3 Done
+            int progress = 0;
+            std::function<void(const std::vector<uint8_t>* voice)> done;
+        } voiceMail;
+        // Beacons & Activity (Guide.Beacons): what was fetched, the rows each tab shows (their games), the scene
+        // showing (0 the tabs, 1 the title picker, 2 a game's friends, 3 Set Beacon) and its state.
+        struct Beacons
+        {
+            struct Game
+            {
+                uint32_t titleId = 0;
+                std::u16string name;
+                std::vector<uint8_t> tile;
+                int64_t lastPlayed = 0;
+                std::vector<uint64_t> played;  // friends who played it
+                std::vector<uint64_t> playing; // friends in it now
+            };
+            std::vector<live::Beacon> mine;
+            std::vector<Game> myGames, friendsGames;
+            std::vector<live::Friend> friends;
+            std::map<uint64_t, std::map<uint32_t, int64_t>> friendPlayed; // friend -> title -> last played
+            std::map<uint64_t, std::vector<live::Beacon>> friendBeacons;
+            bool loaded = false;
+            int scene = 0, tab = 0;
+            std::vector<uint32_t> pickerTitles;    // the title picker's rows
+            std::vector<uint64_t> detailFriends;   // a game's friends' rows
+            Game detailGame;
+            // Set Beacon
+            Game setGame;
+            bool edit = false;
+            std::u16string comment;
+            std::vector<std::function<void()>> actions;
+        } beacons;
         std::vector<std::function<void()>> rowActions, boxActions;
         std::vector<std::function<void()>> rowX; // the Community rows' X (accept a request, delete a message)
         std::vector<std::function<void()>> rowY; // the Players tab's Y (Add Friend: the focused player)
@@ -204,6 +250,17 @@ namespace
                     info.gamerscore += a.gamerscore;
         return info;
     }
+
+    // Beacons & Activity (below).
+    void GuideBeacons(const std::shared_ptr<GuideSession>& g, int tab, uint32_t focus = 0, bool refetch = true);
+    void GuideBeaconTitles(const std::shared_ptr<GuideSession>& g);
+    void GuideBeaconGame(const std::shared_ptr<GuideSession>& g, const GuideSession::Beacons::Game& gm);
+    void GuideSetBeacon(const std::shared_ptr<GuideSession>& g, const GuideSession::Beacons::Game& gm, bool edit,
+                        const std::u16string& comment, uint32_t focus = 2);
+    const GuideSession::Beacons::Game* BeaconGame(const GuideSession::Beacons& b, uint32_t titleId);
+    std::u16string Wide(const std::string& utf8);
+    std::u16string Gamertag(const std::string& tag);
+    std::u16string BeaconsFormat(size_t index, const char16_t* fallback, std::initializer_list<std::u16string> args);
 
     void GuideBack(const std::shared_ptr<GuideSession>& g)
     {
@@ -492,6 +549,11 @@ namespace
         }
         if (id == "btnSignIn")
             return GuideSignIn(g);
+        if (id == "btnBeacons") // Beacons & Activity (BeaconsNavButton: Guide.Beacons.xex), on Xbox LIVE
+            return GuideLiveRequired(g, [g] {
+                xui::GuideKeepPosition();
+                GuideBeacons(g, 0);
+            });
         if (id == "btnPersonalSettings") // Settings > Preferences (hud.xex's Options.xur)
             return GuidePreferences(g, 0, 0);
         if (id == "btnProfile") // Settings > Profile (hud 0x913E6690: XamShowGamerCardUI for the Guide's user)
@@ -674,6 +736,9 @@ namespace
                             }).detach();
                         });
     }
+
+    void GuideVoiceMailStart(const std::shared_ptr<GuideSession>& g, bool record);
+    void GuideVoiceMailClose(const std::shared_ptr<GuideSession>& g);
 
     bool GuideInput(SystemUi& ui, const std::shared_ptr<GuideSession>& g, uint32_t user, uint16_t pressed)
     {
@@ -936,6 +1001,90 @@ namespace
                 auto f = g->rowActions[action.index];
                 f();
             }
+            break;
+        }
+        case Mode::kBeacons:
+        {
+            auto& b = g->beacons;
+            const xui::BeaconsAction a = xui::BeaconsPress(pressed);
+            if (a.kind == xui::BeaconsAction::kTab)
+                b.tab = a.tab;
+            else if (a.kind == xui::BeaconsAction::kCancelled)
+            {
+                // B: Set Beacon -> My Beacons (or the title picker it came from); the picker / a game -> the tabs.
+                if (b.scene == 0)
+                    GuideBack(g);
+                else
+                    GuideBeacons(g, b.tab, 0, false);
+            }
+            else if (a.kind == xui::BeaconsAction::kChosen)
+            {
+                if (b.scene == 0 && b.tab == 0)
+                {
+                    if (a.index == 0)
+                        GuideBeaconTitles(g);
+                    else if (a.index - 1 < b.mine.size())
+                    {
+                        const live::Beacon beacon = b.mine[a.index - 1];
+                        GuideSession::Beacons::Game gm;
+                        if (const auto* known = BeaconGame(b, beacon.titleId))
+                            gm = *known;
+                        gm.titleId = beacon.titleId;
+                        GuideSetBeacon(g, gm, true, Wide(beacon.text));
+                    }
+                }
+                else if (b.scene == 0)
+                {
+                    const auto& games = b.tab == 1 ? b.myGames : b.friendsGames;
+                    if (a.index < games.size())
+                        GuideBeaconGame(g, games[a.index]);
+                }
+                else if (b.scene == 1 && a.index < b.pickerTitles.size())
+                {
+                    if (const auto* gm = BeaconGame(b, b.pickerTitles[a.index]))
+                        GuideSetBeacon(g, *gm, false, u"");
+                }
+                else if (b.scene == 2 && a.index < b.detailFriends.size())
+                {
+                    g->profileFromCommunity = false;
+                    GuideProfile(g, b.detailFriends[a.index], 0);
+                }
+                else if (b.scene == 3)
+                {
+                    if (a.index == 0)
+                    {
+                        // Add / Edit Comment: the keyboard (strings 10, 18; at most 40 characters).
+                        const auto gm = b.setGame;
+                        const bool edit = b.edit;
+                        GuideKeyboard(g, xui::BeaconsString(10, u"Beacons"),
+                                      BeaconsFormat(18, u"Edit your comment.\nMaximum {1} characters.", { u"40" }), 40,
+                                      [g, gm, edit](const std::u16string& text) { GuideSetBeacon(g, gm, edit, text, 0); },
+                                      b.comment);
+                        g->back = [g, gm, edit, comment = b.comment] { GuideSetBeacon(g, gm, edit, comment, 0); };
+                    }
+                    else if (a.index >= 2 && a.index - 2 < b.actions.size())
+                    {
+                        auto f = b.actions[a.index - 2];
+                        f();
+                    }
+                }
+            }
+            break;
+        }
+        case Mode::kVoiceMail:
+        {
+            // Record, Stop, Play, Done (left / right); B Cancel is Done's (sub_901047C8: btnBack as btnAccept).
+            const xui::PaneAction action = xui::PanePress(pressed);
+            g->voiceMail.focus = xui::PaneFocus();
+            if (action.kind == xui::PaneAction::kCancelled || (action.kind == xui::PaneAction::kChosen &&
+                                                               action.index == 3))
+                GuideVoiceMailClose(g);
+            else if (action.kind == xui::PaneAction::kChosen && action.index == 0)
+                GuideVoiceMailStart(g, true);
+            else if (action.kind == xui::PaneAction::kChosen && action.index == 2)
+                GuideVoiceMailStart(g, false);
+            else if (action.kind == xui::PaneAction::kChosen && action.index == 1)
+                live::voice::StopMail(); // the ticker sees it end
             break;
         }
         case Mode::kPartyOptions:
@@ -1297,7 +1446,15 @@ namespace
         }
         else
         {
-            row.slotText[1] = Wide(m.text.substr(0, 60));
+            // INFER: a voice message without text shows Guide.Friends string 258 ("%1 sent you a voice message.").
+            std::u16string line = Wide(m.text.substr(0, 60));
+            if (line.empty() && m.attachment == "voice")
+            {
+                line = xui::FriendsString(258, u"%1 sent you a voice message.");
+                if (const size_t at = line.find(u"%1"); at != std::u16string::npos)
+                    line.replace(at, 2, Gamertag(m.fromGamertag));
+            }
+            row.slotText[1] = line;
             row.slotImage[3] = "sharedres://ico_32x_Mail.png";
         }
     }
@@ -2432,6 +2589,9 @@ namespace
     // A message ("guide message.png"): when it came and when it expires over Reply / View Profile / Delete / Block
     // Communications (greyed: no blocking on our LIVE), the sender's gamercard and the text on the right. A party
     // invitation has Join Party in Reply's place. B: back to Messages.
+    void GuideVoiceMail(const std::shared_ptr<GuideSession>& g, bool canRecord, std::vector<uint8_t> frames,
+                        std::function<void(const std::vector<uint8_t>* voice)> done);
+
     void GuideMessageActions(const std::shared_ptr<GuideSession>& g, const live::Message& m)
     {
         const uint32_t user = g->user;
@@ -2524,11 +2684,30 @@ namespace
         }
         else
         {
+            // A message's rows (types 3 / 4: Play Voice, View Picture, Reply, View Profile, Delete, Block; the first
+            // two only with that attachment, sub_901214E0's flags 4 / 0x800). Play Voice: Voice Mail playing it.
+            if (m.attachment == "voice")
+                add(xui::FriendsString(207, u"Play Voice"), [g, user, m] {
+                    std::string error;
+                    auto frames = live::MessageVoice(user, m.id, &error);
+                    if (!frames)
+                        return GuideCommunityResult(g, xui::FriendsString(207, u"Play Voice"), error, u"");
+                    GuideVoiceMail(g, false, std::move(*frames), [g, m](const std::vector<uint8_t>*) {
+                        GuideMessageActions(g, m);
+                    });
+                });
             add(xui::FriendsString(214, u"Reply"), reply);
             add(xui::FriendsString(255, u"View Profile"), viewProfile);
             add(xui::FriendsString(55, u"Delete"), remove);
         }
-        add(xui::FriendsString(22, u"Block Communications"), nullptr);
+        // Block Communications (action 5: sub_9010A150 with its block flag): the message deleted and its sender's
+        // messages no longer delivered (our LIVE's block list).
+        add(xui::FriendsString(22, u"Block Communications"), [g, user, from, id = m.id] {
+            live::DeleteMessage(user, id);
+            if (const auto error = live::BlockCommunications(user, from))
+                return GuideCommunityResult(g, xui::FriendsString(22, u"Block Communications"), error, u"");
+            GuideCommunity(g, GuideSession::Tab::kMessages, g->communityFocus);
+        });
         // Received when, as the console writes it (7/01/2015, 20:21), and the 30 days our LIVE keeps a message.
         const std::time_t sent = std::time_t(m.sent);
         std::tm local{};
@@ -2676,6 +2855,505 @@ namespace
     // row (Enter Gamertags / Change Gamertags), Add Voice and Add Picture (greyed: our LIVE carries text only), Add /
     // Edit Text and, at the bottom, Send Message (greyed until there are recipients and text, as the module's
     // FUN_9012AD50); "To:" and the text on the right. B Cancel goes back to the Messages tab.
+    // Voice Mail's view now (VoiceMailScene's buttons, info and warning by its state).
+    xui::VoiceMailView VoiceMailView(const std::shared_ptr<GuideSession>& g)
+    {
+        const GuideSession::VoiceMail& vm = g->voiceMail;
+        using Doing = GuideSession::VoiceMail::Doing;
+        xui::VoiceMailView view;
+        const bool busy = vm.doing != Doing::kIdle;
+        view.record = vm.canRecord && !busy;
+        view.play = vm.has && !busy;
+        view.stop = busy;
+        view.focus = vm.focus;
+        view.progress = vm.progress;
+        // txtInfo: string 8 for the composer, 7 for a received message (sub_90104A88).
+        view.info = vm.canRecord ? xui::VoiceMailString(8, u"Record and play back your voice message, up to 15 seconds "
+                                                           u"long.")
+                                 : xui::VoiceMailString(7, u"Use the controls below to play the voice message.");
+        // txtWarning: 12 while the composer is idle (sub_90104A28), hidden while busy (sub_901042C0 / 47C8), 11
+        // after 5 s of recording without sound (sub_90104C40 -> 0x90104980), hidden once sound was heard.
+        if (vm.doing == Doing::kRecording ? vm.warning == 1 : !busy && vm.canRecord)
+            view.warning = vm.doing == Doing::kRecording
+                ? xui::VoiceMailString(11, u"No audio detected. Remember to connect and unmute your headset.")
+                : xui::VoiceMailString(12, u"Remember to connect and unmute your headset or Kinect Sensor.");
+        return view;
+    }
+
+    void GuideVoiceMailTicker(const std::shared_ptr<GuideSession>& g);
+
+    // Play (sub_901047C8's btnPlay: the voice, Stop focused) or Record (btnRecord: up to 15 s).
+    void GuideVoiceMailStart(const std::shared_ptr<GuideSession>& g, bool record)
+    {
+        GuideSession::VoiceMail& vm = g->voiceMail;
+        using Doing = GuideSession::VoiceMail::Doing;
+        if (record)
+        {
+            live::voice::StartMailRecording();
+            vm.doing = Doing::kRecording;
+            vm.recordStarted = std::chrono::steady_clock::now();
+            vm.warning = 0;
+        }
+        else
+        {
+            live::voice::StartMailPlayback(vm.frames);
+            vm.doing = Doing::kPlaying;
+        }
+        vm.progress = 0;
+        vm.focus = 1; // Stop
+        xui::UpdateVoiceMail(VoiceMailView(g));
+        GuideVoiceMailTicker(g);
+    }
+
+    // Done or B (sub_901047C8's btnAccept / btnBack): stops; the composer keeps what was recorded (its result 3 and
+    // the length), a received message's voice goes back as it was.
+    void GuideVoiceMailClose(const std::shared_ptr<GuideSession>& g)
+    {
+        GuideSession::VoiceMail& vm = g->voiceMail;
+        live::voice::StopMail();
+        if (vm.doing == GuideSession::VoiceMail::Doing::kRecording)
+            vm.frames = live::voice::MailRecording();
+        vm.doing = GuideSession::VoiceMail::Doing::kIdle;
+        auto done = std::move(vm.done);
+        vm.done = nullptr;
+        if (done)
+            done(vm.canRecord && vm.has && !vm.frames.empty() ? &vm.frames : nullptr);
+    }
+
+    // Every 100 ms while it plays or records (VoiceMailScene's timer 0x44C, sub_90104CC8): the progress bar, then
+    // the end (Play focused, the bar full); the "no audio" warning while recording (sub_90104C40).
+    void GuideVoiceMailTicker(const std::shared_ptr<GuideSession>& g)
+    {
+        if (g->voiceMail.ticker)
+            return;
+        g->voiceMail.ticker = true;
+        std::thread([g] {
+            for (;;)
+            {
+                Sleep(100);
+                std::lock_guard lock(g->mutex);
+                GuideSession::VoiceMail& vm = g->voiceMail;
+                using Doing = GuideSession::VoiceMail::Doing;
+                if (g->ui->Closed() || g->mode != GuideSession::Mode::kVoiceMail || vm.doing == Doing::kIdle)
+                {
+                    if (g->ui->Closed() || g->mode != GuideSession::Mode::kVoiceMail)
+                        live::voice::StopMail();
+                    vm.ticker = false;
+                    return;
+                }
+                const live::voice::MailStatus m = live::voice::Mail();
+                const bool active = vm.doing == Doing::kRecording ? m.recording : m.playing;
+                if (active)
+                {
+                    vm.progress = m.total ? int(uint64_t(m.frames) * 100 / m.total) : 0;
+                    if (vm.doing == Doing::kRecording)
+                    {
+                        if (m.frames)
+                            vm.has = true;
+                        if (m.heard)
+                            vm.warning = 2;
+                        else if (vm.warning == 0 &&
+                                 std::chrono::steady_clock::now() - vm.recordStarted > std::chrono::seconds(5))
+                            vm.warning = 1;
+                    }
+                }
+                else
+                {
+                    if (vm.doing == Doing::kRecording)
+                    {
+                        vm.frames = live::voice::MailRecording();
+                        vm.has = !vm.frames.empty();
+                    }
+                    vm.doing = Doing::kIdle;
+                    vm.progress = 100;
+                    vm.focus = vm.has ? 2 : 0; // Play (sub_90104CC8), Record when nothing was recorded
+                }
+                xui::UpdateVoiceMail(VoiceMailView(g));
+            }
+        }).detach();
+    }
+
+    // XamShowVoiceMailUI as the Guide calls it: `canRecord` for the composer's Add / Modify Voice (Record focused,
+    // what it has playable), else a received message's Play Voice (it plays at once). `done` gets the voice the
+    // composer keeps (nullptr: none).
+    void GuideVoiceMail(const std::shared_ptr<GuideSession>& g, bool canRecord, std::vector<uint8_t> frames,
+                        std::function<void(const std::vector<uint8_t>* voice)> done)
+    {
+        g->mode = GuideSession::Mode::kVoiceMail;
+        GuideSession::VoiceMail& vm = g->voiceMail;
+        vm.canRecord = canRecord;
+        vm.frames = std::move(frames);
+        vm.has = !vm.frames.empty();
+        vm.doing = GuideSession::VoiceMail::Doing::kIdle;
+        vm.warning = 0;
+        vm.progress = 0;
+        vm.focus = canRecord ? 0 : 2;
+        vm.done = std::move(done);
+        Log("System UI: Guide: Voice Mail ({}, {} ms of voice)", canRecord ? "record" : "play",
+            vm.frames.size() / live::voice::kPayloadBytes * 20);
+        xui::ShowVoiceMail(VoiceMailView(g));
+        if (!canRecord && vm.has)
+            GuideVoiceMailStart(g, false);
+    }
+
+    // ---- Beacons & Activity (Guide.Beacons.xex: its Lua RootScene, MyBeacons, MyRecentGames, WhatsHot,
+    // TitlePicker, GameDetails, SetBeacon; strings its Strings.xus) ----
+
+    std::u16string BeaconsFormat(size_t index, const char16_t* fallback, std::initializer_list<std::u16string> args)
+    {
+        // Util.Format: {1}, {2} ... and %s in order.
+        std::u16string t = xui::BeaconsString(index, fallback);
+        int n = 1;
+        for (const std::u16string& a : args)
+        {
+            const std::u16string key = u"{" + Wide(std::to_string(n++)) + u"}";
+            if (const size_t at = t.find(key); at != std::u16string::npos)
+                t.replace(at, key.size(), a);
+            else if (const size_t pc = t.find(u"%s"); pc != std::u16string::npos)
+                t.replace(pc, 2, a);
+        }
+        return t;
+    }
+
+    // MyRecentGames / WhatsHot's heat lines (strings 13-16: "%s online", "%s recently played"; the singular and
+    // plural forms are the same in English).
+    std::u16string HeatOnline(size_t n)
+    {
+        return n ? BeaconsFormat(n == 1 ? 13 : 14, u"%s online", { Wide(std::to_string(n)) }) : u"";
+    }
+    std::u16string HeatRecent(size_t n)
+    {
+        return n ? BeaconsFormat(n == 1 ? 15 : 16, u"%s recently played", { Wide(std::to_string(n)) }) : u"";
+    }
+    std::u16string BeaconsPlatform()
+    {
+        return xui::BeaconsString(54, u"Xbox 360"); // Util.GetTitlePlatformString: our games are all Xbox 360's
+    }
+
+    // Fetches what the tabs show (blocking requests: off the Guide's thread). INFER: My Activity is the user's 5
+    // last games (string 41), Friends' Activity the games their friends played, most friends first, at most 10.
+    void BeaconsFetch(const std::shared_ptr<GuideSession>& g)
+    {
+        const uint32_t user = g->user;
+        GuideSession::Beacons data;
+        const auto me = host::SignedIn(user);
+        const uint64_t myXuid = me ? me->onlineXuid : 0;
+        if (auto mine = live::Beacons(user, myXuid))
+            data.mine = *mine;
+        data.friends = live::Friends(user);
+        std::erase_if(data.friends, [](const live::Friend& f) { return !f.request.empty(); });
+        std::map<uint32_t, std::vector<uint8_t>> tiles;
+        std::map<uint32_t, std::u16string> names;
+        for (const host::PlayedTitle& t : host::PlayedTitles(user))
+        {
+            tiles[t.titleId] = t.tile;
+            names[t.titleId] = t.name;
+        }
+        auto game = [&](uint32_t id, const std::string& name) {
+            GuideSession::Beacons::Game gm;
+            gm.titleId = id;
+            gm.name = names.contains(id) ? names[id] : Wide(name);
+            if (tiles.contains(id))
+                gm.tile = tiles[id];
+            return gm;
+        };
+        std::map<uint32_t, std::string> friendTitleNames;
+        for (const live::Friend& f : data.friends)
+        {
+            if (auto titles = live::Titles(user, f.xuid))
+                for (const live::TitlePlayed& t : *titles)
+                {
+                    data.friendPlayed[f.xuid][t.titleId] = t.lastPlayed;
+                    friendTitleNames.try_emplace(t.titleId, t.name);
+                }
+            if (f.online && f.titleId)
+            {
+                data.friendPlayed[f.xuid].try_emplace(f.titleId, std::time(nullptr));
+                friendTitleNames.try_emplace(f.titleId, f.title);
+            }
+        }
+        if (auto fb = live::FriendsWithBeacons(user))
+            for (const live::FriendBeacons& b : *fb)
+                data.friendBeacons[b.xuid] = b.beacons;
+        auto heat = [&](GuideSession::Beacons::Game& gm) {
+            for (const live::Friend& f : data.friends)
+            {
+                if (data.friendPlayed[f.xuid].contains(gm.titleId))
+                    gm.played.push_back(f.xuid);
+                if (f.online && f.titleId == gm.titleId)
+                    gm.playing.push_back(f.xuid);
+            }
+        };
+        if (auto titles = live::Titles(user, myXuid))
+        {
+            std::vector<live::TitlePlayed> list = *titles;
+            std::erase_if(list, [](const live::TitlePlayed& t) { return (t.titleId >> 16) == 0xFFFE || !t.titleId; });
+            std::stable_sort(list.begin(), list.end(),
+                             [](const auto& a, const auto& b) { return a.lastPlayed > b.lastPlayed; });
+            for (const live::TitlePlayed& t : list)
+            {
+                GuideSession::Beacons::Game gm = game(t.titleId, t.name);
+                gm.lastPlayed = t.lastPlayed;
+                heat(gm);
+                data.myGames.push_back(std::move(gm));
+            }
+        }
+        for (const auto& [id, name] : friendTitleNames)
+        {
+            if ((id >> 16) == 0xFFFE || !id)
+                continue;
+            GuideSession::Beacons::Game gm = game(id, name);
+            heat(gm);
+            for (const uint64_t x : gm.played)
+                gm.lastPlayed = std::max(gm.lastPlayed, data.friendPlayed[x][id]);
+            data.friendsGames.push_back(std::move(gm));
+        }
+        std::stable_sort(data.friendsGames.begin(), data.friendsGames.end(), [](const auto& a, const auto& b) {
+            return a.played.size() != b.played.size() ? a.played.size() > b.played.size() : a.lastPlayed > b.lastPlayed;
+        });
+        if (data.friendsGames.size() > 10)
+            data.friendsGames.resize(10);
+        data.loaded = true;
+        std::lock_guard lock(g->mutex);
+        data.scene = g->beacons.scene;
+        data.tab = g->beacons.tab;
+        g->beacons = std::move(data);
+    }
+
+    const GuideSession::Beacons::Game* BeaconGame(const GuideSession::Beacons& b, uint32_t titleId)
+    {
+        for (const auto* list : { &b.myGames, &b.friendsGames })
+            for (const auto& gm : *list)
+                if (gm.titleId == titleId)
+                    return &gm;
+        return nullptr;
+    }
+
+    xui::BeaconTab BeaconTabData(const GuideSession::Beacons& b, int tab)
+    {
+        xui::BeaconTab t;
+        t.waiting = !b.loaded;
+        if (tab == 0)
+        {
+            // MyBeacons: "Set Beacon" (greyed with 3 set), then the beacons (MyBeacons.lua's GetText / GetImage).
+            t.description = xui::BeaconsString(1, u"Beacons tell your Xbox Live and Facebook friends that you want "
+                                                  u"them to join you on Xbox Live.");
+            const bool full = b.mine.size() >= 3;
+            xui::BeaconRow add;
+            add.text = xui::BeaconsString(46, u"Set Beacon");
+            add.slot[1] = full ? xui::BeaconsString(4, u"You've set all 3 of your beacons.")
+                               : xui::BeaconsString(3, u"You'll be told when friends want to do the same thing.");
+            add.image = "ico_64x_add.png";
+            add.enabled = !full;
+            t.rows.push_back(add);
+            for (const live::Beacon& beacon : b.mine)
+            {
+                xui::BeaconRow row;
+                const auto* gm = BeaconGame(b, beacon.titleId);
+                row.text = gm ? gm->name : Wide(std::format("{:08X}", beacon.titleId));
+                row.slot[1] = Wide(beacon.text);
+                if (gm)
+                {
+                    row.picture = gm->tile;
+                    row.slot[2] = HeatRecent(gm->played.size());
+                    row.slot[3] = HeatOnline(gm->playing.size());
+                }
+                t.rows.push_back(row);
+            }
+            return t;
+        }
+        const auto& games = tab == 1 ? b.myGames : b.friendsGames;
+        t.description = tab == 1 ? xui::BeaconsString(41, u"Your last 5 games and apps, along with who's been playing "
+                                                           u"them.")
+                                 : xui::BeaconsString(64, u"The games and apps your friends have been playing.");
+        for (size_t i = 0; i < games.size() && (tab != 1 || i < 5); i++)
+        {
+            xui::BeaconRow row;
+            row.text = games[i].name;
+            row.slot[1] = BeaconsPlatform();
+            row.slot[2] = HeatRecent(games[i].played.size());
+            row.slot[3] = HeatOnline(games[i].playing.size());
+            row.picture = games[i].tile;
+            t.rows.push_back(row);
+        }
+        if (b.loaded && t.rows.empty())
+            t.status = tab == 1 ? xui::BeaconsString(31, u"You don't have any recent activity.")
+                                : xui::BeaconsString(65, u"Your friends haven't been playing any games or apps.");
+        return t;
+    }
+
+    void GuideBeacons(const std::shared_ptr<GuideSession>& g, int tab, uint32_t focus, bool refetch)
+    {
+        g->mode = GuideSession::Mode::kBeacons;
+        auto& b = g->beacons;
+        b.scene = 0;
+        b.tab = tab;
+        if (refetch)
+            b.loaded = false;
+        std::vector<xui::BeaconTab> tabs;
+        for (int i = 0; i < 3; i++)
+            tabs.push_back(BeaconTabData(b, i));
+        xui::ShowBeacons(tabs, tab, focus);
+        if (!refetch)
+            return;
+        std::thread([g] {
+            BeaconsFetch(g);
+            std::lock_guard lock(g->mutex);
+            if (g->ui->Closed() || g->mode != GuideSession::Mode::kBeacons || g->beacons.scene != 0)
+                return;
+            for (int i = 0; i < 3; i++)
+                xui::UpdateBeaconTab(i, BeaconTabData(g->beacons, i));
+        }).detach();
+    }
+
+    // "Played {1} days ago" ... "Playing now" (strings 32-40) for a friend's last time in a game.
+    std::u16string PlayedAgo(int64_t when, bool now)
+    {
+        if (now)
+            return xui::BeaconsString(40, u"Playing now");
+        const int64_t s = std::max<int64_t>(0, int64_t(std::time(nullptr)) - when);
+        const auto n = [](int64_t v) { return Wide(std::to_string(v)); };
+        if (s >= 60LL * 86400)
+            return BeaconsFormat(38, u"Played {1} months ago", { n(s / (30LL * 86400)) });
+        if (s >= 30LL * 86400)
+            return BeaconsFormat(39, u"Played {1} month ago", { n(1) });
+        if (s >= 2LL * 86400)
+            return BeaconsFormat(32, u"Played {1} days ago", { n(s / 86400) });
+        if (s >= 86400)
+            return xui::BeaconsString(33, u"Played yesterday");
+        if (s >= 2 * 3600)
+            return BeaconsFormat(34, u"Played {1} hours ago", { n(s / 3600) });
+        if (s >= 3600)
+            return BeaconsFormat(35, u"Played {1} hour ago", { n(1) });
+        if (s >= 120)
+            return BeaconsFormat(36, u"Played {1} minutes ago", { n(s / 60) });
+        return BeaconsFormat(37, u"Played {1} minute ago", { n(1) });
+    }
+
+    // GameDetails: a game's friends (who played it, who is in it now, their beacon for it).
+    void GuideBeaconGame(const std::shared_ptr<GuideSession>& g, const GuideSession::Beacons::Game& gm)
+    {
+        auto& b = g->beacons;
+        b.scene = 2;
+        b.detailGame = gm;
+        b.detailFriends = gm.played;
+        xui::BeaconListInfo info;
+        info.details = true;
+        info.title = gm.name;
+        info.platform = BeaconsPlatform();
+        info.tile = gm.tile;
+        info.description = xui::BeaconsString(23, u"Your friends' activity in this game.");
+        for (const uint64_t x : gm.played)
+        {
+            xui::BeaconRow row;
+            const auto f = std::find_if(b.friends.begin(), b.friends.end(), [x](const auto& f) { return f.xuid == x; });
+            row.text = f != b.friends.end() ? Gamertag(f->gamertag) : u"";
+            const bool now = std::find(gm.playing.begin(), gm.playing.end(), x) != gm.playing.end();
+            row.slot[2] = PlayedAgo(b.friendPlayed[x][gm.titleId], now);
+            if (now)
+                row.slotImage[2] = "friend_online.png";
+            for (const live::Beacon& beacon : b.friendBeacons[x])
+                if (beacon.titleId == gm.titleId)
+                    row.slot[1] = beacon.text.empty() ? xui::BeaconsString(46, u"Set Beacon") : Wide(beacon.text);
+            if (const auto profile = live::GetProfile(g->user, x))
+                row.picture = profile->picture;
+            info.rows.push_back(row);
+        }
+        if (info.rows.empty())
+            info.status = xui::BeaconsString(25, u"You don't have any friends who've tried this activity.");
+        xui::ShowBeaconList(info);
+    }
+
+    // TitlePicker: the user's games to set a beacon for (most recently played first).
+    void GuideBeaconTitles(const std::shared_ptr<GuideSession>& g)
+    {
+        auto& b = g->beacons;
+        b.scene = 1;
+        b.pickerTitles.clear();
+        xui::BeaconListInfo info;
+        for (const auto& gm : b.myGames)
+        {
+            if (std::any_of(b.mine.begin(), b.mine.end(), [&](const live::Beacon& x) { return x.titleId == gm.titleId; }))
+                continue; // it has one: My Beacons edits it
+            xui::BeaconRow row;
+            row.text = gm.name;
+            row.slot[1] = BeaconsPlatform();
+            row.picture = gm.tile;
+            info.rows.push_back(row);
+            b.pickerTitles.push_back(gm.titleId);
+        }
+        if (info.rows.empty())
+            info.status = xui::BeaconsString(31, u"You don't have any recent activity.");
+        xui::ShowBeaconList(info);
+    }
+
+    // SetBeacon: the comment, then Set Beacon (a new one) or Update / Remove Beacon; the result's toast (strings
+    // 51 / 52, 61 / 62, 44 / 45; errors 50, 60, 43 with the status), back to My Beacons.
+    void GuideSetBeacon(const std::shared_ptr<GuideSession>& g, const GuideSession::Beacons::Game& gm, bool edit,
+                        const std::u16string& comment, uint32_t focus)
+    {
+        auto& b = g->beacons;
+        b.scene = 3;
+        b.setGame = gm;
+        b.edit = edit;
+        b.comment = comment;
+        b.actions.clear();
+        const uint32_t user = g->user;
+        auto done = [g, user](const std::u16string& toast) {
+            xui::QueueNotification(xui::kNotifyBeacons, user, toast);
+            GuideBeacons(g, 0);
+        };
+        auto failed = [g](size_t index, const char16_t* fallback, const std::string& error) {
+            GuideCommunityBox(g, xui::BeaconsString(10, u"Beacons"),
+                              BeaconsFormat(index, fallback, { Wide(error) }), { { u"OK", nullptr } });
+            g->back = [g] { GuideBeacons(g, 0); };
+        };
+        const auto name = gm.name;
+        const uint32_t titleId = gm.titleId;
+        xui::SetBeaconInfo info;
+        info.edit = edit;
+        info.comment = edit ? xui::BeaconsString(17, u"Edit Comment") : xui::BeaconsString(0, u"Add Comment");
+        info.share = edit ? xui::BeaconsString(63, u"Update Social Networks") : xui::BeaconsString(53, u"Share to social networks");
+        info.description = xui::BeaconsString(47, u"Include a comment with your beacon or share your beacon with "
+                                                  u"friends outside Xbox Live.");
+        info.title = gm.name;
+        info.tile = gm.tile;
+        info.platform = BeaconsPlatform();
+        info.recent = HeatRecent(gm.played.size());
+        info.online = HeatOnline(gm.playing.size());
+        if (!comment.empty())
+        {
+            info.commentHeader = xui::BeaconsString(12, u"Comment");
+            info.commentText = BeaconsFormat(11, u"\"%s\"", { comment });
+        }
+        auto set = [g, user, titleId, name, done, failed, edit] {
+            const std::string text = Utf8(g->beacons.comment);
+            if (const auto error = live::SetBeacon(user, titleId, "Game", text))
+                return edit ? failed(60, u"Sorry, couldn't update your beacon. Try again later.\n\nStatus code: {1}", *error)
+                            : failed(50, u"Sorry, couldn't set your beacon. Try again later.\n\nStatus code: {1}", *error);
+            done(edit ? BeaconsFormat(62, u"Beacon updated for \\n%s", { name })
+                      : BeaconsFormat(52, u"Beacon set for \\n%s", { name }));
+        };
+        if (edit)
+        {
+            info.actions = { xui::BeaconsString(59, u"Update Beacon"), xui::BeaconsString(42, u"Remove Beacon") };
+            b.actions = { set, [user, titleId, name, done, failed] {
+                              if (const auto error = live::DeleteBeacon(user, titleId))
+                                  return failed(43, u"Sorry, couldn't remove your beacon. Try again later.\n\nStatus "
+                                                    u"code: {1}", *error);
+                              done(BeaconsFormat(45, u"Beacon removed for \\n%s", { name }));
+                          } };
+        }
+        else
+        {
+            info.actions = { xui::BeaconsString(46, u"Set Beacon") };
+            b.actions = { set };
+        }
+        info.focus = focus;
+        g->mode = GuideSession::Mode::kBeacons;
+        xui::ShowSetBeacon(info);
+    }
+
     void GuideCompose(const std::shared_ptr<GuideSession>& g, uint32_t focus)
     {
         const uint32_t user = g->user;
@@ -2688,14 +3366,24 @@ namespace
             rows.push_back({ text, bool(action) && enabled });
             g->rowActions.push_back(std::move(action));
         };
-        const bool haveTo = !g->composeTo.empty(), haveText = !g->composeText.empty();
+        const bool haveTo = !g->composeTo.empty(), haveText = !g->composeText.empty(),
+                   haveVoice = !g->composeVoice.empty();
         add(haveTo ? xui::FriendsString(160, u"Change Gamertags") : xui::FriendsString(10, u"Enter Gamertags"),
             [g, scene] {
                 if (scene)
                     return GuideRecipients(g, 0);
                 GuideRecipientKeyboard(g);
             });
-        add(xui::FriendsString(17, u"Add Voice"), nullptr);
+        // Add Voice, Modify Voice once it has one (Guide.Friends 0x9012AD50: string 0xA2): Voice Mail recording.
+        add(haveVoice ? xui::FriendsString(162, u"Modify Voice") : xui::FriendsString(17, u"Add Voice"), [g] {
+            GuideVoiceMail(g, true, g->composeVoice, [g](const std::vector<uint8_t>* voice) {
+                if (voice)
+                    g->composeVoice = *voice;
+                else
+                    g->composeVoice.clear();
+                GuideCompose(g, 1);
+            });
+        });
         add(haveText ? xui::FriendsString(161, u"Edit Text") : xui::FriendsString(13, u"Add Text"), [g] {
             GuideKeyboard(g, xui::FriendsString(13, u"Add Text"), xui::FriendsString(14, u"Enter your message."), 250,
                           [g](const std::u16string& text) {
@@ -2710,23 +3398,24 @@ namespace
             if (g->composeTo.empty())
                 return GuideCommunityBox(g, u"Send Message", u"Choose who gets the message (Change Gamertags).",
                                          { { u"OK", nullptr } });
-            if (g->composeText.empty())
-                return GuideCommunityBox(g, u"Send Message", u"Type a message first (Edit Text).",
-                                         { { u"OK", nullptr } });
+            if (g->composeText.empty() && g->composeVoice.empty())
+                return GuideCommunityBox(g, u"Send Message", u"Add text or voice first.", { { u"OK", nullptr } });
             std::vector<uint64_t> to;
             for (const auto& r : g->composeTo)
                 to.push_back(r.first);
-            const auto error = live::SendLiveMessage(user, to, Utf8(g->composeText));
+            const auto error = live::SendLiveMessage(user, to, Utf8(g->composeText), "text", 0, 0,
+                                                     g->composeVoice.empty() ? nullptr : &g->composeVoice);
             const std::u16string names = ComposeToText(g);
             g->back = nullptr;
             if (!error)
             {
                 g->composeText.clear();
+                g->composeVoice.clear();
                 g->composeTo.clear();
                 g->tab = GuideSession::Tab::kMessages;
             }
             GuideCommunityResult(g, u"Send Message", error, u"Your message was sent to " + names + u".");
-        }, !scene || (haveTo && haveText));
+        }, !scene || (haveTo && (haveText || haveVoice))); // sub_9012AD50: text, voice or a picture
         xui::ProfilePage page;
         page.card = false;
         page.to = ComposeToText(g);
@@ -3769,6 +4458,27 @@ void guide::GuideButton(uint32_t user)
         return;
     }
     Log("System UI: Guide button on controller {} ignored while the {} is open", user + 1, "Xbox Guide");
+}
+
+void guide::LiveChanged(uint32_t user)
+{
+    std::shared_ptr<GuideSession> open;
+    {
+        std::lock_guard lock(g_mutex);
+        open = g_current.lock();
+    }
+    if (!open || open->user != user)
+        return;
+    // Off the caller's thread (LIVE's event thread: the Community's lists make requests that thread answers).
+    std::thread([open] {
+        std::lock_guard lock(open->mutex);
+        if (open->ui->Closed())
+            return;
+        if (open->mode == GuideSession::Mode::kMain)
+            GuideRefresh(open);
+        else if (open->mode == GuideSession::Mode::kCommunity)
+            GuideCommunity(open, open->tab, xui::PaneFocus());
+    }).detach();
 }
 
 uint32_t guide::ShowCommunity(uint32_t user, Tab tab)

@@ -8,6 +8,7 @@ rem Every checkout and every worktree has its own native/*/build (they are not i
 rem end (cbl2.dll) and the engine and store (cbengine.dll) have no Python fallback any more, so a fresh
 rem checkout runs this once before anything else. Release builds, Ninja, at most 2 parallel compiles.
 setlocal enabledelayedexpansion
+call "%~dp0disk_guard.cmd" || exit /b 1
 set ROOT=%~dp0..
 pushd "%ROOT%" || exit /b 1
 if not defined VCINSTALLDIR (

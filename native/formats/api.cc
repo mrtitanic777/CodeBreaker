@@ -4,8 +4,8 @@
 #include <exception>
 #include <string>
 
+#include "cb/core/error.hpp"
 #include "core/questions.h"
-#include "core/uc.h"
 
 namespace cbf {
 std::map<std::string, Answer> &registry() {
@@ -16,6 +16,21 @@ std::map<std::string, Answer> &registry() {
 
 namespace {
 thread_local std::string answer;   // valid until this thread's next call
+
+// The Python exception a cb::Error stands for (cb/compat/py_bridge.hpp's table): by meaning, never by message.
+const char *python_kind(const cb::Error &e) {
+    if (dynamic_cast<const cb::TruncatedError *>(&e)) return "struct.error";   // a short read
+    if (dynamic_cast<const cb::NotFoundError *>(&e)) return "FileNotFoundError";
+    if (dynamic_cast<const cb::AccessError *>(&e)) return "PermissionError";
+    if (dynamic_cast<const cb::TimeoutError *>(&e)) return "TimeoutError";
+    if (dynamic_cast<const cb::IoError *>(&e)) return "OSError";
+    if (dynamic_cast<const cb::UnsupportedError *>(&e)) return "NotImplementedError";
+    if (dynamic_cast<const cb::FormatError *>(&e)) return "ValueError";
+    if (dynamic_cast<const cb::ParseError *>(&e)) return "ValueError";
+    if (dynamic_cast<const cb::UsageError *>(&e)) return "ValueError";
+    if (dynamic_cast<const cb::InternalError *>(&e)) return "AssertionError";
+    return "RuntimeError";   // ToolError, EmulationError and the rest
+}
 
 int hand_back(int status, const std::string &s, const uint8_t **out, size_t *out_size) {
     answer = s;
@@ -46,6 +61,13 @@ extern "C" CBF_API int cbf_call(const char *question, const uint8_t *data, size_
         return hand_back(CBF_RAISED, err.finish(), out, out_size);
     } catch (const Fallback &f) {
         return hand_back(CBF_FALLBACK, f.reason, out, out_size);
+    } catch (const cb::Error &e) {               // a cb::formats reader: the Python exception that means the same
+        Out err;
+        err.begin_tuple();
+        err.text(python_kind(e));
+        err.text(e.what());
+        err.end_tuple();
+        return hand_back(CBF_RAISED, err.finish(), out, out_size);
     } catch (const std::bad_alloc &) {
         Out err;
         err.begin_tuple();
@@ -65,8 +87,9 @@ extern "C" CBF_API int cbf_call(const char *question, const uint8_t *data, size_
 
 extern "C" CBF_API int cbf_version(void) { return CBF_VERSION; }
 
-extern "C" CBF_API int cbf_unicorn(const wchar_t *path, char *err, size_t errlen) {
-    return cbf::load_unicorn(path, err, errlen);
+extern "C" CBF_API int cbf_unicorn(const wchar_t *, char *err, size_t errlen) {   // not used (cbformats.h)
+    if (err && errlen) err[0] = 0;
+    return 0;
 }
 
 extern "C" CBF_API const char *cbf_questions(void) {

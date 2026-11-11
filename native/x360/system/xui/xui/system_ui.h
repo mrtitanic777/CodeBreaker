@@ -140,6 +140,79 @@ namespace xui
     void ShowControlScene(const std::string& package, const std::string& scene, const std::vector<SceneControl>& controls,
                           const std::vector<std::string>& hidden, uint32_t focus);
     void UpdateSceneControl(uint32_t index, const SceneControl& control);
+    // Guide.Voicemail.xex's Voice Mail (VoiceMail.xur, its VoiceMailScene): the Record, Stop and Play buttons
+    // (scnButtons) and Done (btnAccept), focus moving left / right over the enabled ones (PanePress: kChosen with
+    // 0 Record, 1 Stop, 2 Play, 3 Done; B Cancel), the progress bar (0-100), txtInfo and txtWarning (empty: hidden).
+    // ShowVoiceMail opens it; UpdateVoiceMail changes what shows while it is open. VoiceMailString: its Strings.xus.
+    struct VoiceMailView
+    {
+        bool record = false, stop = false, play = false;
+        uint32_t focus = 0;
+        int progress = 0;
+        std::u16string info, warning;
+    };
+    void ShowVoiceMail(const VoiceMailView& view);
+    void UpdateVoiceMail(const VoiceMailView& view);
+    std::u16string VoiceMailString(size_t index, const char16_t* fallback);
+
+    // Guide.Beacons (its RootScene / TabBaseScene / TitlePickerScene / GameDetails / SetBeacon scenes, drawn with
+    // its own Skin.xur). A row of its lists: the control's text (the game or the gamertag), the data slots 1-3
+    // (btn_Beacons_JumpInList: 1 txtSubText, 2 txtHeatCount2, 3 txtHeatCount1; btn_Beacons_FriendList: 1
+    // txtBeaconText, 2 txtLastPlayed; btn_Beacons_TitlePicker: 1 txtPlatformType), the row's picture (a game's tile or
+    // a gamer picture, PNG) or `image` (one of the module's images, "ico_64x_add.png"), the image slots 1 / 2
+    // (FriendList's imgBeaconIcon / imgPresenceIcon), and whether it can be chosen.
+    struct BeaconRow
+    {
+        std::u16string text, slot[4];
+        std::vector<uint8_t> picture;
+        std::string image, slotImage[3];
+        bool enabled = true;
+    };
+    // A tab of Beacons & Activity (TabBaseScene.xur): labelDescription, txtListCount, labelStatus (the empty / error
+    // text, shown instead of the list) and its wait cursor while `waiting`.
+    struct BeaconTab
+    {
+        std::u16string description, count, status;
+        bool waiting = false;
+        std::vector<BeaconRow> rows;
+    };
+    // RootScene.xur: Tab1 My Beacons, Tab2 My Activity, Tab3 Friends' Activity (XuiTabScene, LB / RB and left /
+    // right; the list up / down, A the focused row, B back). UpdateBeaconTab redraws one tab's data (a fetch done).
+    void ShowBeacons(const std::vector<BeaconTab>& tabs, int tab, uint32_t focus);
+    void UpdateBeaconTab(int tab, const BeaconTab& data);
+    struct BeaconsAction
+    {
+        enum Kind { kNone, kChosen, kCancelled, kTab } kind = kNone;
+        int tab = 0;
+        uint32_t index = 0;
+    };
+    BeaconsAction BeaconsPress(uint16_t pressed);
+    // TitlePickerScene.xur ("Choose an activity.": the games to set a beacon for) or GameDetails.xur (a game's
+    // friends: its tile, name and platform over the list): a list pane (PanePress: kChosen with the row, kCancelled).
+    struct BeaconListInfo
+    {
+        bool details = false; // GameDetails.xur, else TitlePickerScene.xur
+        std::u16string title, platform, description, count, status, sort;
+        std::vector<uint8_t> tile;
+        bool waiting = false;
+        std::vector<BeaconRow> rows;
+        uint32_t focus = 0;
+    };
+    void ShowBeaconList(const BeaconListInfo& info);
+    // SetBeacon.xur: btnComment (Add / Edit Comment), chkSocialNetwork (greyed: no social networks here), the
+    // actions list (lstSetActions: Set Beacon; lstEditActions: Update Beacon, Remove Beacon) and the preview (the
+    // game's tile and name, slots 1 platform, 2 / 3 friends recently / online, 4 "Comment", 5 the comment). PanePress:
+    // kChosen with 0 the comment button, 2 + n the n-th action; B back.
+    struct SetBeaconInfo
+    {
+        bool edit = false;
+        std::u16string comment, share, description, title, platform, recent, online, commentHeader, commentText;
+        std::vector<uint8_t> tile;
+        std::vector<std::u16string> actions;
+        uint32_t focus = 2;
+    };
+    void ShowSetBeacon(const SetBeaconInfo& info);
+    std::u16string BeaconsString(size_t index, const char16_t* fallback);
     void SetPasscodeEntered(uint32_t count, const std::u16string& text);
     void ShowMessageBox(const std::u16string& title, const std::u16string& text,
                         const std::vector<std::u16string>& buttons, uint32_t focus, MessageIcon icon);
@@ -475,6 +548,9 @@ namespace xui
     // player." after Prefer This Player (owner's capture 3_17_08: PreferredPlayer.png; not one of XAM's types, the
     // module's text is not in the system update: the capture's English).
     constexpr uint32_t kNotifyMuted = 0x3F, kNotifyUnmuted = 0x40, kNotifyPreferredPlayer = 0x10001;
+    // Guide.Beacons' own toast (SetBeacon.lua's ShowToast: sharedres://ico_32x_Beacons.png): `param` is the whole
+    // text ("Beacon set for <the game>").
+    constexpr uint32_t kNotifyBeacons = 0x10002;
     void QueueNotification(uint32_t type, uint32_t user, const std::u16string& param);
     void SetNotificationPosition(uint32_t position); // XNotifyPositionUI's XNOTIFYUI_POS_* bits
 

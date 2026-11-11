@@ -1,82 +1,107 @@
-// codebreaker/verify/gate16/setup16.hpp -- typed C++ of codebreaker.verify.gate16.setup16.
+// codebreaker/verify/gate16/setup16.hpp -- COMPAT SHIM over cb/verify/gate16/setup16.hpp (docs/CPP_DESIGN.md 6.3).
 //
-// setup16.py -- does Windows 95 Setup run with these modules? The real system's test of a rebuilt module.
+// The module is native/cb/verify/gate16/setup16.{hpp,cpp} now (does Windows 95 Setup run with these modules? Setup's CD
+// copied with MINI.CAB rebuilt, booted in QEMU, Enter pressed at the Welcome dialog; the License page on the screen is a
+// pass). This header keeps the old py:: API: the screen recognisers over `Image`, `_Monitor`, `Process`, `_paths()` (the
+// settings, read as before), `make_cd` and `continue_test`, converting to and from the new module. No logic of its own.
 //
-// Setup's own CD is copied with WIN95\MINI.CAB rebuilt -- the original's files, with the ones
-// given in their place -- and booted in QEMU from a disk Setup has already prepared and a floppy
-// that starts `SETUP /IS`. At the Welcome dialog Enter is pressed (Continue); Setup then shows
-// its License Agreement page. That page on the screen is a pass; Windows back at the DOS prompt,
-// an error box, or Windows' screen with nothing on it is a fail.
-//
-// Everything a run copies (the CD, the disk -- 650 MB) is made in a folder of its own
-// (base/runs.py: state/phase3/runs/) and gone when the run ends -- a killed run's, by the next
-// run once it is a day old; only the last screen of each tag is kept (state/phase3/shots/<tag>.png),
-// for whoever looks at a failure.
-//
-//     auto [verdict, png] = continue_test({{"USER.EXE", path}, ...}, tag);
-//       verdict: "PASS" | "FAIL(dos)" | "FAIL(hang)" | "FAIL(error box)" | "FAIL(timeout)"
-//                | "FAIL(error box before Welcome)"
-//                | "SLOW" (Setup's DOS part never finished: the run says nothing)
-//
-// Typing notes -- what the runtime does not have, and how it is met:
-//   * pycdlib (an ISO 9660 / Joliet reader and writer) and codebreaker.formats.cab (MSZIP cabinets: read, write, extract) have no typed
-//     port and no runtime counterpart: make_cd() and _replace_on_cd() are written over the interfaces `Iso` and `CabTool` (the calls the Python makes
-//     of them, nothing else), handed in by the caller; continue_test() takes the make_cd as a function (`MakeCd`), which is the Python's
-//     module-level make_cd by default when an `Iso` and `CabTool` are given to set_iso_cab().
-//   * PIL: `Image` is an RGB picture read from a PPM (what QEMU's screendump writes: P6, 8 bits), with getpixel, size, resize (Pillow's
-//     default, bicubic, bit for bit: its convolution with 22-bit fixed-point coefficients) and save (a PNG: the pixels are what PIL writes, the
-//     compressed bytes are zlib's own).  A file PIL cannot open is an OSError (PIL.UnidentifiedImageError is one).
-//   * socket and subprocess.Popen: written here over Winsock and CreateProcessW (Popen.poll / kill / wait are `Process`); a connection that
-//     fails is OSError, a receive that times out is the Python's socket.timeout (not an error there).
-//   * `_Monitor.send(*cmds)` takes the commands as a list.
-//   * `continue_test`'s `keep_shot` is std::optional<str> (None: the run's results folder).
+// The old `Iso` and `CabTool` interfaces (which stood in for pycdlib and formats.cab, neither of which had a port) are
+// kept so that callers compile, and are not used: the new make_cd reads and writes the CD and the cabinets itself.
+// `set_iso_cab` accepts and ignores what it is given.
 #pragma once
 
 #include <cstdint>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
 
+#include "cb/core/process.hpp"
+#include "cb/compat/py_bridge.hpp"
+#include "cb/verify/gate16/setup16.hpp"
 #include "py.hpp"
+#include "py_os.hpp"
+#include "py_settings.hpp"
 
 namespace codebreaker::verify::gate16::setup16 {
 
 using RGB = std::tuple<int64_t, int64_t, int64_t>;
 inline constexpr RGB LICENSE_GREY{192, 199, 200};
-extern const py::list<std::tuple<int64_t, int64_t>> LICENSE_POINTS;   // ((60, 350), (580, 350), (300, 395))
+inline const py::list<std::tuple<int64_t, int64_t>> LICENSE_POINTS = {{60, 350}, {580, 350}, {300, 395}};
 
 // A picture of the screen: what PIL's Image.open(ppm).convert("RGB") gives.
 class Image {
   public:
     Image() = default;
     // a PPM (P6) file's bytes; OSError when they are not a picture
-    static Image from_ppm(const py::bytes& data);
-    static Image open(const py::str& path);     // Image.open(path).convert("RGB") of a PPM file
-    int64_t width() const { return w_; }
-    int64_t height() const { return h_; }
-    std::tuple<int64_t, int64_t> size() const { return {w_, h_}; }
-    RGB getpixel(int64_t x, int64_t y) const;   // IndexError outside the picture
-    Image resize(int64_t w, int64_t h) const;   // Pillow's default (bicubic)
-    py::list<RGB> getdata() const;
-    void save(const py::str& png) const;        // a PNG
+    static Image from_ppm(const py::bytes& data) {
+        auto p = cb::verify::gate16::Picture::try_from_ppm(cb::compat::from_py(data));
+        if (!p) throw py::OSError("cannot identify image file");
+        return Image(std::move(*p));
+    }
+    static Image open(const py::str& path) {
+        py::file f = py::open(path, py::str("rb"));
+        py::bytes data = f.read();
+        f.close();
+        return from_ppm(data);
+    }
+    int64_t width() const { return pic_.width(); }
+    int64_t height() const { return pic_.height(); }
+    std::tuple<int64_t, int64_t> size() const { return {width(), height()}; }
+    RGB getpixel(int64_t x, int64_t y) const {   // IndexError outside the picture
+        const auto p = x >= 0 && y >= 0 ? pic_.at(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y)) : std::nullopt;
+        if (!p) throw py::IndexError("image index out of range");
+        return {p->r, p->g, p->b};
+    }
+    Image resize(int64_t w, int64_t h) const { return Image(pic_.resized(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h))); }
+    py::list<RGB> getdata() const {
+        py::list<RGB> out;
+        const cb::Bytes& px = pic_.rgb();
+        for (std::size_t i = 0; i + 2 < px.size(); i += 3) out.append(RGB{px[i], px[i + 1], px[i + 2]});
+        return out;
+    }
+    void save(const py::str& png) const {   // a PNG
+        const cb::Bytes data = pic_.to_png();
+        py::file f = py::open(png, py::str("wb"));
+        f.write(cb::compat::to_py(cb::ByteView(data)));
+        f.close();
+    }
     // for harnesses
-    static Image make(int64_t w, int64_t h, const py::bytes& rgb);
-    const py::bytes& rgb() const { return rgb_; }
+    static Image make(int64_t w, int64_t h, const py::bytes& rgb) {
+        return Image(cb::verify::gate16::Picture(static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), cb::compat::from_py(rgb)));
+    }
+    py::bytes rgb() const { return cb::compat::to_py(cb::ByteView(pic_.rgb())); }
+    const cb::verify::gate16::Picture& picture() const { return pic_; }
 
   private:
-    int64_t w_ = 0, h_ = 0;
-    py::bytes rgb_;   // 3 bytes a pixel, rows from the top
+    explicit Image(cb::verify::gate16::Picture p) : pic_(std::move(p)) {}
+    cb::verify::gate16::Picture pic_;
 };
 
 struct Paths {
     py::str qemu, iso, original, cab, hd, floppy;
 };
-Paths _paths();
+inline Paths _paths() {
+    const py::str mini = py::os::path::join(py::settings::get_str(py::str("state")), py::str("mini"));
+    py::os::makedirs(py::os::path::dirname(mini), 0777, true);   // (settings.state makes the folder of the path it joins, not the path itself)
+    Paths p;
+    const py::str q = py::settings::get_str(py::str("qemu"));
+    p.qemu = q.empty() ? py::str("C:\\Program Files\\qemu\\qemu-system-i386.exe") : q;
+    p.iso = py::settings::get_str(py::str("win95_setup_iso"));
+    p.original = py::os::path::join(mini, py::str("original"));
+    p.cab = py::os::path::join(mini, py::str("MINI.CAB"));
+    p.hd = py::os::path::join(mini, py::str("prepared_hd.img"));
+    const py::str floppy = py::os::path::join(py::settings::get_str(py::str("state")), py::str("bootfloppy"), py::str("boot95_is.img"));
+    py::os::makedirs(py::os::path::dirname(floppy), 0777, true);
+    p.floppy = floppy;
+    return p;
+}
 
-int64_t _free_port();
+inline int64_t _free_port() { return cb::compat::guard([] { return static_cast<int64_t>(cb::verify::gate16::setup16::free_port()); }); }
 
-// What make_cd asks of an ISO image (pycdlib.PyCdlib) ...
+// What the old make_cd asked of an ISO image (pycdlib.PyCdlib) and of formats.cab: kept for callers that compile against
+// them; unused.
 struct IsoChild {
     py::bytes file_identifier;
 };
@@ -92,12 +117,11 @@ class Iso {
     virtual void write(const py::str& path) = 0;
     virtual void close() = 0;
 };
-// ... and of formats.cab
 struct CabEntry {
     py::str name;
     int64_t folder = 0;
 };
-struct CabInfo {                                   // c.info: .get("prev"), .get("next"), .get("set_id", 0), .get("index", 0)
+struct CabInfo {
     std::optional<py::str> prev, next;
     int64_t set_id = 0, index = 0;
 };
@@ -111,34 +135,61 @@ class CabTool {
     virtual Cab read(const py::str& path) = 0;
     virtual void write(const py::list<std::tuple<py::str, py::bytes>>& files, const py::str& out, const py::str& compress, int64_t set_id,
                        int64_t index = 0, const std::optional<py::str>& prev = std::nullopt, const std::optional<py::str>& next = std::nullopt) = 0;
-    virtual py::dict<py::str, py::str> extract(const py::str& path, const py::str& dest) = 0;   // {name: path of the extracted file}
+    virtual py::dict<py::str, py::str> extract(const py::str& path, const py::str& dest) = 0;
 };
 using IsoFactory = std::function<std::shared_ptr<Iso>()>;
-// the Iso / CabTool make_cd uses (formats::cab and pycdlib have no port: whoever has them sets them)
-void set_iso_cab(const IsoFactory& iso, const std::shared_ptr<CabTool>& cab);
+inline void set_iso_cab(const IsoFactory&, const std::shared_ptr<CabTool>&) {}   // (the new make_cd needs neither)
+
+namespace detail {
+inline cb::verify::gate16::setup16::Config config() {
+    const Paths p = _paths();
+    cb::verify::gate16::setup16::Config c;
+    c.state = py::settings::get_str(py::str("state")).utf8();
+    c.qemu = p.qemu.utf8();
+    c.setup_iso = p.iso.utf8();
+    c.mini_dir = std::filesystem::path(p.cab.utf8()).parent_path();
+    c.boot_floppy = p.floppy.utf8();
+    return c;
+}
+inline cb::verify::gate16::setup16::Replace replace_of(const py::dict<py::str, py::str>& replace) {
+    cb::verify::gate16::setup16::Replace out;
+    for (const auto& kv : replace.items()) out[std::get<0>(kv).utf8()] = std::get<1>(kv).utf8();
+    return out;
+}
+}  // namespace detail
 
 // Setup's CD with MINI.CAB rebuilt from the original's files, `replace` {NAME: path} in place of some.
-void make_cd(const py::str& out, const py::dict<py::str, py::str>& replace);
-
-// Put the files of `rest` {NAME: path} in place on the open CD under /WIN95: a loose file replaced, a file in a cabinet by the cabinet written again.
-void _replace_on_cd(Iso& iso, CabTool& cab, const py::dict<py::str, py::str>& rest, const py::str& out);
+inline void make_cd(const py::str& out, const py::dict<py::str, py::str>& replace) {
+    cb::compat::guard([&] { cb::verify::gate16::setup16::make_cd(detail::config(), out.utf8(), detail::replace_of(replace)); });
+}
 
 // A running QEMU (subprocess.Popen).
 class Process {
   public:
     Process() = default;
-    ~Process();
-    Process(const Process&) = delete;
-    Process& operator=(const Process&) = delete;
     // Popen(args, stdout=DEVNULL, stderr=DEVNULL); OSError when it cannot start
-    explicit Process(const py::list<py::str>& args);
-    std::optional<int64_t> poll();       // None: still running
-    void kill();
-    void wait(double timeout);           // TimeoutExpired is the caller's: false when the time ran out
-    bool wait_timeout(double timeout);
+    explicit Process(const py::list<py::str>& args) {
+        cb::process::ProcessSpec spec;
+        for (const py::str& a : args) spec.argv.push_back(a.utf8());
+        spec.out = cb::process::Capture::Discard;
+        spec.err = cb::process::Capture::Discard;
+        try {
+            p_ = std::make_unique<cb::process::Process>(cb::process::start(spec));
+        } catch (const cb::Error& e) {
+            throw py::FileNotFoundError(e.what());
+        }
+    }
+    std::optional<int64_t> poll() {   // None: still running
+        if (!p_ || p_->running()) return std::nullopt;
+        const auto code = p_->wait(std::chrono::milliseconds(0));
+        return code ? std::optional<int64_t>(*code) : std::nullopt;
+    }
+    void kill() { if (p_) p_->kill(); }
+    void wait(double timeout) { wait_timeout(timeout); }
+    bool wait_timeout(double timeout) { return !p_ || p_->wait(std::chrono::milliseconds(static_cast<int64_t>(timeout * 1000))).has_value(); }
 
   private:
-    void* handle_ = nullptr;
+    std::unique_ptr<cb::process::Process> p_;
 };
 
 class _Monitor {
@@ -146,22 +197,47 @@ class _Monitor {
     explicit _Monitor(int64_t port) : port(port) {}
     int64_t port;
     // connect, read what the monitor says first (2 s at most), send each command and wait 0.3 s after it
-    void send(const py::list<py::str>& cmds);
+    void send(const py::list<py::str>& cmds) {
+        std::vector<std::string> commands;
+        for (const py::str& c : cmds) commands.push_back(c.utf8());
+        if (!cb::verify::gate16::setup16::Monitor(static_cast<std::uint16_t>(port)).send(commands))
+            throw py::OSError("the monitor cannot be reached");
+    }
     // screendump into a PPM beside `png`, 1.2 s later read it, save it as the PNG and remove the PPM
-    Image shot(const py::str& png);
+    Image shot(const py::str& png) {
+        const auto p = cb::verify::gate16::setup16::Monitor(static_cast<std::uint16_t>(port)).shot(png.utf8());
+        if (!p) throw py::OSError("no screen came from the monitor");
+        return Image::make(p->width(), p->height(), cb::compat::to_py(cb::ByteView(p->rgb())));
+    }
 };
 
-bool _license(const Image& img);
-bool _error_box(const Image& img);
-bool _welcome(const Image& img);
+inline bool _license(const Image& img) { return cb::verify::gate16::setup16::is_license(img.picture()); }
+inline bool _error_box(const Image& img) { return cb::verify::gate16::setup16::is_error_box(img.picture()); }
+inline bool _welcome(const Image& img) { return cb::verify::gate16::setup16::is_welcome(img.picture()); }
 // the number of bright pixels of the small picture _welcome counts (what it compares with 2000)
-int64_t _welcome_count(const Image& img);
-bool _black(const Image& img);
+inline int64_t _welcome_count(const Image& img) { return cb::verify::gate16::setup16::white_pixels(img.picture()); }
+inline bool _black(const Image& img) { return cb::verify::gate16::setup16::is_black(img.picture()); }
 
 using MakeCd = std::function<void(const py::str& out, const py::dict<py::str, py::str>& replace)>;
 
 // Boot Setup with `replace` {NAME: path} and press Continue. -> (verdict, screenshot path)
-std::tuple<py::str, py::str> continue_test(const py::dict<py::str, py::str>& replace, const py::str& tag, int64_t wait = 150,
-                                           const std::optional<py::str>& keep_shot = std::nullopt, const MakeCd& make_cd_fn = nullptr);
+inline std::tuple<py::str, py::str> continue_test(const py::dict<py::str, py::str>& replace, const py::str& tag, int64_t wait = 150,
+                                                  const std::optional<py::str>& keep_shot = std::nullopt, const MakeCd& make_cd_fn = nullptr) {
+    return cb::compat::guard([&] {
+        namespace nv = cb::verify::gate16::setup16;
+        nv::Options options;
+        options.timing.wait = std::chrono::seconds(wait);
+        if (keep_shot && !keep_shot->empty()) options.keep_shot = std::filesystem::path(keep_shot->utf8());
+        if (make_cd_fn) {
+            options.make_cd = [make_cd_fn](const std::filesystem::path& out, const nv::Replace& r) {
+                py::dict<py::str, py::str> d;
+                for (const auto& [name, path] : r) d.set(cb::compat::to_py(name), cb::compat::to_py(path.generic_string()));
+                make_cd_fn(cb::compat::to_py(out.generic_string()), d);
+            };
+        }
+        const nv::Outcome o = nv::continue_test(detail::config(), detail::replace_of(replace), tag.utf8(), options);
+        return std::tuple<py::str, py::str>{cb::compat::to_py(nv::word(o.verdict)), cb::compat::to_py(o.screenshot.generic_string())};
+    });
+}
 
 }  // namespace codebreaker::verify::gate16::setup16

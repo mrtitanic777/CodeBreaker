@@ -101,7 +101,8 @@ def _frame_names(doc, far):
 def _named(text, frame):
     """[bp + k] / [bp - k] in an operand by the C name of that place."""
     def one(m):
-        k = int(m.group(2), 0) * (-1 if m.group(1) == "-" else 1)
+        n = m.group(2)
+        k = (int(n, 16) if n.startswith("0x") else int(n, 10)) * (-1 if m.group(1) == "-" else 1)   # (a decimal with a leading zero is no error)
         return frame.get(k, m.group(0))
     return re.sub(r"\[bp ([+-]) (0x[0-9a-f]+|\d+)\]", one, text)
 
@@ -178,6 +179,10 @@ def place(doc, code, start, end, fixups=None, name_at=None, seg=None, window=(0,
             while hi + 1 < len(ins) and ins[hi + 1].mnemonic in ("pop", "push") and ins[hi + 1].op_str in _SEGS:
                 hi += 1
             lo, hi = max(0, lo + window[0]), min(len(ins) - 1, hi + window[1])
+            if hi < lo:                           # (the window moved the two ends past each other: no block, not an empty one)
+                said.append("the window leaves no instruction in the block")
+                k += 1
+                continue
             span = {ins[x].address for x in range(lo, hi + 1)}
             lines = [_line(ins[x], frame, {}, fixups, name_at, seg) for x in range(lo, hi + 1)]
             if None in lines:

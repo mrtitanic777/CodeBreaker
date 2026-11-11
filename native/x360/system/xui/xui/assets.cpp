@@ -235,9 +235,41 @@ namespace xui
         return &strings_.emplace(key, std::move(table)).first->second;
     }
 
+    const Assets::PackageSkin* Assets::PackageSkinOf(std::string_view package) const
+    {
+        // Not the skin packages themselves (huduiskin.skin, xam.skin: XAM's skin, found the usual way).
+        if (package.empty() || package == kSkinBase || package.ends_with(".skin"))
+            return nullptr;
+        if (const auto it = packageSkins_.find(package); it != packageSkins_.end())
+            return it->second.scene ? &it->second : nullptr;
+        PackageSkin& skin = packageSkins_[std::string(package)];
+        const Package* p = FindPackage(package);
+        if (p && p->Find("Skin.xur"))
+            skin.scene = const_cast<Assets*>(this)->LoadScene(package, "Skin.xur");
+        if (!skin.scene)
+            return nullptr;
+        std::function<void(const Node&)> index = [&](const Node& node) {
+            if (node.className == "XuiVisual" && !node.Id().empty())
+                skin.visuals.try_emplace(node.Id(), &node);
+            for (const Node& child : node.children)
+                index(child);
+        };
+        index(skin.scene->Root());
+        Log("System UI: {}'s own skin: {} visuals", package, skin.visuals.size());
+        return &skin;
+    }
+
     bool Assets::FindVisual(std::string_view name, const Node*& node, const Scene*& scene, std::string& base,
                             const Scene* from, std::string_view fromPackage) const
     {
+        if (const PackageSkin* own = PackageSkinOf(fromPackage))
+            if (const auto it = own->visuals.find(name); it != own->visuals.end())
+            {
+                node = it->second;
+                scene = own->scene;
+                base = std::string(fromPackage);
+                return true;
+            }
         if (const auto it = themeVisuals_.find(name); it != themeVisuals_.end())
         {
             node = it->second.node;

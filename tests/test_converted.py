@@ -56,3 +56,15 @@ def test_generic_names():
         os.makedirs(os.path.join(d, "Puzzler"))
         path = _binary(os.path.join(d, "Puzzler"), "default.exe", b"MZ")
         assert converted.default_name(path) == "Puzzler"
+
+
+def test_an_output_beside_the_project_is_not_inside_it():
+    """Converted/foo_2/x.txt is not in Converted/foo: it is recorded as the absolute path it is, not as a path up and over."""
+    with tempfile.TemporaryDirectory() as d:
+        base = os.path.join(d, "Converted")
+        p = converted.project(_binary(d, "foo.exe", b"MZ one"), base=base)
+        sibling = os.path.join(os.path.dirname(p.root), os.path.basename(p.root) + "_2", "x.txt")
+        inside = os.path.join(p.assets, "deep", "y.txt")
+        p.record("c", [sibling, inside, p.root])
+        outputs = p.data()["steps"][0]["outputs"]
+        assert outputs == [os.path.abspath(sibling), os.path.join("assets", "deep", "y.txt"), "."], outputs

@@ -267,6 +267,9 @@ Bytes object_table(const std::vector<ObjectEntry>& objects);
 Bytes name_table(const NameTable& names);
 // (fix-up page table, fix-up records) for `pages` pages from {page number -> record bytes}.
 std::pair<Bytes, Bytes> fixup_tables(const std::map<std::uint32_t, std::vector<Bytes>>& fixups, std::uint32_t pages);
+// Whether a device descriptor block (DDB) can start at `at` of an object's bytes: a DDK version (0x03xx or 0x04xx)
+// followed by an alphanumeric, printable name.
+bool plausible_descriptor(ByteView object_bytes, std::uint64_t at);
 // The names the table at `offset` of `d` lists (tolerant: it stops at the first bad entry); `end` bounds it.
 std::vector<NameOrdinal> names_at(ByteView d, std::uint64_t offset, std::optional<std::uint64_t> end = std::nullopt);
 

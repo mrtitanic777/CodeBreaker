@@ -3,6 +3,8 @@
 
 #include "kernel/stfs_mount.h"
 #include "kernel/kernel.h"
+#include "live/client.h"
+#include "log.h"
 #include "modules.h"
 
 #include <windows.h>
@@ -113,6 +115,27 @@ GUEST_IMPORT(XamLoaderSetLaunchData)
 // trigger is not held, broadcasts XN 0x80040016 (user << 16 | command): the dash navigates in place. Otherwise it
 // launches the dash (XamLoaderLaunchTitleEx(NULL, NULL, NULL, 0x1000 with the trigger held, 0x100000 for command
 // 0x48, else 0)): not implemented (stops). The right-trigger reboot is not read here.
+namespace
+{
+    // A title Native Dashboard started (NATIVE_DASH_HOST_WINDOW, its games.h): that dashboard is still running and
+    // takes the screen back when this process ends, so going "to the dashboard" is ending.
+    bool HostDashboard()
+    {
+        const char* host = std::getenv("NATIVE_DASH_HOST_WINDOW");
+        return host && *host;
+    }
+
+    [[noreturn]] void ReturnToHostDashboard(const char* how)
+    {
+        Log("Loader: {}: back to the dashboard that started this title (it continues as its own process)", how);
+        kernel::users::SaveSignIns();
+        live::SignOutAllForExit();
+        kernel::stfs_mount::WaitForAllWrites(); // content packages still being written back
+        logging::Flush();
+        ExitProcess(0);
+    }
+}
+
 void kernel::RebootToDash(const std::vector<uint8_t>& request)
 {
     auto be32 = [&request](size_t at) {
@@ -125,6 +148,9 @@ void kernel::RebootToDash(const std::vector<uint8_t>& request)
         g_launchData = request;
         g_launchData.resize(0x3FC);
     }
+    // TODO: the request's command for the host dashboard (it goes home: command 0).
+    if (kernel::TitleId() != 0xFFFE07D1 && HostDashboard())
+        ReturnToHostDashboard(std::format("XamLoaderRebootToDash(command {:X}, user {})", command, user).c_str());
     if (kernel::TitleId() != 0xFFFE07D1 || kernel::DashContext() == 5)
         Fatal("XamLoaderRebootToDash(command {:X}, user {}): launching the dashboard as a new title (title {:08X}, dash "
             "context {}) is not implemented", command, user, kernel::TitleId(), kernel::DashContext());
@@ -136,6 +162,9 @@ void kernel::RebootToDash(const std::vector<uint8_t>& request)
 // set), the sign-ins kept (signed_in.txt); this one exits. XamLoaderLaunchTitleEx(NULL) and signin.xex's network test.
 [[noreturn]] void kernel::RelaunchDashboard(const std::vector<uint8_t>* launchData)
 {
+    // TODO: the launch data for the host dashboard (it goes home).
+    if (HostDashboard() && kernel::TitleId() != 0xFFFE07D1)
+        ReturnToHostDashboard("XamLoaderLaunchTitleEx(the dashboard)");
     {
         std::lock_guard lock(g_mutex);
         if (launchData)
@@ -191,6 +220,23 @@ GUEST_IMPORT(XamLoaderLaunchTitleEx)
     if (flags & ~0x2u)
         Fatal("XamLoaderLaunchTitleEx(NULL, flags {:X}): flags other than 2 are not implemented", flags);
     kernel::RelaunchDashboard(nullptr);
+}
+
+// VOID XamLoaderLaunchTitle(LPCSTR ImagePath, DWORD Flags) (XLaunchNewImage): as the Recompiled runtime reads it
+// (its kernel/xam_loader.cpp, from the dash's XLaunchNewImage 0x92198000): NULL with flags 0x100 (XLNI_DASH_ARCADE:
+// Minecraft's main menu Exit Game -> "Return to Xbox Dashboard" OK) or 0 (XLNI_DASH) starts the dashboard again.
+// Deviation (as there): at its home, not the Arcade area. Images by path and the other XLNI_ names stop.
+GUEST_IMPORT(XamLoaderLaunchTitle)
+{
+    auto& mem = guest::g_memory;
+    const std::string path = ctx.r3.u32 ? reinterpret_cast<const char*>(mem.Translate(ctx.r3.u32)) : "";
+    if (path.empty() && (ctx.r4.u32 == 0x100 || ctx.r4.u32 == 0))
+    {
+        Log("XamLoaderLaunchTitle(NULL, flags {:X}): back to the dashboard", ctx.r4.u32);
+        kernel::RelaunchDashboard(nullptr);
+    }
+    Fatal("XamLoaderLaunchTitle(\"{}\", flags {:X}): only the dashboard (NULL, 0 / 0x100) is implemented", path,
+          ctx.r4.u32);
 }
 
 GUEST_IMPORT(XamLoaderRebootToDash)

@@ -598,12 +598,14 @@ Bytes rename_externs(ByteView data, const std::map<std::string, std::string>& ma
             while (q < p.size()) {
                 std::string nm = name_at(p, q);
                 q += 1 + u8(p, q);
-                const std::uint8_t type_index = u8(p, q);
+                // the type index as stored: a record cut after its last name (seen in MSVC 1.52's MFC objects) has
+                // none, and is written back the same
+                const ByteView type_index = clamped(p, q, 1);
                 q += 1;
                 auto it = mapping.find(nm);
                 const Bytes encoded = text::to_latin1(it != mapping.end() ? it->second : nm);
                 append(nb, name(as_text(encoded)));
-                nb.push_back(type_index);
+                append(nb, type_index);
             }
             payload = std::move(nb);
         }
@@ -691,6 +693,11 @@ Bytes patched(ByteView data, std::string_view spec) {
         if (!byte || hex[i] == '-' || hex[i] == '+') throw UsageError("bad patch spec: " + std::string(spec));
         value.push_back(static_cast<std::uint8_t>(*byte));
     }
+    return patched(data, seg, *off, value);
+}
+
+Bytes patched(ByteView data, std::string_view seg, std::int64_t offset, ByteView value) {
+    const std::optional<std::int64_t> off = offset;
     std::vector<std::string> names, segs;
     Bytes out;
     for (const Record& rec : records(data)) {
