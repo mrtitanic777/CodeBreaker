@@ -141,6 +141,20 @@ void write_file(const stdfs::path& p, ByteView data) {
 
 void write_text(const stdfs::path& p, std::string_view text) { write_file(p, as_bytes(text)); }
 
+void append_file(const stdfs::path& p, ByteView data) {
+    if (p.has_parent_path()) make_dirs(p.parent_path());
+    Handle h(CreateFileW(native(p).c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+                         FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (!h.valid()) throw_io(p, GetLastError(), "cannot open for appending");
+    std::size_t done = 0;
+    while (done < data.size()) {
+        const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(data.size() - done, 1u << 30));
+        DWORD wrote = 0;
+        if (!WriteFile(h.get(), data.data() + done, chunk, &wrote, nullptr)) throw_io(p, GetLastError(), "append failed");
+        done += wrote;
+    }
+}
+
 void write_file_atomic(const stdfs::path& p, ByteView data) {
     if (p.has_parent_path()) make_dirs(p.parent_path());
     stdfs::path tmp = p;

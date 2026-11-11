@@ -43,6 +43,25 @@ void count_check();
 // `testdata/` folders next to the `_test.cpp` that uses them; `data_path("formats/testdata/x.bin")`.
 std::filesystem::path data_path(std::string_view relative);
 
+// Captures what the code under test writes to stdout and stderr (through cb::out/cb::err/cb::log or the C
+// runtime's handles) for the life of the object; the originals are restored afterwards.
+class CapturedStd {
+public:
+    CapturedStd();
+    CapturedStd(const CapturedStd&) = delete;
+    CapturedStd& operator=(const CapturedStd&) = delete;
+    ~CapturedStd();
+    std::string out();   // everything written to stdout so far (flushes cb::out's buffer first)
+    std::string err();
+
+private:
+    std::filesystem::path dir_;
+    void* saved_out_ = nullptr;
+    void* saved_err_ = nullptr;
+    void* out_ = nullptr;
+    void* err_ = nullptr;
+};
+
 // Run the registered tests; returns the process exit code. `main` of cb_tests calls this.
 int run_all(int argc, char** argv);
 

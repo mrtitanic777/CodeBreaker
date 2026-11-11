@@ -1,5 +1,9 @@
 #include "cb/core/testing.hpp"
 
+#include <windows.h>
+
+#include "cb/core/fs.hpp"
+#include "cb/core/log.hpp"
 #include "cb/core/win.hpp"
 
 #include <algorithm>
@@ -7,6 +11,7 @@
 #include <cstdio>
 #include <exception>
 #include <fstream>
+#include <mutex>
 
 #ifndef CB_SOURCE_DIR
 #define CB_SOURCE_DIR "."
@@ -32,7 +37,10 @@ struct Run {
     std::vector<Failure> failures;
     std::size_t checks = 0;
 };
-thread_local Run* g_current = nullptr;
+// The test being run. Tests run one at a time, but a test may check from worker threads, so this is process-wide
+// (not thread_local) and guarded by a mutex.
+Run* g_current = nullptr;
+std::mutex g_mutex;
 
 std::string xml_escape(const std::string& s) {
     std::string out;
@@ -53,12 +61,50 @@ std::string xml_escape(const std::string& s) {
 Registrar::Registrar(const char* name, TestFn fn) { registry().push_back({name, std::move(fn)}); }
 
 void record_failure(const char* file, int line, std::string message) {
+    std::lock_guard lock(g_mutex);
     if (g_current != nullptr) g_current->failures.push_back({file, line, std::move(message)});
 }
 
 void count_check() {
+    std::lock_guard lock(g_mutex);
     if (g_current != nullptr) ++g_current->checks;
 }
+
+CapturedStd::CapturedStd() {
+    dir_ = fs::stdfs::temp_directory_path() /
+           fs::from_text("cbtest-capture-" + std::to_string(GetCurrentProcessId()) + "-" +
+                         std::to_string(GetTickCount64()) + "-" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
+    fs::make_dirs(dir_);
+    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+    auto open = [&](const char* name) {
+        return CreateFileW((dir_ / name).c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    };
+    out_ = open("out.txt");
+    err_ = open("err.txt");
+    flush_out();
+    saved_out_ = GetStdHandle(STD_OUTPUT_HANDLE);
+    saved_err_ = GetStdHandle(STD_ERROR_HANDLE);
+    SetStdHandle(STD_OUTPUT_HANDLE, out_);
+    SetStdHandle(STD_ERROR_HANDLE, err_);
+}
+
+CapturedStd::~CapturedStd() {
+    flush_out();
+    SetStdHandle(STD_OUTPUT_HANDLE, saved_out_);
+    SetStdHandle(STD_ERROR_HANDLE, saved_err_);
+    CloseHandle(out_);
+    CloseHandle(err_);
+    std::error_code ec;
+    std::filesystem::remove_all(dir_, ec);
+}
+
+std::string CapturedStd::out() {
+    flush_out();
+    return fs::read_text(dir_ / "out.txt");
+}
+
+std::string CapturedStd::err() { return fs::read_text(dir_ / "err.txt"); }
 
 std::filesystem::path data_path(std::string_view relative) {
     return std::filesystem::path(CB_SOURCE_DIR) / "cb" / std::filesystem::path(win::to_wide(relative));

@@ -38,6 +38,8 @@ std::string read_text(const stdfs::path& p);
 // Whole-file writes; missing parent directories are created. The file is truncated if it exists.
 void write_file(const stdfs::path& p, ByteView data);
 void write_text(const stdfs::path& p, std::string_view text);
+// Append to the file (created, with its parent directories, if it does not exist).
+void append_file(const stdfs::path& p, ByteView data);
 // Write to a temporary file in the same directory, then rename over the target: readers see the old file or the
 // new one, never a half-written one.
 void write_file_atomic(const stdfs::path& p, ByteView data);
