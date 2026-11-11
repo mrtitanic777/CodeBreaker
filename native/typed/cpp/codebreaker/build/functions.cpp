@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <ctime>
+#include <iostream>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -40,6 +41,21 @@ py::dict<py::str, py::str> _HEADER;
 py::dict<py::str, py::dict<py::str, py::str>> OBJECTS;
 
 namespace {
+
+// the build cache's database is one connection shared by every thread: its reads and writes go one at a time
+std::mutex& cache_lock() {
+    static std::mutex m;
+    return m;
+}
+std::optional<py::bytes> cache_get(const py::str& kind, const py::str& k) {
+    std::lock_guard<std::mutex> g(cache_lock());
+    return cache::get(kind, k);
+}
+void cache_put(const py::str& kind, const py::str& k, const py::bytes& v) {
+    std::lock_guard<std::mutex> g(cache_lock());
+    cache::put(kind, k, v);
+}
+
 
 const char* const ERR_RX = "\\((\\d+)\\): Error! (E\\d+: [^\\r\\n]*)";
 const char* const SYM_RX = "(?m)^([0-9A-Fa-f]{4}):([0-9A-Fa-f]{4,8})[+*]?\\s+(\\S+)\\s*$";
@@ -141,7 +157,8 @@ py::subprocess::CompletedProcess run_tool(const py::list<py::str>& args, const p
     o.errors = "replace";
     if (env) {
         EnvScope scope(*env);
-        return py::subprocess::run(args, o);
+        py::subprocess::CompletedProcess r = py::subprocess::run(args, o);
+        return r;
     }
     return py::subprocess::run(args, o);
 }
@@ -345,17 +362,17 @@ py::str tool_inputs(const py::str& cc, const std::optional<py::dict<py::str, py:
     py::str opts = env.get(variable, S(""));
     // the Python's tuple key (cc, INCLUDE, variable's value), joined unambiguously
     py::str k = cc + S("\x01") + include + S("\x01") + opts + S("\x01") + variable;
-    {
-        std::lock_guard<std::mutex> lock(tool_inputs_lock());
+    std::lock_guard<std::mutex> lock(tool_inputs_lock());   // (held while it is worked out: the hashing runs once, and not in two threads at a time)
+
         if (TOOL_INPUTS().contains(k)) return TOOL_INPUTS().at(k);
-    }
+
     std::vector<py::str> folders;
     for (const py::str& d : py::split(include, py::os::pathsep).vec())
         if (!d.empty() && py::os::path::isdir(d)) folders.push_back(d);
     py::str v = cache::key({cache::Part(cache::tool_bytes(cc)),
                             cache::Part(cache::files_bytes(py::list<py::str>(folders))), cache::Part(variable),
                             cache::Part(opts)});
-    std::lock_guard<std::mutex> lock(tool_inputs_lock());
+
     TOOL_INPUTS().set(k, v);
     return v;
 }
@@ -367,7 +384,7 @@ std::tuple<py::str, bool> compile_kept(const py::str& cc, const py::list<py::str
     if (header_key && !header_key->empty())
         k = cache::key({cache::Part(S("wcc-object")), cache::Part(tool_inputs(cc, env, S("WCC"))), cache::Part(cflags),
                         cache::Part(*header_key), cache::Part(stem), cache::Part(text)});
-    std::optional<py::bytes> had = k ? cache::get(S("objects"), *k) : std::nullopt;
+    std::optional<py::bytes> had = k ? cache_get(S("objects"), *k) : std::nullopt;
     if (had) {
         write_text(py::os::path::join(outdir, stem + S(".c")), S("#include \"m.h\"\n\n") + text + S("\n"));
         const std::string& h = had->raw();
@@ -388,10 +405,10 @@ std::tuple<py::str, bool> compile_kept(const py::str& cc, const py::list<py::str
             py::file f = py::open(py::os::path::join(outdir, stem + S(".obj")), S("rb"));
             py::bytes data = f.read();
             f.close();
-            cache::put(S("objects"), *k, py::bytes(std::string("OK") + data.raw()));
+            cache_put(S("objects"), *k, py::bytes(std::string("OK") + data.raw()));
         }
     } else if (k && keep) {   // a rejection is kept; a compiler that fell over is not
-        cache::put(S("objects"), *k, py::bytes(std::string("ER") + message_kept(why, outdir).raw()));
+        cache_put(S("objects"), *k, py::bytes(std::string("ER") + message_kept(why, outdir).raw()));
     }
     return {why, keep};
 }
@@ -433,7 +450,7 @@ py::list<py::str> never_set_kept(const py::str& cc, const py::list<py::str>& cfl
     if (header_key && !header_key->empty())
         k = cache::key({cache::Part(S("wcc-never-set")), cache::Part(tool_inputs(cc, env, S("WCC"))), cache::Part(flags),
                         cache::Part(*header_key), cache::Part(text)});
-    std::optional<py::bytes> had = k ? cache::get(S("never_set"), *k) : std::nullopt;
+    std::optional<py::bytes> had = k ? cache_get(S("never_set"), *k) : std::nullopt;
     if (had) {
         py::list<py::str> out;
         for (const py::str& s : py::split(had->decode("utf-8"), S(",")).vec())
@@ -441,7 +458,7 @@ py::list<py::str> never_set_kept(const py::str& cc, const py::list<py::str>& cfl
         return out;
     }
     py::list<py::str> found = _run_never_set(cc, cflags, env, outdir, stem, text);
-    if (k) cache::put(S("never_set"), *k, py::join(S(","), found).encode("utf-8"));
+    if (k) cache_put(S("never_set"), *k, py::join(S(","), found).encode("utf-8"));
     return found;
 }
 
@@ -934,7 +951,7 @@ py::str compile_powerpc(const py::str& cl, const py::str& outdir, const py::str&
                         cache::Part(cache::folder(py::os::path::dirname(cl))), cache::Part(CFLAGS_POWERPC),
                         cache::Part(_HEADER.at(outdir)), cache::Part(stem), cache::Part(text)});
     }
-    std::optional<py::bytes> had = k ? cache::get(S("objects"), *k) : std::nullopt;
+    std::optional<py::bytes> had = k ? cache_get(S("objects"), *k) : std::nullopt;
     if (had) {
         const std::string& h = had->raw();
         if (h.compare(0, 2, "ER") == 0) return message_here(py::bytes(h.substr(2)), outdir);
@@ -955,7 +972,7 @@ py::str compile_powerpc(const py::str& cl, const py::str& outdir, const py::str&
             py::file f = py::open(py::os::path::join(outdir, stem + S(".obj")), S("rb"));
             py::bytes data = f.read();
             f.close();
-            cache::put(S("objects"), *k, py::bytes(std::string("OK") + data.raw()));
+            cache_put(S("objects"), *k, py::bytes(std::string("OK") + data.raw()));
         }
         return S("");
     }
@@ -969,7 +986,7 @@ py::str compile_powerpc(const py::str& cl, const py::str& outdir, const py::str&
         why = t.empty() ? S("the compiler failed") : t;
     }
     why = head(why, 100);
-    if (k && m) cache::put(S("objects"), *k, py::bytes(std::string("ER") + message_kept(why, outdir).raw()));
+    if (k && m) cache_put(S("objects"), *k, py::bytes(std::string("ER") + message_kept(why, outdir).raw()));
     return why;
 }
 

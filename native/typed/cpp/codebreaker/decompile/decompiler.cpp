@@ -407,11 +407,11 @@ std::optional<py::str> c_from_l2(const std::optional<py::str>& text, FunctionNot
         } else {
             body = native_l2::function(doc, cback::MOVED);
         }
-    } catch (const cback::Decline&) {
+    } catch (const cback::Decline& e) {
         return text;
-    } catch (const py::ValueError&) {
+    } catch (const py::ValueError& e) {
         return text;
-    } catch (const py::KeyError&) {
+    } catch (const py::KeyError& e) {
         return text;
     }
     facts.from_l2 = true;
@@ -583,10 +583,18 @@ std::tuple<py::str, py::str, bool> _run_resuming(const py::str& description, con
                                                  std::optional<int64_t> max_instructions) {
     // CB_THREADS (setting "threads"): functions analysed at once in the one process, by hand; unset, one thread, and the
     // functions are shared among processes instead (below)
-    std::optional<int64_t> threads_setting = py::settings::get_opt_int(S("threads"));
+    // (the setting is "" unless set: a str, or a number)
+    std::optional<py::str> threads_setting;
+    try {
+        std::optional<int64_t> i = py::settings::get_opt_int(S("threads"));
+        if (i && *i) threads_setting = D(*i);
+    } catch (const py::Exception&) {
+        py::str t = py::settings::get_str(S("threads"));
+        if (!t.empty()) threads_setting = t;
+    }
     py::dict<py::str, py::str> env;
     env.set(S("CB_LANGUAGES"), _languages());
-    env.set(S("CB_THREADS"), D(threads_setting && *threads_setting ? *threads_setting : 1));
+    env.set(S("CB_THREADS"), threads_setting ? *threads_setting : S("1"));
     env.set(S("CB_STRUCTS"), _structs(description));   // (structures: see _structs)
     if (max_instructions && *max_instructions) env.set(S("CB_MAX_INSTRUCTIONS"), D(*max_instructions));
     std::vector<int64_t> wanted;
@@ -601,7 +609,7 @@ std::tuple<py::str, py::str, bool> _run_resuming(const py::str& description, con
         wanted.assign(found.begin(), found.end());
     }
     if (wanted.empty()) return {S(""), S(""), true};   // (no code: a font or resource-only module)
-    if (threads_setting && *threads_setting) return _resuming(description, only, timeout, env, wanted);   // (set by hand: as it says)
+    if (threads_setting) return _resuming(description, only, timeout, env, wanted);   // (set by hand: as it says)
     if (static_cast<int64_t>(wanted.size()) <= CHUNK) return _resuming(description, only, timeout, env, wanted);
     // More than a chunk: the functions in fixed chunks of CHUNK, in address order, each chunk a process of its own on one
     // thread, as many at once as the governor gives slots and memory for (base/parallel.py). Not the native program's threads:

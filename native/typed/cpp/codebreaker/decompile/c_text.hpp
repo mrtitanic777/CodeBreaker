@@ -81,7 +81,7 @@ using SelectorImports = py::dict<int64_t, std::tuple<py::str, py::str>>;
 struct Heading {
     std::tuple<py::str, py::list<std::tuple<py::str, py::str>>> params;
     py::dict<py::str, py::str> types;
-    py::list<py::str> calls;
+    py::list<std::tuple<py::str, py::list<py::str>>> calls;   // (callee, its arguments as written)
     py::str declaration;                   // `head();`
     bool fastcall = false;
 };

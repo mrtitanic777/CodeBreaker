@@ -460,7 +460,11 @@ void read_back(ModuleFacts& m, const Wire& w) {
         for (const Wire& p : params[1].seq()) plist.append(std::make_tuple(as_str(p[0]), as_str(p[1])));
         h.params = std::make_tuple(as_str(params[0]), plist);
         for (const auto& kv : x.get("types").items()) h.types.set(as_str(kv.first), as_str(kv.second));
-        for (const Wire& c : x.get("calls").seq()) h.calls.append(as_str(c));
+        for (const Wire& c : x.get("calls").seq()) {
+            py::list<py::str> args;
+            for (const Wire& a : c[1].seq()) args.append(as_str(a));
+            h.calls.append(std::make_tuple(as_str(c[0]), args));
+        }
         h.declaration = as_str(x.get("declaration"));
         h.fastcall = ::py::truthy(x.get("fastcall"));
         m.heading = h;
@@ -479,7 +483,11 @@ Wire heading_wire(const Heading& h) {
     Wire types = Wire::dict();
     for (const auto& kv : h.types.items()) types.set(Ws(std::get<0>(kv)), Ws(std::get<1>(kv)));
     w.set("types", types);
-    w.set("calls", Wstrs(h.calls));
+    {
+        std::vector<Wire> cs;
+        for (const auto& c : h.calls.vec()) cs.push_back(Wire::tuple({Ws(std::get<0>(c)), Wstrs(std::get<1>(c))}));
+        w.set("calls", Wire::list(cs));
+    }
     w.set("declaration", Ws(h.declaration));
     w.set("fastcall", Wire(h.fastcall));
     return w;
