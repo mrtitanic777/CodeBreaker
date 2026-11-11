@@ -1,27 +1,20 @@
-// codebreaker/decompile/struct_text.hpp -- C++ port of codebreaker/decompile/struct_text.py.
-//
-// struct_text.py -- which field accesses are fields: the module's decision, for the C back end.
-//
-//     plan = struct_text::plan(module_path, docs, by_va, declared, analysis);
-//     header += struct_text::declarations(plan, used);
-//
-// The Python module reaches three collaborators that are not part of it: the image loader and
-// structure recovery (codebreaker.analyze.image / structures) and the C back end's
-// parameter_names / struct_accesses over a function's L2 document. In C++ they are handed in as
-// `Analysis`, and a function's document is named by the function (`docs` is the set of functions
-// that have one); the callbacks look the document up.
+// codebreaker/decompile/struct_text.hpp -- COMPAT SHIM (docs/CPP_DESIGN.md 6.3). The module now lives in
+// native/cb/decompile/struct_text.{hpp,cpp}; this header keeps the old py:: surface for decompile/c_text, which
+// hands the module its three collaborators as py:: callbacks. Conversion and forwarding only; deleted with c_text's
+// refactor.
 #pragma once
 
 #include <functional>
 #include <optional>
 #include <tuple>
 
+#include "cb/compat/py_bridge.hpp"
+#include "cb/decompile/struct_text.hpp"
 #include "py.hpp"
 
 namespace codebreaker::decompile::struct_text {
 
-// How big (in bytes) each scalar type name is.
-extern const py::dict<py::str, int64_t> SIZE_;
+namespace ns = ::cb::decompile::struct_text;
 
 // One root of a recovered structure: ("arg", va, index) or ("this", va) (no index).
 struct Root {
@@ -62,18 +55,82 @@ struct Analysis {
 };
 
 // (the field's type as written, its size) for an access `*(base stars)...`; (None, 0) when not a field.
-std::tuple<std::optional<py::str>, int64_t> kind(const py::str& base, const py::str& stars);
+inline std::tuple<std::optional<py::str>, int64_t> kind(const py::str& base, const py::str& stars) {
+    auto k = ns::kind(::cb::compat::from_py(base), static_cast<std::size_t>(py::len(stars)));
+    if (!k) return {std::nullopt, 0};
+    return {::cb::compat::to_py(k->type), k->size};
+}
 
-// {function: {parameter: (structure, {offset: (type, size)})}} -- the accesses through each
-// function's parameters that are a structure's fields, decided over the module: `docs` the
-// functions that have an L2 document, `declared` {function: its heading as written}. On any trouble
-// in the analysis, nothing: this is for reading, never for meaning.
-Plan plan(const py::str& module_path, const py::set<py::str>& docs, const py::dict<int64_t, py::str>& by_va,
-          const py::dict<py::str, py::str>& declared, const Analysis& analysis);
+inline Plan plan(const py::str& module_path, const py::set<py::str>& docs, const py::dict<int64_t, py::str>& by_va,
+                 const py::dict<py::str, py::str>& declared, const Analysis& analysis) {
+    std::set<std::string> new_docs = ::cb::compat::from_py(docs);
+    std::map<std::uint64_t, std::string> new_by_va;
+    for (const auto& kv : by_va.items()) new_by_va[static_cast<std::uint64_t>(std::get<0>(kv))] = ::cb::compat::from_py(std::get<1>(kv));
+    std::map<std::string, std::string> new_declared;
+    for (const auto& kv : declared.items()) new_declared[::cb::compat::from_py(std::get<0>(kv))] = ::cb::compat::from_py(std::get<1>(kv));
 
-// The header's declarations of the structures `used` (the ones a function was written with a
-// field of), each field at its offset, gaps as padding (a line's end after them, whether or not
-// there are any: the header the module had is followed by it wherever a plan was made).
-py::str declarations(const Plan& planned, const py::set<py::str>& used);
+    ns::Analysis a;
+    a.recover = [&](std::string_view path) -> std::optional<std::vector<ns::Structure>> {
+        py::list<Structure> found;
+        try {   // the old callback may throw anything: the plan is then empty, as it was
+            found = analysis.recover(::cb::compat::to_py(path));
+        } catch (const std::exception&) {
+            return std::nullopt;
+        }
+        std::vector<ns::Structure> out;
+        for (const Structure& s : found) {
+            ns::Structure n;
+            n.name = ::cb::compat::from_py(s.name);
+            for (const Root& r : s.roots) {
+                ns::Root nr;
+                nr.kind = r.kind == "arg" ? ns::RootKind::Arg : r.kind == "this" ? ns::RootKind::This : ns::RootKind::Other;
+                nr.va = static_cast<std::uint64_t>(r.va);
+                nr.index = r.index;
+                n.roots.push_back(nr);
+            }
+            out.push_back(std::move(n));
+        }
+        return out;
+    };
+    a.parameter_names = [&](const std::string& fn) { return ::cb::compat::from_py(analysis.parameter_names(::cb::compat::to_py(fn))); };
+    a.struct_accesses = [&](const std::string& fn, const std::string& param) {
+        std::vector<ns::Access> out;
+        for (const Access& x : analysis.struct_accesses(::cb::compat::to_py(fn), ::cb::compat::to_py(param))) {
+            out.push_back({::cb::compat::from_py(x.base), static_cast<std::size_t>(py::len(x.stars)), x.offset});
+        }
+        return out;
+    };
+
+    ns::Plan p = ns::plan(::cb::compat::from_py(module_path), new_docs, new_by_va, new_declared, a);
+    Plan out;
+    for (const auto& [fn, by_param] : p) {
+        py::dict<py::str, Planned> params;
+        for (const auto& [param, planned] : by_param) {
+            Fields fields;
+            for (const auto& [off, f] : planned.fields) fields.set(off, Field(::cb::compat::to_py(f.type), f.size));
+            params.set(::cb::compat::to_py(param), Planned(::cb::compat::to_py(planned.structure), fields));
+        }
+        out.set(::cb::compat::to_py(fn), params);
+    }
+    return out;
+}
+
+// The header's declarations of the structures `used`.
+inline py::str declarations(const Plan& planned, const py::set<py::str>& used) {
+    ns::Plan p;
+    for (const auto& fi : planned.items()) {
+        for (const auto& pi : std::get<1>(fi).items()) {
+            const Planned& pl = std::get<1>(pi);
+            ns::PlannedParam np;
+            np.structure = ::cb::compat::from_py(std::get<0>(pl));
+            for (const auto& fl : std::get<1>(pl).items()) {
+                np.fields[std::get<0>(fl)] = {::cb::compat::from_py(std::get<0>(std::get<1>(fl))),
+                                              static_cast<std::uint32_t>(std::get<1>(std::get<1>(fl)))};
+            }
+            p[::cb::compat::from_py(std::get<0>(fi))][::cb::compat::from_py(std::get<0>(pi))] = std::move(np);
+        }
+    }
+    return ::cb::compat::guard([&] { return ::cb::compat::to_py(ns::declarations(p, ::cb::compat::from_py(used))); });
+}
 
 }  // namespace codebreaker::decompile::struct_text
