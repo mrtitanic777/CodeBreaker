@@ -1,0 +1,5 @@
+zlib C sources a build of py_zlib.cc needs (compile as C, /TC), all under native/decompiler/core/zlib except crc32.c:
+  adler32.c deflate.c inffast.c inflate.c inftrees.c trees.c zutil.c   (native/decompiler/core/zlib)
+  crc32.c                                                              (native/nasm/zlib, same 1.3.1)
+cl line fragment (paths relative to the worktree root %W%):
+  /I %W%\native\decompiler\core\zlib /TC %W%\native\decompiler\core\zlib\adler32.c ... /TP %W%\native\ported\src\py_zlib.cc
