@@ -49,6 +49,8 @@ namespace live::game
         constexpr uint8_t kProbeMagic[4] = { 'X', 'P', '0', '1' };  // hole punching probes and answers
         constexpr size_t kTagSize = 8;                              // HMAC-SHA1, truncated
         constexpr size_t kProbeSize = 4 + 1 + 8 + 8 + 8 + kTagSize;
+        // "XG02": magic, destination XUID, source XUID, source port, destination port, counter (u64), payload, tag.
+        constexpr size_t kDirectHeader = 4 + 8 + 8 + 2 + 2 + 8;
         constexpr auto kProbeInterval = 250ms;   // probes to every endpoint of a peer while punching
         constexpr auto kProbeWindow = 3000ms;    // ... for this long
         constexpr auto kDirectKeepAlive = 2s;    // an answered probe on a direct path keeps the NAT mapping and shows it is up
@@ -189,6 +191,10 @@ namespace live::game
             sockaddr_in address{};
             bool probing = false, retry = false;
             int failures = 0;
+            // Replay protection of direct game data: the counter of the next packet we send, and a sliding window
+            // (IPsec's: the highest counter received and a mask of the 64 below it) of what we received.
+            uint64_t sendCounter = 0, recvHighest = 0, recvMask = 0;
+            std::vector<uint8_t> lastDirect;   // the last XG02 packet sent (the test hook ReplayLastDirect)
             Clock::time_point probeUntil{}, nextProbe{}, lastReceived{}, lastKeepAlive{}, retryAt{};
         };
 
@@ -207,6 +213,7 @@ namespace live::game
             std::map<std::pair<uint32_t, uint64_t>, Peer> peers;   // (local user, the peer's XUID)
             std::atomic<bool> blocked = false, disabled = false;
             std::atomic<uint64_t> relaySent = 0, relayReceived = 0, directSent = 0, directReceived = 0;
+            std::atomic<uint64_t> replayDropped = 0;
         };
 
         State& G()
@@ -476,11 +483,33 @@ namespace live::game
                 peer.lastReceived = now;
         }
 
-        // Direct game data: "XG02", destination XUID, source XUID, source port, destination port, payload, tag.
+        // The window of a pair's received counters: true when `counter` is new (and now taken), false for a counter
+        // seen before or older than the window. Called only for packets whose tag is right.
+        bool AcceptCounter(Peer& peer, uint64_t counter)
+        {
+            if (counter == 0)
+                return false;
+            if (counter > peer.recvHighest)
+            {
+                const uint64_t shift = counter - peer.recvHighest;
+                peer.recvMask = shift >= 64 ? 0 : peer.recvMask << shift;
+                peer.recvMask |= 1;
+                peer.recvHighest = counter;
+                return true;
+            }
+            const uint64_t back = peer.recvHighest - counter;
+            if (back >= 64 || (peer.recvMask >> back & 1))
+                return false;
+            peer.recvMask |= uint64_t(1) << back;
+            return true;
+        }
+
+        // Direct game data: "XG02", destination XUID, source XUID, source port, destination port, counter, payload,
+        // tag. A packet whose counter was seen (or is older than the window of 64) is a replay and dropped.
         bool OnDirectData(const detail::GameTarget& target, const sockaddr_in& from, const uint8_t* p, size_t n)
         {
             State& g = G();
-            if (n < 24 + kTagSize || g.blocked || g.disabled)
+            if (n < kDirectHeader + kTagSize || g.blocked || g.disabled)
                 return false;
             const uint64_t toXuid = Get64(p + 4), fromXuid = Get64(p + 12);
             const auto user = LocalUser(target, toXuid);
@@ -491,6 +520,11 @@ namespace live::game
                 auto it = g.peers.find({ *user, fromXuid });
                 if (it == g.peers.end() || !TagMatches(it->second.key, p, n))
                     return false;
+                if (!AcceptCounter(it->second, Get64(p + 24)))
+                {
+                    g.replayDropped++;
+                    return false;   // (a replay does not keep a path alive either)
+                }
                 const auto now = Clock::now();
                 if (!it->second.direct)
                     GoDirectLocked(it->second, from, now);
@@ -500,7 +534,7 @@ namespace live::game
             g.directReceived++;
             if (g.receiver)
                 g.receiver(toXuid, fromXuid, uint16_t(p[20] << 8 | p[21]), uint16_t(p[22] << 8 | p[23]),
-                           std::vector<uint8_t>(p + 24, p + n - kTagSize));
+                           std::vector<uint8_t>(p + kDirectHeader, p + n - kTagSize));
             return true;
         }
 
@@ -612,8 +646,12 @@ namespace live::game
             if (peer.user == user && peer.direct && AddressHandle(peer.xuid) == toHandle)
             {
                 // Straight to the console: "XG02", destination XUID, source XUID, source port, destination port,
-                // payload, tag over all of it.
-                std::vector<uint8_t> packet(24 + size + kTagSize);
+                // counter, payload, tag over all of it. The counter starts at the time in milliseconds << 12, so a
+                // restarted console never goes back below what its peer has seen, and rises by one per packet.
+                if (peer.sendCounter == 0)
+                    peer.sendCounter = uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch()).count()) << 12;
+                std::vector<uint8_t> packet(kDirectHeader + size + kTagSize);
                 std::memcpy(packet.data(), kDirectMagic, 4);
                 Put64(packet.data() + 4, peer.xuid);
                 Put64(packet.data() + 12, target.xuid[user]);
@@ -621,10 +659,12 @@ namespace live::game
                 packet[21] = uint8_t(fromPort);
                 packet[22] = uint8_t(toPort >> 8);
                 packet[23] = uint8_t(toPort);
+                Put64(packet.data() + 24, ++peer.sendCounter);
                 if (size)
-                    std::memcpy(packet.data() + 24, data, size);
-                const auto tag = Tag(peer.key, packet.data(), 24 + size);
-                std::memcpy(packet.data() + 24 + size, tag.data(), kTagSize);
+                    std::memcpy(packet.data() + kDirectHeader, data, size);
+                const auto tag = Tag(peer.key, packet.data(), kDirectHeader + size);
+                std::memcpy(packet.data() + kDirectHeader + size, tag.data(), kTagSize);
+                peer.lastDirect = packet;
                 g.directSent++;
                 if (!g.blocked)
                     SendToLocked(peer.address, packet);
@@ -694,6 +734,19 @@ namespace live::game
         StartProbingLocked(p, now);   // (a direct path that is up stays in use meanwhile)
     }
 
+    bool ReplayLastDirect(uint64_t peerXuid)
+    {
+        State& g = G();
+        std::lock_guard lock(g.mutex);
+        for (auto& [key, peer] : g.peers)
+            if (peer.xuid == peerXuid && peer.direct && !peer.lastDirect.empty())
+            {
+                SendToLocked(peer.address, peer.lastDirect);
+                return true;
+            }
+        return false;
+    }
+
     std::vector<PeerStatus> Peers()
     {
         State& g = G();
@@ -707,7 +760,7 @@ namespace live::game
     Stats GetStats()
     {
         State& g = G();
-        return { g.relaySent, g.relayReceived, g.directSent, g.directReceived };
+        return { g.relaySent, g.relayReceived, g.directSent, g.directReceived, g.replayDropped };
     }
 
     uint16_t LocalPort()

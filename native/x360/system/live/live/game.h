@@ -48,10 +48,14 @@ namespace live::game
     struct Stats
     {
         uint64_t relaySent = 0, relayReceived = 0, directSent = 0, directReceived = 0;
+        uint64_t replayDropped = 0;   // direct packets with a valid tag whose counter was seen or too old
     };
     Stats GetStats();
     // The UDP port the game socket is bound to (0: not open); a test aims forged packets at it.
     uint16_t LocalPort();
+    // Test hook: sends the last direct game data packet to `peerXuid` again, byte for byte (a replay). False when
+    // there is no direct path to it or nothing was sent on it.
+    bool ReplayLastDirect(uint64_t peerXuid);
     // Test hook: drops every direct packet (probes and game data, both ways) as a path that stopped working would.
     void SetDirectBlocked(bool blocked);
     // Direct connections off (true): no LAN endpoints reported, peer events ignored; everything goes through the server.

@@ -744,9 +744,25 @@ namespace live
 
         GameSessionInfo ParseGameSession(const json& j); // (defined with the session requests)
 
+        // Events of extensions that keep their own state (title servers, titleserver.cpp): every "ts_*" event goes to
+        // this handler as its JSON line.
+        std::mutex g_rawMutex;
+        std::function<void(const std::string&)> g_rawHandler;
+
         void HandleEvent(const json& j)
         {
             const std::string op = Str(j, "op");
+            if (op.rfind("ts_", 0) == 0)
+            {
+                std::function<void(const std::string&)> handler;
+                {
+                    std::lock_guard lock(g_rawMutex);
+                    handler = g_rawHandler;
+                }
+                if (handler)
+                    handler(j.dump());
+                return;
+            }
             const uint32_t user = U32(j, "user");
             if (user >= kMaxUsers)
                 return;
@@ -2720,6 +2736,25 @@ namespace live::detail
         std::array<std::array<uint8_t, 8>, 4> token{};
         std::array<uint64_t, 4> xuid{};
     };
+
+    // A request of an extension as its JSON text (without "id"), answered with the reply's JSON text; nullopt when not
+    // connected or no reply in time (titleserver.cpp).
+    std::optional<std::string> RawRequest(const std::string& request)
+    {
+        json j = json::parse(request, nullptr, false);
+        if (!j.is_object())
+            return std::nullopt;
+        const auto reply = Request(std::move(j));
+        if (!reply)
+            return std::nullopt;
+        return reply->dump();
+    }
+
+    void SetRawEventHandler(std::function<void(const std::string&)> handler)
+    {
+        std::lock_guard lock(g_rawMutex);
+        g_rawHandler = std::move(handler);
+    }
 
     // The server's address and each signed-in user's token and XUID (game.cpp).
     GameTarget CurrentGameTarget()
