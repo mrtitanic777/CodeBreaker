@@ -11,6 +11,7 @@
 #include "kernel/profile_store.h"
 #include "kernel/spa.h"
 #include "kernel/users.h"
+#include "kernel/xam_invites.h"
 #include "log.h"
 #include "settings.h"
 
@@ -351,19 +352,50 @@ bool guide::host::LaunchLiveSignup(uint32_t user)
 // Games on our Xbox LIVE: the dashboard's runtime does not track the running title's joinable session (XSessionCreate
 // only logs, kernel/xam_msg.cpp) nor hand it an accepted invite (XN_LIVE_INVITE_ACCEPTED), so Invite to Game is not
 // offered and Join Game / Accept say it cannot.
-std::optional<uint64_t> guide::host::CurrentGameSession(uint32_t)
+std::optional<uint64_t> guide::host::CurrentGameSession(uint32_t user)
 {
+    return kernel::invites::HostedPresenceSession(user);
+}
+
+std::optional<std::string> guide::host::InviteToGame(uint32_t user, uint64_t xuid)
+{
+    std::vector<live::InviteResult> results;
+    if (const auto error = live::SendGameInvites(user, { xuid }, 0, std::string(), &results))
+        return error;
+    if (!results.empty() && !results.front().ok)
+        return results.front().error;
     return std::nullopt;
 }
 
-std::optional<std::string> guide::host::InviteToGame(uint32_t, uint64_t)
-{
-    return "no joinable game session";
-}
-
+// Accept on a received game invite (the server looks again at the session and uses the invite up) or Join Game on a
+// friend's game (presence): the running title is told with XN_LIVE_INVITE_ACCEPTED and reads the session with
+// XInviteGetAcceptedInfo. Only the running title's own games: another title would have to be launched first (not done).
 bool guide::host::JoinGame(uint32_t user, uint64_t inviter, uint64_t sessionId, bool fromGameInvite)
 {
-    Log("System UI: Join Game for user {} ({:016X}'s session {:016X}{}): not supported by this runtime yet", user,
-        inviter, sessionId, fromGameInvite ? ", a game invite" : "");
-    return false;
+    live::InviteInfo info;
+    std::optional<std::string> error;
+    if (fromGameInvite)
+    {
+        const auto messages = live::Messages(user);
+        const auto it = std::find_if(messages.begin(), messages.end(), [&](const live::Message& m) {
+            return m.kind == "game_invite" && m.from == inviter && m.sessionId == sessionId;
+        });
+        error = it == messages.end() ? std::optional<std::string>("no such invite")
+                                     : live::AcceptGameInvite(user, it->id, info);
+    }
+    else
+        error = live::JoinFriendsGame(user, inviter, info);
+    if (error)
+    {
+        Log("System UI: Join Game for user {} ({:016X}'s session {:016X}): {}", user, inviter, sessionId, *error);
+        return false;
+    }
+    if (info.titleId != kernel::TitleId())
+    {
+        Log("System UI: Join Game for user {}: the session is {:08X}'s, the running title is {:08X}: not launched from here",
+            user, info.titleId, kernel::TitleId());
+        return false;
+    }
+    kernel::invites::Accepted(user, info);
+    return true;
 }

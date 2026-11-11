@@ -11,7 +11,9 @@
 #include "kernel/objects.h"
 #include "kernel/overlapped.h"
 #include "kernel/profile_store.h"
+#include "kernel/spa.h"
 #include "kernel/users.h"
+#include "kernel/xam_matchmaking.h"
 #include "settings.h"
 
 #include "guide/host.h"
@@ -151,6 +153,10 @@ namespace
         Toast(e);
         switch (e.kind)
         {
+        case live::EventKind::MatchFound:
+        case live::EventKind::MatchTimeout:
+            kernel::matchmaking::OnLiveEvent(e); // kernel/xam_matchmaking.cpp (live_matchmaking_queue)
+            break;
         case live::EventKind::SignedIn:
             if (e.user >= g_liveLogonCommitted.size() || !g_liveLogonCommitted[e.user])
             {
@@ -215,8 +221,15 @@ void kernel::InitializeLive()
         Log("Live: live_server \"{}\" names no server: offline", address);
         return;
     }
-    config.client = "Xbox 360 Dashboard";
-    config.titleId = 0xFFFE07D1;
+    // The title this runtime hosts (main.cpp calls this after loading it): its name from its SPA, else its ID.
+    config.titleId = kernel::TitleId();
+    {
+        const std::u16string name = kernel::spa::TitleName();
+        std::string utf8;
+        for (const char16_t c : name)
+            utf8 += c < 0x80 ? char(c) : '?';
+        config.client = utf8.empty() ? std::format("{:08X}", config.titleId) : utf8;
+    }
     // Party chat uses the PC's microphone and speakers, except in headless test runs (LIVE_VOICE_TONE /
     // LIVE_VOICE_DUMP stand in for them there).
     const char* headless = std::getenv("CB_HEADLESS");
@@ -602,6 +615,14 @@ namespace
             if (f.titleId != 0xFFFE07D1)
                 state |= 0x2;
             PutBe32(r, 0x24, f.titleId);
+            // The game session the friend shows in presence (the server's friend view): its XNKID, and JOINABLE (0x10)
+            // when the friend's session lets others join through presence. Minecraft finds friends' games by these.
+            if (f.sessionId)
+            {
+                PutBe64(r, 0x1C, f.sessionId);
+                if (f.joinable)
+                    state |= 0x10;
+            }
             const std::string& text = f.rich.empty() ? f.title : f.rich;
             const int wide = MultiByteToWideChar(CP_UTF8, 0, text.data(), int(text.size()), nullptr, 0);
             std::wstring w(size_t(wide), L'\0');

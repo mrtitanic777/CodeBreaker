@@ -16,6 +16,11 @@
 // Canary and its netplay fork (AdrianCassar/xenia-canary, BSD-3).
 
 #include "kernel/kernel.h"
+#include "kernel/objects.h"
+#include "kernel/users.h"
+#include "kernel/xam_titleserver_core.h"
+#include "live/client.h"
+#include "live/game.h"
 #include "settings.h"
 
 #ifndef NOMINMAX
@@ -29,15 +34,25 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <thread>
 #include <cstdlib>
 #include <cstring>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
+
+namespace kernel
+{
+    uint32_t WriteTitleXnAddr(uint32_t address); // also kernel/xam_msg.cpp
+}
 
 namespace
 {
@@ -242,7 +257,23 @@ namespace
         SOCKET host = INVALID_SOCKET;
         uint32_t type = 0;           // SOCK_STREAM 1, SOCK_DGRAM 2
         bool multicastSend = false;  // option 0x5801 (XAM socket flag 0x20000000)
+        uint16_t portOffset = 0;     // CB_NET_PORT_OFFSET added to the port the title bound (below)
     };
+
+    // CB_NET_PORT_OFFSET=<n> (testing only: two copies on one PC): a socket the title binds to port p is bound to p + n
+    // on the PC, and the title still sees p (getsockname, the ports of our Xbox LIVE's game data). Without it a second
+    // copy cannot bind the port the first one holds (Minecraft's QNet socket). A console has its own address.
+    uint16_t PortOffset()
+    {
+        static const uint16_t offset = [] {
+            const char* v = std::getenv("CB_NET_PORT_OFFSET");
+            return uint16_t(v ? std::atoi(v) : 0);
+        }();
+        return offset;
+    }
+
+    // The port the title sees for a socket's port on the PC.
+    uint16_t GuestPort(SOCKET host, uint16_t hostPort);
     std::map<uint32_t, Socket> g_sockets;
     uint32_t g_nextSocket = 0x100;
 
@@ -266,6 +297,15 @@ namespace
         std::lock_guard lock(g_netMutex);
         const Socket* socket = FindSocket(handle);
         return socket ? socket->host : INVALID_SOCKET;
+    }
+
+    uint16_t GuestPort(SOCKET host, uint16_t hostPort)
+    {
+        std::lock_guard lock(g_netMutex);
+        for (const auto& [guest, socket] : g_sockets)
+            if (socket.host == host)
+                return uint16_t(hostPort - socket.portOffset);
+        return hostPort;
     }
 
     bool MulticastSend(uint32_t handle)
@@ -315,18 +355,204 @@ namespace
         if (lengthPtr)
             mem.Write32(lengthPtr, sizeof(sockaddr_in));
     }
+
+    // ---- Game data through our Xbox LIVE server (docs "Game data", "Direct connections (P2P)") ----
+    // A console of the LIVE server is addressed by a handle 10.x.y.z (its online XUID's low 24 bits: the ina of the
+    // XNADDR a search result carries). A datagram a title sends to such an address does not go out on the PC's network:
+    // it goes through live::game::Send, which sends it straight to that console when a direct path was punched
+    // (live/game.cpp) and through the server otherwise. Datagrams that come back are handed to the title's socket
+    // bound to the destination port, with the sender's handle and port as the source address.
+    //
+    // Only handles the title has registered (XNetXnAddrToInAddr of an XNADDR whose abOnline holds the XUID that
+    // the handle is made of) or has heard from count: another 10.x.y.z is a real address on the PC's LAN (system
+    // link) and is sent to as before.
+    std::set<uint32_t> g_liveHandles; // host order; guarded by g_netMutex
+    struct Injector
+    {
+        SOCKET socket = INVALID_SOCKET;
+        uint16_t port = 0;       // its loopback port
+        uint32_t handle = 0;     // the source it stands for
+        uint16_t sourcePort = 0;
+    };
+    std::map<uint64_t, Injector> g_injectors;          // handle << 16 | source port
+    std::map<uint16_t, uint64_t> g_injectorByPort;     // loopback port -> key
+    constexpr size_t kInjectorsMax = 256;
+
+    bool LiveHandle(uint32_t address)
+    {
+        std::lock_guard lock(g_netMutex);
+        return g_liveHandles.count(address) != 0;
+    }
+
+    // A datagram to a LIVE console: false when the destination is not one (or no user is on LIVE).
+    bool SendThroughLive(SOCKET host, const sockaddr_in& to, const uint8_t* data, size_t size)
+    {
+        const uint32_t address = ntohl(to.sin_addr.s_addr);
+        if ((address >> 24) != 10 || !LiveHandle(address))
+            return false;
+        sockaddr_in bound = {};
+        int length = sizeof(bound);
+        if (::getsockname(host, reinterpret_cast<sockaddr*>(&bound), &length) != 0 || bound.sin_port == 0)
+        {
+            sockaddr_in any = {};
+            any.sin_family = AF_INET;
+            ::bind(host, reinterpret_cast<const sockaddr*>(&any), sizeof(any)); // an unbound socket: the PC picks a port
+            length = sizeof(bound);
+            if (::getsockname(host, reinterpret_cast<sockaddr*>(&bound), &length) != 0)
+                return false;
+        }
+        for (uint32_t user = 0; user < 4; user++)
+            if (live::game::Send(user, address, ntohs(to.sin_port), GuestPort(host, ntohs(bound.sin_port)), data, size))
+                return true;
+        return false;
+    }
+
+    // live::game's receiver (its thread): the datagram goes to the title's socket on `toPort` from a loopback socket
+    // that stands for the sender; recvfrom turns that source back into the sender's handle address.
+    // `handle` is the sender's address as the title sees it: a console's handle (liveConsole: the title may send back to
+    // it through live::game) or a title server's address (kernel/xam_titleserver_core.h).
+    void InjectDatagram(uint32_t handle, uint16_t fromPort, uint16_t toPort, const std::vector<uint8_t>& data,
+                        bool liveConsole)
+    {
+        SOCKET injector = INVALID_SOCKET;
+        uint16_t hostPort = toPort;
+        {
+            std::lock_guard lock(g_netMutex);
+            if (liveConsole)
+                g_liveHandles.insert(handle);
+            bool listening = false;
+            for (const auto& [guest, socket] : g_sockets)
+            {
+                sockaddr_in bound = {};
+                int length = sizeof(bound);
+                if (socket.type == 2 && ::getsockname(socket.host, reinterpret_cast<sockaddr*>(&bound), &length) == 0 &&
+                    ntohs(bound.sin_port) - socket.portOffset == toPort)
+                {
+                    listening = true;
+                    hostPort = ntohs(bound.sin_port);
+                    break;
+                }
+            }
+            if (!listening)
+                return; // nobody is bound there: as on a console, the datagram is lost
+            const uint64_t key = uint64_t(handle) << 16 | fromPort;
+            auto it = g_injectors.find(key);
+            if (it == g_injectors.end())
+            {
+                if (g_injectors.size() >= kInjectorsMax)
+                    return;
+                Injector made;
+                made.socket = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                sockaddr_in local = {};
+                local.sin_family = AF_INET;
+                local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+                int length = sizeof(local);
+                if (made.socket == INVALID_SOCKET || ::bind(made.socket, reinterpret_cast<sockaddr*>(&local), sizeof(local)) != 0 ||
+                    ::getsockname(made.socket, reinterpret_cast<sockaddr*>(&local), &length) != 0)
+                {
+                    if (made.socket != INVALID_SOCKET)
+                        ::closesocket(made.socket);
+                    return;
+                }
+                made.port = ntohs(local.sin_port);
+                made.handle = handle;
+                made.sourcePort = fromPort;
+                g_injectorByPort[made.port] = key;
+                it = g_injectors.emplace(key, made).first;
+            }
+            injector = it->second.socket;
+        }
+        sockaddr_in to = {};
+        to.sin_family = AF_INET;
+        to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        to.sin_port = htons(hostPort);
+        ::sendto(injector, reinterpret_cast<const char*>(data.data()), int(data.size()), 0,
+                 reinterpret_cast<const sockaddr*>(&to), sizeof(to));
+    }
+
+    void LiveGameReceived(uint64_t, uint64_t fromXuid, uint16_t fromPort, uint16_t toPort,
+                          const std::vector<uint8_t>& data)
+    {
+        InjectDatagram(live::game::AddressHandle(fromXuid), fromPort, toPort, data, true);
+    }
+
+    // The first signed-in LIVE user (title servers are asked for as that user), or 0.
+    uint32_t LiveUser()
+    {
+        for (uint32_t user = 0; user < 4; user++)
+            if (kernel::UserOnLive(user))
+                return user;
+        return 0;
+    }
+
+    // The port a socket is bound to; an unbound socket is bound to a port the PC picks.
+    uint16_t BoundPort(SOCKET host)
+    {
+        sockaddr_in bound = {};
+        int length = sizeof(bound);
+        if (::getsockname(host, reinterpret_cast<sockaddr*>(&bound), &length) != 0 || bound.sin_port == 0)
+        {
+            sockaddr_in any = {};
+            any.sin_family = AF_INET;
+            ::bind(host, reinterpret_cast<const sockaddr*>(&any), sizeof(any));
+            length = sizeof(bound);
+            if (::getsockname(host, reinterpret_cast<sockaddr*>(&bound), &length) != 0)
+                return 0;
+        }
+        return ntohs(bound.sin_port);
+    }
+
+    // recvfrom's source: a datagram that LiveGameReceived injected comes from its sender's handle address and port.
+    void TranslateInjectedSource(sockaddr_in& from)
+    {
+        if (from.sin_addr.s_addr != htonl(INADDR_LOOPBACK))
+            return;
+        std::lock_guard lock(g_netMutex);
+        const auto port = g_injectorByPort.find(ntohs(from.sin_port));
+        if (port == g_injectorByPort.end())
+            return;
+        const Injector& injector = g_injectors.at(port->second);
+        from.sin_addr.s_addr = htonl(injector.handle);
+        from.sin_port = htons(injector.sourcePort);
+    }
+
+    void StartLiveGame()
+    {
+        static std::once_flag once;
+        std::call_once(once, [] { live::game::Start(LiveGameReceived); });
+    }
 }
 
 // INT NetDll_XNetStartup(XNCALLER_TYPE Caller, const XNetStartupParams* Params)
 GUEST_IMPORT(NetDll_XNetStartup)
 {
+    StartLiveGame(); // (idle until the live client is connected and a user is signed in)
     ctx.r3.u64 = XNetStartup(ctx.r4.u32);
 }
 
 // INT NetDll_XNetStartupEx(XNCALLER_TYPE Caller, const XNetStartupParams* Params, DWORD VersionRequested)
 GUEST_EXPORT("xam.xex", 80, NetDll_XNetStartupEx)
 {
+    StartLiveGame();
     ctx.r3.u64 = XNetStartup(ctx.r4.u32);
+}
+
+// VOID XNetLogonGetDnsString(DWORD Service, LPSTR Buffer, DWORD Size) (ordinal 313; XAM 0x81739750): the host name of
+// one of XAM's LIVE services, strncpy'd into Buffer. XAM formats its table (0x815FF298, 0x817352C0) with its
+// environment's prefix, none for "PROD" (this console's): 0 XEMACS, 1 XEAS, 2 XETGS, 3 XEXDS, 4 NOTICE (xbox.com),
+// 5 PIFLC, 6 SIFLC. 1888's Network Settings test (0x9218CA60) reads 0-4 and looks the names up.
+GUEST_IMPORT(XNetLogonGetDnsString)
+{
+    static constexpr const char* kNames[] = { "XEMACS.XBOXLIVE.COM", "XEAS.XBOXLIVE.COM", "XETGS.XBOXLIVE.COM",
+                                              "XEXDS.XBOXLIVE.COM", "NOTICE.XBOX.COM", "PIFLC.XBOXLIVE.COM",
+                                              "SIFLC.XBOXLIVE.COM" };
+    auto& mem = guest::g_memory;
+    const uint32_t service = ctx.r3.u32, buffer = ctx.r4.u32, size = ctx.r5.u32;
+    if (service >= std::size(kNames))
+        Fatal("XNetLogonGetDnsString: service {} is past XAM's table (7 names)", service);
+    const std::string_view name = kNames[service];
+    for (uint32_t i = 0; i < size; i++)
+        mem.Write8(buffer + i, i < name.size() ? uint8_t(name[i]) : 0);
 }
 
 // INT NetDll_XNetGetOpt(XNCALLER_TYPE Caller, DWORD OptId, BYTE* Value, DWORD* ValueSize)
@@ -368,6 +594,22 @@ GUEST_IMPORT(NetDll_XNetGetOpt)
         }
         mem.Write32(value, Network().connected ? 1 : 0);
         mem.Write32(sizePtr, 4);
+        ctx.r3.u64 = 0;
+        return;
+    }
+    if (option >= 2 && option <= 9 && sizePtr != 0)
+    {
+        // XNET_OPTID_NIC_XMIT_BYTES (2) ... XNET_OPTID_CALLER_RECV_FRAMES (9): the adapter's and the caller's sent /
+        // received byte and frame counts, ULONGLONGs (the 1888 dash's Network Settings page reads 4). The host's
+        // sockets keep no guest-adapter counts: 0.
+        if (mem.Read32(sizePtr) < 8 || value == 0)
+        {
+            mem.Write32(sizePtr, 8);
+            ctx.r3.u64 = kWsaEMsgSize;
+            return;
+        }
+        mem.Write64(value, 0);
+        mem.Write32(sizePtr, 8);
         ctx.r3.u64 = 0;
         return;
     }
@@ -615,7 +857,20 @@ GUEST_IMPORT(NetDll_bind)
         return Fail(ctx, kWsaENotSock);
     if (!ReadAddress(ctx.r5.u32, ctx.r6.u32, address))
         return Fail(ctx, kWsaEFault);
-    Finish(ctx, ::bind(host, reinterpret_cast<const sockaddr*>(&address), sizeof(address)));
+    uint16_t offset = 0;
+    if (PortOffset() && address.sin_port != 0)
+    {
+        offset = PortOffset();
+        address.sin_port = htons(uint16_t(ntohs(address.sin_port) + offset));
+    }
+    const int result = ::bind(host, reinterpret_cast<const sockaddr*>(&address), sizeof(address));
+    if (result == 0 && offset)
+    {
+        std::lock_guard lock(g_netMutex);
+        if (Socket* socket = FindSocket(ctx.r4.u32))
+            socket->portOffset = offset;
+    }
+    Finish(ctx, result);
 }
 
 // INT NetDll_connect(XNCALLER_TYPE Caller, SOCKET s, const sockaddr* name, int namelen)
@@ -627,6 +882,18 @@ GUEST_IMPORT(NetDll_connect)
         return Fail(ctx, kWsaENotSock);
     if (!ReadAddress(ctx.r5.u32, ctx.r6.u32, address))
         return Fail(ctx, kWsaEFault);
+    if (kernel::titleserver::ServiceOf(ntohl(address.sin_addr.s_addr)))
+    {
+        // A title server (XNetServerToInAddr's address): a stream of our Xbox LIVE server, bridged through the loopback.
+        uint16_t bridge = 0;
+        const uint16_t source = BoundPort(host);
+        const int error = kernel::titleserver::PrepareConnect(ntohl(address.sin_addr.s_addr), ntohs(address.sin_port),
+                                                              source, LiveUser(), kernel::TitleId(), bridge);
+        if (error)
+            return Fail(ctx, uint32_t(error));
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = htons(bridge);
+    }
     Finish(ctx, ::connect(host, reinterpret_cast<const sockaddr*>(&address), sizeof(address)));
 }
 
@@ -664,6 +931,7 @@ GUEST_IMPORT(NetDll_getsockname)
     int size = sizeof(address);
     if (::getsockname(host, reinterpret_cast<sockaddr*>(&address), &size) != 0)
         return Fail(ctx, ::WSAGetLastError());
+    address.sin_port = htons(GuestPort(host, ntohs(address.sin_port)));
     WriteAddress(address, ctx.r5.u32, ctx.r6.u32);
     ctx.r3.u64 = 0;
 }
@@ -677,6 +945,12 @@ GUEST_IMPORT(NetDll_getpeername)
     int size = sizeof(address);
     if (::getpeername(host, reinterpret_cast<sockaddr*>(&address), &size) != 0)
         return Fail(ctx, ::WSAGetLastError());
+    if (address.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
+        if (const auto peer = kernel::titleserver::PeerOfBridge(ntohs(address.sin_port))) // a title server's stream
+        {
+            address.sin_addr.s_addr = htonl(peer->first);
+            address.sin_port = htons(peer->second);
+        }
     WriteAddress(address, ctx.r5.u32, ctx.r6.u32);
     ctx.r3.u64 = 0;
 }
@@ -719,6 +993,31 @@ GUEST_IMPORT(NetDll_sendto)
             return Fail(ctx, kWsaEAddrNotAvail);
         if ((ntohl(address.sin_addr.s_addr) >> 28) == 0xE && !MulticastSend(handle))
             return Fail(ctx, kWsaEAddrNotAvail);
+        if (SendThroughLive(host, address, reinterpret_cast<const uint8_t*>(mem.Translate(buffer)), length))
+        {
+            ctx.r3.u64 = length; // a console of our Xbox LIVE server: relayed or direct (live/game.cpp)
+            return;
+        }
+        {
+            // A title server (XNetServerToInAddr's address): a datagram through our Xbox LIVE server.
+            static std::once_flag injector;
+            std::call_once(injector, [] {
+                kernel::titleserver::SetInjector([](uint32_t from, uint16_t fromPort, uint16_t toPort,
+                                                    const std::vector<uint8_t>& data) {
+                    InjectDatagram(from, fromPort, toPort, data, false);
+                });
+            });
+            int error = 0;
+            if (kernel::titleserver::SendDatagram(ntohl(address.sin_addr.s_addr), ntohs(address.sin_port), GuestPort(host, BoundPort(host)),
+                                                  LiveUser(), kernel::TitleId(),
+                                                  reinterpret_cast<const uint8_t*>(mem.Translate(buffer)), length, error))
+            {
+                if (error)
+                    return Fail(ctx, uint32_t(error));
+                ctx.r3.u64 = length;
+                return;
+            }
+        }
         sent = ::sendto(host, reinterpret_cast<const char*>(mem.Translate(buffer)), int(length), int(flags),
                         reinterpret_cast<const sockaddr*>(&address), sizeof(address));
     }
@@ -759,6 +1058,7 @@ GUEST_IMPORT(NetDll_recvfrom)
                                     int(ctx.r6.u32), int(ctx.r7.u32), reinterpret_cast<sockaddr*>(&address), &size);
     if (received == SOCKET_ERROR)
         return Fail(ctx, ::WSAGetLastError());
+    TranslateInjectedSource(address);
     WriteAddress(address, ctx.r9.u32, ctx.r10.u32);
     ctx.r3.u64 = uint32_t(received);
 }
@@ -919,19 +1219,39 @@ GUEST_IMPORT(NetDll_XNetGetEthernetLinkStatus)
 // service's security gateway: not modelled.)
 GUEST_IMPORT(NetDll_XNetGetTitleXnAddr)
 {
+    ctx.r3.u64 = kernel::WriteTitleXnAddr(ctx.r4.u32);
+}
+
+// The XNADDR above at `address`; returns its XNET_GET_XNADDR_* flags (also XSessionCreate's host address,
+// kernel/xam_msg.cpp).
+uint32_t kernel::WriteTitleXnAddr(uint32_t address)
+{
     auto& mem = guest::g_memory;
-    const uint32_t address = ctx.r4.u32;
     const HostNetwork& network = Network();
     std::memset(mem.Translate(address), 0, 36);
     std::memcpy(mem.Translate(address + 10), Settings().macAddress.data(), 6);
     mem.Write8(address + 0x20, 1);
     if (!network.connected)
     {
-        ctx.r3.u64 = 0x00008002;
-        return;
+        return 0x00008002;
     }
     std::memcpy(mem.Translate(address), &network.address, 4);
-    ctx.r3.u64 = 0x02 | (network.dhcp ? 0x08 : 0x04) | 0x20 | (network.dns ? 0x40 : 0);
+    uint32_t status = 0x02 | (network.dhcp ? 0x08 : 0x04) | 0x20 | (network.dns ? 0x40 : 0);
+    // Signed in to our Xbox LIVE: the online address is the console's handle 10.x.y.z (what XNetXnAddrToInAddr registers
+    // for other consoles), abOnline starts with its XUID. ina stays the LAN address: on a console ina is the address
+    // system link (XNKID kinds 0x00 / 0x40) uses and inaOnline the one the security gateway knows, which online
+    // sessions (kind 0x80) use (XAM 0x817543C8), so a title that sends its own XNADDR to its peers works across
+    // networks, and on one LAN as before.
+    for (uint32_t user = 0; user < 4; user++)
+        if (live::SignedIn(user))
+            if (const auto profile = kernel::users::SignedIn(user); profile && profile->onlineXuid != 0)
+            {
+                mem.Write32(address + 4, live::game::AddressHandle(profile->onlineXuid));
+                mem.Write64(address + 16, profile->onlineXuid);
+                status |= 0x80; // XNET_GET_XNADDR_ONLINE
+                break;
+            }
+    return status;
 }
 
 // XNet's secure addressing on the PC's network. On a console XNetXnAddrToInAddr gives an address that XNet's secure
@@ -950,18 +1270,60 @@ GUEST_IMPORT(NetDll_XNetXnAddrToInAddr)
 {
     auto& mem = guest::g_memory;
     const uint32_t xnaddr = ctx.r4.u32, out = ctx.r6.u32;
-    if (xnaddr == 0 || out == 0 || mem.Read32(xnaddr) == 0)
+    if (xnaddr == 0 || out == 0)
+    {
+        ctx.r3.u64 = kWsaEInval;
+        return;
+    }
+    // XAM 0x817543C8: an online peer session's XNKID (top bits 0x80) is reached at inaOnline, anything else (system
+    // link) at ina. Here inaOnline counts when it is the handle of the XUID in abOnline (a console of our Xbox LIVE,
+    // which is reached through live::game wherever it is); a TSADDR-less XNADDR with only a handle works too.
+    const uint32_t kind = ctx.r5.u32 ? mem.Read8(ctx.r5.u32) & 0xE0u : 0u;
+    const uint32_t inaValue = mem.Read32(xnaddr), onlineValue = mem.Read32(xnaddr + 4);
+    const uint64_t onlineXuid = mem.Read64(xnaddr + 16);
+    const bool liveHandle = (onlineValue >> 24) == 10 && onlineXuid != 0 && live::game::AddressHandle(onlineXuid) == onlineValue;
+    const uint32_t offset = (liveHandle && (kind == 0x80 || inaValue == 0)) ? 4 : 0;
+    if (mem.Read32(xnaddr + offset) == 0)
     {
         ctx.r3.u64 = kWsaEInval;
         return;
     }
     uint32_t address;
-    std::memcpy(&address, mem.Translate(xnaddr), 4);
+    std::memcpy(&address, mem.Translate(xnaddr + offset), 4);
     {
         std::lock_guard lock(g_peerMutex);
         std::memcpy(g_peers[address].data(), mem.Translate(xnaddr), 36);
     }
+    {
+        // A console of our Xbox LIVE server (a search result's XNADDR: ina is the handle 10.x.y.z, abOnline starts
+        // with the XUID the handle is made of): datagrams to it go through live::game (SendThroughLive).
+        const uint32_t handle = _byteswap_ulong(address);
+        const uint64_t xuid = mem.Read64(xnaddr + 16);
+        if ((handle >> 24) == 10 && xuid != 0 && live::game::AddressHandle(xuid) == handle)
+        {
+            std::lock_guard lock(g_netMutex);
+            g_liveHandles.insert(handle);
+        }
+    }
     std::memcpy(mem.Translate(out), &address, 4);
+    ctx.r3.u64 = 0;
+}
+
+// INT NetDll_XNetXnAddrToMachineId(XNCALLER_TYPE Caller, const XNADDR* pxnaddr, ULONGLONG* pqwMachineId): the machine
+// ID of the console behind an online XNADDR. INFER: the first 8 bytes of abOnline (+16), where a console's XNADDR
+// carries its online identity; ours hold the player's online XUID (XNetGetTitleXnAddr above, search results), so
+// every console of our Xbox LIVE has its own. An XNADDR without one (not online) is WSAEINVAL. Minecraft asks it of
+// its own address once the profile is on Xbox LIVE.
+GUEST_IMPORT(NetDll_XNetXnAddrToMachineId)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t xnaddr = ctx.r4.u32, out = ctx.r5.u32;
+    if (xnaddr == 0 || out == 0 || mem.Read64(xnaddr + 16) == 0)
+    {
+        ctx.r3.u64 = kWsaEInval;
+        return;
+    }
+    mem.Write64(out, mem.Read64(xnaddr + 16));
     ctx.r3.u64 = 0;
 }
 
@@ -988,6 +1350,61 @@ GUEST_IMPORT(NetDll_XNetInAddrToXnAddr)
     if (keyId)
         mem.Write64(keyId, g_lastKey);
     ctx.r3.u64 = 0;
+}
+
+// INT NetDll_XNetServerToInAddr(XNCALLER_TYPE Caller, IN_ADDR ina, DWORD ServiceId, IN_ADDR* pina) (XAM 0x81740FC0 ->
+// 0x81754770), INT NetDll_XNetTsAddrToInAddr(Caller, const TSADDR* ptsa, DWORD ServiceId, const XNKID* pxnkid, IN_ADDR*
+// pina) (0x81740FF0 -> 0x817548A8) and INT NetDll_XNetInAddrToServer(Caller, IN_ADDR ina, IN_ADDR* pina) (0x81741058 ->
+// 0x8174DB50): title servers (XLSP), kernel/xam_titleserver_core.h. XNet not started is WSANOTINITIALISED (0x276D).
+GUEST_IMPORT(NetDll_XNetServerToInAddr)
+{
+    auto& mem = guest::g_memory;
+    if (!g_xnetStarted)
+    {
+        ctx.r3.u64 = 0x276D;
+        return;
+    }
+    uint32_t address = 0;
+    const int error = ValidCaller(ctx.r3.u32) && ctx.r6.u32
+                          ? kernel::titleserver::ServerToInAddr(ctx.r4.u32, ctx.r5.u32, LiveUser(), kernel::TitleId(), address)
+                          : int(kWsaEInval);
+    if (error == 0)
+        mem.Write32(ctx.r6.u32, address);
+    ctx.r3.u64 = uint32_t(error);
+}
+
+GUEST_IMPORT(NetDll_XNetTsAddrToInAddr)
+{
+    auto& mem = guest::g_memory;
+    if (!g_xnetStarted)
+    {
+        ctx.r3.u64 = 0x276D;
+        return;
+    }
+    const uint32_t tsaddr = ctx.r4.u32, key = ctx.r6.u32, out = ctx.r7.u32;
+    uint32_t address = 0;
+    const int error = ValidCaller(ctx.r3.u32) && tsaddr && key && out
+                          ? kernel::titleserver::TsAddrToInAddr(mem.Read32(tsaddr), mem.Read32(tsaddr + 4), mem.Read8(key),
+                                                                ctx.r5.u32, LiveUser(), kernel::TitleId(), address)
+                          : int(kWsaEInval);
+    if (error == 0)
+        mem.Write32(out, address);
+    ctx.r3.u64 = uint32_t(error);
+}
+
+GUEST_IMPORT(NetDll_XNetInAddrToServer)
+{
+    if (!g_xnetStarted)
+    {
+        ctx.r3.u64 = 0x276D;
+        return;
+    }
+    uint32_t gateway = 0;
+    const int error = ValidCaller(ctx.r3.u32) && ctx.r5.u32 ? kernel::titleserver::InAddrToServer(ctx.r4.u32, gateway)
+                                                            : int(kWsaEInval);
+    if (error == 0)
+        guest::g_memory.Write32(ctx.r5.u32, gateway);
+    ctx.r3.u64 = uint32_t(error);
 }
 
 // INT NetDll_XNetUnregisterInAddr(XNCALLER_TYPE Caller, IN_ADDR ina)
@@ -1162,11 +1579,36 @@ GUEST_IMPORT(NetDll_XnpEthernetInterceptSetExtendedReceiveCallback)
     ctx.r3.u64 = 10037; // WSAEALREADY
 }
 
+// INT NetDll_XnpEthernetInterceptSetCallbacks(XNCALLER_TYPE Caller, PVOID Context, PVOID ReceiveCallback, PVOID
+// Other) (ordinal 109): the older single-registration form 1888's Media Center uses (0x923F1FE0 registers its receive
+// callback 0x923F0CD0 in r5; 0x923F0C44 clears it with all zero). INFER from those two calls (no XAM of that time to
+// read): kept as the caller's registration and 0; no frames arrive from the PC's network (above), as for the
+// extended form.
+GUEST_IMPORT(NetDll_XnpEthernetInterceptSetCallbacks)
+{
+    static InterceptSlot legacy;
+    std::lock_guard lock(g_interceptMutex);
+    legacy = ctx.r5.u32 ? InterceptSlot{ ctx.r5.u32, ctx.r4.u32, ctx.r3.u32 } : InterceptSlot{};
+    ctx.r3.u64 = 0;
+}
+
 // INT NetDll_XnpEthernetInterceptXmit(XNCALLER_TYPE Caller, const BYTE* Frame, DWORD Length) (XAM 0x81760C50 copies
 // the frame into a packet for the adapter): no raw frames on the PC's network (above).
 GUEST_IMPORT(NetDll_XnpEthernetInterceptXmit)
 {
     ctx.r3.u64 = 0;
+}
+
+// INT NetDll_XnpConfig(XNCALLER_TYPE Caller, const XNP_CONFIG* Config, DWORD Flags) (ordinal 104; XAM 0x81741478 ->
+// 0x8175E098): XNet not started is WSANOTINITIALISED (0x276D); a NULL Config ends a test configuration (clears its
+// flag, XNP +0x9A4 bit 2); else XAM restarts its IP stack with the settings in Config (static or DHCP address, DNS,
+// PPPoE...; Flags 1 / 2 / 4 mark it a test configuration). 1888's Network Settings test (0x9218863C with Flags 3,
+// 0x92187F74 with NULL) applies the console's settings before it tests them. Here the console's network is this PC's
+// adapter as Windows configures it (above): nothing is applied, so both calls succeed.
+GUEST_IMPORT(NetDll_XnpConfig)
+{
+    std::lock_guard lock(g_netMutex);
+    ctx.r3.u64 = g_xnetStarted ? 0 : kWsaNotInitialised;
 }
 
 // INT NetDll_XnpGetConfigStatus(XNCALLER_TYPE Caller, XNP_CONFIG_STATUS* Status) (XAM 0x8175C450): the IP stack's
@@ -1236,4 +1678,410 @@ GUEST_IMPORT(NetDll_UpnpCleanup)
     if (ctx.r3.u32 < std::size(g_upnpReferences) && g_upnpReferences[ctx.r3.u32] > 0)
         g_upnpReferences[ctx.r3.u32]--;
     ctx.r3.u64 = 0;
+}
+
+// ---- Overlapped Winsock (WSARecvFrom / WSARecv / WSASendTo / WSASend, WSAGetOverlappedResult) and WSA events ----
+// A title's XNet library (Minecraft's QNet) keeps an overlapped receive pending on its game socket and waits on the
+// WSAOVERLAPPED's event. WSAOVERLAPPED (0x14): Internal +0, InternalHigh +4, Offset +8, OffsetHigh +0xC, hEvent +0x10;
+// WSABUF (8): len +0, buf +4. As Windows Winsock (the console's follows it): an operation that completes at once returns
+// 0 (and still sets the event); one that cannot returns SOCKET_ERROR with WSA_IO_PENDING (997) and completes later, from
+// a host thread that waits for the socket, writing the bytes and the source, then Internal (0 or the Winsock error),
+// InternalHigh (bytes) and the event. Internal is STATUS_PENDING (0x103) meanwhile (XHasOverlappedIoCompleted).
+// INFER: the console's XNet stores the same fields (not read in XAM); completion routines are not written (stop).
+// The WSA*Event functions take no caller type (see the top of this file); the event is a manual-reset KEVENT as
+// Windows' WSACreateEvent makes.
+namespace
+{
+    constexpr uint32_t kStatusPending = 0x103;
+    constexpr uint32_t kWsaIoPending = 997, kWsaIoIncomplete = 996, kWsaOperationAborted = 995;
+    constexpr uint32_t kWsaInvalidHandle = 6;
+
+    struct PendingIo
+    {
+        std::atomic<bool> cancel = false;
+        uint32_t socket = 0;
+    };
+    std::mutex g_ioMutex;
+    std::map<uint32_t, std::shared_ptr<PendingIo>> g_pendingIo; // by the guest WSAOVERLAPPED
+
+    void SetGuestEvent(uint32_t handle, bool signalled)
+    {
+        if (handle == 0)
+            return;
+        const uint32_t object = kernel::LookupHandle(handle);
+        if (object == 0)
+            return;
+        auto lock = kernel::LockDispatcher();
+        guest::g_memory.Write32(object + kernel::header::kSignalState, signalled ? 1 : 0);
+        if (signalled)
+            kernel::NotifyDispatcherChange(object);
+    }
+
+    void CompleteIo(uint32_t overlapped, uint32_t error, uint32_t bytes, uint32_t flags)
+    {
+        auto& mem = guest::g_memory;
+        mem.Write32(overlapped + 4, bytes);
+        mem.Write32(overlapped + 0xC, flags);
+        mem.Write32(overlapped + 0, error); // last: says the operation is over
+        SetGuestEvent(mem.Read32(overlapped + 0x10), true);
+    }
+
+    // The WSABUF array, checked.
+    struct Buffers
+    {
+        std::vector<std::pair<uint32_t, uint32_t>> list; // guest address, length
+        uint32_t total = 0;
+    };
+    bool ReadBuffers(uint32_t array, uint32_t count, Buffers& out)
+    {
+        auto& mem = guest::g_memory;
+        if (array == 0 || count == 0 || count > 64)
+            return false;
+        for (uint32_t i = 0; i < count; i++)
+        {
+            const uint32_t length = mem.Read32(array + i * 8), address = mem.Read32(array + i * 8 + 4);
+            if (length && address == 0)
+                return false;
+            out.list.push_back({ address, length });
+            out.total += length;
+        }
+        return true;
+    }
+
+    void Scatter(const Buffers& b, const uint8_t* data, uint32_t size)
+    {
+        auto& mem = guest::g_memory;
+        uint32_t at = 0;
+        for (const auto& [address, length] : b.list)
+        {
+            if (at >= size)
+                break;
+            const uint32_t n = std::min(length, size - at);
+            guest::PrepareHostWrite(address, n);
+            std::memcpy(mem.Translate(address), data + at, n);
+            at += n;
+        }
+    }
+
+    std::vector<uint8_t> Gather(const Buffers& b)
+    {
+        auto& mem = guest::g_memory;
+        std::vector<uint8_t> data;
+        data.reserve(b.total);
+        for (const auto& [address, length] : b.list)
+            data.insert(data.end(), mem.Translate(address), mem.Translate(address) + length);
+        return data;
+    }
+
+    bool Readable(SOCKET host, int milliseconds)
+    {
+        fd_set set;
+        FD_ZERO(&set);
+        FD_SET(host, &set);
+        timeval wait = { milliseconds / 1000, (milliseconds % 1000) * 1000 };
+        return ::select(0, &set, nullptr, nullptr, &wait) == 1;
+    }
+
+    // One receive: the bytes into the buffers, the source (datagrams) into from / fromlen. Returns the Winsock error.
+    uint32_t ReceiveNow(SOCKET host, const Buffers& b, uint32_t flags, bool datagram, uint32_t from, uint32_t fromLength,
+                        uint32_t& bytes)
+    {
+        std::vector<uint8_t> data(std::max<uint32_t>(b.total, 1));
+        sockaddr_in address = {};
+        int size = sizeof(address);
+        const int received = datagram ? ::recvfrom(host, reinterpret_cast<char*>(data.data()), int(b.total), int(flags),
+                                                   reinterpret_cast<sockaddr*>(&address), &size)
+                                      : ::recv(host, reinterpret_cast<char*>(data.data()), int(b.total), int(flags));
+        if (received == SOCKET_ERROR)
+            return uint32_t(::WSAGetLastError());
+        Scatter(b, data.data(), uint32_t(received));
+        if (datagram)
+        {
+            TranslateInjectedSource(address);
+            WriteAddress(address, from, fromLength);
+        }
+        bytes = uint32_t(received);
+        return 0;
+    }
+
+    // WSARecvFrom / WSARecv: r3 caller, r4 socket, r5 WSABUF*, r6 count, r7 bytes received*, r8 flags*, then (from)
+    // r9 from*, r10 fromlen*, stack +0x54 overlapped, +0x5C completion routine; (WSARecv) r9 overlapped, r10 routine.
+    void Receive(PPCContext& ctx, bool datagram)
+    {
+        auto& mem = guest::g_memory;
+        const uint32_t caller = ctx.r3.u32, handle = ctx.r4.u32, array = ctx.r5.u32, count = ctx.r6.u32;
+        const uint32_t bytesPtr = ctx.r7.u32, flagsPtr = ctx.r8.u32;
+        const uint32_t from = datagram ? ctx.r9.u32 : 0, fromLength = datagram ? ctx.r10.u32 : 0;
+        const uint32_t overlapped = datagram ? mem.Read32(ctx.r1.u32 + 0x54) : ctx.r9.u32;
+        const uint32_t routine = datagram ? mem.Read32(ctx.r1.u32 + 0x5C) : ctx.r10.u32;
+        if (!WinsockStarted(caller))
+            return Fail(ctx, kWsaNotInitialised);
+        const SOCKET host = HostSocket(handle);
+        if (host == INVALID_SOCKET)
+            return Fail(ctx, kWsaENotSock);
+        Buffers b;
+        if (!ReadBuffers(array, count, b) || flagsPtr == 0)
+            return Fail(ctx, kWsaEFault);
+        if (routine)
+            Fatal("NetDll_WSARecv{}: a completion routine ({:08X}) is not implemented", datagram ? "From" : "", routine);
+        const uint32_t flags = mem.Read32(flagsPtr);
+        if (overlapped == 0 || Readable(host, 0))
+        {
+            uint32_t bytes = 0;
+            const uint32_t error = ReceiveNow(host, b, flags, datagram, from, fromLength, bytes);
+            if (error)
+                return Fail(ctx, error);
+            if (bytesPtr)
+                mem.Write32(bytesPtr, bytes);
+            mem.Write32(flagsPtr, 0);
+            if (overlapped)
+                CompleteIo(overlapped, 0, bytes, 0);
+            ctx.r3.u64 = 0;
+            return;
+        }
+        // Pending: a host thread waits for the socket and completes it.
+        auto io = std::make_shared<PendingIo>();
+        io->socket = handle;
+        {
+            std::lock_guard lock(g_ioMutex);
+            if (g_pendingIo.count(overlapped))
+                Fatal("NetDll_WSARecv{}: overlapped {:08X} is already in use", datagram ? "From" : "", overlapped);
+            g_pendingIo[overlapped] = io;
+        }
+        mem.Write32(overlapped, kStatusPending);
+        mem.Write32(overlapped + 4, 0);
+        SetGuestEvent(mem.Read32(overlapped + 0x10), false);
+        std::thread([=] {
+            uint32_t error = kWsaOperationAborted, bytes = 0;
+            while (!io->cancel)
+            {
+                if (HostSocket(handle) != host)
+                    break; // closed: aborted
+                if (!Readable(host, 20))
+                    continue;
+                error = ReceiveNow(host, b, flags, datagram, from, fromLength, bytes);
+                if (error == WSAEWOULDBLOCK)
+                {
+                    error = kWsaOperationAborted;
+                    continue;
+                }
+                break;
+            }
+            {
+                std::lock_guard lock(g_ioMutex);
+                g_pendingIo.erase(overlapped);
+            }
+            CompleteIo(overlapped, error, error ? 0 : bytes, 0);
+        }).detach();
+        SetLastError(ctx, kWsaIoPending);
+        ctx.r3.u64 = kSocketError;
+    }
+
+    // WSASendTo / WSASend: r3 caller, r4 socket, r5 WSABUF*, r6 count, r7 bytes sent*, r8 flags, then (to) r9 to*,
+    // r10 tolen, stack +0x54 overlapped, +0x5C routine; (WSASend) r9 overlapped, r10 routine. A send completes at once.
+    void Send(PPCContext& ctx, bool datagram)
+    {
+        auto& mem = guest::g_memory;
+        const uint32_t caller = ctx.r3.u32, handle = ctx.r4.u32, array = ctx.r5.u32, count = ctx.r6.u32;
+        const uint32_t bytesPtr = ctx.r7.u32, flags = ctx.r8.u32;
+        const uint32_t to = datagram ? ctx.r9.u32 : 0, toLength = datagram ? ctx.r10.u32 : 0;
+        const uint32_t overlapped = datagram ? mem.Read32(ctx.r1.u32 + 0x54) : ctx.r9.u32;
+        const uint32_t routine = datagram ? mem.Read32(ctx.r1.u32 + 0x5C) : ctx.r10.u32;
+        if (!WinsockStarted(caller))
+            return Fail(ctx, kWsaNotInitialised);
+        const SOCKET host = HostSocket(handle);
+        if (host == INVALID_SOCKET)
+            return Fail(ctx, kWsaENotSock);
+        Buffers b;
+        if (!ReadBuffers(array, count, b))
+            return Fail(ctx, kWsaEFault);
+        if (routine)
+            Fatal("NetDll_WSASend{}: a completion routine ({:08X}) is not implemented", datagram ? "To" : "", routine);
+        const std::vector<uint8_t> data = Gather(b);
+        int sent;
+        if (to == 0)
+            sent = ::send(host, reinterpret_cast<const char*>(data.data()), int(data.size()), int(flags));
+        else
+        {
+            sockaddr_in address;
+            if (!ReadAddress(to, toLength, address))
+                return Fail(ctx, kWsaEFault);
+            if (address.sin_addr.s_addr == 0 || address.sin_port == 0)
+                return Fail(ctx, kWsaEAddrNotAvail);
+            if ((ntohl(address.sin_addr.s_addr) >> 28) == 0xE && !MulticastSend(handle))
+                return Fail(ctx, kWsaEAddrNotAvail);
+            if (SendThroughLive(host, address, data.data(), data.size()))
+                sent = int(data.size()); // a console of our Xbox LIVE server: relayed or direct (live/game.cpp)
+            else
+                sent = ::sendto(host, reinterpret_cast<const char*>(data.data()), int(data.size()), int(flags),
+                                reinterpret_cast<const sockaddr*>(&address), sizeof(address));
+        }
+        if (sent == SOCKET_ERROR)
+            return Fail(ctx, ::WSAGetLastError());
+        if (bytesPtr)
+            mem.Write32(bytesPtr, uint32_t(sent));
+        if (overlapped)
+            CompleteIo(overlapped, 0, uint32_t(sent), 0);
+        ctx.r3.u64 = 0;
+    }
+}
+
+GUEST_IMPORT(NetDll_WSARecvFrom)
+{
+    Receive(ctx, true);
+}
+
+GUEST_IMPORT(NetDll_WSARecv)
+{
+    Receive(ctx, false);
+}
+
+GUEST_IMPORT(NetDll_WSASendTo)
+{
+    Send(ctx, true);
+}
+
+GUEST_IMPORT(NetDll_WSASend)
+{
+    Send(ctx, false);
+}
+
+// BOOL NetDll_WSAGetOverlappedResult(XNCALLER_TYPE Caller, SOCKET s, LPWSAOVERLAPPED lpOverlapped, LPDWORD lpcbTransfer,
+// BOOL fWait, LPDWORD lpdwFlags)
+GUEST_IMPORT(NetDll_WSAGetOverlappedResult)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t overlapped = ctx.r5.u32, transfer = ctx.r6.u32, wait = ctx.r7.u32, flags = ctx.r8.u32;
+    if (!WinsockStarted(ctx.r3.u32))
+    {
+        SetLastError(ctx, kWsaNotInitialised);
+        ctx.r3.u64 = 0;
+        return;
+    }
+    if (overlapped == 0 || transfer == 0 || flags == 0)
+    {
+        SetLastError(ctx, kWsaEFault);
+        ctx.r3.u64 = 0;
+        return;
+    }
+    while (mem.Read32(overlapped) == kStatusPending)
+    {
+        if (!wait)
+        {
+            SetLastError(ctx, kWsaIoIncomplete);
+            ctx.r3.u64 = 0;
+            return;
+        }
+        Sleep(1);
+    }
+    mem.Write32(transfer, mem.Read32(overlapped + 4));
+    mem.Write32(flags, mem.Read32(overlapped + 0xC));
+    const uint32_t error = mem.Read32(overlapped);
+    if (error)
+    {
+        SetLastError(ctx, error);
+        ctx.r3.u64 = 0;
+        return;
+    }
+    ctx.r3.u64 = 1;
+}
+
+// INT NetDll_WSACancelOverlappedIO(XNCALLER_TYPE Caller, SOCKET s): the socket's pending operations end with
+// WSA_OPERATION_ABORTED.
+GUEST_IMPORT(NetDll_WSACancelOverlappedIO)
+{
+    if (!WinsockStarted(ctx.r3.u32))
+        return Fail(ctx, kWsaNotInitialised);
+    if (HostSocket(ctx.r4.u32) == INVALID_SOCKET)
+        return Fail(ctx, kWsaENotSock);
+    std::lock_guard lock(g_ioMutex);
+    for (auto& [overlapped, io] : g_pendingIo)
+        if (io->socket == ctx.r4.u32)
+            io->cancel = true;
+    ctx.r3.u64 = 0;
+}
+
+// WSAEVENT NetDll_WSACreateEvent(): a manual-reset event, not signalled (0 = WSA_INVALID_EVENT).
+GUEST_IMPORT(NetDll_WSACreateEvent)
+{
+    const uint32_t object = kernel::CreateOwnedObject(kernel::kKEventSize);
+    kernel::InitializeDispatcherHeader(object, 0, 0); // NotificationEvent
+    ctx.r3.u64 = kernel::CreateHandle(object);
+}
+
+// BOOL NetDll_WSACloseEvent(WSAEVENT hEvent)
+GUEST_IMPORT(NetDll_WSACloseEvent)
+{
+    if (!kernel::CloseHandle(ctx.r3.u32))
+    {
+        SetLastError(ctx, kWsaInvalidHandle);
+        ctx.r3.u64 = 0;
+        return;
+    }
+    ctx.r3.u64 = 1;
+}
+
+// BOOL NetDll_WSASetEvent(WSAEVENT hEvent) / NetDll_WSAResetEvent(WSAEVENT hEvent)
+GUEST_IMPORT(NetDll_WSASetEvent)
+{
+    if (kernel::LookupHandle(ctx.r3.u32) == 0)
+    {
+        SetLastError(ctx, kWsaInvalidHandle);
+        ctx.r3.u64 = 0;
+        return;
+    }
+    SetGuestEvent(ctx.r3.u32, true);
+    ctx.r3.u64 = 1;
+}
+
+GUEST_IMPORT(NetDll_WSAResetEvent)
+{
+    if (kernel::LookupHandle(ctx.r3.u32) == 0)
+    {
+        SetLastError(ctx, kWsaInvalidHandle);
+        ctx.r3.u64 = 0;
+        return;
+    }
+    SetGuestEvent(ctx.r3.u32, false);
+    ctx.r3.u64 = 1;
+}
+
+// DWORD NetDll_WSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT* lphEvents, BOOL fWaitAll, DWORD dwTimeout,
+// BOOL fAlertable): WSA_WAIT_EVENT_0 + index, WSA_WAIT_TIMEOUT (0x102), WSA_WAIT_IO_COMPLETION (0xC0) or
+// WSA_WAIT_FAILED (0xFFFFFFFF); the kernel's wait (its NTSTATUS values are these numbers).
+GUEST_IMPORT(NetDll_WSAWaitForMultipleEvents)
+{
+    auto& mem = guest::g_memory;
+    const uint32_t count = ctx.r3.u32, events = ctx.r4.u32, all = ctx.r5.u32, timeout = ctx.r6.u32;
+    const bool alertable = ctx.r7.u32 != 0;
+    if (count == 0 || count > 64 || events == 0)
+    {
+        SetLastError(ctx, kWsaEInval);
+        ctx.r3.u64 = 0xFFFFFFFF;
+        return;
+    }
+    std::vector<uint32_t> objects;
+    for (uint32_t i = 0; i < count; i++)
+    {
+        const uint32_t object = kernel::LookupHandle(mem.Read32(events + i * 4));
+        if (object == 0)
+        {
+            SetLastError(ctx, kWsaInvalidHandle);
+            ctx.r3.u64 = 0xFFFFFFFF;
+            return;
+        }
+        objects.push_back(object);
+    }
+    uint32_t timeoutPtr = 0;
+    if (timeout != 0xFFFFFFFF)
+    {
+        timeoutPtr = mem.SystemAlloc(8);
+        mem.Write64(timeoutPtr, uint64_t(-int64_t(timeout) * 10000));
+    }
+    const uint32_t status = kernel::WaitForObjects(objects.data(), count, all != 0, timeoutPtr, alertable);
+    if (timeoutPtr)
+        mem.SystemFree(timeoutPtr);
+    if (status == 0xC0)
+        kernel::DeliverUserApcs(ctx);
+    ctx.r3.u64 = status;
 }
