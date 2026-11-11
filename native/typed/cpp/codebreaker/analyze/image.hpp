@@ -90,7 +90,7 @@ struct JumpTable {
     py::str selector;                              // what is switched on, as text
     std::optional<py::list<int64_t>> bytes;        // the byte table in front of the address table (None: none)
     py::list<int64_t> targets;
-    int64_t default_ = 0;                          // where an out-of-range value goes
+    std::optional<int64_t> default_;               // where an out-of-range value goes (None: the DLL found none)
     int64_t low = 0;                               // the first case's value
     int64_t table = 0;                             // the table's address
     bool bounded = false;                          // a compare bounds the index
@@ -181,6 +181,9 @@ class Image {
     // The decoded instruction whose bytes hold `va`, or null when no function reaches it.
     InsP covering(int64_t va);
 
+    // The image as cbanalyze.dll reads it (what native.Handle takes).
+    native::Image as_native() const;
+
     // Implementation state (decoded-function cache, rows handed back by discover(), the native handle) lives here.
     struct Impl;
     std::shared_ptr<Impl> impl_;
@@ -214,6 +217,10 @@ std::optional<int64_t> destination(const Image& img, const Ins& ins);
 py::list<Op> arguments(const Function& fn, int64_t i, int64_t n);
 
 // ---- loading ----
+// Names the capstone.dll to hand to cbanalyze.dll, to describe.cpp's decoder and to the 32-bit function carve (the C++
+// stand-in for `import capstone`): once, before the first load().
+void set_capstone_dll(const py::str& path);
+
 // 'pe', 'ne' or 'le' for what load() reads (a bundle of drivers, vmm32.vxd's W3, is read as its drivers), else the
 // file's lane (base/corpus.lane).
 std::optional<py::str> kind_of(const py::str& path);
