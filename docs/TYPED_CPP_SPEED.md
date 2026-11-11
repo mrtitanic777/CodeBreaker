@@ -585,3 +585,20 @@ translate/ir: building a node is 1.7x slower than the old port (87 ns against 46
 136 bytes; the first version, with every node as big as a ClassDecl, was 424 bytes and took 0.19 s, so the big declarations are now boxed), walking
 is 6x faster (no shared_ptr counts, no `py::list` of `py::ref`, the kind by a visit rather than a virtual `class_name()` that builds a `py::str`),
 and a build with a walk is 2.3x faster. A tree is built once and walked by every pass.
+
+## cb refactor W1-B1: emulate/powerpc, z80, m6502, native_driver, 2026-11-11
+
+Inputs: a 3000-iteration PowerPC loop (store, load, add, `bdnz`: 15,000 instructions a run, 200 runs), a Z80 `DEC BC` loop (32,770
+steps a run), a 6502 `INX`/`BNE` loop (200,000 steps a run); one thread, Release (`state/work/cpp-refactor/w1b1/bench.cpp`, `bench.py`).
+The old typed ports ran on `py::` containers and per-step dictionaries and cannot be built apart from the Python runtime here, so the
+comparison is with the Python they were ported from (the live implementation until the exe retires it).
+
+| What | Python | new (`cb::emulate`) | Ratio |
+|---|---|---|---|
+| PowerPC interpreter | 0.20 Msteps/s | 29.5 Msteps/s | ~145x |
+| Z80 interpreter | 0.43 Msteps/s | 44.4 Msteps/s | ~100x |
+| 6502 interpreter | 0.70 Msteps/s | 87.9 Msteps/s | ~125x |
+
+Correctness against the Python: 1,825 6502 single steps (every opcode, decimal mode, memory CRC) are identical; 53,419 of 53,424 PowerPC
+single steps (every primary and extended opcode, random words, random machine states, memory CRC of every written page) are identical, and
+the other five are signalling-NaN cases the old harness recorded unstably (the current Python gives what the C++ gives).
