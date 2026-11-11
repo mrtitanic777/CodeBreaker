@@ -1,27 +1,14 @@
-// codebreaker/java/console/sdk.hpp -- C++17 port of codebreaker.java.console.sdk.
+// codebreaker/java/console/sdk.hpp -- SHIM over cb/java/console/sdk.hpp (docs/CPP_DESIGN.md 6.3); deleted with its last
+// py:: consumer (transpile, run, platform_config, platform_coverage).
 //
-// sdk.py -- platform SDK detection & gatekeeping.
-//
-// A console platform's SDK (Xbox 360 XDK, PS3 SDK, Wii RVL SDK) is proprietary. The converter must NOT
-// ship or redistribute those headers/signatures, and must NOT emit platform-specific code for a target
-// the user has no SDK for. So this module:
-//
-//   * DETECTS the SDK on the user's own machine (env var first, then the standard install paths), or
-//     accepts an explicit `--sdk <path>` override.
-//   * GATEKEEPS: converting/emitting for a console platform is refused unless its SDK is located. PC is
-//     ungated; `--platform none` (portable only) is always allowed.
-//   * VERIFIES symbols against the located SDK headers, so the code we emit calls only APIs that actually
-//     exist in THAT installed SDK -- we pull the truth from the user's SDK instead of trusting a baked-in
-//     signature list. (The real declarations come from the user's own `<xtl.h>` at compile time; the tool
-//     ships none of them.)
-//
-// `require(platform)` is the one call the pipeline/config use to gate. It returns an SdkInfo or raises
-// SdkNotFound with actionable instructions.
-//
-// Typing notes: a platform is `str or None` (std::optional<py::str>); PLATFORM_SDKS' dict-with-fixed-keys
-// values are the SdkSpec record. settings.get(key) is py::settings::get_str (a str setting).
+// The settings key xbox360_sdk is read here (the new module takes the configured folder as a plain value).
 #pragma once
 
+#include <memory>
+#include <optional>
+
+#include "codebreaker/java/console/_shim.hpp"
+#include "cb/java/console/sdk.hpp"
 #include "py.hpp"
 #include "py_os.hpp"
 #include "py_settings.hpp"
@@ -35,23 +22,16 @@ struct SdkNotFound : py::Exception {
     const char* type() const override { return "SdkNotFound"; }
 };
 
-// One PLATFORM_SDKS entry: the environment variable(s) that point at the SDK root, the standard install
-// paths to probe, the include subdir, and header files that must exist for the root to count as a real SDK.
-struct SdkSpec {
-    py::str name;
-    py::list<py::str> env;
-    py::list<py::str> default_paths;
-    py::list<py::str> include_subdirs;
-    py::list<py::str> probe_headers;
-    py::str get_env;
-    std::optional<py::str> setting;   // the settings.json key (spec.get('setting')): only xbox360 has one
-};
-
-extern const py::dict<py::str, SdkSpec> PLATFORM_SDKS;
-
 // Platforms that need NO SDK gate (portable / ubiquitous toolchain): None, 'none', 'pc_windows', 'pc', 'windows'.
-bool is_ungated(const std::optional<py::str>& platform);
+inline bool is_ungated(const std::optional<py::str>& platform) {
+    if (!platform) return true;
+    const std::string p = platform->utf8();
+    return p == "none" || p == "pc_windows" || p == "pc" || p == "windows";
+}
 
+inline std::string platform_text(const std::optional<py::str>& platform) { return platform ? platform->utf8() : std::string(); }
+
+// A located SDK: the old record's fields, over the new SdkInfo that reads the headers.
 class SdkInfo {
   public:
     std::optional<py::str> platform;
@@ -60,35 +40,59 @@ class SdkInfo {
     py::list<py::str> include_dirs;   // list of existing include dirs to search for symbols
     py::str source;                   // 'env:XEDK' / 'path' / 'override' -- how we found it
 
-    SdkInfo(const std::optional<py::str>& platform, const py::str& name, const py::str& root,
-            const py::list<py::str>& include_dirs, const py::str& source);
+    explicit SdkInfo(cb::java::console::sdk::SdkInfo found)
+        : platform(cb::compat::to_py(found.platform())),
+          name(cb::compat::to_py(found.name())),
+          root(shim::native(found.root())),
+          source(cb::compat::to_py(found.source_text())),
+          impl_(std::make_shared<cb::java::console::sdk::SdkInfo>(std::move(found))) {
+        for (const auto& d : impl_->include_dirs()) include_dirs.append(shim::native(d));
+    }
 
-    py::str repr() const;   // __repr__
-    // True if `symbol` is declared anywhere in the located SDK's headers. Lets the emitter verify
-    // an API exists in THIS install before emitting a call to it (pull-from-SDK, not baked-in).
-    bool has_symbol(const py::str& symbol);
+    py::str repr() const { return py::str("SdkInfo(") + (platform ? *platform : py::str("None")) + py::str(" @ ") + root + py::str(" via ") + source + py::str(")"); }
+
+    // True if `symbol` is declared anywhere in the located SDK's headers.
+    bool has_symbol(const py::str& symbol) { return impl_->has_symbol(symbol.utf8()); }
 
   private:
-    const py::str& _all_header_text();
-    std::optional<py::str> _symbol_cache;
+    std::shared_ptr<cb::java::console::sdk::SdkInfo> impl_;
 };
 
-bool requires_sdk(const std::optional<py::str>& platform);
+inline bool requires_sdk(const std::optional<py::str>& platform) {
+    return cb::java::console::sdk::requires_sdk(platform_text(platform));
+}
 
-// Does `root` look like a real SDK (has an include dir with a probe header)?  Returns the list of
-// existing include dirs if valid, else None.
-std::optional<py::list<py::str>> _valid_root(const SdkSpec& spec, const std::optional<py::str>& root);
+namespace detail_ {
+inline cb::java::console::sdk::SdkHints hints_for(const std::optional<py::str>& platform, const std::optional<py::str>& override_) {
+    cb::java::console::sdk::SdkHints hints;
+    hints.override_root = shim::given(override_);
+    if (const auto console = cb::java::console::sdk::console_of(platform_text(platform))) {
+        const std::string& key = cb::java::console::sdk::spec_of(*console).setting_key;
+        if (!key.empty()) {
+            const py::str configured = py::settings::get_str(py::str(key));
+            if (configured.size() > 0) hints.configured_root = shim::path_of(configured);
+        }
+    }
+    return hints;
+}
+}  // namespace detail_
 
-// Locate the SDK for `platform`. Order: explicit override -> the platform's settings.json key
-// (xbox360_sdk) -> env var(s) -> default install paths. Returns SdkInfo or None. Ungated platforms
-// return a trivial SdkInfo. (`override_`: the Python's `override`.)
-std::optional<SdkInfo> detect(const std::optional<py::str>& platform, const std::optional<py::str>& override_ = std::nullopt);
+inline std::optional<SdkInfo> detect(const std::optional<py::str>& platform, const std::optional<py::str>& override_ = std::nullopt) {
+    auto found = cb::java::console::sdk::detect(platform_text(platform), detail_::hints_for(platform, override_));
+    if (!found) return std::nullopt;
+    return SdkInfo(std::move(*found));
+}
 
-// Return the SdkInfo for `platform`, or raise SdkNotFound with actionable guidance. This is the
-// gate: no console SDK -> no platform-specific conversion/emission.
-SdkInfo require(const std::optional<py::str>& platform, const std::optional<py::str>& override_ = std::nullopt);
+inline SdkInfo require(const std::optional<py::str>& platform, const std::optional<py::str>& override_ = std::nullopt) {
+    try {
+        return SdkInfo(cb::java::console::sdk::require(platform_text(platform), detail_::hints_for(platform, override_)));
+    } catch (const cb::java::console::sdk::SdkNotFoundError& e) {
+        throw SdkNotFound(std::string(e.what()));
+    }
+}
 
-// Human-readable one-liner about SDK status for `platform` (for CLI `codebreaker java sdk detect`).
-py::str describe(const std::optional<py::str>& platform, const std::optional<py::str>& override_ = std::nullopt);
+inline py::str describe(const std::optional<py::str>& platform, const std::optional<py::str>& override_ = std::nullopt) {
+    return cb::compat::to_py(cb::java::console::sdk::describe(platform_text(platform), detail_::hints_for(platform, override_)));
+}
 
 }  // namespace codebreaker::java::console::sdk

@@ -1,0 +1,1 @@
+class Fluid : public LiquidBlock {};

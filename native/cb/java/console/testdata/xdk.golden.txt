@@ -1,0 +1,159 @@
+detect sdk1
+  include sdk1/include/xbox
+  func D3DXMatrixIdentity d3dx.h
+  func D3DXVec3Normalize d3dx.h
+  func KeQuerySystemTime d3dx.h
+  func MmAllocatePhysicalMemory d3dx.h
+  func NtCreateFile d3dx.h
+  func NtZ_ x.h
+  func VdSwap d3dx.h
+  func XAfterBad bad.h
+  func XBadBytes bad.h
+  func XBo x.h
+  func XContentClose xam.h
+  func XContentCreate xam.h
+  func XContentFlush xam.h
+  func XCrlf crlf.h
+  func XDeepFunction deep.h
+  func XGetLanguage deep.h
+  func XGetVideoMode deep.h
+  func XInputGetState xinput.h
+  func XInputSetState xinput.h
+  func XJSONCreateReader deep.h
+  func XJSONParse deep.h
+  func XMPGetStatus xinput.h
+  func XMPOpenOverlappedEnumerator xinput.h
+  func XMemCompress deep.h
+  func XMemDecompress deep.h
+  func XNetStartup bad.h
+  func XNotifyGetNext bad.h
+  func XPhysicalAlloc d3dx.h
+  func XPhysicalFree d3dx.h
+  func XShowDeviceSelectorUI xam.h
+  func XShowKeyboardUI xinput.h
+  func XShowMessageBoxUI deep.h
+  func XamLoaderLaunchTitle xam.h
+  func XamUserGetSigninState xam.h
+  found XContentCreate header=xam.h count=3 fns=XContentClose,XContentCreate,XContentFlush
+  found XShowDeviceSelectorUI header=xam.h count=1 fns=XShowDeviceSelectorUI
+  found XNotifyGetNext header=bad.h count=1 fns=XNotifyGetNext
+  found XNetStartup header=bad.h count=1 fns=XNetStartup
+  found XPhysicalAlloc header=d3dx.h count=2 fns=XPhysicalAlloc,XPhysicalFree
+  found XShowKeyboardUI header=xinput.h count=1 fns=XShowKeyboardUI
+  found XInputSetState header=xinput.h count=1 fns=XInputSetState
+  found XMPGetStatus header=xinput.h count=2 fns=XMPGetStatus,XMPOpenOverlappedEnumerator
+  found XMemCompress header=deep.h count=1 fns=XMemCompress
+  found XShowMessageBoxUI header=deep.h count=1 fns=XShowMessageBoxUI
+  found XGetLanguage header=deep.h count=1 fns=XGetLanguage
+  found XGetVideoMode header=deep.h count=1 fns=XGetVideoMode
+  found XJSONCreateReader header=deep.h count=2 fns=XJSONCreateReader,XJSONParse
+detect sdk2
+  include sdk2/include
+  func XShowKeyboardUI foo.h
+  func XamOnlyInInclude foo.h
+  found XShowKeyboardUI header=foo.h count=1 fns=XShowKeyboardUI
+  missing XContentCreate
+  missing XShowDeviceSelectorUI
+  missing XNotifyGetNext
+  missing XNetStartup
+  missing XPhysicalAlloc
+  missing XInputSetState
+  missing XMPGetStatus
+  missing XMemCompress
+  missing XShowMessageBoxUI
+  missing XGetLanguage
+  missing XGetVideoMode
+  missing XJSONCreateReader
+detect sdk3
+  include sdk3
+  func XGetLanguage root.h
+  func XGetLanguageFull root.h
+  func XamAtRoot root.h
+  found XGetLanguage header=root.h count=2 fns=XGetLanguage,XGetLanguageFull
+  missing XContentCreate
+  missing XShowDeviceSelectorUI
+  missing XNotifyGetNext
+  missing XNetStartup
+  missing XPhysicalAlloc
+  missing XShowKeyboardUI
+  missing XInputSetState
+  missing XMPGetStatus
+  missing XMemCompress
+  missing XShowMessageBoxUI
+  missing XGetVideoMode
+  missing XJSONCreateReader
+detect emptydir
+  include emptydir
+  missing XContentCreate
+  missing XShowDeviceSelectorUI
+  missing XNotifyGetNext
+  missing XNetStartup
+  missing XPhysicalAlloc
+  missing XShowKeyboardUI
+  missing XInputSetState
+  missing XMPGetStatus
+  missing XMemCompress
+  missing XShowMessageBoxUI
+  missing XGetLanguage
+  missing XGetVideoMode
+  missing XJSONCreateReader
+detect nonexistent
+  include -
+  missing XContentCreate
+  missing XShowDeviceSelectorUI
+  missing XNotifyGetNext
+  missing XNetStartup
+  missing XPhysicalAlloc
+  missing XShowKeyboardUI
+  missing XInputSetState
+  missing XMPGetStatus
+  missing XMemCompress
+  missing XShowMessageBoxUI
+  missing XGetLanguage
+  missing XGetVideoMode
+  missing XJSONCreateReader
+detect sdk1/include/xbox/bad.h
+  include -
+  missing XContentCreate
+  missing XShowDeviceSelectorUI
+  missing XNotifyGetNext
+  missing XNetStartup
+  missing XPhysicalAlloc
+  missing XShowKeyboardUI
+  missing XInputSetState
+  missing XMPGetStatus
+  missing XMemCompress
+  missing XShowMessageBoxUI
+  missing XGetLanguage
+  missing XGetVideoMode
+  missing XJSONCreateReader
+detect <none>
+  include -
+  missing XContentCreate
+  missing XShowDeviceSelectorUI
+  missing XNotifyGetNext
+  missing XNetStartup
+  missing XPhysicalAlloc
+  missing XShowKeyboardUI
+  missing XInputSetState
+  missing XMPGetStatus
+  missing XMemCompress
+  missing XShowMessageBoxUI
+  missing XGetLanguage
+  missing XGetVideoMode
+  missing XJSONCreateReader
+detect <empty>
+  include -
+  missing XContentCreate
+  missing XShowDeviceSelectorUI
+  missing XNotifyGetNext
+  missing XNetStartup
+  missing XPhysicalAlloc
+  missing XShowKeyboardUI
+  missing XInputSetState
+  missing XMPGetStatus
+  missing XMemCompress
+  missing XShowMessageBoxUI
+  missing XGetLanguage
+  missing XGetVideoMode
+  missing XJSONCreateReader

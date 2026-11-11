@@ -1,0 +1,118 @@
+build_pcm_xwb: step_grass:2164966468:0:200 random_click:2182449288:2048:200 dig_stone:8741412:4096:30
+xwb sounds.golden.xwb magic=DNBW version=46 header_version=44 name='sounds' flags=0 entry_count=3
+  segment BANKDATA 52 84
+  segment ENTRYMETADATA 136 72
+  segment SEEKTABLES 0 0
+  segment ENTRYNAMES 0 0
+  segment ENTRYWAVEDATA 2048 4126
+  [0] PCM 1ch 22050Hz block=2 16bit play=0+200
+  [1] PCM 2ch 44100Hz block=4 16bit play=2048+200
+  [2] PCM 1ch 11025Hz block=1 8bit play=4096+30
+WaveBank "sounds"  (DNBW v46)  3 entries
+  segment BANKDATA       off=0x34 len=0x54
+  segment ENTRYMETADATA  off=0x88 len=0x48
+  segment SEEKTABLES     off=0x0 len=0x0
+  segment ENTRYNAMES     off=0x0 len=0x0
+  segment ENTRYWAVEDATA  off=0x800 len=0x101E
+  entries:
+    [  0] PCM   1ch  22050Hz 16bit  wave@0x0 len=200
+    [  1] PCM   2ch  44100Hz 16bit  wave@0x800 len=200
+    [  2] PCM   1ch  11025Hz  8bit  wave@0x1000 len=30
+xwb named.xwb magic=DNBW version=46 header_version=44 name='named' flags=1 entry_count=3
+  segment BANKDATA 52 84
+  segment ENTRYMETADATA 136 72
+  segment SEEKTABLES 0 0
+  segment ENTRYNAMES 208 48
+  segment ENTRYWAVEDATA 2048 4096
+  [0] PCM 1ch 22050Hz block=2 16bit play=0+100 name=alpha
+  [1] PCM 1ch 22050Hz block=2 16bit play=2048+101 name=beta
+  [2] PCM 1ch 22050Hz block=2 16bit play=4096+102 name=gamma_longer_nam
+WaveBank "named"  (DNBW v46)  3 entries
+  segment BANKDATA       off=0x34 len=0x54
+  segment ENTRYMETADATA  off=0x88 len=0x48
+  segment SEEKTABLES     off=0x0 len=0x0
+  segment ENTRYNAMES     off=0xD0 len=0x30
+  segment ENTRYWAVEDATA  off=0x800 len=0x1000
+  entries:
+    [  0] PCM   1ch  22050Hz 16bit  wave@0x0 len=100  "alpha"
+    [  1] PCM   1ch  22050Hz 16bit  wave@0x800 len=101  "beta"
+    [  2] PCM   1ch  22050Hz 16bit  wave@0x1000 len=102  "gamma_longer_nam"
+xwb cut.xwb magic=DNBW version=46 header_version=44 name='named' flags=1 entry_count=3
+  segment BANKDATA 52 84
+  segment ENTRYMETADATA 136 72
+  segment SEEKTABLES 0 0
+  segment ENTRYNAMES 208 48
+  segment ENTRYWAVEDATA 2048 4096
+  [0] PCM 1ch 22050Hz block=2 16bit play=0+100 name=
+WaveBank "big"  (DNBW v46)  70 entries
+  segment BANKDATA       off=0x34 len=0x54
+  segment ENTRYMETADATA  off=0x88 len=0x690
+  segment SEEKTABLES     off=0x0 len=0x0
+  segment ENTRYNAMES     off=0x0 len=0x0
+  segment ENTRYWAVEDATA  off=0x0 len=0x0
+  entries:
+    [  0] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  1] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  2] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  3] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  4] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  5] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  6] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  7] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  8] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [  9] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 10] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 11] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 12] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 13] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 14] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 15] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 16] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 17] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 18] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 19] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 20] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 21] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 22] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 23] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 24] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 25] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 26] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 27] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 28] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 29] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 30] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 31] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 32] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 33] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 34] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 35] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 36] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 37] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 38] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 39] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 40] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 41] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 42] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 43] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 44] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 45] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 46] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 47] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 48] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 49] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 50] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 51] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 52] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 53] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 54] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 55] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 56] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 57] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 58] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 59] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 60] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 61] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 62] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    [ 63] PCM   0ch      0Hz  8bit  wave@0x0 len=0
+    … (6 more)
