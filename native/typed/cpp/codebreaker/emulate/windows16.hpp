@@ -19,7 +19,7 @@
 //   * run::Call::detail for this lane is the Python's whole `hit` dict; run.hpp's Detail variant only holds the
 //     {api, n} note -- the lane (verify/lanes/win16) reads the hits from Trace16::imports_hit (Run.raw) instead.
 //   * `context` (a call recorded in the running system, replayed) is the Context record; `callees`, `prelude` and
-//     `mem_init` are typed below.  The Python mutates context["_code_bases"] while loading: Context::_code_bases.
+//     `mem_init` are typed below.  The Python mutates context["_code_bases"] while loading: options hold the Context as a shared_ptr, so the caller sees it set.
 //   * run.hpp's Run.raw is a std::shared_ptr<Trace16> behind the opaque shared_ptr<void>.
 //   * `shadow` is the native_shadow::Shadow a Shadow16 made (null: none).
 #pragma once
@@ -37,6 +37,7 @@
 #include "codebreaker/emulate/native_trace.hpp"
 #include "codebreaker/emulate/ports16.hpp"
 #include "codebreaker/emulate/run.hpp"
+#include "codebreaker/knowledge/sources.hpp"
 #include "py.hpp"
 
 namespace codebreaker::emulate::windows16 {
@@ -263,7 +264,7 @@ struct Trace16Options {
     std::optional<py::bytes> data_image;
     std::optional<Callees> callees;
     std::optional<std::tuple<int64_t, int64_t>> data_end;
-    std::optional<Context> context;
+    std::shared_ptr<Context> context;   // shared with the caller: the run sets its _code_bases, as the Python does on the dict
     std::optional<MemInit> mem_init;
     std::optional<std::tuple<int64_t, int64_t>> branches;
     std::optional<int64_t> bp;
@@ -289,7 +290,7 @@ struct ProbeOptions {
     std::optional<py::bytes> data_image;
     std::optional<Callees> callees;
     std::optional<std::tuple<int64_t, int64_t>> data_end;
-    std::optional<Context> context;
+    std::shared_ptr<Context> context;   // shared with the caller: the run sets its _code_bases, as the Python does on the dict
     std::optional<int64_t> stub_ret;
     std::optional<MemInit> mem_init;
     std::optional<std::tuple<int64_t, int64_t>> branches;
@@ -305,6 +306,24 @@ Trace16 probe(const py::str& dll, const ProbeOptions& options = {});
 // probe's record as the one run record (emulate/run.hpp): AX and DX:AX the results, every Windows call made, the
 // devices' log, SI DI DS as they went in and came out, the linear addresses run in order.  run.raw is the Trace16.
 run::Run record(const Trace16& rec);
+
+// ---- the SDK symbol tables (the reference JSON beside the data corpus) -------------------------------------------------
+// _load_symbols(): sdk_symbols.json and build311_codeview_syms.json, found by _find() in WT_DATA_ROOT, the data root and the
+// working folder (docs/reference/<name>); a file that is not there or not JSON is read as empty.  Read once.
+using Json = knowledge::sources::Json;
+struct Symbols {
+    Json proto;                                          // sdk["proto"] (a JSON object; None-kind when absent)
+    py::dict<py::str, Json> struct_;                     // sdk["struct"]: structure layouts by name
+    py::dict<py::str, int64_t> arity_lib;                // name -> arity (from lib @N across all modules)
+    py::set<py::str> cvnames;                            // the codeview name set
+    py::dict<py::str, py::str> ci, ci_arity;             // lower-case name -> proper-case, for proto and arity_lib
+    py::set<py::str> ci_cv;                              // lower-cased codeview names
+    py::dict<py::str, py::dict<int64_t, py::str>> ord16; // {MODULE: {ordinal: name}} of the 16-bit libraries
+};
+std::optional<py::str> _find(const py::str& fname);
+const Symbols& _load_symbols();
+// A structure's layout by name, or None.  (Python's `struct`, a C++ keyword.)
+std::optional<Json> struct_(const py::str& name);
 
 // The platform's runner (platforms/win16.py emulator.run): probe(dll, **kw) as a Run.
 run::Run recorded(const py::str& dll, const ProbeOptions& options = {});

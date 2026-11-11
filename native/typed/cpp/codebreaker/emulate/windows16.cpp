@@ -5,8 +5,7 @@
 // call to Windows is seen, named, and returned from with the arguments it was given.  Memory is kept by the hooks of
 // native_win16 (cbtrace.dll); the events (an import entered, a callee not run, an interrupt) are this module's.
 //
-// Not carried over: struct() / _load_symbols() (a reader of the SDK symbol JSON that nothing uses).  The Python
-// mutates the caller's `context` (_code_bases); here the run keeps its own copy of it.
+// The Python mutates the caller's `context` (_code_bases): the options hold it as a shared_ptr, so the caller sees it set.
 
 #include "codebreaker/emulate/windows16.hpp"
 
@@ -784,9 +783,8 @@ Trace16 trace_function16(const py::str& path, const Trace16Options& options) {
     int64_t insn_cap = options.insn_cap;
     bool near_ = options.near_;
     native_shadow::Shadow* shadow = options.shadow;
-    const bool has_context = options.context.has_value();
-    Context context_copy = has_context ? *options.context : Context();   // (the run keeps its own copy: _code_bases is set on it)
-    Context* context = has_context ? &context_copy : nullptr;
+    Context* context = options.context.get();   // the caller's own: the run sets its _code_bases, as the Python does
+    const bool has_context = context != nullptr;
 
     // (a module is parsed and fixed up once per process: each run after the first writes the fixed-up segments as they
     // were -- walking every fix-up chain again was most of a run's setup)
@@ -1451,5 +1449,109 @@ run::Run record(const Trace16& rec) {
 
 // The platform's runner (platforms/win16.py emulator.run): probe(dll, **kw) as a Run.
 run::Run recorded(const py::str& dll, const ProbeOptions& options) { return record(probe(dll, options)); }
+
+// ---- the SDK symbol tables ---------------------------------------------------------------------------------------------
+// Locate a reference JSON across the repo/data split: against the active data corpus (WT_DATA_ROOT, the data root) and the
+// working folder -- no in-repo corpus copy.
+std::optional<py::str> _find(const py::str& fname) {
+    std::vector<py::str> roots;
+    const char* env = std::getenv("WT_DATA_ROOT");
+    if (env && *env) {
+        roots.push_back(py::str(env));
+        roots.push_back(py::os::path::join(py::str(env), py::str("win95")));
+    }
+    // paths.data_root(): WT_DATA_ROOT when it is a folder, else the checkout's parent (the dev monorepo layout)
+    if (env && *env && py::os::path::isdir(py::str(env))) {
+        roots.push_back(py::str(env));
+    } else if (const char* root = std::getenv("CB_CHECKOUT_ROOT")) {
+        roots.push_back(py::os::path::dirname(py::os::path::abspath(py::str(root))));
+    }
+    py::str cwd = py::os::getcwd();
+    roots.push_back(cwd);
+    roots.push_back(py::os::path::join(cwd, py::str("win95")));
+    for (const py::str& r : roots) {
+        py::str p = py::os::path::join(r, py::str("docs"), py::str("reference"), fname);
+        if (py::os::path::exists(p)) return p;
+    }
+    return std::nullopt;
+}
+
+namespace {
+Json empty_object() {
+    Json e;
+    e.kind = Json::Dict;
+    return e;
+}
+// json.load of a reference file, or an empty object when it is not there or not JSON (except (OSError, ValueError))
+Json read_reference(const char* name) {
+    std::optional<py::str> p = _find(py::str(name));
+    if (!p) return empty_object();
+    try {
+        return knowledge::sources::_json(*p);
+    } catch (const py::OSError&) {
+    } catch (const py::ValueError&) {
+    }
+    return empty_object();
+}
+Json member_or_empty(const Json& d, const char* key) {
+    if (d.kind != Json::Dict) return empty_object();
+    auto it = d.dict.get(py::str(key));
+    return it ? *it : empty_object();
+}
+std::optional<int64_t> int_of(const Json& j) {   // isinstance(j, int) (a bool is one)
+    if (j.kind == Json::Int) return j.i;
+    if (j.kind == Json::Bool) return j.b ? 1 : 0;
+    return std::nullopt;
+}
+}  // namespace
+
+const Symbols& _load_symbols() {
+    static std::optional<Symbols> cache;
+    if (cache) return *cache;
+    Json sdk = read_reference("sdk_symbols.json");
+    Json cv = read_reference("build311_codeview_syms.json");
+    Symbols out;
+    // flatten: name -> arity (from lib @N across all modules), and the codeview name set
+    for (const auto& dll : member_or_empty(sdk, "32").dict.items()) {
+        const Json& syms = std::get<1>(dll);
+        if (syms.kind != Json::Dict) continue;
+        for (const auto& kv : syms.dict.items()) {
+            auto a = int_of(std::get<1>(kv));
+            if (a && !out.arity_lib.contains(std::get<0>(kv))) out.arity_lib.set(std::get<0>(kv), *a);
+        }
+    }
+    for (const auto& mod : cv.dict.items()) {
+        const Json& names = std::get<1>(mod);
+        if (names.kind == Json::List) {
+            for (const Json& n : names.list)
+                if (n.kind == Json::Str) out.cvnames.add(n.s);
+        } else if (names.kind == Json::Dict) {
+            for (const py::str& n : names.dict.keys()) out.cvnames.add(n);
+        }
+    }
+    out.proto = member_or_empty(sdk, "proto");
+    // 16-bit OMF IMPDEF map carries ordinals: {MODULE: {name: ordinal_or_expname}}. Invert to {MODULE: {ordinal: name}} so an
+    // ordinal-only export can be named
+    for (const auto& mod : member_or_empty(sdk, "16").dict.items()) {
+        const Json& syms = std::get<1>(mod);
+        py::dict<int64_t, py::str> inv;
+        if (syms.kind == Json::Dict) {
+            for (const auto& kv : syms.dict.items()) {
+                auto ov = int_of(std::get<1>(kv));
+                if (ov && !inv.contains(*ov)) inv.set(*ov, std::get<0>(kv));
+            }
+        }
+        if (!inv.empty()) out.ord16.set(std::get<0>(mod).upper(), inv);
+    }
+    // case-insensitive index: 16-bit export names are UPPERCASE, SDK names are proper-case
+    for (const py::str& k : out.proto.dict.keys()) out.ci.set(k.lower(), k);
+    for (const py::str& k : out.arity_lib.keys()) out.ci_arity.set(k.lower(), k);
+    for (const py::str& n : out.cvnames) out.ci_cv.add(n.lower());
+    out.struct_ = member_or_empty(sdk, "struct").dict;
+    cache = std::move(out);
+    return *cache;
+}
+
+std::optional<Json> struct_(const py::str& name) { return _load_symbols().struct_.get(name); }
 
 }  // namespace codebreaker::emulate::windows16
