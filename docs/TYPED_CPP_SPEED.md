@@ -333,3 +333,16 @@ state/work/typed-port/_bugs/LIST.md: strict reads of a field cut by the end of t
 index 0 as "no target" instead of "the last entry" (OMF 178 fix-up lines, all in the hand-made synthetic objects), a trailing odd byte
 of a UTF-16 resource name dropped instead of replaced (2 of 26,208 damaged PEs). Everything else matched (0 mismatches in 8,736 PE,
 NE, LE and DOS inputs each, 38,688 LE, 26,208 NE and DOS).
+
+### native/cb/build (W0-B5): the old harness cases replayed
+
+Same inputs (the harness `cases.txt` of each module, parsing and hex decoding included), old typed port `test.exe` against the new module.
+
+| Module | py:: port | native/cb | Speedup |
+|---|---|---|---|
+| build/mzfile (158 cases) | 260 ms | 53 ms | 4.9x |
+| build/exepack (5,385 cases) | 297 ms | 127 ms | 2.3x |
+| build/stubjoin (979 cases, several with multi-GB stub places) | 7,859 ms | 4,462 ms | 1.8x |
+| build/vxdfile (329 cases) | 120 ms | 17 ms | 7x |
+
+The assemblers, definitions, watcom, msvc152, period16 and dos_sessions have no CPU-bound work of their own (they drive other programs); not timed.
