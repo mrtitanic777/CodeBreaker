@@ -5,9 +5,9 @@
 #pragma once
 #include <cstdint>
 
-#include "libs.h"
+#include "cb/emulate/tracer/libs.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 struct Shadow;
 
@@ -20,4 +20,4 @@ void sh_written(Shadow *s, uint64_t at, uint64_t size);
 void sh_forget(Shadow *s, const char *name);
 uint64_t sh_segbase(Shadow *s, uc_engine *uc, uint64_t sel);
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer

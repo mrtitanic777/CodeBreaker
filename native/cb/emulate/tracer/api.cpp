@@ -1,39 +1,24 @@
-// api.cc -- the C interface (cbtrace.h): set up, attach a run's hooks to Python's Unicorn
+// api.cpp -- the C interface (cbtrace.h): set up, attach a run's hooks to Python's Unicorn
 // engine, and hand its record back.
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 
-#include "cbtrace.h"
-#include "run.h"
+#include "cb/emulate/tracer/cbtrace.h"
+#include "cb/emulate/tracer/run.hpp"
 
-namespace cbt {
+namespace {
 
-std::mutex cache_lock;
-static std::vector<std::unique_ptr<Static>> statics_by_id;    // (never freed: _INSN lives as long)
-static std::unordered_map<uint64_t, Branchy> decoded;          // sha id << 32 | address -> _DECODED
-
-Static *static_by_id(int32_t id) {
-    std::lock_guard<std::mutex> g(cache_lock);
-    return id >= 0 && size_t(id) < statics_by_id.size() ? statics_by_id[size_t(id)].get() : nullptr;
+// The C interface is process-wide by nature (a caller holds ids, not objects): one cache for it.
+cb::emulate::tracer::TraceCache &process_cache() {
+    static cb::emulate::tracer::TraceCache cache;
+    return cache;
 }
 
-const Branchy &branchy(uc_engine *uc, int32_t sha_id, uint64_t address) {
-    uint64_t key = uint64_t(uint32_t(sha_id)) << 32 | (address & 0xFFFFFFFFull);
-    std::lock_guard<std::mutex> g(cache_lock);
-    auto it = decoded.find(key);
-    if (it == decoded.end()) {
-        Branchy b;
-        decode_branchy(uc, address, b);
-        it = decoded.emplace(key, std::move(b)).first;
-    }
-    return it->second;
-}
+}  // namespace
 
-}  // namespace cbt
-
-using namespace cbt;
+using namespace cb::emulate::tracer;
 
 extern "C" {
 
@@ -46,10 +31,12 @@ CBT_API int cbt_init(const wchar_t *unicorn_dll, const wchar_t *capstone_dll, ch
     if (state == 0)
         return 0;
     char buf[256] = {0};
-    state = load_libs(unicorn_dll, capstone_dll, buf, sizeof buf) ? 0 : 1;
+    state = use_libraries(unicorn_dll, capstone_dll, buf, sizeof buf) ? 0 : 1;
     if (state && err && errlen > 0) {
-        strncpy(err, buf, size_t(errlen) - 1);
-        err[errlen - 1] = 0;
+        const size_t n = strnlen(buf, sizeof buf);
+        const size_t room = size_t(errlen) - 1;
+        memcpy(err, buf, n < room ? n : room);
+        err[n < room ? n : room] = 0;
     }
     return state;
 }
@@ -57,19 +44,14 @@ CBT_API int cbt_init(const wchar_t *unicorn_dll, const wchar_t *capstone_dll, ch
 CBT_API void cbt_register(const char *name, int32_t uc_id) { register_reg(name, uc_id); }
 
 CBT_API int32_t cbt_static(uint64_t lo, uint64_t hi, const uint8_t *image) {
-    auto s = std::make_unique<Static>();
-    s->lo = lo;
-    s->hi = hi;
-    s->image.assign(image, image + (hi - lo));
-    std::lock_guard<std::mutex> g(cache_lock);
-    statics_by_id.push_back(std::move(s));
-    return int32_t(statics_by_id.size() - 1);
+    return process_cache().add_static(lo, hi, image);
 }
 
-CBT_API int32_t cbt_intern(const char *s) { return intern(s ? s : ""); }
+CBT_API int32_t cbt_intern(const char *s) { return process_cache().intern_sha(s ? s : ""); }
 
 CBT_API void *cbt_begin(const cbt_config *c) {
     Run *r = new Run();
+    r->cache = &process_cache();
     r->uc = static_cast<uc_engine *>(c->uch);
     r->flags = c->flags;
     r->sha_id = c->sha_id;
@@ -89,7 +71,7 @@ CBT_API void *cbt_begin(const cbt_config *c) {
     r->lean_low_end = c->lean_low_end;
     r->lean_high_begin = c->lean_high_begin;
     for (int32_t i = 0; i < c->nstatics; i++) {
-        Static *s = static_by_id(c->statics[i]);
+        Static *s = process_cache().static_by_id(c->statics[i]);
         if (!s) {
             delete r;
             return nullptr;
@@ -121,39 +103,9 @@ CBT_API void *cbt_begin(const cbt_config *c) {
     return r;
 }
 
-static int add(Run *r, int type, void *cb, uint64_t begin, uint64_t end) {
-    uc_hook h = 0;
-    uc_err e = UC.hook_add(r->uc, &h, type, cb, r, begin, end);
-    if (e != UC_ERR_OK)
-        return int(e);
-    r->hooks.push_back(h);
-    return 0;
-}
+CBT_API int cbt_attach(void *run) { return attach(static_cast<Run *>(run)); }
 
-// The hooks in trace_function's order: the instruction (or block) hook, the memory hook (or the
-// lean write hook below the stack), unmapped accesses, interrupts, the lean write hook above the
-// stack, the branch log.  Unicorn runs the same with the same hooks.
-CBT_API int cbt_attach(void *run) {
-    Run *r = static_cast<Run *>(run);
-    int e = r->fast ? add(r, UC_HOOK_BLOCK, (void *)hook_block, 1, 0) : add(r, UC_HOOK_CODE, (void *)hook_code, 1, 0);
-    if (!e)
-        e = !r->lean ? add(r, r->reads ? (UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE) : UC_HOOK_MEM_WRITE, (void *)hook_mem, 1, 0)
-                     : add(r, UC_HOOK_MEM_WRITE, (void *)hook_write, 0, r->lean_low_end);
-    if (!e)
-        e = add(r, UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED | UC_HOOK_MEM_FETCH_UNMAPPED,
-                (void *)hook_unmapped, 1, 0);
-    if (!e)
-        e = add(r, UC_HOOK_INTR, (void *)hook_intr, 1, 0);
-    if (!e && r->lean)
-        e = add(r, UC_HOOK_MEM_WRITE, (void *)hook_write, r->lean_high_begin, 0xFFFFFFFFull);
-    if (!e && r->branches)
-        e = add(r, UC_HOOK_CODE, (void *)hook_branch, r->func_lo, r->func_hi - 1);
-    return e;
-}
-
-CBT_API int cbt_attach_code(void *run) {
-    return add(static_cast<Run *>(run), UC_HOOK_CODE, (void *)hook_code, 1, 0);
-}
+CBT_API int cbt_attach_code(void *run) { return attach_code(static_cast<Run *>(run)); }
 
 CBT_API int cbt_switched(void *run) { return static_cast<Run *>(run)->switched ? 1 : 0; }
 
@@ -235,15 +187,7 @@ CBT_API const cbt_result *cbt_result_get(void *run) {
     return &o;
 }
 
-CBT_API int cbt_detach(void *run) {
-    Run *r = static_cast<Run *>(run);
-    int bad = 0;
-    for (uc_hook h : r->hooks)
-        if (UC.hook_del(r->uc, h) != UC_ERR_OK)
-            bad = 1;
-    r->hooks.clear();
-    return bad;
-}
+CBT_API int cbt_detach(void *run) { return detach(static_cast<Run *>(run)); }
 
 CBT_API int cbt_restore(void *run) { return restore(static_cast<Run *>(run)); }
 

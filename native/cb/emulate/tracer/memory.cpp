@@ -2,15 +2,15 @@
 // with what was there before) and hook_unmapped (a page mapped on demand, the fault kept as
 // evidence), trace_function's lean hook_write and hook_intr, and putting a kept machine's
 // pages back after the run.
-#include "run.h"
+#include "cb/emulate/tracer/run.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 void Run::save_page(uint64_t base) {
     if (saved_keys.count(base))
         return;
     std::vector<uint8_t> data(PAGE);
-    if (UC.mem_read(uc, base, data.data(), PAGE) != UC_ERR_OK)
+    if (ucl().mem_read(uc, base, data.data(), PAGE) != UC_ERR_OK)
         return;                                // not there yet: mapping it notes that
     saved_keys.insert(base);
     saved_base.push_back(base);
@@ -54,8 +54,8 @@ void hook_mem(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64
         uint8_t buf[8];
         if (is_write) {
             v = uint64_t(value) & 0xFFFFFFFFull;
-            old = UC.mem_read(uc, address, buf, n) == UC_ERR_OK ? little(buf, n) : 0;
-        } else if (UC.mem_read(uc, address, buf, n) == UC_ERR_OK) {
+            old = ucl().mem_read(uc, address, buf, n) == UC_ERR_OK ? little(buf, n) : 0;
+        } else if (ucl().mem_read(uc, address, buf, n) == UC_ERR_OK) {
             v = little(buf, n);                // the value read (Unicorn passes 0 on a read)
         } else {
             none = true;
@@ -79,7 +79,7 @@ void hook_write(uc_engine *uc, uc_mem_type, uint64_t address, int size, int64_t 
                 continue;
             size_t at = r->pages0_data.size();
             r->pages0_data.resize(at + PAGE);
-            if (UC.mem_read(uc, b, r->pages0_data.data() + at, PAGE) == UC_ERR_OK) {
+            if (ucl().mem_read(uc, b, r->pages0_data.data() + at, PAGE) == UC_ERR_OK) {
                 if (r->saving && !r->saved_keys.count(b)) {
                     r->saved_keys.insert(b);
                     r->saved_base.push_back(b);
@@ -87,7 +87,7 @@ void hook_write(uc_engine *uc, uc_mem_type, uint64_t address, int size, int64_t 
                     r->saved_none.push_back(false);
                 }
             } else {
-                std::fill(r->pages0_data.begin() + at, r->pages0_data.end(), 0);   // reads as zeros
+                std::fill(r->pages0_data.begin() + at, r->pages0_data.end(), std::uint8_t{0});   // reads as zeros
             }
             r->pages0_keys.insert(b);
             r->pages0_base.push_back(b);
@@ -120,7 +120,7 @@ bool hook_unmapped(uc_engine *uc, uc_mem_type type, uint64_t address, int size, 
             r->stop();
             return false;
         }
-        if (UC.mem_map(uc, base, PAGE, UC_PROT_ALL) != UC_ERR_OK)
+        if (ucl().mem_map(uc, base, PAGE, UC_PROT_ALL) != UC_ERR_OK)
             return false;                      // truly can't map -> let it fault
         r->mapped.insert(base);
         newly++;
@@ -164,12 +164,12 @@ void hook_intr(uc_engine *uc, uint32_t intno, void *user) {
 
 int restore(Run *r) {
     for (size_t i = 0; i < r->saved_base.size(); i++) {
-        uc_err e = r->saved_none[i] ? UC.mem_unmap(r->uc, r->saved_base[i], PAGE)
-                                    : UC.mem_write(r->uc, r->saved_base[i], r->saved_data[i].data(), PAGE);
+        uc_err e = r->saved_none[i] ? ucl().mem_unmap(r->uc, r->saved_base[i], PAGE)
+                                    : ucl().mem_write(r->uc, r->saved_base[i], r->saved_data[i].data(), PAGE);
         if (e != UC_ERR_OK)
             return int(e);
     }
     return 0;
 }
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer

@@ -4,9 +4,9 @@
 #include <algorithm>
 #include <mutex>
 
-#include "run.h"
+#include "cb/emulate/tracer/run.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 void code_step(Run *r, uint64_t address, uint32_t csize) {
     uc_engine *uc = r->uc;
@@ -51,7 +51,7 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
                 }
             }
             if (!have) {
-                if (UC.mem_read(uc, address, two, 2) != UC_ERR_OK)
+                if (ucl().mem_read(uc, address, two, 2) != UC_ERR_OK)
                     failed = true;
             }
             if (!failed)
@@ -147,7 +147,7 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
                 if (s->lo <= address && address < s->hi) {
                     if (!r->init_page(address >> 12) && !r->init_page((address + 14) >> 12)) {
                         known = s;
-                        std::lock_guard<std::mutex> g(cache_lock);
+                        std::lock_guard<std::mutex> g(r->cache->lock);
                         auto it = s->insns.find(address);
                         if (it != s->insns.end())
                             info = &it->second;
@@ -161,7 +161,7 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
         if (!info) {
             uint8_t buf[15];
             if (!raw) {
-                uc_err e = UC.mem_read(uc, address, buf, n);
+                uc_err e = ucl().mem_read(uc, address, buf, n);
                 if (e != UC_ERR_OK) {          // (Python: the hook raises; the run stops on it)
                     r->hook_error = 2;
                     r->uc_err = e;
@@ -177,7 +177,7 @@ void code_step(Run *r, uint64_t address, uint32_t csize) {
                 got.text = "?";
             }
             if (known) {
-                std::lock_guard<std::mutex> g(cache_lock);
+                std::lock_guard<std::mutex> g(r->cache->lock);
                 info = &known->insns.emplace(address, got).first->second;
             } else {
                 r->owned.push_back(got);
@@ -229,7 +229,7 @@ void hook_block(uc_engine *uc, uint64_t address, uint32_t size, void *user) {
             if (s->lo <= address && address + size <= s->hi) {
                 if (!r->init_page(address >> 12) && !r->init_page((address + size - 1) >> 12)) {
                     uint64_t key = address << 32 | size;
-                    std::lock_guard<std::mutex> g(cache_lock);
+                    std::lock_guard<std::mutex> g(r->cache->lock);
                     auto it = s->blocks.find(key);
                     if (it == s->blocks.end()) {
                         Straight st;
@@ -283,4 +283,4 @@ void settle(Run *r) {
     }
 }
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer

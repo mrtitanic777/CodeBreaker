@@ -12,11 +12,11 @@
 #include <unordered_set>
 #include <vector>
 
-#include "cbtrace.h"
-#include "libs.h"
-#include "shadow.h"
+#include "cb/emulate/tracer/cbtrace.h"
+#include "cb/emulate/tracer/libs.hpp"
+#include "cb/emulate/tracer/shadow.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 // driver.py / emulator.py caps, repeated here.
 static constexpr uint64_t D_PAGE = 0x1000;
@@ -58,7 +58,7 @@ struct DrvRun {
 
     uint64_t r(int which) const { return reg(uc, ids[which]); }
     void setr(int which, uint64_t v) { set_reg(uc, ids[which], v); }
-    void stop() { UC.emu_stop(uc); }
+    void stop() { ucl().emu_stop(uc); }
     bool holds(uint64_t a) const {
         for (auto &s : spans)
             if (s.first <= a && a < s.second)
@@ -76,7 +76,7 @@ static void given(DrvRun *r, uint64_t out_regs[6], int &nregs, uint64_t out_word
         out_regs[i] = r->r(GIVEN_REGS[i]) & 0xFFFFFFFFull;
     nregs = 6;
     uint8_t b[16];
-    if (UC.mem_read(r->uc, r->r(R_ESP), b, 16) == UC_ERR_OK) {
+    if (ucl().mem_read(r->uc, r->r(R_ESP), b, 16) == UC_ERR_OK) {
         for (int i = 0; i < 4; i++)
             out_words[i] = little(b + 4 * i, 4);
         nwords = 4;
@@ -171,12 +171,12 @@ static void on_intr(uc_engine *, uint32_t intno, void *user) {
     uint64_t eip = r->r(R_EIP);                    // just past the two-byte `int`
     if (intno == 0x20) {
         uint8_t b[4];
-        if (UC.mem_read(r->uc, eip, b, 4) != UC_ERR_OK) {
+        if (ucl().mem_read(r->uc, eip, b, 4) != UC_ERR_OK) {
             r->exit_code = 2;                      // "exception: service number unreadable"
             r->stop();
             return;
         }
-        uint32_t service = little(b, 2), device = little(b + 2, 2);
+        uint32_t service = uint32_t(little(b, 2)), device = uint32_t(little(b + 2, 2));
         if (r->ncalls >= D_MAX_CALLS_RUN) {
             r->truncated = true;
             r->stop();
@@ -235,8 +235,8 @@ static void on_mem(uc_engine *uc, uc_mem_type type, uint64_t address, int size, 
         uint8_t buf[8];
         if (is_write) {
             v = uint64_t(value) & 0xFFFFFFFFull;
-            old = UC.mem_read(uc, address, buf, n) == UC_ERR_OK ? little(buf, n) : 0;
-        } else if (UC.mem_read(uc, address, buf, n) == UC_ERR_OK) {
+            old = ucl().mem_read(uc, address, buf, n) == UC_ERR_OK ? little(buf, n) : 0;
+        } else if (ucl().mem_read(uc, address, buf, n) == UC_ERR_OK) {
             v = little(buf, n);
         } else {
             none = true;
@@ -262,7 +262,7 @@ static bool on_unmapped(uc_engine *uc, uc_mem_type type, uint64_t address, int s
             r->stop();
             return false;
         }
-        if (UC.mem_map(uc, base, D_PAGE, UC_PROT_ALL) != UC_ERR_OK)
+        if (ucl().mem_map(uc, base, D_PAGE, UC_PROT_ALL) != UC_ERR_OK)
             return false;                          // truly can't map -> let it fault
         r->mapped.insert(base);
         newly++;                                   // driver.run: fill=False, so no pattern written
@@ -312,9 +312,9 @@ static void on_out(uc_engine *, uint32_t port, int size, uint32_t value, void *u
     }
 }
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer
 
-using namespace cbt;
+using namespace cb::emulate::tracer;
 
 extern "C" {
 
@@ -342,7 +342,7 @@ CBT_API void *cbt_drv_begin(const cbt_drv_config *c) {
 
 static int d_add(DrvRun *r, int type, void *cb, uint64_t begin, uint64_t end) {
     uc_hook h = 0;
-    uc_err e = UC.hook_add(r->uc, &h, type, cb, r, begin, end);
+    uc_err e = ucl().hook_add(r->uc, &h, type, cb, r, begin, end);
     if (e != UC_ERR_OK)
         return int(e);
     r->hooks.push_back(h);
@@ -351,7 +351,7 @@ static int d_add(DrvRun *r, int type, void *cb, uint64_t begin, uint64_t end) {
 
 static int d_add_insn(DrvRun *r, void *cb, int ins) {
     uc_hook h = 0;
-    uc_err e = UC.hook_add(r->uc, &h, UC_HOOK_INSN, cb, r, 1, 0, ins);
+    uc_err e = ucl().hook_add(r->uc, &h, UC_HOOK_INSN, cb, r, 1, 0, ins);
     if (e != UC_ERR_OK)
         return int(e);
     r->hooks.push_back(h);
@@ -417,7 +417,7 @@ CBT_API int cbt_drv_detach(void *run) {
     DrvRun *r = static_cast<DrvRun *>(run);
     int bad = 0;
     for (uc_hook h : r->hooks)
-        if (UC.hook_del(r->uc, h) != UC_ERR_OK)
+        if (ucl().hook_del(r->uc, h) != UC_ERR_OK)
             bad = 1;
     r->hooks.clear();
     return bad;

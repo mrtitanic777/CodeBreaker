@@ -1,12 +1,12 @@
 // decode.cc -- Capstone, asked what emulator.py asks it (see decode.h).
-#include "decode.h"
+#include "cb/emulate/tracer/decode.hpp"
 
 #include <cctype>
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 const char *const COMPARES[9] = {"cmp", "test", "sub", "and", "or", "dec", "inc", "add", "xor"};
 // instructions that leave the flags alone: a compare before them still decides the jump after
@@ -18,8 +18,8 @@ static csh decoder() {
     thread_local csh h = 0;
     thread_local bool opened = false;
     if (!opened) {
-        CS.open(CS_ARCH_X86, CS_MODE_32, &h);
-        CS.option(h, CS_OPT_DETAIL, CS_OPT_ON);
+        csl().open(CS_ARCH_X86, CS_MODE_32, &h);
+        csl().option(h, CS_OPT_DETAIL, CS_OPT_ON);
         opened = true;
     }
     return h;
@@ -40,7 +40,7 @@ static std::string text_of(const cs_insn &ins) {
 
 bool decode_one(const uint8_t *p, size_t n, uint64_t address, InsnInfo &out) {
     cs_insn *insn = nullptr;
-    size_t got = CS.disasm(decoder(), p, n, address, 1, &insn);
+    size_t got = csl().disasm(decoder(), p, n, address, 1, &insn);
     if (got == 0)
         return false;
     out.text = text_of(insn[0]);
@@ -55,14 +55,14 @@ bool decode_one(const uint8_t *p, size_t n, uint64_t address, InsnInfo &out) {
                 out.target = uint64_t(x.operands[i].imm) & 0xFFFFFFFFull;
             }
     }
-    CS.free(insn, got);
+    csl().free(insn, got);
     return true;
 }
 
 void straight_run(const uint8_t *p, size_t n, uint64_t address, Straight &out) {
     out = Straight();
     cs_insn *insn = nullptr;
-    size_t got = CS.disasm(decoder(), p, n, address, 0, &insn);
+    size_t got = csl().disasm(decoder(), p, n, address, 0, &insn);
     size_t total = 0;
     for (size_t i = 0; i < got; i++) {
         out.addrs.push_back(insn[i].address);
@@ -72,7 +72,7 @@ void straight_run(const uint8_t *p, size_t n, uint64_t address, Straight &out) {
             out.zero = true;
     }
     if (got)
-        CS.free(insn, got);
+        csl().free(insn, got);
     out.ok = total == n && got > 0;
 }
 
@@ -82,21 +82,21 @@ static bool starts(const char *s, const char *prefix) {
 
 int64_t callee_pops(uc_engine *uc, uint64_t ret) {
     uint8_t after[3], before[64];
-    if (UC.mem_read(uc, ret, after, 3) != UC_ERR_OK)
+    if (ucl().mem_read(uc, ret, after, 3) != UC_ERR_OK)
         return 0;
     if ((after[0] == 0x83 || after[0] == 0x81) && after[1] == 0xC4)   // add esp, imm: the caller's
         return 0;
-    if (ret < 64 || UC.mem_read(uc, ret - 64, before, 64) != UC_ERR_OK)
+    if (ret < 64 || ucl().mem_read(uc, ret - 64, before, 64) != UC_ERR_OK)
         return 0;
     csh h = decoder();
     for (int start = 0; start < 60; start++) {
         cs_insn *insn = nullptr;
-        size_t got = CS.disasm(h, before + start, 64 - start, ret - 64 + start, 0, &insn);
+        size_t got = csl().disasm(h, before + start, 64 - start, ret - 64 + start, 0, &insn);
         if (!got)
             continue;
         const cs_insn &last = insn[got - 1];
         if (last.address + last.size != ret || strcmp(last.mnemonic, "call") != 0) {
-            CS.free(insn, got);
+            csl().free(insn, got);
             continue;
         }
         int64_t pushed = 0;
@@ -111,7 +111,7 @@ int64_t callee_pops(uc_engine *uc, uint64_t ret) {
                 starts(insn[k].op_str, "esp"))
                 break;
         }
-        CS.free(insn, got);
+        csl().free(insn, got);
         return pushed <= 64 ? pushed : 0;
     }
     return 0;
@@ -138,7 +138,15 @@ int intern(const std::string &s) {
     return id;
 }
 
-// _uc_reg: getattr(x86_const, "UC_X86_REG_" + name.upper(), None)
+// Unicorn's id for each register name as Capstone spells it, upper-cased (UC_X86_REG_<NAME> of Unicorn 2.1.4).
+static const std::unordered_map<std::string, int> &builtin_registers() {
+    static const std::unordered_map<std::string, int> table = {
+#include "cb/emulate/tracer/x86_registers.inc"
+    };
+    return table;
+}
+
+// The Unicorn register of a Capstone register name: what register_reg() was told, else Unicorn's own table.
 static int uc_reg_of(const char *name) {
     if (!name)
         return -1;
@@ -146,6 +154,8 @@ static int uc_reg_of(const char *name) {
     for (char &c : up)
         c = char(toupper((unsigned char)c));
     std::lock_guard<std::mutex> g(names_lock);
+    if (uc_ids.empty())
+        uc_ids = builtin_registers();
     auto it = uc_ids.find(up);
     return it == uc_ids.end() ? -1 : it->second;
 }
@@ -175,7 +185,7 @@ static bool operand(csh h, const cs_x86_op &op, Operand &o) {
     o = Operand();
     o.size = op.size;
     if (op.type == X86_OP_REG) {
-        const char *name = CS.reg_name(h, op.reg);
+        const char *name = csl().reg_name(h, op.reg);
         o.kind = OP_REG;
         o.uc_reg = uc_reg_of(name);
         o.parent = parent_id(name);
@@ -188,8 +198,8 @@ static bool operand(csh h, const cs_x86_op &op, Operand &o) {
     }
     if (op.type == X86_OP_MEM && op.mem.segment == X86_REG_INVALID) {
         o.kind = OP_MEM;
-        o.base = op.mem.base ? uc_reg_of(CS.reg_name(h, op.mem.base)) : -1;
-        o.index = op.mem.index ? uc_reg_of(CS.reg_name(h, op.mem.index)) : -1;
+        o.base = op.mem.base ? uc_reg_of(csl().reg_name(h, op.mem.base)) : -1;
+        o.index = op.mem.index ? uc_reg_of(csl().reg_name(h, op.mem.index)) : -1;
         o.scale = op.mem.scale;
         o.disp = op.mem.disp;
         return true;
@@ -200,11 +210,11 @@ static bool operand(csh h, const cs_x86_op &op, Operand &o) {
 void decode_branchy(uc_engine *uc, uint64_t address, Branchy &out) {
     out = Branchy();                          // ("other", None, (), None): also what a failure gives
     uint8_t raw[16];
-    if (UC.mem_read(uc, address, raw, 16) != UC_ERR_OK)
+    if (ucl().mem_read(uc, address, raw, 16) != UC_ERR_OK)
         return;
     csh h = decoder();
     cs_insn *insn = nullptr;
-    size_t got = CS.disasm(h, raw, 16, address, 1, &insn);
+    size_t got = csl().disasm(h, raw, 16, address, 1, &insn);
     if (!got)
         return;
     const cs_insn &ins = insn[0];
@@ -214,9 +224,9 @@ void decode_branchy(uc_engine *uc, uint64_t address, Branchy &out) {
     {
         cs_regs rr, rw;
         uint8_t nr = 0, nw = 0;
-        if (CS.regs_access(h, &ins, rr, &nr, rw, &nw) == CS_ERR_OK)
+        if (csl().regs_access(h, &ins, rr, &nr, rw, &nw) == CS_ERR_OK)
             for (int i = 0; i < nw; i++)
-                written.push_back(parent_id(CS.reg_name(h, rw[i])));
+                written.push_back(parent_id(csl().reg_name(h, rw[i])));
     }
     bool has_load = false;
     int load_parent = -1, load_size = 0;
@@ -225,7 +235,7 @@ void decode_branchy(uc_engine *uc, uint64_t address, Branchy &out) {
         x.operands[0].type == X86_OP_REG && x.operands[1].type == X86_OP_MEM) {
         Operand src;
         if (operand(h, x.operands[1], src)) {
-            const char *p = parent_of(CS.reg_name(h, x.operands[0].reg));
+            const char *p = parent_of(csl().reg_name(h, x.operands[0].reg));
             has_load = true;                   // (None as the register: kept, and never used)
             load_parent = p ? intern(p) : -1;
             load_src = src;
@@ -281,7 +291,7 @@ void decode_branchy(uc_engine *uc, uint64_t address, Branchy &out) {
         out.kind = B_OTHER;
         out.written = written;
     }
-    CS.free(insn, got);
+    csl().free(insn, got);
 }
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer

@@ -7,9 +7,9 @@
 // through a pointer given, EAX the stand-in's value; and the call is recorded with its arguments.
 #include <algorithm>
 
-#include "run.h"
+#include "cb/emulate/tracer/run.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 int stand_in(Run *r, uint64_t address, int64_t hit) {
     uc_engine *uc = r->uc;
@@ -88,7 +88,7 @@ int stand_in(Run *r, uint64_t address, int64_t hit) {
                 uint64_t v = given >= 0 ? uint64_t(given) : OUT_HANDLE + 4 * uint64_t(i);
                 if (v <= 0xFFFFFFFFull) {
                     uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)};
-                    if (UC.mem_write(uc, p, b, 4) == UC_ERR_OK && r->shadow)
+                    if (ucl().mem_write(uc, p, b, 4) == UC_ERR_OK && r->shadow)
                         sh_written(r->shadow, p, 4);
                 }
             }
@@ -129,4 +129,4 @@ int stand_in(Run *r, uint64_t address, int64_t hit) {
     return 0;
 }
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer

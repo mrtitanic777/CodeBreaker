@@ -2,9 +2,9 @@
 // conditional jump of the function itself, which way it went and what the comparison before it
 // compared -- the values, and the memory each came from (a register's: where it was last loaded
 // from in this function, if it was not written since).
-#include "run.h"
+#include "cb/emulate/tracer/run.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 static bool mask_of(int size, uint64_t &mask) {
     if (size < 0 || size > 8)
@@ -43,7 +43,7 @@ static bool value_of(Run *r, const Operand &op, uint64_t &value, bool &has_at, u
     }
     uint64_t a = address_of(r->uc, op);
     uint8_t buf[8];
-    if (UC.mem_read(r->uc, a, buf, size_t(op.size)) != UC_ERR_OK)
+    if (ucl().mem_read(r->uc, a, buf, size_t(op.size)) != UC_ERR_OK)
         return false;
     value = little(buf, size_t(op.size));
     has_at = true;
@@ -63,7 +63,7 @@ void hook_branch(uc_engine *uc, uint64_t address, uint32_t, void *user) {
             r->branch_log.insert(r->branch_log.end(), row, row + CBT_BRANCH_WORDS);
         }
     }
-    const Branchy &d = branchy(uc, r->sha_id, address);
+    const Branchy &d = r->cache->branchy(uc, r->sha_id, address);
     if (d.kind == B_CMP) {
         Compare c;
         if (value_of(r, d.ops[0], c.a, c.has_at_a, c.at_a) && value_of(r, d.ops[1], c.b, c.has_at_b, c.at_b)) {
@@ -91,4 +91,4 @@ void hook_branch(uc_engine *uc, uint64_t address, uint32_t, void *user) {
         r->loaded[d.load_parent] = {address_of(uc, d.load_src), d.load_size};
 }
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer

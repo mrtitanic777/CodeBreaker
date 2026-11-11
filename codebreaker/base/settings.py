@@ -22,7 +22,7 @@ and are named in one file, `settings.json` at the top of the checkout:
     xex_bin         folder of the Xbox 360 executable reader, xex.exe (default: native/xex/build/bin)
     tracer_bin      folder of the run recorder, cbtrace.dll: the 32-bit tracer's hooks in C++
     engine_bin      folder of cbengine.dll: the engine and the store in C++ (native/engine)
-                    (default: native/tracer/build/bin)
+                    (default: state/cxx/cb/bin, where toolsuild_cb.cmd puts it)
     formats_bin     folder of the file-format readers in C++, formats.dll (default: native/formats/build/bin)
     dosexec_bin     folder of cbdos.dll: the DOS executive and DPMI host in C++ (default: native/dosexec/build/bin)
     symbols_bin     folder of cbsymbols.dll: codebreaker/symbols/ in C++ (default: native/symbols/build/bin)
@@ -84,7 +84,7 @@ DEFAULTS = {
     "openwatcom": "",
     "decompiler_bin": os.path.join("native", "decompiler", "build", "bin"),
     "xex_bin": os.path.join("native", "xex", "build", "bin"),
-    "tracer_bin": os.path.join("native", "tracer", "build", "bin"),
+    "tracer_bin": os.path.join("state", "cxx", "cb", "bin"),
     "formats_bin": os.path.join("native", "formats", "build", "bin"),
     "engine_bin": os.path.join("native", "engine", "build", "bin"),
     "dosexec_bin": os.path.join("native", "dosexec", "build", "bin"),

@@ -32,10 +32,10 @@
 #include <intrin.h>
 #endif
 
-#include "cbtrace.h"
-#include "shadow.h"
+#include "cb/emulate/tracer/cbtrace.h"
+#include "cb/emulate/tracer/shadow.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 // ---- 128-bit unsigned values ------------------------------------------------------------------
 struct U128 {
@@ -471,12 +471,12 @@ struct Shadow {
     const Expr *S_logic(int32_t op, const Expr *x, const Expr *y) { return node(op, 0, x, y); }
 
     // -- inputs
-    const Expr *var(const std::string &name, int64_t bits, int32_t kind, int32_t where_tag, uint64_t where_int,
+    const Expr *var(const std::string &name, int64_t bits, int32_t var_kind, int32_t where_tag, uint64_t where_int,
                     const std::string &where_str, uint64_t value) {
         auto it = sym.find(name);
         if (it != sym.end())
             return it->second;
-        VarRec v{intern(name), kind, where_tag, where_int, where_tag == 2 ? intern(where_str) : -1, bits, value};
+        VarRec v{intern(name), var_kind, where_tag, where_int, where_tag == 2 ? intern(where_str) : -1, bits, value};
         vars.push_back(v);
         const Expr *e = node(E_VAR, bits);
         const_cast<Expr *>(e)->name = v.name;
@@ -508,7 +508,7 @@ struct Shadow {
             base = sel * 16;
         } else if (kind == 16) {             // windows16.selector_base: the GDT as it is now
             uint8_t d[8];
-            if (UC.mem_read(uc, gdt_addr + (sel >> 3) * 8, d, 8) == UC_ERR_OK)
+            if (ucl().mem_read(uc, gdt_addr + (sel >> 3) * 8, d, 8) == UC_ERR_OK)
                 base = uint64_t(d[2]) | uint64_t(d[3]) << 8 | uint64_t(d[4]) << 16 | uint64_t(d[7]) << 24;
         }
         bases.emplace(sel, base);
@@ -609,9 +609,9 @@ void Shadow::step(uc_engine *uc, uint64_t address, uint64_t cs_base) {
 const Lifted *Shadow::lifted(uc_engine *uc, uint64_t address, uint64_t cs_base, bool &none) {
     uint8_t raw[16];
     size_t n = 16;
-    if (UC.mem_read(uc, address, raw, 16) != UC_ERR_OK) {      // UnicornX86.code
+    if (ucl().mem_read(uc, address, raw, 16) != UC_ERR_OK) {      // UnicornX86.code
         n = size_t((address | 0xFFF) + 1 - address);
-        if (UC.mem_read(uc, address, raw, n) != UC_ERR_OK) {
+        if (ucl().mem_read(uc, address, raw, n) != UC_ERR_OK) {
             none = true;
             return nullptr;
         }
@@ -683,9 +683,9 @@ void Shadow::run(uc_engine *uc, uint64_t address, uint64_t cs_base, const Lifted
         uint64_t v;
         if (ci == conc.end()) {
             if (p.flag >= 0)
-                v = (cbt::reg(uc, eflags_id) >> p.flag) & 1;
+                v = (tracer::reg(uc, eflags_id) >> p.flag) & 1;
             else
-                v = cbt::reg(uc, p.uc_id);
+                v = tracer::reg(uc, p.uc_id);
             conc.emplace(p.reg, v);
         } else {
             v = ci->second;
@@ -714,8 +714,8 @@ void Shadow::run(uc_engine *uc, uint64_t address, uint64_t cs_base, const Lifted
     };
     auto load = [&](uint64_t at, int64_t size) -> Val {
         std::vector<uint8_t> data(size_t(size), 0);
-        if (size > 0 && UC.mem_read(uc, at, data.data(), size_t(size)) != UC_ERR_OK)
-            std::fill(data.begin(), data.end(), 0);
+        if (size > 0 && ucl().mem_read(uc, at, data.data(), size_t(size)) != UC_ERR_OK)
+            std::fill(data.begin(), data.end(), std::uint8_t{0});
         U128 c;
         for (int64_t k = size - 1; k >= 0; k--)
             c = c.shl(8) | U128(data[size_t(k)]);
@@ -964,9 +964,9 @@ void Shadow::run(uc_engine *uc, uint64_t address, uint64_t cs_base, const Lifted
             U128 ac = vals[0].c, bc;
             const Expr *a_s = vals[0].s, *b_s = nullptr;
             int64_t asize = args[0].size, bsize = 0;
-            bool sym = false;
+            bool symbolic_arg = false;
             for (auto &v : vals)
-                sym = sym || v.s;
+                symbolic_arg = symbolic_arg || v.s;
             if (vals.size() > 1) {
                 bc = vals[1].c;
                 b_s = vals[1].s;
@@ -1066,14 +1066,14 @@ void Shadow::run(uc_engine *uc, uint64_t address, uint64_t cs_base, const Lifted
             default: known = false;
             }
             if (!known) {                       // (floating point and the rest: not followed)
-                if (sym)
+                if (symbolic_arg)
                     lost.insert("op:" + op.opc);
                 if (op.out.space)
                     write(op.out, U128(), nullptr);
                 break;
             }
             const Expr *s = nullptr;
-            if (sym) {
+            if (symbolic_arg) {
                 const Expr *A = a_s ? a_s : S_const(ac, 8 * asize);
                 const Expr *B = vals.size() > 1 ? (b_s ? b_s : S_const(bc, 8 * bsize)) : nullptr;
                 switch (code) {
@@ -1199,9 +1199,9 @@ void sh_forget(Shadow *s, const char *name) {
 }
 uint64_t sh_segbase(Shadow *s, uc_engine *uc, uint64_t sel) { return s->segbase(uc, sel); }
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer
 
-using namespace cbt;
+using namespace cb::emulate::tracer;
 
 extern "C" {
 

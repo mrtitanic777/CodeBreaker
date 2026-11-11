@@ -4,18 +4,20 @@
 #pragma once
 #include <cstdint>
 #include <deque>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "cbtrace.h"
-#include "decode.h"
-#include "libs.h"
-#include "shadow.h"
+#include "cb/emulate/tracer/cbtrace.h"
+#include "cb/emulate/tracer/decode.hpp"
+#include "cb/emulate/tracer/libs.hpp"
+#include "cb/emulate/tracer/shadow.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 constexpr uint64_t PAGE = 0x1000;
 constexpr int64_t MAX_MEM = 40000;          // emulator._MAX_MEM
@@ -26,9 +28,6 @@ constexpr int64_t BRANCH_CAP = 4096;        // emulator._BRANCH_CAP
 constexpr uint64_t RETSENT_BASE = 0xB1B10000ull;
 constexpr uint64_t OUT_HANDLE = 0x0000A100ull;
 
-// The caches every run shares (emulator._INSN, _DECODED), guarded for runs on several threads.
-extern std::mutex cache_lock;
-
 // A code range as in the file, with what was decoded of it (one entry of trace_function's `statics`).
 struct Static {
     uint64_t lo = 0, hi = 0;
@@ -36,8 +35,24 @@ struct Static {
     std::unordered_map<uint64_t, InsnInfo> insns;            // address -> instruction
     std::unordered_map<uint64_t, Straight> blocks;           // address << 32 | size -> straight run
 };
-Static *static_by_id(int32_t id);
-const Branchy &branchy(uc_engine *uc, int32_t sha_id, uint64_t address);   // _DECODED
+
+// What runs of one program share: its code ranges with what was decoded of them (emulator._INSN), the decoded
+// conditional jumps (_DECODED), and the numbers given to module hashes. Owned by whoever runs the tracer (the
+// emulator session; the C interface keeps one for the process) and guarded for runs on several threads.
+class TraceCache {
+  public:
+    // A code range as it is in the file (`image` is hi - lo bytes). -> its id.
+    int32_t add_static(uint64_t lo, uint64_t hi, const uint8_t *image);
+    Static *static_by_id(int32_t id);                                           // null for an id never given
+    const Branchy &branchy(uc_engine *uc, int32_t sha_id, uint64_t address);   // _DECODED
+    int32_t intern_sha(const std::string &sha);                                // a small number for a module's hash
+    std::mutex lock;                                                           // guards the statics' own caches too
+
+  private:
+    std::vector<std::unique_ptr<Static>> statics_;                              // (never freed while the cache lives)
+    std::unordered_map<uint64_t, Branchy> decoded_;                             // sha id << 32 | address
+    std::unordered_map<std::string, int32_t> shas_;
+};
 
 struct Call {
     uint64_t pc = 0;
@@ -68,6 +83,7 @@ struct Compare {                              // the compare in force: (mnemonic
 struct Run {
     uc_engine *uc = nullptr;
     uint32_t flags = 0;
+    TraceCache *cache = nullptr;
     int32_t sha_id = 0;
     int64_t insn_cap = 0, stub_ret = 0, stub_cleanup = 0;
     int64_t gov_n = 0, gov_ceil = 0;
@@ -76,7 +92,7 @@ struct Run {
     std::vector<Static *> statics;
     std::unordered_set<uint64_t> init_pages, mapped;
     std::unordered_map<uint64_t, int64_t> sentinels;          // landing address -> place
-    cbt_resolver resolver = nullptr;
+    std::function<int(int32_t index, int64_t *out, int32_t cap)> resolver;   // an import entered (see cbtrace.h cbt_resolver)
     Shadow *shadow = nullptr;                               // the path explorer's, or none
     std::unordered_map<int64_t, std::vector<int64_t>> answers; // the resolver's answer per import, this run
     bool fast = false, lean = false, reads = false, quiet = false, stop_wild = false, stub = false;
@@ -134,7 +150,7 @@ struct Run {
     std::string out_text;
 
     bool init_page(uint64_t page) const { return init_pages.count(page) != 0; }
-    void stop() { UC.emu_stop(uc); }
+    void stop() { ucl().emu_stop(uc); }
     bool has_mnemonic(uint64_t a) const { return mn_index.count(a) != 0; }
     void add_mnemonic(uint64_t a, const std::string *text) {
         mn_index[a] = mn_addr.size();
@@ -164,5 +180,10 @@ void hook_intr(uc_engine *uc, uint32_t intno, void *user);
 int stand_in(Run *r, uint64_t address, int64_t hit);        // 0 answered, 1 go on, 2 stop (Python raised)
 void hook_branch(uc_engine *uc, uint64_t address, uint32_t size, void *user);
 int restore(Run *r);
+// The hooks of a run, in trace_function's order (and a fast run gone one instruction at a time); detach takes them off.
+// 0, or Unicorn's error code.
+int attach(Run *r);
+int attach_code(Run *r);
+int detach(Run *r);
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer

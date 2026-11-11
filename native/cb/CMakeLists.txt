@@ -25,8 +25,9 @@ endfunction()
 # are collected for cb_tests.
 set_property(GLOBAL PROPERTY CB_TEST_SOURCES "")
 function(cb_area dir)
-  file(GLOB sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
-  file(GLOB tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp")
+  # one level of sub-folders is part of the area (emulate/tracer: code moved in from its own directory)
+  file(GLOB sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp" "${CMAKE_CURRENT_LIST_DIR}/${dir}/*/*.cpp")
+  file(GLOB tests CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*_test.cpp" "${CMAKE_CURRENT_LIST_DIR}/${dir}/*/*_test.cpp")
   list(FILTER sources EXCLUDE REGEX "(_test|_main)\\.cpp$")
   add_library(cb_${dir} STATIC ${sources})
   cb_apply_flags(cb_${dir})
@@ -57,6 +58,17 @@ function(cb_copy_prebuilt_dlls target)
   add_custom_command(TARGET ${target} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CB_PREBUILT_DLLS} "$<TARGET_FILE_DIR:${target}>")
 endfunction()
+
+# ---- cbtrace.dll: the recorder's C interface (emulate/tracer/cbtrace.h), for the callers that still reach it through
+# ctypes or LoadLibrary (the old ports and the dynamic exe). The same sources as cb_emulate's tracer, exported. It is
+# handed engines made by the caller's own Unicorn and so calls that DLL (tracer/libs.hpp use_libraries). Not built
+# under ASan: the sanitizer runtime does not belong in a DLL the Python process loads.
+if(NOT CB_ASAN)
+  file(GLOB CB_TRACER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/emulate/tracer/*.cpp")
+  add_library(cbtrace SHARED ${CB_TRACER_SOURCES})
+  cb_apply_flags(cbtrace)
+  target_link_libraries(cbtrace PRIVATE cb_core)
+endif()
 
 # ---- the test executable: every area's tests, compiled straight into it (a static library would let the
 # linker drop test objects nothing references) -------------------------------------------------------------

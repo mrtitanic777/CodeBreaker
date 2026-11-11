@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "libs.h"
+#include "cb/emulate/tracer/libs.hpp"
 
-namespace cbt {
+namespace cb::emulate::tracer {
 
 // One instruction as the record keeps it: (text, is a call, direct target) -- hook_code's `info`.
 struct InsnInfo {
@@ -69,4 +69,4 @@ extern const char *const COMPARES[9];
 void register_reg(const char *upper_name, int id);
 int intern(const std::string &s);
 
-}  // namespace cbt
+}  // namespace cb::emulate::tracer
